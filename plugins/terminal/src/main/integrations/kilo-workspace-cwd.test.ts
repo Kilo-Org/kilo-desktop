@@ -5,6 +5,10 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createFakeMainSdk, createFakeSdk } from "@kilo-desktop/testing";
+// Test-only import pinning the cwd predicate to git's managed worktree
+// convention (the segments const is the convention's single source — if
+// git ever changes it, this file fails to match reality).
+import { KILO_WORKTREE_SEGMENTS } from "@kilo-desktop/plugin-git/contracts";
 
 import { createTerminalCwdResolver } from "./kilo-workspace-cwd.js";
 
@@ -54,6 +58,25 @@ describe("terminal cwd resolution", () => {
 		const authorize = createTerminalCwdResolver(terminalSdk);
 		await expect(authorize(alias)).resolves.toBe(await realpath(primary));
 		await expect(authorize(secondary)).rejects.toMatchObject({ code: "VALIDATION" });
+	});
+
+	it("accepts a chat worktree rooted under a registered primary folder", async () => {
+		const root = await mkdtemp(path.join(os.tmpdir(), "terminal-worktree-"));
+		const primary = path.join(root, "primary");
+		const worktree = path.join(primary, ...KILO_WORKTREE_SEGMENTS, "kilo-session");
+		await mkdir(worktree, { recursive: true });
+		directories.push(root);
+
+		const shared = createFakeSdk({ featureId: "harness" });
+		const terminalSdk = createFakeMainSdk({ featureId: "terminal", services: shared.services });
+		const kiloSdk = createFakeMainSdk({ featureId: "kilo-ui", services: shared.services });
+		kiloSdk.plugins.expose("workspaceService", {
+			list: async () => [{ folders: [{ path: primary, isPrimary: true }] }],
+		});
+
+		await expect(createTerminalCwdResolver(terminalSdk)(worktree)).resolves.toBe(
+			await realpath(worktree),
+		);
 	});
 
 	it("fails closed when Kilo's registry is unavailable", async () => {

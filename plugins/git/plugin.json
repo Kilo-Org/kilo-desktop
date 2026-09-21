@@ -6,13 +6,16 @@
 	"web": "./src/web/index.ts",
 	"protocols": ["kilo-git"],
 	"contributes": {
-		"providers": [{ "component": "GitRepositoryWatcherProvider" }],
+		"providers": [
+			{ "component": "GitRepositoryWatcherProvider" },
+			{ "component": "GitEventsProvider", "priority": 5 }
+		],
 		"zones": [
 			{
 				"zone": "kilo-ui/chat-composer-draft-footer",
-				"id": "branch-selector",
-				"component": "GitBranchSelector",
-				"label": "Branch"
+				"id": "draft-menus",
+				"component": "GitDraftMenus",
+				"label": "Git"
 			},
 			{
 				"zone": "kilo-ui/chat-composer-footer",

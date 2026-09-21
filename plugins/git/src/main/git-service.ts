@@ -1,3 +1,6 @@
+import { rm } from "node:fs/promises";
+import { isAbsolute, relative, resolve, sep } from "node:path";
+
 import type { MainSdkLogger } from "@kilo-desktop/feature-sdk";
 import { FeatureError } from "@kilo-desktop/feature-sdk";
 import type { GitClient, GitPatchFile } from "@kilo-desktop/git-client";
@@ -8,9 +11,6 @@ import {
 	createGitClient,
 	isGitError,
 } from "@kilo-desktop/git-client";
-import { rm } from "node:fs/promises";
-import { isAbsolute, relative, resolve, sep } from "node:path";
-
 import type {
 	GitBranch,
 	GitBranchesResult,
@@ -19,6 +19,7 @@ import type {
 } from "../contracts/schemas.js";
 import type { IBranch, RepositoryType } from "@kilo-desktop/git-client";
 import { findDefaultBranch } from "./find-default-branch.js";
+import { WorktreeManager } from "./worktree-manager.js";
 
 const REMOTE_REF_PREFIX = "refs/remotes/";
 const BRANCH_REF_PREFIXES = ["refs/heads", "refs/remotes"] as const;
@@ -46,22 +47,8 @@ function visibleBranches(branches: ReadonlyArray<IBranch>): GitBranch[] {
 	});
 }
 
-/** The slice of `GitClient` the service actually uses; `GitClient` satisfies it. */
-export type GitClientSlice = Pick<
-	GitClient,
-	| "status"
-	| "version"
-	| "branches"
-	| "createBranch"
-	| "checkoutBranch"
-	| "repositoryType"
-	| "initRepository"
-	| "createWorkingDirectoryPatch"
-	| "getFileContents"
-	| "remoteHead"
-	| "globalConfigValue"
-	| "recentBranches"
->;
+/** `GitClient` minus what the service does not use; new `GitClient` members join the slice automatically. */
+export type GitClientSlice = Omit<GitClient, "path" | "satisfies" | "symbolicRef">;
 
 /**
  * The visible branches' recently checked-out local branch names, in reflog
@@ -190,7 +177,7 @@ function checkoutErrorToFeatureError(error: unknown): unknown {
 }
 
 /**
- * Git status/branch service over git-client.
+ * Git status/branch/worktree service over git-client.
  *
  * Stateless, backed by one shared client: git-client resolves the git binary
  * lazily and memoizes it per instance, so the binary resolution cost is paid
@@ -223,7 +210,9 @@ function checkoutErrorToFeatureError(error: unknown): unknown {
  *   `FeatureError` on every method so its message survives the IPC boundary;
  *   every other unexpected error propagates unwrapped (the IPC boundary
  *   scrubs generic errors, and git-client logs the detail via the adapted
- *   logger).
+ *   logger). The worktree delegate methods additionally map `GitError`s to
+ *   `FeatureError`s carrying git's parsed descriptions, because their
+ *   failures (missing base branch, locked worktree, …) are user-facing copy.
  * - `checkout` additionally maps the two expected user-facing failures
  *   (`BranchAlreadyExists`, `LocalChangesOverwritten`) to `FeatureError`s
  *   carrying git's parsed descriptions, so the UI can surface them. With
@@ -237,8 +226,8 @@ function checkoutErrorToFeatureError(error: unknown): unknown {
  *   reinitializes harmlessly and leaves HEAD untouched.
  *
  * Workspace containment: every directory-taking call (`status`,
- * `branches`, `checkout`, `init`, `createPatch`, `getDiffContents`)
- * resolves the
+ * `branches`, `repositoryType`, `checkout`, `init`, `createPatch`,
+ * `getDiffContents`, `hasWorktreeWork`, `defaultBranch`) resolves the
  * workspace folders per request and rejects with a `VALIDATION` FeatureError
  * unless the directory equals or is inside one of them — this choke point
  * covers both the IPC channels and the `kilo-git://` protocol handler in one
@@ -269,11 +258,17 @@ export class GitService {
 	 * OS-reaped (the OS temp directory).
 	 */
 	readonly #inFlightPatchPaths = new Set<string>();
+	readonly #worktrees: WorktreeManager;
 
 	constructor(options: GitServiceOptions) {
 		this.#client = options.createClient?.() ?? createDefaultClient(options.logger);
 		this.#getWorkspaceFolderPaths = options.getWorkspaceFolderPaths;
 		this.#tempDir = options.tempDir;
+		this.#worktrees = new WorktreeManager({
+			client: this.#client,
+			logger: options.logger,
+			resolveDefaultBranch: (wd) => this.defaultBranch(wd),
+		});
 	}
 
 	/**
@@ -494,6 +489,96 @@ export class GitService {
 			// declared type across the client seam: a falsey resolved value
 			// means no usable version, so it collapses to `false` too.
 			return Boolean(await this.#client.version());
+		} catch {
+			return false;
+		}
+	}
+
+	/**
+	 * The repository's default branch name: the `origin/HEAD` symref short
+	 * name, else a local `main`, else `master` (t3code's chain, trimmed).
+	 * `null` means no candidate — callers fall back to the current HEAD.
+	 */
+	async defaultBranch(workingDirectory: string): Promise<string | null> {
+		await this.#assertWithinWorkspaceFolders(workingDirectory);
+		try {
+			const remote = await this.#client.defaultBranch({ cwd: workingDirectory });
+			if (remote !== null) return remote;
+
+			const branches = await this.#client.branches({ cwd: workingDirectory });
+			const names = branches?.map((branch) => branch.name) ?? [];
+			if (names.includes("main")) return "main";
+			if (names.includes("master")) return "master";
+			return null;
+		} catch (error) {
+			throw gitNotDetectedToFeatureError(error);
+		}
+	}
+
+	/**
+	 * Create a chat worktree at `<main root>/.kilo/worktrees/` on a fresh
+	 * `kilo/<friendly-words>` branch, based on `baseBranch` (else the
+	 * default-branch chain, else the current HEAD). Returns the worktree
+	 * directory and the new branch name.
+	 */
+	async createWorktree(input: {
+		workingDirectory: string;
+		baseBranch?: string;
+	}): Promise<{ directory: string; branch: string; warning?: string }> {
+		return this.#worktrees.createWorktree(input);
+	}
+
+	/**
+	 * Rename a worktree's branch to a semantic name derived from
+	 * `requestedBranch` (naming policy: sanitize, `kilo/` prefix, 50-char
+	 * cap). Ports kilocode's guard chain; every guard declines with `null`
+	 * (rename is best-effort), unexpected failures throw.
+	 */
+	async renameWorktreeBranch(input: {
+		path: string;
+		currentBranch: string;
+		requestedBranch: string;
+	}): Promise<{ branch: string } | null> {
+		return this.#worktrees.renameWorktreeBranch(input);
+	}
+
+	/**
+	 * Remove a managed chat worktree, deleting its branch when it still
+	 * carries the `kilo/` ownership marker. Idempotent: a path that is
+	 * already gone or never registered resolves success; an unmanaged path
+	 * is refused loudly.
+	 */
+	async removeWorktree(input: { path: string }): Promise<void> {
+		return this.#worktrees.removeWorktree(input);
+	}
+
+	/**
+	 * True when the worktree at `directory` has actual work relative to
+	 * `baseBranch`: uncommitted file changes (staged, unstaged, or untracked)
+	 * or commits ahead of the base. Two-tier contract, per the channel:
+	 * a containment refusal rejects with a `VALIDATION` FeatureError (the
+	 * directory is renderer-supplied, same deliberate choke point as every
+	 * sibling method), while every git-level failure — missing binary, spawn
+	 * failure, not a repo — resolves `false` (absence of evidence is not
+	 * generation, same collapsing precedent as `available()`; git-client logs
+	 * the probe detail via the adapted logger at the source).
+	 */
+	async hasWorktreeWork(input: { directory: string; baseBranch?: string }): Promise<boolean> {
+		await this.#assertWithinWorkspaceFolders(input.directory);
+		try {
+			const status = await this.#client.status({ cwd: input.directory });
+			if (status === null) return false;
+			if (status.workingDirectory.files.length > 0) return true;
+			if (!input.baseBranch) return false;
+			// Leading-dash guard before interpolation into the rev-list args array.
+			if (input.baseBranch.startsWith("-")) return false;
+			const result = await this.#client
+				.exec(["rev-list", "--count", `${input.baseBranch}..HEAD`], "revListCount", {
+					cwd: input.directory,
+					successExitCodes: new Set([0, 128]),
+				})
+				.catch(() => null);
+			return result !== null && result.exitCode === 0 && parseInt(result.stdout.trim(), 10) > 0;
 		} catch {
 			return false;
 		}

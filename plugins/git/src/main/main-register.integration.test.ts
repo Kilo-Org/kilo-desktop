@@ -542,6 +542,199 @@ describe("git mainRegister repositoryType", () => {
 	});
 });
 
+describe("git mainRegister defaultBranch", () => {
+	it("resolves the default branch for a regular repository", async () => {
+		const repoDir = initRepo();
+		const { mainSdk, addWorkspaceFolder } = bootedSdk();
+		addWorkspaceFolder(repoDir);
+
+		expect(mainSdk.has("defaultBranch")).toBe(true);
+		await expect(mainSdk.invoke("defaultBranch", { workingDirectory: repoDir })).resolves.toBe(
+			"main",
+		);
+
+		mainSdk.dispose();
+	});
+
+	it("resolves null outside a repository", async () => {
+		const plainDir = createTempDir();
+		const { mainSdk, addWorkspaceFolder } = bootedSdk();
+		addWorkspaceFolder(plainDir);
+
+		await expect(
+			mainSdk.invoke("defaultBranch", { workingDirectory: plainDir }),
+		).resolves.toBeNull();
+
+		mainSdk.dispose();
+	});
+
+	it("rejects a directory outside every workspace folder", async () => {
+		const repoDir = initRepo();
+		const { mainSdk, addWorkspaceFolder } = bootedSdk();
+		addWorkspaceFolder(repoDir);
+
+		await expect(
+			mainSdk.invoke("defaultBranch", { workingDirectory: createTempDir() }),
+		).rejects.toMatchObject({ name: "FeatureError", code: "VALIDATION" });
+
+		mainSdk.dispose();
+	});
+});
+
+describe("git mainRegister gitService capability", () => {
+	it("exposes the worktree methods via plugins.get", async () => {
+		const repoDir = initRepo();
+		const { mainSdk, addWorkspaceFolder } = bootedSdk();
+		addWorkspaceFolder(repoDir);
+
+		const capabilities = mainSdk.plugins.get<GitCapabilities>("git");
+		expect(capabilities).not.toBeNull();
+
+		const worktree = await capabilities?.gitService.createWorktree({ workingDirectory: repoDir });
+		expect(worktree?.directory).toMatch(/[/].kilo[/]worktrees[/]kilo-/);
+		expect(worktree?.branch).toMatch(/^kilo\//);
+
+		// The created worktree is a real git worktree on a kilo/ branch.
+		const listing = execGitOutput(repoDir, ["worktree", "list", "--porcelain"]);
+		expect(listing).toContain(worktree?.directory ?? "");
+		const branches = execGitOutput(repoDir, [
+			"for-each-ref",
+			"--format=%(refname:short)",
+			"refs/heads",
+		]);
+		expect(branches.split("\n")).toContain(worktree?.branch);
+
+		// Removing it prunes both the directory and the branch.
+		await capabilities?.gitService.removeWorktree({ path: worktree?.directory ?? "" });
+		expect(fs.existsSync(worktree?.directory ?? "")).toBe(false);
+		const branchesAfter = execGitOutput(repoDir, [
+			"for-each-ref",
+			"--format=%(refname:short)",
+			"refs/heads",
+		]);
+		expect(branchesAfter.split("\n")).not.toContain(worktree?.branch);
+
+		mainSdk.dispose();
+	});
+
+	it("appends .kilo/worktrees/ to the repository's exclude file", async () => {
+		const repoDir = initRepo();
+		const { mainSdk, addWorkspaceFolder } = bootedSdk();
+		addWorkspaceFolder(repoDir);
+
+		const capabilities = mainSdk.plugins.get<GitCapabilities>("git");
+		const worktree = await capabilities?.gitService.createWorktree({ workingDirectory: repoDir });
+		const exclude = fs.readFileSync(path.join(repoDir, ".git", "info", "exclude"), "utf-8");
+		expect(exclude).toContain(".kilo/worktrees/");
+
+		await capabilities?.gitService.removeWorktree({ path: worktree?.directory ?? "" });
+		mainSdk.dispose();
+	});
+
+	it("falls back to the local base with a warning when fetching the remote fails", async () => {
+		const repoDir = initRepo();
+		execGit(repoDir, ["remote", "add", "origin", path.join(createTempDir(), "no-such-remote")]);
+		const { mainSdk, addWorkspaceFolder } = bootedSdk();
+		addWorkspaceFolder(repoDir);
+
+		const capabilities = mainSdk.plugins.get<GitCapabilities>("git");
+		const worktree = await capabilities?.gitService.createWorktree({ workingDirectory: repoDir });
+
+		expect(worktree?.warning).toBe(
+			"Couldn't fetch latest main from origin; branched from local state.",
+		);
+		// The degraded base still yields a healthy worktree on the local main.
+		const listing = execGitOutput(repoDir, ["worktree", "list", "--porcelain"]);
+		expect(listing).toContain(worktree?.directory ?? "");
+
+		await capabilities?.gitService.removeWorktree({ path: worktree?.directory ?? "" });
+		mainSdk.dispose();
+	});
+
+	it("bases remote-tracking start points on a commit so semantic rename stays eligible", async () => {
+		const repoDir = initRepo();
+		// A bare clone acts as a real (local) remote the fetch can succeed on.
+		const remoteDir = createTempDir();
+		execGit(os.tmpdir(), ["clone", "--bare", repoDir, remoteDir]);
+		execGit(repoDir, ["remote", "add", "origin", remoteDir]);
+		execGit(repoDir, ["fetch", "origin"]);
+		const { mainSdk, addWorkspaceFolder } = bootedSdk();
+		addWorkspaceFolder(repoDir);
+
+		const capabilities = mainSdk.plugins.get<GitCapabilities>("git");
+		const worktree = await capabilities?.gitService.createWorktree({ workingDirectory: repoDir });
+
+		expect(worktree?.warning).toBeUndefined();
+		// Without the `^{commit}` dereference, `worktree add -b <branch> origin/main`
+		// sets upstream tracking on the new branch, and the no-upstream guard
+		// would decline every semantic rename for that session.
+		const upstream = execGitOutput(repoDir, [
+			"for-each-ref",
+			"--format=%(upstream:short)",
+			`refs/heads/${worktree?.branch ?? ""}`,
+		]);
+		expect(upstream).toBe("");
+
+		const rename = await capabilities?.gitService.renameWorktreeBranch({
+			path: worktree?.directory ?? "",
+			currentBranch: worktree?.branch ?? "",
+			requestedBranch: "Fix the Login Bug!",
+		});
+		expect(rename).toEqual({ branch: "kilo/fix-the-login-bug" });
+
+		await capabilities?.gitService.removeWorktree({ path: worktree?.directory ?? "" });
+		mainSdk.dispose();
+	});
+
+	it("emits worktree-branch-renamed when a rename succeeds", async () => {
+		const repoDir = initRepo();
+		const { mainSdk, addWorkspaceFolder } = bootedSdk();
+		addWorkspaceFolder(repoDir);
+
+		const capabilities = mainSdk.plugins.get<GitCapabilities>("git");
+		const worktree = await capabilities?.gitService.createWorktree({ workingDirectory: repoDir });
+
+		const events: unknown[] = [];
+		mainSdk.events.on("git.worktree-branch-renamed", (payload) => {
+			events.push(payload);
+		});
+
+		const renamed = await capabilities?.gitService.renameWorktreeBranch({
+			path: worktree?.directory ?? "",
+			currentBranch: worktree?.branch ?? "",
+			requestedBranch: "Fix the Login Bug!",
+		});
+		expect(renamed).toEqual({ branch: "kilo/fix-the-login-bug" });
+		expect(events).toEqual([{ path: worktree?.directory, branch: "kilo/fix-the-login-bug" }]);
+
+		await capabilities?.gitService.removeWorktree({ path: worktree?.directory ?? "" });
+		mainSdk.dispose();
+	});
+
+	it("does not emit worktree-branch-renamed when rename returns null", async () => {
+		const repoDir = initRepo();
+		const { mainSdk } = bootedSdk();
+
+		const capabilities = mainSdk.plugins.get<GitCapabilities>("git");
+
+		const events: unknown[] = [];
+		mainSdk.events.on("git.worktree-branch-renamed", (payload) => {
+			events.push(payload);
+		});
+
+		// Rename against the main checkout (not a managed worktree) → null.
+		const result = await capabilities?.gitService.renameWorktreeBranch({
+			path: repoDir,
+			currentBranch: "main",
+			requestedBranch: "some-name",
+		});
+		expect(result).toBeNull();
+		expect(events).toHaveLength(0);
+
+		mainSdk.dispose();
+	});
+});
+
 describe("git mainRegister checkout", () => {
 	it("checks out a remote-tracking branch as a local tracking branch", async () => {
 		const cloneDir = cloneWithUntrackedRemoteFeature();

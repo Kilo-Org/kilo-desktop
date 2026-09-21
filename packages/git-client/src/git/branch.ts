@@ -31,3 +31,29 @@ export async function createBranch(
 		...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
 	});
 }
+
+/**
+ * Delete the given local branch, discarding unmerged work
+ * (`git branch -D`).
+ */
+export async function deleteBranch(
+	exec: BranchExec,
+	name: string,
+	options?: BranchOptions,
+): Promise<void> {
+	await exec(["branch", "-D", name], "deleteBranch", {
+		...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
+	});
+}
+
+/** Rename the given local branch to `next` (`git branch -m`). */
+export async function renameBranch(
+	exec: BranchExec,
+	name: string,
+	next: string,
+	options?: BranchOptions,
+): Promise<void> {
+	await exec(["branch", "-m", name, next], "renameBranch", {
+		...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
+	});
+}

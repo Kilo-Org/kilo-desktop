@@ -14,7 +14,7 @@ Before editing files for a substantial task:
 
 ## Context
 
-Read [CONTEXT.md](./CONTEXT.md) for architecture, terminology, and conventions.
+Read [CONTEXT.md](./CONTEXT.md) for architecture, terminology, and conventions. Keep CONTEXT.md high-level when editing it: one line per package/plugin (purpose, not feature enumeration); feature detail lives in code comments and plugin docs.
 
 ## Running the app
 
@@ -41,7 +41,7 @@ Project skills live under [`.agents/skills/`](./.agents/skills/).
 
 1. **Read CONTEXT.md first** — it defines what imports are allowed, how features communicate, and what patterns to follow.
 2. **Never add feature methods to `LocalApi`** — use `sdk.invoke` via the feature-sdk shim.
-3. **Never import across features** — cross-feature = `sdk.events` / `sdk.plugins.get` / `sdk.state.get`.
+3. **Never import across features** — cross-feature = `sdk.events` / `sdk.plugins.get` / `sdk.state.get`. (Types/store keys for those primitives may be imported from the owning plugin's `./contracts` export — that is type-sharing, not a runtime import across features.)
 4. **Every feature registers in the FEATURES array** — never hand-edit `Application.ts`.
 5. **Tests use `createFakeSdk` / `createFakeFeatureSystem` / `createBrowserLocalApi`** — never hand-roll fake `LocalApi` or `FeatureSystem` objects in feature tests. See `.agents/skills/write-vitest/SKILL.md`.
 6. **Every feature ships at least one `@smoke` e2e spec** — see `docs/TESTING.md` and `.agents/skills/write-e2e-test/SKILL.md`.

@@ -9,6 +9,8 @@ export type KiloDesktopWorkspaceFolder = KiloSessionPreparation["workspaceFolder
 export type KiloDesktopSessionMetadata = {
 	workspaceId?: string;
 	workspaceFolders?: KiloDesktopWorkspaceFolder[];
+	/** Present when the session runs in a Kilo-created git worktree. */
+	worktree?: { branch: string };
 };
 
 type SessionStatusType = "busy" | "retry" | "idle";
@@ -16,6 +18,8 @@ type SessionStatusType = "busy" | "retry" | "idle";
 export type SessionActivity = {
 	directory?: string | undefined;
 	workspaceId?: string | undefined;
+	/** The session's worktree branch (`kilo/…`) when it runs in a worktree. */
+	worktreeBranch?: string | undefined;
 	createdAt?: number | undefined;
 	updatedAt?: number | undefined;
 	status?: SessionStatusType | undefined;
@@ -48,7 +52,7 @@ export function createEmptySessionActivity(): SessionActivity {
 	return { pendingPermissionIds: [], pendingQuestionIds: [] };
 }
 
-const asRecord = (value: unknown): Record<string, unknown> | null =>
+export const asRecord = (value: unknown): Record<string, unknown> | null =>
 	typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
 
 const asString = (value: unknown): string | undefined =>
@@ -63,12 +67,14 @@ const asStatusType = (value: unknown): SessionStatusType | undefined =>
 export function buildKiloDesktopSessionMetadata(input?: {
 	workspaceId?: string | undefined;
 	workspaceFolders?: KiloDesktopWorkspaceFolder[] | undefined;
+	worktreeBranch?: string | undefined;
 }): {
 	metadata: { [KILO_DESKTOP_METADATA_KEY]: KiloDesktopSessionMetadata };
 } {
 	const kiloDesktop: KiloDesktopSessionMetadata = {};
 	if (input?.workspaceId) kiloDesktop.workspaceId = input.workspaceId;
 	if (input?.workspaceFolders?.length) kiloDesktop.workspaceFolders = input.workspaceFolders;
+	if (input?.worktreeBranch) kiloDesktop.worktree = { branch: input.worktreeBranch };
 	return { metadata: { [KILO_DESKTOP_METADATA_KEY]: kiloDesktop } };
 }
 
@@ -104,11 +110,17 @@ export function readWorkspaceFoldersFromMetadata(metadata: unknown): KiloDesktop
 	});
 }
 
+export function readWorktreeBranchFromMetadata(metadata: unknown): string | undefined {
+	return asString(asRecord(readKiloDesktopSessionMetadata(metadata)?.worktree)?.branch);
+}
+
 export type SessionActivityPatch = Partial<
 	Pick<SessionActivity, "directory" | "createdAt" | "updatedAt">
 > & {
 	/** `null` clears a previously stamped workspace (deleted workspace). */
 	workspaceId?: string | null;
+	/** `null` clears a previously stamped worktree branch (non-worktree session). */
+	worktreeBranch?: string | null;
 };
 
 /** Reads directory/timestamps/workspace id off a Kilo `Session` (`session.updated` info, list rows). */
@@ -121,8 +133,9 @@ export function readSessionInfoPatch(info: Record<string, unknown>): SessionActi
 	if (createdAt !== undefined) patch.createdAt = createdAt;
 	const updatedAt = asFiniteNumber(time?.updated);
 	if (updatedAt !== undefined) patch.updatedAt = updatedAt;
-	if ("metadata" in info) {
+	if (info.metadata != null) {
 		patch.workspaceId = readWorkspaceIdFromMetadata(info.metadata) ?? null;
+		patch.worktreeBranch = readWorktreeBranchFromMetadata(info.metadata) ?? null;
 	}
 	return patch;
 }
@@ -146,6 +159,14 @@ export function applySessionPatch(
 		}
 	} else if (patch.workspaceId !== undefined && next.workspaceId !== patch.workspaceId) {
 		next = { ...next, workspaceId: patch.workspaceId };
+	}
+	if (patch.worktreeBranch === null) {
+		if (next.worktreeBranch !== undefined) {
+			const { worktreeBranch: _worktreeBranch, ...rest } = next;
+			next = rest;
+		}
+	} else if (patch.worktreeBranch !== undefined && next.worktreeBranch !== patch.worktreeBranch) {
+		next = { ...next, worktreeBranch: patch.worktreeBranch };
 	}
 	return next === session ? null : next;
 }
@@ -369,6 +390,23 @@ export function applySessionActivityEvent(
 }
 
 export type SessionRowState = "approval" | "input" | "working" | "done" | null;
+
+/**
+ * The delete dialog's orphan criterion: `sessionId` runs in a worktree
+ * (a `worktreeBranch` stamp with its directory) and no other known session
+ * shares that directory. An unknown or unstamped session is not a worktree
+ * session as far as this predicate knows — callers that must not mistake
+ * "not hydrated yet" for "not a worktree" wait for the refresh first.
+ */
+export function isOrphanedWorktreeSession(
+	sessions: Readonly<Record<string, SessionActivity>>,
+	sessionId: string,
+): boolean {
+	const own = sessions[sessionId];
+	const directory = own?.worktreeBranch !== undefined ? own.directory : undefined;
+	if (directory === undefined) return false;
+	return Object.values(sessions).every((other) => other === own || other.directory !== directory);
+}
 
 /** Priority per session: approval > input > working > done (unread) > none. */
 export function deriveSessionRowState(

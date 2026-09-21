@@ -10,6 +10,15 @@ import { defineContract, defineMethod, type InferContract } from "@kilo-desktop/
  * client types is enforced by `tsc` at the `handleAll` registration site.
  */
 
+/**
+ * Path segments of the managed chat-worktree directory
+ * (`<main root>/.kilo/worktrees/`) — the single source of the convention.
+ * Plain const (no `node:path`) so web bundles can import it; files and
+ * terminal hardcode the same segments in production and pin against this
+ * const in their tests.
+ */
+export const KILO_WORKTREE_SEGMENTS = [".kilo", "worktrees"] as const;
+
 /** `GitStatusEntry` */
 export const gitStatusEntrySchema = z.enum(["M", "A", "D", "R", "C", ".", "?", "!", "U"]);
 
@@ -135,6 +144,32 @@ export const gitBranchesResultSchema = z.object({
 	recentBranches: z.array(z.string()),
 });
 
+export const gitCreateWorktreeInputSchema = z.object({
+	workingDirectory: z.string().min(1).max(32_768),
+	baseBranch: z.string().min(1).max(255).optional(),
+});
+
+export const gitWorktreeResultSchema = z.object({
+	directory: z.string(),
+	branch: z.string(),
+	/**
+	 * Set when the worktree was created from a degraded base — e.g. the
+	 * fetch of the latest base branch failed, so the branch was cut from
+	 * local state. Surfaced to the session as a non-blocking warning.
+	 */
+	warning: z.string().optional(),
+});
+
+export const gitRenameWorktreeBranchInputSchema = z.object({
+	path: z.string().min(1).max(32_768),
+	currentBranch: z.string().min(1).max(255),
+	requestedBranch: z.string().min(1).max(255),
+});
+
+export const gitRemoveWorktreeInputSchema = z.object({
+	path: z.string().min(1).max(32_768),
+});
+
 /**
  * Feature-SDK contract (unprefixed; scoped by featureId).
  *
@@ -167,6 +202,10 @@ export const gitBranchesResultSchema = z.object({
  * the branch from the global config falling back to `main`, no initial
  * commit). Idempotent — reinitializing an existing repository is a
  * harmless no-op.
+ *
+ * `defaultBranch` resolves the repository's default branch name
+ * (`origin/HEAD` symref, else local `main`, else `master`) or `null` when
+ * no candidate exists — the base-branch picker's default.
  */
 export const gitContract = defineContract({
 	status: defineMethod(
@@ -215,29 +254,76 @@ export const gitContract = defineContract({
 			newContents: z.string().nullable(),
 		}),
 	),
+	defaultBranch: defineMethod(
+		z.object({ workingDirectory: z.string().min(1).max(32_768) }),
+		z.string().nullable(),
+	),
 });
 
 export type GitStatus = z.infer<typeof gitStatusSchema>;
 export type GitBranch = z.infer<typeof gitBranchSchema>;
 export type GitBranchesResult = z.infer<typeof gitBranchesResultSchema>;
 export type GitRepositoryType = z.infer<typeof gitRepositoryTypeSchema>;
+export type GitCreateWorktreeInput = z.infer<typeof gitCreateWorktreeInputSchema>;
+export type GitWorktreeResult = z.infer<typeof gitWorktreeResultSchema>;
+export type GitRenameWorktreeBranchInput = z.infer<typeof gitRenameWorktreeBranchInputSchema>;
+export type GitRemoveWorktreeInput = z.infer<typeof gitRemoveWorktreeInputSchema>;
 
 /**
  * Capability type for consumers resolving the git plugin via
- * `mainSdk.plugins.get`.
+ * `mainSdk.plugins.get`. The worktree surface is capability-only by design:
+ * creation, rename, and removal are main-process orchestration (kilo-ui
+ * calls them while preparing or cleaning up chat sessions) and never cross
+ * the renderer IPC boundary.
  *
  * Usage:
  * ```ts
  * const git = mainSdk.plugins.get<GitCapabilities>("git");
  * const status = await git?.gitService.status(workingDirectory);
+ * const worktree = await git?.gitService.createWorktree({ workingDirectory });
  * ```
  */
 export type GitCapabilities = {
 	readonly gitService: {
 		status(workingDirectory: string): Promise<GitStatus | null>;
 		available(): Promise<boolean>;
+		createWorktree(input: GitCreateWorktreeInput): Promise<GitWorktreeResult>;
+		renameWorktreeBranch(input: GitRenameWorktreeBranchInput): Promise<{ branch: string } | null>;
+		removeWorktree(input: GitRemoveWorktreeInput): Promise<void>;
+		hasWorktreeWork(input: { directory: string; baseBranch?: string }): Promise<boolean>;
 	};
 };
 
 /** Method-style service type inferred from the contract. */
 export type GitServiceContract = InferContract<typeof gitContract>;
+
+/**
+ * The draft-selection state store is a cross-plugin contract: this module
+ * owns its name, key, and value shape, and kilo-ui imports them at send
+ * time (`sdk.state.get(GIT_DRAFT_SELECTION_STORE_KEY)`) instead of keeping
+ * a mirrored copy. The key is derived from the name so the registration
+ * (git's `webRegister`) and the consumer (kilo-ui) cannot drift.
+ */
+
+/** Store name within the git feature; the namespaced key is `git.<name>`. */
+export const DRAFT_SELECTION_STORE_NAME = "draft-worktree-selection";
+
+/**
+ * Fully-qualified store key: one workspace's git draft selection (run the
+ * next session in the local checkout or in a freshly created worktree).
+ */
+export const GIT_DRAFT_SELECTION_STORE_KEY = `git.${DRAFT_SELECTION_STORE_NAME}`;
+
+/**
+ * One workspace's selection: `local` (the main checkout) or `worktree`
+ * (based on `baseBranch` — absent means the service's default-branch chain).
+ */
+export type GitDraftWorktreeSelection =
+	| { mode: "local" }
+	| { mode: "worktree"; baseBranch?: string };
+
+/**
+ * Store value: selections keyed by workspace id, so one store instance
+ * serves every workspace and updates preserve other entries' references.
+ */
+export type GitDraftSelectionStoreValue = Record<string, GitDraftWorktreeSelection>;

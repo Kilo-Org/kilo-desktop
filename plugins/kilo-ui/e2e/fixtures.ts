@@ -9,6 +9,7 @@ import { KiloProvidersPage } from "./pages/kilo-providers-page.js";
 import { LocalProvidersPage } from "./pages/local-providers-page.js";
 import { OnboardingPage } from "./pages/onboarding-page.js";
 import { WorkspacesPage } from "./pages/workspaces-page.js";
+import { GitWorktreesPage, initializeGitRepository } from "./pages/git-worktrees-page.js";
 
 type KiloUiFixtures = {
 	kiloCodePage: KiloCodePage;
@@ -17,6 +18,8 @@ type KiloUiFixtures = {
 	onboardingPage: OnboardingPage;
 	workspacesPage: WorkspacesPage;
 	workspaceFolder: { path: string; name: string };
+	gitWorktreesPage: GitWorktreesPage;
+	gitRepoFolder: { path: string; name: string };
 };
 
 export const test = shellTest.extend<KiloUiFixtures>({
@@ -25,6 +28,17 @@ export const test = shellTest.extend<KiloUiFixtures>({
 		const folderPath = await mkdtemp(path.join(os.tmpdir(), "kilo-ui-workspace-"));
 		removePathAfterAppStops(folderPath);
 		await use({ path: folderPath, name: path.basename(folderPath) });
+	},
+	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
+	gitRepoFolder: async ({}, use) => {
+		const repoPath = await mkdtemp(path.join(os.tmpdir(), "aad-git-worktree-repo-"));
+		removePathAfterAppStops(repoPath);
+		await initializeGitRepository(repoPath);
+		await use({ path: repoPath, name: path.basename(repoPath) });
+	},
+	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
+	gitWorktreesPage: async ({}, use) => {
+		await use(new GitWorktreesPage());
 	},
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
 	kiloCodePage: async ({}, use) => {

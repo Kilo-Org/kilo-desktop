@@ -7,6 +7,7 @@ import { GitErrorCode } from "../exec/errors.js";
 import { isGitError } from "./core.js";
 import {
 	cleanupTestDirs,
+	createTestDir,
 	gitExec,
 	initialize,
 	initializeWithRemote,
@@ -47,6 +48,23 @@ describe("git/checkout", () => {
 			const status = await git.status();
 			expect(status?.currentBranch).toBe("feature");
 			expect(status?.currentUpstreamBranch).toBe("origin/feature");
+		});
+
+		it("honors a cwd override distinct from the client path", async () => {
+			const repoPath = await initialize("checkout-cwd", "main");
+			await makeCommit(repoPath, {
+				entries: [{ path: "README.md", contents: "# main\n" }],
+			});
+			await gitExec(["branch", "feature"], repoPath);
+			const clientFromElsewhere = createGitClient({
+				path: await createTestDir("checkout-cwd-outside"),
+				logger: noopLogger,
+			});
+
+			await clientFromElsewhere.checkoutBranch("feature", { cwd: repoPath });
+
+			const status = await createGitClient({ path: repoPath, logger: noopLogger }).status();
+			expect(status?.currentBranch).toBe("feature");
 		});
 
 		it("rejects an invalid branch name", async () => {

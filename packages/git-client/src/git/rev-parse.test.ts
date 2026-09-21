@@ -122,4 +122,27 @@ directory=`,
 			}
 		});
 	});
+
+	describe("getGitCommonDir", () => {
+		it("returns the absolute path to the .git directory for a regular repository", async () => {
+			const repoPath = await initialize("git-common-dir-regular", "main");
+			const client = createGitClient({ path: repoPath, logger: noopLogger });
+
+			const commonDir = await client.gitCommonDir();
+
+			expect(await realpath(commonDir)).toBe(await realpath(join(repoPath, ".git")));
+		});
+
+		it("honors a cwd override", async () => {
+			const repoPath = await initialize("git-common-dir-cwd", "main");
+			const clientFromElsewhere = createGitClient({
+				path: await createTestDir("git-common-dir-outside"),
+				logger: noopLogger,
+			});
+
+			const commonDir = await clientFromElsewhere.gitCommonDir({ cwd: repoPath });
+
+			expect(await realpath(commonDir)).toBe(await realpath(join(repoPath, ".git")));
+		});
+	});
 });

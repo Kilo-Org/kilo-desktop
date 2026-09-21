@@ -11,9 +11,10 @@ import { GitService } from "./git-service.js";
  * no `browserRegister` and browser mode skips the plugin (its web-side
  * "Changes" tab then degrades to the error state — `kilo-git://` fetches
  * reject there). No feature-flag gate: core infrastructure, not a flagged
- * product feature. The `gitService` capability exposes the same service
- * surface to other plugins (e.g. files' git status decorations) without them
- * depending on this package or its IPC channels.
+ * product feature. The `gitService` capability exposes the full service
+ * surface to other plugins (files' git status decorations, kilo-ui's
+ * worktree session lifecycle) without them depending on this package or its
+ * IPC channels; the renderer-callable methods stay behind the contract.
  */
 /**
  * Capability shape exposed by kilo-ui for workspace folders (a local
@@ -56,6 +57,7 @@ export function mainRegister(mainSdk: MainSdk): void {
 			return undefined;
 		},
 		getDiffContents: (args) => service.getDiffContents(args),
+		defaultBranch: ({ workingDirectory }) => service.defaultBranch(workingDirectory),
 	});
 
 	mainSdk.protocol?.handle("kilo-git", createGitProtocolHandler({ service }));
@@ -63,6 +65,16 @@ export function mainRegister(mainSdk: MainSdk): void {
 	mainSdk.plugins.expose("gitService", {
 		status: service.status.bind(service),
 		available: service.available.bind(service),
+		createWorktree: service.createWorktree.bind(service),
+		renameWorktreeBranch: async (input) => {
+			const result = await service.renameWorktreeBranch(input);
+			if (result !== null) {
+				mainSdk.events.emit("worktree-branch-renamed", { path: input.path, branch: result.branch });
+			}
+			return result;
+		},
+		removeWorktree: service.removeWorktree.bind(service),
+		hasWorktreeWork: service.hasWorktreeWork.bind(service),
 	} satisfies GitCapabilities["gitService"]);
 
 	// Best-effort sweep of patch files still in flight at teardown; the

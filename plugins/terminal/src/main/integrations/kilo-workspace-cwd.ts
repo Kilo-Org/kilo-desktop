@@ -1,7 +1,16 @@
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
+import { dirname, resolve } from "node:path";
 
 import { FeatureError, type MainSdk } from "@kilo-desktop/feature-sdk/main";
+
+/**
+ * Path segments of the managed chat-worktree directory
+ * (`<primary>/.kilo/worktrees/`). Declared locally so terminal carries no
+ * runtime dependency on the git package — pinned to git's contracts const
+ * by kilo-workspace-cwd.test.ts.
+ */
+const KILO_WORKTREE_SEGMENTS = [".kilo", "worktrees"] as const;
 
 interface WorkspaceCapability extends Record<string, unknown> {
 	workspaceService: {
@@ -11,6 +20,13 @@ interface WorkspaceCapability extends Record<string, unknown> {
 
 function comparable(value: string): string {
 	return process.platform === "win32" ? value.toLocaleLowerCase() : value;
+}
+
+function isManagedWorktreeChild(candidate: string, primary: string): boolean {
+	return (
+		comparable(dirname(resolve(candidate))) ===
+		comparable(resolve(primary, ...KILO_WORKTREE_SEGMENTS))
+	);
 }
 
 export function createTerminalCwdResolver(
@@ -38,7 +54,12 @@ export function createTerminalCwdResolver(
 			folders.filter(({ isPrimary }) => isPrimary),
 		)) {
 			try {
-				if (comparable(await realpath(folder.path)) === comparable(canonical)) return canonical;
+				const primary = await realpath(folder.path);
+				if (
+					comparable(primary) === comparable(canonical) ||
+					isManagedWorktreeChild(canonical, primary)
+				)
+					return canonical;
 			} catch {
 				// Stale workspace folders are ignored; the requested folder still has to match another primary.
 			}

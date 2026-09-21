@@ -13,6 +13,7 @@ import {
 	formatRelativeTimeLabel,
 	formatWorkingDurationLabel,
 	hasKiloDesktopSessionMetadata,
+	isOrphanedWorktreeSession,
 	needsAttention,
 	readKiloDesktopSessionMetadata,
 	readWorkspaceFoldersFromMetadata,
@@ -420,14 +421,58 @@ describe("applySessionPatch / readSessionInfoPatch", () => {
 				time: { created: 1, updated: 2 },
 				metadata: { [KILO_DESKTOP_METADATA_KEY]: { workspaceId: "ws-1" } },
 			}),
-		).toEqual({ directory: "/repo", createdAt: 1, updatedAt: 2, workspaceId: "ws-1" });
+		).toEqual({
+			directory: "/repo",
+			createdAt: 1,
+			updatedAt: 2,
+			workspaceId: "ws-1",
+			worktreeBranch: null,
+		});
 		expect(
 			readSessionInfoPatch({
 				directory: "/repo",
 				metadata: { [KILO_DESKTOP_METADATA_KEY]: {} },
 			}),
-		).toEqual({ directory: "/repo", workspaceId: null });
+		).toEqual({ directory: "/repo", workspaceId: null, worktreeBranch: null });
 		expect(readSessionInfoPatch({ directory: "/repo" })).toEqual({ directory: "/repo" });
+		expect(readSessionInfoPatch({ directory: "/repo", metadata: undefined })).toEqual({
+			directory: "/repo",
+		});
+	});
+
+	it("stamps worktree branch into nested kilo-desktop metadata", () => {
+		expect(
+			buildKiloDesktopSessionMetadata({
+				workspaceId: "ws-1",
+				worktreeBranch: "kilo/ambitious-keyboard",
+			}),
+		).toEqual({
+			metadata: {
+				[KILO_DESKTOP_METADATA_KEY]: {
+					workspaceId: "ws-1",
+					worktree: { branch: "kilo/ambitious-keyboard" },
+				},
+			},
+		});
+		expect(buildKiloDesktopSessionMetadata({ worktreeBranch: "kilo/x" })).toEqual({
+			metadata: { [KILO_DESKTOP_METADATA_KEY]: { worktree: { branch: "kilo/x" } } },
+		});
+	});
+
+	it("round-trips the worktree branch through session info patches", () => {
+		expect(
+			readSessionInfoPatch({
+				directory: "/repo",
+				metadata: { [KILO_DESKTOP_METADATA_KEY]: { worktree: { branch: "kilo/x" } } },
+			}),
+		).toEqual({ directory: "/repo", workspaceId: null, worktreeBranch: "kilo/x" });
+		const merged = applySessionPatch(createEmptySessionActivity(), {
+			worktreeBranch: "kilo/x",
+		});
+		expect(merged).toEqual({ ...createEmptySessionActivity(), worktreeBranch: "kilo/x" });
+		expect(
+			applySessionPatch(merged ?? createEmptySessionActivity(), { worktreeBranch: null }),
+		).toEqual(createEmptySessionActivity());
 	});
 
 	it("clears a stamped workspace id", () => {
@@ -491,6 +536,38 @@ describe("needsAttention", () => {
 		expect(needsAttention({ ...createEmptySessionActivity(), pendingQuestionIds: ["q"] })).toBe(
 			true,
 		);
+	});
+});
+
+describe("isOrphanedWorktreeSession", () => {
+	const worktreeSession: Partial<SessionActivity> = {
+		directory: "/repo/.kilo/worktrees/kilo-aback-aardvark",
+		worktreeBranch: "kilo/aback-aardvark",
+	};
+
+	it("is true for the sole session in a worktree directory", () => {
+		const state = stateWith({ "ses-1": worktreeSession });
+		expect(isOrphanedWorktreeSession(state.sessions, "ses-1")).toBe(true);
+	});
+
+	it("is false when another session shares the worktree directory", () => {
+		const state = stateWith({
+			"ses-1": worktreeSession,
+			"ses-2": { ...worktreeSession },
+		});
+		expect(isOrphanedWorktreeSession(state.sessions, "ses-1")).toBe(false);
+	});
+
+	it("is false without a worktree stamp", () => {
+		const state = stateWith({
+			"ses-1": { directory: "/repo/.kilo/worktrees/kilo-aback-aardvark" },
+		});
+		expect(isOrphanedWorktreeSession(state.sessions, "ses-1")).toBe(false);
+	});
+
+	it("is false for an unknown session id (not hydrated yet)", () => {
+		const state = stateWith({});
+		expect(isOrphanedWorktreeSession(state.sessions, "ses-unknown")).toBe(false);
 	});
 });
 

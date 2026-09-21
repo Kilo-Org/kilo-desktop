@@ -21,6 +21,7 @@ import { ChatAgentSelectionProvider } from "../../agent-selection/ChatAgentSelec
 import { ChatConnectionProvider } from "../../connection/ChatConnectionContext.js";
 import { ChatModelSelectionProvider } from "../../model-selection/ChatModelSelectionContext.js";
 import type * as SessionModelUsage from "../../usage/session-model-usage.js";
+import { ComposerSessionMode } from "./composer-footer.js";
 import { Thread } from "./thread.js";
 
 const fetchSessionModelUsage = vi.hoisted(() => vi.fn());
@@ -193,6 +194,18 @@ afterEach(() => {
 });
 
 describe("ComposerFooter", () => {
+	it("labels a worktree-backed active session as Worktree", async () => {
+		const { baseElement } = render(<ComposerSessionMode isWorktree />);
+		const screen = page.elementLocator(baseElement);
+
+		await expect
+			.element(screen.getByTestId("kilo-composer-session-mode"))
+			.toHaveTextContent("Worktree");
+		await expect
+			.element(screen.getByTestId("kilo-composer-session-mode"))
+			.toHaveAttribute("aria-label", "Session mode Worktree");
+	});
+
 	it("hides the footer on an empty draft", async () => {
 		fetchSessionModelUsage.mockResolvedValue(undefined);
 		const { screen } = await renderThread();
@@ -294,7 +307,7 @@ describe("ComposerFooter", () => {
 		}
 	});
 
-	it("renders left-rail zone contributions with the active workspace folder", async () => {
+	it("shows Local and active-thread contributions without repeating the workspace selection", async () => {
 		fetchSessionModelUsage.mockResolvedValue({
 			sessionIDs: ["ses-1"],
 			totals: {
@@ -328,12 +341,13 @@ describe("ComposerFooter", () => {
 		});
 
 		await expect.element(screen.getByTestId("kilo-composer-footer")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-composer-workspace")).not.toBeInTheDocument();
 		await expect
-			.element(screen.getByTestId("kilo-composer-workspace"))
-			.toHaveTextContent("Project");
+			.element(screen.getByTestId("kilo-composer-session-mode"))
+			.toHaveTextContent("Local");
 		await expect
-			.element(screen.getByTestId("kilo-composer-workspace"))
-			.toHaveAttribute("aria-label", "Workspace Project");
+			.element(screen.getByTestId("kilo-composer-session-mode"))
+			.toHaveAttribute("aria-label", "Session mode Local");
 		await expect
 			.element(screen.getByRole("button", { name: "Select workspace" }))
 			.not.toBeInTheDocument();
@@ -381,6 +395,6 @@ describe("ComposerFooter", () => {
 		await expect.element(screen.getByRole("button", { name: "Context usage" })).toBeVisible();
 		await expect.element(screen.getByTestId("kilo-composer-footer-tokens-in")).not.toBeVisible();
 		await expect.element(screen.getByTestId("kilo-composer-footer-tokens-out")).not.toBeVisible();
-		await expect.element(screen.getByTestId("kilo-composer-workspace")).not.toBeVisible();
+		await expect.element(screen.getByTestId("kilo-composer-workspace")).not.toBeInTheDocument();
 	});
 });

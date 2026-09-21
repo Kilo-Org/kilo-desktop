@@ -206,6 +206,9 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 	const sessionWorkspaceId = useSessionActivity((state) =>
 		effectiveRemoteId ? state.sessions[effectiveRemoteId]?.workspaceId : undefined,
 	);
+	const sessionActivity = useSessionActivity((state) =>
+		remoteId ? state.sessions[remoteId] : undefined,
+	);
 	const chatWorkspaceOptions = {
 		remoteId: effectiveRemoteId,
 		activeWorkspaceId,
@@ -213,9 +216,24 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 		workspaces,
 	};
 	const workspace = resolveChatWorkspace(chatWorkspaceOptions);
+	const worktreeDirectory =
+		sessionActivity?.worktreeBranch !== undefined && sessionActivity.directory !== undefined
+			? sessionActivity.directory
+			: undefined;
 	const workspaceDirectory =
-		workspace?.folders.find((folder) => folder.isPrimary)?.path ?? workspace?.folders[0]?.path;
-	const workspaceFolders = workspace?.folders ?? EMPTY_WORKSPACE_FOLDERS;
+		worktreeDirectory ??
+		workspace?.folders.find((folder) => folder.isPrimary)?.path ??
+		workspace?.folders[0]?.path;
+	const workspaceFolders = useMemo(
+		() =>
+			worktreeDirectory
+				? [
+						{ path: worktreeDirectory, isPrimary: true },
+						...(workspace?.folders ?? []).filter((folder) => !folder.isPrimary),
+					]
+				: (workspace?.folders ?? EMPTY_WORKSPACE_FOLDERS),
+		[worktreeDirectory, workspace?.folders],
+	);
 
 	const panelState = useRightPanelStore((state) =>
 		selectSessionRightPanelState(state.bySessionId, sessionId),
@@ -618,19 +636,12 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 						sessionId={sessionId}
 						definitions={rightPanelDefinitions}
 						{...(workspaceDirectory ? { workspaceDirectory } : {})}
-						{...(workspace?.folders ? { workspaceFolders: workspace.folders } : {})}
+						{...(workspaceFolders.length > 0 ? { workspaceFolders } : {})}
 					/>
 				</div>
 			);
 		},
-		[
-			rightPanelDefinitions,
-			sessionId,
-			tabsById,
-			workspace?.folders,
-			workspaceDirectory,
-			workspaceFolders,
-		],
+		[rightPanelDefinitions, sessionId, tabsById, workspaceDirectory, workspaceFolders],
 	);
 
 	if (detached) {

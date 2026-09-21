@@ -3,7 +3,7 @@ import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { MainSdkLogger } from "@kilo-desktop/feature-sdk";
+import { FeatureError, type MainSdkLogger } from "@kilo-desktop/feature-sdk";
 import {
 	AppFileStatusKind,
 	GitFileTooLargeError,
@@ -12,6 +12,7 @@ import {
 import type { IStatusResult, RepositoryType } from "@kilo-desktop/git-client";
 
 import { GitService, type GitClientSlice } from "./git-service.js";
+import { WorktreeManager } from "./worktree-manager.js";
 
 const logger: MainSdkLogger = {
 	info: () => {},
@@ -37,6 +38,17 @@ function clientOf(client: Partial<GitClientSlice>): GitClientSlice {
 		remoteHead: () => Promise.resolve(null),
 		globalConfigValue: () => Promise.resolve(null),
 		recentBranches: () => Promise.resolve([]),
+		worktrees: () => Promise.resolve([]),
+		addWorktree: () => Promise.resolve(),
+		removeWorktree: () => Promise.resolve(),
+		deleteBranch: () => Promise.resolve(),
+		renameBranch: () => Promise.resolve(),
+		defaultBranch: () => Promise.resolve(null),
+		remotes: () => Promise.resolve([]),
+		pruneWorktrees: () => Promise.resolve(),
+		checkRefFormat: () => Promise.resolve(true),
+		gitCommonDir: () => Promise.resolve("/repo/.git"),
+		exec: (() => Promise.resolve(null)) as unknown as GitClientSlice["exec"],
 		...client,
 	};
 }
@@ -839,5 +851,236 @@ describe("GitService workspace-folder containment", () => {
 		});
 		expect(client.status).not.toHaveBeenCalled();
 		expect(client.createWorkingDirectoryPatch).not.toHaveBeenCalled();
+	});
+});
+
+describe("GitService hasWorktreeWork", () => {
+	it("rejects an outside-workspace directory without touching the client", async () => {
+		const status = vi.fn(() => Promise.resolve(null));
+		const service = new GitService({
+			logger,
+			getWorkspaceFolderPaths: folders("/workspaces/project"),
+			createClient: () => clientOf({ status }),
+		});
+
+		await expect(service.hasWorktreeWork({ directory: "/elsewhere/other" })).rejects.toMatchObject({
+			name: "FeatureError",
+			code: "VALIDATION",
+		});
+		expect(status).not.toHaveBeenCalled();
+	});
+
+	it("resolves false when a git probe throws (missing binary, spawn failure)", async () => {
+		const gitNotDetected = new GitService({
+			logger,
+			getWorkspaceFolderPaths: folders("/repo/project"),
+			createClient: () => clientOf({ status: () => Promise.reject(new GitNotDetectedError()) }),
+		});
+		await expect(gitNotDetected.hasWorktreeWork({ directory: "/repo/project" })).resolves.toBe(
+			false,
+		);
+
+		const spawnFailure = new GitService({
+			logger,
+			getWorkspaceFolderPaths: folders("/repo/project"),
+			createClient: () => clientOf({ status: () => Promise.reject(new Error("spawn failed")) }),
+		});
+		await expect(spawnFailure.hasWorktreeWork({ directory: "/repo/project" })).resolves.toBe(false);
+	});
+
+	it("resolves false when the directory is not a repository", async () => {
+		const service = new GitService({
+			logger,
+			getWorkspaceFolderPaths: folders("/not/a/repo"),
+			createClient: () => clientOf({ status: () => Promise.resolve(null) }),
+		});
+
+		await expect(service.hasWorktreeWork({ directory: "/not/a/repo" })).resolves.toBe(false);
+	});
+
+	it("resolves true when the worktree has uncommitted changes", async () => {
+		const service = new GitService({
+			logger,
+			getWorkspaceFolderPaths: folders("/repo/project"),
+			createClient: () =>
+				clientOf({
+					status: () =>
+						Promise.resolve({
+							exists: true,
+							currentBranch: "main",
+							workingDirectory: {
+								files: [{ path: "notes.txt", status: { kind: AppFileStatusKind.Untracked } }],
+							},
+							doConflictedFilesExist: false,
+						}),
+				}),
+		});
+
+		await expect(
+			service.hasWorktreeWork({ directory: "/repo/project", baseBranch: "main" }),
+		).resolves.toBe(true);
+	});
+
+	it("resolves true when the worktree is commits ahead of the base branch", async () => {
+		const exec = vi.fn(async () => ({ exitCode: 0, stdout: "3\n" }));
+		const service = new GitService({
+			logger,
+			getWorkspaceFolderPaths: folders("/repo/project"),
+			createClient: () =>
+				clientOf({
+					status: statusOn("kilo/topic"),
+					exec: exec as unknown as GitClientSlice["exec"],
+				}),
+		});
+
+		await expect(
+			service.hasWorktreeWork({ directory: "/repo/project", baseBranch: "main" }),
+		).resolves.toBe(true);
+		expect(exec).toHaveBeenCalledWith(["rev-list", "--count", "main..HEAD"], "revListCount", {
+			cwd: "/repo/project",
+			successExitCodes: new Set([0, 128]),
+		});
+	});
+});
+
+describe("GitService defaultBranch", () => {
+	it("rejects an outside-workspace directory without touching the client", async () => {
+		const defaultBranchProbe = vi.fn(() => Promise.resolve("main"));
+		const branches = vi.fn(() => Promise.resolve([localBranch("main")]));
+		const service = new GitService({
+			logger,
+			getWorkspaceFolderPaths: folders("/workspaces/project"),
+			createClient: () => clientOf({ defaultBranch: defaultBranchProbe, branches }),
+		});
+
+		await expect(service.defaultBranch("/elsewhere/other")).rejects.toMatchObject({
+			name: "FeatureError",
+			code: "VALIDATION",
+		});
+		expect(defaultBranchProbe).not.toHaveBeenCalled();
+		expect(branches).not.toHaveBeenCalled();
+	});
+
+	it("fails closed when the workspaces capability is absent", async () => {
+		const defaultBranchProbe = vi.fn(() => Promise.resolve("main"));
+		const service = new GitService({
+			logger,
+			getWorkspaceFolderPaths: absentFolders(),
+			createClient: () => clientOf({ defaultBranch: defaultBranchProbe }),
+		});
+
+		await expect(service.defaultBranch("/repo")).rejects.toMatchObject({
+			name: "FeatureError",
+			code: "VALIDATION",
+		});
+		expect(defaultBranchProbe).not.toHaveBeenCalled();
+	});
+
+	it("resolves the origin/HEAD symref short name first", async () => {
+		const defaultBranchProbe = vi.fn(() => Promise.resolve("main"));
+		const branches = vi.fn(() => Promise.resolve([localBranch("trunk")]));
+		const service = new GitService({
+			logger,
+			getWorkspaceFolderPaths: folders("/repo"),
+			createClient: () => clientOf({ defaultBranch: defaultBranchProbe, branches }),
+		});
+
+		await expect(service.defaultBranch("/repo")).resolves.toBe("main");
+		expect(branches).not.toHaveBeenCalled();
+	});
+
+	it("falls back to a local main branch", async () => {
+		const service = new GitService({
+			logger,
+			getWorkspaceFolderPaths: folders("/repo"),
+			createClient: () =>
+				clientOf({ branches: () => Promise.resolve([localBranch("main"), localBranch("dev")]) }),
+		});
+
+		await expect(service.defaultBranch("/repo")).resolves.toBe("main");
+	});
+
+	it("falls back to master when main is absent", async () => {
+		const service = new GitService({
+			logger,
+			getWorkspaceFolderPaths: folders("/repo"),
+			createClient: () => clientOf({ branches: () => Promise.resolve([localBranch("master")]) }),
+		});
+
+		await expect(service.defaultBranch("/repo")).resolves.toBe("master");
+	});
+
+	it("resolves null when no candidate exists", async () => {
+		const service = new GitService({
+			logger,
+			getWorkspaceFolderPaths: folders("/repo"),
+			createClient: () => clientOf({ branches: () => Promise.resolve([localBranch("trunk")]) }),
+		});
+
+		await expect(service.defaultBranch("/repo")).resolves.toBeNull();
+	});
+});
+
+describe("GitService worktree delegation", () => {
+	it("delegates createWorktree to WorktreeManager and passes the result through", async () => {
+		const createWorktree = vi.fn(() =>
+			Promise.resolve({ directory: "/repo/.kilo/worktrees/kilo-test", branch: "kilo/test" }),
+		);
+		vi.spyOn(WorktreeManager.prototype, "createWorktree").mockImplementation(createWorktree);
+
+		const service = new GitService({
+			logger,
+			getWorkspaceFolderPaths: absentFolders(),
+			createClient: () => clientOf({}),
+		});
+
+		const result = await service.createWorktree({ workingDirectory: "/repo" });
+
+		expect(createWorktree).toHaveBeenCalledWith({ workingDirectory: "/repo" });
+		expect(result).toEqual({
+			directory: "/repo/.kilo/worktrees/kilo-test",
+			branch: "kilo/test",
+		});
+
+		vi.restoreAllMocks();
+	});
+
+	it("propagates a FeatureError from WorktreeManager without re-wrapping (WorktreeManager maps errors)", async () => {
+		// WorktreeManager already maps GitError → FeatureError internally.
+		// GitService delegates directly without an extra try/catch layer.
+		const featureError = new FeatureError("fatal: not a git repository", "BUSINESS");
+		vi.spyOn(WorktreeManager.prototype, "createWorktree").mockRejectedValue(featureError);
+
+		const service = new GitService({
+			logger,
+			getWorkspaceFolderPaths: absentFolders(),
+			createClient: () => clientOf({}),
+		});
+
+		await expect(service.createWorktree({ workingDirectory: "/repo" })).rejects.toMatchObject({
+			name: "FeatureError",
+			code: "BUSINESS",
+			message: "fatal: not a git repository",
+		});
+
+		vi.restoreAllMocks();
+	});
+
+	it("passes FeatureErrors from WorktreeManager through unchanged", async () => {
+		const original = new FeatureError(
+			"Refusing to remove this directory: it is not a Kilo-managed worktree.",
+			"BUSINESS",
+		);
+		vi.spyOn(WorktreeManager.prototype, "removeWorktree").mockRejectedValue(original);
+
+		const service = new GitService({
+			logger,
+			getWorkspaceFolderPaths: absentFolders(),
+			createClient: () => clientOf({}),
+		});
+
+		await expect(service.removeWorktree({ path: "/some/path" })).rejects.toBe(original);
+
+		vi.restoreAllMocks();
 	});
 });

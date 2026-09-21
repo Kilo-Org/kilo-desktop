@@ -27,7 +27,7 @@ import { presentEnvNames } from "./providers/present-env.js";
 import { readStoredApiKey } from "./providers/stored-api-key.js";
 import { createWorkspacesDatabase } from "./workspaces/db.js";
 import { WorkspaceService } from "./workspaces/WorkspaceService.js";
-import { createUnscopedChatDirectory } from "./chat/unscoped-chat-directory.js";
+import { createChatWorktreeHandlers } from "./chat/chat-worktree-handlers.js";
 import { createWorkspaceSessionUnscoper } from "./chat/unscope-workspace-sessions.js";
 import { WorkspaceSessionCleanupQueue } from "./chat/workspace-session-cleanup-queue.js";
 
@@ -94,30 +94,7 @@ export function mainRegister(
 
 	const chatApi: KiloUiChatService = {
 		"chat.getConnection": async () => getConnection(),
-		"chat.prepareSession": async ({ workspaceId }) => {
-			if (workspaceId) {
-				const workspace = service.get(workspaceId);
-				if (!workspace) {
-					throw new FeatureError("Workspace not found.", "NOT_FOUND");
-				}
-				const primary = workspace.folders.find((folder) => folder.isPrimary);
-				if (!primary) {
-					throw new FeatureError("Workspace has no primary folder.", "BUSINESS");
-				}
-				return {
-					directory: primary.path,
-					workspaceId,
-					workspaceFolders: workspace.folders.map(({ path, isPrimary }) => ({
-						path,
-						isPrimary,
-					})),
-				};
-			}
-			return {
-				directory: await createUnscopedChatDirectory(mainSdk.storageDir),
-				workspaceFolders: [],
-			};
-		},
+		...createChatWorktreeHandlers(mainSdk, service),
 	};
 
 	const onboarding = new OnboardingStore(mainSdk);

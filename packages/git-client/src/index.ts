@@ -58,8 +58,14 @@ export {
 	isManualConflict,
 } from "./models/status.js";
 export type { IAheadBehind, IBranch, IBranchTip } from "./models/branch.js";
-export type { RepositoryType, RevParseExec } from "./git/rev-parse.js";
-export { getRepositoryType } from "./git/rev-parse.js";
+export type {
+	DefaultBranchOptions,
+	GitCommonDirOptions,
+	RepositoryType,
+	RevParseExec,
+} from "./git/rev-parse.js";
+export { getDefaultBranch, getGitCommonDir, getRepositoryType } from "./git/rev-parse.js";
+
 export { createForEachRefParser } from "./lib/git-delimiter-parser.js";
 export type { InitExec, InitOptions } from "./git/init.js";
 export { initRepository } from "./git/init.js";
@@ -70,10 +76,30 @@ export type { GlobalConfigExec } from "./git/config.js";
 export { getGlobalConfigValue } from "./git/config.js";
 export type { RecentBranchesExec, RecentBranchesOptions } from "./git/reflog.js";
 export { getRecentBranches } from "./git/reflog.js";
-export type { RemoteHeadExec, RemoteHeadOptions } from "./git/remote.js";
-export { getRemoteHEAD } from "./git/remote.js";
-export type { SymbolicRefExec, SymbolicRefOptions } from "./git/refs.js";
-export { getSymbolicRef } from "./git/refs.js";
+export type {
+	ListRemotesExec,
+	ListRemotesOptions,
+	RemoteHeadExec,
+	RemoteHeadOptions,
+} from "./git/remote.js";
+export { getRemoteHEAD, listRemotes } from "./git/remote.js";
+export type { CheckRefFormatOptions, SymbolicRefExec, SymbolicRefOptions } from "./git/refs.js";
+export { checkRefFormat, getSymbolicRef } from "./git/refs.js";
+export type { WorktreeEntry, WorktreeType } from "./models/worktree.js";
+export type {
+	AddWorktreeOptions,
+	PruneWorktreeOptions,
+	RemoveWorktreeOptions,
+	WorktreeExec,
+	WorktreeOptions,
+} from "./git/worktree.js";
+export {
+	addWorktree,
+	listWorktrees,
+	parseWorktreePorcelainOutput,
+	pruneWorktrees,
+	removeWorktree,
+} from "./git/worktree.js";
 
 // Exec layer (exec/; base types stay: the IGit* variants extend them)
 export type {

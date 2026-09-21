@@ -1,5 +1,6 @@
 "use client";
 
+import { toast } from "@kilo-desktop/ui/components/sonner";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Command,
@@ -68,6 +69,7 @@ import {
 } from "react";
 
 import type { Workspace } from "../../../../contracts/workspaces/schemas.js";
+import type { KiloUiChatService } from "../../../../contracts/chat/schemas.js";
 import { NewChatButton } from "../../NewChatButton.js";
 import { WorkspaceFilter } from "../../../workspaces/WorkspaceFilter.js";
 import {
@@ -80,17 +82,23 @@ import {
 	DRAFT_RIGHT_PANEL_SESSION_KEY,
 	useRightPanelStore,
 } from "../../right-panel/right-panel-store.js";
-import { useSessionActivity } from "../../session-activity/SessionActivityProvider.js";
+import {
+	useSessionActivity,
+	useSessionActivityStore,
+} from "../../session-activity/SessionActivityProvider.js";
+import { whenSessionsRefreshed } from "../../session-activity/session-activity-store.js";
 import {
 	deriveSessionRowState,
 	directoryBasename,
 	formatRelativeTimeLabel,
 	formatWorkingDurationLabel,
+	isOrphanedWorktreeSession,
 	resolveSessionLocationLabel,
 	type SessionActivity,
 	type SessionRowState,
 } from "../../session-activity/session-activity-logic.js";
 import { SessionListViewMenu } from "../../session-list/session-list-view-menu.js";
+import { SessionDeleteWorktreeDialog } from "./session-delete-worktree-dialog.js";
 import {
 	buildSessionListSections,
 	readSessionListArchivedExpanded,
@@ -1118,6 +1126,7 @@ const SessionRow: FC = () => {
 	const auiRef = useRef(aui);
 	auiRef.current = aui;
 	const navigate = useNavigateToChat();
+	const sdk = useSdk<KiloUiChatService>("kilo-ui");
 	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
 	const threadId = useAuiState((s) => s.threadListItem.id);
 	const itemStatus = useAuiState((s) => s.threadListItem.status);
@@ -1126,10 +1135,19 @@ const SessionRow: FC = () => {
 	const lastVisitedAt = useSessionActivity((s) =>
 		remoteId ? s.lastVisitedAtBySessionId[remoteId] : undefined,
 	);
+	// Orphan check (t3code): the delete dialog only offers worktree removal
+	// when no other known session shares the directory. The selector closes
+	// over `remoteId`, which is safe — `useStore` re-runs it on every render —
+	// and returns a primitive so the row only re-renders when the flag flips.
+	const isOrphanedWorktree = useSessionActivity(
+		(s) => remoteId !== undefined && isOrphanedWorktreeSession(s.sessions, remoteId),
+	);
+	const activityStore = useSessionActivityStore();
 	const { workspaces } = useWorkspacesFeature();
 	const { show, pinnedIds, togglePin } = use(SessionListChromeContext);
 	const indented = use(SessionRowIndentContext);
 	const { isRenaming, startRename, finishRename, triggerRef } = useRenameState();
+	const [worktreeDialogOpen, setWorktreeDialogOpen] = useState(false);
 	const switchToArchived = useCallback(() => {
 		void auiRef.current.threadListItem.switchTo({ unarchive: false });
 	}, []);
@@ -1139,33 +1157,115 @@ const SessionRow: FC = () => {
 	const unarchive = useCallback(() => {
 		void auiRef.current.threadListItem.unarchive();
 	}, []);
-	const deleteThread = useCallback(() => {
-		void auiRef.current.threadListItem.delete();
+	const worktreeDirectory = activity?.worktreeBranch !== undefined ? activity.directory : undefined;
+	// Every delete path funnels through here so a rejecting delete is
+	// reported, never an unhandled rejection.
+	const deleteSession = useCallback(async (): Promise<boolean> => {
+		try {
+			await auiRef.current.threadListItem.delete();
+			return true;
+		} catch (error) {
+			toast.error("Could not delete chat", {
+				description: error instanceof Error ? error.message : "The chat was not deleted.",
+			});
+			return false;
+		}
 	}, []);
+	// A session with no hydrated record may be mid-refresh, not local: wait
+	// for the refresh to settle (bounded), re-evaluate, then delete — a
+	// worktree session must never leak behind a premature direct delete.
+	const deleteAfterRefresh = useCallback(async () => {
+		if (remoteId === undefined) return;
+		await whenSessionsRefreshed(activityStore);
+		if (isOrphanedWorktreeSession(activityStore.getState().sessions, remoteId)) {
+			setWorktreeDialogOpen(true);
+			return;
+		}
+		await deleteSession();
+	}, [activityStore, remoteId, deleteSession]);
+	const deleteThread = useCallback(() => {
+		// Worktree-backed and orphaned: confirm before removing the worktree.
+		if (isOrphanedWorktree) {
+			setWorktreeDialogOpen(true);
+			return;
+		}
+		// The refresh has not settled: the record may be missing entirely or
+		// present without its worktree stamp (e.g. only `directory` was
+		// hydrated so far). Wait for the refresh to complete so the orphan
+		// check runs against the full picture — a premature direct delete
+		// would silently leak the worktree.
+		if (remoteId !== undefined && !activityStore.getState().sessionsRefreshed) {
+			void deleteAfterRefresh();
+			return;
+		}
+		void deleteSession();
+	}, [isOrphanedWorktree, activityStore, remoteId, deleteAfterRefresh, deleteSession]);
+	const keepWorktreeAndDelete = useCallback(() => {
+		setWorktreeDialogOpen(false);
+		void deleteSession();
+	}, [deleteSession]);
+	const deleteThreadAndWorktree = useCallback(async () => {
+		setWorktreeDialogOpen(false);
+		const deleted = await deleteSession();
+		// Removal only runs after the session delete resolves; a failed delete
+		// returns early — the surviving session may still reference the
+		// worktree. Otherwise failure keeps the worktree on disk and only
+		// reports — the session is already gone.
+		if (!deleted) return;
+		const directory = worktreeDirectory;
+		if (directory === undefined) return;
+		try {
+			await sdk.client["chat.removeWorktree"]({ directory });
+			toast.success("Worktree deleted", {
+				description: activity?.worktreeBranch
+					? `Branch ${activity.worktreeBranch} and its worktree were removed.`
+					: undefined,
+			});
+		} catch (error) {
+			toast.error("Could not remove worktree", {
+				description: error instanceof Error ? error.message : "The worktree was left in place.",
+			});
+		}
+	}, [sdk, deleteSession, worktreeDirectory, activity?.worktreeBranch]);
 
 	return (
-		<SessionRowContent
-			remoteId={remoteId}
-			threadId={threadId}
-			itemStatus={itemStatus}
-			isActive={isActive}
-			activity={activity}
-			lastVisitedAt={lastVisitedAt}
-			workspaces={workspaces}
-			show={show}
-			pinnedIds={pinnedIds}
-			togglePin={togglePin}
-			indented={indented}
-			isRenaming={isRenaming}
-			startRename={startRename}
-			finishRename={finishRename}
-			triggerRef={triggerRef}
-			navigate={navigate}
-			switchToArchived={switchToArchived}
-			archive={archive}
-			unarchive={unarchive}
-			deleteThread={deleteThread}
-		/>
+		<>
+			<SessionRowContent
+				remoteId={remoteId}
+				threadId={threadId}
+				itemStatus={itemStatus}
+				isActive={isActive}
+				activity={activity}
+				lastVisitedAt={lastVisitedAt}
+				workspaces={workspaces}
+				show={show}
+				pinnedIds={pinnedIds}
+				togglePin={togglePin}
+				indented={indented}
+				isRenaming={isRenaming}
+				startRename={startRename}
+				finishRename={finishRename}
+				triggerRef={triggerRef}
+				navigate={navigate}
+				switchToArchived={switchToArchived}
+				archive={archive}
+				unarchive={unarchive}
+				deleteThread={deleteThread}
+			/>
+			{isOrphanedWorktree && worktreeDirectory !== undefined ? (
+				<SessionDeleteWorktreeDialog
+					open={worktreeDialogOpen}
+					onOpenChange={(open) => {
+						if (!open) setWorktreeDialogOpen(false);
+					}}
+					worktreeBranch={activity?.worktreeBranch}
+					onKeepWorktree={keepWorktreeAndDelete}
+					onDeleteWorktree={() => {
+						void deleteThreadAndWorktree();
+					}}
+				/>
+			) : null}
+		</>
 	);
 };
 

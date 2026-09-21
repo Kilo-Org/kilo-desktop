@@ -202,12 +202,16 @@ export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerF
 		const page = await waitForMainWindow(sharedApp);
 		setPage(page);
 		await page.evaluate(() => {
+			localStorage.clear();
 			globalThis.location.hash = "#/";
 		});
 		// Hash reset remounts chat; wait out the redirect so the next spec
 		// does not click New Chat against a tearing-down runtime.
 		await waitForThreadListHydrated(page);
 		await use(sharedApp);
+		// Clear renderer localStorage after each test so plugin preferences
+		// written during a test (e.g. git draft mode) do not bleed into the next.
+		await page.evaluate(() => localStorage.clear());
 	},
 
 	diagnostics: [

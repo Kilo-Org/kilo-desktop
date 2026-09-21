@@ -1,6 +1,15 @@
 import { realpath } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 
 import { FeatureError, type MainSdk } from "@kilo-desktop/feature-sdk/main";
+
+/**
+ * Path segments of the managed chat-worktree directory
+ * (`<registered>/.kilo/worktrees/`). Declared locally so files carries no
+ * runtime dependency on the git package — pinned to git's contracts const
+ * by kilo-workspace-authorization.test.ts.
+ */
+const KILO_WORKTREE_SEGMENTS = [".kilo", "worktrees"] as const;
 
 interface WorkspaceCapability extends Record<string, unknown> {
 	workspaceService: {
@@ -10,6 +19,20 @@ interface WorkspaceCapability extends Record<string, unknown> {
 
 function comparablePath(value: string): string {
 	return process.platform === "win32" ? value.toLocaleLowerCase() : value;
+}
+
+/**
+ * True when `candidate` is a direct child of `<registered>/.kilo/worktrees` —
+ * the managed chat-worktree location. Exact-parent comparison (mirroring the
+ * git plugin's `isManagedWorktreePath`) rules out sibling-prefix confusions
+ * like a `worktrees-evil` directory.
+ *
+ * Known limitation: when the registered folder is itself a linked worktree,
+ * managed worktrees live under the main checkout's `.kilo/worktrees/` and
+ * will not authorize. Out of scope.
+ */
+function isManagedWorktreeChild(candidate: string, registered: string): boolean {
+	return dirname(resolve(candidate)) === resolve(registered, ...KILO_WORKTREE_SEGMENTS);
 }
 
 /**
@@ -37,7 +60,14 @@ export function createKiloWorkspaceAuthorization(
 					}
 				}),
 		);
-		if (!registeredPaths.includes(comparablePath(workspaceDirectory))) {
+		const candidate = comparablePath(workspaceDirectory);
+		if (
+			!registeredPaths.some(
+				(registered) =>
+					registered !== null &&
+					(registered === candidate || isManagedWorktreeChild(candidate, registered)),
+			)
+		) {
 			throw new FeatureError("Workspace directory is not registered.", "VALIDATION");
 		}
 	};

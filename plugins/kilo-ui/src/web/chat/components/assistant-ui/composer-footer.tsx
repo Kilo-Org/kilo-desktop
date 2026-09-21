@@ -1,12 +1,14 @@
 "use client";
 
 import type { ComponentType, FC, ReactNode } from "react";
-import { ArrowDownToLineIcon, ArrowUpIcon, FolderIcon } from "lucide-react";
+import { ArrowDownToLineIcon, ArrowUpIcon, FolderIcon, GitForkIcon } from "lucide-react";
 
 import { useSdkContributions } from "@kilo-desktop/sdk-react";
 
-import { workspaceGlyphColor } from "../../../workspaces/workspace-glyph-style.js";
-import { useThreadWorkspace, useThreadWorkspaceDirectory } from "../../use-workspace-directory.js";
+import {
+	useThreadWorkingDirectory,
+	useThreadWorkspaceDirectory,
+} from "../../use-workspace-directory.js";
 import { useComposerUsageView } from "../../usage/use-session-model-usage.js";
 import { ComposerContext } from "./elements/composer-context.js";
 import { CostMeter } from "./elements/cost-meter.js";
@@ -21,6 +23,12 @@ export const CHAT_COMPOSER_FOOTER_ZONE = "kilo-ui/chat-composer-footer";
 export interface ChatComposerFooterContributionProps {
 	/** Primary folder path of the thread workspace; absent when unscoped. */
 	readonly workspaceDirectory?: string;
+	/**
+	 * The session's effective working directory — the worktree when
+	 * worktree-backed, otherwise the same as `workspaceDirectory`; absent
+	 * when unscoped.
+	 */
+	readonly workingDirectory?: string;
 }
 
 const Metric: FC<{ icon?: ReactNode; value: string; qa: string }> = ({ icon, value, qa }) => {
@@ -33,34 +41,27 @@ const Metric: FC<{ icon?: ReactNode; value: string; qa: string }> = ({ icon, val
 };
 
 const metricIcon = "size-3 text-foreground/40";
-const railLabel = "text-foreground/70 flex h-7 min-w-0 items-center gap-1.5 text-xs";
 
-const ComposerWorkspaceLabel: FC = () => {
-	const workspace = useThreadWorkspace();
-	if (!workspace) return null;
-	const glyph = workspaceGlyphColor(workspace.color);
-
+export const ComposerSessionMode: FC<{ isWorktree: boolean }> = ({ isWorktree }) => {
+	const label = isWorktree ? "Worktree" : "Local";
+	const Icon = isWorktree ? GitForkIcon : FolderIcon;
 	return (
 		<span
-			data-qa-id="kilo-composer-workspace"
-			aria-label={`Workspace ${workspace.name}`}
-			title={workspace.name}
-			className={`${railLabel} @max-[22rem]:hidden`}
+			data-qa-id="kilo-composer-session-mode"
+			aria-label={`Session mode ${label}`}
+			className="text-foreground/70 flex h-7 min-w-0 items-center gap-1.5 text-xs"
 		>
-			<FolderIcon
-				className="text-foreground/40 size-3 shrink-0"
-				aria-hidden
-				{...(glyph ? { color: glyph } : {})}
-			/>
-			<span className="truncate">{workspace.name}</span>
+			<Icon className="text-foreground/40 size-3 shrink-0" aria-hidden />
+			<span>{label}</span>
 		</span>
 	);
 };
 
-/** Active-thread strip under the composer: workspace, contributed chrome, and usage. */
+/** Active-thread strip under the composer: contributed session chrome and usage. */
 export const ComposerFooter: FC = () => {
 	const view = useComposerUsageView();
 	const workspaceDirectory = useThreadWorkspaceDirectory();
+	const workingDirectory = useThreadWorkingDirectory();
 	const contributions = useSdkContributions(CHAT_COMPOSER_FOOTER_ZONE);
 	if (!view) return null;
 
@@ -74,7 +75,13 @@ export const ComposerFooter: FC = () => {
 				className="pointer-events-none absolute -inset-x-4 -top-1.5 -bottom-1.5 bg-[var(--pane-surface,var(--color-background))]"
 			/>
 			<div className="relative flex min-w-0 flex-1 items-center gap-2 overflow-hidden pl-2.5 @min-[32rem]:gap-4">
-				<ComposerWorkspaceLabel />
+				<ComposerSessionMode
+					isWorktree={
+						workspaceDirectory !== undefined &&
+						workingDirectory !== undefined &&
+						workingDirectory !== workspaceDirectory
+					}
+				/>
 				{contributions.map((contribution) => {
 					if (typeof contribution.component !== "function") {
 						console.warn(
@@ -87,7 +94,10 @@ export const ComposerFooter: FC = () => {
 						contribution.component as ComponentType<ChatComposerFooterContributionProps>;
 					return (
 						<span key={`${contribution.featureId}:${contribution.id}`} className="flex min-w-0">
-							<Component {...(workspaceDirectory === undefined ? {} : { workspaceDirectory })} />
+							<Component
+								{...(workspaceDirectory === undefined ? {} : { workspaceDirectory })}
+								{...(workingDirectory === undefined ? {} : { workingDirectory })}
+							/>
 						</span>
 					);
 				})}

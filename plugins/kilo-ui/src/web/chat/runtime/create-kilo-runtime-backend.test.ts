@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { STREAM_RECONNECTED_EVENT_TYPE } from "@assistant-ui/react-opencode";
+import { toast } from "@kilo-desktop/ui/components/sonner";
 import type { KiloGlobalConnection } from "../../../contracts/chat/schemas.js";
 import { createSessionActivityStore } from "../session-activity/session-activity-store.js";
 import { createKiloSuggestionStore } from "../suggestions/kilo-suggestion-store.js";
@@ -9,6 +10,10 @@ import { createKiloDirectoryClient, createKiloGlobalClient } from "./create-kilo
 vi.mock("./create-kilo-runtime-client.js", () => ({
 	createKiloDirectoryClient: vi.fn(),
 	createKiloGlobalClient: vi.fn(),
+}));
+
+vi.mock("@kilo-desktop/ui/components/sonner", () => ({
+	toast: { warning: vi.fn() },
 }));
 
 const connection: KiloGlobalConnection = {
@@ -268,6 +273,82 @@ describe("createKiloRuntimeBackend", () => {
 		expect(eventCallOptions?.signal?.aborted).toBe(true);
 	});
 
+	it("shows a warning toast when the prepared worktree carries one", async () => {
+		const prepareSession = vi.fn(async () => ({
+			directory: "/workspace/worktree",
+			workspaceFolders: [],
+			worktree: {
+				branch: "kilo/aback-aardvark",
+				warning: "Couldn't fetch latest main from origin; branched from local state.",
+			},
+		}));
+		const create = vi.fn(async () => ({ data: { id: "session-warn" } }));
+		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
+		vi.mocked(createKiloDirectoryClient).mockReturnValue({ session: { create } } as never);
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession,
+			getVariant: () => undefined,
+		});
+
+		await expect(backend.initializeSession()).resolves.toEqual({
+			id: "session-warn",
+			directory: "/workspace/worktree",
+		});
+		expect(toast.warning).toHaveBeenCalledWith(
+			"Couldn't fetch latest main from origin; branched from local state.",
+		);
+	});
+
+	it("hydrates workspace id and worktree branch together on session create", async () => {
+		const prepareSession = vi.fn(async () => ({
+			directory: "/workspace/.kilo/worktrees/kilo-aback-aardvark",
+			workspaceId: "ws-1",
+			workspaceFolders: [
+				{ path: "/workspace/.kilo/worktrees/kilo-aback-aardvark", isPrimary: true },
+			],
+			worktree: { branch: "kilo/aback-aardvark" },
+		}));
+		const create = vi.fn(async () => ({ data: { id: "session-wt" } }));
+		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
+		vi.mocked(createKiloDirectoryClient).mockReturnValue({ session: { create } } as never);
+		const store = createSessionActivityStore({ storage: null });
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession,
+			getVariant: () => undefined,
+			sessionActivity: store,
+		});
+
+		await backend.initializeSession();
+
+		expect(store.getState().sessions["session-wt"]).toMatchObject({
+			directory: "/workspace/.kilo/worktrees/kilo-aback-aardvark",
+			workspaceId: "ws-1",
+			worktreeBranch: "kilo/aback-aardvark",
+		});
+	});
+
+	it("shows no warning toast for a worktree without one", async () => {
+		const prepareSession = vi.fn(async () => ({
+			directory: "/workspace/worktree",
+			workspaceFolders: [],
+			worktree: { branch: "kilo/aback-aardvark" },
+		}));
+		const create = vi.fn(async () => ({ data: { id: "session-clean" } }));
+		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
+		vi.mocked(createKiloDirectoryClient).mockReturnValue({ session: { create } } as never);
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession,
+			getVariant: () => undefined,
+		});
+
+		await backend.initializeSession();
+
+		expect(toast.warning).not.toHaveBeenCalled();
+	});
+
 	it("throws when a session directory cannot be resolved from the global list", async () => {
 		const list = vi.fn(async () => ({ data: [] }));
 		vi.mocked(createKiloGlobalClient).mockReturnValue({
@@ -311,6 +392,117 @@ describe("createKiloRuntimeBackend", () => {
 		});
 
 		await expect(backend.initializeSession()).rejects.toThrow(/Failed to create Kilo session/);
+	});
+
+	it("removes the prepared worktree when session creation rejects", async () => {
+		const preparation = {
+			directory: "/workspace/worktree",
+			workspaceFolders: [],
+			worktree: { branch: "kilo/aback-aardvark" },
+		};
+		const create = vi.fn(async () => {
+			throw new Error("server unreachable");
+		});
+		const onSessionCreateFailed = vi.fn();
+		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
+		vi.mocked(createKiloDirectoryClient).mockReturnValue({ session: { create } } as never);
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession: vi.fn(async () => preparation),
+			onSessionCreateFailed,
+		});
+
+		await expect(backend.initializeSession()).rejects.toThrow(/server unreachable/);
+		expect(onSessionCreateFailed).toHaveBeenCalledWith(preparation);
+	});
+
+	it("removes the prepared worktree when session creation returns no session id", async () => {
+		const preparation = {
+			directory: "/workspace/worktree",
+			workspaceFolders: [],
+			worktree: { branch: "kilo/aback-aardvark" },
+		};
+		const create = vi.fn(async () => ({ data: {} }));
+		const onSessionCreateFailed = vi.fn();
+		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
+		vi.mocked(createKiloDirectoryClient).mockReturnValue({ session: { create } } as never);
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession: vi.fn(async () => preparation),
+			onSessionCreateFailed,
+		});
+
+		await expect(backend.initializeSession()).rejects.toThrow(/Failed to create Kilo session/);
+		expect(onSessionCreateFailed).toHaveBeenCalledWith(preparation);
+	});
+
+	it("removes the prepared worktree when model preparation fails", async () => {
+		const preparation = {
+			directory: "/workspace/worktree",
+			workspaceFolders: [],
+			worktree: { branch: "kilo/aback-aardvark" },
+		};
+		const create = vi.fn(async () => ({ data: { id: "session-local" } }));
+		const prepareModel = vi.fn(async () => {
+			throw new Error("model not ready");
+		});
+		const onSessionCreateFailed = vi.fn();
+		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
+		vi.mocked(createKiloDirectoryClient).mockReturnValue({ session: { create } } as never);
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession: vi.fn(async () => preparation),
+			getModel: () => ({ providerID: "anaconda-local", modelID: "qwen-3" }),
+			prepareModel,
+			onSessionCreateFailed,
+		});
+
+		await expect(backend.initializeSession()).rejects.toThrow(/model not ready/);
+		expect(create).not.toHaveBeenCalled();
+		expect(onSessionCreateFailed).toHaveBeenCalledWith(preparation);
+	});
+
+	it("does not fire the cleanup callback for a non-worktree preparation", async () => {
+		const create = vi.fn(async () => {
+			throw new Error("server unreachable");
+		});
+		const onSessionCreateFailed = vi.fn();
+		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
+		vi.mocked(createKiloDirectoryClient).mockReturnValue({ session: { create } } as never);
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession: vi.fn(async () => ({
+				directory: "/workspace/checkout",
+				workspaceFolders: [],
+			})),
+			onSessionCreateFailed,
+		});
+
+		await expect(backend.initializeSession()).rejects.toThrow(/server unreachable/);
+		expect(onSessionCreateFailed).not.toHaveBeenCalled();
+	});
+
+	it("does not let a failing cleanup callback mask the original error", async () => {
+		const create = vi.fn(async () => {
+			throw new Error("server unreachable");
+		});
+		const onSessionCreateFailed = vi.fn(async () => {
+			throw new Error("cleanup failed");
+		});
+		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
+		vi.mocked(createKiloDirectoryClient).mockReturnValue({ session: { create } } as never);
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession: vi.fn(async () => ({
+				directory: "/workspace/worktree",
+				workspaceFolders: [],
+				worktree: { branch: "kilo/aback-aardvark" },
+			})),
+			onSessionCreateFailed,
+		});
+
+		await expect(backend.initializeSession()).rejects.toThrow(/server unreachable/);
+		expect(onSessionCreateFailed).toHaveBeenCalled();
 	});
 
 	it("rewrites a known slash prompt onto session.command after session create", async () => {
@@ -442,6 +634,7 @@ describe("createKiloRuntimeBackend", () => {
 		const prepareModel = vi.fn(async () => {
 			throw new Error("model not ready");
 		});
+		const onSessionCreateFailed = vi.fn();
 		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
 		vi.mocked(createKiloDirectoryClient).mockReturnValue({
 			session: { create },
@@ -454,10 +647,13 @@ describe("createKiloRuntimeBackend", () => {
 			}),
 			getModel: () => ({ providerID: "anaconda-local", modelID: "qwen-3" }),
 			prepareModel,
+			onSessionCreateFailed,
 		});
 
 		await expect(backend.initializeSession()).rejects.toThrow(/model not ready/);
 		expect(create).not.toHaveBeenCalled();
+		// The checkout preparation owns nothing to clean up.
+		expect(onSessionCreateFailed).not.toHaveBeenCalled();
 	});
 
 	it("creates a local session on the current Kilo connection after a slow prepare", async () => {

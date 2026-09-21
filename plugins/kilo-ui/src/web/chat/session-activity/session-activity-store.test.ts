@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { deriveSessionRowState } from "./session-activity-logic.js";
-import { createSessionActivityStore, LAST_VISITED_STORAGE_KEY } from "./session-activity-store.js";
+import {
+	createSessionActivityStore,
+	LAST_VISITED_STORAGE_KEY,
+	whenSessionsRefreshed,
+} from "./session-activity-store.js";
 
 const NOW = 1_700_000_000_000;
 
@@ -260,5 +264,42 @@ describe("createSessionActivityStore", () => {
 		const storage = createMemoryStorage({ [LAST_VISITED_STORAGE_KEY]: "{not json" });
 		const store = createSessionActivityStore({ storage, now: () => NOW });
 		expect(store.getState().lastVisitedAtBySessionId).toEqual({});
+	});
+
+	it("starts unsettled and flips sessionsRefreshed once a refresh settles", () => {
+		const store = createSessionActivityStore({ storage: null, now: () => NOW });
+		expect(store.getState().sessionsRefreshed).toBe(false);
+
+		store.getState().markSessionsRefreshed();
+
+		expect(store.getState().sessionsRefreshed).toBe(true);
+		// Idempotent: repeated refreshes keep the settled flag.
+		store.getState().markSessionsRefreshed();
+		expect(store.getState().sessionsRefreshed).toBe(true);
+	});
+
+	it("whenSessionsRefreshed resolves immediately once the flag is settled", async () => {
+		const store = createSessionActivityStore({ storage: null, now: () => NOW });
+		store.getState().markSessionsRefreshed();
+
+		await expect(whenSessionsRefreshed(store)).resolves.toBeUndefined();
+	});
+
+	it("whenSessionsRefreshed resolves when the flag flips mid-wait", async () => {
+		const store = createSessionActivityStore({ storage: null, now: () => NOW });
+		const settled = whenSessionsRefreshed(store, 1_000);
+
+		store.getState().markSessionsRefreshed();
+
+		await expect(settled).resolves.toBeUndefined();
+	});
+
+	it("whenSessionsRefreshed resolves via the timeout cap when the store never settles", async () => {
+		const store = createSessionActivityStore({ storage: null, now: () => NOW });
+
+		await expect(whenSessionsRefreshed(store, 10)).resolves.toBeUndefined();
+		// The capped wait must not leave a subscription behind.
+		store.getState().markSessionsRefreshed();
+		expect(store.getState().sessionsRefreshed).toBe(true);
 	});
 });

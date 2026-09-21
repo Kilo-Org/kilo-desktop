@@ -14,9 +14,28 @@ export type PromptOptionGetters = {
 	getModel?: () => PromptModelRef | undefined;
 	getSystem?: (prompt: Readonly<Record<string, unknown>>) => string | undefined;
 	prepareModel?: (modelId: string) => Promise<void>;
+	/**
+	 * Observes every outgoing prompt (`session.prompt`/`promptAsync`) with
+	 * the session id and the concatenated `type: "text"` parts — the seam
+	 * the worktree branch namer counts prompts on. Fire-and-forget.
+	 */
+	onPrompt?: (input: { sessionID: string; text: string }) => void;
 	/** Known Kilo slash-command names; used to rewrite `/cmd args` prompts. */
 	getKnownCommandNames?: () => readonly string[];
 };
+
+/** The concatenated `type: "text"` parts of a prompt args object. */
+export function promptText(prompt: Readonly<Record<string, unknown>>): string {
+	const parts = Array.isArray(prompt.parts) ? prompt.parts : [];
+	let text = "";
+	for (const part of parts) {
+		if (typeof part !== "object" || part === null) continue;
+		if ((part as { type?: unknown }).type !== "text") continue;
+		const segment = (part as { text?: unknown }).text;
+		if (typeof segment === "string") text += segment;
+	}
+	return text;
+}
 
 function isPromptModelRef(value: unknown): value is PromptModelRef {
 	return (
@@ -140,6 +159,12 @@ export function withPromptOptions(client: KiloClient, getters: PromptOptionGette
 						return async (args: Record<string, unknown>, ...rest: unknown[]) => {
 							const next = injectPromptOptions(args);
 							await prepareLocalModel(getters, next);
+							if (getters.onPrompt) {
+								const sessionID = typeof next.sessionID === "string" ? next.sessionID : undefined;
+								if (sessionID) {
+									getters.onPrompt({ sessionID, text: promptText(next) });
+								}
+							}
 							const draft = slashCommandFromPromptArgs(
 								next,
 								getters.getKnownCommandNames?.() ?? [],

@@ -6,6 +6,7 @@ import {
 	type OpenCodeServerEvent,
 	type OpenCodeSessionRef,
 } from "@assistant-ui/react-opencode";
+import { toast } from "@kilo-desktop/ui/components/sonner";
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 
 import type {
@@ -39,6 +40,14 @@ export interface CreateKiloRuntimeBackendOptions extends PromptOptionGetters {
 	getConnection?: () => Promise<KiloGlobalConnection>;
 	prepareSession(): Promise<KiloSessionPreparation>;
 	onSessionInitialized?: (threadId: string) => void;
+	/**
+	 * Compensating cleanup: fired fire-and-forget when anything after
+	 * `prepareSession` fails and the preparation included a worktree, so a
+	 * freshly created worktree never leaks behind a session that never
+	 * materialized. Its own failures are swallowed — never mask the
+	 * original error.
+	 */
+	onSessionCreateFailed?: (preparation: KiloSessionPreparation) => void;
 	sessionActivity?: SessionActivityStore;
 	suggestions?: KiloSuggestionStore;
 }
@@ -47,10 +56,12 @@ export function createKiloRuntimeBackend({
 	connectionPromise,
 	getConnection,
 	prepareSession,
+	onSessionCreateFailed,
 	getVariant,
 	getAgent,
 	getModel,
 	prepareModel,
+	onPrompt,
 	getKnownCommandNames,
 	onSessionInitialized,
 	sessionActivity,
@@ -94,6 +105,7 @@ export function createKiloRuntimeBackend({
 		...(getAgent ? { getAgent } : {}),
 		...(getModel ? { getModel } : {}),
 		...(prepareModel ? { prepareModel } : {}),
+		...(onPrompt ? { onPrompt } : {}),
 		...(getKnownCommandNames ? { getKnownCommandNames } : {}),
 		getSystem: (prompt) => {
 			const sessionId = typeof prompt.sessionID === "string" ? prompt.sessionID : undefined;
@@ -156,6 +168,10 @@ export function createKiloRuntimeBackend({
 			})
 			.finally(() => {
 				refreshPromise = undefined;
+				// Settles on success and failure alike: a missing session record
+				// now means "not a worktree", not "not hydrated yet" (delete
+				// flows wait on this flag to decide).
+				sessionActivity?.getState().markSessionsRefreshed();
 			});
 		return refreshPromise;
 	};
@@ -207,44 +223,72 @@ export function createKiloRuntimeBackend({
 		globalClient,
 		getSessionClient,
 		initializeSession: async () => {
-			const { directory, workspaceId, workspaceFolders } = await prepareSession();
-			const agent = getAgent?.();
-			const model = getModel?.();
-			const variant = getVariant?.();
-			if (prepareModel && model?.providerID === ANACONDA_LOCAL_PROVIDER_ID) {
-				await prepareModel(model.modelID);
+			const preparation = await prepareSession();
+			const { directory, workspaceId, workspaceFolders, worktree } = preparation;
+			// A degraded base (e.g. offline fetch fallback) must not block
+			// session creation — surface the git plugin's warning toast instead.
+			if (worktree?.warning !== undefined) {
+				toast.warning(worktree.warning);
 			}
-			const metadata = buildKiloDesktopSessionMetadata(
-				workspaceId ? { workspaceId, workspaceFolders } : undefined,
-			);
-			const permission = buildWorkspacePermissionRules(workspaceFolders);
-			const response = await directoryClient(directory).session.create(
-				{
-					...metadata,
-					...(agent ? { agent } : {}),
-					...(model
-						? {
-								model: {
-									id: model.modelID,
-									providerID: model.providerID,
-									...(variant ? { variant } : {}),
-								},
-							}
-						: {}),
-					...(permission.length > 0 ? { permission } : {}),
-				},
-				REQUEST_OPTIONS,
-			);
-			const session = response.data;
-			if (!session?.id) throw new Error("Failed to create Kilo session.");
-			const ref = { id: session.id, directory };
-			rememberWorkspaceSystem(session.id, workspaceFolders);
-			rememberSession(ref);
-			onSessionInitialized?.(session.id);
-			if (workspaceId) {
-				sessionActivity?.getState().hydrateSessions([{ id: session.id, workspaceId }]);
+			try {
+				const agent = getAgent?.();
+				const model = getModel?.();
+				const variant = getVariant?.();
+				if (prepareModel && model?.providerID === ANACONDA_LOCAL_PROVIDER_ID) {
+					await prepareModel(model.modelID);
+				}
+				// The worktree stamp round-trips through the activity store so the
+				// session list knows these sessions definitively (no path
+				// heuristics) and survives restarts.
+				const metadata = buildKiloDesktopSessionMetadata({
+					...(workspaceId ? { workspaceId } : {}),
+					workspaceFolders,
+					...(worktree ? { worktreeBranch: worktree.branch } : {}),
+				});
+				const permission = buildWorkspacePermissionRules(workspaceFolders);
+				const response = await directoryClient(directory).session.create(
+					{
+						...metadata,
+						...(agent ? { agent } : {}),
+						...(model
+							? {
+									model: {
+										id: model.modelID,
+										providerID: model.providerID,
+										...(variant ? { variant } : {}),
+									},
+								}
+							: {}),
+						...(permission.length > 0 ? { permission } : {}),
+					},
+					REQUEST_OPTIONS,
+				);
+				const session = response.data;
+				if (!session?.id) throw new Error("Failed to create Kilo session.");
+				const ref = { id: session.id, directory };
+				rememberWorkspaceSystem(session.id, workspaceFolders);
+				rememberSession(ref);
+				onSessionInitialized?.(session.id);
+				if (worktree || workspaceId) {
+					sessionActivity?.getState().hydrateSessions([
+						{
+							id: session.id,
+							directory,
+							...(workspaceId ? { workspaceId } : {}),
+							...(worktree ? { worktreeBranch: worktree.branch } : {}),
+						},
+					]);
+				}
+				return ref;
+			} catch (error) {
+				// Compensating cleanup: the preparation already created a
+				// worktree, and the session will never own it. Fire-and-forget
+				// and failure-swallowing so the original error survives.
+				if (preparation.worktree !== undefined) {
+					void Promise.resolve(onSessionCreateFailed?.(preparation)).catch(() => undefined);
+				}
+				throw error;
 			}
-			return ref;
 		},
 		createEventSource: () => {
 			const source = new OpenCodeEventSource(globalClient, subscribeToGlobalEvents, rememberEvent);

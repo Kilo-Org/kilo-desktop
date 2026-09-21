@@ -143,6 +143,15 @@ function registerChatBrowser(mainSdk: MainSdk): void {
 		"chat.prepareSession": async () => {
 			throw new FeatureError("Kilo Server requires the desktop app.", "BUSINESS");
 		},
+		"chat.renameWorktreeBranch": async () => {
+			// Best-effort rename degrades to a decline in browser mode.
+			return null;
+		},
+		"chat.removeWorktree": async () => {
+			throw new FeatureError("Git worktrees require the desktop app.", "BUSINESS");
+		},
+		// Best-effort: browser mode has no git capability, so no work is possible.
+		"chat.hasWorktreeWork": async () => false,
 	};
 	mainSdk.channels(kiloUiChatContract).handleAll(chatApi);
 }

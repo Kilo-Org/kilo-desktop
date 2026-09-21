@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render, renderHook } from "@testing-library/react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
@@ -34,7 +34,8 @@ import {
 	FILES_EXPLORER_PANE_ID,
 	FILES_PANE_DEFINITION_ID,
 } from "./pane-canvas/default-workspace-files-pane.js";
-
+import { useSessionActivity } from "./session-activity/SessionActivityProvider.js";
+import type { SessionSummaryInput } from "./session-activity/session-activity-store.js";
 import {
 	CHAT_RIGHT_PANEL_TAB_EXTENSION,
 	type ChatRightPanelContributionProps,
@@ -369,6 +370,15 @@ afterEach(() => {
 	assistantState.current.threadListItem.title = "Session";
 	vi.clearAllMocks();
 });
+
+/** Stamps session activity inside ChatFeatureProvider's own store. */
+function StampSessionActivity({ sessions }: { sessions: SessionSummaryInput[] }) {
+	const hydrateSessions = useSessionActivity((state) => state.hydrateSessions);
+	useEffect(() => {
+		hydrateSessions(sessions);
+	}, [hydrateSessions, sessions]);
+	return null;
+}
 
 describe("chat connection context", () => {
 	it("returns the nearest connection status", () => {
@@ -2116,6 +2126,81 @@ describe("ChatPage", () => {
 		await expect
 			.element(screen.getByTestId("test-canvas-panel"))
 			.toHaveAttribute("data-workspace-folders", "/projects/workspace-1|/projects/reference");
+	});
+
+	it("roots right-panel contributions and file links at a worktree session's directory", async () => {
+		assistantState.current.threadListItem.remoteId = "session-42";
+		assistantState.current.threadListItem.status = "regular";
+		const multiFolderWorkspace: Workspace = {
+			...workspace,
+			folders: [
+				...workspace.folders,
+				{
+					id: "folder-2",
+					path: "/projects/reference",
+					isPrimary: false,
+					position: 1,
+				},
+			],
+		};
+		localStorage.setItem("kilo-ui.active-workspace", multiFolderWorkspace.id);
+		const { baseElement } = renderChatPage({
+			workspaces: [multiFolderWorkspace],
+			children: (
+				<StampSessionActivity
+					sessions={[
+						{
+							id: "session-42",
+							directory: "/repo/.kilo/worktrees/kilo-x",
+							workspaceId: multiFolderWorkspace.id,
+							worktreeBranch: "kilo/x",
+						},
+					]}
+				/>
+			),
+		});
+		useRightPanelStore.getState().openTab("session-42", { id: "canvas.canvas", title: "Canvas" });
+		const screen = page.elementLocator(baseElement);
+
+		await expect
+			.element(screen.getByTestId("test-canvas-panel"))
+			.toHaveAttribute("data-workspace-directory", "/repo/.kilo/worktrees/kilo-x");
+		await expect
+			.element(screen.getByTestId("test-canvas-panel"))
+			.toHaveAttribute(
+				"data-workspace-folders",
+				"/repo/.kilo/worktrees/kilo-x|/projects/reference",
+			);
+	});
+
+	it("keeps the workspace root for non-worktree sessions", async () => {
+		assistantState.current.threadListItem.remoteId = "session-43";
+		assistantState.current.threadListItem.status = "regular";
+		localStorage.setItem("kilo-ui.active-workspace", workspace.id);
+		const { baseElement } = renderChatPage({
+			workspaces: [workspace],
+			children: (
+				<StampSessionActivity
+					sessions={[
+						{
+							id: "session-43",
+							directory: "/projects/workspace-1",
+							workspaceId: workspace.id,
+							worktreeBranch: null,
+						},
+					]}
+				/>
+			),
+		});
+		useRightPanelStore.getState().openTab("session-43", { id: "canvas.canvas", title: "Canvas" });
+		const screen = page.elementLocator(baseElement);
+
+		await expect
+			.element(screen.getByTestId("test-canvas-panel"))
+			.toHaveAttribute("data-workspace-directory", "/projects/workspace-1");
+		await expect
+			.element(screen.getByTestId("test-canvas-panel"))
+			.toHaveAttribute("data-workspace-folders", "/projects/workspace-1");
 	});
 
 	it("uses the latest workspace only when the runtime prepares a new session", async () => {

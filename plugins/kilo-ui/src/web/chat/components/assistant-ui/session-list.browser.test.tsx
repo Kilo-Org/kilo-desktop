@@ -13,6 +13,7 @@ import { page, userEvent } from "vitest/browser";
 import { SdkProvider } from "@kilo-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 
+import { kiloUiChatContract } from "../../../../contracts/chat/schemas.js";
 import {
 	WorkspacesContext,
 	type WorkspacesContextValue,
@@ -21,6 +22,15 @@ import { SessionActivityProvider } from "../../session-activity/SessionActivityP
 import { createSessionActivityStore } from "../../session-activity/session-activity-store.js";
 import { SessionListViewProvider } from "../../session-list/use-session-list-view.js";
 import { SessionList } from "./session-list.js";
+
+const toastApi = vi.hoisted(() => ({
+	success: vi.fn(),
+	error: vi.fn(),
+}));
+
+vi.mock("@kilo-desktop/ui/components/sonner", () => ({
+	toast: toastApi,
+}));
 
 const stubChatModel: ChatModelAdapter = {
 	async run() {
@@ -39,6 +49,8 @@ class SeededThreadListAdapter implements RemoteThreadListAdapter {
 	readonly unarchiveCalls: string[] = [];
 	readonly renameCalls: { remoteId: string; title: string }[] = [];
 	readonly deleteCalls: string[] = [];
+	/** When set, `delete` rejects — the server-failure path. */
+	deleteError: Error | undefined;
 	private readonly records: Required<SeededThread>[];
 
 	constructor(threads: SeededThread[]) {
@@ -72,6 +84,7 @@ class SeededThreadListAdapter implements RemoteThreadListAdapter {
 
 	delete(remoteId: string) {
 		this.deleteCalls.push(remoteId);
+		if (this.deleteError) return Promise.reject(this.deleteError);
 		const index = this.records.findIndex((entry) => entry.remoteId === remoteId);
 		if (index >= 0) this.records.splice(index, 1);
 		return Promise.resolve();
@@ -171,11 +184,16 @@ function renderSessionList({
 	hydrate,
 	activeWorkspaceId = null,
 	includeComposer = false,
+	removeWorktree,
+	skipDefaultHydration = false,
 }: {
 	threads: SeededThread[];
 	hydrate?: (store: ReturnType<typeof createSessionActivityStore>) => void;
 	activeWorkspaceId?: string | null;
 	includeComposer?: boolean;
+	removeWorktree?: (input: { directory: string }) => Promise<undefined>;
+	/** Mirrors the real startup window: rows render before any session stamp arrives. */
+	skipDefaultHydration?: boolean;
 }) {
 	const adapter = new SeededThreadListAdapter(threads);
 	const navigate = vi.fn();
@@ -191,18 +209,33 @@ function renderSessionList({
 		openEdit,
 		openDelete,
 	};
-	const sdk = createFakeSdk({ featureId: "kilo-ui", navigation: { navigate } });
+	const sdk = createFakeSdk({
+		featureId: "kilo-ui",
+		navigation: { navigate },
+		channels: kiloUiChatContract,
+		handlers: {
+			"chat.removeWorktree": removeWorktree ?? (async () => undefined),
+		},
+	});
 	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
 	const store = createSessionActivityStore({ storage: null });
-	store.getState().hydrateSessions(
-		threads.map((thread, index) => ({
-			id: thread.remoteId,
-			directory: `/repo/${thread.remoteId}`,
-			createdAt: 1_700_000_000_000 + index * 1000,
-			updatedAt: 1_700_000_000_000 + index * 1000,
-		})),
-	);
+	if (!skipDefaultHydration) {
+		store.getState().hydrateSessions(
+			threads.map((thread, index) => ({
+				id: thread.remoteId,
+				directory: `/repo/${thread.remoteId}`,
+				createdAt: 1_700_000_000_000 + index * 1000,
+				updatedAt: 1_700_000_000_000 + index * 1000,
+			})),
+		);
+	}
 	hydrate?.(store);
+	// Settle the refresh flag after all hydration so the delete flow treats
+	// the store as authoritative. Tests that exercise the unsettled window
+	// use `skipDefaultHydration` and call `markSessionsRefreshed()` manually.
+	if (!skipDefaultHydration) {
+		store.getState().markSessionsRefreshed();
+	}
 	const result = render(
 		<SessionListHarness
 			adapter={adapter}
@@ -228,6 +261,8 @@ function renderSessionList({
 afterEach(() => {
 	cleanup();
 	localStorage.clear();
+	toastApi.success.mockReset();
+	toastApi.error.mockReset();
 });
 
 describe("SessionList", () => {
@@ -1556,5 +1591,322 @@ describe("SessionList", () => {
 		const allIcon = workspaceFilter.element().querySelector("svg");
 		expect(allIcon?.classList.contains("lucide-layout-grid")).toBe(true);
 		expect(allIcon?.getAttribute("stroke")).toBe("currentColor");
+	});
+});
+
+describe("SessionList worktree deletion", () => {
+	const WORKTREE_DIRECTORY = "/repo/.kilo/worktrees/kilo-aback-aardvark";
+
+	async function deleteViaRowMenu(screen: ReturnType<typeof page.elementLocator>, title: string) {
+		const card = screen.getByRole("listitem").filter({ hasText: title });
+		await expect.element(card).toBeVisible();
+		await userEvent.hover(card);
+		await card.getByRole("button", { name: "Thread actions" }).click();
+		await page.getByRole("menuitem", { name: "Delete" }).click();
+	}
+
+	it("offers a confirm dialog for an orphaned worktree session; keep deletes only the session", async () => {
+		const removeWorktree = vi.fn(async () => undefined);
+		const { adapter, screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Worktree chat" }],
+			removeWorktree,
+			hydrate: (store) => {
+				store
+					.getState()
+					.hydrateSessions([
+						{ id: "ses-1", directory: WORKTREE_DIRECTORY, worktreeBranch: "kilo/aback-aardvark" },
+					]);
+			},
+		});
+
+		await deleteViaRowMenu(screen, "Worktree chat");
+		await expect.element(page.getByTestId("session-delete-worktree-dialog")).toBeVisible();
+
+		await page.getByTestId("session-delete-keep-worktree").click();
+
+		await expect
+			.element(page.getByTestId("session-delete-worktree-dialog"))
+			.not.toBeInTheDocument();
+		expect(adapter.deleteCalls).toEqual(["ses-1"]);
+		expect(removeWorktree).not.toHaveBeenCalled();
+	});
+
+	it("sizes the dialog so every footer button stays within its bounds", async () => {
+		const { screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Worktree chat" }],
+			removeWorktree: vi.fn(async () => undefined),
+			hydrate: (store) => {
+				store
+					.getState()
+					.hydrateSessions([
+						{ id: "ses-1", directory: WORKTREE_DIRECTORY, worktreeBranch: "kilo/aback-aardvark" },
+					]);
+			},
+		});
+
+		await deleteViaRowMenu(screen, "Worktree chat");
+		await expect.element(page.getByTestId("session-delete-worktree-dialog")).toBeVisible();
+
+		const dialog = page.getByTestId("session-delete-worktree-dialog").element();
+		const dialogRect = dialog.getBoundingClientRect();
+		const buttons = dialog.querySelectorAll("[data-slot='alert-dialog-footer'] button");
+		expect(buttons.length).toBe(3);
+		for (const button of buttons) {
+			const rect = button.getBoundingClientRect();
+			expect(rect.left).toBeGreaterThanOrEqual(dialogRect.left - 0.5);
+			expect(rect.right).toBeLessThanOrEqual(dialogRect.right + 0.5);
+			expect(rect.top).toBeGreaterThanOrEqual(dialogRect.top - 0.5);
+			expect(rect.bottom).toBeLessThanOrEqual(dialogRect.bottom + 0.5);
+		}
+	});
+
+	it("removes the worktree after confirming the dialog", async () => {
+		const removeWorktree = vi.fn(async () => undefined);
+		const { adapter, screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Worktree chat" }],
+			removeWorktree,
+			hydrate: (store) => {
+				store
+					.getState()
+					.hydrateSessions([
+						{ id: "ses-1", directory: WORKTREE_DIRECTORY, worktreeBranch: "kilo/aback-aardvark" },
+					]);
+			},
+		});
+
+		await deleteViaRowMenu(screen, "Worktree chat");
+		await page.getByTestId("session-delete-worktree-confirm").click();
+
+		await vi.waitFor(() => {
+			expect(adapter.deleteCalls).toEqual(["ses-1"]);
+		});
+		await vi.waitFor(() => {
+			expect(removeWorktree).toHaveBeenCalledWith({ directory: WORKTREE_DIRECTORY });
+		});
+		await vi.waitFor(() => {
+			expect(toastApi.success).toHaveBeenCalledWith(
+				"Worktree deleted",
+				expect.objectContaining({ description: expect.stringContaining("kilo/aback-aardvark") }),
+			);
+		});
+	});
+
+	it("one-click deletes a worktree session that shares its directory with another session", async () => {
+		const removeWorktree = vi.fn(async () => undefined);
+		const { adapter, screen } = renderSessionList({
+			threads: [
+				{ remoteId: "ses-1", title: "Shared one" },
+				{ remoteId: "ses-2", title: "Shared two" },
+			],
+			removeWorktree,
+			hydrate: (store) => {
+				store.getState().hydrateSessions([
+					{ id: "ses-1", directory: WORKTREE_DIRECTORY, worktreeBranch: "kilo/aback-aardvark" },
+					{ id: "ses-2", directory: WORKTREE_DIRECTORY, worktreeBranch: "kilo/aback-aardvark" },
+				]);
+			},
+		});
+
+		await deleteViaRowMenu(screen, "Shared one");
+
+		await expect
+			.element(page.getByTestId("session-delete-worktree-dialog"))
+			.not.toBeInTheDocument();
+		expect(adapter.deleteCalls).toEqual(["ses-1"]);
+		expect(removeWorktree).not.toHaveBeenCalled();
+	});
+
+	it("one-click deletes sessions without a worktree stamp", async () => {
+		const removeWorktree = vi.fn(async () => undefined);
+		const { adapter, screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Local chat" }],
+			removeWorktree,
+		});
+
+		await deleteViaRowMenu(screen, "Local chat");
+
+		await expect
+			.element(page.getByTestId("session-delete-worktree-dialog"))
+			.not.toBeInTheDocument();
+		expect(adapter.deleteCalls).toEqual(["ses-1"]);
+		expect(removeWorktree).not.toHaveBeenCalled();
+	});
+
+	it("surfaces a removal failure as an error toast while the session is still deleted", async () => {
+		const removeWorktree = vi.fn(async () => {
+			throw new Error("fatal: worktree is locked");
+		});
+		const { adapter, screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Worktree chat" }],
+			removeWorktree,
+			hydrate: (store) => {
+				store
+					.getState()
+					.hydrateSessions([
+						{ id: "ses-1", directory: WORKTREE_DIRECTORY, worktreeBranch: "kilo/aback-aardvark" },
+					]);
+			},
+		});
+
+		await deleteViaRowMenu(screen, "Worktree chat");
+		await page.getByTestId("session-delete-worktree-confirm").click();
+
+		await vi.waitFor(() => {
+			expect(adapter.deleteCalls).toEqual(["ses-1"]);
+		});
+		await vi.waitFor(() => {
+			expect(toastApi.error).toHaveBeenCalledWith(
+				"Could not remove worktree",
+				expect.objectContaining({ description: "fatal: worktree is locked" }),
+			);
+		});
+	});
+
+	it("surfaces a failed session delete as an error toast and keeps the worktree", async () => {
+		const removeWorktree = vi.fn(async () => undefined);
+		const unhandled = vi.fn();
+		window.addEventListener("unhandledrejection", unhandled);
+		const { adapter, screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Worktree chat" }],
+			removeWorktree,
+			hydrate: (store) => {
+				store
+					.getState()
+					.hydrateSessions([
+						{ id: "ses-1", directory: WORKTREE_DIRECTORY, worktreeBranch: "kilo/aback-aardvark" },
+					]);
+			},
+		});
+		adapter.deleteError = new Error("network unreachable");
+
+		await deleteViaRowMenu(screen, "Worktree chat");
+		await page.getByTestId("session-delete-worktree-confirm").click();
+
+		await vi.waitFor(() => {
+			expect(toastApi.error).toHaveBeenCalledWith(
+				"Could not delete chat",
+				expect.objectContaining({ description: "network unreachable" }),
+			);
+		});
+		// The session survived, so its worktree must not be removed.
+		expect(adapter.deleteCalls).toEqual(["ses-1"]);
+		expect(removeWorktree).not.toHaveBeenCalled();
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		expect(unhandled).not.toHaveBeenCalled();
+		window.removeEventListener("unhandledrejection", unhandled);
+	});
+
+	it("waits for the refresh before deleting a not-yet-hydrated session", async () => {
+		// Startup window: the row rendered before any session stamp arrived,
+		// so the orphan selector says "not a worktree" — the delete must wait
+		// for the refresh to settle before deciding.
+		const removeWorktree = vi.fn(async () => undefined);
+		const { adapter, screen, store } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Worktree chat" }],
+			removeWorktree,
+			skipDefaultHydration: true,
+		});
+
+		await expect.element(screen.getByText("Worktree chat")).toBeVisible();
+		await deleteViaRowMenu(screen, "Worktree chat");
+
+		// Direct delete must not have happened: the store has no record yet
+		// and the refresh has not settled.
+		expect(adapter.deleteCalls).toEqual([]);
+
+		// The refresh lands mid-decide: the stamp reveals a worktree session.
+		act(() => {
+			store.getState().hydrateSessions([
+				{
+					id: "ses-1",
+					directory: WORKTREE_DIRECTORY,
+					worktreeBranch: "kilo/aback-aardvark",
+				},
+			]);
+			store.getState().markSessionsRefreshed();
+		});
+
+		await expect.element(page.getByTestId("session-delete-worktree-dialog")).toBeVisible();
+		expect(adapter.deleteCalls).toEqual([]);
+		expect(removeWorktree).not.toHaveBeenCalled();
+	});
+
+	it("waits for the refresh when the record exists but lacks a worktree stamp", async () => {
+		// The session record was partially hydrated (directory only, no
+		// worktreeBranch) before the full refresh settled. The delete must
+		// wait for the refresh rather than deleting directly.
+		const removeWorktree = vi.fn(async () => undefined);
+		const { adapter, screen, store } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Worktree chat" }],
+			removeWorktree,
+			skipDefaultHydration: true,
+			hydrate: (s) => {
+				s.getState().hydrateSessions([{ id: "ses-1", directory: WORKTREE_DIRECTORY }]);
+			},
+		});
+
+		await expect.element(screen.getByText("Worktree chat")).toBeVisible();
+		await deleteViaRowMenu(screen, "Worktree chat");
+
+		// The record exists but has no worktree stamp and the refresh has not
+		// settled — the delete must not have proceeded yet.
+		expect(adapter.deleteCalls).toEqual([]);
+
+		// The full refresh lands: the stamp reveals a worktree session.
+		act(() => {
+			store.getState().hydrateSessions([
+				{
+					id: "ses-1",
+					directory: WORKTREE_DIRECTORY,
+					worktreeBranch: "kilo/aback-aardvark",
+				},
+			]);
+			store.getState().markSessionsRefreshed();
+		});
+
+		await expect.element(page.getByTestId("session-delete-worktree-dialog")).toBeVisible();
+		expect(adapter.deleteCalls).toEqual([]);
+		expect(removeWorktree).not.toHaveBeenCalled();
+	});
+
+	it("deletes directly when the settled refresh shows no worktree stamp", async () => {
+		const removeWorktree = vi.fn(async () => undefined);
+		const { adapter, screen, store } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Local chat" }],
+			removeWorktree,
+			skipDefaultHydration: true,
+		});
+		store.getState().markSessionsRefreshed();
+
+		await deleteViaRowMenu(screen, "Local chat");
+
+		await vi.waitFor(() => {
+			expect(adapter.deleteCalls).toEqual(["ses-1"]);
+		});
+		expect(removeWorktree).not.toHaveBeenCalled();
+	});
+
+	it("cancel closes the dialog without deleting anything", async () => {
+		const removeWorktree = vi.fn(async () => undefined);
+		const { adapter, screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Worktree chat" }],
+			removeWorktree,
+			hydrate: (store) => {
+				store
+					.getState()
+					.hydrateSessions([
+						{ id: "ses-1", directory: WORKTREE_DIRECTORY, worktreeBranch: "kilo/aback-aardvark" },
+					]);
+			},
+		});
+
+		await deleteViaRowMenu(screen, "Worktree chat");
+		await page.getByTestId("session-delete-worktree-cancel").click();
+
+		await expect
+			.element(page.getByTestId("session-delete-worktree-dialog"))
+			.not.toBeInTheDocument();
+		expect(adapter.deleteCalls).toEqual([]);
+		expect(removeWorktree).not.toHaveBeenCalled();
 	});
 });

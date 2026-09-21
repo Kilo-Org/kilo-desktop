@@ -21,6 +21,13 @@ export type PendingRequestInput = Iterable<{ id: string; sessionID: string }>;
 export type SessionActivityStoreState = SessionActivityState & {
 	/** Bumps when a live SSE event mutates activity; used to detect hydrate races. */
 	activityEpoch: number;
+	/**
+	 * True once the runtime backend's startup/reconnect session refresh has
+	 * settled (success or failure). Until then a missing session record means
+	 * "not hydrated yet", not "not a worktree" — delete flows read this to
+	 * decide whether to wait for certainty.
+	 */
+	sessionsRefreshed: boolean;
 	applyEvent: (event: SessionActivityEvent) => void;
 	hydrateSessions: (sessions: Iterable<SessionSummaryInput>) => void;
 	hydratePendingRequests: (input: {
@@ -34,10 +41,36 @@ export type SessionActivityStoreState = SessionActivityState & {
 		sinceEpoch?: number,
 	) => void;
 	markVisited: (sessionId: string, at?: number) => void;
+	markSessionsRefreshed: () => void;
 	setOpenSession: (sessionId: string | null) => void;
 };
 
 export type SessionActivityStore = ReturnType<typeof createSessionActivityStore>;
+
+/**
+ * One-shot wait for the session refresh to settle. The timeout cap bounds the
+ * pathological case — a store that never wires `markSessionsRefreshed` (a
+ * test double or a failed backend boot) must never hang a delete flow; the
+ * cap trades a possible wrong direct delete in that case for guaranteed
+ * progress.
+ */
+export function whenSessionsRefreshed(
+	store: SessionActivityStore,
+	timeoutMs = 2_000,
+): Promise<void> {
+	if (store.getState().sessionsRefreshed) return Promise.resolve();
+	return new Promise((resolve) => {
+		const unsubscribe = store.subscribe((state, previous) => {
+			if (state.sessionsRefreshed && !previous.sessionsRefreshed) settle();
+		});
+		const timer = setTimeout(settle, timeoutMs);
+		function settle(): void {
+			clearTimeout(timer);
+			unsubscribe();
+			resolve();
+		}
+	});
+}
 
 type StorageLike = Pick<Storage, "getItem" | "setItem">;
 
@@ -138,6 +171,7 @@ export function createSessionActivityStore(options?: {
 	return createStore<SessionActivityStoreState>()((set, get) => ({
 		...EMPTY_SESSION_ACTIVITY_STATE,
 		activityEpoch: 0,
+		sessionsRefreshed: false,
 		lastVisitedAtBySessionId: loadLastVisited(storage),
 
 		applyEvent: (event) => {
@@ -265,6 +299,11 @@ export function createSessionActivityStore(options?: {
 				persistLastVisited(lastVisitedAtBySessionId);
 				return { ...state, lastVisitedAtBySessionId };
 			});
+		},
+
+		markSessionsRefreshed: () => {
+			// No-op after the first settle so repeated refreshes never notify.
+			set((state) => (state.sessionsRefreshed ? state : { ...state, sessionsRefreshed: true }));
 		},
 
 		setOpenSession: (sessionId) => {

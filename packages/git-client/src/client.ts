@@ -23,8 +23,8 @@ import { checkoutBranch } from "./git/checkout.js";
 import type { ForEachRefOptions } from "./git/for-each-ref.js";
 import type { IBranch } from "./models/branch.js";
 import { getBranches } from "./git/for-each-ref.js";
-import type { RepositoryType } from "./git/rev-parse.js";
-import { getRepositoryType } from "./git/rev-parse.js";
+import type { DefaultBranchOptions, RepositoryType } from "./git/rev-parse.js";
+import { getDefaultBranch, getGitCommonDir, getRepositoryType } from "./git/rev-parse.js";
 import type { IStatusResult, StatusOptions } from "./git/status.js";
 import { getStatus } from "./git/status.js";
 import type { CreateWorkingDirectoryPatchOptions, GitPatchFile, PatchExec } from "./git/diff.js";
@@ -36,11 +36,32 @@ import { getFileContents } from "./git/file-contents.js";
 import { getGlobalConfigValue } from "./git/config.js";
 import type { RecentBranchesOptions } from "./git/reflog.js";
 import { getRecentBranches } from "./git/reflog.js";
-import type { RemoteHeadOptions } from "./git/remote.js";
-import { getRemoteHEAD } from "./git/remote.js";
-import type { SymbolicRefOptions } from "./git/refs.js";
-import { getSymbolicRef } from "./git/refs.js";
+import type { ListRemotesOptions, RemoteHeadOptions } from "./git/remote.js";
+import { getRemoteHEAD, listRemotes } from "./git/remote.js";
+import type { CheckRefFormatOptions, SymbolicRefOptions } from "./git/refs.js";
+import { checkRefFormat, getSymbolicRef } from "./git/refs.js";
 import type { ShowExec } from "./git/show.js";
+import type { WorktreeEntry } from "./models/worktree.js";
+import { deleteBranch, renameBranch } from "./git/branch.js";
+import type {
+	AddWorktreeOptions,
+	PruneWorktreeOptions,
+	RemoveWorktreeOptions,
+	WorktreeOptions,
+} from "./git/worktree.js";
+import { addWorktree, listWorktrees, pruneWorktrees, removeWorktree } from "./git/worktree.js";
+
+/**
+ * The per-call executor `#cwdExecutor` returns: a generic whose result
+ * tracks the options' `encoding` (`"buffer"` → buffer result, otherwise
+ * string), so both `StatusExec` (buffer) and the string-only module execs
+ * accept it. The conditional is the type-level form of `exec`'s overloads.
+ */
+type CwdAwareExec = <O extends IGitStringExecutionOptions | IGitBufferExecutionOptions>(
+	args: string[],
+	name: string,
+	opts: O,
+) => Promise<O extends IGitBufferExecutionOptions ? IGitBufferResult : IGitStringResult>;
 
 export interface GitClientOptions {
 	/** Working directory for git commands. Defaults to process.cwd(). */
@@ -171,6 +192,66 @@ export interface GitClient {
 	 * call; it defaults to the client's `path`.
 	 */
 	recentBranches(limit: number, options?: RecentBranchesOptions): Promise<string[]>;
+	/**
+	 * Worktrees of the repository containing the given working directory,
+	 * via `git worktree list --porcelain -z` (the main worktree first).
+	 * `options.cwd` overrides the working directory for this call.
+	 */
+	worktrees(options?: WorktreeOptions): Promise<ReadonlyArray<WorktreeEntry>>;
+	/**
+	 * Add a worktree at `worktreePath`. With `options.createBranch`, create
+	 * a new branch there; with `options.commitish`, check it out
+	 * (defaults to HEAD).
+	 */
+	addWorktree(worktreePath: string, options?: AddWorktreeOptions): Promise<void>;
+	/**
+	 * Remove the worktree at `worktreePath`. With `options.force`, delete
+	 * it even when it is dirty or locked.
+	 */
+	removeWorktree(worktreePath: string, options?: RemoveWorktreeOptions): Promise<void>;
+	/**
+	 * Delete the given local branch, discarding unmerged work
+	 * (`git branch -D`). `options.cwd` overrides the working directory for
+	 * this call.
+	 */
+	deleteBranch(name: string, options?: BranchOptions): Promise<void>;
+	/**
+	 * Rename the given local branch to `next` (`git branch -m`).
+	 * `options.cwd` overrides the working directory for this call.
+	 */
+	renameBranch(name: string, next: string, options?: BranchOptions): Promise<void>;
+	/**
+	 * The short name of the branch `refs/remotes/origin/HEAD` points at,
+	 * or `null` when the symref is unset or the working directory is not
+	 * inside a repository. `options.cwd` overrides the working directory
+	 * for this call.
+	 */
+	defaultBranch(options?: DefaultBranchOptions): Promise<string | null>;
+	/**
+	 * Names of all configured remotes (`git remote`), as a `string[]`.
+	 * Empty when the repository has no remotes. `options.cwd` overrides
+	 * the working directory for this call.
+	 */
+	remotes(options?: ListRemotesOptions): Promise<string[]>;
+	/**
+	 * Prune stale worktree registrations (`git worktree prune --expire now`).
+	 * `options.cwd` overrides the working directory for this call.
+	 */
+	pruneWorktrees(options?: PruneWorktreeOptions): Promise<void>;
+	/**
+	 * Check whether `name` is a valid branch name (`git check-ref-format
+	 * --branch <name>`). Returns `true` when git accepts it, `false` when
+	 * it rejects it. The caller is responsible for the leading-dash guard.
+	 * `options.cwd` overrides the working directory for this call.
+	 */
+	checkRefFormat(name: string, options?: CheckRefFormatOptions): Promise<boolean>;
+	/**
+	 * The `<git common dir>` for a working directory (`git rev-parse
+	 * --git-common-dir`), resolved to an absolute path. Linked worktrees
+	 * share the common dir with the main worktree. `options.cwd` overrides
+	 * the working directory for this call.
+	 */
+	gitCommonDir(options?: { cwd?: string }): Promise<string>;
 }
 
 /**
@@ -223,11 +304,7 @@ class GitClientImpl implements GitClient {
 	}
 
 	status(options?: StatusOptions): Promise<IStatusResult | null> {
-		return getStatus(
-			(args, name, opts) =>
-				this.exec(args, name, options?.cwd ? { ...opts, cwd: options.cwd } : opts),
-			options,
-		);
+		return getStatus(this.#cwdExecutor(options), options);
 	}
 
 	createWorkingDirectoryPatch(
@@ -245,29 +322,15 @@ class GitClientImpl implements GitClient {
 	}
 
 	branches(options?: ForEachRefOptions): Promise<IBranch[] | null> {
-		return getBranches(
-			(args, name, opts) =>
-				this.exec(args, name, options?.cwd ? { ...opts, cwd: options.cwd } : opts),
-			options,
-		);
+		return getBranches(this.#cwdExecutor(options), options);
 	}
 
 	createBranch(name: string, startPoint?: string, options?: BranchOptions): Promise<void> {
-		return createBranch(
-			(args, execName, opts) =>
-				this.exec(args, execName, options?.cwd ? { ...opts, cwd: options.cwd } : opts),
-			name,
-			startPoint,
-		);
+		return createBranch(this.#cwdExecutor(options), name, startPoint);
 	}
 
 	checkoutBranch(branch: string, options?: CheckoutOptions): Promise<void> {
-		return checkoutBranch(
-			(args, name, opts) =>
-				this.exec(args, name, options?.cwd ? { ...opts, cwd: options.cwd } : opts),
-			branch,
-			options,
-		);
+		return checkoutBranch(this.#cwdExecutor(options), branch, options);
 	}
 
 	initRepository(options?: InitOptions): Promise<void> {
@@ -302,6 +365,69 @@ class GitClientImpl implements GitClient {
 	get #exec() {
 		return (args: string[], name: string, opts: IGitStringExecutionOptions) =>
 			this.exec(args, name, opts);
+	}
+
+	/**
+	 * Executor for per-call modules: `options.cwd` (when set) overrides the
+	 * client's default `path` for every invocation of the returned executor.
+	 * The returned executor's result tracks the options' `encoding`
+	 * (`"buffer"` → buffer, otherwise string), so both `StatusExec` (buffer)
+	 * and the string-only module execs accept it. The `=== undefined` check
+	 * means an empty-string cwd passes through as an explicit override —
+	 * degenerate, but consistent everywhere.
+	 */
+	#cwdExecutor(options: { readonly cwd?: string } | undefined): CwdAwareExec {
+		const exec: CwdAwareExec = (args, name, opts) =>
+			// One assertion, at the overload boundary: an overloaded callee
+			// cannot be driven by a generic-typed options argument. The
+			// runtime `opts.encoding` already selects the matching result.
+			(this.exec as CwdAwareExec)(
+				args,
+				name,
+				options?.cwd === undefined ? opts : { ...opts, cwd: options.cwd },
+			);
+		return exec;
+	}
+
+	worktrees(options?: WorktreeOptions): Promise<ReadonlyArray<WorktreeEntry>> {
+		return listWorktrees(this.#cwdExecutor(options), options);
+	}
+
+	addWorktree(worktreePath: string, options?: AddWorktreeOptions): Promise<void> {
+		return addWorktree(this.#cwdExecutor(options), worktreePath, options);
+	}
+
+	removeWorktree(worktreePath: string, options?: RemoveWorktreeOptions): Promise<void> {
+		return removeWorktree(this.#cwdExecutor(options), worktreePath, options);
+	}
+
+	deleteBranch(name: string, options?: BranchOptions): Promise<void> {
+		return deleteBranch(this.#cwdExecutor(options), name, options);
+	}
+
+	renameBranch(name: string, next: string, options?: BranchOptions): Promise<void> {
+		return renameBranch(this.#cwdExecutor(options), name, next, options);
+	}
+
+	defaultBranch(options?: DefaultBranchOptions): Promise<string | null> {
+		return getDefaultBranch(this.#cwdExecutor(options), options);
+	}
+
+	remotes(options?: ListRemotesOptions): Promise<string[]> {
+		return listRemotes(this.#cwdExecutor(options), options);
+	}
+
+	pruneWorktrees(options?: PruneWorktreeOptions): Promise<void> {
+		return pruneWorktrees(this.#cwdExecutor(options), options);
+	}
+
+	checkRefFormat(name: string, options?: CheckRefFormatOptions): Promise<boolean> {
+		return checkRefFormat(this.#exec, name, options);
+	}
+
+	gitCommonDir(options?: { cwd?: string }): Promise<string> {
+		const cwd = options?.cwd ?? this.path;
+		return getGitCommonDir(this.#cwdExecutor({ cwd }), { cwd });
 	}
 
 	#resolveContext(): GitProcessContext {

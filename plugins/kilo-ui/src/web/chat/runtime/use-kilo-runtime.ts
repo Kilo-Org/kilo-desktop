@@ -38,6 +38,13 @@ export interface UseKiloRuntimeOptions {
 	defaultModel?: PromptModelRef;
 	/** Ensures a managed local model is ready before its prompt is forwarded. */
 	prepareModel?: (modelId: string) => Promise<void>;
+	/** Observes every outgoing prompt with its session id and text. */
+	onPrompt?: (input: { sessionID: string; text: string }) => void;
+	/**
+	 * Compensating cleanup for a session that failed to materialize after
+	 * `prepareSession` created a worktree for it (see the backend option).
+	 */
+	onSessionCreateFailed?: (preparation: KiloSessionPreparation) => void;
 	/** Reasoning effort / OpenCode variant injected into prompt requests. */
 	variant?: string;
 	isSendDisabled?: boolean;
@@ -61,6 +68,8 @@ export function useKiloRuntime({
 	getAgent,
 	defaultModel,
 	prepareModel,
+	onPrompt,
+	onSessionCreateFailed,
 	variant,
 	isSendDisabled,
 	onError,
@@ -79,6 +88,8 @@ export function useKiloRuntime({
 
 	const prepareModelRef = useRef(prepareModel);
 	prepareModelRef.current = prepareModel;
+	const onPromptRef = useRef(onPrompt);
+	onPromptRef.current = onPrompt;
 	const connectionRef = useRef(connectionPromise);
 	connectionRef.current = connectionPromise;
 	const knownCommandNamesRef = useRef(getKnownCommandNames);
@@ -93,6 +104,9 @@ export function useKiloRuntime({
 			getModel: () => modelRef.current,
 			prepareModel: async (modelId: string) => {
 				await prepareModelRef.current?.(modelId);
+			},
+			onPrompt: (input: { sessionID: string; text: string }) => {
+				onPromptRef.current?.(input);
 			},
 			getKnownCommandNames: () => knownCommandNamesRef.current?.() ?? [],
 		}),
@@ -119,10 +133,11 @@ export function useKiloRuntime({
 			prepareSession,
 			...promptGetters,
 			onSessionInitialized: (threadId: string) => onSessionInitializedRef.current?.(threadId),
+			...(onSessionCreateFailed ? { onSessionCreateFailed } : {}),
 			...(sessionActivity ? { sessionActivity } : {}),
 			...(suggestions ? { suggestions } : {}),
 		});
-	}, [client, prepareSession, promptGetters, sessionActivity, suggestions]);
+	}, [client, onSessionCreateFailed, prepareSession, promptGetters, sessionActivity, suggestions]);
 	const adapters = useMemo(() => ({ attachments: new OpenCodeAttachmentAdapter() }), []);
 
 	return useOpenCodeRuntime({

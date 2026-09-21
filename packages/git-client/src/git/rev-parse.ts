@@ -17,6 +17,59 @@ export type RepositoryType =
 	| { kind: "missing" }
 	| { kind: "unsafe"; path: string };
 
+export interface DefaultBranchOptions {
+	/** Working directory override for this call. Defaults to the client's `path`. */
+	readonly cwd?: string;
+}
+
+export interface GitCommonDirOptions {
+	/**
+	 * Working directory for the git command and the base for resolving the
+	 * (potentially relative) `--git-common-dir` output. Required because
+	 * the module function cannot read the client's `path` default.
+	 */
+	readonly cwd: string;
+}
+
+/**
+ * Resolve `<git common dir>` for `cwd` (`git rev-parse --git-common-dir`).
+ * Returns the absolute path — relative results (e.g. `.git`) are resolved
+ * against `cwd`. Linked worktrees share the common dir with the main worktree,
+ * so this is the correct anchor for `info/exclude` and LFS probes.
+ */
+export async function getGitCommonDir(
+	exec: RevParseExec,
+	options: GitCommonDirOptions,
+): Promise<string> {
+	const { cwd } = options;
+	const result = await exec(["rev-parse", "--git-common-dir"], "getGitCommonDir", { cwd });
+	const raw = result.stdout.trim();
+	// `--git-common-dir` can return a relative path (e.g. `.git`).
+	return resolve(cwd, raw);
+}
+
+/**
+ * The short name of the branch `refs/remotes/origin/HEAD` points at (the
+ * remote's default branch), or `null` when the symref is unset or the
+ * working directory is not inside a repository.
+ */
+export async function getDefaultBranch(
+	exec: RevParseExec,
+	options?: DefaultBranchOptions,
+): Promise<string | null> {
+	const result = await exec(["symbolic-ref", "refs/remotes/origin/HEAD"], "getDefaultBranch", {
+		...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
+		successExitCodes: new Set([0, 1, 128]),
+	});
+
+	if (result.exitCode !== 0) {
+		return null;
+	}
+
+	const ref = result.stdout.trim();
+	return ref.startsWith("refs/remotes/origin/") ? ref.slice("refs/remotes/origin/".length) : null;
+}
+
 /**
  * Attempts to fulfill the work of isGitRepository and isBareRepository while
  * requiring only one Git process to be spawned.

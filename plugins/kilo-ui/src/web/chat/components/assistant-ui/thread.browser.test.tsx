@@ -37,6 +37,7 @@ import { kiloUiBrowserRegister } from "../../../browserRegister.js";
 import { KiloAuthContext, type KiloAuthContextValue } from "../../../account/KiloAuthContext.js";
 import { WorkspacesFeatureProvider } from "../../../workspaces/WorkspacesFeatureProvider.js";
 import { ChatMarkdownProvider } from "../../ChatMarkdownContext.js";
+import { WorktreeSetupProvider } from "../../worktree-setup/WorktreeSetupContext.js";
 import { OPTIMISTIC_AGENT_CATALOG } from "../../agent-selection/agent-catalog.js";
 import { ChatAgentSelectionProvider } from "../../agent-selection/ChatAgentSelectionContext.js";
 import {
@@ -272,6 +273,7 @@ function ThreadTree({
 		connectionPromise: Promise.resolve(connection),
 	},
 	probe = false,
+	isSettingUpWorktree = false,
 }: {
 	auth: KiloAuthContextValue;
 	selection?: ChatModelSelectionValue;
@@ -280,6 +282,7 @@ function ThreadTree({
 	enableMessageQueue?: boolean;
 	connectionStatus?: ChatConnectionStatus;
 	probe?: boolean;
+	isSettingUpWorktree?: boolean;
 }) {
 	const runtime = useLocalRuntime(adapter, {
 		initialMessages,
@@ -295,10 +298,12 @@ function ThreadTree({
 								sessionId="session-1"
 								workspaceFolders={[{ path: "/workspace/project", isPrimary: true }]}
 							>
-								<div className="h-[480px]">
-									<Thread />
-									{probe ? <LastUserIdProbe /> : null}
-								</div>
+								<WorktreeSetupProvider isSettingUp={isSettingUpWorktree}>
+									<div className="h-[480px]">
+										<Thread />
+										{probe ? <LastUserIdProbe /> : null}
+									</div>
+								</WorktreeSetupProvider>
 							</ChatMarkdownProvider>
 						</ChatModelSelectionProvider>
 					</ChatAgentSelectionProvider>
@@ -317,6 +322,7 @@ function renderThread({
 	connectionStatus,
 	extras,
 	openFile,
+	isSettingUpWorktree,
 }: {
 	auth?: KiloAuthContextValue;
 	selection?: ChatModelSelectionValue;
@@ -330,6 +336,7 @@ function renderThread({
 		workspaceDirectory: string;
 		relativePath: string;
 	}) => void;
+	isSettingUpWorktree?: boolean;
 }) {
 	extrasRef.current = extras;
 	const sdk = createFakeSdk({ featureId: "kilo-ui" });
@@ -349,6 +356,7 @@ function renderThread({
 						{...(enableMessageQueue === undefined ? {} : { enableMessageQueue })}
 						{...(adapter ? { adapter } : {})}
 						{...(connectionStatus ? { connectionStatus } : {})}
+						{...(isSettingUpWorktree === undefined ? {} : { isSettingUpWorktree })}
 						probe={extras !== undefined}
 					/>
 				</WorkspacesFeatureProvider>
@@ -357,6 +365,29 @@ function renderThread({
 	);
 	return page.elementLocator(baseElement);
 }
+
+describe("worktree setup indicator", () => {
+	it("appears after the optimistic user message while the worktree is being created", async () => {
+		const screen = renderThread({
+			initialMessages: [{ role: "user", content: [{ type: "text", text: "Start the task" }] }],
+			isSettingUpWorktree: true,
+		});
+
+		const indicator = screen.getByRole("status", { name: "Setting up worktree" });
+		await expect.element(indicator).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-worktree-setup-spinner")).toBeVisible();
+	});
+
+	it("is absent when no worktree creation is pending", async () => {
+		const screen = renderThread({
+			initialMessages: [{ role: "user", content: [{ type: "text", text: "Start locally" }] }],
+		});
+
+		await expect
+			.element(screen.getByRole("status", { name: "Setting up worktree" }))
+			.not.toBeInTheDocument();
+	});
+});
 
 function renderThreadWithInference({
 	initialMessages = [],

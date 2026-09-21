@@ -33,19 +33,19 @@ function renderLabel(
 		repositoryType?: () => GitRepositoryType | Promise<GitRepositoryType>;
 		branches: () => GitBranchesResult | null | Promise<GitBranchesResult | null>;
 	},
-	options?: { workspaceDirectory?: string | undefined },
+	options?: { workingDirectory?: string | undefined },
 ) {
-	const workspaceDirectory = options === undefined ? "/repo/project" : options.workspaceDirectory;
+	const workingDirectory = options === undefined ? "/repo/project" : options.workingDirectory;
 	const sdk = createFakeSdk({ featureId: "git" });
 	const mainSdk = createFakeMainSdk({ featureId: "git", services: sdk.services });
 	mainSdk.channels(gitContract).handleAll({
 		repositoryType: ({ workingDirectory: probedDirectory }) => {
-			if (workspaceDirectory === undefined) throw new Error("probed without a workspace");
-			expect(probedDirectory).toBe(workspaceDirectory);
+			if (workingDirectory === undefined) throw new Error("probed without a workspace");
+			expect(probedDirectory).toBe(workingDirectory);
 			return handlers.repositoryType?.() ?? regularRepositoryType;
 		},
 		branches: ({ workingDirectory: probedDirectory }) => {
-			expect(probedDirectory).toBe(workspaceDirectory);
+			expect(probedDirectory).toBe(workingDirectory);
 			return handlers.branches();
 		},
 		checkout: async () => undefined,
@@ -59,6 +59,9 @@ function renderLabel(
 		getDiffContents: () => {
 			throw new Error("unused in this test");
 		},
+		defaultBranch: () => {
+			throw new Error("unused in this test");
+		},
 	});
 	const system = createFakeFeatureSystem({ sdks: { git: sdk } });
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -66,7 +69,7 @@ function renderLabel(
 	const { baseElement } = render(
 		<SdkProvider system={system}>
 			<QueryClientProvider client={queryClient}>
-				<GitBranchLabel workspaceDirectory={workspaceDirectory} />
+				<GitBranchLabel workingDirectory={workingDirectory} />
 			</QueryClientProvider>
 		</SdkProvider>,
 	);
@@ -90,7 +93,7 @@ describe("GitBranchLabel", () => {
 
 	it("hides when there is no workspace and never probes", async () => {
 		const branches = vi.fn(() => branchesResult);
-		const screen = renderLabel({ branches }, { workspaceDirectory: undefined });
+		const screen = renderLabel({ branches }, { workingDirectory: undefined });
 
 		await expect.element(screen.getByTestId("git-branch-label")).not.toBeInTheDocument();
 		expect(branches).not.toHaveBeenCalled();
@@ -103,7 +106,7 @@ describe("GitBranchLabel", () => {
 				repositoryType: () => ({ kind: "missing" }),
 				branches,
 			},
-			{ workspaceDirectory: "/tmp/not-a-repo" },
+			{ workingDirectory: "/tmp/not-a-repo" },
 		);
 
 		await expect.element(screen.getByTestId("git-init-thread-button")).toBeVisible();
@@ -121,11 +124,36 @@ describe("GitBranchLabel", () => {
 				repositoryType: () => repositoryType,
 				branches,
 			},
-			{ workspaceDirectory: "/repo/project" },
+			{ workingDirectory: "/repo/project" },
 		);
 
 		await expect.element(screen.getByTestId("git-branch-label")).not.toBeInTheDocument();
 		await expect.element(screen.getByTestId("git-init-thread-button")).not.toBeInTheDocument();
 		expect(branches).not.toHaveBeenCalled();
+	});
+
+	it("shows the worktree branch when given a worktree working directory", async () => {
+		const worktreeBranchesResult: GitBranchesResult = {
+			currentBranch: "kilo/fix-the-login-bug",
+			defaultBranch: "main",
+			recentBranches: [],
+			branches: [
+				{
+					name: "kilo/fix-the-login-bug",
+					upstream: null,
+					tip: { sha: "b" },
+					ref: "refs/heads/kilo/fix-the-login-bug",
+					kind: "local",
+				},
+			],
+		};
+		const screen = renderLabel(
+			{ branches: () => worktreeBranchesResult },
+			{ workingDirectory: "/repo/.kilo/worktrees/kilo-fix-the-login-bug" },
+		);
+
+		const label = screen.getByTestId("git-branch-label");
+		await expect.element(label).toBeVisible();
+		await expect.element(label).toHaveTextContent("kilo/fix-the-login-bug");
 	});
 });

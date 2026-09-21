@@ -7,33 +7,35 @@ import { getReadOnlyBranchLabel, type SelectorQueryState } from "./branch-select
 import { InitializeGitButton } from "./InitializeGitButton.js";
 
 export interface GitBranchLabelProps {
-	readonly workspaceDirectory?: string | undefined;
+	readonly workingDirectory?: string | undefined;
 }
 
 /**
  * Read-only current-branch label for the active-thread composer rail
- * (`kilo-ui/chat-composer-footer`). Same workspace probes as the draft
- * footer switcher; hidden until a branch name is known — except for a
- * workspace the probe reports as `missing`, which swaps the label slot
- * for the shared Initialize Git action, muted to match the usage metrics
- * beside it. A successful init invalidates `repositoryType`, and the
- * refetch (now `regular`) renders the label here instead.
+ * (`kilo-ui/chat-composer-footer`). Probes the session's effective working
+ * directory — the worktree when worktree-backed — so the label shows the
+ * worktree branch, not the main checkout. Same workspace probes as the
+ * draft footer switcher; hidden until a branch name is known — except
+ * for a workspace the probe reports as `missing`, which swaps the label
+ * slot for the shared Initialize Git action, muted to match the usage
+ * metrics beside it. A successful init invalidates `repositoryType`, and
+ * the refetch (now `regular`) renders the label here instead.
  */
-export function GitBranchLabel({ workspaceDirectory }: GitBranchLabelProps) {
+export function GitBranchLabel({ workingDirectory }: GitBranchLabelProps) {
 	const sdk = useSdk<GitServiceContract>("git");
 	const typeQuery = useQuery({
-		...sdkQueryOptions(sdk, "repositoryType", { workingDirectory: workspaceDirectory ?? "" }),
-		enabled: workspaceDirectory !== undefined,
+		...sdkQueryOptions(sdk, "repositoryType", { workingDirectory: workingDirectory ?? "" }),
+		enabled: workingDirectory !== undefined,
 	});
 	const isRegular = typeQuery.data?.kind === "regular";
 	const query = useQuery({
-		...sdkQueryOptions(sdk, "branches", { workingDirectory: workspaceDirectory ?? "" }),
-		enabled: workspaceDirectory !== undefined && isRegular,
+		...sdkQueryOptions(sdk, "branches", { workingDirectory: workingDirectory ?? "" }),
+		enabled: workingDirectory !== undefined && isRegular,
 	});
 
 	const state: SelectorQueryState = {
-		workspaceDirectory,
-		isChecking: workspaceDirectory !== undefined && typeQuery.isPending,
+		workspaceDirectory: workingDirectory,
+		isChecking: workingDirectory !== undefined && typeQuery.isPending,
 		isRegular,
 		typeFailed: typeQuery.isError,
 		branchesPending: isRegular && query.isPending,
@@ -43,11 +45,13 @@ export function GitBranchLabel({ workspaceDirectory }: GitBranchLabelProps) {
 	const label = getReadOnlyBranchLabel(state);
 	// The missing-repo swap must precede the null return: `label` is
 	// undefined for a missing workspace (the branches probe never runs).
-	if (workspaceDirectory !== undefined && typeQuery.data?.kind === "missing") {
+	// For a missing repo no worktree can exist, so the worktree-effective
+	// directory equals the workspace directory.
+	if (workingDirectory !== undefined && typeQuery.data?.kind === "missing") {
 		return (
 			<InitializeGitButton
 				className="text-foreground/70 [&_svg]:text-foreground/40"
-				workspaceDirectory={workspaceDirectory}
+				workspaceDirectory={workingDirectory}
 				size="sm"
 				testId="git-init-thread-button"
 			/>

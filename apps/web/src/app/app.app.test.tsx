@@ -143,7 +143,7 @@ describe("AppProviders (app-level)", () => {
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("kilo-chat-page")).toBeVisible();
-		await expect.element(screen.getByTestId("git-branch-selector-trigger")).toBeVisible();
+		await expect.element(screen.getByRole("combobox", { name: "Select workspace" })).toBeVisible();
 		await expect.element(screen.getByText("Something went wrong!")).not.toBeInTheDocument();
 	});
 

@@ -51,6 +51,9 @@ function renderProvider(handlers: {
 		init: () => {
 			throw new Error("unused in this test");
 		},
+		defaultBranch: () => {
+			throw new Error("unused in this test");
+		},
 		getDiffContents: () => {
 			throw new Error("unused in this test");
 		},

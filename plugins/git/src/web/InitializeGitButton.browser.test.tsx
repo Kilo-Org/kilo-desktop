@@ -48,6 +48,9 @@ function renderButton(
 		getDiffContents: () => {
 			throw new Error("unused in this test");
 		},
+		defaultBranch: () => {
+			throw new Error("unused in this test");
+		},
 	});
 	const system = createFakeFeatureSystem({ sdks: { git: sdk } });
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });

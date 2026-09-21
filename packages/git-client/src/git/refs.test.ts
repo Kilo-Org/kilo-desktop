@@ -9,7 +9,7 @@ import {
 	makeCommit,
 	noopLogger,
 } from "../test/util.js";
-import { getSymbolicRef } from "./refs.js";
+import { checkRefFormat, getSymbolicRef } from "./refs.js";
 import type { SymbolicRefExec } from "./refs.js";
 
 afterEach(cleanupTestDirs);
@@ -57,6 +57,26 @@ describe("git/refs", () => {
 			await expect(getSymbolicRef(execFor(repoPath), "refs/remotes/origin/HEAD")).resolves.toBe(
 				"refs/remotes/origin/main",
 			);
+		});
+	});
+
+	describe("checkRefFormat", () => {
+		it("returns true for a valid branch name", async () => {
+			const repoPath = await initialize("check-ref-format-valid", "main");
+
+			await expect(checkRefFormat(execFor(repoPath), "feature/my-branch")).resolves.toBe(true);
+		});
+
+		it("returns false for an invalid branch name with a leading dot segment", async () => {
+			const repoPath = await initialize("check-ref-format-invalid", "main");
+
+			await expect(checkRefFormat(execFor(repoPath), ".invalid")).resolves.toBe(false);
+		});
+
+		it("returns false for a name with double dots", async () => {
+			const repoPath = await initialize("check-ref-format-dots", "main");
+
+			await expect(checkRefFormat(execFor(repoPath), "bad..name")).resolves.toBe(false);
 		});
 	});
 });

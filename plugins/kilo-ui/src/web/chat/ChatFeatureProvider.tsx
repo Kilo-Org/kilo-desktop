@@ -5,7 +5,11 @@ import { AssistantRuntimeProvider, DataRenderers, Tools, useAui } from "@assista
 
 import { sdkQueryOptions, useSdk } from "@kilo-desktop/sdk-react";
 
-import type { KiloGlobalConnection, KiloUiChatService } from "../../contracts/chat/schemas.js";
+import type {
+	KiloGlobalConnection,
+	KiloSessionPreparation,
+	KiloUiChatService,
+} from "../../contracts/chat/schemas.js";
 import { useWorkspacesFeature } from "../workspaces/WorkspacesFeatureContext.js";
 import { resolveChatWorkspaceDirectory } from "./chat-workspace-directory.js";
 import { navigateToChat } from "./chat-navigation.js";
@@ -40,6 +44,12 @@ import { ElectronMcpAppRenderer } from "./components/mcp-apps/ElectronMcpAppRend
 import { SessionActivityProvider } from "./session-activity/SessionActivityProvider.js";
 import { createSessionActivityStore } from "./session-activity/session-activity-store.js";
 import { SessionListViewProvider } from "./session-list/use-session-list-view.js";
+import {
+	readGitDraftSelection,
+	resolvePrepareSessionWorktreeInput,
+} from "./git-draft-selection.js";
+import { createWorktreeBranchNamer } from "./worktree-branch-namer.js";
+import { WorktreeSetupProvider } from "./worktree-setup/WorktreeSetupContext.js";
 import { KiloSuggestionProvider } from "./suggestions/KiloSuggestionContext.js";
 import { createKiloSuggestionStore } from "./suggestions/kilo-suggestion-store.js";
 import { PierreDiffProvider } from "./PierreDiffProvider.js";
@@ -231,16 +241,53 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 
 	const activeWorkspaceIdRef = useRef(activeWorkspaceId);
 	activeWorkspaceIdRef.current = activeWorkspaceId;
+	const [isSettingUpWorktree, setIsSettingUpWorktree] = useState(false);
 	const prepareSession = useMemo(
-		() => () =>
-			sdk.client["chat.prepareSession"]({
-				...(activeWorkspaceIdRef.current ? { workspaceId: activeWorkspaceIdRef.current } : {}),
-			}),
+		() => async () => {
+			const workspaceId = activeWorkspaceIdRef.current ?? undefined;
+			// Cross-feature read of the git plugin's draft selection store:
+			// a `worktree` mode with no entry (git inactive, race with the
+			// menu's first write) means the workspace checkout.
+			const worktree = resolvePrepareSessionWorktreeInput(readGitDraftSelection(sdk, workspaceId));
+			if (worktree !== undefined) setIsSettingUpWorktree(true);
+			try {
+				return await sdk.client["chat.prepareSession"]({
+					...(workspaceId ? { workspaceId } : {}),
+					...(worktree === undefined ? {} : worktree),
+				});
+			} finally {
+				if (worktree !== undefined) setIsSettingUpWorktree(false);
+			}
+		},
+		[sdk],
+	);
+
+	// Compensating cleanup: a worktree prepared for a session whose creation
+	// then failed is removed fire-and-forget; git's managed-path guard makes
+	// this a no-op for anything that is not a Kilo worktree.
+	const onSessionCreateFailed = useCallback(
+		(preparation: KiloSessionPreparation) =>
+			sdk.client["chat.removeWorktree"]({ directory: preparation.directory }),
 		[sdk],
 	);
 
 	const sessionActivity = useMemo(() => createSessionActivityStore(), []);
 	const suggestions = useMemo(() => createKiloSuggestionStore(), []);
+
+	const hasWorktreeWorkRef = useRef((input: { directory: string; baseBranch?: string }) =>
+		sdk.client["chat.hasWorktreeWork"](input),
+	);
+	const branchNamer = useMemo(
+		() =>
+			createWorktreeBranchNamer({
+				getConnection: () => connectionPromise,
+				sessionActivity,
+				renameWorktreeBranch: (input) => sdk.client["chat.renameWorktreeBranch"](input),
+				hasWorktreeWork: (input) => hasWorktreeWorkRef.current(input),
+			}),
+		[connectionPromise, sessionActivity, sdk],
+	);
+	useEffect(() => () => branchNamer.dispose(), [branchNamer]);
 
 	const catalogQuery = useKiloModelCatalog(connection.data, connection.dataUpdatedAt);
 	const [activeThreadId, setActiveThreadId] = useState<string>();
@@ -334,10 +381,12 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	const runtime = useKiloRuntime({
 		connectionPromise,
 		prepareSession,
+		onSessionCreateFailed,
 		...(agent ? { defaultAgent: agent } : {}),
 		getAgent,
 		...(validatedModel ? { defaultModel: validatedModel } : {}),
 		...(prepareModel ? { prepareModel } : {}),
+		onPrompt: branchNamer.prompt,
 		...(activeEffort === undefined ? {} : { variant: activeEffort }),
 		onThreadIdChange,
 		onSessionInitialized,
@@ -420,13 +469,15 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 						<KiloSuggestionProvider store={suggestions}>
 							<ChatAgentSelectionProvider value={agentSelection}>
 								<ChatModelSelectionProvider value={modelSelection}>
-									<AssistantRuntimeProvider aui={aui} runtime={runtime}>
-										<KiloSessionSelectionSync
-											hydrateAgent={hydrateThreadAgent}
-											hydrateModel={hydrateThreadModel}
-										/>
-										<SessionListViewProvider>{children}</SessionListViewProvider>
-									</AssistantRuntimeProvider>
+									<WorktreeSetupProvider isSettingUp={isSettingUpWorktree}>
+										<AssistantRuntimeProvider aui={aui} runtime={runtime}>
+											<KiloSessionSelectionSync
+												hydrateAgent={hydrateThreadAgent}
+												hydrateModel={hydrateThreadModel}
+											/>
+											<SessionListViewProvider>{children}</SessionListViewProvider>
+										</AssistantRuntimeProvider>
+									</WorktreeSetupProvider>
 								</ChatModelSelectionProvider>
 							</ChatAgentSelectionProvider>
 						</KiloSuggestionProvider>

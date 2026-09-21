@@ -38,3 +38,29 @@ export function useThreadWorkspace(): Workspace | undefined {
 export function useThreadWorkspaceDirectory(): string | undefined {
 	return resolveChatWorkspaceDirectory(useThreadWorkspaceOptions());
 }
+
+/**
+ * The session's effective working directory: the worktree path when the
+ * thread runs in a kilo-managed worktree, otherwise the workspace primary
+ * (same as `useThreadWorkspaceDirectory`).
+ */
+export function useThreadWorkingDirectory(): string | undefined {
+	const { workspaces, activeWorkspaceId } = useWorkspacesFeature();
+	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
+	const worktreeDirectory = useOptionalSessionActivity((state) => {
+		const session = remoteId ? state.sessions[remoteId] : undefined;
+		return session?.worktreeBranch !== undefined && session.directory !== undefined
+			? session.directory
+			: undefined;
+	});
+	const sessionWorkspaceId = useOptionalSessionActivity((state) =>
+		remoteId ? state.sessions[remoteId]?.workspaceId : undefined,
+	);
+	if (worktreeDirectory !== undefined) return worktreeDirectory;
+	return resolveChatWorkspaceDirectory({
+		remoteId: sessionWorkspaceId ? remoteId : undefined,
+		activeWorkspaceId,
+		sessionWorkspaceId,
+		workspaces,
+	});
+}

@@ -45,6 +45,35 @@ describe("FilesService", () => {
 		});
 	});
 
+	it("excludes the root .git directory but not nested worktree .git pointer files or other dot files", async () => {
+		const workspace = await temporaryWorkspace();
+		await mkdir(path.join(workspace, ".git", "objects"), { recursive: true });
+		await writeFile(path.join(workspace, ".git", "HEAD"), "ref: refs/heads/main\n");
+		const worktreeDirectory = path.join(workspace, ".kilo", "worktrees", "kilo-x");
+		await mkdir(worktreeDirectory, { recursive: true });
+		await writeFile(path.join(worktreeDirectory, ".git"), "gitdir: /repo/.git/worktrees/kilo-x\n");
+		await writeFile(path.join(worktreeDirectory, ".DS_Store"), "junk");
+		await writeFile(path.join(worktreeDirectory, "README.md"), "readme");
+		await writeFile(path.join(workspace, "Thumbs.db"), "junk");
+
+		const service = new FilesService({
+			authorize: async () => undefined,
+			gitStatus: async () => null,
+		});
+		await expect(service.list(workspace)).resolves.toEqual({
+			paths: [
+				".kilo/",
+				".kilo/worktrees/",
+				".kilo/worktrees/kilo-x/",
+				".kilo/worktrees/kilo-x/.DS_Store",
+				".kilo/worktrees/kilo-x/.git",
+				".kilo/worktrees/kilo-x/README.md",
+				"Thumbs.db",
+			],
+			truncated: false,
+		});
+	});
+
 	it("caps scans and reports truncation", async () => {
 		const workspace = await temporaryWorkspace();
 		await Promise.all(

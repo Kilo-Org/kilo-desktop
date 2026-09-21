@@ -19,7 +19,13 @@ export function SessionActivityProvider({
 	);
 }
 
-function useSessionActivityStore(): SessionActivityStore {
+/**
+ * The raw store handle — for imperative `getState()` reads at event time
+ * (e.g. the delete flow's refresh-settled check) where subscribing would
+ * re-render unnecessarily. Render-visible data must use `useSessionActivity`
+ * selectors instead.
+ */
+export function useSessionActivityStore(): SessionActivityStore {
 	const store = useContext(SessionActivityContext);
 	if (!store) {
 		throw new Error("useSessionActivity requires SessionActivityProvider");

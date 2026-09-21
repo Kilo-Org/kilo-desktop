@@ -1,3 +1,7 @@
+<!-- Editing this file: keep it HIGH level — one line per package/plugin
+describing what it IS, not a feature list. Feature detail belongs in the
+plugin's own docs and code comments, not here. -->
+
 # CONTEXT.md — Kilo Desktop
 
 ## What is this project?
@@ -17,7 +21,7 @@ packages/
 ├── sdk-react/    @kilo-desktop/sdk-react    React SDK bindings (SdkProvider, useSdk, useSdkQuery, useSdkMutation)
 ├── testing/      @kilo-desktop/testing      Test utilities (createFakeSdk, createFakeMainSdk, createFakeFeatureSystem)
 ├── ui/           @kilo-desktop/ui           Anaconda Design System primitives (shadcn) — shell-owned, ONE set shared by apps and plugins; never vendor copies
-└── git-client/   @kilo-desktop/git-client   Node-only git client: `exec` with error normalization (successExitCodes/expectedErrors gating), typed `status()` (working-directory and branch status), `branches()`/`createBranch()`/`checkoutBranch()` (local branch list/create/checkout), `repositoryType()` (single rev-parse probe classifying missing/unsafe/bare/regular, ported from GitHub Desktop), `createWorkingDirectoryPatch()` (throwaway-index patch) and `getFileContents()`/`getBlobContents()` (both sides of a working-tree file, size-capped); system git via which — no embedded binary
+└── git-client/   @kilo-desktop/git-client   Node-only git client over the system git binary (resolved via `which` — no embedded binary); typed operations and error normalization ported from GitHub Desktop
 
 e2e/              @kilo-desktop/e2e          Playwright/Electron e2e (plugin-aware)
 plugins/          Bundled plugins — self-contained workspace packages
@@ -25,7 +29,7 @@ plugins/          Bundled plugins — self-contained workspace packages
 ├── kilo-server/  @kilo-desktop/plugin-kilo-server Kilo CLI packaging and server lifecycle
 ├── kilo-ui/      @kilo-desktop/plugin-kilo-ui Chat UI and workspace management
 ├── notebook/     @kilo-desktop/plugin-notebook Ephemeral nteract notebooks for chat right panels
-└── git/          @kilo-desktop/plugin-git Git status (main) + working-directory "Changes" right-panel tab streamed over a custom `kilo-git://` protocol (`getDiffContents` channel for hunk expansion), and branch switching (create/checkout) via git-client contributing the composer draft footer branch switcher, gated on `repositoryType` (regular repos only)
+└── git/          @kilo-desktop/plugin-git Git status and working-directory "Changes" panel (custom `kilo-git://` protocol), branch switching in the composer draft footer, and the chat worktree lifecycle exposed to other plugins as a main-side `gitService` capability
 ```
 
 ## Key architectural decisions
@@ -150,7 +154,7 @@ Three tiers decide where a dependency lives:
 - **peerDependencies** for react, react-dom, zod in publishable packages
 - Tests use `createFakeSdk` / `createFakeMainSdk` / `createLinkedFakeSdkPair` from `@kilo-desktop/testing`
 - Interactive elements use stable `data-qa-id` attributes (queried by Vitest browser + Playwright)
-- Cross-feature communication only through SDK primitives (events, state, plugins.get)
+- Cross-feature communication only through SDK primitives (events, state, plugins.get). Types and store keys for those primitives (capability types, state-store keys/values) may be imported from the owning plugin's `./contracts` export — type-sharing via contracts is not a runtime import across features
 - All events namespaced by feature ID: `featureId.eventName`
 - Expected handler failures throw `FeatureError` (never plain `Error` — its message gets scrubbed at the IPC boundary)
 - Each feature owns its own SQLite file if it persists data

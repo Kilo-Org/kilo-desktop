@@ -5,6 +5,7 @@ import type { ComponentType, FC } from "react";
 import { useSdkContributions } from "@kilo-desktop/sdk-react";
 
 import { useWorkspaceDirectory } from "../../use-workspace-directory.js";
+import { useWorkspacesFeature } from "../../../workspaces/WorkspacesFeatureContext.js";
 import { WorkspaceSelector } from "../../../workspaces/WorkspaceSelector.js";
 
 /**
@@ -17,7 +18,9 @@ export const CHAT_COMPOSER_DRAFT_FOOTER_ZONE = "kilo-ui/chat-composer-draft-foot
 /** Context kilo-ui supplies when it renders a draft-footer contribution. */
 export interface ChatComposerDraftFooterContributionProps {
 	/** Primary folder path of the active workspace; absent when unscoped. */
-	readonly workspaceDirectory?: string;
+	readonly workspaceDirectory?: string | undefined;
+	/** Id of the active workspace; absent when unscoped. */
+	readonly workspaceId?: string | undefined;
 }
 
 /**
@@ -28,6 +31,7 @@ export interface ChatComposerDraftFooterContributionProps {
  */
 export const ComposerDraftFooter: FC = () => {
 	const workspaceDirectory = useWorkspaceDirectory();
+	const { activeWorkspaceId } = useWorkspacesFeature();
 	const contributions = useSdkContributions(CHAT_COMPOSER_DRAFT_FOOTER_ZONE);
 
 	return (
@@ -51,7 +55,8 @@ export const ComposerDraftFooter: FC = () => {
 					return (
 						<Component
 							key={`${contribution.featureId}:${contribution.id}`}
-							{...(workspaceDirectory === undefined ? {} : { workspaceDirectory })}
+							workspaceDirectory={workspaceDirectory}
+							workspaceId={activeWorkspaceId ?? undefined}
 						/>
 					);
 				})}

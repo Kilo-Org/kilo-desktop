@@ -80,6 +80,7 @@ import {
 	CornerDownLeftIcon,
 	DownloadIcon,
 	FileTextIcon,
+	GitForkIcon,
 	Loader2Icon,
 	MicIcon,
 	MoreHorizontalIcon,
@@ -131,6 +132,7 @@ import { useLocalInferenceStatus } from "../../use-local-inference-status.js";
 import { ANACONDA_LOCAL_PROVIDER_ID } from "../../../providers/provider-ids.js";
 import { retryFailedPrompt } from "./retry-failed-prompt.js";
 import { retryFailedTurn } from "./retry-failed-turn.js";
+import { useIsSettingUpWorktree } from "../../worktree-setup/WorktreeSetupContext.js";
 
 import "./assistant-working-indicator.css";
 
@@ -252,6 +254,7 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 						className={cn("flex flex-col gap-y-4 empty:hidden", isDraft ? "mb-10" : "mb-16")}
 					>
 						<ThreadPrimitive.Messages>{() => <ThreadMessage />}</ThreadPrimitive.Messages>
+						<WorktreeSetupIndicator />
 					</div>
 
 					<ThreadPrimitive.ViewportFooter
@@ -275,6 +278,52 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 				</div>
 			</ThreadPrimitive.Viewport>
 		</ThreadPrimitive.Root>
+	);
+};
+
+const WorktreeSetupIndicator: FC = () => {
+	const isSettingUp = useIsSettingUpWorktree();
+	if (!isSettingUp) return null;
+
+	return (
+		<div
+			data-qa-id="kilo-worktree-setup"
+			className="text-muted-foreground flex w-fit items-center gap-2 py-1 text-sm"
+			role="status"
+			aria-label="Setting up worktree"
+		>
+			<AvatarGroup className="*:data-[slot=avatar]:ring-[var(--pane-surface,var(--color-background))]">
+				<Avatar aria-hidden className="size-6.5">
+					<AvatarFallback className="relative border-0">
+						<GitForkIcon className="size-3.5" />
+						<svg
+							data-qa-id="kilo-worktree-setup-spinner"
+							aria-hidden
+							viewBox="0 0 28 28"
+							fill="none"
+							className="pointer-events-none absolute inset-0 size-full animate-spin"
+						>
+							<circle
+								cx="14"
+								cy="14"
+								r="13"
+								stroke="currentColor"
+								strokeOpacity={0.4}
+								strokeWidth="2"
+								strokeLinecap="round"
+								strokeDasharray="20.4 61.3"
+							/>
+						</svg>
+					</AvatarFallback>
+				</Avatar>
+			</AvatarGroup>
+			<span aria-hidden className="relative inline-block font-medium">
+				Setting <span className="opacity-60">up worktree</span>
+				<span className="shimmer shimmer-color-foreground pointer-events-none absolute top-0 left-0 motion-reduce:animate-none">
+					Setting up worktree
+				</span>
+			</span>
+		</div>
 	);
 };
 

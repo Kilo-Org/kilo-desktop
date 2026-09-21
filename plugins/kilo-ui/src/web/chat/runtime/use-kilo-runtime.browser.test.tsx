@@ -37,6 +37,7 @@ describe("useKiloRuntime", () => {
 	it("creates one backend and forwards runtime options", () => {
 		const connectionPromise = Promise.resolve(connection);
 		const prepareSession = vi.fn(async () => ({ directory: "/workspace", workspaceFolders: [] }));
+		const onSessionCreateFailed = vi.fn();
 		const onError = vi.fn();
 		const onSessionInitialized = vi.fn();
 
@@ -45,6 +46,7 @@ describe("useKiloRuntime", () => {
 				connectionPromise,
 				prepareSession,
 				defaultModel: { providerID: "anthropic", modelID: "claude-sonnet" },
+				onSessionCreateFailed,
 				onError,
 				onSessionInitialized,
 			}),
@@ -57,9 +59,11 @@ describe("useKiloRuntime", () => {
 			getVariant: expect.any(Function),
 			getAgent: expect.any(Function),
 			getModel: expect.any(Function),
+			onPrompt: expect.any(Function),
 			prepareModel: expect.any(Function),
 			getKnownCommandNames: expect.any(Function),
 			onSessionInitialized: expect.any(Function),
+			onSessionCreateFailed,
 		});
 		vi.mocked(createKiloRuntimeBackend).mock.calls[0]?.[0].onSessionInitialized?.("session-1");
 		expect(onSessionInitialized).toHaveBeenCalledWith("session-1");
@@ -248,6 +252,7 @@ describe("useKiloRuntime", () => {
 			getVariant: expect.any(Function),
 			getAgent: expect.any(Function),
 			getModel: expect.any(Function),
+			onPrompt: expect.any(Function),
 			prepareModel: expect.any(Function),
 			getKnownCommandNames: expect.any(Function),
 			onSessionInitialized: expect.any(Function),

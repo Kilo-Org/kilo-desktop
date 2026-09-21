@@ -54,6 +54,7 @@
 	"devDependencies": {
 		"@kilo-desktop/e2e": "workspace:*",
 		"@kilo-desktop/feature-sdk": "workspace:*",
+		"@kilo-desktop/plugin-git": "workspace:*",
 		"@kilo-desktop/sdk-react": "workspace:*",
 		"@kilo-desktop/testing": "workspace:*",
 		"@kilo-desktop/ui": "link:../../packages/ui",

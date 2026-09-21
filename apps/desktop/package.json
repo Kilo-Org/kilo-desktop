@@ -51,7 +51,7 @@
 		"@vscode/proxy-agent": "^0.45.0",
 		"anaconda-opentelemetry": "0.9.3",
 		"atomically": "catalog:",
-		"electron-debug": "^4.1.0",
+		"electron-debug": "^5.0.0",
 		"electron-log": "catalog:",
 		"electron-squirrel-startup": "^1.0.1",
 		"electron-store": "^11.0.2",

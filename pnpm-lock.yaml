@@ -365,8 +365,8 @@ importers:
         specifier: 'catalog:'
         version: 2.1.1
       electron-debug:
-        specifier: ^4.1.0
-        version: 4.1.0(supports-color@10.2.2)
+        specifier: ^5.0.0
+        version: 5.0.0
       electron-log:
         specifier: 'catalog:'
         version: 5.4.4
@@ -6575,9 +6575,9 @@ packages:
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
-  electron-debug@4.1.0:
-    resolution: {integrity: sha512-rdbvmotqbaNcSuinPe1tzB5zK+JKal+4LSDbguBcqTLARNqWrGoRS/TkR1gGH4+63boYH3HUaf9r9ECAxgIe9g==}
-    engines: {node: '>=18'}
+  electron-debug@5.0.0:
+    resolution: {integrity: sha512-OJURKDBbEMcejThLVqFuTM3rvv0J4JU3OK7wp0JAV59fusU0kgZTuRqZPHSVS362onE7xuEC4VKBnziAswIXwg==}
+    engines: {node: '>=22'}
 
   electron-installer-common@0.10.4:
     resolution: {integrity: sha512-8gMNPXfAqUE5CfXg8RL0vXpLE9HAaPkgLXVoHE3BMUzogMWenf4LmwQ27BdCUrEhkjrKl+igs2IHJibclR3z3Q==}
@@ -6594,15 +6594,9 @@ packages:
     engines: {node: '>= 16'}
     hasBin: true
 
-  electron-is-accelerator@0.1.2:
-    resolution: {integrity: sha512-fLGSAjXZtdn1sbtZxx52+krefmtNuVwnJCV2gNiVt735/ARUboMl8jnNC9fZEqQdlAv2ZrETfmBUsoQci5evJA==}
-
   electron-is-dev@3.0.1:
     resolution: {integrity: sha512-8TjjAh8Ec51hUi3o4TaU0mD3GMTOESi866oRNavj9A3IQJ7pmv+MJVmdZBFGw4GFT36X7bkqnuDNYvkQgvyI8Q==}
     engines: {node: '>=18'}
-
-  electron-localshortcut@3.2.1:
-    resolution: {integrity: sha512-DWvhKv36GsdXKnaFFhEiK8kZZA+24/yFLgtTwJJHc7AFgDjNRIBJZ/jq62Y/dWv9E4ypYwrVWN2bVrCYw1uv7Q==}
 
   electron-log@5.4.4:
     resolution: {integrity: sha512-istWgaXjBfURBSS8LWVW9C3jsc6+ac+tY1lXrQEOTp0lVj+a4OlO1Tmqb36GgnEUDv92DGC9VI1HNXwJinWpgA==}
@@ -7704,12 +7698,6 @@ packages:
   junk@4.0.1:
     resolution: {integrity: sha512-Qush0uP+G8ZScpGMZvHUiRfI0YBWuB3gVBYlI0v0vvOJt5FLicco+IkP0a50LqTTQhmts/m6tP5SWE+USyIvcQ==}
     engines: {node: '>=12.20'}
-
-  keyboardevent-from-electron-accelerator@2.0.0:
-    resolution: {integrity: sha512-iQcmNA0M4ETMNi0kG/q0h/43wZk7rMeKYrXP7sqKIJbHkTU8Koowgzv+ieR/vWJbOwxx5nDC3UnudZ0aLSu4VA==}
-
-  keyboardevents-areequal@0.2.2:
-    resolution: {integrity: sha512-Nv+Kr33T0mEjxR500q+I6IWisOQ0lK1GGOncV0kWE6n4KFmpcu7RUX5/2B0EUtX51Cb0HjZ9VJsSY3u4cBa0kw==}
 
   keyv@4.5.4:
     resolution: {integrity: sha512-oxVHkHR/EJf2CNXnWxRLW6mg7JyCCUcG0DtEGmL2ctUo1PNTin1PUil+r/+4r5MpVgC/fn1kjsx7mjSujKqIpw==}
@@ -14797,12 +14785,9 @@ snapshots:
 
   ee-first@1.1.1: {}
 
-  electron-debug@4.1.0(supports-color@10.2.2):
+  electron-debug@5.0.0:
     dependencies:
       electron-is-dev: 3.0.1
-      electron-localshortcut: 3.2.1(supports-color@10.2.2)
-    transitivePeerDependencies:
-      - supports-color
 
   electron-installer-common@0.10.4(supports-color@10.2.2):
     dependencies:
@@ -14846,18 +14831,7 @@ snapshots:
       - supports-color
     optional: true
 
-  electron-is-accelerator@0.1.2: {}
-
   electron-is-dev@3.0.1: {}
-
-  electron-localshortcut@3.2.1(supports-color@10.2.2):
-    dependencies:
-      debug: 4.4.3(supports-color@10.2.2)
-      electron-is-accelerator: 0.1.2
-      keyboardevent-from-electron-accelerator: 2.0.0
-      keyboardevents-areequal: 0.2.2
-    transitivePeerDependencies:
-      - supports-color
 
   electron-log@5.4.4: {}
 
@@ -16165,10 +16139,6 @@ snapshots:
     optional: true
 
   junk@4.0.1: {}
-
-  keyboardevent-from-electron-accelerator@2.0.0: {}
-
-  keyboardevents-areequal@0.2.2: {}
 
   keyv@4.5.4:
     dependencies:

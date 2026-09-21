@@ -1312,7 +1312,7 @@ const SessionRowContent = memo(function SessionRowContent({
 		<ThreadListItemPrimitive.Root
 			data-slot={isArchived ? "aui_session-list-archived-item" : "aui_session-list-item"}
 			className={cn(
-				"group/sidebar-row relative mx-1 min-w-0 cursor-pointer rounded-md text-left outline-none select-none",
+				"group/sidebar-row relative mx-px min-w-0 cursor-pointer rounded-md text-left outline-none select-none",
 				isActive ? sidebarSurfaceActiveClassName : sidebarSurfaceIdleClassName,
 			)}
 		>

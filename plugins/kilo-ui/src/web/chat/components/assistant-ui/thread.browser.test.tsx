@@ -1175,6 +1175,30 @@ describe("assistant working status", () => {
 			.toBeVisible();
 	});
 
+	it("shows considering next steps after an assistant progress update", async () => {
+		vi.useFakeTimers();
+		const messages: readonly ExternalThreadMessage[] = [
+			idleRunningMessages()[0]!,
+			fromThreadMessageLike(
+				{
+					role: "assistant",
+					status: { type: "running" },
+					content: [{ type: "text", text: "I inspected the sidebar changes." }],
+				},
+				"msg-assistant",
+				{ type: "complete", reason: "stop" },
+			),
+		];
+		const screen = renderExternalMessagesThread(messages, true);
+
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(750);
+		});
+		await expect
+			.element(screen.getByRole("status", { name: "Considering next steps" }))
+			.toBeVisible();
+	});
+
 	it("collapses completed work while leaving the final answer visible", async () => {
 		const messages: readonly ExternalThreadMessage[] = [
 			fromThreadMessageLike(

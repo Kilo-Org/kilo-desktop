@@ -39,18 +39,19 @@ const ACTIVE_DEVICE_AUTH: readonly DeviceAuthStatus[] = ["initiating", "waiting"
 
 function AccountSkeleton() {
 	return (
-		<div
-			className="flex h-12 min-w-0 items-center gap-2.5 px-2"
-			data-qa-id="sidebar-kilo-account-loading"
-			aria-label="Loading account"
-			aria-busy="true"
-		>
-			<Skeleton className="size-7 shrink-0 rounded-full" />
-			<div className="flex min-w-0 flex-1 flex-col gap-1.5">
-				<Skeleton className="h-3.5 w-24" />
-				<Skeleton className="h-2.5 w-32 max-w-full" />
-			</div>
-		</div>
+		<SidebarMenu>
+			<SidebarMenuItem>
+				<div
+					className="flex h-8 min-w-0 items-center gap-2 px-2"
+					data-qa-id="sidebar-kilo-account-loading"
+					aria-label="Loading account"
+					aria-busy="true"
+				>
+					<Skeleton className="size-[22px] shrink-0 rounded-full" />
+					<Skeleton className="h-3.5 w-24 max-w-full" />
+				</div>
+			</SidebarMenuItem>
+		</SidebarMenu>
 	);
 }
 
@@ -147,7 +148,7 @@ export function SidebarKiloAccount() {
 							<span className="truncate font-medium">{accountName}</span>
 						</div>
 					</DropdownMenuTrigger>
-					<DropdownMenuContent className="w-64" side="right" align="end" sideOffset={4}>
+					<DropdownMenuContent className="w-64" side="top" align="end" sideOffset={4}>
 						<DropdownMenuGroup>
 							<DropdownMenuLabel className="p-0 font-normal">
 								<div className="flex items-center gap-2.5 px-1 py-1.5 text-left text-sm">

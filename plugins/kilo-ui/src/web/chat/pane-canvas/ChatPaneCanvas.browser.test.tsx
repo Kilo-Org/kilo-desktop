@@ -8,6 +8,7 @@ import {
 	createLayout,
 	movePane,
 	movePaneToGroup,
+	removePane,
 	setActivePane,
 	togglePin,
 } from "@kilo-desktop/pane-layout";
@@ -1472,6 +1473,21 @@ describe("ChatPaneCanvas", () => {
 		await expect.element(right).not.toBeInTheDocument();
 		rerender(view(400));
 		await expect.element(right).toBeVisible();
+
+		for (const id of ["notes", "files", "output"]) layout = removePane(layout, id);
+		rerender(view(400));
+
+		await vi.waitFor(() => {
+			const strip = screen.getByTestId("chat-pane-tabs").element();
+			expect(strip.scrollWidth).toBeLessThanOrEqual(strip.clientWidth);
+			expect(strip.scrollLeft).toBe(0);
+			expect(strip).not.toHaveAttribute("data-overflow-left");
+			expect(strip).not.toHaveAttribute("data-overflow-right");
+			expect(strip).toHaveClass("[mask-image:none]");
+		});
+		await expect
+			.element(screen.getByRole("button", { name: "Scroll tabs left" }))
+			.not.toBeInTheDocument();
 	});
 	it("reveals newly active tabs past either edge without interrupting manual scrolling", async () => {
 		await page.viewport(900, 600);

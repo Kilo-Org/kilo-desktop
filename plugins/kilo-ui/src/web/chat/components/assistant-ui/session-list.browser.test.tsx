@@ -846,7 +846,7 @@ describe("SessionList", () => {
 		const headerLabel = screen.getByTestId("session-list-active-toggle").getByText("Active");
 		const iconBox = icon.element().getBoundingClientRect();
 		const headerLeft = headerLabel.element().getBoundingClientRect().left;
-		expect(iconBox.left - headerLeft).toBeCloseTo(4, 0);
+		expect(iconBox.left - headerLeft).toBeCloseTo(1, 0);
 		expect(iconBox.right).toBeLessThanOrEqual(workingLeft + 1);
 
 		const root = working.element().querySelector('[data-slot="aui_session-list-item"]');

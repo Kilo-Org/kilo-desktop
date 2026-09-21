@@ -1,7 +1,8 @@
 "use client";
 
-import { type ComponentProps, type ReactNode } from "react";
+import { useState, type ComponentProps, type ReactNode } from "react";
 
+import { Popover, PopoverContent, PopoverTrigger } from "@kilo-desktop/ui/components/popover";
 import { Separator } from "@kilo-desktop/ui/components/separator";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
@@ -29,8 +30,9 @@ export function ComposerContext({
 	className,
 	children,
 	rail,
+	onClick,
 	...props
-}: ComponentProps<"div"> & {
+}: ComponentProps<"button"> & {
 	usage: ComposerContextUsage;
 	tokens: ComposerTokenUsage;
 	children?: ReactNode;
@@ -41,22 +43,68 @@ export function ComposerContext({
 	const warn = fraction > 0.85;
 	const circumference = 2 * Math.PI * 6;
 	const fill = pct(used, usage.total);
+	const [open, setOpen] = useState(false);
 
 	return (
-		<div
-			data-slot="composer-context"
-			className={cn("group/ctx relative inline-flex max-w-full", className)}
-			{...props}
-		>
-			<div
+		<Popover open={open} onOpenChange={setOpen}>
+			<PopoverTrigger
+				render={
+					<button
+						type="button"
+						aria-label="Context usage"
+						data-slot="composer-context"
+						className={cn(
+							ghostButton,
+							"relative inline-flex max-w-full",
+							rail ? "h-7 w-fit shrink-0 gap-2.5 rounded-md px-2.5 py-1 text-xs" : "size-8",
+							warn && "text-destructive",
+							className,
+						)}
+						{...props}
+						onClick={(event) => {
+							onClick?.(event);
+							if (event.defaultPrevented) return;
+							(
+								event as typeof event & {
+									preventBaseUIHandler: () => void;
+								}
+							).preventBaseUIHandler();
+							setOpen((value) => !value);
+						}}
+					/>
+				}
+			>
+				{rail}
+				<svg viewBox="0 0 16 16" className="size-4 shrink-0 -rotate-90" aria-hidden>
+					<circle
+						cx="8"
+						cy="8"
+						r="6"
+						fill="none"
+						strokeWidth="2.5"
+						className="stroke-foreground/10"
+					/>
+					<circle
+						cx="8"
+						cy="8"
+						r="6"
+						fill="none"
+						strokeWidth="2.5"
+						strokeLinecap="round"
+						className="stroke-current transition-[stroke-dashoffset] duration-700 motion-reduce:transition-none"
+						strokeDasharray={circumference}
+						strokeDashoffset={circumference * (1 - clamp(fraction, 0, 1))}
+					/>
+				</svg>
+			</PopoverTrigger>
+			<PopoverContent
 				data-qa-id="kilo-composer-context-popover"
+				side="top"
+				align="end"
+				sideOffset={8}
 				className={cn(
-					"bg-popover/95 text-popover-foreground absolute end-0 bottom-full z-10 mb-2 flex origin-bottom-right flex-col gap-3 rounded-xl p-2.5 text-sm shadow-lg backdrop-blur-sm ring-1 ring-foreground/10 after:absolute after:inset-x-0 after:top-full after:h-2 after:content-['']",
+					"bg-popover/95 data-closed:hidden flex flex-col gap-3 rounded-xl backdrop-blur-sm",
 					children ? "w-80" : "w-64",
-					"transition-[opacity,scale] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)] motion-reduce:transition-none",
-					"pointer-events-none scale-[0.97] opacity-0",
-					"group-hover/ctx:pointer-events-auto group-hover/ctx:scale-100 group-hover/ctx:opacity-100",
-					"group-focus-within/ctx:pointer-events-auto group-focus-within/ctx:scale-100 group-focus-within/ctx:opacity-100",
 				)}
 			>
 				<div className="flex flex-col gap-2">
@@ -101,39 +149,7 @@ export function ComposerContext({
 						{children}
 					</>
 				) : null}
-			</div>
-			<button
-				type="button"
-				aria-label="Context usage"
-				className={cn(
-					ghostButton,
-					rail ? "h-7 w-fit max-w-full shrink-0 gap-2.5 rounded-md px-2.5 py-1 text-xs" : "size-8",
-					warn && "text-destructive",
-				)}
-			>
-				{rail}
-				<svg viewBox="0 0 16 16" className="size-4 shrink-0 -rotate-90" aria-hidden>
-					<circle
-						cx="8"
-						cy="8"
-						r="6"
-						fill="none"
-						strokeWidth="2.5"
-						className="stroke-foreground/10"
-					/>
-					<circle
-						cx="8"
-						cy="8"
-						r="6"
-						fill="none"
-						strokeWidth="2.5"
-						strokeLinecap="round"
-						className="stroke-current transition-[stroke-dashoffset] duration-700 motion-reduce:transition-none"
-						strokeDasharray={circumference}
-						strokeDashoffset={circumference * (1 - clamp(fraction, 0, 1))}
-					/>
-				</svg>
-			</button>
-		</div>
+			</PopoverContent>
+		</Popover>
 	);
 }

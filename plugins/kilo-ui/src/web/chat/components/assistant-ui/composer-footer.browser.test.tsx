@@ -251,6 +251,9 @@ describe("ComposerFooter", () => {
 		await userEvent.hover(screen.getByTestId("kilo-composer-footer-cost"));
 
 		const popover = screen.getByTestId("kilo-composer-context-popover");
+		await expect.element(popover).not.toBeInTheDocument();
+		await ring.click();
+		await expect.element(ring).toHaveAttribute("aria-expanded", "true");
 		await expect.element(popover.getByText("Context")).toBeVisible();
 		await expect.element(popover.getByText("15.6K / 200.0K")).toBeVisible();
 		await expect.element(popover.getByText("8%")).toBeVisible();
@@ -270,6 +273,25 @@ describe("ComposerFooter", () => {
 		await expect.element(screen.getByText("Tools")).not.toBeInTheDocument();
 		await expect.element(screen.getByText("Messages")).not.toBeInTheDocument();
 		await expect.element(screen.getByText("last turn")).toBeVisible();
+		await ring.click();
+		await expect.element(ring).toHaveAttribute("aria-expanded", "false");
+		await expect
+			.poll(() => {
+				const element = document.querySelector<HTMLElement>(
+					'[data-qa-id="kilo-composer-context-popover"]',
+				);
+				return element === null || getComputedStyle(element).display === "none";
+			})
+			.toBe(true);
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		await expect.element(popover).not.toBeInTheDocument();
+
+		for (let attempt = 0; attempt < 3; attempt += 1) {
+			await ring.click();
+			await expect.element(ring).toHaveAttribute("aria-expanded", "true");
+			await ring.click();
+			await expect.element(ring).toHaveAttribute("aria-expanded", "false");
+		}
 	});
 
 	it("renders left-rail zone contributions with the active workspace folder", async () => {

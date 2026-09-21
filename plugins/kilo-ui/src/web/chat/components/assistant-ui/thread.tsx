@@ -1241,9 +1241,6 @@ const AssistantMessage: FC = () => {
 	const hiddenPlanCallIds = getPlanProjectionForMessage(planThread, messageId)?.hiddenCallIds;
 	const pendingSuggestion = usePendingKiloSuggestion();
 	const hasInFlightActivity = useAuiState((s) => messageHasInFlightActivity(s.message.parts));
-	const hasVisibleText = useAuiState((s) =>
-		s.message.parts.some((part) => part.type === "text" && Boolean(part.text.trim())),
-	);
 	const hasRenderablePart = useAuiState((s) =>
 		s.message.parts.some(
 			(part) =>
@@ -1375,8 +1372,7 @@ const AssistantMessage: FC = () => {
 						<AssistantWorkingIndicator
 							overlay={hasRenderablePart}
 							active={
-								assistantWorkingIndicatorMode(pendingSuggestion, hasInFlightActivity) !== "never" &&
-								!hasVisibleText
+								assistantWorkingIndicatorMode(pendingSuggestion, hasInFlightActivity) !== "never"
 							}
 						/>
 					) : null}

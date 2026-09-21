@@ -10,6 +10,7 @@ import {
 } from "react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 import { PaneTabTooltipScope } from "./PaneTabTooltip.js";
 
 export function PaneTabScrollArea({
@@ -18,6 +19,7 @@ export function PaneTabScrollArea({
 	activeTabId,
 	children,
 	onWheelCapture,
+	className,
 	...props
 }: Omit<ComponentProps<"div">, "ref"> & {
 	scrollRef: RefObject<HTMLDivElement | null>;
@@ -71,6 +73,13 @@ export function PaneTabScrollArea({
 			strip.scrollTo({ left: target, behavior: "instant" });
 		}
 	}, [activeTabId, scrollRef, suspendTooltips]);
+
+	useLayoutEffect(() => {
+		const strip = scrollRef.current;
+		if (!strip || strip.scrollWidth - strip.clientWidth > 1) return;
+		strip.scrollLeft = 0;
+		setOverflow({ left: false, right: false });
+	}, [scrollRef, tabIds]);
 
 	useLayoutEffect(() => {
 		const strip = scrollRef.current;
@@ -128,6 +137,14 @@ export function PaneTabScrollArea({
 			<div className="relative min-w-0 shrink-0">
 				<div
 					ref={scrollRef}
+					className={cn(
+						className,
+						!overflow.left &&
+							!overflow.right &&
+							"[animation:none] [mask-image:none] [-webkit-mask-image:none]",
+					)}
+					data-overflow-left={overflow.left || undefined}
+					data-overflow-right={overflow.right || undefined}
 					{...props}
 					onWheelCapture={(event) => {
 						suspendTooltips();

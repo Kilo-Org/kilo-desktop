@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import path from "node:path";
 import type { AuthSessionService } from "../auth/auth-service.js";
 import { createLogger, type Logger } from "../../platform/logger.js";
 import { ANONYMOUS_CONTEXT, bindAuthToProvider, deriveContext } from "./auth-adapter.js";
@@ -8,6 +9,8 @@ import type { FeatureFlagProvider } from "./types.js";
 export interface CreateFeatureFlagOptions {
 	auth: AuthSessionService;
 	appVersion: string;
+	/** Electron `userData` dir; the provider's flag cache lives under it. */
+	storageRoot: string;
 }
 
 interface FeatureFlagServiceDeps {
@@ -76,6 +79,7 @@ export class FeatureFlagService extends EventEmitter<FeatureFlagServiceEvents> {
 			clientSideId,
 			initialContext: ANONYMOUS_CONTEXT,
 			appVersion: options.appVersion,
+			storagePath: path.join(options.storageRoot, "launchdarkly"),
 			logger,
 		});
 

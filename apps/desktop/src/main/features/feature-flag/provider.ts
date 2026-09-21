@@ -20,6 +20,12 @@ export interface LaunchDarklyProviderOptions {
 	clientSideId: string;
 	initialContext: FeatureFlagContext;
 	appVersion: string;
+	/**
+	 * Directory for the SDK's on-disk flag cache. Without it the SDK writes
+	 * `ldclient-user-cache/` under `process.cwd()`, which is `/` for a packaged
+	 * app launched from Finder — the cache then fails with ENOENT on every read.
+	 */
+	storagePath?: string;
 	logger?: Logger;
 }
 
@@ -50,6 +56,7 @@ export class LaunchDarklyProvider
 		this.#appVersion = options.appVersion;
 		this.#client = createClient(options.clientSideId, this.#toLdContext(options.initialContext), {
 			logger: this.#logger as LDLogger,
+			...(options.storagePath !== undefined ? { localStoragePath: options.storagePath } : {}),
 		});
 
 		this.#client.on("change", () => {

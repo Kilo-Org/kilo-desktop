@@ -80,6 +80,16 @@ beforeEach(() => {
 });
 
 describe("LaunchDarklyProvider", () => {
+	it("passes storagePath to the SDK as localStoragePath", () => {
+		makeProvider({ storagePath: "/user-data/launchdarkly" });
+
+		expect(createClientSpy).toHaveBeenCalledWith(
+			"test-id",
+			expect.anything(),
+			expect.objectContaining({ localStoragePath: "/user-data/launchdarkly" }),
+		);
+	});
+
 	it("start() returns the SDK status and passes a timeout", async () => {
 		const provider = makeProvider();
 

@@ -290,6 +290,7 @@ export class Application {
 		const featureFlags = FeatureFlagService.create({
 			auth: this.#auth,
 			appVersion: this.#app.metadata.appVersion,
+			storageRoot: this.#app.getPath("userData"),
 		});
 
 		const telemetryEnv = import.meta.env.VITE_ANACONDA_LOGGING_ENV_ATTRIBUTE ?? "production";

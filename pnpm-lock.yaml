@@ -1313,14 +1313,14 @@ importers:
         version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.1)(@vitest/coverage-v8@5.0.1)(@vitest/ui@5.0.1)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
     optionalDependencies:
       '@kilocode/cli-darwin-arm64':
-        specifier: 7.7.5
-        version: 7.7.5
+        specifier: 7.7.6
+        version: 7.7.6
       '@kilocode/cli-linux-x64-baseline':
-        specifier: 7.7.5
-        version: 7.7.5
+        specifier: 7.7.6
+        version: 7.7.6
       '@kilocode/cli-windows-x64-baseline':
-        specifier: 7.7.5
-        version: 7.7.5
+        specifier: 7.7.6
+        version: 7.7.6
 
   plugins/kilo-server/relay-runtime:
     dependencies:
@@ -3063,18 +3063,18 @@ packages:
   '@js-sdsl/ordered-map@4.4.2':
     resolution: {integrity: sha512-iUKgm52T8HOE/makSxjqoWhe95ZJA1/G1sYsGev2JDKUSS14KAgg1LHb+Ba+IPow0xflbnSkOsZcO08C7w1gYw==}
 
-  '@kilocode/cli-darwin-arm64@7.7.5':
-    resolution: {integrity: sha512-PbvSVPjsGTj5NlIeUCf2a2kMc/x6r2Oxz6Pque/X1K/jO6KURjhfbFN0DjcIKTF6eI1z/kGn1QfT0N0cR1oSIg==}
+  '@kilocode/cli-darwin-arm64@7.7.6':
+    resolution: {integrity: sha512-Ffwoeg0Ahnj4uYPI7g/2uPTlA+qilSsNr2g8XhnOiL/9JjEguHGvVOv+9gRAweGXBLqJ0N8icj0WWBSUZFo+6Q==}
     cpu: [arm64]
     os: [darwin]
 
-  '@kilocode/cli-linux-x64-baseline@7.7.5':
-    resolution: {integrity: sha512-Xy5/nEj/JSyE/rgrgb7ropewaxsWCnjucZMkpAfR+NVl0hIN4fhUAFfkdsyHdqjdfgbTAQCaLL42ctS++FDZ6g==}
+  '@kilocode/cli-linux-x64-baseline@7.7.6':
+    resolution: {integrity: sha512-cHx8eR92Fl96jJWbZMMHDKhCNDi737RuUS/IIrUN2ZVwgP3GjZkSJlkiPRzhUApWRWehOi4DVa7KKaIntxs3FA==}
     cpu: [x64]
     os: [linux]
 
-  '@kilocode/cli-windows-x64-baseline@7.7.5':
-    resolution: {integrity: sha512-s0S6jGnD9If8abkyJjhOGP9ZSNwwBQFfXVMvVHM7XKCmDVpvql68x6joGrBBMe2kjtuGBj/zyaddP458HN8gtg==}
+  '@kilocode/cli-windows-x64-baseline@7.7.6':
+    resolution: {integrity: sha512-+ncUxn1uFGrOrcen5quqdY762d6yKWHUl5TCtT59h5/qSQEK7ZqMAtW4iAKTNHBhzUz3BFzcnXl5AqH/iMh0Zg==}
     cpu: [x64]
     os: [win32]
 
@@ -11423,13 +11423,13 @@ snapshots:
 
   '@js-sdsl/ordered-map@4.4.2': {}
 
-  '@kilocode/cli-darwin-arm64@7.7.5':
+  '@kilocode/cli-darwin-arm64@7.7.6':
     optional: true
 
-  '@kilocode/cli-linux-x64-baseline@7.7.5':
+  '@kilocode/cli-linux-x64-baseline@7.7.6':
     optional: true
 
-  '@kilocode/cli-windows-x64-baseline@7.7.5':
+  '@kilocode/cli-windows-x64-baseline@7.7.6':
     optional: true
 
   '@kilocode/sdk@7.7.5':

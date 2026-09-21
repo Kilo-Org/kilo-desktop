@@ -30,9 +30,9 @@
 		"zod": "catalog:"
 	},
 	"optionalDependencies": {
-		"@kilocode/cli-darwin-arm64": "7.7.5",
-		"@kilocode/cli-linux-x64-baseline": "7.7.5",
-		"@kilocode/cli-windows-x64-baseline": "7.7.5"
+		"@kilocode/cli-darwin-arm64": "7.7.6",
+		"@kilocode/cli-linux-x64-baseline": "7.7.6",
+		"@kilocode/cli-windows-x64-baseline": "7.7.6"
 	},
 	"devDependencies": {
 		"@kilo-desktop/testing": "workspace:*",

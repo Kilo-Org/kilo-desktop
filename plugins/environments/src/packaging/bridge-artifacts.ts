@@ -6,7 +6,7 @@
  *   @anaconda/desktop-bridge-payload-<os>-<cpu>
  *
  * Each package contains a `manifest.json` describing the launch contract,
- * Mach-O inventory, and version metadata.
+ * native binary inventory, and version metadata.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -20,7 +20,18 @@ export interface BridgePayloadManifest {
 	readonly bridge_version: string;
 	readonly launch: readonly string[];
 	readonly packages: Record<string, string>;
-	readonly macho: readonly string[];
+	/**
+	 * Native binary inventory (executables and shared objects) relative to the
+	 * payload root. Optional: payloads built before the `macho` → `natives`
+	 * rename only carry {@link BridgePayloadManifest.macho}. Use
+	 * {@link getNativeInventory} rather than reading this field directly.
+	 */
+	readonly natives?: readonly string[];
+	/**
+	 * Legacy macOS-only alias for {@link BridgePayloadManifest.natives}.
+	 * Current payloads emit both; pre-rename payloads emit only this one.
+	 */
+	readonly macho?: readonly string[];
 }
 
 export interface BridgePayloadInfo {
@@ -38,6 +49,8 @@ export interface BridgePayloadInfo {
  */
 const PAYLOAD_PACKAGES: Record<string, string> = {
 	"darwin-arm64": "@anaconda/desktop-bridge-payload-darwin-arm64",
+	"linux-x64": "@anaconda/desktop-bridge-payload-linux-x64",
+	"win32-x64": "@anaconda/desktop-bridge-payload-win32-x64",
 };
 
 export function getPayloadPackageName(
@@ -45,6 +58,16 @@ export function getPayloadPackageName(
 	arch: NodeJS.Architecture = process.arch,
 ): string | null {
 	return PAYLOAD_PACKAGES[`${platform}-${arch}`] ?? null;
+}
+
+/**
+ * The list of native binaries and shared objects a payload ships, resolved
+ * across the `natives` / `macho` field rename. Returns an empty array when the
+ * manifest carries neither — callers that need to chmod the inventory should
+ * treat that as suspicious rather than normal.
+ */
+export function getNativeInventory(manifest: BridgePayloadManifest): readonly string[] {
+	return manifest.natives ?? manifest.macho ?? [];
 }
 
 /**
@@ -73,8 +96,14 @@ export function resolveInstalledPayload(
 	}
 
 	const payloadRoot = path.dirname(manifestPath);
-	const manifest: BridgePayloadManifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-	return { payloadRoot, manifest, packageName };
+	const parsed: unknown = JSON.parse(readFileSync(manifestPath, "utf8"));
+	if (!isBridgePayloadManifest(parsed)) {
+		throw new Error(
+			`Bridge payload manifest from ${packageName} is malformed: ${manifestPath}. ` +
+				`Expected schema/target/python_version/bridge_version/launch/packages fields.`,
+		);
+	}
+	return { payloadRoot, manifest: parsed, packageName };
 }
 
 /** Node throws these codes when a require target cannot be resolved. */
@@ -87,14 +116,53 @@ function isModuleNotFound(error: unknown): boolean {
 	);
 }
 
+function isStringArray(value: unknown): value is string[] {
+	return Array.isArray(value) && value.every((entry) => typeof entry === "string");
+}
+
+/**
+ * A plain object with string values. Arrays are excluded deliberately: they are
+ * `typeof "object"` and non-null, so a bare `typeof` check would let
+ * `"packages": ["numpy"]` satisfy a field declared as `Record<string, string>`.
+ */
+function isStringRecord(value: unknown): value is Record<string, string> {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+	return Object.values(value).every((entry) => typeof entry === "string");
+}
+
+/**
+ * Runtime shape check for a parsed manifest.json.
+ *
+ * `JSON.parse` returns `any`, so without this every consumer of
+ * {@link BridgePayloadManifest} would be trusting a type assertion over
+ * untrusted file content. Validating here keeps the declared interface honest:
+ * required fields really are present, and the two optional inventory fields are
+ * string arrays when they appear.
+ */
+export function isBridgePayloadManifest(value: unknown): value is BridgePayloadManifest {
+	if (typeof value !== "object" || value === null) return false;
+	const record = value as Record<string, unknown>;
+	if (typeof record["schema"] !== "number") return false;
+	if (typeof record["target"] !== "string") return false;
+	if (typeof record["python_version"] !== "string") return false;
+	if (typeof record["bridge_version"] !== "string") return false;
+	if (!isStringArray(record["launch"])) return false;
+	if (!isStringRecord(record["packages"])) return false;
+	if (record["natives"] !== undefined && !isStringArray(record["natives"])) return false;
+	if (record["macho"] !== undefined && !isStringArray(record["macho"])) return false;
+	return true;
+}
+
 /**
  * Read a staged payload manifest from a given directory.
+ * Returns null when the manifest is absent, unparseable, or malformed.
  */
 export function readStagedManifest(bridgeDir: string): BridgePayloadManifest | null {
 	const manifestPath = path.join(bridgeDir, "manifest.json");
 	if (!existsSync(manifestPath)) return null;
 	try {
-		return JSON.parse(readFileSync(manifestPath, "utf8"));
+		const parsed: unknown = JSON.parse(readFileSync(manifestPath, "utf8"));
+		return isBridgePayloadManifest(parsed) ? parsed : null;
 	} catch {
 		return null;
 	}

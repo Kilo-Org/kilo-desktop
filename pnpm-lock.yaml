@@ -1059,6 +1059,12 @@ importers:
       '@anaconda/desktop-bridge-payload-darwin-arm64':
         specifier: 0.1.7
         version: 0.1.7
+      '@anaconda/desktop-bridge-payload-linux-x64':
+        specifier: 0.1.7
+        version: 0.1.7
+      '@anaconda/desktop-bridge-payload-win32-x64':
+        specifier: 0.1.7
+        version: 0.1.7
 
   plugins/files:
     dependencies:
@@ -1859,6 +1865,16 @@ packages:
     resolution: {integrity: sha512-miPhL4V4nClw5V3qMzIKoYCKMnVHIHzvmsumG4J0UriyLjT+3SMwzF83iL5mdR5QPhxwVPyGtnGN3iSMEBuqhA==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-darwin-arm64/0.1.7/8286fc8c6b0a1617de4f44c5c9028cee1e5ea8a8}
     cpu: [arm64]
     os: [darwin]
+
+  '@anaconda/desktop-bridge-payload-linux-x64@0.1.7':
+    resolution: {integrity: sha512-WSUjte0TTat/6eeA8tCCVR+5/+wfK0saKBPPJLjknoLMJnjGYcrEIHNrfQ3q3P1xPEHI8jL+zpEUBpUEiWrdzg==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-linux-x64/0.1.7/93fc08cdf8b83b2f53cdc5f6dcc7819037f95cb2}
+    cpu: [x64]
+    os: [linux]
+
+  '@anaconda/desktop-bridge-payload-win32-x64@0.1.7':
+    resolution: {integrity: sha512-LHBmfnJn9kmTgYQhHmfUgPRJtMnlms2a9l4cc4n3IUFJJjnXkKprzBc78x7Pu7PL2f6aO4M33ke1IWzE1xTDrA==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-win32-x64/0.1.7/828e55dc772f4d95c489670cadf44f5ba08efa1e}
+    cpu: [x64]
+    os: [win32]
 
   '@anaconda/playwright-utils@2.0.2':
     resolution: {integrity: sha512-W8w4LG9cmMeqft14+q5xZTp/Az1sQPieRT+DqZQz0/9in7caY38Zw+QUDInsPMaaNoEGUUlqVMu/h5bvpytfJA==, tarball: https://npm.pkg.github.com/download/@anaconda/playwright-utils/2.0.2/5597c81c3c855801785c379a14bac1476c8882c1}
@@ -10032,6 +10048,12 @@ snapshots:
   7zip-bin-full@26.2.1: {}
 
   '@anaconda/desktop-bridge-payload-darwin-arm64@0.1.7':
+    optional: true
+
+  '@anaconda/desktop-bridge-payload-linux-x64@0.1.7':
+    optional: true
+
+  '@anaconda/desktop-bridge-payload-win32-x64@0.1.7':
     optional: true
 
   '@anaconda/playwright-utils@2.0.2(@playwright/test@1.63.0)(jiti@2.7.0)(supports-color@10.2.2)':

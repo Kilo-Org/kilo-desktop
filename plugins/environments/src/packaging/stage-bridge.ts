@@ -16,7 +16,13 @@ import { accessSync, constants, existsSync } from "node:fs";
 import { chmod, cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { resolveInstalledPayload, type BridgePayloadManifest } from "./bridge-artifacts.js";
+import {
+	getNativeInventory,
+	isBridgePayloadManifest,
+	readStagedManifest,
+	resolveInstalledPayload,
+	type BridgePayloadManifest,
+} from "./bridge-artifacts.js";
 
 export interface StageBridgeOptions {
 	/** Root directory for staged bridge resources (e.g., `plugins/environments/resources/bridge`). */
@@ -45,6 +51,20 @@ function stateFilePath(resourceRoot: string): string {
 	return path.join(resourceRoot, ".staged-state.json");
 }
 
+/**
+ * Read and validate a manifest.json. Unlike {@link readStagedManifest}, which
+ * returns null so callers can fall back, staging treats a malformed manifest as
+ * fatal: we are about to copy this payload into the app bundle, so shipping one
+ * we cannot understand is worse than failing the build.
+ */
+async function readManifest(manifestPath: string): Promise<BridgePayloadManifest> {
+	const parsed: unknown = JSON.parse(await readFile(manifestPath, "utf8"));
+	if (!isBridgePayloadManifest(parsed)) {
+		throw new Error(`Bridge payload manifest is malformed: ${manifestPath}`);
+	}
+	return parsed;
+}
+
 async function isAlreadyStaged(resourceRoot: string, version: string): Promise<boolean> {
 	const statePath = stateFilePath(resourceRoot);
 	if (!existsSync(statePath)) return false;
@@ -59,25 +79,22 @@ async function isAlreadyStaged(resourceRoot: string, version: string): Promise<b
 	// actual payload while leaving the marker behind. Cross-check that the
 	// launch contract and interpreter are still on disk so we never report
 	// "already staged" over a broken directory.
-	const manifestPath = path.join(resourceRoot, "manifest.json");
-	if (!existsSync(manifestPath)) return false;
+	const manifest = readStagedManifest(resourceRoot);
+	if (!manifest) return false;
+	const launchEntry = manifest.launch[0];
+	if (!launchEntry) return false;
+	const launchPath = path.join(resourceRoot, launchEntry);
+	if (!existsSync(launchPath)) return false;
+	// Verify the binary is executable — pnpm can strip +x bits during
+	// install, which would leave a "staged" payload that cannot launch.
+	// Note: on Windows X_OK is not a meaningful check (Node treats it as F_OK),
+	// which is fine — the existsSync above is the real assertion there.
 	try {
-		const manifest: BridgePayloadManifest = JSON.parse(await readFile(manifestPath, "utf8"));
-		const launchEntry = manifest.launch?.[0];
-		if (!launchEntry) return false;
-		const launchPath = path.join(resourceRoot, launchEntry);
-		if (!existsSync(launchPath)) return false;
-		// Verify the binary is executable — pnpm can strip +x bits during
-		// install, which would leave a "staged" payload that cannot launch.
-		try {
-			accessSync(launchPath, constants.X_OK);
-		} catch {
-			return false;
-		}
-		return true;
+		accessSync(launchPath, constants.X_OK);
 	} catch {
 		return false;
 	}
+	return true;
 }
 
 /**
@@ -102,7 +119,7 @@ export async function stageBridge(options: StageBridgeOptions): Promise<StageBri
 		if (!existsSync(manifestPath)) {
 			throw new Error(`BRIDGE_PAYLOAD path does not contain a manifest.json: ${payloadRoot}`);
 		}
-		const manifest: BridgePayloadManifest = JSON.parse(await readFile(manifestPath, "utf8"));
+		const manifest = await readManifest(manifestPath);
 		version = manifest.bridge_version;
 		source = `local:${payloadRoot}`;
 	} else {
@@ -110,7 +127,8 @@ export async function stageBridge(options: StageBridgeOptions): Promise<StageBri
 		const payload = resolveInstalledPayload(platform, arch);
 		if (!payload) {
 			// No payload package for this platform — skip gracefully.
-			// Only darwin-arm64 is published for now; other platforms are not yet supported.
+			// Published targets are listed in PAYLOAD_PACKAGES (bridge-artifacts.ts);
+			// anything else (e.g. linux-arm64) has no payload yet.
 			console.log(`No bridge payload package available for ${platform}/${arch} — skipping.`);
 			return { staged: false, payloadRoot: options.resourceRoot, version: "none" };
 		}
@@ -134,23 +152,47 @@ export async function stageBridge(options: StageBridgeOptions): Promise<StageBri
 
 	// Restore executable permissions on binaries. pnpm's content-addressable
 	// store and hardlinking can strip the +x bit from files in npm packages,
-	// so we explicitly chmod the entries listed in the manifest's `macho` array
-	// (which enumerates all native binaries and shared objects).
+	// so we explicitly chmod the entries listed in the manifest's native binary
+	// inventory (`natives`, or the legacy `macho` field on pre-rename payloads).
+	//
+	// Skipped on Windows: Node's chmod there only toggles the read-only
+	// attribute, so walking a ~100-entry inventory would cost a stat + syscall
+	// per file for no benefit. Execute permission is not a concept NTFS applies
+	// to .exe/.dll the way POSIX does to ELF/Mach-O.
 	const stagedManifestPath = path.join(options.resourceRoot, "manifest.json");
-	const stagedManifest: BridgePayloadManifest = JSON.parse(
-		await readFile(stagedManifestPath, "utf8"),
-	);
-	const executables = [
-		...(stagedManifest.launch?.[0] ? [stagedManifest.launch[0]] : []),
-		...(stagedManifest.macho ?? []),
-	];
-	const seen = new Set<string>();
-	for (const relative of executables) {
-		if (seen.has(relative)) continue;
-		seen.add(relative);
-		const abs = path.join(options.resourceRoot, relative);
-		if (existsSync(abs)) {
-			await chmod(abs, 0o755);
+	const stagedManifest = await readManifest(stagedManifestPath);
+	const nativeBinaries = getNativeInventory(stagedManifest);
+	if (nativeBinaries.length === 0) {
+		// Every published payload ships an inventory. An empty one means the
+		// payload was built with a field name this code does not know about, and
+		// would leave the runtime unexecutable on POSIX — warn loudly rather than
+		// silently chmod'ing nothing and failing later at spawn() with EACCES.
+		//
+		// The consequence differs by platform, so the message does too: on
+		// Windows the chmod pass is skipped entirely, so promising that the launch
+		// entry point will still be made executable would be untrue.
+		const consequence =
+			platform === "win32"
+				? `No permissions will be adjusted (the chmod pass does not run on Windows).`
+				: `Only the launch entry point will be made executable.`;
+		console.warn(
+			`Bridge payload v${version} has no native binary inventory (neither ` +
+				`\`natives\` nor \`macho\` in ${stagedManifestPath}). ${consequence}`,
+		);
+	}
+	if (platform !== "win32") {
+		const executables = [
+			...(stagedManifest.launch[0] ? [stagedManifest.launch[0]] : []),
+			...nativeBinaries,
+		];
+		const seen = new Set<string>();
+		for (const relative of executables) {
+			if (seen.has(relative)) continue;
+			seen.add(relative);
+			const abs = path.join(options.resourceRoot, relative);
+			if (existsSync(abs)) {
+				await chmod(abs, 0o755);
+			}
 		}
 	}
 

@@ -121,6 +121,7 @@ import { useChatModelSelection } from "../../model-selection/ChatModelSelectionC
 import { isKiloGatewayProvider } from "../../model-selection/model-catalog.js";
 import { usePlanThreadProjection } from "../../plan/use-plan-thread-projection.js";
 import { ComposerTaskList } from "../../tasks/ComposerTaskList.js";
+import { useSubagentActivity } from "../../subagents/SubagentActivityContext.js";
 import { useOptionalOpenCodeRuntimeExtras } from "../../runtime/use-optional-opencode-runtime-extras.js";
 import { usePendingKiloSuggestion } from "../../suggestions/KiloSuggestionContext.js";
 import {
@@ -182,6 +183,31 @@ export const Thread: FC<ThreadProps> = ({ components = EMPTY_COMPONENTS }) => {
 		</ThreadComponentsContext.Provider>
 	);
 };
+
+/** Message-only thread surface for transcripts hosted by a readonly runtime. */
+export const ReadonlyThread: FC<ThreadProps> = ({ components = EMPTY_COMPONENTS }) => (
+	<ThreadComponentsContext.Provider value={components}>
+		<RevertPendingProvider>
+			<ThreadPrimitive.Root
+				className="aui-root aui-thread-root @container flex h-full min-h-0 flex-col bg-[var(--pane-surface,var(--color-background))]"
+				style={{ ["--thread-max-width" as string]: "48rem" }}
+			>
+				<ThreadPrimitive.Viewport
+					autoScroll
+					turnAnchor="bottom"
+					data-slot="aui_readonly-thread-viewport"
+					className="relative flex flex-1 [scrollbar-gutter:stable_both-edges] flex-col items-center overflow-x-hidden overflow-y-auto scroll-smooth"
+				>
+					<div className="mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col px-1 pt-4">
+						<div className="flex flex-col gap-y-4 empty:hidden">
+							<ThreadPrimitive.Messages>{() => <ThreadMessage />}</ThreadPrimitive.Messages>
+						</div>
+					</div>
+				</ThreadPrimitive.Viewport>
+			</ThreadPrimitive.Root>
+		</RevertPendingProvider>
+	</ThreadComponentsContext.Provider>
+);
 
 const ComposerDockMask: FC = () => {
 	return (
@@ -801,12 +827,14 @@ const ComposerAction: FC<{
 	planActionPending,
 	onRefine,
 }) => {
+	const aui = useAui();
 	const isRunning = useAuiState((s) => s.thread.isRunning);
+	const { hasActiveSubagents, stopAllSubagents } = useSubagentActivity();
 	const canSend = useAuiState((s) => s.composer.canSend);
 	const isComposerEmpty = useAuiState((s) => s.composer.isEmpty);
 	const canQueue = useAuiState((s) => s.thread.capabilities.queue);
 	const pendingSuggestion = usePendingKiloSuggestion();
-	const isPromptBusy = isComposerPromptBusy(isRunning, pendingSuggestion);
+	const isPromptBusy = isComposerPromptBusy(isRunning, pendingSuggestion) || hasActiveSubagents;
 	const isSendLocked = isConnecting || isLoadingModel;
 	const lockLabel = isConnecting ? "Connecting to Kilo" : LOCAL_MODEL_LOADING_TITLE;
 
@@ -942,9 +970,9 @@ const ComposerAction: FC<{
 						</ComposerPrimitive.Send>
 					)
 				) : null}
-				{!showPlanFollowupActions && !isSendLocked && isPromptBusy ? (
+				{(!showPlanFollowupActions || hasActiveSubagents) && !isSendLocked && isPromptBusy ? (
 					<>
-						{canQueue && !isComposerEmpty ? (
+						{!showPlanFollowupActions && canQueue && !isComposerEmpty ? (
 							<ComposerPrimitive.Send
 								render={
 									<Button
@@ -960,20 +988,37 @@ const ComposerAction: FC<{
 								Queue
 							</ComposerPrimitive.Send>
 						) : null}
-						<ComposerPrimitive.Cancel
-							render={
-								<TooltipIconButton
-									tooltip="Stop generating"
-									type="button"
-									variant={canQueue && !isComposerEmpty ? "outline" : "default"}
-									size="icon"
-									className="aui-composer-cancel size-7 rounded-full"
-									aria-label="Stop generating"
-								/>
-							}
-						>
-							<SquareIcon className="aui-composer-cancel-icon size-3.5 fill-current" />
-						</ComposerPrimitive.Cancel>
+						{hasActiveSubagents ? (
+							<TooltipIconButton
+								tooltip="Stop all subagents"
+								type="button"
+								variant="default"
+								size="icon"
+								className="aui-composer-cancel size-7 rounded-full"
+								aria-label="Stop all subagents"
+								onClick={() => {
+									if (isRunning) aui.thread().cancelRun();
+									void stopAllSubagents();
+								}}
+							>
+								<SquareIcon className="size-3.5 fill-current" />
+							</TooltipIconButton>
+						) : (
+							<ComposerPrimitive.Cancel
+								render={
+									<TooltipIconButton
+										tooltip="Stop generating"
+										type="button"
+										variant={canQueue && !isComposerEmpty ? "outline" : "default"}
+										size="icon"
+										className="aui-composer-cancel size-7 rounded-full"
+										aria-label="Stop generating"
+									/>
+								}
+							>
+								<SquareIcon className="aui-composer-cancel-icon size-3.5 fill-current" />
+							</ComposerPrimitive.Cancel>
+						)}
 					</>
 				) : null}
 			</div>
@@ -1317,7 +1362,23 @@ const AssistantMessage: FC = () => {
 	const threadOwnsRun = useAuiState(
 		(s) => s.thread.isRunning && s.message.index === s.thread.messages.length - 1,
 	);
-	const isRunning = status?.type === "running" || threadOwnsRun;
+	const { hasActiveSubagents, activeToolCallIds } = useSubagentActivity();
+	const subagentBoundaryToolCallIdsRef = useRef(new Set<string>());
+	for (const toolCallId of activeToolCallIds) {
+		subagentBoundaryToolCallIdsRef.current.add(toolCallId);
+	}
+	for (const part of messageParts) {
+		if (
+			part.type === "tool-call" &&
+			part.toolName.toLowerCase() === "task" &&
+			part.status?.type === "running"
+		) {
+			subagentBoundaryToolCallIdsRef.current.add(part.toolCallId);
+		}
+	}
+	const isLastMessage = useAuiState((s) => s.message.index === s.thread.messages.length - 1);
+	const isRunning =
+		status?.type === "running" || threadOwnsRun || (isLastMessage && hasActiveSubagents);
 	const interrupted = status?.type === "incomplete" && status.reason === "cancelled";
 	const wasRunningRef = useRef(isRunning);
 	const animateWorkCollapse = wasRunningRef.current && !isRunning;
@@ -1330,7 +1391,10 @@ const AssistantMessage: FC = () => {
 	const groupActivityParts = useMemo(
 		() =>
 			isRunning
-				? createActivityGroupBy(messageParts, { hiddenPlanCallIds })
+				? createActivityGroupBy(messageParts, {
+						hiddenPlanCallIds,
+						activeSubagentToolCallIds: subagentBoundaryToolCallIdsRef.current,
+					})
 				: createTurnWorkGroupBy(messageParts, { hiddenPlanCallIds }),
 		[hiddenPlanCallIds, isRunning, messageParts],
 	);
@@ -1356,6 +1420,9 @@ const AssistantMessage: FC = () => {
 					{isRunning ? <TurnWorkHeader startedAt={turnStartedAt} /> : null}
 					<MessagePrimitive.GroupedParts indicator="never" groupBy={groupActivityParts}>
 						{({ part, children }) => {
+							if (part.type.startsWith("group-activity-") && "indices" in part) {
+								return <ActivityGroup group={part}>{children}</ActivityGroup>;
+							}
 							switch (part.type) {
 								case "group-turn-work":
 									return (
@@ -1433,7 +1500,7 @@ const AssistantMessage: FC = () => {
 					className={cn("mt-3 ms-2 flex items-center", ACTION_BAR_HEIGHT)}
 				>
 					<BranchPicker />
-					<AssistantActionBar />
+					<AssistantActionBar hidden={isRunning} />
 				</div>
 			</ManualDisclosureProvider>
 		</MessagePrimitive.Root>
@@ -1468,12 +1535,16 @@ const AssistantActionMoreTrigger: FC = () => {
 	);
 };
 
-const AssistantActionBar: FC = () => {
+const AssistantActionBar: FC<{ hidden: boolean }> = ({ hidden }) => {
 	return (
 		<ActionBarPrimitive.Root
 			hideWhenRunning
 			autohide="not-last"
-			className="aui-assistant-action-bar-root text-muted-foreground animate-in fade-in col-start-3 row-start-2 -ms-1 flex gap-1 duration-200"
+			aria-hidden={hidden || undefined}
+			className={cn(
+				"aui-assistant-action-bar-root text-muted-foreground col-start-3 row-start-2 -ms-1 flex gap-1 transition-opacity duration-200",
+				hidden ? "pointer-events-none opacity-0" : "opacity-100",
+			)}
 		>
 			<MessageCopyButton />
 			<ActionBarMorePrimitive.Root>

@@ -1,10 +1,13 @@
 import { lazy, Suspense, useMemo, type ComponentType, type FC } from "react";
-import { CircleHelpIcon, LayoutTemplateIcon, ListTodoIcon } from "lucide-react";
+import { BotIcon, CircleHelpIcon, LayoutTemplateIcon, ListTodoIcon } from "lucide-react";
 
 import type { Contribution, ContributionMountPolicy } from "@kilo-desktop/feature-sdk";
 import { useSdkContributions } from "@kilo-desktop/sdk-react";
 
 const PlanTab = lazy(() => import("./PlanTab.js").then((module) => ({ default: module.PlanTab })));
+const SubagentPane = lazy(() =>
+	import("../subagents/SubagentPane.js").then((module) => ({ default: module.SubagentPane })),
+);
 
 export const CHAT_RIGHT_PANEL_TAB_EXTENSION = "kilo-ui/chat-right-panel-tab";
 
@@ -22,6 +25,7 @@ export interface ChatRightPanelContributionProps {
 }
 
 export const PLAN_TAB_DEFINITION_ID = "kilo-ui.plan";
+export const SUBAGENT_TAB_DEFINITION_ID = "kilo-ui.subagent";
 
 export interface RightPanelTabIconProps {
 	readonly className?: string;
@@ -82,6 +86,16 @@ const PLAN_TAB_DEFINITION: RightPanelTabDefinition = {
 	Content: PlanTab,
 };
 
+export const SUBAGENT_TAB_DEFINITION: RightPanelTabDefinition = {
+	id: SUBAGENT_TAB_DEFINITION_ID,
+	title: "Subagent",
+	description: "Read-only live subagent conversation.",
+	Icon: BotIcon,
+	addable: false,
+	mountPolicy: "active-only",
+	Content: SubagentPane,
+};
+
 function isRenderableComponent(
 	value: unknown,
 ): value is ComponentType<ChatRightPanelContributionProps> {
@@ -117,7 +131,11 @@ export function buildContributedTabDefinitions(
 export function useRightPanelTabDefinitions(): readonly RightPanelTabDefinition[] {
 	const contributions = useSdkContributions(CHAT_RIGHT_PANEL_TAB_EXTENSION);
 	return useMemo(
-		() => [PLAN_TAB_DEFINITION, ...buildContributedTabDefinitions(contributions)],
+		() => [
+			PLAN_TAB_DEFINITION,
+			SUBAGENT_TAB_DEFINITION,
+			...buildContributedTabDefinitions(contributions),
+		],
 		[contributions],
 	);
 }

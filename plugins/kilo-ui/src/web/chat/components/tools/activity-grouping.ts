@@ -5,10 +5,11 @@ import { isHostableMcpAppTool } from "../../runtime/mcp-app-registry.js";
 import { isHiddenOpenCodeDataPart } from "./opencode-data-part.js";
 import { getGroupKeyForTool, isSuggestTool } from "./tool-categories.js";
 
-type ActivityGroupPath = readonly ["group-activity", `group-${string}`];
+type ActivityGroupPath = readonly [`group-activity${string}`, `group-${string}`];
 
 type ActivityGroupingOptions = {
 	hiddenPlanCallIds?: ReadonlySet<string> | undefined;
+	activeSubagentToolCallIds?: ReadonlySet<string> | undefined;
 };
 
 type ActivityNeighbors = {
@@ -25,17 +26,52 @@ const isHiddenStructuralPart = (part: PartState): boolean =>
 const isActivityPart = (part: PartState): boolean =>
 	part.type === "reasoning" || part.type === "tool-call";
 
+const isActiveSubagentPart = (
+	part: PartState,
+	activeSubagentToolCallIds: ReadonlySet<string> | undefined,
+): boolean =>
+	part.type === "tool-call" &&
+	part.toolName.toLowerCase() === "task" &&
+	Boolean(activeSubagentToolCallIds?.has(part.toolCallId));
+
+const indexActivityGroupKeys = (
+	parts: readonly PartState[],
+	activeSubagentToolCallIds: ReadonlySet<string> | undefined,
+): ReadonlyMap<PartState, `group-activity${string}`> => {
+	const keys = new Map<PartState, `group-activity${string}`>();
+	let groupIndex = 0;
+	let pendingBoundary = false;
+
+	for (const part of parts) {
+		if (
+			pendingBoundary &&
+			!isActiveSubagentPart(part, activeSubagentToolCallIds) &&
+			(!isHiddenStructuralPart(part) ||
+				(part.type === "data" && part.name === "opencode-step-start"))
+		) {
+			groupIndex += 1;
+			pendingBoundary = false;
+		}
+
+		keys.set(part, groupIndex === 0 ? "group-activity" : `group-activity-${groupIndex}`);
+		if (isActiveSubagentPart(part, activeSubagentToolCallIds)) pendingBoundary = true;
+	}
+
+	return keys;
+};
+
 const getDirectActivityPath = (
 	part: PartState,
 	context: GroupByContext,
 	options: ActivityGroupingOptions,
+	activityGroupKey: `group-activity${string}` = "group-activity",
 ): ActivityGroupPath | undefined => {
 	if (part.type === "reasoning") {
-		return ["group-activity", "group-thinking"];
+		return [activityGroupKey, "group-thinking"];
 	}
 	if (part.type !== "tool-call") return undefined;
 	if (shouldKeepPartOutsideActivity(part, context, options)) return undefined;
-	return ["group-activity", getGroupKeyForTool(part.toolName)];
+	return [activityGroupKey, getGroupKeyForTool(part.toolName)];
 };
 
 const shouldKeepPartOutsideActivity = (
@@ -88,19 +124,24 @@ export const createActivityGroupBy = (
 	options: ActivityGroupingOptions = {},
 ) => {
 	const hiddenNeighbors = indexHiddenActivityNeighbors(parts);
+	const activityGroupKeys = indexActivityGroupKeys(parts, options.activeSubagentToolCallIds);
 
 	return (part: PartState, context: GroupByContext): readonly `group-${string}`[] => {
-		const directPath = getDirectActivityPath(part, context, options);
+		const activityGroupKey = activityGroupKeys.get(part) ?? "group-activity";
+		const directPath = getDirectActivityPath(part, context, options, activityGroupKey);
 		if (directPath) return directPath;
 		if (!isHiddenStructuralPart(part)) return [];
 
 		const neighbors = hiddenNeighbors.get(part);
-		return (
-			(neighbors?.before && getDirectActivityPath(neighbors.before, context, options)) ||
-			(neighbors?.after && getDirectActivityPath(neighbors.after, context, options)) || [
-				"group-activity",
-			]
-		);
+		const beforePath =
+			neighbors?.before &&
+			activityGroupKeys.get(neighbors.before) === activityGroupKey &&
+			getDirectActivityPath(neighbors.before, context, options, activityGroupKey);
+		const afterPath =
+			neighbors?.after &&
+			activityGroupKeys.get(neighbors.after) === activityGroupKey &&
+			getDirectActivityPath(neighbors.after, context, options, activityGroupKey);
+		return beforePath || afterPath || [activityGroupKey];
 	};
 };
 

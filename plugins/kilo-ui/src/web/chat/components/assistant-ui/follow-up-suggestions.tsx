@@ -2,6 +2,7 @@
 
 import { AuiIf, useAuiState, ThreadPrimitive } from "@assistant-ui/react";
 import { useCallback, useEffect, useRef, useState, type FC } from "react";
+import { useSubagentActivity } from "../../subagents/SubagentActivityContext.js";
 
 const FollowupSuggestionsRow: FC = () => {
 	const suggestions = useAuiState((s) => s.thread.suggestions);
@@ -65,10 +66,18 @@ const FollowupSuggestionsRow: FC = () => {
 	);
 };
 
-export const ThreadFollowupSuggestions: FC = () => (
-	<AuiIf
-		condition={(s) => !s.thread.isEmpty && !s.thread.isRunning && s.thread.suggestions.length > 0}
-	>
-		<FollowupSuggestionsRow />
-	</AuiIf>
-);
+export const ThreadFollowupSuggestions: FC = () => {
+	const { hasActiveSubagents } = useSubagentActivity();
+	return (
+		<AuiIf
+			condition={(s) =>
+				!hasActiveSubagents &&
+				!s.thread.isEmpty &&
+				!s.thread.isRunning &&
+				s.thread.suggestions.length > 0
+			}
+		>
+			<FollowupSuggestionsRow />
+		</AuiIf>
+	);
+};

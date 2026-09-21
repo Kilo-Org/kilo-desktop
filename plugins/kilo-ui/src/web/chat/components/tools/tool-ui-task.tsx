@@ -1,17 +1,21 @@
 import { memo } from "react";
-import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
+import { useAuiState, type ToolCallMessagePartComponent } from "@assistant-ui/react";
+import { Loader2Icon, SquareIcon } from "lucide-react";
 
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
-import { PlanMarkdown } from "../../plan/PlanMarkdown.js";
-import { SoloAwareExpandableRow } from "./tool-ui-activity-row.js";
+import { chatRightPanelCapability } from "../../right-panel/chat-right-panel-capability.js";
+import { SUBAGENT_TAB_DEFINITION } from "../../right-panel/right-panel-tab-registry.js";
+import { resolveRightPanelSessionKey } from "../../right-panel/right-panel-store.js";
+import { useOptionalOpenCodeRuntimeExtras } from "../../runtime/use-optional-opencode-runtime-extras.js";
+import { useSubagentActivity } from "../../subagents/SubagentActivityContext.js";
 import {
-	isTaskErrorOutput,
-	resultText,
-	str,
-	truncate,
-	unwrapTaskOutput,
-} from "./tool-ui-shared.js";
+	SUBAGENT_CHILD_SESSION_METADATA_KEY,
+	childSessionIdForToolCall,
+	subagentPaneInstanceId,
+} from "../../subagents/subagent-state.js";
+import { ToolActivityRow } from "./tool-ui-activity-row.js";
+import { str, truncate } from "./tool-ui-shared.js";
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
 	value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
@@ -34,47 +38,94 @@ export const getTaskPrompt = (args: unknown): string | undefined => {
 	return prompt || undefined;
 };
 
-const TaskDetail = ({
-	agent,
-	output,
-	isError,
-}: {
-	agent?: string | undefined;
-	output: string;
-	isError: boolean;
-}) => (
-	<div className="flex flex-col gap-2 py-0.5" data-slot="kilo-task-detail">
-		{agent ? <div className="text-muted-foreground text-xs font-medium">@{agent}</div> : null}
-		{output ? (
-			<div className={cn("max-h-96 overflow-y-auto", isError && "text-destructive-foreground")}>
-				<PlanMarkdown text={output} />
-			</div>
-		) : null}
-	</div>
-);
+export const TaskActivity: ToolCallMessagePartComponent = memo(({ args, status, toolCallId }) => {
+	const title = getTaskDescription(args) ?? "Delegated task";
+	const agentType = (getTaskAgent(args) ?? "Subagent")
+		.replaceAll(/[-_]+/g, " ")
+		.replace(/\b\w/g, (letter) => letter.toUpperCase());
+	const originalParts = useAuiState((state) => {
+		const custom = state.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
+		return custom?.opencode?.parts;
+	});
+	const childSessionId = childSessionIdForToolCall(originalParts, toolCallId);
+	const extras = useOptionalOpenCodeRuntimeExtras();
+	const threadSessionId = useAuiState((state) =>
+		resolveRightPanelSessionKey(state.threadListItem.remoteId, state.threadListItem.id),
+	);
+	const { activities, stopSubagent, stoppingIds } = useSubagentActivity();
+	const activity =
+		activities.find((item) => item.toolCallId === toolCallId) ??
+		(childSessionId
+			? activities.find((item) => item.childSessionId === childSessionId)
+			: undefined);
+	const resolvedChildSessionId = activity?.childSessionId ?? childSessionId;
+	const parentSessionId = extras?.session?.id ?? threadSessionId;
+	const child = resolvedChildSessionId
+		? extras?.state?.childSessionsById?.[resolvedChildSessionId]
+		: undefined;
+	const isActive =
+		activity?.status === "working" ||
+		activity?.status === "waiting" ||
+		child?.sessionStatus?.type === "busy" ||
+		child?.sessionStatus?.type === "retry";
+	const stopping = resolvedChildSessionId ? stoppingIds.has(resolvedChildSessionId) : false;
+	const effectiveStatus = isActive ? ({ type: "running" } as const) : status;
+	const rowVerb = activity?.typeLabel ?? agentType;
+	const stopTarget =
+		activity ??
+		(resolvedChildSessionId
+			? {
+					childSessionId: resolvedChildSessionId,
+					toolCallId,
+					title,
+					typeLabel: rowVerb,
+					status: "working" as const,
+					directory: child?.session?.directory,
+				}
+			: undefined);
+	const canStop = Boolean(stopTarget && isActive);
+	const openPane = () => {
+		if (!resolvedChildSessionId) return;
+		chatRightPanelCapability.openContributedTab(parentSessionId, SUBAGENT_TAB_DEFINITION, {
+			instanceId: subagentPaneInstanceId(resolvedChildSessionId),
+			title,
+			metadata: { [SUBAGENT_CHILD_SESSION_METADATA_KEY]: resolvedChildSessionId },
+		});
+	};
 
-export const TaskActivity: ToolCallMessagePartComponent = memo(
-	({ args, result, status, toolCallId }) => {
-		const description = getTaskDescription(args);
-		const agent = getTaskAgent(args);
-		const raw = resultText(result);
-		const output = unwrapTaskOutput(raw);
-		const isError = isTaskErrorOutput(raw);
-		const hasDetail = output.length > 0 && status?.type !== "running";
-
-		return (
-			<SoloAwareExpandableRow
-				kind="subagent"
-				liveVerb="Delegating"
-				doneVerb={isError ? "Failed" : "Delegated"}
-				object={description}
-				status={status}
-				disclosureId={toolCallId}
-				hasDetail={hasDetail}
-				hideSoloWithoutDetail={!isError}
-				detail={<TaskDetail agent={agent} output={output} isError={isError} />}
+	return (
+		<div data-qa-id={`subagent-summary-${toolCallId}`}>
+			<ToolActivityRow
+				liveVerb={rowVerb}
+				doneVerb={rowVerb}
+				object={title}
+				status={effectiveStatus}
+				onClick={resolvedChildSessionId ? openPane : undefined}
+				ariaLabel={resolvedChildSessionId ? `Open subagent: ${title}` : undefined}
+				shimmerVerb={isActive}
+				connector={canStop}
+				trailing={
+					canStop && stopTarget ? (
+						<button
+							type="button"
+							className={cn(
+								"text-muted-foreground hover:bg-muted hover:text-foreground grid size-5 shrink-0 place-items-center rounded",
+								stopping && "cursor-wait",
+							)}
+							disabled={stopping}
+							onClick={() => void stopSubagent(stopTarget)}
+							aria-label={`Stop subagent: ${title}`}
+						>
+							{stopping ? (
+								<Loader2Icon className="size-2.5 animate-spin" />
+							) : (
+								<SquareIcon className="size-2.5 fill-current" />
+							)}
+						</button>
+					) : null
+				}
 			/>
-		);
-	},
-);
+		</div>
+	);
+});
 TaskActivity.displayName = "TaskActivity";

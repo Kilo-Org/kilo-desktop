@@ -30,11 +30,13 @@ export const VerbObjectLabel = ({
 	doneVerb,
 	object,
 	status,
+	shimmerVerb = false,
 }: {
 	liveVerb: string;
 	doneVerb: string;
 	object?: string | undefined;
 	status?: ToolCallStatusLike;
+	shimmerVerb?: boolean;
 }) => {
 	const isRunning = status?.type === "running";
 	const isCancelled = isCancelledToolStatus(status);
@@ -47,7 +49,14 @@ export const VerbObjectLabel = ({
 				isCancelled && "line-through opacity-50",
 			)}
 		>
-			{verb}
+			{shimmerVerb && isRunning ? (
+				<span className="relative shrink-0">
+					<span className="invisible">{verb}</span>
+					<span className="shimmer shimmer-color-foreground absolute inset-0">{verb}</span>
+				</span>
+			) : (
+				verb
+			)}
 			{object ? <span className="opacity-60">{object}</span> : null}
 		</span>
 	);
@@ -83,6 +92,68 @@ export const SoloAwareLabelRow = memo(
 	},
 );
 SoloAwareLabelRow.displayName = "SoloAwareLabelRow";
+
+/** Standard compact tool row with an optional primary action and trailing controls. */
+export const ToolActivityRow = memo(
+	({
+		liveVerb,
+		doneVerb,
+		object,
+		status,
+		onClick,
+		ariaLabel,
+		trailing,
+		shimmerVerb = false,
+		connector = false,
+	}: {
+		liveVerb: string;
+		doneVerb: string;
+		object?: string | undefined;
+		status?: ToolCallStatusLike;
+		onClick?: (() => void) | undefined;
+		ariaLabel?: string | undefined;
+		trailing?: ReactNode;
+		shimmerVerb?: boolean;
+		connector?: boolean;
+	}) => {
+		const label = (
+			<VerbObjectLabel
+				liveVerb={liveVerb}
+				doneVerb={doneVerb}
+				object={object}
+				status={status}
+				shimmerVerb={shimmerVerb}
+			/>
+		);
+		const content = (
+			<>
+				<ToolStatusIcon status={status} />
+				{label}
+				{connector ? (
+					<span className="border-muted-foreground/20 mt-0.5 min-w-4 flex-1 self-center border-b-[0.5px]" />
+				) : null}
+			</>
+		);
+		return (
+			<div className="text-muted-foreground flex min-w-0 items-center gap-2 py-0.5 text-sm">
+				{onClick ? (
+					<button
+						type="button"
+						className="hover:text-foreground flex min-w-0 flex-1 items-center gap-2 text-left transition-colors"
+						onClick={onClick}
+						aria-label={ariaLabel}
+					>
+						{content}
+					</button>
+				) : (
+					<div className="flex min-w-0 flex-1 items-center gap-2">{content}</div>
+				)}
+				{trailing}
+			</div>
+		);
+	},
+);
+ToolActivityRow.displayName = "ToolActivityRow";
 
 /**
  * Expandable tool row. Solo in its subgroup → detail only (no nested trigger).

@@ -54,6 +54,7 @@ import { KiloSuggestionProvider } from "./suggestions/KiloSuggestionContext.js";
 import { createKiloSuggestionStore } from "./suggestions/kilo-suggestion-store.js";
 import { PierreDiffProvider } from "./PierreDiffProvider.js";
 import { KiloSessionSelectionSync } from "./session-selection/KiloSessionSelectionSync.js";
+import { SubagentActivityProvider } from "./subagents/SubagentActivityContext.js";
 
 import "./composer.css";
 
@@ -471,11 +472,13 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 								<ChatModelSelectionProvider value={modelSelection}>
 									<WorktreeSetupProvider isSettingUp={isSettingUpWorktree}>
 										<AssistantRuntimeProvider aui={aui} runtime={runtime}>
-											<KiloSessionSelectionSync
-												hydrateAgent={hydrateThreadAgent}
-												hydrateModel={hydrateThreadModel}
-											/>
-											<SessionListViewProvider>{children}</SessionListViewProvider>
+											<SubagentActivityProvider>
+												<KiloSessionSelectionSync
+													hydrateAgent={hydrateThreadAgent}
+													hydrateModel={hydrateThreadModel}
+												/>
+												<SessionListViewProvider>{children}</SessionListViewProvider>
+											</SubagentActivityProvider>
 										</AssistantRuntimeProvider>
 									</WorktreeSetupProvider>
 								</ChatModelSelectionProvider>

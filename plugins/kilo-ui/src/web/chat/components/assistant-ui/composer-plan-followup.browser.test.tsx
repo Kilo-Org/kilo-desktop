@@ -45,6 +45,21 @@ const signedInAuth: KiloAuthContextValue = {
 };
 
 const replyToQuestion = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const subagents = vi.hoisted(() => ({
+	active: false,
+	stopAll: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../../subagents/SubagentActivityContext.js", () => ({
+	useSubagentActivity: () => ({
+		activities: [],
+		hasActiveSubagents: subagents.active,
+		activeToolCallIds: new Set(),
+		stoppingIds: new Set(),
+		stopSubagent: vi.fn(),
+		stopAllSubagents: subagents.stopAll,
+	}),
+}));
 
 vi.mock("@assistant-ui/react-opencode", async (importOriginal) => {
 	const actual = await importOriginal<typeof AssistantUiReactOpencode>();
@@ -214,6 +229,7 @@ afterEach(() => {
 	cleanup();
 	localStorage.clear();
 	resetPlanApprovalUiState();
+	subagents.active = false;
 	vi.clearAllMocks();
 });
 
@@ -241,6 +257,18 @@ describe("composer plan follow-up CTAs", () => {
 		await expect
 			.element(screen.getByRole("button", { name: "Stop generating" }))
 			.not.toBeInTheDocument();
+	});
+
+	it("keeps stop-all-subagents available while plan follow-up actions are showing", async () => {
+		subagents.active = true;
+		const { baseElement } = renderThread(seededMessages);
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("kilo-composer-refine")).toBeVisible();
+		const stop = screen.getByRole("button", { name: "Stop all subagents" });
+		await expect.element(stop).toBeVisible();
+		await stop.click();
+		await expect.poll(() => subagents.stopAll).toHaveBeenCalledOnce();
 	});
 
 	it("enables Refine when the composer has text", async () => {

@@ -47,6 +47,7 @@ import {
 import { ReasoningText } from "../assistant-ui/reasoning.js";
 import { getGroupDiffStats } from "./tool-diff-stats.js";
 import { DiffCounts } from "./tool-ui-shared.js";
+import { useSubagentActivity } from "../../subagents/SubagentActivityContext.js";
 
 /**
  * Thinking segments reuse the reasoning scroll box — capped height with
@@ -603,16 +604,26 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 	const keepActivitySubgroupOpen = useCallback(() => setToggled(true), [setPersistedToggled]);
 
 	const progressIndex = useContext(ActivityProgressIndexContext);
+	const { activeToolCallIds } = useSubagentActivity();
 	const segmentEndIndex = segment.indices.at(-1) ?? -1;
 	const canBeActive = segmentEndIndex >= progressIndex;
-	const statusActive = canBeActive && (segment.running || segment.requiresAction || hasPendingAsk);
+	const hasActiveSubagent =
+		kind === "subagent" &&
+		segment.indices.some((index) => {
+			const part = parts[index];
+			return part?.type === "tool-call" && activeToolCallIds.has(part.toolCallId);
+		});
+	const statusActive =
+		canBeActive &&
+		(segment.running || segment.requiresAction || hasPendingAsk || hasActiveSubagent);
 	const automaticOpen = useDelayedActivityOpen(
 		statusActive,
-		(kind === "thinking" || segment.indices.length > 1) && toggled === null,
+		(kind === "thinking" || kind === "subagent" || segment.indices.length > 1) && toggled === null,
 	);
 	const settlingSegmentStart = useContext(ActivitySettlingSegmentContext);
 	const isSettlingSegment = settlingSegmentStart === (segment.indices[0] ?? null);
 	const open =
+		(kind === "subagent" && statusActive) ||
 		(canBeActive && (segment.requiresAction || hasPendingAsk || hasPendingPermission)) ||
 		(toggled ?? (isSettlingSegment || automaticOpen));
 
@@ -633,6 +644,45 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 	);
 
 	const active = statusActive;
+	if (kind === "subagent") {
+		if (streamCollapsed) {
+			return (
+				<ActivitySubgroupContext.Provider value={subgroupContext}>
+					<ActivitySubgroupManualOpenContext.Provider value={keepActivitySubgroupOpen}>
+						<div className="border-border/60 mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
+							{children}
+						</div>
+					</ActivitySubgroupManualOpenContext.Provider>
+				</ActivitySubgroupContext.Provider>
+			);
+		}
+		const label = active ? meta.liveLabel(stats) : meta.doneLabel(stats);
+		return (
+			<ActivitySubgroupContext.Provider value={subgroupContext}>
+				<ActivitySubgroupManualOpenContext.Provider value={keepActivitySubgroupOpen}>
+					<div className="text-muted-foreground flex items-center gap-2 py-1 text-sm">
+						<ActivityIconStack
+							items={[
+								{
+									icon: meta.icon,
+									label: meta.label,
+									className: meta.circleClassName,
+									colored: active,
+									loading: active,
+								},
+							]}
+						/>
+						<span className="font-medium">
+							<ActivityLabel label={label} shimmer={active} />
+						</span>
+					</div>
+					<div className="border-border/60 mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
+						{children}
+					</div>
+				</ActivitySubgroupManualOpenContext.Provider>
+			</ActivitySubgroupContext.Provider>
+		);
+	}
 	const soloPart = segment.indices.length === 1 ? parts[segment.indices[0]!] : undefined;
 	const runningTerminalHasCommand =
 		kind === "terminal" &&
@@ -641,6 +691,8 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 		typeof soloPart.args?.command === "string" &&
 		soloPart.args.command.trim().length > 0;
 
+	// Delegated work is useful as an independently addressable summary even
+	// when it is the only activity, so never replace task cards with a group label.
 	if (streamCollapsed && !active && !isSettlingSegment) return null;
 
 	// A single label-only activity is fully described by its header. Multiple

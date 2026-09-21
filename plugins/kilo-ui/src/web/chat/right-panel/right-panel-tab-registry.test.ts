@@ -10,6 +10,8 @@ import {
 	CHAT_RIGHT_PANEL_TAB_EXTENSION,
 	isRightPanelTab,
 	PLAN_TAB_DEFINITION_ID,
+	SUBAGENT_TAB_DEFINITION,
+	SUBAGENT_TAB_DEFINITION_ID,
 } from "./right-panel-tab-registry.js";
 
 const Canvas = () => null;
@@ -94,5 +96,14 @@ describe("right-panel-tab-registry", () => {
 			ordinal: null,
 		});
 		expect(isRightPanelTab(createPlanTab())).toBe(true);
+	});
+
+	it("registers the built-in subagent pane as read-only and non-addable", () => {
+		expect(SUBAGENT_TAB_DEFINITION).toMatchObject({
+			id: SUBAGENT_TAB_DEFINITION_ID,
+			title: "Subagent",
+			addable: false,
+			mountPolicy: "active-only",
+		});
 	});
 });

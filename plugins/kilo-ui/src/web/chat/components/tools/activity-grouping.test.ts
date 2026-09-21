@@ -19,8 +19,8 @@ const dataPart = (name: string): PartState => ({ type: "data", name, data: {} })
 
 const textPart = (text: string): PartState => ({ type: "text", text }) as PartState;
 
-const groupPaths = (parts: PartState[]) => {
-	const groupBy = createActivityGroupBy(parts);
+const groupPaths = (parts: PartState[], options?: Parameters<typeof createActivityGroupBy>[1]) => {
+	const groupBy = createActivityGroupBy(parts, options);
 	return parts.map((part) => groupBy(part, context));
 };
 
@@ -80,6 +80,42 @@ describe("createActivityGroupBy", () => {
 			["group-activity", "group-web"],
 			["group-activity", "group-web"],
 			["group-activity", "group-terminal"],
+		]);
+	});
+
+	it("starts a sibling activity group when parent work follows a live delegation", () => {
+		const parts = [
+			toolPart("read-1", "read"),
+			toolPart("task-1", "task"),
+			dataPart("opencode-step-finish"),
+			dataPart("opencode-step-start"),
+			toolPart("read-2", "read"),
+		];
+
+		expect(groupPaths(parts, { activeSubagentToolCallIds: new Set(["task-1"]) })).toEqual([
+			["group-activity", "group-reading"],
+			["group-activity", "group-subagent"],
+			["group-activity", "group-subagent"],
+			["group-activity-1", "group-reading"],
+			["group-activity-1", "group-reading"],
+		]);
+	});
+
+	it("keeps consecutive live delegations in the same activity group", () => {
+		const parts = [
+			toolPart("task-1", "task"),
+			toolPart("task-2", "task"),
+			toolPart("read-1", "read"),
+		];
+
+		expect(
+			groupPaths(parts, {
+				activeSubagentToolCallIds: new Set(["task-1", "task-2"]),
+			}),
+		).toEqual([
+			["group-activity", "group-subagent"],
+			["group-activity", "group-subagent"],
+			["group-activity-1", "group-reading"],
 		]);
 	});
 });

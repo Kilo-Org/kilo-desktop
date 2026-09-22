@@ -1,5 +1,4 @@
 {
-	"features": ["specular-location"],
 	"fill-specializations": [
 		{
 			"value": {
@@ -92,7 +91,7 @@
 			},
 			"specular-specializations": [
 				{
-					"value": "inside"
+					"value": true
 				},
 				{
 					"appearance": "dark",

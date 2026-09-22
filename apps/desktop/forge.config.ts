@@ -58,7 +58,7 @@ const executableName =
 const macIcon = track === "preview" ? "icon-preview.icon" : "icon.icon";
 const appIcon =
 	process.platform === "darwin"
-		? [path.join(packageRoot, "assets/icon.icns"), path.join(packageRoot, `assets/${macIcon}`)]
+		? [path.join(packageRoot, `assets/${macIcon}`), path.join(packageRoot, "assets/icon.icns")]
 		: path.join(packageRoot, "assets/icon");
 
 const notebookPackaging = createNotebookPackagingPlan();

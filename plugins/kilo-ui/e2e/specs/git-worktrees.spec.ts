@@ -1,15 +1,17 @@
 import { test } from "../fixtures.js";
 
-test.describe("Git worktrees @smoke", () => {
-	test("runs a worktree session after explicit worktree selection and removes it on session delete", async ({
+test.use({ appIsolationKey: "git-worktrees" });
+
+test.describe("Git worktrees @packaged", () => {
+	test("runs a worktree session after explicit worktree selection and removes it on session delete @smoke", async ({
 		gitWorktreesPage,
 		gitRepoFolder,
 	}) => {
 		await gitWorktreesPage.createWorkspace(gitRepoFolder.path, gitRepoFolder.name);
 		await gitWorktreesPage.openNewDraftForWorkspace(gitRepoFolder.name);
 
-		// The draft footer defaults to local; user must explicitly choose worktree.
-		await gitWorktreesPage.assertDraftDefaultsToLocal();
+		// Select local first so this test does not depend on a persisted/default mode.
+		await gitWorktreesPage.switchToLocalMode();
 		await gitWorktreesPage.switchToWorktreeMode();
 
 		const session = await gitWorktreesPage.sendFirstMessage("Git worktree smoke test");
@@ -30,7 +32,6 @@ test.describe("Git worktrees @smoke", () => {
 		await gitWorktreesPage.createWorkspace(gitRepoFolder.path, gitRepoFolder.name);
 		await gitWorktreesPage.openNewDraftForWorkspace(gitRepoFolder.name);
 
-		// Shared worker app: the sibling spec persists worktree draft mode.
 		await gitWorktreesPage.switchToLocalMode();
 		await gitWorktreesPage.assertLocalModeShowsBranchSelector("main");
 	});

@@ -33,6 +33,24 @@ import {
 } from "./workspace-session-context.js";
 
 const REQUEST_OPTIONS = { throwOnError: true } as const;
+const SESSION_LIST_TIMEOUT_MS = 10_000;
+
+class SessionListTimeoutError extends Error {
+	constructor() {
+		super(`Kilo session list timed out after ${SESSION_LIST_TIMEOUT_MS}ms`);
+		this.name = "SessionListTimeoutError";
+	}
+}
+
+function withSessionListTimeout(request: PromiseLike<unknown>): Promise<unknown> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const timeout = new Promise<never>((_resolve, reject) => {
+		timer = setTimeout(() => reject(new SessionListTimeoutError()), SESSION_LIST_TIMEOUT_MS);
+	});
+	return Promise.race([request, timeout]).finally(() => {
+		if (timer !== undefined) clearTimeout(timer);
+	});
+}
 
 export interface CreateKiloRuntimeBackendOptions extends PromptOptionGetters {
 	connectionPromise?: Promise<KiloGlobalConnection>;
@@ -83,13 +101,37 @@ export function createKiloRuntimeBackend({
 	const globalClients = new WeakMap<KiloGlobalConnection, KiloClient>();
 	const directoryClients = new WeakMap<KiloGlobalConnection, Map<string, KiloClient>>();
 
-	const liveGlobalClient = async () => {
+	const liveRawGlobalClient = async () => {
 		const connection = await liveConnection();
 		const cached = globalClients.get(connection);
 		if (cached) return cached;
 		const client = withKiloDesktopSessionListFilter(createKiloGlobalClient(connection));
 		globalClients.set(connection, client);
 		return client;
+	};
+	type SessionList = KiloClient["experimental"]["session"]["list"];
+	const listSessions = (async (...args: Parameters<SessionList>) => {
+		let lastError: unknown;
+		for (let attempt = 0; attempt < 2; attempt += 1) {
+			try {
+				const client = await liveRawGlobalClient();
+				return await withSessionListTimeout(client.experimental.session.list(...args));
+			} catch (error) {
+				lastError = error;
+			}
+		}
+		throw lastError;
+	}) as SessionList;
+	const liveGlobalClient = async () => {
+		const client = await liveRawGlobalClient();
+		if (!client.experimental?.session) return client;
+		return {
+			...client,
+			experimental: {
+				...client.experimental,
+				session: { ...client.experimental.session, list: listSessions },
+			},
+		} as KiloClient;
 	};
 
 	const globalClient = createDeferredKiloRuntimeClient(liveGlobalClient);

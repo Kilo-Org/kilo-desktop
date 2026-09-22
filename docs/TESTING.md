@@ -15,6 +15,10 @@ Coverage gate: **80%** lines / branches / functions / statements via the shared 
 
 App-level tests cover router + provider composition. Feature CRUD belongs in browser component tests and e2e (protocol / IPC / packaging).
 
+PR E2E runs only `@smoke` on Windows. The merge queue and nightly run the full
+suite on their platform matrices; every E2E test launches an OS-matched packaged
+application.
+
 ## How to run
 
 ```bash
@@ -41,7 +45,8 @@ pnpm --filter @kilo-desktop/e2e run test:e2e:headed
 `package:e2e` sets `ELECTRON_ENABLE_INSPECT=true` so the Electron fuse
 `EnableNodeCliInspectArguments` stays on. Playwright's `electron.launch` waits for
 Node's `Debugger listening on` line; without that fuse the suite hangs after packaging.
-Never package with plain `pnpm package` for e2e — CI uses `package:e2e` via `.github/actions/run-e2e`.
+Never package with plain `pnpm package` for e2e. CI packages with `package:e2e`
+and then runs Playwright as separately named steps in the same OS-specific job.
 
 Package-scoped:
 
@@ -74,9 +79,9 @@ plugins/<id>/e2e/                          # after migration — self-contained 
 
 1. Re-run headed: `pnpm --filter @kilo-desktop/e2e run test:e2e:headed -- --grep "test title"`.
 2. On failure, Playwright attaches **screenshot**, **page HTML**, and **console logs** (Electron does not get Playwright's built-in attachments).
-3. Open `playwright-report/index.html` (`npx playwright show-report`).
+3. Open `playwright-report/index.html` (`npx playwright show-report`). CI also uploads JUnit XML and a Playwright blob report for machine-readable diagnostics.
 4. Traces are retained on failure (`trace: "retain-on-failure"`).
-5. CI retries twice; flaky specs must be fixed (no quarantine tag).
+5. CI retries twice. PR and merge-queue checks tolerate a retry pass, while nightly sets `PLAYWRIGHT_FAIL_ON_FLAKY_TESTS=true` and fails on any flaky result. Flaky specs must still be fixed (no quarantine tag).
 
 ## Feature test obligations
 

@@ -1,6 +1,6 @@
 import { test } from "../../fixtures/shell.js";
 
-test.describe("Settings @smoke", () => {
+test.describe("Settings", () => {
 	test("opens Appearance settings from the app bar", async ({ appShellPage }) => {
 		await appShellPage.verifyShellIsLoaded();
 		await appShellPage.openSettings();

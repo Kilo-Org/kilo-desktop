@@ -28,7 +28,9 @@ export class BrowserPage {
 			"Pane toolbar should appear after starting the chat",
 		);
 		await click(getLocatorByTestId("chat-pane-toolbar-add"));
-		await click(getLocatorByTestId("chat-pane-launch-browser.browser"));
+		const launchItem = getLocatorByTestId("chat-pane-launch-browser.browser");
+		await expectElementToBeVisible(launchItem, "Browser pane launch item should be actionable");
+		await click(launchItem);
 		const browserView = getLocatorByTestId("browser-view");
 		await expectElementToBeVisible(browserView, "Browser pane should mount");
 		await expectElementToHaveAttribute(browserView, "aria-busy", "false", {

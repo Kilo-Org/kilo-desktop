@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { test } from "../fixtures.js";
 
-test.describe("Files @smoke", () => {
+test.describe("Files @packaged", () => {
 	test("opens the bundled files pane and exposes a workspace file", async ({
 		appShellPage,
 		filesPage,
@@ -27,7 +27,7 @@ test.describe("Files @smoke", () => {
 		await filesPage.verifyFileHasGitStatus(filesWorkspace.untrackedFileName, "untracked");
 	});
 
-	test("auto-refreshes the tree when files change on disk", async ({
+	test("auto-refreshes the tree when files change on disk @smoke", async ({
 		appShellPage,
 		filesPage,
 		filesWorkspace,

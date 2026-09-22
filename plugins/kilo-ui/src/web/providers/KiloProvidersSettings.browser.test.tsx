@@ -418,7 +418,7 @@ describe("KiloProvidersSettings", () => {
 		await expect.element(screen.getByTestId("kilo-providers-add-provider")).toBeDisabled();
 	});
 
-	it("keeps one complete skeleton inventory visible until every initial request is ready", async () => {
+	it("shows the inventory once the catalog is ready while account data continues loading", async () => {
 		let resolveCatalog!: (value: unknown) => void;
 		providerList.mockImplementation(
 			() =>
@@ -428,7 +428,7 @@ describe("KiloProvidersSettings", () => {
 		);
 		configGet.mockResolvedValue({ data: {} });
 		const loadingAuth = idleAuth({ isLoading: true });
-		const { screen, queryClient, rerenderAuth } = renderPage(
+		const { screen, queryClient } = renderPage(
 			{ isPending: false, isError: false, connection },
 			loadingAuth,
 		);
@@ -448,10 +448,6 @@ describe("KiloProvidersSettings", () => {
 		});
 
 		await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0));
-		await expect.element(screen.getByTestId("kilo-providers-loading")).toBeVisible();
-		await expect.element(screen.getByTestId("kilo-providers-loading-provider")).toBeVisible();
-
-		rerenderAuth(idleAuth());
 		await expect.element(screen.getByTestId("kilo-providers-loading")).not.toBeInTheDocument();
 		await expect.element(screen.getByTestId("kilo-providers-row-anthropic")).toBeVisible();
 	});

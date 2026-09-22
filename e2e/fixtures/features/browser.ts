@@ -21,4 +21,6 @@ export const test = shellTest.extend<BrowserFixtures>({
 	},
 });
 
+test.use({ appIsolationKey: "browser" });
+
 export const { expect } = test;

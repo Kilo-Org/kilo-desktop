@@ -24,6 +24,22 @@ const CLOSE_TIMEOUT_MS = 10_000;
 const CLOSE_FORCE_WAIT_MS = 5_000;
 const PLAYWRIGHT_DEFAULT_TIMEOUT_MS = 30_000;
 const deferredRemovalPaths = new Set<string>();
+const CHAT_ISOLATION_KEYS = new Set([
+	"browser",
+	"files",
+	"git",
+	"git-branch-selector",
+	"git-changes",
+	"git-init",
+	"git-worktrees",
+	"kilo-code",
+	"kilo-ui",
+	"kilo-providers",
+	"local-inference",
+	"onboarding",
+	"terminal",
+	"workspaces",
+]);
 
 /**
  * Test workspaces can remain open in the packaged app until worker teardown,
@@ -100,21 +116,18 @@ async function waitForEnabledNewChat(page: Page, timeoutMs: number): Promise<boo
  * Cold Windows runners often need longer than the 30s locator default after
  * kilo-server is already accepting connections, so reuse that sidecar budget.
  *
- * A hung first `list()` (threads.isLoading stuck true) is not slowness: a fresh
- * launch of the same spec succeeds in ~10s. Reload remounts the chat runtime
- * against the already-ready sidecar instead of failing the worker.
+ * The runtime bounds and retries its initial thread-list request. The fixture
+ * observes that product readiness contract but never repairs a failed runtime
+ * by reloading it, so cold-start regressions remain visible.
  */
 async function waitForThreadListHydrated(page: Page): Promise<void> {
 	page.setDefaultTimeout(KILO_SERVER_READY_TIMEOUT_MS);
 	try {
 		await waitForChatRoute(page);
 		if (await waitForEnabledNewChat(page, THREAD_LIST_HYDRATION_PROBE_MS)) return;
-		await page.reload({ waitUntil: "domcontentloaded" });
-		await page.waitForFunction(() => "desktopApi" in globalThis, undefined, {
-			timeout: MAIN_WINDOW_TIMEOUT_MS,
-		});
-		await waitForChatRoute(page);
-		await page.locator(ENABLED_NEW_CHAT).waitFor();
+		throw new Error(
+			"Chat thread list did not hydrate: New Chat remained disabled after the bounded runtime retry",
+		);
 	} finally {
 		page.setDefaultTimeout(PLAYWRIGHT_DEFAULT_TIMEOUT_MS);
 	}
@@ -214,12 +227,13 @@ export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerF
 		async ({ appIsolationKey, appLaunchEnv }, use) => {
 			// Depending on the option gives each distinct key its own worker, app,
 			// and temporary profile while preserving sharing within that group.
-			void appIsolationKey;
 			await killStrayProcesses();
 			const { app, userDataDir } = await launchApp(appLaunchEnv);
 			const page = await waitForMainWindow(app);
-			await waitForKiloServer(page);
-			await waitForThreadListHydrated(page);
+			if (CHAT_ISOLATION_KEYS.has(appIsolationKey)) {
+				await waitForKiloServer(page);
+				await waitForThreadListHydrated(page);
+			}
 			await use(app);
 			await stopApp(app);
 			await Promise.all([
@@ -230,16 +244,18 @@ export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerF
 		{ scope: "worker", timeout: WORKER_APP_TIMEOUT_MS },
 	],
 
-	electronApp: async ({ sharedApp }, use) => {
+	electronApp: async ({ appIsolationKey, sharedApp }, use) => {
 		const page = await waitForMainWindow(sharedApp);
 		setPage(page);
 		await page.evaluate(() => {
 			localStorage.clear();
 			globalThis.location.hash = "#/";
 		});
-		// Hash reset remounts chat; wait out the redirect so the next spec
-		// does not click New Chat against a tearing-down runtime.
-		await waitForThreadListHydrated(page);
+		if (CHAT_ISOLATION_KEYS.has(appIsolationKey)) {
+			// Hash reset remounts chat; wait out the redirect so the next spec
+			// does not click New Chat against a tearing-down runtime.
+			await waitForThreadListHydrated(page);
+		}
 		await use(sharedApp);
 		// Clear renderer localStorage after each test so plugin preferences
 		// written during a test (e.g. git draft mode) do not bleed into the next.

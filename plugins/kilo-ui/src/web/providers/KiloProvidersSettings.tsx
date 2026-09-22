@@ -24,7 +24,6 @@ import {
 } from "@kilo-desktop/ui/components/tooltip";
 
 import type { KiloUiProvidersService } from "../../contracts/providers/schemas.js";
-import { useKiloAuth } from "../account/KiloAuthContext.js";
 import { useChatConnection } from "../chat/connection/ChatConnectionContext.js";
 import { ProviderIcon } from "../chat/model-selection/provider-icon.js";
 import { AddProviderDialog } from "./AddProviderDialog.js";
@@ -102,7 +101,6 @@ function LocalModelServerLink() {
  */
 export function KiloProvidersSettings() {
 	const connection = useChatConnection();
-	const auth = useKiloAuth();
 	const providers = useKiloProviders(connection.connection);
 	const localInference = useLocalInferenceAvailable();
 	const [dialog, setDialog] = useState<DialogState>(null);
@@ -133,8 +131,7 @@ export function KiloProvidersSettings() {
 	const customExisting =
 		customOpen && dialog.existing ? toExisting(dialog.existing, providers.config) : null;
 	const catalogLoading = connection.isPending || providers.isLoading;
-	const initialAccountLoading = auth.isLoading && auth.deviceAuth.status === "idle";
-	const pageLoading = catalogLoading || initialAccountLoading;
+	const pageLoading = catalogLoading;
 
 	const openCustomProvider = (existing: ProviderRow) => {
 		providers.resetSave();

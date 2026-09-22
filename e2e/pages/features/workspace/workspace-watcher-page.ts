@@ -13,6 +13,32 @@ interface FileChangeBatch {
 const ATTEMPT_TIMEOUT_MS = 4_000;
 const MAX_ATTEMPTS = 5;
 
+export async function waitForWorkspaceWatcher(folderPath: string): Promise<void> {
+	await getPage().waitForFunction(async (expectedPath) => {
+		type InvokeResult =
+			| { ok: true; value: { directories: { path: string; state: string }[] } }
+			| { ok: false; error: { code: string; message: string } };
+		type DesktopGlobal = typeof globalThis & {
+			desktopApi: {
+				invoke(
+					channel: "feature:invoke",
+					input: { featureId: string; channel: string },
+				): Promise<InvokeResult>;
+			};
+		};
+		const response = await (globalThis as DesktopGlobal).desktopApi.invoke("feature:invoke", {
+			featureId: "workspace",
+			channel: "status",
+		});
+		return (
+			response.ok &&
+			response.value.directories.some(
+				(directory) => directory.path === expectedPath && directory.state === "active",
+			)
+		);
+	}, folderPath);
+}
+
 /**
  * Page object for the built-in workspace watcher smoke flow.
  *
@@ -52,16 +78,16 @@ export class WorkspaceWatcherPage {
 			},
 			{ folderPath, name },
 		);
+		await waitForWorkspaceWatcher(folderPath);
 	}
 
 	/**
 	 * Write a new file into a watched folder and await the `create` batch the
 	 * watcher must publish for it.
 	 *
-	 * The native watcher arms asynchronously after `createWorkspace`, so a
-	 * write can race its subscription. Each attempt writes a fresh file —
-	 * a raced write is retried, never waited on — and the first observed
-	 * batch proves the packaged binary's full chain: native parcel events →
+	 * `createWorkspace` waits for the native subscription to become active.
+	 * Multiple attempts still tolerate platform event coalescing, and the first
+	 * observed batch proves the packaged binary's full chain: native parcel events →
 	 * normalization → main event bus → IPC bridge → renderer.
 	 */
 	async writeNewFileAndAwaitCreateChange(folderPath: string, baseName: string): Promise<string> {

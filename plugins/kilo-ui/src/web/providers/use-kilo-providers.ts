@@ -28,6 +28,12 @@ import {
 	type KiloProviderClient,
 } from "./provider-mutations.js";
 
+const PROVIDER_MANAGEMENT_TIMEOUT_MS = 15_000;
+
+function boundedSignal(querySignal: AbortSignal): AbortSignal {
+	return AbortSignal.any([querySignal, AbortSignal.timeout(PROVIDER_MANAGEMENT_TIMEOUT_MS)]);
+}
+
 export type ProviderManagementData = {
 	view: ProviderListView;
 	config: GlobalProviderConfig;
@@ -173,14 +179,15 @@ function withSavedCustomProvider(
 
 export async function fetchProviderManagement(
 	connection: KiloGlobalConnection | undefined,
+	signal: AbortSignal = AbortSignal.timeout(PROVIDER_MANAGEMENT_TIMEOUT_MS),
 ): Promise<ProviderManagementData> {
 	if (!connection) {
 		throw new Error("Cannot load providers before the provider service is connected");
 	}
 	const client = createKiloDirectoryClient(connection, connection.globalDirectory);
 	const [{ data: list }, { data: global }] = await Promise.all([
-		client.provider.list({}, { throwOnError: true }),
-		client.global.config.get({ throwOnError: true }),
+		client.provider.list({}, { throwOnError: true, signal }),
+		client.global.config.get({ throwOnError: true, signal }),
 	]);
 	const payload = list as ProviderListResponse;
 	const config = (global ?? {}) as GlobalProviderConfig;
@@ -207,7 +214,7 @@ export function useKiloProviders(connection: KiloGlobalConnection | undefined) {
 	const queryKey = [...KILO_PROVIDERS_MANAGE_QUERY_KEY, connection?.baseUrl, connection?.version];
 	const query = useQuery({
 		queryKey,
-		queryFn: () => fetchProviderManagement(connection),
+		queryFn: ({ signal }) => fetchProviderManagement(connection, boundedSignal(signal)),
 		enabled: connection !== undefined,
 		placeholderData: keepPreviousData,
 		retry: shouldRetryStaleKiloQuery,

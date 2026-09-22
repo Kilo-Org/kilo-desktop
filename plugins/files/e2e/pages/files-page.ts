@@ -47,7 +47,9 @@ export class FilesPage {
 			"Pane toolbar should be visible after the chat starts",
 		);
 		await click(getLocatorByTestId("chat-pane-toolbar-add"));
-		await click(getLocatorByTestId("chat-pane-launch-files.files"));
+		const launchItem = getLocatorByTestId("chat-pane-launch-files.files");
+		await expectElementToBeVisible(launchItem, "Files pane launch item should be actionable");
+		await click(launchItem);
 		await expectElementToBeVisible(
 			getLocatorByTestId("files-view"),
 			"Files pane should be visible",

@@ -30,4 +30,6 @@ export const test = shellTest.extend<WorkspaceFixtures>({
 	},
 });
 
+test.use({ appIsolationKey: "workspace-watcher" });
+
 export const { expect } = test;

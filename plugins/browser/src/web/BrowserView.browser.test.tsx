@@ -30,17 +30,18 @@ function renderView(
 		updateTab: vi.fn(),
 	});
 	const originalCreateElement = document.createElement.bind(document);
+	let webContentsId = 42;
 	vi.spyOn(document, "createElement").mockImplementation(((
 		tagName: string,
 		options?: ElementCreationOptions,
 	) => {
 		const element = originalCreateElement(tagName, options);
 		if (tagName === "webview") {
-			Object.assign(element, { getWebContentsId: () => 42, reload: vi.fn() });
+			Object.assign(element, { getWebContentsId: () => webContentsId, reload: vi.fn() });
 		}
 		return element;
 	}) as typeof document.createElement);
-	return render(
+	const view = render(
 		<SdkProvider system={system}>
 			<div
 				data-qa-id="chat-pane-frame"
@@ -50,6 +51,7 @@ function renderView(
 			</div>
 		</SdkProvider>,
 	);
+	return { ...view, sdk, setWebContentsId: (next: number) => (webContentsId = next) };
 }
 
 describe("BrowserView", () => {
@@ -77,12 +79,14 @@ describe("BrowserView", () => {
 		});
 		renderView({ config: async () => ({ partition: "persist:test" }), attach });
 		await vi.waitFor(() => expect(attach).toHaveBeenCalledOnce());
+		await expect.element(page.getByTestId("browser-view")).toHaveAttribute("aria-busy", "true");
 
 		const webview = document.querySelector("webview");
 		if (!webview) throw new Error("Expected browser webview");
 		webview.dispatchEvent(new Event("dom-ready"));
 
 		await vi.waitFor(() => expect(attach).toHaveBeenCalledTimes(2));
+		await expect.element(page.getByTestId("browser-view")).toHaveAttribute("aria-busy", "false");
 	});
 
 	it("replays dom-ready when it arrives during a failing attachment", async () => {
@@ -149,6 +153,104 @@ describe("BrowserView", () => {
 		});
 
 		await expect.element(view).toHaveAttribute("aria-busy", "false");
+	});
+
+	it("stays busy when browser state arrives before attachment completes", async () => {
+		let resolveAttach!: (
+			state: Awaited<ReturnType<ChannelHandlerMap<typeof browserContract>["attach"]>>,
+		) => void;
+		const attach = vi.fn(
+			() =>
+				new Promise<Awaited<ReturnType<ChannelHandlerMap<typeof browserContract>["attach"]>>>(
+					(resolve) => {
+						resolveAttach = resolve;
+					},
+				),
+		);
+		const { sdk } = renderView({ config: async () => ({ partition: "persist:test" }), attach });
+		await vi.waitFor(() => expect(attach).toHaveBeenCalledOnce());
+
+		sdk.events.emit("state-changed", {
+			instanceId: "browser-1",
+			webContentsId: 42,
+			url: "https://example.com/",
+			title: "Example",
+			faviconUrl: "",
+			loading: false,
+			canGoBack: false,
+			canGoForward: false,
+			zoomFactor: 1,
+		});
+
+		await vi.waitFor(() =>
+			expect(page.getByText("Enter a URL to start browsing.").query()).toBeNull(),
+		);
+		await expect.element(page.getByTestId("browser-view")).toHaveAttribute("aria-busy", "true");
+		resolveAttach({
+			instanceId: "browser-1",
+			webContentsId: 42,
+			url: "https://example.com/",
+			title: "Example",
+			faviconUrl: "",
+			loading: false,
+			canGoBack: false,
+			canGoForward: false,
+			zoomFactor: 1,
+		});
+		await expect.element(page.getByTestId("browser-view")).toHaveAttribute("aria-busy", "false");
+	});
+
+	it("ignores a stale attachment completion after the guest is replaced", async () => {
+		const instanceId = "browser-replacement-race";
+		const resolvers: Array<
+			(state: Awaited<ReturnType<ChannelHandlerMap<typeof browserContract>["attach"]>>) => void
+		> = [];
+		const attach = vi.fn(
+			() =>
+				new Promise<Awaited<ReturnType<ChannelHandlerMap<typeof browserContract>["attach"]>>>(
+					(resolve) => resolvers.push(resolve),
+				),
+		);
+		const { setWebContentsId } = renderView(
+			{
+				config: async () => ({ partition: "persist:test" }),
+				attach,
+			},
+			instanceId,
+		);
+		await vi.waitFor(() => expect(attach).toHaveBeenCalledOnce());
+
+		setWebContentsId(84);
+		const webview = document.querySelector("webview");
+		if (!webview) throw new Error("Expected browser webview");
+		webview.dispatchEvent(new Event("did-attach"));
+		await vi.waitFor(() => expect(attach).toHaveBeenCalledTimes(2));
+
+		resolvers[0]?.({
+			instanceId,
+			webContentsId: 42,
+			url: "https://stale.example/",
+			title: "Stale",
+			faviconUrl: "",
+			loading: false,
+			canGoBack: false,
+			canGoForward: false,
+			zoomFactor: 1,
+		});
+		await expect.element(page.getByTestId("browser-view")).toHaveAttribute("aria-busy", "true");
+
+		resolvers[1]?.({
+			instanceId,
+			webContentsId: 84,
+			url: "https://current.example/",
+			title: "Current",
+			faviconUrl: "",
+			loading: false,
+			canGoBack: false,
+			canGoForward: false,
+			zoomFactor: 1,
+		});
+		await expect.element(page.getByTestId("browser-view")).toHaveAttribute("aria-busy", "false");
 	});
 
 	it("does not lose navigation while attachment state is rendering", async () => {

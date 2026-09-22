@@ -1,6 +1,6 @@
 import { test } from "../fixtures.js";
 
-test.describe("Todos @smoke", () => {
+test.describe("Todos", () => {
 	// Todos is behind the `todo-feature` LaunchDarkly flag (default off), and
 	// the manifest declares `featureFlag: "todo-feature"` on the nav entry.
 	// Packaged e2e builds hit LaunchDarkly with an anonymous context that

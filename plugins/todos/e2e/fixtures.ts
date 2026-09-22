@@ -14,4 +14,6 @@ export const test = shellTest.extend<{ todosPage: TodosPage }>({
 	},
 });
 
+test.use({ appIsolationKey: "todos" });
+
 export const { expect } = test;

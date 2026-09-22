@@ -1,6 +1,6 @@
 import { test } from "../../../fixtures/features/workspace.js";
 
-test.describe("Workspace watcher @smoke", () => {
+test.describe("Workspace watcher @smoke @packaged", () => {
 	test("publishes a file-change batch for a registered workspace folder", async ({
 		appShellPage,
 		watcherPage,

@@ -1,7 +1,9 @@
 import { test } from "../fixtures.js";
 
-test.describe("Kilo Code @smoke", () => {
-	test("starts the packaged CLI and exposes authenticated health and SSE", async ({
+test.use({ appIsolationKey: "kilo-code" });
+
+test.describe("Kilo Code @packaged", () => {
+	test("starts the packaged CLI and exposes authenticated health and SSE @smoke", async ({
 		kiloCodePage,
 		workspaceFolder,
 	}) => {

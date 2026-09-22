@@ -8,4 +8,6 @@ export const test = shellTest.extend<{ themePage: ThemePage }>({
 	},
 });
 
+test.use({ appIsolationKey: "theme" });
+
 export const { expect } = test;

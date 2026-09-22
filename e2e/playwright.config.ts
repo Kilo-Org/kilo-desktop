@@ -6,6 +6,7 @@ import { defineConfig } from "@playwright/test";
 import { repoRoot } from "./utils/paths.js";
 
 const isCI = Boolean(process.env.CI);
+const failOnFlakyTests = process.env.PLAYWRIGHT_FAIL_ON_FLAKY_TESTS === "true";
 
 /**
  * Keep this config free of the `@anaconda/playwright-utils` barrel import.
@@ -19,14 +20,19 @@ export default defineConfig({
 	outputDir: path.join(repoRoot, "test-results"),
 	fullyParallel: false,
 	forbidOnly: isCI,
-	failOnFlakyTests: isCI,
+	failOnFlakyTests,
 	workers: 1,
 	retries: isCI ? 2 : 0,
 	timeout: Timeouts.TEST_TIMEOUT * 3,
 	expect: {
 		timeout: Timeouts.EXPECT_TIMEOUT * 3,
 	},
-	reporter: [["html", { outputFolder: path.join(repoRoot, "playwright-report") }], ["list"]],
+	reporter: [
+		["html", { outputFolder: path.join(repoRoot, "playwright-report") }],
+		["junit", { outputFile: path.join(repoRoot, "test-results/junit.xml") }],
+		["blob", { outputDir: path.join(repoRoot, "blob-report") }],
+		["list"],
+	],
 	use: {
 		testIdAttribute: "data-qa-id",
 		ignoreHTTPSErrors: true,

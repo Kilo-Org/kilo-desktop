@@ -12,10 +12,10 @@ import { useWorkspaceWatcher } from "@kilo-desktop/sdk-react";
  * `.git` events flow; this provider is the renderer's single subscriber
  * for them (the app-wide-dedup pattern: never subscribe per-component).
  *
- * The subscription filters to `.git` paths and create/delete events
- * only: covers both transitions (init/clone → regular; `.git` removed →
- * missing) while skipping update noise (checkouts touch `.git/HEAD` as
- * updates). A matching batch invalidates the `repositoryType`,
+ * The subscription filters to `.git` paths and accepts every event type so
+ * existing metadata changes (for example HEAD, refs, and the index) also
+ * invalidate cached repository state. A matching batch invalidates the
+ * `repositoryType`,
  * `branches`, and `status` queries (`[featureId, channel]` prefix match,
  * the same trio as the `init` mutation's invalidation pass) so every
  * gated UI refetches and the footer swaps happen on their own. No
@@ -32,7 +32,6 @@ export function GitRepositoryWatcherProvider({ children }: { readonly children: 
 
 	useWorkspaceWatcher({
 		includes: ["**/.git", "**/.git/**"],
-		types: ["create", "delete"],
 		onFileChange: () => {
 			for (const channel of ["repositoryType", "branches", "status"] as const) {
 				void queryClient.invalidateQueries({ queryKey: ["git", channel] });

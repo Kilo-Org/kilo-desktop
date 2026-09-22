@@ -1,6 +1,8 @@
 import { test } from "../fixtures.js";
 
-test.describe("Onboarding @smoke", () => {
+test.use({ appIsolationKey: "onboarding" });
+
+test.describe("Onboarding", () => {
 	test("does not cover the shell in packaged e2e profiles", async ({
 		appShellPage,
 		onboardingPage,

@@ -43,7 +43,9 @@ export class ChangesPage {
 			"Pane toolbar should be visible after the chat starts",
 		);
 		await click(getLocatorByTestId("chat-pane-toolbar-add"));
-		await click(getLocatorByTestId("chat-pane-launch-git.changes"));
+		const launchItem = getLocatorByTestId("chat-pane-launch-git.changes");
+		await expectElementToBeVisible(launchItem, "Changes pane launch item should be actionable");
+		await click(launchItem);
 	}
 
 	async verifyTabMounted(): Promise<void> {
@@ -51,5 +53,15 @@ export class ChangesPage {
 		// first items, so waiting for it proves the kilo-git:// protocol
 		// round-trip succeeded, not just that the shell mounted the tab.
 		await getLocatorByTestId("git-diff-view").waitFor({ state: "visible" });
+	}
+
+	async initializeFromErrorState(): Promise<void> {
+		const initButton = getLocatorByTestId("git-diff-init");
+		await expectElementToBeVisible(
+			initButton,
+			"Initialize Git button should replace Retry in the 404 error state",
+		);
+		await click(initButton);
+		await this.verifyTabMounted();
 	}
 }

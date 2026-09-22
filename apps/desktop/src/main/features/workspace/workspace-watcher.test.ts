@@ -200,6 +200,28 @@ describe("WorkspaceWatcher", () => {
 	});
 
 	describe("watch lifecycle", () => {
+		it("reports starting until the native subscription resolves", async () => {
+			let releaseSubscribe!: () => void;
+			const { watcher, parcel, tick } = createTestWatcher({
+				subscribeFn: (dir, onEvents, opts) =>
+					new Promise<{ unsubscribe(): Promise<void> }>((resolve) => {
+						releaseSubscribe = () => resolve(parcel.subscribe(dir, onEvents, opts));
+					}),
+			});
+
+			watcher.watchDirectory(PROJECT);
+			await tick();
+
+			expect(watcher.status().directories).toEqual([
+				{ path: PROJECT, state: "starting", subscriberCount: 0 },
+			]);
+
+			releaseSubscribe();
+			await vi.waitFor(() => {
+				expect(watcher.status().directories[0]?.state).toBe("active");
+			});
+		});
+
 		it("unwatchDirectory tears the native watcher down once no subscribers remain", async () => {
 			const { watcher, parcel, tick } = createTestWatcher();
 			watcher.watchDirectory(PROJECT);

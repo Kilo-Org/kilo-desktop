@@ -48,4 +48,6 @@ export const test = shellTest.extend<FilesFixtures>({
 	},
 });
 
+test.use({ appIsolationKey: "files" });
+
 export const { expect } = test;

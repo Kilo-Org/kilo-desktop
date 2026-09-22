@@ -7,6 +7,8 @@ import {
 } from "@anaconda/playwright-utils";
 import { getPage } from "@anaconda/playwright-utils/page-utils";
 
+import { waitForWorkspaceWatcher } from "../workspace/workspace-watcher-page.js";
+
 /**
  * Pave a workspace chat for a folder: create the workspace through the
  * shell's `desktopApi.invoke` (no UI drag needed), then start a new chat
@@ -35,6 +37,7 @@ export async function paveWorkspaceChat(folderPath: string, name: string): Promi
 		},
 		{ folderPath, name },
 	);
+	await waitForWorkspaceWatcher(folderPath);
 
 	// Worker fixture resets to `#/`; the shell redirects that to chat.
 	await getPage().waitForURL("kilo-desktop://app/#/plugins/chat");

@@ -1,6 +1,6 @@
 import { test } from "../fixtures.js";
 
-test.describe("Terminal @smoke", () => {
+test.describe("Terminal @smoke @packaged", () => {
 	test("runs isolated shells in repeatable grid panes", async ({
 		appShellPage,
 		terminalPage,

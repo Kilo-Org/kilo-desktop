@@ -6,6 +6,7 @@ import pLimit from "p-limit";
 
 import {
 	WORKSPACE_FILE_CHANGE_EVENT,
+	workspaceContract,
 	type FileChange,
 	type WorkspaceWatchFilter,
 	type WorkspaceWatcherCapability,
@@ -67,6 +68,9 @@ export async function mainRegister(
 		status: () => watcher.status(),
 	} satisfies WorkspaceWatcherCapability;
 	mainSdk.plugins.expose("watcher", capability);
+	mainSdk.channels(workspaceContract).handleAll({
+		status: () => watcher.status(),
+	});
 
 	const reconcile = async (): Promise<void> => {
 		const service = mainSdk.plugins.get<KiloUiWorkspaceCapability>("kilo-ui")?.workspaceService;

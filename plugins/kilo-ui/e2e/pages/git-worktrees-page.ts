@@ -75,13 +75,6 @@ export class GitWorktreesPage {
 		await page.getByText(workspaceName, { exact: true }).click();
 	}
 
-	/** The draft footer's local default (written on first mount with no stored preference). */
-	async assertDraftDefaultsToLocal(): Promise<void> {
-		await expect
-			.poll(() => getPage().getByTestId("git-draft-mode-trigger").textContent())
-			.toContain("Local");
-	}
-
 	async switchToLocalMode(): Promise<void> {
 		const page = getPage();
 		await page.getByTestId("git-draft-mode-trigger").click();

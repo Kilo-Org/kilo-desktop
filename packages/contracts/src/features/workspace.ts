@@ -1,6 +1,8 @@
 import { z } from "zod";
 
-import { defineEvent } from "../contract.js";
+import type { InferContract } from "@kilo-desktop/feature-sdk";
+
+import { defineContract, defineEvent, defineMethod } from "../contract.js";
 
 /**
  * Feature id for the built-in workspace watcher. Watches all registered
@@ -75,27 +77,37 @@ export type WorkspaceWatchFilter = z.infer<typeof workspaceWatchFilterSchema>;
 
 /**
  * Diagnostic state of a watched directory:
- * - `"active"` — watch requested, no failure observed. The underlying native
- *   subscription resolves asynchronously, so a brief window exists after
- *   `watchDirectory` returns where state is `"active"` but events cannot yet
- *   flow. This is intentional: readiness is not a state (mirrors vscode, which
- *   carries `ParcelWatcherInstance.ready: Promise<unknown>` rather than a
- *   `"pending"` enum value).
+ * - `"starting"` — the native subscription has been requested but has not
+ *   resolved yet. Events cannot flow in this state.
+ * - `"active"` — the native subscription resolved and can deliver events.
  * - `"retrying"` — the native subscription failed transiently; a bounded
  *   back-off loop is running. The retry loop owns resubscription; `watchDirectory`
  *   on a retrying directory is a no-op.
  * - `"failed"` — retry budget exhausted or non-recoverable error (ENOSPC/EMFILE).
  *   Calling `watchDirectory` again resets the loop (the recovery path).
  *
- * This type is diagnostics-only; callers must not gate logic on it.
+ * Consumers that must avoid racing the native watcher may poll the status
+ * channel until their directory is `"active"`.
  */
-export type WatcherDirectoryState = "active" | "retrying" | "failed";
+export const watcherDirectoryStateSchema = z.enum(["starting", "active", "retrying", "failed"]);
+export type WatcherDirectoryState = z.infer<typeof watcherDirectoryStateSchema>;
 
-export interface WatcherDirectoryStatus {
-	path: string;
-	state: WatcherDirectoryState;
-	subscriberCount: number;
-}
+export const watcherDirectoryStatusSchema = z.object({
+	path: z.string(),
+	state: watcherDirectoryStateSchema,
+	subscriberCount: z.number().int().nonnegative(),
+});
+export type WatcherDirectoryStatus = z.infer<typeof watcherDirectoryStatusSchema>;
+
+export const workspaceWatcherStatusSchema = z.object({
+	directories: z.array(watcherDirectoryStatusSchema),
+});
+export type WorkspaceWatcherStatus = z.infer<typeof workspaceWatcherStatusSchema>;
+
+export const workspaceContract = defineContract({
+	status: defineMethod(z.undefined(), workspaceWatcherStatusSchema),
+});
+export type WorkspaceServiceContract = InferContract<typeof workspaceContract>;
 
 /**
  * Capability the workspace feature exposes in main via
@@ -113,6 +125,6 @@ export interface WorkspaceWatcherCapability {
 		options: WorkspaceWatchFilter,
 		callback: (changes: FileChange[]) => void,
 	): () => void;
-	/** Current watcher status for diagnostics. */
-	status(): { directories: WatcherDirectoryStatus[] };
+	/** Current watcher status, including native subscription readiness. */
+	status(): WorkspaceWatcherStatus;
 }

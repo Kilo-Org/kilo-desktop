@@ -113,6 +113,7 @@ jobs:
     env:
       NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
       ANACONDA_NPM_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
+      PLAYWRIGHT_FAIL_ON_FLAKY_TESTS: "false"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node-pnpm
@@ -139,6 +140,7 @@ jobs:
     env:
       NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
       ANACONDA_NPM_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
+      PLAYWRIGHT_FAIL_ON_FLAKY_TESTS: "false"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node-pnpm

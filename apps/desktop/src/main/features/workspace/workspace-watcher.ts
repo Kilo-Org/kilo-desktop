@@ -8,7 +8,7 @@ import type {
 	FileChangeType,
 	WorkspaceFileChangeEvent,
 	WorkspaceWatchFilter,
-	WatcherDirectoryStatus,
+	WorkspaceWatcherStatus,
 } from "@kilo-desktop/contracts";
 
 import { watcherIgnorePatterns } from "./default-excludes.js";
@@ -67,7 +67,7 @@ interface DirectorySubscription {
 	filter: (changes: readonly FileChange[]) => FileChange[];
 }
 
-type DirectoryState = "active" | "retrying" | "failed";
+type DirectoryState = "starting" | "active" | "retrying" | "failed";
 
 interface WatchedDirectory {
 	state: DirectoryState;
@@ -141,7 +141,7 @@ export class WorkspaceWatcher {
 		const existing = this.#directories.get(dir);
 		if (!existing) {
 			this.#directories.set(dir, {
-				state: "active",
+				state: "starting",
 				registered: true,
 				subscriptions: new Map(),
 				retryCount: 0,
@@ -156,7 +156,7 @@ export class WorkspaceWatcher {
 		existing.registered = true;
 		if (existing.state === "failed") {
 			existing.retryCount = 0;
-			existing.state = "active";
+			existing.state = "starting";
 			void this.#startSubscription(dir, existing);
 		}
 	}
@@ -213,7 +213,7 @@ export class WorkspaceWatcher {
 		return [...this.#directories].filter(([, entry]) => entry.registered).map(([dir]) => dir);
 	}
 
-	status(): { directories: WatcherDirectoryStatus[] } {
+	status(): WorkspaceWatcherStatus {
 		return {
 			directories: [...this.#directories].map(([path, entry]) => ({
 				path,
@@ -262,6 +262,7 @@ export class WorkspaceWatcher {
 	}
 
 	async #startSubscription(dir: string, entry: WatchedDirectory): Promise<void> {
+		entry.state = "starting";
 		// Runtime resubscribe path, not shutdown — the prior unsubscribe settles
 		// in the background while the new subscription starts.
 		void this.#unsubscribeParcel(dir, entry);

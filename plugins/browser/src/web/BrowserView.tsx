@@ -76,6 +76,7 @@ export function BrowserView({ sessionId, instanceId, title, metadata }: BrowserV
 	const [error, setError] = useState<string>();
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [guestLease, setGuestLease] = useState<BrowserGuestLease>();
+	const [attachmentReady, setAttachmentReady] = useState(false);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const surfaceRef = useRef<HTMLDivElement>(null);
 	const webviewRef = useRef<ElectronWebview | null>(null);
@@ -84,7 +85,7 @@ export function BrowserView({ sessionId, instanceId, title, metadata }: BrowserV
 	const attachmentReadyRef = useRef(false);
 	const crashCountRef = useRef(0);
 	const pendingUrlRef = useRef<string | undefined>(undefined);
-	const ready = state !== undefined;
+	const ready = attachmentReady;
 	const hasUrl = Boolean(state?.url || restoredUrl);
 	const zoom = Math.round((state?.zoomFactor ?? 1) * 100);
 	const loadProgress = useLoadingProgress(hasUrl && (state?.loading ?? false));
@@ -220,11 +221,14 @@ export function BrowserView({ sessionId, instanceId, title, metadata }: BrowserV
 				attachedIdRef.current = webContentsId;
 				attachmentRetryPendingRef.current = false;
 				attachmentReadyRef.current = false;
+				setAttachmentReady(false);
 				void sdk.client
 					.attach({ instanceId, webContentsId })
 					.then((nextState) => {
+						if (attachedIdRef.current !== webContentsId) return;
 						attachmentRetryPendingRef.current = false;
 						attachmentReadyRef.current = true;
+						setAttachmentReady(true);
 						setState(nextState);
 						const pendingUrl = pendingUrlRef.current;
 						if (!pendingUrl) return;
@@ -232,8 +236,10 @@ export function BrowserView({ sessionId, instanceId, title, metadata }: BrowserV
 						return sdk.client.navigate({ instanceId, url: pendingUrl });
 					})
 					.catch((cause: unknown) => {
+						if (attachedIdRef.current !== webContentsId) return;
 						attachmentReadyRef.current = false;
-						if (attachedIdRef.current === webContentsId) attachedIdRef.current = undefined;
+						setAttachmentReady(false);
+						attachedIdRef.current = undefined;
 						if (attachmentRetryPendingRef.current) {
 							attachmentRetryPendingRef.current = false;
 							queueMicrotask(attemptAttachment);
@@ -248,7 +254,7 @@ export function BrowserView({ sessionId, instanceId, title, metadata }: BrowserV
 		[instanceId, sdk],
 	);
 	const closeMenu = useCallback(() => setMenuOpen(false), []);
-	useEffect(() => {
+	useLayoutEffect(() => {
 		const webview = guestLease?.webview;
 		if (!webview || !partition) return;
 		let recoveryTimer: ReturnType<typeof setTimeout> | undefined;

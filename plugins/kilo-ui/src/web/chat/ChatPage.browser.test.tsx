@@ -797,6 +797,9 @@ describe("ChatFeatureProvider thread + prepareSession wiring", () => {
 		const key = [...KILO_PROVIDER_LIST_QUERY_KEY, connection.baseUrl, connection.version];
 		queryClient.setQueryData(key, { providers: [], models: [], defaults: {} });
 		await vi.waitFor(() => expect(vi.mocked(useKiloRuntime)).toHaveBeenCalled());
+		await expect(vi.mocked(useKiloRuntime).mock.lastCall?.[0].connectionPromise).resolves.toEqual(
+			connection,
+		);
 
 		kiloServer.events.emit("server-status-changed", {
 			status: "ready",
@@ -906,6 +909,31 @@ describe("ChatPage", () => {
 		});
 	});
 
+	it("does not refetch the connection for the cold-start ready event", async () => {
+		let resolveConnection!: (value: KiloGlobalConnection) => void;
+		const getConnection = vi.fn(
+			() =>
+				new Promise<KiloGlobalConnection>((resolve) => {
+					resolveConnection = resolve;
+				}),
+		);
+		const { kiloServer } = renderChatPage({ getConnection });
+
+		await vi.waitFor(() => expect(getConnection).toHaveBeenCalledOnce());
+		kiloServer.events.emit("server-status-changed", {
+			status: "ready",
+			baseUrl: connection.baseUrl,
+			version: connection.version,
+		});
+		resolveConnection(connection);
+
+		await expect(vi.mocked(useKiloRuntime).mock.lastCall?.[0].connectionPromise).resolves.toEqual(
+			connection,
+		);
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		expect(getConnection).toHaveBeenCalledOnce();
+	});
+
 	it("refreshes the global connection after a runtime request fails", async () => {
 		const refreshedConnection = {
 			...connection,
@@ -976,7 +1004,9 @@ describe("ChatPage", () => {
 			version: refreshedConnection.version,
 		});
 
-		await vi.waitFor(() => expect(getConnection.mock.calls.length).toBeGreaterThan(1));
+		await vi.waitFor(() => expect(getConnection).toHaveBeenCalledTimes(2));
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		expect(getConnection).toHaveBeenCalledTimes(2);
 		await vi.waitFor(() =>
 			expect(vi.mocked(useKiloRuntime).mock.lastCall?.[0].connectionPromise).not.toBe(
 				initialPromise,

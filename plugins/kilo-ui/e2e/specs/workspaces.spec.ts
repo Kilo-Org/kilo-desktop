@@ -1,6 +1,8 @@
 import { test } from "../fixtures.js";
 
-test.describe("Workspaces @smoke", () => {
+test.use({ appIsolationKey: "workspaces" });
+
+test.describe("Workspaces", () => {
 	test("creates an unnamed workspace from the native folder picker", async ({
 		workspacesPage,
 		workspaceFolder,

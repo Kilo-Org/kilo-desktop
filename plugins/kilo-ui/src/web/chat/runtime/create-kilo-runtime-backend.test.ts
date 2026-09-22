@@ -37,6 +37,7 @@ function deferred<T>() {
 
 describe("createKiloRuntimeBackend", () => {
 	afterEach(() => {
+		vi.useRealTimers();
 		vi.clearAllMocks();
 	});
 
@@ -747,6 +748,57 @@ describe("createKiloRuntimeBackend", () => {
 		expect(directoryGet.mock.calls).toEqual([["secret"], ["rotated-secret"]]);
 		expect(createKiloGlobalClient).toHaveBeenCalledTimes(2);
 		expect(createKiloDirectoryClient).toHaveBeenCalledTimes(2);
+	});
+
+	it("bounds session listing and retries once against the current live connection", async () => {
+		vi.useFakeTimers();
+		const restarted = { ...connection, password: "rotated-secret" };
+		let current = Promise.resolve(connection);
+		const firstList = vi.fn(() => new Promise(() => undefined));
+		const secondList = vi.fn(async () => ({ data: [] }));
+		vi.mocked(createKiloGlobalClient).mockImplementation((next) => {
+			return {
+				experimental: {
+					session: { list: next === connection ? firstList : secondList },
+				},
+			} as never;
+		});
+		const backend = createKiloRuntimeBackend({
+			getConnection: () => current,
+			prepareSession: vi.fn(),
+		});
+
+		const listing = backend.globalClient.experimental.session.list({}, { throwOnError: true });
+		await vi.advanceTimersByTimeAsync(0);
+		expect(firstList).toHaveBeenCalledOnce();
+		current = Promise.resolve(restarted);
+		await vi.advanceTimersByTimeAsync(10_000);
+
+		await expect(listing).resolves.toEqual({ data: [] });
+		expect(secondList).toHaveBeenCalledOnce();
+		expect(createKiloGlobalClient).toHaveBeenCalledTimes(2);
+	});
+
+	it("rejects session listing after the bounded retry also times out", async () => {
+		vi.useFakeTimers();
+		const list = vi.fn(() => new Promise(() => undefined));
+		vi.mocked(createKiloGlobalClient).mockReturnValue({
+			experimental: { session: { list } },
+		} as never);
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession: vi.fn(),
+		});
+
+		const listing = backend.globalClient.experimental.session.list({}, { throwOnError: true });
+		const rejection = expect(listing).rejects.toThrow(/timed out/i);
+		await vi.advanceTimersByTimeAsync(0);
+		await vi.advanceTimersByTimeAsync(10_000);
+		await Promise.resolve();
+		await vi.advanceTimersByTimeAsync(10_000);
+
+		await rejection;
+		expect(list).toHaveBeenCalledTimes(2);
 	});
 
 	it("applies streamed events into the activity store and re-hydrates on reconnect", async () => {

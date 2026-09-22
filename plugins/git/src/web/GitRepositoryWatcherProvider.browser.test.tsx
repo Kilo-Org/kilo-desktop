@@ -137,17 +137,21 @@ describe("GitRepositoryWatcherProvider", () => {
 		expect(repositoryType).toHaveBeenCalledTimes(1);
 	});
 
-	it("ignores .git updates like checkouts touching .git/HEAD", async () => {
-		const repositoryType = vi.fn(() => ({ kind: "missing" }) as const);
+	it("refetches when existing .git metadata is updated", async () => {
+		let missing = true;
+		const repositoryType = vi.fn((): GitRepositoryType =>
+			missing ? { kind: "missing" } : regularRepositoryType,
+		);
 		const { workspaceMainSdk } = renderProvider({ repositoryType });
 
 		await expect.element(page.getByTestId("git-repository-kind")).toHaveTextContent("missing");
 
+		missing = false;
 		emitWorkspaceFileChange(workspaceMainSdk, [
 			{ path: "/repo/project/.git/HEAD", type: "update" },
 		]);
 
-		await new Promise((resolve) => setTimeout(resolve, 100));
-		expect(repositoryType).toHaveBeenCalledTimes(1);
+		await expect.element(page.getByTestId("git-repository-kind")).toHaveTextContent("regular");
+		expect(repositoryType).toHaveBeenCalledTimes(2);
 	});
 });

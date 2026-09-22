@@ -1,15 +1,24 @@
-import { useAuiState } from "@assistant-ui/react";
 import { renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
+
+import type * as AssistantUiReact from "@assistant-ui/react";
 
 import { SessionActivityProvider } from "./session-activity/SessionActivityProvider.js";
 import { createSessionActivityStore } from "./session-activity/session-activity-store.js";
 import { useThreadWorkingDirectory } from "./use-workspace-directory.js";
 
+const threadListItem = vi.hoisted(() => ({
+	remoteId: null as string | null,
+}));
+
 vi.mock("@assistant-ui/react", async (importOriginal) => {
-	const actual = await importOriginal<Record<string, unknown>>();
-	return { ...actual, useAuiState: vi.fn(() => null) };
+	const actual = await importOriginal<typeof AssistantUiReact>();
+	return {
+		...actual,
+		useAuiState: (selector: (state: { threadListItem: typeof threadListItem }) => unknown) =>
+			selector({ threadListItem }),
+	};
 });
 
 vi.mock("../workspaces/WorkspacesFeatureContext.js", () => ({
@@ -25,7 +34,7 @@ function withStore(children: ReactNode, store: ReturnType<typeof createSessionAc
 
 describe("useThreadWorkingDirectory", () => {
 	it("returns the worktree directory when the session is worktree-backed", () => {
-		vi.mocked(useAuiState).mockReturnValue("ses-worktree");
+		threadListItem.remoteId = "ses-worktree";
 		const store = createSessionActivityStore({ storage: null });
 		store.getState().hydrateSessions([
 			{
@@ -43,7 +52,7 @@ describe("useThreadWorkingDirectory", () => {
 	});
 
 	it("returns undefined when there is no worktree activity and no workspace", () => {
-		vi.mocked(useAuiState).mockReturnValue(null);
+		threadListItem.remoteId = null;
 		const store = createSessionActivityStore({ storage: null });
 
 		const { result } = renderHook(() => useThreadWorkingDirectory(), {

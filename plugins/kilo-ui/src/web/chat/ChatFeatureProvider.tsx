@@ -97,20 +97,13 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		invalidateKiloProviderQueries(queryClient);
 	}, [connectionOptions.queryKey, queryClient]);
 	useEffect(() => {
-		const stopServer = sdk.events.on("kilo-server.server-status-changed", (payload) => {
-			if (!payload || typeof payload !== "object") return;
-			const status = payload as { status?: unknown; baseUrl?: unknown };
-			if (status.status !== "ready" || typeof status.baseUrl !== "string") return;
-			void refreshConnection();
-		});
 		const stopModels = sdk.events.on("local-inference.models-changed", () => {
 			invalidateKiloProviderQueries(queryClient);
 		});
 		return () => {
-			stopServer();
 			stopModels();
 		};
-	}, [queryClient, refreshConnection, sdk]);
+	}, [queryClient, sdk]);
 	const connection = useQuery(connectionOptions);
 	// One deferred covers the cold-start pending→ready transition so the promise
 	// identity (and thus useKiloRuntime's backend / OpenCode SSE) stays fixed.
@@ -201,7 +194,6 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 			reject,
 			dataUpdatedAt: null,
 		};
-		void queryClient.fetchQuery(connectionOptions).catch(() => undefined);
 		return pending;
 	}, [
 		connection.data,
@@ -210,8 +202,6 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		connection.errorUpdatedAt,
 		connection.isError,
 		connection.isFetching,
-		connectionOptions,
-		queryClient,
 	]);
 	const onRuntimeError = useCallback(
 		(error: unknown) => {

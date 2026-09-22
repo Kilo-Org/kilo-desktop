@@ -108,6 +108,31 @@ describe("workspace mainRegister", () => {
 		unsubscribe();
 	});
 
+	it("exposes actual native watcher readiness through the status channel", async () => {
+		let releaseSubscribe!: () => void;
+		harness = boot();
+		const registered = mainRegister(harness.workspaceSdk, {
+			subscribeFn: (dir, onEvents, opts) =>
+				new Promise<{ unsubscribe(): Promise<void> }>((resolve) => {
+					releaseSubscribe = () => resolve(harness!.parcel.subscribe(dir, onEvents, opts));
+				}),
+			realpath: (p) => p,
+		});
+		await tick();
+
+		await expect(harness.workspaceSdk.invoke("status")).resolves.toEqual({
+			directories: [{ path: PROJECT_A, state: "starting", subscriberCount: 0 }],
+		});
+
+		releaseSubscribe();
+		await registered;
+		await vi.waitFor(async () => {
+			await expect(harness!.workspaceSdk.invoke("status")).resolves.toEqual({
+				directories: [{ path: PROJECT_A, state: "active", subscriberCount: 0 }],
+			});
+		});
+	});
+
 	it("reconciles on kilo-ui workspace events: starts new folders and drops removed ones", async () => {
 		harness = boot();
 		await mainRegister(harness.workspaceSdk, { subscribeFn: harness.parcel.subscribe });

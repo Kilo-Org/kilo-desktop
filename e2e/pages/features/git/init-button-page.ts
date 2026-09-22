@@ -1,3 +1,5 @@
+import { execFileSync } from "node:child_process";
+
 import {
 	click,
 	expectElementToBeVisible,
@@ -42,9 +44,10 @@ export class InitButtonPage {
 			"Initialize Git button should render in the draft footer for a plain workspace folder",
 		);
 		await click(button);
-		// Success invalidates repositoryType → the refetch reports
-		// `regular` → the button is replaced by the branch selector.
-		await button.waitFor({ state: "detached" });
+		await expectElementToBeVisible(
+			getLocatorByTestId("git-branch-selector-trigger"),
+			"The branch selector should replace the init button once the repository exists",
+		);
 	}
 
 	async initializeFromThreadFooter(): Promise<void> {
@@ -54,8 +57,21 @@ export class InitButtonPage {
 			"Initialize Git button should render in the thread footer for a plain workspace folder",
 		);
 		await click(button);
-		// Success invalidates repositoryType → the refetch reports
-		// `regular` → the branch label replaces the button.
-		await button.waitFor({ state: "detached" });
+		await expectElementToBeVisible(
+			getLocatorByTestId("git-branch-label"),
+			"The branch label should replace the init button once the repository exists",
+		);
+	}
+
+	async initializeExternally(folderPath: string): Promise<void> {
+		await expectElementToBeVisible(
+			getLocatorByTestId("git-init-draft-button"),
+			"Initialize Git button should render before external initialization",
+		);
+		execFileSync("git", ["-C", folderPath, "init"]);
+		await expectElementToBeVisible(
+			getLocatorByTestId("git-branch-selector-trigger"),
+			"The branch selector should appear after external initialization",
+		);
 	}
 }

@@ -1062,8 +1062,8 @@ importers:
         specifier: 0.1.9
         version: 0.1.9
       '@anaconda/desktop-bridge-payload-linux-x64':
-        specifier: 0.1.7
-        version: 0.1.7
+        specifier: 0.1.9
+        version: 0.1.9
       '@anaconda/desktop-bridge-payload-win32-x64':
         specifier: 0.1.9
         version: 0.1.9
@@ -1886,8 +1886,8 @@ packages:
     cpu: [arm64]
     os: [darwin]
 
-  '@anaconda/desktop-bridge-payload-linux-x64@0.1.7':
-    resolution: {integrity: sha512-WSUjte0TTat/6eeA8tCCVR+5/+wfK0saKBPPJLjknoLMJnjGYcrEIHNrfQ3q3P1xPEHI8jL+zpEUBpUEiWrdzg==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-linux-x64/0.1.7/93fc08cdf8b83b2f53cdc5f6dcc7819037f95cb2}
+  '@anaconda/desktop-bridge-payload-linux-x64@0.1.9':
+    resolution: {integrity: sha512-EwUH67mZersq3RKI4Mnh/ornMUhKmVJQaruUs/979qKXMTwirmCNnkhgvzVbznwHOA2GTwkaVY+QOI0ldbmYZw==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-linux-x64/0.1.9/5393f22d7ff217ddcdc986bf6bc269cd5928ed64}
     cpu: [x64]
     os: [linux]
 
@@ -10447,7 +10447,7 @@ snapshots:
   '@anaconda/desktop-bridge-payload-darwin-arm64@0.1.9':
     optional: true
 
-  '@anaconda/desktop-bridge-payload-linux-x64@0.1.7':
+  '@anaconda/desktop-bridge-payload-linux-x64@0.1.9':
     optional: true
 
   '@anaconda/desktop-bridge-payload-win32-x64@0.1.9':

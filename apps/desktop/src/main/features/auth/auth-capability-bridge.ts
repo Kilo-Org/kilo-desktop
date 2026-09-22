@@ -9,6 +9,7 @@ import type { AuthSessionService } from "./auth-service.js";
  * ```ts
  * const auth = mainSdk.plugins.get<AuthMainCapability>("auth");
  * const apiKey = await auth?.session.getApiKey();
+ * const domain = await auth?.session.getSiteDomain();
  * ```
  *
  * Also relays session changes to the feature event bus (`auth.changed`) so
@@ -20,9 +21,10 @@ import type { AuthSessionService } from "./auth-service.js";
 export function registerAuthCapability(auth: AuthSessionService): () => void {
 	// Expose the auth capability under the "auth" feature ID. The capability
 	// name "session" becomes the property name in the merged result —
-	// consumers read `auth.session.getApiKey()`.
+	// consumers read `auth.session.getApiKey()` / `auth.session.getSiteDomain()`.
 	featureRouter.capabilityRegistry.expose("auth", "session", {
 		getApiKey: () => auth.getApiKey(),
+		getSiteDomain: () => auth.getSiteDomain(),
 	});
 
 	// Relay auth session changes to the feature event bus so main-side

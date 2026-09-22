@@ -88,7 +88,10 @@ export async function mainRegister(mainSdk: MainSdk): Promise<void> {
 	});
 	const getApiKey = async () =>
 		(await mainSdk.plugins.get<AuthMainCapability>("auth")?.session.getApiKey()) ?? null;
-	const catalogDependencies = { fetch: mainSdk.net.fetch, getApiKey };
+	const getSiteDomain = async () =>
+		(await mainSdk.plugins.get<AuthMainCapability>("auth")?.session.getSiteDomain()) ??
+		"anaconda.com";
+	const catalogDependencies = { fetch: mainSdk.net.fetch, getApiKey, getSiteDomain };
 	const catalog = new ModelCatalogService(catalogDependencies, () => hardwareProfile.read());
 	const downloads = new ModelDownloadManager({
 		modelsDir: path.join(mainSdk.storageDir, "models"),

@@ -51,7 +51,11 @@ describe("listModelCatalog", () => {
 
 		await expect(
 			getModelDownloadUrl(
-				{ fetch, getApiKey: async () => "anaconda-api-key" },
+				{
+					fetch,
+					getApiKey: async () => "anaconda-api-key",
+					getSiteDomain: async () => "anaconda.com",
+				},
 				"model/id",
 				"file id",
 				signal,
@@ -74,7 +78,11 @@ describe("listModelCatalog", () => {
 		const fetch = vi.fn(async () => Response.json({ result: { data: [apiModel], total: 1 } }));
 
 		await expect(
-			listModelCatalog({ fetch, getApiKey: async () => "anaconda-api-key" }),
+			listModelCatalog({
+				fetch,
+				getApiKey: async () => "anaconda-api-key",
+				getSiteDomain: async () => "anaconda.com",
+			}),
 		).resolves.toEqual({
 			models: [
 				{
@@ -153,7 +161,11 @@ describe("listModelCatalog", () => {
 			}),
 		);
 
-		const catalog = await listModelCatalog({ fetch, getApiKey: async () => "anaconda-api-key" });
+		const catalog = await listModelCatalog({
+			fetch,
+			getApiKey: async () => "anaconda-api-key",
+			getSiteDomain: async () => "anaconda.com",
+		});
 
 		expect(catalog.models).toEqual([
 			expect.objectContaining({
@@ -194,7 +206,11 @@ describe("listModelCatalog", () => {
 			}),
 		);
 
-		const catalog = await listModelCatalog({ fetch, getApiKey: async () => "anaconda-api-key" });
+		const catalog = await listModelCatalog({
+			fetch,
+			getApiKey: async () => "anaconda-api-key",
+			getSiteDomain: async () => "anaconda.com",
+		});
 
 		expect(catalog.models[0]).toMatchObject({
 			activeParameters: 32_000_000_000,
@@ -220,7 +236,11 @@ describe("listModelCatalog", () => {
 			}),
 		);
 
-		const catalog = await listModelCatalog({ fetch, getApiKey: async () => "anaconda-api-key" });
+		const catalog = await listModelCatalog({
+			fetch,
+			getApiKey: async () => "anaconda-api-key",
+			getSiteDomain: async () => "anaconda.com",
+		});
 
 		expect(catalog.models[0]).toMatchObject({
 			modelType: "Sentence Similarity",
@@ -251,7 +271,11 @@ describe("listModelCatalog", () => {
 			}),
 		);
 
-		const catalog = await listModelCatalog({ fetch, getApiKey: async () => "anaconda-api-key" });
+		const catalog = await listModelCatalog({
+			fetch,
+			getApiKey: async () => "anaconda-api-key",
+			getSiteDomain: async () => "anaconda.com",
+		});
 
 		expect(catalog.models[0]).toMatchObject({
 			modelType: "Text Generation",
@@ -290,7 +314,11 @@ describe("listModelCatalog", () => {
 			}),
 		);
 
-		const catalog = await listModelCatalog({ fetch, getApiKey: async () => "anaconda-api-key" });
+		const catalog = await listModelCatalog({
+			fetch,
+			getApiKey: async () => "anaconda-api-key",
+			getSiteDomain: async () => "anaconda.com",
+		});
 
 		expect(catalog.models[0]?.numParameters).toBe(7_000_000_000);
 	});
@@ -318,7 +346,11 @@ describe("listModelCatalog", () => {
 			}),
 		);
 
-		const catalog = await listModelCatalog({ fetch, getApiKey: async () => "anaconda-api-key" });
+		const catalog = await listModelCatalog({
+			fetch,
+			getApiKey: async () => "anaconda-api-key",
+			getSiteDomain: async () => "anaconda.com",
+		});
 
 		expect(catalog.models[0]?.numParameters).toBe(9_000_000_000);
 	});
@@ -346,7 +378,11 @@ describe("listModelCatalog", () => {
 			}),
 		);
 
-		const catalog = await listModelCatalog({ fetch, getApiKey: async () => "anaconda-api-key" });
+		const catalog = await listModelCatalog({
+			fetch,
+			getApiKey: async () => "anaconda-api-key",
+			getSiteDomain: async () => "anaconda.com",
+		});
 
 		expect(catalog.models.map((entry) => entry.numParameters)).toEqual([
 			5_000_000_000, 8_000_000_000,
@@ -370,7 +406,11 @@ describe("listModelCatalog", () => {
 			}),
 		);
 
-		const catalog = await listModelCatalog({ fetch, getApiKey: async () => "anaconda-api-key" });
+		const catalog = await listModelCatalog({
+			fetch,
+			getApiKey: async () => "anaconda-api-key",
+			getSiteDomain: async () => "anaconda.com",
+		});
 
 		expect(catalog.models[0]?.numParameters).toBe(109_000_000_000);
 	});
@@ -401,7 +441,11 @@ describe("listModelCatalog", () => {
 			}),
 		);
 
-		const catalog = await listModelCatalog({ fetch, getApiKey: async () => "anaconda-api-key" });
+		const catalog = await listModelCatalog({
+			fetch,
+			getApiKey: async () => "anaconda-api-key",
+			getSiteDomain: async () => "anaconda.com",
+		});
 
 		expect(catalog.models.map((model) => model.name)).toEqual(["Llama 3.1 8B Instruct"]);
 		expect(catalog.total).toBe(1);
@@ -409,11 +453,63 @@ describe("listModelCatalog", () => {
 
 	it("requires a signed-in Anaconda account", async () => {
 		const fetch = vi.fn();
+		const getSiteDomain = vi.fn(async () => "anaconda.com");
 
-		await expect(listModelCatalog({ fetch, getApiKey: async () => null })).rejects.toMatchObject({
+		await expect(
+			listModelCatalog({ fetch, getApiKey: async () => null, getSiteDomain }),
+		).rejects.toMatchObject({
 			name: "FeatureError",
 			message: "Sign in to your Anaconda account to view the model catalog.",
 		});
 		expect(fetch).not.toHaveBeenCalled();
+		expect(getSiteDomain).not.toHaveBeenCalled();
+	});
+
+	it("requests the catalog from the configured Anaconda site", async () => {
+		const fetch = vi.fn(async () => Response.json({ result: { data: [apiModel], total: 1 } }));
+
+		await listModelCatalog({
+			fetch,
+			getApiKey: async () => "anaconda-api-key",
+			getSiteDomain: async () => "stage.example.com",
+		});
+
+		expect(fetch).toHaveBeenCalledWith("https://stage.example.com/api/ai/model/models", {
+			headers: {
+				Accept: "application/json",
+				Authorization: "Bearer anaconda-api-key",
+				"X-Anaconda-Api-Version": "3",
+			},
+		});
+	});
+
+	it("resolves download URLs from the configured Anaconda site", async () => {
+		const fetch = vi.fn(async () =>
+			Response.json({ download_url: "https://download.example.test/signed-model.gguf" }),
+		);
+		const signal = new AbortController().signal;
+
+		await getModelDownloadUrl(
+			{
+				fetch,
+				getApiKey: async () => "anaconda-api-key",
+				getSiteDomain: async () => "stage.example.com",
+			},
+			"model/id",
+			"file id",
+			signal,
+		);
+
+		expect(fetch).toHaveBeenCalledWith(
+			"https://stage.example.com/api/ai/model/models/model%2Fid/files/file%20id/download",
+			{
+				headers: {
+					Accept: "application/json",
+					Authorization: "Bearer anaconda-api-key",
+					"X-Anaconda-Api-Version": "3",
+				},
+				signal,
+			},
+		);
 	});
 });

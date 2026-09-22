@@ -5,6 +5,7 @@
  * ```ts
  * const auth = mainSdk.plugins.get<AuthMainCapability>("auth");
  * const apiKey = await auth?.session.getApiKey();
+ * const domain = await auth?.session.getSiteDomain();
  * ```
  *
  * The raw API key is never exposed to the renderer process.
@@ -20,4 +21,12 @@ export interface AuthMainCapabilityService {
 	 * is unavailable.
 	 */
 	getApiKey(): Promise<string | null>;
+
+	/**
+	 * The resolved Anaconda site host (e.g. `stage.anaconda.com`, or
+	 * `host:port` for self-hosted), for consumers that must derive per-site
+	 * API URLs. Defaults to — and falls back to — `anaconda.com` when the
+	 * site config cannot be resolved. Main-process only.
+	 */
+	getSiteDomain(): Promise<string>;
 }

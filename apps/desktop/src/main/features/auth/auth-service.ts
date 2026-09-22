@@ -20,6 +20,7 @@ import { startLoopbackAuthorize, electronFetch } from "./oauth/callback-server.j
 import {
 	resolveSite,
 	buildOAuthConfig,
+	DEFAULT_DOMAIN,
 	type ConfigLoader,
 	type ResolvedSite,
 } from "./config/site.js";
@@ -147,6 +148,23 @@ export class AuthSessionService {
 			return await keyring.getApiKey();
 		} catch {
 			return null;
+		}
+	}
+
+	/**
+	 * The resolved Anaconda site host (e.g. `stage.anaconda.com`, or
+	 * `host:port` for self-hosted), used by consumers to derive per-site API
+	 * URLs. Falls back to the default domain (`anaconda.com`) when the config
+	 * cannot be resolved. This method is main-process-only.
+	 */
+	async getSiteDomain(): Promise<string> {
+		try {
+			return (await this.#resolveSite(this.#configLoader)).domain;
+		} catch (cause) {
+			this.#logger.warn(
+				`getSiteDomain: site resolution failed, using default: ${errorReason(cause)}`,
+			);
+			return DEFAULT_DOMAIN;
 		}
 	}
 

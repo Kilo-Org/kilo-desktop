@@ -574,6 +574,35 @@ describe("AuthSessionService", () => {
 		});
 	});
 
+	describe("getSiteDomain", () => {
+		it("returns the configured site domain", async () => {
+			const service = new AuthSessionService({
+				resolveSite: async () => ({ domain: "stage.anaconda.com", client_id: "test-client" }),
+			});
+
+			expect(await service.getSiteDomain()).toBe("stage.anaconda.com");
+		});
+
+		it("returns the default domain when no site is configured", async () => {
+			const service = new AuthSessionService({
+				resolveSite: async () => ({ domain: "anaconda.com" }),
+			});
+
+			expect(await service.getSiteDomain()).toBe("anaconda.com");
+		});
+
+		it("returns the default domain when site resolution throws", async () => {
+			const service = new AuthSessionService({
+				resolveSite: async () => {
+					throw new Error("bad config");
+				},
+				logger: silentLogger,
+			});
+
+			expect(await service.getSiteDomain()).toBe("anaconda.com");
+		});
+	});
+
 	describe("key rotation detection", () => {
 		it("fires onChanged when the API key rotates but session identity is unchanged", async () => {
 			let currentKey = "key-v1";

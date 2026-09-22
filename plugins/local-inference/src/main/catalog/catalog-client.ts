@@ -8,7 +8,13 @@ import {
 } from "./catalog-api-schemas.js";
 import { mapModelCatalog } from "./map-catalog-model.js";
 
-const MODEL_CATALOG_URL = "https://anaconda.com/api/ai/model/models";
+const MODEL_CATALOG_PATH = "/api/ai/model/models";
+
+function resolveCatalogUrl(
+	getSiteDomain: ModelCatalogDependencies["getSiteDomain"],
+): Promise<string> {
+	return getSiteDomain().then((domain) => `https://${domain}${MODEL_CATALOG_PATH}`);
+}
 
 function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
 	if (signal.aborted) return Promise.reject(signal.reason);
@@ -31,17 +37,20 @@ function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
 export interface AuthMainCapability extends Record<string, unknown> {
 	session: {
 		getApiKey(): Promise<string | null>;
+		getSiteDomain(): Promise<string>;
 	};
 }
 
 export interface ModelCatalogDependencies {
 	fetch: MainSdkFetch;
 	getApiKey(): Promise<string | null>;
+	getSiteDomain(): Promise<string>;
 }
 
 export async function listModelCatalog({
 	fetch,
 	getApiKey,
+	getSiteDomain,
 }: ModelCatalogDependencies): Promise<ModelCatalog> {
 	const apiKey = await getApiKey();
 	if (!apiKey) {
@@ -50,7 +59,7 @@ export async function listModelCatalog({
 
 	let response: Response;
 	try {
-		response = await fetch(MODEL_CATALOG_URL, {
+		response = await fetch(await resolveCatalogUrl(getSiteDomain), {
 			headers: {
 				Accept: "application/json",
 				Authorization: `Bearer ${apiKey}`,
@@ -85,7 +94,7 @@ export async function listModelCatalog({
 }
 
 export async function getModelDownloadUrl(
-	{ fetch, getApiKey }: ModelCatalogDependencies,
+	{ fetch, getApiKey, getSiteDomain }: ModelCatalogDependencies,
 	modelId: string,
 	fileId: string,
 	signal: AbortSignal,
@@ -95,10 +104,12 @@ export async function getModelDownloadUrl(
 		throw new FeatureError("Sign in to your Anaconda account to download models.");
 	}
 
+	const catalogUrl = await abortable(resolveCatalogUrl(getSiteDomain), signal);
+
 	let response: Response;
 	try {
 		response = await fetch(
-			`${MODEL_CATALOG_URL}/${encodeURIComponent(modelId)}/files/${encodeURIComponent(fileId)}/download`,
+			`${catalogUrl}/${encodeURIComponent(modelId)}/files/${encodeURIComponent(fileId)}/download`,
 			{
 				signal,
 				headers: {

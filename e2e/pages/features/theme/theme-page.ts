@@ -32,6 +32,7 @@ export class ThemePage {
 			app = await launch();
 			setPage(await waitForMainWindow(app));
 			await click(getLocatorByTestId("nav-settings"));
+			await click(getLocatorByTestId("settings-section-appearance"));
 			await click(getLocatorByTestId("appearance-theme-dark"));
 			await click(getLocatorByTestId("appearance-color-theme"));
 			await click(getLocatorByTestId("appearance-color-theme-dracula"));
@@ -42,6 +43,7 @@ export class ThemePage {
 			const relaunchedApp = app;
 			setPage(await waitForMainWindow(relaunchedApp));
 			await click(getLocatorByTestId("nav-settings"));
+			await click(getLocatorByTestId("settings-section-appearance"));
 			await expectElementToContainText(getLocatorByTestId("appearance-color-theme"), "Dracula", {
 				message: "The theme picker should restore Dracula after relaunch",
 			});

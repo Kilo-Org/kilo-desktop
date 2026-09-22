@@ -9,6 +9,15 @@ test.describe("Settings", () => {
 		await appShellPage.verifyShellIsLoaded();
 	});
 
+	test("opens Account settings from the settings siderail", async ({ appShellPage }) => {
+		await appShellPage.verifyShellIsLoaded();
+		await appShellPage.openSettings();
+		await appShellPage.openAccountSettings();
+		await appShellPage.verifyAccountSettings();
+		await appShellPage.leaveSettings();
+		await appShellPage.verifyShellIsLoaded();
+	});
+
 	test("reads automatic update state over the desktop bridge", async ({ appShellPage }) => {
 		await appShellPage.verifyShellIsLoaded();
 		await appShellPage.openSettings();

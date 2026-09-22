@@ -141,8 +141,14 @@ describe("findSettingsSection", () => {
 });
 
 describe("PLUGIN_SETTINGS", () => {
-	it("starts with the shell Appearance section", () => {
+	it("starts with the kilo-ui Account section, then the shell Appearance section", () => {
 		expect(PLUGIN_SETTINGS[0]).toMatchObject({
+			pluginId: "kilo-ui",
+			id: "account",
+			title: "Account",
+			category: "Personal",
+		});
+		expect(PLUGIN_SETTINGS[1]).toMatchObject({
 			pluginId: "shell",
 			id: "appearance",
 			title: "Appearance",
@@ -157,6 +163,15 @@ describe("PLUGIN_SETTINGS", () => {
 			title: "AI Providers",
 			category: "AI",
 			priority: 90,
+		});
+	});
+
+	it("includes the kilo-ui Account section under Personal", () => {
+		expect(PLUGIN_SETTINGS.find((section) => section.id === "account")).toMatchObject({
+			pluginId: "kilo-ui",
+			title: "Account",
+			category: "Personal",
+			priority: 105,
 		});
 	});
 

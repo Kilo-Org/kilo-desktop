@@ -53,9 +53,10 @@ export class AppShellPage {
 			getLocatorByTestId("settings-page"),
 			"Settings page should be visible",
 		);
+		await click(getLocatorByTestId("settings-section-appearance"));
 		await expectElementToBeVisible(
 			getLocatorByTestId("appearance-settings"),
-			"Appearance should be the first settings section",
+			"Appearance settings should open from the settings siderail",
 		);
 		await expectElementToBeVisible(
 			getLocatorByTestId("appearance-theme"),
@@ -79,6 +80,25 @@ export class AppShellPage {
 		await expectElementToBeVisible(
 			getLocatorByTestId("update-track"),
 			"About settings should show the selected update track",
+		);
+	}
+
+	async openAccountSettings(): Promise<void> {
+		await click(getLocatorByTestId("settings-section-account"));
+	}
+
+	async verifyAccountSettings(): Promise<void> {
+		await expectElementToBeVisible(
+			getLocatorByTestId("account-page"),
+			"Account settings should be visible in the packaged desktop app",
+		);
+		await expectElementToBeVisible(
+			getLocatorByTestId("account-kilo-row"),
+			"Account settings should show the Kilo account row",
+		);
+		await expectElementToBeVisible(
+			getLocatorByTestId("account-anaconda-row"),
+			"Account settings should show the Anaconda account row",
 		);
 	}
 

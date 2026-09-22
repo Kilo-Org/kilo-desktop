@@ -38,6 +38,14 @@
 		],
 		"settings": [
 			{
+				"id": "account",
+				"title": "Account",
+				"component": "AccountSettings",
+				"icon": "AccountNavIcon",
+				"category": "Personal",
+				"priority": 105
+			},
+			{
 				"id": "kilo-providers",
 				"title": "AI Providers",
 				"component": "KiloProvidersSettings",

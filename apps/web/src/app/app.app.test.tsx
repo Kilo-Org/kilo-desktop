@@ -160,7 +160,8 @@ describe("AppProviders (app-level)", () => {
 		await screen.getByTestId("nav-settings").click();
 		await expect.element(screen.getByTestId("settings-page")).toBeVisible();
 		await expect.element(screen.getByRole("heading", { name: "Settings" })).toBeVisible();
-		await expect.element(screen.getByTestId("appearance-settings")).toBeVisible();
+		await expect.element(screen.getByTestId("account-page")).toBeVisible();
+		await expect.element(screen.getByTestId("settings-section-account")).toBeVisible();
 		await expect.element(screen.getByTestId("settings-section-appearance")).toBeVisible();
 		await expect.element(screen.getByTestId("settings-section-kilo-providers")).toBeVisible();
 		await expect.element(screen.getByTestId("settings-empty")).not.toBeInTheDocument();

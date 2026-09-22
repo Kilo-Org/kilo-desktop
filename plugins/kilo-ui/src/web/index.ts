@@ -1,3 +1,5 @@
+export { AccountNavIcon } from "./account/AccountNavIcon.js";
+export { AccountSettings } from "./account/AccountSettings.js";
 export { kiloUiBrowserRegister as browserRegister } from "./browserRegister.js";
 export { KiloProvidersNavIcon } from "./providers/KiloProvidersNavIcon.js";
 export { KiloProvidersSettings } from "./providers/KiloProvidersSettings.js";

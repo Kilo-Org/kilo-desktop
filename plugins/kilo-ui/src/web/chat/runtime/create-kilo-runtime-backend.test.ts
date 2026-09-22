@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { STREAM_RECONNECTED_EVENT_TYPE } from "@assistant-ui/react-opencode";
 import { toast } from "@kilo-desktop/ui/components/sonner";
+import { createKiloClient } from "@kilocode/sdk/v2/client";
 import type { KiloGlobalConnection } from "../../../contracts/chat/schemas.js";
 import { LOCAL_MODEL_SERVER_PROVIDER_ID } from "../../providers/provider-ids.js";
 import { createSessionActivityStore } from "../session-activity/session-activity-store.js";
@@ -273,6 +274,38 @@ describe("createKiloRuntimeBackend", () => {
 		);
 		unsubscribe();
 		expect(eventCallOptions?.signal?.aborted).toBe(true);
+	});
+
+	it("subscribes through a real SDK client's prototype-backed global endpoint", async () => {
+		const client = createKiloClient({ baseUrl: connection.baseUrl });
+		const event = vi.fn(async () => ({
+			stream: (async function* () {
+				yield {
+					directory: "/workspace/events",
+					payload: {
+						type: "session.updated",
+						properties: { info: { id: "session-events" } },
+					},
+				};
+			})(),
+		}));
+		client.global.event = event as typeof client.global.event;
+		vi.mocked(createKiloGlobalClient).mockReturnValue(client);
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession: vi.fn(),
+		});
+		const source = backend.createEventSource();
+		const listener = vi.fn();
+		const unsubscribe = source.subscribe(listener);
+
+		try {
+			await vi.waitFor(() => expect(listener).toHaveBeenCalledOnce());
+			expect(event).toHaveBeenCalledOnce();
+		} finally {
+			unsubscribe();
+			source.dispose();
+		}
 	});
 
 	it("shows a warning toast when the prepared worktree carries one", async () => {

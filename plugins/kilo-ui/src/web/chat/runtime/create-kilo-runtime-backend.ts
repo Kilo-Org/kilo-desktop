@@ -125,13 +125,21 @@ export function createKiloRuntimeBackend({
 	const liveGlobalClient = async () => {
 		const client = await liveRawGlobalClient();
 		if (!client.experimental?.session) return client;
-		return {
-			...client,
-			experimental: {
-				...client.experimental,
-				session: { ...client.experimental.session, list: listSessions },
+		const session = new Proxy(client.experimental.session, {
+			get(target, property) {
+				return property === "list" ? listSessions : Reflect.get(target, property, target);
 			},
-		} as KiloClient;
+		});
+		const experimental = new Proxy(client.experimental, {
+			get(target, property) {
+				return property === "session" ? session : Reflect.get(target, property, target);
+			},
+		});
+		return new Proxy(client, {
+			get(target, property) {
+				return property === "experimental" ? experimental : Reflect.get(target, property, target);
+			},
+		});
 	};
 
 	const globalClient = createDeferredKiloRuntimeClient(liveGlobalClient);

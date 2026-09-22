@@ -40,7 +40,7 @@ vi.mock("@launchdarkly/node-client-sdk", () => ({
 	createClient: (...args: unknown[]) => createClientSpy(...(args as [])),
 }));
 
-const { LaunchDarklyProvider } = await import("./provider.js");
+const { LaunchDarklyProvider, redactSdkDebugPayload } = await import("./provider.js");
 type LaunchDarklyProviderOptions = ConstructorParameters<typeof LaunchDarklyProvider>[0];
 
 function fakeLogger(overrides: Partial<Logger> = {}): Logger {
@@ -251,5 +251,34 @@ describe("LaunchDarklyProvider", () => {
 		// Listeners were removed, so a subsequent SDK change is not re-emitted.
 		changeListeners.forEach((cb) => cb());
 		expect(onChange).not.toHaveBeenCalled();
+	});
+});
+
+describe("redactSdkDebugPayload", () => {
+	it("redacts PII attribute values from an SDK context dump", () => {
+		const payload =
+			'Identifying {"kind":"user","key":"u1","name":"Ada Lovelace","firstName":"Ada",' +
+			'"lastName":"Lovelace","email":"ada@example.com","username":"ada",' +
+			'"is_anaconda_employee":true,"subscription":"free_subscription","app_version":"1.2.3"}';
+
+		const redacted = redactSdkDebugPayload(payload);
+
+		expect(redacted).toContain('"email":"***"');
+		expect(redacted).toContain('"name":"***"');
+		expect(redacted).toContain('"firstName":"***"');
+		expect(redacted).toContain('"lastName":"***"');
+		expect(redacted).toContain('"username":"***"');
+		expect(redacted).not.toContain("ada@example.com");
+		expect(redacted).not.toContain("Ada");
+		// Non-PII attributes survive untouched.
+		expect(redacted).toContain('"key":"u1"');
+		expect(redacted).toContain('"is_anaconda_employee":true');
+		expect(redacted).toContain('"subscription":"free_subscription"');
+	});
+
+	it("leaves payloads without PII attributes unchanged", () => {
+		const payload = 'Received put event {"flags":["a","b"]}';
+
+		expect(redactSdkDebugPayload(payload)).toBe(payload);
 	});
 });

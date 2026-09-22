@@ -55,13 +55,27 @@ export class LaunchDarklyProvider
 		this.#logger = options.logger ?? createLogger("launch-darkly");
 		this.#appVersion = options.appVersion;
 		this.#client = createClient(options.clientSideId, this.#toLdContext(options.initialContext), {
-			logger: this.#logger as LDLogger,
+			logger: this.#sdkLogger(),
 			...(options.storagePath !== undefined ? { localStoragePath: options.storagePath } : {}),
 		});
 
 		this.#client.on("change", () => {
 			this.emit("change");
 		});
+	}
+
+	/**
+	 * Adapt our scoped logger to the SDK's `LDLogger`. Debug is redacted: the
+	 * SDK dumps the full LD context ("Identifying {...}") at that level, which
+	 * would persist raw PII attributes (name, email, username) to log files.
+	 */
+	#sdkLogger(): LDLogger {
+		return {
+			debug: (message: string) => this.#logger.debug(redactSdkDebugPayload(message)),
+			info: (message: string) => this.#logger.info(message),
+			warn: (message: string) => this.#logger.warn(message),
+			error: (message: string) => this.#logger.error(message),
+		};
 	}
 
 	/**
@@ -163,15 +177,16 @@ export class LaunchDarklyProvider
 }
 
 /**
- * Human-readable one-liner for identify logging. Email is masked so the log
- * confirms it was included without persisting the address to log files.
+ * Human-readable one-liner for identify logging. Email is masked and name /
+ * username are omitted entirely so the line confirms which attributes were
+ * set without persisting raw PII to log files.
  */
 function describeContext(ctx: FeatureFlagContext): string {
 	const parts: string[] = [`userId=${ctx.userId ?? "anonymous"}`, `employee=${ctx.isEmployee}`];
 	if (ctx.subscription) parts.push(`subscription=${ctx.subscription}`);
 	if (ctx.email) parts.push(`email=${maskEmail(ctx.email)}`);
-	if (ctx.username) parts.push(`username=${ctx.username}`);
-	if (ctx.name) parts.push(`name="${ctx.name}"`);
+	if (ctx.name) parts.push("name=set");
+	if (ctx.username) parts.push("username=set");
 	if (ctx.organization) {
 		parts.push(
 			`org=${ctx.organization.id}${ctx.organization.name ? ` (${ctx.organization.name})` : ""}`,
@@ -185,4 +200,18 @@ function maskEmail(email: string): string {
 	if (!local || !domain) return "***";
 	const head = local.slice(0, 1);
 	return `${head}***@${domain}`;
+}
+
+/** LD context attributes that carry PII and must not reach log files. */
+const PII_ATTRIBUTES = ["email", "name", "firstName", "lastName", "username"];
+
+const PII_VALUE_PATTERN = new RegExp(`"(${PII_ATTRIBUTES.join("|")})":"[^"]*"`, "g");
+
+/**
+ * Replace PII attribute values in an SDK debug payload with `"***"`. Keys and
+ * non-PII attributes (key, subscription, app_version, …) survive so the line
+ * keeps its diagnostic value.
+ */
+export function redactSdkDebugPayload(payload: string): string {
+	return payload.replaceAll(PII_VALUE_PATTERN, '"$1":"***"');
 }

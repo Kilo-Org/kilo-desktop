@@ -32,7 +32,7 @@ export default defineConfig(({ command }) => {
 				// `better-sqlite3` (transitive via the bundled kilo-ui / todos plugins).
 				// The plugin externalizes each name plus its `<name>/<subpath>` forms.
 				include: ["electron", "better-sqlite3", "node-pty", "@vscode/windows-ca-certs"],
-				// Workspace packages are `workspace:*` / `link:` deps that must stay
+				// Workspace packages are `workspace:*` deps that must stay
 				// bundled (not resolvable runtime modules on disk).
 				exclude: [/^@kilo-desktop\/.+$/],
 			}),

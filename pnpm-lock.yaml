@@ -161,7 +161,6 @@ lockfileVersion: '9.0'
 settings:
   autoInstallPeers: false
   excludeLinksFromLockfile: false
-  injectWorkspacePackages: true
 
 catalogs:
   default:
@@ -257,7 +256,7 @@ importers:
         specifier: workspace:*
         version: link:packages/sdk-react
       '@kilo-desktop/ui':
-        specifier: link:./packages/ui
+        specifier: workspace:*
         version: link:packages/ui
       '@opencode-ai/sdk':
         specifier: workspace:*
@@ -317,31 +316,31 @@ importers:
         specifier: workspace:*
         version: link:../../packages/feature-sdk
       '@kilo-desktop/plugin-browser':
-        specifier: link:../../plugins/browser
+        specifier: workspace:*
         version: link:../../plugins/browser
       '@kilo-desktop/plugin-environments':
         specifier: workspace:*
         version: link:../../plugins/environments
       '@kilo-desktop/plugin-files':
-        specifier: link:../../plugins/files
+        specifier: workspace:*
         version: link:../../plugins/files
       '@kilo-desktop/plugin-git':
-        specifier: link:../../plugins/git
+        specifier: workspace:*
         version: link:../../plugins/git
       '@kilo-desktop/plugin-kilo-server':
-        specifier: link:../../plugins/kilo-server
+        specifier: workspace:*
         version: link:../../plugins/kilo-server
       '@kilo-desktop/plugin-kilo-ui':
-        specifier: link:../../plugins/kilo-ui
+        specifier: workspace:*
         version: link:../../plugins/kilo-ui
       '@kilo-desktop/plugin-local-inference':
-        specifier: link:../../plugins/local-inference
+        specifier: workspace:*
         version: link:../../plugins/local-inference
       '@kilo-desktop/plugin-notebook':
-        specifier: link:../../plugins/notebook
+        specifier: workspace:*
         version: link:../../plugins/notebook
       '@kilo-desktop/plugin-terminal':
-        specifier: link:../../plugins/terminal
+        specifier: workspace:*
         version: link:../../plugins/terminal
       '@kilo-desktop/plugin-todos':
         specifier: workspace:*
@@ -507,31 +506,31 @@ importers:
         specifier: workspace:*
         version: link:../../packages/pane-layout
       '@kilo-desktop/plugin-browser':
-        specifier: link:../../plugins/browser
+        specifier: workspace:*
         version: link:../../plugins/browser
       '@kilo-desktop/plugin-environments':
         specifier: workspace:*
         version: link:../../plugins/environments
       '@kilo-desktop/plugin-files':
-        specifier: link:../../plugins/files
+        specifier: workspace:*
         version: link:../../plugins/files
       '@kilo-desktop/plugin-git':
-        specifier: link:../../plugins/git
+        specifier: workspace:*
         version: link:../../plugins/git
       '@kilo-desktop/plugin-kilo-server':
-        specifier: link:../../plugins/kilo-server
+        specifier: workspace:*
         version: link:../../plugins/kilo-server
       '@kilo-desktop/plugin-kilo-ui':
-        specifier: link:../../plugins/kilo-ui
+        specifier: workspace:*
         version: link:../../plugins/kilo-ui
       '@kilo-desktop/plugin-local-inference':
-        specifier: link:../../plugins/local-inference
+        specifier: workspace:*
         version: link:../../plugins/local-inference
       '@kilo-desktop/plugin-notebook':
-        specifier: link:../../plugins/notebook
+        specifier: workspace:*
         version: link:../../plugins/notebook
       '@kilo-desktop/plugin-terminal':
-        specifier: link:../../plugins/terminal
+        specifier: workspace:*
         version: link:../../plugins/terminal
       '@kilo-desktop/plugin-todos':
         specifier: workspace:*
@@ -540,7 +539,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/sdk-react
       '@kilo-desktop/ui':
-        specifier: link:../../packages/ui
+        specifier: workspace:*
         version: link:../../packages/ui
       '@mcp-b/webmcp-polyfill':
         specifier: 5.1.0
@@ -917,7 +916,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/testing
       '@kilo-desktop/ui':
-        specifier: link:../../packages/ui
+        specifier: workspace:*
         version: link:../../packages/ui
       '@testing-library/react':
         specifier: ^16.3.2
@@ -1107,7 +1106,7 @@ importers:
         version: link:../../packages/feature-sdk
       '@kilo-desktop/plugin-git':
         specifier: workspace:*
-        version: file:plugins/git(@kilo-desktop/feature-sdk@file:packages/feature-sdk(zod@4.4.3))(@kilo-desktop/sdk-react@file:packages/sdk-react(@kilo-desktop/feature-sdk@file:packages/feature-sdk(zod@4.4.3))(@tanstack/react-query@5.101.4(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.4.3))(@kilo-desktop/ui@packages+ui)(@shikijs/themes@4.4.2)(@tanstack/react-query@5.101.4(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(shiki@4.4.2)(supports-color@10.2.2)(zod@4.4.3)
+        version: link:../git
       '@kilo-desktop/sdk-react':
         specifier: workspace:*
         version: link:../../packages/sdk-react
@@ -1115,7 +1114,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/testing
       '@kilo-desktop/ui':
-        specifier: link:../../packages/ui
+        specifier: workspace:*
         version: link:../../packages/ui
       '@playwright/test':
         specifier: 'catalog:'
@@ -1221,7 +1220,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/testing
       '@kilo-desktop/ui':
-        specifier: link:../../packages/ui
+        specifier: workspace:*
         version: link:../../packages/ui
       '@playwright/test':
         specifier: 'catalog:'
@@ -1432,7 +1431,7 @@ importers:
         version: link:../../packages/feature-sdk
       '@kilo-desktop/plugin-git':
         specifier: workspace:*
-        version: file:plugins/git(@kilo-desktop/feature-sdk@file:packages/feature-sdk(zod@4.4.3))(@kilo-desktop/sdk-react@file:packages/sdk-react(@kilo-desktop/feature-sdk@file:packages/feature-sdk(zod@4.4.3))(@tanstack/react-query@5.101.4(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.4.3))(@kilo-desktop/ui@packages+ui)(@shikijs/themes@4.4.2)(@tanstack/react-query@5.101.4(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(shiki@4.4.2)(supports-color@10.2.2)(zod@4.4.3)
+        version: link:../git
       '@kilo-desktop/sdk-react':
         specifier: workspace:*
         version: link:../../packages/sdk-react
@@ -1440,7 +1439,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/testing
       '@kilo-desktop/ui':
-        specifier: link:../../packages/ui
+        specifier: workspace:*
         version: link:../../packages/ui
       '@playwright/test':
         specifier: 'catalog:'
@@ -1544,7 +1543,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/testing
       '@kilo-desktop/ui':
-        specifier: link:../../packages/ui
+        specifier: workspace:*
         version: link:../../packages/ui
       '@tailwindcss/vite':
         specifier: ^4.3.3
@@ -1623,7 +1622,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/testing
       '@kilo-desktop/ui':
-        specifier: link:../../packages/ui
+        specifier: workspace:*
         version: link:../../packages/ui
       '@playwright/test':
         specifier: 'catalog:'
@@ -1721,7 +1720,7 @@ importers:
         version: link:../../packages/feature-sdk
       '@kilo-desktop/plugin-git':
         specifier: workspace:*
-        version: file:plugins/git(@kilo-desktop/feature-sdk@file:packages/feature-sdk(zod@4.4.3))(@kilo-desktop/sdk-react@file:packages/sdk-react(@kilo-desktop/feature-sdk@file:packages/feature-sdk(zod@4.4.3))(@tanstack/react-query@5.101.4(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.4.3))(@kilo-desktop/ui@packages+ui)(@shikijs/themes@4.4.2)(@tanstack/react-query@5.101.4(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(shiki@4.4.2)(supports-color@10.2.2)(zod@4.4.3)
+        version: link:../git
       '@kilo-desktop/sdk-react':
         specifier: workspace:*
         version: link:../../packages/sdk-react
@@ -1729,7 +1728,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/testing
       '@kilo-desktop/ui':
-        specifier: link:../../packages/ui
+        specifier: workspace:*
         version: link:../../packages/ui
       '@playwright/test':
         specifier: 'catalog:'
@@ -3083,34 +3082,6 @@ packages:
 
   '@js-sdsl/ordered-map@4.4.2':
     resolution: {integrity: sha512-iUKgm52T8HOE/makSxjqoWhe95ZJA1/G1sYsGev2JDKUSS14KAgg1LHb+Ba+IPow0xflbnSkOsZcO08C7w1gYw==}
-
-  '@kilo-desktop/feature-sdk@file:packages/feature-sdk':
-    resolution: {directory: packages/feature-sdk, type: directory}
-    peerDependencies:
-      zod: ^4.4.3
-
-  '@kilo-desktop/git-client@file:packages/git-client':
-    resolution: {directory: packages/git-client, type: directory}
-
-  '@kilo-desktop/plugin-git@file:plugins/git':
-    resolution: {directory: plugins/git, type: directory}
-    peerDependencies:
-      '@kilo-desktop/feature-sdk': workspace:*
-      '@kilo-desktop/sdk-react': workspace:*
-      '@kilo-desktop/ui': workspace:*
-      '@tanstack/react-query': ^5.101.4
-      react: ^19.0.0
-      react-dom: ^19.0.0
-      zod: ^4.4.3
-
-  '@kilo-desktop/sdk-react@file:packages/sdk-react':
-    resolution: {directory: packages/sdk-react, type: directory}
-    peerDependencies:
-      '@kilo-desktop/feature-sdk': ^0.1.0
-      '@tanstack/react-query': ^5.101.4
-      react: ^19.0.0
-      react-dom: ^19.0.0
-      zod: ^4.4.3
 
   '@kilocode/cli-darwin-arm64@7.7.6':
     resolution: {integrity: sha512-Ffwoeg0Ahnj4uYPI7g/2uPTlA+qilSsNr2g8XhnOiL/9JjEguHGvVOv+9gRAweGXBLqJ0N8icj0WWBSUZFo+6Q==}
@@ -11848,48 +11819,6 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.6.0
 
   '@js-sdsl/ordered-map@4.4.2': {}
-
-  '@kilo-desktop/feature-sdk@file:packages/feature-sdk(zod@4.4.3)':
-    dependencies:
-      picomatch: 4.0.7
-      zod: 4.4.3
-
-  '@kilo-desktop/git-client@file:packages/git-client':
-    dependencies:
-      semver: 7.8.5
-      which: 7.0.0
-
-  '@kilo-desktop/plugin-git@file:plugins/git(@kilo-desktop/feature-sdk@file:packages/feature-sdk(zod@4.4.3))(@kilo-desktop/sdk-react@file:packages/sdk-react(@kilo-desktop/feature-sdk@file:packages/feature-sdk(zod@4.4.3))(@tanstack/react-query@5.101.4(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.4.3))(@kilo-desktop/ui@packages+ui)(@shikijs/themes@4.4.2)(@tanstack/react-query@5.101.4(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(shiki@4.4.2)(supports-color@10.2.2)(zod@4.4.3)':
-    dependencies:
-      '@kilo-desktop/feature-sdk': file:packages/feature-sdk(zod@4.4.3)
-      '@kilo-desktop/git-client': file:packages/git-client
-      '@kilo-desktop/sdk-react': file:packages/sdk-react(@kilo-desktop/feature-sdk@file:packages/feature-sdk(zod@4.4.3))(@tanstack/react-query@5.101.4(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.4.3)
-      '@kilo-desktop/ui': link:packages/ui
-      '@pierre/diffs': 1.4.3(@shikijs/themes@4.4.2)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@pierre/trees': 1.0.0-beta.6(@shikijs/themes@4.4.2)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(shiki@4.4.2)
-      '@tanstack/react-query': 5.101.4(react@19.2.8)
-      friendly-words: 1.3.1(supports-color@10.2.2)
-      lucide-react: 1.27.0(react@19.2.8)
-      p-limit: 7.3.2
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
-      react-use: 17.6.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      zod: 4.4.3
-    transitivePeerDependencies:
-      - '@ava/typescript'
-      - '@pierre/theme'
-      - '@shikijs/themes'
-      - shiki
-      - supports-color
-
-  '@kilo-desktop/sdk-react@file:packages/sdk-react(@kilo-desktop/feature-sdk@file:packages/feature-sdk(zod@4.4.3))(@tanstack/react-query@5.101.4(react@19.2.8))(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(zod@4.4.3)':
-    dependencies:
-      '@kilo-desktop/feature-sdk': file:packages/feature-sdk(zod@4.4.3)
-      '@tanstack/react-query': 5.101.4(react@19.2.8)
-      lodash: 4.18.1
-      react: 19.2.8
-      react-dom: 19.2.8(react@19.2.8)
-      zod: 4.4.3
 
   '@kilocode/cli-darwin-arm64@7.7.6':
     optional: true

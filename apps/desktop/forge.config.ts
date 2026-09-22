@@ -168,6 +168,13 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 		// Modern deploy consumes the committed workspace lockfile. Keep the build
 		// offline and frozen so release artifacts cannot drift when a compatible
 		// transitive version is published after the lockfile was reviewed.
+		// PNPM_CONFIG_TRUST_LOCKFILE (env — the --config flag does not reach
+		// deploy's inner install): the offline supply-chain re-verification
+		// needs each lockfile entry's publish date from the full-metadata
+		// mirror, which only resolution-time fetches populate — offline it
+		// fails with ERR_PNPM_NO_OFFLINE_META. The gate already ran online on
+		// the same lockfile at the root `pnpm install`, and deploy is frozen,
+		// so re-verification here is redundant.
 		await execa(
 			"pnpm",
 			[
@@ -183,7 +190,7 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 			],
 			{
 				cwd: workspaceRoot,
-				env: { HUSKY: "0" },
+				env: { HUSKY: "0", PNPM_CONFIG_TRUST_LOCKFILE: "true" },
 				stderr: "inherit",
 				stdout: "inherit",
 			},
@@ -242,7 +249,9 @@ async function stageWebMcpRelayRuntime(buildPath: string): Promise<void> {
 			],
 			{
 				cwd: workspaceRoot,
-				env: { HUSKY: "0" },
+				// See stageProductionDependencies for why the offline deploy
+				// skips the supply-chain re-verification.
+				env: { HUSKY: "0", PNPM_CONFIG_TRUST_LOCKFILE: "true" },
 				stderr: "inherit",
 				stdout: "inherit",
 			},

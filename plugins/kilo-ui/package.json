@@ -44,10 +44,10 @@
 		"@kilo-desktop/pane-layout": "workspace:*"
 	},
 	"peerDependencies": {
-		"@kilo-desktop/feature-sdk": "^0.1.0",
+		"@kilo-desktop/feature-sdk": "workspace:*",
 		"@kilo-desktop/plugin-git": "workspace:*",
-		"@kilo-desktop/sdk-react": "^0.1.0",
-		"@kilo-desktop/ui": "^0.1.0",
+		"@kilo-desktop/sdk-react": "workspace:*",
+		"@kilo-desktop/ui": "workspace:*",
 		"@tanstack/react-query": "^5.101.4",
 		"react": "^19.0.0",
 		"react-dom": "^19.0.0",
@@ -79,7 +79,7 @@
 		"@kilo-desktop/plugin-git": "workspace:*",
 		"@kilo-desktop/sdk-react": "workspace:*",
 		"@kilo-desktop/testing": "workspace:*",
-		"@kilo-desktop/ui": "link:../../packages/ui",
+		"@kilo-desktop/ui": "workspace:*",
 		"@anaconda/playwright-utils": "2.0.2",
 		"@playwright/test": "catalog:",
 		"@tailwindcss/vite": "^4.3.3",

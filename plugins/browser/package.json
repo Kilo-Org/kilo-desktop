@@ -30,7 +30,7 @@
 		"@kilo-desktop/feature-sdk": "workspace:*",
 		"@kilo-desktop/sdk-react": "workspace:*",
 		"@kilo-desktop/testing": "workspace:*",
-		"@kilo-desktop/ui": "link:../../packages/ui",
+		"@kilo-desktop/ui": "workspace:*",
 		"@testing-library/react": "^16.3.2",
 		"@types/node": "^24.13.3",
 		"@types/react": "^19.2.17",

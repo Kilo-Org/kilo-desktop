@@ -37,7 +37,6 @@ catalog:
 savePrefix: ^
 
 nodeLinker: hoisted
-injectWorkspacePackages: true
 autoInstallPeers: false
 
 overrides:

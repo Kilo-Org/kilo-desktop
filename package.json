@@ -45,7 +45,7 @@
 	"devDependencies": {
 		"@kilo-desktop/feature-sdk": "workspace:*",
 		"@kilo-desktop/sdk-react": "workspace:*",
-		"@kilo-desktop/ui": "link:./packages/ui",
+		"@kilo-desktop/ui": "workspace:*",
 		"@opencode-ai/sdk": "workspace:*",
 		"@types/node": "^24.13.3",
 		"@vitest/coverage-v8": "catalog:",

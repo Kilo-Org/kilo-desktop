@@ -52,7 +52,7 @@
 		"@kilo-desktop/plugin-git": "workspace:*",
 		"@kilo-desktop/sdk-react": "workspace:*",
 		"@kilo-desktop/testing": "workspace:*",
-		"@kilo-desktop/ui": "link:../../packages/ui",
+		"@kilo-desktop/ui": "workspace:*",
 		"@anaconda/playwright-utils": "2.0.2",
 		"@playwright/test": "catalog:",
 		"@tailwindcss/vite": "^4.3.3",

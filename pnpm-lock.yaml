@@ -1066,8 +1066,8 @@ importers:
         specifier: 0.1.7
         version: 0.1.7
       '@anaconda/desktop-bridge-payload-win32-x64':
-        specifier: 0.1.7
-        version: 0.1.7
+        specifier: 0.1.9
+        version: 0.1.9
 
   plugins/files:
     dependencies:
@@ -1892,8 +1892,8 @@ packages:
     cpu: [x64]
     os: [linux]
 
-  '@anaconda/desktop-bridge-payload-win32-x64@0.1.7':
-    resolution: {integrity: sha512-LHBmfnJn9kmTgYQhHmfUgPRJtMnlms2a9l4cc4n3IUFJJjnXkKprzBc78x7Pu7PL2f6aO4M33ke1IWzE1xTDrA==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-win32-x64/0.1.7/828e55dc772f4d95c489670cadf44f5ba08efa1e}
+  '@anaconda/desktop-bridge-payload-win32-x64@0.1.9':
+    resolution: {integrity: sha512-OrNAXx68vaB2SvLMJKOahyXe+8vnlzBOM44edVeItiVxX/7vfzWPDcjsJHEgq0Nwx6hwBMpsel+Uus4/Byd98g==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-win32-x64/0.1.9/624d069905563e4cabe01d498e0012ff7d9fe02b}
     cpu: [x64]
     os: [win32]
 
@@ -10479,7 +10479,7 @@ snapshots:
   '@anaconda/desktop-bridge-payload-linux-x64@0.1.7':
     optional: true
 
-  '@anaconda/desktop-bridge-payload-win32-x64@0.1.7':
+  '@anaconda/desktop-bridge-payload-win32-x64@0.1.9':
     optional: true
 
   '@anaconda/playwright-utils@2.0.2(@playwright/test@1.63.0)(jiti@2.7.0)(supports-color@10.2.2)':

@@ -35,7 +35,7 @@
 	"optionalDependencies": {
 		"@anaconda/desktop-bridge-payload-darwin-arm64": "0.1.7",
 		"@anaconda/desktop-bridge-payload-linux-x64": "0.1.7",
-		"@anaconda/desktop-bridge-payload-win32-x64": "0.1.7"
+		"@anaconda/desktop-bridge-payload-win32-x64": "0.1.9"
 	},
 	"devDependencies": {
 		"@kilo-desktop/e2e": "workspace:*",

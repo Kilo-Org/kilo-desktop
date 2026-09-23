@@ -13,6 +13,10 @@ const RUNTIMED_EXECUTABLES = new Map([
 	["linux-x64", "runtimed-nightly"],
 	["win32-x64", "runtimed-nightly.exe"],
 ]);
+// The Kilo server loads the notebook tool plugin, which requires the unpacked
+// @runtimed/node by path. That server is not Electron and cannot read app.asar,
+// so every runtime dependency of @runtimed/node (`rxjs`) must be unpacked alongside it.
+//
 // `koffi` is loaded lazily by the daemon peer-credential check, so it must stay
 // outside ASAR and be externalized from the bundled main process just like the
 // other native runtime dependencies. Critically, koffi ships NO addon of its
@@ -24,7 +28,7 @@ const RUNTIMED_EXECUTABLES = new Map([
 // `@koromix` is a scope, not a package: it unpacks every installed platform
 // package under it, but pnpm only installs the one matching the current
 // platform/arch, so exactly one `@koromix/koffi-*` is ever present per build.
-export const NOTEBOOK_ASAR_UNPACK_PACKAGES = ["@runtimed", "koffi", "@koromix"] as const;
+export const NOTEBOOK_ASAR_UNPACK_PACKAGES = ["@runtimed", "rxjs", "koffi", "@koromix"] as const;
 export const NOTEBOOK_MAIN_EXTERNALS = [/^@runtimed\/node(?:\/.*)?$/, /^koffi$/] as const;
 
 export interface NotebookPackagingPlan {

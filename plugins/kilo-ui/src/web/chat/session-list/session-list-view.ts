@@ -9,7 +9,7 @@ export const SESSION_LIST_VIEW_STORAGE_KEY = "kilo-ui.session-list-view:v1";
 
 export const SESSION_LIST_GROUPINGS = ["lifecycle", "workspace", "updated"] as const;
 export const SESSION_LIST_ORDERINGS = ["recency", "title"] as const;
-export const SESSION_LIST_SHOW_FIELDS = ["workspace", "updated"] as const;
+export const SESSION_LIST_SHOW_FIELDS = ["workspace", "updated", "pr"] as const;
 export const SESSION_LIST_STATUS_FILTERS = [
 	"all",
 	"attention",
@@ -35,7 +35,7 @@ export type SessionListView = {
 export const DEFAULT_SESSION_LIST_VIEW: SessionListView = {
 	grouping: "lifecycle",
 	ordering: "recency",
-	show: [],
+	show: ["pr"],
 	status: "all",
 	focus: null,
 };
@@ -54,6 +54,7 @@ export const SESSION_LIST_ORDERING_LABELS: Record<SessionListOrdering, string> =
 export const SESSION_LIST_SHOW_LABELS: Record<SessionListShowField, string> = {
 	workspace: "Workspace",
 	updated: "Updated",
+	pr: "PR",
 };
 
 export const SESSION_LIST_STATUS_LABELS: Record<SessionListStatusFilter, string> = {
@@ -134,7 +135,8 @@ export function isDefaultSessionListView(view: SessionListView): boolean {
 		view.grouping === DEFAULT_SESSION_LIST_VIEW.grouping &&
 		view.ordering === DEFAULT_SESSION_LIST_VIEW.ordering &&
 		view.status === DEFAULT_SESSION_LIST_VIEW.status &&
-		view.show.length === 0 &&
+		view.show.length === DEFAULT_SESSION_LIST_VIEW.show.length &&
+		DEFAULT_SESSION_LIST_VIEW.show.every((field) => view.show.includes(field)) &&
 		view.focus === DEFAULT_SESSION_LIST_VIEW.focus
 	);
 }

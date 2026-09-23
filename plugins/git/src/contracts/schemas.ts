@@ -260,6 +260,94 @@ export const gitContract = defineContract({
 	),
 });
 
+const workingDirectoryInput = z.object({ workingDirectory: z.string().min(1).max(32_768) });
+const githubCliStatusSchema = z.enum(["ready", "missing", "unauthenticated", "timeout", "error"]);
+const pullRequestSchema = z.object({
+	number: z.number().int().positive(),
+	url: z.url(),
+	title: z.string().min(1),
+	baseBranch: z.string().min(1),
+	headBranch: z.string().min(1),
+	state: z.enum(["open", "closed", "merged"]),
+	isDraft: z.boolean(),
+});
+
+export const gitActionsContract = defineContract({
+	githubCliStatus: defineMethod(
+		z.object({ force: z.boolean().optional() }),
+		z.object({ status: githubCliStatusSchema }),
+	),
+	fetch: defineMethod(workingDirectoryInput, z.undefined()),
+	stageChanges: defineMethod(
+		workingDirectoryInput,
+		z.object({
+			statusSummary: z.string(),
+			diffPatch: z.string(),
+			recentCommitSubjects: z.array(z.string()),
+		}),
+	),
+	commit: defineMethod(
+		z.object({
+			workingDirectory: z.string().min(1).max(32_768),
+			message: z.string().trim().min(1).max(10_000),
+		}),
+		z.undefined(),
+	),
+	push: defineMethod(
+		z.object({
+			workingDirectory: z.string().min(1).max(32_768),
+			branch: z.string().min(1).max(255),
+			hasUpstream: z.boolean(),
+		}),
+		z.undefined(),
+	),
+	pull: defineMethod(workingDirectoryInput, z.undefined()),
+	originUrl: defineMethod(workingDirectoryInput, z.string().nullable()),
+	pullRequest: defineMethod(workingDirectoryInput, pullRequestSchema.nullable()),
+	pullRequestSnapshot: defineMethod(
+		workingDirectoryInput,
+		z.object({
+			identity: z.string().nullable(),
+			branch: z.string().nullable(),
+			repository: z.string().nullable(),
+			parentRepository: z.string().nullable(),
+			pullRequest: pullRequestSchema.nullable(),
+			/** `unsupported`: no branch or a non-GitHub origin; never spawns `gh`. */
+			githubStatus: z.union([githubCliStatusSchema, z.literal("unsupported")]),
+		}),
+	),
+	createPullRequest: defineMethod(
+		z.object({
+			workingDirectory: z.string().min(1).max(32_768),
+			baseBranch: z.string().min(1).max(255),
+			headBranch: z.string().min(1).max(255),
+			title: z.string().trim().min(1).max(256),
+			body: z.string().max(65_536),
+		}),
+		pullRequestSchema,
+	),
+	pullRequestContext: defineMethod(
+		z.object({
+			workingDirectory: z.string().min(1).max(32_768),
+			baseBranch: z.string().min(1).max(255),
+		}),
+		z.object({
+			commitSummary: z.string(),
+			diffSummary: z.string(),
+			diffPatch: z.string(),
+			recentCommitSubjects: z.array(z.string()),
+			pullRequestTemplate: z.string().nullable(),
+		}),
+	),
+	workingTreeStats: defineMethod(
+		workingDirectoryInput,
+		z.object({
+			additions: z.number().int().nonnegative(),
+			deletions: z.number().int().nonnegative(),
+		}),
+	),
+});
+
 export type GitStatus = z.infer<typeof gitStatusSchema>;
 export type GitBranch = z.infer<typeof gitBranchSchema>;
 export type GitBranchesResult = z.infer<typeof gitBranchesResultSchema>;
@@ -295,7 +383,8 @@ export type GitCapabilities = {
 };
 
 /** Method-style service type inferred from the contract. */
-export type GitServiceContract = InferContract<typeof gitContract>;
+export type GitServiceContract = InferContract<typeof gitContract> &
+	InferContract<typeof gitActionsContract>;
 
 /**
  * The draft-selection state store is a cross-plugin contract: this module

@@ -16,6 +16,15 @@ const coverage = {
 		// the integration project and app composition, which coverage excludes.
 		"src/main/index.ts",
 		"src/web/index.ts",
+		// Contextual chat contributions and the app-lifetime PR coordinator are
+		// composition surfaces: they require the Kilo model capability, GitHub
+		// CLI status, timers, and host contribution zones. Their behavior is
+		// covered through app/E2E composition rather than package unit coverage.
+		"src/web/GitActionsControl.tsx",
+		"src/web/use-repository-actions.ts",
+		"src/web/GitPrStatusProvider.tsx",
+		"src/web/GitPrStatusTargets.tsx",
+		"src/web/GitSessionRowMetadata.tsx",
 		// Shared browser-test scaffolding, not plugin source.
 		"src/web/test-utils.tsx",
 		"src/test/**",

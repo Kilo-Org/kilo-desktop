@@ -35,7 +35,7 @@ function activity(patch: Partial<SessionActivity> = {}): SessionActivity {
 	return { ...createEmptySessionActivity(), ...patch };
 }
 
-const defaultView: SessionListView = { ...DEFAULT_SESSION_LIST_VIEW, show: [] };
+const defaultView: SessionListView = { ...DEFAULT_SESSION_LIST_VIEW };
 
 describe("writeSessionListView", () => {
 	it("ignores unavailable storage", () => {
@@ -98,7 +98,7 @@ describe("parseSessionListView", () => {
 		).toEqual({
 			grouping: "updated",
 			ordering: "title",
-			show: ["workspace"],
+			show: ["workspace", "pr"],
 			status: "working",
 			focus: null,
 		});

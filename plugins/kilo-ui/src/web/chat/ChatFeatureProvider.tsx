@@ -63,6 +63,8 @@ import {
 	resolvePrepareSessionWorktreeInput,
 } from "./git-draft-selection.js";
 import { createWorktreeBranchNamer } from "./worktree-branch-namer.js";
+import { createKiloDirectoryClient } from "./runtime/create-kilo-runtime-client.js";
+import { createSourceControlWriter } from "./source-control-writer.js";
 import { WorktreeSetupProvider } from "./worktree-setup/WorktreeSetupContext.js";
 import { KiloSuggestionProvider } from "./suggestions/KiloSuggestionContext.js";
 import { createKiloSuggestionStore } from "./suggestions/kilo-suggestion-store.js";
@@ -473,6 +475,24 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 			startLocalInference,
 		],
 	);
+	const writerInputsRef = useRef({ validatedModel, activeEffort, prepareModel, connectionPromise });
+	writerInputsRef.current = { validatedModel, activeEffort, prepareModel, connectionPromise };
+	useEffect(() => {
+		let mounted = true;
+		sdk.plugins.expose("sourceControlWriter", {
+			...createSourceControlWriter({
+				getModel: () => writerInputsRef.current.validatedModel,
+				getVariant: () => writerInputsRef.current.activeEffort,
+				getPrepareModel: () => writerInputsRef.current.prepareModel,
+				createDirectoryClient: async (directory) =>
+					createKiloDirectoryClient(await writerInputsRef.current.connectionPromise, directory),
+				isAvailable: () => mounted,
+			}),
+		});
+		return () => {
+			mounted = false;
+		};
+	}, [sdk]);
 
 	const agentSelection = useMemo(
 		() => ({

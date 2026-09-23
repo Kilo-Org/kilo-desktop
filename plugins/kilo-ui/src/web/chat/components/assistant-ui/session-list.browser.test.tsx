@@ -218,6 +218,13 @@ function renderSessionList({
 		},
 	});
 	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
+	system.getSdk("metadata-probe").contribute("kilo-ui/chat-session-row-metadata", {
+		id: "probe",
+		label: "PR status",
+		component: ({ statusId }: { statusId: string }) => (
+			<span data-qa-id={`pr-status-${statusId}`}>PR #42</span>
+		),
+	});
 	const store = createSessionActivityStore({ storage: null });
 	if (!skipDefaultHydration) {
 		store.getState().hydrateSessions(
@@ -613,6 +620,7 @@ describe("SessionList", () => {
 		await expect.element(archivedShelfRow.getByText("2m")).not.toBeInTheDocument();
 		// Workspace is opt-in via Show — default rows are title-only.
 		await expect.element(screen.getByText("Acme App")).not.toBeInTheDocument();
+		await expect.element(screen.getByText("PR #42").first()).toBeVisible();
 
 		await screen.getByRole("button", { name: "Session list options" }).click();
 		await page.getByRole("menuitem", { name: /Show/ }).click();
@@ -1087,8 +1095,9 @@ describe("SessionList", () => {
 		await page.getByRole("option", { name: /Acme App/ }).click();
 		const focusedCard = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
 		await expect.element(focusedCard).toBeVisible();
+		await expect.element(focusedCard.getByText("Acme App")).not.toBeInTheDocument();
 		expect(
-			focusedCard.element().querySelector('[data-slot="aui_session-list-item-info"]'),
+			focusedCard.element().querySelector('[data-slot="aui_session-list-workspace-icon"]'),
 		).toBeNull();
 
 		await screen.getByRole("button", { name: "Session list options" }).click();

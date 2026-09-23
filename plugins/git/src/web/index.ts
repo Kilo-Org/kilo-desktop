@@ -9,6 +9,10 @@ export { GitDiffTabIcon } from "./GitDiffTabIcon.js";
 export { GitRepositoryWatcherProvider } from "./GitRepositoryWatcherProvider.js";
 export { GitDraftMenus } from "./GitDraftMenus.js";
 export { GitEventsProvider } from "./GitEventsProvider.js";
+export { GitActionsControl } from "./GitActionsControl.js";
+export { GitSessionRowMetadata } from "./GitSessionRowMetadata.js";
+export { GitPrStatusProvider } from "./GitPrStatusProvider.js";
+export { GitPrStatusTargets } from "./GitPrStatusTargets.js";
 
 /**
  * Renderer boot hook (discovered from this web entry module by the feature

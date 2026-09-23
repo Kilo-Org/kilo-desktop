@@ -8,9 +8,31 @@
 	"contributes": {
 		"providers": [
 			{ "component": "GitRepositoryWatcherProvider" },
+			{ "component": "GitPrStatusProvider", "priority": 4 },
 			{ "component": "GitEventsProvider", "priority": 5 }
 		],
 		"zones": [
+			{
+				"zone": "kilo-ui/chat-session-metadata-provider",
+				"id": "pull-request-targets",
+				"component": "GitPrStatusTargets",
+				"label": "Pull request status targets",
+				"priority": 100
+			},
+			{
+				"zone": "kilo-ui/chat-session-row-metadata",
+				"id": "branch-and-pull-request",
+				"component": "GitSessionRowMetadata",
+				"label": "Branch and pull request",
+				"priority": 100
+			},
+			{
+				"zone": "kilo-ui/chat-header-actions",
+				"id": "repository-actions",
+				"component": "GitActionsControl",
+				"label": "Repository actions",
+				"priority": 100
+			},
 			{
 				"zone": "kilo-ui/chat-composer-draft-footer",
 				"id": "draft-menus",

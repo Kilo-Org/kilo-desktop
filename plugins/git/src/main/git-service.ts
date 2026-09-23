@@ -1,5 +1,9 @@
-import { rm } from "node:fs/promises";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { randomUUID } from "node:crypto";
+import { open, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path, { isAbsolute, relative, resolve, sep } from "node:path";
+
+import { execa, type ExecaError } from "execa";
 
 import type { MainSdkLogger } from "@kilo-desktop/feature-sdk";
 import { FeatureError } from "@kilo-desktop/feature-sdk";
@@ -10,7 +14,9 @@ import {
 	GitNotDetectedError,
 	createGitClient,
 	isGitError,
+	isMaxBufferExceededError,
 } from "@kilo-desktop/git-client";
+import { githubRepositoryUrl } from "../contracts/github-remote.js";
 import type {
 	GitBranch,
 	GitBranchesResult,
@@ -21,10 +27,60 @@ import type { IBranch, RepositoryType } from "@kilo-desktop/git-client";
 import { findDefaultBranch } from "./find-default-branch.js";
 import { WorktreeManager } from "./worktree-manager.js";
 
+export interface GitPullRequest {
+	readonly number: number;
+	readonly url: string;
+	readonly title: string;
+	readonly baseBranch: string;
+	readonly headBranch: string;
+	readonly state: "open" | "closed" | "merged";
+	readonly isDraft: boolean;
+}
+
 const REMOTE_REF_PREFIX = "refs/remotes/";
 const BRANCH_REF_PREFIXES = ["refs/heads", "refs/remotes"] as const;
 /** The only remote this plugin's default-branch detection looks at (no fork model). */
 const DEFAULT_REMOTE_NAME = "origin";
+const PULL_REQUEST_TEMPLATE_PATHS = [
+	".github/pull_request_template.md",
+	".github/PULL_REQUEST_TEMPLATE.md",
+	"pull_request_template.md",
+	"PULL_REQUEST_TEMPLATE.md",
+	"docs/pull_request_template.md",
+	"docs/PULL_REQUEST_TEMPLATE.md",
+] as const;
+const PULL_REQUEST_TEMPLATE_DIRECTORIES = [
+	".github/PULL_REQUEST_TEMPLATE",
+	"PULL_REQUEST_TEMPLATE",
+	"docs/PULL_REQUEST_TEMPLATE",
+] as const;
+const PULL_REQUEST_TEMPLATE_MAX_CHARS = 8_000;
+const PULL_REQUEST_FIELDS = "number,url,title,baseRefName,headRefName,state,isDraft,updatedAt";
+/** Budgets for model-bound Git context: summaries and the patch itself. */
+const SUMMARY_MAX_CHARS = 20_000;
+const PATCH_MAX_CHARS = 60_000;
+const GH_TIMEOUT_MS = 20_000;
+const GH_PROBE_SUCCESS_TTL_MS = 300_000;
+const GH_PROBE_FAILURE_TTL_MS = 30_000;
+const FETCH_THROTTLE_MS = 60_000;
+const REPOSITORY_IDENTITY_TTL_MS = 5 * 60_000;
+const REPOSITORY_IDENTITY_FAILURE_TTL_MS = 30_000;
+const REPOSITORY_IDENTITY_CACHE_LIMIT = 100;
+const UNTRACKED_STATS_MAX_FILES = 500;
+const UNTRACKED_STATS_MAX_BYTES = 1024 * 1024;
+
+type GithubCliStatus = "ready" | "missing" | "unauthenticated" | "timeout" | "error";
+/** `unsupported`: no branch, or an origin the GitHub CLI cannot serve. */
+type GithubSnapshotStatus = GithubCliStatus | "unsupported";
+
+export interface GitPullRequestSnapshot {
+	readonly identity: string | null;
+	readonly branch: string | null;
+	readonly repository: string | null;
+	readonly parentRepository: string | null;
+	readonly pullRequest: GitPullRequest | null;
+	readonly githubStatus: GithubSnapshotStatus;
+}
 /** The max number of recent branches to report (GitHub Desktop's `RecentBranchesLimit`). */
 const RECENT_BRANCHES_LIMIT = 5;
 const DEFAULT_BRANCH_CONFIG_KEY = "init.defaultBranch";
@@ -176,6 +232,119 @@ function checkoutErrorToFeatureError(error: unknown): unknown {
 	return gitNotDetectedToFeatureError(error);
 }
 
+function gitActionErrorToFeatureError(error: unknown): unknown {
+	if (isGitError(error)) {
+		return new FeatureError(error.result.gitErrorDescription ?? error.message, "BUSINESS");
+	}
+	return gitNotDetectedToFeatureError(error);
+}
+
+export function ghErrorToFeatureError(error: unknown): FeatureError {
+	const failure = error as Partial<ExecaError>;
+	const detail = typeof failure.stderr === "string" ? failure.stderr.trim() : "";
+	if ((failure as { code?: string }).code === "ENOENT") {
+		return new FeatureError(
+			"GitHub CLI (gh) is not installed. Install it from https://cli.github.com/.",
+			"BUSINESS",
+		);
+	}
+	if (/auth login|not logged|authentication/i.test(detail)) {
+		return new FeatureError(
+			"Not authenticated with GitHub CLI. Run 'gh auth login' first.",
+			"BUSINESS",
+		);
+	}
+	return new FeatureError(detail || "GitHub CLI operation failed.", "BUSINESS");
+}
+
+export function classifyGithubCliError(error: unknown): Exclude<GithubCliStatus, "ready"> {
+	const failure = error as Partial<ExecaError> & { code?: string; timedOut?: boolean };
+	const detail = typeof failure.stderr === "string" ? failure.stderr : "";
+	if (failure.code === "ENOENT") return "missing";
+	if (failure.timedOut) return "timeout";
+	if (/auth login|not logged|authentication/i.test(detail)) return "unauthenticated";
+	return "error";
+}
+
+function truncate(text: string, maxChars: number): string {
+	return text.length > maxChars ? `${text.slice(0, maxChars)}\n[truncated]` : text;
+}
+
+function parseJsonArray(json: string): unknown[] {
+	const value = JSON.parse(json) as unknown;
+	return Array.isArray(value)
+		? value.filter((item) => item !== null && typeof item === "object")
+		: [];
+}
+
+/** Sum `git diff --numstat` rows; binary rows (`-`) carry no line counts. */
+export function parseNumstat(output: string): { additions: number; deletions: number } {
+	let additions = 0;
+	let deletions = 0;
+	for (const line of output.split("\n")) {
+		const [added, deleted] = line.split("\t");
+		const addedCount = Number.parseInt(added ?? "", 10);
+		const deletedCount = Number.parseInt(deleted ?? "", 10);
+		if (Number.isNaN(addedCount) || Number.isNaN(deletedCount)) continue;
+		additions += addedCount;
+		deletions += deletedCount;
+	}
+	return { additions, deletions };
+}
+
+/**
+ * Line count of an untracked text file as git numstat would report it; 0
+ * for binary (NUL byte) or oversized files and for anything unreadable.
+ */
+async function countUntrackedLines(filePath: string): Promise<number> {
+	let handle;
+	try {
+		handle = await open(filePath, "r");
+		const { size } = await handle.stat();
+		if (size === 0 || size > UNTRACKED_STATS_MAX_BYTES) return 0;
+		const buffer = Buffer.alloc(size);
+		await handle.read(buffer, 0, size, 0);
+		if (buffer.includes(0)) return 0;
+		let lines = 0;
+		for (const byte of buffer) if (byte === 0x0a) lines += 1;
+		return buffer[size - 1] === 0x0a ? lines : lines + 1;
+	} catch {
+		return 0;
+	} finally {
+		await handle?.close().catch(() => undefined);
+	}
+}
+
+function parsePullRequest(json: string): GitPullRequest {
+	try {
+		const value = JSON.parse(json) as Record<string, unknown>;
+		if (
+			typeof value.number !== "number" ||
+			typeof value.url !== "string" ||
+			typeof value.title !== "string" ||
+			typeof value.baseRefName !== "string" ||
+			typeof value.headRefName !== "string" ||
+			!(["OPEN", "CLOSED", "MERGED"] as const).includes(
+				value.state as "OPEN" | "CLOSED" | "MERGED",
+			) ||
+			typeof value.isDraft !== "boolean"
+		) {
+			throw new Error("missing fields");
+		}
+		return {
+			number: value.number,
+			url: value.url,
+			title: value.title,
+			baseBranch: value.baseRefName,
+			headBranch: value.headRefName,
+			state: (value.state as "OPEN" | "CLOSED" | "MERGED").toLowerCase() as GitPullRequest["state"],
+			isDraft: value.isDraft,
+		};
+	} catch {
+		throw new FeatureError("GitHub CLI returned invalid pull request data.", "BUSINESS");
+	}
+}
+
 /**
  * Git status/branch/worktree service over git-client.
  *
@@ -237,6 +406,13 @@ function checkoutErrorToFeatureError(error: unknown): unknown {
  * always passes workspace folder paths, so the guard never trips in normal
  * use.
  *
+ * Repository actions and GitHub state are the service's only mutable
+ * state, all process-local caches: the `gh auth status` probe (5 min on
+ * success, 30 s on failure, concurrent probes coalesced), `gh repo view`
+ * identity per directory (bounded LRU, failures cached briefly), and
+ * per-directory fetch coalescing/throttling.
+ * `gh` is only spawned for directories whose origin is a GitHub remote.
+ *
  * `available` is a probe, so its error semantics differ from `status` on
  * purpose: every failure collapses to `false` — including
  * `GitNotDetectedError`, which `version()` can throw synchronously because
@@ -259,6 +435,13 @@ export class GitService {
 	 */
 	readonly #inFlightPatchPaths = new Set<string>();
 	readonly #worktrees: WorktreeManager;
+	#githubCliProbe: { status: GithubCliStatus; expiresAt: number } | null = null;
+	#githubCliProbePromise: Promise<{ status: GithubCliStatus }> | null = null;
+	readonly #repositoryIdentity = new Map<
+		string,
+		{ repository: string | null; parentRepository: string | null; expiresAt: number }
+	>();
+	readonly #fetches = new Map<string, { promise: Promise<void> | null; settledAt: number }>();
 
 	constructor(options: GitServiceOptions) {
 		this.#client = options.createClient?.() ?? createDefaultClient(options.logger);
@@ -306,6 +489,585 @@ export class GitService {
 		} catch (error) {
 			throw gitNotDetectedToFeatureError(error);
 		}
+	}
+
+	/**
+	 * Commit exactly what is staged. The staging happens in
+	 * {@link stageChanges}, so the generated message describes the same
+	 * index that gets committed even if files keep changing meanwhile.
+	 */
+	async commit(workingDirectory: string, message: string): Promise<void> {
+		await this.#assertWithinWorkspaceFolders(workingDirectory);
+		try {
+			await this.#client.exec(["commit", "-m", message], "commit", { cwd: workingDirectory });
+		} catch (error) {
+			throw gitActionErrorToFeatureError(error);
+		}
+	}
+
+	/**
+	 * Stage every working-tree change, then describe the index (not the
+	 * working tree) for commit-message generation.
+	 */
+	async stageChanges(workingDirectory: string): Promise<{
+		statusSummary: string;
+		diffPatch: string;
+		recentCommitSubjects: string[];
+	}> {
+		await this.#assertWithinWorkspaceFolders(workingDirectory);
+		try {
+			await this.#client.exec(["add", "--all", "--"], "add", { cwd: workingDirectory });
+			const [statusSummary, diffPatch, recentCommitSubjects] = await Promise.all([
+				this.#boundedOutput(
+					["status", "--short"],
+					"status short",
+					workingDirectory,
+					SUMMARY_MAX_CHARS,
+				),
+				this.#boundedOutput(
+					["diff", "--cached", "--no-ext-diff", "--no-color", "-M"],
+					"staged diff",
+					workingDirectory,
+					PATCH_MAX_CHARS,
+				),
+				this.#recentCommitSubjects(workingDirectory),
+			]);
+			return { statusSummary, diffPatch, recentCommitSubjects };
+		} catch (error) {
+			throw gitActionErrorToFeatureError(error);
+		}
+	}
+
+	/**
+	 * `git fetch --prune`, coalesced per directory and throttled to one run
+	 * per {@link FETCH_THROTTLE_MS}: every chat header and menu open asks for
+	 * a fetch, and concurrent fetches contend for the same ref locks.
+	 */
+	async fetch(workingDirectory: string): Promise<void> {
+		await this.#assertWithinWorkspaceFolders(workingDirectory);
+		const entry = this.#fetches.get(workingDirectory);
+		if (entry?.promise) return entry.promise;
+		if (entry && Date.now() - entry.settledAt < FETCH_THROTTLE_MS) return;
+		const promise = this.#client
+			.exec(["fetch", "--prune"], "fetch", { cwd: workingDirectory })
+			.then(
+				() => undefined,
+				(error: unknown) => {
+					throw gitActionErrorToFeatureError(error);
+				},
+			)
+			.finally(() => {
+				this.#fetches.set(workingDirectory, { promise: null, settledAt: Date.now() });
+			});
+		this.#fetches.set(workingDirectory, { promise, settledAt: entry?.settledAt ?? 0 });
+		return promise;
+	}
+
+	async push(workingDirectory: string, branch: string, hasUpstream: boolean): Promise<void> {
+		await this.#assertWithinWorkspaceFolders(workingDirectory);
+		if (branch.startsWith("-")) {
+			throw new FeatureError(`"${branch}" is not a valid branch name.`, "VALIDATION");
+		}
+		try {
+			const args = hasUpstream ? ["push"] : ["push", "--set-upstream", DEFAULT_REMOTE_NAME, branch];
+			await this.#client.exec(args, "push", { cwd: workingDirectory });
+		} catch (error) {
+			throw gitActionErrorToFeatureError(error);
+		}
+	}
+
+	async pull(workingDirectory: string): Promise<void> {
+		await this.#assertWithinWorkspaceFolders(workingDirectory);
+		try {
+			await this.#client.exec(["pull", "--ff-only"], "pull", { cwd: workingDirectory });
+		} catch (error) {
+			throw gitActionErrorToFeatureError(error);
+		}
+	}
+
+	async originUrl(workingDirectory: string): Promise<string | null> {
+		await this.#assertWithinWorkspaceFolders(workingDirectory);
+		try {
+			return await this.#readOriginUrl(workingDirectory);
+		} catch (error) {
+			throw gitActionErrorToFeatureError(error);
+		}
+	}
+
+	async #readOriginUrl(workingDirectory: string): Promise<string | null> {
+		const result = await this.#client.exec(
+			["remote", "get-url", DEFAULT_REMOTE_NAME],
+			"remote get-url",
+			{ cwd: workingDirectory, successExitCodes: new Set([0, 2]) },
+		);
+		return result.exitCode === 0 ? result.stdout.trim() || null : null;
+	}
+
+	async githubCliStatus(force = false): Promise<{ status: GithubCliStatus }> {
+		if (!force && this.#githubCliProbe && this.#githubCliProbe.expiresAt > Date.now()) {
+			return { status: this.#githubCliProbe.status };
+		}
+		if (!force && this.#githubCliProbePromise) return this.#githubCliProbePromise;
+		const probe = (async () => {
+			let status: GithubCliStatus;
+			try {
+				const result = await execa("gh", ["auth", "status"], {
+					reject: false,
+					timeout: GH_TIMEOUT_MS,
+					windowsHide: true,
+				});
+				status =
+					result.exitCode === 0 ? "ready" : classifyGithubCliError({ stderr: result.stderr });
+			} catch (error) {
+				status = classifyGithubCliError(error);
+			}
+			this.#githubCliProbe = {
+				status,
+				expiresAt:
+					Date.now() + (status === "ready" ? GH_PROBE_SUCCESS_TTL_MS : GH_PROBE_FAILURE_TTL_MS),
+			};
+			return { status };
+		})();
+		this.#githubCliProbePromise = probe;
+		try {
+			return await probe;
+		} finally {
+			if (this.#githubCliProbePromise === probe) this.#githubCliProbePromise = null;
+		}
+	}
+
+	async pullRequest(workingDirectory: string): Promise<GitPullRequest | null> {
+		return (await this.pullRequestSnapshot(workingDirectory)).pullRequest;
+	}
+
+	/**
+	 * The pull request for the directory's current branch. Local probes run
+	 * first and short-circuit before any `gh` spawn: no branch or a
+	 * non-GitHub origin resolves `githubStatus: "unsupported"`, and an
+	 * unavailable GitHub CLI resolves its capability status instead of
+	 * throwing, so background polling never surfaces an error for
+	 * repositories the CLI cannot serve.
+	 */
+	async pullRequestSnapshot(workingDirectory: string): Promise<GitPullRequestSnapshot> {
+		await this.#assertWithinWorkspaceFolders(workingDirectory);
+		try {
+			const status = await this.status(workingDirectory);
+			const branch = status?.currentBranch ?? null;
+			const empty = (githubStatus: GithubSnapshotStatus): GitPullRequestSnapshot => ({
+				identity: null,
+				branch,
+				repository: null,
+				parentRepository: null,
+				pullRequest: null,
+				githubStatus,
+			});
+			if (!status || !branch) return empty("unsupported");
+			const origin = await this.#readOriginUrl(workingDirectory);
+			if (!origin || !githubRepositoryUrl(origin)) return empty("unsupported");
+			const capability = await this.githubCliStatus();
+			if (capability.status !== "ready") return empty(capability.status);
+			const head = await this.#client.exec(
+				["rev-parse", "--verify", "--quiet", "HEAD"],
+				"head identity",
+				{ cwd: workingDirectory, successExitCodes: new Set([0, 1]) },
+			);
+			const sha = head.exitCode === 0 ? head.stdout.trim() : "";
+			// An unborn branch has nothing a pull request could contain.
+			if (!sha) return empty("ready");
+			const identity = `${status.currentUpstreamBranch ?? branch}|${sha}`;
+			const repositoryIdentity = await this.#githubRepositoryIdentity(workingDirectory);
+			const pullRequests = await this.#findPullRequests(
+				workingDirectory,
+				branch,
+				sha,
+				repositoryIdentity.repository?.split("/")[0] ?? null,
+			);
+			const snapshot = { identity, branch, ...repositoryIdentity, githubStatus: "ready" as const };
+			const open = pullRequests.find((pullRequest) => pullRequest.state === "open");
+			if (open) return { ...snapshot, pullRequest: open };
+			if (pullRequests.length === 0) return { ...snapshot, pullRequest: null };
+			const defaultBranch = await this.defaultBranch(workingDirectory);
+			return {
+				...snapshot,
+				pullRequest: branch === defaultBranch ? null : (pullRequests[0] ?? null),
+			};
+		} catch (error) {
+			if (error instanceof FeatureError) throw error;
+			throw ghErrorToFeatureError(error);
+		}
+	}
+
+	/**
+	 * Candidate pull requests for `branch`, most specific lookup first:
+	 * `gh pr view` (branch config aware), an open PR whose head is exactly
+	 * HEAD (a new branch can share HEAD with a merged PR without belonging to
+	 * it), then every PR with that head branch name. `gh pr list --head`
+	 * rejects `owner:branch`, so the owner match is filtered client-side.
+	 */
+	async #findPullRequests(
+		workingDirectory: string,
+		branch: string,
+		sha: string,
+		owner: string | null,
+	): Promise<GitPullRequest[]> {
+		for (const args of [
+			["pr", "view", branch, "--json", PULL_REQUEST_FIELDS],
+			["pr", "view", "--json", PULL_REQUEST_FIELDS],
+		]) {
+			const result = await this.#gh(workingDirectory, args);
+			if (result.exitCode === 0) return [parsePullRequest(result.stdout)];
+		}
+		const bySha = await this.#gh(workingDirectory, [
+			"pr",
+			"list",
+			"--state",
+			"open",
+			"--search",
+			`${sha} is:pr`,
+			"--limit",
+			"5",
+			"--json",
+			`${PULL_REQUEST_FIELDS},headRefOid`,
+		]);
+		if (bySha.exitCode === 0) {
+			const match = parseJsonArray(bySha.stdout).find(
+				(item) => (item as { headRefOid?: unknown }).headRefOid === sha,
+			);
+			if (match) return [parsePullRequest(JSON.stringify(match))];
+		}
+		const byBranch = await this.#gh(workingDirectory, [
+			"pr",
+			"list",
+			"--head",
+			branch,
+			"--state",
+			"all",
+			"--limit",
+			"20",
+			"--json",
+			`${PULL_REQUEST_FIELDS},headRepositoryOwner`,
+		]);
+		if (byBranch.exitCode !== 0) {
+			throw Object.assign(new Error(byBranch.stderr), { stderr: byBranch.stderr });
+		}
+		return parseJsonArray(byBranch.stdout)
+			.filter((item) => {
+				if (!owner) return true;
+				const login = (item as { headRepositoryOwner?: { login?: unknown } | null })
+					.headRepositoryOwner?.login;
+				return typeof login === "string" && login.toLowerCase() === owner.toLowerCase();
+			})
+			.map((item) => parsePullRequest(JSON.stringify(item)));
+	}
+
+	#gh(workingDirectory: string, args: string[]) {
+		return execa("gh", args, {
+			cwd: workingDirectory,
+			reject: false,
+			timeout: GH_TIMEOUT_MS,
+			windowsHide: true,
+		});
+	}
+
+	async #githubRepositoryIdentity(
+		workingDirectory: string,
+	): Promise<{ repository: string | null; parentRepository: string | null }> {
+		const cached = this.#repositoryIdentity.get(workingDirectory);
+		if (cached && cached.expiresAt > Date.now()) {
+			return { repository: cached.repository, parentRepository: cached.parentRepository };
+		}
+		const result = await this.#gh(workingDirectory, [
+			"repo",
+			"view",
+			"--json",
+			"nameWithOwner,parent",
+		]);
+		let repository: string | null = null;
+		let parentRepository: string | null = null;
+		if (result.exitCode === 0) {
+			try {
+				const value = JSON.parse(result.stdout) as {
+					nameWithOwner?: unknown;
+					parent?: { nameWithOwner?: unknown } | null;
+				};
+				repository = typeof value.nameWithOwner === "string" ? value.nameWithOwner : null;
+				parentRepository =
+					typeof value.parent?.nameWithOwner === "string" ? value.parent.nameWithOwner : null;
+			} catch {
+				// Unparseable output is treated like a failed lookup.
+			}
+		}
+		this.#repositoryIdentity.delete(workingDirectory);
+		if (this.#repositoryIdentity.size >= REPOSITORY_IDENTITY_CACHE_LIMIT) {
+			const oldest = this.#repositoryIdentity.keys().next().value;
+			if (oldest !== undefined) this.#repositoryIdentity.delete(oldest);
+		}
+		this.#repositoryIdentity.set(workingDirectory, {
+			repository,
+			parentRepository,
+			expiresAt:
+				Date.now() + (repository ? REPOSITORY_IDENTITY_TTL_MS : REPOSITORY_IDENTITY_FAILURE_TTL_MS),
+		});
+		return { repository, parentRepository };
+	}
+
+	async createPullRequest(input: {
+		workingDirectory: string;
+		baseBranch: string;
+		headBranch: string;
+		title: string;
+		body: string;
+	}): Promise<GitPullRequest> {
+		await this.#assertWithinWorkspaceFolders(input.workingDirectory);
+		const bodyFile = path.join(tmpdir(), `kilo-desktop-pr-${randomUUID()}.md`);
+		try {
+			const identity = await this.#githubRepositoryIdentity(input.workingDirectory);
+			// From a fork, gh needs `owner:branch` to find the pushed head.
+			const forkOwner = identity.parentRepository ? identity.repository?.split("/")[0] : undefined;
+			await writeFile(bodyFile, input.body, { encoding: "utf8", mode: 0o600 });
+			const created = await execa(
+				"gh",
+				[
+					"pr",
+					"create",
+					"--draft",
+					"--base",
+					input.baseBranch,
+					"--head",
+					forkOwner ? `${forkOwner}:${input.headBranch}` : input.headBranch,
+					"--title",
+					input.title,
+					"--body-file",
+					bodyFile,
+				],
+				{ cwd: input.workingDirectory, timeout: GH_TIMEOUT_MS, windowsHide: true },
+			);
+			const url = String(created.stdout)
+				.split(/\s+/)
+				.find((token) => /^https?:\/\/\S+\/pull\/\d+$/.test(token));
+			if (url) {
+				const view = await this.#gh(input.workingDirectory, [
+					"pr",
+					"view",
+					url,
+					"--json",
+					PULL_REQUEST_FIELDS,
+				]);
+				if (view.exitCode === 0) return parsePullRequest(view.stdout);
+			}
+			const found = await this.pullRequest(input.workingDirectory);
+			if (!found)
+				throw new FeatureError("GitHub did not return the created pull request.", "BUSINESS");
+			return found;
+		} catch (error) {
+			if (error instanceof FeatureError) throw error;
+			throw ghErrorToFeatureError(error);
+		} finally {
+			await rm(bodyFile, { force: true });
+		}
+	}
+
+	/**
+	 * Bounded Git context for PR text generation. The range starts from
+	 * `origin/<baseBranch>` when that remote-tracking ref exists — a stale
+	 * or missing local base branch would otherwise pull already-merged
+	 * commits into the description, or fail outright. Every output is
+	 * truncated rather than failing when it exceeds its budget.
+	 */
+	async pullRequestContext(
+		workingDirectory: string,
+		baseBranch: string,
+	): Promise<{
+		commitSummary: string;
+		diffSummary: string;
+		diffPatch: string;
+		recentCommitSubjects: string[];
+		pullRequestTemplate: string | null;
+	}> {
+		await this.#assertWithinWorkspaceFolders(workingDirectory);
+		if (baseBranch.startsWith("-")) {
+			throw new FeatureError(`"${baseBranch}" is not a valid base branch.`, "VALIDATION");
+		}
+		try {
+			const baseRef = await this.#resolveBaseRef(workingDirectory, baseBranch);
+			const range = `${baseRef}...HEAD`;
+			const [commitSummary, diffSummary, diffPatch, recentCommitSubjects, pullRequestTemplate] =
+				await Promise.all([
+					this.#boundedOutput(
+						["log", "--format=%h %s", range],
+						"log",
+						workingDirectory,
+						SUMMARY_MAX_CHARS,
+					),
+					this.#boundedOutput(
+						["diff", "--stat", "--no-color", range],
+						"diff stat",
+						workingDirectory,
+						SUMMARY_MAX_CHARS,
+					),
+					this.#boundedOutput(
+						["diff", "--no-ext-diff", "--no-color", "-M", range],
+						"diff",
+						workingDirectory,
+						PATCH_MAX_CHARS,
+					),
+					this.#recentCommitSubjects(workingDirectory),
+					this.#pullRequestTemplate(workingDirectory, baseRef),
+				]);
+			return { commitSummary, diffSummary, diffPatch, recentCommitSubjects, pullRequestTemplate };
+		} catch (error) {
+			throw gitActionErrorToFeatureError(error);
+		}
+	}
+
+	async #resolveBaseRef(workingDirectory: string, baseBranch: string): Promise<string> {
+		const remoteRef = `${REMOTE_REF_PREFIX}${DEFAULT_REMOTE_NAME}/${baseBranch}`;
+		const probe = await this.#client.exec(
+			["rev-parse", "--verify", "--quiet", `${remoteRef}^{commit}`],
+			"resolve base ref",
+			{ cwd: workingDirectory, successExitCodes: new Set([0, 1]) },
+		);
+		return probe.exitCode === 0 ? remoteRef : baseBranch;
+	}
+
+	/**
+	 * Changed-line totals against HEAD (the empty tree when unborn):
+	 * `--numstat` for tracked files plus a line count of untracked text
+	 * files, capped in count and size so a huge untracked tree stays cheap.
+	 * Binary files contribute no lines, matching git's numstat.
+	 */
+	async workingTreeStats(
+		workingDirectory: string,
+	): Promise<{ additions: number; deletions: number }> {
+		await this.#assertWithinWorkspaceFolders(workingDirectory);
+		try {
+			const head = await this.#client.exec(
+				["rev-parse", "--verify", "--quiet", "HEAD"],
+				"head commit",
+				{ cwd: workingDirectory, successExitCodes: new Set([0, 1]) },
+			);
+			const base =
+				head.exitCode === 0
+					? head.stdout.trim()
+					: (
+							await this.#client.exec(["hash-object", "-t", "tree", "--stdin"], "empty tree", {
+								cwd: workingDirectory,
+								stdin: "",
+							})
+						).stdout.trim();
+			const [tracked, untracked] = await Promise.all([
+				this.#client.exec(
+					["diff", "--numstat", "--no-renames", "--no-color", base, "--"],
+					"numstat",
+					{
+						cwd: workingDirectory,
+					},
+				),
+				this.#client.exec(["ls-files", "--others", "--exclude-standard", "-z"], "untracked files", {
+					cwd: workingDirectory,
+				}),
+			]);
+			const totals = parseNumstat(tracked.stdout);
+			const untrackedPaths = untracked.stdout
+				.split("\0")
+				.filter(Boolean)
+				.slice(0, UNTRACKED_STATS_MAX_FILES);
+			for (const relativePath of untrackedPaths) {
+				totals.additions += await countUntrackedLines(path.join(workingDirectory, relativePath));
+			}
+			return totals;
+		} catch (error) {
+			throw gitActionErrorToFeatureError(error);
+		}
+	}
+
+	/** Command output truncated to `maxChars` instead of failing on overflow. */
+	async #boundedOutput(
+		args: string[],
+		name: string,
+		workingDirectory: string,
+		maxChars: number,
+	): Promise<string> {
+		try {
+			const result = await this.#client.exec(args, name, {
+				cwd: workingDirectory,
+				// UTF-8 is at most 4 bytes per character.
+				maxBuffer: maxChars * 4,
+			});
+			return truncate(result.stdout, maxChars);
+		} catch (error) {
+			if (isMaxBufferExceededError(error)) return truncate(String(error.stdout), maxChars);
+			throw error;
+		}
+	}
+
+	async #recentCommitSubjects(workingDirectory: string): Promise<string[]> {
+		try {
+			const result = await this.#client.exec(
+				["log", "-n", "20", "--no-merges", "--pretty=format:%s"],
+				"recent commit subjects",
+				{ cwd: workingDirectory },
+			);
+			return result.stdout
+				.split("\n")
+				.map((subject) => subject.trim())
+				.filter(Boolean);
+		} catch {
+			return [];
+		}
+	}
+
+	async #pullRequestTemplate(workingDirectory: string, baseRef: string): Promise<string | null> {
+		try {
+			const treePaths = [...PULL_REQUEST_TEMPLATE_PATHS, ...PULL_REQUEST_TEMPLATE_DIRECTORIES];
+			const listing = await this.#boundedOutput(
+				["ls-tree", "-r", "-z", "--full-tree", baseRef, "--", ...treePaths],
+				"list pull request templates",
+				workingDirectory,
+				100_000,
+			);
+			const entries = listing.split("\0").flatMap((record) => {
+				const match = record.match(/^100(?:644|755) blob ([0-9a-f]{40,64})\t(.+)$/);
+				return match?.[1] && match[2] ? [{ objectId: match[1], path: match[2] }] : [];
+			});
+			const byPath = new Map(entries.map((entry) => [entry.path, entry]));
+			for (const templatePath of PULL_REQUEST_TEMPLATE_PATHS) {
+				const entry = byPath.get(templatePath);
+				if (!entry) continue;
+				const template = await this.#readTemplateBlob(workingDirectory, entry.objectId);
+				if (template) return template;
+			}
+			for (const directory of PULL_REQUEST_TEMPLATE_DIRECTORIES) {
+				const prefix = `${directory}/`;
+				const candidates = entries.filter((entry) => {
+					if (!entry.path.startsWith(prefix)) return false;
+					const relativePath = entry.path.slice(prefix.length);
+					return !relativePath.includes("/") && relativePath.toLowerCase().endsWith(".md");
+				});
+				const templates = (
+					await Promise.all(
+						candidates.map((entry) => this.#readTemplateBlob(workingDirectory, entry.objectId)),
+					)
+				).filter((template): template is string => template !== null);
+				if (templates.length === 1) return templates[0]!;
+				if (templates.length > 1) return null;
+			}
+			return null;
+		} catch {
+			return null;
+		}
+	}
+
+	async #readTemplateBlob(workingDirectory: string, objectId: string): Promise<string | null> {
+		const template = (
+			await this.#boundedOutput(
+				["cat-file", "blob", objectId],
+				"read PR template",
+				workingDirectory,
+				PULL_REQUEST_TEMPLATE_MAX_CHARS,
+			)
+		).trim();
+		return template || null;
 	}
 
 	async branches(workingDirectory: string): Promise<GitBranchesResult | null> {

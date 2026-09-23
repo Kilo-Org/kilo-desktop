@@ -31,8 +31,14 @@ function RepositoryTypeProbe() {
 	return <span data-qa-id="git-repository-kind">{query.data?.kind ?? "pending"}</span>;
 }
 
+function StatusProbe({ status }: { readonly status: () => string }) {
+	const query = useQuery({ queryKey: ["git", "status", "/repo/project"], queryFn: status });
+	return <span data-qa-id="git-status-probe">{query.data ?? "pending"}</span>;
+}
+
 function renderProvider(handlers: {
 	repositoryType: () => GitRepositoryType | Promise<GitRepositoryType>;
+	status?: () => string;
 }) {
 	const sdk = createFakeSdk({ featureId: "git" });
 	const mainSdk = createFakeMainSdk({ featureId: "git", services: sdk.services });
@@ -69,6 +75,7 @@ function renderProvider(handlers: {
 			<QueryClientProvider client={queryClient}>
 				<GitRepositoryWatcherProvider>
 					<RepositoryTypeProbe />
+					{handlers.status ? <StatusProbe status={handlers.status} /> : null}
 				</GitRepositoryWatcherProvider>
 			</QueryClientProvider>
 		</SdkProvider>,
@@ -122,6 +129,43 @@ describe("GitRepositoryWatcherProvider", () => {
 		expect(repositoryType).toHaveBeenCalledTimes(2);
 	});
 
+	it("recognizes Windows .git paths", async () => {
+		let missing = true;
+		const repositoryType = vi.fn((): GitRepositoryType =>
+			missing ? { kind: "missing" } : regularRepositoryType,
+		);
+		const { workspaceMainSdk } = renderProvider({ repositoryType });
+
+		await expect.element(page.getByTestId("git-repository-kind")).toHaveTextContent("missing");
+		missing = false;
+		emitWorkspaceFileChange(workspaceMainSdk, [
+			{ path: String.raw`C:\repo\project\.git\HEAD`, type: "create" },
+		]);
+
+		await expect.element(page.getByTestId("git-repository-kind")).toHaveTextContent("regular");
+		expect(repositoryType).toHaveBeenCalledTimes(2);
+	});
+
+	it("retains .git invalidation when an ordinary file event follows during the debounce", async () => {
+		let missing = true;
+		const repositoryType = vi.fn((): GitRepositoryType =>
+			missing ? { kind: "missing" } : regularRepositoryType,
+		);
+		const { workspaceMainSdk } = renderProvider({ repositoryType });
+
+		await expect.element(page.getByTestId("git-repository-kind")).toHaveTextContent("missing");
+		missing = false;
+		emitWorkspaceFileChange(workspaceMainSdk, [
+			{ path: "/repo/project/.git/HEAD", type: "create" },
+		]);
+		emitWorkspaceFileChange(workspaceMainSdk, [
+			{ path: "/repo/project/src/index.ts", type: "update" },
+		]);
+
+		await expect.element(page.getByTestId("git-repository-kind")).toHaveTextContent("regular");
+		expect(repositoryType).toHaveBeenCalledTimes(2);
+	});
+
 	it("ignores file changes outside .git", async () => {
 		const repositoryType = vi.fn(() => ({ kind: "missing" }) as const);
 		const { workspaceMainSdk } = renderProvider({ repositoryType });
@@ -135,6 +179,22 @@ describe("GitRepositoryWatcherProvider", () => {
 		// Give the (filtered-out) batch a beat before asserting no refetch.
 		await new Promise((resolve) => setTimeout(resolve, 100));
 		expect(repositoryType).toHaveBeenCalledTimes(1);
+	});
+
+	it("refetches git status after an ordinary workspace file update", async () => {
+		const repositoryType = vi.fn(() => regularRepositoryType);
+		let statusValue = "clean";
+		const status = vi.fn(() => statusValue);
+		const { workspaceMainSdk } = renderProvider({ repositoryType, status });
+
+		await expect.element(page.getByTestId("git-status-probe")).toHaveTextContent("clean");
+		statusValue = "modified";
+		emitWorkspaceFileChange(workspaceMainSdk, [
+			{ path: "/repo/project/src/index.ts", type: "update" },
+		]);
+
+		await expect.element(page.getByTestId("git-status-probe")).toHaveTextContent("modified");
+		expect(status).toHaveBeenCalledTimes(2);
 	});
 
 	it("refetches when existing .git metadata is updated", async () => {

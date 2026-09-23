@@ -1,6 +1,6 @@
 import type { MainSdk } from "@kilo-desktop/feature-sdk/main";
 
-import { gitContract, type GitCapabilities } from "../contracts/schemas.js";
+import { gitActionsContract, gitContract, type GitCapabilities } from "../contracts/schemas.js";
 import { createGitProtocolHandler } from "./git-protocol.js";
 import { GitService } from "./git-service.js";
 
@@ -58,6 +58,34 @@ export function mainRegister(mainSdk: MainSdk): void {
 		},
 		getDiffContents: (args) => service.getDiffContents(args),
 		defaultBranch: ({ workingDirectory }) => service.defaultBranch(workingDirectory),
+	});
+
+	mainSdk.channels(gitActionsContract).handleAll({
+		githubCliStatus: ({ force }) => service.githubCliStatus(force),
+		stageChanges: ({ workingDirectory }) => service.stageChanges(workingDirectory),
+		fetch: async ({ workingDirectory }) => {
+			await service.fetch(workingDirectory);
+			return undefined;
+		},
+		commit: async ({ workingDirectory, message }) => {
+			await service.commit(workingDirectory, message);
+			return undefined;
+		},
+		push: async ({ workingDirectory, branch, hasUpstream }) => {
+			await service.push(workingDirectory, branch, hasUpstream);
+			return undefined;
+		},
+		pull: async ({ workingDirectory }) => {
+			await service.pull(workingDirectory);
+			return undefined;
+		},
+		originUrl: ({ workingDirectory }) => service.originUrl(workingDirectory),
+		pullRequest: ({ workingDirectory }) => service.pullRequest(workingDirectory),
+		pullRequestSnapshot: ({ workingDirectory }) => service.pullRequestSnapshot(workingDirectory),
+		createPullRequest: (input) => service.createPullRequest(input),
+		pullRequestContext: ({ workingDirectory, baseBranch }) =>
+			service.pullRequestContext(workingDirectory, baseBranch),
+		workingTreeStats: ({ workingDirectory }) => service.workingTreeStats(workingDirectory),
 	});
 
 	mainSdk.protocol?.handle("kilo-git", createGitProtocolHandler({ service }));

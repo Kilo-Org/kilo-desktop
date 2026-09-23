@@ -28,7 +28,7 @@ import {
 	TooltipTrigger,
 } from "@kilo-desktop/ui/components/tooltip";
 import { cn } from "@kilo-desktop/ui/lib/utils";
-import { useSdk } from "@kilo-desktop/sdk-react";
+import { useSdk, useSdkContributions } from "@kilo-desktop/sdk-react";
 import {
 	ThreadListItemPrimitive,
 	ThreadListPrimitive,
@@ -1286,6 +1286,12 @@ type SessionRowContentProps = {
 	deleteThread: () => void;
 };
 
+type SessionRowMetadataProps = {
+	statusId: string;
+	directory: string;
+	worktreeBranch?: string;
+};
+
 const SessionRowContent = memo(function SessionRowContent({
 	remoteId,
 	threadId,
@@ -1320,7 +1326,14 @@ const SessionRowContent = memo(function SessionRowContent({
 	const workspaceColor = workspaceGlyphColor(workspace?.color);
 	const showUpdated = show.includes("updated");
 	const showWorkspace = show.includes("workspace") && locationLabel !== null;
+	const showPullRequest = show.includes("pr");
+	const statusId = activity?.workspaceId
+		? activity.worktreeBranch
+			? `${activity.workspaceId}:worktree:${activity.worktreeBranch}`
+			: `${activity.workspaceId}:local`
+		: null;
 	const updatedAt = showUpdated ? activity?.updatedAt : undefined;
+	const metadataContributions = useSdkContributions("kilo-ui/chat-session-row-metadata");
 
 	const leadingIcon =
 		rowState !== null ? (
@@ -1334,6 +1347,20 @@ const SessionRowContent = memo(function SessionRowContent({
 		);
 
 	const rightSlot = updatedAt !== undefined ? <SessionRelativeTime timestamp={updatedAt} /> : null;
+	const pullRequestMetadata =
+		showPullRequest && activity?.directory && statusId
+			? metadataContributions.map((contribution) => {
+					const Component = contribution.component as FC<SessionRowMetadataProps>;
+					return (
+						<Component
+							key={`${contribution.featureId}.${contribution.id}`}
+							statusId={statusId}
+							directory={activity.directory!}
+							{...(activity.worktreeBranch ? { worktreeBranch: activity.worktreeBranch } : {})}
+						/>
+					);
+				})
+			: null;
 
 	const glyph = indented ? (
 		<span className="flex h-5 w-4 shrink-0 items-center justify-center">{leadingIcon}</span>
@@ -1376,7 +1403,7 @@ const SessionRowContent = memo(function SessionRowContent({
 	);
 
 	const infoLine =
-		showWorkspace && locationLabel ? (
+		(showWorkspace && locationLabel) || pullRequestMetadata?.length ? (
 			<span
 				data-slot="aui_session-list-item-info"
 				className={cn(
@@ -1384,13 +1411,18 @@ const SessionRowContent = memo(function SessionRowContent({
 					indented && "ml-1.5 pl-4",
 				)}
 			>
-				<FolderIcon
-					aria-hidden
-					data-slot="aui_session-list-workspace-icon"
-					className="size-[13px] shrink-0 opacity-70"
-					{...(workspaceColor ? { color: workspaceColor } : {})}
-				/>
-				<span className="truncate">{locationLabel}</span>
+				{showWorkspace && locationLabel ? (
+					<>
+						<FolderIcon
+							aria-hidden
+							data-slot="aui_session-list-workspace-icon"
+							className="size-[13px] shrink-0 opacity-70"
+							{...(workspaceColor ? { color: workspaceColor } : {})}
+						/>
+						<span className="min-w-0 flex-1 truncate">{locationLabel}</span>
+					</>
+				) : null}
+				{pullRequestMetadata}
 			</span>
 		) : null;
 

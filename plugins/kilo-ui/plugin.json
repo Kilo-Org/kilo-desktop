@@ -9,7 +9,10 @@
 		{ "id": "chat-markdown-extension" },
 		{ "id": "chat-composer-trigger" },
 		{ "id": "chat-composer-draft-footer" },
-		{ "id": "chat-composer-footer" }
+		{ "id": "chat-composer-footer" },
+		{ "id": "chat-header-actions" },
+		{ "id": "chat-session-row-metadata" },
+		{ "id": "chat-session-metadata-provider" }
 	],
 	"contributes": {
 		"providers": [

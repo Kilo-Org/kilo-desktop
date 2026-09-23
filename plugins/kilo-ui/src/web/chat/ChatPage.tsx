@@ -9,6 +9,7 @@ import {
 	useRef,
 	useState,
 	type ReactNode,
+	type ComponentType,
 } from "react";
 
 import type { PluginPageProps } from "@kilo-desktop/feature-sdk";
@@ -22,7 +23,7 @@ import {
 	type Arrangement,
 	type PaneLayout,
 } from "@kilo-desktop/pane-layout";
-import { useSdk } from "@kilo-desktop/sdk-react";
+import { useSdk, useSdkContributions } from "@kilo-desktop/sdk-react";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Tooltip,
@@ -80,6 +81,12 @@ import { useWorkspacesFeature } from "../workspaces/WorkspacesFeatureContext.js"
 
 const EMPTY_WORKSPACE_FOLDERS: ChatMarkdownExtensionContext["workspaceFolders"] = [];
 const KILO_UI_PLUGIN_ID = "kilo-ui";
+export const CHAT_HEADER_ACTIONS_ZONE = "kilo-ui/chat-header-actions";
+
+export interface ChatHeaderActionProps {
+	readonly workspaceDirectory?: string;
+	readonly onOpenChanges?: () => void;
+}
 
 function unpinLayout(layout: PaneLayout): PaneLayout {
 	if (!layout.groups.some((group) => group.pinned)) return layout;
@@ -157,18 +164,33 @@ export function ChatPageHeaderLeading() {
 
 export function ChatPageHeaderActions() {
 	const state = usePaneSessionHeaderStore();
-	if (!state.hasCanvas) return null;
+	const contributions = useSdkContributions(CHAT_HEADER_ACTIONS_ZONE);
+	if (!state.ready) return null;
 	return (
 		<div className="-mr-1 flex items-center gap-1 [-webkit-app-region:no-drag]">
-			<PaneLaunchToolbar
-				definitions={state.definitions}
-				onLaunchChat={state.onLaunchChat}
-				onLaunch={state.onLaunch}
-			/>
-			<PaneSessionChrome
-				arrangement={state.arrangement}
-				onArrangementChange={state.onArrangementChange}
-			/>
+			{contributions.map((contribution) => {
+				const Component = contribution.component as ComponentType<ChatHeaderActionProps>;
+				return (
+					<Component
+						key={`${contribution.featureId}.${contribution.id}`}
+						{...(state.workspaceDirectory ? { workspaceDirectory: state.workspaceDirectory } : {})}
+						onOpenChanges={state.onOpenChanges}
+					/>
+				);
+			})}
+			{state.hasCanvas ? (
+				<>
+					<PaneLaunchToolbar
+						definitions={state.definitions}
+						onLaunchChat={state.onLaunchChat}
+						onLaunch={state.onLaunch}
+					/>
+					<PaneSessionChrome
+						arrangement={state.arrangement}
+						onArrangementChange={state.onArrangementChange}
+					/>
+				</>
+			) : null}
 		</div>
 	);
 }
@@ -224,6 +246,11 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 		worktreeDirectory ??
 		workspace?.folders.find((folder) => folder.isPrimary)?.path ??
 		workspace?.folders[0]?.path;
+	const headerWorkspaceDirectory = remoteId?.trim()
+		? (worktreeDirectory ??
+			workspace?.folders.find((folder) => folder.isPrimary)?.path ??
+			workspace?.folders[0]?.path)
+		: undefined;
 	const workspaceFolders = useMemo(
 		() =>
 			worktreeDirectory
@@ -553,6 +580,33 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 		},
 		[aliases, chatTitle, commitLayout, layout, sessionId, setChatPaneOpen],
 	);
+	const handleOpenChanges = useCallback(() => {
+		const existing = panelState.tabs.findLast((tab) => tab.definitionId === "git.changes");
+		if (existing) {
+			if (poppedOutPaneIds.has(existing.instanceId)) {
+				handleFocusPoppedOutPane(existing.instanceId);
+				return;
+			}
+			activateTab(sessionId, existing.instanceId);
+			commitLayout(setActivePane(layout, existing.instanceId));
+			setRevealActivePaneNonce((current) => current + 1);
+			return;
+		}
+		const changesDefinition = rightPanelDefinitions.find(
+			(definition) => definition.id === "git.changes",
+		);
+		if (changesDefinition) handleLaunch(changesDefinition);
+	}, [
+		activateTab,
+		commitLayout,
+		handleFocusPoppedOutPane,
+		handleLaunch,
+		layout,
+		panelState.tabs,
+		poppedOutPaneIds,
+		rightPanelDefinitions,
+		sessionId,
+	]);
 	const handleArrangementChange = useCallback(
 		(next: Arrangement) => {
 			if (next === "tiles") {
@@ -570,19 +624,23 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 			ready: true,
 			sessionId,
 			hasCanvas,
+			workspaceDirectory: headerWorkspaceDirectory ?? null,
 			arrangement,
 			onArrangementChange: handleArrangementChange,
 			definitions: rightPanelDefinitions,
 			onLaunch: handleLaunch,
+			onOpenChanges: handleOpenChanges,
 			onLaunchChat: handleLaunchChat,
 		});
 		return () => resetPaneSessionHeader();
 	}, [
 		arrangement,
 		handleLaunch,
+		handleOpenChanges,
 		handleLaunchChat,
 		handleArrangementChange,
 		hasCanvas,
+		headerWorkspaceDirectory,
 		isDetached,
 		rightPanelDefinitions,
 		sessionId,

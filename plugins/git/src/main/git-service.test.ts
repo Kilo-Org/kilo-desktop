@@ -104,6 +104,35 @@ function absentFolders(): () => Promise<readonly string[] | null> {
 }
 
 describe("GitService", () => {
+	it("rejects option-like push branches before invoking git", async () => {
+		const exec = vi.fn();
+		const service = new GitService({
+			logger,
+			getWorkspaceFolderPaths: folders("/some/repo"),
+			createClient: () => clientOf({ exec }),
+		});
+
+		await expect(service.push("/some/repo", "--force", false)).rejects.toMatchObject({
+			name: "FeatureError",
+			code: "VALIDATION",
+		});
+		expect(exec).not.toHaveBeenCalled();
+	});
+
+	it("rejects option-like pull request base branches before invoking git", async () => {
+		const exec = vi.fn();
+		const service = new GitService({
+			logger,
+			getWorkspaceFolderPaths: folders("/some/repo"),
+			createClient: () => clientOf({ exec }),
+		});
+
+		await expect(
+			service.pullRequestContext("/some/repo", "--output=/tmp/exfiltrate"),
+		).rejects.toMatchObject({ name: "FeatureError", code: "VALIDATION" });
+		expect(exec).not.toHaveBeenCalled();
+	});
+
 	it("rejects with a BUSINESS FeatureError when the git binary is not found", async () => {
 		const service = new GitService({
 			logger,

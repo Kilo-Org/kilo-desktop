@@ -60,7 +60,7 @@ export class ElectronShell {
 		kind: "directory";
 		multiple?: boolean | undefined;
 	}): Promise<{ canceled: boolean; paths: string[] }> {
-		const properties: OpenDialogOptions["properties"] = ["openDirectory"];
+		const properties: OpenDialogOptions["properties"] = ["openDirectory", "createDirectory"];
 		if (options.multiple) properties.push("multiSelections");
 		const dialogOptions = { properties } satisfies OpenDialogOptions;
 		const parentWindow = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];

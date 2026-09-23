@@ -66,7 +66,7 @@ describe("ElectronShell", () => {
 			paths: ["/tmp/one", "/tmp/two"],
 		});
 		expect(showOpenDialog).toHaveBeenCalledWith(parentWindow, {
-			properties: ["openDirectory", "multiSelections"],
+			properties: ["openDirectory", "createDirectory", "multiSelections"],
 		});
 	});
 
@@ -79,7 +79,7 @@ describe("ElectronShell", () => {
 		await adapter.showOpenDialog({ kind: "directory" });
 
 		expect(showOpenDialog).toHaveBeenCalledWith(parentWindow, {
-			properties: ["openDirectory"],
+			properties: ["openDirectory", "createDirectory"],
 		});
 	});
 
@@ -90,7 +90,9 @@ describe("ElectronShell", () => {
 
 		await adapter.showOpenDialog({ kind: "directory" });
 
-		expect(showOpenDialog).toHaveBeenCalledWith({ properties: ["openDirectory"] });
+		expect(showOpenDialog).toHaveBeenCalledWith({
+			properties: ["openDirectory", "createDirectory"],
+		});
 	});
 
 	it.each([

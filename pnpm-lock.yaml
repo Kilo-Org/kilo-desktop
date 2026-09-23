@@ -1062,14 +1062,14 @@ importers:
         version: 5.0.1(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.1)(@vitest/coverage-v8@5.0.1)(@vitest/ui@5.0.1)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
     optionalDependencies:
       '@anaconda/desktop-bridge-payload-darwin-arm64':
-        specifier: 0.1.9
-        version: 0.1.9
+        specifier: 0.1.11
+        version: 0.1.11
       '@anaconda/desktop-bridge-payload-linux-x64':
-        specifier: 0.1.9
-        version: 0.1.9
+        specifier: 0.1.11
+        version: 0.1.11
       '@anaconda/desktop-bridge-payload-win32-x64':
-        specifier: 0.1.9
-        version: 0.1.9
+        specifier: 0.1.11
+        version: 0.1.11
 
   plugins/files:
     dependencies:
@@ -1887,18 +1887,18 @@ packages:
   7zip-bin-full@26.2.1:
     resolution: {integrity: sha512-h1DE4G8WEJ3/LI4HTcuOpouP7cy9JGqYfZm5fzLhdzw8jI3wFyA9RFu5MP+ICzelKEYmWweRWApEvVWKmJIdVQ==}
 
-  '@anaconda/desktop-bridge-payload-darwin-arm64@0.1.9':
-    resolution: {integrity: sha512-gXLsNCYUhd0+g3cXPSuF7YsIpcyRF3UWfR95a8Vycua3pOcNpxNBY4a2CFLD+XTO9uoeYGkPZdr4a+L15NOHtw==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-darwin-arm64/0.1.9/4c540d5519e38b82ed308a10ed2e4545838e5858}
+  '@anaconda/desktop-bridge-payload-darwin-arm64@0.1.11':
+    resolution: {integrity: sha512-J/n+S4kZytiJaiAGr3Bwz12B/yzn/oBmNvWx4VZxVPCOLt8ijuvyhzKdr6XBOtVQAOaAzz+KGzWolCrby71YqQ==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-darwin-arm64/0.1.11/0a08ee02060a788ad9fade278e2fdcd858bf4140}
     cpu: [arm64]
     os: [darwin]
 
-  '@anaconda/desktop-bridge-payload-linux-x64@0.1.9':
-    resolution: {integrity: sha512-EwUH67mZersq3RKI4Mnh/ornMUhKmVJQaruUs/979qKXMTwirmCNnkhgvzVbznwHOA2GTwkaVY+QOI0ldbmYZw==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-linux-x64/0.1.9/5393f22d7ff217ddcdc986bf6bc269cd5928ed64}
+  '@anaconda/desktop-bridge-payload-linux-x64@0.1.11':
+    resolution: {integrity: sha512-Zoc4kJ7+/Q3CoCBO8U1Pm+d6J1SnudNALdwDiw40cbUpioCizwTx5VFYheexKXnfoR65ZQgq3K7afQ8wIESY7A==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-linux-x64/0.1.11/39383c3ceb186b75ece5215f19abb495b20fb6b9}
     cpu: [x64]
     os: [linux]
 
-  '@anaconda/desktop-bridge-payload-win32-x64@0.1.9':
-    resolution: {integrity: sha512-OrNAXx68vaB2SvLMJKOahyXe+8vnlzBOM44edVeItiVxX/7vfzWPDcjsJHEgq0Nwx6hwBMpsel+Uus4/Byd98g==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-win32-x64/0.1.9/624d069905563e4cabe01d498e0012ff7d9fe02b}
+  '@anaconda/desktop-bridge-payload-win32-x64@0.1.11':
+    resolution: {integrity: sha512-sSzxzEi+/+YvsFQ5QcWMELQoddorL/NbmlslhgeeCWo98xHJG6pHSQiDWXgkBiRUNQ25u4GA4rHL97IbbJzL8g==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-win32-x64/0.1.11/ed455a4f6324bc64dd91d06e0a8618ac45156904}
     cpu: [x64]
     os: [win32]
 
@@ -10543,13 +10543,13 @@ snapshots:
 
   7zip-bin-full@26.2.1: {}
 
-  '@anaconda/desktop-bridge-payload-darwin-arm64@0.1.9':
+  '@anaconda/desktop-bridge-payload-darwin-arm64@0.1.11':
     optional: true
 
-  '@anaconda/desktop-bridge-payload-linux-x64@0.1.9':
+  '@anaconda/desktop-bridge-payload-linux-x64@0.1.11':
     optional: true
 
-  '@anaconda/desktop-bridge-payload-win32-x64@0.1.9':
+  '@anaconda/desktop-bridge-payload-win32-x64@0.1.11':
     optional: true
 
   '@anaconda/playwright-utils@2.0.2(@playwright/test@1.63.0)(jiti@2.7.0)(supports-color@10.2.2)':

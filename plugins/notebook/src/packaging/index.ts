@@ -13,8 +13,19 @@ const RUNTIMED_EXECUTABLES = new Map([
 	["linux-x64", "runtimed-nightly"],
 	["win32-x64", "runtimed-nightly.exe"],
 ]);
-export const NOTEBOOK_ASAR_UNPACK_PACKAGES = ["@runtimed"] as const;
-export const NOTEBOOK_MAIN_EXTERNALS = [/^@runtimed\/node(?:\/.*)?$/] as const;
+// `koffi` is loaded lazily by the daemon peer-credential check, so it must stay
+// outside ASAR and be externalized from the bundled main process just like the
+// other native runtime dependencies. Critically, koffi ships NO addon of its
+// own: its loader requires `koffi.node` from a sibling platform package
+// `@koromix/koffi-<platform>-<arch>`. Under the hoisted node linker that package
+// hoists to the top level, so it must be unpacked too — otherwise the addon
+// stays inside app.asar, koffi fails to load in packaged builds, and every
+// daemon is silently denied while `pnpm dev` (unpacked) keeps working.
+// `@koromix` is a scope, not a package: it unpacks every installed platform
+// package under it, but pnpm only installs the one matching the current
+// platform/arch, so exactly one `@koromix/koffi-*` is ever present per build.
+export const NOTEBOOK_ASAR_UNPACK_PACKAGES = ["@runtimed", "koffi", "@koromix"] as const;
+export const NOTEBOOK_MAIN_EXTERNALS = [/^@runtimed\/node(?:\/.*)?$/, /^koffi$/] as const;
 
 export interface NotebookPackagingPlan {
 	readonly extraResources: readonly string[];

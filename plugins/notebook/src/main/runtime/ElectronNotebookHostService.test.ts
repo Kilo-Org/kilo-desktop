@@ -16,6 +16,10 @@ const mocks = vi.hoisted(() => ({
 	openRelayPath: vi.fn(),
 	queryDaemonInfo: vi.fn(),
 	serve: vi.fn(),
+	// Peer authentication is unit-tested in daemon-peer-auth / -authenticator /
+	// RuntimedDaemonManager specs; here it defaults to trusting so these
+	// lifecycle tests exercise daemon states without the OS credential lookup.
+	createAuthenticator: vi.fn(() => async () => ({ trusted: true }) as const),
 }));
 
 vi.mock("@runtimed/node/relay", () => ({
@@ -25,6 +29,9 @@ vi.mock("@runtimed/node/relay", () => ({
 }));
 vi.mock("@runtimed/node/electron", () => ({
 	serveElectronNotebookHost: mocks.serve,
+}));
+vi.mock("./daemon-peer-authenticator.js", () => ({
+	createDaemonPeerAuthenticator: mocks.createAuthenticator,
 }));
 
 import { ElectronNotebookHostService } from "./ElectronNotebookHostService.js";
@@ -742,6 +749,38 @@ describe("ElectronNotebookHostService", () => {
 		expect(mocks.createRelay).not.toHaveBeenCalled();
 	});
 
+	it("never reports an untrusted daemon as available or leaks its metadata", async () => {
+		// A squatter answers the socket, so queryDaemonInfo would succeed, but the
+		// daemon manager failed authentication. status() must stay unavailable and
+		// must not surface the attacker-controlled version/socket/blob port.
+		mocks.queryDaemonInfo.mockResolvedValue({
+			version: "6.6.6",
+			socketPath: "/tmp/squatter.sock",
+			isDevMode: false,
+			blobPort: 1337,
+		});
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			socketPath: "/tmp/nightly.sock",
+			createDaemonManager: () => ({
+				state: { status: "idle" },
+				ensureAvailable: async () => ({
+					status: "failed" as const,
+					reason: "The runtime daemon is running an untrusted executable: /tmp/evil.",
+				}),
+				dispose: async () => undefined,
+			}),
+		});
+
+		const result = await service.status();
+		expect(result.availability).toEqual({
+			status: "unavailable",
+			reason: expect.stringContaining("untrusted executable"),
+		});
+		expect(result.daemon).toBeNull();
+		expect(mocks.queryDaemonInfo).not.toHaveBeenCalled();
+	});
+
 	it("can warm the daemon without opening a notebook relay", async () => {
 		const ensureAvailable = vi.fn(async () => ({ status: "bundled" as const, pid: 42 }));
 		const service = new ElectronNotebookHostService({
@@ -1206,5 +1245,40 @@ describe("ElectronNotebookHostService", () => {
 		await expect(handler.invoke("notebook.getDefaultSaveDirectory", undefined)).resolves.toBe(
 			os.homedir(),
 		);
+	});
+});
+
+describe("ElectronNotebookHostService daemon authentication wiring", () => {
+	afterEach(() => vi.clearAllMocks());
+
+	it("builds the authenticator from the bundled image, this user's uid, and the resolver seam", async () => {
+		const resolvePeerIdentity = vi.fn(async () => null);
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			socketPath: "/tmp/nightly.sock",
+			runtimedBinaryPath: "/resources/runtimed-nightly",
+			resolvePeerIdentity,
+			probePeerCredentialBackend: async () => true,
+		});
+
+		expect(mocks.createAuthenticator).toHaveBeenCalledWith({
+			resolvePeerIdentity,
+			allowedExecutablePaths: ["/resources/runtimed-nightly"],
+			selfUid: typeof process.getuid === "function" ? process.getuid() : null,
+		});
+		await service.dispose();
+	});
+
+	it("trusts no external image when no bundled binary is staged", async () => {
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			socketPath: "/tmp/nightly.sock",
+			probePeerCredentialBackend: async () => true,
+		});
+
+		expect(mocks.createAuthenticator).toHaveBeenCalledWith(
+			expect.objectContaining({ allowedExecutablePaths: [] }),
+		);
+		await service.dispose();
 	});
 });

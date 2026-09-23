@@ -29,6 +29,12 @@ import type { NotebookOpenFileResult, NotebookSaveResult } from "../../contracts
 
 import { resolveDaemonSocketPath, type BuildChannel } from "./socket-path.js";
 import { RuntimedDaemonManager, type RuntimedDaemonState } from "./RuntimedDaemonManager.js";
+import { createDaemonPeerAuthenticator } from "./daemon-peer-authenticator.js";
+import {
+	isPeerCredentialBackendAvailable,
+	resolveDaemonPeerIdentity,
+	type PeerCredentialResolver,
+} from "./peer-credentials.js";
 
 export interface ElectronNotebookConnectionArgs {
 	readonly notebookId: string;
@@ -46,6 +52,14 @@ export interface ElectronNotebookHostServiceOptions {
 	readonly createDaemonManager?: (
 		options: ConstructorParameters<typeof RuntimedDaemonManager>[0],
 	) => RuntimedDaemonManagerLike;
+	/** Test seam for the OS peer-credential lookup used to authenticate the daemon. */
+	readonly resolvePeerIdentity?: PeerCredentialResolver;
+	/**
+	 * Probes whether the native peer-credential backend can load, to warn when it
+	 * cannot (every daemon would then be denied). Defaults to the real koffi
+	 * probe; tests pass a stub to keep the constructor side-effect-free.
+	 */
+	readonly probePeerCredentialBackend?: () => Promise<boolean>;
 }
 
 export interface RuntimedDaemonManagerLike {
@@ -234,11 +248,36 @@ export class ElectronNotebookHostService {
 		const createDaemonManager =
 			options.createDaemonManager ??
 			((managerOptions) => new RuntimedDaemonManager(managerOptions));
+		// Authenticate whatever answers the daemon socket before any notebook
+		// code reaches it: our spawned child by pid, or an attached daemon by its
+		// executable image (only the bundled binary is trusted by default).
+		const authenticatePeer = createDaemonPeerAuthenticator({
+			resolvePeerIdentity: options.resolvePeerIdentity ?? resolveDaemonPeerIdentity,
+			allowedExecutablePaths: options.runtimedBinaryPath ? [options.runtimedBinaryPath] : [],
+			selfUid: typeof process.getuid === "function" ? process.getuid() : null,
+		});
+		// Warn loudly if the native peer-credential backend cannot load:
+		// authentication would then deny every daemon, which is otherwise
+		// indistinguishable from a broken runtime. This is an explicit probe
+		// (defaulting to the real koffi check) rather than being keyed off the
+		// resolvePeerIdentity test seam; tests pass a stub to stay hermetic.
+		const probePeerCredentialBackend =
+			options.probePeerCredentialBackend ?? isPeerCredentialBackendAvailable;
+		void probePeerCredentialBackend()
+			.then((available) => {
+				if (!available) {
+					this.#mainSdk.logger.warn(
+						"The notebook runtime daemon cannot be authenticated: the native peer-credential backend (koffi) failed to load, so every daemon will be treated as untrusted. In packaged builds this usually means koffi's native addon was not unpacked from the app bundle.",
+					);
+				}
+			})
+			.catch(() => {});
 		this.#daemonManager = createDaemonManager({
 			binaryPath: options.runtimedBinaryPath,
 			socketPath: this.#socketPath,
 			allowSpawn: options.socketPath === undefined && !process.env["RUNTIMED_SOCKET_PATH"]?.trim(),
 			probe: async () => (await queryDaemonInfo({ socketPath: this.#socketPath })) !== null,
+			authenticatePeer,
 			logger: this.#mainSdk.logger,
 		});
 	}
@@ -252,12 +291,18 @@ export class ElectronNotebookHostService {
 	}
 
 	async status() {
-		const process = await this.start();
-		const daemon = await queryDaemonInfo({ socketPath: this.#socketPath });
+		const daemonProcess = await this.start();
+		// Only a daemon that passed authentication (external/bundled) may be
+		// reported "available", and only then is its metadata read. A squatter
+		// that answers the socket still responds to queryDaemonInfo, so gating on
+		// the authenticated process state keeps its version/socket/blob port from
+		// reaching the renderer as if it were the real daemon.
+		const trusted = daemonProcess.status === "external" || daemonProcess.status === "bundled";
+		const daemon = trusted ? await queryDaemonInfo({ socketPath: this.#socketPath }) : null;
 		return daemon
 			? {
 					availability: { status: "available" as const },
-					process,
+					process: daemonProcess,
 					daemon: {
 						version: daemon.version,
 						socketPath: daemon.socketPath,
@@ -269,11 +314,11 @@ export class ElectronNotebookHostService {
 					availability: {
 						status: "unavailable" as const,
 						reason:
-							process.status === "failed"
-								? process.reason
+							daemonProcess.status === "failed"
+								? daemonProcess.reason
 								: "The notebook runtime daemon is not ready yet.",
 					},
-					process,
+					process: daemonProcess,
 					daemon: null,
 				};
 	}

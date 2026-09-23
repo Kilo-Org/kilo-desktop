@@ -8,9 +8,33 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { RuntimedDaemonManager, runtimedRestartDelayMs } from "./RuntimedDaemonManager.js";
+import {
+	RuntimedDaemonManager,
+	runtimedRestartDelayMs,
+	type AuthenticatePeer,
+	type RuntimedDaemonManagerOptions,
+} from "./RuntimedDaemonManager.js";
 
 vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
+
+// Authentication has its own describe block below; these lifecycle tests supply
+// an explicit always-trust stub so the (now required) control is never omitted.
+const alwaysTrust: AuthenticatePeer = async () => ({ trusted: true });
+
+function createManager(
+	options: Omit<RuntimedDaemonManagerOptions, "authenticatePeer"> & {
+		authenticatePeer?: AuthenticatePeer;
+	},
+): RuntimedDaemonManager {
+	// A real manager always has a socket path (authentication reads credentials
+	// from it and fails closed without one). Default an absent path so lifecycle
+	// tests that don't care about it still authenticate through the stub.
+	return new RuntimedDaemonManager({
+		socketPath: "/tmp/kd-daemon-test.sock",
+		authenticatePeer: alwaysTrust,
+		...options,
+	});
+}
 
 class FakeChild extends EventEmitter {
 	pid = 4242;
@@ -46,7 +70,7 @@ function build(
 	let clock = 0;
 	const spawned: string[] = [];
 	const child = new FakeChild();
-	const manager = new RuntimedDaemonManager({
+	const manager = createManager({
 		binaryPath: "binaryPath" in options ? options.binaryPath : "/resources/runtimed-nightly",
 		probe: options.probe ?? (async () => false),
 		spawnProcess:
@@ -86,7 +110,7 @@ describe("RuntimedDaemonManager", () => {
 		const child = new FakeChild();
 		const spawn = vi.mocked(childProcesses.spawn).mockReturnValue(child.asChildProcess());
 		let probes = 0;
-		const manager = new RuntimedDaemonManager({
+		const manager = createManager({
 			binaryPath: "/resources/runtimed-nightly",
 			probe: async () => ++probes > 1,
 		});
@@ -105,7 +129,7 @@ describe("RuntimedDaemonManager", () => {
 
 	it("never spawns for an explicit attach-only endpoint", async () => {
 		const spawnProcess = vi.fn();
-		const manager = new RuntimedDaemonManager({
+		const manager = createManager({
 			binaryPath: "/resources/runtimed-nightly",
 			allowSpawn: false,
 			probe: async () => false,
@@ -132,7 +156,7 @@ describe("RuntimedDaemonManager", () => {
 			const spawnProcess = vi.fn();
 			let clock = 0;
 			let probes = 0;
-			const manager = new RuntimedDaemonManager({
+			const manager = createManager({
 				socketPath,
 				binaryPath: "/resources/runtimed-nightly",
 				probe: async () => ++probes > 1 && outcome === "ready",
@@ -185,7 +209,7 @@ describe("RuntimedDaemonManager", () => {
 			const child = new FakeChild();
 			const spawnProcess = vi.fn(() => child.asChildProcess());
 			let probes = 0;
-			const manager = new RuntimedDaemonManager({
+			const manager = createManager({
 				socketPath,
 				binaryPath: "/resources/runtimed-nightly",
 				probe: async () => ++probes > 1,
@@ -219,7 +243,7 @@ describe("RuntimedDaemonManager", () => {
 		const child = new FakeChild();
 		const spawnProcess = vi.fn(() => child.asChildProcess());
 		let probes = 0;
-		const manager = new RuntimedDaemonManager({
+		const manager = createManager({
 			socketPath,
 			binaryPath: "/resources/runtimed-nightly",
 			probe: async () => ++probes > 1,
@@ -241,7 +265,7 @@ describe("RuntimedDaemonManager", () => {
 			const socketPath = path.join(directory, "daemon.sock");
 			await writeFile(socketPath, "not a socket");
 			const spawnProcess = vi.fn();
-			const manager = new RuntimedDaemonManager({
+			const manager = createManager({
 				socketPath,
 				binaryPath: "/resources/runtimed-nightly",
 				probe: async () => false,
@@ -263,7 +287,7 @@ describe("RuntimedDaemonManager", () => {
 
 	it("attaches to an existing singleton without spawning", async () => {
 		const spawnProcess = vi.fn();
-		const manager = new RuntimedDaemonManager({
+		const manager = createManager({
 			binaryPath: "/resources/runtimed-nightly",
 			probe: async () => true,
 			spawnProcess,
@@ -278,7 +302,7 @@ describe("RuntimedDaemonManager", () => {
 		let externalIsRunning = true;
 		const child = new FakeChild();
 		const spawned: string[] = [];
-		const manager = new RuntimedDaemonManager({
+		const manager = createManager({
 			binaryPath: "/resources/runtimed-nightly",
 			probe: async () => externalIsRunning,
 			spawnProcess: (binaryPath) => {
@@ -324,7 +348,7 @@ describe("RuntimedDaemonManager", () => {
 	it("re-probes and attaches when another daemon wins the startup race", async () => {
 		const child = new FakeChild();
 		let probes = 0;
-		const manager = new RuntimedDaemonManager({
+		const manager = createManager({
 			binaryPath: "/resources/runtimed-nightly",
 			probe: async () => {
 				probes += 1;
@@ -371,7 +395,7 @@ describe("RuntimedDaemonManager", () => {
 
 		const child = new StickyChild();
 		let listening = false;
-		const manager = new RuntimedDaemonManager({
+		const manager = createManager({
 			binaryPath: "/resources/runtimed-nightly",
 			probe: async () => listening,
 			spawnProcess: () => {
@@ -399,7 +423,7 @@ describe("RuntimedDaemonManager", () => {
 		expect(owned.child.signals).toContain("SIGTERM");
 
 		const externalChild = new FakeChild();
-		const external = new RuntimedDaemonManager({
+		const external = createManager({
 			binaryPath: "/resources/runtimed-nightly",
 			probe: async () => true,
 			spawnProcess: () => externalChild.asChildProcess(),
@@ -424,7 +448,7 @@ describe("RuntimedDaemonManager", () => {
 
 	it("fails when the bundled process emits an error before it is ready", async () => {
 		const child = new FakeChild();
-		const manager = new RuntimedDaemonManager({
+		const manager = createManager({
 			binaryPath: "/resources/runtimed-nightly",
 			probe: async () => false,
 			spawnProcess: () => {
@@ -448,7 +472,7 @@ describe("RuntimedDaemonManager", () => {
 		try {
 			let listening = false;
 			const spawned: FakeChild[] = [];
-			const manager = new RuntimedDaemonManager({
+			const manager = createManager({
 				binaryPath: "/resources/runtimed-nightly",
 				probe: async () => listening,
 				spawnProcess: () => {
@@ -487,7 +511,7 @@ describe("RuntimedDaemonManager", () => {
 
 	it("fails when the bundled process exits before the socket is ready", async () => {
 		const child = new FakeChild();
-		const manager = new RuntimedDaemonManager({
+		const manager = createManager({
 			binaryPath: "/resources/runtimed-nightly",
 			probe: async () => false,
 			spawnProcess: () => {
@@ -509,7 +533,7 @@ describe("RuntimedDaemonManager", () => {
 	it("attaches to an external daemon that appears after the bundled child exits", async () => {
 		const child = new FakeChild();
 		let listening = false;
-		const manager = new RuntimedDaemonManager({
+		const manager = createManager({
 			binaryPath: "/resources/runtimed-nightly",
 			probe: async () => listening,
 			spawnProcess: () => {
@@ -533,7 +557,7 @@ describe("RuntimedDaemonManager", () => {
 		try {
 			let listening = false;
 			const spawned: FakeChild[] = [];
-			const manager = new RuntimedDaemonManager({
+			const manager = createManager({
 				binaryPath: "/resources/runtimed-nightly",
 				probe: async () => listening,
 				spawnProcess: () => {
@@ -574,6 +598,147 @@ describe("RuntimedDaemonManager", () => {
 		expect(await manager.ensureAvailable()).toEqual({
 			status: "failed",
 			reason: "Could not start the bundled runtimed daemon: ENOENT",
+		});
+		await manager.dispose();
+	});
+});
+
+describe("RuntimedDaemonManager peer authentication", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+		vi.unstubAllEnvs();
+	});
+
+	it("authenticates the spawned daemon as its own child before trusting it", async () => {
+		const child = new FakeChild();
+		const seen: Array<{ socketPath: string; spawnedPid: number | null }> = [];
+		let probes = 0;
+		const manager = createManager({
+			socketPath: "/tmp/runtimed.sock",
+			binaryPath: "/resources/runtimed-nightly",
+			probe: async () => ++probes > 1,
+			spawnProcess: () => child.asChildProcess(),
+			sleep: async () => undefined,
+			readyTimeoutMs: 100,
+			pollIntervalMs: 1,
+			authenticatePeer: async (input) => {
+				seen.push(input);
+				return input.spawnedPid === child.pid
+					? { trusted: true }
+					: { trusted: false, reason: "pid mismatch" };
+			},
+		});
+
+		expect(await manager.ensureAvailable()).toEqual({ status: "bundled", pid: 4242 });
+		expect(seen).toEqual([{ socketPath: "/tmp/runtimed.sock", spawnedPid: 4242 }]);
+		await manager.dispose();
+	});
+
+	it("refuses a spawned daemon whose socket is answered by another process", async () => {
+		const child = new FakeChild();
+		let probes = 0;
+		const manager = createManager({
+			socketPath: "/tmp/runtimed.sock",
+			binaryPath: "/resources/runtimed-nightly",
+			probe: async () => ++probes > 1,
+			spawnProcess: () => child.asChildProcess(),
+			sleep: async () => undefined,
+			readyTimeoutMs: 100,
+			pollIntervalMs: 1,
+			// A squatter answered the socket, so the listener is not our child.
+			authenticatePeer: async () => ({ trusted: false, reason: "listener pid 1 is not pid 4242" }),
+		});
+
+		expect(await manager.ensureAvailable()).toMatchObject({
+			status: "failed",
+			reason: expect.stringContaining("listener pid 1 is not pid 4242"),
+		});
+		// The unauthenticated child must be terminated rather than left running.
+		expect(child.signals).toContain("SIGKILL");
+		await manager.dispose();
+	});
+
+	it("fails closed with an actionable reason when the spawned daemon reports no pid", async () => {
+		const child = new FakeChild();
+		(child as unknown as { pid: number | undefined }).pid = undefined;
+		let probes = 0;
+		const manager = createManager({
+			socketPath: "/tmp/runtimed.sock",
+			binaryPath: "/resources/runtimed-nightly",
+			probe: async () => ++probes > 1,
+			spawnProcess: () => child.asChildProcess(),
+			sleep: async () => undefined,
+			readyTimeoutMs: 100,
+			pollIntervalMs: 1,
+			// Even an always-trusting authenticator must not be reached: the pid
+			// guard runs first, so a missing pid can never fabricate a pid-0 check.
+			authenticatePeer: async () => ({ trusted: true }),
+		});
+
+		expect(await manager.ensureAvailable()).toMatchObject({
+			status: "failed",
+			reason: expect.stringContaining("did not report a process id"),
+		});
+		expect(child.signals).toContain("SIGKILL");
+		await manager.dispose();
+	});
+
+	it("attaches to an external daemon only after it authenticates as a trusted image", async () => {
+		const seen: Array<{ socketPath: string; spawnedPid: number | null }> = [];
+		const spawnProcess = vi.fn();
+		const manager = createManager({
+			socketPath: "/tmp/runtimed.sock",
+			binaryPath: "/resources/runtimed-nightly",
+			probe: async () => true,
+			spawnProcess,
+			authenticatePeer: async (input) => {
+				seen.push(input);
+				return { trusted: true };
+			},
+		});
+
+		expect(await manager.ensureAvailable()).toEqual({ status: "external" });
+		expect(seen).toEqual([{ socketPath: "/tmp/runtimed.sock", spawnedPid: null }]);
+		expect(spawnProcess).not.toHaveBeenCalled();
+		await manager.dispose();
+	});
+
+	it("refuses to attach to an external daemon running an untrusted image", async () => {
+		const spawnProcess = vi.fn();
+		const manager = createManager({
+			socketPath: "/tmp/runtimed.sock",
+			binaryPath: "/resources/runtimed-nightly",
+			allowSpawn: false,
+			probe: async () => true,
+			spawnProcess,
+			authenticatePeer: async () => ({
+				trusted: false,
+				reason: "untrusted executable: /tmp/evil",
+			}),
+		});
+
+		expect(await manager.ensureAvailable()).toMatchObject({
+			status: "failed",
+			reason: expect.stringContaining("untrusted executable"),
+		});
+		expect(spawnProcess).not.toHaveBeenCalled();
+		await manager.dispose();
+	});
+
+	it("fails closed when peer authentication throws", async () => {
+		const manager = createManager({
+			socketPath: "/tmp/runtimed.sock",
+			binaryPath: "/resources/runtimed-nightly",
+			probe: async () => true,
+			spawnProcess: vi.fn(),
+			authenticatePeer: async () => {
+				throw new Error("resolver blew up");
+			},
+		});
+
+		expect(await manager.ensureAvailable()).toMatchObject({
+			status: "failed",
+			reason: expect.stringContaining("could not be verified"),
 		});
 		await manager.dispose();
 	});

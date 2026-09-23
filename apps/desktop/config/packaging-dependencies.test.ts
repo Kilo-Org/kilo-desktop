@@ -32,6 +32,18 @@ describe("packaged production dependencies", () => {
 		expect(dependencies.ws).toEqual(expect.stringMatching(/\S/));
 	});
 
+	it("declares koffi on desktop so the Vite-external main import resolves after pnpm deploy", () => {
+		// koffi is externalized in the main bundle and only a transitive notebook
+		// dep; without a desktop declaration pnpm deploy would not hoist it (or its
+		// prebuilt @koromix sibling), and packaged builds would silently deny every
+		// daemon. Keep the version in lockstep with the notebook plugin.
+		const notebookManifest = JSON.parse(
+			readFileSync(path.join(workspaceRoot, "plugins/notebook/package.json"), "utf8"),
+		) as { dependencies?: Record<string, string> };
+		expect(dependencies.koffi).toEqual(expect.stringMatching(/\S/));
+		expect(dependencies.koffi).toBe(notebookManifest.dependencies?.koffi);
+	});
+
 	it("installs the published @runtimed/node package in production", () => {
 		expect(dependencies["@runtimed/node"]).toBe("0.5.6");
 	});

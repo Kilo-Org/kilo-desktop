@@ -85,6 +85,33 @@ async function findFile(directory: string, fileName: string): Promise<string> {
 	return match;
 }
 
+// koffi is a fail-closed native dependency: if its prebuilt @koromix addon is not
+// hoisted by `pnpm deploy` and unpacked from app.asar, the packaged main process
+// cannot load it and notebook daemon peer authentication silently denies every
+// daemon while the app still boots. Nothing else in CI exercises this path, so
+// assert the addon physically ships in the packaged tree.
+async function assertNativePeerCredentialAddon(resourcesDirectory: string): Promise<void> {
+	const unpacked = path.join(resourcesDirectory, "app.asar.unpacked");
+	let files: string[];
+	try {
+		files = await walkFiles(unpacked);
+	} catch {
+		throw new Error(
+			`Packaged app is missing app.asar.unpacked (${unpacked}); koffi's native addon cannot load and notebook peer authentication would deny every daemon.`,
+		);
+	}
+	const addon = files.find(
+		(file) =>
+			path.basename(file) === "koffi.node" && file.includes(`${path.sep}@koromix${path.sep}`),
+	);
+	if (!addon) {
+		throw new Error(
+			"Packaged app is missing koffi's @koromix native addon under app.asar.unpacked; " +
+				"notebook daemon peer authentication would fail closed and deny every daemon.",
+		);
+	}
+}
+
 async function waitForReadyFile(file: string, child: ReturnType<typeof spawn>): Promise<void> {
 	const deadline = Date.now() + readyTimeoutMs;
 	while (Date.now() < deadline) {
@@ -129,6 +156,7 @@ export async function smokeReleaseArtifact(platform: NodeJS.Platform): Promise<v
 			await execa("codesign", ["--verify", "--deep", "--strict", "--verbose=2", appBundle]);
 			await execa("spctl", ["--assess", "--type", "execute", "--verbose=4", appBundle]);
 			await execa("xcrun", ["stapler", "validate", appBundle]);
+			await assertNativePeerCredentialAddon(path.join(appBundle, "Contents", "Resources"));
 			executable = path.join(appBundle, "Contents", "MacOS", identity.productName);
 		} else {
 			await mkdir(extractedDirectory);
@@ -139,6 +167,7 @@ export async function smokeReleaseArtifact(platform: NodeJS.Platform): Promise<v
 				env: authenticode.env,
 			});
 			assertWindowsAuthenticodeSignature(JSON.parse(stdout) as WindowsAuthenticodeSignature);
+			await assertNativePeerCredentialAddon(path.join(path.dirname(executable), "resources"));
 		}
 
 		const readyFile = path.join(temporaryDirectory, "ready");

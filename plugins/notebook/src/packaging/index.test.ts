@@ -3,7 +3,11 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { RUNTIMED_ARTIFACTS } from "./artifacts.js";
-import { createNotebookPackagingPlan, NOTEBOOK_MAIN_EXTERNALS } from "./index.js";
+import {
+	createNotebookPackagingPlan,
+	NOTEBOOK_ASAR_UNPACK_PACKAGES,
+	NOTEBOOK_MAIN_EXTERNALS,
+} from "./index.js";
 
 describe("notebook packaging", () => {
 	it("keeps the fetched notebook UI, direct Kilo plugin, and Windows daemon mandatory", () => {
@@ -29,7 +33,7 @@ describe("notebook packaging", () => {
 				path.join(pluginRoot, "build/kilo-plugin"),
 				path.join(pluginRoot, "resources/runtimed"),
 			],
-			asarUnpackPackages: ["@runtimed"],
+			asarUnpackPackages: ["@runtimed", "koffi", "@koromix"],
 		});
 	});
 
@@ -73,13 +77,30 @@ describe("notebook packaging", () => {
 		).toThrow(/runtimed is not configured for linux\/arm64/);
 	});
 
+	it("unpacks koffi's sibling addon package so the native binding survives packaging", () => {
+		// koffi ships no addon itself; it requires koffi.node from
+		// @koromix/koffi-<platform>-<arch>, which hoists to the top level under
+		// the hoisted node linker. Missing it leaves the addon inside app.asar and
+		// silently disables daemon peer authentication in packaged builds.
+		expect(NOTEBOOK_ASAR_UNPACK_PACKAGES).toContain("@koromix");
+		expect(NOTEBOOK_ASAR_UNPACK_PACKAGES).toContain("koffi");
+	});
+
 	it("declares the native adapter as a main-process external", () => {
 		expect(NOTEBOOK_MAIN_EXTERNALS[0].test("@runtimed/node/electron")).toBe(true);
 	});
 
+	it("declares koffi as a main-process external so its native addon is not bundled", () => {
+		expect(NOTEBOOK_MAIN_EXTERNALS.some((pattern) => pattern.test("koffi"))).toBe(true);
+	});
+
 	it("resolves the installed plugin root when packaging options are omitted", () => {
 		try {
-			expect(createNotebookPackagingPlan().asarUnpackPackages).toEqual(["@runtimed"]);
+			expect(createNotebookPackagingPlan().asarUnpackPackages).toEqual([
+				"@runtimed",
+				"koffi",
+				"@koromix",
+			]);
 		} catch (error) {
 			expect(error).toBeInstanceOf(Error);
 			expect((error as Error).message).toMatch(/missing|not configured/);

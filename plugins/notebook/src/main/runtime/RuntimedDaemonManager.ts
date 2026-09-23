@@ -3,6 +3,24 @@ import { createConnection } from "node:net";
 
 import type { MainSdkLogger } from "@kilo-desktop/feature-sdk";
 
+import type { PeerTrustDecision } from "./daemon-peer-auth.js";
+
+/**
+ * Authenticates the process answering the daemon socket before we trust it.
+ *
+ * `spawnedPid` is the pid of the child this manager launched (the daemon must
+ * be exactly that process), or `null` when attaching to a daemon we did not
+ * start (the daemon must be running a trusted runtimed image). The concrete
+ * implementation is injected by `ElectronNotebookHostService`; tests pass an
+ * explicit stub. It is required so the trust boundary can never be dropped by
+ * omission — a construction path that forgets it is a type error, not a silent
+ * security regression.
+ */
+export type AuthenticatePeer = (input: {
+	readonly socketPath: string;
+	readonly spawnedPid: number | null;
+}) => Promise<PeerTrustDecision>;
+
 /**
  * Owns the lifecycle of the optional runtimed child process, never the shared
  * singleton itself. The canonical endpoint is probed before every spawn because
@@ -40,6 +58,12 @@ export interface RuntimedDaemonManagerOptions {
 	/** Explicit endpoints are attach-only: a socket override is not isolation. */
 	readonly allowSpawn?: boolean;
 	readonly probe: () => Promise<boolean>;
+	/**
+	 * Verifies the identity of the process on the daemon socket before code is
+	 * ever sent to it. Required: lifecycle tests pass an explicit always-trust
+	 * stub so the control can never be omitted by accident in production.
+	 */
+	readonly authenticatePeer: AuthenticatePeer;
 	readonly logger?: Pick<MainSdkLogger, "info" | "warn">;
 	readonly spawnProcess?: (binaryPath: string) => ChildProcess;
 	readonly sleep?: (ms: number) => Promise<void>;
@@ -67,6 +91,7 @@ export class RuntimedDaemonManager {
 	readonly #socketPath: string | undefined;
 	readonly #allowSpawn: boolean;
 	readonly #probe: () => Promise<boolean>;
+	readonly #authenticatePeer: AuthenticatePeer;
 	readonly #logger: Pick<MainSdkLogger, "info" | "warn">;
 	readonly #spawnProcess: (binaryPath: string) => ChildProcess;
 	readonly #sleep: (ms: number) => Promise<void>;
@@ -92,6 +117,7 @@ export class RuntimedDaemonManager {
 		this.#socketPath = options.socketPath;
 		this.#allowSpawn = options.allowSpawn ?? true;
 		this.#probe = options.probe;
+		this.#authenticatePeer = options.authenticatePeer;
 		this.#logger = options.logger ?? noopLogger;
 		this.#spawnProcess =
 			options.spawnProcess ??
@@ -164,10 +190,37 @@ export class RuntimedDaemonManager {
 		);
 	}
 
-	#attachExternal(): RuntimedDaemonState {
+	async #attachExternal(): Promise<RuntimedDaemonState> {
+		// A daemon we did not start is only trusted if it authenticates as a
+		// known runtimed image; a squatter answering the shared socket does not.
+		const decision = await this.#authenticate(null);
+		if (this.#disposed) return this.#state;
+		if (!decision.trusted) return this.#fail(decision.reason);
 		this.#logger.info("Using the runtimed daemon already listening on the shared endpoint.");
 		this.#state = { status: "external" };
 		return this.#state;
+	}
+
+	/**
+	 * Verify the process on the daemon socket before any notebook code reaches
+	 * it. Fails closed: a missing socket path or a throwing authenticator denies
+	 * trust rather than granting it.
+	 */
+	async #authenticate(spawnedPid: number | null): Promise<PeerTrustDecision> {
+		if (!this.#socketPath) {
+			return {
+				trusted: false,
+				reason: "The notebook runtime daemon could not be verified: no socket path is configured.",
+			};
+		}
+		try {
+			return await this.#authenticatePeer({ socketPath: this.#socketPath, spawnedPid });
+		} catch (error) {
+			return {
+				trusted: false,
+				reason: `The notebook runtime daemon could not be verified: ${messageOf(error)}`,
+			};
+		}
 	}
 
 	async #spawnAndWait(): Promise<RuntimedDaemonState> {
@@ -205,9 +258,33 @@ export class RuntimedDaemonManager {
 					this.#child = undefined;
 					return this.#attachExternal();
 				}
+				// Without a pid we cannot run the own-child check at all. Fail
+				// closed with an actionable reason rather than fabricating an
+				// expectation of pid 0 (which denies a healthy daemon with a
+				// confusing "is not the daemon this app started (pid 0)").
+				const pid = child.pid;
+				if (typeof pid !== "number") {
+					this.#killChild(child);
+					this.#child = undefined;
+					return this.#fail(
+						"The bundled runtime daemon did not report a process id, so it cannot be verified.",
+					);
+				}
+				// Trust the socket only if our own child is the process answering
+				// it; a squatter that beat the child to the endpoint is rejected
+				// and the now-useless child is torn down. This relies on runtimed
+				// being the listener itself (no daemonize/re-exec) — see the
+				// own-child invariant in `decidePeerTrust`.
+				const decision = await this.#authenticate(pid);
+				if (this.#disposed) return this.#state;
+				if (!decision.trusted) {
+					this.#killChild(child);
+					this.#child = undefined;
+					return this.#fail(decision.reason);
+				}
 				this.#readyAt = this.#now();
-				this.#state = { status: "bundled", pid: child.pid ?? 0 };
-				this.#logger.info(`Started bundled runtimed daemon (pid ${child.pid ?? 0}).`);
+				this.#state = { status: "bundled", pid };
+				this.#logger.info(`Started bundled runtimed daemon (pid ${pid}).`);
 				return this.#state;
 			}
 			if (exited || child.exitCode !== null || child.signalCode !== null) {

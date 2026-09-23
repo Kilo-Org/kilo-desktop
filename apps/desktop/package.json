@@ -28,7 +28,8 @@
 		"coverage": "vitest run --coverage"
 	},
 	"dependencyNotes": {
-		"ws": "PACKAGING BRIDGE: Vite leaves `ws` external in the main bundle (CJS `events` require). pnpm deploy only hoists packages declared on desktop, so a transitive kilo-server dep is not enough."
+		"ws": "PACKAGING BRIDGE: Vite leaves `ws` external in the main bundle (CJS `events` require). pnpm deploy only hoists packages declared on desktop, so a transitive kilo-server dep is not enough.",
+		"koffi": "PACKAGING BRIDGE: Vite leaves `koffi` external in the main bundle (dynamic import in the notebook daemon peer-credential check). pnpm deploy only hoists packages declared on desktop, so a transitive notebook dep is not enough; declaring it here ships koffi and its prebuilt `@koromix/koffi-*` sibling in the packaged app. Keep in sync with plugins/notebook."
 	},
 	"dependencies": {
 		"@kilo-desktop/contracts": "workspace:*",
@@ -56,6 +57,7 @@
 		"electron-squirrel-startup": "^1.0.1",
 		"electron-store": "^11.0.2",
 		"execa": "catalog:",
+		"koffi": "3.2.1",
 		"lodash": "catalog:",
 		"openid-client": "^6.6.3",
 		"p-defer": "^4.0.1",

@@ -63,6 +63,15 @@ Electron port and retain runtimed's negotiated protocol number.
   scoped to the renderer that opened the feature port.
 - Missing, failed, or incompatible runtimed fails closed with a retryable status. There is no
   transport fallback to a listening WebSocket.
+- The process answering the daemon socket is authenticated before any notebook code is sent
+  (see `daemon-peer-auth.ts`): a daemon we spawned must match our child pid; a daemon we attach
+  to must be running a trusted runtimed image. By default the only trusted image is the bundled
+  binary, so attaching to a **locally built or externally installed** runtimed — including one
+  reached via `RUNTIMED_SOCKET_PATH` or an explicit `socketPath` — **fails closed** with an
+  "untrusted executable"/"could not be identified" status. This is intentional. To trust another
+  binary, extend the allow-list at its single injection point: `allowedExecutablePaths` in
+  `ElectronNotebookHostService` (sourced from `runtimedBinaryPath`); on a build with no staged
+  bundled binary that list is empty, so every attach fails closed.
 
 ## Release verification
 

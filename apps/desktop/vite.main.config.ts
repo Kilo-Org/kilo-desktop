@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig, loadEnv } from "vite";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { externalizeDeps } from "@kilo-desktop/vite-plugin-externalize-deps";
+import { NOTEBOOK_MAIN_EXTERNALS } from "@kilo-desktop/plugin-notebook/packaging";
 
 import {
 	createViteEnvironmentDefinitions,
@@ -31,7 +32,17 @@ export default defineConfig(({ command }) => {
 				// (uninstalled optional native dep of `@vscode/proxy-agent`), and
 				// `better-sqlite3` (transitive via the bundled kilo-ui / todos plugins).
 				// The plugin externalizes each name plus its `<name>/<subpath>` forms.
-				include: ["electron", "better-sqlite3", "node-pty", "@vscode/windows-ca-certs"],
+				// The notebook native main externals (koffi, @runtimed/node) come from
+				// the plugin-owned NOTEBOOK_MAIN_EXTERNALS so this list and the plugin
+				// cannot drift — a mismatch would bundle a native addon that then fails
+				// to load in packaged builds.
+				include: [
+					"electron",
+					"better-sqlite3",
+					"node-pty",
+					"@vscode/windows-ca-certs",
+					...NOTEBOOK_MAIN_EXTERNALS,
+				],
 				// Workspace packages are `workspace:*` deps that must stay
 				// bundled (not resolvable runtime modules on disk).
 				exclude: [/^@kilo-desktop\/.+$/],

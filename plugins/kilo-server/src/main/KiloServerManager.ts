@@ -553,6 +553,12 @@ export class KiloServerManager {
 			...sanitizedContributed,
 			KILO_SERVER_PASSWORD: password,
 			KILO_PARENT_PID: String(process.pid),
+			// Telemetry attribution: without these the CLI reports itself as a bare
+			// `kilo-cli` on the host OS, making Desktop-spawned events
+			// indistinguishable from terminal usage in PostHog. Set after the
+			// spreads so inherited shell values cannot override attribution.
+			KILO_APP_NAME: "kilo-desktop",
+			KILO_PLATFORM: "desktop",
 			KILO_ENABLE_QUESTION_TOOL: "true",
 			KILO_EXPERIMENTAL_MCP_APPS: "true",
 			KILO_TREE_SITTER_WASM_DIR: this.#options.installation.treeSitterWasmDirectory,

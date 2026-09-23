@@ -191,6 +191,22 @@ describe("KiloServerManager", () => {
 		manager.dispose();
 	});
 
+	it("stamps CLI telemetry attribution over any inherited shell values", async () => {
+		const { manager, spawn } = createHarness({
+			environment: {
+				PATH: "/bin",
+				KILO_APP_NAME: "kilo-cli",
+				KILO_PLATFORM: "darwin",
+			},
+		});
+		await manager.ensureRunning();
+		const environment = spawn.mock.calls[0]![2].env;
+
+		expect(environment.KILO_APP_NAME).toBe("kilo-desktop");
+		expect(environment.KILO_PLATFORM).toBe("desktop");
+		manager.dispose();
+	});
+
 	it("normalizes a case-variant inherited XDG_CONFIG_HOME", async () => {
 		const { manager, spawn } = createHarness({
 			environment: {

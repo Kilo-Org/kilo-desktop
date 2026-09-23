@@ -10,7 +10,8 @@ import {
 	XIcon,
 } from "lucide-react";
 
-import { useSdk, useSdkMutation, useSdkQuery } from "@kilo-desktop/sdk-react";
+import { useSdk, useSdkMutation, useSdkQuery, useAnacondaSignIn } from "@kilo-desktop/sdk-react";
+import { AnacondaSignInDialog } from "@kilo-desktop/ui/components/anaconda-sign-in-dialog";
 import { Badge } from "@kilo-desktop/ui/components/badge";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Checkbox } from "@kilo-desktop/ui/components/checkbox";
@@ -48,7 +49,12 @@ import type {
 	CondaService,
 } from "../../../contracts/providers/conda.js";
 import { parseEnvironmentsErrorMessage } from "../../../contracts/common.js";
-import { ChannelsDialog } from "./ChannelsDialog.js";
+import { ChannelChooserPopover } from "./ChannelChooserPopover.js";
+import {
+	defaultChannelSelection,
+	getChannelPresentation,
+	selectableChannels,
+} from "./channel-presentation.js";
 import {
 	CHANGE_ICONS,
 	CHANGE_VARIANT,
@@ -113,6 +119,7 @@ function sizeForRow(pkg: CondaRepodataPackage, rowVersion: string): number | und
  */
 export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) {
 	const sdk = useSdk<CondaService>("environments");
+	const { authenticated, signingIn, error: signInError, signIn } = useAnacondaSignIn(sdk);
 	const install = useSdkMutation(sdk, "conda.packages.install", {
 		invalidates: ["conda.packages.list", "conda.repodata.find"],
 	});
@@ -129,6 +136,10 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 	const [page, setPage] = useState(0);
 	const [showChannels, setShowChannels] = useState(false);
 	const [selectedChannels, setSelectedChannels] = useState<string[]>([]);
+	// The Anaconda channel whose selection was deferred to sign-in; applied
+	// once the OAuth round-trip lands the session.
+	const [pendingChannel, setPendingChannel] = useState<string>();
+	const [signInOpen, setSignInOpen] = useState(false);
 
 	const channelsArg = useMemo(
 		() => (selectedChannels.length > 0 ? selectedChannels : undefined),
@@ -244,7 +255,10 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 	} | null>(null);
 
 	const prefixQuery = useSdkQuery(sdk, "conda.envs.prefixOptions");
-	const availableChannels = prefixQuery.data?.channels ?? [];
+	const availableChannels = useMemo(
+		() => selectableChannels(prefixQuery.data?.channels ?? []),
+		[prefixQuery.data?.channels],
+	);
 
 	// Installed packages for this env — rows matching these names are shown
 	// greyed out with their installed version instead of a version picker.
@@ -257,12 +271,41 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 		[installedQuery.data?.packages],
 	);
 
-	// Auto-select all channels when data first loads.
+	// Auto-select the default channels when data first loads, skipping
+	// sign-in-gated Anaconda channels for signed-out users.
 	useEffect(() => {
 		if (availableChannels.length > 0 && selectedChannels.length === 0) {
-			setSelectedChannels(availableChannels);
+			setSelectedChannels(defaultChannelSelection(availableChannels, authenticated));
 		}
-	}, [availableChannels]); // eslint-disable-line react-hooks/exhaustive-deps
+	}, [availableChannels, authenticated]); // eslint-disable-line react-hooks/exhaustive-deps
+
+	function toggleChannel(channel: string) {
+		setSelectedChannels((prev) =>
+			prev.includes(channel) ? prev.filter((c) => c !== channel) : [...prev, channel],
+		);
+	}
+
+	// Anaconda channels stay gated while signed out: remember which one the
+	// user picked, run the OAuth flow, and apply the selection on success.
+	async function handleSignIn(): Promise<void> {
+		const ok = await signIn();
+		if (!ok) return;
+		setSignInOpen(false);
+		const channel = pendingChannel;
+		setPendingChannel(undefined);
+		if (channel && availableChannels.includes(channel)) {
+			setSelectedChannels((prev) => (prev.includes(channel) ? prev : [...prev, channel]));
+		}
+	}
+
+	function handleChannelSelect(channel: string) {
+		if (getChannelPresentation(channel).requiresSignIn && !authenticated) {
+			setPendingChannel(channel);
+			setSignInOpen(true);
+			return;
+		}
+		toggleChannel(channel);
+	}
 
 	// Debounced package search via repodata.find. Waits for prefixOptions
 	// to load first so the initial search includes the correct channels —
@@ -319,7 +362,9 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 		setLoadingPackages(true);
 		setPage(0);
 		setShowChannels(false);
-		setSelectedChannels(availableChannels);
+		setSelectedChannels(defaultChannelSelection(availableChannels, authenticated));
+		setPendingChannel(undefined);
+		setSignInOpen(false);
 		setPreview(null);
 		setPreviewLoading(false);
 		setPreviewError(null);
@@ -413,9 +458,12 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 		}
 	}
 
-	const channelLabel =
-		selectedChannels.length === availableChannels.length
-			? "All channels"
+	const allChannelsSelected =
+		availableChannels.length > 0 && availableChannels.every((c) => selectedChannels.includes(c));
+	const channelLabel = allChannelsSelected
+		? "All channels"
+		: selectedChannels.length === 0
+			? "No channels"
 			: `${selectedChannels.length} channel${selectedChannels.length === 1 ? "" : "s"}`;
 
 	return (
@@ -437,18 +485,27 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 							<div className="flex min-h-0 flex-col gap-3 overflow-y-auto px-6 py-5">
 								<div className="flex items-center justify-between">
 									<h4 className="text-base font-semibold">Select packages:</h4>
-									<Button
-										type="button"
-										variant="outline"
-										onClick={() => setShowChannels(true)}
-										data-qa-id="environments-conda-add-pkg-channels-btn"
-									>
-										<NetworkIcon data-icon="inline-start" />
-										Channels
-										<Badge variant="secondary" className="ml-1">
-											{channelLabel}
-										</Badge>
-									</Button>
+									<ChannelChooserPopover
+										open={showChannels}
+										onOpenChange={setShowChannels}
+										availableChannels={availableChannels}
+										selectedChannels={selectedChannels}
+										onToggle={toggleChannel}
+										signedIn={authenticated}
+										onRequestSignIn={handleChannelSelect}
+										trigger={{
+											"data-qa-id": "environments-conda-add-pkg-channels-btn",
+											children: (
+												<>
+													<NetworkIcon data-icon="inline-start" />
+													Channels
+													<Badge variant="secondary" className="ml-1">
+														{channelLabel}
+													</Badge>
+												</>
+											),
+										}}
+									/>
 								</div>
 								<div className="relative">
 									<SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
@@ -655,15 +712,12 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 				</DialogContent>
 			</Dialog>
 
-			<ChannelsDialog
-				open={showChannels}
-				availableChannels={availableChannels}
-				selectedChannels={selectedChannels}
-				onCancel={() => setShowChannels(false)}
-				onConfirm={(channels) => {
-					setSelectedChannels(channels);
-					setShowChannels(false);
-				}}
+			<AnacondaSignInDialog
+				open={signInOpen}
+				onOpenChange={setSignInOpen}
+				onSignIn={() => void handleSignIn()}
+				pending={signingIn}
+				error={signInError}
 			/>
 		</>
 	);

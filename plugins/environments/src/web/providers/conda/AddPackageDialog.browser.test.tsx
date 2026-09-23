@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
 import { SdkProvider } from "@kilo-desktop/sdk-react";
+import type { AuthSession, SDK } from "@kilo-desktop/feature-sdk";
 import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 
 import {
@@ -16,6 +17,19 @@ import {
 	type CondaRepodataPackage,
 } from "../../../contracts/providers/conda.js";
 import { AddPackageDialog } from "./AddPackageDialog.js";
+
+const AUTHENTICATED_SESSION: AuthSession = {
+	status: "authenticated",
+	user: { username: "ada" },
+};
+
+const authenticatedAuth: Partial<SDK["auth"]> = {
+	subscribe(listener) {
+		listener(AUTHENTICATED_SESSION);
+		return () => undefined;
+	},
+	peek: () => AUTHENTICATED_SESSION,
+};
 
 const ENV: CondaEnv = { name: "dev", prefix: "/opt/anaconda3/envs/dev" };
 
@@ -43,6 +57,7 @@ function renderDialog(
 		installed?: CondaPackage[];
 		channels?: string[];
 		onClose?: () => void;
+		auth?: Partial<SDK["auth"]>;
 	} = {},
 ) {
 	const find = options.find ?? (() => [pkg("numpy", ["2.1.0", "2.0.0"]), pkg("pandas")]);
@@ -75,6 +90,7 @@ function renderDialog(
 				nothingToDo: true,
 			}),
 		},
+		auth: options.auth ?? {},
 	});
 	const system = createFakeFeatureSystem({ sdks: { environments: sdk } });
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -343,9 +359,13 @@ describe("AddPackageDialog", () => {
 		finish(installResult());
 	});
 
-	it("opens the Channels dialog and applies the chosen channel set to the search", async () => {
+	it("opens the channel chooser popover and toggles the selection into the search", async () => {
 		const find = vi.fn((_input: CondaRepodataFindInput) => [pkg("numpy")]);
-		const { baseElement } = renderDialog({ find, channels: ["defaults", "conda-forge"] });
+		const { baseElement } = renderDialog({
+			find,
+			channels: ["defaults", "conda-forge"],
+			auth: authenticatedAuth,
+		});
 		const screen = page.elementLocator(baseElement);
 		await waitForRows(baseElement, 1);
 
@@ -353,10 +373,10 @@ describe("AddPackageDialog", () => {
 			await screen.getByTestId("environments-conda-add-pkg-channels-btn").element().textContent,
 		).toContain("All channels");
 		await userEvent.click(screen.getByTestId("environments-conda-add-pkg-channels-btn"));
-		await expect.element(screen.getByTestId("environments-channels-dialog")).toBeVisible();
+		await expect.element(page.getByTestId("environments-channel-chooser")).toBeVisible();
 
-		await userEvent.click(screen.getByRole("checkbox", { name: "defaults defaults" }));
-		await userEvent.click(screen.getByTestId("environments-channels-confirm"));
+		// Toggle Anaconda off — the search must re-run with only conda-forge.
+		await userEvent.click(page.getByTestId("environments-channel-option-defaults"));
 
 		await vi.waitFor(async () => {
 			expect(
@@ -366,5 +386,83 @@ describe("AddPackageDialog", () => {
 		await vi.waitFor(() => {
 			expect(find.mock.calls.at(-1)![0].channels).toEqual(["conda-forge"]);
 		});
+	});
+
+	it("skips Anaconda in the default channel selection for signed-out users", async () => {
+		const find = vi.fn((_input: CondaRepodataFindInput) => [pkg("numpy")]);
+		const { baseElement } = renderDialog({ find, channels: ["defaults", "conda-forge"] });
+		const screen = page.elementLocator(baseElement);
+		await waitForRows(baseElement, 1);
+
+		// Anonymous session drops the Anaconda channel from the seeded selection.
+		expect(find.mock.calls[0]![0].channels).toEqual(["conda-forge"]);
+		expect(
+			await screen.getByTestId("environments-conda-add-pkg-channels-btn").element().textContent,
+		).toContain("1 channel");
+	});
+
+	it("gates the Anaconda channel behind the sign-in modal while signed out", async () => {
+		const login = vi.fn(async (): Promise<AuthSession> => ({ status: "anonymous" }));
+		const { baseElement } = renderDialog({
+			channels: ["defaults", "conda-forge"],
+			auth: { login },
+		});
+		const screen = page.elementLocator(baseElement);
+		await waitForRows(baseElement, 2);
+
+		await userEvent.click(screen.getByTestId("environments-conda-add-pkg-channels-btn"));
+		await userEvent.click(page.getByTestId("environments-channel-option-defaults"));
+
+		const modal = page.getByTestId("anaconda-sign-in-dialog");
+		await expect.element(modal).toBeVisible();
+		expect(login).not.toHaveBeenCalled();
+
+		await userEvent.click(page.getByTestId("anaconda-sign-in-submit"));
+		await vi.waitFor(() => {
+			expect(login).toHaveBeenCalledOnce();
+		});
+		// Anonymous result keeps the modal open with the channel unapplied.
+		await expect.element(modal).toBeVisible();
+	});
+
+	it("applies the Anaconda channel after a successful sign-in", async () => {
+		let session: AuthSession = { status: "anonymous" };
+		const listeners = new Set<(next: AuthSession) => void>();
+		const login = vi.fn(async (): Promise<AuthSession> => {
+			session = { status: "authenticated", user: { username: "ada" } };
+			for (const listener of listeners) listener(session);
+			return session;
+		});
+		const install = vi.fn(async (_input: CondaPackagesInstallInput) => installResult());
+		const { baseElement } = renderDialog({
+			install,
+			channels: ["defaults", "conda-forge"],
+			auth: {
+				subscribe(listener) {
+					listeners.add(listener);
+					listener(session);
+					return () => listeners.delete(listener);
+				},
+				peek: () => session,
+				login,
+			},
+		});
+		const screen = page.elementLocator(baseElement);
+		await waitForRows(baseElement, 2);
+
+		await userEvent.click(screen.getByTestId("environments-conda-add-pkg-channels-btn"));
+		await userEvent.click(page.getByTestId("environments-channel-option-defaults"));
+		await userEvent.click(page.getByTestId("anaconda-sign-in-submit"));
+
+		await expect.element(page.getByTestId("anaconda-sign-in-dialog")).not.toBeInTheDocument();
+
+		// Install now sends both channels, with Anaconda applied after the OAuth landed.
+		await userEvent.click(screen.getByText("pandas", { exact: true }));
+		await userEvent.click(screen.getByTestId("environments-conda-add-pkg-install-btn"));
+
+		await vi.waitFor(() => {
+			expect(install).toHaveBeenCalledOnce();
+		});
+		expect(install.mock.calls[0]![0].channels).toEqual(["conda-forge", "defaults"]);
 	});
 });

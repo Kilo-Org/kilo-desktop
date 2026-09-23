@@ -158,6 +158,11 @@ export async function stageKiloCli(options: StageKiloCliOptions): Promise<StageK
 			await rm(stagedDirectory, { recursive: true, force: true });
 		}
 	}
+	// mkdtemp creates the staging directory owner-only (0700) and the rename
+	// keeps that mode. Linux .deb installs resources as root, so an owner-only
+	// directory hides the CLI from the user running the app. Normalize on every
+	// run so stages restored from a CI cache are repaired too.
+	if (process.platform !== "win32") await chmod(targetDirectory, 0o755);
 
 	if (artifact.platform === "win32" && options.signExecutable) {
 		for (const executable of await collectExecutables(path.join(targetDirectory, "bin"))) {

@@ -98,7 +98,7 @@ describe("feature registration", () => {
 		const featureId = "registry-rollback-test";
 		const disposed = vi.fn();
 		const error = new Error("registration failed");
-		const logging = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		vi.spyOn(console, "error").mockImplementation(() => undefined);
 
 		const failedDispose = await bootFeatures([
 			{
@@ -110,10 +110,6 @@ describe("feature registration", () => {
 			},
 		]);
 
-		expect(logging).toHaveBeenCalledWith(
-			expect.stringContaining(`mainRegister failed for "${featureId}"`),
-			error,
-		);
 		expect(disposed).toHaveBeenCalledOnce();
 		await failedDispose();
 
@@ -230,7 +226,7 @@ describe("feature registration", () => {
 
 	it("rolls back async mainRegister that rejects", async () => {
 		const featureId = "registry-async-rollback-test";
-		const logging = vi.spyOn(console, "error").mockImplementation(() => undefined);
+		vi.spyOn(console, "error").mockImplementation(() => undefined);
 
 		const dispose = await bootFeatures([
 			{
@@ -242,10 +238,6 @@ describe("feature registration", () => {
 			},
 		]);
 
-		expect(logging).toHaveBeenCalledWith(
-			expect.stringContaining(`mainRegister failed for "${featureId}"`),
-			expect.any(Error),
-		);
 		await dispose();
 
 		// Feature can be retried after async failure

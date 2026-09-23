@@ -139,6 +139,15 @@ async function acquireBinary(
 	}
 }
 
+/**
+ * mkdtemp creates the staging directory owner-only (0700) and the rename keeps
+ * that mode. Linux .deb installs resources as root, so an owner-only directory
+ * hides the binary from the user running the app.
+ */
+async function makeTraversableByAllUsers(directory: string): Promise<void> {
+	if (process.platform !== "win32") await chmod(directory, 0o755);
+}
+
 async function replaceDirectory(targetDirectory: string, stagedDirectory: string): Promise<void> {
 	const backupDirectory = `${targetDirectory}.previous`;
 	await rm(backupDirectory, { recursive: true, force: true });
@@ -168,6 +177,8 @@ export async function stagePinnedBinary(
 	const executablePath = path.join(targetDirectory, artifact.executable);
 	await mkdir(options.resourceRoot, { recursive: true });
 	if (await existingStageIsCurrent(targetDirectory, artifact)) {
+		// Repair stages restored from a CI cache that predate the mode fix below.
+		await makeTraversableByAllUsers(targetDirectory);
 		return { artifact, executablePath, staged: false, targetDirectory };
 	}
 
@@ -200,6 +211,7 @@ export async function stagePinnedBinary(
 	} finally {
 		await rm(stagedDirectory, { recursive: true, force: true });
 	}
+	await makeTraversableByAllUsers(targetDirectory);
 
 	const info = await stat(executablePath);
 	if (!info.isFile()) throw new Error(`staged ${label} is not a file: ${executablePath}`);

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -55,4 +55,38 @@ describe("stageRuntimed", () => {
 			result.artifact.sha256,
 		);
 	});
+
+	// Linux packages install resources as root for a different runtime user, so
+	// the staged target directory must be traversable by everyone.
+	it.skipIf(process.platform === "win32")(
+		"stages a target directory readable by users other than the builder",
+		async () => {
+			const resourceRoot = await temporaryDirectory();
+			const fetch_ = vi.fn(async () => new Response(MACHO_BYTES));
+
+			const result = await stageRuntimed({
+				resourceRoot,
+				artifact: artifactFor(),
+				fetch: fetch_ as typeof fetch,
+			});
+
+			expect((await stat(result.targetDirectory)).mode & 0o777).toBe(0o755);
+		},
+	);
+
+	it.skipIf(process.platform === "win32")(
+		"repairs an already-current stage restored with an owner-only directory",
+		async () => {
+			const resourceRoot = await temporaryDirectory();
+			const fetch_ = vi.fn(async () => new Response(MACHO_BYTES));
+			const options = { resourceRoot, artifact: artifactFor(), fetch: fetch_ as typeof fetch };
+			const first = await stageRuntimed(options);
+			await chmod(first.targetDirectory, 0o700);
+
+			const result = await stageRuntimed(options);
+
+			expect(result.staged).toBe(false);
+			expect((await stat(result.targetDirectory)).mode & 0o777).toBe(0o755);
+		},
+	);
 });

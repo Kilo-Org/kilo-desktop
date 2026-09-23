@@ -149,7 +149,9 @@ export async function bootFeatures(
 			bootedFeatureIds.add(feature.id);
 			booted.push(feature.id);
 		} catch (error) {
-			console.error(`[FeatureRegistry] mainRegister failed for "${feature.id}":`, error);
+			// The feature-scoped host logger reaches the on-disk log file; raw
+			// console output is lost when the app is launched from a desktop entry.
+			mainSdk.logger.error(`mainRegister failed for "${feature.id}"`, error);
 			Sentry.captureException(error, { tags: { feature_id: feature.id } });
 			// Roll back partial registration so the feature is not half-alive.
 			await featureRouter.destroyFeatureAsync(feature.id);

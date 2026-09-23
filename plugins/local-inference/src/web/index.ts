@@ -15,6 +15,9 @@ export function webRegister(sdk: SDK): void {
 		prepareModel: async (modelId: string) => {
 			await (sdk.client as LocalInferenceServiceContract)["models.prepare"]({ modelId });
 		},
+		connect: async () => {
+			await (sdk.client as LocalInferenceServiceContract)["runtime.connect"]();
+		},
 	} satisfies LocalInferenceCapabilities["localInference"];
 	sdk.plugins.expose("localInference", service);
 

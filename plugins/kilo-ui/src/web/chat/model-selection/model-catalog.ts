@@ -1,8 +1,14 @@
-import { LOCAL_MODEL_SERVER_PROVIDER_ID } from "../../providers/provider-ids.js";
+import {
+	KILO_PROVIDER_ID,
+	LOCAL_MODEL_SERVER_PROVIDER_ID,
+	LOCAL_MODEL_SERVER_PROVIDER_NAME,
+} from "../../providers/provider-ids.js";
 import type {
 	ModelOption,
 	ModelSelectorEffortOption,
 } from "../components/assistant-ui/model-selector.js";
+import type { GatewayModelDetails } from "../../../contracts/chat/schemas.js";
+import { modelCostTier, type ModelCostTier } from "./model-cost.js";
 
 /** Selection shape accepted by `useKiloRuntime` / Kilo `session.prompt`. */
 export type KiloModelRef = {
@@ -30,8 +36,12 @@ export type KiloProviderGroup = {
 export type KiloCatalogModel = ModelOption & {
 	providerID: string;
 	modelID: string;
+	providerName?: string;
+	recommendedIndex?: number;
+	costTier?: ModelCostTier;
 	/** Active model's context window in tokens, when the provider reports it. */
 	contextWindow?: number;
+	details?: GatewayModelDetails;
 };
 
 export type KiloModelCatalog = {
@@ -57,6 +67,9 @@ type KiloProviderListModel = {
 	id: string;
 	name: string;
 	providerID: string;
+	recommendedIndex?: number;
+	options?: { description?: string };
+	cost?: { output?: number };
 	/** OpenCode-style named variants (often reasoning levels). */
 	variants?: Record<string, unknown>;
 	reasoning_options?: ReadonlyArray<KiloReasoningOption>;
@@ -131,7 +144,7 @@ export function parseModelId(id: string): KiloModelRef | null {
 
 /** Kilo's built-in OAuth gateway — keep first in the provider rail (below favorites). */
 export function isKiloGatewayProvider(provider: { id: string; name?: string }): boolean {
-	if (provider.id === "kilo") {
+	if (provider.id === KILO_PROVIDER_ID) {
 		return true;
 	}
 	return provider.name !== undefined && /^kilo\s*gateway$/i.test(provider.name.trim());
@@ -168,32 +181,36 @@ export function buildCatalogFromProviderList(
 	for (const provider of payload.all) {
 		const providerID = provider.id;
 		const isConnected = connected.has(providerID);
-		if (connectedOnly && !isConnected) {
-			continue;
-		}
-		const modelEntries = Object.values(provider.models);
-		if (isLocalModelServerProvider(provider) && (!isConnected || modelEntries.length === 0)) {
+		const isLocal = isLocalModelServerProvider(provider);
+		const providerName = isLocal ? LOCAL_MODEL_SERVER_PROVIDER_NAME : provider.name;
+		if ((connectedOnly || isLocal) && !isConnected) {
 			continue;
 		}
 		providers.push({
 			id: providerID,
-			name: provider.name,
+			name: providerName,
 			connected: isConnected,
 		});
-		for (const model of modelEntries) {
+		for (const model of Object.values(provider.models)) {
 			const modelID = model.id;
-			const modelProviderID = model.providerID || provider.id;
+			const modelProviderID = model.providerID || providerID;
 			const efforts = effortsFromProviderModel(model);
+			const costTier = modelCostTier(model.cost);
 			const contextWindow = contextWindowFromProviderModel(model);
 			models.push({
 				id: modelRefToId({ providerID: modelProviderID, modelID }),
 				name: model.name,
-				description: provider.name,
-				keywords: [provider.name, modelProviderID, modelID],
+				description: model.options?.description?.trim() || providerName,
+				keywords: [providerName, modelProviderID, modelID],
 				providerID: modelProviderID,
 				modelID,
+				providerName,
+				...(model.recommendedIndex !== undefined
+					? { recommendedIndex: model.recommendedIndex }
+					: {}),
 				disabled: !isConnected,
 				...(efforts ? { efforts } : {}),
+				...(costTier ? { costTier } : {}),
 				...(contextWindow === undefined ? {} : { contextWindow }),
 			});
 		}
@@ -204,6 +221,22 @@ export function buildCatalogFromProviderList(
 		models,
 		defaults: { ...payload.default },
 		connected: [...payload.connected],
+	};
+}
+
+export function attachGatewayModelDetails(
+	catalog: KiloModelCatalog | undefined,
+	details: readonly GatewayModelDetails[] | undefined,
+): KiloModelCatalog | undefined {
+	if (!catalog || !details?.length) return catalog;
+	const detailsByModelID = new Map(details.map((entry) => [entry.modelID, entry]));
+	return {
+		...catalog,
+		models: catalog.models.map((model) => {
+			if (model.providerID !== KILO_PROVIDER_ID) return model;
+			const modelDetails = detailsByModelID.get(model.modelID);
+			return modelDetails ? { ...model, details: modelDetails } : model;
+		}),
 	};
 }
 

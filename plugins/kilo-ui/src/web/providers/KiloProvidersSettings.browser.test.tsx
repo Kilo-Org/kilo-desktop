@@ -201,6 +201,7 @@ function renderPage(
 	if (options.localInference) {
 		system.getSdk("local-inference").plugins.expose("localInference", {
 			prepareModel: async () => undefined,
+			connect: async () => undefined,
 		});
 	}
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });

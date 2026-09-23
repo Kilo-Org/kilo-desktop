@@ -65,5 +65,6 @@ export type LocalInferenceServiceContract = InferContract<typeof localInferenceC
 export interface LocalInferenceCapabilities extends Record<string, unknown> {
 	localInference: {
 		prepareModel(modelId: string): Promise<void>;
+		connect(): Promise<void>;
 	};
 }

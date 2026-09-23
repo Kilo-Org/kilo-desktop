@@ -216,6 +216,7 @@ function renderChatPage(options?: {
 	children?: ReactNode;
 	canvasMountPolicy?: Contribution["mountPolicy"];
 	prepareModel?: (modelId: string) => Promise<void>;
+	connectLocalInference?: () => Promise<void>;
 	shell?: Partial<SDK["shell"]>;
 	pageProps?: Partial<PluginPageProps>;
 }) {
@@ -246,9 +247,10 @@ function renderChatPage(options?: {
 	});
 	const localInference = system.getSdk("local-inference");
 	const kiloServer = system.getSdk("kilo-server");
-	if (options?.prepareModel) {
+	if (options?.prepareModel || options?.connectLocalInference) {
 		localInference.plugins.expose("localInference", {
-			prepareModel: options.prepareModel,
+			prepareModel: options.prepareModel ?? (async () => undefined),
+			connect: options.connectLocalInference ?? (async () => undefined),
 		});
 	}
 	const removeCanvasContribution = system
@@ -776,6 +778,28 @@ describe("ChatFeatureProvider thread + prepareSession wiring", () => {
 
 		expect(prepareModel).not.toHaveBeenCalled();
 		expect(vi.mocked(useKiloRuntime).mock.lastCall?.[0].prepareModel).toBeTypeOf("function");
+	});
+
+	it("starts local inference and refreshes the provider catalog from model selection", async () => {
+		const connectLocalInference = vi.fn(async () => undefined);
+		let startLocalInference: (() => Promise<void>) | undefined;
+		function CaptureLocalInferenceControls() {
+			startLocalInference = useChatModelSelection().startLocalInference;
+			return null;
+		}
+		const { queryClient } = renderChatPage({
+			getConnection: async () => connection,
+			connectLocalInference,
+			children: <CaptureLocalInferenceControls />,
+		});
+		const key = [...KILO_PROVIDER_LIST_QUERY_KEY, connection.baseUrl, connection.version];
+		queryClient.setQueryData(key, { providers: [], models: [], defaults: {} });
+		await vi.waitFor(() => expect(startLocalInference).toBeTypeOf("function"));
+
+		await act(async () => startLocalInference?.());
+
+		expect(connectLocalInference).toHaveBeenCalledOnce();
+		expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true);
 	});
 
 	it("refetches the Kilo catalog when local models change", async () => {

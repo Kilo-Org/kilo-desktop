@@ -140,6 +140,7 @@ function registerChatBrowser(mainSdk: MainSdk): void {
 		"chat.getConnection": async () => {
 			throw new FeatureError("Kilo Server requires the desktop app.", "BUSINESS");
 		},
+		"chat.getGatewayModelDetails": async () => [],
 		"chat.prepareSession": async () => {
 			throw new FeatureError("Kilo Server requires the desktop app.", "BUSINESS");
 		},

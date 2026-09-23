@@ -18,6 +18,12 @@ import { OpenCodeDataPart } from "./components/tools/opencode-data-part.js";
 import toolkit from "./components/tools/toolkit.js";
 import { KiloServerErrorToast } from "./KiloServerErrorToast.js";
 import { LocalModelLoadingToast } from "./LocalModelLoadingToast.js";
+import {
+	INSTALLED_LOCAL_MODELS_QUERY_KEY,
+	installedLocalModelsFromChangedPayload,
+	useHasInstalledLocalModels,
+} from "./use-installed-local-models.js";
+import { useLocalInferenceStatus } from "./use-local-inference-status.js";
 import { ChatAgentSelectionProvider } from "./agent-selection/ChatAgentSelectionContext.js";
 import { useKiloAgentCatalog } from "./agent-selection/use-kilo-agent-catalog.js";
 import { useAgentSelection } from "./agent-selection/use-agent-selection.js";
@@ -26,7 +32,11 @@ import { useKiloCommandCatalog } from "./slash-commands/use-kilo-command-catalog
 import { KiloAuthProvider } from "../account/KiloAuthProvider.js";
 import { ChatConnectionProvider } from "./connection/ChatConnectionContext.js";
 import { ChatModelSelectionProvider } from "./model-selection/ChatModelSelectionContext.js";
-import { modelRefToId, type KiloModelRef } from "./model-selection/model-catalog.js";
+import {
+	attachGatewayModelDetails,
+	modelRefToId,
+	type KiloModelRef,
+} from "./model-selection/model-catalog.js";
 import {
 	isModelCatalogPending,
 	useKiloModelCatalog,
@@ -34,7 +44,11 @@ import {
 import { usePersistedModelSelection } from "./model-selection/use-persisted-model-selection.js";
 import { useModelPreferences } from "./model-selection/use-model-preferences.js";
 import { resolveLocalInferenceCapability } from "../providers/local-inference/capability.js";
-import { invalidateKiloProviderQueries } from "../providers/provider-queries.js";
+import { KILO_PROVIDER_ID } from "../providers/provider-ids.js";
+import {
+	invalidateKiloProviderQueries,
+	KILO_PROVIDER_LIST_QUERY_KEY,
+} from "../providers/provider-queries.js";
 import { isStaleKiloConnectionError } from "./kilo-connection-error.js";
 import { bindChatPaneSync, listenChatPaneSync } from "./pane-canvas/chat-pane-sync.js";
 import { chatRightPanelCapability } from "./right-panel/chat-right-panel-capability.js";
@@ -67,10 +81,18 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	const queryClient = useQueryClient();
 	const { activeWorkspaceId, workspaces } = useWorkspacesFeature();
 	const localInference = resolveLocalInferenceCapability(sdk.plugins.get("local-inference"));
+	const localInferenceStatus = useLocalInferenceStatus();
+	const { hasInstalled: hasInstalledLocalModels, isPending: isInstalledLocalModelsPending } =
+		useHasInstalledLocalModels(localInference !== null);
 	const prepareModel = useMemo(
 		() => (localInference ? (modelId: string) => localInference.prepareModel(modelId) : undefined),
 		[localInference],
 	);
+	const startLocalInference = useCallback(async () => {
+		if (!localInference?.connect) return;
+		await localInference.connect();
+		await queryClient.invalidateQueries({ queryKey: [...KILO_PROVIDER_LIST_QUERY_KEY] });
+	}, [localInference, queryClient]);
 
 	useEffect(() => {
 		sdk.plugins.expose("chatRightPanel", bindChatPaneSync(sdk, chatRightPanelCapability));
@@ -97,12 +119,14 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		invalidateKiloProviderQueries(queryClient);
 	}, [connectionOptions.queryKey, queryClient]);
 	useEffect(() => {
-		const stopModels = sdk.events.on("local-inference.models-changed", () => {
+		return sdk.events.on("local-inference.models-changed", (payload) => {
 			invalidateKiloProviderQueries(queryClient);
+			const installed = installedLocalModelsFromChangedPayload(payload);
+			if (installed === false) {
+				queryClient.setQueryData(INSTALLED_LOCAL_MODELS_QUERY_KEY, false);
+			}
+			void queryClient.invalidateQueries({ queryKey: [...INSTALLED_LOCAL_MODELS_QUERY_KEY] });
 		});
-		return () => {
-			stopModels();
-		};
 	}, [queryClient, sdk]);
 	const connection = useQuery(connectionOptions);
 	// One deferred covers the cold-start pending→ready transition so the promise
@@ -281,6 +305,18 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	useEffect(() => () => branchNamer.dispose(), [branchNamer]);
 
 	const catalogQuery = useKiloModelCatalog(connection.data, connection.dataUpdatedAt);
+	const gatewayModelDetails = useQuery({
+		...sdkQueryOptions(sdk, "chat.getGatewayModelDetails"),
+		enabled:
+			catalogQuery.data?.models.some((model) => model.providerID === KILO_PROVIDER_ID) ?? false,
+		staleTime: 5 * 60_000,
+		gcTime: 30 * 60_000,
+		retry: 1,
+	});
+	const catalogWithDetails = useMemo(
+		() => attachGatewayModelDetails(catalogQuery.data, gatewayModelDetails.data),
+		[catalogQuery.data, gatewayModelDetails.data],
+	);
 	const [activeThreadId, setActiveThreadId] = useState<string>();
 	const agentCatalogQuery = useKiloAgentCatalog(connection.data, connection.dataUpdatedAt);
 	const {
@@ -312,7 +348,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		promoteDraftModel,
 		resetDraftModel,
 	} = usePersistedModelSelection(
-		catalogQuery.data,
+		catalogWithDetails,
 		activeThreadId,
 		configuredAgent
 			? {
@@ -409,21 +445,32 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 			setEffort,
 			name,
 			efforts,
-			catalog: catalogQuery.data,
+			catalog: catalogWithDetails,
 			isCatalogPending: isModelCatalogPending(catalogQuery),
 			isCatalogError: catalogQuery.isError,
+			isCatalogFetching: catalogQuery.isFetching,
+			localInferenceAvailable: localInference !== null,
+			localInferenceStatus,
+			hasInstalledLocalModels,
+			isInstalledLocalModelsPending,
+			...(localInference?.connect ? { startLocalInference } : {}),
 		}),
 		[
-			catalogQuery.data,
+			catalogWithDetails,
 			catalogQuery.isError,
 			catalogQuery.isFetching,
 			catalogQuery.isPending,
+			hasInstalledLocalModels,
+			isInstalledLocalModelsPending,
 			effort,
 			efforts,
+			localInference,
+			localInferenceStatus,
 			model,
 			name,
 			setEffort,
 			selectModel,
+			startLocalInference,
 		],
 	);
 

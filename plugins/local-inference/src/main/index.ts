@@ -172,6 +172,7 @@ export async function mainRegister(mainSdk: MainSdk): Promise<void> {
 
 	const capability = {
 		prepareModel: service.prepareModel.bind(service),
+		connect: service.connect.bind(service),
 	} satisfies LocalInferenceCapabilities["localInference"];
 	mainSdk.plugins.expose("localInference", capability);
 	mainSdk.channels(localInferenceContract).handleAll(handlers);

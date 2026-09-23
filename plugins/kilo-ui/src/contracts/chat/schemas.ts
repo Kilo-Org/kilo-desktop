@@ -48,11 +48,33 @@ export const kiloSessionPreparationSchema = z.object({
 		.optional(),
 });
 
+export const gatewayModelDetailsSchema = z.object({
+	modelID: z.string().min(1),
+	description: z.string().optional(),
+	inputPricePerMillion: z.number().nonnegative().optional(),
+	outputPricePerMillion: z.number().nonnegative().optional(),
+	averageAttemptCostUsd: z.number().nonnegative().optional(),
+	kiloBenchScore: z.number().min(0).max(1).optional(),
+	codingIndex: z.number().nonnegative().optional(),
+	codeModeRank: z.number().int().positive().optional(),
+	enkryptRiskScore: z.number().min(0).max(100).optional(),
+	contextWindow: z.number().int().positive().optional(),
+	maxOutputTokens: z.number().int().positive().optional(),
+	isFree: z.boolean().optional(),
+	mayTrainOnYourPrompts: z.boolean().optional(),
+	hasUserByokAvailable: z.boolean().optional(),
+	modelPageSlug: z.string().min(1).optional(),
+});
+
+export const gatewayModelDetailsListSchema = z.array(gatewayModelDetailsSchema);
+
 export type KiloGlobalConnection = z.infer<typeof kiloGlobalConnectionSchema>;
 export type KiloSessionPreparation = z.infer<typeof kiloSessionPreparationSchema>;
+export type GatewayModelDetails = z.infer<typeof gatewayModelDetailsSchema>;
 
 export const kiloUiChatContract = defineContract({
 	"chat.getConnection": defineMethod(z.undefined(), kiloGlobalConnectionSchema),
+	"chat.getGatewayModelDetails": defineMethod(z.undefined(), gatewayModelDetailsListSchema),
 	"chat.prepareSession": defineMethod(
 		kiloSessionPreparationInputSchema,
 		kiloSessionPreparationSchema,

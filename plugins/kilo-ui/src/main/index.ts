@@ -28,6 +28,7 @@ import { readStoredApiKey } from "./providers/stored-api-key.js";
 import { createWorkspacesDatabase } from "./workspaces/db.js";
 import { WorkspaceService } from "./workspaces/WorkspaceService.js";
 import { createChatWorktreeHandlers } from "./chat/chat-worktree-handlers.js";
+import { fetchGatewayModelDetails } from "./chat/gateway-model-details.js";
 import { createWorkspaceSessionUnscoper } from "./chat/unscope-workspace-sessions.js";
 import { WorkspaceSessionCleanupQueue } from "./chat/workspace-session-cleanup-queue.js";
 
@@ -94,6 +95,7 @@ export function mainRegister(
 
 	const chatApi: KiloUiChatService = {
 		"chat.getConnection": async () => getConnection(),
+		"chat.getGatewayModelDetails": async () => fetchGatewayModelDetails(mainSdk.net.fetch),
 		...createChatWorktreeHandlers(mainSdk, service),
 	};
 

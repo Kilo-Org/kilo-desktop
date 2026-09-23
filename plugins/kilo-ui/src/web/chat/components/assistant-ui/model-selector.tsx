@@ -513,9 +513,17 @@ function ModelSelectorSearch({
 	return <CommandInput data-slot="model-selector-search" placeholder={placeholder} {...props} />;
 }
 
-export type ModelSelectorListProps = ComponentProps<typeof CommandList>;
+export type ModelSelectorListProps = ComponentProps<typeof CommandList> & {
+	showScrollbar?: boolean;
+};
 
-function ModelSelectorList({ className, children, ref, ...props }: ModelSelectorListProps) {
+function ModelSelectorList({
+	className,
+	children,
+	ref,
+	showScrollbar = false,
+	...props
+}: ModelSelectorListProps) {
 	const { models } = useModelSelectorContext();
 
 	return (
@@ -523,7 +531,8 @@ function ModelSelectorList({ className, children, ref, ...props }: ModelSelector
 			ref={ref}
 			data-slot="model-selector-list"
 			className={cn(
-				"[-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+				!showScrollbar &&
+					"[-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
 				className,
 			)}
 			{...props}
@@ -564,7 +573,7 @@ function ModelSelectorSeparator(props: ModelSelectorSeparatorProps) {
 	return <CommandSeparator data-slot="model-selector-separator" {...props} />;
 }
 
-export type ModelSelectorItemProps = Omit<ComponentPropsWithoutRef<typeof CommandItem>, "value"> & {
+export type ModelSelectorItemProps = Omit<ComponentProps<typeof CommandItem>, "value"> & {
 	model: ModelOption;
 	/** When false, the selected check is omitted so callers can render their own trailing actions. */
 	showCheck?: boolean;

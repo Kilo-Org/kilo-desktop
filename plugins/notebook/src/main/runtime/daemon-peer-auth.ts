@@ -12,8 +12,9 @@
  *   exact child pid we launched. This is the strong case — a squatter that
  *   answered the socket instead of our child fails immediately.
  * - `trusted-image`: we are attaching to a daemon we did not spawn, so we can
- *   only trust it by its executable — it must be running one of our known-good
- *   runtimed binaries. This is defense in depth, not a hard boundary against a
+ *   only trust it by its executable — its digest must match the pinned release,
+ *   or its macOS signature must meet our Developer ID requirement. This is
+ *   defense in depth, not a hard boundary against a
  *   same-user attacker: that user can run the genuine binary under `LD_PRELOAD`
  *   / `DYLD_INSERT_LIBRARIES` (absent a hardened runtime), attach with ptrace,
  *   or replace a user-writable install outright (see the Tampering rows in
@@ -46,11 +47,15 @@ export interface PeerIdentity {
 	readonly uid: number | null;
 	/** Canonical (realpath) executable image of the listener, or `null` if unknown. */
 	readonly executablePath: string | null;
+	/** SHA-256 of that image, populated when verifying an attached daemon. */
+	readonly executableSha256?: string | null;
+	/** Whether the image satisfies the trusted macOS signing requirement. */
+	readonly trustedSignature?: boolean;
 }
 
 export type ExpectedDaemonPeer =
 	| { readonly kind: "own-child"; readonly pid: number }
-	| { readonly kind: "trusted-image"; readonly allowedExecutablePaths: readonly string[] };
+	| { readonly kind: "trusted-image"; readonly allowedExecutableSha256: readonly string[] };
 
 export type PeerTrustDecision =
 	| { readonly trusted: true }
@@ -111,9 +116,15 @@ export function decidePeerTrust(
 			"The runtime daemon's executable could not be identified, so it cannot be matched against the trusted runtimed image.",
 		);
 	}
-	if (!expected.allowedExecutablePaths.includes(peer.executablePath)) {
+	if (!expected.allowedExecutableSha256.length) {
+		return deny("No trusted runtimed release is available for an attached daemon.");
+	}
+	if (
+		!peer.trustedSignature &&
+		(!peer.executableSha256 || !expected.allowedExecutableSha256.includes(peer.executableSha256))
+	) {
 		return deny(
-			`The runtime daemon is running an executable that is not in the trusted runtimed allow-list (only the bundled runtimed is trusted for an attached daemon): ${peer.executablePath}.`,
+			`The runtime daemon is running an executable that does not match the trusted runtimed release or signing identity: ${peer.executablePath}.`,
 		);
 	}
 	return { trusted: true };

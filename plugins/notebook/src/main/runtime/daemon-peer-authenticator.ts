@@ -1,4 +1,8 @@
+import { createHash } from "node:crypto";
+import { execFile } from "node:child_process";
+import { createReadStream } from "node:fs";
 import { realpath } from "node:fs/promises";
+import { promisify } from "node:util";
 
 import { decidePeerTrust, type PeerIdentity } from "./daemon-peer-auth.js";
 import type { AuthenticatePeer } from "./RuntimedDaemonManager.js";
@@ -9,39 +13,58 @@ import type { AuthenticatePeer } from "./RuntimedDaemonManager.js";
  *
  * The manager tells us whether it spawned the daemon (`spawnedPid`) or is
  * attaching to one it did not start (`spawnedPid === null`); that selects the
- * expectation the pure decision enforces. Executable paths are canonicalized
- * on both sides so a symlinked bundle path still matches the peer's realpath.
+ * expectation the pure decision enforces. Attached images are hashed by their
+ * canonical path and compared with the release's pinned digest; signed macOS
+ * images may instead satisfy the Anaconda Developer ID requirement.
  */
 export interface DaemonPeerAuthenticatorDeps {
 	readonly resolvePeerIdentity: (socketPath: string) => Promise<PeerIdentity | null>;
-	/** Executables an attached (not-spawned) daemon may run — typically our bundled binary. */
-	readonly allowedExecutablePaths: readonly string[];
+	/** Pinned SHA-256 digests of executable releases allowed for attached daemons. */
+	readonly allowedExecutableSha256: readonly string[];
 	readonly selfUid: number | null;
-	/** Resolves symlinks/case so both sides of the image comparison are canonical. */
+	/** Resolves symlinks so the image is read from its canonical location. */
 	readonly canonicalize?: (path: string) => Promise<string>;
+	/** Test seam for hashing an executable image. */
+	readonly hashExecutable?: (path: string) => Promise<string>;
+	/** Test seam for verifying a signed executable. */
+	readonly verifySignature?: (path: string) => Promise<boolean>;
 }
 
 async function defaultCanonicalize(path: string): Promise<string> {
-	const resolved = await realpath(path);
-	// Windows paths are case-insensitive; fold case so the compare is stable.
-	return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+	return realpath(path);
 }
 
-async function safeCanonicalize(
-	path: string,
-	canonicalize: (path: string) => Promise<string>,
-): Promise<string> {
+async function hashExecutable(path: string): Promise<string> {
+	const hash = createHash("sha256");
+	for await (const chunk of createReadStream(path)) hash.update(chunk);
+	return hash.digest("hex");
+}
+
+const execFileAsync = promisify(execFile);
+// Forge signs bundled native resources under the Kilo Preview Developer ID.
+// A signed executable's file digest differs from the unsigned release asset.
+const MACOS_RUNTIMED_REQUIREMENT =
+	'anchor apple generic and certificate leaf[subject.OU] = "Z5788K4JT7" and identifier "runtimed-nightly"';
+
+async function verifySignature(path: string): Promise<boolean> {
+	if (process.platform !== "darwin") return false;
 	try {
-		return await canonicalize(path);
+		await execFileAsync("/usr/bin/codesign", [
+			"--verify",
+			"--strict",
+			`-R=${MACOS_RUNTIMED_REQUIREMENT}`,
+			path,
+		]);
+		return true;
 	} catch {
-		// A missing/unreadable path can't be canonicalized; compare it verbatim
-		// so it simply fails to match an allowed entry rather than throwing.
-		return process.platform === "win32" ? path.toLowerCase() : path;
+		return false;
 	}
 }
 
 export function createDaemonPeerAuthenticator(deps: DaemonPeerAuthenticatorDeps): AuthenticatePeer {
 	const canonicalize = deps.canonicalize ?? defaultCanonicalize;
+	const hash = deps.hashExecutable ?? hashExecutable;
+	const verify = deps.verifySignature ?? verifySignature;
 	return async ({ socketPath, spawnedPid }) => {
 		const peer = await deps.resolvePeerIdentity(socketPath);
 
@@ -53,16 +76,32 @@ export function createDaemonPeerAuthenticator(deps: DaemonPeerAuthenticatorDeps)
 			);
 		}
 
-		const allowedExecutablePaths = await Promise.all(
-			deps.allowedExecutablePaths.map((path) => safeCanonicalize(path, canonicalize)),
-		);
-		const canonicalPeer =
-			peer && peer.executablePath !== null
-				? { ...peer, executablePath: await safeCanonicalize(peer.executablePath, canonicalize) }
-				: peer;
+		let authenticatedPeer = peer;
+		if (peer?.executablePath && deps.allowedExecutableSha256.length) {
+			try {
+				const executablePath = await canonicalize(peer.executablePath);
+				let executableSha256: string | null = null;
+				try {
+					executableSha256 = await hash(executablePath);
+				} catch {
+					// A signed image can still be verified if the file cannot be read.
+				}
+				authenticatedPeer = {
+					...peer,
+					executablePath,
+					executableSha256,
+					trustedSignature:
+						!executableSha256 || !deps.allowedExecutableSha256.includes(executableSha256)
+							? await verify(executablePath)
+							: false,
+				};
+			} catch {
+				// Unreadable or missing images cannot establish trust.
+			}
+		}
 		return decidePeerTrust(
-			canonicalPeer,
-			{ kind: "trusted-image", allowedExecutablePaths },
+			authenticatedPeer,
+			{ kind: "trusted-image", allowedExecutableSha256: deps.allowedExecutableSha256 },
 			{ selfUid: deps.selfUid },
 		);
 	};

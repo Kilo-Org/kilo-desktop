@@ -65,13 +65,11 @@ Electron port and retain runtimed's negotiated protocol number.
   transport fallback to a listening WebSocket.
 - The process answering the daemon socket is authenticated before any notebook code is sent
   (see `daemon-peer-auth.ts`): a daemon we spawned must match our child pid; a daemon we attach
-  to must be running a trusted runtimed image. By default the only trusted image is the bundled
-  binary, so attaching to a **locally built or externally installed** runtimed — including one
-  reached via `RUNTIMED_SOCKET_PATH` or an explicit `socketPath` — **fails closed** with an
-  "untrusted executable"/"could not be identified" status. This is intentional. To trust another
-  binary, extend the allow-list at its single injection point: `allowedExecutablePaths` in
-  `ElectronNotebookHostService` (sourced from `runtimedBinaryPath`); on a build with no staged
-  bundled binary that list is empty, so every attach fails closed.
+  to must run an executable whose SHA-256 matches the pinned release artifact. This allows an
+  identical daemon from another Kilo installation. A macOS-signed executable can differ from the
+  unsigned release bytes, so the alternative is a valid signature bound to Anaconda's Developer ID
+  team and the `runtimed-nightly` identifier. A different unsigned binary still fails closed,
+  including through explicit endpoints. Without a staged bundled binary every attach fails closed.
 
 ## Release verification
 

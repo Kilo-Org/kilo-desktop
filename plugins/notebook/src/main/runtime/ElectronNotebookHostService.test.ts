@@ -10,6 +10,7 @@ import type {
 import type { RelayInfo, RelaySession } from "@runtimed/node/relay";
 
 import { createFakeMainSdk } from "@kilo-desktop/testing";
+import { findRuntimedArtifact } from "../../packaging/artifacts.js";
 
 const mocks = vi.hoisted(() => ({
 	createRelay: vi.fn(),
@@ -1251,7 +1252,7 @@ describe("ElectronNotebookHostService", () => {
 describe("ElectronNotebookHostService daemon authentication wiring", () => {
 	afterEach(() => vi.clearAllMocks());
 
-	it("builds the authenticator from the bundled image, this user's uid, and the resolver seam", async () => {
+	it("builds the authenticator from the pinned release, this user's uid, and the resolver seam", async () => {
 		const resolvePeerIdentity = vi.fn(async () => null);
 		const service = new ElectronNotebookHostService({
 			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
@@ -1263,7 +1264,7 @@ describe("ElectronNotebookHostService daemon authentication wiring", () => {
 
 		expect(mocks.createAuthenticator).toHaveBeenCalledWith({
 			resolvePeerIdentity,
-			allowedExecutablePaths: ["/resources/runtimed-nightly"],
+			allowedExecutableSha256: [findRuntimedArtifact()?.sha256],
 			selfUid: typeof process.getuid === "function" ? process.getuid() : null,
 		});
 		await service.dispose();
@@ -1277,7 +1278,7 @@ describe("ElectronNotebookHostService daemon authentication wiring", () => {
 		});
 
 		expect(mocks.createAuthenticator).toHaveBeenCalledWith(
-			expect.objectContaining({ allowedExecutablePaths: [] }),
+			expect.objectContaining({ allowedExecutableSha256: [] }),
 		);
 		await service.dispose();
 	});

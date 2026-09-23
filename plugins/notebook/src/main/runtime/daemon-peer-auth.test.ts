@@ -48,29 +48,39 @@ describe("decidePeerTrust", () => {
 	});
 
 	describe("trusted-image (attaching to an external daemon)", () => {
-		it("trusts a listener running an allowed executable", () => {
+		it("trusts a listener running the pinned executable", () => {
 			expect(
 				decidePeerTrust(
-					peer({ executablePath: "/apps/runtimed" }),
-					{ kind: "trusted-image", allowedExecutablePaths: ["/apps/runtimed"] },
+					peer({ executablePath: "/other-app/runtimed", executableSha256: "pinned-digest" }),
+					{ kind: "trusted-image", allowedExecutableSha256: ["pinned-digest"] },
 					{ selfUid: OUR_UID },
 				),
 			).toEqual({ trusted: true });
 		});
 
-		it("rejects a listener whose executable is not on the allow-list", () => {
+		it("rejects a listener whose executable digest is not on the allow-list", () => {
 			const decision = decidePeerTrust(
-				peer({ executablePath: "/tmp/evil" }),
-				{ kind: "trusted-image", allowedExecutablePaths: ["/apps/runtimed"] },
+				peer({ executablePath: "/tmp/evil", executableSha256: "other-digest" }),
+				{ kind: "trusted-image", allowedExecutableSha256: ["pinned-digest"] },
 				{ selfUid: OUR_UID },
 			);
 			expect(decision.trusted).toBe(false);
 		});
 
+		it("trusts a signed executable with a different file digest", () => {
+			expect(
+				decidePeerTrust(
+					peer({ executableSha256: "signed-digest", trustedSignature: true }),
+					{ kind: "trusted-image", allowedExecutableSha256: ["pinned-digest"] },
+					{ selfUid: OUR_UID },
+				),
+			).toEqual({ trusted: true });
+		});
+
 		it("rejects when the peer executable path is unknown", () => {
 			const decision = decidePeerTrust(
 				peer({ executablePath: null }),
-				{ kind: "trusted-image", allowedExecutablePaths: ["/apps/runtimed"] },
+				{ kind: "trusted-image", allowedExecutableSha256: ["pinned-digest"] },
 				{ selfUid: OUR_UID },
 			);
 			expect(decision.trusted).toBe(false);
@@ -78,8 +88,8 @@ describe("decidePeerTrust", () => {
 
 		it("rejects when the allow-list is empty", () => {
 			const decision = decidePeerTrust(
-				peer(),
-				{ kind: "trusted-image", allowedExecutablePaths: [] },
+				peer({ executableSha256: "pinned-digest", trustedSignature: true }),
+				{ kind: "trusted-image", allowedExecutableSha256: [] },
 				{ selfUid: OUR_UID },
 			);
 			expect(decision.trusted).toBe(false);
@@ -87,8 +97,8 @@ describe("decidePeerTrust", () => {
 
 		it("rejects a listener owned by a different user", () => {
 			const decision = decidePeerTrust(
-				peer({ executablePath: "/apps/runtimed", uid: 0 }),
-				{ kind: "trusted-image", allowedExecutablePaths: ["/apps/runtimed"] },
+				peer({ executablePath: "/apps/runtimed", executableSha256: "pinned-digest", uid: 0 }),
+				{ kind: "trusted-image", allowedExecutableSha256: ["pinned-digest"] },
 				{ selfUid: OUR_UID },
 			);
 			expect(decision.trusted).toBe(false);

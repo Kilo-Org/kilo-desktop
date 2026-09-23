@@ -30,6 +30,7 @@ import type { NotebookOpenFileResult, NotebookSaveResult } from "../../contracts
 import { resolveDaemonSocketPath, type BuildChannel } from "./socket-path.js";
 import { RuntimedDaemonManager, type RuntimedDaemonState } from "./RuntimedDaemonManager.js";
 import { createDaemonPeerAuthenticator } from "./daemon-peer-authenticator.js";
+import { findRuntimedArtifact } from "../../packaging/artifacts.js";
 import {
 	isPeerCredentialBackendAvailable,
 	resolveDaemonPeerIdentity,
@@ -250,10 +251,12 @@ export class ElectronNotebookHostService {
 			((managerOptions) => new RuntimedDaemonManager(managerOptions));
 		// Authenticate whatever answers the daemon socket before any notebook
 		// code reaches it: our spawned child by pid, or an attached daemon by its
-		// executable image (only the bundled binary is trusted by default).
+		// executable digest or verified macOS signing identity.
 		const authenticatePeer = createDaemonPeerAuthenticator({
 			resolvePeerIdentity: options.resolvePeerIdentity ?? resolveDaemonPeerIdentity,
-			allowedExecutablePaths: options.runtimedBinaryPath ? [options.runtimedBinaryPath] : [],
+			allowedExecutableSha256: options.runtimedBinaryPath
+				? [findRuntimedArtifact()?.sha256].filter((digest): digest is string => !!digest)
+				: [],
 			selfUid: typeof process.getuid === "function" ? process.getuid() : null,
 		});
 		// Warn loudly if the native peer-credential backend cannot load:

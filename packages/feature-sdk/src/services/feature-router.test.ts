@@ -18,7 +18,7 @@ describe("FeatureRouter", () => {
 	});
 
 	it("exposes injected host logger and network delegates", async () => {
-		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 		const fetch = vi.fn(async () => Response.json({ ok: true })) as typeof globalThis.fetch;
 		const mainSdk = new FeatureRouter().createMainSdk("my-feature", { logger, fetch });
 

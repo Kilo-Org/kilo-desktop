@@ -12,6 +12,7 @@ import type { CatalogDownloadArtifact } from "./catalog-download.js";
 const roots: string[] = [];
 
 const logger = {
+	debug: vi.fn(),
 	info: vi.fn(),
 	warn: vi.fn(),
 	error: vi.fn(),

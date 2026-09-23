@@ -96,6 +96,7 @@ export function createFakeParcelWatcher(): FakeParcelWatcher {
 }
 
 export const noopLogger: MainSdkLogger = {
+	debug: () => {},
 	info: () => {},
 	warn: () => {},
 	error: () => {},

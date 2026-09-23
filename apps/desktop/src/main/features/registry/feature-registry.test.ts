@@ -56,7 +56,7 @@ describe("feature registration", () => {
 		const relay = vi.fn();
 		const disposed = vi.fn();
 		const resolveAsset = vi.fn((subpath: string) => `/plugin/${subpath}`);
-		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 		const createLogger = vi.fn(() => logger);
 		const fetch = vi.fn(async () => Response.json({ ok: true })) as typeof globalThis.fetch;
 		const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);

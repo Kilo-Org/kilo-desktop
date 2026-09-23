@@ -914,7 +914,7 @@ describe("ElectronNotebookHostService", () => {
 	});
 
 	it("forwards sidecar log notifications to the feature logger", async () => {
-		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 		const mainSdk = createFakeMainSdk({
 			featureId: "notebook",
 			host: desktopHost(),
@@ -936,7 +936,7 @@ describe("ElectronNotebookHostService", () => {
 		handler.notify?.({ method: "log.warn", params: { message: "warn" } });
 		handler.notify?.({ method: "log.error", params: { message: "error" } });
 
-		expect(logger.info).toHaveBeenCalledWith("debug");
+		expect(logger.debug).toHaveBeenCalledWith("debug");
 		expect(logger.info).toHaveBeenCalledWith("info");
 		expect(logger.warn).toHaveBeenCalledWith("warn");
 		expect(logger.error).toHaveBeenCalledWith("error");

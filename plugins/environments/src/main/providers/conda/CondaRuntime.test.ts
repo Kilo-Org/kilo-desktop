@@ -11,6 +11,7 @@ import { SidecarCondaBackend } from "./SidecarCondaBackend.js";
 import type { BridgeLaunchInfo } from "./resolveBridgePath.js";
 
 const logger: MainSdkLogger = {
+	debug: () => {},
 	info: () => {},
 	warn: () => {},
 	error: () => {},

@@ -103,6 +103,7 @@ export interface CreateMainSdkOptions {
 function createConsoleLogger(featureId: string): MainSdkLogger {
 	const prefix = `[${featureId}]`;
 	return {
+		debug: (message, ...args) => console.debug(prefix, message, ...args),
 		info: (message, ...args) => console.info(prefix, message, ...args),
 		warn: (message, ...args) => console.warn(prefix, message, ...args),
 		error: (message, ...args) => console.error(prefix, message, ...args),

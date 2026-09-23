@@ -608,8 +608,7 @@ export class ElectronNotebookHostService {
 			invoke: invoke as ElectronNotebookHostHandler["invoke"],
 			notify: ({ method, params }) => {
 				const level = method.slice("log.".length) as "debug" | "info" | "warn" | "error";
-				if (level === "debug") this.#mainSdk.logger.info(params.message);
-				else this.#mainSdk.logger[level](params.message);
+				this.#mainSdk.logger[level](params.message);
 			},
 		};
 	}

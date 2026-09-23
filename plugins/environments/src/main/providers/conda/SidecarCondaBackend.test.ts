@@ -45,6 +45,7 @@ import { spawn } from "node:child_process";
 import { createMessageConnection, ResponseError } from "vscode-jsonrpc/node";
 
 const silentLogger: MainSdkLogger = {
+	debug: () => {},
 	info: () => {},
 	warn: () => {},
 	error: () => {},

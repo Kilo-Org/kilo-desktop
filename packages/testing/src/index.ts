@@ -60,6 +60,7 @@ export function createFakeTheme(initial = DEFAULT_APPEARANCES.light): SdkTheme &
 	};
 }
 const noopMainSdkLogger = {
+	debug: noop,
 	info: noop,
 	warn: noop,
 	error: noop,

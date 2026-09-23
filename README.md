@@ -258,6 +258,20 @@ Notes:
   (the native minidump reporter requires a DSN); only `spotlightIntegration` is
   active, so local events go to Spotlight and nowhere else.
 
+## Log verbosity
+
+Main-process logs (electron-log, console + file transports) default to `info`.
+Levels are `error`, `warn`, `info`, `verbose`, `debug`, `silly` — anything below
+the configured level is dropped. Two ways to change it, env var wins:
+
+```bash
+KILO_LOG_LEVEL=debug pnpm dev   # one-off, e.g. to see notebook sidecar debug logs
+```
+
+or set `"logLevel": "debug"` in `preferences.json` inside the app's userData
+directory (e.g. `~/Library/Application Support/Kilo Desktop Preview/` on macOS) to
+persist it across launches.
+
 ## Electron architecture and security
 
 The renderer is sandboxed and has no Node.js access. The preload exposes only the

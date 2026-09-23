@@ -8,6 +8,8 @@ import {
 	type ThemeSource,
 } from "@kilo-desktop/contracts";
 
+import { DEFAULT_LOG_LEVEL, logLevelSchema, type LogLevel } from "./logger.js";
+
 export interface AppPreferences {
 	/** Last renderer-synced theme source — used to resolve cold-start native chrome. */
 	themeSource?: ThemeSource;
@@ -18,6 +20,8 @@ export interface AppPreferences {
 	installationId?: string;
 	/** User-selected desktop update track; unset follows the build's release track. */
 	releaseTrack?: ReleaseTrack;
+	/** Main-process log verbosity; unset logs at info. `KILO_LOG_LEVEL` overrides. */
+	logLevel?: LogLevel;
 }
 
 /** Owns persisted shell preferences; invalid theme values fall back to application defaults. */
@@ -61,6 +65,15 @@ export class PreferencesStore {
 	getReleaseTrack(fallback: ReleaseTrack): ReleaseTrack {
 		const parsed = releaseTrackSchema.safeParse(this.#store.get("releaseTrack"));
 		return parsed.success ? parsed.data : fallback;
+	}
+
+	getLogLevel(): LogLevel {
+		const parsed = logLevelSchema.safeParse(this.#store.get("logLevel"));
+		return parsed.success ? parsed.data : DEFAULT_LOG_LEVEL;
+	}
+
+	setLogLevel(level: LogLevel): void {
+		this.#store.set("logLevel", logLevelSchema.parse(level));
 	}
 
 	setReleaseTrack(track: ReleaseTrack): void {

@@ -85,6 +85,26 @@ describe("PreferencesStore", () => {
 		});
 	});
 
+	describe("logLevel", () => {
+		it("defaults to info when unset and round-trips a valid selection", () => {
+			const store = createFakeStore();
+			const preferences = new PreferencesStore(store as never);
+
+			expect(preferences.getLogLevel()).toBe("info");
+			preferences.setLogLevel("debug");
+			expect(store.set).toHaveBeenCalledWith("logLevel", "debug");
+			expect(preferences.getLogLevel()).toBe("debug");
+		});
+
+		it("falls back to info for an invalid stored value", () => {
+			const store = createFakeStore();
+			store.get.mockReturnValue("chatty");
+			const preferences = new PreferencesStore(store as never);
+
+			expect(preferences.getLogLevel()).toBe("info");
+		});
+	});
+
 	describe("getInstallationId", () => {
 		it("generates and persists an id on first read", () => {
 			const store = createFakeStore();

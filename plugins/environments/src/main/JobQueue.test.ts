@@ -321,7 +321,7 @@ describe("JobQueue.enqueue — progress event emission", () => {
 		});
 		const queue = new JobQueue({
 			emit,
-			logger: { info: () => {}, warn, error: () => {} },
+			logger: { debug: () => {}, info: () => {}, warn, error: () => {} },
 		});
 
 		const { result } = queue.enqueue({

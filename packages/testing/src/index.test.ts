@@ -119,7 +119,7 @@ describe("createFakeMainSdk", () => {
 	});
 
 	it("uses injected logger and network delegates", async () => {
-		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 		const fetch = vi.fn(async () => Response.json({ ok: true })) as typeof globalThis.fetch;
 		const mainSdk = createFakeMainSdk({ featureId: "todos", logger, fetch });
 

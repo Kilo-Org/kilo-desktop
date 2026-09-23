@@ -65,7 +65,7 @@ describe("LocalInferenceService", () => {
 			},
 			getKilo: () => null,
 			emit: vi.fn(),
-			logger: { info() {}, warn() {}, error() {} },
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
 		});
 		const model = await service.add({
 			path: file,
@@ -119,7 +119,7 @@ describe("LocalInferenceService", () => {
 			},
 			getKilo: () => null,
 			emit: vi.fn(),
-			logger: { info() {}, warn() {}, error() {} },
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
 		});
 
 		const removal = service.remove(model.id, "delete-managed-file");
@@ -139,7 +139,7 @@ describe("LocalInferenceService", () => {
 		const registry = new LocalModelRegistry(store(), () => 1);
 		const model = await registry.add(file);
 		registry.setEnabled(true);
-		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 		const service = new LocalInferenceService({
 			registry,
 			router: {
@@ -198,7 +198,7 @@ describe("LocalInferenceService", () => {
 			},
 			getKilo: () => null,
 			emit: vi.fn(),
-			logger: { info() {}, warn() {}, error() {} },
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
 		});
 		const imported = await service.add({ path: importedFile });
 
@@ -251,7 +251,7 @@ describe("LocalInferenceService", () => {
 				},
 			}),
 			emit: vi.fn(),
-			logger: { info() {}, warn() {}, error() {} },
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
 		});
 
 		const model = await service.add({ path: await fixture() });
@@ -303,7 +303,7 @@ describe("LocalInferenceService", () => {
 			},
 			getKilo: () => null,
 			emit: vi.fn(),
-			logger: { info() {}, warn() {}, error() {} },
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
 		});
 		const model = await service.add({ path: await fixture() });
 		await service.reconcile();
@@ -359,7 +359,7 @@ describe("LocalInferenceService", () => {
 			},
 			getKilo: () => null,
 			emit: vi.fn(),
-			logger: { info() {}, warn() {}, error() {} },
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
 		});
 
 		expect(service.status).toEqual({
@@ -393,7 +393,7 @@ describe("LocalInferenceService", () => {
 			},
 			getKilo: () => null,
 			emit: vi.fn(),
-			logger: { info() {}, warn() {}, error() {} },
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
 		});
 		const model = await service.add({ path: await fixture() });
 
@@ -438,7 +438,7 @@ describe("LocalInferenceService", () => {
 				},
 			}),
 			emit: vi.fn(),
-			logger: { info() {}, warn() {}, error() {} },
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
 		});
 		await service.add({ path: await fixture() });
 		await service.reconcile();
@@ -489,7 +489,7 @@ describe("LocalInferenceService", () => {
 				},
 			}),
 			emit: vi.fn(),
-			logger: { info() {}, warn() {}, error() {} },
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
 		});
 
 		expect(service.status).toEqual({ status: "disconnected" });
@@ -537,7 +537,7 @@ describe("LocalInferenceService", () => {
 				},
 			}),
 			emit: vi.fn(),
-			logger: { info() {}, warn() {}, error() {} },
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
 		});
 		const first = await service.add({ path: await fixture() });
 		await service.reconcile();
@@ -595,7 +595,7 @@ describe("LocalInferenceService", () => {
 				},
 			}),
 			emit: vi.fn(),
-			logger: { info() {}, warn() {}, error() {} },
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
 		});
 		await service.add({ path: await fixture() });
 		prepareModel.mockClear();
@@ -639,7 +639,7 @@ describe("LocalInferenceService", () => {
 				},
 			}),
 			emit: vi.fn(),
-			logger: { info() {}, warn() {}, error() {} },
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
 		});
 
 		await expect(
@@ -698,7 +698,7 @@ describe("LocalInferenceService", () => {
 				},
 			}),
 			emit: vi.fn(),
-			logger: { info() {}, warn() {}, error() {} },
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
 		});
 		const model = await service.add({ path: await fixture() });
 		await service.reconcile();
@@ -748,7 +748,7 @@ describe("LocalInferenceService", () => {
 				},
 			}),
 			emit: vi.fn(),
-			logger: { info() {}, warn() {}, error() {} },
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
 		});
 		const model = await service.add({ path: await fixture() });
 		await service.reconcile();
@@ -797,7 +797,7 @@ describe("LocalInferenceService", () => {
 			},
 			getKilo: () => null,
 			emit: vi.fn(),
-			logger: { info() {}, warn() {}, error() {} },
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
 		});
 
 		expect(service.status).toEqual({ status: "stopping" });
@@ -837,7 +837,7 @@ describe("LocalInferenceService", () => {
 			},
 			getKilo: () => null,
 			emit: vi.fn(),
-			logger: { info() {}, warn() {}, error() {} },
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
 		});
 		const model = await service.add({ path: await fixture() });
 		await service.reconcile();
@@ -893,7 +893,7 @@ describe("LocalInferenceService", () => {
 			}),
 			getKilo: () => null,
 			emit: vi.fn(),
-			logger: { info() {}, warn() {}, error() {} },
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
 		});
 		await service.add({ path: await fixture() });
 		await service.reconcile();
@@ -943,7 +943,7 @@ describe("LocalInferenceService", () => {
 			},
 			getKilo: () => null,
 			emit: vi.fn(),
-			logger: { info() {}, warn() {}, error() {} },
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
 		});
 		await service.add({ path: await fixture() });
 		service.updateServerSettings({ serveOnLocalNetwork: true });
@@ -987,7 +987,7 @@ describe("LocalInferenceService", () => {
 			},
 			getKilo: () => null,
 			emit: vi.fn(),
-			logger: { info() {}, warn() {}, error() {} },
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
 		});
 		await service.add({ path: await fixture() });
 

@@ -14,6 +14,7 @@ import type { GitClientSlice } from "./git-service.js";
 import { WorktreeManager, type WorktreeManagerOptions } from "./worktree-manager.js";
 
 const logger: MainSdkLogger = {
+	debug: () => {},
 	info: () => {},
 	warn: () => {},
 	error: () => {},

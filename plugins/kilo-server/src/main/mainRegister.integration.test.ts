@@ -61,7 +61,7 @@ function registerKiloServer(
 
 describe("kilo-server main registration", () => {
 	it("builds the server from plugin assets and host networking and logging delegates", () => {
-		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 		const fetch = vi.fn() as unknown as typeof globalThis.fetch;
 		const mainSdk = createFakeMainSdk({
 			featureId: "kilo-server",

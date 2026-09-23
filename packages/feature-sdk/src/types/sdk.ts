@@ -848,6 +848,7 @@ export type KvStoreFactory = <T extends Record<string, unknown>>(
 
 /** Feature-scoped application logger supplied by the host process. */
 export interface MainSdkLogger {
+	debug(message: string, ...args: unknown[]): void;
 	info(message: string, ...args: unknown[]): void;
 	warn(message: string, ...args: unknown[]): void;
 	error(message: string, ...args: unknown[]): void;

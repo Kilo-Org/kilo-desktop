@@ -50,7 +50,13 @@ vi.mock("electron", () => ({
 	webContents: { fromId: webContentsFromId },
 }));
 
+const detachContextMenu = vi.hoisted(() => vi.fn());
+vi.mock("./ElectronContextMenu.js", () => ({
+	attachContextMenu: vi.fn(() => detachContextMenu),
+}));
+
 import { ElectronBrowserHost } from "./ElectronBrowserHost.js";
+import { attachContextMenu } from "./ElectronContextMenu.js";
 
 afterEach(() => {
 	vi.clearAllMocks();
@@ -69,6 +75,18 @@ describe("ElectronBrowserHost", () => {
 		expect(callback).toHaveBeenCalledWith(false);
 		const check = browserSession.setPermissionCheckHandler.mock.calls[0]?.[0];
 		expect(check?.(guest, "clipboard-read")).toBe(false);
+	});
+
+	it("gives leased web pages the native context menu until the lease is disposed", () => {
+		const host = new ElectronBrowserHost(() => true);
+		const controller = host.attach(42, vi.fn());
+
+		expect(attachContextMenu).toHaveBeenCalledWith(guest, { isDevelopment: false });
+		expect(detachContextMenu).not.toHaveBeenCalled();
+
+		controller.dispose();
+		controller.dispose();
+		expect(detachContextMenu).toHaveBeenCalledOnce();
 	});
 
 	it("blocks unsupported main-frame navigations and redirects", () => {

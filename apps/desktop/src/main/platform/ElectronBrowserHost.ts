@@ -6,6 +6,8 @@ import type {
 	MainSdkHostBrowser,
 } from "@kilo-desktop/feature-sdk";
 
+import { attachContextMenu } from "./ElectronContextMenu.js";
+
 export const BROWSER_PARTITION = "persist:kilo-desktop-browser";
 
 const ZOOM_LEVELS = [
@@ -129,6 +131,7 @@ export class ElectronBrowserHost implements MainSdkHostBrowser {
 			if (isHttpUrl(url)) void guest.loadURL(url).catch(() => undefined);
 			return { action: "deny" };
 		});
+		const detachContextMenu = attachContextMenu(guest, { isDevelopment: false });
 		emit();
 		updateFavicon(guest.getURL());
 
@@ -163,6 +166,7 @@ export class ElectronBrowserHost implements MainSdkHostBrowser {
 				if (disposed) return;
 				disposed = true;
 				for (const [name, listener] of listeners) guest.off(name as never, listener);
+				detachContextMenu();
 			},
 		};
 		return controller;

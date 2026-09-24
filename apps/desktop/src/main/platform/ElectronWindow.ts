@@ -19,6 +19,7 @@ import { getDesktopRouteUrl, getDesktopUrl } from "./ElectronProtocol.js";
 import { isTrustedRendererUrl } from "./ElectronSecurity.js";
 import type { ElectronShell } from "./ElectronShell.js";
 import { BROWSER_PARTITION } from "./ElectronBrowserHost.js";
+import { attachContextMenu } from "./ElectronContextMenu.js";
 
 type WebMcpRendezvous = {
 	readonly port: number;
@@ -71,7 +72,7 @@ export class ElectronWindow {
 		readonly deferShow?: boolean;
 		readonly initialRoute?: ShellNavigationTarget;
 	}): BrowserWindow {
-		const window = this.#createWindow(input.preloadPath, {
+		const window = this.#createWindow(input.isDevelopment, input.preloadPath, {
 			windowStatePersistence: true,
 			...input.options,
 			webPreferences: {
@@ -126,7 +127,7 @@ export class ElectronWindow {
 			return { opened: false };
 		}
 
-		const window = this.#createWindow(undefined, {
+		const window = this.#createWindow(isDevelopment, undefined, {
 			title: descriptor.title,
 			name: paneWindowName(descriptor),
 			width: 960,
@@ -321,7 +322,11 @@ export class ElectronWindow {
 		return this.liveWindows.some((window) => window.webContents.id === webContentsId);
 	}
 
-	#createWindow(preloadPath?: string, options?: BrowserWindowConstructorOptions): BrowserWindow {
+	#createWindow(
+		isDevelopment: boolean,
+		preloadPath?: string,
+		options?: BrowserWindowConstructorOptions,
+	): BrowserWindow {
 		const dark = this.shouldUseDarkColors();
 		const colors = getThemeChrome(this.themeId() ?? DEFAULT_APP_THEME_PREFERENCES.themeId);
 		const chrome = chromeFor(dark, colors);
@@ -375,6 +380,7 @@ export class ElectronWindow {
 			event.preventDefault();
 			void this.electronShell.openExternal(url);
 		});
+		attachContextMenu(window.webContents, { isDevelopment });
 		return window;
 	}
 

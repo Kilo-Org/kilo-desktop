@@ -101,7 +101,9 @@ vi.mock("./ElectronProtocol.js", () => ({
 	getDesktopUrl: vi.fn(() => "desktop://app"),
 }));
 vi.mock("./ElectronSecurity.js", () => ({ isTrustedRendererUrl: vi.fn(() => true) }));
+vi.mock("./ElectronContextMenu.js", () => ({ attachContextMenu: vi.fn() }));
 
+import { attachContextMenu } from "./ElectronContextMenu.js";
 import { ElectronWindow } from "./ElectronWindow.js";
 import { isTrustedRendererUrl } from "./ElectronSecurity.js";
 
@@ -281,6 +283,22 @@ describe("ElectronWindow theme chrome", () => {
 
 		expect(createdWindows[0]?.options.webPreferences?.webviewTag).toBe(true);
 		expect(createdWindows[1]?.options.webPreferences?.webviewTag).toBe(false);
+	});
+
+	it("gives the main and pane windows the native context menu", () => {
+		const windows = new ElectronWindow(createShell() as never, () => false);
+		windows.create({ isDevelopment: true });
+		windows.openPaneWindow(
+			{ pluginId: "kilo-ui", sessionId: "s1", paneId: "p1", title: "File", path: "/plugins/chat" },
+			false,
+		);
+
+		expect(attachContextMenu).toHaveBeenCalledWith(createdWindows[0]?.webContents, {
+			isDevelopment: true,
+		});
+		expect(attachContextMenu).toHaveBeenCalledWith(createdWindows[1]?.webContents, {
+			isDevelopment: false,
+		});
 	});
 
 	it("reveals, broadcasts to, and destroys the live window", () => {

@@ -204,6 +204,7 @@ describe("KiloServerManager", () => {
 
 		expect(environment.KILO_APP_NAME).toBe("kilo-desktop");
 		expect(environment.KILO_PLATFORM).toBe("desktop");
+		expect(environment.KILOCODE_FEATURE).toBe("desktop");
 		manager.dispose();
 	});
 

@@ -561,6 +561,11 @@ export class KiloServerManager {
 			// spreads so inherited shell values cannot override attribution.
 			KILO_APP_NAME: "kilo-desktop",
 			KILO_PLATFORM: "desktop",
+			// Kilo Gateway usage attribution: the CLI forwards this as the
+			// X-KILOCODE-FEATURE header. Must match a value in the gateway's
+			// FEATURE_VALUES enum (Kilo-Org/cloud feature-detection.ts) or the
+			// gateway drops it to NULL.
+			KILOCODE_FEATURE: "desktop",
 			KILO_ENABLE_QUESTION_TOOL: "true",
 			KILO_EXPERIMENTAL_MCP_APPS: "true",
 			KILO_TREE_SITTER_WASM_DIR: this.#options.installation.treeSitterWasmDirectory,

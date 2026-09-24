@@ -91,8 +91,12 @@ test.describe("My feature @smoke", () => {
 - **Use `getLocatorByTestId()`** for `data-qa-id` — never raw CSS `[data-qa-id="..."]`.
 - **Never use `.nth()`, `.first()`, `.last()`** — disambiguate with ancestor scoping.
 - **No `console.log`** — use `logger` from `@anaconda/playwright-utils` in page objects only.
-- **Tag smoke specs with `@smoke`** so they run on every PR.
+- **Tag smoke specs with `@smoke`** so they run on every PR. A PR also runs the full specs of the areas it changes (`e2e/scripts/select-pr-e2e.ts`); add a `RELATED_SPECS` entry when a plugin is exercised by specs outside `plugins/<id>/e2e/`.
 - **Default to the shared worker Electron app** via `shell.ts`.
+- **Open chat drafts with `openNewChatDraft()`** (and `selectDraftWorkspace()`) from `@kilo-desktop/e2e` — never a one-shot "footer present? else click New Chat" check, which races thread switches.
+- **Wait for an area's settled state, not its first element.** When a page can show a loading skeleton or an error, wait for loading to finish with a timeout above the product's own request bound, and fail with the page's error text.
+- **Do not add a plugin-local `@anaconda/playwright-utils` version** that differs from `e2e/package.json` — a second copy has an unset page singleton. Global setup fails fast if a plugin resolves a different copy.
+- **Keep specs off the public internet.** Launch envs point Kilo at a local gateway stub and give every profile its own XDG directories; extend `e2e/utils/kilo-gateway-stub.ts` rather than letting a spec depend on a live endpoint.
 
 ## Locator priority
 

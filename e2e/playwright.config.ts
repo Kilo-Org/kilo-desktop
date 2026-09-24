@@ -7,6 +7,24 @@ import { repoRoot } from "./utils/paths.js";
 
 const isCI = Boolean(process.env.CI);
 const failOnFlakyTests = process.env.PLAYWRIGHT_FAIL_ON_FLAKY_TESTS === "true";
+// Set by CI from scripts/select-pr-e2e.ts. An env var rather than `--grep`
+// keeps regex metacharacters like `|` away from Windows shell quoting.
+const selectedGrep = process.env.E2E_GREP ? new RegExp(process.env.E2E_GREP) : undefined;
+// "current/total", e.g. "1/2", set per CI matrix leg.
+const shard = parseShard(process.env.E2E_SHARD);
+/**
+ * Two apps run side by side. Each worker owns an isolated profile (userData +
+ * XDG dirs) and stops only its own process tree, so concurrent workers cannot
+ * share state or kill each other's app. `E2E_WORKERS=1` serializes for debugging.
+ */
+const workers = Number(process.env.E2E_WORKERS ?? 2);
+
+function parseShard(value: string | undefined): { current: number; total: number } | undefined {
+	const match = value ? /^(\d+)\/(\d+)$/.exec(value) : null;
+	if (!match) return undefined;
+	const [current, total] = [Number(match[1]), Number(match[2])];
+	return total > 1 ? { current, total } : undefined;
+}
 
 /**
  * Keep this config free of the `@anaconda/playwright-utils` barrel import.
@@ -17,11 +35,15 @@ export default defineConfig({
 	globalSetup: "./global-setup.ts",
 	testDir: repoRoot,
 	testMatch: ["e2e/specs/**/*.spec.ts", "plugins/*/e2e/specs/**/*.spec.ts"],
+	...(selectedGrep ? { grep: selectedGrep } : {}),
+	...(shard ? { shard } : {}),
 	outputDir: path.join(repoRoot, "test-results"),
+	// Tests within a file share their worker's app and run in order; files
+	// (and isolation groups) are distributed across workers.
 	fullyParallel: false,
 	forbidOnly: isCI,
 	failOnFlakyTests,
-	workers: 1,
+	workers,
 	retries: isCI ? 2 : 0,
 	timeout: Timeouts.TEST_TIMEOUT * 3,
 	expect: {

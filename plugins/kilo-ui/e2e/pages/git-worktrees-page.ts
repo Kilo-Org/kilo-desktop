@@ -3,7 +3,9 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
+import { click, expectElementToBeVisible, getLocatorByTestId } from "@anaconda/playwright-utils";
 import { getPage } from "@anaconda/playwright-utils/page-utils";
+import { openNewChatDraft, selectDraftWorkspace } from "@kilo-desktop/e2e";
 import { expect } from "@playwright/test";
 
 const execFile = promisify(execFileCallback);
@@ -65,26 +67,25 @@ export class GitWorktreesPage {
 
 	/** Opens a fresh draft scoped to the named workspace. */
 	async openNewDraftForWorkspace(workspaceName: string): Promise<void> {
-		const page = getPage();
-		await page.evaluate(() => {
+		await getPage().evaluate(() => {
 			globalThis.location.hash = "#/plugins/chat";
 		});
-		await page.getByTestId("kilo-chat-thread").waitFor({ state: "visible" });
-		await page.locator('[data-slot="aui_thread-list-new"]').click();
-		await page.getByRole("combobox", { name: "Select workspace" }).click();
-		await page.getByText(workspaceName, { exact: true }).click();
+		await expectElementToBeVisible(
+			getLocatorByTestId("kilo-chat-thread"),
+			"The chat thread should render before opening a draft",
+		);
+		await openNewChatDraft();
+		await selectDraftWorkspace(workspaceName);
 	}
 
 	async switchToLocalMode(): Promise<void> {
-		const page = getPage();
-		await page.getByTestId("git-draft-mode-trigger").click();
-		await page.getByTestId("git-draft-mode-item-local").click();
+		await click(getLocatorByTestId("git-draft-mode-trigger"));
+		await click(getLocatorByTestId("git-draft-mode-item-local"));
 	}
 
 	async switchToWorktreeMode(): Promise<void> {
-		const page = getPage();
-		await page.getByTestId("git-draft-mode-trigger").click();
-		await page.getByTestId("git-draft-mode-item-worktree").click();
+		await click(getLocatorByTestId("git-draft-mode-trigger"));
+		await click(getLocatorByTestId("git-draft-mode-item-worktree"));
 	}
 
 	/** The local mode keeps the checkout branch selector with the current branch. */

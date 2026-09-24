@@ -168,6 +168,7 @@ build/
 release/
 playwright-report/
 test-results/
+blob-report/
 
 # Kilo agent workspace
 .kilo/*

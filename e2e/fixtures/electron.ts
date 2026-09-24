@@ -7,10 +7,11 @@ import { setPage } from "@anaconda/playwright-utils/page-utils";
 import { _electron as electron, type ElectronApplication, type Page } from "playwright";
 
 import {
-	killProcessTree,
-	killStrayProcesses,
-	packagedAppLaunchEnv,
-} from "../utils/app-launcher.js";
+	attachProcessLogs,
+	MainProcessLog,
+	withStartupDiagnostics,
+} from "../utils/app-diagnostics.js";
+import { killProcessTree, packagedAppLaunchEnv } from "../utils/app-launcher.js";
 import { ConsoleLogCollector } from "../utils/console-log-collector.js";
 import { packagedExecutable } from "../utils/paths.js";
 
@@ -160,10 +161,17 @@ type ElectronFixtures = {
 	diagnostics: void;
 };
 
+/** One packaged app per worker, with the profile and output needed to diagnose it. */
+type SharedAppRuntime = {
+	app: ElectronApplication;
+	userDataDir: string;
+	log: MainProcessLog;
+};
+
 type ElectronWorkerFixtures = {
 	appIsolationKey: string;
 	appLaunchEnv: Record<string, string>;
-	sharedApp: ElectronApplication;
+	sharedApp: SharedAppRuntime;
 };
 
 async function launchApp(
@@ -196,21 +204,63 @@ function wait(ms: number): { promise: Promise<void>; cancel: () => void } {
 	};
 }
 
-/** Close the packaged app; force-kill the process tree if graceful quit hangs. */
+/**
+ * Close the packaged app; force-kill its own process tree if graceful quit
+ * hangs. Workers run concurrently, so this must never kill by executable
+ * name — that would take down another worker's app. Orphans from crashed
+ * runs are swept once in global setup/teardown instead.
+ */
 async function stopApp(app: ElectronApplication): Promise<void> {
 	const pid = app.process().pid;
+	let exited = false;
 	const closed = app.close().then(
-		() => undefined,
+		() => {
+			exited = true;
+		},
 		() => undefined,
 	);
 	const grace = wait(CLOSE_TIMEOUT_MS);
-	const timedOut = await Promise.race([closed.then(() => false), grace.promise.then(() => true)]);
+	await Promise.race([closed, grace.promise]);
 	grace.cancel();
-	if (timedOut && pid !== undefined) killProcessTree(pid);
+	if (exited || pid === undefined) return;
+	killProcessTree(pid);
 	const leftover = wait(CLOSE_FORCE_WAIT_MS);
 	await Promise.race([closed, leftover.promise]);
 	leftover.cancel();
-	killStrayProcesses();
+}
+
+async function removeProfile(userDataDir: string): Promise<void> {
+	await Promise.all([
+		removeDeferredPaths(),
+		rm(userDataDir, { recursive: true, force: true, maxRetries: 8, retryDelay: 200 }),
+	]);
+}
+
+/**
+ * Playwright's `trace` option only records contexts created by its browser
+ * fixtures, so traces of Electron specs held test steps and nothing else.
+ * Record the Electron window's context explicitly; the result is kept only for
+ * failed attempts. Returns undefined when tracing is already active.
+ */
+async function startWindowTracing(
+	app: ElectronApplication,
+	testInfo: TestInfo,
+): Promise<((failed: boolean) => Promise<void>) | undefined> {
+	const tracing = app.context().tracing;
+	try {
+		await tracing.start({ title: testInfo.title, screenshots: true, snapshots: true });
+	} catch {
+		return undefined;
+	}
+	return async (failed) => {
+		if (!failed) {
+			await tracing.stop();
+			return;
+		}
+		const tracePath = testInfo.outputPath("electron-trace.zip");
+		await tracing.stop({ path: tracePath });
+		await testInfo.attach("electron-trace", { path: tracePath, contentType: "application/zip" });
+	};
 }
 
 /**
@@ -218,6 +268,8 @@ async function stopApp(app: ElectronApplication): Promise<void> {
  * `electronApp` rebinds the page singleton and resets the hash between tests.
  * Sidecar spawn (`server.getConnection`) and thread-list hydration run here so
  * the first @smoke spec does not spend the locator budget waiting for either.
+ * Startup failures carry main-process and Kilo CLI output in their message,
+ * because no test-scoped fixture exists yet to attach files.
  */
 export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerFixtures>({
 	appIsolationKey: ["shared", { scope: "worker", option: true }],
@@ -227,25 +279,29 @@ export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerF
 		async ({ appIsolationKey, appLaunchEnv }, use) => {
 			// Depending on the option gives each distinct key its own worker, app,
 			// and temporary profile while preserving sharing within that group.
-			await killStrayProcesses();
 			const { app, userDataDir } = await launchApp(appLaunchEnv);
-			const page = await waitForMainWindow(app);
-			if (CHAT_ISOLATION_KEYS.has(appIsolationKey)) {
-				await waitForKiloServer(page);
-				await waitForThreadListHydrated(page);
+			const log = new MainProcessLog(app);
+			try {
+				const page = await waitForMainWindow(app);
+				if (CHAT_ISOLATION_KEYS.has(appIsolationKey)) {
+					await waitForKiloServer(page);
+					await waitForThreadListHydrated(page);
+				}
+			} catch (error) {
+				const diagnosed = await withStartupDiagnostics(error, log, userDataDir);
+				await stopApp(app);
+				await removeProfile(userDataDir);
+				throw diagnosed;
 			}
-			await use(app);
+			await use({ app, userDataDir, log });
 			await stopApp(app);
-			await Promise.all([
-				removeDeferredPaths(),
-				rm(userDataDir, { recursive: true, force: true, maxRetries: 8, retryDelay: 200 }),
-			]);
+			await removeProfile(userDataDir);
 		},
 		{ scope: "worker", timeout: WORKER_APP_TIMEOUT_MS },
 	],
 
 	electronApp: async ({ appIsolationKey, sharedApp }, use) => {
-		const page = await waitForMainWindow(sharedApp);
+		const page = await waitForMainWindow(sharedApp.app);
 		setPage(page);
 		await page.evaluate(() => {
 			localStorage.clear();
@@ -256,30 +312,39 @@ export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerF
 			// does not click New Chat against a tearing-down runtime.
 			await waitForThreadListHydrated(page);
 		}
-		await use(sharedApp);
+		await use(sharedApp.app);
 		// Clear renderer localStorage after each test so plugin preferences
 		// written during a test (e.g. git draft mode) do not bleed into the next.
 		await page.evaluate(() => localStorage.clear());
 	},
 
 	diagnostics: [
-		async ({ electronApp }, use, testInfo: TestInfo) => {
+		async ({ electronApp, sharedApp }, use, testInfo: TestInfo) => {
 			const page = await waitForMainWindow(electronApp);
 			const logs = new ConsoleLogCollector(page);
+			const logMark = sharedApp.log.mark();
+			const stopTracing = await startWindowTracing(electronApp, testInfo);
 			logs.start();
 			await use();
-			if (testInfo.status === "failed") {
-				await testInfo.attach("screenshot", {
-					body: await page.screenshot(),
-					contentType: "image/png",
-				});
-				await testInfo.attach("page.html", {
-					body: await page.content(),
-					contentType: "text/html",
-				});
-				await logs.attach(testInfo);
+			// Includes timeouts, which report "timedOut" rather than "failed".
+			const failed = testInfo.status !== testInfo.expectedStatus;
+			try {
+				if (failed) {
+					await testInfo.attach("screenshot", {
+						body: await page.screenshot(),
+						contentType: "image/png",
+					});
+					await testInfo.attach("page.html", {
+						body: await page.content(),
+						contentType: "text/html",
+					});
+					await logs.attach(testInfo);
+					await attachProcessLogs(testInfo, sharedApp.log, logMark, sharedApp.userDataDir);
+				}
+			} finally {
+				logs.stop();
+				await stopTracing?.(failed);
 			}
-			logs.stop();
 		},
 		{ scope: "test", auto: true },
 	],

@@ -6,5 +6,6 @@
  */
 export { electronFixture, waitForMainWindow } from "./fixtures/electron.js";
 export { expect, test } from "./fixtures/shell.js";
+export { openNewChatDraft, selectDraftWorkspace } from "./pages/features/chat/new-chat-draft.js";
 export { packagedAppLaunchEnv } from "./utils/app-launcher.js";
 export { packagedExecutable, packagedResourcesDirectory } from "./utils/paths.js";

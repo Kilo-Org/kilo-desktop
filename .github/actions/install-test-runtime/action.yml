@@ -3,7 +3,9 @@ description: Install Electron or Playwright with bounded retries for transient d
 
 inputs:
   runtime:
-    description: Runtime to install (electron or playwright).
+    description: >
+      Runtime to install: electron, playwright (Chromium browser), or
+      playwright-deps (only the Linux system libraries Chromium/Electron need).
     required: true
   package-name:
     description: Workspace package that provides the installer.
@@ -32,6 +34,9 @@ runs:
             if [[ "$WITH_DEPS" == "true" ]]; then
               command+=(--with-deps)
             fi
+            ;;
+          playwright-deps)
+            command=(pnpm --filter "$PACKAGE_NAME" exec playwright install-deps chromium)
             ;;
           *)
             echo "Unsupported test runtime: $RUNTIME" >&2

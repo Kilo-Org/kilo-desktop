@@ -8,6 +8,16 @@ inputs:
     description: e2e package script to run (test:e2e or test:e2e:smoke).
     required: false
     default: test:e2e
+  grep:
+    description: >
+      Optional Playwright grep pattern (see e2e/scripts/select-pr-e2e.ts),
+      passed as E2E_GREP. Use with the unfiltered test:e2e script.
+    required: false
+    default: ""
+  shard:
+    description: Optional Playwright shard as "current/total" (e.g. 1/2), passed as E2E_SHARD.
+    required: false
+    default: ""
   xvfb:
     description: Wrap the test command in xvfb-run (Linux CI).
     required: false
@@ -29,13 +39,15 @@ runs:
         runtime: electron
         package-name: "@kilo-desktop/desktop"
 
-    # --with-deps is only enabled on Linux. On Windows it runs a slow, silent
-    # Media Foundation DISM install (~3min) that the e2e tests don't need.
-    - uses: ./.github/actions/install-test-runtime
+    # Specs drive the packaged app through `_electron.launch` and never open a
+    # Playwright browser, so no Chromium download. Linux still needs the
+    # system libraries Electron loads under xvfb, which the same installer
+    # provides. (On Windows, --with-deps would run a slow DISM install.)
+    - if: runner.os == 'Linux'
+      uses: ./.github/actions/install-test-runtime
       with:
-        runtime: playwright
+        runtime: playwright-deps
         package-name: "@kilo-desktop/e2e"
-        with-deps: ${{ runner.os == 'Linux' }}
 
     - uses: ./plugins/notebook/actions/setup-native
 
@@ -49,6 +61,8 @@ runs:
       shell: bash
       env:
         SKIP_BUILD: "true"
+        E2E_GREP: ${{ inputs.grep }}
+        E2E_SHARD: ${{ inputs.shard }}
       run: |
         if [ "${{ inputs.xvfb }}" = "true" ]; then
           xvfb-run --auto-servernum pnpm --filter @kilo-desktop/e2e run ${{ inputs.script }}

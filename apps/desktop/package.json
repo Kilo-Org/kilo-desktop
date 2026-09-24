@@ -58,7 +58,7 @@
 		"electron-squirrel-startup": "^1.0.1",
 		"electron-store": "^11.0.2",
 		"execa": "catalog:",
-		"koffi": "3.2.1",
+		"koffi": "3.3.1",
 		"lodash": "catalog:",
 		"openid-client": "^6.6.3",
 		"p-defer": "^4.0.1",

@@ -847,7 +847,7 @@ const GatewayModelFilter: FC<{
 						type="button"
 						variant="ghost"
 						size="icon-xs"
-						className="text-muted-foreground data-active:text-primary data-active:hover:text-primary data-active:data-open:text-primary"
+						className="text-muted-foreground data-active:text-primary-soft-foreground data-active:hover:text-primary-soft-foreground data-active:data-open:text-primary-soft-foreground"
 						data-active={activeCount > 0 || undefined}
 						aria-label={activeCount ? `Filter models, ${activeCount} active` : "Filter models"}
 						data-qa-id="kilo-model-filter-trigger"
@@ -1207,7 +1207,7 @@ const LocalModelServerEmptyState: FC<{ onAddModel: () => void }> = ({ onAddModel
 			<EmptyHeader className="max-w-72 gap-1">
 				<EmptyMedia
 					variant="icon"
-					className="bg-primary/10 text-primary ring-primary/15 mb-0 size-10 -translate-y-2 rounded-xl ring-1"
+					className="bg-primary-soft text-primary-soft-foreground ring-primary/15 mb-0 size-10 -translate-y-2 rounded-xl ring-1"
 				>
 					<ServerIcon className="size-5" aria-hidden="true" />
 				</EmptyMedia>
@@ -1384,7 +1384,7 @@ const RailButton: FC<{
 						data-qa-id={qaId}
 						className={cn(
 							"relative isolate flex aspect-square w-full cursor-pointer items-center justify-center rounded-md transition-colors hover:bg-foreground/5 focus-visible:bg-foreground/5 focus-visible:outline-none",
-							selected && "bg-foreground/5 text-primary",
+							selected && "bg-foreground/5 text-primary-soft-foreground",
 							disabled && "cursor-not-allowed opacity-50 hover:bg-transparent",
 						)}
 						onClick={() => {
@@ -1450,7 +1450,7 @@ const CatalogModelItem: FC<{
 				<span className="flex min-w-0 items-center gap-1.5">
 					<span className="min-w-0 truncate text-sm leading-5 font-normal">{model.name}</span>
 					{isCurrent ? (
-						<span className="text-primary inline-flex shrink-0 items-center">
+						<span className="text-primary-ink inline-flex shrink-0 items-center">
 							<CheckIcon className="size-3.5" aria-hidden="true" />
 							<span className="sr-only">Current model</span>
 						</span>

@@ -52,7 +52,7 @@ function ModelStatusDot({ modelId, loaded }: { modelId: string; loaded: boolean 
 		<span
 			className={cn(
 				"size-2 shrink-0 rounded-full",
-				loaded ? "bg-primary" : "bg-muted-foreground/35",
+				loaded ? "bg-primary-ink" : "bg-muted-foreground/35",
 			)}
 			data-qa-id={`local-model-status-${modelId}`}
 			data-status={loaded ? "loaded" : "not-loaded"}

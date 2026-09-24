@@ -29,7 +29,7 @@ export function SignInStep({
 				className="border-border bg-card flex items-center gap-3 rounded-xl border px-4 py-3"
 				data-qa-id="onboarding-connecting"
 			>
-				<Loader2Icon className="text-primary size-5 animate-spin" />
+				<Loader2Icon className="text-primary-ink size-5 animate-spin" />
 				<p className="text-muted-foreground text-sm">Connecting to Kilo…</p>
 			</div>
 		);
@@ -42,7 +42,7 @@ export function SignInStep({
 				className="border-border bg-card flex items-center gap-3 rounded-xl border px-4 py-3"
 				data-qa-id="onboarding-signed-in"
 			>
-				<div className="bg-primary/10 text-primary flex size-9 items-center justify-center rounded-full">
+				<div className="bg-primary-soft text-primary-soft-foreground flex size-9 items-center justify-center rounded-full">
 					<CheckIcon className="size-4" />
 				</div>
 				<div className="min-w-0">

@@ -63,7 +63,7 @@ export function KiloSignInCard({
 						role="listitem"
 						className="flex-col justify-center"
 					>
-						<ItemMedia variant="icon" className="text-primary">
+						<ItemMedia variant="icon" className="text-primary-ink">
 							<Icon />
 						</ItemMedia>
 						<ItemContent className="items-center">

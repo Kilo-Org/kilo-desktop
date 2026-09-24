@@ -55,7 +55,7 @@ function YamlLine({ line }: { line: string }) {
 			<span>
 				{indent}
 				{dash && <span className="text-muted-foreground">{dash}</span>}
-				<span className="text-primary/80 font-medium">{key}</span>
+				<span className="text-primary-ink/80 font-medium">{key}</span>
 				<span className="text-muted-foreground">{colon}</span>
 				{value && <span>{value}</span>}
 				{"\n"}
@@ -302,7 +302,7 @@ export function ImportEnvironmentDialog({ open, onClose }: ImportEnvironmentDial
 									className={cn(
 										"flex flex-col items-center gap-2 rounded-lg border-2 border-dashed p-6 text-center transition-colors",
 										isDragging
-											? "border-primary bg-primary/5"
+											? "border-primary-ink bg-primary/5"
 											: "border-muted-foreground/25 hover:border-muted-foreground/50",
 									)}
 									onDragOver={(e) => {

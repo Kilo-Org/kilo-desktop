@@ -1253,7 +1253,7 @@ const KiloMessageErrorBanner: FC = () => {
 				data-qa-id="kilo-message-error-signed-in"
 			>
 				<span className="flex min-w-0 items-center gap-2">
-					<CheckCircle2Icon className="text-primary size-4 shrink-0" />
+					<CheckCircle2Icon className="text-primary-ink size-4 shrink-0" />
 					<span>You&rsquo;re signed in to Kilo.</span>
 				</span>
 				{isLast ? (

@@ -60,7 +60,7 @@ export const PaneAddTab: FC<{
 						data-qa-id={isToolbar ? "chat-pane-launch-chat" : "chat-pane-add-menu-chat"}
 						onClick={onLaunchChat}
 					>
-						<BotIcon className="text-primary size-3" />
+						<BotIcon className="text-muted-foreground size-3" />
 						Chat
 					</DropdownMenuItem>
 				) : null}

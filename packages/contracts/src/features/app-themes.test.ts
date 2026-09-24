@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	ACCENT_ROLE_DEFAULTS,
 	ACCENTS,
 	APP_THEMES,
 	DEFAULT_APP_THEME_PREFERENCES,
@@ -28,7 +29,7 @@ describe("app theme presets", () => {
 			sidebar: "#fafafa",
 			muted: "#f5f5f5",
 			border: "#e5e5e5",
-			primary: "#f0f042",
+			primary: "#f1f200",
 			ring: "#737373",
 		});
 		expect(getThemeVariant("kilo", "dark")?.tokens).toMatchObject({
@@ -124,6 +125,31 @@ describe("app theme presets", () => {
 			shiki: "dracula",
 			terminal: { background: "#282a36", brightRed: "#ff6e6e" },
 		});
+	});
+
+	it("scopes accent-role remaps to Kilo light; every other variant aliases the accent", () => {
+		expect(getThemeVariant("kilo", "light")?.tokens).toMatchObject({
+			"primary-ink": "var(--muted-foreground)",
+			"primary-ink-foreground": "var(--background)",
+			"primary-soft": "var(--primary)",
+			"primary-soft-foreground": "var(--primary-foreground)",
+		});
+		for (const theme of APP_THEMES) {
+			for (const mode of ["light", "dark"] as const) {
+				if (theme.id === "kilo" && mode === "light") continue;
+				const tokens = getThemeVariant(theme.id, mode)?.tokens;
+				if (tokens) expect(tokens).toMatchObject(ACCENT_ROLE_DEFAULTS);
+			}
+		}
+	});
+
+	it("restores accent-role defaults when a curated accent replaces Kilo yellow", () => {
+		const light = themeCss({ themeId: "kilo", accentId: "blue" }).split(
+			'html:root[data-theme="dark"]',
+		)[0]!;
+		expect(light).toContain("--primary-ink:var(--primary);");
+		expect(light).toContain("--primary-soft-foreground:var(--primary);");
+		expect(light).not.toContain("--primary-ink:var(--muted-foreground);");
 	});
 
 	it("layers curated accents over any theme without recoloring terminal", () => {

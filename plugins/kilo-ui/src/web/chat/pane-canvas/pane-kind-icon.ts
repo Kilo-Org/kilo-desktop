@@ -16,7 +16,7 @@ export const PANE_KIND_ICON: Record<PaneKind, typeof BotIcon> = {
 };
 
 export const PANE_KIND_ICON_CLASS: Record<PaneKind, string> = {
-	agent: "text-primary",
+	agent: "text-muted-foreground",
 	document: "text-info-foreground",
 	notebook: "text-chart-4",
 	tool: "text-chart-2",

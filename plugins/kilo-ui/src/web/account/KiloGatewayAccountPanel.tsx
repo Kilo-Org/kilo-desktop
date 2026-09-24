@@ -453,7 +453,7 @@ function KiloPassUsage({ pass }: { pass: NonNullable<KiloProfileData["kiloPass"]
 		<div className="flex flex-col gap-2.5">
 			<div className="flex items-center justify-between gap-3">
 				<div className="flex items-center gap-2">
-					<ZapIcon className="text-primary size-4" />
+					<ZapIcon className="text-primary-ink size-4" />
 					<span className="text-sm font-medium">Kilo Pass</span>
 				</div>
 				<span
@@ -466,7 +466,7 @@ function KiloPassUsage({ pass }: { pass: NonNullable<KiloProfileData["kiloPass"]
 			</div>
 			<div className="bg-muted h-2 overflow-hidden rounded-full">
 				<div
-					className="bg-primary h-full rounded-full transition-[width]"
+					className="bg-primary-ink h-full rounded-full transition-[width]"
 					style={{ width: `${percent}%` }}
 					data-qa-id="kilo-account-pass-bar"
 				/>

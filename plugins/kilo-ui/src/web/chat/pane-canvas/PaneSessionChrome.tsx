@@ -28,7 +28,7 @@ export const PaneSessionChrome: FC<{
 							className={cn(
 								"[-webkit-app-region:no-drag]",
 								carouselOn &&
-									"border-primary/35 bg-primary/15 text-primary shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--primary),transparent_65%)] hover:border-primary/45 hover:bg-primary/20 hover:text-primary",
+									"border-primary/35 bg-primary-soft text-primary-soft-foreground shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--primary),transparent_65%)] hover:border-primary/45 hover:bg-primary-soft hover:text-primary-soft-foreground",
 							)}
 							aria-label="Carousel layout"
 							aria-pressed={carouselOn}

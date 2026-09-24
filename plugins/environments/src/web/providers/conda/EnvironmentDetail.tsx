@@ -297,7 +297,7 @@ export function EnvironmentDetail({ env, onBack }: EnvironmentDetailProps) {
 				<button
 					type="button"
 					onClick={onBack}
-					className="text-primary flex cursor-pointer items-center gap-1 self-start text-sm font-medium hover:underline"
+					className="text-primary-ink flex cursor-pointer items-center gap-1 self-start text-sm font-medium hover:underline"
 					data-qa-id="environments-conda-detail-back"
 				>
 					<ChevronLeftIcon className="size-4" />
@@ -316,7 +316,7 @@ export function EnvironmentDetail({ env, onBack }: EnvironmentDetailProps) {
 							</h2>
 							{pythonVersion && (
 								<Badge
-									className="bg-primary/10 text-primary border-primary/20 shrink-0 border font-medium"
+									className="bg-primary-soft text-primary-soft-foreground border-primary/20 shrink-0 border font-medium"
 									data-qa-id="environments-conda-detail-python"
 								>
 									Python {pythonVersion}
@@ -762,7 +762,7 @@ function PackagesTable({
 												<TooltipTrigger
 													render={
 														<span
-															className="text-primary inline-flex cursor-default items-center"
+															className="text-primary-ink inline-flex cursor-default items-center"
 															aria-label={`Update available: ${pkg.version} → ${latestVersion}`}
 															data-qa-id="environments-conda-detail-upgrade-badge"
 														/>

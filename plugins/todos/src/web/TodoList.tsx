@@ -69,7 +69,7 @@ export function TodoList() {
 
 				{showFeatureFlagBanner ? (
 					<p
-						className="text-primary mt-1 text-sm font-medium"
+						className="text-primary-ink mt-1 text-sm font-medium"
 						data-qa-id="todos-feature-flag-banner"
 					>
 						Now with more feature flags!

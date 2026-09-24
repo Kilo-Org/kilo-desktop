@@ -13,7 +13,7 @@ export function MarkdownAnchor({ className, ...props }: ComponentProps<"a">) {
 	return (
 		<a
 			className={cn(
-				"aui-md-a text-primary hover:text-primary/80 underline underline-offset-2",
+				"aui-md-a text-primary-ink hover:text-primary-ink/80 underline underline-offset-2",
 				className,
 			)}
 			{...props}

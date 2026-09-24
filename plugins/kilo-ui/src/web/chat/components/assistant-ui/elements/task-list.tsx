@@ -44,7 +44,7 @@ export function TaskList({
 						) : item.status === "cancelled" ? (
 							<BanIcon className="text-foreground/30 size-3.5" />
 						) : item.status === "active" ? (
-							<Loader2Icon className="text-primary size-3.5 animate-spin motion-reduce:animate-none" />
+							<Loader2Icon className="text-primary-ink size-3.5 animate-spin motion-reduce:animate-none" />
 						) : (
 							<span className="border-foreground/15 size-3.5 rounded-[5px] border" />
 						)}

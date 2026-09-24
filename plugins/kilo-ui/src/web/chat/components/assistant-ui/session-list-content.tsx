@@ -1039,7 +1039,7 @@ const SessionRowGlyph: FC<{
 						<span
 							data-qa-id="session-list-done-dot"
 							aria-hidden
-							className="bg-primary size-1.5 rounded-full"
+							className="bg-primary-ink size-1.5 rounded-full"
 						/>
 					) : null}
 					{rowState === "approval" ? <CircleAlertIcon aria-hidden className="size-3.5" /> : null}

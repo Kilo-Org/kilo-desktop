@@ -449,7 +449,7 @@ export function BrowserView({ sessionId, instanceId, title, metadata }: BrowserV
 				{loadProgress > 0 ? (
 					<div
 						aria-hidden="true"
-						className="bg-primary pointer-events-none absolute bottom-0 left-0 z-10 h-0.5 rounded-r-full transition-all duration-150 ease-out"
+						className="bg-primary-ink pointer-events-none absolute bottom-0 left-0 z-10 h-0.5 rounded-r-full transition-all duration-150 ease-out"
 						style={{ width: `${loadProgress}%`, boxShadow: "0 0 6px 1px var(--color-ring)" }}
 						data-qa-id="browser-load-progress"
 					/>

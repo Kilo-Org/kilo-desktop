@@ -102,7 +102,7 @@ export function ColumnResizer({
 			 */}
 			<span
 				aria-hidden="true"
-				className="bg-border group-hover/columns:bg-foreground/30 group-hover/resizer:bg-primary group-focus-visible/resizer:bg-primary h-full w-px transition-all group-hover/resizer:w-0.5 group-focus-visible/resizer:w-0.5"
+				className="bg-border group-hover/columns:bg-foreground/30 group-hover/resizer:bg-primary-ink group-focus-visible/resizer:bg-primary-ink h-full w-px transition-all group-hover/resizer:w-0.5 group-focus-visible/resizer:w-0.5"
 			/>
 		</div>
 	);

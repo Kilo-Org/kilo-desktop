@@ -82,7 +82,7 @@ export function WorkspaceFormFields({
 					className={cn(
 						"rounded-lg border transition-colors",
 						folders.length === 0 && "border-dashed",
-						isDragging ? "border-primary border-dashed bg-primary/5" : "border-border",
+						isDragging ? "border-primary-ink border-dashed bg-primary/5" : "border-border",
 					)}
 				>
 					{folders.length === 0 && canPickDirectories ? (
@@ -150,7 +150,7 @@ export function WorkspaceFormFields({
 											</ItemContent>
 											<ItemActions className="gap-1">
 												{folder.isPrimary ? (
-													<span className="bg-primary/10 text-primary rounded-full px-2 py-0.5 text-xs font-medium">
+													<span className="bg-primary-soft text-primary-soft-foreground rounded-full px-2 py-0.5 text-xs font-medium">
 														Primary
 													</span>
 												) : (

@@ -24,7 +24,7 @@ import "./pane-drag.css";
 // raised secondary surface for the selected tab.
 function tabChromeClassName(selected: boolean) {
 	return selected
-		? "border-primary/60 bg-secondary text-foreground shadow-sm"
+		? "border-primary-ink/60 bg-secondary text-foreground shadow-sm"
 		: "border-border bg-muted/40 text-muted-foreground hover:bg-accent/60 hover:text-foreground";
 }
 
@@ -288,7 +288,7 @@ export const PaneTabStrip: FC<{
 						className={cn(
 							"text-muted-foreground relative ml-auto rounded-md opacity-0 transition-opacity group-focus-within/pane-tabs:opacity-100 group-hover/pane-tabs:opacity-100 group-data-[selected]/pane-tabs:opacity-100",
 							pinned &&
-								"bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary opacity-100",
+								"bg-primary-soft text-primary-soft-foreground hover:bg-primary-soft hover:text-primary-soft-foreground opacity-100",
 						)}
 						data-qa-id={`chat-pane-pin-${groupId}`}
 						onPointerDown={stopActionBubble}

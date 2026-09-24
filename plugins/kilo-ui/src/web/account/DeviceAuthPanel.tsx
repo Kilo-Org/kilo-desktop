@@ -51,7 +51,7 @@ export function DeviceAuthPanel({
 			<Panel state="initiating" embedded={embedded}>
 				<div className={cn("flex items-center justify-between gap-3", !embedded && "p-4")}>
 					<div className="text-muted-foreground flex items-center gap-2 text-sm">
-						<Loader2Icon className="text-primary size-4 animate-spin" />
+						<Loader2Icon className="text-primary-ink size-4 animate-spin" />
 						<span>Contacting Kilo…</span>
 					</div>
 					<Button
@@ -116,7 +116,7 @@ export function DeviceAuthPanel({
 						!embedded && "p-4",
 					)}
 				>
-					<Loader2Icon className="text-primary size-4 animate-spin" />
+					<Loader2Icon className="text-primary-ink size-4 animate-spin" />
 					<span>Finishing connection…</span>
 				</div>
 			</Panel>

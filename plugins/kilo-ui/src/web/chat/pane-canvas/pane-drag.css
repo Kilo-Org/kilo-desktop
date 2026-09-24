@@ -63,7 +63,7 @@
 	justify-content: center;
 	gap: 6px;
 	padding: 12px;
-	border: 2px dashed var(--primary);
+	border: 2px dashed var(--primary-ink);
 	border-radius: 6px;
 	background: var(--card);
 	color: var(--foreground, #f0f0f0);

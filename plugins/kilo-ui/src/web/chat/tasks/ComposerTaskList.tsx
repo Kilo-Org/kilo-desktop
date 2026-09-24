@@ -38,7 +38,7 @@ export const ComposerTaskList = memo(() => {
 							<span aria-hidden className="text-foreground/25">
 								·
 							</span>
-							<Loader2Icon className="text-primary size-3 shrink-0 animate-spin motion-reduce:animate-none" />
+							<Loader2Icon className="text-primary-ink size-3 shrink-0 animate-spin motion-reduce:animate-none" />
 							<span className="truncate" data-qa-id="kilo-composer-tasks-active">
 								{activeItem.text}
 							</span>

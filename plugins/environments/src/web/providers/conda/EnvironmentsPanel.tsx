@@ -119,7 +119,7 @@ export function EnvironmentsPanel() {
 				className="flex min-h-64 flex-col items-center justify-center gap-4"
 				data-qa-id="environments-conda-loading"
 			>
-				<Spinner size="md" className="text-primary" label="Loading environments" />
+				<Spinner size="md" className="text-primary-ink" label="Loading environments" />
 				<p className="text-muted-foreground text-sm">Loading environments…</p>
 			</div>
 		);

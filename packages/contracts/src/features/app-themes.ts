@@ -72,7 +72,23 @@ type RolePalette = {
 	primary: string;
 	primaryForeground: string;
 	ring?: string;
+	/** Per-theme remap of accent roles onto existing tokens (see ACCENT_ROLE_DEFAULTS). */
+	roles?: Partial<typeof ACCENT_ROLE_DEFAULTS>;
 	ansi: StringTuple<typeof ansiRoles>;
+};
+
+/**
+ * Accent roles for places the raw accent can be unreadable. Defaults alias the
+ * accent so themes render exactly as with `primary` directly; a theme may
+ * remap them onto other existing tokens (never new colors).
+ * - ink: link text, spinners, status dots, progress, checked toggle track.
+ * - soft: selected/active chips, badges and icon tiles (wash + accent text).
+ */
+export const ACCENT_ROLE_DEFAULTS = {
+	"primary-ink": "var(--primary)",
+	"primary-ink-foreground": "var(--primary-foreground)",
+	"primary-soft": "color-mix(in oklab, var(--primary) 10%, transparent)",
+	"primary-soft-foreground": "var(--primary)",
 };
 
 function variant(p: RolePalette, shiki: ShikiTheme, mode: ResolvedColorScheme) {
@@ -120,6 +136,8 @@ function variant(p: RolePalette, shiki: ShikiTheme, mode: ResolvedColorScheme) {
 			"sidebar-accent-foreground": p.foreground,
 			"sidebar-border": p.border,
 			"sidebar-ring": p.ring ?? p.primary,
+			...ACCENT_ROLE_DEFAULTS,
+			...p.roles,
 			info: status.info,
 			"info-foreground": status.info,
 			"app-scrollbar-thumb": p.border,
@@ -172,9 +190,16 @@ export const APP_THEMES = [
 					hover: "#f5f5f5",
 					muted: "#737373",
 					border: "#e5e5e5",
-					primary: "#f0f042",
+					primary: "#f1f200",
 					primaryForeground: "#1f1f1f",
 					ring: "#737373",
+					// Neon is ~1.2:1 on white: keep it as a filled surface, use gray for small marks.
+					roles: {
+						"primary-ink": "var(--muted-foreground)",
+						"primary-ink-foreground": "var(--background)",
+						"primary-soft": "var(--primary)",
+						"primary-soft-foreground": "var(--primary-foreground)",
+					},
 					ansi: [
 						"#1f1f1f",
 						"#dc2626",
@@ -799,6 +824,7 @@ export function themeCss(preferences: AppThemePreferences): string {
 			if (accent) {
 				const { color, foreground } = accent[mode];
 				Object.assign(tokens, {
+					...ACCENT_ROLE_DEFAULTS,
 					primary: color,
 					"primary-foreground": foreground,
 					ring: color,

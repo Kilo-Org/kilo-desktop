@@ -475,7 +475,7 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 				>
 					<DialogHeader className="shrink-0 border-b px-6 py-4">
 						<DialogTitle>
-							Add Packages to <span className="text-primary">{displayName}</span>
+							Add Packages to <span className="text-primary-ink">{displayName}</span>
 						</DialogTitle>
 					</DialogHeader>
 

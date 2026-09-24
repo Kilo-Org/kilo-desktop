@@ -82,8 +82,8 @@
 	padding-inline: 0.4em;
 	border: none;
 	border-radius: 0.35rem;
-	background: color-mix(in oklab, var(--color-primary) 16%, transparent);
-	color: var(--color-primary);
+	background: var(--color-primary-soft);
+	color: var(--color-primary-soft-foreground);
 	font-size: inherit;
 	font-weight: 500;
 	line-height: inherit;

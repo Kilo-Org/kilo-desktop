@@ -24,6 +24,11 @@
 	--window-controls-width: calc(
 		100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)
 	);
+	/* Accent roles (ACCENT_ROLE_DEFAULTS in app-themes.ts) for CSS-owned themes. */
+	--primary-ink: var(--primary);
+	--primary-ink-foreground: var(--primary-foreground);
+	--primary-soft: color-mix(in oklab, var(--primary) 10%, transparent);
+	--primary-soft-foreground: var(--primary);
 	--update: var(--color-green-850);
 	--update-surface: color-mix(in oklch, var(--primary) 12%, transparent);
 	--update-surface-hover: color-mix(in oklch, var(--primary) 18%, transparent);
@@ -125,6 +130,10 @@ html {
 	--color-info: var(--info);
 	--color-info-foreground: var(--info-foreground);
 	--color-destructive-foreground: var(--destructive-foreground);
+	--color-primary-ink: var(--primary-ink);
+	--color-primary-ink-foreground: var(--primary-ink-foreground);
+	--color-primary-soft: var(--primary-soft);
+	--color-primary-soft-foreground: var(--primary-soft-foreground);
 	--text-sm: 0.8125rem;
 	--text-sm--line-height: 1.25rem;
 

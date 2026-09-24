@@ -26,7 +26,7 @@ function formatBytePair(used: number, total: number): string {
 export function usageIndicatorClass(percent: number): string {
 	if (percent >= 90) return "bg-destructive";
 	if (percent >= 70) return "bg-amber-500";
-	return "bg-primary";
+	return "bg-primary-ink";
 }
 
 function UsageMeter({ value }: { value: number }) {

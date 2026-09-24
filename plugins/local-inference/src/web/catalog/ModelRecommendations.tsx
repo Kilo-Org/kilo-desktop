@@ -65,7 +65,7 @@ function RecommendationGroup({
 	return (
 		<div className="border-border bg-card min-w-0 rounded-xl border px-4 pt-3 pb-4">
 			<div className="mb-2 flex items-center gap-2">
-				<Icon className="text-primary size-4" aria-hidden="true" />
+				<Icon className="text-primary-ink size-4" aria-hidden="true" />
 				<h3 className="text-sm font-semibold">{title}</h3>
 			</div>
 			{recommendations.length === 0 ? (

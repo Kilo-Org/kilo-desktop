@@ -527,7 +527,7 @@ export function UpdateConfirmationDialog({
 				<DialogHeader className="shrink-0 border-b px-6 py-4">
 					<DialogTitle>
 						Update {upgradableItems.length} {upgradableItems.length === 1 ? "Package" : "Packages"}{" "}
-						in <span className="text-primary">{displayName}</span>
+						in <span className="text-primary-ink">{displayName}</span>
 					</DialogTitle>
 				</DialogHeader>
 

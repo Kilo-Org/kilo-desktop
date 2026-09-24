@@ -1,3 +1,6 @@
+// Derived from Pierre's diffshub (apps/diffshub/lib/streamGitPatchFiles.ts), Copyright 2025 Pierre Computer Company,
+// Apache-2.0. Modified for Kilo Desktop; see THIRD_PARTY_NOTICES.md.
+
 const GIT_FILE_BOUNDARY = "diff --git ";
 const GIT_FILE_BOUNDARY_WITH_NEWLINE = `\n${GIT_FILE_BOUNDARY}`;
 const GIT_FILE_BOUNDARY_SCAN_OVERLAP = GIT_FILE_BOUNDARY_WITH_NEWLINE.length - 1;

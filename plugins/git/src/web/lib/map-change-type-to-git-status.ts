@@ -1,3 +1,6 @@
+// Derived from Pierre's diffshub (apps/diffshub/lib/mapChangeTypeToGitStatus.ts), Copyright 2025 Pierre Computer Company,
+// Apache-2.0. Modified for Kilo Desktop; see THIRD_PARTY_NOTICES.md.
+
 import type { ChangeTypes } from "@pierre/diffs";
 import type { GitStatus } from "@pierre/trees";
 

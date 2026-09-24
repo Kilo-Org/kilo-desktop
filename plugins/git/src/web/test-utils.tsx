@@ -1,11 +1,13 @@
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { expect, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
+import { WORKSPACE_FILE_CHANGE_EVENT } from "@kilo-desktop/feature-sdk";
 import { SdkProvider } from "@kilo-desktop/sdk-react";
 import { TooltipProvider } from "@kilo-desktop/ui/components/tooltip";
 import { createFakeFeatureSystem, createFakeSdk, type FakeSdk } from "@kilo-desktop/testing";
 
+import { gitContract, type GitRepositoryType } from "../contracts/schemas.js";
 import { GitDiffView, type GitDiffViewProps } from "./GitDiffView.js";
 
 // The view consumes the ambient pierre worker pool (kilo-ui's
@@ -35,6 +37,26 @@ index 0000000..3333333
 +++ b/src/new.ts
 @@ -0,0 +1 @@
 +export const value = 1;
+`;
+
+/**
+ * Same file set as `PATCH`: README.md byte-identical (same raw patch key),
+ * src/new.ts with changed content (different raw patch key).
+ */
+export const SECOND_PATCH = `diff --git a/README.md b/README.md
+index 1111111..2222222 100644
+--- a/README.md
++++ b/README.md
+@@ -1 +1 @@
+-hello
++hello world
+diff --git a/src/new.ts b/src/new.ts
+new file mode 100644
+index 0000000..4444444
+--- /dev/null
++++ b/src/new.ts
+@@ -0,0 +1 @@
++export const value = 2;
 `;
 
 export const FIRST_FILE = `diff --git a/first.txt b/first.txt
@@ -89,6 +111,26 @@ export function delayedFileResponseStream(
 	});
 }
 
+/** A patch body stream the test feeds and closes by hand (stalls until then). */
+export function controlledPatchStream(): {
+	stream: ReadableStream<Uint8Array>;
+	enqueue(text: string): void;
+	close(): void;
+} {
+	const encoder = new TextEncoder();
+	let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
+	const stream = new ReadableStream<Uint8Array>({
+		start(c) {
+			controller = c;
+		},
+	});
+	return {
+		stream,
+		enqueue: (text) => controller?.enqueue(encoder.encode(text)),
+		close: () => controller?.close(),
+	};
+}
+
 export function stubFetch(
 	respond: (url: string) => Response | Promise<Response>,
 ): ReturnType<typeof vi.fn> {
@@ -100,6 +142,15 @@ export function stubFetch(
 	});
 	vi.stubGlobal("fetch", fetchMock);
 	return fetchMock;
+}
+
+/** A git sdk whose `repositoryType` probe resolves to `repositoryType`. */
+export function createRepositoryTypeSdk(repositoryType: GitRepositoryType): FakeSdk {
+	return createFakeSdk({
+		featureId: "git",
+		channels: gitContract,
+		handlers: { repositoryType: async () => repositoryType },
+	});
 }
 
 export function renderView(props: Partial<GitDiffViewProps> = {}, customSdk?: FakeSdk) {
@@ -163,6 +214,25 @@ export function collapseButtonFor(relativePath: string): HTMLButtonElement | nul
 			'[data-qa-id="git-diff-file-collapse"]',
 		) ?? null
 	);
+}
+
+/**
+ * Emits one workspace watcher batch. `act` flushes the watcher's counter
+ * bump so a debounce timer arms inside the same step — under fake timers
+ * the re-render would otherwise wait on a real macrotask that
+ * `advanceTimersByTimeAsync` never yields to.
+ */
+export function emitWorkspaceChanges(
+	sdk: FakeSdk,
+	root: string,
+	paths: readonly string[],
+): Promise<void> {
+	return act(async () => {
+		sdk.services.featureRouter.eventBus.emit(WORKSPACE_FILE_CHANGE_EVENT, {
+			root,
+			changes: paths.map((path) => ({ path, type: "update" as const })),
+		});
+	});
 }
 
 /** Shared afterEach: unmount, drop the fetch stub, and reset storage. */

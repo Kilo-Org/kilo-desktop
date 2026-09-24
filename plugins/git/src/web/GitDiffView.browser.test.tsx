@@ -6,6 +6,10 @@ import { page } from "vitest/browser";
 import { gitContract } from "../contracts/schemas.js";
 import {
 	FIRST_FILE,
+	SECOND_PATCH,
+	collapseButtonFor,
+	controlledPatchStream,
+	diffContainerFor,
 	filesPanel,
 	patchResponseStream,
 	renderView,
@@ -209,8 +213,12 @@ index 0000000..3333333
 		});
 	});
 
-	it("refreshes on demand", async () => {
-		const fetchMock = stubFetch(() => new Response(patchResponseStream()));
+	it("refreshes on demand into the no-changes state", async () => {
+		let fetchCount = 0;
+		const fetchMock = stubFetch(() => {
+			fetchCount++;
+			return fetchCount === 1 ? new Response(patchResponseStream()) : new Response("");
+		});
 		renderView();
 		await waitForTreePath("README.md");
 
@@ -218,7 +226,114 @@ index 0000000..3333333
 		await vi.waitFor(() => {
 			expect(fetchMock).toHaveBeenCalledTimes(2);
 		});
+
+		// A refresh that streams zero files publishes no tree, exactly like
+		// a first load that found nothing: the main panel shows the empty
+		// state and the sidebar falls back to its placeholder.
+		await expect.element(page.getByTestId("git-diff-empty")).toBeVisible();
+		await vi.waitFor(() => {
+			const placeholder = document.querySelector('[data-qa-id="git-diff-tree-placeholder"]');
+			expect(placeholder?.textContent ?? "").toContain("No changed files.");
+			const search = document.querySelector<HTMLInputElement>('[data-qa-id="git-diff-search"]');
+			expect(search?.disabled).toBe(true);
+		});
+	});
+
+	it("refreshes in place, keeping unchanged files as the user left them", async () => {
+		const secondLoad = controlledPatchStream();
+		let fetchCount = 0;
+		const fetchMock = stubFetch(() => {
+			fetchCount++;
+			return fetchCount === 1
+				? new Response(patchResponseStream())
+				: new Response(secondLoad.stream);
+		});
+		renderView();
 		await waitForTreePath("README.md");
+
+		// The diff body awaits the highlight pipeline and the header-prefix
+		// slot content publishes a tick later, so wait for both before
+		// collapsing — otherwise the collapse assertions below would pass
+		// trivially on a body that never rendered.
+		await vi.waitFor(() => {
+			expect(collapseButtonFor("README.md")).not.toBeNull();
+			expect(diffContainerFor("README.md")?.shadowRoot?.querySelector("pre")).not.toBeNull();
+		});
+		fireEvent.click(collapseButtonFor("README.md")!);
+		await vi.waitFor(() => {
+			expect(collapseButtonFor("README.md")?.getAttribute("aria-expanded")).toBe("false");
+		});
+
+		// Refresh into a stream the test controls: the refresh stalls with
+		// the old diff on screen until the second patch is released.
+		fireEvent.click(document.querySelector('[data-qa-id="git-diff-refresh"]')!);
+		await vi.waitFor(() => {
+			const refreshButton = document.querySelector<HTMLButtonElement>(
+				'[data-qa-id="git-diff-refresh"]',
+			);
+			expect(refreshButton?.disabled).toBe(true);
+			expect(refreshButton?.querySelector("svg")?.classList.contains("animate-spin")).toBe(true);
+			// The header spinner follows the same busy flag (Decision 4).
+			expect(document.querySelector('[data-qa-id="git-diff-loading"]')).not.toBeNull();
+		});
+		await vi.waitFor(() => {
+			expect(fetchMock).toHaveBeenCalledTimes(2);
+		});
+		// In-place: the current diff stays mounted; no first-load placeholder.
+		expect(document.querySelector('[data-qa-id="git-diff-view"]')).not.toBeNull();
+		expect(document.querySelector('[data-qa-id="git-diff-viewer-loading"]')).toBeNull();
+
+		// README.md byte-identical, src/new.ts changed.
+		secondLoad.enqueue(SECOND_PATCH);
+		secondLoad.close();
+		await vi.waitFor(() => {
+			expect(collapseButtonFor("README.md")?.getAttribute("aria-expanded")).toBe("false");
+		});
+		await vi.waitFor(() => {
+			expect(diffContainerFor("src/new.ts")?.shadowRoot?.textContent ?? "").toContain(
+				"export const value = 2;",
+			);
+		});
+		// The refresh settled: the busy affordances cleared.
+		await vi.waitFor(() => {
+			expect(
+				document.querySelector<HTMLButtonElement>('[data-qa-id="git-diff-refresh"]')?.disabled,
+			).toBe(false);
+		});
+	});
+
+	it("re-opens a collapsed file whose diff changed", async () => {
+		let fetchCount = 0;
+		const fetchMock = stubFetch(() => {
+			fetchCount++;
+			return new Response(patchResponseStream(24, fetchCount === 1 ? undefined : SECOND_PATCH));
+		});
+		renderView();
+		await waitForTreePath("README.md");
+
+		await vi.waitFor(() => {
+			expect(collapseButtonFor("src/new.ts")).not.toBeNull();
+			expect(diffContainerFor("src/new.ts")?.shadowRoot?.querySelector("pre")).not.toBeNull();
+		});
+		// Collapsing bumps the live item's version to 1; the refresh must
+		// still replace it (version 2) and re-open it.
+		fireEvent.click(collapseButtonFor("src/new.ts")!);
+		await vi.waitFor(() => {
+			expect(collapseButtonFor("src/new.ts")?.getAttribute("aria-expanded")).toBe("false");
+		});
+
+		fireEvent.click(document.querySelector('[data-qa-id="git-diff-refresh"]')!);
+		await vi.waitFor(() => {
+			expect(fetchMock).toHaveBeenCalledTimes(2);
+		});
+		await vi.waitFor(() => {
+			expect(collapseButtonFor("src/new.ts")?.getAttribute("aria-expanded")).toBe("true");
+		});
+		await vi.waitFor(() => {
+			expect(diffContainerFor("src/new.ts")?.shadowRoot?.textContent ?? "").toContain(
+				"export const value = 2;",
+			);
+		});
 	});
 
 	it("renders singular stats for a single changed file", async () => {

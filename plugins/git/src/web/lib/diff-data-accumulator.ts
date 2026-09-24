@@ -1,3 +1,6 @@
+// Derived from Pierre's diffshub (apps/diffshub/lib/diffsHubDataAccumulator.ts), Copyright 2025 Pierre Computer Company,
+// Apache-2.0. Modified for Kilo Desktop; see THIRD_PARTY_NOTICES.md.
+
 import type { ChangeTypes, CodeViewItem, FileDiffMetadata } from "@pierre/diffs";
 import type { FileTreeGitStatusPatch, GitStatusEntry } from "@pierre/trees";
 

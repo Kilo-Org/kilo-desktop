@@ -1,12 +1,30 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
+import { processFile } from "@pierre/diffs";
+import type * as PierreDiffs from "@pierre/diffs";
 import type { CodeViewHandle } from "@pierre/diffs/react";
 import type { RefObject } from "react";
 
 import { usePatchLoader } from "./use-patch-loader.js";
-import { resetViewTestDom, stubFetch } from "./test-utils.js";
+import {
+	SECOND_PATCH,
+	diffContainerFor,
+	patchResponseStream,
+	renderView,
+	resetViewTestDom,
+	stubFetch,
+	waitForTreePath,
+} from "./test-utils.js";
 
-afterEach(resetViewTestDom);
+vi.mock("@pierre/diffs", async (importOriginal) => {
+	const actual = await importOriginal<typeof PierreDiffs>();
+	return { ...actual, processFile: vi.fn(actual.processFile) };
+});
+
+afterEach(() => {
+	vi.mocked(processFile).mockClear();
+	resetViewTestDom();
+});
 
 /**
  * Same-path patch entries: the second entry supersedes the first's CodeView
@@ -111,6 +129,30 @@ async function enqueueFirstEntryThenPublish(load: { enqueue(text: string): void 
 	await new Promise((resolve) => setTimeout(resolve, 150));
 	load.enqueue(SECOND_ENTRY);
 }
+
+describe("usePatchLoader parse reuse", () => {
+	it("re-parses only the files whose raw patch changed on an in-place refresh", async () => {
+		const fetchMock = stubFetch(() =>
+			fetchMock.mock.calls.length === 1
+				? new Response(patchResponseStream())
+				: new Response(patchResponseStream(24, SECOND_PATCH)),
+		);
+		renderView();
+		await waitForTreePath("README.md");
+		await vi.waitFor(() => {
+			expect(document.querySelector('[data-qa-id="git-diff-loading"]')).toBeNull();
+		});
+		expect(processFile).toHaveBeenCalledTimes(2);
+
+		fireEvent.click(document.querySelector('[data-qa-id="git-diff-refresh"]')!);
+		await vi.waitFor(() => {
+			expect(diffContainerFor("src/new.ts")?.shadowRoot?.textContent ?? "").toContain(
+				"export const value = 2;",
+			);
+		});
+		expect(processFile).toHaveBeenCalledTimes(3);
+	});
+});
 
 describe("usePatchLoader supersession", () => {
 	it("applies the second entry's item-id rename to the current viewer", async () => {

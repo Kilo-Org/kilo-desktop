@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { FeatureError } from "@kilo-desktop/feature-sdk";
-import type { GitPatchFile } from "@kilo-desktop/git-client";
+import { GitPatchTooLargeError, type GitPatchFile } from "@kilo-desktop/git-client";
 
 import { createGitProtocolHandler, type GitProtocolService } from "./git-protocol.js";
 
@@ -126,6 +126,17 @@ describe("createGitProtocolHandler", () => {
 		const response = await handler(requestFor("kilo-git://diff/patch?cwd=/outside/workspace"));
 		expect(response.status).toBe(403);
 		expect(await response.text()).toContain("not inside a workspace folder");
+	});
+
+	it("returns 413 with the error message when the patch exceeds the size cap", async () => {
+		const tooLarge = new GitPatchTooLargeError(12 * 1024 * 1024, 10 * 1024 * 1024);
+		const { service } = createFakeService(async () => {
+			throw tooLarge;
+		});
+		const handler = createGitProtocolHandler({ service, existsDirectory: alwaysExists });
+		const response = await handler(requestFor("kilo-git://diff/patch?cwd=/repo"));
+		expect(response.status).toBe(413);
+		expect(await response.text()).toBe(tooLarge.message);
 	});
 
 	it("returns 500 with a generic message on unexpected service failures", async () => {

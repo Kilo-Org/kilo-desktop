@@ -1,3 +1,7 @@
+import { execFileSync } from "node:child_process";
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
+
 import {
 	click,
 	expectElementToBeVisible,
@@ -5,8 +9,12 @@ import {
 	getLocatorByRole,
 	getLocatorByTestId,
 } from "@anaconda/playwright-utils";
+import { getPage } from "@anaconda/playwright-utils/page-utils";
 
 import { paveWorkspaceChat } from "./pave-workspace-chat.js";
+
+/** Debounce (1 s) + cooldown (5 s) + a refresh pass — generous for CI. */
+const LIVE_RELOAD_TIMEOUT_MS = 20_000;
 
 /**
  * Page object for the git plugin's "Changes" chat pane.
@@ -63,5 +71,49 @@ export class ChangesPage {
 		);
 		await click(initButton);
 		await this.verifyTabMounted();
+	}
+
+	/**
+	 * Wait until the tree shows exactly `paths`, in order. Rows carry
+	 * `data-item-path` inside the tree host's shadow root; folder rows end
+	 * with a slash. The live reload's debounce (1 s) and refresh pass are the
+	 * wait, so callers assert the settled state, never a manual refresh.
+	 */
+	async expectTreePaths(paths: string[]): Promise<void> {
+		await getPage().waitForFunction(
+			(expectedPaths: string[]) => {
+				const rows = Array.from(
+					document
+						.querySelector('[data-qa-id="git-diff-tree"]')
+						?.shadowRoot?.querySelectorAll("[data-item-path]") ?? [],
+				).map((row) => row.getAttribute("data-item-path"));
+				return (
+					rows.length === expectedPaths.length &&
+					expectedPaths.every((expectedPath, index) => rows[index] === expectedPath)
+				);
+			},
+			paths,
+			{ timeout: LIVE_RELOAD_TIMEOUT_MS },
+		);
+	}
+
+	/** Wait until every change is gone and the empty state replaced the diff. */
+	async expectNoChanges(): Promise<void> {
+		await getLocatorByTestId("git-diff-empty").waitFor({
+			state: "visible",
+			timeout: LIVE_RELOAD_TIMEOUT_MS,
+		});
+	}
+
+	/** Write a file into the repo from outside the app (external editor). */
+	async writeWorkingTreeFile(folderPath: string, name: string, contents: string): Promise<void> {
+		await writeFile(path.join(folderPath, name), contents);
+	}
+
+	/** Stage everything and commit from a terminal. */
+	async stageAndCommitAll(folderPath: string, message: string): Promise<void> {
+		const git = (args: string[]) => execFileSync("git", ["-C", folderPath, ...args]);
+		git(["add", "-A"]);
+		git(["-c", "commit.gpgsign=false", "commit", "-m", message]);
 	}
 }

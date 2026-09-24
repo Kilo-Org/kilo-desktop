@@ -29,7 +29,7 @@ plugins/          Bundled plugins — self-contained workspace packages
 ├── kilo-server/  @kilo-desktop/plugin-kilo-server Kilo CLI packaging and server lifecycle
 ├── kilo-ui/      @kilo-desktop/plugin-kilo-ui Chat UI and workspace management
 ├── notebook/     @kilo-desktop/plugin-notebook Ephemeral nteract notebooks for chat right panels
-└── git/          @kilo-desktop/plugin-git Git status and working-directory "Changes" panel (custom `kilo-git://` protocol), branch switching in the composer draft footer, and the chat worktree lifecycle exposed to other plugins as a main-side `gitService` capability
+└── git/          @kilo-desktop/plugin-git Git status and live-reloading working-directory "Changes" panel (custom `kilo-git://` protocol), branch switching in the composer draft footer, and the chat worktree lifecycle exposed to other plugins as a main-side `gitService` capability
 ```
 
 ## Key architectural decisions

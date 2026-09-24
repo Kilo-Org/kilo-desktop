@@ -4,6 +4,7 @@ import {
 	LoaderCircleIcon,
 	PanelRightCloseIcon,
 	PanelRightOpenIcon,
+	TriangleAlertIcon,
 } from "lucide-react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
@@ -19,6 +20,11 @@ interface GitDiffHeaderProps {
 	readonly loading: boolean;
 	readonly onToggleCollapseMode: () => void;
 	readonly onToggleTreeCollapsed: () => void;
+	/**
+	 * Why the latest refresh failed while the last result stays on screen.
+	 * The sidebar's refresh button is the retry.
+	 */
+	readonly refreshError: string | null;
 	readonly treeCollapsed: boolean;
 }
 
@@ -34,6 +40,7 @@ export function GitDiffHeader({
 	loading,
 	onToggleCollapseMode,
 	onToggleTreeCollapsed,
+	refreshError,
 	treeCollapsed,
 }: GitDiffHeaderProps) {
 	return (
@@ -44,6 +51,26 @@ export function GitDiffHeader({
 			<div className="text-muted-foreground flex min-w-0 flex-1 items-center gap-2 text-xs">
 				{loading ? (
 					<LoaderCircleIcon className="size-3.5 animate-spin" data-qa-id="git-diff-loading" />
+				) : null}
+				{refreshError != null ? (
+					<Tooltip>
+						<TooltipTrigger
+							render={
+								<span
+									aria-label="Couldn't refresh changes"
+									className="inline-flex text-amber-500"
+									data-qa-id="git-diff-refresh-error"
+									role="img"
+									tabIndex={0}
+								/>
+							}
+						>
+							<TriangleAlertIcon aria-hidden="true" className="size-3.5" />
+						</TooltipTrigger>
+						<TooltipContent side="bottom">
+							Showing the last loaded changes. {refreshError}
+						</TooltipContent>
+					</Tooltip>
 				) : null}
 				{fileCount > 0 ? (
 					<span data-qa-id="git-diff-stats">

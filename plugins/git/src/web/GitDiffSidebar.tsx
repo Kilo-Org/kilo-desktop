@@ -1,3 +1,6 @@
+// Derived from Pierre's diffshub (apps/diffshub/components/DiffsHubFileTree.tsx), Copyright 2025 Pierre Computer Company,
+// Apache-2.0. Modified for Kilo Desktop; see THIRD_PARTY_NOTICES.md.
+
 import { resolveTheme } from "@pierre/diffs";
 import type { CodeViewHandle } from "@pierre/diffs/react";
 import { themeToTreeStyles } from "@pierre/trees";
@@ -20,15 +23,20 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
 import type { GitDiffTreeSource } from "./lib/diff-data-accumulator.js";
-
-function folderName(path: string): string {
-	const withoutTrailingSeparators = path.replace(/[\\/]+$/u, "");
-	return withoutTrailingSeparators.split(/[\\/]/u).at(-1) || path;
-}
+import { folderName } from "./lib/folder-name.js";
 
 // Keeps @pierre/trees from applying its default semantic sort so the sidebar
 // follows the same patch path sequence that drives the code view.
 const PRESERVE_INPUT_ORDER_SORT: FileTreeSortComparator = () => 0;
+
+/** Length-then-element comparison — no structural dependency for this. */
+function arePathListsEqual(a: readonly string[], b: readonly string[]): boolean {
+	if (a.length !== b.length) return false;
+	for (let index = 0; index < a.length; index++) {
+		if (a[index] !== b[index]) return false;
+	}
+	return true;
+}
 
 // Module-level so the always-mounted sidebar never allocates fresh model
 // inputs per render; the model is seeded empty and populated by the
@@ -118,7 +126,9 @@ export function GitDiffSidebar({
 		}
 		// Linked snapshots are guaranteed to extend the previous path list, so
 		// apply the delta instead of rebuilding the whole PathStore; an
-		// unlinked snapshot (new request) resets the tree.
+		// unlinked snapshot (new request) resets the tree — but an in-place
+		// refresh whose file set did not change must keep folder expansion
+		// and search matches, so only reset when the path list differs.
 		if (source.previousSource != null && source.previousSource === previousSource) {
 			if (source.pathCount > previousSource.pathCount) {
 				const operations: FileTreeBatchOperation[] = [];
@@ -134,7 +144,12 @@ export function GitDiffSidebar({
 				model.applyGitStatusPatch(source.gitStatusPatch);
 			}
 		} else {
-			model.resetPaths(source.paths.slice(0, source.pathCount));
+			const nextPaths = source.paths.slice(0, source.pathCount);
+			const previousPaths =
+				previousSource == null ? [] : previousSource.paths.slice(0, previousSource.pathCount);
+			if (!arePathListsEqual(previousPaths, nextPaths)) {
+				model.resetPaths(nextPaths);
+			}
 			model.setGitStatus(source.gitStatus);
 		}
 	}, [model, source]);

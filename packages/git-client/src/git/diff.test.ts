@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
@@ -13,7 +13,7 @@ import {
 	makeCommit,
 	noopLogger,
 } from "../test/util.js";
-import { createWorkingDirectoryPatch, type PatchExec } from "./diff.js";
+import { createWorkingDirectoryPatch, GitPatchTooLargeError, type PatchExec } from "./diff.js";
 import type { GitPatchFile } from "./diff.js";
 
 afterEach(cleanupTestDirs);
@@ -245,6 +245,95 @@ describe("createWorkingDirectoryPatch", () => {
 		);
 	});
 
+	it("diffs against an explicit commitish", async () => {
+		const repoPath = await initialize("explicit-commitish");
+		await makeCommit(repoPath, { entries: [{ path: "a.txt", contents: "commit A\n" }] });
+		await makeCommit(repoPath, { entries: [{ path: "b.txt", contents: "commit B\n" }] });
+
+		const text = await readPatchText(await createPatchOrThrow(repoPath, { commitish: "HEAD~1" }));
+		expect(text).toContain("diff --git a/b.txt b/b.txt");
+		expect(text).toContain("+commit B");
+	});
+
+	it("respects skip-worktree entries like git status", async () => {
+		const repoPath = await initialize("skip-worktree");
+		await makeCommit(repoPath, {
+			entries: [
+				{ path: "a.txt", contents: "a\n" },
+				{ path: "b.txt", contents: "b\n" },
+			],
+		});
+		await gitExec(["update-index", "--skip-worktree", "a.txt"], repoPath);
+		await rm(join(repoPath, "a.txt"));
+		await writeFile(join(repoPath, "b.txt"), "changed\n");
+
+		const text = await readPatchText(await createPatchOrThrow(repoPath));
+		expect(text).toContain("+changed");
+		expect(text).not.toContain("a.txt");
+		expect(text).not.toContain("deleted file mode");
+	});
+
+	it("includes a force-added ignored file", async () => {
+		const repoPath = await initialize("force-added-ignored");
+		await makeCommit(repoPath, { entries: [{ path: ".gitignore", contents: "secret.txt\n" }] });
+		await writeFile(join(repoPath, "secret.txt"), "force added\n");
+		await gitExec(["add", "-f", "secret.txt"], repoPath);
+
+		const text = await readPatchText(await createPatchOrThrow(repoPath));
+		expect(text).toContain("diff --git a/secret.txt b/secret.txt");
+		expect(text).toContain("+force added");
+	});
+
+	it("sees a same-size rewrite of a racily clean entry", async () => {
+		// Racy git: an entry whose mtime is not older than the index file's is
+		// re-checked by content. Copying the index must keep its mtime, or the
+		// copy looks newer and the rewrite below passes the stat check.
+		const repoPath = await initialize("racy-clean");
+		await gitExec(["config", "core.checkStat", "minimal"], repoPath);
+		await gitExec(["config", "core.trustctime", "false"], repoPath);
+		const filePath = join(repoPath, "file.txt");
+		const racyTime = new Date("2020-01-01T00:00:00Z");
+		await writeFile(filePath, "before\n");
+		await utimes(filePath, racyTime, racyTime);
+		await gitExec(["add", "file.txt"], repoPath);
+		await gitExec(["commit", "-m", "commit"], repoPath);
+		await utimes(join(repoPath, ".git", "index"), racyTime, racyTime);
+		await writeFile(filePath, "after!\n");
+		await utimes(filePath, racyTime, racyTime);
+
+		const text = await readPatchText(await createPatchOrThrow(repoPath));
+		expect(text).toContain("+after!");
+	});
+
+	it("handles a fresh repository without an index", async () => {
+		const repoPath = await initialize("no-index");
+		await writeFile(join(repoPath, "first.txt"), "first\n");
+		await expect(stat(join(repoPath, ".git", "index"))).rejects.toMatchObject({ code: "ENOENT" });
+
+		const text = await readPatchText(await createPatchOrThrow(repoPath));
+		expect(text).toContain("diff --git a/first.txt b/first.txt");
+		expect(text).toContain("new file mode");
+	});
+
+	it("diffs a linked worktree against its own index", async () => {
+		const repoPath = await initialize("linked-worktree");
+		await makeCommit(repoPath, {
+			entries: [
+				{ path: "a.txt", contents: "a\n" },
+				{ path: "b.txt", contents: "b\n" },
+			],
+		});
+		const worktreePath = join(await createTestDir("linked-worktree-checkout"), "wt");
+		await gitExec(["worktree", "add", "-b", "feature", worktreePath], repoPath);
+		await gitExec(["update-index", "--skip-worktree", "a.txt"], worktreePath);
+		await rm(join(worktreePath, "a.txt"));
+		await writeFile(join(worktreePath, "b.txt"), "worktree change\n");
+
+		const text = await readPatchText(await createPatchOrThrow(worktreePath));
+		expect(text).toContain("+worktree change");
+		expect(text).not.toContain("a.txt");
+	});
+
 	it("rejects a dash-prefixed commitish before any git exec", async () => {
 		// A dash-prefixed value would become an option to `rev-parse` /
 		// `read-tree` (e.g. `--upload-pack=…`), so it must be rejected at
@@ -275,11 +364,30 @@ describe("createWorkingDirectoryPatch", () => {
 		await makeCommit(repoPath, { entries: [{ path: "file.txt", contents: "x\n" }] });
 		await writeFile(join(repoPath, "file.txt"), "y\n");
 
-		await expect(
-			createGitClient({ path: repoPath, logger: noopLogger }).createWorkingDirectoryPatch({
-				maxBytes: 4,
-			}),
-		).rejects.toThrow(/too large/);
+		const result = createGitClient({
+			path: repoPath,
+			logger: noopLogger,
+		}).createWorkingDirectoryPatch({ maxBytes: 4 });
+
+		await expect(result).rejects.toBeInstanceOf(GitPatchTooLargeError);
+		await expect(result).rejects.toThrow(/too large/);
+		const error = (await result.catch((caught: unknown) => caught)) as GitPatchTooLargeError;
+		expect(error.maxBytes).toBe(4);
+		expect(error.byteLength).toBeGreaterThan(error.maxBytes);
+	});
+
+	it("leaves the git dir untouched under core.splitIndex", async () => {
+		const repoPath = await initialize("split-index");
+		await makeCommit(repoPath, { entries: [{ path: "file.txt", contents: "x\n" }] });
+		await gitExec(["config", "core.splitIndex", "true"], repoPath);
+		await gitExec(["update-index", "--split-index"], repoPath);
+		await writeFile(join(repoPath, "file.txt"), "y\n");
+		await writeFile(join(repoPath, "untracked.txt"), "z\n");
+
+		const gitDirBefore = (await readdir(join(repoPath, ".git"))).sort();
+		await removePatchFile(await createPatchOrThrow(repoPath));
+
+		expect((await readdir(join(repoPath, ".git"))).sort()).toEqual(gitDirBefore);
 	});
 
 	it("removes the throwaway index dir but leaves the patch file to the caller", async () => {

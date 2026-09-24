@@ -114,7 +114,8 @@ export interface GitClient {
 	 * vs `commitish`, default `HEAD`) to a temp file WITHOUT touching the
 	 * user's real index (throwaway `GIT_INDEX_FILE`). Resolves `null` when
 	 * the working directory is not inside a git repository; an empty working
-	 * tree yields a zero-byte patch. The caller must `cleanup()` the result.
+	 * tree yields a zero-byte patch. Throws `GitPatchTooLargeError` past
+	 * `maxBytes`. The caller must remove the result's `patchPath`.
 	 */
 	createWorkingDirectoryPatch(
 		options?: CreateWorkingDirectoryPatchOptions,

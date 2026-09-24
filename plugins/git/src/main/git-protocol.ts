@@ -4,7 +4,7 @@ import { isAbsolute } from "node:path";
 import { Readable } from "node:stream";
 
 import { FeatureError } from "@kilo-desktop/feature-sdk";
-import type { GitPatchFile } from "@kilo-desktop/git-client";
+import { GitPatchTooLargeError, type GitPatchFile } from "@kilo-desktop/git-client";
 
 /**
  * The service slice the protocol handler needs; `GitService` satisfies it.
@@ -81,6 +81,7 @@ function createTextResponse(
  * - 403 — the service refused the cwd (outside every workspace folder —
  *   `VALIDATION` FeatureError)
  * - 404 — unknown endpoint, or not a git repository (service returned `null`)
+ * - 413 — the patch exceeds the size cap; auto-refresh pauses on it
  * - 500 — unexpected failure (message deliberately generic; detail stays in
  *   git-client's log)
  * - 503 — git binary missing (`FeatureError` from the service)
@@ -127,6 +128,9 @@ export function createGitProtocolHandler(
 					error.code === "VALIDATION" ? 403 : 503,
 					corsOrigin,
 				);
+			}
+			if (error instanceof GitPatchTooLargeError) {
+				return createTextResponse(error.message, 413, corsOrigin);
 			}
 			return createTextResponse("The diff could not be generated.", 500, corsOrigin);
 		}

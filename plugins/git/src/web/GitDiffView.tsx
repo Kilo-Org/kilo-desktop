@@ -27,7 +27,9 @@ import { DiffConfigProvider, useDiffOptions } from "./diff-options.js";
 import { GitDiffHeader } from "./GitDiffHeader.js";
 import { GitDiffSidebar } from "./GitDiffSidebar.js";
 import { createDiffFilesLoader } from "./lib/diff-files-loader.js";
+import { useGitDiffWatcher } from "./use-git-diff-watcher.js";
 import { useInitRepository } from "./use-init-repository.js";
+import { usePaneVisibility } from "./use-pane-visibility.js";
 import { usePatchLoader } from "./use-patch-loader.js";
 
 export interface GitDiffViewProps {
@@ -57,6 +59,9 @@ const DIFF_VIEW_UNSAFE_CSS = `
 	}
 `;
 
+const NOT_A_REPOSITORY_STATUS = 404;
+const PATCH_TOO_LARGE_STATUS = 413;
+
 const DEFAULT_FILES_WIDTH = 224;
 const MIN_FILES_WIDTH = 160;
 const FILES_WIDTH_STORAGE_KEY = "git.diffFilesWidth";
@@ -80,7 +85,7 @@ function deserializeFilesWidth(raw: string): number | undefined {
 /**
  * "Changes" chat right-panel tab: renders this chat's workspace working-tree
  * diff (staged + unstaged + untracked vs HEAD) as a streaming CodeView with a
- * file-tree sidebar. Static v1 — refresh is manual.
+ * file-tree sidebar. Live: workspace file events refresh the diff in place.
  */
 export function GitDiffView(props: GitDiffViewProps) {
 	if (!props.workspaceDirectory) {
@@ -149,6 +154,7 @@ function GitDiffTabContent({
 		: workspaceDirectory;
 	const viewerRef = useRef<CodeViewHandle<undefined, undefined> | null>(null);
 	const groupRef = useRef<HTMLDivElement | null>(null);
+	const rootRef = useRef<HTMLDivElement | null>(null);
 	const [collapseMode, setCollapseMode] = useState<"expanded" | "collapsed">("expanded");
 	// Tree collapse is session-only state that must live here because the
 	// header (outside the panel group) renders the toggle.
@@ -185,7 +191,9 @@ function GitDiffTabContent({
 		expandItem,
 		initialItems,
 		loadState,
-		retryLoad,
+		refresh,
+		refreshError,
+		refreshing,
 		toggleItemCollapsed,
 		treeSource,
 		viewerKey,
@@ -193,6 +201,16 @@ function GitDiffTabContent({
 		collapseMode,
 		workspaceDirectory: effectiveDirectory,
 		viewerRef,
+	});
+	// Only a too-large diff pauses auto-refresh, VS Code's `isRepositoryHuge`
+	// analog: every refresh would regenerate the same oversized patch. Other
+	// failures keep watching, so a 404 recovers after `git init` in a
+	// terminal and a transient failure recovers on the next change.
+	useGitDiffWatcher({
+		directory: effectiveDirectory,
+		refresh,
+		paused: errorStatus === PATCH_TOO_LARGE_STATUS,
+		visibility: usePaneVisibility(rootRef),
 	});
 	const initRepository = useInitRepository();
 
@@ -285,15 +303,22 @@ function GitDiffTabContent({
 	}, []);
 
 	const loading = loadState === "fetching" || loadState === "streaming";
+	// First-load `loading` and in-place `refreshing` share one busy flag for
+	// the header spinner and the sidebar refresh button; the placeholder
+	// text below keeps first-load `loading` so the empty and error states
+	// do not flash during a refresh.
+	const busy = loading || refreshing;
 	const fileCount = diffStats?.fileCount ?? 0;
 	// Sidebar one-liner for the states that have no tree to show. Only
 	// rendered while no tree snapshot exists (source == null); a partial
 	// tree always wins over the loading/error line.
 	const treePlaceholder =
 		loadState === "error"
-			? errorStatus === 404
+			? errorStatus === NOT_A_REPOSITORY_STATUS
 				? "Not a git repository."
-				: "Couldn't load changes."
+				: errorStatus === PATCH_TOO_LARGE_STATUS
+					? "Diff too large."
+					: "Couldn't load changes."
 			: loading
 				? "Loading changes…"
 				: loadState === "ready" && fileCount === 0
@@ -301,15 +326,16 @@ function GitDiffTabContent({
 					: null;
 
 	return (
-		<div className="flex min-h-0 min-w-0 flex-1 flex-col" data-qa-id="git-diff-root">
+		<div className="flex min-h-0 min-w-0 flex-1 flex-col" data-qa-id="git-diff-root" ref={rootRef}>
 			<GitDiffHeader
 				addedLines={diffStats?.addedLines ?? 0}
 				collapseMode={collapseMode}
 				deletedLines={diffStats?.deletedLines ?? 0}
 				fileCount={fileCount}
-				loading={loading}
+				loading={busy}
 				onToggleCollapseMode={toggleCollapseMode}
 				onToggleTreeCollapsed={toggleTreeCollapsed}
+				refreshError={refreshError}
 				treeCollapsed={treeCollapsed}
 			/>
 			<ResizablePanelGroup className="min-h-0 min-w-0 flex-1" ref={groupRef}>
@@ -324,24 +350,30 @@ function GitDiffTabContent({
 									<GitCompareIcon />
 								</EmptyMedia>
 								<EmptyTitle aria-level={2} role="heading">
-									{errorStatus === 404 ? "Not a git repository" : "The diff could not be loaded"}
+									{errorStatus === NOT_A_REPOSITORY_STATUS
+										? "Not a git repository"
+										: errorStatus === PATCH_TOO_LARGE_STATUS
+											? "The diff is too large to show"
+											: "The diff could not be loaded"}
 								</EmptyTitle>
 								<EmptyDescription>
-									{errorStatus === 404
+									{errorStatus === NOT_A_REPOSITORY_STATUS
 										? "This folder isn't a git repository. Initialize git to track its changes, or choose a different workspace folder."
-										: errorMessage}
+										: errorStatus === PATCH_TOO_LARGE_STATUS
+											? `${errorMessage} Live reload is paused. Retry once the changes are smaller.`
+											: errorMessage}
 								</EmptyDescription>
 							</EmptyHeader>
 							<EmptyContent>
-								{errorStatus === 404 ? (
+								{errorStatus === NOT_A_REPOSITORY_STATUS ? (
 									<Button
 										data-qa-id="git-diff-init"
-										disabled={initRepository.isPending}
-										onClick={() => initRepository.init(effectiveDirectory, retryLoad)}
+										disabled={initRepository.isPending || refreshing}
+										onClick={() => initRepository.init(effectiveDirectory, refresh)}
 										size="sm"
 										variant="outline"
 									>
-										{initRepository.isPending ? (
+										{initRepository.isPending || refreshing ? (
 											<Spinner data-icon="inline-start" size="sm" />
 										) : (
 											<FolderGit2Icon data-icon="inline-start" />
@@ -351,11 +383,16 @@ function GitDiffTabContent({
 								) : (
 									<Button
 										data-qa-id="git-diff-retry"
-										onClick={retryLoad}
+										disabled={refreshing}
+										onClick={refresh}
 										size="sm"
 										variant="outline"
 									>
-										<RefreshCwIcon />
+										{refreshing ? (
+											<Spinner data-icon="inline-start" size="sm" />
+										) : (
+											<RefreshCwIcon />
+										)}
 										Retry
 									</Button>
 								)}
@@ -364,9 +401,11 @@ function GitDiffTabContent({
 					) : initialItems.length > 0 ? (
 						/*
 								Imperative CodeView ownership: initialItems seeds ONLY at
-								mount (later prop changes are ignored — items stream in via
-								the handle), so the viewer must mount after the loader's
-								first publish, and remount (key) on refresh.
+								mount (later prop changes are ignored), so the viewer must
+								mount after the loader's first publish, and remount (key)
+								only on a folder switch. In-place refreshes reconcile
+								through setItems; initialItems mirrors the current list so
+								the panel branches follow (0 items shows the empty state).
 							*/
 						<div className="h-full min-h-0 min-w-0" data-qa-id="git-diff-view">
 							<CodeView
@@ -441,12 +480,12 @@ function GitDiffTabContent({
 				>
 					<GitDiffSidebar
 						appearance={appearance}
-						loading={loading}
+						loading={busy}
 						workspaceDirectory={effectiveDirectory}
 						workspaceFolders={folders}
 						onExpandItem={expandItem}
 						onSelectWorkspaceFolder={setChosenDirectory}
-						onRefresh={retryLoad}
+						onRefresh={refresh}
 						source={treeSource}
 						treePlaceholder={treePlaceholder}
 						viewerRef={viewerRef}

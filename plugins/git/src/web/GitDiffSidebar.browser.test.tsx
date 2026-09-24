@@ -5,6 +5,7 @@ import { page } from "vitest/browser";
 import {
 	FIRST_FILE,
 	SECOND_FILE,
+	controlledPatchStream,
 	delayedFileResponseStream,
 	patchResponseStream,
 	renderView,
@@ -103,6 +104,45 @@ describe("GitDiffSidebar folder select", () => {
 			const triggerText =
 				document.querySelector('[data-qa-id="git-diff-folder-select"]')?.textContent ?? "";
 			expect(triggerText).toContain("other");
+		});
+	});
+
+	it("a folder switch during a refresh clears the busy state", async () => {
+		const stalledRefresh = controlledPatchStream();
+		let projectFetches = 0;
+		stubFetch((url) => {
+			if (url.includes(encodeURIComponent("/workspace/other"))) {
+				return new Response(patchResponseStream(24, SECOND_FILE));
+			}
+			projectFetches++;
+			return projectFetches === 1
+				? new Response(patchResponseStream(24, FIRST_FILE))
+				: new Response(stalledRefresh.stream);
+		});
+		renderView({
+			workspaceFolders: [
+				{ path: "/workspace/project", isPrimary: true },
+				{ path: "/workspace/other", isPrimary: false },
+			],
+		});
+		await waitForTreePath("first.txt");
+		const refreshButton = () =>
+			document.querySelector<HTMLButtonElement>('[data-qa-id="git-diff-refresh"]');
+		await vi.waitFor(() => {
+			expect(refreshButton()?.disabled).toBe(false);
+		});
+
+		fireEvent.click(refreshButton()!);
+		await vi.waitFor(() => {
+			expect(refreshButton()?.disabled).toBe(true);
+		});
+
+		await page.getByTestId("git-diff-folder-select").click();
+		await page.getByRole("option", { name: "other" }).click();
+		await waitForTreePath("second.txt");
+		await vi.waitFor(() => {
+			expect(refreshButton()?.disabled).toBe(false);
+			expect(document.querySelector('[data-qa-id="git-diff-loading"]')).toBeNull();
 		});
 	});
 
@@ -241,8 +281,10 @@ describe("GitDiffSidebar tree search", () => {
 		});
 		await waitForTreePath("README.md");
 		// Discriminating pair: the input still holds the query AND the
-		// non-match stays hidden on the remounted sidebar. (README.md was
-		// visible before the refresh too, so presence alone proves nothing.)
+		// non-match stays hidden after the refresh. The tree now survives an
+		// in-place refresh (no remount — the unchanged path list skips the
+		// reset), so this pins resetPaths being skipped, not a rebuild that
+		// happens to restore the same search state.
 		await vi.waitFor(() => {
 			const input = document.querySelector<HTMLInputElement>('[data-qa-id="git-diff-search"]');
 			expect(input?.value).toBe("readme");

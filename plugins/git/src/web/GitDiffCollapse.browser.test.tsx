@@ -113,7 +113,7 @@ index 1111111..2222222 100644
 			line === "line 2" || line === "line 51" ? line.toUpperCase() : line,
 		);
 		const requests: { workingDirectory: string; path: string }[] = [];
-		stubFetch(() => new Response(patchResponseStream(24, gapPatch)));
+		const fetchMock = stubFetch(() => new Response(patchResponseStream(24, gapPatch)));
 		const sdk = createFakeSdk({
 			featureId: "git",
 			channels: gitContract,
@@ -156,6 +156,25 @@ index 1111111..2222222 100644
 			workingDirectory: "/workspace/project",
 			path: "story.md",
 		});
+
+		// Refresh with a byte-identical patch: the stored raw patch key
+		// matches, so the live (hydrated) item is reused and the revealed
+		// context lines survive the commit. The live item's own cacheKey
+		// was rewritten in place to `…:hydrated` by the expansion, so this
+		// pins change detection comparing stored raw keys, not live ones.
+		const statsText = () =>
+			document.querySelector('[data-qa-id="git-diff-stats"]')?.textContent ?? "";
+		const statsBefore = statsText();
+		expect(statsBefore).toContain("+2");
+		fireEvent.click(document.querySelector('[data-qa-id="git-diff-refresh"]')!);
+		await vi.waitFor(() => {
+			expect(fetchMock).toHaveBeenCalledTimes(2);
+			expect(diffContainerFor("story.md")?.shadowRoot?.textContent ?? "").toContain("line 25");
+			expect(document.querySelector('[data-qa-id="git-diff-loading"]')).toBeNull();
+		});
+		// The refresh reuses the live, hydrated parse; its hunk counts must
+		// still add up to the same stats.
+		expect(statsText()).toBe(statsBefore);
 	});
 
 	it("disables the per-file button for an empty diff", async () => {

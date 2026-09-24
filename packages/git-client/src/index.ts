@@ -20,7 +20,11 @@ export {
 // High-level layer (git/, lib/, models/)
 export type { IStatusResult, StatusOptions, StatusExec } from "./git/status.js";
 export type { CreateWorkingDirectoryPatchOptions, GitPatchFile, PatchExec } from "./git/diff.js";
-export { DEFAULT_PATCH_MAX_BYTES, createWorkingDirectoryPatch } from "./git/diff.js";
+export {
+	DEFAULT_PATCH_MAX_BYTES,
+	GitPatchTooLargeError,
+	createWorkingDirectoryPatch,
+} from "./git/diff.js";
 export type { GetFileContentsOptions, WorkingTreeFileContents } from "./git/file-contents.js";
 export {
 	DEFAULT_FILE_CONTENTS_MAX_BYTES,

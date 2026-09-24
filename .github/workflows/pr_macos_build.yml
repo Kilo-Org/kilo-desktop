@@ -1,12 +1,14 @@
 name: PR macOS Build
 
+# Opt-in: a signed and notarized macOS make takes ~25 minutes, so it no longer
+# runs on every PR push. Either add the `build:macos` label to a PR (it then
+# rebuilds on each push while the label stays), or run this workflow manually
+# from the Actions tab for any branch.
 on:
   pull_request:
     branches: [main]
-
-concurrency:
-  group: pr-macos-build-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+    types: [labeled, synchronize, reopened]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -14,6 +16,16 @@ permissions:
 jobs:
   build:
     name: macOS build (optional)
+    # A `labeled` event fires for every label, so only the build label counts.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (contains(github.event.pull_request.labels.*.name, 'build:macos') &&
+      (github.event.action != 'labeled' || github.event.label.name == 'build:macos'))
+    # Job-level, so a skipped run (e.g. an unrelated label) never cancels a
+    # build that is already in progress.
+    concurrency:
+      group: pr-macos-build-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
     runs-on: macos-latest
     timeout-minutes: 90
     env:
@@ -67,7 +79,9 @@ jobs:
       - name: Upload macOS artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: mac-arm64-pr-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+          # Branch names can contain "/", which artifact names reject; manual
+          # runs are identified by run id instead.
+          name: mac-arm64-${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
             apps/desktop/out/make/**/*.dmg
             apps/desktop/out/make/**/*.zip

@@ -33,6 +33,7 @@ import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type { LocalModel, ModelCatalogEntry } from "../../contracts/schemas.js";
 import { getPublisherDisplayName, ModelPublisherIcon } from "../catalog/ModelPublisherIcon.js";
+import { revealInFileManagerLabel } from "./reveal-file-label.js";
 
 // lucide-react 1.27 does not export Eject yet; this is the upstream glyph.
 const EjectIcon = createLucideIcon("eject", [
@@ -204,7 +205,7 @@ function LocalFileModelSidebarButton({
 						onReveal(model);
 					}}
 				>
-					Show in Finder
+					{revealInFileManagerLabel()}
 					<FolderOpenIcon data-icon="inline-end" aria-hidden="true" />
 				</Button>
 			</PreviewCardContent>
@@ -386,7 +387,7 @@ export function ModelSidebar({
 										onClick={() => onReveal(model)}
 									>
 										<FolderOpenIcon />
-										Show in Finder
+										{revealInFileManagerLabel()}
 									</DropdownMenuItem>
 									{model.managedFile ? (
 										<>

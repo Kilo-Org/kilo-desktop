@@ -16,6 +16,7 @@ import {
 	renderSettings,
 	usageSnapshot,
 } from "../../test/render-local-model-server-settings.js";
+import { revealInFileManagerLabel } from "../models/reveal-file-label.js";
 
 afterEach(() => {
 	cleanup();
@@ -994,7 +995,7 @@ describe("LocalModelServerSettings", () => {
 		await expect
 			.element(filePreview.getByTestId("local-model-path-model-beta"))
 			.toHaveTextContent("/models/beta.gguf");
-		await filePreview.getByRole("button", { name: "Show in Finder" }).click();
+		await filePreview.getByRole("button", { name: revealInFileManagerLabel() }).click();
 		await expect.poll(() => showItemInFolder).toHaveBeenCalledWith("/models/beta.gguf");
 
 		await screen.getByTestId("local-model-select-model-beta").click();
@@ -1011,7 +1012,7 @@ describe("LocalModelServerSettings", () => {
 		await expect.element(filePreview).not.toBeInTheDocument();
 		const betaActions = screen.getByRole("button", { name: "More actions for Beta 3B" });
 		await betaActions.click();
-		await page.getByRole("menuitem", { name: "Show in Finder" }).click();
+		await page.getByRole("menuitem", { name: revealInFileManagerLabel() }).click();
 		await expect.poll(() => showItemInFolder).toHaveBeenCalledWith("/models/beta.gguf");
 
 		await betaActions.click();

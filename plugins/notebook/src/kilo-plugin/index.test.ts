@@ -22,6 +22,7 @@ describe("nteract Kilo plugin", () => {
 	it("creates a notebook cell through a dedicated tool and can execute it immediately", async () => {
 		const session = {
 			notebookId: NOTEBOOK_ID,
+			getCell: vi.fn(async (cellId: string) => ({ id: cellId })),
 			createCell: vi.fn(async () => "cell-created"),
 			executeCell: vi.fn(async () => ({
 				cellId: "cell-created",
@@ -224,6 +225,7 @@ describe("nteract Kilo plugin", () => {
 	it("applies an ordered batch of notebook cell edits", async () => {
 		const session = {
 			notebookId: NOTEBOOK_ID,
+			getCell: vi.fn(async (cellId: string) => ({ id: cellId })),
 			setCell: vi.fn(async () => true),
 			deleteCell: vi.fn(async () => true),
 			moveCell: vi.fn(async () => "a2"),
@@ -260,9 +262,9 @@ describe("nteract Kilo plugin", () => {
 		expect(JSON.parse(result.output)).toEqual({
 			notebook_id: NOTEBOOK_ID,
 			results: [
-				{ action: "update", cell_id: "cell-2", updated: true },
+				{ action: "update", cell_id: "cell-2" },
 				{ action: "move", cell_id: "cell-2", position: "a2" },
-				{ action: "delete", cell_id: "cell-3", deleted: true },
+				{ action: "delete", cell_id: "cell-3" },
 			],
 		});
 		expect(session.setCell).toHaveBeenCalledWith("cell-2", { source: "value = 42" });
@@ -272,6 +274,156 @@ describe("nteract Kilo plugin", () => {
 				{ action: "create", source: "# Analysis", cell_type: "markdown" },
 			]).success,
 		).toBe(false);
+	});
+
+	it("rejects edit operations with misspelled keys instead of dropping them", async () => {
+		const hooks = await createNteractKiloPlugin({
+			loadRuntimedNode: () => ({ openNotebook: vi.fn() }),
+		})();
+
+		expect(
+			z.safeParse(hooks.tool.notebooks_edit_cells.args.operations!, [
+				{ action: "update", cell_id: "cell-1", "source/remove the kernel line": "x = 1" },
+			]).success,
+		).toBe(false);
+	});
+
+	it("refuses updates that change nothing before applying any operation", async () => {
+		const session = {
+			notebookId: NOTEBOOK_ID,
+			setCell: vi.fn(async () => true),
+			deleteCell: vi.fn(async () => true),
+			close: vi.fn(async () => undefined),
+		};
+		const hooks = await createNteractKiloPlugin({
+			loadRuntimedNode: () => ({ openNotebook: vi.fn(async () => session) }),
+		})();
+
+		await expect(
+			hooks.tool.notebooks_edit_cells.execute(
+				{
+					notebook_id: NOTEBOOK_ID,
+					operations: [
+						{ action: "delete", cell_id: "cell-1" },
+						{ action: "update", cell_id: "cell-2" },
+					],
+				},
+				toolContext(),
+			),
+		).rejects.toThrow(/Operation 2 \(update cell-2\) must set source or cell_type/);
+		expect(session.deleteCell).not.toHaveBeenCalled();
+	});
+
+	it("fails the batch when a cell is missing and reports what was already applied", async () => {
+		const session = {
+			notebookId: NOTEBOOK_ID,
+			setCell: vi.fn(async (cellId: string) => cellId !== "cell-missing"),
+			deleteCell: vi.fn(async () => true),
+			close: vi.fn(async () => undefined),
+		};
+		const hooks = await createNteractKiloPlugin({
+			loadRuntimedNode: () => ({ openNotebook: vi.fn(async () => session) }),
+		})();
+
+		await expect(
+			hooks.tool.notebooks_edit_cells.execute(
+				{
+					notebook_id: NOTEBOOK_ID,
+					operations: [
+						{ action: "update", cell_id: "cell-1", source: "a = 1" },
+						{ action: "update", cell_id: "cell-missing", source: "b = 2" },
+						{ action: "delete", cell_id: "cell-3" },
+					],
+				},
+				toolContext(),
+			),
+		).rejects.toThrow(
+			'Operation 2 (update cell-missing) failed: cell not found. Applied before the failure: [{"action":"update","cell_id":"cell-1"}]',
+		);
+		expect(session.deleteCell).not.toHaveBeenCalled();
+	});
+
+	it("fails a move whose cell or anchor is missing instead of misplacing the cell", async () => {
+		const session = {
+			notebookId: NOTEBOOK_ID,
+			getCell: vi.fn(async (cellId: string) => (cellId === "cell-gone" ? null : { id: cellId })),
+			moveCell: vi.fn(async (cellId: string) => {
+				if (cellId === "cell-gone") throw new Error("cell not found: cell-gone");
+				return "a2";
+			}),
+			createCell: vi.fn(async () => "cell-new"),
+			close: vi.fn(async () => undefined),
+		};
+		const hooks = await createNteractKiloPlugin({
+			loadRuntimedNode: () => ({ openNotebook: vi.fn(async () => session) }),
+		})();
+		const moveTo = (cellId: string, afterCellId: string) =>
+			hooks.tool.notebooks_edit_cells.execute(
+				{
+					notebook_id: NOTEBOOK_ID,
+					operations: [{ action: "move", cell_id: cellId, after_cell_id: afterCellId }],
+				},
+				toolContext(),
+			);
+
+		await expect(moveTo("cell-2", "cell-gone")).rejects.toThrow(
+			"Operation 1 (move cell-2) failed: after_cell_id cell-gone was not found",
+		);
+		await expect(moveTo("cell-gone", "cell-1")).rejects.toThrow(
+			"Operation 1 (move cell-gone) failed: cell not found: cell-gone",
+		);
+		expect(session.moveCell).toHaveBeenCalledOnce();
+
+		await expect(
+			hooks.tool.notebooks_create_cell.execute(
+				{ notebook_id: NOTEBOOK_ID, source: "x = 1", after_cell_id: "cell-gone" },
+				toolContext(),
+			),
+		).rejects.toThrow("after_cell_id cell-gone was not found");
+		expect(session.createCell).not.toHaveBeenCalled();
+	});
+
+	it("reports a lost connection and reopens the notebook peer on the next call", async () => {
+		let emitStatus: (status: unknown) => void = () => undefined;
+		const subscription = { unsubscribe: vi.fn() };
+		const createSession = () => ({
+			notebookId: NOTEBOOK_ID,
+			setCell: vi.fn(async () => true),
+			sessionStatus$: {
+				subscribe: vi.fn((next: (status: unknown) => void) => {
+					emitStatus = next;
+					return subscription;
+				}),
+			},
+			close: vi.fn(async () => undefined),
+		});
+		const first = createSession();
+		const second = createSession();
+		const openNotebook = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+		const hooks = await createNteractKiloPlugin({
+			loadRuntimedNode: () => ({ openNotebook }),
+		})();
+		const edit = {
+			notebook_id: NOTEBOOK_ID,
+			operations: [{ action: "update" as const, cell_id: "cell-1", source: "a = 1" }],
+		};
+
+		emitStatus({ connection: "Connected", notebook_doc: "Interactive" });
+		await hooks.tool.notebooks_edit_cells.execute(edit, toolContext());
+		first.setCell.mockImplementationOnce(async () => {
+			emitStatus({ connection: "Disconnected", notebook_doc: "Interactive" });
+			return true;
+		});
+
+		await expect(hooks.tool.notebooks_edit_cells.execute(edit, toolContext())).rejects.toThrow(
+			/notebook connection was lost/,
+		);
+		expect(first.close).toHaveBeenCalledOnce();
+		expect(subscription.unsubscribe).toHaveBeenCalledOnce();
+
+		await hooks.tool.notebooks_edit_cells.execute(edit, toolContext());
+		expect(openNotebook).toHaveBeenCalledTimes(2);
+		expect(second.setCell).toHaveBeenCalledOnce();
 	});
 
 	it("executes selected existing cells in order and combines their results", async () => {

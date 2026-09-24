@@ -121,31 +121,76 @@ function parseSidecar(
 	}
 }
 
-async function readSidecar(configDirectory: string): Promise<SidecarReadResult> {
-	const ownershipPath = path.join(configDirectory, OWNERSHIP_SIDECAR_FILENAME);
+type SidecarFileRead =
+	| { readonly kind: "absent" }
+	| { readonly kind: "unusable" }
+	| { readonly kind: "parsed"; readonly result: SidecarReadResult };
+
+async function readSidecarFile(
+	filePath: string,
+	flatKey: "ownedEntryIds" | "managed",
+): Promise<SidecarFileRead> {
+	let raw: string;
 	try {
-		const current = parseSidecar(await readFile(ownershipPath, "utf8"), "ownedEntryIds");
-		if (current) return current;
-		return noOwnership();
+		raw = await readFile(filePath, "utf8");
 	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code !== "ENOENT") return noOwnership();
+		return (error as NodeJS.ErrnoException).code === "ENOENT"
+			? { kind: "absent" }
+			: { kind: "unusable" };
+	}
+	const result = parseSidecar(raw, flatKey);
+	return result ? { kind: "parsed", result } : { kind: "unusable" };
+}
+
+function legacyFlatKey(filename: string): "ownedEntryIds" | "managed" {
+	return filename.endsWith("-managed.json") ? "managed" : "ownedEntryIds";
+}
+
+/** Adds legacy-owned keys the current sidecar does not know; current owners win. */
+function mergeLegacyOwnership(current: Sidecar, legacy: Sidecar): Sidecar {
+	return {
+		version: SIDECAR_SCHEMA_VERSION,
+		ownedEntryKeys: Array.from(new Set([...current.ownedEntryKeys, ...legacy.ownedEntryKeys])),
+		owners: { ...legacy.owners, ...current.owners },
+	};
+}
+
+async function readSidecar(configDirectory: string): Promise<SidecarReadResult> {
+	const current = await readSidecarFile(
+		path.join(configDirectory, OWNERSHIP_SIDECAR_FILENAME),
+		"ownedEntryIds",
+	);
+	// A corrupt or unreadable sidecar means Desktop owns nothing. This is the
+	// conservative choice: never overwrite an entry whose ownership is unclear.
+	if (current.kind === "unusable") return noOwnership();
+
+	if (current.kind === "parsed") {
+		// A legacy sidecar beside the current one comes from an older build that
+		// ran after the rename (e.g. switching branches that share a profile).
+		// Its entries were still written by Desktop, so fold them in; ignoring
+		// them orphans those entries in kilo.jsonc forever.
+		let { sidecar, requiresMigration } = current.result;
+		for (const filename of LEGACY_OWNERSHIP_SIDECAR_FILENAMES) {
+			const legacy = await readSidecarFile(
+				path.join(configDirectory, filename),
+				legacyFlatKey(filename),
+			);
+			if (legacy.kind !== "parsed") continue;
+			sidecar = mergeLegacyOwnership(sidecar, legacy.result.sidecar);
+			requiresMigration = true;
+		}
+		return { sidecar, requiresMigration };
 	}
 
 	for (const filename of LEGACY_OWNERSHIP_SIDECAR_FILENAMES) {
-		try {
-			const flatKey = filename.endsWith("-managed.json") ? "managed" : "ownedEntryIds";
-			const legacy = parseSidecar(
-				await readFile(path.join(configDirectory, filename), "utf8"),
-				flatKey,
-			);
-			if (legacy) return { sidecar: legacy.sidecar, requiresMigration: true };
-			return noOwnership();
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code !== "ENOENT") return noOwnership();
-		}
+		const legacy = await readSidecarFile(
+			path.join(configDirectory, filename),
+			legacyFlatKey(filename),
+		);
+		if (legacy.kind === "absent") continue;
+		if (legacy.kind === "unusable") return noOwnership();
+		return { sidecar: legacy.result.sidecar, requiresMigration: true };
 	}
-	// A missing or corrupt sidecar means Desktop owns nothing. This is the
-	// conservative choice: never overwrite an entry whose ownership is unclear.
 	return noOwnership();
 }
 

@@ -230,6 +230,55 @@ describe("KiloConfigManager", () => {
 		).rejects.toThrow(/ENOENT/);
 	});
 
+	it("folds a legacy sidecar left beside the current one so its entries stay removable", async () => {
+		await writeFile(
+			path.join(configDirectory, KILO_CONFIG_FILENAME),
+			`${JSON.stringify({
+				mcp: {
+					desktop: { type: "local" },
+					notebooks: { type: "local" },
+					"nteract-mcp": { type: "local" },
+				},
+			})}\n`,
+		);
+		await writeFile(
+			path.join(configDirectory, OWNERSHIP_SIDECAR_FILENAME),
+			`${JSON.stringify({
+				version: 4,
+				ownedEntryKeys: ["mcp:desktop"],
+				owners: { "mcp:desktop": "kilo-server" },
+			})}\n`,
+		);
+		await writeFile(
+			path.join(configDirectory, LEGACY_OWNERSHIP_SIDECAR_FILENAME),
+			`${JSON.stringify({
+				version: 4,
+				ownedEntryKeys: ["mcp:desktop", "mcp:notebooks", "mcp:nteract-mcp"],
+				owners: {
+					"mcp:desktop": "stale-owner",
+					"mcp:notebooks": "notebook",
+					"mcp:nteract-mcp": "notebook",
+				},
+			})}\n`,
+		);
+		const config = new KiloConfigManager(configDirectory);
+
+		await expect(config.listOwnedMcpEntryIds("notebook")).resolves.toEqual([
+			"notebooks",
+			"nteract-mcp",
+		]);
+		await expect(config.listOwnedMcpEntryIds("kilo-server")).resolves.toEqual(["desktop"]);
+		await expect(config.removeMcpEntry("notebook", "notebooks")).resolves.toEqual({
+			kind: "removed",
+			reason: "explicit",
+		});
+
+		expect(Object.keys((await readConfig()).mcp ?? {})).toEqual(["desktop", "nteract-mcp"]);
+		await expect(
+			readFile(path.join(configDirectory, LEGACY_OWNERSHIP_SIDECAR_FILENAME), "utf8"),
+		).rejects.toThrow(/ENOENT/);
+	});
+
 	it("removes the reserved legacy local provider without ownership metadata", async () => {
 		await writeFile(
 			path.join(configDirectory, KILO_CONFIG_FILENAME),

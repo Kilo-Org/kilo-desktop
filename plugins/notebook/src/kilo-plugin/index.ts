@@ -73,15 +73,36 @@ function requireRuntimedNode(value: unknown): RuntimedNode {
 	return value as RuntimedNode;
 }
 
+type StatusSubscription = { unsubscribe(): void };
+
+// The native SyncStatus payload carries `connection`, but @runtimed/node's
+// SessionStatus type omits it, so read it structurally.
+function isDisconnectedStatus(status: unknown): boolean {
+	return (
+		typeof status === "object" &&
+		status !== null &&
+		(status as { connection?: unknown }).connection === "Disconnected"
+	);
+}
+
 /**
  * Owns native notebook peers for one Kilo workspace plugin instance. Concurrent
  * opens coalesce, and failed opens leave no stale cache entry. Kilo session
  * ownership is tracked separately so session deletion can release only peers
  * that are no longer referenced by another chat.
+ *
+ * Native mutations (setCell, createCell, ...) only write the peer's local
+ * replica and return before the daemon sees them. If the peer's sync task dies,
+ * it never reconnects, yet mutations keep "succeeding" locally. The registry
+ * therefore watches each peer's session status and evicts disconnected peers so
+ * the next tool call reopens a live one; `assertConnected` lets mutating tools
+ * report a lost connection instead of claiming their edits were applied.
  */
 class NotebookSessionRegistry {
 	readonly #runtimed: RuntimedNode;
 	readonly #sessions = new Map<string, Promise<Session>>();
+	readonly #statusSubscriptions = new Map<string, StatusSubscription>();
+	readonly #disconnected = new WeakSet<Session>();
 	readonly #notebooksByKiloSession = new Map<string, Set<string>>();
 
 	constructor(runtimed: RuntimedNode) {
@@ -101,12 +122,26 @@ class NotebookSessionRegistry {
 				description: "Kilo Desktop notebook tools",
 				peerLabel: NOTEBOOK_PEER_LABEL,
 			})
-			.catch((error: unknown) => {
-				this.#sessions.delete(notebookId);
-				throw error;
-			});
+			.then(
+				(session) => {
+					this.#watchStatus(notebookId, session, opening);
+					return session;
+				},
+				(error: unknown) => {
+					this.#sessions.delete(notebookId);
+					throw error;
+				},
+			);
 		this.#sessions.set(notebookId, opening);
 		return opening;
+	}
+
+	assertConnected(session: Session): void {
+		if (this.#disconnected.has(session)) {
+			throw new Error(
+				"The notebook connection was lost, so these changes may not have reached the notebook. Re-read the notebook and retry.",
+			);
+		}
 	}
 
 	async closeForKiloSession(kiloSessionId: string): Promise<void> {
@@ -117,12 +152,25 @@ class NotebookSessionRegistry {
 		await Promise.all(
 			[...notebookIds]
 				.filter((notebookId) => !retained.has(notebookId))
-				.map(async (notebookId) => {
-					const session = this.#sessions.get(notebookId);
-					this.#sessions.delete(notebookId);
-					await session?.then((value) => value.close()).catch(() => undefined);
-				}),
+				.map((notebookId) => this.#release(notebookId)),
 		);
+	}
+
+	#watchStatus(notebookId: string, session: Session, opening: Promise<Session>): void {
+		const subscription = session.sessionStatus$?.subscribe((status) => {
+			if (!isDisconnectedStatus(status)) return;
+			this.#disconnected.add(session);
+			if (this.#sessions.get(notebookId) === opening) void this.#release(notebookId);
+		});
+		if (subscription) this.#statusSubscriptions.set(notebookId, subscription);
+	}
+
+	async #release(notebookId: string): Promise<void> {
+		const session = this.#sessions.get(notebookId);
+		this.#sessions.delete(notebookId);
+		this.#statusSubscriptions.get(notebookId)?.unsubscribe();
+		this.#statusSubscriptions.delete(notebookId);
+		await session?.then((value) => value.close()).catch(() => undefined);
 	}
 }
 
@@ -239,6 +287,46 @@ async function projectCell(
 	};
 }
 
+type EditOperation =
+	| {
+			action: "update";
+			cell_id: string;
+			source?: string;
+			cell_type?: "code" | "markdown" | "raw";
+	  }
+	| { action: "delete"; cell_id: string }
+	| { action: "move"; cell_id: string; after_cell_id?: string | null };
+
+// The native layer silently appends when an anchor cell is unknown, so a stale
+// after_cell_id would otherwise "succeed" at the wrong position.
+async function assertAnchorExists(session: Session, afterCellId: string | null | undefined) {
+	if (typeof afterCellId === "string" && !(await session.getCell(afterCellId))) {
+		throw new Error(`after_cell_id ${afterCellId} was not found`);
+	}
+}
+
+/** Applies one edit to the local replica; resolves to null when the cell does not exist. */
+async function applyEditOperation(
+	session: Session,
+	operation: EditOperation,
+): Promise<Record<string, unknown> | null> {
+	switch (operation.action) {
+		case "update": {
+			const updated = await session.setCell(operation.cell_id, {
+				...(operation.source !== undefined ? { source: operation.source } : {}),
+				...(operation.cell_type ? { cellType: operation.cell_type } : {}),
+			});
+			return updated ? {} : null;
+		}
+		case "move":
+			// A missing cell_id makes the native moveCell throw; only the anchor needs checking.
+			await assertAnchorExists(session, operation.after_cell_id);
+			return { position: await session.moveCell(operation.cell_id, operation.after_cell_id) };
+		case "delete":
+			return (await session.deleteCell(operation.cell_id)) ? {} : null;
+	}
+}
+
 export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 	return async () => {
 		const runtimed = requireRuntimedNode(
@@ -345,11 +433,13 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 				if (context.abort.aborted) throw new Error("Notebook cell creation was cancelled.");
 				const session = await sessions.open(args.notebook_id, context.sessionID);
 				const cellType = args.cell_type ?? "code";
+				await assertAnchorExists(session, args.after_cell_id);
 				const cellId = await session.createCell(args.source ?? "", {
 					cellType,
 					...(args.after_cell_id === null ? { index: 0 } : {}),
 					...(typeof args.after_cell_id === "string" ? { afterCellId: args.after_cell_id } : {}),
 				});
+				sessions.assertConnected(session);
 				if (args.and_run && cellType === "code") {
 					const result = await session.executeCell(cellId, {
 						timeoutMs: Math.round((args.timeout_secs ?? 120) * 1000),
@@ -373,15 +463,6 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 			},
 		};
 
-		type EditOperation =
-			| {
-					action: "update";
-					cell_id: string;
-					source?: string;
-					cell_type?: "code" | "markdown" | "raw";
-			  }
-			| { action: "delete"; cell_id: string }
-			| { action: "move"; cell_id: string; after_cell_id?: string | null };
 		const editCells: ToolDefinition<{
 			notebook_id: string;
 			operations: EditOperation[];
@@ -390,17 +471,19 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 				"Apply an ordered batch of updates, moves, and deletes to existing notebook cells.",
 			args: {
 				notebook_id: NOTEBOOK_ID,
+				// Strict objects so a misspelled key (e.g. "sourc") fails validation
+				// instead of being stripped into a silent no-op update.
 				operations: z
 					.array(
 						z.discriminatedUnion("action", [
-							z.object({
+							z.strictObject({
 								action: z.literal("update"),
 								cell_id: z.string().min(1),
 								source: z.string().optional(),
 								cell_type: z.enum(["code", "markdown", "raw"]).optional(),
 							}),
-							z.object({ action: z.literal("delete"), cell_id: z.string().min(1) }),
-							z.object({
+							z.strictObject({ action: z.literal("delete"), cell_id: z.string().min(1) }),
+							z.strictObject({
 								action: z.literal("move"),
 								cell_id: z.string().min(1),
 								after_cell_id: z.string().min(1).nullable().optional(),
@@ -411,31 +494,38 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 					.max(100),
 			},
 			async execute(args, context) {
+				args.operations.forEach((operation, index) => {
+					if (
+						operation.action === "update" &&
+						operation.source === undefined &&
+						operation.cell_type === undefined
+					) {
+						throw new Error(
+							`Operation ${index + 1} (update ${operation.cell_id}) must set source or cell_type. No operations were applied.`,
+						);
+					}
+				});
+
 				const session = await sessions.open(args.notebook_id, context.sessionID);
 				const results: Array<Record<string, unknown>> = [];
-				for (const operation of args.operations) {
-					if (context.abort.aborted) throw new Error("Notebook edit was cancelled.");
-					switch (operation.action) {
-						case "update": {
-							const updated = await session.setCell(operation.cell_id, {
-								...(operation.source !== undefined ? { source: operation.source } : {}),
-								...(operation.cell_type ? { cellType: operation.cell_type } : {}),
-							});
-							results.push({ action: operation.action, cell_id: operation.cell_id, updated });
-							break;
-						}
-						case "move": {
-							const position = await session.moveCell(operation.cell_id, operation.after_cell_id);
-							results.push({ action: operation.action, cell_id: operation.cell_id, position });
-							break;
-						}
-						case "delete": {
-							const deleted = await session.deleteCell(operation.cell_id);
-							results.push({ action: operation.action, cell_id: operation.cell_id, deleted });
-							break;
-						}
+				const failAt = (index: number, operation: EditOperation, reason: string): never => {
+					throw new Error(
+						`Operation ${index + 1} (${operation.action} ${operation.cell_id}) failed: ${reason}. ` +
+							`Applied before the failure: ${JSON.stringify(results)}. Re-read the notebook before retrying.`,
+					);
+				};
+				for (const [index, operation] of args.operations.entries()) {
+					if (context.abort.aborted) failAt(index, operation, "the edit was cancelled");
+					let result: Record<string, unknown> | null;
+					try {
+						result = await applyEditOperation(session, operation);
+					} catch (error) {
+						return failAt(index, operation, error instanceof Error ? error.message : String(error));
 					}
+					if (!result) failAt(index, operation, "cell not found");
+					results.push({ action: operation.action, cell_id: operation.cell_id, ...result });
 				}
+				sessions.assertConnected(session);
 				return {
 					title: "Notebook cells updated",
 					output: JSON.stringify({ notebook_id: args.notebook_id, results }),

@@ -65,6 +65,16 @@ describe("BrowserView", () => {
 		});
 	});
 
+	it("paints an opaque white canvas behind the guest page so the app theme cannot show through", async () => {
+		renderView({ config: async () => ({ partition: "persist:test" }) }, "browser-canvas");
+
+		await vi.waitFor(() => {
+			const host = document.querySelector<HTMLElement>("[data-browser-webview-host]");
+			if (!host) throw new Error("Expected browser webview host");
+			expect(getComputedStyle(host).backgroundColor).toBe("rgb(255, 255, 255)");
+		});
+	});
+
 	it("retries attachment after a transient failure", async () => {
 		const attach = vi.fn().mockRejectedValueOnce(new Error("Not ready")).mockResolvedValueOnce({
 			instanceId: "browser-1",

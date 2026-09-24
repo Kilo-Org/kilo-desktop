@@ -1,6 +1,10 @@
 import type { ElectronWebview } from "./browser-types.js";
 
 const RELEASE_DELAY_MS = 1_000;
+// <webview> guests have a transparent canvas, but pages assume the opaque white
+// canvas a top-level browser tab provides; without it the app's themed pane
+// surface shows through wherever a page leaves its background unset.
+const GUEST_CANVAS_COLOR = "#fff";
 const WEBVIEW_PREFERENCES =
 	"sandbox=true,contextIsolation=true,nodeIntegration=false,allowRunningInsecureContent=false";
 
@@ -18,7 +22,12 @@ const guests = new Map<string, GuestEntry>();
 function createGuest(instanceId: string, partition: string, src: string): GuestEntry {
 	const host = document.createElement("div");
 	host.dataset.browserWebviewHost = instanceId;
-	Object.assign(host.style, { position: "fixed", overflow: "hidden", zIndex: "20" });
+	Object.assign(host.style, {
+		position: "fixed",
+		overflow: "hidden",
+		zIndex: "20",
+		backgroundColor: GUEST_CANVAS_COLOR,
+	});
 	const webview = document.createElement("webview") as ElectronWebview;
 	webview.setAttribute("src", src);
 	webview.setAttribute("partition", partition);

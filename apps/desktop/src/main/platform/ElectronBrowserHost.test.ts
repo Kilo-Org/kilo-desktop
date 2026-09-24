@@ -46,6 +46,7 @@ const { browserSession, guest, sessionFromPartition, webContentsFromId } = vi.ho
 });
 
 vi.mock("electron", () => ({
+	app: { getName: () => "Kilo Test App", getVersion: () => "0.1.1-beta.2" },
 	session: { fromPartition: sessionFromPartition },
 	webContents: { fromId: webContentsFromId },
 }));
@@ -75,6 +76,18 @@ describe("ElectronBrowserHost", () => {
 		expect(callback).toHaveBeenCalledWith(false);
 		const check = browserSession.setPermissionCheckHandler.mock.calls[0]?.[0];
 		expect(check?.(guest, "clipboard-read")).toBe(false);
+	});
+
+	it("presents a plain Chrome user agent to websites", () => {
+		browserSession.getUserAgent.mockReturnValueOnce(
+			"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) KiloTestApp/0.1.1-beta.2 Chrome/152.0.7977.78 Electron/44.4.1 Safari/537.36",
+		);
+		const host = new ElectronBrowserHost(() => true);
+		host.initialize();
+
+		expect(browserSession.setUserAgent).toHaveBeenCalledWith(
+			"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.7977.78 Safari/537.36",
+		);
 	});
 
 	it("gives leased web pages the native context menu until the lease is disposed", () => {

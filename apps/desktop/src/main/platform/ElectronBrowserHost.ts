@@ -1,4 +1,4 @@
-import { session, webContents, type Session, type WebContents } from "electron";
+import { app, session, webContents, type Session, type WebContents } from "electron";
 
 import type {
 	HostBrowserController,
@@ -27,8 +27,15 @@ function nextZoomLevel(current: number, direction: "in" | "out"): number {
 	);
 }
 
+// Electron inserts `<app name without whitespace>/<app version>` and
+// `Electron/<version>` tokens; sites that sniff them may serve degraded variants.
 function cleanUserAgent(userAgent: string): string {
-	return userAgent.replace(/Electron\/[\d.]+\s*/g, "").replace(/kilo-desktop\/[\d.]+\s*/gi, "");
+	const appToken = `${app.getName().replace(/\s+/g, "")}/${app.getVersion()}`;
+	return userAgent
+		.replace(/Electron\/\S+\s*/g, "")
+		.split(" ")
+		.filter((token) => token !== appToken)
+		.join(" ");
 }
 
 /**

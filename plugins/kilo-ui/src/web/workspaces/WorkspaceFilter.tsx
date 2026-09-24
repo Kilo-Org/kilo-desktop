@@ -1,4 +1,4 @@
-import { ChevronsUpDownIcon, FolderIcon, LayoutGridIcon } from "lucide-react";
+import { ChevronDownIcon, FolderIcon, LayoutGridIcon } from "lucide-react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
 
@@ -50,7 +50,7 @@ function WorkspaceFilterTrigger() {
 		>
 			<Icon data-icon="inline-start" className="shrink-0" {...(glyph ? { color: glyph } : {})} />
 			<span className="min-w-0 flex-1 truncate text-left">{triggerLabel}</span>
-			<ChevronsUpDownIcon
+			<ChevronDownIcon
 				data-icon="inline-end"
 				className="text-muted-foreground group-hover/button:text-foreground group-aria-expanded/button:text-foreground -mr-px shrink-0"
 			/>

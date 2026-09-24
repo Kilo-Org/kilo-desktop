@@ -185,4 +185,26 @@ describe("AppProviders (app-level)", () => {
 		await expect.element(screen.getByTestId("chat-right-panel-toggle")).not.toBeInTheDocument();
 		await expect.element(screen.getByTestId("chat-pane-arrangement")).not.toBeInTheDocument();
 	});
+
+	it("reopens settings on the last visited section", async () => {
+		const localApi = createBrowserLocalApi();
+		const system = createAppFeatureSystem(localApi, WEB_FEATURES);
+		registerPluginZoneContributions(system, PLUGIN_ZONE_CONTRIBUTIONS, {
+			desktopAvailable: false,
+		});
+		const { baseElement } = render(<AppProviders localApi={localApi} system={system} />);
+		const screen = page.elementLocator(baseElement);
+
+		await screen.getByTestId("nav-settings").click();
+		await expect.element(screen.getByTestId("account-page")).toBeVisible();
+		await screen.getByTestId("settings-section-appearance").click();
+		await expect.poll(() => router.state.location.pathname).toBe("/settings/appearance");
+
+		await screen.getByTestId("settings-back").click();
+		await expect.element(screen.getByTestId("settings-back")).not.toBeInTheDocument();
+
+		await screen.getByTestId("nav-settings").click();
+		await expect.poll(() => router.state.location.pathname).toBe("/settings/appearance");
+		await expect.element(screen.getByTestId("account-page")).not.toBeInTheDocument();
+	});
 });

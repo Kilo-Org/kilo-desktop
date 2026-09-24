@@ -264,7 +264,9 @@ export class KiloServerManager {
 				}),
 			onStatusChange: options.onStatusChange ?? (() => undefined),
 			logger: options.logger,
-			startupTimeoutMs: options.startupTimeoutMs ?? 30_000,
+			// The CLI's first listening line has taken 20s+ when it cold-starts
+			// alongside the app's other sidecars on a contended machine.
+			startupTimeoutMs: options.startupTimeoutMs ?? 60_000,
 			healthTimeoutMs: options.healthTimeoutMs ?? 10_000,
 			healthRequestTimeoutMs: options.healthRequestTimeoutMs ?? 3_000,
 			healthRetryDelayMs: options.healthRetryDelayMs ?? 250,

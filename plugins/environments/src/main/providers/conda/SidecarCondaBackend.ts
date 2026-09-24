@@ -94,8 +94,14 @@ import { parseTransactionActions } from "./transaction-actions.js";
 
 const MAX_RESTART_ATTEMPTS = 3;
 const BASE_RESTART_DELAY_MS = 1000;
-/** Ceiling on the startup health-check so a wedged spawn never hangs callers. */
-const HEALTH_CHECK_TIMEOUT_MS = 10_000;
+/**
+ * Ceiling on the startup health-check so a wedged spawn never hangs callers.
+ * A cold bridge (bundled Python + conda imports, then `conda.info`) needed
+ * 8-18s on contended CI runners; a tighter ceiling killed healthy bridges
+ * mid-startup and burned CPU on respawns.
+ */
+const HEALTH_CHECK_TIMEOUT_MS = 30_000;
+const FORCE_KILL_DELAY_MS = 5_000;
 
 /** Shape of the `data` field on JSON-RPC errors from the bridge. */
 interface BridgeErrorData {
@@ -712,9 +718,13 @@ export class SidecarCondaBackend implements CondaBackend {
 
 		child.on("exit", (code, signal) => {
 			this.#logger.info(`[anaconda-bridge-sidecar] Process exited: code=${code}, signal=${signal}`);
-			this.#connection?.dispose();
-			this.#connection = null;
-			this.#process = null;
+			// A torn-down bridge can exit after its replacement has spawned;
+			// only the current child owns the shared connection state.
+			if (this.#process === child) {
+				this.#connection?.dispose();
+				this.#connection = null;
+				this.#process = null;
+			}
 
 			// Unblock an in-flight startup that was waiting on the health check.
 			onStartupFailure(new Error(`process exited before ready (code=${code}, signal=${signal})`));
@@ -804,22 +814,27 @@ export class SidecarCondaBackend implements CondaBackend {
 			this.#connection.dispose();
 			this.#connection = null;
 		}
-		if (this.#process && !this.#process.killed) {
-			this.#process.kill("SIGTERM");
-			// Force kill after 5s if graceful shutdown doesn't work
+		const child = this.#process;
+		this.#process = null;
+		if (child && hasNotExited(child)) {
+			child.kill("SIGTERM");
+			// Bound to this child: a restart may have replaced `#process` by
+			// the time the timer fires, and that replacement must survive.
 			const forceKillTimer = setTimeout(() => {
-				if (this.#process && !this.#process.killed) {
-					this.#process.kill("SIGKILL");
-				}
-			}, 5000);
+				if (hasNotExited(child)) child.kill("SIGKILL");
+			}, FORCE_KILL_DELAY_MS);
 			forceKillTimer.unref();
 		}
-		this.#process = null;
 	}
 	/* v8 ignore stop */
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** `ChildProcess.killed` only means a signal was sent, not that the child exited. */
+function hasNotExited(child: ChildProcess): boolean {
+	return child.exitCode === null && child.signalCode === null;
+}
 
 function featureError(code: EnvironmentsErrorCode, detail?: string): FeatureError {
 	return new FeatureError(

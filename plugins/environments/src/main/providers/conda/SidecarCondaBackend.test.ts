@@ -57,12 +57,16 @@ function createMockProcess() {
 		stdout: Readable;
 		stderr: Readable;
 		killed: boolean;
+		exitCode: number | null;
+		signalCode: NodeJS.Signals | null;
 		kill: ReturnType<typeof vi.fn>;
 	};
 	proc.stdin = new Writable({ write: (_chunk, _enc, cb) => cb() });
 	proc.stdout = new Readable({ read() {} });
 	proc.stderr = new Readable({ read() {} });
 	proc.killed = false;
+	proc.exitCode = null;
+	proc.signalCode = null;
 	proc.kill = vi.fn(() => {
 		proc.killed = true;
 	});
@@ -1484,6 +1488,100 @@ describe("SidecarCondaBackend", () => {
 			await Promise.all([warmUp, list]);
 
 			expect(spawn).toHaveBeenCalledTimes(1);
+		});
+	});
+
+	describe("shutdown of a bridge that failed its health check", () => {
+		/** Mirrors Node: `killed` flips when a signal is sent, not when the child exits. */
+		function createBridgeProcess(exitsOn: readonly NodeJS.Signals[]) {
+			const proc = createMockProcess();
+			proc.kill = vi.fn((signal: NodeJS.Signals) => {
+				proc.killed = true;
+				if (!exitsOn.includes(signal)) return;
+				queueMicrotask(() => {
+					proc.signalCode = signal;
+					proc.emit("exit", null, signal);
+				});
+			});
+			return proc;
+		}
+
+		function createBridgeConnection(respond: (method: string) => Promise<unknown>) {
+			const connection = createMockConnection();
+			connection.sendRequest.mockImplementation(respond);
+			return connection;
+		}
+
+		const failingHealthCheck = () => Promise.reject(new Error("bridge not ready"));
+		const pendingHealthCheck = () => new Promise(() => {});
+		const healthyBridge = (method: string) =>
+			Promise.resolve(method === "conda_tools.describe_environments" ? { environments: [] } : {});
+
+		beforeEach(() => {
+			vi.useFakeTimers();
+		});
+
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it("does not force-kill the replacement bridge spawned while the failed one shuts down", async () => {
+			const failed = createBridgeProcess(["SIGTERM"]);
+			const replacement = createBridgeProcess(["SIGTERM"]);
+			vi.mocked(spawn)
+				.mockReturnValueOnce(failed as never)
+				.mockReturnValueOnce(replacement as never);
+			vi.mocked(createMessageConnection)
+				.mockReturnValueOnce(createBridgeConnection(failingHealthCheck) as never)
+				.mockReturnValueOnce(createBridgeConnection(pendingHealthCheck) as never);
+
+			const backend = createBackend();
+			await expect(backend.warmUp()).rejects.toThrow("PROVIDER_NOT_READY");
+			await vi.advanceTimersByTimeAsync(1_000);
+			expect(spawn).toHaveBeenCalledTimes(2);
+
+			await vi.advanceTimersByTimeAsync(5_000);
+
+			expect(replacement.kill).not.toHaveBeenCalled();
+			backend.dispose();
+		});
+
+		it("force-kills a bridge that ignores SIGTERM", async () => {
+			const stubborn = createBridgeProcess(["SIGKILL"]);
+			vi.mocked(spawn).mockReturnValueOnce(stubborn as never);
+			vi.mocked(createMessageConnection).mockReturnValueOnce(
+				createBridgeConnection(failingHealthCheck) as never,
+			);
+
+			const backend = createBackend();
+			await expect(backend.warmUp()).rejects.toThrow("PROVIDER_NOT_READY");
+			await vi.advanceTimersByTimeAsync(5_000);
+
+			expect(stubborn.kill).toHaveBeenCalledWith("SIGKILL");
+			backend.dispose();
+		});
+
+		it("keeps serving from the replacement bridge when the failed one exits late", async () => {
+			const stubborn = createBridgeProcess(["SIGKILL"]);
+			const replacement = createBridgeProcess(["SIGTERM"]);
+			const replacementConnection = createBridgeConnection(healthyBridge);
+			vi.mocked(spawn)
+				.mockReturnValueOnce(stubborn as never)
+				.mockReturnValueOnce(replacement as never);
+			vi.mocked(createMessageConnection)
+				.mockReturnValueOnce(createBridgeConnection(failingHealthCheck) as never)
+				.mockReturnValueOnce(replacementConnection as never);
+
+			const backend = createBackend();
+			await expect(backend.warmUp()).rejects.toThrow("PROVIDER_NOT_READY");
+			await expect(backend.list()).resolves.toEqual([]);
+			await vi.advanceTimersByTimeAsync(5_000);
+			expect(stubborn.kill).toHaveBeenCalledWith("SIGKILL");
+
+			await expect(backend.list()).resolves.toEqual([]);
+			expect(spawn).toHaveBeenCalledTimes(2);
+			expect(replacementConnection.dispose).not.toHaveBeenCalled();
+			backend.dispose();
 		});
 	});
 

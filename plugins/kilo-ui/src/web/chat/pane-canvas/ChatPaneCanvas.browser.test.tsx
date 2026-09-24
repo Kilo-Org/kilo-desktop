@@ -137,6 +137,57 @@ describe("ChatPaneCanvas", () => {
 		expect(renderPane).not.toHaveBeenCalled();
 	});
 
+	it("shows the popped-out empty state when its tab is selected beside a docked tab", async () => {
+		const focus = vi.fn();
+		const initial = movePaneToGroup(
+			createLayout(
+				[
+					{ id: "agent", kind: "agent", title: "Chat" },
+					{ id: "files", kind: "document", title: "Files" },
+				],
+				"agent",
+			),
+			"files",
+			"agent",
+			1,
+		);
+
+		function SelectedPoppedOutPane() {
+			const [layout, setLayout] = useState(initial);
+			return (
+				<ChatPaneCanvas
+					arrangement="tiles"
+					definitions={[]}
+					layout={layout}
+					onLaunchChat={vi.fn()}
+					onLaunch={vi.fn()}
+					onLayoutChange={setLayout}
+					onSelectPane={vi.fn()}
+					poppedOutPaneIds={new Set(["files"])}
+					onFocusPoppedOutPane={focus}
+					onDockPoppedOutPane={vi.fn()}
+					renderPane={(paneId) => <div>{paneId} content</div>}
+				/>
+			);
+		}
+
+		const { baseElement } = render(
+			<div style={{ display: "flex", width: 900, height: 400 }}>
+				<SelectedPoppedOutPane />
+			</div>,
+		);
+		const screen = page.elementLocator(baseElement);
+
+		await screen.getByTestId("chat-pane-tab-files").click();
+
+		await expect
+			.element(screen.getByTestId("chat-pane-popped-out-files"))
+			.toHaveAttribute("data-slot", "empty");
+		await expect.element(screen.getByText("This view is open in a separate window.")).toBeVisible();
+		expect(baseElement.querySelector("[data-qa-id='chat-pane-content-files']")).toBeNull();
+		expect(focus).not.toHaveBeenCalled();
+	});
+
 	it("renders a local tab strip per group and keeps inactive grouped panes mounted", async () => {
 		const initial = createLayout(
 			[

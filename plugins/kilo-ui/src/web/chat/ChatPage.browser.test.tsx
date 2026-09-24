@@ -1622,7 +1622,7 @@ describe("ChatPage", () => {
 			.toHaveAttribute("aria-selected", "true");
 	});
 
-	it("pops a pane into a window while retaining a focusable tab", async () => {
+	it("pops a pane into a window while retaining its in-canvas empty state", async () => {
 		const openPaneWindow = vi.fn(async () => ({ opened: true }));
 		const focusPaneWindow = vi.fn(async () => ({ focused: true }));
 		const dockPaneWindow = vi.fn(async () => ({ docked: true }));
@@ -1651,6 +1651,12 @@ describe("ChatPage", () => {
 		expect(baseElement.querySelector("[data-qa-id='test-canvas-panel']")).toBeNull();
 
 		await screen.getByTestId(`chat-pane-tab-${tab.instanceId}`).click();
+		await expect
+			.element(screen.getByTestId(`chat-pane-popped-out-${tab.instanceId}`))
+			.toBeVisible();
+		expect(focusPaneWindow).not.toHaveBeenCalled();
+
+		await screen.getByRole("button", { name: "Bring to front" }).click();
 		expect(focusPaneWindow).toHaveBeenCalledWith({
 			pluginId: "kilo-ui",
 			sessionId: "draft",

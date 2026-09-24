@@ -45,7 +45,6 @@ export const PaneTabStrip: FC<{
 	onSelect: (paneId: string) => void;
 	onActivateGroup?: () => void;
 	onPopOut?: (paneId: string) => void;
-	onFocusPoppedOut?: (paneId: string) => void;
 	onDockPoppedOut?: (paneId: string) => void;
 	expanded?: boolean;
 	onExpand?: (paneId: string) => void;
@@ -68,7 +67,6 @@ export const PaneTabStrip: FC<{
 	onSelect,
 	onActivateGroup,
 	onPopOut,
-	onFocusPoppedOut,
 	onDockPoppedOut,
 	expanded = false,
 	onExpand,
@@ -145,10 +143,6 @@ export const PaneTabStrip: FC<{
 										suppressClickRef.current.sourceId === pane.id
 									) {
 										suppressClickRef.current = null;
-										return;
-									}
-									if (poppedOut && onFocusPoppedOut) {
-										onFocusPoppedOut(pane.id);
 										return;
 									}
 									onSelect(pane.id);

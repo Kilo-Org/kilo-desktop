@@ -32,6 +32,12 @@ import {
 	type ProjectedGroup,
 } from "@kilo-desktop/pane-layout";
 import { Button } from "@kilo-desktop/ui/components/button";
+import {
+	Empty,
+	EmptyContent,
+	EmptyDescription,
+	EmptyHeader,
+} from "@kilo-desktop/ui/components/empty";
 import { ResizableHandle } from "@kilo-desktop/ui/components/resizable";
 import { Tabs, TabsContent } from "@kilo-desktop/ui/components/tabs";
 import { cn } from "@kilo-desktop/ui/lib/utils";
@@ -90,12 +96,11 @@ const PoppedOutPanePlaceholder: FC<{
 	onFocus?: (paneId: string) => void;
 	onDock?: (paneId: string) => void;
 }> = ({ paneId, onFocus, onDock }) => (
-	<div
-		className="text-muted-foreground flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-6 text-center"
-		data-qa-id={`chat-pane-popped-out-${paneId}`}
-	>
-		<p className="text-sm">This view is open in a separate window.</p>
-		<div className="flex flex-wrap items-center justify-center gap-2">
+	<Empty data-qa-id={`chat-pane-popped-out-${paneId}`}>
+		<EmptyHeader>
+			<EmptyDescription>This view is open in a separate window.</EmptyDescription>
+		</EmptyHeader>
+		<EmptyContent className="flex-row flex-wrap justify-center">
 			{onFocus ? (
 				<Button type="button" variant="outline" size="sm" onClick={() => onFocus(paneId)}>
 					<ExternalLinkIcon />
@@ -108,8 +113,8 @@ const PoppedOutPanePlaceholder: FC<{
 					Dock
 				</Button>
 			) : null}
-		</div>
-	</div>
+		</EmptyContent>
+	</Empty>
 );
 
 function animateHorizontalScroll(
@@ -208,7 +213,9 @@ function withoutPoppedOutPanes(
 ): PaneLayout {
 	if (!poppedOutPaneIds?.size) return layout;
 	const groups = layout.groups.flatMap((group) => {
-		const tabs = group.tabs.filter((pane) => !poppedOutPaneIds.has(pane.id));
+		const tabs = group.tabs.filter(
+			(pane) => !poppedOutPaneIds.has(pane.id) || pane.id === layout.activePaneId,
+		);
 		if (tabs.length === 0) {
 			const pane =
 				group.tabs.find((candidate) => candidate.id === group.activePaneId) ?? group.tabs[0];
@@ -224,11 +231,11 @@ function withoutPoppedOutPanes(
 			},
 		];
 	});
-	const activePaneId = poppedOutPaneIds.has(layout.activePaneId)
-		? (groups.flatMap((group) => group.tabs).find((pane) => !poppedOutPaneIds.has(pane.id))?.id ??
-			groups[0]?.activePaneId ??
-			"")
-		: layout.activePaneId;
+	const activePaneId = groups.some((group) =>
+		group.tabs.some((pane) => pane.id === layout.activePaneId),
+	)
+		? layout.activePaneId
+		: (groups[0]?.activePaneId ?? "");
 	return { ...layout, groups, activePaneId };
 }
 
@@ -476,7 +483,6 @@ const PaneCanvasColumn: FC<{
 									: {})}
 								{...(poppedOutPaneIds ? { poppedOutPaneIds } : {})}
 								{...(onPopOutPane ? { onPopOut: onPopOutPane } : {})}
-								{...(onFocusPoppedOutPane ? { onFocusPoppedOut: onFocusPoppedOutPane } : {})}
 								{...(onDockPoppedOutPane ? { onDockPoppedOut: onDockPoppedOutPane } : {})}
 								titleHint={(paneId) => {
 									const fromCaller = paneTitleHint?.(paneId);

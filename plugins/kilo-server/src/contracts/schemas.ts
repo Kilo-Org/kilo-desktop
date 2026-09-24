@@ -39,6 +39,10 @@ export type KiloGetConnectionInput = z.infer<typeof kiloGetConnectionInputSchema
 
 export type KiloMcpEntry = Readonly<Record<string, unknown>>;
 export type KiloProviderEntry = Readonly<Record<string, unknown>>;
+export type KiloOwnedMcpEntry = {
+	readonly id: string;
+	readonly sourceId: string | undefined;
+};
 
 export interface KiloConfigurationState {
 	readonly mcpEntries: Readonly<Record<string, KiloMcpEntry>>;
@@ -71,6 +75,10 @@ export interface KiloServerCapabilityService {
 		 */
 		contribute(sourceId: string, env: Record<string, string>): () => void;
 	};
+	readonly mcpConfig: {
+		/** List MCP entries contributed and owned by Desktop features. */
+		list?(): Promise<KiloOwnedMcpEntry[]>;
+	};
 	readonly configuration: {
 		/** Reconcile one source's complete desired state across Kilo's managed config files. */
 		set(sourceId: string, desired: KiloConfigurationState): Promise<void>;
@@ -92,6 +100,12 @@ export interface KiloServerCapabilityService {
 	 * Useful after environment or config changes that require a full respawn.
 	 */
 	restartServer(): Promise<void>;
+	/**
+	 * Reload config after a Marketplace mutation. A workspace directory
+	 * invalidates only that Kilo instance; no directory restarts the shared
+	 * server so app-global agents, skills, and MCPs are rediscovered.
+	 */
+	reloadConfig(directory?: string): Promise<void>;
 }
 
 /**

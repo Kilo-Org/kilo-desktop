@@ -188,9 +188,19 @@ describe("PLUGIN_SETTINGS", () => {
 		expect(PLUGIN_SETTINGS.some((section) => section.id === "local-model-catalog")).toBe(false);
 	});
 
+	it("includes Agent Behavior under AI", () => {
+		expect(PLUGIN_SETTINGS.find((section) => section.id === "kilo-marketplace")).toMatchObject({
+			pluginId: "kilo-marketplace",
+			title: "Agent Behavior",
+			category: "AI",
+			priority: 100,
+		});
+	});
+
 	it("lists AI settings by priority", () => {
 		const aiSections = PLUGIN_SETTINGS.filter((section) => section.category === "AI");
 		expect(aiSections.map((section) => section.id)).toEqual([
+			"kilo-marketplace",
 			"kilo-providers",
 			"local-model-server",
 		]);

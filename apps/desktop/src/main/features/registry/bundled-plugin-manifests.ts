@@ -18,6 +18,7 @@ import environmentsManifest from "@kilo-desktop/plugin-environments/plugin.json"
 import browserManifest from "@kilo-desktop/plugin-browser/plugin.json" with { type: "json" };
 import filesManifest from "@kilo-desktop/plugin-files/plugin.json" with { type: "json" };
 import gitManifest from "@kilo-desktop/plugin-git/plugin.json" with { type: "json" };
+import kiloMarketplaceManifest from "@kilo-desktop/plugin-kilo-marketplace/plugin.json" with { type: "json" };
 import kiloServerManifest from "@kilo-desktop/plugin-kilo-server/plugin.json" with { type: "json" };
 import kiloUiManifest from "@kilo-desktop/plugin-kilo-ui/plugin.json" with { type: "json" };
 import localInferenceManifest from "@kilo-desktop/plugin-local-inference/plugin.json" with { type: "json" };
@@ -42,6 +43,7 @@ export const bundledPluginManifests = {
 	environments: environmentsManifest,
 	files: filesManifest,
 	git: gitManifest,
+	kiloMarketplace: kiloMarketplaceManifest,
 	kiloServer: kiloServerManifest,
 	kiloUi: kiloUiManifest,
 	localInference: localInferenceManifest,

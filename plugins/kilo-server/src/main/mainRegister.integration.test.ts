@@ -9,6 +9,7 @@ import {
 	ContributedEnvManager,
 	createKiloServerManagerOptions,
 	registerKiloServer as registerProductionKiloServer,
+	resolveUserConfigDirectory,
 	type KiloServerCapabilities,
 	type KiloServerController,
 } from "./index.js";
@@ -60,6 +61,15 @@ function registerKiloServer(
 }
 
 describe("kilo-server main registration", () => {
+	it("resolves the user Kilo config directory from the platform environment", () => {
+		expect(resolveUserConfigDirectory("darwin", { XDG_CONFIG_HOME: "/custom/config" })).toBe(
+			"/custom/config/kilo",
+		);
+		expect(
+			resolveUserConfigDirectory("win32", { APPDATA: "C:\\Users\\me\\AppData\\Roaming" }),
+		).toBe("C:\\Users\\me\\AppData\\Roaming\\kilo");
+	});
+
 	it("builds the server from plugin assets and host networking and logging delegates", () => {
 		const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 		const fetch = vi.fn() as unknown as typeof globalThis.fetch;
@@ -106,6 +116,7 @@ describe("kilo-server main registration", () => {
 			createServer: () => server,
 			reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
 			runAsNodeEnabled: async () => true,
+			userConfigDirectory: "/home/user/.config/kilo",
 		});
 		// Lazy spawn: no ensureRunning call until a consumer requests the
 		// connection. The initialization still runs in the background — give it a tick
@@ -119,6 +130,9 @@ describe("kilo-server main registration", () => {
 		await expect(connectionService!.getConnection()).resolves.toMatchObject({
 			globalDirectory: "/plugin-data/kilo-server/runtime",
 		});
+		await expect(connectionService!.getUserConfigDirectory()).resolves.toBe(
+			"/home/user/.config/kilo",
+		);
 
 		await expect(mainSdk.invoke("server.getConnection")).resolves.toEqual({
 			baseUrl: "http://127.0.0.1:4321",
@@ -494,6 +508,62 @@ describe("kilo-server main registration", () => {
 		expect(typeof capability!.kiloService.restartServer).toBe("function");
 
 		await capability!.kiloService.restartServer();
+		expect(server.restart).toHaveBeenCalledOnce();
+		mainSdk.dispose();
+	});
+
+	it("reloadConfig leaves a cold server unspawned (the first spawn reads fresh config)", async () => {
+		const fetch = vi.fn(async () => new Response(null, { status: 204 }));
+		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({
+			featureId: "kilo-server",
+			main: { fetch: fetch as unknown as typeof globalThis.fetch },
+		});
+		const server = fakeServer();
+		await registerKiloServer(mainSdk, {
+			createServer: () => server,
+			reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
+			runAsNodeEnabled: async () => true,
+		});
+		const kiloService =
+			createMainSdk("kilo-marketplace").plugins.get<KiloServerCapabilities>(
+				"kilo-server",
+			)!.kiloService;
+
+		await kiloService.reloadConfig("/workspace");
+		await kiloService.reloadConfig();
+
+		expect(server.ensureRunning).not.toHaveBeenCalled();
+		expect(server.restart).not.toHaveBeenCalled();
+		expect(fetch).not.toHaveBeenCalled();
+		mainSdk.dispose();
+	});
+
+	it("reloadConfig disposes the workspace instance or restarts a running server", async () => {
+		const fetch = vi.fn(async () => new Response(null, { status: 204 }));
+		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({
+			featureId: "kilo-server",
+			main: { fetch: fetch as unknown as typeof globalThis.fetch },
+		});
+		const server = fakeServer();
+		server.isRunning = true;
+		await registerKiloServer(mainSdk, {
+			createServer: () => server,
+			reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
+			runAsNodeEnabled: async () => true,
+		});
+		const kiloService =
+			createMainSdk("kilo-marketplace").plugins.get<KiloServerCapabilities>(
+				"kilo-server",
+			)!.kiloService;
+
+		await kiloService.reloadConfig("/workspace");
+		const [input, init] = fetch.mock.calls[0] as unknown as [URL, RequestInit];
+		expect(input.pathname).toBe("/instance/dispose");
+		expect(input.searchParams.get("directory")).toBe("/workspace");
+		expect(init).toMatchObject({ method: "POST" });
+		expect(server.restart).not.toHaveBeenCalled();
+
+		await kiloService.reloadConfig();
 		expect(server.restart).toHaveBeenCalledOnce();
 		mainSdk.dispose();
 	});

@@ -30,6 +30,7 @@ import * as environmentsMain from "@kilo-desktop/plugin-environments/main";
 import * as browserMain from "@kilo-desktop/plugin-browser/main";
 import * as filesMain from "@kilo-desktop/plugin-files/main";
 import * as gitMain from "@kilo-desktop/plugin-git/main";
+import * as kiloMarketplaceMain from "@kilo-desktop/plugin-kilo-marketplace/main";
 import * as kiloServerMain from "@kilo-desktop/plugin-kilo-server/main";
 import { createKiloServerResolveAsset } from "@kilo-desktop/plugin-kilo-server/packaged-assets";
 import * as kiloUiMain from "@kilo-desktop/plugin-kilo-ui/main";
@@ -60,6 +61,11 @@ export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
 			isPackaged: app.isPackaged,
 			packagedResourcesPath: process.resourcesPath,
 		}),
+	},
+	{
+		manifest: bundledPluginManifests.kiloMarketplace,
+		module: kiloMarketplaceMain,
+		resolveAsset: bundledPluginAssetResolver("@kilo-desktop/plugin-kilo-marketplace"),
 	},
 	{
 		manifest: bundledPluginManifests.notebook,

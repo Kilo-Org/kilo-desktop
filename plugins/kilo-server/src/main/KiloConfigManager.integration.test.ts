@@ -64,6 +64,19 @@ describe("KiloConfigManager", () => {
 		expect(sidecar.owners).toEqual({ "mcp:one": SOURCE_ONE, "mcp:two": SOURCE_TWO });
 	});
 
+	it("lists Desktop-owned MCP entries with their contributing source", async () => {
+		const config = new KiloConfigManager(configDirectory);
+		await config.setMcpEntry(SOURCE_ONE, "one", {
+			type: "remote",
+			url: "https://one.test/mcp",
+		});
+		await config.setProviderEntry(SOURCE_TWO, "provider", {
+			name: "Provider",
+		});
+
+		await expect(config.listMcpEntries()).resolves.toEqual([{ id: "one", sourceId: SOURCE_ONE }]);
+	});
+
 	it("lists only MCP entries owned by the requested source", async () => {
 		const config = new KiloConfigManager(configDirectory);
 		await config.setMcpEntry(SOURCE_ONE, "one", { type: "remote" });

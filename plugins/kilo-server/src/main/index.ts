@@ -1,3 +1,4 @@
+import os from "node:os";
 import path from "node:path";
 
 import { FuseState, FuseV1Options, FuseVersion, getCurrentFuseWire } from "@electron/fuses";
@@ -80,11 +81,13 @@ interface RegisterKiloServerOptions {
 		| "setProviderEntry"
 		| "removeProviderEntry"
 	> &
-		Partial<Pick<KiloConfigManager, "replaceProviderEntry">>;
+		Partial<Pick<KiloConfigManager, "listMcpEntries" | "replaceProviderEntry">>;
 	/** Injected Desktop-owned plugin installer for tests. */
 	kiloPluginConfig?: Pick<KiloPluginConfig, "install" | "remove" | "listOwnedPluginIds">;
 	/** Kilo Desktop's own binary path. Defaults to `process.execPath`. */
 	appExecutablePath?: string;
+	/** User-owned global Kilo config directory. Injected in tests. */
+	userConfigDirectory?: string;
 	/**
 	 * Detects whether the running Electron binary honors
 	 * `ELECTRON_RUN_AS_NODE`. Defaults to reading fuses off `process.execPath`
@@ -110,6 +113,8 @@ export type KiloServerCapabilities = {
 		 * race the initial relay-config reconcile, but never triggers a lazy spawn.
 		 */
 		getConfigDirectory(): Promise<string>;
+		/** Resolve the user-owned global Kilo config directory. */
+		getUserConfigDirectory(): Promise<string>;
 	};
 	kiloService: KiloServerCapabilityService;
 };
@@ -123,6 +128,18 @@ function resolveKiloServerDirectories(storageDirectory: string): {
 		runtimeDirectory,
 		configDirectory: path.join(runtimeDirectory, "config", "kilo"),
 	};
+}
+
+export function resolveUserConfigDirectory(
+	platform: NodeJS.Platform = process.platform,
+	env: NodeJS.ProcessEnv = process.env,
+): string {
+	if (platform === "win32") {
+		const { join } = path.win32;
+		return join(env.APPDATA ?? join(os.homedir(), "AppData", "Roaming"), "kilo");
+	}
+	const { join } = path.posix;
+	return join(env.XDG_CONFIG_HOME ?? join(os.homedir(), ".config"), "kilo");
 }
 
 export function createKiloServerManagerOptions(
@@ -204,6 +221,7 @@ export function registerKiloServer(
 	options: RegisterKiloServerOptions = {},
 ): Promise<void> {
 	const { configDirectory } = resolveKiloServerDirectories(mainSdk.storageDir);
+	const userConfigDirectory = options.userConfigDirectory ?? resolveUserConfigDirectory();
 	const appExecutablePath = options.appExecutablePath ?? process.execPath;
 	const runAsNodeEnabled =
 		options.runAsNodeEnabled ?? (() => defaultRunAsNodeEnabled(appExecutablePath));
@@ -352,6 +370,7 @@ export function registerKiloServer(
 			await configReady;
 			return configDirectory;
 		},
+		getUserConfigDirectory: async () => userConfigDirectory,
 	} satisfies KiloServerCapabilities["connectionService"];
 
 	const service: KiloServerService = {
@@ -368,6 +387,12 @@ export function registerKiloServer(
 	const kiloService: KiloServerCapabilityService = {
 		serverEnv: {
 			contribute: contributedEnv.contribute.bind(contributedEnv),
+		},
+		mcpConfig: {
+			list: async () => {
+				await configReady;
+				return kiloConfig.listMcpEntries?.() ?? [];
+			},
 		},
 		configuration: {
 			set: async (sourceId, desired) => {
@@ -401,6 +426,31 @@ export function registerKiloServer(
 			// Wait for config readiness for the same reason as `server.restart`.
 			await configReady;
 			await server.restart();
+		},
+		reloadConfig: async (directory?: string) => {
+			await configReady;
+			// Same lazy-spawn rule as `requestConfigRestart`: a cold server reads
+			// the updated config on its first spawn, so there is nothing to reload.
+			if (!server.isRunning && !server.isStarting) return;
+			if (!directory) {
+				await server.restart();
+				return;
+			}
+			const connection = await server.ensureRunning();
+			const url = new URL("/instance/dispose", connection.baseUrl);
+			url.searchParams.set("directory", directory);
+			const authorization = Buffer.from(`${connection.username}:${connection.password}`).toString(
+				"base64",
+			);
+			const response = await mainSdk.net.fetch(url, {
+				method: "POST",
+				headers: { authorization: `Basic ${authorization}` },
+			});
+			if (!response.ok) {
+				throw new Error(
+					`Kilo config reload failed with HTTP ${response.status} ${response.statusText}.`,
+				);
+			}
 		},
 	};
 

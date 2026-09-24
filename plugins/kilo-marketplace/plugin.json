@@ -1,0 +1,22 @@
+{
+	"id": "kilo-marketplace",
+	"displayName": "Kilo Marketplace",
+	"version": "0.1.0",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
+	"contributes": {
+		"routes": [],
+		"nav": [],
+		"zones": [],
+		"settings": [
+			{
+				"id": "kilo-marketplace",
+				"title": "Agent Behavior",
+				"component": "MarketplaceSettings",
+				"icon": "MarketplaceNavIcon",
+				"category": "AI",
+				"priority": 100
+			}
+		]
+	}
+}

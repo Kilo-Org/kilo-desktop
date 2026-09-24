@@ -23,6 +23,8 @@ import filesManifest from "@kilo-desktop/plugin-files/plugin.json" with { type: 
 import * as filesWeb from "@kilo-desktop/plugin-files/web";
 import gitManifest from "@kilo-desktop/plugin-git/plugin.json" with { type: "json" };
 import * as gitWeb from "@kilo-desktop/plugin-git/web";
+import kiloMarketplaceManifest from "@kilo-desktop/plugin-kilo-marketplace/plugin.json" with { type: "json" };
+import * as kiloMarketplaceWeb from "@kilo-desktop/plugin-kilo-marketplace/web";
 import kiloServerManifest from "@kilo-desktop/plugin-kilo-server/plugin.json" with { type: "json" };
 import * as kiloServerWeb from "@kilo-desktop/plugin-kilo-server/web";
 import kiloUiManifest from "@kilo-desktop/plugin-kilo-ui/plugin.json" with { type: "json" };
@@ -40,6 +42,7 @@ export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
 	{ manifest: browserManifest, module: browserWeb },
 	{ manifest: kiloUiManifest, module: kiloUiWeb },
 	{ manifest: kiloServerManifest, module: kiloServerWeb },
+	{ manifest: kiloMarketplaceManifest, module: kiloMarketplaceWeb },
 	{ manifest: notebookManifest, module: notebookWeb },
 	{ manifest: filesManifest, module: filesWeb },
 	{ manifest: terminalManifest, module: terminalWeb },

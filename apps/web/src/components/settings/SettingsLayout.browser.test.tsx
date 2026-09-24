@@ -103,6 +103,10 @@ describe("SettingsSidebar", () => {
 		await expect.element(screen.getByTestId("settings-section-nav")).not.toBeInTheDocument();
 		await expect.element(screen.getByTestId("settings-search")).not.toBeInTheDocument();
 		await expect.element(screen.getByTestId("settings-group-personal")).not.toBeInTheDocument();
+		expect(
+			getComputedStyle(screen.getByTestId("settings-page").element().firstElementChild!)
+				.scrollbarGutter,
+		).toBe("stable");
 	});
 
 	it("lists sections in the siderail and switches the content pane", async () => {

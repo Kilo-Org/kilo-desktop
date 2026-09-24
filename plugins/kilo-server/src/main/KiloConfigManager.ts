@@ -20,6 +20,10 @@ const SIDECAR_SCHEMA_VERSION = 4;
 export type KiloConfigEntry = Readonly<Record<string, unknown>>;
 export type KiloMcpEntry = KiloConfigEntry;
 export type KiloProviderEntry = KiloConfigEntry;
+export type KiloOwnedMcpEntry = {
+	readonly id: string;
+	readonly sourceId: string | undefined;
+};
 type KiloConfigSection = "mcp" | "provider";
 
 export type KiloConfigMutationOutcome =
@@ -375,6 +379,16 @@ export class KiloConfigManager {
 			return sidecarResult.sidecar.ownedEntryKeys
 				.filter((key) => key.startsWith(prefix) && sidecarResult.sidecar.owners[key] === sourceId)
 				.map((key) => key.slice(prefix.length));
+		});
+	}
+
+	async listMcpEntries(): Promise<KiloOwnedMcpEntry[]> {
+		await this.#pending;
+		const sidecar = (await readSidecar(this.#configDirectory)).sidecar;
+		return sidecar.ownedEntryKeys.flatMap((entry) => {
+			const prefix = "mcp:";
+			if (!entry.startsWith(prefix)) return [];
+			return [{ id: entry.slice(prefix.length), sourceId: sidecar.owners[entry] }];
 		});
 	}
 

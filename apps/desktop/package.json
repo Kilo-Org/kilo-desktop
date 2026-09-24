@@ -38,6 +38,7 @@
 		"@kilo-desktop/plugin-environments": "workspace:*",
 		"@kilo-desktop/plugin-files": "workspace:*",
 		"@kilo-desktop/plugin-git": "workspace:*",
+		"@kilo-desktop/plugin-kilo-marketplace": "workspace:*",
 		"@kilo-desktop/plugin-kilo-server": "workspace:*",
 		"@kilo-desktop/plugin-kilo-ui": "workspace:*",
 		"@kilo-desktop/plugin-local-inference": "workspace:*",

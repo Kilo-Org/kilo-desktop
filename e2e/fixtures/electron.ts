@@ -34,6 +34,7 @@ const CHAT_ISOLATION_KEYS = new Set([
 	"git-init",
 	"git-worktrees",
 	"kilo-code",
+	"kilo-marketplace",
 	"kilo-ui",
 	"kilo-providers",
 	"local-inference",

@@ -139,9 +139,9 @@ describe("workspace mainRegister", () => {
 
 		harness.setWorkspaces([{ folders: [{ path: PROJECT_A }, { path: PROJECT_B }] }]);
 		harness.kiloSdk.events.emit("workspace-updated", { before: null, after: null });
-		await tick();
-
-		expect(harness.parcel.subscribeAttempts).toEqual([PROJECT_A, PROJECT_B]);
+		await vi.waitFor(() => {
+			expect(harness!.parcel.subscribeAttempts).toEqual([PROJECT_A, PROJECT_B]);
+		});
 
 		const onFileChange = vi.fn();
 		harness.workspaceSdk.events.on("workspace.file-change", onFileChange);
@@ -156,9 +156,9 @@ describe("workspace mainRegister", () => {
 
 		harness.setWorkspaces([{ folders: [{ path: PROJECT_A }] }]);
 		harness.kiloSdk.events.emit("workspace-deleted", { before: null, after: null });
-		await tick();
-
-		expect(betaSubscription.unsubscribed).toBe(true);
+		await vi.waitFor(() => {
+			expect(betaSubscription.unsubscribed).toBe(true);
+		});
 		expect(
 			harness.workspaceSdk.plugins
 				.get<{ watcher: WorkspaceWatcherCapability }>("workspace")

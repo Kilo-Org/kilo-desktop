@@ -50,6 +50,14 @@ export interface GitDiffViewProps {
 // padding: the toolbar's border-b is the list's top edge, and the first
 // container's top hairline is clipped by the scrollport.
 const DIFF_VIEW_LAYOUT = { paddingTop: 0, gap: 1, paddingBottom: 8 } as const;
+// The default CodeView metrics assume the package's own default font metrics
+// (lineHeight: 20px, diffHeaderHeight: 44px). We override --diffs-line-height
+// to 1.125rem (18px at 16px root) and --diffs-gap-fallback is unchanged at
+// 8px, so the rendered header min-height is 1lh + (8px × 3) = 18 + 24 = 42px.
+// Passing the corrected metrics keeps the virtualizer's size estimates in sync
+// with the actual rendered dimensions, eliminating the gap at the top of the
+// diff list caused by the stickyOffset div being sized against stale metrics.
+const DIFF_VIEW_ITEM_METRICS = { lineHeight: 18, diffHeaderHeight: 42 } as const;
 const DIFF_VIEW_UNSAFE_CSS = `
 	:host {
 		--diffs-bg: var(--pane-surface, var(--background));
@@ -233,6 +241,7 @@ function GitDiffTabContent({
 			stickyHeaders: true,
 			overflow: (wrapLines ? "wrap" : "scroll") as "wrap" | "scroll",
 			layout: DIFF_VIEW_LAYOUT,
+			itemMetrics: DIFF_VIEW_ITEM_METRICS,
 			unsafeCSS: DIFF_VIEW_UNSAFE_CSS,
 			loadDiffFiles,
 		}),
@@ -465,10 +474,15 @@ function GitDiffTabContent({
 				either panel the handle would be clipped by its overflow-hidden.
 			*/}
 				<div className="relative w-0 shrink-0">
-					{/* The shared handle's divider line is hover-only; Changes keeps a persistent hairline. */}
+					{/*
+					The shared handle is centered on a 4px column gutter (chat
+					canvas); Changes has no gutter, so re-center the hit area on
+					the divider and pin a persistent, pixel-aligned 1px hairline
+					to the sidebar's left edge.
+				*/}
 					<ResizableHandle
 						ariaLabel="Resize file tree"
-						className="before:bg-border before:w-px"
+						className="before:bg-border -right-1 before:w-px before:translate-x-0"
 						onResize={handleFilesResize}
 						qaId="git-diff-tree-resize"
 					/>

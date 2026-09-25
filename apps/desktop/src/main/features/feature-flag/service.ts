@@ -121,7 +121,7 @@ export class FeatureFlagService extends EventEmitter<FeatureFlagServiceEvents> {
 	}
 
 	getFlag<T>(key: string, defaultValue?: T): T {
-		// TODO: re-add FEATURE_FLAG_EVALUATION telemetry (the old Eppo
+		// TODO: re-add Feature Flag Evaluation telemetry (the old Eppo
 		// integration emitted it per evaluation) once getFlag() has a real
 		// caller — it currently has none, only getAllFlags() is used.
 		if (this.#overrides.has(key)) {

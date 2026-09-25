@@ -3,18 +3,18 @@ import { z } from "zod";
 import { defineMethod } from "../contract.js";
 
 /**
- * Telemetry event names. Ported from anaconda-desktop's `TelemetryEvent` union,
- * trimmed to the events this app actually emits today. Extend this enum as new
- * product surfaces start reporting — the renderer and main handlers validate
- * against it at the IPC boundary, so an unknown name is rejected rather than
- * silently sent.
+ * Telemetry event names, Title Case to match the org-wide PostHog convention
+ * used by the Kilo CLI, VS Code, and cloud (`Session Start`, `Task Created`).
+ * Extend this enum as new product surfaces start reporting — the renderer and
+ * main handlers validate against it at the IPC boundary, so an unknown name is
+ * rejected rather than silently sent.
  */
 export const TELEMETRY_EVENTS = [
-	"DESKTOP_INITIALIZED",
-	"LOGGED_IN",
-	"LOGGED_OUT",
-	"PAGE_VISIT",
-	"FEATURE_FLAG_EVALUATION",
+	"Desktop Initialized",
+	"Logged In",
+	"Logged Out",
+	"Page Visit",
+	"Feature Flag Evaluation",
 ] as const;
 
 export const telemetryEventSchema = z.enum(TELEMETRY_EVENTS);

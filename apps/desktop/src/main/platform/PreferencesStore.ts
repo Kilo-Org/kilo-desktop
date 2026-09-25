@@ -82,8 +82,8 @@ export class PreferencesStore {
 
 	/**
 	 * Stable installation id, lazily generated on first read and persisted so it
-	 * survives restarts. Used as an OTEL resource attribute and as the Sentry
-	 * user id to correlate a single install (e.g. affected-user counts on
+	 * survives restarts. Used as the anonymous telemetry `distinct_id` and as the
+	 * Sentry user id to correlate a single install (e.g. affected-user counts on
 	 * issues) without identifying the actual user.
 	 */
 	getInstallationId(): string {

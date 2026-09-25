@@ -149,6 +149,6 @@ describe("createBrowserLocalApi", () => {
 
 	it("drops telemetry events as a no-op outside Electron", async () => {
 		const api = createBrowserLocalApi();
-		await expect(api.telemetry.track({ event: "PAGE_VISIT", data: {} })).resolves.toBeUndefined();
+		await expect(api.telemetry.track({ event: "Page Visit", data: {} })).resolves.toBeUndefined();
 	});
 });

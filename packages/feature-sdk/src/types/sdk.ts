@@ -374,7 +374,7 @@ export interface TelemetryData {
  * calling feature's id under `data.featureId` (an explicit data.featureId wins).
  *
  * @example
- * sdk.telemetry.track({ event: "PAGE_VISIT", data: { path: "/todos" } });
+ * sdk.telemetry.track({ event: "Page Visit", data: { path: "/todos" } });
  */
 export interface SdkTelemetry {
 	track(input: TelemetryData): Promise<void>;

@@ -1,180 +1,148 @@
-import {
-	changeSignalConnection,
-	Configuration,
-	initializeTelemetry,
-	ResourceAttributes,
-	sendEvent,
-	type AttrMap,
-} from "anaconda-opentelemetry";
-import isEqual from "lodash/isEqual.js";
-import { platform, version } from "node:os";
+import { release } from "node:os";
 
 import { createLogger } from "../../platform/logger.js";
-import { singleFlight } from "../../platform/single-flight.js";
-import { hashHostname, hashMachineId, hostnameId, readMachineIdFromOs } from "./utils.js";
+import { HttpClient } from "../../platform/HttpClient.js";
 import type {
 	TelemetryConfig,
 	TelemetryEntry,
 	TelemetryLogger,
 	TelemetryProvider,
-	TelemetryProviderAuth,
 } from "./types.js";
 
-const SIGNAL_FALLBACK_URL = "http://localhost:4318/v1/logs";
-
-/** Effective OTEL connection identity; re-init happens only when this changes. */
-interface Connection {
-	apiKey: string | undefined;
-	userId: string | undefined;
-}
-
-/** Identity-derived OTEL attributes shared by event payloads and the resource. */
-function identityAttributes(entry: TelemetryEntry): AttrMap {
-	const attrs: AttrMap = {};
-	if (entry.subscription) attrs.subscription = entry.subscription;
-	if (entry.cohortId !== undefined) attrs.cohortId = entry.cohortId;
-	if (entry.isEmployee) attrs.is_anaconda_employee = true;
-	return attrs;
-}
-
-export interface AnacondaOtelProviderOptions {
-	auth: TelemetryProviderAuth;
+export interface PostHogProviderOptions {
 	config: TelemetryConfig;
 	logger?: TelemetryLogger;
+	/** Injectable for tests; production defaults to Electron `net.fetch`. */
+	fetch?: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+}
+
+interface PostHogEvent {
+	event: string;
+	distinct_id: string;
+	properties: Record<string, unknown>;
+	timestamp: string;
 }
 
 /**
- * OTEL-specific telemetry provider and sole importer of `anaconda-opentelemetry`.
- * Preserves the correctness-critical parts of the ported anaconda-desktop
- * service: single-flight lazy init and re-init on connection change. The
- * connection is re-initialized only when the effective identity
- * (`{ apiKey, userId }`) changes or an auth `onChanged` event fired — repeated
- * sends with an unchanged identity reuse the existing connection.
+ * PostHog-backed telemetry provider. Uses the plain `/batch/` capture API over
+ * Electron `net.fetch` (per the apps/desktop networking rule) rather than
+ * `posthog-node`, which would reach for plain Node `fetch`.
+ *
+ * Identity follows PostHog's model for backend SDKs, where there is no
+ * anonymous session to merge: the lowercased email is the `distinct_id` once a
+ * user is known, the installation id carries genuinely anonymous usage, and
+ * `$identify` sets person properties on the email person.
+ *
+ * Deliberately no `$create_alias` to roll pre-login events into the user.
+ * PostHog would make the *alias* the surviving id (so the machine UUID, not the
+ * email, would become canonical), and it refuses a merge when the alias id was
+ * already identified or is associated with more than one distinct id — both of
+ * which apply here, since the installation id is shared by every account that
+ * signs in on the machine. Merging it would also fuse two real users who share
+ * a device. Pre-login events therefore stay on the installation persona.
+ *
+ * Development builds never talk to PostHog.
  */
-export class AnacondaOtelProvider implements TelemetryProvider {
-	readonly #auth: TelemetryProviderAuth;
+export class PostHogProvider implements TelemetryProvider {
 	readonly #config: TelemetryConfig;
 	readonly #logger: TelemetryLogger;
-	readonly #resources: ResourceAttributes;
+	readonly #fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+	readonly #inFlight = new Set<Promise<void>>();
 
-	#lastConnection: Connection | undefined;
-	#authChanged = false;
-	#machineHash: string | undefined;
-	#stopOnChanged: (() => void) | undefined;
+	/** Last distinct id seen; `$identify` fires once per identity change. */
+	#distinctId: string | undefined;
 
-	constructor(options: AnacondaOtelProviderOptions) {
-		this.#auth = options.auth;
+	constructor(options: PostHogProviderOptions) {
 		this.#config = options.config;
 		this.#logger = options.logger ?? createLogger("telemetry");
-		this.#resources = new ResourceAttributes(this.#config.serviceId, this.#config.serviceVersion);
-
-		this.#stopOnChanged = this.#auth.onChanged(() => {
-			this.#authChanged = true;
-		});
+		this.#fetch = options.fetch ?? new HttpClient().fetch;
 	}
 
-	#initialize = singleFlight(
-		async (entry: TelemetryEntry, apiKey: string | undefined): Promise<void> => {
-			this.#logger.info(`Initializing OTEL telemetry (${apiKey ? "authenticated" : "anonymous"})`);
-
-			const url = this.#getUrl(apiKey);
-			const config = new Configuration();
-			// 0.9.3 dropped constructor/default endpoints; logging never starts
-			// unless the signal-specific setter is used (otherwise sendEvent
-			// prints "### ERROR: No Logger!!!").
-			config.setLoggingEndpoint(url, apiKey);
-			if (this.#config.exportIntervalMs !== undefined) {
-				config.setLoggingExportIntervalMs(this.#config.exportIntervalMs);
-			}
-			config.setDebugState(false);
-
-			await this.#buildResourceAttributes(entry);
-			initializeTelemetry(config, this.#resources, ["logging"]);
-		},
-	);
-
-	#reInitialize = singleFlight(
-		async (entry: TelemetryEntry, apiKey: string | undefined): Promise<void> => {
-			const url = this.#getUrl(apiKey);
-			await this.#buildResourceAttributes(entry);
-			await changeSignalConnection("logging", {
-				endpoint: url,
-				...(apiKey ? { authToken: apiKey } : {}),
-				...(entry.userId ? { userId: entry.userId } : {}),
-			});
-			this.#logger.debug(`OTEL re-initialized connection (${url.href})`);
-		},
-	);
-
 	async track(entry: TelemetryEntry): Promise<void> {
-		try {
-			const apiKey = (await this.#auth.getApiKey()) ?? undefined;
-			const next: Connection = { apiKey, userId: entry.userId };
-
-			if (this.#lastConnection === undefined) {
-				await this.#initialize(entry, apiKey);
-			} else if (this.#authChanged || !isEqual(this.#lastConnection, next)) {
-				await this.#reInitialize(entry, apiKey);
-			}
-			this.#lastConnection = next;
-			this.#authChanged = false;
-
-			const ok = sendEvent({
-				eventName: entry.event,
-				payload: entry.data,
-				attributes: identityAttributes(entry),
-			});
-			if (!ok) {
-				this.#logger.error(`OTEL failed to send telemetry event '${entry.event}'`);
-			} else {
-				this.#logger.debug(`OTEL telemetry event '${entry.event}' sent`);
-			}
-		} catch (cause) {
-			this.#logger.error(`OTEL failed to send telemetry event '${entry.event}'`, cause);
+		if (this.#config.environment === "development") {
+			this.#logger.debug(`telemetry suppressed in development: '${entry.event}'`);
+			return;
 		}
+
+		const email = entry.email?.toLowerCase();
+		const distinctId = email ?? entry.installationId;
+		const previousId = this.#distinctId;
+		const identityChanged = previousId !== distinctId;
+
+		const events: PostHogEvent[] = [];
+		if (email !== undefined && identityChanged) {
+			// Person properties belong to this email, so identify on every switch
+			// into it — including account→account, where the new person would
+			// otherwise never receive its properties.
+			events.push(this.#identifyEvent(entry, email));
+		}
+		events.push(this.#captureEvent(entry, distinctId));
+		this.#distinctId = distinctId;
+
+		await this.#send(events);
 	}
 
 	async dispose(): Promise<void> {
-		this.#stopOnChanged?.();
-		this.#stopOnChanged = undefined;
+		await Promise.allSettled([...this.#inFlight]);
 	}
 
-	#getUrl(token: string | undefined): URL {
-		const configured = token ? this.#config.authUrl : this.#config.nonAuthUrl;
-		const urlStr = configured && configured !== "" ? configured : SIGNAL_FALLBACK_URL;
-		if (urlStr === SIGNAL_FALLBACK_URL) {
-			this.#logger.warn(
-				`OTEL logging URL not set (${token ? "auth" : "non-auth"}); defaulting to '${SIGNAL_FALLBACK_URL}'`,
-			);
-		}
-		return new URL(urlStr);
-	}
-
-	async #buildResourceAttributes(entry: TelemetryEntry): Promise<void> {
-		const parameters: AttrMap = {
-			machineId: await this.#getMachineHash(),
-			service_id: this.#config.serviceId,
-			...identityAttributes(entry),
-		};
-
-		this.#resources.setAttributes({
-			osType: platform(),
-			osVersion: version(),
-			nodeVersion: process.version.slice(1),
-			hostname: hashHostname(),
-			userId: entry.userId,
+	#captureEvent(entry: TelemetryEntry, distinctId: string): PostHogEvent {
+		const properties: Record<string, unknown> = {
+			...entry.data,
 			installationId: entry.installationId,
-			environment: this.#config.environmentAttribute || "staging",
-			platform: "desktop-gui",
-			parameters,
-		});
+			appRunId: entry.appRunId,
+			appName: this.#config.serviceId,
+			appVersion: this.#config.serviceVersion,
+			platform: process.platform,
+			os_version: release(),
+			os_arch: process.arch,
+			environment: this.#config.environment,
+			is_anaconda_employee: entry.isEmployee,
+		};
+		if (entry.cohortId !== undefined) properties.cohortId = entry.cohortId;
+		return {
+			event: entry.event,
+			distinct_id: distinctId,
+			properties,
+			timestamp: new Date().toISOString(),
+		};
 	}
 
-	async #getMachineHash(): Promise<string> {
-		if (this.#machineHash === undefined) {
-			const raw = await readMachineIdFromOs().catch(() => hostnameId());
-			this.#machineHash = hashMachineId(raw);
+	#identifyEvent(entry: TelemetryEntry, email: string): PostHogEvent {
+		const set: Record<string, unknown> = {
+			email,
+			is_anaconda_employee: entry.isEmployee,
+		};
+		if (entry.cohortId !== undefined) set.cohortId = entry.cohortId;
+		return {
+			event: "$identify",
+			distinct_id: email,
+			properties: { $set: set },
+			timestamp: new Date().toISOString(),
+		};
+	}
+
+	async #send(events: PostHogEvent[]): Promise<void> {
+		const host = this.#config.posthogHost.replace(/\/+$/, "");
+		const sending = (async () => {
+			try {
+				const response = await this.#fetch(`${host}/batch/`, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ api_key: this.#config.posthogKey, batch: events }),
+				});
+				if (!response.ok) {
+					this.#logger.error(`PostHog rejected telemetry batch (HTTP ${response.status})`);
+				}
+			} catch (cause) {
+				this.#logger.error("PostHog failed to send telemetry batch", cause);
+			}
+		})();
+		this.#inFlight.add(sending);
+		try {
+			await sending;
+		} finally {
+			this.#inFlight.delete(sending);
 		}
-		return this.#machineHash;
 	}
 }

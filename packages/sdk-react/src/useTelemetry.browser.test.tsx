@@ -25,7 +25,7 @@ describe("useTelemetry", () => {
 
 	it("forwards track input to the shell telemetry delegate", () => {
 		const track = vi.fn(async () => {});
-		const input: TelemetryData = { event: "PAGE_VISIT", data: { path: "/x" } };
+		const input: TelemetryData = { event: "Page Visit", data: { path: "/x" } };
 		const system = createFeatureSystem({
 			shellDelegates: delegatesWithTelemetry({ track }),
 			features: [],

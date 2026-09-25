@@ -402,10 +402,10 @@ describe("createSdk", () => {
 		services.shellDelegates.telemetry.track = track;
 		const sdk = createSdk("todos", services);
 
-		await sdk.telemetry.track({ event: "PAGE_VISIT", data: { path: "/x" } });
+		await sdk.telemetry.track({ event: "Page Visit", data: { path: "/x" } });
 
 		expect(track).toHaveBeenCalledWith({
-			event: "PAGE_VISIT",
+			event: "Page Visit",
 			data: { featureId: "todos", path: "/x" },
 		});
 	});
@@ -416,10 +416,10 @@ describe("createSdk", () => {
 		services.shellDelegates.telemetry.track = track;
 		const sdk = createSdk("todos", services);
 
-		await sdk.telemetry.track({ event: "PAGE_VISIT", data: { featureId: "override" } });
+		await sdk.telemetry.track({ event: "Page Visit", data: { featureId: "override" } });
 
 		expect(track).toHaveBeenCalledWith({
-			event: "PAGE_VISIT",
+			event: "Page Visit",
 			data: { featureId: "override" },
 		});
 	});
@@ -428,6 +428,6 @@ describe("createSdk", () => {
 		const services = makeServices();
 		const sdk = createSdk("todos", services);
 		sdk.destroy();
-		await expect(sdk.telemetry.track({ event: "PAGE_VISIT" })).rejects.toThrow(/destroyed/);
+		await expect(sdk.telemetry.track({ event: "Page Visit" })).rejects.toThrow(/destroyed/);
 	});
 });

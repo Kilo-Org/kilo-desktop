@@ -84,7 +84,7 @@ describe("createShellDelegates telemetry", () => {
 			telemetry: { ...api.telemetry, track },
 		});
 
-		const input = { event: "PAGE_VISIT", data: { featureId: "todos", path: "/x" } };
+		const input = { event: "Page Visit", data: { featureId: "todos", path: "/x" } };
 		await telemetry.track(input);
 
 		expect(track).toHaveBeenCalledWith(input);

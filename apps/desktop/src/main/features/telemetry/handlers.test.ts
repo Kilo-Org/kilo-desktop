@@ -11,7 +11,7 @@ describe("createTelemetryHandlers", () => {
 		const handlers = createTelemetryHandlers({ track } as unknown as TelemetryService);
 
 		const input: TelemetryTrackInput = {
-			event: "PAGE_VISIT",
+			event: "Page Visit",
 			data: { path: "/" },
 			options: { anonymize: "never" },
 		};

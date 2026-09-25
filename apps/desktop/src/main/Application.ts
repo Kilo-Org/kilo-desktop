@@ -293,7 +293,7 @@ export class Application {
 			storageRoot: this.#app.getPath("userData"),
 		});
 
-		const telemetryEnv = import.meta.env.VITE_ANACONDA_LOGGING_ENV_ATTRIBUTE ?? "production";
+		const telemetryEnv = this.#app.metadata.isPackaged ? RELEASE_TRACK : "development";
 
 		return {
 			featureFlags,
@@ -405,7 +405,7 @@ export class Application {
 			auth: this.#auth,
 			preferences,
 			appVersion: this.#app.metadata.appVersion,
-			serviceId: "kilo-desktop",
+			environment: this.#app.metadata.isPackaged ? RELEASE_TRACK : "development",
 		});
 		this.#telemetry = telemetry;
 		this.#disposers.push(() => void telemetry.dispose());

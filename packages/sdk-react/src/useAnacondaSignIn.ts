@@ -21,7 +21,7 @@ export interface AnacondaSignIn {
 /**
  * Drive the Anaconda sign-in flow for a feature renderer. Reads the auth
  * session delegate off the feature's own SDK (`sdk.auth`) so the component
- * re-renders when the OAuth loopback completes, and tracks the `LOGGED_IN`
+ * re-renders when the OAuth loopback completes, and tracks the `Logged In`
  * telemetry event on success.
  */
 export function useAnacondaSignIn(sdk: Pick<SDK, "auth" | "telemetry">): AnacondaSignIn {
@@ -39,7 +39,7 @@ export function useAnacondaSignIn(sdk: Pick<SDK, "auth" | "telemetry">): Anacond
 				return false;
 			}
 			if (next.status === "authenticated") {
-				void sdk.telemetry.track({ event: "LOGGED_IN" });
+				void sdk.telemetry.track({ event: "Logged In" });
 				return true;
 			}
 			return false;

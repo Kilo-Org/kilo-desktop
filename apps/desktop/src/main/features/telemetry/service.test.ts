@@ -3,25 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TelemetryService, deriveTelemetryIdentity, type TelemetryPreferences } from "./service.js";
 import type { TelemetryAuth, TelemetryProvider } from "./types.js";
 
-vi.mock("anaconda-opentelemetry", () => ({
-	initializeTelemetry: vi.fn(() => true),
-	sendEvent: vi.fn(() => true),
-	changeSignalConnection: vi.fn(async () => true),
-	Configuration: class {
-		setLoggingExportIntervalMs() {
-			return this;
-		}
-		setDebugState() {
-			return this;
-		}
-	},
-	ResourceAttributes: class {
-		setAttributes() {
-			return this;
-		}
-	},
-}));
-
 const silentLogger = { info() {}, warn() {}, error() {}, debug() {} };
 
 function fakeProvider(track = vi.fn(async () => {})): TelemetryProvider & {
@@ -37,9 +18,6 @@ function fakeProvider(track = vi.fn(async () => {})): TelemetryProvider & {
 function fakeAuth(overrides: Partial<TelemetryAuth> = {}): TelemetryAuth {
 	return {
 		getSession: overrides.getSession ?? (async () => ({ status: "anonymous" })),
-		getApiKey: overrides.getApiKey ?? (async () => null),
-		getUserInfo: overrides.getUserInfo ?? (async () => []),
-		onChanged: overrides.onChanged ?? (() => () => {}),
 	};
 }
 
@@ -55,6 +33,7 @@ function service(options: {
 	auth?: TelemetryAuth;
 	preferences?: TelemetryPreferences;
 	appVersion?: string;
+	appRunId?: string;
 }): TelemetryService {
 	return new TelemetryService({
 		provider: options.provider,
@@ -62,6 +41,7 @@ function service(options: {
 		preferences: options.preferences ?? preferences(),
 		logger: silentLogger,
 		appVersion: options.appVersion ?? "0.0.0",
+		appRunId: options.appRunId ?? "run-1",
 	});
 }
 
@@ -73,7 +53,7 @@ describe("TelemetryService", () => {
 	it("drops events when data collection is disabled", async () => {
 		const provider = fakeProvider();
 		await service({ provider, preferences: preferences({ allowDataCollection: false }) }).track({
-			event: "PAGE_VISIT",
+			event: "Page Visit",
 			data: {},
 		});
 
@@ -88,33 +68,33 @@ describe("TelemetryService", () => {
 				status: "authenticated",
 				user: { userId: "u1", email: "dev@anaconda.com" },
 			}),
-			getUserInfo: async () => [{ id: "business_subscription.org", group: "subscriptions" }],
 		});
 
 		await service({ provider, auth }).track({
-			event: "LOGGED_IN",
+			event: "Logged In",
 			data: { email_domain: "anaconda.com" },
 		});
 
 		expect(provider.track).toHaveBeenCalledWith({
-			event: "LOGGED_IN",
+			event: "Logged In",
 			data: { email_domain: "anaconda.com" },
 			installationId: "install-1",
+			appRunId: "run-1",
+			email: "dev@anaconda.com",
 			isEmployee: true,
-			userId: "u1",
 			cohortId: 0,
-			subscription: "business_subscription",
 		});
 	});
 
 	it("omits absent identity fields from the entry", async () => {
 		const provider = fakeProvider();
-		await service({ provider }).track({ event: "PAGE_VISIT", data: { path: "/" } });
+		await service({ provider }).track({ event: "Page Visit", data: { path: "/" } });
 
 		expect(provider.track).toHaveBeenCalledWith({
-			event: "PAGE_VISIT",
+			event: "Page Visit",
 			data: { path: "/" },
 			installationId: "install-1",
+			appRunId: "run-1",
 			isEmployee: false,
 		});
 	});
@@ -123,7 +103,7 @@ describe("TelemetryService", () => {
 		const getSession = vi.fn(async () => ({ status: "anonymous" as const }));
 		const provider = fakeProvider();
 		await service({ provider, auth: fakeAuth({ getSession }) }).track({
-			event: "LOGGED_IN",
+			event: "Logged In",
 			data: {},
 			options: { anonymize: "always" },
 		});
@@ -140,7 +120,7 @@ describe("TelemetryService", () => {
 		);
 
 		await expect(
-			service({ provider }).track({ event: "PAGE_VISIT", data: {} }),
+			service({ provider }).track({ event: "Page Visit", data: {} }),
 		).resolves.toBeUndefined();
 	});
 
@@ -150,7 +130,7 @@ describe("TelemetryService", () => {
 
 		const entry = provider.track.mock.calls[0]?.[0];
 		expect(entry).toMatchObject({
-			event: "DESKTOP_INITIALIZED",
+			event: "Desktop Initialized",
 			data: expect.objectContaining({ version: "1.2.3", platform: process.platform }),
 		});
 	});
@@ -171,24 +151,22 @@ describe("deriveTelemetryIdentity", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("resolves identity for an authenticated anaconda employee with a subscription", async () => {
+	it("resolves identity for an authenticated anaconda employee", async () => {
 		const auth = fakeAuth({
 			getSession: async () => ({
 				status: "authenticated",
 				user: { userId: "u1", email: "dev@anaconda.com" },
 			}),
-			getUserInfo: async () => [{ id: "business_subscription.org", group: "subscriptions" }],
 		});
 
 		expect(await deriveTelemetryIdentity(auth, "never")).toEqual({
-			userId: "u1",
+			email: "dev@anaconda.com",
 			isEmployee: true,
 			cohortId: 0,
-			subscription: "business_subscription",
 		});
 	});
 
-	it("marks a non-anaconda email as free tier without attributes", async () => {
+	it("resolves identity for a non-anaconda email", async () => {
 		const auth = fakeAuth({
 			getSession: async () => ({
 				status: "authenticated",
@@ -197,45 +175,26 @@ describe("deriveTelemetryIdentity", () => {
 		});
 
 		expect(await deriveTelemetryIdentity(auth, "never")).toEqual({
-			userId: "u2",
+			email: "person@example.com",
 			isEmployee: false,
 			cohortId: 0,
-			subscription: "free_subscription",
 		});
 	});
 
-	it("returns the anonymous identity when anonymize is 'always' (no userinfo call)", async () => {
-		const getUserInfo = vi.fn(async () => []);
-		const auth = fakeAuth({
-			getSession: async () => ({
-				status: "authenticated",
-				user: { userId: "u1", email: "dev@anaconda.com" },
-			}),
-			getUserInfo,
-		});
+	it("returns the anonymous identity when anonymize is 'always'", async () => {
+		const getSession = vi.fn(async () => ({
+			status: "authenticated" as const,
+			user: { userId: "u1", email: "dev@anaconda.com" },
+		}));
 
-		expect(await deriveTelemetryIdentity(auth, "always")).toEqual({ isEmployee: false });
-		expect(getUserInfo).not.toHaveBeenCalled();
+		expect(await deriveTelemetryIdentity(fakeAuth({ getSession }), "always")).toEqual({
+			isEmployee: false,
+		});
+		expect(getSession).not.toHaveBeenCalled();
 	});
 
 	it("returns the anonymous identity for an anonymous session", async () => {
 		expect(await deriveTelemetryIdentity(fakeAuth(), "never")).toEqual({ isEmployee: false });
-	});
-
-	it("omits subscription when getUserInfo throws (never throws)", async () => {
-		const auth = fakeAuth({
-			getSession: async () => ({
-				status: "authenticated",
-				user: { userId: "u1", email: "dev@anaconda.com" },
-			}),
-			getUserInfo: async () => {
-				throw new Error("boom");
-			},
-		});
-
-		const identity = await deriveTelemetryIdentity(auth, "never", silentLogger);
-		expect(identity.subscription).toBeUndefined();
-		expect(identity.userId).toBe("u1");
 	});
 
 	it("returns the anonymous identity when getSession throws", async () => {
@@ -248,14 +207,12 @@ describe("deriveTelemetryIdentity", () => {
 		expect(await deriveTelemetryIdentity(auth, "never")).toEqual({ isEmployee: false });
 	});
 
-	it("treats a user without an email as a non-employee", async () => {
+	it("treats an authenticated session without an email as anonymous", async () => {
 		const auth = fakeAuth({
 			getSession: async () => ({ status: "authenticated", user: { userId: "u3" } }),
 		});
 
-		const identity = await deriveTelemetryIdentity(auth, "never");
-		expect(identity.isEmployee).toBe(false);
-		expect(identity.userId).toBe("u3");
+		expect(await deriveTelemetryIdentity(auth, "never")).toEqual({ isEmployee: false });
 	});
 });
 
@@ -265,30 +222,24 @@ describe("TelemetryService.create", () => {
 	});
 
 	it("assembles a service from the auth slice, preferences, and env", () => {
-		vi.stubEnv("VITE_ANACONDA_LOGGING_ENV_ATTRIBUTE", "test");
-		vi.stubEnv("VITE_ANACONDA_LOGGING_AUTH_URL", "https://auth.test/v1/logs");
-		vi.stubEnv("VITE_ANACONDA_LOGGING_NON_AUTH_URL", "https://anon.test/v1/logs");
-		vi.stubEnv("VITE_ANACONDA_LOGGING_EXPORT_INTERVAL_MS", "15000");
+		vi.stubEnv("VITE_POSTHOG_HOST", "https://eu.i.posthog.com");
 
 		const svc = TelemetryService.create({
 			auth: fakeAuth(),
 			preferences: preferences(),
 			appVersion: "1.2.3",
-			serviceId: "kilo-desktop",
+			environment: "preview",
 		});
 
 		expect(svc).toBeInstanceOf(TelemetryService);
 	});
 
-	it("tolerates unset / non-numeric env values", () => {
-		vi.stubEnv("VITE_ANACONDA_LOGGING_AUTH_URL", "");
-		vi.stubEnv("VITE_ANACONDA_LOGGING_EXPORT_INTERVAL_MS", "not-a-number");
-
+	it("tolerates an unset host override", () => {
 		const svc = TelemetryService.create({
 			auth: fakeAuth(),
 			preferences: preferences({ allowDataCollection: false }),
 			appVersion: "1.2.3",
-			serviceId: "svc",
+			environment: "development",
 		});
 
 		expect(svc).toBeInstanceOf(TelemetryService);

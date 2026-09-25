@@ -164,7 +164,7 @@ function AccountAnacondaRow() {
 				toast.error("Could not sign out", { description: next.reason });
 				return;
 			}
-			void sdk.telemetry.track({ event: "LOGGED_OUT" });
+			void sdk.telemetry.track({ event: "Logged Out" });
 		} catch (cause) {
 			toast.error("Could not sign out", { description: errorMessage(cause) });
 		}
@@ -180,7 +180,7 @@ function AccountAnacondaRow() {
 				toast.error("Could not sign in", { description: next.reason });
 				return;
 			}
-			void sdk.telemetry.track({ event: "LOGGED_IN" });
+			void sdk.telemetry.track({ event: "Logged In" });
 		} catch (cause) {
 			toast.error("Could not sign in", { description: errorMessage(cause) });
 		}

@@ -143,11 +143,11 @@ export function AppSidebarLayout({
 
 	const location = useRouterState({ select: (state) => state.location });
 	const pathname = location.pathname;
-	// PAGE_VISIT is a shell-level, cross-feature concern, so it uses the
+	// Page Visit is a shell-level, cross-feature concern, so it uses the
 	// untagged useTelemetry() hook rather than a feature-scoped sdk instance.
 	const { track } = useTelemetry();
 	useEffect(() => {
-		void track({ event: "PAGE_VISIT", data: { path: pathname } });
+		void track({ event: "Page Visit", data: { path: pathname } });
 	}, [pathname, track]);
 
 	// Filter nav entries against the current feature-flag map so a plugin

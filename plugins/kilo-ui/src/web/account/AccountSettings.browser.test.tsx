@@ -185,7 +185,7 @@ describe("AccountSettings", () => {
 			.toHaveTextContent("Signed in as dev@anaconda.com");
 		await screen.getByTestId("account-anaconda-sign-out").click();
 		await vi.waitFor(() => expect(anaconda.logout).toHaveBeenCalledTimes(1));
-		expect(track).toHaveBeenCalledWith(expect.objectContaining({ event: "LOGGED_OUT" }));
+		expect(track).toHaveBeenCalledWith(expect.objectContaining({ event: "Logged Out" }));
 	});
 
 	it("starts Anaconda sign-in in the browser without a dialog", async () => {

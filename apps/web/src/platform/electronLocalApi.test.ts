@@ -135,7 +135,7 @@ describe("createElectronLocalApi", () => {
 	it("forwards telemetry.track through the bridge", async () => {
 		const invoke = vi.fn().mockResolvedValue({ ok: true, value: undefined });
 		const api = createElectronLocalApi(makeBridge({ invoke }));
-		const input = { event: "PAGE_VISIT", data: { path: "/" } } as const;
+		const input = { event: "Page Visit", data: { path: "/" } } as const;
 
 		await expect(api.telemetry.track(input)).resolves.toBeUndefined();
 		expect(invoke).toHaveBeenCalledWith("telemetry:track", input);

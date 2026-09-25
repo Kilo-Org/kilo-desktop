@@ -5,16 +5,16 @@ import { TELEMETRY_EVENTS, telemetryMethods, telemetryTrackInputSchema } from ".
 describe("telemetry contract", () => {
 	it("parses a minimal track input", () => {
 		const parsed = telemetryTrackInputSchema.parse({
-			event: "DESKTOP_INITIALIZED",
+			event: "Desktop Initialized",
 			data: { version: "1.2.3" },
 		});
 
-		expect(parsed).toEqual({ event: "DESKTOP_INITIALIZED", data: { version: "1.2.3" } });
+		expect(parsed).toEqual({ event: "Desktop Initialized", data: { version: "1.2.3" } });
 	});
 
 	it("parses an input carrying anonymize options", () => {
 		const parsed = telemetryTrackInputSchema.parse({
-			event: "LOGGED_IN",
+			event: "Logged In",
 			data: { email_domain: "anaconda.com" },
 			options: { anonymize: "always" },
 		});
@@ -28,10 +28,16 @@ describe("telemetry contract", () => {
 		).toBe(false);
 	});
 
+	it("rejects legacy snake_case event names", () => {
+		expect(
+			telemetryTrackInputSchema.safeParse({ event: "DESKTOP_INITIALIZED", data: {} }).success,
+		).toBe(false);
+	});
+
 	it("rejects an unknown anonymize option", () => {
 		expect(
 			telemetryTrackInputSchema.safeParse({
-				event: "PAGE_VISIT",
+				event: "Page Visit",
 				data: {},
 				options: { anonymize: "sometimes" },
 			}).success,

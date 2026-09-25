@@ -9,7 +9,7 @@ import type { SdkTelemetry } from "@kilo-desktop/feature-sdk";
  *
  * @example
  * const { track } = useTelemetry();
- * track({ event: "PAGE_VISIT", data: { path } });
+ * track({ event: "Page Visit", data: { path } });
  */
 export function useTelemetry(): SdkTelemetry {
 	return useFeatureSystem().services.shellDelegates.telemetry;

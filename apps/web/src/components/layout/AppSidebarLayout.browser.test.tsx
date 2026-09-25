@@ -248,12 +248,12 @@ describe("AppSidebarLayout account dock", () => {
 		await expect.element(page.getByTestId("settings-back")).not.toBeInTheDocument();
 	});
 
-	it("tracks PAGE_VISIT for the initial route on mount", async () => {
+	it("tracks Page Visit for the initial route on mount", async () => {
 		const track = vi.fn(async () => undefined);
 		renderLayout(fakeLocalApi({ status: "anonymous" }, {}, apiWithTrack(track)));
 
 		await vi.waitFor(() => {
-			expect(track).toHaveBeenCalledWith({ event: "PAGE_VISIT", data: { path: "/" } });
+			expect(track).toHaveBeenCalledWith({ event: "Page Visit", data: { path: "/" } });
 		});
 	});
 });

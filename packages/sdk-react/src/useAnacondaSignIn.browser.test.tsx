@@ -55,7 +55,7 @@ describe("useAnacondaSignIn", () => {
 		expect(getState().authenticated).toBe(true);
 	});
 
-	it("resolves true, updates the session, and tracks LOGGED_IN on success", async () => {
+	it("resolves true, updates the session, and tracks Logged In on success", async () => {
 		const store = sessionStore({ status: "anonymous" });
 		const track = vi.fn(async () => {});
 		const login = vi.fn(async (): Promise<AuthSession> => {
@@ -67,7 +67,7 @@ describe("useAnacondaSignIn", () => {
 		const ok = await getState().signIn();
 
 		expect(ok).toBe(true);
-		expect(track).toHaveBeenCalledWith({ event: "LOGGED_IN" });
+		expect(track).toHaveBeenCalledWith({ event: "Logged In" });
 		expect(getState().authenticated).toBe(true);
 		expect(getState().error).toBeUndefined();
 		await vi.waitFor(() => {

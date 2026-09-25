@@ -51,7 +51,6 @@
 		"@runtimed/node": "0.5.6",
 		"@sentry/electron": "catalog:",
 		"@vscode/proxy-agent": "^0.45.0",
-		"anaconda-opentelemetry": "0.9.3",
 		"atomically": "catalog:",
 		"electron-debug": "^5.0.0",
 		"electron-log": "catalog:",

@@ -3,6 +3,16 @@ import { describe, expect, it } from "vitest";
 import { shouldShowChatCanvas } from "./chat-canvas-visibility.js";
 
 describe("shouldShowChatCanvas", () => {
+	it("keeps configured panes hidden until the new chat starts", () => {
+		expect(
+			shouldShowChatCanvas({
+				hasMessages: false,
+				hasExtraPanes: true,
+				remoteId: undefined,
+				status: "new",
+			}),
+		).toBe(false);
+	});
 	it("keeps a new empty chat off the pane canvas", () => {
 		expect(
 			shouldShowChatCanvas({

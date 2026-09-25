@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { flattenPanes, parseLayoutJson } from "@kilo-desktop/pane-layout";
 
 import { PLAN_TAB_DEFINITION_ID } from "./right-panel-tab-registry.js";
 import {
@@ -54,6 +55,98 @@ describe("resolveVisibleRightPanelSessionKey", () => {
 });
 
 describe("right-panel-store", () => {
+	it("initializes a draft once, remembers no-default, and never overwrites existing panes", () => {
+		const template = {
+			version: 1 as const,
+			arrangement: "carousel" as const,
+			slots: [],
+			groups: [],
+		};
+		useRightPanelStore.getState().initializeDefaultLayout("draft", undefined, []);
+		useRightPanelStore.getState().initializeDefaultLayout("draft", template, []);
+		expect(useRightPanelStore.getState().bySessionId.draft?.arrangement).toBe("tiles");
+		useRightPanelStore.getState().setArrangement("draft", "tiles");
+		expect(useRightPanelStore.getState().bySessionId.draft?.defaultLayoutInitialized).toBe(true);
+		useRightPanelStore.getState().clearSession("draft");
+		useRightPanelStore.getState().initializeDefaultLayout("draft", template, []);
+		expect(useRightPanelStore.getState().bySessionId.draft?.arrangement).toBe("carousel");
+		useRightPanelStore.getState().moveSessionState("draft", "remote");
+		expect(useRightPanelStore.getState().bySessionId.remote?.defaultLayoutInitialized).toBe(true);
+		useRightPanelStore.getState().openTab("modified", CANVAS);
+		const before = useRightPanelStore.getState().bySessionId.modified;
+		useRightPanelStore.getState().initializeDefaultLayout("modified", template, []);
+		expect(useRightPanelStore.getState().bySessionId.modified).toBe(before);
+	});
+	it("applies preset tabs and geometry in a single observable update", () => {
+		const observations: SessionRightPanelState[] = [];
+		const unsubscribe = useRightPanelStore.subscribe((state) => {
+			observations.push(selectSessionRightPanelState(state.bySessionId, SESSION));
+		});
+		try {
+			useRightPanelStore.getState().applyTemplate(
+				SESSION,
+				{
+					version: 1,
+					arrangement: "carousel",
+					activePaneId: "terminal",
+					slots: [
+						{ id: "chat", type: "chat" },
+						{ id: "terminal", type: "terminal" },
+					],
+					groups: [
+						{
+							id: "tabs",
+							tabs: ["chat", "terminal"],
+							activePaneId: "terminal",
+							width: 500,
+							pinned: false,
+						},
+					],
+				},
+				["terminal.terminal"],
+			);
+			expect(observations).toHaveLength(1);
+			const state = observations[0]!;
+			expect(state.arrangement).toBe("carousel");
+			expect(state.tabs).toHaveLength(1);
+			expect(state.activeTabId).toBe(state.tabs[0]?.instanceId);
+			expect(flattenPanes(parseLayoutJson(state.layoutJson)!).map((pane) => pane.id)).toEqual([
+				"agent:session-1",
+				state.tabs[0]?.instanceId,
+			]);
+		} finally {
+			unsubscribe();
+		}
+	});
+	it("filters default layouts against the currently available definitions", () => {
+		useRightPanelStore.getState().initializeDefaultLayout(
+			SESSION,
+			{
+				version: 1,
+				arrangement: "tiles",
+				slots: [
+					{ id: "chat", type: "chat" },
+					{ id: "changes", type: "changes" },
+				],
+				groups: [
+					{
+						id: "tabs",
+						tabs: ["chat", "changes"],
+						activePaneId: "changes",
+						width: 500,
+						pinned: false,
+					},
+				],
+			},
+			["terminal.terminal"],
+		);
+
+		const state = useRightPanelStore.getState().bySessionId[SESSION]!;
+		expect(state.tabs).toEqual([]);
+		expect(flattenPanes(parseLayoutJson(state.layoutJson)!).map((pane) => pane.id)).toEqual([
+			"agent:session-1",
+		]);
+	});
 	it("uses fresh grouped-layout persistence with Tiles as the default", () => {
 		expect(RIGHT_PANEL_STORAGE_KEY).toBe("kilo-ui:right-panel-state:v3");
 		expect(DEFAULT_ARRANGEMENT).toBe("tiles");
@@ -238,5 +331,16 @@ describe("right-panel-store", () => {
 		const persisted = persistedRightPanelState(useRightPanelStore.getState());
 		expect(persisted.bySessionId[DRAFT_RIGHT_PANEL_SESSION_KEY]).toBeUndefined();
 		expect(persisted.bySessionId[SESSION]?.tabs).toHaveLength(1);
+	});
+
+	it("omits a marker-only default decision after draft promotion", () => {
+		useRightPanelStore
+			.getState()
+			.initializeDefaultLayout(DRAFT_RIGHT_PANEL_SESSION_KEY, undefined, []);
+		useRightPanelStore.getState().moveSessionState(DRAFT_RIGHT_PANEL_SESSION_KEY, SESSION);
+		expect(useRightPanelStore.getState().bySessionId[SESSION]?.defaultLayoutInitialized).toBe(true);
+		expect(
+			persistedRightPanelState(useRightPanelStore.getState()).bySessionId[SESSION],
+		).toBeUndefined();
 	});
 });

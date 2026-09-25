@@ -23,7 +23,7 @@ import {
 	type Arrangement,
 	type PaneLayout,
 } from "@kilo-desktop/pane-layout";
-import { useSdk, useSdkContributions } from "@kilo-desktop/sdk-react";
+import { useFeatureFlag, useSdk, useSdkContributions } from "@kilo-desktop/sdk-react";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@kilo-desktop/ui/components/empty";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
@@ -34,6 +34,11 @@ import { ChatMarkdownProvider } from "./ChatMarkdownContext.js";
 import type { ChatMarkdownExtensionContext } from "./chat-markdown-extensions.js";
 import { resolveChatWorkspace } from "./chat-workspace-directory.js";
 import { Thread } from "./components/assistant-ui/thread.js";
+import type { LayoutPreset } from "../../contracts/layout-presets/schemas.js";
+import { LayoutPresetsMenu } from "./layout-presets/LayoutPresetsMenu.js";
+import { captureLayoutTemplate } from "./layout-presets/layout-template.js";
+import { useDefaultLayout } from "./layout-presets/use-default-layout.js";
+import { CHAT_LAYOUTS_FEATURE_FLAG } from "./layout-presets/feature-flag.js";
 
 import { ChatPaneCanvas } from "./pane-canvas/ChatPaneCanvas.js";
 import {
@@ -166,6 +171,7 @@ export function ChatPageHeaderLeading() {
 
 export function ChatPageHeaderActions() {
 	const state = usePaneSessionHeaderStore();
+	const layoutsEnabled = useFeatureFlag(CHAT_LAYOUTS_FEATURE_FLAG, false);
 	const contributions = useSdkContributions(CHAT_HEADER_ACTIONS_ZONE);
 	if (!state.ready) return null;
 	return (
@@ -191,6 +197,9 @@ export function ChatPageHeaderActions() {
 						arrangement={state.arrangement}
 						onArrangementChange={state.onArrangementChange}
 					/>
+					{layoutsEnabled ? (
+						<LayoutPresetsMenu capture={state.captureLayout} onApply={state.onApplyLayout} />
+					) : null}
 				</>
 			) : null}
 		</div>
@@ -204,7 +213,12 @@ export function ChatPageHeaderActions() {
  */
 export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 	const sdk = useSdk(KILO_UI_PLUGIN_ID);
+	const layoutsEnabled = useFeatureFlag(CHAT_LAYOUTS_FEATURE_FLAG, false);
 	const rightPanelDefinitions = useRightPanelTabDefinitions();
+	const availableDefinitionIds = useMemo(
+		() => rightPanelDefinitions.map((definition) => definition.id),
+		[rightPanelDefinitions],
+	);
 	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
 	const localThreadId = useAuiState((s) => s.threadListItem.id);
 	const sessionTitle = useAuiState((s) => s.threadListItem.title);
@@ -275,6 +289,7 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 	const clearSession = useRightPanelStore((state) => state.clearSession);
 	const persistLayoutJson = useRightPanelStore((state) => state.setLayout);
 	const persistArrangement = useRightPanelStore((state) => state.setArrangement);
+	const applyTemplate = useRightPanelStore((state) => state.applyTemplate);
 
 	const hasExtraPanes = panelState.tabs.length > 0;
 	const hasCanvas = shouldShowChatCanvas({
@@ -545,6 +560,13 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 		}
 		wasEmptyRef.current = !hasMessages;
 	}, [clearSession, hasMessages, isDetached, remoteId, sessionId]);
+	useDefaultLayout(
+		sessionId,
+		isDetached ? undefined : prePromotionSessionId,
+		!isDetached && threadStatus === "new" && !remoteId?.trim() && !hasMessages,
+		layoutsEnabled,
+		availableDefinitionIds,
+	);
 
 	const handleLaunch = useCallback(
 		(definition: RightPanelTabDefinition, targetGroupId?: string) => {
@@ -620,6 +642,17 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 		[commitLayout, layout, persistArrangement, sessionId],
 	);
 
+	const captureLayout = useCallback(
+		() => captureLayoutTemplate(layout, panelState),
+		[layout, panelState],
+	);
+	const handleApplyLayout = useCallback(
+		(preset: LayoutPreset) => {
+			applyTemplate(sessionId, preset.template, availableDefinitionIds);
+		},
+		[applyTemplate, availableDefinitionIds, sessionId],
+	);
+
 	useEffect(() => {
 		if (isDetached) return;
 		usePaneSessionHeaderStore.setState({
@@ -633,10 +666,14 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 			onLaunch: handleLaunch,
 			onOpenChanges: handleOpenChanges,
 			onLaunchChat: handleLaunchChat,
+			captureLayout,
+			onApplyLayout: handleApplyLayout,
 		});
 		return () => resetPaneSessionHeader();
 	}, [
 		arrangement,
+		captureLayout,
+		handleApplyLayout,
 		handleLaunch,
 		handleOpenChanges,
 		handleLaunchChat,

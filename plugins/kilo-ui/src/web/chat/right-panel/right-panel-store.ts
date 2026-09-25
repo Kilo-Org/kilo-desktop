@@ -1,8 +1,15 @@
-/** Per-session chat pane + artifact tab state. */
+/**
+ * Owns per-session pane identity and geometry, including draft-to-session promotion.
+ * Templates update tabs and layout atomically so reconciliation never sees orphaned
+ * panes; existing tab identities and unsaved state survive layout changes. A draft
+ * resolves its default once, even when none is configured, until explicitly cleared.
+ */
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { ARRANGEMENTS, type Arrangement } from "@kilo-desktop/pane-layout";
+import type { LayoutTemplate } from "../../../contracts/layout-presets/schemas.js";
+import { applyLayoutTemplate } from "../layout-presets/layout-template.js";
 
 import {
 	createContributedTab,
@@ -56,6 +63,8 @@ export interface SessionRightPanelState {
 	/** Tiles / Carousel. Invalid persisted values fall back to Tiles. */
 	arrangement?: Arrangement;
 	layoutJson?: string;
+	/** A new draft resolves its default only once, including when no default is set. */
+	defaultLayoutInitialized?: boolean;
 }
 
 export type OpenPlanOptions = {
@@ -79,6 +88,16 @@ interface RightPanelStoreState {
 	setChatPaneOpen: (sessionId: string, open: boolean) => void;
 	setLayout: (sessionId: string, layoutJson: string) => void;
 	setArrangement: (sessionId: string, arrangement: Arrangement) => void;
+	applyTemplate: (
+		sessionId: string,
+		template: LayoutTemplate,
+		availableDefinitionIds: readonly string[],
+	) => void;
+	initializeDefaultLayout: (
+		sessionId: string,
+		template: LayoutTemplate | undefined,
+		availableDefinitionIds: readonly string[],
+	) => void;
 }
 
 export function persistedRightPanelState(
@@ -88,6 +107,13 @@ export function persistedRightPanelState(
 		bySessionId: Object.fromEntries(
 			Object.entries(state.bySessionId)
 				.filter(([sessionId]) => sessionId !== DRAFT_RIGHT_PANEL_SESSION_KEY)
+				.filter(
+					([, session]) =>
+						session.tabs.length > 0 ||
+						session.layoutJson !== undefined ||
+						session.chatPaneOpen !== undefined ||
+						(session.arrangement ?? DEFAULT_ARRANGEMENT) !== DEFAULT_ARRANGEMENT,
+				)
 				.map(([sessionId, session]) => {
 					const { isOpen: _legacyIsOpen, ...current } = session as PersistedSessionState;
 					const tabs = session.tabs
@@ -147,6 +173,7 @@ const updateSession = (
 		next.activeTabId === null &&
 		next.tabs.length === 0 &&
 		!next.layoutJson &&
+		!next.defaultLayoutInitialized &&
 		(next.arrangement ?? DEFAULT_ARRANGEMENT) === DEFAULT_ARRANGEMENT
 	) {
 		if (!(sessionId in bySessionId)) return bySessionId;
@@ -204,6 +231,9 @@ function mergeSessionState(
 				? {}
 				: { chatPaneOpen: preferredChatPaneOpen }),
 		arrangement,
+		...(source.defaultLayoutInitialized || target.defaultLayoutInitialized
+			? { defaultLayoutInitialized: true }
+			: {}),
 		...(target.layoutJson
 			? { layoutJson: target.layoutJson }
 			: source.layoutJson
@@ -342,6 +372,32 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
 						current.arrangement === arrangement ? current : { ...current, arrangement },
 					),
 				})),
+			applyTemplate: (sessionId, template, availableDefinitionIds) =>
+				set((state) => ({
+					bySessionId: updateSession(state.bySessionId, sessionId, (current) =>
+						applyLayoutTemplate(template, sessionId, current, new Set(availableDefinitionIds)),
+					),
+				})),
+			initializeDefaultLayout: (sessionId, template, availableDefinitionIds) =>
+				set((state) => {
+					if (state.bySessionId[sessionId]) return state;
+					return {
+						bySessionId: {
+							...state.bySessionId,
+							[sessionId]: {
+								...(template
+									? applyLayoutTemplate(
+											template,
+											sessionId,
+											EMPTY_SESSION_RIGHT_PANEL_STATE,
+											new Set(availableDefinitionIds),
+										)
+									: EMPTY_SESSION_RIGHT_PANEL_STATE),
+								defaultLayoutInitialized: true,
+							},
+						},
+					};
+				}),
 		}),
 		{
 			name: RIGHT_PANEL_STORAGE_KEY,

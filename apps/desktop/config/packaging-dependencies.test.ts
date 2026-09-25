@@ -355,6 +355,7 @@ describe("packaged production dependencies", () => {
 		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
 
 		expect(scripts?.["package:e2e"]).toContain("ELECTRON_SKIP_NATIVE_REBUILD=true");
+		expect(scripts?.["package:e2e"]).toContain("VITE_FEATURE_FLAG_OVERRIDES=chat-layouts");
 		expect(forge).toContain('process.env.ELECTRON_SKIP_NATIVE_REBUILD === "true"');
 		expect(forge).toContain("types: []");
 	});

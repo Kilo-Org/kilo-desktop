@@ -26,6 +26,11 @@ import {
 	type Workspace,
 	type WorkspacesService,
 } from "../../contracts/workspaces/schemas.js";
+import {
+	layoutPresetsContract,
+	type LayoutPresetsService,
+	type LayoutPresetsState,
+} from "../../contracts/layout-presets/schemas.js";
 import { WorkspacesFeatureProvider } from "../workspaces/WorkspacesFeatureProvider.js";
 import { ChatConnectionProvider, useChatConnection } from "./connection/ChatConnectionContext.js";
 import { ChatFeatureProvider } from "./ChatFeatureProvider.js";
@@ -86,6 +91,7 @@ function CanvasPanel({
 			data-workspace-folders={workspaceFolders?.map((folder) => folder.path).join("|")}
 		>
 			{title}
+			<input aria-label="Canvas draft" />
 		</div>
 	);
 }
@@ -207,6 +213,9 @@ function testClient(): QueryClient {
 }
 
 function renderChatPage(options?: {
+	layoutPresets?: LayoutPresetsState;
+	getLayoutPresets?: LayoutPresetsService["layoutPresets.get"];
+	saveLayoutPreset?: LayoutPresetsService["layoutPresets.save"];
 	getConnection?: KiloUiChatService["chat.getConnection"];
 	prepareSession?: KiloUiChatService["chat.prepareSession"];
 	workspaces?: Workspace[];
@@ -219,6 +228,8 @@ function renderChatPage(options?: {
 	connectLocalInference?: () => Promise<void>;
 	shell?: Partial<SDK["shell"]>;
 	pageProps?: Partial<PluginPageProps>;
+	layoutsEnabled?: boolean;
+	featureFlags?: SDK["featureFlags"];
 }) {
 	const getConnection = options?.getConnection ?? (async () => connection);
 	const prepareSession =
@@ -230,7 +241,7 @@ function renderChatPage(options?: {
 
 	const kiloUi = createFakeSdk({
 		featureId: "kilo-ui",
-		channels: { ...workspacesContract, ...kiloUiChatContract },
+		channels: { ...workspacesContract, ...kiloUiChatContract, ...layoutPresetsContract },
 		handlers: {
 			list: async () => workspaces,
 			get: async ({ id }) => workspaces.find((candidate) => candidate.id === id) ?? null,
@@ -239,8 +250,19 @@ function renderChatPage(options?: {
 			remove: async () => ({ deleted: true }),
 			"chat.getConnection": getConnection,
 			"chat.prepareSession": prepareSession,
-		} satisfies Partial<WorkspacesService & KiloUiChatService>,
+			"layoutPresets.get":
+				options?.getLayoutPresets ??
+				(async () => options?.layoutPresets ?? { presets: [], defaultPresetId: null }),
+			...(options?.saveLayoutPreset ? { "layoutPresets.save": options.saveLayoutPreset } : {}),
+		} satisfies Partial<WorkspacesService & KiloUiChatService & LayoutPresetsService>,
 		...(options?.shell ? { shell: options.shell } : {}),
+		featureFlags: options?.featureFlags ?? {
+			peek: () => ({ "chat-layouts": options?.layoutsEnabled ?? true }),
+			subscribe: (listener) => {
+				listener({ "chat-layouts": options?.layoutsEnabled ?? true });
+				return () => undefined;
+			},
+		},
 	});
 	const system = createFakeFeatureSystem({
 		sdks: { "kilo-ui": kiloUi },
@@ -368,9 +390,545 @@ afterEach(() => {
 	assistantState.current.thread.isEmpty = true;
 	assistantState.current.thread.extras = undefined;
 	assistantState.current.threadListItem.remoteId = undefined;
+	assistantState.current.threadListItem.id = "draft";
 	assistantState.current.threadListItem.status = "new";
 	assistantState.current.threadListItem.title = "Session";
 	vi.clearAllMocks();
+});
+
+describe("chat layout presets", () => {
+	const filesDefault: LayoutPresetsState = {
+		defaultPresetId: "files",
+		presets: [
+			{
+				id: "files",
+				name: "Files beside chat",
+				template: {
+					version: 1,
+					arrangement: "carousel",
+					activePaneId: "chat",
+					slots: [
+						{ id: "chat", type: "chat" },
+						{ id: "files", type: "files" },
+					],
+					groups: [
+						{ id: "chat", tabs: ["chat"], activePaneId: "chat", width: 600, pinned: false },
+						{ id: "files", tabs: ["files"], activePaneId: "files", width: 400, pinned: true },
+					],
+				},
+			},
+		],
+	};
+	const codingPreset: LayoutPresetsState = {
+		defaultPresetId: "coding",
+		presets: [
+			{
+				id: "coding",
+				name: "Coding",
+				template: {
+					version: 1,
+					arrangement: "tiles",
+					activePaneId: "changes",
+					slots: [
+						{ id: "chat", type: "chat" },
+						{ id: "changes", type: "changes" },
+					],
+					groups: [
+						{ id: "chat", tabs: ["chat"], activePaneId: "chat", width: 600, pinned: false },
+						{
+							id: "changes",
+							tabs: ["changes"],
+							activePaneId: "changes",
+							width: 400,
+							pinned: false,
+						},
+					],
+				},
+			},
+		],
+	};
+
+	it("shows the layouts control only after the chat enters the pane canvas", async () => {
+		const { baseElement, rerenderChatPage } = renderChatPage();
+		const screen = page.elementLocator(baseElement);
+		await expect.element(screen.getByTestId("chat-layouts-menu")).not.toBeInTheDocument();
+		assistantState.current.thread.messages = [{ role: "user" }];
+		assistantState.current.thread.isEmpty = false;
+		assistantState.current.threadListItem.status = "regular";
+		rerenderChatPage();
+		await expect.element(screen.getByTestId("chat-layouts-menu")).toBeVisible();
+	});
+
+	it("hides layouts and does not load a saved default while the feature flag is off", async () => {
+		const getLayoutPresets = vi.fn(async () => filesDefault);
+		const { baseElement, rerenderChatPage } = renderChatPage({
+			layoutsEnabled: false,
+			layoutPresets: filesDefault,
+			getLayoutPresets,
+			contributeFiles: true,
+		});
+		const screen = page.elementLocator(baseElement);
+		await expect.element(screen.getByTestId("chat-layouts-menu")).not.toBeInTheDocument();
+		await vi.waitFor(() => expect(getLayoutPresets).not.toHaveBeenCalled());
+		assistantState.current.thread.messages = [{ role: "user" }];
+		assistantState.current.thread.isEmpty = false;
+		assistantState.current.threadListItem.status = "regular";
+		rerenderChatPage();
+		await expect.element(screen.getByTestId("test-files-panel")).not.toBeInTheDocument();
+	});
+
+	it("responds to the chat-layouts flag without changing existing pane state", async () => {
+		let enabled = false;
+		const subscribers = new Set<(flags: Record<string, unknown>) => void>();
+		const featureFlags = {
+			getAllFlags: async () => ({ "chat-layouts": enabled }),
+			peek: () => ({ "chat-layouts": enabled }),
+			subscribe: (listener: (flags: Record<string, unknown>) => void) => {
+				subscribers.add(listener);
+				listener({ "chat-layouts": enabled });
+				return () => subscribers.delete(listener);
+			},
+		};
+		const { baseElement } = renderChatPage({ featureFlags });
+		const screen = page.elementLocator(baseElement);
+		await expect.element(screen.getByTestId("chat-layouts-menu")).not.toBeInTheDocument();
+		act(() => {
+			enabled = true;
+			for (const subscriber of subscribers) subscriber({ "chat-layouts": enabled });
+		});
+		await expect.element(screen.getByTestId("chat-layouts-menu")).not.toBeInTheDocument();
+		assistantState.current.thread.messages = [{ role: "user" }];
+		assistantState.current.thread.isEmpty = false;
+		assistantState.current.threadListItem.status = "regular";
+		act(() => useRightPanelStore.getState().setArrangement("draft", "carousel"));
+		await expect.element(screen.getByTestId("chat-layouts-menu")).toBeVisible();
+		act(() => {
+			enabled = false;
+			for (const subscriber of subscribers) subscriber({ "chat-layouts": enabled });
+		});
+		await expect.element(screen.getByTestId("chat-layouts-menu")).not.toBeInTheDocument();
+		expect(useRightPanelStore.getState().bySessionId.draft?.arrangement).toBe("carousel");
+	});
+
+	it("saves the current layout from the pane canvas header", async () => {
+		const saveLayoutPreset = vi.fn<LayoutPresetsService["layoutPresets.save"]>(
+			async ({ name, template }) => ({
+				presets: [{ id: "saved", name, template }],
+				defaultPresetId: null,
+			}),
+		);
+		const { baseElement } = renderChatPage({ saveLayoutPreset });
+		const screen = page.elementLocator(baseElement);
+		assistantState.current.thread.messages = [{ role: "user" }];
+		assistantState.current.thread.isEmpty = false;
+		assistantState.current.threadListItem.status = "regular";
+		act(() => useRightPanelStore.getState().setArrangement("draft", "tiles"));
+		await screen.getByTestId("chat-layouts-menu").click();
+		await page.getByTestId("chat-layout-save-current").click();
+		await page.getByTestId("chat-layout-name").fill("Chat only");
+		await page.getByTestId("chat-layout-save").click();
+		await vi.waitFor(() =>
+			expect(saveLayoutPreset).toHaveBeenCalledWith({
+				name: "Chat only",
+				makeDefault: false,
+				template: {
+					version: 1,
+					arrangement: "tiles",
+					activePaneId: "slot-1",
+					slots: [{ id: "slot-1", type: "chat" }],
+					groups: [
+						expect.objectContaining({ tabs: ["slot-1"], activePaneId: "slot-1", pinned: false }),
+					],
+				},
+			}),
+		);
+		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
+	});
+
+	it("initializes a new draft when its default arrives and preserves pane identity through promotion", async () => {
+		let resolvePresets!: (state: LayoutPresetsState) => void;
+		const pending = new Promise<LayoutPresetsState>((resolve) => {
+			resolvePresets = resolve;
+		});
+		const { baseElement, rerenderChatPage } = renderChatPage({
+			getLayoutPresets: () => pending,
+			contributeFiles: true,
+			workspaces: [workspace],
+			activeWorkspaceId: workspace.id,
+		});
+		const screen = page.elementLocator(baseElement);
+		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
+		resolvePresets(filesDefault);
+		await vi.waitFor(() =>
+			expect(useRightPanelStore.getState().bySessionId.draft?.tabs).toHaveLength(1),
+		);
+		const tab = useRightPanelStore.getState().bySessionId.draft!.tabs[0]!;
+		expect(tab.definitionId).toBe("files.files");
+		await expect.element(screen.getByTestId("kilo-chat-pane-canvas")).not.toBeInTheDocument();
+		await expect.element(screen.getByTestId("test-files-panel")).not.toBeInTheDocument();
+
+		assistantState.current.thread.messages = [{ role: "user" }];
+		assistantState.current.thread.isEmpty = false;
+		assistantState.current.threadListItem.status = "regular";
+		rerenderChatPage();
+		await expect.element(screen.getByTestId("test-files-panel")).toBeVisible();
+		await expect
+			.element(screen.getByTestId("kilo-chat-pane-canvas"))
+			.toHaveAttribute("data-arrangement", "carousel");
+		await expect
+			.element(screen.getByTestId("test-files-panel"))
+			.toHaveAttribute("data-workspace-directory", "/projects/workspace-1");
+		const before = baseElement.querySelector("[data-qa-id='test-files-panel']");
+		assistantState.current.threadListItem.remoteId = "session-default";
+		rerenderChatPage();
+		await expect
+			.element(screen.getByTestId("test-files-panel"))
+			.toHaveAttribute("data-session-id", "session-default");
+		expect(baseElement.querySelector("[data-qa-id='test-files-panel']")).toBe(before);
+		expect(useRightPanelStore.getState().bySessionId.draft).toBeUndefined();
+		expect(useRightPanelStore.getState().bySessionId["session-default"]?.tabs[0]?.instanceId).toBe(
+			tab.instanceId,
+		);
+	});
+
+	it.each([false, true])(
+		"applies a pending default after first send (already promoted: %s)",
+		async (promoted) => {
+			let resolvePresets!: (state: LayoutPresetsState) => void;
+			const pending = new Promise<LayoutPresetsState>((resolve) => {
+				resolvePresets = resolve;
+			});
+			assistantState.current.threadListItem.id = "local-pending";
+			const { baseElement, queryClient, rerenderChatPage } = renderChatPage({
+				getLayoutPresets: () => pending,
+				contributeFiles: true,
+			});
+			const screen = page.elementLocator(baseElement);
+			await expect.element(screen.getByTestId("kilo-chat-pane-canvas")).not.toBeInTheDocument();
+			assistantState.current.thread.messages = [{ role: "user" }];
+			assistantState.current.thread.isEmpty = false;
+			assistantState.current.threadListItem.status = "regular";
+			rerenderChatPage();
+			if (promoted) {
+				assistantState.current.threadListItem.remoteId = "remote-pending";
+				rerenderChatPage();
+			}
+			resolvePresets(filesDefault);
+			await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0));
+			await expect.element(screen.getByTestId("test-files-panel")).toBeVisible();
+			const files = baseElement.querySelector("[data-qa-id='test-files-panel']");
+			assistantState.current.threadListItem.remoteId = "remote-pending";
+			rerenderChatPage();
+			await expect
+				.element(screen.getByTestId("test-files-panel"))
+				.toHaveAttribute("data-session-id", "remote-pending");
+			expect(baseElement.querySelector("[data-qa-id='test-files-panel']")).toBe(files);
+			expect(useRightPanelStore.getState().bySessionId["local-pending"]).toBeUndefined();
+			expect(useRightPanelStore.getState().bySessionId["remote-pending"]?.tabs).toHaveLength(1);
+			await expect
+				.element(screen.getByTestId("kilo-chat-pane-canvas"))
+				.toHaveAttribute("data-arrangement", "carousel");
+		},
+	);
+
+	it("does not carry a pending default to an unrelated chat after navigation", async () => {
+		let resolvePresets!: (state: LayoutPresetsState) => void;
+		const pending = new Promise<LayoutPresetsState>((resolve) => {
+			resolvePresets = resolve;
+		});
+		assistantState.current.threadListItem.id = "local-pending";
+		const { queryClient, rerenderChatPage } = renderChatPage({ getLayoutPresets: () => pending });
+		assistantState.current.thread.messages = [{ role: "user" }];
+		assistantState.current.threadListItem.status = "regular";
+		rerenderChatPage();
+		assistantState.current.threadListItem.id = "existing-chat";
+		assistantState.current.threadListItem.remoteId = "existing-chat";
+		rerenderChatPage();
+		resolvePresets(filesDefault);
+		await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0));
+		expect(useRightPanelStore.getState().bySessionId).toEqual({});
+		assistantState.current.threadListItem.id = "local-pending";
+		assistantState.current.threadListItem.remoteId = "remote-pending";
+		rerenderChatPage();
+		expect(useRightPanelStore.getState().bySessionId).toEqual({});
+	});
+
+	it.each(["before-send", "after-send", "after-promotion"])(
+		"does not restore a pending default after pane edits %s",
+		async (when) => {
+			let resolvePresets!: (state: LayoutPresetsState) => void;
+			const pending = new Promise<LayoutPresetsState>((resolve) => {
+				resolvePresets = resolve;
+			});
+			assistantState.current.threadListItem.id = "local-pending";
+			const { queryClient, rerenderChatPage } = renderChatPage({
+				getLayoutPresets: () => pending,
+			});
+			const edit = (sessionId: string) => {
+				act(() => {
+					useRightPanelStore.getState().setArrangement(sessionId, "carousel");
+					useRightPanelStore.getState().setArrangement(sessionId, "tiles");
+				});
+			};
+			if (when === "before-send") edit("local-pending");
+			assistantState.current.thread.messages = [{ role: "user" }];
+			assistantState.current.threadListItem.status = "regular";
+			rerenderChatPage();
+			if (when === "after-send") edit("local-pending");
+			assistantState.current.threadListItem.remoteId = "remote-pending";
+			rerenderChatPage();
+			if (when === "after-promotion") edit("remote-pending");
+			resolvePresets(filesDefault);
+			await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0));
+			expect(useRightPanelStore.getState().bySessionId).toEqual({});
+		},
+	);
+
+	it("preserves live panes edited before promotion while the default is pending", async () => {
+		let resolvePresets!: (state: LayoutPresetsState) => void;
+		const pending = new Promise<LayoutPresetsState>((resolve) => {
+			resolvePresets = resolve;
+		});
+		assistantState.current.threadListItem.id = "local-pending";
+		const { baseElement, queryClient, rerenderChatPage } = renderChatPage({
+			getLayoutPresets: () => pending,
+			contributeFiles: true,
+		});
+		assistantState.current.thread.messages = [{ role: "user" }];
+		assistantState.current.threadListItem.status = "regular";
+		rerenderChatPage();
+		act(() => {
+			useRightPanelStore
+				.getState()
+				.openTab(
+					"local-pending",
+					{ id: "canvas.canvas", title: "Canvas" },
+					{ instanceId: "live-canvas" },
+				);
+		});
+		const screen = page.elementLocator(baseElement);
+		await screen.getByRole("textbox", { name: "Canvas draft" }).fill("Unsaved before promotion");
+		const canvas = baseElement.querySelector("[data-qa-id='test-canvas-panel']");
+		assistantState.current.threadListItem.remoteId = "remote-pending";
+		act(() => {
+			queryClient.setQueryData(["kilo-ui", "layout-presets"], filesDefault);
+			rerenderChatPage();
+		});
+		resolvePresets(filesDefault);
+		await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0));
+		await expect
+			.element(screen.getByRole("textbox", { name: "Canvas draft" }))
+			.toHaveValue("Unsaved before promotion");
+		expect(baseElement.querySelector("[data-qa-id='test-canvas-panel']")).toBe(canvas);
+		await expect.element(screen.getByTestId("test-files-panel")).not.toBeInTheDocument();
+		expect(useRightPanelStore.getState().bySessionId["local-pending"]).toBeUndefined();
+		expect(useRightPanelStore.getState().bySessionId["remote-pending"]?.tabs).toEqual([
+			expect.objectContaining({ instanceId: "live-canvas" }),
+		]);
+	});
+
+	it("applies a selected layout from the pane canvas", async () => {
+		const { baseElement, queryClient, rerenderChatPage } = renderChatPage({
+			layoutPresets: { ...filesDefault, defaultPresetId: null },
+			contributeFiles: true,
+		});
+		const screen = page.elementLocator(baseElement);
+		await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0));
+		assistantState.current.thread.messages = [{ role: "user" }];
+		assistantState.current.thread.isEmpty = false;
+		assistantState.current.threadListItem.status = "regular";
+		rerenderChatPage();
+		await screen.getByTestId("chat-layouts-menu").click();
+		await page.getByTestId("chat-layout-apply-files").click();
+		await vi.waitFor(() =>
+			expect(useRightPanelStore.getState().bySessionId.draft?.tabs).toHaveLength(1),
+		);
+		await expect.element(screen.getByTestId("test-files-panel")).toBeVisible();
+		await expect
+			.element(screen.getByTestId("kilo-chat-pane-canvas"))
+			.toHaveAttribute("data-arrangement", "carousel");
+	});
+
+	it("does not persist unavailable roles from a selected layout", async () => {
+		const { baseElement, queryClient, rerenderChatPage } = renderChatPage({
+			layoutPresets: { ...codingPreset, defaultPresetId: null },
+		});
+		const screen = page.elementLocator(baseElement);
+		await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0));
+		assistantState.current.thread.messages = [{ role: "user" }];
+		assistantState.current.thread.isEmpty = false;
+		assistantState.current.threadListItem.status = "regular";
+		rerenderChatPage();
+		await screen.getByTestId("chat-layouts-menu").click();
+		await page.getByTestId("chat-layout-apply-coding").click();
+
+		expect(useRightPanelStore.getState().bySessionId.draft?.tabs ?? []).toEqual([]);
+		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
+	});
+
+	it("does not persist unavailable roles from the default layout", async () => {
+		const { queryClient } = renderChatPage({ layoutPresets: codingPreset });
+		await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0));
+
+		expect(useRightPanelStore.getState().bySessionId.draft?.tabs ?? []).toEqual([]);
+		expect(useRightPanelStore.getState().bySessionId.draft?.defaultLayoutInitialized).toBe(true);
+	});
+
+	it("does not apply a changed default until the next new-chat generation", async () => {
+		const { queryClient, rerenderChatPage } = renderChatPage({ contributeFiles: true });
+		await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0));
+		act(() => queryClient.setQueryData(["kilo-ui", "layout-presets"], filesDefault));
+		rerenderChatPage();
+		expect(useRightPanelStore.getState().bySessionId.draft?.tabs ?? []).toEqual([]);
+
+		assistantState.current.thread.messages = [{ role: "user" }];
+		assistantState.current.threadListItem.status = "regular";
+		rerenderChatPage();
+		assistantState.current.thread.messages = [];
+		assistantState.current.threadListItem.status = "new";
+		rerenderChatPage();
+		await vi.waitFor(() =>
+			expect(useRightPanelStore.getState().bySessionId.draft?.tabs).toHaveLength(1),
+		);
+		const firstId = useRightPanelStore.getState().bySessionId.draft!.tabs[0]!.instanceId;
+
+		act(() => useRightPanelStore.getState().clearSession("draft"));
+		act(() => queryClient.setQueryData(["kilo-ui", "layout-presets"], { ...filesDefault }));
+		rerenderChatPage();
+		expect(useRightPanelStore.getState().bySessionId.draft).toBeUndefined();
+		assistantState.current.threadListItem.id = "next-draft";
+		rerenderChatPage();
+		await vi.waitFor(() =>
+			expect(useRightPanelStore.getState().bySessionId["next-draft"]?.tabs).toHaveLength(1),
+		);
+		expect(useRightPanelStore.getState().bySessionId["next-draft"]?.tabs[0]?.instanceId).not.toBe(
+			firstId,
+		);
+	});
+
+	it("does not overwrite a draft changed while its default query was pending", async () => {
+		let resolvePresets!: (state: LayoutPresetsState) => void;
+		const pending = new Promise<LayoutPresetsState>((resolve) => {
+			resolvePresets = resolve;
+		});
+		const { queryClient } = renderChatPage({ getLayoutPresets: () => pending });
+		act(() => {
+			useRightPanelStore.getState().setArrangement("draft", "carousel");
+			useRightPanelStore.getState().setArrangement("draft", "tiles");
+		});
+		resolvePresets(filesDefault);
+		await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0));
+		expect(useRightPanelStore.getState().bySessionId.draft?.tabs ?? []).toEqual([]);
+	});
+
+	it.each([
+		{ status: "regular" as const, remoteId: undefined, messages: [] },
+		{ status: "new" as const, remoteId: "existing-empty", messages: [] },
+		{ status: "new" as const, remoteId: undefined, messages: [{ role: "user" }] },
+	])(
+		"never initializes an existing thread $status/$remoteId/$messages",
+		async ({ status, remoteId, messages }) => {
+			assistantState.current.threadListItem.status = status;
+			assistantState.current.threadListItem.remoteId = remoteId;
+			assistantState.current.thread.messages = messages;
+			const { queryClient } = renderChatPage({ layoutPresets: filesDefault });
+			await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0));
+			expect(useRightPanelStore.getState().bySessionId).toEqual({});
+		},
+	);
+
+	it("keeps chat usable when layout preferences fail to load", async () => {
+		const { baseElement, queryClient, rerenderChatPage } = renderChatPage({
+			getLayoutPresets: async () => {
+				throw new Error("Unavailable");
+			},
+		});
+		const screen = page.elementLocator(baseElement);
+		await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0));
+		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
+		assistantState.current.thread.messages = [{ role: "user" }];
+		assistantState.current.threadListItem.status = "regular";
+		rerenderChatPage();
+		await expect.element(screen.getByTestId("kilo-chat-pane-canvas")).toBeVisible();
+	});
+
+	it("preserves a resolved no-default draft across ChatPage remounts", async () => {
+		const first = renderChatPage();
+		await vi.waitFor(() => expect(first.queryClient.isFetching()).toBe(0));
+		first.unmount();
+		const second = renderChatPage({ layoutPresets: filesDefault });
+		await vi.waitFor(() => expect(second.queryClient.isFetching()).toBe(0));
+		expect(useRightPanelStore.getState().bySessionId.draft?.tabs ?? []).toEqual([]);
+	});
+
+	it("does not replace an already modified draft when ChatPage mounts", async () => {
+		useRightPanelStore.getState().openTab("draft", { id: "canvas.canvas", title: "Canvas" });
+		const { queryClient } = renderChatPage({ layoutPresets: filesDefault });
+		await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0));
+		expect(
+			useRightPanelStore.getState().bySessionId.draft?.tabs.map((tab) => tab.definitionId),
+		).toEqual(["canvas.canvas"]);
+	});
+
+	it("initializes fresh panes after clearing the preceding submitted draft", async () => {
+		const { queryClient, rerenderChatPage } = renderChatPage({
+			layoutPresets: filesDefault,
+			contributeFiles: true,
+		});
+		await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0));
+		const oldId = useRightPanelStore.getState().bySessionId.draft!.tabs[0]!.instanceId;
+		assistantState.current.thread.messages = [{ role: "user" }];
+		assistantState.current.threadListItem.status = "regular";
+		rerenderChatPage();
+		act(() => useRightPanelStore.getState().setArrangement("draft", "tiles"));
+		assistantState.current.thread.messages = [];
+		assistantState.current.threadListItem.status = "new";
+		rerenderChatPage();
+		const next = useRightPanelStore.getState().bySessionId.draft!;
+		expect(next.tabs).toHaveLength(1);
+		expect(next.tabs[0]!.instanceId).not.toBe(oldId);
+		expect(next.arrangement).toBe("carousel");
+		expect(next.layoutJson).not.toContain(oldId);
+	});
+
+	it("retains mounted pane contents and dirty extras when applying a layout to a live chat", async () => {
+		assistantState.current.thread.messages = [{ role: "user" }];
+		assistantState.current.threadListItem.status = "regular";
+		const store = useRightPanelStore.getState();
+		store.openTab(
+			"draft",
+			{ id: "canvas.canvas", title: "Canvas" },
+			{ instanceId: "dirty-canvas" },
+		);
+		store.updateTab("draft", "dirty-canvas", { dirty: true });
+		store.openTab("draft", { id: "files.files", title: "Files" }, { instanceId: "existing-files" });
+		const { baseElement, queryClient } = renderChatPage({
+			layoutPresets: filesDefault,
+			contributeFiles: true,
+		});
+		const screen = page.elementLocator(baseElement);
+		await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0));
+		await screen.getByTestId("chat-pane-tab-dirty-canvas").click();
+		await screen.getByRole("textbox", { name: "Canvas draft" }).fill("Unsaved notes");
+		const canvas = baseElement.querySelector("[data-qa-id='test-canvas-panel']");
+		const files = baseElement.querySelector("[data-qa-id='test-files-panel']");
+		expect(canvas).not.toBeNull();
+		expect(files).not.toBeNull();
+		await screen.getByTestId("chat-layouts-menu").click();
+		await page.getByTestId("chat-layout-apply-files").click();
+		await expect
+			.element(screen.getByTestId("kilo-chat-pane-canvas"))
+			.toHaveAttribute("data-arrangement", "carousel");
+		expect(baseElement.querySelector("[data-qa-id='test-canvas-panel']")).toBe(canvas);
+		expect(baseElement.querySelector("[data-qa-id='test-files-panel']")).toBe(files);
+		await expect
+			.element(screen.getByRole("textbox", { name: "Canvas draft" }))
+			.toHaveValue("Unsaved notes");
+		expect(useRightPanelStore.getState().bySessionId.draft?.tabs).toEqual([
+			expect.objectContaining({ instanceId: "dirty-canvas", dirty: true }),
+			expect.objectContaining({ instanceId: "existing-files" }),
+		]);
+	});
 });
 
 /** Stamps session activity inside ChatFeatureProvider's own store. */

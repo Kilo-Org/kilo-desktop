@@ -5,6 +5,7 @@ import path from "node:path";
 import { removePathAfterAppStops, test as shellTest } from "@kilo-desktop/e2e/fixtures";
 
 import { KiloCodePage } from "./pages/kilo-code-page.js";
+import { LayoutPresetsPage } from "./pages/layout-presets-page.js";
 import { KiloProvidersPage } from "./pages/kilo-providers-page.js";
 import { LocalProvidersPage } from "./pages/local-providers-page.js";
 import { OnboardingPage } from "./pages/onboarding-page.js";
@@ -13,6 +14,7 @@ import { GitWorktreesPage, initializeGitRepository } from "./pages/git-worktrees
 
 type KiloUiFixtures = {
 	kiloCodePage: KiloCodePage;
+	layoutPresetsPage: LayoutPresetsPage;
 	kiloProvidersPage: KiloProvidersPage;
 	localProvidersPage: LocalProvidersPage;
 	onboardingPage: OnboardingPage;
@@ -23,6 +25,10 @@ type KiloUiFixtures = {
 };
 
 export const test = shellTest.extend<KiloUiFixtures>({
+	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
+	layoutPresetsPage: async ({}, use) => {
+		await use(new LayoutPresetsPage());
+	},
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
 	workspaceFolder: async ({}, use) => {
 		const folderPath = await mkdtemp(path.join(os.tmpdir(), "kilo-ui-workspace-"));

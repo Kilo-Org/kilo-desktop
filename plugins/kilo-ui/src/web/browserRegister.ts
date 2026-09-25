@@ -20,6 +20,8 @@ import { onboardingContract } from "../contracts/onboarding/schemas.js";
 import { modelPreferencesContract } from "../contracts/model-preferences/schemas.js";
 import { kiloUiProvidersContract } from "../contracts/providers/schemas.js";
 import { workspacesContract } from "../contracts/workspaces/schemas.js";
+import { registerLayoutPresets } from "../main/layout-presets/register.js";
+import type { LayoutPresetsState } from "../contracts/layout-presets/schemas.js";
 
 const basename = (folderPath: string) =>
 	folderPath
@@ -225,4 +227,11 @@ export function kiloUiBrowserRegister(mainSdk: MainSdk): void {
 	registerProvidersBrowser(mainSdk);
 	registerOnboardingBrowser(mainSdk);
 	registerModelPreferencesBrowser(mainSdk);
+	let layouts = { version: 1, state: { presets: [], defaultPresetId: null } as LayoutPresetsState };
+	registerLayoutPresets(mainSdk, {
+		snapshot: () => layouts,
+		set: (value) => {
+			layouts = value;
+		},
+	});
 }

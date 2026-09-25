@@ -36,6 +36,7 @@ import { createChatWorktreeHandlers } from "./chat/chat-worktree-handlers.js";
 import { fetchGatewayModelDetails } from "./chat/gateway-model-details.js";
 import { createWorkspaceSessionUnscoper } from "./chat/unscope-workspace-sessions.js";
 import { WorkspaceSessionCleanupQueue } from "./chat/workspace-session-cleanup-queue.js";
+import { registerLayoutPresets } from "./layout-presets/register.js";
 
 type KiloServerCapabilities = {
 	connectionService: {
@@ -144,6 +145,7 @@ export function mainRegister(
 	mainSdk.channels(onboardingContract).handleAll(onboardingApi);
 	mainSdk.channels(modelPreferencesContract).handleAll(modelPreferencesApi);
 	mainSdk.channels(kiloUiProvidersContract).handleAll(providersApi);
+	registerLayoutPresets(mainSdk);
 
 	const mcpAppsApi = createMcpAppsHandlers(getConnection, mainSdk.net.fetch);
 	mainSdk.channels(mcpAppsContract).handleAll(mcpAppsApi);

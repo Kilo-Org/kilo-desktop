@@ -9,12 +9,14 @@ import { createObservableValue } from "@kilo-desktop/feature-sdk";
 import type { KiloServerCapabilities } from "@kilo-desktop/plugin-kilo-server/contracts";
 import isEqual from "lodash/isEqual.js";
 
+import { MCP_PATH, resolveAnacondaMcpUrl } from "./anacondaMcpUrl.js";
+
 /**
  * Default Anaconda Remote MCP URL (production). Other environments (e.g.
- * `https://stage.anaconda.com/api/mcp`) go through the URL override in the
- * settings panel.
+ * `https://stage.anaconda.com/api/mcp`) are reached by deriving the URL from the
+ * resolved Anaconda site domain, or by a URL override pinned to that same domain.
  */
-export const DEFAULT_MCP_URL = "https://anaconda.com/api/mcp";
+export const DEFAULT_MCP_URL = `https://anaconda.com${MCP_PATH}`;
 
 /** Stable MCP server ID persisted in Desktop's owned Kilo config. */
 export const MCP_ID = "anaconda-remote";
@@ -196,14 +198,29 @@ export class AnacondaMcpService {
 		// 3. Resolve auth capability and get the API key.
 		const auth = sdk.plugins.get<AuthMainCapability>("auth");
 		const apiKey = await auth?.session.getApiKey();
-		if (!apiKey) {
+		if (!auth || !apiKey) {
 			await this.#teardown();
 			this.#setStatus({ state: "waiting-for-auth" });
 			return;
 		}
 
-		// 4. Compute desired URL.
-		const url = settings.urlOverride ?? DEFAULT_MCP_URL;
+		// 4. Resolve the desired MCP URL, pinned to the signed-in Anaconda site
+		//    domain (the same anchor the auth flow and model-catalog client use).
+		//    A user override is honored only when it targets that same host;
+		//    anything else is rejected so the API key can never be sent to a
+		//    non-Anaconda host. Failing closed tears down any prior contribution
+		//    (removing the entry and the key env) and surfaces an error status.
+		const siteDomain = await auth.session.getSiteDomain();
+		const resolved = resolveAnacondaMcpUrl(settings.urlOverride, siteDomain);
+		if (!resolved.ok) {
+			await this.#teardown();
+			this.#setStatus({
+				state: "error",
+				reason: `Anaconda MCP URL rejected: ${resolved.reason}`,
+			});
+			return;
+		}
+		const url = resolved.url;
 
 		// 5. Persist the Desktop-owned MCP entry and contribute the API key env. Both
 		//    paths are idempotent and share Kilo's debounced restart handling.

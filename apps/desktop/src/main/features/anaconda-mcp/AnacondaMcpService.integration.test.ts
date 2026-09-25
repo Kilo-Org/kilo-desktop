@@ -22,6 +22,8 @@ function createTestHarness(overrides?: {
 	settings?: Partial<AnacondaMcpServiceOptions>;
 	apiKey?: string | null;
 	withKilo?: boolean;
+	/** Domains returned by the fake auth capability's getSiteDomain. Defaults to anaconda.com. */
+	siteDomain?: string;
 	/** Gate awaited inside the fake auth capability's getApiKey. */
 	getApiKeyGate?: Promise<void>;
 	/**
@@ -69,6 +71,7 @@ function createTestHarness(overrides?: {
 			if (gate) await gate;
 			return apiKey;
 		},
+		getSiteDomain: async () => overrides?.siteDomain ?? "anaconda.com",
 	});
 
 	const featureFlagEnabled = overrides?.featureFlagEnabled;
@@ -193,21 +196,52 @@ describe("AnacondaMcpService", () => {
 		});
 	});
 
-	it("uses the url override when configured", async () => {
+	it("derives the MCP URL from the resolved site domain when no override is set", async () => {
 		const { service, configurationApply } = createTestHarness({
 			apiKey: "key",
-			settings: { urlOverride: "https://custom.mcp.dev/mcp" },
+			siteDomain: "stage.anaconda.com",
 		});
 
 		await service.reconcile();
 
 		expect(service.status).toEqual({
 			state: "connected",
-			url: "https://custom.mcp.dev/mcp",
+			url: "https://stage.anaconda.com/api/mcp",
 		});
 		expect(latestMcpEntry(configurationApply)).toMatchObject({
-			url: "https://custom.mcp.dev/mcp",
+			url: "https://stage.anaconda.com/api/mcp",
 		});
+	});
+
+	it("uses a same-host url override when configured", async () => {
+		const { service, configurationApply } = createTestHarness({
+			apiKey: "key",
+			siteDomain: "stage.anaconda.com",
+			settings: { urlOverride: "https://stage.anaconda.com/mcp" },
+		});
+
+		await service.reconcile();
+
+		expect(service.status).toEqual({
+			state: "connected",
+			url: "https://stage.anaconda.com/mcp",
+		});
+		expect(latestMcpEntry(configurationApply)).toMatchObject({
+			url: "https://stage.anaconda.com/mcp",
+		});
+	});
+
+	it("rejects a non-Anaconda override and fails closed (no entry, no key, error status)", async () => {
+		const { service, envContribute, configurationApply } = createTestHarness({
+			apiKey: "key",
+			settings: { urlOverride: "https://evil.example.com/mcp" },
+		});
+
+		await service.reconcile();
+
+		expect(service.status.state).toBe("error");
+		expect(mcpSetCalls(configurationApply)).toHaveLength(0);
+		expect(envContribute).not.toHaveBeenCalled();
 	});
 
 	it("enters disabled state when settings.enabled is false", async () => {
@@ -238,21 +272,21 @@ describe("AnacondaMcpService", () => {
 	});
 
 	it("re-contributes on key rotation and URL change (kilo-server dedupes no-ops)", async () => {
-		const harness = createTestHarness({ apiKey: "key" });
+		const harness = createTestHarness({ apiKey: "key", siteDomain: "stage.anaconda.com" });
 
 		await harness.service.reconcile();
 		expect(harness.envContribute).toHaveBeenCalledTimes(1);
 		expect(mcpSetCalls(harness.configurationApply)).toHaveLength(1);
 
-		// URL change flows into the next MCP config write.
-		harness.settings = { enabled: true, urlOverride: "https://staging.mcp.dev/mcp" };
+		// URL change (same host) flows into the next MCP config write.
+		harness.settings = { enabled: true, urlOverride: "https://stage.anaconda.com/mcp" };
 		await harness.service.reconcile();
 		expect(latestMcpEntry(harness.configurationApply)).toMatchObject({
-			url: "https://staging.mcp.dev/mcp",
+			url: "https://stage.anaconda.com/mcp",
 		});
 		expect(harness.service.status).toEqual({
 			state: "connected",
-			url: "https://staging.mcp.dev/mcp",
+			url: "https://stage.anaconda.com/mcp",
 		});
 	});
 
@@ -323,12 +357,12 @@ describe("AnacondaMcpService", () => {
 		await harness.service.reconcile();
 		// Same status again: no duplicate event.
 		await harness.service.reconcile();
-		harness.settings = { enabled: true, urlOverride: "https://two.test/mcp" };
+		harness.settings = { enabled: true, urlOverride: "https://anaconda.com/other-mcp" };
 		await harness.service.reconcile();
 
 		expect(seen).toEqual([
 			{ state: "connected", url: DEFAULT_MCP_URL },
-			{ state: "connected", url: "https://two.test/mcp" },
+			{ state: "connected", url: "https://anaconda.com/other-mcp" },
 		]);
 	});
 
@@ -361,6 +395,7 @@ describe("AnacondaMcpService", () => {
 				}
 				return "key";
 			},
+			getSiteDomain: async () => "anaconda.com",
 		});
 		const flagSdk = createMainSdk("feature-flag");
 		flagSdk.plugins.expose("featureFlag", {

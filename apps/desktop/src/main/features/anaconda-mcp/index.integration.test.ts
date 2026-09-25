@@ -40,7 +40,10 @@ describe("anaconda-mcp main registration", () => {
 			releaseApiKey = resolve;
 		});
 		const authSdk = createMainSdk("auth");
-		authSdk.plugins.expose("session", { getApiKey: () => apiKey });
+		authSdk.plugins.expose("session", {
+			getApiKey: () => apiKey,
+			getSiteDomain: async () => "anaconda.com",
+		});
 
 		const featureFlagSdk = createMainSdk("feature-flag");
 		featureFlagSdk.plugins.expose("featureFlag", {

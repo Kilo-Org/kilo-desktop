@@ -144,7 +144,7 @@ async function openShowFilters() {
 }
 
 describe("MarketplaceSettings", () => {
-	it("renders URL-derived MCP icons in Agent Behavior and the Kilo Marketplace", async () => {
+	it("does not render supplied MCP images in Agent Behavior or the Kilo Marketplace", async () => {
 		const iconDataUrl =
 			"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 		const mcp = {
@@ -157,20 +157,17 @@ describe("MarketplaceSettings", () => {
 			iconDataUrl,
 			content: '{"type":"remote","url":"https://docs.example.com/mcp"}',
 		};
-		renderPage({
+		const { baseElement } = renderPage({
 			...snapshot,
 			items: [mcp],
-			installed: [{ type: "mcp", id: "docs", scope: "global", iconDataUrl }],
+			installed: [{ type: "mcp", id: "docs", scope: "global" }],
 		});
 
-		await expect
-			.element(page.getByTestId("marketplace-icon-mcp-docs"))
-			.toHaveAttribute("src", iconDataUrl);
+		await expect.element(page.getByTestId("marketplace-item-mcp-docs")).toBeVisible();
+		expect(baseElement.querySelector("img")).toBeNull();
 		await openBrowse();
 		await expect.element(page.getByTestId("marketplace-item-mcp-docs")).toBeVisible();
-		await expect
-			.element(page.getByTestId("marketplace-icon-mcp-docs"))
-			.toHaveAttribute("src", iconDataUrl);
+		expect(baseElement.querySelector("img")).toBeNull();
 	});
 
 	it("uses category display names on Marketplace card badges", async () => {

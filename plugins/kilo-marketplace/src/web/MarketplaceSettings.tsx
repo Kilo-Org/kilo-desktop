@@ -325,19 +325,6 @@ function TypeIcon({ type }: { type: MarketplaceType }) {
 }
 
 function MarketplaceItemIcon({ item }: { item: MarketplaceListItem }) {
-	const [failedUrl, setFailedUrl] = useState<string>();
-	const iconDataUrl = item.type === "mcp" && "iconDataUrl" in item ? item.iconDataUrl : undefined;
-	if (iconDataUrl && iconDataUrl !== failedUrl) {
-		return (
-			<img
-				src={iconDataUrl}
-				alt=""
-				className="size-4 rounded-xs object-contain"
-				onError={() => setFailedUrl(iconDataUrl)}
-				data-qa-id={`marketplace-icon-${item.type}-${item.id}`}
-			/>
-		);
-	}
 	return (
 		<span className={cn("contents", TYPE_ICON_STYLES[item.type])}>
 			<TypeIcon type={item.type} />

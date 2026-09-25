@@ -5,12 +5,7 @@ import { createFakeMainSdk, createFakeSdk } from "@kilo-desktop/testing";
 import { marketplaceSnapshotSchema } from "../contracts/schemas.js";
 import { mainRegister } from "./index.js";
 
-vi.mock("node:dns/promises", () => ({
-	lookup: vi.fn(async () => [{ address: "93.184.216.34", family: 4 }]),
-}));
-
 const disposables: Array<() => Promise<void> | void> = [];
-const PNG = Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]);
 
 function json(body: unknown, status = 200): Response {
 	return new Response(JSON.stringify(body), {
@@ -43,7 +38,8 @@ describe("kilo-marketplace mainRegister", () => {
 				name: "GitHub",
 				description: "Connect GitHub tools",
 				category: "engineering",
-				url: "https://github.com/example/github-mcp",
+				url: "https://example.com/github-mcp",
+				icons: [{ src: "https://example.com/icon.png" }],
 				content: [{ name: "Remote", content: '{"type":"remote","url":"{{URL}}"}' }],
 			},
 		];
@@ -51,7 +47,6 @@ describe("kilo-marketplace mainRegister", () => {
 		const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
 			const url = new URL(String(input));
 			requests.push({ url, ...(init ? { init } : {}) });
-			if (url.pathname === "/favicon.ico") return new Response(PNG);
 			if (url.pathname === "/kilocode/marketplace") {
 				const directory = url.searchParams.get("directory");
 				return json({
@@ -173,6 +168,14 @@ describe("kilo-marketplace mainRegister", () => {
 				.filter(({ url }) => url.pathname === "/kilocode/marketplace")
 				.map(({ url }) => url.searchParams.get("directory")),
 		).toEqual([demo, docs]);
+		expect(requests.every(({ url }) => url.origin === connection.baseUrl)).toBe(true);
+
+		requests.length = 0;
+		const refreshed = marketplaceSnapshotSchema.parse(
+			await mainSdk.invoke("marketplace.refresh", { workspaceId: "demo" }),
+		);
+		expect(refreshed.installed).toEqual(listed.installed);
+		expect(requests.every(({ url }) => url.origin === connection.baseUrl)).toBe(true);
 
 		await expect(
 			mainSdk.invoke("marketplace.install", {

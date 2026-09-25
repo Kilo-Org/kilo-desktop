@@ -24,13 +24,6 @@ export const mcpMethodSchema = z.object({
 });
 export type McpMethod = z.infer<typeof mcpMethodSchema>;
 
-export const marketplaceIconSchema = z.object({
-	src: z.url(),
-	mimeType: z.string().optional(),
-	sizes: z.array(z.string()).optional(),
-	theme: z.enum(["light", "dark"]).optional(),
-});
-
 const itemBase = {
 	id: z.string().min(1),
 	name: z.string().min(1),
@@ -66,8 +59,6 @@ export const mcpMarketplaceItemSchema = z.object({
 	...itemBase,
 	type: z.literal("mcp"),
 	url: z.url(),
-	icons: z.array(marketplaceIconSchema).optional(),
-	iconDataUrl: z.string().startsWith("data:image/").optional(),
 	content: z.union([z.string().min(1), z.array(mcpMethodSchema).min(1)]),
 	parameters: z.array(mcpParameterSchema).optional(),
 });
@@ -102,7 +93,6 @@ export const marketplaceInstalledSchema = marketplaceItemRefSchema.extend({
 	category: z.string().optional(),
 	installedIn: z.string().optional(),
 	url: z.url().optional(),
-	iconDataUrl: z.string().startsWith("data:image/").optional(),
 });
 export type MarketplaceInstalled = z.infer<typeof marketplaceInstalledSchema>;
 
@@ -113,7 +103,6 @@ export const marketplaceIncludedItemSchema = z.object({
 	description: z.string(),
 	category: z.string().min(1),
 	installedIn: z.string().min(1),
-	iconDataUrl: z.string().startsWith("data:image/").optional(),
 });
 export type MarketplaceIncludedItem = z.infer<typeof marketplaceIncludedItemSchema>;
 

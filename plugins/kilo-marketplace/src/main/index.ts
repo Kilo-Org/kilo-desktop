@@ -2,7 +2,6 @@ import {
 	marketplaceContract,
 	type MarketplaceIncludedItem,
 	type MarketplaceInstalled,
-	type MarketplaceItem,
 	marketplaceMcpStatusSchema,
 	type MarketplaceMcpStatus,
 	type MarketplaceMutationInput,
@@ -17,7 +16,6 @@ import {
 	CliMarketplaceError,
 	type KiloConnection,
 } from "./cli-marketplace.js";
-import { McpIconResolver, mcpIconCandidateUrls } from "./mcp-icon.js";
 import { FeatureError, type MainSdk } from "@kilo-desktop/feature-sdk/main";
 
 type Workspace = {
@@ -119,11 +117,9 @@ function operationError(error: unknown): never {
  * Marketplace registration adapts Kilo's Marketplace HTTP API to Desktop's
  * multi-workspace view. Kilo owns catalog, detection, and mutation; Desktop
  * enriches those results with workspace identity, runtime inventory/status,
- * Desktop-managed MCPs, and inert icon data.
+ * and Desktop-managed MCPs.
  */
 export function mainRegister(mainSdk: MainSdk): void {
-	const mcpIcons = new McpIconResolver(mainSdk.net.fetch);
-
 	const kilo = (): KiloServerCapabilities => {
 		const capability = mainSdk.plugins.get<KiloServerCapabilities>("kilo-server");
 		if (!capability) throw new FeatureError("Kilo Server is unavailable.", "BUSINESS");
@@ -432,49 +428,11 @@ export function mainRegister(mainSdk: MainSdk): void {
 			discovered.add(key);
 			return true;
 		});
-		const mcpUrls = new Map<string, { explicit: string[]; favicons: string[] }>();
-		for (const entry of catalogSnapshot.items) {
-			if (entry.type === "mcp") {
-				mcpUrls.set(entry.id, {
-					explicit: entry.icons?.map(({ src }) => src) ?? [],
-					favicons: mcpIconCandidateUrls(entry),
-				});
-			}
-		}
-		for (const entry of installed) {
-			if (entry.type !== "mcp" || !entry.url) continue;
-			const current = mcpUrls.get(entry.id) ?? { explicit: [], favicons: [] };
-			mcpUrls.set(entry.id, {
-				...current,
-				favicons: [entry.url, ...current.favicons],
-			});
-		}
-		const iconEntries = await Promise.all(
-			[...mcpUrls].map(
-				async ([id, sources]) =>
-					[
-						id,
-						(await mcpIcons.resolveExplicit(sources.explicit)) ??
-							(await mcpIcons.resolveFirst(sources.favicons)),
-					] as const,
-			),
-		);
-		const iconById = new Map(
-			iconEntries.filter((entry): entry is readonly [string, string] => !!entry[1]),
-		);
-		const withMcpIcon = <
-			T extends MarketplaceItem | MarketplaceInstalled | MarketplaceIncludedItem,
-		>(
-			entry: T,
-		): T => {
-			const iconDataUrl = entry.type === "mcp" ? iconById.get(entry.id) : undefined;
-			return iconDataUrl ? { ...entry, iconDataUrl } : entry;
-		};
 		return {
-			items: catalogSnapshot.items.map(withMcpIcon),
+			items: catalogSnapshot.items,
 			targets: availableTargets,
-			installed: installed.map(withMcpIcon),
-			included: [...runtimeIncluded, ...included].map(withMcpIcon),
+			installed,
+			included: [...runtimeIncluded, ...included],
 			mcpStatuses: statuses,
 			mcpInstallationStatuses: mcpInstallationStatuses(locationStatuses),
 			errors: [...new Set(lists.flatMap(({ result }) => result.errors))],

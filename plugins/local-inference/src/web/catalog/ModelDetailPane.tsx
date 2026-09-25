@@ -1,15 +1,9 @@
-import { BinaryIcon, EyeIcon, LibraryIcon, MessageCircleIcon, WrenchIcon } from "lucide-react";
+import { BinaryIcon, EyeIcon, MessageCircleIcon, WrenchIcon } from "lucide-react";
 
 import { Badge } from "@kilo-desktop/ui/components/badge";
-import {
-	Empty,
-	EmptyDescription,
-	EmptyHeader,
-	EmptyMedia,
-	EmptyTitle,
-} from "@kilo-desktop/ui/components/empty";
 import { ScrollArea } from "@kilo-desktop/ui/components/scroll-area";
-import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
+import { FieldContent } from "@kilo-desktop/ui/components/field";
+import { Skeleton, SkeletonText } from "@kilo-desktop/ui/components/skeleton";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type {
@@ -20,6 +14,7 @@ import type {
 } from "../../contracts/schemas.js";
 import type { DownloadIdentity } from "./catalog-downloads.js";
 import { ModelDownloadSection } from "./ModelDownloadSection.js";
+import { ModelPerformanceSkeleton } from "./ModelPerformance.js";
 import { getPublisherDisplayName, ModelPublisherIcon } from "./ModelPublisherIcon.js";
 import { formatParameterCount } from "../models/model-format.js";
 
@@ -99,7 +94,10 @@ export function ModelDetailPane({
 }) {
 	return (
 		<ScrollArea
-			className={cn("size-full min-h-0", interactiveScrollbarClassName)}
+			className={cn(
+				"size-full min-h-0 [&_[data-slot=scroll-area-viewport]]:scroll-fade-y",
+				interactiveScrollbarClassName,
+			)}
 			data-qa-id="model-catalog-detail-pane"
 		>
 			<div className="flex flex-col gap-6 p-4" data-qa-id={`model-catalog-detail-${model.id}`}>
@@ -135,71 +133,77 @@ export function ModelDetailPane({
 	);
 }
 
-export function ModelDetailEmpty({ missing = false }: { missing?: boolean }) {
-	return (
-		<Empty
-			className="h-full rounded-none"
-			data-qa-id={missing ? "model-catalog-detail-missing" : "model-catalog-detail-empty"}
-		>
-			<EmptyHeader>
-				<EmptyMedia variant="icon">
-					<LibraryIcon />
-				</EmptyMedia>
-				<EmptyTitle>{missing ? "Model not found" : "Select a model"}</EmptyTitle>
-				<EmptyDescription>
-					{missing
-						? "This catalog link doesn't match a model you can view."
-						: "Choose a model from the catalog to view its details."}
-				</EmptyDescription>
-			</EmptyHeader>
-		</Empty>
-	);
-}
-
 export function ModelDetailSkeleton() {
 	return (
 		<div
-			className="[&_[data-slot=skeleton]]:bg-muted-foreground/25 flex h-full flex-col gap-6 p-4"
+			className="flex h-full flex-col gap-6 p-4"
+			role="status"
+			aria-busy="true"
 			aria-label="Loading model details"
 			data-qa-id="model-catalog-detail-loading"
 		>
-			<div className="flex h-10 flex-col justify-center gap-1.5">
-				<div className="flex items-center gap-2">
-					<Skeleton className="size-4 rounded-sm" />
-					<Skeleton className="h-4 w-44" />
+			<div className="flex h-10 min-w-0 flex-col justify-center gap-0.5">
+				<div className="flex min-w-0 items-center gap-1.5">
+					<Skeleton className="size-4 shrink-0 rounded-sm" />
+					<div className="text-base leading-tight font-medium">
+						<SkeletonText className="w-44" />
+					</div>
 				</div>
-				<Skeleton className="h-3 w-24" />
+				<div className="text-sm leading-tight">
+					<SkeletonText className="w-24" />
+				</div>
 			</div>
-			<section className="flex w-full flex-col gap-4">
-				<div className="flex flex-col gap-2">
-					<Skeleton className="h-3.5 w-36" />
-					<Skeleton className="h-3 w-4/5" />
-				</div>
+			<div className="flex w-full flex-col gap-4">
+				<FieldContent>
+					<div className="text-sm font-medium">
+						<SkeletonText className="w-36" />
+					</div>
+					<div className="text-sm leading-normal">
+						<SkeletonText className="w-64" />
+					</div>
+				</FieldContent>
 				<div className="flex items-center gap-3">
 					<Skeleton className="h-8 min-w-0 flex-1 rounded-lg" />
 					<Skeleton className="h-8 w-28 rounded-lg" />
 				</div>
-				<div className="flex items-center justify-between gap-3">
-					<Skeleton className="h-3 w-32" />
-					<Skeleton className="h-5 w-24 rounded-full" />
+				<div className="flex items-center justify-between gap-3 pr-px">
+					<span className="text-xs">
+						<SkeletonText className="w-32" />
+					</span>
+					<ModelPerformanceSkeleton />
 				</div>
-			</section>
-			<section className="flex w-full flex-col gap-4">
-				<Skeleton className="h-3.5 w-16" />
-				<div className="flex flex-col gap-2">
-					<Skeleton className="h-3 w-full" />
-					<Skeleton className="h-3 w-11/12" />
-					<Skeleton className="h-3 w-3/4" />
+			</div>
+			<div className="flex w-full flex-col gap-4">
+				<div className="text-sm font-medium">
+					<SkeletonText className="w-14" />
+				</div>
+				<div className="flex flex-col leading-relaxed">
+					<SkeletonText className="w-72" />
+					<SkeletonText className="w-64" />
+					<SkeletonText className="w-44" />
 				</div>
 				<div className="grid grid-cols-2 gap-x-6 gap-y-4">
-					{["parameters", "type", "context", "license"].map((detail) => (
-						<div key={detail} className="flex flex-col gap-2">
-							<Skeleton className="h-2.5 w-20" />
-							<Skeleton className="h-3.5 w-28" />
+					{["w-20", "w-24", "w-16", "w-28"].map((valueWidth) => (
+						<div key={valueWidth} className="flex min-w-0 flex-col gap-1">
+							<div className="text-xs">
+								<SkeletonText className="w-16" />
+							</div>
+							<div className="font-medium">
+								<SkeletonText className={valueWidth} />
+							</div>
 						</div>
 					))}
+					<div className="col-span-2 flex min-w-0 flex-col gap-2">
+						<div className="text-xs">
+							<SkeletonText className="w-20" />
+						</div>
+						<div className="flex flex-wrap gap-2">
+							<Skeleton className="h-5 w-14 rounded-full" />
+							<Skeleton className="h-5 w-20 rounded-full" />
+						</div>
+					</div>
 				</div>
-			</section>
+			</div>
 		</div>
 	);
 }

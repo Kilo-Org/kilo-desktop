@@ -279,7 +279,7 @@ describe("ComposerDraftFooter", () => {
 		});
 
 		await expect.element(screen.getByTestId("kilo-model-selector-content")).toBeVisible();
-		await expect.element(screen.getByPlaceholder("Search models...")).toHaveFocus();
+		await expect.element(screen.getByPlaceholder("Search models")).toHaveFocus();
 		await expect.element(screen.getByText("No workspaces yet.")).not.toBeInTheDocument();
 	});
 

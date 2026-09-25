@@ -1,3 +1,4 @@
+import { Skeleton, SkeletonText } from "@kilo-desktop/ui/components/skeleton";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type { ModelCompatibility, ModelFit } from "../../shared/catalog/model-compatibility.js";
@@ -5,11 +6,11 @@ import type { ModelCompatibility, ModelFit } from "../../shared/catalog/model-co
 type PerformanceFitKind = ModelFit | "doesnt-fit";
 
 const performanceFitMarkerClasses: Record<PerformanceFitKind, string> = {
-	"runs-great": "bg-emerald-500",
-	"runs-well": "bg-sky-500",
-	"tight-fit": "bg-amber-500",
-	"runs-slowly": "bg-orange-500",
-	"doesnt-fit": "bg-red-500",
+	"runs-great": "bg-success",
+	"runs-well": "bg-info",
+	"tight-fit": "bg-warning",
+	"runs-slowly": "bg-warning",
+	"doesnt-fit": "bg-destructive",
 };
 
 function PerformanceFitIndicator({
@@ -84,6 +85,45 @@ export function ModelPerformance({
 					<span>tokens/sec</span>
 				</div>
 			) : null}
+		</div>
+	);
+}
+
+/** Placeholder for the fit indicator + two-line tokens/sec estimate. */
+export function ModelPerformanceSkeleton({
+	fixedFitWidth = false,
+	wrap = false,
+	stackOnNarrow = false,
+}: {
+	fixedFitWidth?: boolean;
+	wrap?: boolean;
+	stackOnNarrow?: boolean;
+}) {
+	return (
+		<div
+			className={cn(
+				"flex min-w-0 items-center gap-x-3 gap-y-1",
+				wrap ? "flex-wrap" : "shrink-0",
+				stackOnNarrow && "flex-col items-start @xl:flex-row @xl:items-center",
+			)}
+		>
+			<span
+				className={cn(
+					"inline-flex items-center gap-2 text-xs font-medium",
+					fixedFitWidth && "w-24",
+				)}
+			>
+				<Skeleton className="size-2 shrink-0 rounded-full" />
+				<SkeletonText className="w-14" />
+			</span>
+			<div className="flex flex-col text-xs leading-tight">
+				<span>
+					<SkeletonText className="w-12" />
+				</span>
+				<span>
+					<SkeletonText className="w-14" />
+				</span>
+			</div>
 		</div>
 	);
 }

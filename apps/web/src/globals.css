@@ -1,7 +1,8 @@
 @import "tailwindcss";
-/* Design-system primitives and bundled plugins live outside this package —
+/* Design-system primitives, sdk-react components, and bundled plugins live outside this package —
    include their sources so Tailwind generates the utility classes they use. */
 @source "../../../packages/ui";
+@source "../../../packages/sdk-react/src";
 @source "../../../plugins";
 @import "@anaconda/shadcn-theme/styles";
 @import "@anaconda/shadcn-theme/base-global";
@@ -9,17 +10,25 @@
 @import "@fontsource-variable/inter";
 @import "shadcn/tailwind.css";
 @import "tw-shimmer";
-@import "@kilo-desktop/ui/styles/animations.css";
 
 :root {
 	--font-sans: "Inter Variable", sans-serif;
-	/* Existing app roles not supplied by the alpha.2 theme. */
+	/* Existing app roles not supplied by the alpha.2 theme. Status roles are
+	   text-strength colours: `--X` for text, icons and dots, `--X-foreground`
+	   for text on `--X-surface` tints. */
+	--destructive: var(--color-red-700);
 	--info: var(--color-blue-600);
 	--info-foreground: var(--info);
-	--destructive-foreground: var(--color-red-700);
+	--info-surface: color-mix(in oklch, var(--info) 10%, transparent);
+	--success: var(--color-green-700);
+	--success-foreground: var(--success);
+	--success-surface: color-mix(in oklch, var(--success) 10%, transparent);
+	--warning: var(--color-amber-700);
+	--warning-foreground: var(--warning);
+	--warning-surface: color-mix(in oklch, var(--warning) 10%, transparent);
 	--app-scrollbar-width: 6px;
-	--app-scrollbar-thumb: color-mix(in oklch, var(--border) 85%, transparent);
-	--app-scrollbar-thumb-hover: var(--border);
+	--app-scrollbar-thumb: color-mix(in oklch, var(--muted-foreground) 40%, transparent);
+	--app-scrollbar-thumb-hover: color-mix(in oklch, var(--muted-foreground) 60%, transparent);
 	--shell-glass-opacity: 64%;
 	--window-controls-width: calc(
 		100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)
@@ -32,6 +41,17 @@
 	--update: var(--color-green-850);
 	--update-surface: color-mix(in oklch, var(--primary) 12%, transparent);
 	--update-surface-hover: color-mix(in oklch, var(--primary) 18%, transparent);
+	/* Quiet dividers (activity rails, code headers, nested rows). Derived so
+	   every theme's border weight carries through. */
+	--border-subtle: color-mix(in oklch, var(--border) 60%, transparent);
+	/* Ghost-button wash: an overlay, so it reads on muted trays and cards too. */
+	--ghost-hover: color-mix(in oklch, var(--foreground) 5%, transparent);
+	/* Pane frames override these locally; outside a pane they fall back to the
+	   page and card surfaces. */
+	--pane-surface: var(--background);
+	--pane-raised: var(--card);
+	--composer-shadow: 0 12px 28px -18px rgb(0 0 0 / 0.4);
+	--composer-shelf-shadow: 0 8px 24px -20px rgb(0 0 0 / 0.7);
 }
 
 [data-theme="dark"] {
@@ -53,14 +73,19 @@
 	/* Translucent hairline: keeps one apparent weight over both the opaque
 	   content panes and the vibrancy-backed sidebar, which a solid Mist step
 	   cannot — its contrast inverts with the surface beneath it. */
-	--border: color-mix(in oklch, var(--color-mist-300) 6%, transparent);
+	--border: color-mix(in oklch, var(--color-mist-300) 12%, transparent);
+	/* The glass sidebar keeps the lighter hairline over vibrancy. */
 	--sidebar-border: color-mix(in oklch, var(--color-mist-300) 6%, transparent);
+	/* Restated because the light override above would otherwise win over the
+	   theme package's dark value (same specificity, later source order). */
+	--destructive: var(--color-red-400);
 	--info: var(--color-blue-400);
-	--destructive-foreground: var(--color-red-400);
-	--app-scrollbar-thumb: color-mix(in oklch, var(--muted-foreground) 40%, transparent);
-	--app-scrollbar-thumb-hover: color-mix(in oklch, var(--muted-foreground) 60%, transparent);
+	--success: var(--color-green-400);
+	--warning: var(--color-amber-400);
 	--shell-glass-opacity: 80%;
 	--update: var(--primary);
+	/* Dark glass reads by its stroke; the drop shadow only muddies it. */
+	--composer-shadow: 0 0 #0000;
 }
 
 @layer base {
@@ -68,31 +93,16 @@
 		/* Let Electron vibrancy / mica show through the app shell. */
 		@apply m-0 min-h-screen min-w-80 bg-transparent;
 	}
+	/* Standard scrollbar properties only: Chromium ignores every
+	   ::-webkit-scrollbar rule on an element whose (inherited)
+	   scrollbar-color or scrollbar-width is set, so mixing the two is dead code. */
+	* {
+		scrollbar-width: thin;
+	}
 	html {
 		@apply font-sans;
-		scrollbar-width: thin;
 		scrollbar-color: var(--app-scrollbar-thumb) transparent;
 	}
-}
-
-/* Thin overlay scrollbar */
-::-webkit-scrollbar {
-	width: var(--app-scrollbar-width);
-	height: var(--app-scrollbar-width);
-}
-
-::-webkit-scrollbar-track {
-	background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-	background: var(--app-scrollbar-thumb);
-	border-radius: 3px;
-	transition: background-color 160ms ease-out;
-}
-
-::-webkit-scrollbar-thumb:hover {
-	background: var(--app-scrollbar-thumb-hover);
 }
 
 /* App chrome over native window materials. Tint lives on `html` (also in
@@ -129,11 +139,25 @@ html {
 @theme inline {
 	--color-info: var(--info);
 	--color-info-foreground: var(--info-foreground);
-	--color-destructive-foreground: var(--destructive-foreground);
 	--color-primary-ink: var(--primary-ink);
 	--color-primary-ink-foreground: var(--primary-ink-foreground);
 	--color-primary-soft: var(--primary-soft);
 	--color-primary-soft-foreground: var(--primary-soft-foreground);
+	--color-info-surface: var(--info-surface);
+	--color-success: var(--success);
+	--color-success-foreground: var(--success-foreground);
+	--color-success-surface: var(--success-surface);
+	--color-warning: var(--warning);
+	--color-warning-foreground: var(--warning-foreground);
+	--color-warning-surface: var(--warning-surface);
+	--color-border-subtle: var(--border-subtle);
+	--color-pane: var(--pane-surface);
+	--color-pane-raised: var(--pane-raised);
+	--shadow-composer: var(--composer-shadow);
+	--shadow-composer-shelf: var(--composer-shelf-shadow);
+	/* Density scale: 2xs sits below stock xs for chips, counts and meta text. */
+	--text-2xs: 0.6875rem;
+	--text-2xs--line-height: 1rem;
 	--text-sm: 0.8125rem;
 	--text-sm--line-height: 1.25rem;
 

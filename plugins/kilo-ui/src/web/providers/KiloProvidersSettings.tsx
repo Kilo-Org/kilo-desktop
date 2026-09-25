@@ -1,7 +1,14 @@
 import { useState, type ReactNode } from "react";
-import { PencilIcon, PlusIcon, RotateCcwIcon, ServerIcon, Trash2Icon } from "lucide-react";
+import {
+	CircleAlertIcon,
+	PlusIcon,
+	RefreshCwIcon,
+	ServerIcon,
+	SettingsIcon,
+	Trash2Icon,
+} from "lucide-react";
 
-import { useSdk, useSdkQuery } from "@kilo-desktop/sdk-react";
+import { SettingsPageHeader, useSdk, useSdkQuery } from "@kilo-desktop/sdk-react";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -12,37 +19,40 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@kilo-desktop/ui/components/alert-dialog";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
+import { Alert, AlertAction, AlertTitle } from "@kilo-desktop/ui/components/alert";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Collapsible, CollapsibleContent } from "@kilo-desktop/ui/components/collapsible";
-import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
+import { Skeleton, SkeletonText } from "@kilo-desktop/ui/components/skeleton";
 import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "@kilo-desktop/ui/components/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
 import type { KiloUiProvidersService } from "../../contracts/providers/schemas.js";
+import { ButtonSkeleton } from "../account/ButtonSkeleton.js";
 import { useChatConnection } from "../chat/connection/ChatConnectionContext.js";
 import { ProviderIcon } from "../chat/model-selection/provider-icon.js";
 import { AddProviderDialog } from "./AddProviderDialog.js";
-import { CustomProviderDialog } from "./CustomProviderDialog.js";
+import { CustomProviderForm } from "./CustomProviderDialog.js";
 import type { SanitizedProviderConfig } from "./custom-provider.js";
-import { EditProviderApiKeyDialog } from "./EditProviderApiKeyDialog.js";
 import { KiloGatewayProviderDisclosure } from "./KiloGatewayProviderCard.js";
 import { resolveLocalInferenceCapability } from "./local-inference/capability.js";
+import { ProviderApiKeyEditor } from "./ProviderApiKeyEditor.js";
 import { isEnvironmentSourced, providerSourceLabel, type ProviderRow } from "./provider-list.js";
 import { useKiloProviders } from "./use-kilo-providers.js";
 
 const LOCAL_MODEL_SERVER_SETTINGS_PATH = "/settings/local-model-server";
 
-type DialogState =
-	| null
-	| { type: "add" }
-	| { type: "custom"; existing: ProviderRow }
-	| { type: "edit-api"; provider: ProviderRow }
-	| { type: "remove"; provider: ProviderRow };
+type DialogState = null | { type: "add" } | { type: "remove"; provider: ProviderRow };
+
+type EditorKind = "custom" | "api";
+
+/** The expanded editor whose save was last submitted; mutation errors belong to it. */
+type SubmittedEdit = { providerID: string; kind: EditorKind };
+
+function editorKind(row: ProviderRow): EditorKind | null {
+	if (row.custom) return "custom";
+	return row.canDisconnect ? "api" : null;
+}
 
 async function settle(task: () => Promise<unknown>): Promise<boolean> {
 	return task().then(
@@ -51,13 +61,9 @@ async function settle(task: () => Promise<unknown>): Promise<boolean> {
 	);
 }
 
-function ProviderEntrySurface({ children }: { children: ReactNode }) {
-	return (
-		<div className="border-border bg-card min-w-0 overflow-hidden rounded-lg border">
-			{children}
-		</div>
-	);
-}
+/** One bordered panel of joined rows, the settings pattern for configured entities. */
+const PROVIDER_PANEL_CLASS =
+	"border-border bg-card divide-border min-w-0 divide-y overflow-hidden rounded-lg border";
 
 function useLocalInferenceAvailable(): boolean {
 	const sdk = useSdk("kilo-ui");
@@ -68,7 +74,7 @@ function LocalModelServerLink() {
 	const sdk = useSdk("kilo-ui");
 
 	return (
-		<ProviderEntrySurface>
+		<div>
 			<SummaryCard.Row>
 				<SummaryCard.Icon>
 					<ServerIcon className="size-[18px]" aria-hidden />
@@ -80,16 +86,17 @@ function LocalModelServerLink() {
 				<SummaryCard.Actions>
 					<Button
 						type="button"
-						variant="ghost"
+						variant="outline"
 						size="sm"
 						onClick={() => sdk.navigate(LOCAL_MODEL_SERVER_SETTINGS_PATH)}
 						data-qa-id="kilo-providers-local-model-server-link"
 					>
+						<SettingsIcon data-icon="inline-start" />
 						Manage
 					</Button>
 				</SummaryCard.Actions>
 			</SummaryCard.Row>
-		</ProviderEntrySurface>
+		</div>
 	);
 }
 
@@ -104,6 +111,8 @@ export function KiloProvidersSettings() {
 	const providers = useKiloProviders(connection.connection);
 	const localInference = useLocalInferenceAvailable();
 	const [dialog, setDialog] = useState<DialogState>(null);
+	const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(() => new Set());
+	const [submitted, setSubmitted] = useState<SubmittedEdit | null>(null);
 
 	if (connection.isError) {
 		return (
@@ -117,8 +126,6 @@ export function KiloProvidersSettings() {
 	}
 
 	const addOpen = dialog?.type === "add";
-	const customOpen = dialog?.type === "custom";
-	const editProvider = dialog?.type === "edit-api" ? dialog.provider : null;
 	const removeProvider = dialog?.type === "remove" ? dialog.provider : null;
 	const view = providers.view ?? { connected: [], environment: [], popular: [] };
 	const connected = [
@@ -128,19 +135,65 @@ export function KiloProvidersSettings() {
 		left.name.localeCompare(right.name, undefined, { sensitivity: "base" }),
 	);
 	const blockedIds = [...providers.ids, ...Object.keys(providers.config?.provider ?? {})];
-	const customExisting =
-		customOpen && dialog.existing ? toExisting(dialog.existing, providers.config) : null;
 	const catalogLoading = connection.isPending || providers.isLoading;
 	const pageLoading = catalogLoading;
 
-	const openCustomProvider = (existing: ProviderRow) => {
+	const editorError = (providerID: string): string | null => {
+		if (submitted?.providerID !== providerID) return null;
+		return submitted.kind === "custom" ? providers.saveError : providers.connectError;
+	};
+	// An expanded editor shows its own save error, so the page alert would only repeat it.
+	const inlineError =
+		submitted && expandedIds.has(submitted.providerID) ? editorError(submitted.providerID) : null;
+	const pageError = providers.error === inlineError ? null : providers.error;
+
+	const setExpanded = (providerID: string, open: boolean) => {
+		setExpandedIds((current) => {
+			const next = new Set(current);
+			if (open) next.add(providerID);
+			else next.delete(providerID);
+			return next;
+		});
+		if (!open) {
+			setSubmitted((current) => (current?.providerID === providerID ? null : current));
+		}
+	};
+
+	const submitEdit = async (
+		providerID: string,
+		kind: EditorKind,
+		task: () => Promise<unknown>,
+	): Promise<void> => {
+		// Several editors can be open, but only the latest submission owns an
+		// error; clear both so a stale one can't resurface in the page alert.
 		providers.resetSave();
-		setDialog({ type: "custom", existing });
-	};
-	const openApiProvider = (provider: ProviderRow) => {
 		providers.resetConnect();
-		setDialog({ type: "edit-api", provider });
+		setSubmitted({ providerID, kind });
+		if (await settle(task)) setExpanded(providerID, false);
 	};
+
+	const renderEditor = (row: ProviderRow, kind: EditorKind): ReactNode =>
+		kind === "custom" ? (
+			<CustomProviderForm
+				layout="inline"
+				existing={toExisting(row, providers.config)}
+				blockedIds={blockedIds}
+				pending={providers.pending}
+				error={editorError(row.id)}
+				onCancel={() => setExpanded(row.id, false)}
+				onSubmit={(input) => submitEdit(row.id, kind, () => providers.saveCustom(input))}
+			/>
+		) : (
+			<ProviderApiKeyEditor
+				provider={row}
+				pending={providers.pending}
+				error={editorError(row.id)}
+				onCancel={() => setExpanded(row.id, false)}
+				onSubmit={(apiKey) =>
+					submitEdit(row.id, kind, () => providers.connect({ providerID: row.id, apiKey }))
+				}
+			/>
+		);
 
 	return (
 		<PageShell
@@ -158,71 +211,84 @@ export function KiloProvidersSettings() {
 				</Button>
 			}
 		>
-			{pageLoading ? (
-				<ProvidersContentLoadingState />
-			) : (
-				<>
-					<section
-						className="flex min-w-0 flex-col gap-2"
-						aria-label="Providers"
-						data-qa-id="kilo-providers-inventory"
-					>
-						<ProviderEntrySurface>
-							<KiloGatewayProviderDisclosure />
-						</ProviderEntrySurface>
-						{localInference ? <LocalModelServerLink /> : null}
-						{connected.map((row) => (
-							<ProviderEntrySurface key={row.id}>
+			{/* The inventory panel stays mounted while loading so the Kilo Gateway card
+			    (which owns its own loading state) and the synchronously known Local
+			    Model Server row don't change shape or remount when the catalog lands;
+			    only the connected-provider rows wait for it, behind a placeholder row. */}
+			<section
+				className={PROVIDER_PANEL_CLASS}
+				aria-label="Providers"
+				aria-busy={pageLoading || undefined}
+				data-qa-id="kilo-providers-inventory"
+			>
+				<div>
+					<KiloGatewayProviderDisclosure />
+				</div>
+				{localInference ? <LocalModelServerLink /> : null}
+				{pageLoading ? (
+					<ConnectedProviderSkeleton />
+				) : (
+					connected.map((row) => {
+						const kind = editorKind(row);
+						const open = expandedIds.has(row.id);
+						return (
+							<div key={row.id}>
 								{isEnvironmentSourced(row) ? (
 									<EnvironmentProvider row={row} />
 								) : (
 									<ConnectedProvider
 										row={row}
 										pending={providers.pending}
-										{...(row.canDisconnect && !row.custom
-											? { onDisconnect: () => void settle(() => providers.disconnect(row.id)) }
+										{...(kind
+											? {
+													editor: {
+														open,
+														onOpenChange: (next: boolean) => setExpanded(row.id, next),
+														content: open ? renderEditor(row, kind) : null,
+													},
+												}
 											: {})}
 										{...(row.custom
-											? { onEdit: () => openCustomProvider(row) }
+											? { onDelete: () => setDialog({ type: "remove", provider: row }) }
 											: row.canDisconnect
-												? { onEdit: () => openApiProvider(row) }
+												? { onDelete: () => void settle(() => providers.disconnect(row.id)) }
 												: {})}
-										{...(row.custom
-											? { onRemove: () => setDialog({ type: "remove", provider: row }) }
-											: {})}
 									/>
 								)}
-							</ProviderEntrySurface>
-						))}
-					</section>
+							</div>
+						);
+					})
+				)}
+			</section>
 
-					{providers.error ? (
-						<div
-							className="border-destructive/30 bg-destructive/5 text-destructive rounded-xl border px-4 py-3 text-sm"
-							data-qa-id="kilo-providers-error"
-							role="alert"
-						>
-							{providers.error}
-						</div>
-					) : null}
+			{pageLoading ? (
+				<span role="status" className="sr-only" data-qa-id="kilo-providers-loading">
+					Loading providers
+				</span>
+			) : null}
 
+			{!pageLoading && pageError ? (
+				<Alert variant="destructive" data-qa-id="kilo-providers-error">
+					<CircleAlertIcon aria-hidden="true" />
+					<AlertTitle>{pageError}</AlertTitle>
 					{providers.isError ? (
-						<Button
-							type="button"
-							variant="outline"
-							size="sm"
-							className="self-start"
-							onClick={() => {
-								void providers.reload();
-							}}
-							data-qa-id="kilo-providers-retry"
-						>
-							<RotateCcwIcon data-icon="inline-start" />
-							Try again
-						</Button>
+						<AlertAction>
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								onClick={() => {
+									void providers.reload();
+								}}
+								data-qa-id="kilo-providers-retry"
+							>
+								<RefreshCwIcon data-icon="inline-start" />
+								Try again
+							</Button>
+						</AlertAction>
 					) : null}
-				</>
-			)}
+				</Alert>
+			) : null}
 
 			<AddProviderDialog
 				key={`add:${addOpen ? "open" : "closed"}`}
@@ -245,40 +311,6 @@ export function KiloProvidersSettings() {
 				}}
 				onSaveCustom={async (input) => {
 					const didSave = await settle(() => providers.saveCustom(input));
-					if (didSave) setDialog(null);
-				}}
-			/>
-
-			<CustomProviderDialog
-				key={`custom:${customOpen ? (customExisting?.providerID ?? "editing") : "closed"}`}
-				open={customOpen}
-				existing={customExisting}
-				blockedIds={blockedIds}
-				pending={providers.pending}
-				error={providers.saveError}
-				onOpenChange={(open) => {
-					if (!open) setDialog(null);
-				}}
-				onSubmit={async (input) => {
-					const didSave = await settle(() => providers.saveCustom(input));
-					if (didSave) setDialog(null);
-				}}
-			/>
-
-			<EditProviderApiKeyDialog
-				key={`edit-api:${editProvider?.id ?? "closed"}`}
-				open={editProvider !== null}
-				provider={editProvider}
-				pending={providers.pending}
-				error={providers.connectError}
-				onOpenChange={(open) => {
-					if (!open) setDialog(null);
-				}}
-				onSubmit={async (apiKey) => {
-					if (!editProvider) return;
-					const didSave = await settle(() =>
-						providers.connect({ providerID: editProvider.id, apiKey }),
-					);
 					if (didSave) setDialog(null);
 				}}
 			/>
@@ -309,7 +341,8 @@ export function KiloProvidersSettings() {
 								void settle(() => providers.deleteCustom(providerID));
 							}}
 						>
-							{providers.pending ? "Deleting…" : "Delete AI Provider"}
+							{providers.pending ? <Spinner data-icon="inline-start" aria-hidden="true" /> : null}
+							{providers.pending ? "Deleting…" : "Delete AI provider"}
 						</AlertDialogAction>
 					</AlertDialogFooter>
 				</AlertDialogContent>
@@ -345,89 +378,42 @@ function PageShell({
 }) {
 	return (
 		<div
-			className="mx-auto flex w-full max-w-3xl min-w-0 flex-col gap-6"
+			className="flex min-w-0 flex-col gap-6"
 			data-qa-id="kilo-providers-page"
 			data-state={state}
 		>
-			<header className="flex items-start justify-between gap-3">
-				<div className="min-w-0">
-					<h1
-						className="text-base font-semibold tracking-tight"
-						data-qa-id="settings-section-heading"
-					>
-						AI Providers
-					</h1>
-					<p className="text-muted-foreground mt-0.5 text-sm leading-snug">
-						Choose where your models come from.
-					</p>
-				</div>
-				{action ? <div className="shrink-0">{action}</div> : null}
-			</header>
+			<SettingsPageHeader actions={action} />
 			{children}
 		</div>
 	);
 }
 
-function ProvidersContentLoadingState() {
+/**
+ * Stands in for the connected-provider rows until the catalog lands. How many
+ * exist is unknown, so it reserves a single `ConnectedProvider` row.
+ */
+function ConnectedProviderSkeleton() {
 	return (
-		<section
-			className="flex min-w-0 flex-col gap-2"
-			aria-label="Loading providers"
-			data-qa-id="kilo-providers-loading"
-		>
-			<span className="sr-only" role="status">
-				Loading providers
-			</span>
-			<ProviderEntrySurface>
-				<GatewayProviderLoadingState />
-			</ProviderEntrySurface>
-			<ProviderEntrySurface>
-				<ProviderLoadingRow compact qaId="kilo-providers-loading-provider">
-					<Skeleton className="bg-muted-foreground/25 h-7 w-14 rounded-lg" />
-				</ProviderLoadingRow>
-			</ProviderEntrySurface>
-		</section>
-	);
-}
-
-function GatewayProviderLoadingState() {
-	return (
-		<ProviderLoadingRow qaId="kilo-providers-loading-gateway">
-			<Skeleton className="bg-muted-foreground/25 h-7 w-14 rounded-lg" />
-		</ProviderLoadingRow>
-	);
-}
-
-function ProviderLoadingRow({
-	children,
-	compact = false,
-	qaId,
-}: {
-	children?: ReactNode;
-	compact?: boolean;
-	qaId: string;
-}) {
-	return (
-		<SummaryCard.Row className="min-h-[54px]" aria-hidden="true" data-qa-id={qaId}>
-			<SummaryCard.Icon>
-				<Skeleton className="bg-muted-foreground/25 size-[18px] rounded-sm" />
-			</SummaryCard.Icon>
-			<SummaryCard.Content className="group-data-[size=xs]/item:gap-1.5">
-				<Skeleton
-					className={
-						compact ? "bg-muted-foreground/25 h-3.5 w-24" : "bg-muted-foreground/25 h-3.5 w-32"
-					}
-				/>
-				<Skeleton
-					className={
-						compact
-							? "bg-muted-foreground/25 h-3 w-44 max-w-full"
-							: "bg-muted-foreground/25 h-3 w-64 max-w-full"
-					}
-				/>
-			</SummaryCard.Content>
-			{children ? <SummaryCard.Actions>{children}</SummaryCard.Actions> : null}
-		</SummaryCard.Row>
+		<div aria-hidden="true" data-qa-id="kilo-providers-loading-provider">
+			<SummaryCard.Row>
+				<SummaryCard.Icon>
+					<Skeleton className="size-[18px] rounded-sm" />
+				</SummaryCard.Icon>
+				<SummaryCard.Content>
+					<SummaryCard.Title>
+						<SkeletonText className="w-24" />
+					</SummaryCard.Title>
+					<SummaryCard.Description>
+						<SkeletonText className="w-32" />
+					</SummaryCard.Description>
+				</SummaryCard.Content>
+				<SummaryCard.Actions>
+					<ButtonSkeleton size="icon-sm">
+						<Trash2Icon />
+					</ButtonSkeleton>
+				</SummaryCard.Actions>
+			</SummaryCard.Row>
+		</div>
 	);
 }
 
@@ -470,7 +456,7 @@ function EnvironmentProvider({ row }: { row: ProviderRow }) {
 			</SummaryCard.Row>
 			<CollapsibleContent>
 				<div
-					className="border-border bg-background/60 border-t p-3"
+					className="border-border bg-background/60 border-t p-4"
 					data-qa-id={`kilo-providers-env-details-${row.id}`}
 				>
 					<p className="text-muted-foreground text-sm">
@@ -493,85 +479,97 @@ function EnvironmentProvider({ row }: { row: ProviderRow }) {
 	);
 }
 
+type ProviderEditor = {
+	open: boolean;
+	onOpenChange(open: boolean): void;
+	/** Rendered only while open so each expansion starts from the saved config. */
+	content: ReactNode;
+};
+
 function ConnectedProvider({
 	row,
 	pending,
-	onDisconnect,
-	onEdit,
-	onRemove,
+	editor,
+	onDelete,
 }: {
 	row: ProviderRow;
 	pending: boolean;
-	onDisconnect?: () => void;
-	onEdit?: () => void;
-	onRemove?: () => void;
+	editor?: ProviderEditor;
+	onDelete?: () => void;
 }) {
-	return (
-		<TooltipProvider>
+	const identity = (
+		<>
+			<SummaryCard.Icon>
+				<ProviderIcon provider={row.id} variant="color" size={18} fallbackLabel={row.name} />
+			</SummaryCard.Icon>
+			<SummaryCard.Content>
+				<SummaryCard.Title>{row.name}</SummaryCard.Title>
+				<SummaryCard.Description>{providerSourceLabel(row)}</SummaryCard.Description>
+			</SummaryCard.Content>
+		</>
+	);
+	const deleteButton = onDelete ? (
+		<DeleteProviderButton row={row} pending={pending} onDelete={onDelete} />
+	) : null;
+
+	if (!editor) {
+		return (
 			<SummaryCard.Row data-qa-id={`kilo-providers-row-${row.id}`}>
-				<SummaryCard.Icon>
-					<ProviderIcon provider={row.id} variant="color" size={18} fallbackLabel={row.name} />
-				</SummaryCard.Icon>
-				<SummaryCard.Content>
-					<SummaryCard.Title>{row.name}</SummaryCard.Title>
-					<SummaryCard.Description>{providerSourceLabel(row)}</SummaryCard.Description>
-				</SummaryCard.Content>
-				<SummaryCard.Actions>
-					<div
-						className="flex items-center justify-end gap-2 opacity-0 transition-opacity group-hover/summary-card:opacity-100 group-has-[:focus-visible]/summary-card:opacity-100"
-						data-qa-id={`kilo-providers-actions-${row.id}`}
-					>
-						{onEdit ? (
-							<ProviderIconAction
-								label={`Edit ${row.name}`}
-								pending={pending}
-								onClick={onEdit}
-								qaId={`kilo-providers-edit-${row.id}`}
-								icon={<PencilIcon />}
-							/>
-						) : null}
-						{onDisconnect ? (
-							<ProviderIconAction
-								label={`Delete ${row.name}`}
-								pending={pending}
-								onClick={onDisconnect}
-								qaId={`kilo-providers-disconnect-${row.id}`}
-								icon={<Trash2Icon />}
-								destructive
-							/>
-						) : null}
-						{onRemove ? (
-							<ProviderIconAction
-								label={`Delete ${row.name}`}
-								pending={pending}
-								onClick={onRemove}
-								qaId={`kilo-providers-remove-${row.id}`}
-								icon={<Trash2Icon />}
-								destructive
-							/>
-						) : null}
-					</div>
+				{identity}
+				{deleteButton ? <SummaryCard.Actions>{deleteButton}</SummaryCard.Actions> : null}
+			</SummaryCard.Row>
+		);
+	}
+
+	const label = `Toggle ${row.name} settings`;
+	return (
+		<Collapsible
+			className="min-w-0"
+			open={editor.open}
+			onOpenChange={editor.onOpenChange}
+			data-qa-id={`kilo-providers-row-${row.id}`}
+			data-state={editor.open ? "expanded" : "summary"}
+		>
+			<SummaryCard.Row>
+				<SummaryCard.Trigger
+					type="button"
+					aria-label={label}
+					data-qa-id={`kilo-providers-row-trigger-${row.id}`}
+				>
+					{identity}
+				</SummaryCard.Trigger>
+				<SummaryCard.Actions className="gap-1">
+					{deleteButton}
+					<SummaryCard.Toggle
+						label={label}
+						open={editor.open}
+						data-qa-id={`kilo-providers-toggle-${row.id}`}
+					/>
 				</SummaryCard.Actions>
 			</SummaryCard.Row>
-		</TooltipProvider>
+			<CollapsibleContent>
+				<section
+					aria-label={`${row.name} settings`}
+					className="border-border bg-background/60 min-w-0 border-t p-4"
+					data-qa-id={`kilo-providers-editor-${row.id}`}
+				>
+					{editor.content}
+				</section>
+			</CollapsibleContent>
+		</Collapsible>
 	);
 }
 
-function ProviderIconAction({
-	label,
+function DeleteProviderButton({
+	row,
 	pending,
-	onClick,
-	qaId,
-	icon,
-	destructive = false,
+	onDelete,
 }: {
-	label: string;
+	row: ProviderRow;
 	pending: boolean;
-	onClick: () => void;
-	qaId: string;
-	icon: ReactNode;
-	destructive?: boolean;
+	onDelete(): void;
 }) {
+	const label = `Delete ${row.name}`;
 	return (
 		<Tooltip>
 			<TooltipTrigger
@@ -580,15 +578,15 @@ function ProviderIconAction({
 						type="button"
 						variant="ghost"
 						size="icon-sm"
-						className={destructive ? "hover:text-destructive" : undefined}
+						className="text-muted-foreground hover:text-destructive"
 						aria-label={label}
 						disabled={pending}
-						onClick={onClick}
-						data-qa-id={qaId}
+						onClick={onDelete}
+						data-qa-id={`kilo-providers-delete-${row.id}`}
 					/>
 				}
 			>
-				{icon}
+				<Trash2Icon />
 			</TooltipTrigger>
 			<TooltipContent>{label}</TooltipContent>
 		</Tooltip>

@@ -4,7 +4,7 @@ import {
 	BugIcon,
 	HammerIcon,
 	ListTodoIcon,
-	MessageCircleQuestionIcon,
+	MessageCircleQuestionMarkIcon,
 	type LucideIcon,
 } from "lucide-react";
 
@@ -28,7 +28,7 @@ export const DEFAULT_AGENT = "code";
 const SWITCHER_AGENTS = [
 	{ name: "code", displayName: "Code", icon: HammerIcon },
 	{ name: "plan", displayName: "Plan", color: "#f97316", icon: ListTodoIcon },
-	{ name: "ask", displayName: "Ask", color: "#22c55e", icon: MessageCircleQuestionIcon },
+	{ name: "ask", displayName: "Ask", color: "#22c55e", icon: MessageCircleQuestionMarkIcon },
 	{ name: "debug", displayName: "Debug", color: "#ef4444", icon: BugIcon },
 ] as const satisfies readonly KiloCatalogAgent[];
 

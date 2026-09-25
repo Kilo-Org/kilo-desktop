@@ -181,6 +181,25 @@ describe("update UI", () => {
 		expect(page.getByTestId("update-release-notes").element().textContent).not.toContain("#");
 	});
 
+	it("confirms installation from About with an in-app dialog", async () => {
+		const install = vi.fn(async () => ({ accepted: true, state: downloadedState }));
+		const confirm = vi.spyOn(globalThis, "confirm");
+		renderUpdates(updateApi(downloadedState, { install }), <AboutSettings />);
+
+		await page.getByTestId("update-install").click();
+		await expect.element(page.getByTestId("update-install-dialog")).toBeVisible();
+		await page.getByTestId("update-install-cancel").click();
+		await expect.element(page.getByTestId("update-install-dialog")).not.toBeInTheDocument();
+		expect(install).not.toHaveBeenCalled();
+
+		await page.getByTestId("update-install").click();
+		await page.getByTestId("update-install-confirm").click();
+		await vi.waitFor(() => {
+			expect(install).toHaveBeenCalledOnce();
+		});
+		expect(confirm).not.toHaveBeenCalled();
+	});
+
 	it("renders published release-note text when there are no bullet items", async () => {
 		const state = {
 			...downloadedState,
@@ -305,6 +324,15 @@ describe("update UI", () => {
 
 		rendered.unmount();
 		expect(unsubscribe).toHaveBeenCalledOnce();
+	});
+
+	it("does not show a guessed update track before the update state loads", async () => {
+		const api = updateApi(downloadedState, { getState: () => new Promise(() => {}) });
+		renderUpdates(api, <AboutSettings />);
+
+		const track = page.getByTestId("update-track");
+		await expect.element(track).toBeDisabled();
+		expect(track.element().textContent).not.toMatch(/Stable|Preview/);
 	});
 
 	it("formats restart confirmation details for Windows and unknown versions", () => {

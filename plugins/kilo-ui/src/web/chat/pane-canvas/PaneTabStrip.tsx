@@ -1,4 +1,5 @@
 import { PaneTabTooltip } from "./PaneTabTooltip.js";
+import { Tabs as TabsPrimitive } from "@base-ui/react/tabs";
 import {
 	ExternalLinkIcon,
 	Maximize2Icon,
@@ -10,8 +11,8 @@ import {
 import type { CSSProperties, FC, ReactNode } from "react";
 
 import type { PaneDescriptor } from "@kilo-desktop/pane-layout";
-import { Button } from "@kilo-desktop/ui/components/button";
-import { TabsList, TabsTrigger } from "@kilo-desktop/ui/components/tabs";
+import { Button, buttonVariants } from "@kilo-desktop/ui/components/button";
+import { Toggle } from "@kilo-desktop/ui/components/toggle";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type { PaneDrop } from "./pane-drop.js";
@@ -25,7 +26,7 @@ import "./pane-drag.css";
 function tabChromeClassName(selected: boolean) {
 	return selected
 		? "border-primary-ink/60 bg-secondary text-foreground shadow-sm"
-		: "border-border bg-muted/40 text-muted-foreground hover:bg-accent/60 hover:text-foreground";
+		: "border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground";
 }
 
 function stopActionBubble(event: { stopPropagation: () => void }) {
@@ -85,7 +86,7 @@ export const PaneTabStrip: FC<{
 			scrollRef={stripRef}
 			tabIds={panes.map((pane) => pane.id)}
 			activeTabId={activePaneId}
-			className="group/pane-tabs scroll-fade-x flex h-7 min-w-0 shrink-0 [scroll-padding-inline:1.25rem] [scrollbar-width:none] items-stretch gap-1 overflow-x-auto overflow-y-hidden [--scroll-fade-reveal:1.25rem] [--scroll-fade-size:1.25rem] [&::-webkit-scrollbar]:hidden"
+			className="group/pane-tabs no-scrollbar scroll-fade-x flex h-7 min-w-0 shrink-0 [scroll-padding-inline:1.25rem] items-stretch gap-1 overflow-x-auto overflow-y-hidden [--scroll-fade-reveal:1.25rem]"
 			data-qa-id="chat-pane-tabs"
 			data-pane-group-tabs={groupId}
 			data-selected={panes.some((pane) => pane.id === activePaneId) || undefined}
@@ -93,9 +94,11 @@ export const PaneTabStrip: FC<{
 				if (event.target === event.currentTarget) onActivateGroup?.();
 			}}
 		>
-			<TabsList
-				variant="ghost"
-				className="h-7 shrink-0 items-stretch group-data-horizontal/tabs:h-7"
+			{/* Pane tabs are chrome-wrapped buttons rather than a stock tab list, so
+			    they use the Tabs primitive directly for its roving focus and ARIA. */}
+			<TabsPrimitive.List
+				data-slot="tabs-list"
+				className="text-muted-foreground inline-flex h-7 w-fit shrink-0 items-stretch justify-center gap-1"
 				aria-label="Panes"
 			>
 				{panes.map((pane) => {
@@ -129,12 +132,15 @@ export const PaneTabStrip: FC<{
 								{ "--pane-tab-actions-width": `${actionCount * 1.25 + 0.5}rem` } as CSSProperties
 							}
 						>
-							<TabsTrigger
+							<TabsPrimitive.Tab
+								data-slot="tabs-trigger"
 								aria-description={titleHint?.(pane.id)}
 								value={pane.id}
-								variant="ghost"
 								type="button"
-								className="h-full min-w-0 flex-1 cursor-grab touch-none justify-start gap-1.5 rounded-none px-2 text-xs hover:bg-transparent focus-visible:ring-inset active:not-aria-[haspopup]:translate-y-0"
+								className={cn(
+									buttonVariants({ variant: "ghost", size: "sm" }),
+									"h-full min-w-0 flex-1 cursor-grab touch-none justify-start gap-1.5 rounded-none px-2 text-xs text-inherit hover:bg-transparent focus-visible:ring-inset active:not-aria-[haspopup]:translate-y-0",
+								)}
 								data-qa-id={`chat-pane-tab-${pane.id}`}
 								data-popped-out={poppedOut ? "true" : undefined}
 								onClick={() => {
@@ -174,20 +180,16 @@ export const PaneTabStrip: FC<{
 								>
 									{pane.title}
 								</span>
-							</TabsTrigger>
+							</TabsPrimitive.Tab>
 							<div className={actionVisibilityClassName}>
 								{onExpand ? (
 									<PaneTabTooltip content={paneExpanded ? "Restore" : "Expand"}>
 										<Button
 											type="button"
-											variant="ghost"
+											variant={paneExpanded ? "secondary" : "ghost"}
 											size="icon-xs"
 											aria-label={paneExpanded ? `Restore ${pane.title}` : `Expand ${pane.title}`}
 											aria-pressed={paneExpanded}
-											className={cn(
-												"text-muted-foreground hover:text-foreground size-5 rounded-[3px]",
-												paneExpanded && "bg-foreground/10 text-foreground",
-											)}
 											data-qa-id={`chat-pane-expand-${pane.id}`}
 											onPointerDown={stopActionBubble}
 											onClick={(event) => {
@@ -206,10 +208,7 @@ export const PaneTabStrip: FC<{
 											variant="ghost"
 											size="icon-xs"
 											aria-label={poppedOut ? `Dock ${pane.title}` : `Pop out ${pane.title}`}
-											className={cn(
-												"hover:text-foreground size-5 rounded-[3px]",
-												poppedOut ? "text-info" : "text-muted-foreground",
-											)}
+											className={cn(poppedOut && "text-info")}
 											data-qa-id={`chat-pane-${poppedOut ? "dock" : "pop-out"}-tab-${pane.id}`}
 											onPointerDown={stopActionBubble}
 											onClick={(event) => {
@@ -231,7 +230,6 @@ export const PaneTabStrip: FC<{
 										variant="ghost"
 										size="icon-xs"
 										aria-label={`Close ${pane.title}`}
-										className="text-muted-foreground hover:text-foreground size-5 rounded-[3px]"
 										data-qa-id={`chat-pane-close-tab-${pane.id}`}
 										onPointerDown={stopActionBubble}
 										onClick={(event) => {
@@ -246,7 +244,7 @@ export const PaneTabStrip: FC<{
 						</div>
 					);
 				})}
-			</TabsList>
+			</TabsPrimitive.List>
 			{trailing}
 			{onDrop ? (
 				<button
@@ -273,26 +271,21 @@ export const PaneTabStrip: FC<{
 			) : null}
 			{showPinned && onPin ? (
 				<PaneTabTooltip content={pinned ? "Unpin column" : "Pin column"}>
-					<Button
-						type="button"
-						variant="ghost"
-						size="icon-sm"
+					<Toggle
+						size="sm"
 						aria-label={pinned ? "Unpin column" : "Pin column"}
-						aria-pressed={pinned}
+						pressed={pinned}
 						className={cn(
-							"text-muted-foreground relative ml-auto rounded-md opacity-0 transition-opacity group-focus-within/pane-tabs:opacity-100 group-hover/pane-tabs:opacity-100 group-data-[selected]/pane-tabs:opacity-100",
-							pinned &&
-								"bg-primary-soft text-primary-soft-foreground hover:bg-primary-soft hover:text-primary-soft-foreground opacity-100",
+							"relative ml-auto opacity-0 transition-opacity group-focus-within/pane-tabs:opacity-100 group-hover/pane-tabs:opacity-100 group-data-[selected]/pane-tabs:opacity-100",
+							pinned && "opacity-100",
 						)}
 						data-qa-id={`chat-pane-pin-${groupId}`}
 						onPointerDown={stopActionBubble}
-						onClick={(event) => {
-							stopActionBubble(event);
-							onPin();
-						}}
+						onClick={stopActionBubble}
+						onPressedChange={() => onPin()}
 					>
 						{pinned ? <PinOffIcon className="size-3" /> : <PinIcon className="size-3" />}
-					</Button>
+					</Toggle>
 				</PaneTabTooltip>
 			) : null}
 		</PaneTabScrollArea>

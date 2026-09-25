@@ -1,5 +1,10 @@
 import { useAuiState } from "@assistant-ui/react";
 import { type FC } from "react";
+import { CircleAlertIcon } from "lucide-react";
+
+import { Alert, AlertTitle } from "@kilo-desktop/ui/components/alert";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@kilo-desktop/ui/components/empty";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 
 import { ApprovePlanButton } from "../plan/ApprovePlanButton.js";
 import {
@@ -70,7 +75,7 @@ const PlanTabContent: FC<{
 
 	return (
 		<div className="flex min-h-0 flex-1 flex-col" data-qa-id="chat-pane-plan">
-			<div className="border-border dark:border-border/60 flex h-11 shrink-0 items-center gap-3 border-b px-4">
+			<div className="border-border-subtle flex h-11 shrink-0 items-center gap-3 border-b px-4">
 				<p className="min-w-0 flex-1 truncate text-sm font-medium">{title}</p>
 				<ApprovePlanButton
 					enabled={canApprove}
@@ -84,12 +89,20 @@ const PlanTabContent: FC<{
 			</div>
 			<div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
 				{isLoading && !markdown ? (
-					<p className="text-muted-foreground text-sm">Loading plan…</p>
+					<Empty>
+						<EmptyHeader>
+							<EmptyMedia variant="icon">
+								<Spinner aria-hidden="true" />
+							</EmptyMedia>
+							<EmptyTitle>Loading plan…</EmptyTitle>
+						</EmptyHeader>
+					</Empty>
 				) : null}
 				{isError ? (
-					<p className="text-destructive-foreground text-sm" role="alert">
-						Could not load the plan file.
-					</p>
+					<Alert variant="destructive">
+						<CircleAlertIcon aria-hidden="true" />
+						<AlertTitle>Could not load the plan file</AlertTitle>
+					</Alert>
 				) : null}
 				{body ? <PlanMarkdown text={body} /> : null}
 			</div>

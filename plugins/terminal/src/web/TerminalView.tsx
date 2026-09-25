@@ -1,8 +1,15 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { SquareTerminal } from "lucide-react";
+import { CircleAlertIcon, SquareTerminalIcon } from "lucide-react";
 
 import type { ThemeAppearance } from "@kilo-desktop/feature-sdk";
 import { useSdk } from "@kilo-desktop/sdk-react";
+import {
+	Empty,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyMedia,
+	EmptyTitle,
+} from "@kilo-desktop/ui/components/empty";
 
 import {
 	TERMINAL_PROTOCOL_VERSION,
@@ -186,10 +193,18 @@ export function TerminalView({
 		return (
 			<div
 				ref={viewRef}
-				className="text-muted-foreground flex min-h-0 flex-1 items-center justify-center bg-[var(--pane-surface,var(--color-background))] p-8 text-center text-sm"
+				className="bg-pane flex min-h-0 flex-1"
 				data-qa-id="terminal-desktop-required"
 			>
-				Terminal tabs are available in the desktop app.
+				<Empty>
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<SquareTerminalIcon aria-hidden="true" />
+						</EmptyMedia>
+						<EmptyTitle>Terminal unavailable</EmptyTitle>
+						<EmptyDescription>Terminal tabs are available in the desktop app.</EmptyDescription>
+					</EmptyHeader>
+				</Empty>
 			</div>
 		);
 	}
@@ -197,25 +212,29 @@ export function TerminalView({
 		return (
 			<div
 				ref={viewRef}
-				className="text-destructive flex min-h-0 flex-1 items-center justify-center bg-[var(--pane-surface,var(--color-background))] p-8 text-center text-sm"
+				className="bg-pane flex min-h-0 flex-1"
 				data-qa-id="terminal-connection-error"
 			>
-				{connectionError}
+				<Empty>
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<CircleAlertIcon aria-hidden="true" />
+						</EmptyMedia>
+						<EmptyTitle>Could not connect to the terminal</EmptyTitle>
+						<EmptyDescription>{connectionError}</EmptyDescription>
+					</EmptyHeader>
+				</Empty>
 			</div>
 		);
 	}
 	return (
-		<div
-			ref={viewRef}
-			className="flex min-h-0 flex-1 bg-[var(--pane-surface,var(--color-background))]"
-			data-qa-id="terminal-view"
-		>
+		<div ref={viewRef} className="bg-pane flex min-h-0 flex-1" data-qa-id="terminal-view">
 			<iframe
 				key={frameKey}
 				ref={frameRef}
 				src={frameSrc}
 				title="Terminal"
-				className="min-h-0 flex-1 border-0 bg-[var(--pane-surface,var(--color-background))]"
+				className="bg-pane min-h-0 flex-1 border-0"
 				allow="clipboard-read; clipboard-write"
 				data-qa-id="terminal-frame"
 			/>
@@ -223,4 +242,4 @@ export function TerminalView({
 	);
 }
 
-export const TerminalIcon = SquareTerminal;
+export const TerminalIcon = SquareTerminalIcon;

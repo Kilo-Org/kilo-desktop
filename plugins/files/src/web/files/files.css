@@ -2,22 +2,6 @@
 	container-type: inline-size;
 }
 
-.files-editor-scroll {
-	scrollbar-color: transparent transparent;
-}
-
-.files-editor-scroll::-webkit-scrollbar-thumb {
-	background: transparent;
-}
-
-.files-editor-scroll:is(:hover, :focus-within) {
-	scrollbar-color: var(--app-scrollbar-thumb) transparent;
-}
-
-.files-editor-scroll:is(:hover, :focus-within)::-webkit-scrollbar-thumb {
-	background: var(--app-scrollbar-thumb);
-}
-
 @container (max-width: 620px) {
 	.files-panel .files-explorer-pane {
 		width: min(15rem, 42%);

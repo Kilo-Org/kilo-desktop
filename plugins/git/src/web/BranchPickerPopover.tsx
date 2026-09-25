@@ -135,7 +135,7 @@ export function BranchPickerPopover({
 						type="button"
 						variant="ghost"
 						size="sm"
-						className="dark:text-foreground/90 h-7 max-w-56 rounded-md"
+						className="max-w-56"
 						data-qa-id={triggerTestId}
 					/>
 				}
@@ -159,18 +159,9 @@ export function BranchPickerPopover({
 						{note}
 					</div>
 				) : (
-					<Command
-						label="Search branches"
-						className="[&_[data-slot=command-input-wrapper]]:gap-1.5 [&_[data-slot=command-input-wrapper]]:px-2 [&_[data-slot=command-input-wrapper]]:py-2 [&_[data-slot=command-item]]:gap-1.5 [&_[data-slot=command-item]]:rounded-md [&_[data-slot=command-item]]:px-1.5 [&_[data-slot=command-item]]:py-1 [&_[data-slot=command-item]_[data-slot=button]]:size-5 [&_[data-slot=command-item]_span:has(>svg.lucide-check)]:size-5"
-					>
-						<CommandInput
-							placeholder="Search branches…"
-							value={search}
-							onValueChange={setSearch}
-							className="w-0 min-w-0 flex-1"
-						/>
-						<CommandSeparator />
-						<CommandList className="scroll-fade max-h-[calc(1.75rem*5+0.5rem)]">
+					<Command label="Search branches">
+						<CommandInput placeholder="Search branches" value={search} onValueChange={setSearch} />
+						<CommandList className="scroll-fade max-h-[calc(1.75rem*5)]">
 							<CommandEmpty>
 								{branches.length === 0 ? "No branches yet." : "No branches found."}
 							</CommandEmpty>
@@ -198,7 +189,8 @@ export function BranchPickerPopover({
 						    is click-only — cmdk's keyboard nav only covers list items. */}
 						{onCreateBranch !== undefined ? (
 							<>
-								<CommandSeparator />
+								{/* Outside the list, so it must opt out of cmdk hiding it while filtering. */}
+								<CommandSeparator alwaysRender />
 								<CommandGroup forceMount>
 									<CommandItem
 										data-qa-id="git-branch-create"

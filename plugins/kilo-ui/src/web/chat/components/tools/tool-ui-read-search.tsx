@@ -3,7 +3,7 @@ import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 
 import { SoloAwareExpandableRow, SoloAwareLabelRow } from "./tool-ui-activity-row.js";
 import { getToolFilePath } from "./tool-ui-file-mutation.js";
-import { basename, resultText, truncate } from "./tool-ui-shared.js";
+import { basename, resultText, ToolOutputText, truncate } from "./tool-ui-shared.js";
 
 export const ReadActivity: ToolCallMessagePartComponent = memo(({ args, status }) => {
 	const path = getToolFilePath(args as Record<string, unknown> | undefined);
@@ -20,12 +20,6 @@ export const ReadActivity: ToolCallMessagePartComponent = memo(({ args, status }
 	);
 });
 ReadActivity.displayName = "ReadActivity";
-
-const OutputDetail = ({ text }: { text: string }) => (
-	<pre className="bg-muted/50 max-h-96 overflow-y-auto rounded-md border p-3 font-mono text-xs wrap-break-word whitespace-pre-wrap">
-		{text}
-	</pre>
-);
 
 export const GrepActivity: ToolCallMessagePartComponent = memo(
 	({ args, result, status, toolCallId }) => {
@@ -48,7 +42,7 @@ export const GrepActivity: ToolCallMessagePartComponent = memo(
 				status={status}
 				disclosureId={toolCallId}
 				hasDetail={hasDetail}
-				detail={<OutputDetail text={output} />}
+				detail={<ToolOutputText text={output} />}
 			/>
 		);
 	},
@@ -76,7 +70,7 @@ export const GlobActivity: ToolCallMessagePartComponent = memo(
 				status={status}
 				disclosureId={toolCallId}
 				hasDetail={hasDetail}
-				detail={<OutputDetail text={output} />}
+				detail={<ToolOutputText text={output} />}
 			/>
 		);
 	},

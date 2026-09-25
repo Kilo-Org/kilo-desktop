@@ -103,7 +103,7 @@ export function BulkRemoveConfirmation({
 					>
 						{remove.isPending
 							? "Removing\u2026"
-							: `Remove ${count} ${count === 1 ? "Package" : "Packages"}`}
+							: `Remove ${count} ${count === 1 ? "package" : "packages"}`}
 					</AlertDialogAction>
 				</AlertDialogFooter>
 			</AlertDialogContent>

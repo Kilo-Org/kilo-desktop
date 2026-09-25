@@ -123,11 +123,11 @@ export function ConversationMap({
 								side={side}
 								sideOffset={10}
 								arrowClassName="hidden"
-								className="bg-popover text-popover-foreground border-border/60 ring-foreground/10 flex w-60 max-w-60 flex-col items-start gap-0 rounded-xl p-3.5 text-left shadow-md ring-1"
+								className="bg-popover text-popover-foreground border-border-subtle ring-foreground/10 flex w-60 max-w-60 flex-col items-start gap-0 rounded-xl p-3.5 text-left shadow-md ring-1"
 							>
-								<p className="line-clamp-2 text-[13px] leading-snug font-medium">{entry.title}</p>
+								<p className="line-clamp-2 text-sm leading-snug font-medium">{entry.title}</p>
 								{entry.preview ? (
-									<p className="text-foreground/50 line-clamp-3 text-[13px] leading-snug">
+									<p className="text-foreground/50 line-clamp-3 text-sm leading-snug">
 										{entry.preview}
 									</p>
 								) : null}

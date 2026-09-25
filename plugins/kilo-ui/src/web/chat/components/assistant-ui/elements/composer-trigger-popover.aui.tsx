@@ -83,7 +83,7 @@ function resolveIcon(
 }
 
 const MENU_ITEM =
-	"flex w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-hidden select-none hover:bg-foreground/5 focus:bg-foreground/5 data-[highlighted]:bg-foreground/5";
+	"flex w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-hidden select-none hover:bg-muted focus:bg-muted data-[highlighted]:bg-muted";
 
 const MENU_EMPTY = "text-muted-foreground px-1.5 py-1 text-sm";
 
@@ -223,7 +223,7 @@ const ComposerTriggerPopoverImpl: FC<ComposerTriggerPopoverProps> = ({
 		<ComposerPrimitive.Unstable_TriggerPopover
 			data-slot="composer-trigger-popover"
 			className={cn(
-				"aui-composer-trigger-popover bg-popover/95 text-popover-foreground absolute start-0 bottom-full z-50 mb-2 w-full max-h-[min(20rem,calc(100dvh-14rem))] overflow-x-hidden overflow-y-auto rounded-lg p-1 shadow-md ring-1 ring-foreground/10 backdrop-blur-sm",
+				"aui-composer-trigger-popover bg-popover/95 text-popover-foreground absolute start-0 bottom-full z-50 mb-2 flex w-full max-h-[min(20rem,calc(100dvh-14rem))] flex-col overflow-hidden rounded-lg shadow-md ring-1 ring-foreground/10 backdrop-blur-sm",
 				className,
 			)}
 			{...props}
@@ -240,15 +240,23 @@ const ComposerTriggerPopoverImpl: FC<ComposerTriggerPopoverProps> = ({
 					removeOnExecute={action.removeOnExecute}
 				/>
 			) : null}
-			<Categories iconMap={iconMap} fallbackIcon={fallbackIcon} emptyLabel={emptyCategoriesLabel} />
-			<Items
-				iconMap={iconMap}
-				fallbackIcon={fallbackIcon}
-				renderItemIcon={renderItemIcon}
-				backLabel={backLabel}
-				emptyLabel={emptyItemsLabel}
-				loadingLabel={loadingLabel}
-			/>
+			{/* The fade lives on an inner scroller: a mask on the popover itself would clip its ring and shadow.
+			    Closed triggers render children bare inside the composer shell, so the empty scroller must collapse. */}
+			<div className="scroll-fade-y min-h-0 overflow-x-hidden overflow-y-auto p-1 empty:hidden">
+				<Categories
+					iconMap={iconMap}
+					fallbackIcon={fallbackIcon}
+					emptyLabel={emptyCategoriesLabel}
+				/>
+				<Items
+					iconMap={iconMap}
+					fallbackIcon={fallbackIcon}
+					renderItemIcon={renderItemIcon}
+					backLabel={backLabel}
+					emptyLabel={emptyItemsLabel}
+					loadingLabel={loadingLabel}
+				/>
+			</div>
 		</ComposerPrimitive.Unstable_TriggerPopover>
 	);
 };

@@ -2,7 +2,7 @@ import { MessageSquareIcon } from "lucide-react";
 
 import { useAui, useAuiState } from "@assistant-ui/react";
 import { useSdk } from "@kilo-desktop/sdk-react";
-import { Button } from "@kilo-desktop/ui/components/button";
+import { SidebarMenuButton } from "@kilo-desktop/ui/components/sidebar";
 
 import { navigateToChat } from "./chat-navigation.js";
 import {
@@ -22,18 +22,15 @@ export function NewChatButton() {
 	};
 
 	return (
-		<Button
-			type="button"
-			aria-label="New Chat"
+		<SidebarMenuButton
 			data-slot="aui_thread-list-new"
 			data-qa-id="new-chat"
-			variant="ghost"
-			className="h-8 w-full min-w-0 justify-start gap-2 rounded-md px-2 text-sm font-normal"
+			className="gap-2 rounded-lg"
 			disabled={isLoadingThreads}
 			onClick={createChat}
 		>
-			<MessageSquareIcon data-icon="inline-start" data-slot="aui_thread-list-new-icon" />
+			<MessageSquareIcon data-slot="aui_thread-list-new-icon" />
 			<span data-slot="aui_thread-list-new-label">New Chat</span>
-		</Button>
+		</SidebarMenuButton>
 	);
 }

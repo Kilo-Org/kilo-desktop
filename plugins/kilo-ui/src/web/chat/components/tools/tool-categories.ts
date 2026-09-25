@@ -3,7 +3,7 @@ import {
 	BookOpenIcon,
 	BotIcon,
 	BrainIcon,
-	CircleHelpIcon,
+	CircleQuestionMarkIcon,
 	FilePenIcon,
 	FilePlusIcon,
 	GlobeIcon,
@@ -374,7 +374,7 @@ const KIND_META: Record<Exclude<ActivityKind, McpActivityKind>, KindMeta> = {
 			"border-rose-600/40 bg-rose-100 text-rose-600 dark:border-rose-400/40 dark:bg-rose-950 dark:text-rose-400",
 	},
 	asking: {
-		icon: CircleHelpIcon,
+		icon: CircleQuestionMarkIcon,
 		label: "Question",
 		liveLabel: () => "Asking",
 		doneLabel: ({ question, count }) =>

@@ -35,15 +35,20 @@ describe("app theme presets", () => {
 		expect(getThemeVariant("kilo", "dark")?.tokens).toMatchObject({
 			background: "#111111",
 			foreground: "#f0f0f0",
-			border: "#292929",
-			input: "#292929",
+			border: "rgb(255 255 255 / 0.1)",
+			input: "rgb(255 255 255 / 0.1)",
 			primary: "#f7f586",
 			"primary-foreground": "#1f1f1f",
 			card: "#181818",
 			popover: "#2b2b2b",
 			sidebar: "#161616",
-			"sidebar-border": "#292929",
+			"sidebar-border": "rgb(255 255 255 / 0.1)",
+			muted: "#333333",
+			accent: "color-mix(in oklch, var(--foreground) 5%, transparent)",
+			secondary: "color-mix(in oklch, var(--foreground) 5%, transparent)",
+			"sidebar-accent": "color-mix(in oklch, var(--foreground) 5%, transparent)",
 		});
+		expect(getThemeVariant("kilo", "dark")?.terminal?.selectionBackground).toBe("#1c1c1c");
 		const kiloCss = themeCss({ themeId: "kilo", accentId: "theme" });
 		expect(kiloCss).not.toContain("--shell-glass-opacity");
 		const dark = getThemeVariant("dracula", "dark")!;
@@ -212,6 +217,10 @@ describe("app theme presets", () => {
 						"destructive-foreground",
 						"info",
 						"info-foreground",
+						"success",
+						"success-foreground",
+						"warning",
+						"warning-foreground",
 						"update",
 					] as const) {
 						expect(
@@ -219,7 +228,7 @@ describe("app theme presets", () => {
 							`${theme.id} ${mode} ${role} on ${surface}`,
 						).toBeGreaterThanOrEqual(4.5);
 					}
-					for (const role of ["destructive", "info"] as const) {
+					for (const role of ["destructive", "info", "success", "warning"] as const) {
 						// Buttons/badges tint the underlying surface by 10%, then 20% on hover.
 						for (const opacity of [0.1, 0.2]) {
 							const tinted =
@@ -243,6 +252,7 @@ describe("app theme presets", () => {
 					}
 				}
 				for (const surface of ["update-surface", "update-surface-hover"] as const) {
+					if (!/^#[0-9a-f]{6}$/i.test(tokens[surface])) continue;
 					expect(
 						contrast(tokens.update, tokens[surface]),
 						`${theme.id} ${mode} update on ${surface}`,

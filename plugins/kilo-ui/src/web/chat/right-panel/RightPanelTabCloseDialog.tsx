@@ -10,6 +10,8 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@kilo-desktop/ui/components/alert-dialog";
+import { FieldError } from "@kilo-desktop/ui/components/field";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 
 import type { RightPanelTabLifecycle } from "./chat-right-panel-capability.js";
 import type { RightPanelTab } from "./right-panel-tab-registry.js";
@@ -80,36 +82,32 @@ export function RightPanelTabCloseDialog({
 						Closing this tab will discard your unsaved changes.
 					</AlertDialogDescription>
 				</AlertDialogHeader>
-				{error ? (
-					<p className="text-destructive text-sm" role="alert" data-qa-id="chat-pane-close-error">
-						{error}
-					</p>
-				) : null}
-				<AlertDialogFooter className="sm:justify-between">
+				{error ? <FieldError data-qa-id="chat-pane-close-error">{error}</FieldError> : null}
+				<AlertDialogFooter>
 					<AlertDialogCancel disabled={pending !== null} data-qa-id="chat-pane-close-cancel">
 						Cancel
 					</AlertDialogCancel>
-					<div className="flex items-center gap-2">
+					<AlertDialogAction
+						type="button"
+						variant="destructive"
+						disabled={pending !== null}
+						data-qa-id="chat-pane-close-discard"
+						onClick={() => void discard()}
+					>
+						{pending === "discard" ? <Spinner data-icon="inline-start" aria-hidden="true" /> : null}
+						{pending === "discard" ? "Discarding…" : "Discard"}
+					</AlertDialogAction>
+					{lifecycle?.save ? (
 						<AlertDialogAction
 							type="button"
-							variant="destructive"
 							disabled={pending !== null}
-							data-qa-id="chat-pane-close-discard"
-							onClick={() => void discard()}
+							data-qa-id="chat-pane-close-save"
+							onClick={() => void save()}
 						>
-							{pending === "discard" ? "Discarding…" : "Discard"}
+							{pending === "save" ? <Spinner data-icon="inline-start" aria-hidden="true" /> : null}
+							{pending === "save" ? "Saving…" : "Save"}
 						</AlertDialogAction>
-						{lifecycle?.save ? (
-							<AlertDialogAction
-								type="button"
-								disabled={pending !== null}
-								data-qa-id="chat-pane-close-save"
-								onClick={() => void save()}
-							>
-								{pending === "save" ? "Saving…" : "Save"}
-							</AlertDialogAction>
-						) : null}
-					</div>
+					) : null}
 				</AlertDialogFooter>
 			</AlertDialogContent>
 		</AlertDialog>

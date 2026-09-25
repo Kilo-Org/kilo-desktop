@@ -82,7 +82,7 @@ export function useApprovePlan(options?: { fallbackApprovalScope?: string }) {
 				if (key) markApproved(key);
 				if (fallbackKey && fallbackKey !== key) markApproved(fallbackKey);
 			} catch (caught) {
-				setError(caught instanceof Error ? caught.message : "Failed to approve the plan.");
+				setError(caught instanceof Error ? caught.message : "Could not approve the plan.");
 			} finally {
 				setSubmitting(false);
 			}
@@ -100,7 +100,7 @@ export function useApprovePlan(options?: { fallbackApprovalScope?: string }) {
 				await replyToQuestion(planFollowup.id, buildPlanRefineAnswers(draft));
 				aui.composer.setText("");
 			} catch (caught) {
-				setError(caught instanceof Error ? caught.message : "Failed to refine the plan.");
+				setError(caught instanceof Error ? caught.message : "Could not refine the plan.");
 			} finally {
 				setSubmitting(false);
 			}

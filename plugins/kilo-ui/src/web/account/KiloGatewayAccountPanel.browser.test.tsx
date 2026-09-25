@@ -134,7 +134,7 @@ describe("KiloGatewayAccountPanel", () => {
 			.toHaveTextContent("$42.50");
 		await expect.element(screen.getByTestId("kilo-account-pass-bar")).toBeVisible();
 		await expect.element(screen.getByTestId("kilo-account-dashboard")).toBeVisible();
-		await expect.element(screen.getByRole("button", { name: "Sign Out" })).toBeVisible();
+		await expect.element(screen.getByRole("button", { name: "Sign out" })).toBeVisible();
 
 		const actions = document.querySelector("[data-qa-id=kilo-account-actions]");
 		for (const qa of ["kilo-account-top-up", "kilo-account-dashboard", "kilo-account-logout"]) {

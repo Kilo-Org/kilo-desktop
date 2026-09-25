@@ -59,7 +59,7 @@ export const SESSION_LIST_SHOW_LABELS: Record<SessionListShowField, string> = {
 
 export const SESSION_LIST_STATUS_LABELS: Record<SessionListStatusFilter, string> = {
 	all: "All",
-	attention: "Needs Attention",
+	attention: "Needs attention",
 	working: "Working",
 	idle: "Idle",
 	archived: "Archived",
@@ -430,7 +430,7 @@ export function buildSessionListSections(args: {
 	if (attention.length > 0) {
 		sections.push({
 			key: "attention",
-			label: "Needs Attention",
+			label: "Needs attention",
 			tone: "attention",
 			rows: toRows(attention),
 		});

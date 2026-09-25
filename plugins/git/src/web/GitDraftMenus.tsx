@@ -11,12 +11,7 @@ import {
 	DropdownMenuRadioItem,
 	DropdownMenuTrigger,
 } from "@kilo-desktop/ui/components/dropdown-menu";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "@kilo-desktop/ui/components/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 import { useQuery } from "@tanstack/react-query";
 import { sdkQueryOptions, useSdk } from "@kilo-desktop/sdk-react";
 
@@ -170,13 +165,7 @@ export function GitDraftMenus({ workspaceDirectory, workspaceId }: GitDraftMenus
 			<DropdownMenu>
 				<DropdownMenuTrigger
 					render={
-						<Button
-							type="button"
-							variant="ghost"
-							size="sm"
-							className="dark:text-foreground/90 h-7 rounded-md"
-							data-qa-id="git-draft-mode-trigger"
-						/>
+						<Button type="button" variant="ghost" size="sm" data-qa-id="git-draft-mode-trigger" />
 					}
 				>
 					{mode === "worktree" ? (
@@ -217,35 +206,31 @@ export function GitDraftMenus({ workspaceDirectory, workspaceId }: GitDraftMenus
 							}}
 						>
 							{unborn ? (
-								<TooltipProvider>
-									<Tooltip>
-										<TooltipTrigger
-											render={
-												<DropdownMenuRadioItem
-													value="worktree"
-													disabled
-													className="py-2"
-													data-qa-id="git-draft-mode-item-worktree"
-												>
-													<span className="flex min-w-0 flex-col gap-0.5">
-														<span>New worktree</span>
-														<span className="text-muted-foreground text-xs">
-															Creates a separate copy for this session
-														</span>
+								<Tooltip>
+									<TooltipTrigger
+										render={
+											<DropdownMenuRadioItem
+												value="worktree"
+												disabled
+												data-qa-id="git-draft-mode-item-worktree"
+											>
+												<span className="flex min-w-0 flex-col gap-0.5">
+													<span>New worktree</span>
+													<span className="text-muted-foreground text-xs">
+														Creates a separate copy for this session
 													</span>
-												</DropdownMenuRadioItem>
-											}
-										/>
-										<TooltipContent>
-											This repository has no commits yet. Create an initial commit to use worktrees.
-										</TooltipContent>
-									</Tooltip>
-								</TooltipProvider>
+												</span>
+											</DropdownMenuRadioItem>
+										}
+									/>
+									<TooltipContent>
+										This repository has no commits yet. Create an initial commit to use worktrees.
+									</TooltipContent>
+								</Tooltip>
 							) : (
 								<DropdownMenuRadioItem
 									value="worktree"
 									closeOnClick
-									className="py-2"
 									data-qa-id="git-draft-mode-item-worktree"
 								>
 									<span className="flex min-w-0 flex-col gap-0.5">
@@ -259,7 +244,6 @@ export function GitDraftMenus({ workspaceDirectory, workspaceId }: GitDraftMenus
 							<DropdownMenuRadioItem
 								value="local"
 								closeOnClick
-								className="py-2"
 								data-qa-id="git-draft-mode-item-local"
 							>
 								<span className="flex min-w-0 flex-col gap-0.5">

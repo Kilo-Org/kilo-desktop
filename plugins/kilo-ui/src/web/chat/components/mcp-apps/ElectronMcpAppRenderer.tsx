@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { CircleAlertIcon } from "lucide-react";
+
+import { Alert, AlertDescription, AlertTitle } from "@kilo-desktop/ui/components/alert";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@kilo-desktop/ui/components/empty";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { resource, useResource } from "@assistant-ui/tap";
 import type {
 	McpAppResource,
@@ -385,10 +390,23 @@ function InlineRenderer({
 	if (!app) return null;
 	if (error)
 		return (
-			<div style={{ color: "var(--destructive, red)", padding: "8px" }}>MCP App error: {error}</div>
+			<Alert variant="destructive">
+				<CircleAlertIcon aria-hidden="true" />
+				<AlertTitle>Could not load the MCP app</AlertTitle>
+				<AlertDescription>{error}</AlertDescription>
+			</Alert>
 		);
 	if (!loadedHtml)
-		return <div style={{ color: "var(--muted-foreground)", padding: "8px" }}>Loading MCP App…</div>;
+		return (
+			<Empty>
+				<EmptyHeader>
+					<EmptyMedia variant="icon">
+						<Spinner aria-hidden="true" />
+					</EmptyMedia>
+					<EmptyTitle>Loading MCP app…</EmptyTitle>
+				</EmptyHeader>
+			</Empty>
+		);
 
 	return (
 		<ElectronMcpAppFrame

@@ -119,8 +119,8 @@ describe("LocalModelCatalog", () => {
 
 		await expect.element(table).toBeVisible();
 		await expect
-			.element(screen.getByTestId("model-catalog-sort").getByText("Newest", { exact: true }))
-			.toBeVisible();
+			.element(screen.getByTestId("model-catalog-sort"))
+			.toHaveAccessibleName("Sort models: Newest");
 		expect([...baseElement.querySelectorAll("th")].map((header) => header.innerText)).toEqual([
 			"Model",
 			"Capabilities",
@@ -151,7 +151,7 @@ describe("LocalModelCatalog", () => {
 					"model-catalog-capability-toolCalling-48d448b0-2634-4c32-b3fe-56a26483c904",
 				),
 			)
-			.toHaveAttribute("aria-label", "Tool Calling");
+			.toHaveAttribute("aria-label", "Tool calling");
 		await expect
 			.element(
 				screen.getByTestId(
@@ -167,7 +167,7 @@ describe("LocalModelCatalog", () => {
 			.element(capabilities)
 			.toHaveAttribute(
 				"aria-label",
-				"Model type: Text Generation. Capabilities: Chat, Tool Calling, Vision, Embedding.",
+				"Model type: Text Generation. Capabilities: Chat, Tool calling, Vision, Embedding.",
 			);
 		await capabilities.hover();
 		await expect
@@ -188,7 +188,7 @@ describe("LocalModelCatalog", () => {
 					"model-catalog-tooltip-capability-toolCalling-48d448b0-2634-4c32-b3fe-56a26483c904",
 				),
 			)
-			.toHaveTextContent("Tool Calling");
+			.toHaveTextContent("Tool calling");
 		await expect
 			.element(
 				page.getByTestId(
@@ -228,7 +228,6 @@ describe("LocalModelCatalog", () => {
 		await expect.element(search).toBeVisible();
 		await search.fill("Qwen 27B");
 
-		await expect.element(screen.getByText("Search results", { exact: true })).toBeVisible();
 		await expect
 			.element(screen.getByTestId("model-catalog-table").getByText("Qwen3.8-27B", { exact: true }))
 			.toBeVisible();
@@ -243,7 +242,9 @@ describe("LocalModelCatalog", () => {
 
 		await expect.element(search).toHaveValue("");
 		await expect.element(screen.getByText("Recommended Models", { exact: true })).toBeVisible();
-		await expect.element(screen.getByText("All models", { exact: true })).toBeVisible();
+		await expect
+			.element(screen.getByTestId("model-catalog-table").getByText("Llama 3.1 8B Instruct"))
+			.toBeVisible();
 	});
 
 	it("uses two columns when the catalog pane is narrow", async () => {
@@ -374,9 +375,12 @@ describe("LocalModelCatalog", () => {
 			.poll(() => baseElement.querySelector("tbody tr")?.textContent)
 			.toContain("Llama 3.1 8B Instruct");
 
-		await screen.getByRole("combobox", { name: "Sort models" }).click();
-		await page.getByRole("option", { name: "Fastest" }).click();
+		await screen.getByRole("button", { name: "Sort models: Newest" }).click();
+		await page.getByRole("menuitemradio", { name: "Fastest" }).click();
 		await expect.poll(() => baseElement.querySelector("tbody tr")?.textContent).toContain("gpt2");
+		await expect
+			.element(screen.getByTestId("model-catalog-sort"))
+			.toHaveAccessibleName("Sort models: Fastest");
 	});
 
 	it("renders Best Picks in CanIRun editorial order while browse defaults to newest", async () => {

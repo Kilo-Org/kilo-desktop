@@ -244,6 +244,10 @@ function renderPage(
 	};
 }
 
+async function clickDeleteProvider(screen: typeof page, providerId: string) {
+	await screen.getByTestId(`kilo-providers-delete-${providerId}`).click();
+}
+
 describe("KiloProvidersSettings", () => {
 	it("shows desktop-unavailable copy when the connection failed", async () => {
 		const { screen } = renderPage({ isPending: false, isError: true });
@@ -256,9 +260,10 @@ describe("KiloProvidersSettings", () => {
 		providerList.mockRejectedValueOnce(new Error("catalog offline"));
 		configGet.mockResolvedValue({ data: {} });
 		const { screen } = renderPage({ isPending: false, isError: false, connection });
-		await expect
-			.element(screen.getByTestId("kilo-providers-error"))
-			.toHaveTextContent("catalog offline");
+		await expect.element(screen.getByTestId("kilo-providers-error")).toBeVisible();
+		expect(screen.getByTestId("kilo-providers-error").element().textContent).toContain(
+			"catalog offline",
+		);
 		await expect.element(screen.getByTestId("kilo-providers-popular")).not.toBeInTheDocument();
 		await expect.element(screen.getByTestId("kilo-providers-retry")).toBeVisible();
 		mockCatalog();
@@ -347,7 +352,7 @@ describe("KiloProvidersSettings", () => {
 		await expect
 			.element(screen.getByTestId("kilo-providers-row-kilo"))
 			.toHaveAttribute("data-state", "summary");
-		await expect.element(screen.getByRole("button", { name: "Sign In" })).toBeVisible();
+		await expect.element(screen.getByRole("button", { name: "Sign in" })).toBeVisible();
 		await expect.element(screen.getByTestId("kilo-providers-popular")).not.toBeInTheDocument();
 		await expect
 			.element(screen.getByTestId("kilo-providers-add-provider"))
@@ -374,7 +379,7 @@ describe("KiloProvidersSettings", () => {
 		await screen.getByTestId("kilo-providers-add-provider").click();
 		await expect.element(screen.getByTestId("kilo-providers-custom-dialog")).toBeVisible();
 		await expect
-			.element(screen.getByRole("heading", { name: "Add custom AI Provider" }))
+			.element(screen.getByRole("heading", { name: "Add custom AI provider" }))
 			.toBeVisible();
 		await expect
 			.element(screen.getByTestId("kilo-providers-add-progress-label"))
@@ -434,7 +439,9 @@ describe("KiloProvidersSettings", () => {
 			loadingAuth,
 		);
 
-		await expect.element(screen.getByTestId("kilo-providers-loading-gateway")).toBeVisible();
+		await expect
+			.element(screen.getByTestId("kilo-providers-row-kilo"))
+			.toHaveAttribute("data-state", "loading");
 		await expect.element(screen.getByTestId("kilo-providers-loading-provider")).toBeVisible();
 
 		resolveCatalog({
@@ -450,26 +457,32 @@ describe("KiloProvidersSettings", () => {
 
 		await vi.waitFor(() => expect(queryClient.isFetching()).toBe(0));
 		await expect.element(screen.getByTestId("kilo-providers-loading")).not.toBeInTheDocument();
+		await expect
+			.element(screen.getByTestId("kilo-providers-loading-provider"))
+			.not.toBeInTheDocument();
 		await expect.element(screen.getByTestId("kilo-providers-row-anthropic")).toBeVisible();
 	});
 
-	it("defers the local model server link until the page finishes loading", async () => {
+	it("keeps the local model server link in place while the catalog loads", async () => {
 		mockCatalog();
 		const { screen, rerenderStatus } = renderPage({ isPending: true, isError: false }, idleAuth(), {
 			localInference: true,
 		});
 
-		await expect.element(screen.getByTestId("kilo-providers-loading")).toBeVisible();
-		await expect
-			.element(screen.getByTestId("kilo-providers-local-model-server-link"))
-			.not.toBeInTheDocument();
-		await expect.element(screen.getByTestId("kilo-providers-inventory")).not.toBeInTheDocument();
+		await expect.element(screen.getByTestId("kilo-providers-loading")).toBeInTheDocument();
+		await expect.element(screen.getByTestId("kilo-providers-loading-provider")).toBeVisible();
+		const link = screen.getByTestId("kilo-providers-local-model-server-link");
+		await expect.element(link).toBeVisible();
+		const linkElement = link.element();
 
 		rerenderStatus({ isPending: false, isError: false, connection });
 
 		await expect
-			.element(screen.getByTestId("kilo-providers-local-model-server-link"))
-			.toBeVisible();
+			.element(screen.getByTestId("kilo-providers-loading-provider"))
+			.not.toBeInTheDocument();
+		expect(screen.getByTestId("kilo-providers-local-model-server-link").element()).toBe(
+			linkElement,
+		);
 	});
 
 	it("shows the connected Kilo account details inside the gateway card", async () => {
@@ -498,22 +511,17 @@ describe("KiloProvidersSettings", () => {
 		);
 		await expect
 			.element(screen.getByTestId("kilo-providers-row-kilo"))
-			.toHaveAttribute("data-state", "summary");
+			.toHaveAttribute("data-state", "expanded");
 		await expect
 			.element(screen.getByTestId("kilo-account-email"))
 			.toHaveTextContent("dev@anaconda.com");
-		await expect.element(screen.getByTestId("kilo-account-balance-value")).not.toBeInTheDocument();
 		await expect.element(screen.getByText("Manage", { exact: true })).not.toBeInTheDocument();
-		await screen.getByTestId("kilo-provider-toggle").click();
-		await expect
-			.element(screen.getByTestId("kilo-providers-row-kilo"))
-			.toHaveAttribute("data-state", "expanded");
 		await expect
 			.element(screen.getByTestId("kilo-account-balance-value"))
 			.toHaveTextContent("$1.00");
 		await expect.element(screen.getByTestId("kilo-account-org")).toBeVisible();
 		await expect.element(screen.getByTestId("kilo-account-pass-bar")).toBeVisible();
-		await expect.element(screen.getByRole("button", { name: "Sign Out" })).toBeVisible();
+		await expect.element(screen.getByRole("button", { name: "Sign out" })).toBeVisible();
 		const signOut = document.querySelector("[data-qa-id=kilo-account-logout]");
 		expect(
 			document.querySelector("[data-qa-id=kilo-provider-header-actions]")?.contains(signOut),
@@ -522,11 +530,7 @@ describe("KiloProvidersSettings", () => {
 			false,
 		);
 		await expect.element(screen.getByTestId("kilo-account-login")).not.toBeInTheDocument();
-		await screen.getByTestId("kilo-provider-row-trigger").click();
-		await expect
-			.element(screen.getByTestId("kilo-providers-row-kilo"))
-			.toHaveAttribute("data-state", "summary");
-		await expect.element(screen.getByTestId("kilo-account-balance-value")).not.toBeInTheDocument();
+		await expect.element(screen.getByTestId("kilo-provider-toggle")).not.toBeInTheDocument();
 	});
 
 	it("connects a catalog provider with an API key", async () => {
@@ -594,10 +598,16 @@ describe("KiloProvidersSettings", () => {
 		mockConnectedCatalog();
 		const { screen } = renderPage({ isPending: false, isError: false, connection });
 
-		await screen.getByTestId("kilo-providers-edit-openai").click();
-		await expect.element(screen.getByTestId("kilo-providers-edit-dialog")).toBeVisible();
-		await expect.element(screen.getByText("Edit OpenAI")).toBeVisible();
-		const input = screen.getByTestId("kilo-providers-edit-api-key");
+		await expect
+			.element(screen.getByTestId("kilo-providers-row-openai"))
+			.toHaveAttribute("data-state", "summary");
+		await screen.getByTestId("kilo-providers-toggle-openai").click();
+		await expect
+			.element(screen.getByTestId("kilo-providers-row-openai"))
+			.toHaveAttribute("data-state", "expanded");
+		const editor = screen.getByTestId("kilo-providers-editor-openai");
+		await expect.element(editor).toBeVisible();
+		const input = editor.getByTestId("kilo-providers-edit-api-key");
 		await expect.element(input).toHaveValue("sk-openai-stored");
 		await expect.element(input).toHaveAttribute("type", "password");
 		await screen.getByTestId("kilo-providers-edit-api-key-visibility").click();
@@ -612,18 +622,122 @@ describe("KiloProvidersSettings", () => {
 				{ throwOnError: true },
 			),
 		);
-		await expect.element(screen.getByTestId("kilo-providers-edit-dialog")).not.toBeInTheDocument();
+		await expect
+			.element(screen.getByTestId("kilo-providers-row-openai"))
+			.toHaveAttribute("data-state", "summary");
+		await expect
+			.element(screen.getByTestId("kilo-providers-editor-openai"))
+			.not.toBeInTheDocument();
 	});
 
-	it("labels the edit API key dialog while the stored key is loading", async () => {
+	it("keeps an API key save error inside the expanded provider editor", async () => {
+		mockConnectedCatalog();
+		authSet.mockRejectedValueOnce(new Error("credential store unavailable"));
+		const { screen } = renderPage({ isPending: false, isError: false, connection });
+
+		await screen.getByTestId("kilo-providers-row-trigger-openai").click();
+		const editor = screen.getByTestId("kilo-providers-editor-openai");
+		await expect.element(editor.getByTestId("kilo-providers-edit-api-key")).toBeVisible();
+		await editor.getByTestId("kilo-providers-edit-api-key").fill("sk-new");
+		await editor.getByTestId("kilo-providers-edit-save").click();
+
+		await expect.element(editor.getByText("credential store unavailable")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-providers-error")).not.toBeInTheDocument();
+		await expect
+			.element(screen.getByTestId("kilo-providers-row-openai"))
+			.toHaveAttribute("data-state", "expanded");
+	});
+
+	it("does not surface an earlier provider's editor error after another provider fails", async () => {
+		mockCustomCatalog();
+		providerList.mockResolvedValue({
+			data: {
+				all: [
+					{ id: "kilo", name: "Kilo Gateway", source: "custom" },
+					{ id: "openai", name: "OpenAI", source: "api" },
+					{ id: "vllm", name: "Local vLLM", source: "custom" },
+				],
+				connected: ["kilo", "openai", "vllm"],
+				default: {},
+			},
+		});
+		authSet.mockRejectedValueOnce(new Error("credential store unavailable"));
+		configUpdate.mockRejectedValueOnce(new Error("config write failed"));
+		const { screen } = renderPage({ isPending: false, isError: false, connection });
+
+		await screen.getByTestId("kilo-providers-toggle-openai").click();
+		const apiEditor = screen.getByTestId("kilo-providers-editor-openai");
+		await apiEditor.getByTestId("kilo-providers-edit-api-key").fill("sk-bad");
+		await apiEditor.getByTestId("kilo-providers-edit-save").click();
+		await expect.element(apiEditor.getByText("credential store unavailable")).toBeVisible();
+
+		await screen.getByTestId("kilo-providers-toggle-vllm").click();
+		const customEditor = screen.getByTestId("kilo-providers-editor-vllm");
+		await customEditor.getByTestId("kilo-providers-custom-url").fill("http://127.0.0.1:9000/v1");
+		await customEditor.getByTestId("kilo-providers-custom-save").click();
+
+		await expect.element(customEditor.getByText("config write failed")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-providers-error")).not.toBeInTheDocument();
+	});
+
+	it("shows a loading placeholder in the API key editor while the stored key loads", async () => {
 		mockConnectedCatalog();
 		getApiKey.mockImplementation(() => new Promise(() => undefined));
 		const { screen } = renderPage({ isPending: false, isError: false, connection });
 
-		await screen.getByTestId("kilo-providers-edit-openai").click();
+		await screen.getByTestId("kilo-providers-toggle-openai").click();
 
-		await expect.element(screen.getByRole("heading", { name: "Edit OpenAI" })).toBeVisible();
-		await expect.element(screen.getByRole("dialog", { name: "Edit OpenAI" })).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-providers-edit-api-key-loading")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-providers-edit-save")).toBeDisabled();
+	});
+
+	it("edits a custom provider inline and collapses after saving", async () => {
+		mockCustomCatalog();
+		const { screen } = renderPage({ isPending: false, isError: false, connection });
+
+		await screen.getByTestId("kilo-providers-toggle-vllm").click();
+		const editor = screen.getByTestId("kilo-providers-editor-vllm");
+		await expect
+			.element(editor.getByTestId("kilo-providers-custom-name"))
+			.toHaveValue("Local vLLM");
+		await expect
+			.element(editor.getByTestId("kilo-providers-custom-url"))
+			.toHaveValue("http://127.0.0.1:8000/v1");
+		await expect
+			.element(editor.getByTestId("kilo-providers-model-row-0"))
+			.toHaveTextContent("qwen");
+		await editor.getByTestId("kilo-providers-custom-url").fill("http://127.0.0.1:9000/v1");
+		await editor.getByTestId("kilo-providers-custom-save").click();
+
+		await vi.waitFor(() => expect(configUpdate).toHaveBeenCalled());
+		const payload = configUpdate.mock.calls[0]?.[0] as {
+			config: { provider: Record<string, { options: { baseURL: string } }> };
+		};
+		expect(payload.config.provider.vllm?.options.baseURL).toBe("http://127.0.0.1:9000/v1");
+		await expect
+			.element(screen.getByTestId("kilo-providers-row-vllm"))
+			.toHaveAttribute("data-state", "summary");
+	});
+
+	it("discards unsaved custom provider edits on cancel", async () => {
+		mockCustomCatalog();
+		const { screen } = renderPage({ isPending: false, isError: false, connection });
+
+		await screen.getByTestId("kilo-providers-toggle-vllm").click();
+		const editor = screen.getByTestId("kilo-providers-editor-vllm");
+		await editor.getByTestId("kilo-providers-custom-name").fill("Renamed");
+		await editor.getByRole("button", { name: "Cancel" }).click();
+		await expect
+			.element(screen.getByTestId("kilo-providers-row-vllm"))
+			.toHaveAttribute("data-state", "summary");
+
+		await screen.getByTestId("kilo-providers-toggle-vllm").click();
+		await expect
+			.element(
+				screen.getByTestId("kilo-providers-editor-vllm").getByTestId("kilo-providers-custom-name"),
+			)
+			.toHaveValue("Local vLLM");
+		expect(configUpdate).not.toHaveBeenCalled();
 	});
 
 	it("saves a custom provider after validation", async () => {
@@ -702,17 +816,12 @@ describe("KiloProvidersSettings", () => {
 		await expect
 			.element(screen.getByTestId("kilo-providers-row-vllm").getByText("Custom"))
 			.toBeVisible();
-		await expect
-			.element(screen.getByTestId("kilo-providers-edit-vllm"))
-			.toHaveAttribute("aria-label", "Edit Local vLLM");
-		await expect
-			.element(screen.getByTestId("kilo-providers-remove-vllm"))
-			.toHaveAttribute("aria-label", "Delete Local vLLM");
-		await screen.getByTestId("kilo-providers-remove-vllm").click();
+		await expect.element(screen.getByRole("button", { name: "Delete Local vLLM" })).toBeVisible();
+		await clickDeleteProvider(screen, "vllm");
 		await expect.element(screen.getByTestId("kilo-providers-remove-dialog")).toBeVisible();
 		await expect
 			.element(screen.getByTestId("kilo-providers-remove-confirm"))
-			.toHaveTextContent("Delete AI Provider");
+			.toHaveTextContent("Delete AI provider");
 		expect(authRemove).not.toHaveBeenCalled();
 
 		await screen.getByTestId("kilo-providers-remove-confirm").click();
@@ -751,10 +860,7 @@ describe("KiloProvidersSettings", () => {
 			.element(screen.getByTestId("kilo-providers-row-anthropic").getByText("API key"))
 			.toBeVisible();
 		await expect
-			.element(screen.getByTestId("kilo-providers-disconnect-amazon-bedrock"))
-			.not.toBeInTheDocument();
-		await expect
-			.element(screen.getByTestId("kilo-providers-edit-amazon-bedrock"))
+			.element(screen.getByTestId("kilo-providers-delete-amazon-bedrock"))
 			.not.toBeInTheDocument();
 		await expect
 			.element(
@@ -818,10 +924,7 @@ describe("KiloProvidersSettings", () => {
 			)
 			.toBeVisible();
 		await expect
-			.element(screen.getByTestId("kilo-providers-disconnect-amazon-bedrock"))
-			.not.toBeInTheDocument();
-		await expect
-			.element(screen.getByTestId("kilo-providers-edit-amazon-bedrock"))
+			.element(screen.getByTestId("kilo-providers-delete-amazon-bedrock"))
 			.not.toBeInTheDocument();
 		await screen.getByTestId("kilo-providers-toggle-amazon-bedrock").click();
 		await expect
@@ -851,37 +954,27 @@ describe("KiloProvidersSettings", () => {
 		mockConnectedCatalog();
 		authRemove.mockImplementation(() => new Promise(() => undefined));
 		const { screen } = renderPage({ isPending: false, isError: false, connection });
-		await expect
-			.element(screen.getByTestId("kilo-providers-disconnect-openai"))
-			.toHaveAttribute("aria-label", "Delete OpenAI");
-		await screen.getByTestId("kilo-providers-disconnect-openai").hover();
-		await expect.element(screen.getByText("Delete OpenAI", { exact: true })).toBeVisible();
-		await screen.getByTestId("kilo-providers-disconnect-openai").click();
-		await expect.element(screen.getByTestId("kilo-providers-disconnect-anthropic")).toBeDisabled();
+		await clickDeleteProvider(screen, "openai");
+		await expect.element(screen.getByTestId("kilo-providers-delete-anthropic")).toBeDisabled();
 	});
 
-	it("reveals added provider actions when the row is hovered", async () => {
+	it("shows the delete button for added providers without hovering the row", async () => {
 		mockConnectedCatalog();
 		const { screen } = renderPage({ isPending: false, isError: false, connection });
 		await expect.element(screen.getByTestId("kilo-providers-row-openai")).toBeVisible();
-		const actions = screen.getByTestId("kilo-providers-actions-openai");
-
-		await screen.getByRole("heading", { name: "AI Providers" }).hover();
-		await vi.waitFor(() => expect(getComputedStyle(actions.element()).opacity).toBe("0"));
-		await screen.getByTestId("kilo-providers-row-openai").hover();
-		await vi.waitFor(() => expect(getComputedStyle(actions.element()).opacity).toBe("1"));
+		await expect.element(screen.getByRole("button", { name: "Delete OpenAI" })).toBeVisible();
 	});
 
 	it("clears an earlier mutation error when a later provider action succeeds", async () => {
 		mockConnectedCatalog();
 		authRemove.mockRejectedValueOnce(new Error("credential store unavailable"));
 		const { screen } = renderPage({ isPending: false, isError: false, connection });
-		await screen.getByTestId("kilo-providers-disconnect-openai").click();
+		await clickDeleteProvider(screen, "openai");
 		await expect
 			.element(screen.getByTestId("kilo-providers-error"))
 			.toHaveTextContent("credential store unavailable");
 
-		await screen.getByTestId("kilo-providers-disconnect-anthropic").click();
+		await clickDeleteProvider(screen, "anthropic");
 		await vi.waitFor(() => expect(authRemove).toHaveBeenCalledTimes(2));
 		await expect.element(screen.getByTestId("kilo-providers-error")).not.toBeInTheDocument();
 	});

@@ -641,7 +641,7 @@ describe("git mainRegister gitService capability", () => {
 		const worktree = await capabilities?.gitService.createWorktree({ workingDirectory: repoDir });
 
 		expect(worktree?.warning).toBe(
-			"Couldn't fetch latest main from origin; branched from local state.",
+			"Could not fetch latest main from origin; branched from local state.",
 		);
 		// The degraded base still yields a healthy worktree on the local main.
 		const listing = execGitOutput(repoDir, ["worktree", "list", "--porcelain"]);

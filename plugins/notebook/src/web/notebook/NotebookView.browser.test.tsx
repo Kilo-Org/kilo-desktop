@@ -163,9 +163,9 @@ describe("NotebookView", () => {
 			},
 		});
 
-		await expect
-			.element(page.getByTestId("notebook-file-open-error"))
-			.toHaveTextContent("Could not open notebook: lock held");
+		const error = page.getByTestId("notebook-file-open-error");
+		await expect.element(error).toBeVisible();
+		await expect.element(error.getByText("Could not open notebook: lock held")).toBeVisible();
 	});
 
 	it("uses a file tab's daemon identity and persisted path for the Electron host", () => {

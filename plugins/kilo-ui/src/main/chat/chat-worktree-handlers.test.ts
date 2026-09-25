@@ -125,7 +125,7 @@ describe("kilo-ui chat worktree handlers", () => {
 				createWorktree: vi.fn(async () => ({
 					directory: "/repo/.kilo/worktrees/kilo-aback-aardvark",
 					branch: "kilo/aback-aardvark",
-					warning: "Couldn't fetch latest main from origin; branched from local state.",
+					warning: "Could not fetch latest main from origin; branched from local state.",
 				})),
 			}),
 		);
@@ -139,7 +139,7 @@ describe("kilo-ui chat worktree handlers", () => {
 			directory: "/repo/.kilo/worktrees/kilo-aback-aardvark",
 			worktree: {
 				branch: "kilo/aback-aardvark",
-				warning: "Couldn't fetch latest main from origin; branched from local state.",
+				warning: "Could not fetch latest main from origin; branched from local state.",
 			},
 		});
 	});

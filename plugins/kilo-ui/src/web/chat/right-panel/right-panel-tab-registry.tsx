@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, type ComponentType, type FC } from "react";
-import { BotIcon, CircleHelpIcon, LayoutTemplateIcon, ListTodoIcon } from "lucide-react";
+import { BotIcon, CircleQuestionMarkIcon, LayoutTemplateIcon, ListTodoIcon } from "lucide-react";
 
 import type { Contribution, ContributionMountPolicy } from "@kilo-desktop/feature-sdk";
 import { useSdkContributions } from "@kilo-desktop/sdk-react";
@@ -205,7 +205,7 @@ function MissingContributionTab({ title }: ChatRightPanelContributionProps) {
 			className="text-muted-foreground flex min-h-0 flex-1 flex-col items-center justify-center gap-1 p-6 text-center"
 			data-qa-id="chat-pane-contribution-unavailable"
 		>
-			<CircleHelpIcon className="size-6" />
+			<CircleQuestionMarkIcon className="size-6" />
 			<p className="text-foreground text-sm font-medium">{title} is unavailable</p>
 			<p className="text-xs">The plugin that contributed this tab is not currently loaded.</p>
 		</div>

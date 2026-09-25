@@ -37,7 +37,7 @@ export function SessionDeleteWorktreeDialog({
 }: SessionDeleteWorktreeDialogProps) {
 	return (
 		<AlertDialog open={open} onOpenChange={onOpenChange}>
-			<AlertDialogContent data-qa-id="session-delete-worktree-dialog">
+			<AlertDialogContent data-qa-id="session-delete-worktree-dialog" className="sm:max-w-md">
 				<AlertDialogHeader>
 					<AlertDialogTitle>Delete session and worktree?</AlertDialogTitle>
 					<AlertDialogDescription>

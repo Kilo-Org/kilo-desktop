@@ -1,130 +1,116 @@
 import { toast } from "@kilo-desktop/ui/components/sonner";
-import { OctagonXIcon } from "lucide-react";
 
 import { friendlyEnvironmentsError } from "./environments-error-message.js";
 
 /**
- * Persistent, right-side error toast for environments failures. Failures
- * (e.g. "an environment already exists at that location") are actionable and
- * must not disappear before the user reads them, so the toast never
- * auto-dismisses (`duration: Infinity`) — the user closes it. Pass `toastId`
- * to replace an in-flight loading toast in place.
+ * Wording for one long-running environments job. Every job reports through
+ * stock sonner `toast.promise`: loading → success, or a failure that stays on
+ * screen until dismissed because it is usually actionable ("an environment
+ * already exists at that location").
  */
-export function showEnvironmentsErrorToast(
-	title: string,
-	reason: unknown,
-	fallback: string,
-	toastId?: string | number,
-): void {
-	toast.error(title, {
-		...(toastId !== undefined ? { id: toastId } : {}),
-		description: friendlyEnvironmentsError(reason, fallback),
+export interface JobToastCopy {
+	loading: string;
+	loadingDescription?: string;
+	success: string;
+	successDescription?: string;
+	/** "Could not …" title shown when the job fails. */
+	errorTitle: string;
+	/** Used when the failure carries no recognisable environments error code. */
+	errorFallback: string;
+}
+
+/** `toast.promise` options for a job; pass `id` to continue an existing toast. */
+export function jobToastOptions(copy: JobToastCopy, id?: string | number) {
+	return {
+		...(id !== undefined ? { id } : {}),
+		loading: copy.loading,
+		...(copy.loadingDescription ? { description: copy.loadingDescription } : {}),
+		success: () => ({ message: copy.success, description: copy.successDescription }),
+		error: (reason: unknown) => jobErrorToast(copy, reason),
+	};
+}
+
+function jobErrorToast(copy: JobToastCopy, reason: unknown) {
+	return {
+		message: copy.errorTitle,
+		description: friendlyEnvironmentsError(reason, copy.errorFallback),
 		duration: Infinity,
-		icon: <OctagonXIcon className="text-destructive size-5" />,
-	});
+	};
 }
 
-/** Success toast shown when an environment finishes creating. */
-export function showEnvironmentCreatedToast(envName: string, toastId?: string | number): void {
-	toast.success(`${envName} created`, {
-		...(toastId !== undefined ? { id: toastId } : {}),
-		description: "The environment is ready to use.",
-	});
+/** Report a job that finished while its dialog was still open. */
+export function showJobSuccess(copy: JobToastCopy): void {
+	toast.success(copy.success, { description: copy.successDescription });
 }
 
-/**
- * Track an already-running create/import job as a background toast:
- * loading → success or persistent error. Attaches to the job's existing
- * promise — callers must NOT start a second job for the same work.
- */
-export function trackBackgroundCreateToast(
-	promise: Promise<unknown>,
-	envName: string,
-	errorFallback: string,
-): void {
-	const toastId = toast.loading(`Creating ${envName}…`, {
-		description: "Resolving dependencies and installing packages.",
-	});
-	promise.then(
-		() => {
-			showEnvironmentCreatedToast(envName, toastId);
-		},
-		(reason) => {
-			showEnvironmentsErrorToast(`Failed to create ${envName}`, reason, errorFallback, toastId);
-		},
-	);
+/** Report a job that failed while its dialog was still open. */
+export function showJobError(copy: JobToastCopy, reason: unknown): void {
+	const { message, ...options } = jobErrorToast(copy, reason);
+	toast.error(message, options);
 }
 
-/** Success toast shown when packages finish installing. */
-export function showPackagesInstalledToast(
-	envName: string,
-	count: number,
-	toastId?: string | number,
-): void {
-	toast.success(`Packages installed`, {
-		...(toastId !== undefined ? { id: toastId } : {}),
-		description: `${count} ${count === 1 ? "package" : "packages"} installed in ${envName}.`,
-	});
+function packageCount(count: number): string {
+	return `${count} ${count === 1 ? "package" : "packages"}`;
 }
 
-/** Success toast shown when packages finish updating. */
-export function showPackagesUpdatedToast(
-	envName: string,
-	count: number,
-	toastId?: string | number,
-): void {
-	toast.success(`Packages updated`, {
-		...(toastId !== undefined ? { id: toastId } : {}),
-		description: `${count} ${count === 1 ? "package" : "packages"} updated in ${envName}.`,
-	});
+export function createEnvironmentJob(envName: string): JobToastCopy {
+	return {
+		loading: `Creating ${envName}…`,
+		loadingDescription: "Resolving dependencies and installing packages.",
+		success: `${envName} created`,
+		successDescription: "The environment is ready to use.",
+		errorTitle: `Could not create ${envName}`,
+		errorFallback: "Could not create the environment.",
+	};
 }
 
-/**
- * Track an already-running install job as a background toast:
- * loading → success or persistent error.
- */
-export function trackBackgroundInstallToast(
-	promise: Promise<unknown>,
-	envName: string,
-	count: number,
-	errorFallback: string,
-): void {
-	const toastId = toast.loading(`Installing ${count} ${count === 1 ? "package" : "packages"}…`, {
-		description: `Resolving dependencies for ${envName}.`,
-	});
-	promise.then(
-		() => {
-			showPackagesInstalledToast(envName, count, toastId);
-		},
-		(reason) => {
-			showEnvironmentsErrorToast("Install failed", reason, errorFallback, toastId);
-		},
-	);
+export function importEnvironmentJob(envName: string): JobToastCopy {
+	return {
+		...createEnvironmentJob(envName),
+		errorFallback: "Could not create the environment from the file.",
+	};
 }
 
-/**
- * Track a delete-environment job as a background toast:
- * loading → success or persistent error. The dialog closes immediately
- * and this toast takes over progress reporting.
- */
-export function trackBackgroundDeleteToast(promise: Promise<unknown>, envName: string): void {
-	const toastId = toast.loading(`Deleting ${envName}…`, {
-		description: "Removing the environment and all its packages.",
-	});
-	promise.then(
-		() => {
-			toast.success(`${envName} deleted`, {
-				id: toastId,
-				description: "The environment has been removed.",
-			});
-		},
-		(reason) => {
-			showEnvironmentsErrorToast(
-				`Failed to delete ${envName}`,
-				reason,
-				"Could not delete environment.",
-				toastId,
-			);
-		},
-	);
+export function deleteEnvironmentJob(envName: string): JobToastCopy {
+	return {
+		loading: `Deleting ${envName}…`,
+		loadingDescription: "Removing the environment and all its packages.",
+		success: `${envName} deleted`,
+		successDescription: "The environment has been removed.",
+		errorTitle: `Could not delete ${envName}`,
+		errorFallback: "Could not delete the environment.",
+	};
+}
+
+export function installPackagesJob(envName: string, count: number): JobToastCopy {
+	return {
+		loading: `Installing ${packageCount(count)}…`,
+		loadingDescription: `Resolving dependencies for ${envName}.`,
+		success: "Packages installed",
+		successDescription: `${packageCount(count)} installed in ${envName}.`,
+		errorTitle: "Could not install packages",
+		errorFallback: "Could not install the selected packages.",
+	};
+}
+
+export function updatePackagesJob(envName: string, count: number): JobToastCopy {
+	return {
+		loading: `Updating ${packageCount(count)}…`,
+		loadingDescription: `Resolving dependencies for ${envName}.`,
+		success: "Packages updated",
+		successDescription: `${packageCount(count)} updated in ${envName}.`,
+		errorTitle: "Could not update packages",
+		errorFallback: "Could not update the selected packages.",
+	};
+}
+
+export function backupEnvironmentJob(envName: string, cloneName: string): JobToastCopy {
+	return {
+		loading: `Backing up ${envName}…`,
+		loadingDescription: `Cloning to ${cloneName} before updating.`,
+		success: `${envName} backed up`,
+		successDescription: `Saved as ${cloneName}.`,
+		errorTitle: `Could not back up ${envName}`,
+		errorFallback: "Could not back up the environment.",
+	};
 }

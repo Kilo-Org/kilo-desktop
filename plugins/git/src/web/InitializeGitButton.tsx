@@ -51,7 +51,7 @@ export function InitializeGitButton({
 			variant="ghost"
 		>
 			{initRepository.isPending ? (
-				<Spinner data-icon="inline-start" size="sm" />
+				<Spinner data-icon="inline-start" aria-hidden="true" />
 			) : (
 				<FolderGit2Icon data-icon="inline-start" />
 			)}

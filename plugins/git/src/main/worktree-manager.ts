@@ -500,7 +500,7 @@ export class WorktreeManager {
 		if (!fetched) {
 			return {
 				remote,
-				warning: `Couldn't fetch latest ${baseName} from ${remote}; branched from local state.`,
+				warning: `Could not fetch latest ${baseName} from ${remote}; branched from local state.`,
 			};
 		}
 		this.#fetchCache.set(cacheKey, Date.now());

@@ -1,8 +1,9 @@
 import { useState, useSyncExternalStore } from "react";
-import { ArrowRightIcon, LoaderCircleIcon } from "lucide-react";
+import { ArrowRightIcon } from "lucide-react";
 
 import type { ToolCallMessagePartProps } from "@assistant-ui/react";
 import { isAnacondaSignInGateForced, useSdk } from "@kilo-desktop/sdk-react";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { AnacondaLogo } from "@kilo-desktop/ui/components/anaconda-logo";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@kilo-desktop/ui/components/card";
@@ -40,7 +41,7 @@ function toolCopy(toolName: string) {
 	}
 	return {
 		featureId: "environments",
-		title: "Sign in to use Anaconda environments",
+		title: "Sign in to use Conda Environments",
 		description:
 			"This environment action uses Anaconda package channels. Sign in to continue and accept Anaconda's Terms of Service.",
 	};
@@ -76,7 +77,7 @@ export function AnacondaAuthToolCard({
 		if (status.type === "running") {
 			return (
 				<div className="text-muted-foreground flex items-center gap-2 py-1 text-sm">
-					<LoaderCircleIcon className="size-4 animate-spin" />
+					<Spinner className="size-3" />
 					Opening…
 				</div>
 			);
@@ -108,7 +109,10 @@ export function AnacondaAuthToolCard({
 				<div className="flex items-center gap-2">
 					<Button type="button" disabled={submitting || !gate} onClick={() => void signIn()}>
 						{submitting ? (
-							<LoaderCircleIcon className="size-4 animate-spin" aria-hidden="true" />
+							<>
+								<Spinner data-icon="inline-start" aria-hidden="true" />
+								Signing in…
+							</>
 						) : (
 							<>
 								Sign in to Anaconda

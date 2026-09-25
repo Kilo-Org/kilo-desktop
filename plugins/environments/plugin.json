@@ -1,19 +1,17 @@
 {
 	"id": "environments",
-	"displayName": "Environments",
+	"displayName": "Conda Environments",
 	"version": "0.1.0",
 	"main": "./src/main/index.ts",
 	"web": "./src/web/index.ts",
 	"contributes": {
 		"providers": [{ "component": "EnvironmentsAuthProvider", "priority": 5 }],
-		"routes": [
-			{ "path": "/environments", "component": "EnvironmentsPage", "title": "Environments" }
-		],
 		"nav": [],
 		"settings": [
 			{
 				"id": "environments",
-				"title": "Environments",
+				"title": "Conda Environments",
+				"description": "Manage your conda environments and packages.",
 				"component": "EnvironmentsPage",
 				"icon": "EnvironmentsNavIcon",
 				"featureFlag": "environments-feature",

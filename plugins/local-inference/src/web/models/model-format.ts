@@ -14,3 +14,9 @@ export function formatParameterCount(parameters: number): string {
 export function formatFileSize(bytes: number): string {
 	return `${fileSizeFormatter.format(bytes / 1024 ** 3)} GB`;
 }
+
+/** Catalog downloads are registered as "Name (quant)"; the quant is shown separately. */
+export function modelDisplayName(model: { name: string; catalog?: unknown }): string {
+	if (!model.catalog) return model.name;
+	return model.name.replace(/\s*\([^()]*\)$/, "") || model.name;
+}

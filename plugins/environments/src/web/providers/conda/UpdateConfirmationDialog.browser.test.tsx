@@ -138,7 +138,6 @@ describe("UpdateConfirmationDialog", () => {
 		expect(text).toContain("libblas");
 		expect(text).toContain("libgfortran");
 		expect(text).toContain("legacy-dep");
-		expect(text).toContain("3 total changes");
 		expect(text).not.toContain("numpy");
 
 		await expect.element(screen.getByTestId("environments-conda-update-confirm-btn")).toBeEnabled();
@@ -218,12 +217,12 @@ describe("UpdateConfirmationDialog", () => {
 			expect(preview).toHaveBeenCalledOnce();
 		});
 		expect(preview.mock.calls[0]![0].packages).toEqual(["numpy=2.1.0"]);
-		expect(await screen.getByText(/Update 1 Package in/).element().textContent).toContain(
-			"Update 1 Package",
+		expect(await screen.getByText(/Update 1 package in/).element().textContent).toContain(
+			"Update 1 package",
 		);
 	});
 
-	it("unchecking a package marks the preview stale and auto re-solves without it", async () => {
+	it("unchecking a package re-solves without it after the debounce", async () => {
 		const preview = vi.fn(async (_input: CondaPackagesPreviewInput) =>
 			previewWith({ upgraded: [change("libblas", "3.9.0", "3.9.1")] }),
 		);
@@ -235,10 +234,9 @@ describe("UpdateConfirmationDialog", () => {
 		});
 		await userEvent.click(screen.getByRole("checkbox", { name: "Include pandas in update" }));
 
-		await expect
-			.element(screen.getByTestId("environments-conda-update-confirm-preview-btn"))
-			.toHaveTextContent("Pending…");
-		// Auto-preview debounces for 2 s before re-solving.
+		// The out-of-date list is replaced by the resolving status right away;
+		// the re-solve itself waits for a 2 s pause in edits.
+		await expect.element(screen.getByText("Resolving dependencies…")).toBeVisible();
 		await vi.waitFor(
 			() => {
 				expect(preview).toHaveBeenCalledTimes(2);
@@ -246,39 +244,32 @@ describe("UpdateConfirmationDialog", () => {
 			{ timeout: 5000 },
 		);
 		expect(preview.mock.calls[1]![0].packages).toEqual(["numpy=2.1.0"]);
-		expect(await screen.getByText(/Update 1 Package in/).element().textContent).toContain(
-			"Update 1 Package",
+		expect(await screen.getByText(/Update 1 package in/).element().textContent).toContain(
+			"Update 1 package",
 		);
 	});
 
-	it("with Auto off, a stale preview shows the refresh overlay until the user re-runs it", async () => {
-		const preview = vi.fn(async (_input: CondaPackagesPreviewInput) =>
-			previewWith({ upgraded: [change("libblas", "3.9.0", "3.9.1")] }),
-		);
+	it("retries a failed preview from the solver error card", async () => {
+		let attempt = 0;
+		const preview = vi.fn(async (_input: CondaPackagesPreviewInput) => {
+			attempt += 1;
+			if (attempt === 1) throw new Error("SOLVE_FAILED: conflict");
+			return previewWith({ upgraded: [change("libblas", "3.9.0", "3.9.1")] });
+		});
 		const { baseElement } = renderDialog({ preview });
 		const screen = page.elementLocator(baseElement);
 
-		await vi.waitFor(() => {
-			expect(preview).toHaveBeenCalledOnce();
-		});
-		await userEvent.click(screen.getByTestId("environments-conda-update-confirm-auto-check"));
-		await userEvent.click(screen.getByRole("checkbox", { name: "Include pandas in update" }));
+		const card = screen.getByTestId("environments-conda-update-confirm-error");
+		await expect.element(card).toBeVisible();
+		await userEvent.click(card.getByRole("button", { name: "Try again" }));
 
-		await expect
-			.element(screen.getByTestId("environments-conda-update-confirm-stale"))
-			.toBeVisible();
-		await expect
-			.element(screen.getByTestId("environments-conda-update-confirm-preview-btn"))
-			.toHaveTextContent("Preview");
-
-		await userEvent.click(screen.getByTestId("environments-conda-update-confirm-refresh-btn"));
 		await vi.waitFor(() => {
 			expect(preview).toHaveBeenCalledTimes(2);
 		});
-		expect(preview.mock.calls[1]![0].packages).toEqual(["numpy=2.1.0"]);
 		await expect
 			.element(screen.getByTestId("environments-conda-update-confirm-preview"))
 			.toBeVisible();
+		await expect.element(card).not.toBeInTheDocument();
 	});
 
 	it("changing a package's target version re-pins the spec sent to the solver", async () => {
@@ -289,14 +280,15 @@ describe("UpdateConfirmationDialog", () => {
 		await vi.waitFor(() => {
 			expect(preview).toHaveBeenCalledOnce();
 		});
-		await userEvent.click(screen.getByTestId("environments-conda-update-confirm-auto-check"));
 		await userEvent.click(screen.getByRole("combobox", { name: "Version for numpy" }));
 		await userEvent.click(screen.getByRole("option", { name: "2.0.1" }));
-		await userEvent.click(screen.getByTestId("environments-conda-update-confirm-refresh-btn"));
 
-		await vi.waitFor(() => {
-			expect(preview).toHaveBeenCalledTimes(2);
-		});
+		await vi.waitFor(
+			() => {
+				expect(preview).toHaveBeenCalledTimes(2);
+			},
+			{ timeout: 5000 },
+		);
 		expect(preview.mock.calls[1]![0].packages).toEqual(["numpy=2.0.1", "pandas=2.3.0"]);
 	});
 
@@ -343,11 +335,11 @@ describe("UpdateConfirmationDialog", () => {
 		const { baseElement } = renderDialog({ preview });
 		const screen = page.elementLocator(baseElement);
 
-		await userEvent.fill(screen.getByPlaceholder("Search packages…"), "pan");
+		await userEvent.fill(screen.getByPlaceholder("Search packages"), "pan");
 		await expect.element(screen.getByText("pandas", { exact: true })).toBeVisible();
 		expect(await screen.getByText("numpy", { exact: true }).all()).toHaveLength(0);
-		expect(await screen.getByText(/Update 2 Packages in/).element().textContent).toContain(
-			"Update 2 Packages",
+		expect(await screen.getByText(/Update 2 packages in/).element().textContent).toContain(
+			"Update 2 packages",
 		);
 	});
 
@@ -363,13 +355,15 @@ describe("UpdateConfirmationDialog", () => {
 		const panel = screen.getByTestId("environments-conda-update-confirm-preview");
 		await expect.element(panel).toBeVisible();
 
-		await userEvent.click(screen.getByTestId("environments-conda-update-confirm-filter-added"));
+		await userEvent.click(screen.getByTestId("environments-conda-update-confirm-filter"));
+		await userEvent.click(page.getByRole("menuitemradio", { name: /Added/ }));
 		let text = (await panel.element().textContent) ?? "";
 		expect(text).toContain("libgfortran");
 		expect(text).not.toContain("libblas");
 
-		await userEvent.click(screen.getByTestId("environments-conda-update-confirm-filter-all"));
-		await userEvent.fill(screen.getByPlaceholder("Filter dependencies…"), "blas");
+		await userEvent.click(screen.getByTestId("environments-conda-update-confirm-filter"));
+		await userEvent.click(page.getByRole("menuitemradio", { name: /All/ }));
+		await userEvent.fill(screen.getByPlaceholder("Search dependencies"), "blas");
 		text = (await panel.element().textContent) ?? "";
 		expect(text).toContain("libblas");
 		expect(text).not.toContain("libgfortran");
@@ -459,7 +453,7 @@ describe("UpdateConfirmationDialog", () => {
 			.toHaveValue("dev-backup");
 
 		const submit = screen.getByTestId("environments-conda-update-confirm-btn");
-		expect(await submit.element().textContent).toContain("Back up & Update 2 Packages");
+		expect(await submit.element().textContent).toContain("Back up and update 2 packages");
 		await userEvent.click(submit);
 
 		await vi.waitFor(() => {

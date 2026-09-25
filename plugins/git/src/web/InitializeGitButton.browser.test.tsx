@@ -101,7 +101,9 @@ describe("InitializeGitButton", () => {
 		await button.click();
 
 		await expect.element(button).toBeDisabled();
-		await expect.element(page.getByRole("status", { name: "Loading" })).toBeVisible();
+		await expect
+			.element(button.element().querySelector('[data-slot="spinner"]') as SVGElement | null)
+			.toBeVisible();
 
 		finishInit?.();
 		await vi.waitFor(() => {

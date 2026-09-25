@@ -41,7 +41,7 @@ export const KiloLexicalComposerInput: FC<KiloLexicalComposerInputProps> = ({
 			}}
 			formatter={composerFormatter}
 			directiveChip={KiloDirectiveChip}
-			placeholder="Send a message, @ to mention files, or / for commands..."
+			placeholder="Send a message, @ to mention files, or / for commands…"
 			cancelOnEscape={cancelOnEscape}
 			submitMode={submitMode}
 			aria-label="Message input"

@@ -25,7 +25,7 @@ function formatBytePair(used: number, total: number): string {
 
 export function usageIndicatorClass(percent: number): string {
 	if (percent >= 90) return "bg-destructive";
-	if (percent >= 70) return "bg-amber-500";
+	if (percent >= 70) return "bg-warning";
 	return "bg-primary-ink";
 }
 
@@ -76,7 +76,7 @@ function UsageCard({
 					loading ? (
 						<Skeleton className="h-4 w-10" />
 					) : (
-						<p className="text-muted-foreground shrink-0 text-[11px] tabular-nums">
+						<p className="text-muted-foreground text-2xs shrink-0 tabular-nums">
 							{usedPercent === null ? "—" : formatPercent(usedPercent)}
 						</p>
 					)
@@ -89,7 +89,7 @@ function UsageCard({
 					<>
 						<p className="truncate text-sm font-semibold tracking-tight tabular-nums">{value}</p>
 						{subtitle ? (
-							<p className="text-muted-foreground truncate text-[11px] tabular-nums">{subtitle}</p>
+							<p className="text-muted-foreground text-2xs truncate tabular-nums">{subtitle}</p>
 						) : null}
 					</>
 				)}

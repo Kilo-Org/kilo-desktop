@@ -13,6 +13,7 @@ import {
 } from "@kilo-desktop/ui/components/dialog";
 import { Field, FieldError, FieldLabel } from "@kilo-desktop/ui/components/field";
 import { Input } from "@kilo-desktop/ui/components/input";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 
 import type { CondaEnv, CondaService } from "../../../contracts/providers/conda.js";
 import { environmentDisplayName, validateEnvironmentName } from "./environment-display.js";
@@ -78,10 +79,12 @@ export function CloneEnvironmentDialog({ env, open, onClose }: CloneEnvironmentD
 					</DialogDescription>
 				</DialogHeader>
 				<form onSubmit={handleSubmit} className="flex flex-col gap-4">
-					<Field>
-						<FieldLabel>New name</FieldLabel>
+					<Field data-invalid={validationError ? true : undefined}>
+						<FieldLabel htmlFor="environments-clone-name">New name</FieldLabel>
 						<Input
+							id="environments-clone-name"
 							value={name}
+							aria-invalid={validationError ? true : undefined}
 							onChange={(e) => setName(e.target.value)}
 							autoFocus
 							data-qa-id="environments-clone-name"
@@ -91,7 +94,7 @@ export function CloneEnvironmentDialog({ env, open, onClose }: CloneEnvironmentD
 
 					{serverError ? <FieldError>{serverError}</FieldError> : null}
 
-					<DialogFooter className="border-t-0 bg-transparent">
+					<DialogFooter>
 						<DialogClose render={<Button variant="outline" disabled={mutation.isPending} />}>
 							Cancel
 						</DialogClose>
@@ -100,6 +103,7 @@ export function CloneEnvironmentDialog({ env, open, onClose }: CloneEnvironmentD
 							disabled={mutation.isPending}
 							data-qa-id="environments-clone-submit"
 						>
+							{mutation.isPending ? <Spinner data-icon="inline-start" aria-hidden="true" /> : null}
 							{mutation.isPending ? "Cloning…" : "Clone"}
 						</Button>
 					</DialogFooter>

@@ -1133,26 +1133,26 @@ describe("snapshot progress status", () => {
 		),
 	];
 
-	it("shows 'Initializing snapshot...' as the working status instead of chat text", async () => {
+	it("shows 'Initializing snapshot…' as the working status instead of chat text", async () => {
 		const screen = renderExternalMessagesThread(progressPartMessages("running"), true);
 
 		await expect
-			.element(screen.getByRole("status", { name: "Initializing snapshot..." }))
+			.element(screen.getByRole("status", { name: "Initializing snapshot…" }))
 			.toBeVisible();
 		await expect
 			.element(screen.getByRole("status", { name: "Considering next steps" }))
 			.not.toBeInTheDocument();
 		// The raw spinner-frame text must never land in the chat content.
-		expect(screen.getByText(/Initializing snapshot…/).elements()).toHaveLength(0);
+		expect(screen.getByText(/⠋ Initializing snapshot…/).elements()).toHaveLength(0);
 	});
 
 	it("leaves no trace of the progress part once the message completes", async () => {
 		const screen = renderExternalMessagesThread(progressPartMessages("complete"), false);
 
 		await expect
-			.element(screen.getByRole("status", { name: "Initializing snapshot..." }))
+			.element(screen.getByRole("status", { name: "Initializing snapshot…" }))
 			.not.toBeInTheDocument();
-		expect(screen.getByText(/Initializing snapshot…/).elements()).toHaveLength(0);
+		expect(screen.getByText(/⠋ Initializing snapshot…/).elements()).toHaveLength(0);
 	});
 });
 

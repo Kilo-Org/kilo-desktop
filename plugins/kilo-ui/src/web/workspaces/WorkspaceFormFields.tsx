@@ -13,12 +13,7 @@ import {
 	ItemMedia,
 	ItemTitle,
 } from "@kilo-desktop/ui/components/item";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "@kilo-desktop/ui/components/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type { useWorkspaceForm } from "./useWorkspaceForm.js";
@@ -96,7 +91,7 @@ export function WorkspaceFormFields({
 									void chooseFolders();
 								}
 							}}
-							className="hover:bg-foreground/5 flex min-h-32 cursor-pointer flex-col items-center justify-center gap-2.5 rounded-[calc(var(--radius-lg)-1px)] text-center transition-colors"
+							className="hover:bg-muted flex min-h-32 cursor-pointer flex-col items-center justify-center gap-2.5 rounded-[calc(var(--radius-lg)-1px)] text-center transition-colors"
 						>
 							<div className="bg-foreground/10 text-muted-foreground flex size-9 items-center justify-center rounded-full">
 								<FolderPlusIcon className="size-4" />
@@ -113,85 +108,83 @@ export function WorkspaceFormFields({
 						</div>
 					) : (
 						<div className="flex flex-col">
-							<TooltipProvider>
-								<ItemGroup className="gap-0.5 p-1 has-data-[size=sm]:gap-0.5">
-									{folders.map((folder) => (
-										<Item
-											key={folder.path}
-											size="sm"
-											role="listitem"
-											className="flex-nowrap gap-2 px-2 py-1"
-											render={
-												<motion.div
-													layout="position"
-													transition={{
-														type: "spring",
-														stiffness: 500,
-														damping: 35,
-														mass: 0.8,
-													}}
-												/>
-											}
-										>
-											<ItemMedia variant="icon" className="text-muted-foreground">
-												<FolderIcon />
-											</ItemMedia>
-											<ItemContent className="min-w-0">
-												<Tooltip>
-													<TooltipTrigger
-														render={<ItemTitle className="max-w-full cursor-default" />}
-													>
-														{folderName(folder.path)}
-													</TooltipTrigger>
-													<TooltipContent className="max-w-sm font-mono break-all">
-														{folder.path}
-													</TooltipContent>
-												</Tooltip>
-											</ItemContent>
-											<ItemActions className="gap-1">
-												{folder.isPrimary ? (
-													<span className="bg-primary-soft text-primary-soft-foreground rounded-full px-2 py-0.5 text-xs font-medium">
-														Primary
-													</span>
-												) : (
-													<Button
-														type="button"
-														variant="ghost"
-														size="xs"
-														className="opacity-0 group-focus-within/item:opacity-100 group-hover/item:opacity-100"
-														onClick={() => makePrimary(folder.path)}
-													>
-														Make primary
-													</Button>
-												)}
+							<ItemGroup className="gap-0.5 p-1 has-data-[size=sm]:gap-0.5">
+								{folders.map((folder) => (
+									<Item
+										key={folder.path}
+										size="sm"
+										role="listitem"
+										className="flex-nowrap gap-2 px-2 py-1"
+										render={
+											<motion.div
+												layout="position"
+												transition={{
+													type: "spring",
+													stiffness: 500,
+													damping: 35,
+													mass: 0.8,
+												}}
+											/>
+										}
+									>
+										<ItemMedia variant="icon" className="text-muted-foreground">
+											<FolderIcon />
+										</ItemMedia>
+										<ItemContent className="min-w-0">
+											<Tooltip>
+												<TooltipTrigger
+													render={<ItemTitle className="max-w-full cursor-default" />}
+												>
+													{folderName(folder.path)}
+												</TooltipTrigger>
+												<TooltipContent className="max-w-sm font-mono break-all">
+													{folder.path}
+												</TooltipContent>
+											</Tooltip>
+										</ItemContent>
+										<ItemActions className="gap-1">
+											{folder.isPrimary ? (
+												<span className="bg-primary-soft text-primary-soft-foreground rounded-full px-2 py-0.5 text-xs font-medium">
+													Primary
+												</span>
+											) : (
 												<Button
 													type="button"
 													variant="ghost"
-													size="icon-xs"
-													aria-label={`Remove ${folder.path}`}
-													className="text-muted-foreground -mr-1.5"
-													disabled={!canPickDirectories && folders.length === 1}
-													onClick={() => removeFolder(folder.path)}
+													size="xs"
+													className="opacity-0 group-focus-within/item:opacity-100 group-hover/item:opacity-100"
+													onClick={() => makePrimary(folder.path)}
 												>
-													<XIcon />
+													Make primary
 												</Button>
-											</ItemActions>
-										</Item>
-									))}
-								</ItemGroup>
-							</TooltipProvider>
+											)}
+											<Button
+												type="button"
+												variant="ghost"
+												size="icon-xs"
+												aria-label={`Remove ${folder.path}`}
+												className="-mr-1.5"
+												disabled={!canPickDirectories && folders.length === 1}
+												onClick={() => removeFolder(folder.path)}
+											>
+												<XIcon />
+											</Button>
+										</ItemActions>
+									</Item>
+								))}
+							</ItemGroup>
 							<div className="border-border border-t p-1">
 								{canPickDirectories ? (
 									<Item
 										size="sm"
 										render={<button type="button" onClick={() => void chooseFolders()} />}
-										className="text-muted-foreground hover:bg-foreground/5 hover:text-foreground min-h-8 flex-nowrap gap-2 px-2 py-1"
+										className="text-muted-foreground hover:bg-muted hover:text-foreground min-h-8 flex-nowrap gap-2 px-2 py-1"
 									>
 										<ItemMedia variant="icon" className="text-muted-foreground">
 											<FolderPlusIcon />
 										</ItemMedia>
 										<ItemContent>
-											<ItemTitle className="font-normal">Add folder</ItemTitle>
+											<ItemTitle>Add folder</ItemTitle>
 										</ItemContent>
 									</Item>
 								) : (

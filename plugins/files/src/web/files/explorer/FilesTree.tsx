@@ -1,12 +1,23 @@
 import { resolveTheme } from "@pierre/diffs";
 import { themeToTreeStyles } from "@pierre/trees";
 import { FileTree, useFileTree, useFileTreeSearch } from "@pierre/trees/react";
-import { FolderIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
+import { CircleAlertIcon, FolderIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import type { SDK } from "@kilo-desktop/feature-sdk";
 import { Button } from "@kilo-desktop/ui/components/button";
-import { Input } from "@kilo-desktop/ui/components/input";
+import {
+	Empty,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyMedia,
+	EmptyTitle,
+} from "@kilo-desktop/ui/components/empty";
+import {
+	InputGroup,
+	InputGroupAddon,
+	InputGroupInput,
+} from "@kilo-desktop/ui/components/input-group";
 import {
 	Select,
 	SelectContent,
@@ -15,12 +26,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@kilo-desktop/ui/components/select";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "@kilo-desktop/ui/components/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
 import type { FileGitStatusEntry } from "../../../contracts/schemas.js";
 import { FILE_ICONS } from "../file-icons/file-icons.js";
@@ -87,22 +93,6 @@ export function FilesTree({
 
 			[data-item-type="file"][data-item-path$=".ipynb" i] [data-item-section="icon"] {
 				color: light-dark(#d47628, #ffa359);
-			}
-
-			[data-file-tree-virtualized-scroll="true"] {
-				scrollbar-color: transparent transparent;
-			}
-
-			[data-file-tree-virtualized-scroll="true"]::-webkit-scrollbar-thumb {
-				background: transparent;
-			}
-
-			[data-file-tree-virtualized-scroll="true"]:is(:hover, :focus-within) {
-				scrollbar-color: var(--trees-scrollbar-thumb) transparent;
-			}
-
-			[data-file-tree-virtualized-scroll="true"]:is(:hover, :focus-within)::-webkit-scrollbar-thumb {
-				background: var(--trees-scrollbar-thumb);
 			}
 		`,
 		onSelectionChange(selectedPaths) {
@@ -208,11 +198,10 @@ export function FilesTree({
 				</div>
 			) : null}
 			<div className="flex h-10 shrink-0 items-center gap-1 border-b px-2">
-				<div className="relative min-w-0 flex-1">
-					<SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2" />
-					<Input
+				<InputGroup size="sm" className="min-w-0 flex-1">
+					<InputGroupInput
+						type="search"
 						aria-label="Search workspace files"
-						className="h-7 pl-7 text-xs"
 						data-qa-id="files-search"
 						placeholder="Search files"
 						value={search.value}
@@ -222,46 +211,53 @@ export function FilesTree({
 							else search.close();
 						}}
 					/>
-				</div>
-				<TooltipProvider>
-					<Tooltip disableHoverablePopup>
-						<TooltipTrigger
-							render={
-								<Button
-									aria-label="Refresh files"
-									data-qa-id="files-refresh"
-									disabled={loading}
-									onClick={onRefresh}
-									size="icon-sm"
-									variant="ghost"
-								/>
-							}
-						>
-							<RefreshCwIcon className={loading ? "animate-spin" : undefined} />
-						</TooltipTrigger>
-						<TooltipContent side="bottom">Refresh files</TooltipContent>
-					</Tooltip>
-				</TooltipProvider>
+					<InputGroupAddon>
+						<SearchIcon aria-hidden="true" />
+					</InputGroupAddon>
+				</InputGroup>
+				<Tooltip disableHoverablePopup>
+					<TooltipTrigger
+						render={
+							<Button
+								aria-label="Refresh files"
+								data-qa-id="files-refresh"
+								disabled={loading}
+								onClick={onRefresh}
+								size="icon-sm"
+								variant="ghost"
+							/>
+						}
+					>
+						<RefreshCwIcon className={loading ? "animate-spin" : undefined} />
+					</TooltipTrigger>
+					<TooltipContent side="bottom">Refresh files</TooltipContent>
+				</Tooltip>
 			</div>
 			{truncated ? (
-				<p className="text-muted-foreground border-b px-3 py-1.5 text-[11px]">
+				<p className="text-muted-foreground text-2xs border-b px-3 py-1.5">
 					Showing the first 25,000 entries.
 				</p>
 			) : null}
 			{error ? (
-				<div
-					className="text-destructive flex flex-1 items-center justify-center p-5 text-center text-xs"
-					data-qa-id="files-list-error"
-				>
-					{error}
-				</div>
+				<Empty data-qa-id="files-list-error">
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<CircleAlertIcon aria-hidden="true" />
+						</EmptyMedia>
+						<EmptyTitle>Could not load files</EmptyTitle>
+						<EmptyDescription>{error}</EmptyDescription>
+					</EmptyHeader>
+				</Empty>
 			) : !loading && paths.length === 0 ? (
-				<div
-					className="text-muted-foreground flex flex-1 items-center justify-center p-5 text-center text-xs"
-					data-qa-id="files-empty"
-				>
-					This workspace has no files to display.
-				</div>
+				<Empty data-qa-id="files-empty">
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<FolderIcon aria-hidden="true" />
+						</EmptyMedia>
+						<EmptyTitle>No files</EmptyTitle>
+						<EmptyDescription>This workspace has no files to display.</EmptyDescription>
+					</EmptyHeader>
+				</Empty>
 			) : (
 				<FileTree
 					aria-label="Workspace files"

@@ -1,5 +1,7 @@
-import type { FC, ReactNode } from "react";
-import { AlertCircleIcon, CheckIcon, LoaderCircleIcon, XCircleIcon } from "lucide-react";
+import type { ComponentProps, FC, ReactNode } from "react";
+import { CheckIcon, CircleAlertIcon, CircleXIcon } from "lucide-react";
+
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
@@ -59,8 +61,8 @@ export const DiffCounts: FC<{ added: number; removed: number }> = ({ added, remo
 	if (added <= 0 && removed <= 0) return null;
 	return (
 		<span aria-hidden className="ml-0.5 flex items-center gap-1 font-mono text-xs">
-			{added > 0 ? <span className="text-green-500">+{added}</span> : null}
-			{removed > 0 ? <span className="text-red-500">-{removed}</span> : null}
+			{added > 0 ? <span className="text-success">+{added}</span> : null}
+			{removed > 0 ? <span className="text-destructive">-{removed}</span> : null}
 		</span>
 	);
 };
@@ -173,20 +175,34 @@ export const ToolStatusIcon = ({
 	const isCancelled = isCancelledToolStatus(status);
 
 	if (statusType === "running") {
-		return <LoaderCircleIcon className="size-3 shrink-0 animate-spin" />;
+		return <Spinner className="size-3 shrink-0" />;
 	}
 
 	if (statusType === "requires-action") {
-		return <AlertCircleIcon className="size-3 shrink-0 text-amber-600" />;
+		return <CircleAlertIcon className="text-warning size-3 shrink-0" />;
 	}
 
 	if (statusType === "incomplete") {
-		return (
-			<XCircleIcon
-				className={cn("size-3 shrink-0", !isCancelled && "text-destructive-foreground")}
-			/>
-		);
+		return <CircleXIcon className={cn("size-3 shrink-0", !isCancelled && "text-destructive")} />;
 	}
 
 	return completeIcon ?? <CheckIcon className="size-3 shrink-0" />;
 };
+
+/** Monospace, scroll-capped panel for tool output in an expanded activity row. */
+export const ToolOutputBlock = ({ className, ...props }: ComponentProps<"div">) => (
+	<div
+		className={cn(
+			"bg-muted/50 max-h-96 overflow-y-auto rounded-md border p-3 font-mono text-xs",
+			className,
+		)}
+		{...props}
+	/>
+);
+
+/** Plain wrapped text output (search results, fetched pages, grep matches). */
+export const ToolOutputText = ({ text }: { text: string }) => (
+	<ToolOutputBlock>
+		<pre className="wrap-break-word whitespace-pre-wrap">{text}</pre>
+	</ToolOutputBlock>
+);

@@ -1,9 +1,11 @@
 import {
 	ChevronDownIcon,
+	CircleAlertIcon,
 	FileUpIcon,
 	LibraryIcon,
 	ListFilterIcon,
 	PlusIcon,
+	RefreshCwIcon,
 	SearchIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -12,12 +14,15 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	sdkQueryKey,
 	sdkQueryOptions,
+	SettingsPageHeader,
 	useAnacondaSignIn,
 	useSdk,
 	useSdkMutation,
 	useSdkQuery,
 } from "@kilo-desktop/sdk-react";
 import { AnacondaSignInDialog } from "@kilo-desktop/ui/components/anaconda-sign-in-dialog";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
+import { Alert, AlertAction, AlertTitle } from "@kilo-desktop/ui/components/alert";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	AlertDialog,
@@ -40,11 +45,21 @@ import {
 	DropdownMenuRadioItem,
 	DropdownMenuTrigger,
 } from "@kilo-desktop/ui/components/dropdown-menu";
-import { Field, FieldError } from "@kilo-desktop/ui/components/field";
-import { Input } from "@kilo-desktop/ui/components/input";
+import {
+	Field,
+	FieldContent,
+	FieldDescription,
+	FieldError,
+	FieldLegend,
+	FieldSet,
+} from "@kilo-desktop/ui/components/field";
+import {
+	InputGroup,
+	InputGroupAddon,
+	InputGroupInput,
+} from "@kilo-desktop/ui/components/input-group";
 import { ScrollArea } from "@kilo-desktop/ui/components/scroll-area";
 import { Separator } from "@kilo-desktop/ui/components/separator";
-import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
 import { Switch } from "@kilo-desktop/ui/components/switch";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
@@ -64,21 +79,16 @@ import {
 import { ConnectionDetails } from "../connections/ConnectionDetails.js";
 import { LocalModelCatalog } from "../catalog/ModelCatalog.js";
 import { ModelCatalogDialogHeader } from "../catalog/ModelCatalogAccess.js";
-import {
-	ModelDetailEmpty,
-	ModelDetailPane,
-	ModelDetailSkeleton,
-} from "../catalog/ModelDetailPane.js";
+import { ModelDetailPane, ModelDetailSkeleton } from "../catalog/ModelDetailPane.js";
 import {
 	catalogArtifactKey,
 	type DownloadIdentity,
 	upsertDownload,
 } from "../catalog/catalog-downloads.js";
 import { ModelSettingsPanel } from "../models/ModelSettingsPanel.js";
-import { ModelSidebar } from "../models/ModelSidebar.js";
+import { ModelList } from "../models/ModelList.js";
 import {
 	ModelListSkeleton,
-	ModelSettingsSkeleton,
 	NoMatchingModelsState,
 	NoModelsEmptyState,
 } from "../models/ModelManagementStates.js";
@@ -87,8 +97,8 @@ import {
 	modelSourceFilters,
 	type ModelSourceFilter,
 } from "../models/model-filter.js";
-import { formatFileSize } from "../models/model-format.js";
-import { ServerSettings } from "../server/ServerSettings.js";
+import { formatFileSize, modelDisplayName } from "../models/model-format.js";
+import { ServerSettings, ServerSettingsSkeleton } from "../server/ServerSettings.js";
 import { SystemMonitor } from "../server/SystemMonitor.js";
 import { presentServerStatus } from "../server/server-status-presentation.js";
 
@@ -114,10 +124,11 @@ export function LocalModelServerSettings() {
 	const [catalogOpen, setCatalogOpen] = useState(false);
 	const [catalogModel, setCatalogModel] = useState<ModelCatalogEntry>();
 	const catalogModelId = useCatalogModelId(sdk);
-	const appliedCatalogModelId = useRef<string | undefined>(undefined);
+	const [appliedCatalogModelId, setAppliedCatalogModelId] = useState<string>();
 	const [pendingCatalogModel, setPendingCatalogModel] = useState<ModelCatalogEntry | null>();
 	const [signInOpen, setSignInOpen] = useState(false);
-	const [selectedModelId, setSelectedModelId] = useState<string>();
+	const [expandedModelIds, setExpandedModelIds] = useState<ReadonlySet<string>>(() => new Set());
+	const [lastExpandedModelId, setLastExpandedModelId] = useState<string>();
 	const [modelSearch, setModelSearch] = useState("");
 	const [modelSourceFilter, setModelSourceFilter] = useState<ModelSourceFilter>("all");
 	const [modelFileError, setModelFileError] = useState<string>();
@@ -141,6 +152,16 @@ export function LocalModelServerSettings() {
 		enabled: authenticated && (hasCatalogModels || catalogOpen),
 		retry: false,
 		staleTime: 5 * 60 * 1_000,
+	});
+	// `sdk.auth.peek()` reads anonymous until the shell's first resolve lands,
+	// so "anonymous" alone cannot tell a signed-out user from a pending check.
+	// Settling getSession() gives that signal without widening the auth API.
+	const authResolution = useQuery({
+		queryKey: ["local-inference", "auth-session-resolved"],
+		queryFn: () => sdk.auth.getSession(),
+		enabled: !authenticated,
+		retry: false,
+		staleTime: Number.POSITIVE_INFINITY,
 	});
 	const catalogDownloads = useSdkQuery(sdk, "catalog.downloads.list");
 	const start = useSdkMutation(sdk, "runtime.connect", {
@@ -226,10 +247,7 @@ export function LocalModelServerSettings() {
 	}
 
 	useEffect(() => {
-		if (!catalogModelId) {
-			appliedCatalogModelId.current = undefined;
-			return;
-		}
+		if (!catalogModelId) return;
 		if (!authenticated) {
 			setPendingCatalogModel(null);
 			setSignInOpen(true);
@@ -237,11 +255,20 @@ export function LocalModelServerSettings() {
 		}
 		setSignInOpen(false);
 		setCatalogOpen(true);
-		if (!catalogMetadata.data) return;
-		if (appliedCatalogModelId.current === catalogModelId) return;
-		setCatalogModel(catalogMetadata.data.models.find((model) => model.id === catalogModelId));
-		appliedCatalogModelId.current = catalogModelId;
-	}, [authenticated, catalogModelId, catalogMetadata.data]);
+	}, [authenticated, catalogModelId]);
+
+	// Apply a catalogModel deep link during render, in the same pass where
+	// catalog metadata arrives: the details skeleton hands straight over to the
+	// pane with no commit in between where the pane unmounts. Each link id is
+	// applied once so the user can then browse to other models.
+	if (appliedCatalogModelId !== catalogModelId) {
+		if (!catalogModelId) {
+			setAppliedCatalogModelId(undefined);
+		} else if (authenticated && catalogMetadata.data) {
+			setAppliedCatalogModelId(catalogModelId);
+			setCatalogModel(catalogMetadata.data.models.find((model) => model.id === catalogModelId));
+		}
+	}
 
 	const serverStatus = status.data?.status;
 	const pendingAction = start.isPending
@@ -266,8 +293,16 @@ export function LocalModelServerSettings() {
 	const statusError = status.data?.status === "error" ? status.data.message : status.error?.message;
 	const connection = status.data?.status === "ready" ? status.data.connection : undefined;
 	const modelRows = models.data ?? [];
-	const modelManagementPending =
-		models.isPending || (authenticated && hasCatalogModels && catalogMetadata.isPending);
+	// Catalog-backed rows wait for catalog metadata (publisher icon,
+	// quantization) so they render once, complete. The skeleton only covers the
+	// first load: once rows have rendered, a later auth change or catalog refetch
+	// updates them in place instead of flashing back to the skeleton.
+	const modelManagementLoading =
+		models.isPending ||
+		(hasCatalogModels && (authenticated ? catalogMetadata.isPending : authResolution.isPending));
+	const [modelListRendered, setModelListRendered] = useState(false);
+	if (!modelManagementLoading && !modelListRendered) setModelListRendered(true);
+	const modelManagementPending = modelManagementLoading && !modelListRendered;
 	const visibleModelRows = filterLocalModels(modelRows, modelSearch, modelSourceFilter);
 	const activeModelSourceFilter =
 		modelSourceFilters.find((filter) => filter.value === modelSourceFilter) ??
@@ -275,6 +310,8 @@ export function LocalModelServerSettings() {
 	const catalogModels = new Map(
 		catalogMetadata.data?.models.map((model) => [model.id, model] as const) ?? [],
 	);
+	const resolvingCatalogModelLink = catalogModelId !== undefined && catalogMetadata.isPending;
+	const catalogDetailOpen = catalogModel !== undefined || resolvingCatalogModelLink;
 	const catalogDownloadRows = catalogDownloads.data ?? [];
 	const addedCatalogArtifacts = new Map(
 		modelRows.flatMap((model) =>
@@ -292,30 +329,20 @@ export function LocalModelServerSettings() {
 		sdk.client["catalog.download.start"](identity).then(updateDownload);
 	const cancelCatalogDownload = (identity: DownloadIdentity) =>
 		sdk.client["catalog.download.cancel"](identity).then(updateDownload);
-	const selectedModel =
-		visibleModelRows.find((model) => model.id === selectedModelId) ?? visibleModelRows[0];
-	const selectFirstVisibleModel = (
-		search: string,
-		source: ModelSourceFilter,
-		currentModelId: string | undefined,
-	) => {
-		const nextModels = filterLocalModels(modelRows, search, source);
-		return currentModelId && nextModels.some((model) => model.id === currentModelId)
-			? currentModelId
-			: nextModels[0]?.id;
-	};
-	const updateModelSearch = (search: string) => {
-		setModelSearch(search);
-		setSelectedModelId((current) => selectFirstVisibleModel(search, modelSourceFilter, current));
-	};
-	const updateModelSourceFilter = (source: ModelSourceFilter) => {
-		setModelSourceFilter(source);
-		setSelectedModelId((current) => selectFirstVisibleModel(modelSearch, source, current));
+	const connectionModel =
+		visibleModelRows.find((model) => model.id === lastExpandedModelId) ?? visibleModelRows[0];
+	const setModelExpanded = (modelId: string, open: boolean) => {
+		setExpandedModelIds((current) => {
+			const next = new Set(current);
+			if (open) next.add(modelId);
+			else next.delete(modelId);
+			return next;
+		});
+		if (open) setLastExpandedModelId(modelId);
 	};
 	const clearModelFilters = () => {
 		setModelSearch("");
 		setModelSourceFilter("all");
-		setSelectedModelId(modelRows[0]?.id);
 	};
 	const loadedModelIds = new Set(
 		status.data?.status === "ready" || status.data?.status === "loading-model"
@@ -363,20 +390,9 @@ export function LocalModelServerSettings() {
 	};
 
 	return (
-		<div
-			className="mx-auto flex w-full max-w-3xl min-w-0 flex-col gap-8"
-			data-qa-id="local-model-server-page"
-		>
-			<header className="flex items-start justify-between gap-3">
-				<div className="min-w-0">
-					<h1
-						className="text-base font-semibold tracking-tight"
-						data-qa-id="settings-section-heading"
-					>
-						Local Model Server
-					</h1>
-				</div>
-				<div className="flex items-center gap-3">
+		<div className="flex min-w-0 flex-col gap-6" data-qa-id="local-model-server-page">
+			<SettingsPageHeader
+				actions={
 					<div className="flex h-7 items-center gap-2">
 						<span className="text-muted-foreground flex items-center gap-1.5 text-sm">
 							<span
@@ -397,253 +413,224 @@ export function LocalModelServerSettings() {
 							data-qa-id="local-model-server-toggle"
 						/>
 					</div>
-				</div>
-			</header>
-			{statusError ? (
-				<div
-					className="border-destructive/30 bg-destructive/5 text-destructive flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm"
-					role="alert"
-					data-qa-id="local-model-server-error"
-				>
-					<span>{statusError}</span>
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						disabled={retry.isPending || status.isFetching}
-						data-qa-id="local-model-server-retry"
-						onClick={() => {
-							if (status.data?.status === "error") retry.mutate();
-							else void status.refetch();
-						}}
-					>
-						{retry.isPending ? "Retrying…" : "Retry"}
-					</Button>
-				</div>
-			) : null}
-			<div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
-				<SystemMonitor usage={usage.data} loading={usage.isPending} />
-				<ConnectionDetails
-					connection={connection}
-					modelId={selectedModel?.id}
-					onCopy={copyConnectionDetail}
-				/>
-			</div>
-			<section className="mt-1 flex min-w-0 flex-col gap-4" aria-labelledby="models-heading">
-				<div className="flex items-center justify-between gap-4">
-					<div className="min-w-0">
-						<h2 id="models-heading" className="text-sm leading-tight font-medium">
-							Models
-						</h2>
-						<p className="text-muted-foreground mt-0.5 text-sm leading-snug">
-							Manage local models and configure how each one runs.
-						</p>
-					</div>
-					<input
-						ref={modelFileInput}
-						type="file"
-						accept=".gguf"
-						className="hidden"
-						data-qa-id="local-model-server-file"
-						onChange={(event) => {
-							importModel(event.target.files?.[0]);
-							event.target.value = "";
-						}}
-					/>
-					<DropdownMenu>
-						<DropdownMenuTrigger
-							render={
-								<Button
-									type="button"
-									size="sm"
-									disabled={addModel.isPending}
-									data-qa-id="local-model-server-add-model"
+				}
+			/>
+			<div className="flex min-w-0 flex-col gap-8">
+				{statusError ? (
+					<Alert variant="destructive" data-qa-id="local-model-server-error">
+						<CircleAlertIcon aria-hidden="true" />
+						<AlertTitle>{statusError}</AlertTitle>
+						<AlertAction>
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								disabled={retry.isPending || status.isFetching}
+								data-qa-id="local-model-server-retry"
+								onClick={() => {
+									if (status.data?.status === "error") retry.mutate();
+									else void status.refetch();
+								}}
+							>
+								<RefreshCwIcon
+									data-icon="inline-start"
+									className={retry.isPending ? "animate-spin" : undefined}
 								/>
-							}
-						>
-							<PlusIcon data-icon="inline-start" aria-hidden="true" />
-							Add model
-							<ChevronDownIcon data-icon="inline-end" aria-hidden="true" />
-						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end" className="min-w-44">
-							<DropdownMenuGroup>
-								<DropdownMenuItem
-									data-qa-id="local-model-server-open-catalog"
-									onClick={() => {
-										openCatalog();
-									}}
-								>
-									<LibraryIcon aria-hidden="true" />
-									From catalog
-								</DropdownMenuItem>
-								<DropdownMenuItem
-									data-qa-id="local-model-server-import-gguf"
-									onClick={() => {
-										setModelFileError(undefined);
-										addModel.reset();
-										modelFileInput.current?.click();
-									}}
-								>
-									<FileUpIcon aria-hidden="true" />
-									Import GGUF
-								</DropdownMenuItem>
-							</DropdownMenuGroup>
-						</DropdownMenuContent>
-					</DropdownMenu>
-				</div>
-				{addModelError ? (
-					<Field data-invalid>
-						<FieldError>{addModelError}</FieldError>
-					</Field>
+								Try again
+							</Button>
+						</AlertAction>
+					</Alert>
 				) : null}
-				<div
-					className={cn(
-						"bg-card grid min-w-0 gap-3 rounded-xl border p-2",
-						modelRows.length === 0 && !modelManagementPending
-							? "md:grid-cols-1"
-							: "md:grid-cols-[18rem_minmax(0,1fr)]",
-					)}
-				>
-					<div className="min-w-0" data-qa-id="local-model-sidebar">
-						{modelManagementPending ? (
-							<ModelListSkeleton />
-						) : modelRows.length === 0 ? (
-							<NoModelsEmptyState failed={models.isError} />
-						) : (
-							<>
-								<div
-									className="flex items-center gap-1 pb-2"
-									data-qa-id="local-model-list-controls"
-								>
-									<div className="relative min-w-0 flex-1">
-										<SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2" />
-										<Input
-											type="search"
-											aria-label="Search models"
-											placeholder="Search models"
-											className="h-7 pl-7 text-xs"
-											value={modelSearch}
-											data-qa-id="local-model-search"
-											onChange={(event) => updateModelSearch(event.currentTarget.value)}
-										/>
-									</div>
-									<DropdownMenu>
-										<DropdownMenuTrigger
-											render={
-												<Button
-													type="button"
-													variant="ghost"
-													size="icon-sm"
-													aria-label={`Filter models: ${activeModelSourceFilter.label}`}
-													className={cn(
-														"text-muted-foreground shrink-0",
-														modelSourceFilter !== "all" && "bg-foreground/5 text-foreground",
-													)}
-													data-qa-id="local-model-source-filter"
-												/>
-											}
-										>
-											<ListFilterIcon aria-hidden="true" />
-										</DropdownMenuTrigger>
-										<DropdownMenuContent align="end" className="min-w-44">
-											<DropdownMenuGroup>
-												<DropdownMenuLabel>Model source</DropdownMenuLabel>
-												<DropdownMenuRadioGroup value={modelSourceFilter}>
-													{modelSourceFilters.map((filter) => (
-														<DropdownMenuRadioItem
-															key={filter.value}
-															value={filter.value}
-															closeOnClick
-															onClick={() => updateModelSourceFilter(filter.value)}
-														>
-															{filter.label}
-														</DropdownMenuRadioItem>
-													))}
-												</DropdownMenuRadioGroup>
-											</DropdownMenuGroup>
-										</DropdownMenuContent>
-									</DropdownMenu>
-								</div>
-								{visibleModelRows.length > 0 ? (
-									<ModelSidebar
-										models={visibleModelRows}
-										catalogModels={catalogModels}
-										loadedModelIds={loadedModelIds}
-										selectedModelId={selectedModel?.id}
-										removing={removeModel.isPending}
-										onSelect={setSelectedModelId}
-										onRemove={(model) =>
-											removeModel.mutate({ id: model.id, mode: "registry-only" })
-										}
-										onReveal={(model) => {
-											void sdk.shell.showItemInFolder(model.path).catch(() => undefined);
-										}}
-										onDelete={requestModelDeletion}
-										onOpenCatalog={(model) => {
-											openCatalog(model);
-										}}
+				<div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
+					<SystemMonitor usage={usage.data} loading={usage.isPending} />
+					<ConnectionDetails
+						connection={connection}
+						modelId={connectionModel?.id}
+						onCopy={copyConnectionDetail}
+					/>
+				</div>
+				<FieldSet className="mt-1 min-w-0" aria-labelledby="models-heading">
+					<div className="flex items-center justify-between gap-4">
+						<FieldContent>
+							<FieldLegend id="models-heading" variant="label" className="mb-0">
+								Models
+							</FieldLegend>
+							<FieldDescription>
+								Manage local models and configure how each one runs.
+							</FieldDescription>
+						</FieldContent>
+						<input
+							ref={modelFileInput}
+							type="file"
+							accept=".gguf"
+							className="hidden"
+							data-qa-id="local-model-server-file"
+							onChange={(event) => {
+								importModel(event.target.files?.[0]);
+								event.target.value = "";
+							}}
+						/>
+						<DropdownMenu>
+							<DropdownMenuTrigger
+								render={
+									<Button
+										type="button"
+										size="sm"
+										disabled={addModel.isPending}
+										data-qa-id="local-model-server-add-model"
 									/>
-								) : null}
-							</>
-						)}
+								}
+							>
+								<PlusIcon data-icon="inline-start" aria-hidden="true" />
+								Add model
+								<ChevronDownIcon data-icon="inline-end" aria-hidden="true" />
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align="end" className="min-w-44">
+								<DropdownMenuGroup>
+									<DropdownMenuItem
+										data-qa-id="local-model-server-open-catalog"
+										onClick={() => {
+											openCatalog();
+										}}
+									>
+										<LibraryIcon aria-hidden="true" />
+										From catalog
+									</DropdownMenuItem>
+									<DropdownMenuItem
+										data-qa-id="local-model-server-import-gguf"
+										onClick={() => {
+											setModelFileError(undefined);
+											addModel.reset();
+											modelFileInput.current?.click();
+										}}
+									>
+										<FileUpIcon aria-hidden="true" />
+										Import GGUF
+									</DropdownMenuItem>
+								</DropdownMenuGroup>
+							</DropdownMenuContent>
+						</DropdownMenu>
 					</div>
-					{modelRows.length > 0 || modelManagementPending ? (
-						<section
-							aria-label={
-								modelManagementPending
-									? "Loading model settings"
-									: selectedModel
-										? `${selectedModel.name} model settings`
-										: "Model settings"
-							}
-							className="min-w-0"
-							data-qa-id="local-model-settings-card"
-							data-model-id={modelManagementPending ? undefined : selectedModel?.id}
-						>
-							{modelManagementPending ? (
-								<ModelSettingsSkeleton />
-							) : selectedModel ? (
-								<ModelSettingsPanel
-									key={selectedModel.id}
-									model={selectedModel}
-									error={updateModel.error?.message}
-									onSave={(settings) => saveModelSettings(selectedModel.id, settings)}
+					{addModelError ? (
+						<Field data-invalid>
+							<FieldError>{addModelError}</FieldError>
+						</Field>
+					) : null}
+					{modelManagementPending ? (
+						<ModelListSkeleton />
+					) : modelRows.length === 0 ? (
+						<div className="border-border bg-card rounded-lg border">
+							<NoModelsEmptyState failed={models.isError} />
+						</div>
+					) : (
+						<div className="flex min-w-0 flex-col gap-3">
+							<div className="flex items-center gap-2" data-qa-id="local-model-list-controls">
+								<InputGroup size="sm" className="min-w-0 flex-1">
+									<InputGroupInput
+										type="search"
+										aria-label="Search models"
+										placeholder="Search models"
+										value={modelSearch}
+										data-qa-id="local-model-search"
+										onChange={(event) => setModelSearch(event.currentTarget.value)}
+									/>
+									<InputGroupAddon>
+										<SearchIcon aria-hidden="true" />
+									</InputGroupAddon>
+								</InputGroup>
+								<DropdownMenu>
+									<DropdownMenuTrigger
+										render={
+											<Button
+												type="button"
+												variant={modelSourceFilter === "all" ? "outline" : "secondary"}
+												size="icon-sm"
+												aria-label={`Filter models: ${activeModelSourceFilter.label}`}
+												className="shrink-0"
+												data-qa-id="local-model-source-filter"
+											/>
+										}
+									>
+										<ListFilterIcon aria-hidden="true" />
+									</DropdownMenuTrigger>
+									<DropdownMenuContent align="end" className="min-w-44">
+										<DropdownMenuGroup>
+											<DropdownMenuLabel>Model source</DropdownMenuLabel>
+											<DropdownMenuRadioGroup value={modelSourceFilter}>
+												{modelSourceFilters.map((filter) => (
+													<DropdownMenuRadioItem
+														key={filter.value}
+														value={filter.value}
+														closeOnClick
+														onClick={() => setModelSourceFilter(filter.value)}
+													>
+														{filter.label}
+													</DropdownMenuRadioItem>
+												))}
+											</DropdownMenuRadioGroup>
+										</DropdownMenuGroup>
+									</DropdownMenuContent>
+								</DropdownMenu>
+							</div>
+							{visibleModelRows.length > 0 ? (
+								<ModelList
+									models={visibleModelRows}
+									catalogModels={catalogModels}
+									loadedModelIds={loadedModelIds}
+									expandedModelIds={expandedModelIds}
+									onExpandedChange={setModelExpanded}
+									renderSettings={(model) => (
+										<ModelSettingsPanel
+											model={model}
+											error={
+												updateModel.variables?.id === model.id
+													? updateModel.error?.message
+													: undefined
+											}
+											onSave={(settings) => saveModelSettings(model.id, settings)}
+										/>
+									)}
+									removing={removeModel.isPending}
+									onRemove={(model) => removeModel.mutate({ id: model.id, mode: "registry-only" })}
+									onReveal={(model) => {
+										void sdk.shell.showItemInFolder(model.path).catch(() => undefined);
+									}}
+									onDelete={requestModelDeletion}
+									onOpenCatalog={(model) => {
+										openCatalog(model);
+									}}
 								/>
 							) : (
 								<NoMatchingModelsState onClear={clearModelFilters} />
 							)}
-						</section>
-					) : null}
-				</div>
-			</section>
-			<section className="mt-1 flex min-w-0 flex-col gap-4" aria-labelledby="runtime-heading">
-				<div className="min-w-0">
-					<h2 id="runtime-heading" className="text-sm leading-tight font-medium">
-						Runtime
-					</h2>
-					<p className="text-muted-foreground mt-0.5 text-sm leading-snug">
-						Configure how the server runs, loads models, and accepts connections.
-					</p>
-				</div>
-				<div className="bg-card min-w-0 overflow-hidden rounded-xl border">
-					{serverSettings.isPending ? (
-						<div className="flex min-w-0 flex-col gap-5 p-4" aria-label="Loading server settings">
-							<Skeleton className="h-14 w-full" />
-							<Skeleton className="h-14 w-full" />
-							<Skeleton className="h-14 w-full" />
 						</div>
-					) : (
-						<ServerSettings
-							settings={serverSettings.data ?? {}}
-							disabled={serverSettings.isError}
-							error={updateServerSettings.error?.message}
-							onSave={async (settings) => {
-								await updateServerSettings.mutateAsync(settings);
-							}}
-						/>
 					)}
-				</div>
-			</section>
+				</FieldSet>
+				<FieldSet className="min-w-0" aria-labelledby="runtime-heading">
+					<FieldContent>
+						<FieldLegend id="runtime-heading" variant="label" className="mb-0">
+							Runtime
+						</FieldLegend>
+						<FieldDescription>
+							Configure how the server runs, loads models, and accepts connections.
+						</FieldDescription>
+					</FieldContent>
+					<div className="bg-card min-w-0 overflow-hidden rounded-lg border">
+						{serverSettings.isPending ? (
+							<ServerSettingsSkeleton />
+						) : (
+							<ServerSettings
+								settings={serverSettings.data ?? {}}
+								disabled={serverSettings.isError}
+								error={updateServerSettings.error?.message}
+								onSave={async (settings) => {
+									await updateServerSettings.mutateAsync(settings);
+								}}
+							/>
+						)}
+					</div>
+				</FieldSet>
+			</div>
 			<Dialog
 				open={catalogOpen}
 				onOpenChange={(open) => {
@@ -659,10 +646,17 @@ export function LocalModelServerSettings() {
 				}}
 			>
 				<DialogContent
-					className="h-[min(48rem,calc(100dvh-8rem))] grid-rows-[minmax(0,1fr)] overflow-hidden sm:w-[calc(100%-4rem)] sm:max-w-7xl"
+					className="h-[min(48rem,calc(100dvh-4rem))] grid-rows-[minmax(0,1fr)] overflow-hidden sm:w-[calc(100%-4rem)] sm:max-w-6xl"
 					data-qa-id="local-model-catalog-dialog"
 				>
-					<div className="-m-4 grid min-h-0 grid-cols-[minmax(0,3fr)_auto_minmax(22rem,2fr)]">
+					<div
+						className={cn(
+							"-m-4 grid min-h-0",
+							catalogDetailOpen
+								? "grid-cols-[minmax(0,3fr)_auto_minmax(22rem,2fr)]"
+								: "grid-cols-[minmax(0,1fr)]",
+						)}
+					>
 						<div className="grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden">
 							<ModelCatalogDialogHeader />
 							<ScrollArea
@@ -680,26 +674,26 @@ export function LocalModelServerSettings() {
 								</div>
 							</ScrollArea>
 						</div>
-						<Separator orientation="vertical" />
-						<section className="bg-background/60 min-h-0 min-w-0" aria-label="Model details">
-							{catalogModel ? (
-								<ModelDetailPane
-									model={catalogModel}
-									hardware={catalogHardware.data}
-									downloads={catalogDownloadRows}
-									addedCatalogArtifacts={addedCatalogArtifacts}
-									onStartDownload={startCatalogDownload}
-									onCancelDownload={cancelCatalogDownload}
-									onDeleteModel={requestModelDeletion}
-								/>
-							) : catalogModelId && catalogMetadata.data ? (
-								<ModelDetailEmpty missing />
-							) : catalogMetadata.isPending || catalogHardware.isPending ? (
-								<ModelDetailSkeleton />
-							) : (
-								<ModelDetailEmpty />
-							)}
-						</section>
+						{catalogDetailOpen ? (
+							<>
+								<Separator orientation="vertical" />
+								<section className="bg-background/60 min-h-0 min-w-0" aria-label="Model details">
+									{catalogModel ? (
+										<ModelDetailPane
+											model={catalogModel}
+											hardware={catalogHardware.data}
+											downloads={catalogDownloadRows}
+											addedCatalogArtifacts={addedCatalogArtifacts}
+											onStartDownload={startCatalogDownload}
+											onCancelDownload={cancelCatalogDownload}
+											onDeleteModel={requestModelDeletion}
+										/>
+									) : (
+										<ModelDetailSkeleton />
+									)}
+								</section>
+							</>
+						) : null}
 					</div>
 				</DialogContent>
 			</Dialog>
@@ -720,7 +714,8 @@ export function LocalModelServerSettings() {
 					<AlertDialogHeader>
 						<AlertDialogTitle>Delete downloaded model?</AlertDialogTitle>
 						<AlertDialogDescription>
-							This permanently deletes {modelPendingDeletion?.name ?? "this model"}
+							This permanently deletes{" "}
+							{modelPendingDeletion ? modelDisplayName(modelPendingDeletion) : "this model"}
 							{modelPendingDeletion?.sizeBytes
 								? ` (${formatFileSize(modelPendingDeletion.sizeBytes)})`
 								: ""}{" "}
@@ -736,6 +731,9 @@ export function LocalModelServerSettings() {
 							data-qa-id="local-model-delete-confirm"
 							onClick={deleteModel}
 						>
+							{removeModel.isPending ? (
+								<Spinner data-icon="inline-start" aria-hidden="true" />
+							) : null}
 							{removeModel.isPending ? "Deleting…" : "Delete file"}
 						</AlertDialogAction>
 					</AlertDialogFooter>

@@ -314,7 +314,7 @@ describe("createKiloRuntimeBackend", () => {
 			workspaceFolders: [],
 			worktree: {
 				branch: "kilo/aback-aardvark",
-				warning: "Couldn't fetch latest main from origin; branched from local state.",
+				warning: "Could not fetch latest main from origin; branched from local state.",
 			},
 		}));
 		const create = vi.fn(async () => ({ data: { id: "session-warn" } }));
@@ -331,7 +331,7 @@ describe("createKiloRuntimeBackend", () => {
 			directory: "/workspace/worktree",
 		});
 		expect(toast.warning).toHaveBeenCalledWith(
-			"Couldn't fetch latest main from origin; branched from local state.",
+			"Could not fetch latest main from origin; branched from local state.",
 		);
 	});
 

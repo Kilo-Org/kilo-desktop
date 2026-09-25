@@ -1,7 +1,9 @@
 "use client";
 
 import { memo, useCallback, useState, type FC, type PropsWithChildren } from "react";
-import { ChevronDownIcon, LoaderIcon } from "lucide-react";
+import { ChevronDownIcon } from "lucide-react";
+
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { cva, type VariantProps } from "class-variance-authority";
 import {
 	Collapsible,
@@ -100,9 +102,9 @@ function ToolGroupTrigger({
 			{...props}
 		>
 			{active && (
-				<LoaderIcon
+				<Spinner
 					data-slot="tool-group-trigger-loader"
-					className="aui-tool-group-trigger-loader size-3 shrink-0 animate-spin [animation-duration:0.6s]"
+					className="aui-tool-group-trigger-loader size-3 shrink-0"
 				/>
 			)}
 			<span

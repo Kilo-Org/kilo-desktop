@@ -1,5 +1,6 @@
 "use client";
 
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Collapsible,
@@ -9,7 +10,7 @@ import {
 import { toast } from "@kilo-desktop/ui/components/sonner";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 import { useAui, useAuiState } from "@assistant-ui/react";
-import { ChevronDownIcon, Loader2Icon } from "lucide-react";
+import { ChevronDownIcon } from "lucide-react";
 import { useEffect, useState, type FC } from "react";
 
 /** Tracks which (sessionId, boundaryId, workspace) combinations have already shown a notice in this app session. */
@@ -28,6 +29,7 @@ import {
 } from "./checkpoint-revert.js";
 import { selectOpenCodeExtras } from "../../runtime/use-optional-opencode-runtime-extras.js";
 import { DiffStat, RevertMessageRows } from "./checkpoint-revert-messages.js";
+import { COMPOSER_SHELF_CLASS } from "../composer-shelf.js";
 
 // Mirrors the kilocode clients' three revert.workspace states. The undefined
 // case covers reverts performed by older CLIs/TUI that did not report status.
@@ -95,12 +97,12 @@ export const CheckpointRestoreControls: FC = () => {
 			key={boundaryId ?? "none"}
 			open={isOpen}
 			onOpenChange={setIsOpen}
-			className="border-border/60 chat-composer-glass chat-composer-surface flex w-full flex-col overflow-hidden rounded-xl border shadow-[0_8px_24px_-20px_rgba(0,0,0,0.7)]"
+			className={COMPOSER_SHELF_CLASS}
 		>
 			<div
 				className={cn(
 					"relative flex h-8 w-full items-center",
-					isOpen && rows.length > 0 && "border-border/40 border-b",
+					isOpen && rows.length > 0 && "border-border-subtle border-b",
 				)}
 			>
 				{rows.length > 0 ? (
@@ -109,7 +111,7 @@ export const CheckpointRestoreControls: FC = () => {
 						render={
 							<Button
 								variant="ghost"
-								className="text-muted-foreground hover:bg-muted/35 h-full min-w-0 flex-1 justify-start rounded-none bg-clip-border px-3 pr-28 text-xs font-medium"
+								className="hover:bg-muted h-full min-w-0 flex-1 justify-start rounded-none bg-clip-border px-3 pr-28 text-xs font-medium"
 							>
 								<span>{revertedCopy}</span>
 								{files.length > 0 && <DiffStat additions={additions} deletions={deletions} />}
@@ -137,18 +139,15 @@ export const CheckpointRestoreControls: FC = () => {
 					disabled={isRunning || isUndoing}
 					onClick={() => void undo()}
 					data-qa-id="kilo-revert-undo-button"
-					className={cn(
-						"text-muted-foreground hover:text-foreground h-6 px-2 text-xs",
-						rows.length > 0 ? "absolute right-[27px]" : "mr-1.5",
-					)}
+					className={cn(rows.length > 0 ? "absolute right-[27px]" : "mr-1.5")}
 				>
-					{isUndoing && <Loader2Icon data-icon="inline-start" className="animate-spin" />}
+					{isUndoing && <Spinner data-icon="inline-start" aria-hidden="true" />}
 					Undo revert
 				</Button>
 			</div>
 			{rows.length > 0 && (
 				<CollapsibleContent className="w-full overflow-hidden">
-					<div className="max-h-36 overflow-y-auto p-1">
+					<div className="scroll-fade-y max-h-36 overflow-y-auto p-1">
 						<RevertMessageRows aui={aui} rows={rows} isRunning={isRunning} />
 					</div>
 				</CollapsibleContent>

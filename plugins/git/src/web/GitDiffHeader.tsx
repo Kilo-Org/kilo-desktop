@@ -1,12 +1,12 @@
 import {
 	ListChevronsDownUpIcon,
 	ListChevronsUpDownIcon,
-	LoaderCircleIcon,
 	PanelRightCloseIcon,
 	PanelRightOpenIcon,
 	TriangleAlertIcon,
 } from "lucide-react";
 
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
@@ -49,16 +49,14 @@ export function GitDiffHeader({
 			data-qa-id="git-diff-header"
 		>
 			<div className="text-muted-foreground flex min-w-0 flex-1 items-center gap-2 text-xs">
-				{loading ? (
-					<LoaderCircleIcon className="size-3.5 animate-spin" data-qa-id="git-diff-loading" />
-				) : null}
+				{loading ? <Spinner className="size-3.5" data-qa-id="git-diff-loading" /> : null}
 				{refreshError != null ? (
 					<Tooltip>
 						<TooltipTrigger
 							render={
 								<span
 									aria-label="Couldn't refresh changes"
-									className="inline-flex text-amber-500"
+									className="text-warning inline-flex"
 									data-qa-id="git-diff-refresh-error"
 									role="img"
 									tabIndex={0}
@@ -77,8 +75,8 @@ export function GitDiffHeader({
 						<span>
 							{fileCount} {fileCount === 1 ? "file" : "files"}
 						</span>
-						<span className="ml-2 text-green-500">+{addedLines}</span>
-						<span className="ml-1 text-red-500">−{deletedLines}</span>
+						<span className="text-success ml-2">+{addedLines}</span>
+						<span className="text-destructive ml-1">−{deletedLines}</span>
 					</span>
 				) : (
 					<span>{loading ? "Loading changes…" : "Changes"}</span>

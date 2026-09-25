@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useCallback, useState } from "react";
-import { AlertCircleIcon, CheckIcon, ChevronDownIcon, LoaderIcon, XCircleIcon } from "lucide-react";
+import { CheckIcon, ChevronDownIcon, CircleAlertIcon, CircleXIcon } from "lucide-react";
 import {
 	useToolCallElapsed,
 	type ToolApprovalOption,
@@ -16,6 +16,7 @@ import {
 	CollapsibleTrigger,
 } from "@kilo-desktop/ui/components/collapsible";
 import { cn } from "@kilo-desktop/ui/lib/utils";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Button } from "@kilo-desktop/ui/components/button";
 
 const ANIMATION_DURATION = 200;
@@ -75,10 +76,10 @@ function ToolFallbackRoot({
 type ToolStatus = ToolCallMessagePartStatus["type"];
 
 const statusIconMap: Record<ToolStatus, React.ElementType> = {
-	running: LoaderIcon,
+	running: Spinner,
 	complete: CheckIcon,
-	incomplete: XCircleIcon,
-	"requires-action": AlertCircleIcon,
+	incomplete: CircleXIcon,
+	"requires-action": CircleAlertIcon,
 };
 
 const formatToolDuration = (ms: number) => {
@@ -137,7 +138,6 @@ function ToolFallbackTrigger({
 				className={cn(
 					"aui-tool-fallback-trigger-icon size-4 shrink-0",
 					isCancelled && "text-muted-foreground",
-					isRunning && "animate-spin [animation-duration:0.6s]",
 				)}
 			/>
 			<span
@@ -385,7 +385,7 @@ function ToolFallbackApproval({
 					<ul className="aui-tool-fallback-approval-confirm-grants flex flex-col gap-1">
 						{confirming.grants.map((grant) => (
 							<li key={grant}>
-								<code className="aui-tool-fallback-approval-confirm-grant bg-muted rounded px-1.5 py-0.5 text-xs">
+								<code className="aui-tool-fallback-approval-confirm-grant bg-muted rounded-sm px-1.5 py-0.5 text-xs">
 									{grant}
 								</code>
 							</li>

@@ -1,6 +1,7 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo } from "react";
 import { ArrowUpRightIcon, CircleAlertIcon, RefreshCwIcon, ZapIcon } from "lucide-react";
 
+import { Alert, AlertDescription, AlertTitle } from "@kilo-desktop/ui/components/alert";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Select,
@@ -10,10 +11,12 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@kilo-desktop/ui/components/select";
-import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
+import { Progress } from "@kilo-desktop/ui/components/progress";
+import { SkeletonText } from "@kilo-desktop/ui/components/skeleton";
 import { useSdk } from "@kilo-desktop/sdk-react";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
+import { ButtonSkeleton } from "./ButtonSkeleton.js";
 import { DeviceAuthPanel } from "./DeviceAuthPanel.js";
 import { useKiloAuth, type KiloAuthContextValue } from "./KiloAuthContext.js";
 import { KiloSignInCard } from "./KiloSignInCard.js";
@@ -104,7 +107,7 @@ export function KiloGatewayAccountPanel({
 
 			{!showDeviceAuth && profileFailed ? (
 				<ProfileLoadError
-					message={auth.profileError ?? "Couldn't load your Kilo account"}
+					message={auth.profileError ?? "Could not load your Kilo account"}
 					retrying={auth.isRefreshing}
 					onRetry={auth.refreshProfile}
 					{...(showSignOut ? { onLogout: auth.logout } : {})}
@@ -128,67 +131,55 @@ export function KiloGatewayAccountPanel({
 	);
 }
 
+/**
+ * Placeholder for `SignedInView` while a known signed-in profile loads. The
+ * profile decides which sections exist, so this reserves only the balance and
+ * its actions. The Kilo Pass section is left out: it is absent for
+ * organization accounts and differs in height between "Get Kilo Pass" and the
+ * usage meter, so guessing it would leave the card taller than what loads.
+ * Text lines sit inside the real text elements so they reserve the same line
+ * heights.
+ */
 export function KiloGatewayAccountLoadingState({
 	showSignOut = true,
 }: { showSignOut?: boolean } = {}) {
 	return (
-		<div className="flex flex-col gap-4" data-qa-id="kilo-account-settings" data-state="loading">
-			<div className="grid gap-5 sm:grid-cols-2">
-				<section className="min-w-0">
-					<Skeleton className="bg-muted-foreground/25 flex w-fit">
-						<span className="invisible text-xs font-medium">Available balance</span>
-					</Skeleton>
-					<div className="mt-1 flex items-center gap-1.5">
-						<Skeleton className="bg-muted-foreground/25 flex w-fit">
-							<span className="font-heading invisible text-2xl font-semibold tracking-tight">
-								$000.00
-							</span>
-						</Skeleton>
-						<Skeleton className="bg-muted-foreground/25 size-7 rounded-lg" />
-					</div>
-				</section>
-
-				<div className="min-w-0">
-					<Skeleton className="bg-muted-foreground/25 flex w-fit">
-						<span className="invisible text-xs font-medium">Organization</span>
-					</Skeleton>
-					<Skeleton className="bg-muted-foreground/25 mt-1 h-9 w-full rounded-lg" />
+		<div
+			className="flex flex-col gap-4"
+			role="status"
+			aria-label="Loading your Kilo account"
+			data-qa-id="kilo-account-settings"
+			data-state="loading"
+		>
+			<div className="flex flex-col gap-2">
+				<div className="grid items-start gap-5 sm:grid-cols-2">
+					<section className="min-w-0">
+						<p className="text-muted-foreground text-xs font-medium">
+							<SkeletonText className="w-24" />
+						</p>
+						<div className="mt-1 flex items-center gap-1.5">
+							<p className="text-lg font-semibold tabular-nums">
+								<SkeletonText className="w-16" />
+							</p>
+							<ButtonSkeleton size="icon-xs">
+								<RefreshCwIcon />
+							</ButtonSkeleton>
+						</div>
+					</section>
+				</div>
+				<div className="flex flex-wrap items-center gap-2">
+					<ButtonSkeleton>
+						Top up
+						<ArrowUpRightIcon data-icon="inline-end" />
+					</ButtonSkeleton>
+					<ButtonSkeleton>
+						Kilo Dashboard
+						<ArrowUpRightIcon data-icon="inline-end" />
+					</ButtonSkeleton>
+					{showSignOut ? <ButtonSkeleton className="ml-auto">Sign out</ButtonSkeleton> : null}
 				</div>
 			</div>
-			<div className="flex flex-wrap items-center gap-2">
-				<AccountActionSkeleton variant="outline">
-					Top up
-					<ArrowUpRightIcon data-icon="inline-end" />
-				</AccountActionSkeleton>
-				<AccountActionSkeleton>
-					Kilo Dashboard
-					<ArrowUpRightIcon data-icon="inline-end" />
-				</AccountActionSkeleton>
-				{showSignOut ? (
-					<AccountActionSkeleton variant="outline" className="ml-auto">
-						Sign Out
-					</AccountActionSkeleton>
-				) : null}
-			</div>
 		</div>
-	);
-}
-
-function AccountActionSkeleton({
-	variant = "ghost",
-	className,
-	children,
-}: {
-	variant?: "ghost" | "outline";
-	className?: string;
-	children: ReactNode;
-}) {
-	return (
-		<Skeleton className={cn("bg-muted-foreground/25 flex shrink-0 rounded-lg", className)}>
-			<Button type="button" variant={variant} size="sm" className="invisible" disabled>
-				{children}
-			</Button>
-		</Skeleton>
 	);
 }
 
@@ -212,7 +203,7 @@ function SignedInView({
 			{orgError ? (
 				<AccountError
 					qa="kilo-account-org-error"
-					title="Couldn't switch organization"
+					title="Could not switch organization"
 					message={orgError.message}
 					retrying={auth.isSwitchingOrg}
 					onRetry={() => auth.setOrganization(orgError.organizationId)}
@@ -222,107 +213,109 @@ function SignedInView({
 				/>
 			) : null}
 
-			<div className="grid gap-5 sm:grid-cols-2">
-				{profile.balance ? (
-					<section className="min-w-0" data-qa-id="kilo-account-balance">
-						<p className="text-muted-foreground text-xs font-medium">Available balance</p>
-						<div className="mt-1 flex items-center gap-1.5">
-							<p
-								className="font-heading text-2xl font-semibold tracking-tight tabular-nums"
-								data-qa-id="kilo-account-balance-value"
-							>
-								{formatBalance(profile.balance.balance)}
-							</p>
-							<Button
-								type="button"
-								variant="ghost"
-								size="icon-sm"
-								aria-label="Refresh balance"
-								disabled={auth.isRefreshing}
-								onClick={auth.refreshProfile}
-								data-qa-id="kilo-account-refresh"
-							>
-								<RefreshCwIcon className={cn(auth.isRefreshing && "animate-spin")} />
-							</Button>
-						</div>
-					</section>
-				) : null}
+			<div className="flex flex-col gap-2">
+				<div className="grid items-start gap-5 sm:grid-cols-2">
+					{profile.balance ? (
+						<section className="min-w-0" data-qa-id="kilo-account-balance">
+							<p className="text-muted-foreground text-xs font-medium">Available balance</p>
+							<div className="mt-1 flex items-center gap-1.5">
+								<p
+									className="text-lg font-semibold tabular-nums"
+									data-qa-id="kilo-account-balance-value"
+								>
+									{formatBalance(profile.balance.balance)}
+								</p>
+								<Button
+									type="button"
+									variant="ghost"
+									size="icon-xs"
+									aria-label="Refresh balance"
+									disabled={auth.isRefreshing}
+									onClick={auth.refreshProfile}
+									data-qa-id="kilo-account-refresh"
+								>
+									<RefreshCwIcon className={cn(auth.isRefreshing && "animate-spin")} />
+								</Button>
+							</div>
+						</section>
+					) : null}
 
-				{orgOptions.length > 0 ? (
-					<div className="min-w-0">
-						<p className="text-muted-foreground text-xs font-medium">Organization</p>
-						<Select
-							items={orgOptions.map((o) => ({ value: o.value, label: o.label }))}
-							value={currentOrgValue}
-							disabled={auth.isSwitchingOrg}
-							onValueChange={(next) => {
-								if (next == null) return;
-								const id = organizationIdFromValue(next);
-								const current =
-									currentOrgValue === PERSONAL_ORG_VALUE ? null : (currentOrgValue ?? null);
-								if (id === current) return;
-								auth.setOrganization(id);
-							}}
-						>
-							<SelectTrigger
-								aria-label="Organization"
-								data-qa-id="kilo-account-org"
-								className="mt-1 w-full"
+					{orgOptions.length > 0 ? (
+						<div className="min-w-0">
+							<p className="text-muted-foreground text-xs font-medium">Organization</p>
+							<Select
+								items={orgOptions.map((o) => ({ value: o.value, label: o.label }))}
+								value={currentOrgValue}
+								disabled={auth.isSwitchingOrg}
+								onValueChange={(next) => {
+									if (next == null) return;
+									const id = organizationIdFromValue(next);
+									const current =
+										currentOrgValue === PERSONAL_ORG_VALUE ? null : (currentOrgValue ?? null);
+									if (id === current) return;
+									auth.setOrganization(id);
+								}}
 							>
-								<SelectValue>
-									{(value) => orgOptions.find((o) => o.value === value)?.label ?? "Personal"}
-								</SelectValue>
-							</SelectTrigger>
-							<SelectContent>
-								<SelectGroup>
-									{orgOptions.map((option) => (
-										<SelectItem
-											key={option.value}
-											value={option.value}
-											className="[&>div]:flex-col [&>div]:items-start [&>div]:gap-0.5"
-										>
-											<span className="max-w-full truncate">{option.label}</span>
-											{option.description ? (
-												<span className="text-muted-foreground text-xs">{option.description}</span>
-											) : null}
-										</SelectItem>
-									))}
-								</SelectGroup>
-							</SelectContent>
-						</Select>
+								<SelectTrigger
+									aria-label="Organization"
+									data-qa-id="kilo-account-org"
+									className="mt-1 w-full"
+								>
+									<SelectValue>
+										{(value) => orgOptions.find((o) => o.value === value)?.label ?? "Personal"}
+									</SelectValue>
+								</SelectTrigger>
+								<SelectContent>
+									<SelectGroup>
+										{orgOptions.map((option) => (
+											<SelectItem key={option.value} value={option.value}>
+												<span className="flex min-w-0 flex-col">
+													<span className="truncate">{option.label}</span>
+													{option.description ? (
+														<span className="text-muted-foreground truncate text-xs">
+															{option.description}
+														</span>
+													) : null}
+												</span>
+											</SelectItem>
+										))}
+									</SelectGroup>
+								</SelectContent>
+							</Select>
+						</div>
+					) : null}
+				</div>
+
+				{profile.balance || showSignOut ? (
+					<div className="flex flex-wrap items-center gap-2" data-qa-id="kilo-account-actions">
+						{profile.balance ? (
+							<>
+								<Button
+									type="button"
+									variant="outline"
+									size="sm"
+									onClick={() => auth.openExternal(KILO_CREDITS_URL)}
+									data-qa-id="kilo-account-top-up"
+								>
+									Top up
+									<ArrowUpRightIcon data-icon="inline-end" />
+								</Button>
+								<Button
+									type="button"
+									variant="ghost"
+									size="sm"
+									onClick={() => auth.openExternal(KILO_PROFILE_URL)}
+									data-qa-id="kilo-account-dashboard"
+								>
+									Kilo Dashboard
+									<ArrowUpRightIcon data-icon="inline-end" />
+								</Button>
+							</>
+						) : null}
+						{showSignOut ? <SignOutButton onLogout={auth.logout} /> : null}
 					</div>
 				) : null}
 			</div>
-
-			{profile.balance || showSignOut ? (
-				<div className="flex flex-wrap items-center gap-2" data-qa-id="kilo-account-actions">
-					{profile.balance ? (
-						<>
-							<Button
-								type="button"
-								variant="outline"
-								size="sm"
-								onClick={() => auth.openExternal(KILO_CREDITS_URL)}
-								data-qa-id="kilo-account-top-up"
-							>
-								Top up
-								<ArrowUpRightIcon data-icon="inline-end" />
-							</Button>
-							<Button
-								type="button"
-								variant="ghost"
-								size="sm"
-								onClick={() => auth.openExternal(KILO_PROFILE_URL)}
-								data-qa-id="kilo-account-dashboard"
-							>
-								Kilo Dashboard
-								<ArrowUpRightIcon data-icon="inline-end" />
-							</Button>
-						</>
-					) : null}
-					{showSignOut ? <SignOutButton onLogout={auth.logout} /> : null}
-				</div>
-			) : null}
 
 			{isPersonalAccount(profile) && profile.kiloPass ? (
 				<KiloPassUsage pass={profile.kiloPass} />
@@ -367,7 +360,7 @@ function ProfileLoadError({
 		<>
 			<AccountError
 				qa="kilo-account-profile-error"
-				title="Couldn't load your Kilo account"
+				title="Could not load your Kilo account"
 				message={message}
 				retrying={retrying}
 				onRetry={onRetry}
@@ -398,35 +391,40 @@ function AccountError({
 	dismissQa?: string;
 }) {
 	return (
-		<div
-			className="border-destructive/40 bg-destructive/5 overflow-hidden rounded-xl border"
-			data-qa-id={qa}
-		>
-			<div className="flex items-start gap-3 p-4">
-				<CircleAlertIcon className="text-destructive-foreground mt-0.5 size-4 shrink-0" />
-				<div className="min-w-0 flex-1">
-					<p className="text-sm font-medium">{title}</p>
-					<p className="text-muted-foreground mt-1 text-sm break-words">{message}</p>
-				</div>
-			</div>
-			<div className="bg-muted/50 border-border flex items-center justify-start gap-2 border-t px-4 py-2.5">
-				<Button type="button" size="sm" onClick={onRetry} disabled={retrying} data-qa-id={retryQa}>
-					{retrying ? <RefreshCwIcon className="animate-spin" data-icon="inline-start" /> : null}
-					Try again
-				</Button>
-				{onDismiss && dismissQa ? (
+		<Alert variant="destructive" data-qa-id={qa}>
+			<CircleAlertIcon aria-hidden="true" />
+			<AlertTitle>{title}</AlertTitle>
+			<AlertDescription>
+				<p className="break-words">{message}</p>
+				<div className="mt-2 flex items-center gap-2">
 					<Button
 						type="button"
-						variant="ghost"
+						variant="outline"
 						size="sm"
-						onClick={onDismiss}
-						data-qa-id={dismissQa}
+						onClick={onRetry}
+						disabled={retrying}
+						data-qa-id={retryQa}
 					>
-						Dismiss
+						<RefreshCwIcon
+							data-icon="inline-start"
+							className={retrying ? "animate-spin" : undefined}
+						/>
+						Try again
 					</Button>
-				) : null}
-			</div>
-		</div>
+					{onDismiss && dismissQa ? (
+						<Button
+							type="button"
+							variant="ghost"
+							size="sm"
+							onClick={onDismiss}
+							data-qa-id={dismissQa}
+						>
+							Dismiss
+						</Button>
+					) : null}
+				</div>
+			</AlertDescription>
+		</Alert>
 	);
 }
 
@@ -440,7 +438,7 @@ function SignOutButton({ onLogout }: { onLogout: () => void }) {
 			onClick={onLogout}
 			data-qa-id="kilo-account-logout"
 		>
-			Sign Out
+			Sign out
 		</Button>
 	);
 }
@@ -464,13 +462,7 @@ function KiloPassUsage({ pass }: { pass: NonNullable<KiloProfileData["kiloPass"]
 					{formatPassShort(pass.currentPeriodBaseCreditsUsd)}
 				</span>
 			</div>
-			<div className="bg-muted h-2 overflow-hidden rounded-full">
-				<div
-					className="bg-primary-ink h-full rounded-full transition-[width]"
-					style={{ width: `${percent}%` }}
-					data-qa-id="kilo-account-pass-bar"
-				/>
-			</div>
+			<Progress value={percent} aria-label="Kilo Pass usage" data-qa-id="kilo-account-pass-bar" />
 			<div className="text-muted-foreground flex items-center justify-between gap-3 text-xs">
 				<span className="tabular-nums">
 					{Math.round(percent)}% used

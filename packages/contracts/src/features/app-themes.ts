@@ -67,6 +67,8 @@ type RolePalette = {
 	popover?: string;
 	sidebar: string;
 	hover: string;
+	/** Standing `--muted` fill. Defaults to `hover` when omitted. */
+	mutedFill?: string;
 	muted: string;
 	border: string;
 	primary: string;
@@ -91,12 +93,96 @@ export const ACCENT_ROLE_DEFAULTS = {
 	"primary-soft-foreground": "var(--primary)",
 };
 
+const LIGHT_STATUS = {
+	error: "#9f1239",
+	info: "#1e40af",
+	success: "#166534",
+	warning: "#92400e",
+	update: "#166534",
+};
+
+/** Pale tints that stay readable on the role's own 10–20% tinted chips. */
+const DARK_STATUS_TEXT = {
+	error: "#ffe4e6",
+	info: "#dbeafe",
+	success: "#bbf7d0",
+	warning: "#fde68a",
+	update: "#bbf7d0",
+};
+
+/**
+ * Saturated dark hues for dots, icons and plain status text, most vivid first
+ * (Tailwind 400, then 300). The pale text tint is the last resort.
+ */
+const DARK_STATUS_CANDIDATES = {
+	error: ["#f87171", "#fca5a5", DARK_STATUS_TEXT.error],
+	info: ["#60a5fa", "#93c5fd", DARK_STATUS_TEXT.info],
+	success: ["#4ade80", "#86efac", DARK_STATUS_TEXT.success],
+	warning: ["#fbbf24", "#fcd34d", DARK_STATUS_TEXT.warning],
+} as const;
+
+const MIN_TEXT_CONTRAST = 4.5;
+
+function relativeLuminance(hex: string): number {
+	const [r, g, b] = [1, 3, 5].map((start) => {
+		const value = Number.parseInt(hex.slice(start, start + 2), 16) / 255;
+		return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+	}) as [number, number, number];
+	return r * 0.2126 + g * 0.7152 + b * 0.0722;
+}
+
+function isHexColor(value: string): boolean {
+	return /^#[0-9a-f]{6}$/i.test(value);
+}
+
+function mixHex(top: string, bottom: string, amount: number): string {
+	const channel = (hex: string, start: number) => Number.parseInt(hex.slice(start, start + 2), 16);
+	return `#${[1, 3, 5]
+		.map((start) =>
+			Math.round(channel(top, start) * amount + channel(bottom, start) * (1 - amount))
+				.toString(16)
+				.padStart(2, "0"),
+		)
+		.join("")}`;
+}
+
+function contrastRatio(a: string, b: string): number {
+	const [light, dark] = [relativeLuminance(a), relativeLuminance(b)].sort((x, y) => y - x) as [
+		number,
+		number,
+	];
+	return (light + 0.05) / (dark + 0.05);
+}
+
+function mostVividReadable(candidates: readonly string[], surfaces: readonly string[]): string {
+	return (
+		candidates.find((color) =>
+			surfaces.every((surface) => contrastRatio(color, surface) >= MIN_TEXT_CONTRAST),
+		) ?? candidates[candidates.length - 1]!
+	);
+}
+
+function statusColors(p: RolePalette, mode: ResolvedColorScheme) {
+	if (mode === "light") return { base: LIGHT_STATUS, text: LIGHT_STATUS };
+	const surfaces = [p.background, p.surface, p.popover ?? p.surface];
+	const pick = (role: keyof typeof DARK_STATUS_CANDIDATES) =>
+		mostVividReadable(DARK_STATUS_CANDIDATES[role], surfaces);
+	return {
+		base: {
+			error: pick("error"),
+			info: pick("info"),
+			success: pick("success"),
+			warning: pick("warning"),
+			update: DARK_STATUS_TEXT.update,
+		},
+		text: DARK_STATUS_TEXT,
+	};
+}
+
 function variant(p: RolePalette, shiki: ShikiTheme, mode: ResolvedColorScheme) {
-	// ANSI hues stay canonical; UI text must also contrast on raised and tinted surfaces.
-	const status =
-		mode === "light"
-			? { error: "#9f1239", info: "#1e40af", update: "#166534" }
-			: { error: "#ffe4e6", info: "#dbeafe", update: "#bbf7d0" };
+	// ANSI hues stay canonical. Status roles split in two: the base colour is
+	// vivid for dots and icons, `-foreground` stays readable on tinted chips.
+	const { base: status, text: statusText } = statusColors(p, mode);
 	const ansi = Object.fromEntries(ansiRoles.map((role, index) => [role, p.ansi[index]])) as Record<
 		(typeof ansiRoles)[number],
 		string
@@ -114,12 +200,12 @@ function variant(p: RolePalette, shiki: ShikiTheme, mode: ResolvedColorScheme) {
 			"primary-foreground": p.primaryForeground,
 			secondary: p.hover,
 			"secondary-foreground": p.foreground,
-			muted: p.hover,
+			muted: p.mutedFill ?? p.hover,
 			"muted-foreground": p.muted,
 			accent: p.hover,
 			"accent-foreground": p.foreground,
 			destructive: status.error,
-			"destructive-foreground": status.error,
+			"destructive-foreground": statusText.error,
 			border: p.border,
 			input: p.border,
 			ring: p.ring ?? p.primary,
@@ -139,9 +225,15 @@ function variant(p: RolePalette, shiki: ShikiTheme, mode: ResolvedColorScheme) {
 			...ACCENT_ROLE_DEFAULTS,
 			...p.roles,
 			info: status.info,
-			"info-foreground": status.info,
-			"app-scrollbar-thumb": p.border,
-			"app-scrollbar-thumb-hover": p.muted,
+			"info-foreground": statusText.info,
+			success: status.success,
+			"success-foreground": statusText.success,
+			warning: status.warning,
+			"warning-foreground": statusText.warning,
+			// Thumb derives from muted text, not border: palette borders sit too
+			// close to popover and pane surfaces for the thumb to be seen on them.
+			"app-scrollbar-thumb": `color-mix(in srgb, ${p.muted} 40%, transparent)`,
+			"app-scrollbar-thumb-hover": `color-mix(in srgb, ${p.muted} 60%, transparent)`,
 			update: status.update,
 			"update-surface": p.surface,
 			"update-surface-hover": p.hover,
@@ -152,7 +244,7 @@ function variant(p: RolePalette, shiki: ShikiTheme, mode: ResolvedColorScheme) {
 			foreground: p.foreground,
 			cursor: p.foreground,
 			cursorAccent: p.background,
-			selectionBackground: p.hover,
+			selectionBackground: isHexColor(p.hover) ? p.hover : mixHex(p.foreground, p.background, 0.05),
 			selectionForeground: p.foreground,
 		},
 		shiki,
@@ -232,9 +324,16 @@ export const APP_THEMES = [
 					draftComposer: "#1f1f1f",
 					popover: "#2b2b2b",
 					sidebar: "#161616",
-					hover: "#333333",
+					// Overlay, not a solid step: #333333 lifts the sidebar too hard,
+					// and any solid dark enough for the sidebar reads as a hole on the
+					// #2b2b2b popover. 5% matches main's stock foreground/5 hover.
+					hover: "color-mix(in oklch, var(--foreground) 5%, transparent)",
+					mutedFill: "#333333",
 					muted: "#a3a3a3",
-					border: "#292929",
+					// Translucent so dividers read on every surface: #292929 over the
+					// background as before, #404040 over the #2b2b2b popover (a solid
+					// #292929 vanished there).
+					border: "rgb(255 255 255 / 0.1)",
 					primary: "#f7f586",
 					primaryForeground: "#1f1f1f",
 					ansi: [

@@ -84,7 +84,7 @@ describe("TodoList", () => {
 		});
 		const screen = page.elementLocator(baseElement);
 
-		await expect.element(screen.getByText("Loading todos…")).toBeVisible();
+		await expect.element(screen.getByRole("status", { name: "Loading todos" })).toBeInTheDocument();
 	});
 
 	it("loads todos through the SDK", async () => {
@@ -94,14 +94,14 @@ describe("TodoList", () => {
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByRole("checkbox", { name: "Buy milk" })).toBeVisible();
-		await expect.element(screen.getByText("No todos yet.")).not.toBeInTheDocument();
+		await expect.element(screen.getByText("No todos yet", { exact: true })).not.toBeInTheDocument();
 	});
 
 	it("adds a todo through the form", async () => {
 		const { baseElement } = renderTodoList(inMemoryHandlers());
 		const screen = page.elementLocator(baseElement);
 
-		await expect.element(screen.getByText("No todos yet.")).toBeVisible();
+		await expect.element(screen.getByText("No todos yet", { exact: true })).toBeVisible();
 		await screen.getByRole("textbox", { name: "New todo" }).fill("Write tests");
 		await screen.getByRole("button", { name: "Add todo" }).click();
 		await expect.element(screen.getByRole("checkbox", { name: "Write tests" })).toBeVisible();
@@ -130,7 +130,8 @@ describe("TodoList", () => {
 			},
 		});
 		const listScreen = page.elementLocator(listRender.baseElement);
-		await expect.element(listScreen.getByText(/Could not load todos: list failed/)).toBeVisible();
+		await expect.element(listScreen.getByText("Could not load todos")).toBeVisible();
+		await expect.element(listScreen.getByText("list failed")).toBeVisible();
 		listRender.unmount();
 
 		const { baseElement } = renderTodoList({
@@ -140,7 +141,7 @@ describe("TodoList", () => {
 			},
 		});
 		const screen = page.elementLocator(baseElement);
-		await expect.element(screen.getByText("No todos yet.")).toBeVisible();
+		await expect.element(screen.getByText("No todos yet", { exact: true })).toBeVisible();
 		await screen.getByRole("textbox", { name: "New todo" }).fill("Will fail");
 		await screen.getByRole("button", { name: "Add todo" }).click();
 		await expect.element(screen.getByText(/Could not update todos: add failed/)).toBeVisible();
@@ -161,7 +162,7 @@ describe("TodoList", () => {
 				}),
 		});
 		const screen = page.elementLocator(baseElement);
-		await expect.element(screen.getByText("No todos yet.")).toBeVisible();
+		await expect.element(screen.getByText("No todos yet", { exact: true })).toBeVisible();
 		await screen.getByRole("textbox", { name: "New todo" }).fill("Slow");
 		await screen.getByRole("button", { name: "Add todo" }).click();
 		await expect.element(screen.getByRole("button", { name: "Adding…" })).toBeVisible();
@@ -172,9 +173,9 @@ describe("TodoList", () => {
 	it("ignores blank form submits while the add button is disabled", async () => {
 		const { baseElement } = renderTodoList(inMemoryHandlers());
 		const screen = page.elementLocator(baseElement);
-		await expect.element(screen.getByText("No todos yet.")).toBeVisible();
+		await expect.element(screen.getByText("No todos yet", { exact: true })).toBeVisible();
 		baseElement.querySelector("form")?.requestSubmit();
-		await expect.element(screen.getByText("No todos yet.")).toBeVisible();
+		await expect.element(screen.getByText("No todos yet", { exact: true })).toBeVisible();
 	});
 
 	describe("feature flag gate (todo-feature)", () => {
@@ -189,7 +190,9 @@ describe("TodoList", () => {
 			// None of the interactive controls should render in flag-off state.
 			await expect.element(screen.getByTestId("todo-input")).not.toBeInTheDocument();
 			await expect.element(screen.getByTestId("todo-add")).not.toBeInTheDocument();
-			await expect.element(screen.getByText("No todos yet.")).not.toBeInTheDocument();
+			await expect
+				.element(screen.getByText("No todos yet", { exact: true }))
+				.not.toBeInTheDocument();
 		});
 
 		it("renders the normal panel when the flag is on", async () => {

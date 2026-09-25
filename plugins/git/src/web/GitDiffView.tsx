@@ -1,6 +1,6 @@
 import type { CodeViewItem } from "@pierre/diffs";
 import { CodeView, type CodeViewHandle } from "@pierre/diffs/react";
-import { FolderGit2Icon, GitCompareIcon, LoaderCircleIcon, RefreshCwIcon } from "lucide-react";
+import { FolderGitIcon, GitCompareIcon, RefreshCwIcon } from "lucide-react";
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useLocalStorage } from "react-use";
 
@@ -327,7 +327,7 @@ function GitDiffTabContent({
 				? "Not a git repository."
 				: errorStatus === PATCH_TOO_LARGE_STATUS
 					? "Diff too large."
-					: "Couldn't load changes."
+					: "Could not load changes."
 			: loading
 				? "Loading changes…"
 				: loadState === "ready" && fileCount === 0
@@ -369,7 +369,7 @@ function GitDiffTabContent({
 									{errorStatus === NOT_A_REPOSITORY_STATUS
 										? "This folder isn't a git repository. Initialize git to track its changes, or choose a different workspace folder."
 										: errorStatus === PATCH_TOO_LARGE_STATUS
-											? `${errorMessage} Live reload is paused. Retry once the changes are smaller.`
+											? `${errorMessage} Live reload is paused. Try again once the changes are smaller.`
 											: errorMessage}
 								</EmptyDescription>
 							</EmptyHeader>
@@ -383,9 +383,9 @@ function GitDiffTabContent({
 										variant="outline"
 									>
 										{initRepository.isPending || refreshing ? (
-											<Spinner data-icon="inline-start" size="sm" />
+											<Spinner data-icon="inline-start" aria-hidden="true" />
 										) : (
-											<FolderGit2Icon data-icon="inline-start" />
+											<FolderGitIcon data-icon="inline-start" />
 										)}
 										Initialize Git
 									</Button>
@@ -398,11 +398,11 @@ function GitDiffTabContent({
 										variant="outline"
 									>
 										{refreshing ? (
-											<Spinner data-icon="inline-start" size="sm" />
+											<Spinner data-icon="inline-start" aria-hidden="true" />
 										) : (
-											<RefreshCwIcon />
+											<RefreshCwIcon data-icon="inline-start" aria-hidden="true" />
 										)}
-										Retry
+										Try again
 									</Button>
 								)}
 							</EmptyContent>
@@ -450,10 +450,7 @@ function GitDiffTabContent({
 						>
 							<EmptyHeader>
 								<EmptyMedia>
-									<LoaderCircleIcon
-										aria-hidden="true"
-										className="text-muted-foreground size-5 animate-spin"
-									/>
+									<Spinner aria-hidden="true" className="text-muted-foreground size-5" />
 								</EmptyMedia>
 								<EmptyTitle aria-level={2} role="heading">
 									{loadState === "streaming" ? "Streaming changes" : "Fetching changes"}

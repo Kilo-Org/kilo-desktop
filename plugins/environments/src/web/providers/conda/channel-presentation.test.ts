@@ -30,13 +30,13 @@ describe("getChannelPresentation", () => {
 		});
 	});
 
-	it("presents Anaconda channels as sign-in gated with the MAIN badge", () => {
+	it("presents Anaconda channels as sign-in gated with the Main badge", () => {
 		for (const channel of ["defaults", "anaconda", "main", "r", "msys2", "pro"]) {
 			const presentation = getChannelPresentation(channel);
 			expect(presentation).toMatchObject({
 				kind: "anaconda",
 				title: "Anaconda",
-				badge: "MAIN",
+				badge: "Main",
 				requiresSignIn: true,
 			});
 		}

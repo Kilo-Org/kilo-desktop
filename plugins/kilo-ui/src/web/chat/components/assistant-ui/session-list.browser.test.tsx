@@ -12,6 +12,7 @@ import { page, userEvent } from "vitest/browser";
 
 import { SdkProvider } from "@kilo-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
+import { SidebarProvider } from "@kilo-desktop/ui/components/sidebar";
 
 import { kiloUiChatContract } from "../../../../contracts/chat/schemas.js";
 import {
@@ -23,10 +24,33 @@ import { createSessionActivityStore } from "../../session-activity/session-activ
 import { SessionListViewProvider } from "../../session-list/use-session-list-view.js";
 import { SessionList } from "./session-list.js";
 
-const toastApi = vi.hoisted(() => ({
-	success: vi.fn(),
-	error: vi.fn(),
-}));
+type ToastResult = { message: string; [key: string]: unknown };
+const toastApi = vi.hoisted(() => {
+	const api = {
+		success: vi.fn(),
+		error: vi.fn(),
+		// Settles like sonner: forwards the resolved state to success/error so
+		// tests assert on the final toast the user sees.
+		promise: vi.fn(
+			(
+				job: Promise<unknown>,
+				options: { success: (v: unknown) => ToastResult; error: (e: unknown) => ToastResult },
+			) => {
+				job.then(
+					(value) => {
+						const { message, ...rest } = options.success(value);
+						api.success(message, rest);
+					},
+					(reason) => {
+						const { message, ...rest } = options.error(reason);
+						api.error(message, rest);
+					},
+				);
+			},
+		),
+	};
+	return api;
+});
 
 vi.mock("@kilo-desktop/ui/components/sonner", () => ({
 	toast: toastApi,
@@ -159,21 +183,23 @@ function SessionListHarness({
 	return (
 		<SdkProvider system={system}>
 			<AssistantRuntimeProvider runtime={runtime}>
-				<SessionActivityProvider store={store}>
-					<WorkspacesContext.Provider value={workspaces}>
-						<SessionListViewProvider>
-							<div data-qa-id="sidebar-header-actions" />
-							<div className="flex h-[420px] flex-col">
-								<SessionList />
-							</div>
-							{includeComposer ? (
-								<ComposerPrimitive.Root>
-									<ComposerPrimitive.Input aria-label="Test composer" />
-								</ComposerPrimitive.Root>
-							) : null}
-						</SessionListViewProvider>
-					</WorkspacesContext.Provider>
-				</SessionActivityProvider>
+				<SidebarProvider>
+					<SessionActivityProvider store={store}>
+						<WorkspacesContext.Provider value={workspaces}>
+							<SessionListViewProvider>
+								<div data-qa-id="sidebar-header-actions" />
+								<div className="flex h-[420px] flex-col">
+									<SessionList />
+								</div>
+								{includeComposer ? (
+									<ComposerPrimitive.Root>
+										<ComposerPrimitive.Input aria-label="Test composer" />
+									</ComposerPrimitive.Root>
+								) : null}
+							</SessionListViewProvider>
+						</WorkspacesContext.Provider>
+					</SessionActivityProvider>
+				</SidebarProvider>
 			</AssistantRuntimeProvider>
 		</SdkProvider>
 	);
@@ -270,6 +296,7 @@ afterEach(() => {
 	localStorage.clear();
 	toastApi.success.mockReset();
 	toastApi.error.mockReset();
+	toastApi.promise.mockClear();
 });
 
 describe("SessionList", () => {
@@ -438,7 +465,7 @@ describe("SessionList", () => {
 		await vi.waitFor(() =>
 			expect(
 				row.element().querySelector('[data-slot="aui_session-list-archived-item"]')?.className,
-			).toContain("bg-foreground/5"),
+			).toContain("bg-sidebar-accent"),
 		);
 		expect(adapter.unarchiveCalls).toEqual([]);
 	});
@@ -508,8 +535,8 @@ describe("SessionList", () => {
 		expect(all.element().getAttribute("aria-pressed")).toBe("true");
 		expect(chats.element().getAttribute("aria-pressed")).toBe("false");
 		expect(all.element().className).not.toContain("border-input");
-		expect(all.element().className).toContain("hover:bg-secondary");
-		expect(all.element().className).toContain("aria-pressed:bg-secondary");
+		expect(all.element().className).toContain("hover:bg-muted");
+		expect(all.element().className).toContain("aria-pressed:bg-muted");
 
 		await page.getByRole("button", { name: "Workspaces" }).click();
 		await expect.element(page.getByTestId("session-search-workspace-ws-1")).toBeVisible();
@@ -729,9 +756,9 @@ describe("SessionList", () => {
 		const idleRow = idle.element().querySelector('[data-slot="aui_session-list-item"]');
 		const selectedRowClasses = selectedRow?.className.split(/\s+/) ?? [];
 		const idleRowClasses = idleRow?.className.split(/\s+/) ?? [];
-		expect(selectedRowClasses).toContain("bg-foreground/5");
+		expect(selectedRowClasses).toContain("bg-sidebar-accent");
 		expect(selectedRowClasses).not.toContain("bg-muted");
-		expect(idleRowClasses).not.toContain("bg-foreground/5");
+		expect(idleRowClasses).not.toContain("bg-sidebar-accent");
 	});
 
 	it("uses a single-row card without a location for unscoped sessions", async () => {
@@ -775,8 +802,8 @@ describe("SessionList", () => {
 		});
 
 		await expect.element(screen.getByTestId("session-list-attention-toggle")).toBeVisible();
-		await expect.element(screen.getByRole("button", { name: /^Needs Attention$/ })).toBeVisible();
-		await expect.element(screen.getByRole("status", { name: "Requires Approval" })).toBeVisible();
+		await expect.element(screen.getByRole("button", { name: /^Needs attention$/ })).toBeVisible();
+		await expect.element(screen.getByRole("status", { name: "Requires approval" })).toBeVisible();
 		await expect.element(screen.getByText("Add tests")).toBeVisible();
 	});
 
@@ -798,7 +825,7 @@ describe("SessionList", () => {
 		});
 
 		await expect.element(screen.getByTestId("session-list-attention-toggle")).toBeVisible();
-		await expect.element(screen.getByRole("status", { name: "Requires Input" })).toBeVisible();
+		await expect.element(screen.getByRole("status", { name: "Requires input" })).toBeVisible();
 	});
 
 	it("archives a quiet session and unarchives it", async () => {
@@ -1317,9 +1344,10 @@ describe("SessionList", () => {
 		const pinIcon = pin.element().querySelector("svg");
 		expect(archiveIcon).not.toBeNull();
 		expect(pinIcon).not.toBeNull();
+		// Stock icon-xs buttons (24px) around 14px icons leave ~10px of padding.
 		expect(
 			pinIcon!.getBoundingClientRect().left - archiveIcon!.getBoundingClientRect().right,
-		).toBeLessThan(10);
+		).toBeLessThan(14);
 	});
 
 	it("shows icon-only hover actions with tooltips", async () => {

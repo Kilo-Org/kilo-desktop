@@ -16,6 +16,8 @@ export interface PluginSettingsSection {
 	/** URL slug, unique across plugins and built-ins. */
 	id: string;
 	title: string;
+	/** Default description for the section's `SettingsPageHeader`. */
+	description?: string | undefined;
 	component: ComponentType;
 	category: string;
 	icon: string | undefined;
@@ -44,6 +46,7 @@ export function buildPluginSettings(
 		pluginId: section.pluginId,
 		id: section.id,
 		title: section.title,
+		description: section.description,
 		component: section.component as ComponentType,
 		category: section.category ?? "Personal",
 		icon: section.icon,

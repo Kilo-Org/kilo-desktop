@@ -25,7 +25,6 @@ export class KiloProvidersPage {
 	private readonly kiloCard = () => getLocatorByTestId("kilo-providers-row-kilo");
 	private readonly login = () => getLocatorByTestId("kilo-account-login");
 	private readonly logout = () => getLocatorByTestId("kilo-account-logout");
-	private readonly toggle = () => getLocatorByTestId("kilo-provider-toggle");
 
 	async openFromSettings(): Promise<void> {
 		await click(this.nav());
@@ -51,7 +50,7 @@ export class KiloProvidersPage {
 
 	/**
 	 * Asserts the Kilo Gateway row finished loading: either the signed-out
-	 * Sign In button or the signed-in details toggle.
+	 * Sign in button or the signed-in Sign out button (details stay expanded).
 	 * Does not complete OAuth in CI.
 	 */
 	async verifyKiloLoginOrSignedIn(): Promise<void> {
@@ -60,19 +59,18 @@ export class KiloProvidersPage {
 		await expectElementToBeVisible(this.kiloCard(), "Kilo Gateway card should be visible");
 		await getPage().waitForFunction(() => {
 			if (document.querySelector('[data-qa-id="kilo-account-login"]')) return true;
-			return Boolean(document.querySelector('[data-qa-id="kilo-provider-toggle"]'));
+			return Boolean(document.querySelector('[data-qa-id="kilo-account-logout"]'));
 		});
 		if (await this.login().isVisible()) {
 			await expectElementToBeVisible(
 				this.login(),
-				"Kilo Sign In button should be visible when signed out",
+				"Kilo Sign in button should be visible when signed out",
 			);
 			return;
 		}
-		await click(this.toggle());
 		await expectElementToBeVisible(
 			this.logout(),
-			"Kilo Sign Out button should be visible in expanded account details",
+			"Kilo Sign out button should be visible when signed in",
 		);
 	}
 }

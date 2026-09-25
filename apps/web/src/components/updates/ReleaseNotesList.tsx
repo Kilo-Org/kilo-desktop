@@ -21,7 +21,7 @@ export function ReleaseNotesList({
 							What's changed
 						</h3>
 					) : releaseIndex > 0 ? (
-						<code className="text-muted-foreground text-[11px] font-medium">{release.version}</code>
+						<code className="text-muted-foreground text-2xs font-medium">{release.version}</code>
 					) : null}
 					{release.items.length > 0 ? (
 						<ul

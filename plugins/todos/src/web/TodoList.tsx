@@ -8,9 +8,23 @@ import type { TodoService } from "../contracts/schemas.js";
 
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Checkbox } from "@kilo-desktop/ui/components/checkbox";
+import {
+	Empty,
+	EmptyContent,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyMedia,
+	EmptyTitle,
+} from "@kilo-desktop/ui/components/empty";
+import { FieldError } from "@kilo-desktop/ui/components/field";
 import { Input } from "@kilo-desktop/ui/components/input";
 import { Label } from "@kilo-desktop/ui/components/label";
+import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
 import { toast } from "@kilo-desktop/ui/components/sonner";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
+import { CircleAlertIcon, ListTodoIcon, RefreshCwIcon } from "lucide-react";
+
+const SKELETON_ROWS = ["first", "second", "third"];
 
 /**
  * LaunchDarkly feature-flag key that gates this panel, the plugin's tool
@@ -38,7 +52,7 @@ export function TodoList() {
 	if (!featureEnabled) {
 		return (
 			<div className="flex h-full min-h-0 flex-col" data-qa-id="todos-page" data-state="flag-off">
-				<div className="mx-auto w-full max-w-xl px-5 py-8">
+				<div className="mx-auto w-full max-w-3xl px-5 py-8">
 					<p className="text-muted-foreground text-sm" data-qa-id="todos-unavailable">
 						This feature is not enabled for your account. Contact your Anaconda administrator or try
 						again later.
@@ -62,7 +76,7 @@ export function TodoList() {
 
 	return (
 		<div className="flex h-full min-h-0 flex-col" data-qa-id="todos-page">
-			<div className="mx-auto w-full max-w-xl px-5 py-8">
+			<div className="mx-auto w-full max-w-3xl px-5 py-8">
 				<p className="text-muted-foreground text-sm">
 					Todos load and update through the feature SDK with TanStack Query.
 				</p>
@@ -89,25 +103,50 @@ export function TodoList() {
 						onChange={(event) => setTitle(event.target.value)}
 					/>
 					<Button type="submit" data-qa-id="todo-add" disabled={!title.trim() || addTodo.isPending}>
+						{addTodo.isPending ? <Spinner data-icon="inline-start" aria-hidden="true" /> : null}
 						{addTodo.isPending ? "Adding…" : "Add todo"}
 					</Button>
 				</form>
 
-				{todos.isError ? (
-					<p className="text-destructive text-sm" role="alert">
-						Could not load todos: {todos.error.message}
-					</p>
-				) : null}
 				{mutationError ? (
-					<p className="text-destructive text-sm" role="alert">
-						Could not update todos: {mutationError.message}
-					</p>
+					<FieldError className="mb-4">Could not update todos: {mutationError.message}</FieldError>
 				) : null}
 
-				{todos.isPending ? (
-					<p className="text-muted-foreground text-sm">Loading todos…</p>
+				{todos.isError ? (
+					<Empty className="border">
+						<EmptyHeader>
+							<EmptyMedia variant="icon">
+								<CircleAlertIcon aria-hidden="true" />
+							</EmptyMedia>
+							<EmptyTitle>Could not load todos</EmptyTitle>
+							<EmptyDescription>{todos.error.message}</EmptyDescription>
+						</EmptyHeader>
+						<EmptyContent>
+							<Button type="button" variant="outline" onClick={() => void todos.refetch()}>
+								<RefreshCwIcon data-icon="inline-start" aria-hidden="true" />
+								Try again
+							</Button>
+						</EmptyContent>
+					</Empty>
+				) : todos.isPending ? (
+					<div role="status" aria-busy="true" aria-label="Loading todos" className="grid gap-2">
+						{SKELETON_ROWS.map((row) => (
+							<div key={row} className="flex items-center gap-3" aria-hidden="true">
+								<Skeleton className="size-4" />
+								<Skeleton className="h-3.5 w-48" />
+							</div>
+						))}
+					</div>
 				) : todos.data?.length === 0 ? (
-					<p className="text-muted-foreground text-sm">No todos yet.</p>
+					<Empty className="border">
+						<EmptyHeader>
+							<EmptyMedia variant="icon">
+								<ListTodoIcon aria-hidden="true" />
+							</EmptyMedia>
+							<EmptyTitle>No todos yet</EmptyTitle>
+							<EmptyDescription>Add one above to get started.</EmptyDescription>
+						</EmptyHeader>
+					</Empty>
 				) : todos.data ? (
 					<ul className="m-0 grid list-none gap-2 p-0" aria-label="Todos">
 						{todos.data.map((todo) => (

@@ -384,7 +384,7 @@ describe("WorktreeManager", () => {
 			});
 
 			expect(result.warning).toBe(
-				"Couldn't fetch latest main from origin; branched from local state.",
+				"Could not fetch latest main from origin; branched from local state.",
 			);
 			expect(addWorktree).toHaveBeenCalledWith(expect.any(String), {
 				cwd: mainRoot,

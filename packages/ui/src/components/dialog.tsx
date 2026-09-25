@@ -1,5 +1,3 @@
-"use client";
-
 import * as React from "react";
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 
@@ -44,6 +42,7 @@ function DialogContent({
 	showCloseButton = true,
 	...props
 }: DialogPrimitive.Popup.Props & {
+	// local: overlay props for nested dialogs (not in stock).
 	overlayClassName?: string | undefined;
 	/**
 	 * Additional visual-only backdrop for nested dialogs. Base UI suppresses
@@ -68,6 +67,7 @@ function DialogContent({
 			) : null}
 			<DialogPrimitive.Popup
 				data-slot="dialog-content"
+				// local: page background (bg-background) instead of stock bg-popover.
 				className={cn(
 					"fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-background p-4 text-sm text-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
 					className,
@@ -91,7 +91,12 @@ function DialogContent({
 
 function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
 	return (
-		<div data-slot="dialog-header" className={cn("flex flex-col gap-2", className)} {...props} />
+		<div
+			data-slot="dialog-header"
+			// local: gap-0.5 instead of stock gap-2, matching the settings section header.
+			className={cn("flex flex-col gap-0.5", className)}
+			{...props}
+		/>
 	);
 }
 
@@ -106,6 +111,7 @@ function DialogFooter({
 	return (
 		<div
 			data-slot="dialog-footer"
+			// local: bg-foreground/3 footer tint instead of stock bg-muted/50.
 			className={cn(
 				"-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-foreground/3 p-4 sm:flex-row sm:justify-end",
 				className,
@@ -124,7 +130,9 @@ function DialogTitle({ className, ...props }: DialogPrimitive.Title.Props) {
 	return (
 		<DialogPrimitive.Title
 			data-slot="dialog-title"
-			className={cn("text-base leading-none font-medium", className)}
+			// local: default text-base line height (not leading-none) so the title/description
+			// rhythm matches the settings section header.
+			className={cn("text-base font-medium", className)}
 			{...props}
 		/>
 	);
@@ -135,7 +143,7 @@ function DialogDescription({ className, ...props }: DialogPrimitive.Description.
 		<DialogPrimitive.Description
 			data-slot="dialog-description"
 			className={cn(
-				"text-sm text-muted-foreground *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
+				"text-sm leading-snug text-muted-foreground *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
 				className,
 			)}
 			{...props}

@@ -1,26 +1,31 @@
 import {
-	AlertTriangleIcon,
-	Code2Icon,
+	CircleAlertIcon,
+	CodeXmlIcon,
 	EyeIcon,
+	FolderIcon,
 	ImageIcon,
-	LoaderCircleIcon,
 	NotebookIcon,
 	SaveIcon,
+	TriangleAlertIcon,
 } from "lucide-react";
 import { type Editor, type EditorOptions } from "@pierre/diffs/edit";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { useSdk } from "@kilo-desktop/sdk-react";
+import { Toggle } from "@kilo-desktop/ui/components/toggle";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-} from "@kilo-desktop/ui/components/dialog";
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@kilo-desktop/ui/components/alert-dialog";
 import {
 	Empty,
 	EmptyContent,
@@ -29,12 +34,7 @@ import {
 	EmptyMedia,
 	EmptyTitle,
 } from "@kilo-desktop/ui/components/empty";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "@kilo-desktop/ui/components/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
 import { type FileReadResult, type FilesServiceContract } from "../../contracts/schemas.js";
 import { useDocumentWatcher } from "./document/document-watcher.js";
@@ -541,12 +541,15 @@ export function FilesView({
 
 	if (!activeWorkspaceDirectory) {
 		return (
-			<div
-				className="text-muted-foreground flex min-h-0 flex-1 items-center justify-center p-8 text-center text-sm"
-				data-qa-id="files-no-workspace"
-			>
-				No workspace selected for this chat.
-			</div>
+			<Empty data-qa-id="files-no-workspace">
+				<EmptyHeader>
+					<EmptyMedia variant="icon">
+						<FolderIcon aria-hidden="true" />
+					</EmptyMedia>
+					<EmptyTitle>No workspace selected</EmptyTitle>
+					<EmptyDescription>Choose a workspace for this chat to browse its files.</EmptyDescription>
+				</EmptyHeader>
+			</Empty>
 		);
 	}
 
@@ -588,7 +591,7 @@ export function FilesView({
 								variant="default"
 							>
 								{saving ? (
-									<LoaderCircleIcon className="animate-spin" data-icon="inline-start" />
+									<Spinner data-icon="inline-start" aria-hidden="true" />
 								) : (
 									<SaveIcon data-icon="inline-start" />
 								)}
@@ -597,37 +600,29 @@ export function FilesView({
 						) : null}
 						<ExternalEditorActions model={externalEditors} />
 						{(fileLoading || file?.kind === "text") && isMarkdown(selectedPath) ? (
-							<TooltipProvider>
-								<Tooltip disableHoverablePopup>
-									<TooltipTrigger
-										render={
-											<Button
-												aria-label={markdownToggleLabel}
-												aria-pressed={renderMarkdown}
-												className={
-													renderMarkdown
-														? "bg-foreground/5 text-foreground"
-														: "text-muted-foreground"
-												}
-												data-qa-id="files-markdown-toggle"
-												onClick={() => setRenderMarkdown(!renderMarkdown)}
-												size="icon-sm"
-												variant="ghost"
-											/>
-										}
-									>
-										{renderMarkdown ? <Code2Icon /> : <EyeIcon />}
-									</TooltipTrigger>
-									<TooltipContent side="bottom">{markdownToggleLabel}</TooltipContent>
-								</Tooltip>
-							</TooltipProvider>
+							<Tooltip disableHoverablePopup>
+								<TooltipTrigger
+									render={
+										<Toggle
+											aria-label={markdownToggleLabel}
+											pressed={renderMarkdown}
+											onPressedChange={setRenderMarkdown}
+											data-qa-id="files-markdown-toggle"
+											size="sm"
+										/>
+									}
+								>
+									{renderMarkdown ? <CodeXmlIcon /> : <EyeIcon />}
+								</TooltipTrigger>
+								<TooltipContent side="bottom">{markdownToggleLabel}</TooltipContent>
+							</Tooltip>
 						) : null}
 					</div>
 				) : null}
 
 				{externalEditors.error ? (
 					<div
-						className="text-destructive border-b px-3 py-1.5 text-[11px]"
+						className="text-destructive text-2xs border-b px-3 py-1.5"
 						data-qa-id="files-external-editor-error"
 					>
 						{externalEditors.error}
@@ -635,10 +630,7 @@ export function FilesView({
 				) : null}
 
 				{file?.kind === "text" && file.truncated ? (
-					<div
-						className="border-b px-3 py-1.5 text-[11px] text-amber-700 dark:text-amber-300"
-						data-qa-id="files-truncated"
-					>
+					<div className="text-2xs text-warning border-b px-3 py-1.5" data-qa-id="files-truncated">
 						Preview limited to the first 1 MiB. This file is read-only.
 					</div>
 				) : null}
@@ -673,19 +665,24 @@ export function FilesView({
 					) : (
 						<div className="flex min-w-0 flex-1 flex-col" data-qa-id="files-viewer-pane">
 							{fileLoading ? (
-								<div
-									className="text-muted-foreground flex flex-1 items-center justify-center"
-									data-qa-id="files-file-loading"
-								>
-									<LoaderCircleIcon className="size-5 animate-spin" />
-								</div>
+								<Empty data-qa-id="files-file-loading">
+									<EmptyHeader>
+										<EmptyMedia variant="icon">
+											<Spinner aria-hidden="true" />
+										</EmptyMedia>
+										<EmptyTitle>Opening file…</EmptyTitle>
+									</EmptyHeader>
+								</Empty>
 							) : fileError ? (
-								<div
-									className="text-destructive flex flex-1 items-center justify-center p-6 text-center text-xs"
-									data-qa-id="files-file-error"
-								>
-									{fileError}
-								</div>
+								<Empty data-qa-id="files-file-error">
+									<EmptyHeader>
+										<EmptyMedia variant="icon">
+											<CircleAlertIcon aria-hidden="true" />
+										</EmptyMedia>
+										<EmptyTitle>Could not open the file</EmptyTitle>
+										<EmptyDescription>{fileError}</EmptyDescription>
+									</EmptyHeader>
+								</Empty>
 							) : selectedPath && isNotebookFile(selectedPath) ? (
 								<Empty data-qa-id="files-notebook-empty">
 									<EmptyHeader>
@@ -706,7 +703,7 @@ export function FilesView({
 											onClick={() => void openInNotebookPanel()}
 										>
 											{notebookOpening ? (
-												<LoaderCircleIcon className="animate-spin" data-icon="inline-start" />
+												<Spinner data-icon="inline-start" aria-hidden="true" />
 											) : (
 												<NotebookIcon data-icon="inline-start" />
 											)}
@@ -760,7 +757,7 @@ export function FilesView({
 									{file.reason === "binary" ? (
 										<ImageIcon className="size-6" />
 									) : (
-										<AlertTriangleIcon className="size-6" />
+										<TriangleAlertIcon className="size-6" />
 									)}
 									{unsupportedMessage(file)}
 								</div>
@@ -769,26 +766,20 @@ export function FilesView({
 					)}
 				</div>
 
-				<Dialog
+				<AlertDialog
 					open={pendingAction !== null}
 					onOpenChange={(open) => {
 						if (!open) cancelPendingAction();
 					}}
 				>
-					<DialogContent data-qa-id="files-unsaved-dialog" showCloseButton={false}>
-						<DialogHeader>
-							<DialogTitle>Save changes?</DialogTitle>
-							<DialogDescription>The current file has unsaved changes.</DialogDescription>
-						</DialogHeader>
-						<DialogFooter>
-							<Button
-								data-qa-id="files-unsaved-cancel"
-								onClick={cancelPendingAction}
-								variant="outline"
-							>
-								Cancel
-							</Button>
-							<Button
+					<AlertDialogContent data-qa-id="files-unsaved-dialog">
+						<AlertDialogHeader>
+							<AlertDialogTitle>Save changes?</AlertDialogTitle>
+							<AlertDialogDescription>The current file has unsaved changes.</AlertDialogDescription>
+						</AlertDialogHeader>
+						<AlertDialogFooter>
+							<AlertDialogCancel data-qa-id="files-unsaved-cancel">Cancel</AlertDialogCancel>
+							<AlertDialogAction
 								data-qa-id="files-unsaved-discard"
 								onClick={() => {
 									void discardCurrent().then(continuePendingAction);
@@ -796,8 +787,8 @@ export function FilesView({
 								variant="destructive"
 							>
 								Discard
-							</Button>
-							<Button
+							</AlertDialogAction>
+							<AlertDialogAction
 								data-qa-id="files-unsaved-save"
 								onClick={() => {
 									void saveCurrent().then((saved) => {
@@ -807,28 +798,22 @@ export function FilesView({
 								}}
 							>
 								Save
-							</Button>
-						</DialogFooter>
-					</DialogContent>
-				</Dialog>
+							</AlertDialogAction>
+						</AlertDialogFooter>
+					</AlertDialogContent>
+				</AlertDialog>
 
-				<Dialog open={conflict} onOpenChange={setConflict}>
-					<DialogContent data-qa-id="files-conflict-dialog" showCloseButton={false}>
-						<DialogHeader>
-							<DialogTitle>File changed on disk</DialogTitle>
-							<DialogDescription>
+				<AlertDialog open={conflict} onOpenChange={setConflict}>
+					<AlertDialogContent data-qa-id="files-conflict-dialog">
+						<AlertDialogHeader>
+							<AlertDialogTitle>File changed on disk</AlertDialogTitle>
+							<AlertDialogDescription>
 								Reload the disk version or overwrite it with your changes.
-							</DialogDescription>
-						</DialogHeader>
-						<DialogFooter>
-							<Button
-								data-qa-id="files-conflict-cancel"
-								onClick={() => setConflict(false)}
-								variant="outline"
-							>
-								Cancel
-							</Button>
-							<Button
+							</AlertDialogDescription>
+						</AlertDialogHeader>
+						<AlertDialogFooter>
+							<AlertDialogCancel data-qa-id="files-conflict-cancel">Cancel</AlertDialogCancel>
+							<AlertDialogAction
 								data-qa-id="files-conflict-reload"
 								onClick={() => {
 									setConflict(false);
@@ -841,9 +826,10 @@ export function FilesView({
 								variant="outline"
 							>
 								Reload
-							</Button>
-							<Button
+							</AlertDialogAction>
+							<AlertDialogAction
 								data-qa-id="files-conflict-overwrite"
+								variant="destructive"
 								onClick={() => {
 									void saveCurrent(true).then((saved) => {
 										if (saved && pendingAction) void continuePendingAction();
@@ -851,10 +837,10 @@ export function FilesView({
 								}}
 							>
 								Overwrite
-							</Button>
-						</DialogFooter>
-					</DialogContent>
-				</Dialog>
+							</AlertDialogAction>
+						</AlertDialogFooter>
+					</AlertDialogContent>
+				</AlertDialog>
 			</div>
 		</FilesEditProvider>
 	);

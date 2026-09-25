@@ -7,13 +7,15 @@ import { SdkProvider } from "@kilo-desktop/sdk-react";
 import type { AuthSession, SDK } from "@kilo-desktop/feature-sdk";
 import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 
-import { condaContract, type CondaRepodataPackage } from "../../../contracts/providers/conda.js";
-import type {
-	CondaEnvsCreateInput,
-	CondaEnvsCreateResult,
+import {
+	condaContract,
+	type CondaEnvsCreateInput,
+	type CondaEnvsCreateResult,
+	type CondaRepodataFindInput,
+	type CondaRepodataFindResult,
+	type CondaRepodataPackage,
 } from "../../../contracts/providers/conda.js";
 import { CreateEnvironmentDialog } from "./CreateEnvironmentDialog.js";
-import { PACKAGE_GRID_COLUMN_WIDTHS_STORAGE_KEY } from "./column-widths.js";
 
 function pkg(name: string, versions: string[] = []): CondaRepodataPackage {
 	return {
@@ -58,6 +60,8 @@ const authenticatedAuth: Partial<SDK["auth"]> = {
 function renderDialog(
 	options: {
 		find?: () => CondaRepodataPackage[];
+		/** Full control over the search response, e.g. to page by `limit`. */
+		search?: (input: CondaRepodataFindInput) => CondaRepodataFindResult;
 		create?: (input: CondaEnvsCreateInput) => CondaEnvsCreateResult;
 		channels?: string[];
 		envsDirs?: string[];
@@ -76,7 +80,8 @@ function renderDialog(
 				envsDirs: options.envsDirs ?? ["/opt/anaconda3/envs"],
 				channels: options.channels ?? ["defaults", "conda-forge"],
 			}),
-			"conda.repodata.find": async () => ({ packages: find(), truncated: false }),
+			"conda.repodata.find": async (input: CondaRepodataFindInput) =>
+				options.search ? options.search(input) : { packages: find(), truncated: false },
 			"conda.envs.create": async (input: CondaEnvsCreateInput) => create(input),
 		},
 		auth: options.auth ?? {},
@@ -111,9 +116,15 @@ describe("CreateEnvironmentDialog (modal)", () => {
 	it("selecting a package adds it to the Selected Packages sidebar", async () => {
 		const { baseElement } = renderDialog();
 		const screen = page.elementLocator(baseElement);
+		const panel = screen.getByRole("complementary", { name: "Selected packages" });
+		await expect
+			.element(screen.getByTestId("environments-create-package-row").first(), { timeout: 10_000 })
+			.toBeVisible();
+		await expect.element(panel).not.toBeInTheDocument();
 
 		await userEvent.click(screen.getByText("numpy", { exact: true }));
 
+		await expect.element(panel).toBeVisible();
 		await expect
 			.element(screen.getByTestId("environments-create-selected-count"))
 			.toHaveTextContent("1");
@@ -163,7 +174,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 
 		const success = screen.getByTestId("environments-create-success");
 		await expect.element(success).toBeVisible();
-		expect(await success.element().textContent).toContain("myenv was created successfully.");
+		expect(await success.element().textContent).toContain("myenv was created.");
 		await expect.element(screen.getByTestId("environments-create-dialog")).toBeVisible();
 		// Form state is preserved so the user can review what was created.
 		await expect.element(screen.getByTestId("environments-create-name")).toHaveValue("myenv");
@@ -176,8 +187,10 @@ describe("CreateEnvironmentDialog (modal)", () => {
 		await userEvent.click(screen.getByTestId("environments-create-channels-button"));
 		const chooser = page.getByTestId("environments-channel-chooser");
 		await expect.element(chooser).toBeVisible();
-		await expect.element(chooser.getByRole("checkbox", { name: "conda-forge" })).toBeVisible();
-		await expect.element(chooser.getByRole("checkbox", { name: "Anaconda" })).toBeVisible();
+		await expect
+			.element(chooser.getByRole("menuitemcheckbox", { name: /conda-forge/ }))
+			.toBeVisible();
+		await expect.element(chooser.getByRole("menuitemcheckbox", { name: /Anaconda/ })).toBeVisible();
 	});
 
 	it("offers the product channel selector when conda reports no configured channels", async () => {
@@ -186,8 +199,10 @@ describe("CreateEnvironmentDialog (modal)", () => {
 
 		await userEvent.click(screen.getByTestId("environments-create-channels-button"));
 		const chooser = page.getByTestId("environments-channel-chooser");
-		await expect.element(chooser.getByRole("checkbox", { name: "conda-forge" })).toBeVisible();
-		await expect.element(chooser.getByRole("checkbox", { name: "Anaconda" })).toBeVisible();
+		await expect
+			.element(chooser.getByRole("menuitemcheckbox", { name: /conda-forge/ }))
+			.toBeVisible();
+		await expect.element(chooser.getByRole("menuitemcheckbox", { name: /Anaconda/ })).toBeVisible();
 		await expect.element(chooser.getByText("No channels configured.")).not.toBeInTheDocument();
 	});
 
@@ -290,12 +305,12 @@ describe("CreateEnvironmentDialog (modal)", () => {
 		await expect.element(screen.getByTestId("environments-create-submit")).toBeDisabled();
 	});
 
-	it("shows 'No packages available.' when the package grid is empty", async () => {
+	it("shows 'No packages available' when the package search is empty", async () => {
 		const { baseElement } = renderDialog({ find: () => [] });
 		const screen = page.elementLocator(baseElement);
 
 		await vi.waitFor(async () => {
-			await expect.element(screen.getByText("No packages available.")).toBeVisible();
+			await expect.element(screen.getByText("No packages available")).toBeVisible();
 		});
 	});
 
@@ -320,11 +335,11 @@ describe("CreateEnvironmentDialog (modal)", () => {
 			.element(screen.getByTestId("environments-create-selected-count"))
 			.toHaveTextContent("1");
 
-		// Remove it via the sidebar X button
+		// Remove it via the sidebar X button; the emptied panel closes.
 		await userEvent.click(screen.getByRole("button", { name: "Remove numpy" }));
 		await expect
-			.element(screen.getByTestId("environments-create-selected-count"))
-			.toHaveTextContent("0");
+			.element(screen.getByRole("complementary", { name: "Selected packages" }))
+			.not.toBeInTheDocument();
 	});
 
 	it("deselects a package by clicking the row again", async () => {
@@ -342,8 +357,8 @@ describe("CreateEnvironmentDialog (modal)", () => {
 		// (which is numpy) to avoid the sidebar duplicate.
 		await userEvent.click(screen.getByTestId("environments-create-package-row").first());
 		await expect
-			.element(screen.getByTestId("environments-create-selected-count"))
-			.toHaveTextContent("0");
+			.element(screen.getByRole("complementary", { name: "Selected packages" }))
+			.not.toBeInTheDocument();
 	});
 
 	it("displays packages without version list using a plain text version", async () => {
@@ -359,58 +374,63 @@ describe("CreateEnvironmentDialog (modal)", () => {
 		await expect.element(screen.getByText("1.0.0")).toBeVisible();
 	});
 
-	it("shows the truncation hint and pagination when many results are returned", async () => {
-		const manyPkgs = Array.from({ length: 25 }, (_, i) =>
-			pkg(`pkg-${String(i).padStart(2, "0")}`, ["1.0.0"]),
+	it("loads more results when the list is scrolled to the end", async () => {
+		const all = Array.from({ length: 120 }, (_, i) =>
+			pkg(`pkg-${String(i).padStart(3, "0")}`, ["1.0.0"]),
 		);
-		const { baseElement } = renderDialog({
-			find: () => manyPkgs,
-		});
+		const search = vi.fn((input: CondaRepodataFindInput) => ({
+			packages: all.slice(0, input.limit),
+			truncated: input.limit < all.length,
+		}));
+		const { baseElement } = renderDialog({ search });
 		const screen = page.elementLocator(baseElement);
 
 		await expect
 			.element(screen.getByTestId("environments-create-package-row").first(), { timeout: 10_000 })
 			.toBeVisible();
+		const packageSearches = () => search.mock.calls.map(([input]) => input).filter((i) => !i.names);
+		expect(packageSearches()[0]?.limit).toBe(50);
+		expect(
+			baseElement.querySelectorAll('[data-qa-id="environments-create-package-row"]'),
+		).toHaveLength(50);
 
-		// Pagination footer should be visible (25 > PAGE_SIZE of 20)
-		await expect.element(screen.getByTestId("environments-create-package-next")).toBeVisible();
-		await expect.element(screen.getByTestId("environments-create-package-prev")).toBeVisible();
+		const scroller = baseElement.querySelector(
+			'[data-qa-id="environments-create-package-results"]',
+		)! as HTMLElement;
+		scroller.scrollTop = scroller.scrollHeight;
 
-		// Navigate to page 2
-		await userEvent.click(screen.getByTestId("environments-create-package-next"));
-		await expect.element(screen.getByText("pkg-20")).toBeVisible();
+		await expect.element(screen.getByText("pkg-099")).toBeInTheDocument();
+		expect(packageSearches().map((input) => input.limit)).toContain(100);
+		// No pager: the list simply grows.
+		expect(baseElement.querySelector('[data-qa-id*="package-next"]')).toBeNull();
 	});
 
-	it("shows the truncated hint when results exceed the search limit", async () => {
+	it("asks the user to refine the search once the result cap is reached", async () => {
 		const pkgs = Array.from({ length: 5 }, (_, i) => pkg(`pkg-${i}`, ["1.0.0"]));
-		const sdk = createFakeSdk({
-			featureId: "environments",
-			channels: condaContract,
-			handlers: {
-				"conda.envs.list": async () => [],
-				"conda.envs.prefixOptions": async () => ({
-					envsDirs: ["/opt/anaconda3/envs"],
-					channels: ["defaults"],
-				}),
-				"conda.repodata.find": async () => ({ packages: pkgs, truncated: true }),
-				"conda.envs.create": async () => ({ jobId: "j", environment: { name: "x", prefix: "/x" } }),
-			},
+		const { baseElement } = renderDialog({
+			search: () => ({ packages: pkgs, truncated: true }),
 		});
-		const system = createFakeFeatureSystem({ sdks: { environments: sdk } });
-		const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-
-		const { baseElement } = render(
-			<SdkProvider system={system}>
-				<QueryClientProvider client={queryClient}>
-					<CreateEnvironmentDialog open onClose={() => {}} />
-				</QueryClientProvider>
-			</SdkProvider>,
-		);
 		const screen = page.elementLocator(baseElement);
+		await expect
+			.element(screen.getByTestId("environments-create-package-row").first(), { timeout: 10_000 })
+			.toBeVisible();
 
-		await vi.waitFor(async () => {
-			await expect.element(screen.getByTestId("environments-create-truncated-hint")).toBeVisible();
-		});
+		// Keep scrolling to the end: each batch widens the request until the cap.
+		await vi.waitFor(
+			() => {
+				const scroller = baseElement.querySelector(
+					'[data-qa-id="environments-create-package-results"]',
+				)! as HTMLElement;
+				scroller.scrollTop = scroller.scrollHeight;
+				expect(
+					baseElement.querySelector('[data-qa-id="environments-create-package-refine-hint"]'),
+				).not.toBeNull();
+			},
+			{ timeout: 10_000, interval: 100 },
+		);
+		await expect
+			.element(screen.getByTestId("environments-create-package-refine-hint"))
+			.toHaveTextContent("Refine your search to see more results");
 	});
 
 	it("sends channels and prefix when location differs from default", async () => {
@@ -561,81 +581,5 @@ describe("CreateEnvironmentDialog (modal)", () => {
 		});
 		const payload = create.mock.calls[0]![0];
 		expect(payload.prefix).toBe("/home/user/.conda/envs/myenv");
-	});
-});
-
-/** Drives the pointer sequence a real drag produces, which userEvent cannot express. */
-function dragHandle(handle: Element, deltaX: number) {
-	const startX = 500;
-	handle.dispatchEvent(
-		new PointerEvent("pointerdown", { bubbles: true, clientX: startX, pointerId: 1 }),
-	);
-	window.dispatchEvent(
-		new PointerEvent("pointermove", { bubbles: true, clientX: startX + deltaX, pointerId: 1 }),
-	);
-	window.dispatchEvent(
-		new PointerEvent("pointerup", { bubbles: true, clientX: startX + deltaX, pointerId: 1 }),
-	);
-}
-
-describe("CreateEnvironmentDialog — resizable package columns", () => {
-	afterEach(() => {
-		localStorage.removeItem(PACKAGE_GRID_COLUMN_WIDTHS_STORAGE_KEY);
-	});
-
-	it("widens the Version column when its handle is dragged right", async () => {
-		const { baseElement } = renderDialog();
-		const screen = page.elementLocator(baseElement);
-		const handle = screen.getByTestId("environments-create-column-resizer-version");
-
-		await expect.element(handle).toBeVisible();
-		dragHandle(handle.element(), -40);
-
-		// Version starts at its 128px default; dragging its leading edge left widens it.
-		await expect.element(handle).toHaveAttribute("aria-valuenow", "168");
-	});
-
-	it("narrows the Size column from the keyboard and keeps it after remount", async () => {
-		const first = renderDialog();
-		const firstHandle = page
-			.elementLocator(first.baseElement)
-			.getByTestId("environments-create-column-resizer-size");
-
-		await expect.element(firstHandle).toBeVisible();
-		await userEvent.click(firstHandle);
-		await userEvent.keyboard("{ArrowRight}");
-
-		// Size starts at 80px; a right press on its leading edge trims 16px.
-		await expect.element(firstHandle).toHaveAttribute("aria-valuenow", "64");
-
-		cleanup();
-		const second = renderDialog();
-		const secondHandle = page
-			.elementLocator(second.baseElement)
-			.getByTestId("environments-create-column-resizer-size");
-
-		await expect.element(secondHandle).toHaveAttribute("aria-valuenow", "64");
-	});
-});
-
-describe("CreateEnvironmentDialog — narrow columns", () => {
-	afterEach(() => {
-		localStorage.removeItem(PACKAGE_GRID_COLUMN_WIDTHS_STORAGE_KEY);
-	});
-
-	it("keeps the row within the grid even when a column is dragged very wide", async () => {
-		const { baseElement } = renderDialog();
-		const screen = page.elementLocator(baseElement);
-		const handle = screen.getByTestId("environments-create-column-resizer-version");
-
-		await expect.element(handle).toBeVisible();
-		// A leading-edge drag this far left would otherwise push the row wider
-		// than the grid.
-		dragHandle(handle.element(), -4000);
-
-		// Flex shrinking absorbs an oversized column, so the row still fits.
-		const header = baseElement.querySelector('[data-qa-id="environments-create-package-header"]')!;
-
-		expect(header.scrollWidth).toBeLessThanOrEqual(header.clientWidth + 1);
 	});
 });

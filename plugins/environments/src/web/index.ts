@@ -1,10 +1,10 @@
 /**
  * Renderer entry for the `environments` plugin.
  *
- * `EnvironmentsPage` is the page component named by the manifest route
- * (`plugin.json` `routes[].component`) — the shell resolves it here and
- * mounts it when `/environments` is visited. `EnvironmentsNavIcon` is the
- * sidebar icon.
+ * `EnvironmentsPage` is the settings-section component named by the manifest
+ * (`plugin.json` `contributes.settings[].component`) — the shell resolves it
+ * here and mounts it at `/settings/environments`. `EnvironmentsNavIcon` is the
+ * settings-nav icon.
  *
  * `webRegister` runs in both Electron and browser modes and dispatches to
  * each provider's tool-registration helper. Sub-issue 4 wires conda's

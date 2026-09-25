@@ -77,7 +77,7 @@ describe("DeleteEnvironmentDialog", () => {
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-delete-dialog")).toBeVisible();
-		await expect.element(screen.getByText("Delete myenv")).toBeVisible();
+		await expect.element(screen.getByText("Delete myenv?")).toBeVisible();
 	});
 
 	it("shows a warning that the action is irreversible", async () => {
@@ -87,7 +87,7 @@ describe("DeleteEnvironmentDialog", () => {
 		await expect
 			.element(
 				screen.getByText(
-					"This will permanently remove the environment and all its installed packages. This action cannot be undone.",
+					"This permanently removes the environment and all its installed packages. This action cannot be undone.",
 				),
 			)
 			.toBeVisible();
@@ -121,6 +121,6 @@ describe("DeleteEnvironmentDialog", () => {
 		const { baseElement } = renderDialog({ env });
 		const screen = page.elementLocator(baseElement);
 
-		await expect.element(screen.getByText("Delete anaconda3")).toBeVisible();
+		await expect.element(screen.getByText("Delete anaconda3?")).toBeVisible();
 	});
 });

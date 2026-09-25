@@ -150,6 +150,8 @@ export const pluginSettingsContributionSchema = z.strictObject({
 		.string()
 		.regex(featureIdPattern, 'Settings section id must be kebab-case (e.g. "anaconda-mcp").'),
 	title: z.string().min(1),
+	/** One sentence under the title; the default for the section's `SettingsPageHeader`. */
+	description: z.string().trim().min(1).optional(),
 	component: z.string().min(1),
 	/** Sidebar category label. Defaults to "Personal" in the shell. */
 	category: z.string().trim().min(1).optional(),

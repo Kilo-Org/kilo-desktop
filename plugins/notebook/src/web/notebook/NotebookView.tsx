@@ -2,6 +2,16 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import { useSdk } from "@kilo-desktop/sdk-react";
 import { Button } from "@kilo-desktop/ui/components/button";
+import {
+	Empty,
+	EmptyContent,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyMedia,
+	EmptyTitle,
+} from "@kilo-desktop/ui/components/empty";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
+import { CircleAlertIcon, NotebookIcon, RefreshCwIcon } from "lucide-react";
 
 import {
 	NTERACT_ELECTRON_HOST_PROTOCOL_VERSION,
@@ -302,52 +312,72 @@ export function NotebookView({
 	}, [appearance, frameSrc]);
 
 	return (
-		<div
-			ref={viewRef}
-			className="flex min-h-0 flex-1 flex-col bg-[var(--pane-surface,var(--color-background))]"
-			data-qa-id="notebook-view"
-		>
+		<div ref={viewRef} className="bg-pane flex min-h-0 flex-1 flex-col" data-qa-id="notebook-view">
 			{fileOpenState === "opening" ? (
-				<div
-					className="text-muted-foreground flex min-h-0 flex-1 items-center justify-center p-8 text-center text-sm"
-					data-qa-id="notebook-file-opening"
-				>
-					Opening notebook…
-				</div>
+				<Empty data-qa-id="notebook-file-opening">
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<Spinner aria-hidden="true" />
+						</EmptyMedia>
+						<EmptyTitle>Opening notebook…</EmptyTitle>
+					</EmptyHeader>
+				</Empty>
 			) : fileOpenState === "error" ? (
-				<div
-					className="text-destructive flex min-h-0 flex-1 items-center justify-center p-8 text-center text-sm"
-					data-qa-id="notebook-file-open-error"
-				>
-					{fileOpenError ?? "The notebook file could not be opened."}
-				</div>
+				<Empty data-qa-id="notebook-file-open-error">
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<CircleAlertIcon aria-hidden="true" />
+						</EmptyMedia>
+						<EmptyTitle>Could not open the notebook</EmptyTitle>
+						<EmptyDescription>
+							{fileOpenError ?? "The notebook file could not be opened."}
+						</EmptyDescription>
+					</EmptyHeader>
+				</Empty>
 			) : !frameSrc ? (
-				<div
-					className="text-muted-foreground flex min-h-0 flex-1 items-center justify-center p-8 text-center text-sm"
-					data-qa-id="notebook-placeholder"
-				>
-					The notebook interface is not bundled in this build.
-				</div>
+				<Empty data-qa-id="notebook-placeholder">
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<NotebookIcon aria-hidden="true" />
+						</EmptyMedia>
+						<EmptyTitle>Notebook unavailable</EmptyTitle>
+						<EmptyDescription>
+							The notebook interface is not bundled in this build.
+						</EmptyDescription>
+					</EmptyHeader>
+				</Empty>
 			) : runtime.status === "checking" ? (
-				<div
-					className="text-muted-foreground flex min-h-0 flex-1 items-center justify-center p-8 text-center text-sm"
-					data-qa-id="notebook-runtime-starting"
-				>
-					Starting the notebook runtime…
-				</div>
+				<Empty data-qa-id="notebook-runtime-starting">
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<Spinner aria-hidden="true" />
+						</EmptyMedia>
+						<EmptyTitle>Starting the notebook runtime…</EmptyTitle>
+					</EmptyHeader>
+				</Empty>
 			) : runtime.status === "unavailable" ? (
-				<div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 p-8 text-center text-sm">
-					<p className="text-muted-foreground" data-qa-id="notebook-runtime-error">
-						{runtime.reason}
-					</p>
-					<Button
-						type="button"
-						data-qa-id="notebook-runtime-retry"
-						onClick={() => setRetryVersion((version) => version + 1)}
-					>
-						Retry
-					</Button>
-				</div>
+				<Empty>
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<CircleAlertIcon aria-hidden="true" />
+						</EmptyMedia>
+						<EmptyTitle>Could not start the notebook runtime</EmptyTitle>
+						<EmptyDescription data-qa-id="notebook-runtime-error">
+							{runtime.reason}
+						</EmptyDescription>
+					</EmptyHeader>
+					<EmptyContent>
+						<Button
+							type="button"
+							variant="outline"
+							data-qa-id="notebook-runtime-retry"
+							onClick={() => setRetryVersion((version) => version + 1)}
+						>
+							<RefreshCwIcon data-icon="inline-start" aria-hidden="true" />
+							Try again
+						</Button>
+					</EmptyContent>
+				</Empty>
 			) : (
 				// Deliberately no `sandbox` attribute. The trusted nteract application is
 				// isolated from the app renderer by its dedicated protocol origin and CSP.

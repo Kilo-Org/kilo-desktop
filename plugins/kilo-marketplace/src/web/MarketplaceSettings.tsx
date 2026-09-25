@@ -10,14 +10,13 @@ import {
 import {
 	BotIcon,
 	BriefcaseBusinessIcon,
-	ChevronDownIcon,
 	ChevronsUpDownIcon,
 	CircleAlertIcon,
-	Code2Icon,
+	CodeXmlIcon,
 	DatabaseIcon,
+	EarthIcon,
 	ExternalLinkIcon,
 	FolderIcon,
-	Globe2Icon,
 	LibraryIcon,
 	ListFilterIcon,
 	LockIcon,
@@ -49,7 +48,12 @@ import type {
 	McpParameter,
 } from "../contracts/schemas.js";
 import { filterMarketplaceItems, installedScopes, matchesSearch } from "./marketplace-filter.js";
-import { sdkQueryOptions, useSdk, useSdkMutation } from "@kilo-desktop/sdk-react";
+import {
+	sdkQueryOptions,
+	SettingsPageHeader,
+	useSdk,
+	useSdkMutation,
+} from "@kilo-desktop/sdk-react";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -60,9 +64,12 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@kilo-desktop/ui/components/alert-dialog";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Alert, AlertDescription, AlertTitle } from "@kilo-desktop/ui/components/alert";
+import { Badge } from "@kilo-desktop/ui/components/badge";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Card } from "@kilo-desktop/ui/components/card";
+import { Collapsible, CollapsibleContent } from "@kilo-desktop/ui/components/collapsible";
 import {
 	Command,
 	CommandEmpty,
@@ -100,7 +107,16 @@ import {
 	EmptyMedia,
 	EmptyTitle,
 } from "@kilo-desktop/ui/components/empty";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@kilo-desktop/ui/components/field";
+import {
+	Field,
+	FieldContent,
+	FieldDescription,
+	FieldError,
+	FieldGroup,
+	FieldLabel,
+	FieldLegend,
+	FieldSet,
+} from "@kilo-desktop/ui/components/field";
 import { Input } from "@kilo-desktop/ui/components/input";
 import {
 	InputGroup,
@@ -116,14 +132,10 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@kilo-desktop/ui/components/select";
-import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
+import { Skeleton, SkeletonText } from "@kilo-desktop/ui/components/skeleton";
+import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
 import { Toggle } from "@kilo-desktop/ui/components/toggle";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "@kilo-desktop/ui/components/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 const TYPE_OPTIONS: Array<{ value: MarketplaceType; label: string; noun: string }> = [
@@ -131,7 +143,7 @@ const TYPE_OPTIONS: Array<{ value: MarketplaceType; label: string; noun: string 
 	{ value: "mcp", label: "MCPs", noun: "MCPs" },
 	{ value: "skill", label: "Skills", noun: "skills" },
 ];
-const COUNT_CLASS = "inline-block min-w-[3ch] text-right text-[0.7rem] tabular-nums opacity-60";
+const COUNT_CLASS = "inline-block min-w-[3ch] text-right text-2xs tabular-nums opacity-60";
 const TYPE_ICON_STYLES: Record<MarketplaceType, string> = {
 	agent: "text-emerald-500!",
 	mcp: "text-sky-500!",
@@ -142,6 +154,15 @@ const ITEM_NAME_COLLATOR = new Intl.Collator(undefined, {
 	sensitivity: "base",
 });
 const CATEGORY_PREVIEW_LIMIT = 6;
+const CATEGORY_TILE_PLACEHOLDERS = [
+	"first",
+	"second",
+	"third",
+	"fourth",
+	"fifth",
+	"sixth",
+	"seventh",
+];
 const LIST_FORMAT = new Intl.ListFormat("en", { type: "conjunction" });
 
 type InstallDestination = { label: string; input: MarketplaceMutationInput };
@@ -217,7 +238,7 @@ function installationLabel(
 	installation: MarketplaceInstalled,
 	targets: MarketplaceTarget[],
 ): string {
-	if (installation.scope === "global") return "All Workspaces";
+	if (installation.scope === "global") return "All workspaces";
 	return (
 		targets.find((target) => target.id === installation.workspaceId)?.name ??
 		(installation.workspaceId
@@ -311,7 +332,7 @@ function MarketplaceItemIcon({ item }: { item: MarketplaceListItem }) {
 			<img
 				src={iconDataUrl}
 				alt=""
-				className="size-4 rounded-[2px] object-contain"
+				className="size-4 rounded-xs object-contain"
 				onError={() => setFailedUrl(iconDataUrl)}
 				data-qa-id={`marketplace-icon-${item.type}-${item.id}`}
 			/>
@@ -324,16 +345,24 @@ function MarketplaceItemIcon({ item }: { item: MarketplaceListItem }) {
 	);
 }
 
+function TypeCount({ count, loading }: { count: number; loading: boolean }) {
+	return (
+		<span className={COUNT_CLASS}>{loading ? <SkeletonText className="w-[2ch]" /> : count}</span>
+	);
+}
+
 function TypeToggles({
 	selected,
 	total,
 	counts,
+	loading,
 	onToggle,
 	onClear,
 }: {
 	selected: ReadonlySet<MarketplaceType>;
 	total: number;
 	counts: Record<MarketplaceType, number>;
+	loading: boolean;
 	onToggle(type: MarketplaceType): void;
 	onClear(): void;
 }) {
@@ -349,7 +378,7 @@ function TypeToggles({
 				onPressedChange={onClear}
 				data-qa-id="marketplace-type-all"
 			>
-				All <span className={COUNT_CLASS}>{total}</span>
+				All <TypeCount count={total} loading={loading} />
 			</Toggle>
 			{TYPE_OPTIONS.map((option) => (
 				<Toggle
@@ -362,7 +391,7 @@ function TypeToggles({
 					<span className={cn("shrink-0 [&>svg]:size-3.5", TYPE_ICON_STYLES[option.value])}>
 						<TypeIcon type={option.value} />
 					</span>
-					{option.label} <span className={COUNT_CLASS}>{counts[option.value]}</span>
+					{option.label} <TypeCount count={counts[option.value]} loading={loading} />
 				</Toggle>
 			))}
 		</div>
@@ -372,11 +401,13 @@ function TypeToggles({
 function CategoryToggles({
 	categories,
 	selected,
+	loading,
 	onToggle,
 	onClear,
 }: {
 	categories: readonly string[];
 	selected: ReadonlySet<string>;
+	loading: boolean;
 	onToggle(category: string): void;
 	onClear(): void;
 }) {
@@ -395,6 +426,11 @@ function CategoryToggles({
 				onPressedChange={onClear}
 				qaId="marketplace-category-all"
 			/>
+			{loading
+				? CATEGORY_TILE_PLACEHOLDERS.map((placeholder) => (
+						<CategoryTilePlaceholder key={placeholder} />
+					))
+				: null}
 			{categories.map((entry) => (
 				<CategoryTile
 					key={entry}
@@ -426,14 +462,33 @@ function CategoryTile({
 		<Toggle
 			pressed={pressed}
 			onPressedChange={onPressedChange}
-			className="hover:bg-accent/50 h-auto min-w-0 justify-start gap-3 px-4 py-3"
+			className="hover:bg-muted h-auto min-w-0 justify-start gap-2.5 px-2 py-2"
 			data-qa-id={qaId}
 		>
-			<span className="bg-card text-muted-foreground flex shrink-0 items-center justify-center rounded-md p-3 [&>svg]:size-4">
+			<span className="bg-card text-muted-foreground flex shrink-0 items-center justify-center rounded-md p-2 [&>svg]:size-4">
 				{icon}
 			</span>
 			<span className="text-left text-sm leading-tight">{label}</span>
 		</Toggle>
+	);
+}
+
+/**
+ * Mirrors CategoryTile's padding, icon tile, and label line so the grid keeps its shape. The real
+ * icon tile is 30px: Toggle's unsized-svg rule (size-3.5) outranks the tile's `[&>svg]:size-4`.
+ */
+function CategoryTilePlaceholder() {
+	return (
+		<div
+			aria-hidden="true"
+			className="flex min-w-0 items-center gap-2.5 rounded-lg px-2 py-2"
+			data-qa-id="marketplace-category-placeholder"
+		>
+			<Skeleton className="size-7.5 shrink-0" />
+			<span className="text-sm leading-tight">
+				<SkeletonText className="w-24" />
+			</span>
+		</div>
 	);
 }
 
@@ -463,22 +518,18 @@ function InstalledFilterMenu({
 				render={
 					<Button
 						type="button"
-						variant="outline"
+						variant={customized ? "secondary" : "outline"}
 						size="icon-sm"
 						aria-label="Filter installed items"
 						data-qa-id="marketplace-filter-menu"
 						data-active={customized || undefined}
-						className="border-border bg-muted/40 text-muted-foreground hover:bg-accent/60 hover:text-foreground data-active:border-primary/60 data-active:bg-secondary data-active:text-foreground data-active:hover:bg-secondary shrink-0 data-active:shadow-sm"
+						className="shrink-0"
 					/>
 				}
 			>
 				<ListFilterIcon />
 			</DropdownMenuTrigger>
-			<DropdownMenuContent
-				align="end"
-				sideOffset={6}
-				className="[&::-webkit-scrollbar-thumb]:bg-muted-foreground/30 max-h-72 w-56 [scrollbar-width:thin] [scrollbar-color:color-mix(in_oklch,var(--muted-foreground)_30%,transparent)_transparent] overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent"
-			>
+			<DropdownMenuContent align="end" sideOffset={6} className="max-h-72 w-56 overflow-y-auto">
 				<DropdownMenuGroup>
 					<DropdownMenuSub>
 						<DropdownMenuSubTrigger className="w-full" data-qa-id="marketplace-show-filter">
@@ -558,7 +609,7 @@ function CategoryIcon({ category }: { category: string }) {
 			return <DatabaseIcon />;
 		case "development":
 		case "engineering":
-			return <Code2Icon />;
+			return <CodeXmlIcon />;
 		case "automation":
 		case "observability":
 			return <WorkflowIcon />;
@@ -569,7 +620,7 @@ function CategoryIcon({ category }: { category: string }) {
 		case "research":
 			return <SearchIcon />;
 		case "web-automation":
-			return <Globe2Icon />;
+			return <EarthIcon />;
 		default:
 			return <TagIcon />;
 	}
@@ -642,12 +693,9 @@ function ItemMetadata({
 					qaId={`marketplace-source-${item.type}-${item.id}`}
 				/>
 			) : null}
-			<span
-				className="text-muted-foreground bg-foreground/5 shrink-0 rounded-md px-1.5 py-0.5 text-[0.65rem] font-medium"
-				data-qa-id={categoryQaId}
-			>
+			<Badge variant="secondary" data-qa-id={categoryQaId}>
 				{categoryDisplayName(item.category)}
-			</span>
+			</Badge>
 		</div>
 	);
 }
@@ -673,9 +721,9 @@ function MarketplaceCardActions({
 						render={
 							<Button
 								type="button"
-								variant="ghost"
+								variant="secondary"
 								size="sm"
-								className="text-muted-foreground bg-foreground/10 hover:bg-foreground/15 h-7 shrink-0 rounded-md px-2 text-[0.65rem]"
+								className="text-muted-foreground text-2xs h-7 shrink-0 rounded-md px-2"
 								data-qa-id={`marketplace-installed-badge-${item.type}-${item.id}`}
 							/>
 						}
@@ -696,7 +744,7 @@ function MarketplaceCardActions({
 							{installations.map((entry) => (
 								<div key={installationKey(entry)} className="flex min-w-0 items-center gap-2">
 									{entry.scope === "global" ? (
-										<Globe2Icon className="size-3.5 shrink-0" aria-hidden />
+										<EarthIcon className="size-3.5 shrink-0" aria-hidden />
 									) : (
 										<FolderIcon className="size-3.5 shrink-0" aria-hidden />
 									)}
@@ -864,62 +912,49 @@ function InstalledCard({
 			? installationLabel(primaryInstallation!, targets)
 			: `${locationCount} places`;
 	const detailsId = `marketplace-card-details-${item.type}-${item.id}`;
+	const toggleLabel = `Toggle ${item.name} details`;
 
 	return (
-		<div
+		<Collapsible
 			className="max-w-full min-w-0"
+			open={detailsOpen}
+			onOpenChange={onToggleDetails}
 			data-qa-id={`marketplace-item-${item.type}-${item.id}`}
 			data-state={detailsOpen ? "details-open" : "summary"}
 		>
-			<div
-				className="hover:bg-foreground/[0.07] flex max-w-full min-w-0 cursor-pointer items-center gap-2.5 overflow-hidden py-2 pr-4 pl-2.5 transition-colors"
-				onClick={onToggleDetails}
-				data-qa-id={`marketplace-card-header-${item.type}-${item.id}`}
-			>
-				<Button
+			<SummaryCard.Row data-qa-id={`marketplace-card-header-${item.type}-${item.id}`}>
+				<SummaryCard.Trigger
 					type="button"
-					variant="ghost"
-					className="-m-1 h-auto w-0 min-w-0 shrink grow justify-start gap-2.5 rounded-lg p-1 text-left whitespace-normal hover:bg-transparent aria-expanded:bg-transparent"
-					aria-expanded={detailsOpen}
-					aria-pressed={detailsOpen}
-					aria-controls={detailsId}
-					onClick={(event) => {
-						event.stopPropagation();
-						onToggleDetails();
-					}}
+					aria-label={toggleLabel}
 					data-qa-id={`marketplace-card-trigger-${item.type}-${item.id}`}
 				>
-					<span className="border-border bg-background flex size-8 shrink-0 items-center justify-center rounded-md border [&_svg]:size-4">
+					<SummaryCard.Icon>
 						<MarketplaceItemIcon item={item} />
-					</span>
-					<span className="min-w-0 flex-1">
-						<span className="flex min-w-0 items-center gap-2">
-							<span
-								className="truncate text-sm leading-4 font-medium"
-								data-qa-id={`marketplace-name-${item.type}-${item.id}`}
-							>
+					</SummaryCard.Icon>
+					<SummaryCard.Content>
+						<SummaryCard.Title>
+							<span className="truncate" data-qa-id={`marketplace-name-${item.type}-${item.id}`}>
 								{item.name}
 							</span>
 							{needsClientRegistration ? (
-								<span
-									className="text-destructive-foreground bg-destructive/10 inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[0.65rem] font-medium"
+								<Badge
+									variant="destructive"
 									data-qa-id={`marketplace-mcp-blocked-${item.type}-${item.id}-${primaryDestination}`}
 								>
-									<CircleAlertIcon className="size-3" aria-hidden />
+									<CircleAlertIcon aria-hidden="true" />
 									Requires setup
-								</span>
+								</Badge>
 							) : null}
-						</span>
-						<span
-							className="text-muted-foreground mt-0.5 block truncate text-xs leading-4"
+						</SummaryCard.Title>
+						<SummaryCard.Description
 							data-qa-id={`marketplace-card-summary-${item.type}-${item.id}`}
 						>
 							{summaryDescription(item.description)}
-						</span>
-					</span>
-				</Button>
+						</SummaryCard.Description>
+					</SummaryCard.Content>
+				</SummaryCard.Trigger>
 
-				<div className="flex max-w-full min-w-0 shrink-0 items-center gap-1.5">
+				<SummaryCard.Actions className="gap-1.5">
 					{included ? (
 						<span
 							className="text-muted-foreground inline-flex size-7 items-center justify-center"
@@ -927,86 +962,65 @@ function InstalledCard({
 							title="Built in"
 							data-qa-id={`marketplace-included-${item.type}-${item.id}`}
 						>
-							<LockIcon className="size-3.5" aria-hidden />
+							<LockIcon className="size-3.5" aria-hidden="true" />
 						</span>
 					) : null}
 					{needsAuth ? (
-						<span
-							className="inline-flex h-6 shrink-0 items-center gap-1 rounded-md bg-amber-500/10 px-1.5 text-[0.65rem] font-medium text-amber-700 dark:text-amber-400"
-							data-qa-id={`marketplace-mcp-auth-needed-${item.id}`}
-						>
-							<CircleAlertIcon className="size-3" aria-hidden />
+						<Badge variant="outline" data-qa-id={`marketplace-mcp-auth-needed-${item.id}`}>
+							<CircleAlertIcon aria-hidden="true" />
 							Needs sign-in
-						</span>
+						</Badge>
 					) : null}
 					{failed ? (
-						<span
-							className="text-destructive-foreground bg-destructive/10 inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-[0.65rem] font-medium"
-							data-qa-id={`marketplace-mcp-failed-${item.id}`}
-						>
-							<CircleAlertIcon className="size-3" aria-hidden />
+						<Badge variant="destructive" data-qa-id={`marketplace-mcp-failed-${item.id}`}>
+							<CircleAlertIcon aria-hidden="true" />
 							Failed
-						</span>
+						</Badge>
 					) : null}
 					{disabled ? (
-						<span
-							className="text-muted-foreground bg-foreground/5 inline-flex h-6 shrink-0 items-center rounded-md px-1.5 text-[0.65rem] font-medium"
-							data-qa-id={`marketplace-mcp-disabled-${item.id}`}
-						>
+						<Badge variant="secondary" data-qa-id={`marketplace-mcp-disabled-${item.id}`}>
 							Disabled
-						</span>
+						</Badge>
 					) : null}
-					<span
-						className="text-muted-foreground bg-foreground/5 hidden h-6 max-w-48 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-xs @xl:inline-flex"
+					<Badge
+						variant="secondary"
+						className="hidden max-w-48 @xl:inline-flex"
 						data-qa-id={`marketplace-card-location-summary-${item.type}-${item.id}`}
 					>
 						{included || primaryInstallation?.scope === "global" ? (
-							<Globe2Icon className="size-3.5" aria-hidden />
+							<EarthIcon aria-hidden="true" />
 						) : (
-							<FolderIcon className="size-3.5" aria-hidden />
+							<FolderIcon aria-hidden="true" />
 						)}
 						<span className="truncate">{locationSummary}</span>
-					</span>
-					<Button
-						type="button"
-						variant="ghost"
-						size="icon-sm"
-						className="text-muted-foreground -mr-1.5 shrink-0"
-						aria-label={`Toggle ${item.name} details`}
-						aria-expanded={detailsOpen}
-						aria-controls={detailsId}
-						onClick={(event) => {
-							event.stopPropagation();
-							onToggleDetails();
-						}}
+					</Badge>
+					<SummaryCard.Toggle
+						label={toggleLabel}
+						open={detailsOpen}
 						data-qa-id={`marketplace-card-chevron-${item.type}-${item.id}`}
-					>
-						<ChevronDownIcon className={cn("transition-transform", detailsOpen && "rotate-180")} />
-					</Button>
+					/>
+				</SummaryCard.Actions>
+			</SummaryCard.Row>
+			<CollapsibleContent>
+				<div
+					id={detailsId}
+					className="border-border bg-background/60 border-t p-4"
+					data-qa-id={detailsId}
+				>
+					<InstalledDetails
+						item={item}
+						installations={installations}
+						targets={targets}
+						installationStatus={installationStatus}
+						authenticatingWorkspaceId={authenticatingWorkspaceId}
+						onAddLocation={onAddLocation}
+						onAuthenticate={onAuthenticate}
+						onRemove={onRemove}
+						onOpenLink={onOpenLink}
+					/>
 				</div>
-			</div>
-			{detailsOpen ? (
-				<TooltipProvider>
-					<div
-						id={detailsId}
-						className="border-border bg-background/60 border-t p-4"
-						data-qa-id={detailsId}
-					>
-						<InstalledDetails
-							item={item}
-							installations={installations}
-							targets={targets}
-							installationStatus={installationStatus}
-							authenticatingWorkspaceId={authenticatingWorkspaceId}
-							onAddLocation={onAddLocation}
-							onAuthenticate={onAuthenticate}
-							onRemove={onRemove}
-							onOpenLink={onOpenLink}
-						/>
-					</div>
-				</TooltipProvider>
-			) : null}
-		</div>
+			</CollapsibleContent>
+		</Collapsible>
 	);
 }
 
@@ -1030,25 +1044,28 @@ function InstalledDetails({
 	const canAddLocation = isCatalogItem(item) && hasInstallableLocation(installations, targets);
 
 	return (
-		<div className="grid min-w-0 items-stretch gap-4 @xl:grid-cols-[minmax(0,1fr)_18rem]">
-			<div className="flex min-w-0 flex-col">
-				<div className="mb-2.5 flex min-h-6 min-w-0 items-center justify-between gap-3">
-					<h3 className="text-muted-foreground text-sm font-medium">About</h3>
-				</div>
-				<p className="text-foreground/90 text-sm leading-5 break-words">{item.description}</p>
+		<div className="grid min-w-0 items-start gap-4 @xl:grid-cols-[minmax(0,1fr)_18rem]">
+			<FieldSet className="min-w-0 gap-2">
+				<FieldContent>
+					<FieldLegend variant="label" className="mb-0">
+						About
+					</FieldLegend>
+					<FieldDescription className="break-words">{item.description}</FieldDescription>
+				</FieldContent>
 				<ItemMetadata
 					item={item}
 					author={author}
 					onOpenLink={onOpenLink}
 					categoryQaId={`marketplace-card-category-${item.type}-${item.id}`}
 					authorQaId={`marketplace-card-author-${item.type}-${item.id}`}
-					className="mt-auto pt-3"
 				/>
-			</div>
+			</FieldSet>
 
-			<div className="min-w-0">
-				<div className="mb-2.5 flex min-h-6 min-w-0 items-center justify-between gap-3">
-					<h3 className="text-muted-foreground text-sm font-medium">Installed in</h3>
+			<FieldSet className="min-w-0 gap-2">
+				<div className="flex items-center justify-between gap-3">
+					<FieldLegend variant="label" className="mb-0">
+						Installed in
+					</FieldLegend>
 					{canAddLocation ? (
 						<Button
 							type="button"
@@ -1063,9 +1080,9 @@ function InstalledDetails({
 						</Button>
 					) : null}
 				</div>
-				<div className="grid min-w-0 gap-1">
+				<div className="border-border divide-border min-w-0 divide-y overflow-hidden rounded-lg border">
 					{included ? (
-						<div className="bg-foreground/5 flex min-w-0 items-center gap-2.5 rounded-md px-2.5 py-2">
+						<div className="flex min-w-0 items-center gap-2 px-2.5 py-1.5">
 							<LockIcon className="text-muted-foreground size-3.5 shrink-0" aria-hidden />
 							<span
 								className="min-w-0 flex-1 truncate text-sm font-medium"
@@ -1086,12 +1103,9 @@ function InstalledDetails({
 								!targets.some((target) => target.id === installation.workspaceId);
 							const location = installationLabel(installation, targets);
 							return (
-								<div
-									key={destination}
-									className="bg-foreground/5 flex min-w-0 items-center gap-2.5 rounded-md px-2.5 py-2"
-								>
+								<div key={destination} className="flex min-w-0 items-center gap-2 px-2.5 py-1.5">
 									{installation.scope === "global" ? (
-										<Globe2Icon className="text-muted-foreground size-3.5 shrink-0" aria-hidden />
+										<EarthIcon className="text-muted-foreground size-3.5 shrink-0" aria-hidden />
 									) : (
 										<FolderIcon className="text-muted-foreground size-3.5 shrink-0" aria-hidden />
 									)}
@@ -1105,7 +1119,7 @@ function InstalledDetails({
 										{status?.status === "failed" ||
 										status?.status === "needs_client_registration" ? (
 											<span
-												className="text-destructive-foreground block text-[0.7rem] leading-4 break-words"
+												className="text-destructive text-2xs block leading-4 break-words"
 												data-qa-id={`marketplace-mcp-error-${item.id}-${destination}`}
 											>
 												{status.error}
@@ -1124,21 +1138,17 @@ function InstalledDetails({
 											{authenticating ? "Signing in" : "Sign in"}
 										</Button>
 									) : status?.status === "needs_client_registration" ? (
-										<span className="text-destructive-foreground shrink-0 text-[0.7rem] font-medium">
+										<span className="text-destructive text-2xs shrink-0 font-medium">
 											Requires setup
 										</span>
 									) : status?.status === "failed" ? (
-										<span className="text-destructive-foreground shrink-0 text-[0.7rem] font-medium">
-											Failed
-										</span>
+										<span className="text-destructive text-2xs shrink-0 font-medium">Failed</span>
 									) : status?.status === "disabled" ? (
-										<span className="text-muted-foreground shrink-0 text-[0.7rem] font-medium">
+										<span className="text-muted-foreground text-2xs shrink-0 font-medium">
 											Disabled
 										</span>
 									) : status?.status === "connected" ? (
-										<span className="inline-flex h-5 shrink-0 items-center rounded-md bg-emerald-500/10 px-1.5 text-[0.65rem] font-medium text-emerald-700 dark:text-emerald-400">
-											Connected
-										</span>
+										<Badge variant="secondary">Connected</Badge>
 									) : null}
 									{unavailable ? (
 										<Tooltip>
@@ -1164,7 +1174,7 @@ function InstalledDetails({
 											type="button"
 											variant="ghost"
 											size="icon-xs"
-											className="text-muted-foreground hover:text-destructive -mr-0.5 shrink-0"
+											className="hover:text-destructive shrink-0"
 											aria-label={`Remove ${item.name} from ${location}`}
 											onClick={() => onRemove(item, installation)}
 											data-qa-id={`marketplace-remove-${item.type}-${item.id}-${destination}`}
@@ -1177,7 +1187,7 @@ function InstalledDetails({
 						})
 					)}
 				</div>
-			</div>
+			</FieldSet>
 		</div>
 	);
 }
@@ -1237,14 +1247,14 @@ function InstallDialog({
 	const destinationValid = globalSelected ? !globalInstalled : selectedTargets.length > 0;
 	const valid = parametersValid && destinationValid;
 	const confirmLabel = globalSelected
-		? "Install in All Workspaces"
+		? "Install in All workspaces"
 		: selectedTargets.length === 1
 			? `Install in ${selectedTargets[0]?.name}`
 			: selectedTargets.length > 1
 				? `Install in ${selectedTargets.length} workspaces`
 				: "Select a location";
 	const destinationLabel = globalSelected
-		? "All Workspaces"
+		? "All workspaces"
 		: selectedTargets.length === 1
 			? selectedTargets[0]!.name
 			: selectedTargets.length > 1
@@ -1282,7 +1292,7 @@ function InstallDialog({
 			...(Object.keys(parameters).length > 0 ? { parameters } : {}),
 		};
 		const destinations: InstallDestination[] = globalSelected
-			? [{ label: "All Workspaces", input: { ...baseInput, scope: "global" } }]
+			? [{ label: "All workspaces", input: { ...baseInput, scope: "global" } }]
 			: selectedTargets.map((target) => ({
 					label: target.name,
 					input: { ...baseInput, scope: "workspace", workspaceId: target.id },
@@ -1323,7 +1333,7 @@ function InstallDialog({
 	return (
 		<Dialog open onOpenChange={(open) => !open && close()}>
 			<DialogContent
-				className="max-h-[min(44rem,calc(100dvh-2rem))] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-md"
+				className="max-h-[min(48rem,calc(100dvh-4rem))] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-md"
 				data-qa-id="marketplace-install-dialog"
 			>
 				<DialogHeader className="shrink-0 border-b px-4 py-4 pr-12 text-left">
@@ -1333,7 +1343,7 @@ function InstallDialog({
 				</DialogHeader>
 
 				<FieldGroup
-					className="scroll-fade-y min-h-0 gap-5 overflow-y-auto overscroll-contain px-4 py-4 [--scroll-fade-size:1.5rem]"
+					className="scroll-fade-y min-h-0 gap-5 overflow-y-auto overscroll-contain px-4 py-4"
 					data-qa-id="marketplace-install-content"
 				>
 					<Field className="gap-2">
@@ -1351,7 +1361,7 @@ function InstallDialog({
 							>
 								<span className="flex min-w-0 items-center gap-2">
 									{globalSelected ? (
-										<Globe2Icon data-icon="inline-start" aria-hidden />
+										<EarthIcon data-icon="inline-start" aria-hidden />
 									) : (
 										<FolderIcon data-icon="inline-start" aria-hidden />
 									)}
@@ -1365,11 +1375,11 @@ function InstallDialog({
 										placeholder="Search workspaces"
 										data-qa-id="marketplace-install-workspace-search"
 									/>
-									<CommandList>
+									<CommandList className="scroll-fade-y">
 										<CommandEmpty>No workspaces found.</CommandEmpty>
 										<CommandGroup>
 											<CommandItem
-												value="All Workspaces"
+												value="All workspaces"
 												disabled={globalInstalled}
 												data-checked={globalSelected}
 												onSelect={() => {
@@ -1379,8 +1389,8 @@ function InstallDialog({
 												}}
 												data-qa-id="marketplace-install-scope-global"
 											>
-												<Globe2Icon aria-hidden />
-												<span className="min-w-0 flex-1">All Workspaces</span>
+												<EarthIcon aria-hidden />
+												<span className="min-w-0 flex-1">All workspaces</span>
 												{globalInstalled ? (
 													<span className="text-muted-foreground text-xs">Already installed</span>
 												) : null}
@@ -1536,6 +1546,7 @@ function InstallDialog({
 						className="min-w-0 shrink"
 						data-qa-id="marketplace-install-confirm"
 					>
+						{submitting ? <Spinner data-icon="inline-start" aria-hidden="true" /> : null}
 						<span className="truncate">{submitting ? "Installing…" : confirmLabel}</span>
 					</Button>
 				</DialogFooter>
@@ -1774,48 +1785,39 @@ export function MarketplaceSettings() {
 	};
 
 	return (
-		<div className="@container mx-auto w-full max-w-3xl min-w-0" data-qa-id="marketplace-page">
-			<header className="flex items-start justify-between gap-3">
-				<div className="min-w-0">
-					<h1
-						className="text-base font-semibold tracking-tight"
-						data-qa-id="settings-section-heading"
-					>
-						Agent Behavior
-					</h1>
-					<p className="text-muted-foreground mt-0.5 text-sm leading-snug">
-						Manage the agents, skills, and MCPs available to Kilo.
-					</p>
-				</div>
-				<div className="flex shrink-0 items-center gap-2">
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						disabled={refresh.isPending || query.isPending}
-						onClick={() => refresh.mutate(input)}
-						data-qa-id="marketplace-refresh"
-					>
-						<RefreshCwIcon
-							data-icon="inline-start"
-							className={refresh.isPending ? "animate-spin" : undefined}
-						/>
-						Refresh
-					</Button>
-					<Button
-						type="button"
-						size="sm"
-						onClick={() => selectMode("browse")}
-						data-qa-id="marketplace-add"
-					>
-						<PlusIcon data-icon="inline-start" aria-hidden="true" />
-						Add
-					</Button>
-				</div>
-			</header>
+		<div className="@container flex min-w-0 flex-col gap-6" data-qa-id="marketplace-page">
+			<SettingsPageHeader
+				actions={
+					<>
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							disabled={refresh.isPending || query.isPending}
+							onClick={() => refresh.mutate(input)}
+							data-qa-id="marketplace-refresh"
+						>
+							<RefreshCwIcon
+								data-icon="inline-start"
+								className={refresh.isPending ? "animate-spin" : undefined}
+							/>
+							Refresh
+						</Button>
+						<Button
+							type="button"
+							size="sm"
+							onClick={() => selectMode("browse")}
+							data-qa-id="marketplace-add"
+						>
+							<PlusIcon data-icon="inline-start" aria-hidden="true" />
+							Add
+						</Button>
+					</>
+				}
+			/>
 
 			{snapshot?.errors.length ? (
-				<Alert className="mt-4" data-qa-id="marketplace-warning">
+				<Alert data-qa-id="marketplace-warning">
 					<CircleAlertIcon aria-hidden="true" />
 					<AlertTitle>
 						{snapshot.stale ? "Using saved catalog" : "Catalog partially available"}
@@ -1828,14 +1830,14 @@ export function MarketplaceSettings() {
 				</Alert>
 			) : null}
 			{refresh.error ? (
-				<Alert className="mt-4" variant="destructive">
+				<Alert variant="destructive">
 					<CircleAlertIcon aria-hidden="true" />
 					<AlertTitle>Could not refresh Marketplace</AlertTitle>
 					<AlertDescription>{refresh.error.message}</AlertDescription>
 				</Alert>
 			) : null}
 			{authenticateMcp.error ? (
-				<Alert className="mt-4" variant="destructive" data-qa-id="marketplace-authenticate-error">
+				<Alert variant="destructive" data-qa-id="marketplace-authenticate-error">
 					<CircleAlertIcon aria-hidden="true" />
 					<AlertTitle>MCP sign-in failed</AlertTitle>
 					<AlertDescription>{authenticateMcp.error.message}</AlertDescription>
@@ -1844,15 +1846,14 @@ export function MarketplaceSettings() {
 
 			{!catalogOpen ? (
 				<>
-					<div className="mt-6 flex min-w-0 flex-wrap items-center gap-2">
-						<InputGroup className="h-7 min-w-40 flex-1">
+					<div className="flex min-w-0 flex-wrap items-center gap-2">
+						<InputGroup size="sm" className="min-w-40 flex-1">
 							<InputGroupInput
 								type="search"
 								value={search}
 								onChange={(event) => setSearch(event.currentTarget.value)}
 								placeholder="Search installed items"
 								aria-label="Search installed items"
-								className="text-xs"
 								data-qa-id="marketplace-search"
 							/>
 							<InputGroupAddon>
@@ -1864,6 +1865,7 @@ export function MarketplaceSettings() {
 								selected={selectedTypes}
 								total={filtered.length}
 								counts={typeCounts}
+								loading={query.isPending}
 								onToggle={toggleType}
 								onClear={clearTypes}
 							/>
@@ -1882,7 +1884,7 @@ export function MarketplaceSettings() {
 						</div>
 					</div>
 
-					<section className="mt-6 flex min-w-0 flex-col gap-2" aria-label="Installed items">
+					<section className="flex min-w-0 flex-col gap-2" aria-label="Installed items">
 						{query.isPending ? (
 							<MarketplaceLoading mode="installed" />
 						) : query.error ? (
@@ -1897,22 +1899,20 @@ export function MarketplaceSettings() {
 							>
 								{installedSections.map((section) =>
 									section.rows.length === 0 ? null : (
-										<section
+										<FieldSet
 											key={section.value}
-											className="grid min-w-0 gap-4"
-											aria-label={section.label}
+											className="min-w-0"
+											aria-labelledby={`marketplace-installed-heading-${section.value}`}
 										>
-											<header className="flex items-center gap-1.5">
-												<span
-													className={cn(
-														"shrink-0 [&>svg]:size-3.5",
-														TYPE_ICON_STYLES[section.value],
-													)}
+											<div>
+												<FieldLegend
+													id={`marketplace-installed-heading-${section.value}`}
+													variant="label"
+													className="mb-0"
 												>
-													<TypeIcon type={section.value} />
-												</span>
-												<h2 className="text-sm leading-tight font-medium">{section.label}</h2>
-											</header>
+													{section.label}
+												</FieldLegend>
+											</div>
 											<div className="border-border bg-card divide-border min-w-0 divide-y overflow-hidden rounded-lg border">
 												{section.rows.map(({ item, installations, key }) => (
 													<InstalledCard
@@ -1948,12 +1948,12 @@ export function MarketplaceSettings() {
 													/>
 												))}
 											</div>
-										</section>
+										</FieldSet>
 									),
 								)}
 							</div>
 						) : (
-							<Empty className="min-h-64 border" data-qa-id="marketplace-empty">
+							<Empty className="border" data-qa-id="marketplace-empty">
 								<EmptyHeader>
 									<EmptyMedia variant="icon">
 										{hasFilters ? (
@@ -1998,25 +1998,24 @@ export function MarketplaceSettings() {
 
 			<Dialog open={catalogOpen} onOpenChange={(open) => selectMode(open ? "browse" : "installed")}>
 				<DialogContent
-					className="@container h-[min(52rem,calc(100dvh-4rem))] grid-rows-[auto_auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:w-[calc(100%-3rem)] sm:max-w-6xl"
+					className="@container h-[min(48rem,calc(100dvh-4rem))] grid-rows-[auto_auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:w-[calc(100%-4rem)] sm:max-w-6xl"
 					data-qa-id="marketplace-catalog-dialog"
 				>
-					<DialogHeader className="shrink-0 gap-0.5 px-4 pt-4 pr-12 pb-6 text-left">
-						<DialogTitle className="text-base leading-tight">Kilo Marketplace</DialogTitle>
+					<DialogHeader className="shrink-0 px-4 pt-4 pr-12 pb-6 text-left">
+						<DialogTitle>Kilo Marketplace</DialogTitle>
 						<DialogDescription className="text-sm leading-tight">
 							Browse specialized agents, skills, and MCPs to add to Kilo.
 						</DialogDescription>
 					</DialogHeader>
-					<div className="grid w-full min-w-0 gap-6 px-4">
+					<div className="grid w-full min-w-0 gap-4 px-4">
 						<div className="flex min-w-0 flex-wrap items-center gap-2">
-							<InputGroup className="h-7 min-w-40 flex-1">
+							<InputGroup size="sm" className="min-w-40 flex-1">
 								<InputGroupInput
 									type="search"
 									value={search}
 									onChange={(event) => setSearch(event.currentTarget.value)}
 									placeholder="Search Kilo Marketplace"
 									aria-label="Search Kilo Marketplace"
-									className="text-xs"
 									data-qa-id="marketplace-search"
 								/>
 								<InputGroupAddon>
@@ -2027,6 +2026,7 @@ export function MarketplaceSettings() {
 								selected={selectedTypes}
 								total={filtered.length}
 								counts={typeCounts}
+								loading={query.isPending}
 								onToggle={toggleType}
 								onClear={clearTypes}
 							/>
@@ -2034,13 +2034,17 @@ export function MarketplaceSettings() {
 						<CategoryToggles
 							categories={categoryOptions}
 							selected={browseCategories}
+							loading={query.isPending}
 							onToggle={toggleBrowseCategory}
 							onClear={clearBrowseCategories}
 						/>
 					</div>
+					{/* pl-6 matches the category tiles' px-2 inset so section content aligns with the tile
+					    icons. pt-3 is small because unpressed tiles and each section header's min-h-7
+					    already add transparent space; together they give a visual 24px gap. */}
 					<section
 						ref={catalogViewportRef}
-						className="scroll-fade-y min-h-0 min-w-0 [scrollbar-gutter:stable] overflow-y-auto px-4 pt-6 pb-4 [--scroll-fade-size:1.5rem]"
+						className="scroll-fade-y min-h-0 min-w-0 [scrollbar-gutter:stable] overflow-y-auto pt-3 pr-4 pb-4 pl-6"
 						aria-label="Marketplace items"
 						data-qa-id="marketplace-scroll-viewport"
 					>
@@ -2049,76 +2053,71 @@ export function MarketplaceSettings() {
 						) : query.error ? (
 							<MarketplaceLoadError message={query.error.message} />
 						) : visible.length > 0 ? (
-							<TooltipProvider>
-								<div
-									className="grid min-w-0 content-start gap-7"
-									data-qa-id="marketplace-card-grid"
-								>
-									{catalogSections.map((section) => {
-										const previewRows =
-											browseCategories.size === 0
-												? section.rows.slice(0, CATEGORY_PREVIEW_LIMIT)
-												: section.rows;
-										return (
-											<section
-												key={section.value}
-												className="grid min-w-0 gap-3"
-												aria-labelledby={`marketplace-category-heading-${section.value}`}
-												data-qa-id={`marketplace-category-section-${section.value}`}
-											>
-												{/* min-h-7 reserves the View all button's height so headers don't shift when it hides. */}
-												<header className="flex min-h-7 min-w-0 items-center gap-2">
-													<span className="text-muted-foreground shrink-0 [&>svg]:size-3.5">
-														<CategoryIcon category={section.value} />
-													</span>
-													<h2
-														id={`marketplace-category-heading-${section.value}`}
-														className="truncate text-sm leading-tight font-medium"
+							<div className="grid min-w-0 content-start gap-6" data-qa-id="marketplace-card-grid">
+								{catalogSections.map((section) => {
+									const previewRows =
+										browseCategories.size === 0
+											? section.rows.slice(0, CATEGORY_PREVIEW_LIMIT)
+											: section.rows;
+									return (
+										<section
+											key={section.value}
+											className="grid min-w-0 gap-3"
+											aria-labelledby={`marketplace-category-heading-${section.value}`}
+											data-qa-id={`marketplace-category-section-${section.value}`}
+										>
+											{/* min-h-7 reserves the View all button's height so headers don't shift when it hides. */}
+											<header className="flex min-h-7 min-w-0 items-center gap-2">
+												<span className="text-muted-foreground shrink-0 [&>svg]:size-3.5">
+													<CategoryIcon category={section.value} />
+												</span>
+												<h2
+													id={`marketplace-category-heading-${section.value}`}
+													className="truncate text-sm leading-tight font-medium"
+												>
+													{section.label}
+												</h2>
+												<span className="text-muted-foreground text-xs leading-tight tabular-nums">
+													<span className="sr-only">Items: </span>
+													{section.rows.length}
+												</span>
+												{previewRows.length < section.rows.length ? (
+													<Button
+														type="button"
+														variant="ghost"
+														size="sm"
+														className="ml-auto h-7 px-2 text-xs"
+														aria-label={`View all ${section.label}`}
+														onClick={() => {
+															catalogViewportRef.current?.scrollTo({ top: 0 });
+															toggleBrowseCategory(section.value);
+														}}
+														data-qa-id={`marketplace-view-all-${section.value}`}
 													>
-														{section.label}
-													</h2>
-													<span className="text-muted-foreground text-xs leading-tight tabular-nums">
-														<span className="sr-only">Items: </span>
-														{section.rows.length}
-													</span>
-													{previewRows.length < section.rows.length ? (
-														<Button
-															type="button"
-															variant="ghost"
-															size="sm"
-															className="ml-auto h-7 px-2 text-xs"
-															aria-label={`View all ${section.label}`}
-															onClick={() => {
-																catalogViewportRef.current?.scrollTo({ top: 0 });
-																toggleBrowseCategory(section.value);
-															}}
-															data-qa-id={`marketplace-view-all-${section.value}`}
-														>
-															View all
-														</Button>
-													) : null}
-												</header>
-												<div className="grid min-w-0 gap-3 @xl:grid-cols-2 @5xl:grid-cols-3">
-													{previewRows.map(({ item, installations, key }) =>
-														isCatalogItem(item) ? (
-															<MarketplaceCatalogCard
-																key={key}
-																item={item}
-																installations={installations}
-																targets={snapshot?.targets ?? []}
-																onInstall={setInstalling}
-																onOpenLink={(url) => void sdk.shell.openExternal(url)}
-															/>
-														) : null,
-													)}
-												</div>
-											</section>
-										);
-									})}
-								</div>
-							</TooltipProvider>
+														View all
+													</Button>
+												) : null}
+											</header>
+											<div className="grid min-w-0 gap-3 @xl:grid-cols-2 @5xl:grid-cols-3">
+												{previewRows.map(({ item, installations, key }) =>
+													isCatalogItem(item) ? (
+														<MarketplaceCatalogCard
+															key={key}
+															item={item}
+															installations={installations}
+															targets={snapshot?.targets ?? []}
+															onInstall={setInstalling}
+															onOpenLink={(url) => void sdk.shell.openExternal(url)}
+														/>
+													) : null,
+												)}
+											</div>
+										</section>
+									);
+								})}
+							</div>
 						) : (
-							<Empty className="min-h-64 border" data-qa-id="marketplace-empty">
+							<Empty className="border" data-qa-id="marketplace-empty">
 								<EmptyHeader>
 									<EmptyMedia variant="icon">
 										{hasFilters ? (
@@ -2188,6 +2187,7 @@ export function MarketplaceSettings() {
 							onClick={confirmRemove}
 							data-qa-id="marketplace-remove-confirm"
 						>
+							{remove.isPending ? <Spinner data-icon="inline-start" aria-hidden="true" /> : null}
 							{remove.isPending ? "Removing…" : "Remove"}
 						</AlertDialogAction>
 					</AlertDialogFooter>
@@ -2199,7 +2199,7 @@ export function MarketplaceSettings() {
 
 function MarketplaceLoadError({ message, onRetry }: { message: string; onRetry?(): void }) {
 	return (
-		<Empty className="min-h-64 border" data-qa-id="marketplace-error">
+		<Empty className="border" data-qa-id="marketplace-error">
 			<EmptyHeader>
 				<EmptyMedia variant="icon">
 					<CircleAlertIcon aria-hidden="true" />
@@ -2219,54 +2219,113 @@ function MarketplaceLoadError({ message, onRetry }: { message: string; onRetry?(
 	);
 }
 
+// Each placeholder reuses the loaded view's containers (section header, Card, SummaryCard.Row,
+// FieldSet) and puts SkeletonText inside the same text styles, so nothing shifts when data lands.
+const LOADING_SECTIONS = [
+	{ key: "first", cards: ["a", "b", "c", "d", "e", "f"], rows: ["a", "b", "c"] },
+	{ key: "second", cards: ["a", "b", "c"], rows: ["a", "b"] },
+];
+
 function MarketplaceLoading({ mode }: { mode: MarketplaceMode }) {
-	const rows = ["first", "second", "third", "fourth", "fifth", "sixth"];
-	if (mode === "browse") {
-		return (
-			<div
-				className="grid min-w-0 gap-3 @xl:grid-cols-2 @5xl:grid-cols-3"
-				aria-label="Loading Marketplace catalog"
-				data-qa-id="marketplace-loading"
-			>
-				{rows.map((row) => (
-					<div
-						key={row}
-						className="border-border bg-card grid min-w-0 content-start gap-3 rounded-lg border p-3"
-					>
-						<div className="flex items-center gap-2.5">
-							<Skeleton className="size-8 shrink-0 rounded-md" />
-							<Skeleton className="h-3.5 w-28" />
-							<Skeleton className="ml-auto size-7 shrink-0 rounded-md" />
-						</div>
-						<div className="grid gap-1">
-							<Skeleton className="h-3 w-full" />
-							<Skeleton className="h-3 w-2/3" />
-						</div>
-						<div className="flex items-center gap-1.5">
-							<Skeleton className="h-3 w-20" />
-							<Skeleton className="ml-auto h-4.5 w-16 rounded-md" />
-						</div>
-					</div>
-				))}
-			</div>
-		);
-	}
 	return (
 		<div
-			className="border-border bg-card divide-border divide-y overflow-hidden rounded-lg border"
-			aria-label="Loading installed items"
+			className="grid min-w-0 content-start gap-6"
+			role="status"
+			aria-busy="true"
+			aria-label={mode === "browse" ? "Loading Marketplace catalog" : "Loading installed items"}
 			data-qa-id="marketplace-loading"
 		>
-			{rows.map((row) => (
-				<div key={row} className="flex items-center gap-2.5 p-2">
-					<Skeleton className="size-8 shrink-0 rounded-md" />
-					<div className="flex min-w-0 flex-1 flex-col gap-1">
-						<Skeleton className="h-3.5 w-36" />
-						<Skeleton className="h-3 w-4/5" />
-					</div>
-					<Skeleton className="h-6 w-24 rounded-md" />
-				</div>
-			))}
+			{LOADING_SECTIONS.map((section, index) =>
+				mode === "browse" ? (
+					<CatalogSectionPlaceholder
+						key={section.key}
+						cards={section.cards}
+						viewAll={index === 0}
+					/>
+				) : (
+					<InstalledSectionPlaceholder key={section.key} rows={section.rows} />
+				),
+			)}
 		</div>
+	);
+}
+
+function CatalogSectionPlaceholder({ cards, viewAll }: { cards: string[]; viewAll: boolean }) {
+	return (
+		<div aria-hidden="true" className="grid min-w-0 gap-3">
+			<div className="flex min-h-7 min-w-0 items-center gap-2">
+				<Skeleton className="size-3.5 shrink-0 rounded-sm" />
+				<span className="text-sm leading-tight font-medium">
+					<SkeletonText className="w-24" />
+				</span>
+				<span className="text-xs leading-tight">
+					<SkeletonText className="w-3" />
+				</span>
+				{viewAll ? <Skeleton className="ml-auto h-7 w-16" /> : null}
+			</div>
+			<div className="grid min-w-0 gap-3 @xl:grid-cols-2 @5xl:grid-cols-3">
+				{cards.map((card) => (
+					<CatalogCardPlaceholder key={card} />
+				))}
+			</div>
+		</div>
+	);
+}
+
+function CatalogCardPlaceholder() {
+	return (
+		<Card size="sm" className="min-w-0 gap-3 p-3">
+			<div className="flex min-w-0 items-center gap-2.5">
+				<Skeleton className="size-8 shrink-0" />
+				<span className="min-w-0 text-sm font-medium">
+					<SkeletonText className="w-28" />
+				</span>
+			</div>
+			<p className="min-h-8 w-full text-xs leading-4">
+				<SkeletonText className="w-64" />
+				<br />
+				<SkeletonText className="w-40" />
+			</p>
+			<div className="flex min-w-0 items-center gap-1.5 text-xs">
+				<span className="min-w-0">
+					<SkeletonText className="w-20" />
+				</span>
+				<Skeleton className="size-7 shrink-0" />
+				<Skeleton className="h-5 w-16 rounded-4xl" />
+			</div>
+		</Card>
+	);
+}
+
+function InstalledSectionPlaceholder({ rows }: { rows: string[] }) {
+	return (
+		<FieldSet aria-hidden="true" className="min-w-0">
+			<div>
+				<FieldLegend variant="label" className="mb-0">
+					<SkeletonText className="w-16" />
+				</FieldLegend>
+			</div>
+			<div className="border-border bg-card divide-border min-w-0 divide-y overflow-hidden rounded-lg border">
+				{rows.map((row) => (
+					<SummaryCard.Row key={row}>
+						<SummaryCard.Icon>
+							<Skeleton className="size-[18px] rounded-sm" />
+						</SummaryCard.Icon>
+						<SummaryCard.Content>
+							<SummaryCard.Title>
+								<SkeletonText className="w-36" />
+							</SummaryCard.Title>
+							<SummaryCard.Description>
+								<SkeletonText className="w-72" />
+							</SummaryCard.Description>
+						</SummaryCard.Content>
+						<SummaryCard.Actions className="gap-1.5">
+							<Skeleton className="hidden h-5 w-28 rounded-4xl @xl:block" />
+							<Skeleton className="size-7" />
+						</SummaryCard.Actions>
+					</SummaryCard.Row>
+				))}
+			</div>
+		</FieldSet>
 	);
 }

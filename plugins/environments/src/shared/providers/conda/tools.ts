@@ -45,7 +45,7 @@ export function registerCondaTools(sdk: SDK): void {
 	sdk.tools.register({
 		name: "conda.setup.open",
 		description:
-			"Open Environments settings in the desktop app so the user can create an environment " +
+			"Open Conda Environments settings in the desktop app so the user can create an environment " +
 			"and choose package channels. Use this when the user asks to set up or configure an " +
 			"environment or channel. Requires Anaconda sign-in before opening.",
 		inputSchema: { type: "object", properties: {}, additionalProperties: false },

@@ -21,8 +21,8 @@ import {
 // token rule — they mirror GitDiffHeader, the app's diff-stat convention.
 export const DiffStat = ({ additions, deletions }: { additions: number; deletions: number }) => (
 	<span className="shrink-0 text-xs tabular-nums">
-		<span className="text-green-500">+{additions}</span>
-		<span className="ml-1 text-red-500">−{deletions}</span>
+		<span className="text-success">+{additions}</span>
+		<span className="text-destructive ml-1">−{deletions}</span>
 	</span>
 );
 
@@ -47,7 +47,7 @@ const RevertMessageRow = ({
 			size="xs"
 			role="listitem"
 			data-qa-id="kilo-revert-message-row"
-			className="group hover:bg-muted/45 after:bg-border/35 relative h-8 min-w-0 shrink-0 flex-nowrap gap-1.5 rounded-md py-0 pr-[3px] pl-2 transition-colors after:absolute after:inset-x-0 after:bottom-0 after:h-px after:content-[''] last:after:hidden"
+			className="group hover:bg-muted after:bg-border/35 relative h-8 min-w-0 shrink-0 flex-nowrap gap-1.5 rounded-md py-0 pr-[3px] pl-2 transition-colors after:absolute after:inset-x-0 after:bottom-0 after:h-px after:content-[''] last:after:hidden"
 		>
 			<ItemContent className="min-w-0">
 				<ItemDescription className="text-foreground/90 line-clamp-none truncate text-sm">
@@ -58,7 +58,7 @@ const RevertMessageRow = ({
 				{row.hasDiffs ? (
 					<DiffStat additions={row.additions} deletions={row.deletions} />
 				) : (
-					<span className="text-muted-foreground text-[11px]">No changes</span>
+					<span className="text-muted-foreground text-2xs">No changes</span>
 				)}
 				<Button
 					type="button"
@@ -67,7 +67,7 @@ const RevertMessageRow = ({
 					disabled={isRunning}
 					onClick={() => void restore()}
 					data-qa-id="kilo-revert-row-restore-button"
-					className="text-muted-foreground hover:text-foreground h-6 px-2 text-xs opacity-65 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+					className="opacity-65 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
 				>
 					Restore to here
 				</Button>

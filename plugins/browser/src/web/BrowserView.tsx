@@ -1,8 +1,10 @@
 import {
 	ArrowLeftIcon,
 	ArrowRightIcon,
+	CircleAlertIcon,
+	EllipsisVerticalIcon,
+	GlobeIcon,
 	MinusIcon,
-	MoreVerticalIcon,
 	PlusIcon,
 	RefreshCwIcon,
 	RotateCcwIcon,
@@ -19,6 +21,14 @@ import {
 
 import { useSdk } from "@kilo-desktop/sdk-react";
 import { Button } from "@kilo-desktop/ui/components/button";
+import {
+	Empty,
+	EmptyContent,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyMedia,
+	EmptyTitle,
+} from "@kilo-desktop/ui/components/empty";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -317,7 +327,7 @@ export function BrowserView({ sessionId, instanceId, title, metadata }: BrowserV
 			});
 	return (
 		<div
-			className="flex min-h-0 flex-1 flex-col bg-[var(--pane-surface,var(--color-background))]"
+			className="bg-pane flex min-h-0 flex-1 flex-col"
 			data-qa-id="browser-view"
 			aria-busy={!ready}
 		>
@@ -385,7 +395,7 @@ export function BrowserView({ sessionId, instanceId, title, metadata }: BrowserV
 									aria-label="Browser menu"
 									data-qa-id="browser-menu"
 								>
-									<MoreVerticalIcon />
+									<EllipsisVerticalIcon />
 								</Button>
 							}
 						/>
@@ -462,17 +472,33 @@ export function BrowserView({ sessionId, instanceId, title, metadata }: BrowserV
 			) : null}
 			<div ref={surfaceRef} className="relative min-h-0 flex-1">
 				{!hasUrl ? (
-					<div className="text-muted-foreground absolute inset-0 flex items-center justify-center text-sm">
-						Enter a URL to start browsing.
-					</div>
+					<Empty className="absolute inset-0">
+						<EmptyHeader>
+							<EmptyMedia variant="icon">
+								<GlobeIcon aria-hidden="true" />
+							</EmptyMedia>
+							<EmptyTitle>No page open</EmptyTitle>
+							<EmptyDescription>Enter a URL to start browsing.</EmptyDescription>
+						</EmptyHeader>
+					</Empty>
 				) : null}
 				{state?.failure ? (
-					<div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-[var(--pane-surface,var(--color-card))] p-6 text-center">
-						<p className="font-medium">This page could not be loaded.</p>
-						<p className="text-muted-foreground text-xs">{state.failure.description}</p>
-						<Button type="button" variant="outline" size="sm" onClick={command("reload")}>
-							Try again
-						</Button>
+					<div className="bg-pane absolute inset-0 z-10 flex">
+						<Empty>
+							<EmptyHeader>
+								<EmptyMedia variant="icon">
+									<CircleAlertIcon aria-hidden="true" />
+								</EmptyMedia>
+								<EmptyTitle>Could not load this page</EmptyTitle>
+								<EmptyDescription>{state.failure.description}</EmptyDescription>
+							</EmptyHeader>
+							<EmptyContent>
+								<Button type="button" variant="outline" onClick={command("reload")}>
+									<RefreshCwIcon data-icon="inline-start" aria-hidden="true" />
+									Try again
+								</Button>
+							</EmptyContent>
+						</Empty>
 					</div>
 				) : null}
 			</div>

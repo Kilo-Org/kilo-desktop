@@ -14,7 +14,6 @@ import {
 	type CondaRepodataPackage,
 	type CondaService,
 } from "../../../contracts/providers/conda.js";
-import { PACKAGE_TABLE_COLUMN_WIDTHS_STORAGE_KEY } from "./column-widths.js";
 import { EnvironmentDetail } from "./EnvironmentDetail.js";
 
 const MOCK_ENV: CondaEnv = { name: "dev", prefix: "/opt/conda/envs/dev" };
@@ -169,6 +168,15 @@ describe("EnvironmentDetail", () => {
 			.toHaveTextContent("/opt/conda/envs/dev");
 	});
 
+	it("calls onBack when the back button is pressed", async () => {
+		const onBack = vi.fn();
+		const { baseElement } = renderDetail({ onBack });
+		const screen = page.elementLocator(baseElement);
+
+		await screen.getByTestId("environments-conda-detail-back").click();
+		expect(onBack).toHaveBeenCalledOnce();
+	});
+
 	it("renders directory basename as the name when env.name is empty", async () => {
 		const { baseElement } = renderDetail({
 			env: { name: "", prefix: "/opt/conda" },
@@ -199,30 +207,35 @@ describe("EnvironmentDetail", () => {
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-conda-detail-table")).toBeVisible();
-		// Default page size is 20; our mock has 7 packages so all should render
 		expect(
 			baseElement.querySelectorAll('[data-qa-id="environments-conda-detail-row"]').length,
 		).toBe(8);
 	});
 
-	it("displays pagination info showing total items", async () => {
+	it("renders the package list without pagination", async () => {
 		const { baseElement } = renderDetail();
 		const screen = page.elementLocator(baseElement);
 
-		await expect.element(screen.getByTestId("environments-conda-detail-pagination")).toBeVisible();
-		await expect.element(screen.getByText("1 – 8 of 8 items")).toBeVisible();
+		await expect.element(screen.getByTestId("environments-conda-detail-table")).toBeVisible();
+		expect(baseElement.querySelector('[data-qa-id*="pagination"]')).toBeNull();
 	});
 
-	it("surfaces backend errors", async () => {
+	it("surfaces backend errors with a retry", async () => {
+		let calls = 0;
 		const { baseElement } = renderDetail({
 			packagesList: async () => {
-				throw new Error("connection failed");
+				calls += 1;
+				if (calls === 1) throw new Error("connection failed");
+				return { envName: "dev", packages: MOCK_PACKAGES };
 			},
 		});
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-conda-detail-error")).toBeVisible();
 		await expect.element(screen.getByText(/could not load packages/i)).toBeVisible();
+
+		await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+		await expect.element(screen.getByTestId("environments-conda-detail-table")).toBeVisible();
 	});
 
 	it("shows empty state when no packages are installed", async () => {
@@ -263,16 +276,22 @@ describe("EnvironmentDetail", () => {
 		await expect.element(screen.getByTestId("environments-conda-detail-empty")).toBeVisible();
 	});
 
-	it("renders back button and action buttons", async () => {
+	it("renders the environment as the page title and subtitle", async () => {
 		const { baseElement } = renderDetail();
 		const screen = page.elementLocator(baseElement);
 
+		await expect
+			.element(screen.getByRole("heading", { level: 1, name: "dev" }))
+			.toHaveAttribute("data-qa-id", "environments-conda-detail-name");
+		await expect
+			.element(screen.getByTestId("environments-conda-detail-prefix"))
+			.toHaveTextContent("/opt/conda/envs/dev");
 		await expect.element(screen.getByTestId("environments-conda-detail-back")).toBeVisible();
 		await expect.element(screen.getByTestId("environments-conda-detail-add-pkg")).toBeVisible();
 	});
 
-	it("navigates pages when there are more packages than page size", async () => {
-		const manyPackages: CondaPackage[] = Array.from({ length: 45 }, (_, i) => ({
+	it("virtualises long package lists and reaches the last row by scrolling", async () => {
+		const manyPackages: CondaPackage[] = Array.from({ length: 300 }, (_, i) => ({
 			name: `pkg-${String(i).padStart(3, "0")}`,
 			version: "1.0.0",
 			build: "py311_0",
@@ -280,44 +299,41 @@ describe("EnvironmentDetail", () => {
 		}));
 		const { baseElement } = renderDetail({
 			packagesList: async () => ({ envName: "dev", packages: manyPackages }),
+			hostHeight: 480,
 		});
 		const screen = page.elementLocator(baseElement);
 
-		await expect.element(screen.getByTestId("environments-conda-detail-table")).toBeVisible();
-		await expect.element(screen.getByText("1 – 20 of 45 items")).toBeVisible();
+		await expect.element(screen.getByTestId("environments-conda-detail-row").first()).toBeVisible();
+		const rendered = baseElement.querySelectorAll('[data-qa-id="environments-conda-detail-row"]');
+		expect(rendered.length).toBeGreaterThan(0);
+		expect(rendered.length).toBeLessThan(manyPackages.length);
 
-		const pager = screen.getByTestId("environments-conda-detail-pagination");
-
-		await screen.getByTestId("environments-conda-detail-pagination-next").click();
-		await expect.element(screen.getByText("21 – 40 of 45 items")).toBeVisible();
-
-		// The last page is reached by its number: the shared pager offers no
-		// first/last jump, relying on numbered pages and ellipsis instead.
-		await pager.getByText("3", { exact: true }).click();
-		await expect.element(screen.getByText("41 – 45 of 45 items")).toBeVisible();
-
-		await screen.getByTestId("environments-conda-detail-pagination-prev").click();
-		await expect.element(screen.getByText("21 – 40 of 45 items")).toBeVisible();
+		const scroller = baseElement.querySelector(
+			'[data-qa-id="environments-conda-detail-table"]',
+		)! as HTMLElement;
+		scroller.scrollTop = scroller.scrollHeight;
+		await expect.element(screen.getByText("pkg-299")).toBeVisible();
 	});
 
-	it("sorts packages by version when version header is clicked", async () => {
+	it("sorts packages by version from the view menu", async () => {
 		const { baseElement } = renderDetail();
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-conda-detail-table")).toBeVisible();
 
-		// Click version header to sort by version ascending
-		const versionButton = screen.getByRole("button", { name: /version/i });
-		await versionButton.click();
+		await userEvent.click(screen.getByTestId("environments-conda-detail-view-menu"));
+		await userEvent.click(screen.getByRole("menuitem", { name: /Sort by/ }));
+		await userEvent.click(screen.getByRole("menuitemradio", { name: "Version" }));
 
-		// Extract displayed versions and verify ascending order
-		// Column indices: 0=checkbox, 1=name, 2=version, 3=source, 4=actions
-		const rows = baseElement.querySelectorAll('[data-qa-id="environments-conda-detail-row"]');
-		const versions = Array.from(rows).map(
-			(row) => row.querySelectorAll("td")[2]?.textContent ?? "",
-		);
-		const sortedVersions = [...versions].sort((a, b) => a.localeCompare(b));
-		expect(versions).toEqual(sortedVersions);
+		// Column indices: 0=checkbox, 1=name, 2=version, 3=source, 4=channel, 5=actions
+		await vi.waitFor(() => {
+			const rows = baseElement.querySelectorAll('[data-qa-id="environments-conda-detail-row"]');
+			const versions = Array.from(rows).map(
+				(row) => row.querySelectorAll("td")[2]?.textContent ?? "",
+			);
+			expect(versions).toEqual([...versions].sort((a, b) => a.localeCompare(b)));
+			expect(versions[0]).toBe("0.13.2");
+		});
 	});
 
 	it("shows conda badge for conda packages and pip badge for pypi packages", async () => {
@@ -334,41 +350,42 @@ describe("EnvironmentDetail", () => {
 		expect(labels.filter((l) => l === "pip")).toHaveLength(1);
 	});
 
-	it("sorts packages by source when the Source header is clicked", async () => {
+	it("sorts packages by source from the view menu", async () => {
 		const { baseElement } = renderDetail();
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-conda-detail-table")).toBeVisible();
 
-		// Click source header to sort by source ascending (conda before pip)
-		const sourceButton = screen.getByRole("button", { name: /source/i });
-		await sourceButton.click();
+		await userEvent.click(screen.getByTestId("environments-conda-detail-view-menu"));
+		await userEvent.click(screen.getByRole("menuitem", { name: /Sort by/ }));
+		await userEvent.click(screen.getByRole("menuitemradio", { name: "Source" }));
+		await userEvent.click(screen.getByRole("menuitem", { name: /^Order/ }));
+		await userEvent.click(screen.getByRole("menuitemradio", { name: "Descending" }));
 
-		const badges = baseElement.querySelectorAll('[data-qa-id="environments-conda-detail-source"]');
-		const labels = Array.from(badges).map((b) => b.textContent?.trim());
-
-		// All conda packages should appear before pip packages in ascending order
-		const firstPipIndex = labels.indexOf("pip");
-		const lastCondaIndex = labels.lastIndexOf("conda");
-		expect(lastCondaIndex).toBeLessThan(firstPipIndex);
+		// Descending by source puts the pip package first.
+		await vi.waitFor(() => {
+			const badges = baseElement.querySelectorAll(
+				'[data-qa-id="environments-conda-detail-source"]',
+			);
+			expect(badges[0]?.textContent?.trim()).toBe("pip");
+		});
 	});
 
-	it("toggles sort direction when clicking the same column header again", async () => {
+	it("sorts names descending from the view menu", async () => {
 		const { baseElement } = renderDetail();
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-conda-detail-table")).toBeVisible();
 
-		// Default sort is name ascending. Clicking the name header toggles to descending.
-		const nameButton = screen.getByRole("columnheader", { name: /package/i }).getByRole("button");
-		await nameButton.click();
+		await userEvent.click(screen.getByTestId("environments-conda-detail-view-menu"));
+		await userEvent.click(screen.getByRole("menuitem", { name: /^Order/ }));
+		await userEvent.click(screen.getByRole("menuitemradio", { name: "Descending" }));
 
-		// Extract names and verify descending order
-		// Column indices: 0=checkbox, 1=name, 2=version, 3=source, 4=actions
-		const rows = baseElement.querySelectorAll('[data-qa-id="environments-conda-detail-row"]');
-		const names = Array.from(rows).map((row) => row.querySelectorAll("td")[1]?.textContent ?? "");
-		const sortedDesc = [...names].sort((a, b) => b.localeCompare(a));
-		expect(names).toEqual(sortedDesc);
+		await vi.waitFor(() => {
+			const rows = baseElement.querySelectorAll('[data-qa-id="environments-conda-detail-row"]');
+			const names = Array.from(rows).map((row) => row.querySelectorAll("td")[1]?.textContent ?? "");
+			expect(names).toEqual([...names].sort((a, b) => b.localeCompare(a)));
+		});
 	});
 
 	it("Add Package button opens the add package dialog", async () => {
@@ -381,7 +398,7 @@ describe("EnvironmentDetail", () => {
 		await addBtn.click();
 
 		await expect.element(screen.getByTestId("environments-conda-add-pkg-dialog")).toBeVisible();
-		await expect.element(screen.getByText(/Add Packages to/)).toBeVisible();
+		await expect.element(screen.getByText(/Add packages to/)).toBeVisible();
 		await expect.element(screen.getByTestId("environments-conda-add-pkg-search")).toBeVisible();
 	});
 
@@ -498,7 +515,7 @@ describe("EnvironmentDetail", () => {
 		});
 	});
 
-	it("marks upgradable rows and offers the updates dropdown with a filter", async () => {
+	it("marks upgradable rows and filters to them from the view menu", async () => {
 		const { baseElement } = renderDetail({ handlers: UPGRADE_HANDLERS });
 		const screen = page.elementLocator(baseElement);
 
@@ -506,11 +523,13 @@ describe("EnvironmentDetail", () => {
 		await expect.element(badge).toBeVisible();
 		expect(await badge.all()).toHaveLength(1);
 		await expect.element(badge).toHaveAttribute("aria-label", "Update available: 2.5.1 → 2.6.0");
+		await expect
+			.element(screen.getByTestId("environments-conda-detail-update-all"))
+			.toHaveTextContent("Update 1 package");
 
-		const trigger = screen.getByTestId("environments-conda-detail-upgradable-filter");
-		expect(await trigger.element().textContent).toContain("1");
-		await userEvent.click(trigger);
-		await userEvent.click(screen.getByRole("menuitem", { name: /Filter packages with updates/ }));
+		await userEvent.click(screen.getByTestId("environments-conda-detail-view-menu"));
+		const filter = screen.getByRole("menuitemcheckbox", { name: "Only packages with updates" });
+		await userEvent.click(filter);
 
 		await vi.waitFor(() => {
 			const rows = baseElement.querySelectorAll('[data-qa-id="environments-conda-detail-row"]');
@@ -518,8 +537,7 @@ describe("EnvironmentDetail", () => {
 			expect(rows[0]!.textContent).toContain("numpy");
 		});
 
-		await userEvent.click(trigger);
-		await userEvent.click(screen.getByRole("menuitem", { name: /Show all packages/ }));
+		await userEvent.click(filter);
 		await vi.waitFor(() => {
 			expect(
 				baseElement.querySelectorAll('[data-qa-id="environments-conda-detail-row"]'),
@@ -527,16 +545,18 @@ describe("EnvironmentDetail", () => {
 		});
 	});
 
-	it("Update all… opens the update sheet with every upgradable package", async () => {
+	it("Update all opens the update sheet with every upgradable package", async () => {
 		const { baseElement } = renderDetail({ handlers: UPGRADE_HANDLERS });
 		const screen = page.elementLocator(baseElement);
 
-		await userEvent.click(screen.getByTestId("environments-conda-detail-upgradable-filter"));
-		await userEvent.click(screen.getByRole("menuitem", { name: /Update all/ }));
+		await expect
+			.element(screen.getByTestId("environments-conda-detail-upgrade-badge"))
+			.toBeVisible();
+		await userEvent.click(screen.getByTestId("environments-conda-detail-update-all"));
 
 		const sheet = screen.getByTestId("environments-conda-update-confirm-dialog");
 		await expect.element(sheet).toBeVisible();
-		expect(await sheet.element().textContent).toContain("Update 1 Package in");
+		expect(await sheet.element().textContent).toContain("Update 1 package in");
 	});
 
 	it("per-row Update… opens the update sheet for just that package", async () => {
@@ -552,7 +572,7 @@ describe("EnvironmentDetail", () => {
 		const sheet = screen.getByTestId("environments-conda-update-confirm-dialog");
 		await expect.element(sheet).toBeVisible();
 		const text = (await sheet.element().textContent) ?? "";
-		expect(text).toContain("Update 1 Package in");
+		expect(text).toContain("Update 1 package in");
 		expect(text).toContain("numpy");
 		expect(text).not.toContain("pandas");
 	});
@@ -574,7 +594,7 @@ describe("EnvironmentDetail", () => {
 			.toHaveTextContent("Python 3.11.9");
 	});
 
-	it("selecting rows shows the bulk bar; select-all toggles the page; Clear resets", async () => {
+	it("selecting rows swaps the toolbar for bulk actions; select-all and Clear reset it", async () => {
 		const { baseElement } = renderDetail();
 		const screen = page.elementLocator(baseElement);
 		await expect.element(screen.getByTestId("environments-conda-detail-table")).toBeVisible();
@@ -582,13 +602,11 @@ describe("EnvironmentDetail", () => {
 		await userEvent.click(screen.getByRole("checkbox", { name: "Select numpy" }));
 		const bar = screen.getByTestId("environments-conda-detail-bulk-bar");
 		await expect.element(bar).toBeVisible();
-		expect(await bar.element().textContent).toContain("1 package selected");
+		expect(await bar.element().textContent).toContain("1 selected");
 
 		await userEvent.click(screen.getByTestId("environments-conda-detail-select-all"));
 		await vi.waitFor(async () => {
-			expect(await bar.element().textContent).toContain(
-				`${MOCK_PACKAGES.length} packages selected`,
-			);
+			expect(await bar.element().textContent).toContain(`${MOCK_PACKAGES.length} selected`);
 		});
 
 		await userEvent.click(screen.getByTestId("environments-conda-detail-select-all"));
@@ -650,26 +668,31 @@ describe("EnvironmentDetail", () => {
 		await expect.element(sheet).toBeVisible();
 		const text = (await sheet.element().textContent) ?? "";
 		// numpy is upgradable; pandas is listed but shown as already current.
-		expect(text).toContain("Update 1 Package in");
+		expect(text).toContain("Update 1 package in");
 		expect(text).toContain("pandas");
 		expect(text).toContain("up to date");
 	});
 
-	it("sorts by channel when the Channel header is clicked", async () => {
+	it("sorts by channel from the view menu", async () => {
 		const { baseElement } = renderDetail();
 		const screen = page.elementLocator(baseElement);
 		await expect.element(screen.getByTestId("environments-conda-detail-table")).toBeVisible();
 
-		await userEvent.click(screen.getByRole("button", { name: /^Channel/ }));
+		await userEvent.click(screen.getByTestId("environments-conda-detail-view-menu"));
+		await userEvent.click(screen.getByRole("menuitem", { name: /Sort by/ }));
+		await userEvent.click(screen.getByRole("menuitemradio", { name: "Channel" }));
 
-		const channels = Array.from(
-			baseElement.querySelectorAll('[data-qa-id="environments-conda-detail-channel"]'),
-		).map((cell) => cell.textContent ?? "");
-		expect(channels).toEqual([...channels].sort((a, b) => a.localeCompare(b)));
+		await vi.waitFor(() => {
+			const channels = Array.from(
+				baseElement.querySelectorAll('[data-qa-id="environments-conda-detail-channel"]'),
+			).map((cell) => cell.textContent ?? "");
+			expect(channels).toEqual([...channels].sort((a, b) => a.localeCompare(b)));
+			expect(channels[0]).toBe("conda-forge");
+		});
 	});
 });
 
-describe("EnvironmentDetail — sticky package headers", () => {
+describe("EnvironmentDetail — scrolling", () => {
 	const manyPackages = Array.from({ length: 40 }, (_, index) => ({
 		name: `pkg-${String(index).padStart(2, "0")}`,
 		version: "1.0.0",
@@ -677,7 +700,7 @@ describe("EnvironmentDetail — sticky package headers", () => {
 		channel: "defaults",
 	}));
 
-	it("keeps the column headers visible while the package rows scroll", async () => {
+	it("scrolls the package rows inside the table panel while the toolbar stays put", async () => {
 		const { baseElement } = renderDetail({
 			packagesList: async () => ({ envName: "dev", packages: manyPackages }),
 			hostHeight: 380,
@@ -688,80 +711,17 @@ describe("EnvironmentDetail — sticky package headers", () => {
 		const scroller = baseElement.querySelector(
 			'[data-qa-id="environments-conda-detail-table"]',
 		)! as HTMLElement;
-		const header = baseElement.querySelector("thead")!;
+		const search = baseElement.querySelector('[data-qa-id="environments-conda-detail-search"]')!;
 
 		expect(scroller.scrollHeight).toBeGreaterThan(scroller.clientHeight);
-
-		const headerBefore = header.getBoundingClientRect().top;
-		const firstRowBefore = baseElement
-			.querySelector('[data-qa-id="environments-conda-detail-row"]')!
-			.getBoundingClientRect().top;
+		const searchBefore = search.getBoundingClientRect().top;
 
 		scroller.scrollTop = scroller.scrollHeight - scroller.clientHeight;
 		await vi.waitFor(() => {
 			expect(scroller.scrollTop).toBeGreaterThan(0);
 		});
 
-		const firstRowAfter = baseElement
-			.querySelector('[data-qa-id="environments-conda-detail-row"]')!
-			.getBoundingClientRect().top;
-
-		// Rows move; the header does not.
-		expect(firstRowAfter).toBeLessThan(firstRowBefore);
-		expect(header.getBoundingClientRect().top).toBeCloseTo(headerBefore, 0);
-	});
-});
-
-describe("EnvironmentDetail — resizable columns", () => {
-	afterEach(() => {
-		localStorage.removeItem(PACKAGE_TABLE_COLUMN_WIDTHS_STORAGE_KEY);
-	});
-
-	function dragHandle(handle: Element, deltaX: number) {
-		const startX = 500;
-		handle.dispatchEvent(
-			new PointerEvent("pointerdown", { bubbles: true, clientX: startX, pointerId: 1 }),
-		);
-		window.dispatchEvent(
-			new PointerEvent("pointermove", { bubbles: true, clientX: startX + deltaX, pointerId: 1 }),
-		);
-		window.dispatchEvent(
-			new PointerEvent("pointerup", { bubbles: true, clientX: startX + deltaX, pointerId: 1 }),
-		);
-	}
-
-	it("widens the Package column when its handle is dragged right", async () => {
-		const { baseElement } = renderDetail({ hostWidth: 900 });
-		const screen = page.elementLocator(baseElement);
-		const handle = screen.getByTestId("environments-detail-column-resizer-name");
-
-		await expect.element(handle).toBeVisible();
-		dragHandle(handle.element(), 50);
-
-		// Package starts at its 240px default.
-		await expect.element(handle).toHaveAttribute("aria-valuenow", "290");
-	});
-
-	it("narrows the Version column from the keyboard and keeps it after remount", async () => {
-		const first = renderDetail({ hostWidth: 900 });
-		const firstHandle = page
-			.elementLocator(first.baseElement)
-			.getByTestId("environments-detail-column-resizer-version");
-
-		await expect.element(firstHandle).toBeVisible();
-		await userEvent.click(firstHandle);
-		await userEvent.keyboard("{ArrowLeft}");
-
-		// Version starts at 130px, so a single 16px step lands on the 120px floor.
-		await expect.element(firstHandle).toHaveAttribute("aria-valuenow", "120");
-
-		cleanup();
-		const second = renderDetail({ hostWidth: 900 });
-		const secondHandle = page
-			.elementLocator(second.baseElement)
-			.getByTestId("environments-detail-column-resizer-version");
-
-		await expect.element(secondHandle).toHaveAttribute("aria-valuenow", "120");
+		expect(search.getBoundingClientRect().top).toBeCloseTo(searchBefore, 0);
 	});
 });
 

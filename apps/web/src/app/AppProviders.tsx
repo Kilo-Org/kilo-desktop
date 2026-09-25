@@ -9,6 +9,7 @@ import { LocalApiProvider } from "@/platform/LocalApiProvider";
 import { ShellNavigationListener } from "@/platform/ShellNavigationListener";
 import { UpdateProvider } from "@/platform/updates/UpdateProvider";
 import { SdkProvider, type FeatureSystem } from "@kilo-desktop/sdk-react";
+import { TooltipProvider } from "@kilo-desktop/ui/components/tooltip";
 import { router } from "@/router";
 
 type AppProvidersProps = {
@@ -30,9 +31,13 @@ export function AppProviders({ localApi, system, children }: AppProvidersProps) 
 			<UpdateProvider>
 				<SdkProvider system={system}>
 					<QueryClientProvider client={queryClient}>
-						<PluginProviderStack>
-							{children ?? <RouterProvider router={router} />}
-						</PluginProviderStack>
+						{/* One provider for the whole app so adjacent tooltips share the
+						    open delay; features must not add their own. */}
+						<TooltipProvider>
+							<PluginProviderStack>
+								{children ?? <RouterProvider router={router} />}
+							</PluginProviderStack>
+						</TooltipProvider>
 					</QueryClientProvider>
 				</SdkProvider>
 			</UpdateProvider>

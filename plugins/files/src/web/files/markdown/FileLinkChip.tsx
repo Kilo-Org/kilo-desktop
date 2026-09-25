@@ -35,7 +35,7 @@ export function FileLinkChip({
 			href={href}
 			title={props.title ?? fileTarget.relativePath}
 			className={cn(
-				"aui-md-a border-border/70 bg-accent/40 text-foreground hover:bg-accent/70 inline-flex max-w-full items-center gap-[0.33em] rounded-[0.5em] border px-[0.5em] py-[0.08em] align-middle text-[0.875em] leading-[1.1] font-medium no-underline transition-colors",
+				"aui-md-a border-border-subtle bg-accent/40 text-foreground hover:bg-muted inline-flex max-w-full items-center gap-[0.33em] rounded-[0.5em] border px-[0.5em] py-[0.08em] align-middle text-[0.875em] leading-[1.1] font-medium no-underline transition-colors",
 				className,
 			)}
 			data-qa-id="markdown-file-link"

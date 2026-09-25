@@ -38,7 +38,7 @@ export const ComposerDraftFooter: FC = () => {
 		<div
 			data-slot="aui_composer-draft-footer"
 			data-qa-id="kilo-composer-draft-footer"
-			className="border-border dark:border-border/60 bg-foreground/[0.06] dark:bg-muted relative z-0 -mt-(--composer-radius) flex w-full items-center justify-between gap-2 rounded-b-(--composer-radius) border border-t-0 px-1 pt-5 pb-1"
+			className="border-border-subtle bg-foreground/[0.06] dark:bg-muted relative z-0 -mt-(--composer-radius) flex w-full items-center justify-between gap-2 rounded-b-(--composer-radius) border border-t-0 px-1 pt-5 pb-1"
 		>
 			<div className="flex min-w-0 flex-1 items-center gap-1">
 				<WorkspaceSelector />

@@ -1,7 +1,9 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { ArrowUpRightIcon, CircleAlertIcon, CopyIcon, Loader2Icon } from "lucide-react";
+import { ArrowUpRightIcon, CircleAlertIcon, CopyIcon } from "lucide-react";
 
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Button } from "@kilo-desktop/ui/components/button";
+import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type { DeviceAuthState } from "./kilo-auth.js";
@@ -51,7 +53,7 @@ export function DeviceAuthPanel({
 			<Panel state="initiating" embedded={embedded}>
 				<div className={cn("flex items-center justify-between gap-3", !embedded && "p-4")}>
 					<div className="text-muted-foreground flex items-center gap-2 text-sm">
-						<Loader2Icon className="text-primary-ink size-4 animate-spin" />
+						<Spinner className="text-primary-ink size-4" />
 						<span>Contacting Kilo…</span>
 					</div>
 					<Button
@@ -76,7 +78,7 @@ export function DeviceAuthPanel({
 				className={embedded ? "bg-destructive/5" : "border-destructive/40 bg-destructive/5"}
 			>
 				<div className="flex items-start gap-3 p-4">
-					<CircleAlertIcon className="text-destructive-foreground mt-0.5 size-4 shrink-0" />
+					<CircleAlertIcon className="text-destructive mt-0.5 size-4 shrink-0" />
 					<div className="min-w-0 flex-1">
 						<p className="text-sm font-medium">Sign-in failed</p>
 						{deviceAuth.error ? (
@@ -116,7 +118,7 @@ export function DeviceAuthPanel({
 						!embedded && "p-4",
 					)}
 				>
-					<Loader2Icon className="text-primary-ink size-4 animate-spin" />
+					<Spinner className="text-primary-ink size-4" />
 					<span>Finishing connection…</span>
 				</div>
 			</Panel>
@@ -136,32 +138,38 @@ export function DeviceAuthPanel({
 					</p>
 				</div>
 
-				<div className="border-border bg-muted/40 flex items-center justify-between gap-4 rounded-lg border px-3 py-2.5">
-					<div className="min-w-0">
-						<p className="text-muted-foreground text-xs font-medium">Confirmation code</p>
-						<code
-							className="mt-0.5 block truncate text-xl font-semibold tracking-[0.18em]"
-							data-qa-id="kilo-account-device-code"
-						>
-							{deviceAuth.code ?? "————"}
-						</code>
-					</div>
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						disabled={!deviceAuth.code}
-						onClick={() => deviceAuth.code && onCopy(deviceAuth.code)}
-						data-qa-id="kilo-account-copy-code"
-					>
-						<CopyIcon data-icon="inline-start" />
-						Copy code
-					</Button>
+				<div className="border-border bg-muted/40 overflow-hidden rounded-lg border">
+					<SummaryCard.Row>
+						<SummaryCard.Content>
+							<SummaryCard.Description>Confirmation code</SummaryCard.Description>
+							<SummaryCard.Title>
+								<code
+									className="block truncate text-xl font-semibold tracking-[0.18em]"
+									data-qa-id="kilo-account-device-code"
+								>
+									{deviceAuth.code ?? "————"}
+								</code>
+							</SummaryCard.Title>
+						</SummaryCard.Content>
+						<SummaryCard.Actions>
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								disabled={!deviceAuth.code}
+								onClick={() => deviceAuth.code && onCopy(deviceAuth.code)}
+								data-qa-id="kilo-account-copy-code"
+							>
+								<CopyIcon data-icon="inline-start" />
+								Copy code
+							</Button>
+						</SummaryCard.Actions>
+					</SummaryCard.Row>
 				</div>
 
 				<div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 					<span className="text-muted-foreground flex shrink-0 items-center gap-2 text-xs whitespace-nowrap">
-						<Loader2Icon className="size-3.5 animate-spin" />
+						<Spinner className="size-3.5" />
 						<span>Waiting for approval</span>
 						<span aria-hidden="true">·</span>
 						<span className="tabular-nums" aria-label={`${formatTime(remaining)} remaining`}>

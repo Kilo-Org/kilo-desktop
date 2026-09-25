@@ -12,6 +12,7 @@
 			{
 				"id": "kilo-marketplace",
 				"title": "Agent Behavior",
+				"description": "Manage the agents, skills, and MCPs available to Kilo.",
 				"component": "MarketplaceSettings",
 				"icon": "MarketplaceNavIcon",
 				"category": "AI",

@@ -14,7 +14,7 @@ import {
 	type ReactNode,
 } from "react";
 import { cva, type VariantProps } from "class-variance-authority";
-import { CheckIcon, ChevronDownIcon } from "lucide-react";
+import { ChevronDownIcon } from "lucide-react";
 import { useAui } from "@assistant-ui/react";
 
 import {
@@ -239,9 +239,9 @@ export const modelSelectorTriggerVariants = cva(
 		variants: {
 			variant: {
 				outline:
-					"border-input border bg-transparent hover:bg-foreground/5 hover:text-foreground aria-expanded:bg-foreground/5 aria-expanded:text-foreground data-popup-open:bg-foreground/5 data-popup-open:text-foreground",
+					"border-input border bg-transparent hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground data-popup-open:bg-muted data-popup-open:text-foreground",
 				ghost:
-					"hover:bg-foreground/5 hover:text-foreground aria-expanded:bg-foreground/5 aria-expanded:text-foreground data-popup-open:bg-foreground/5 data-popup-open:text-foreground",
+					"hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground data-popup-open:bg-muted data-popup-open:text-foreground",
 				muted:
 					"bg-secondary text-secondary-foreground hover:bg-secondary/80 aria-expanded:bg-secondary aria-expanded:text-secondary-foreground data-popup-open:bg-secondary data-popup-open:text-secondary-foreground",
 			},
@@ -344,7 +344,7 @@ function ModelSelectorValue({
 		<span
 			data-slot="model-selector-value"
 			data-model-selected="true"
-			className={cn("flex items-center gap-1.5 dark:text-foreground/90", className)}
+			className={cn("flex items-center gap-1.5", className)}
 		>
 			{selectedModel.icon && <ModelIcon>{selectedModel.icon}</ModelIcon>}
 			<span data-slot="model-selector-name" className="font-medium whitespace-nowrap">
@@ -478,13 +478,15 @@ function ModelSelectorContent({
 			sideOffset={sideOffset}
 			initialFocus={initialFocus ?? focusSearchInput}
 			className={cn(
-				"bg-popover/95 w-72 min-w-(--anchor-width) overflow-hidden rounded-xl p-0 shadow-lg backdrop-blur-sm",
+				"bg-popover/95 w-72 min-w-(--anchor-width) overflow-hidden p-0 shadow-lg backdrop-blur-sm",
 				className,
 			)}
 			{...props}
 		>
+			{/* Fills the popover edge to edge: no inset, and the popover's radius
+			    (stock Command forces rounded-xl, which pulls the rail's corners in). */}
 			<Command
-				className="bg-transparent"
+				className="rounded-[inherit]! bg-transparent p-0"
 				shouldFilter={shouldFilter}
 				{...(commandValue !== undefined ? { value: commandValue } : {})}
 				{...(onCommandValueChange ? { onValueChange: onCommandValueChange } : {})}
@@ -507,7 +509,7 @@ function ModelSelectorContent({
 export type ModelSelectorSearchProps = ComponentPropsWithoutRef<typeof CommandInput>;
 
 function ModelSelectorSearch({
-	placeholder = "Search models...",
+	placeholder = "Search models",
 	...props
 }: ModelSelectorSearchProps) {
 	return <CommandInput data-slot="model-selector-search" placeholder={placeholder} {...props} />;
@@ -530,11 +532,8 @@ function ModelSelectorList({
 		<CommandList
 			ref={ref}
 			data-slot="model-selector-list"
-			className={cn(
-				!showScrollbar &&
-					"[-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-				className,
-			)}
+			// Stock CommandList hides its scrollbar; long model lists opt back in.
+			className={cn(showScrollbar && "scrollbar-thin", className)}
 			{...props}
 		>
 			{children ?? (
@@ -601,9 +600,11 @@ function ModelSelectorItem({
 				setOpen(false);
 				onSelect?.(selectedValue);
 			}}
+			data-checked={showCheck && isSelected}
 			className={cn(
-				// Hide CommandItem's built-in check (opacity-0 still reserves layout space).
-				"items-start gap-2 rounded-lg py-2 ps-3 pe-3 [&>svg:last-child]:hidden [&_svg:not([class*='size-'])]:size-3.5",
+				// Callers that draw their own check drop the built-in one, whose
+				// opacity-0 placeholder would otherwise still reserve space.
+				!showCheck && "[&>svg:last-child]:hidden",
 				className,
 			)}
 			{...props}
@@ -612,18 +613,13 @@ function ModelSelectorItem({
 				<>
 					{model.icon && <ModelIcon>{model.icon}</ModelIcon>}
 					<span className="flex min-w-0 flex-1 flex-col">
-						<span className="truncate font-medium">{model.name}</span>
+						<span className="truncate">{model.name}</span>
 						{model.description && (
 							<span className="text-muted-foreground truncate text-xs">{model.description}</span>
 						)}
 					</span>
 				</>
 			)}
-			{showCheck && isSelected ? (
-				<span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
-					<CheckIcon className="size-4" />
-				</span>
-			) : null}
 		</CommandItem>
 	);
 }

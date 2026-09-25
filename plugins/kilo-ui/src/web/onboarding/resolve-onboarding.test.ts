@@ -5,6 +5,7 @@ import { resolveOnboarding, type ResolveOnboardingInput } from "./resolve-onboar
 const open: ResolveOnboardingInput = {
 	state: { outcome: null, closedAt: null },
 	connectionUnavailable: false,
+	forced: false,
 };
 
 describe("resolveOnboarding", () => {
@@ -35,5 +36,20 @@ describe("resolveOnboarding", () => {
 			status: "visible",
 			initialStep: "kilo-sign-in",
 		});
+	});
+
+	it("shows the wizard when forced, even after the user completed or skipped", () => {
+		expect(
+			resolveOnboarding({ ...open, forced: true, state: { outcome: "skipped", closedAt: 1 } }),
+		).toEqual({ status: "visible", initialStep: "kilo-sign-in" });
+		expect(
+			resolveOnboarding({ ...open, forced: true, state: { outcome: "completed", closedAt: 1 } }),
+		).toMatchObject({ status: "visible" });
+	});
+
+	it("still hides a forced wizard when Kilo is unavailable", () => {
+		expect(resolveOnboarding({ ...open, forced: true, connectionUnavailable: true })).toMatchObject(
+			{ status: "hidden" },
+		);
 	});
 });

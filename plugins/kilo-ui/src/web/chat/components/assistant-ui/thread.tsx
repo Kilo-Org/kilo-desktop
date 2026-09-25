@@ -30,12 +30,15 @@ import {
 	useHasOpenManualDisclosure,
 } from "../tools/activity-group.js";
 import { createActivityGroupBy, createTurnWorkGroupBy } from "../tools/activity-grouping.js";
+import { ComposerShelf, ComposerShelfToggle } from "../composer-shelf.js";
 import { OpenCodeComposerInteraction } from "../tools/opencode-composer-interaction.js";
 import { OPENCODE_SNAPSHOT_PROGRESS_PART } from "../tools/opencode-data-part.js";
 import { FallbackTool } from "../tools/opencode-tools.js";
 import { activityKindFromGroupKey } from "../tools/tool-categories.js";
 import { getPlanProjectionForMessage } from "../../plan/index.js";
 import { useApprovePlan } from "../../plan/use-approve-plan.js";
+import { Item, ItemActions, ItemContent } from "@kilo-desktop/ui/components/item";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Avatar, AvatarFallback, AvatarGroup } from "@kilo-desktop/ui/components/avatar";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
@@ -43,12 +46,7 @@ import {
 	CollapsibleContent,
 	CollapsibleTrigger,
 } from "@kilo-desktop/ui/components/collapsible";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "@kilo-desktop/ui/components/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 import {
@@ -73,17 +71,15 @@ import {
 import {
 	ArrowDownIcon,
 	ArrowUpIcon,
-	CheckCircle2Icon,
 	ChevronDownIcon,
 	ChevronLeftIcon,
 	ChevronRightIcon,
+	CircleCheckIcon,
 	CornerDownLeftIcon,
 	DownloadIcon,
+	EllipsisIcon,
 	FileTextIcon,
-	GitForkIcon,
-	Loader2Icon,
 	MicIcon,
-	MoreHorizontalIcon,
 	SquareIcon,
 	Trash2Icon,
 } from "lucide-react";
@@ -154,6 +150,10 @@ export type ThreadProps = {
 	components?: ThreadComponents | undefined;
 };
 
+/** Shared by the live and read-only thread viewports. */
+const THREAD_VIEWPORT_CLASS =
+	"relative flex flex-1 flex-col items-center overflow-x-hidden overflow-y-auto scroll-smooth";
+
 const EMPTY_COMPONENTS: ThreadComponents = {};
 
 const ThreadComponentsContext = createContext<ThreadComponents>(EMPTY_COMPONENTS);
@@ -189,14 +189,14 @@ export const ReadonlyThread: FC<ThreadProps> = ({ components = EMPTY_COMPONENTS 
 	<ThreadComponentsContext.Provider value={components}>
 		<RevertPendingProvider>
 			<ThreadPrimitive.Root
-				className="aui-root aui-thread-root @container flex h-full min-h-0 flex-col bg-[var(--pane-surface,var(--color-background))]"
+				className="aui-root aui-thread-root bg-pane @container flex h-full min-h-0 flex-col"
 				style={{ ["--thread-max-width" as string]: "48rem" }}
 			>
 				<ThreadPrimitive.Viewport
 					autoScroll
 					turnAnchor="bottom"
 					data-slot="aui_readonly-thread-viewport"
-					className="relative flex flex-1 [scrollbar-gutter:stable_both-edges] flex-col items-center overflow-x-hidden overflow-y-auto scroll-smooth"
+					className={cn(THREAD_VIEWPORT_CLASS, "[scrollbar-gutter:stable_both-edges]")}
 				>
 					<div className="mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col px-1 pt-4">
 						<div className="flex flex-col gap-y-4 empty:hidden">
@@ -212,10 +212,7 @@ export const ReadonlyThread: FC<ThreadProps> = ({ components = EMPTY_COMPONENTS 
 const ComposerDockMask: FC = () => {
 	return (
 		<>
-			<div
-				aria-hidden
-				className="pointer-events-none absolute -inset-x-4 top-full h-4 bg-[var(--pane-surface,var(--color-background))]"
-			/>
+			<div aria-hidden className="bg-pane pointer-events-none absolute -inset-x-4 top-full h-4" />
 			<div aria-hidden className="composer-corner-fill composer-corner-fill-bl" />
 			<div aria-hidden className="composer-corner-fill composer-corner-fill-br" />
 		</>
@@ -241,10 +238,10 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 	return (
 		<ThreadPrimitive.Root
 			className={cn(
-				"aui-root aui-thread-root @container flex h-full flex-col bg-[var(--pane-surface,var(--color-background))]",
+				"aui-root aui-thread-root @container flex h-full flex-col bg-pane",
 				isDraft
 					? "[--composer-bg:var(--composer-draft,var(--color-card))]"
-					: "[--composer-bg:var(--pane-raised,var(--color-card))]",
+					: "[--composer-bg:var(--pane-raised)]",
 			)}
 			style={{
 				["--thread-max-width" as string]: "48rem",
@@ -258,15 +255,12 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 				scrollToBottomOnRunStart={false}
 				data-slot="aui_thread-viewport"
 				className={cn(
-					"relative flex flex-1 flex-col items-center overflow-x-hidden overflow-y-auto scroll-smooth",
+					THREAD_VIEWPORT_CLASS,
+					"scroll-fade-t",
 					!isDraft && "[scrollbar-gutter:stable_both-edges]",
 				)}
 			>
 				<ScrollToBottomOnSend />
-				<div
-					aria-hidden
-					className="pointer-events-none sticky top-0 z-10 -mb-6 h-6 w-full shrink-0 bg-linear-to-b from-[var(--pane-surface,var(--color-background))] to-transparent"
-				/>
 				{isDraft ? null : <ConversationMapAui />}
 				<div
 					data-slot="aui_thread-column"
@@ -318,28 +312,14 @@ const WorktreeSetupIndicator: FC = () => {
 			role="status"
 			aria-label="Setting up worktree"
 		>
-			<AvatarGroup className="*:data-[slot=avatar]:ring-[var(--pane-surface,var(--color-background))]">
+			<AvatarGroup className="*:data-[slot=avatar]:ring-pane">
 				<Avatar aria-hidden className="size-6.5">
-					<AvatarFallback className="relative border-0">
-						<GitForkIcon className="size-3.5" />
-						<svg
+					<AvatarFallback className="border-0">
+						<Spinner
+							aria-hidden="true"
+							className="size-3"
 							data-qa-id="kilo-worktree-setup-spinner"
-							aria-hidden
-							viewBox="0 0 28 28"
-							fill="none"
-							className="pointer-events-none absolute inset-0 size-full animate-spin"
-						>
-							<circle
-								cx="14"
-								cy="14"
-								r="13"
-								stroke="currentColor"
-								strokeOpacity={0.4}
-								strokeWidth="2"
-								strokeLinecap="round"
-								strokeDasharray="20.4 61.3"
-							/>
-						</svg>
+						/>
 					</AvatarFallback>
 				</Avatar>
 			</AvatarGroup>
@@ -374,7 +354,7 @@ const ThreadScrollToBottom: FC = () => {
 				<TooltipIconButton
 					tooltip="Scroll to bottom"
 					variant="outline"
-					className="aui-thread-scroll-to-bottom dark:border-border dark:bg-background dark:hover:bg-accent absolute -top-12 z-10 self-center rounded-full p-4 disabled:invisible"
+					className="aui-thread-scroll-to-bottom dark:border-border dark:bg-background dark:hover:bg-muted absolute -top-12 z-10 self-center rounded-full p-4 disabled:invisible"
 				/>
 			}
 		>
@@ -452,7 +432,7 @@ const ThreadSuggestionItem: FC = () => {
 				render={
 					<Button
 						variant="ghost"
-						className="aui-thread-welcome-suggestion text-foreground hover:bg-muted border-border/60 h-auto gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-normal whitespace-nowrap transition-colors"
+						className="aui-thread-welcome-suggestion text-foreground hover:bg-muted border-border-subtle h-auto gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-normal whitespace-nowrap transition-colors"
 					/>
 				}
 			>
@@ -475,7 +455,7 @@ type QueueItemWithAttachmentPreview = QueueItemState & {
 const QueueAttachmentPreview: FC<{ attachment: QueueItemAttachmentPreview }> = ({ attachment }) => {
 	return (
 		<div
-			className="border-border/60 bg-muted flex size-6 shrink-0 items-center justify-center overflow-hidden rounded-md border"
+			className="border-border-subtle bg-muted flex size-6 shrink-0 items-center justify-center overflow-hidden rounded-md border"
 			data-qa-id="kilo-composer-queue-attachment"
 		>
 			{attachment.src ? (
@@ -502,34 +482,26 @@ const ComposerQueue: FC<{ steerOnEnter: boolean }> = ({ steerOnEnter }) => {
 	if (queueLength === 0) return null;
 
 	return (
-		<div
-			className="border-border/60 chat-composer-glass chat-composer-surface overflow-hidden rounded-xl border shadow-[0_8px_24px_-20px_rgba(0,0,0,0.7)]"
-			data-qa-id="kilo-composer-queue"
-		>
-			<button
-				type="button"
-				className={cn(
-					"text-muted-foreground hover:bg-muted/35 focus-visible:ring-ring/50 flex h-8 w-full items-center justify-between px-3 text-xs font-medium outline-none transition-colors focus-visible:ring-2",
-					!collapsed && "border-border/40 border-b",
-				)}
-				aria-expanded={!collapsed}
+		<ComposerShelf data-qa-id="kilo-composer-queue">
+			<ComposerShelfToggle
+				collapsed={collapsed}
 				aria-controls="kilo-composer-queue-items"
 				onClick={() => setCollapsed((value) => !value)}
 				data-qa-id="kilo-composer-queue-toggle"
 			>
 				<span>{queueLength} queued</span>
-				<ChevronDownIcon
-					className={cn("size-3.5 transition-transform duration-150", collapsed && "-rotate-90")}
-				/>
-			</button>
+			</ComposerShelfToggle>
 			{!collapsed ? (
-				<div id="kilo-composer-queue-items" className="flex max-h-36 flex-col overflow-y-auto p-1">
+				<div
+					id="kilo-composer-queue-items"
+					className="scroll-fade-y flex max-h-36 flex-col overflow-y-auto p-1"
+				>
 					<ComposerPrimitive.Queue>
 						{({ queueItem }) => <QueueItemRow queueItem={queueItem} showEnterHint={steerOnEnter} />}
 					</ComposerPrimitive.Queue>
 				</div>
 			) : null}
-		</div>
+		</ComposerShelf>
 	);
 };
 
@@ -541,44 +513,49 @@ const QueueItemRow: FC<{ queueItem: QueueItemState; showEnterHint: boolean }> = 
 	const attachmentPreview = (queueItem as QueueItemWithAttachmentPreview).attachmentPreview;
 
 	return (
-		<div
-			className="group hover:bg-muted/45 after:bg-border/35 relative flex h-8 min-w-0 shrink-0 items-center gap-1.5 rounded-md pr-[3px] pl-2 transition-colors after:absolute after:inset-x-0 after:bottom-0 after:h-px after:content-[''] last:after:hidden"
+		<Item
+			size="xs"
+			className="group min-w-0 shrink-0 flex-nowrap"
 			data-qa-id="kilo-composer-queue-item"
 			data-queue-item-id={queueItem.id}
 		>
 			{attachmentPreview ? <QueueAttachmentPreview attachment={attachmentPreview} /> : null}
-			<QueueItemPrimitive.Text className="text-foreground/90 min-w-0 flex-1 truncate text-sm" />
-			<QueueItemPrimitive.Steer
-				render={
-					<Button
-						type="button"
-						size="xs"
-						variant="ghost"
-						className="text-muted-foreground hover:text-foreground h-6 px-2 text-[11px] opacity-65 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
-						data-qa-id="kilo-composer-queue-send-now"
-					/>
-				}
-			>
-				{showEnterHint && isFirst ? <CornerDownLeftIcon aria-hidden className="size-3" /> : null}
-				Send now
-			</QueueItemPrimitive.Steer>
-			<QueueItemPrimitive.Remove
-				render={
-					<TooltipIconButton
-						tooltip="Delete queued message"
-						side="bottom"
-						type="button"
-						variant="ghost"
-						size="icon-xs"
-						className="text-muted-foreground hover:text-destructive-foreground size-6 opacity-65 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
-						aria-label="Delete queued message"
-						data-qa-id="kilo-composer-queue-delete"
-					/>
-				}
-			>
-				<Trash2Icon className="size-3" />
-			</QueueItemPrimitive.Remove>
-		</div>
+			<ItemContent className="min-w-0">
+				<QueueItemPrimitive.Text className="truncate text-sm" />
+			</ItemContent>
+			<ItemActions>
+				<QueueItemPrimitive.Steer
+					render={
+						<Button
+							type="button"
+							size="xs"
+							variant="ghost"
+							className="opacity-65 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+							data-qa-id="kilo-composer-queue-send-now"
+						/>
+					}
+				>
+					{showEnterHint && isFirst ? <CornerDownLeftIcon aria-hidden className="size-3" /> : null}
+					Send now
+				</QueueItemPrimitive.Steer>
+				<QueueItemPrimitive.Remove
+					render={
+						<TooltipIconButton
+							tooltip="Delete queued message"
+							side="bottom"
+							type="button"
+							variant="ghost"
+							size="icon-xs"
+							className="hover:text-destructive size-6 opacity-65 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+							aria-label="Delete queued message"
+							data-qa-id="kilo-composer-queue-delete"
+						/>
+					}
+				>
+					<Trash2Icon className="size-3" />
+				</QueueItemPrimitive.Remove>
+			</ItemActions>
+		</Item>
 	);
 };
 
@@ -774,8 +751,8 @@ const Composer: FC = () => {
 							className={cn(
 								"border-border chat-composer-surface data-[dragging=true]:border-ring flex w-full flex-col gap-2 rounded-(--composer-radius) border px-(--composer-padding) pt-2 pb-(--composer-padding) transition-[border-color,outline-color,box-shadow] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]",
 								isDraft
-									? "relative z-10 bg-(--composer-bg) dark:border-border focus-within:border-border dark:focus-within:border-muted-foreground/30"
-									: "relative z-10 chat-composer-glass shadow-[0_12px_28px_-18px_rgba(0,0,0,0.40)] dark:shadow-none",
+									? "relative z-10 bg-(--composer-bg) focus-within:border-(--composer-focus-stroke)"
+									: "relative z-10 chat-composer-glass shadow-composer",
 							)}
 						/>
 					}
@@ -873,7 +850,7 @@ const ComposerAction: FC<{
 									type="button"
 									variant="ghost"
 									size="icon"
-									className="aui-composer-stop-dictation text-destructive-foreground size-7 rounded-full"
+									className="aui-composer-stop-dictation text-destructive size-7 rounded-full"
 									aria-label="Stop voice input"
 								/>
 							}
@@ -897,9 +874,9 @@ const ComposerAction: FC<{
 						aria-label={lockLabel}
 						data-qa-id={isConnecting ? "kilo-composer-connecting" : "kilo-composer-loading-model"}
 					>
-						<Loader2Icon
+						<Spinner
 							className={cn(
-								"size-4.5 animate-spin",
+								"size-4.5",
 								isConnecting ? "aui-composer-connecting-icon" : "aui-composer-loading-model-icon",
 							)}
 						/>
@@ -931,7 +908,7 @@ const ComposerAction: FC<{
 						aria-label="Refine plan"
 						onClick={() => onRefine()}
 					>
-						{planActionPending ? <Loader2Icon className="size-3.5 animate-spin" /> : null}
+						{planActionPending ? <Spinner data-icon="inline-start" aria-hidden="true" /> : null}
 						Refine
 					</Button>
 				) : null}
@@ -1027,7 +1004,7 @@ const ComposerAction: FC<{
 };
 
 const CONSIDERING_NEXT_STEPS = "Considering next steps";
-const SNAPSHOT_PROGRESS_STATUS = "Initializing snapshot...";
+const SNAPSHOT_PROGRESS_STATUS = "Initializing snapshot…";
 const SNAPSHOT_INDICATOR_DELAY_MS = 200;
 const CONSIDERING_INDICATOR_DELAY_MS = 750;
 const WORKING_INDICATOR_PIXEL_DELAYS = Array.from({ length: 9 }, (_, index) => {
@@ -1107,10 +1084,7 @@ const AssistantWorkingIndicator: FC<{ active: boolean; overlay: boolean }> = ({
 			aria-label={isVisible ? label : undefined}
 			aria-hidden={!isVisible}
 		>
-			<AvatarGroup
-				aria-hidden
-				className="-space-x-1 *:data-[slot=avatar]:ring-[var(--pane-surface,var(--color-background))]"
-			>
+			<AvatarGroup aria-hidden className="*:data-[slot=avatar]:ring-pane -space-x-1">
 				<Avatar className="size-6.5">
 					<AvatarFallback className="border-2 border-transparent">
 						<span className="grid grid-cols-[repeat(3,3px)] gap-[2.5px]">
@@ -1155,7 +1129,7 @@ const WorkingTimer: FC<{ startedAt: number }> = ({ startedAt }) => {
 
 const TurnWorkHeader: FC<{ startedAt: number }> = ({ startedAt }) => (
 	<div
-		className="text-muted-foreground border-border/60 mb-2 flex w-full items-center border-b pt-2 pb-2 text-xs"
+		className="text-muted-foreground border-border-subtle mb-2 flex w-full items-center border-b pt-2 pb-2 text-xs"
 		role="status"
 		data-qa-id="kilo-turn-working"
 	>
@@ -1190,7 +1164,7 @@ const TurnWorkDisclosure: FC<
 			data-qa-id="kilo-turn-work"
 		>
 			<CollapsibleTrigger
-				className="text-muted-foreground hover:text-foreground border-border/60 flex w-full items-center gap-1 border-b pt-1 pb-3 text-xs transition-colors"
+				className="text-muted-foreground hover:text-foreground border-border-subtle flex w-full items-center gap-1 border-b pt-1 pb-3 text-xs transition-colors"
 				data-qa-id="kilo-turn-work-toggle"
 			>
 				<span>{label}</span>
@@ -1253,7 +1227,7 @@ const KiloMessageErrorBanner: FC = () => {
 				data-qa-id="kilo-message-error-signed-in"
 			>
 				<span className="flex min-w-0 items-center gap-2">
-					<CheckCircle2Icon className="text-primary-ink size-4 shrink-0" />
+					<CircleCheckIcon className="text-primary-ink size-4 shrink-0" />
 					<span>You&rsquo;re signed in to Kilo.</span>
 				</span>
 				{isLast ? (
@@ -1284,7 +1258,7 @@ const KiloMessageErrorBanner: FC = () => {
 								},
 							})
 								.catch(() => {
-									toast.error("Couldn't retry the prompt");
+									toast.error("Could not retry the prompt");
 								})
 								.finally(() => {
 									retrying.current = false;
@@ -1301,7 +1275,7 @@ const KiloMessageErrorBanner: FC = () => {
 
 	return (
 		<ErrorPrimitive.Root className="aui-message-error-root border-border bg-background mt-2 flex items-center justify-between gap-3 rounded-md border p-3 text-sm">
-			<span className="aui-message-error-message text-destructive-foreground line-clamp-2 min-w-0 flex-1">
+			<span className="aui-message-error-message text-destructive line-clamp-2 min-w-0 flex-1">
 				{displayChatError(errorText)}
 			</span>
 			{offerSignIn ? (
@@ -1315,6 +1289,7 @@ const KiloMessageErrorBanner: FC = () => {
 					disabled={signingIn}
 					data-qa-id="kilo-message-error-signin"
 				>
+					{signingIn ? <Spinner data-icon="inline-start" aria-hidden="true" /> : null}
 					{signingIn ? "Connecting…" : "Connect"}
 				</Button>
 			) : null}
@@ -1509,29 +1484,27 @@ const AssistantMessage: FC = () => {
 
 const AssistantActionMoreTrigger: FC = () => {
 	return (
-		<TooltipProvider>
-			<Tooltip disableHoverablePopup>
-				<TooltipTrigger
-					render={
-						<ActionBarMorePrimitive.Trigger
-							render={
-								<Button
-									variant="ghost"
-									size="icon"
-									className="aui-button-icon data-[state=open]:bg-accent size-6 p-1 active:scale-90"
-								/>
-							}
-						/>
-					}
-				>
-					<MoreHorizontalIcon className="size-3.5" />
-					<span className="sr-only">More</span>
-				</TooltipTrigger>
-				<TooltipContent side="bottom" className="pointer-events-none">
-					More
-				</TooltipContent>
-			</Tooltip>
-		</TooltipProvider>
+		<Tooltip disableHoverablePopup>
+			<TooltipTrigger
+				render={
+					<ActionBarMorePrimitive.Trigger
+						render={
+							<Button
+								variant="ghost"
+								size="icon"
+								className="aui-button-icon data-[state=open]:bg-muted size-6 p-1 active:scale-90"
+							/>
+						}
+					/>
+				}
+			>
+				<EllipsisIcon className="size-3.5" />
+				<span className="sr-only">More</span>
+			</TooltipTrigger>
+			<TooltipContent side="bottom" className="pointer-events-none">
+				More
+			</TooltipContent>
+		</Tooltip>
 	);
 };
 
@@ -1553,7 +1526,7 @@ const AssistantActionBar: FC<{ hidden: boolean }> = ({ hidden }) => {
 					side="bottom"
 					align="start"
 					sideOffset={6}
-					className="aui-action-bar-more-content bg-popover/95 text-popover-foreground data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:animate-out data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-[8rem] overflow-hidden rounded-xl border p-1.5 shadow-lg backdrop-blur-sm"
+					className="aui-action-bar-more-content bg-popover/95 text-popover-foreground data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:animate-out data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 min-w-[8rem] overflow-hidden rounded-lg border p-1.5 shadow-lg backdrop-blur-sm"
 				>
 					<ActionBarPrimitive.ExportMarkdown
 						render={
@@ -1610,7 +1583,7 @@ const UserMessage: FC = () => {
 			<UserMessageAttachments />
 
 			<div className="aui-user-message-content-wrapper relative col-start-2 w-fit max-w-full min-w-0 justify-self-end pb-7">
-				<div className="aui-user-message-content border-border text-foreground dark:border-muted-foreground/15 rounded-xl border bg-[var(--pane-raised,var(--color-card))] px-4 py-2 text-sm wrap-break-word whitespace-pre-wrap empty:hidden">
+				<div className="aui-user-message-content border-border text-foreground bg-pane-raised rounded-xl border px-4 py-2 text-sm wrap-break-word whitespace-pre-wrap empty:hidden">
 					<MessagePrimitive.Parts components={{ Text: KiloDirectiveText }} />
 				</div>
 				<UserActionBar />

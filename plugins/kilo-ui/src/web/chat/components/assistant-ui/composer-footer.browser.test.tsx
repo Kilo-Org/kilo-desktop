@@ -277,9 +277,9 @@ describe("ComposerFooter", () => {
 		await expect.element(popover.getByText("8.0K")).toBeVisible();
 		await expect.element(popover.getByText("Reasoning")).toBeVisible();
 		await expect.element(popover.getByText("1.2K")).toBeVisible();
-		await expect.element(popover.getByText("Cache Read")).toBeVisible();
+		await expect.element(popover.getByText("Cache read")).toBeVisible();
 		await expect.element(popover.getByText("20.0K")).toBeVisible();
-		await expect.element(popover.getByText("Cache Write")).toBeVisible();
+		await expect.element(popover.getByText("Cache write")).toBeVisible();
 		await expect.element(popover.getByText("2.0K")).toBeVisible();
 		await expect.element(screen.getByText("Total")).not.toBeInTheDocument();
 		await expect.element(screen.getByText("System")).not.toBeInTheDocument();

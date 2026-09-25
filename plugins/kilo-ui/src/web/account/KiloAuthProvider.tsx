@@ -218,7 +218,7 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 					await profileQuery.refetch();
 				} catch (error) {
 					setOrgError({
-						message: errorMessage(error, "Failed to switch organization"),
+						message: errorMessage(error, "Could not switch organization"),
 						organizationId,
 					});
 					await profileQuery.refetch().catch(() => undefined);
@@ -261,7 +261,7 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 
 	const profileError =
 		authenticated === true && !profileQuery.data && profileQuery.isError
-			? errorMessage(profileQuery.error, "Couldn't load your Kilo account")
+			? errorMessage(profileQuery.error, "Could not load your Kilo account")
 			: null;
 
 	const value = useMemo<KiloAuthContextValue>(

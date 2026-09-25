@@ -1,5 +1,12 @@
 import type { OnboardingState } from "../../contracts/onboarding/schemas.js";
 
+/**
+ * Dev override that reopens the wizard on every launch regardless of the
+ * persisted outcome. Turn on with
+ * `VITE_FEATURE_FLAG_OVERRIDES=force-onboarding` in `apps/desktop/.env.local`.
+ */
+export const FORCE_ONBOARDING_FLAG = "force-onboarding";
+
 export const ONBOARDING_STEPS = ["kilo-sign-in", "workspace"] as const;
 export type OnboardingStepId = (typeof ONBOARDING_STEPS)[number];
 
@@ -11,6 +18,8 @@ export type OnboardingView = {
 export type ResolveOnboardingInput = {
 	state: OnboardingState | null;
 	connectionUnavailable: boolean;
+	/** Ignore a recorded complete/skip (see {@link FORCE_ONBOARDING_FLAG}). */
+	forced: boolean;
 };
 
 /**
@@ -27,7 +36,7 @@ export function resolveOnboarding(input: ResolveOnboardingInput): OnboardingView
 	if (input.state === null) {
 		return { status: "loading", initialStep: "kilo-sign-in" };
 	}
-	if (input.state.outcome !== null) {
+	if (input.state.outcome !== null && !input.forced) {
 		return { status: "hidden", initialStep: "kilo-sign-in" };
 	}
 	return { status: "visible", initialStep: "kilo-sign-in" };

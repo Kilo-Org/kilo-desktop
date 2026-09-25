@@ -1,7 +1,13 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState, type ReactNode } from "react";
 
-import { sdkQueryKey, useSdk, useSdkMutation, useSdkQuery } from "@kilo-desktop/sdk-react";
+import {
+	sdkQueryKey,
+	useFeatureFlag,
+	useSdk,
+	useSdkMutation,
+	useSdkQuery,
+} from "@kilo-desktop/sdk-react";
 
 import type { OnboardingService } from "../../contracts/onboarding/schemas.js";
 import type { Workspace, WorkspacesService } from "../../contracts/workspaces/schemas.js";
@@ -10,7 +16,11 @@ import { useWorkspacesFeature } from "../workspaces/WorkspacesFeatureContext.js"
 import { useWorkspaceForm } from "../workspaces/useWorkspaceForm.js";
 
 import { OnboardingFlow } from "./OnboardingFlow.js";
-import { resolveOnboarding, type OnboardingStepId } from "./resolve-onboarding.js";
+import {
+	FORCE_ONBOARDING_FLAG,
+	resolveOnboarding,
+	type OnboardingStepId,
+} from "./resolve-onboarding.js";
 import { SignInStep } from "./SignInStep.js";
 import { WorkspaceStep } from "./WorkspaceStep.js";
 
@@ -19,7 +29,8 @@ import { WorkspaceStep } from "./WorkspaceStep.js";
  * user completes or skips. Skip is persisted, so the wizard never returns.
  * Existing workspaces do not suppress a first showing. Registered as a kilo-ui
  * provider (priority 5, inside Chat) so it can read Kilo auth without crossing
- * plugin boundaries.
+ * plugin boundaries. The `force-onboarding` flag reopens it each launch until
+ * the user finishes or skips it in that session.
  */
 export function OnboardingProvider({ children }: { children: ReactNode }) {
 	const onboardingSdk = useSdk<OnboardingService>("kilo-ui");
@@ -36,10 +47,13 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 	});
 	const form = useWorkspaceForm({ shell: workspacesSdk.shell });
 	const [step, setStep] = useState<OnboardingStepId | null>(null);
+	const forceFlag = useFeatureFlag(FORCE_ONBOARDING_FLAG);
+	const [closedThisSession, setClosedThisSession] = useState(false);
 
 	const view = resolveOnboarding({
 		state: persisted.data ?? null,
 		connectionUnavailable: auth.connectionUnavailable,
+		forced: forceFlag && !closedThisSession,
 	});
 
 	useEffect(() => {
@@ -61,6 +75,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 			);
 			workspaces.setActiveWorkspaceId(saved.id);
 			await queryClient.invalidateQueries({ queryKey: listQueryKey });
+			setClosedThisSession(true);
 			await complete.mutateAsync().catch(() => undefined);
 		},
 		onError: (reason) => {
@@ -102,7 +117,10 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 				}
 				onBack={() => setStep("kilo-sign-in")}
 				onContinue={onContinue}
-				onSkip={() => skip.mutate()}
+				onSkip={() => {
+					setClosedThisSession(true);
+					skip.mutate();
+				}}
 				onJump={setStep}
 			>
 				{currentStep === "kilo-sign-in" ? (

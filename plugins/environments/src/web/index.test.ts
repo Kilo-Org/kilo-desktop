@@ -11,10 +11,10 @@ const inlineAuthActions = { signIn: async () => true, cancel: () => undefined };
 
 /**
  * The manifest (`plugin.json`) names three exports the shell resolves from
- * this barrel at boot: `routes[0].component` -> `EnvironmentsPage`,
- * `nav[0].icon` -> `EnvironmentsNavIcon`, and `webRegister` if the plugin
+ * this barrel at boot: `settings[0].component` -> `EnvironmentsPage`,
+ * `settings[0].icon` -> `EnvironmentsNavIcon`, and `webRegister` if the plugin
  * has renderer-side setup. A broken barrel would make the shell render an
- * unavailable state for `/environments` or crash boot; the checks below
+ * unavailable state for `/settings/environments` or crash boot; the checks below
  * catch that at test time.
  */
 describe("environments plugin web entry", () => {

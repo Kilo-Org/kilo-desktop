@@ -3,14 +3,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
 import type { LocalModel, LocalModelSettings } from "../../contracts/schemas.js";
-import { renderSettings, usageSnapshot } from "../../test/render-local-model-server-settings.js";
+import {
+	expandModel,
+	renderSettings,
+	usageSnapshot,
+} from "../../test/render-local-model-server-settings.js";
 
 afterEach(() => {
 	cleanup();
 });
 
 describe("ModelSettingsPanel", () => {
-	it("shows and saves context length and temperature for the selected model", async () => {
+	it("shows and saves context length and temperature for an expanded model", async () => {
 		const updateModel = vi.fn(async ({ id, settings }) => ({
 			id,
 			name: "Alpha 8B",
@@ -35,6 +39,7 @@ describe("ModelSettingsPanel", () => {
 			"usage.get": async () => usageSnapshot,
 		});
 		const screen = page.elementLocator(baseElement);
+		await expandModel(baseElement, "model-alpha");
 		const contextLength = screen.getByRole("group", { name: "Context length" }).getByRole("slider");
 		const contextLengthInput = screen.getByLabelText("Context length in tokens");
 		const temperature = screen.getByRole("group", { name: "Temperature" }).getByRole("slider");
@@ -119,6 +124,7 @@ describe("ModelSettingsPanel", () => {
 			"usage.get": async () => usageSnapshot,
 		});
 		const screen = page.elementLocator(baseElement);
+		await expandModel(baseElement, "model-alpha");
 		const contextLength = screen.getByLabelText(
 			"Context length in tokens, automatic: Model default",
 		);
@@ -179,6 +185,7 @@ describe("ModelSettingsPanel", () => {
 			"usage.get": async () => usageSnapshot,
 		});
 		const screen = page.elementLocator(baseElement);
+		await expandModel(baseElement, "model-alpha");
 		const temperature = screen.getByLabelText("Temperature value");
 		const contextLength = screen.getByLabelText("Context length in tokens");
 
@@ -208,7 +215,7 @@ describe("ModelSettingsPanel", () => {
 		});
 	});
 
-	it("groups model settings into independently collapsible sections", async () => {
+	it("groups model settings into tabs that flag customized values", async () => {
 		const { baseElement } = renderSettings({
 			"models.list": async () => [
 				{
@@ -217,19 +224,23 @@ describe("ModelSettingsPanel", () => {
 					path: "/models/alpha.gguf",
 					available: true,
 					addedAt: 1,
+					settings: { topP: 0.9, topK: 50 },
 				},
 			],
 			"status.get": async () => ({ status: "ready", loadedModelIds: [] }),
 			"usage.get": async () => usageSnapshot,
 		});
 		const screen = page.elementLocator(baseElement);
-		const general = screen.getByRole("button", { name: "General" });
-		const sampling = screen.getByRole("button", { name: "Sampling" });
-		const advanced = screen.getByRole("button", { name: "Advanced" });
+		const details = await expandModel(baseElement, "model-alpha");
+		const general = details.getByRole("tab", { name: "General" });
+		const sampling = details.getByRole("tab", { name: /^Sampling/ });
+		const advanced = details.getByRole("tab", { name: "Advanced" });
 
-		await expect.element(general).toHaveAttribute("aria-expanded", "true");
-		await expect.element(sampling).toHaveAttribute("aria-expanded", "false");
-		await expect.element(advanced).toHaveAttribute("aria-expanded", "false");
+		await expect.element(general).toHaveAttribute("aria-selected", "true");
+		await expect.element(sampling).toHaveAttribute("aria-selected", "false");
+		await expect.element(advanced).toHaveAttribute("aria-selected", "false");
+		await expect.element(sampling).toHaveAccessibleName("Sampling, 2 customized");
+		await expect.element(general).toHaveAccessibleName("General");
 		await expect
 			.element(
 				screen.getByText(
@@ -247,14 +258,18 @@ describe("ModelSettingsPanel", () => {
 			.toBeVisible();
 
 		await sampling.click();
-		await advanced.click();
 
-		await expect.element(general).toHaveAttribute("aria-expanded", "true");
-		await expect.element(sampling).toHaveAttribute("aria-expanded", "true");
-		await expect.element(advanced).toHaveAttribute("aria-expanded", "true");
+		await expect.element(sampling).toHaveAttribute("aria-selected", "true");
+		await expect.element(screen.getByLabelText("Top P value")).toHaveValue(0.9);
+		await expect
+			.element(screen.getByLabelText(/^Context length in tokens/))
+			.not.toBeInTheDocument();
+
+		await screen.getByRole("button", { name: "Reset Top K to automatic" }).click();
+		await expect.element(sampling).toHaveAccessibleName("Sampling, 1 customized");
 	});
 
-	it("shows and saves the selected model's llama.cpp sampling settings", async () => {
+	it("shows and saves an expanded model's llama.cpp sampling settings", async () => {
 		const updateModel = vi.fn(async ({ id, settings }) => ({
 			id,
 			name: "Alpha 8B",
@@ -287,14 +302,15 @@ describe("ModelSettingsPanel", () => {
 			"usage.get": async () => usageSnapshot,
 		});
 		const screen = page.elementLocator(baseElement);
-		await screen.getByRole("button", { name: "Sampling" }).click();
+		await expandModel(baseElement, "model-alpha");
+		await expect.element(screen.getByLabelText("Max tokens value")).toHaveValue(2048);
+		await screen.getByRole("tab", { name: /^Sampling/ }).click();
 
 		await expect.element(screen.getByLabelText("Top P value")).toHaveValue(0.9);
 		await expect.element(screen.getByLabelText("Top K value")).toHaveValue(64);
 		await expect.element(screen.getByLabelText("Min P value")).toHaveValue(0.05);
 		await expect.element(screen.getByLabelText("Repetition penalty value")).toHaveValue(1.1);
 		await expect.element(screen.getByLabelText("Presence penalty value")).toHaveValue(0.2);
-		await expect.element(screen.getByLabelText("Max tokens value")).toHaveValue(2048);
 
 		const topP = screen.getByRole("group", { name: "Top P" }).getByRole("slider");
 		topP.element().focus();
@@ -307,6 +323,7 @@ describe("ModelSettingsPanel", () => {
 				settings: { ...initialSettings, topP: 0.91 },
 			});
 
+		await screen.getByRole("tab", { name: /^General/ }).click();
 		const maxTokens = screen.getByLabelText("Max tokens value");
 		await maxTokens.fill("4096");
 		maxTokens.element().focus();
@@ -320,7 +337,7 @@ describe("ModelSettingsPanel", () => {
 			});
 	});
 
-	it("saves whether the selected model receives coding tools and instructions", async () => {
+	it("saves whether an expanded model receives coding tools and instructions", async () => {
 		const updateModel = vi.fn(async ({ id, settings }) => ({
 			id,
 			name: "Alpha 8B",
@@ -344,6 +361,7 @@ describe("ModelSettingsPanel", () => {
 			"usage.get": async () => usageSnapshot,
 		});
 		const screen = page.elementLocator(baseElement);
+		await expandModel(baseElement, "model-alpha");
 		const contextAndTools = screen.getByRole("switch", {
 			name: "Coding tools and instructions",
 		});
@@ -360,7 +378,7 @@ describe("ModelSettingsPanel", () => {
 			});
 	});
 
-	it("saves pasted llama.cpp extra arguments for the selected model", async () => {
+	it("saves pasted llama.cpp extra arguments for an expanded model", async () => {
 		const updateModel = vi.fn(async ({ id, settings }) => ({
 			id,
 			name: "Alpha 8B",
@@ -385,14 +403,15 @@ describe("ModelSettingsPanel", () => {
 			"usage.get": async () => usageSnapshot,
 		});
 		const screen = page.elementLocator(baseElement);
-		await screen.getByRole("button", { name: "Advanced" }).click();
+		await expandModel(baseElement, "model-alpha");
+		await screen.getByRole("tab", { name: /^Advanced/ }).click();
 		const extraArguments = screen.getByLabelText("Extra Arguments");
 
 		await expect.element(extraArguments).toHaveValue("--flash-attn on");
 		await expect
 			.element(
 				screen.getByText(
-					"Paste llama.cpp flags exactly as you would on the command line. Matching values override the model settings above; app-managed flags are refused.",
+					"Paste llama.cpp flags exactly as you would on the command line. Matching values override the model settings in the other tabs; app-managed flags are refused.",
 				),
 			)
 			.toBeVisible();

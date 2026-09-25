@@ -10,7 +10,7 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 
-import { SdkProvider } from "@kilo-desktop/sdk-react";
+import { SdkProvider, SettingsPageHeader } from "@kilo-desktop/sdk-react";
 import { SidebarProvider } from "@kilo-desktop/ui/components/sidebar";
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";
 import { createAppFeatureSystem } from "@/platform/featureSystem";
@@ -120,9 +120,7 @@ describe("SettingsSidebar", () => {
 		await expect.element(screen.getByTestId("settings-section-nav")).toBeVisible();
 		await expect.element(screen.getByTestId("settings-group-personal")).toBeVisible();
 		await expect.element(screen.getByTestId("alpha-panel")).toBeVisible();
-		expect(screen.getByTestId("settings-section-alpha").element().className).toContain(
-			"data-active:bg-foreground/5",
-		);
+		expect(screen.getByTestId("settings-section-alpha").element()).toHaveAttribute("data-active");
 
 		await screen.getByTestId("settings-section-beta").click();
 		await expect.element(screen.getByTestId("beta-panel")).toBeVisible();
@@ -181,5 +179,70 @@ describe("SettingsSectionView", () => {
 		);
 		const screen = page.elementLocator(baseElement);
 		await expect.element(screen.getByTestId("settings-section-unavailable")).toBeVisible();
+	});
+
+	it("defaults a section's page header to its entry title and description", async () => {
+		function PanelWithAction() {
+			return (
+				<div data-qa-id="alpha-panel">
+					<SettingsPageHeader actions={<button type="button">Refresh</button>} />
+					Alpha panel
+				</div>
+			);
+		}
+		const { baseElement } = render(
+			<SettingsSectionView
+				sectionId="alpha"
+				sections={[makeSection({ description: "Alpha settings.", component: PanelWithAction })]}
+			/>,
+		);
+		const screen = page.elementLocator(baseElement);
+
+		await expect
+			.element(screen.getByRole("heading", { level: 1, name: "Alpha" }))
+			.toHaveAttribute("data-qa-id", "settings-section-heading");
+		await expect.element(screen.getByText("Alpha settings.")).toBeVisible();
+		await expect
+			.element(
+				screen.getByTestId("settings-section-actions").getByRole("button", { name: "Refresh" }),
+			)
+			.toBeVisible();
+	});
+
+	it("lets a section replace the page title and subtitle", async () => {
+		function PanelWithHeading() {
+			return (
+				<div data-qa-id="alpha-panel">
+					<SettingsPageHeader
+						title="dev"
+						description="/opt/conda/envs/dev"
+						titleQaId="env-name"
+						leading={
+							<button type="button" data-qa-id="env-back">
+								Back
+							</button>
+						}
+					>
+						<span data-qa-id="env-badge">Python 3.12</span>
+					</SettingsPageHeader>
+					Alpha panel
+				</div>
+			);
+		}
+		const { baseElement } = render(
+			<SettingsSectionView
+				sectionId="alpha"
+				sections={[makeSection({ description: "Alpha settings.", component: PanelWithHeading })]}
+			/>,
+		);
+		const screen = page.elementLocator(baseElement);
+
+		await expect
+			.element(screen.getByRole("heading", { level: 1, name: "dev" }))
+			.toHaveAttribute("data-qa-id", "env-name");
+		await expect.element(screen.getByText("/opt/conda/envs/dev")).toBeVisible();
+		await expect.element(screen.getByTestId("env-back")).toBeVisible();
+		await expect.element(screen.getByTestId("env-badge")).toBeVisible();
+		await expect.element(screen.getByText("Alpha settings.")).not.toBeInTheDocument();
 	});
 });

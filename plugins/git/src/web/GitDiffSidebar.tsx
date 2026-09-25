@@ -6,12 +6,17 @@ import type { CodeViewHandle } from "@pierre/diffs/react";
 import { themeToTreeStyles } from "@pierre/trees";
 import { FileTree, useFileTree, useFileTreeSearch } from "@pierre/trees/react";
 import type { FileTreeBatchOperation, FileTreeSortComparator, GitStatusEntry } from "@pierre/trees";
-import { FolderIcon, LoaderCircleIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
+import { FolderIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 
 import type { ThemeAppearance } from "@kilo-desktop/feature-sdk";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Button } from "@kilo-desktop/ui/components/button";
-import { Input } from "@kilo-desktop/ui/components/input";
+import {
+	InputGroup,
+	InputGroupAddon,
+	InputGroupInput,
+} from "@kilo-desktop/ui/components/input-group";
 import {
 	Select,
 	SelectContent,
@@ -206,11 +211,10 @@ export function GitDiffSidebar({
 				</div>
 			) : null}
 			<div className="flex h-10 shrink-0 items-center gap-1 border-b px-2">
-				<div className="relative min-w-0 flex-1">
-					<SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2" />
-					<Input
+				<InputGroup size="sm" className="min-w-0 flex-1">
+					<InputGroupInput
+						type="search"
 						aria-label="Search changed files"
-						className="h-7 pl-7 text-xs"
 						data-qa-id="git-diff-search"
 						disabled={source == null}
 						placeholder="Search files"
@@ -221,7 +225,10 @@ export function GitDiffSidebar({
 							else search.close();
 						}}
 					/>
-				</div>
+					<InputGroupAddon>
+						<SearchIcon aria-hidden="true" />
+					</InputGroupAddon>
+				</InputGroup>
 				<Tooltip disableHoverablePopup>
 					<TooltipTrigger
 						render={
@@ -271,9 +278,7 @@ export function GitDiffSidebar({
 					className="text-muted-foreground flex min-h-0 flex-1 items-center justify-center gap-1.5 px-4 text-center text-xs"
 					data-qa-id="git-diff-tree-placeholder"
 				>
-					{loading ? (
-						<LoaderCircleIcon aria-hidden="true" className="size-3.5 shrink-0 animate-spin" />
-					) : null}
+					{loading ? <Spinner aria-hidden="true" className="size-3.5 shrink-0" /> : null}
 					{treePlaceholder}
 				</div>
 			)}

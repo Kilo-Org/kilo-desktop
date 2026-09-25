@@ -3,7 +3,6 @@ import { createContext, useContext, useState, type ReactElement, type ReactNode 
 import {
 	Tooltip,
 	TooltipContent,
-	TooltipProvider,
 	TooltipTrigger,
 	createTooltipHandle,
 } from "@kilo-desktop/ui/components/tooltip";
@@ -22,16 +21,14 @@ export function PaneTabTooltipScope({
 	const [handle] = useState(() => createTooltipHandle<ReactNode>());
 	return (
 		<PaneTabTooltipContext value={handle}>
-			<TooltipProvider>
-				{children}
-				<Tooltip handle={handle} disabled={scrolling} disableHoverablePopup>
-					{({ payload }) => (
-						<TooltipContent side="bottom" positionMethod="fixed" className="data-closed:hidden">
-							{payload}
-						</TooltipContent>
-					)}
-				</Tooltip>
-			</TooltipProvider>
+			{children}
+			<Tooltip handle={handle} disabled={scrolling} disableHoverablePopup>
+				{({ payload }) => (
+					<TooltipContent side="bottom" positionMethod="fixed" className="data-closed:hidden">
+						{payload}
+					</TooltipContent>
+				)}
+			</Tooltip>
 		</PaneTabTooltipContext>
 	);
 }

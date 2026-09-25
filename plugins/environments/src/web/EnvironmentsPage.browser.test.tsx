@@ -24,6 +24,7 @@ function renderPage(
 	options: {
 		flagEnabled?: boolean;
 		providersAvailable?: boolean;
+		status?: () => Promise<{ providersAvailable: boolean }>;
 		list?: CondaService["conda.envs.list"];
 		/** Height of the surrounding shell; settings renders the page in a bounded scroller. */
 		hostHeight?: number;
@@ -37,7 +38,7 @@ function renderPage(
 		featureId: "environments",
 		channels: { ...condaContract, ...environmentsStatusContract },
 		handlers: {
-			"environments.status": async () => ({ providersAvailable }),
+			"environments.status": options.status ?? (async () => ({ providersAvailable })),
 			"conda.envs.list": list,
 			"conda.envs.create": async () => {
 				throw new Error("not implemented in test");
@@ -210,6 +211,18 @@ describe("EnvironmentsPage", () => {
 			await expect.element(screen.getByTestId("environments-unavailable-message")).toBeVisible();
 		});
 
+		it("shows a loading skeleton while the status resolves", async () => {
+			const { baseElement } = renderPage({ status: () => new Promise(() => {}) });
+			const screen = page.elementLocator(baseElement);
+
+			await expect
+				.element(screen.getByTestId("environments-page"))
+				.toHaveAttribute("data-state", "loading");
+			await expect
+				.element(screen.getByRole("status", { name: "Loading environments" }))
+				.toBeVisible();
+		});
+
 		it("renders normally when providers are available", async () => {
 			const { baseElement } = renderPage({ providersAvailable: true });
 			const screen = page.elementLocator(baseElement);
@@ -228,7 +241,7 @@ describe("EnvironmentsPage — scrolling", () => {
 		prefix: `/opt/conda/envs/env-${index}`,
 	}));
 
-	it("keeps the page chrome in place and scrolls only the environment list", async () => {
+	it("scrolls the settings page, not the environment list", async () => {
 		const { baseElement } = renderPage({
 			list: async () => manyEnvironments,
 			hostHeight: 420,
@@ -237,11 +250,9 @@ describe("EnvironmentsPage — scrolling", () => {
 		await expect.element(screen.getByTestId("environments-conda-row").first()).toBeVisible();
 
 		const shell = baseElement.querySelector('[data-qa-id="test-settings-scroller"]')!;
-		const table = baseElement.querySelector("table")!;
-		const listScroller = table.parentElement!;
+		const list = baseElement.querySelector('[data-qa-id="environments-conda-list"]')!;
 
-		// The settings shell must not be what overflows: the list owns the scroll.
-		expect(shell.scrollHeight).toBeLessThanOrEqual(shell.clientHeight + 1);
-		expect(listScroller.scrollHeight).toBeGreaterThan(listScroller.clientHeight);
+		expect(shell.scrollHeight).toBeGreaterThan(shell.clientHeight);
+		expect(list.scrollHeight).toBeLessThanOrEqual(list.clientHeight + 1);
 	});
 });

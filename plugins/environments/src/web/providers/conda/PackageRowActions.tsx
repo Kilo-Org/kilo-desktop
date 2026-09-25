@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { ArrowUpCircleIcon, EllipsisVerticalIcon, TrashIcon } from "lucide-react";
+import { EllipsisIcon, Trash2Icon } from "lucide-react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
@@ -12,6 +12,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
 import type { CondaEnv, CondaPackage } from "../../../contracts/providers/conda.js";
+import { UpdateIcon } from "./package-change-icons.js";
 import { RemovePackageConfirmation } from "./RemovePackageConfirmation.js";
 
 interface PackageRowActionsProps {
@@ -48,7 +49,7 @@ export function PackageRowActions({
 
 	const updateItem = (
 		<DropdownMenuItem disabled={!hasUpdate} onClick={hasUpdate ? () => onUpdate(pkg) : undefined}>
-			<ArrowUpCircleIcon className="size-4" />
+			<UpdateIcon />
 			Update…
 		</DropdownMenuItem>
 	);
@@ -60,13 +61,13 @@ export function PackageRowActions({
 					render={
 						<Button
 							variant="ghost"
-							size="icon-xs"
+							size="icon-sm"
 							aria-label={`Actions for ${pkg.name}`}
 							data-qa-id="environments-conda-detail-row-actions"
 						/>
 					}
 				>
-					<EllipsisVerticalIcon className="size-4" />
+					<EllipsisIcon />
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="end">
 					{hasUpdate ? (
@@ -84,7 +85,7 @@ export function PackageRowActions({
 						</Tooltip>
 					)}
 					<DropdownMenuItem variant="destructive" onClick={() => setShowRemove(true)}>
-						<TrashIcon className="size-4" />
+						<Trash2Icon />
 						Remove
 					</DropdownMenuItem>
 				</DropdownMenuContent>

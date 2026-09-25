@@ -62,7 +62,7 @@ export function getChannelPresentation(channel: string): ChannelPresentation {
 		return {
 			kind: "anaconda",
 			title: "Anaconda",
-			badge: "MAIN",
+			badge: "Main",
 			description: "Secure, vetted packages. Requires Anaconda sign-in and ToS acceptance.",
 			requiresSignIn: true,
 		};

@@ -1,10 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
+import { page } from "vitest/browser";
 
 import type { AuthSession, ChannelHandlerMap, SDK, SdkNavigation } from "@kilo-desktop/feature-sdk";
 import { SdkProvider } from "@kilo-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
-import { SidebarProvider } from "@kilo-desktop/ui/components/sidebar";
 
 import { localInferenceContract } from "../contracts/schemas.js";
 import { LocalModelServerSettings } from "../web/settings/LocalModelServerSettings.js";
@@ -67,12 +67,16 @@ export function renderSettings(
 	const view = render(
 		<SdkProvider system={system}>
 			<QueryClientProvider client={queryClient}>
-				<SidebarProvider>
-					<LocalModelServerSettings />
-				</SidebarProvider>
+				<LocalModelServerSettings />
 			</QueryClientProvider>
 		</SdkProvider>,
 	);
 
 	return { ...view, sdk };
+}
+
+export async function expandModel(baseElement: HTMLElement, modelId: string) {
+	const trigger = page.elementLocator(baseElement).getByTestId(`local-model-trigger-${modelId}`);
+	await trigger.click();
+	return page.elementLocator(baseElement).getByTestId(`local-model-details-${modelId}`);
 }

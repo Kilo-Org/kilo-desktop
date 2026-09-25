@@ -108,7 +108,7 @@ describe("SidebarKiloAccount", () => {
 		expect(screen.getByTestId("sidebar-kilo-login").query()).toBeNull();
 	});
 
-	it("falls back to the Sign In button when device auth fails while signed out", async () => {
+	it("falls back to the Sign in button when device auth fails while signed out", async () => {
 		const { screen, auth, navigate } = renderDock(
 			idleAuth({
 				deviceAuth: {

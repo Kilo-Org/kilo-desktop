@@ -1,6 +1,7 @@
-import { CheckIcon, Loader2Icon } from "lucide-react";
+import { CheckIcon } from "lucide-react";
 import type { FC } from "react";
 
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
@@ -32,7 +33,7 @@ export const ApprovePlanButton: FC<ApprovePlanButtonProps> = ({
 				role="status"
 				data-qa-id={approvedQaId}
 				className={cn(
-					"inline-flex h-7 shrink-0 items-center gap-1 rounded-lg bg-emerald-500/15 px-2.5 text-[0.8rem] font-medium text-emerald-600 dark:text-emerald-400",
+					"inline-flex h-7 shrink-0 items-center gap-1 rounded-lg bg-success-surface px-2.5 text-[0.8rem] font-medium text-success-foreground",
 					className,
 				)}
 			>
@@ -51,11 +52,11 @@ export const ApprovePlanButton: FC<ApprovePlanButtonProps> = ({
 			onClick={approve}
 		>
 			{submitting ? (
-				<Loader2Icon className="size-4 animate-spin" />
+				<Spinner data-icon="inline-start" aria-hidden="true" />
 			) : (
-				<CheckIcon className="size-4" />
+				<CheckIcon data-icon="inline-start" />
 			)}
-			Approve
+			{submitting ? "Approving…" : "Approve"}
 		</Button>
 	);
 };

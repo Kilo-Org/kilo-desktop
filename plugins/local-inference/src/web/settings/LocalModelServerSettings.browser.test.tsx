@@ -13,6 +13,7 @@ import type {
 } from "../../contracts/schemas.js";
 import {
 	authenticatedAuth,
+	expandModel,
 	renderSettings,
 	usageSnapshot,
 } from "../../test/render-local-model-server-settings.js";
@@ -159,7 +160,7 @@ describe("LocalModelServerSettings", () => {
 		await expect.element(dialog.getByRole("heading", { name: "Catalog Model" })).toBeVisible();
 	});
 
-	it("shows model not found when the catalogModel search param is unknown", async () => {
+	it("keeps the details panel closed when the catalogModel search param is unknown", async () => {
 		const { baseElement } = renderSettings(
 			{
 				"catalog.list": async () => ({ models: [catalogModel], total: 1 }),
@@ -177,9 +178,10 @@ describe("LocalModelServerSettings", () => {
 		const dialog = page.elementLocator(baseElement).getByRole("dialog", {
 			name: "Local Model Catalog",
 		});
-		await expect.element(dialog).toBeVisible();
-		await expect.element(dialog.getByTestId("model-catalog-detail-missing")).toBeVisible();
-		await expect.element(dialog.getByText("Model not found")).toBeVisible();
+		await expect.element(dialog.getByTestId("model-catalog-table")).toBeVisible();
+		await expect
+			.element(dialog.getByRole("region", { name: "Model details" }))
+			.not.toBeInTheDocument();
 	});
 
 	it("prompts for Anaconda sign-in when opening the catalog while signed out", async () => {
@@ -294,7 +296,7 @@ describe("LocalModelServerSettings", () => {
 		await expect.poll(() => listCatalog).toHaveBeenCalledTimes(2);
 	});
 
-	it("shows structural skeletons in both catalog panes while data loads", async () => {
+	it("shows the catalog skeleton without a details panel while data loads", async () => {
 		let resolveCatalog:
 			| ((value: { models: ModelCatalogEntry[]; total: number }) => void)
 			| undefined;
@@ -318,18 +320,53 @@ describe("LocalModelServerSettings", () => {
 		await screen.getByRole("button", { name: "Add model" }).click();
 		await page.getByRole("menuitem", { name: "From catalog" }).click();
 		const dialog = page.getByRole("dialog", { name: "Local Model Catalog" });
+		const detailsPanel = dialog.getByRole("region", { name: "Model details" });
 		await expect.element(dialog.getByTestId("model-catalog-loading")).toBeVisible();
-		await expect.element(dialog.getByTestId("model-catalog-detail-loading")).toBeVisible();
+		await expect.element(detailsPanel).not.toBeInTheDocument();
 
 		resolveCatalog?.({ models: [catalogModel], total: 1 });
 		await expect.element(dialog.getByTestId("model-catalog-loading")).toBeVisible();
 		resolveHardware?.(hardwareProfile);
 
 		await expect.element(dialog.getByTestId("model-catalog-loading")).not.toBeInTheDocument();
+		await expect.element(dialog.getByTestId("model-catalog-table")).toBeVisible();
+		await expect.element(detailsPanel).not.toBeInTheDocument();
+	});
+
+	it("shows a details skeleton while a catalogModel deep link resolves", async () => {
+		let resolveCatalog:
+			| ((value: { models: ModelCatalogEntry[]; total: number }) => void)
+			| undefined;
+		const catalogResponse = new Promise<{ models: ModelCatalogEntry[]; total: number }>(
+			(resolve) => {
+				resolveCatalog = resolve;
+			},
+		);
+		const { baseElement } = renderSettings(
+			{
+				"catalog.list": () => catalogResponse,
+				"hardware.profile": async () => hardwareProfile,
+				"status.get": async () => ({ status: "ready", loadedModelIds: [] }),
+				"usage.get": async () => usageSnapshot,
+			},
+			{},
+			authenticatedAuth,
+			createStaticNavigation({
+				path: "/settings/local-model-server",
+				search: { catalogModel: catalogModel.id },
+			}),
+		);
+		const dialog = page.elementLocator(baseElement).getByRole("dialog", {
+			name: "Local Model Catalog",
+		});
+		await expect.element(dialog.getByTestId("model-catalog-detail-loading")).toBeVisible();
+
+		resolveCatalog?.({ models: [catalogModel], total: 1 });
+
 		await expect
 			.element(dialog.getByTestId("model-catalog-detail-loading"))
 			.not.toBeInTheDocument();
-		await expect.element(dialog.getByTestId("model-catalog-detail-empty")).toBeVisible();
+		await expect.element(dialog.getByTestId("model-catalog-detail-catalog-model")).toBeVisible();
 	});
 
 	it("shows model details beside the catalog and selects a quantization", async () => {
@@ -345,14 +382,13 @@ describe("LocalModelServerSettings", () => {
 		await page.getByRole("menuitem", { name: "From catalog" }).click();
 
 		const catalogDialog = page.getByRole("dialog", { name: "Local Model Catalog" });
-		await expect.element(catalogDialog.getByTestId("model-catalog-detail-empty")).toBeVisible();
+		const detailsPanel = catalogDialog.getByRole("region", { name: "Model details" });
+		await expect.element(catalogDialog.getByTestId("model-catalog-table")).toBeVisible();
+		await expect.element(detailsPanel).not.toBeInTheDocument();
 		await catalogDialog.getByRole("row", { name: /Catalog Model/ }).click();
 
 		const detailDialog = catalogDialog.getByTestId("model-catalog-detail-pane");
-		await expect.element(catalogDialog.getByTestId("model-catalog-table")).toBeVisible();
-		await expect
-			.element(catalogDialog.getByTestId("model-catalog-detail-empty"))
-			.not.toBeInTheDocument();
+		await expect.element(detailsPanel).toBeVisible();
 		await expect
 			.element(detailDialog.getByTestId("model-catalog-detail-catalog-model"))
 			.toBeVisible();
@@ -704,7 +740,7 @@ describe("LocalModelServerSettings", () => {
 		const dialog = page.getByRole("dialog", { name: "Local Model Catalog" });
 		await dialog.getByRole("row", { name: /Catalog Model/ }).click();
 		await expect.element(dialog.getByText("The model file could not be downloaded.")).toBeVisible();
-		await dialog.getByRole("button", { name: "Retry" }).click();
+		await dialog.getByRole("button", { name: "Try again" }).click();
 
 		await expect.poll(() => startDownload).toHaveBeenCalledOnce();
 		await expect.element(dialog.getByText("Downloading 0%", { exact: true })).toBeVisible();
@@ -801,11 +837,11 @@ describe("LocalModelServerSettings", () => {
 		await expect
 			.element(screen.getByRole("alert").getByText("Runtime failed to start", { exact: true }))
 			.toBeVisible();
-		await screen.getByRole("button", { name: "Retry" }).click();
+		await screen.getByRole("button", { name: "Try again" }).click();
 		await expect.poll(() => retry).toHaveBeenCalledOnce();
 	});
 
-	it("keeps the model list and settings skeletons visible while catalog metadata loads", async () => {
+	it("keeps the model list skeleton visible while catalog metadata loads", async () => {
 		let resolveCatalog:
 			| ((value: { models: ModelCatalogEntry[]; total: number }) => void)
 			| undefined;
@@ -834,21 +870,19 @@ describe("LocalModelServerSettings", () => {
 
 		await expect.poll(() => listCatalog).toHaveBeenCalledOnce();
 		await expect.element(screen.getByTestId("local-model-list-skeleton")).toBeVisible();
-		await expect.element(screen.getByTestId("local-model-settings-skeleton")).toBeVisible();
 		await expect
-			.element(screen.getByTestId("local-model-select-model-alpha"))
+			.element(screen.getByTestId("local-model-item-model-alpha"))
 			.not.toBeInTheDocument();
 
 		resolveCatalog?.({ models: [catalogModel], total: 1 });
 
 		await expect.element(screen.getByTestId("local-model-list-skeleton")).not.toBeInTheDocument();
 		await expect
-			.element(screen.getByTestId("local-model-settings-skeleton"))
-			.not.toBeInTheDocument();
-		await expect
 			.element(screen.getByTestId("local-model-publisher-icon-model-alpha"))
 			.toBeVisible();
-		await expect.element(screen.getByRole("button", { name: "General" })).toBeVisible();
+		await expect
+			.element(screen.getByTestId("local-model-item-model-alpha"))
+			.toHaveAttribute("data-state", "summary");
 	});
 
 	it("searches models and filters them by catalog or imported source", async () => {
@@ -882,48 +916,44 @@ describe("LocalModelServerSettings", () => {
 			"usage.get": async () => usageSnapshot,
 		});
 		const screen = page.elementLocator(baseElement);
-		const settingsCard = screen.getByTestId("local-model-settings-card");
 		const search = screen.getByRole("searchbox", { name: "Search models" });
 		const sourceFilter = screen.getByTestId("local-model-source-filter");
+		const catalogAlpha = screen.getByTestId("local-model-item-catalog-alpha");
+		const importedBeta = screen.getByTestId("local-model-item-imported-beta");
+		const importedGamma = screen.getByTestId("local-model-item-imported-gamma");
 
-		await expect.element(screen.getByTestId("local-model-select-catalog-alpha")).toBeVisible();
-		await expect.element(screen.getByTestId("local-model-select-imported-beta")).toBeVisible();
+		await expect.element(catalogAlpha).toBeVisible();
+		await expect.element(importedBeta).toBeVisible();
+		await screen.getByTestId("local-model-trigger-imported-beta").click();
+		await expect.element(importedBeta).toHaveAttribute("data-state", "details-open");
 		await search.fill("beta");
-		await expect
-			.element(screen.getByTestId("local-model-select-catalog-alpha"))
-			.not.toBeInTheDocument();
-		await expect.element(screen.getByTestId("local-model-select-imported-beta")).toBeVisible();
-		await expect.element(settingsCard).toHaveAttribute("data-model-id", "imported-beta");
+		await expect.element(catalogAlpha).not.toBeInTheDocument();
+		await expect.element(importedBeta).toBeVisible();
 
 		await search.fill("");
 		await sourceFilter.click();
 		await page.getByRole("menuitemradio", { name: "Catalog models" }).click();
-		await expect.element(screen.getByTestId("local-model-select-catalog-alpha")).toBeVisible();
-		await expect
-			.element(screen.getByTestId("local-model-select-imported-beta"))
-			.not.toBeInTheDocument();
-		await expect.element(settingsCard).toHaveAttribute("data-model-id", "catalog-alpha");
+		await expect.element(catalogAlpha).toBeVisible();
+		await expect.element(importedBeta).not.toBeInTheDocument();
 		await expect.element(sourceFilter).toHaveAttribute("aria-expanded", "false");
 
 		await sourceFilter.click();
 		const importedModelsFilter = page.getByRole("menuitemradio", { name: "Imported models" });
 		await expect.element(importedModelsFilter).toBeVisible();
 		await importedModelsFilter.click();
-		await expect
-			.element(screen.getByTestId("local-model-select-catalog-alpha"))
-			.not.toBeInTheDocument();
-		await expect.element(screen.getByTestId("local-model-select-imported-beta")).toBeVisible();
-		await expect.element(screen.getByTestId("local-model-select-imported-gamma")).toBeVisible();
-		await expect.element(settingsCard).toHaveAttribute("data-model-id", "imported-beta");
+		await expect.element(catalogAlpha).not.toBeInTheDocument();
+		await expect.element(importedBeta).toBeVisible();
+		await expect.element(importedGamma).toBeVisible();
+		await expect.element(importedBeta).toHaveAttribute("data-state", "details-open");
 
 		await search.fill("missing");
 		await expect.element(screen.getByText("No matching models", { exact: true })).toBeVisible();
 		await screen.getByRole("button", { name: "Clear filters" }).click();
-		await expect.element(screen.getByTestId("local-model-select-catalog-alpha")).toBeVisible();
-		await expect.element(screen.getByTestId("local-model-select-imported-beta")).toBeVisible();
+		await expect.element(catalogAlpha).toBeVisible();
+		await expect.element(importedBeta).toBeVisible();
 	});
 
-	it("selects a model and exposes safe filesystem actions from its menu", async () => {
+	it("expands model cards and exposes safe filesystem actions from their menu", async () => {
 		const removeModel = vi.fn(async () => ({ ok: true as const }));
 		const showItemInFolder = vi.fn(async () => ({ revealed: true }));
 		const { baseElement } = renderSettings(
@@ -931,7 +961,7 @@ describe("LocalModelServerSettings", () => {
 				"models.list": async () => [
 					{
 						id: "model-alpha",
-						name: "Alpha 8B",
+						name: "Alpha 8B (Q4_K_M)",
 						path: "/models/alpha.gguf",
 						available: true,
 						addedAt: 1,
@@ -958,7 +988,8 @@ describe("LocalModelServerSettings", () => {
 			{ showItemInFolder },
 		);
 		const screen = page.elementLocator(baseElement);
-		const settingsCard = screen.getByTestId("local-model-settings-card");
+		const alpha = screen.getByTestId("local-model-item-model-alpha");
+		const beta = screen.getByTestId("local-model-item-model-beta");
 
 		await expect
 			.element(screen.getByTestId("local-model-status-model-alpha"))
@@ -970,17 +1001,25 @@ describe("LocalModelServerSettings", () => {
 			.element(screen.getByTestId("local-model-publisher-icon-model-alpha"))
 			.toBeVisible();
 		await expect.element(screen.getByTestId("local-model-file-icon-model-beta")).toBeVisible();
-		await expect.element(settingsCard).toHaveAttribute("data-model-id", "model-alpha");
+		const alphaTitle = screen.getByTestId("local-model-title-model-alpha");
+		await expect.element(alphaTitle).toBeVisible();
+		expect(alphaTitle.element().textContent).toBe("Alpha 8B");
+		const alphaSummary = screen.getByTestId("local-model-summary-model-alpha");
+		await expect.element(alphaSummary.getByText("Loaded", { exact: true })).toBeVisible();
+		await expect.element(alphaSummary.getByText("Q4_K_M", { exact: true })).toBeVisible();
+		await expect.element(alpha).toHaveAttribute("data-state", "summary");
+		await expect.element(beta).toHaveAttribute("data-state", "summary");
 
-		await screen.getByTestId("local-model-select-model-alpha").hover();
-		const catalogPreview = page.getByTestId("local-model-catalog-preview-model-alpha");
-		await expect.element(catalogPreview.getByText("Catalog Model", { exact: true })).toBeVisible();
+		const alphaDetails = await expandModel(baseElement, "model-alpha");
+		await expect.element(alpha).toHaveAttribute("data-state", "details-open");
 		await expect
-			.element(catalogPreview.getByText("A catalog model.", { exact: true }))
+			.element(screen.getByRole("region", { name: "Alpha 8B model settings" }))
 			.toBeVisible();
-		await expect.element(catalogPreview.getByText("Q4_K_M", { exact: true })).toBeVisible();
-		await expect.element(catalogPreview.getByText("4 GB", { exact: true })).toBeVisible();
-		await catalogPreview.getByRole("button", { name: "View in catalog" }).click();
+		const alphaAbout = alphaDetails.getByRole("complementary", { name: "About Alpha 8B" });
+		await expect.element(alphaAbout.getByText("A catalog model.", { exact: true })).toBeVisible();
+		await expect.element(alphaAbout.getByText("Q4_K_M", { exact: true })).toBeVisible();
+		await expect.element(alphaAbout.getByText("4 GB", { exact: true })).toBeVisible();
+		await alphaAbout.getByRole("button", { name: "View in catalog" }).click();
 		await expect.element(page.getByTestId("model-catalog-detail-catalog-model")).toBeVisible();
 		await page
 			.getByRole("dialog", { name: "Local Model Catalog" })
@@ -989,27 +1028,20 @@ describe("LocalModelServerSettings", () => {
 			})
 			.click();
 
-		await screen.getByTestId("local-model-title-model-beta").hover();
-		const filePreview = page.getByTestId("local-model-file-preview-model-beta");
-		await expect.element(filePreview.getByText("Imported GGUF", { exact: true })).toBeVisible();
-		await expect
-			.element(filePreview.getByTestId("local-model-path-model-beta"))
-			.toHaveTextContent("/models/beta.gguf");
-		await filePreview.getByRole("button", { name: revealInFileManagerLabel() }).click();
+		const betaDetails = await expandModel(baseElement, "model-beta");
+		await expect.element(alpha).toHaveAttribute("data-state", "details-open");
+		await expect.element(beta).toHaveAttribute("data-state", "details-open");
+		const betaAbout = betaDetails.getByRole("complementary", { name: "About Beta 3B" });
+		await expect.element(betaAbout.getByText("Imported GGUF", { exact: true })).toBeVisible();
+		await betaAbout.getByRole("button", { name: revealInFileManagerLabel() }).click();
 		await expect.poll(() => showItemInFolder).toHaveBeenCalledWith("/models/beta.gguf");
+		showItemInFolder.mockClear();
 
-		await screen.getByTestId("local-model-select-model-beta").click();
-
-		await expect.element(settingsCard).toHaveAttribute("data-model-id", "model-beta");
+		await screen.getByTestId("local-model-chevron-model-alpha").click();
+		await expect.element(alpha).toHaveAttribute("data-state", "summary");
 		await expect
-			.element(screen.getByTestId("local-model-select-model-beta"))
-			.toHaveAttribute("aria-pressed", "true");
-		await expect.element(filePreview).not.toBeInTheDocument();
-		await screen.getByTestId("local-model-search").hover();
-		await screen.getByTestId("local-model-select-model-beta").hover();
-		await expect.element(filePreview).toBeVisible();
-		await screen.getByTestId("local-model-search").hover();
-		await expect.element(filePreview).not.toBeInTheDocument();
+			.element(screen.getByTestId("local-model-details-model-alpha"))
+			.not.toBeInTheDocument();
 		const betaActions = screen.getByRole("button", { name: "More actions for Beta 3B" });
 		await betaActions.click();
 		await page.getByRole("menuitem", { name: revealInFileManagerLabel() }).click();
@@ -1029,6 +1061,38 @@ describe("LocalModelServerSettings", () => {
 		await expect
 			.poll(() => removeModel)
 			.toHaveBeenCalledWith({ id: "model-alpha", mode: "delete-managed-file" });
+	});
+
+	it("expands a model from anywhere on its row except the actions menu", async () => {
+		const { baseElement } = renderSettings({
+			"models.list": async () => [
+				{
+					id: "model-alpha",
+					name: "Alpha 8B",
+					path: "/models/alpha.gguf",
+					available: true,
+					addedAt: 1,
+				},
+			],
+			"status.get": async () => ({ status: "ready", loadedModelIds: [] }),
+			"usage.get": async () => usageSnapshot,
+		});
+		const screen = page.elementLocator(baseElement);
+		const item = screen.getByTestId("local-model-item-model-alpha");
+		const header = screen.getByTestId("local-model-header-model-alpha");
+
+		await header.click({ position: { x: 2, y: 2 } });
+		await expect.element(item).toHaveAttribute("data-state", "details-open");
+
+		const { width, height } = header.element().getBoundingClientRect();
+		await header.click({ position: { x: width - 2, y: height - 2 } });
+		await expect.element(item).toHaveAttribute("data-state", "summary");
+
+		await screen.getByRole("button", { name: "More actions for Alpha 8B" }).click();
+		await expect
+			.element(page.getByRole("menuitem", { name: revealInFileManagerLabel() }))
+			.toBeVisible();
+		await expect.element(item).toHaveAttribute("data-state", "summary");
 	});
 
 	it("keeps the deletion dialog open and shows model deletion failures", async () => {

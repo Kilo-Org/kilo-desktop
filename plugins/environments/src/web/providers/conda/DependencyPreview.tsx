@@ -1,250 +1,328 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import {
-	AlertTriangleIcon,
 	ArrowRightIcon,
-	ChevronDownIcon,
-	ChevronRightIcon,
-	ClipboardCopyIcon,
+	CircleAlertIcon,
+	CopyIcon,
+	ListFilterIcon,
 	MaximizeIcon,
 	MinimizeIcon,
-	MinusIcon,
-	PlusIcon,
-	RepeatIcon,
+	RefreshCwIcon,
 } from "lucide-react";
 
-import { Badge } from "@kilo-desktop/ui/components/badge";
+import { Alert, AlertDescription, AlertTitle } from "@kilo-desktop/ui/components/alert";
+import { Button } from "@kilo-desktop/ui/components/button";
 import { toast } from "@kilo-desktop/ui/components/sonner";
-import { ArrowDownIcon, ArrowUpIcon } from "lucide-react";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuGroup,
+	DropdownMenuLabel,
+	DropdownMenuRadioGroup,
+	DropdownMenuRadioItem,
+	DropdownMenuTrigger,
+} from "@kilo-desktop/ui/components/dropdown-menu";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
-import type { CondaPackageChange } from "../../../contracts/providers/conda.js";
+import type {
+	CondaPackageChange,
+	CondaPackagesPreviewResult,
+} from "../../../contracts/providers/conda.js";
+import { PanelList, PanelListRow } from "./PackageSearch.js";
+import {
+	PACKAGE_CHANGE_COLORS,
+	PACKAGE_CHANGE_ICONS,
+	type PackageChangeKind,
+} from "./package-change-icons.js";
 
-export type ChangeFilter = "all" | "upgraded" | "downgraded" | "added" | "removed" | "rebuilt";
+export type ChangeCategory = PackageChangeKind;
+export type ChangeFilter = "all" | ChangeCategory;
+
+const CATEGORIES: readonly ChangeCategory[] = [
+	"upgraded",
+	"downgraded",
+	"added",
+	"removed",
+	"rebuilt",
+];
+
+const CATEGORY_LABELS: Record<ChangeFilter, string> = {
+	all: "All",
+	upgraded: "Upgraded",
+	downgraded: "Downgraded",
+	added: "Added",
+	removed: "Removed",
+	rebuilt: "Rebuilt",
+};
 
 export interface ChangeSection {
-	key: string;
-	title: string;
-	icon: React.ReactNode;
-	variant: "upgrade" | "downgrade" | "add" | "remove";
+	key: ChangeCategory;
 	changes: CondaPackageChange[];
 	totalCount: number;
 }
 
-/** Default category icons keyed by change kind. */
-export const CHANGE_ICONS: Record<string, React.ReactNode> = {
-	upgraded: <ArrowUpIcon className="size-3.5 text-green-600" />,
-	downgraded: <ArrowDownIcon className="size-3.5 text-amber-600" />,
-	added: <PlusIcon className="size-3.5 text-blue-600" />,
-	removed: <MinusIcon className="size-3.5 text-red-600" />,
-	rebuilt: <RepeatIcon className="size-3.5 text-gray-600" />,
-};
+export interface ChangeSummary {
+	sections: ChangeSection[];
+	/** Transitive changes across every category, before the filter and search. */
+	total: number;
+	counts: Record<ChangeCategory, number>;
+}
 
-export const CHANGE_VARIANT: Record<string, ChangeSection["variant"]> = {
-	upgraded: "upgrade",
-	downgraded: "downgrade",
-	added: "add",
-	removed: "remove",
-	rebuilt: "upgrade",
-};
+/**
+ * Transitive dependency changes in a solver preview. Packages the user chose
+ * explicitly are excluded: the preview panel shows only what the solver adds
+ * on top of that choice. `filter` and `needle` narrow the sections without
+ * changing the totals.
+ */
+export function summarizeChanges(
+	preview: CondaPackagesPreviewResult | null,
+	excluded: ReadonlySet<string>,
+	filter: ChangeFilter = "all",
+	needle = "",
+): ChangeSummary {
+	const counts = { upgraded: 0, downgraded: 0, added: 0, removed: 0, rebuilt: 0 };
+	if (!preview || preview.nothingToDo) return { sections: [], total: 0, counts };
+	const query = needle.trim().toLowerCase();
+	const sections: ChangeSection[] = [];
+	for (const key of CATEGORIES) {
+		const transitive = preview[key].filter((change) => !excluded.has(change.name));
+		counts[key] = transitive.length;
+		if (transitive.length === 0 || (filter !== "all" && filter !== key)) continue;
+		sections.push({
+			key,
+			changes: query
+				? transitive.filter((change) => change.name.toLowerCase().includes(query))
+				: transitive,
+			totalCount: transitive.length,
+		});
+	}
+	const total = CATEGORIES.reduce((sum, key) => sum + counts[key], 0);
+	return { sections, total, counts };
+}
 
-export function PreviewContent({
+/**
+ * Toolbar filter button for the dependency preview, matching the other
+ * list filters in the app. Only "All" and categories with changes are
+ * offered; while a new preview resolves, `categories` pins the previous set
+ * so the options don't jump.
+ */
+export function ChangeFilterMenu({
+	value,
+	onChange,
+	counts,
+	total,
+	resolving = false,
+	categories,
+	size = "icon-sm",
+	qaPrefix,
+}: {
+	value: ChangeFilter;
+	onChange: (value: ChangeFilter) => void;
+	counts: Record<ChangeCategory, number>;
+	total: number;
+	resolving?: boolean;
+	categories?: ReadonlySet<ChangeCategory>;
+	size?: "icon" | "icon-sm";
+	qaPrefix?: string;
+}) {
+	const visible = CATEGORIES.filter((key) => (categories ? categories.has(key) : counts[key] > 0));
+	const filters: ChangeFilter[] = ["all", ...visible];
+	const filtered = value !== "all";
+	return (
+		<DropdownMenu>
+			<DropdownMenuTrigger
+				render={
+					<Button
+						type="button"
+						variant={filtered ? "secondary" : "outline"}
+						size={size}
+						aria-label={`Filter dependency changes: ${CATEGORY_LABELS[value]}`}
+						className="shrink-0"
+						data-active={filtered || undefined}
+						data-qa-id={qaPrefix ? `${qaPrefix}-filter` : undefined}
+					/>
+				}
+			>
+				<ListFilterIcon aria-hidden="true" />
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end" className="w-56">
+				<DropdownMenuGroup>
+					<DropdownMenuLabel>Show</DropdownMenuLabel>
+					<DropdownMenuRadioGroup value={value}>
+						{filters.map((filter) => (
+							<DropdownMenuRadioItem
+								key={filter}
+								value={filter}
+								closeOnClick
+								onClick={() => onChange(filter)}
+								data-qa-id={qaPrefix ? `${qaPrefix}-filter-${filter}` : undefined}
+							>
+								{filter === "all" ? null : <CategoryIcon category={filter} />}
+								<span className={cn(filter === "all" && "pl-5")}>{CATEGORY_LABELS[filter]}</span>
+								<span className="text-muted-foreground ml-auto tabular-nums">
+									{resolving ? "–" : filter === "all" ? total : counts[filter]}
+								</span>
+							</DropdownMenuRadioItem>
+						))}
+					</DropdownMenuRadioGroup>
+				</DropdownMenuGroup>
+			</DropdownMenuContent>
+		</DropdownMenu>
+	);
+}
+
+/**
+ * Dependency changes as one bordered list, ordered by category. Each row is a
+ * single line — category icon, package name, version change — so the list
+ * scans like a table; the filter menu doubles as the icon legend.
+ */
+export function DependencyChangeList({
 	sections,
-	collapsed,
-	onToggleCollapse,
+	qaId,
 }: {
 	sections: ChangeSection[];
-	collapsed: Record<string, boolean>;
-	onToggleCollapse: (key: string) => void;
+	qaId?: string;
 }) {
-	if (sections.length === 0) {
-		return <p className="text-muted-foreground py-4 text-center text-xs">No matching changes.</p>;
+	const rows = sections.flatMap((section) =>
+		section.changes.map((change) => ({ category: section.key, change })),
+	);
+	if (rows.length === 0) {
+		return <p className="text-muted-foreground py-1.5 text-xs">No matching changes.</p>;
 	}
 	return (
-		<div className="space-y-2">
-			{sections.map((section) => (
-				<CollapsibleChangeSection
-					key={section.key}
-					sectionKey={section.key}
-					title={section.title}
-					icon={section.icon}
-					variant={section.variant}
-					changes={section.changes}
-					totalCount={section.totalCount}
-					isCollapsed={collapsed[section.key] ?? false}
-					onToggle={onToggleCollapse}
-				/>
+		<PanelList data-qa-id={qaId}>
+			{rows.map(({ category, change }) => (
+				<PanelListRow key={`${category}:${change.name}`}>
+					<CategoryIcon category={category} />
+					<span className="sr-only">{CATEGORY_LABELS[category]}</span>
+					<span className="min-w-0 flex-1 truncate font-medium" title={change.name}>
+						{change.name}
+					</span>
+					<ChangeVersions category={category} change={change} />
+				</PanelListRow>
 			))}
-		</div>
+		</PanelList>
 	);
 }
 
-function CollapsibleChangeSection({
-	sectionKey,
-	title,
-	icon,
-	variant,
-	changes,
-	totalCount,
-	isCollapsed,
-	onToggle,
-}: {
-	sectionKey: string;
-	title: string;
-	icon: React.ReactNode;
-	variant: "upgrade" | "downgrade" | "add" | "remove";
-	changes: CondaPackageChange[];
-	totalCount: number;
-	isCollapsed: boolean;
-	onToggle: (key: string) => void;
-}) {
+function CategoryIcon({ category }: { category: ChangeCategory }) {
+	const Icon = PACKAGE_CHANGE_ICONS[category];
 	return (
-		<div>
-			<button
-				type="button"
-				className="hover:bg-muted/50 flex w-full items-center gap-1.5 rounded px-1 py-1 text-xs font-semibold"
-				onClick={() => onToggle(sectionKey)}
-			>
-				{isCollapsed ? (
-					<ChevronRightIcon className="text-muted-foreground size-3.5" />
-				) : (
-					<ChevronDownIcon className="text-muted-foreground size-3.5" />
-				)}
-				{icon}
-				{title}
-				<Badge variant="secondary" className="ml-1 text-[10px]">
-					{changes.length !== totalCount ? `${changes.length}/${totalCount}` : totalCount}
-				</Badge>
-			</button>
-			{!isCollapsed && (
-				<div className="mt-1 rounded-md border text-xs">
-					{changes.length === 0 ? (
-						<p className="text-muted-foreground px-2.5 py-1.5">No matches in this category.</p>
-					) : (
-						changes.map((change) => (
-							<div
-								key={change.name}
-								className="flex items-center gap-2 border-b px-2.5 py-1.5 last:border-b-0"
-							>
-								<span className="min-w-0 flex-1 truncate font-medium">{change.name}</span>
-								{variant === "add" && (
-									<span className="text-muted-foreground shrink-0">{change.toVersion}</span>
-								)}
-								{variant === "remove" && (
-									<span className="text-muted-foreground shrink-0 line-through">
-										{change.fromVersion}
-									</span>
-								)}
-								{variant === "upgrade" && (
-									<span className="text-muted-foreground flex shrink-0 items-center gap-1">
-										{change.fromVersion}
-										<ArrowRightIcon className="size-3" />
-										<span className="font-medium text-green-700 dark:text-green-400">
-											{change.toVersion}
-										</span>
-									</span>
-								)}
-								{variant === "downgrade" && (
-									<span className="text-muted-foreground flex shrink-0 items-center gap-1">
-										{change.fromVersion}
-										<ArrowRightIcon className="size-3" />
-										<span className="font-medium text-red-600 dark:text-red-400">
-											{change.toVersion}
-										</span>
-									</span>
-								)}
-							</div>
-						))
-					)}
-				</div>
-			)}
-		</div>
+		<Icon className={cn("size-3.5 shrink-0", PACKAGE_CHANGE_COLORS[category])} aria-hidden="true" />
 	);
 }
 
+function ChangeVersions({
+	category,
+	change,
+}: {
+	category: ChangeCategory;
+	change: CondaPackageChange;
+}) {
+	const className = "text-muted-foreground flex shrink-0 items-center gap-1 tabular-nums";
+	if (category === "added") return <span className={className}>{change.toVersion}</span>;
+	if (category === "removed") return <span className={className}>{change.fromVersion}</span>;
+	return (
+		<span className={className}>
+			{change.fromVersion}
+			<ArrowRightIcon className="size-3" aria-hidden="true" />
+			<span className="text-foreground">{change.toVersion}</span>
+		</span>
+	);
+}
+
+/** Solver failure with the raw conda output one click away. */
 export function SolverErrorCard({
 	message,
 	detail,
 	qaId,
+	onRetry,
 }: {
 	message: string;
 	detail?: string;
 	qaId?: string;
+	/** Re-runs the solve; the preview has no other retry control. */
+	onRetry?: () => void;
 }) {
 	const [expanded, setExpanded] = useState(false);
-	const [copied, setCopied] = useState(false);
 
 	function handleCopy() {
 		const text = detail ? `${message}\n\n${detail}` : message;
 		navigator.clipboard.writeText(text).then(
-			() => {
-				setCopied(true);
-				setTimeout(() => setCopied(false), 2000);
-			},
-			() => {
-				toast.error("Could not copy to clipboard");
-			},
+			() => toast.success("Copied to clipboard"),
+			() => toast.error("Could not copy to clipboard"),
 		);
 	}
 
 	return (
-		<div
-			className="flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center overflow-hidden"
-			data-qa-id={qaId}
-		>
-			<div
-				className={`flex min-w-0 flex-col rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/30 ${
-					expanded ? "h-full w-full" : "mx-auto max-w-sm"
-				}`}
-			>
-				<div className="flex items-start gap-3 px-5 pt-4 pb-3">
-					<AlertTriangleIcon className="mt-0.5 size-5 shrink-0 text-amber-600 dark:text-amber-400" />
-					<div className="min-w-0 flex-1 space-y-1">
-						<p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
-							Resolve conflict
-						</p>
-						<p className="text-xs text-amber-800 dark:text-amber-300">{message}</p>
-					</div>
-					<div className="flex shrink-0 items-center gap-1">
-						<button
-							type="button"
-							onClick={handleCopy}
-							className="rounded p-1 text-amber-600 hover:bg-amber-200/60 dark:text-amber-400 dark:hover:bg-amber-900/40"
-							aria-label="Copy to clipboard"
-						>
-							{copied ? (
-								<span className="text-[10px] font-medium">Copied</span>
-							) : (
-								<ClipboardCopyIcon className="size-3.5" />
-							)}
-						</button>
-						{detail && (
-							<button
-								type="button"
-								onClick={() => setExpanded((e) => !e)}
-								className="rounded p-1 text-amber-600 hover:bg-amber-200/60 dark:text-amber-400 dark:hover:bg-amber-900/40"
-								aria-label={expanded ? "Collapse details" : "Expand details"}
-							>
-								{expanded ? (
-									<MinimizeIcon className="size-3.5" />
-								) : (
-									<MaximizeIcon className="size-3.5" />
-								)}
-							</button>
+		<Alert variant="destructive" className={cn("min-h-0", expanded && "flex-1")} data-qa-id={qaId}>
+			<CircleAlertIcon aria-hidden="true" />
+			<AlertTitle>Dependency conflict</AlertTitle>
+			<AlertDescription className="flex min-h-0 flex-col gap-2">
+				<span>{message}</span>
+				{detail ? (
+					<pre
+						className={cn(
+							"bg-muted/50 text-foreground/90 overflow-auto rounded-md border p-2.5 font-mono text-xs break-all whitespace-pre-wrap",
+							expanded ? "max-h-96" : "max-h-32",
 						)}
+					>
+						{detail}
+					</pre>
+				) : null}
+				<div className="flex items-center gap-1">
+					{onRetry ? (
+						<Button type="button" variant="outline" size="xs" onClick={onRetry}>
+							<RefreshCwIcon data-icon="inline-start" aria-hidden="true" />
+							Try again
+						</Button>
+					) : null}
+					<div className="ml-auto flex items-center gap-0.5">
+						<IconAction label="Copy to clipboard" onClick={handleCopy}>
+							<CopyIcon />
+						</IconAction>
+						{detail ? (
+							<IconAction
+								label={expanded ? "Collapse details" : "Expand details"}
+								onClick={() => setExpanded((value) => !value)}
+							>
+								{expanded ? <MinimizeIcon /> : <MaximizeIcon />}
+							</IconAction>
+						) : null}
 					</div>
 				</div>
-				{detail && (
-					<div className={`min-h-0 min-w-0 overflow-auto px-5 pb-4 ${expanded ? "flex-1" : ""}`}>
-						<pre
-							className={`rounded bg-amber-100/60 px-2.5 py-2 font-mono text-[10px] leading-relaxed break-all whitespace-pre-wrap text-amber-900 dark:bg-amber-950/50 dark:text-amber-200 ${
-								expanded ? "" : "max-h-32"
-							} overflow-auto`}
-						>
-							{detail}
-						</pre>
-					</div>
-				)}
-			</div>
-		</div>
+			</AlertDescription>
+		</Alert>
+	);
+}
+
+function IconAction({
+	label,
+	onClick,
+	children,
+}: {
+	label: string;
+	onClick: () => void;
+	children: ReactNode;
+}) {
+	return (
+		<Tooltip>
+			<TooltipTrigger
+				render={
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon-xs"
+						className="text-muted-foreground"
+						aria-label={label}
+						onClick={onClick}
+					/>
+				}
+			>
+				{children}
+			</TooltipTrigger>
+			<TooltipContent>{label}</TooltipContent>
+		</Tooltip>
 	);
 }

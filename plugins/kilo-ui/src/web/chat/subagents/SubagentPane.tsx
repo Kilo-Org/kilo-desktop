@@ -1,5 +1,7 @@
 import { ReadonlyThreadProvider, useAuiState } from "@assistant-ui/react";
-import { AlertCircleIcon, BotIcon, LoaderCircleIcon } from "lucide-react";
+import { BotIcon, CircleAlertIcon } from "lucide-react";
+
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 
 import type { ChatRightPanelContributionProps } from "../right-panel/right-panel-tab-registry.js";
 import { useOptionalOpenCodeRuntimeExtras } from "../runtime/use-optional-opencode-runtime-extras.js";
@@ -42,7 +44,7 @@ export function SubagentPane({ metadata }: ChatRightPanelContributionProps) {
 				data-qa-id="subagent-pane-loading"
 			>
 				<div className="flex items-center gap-2">
-					<LoaderCircleIcon className="size-4 animate-spin" />
+					<Spinner className="size-4" />
 					Loading subagent conversation...
 				</div>
 			</div>
@@ -55,7 +57,7 @@ export function SubagentPane({ metadata }: ChatRightPanelContributionProps) {
 				data-qa-id="subagent-pane-unavailable"
 			>
 				<div className="flex max-w-sm flex-col items-center gap-2">
-					<AlertCircleIcon className="size-5" />
+					<CircleAlertIcon className="size-5" />
 					<p className="text-foreground text-sm font-medium">Subagent conversation unavailable</p>
 					<p className="text-xs">The child session could not be restored from this task.</p>
 				</div>

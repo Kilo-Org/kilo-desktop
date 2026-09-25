@@ -12,12 +12,7 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@kilo-desktop/ui/components/dropdown-menu";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "@kilo-desktop/ui/components/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
 import {
 	EXTERNAL_EDITORS,
@@ -107,34 +102,32 @@ export function ExternalEditorActions({
 
 	return (
 		<ButtonGroup aria-label="Open in external editor">
-			<TooltipProvider>
-				<Tooltip disableHoverablePopup>
-					<TooltipTrigger
-						render={
-							<Button
-								aria-label={openLabel}
-								data-qa-id="files-open-external-editor"
-								disabled={!preferredEditor}
-								onClick={() => {
-									if (preferredEditor) void open(preferredEditor);
-								}}
-								size="sm"
-								variant="outline"
-							/>
-						}
-					>
-						{PreferredEditorIcon ? (
-							<PreferredEditorIcon
-								aria-hidden="true"
-								data-editor-icon={preferredEditor ?? undefined}
-								data-icon="inline-start"
-							/>
-						) : null}
-						<span className="sr-only">Open</span>
-					</TooltipTrigger>
-					<TooltipContent side="bottom">{openLabel}</TooltipContent>
-				</Tooltip>
-			</TooltipProvider>
+			<Tooltip disableHoverablePopup>
+				<TooltipTrigger
+					render={
+						<Button
+							aria-label={openLabel}
+							data-qa-id="files-open-external-editor"
+							disabled={!preferredEditor}
+							onClick={() => {
+								if (preferredEditor) void open(preferredEditor);
+							}}
+							size="sm"
+							variant="outline"
+						/>
+					}
+				>
+					{PreferredEditorIcon ? (
+						<PreferredEditorIcon
+							aria-hidden="true"
+							data-editor-icon={preferredEditor ?? undefined}
+							data-icon="inline-start"
+						/>
+					) : null}
+					<span className="sr-only">Open</span>
+				</TooltipTrigger>
+				<TooltipContent side="bottom">{openLabel}</TooltipContent>
+			</Tooltip>
 			<DropdownMenu>
 				<DropdownMenuTrigger
 					render={

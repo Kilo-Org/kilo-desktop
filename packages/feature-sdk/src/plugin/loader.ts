@@ -263,6 +263,8 @@ export interface ResolvedPluginSettingsContribution {
 	/** URL slug, unique across plugins. */
 	id: string;
 	title: string;
+	/** Default description for the section's `SettingsPageHeader`. */
+	description?: string | undefined;
 	/** The resolved section component export. */
 	component: unknown;
 	category?: string | undefined;
@@ -619,6 +621,7 @@ function resolveContributions(
 			pluginId: manifest.id,
 			id: contribution.id,
 			title: contribution.title,
+			...(contribution.description === undefined ? {} : { description: contribution.description }),
 			component,
 			...(contribution.category === undefined ? {} : { category: contribution.category }),
 			icon: contribution.icon,

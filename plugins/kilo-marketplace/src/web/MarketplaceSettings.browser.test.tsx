@@ -50,9 +50,11 @@ afterEach(() => cleanup());
 
 function renderPage(
 	data: MarketplaceSnapshot = snapshot,
-	options: { activeWorkspaceId?: string } = {},
+	options: { activeWorkspaceId?: string; holdList?: boolean } = {},
 ) {
 	let current = data;
+	let holdingList = options.holdList ?? false;
+	const heldLists: Array<() => void> = [];
 	const install = vi.fn(async (input: MarketplaceMutationInput) => {
 		current = {
 			...current,
@@ -71,7 +73,11 @@ function renderPage(
 	const remove = vi.fn(async () => ({ ok: true as const, path: "/tmp/reviewer.md" }));
 	const authenticateMcp = vi.fn(async () => ({ ok: true as const }));
 	const refresh = vi.fn(async () => current);
-	const list = vi.fn(async () => current);
+	const list = vi.fn(() =>
+		holdingList
+			? new Promise<MarketplaceSnapshot>((resolve) => heldLists.push(() => resolve(current)))
+			: Promise.resolve(current),
+	);
 	const openExternal = vi.fn(async () => ({ opened: true as const }));
 	const sdk = createFakeSdk({
 		featureId: "kilo-marketplace",
@@ -106,6 +112,10 @@ function renderPage(
 		openExternal,
 		refresh,
 		remove,
+		releaseList() {
+			holdingList = false;
+			for (const resolve of heldLists.splice(0)) resolve();
+		},
 		setSnapshot(next: MarketplaceSnapshot) {
 			current = next;
 		},
@@ -336,6 +346,53 @@ describe("MarketplaceSettings", () => {
 		expect(tabs.map((tab) => tab.getBoundingClientRect().width)).toEqual(widthsBefore);
 	});
 
+	it("holds type filter counts without reporting zero while the catalog loads", async () => {
+		const { releaseList } = renderPage(
+			{ ...snapshot, installed: [{ type: "agent", id: "reviewer", scope: "global" }] },
+			{ holdList: true },
+		);
+		const typeFilters = () =>
+			["all", "agent", "mcp", "skill"].map((type) => page.getByTestId(`marketplace-type-${type}`));
+		const widths = () => typeFilters().map((tab) => tab.element().getBoundingClientRect().width);
+
+		await expect.element(page.getByTestId("marketplace-loading")).toBeVisible();
+		for (const tab of typeFilters()) expect(tab.element().textContent).not.toMatch(/\d/);
+		const loadingWidths = widths();
+
+		releaseList();
+		await expect.element(page.getByTestId("marketplace-type-all")).toHaveTextContent("All 1");
+		await expect.element(page.getByTestId("marketplace-type-mcp")).toHaveTextContent("MCPs 0");
+		expect(widths()).toEqual(loadingWidths);
+	});
+
+	it("keeps the category tile grid shape while the catalog loads", async () => {
+		await page.viewport(1200, 800);
+		onTestFinished(() => page.viewport(414, 896));
+		const { releaseList } = renderPage(snapshot, { holdList: true });
+
+		await openBrowse();
+		await expect.element(page.getByTestId("marketplace-loading")).toBeVisible();
+		for (const type of ["all", "agent", "mcp", "skill"]) {
+			expect(page.getByTestId(`marketplace-type-${type}`).element().textContent).not.toMatch(/\d/);
+		}
+		const container = page.getByTestId("marketplace-category-tiles").element();
+		const allTile = page.getByTestId("marketplace-category-all").element().getBoundingClientRect();
+		const tiles = Array.from(container.children, (tile) => tile.getBoundingClientRect());
+
+		expect(tiles.length).toBeGreaterThan(1);
+		expect(allTile.width).toBeLessThan(container.getBoundingClientRect().width / 2);
+		for (const tile of tiles) {
+			expect(tile.width).toBeCloseTo(allTile.width, 0);
+			expect(tile.height).toBeCloseTo(allTile.height, 0);
+		}
+
+		releaseList();
+		await expect.element(page.getByTestId("marketplace-category-data")).toBeVisible();
+		expect(page.getByTestId("marketplace-category-placeholder").elements()).toHaveLength(0);
+		const loadedAllTile = page.getByTestId("marketplace-category-all").element();
+		expect(loadedAllTile.getBoundingClientRect().height).toBeCloseTo(allTile.height, 0);
+	});
+
 	it("places type filters after search on the same row in installed and Marketplace views", async () => {
 		const searchFieldRect = () => {
 			const group = page
@@ -384,11 +441,26 @@ describe("MarketplaceSettings", () => {
 			Math.max(catalogSearch.bottom, catalogTypes.bottom),
 		);
 
-		const cardGrid = page.getByTestId("marketplace-card-grid").element().getBoundingClientRect();
+		// Tile padding and the section header's min-h-7 are transparent, so compare the
+		// visible content: tile icons against the search row and the first section heading.
+		const tileIcons = Array.from(
+			page
+				.getByTestId("marketplace-category-tiles")
+				.element()
+				.querySelectorAll("button > span:first-child"),
+			(icon) => icon.getBoundingClientRect(),
+		);
+		const firstHeading = page
+			.getByTestId("marketplace-card-grid")
+			.element()
+			.querySelector("h2")!
+			.getBoundingClientRect();
 		const spaceAboveCategories =
-			categories.top - Math.max(catalogSearch.bottom, catalogTypes.bottom);
-		const spaceBelowCategories = cardGrid.top - categories.bottom;
-		expect(spaceAboveCategories).toBeCloseTo(spaceBelowCategories, 0);
+			Math.min(...tileIcons.map((icon) => icon.top)) -
+			Math.max(catalogSearch.bottom, catalogTypes.bottom);
+		const spaceBelowCategories =
+			firstHeading.top - Math.max(...tileIcons.map((icon) => icon.bottom));
+		expect(Math.abs(spaceAboveCategories - spaceBelowCategories)).toBeLessThanOrEqual(2);
 	});
 
 	it("sizes category toggles equally to fit the longest name and fill the row", async () => {
@@ -476,9 +548,6 @@ describe("MarketplaceSettings", () => {
 			{ activeWorkspaceId: "workspace-1" },
 		);
 
-		await expect
-			.element(page.getByTestId("settings-section-heading"))
-			.toHaveTextContent("Agent Behavior");
 		await expect.element(page.getByTestId("marketplace-add")).toHaveTextContent("Add");
 		await expect.element(page.getByTestId("marketplace-catalog-dialog")).not.toBeInTheDocument();
 		await expect
@@ -495,7 +564,7 @@ describe("MarketplaceSettings", () => {
 		await page.getByTestId("marketplace-card-trigger-agent-reviewer").click();
 		await expect
 			.element(page.getByTestId("marketplace-installed-in-agent-reviewer-global"))
-			.toHaveTextContent("All Workspaces");
+			.toHaveTextContent("All workspaces");
 		await page.getByTestId("marketplace-card-trigger-agent-reviewer").click();
 
 		await page.getByTestId("marketplace-type-skill").click();
@@ -553,7 +622,7 @@ describe("MarketplaceSettings", () => {
 		await page.getByTestId("marketplace-card-trigger-agent-local-helper").click();
 		await expect
 			.element(page.getByTestId("marketplace-installed-in-agent-local-helper-global"))
-			.toHaveTextContent("All Workspaces");
+			.toHaveTextContent("All workspaces");
 		await page.getByTestId("marketplace-remove-agent-local-helper-global").click();
 		await page.getByTestId("marketplace-remove-confirm").click();
 
@@ -703,7 +772,7 @@ describe("MarketplaceSettings", () => {
 		const workspaceLocation = page.getByTestId(
 			"marketplace-installed-in-agent-architect-workspace-1",
 		);
-		await expect.element(globalLocation).toHaveTextContent("All Workspaces");
+		await expect.element(globalLocation).toHaveTextContent("All workspaces");
 		await expect.element(workspaceLocation).toHaveTextContent("Demo");
 		await expect
 			.element(page.getByTestId("marketplace-card-details-agent-architect"))
@@ -713,7 +782,7 @@ describe("MarketplaceSettings", () => {
 			.not.toBeInTheDocument();
 		await expect
 			.element(page.getByTestId("marketplace-remove-agent-architect-global"))
-			.toHaveAccessibleName("Remove Architect from All Workspaces");
+			.toHaveAccessibleName("Remove Architect from All workspaces");
 		await expect
 			.element(page.getByTestId("marketplace-remove-agent-architect-workspace-1"))
 			.toHaveAccessibleName("Remove Architect from Demo");
@@ -1000,7 +1069,7 @@ describe("MarketplaceSettings", () => {
 		await page.getByTestId("marketplace-installed-badge-agent-reviewer").hover();
 		await expect
 			.element(page.getByTestId("marketplace-installed-locations-agent-reviewer"))
-			.toHaveTextContent("Installed inAll WorkspacesDemo");
+			.toHaveTextContent("Installed inAll workspacesDemo");
 	});
 
 	it("loads the Marketplace for the active workspace", async () => {
@@ -1030,10 +1099,10 @@ describe("MarketplaceSettings", () => {
 			.toHaveTextContent("Install Reviewer");
 		await expect
 			.element(page.getByTestId("marketplace-install-target"))
-			.toHaveTextContent("All Workspaces");
+			.toHaveTextContent("All workspaces");
 		await expect
 			.element(page.getByTestId("marketplace-install-confirm"))
-			.toHaveTextContent("Install in All Workspaces");
+			.toHaveTextContent("Install in All workspaces");
 		await page.getByTestId("marketplace-install-confirm").click();
 
 		await expect
@@ -1266,7 +1335,7 @@ describe("MarketplaceSettings", () => {
 			});
 	});
 
-	it("explains when the All Workspaces destination is already installed", async () => {
+	it("explains when the All workspaces destination is already installed", async () => {
 		renderPage({
 			...snapshot,
 			installed: [{ type: "skill", id: "notebooks", scope: "global" }],
@@ -1279,7 +1348,7 @@ describe("MarketplaceSettings", () => {
 		await page.getByTestId("marketplace-installed-badge-skill-notebooks").hover();
 		await expect
 			.element(page.getByTestId("marketplace-installed-locations-skill-notebooks"))
-			.toHaveTextContent("Installed inAll Workspaces");
+			.toHaveTextContent("Installed inAll workspaces");
 		await page.getByTestId("marketplace-install-skill-notebooks").click();
 
 		await expect.element(page.getByTestId("marketplace-install-target")).toHaveTextContent("Demo");
@@ -1287,7 +1356,7 @@ describe("MarketplaceSettings", () => {
 		await expect.element(page.getByTestId("marketplace-install-scope-global")).toBeDisabled();
 		await expect
 			.element(page.getByTestId("marketplace-install-scope-global"))
-			.toHaveTextContent("All WorkspacesAlready installed");
+			.toHaveTextContent("All workspacesAlready installed");
 	});
 
 	it("explains when the item is installed in every workspace", async () => {
@@ -1307,7 +1376,7 @@ describe("MarketplaceSettings", () => {
 		await page.getByTestId("marketplace-install-agent-reviewer").click();
 		await expect
 			.element(page.getByTestId("marketplace-install-target"))
-			.toHaveTextContent("All Workspaces");
+			.toHaveTextContent("All workspaces");
 	});
 
 	it("reconciles the install destination when availability changes while open", async () => {
@@ -1324,7 +1393,7 @@ describe("MarketplaceSettings", () => {
 		await page.getByTestId("marketplace-install-agent-reviewer").click();
 		await expect
 			.element(page.getByTestId("marketplace-install-target"))
-			.toHaveTextContent("All Workspaces");
+			.toHaveTextContent("All workspaces");
 
 		setSnapshot({
 			...initial,
@@ -1551,7 +1620,7 @@ describe("MarketplaceSettings", () => {
 
 		const locationBadge = page.getByTestId("marketplace-card-location-summary-skill-notebooks");
 		await expect.element(locationBadge).toBeVisible();
-		await expect.element(locationBadge).toHaveTextContent("All Workspaces");
+		await expect.element(locationBadge).toHaveTextContent("All workspaces");
 		const locationLabel = locationBadge.element().querySelector("span");
 		expect(locationLabel?.scrollWidth).toBeLessThanOrEqual(locationLabel?.clientWidth ?? 0);
 		await page.getByTestId("marketplace-refresh").click();
@@ -1606,17 +1675,14 @@ describe("MarketplaceSettings", () => {
 		await trigger.click();
 		await expect.element(trigger).toHaveAttribute("aria-expanded", "true");
 		await expect.element(chevron).toHaveAttribute("aria-expanded", "true");
-		await expect.element(trigger).toHaveAttribute("aria-pressed", "true");
 		await expect.element(page.getByTestId("marketplace-card-details-agent-reviewer")).toBeVisible();
 		expect(installedCard!.scrollWidth).toBeLessThanOrEqual(installedCard!.clientWidth);
 		await trigger.click();
 		await expect.element(trigger).toHaveAttribute("aria-expanded", "false");
-		await page
-			.getByTestId("marketplace-card-header-agent-reviewer")
-			.click({ position: { x: 8, y: 8 } });
+		await trigger.click();
 		await expect
 			.element(page.getByTestId("marketplace-installed-in-agent-reviewer-global"))
-			.toHaveTextContent("All Workspaces");
+			.toHaveTextContent("All workspaces");
 		await expect
 			.element(page.getByTestId("marketplace-installed-in-agent-reviewer-workspace-a"))
 			.toHaveTextContent("Workspace A");

@@ -20,14 +20,7 @@ function WorkspaceSelectorTrigger() {
 	return (
 		<WorkspacePickerTrigger
 			aria-label="Select workspace"
-			render={
-				<Button
-					type="button"
-					variant="ghost"
-					size="sm"
-					className="dark:text-foreground/90 h-7 max-w-56 gap-1.5 rounded-md text-xs"
-				/>
-			}
+			render={<Button type="button" variant="ghost" size="sm" className="max-w-56" />}
 		>
 			<FolderIcon data-icon="inline-start" {...(glyph ? { color: glyph } : {})} />
 			<span className="truncate">{triggerLabel}</span>

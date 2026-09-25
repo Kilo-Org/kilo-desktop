@@ -48,7 +48,7 @@ function PluginFallbackPage({
 }) {
 	return (
 		<div className="flex h-full min-h-0 flex-col" data-qa-id={headingQaId}>
-			<div className="mx-auto w-full max-w-xl px-5 py-8">{children}</div>
+			<div className="mx-auto w-full max-w-3xl px-5 py-8">{children}</div>
 		</div>
 	);
 }
@@ -74,7 +74,7 @@ export function PluginPageView({
 			<PluginPageSurface>
 				<PluginFallbackPage headingQaId="plugin-page-not-found">
 					<p className="text-muted-foreground mt-0.5 text-sm leading-snug">
-						No plugin provides a page at <code className="bg-muted rounded px-1">{path}</code>.
+						No plugin provides a page at <code className="bg-muted rounded-sm px-1">{path}</code>.
 					</p>
 				</PluginFallbackPage>
 			</PluginPageSurface>

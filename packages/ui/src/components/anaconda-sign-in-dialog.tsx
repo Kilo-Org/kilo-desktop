@@ -54,7 +54,7 @@ export function AnacondaSignInDialog({
 				<div className="flex flex-col items-center gap-3">
 					<AnacondaLogo className="size-8 text-(--color-green-700)" />
 					<div className="flex flex-col gap-1">
-						<p className="text-muted-foreground text-[0.65rem] font-semibold tracking-[0.14em] uppercase">
+						<p className="text-muted-foreground text-2xs font-semibold tracking-[0.14em] uppercase">
 							Anaconda Account
 						</p>
 						<DialogTitle className="text-lg leading-tight font-semibold">
@@ -73,10 +73,13 @@ export function AnacondaSignInDialog({
 						data-qa-id="anaconda-sign-in-submit"
 					>
 						{pending ? (
-							<Spinner size="sm" aria-hidden="true" />
+							<>
+								<Spinner data-icon="inline-start" aria-hidden="true" />
+								Signing in…
+							</>
 						) : (
 							<>
-								Sign In
+								Sign in
 								<ArrowRightIcon data-icon="inline-end" aria-hidden="true" />
 							</>
 						)}
@@ -90,8 +93,8 @@ export function AnacondaSignInDialog({
 							{error}
 						</p>
 					) : null}
-					<p className="text-muted-foreground text-[0.7rem] leading-relaxed text-pretty">
-						By clicking Sign In with Email, or signing in with Google, Microsoft, or GitHub, I agree
+					<p className="text-muted-foreground text-2xs leading-relaxed text-pretty">
+						By clicking Sign in with Email, or signing in with Google, Microsoft, or GitHub, I agree
 						to the collection of my data, Anaconda's{" "}
 						<a href={PRIVACY_POLICY_URL} target="_blank" rel="noreferrer" className="underline">
 							Privacy Policy

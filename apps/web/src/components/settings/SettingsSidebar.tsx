@@ -93,7 +93,7 @@ export function SettingsSidebar({ sections = EMPTY_SECTIONS }: SettingsSidebarPr
 			</div>
 			{filtered.length > 0 ? (
 				<div
-					className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto"
+					className="scroll-fade-y flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto"
 					data-qa-id="settings-section-nav"
 					aria-label="Settings sections"
 				>
@@ -115,7 +115,7 @@ export function SettingsSidebar({ sections = EMPTY_SECTIONS }: SettingsSidebarPr
 												isActive={pathname === href}
 												tooltip={section.title}
 												render={<Link to="/settings/$section" params={{ section: section.id }} />}
-												className="hover:bg-foreground/3 data-active:bg-foreground/5 data-active:hover:bg-foreground/5 gap-2 rounded-lg"
+												className="gap-2 rounded-lg"
 												data-qa-id={`settings-section-${section.id}`}
 											>
 												<Icon />

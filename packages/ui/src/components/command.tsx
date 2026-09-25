@@ -1,5 +1,3 @@
-"use client";
-
 import * as React from "react";
 import { Command as CommandPrimitive } from "cmdk";
 
@@ -18,7 +16,7 @@ function Command({ className, ...props }: React.ComponentProps<typeof CommandPri
 		<CommandPrimitive
 			data-slot="command"
 			className={cn(
-				"flex w-full flex-col overflow-hidden rounded-xl! bg-popover text-popover-foreground",
+				"flex size-full flex-col overflow-hidden rounded-xl! bg-popover p-1 text-popover-foreground",
 				className,
 			)}
 			{...props}
@@ -42,17 +40,14 @@ function CommandDialog({
 }) {
 	return (
 		<Dialog {...props}>
+			<DialogHeader className="sr-only">
+				<DialogTitle>{title}</DialogTitle>
+				<DialogDescription>{description}</DialogDescription>
+			</DialogHeader>
 			<DialogContent
-				className={cn(
-					"top-1/3 translate-y-0 overflow-hidden rounded-xl! p-0 sm:max-w-xl [&_[data-slot=dialog-close]]:top-3 [&_[data-slot=dialog-close]]:right-3",
-					className,
-				)}
+				className={cn("top-1/3 translate-y-0 overflow-hidden rounded-xl! p-0", className)}
 				showCloseButton={showCloseButton}
 			>
-				<DialogHeader className="sr-only">
-					<DialogTitle>{title}</DialogTitle>
-					<DialogDescription>{description}</DialogDescription>
-				</DialogHeader>
 				{children}
 			</DialogContent>
 		</Dialog>
@@ -64,12 +59,16 @@ function CommandInput({
 	...props
 }: React.ComponentProps<typeof CommandPrimitive.Input>) {
 	return (
-		<div data-slot="command-input-wrapper" className="flex items-center gap-2 px-4 py-3.5">
-			<SearchIcon className="size-4 shrink-0 opacity-50" />
+		// local: bare search row over a divider instead of stock's filled InputGroup.
+		<div
+			data-slot="command-input-wrapper"
+			className="-mx-1 -mt-1 mb-1 flex items-center gap-1.5 border-b px-2.5 py-2 in-data-[slot=dialog-content]:gap-2 in-data-[slot=dialog-content]:px-4 in-data-[slot=dialog-content]:py-3.5"
+		>
+			<SearchIcon className="text-muted-foreground size-3.5 shrink-0" />
 			<CommandPrimitive.Input
 				data-slot="command-input"
 				className={cn(
-					"h-5 w-full bg-transparent text-sm outline-hidden disabled:cursor-not-allowed disabled:opacity-50",
+					"placeholder:text-muted-foreground h-5 w-full bg-transparent text-sm outline-hidden disabled:cursor-not-allowed disabled:opacity-50",
 					className,
 				)}
 				{...props}
@@ -83,7 +82,7 @@ function CommandList({ className, ...props }: React.ComponentProps<typeof Comman
 		<CommandPrimitive.List
 			data-slot="command-list"
 			className={cn(
-				"max-h-72 scroll-py-1 overflow-x-hidden overflow-y-auto outline-none in-data-[slot=dialog-content]:max-h-96 [scrollbar-width:thin] [scrollbar-color:var(--border)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-border",
+				"no-scrollbar max-h-72 scroll-py-1 overflow-x-hidden overflow-y-auto outline-none",
 				className,
 			)}
 			{...props}
@@ -111,8 +110,9 @@ function CommandGroup({
 	return (
 		<CommandPrimitive.Group
 			data-slot="command-group"
+			// local: menu density — no group padding, DropdownMenuLabel heading spacing.
 			className={cn(
-				"overflow-hidden p-1 text-foreground in-data-[slot=dialog-content]:p-2 **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:text-xs **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground in-data-[slot=dialog-content]:**:[[cmdk-group-heading]]:px-3 in-data-[slot=dialog-content]:**:[[cmdk-group-heading]]:py-2",
+				"overflow-hidden text-foreground **:[[cmdk-group-heading]]:px-1.5 **:[[cmdk-group-heading]]:py-1 **:[[cmdk-group-heading]]:text-xs **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground",
 				className,
 			)}
 			{...props}
@@ -127,8 +127,8 @@ function CommandSeparator({
 	return (
 		<CommandPrimitive.Separator
 			data-slot="command-separator"
-			alwaysRender
-			className={cn("h-px bg-border", className)}
+			// local: my-1 like DropdownMenuSeparator (groups have no padding here).
+			className={cn("-mx-1 my-1 h-px bg-border", className)}
 			{...props}
 		/>
 	);
@@ -142,8 +142,9 @@ function CommandItem({
 	return (
 		<CommandPrimitive.Item
 			data-slot="command-item"
+			// local: menu density — DropdownMenuItem gap/padding/radius.
 			className={cn(
-				"group/command-item relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none in-data-[slot=dialog-content]:gap-3 in-data-[slot=dialog-content]:rounded-lg! in-data-[slot=dialog-content]:px-3 in-data-[slot=dialog-content]:py-1 data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-foreground/5 data-selected:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5 data-selected:*:[svg]:text-foreground",
+				"group/command-item relative flex cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-hidden select-none in-data-[slot=dialog-content]:rounded-lg! data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-muted data-selected:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5 data-selected:*:[svg]:text-foreground",
 				className,
 			)}
 			{...props}

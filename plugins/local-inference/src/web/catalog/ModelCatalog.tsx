@@ -1,9 +1,9 @@
 import { useDeferredValue, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-	ArrowUpDownIcon,
 	BinaryIcon,
 	EyeIcon,
+	ListFilterIcon,
 	MessageCircleIcon,
 	SearchIcon,
 	WrenchIcon,
@@ -11,29 +11,23 @@ import {
 } from "lucide-react";
 
 import { sdkQueryOptions, useSdk } from "@kilo-desktop/sdk-react";
-import { Input } from "@kilo-desktop/ui/components/input";
 import {
-	Select,
-	SelectContent,
-	SelectGroup,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@kilo-desktop/ui/components/select";
+	InputGroup,
+	InputGroupAddon,
+	InputGroupInput,
+} from "@kilo-desktop/ui/components/input-group";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@kilo-desktop/ui/components/table";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "@kilo-desktop/ui/components/tooltip";
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuGroup,
+	DropdownMenuLabel,
+	DropdownMenuRadioGroup,
+	DropdownMenuRadioItem,
+	DropdownMenuTrigger,
+} from "@kilo-desktop/ui/components/dropdown-menu";
+import { TableCell, TableRow } from "@kilo-desktop/ui/components/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type {
@@ -50,26 +44,25 @@ import {
 	ModelCatalogLoading,
 	ModelCatalogNoResults,
 } from "./CatalogStates.js";
+import { catalogTableCellClassNames, ModelCatalogTableFrame } from "./ModelCatalogTableLayout.js";
 import { ModelIdentity } from "./ModelIdentity.js";
 import { ModelPerformance } from "./ModelPerformance.js";
 import { ModelRecommendations } from "./ModelRecommendations.js";
 import { getPublisherDisplayName } from "./ModelPublisherIcon.js";
 
-const catalogSortOptions: ReadonlyArray<{ label: string; value: CatalogSort }> = [
+const defaultCatalogSort: CatalogSort = "newest";
+
+const catalogSortOptions = [
 	{ label: "Newest", value: "newest" },
 	{ label: "Estimated performance", value: "best-fit" },
 	{ label: "Fastest", value: "fastest" },
 	{ label: "Largest", value: "parameters-desc" },
 	{ label: "Smallest", value: "parameters-asc" },
-];
-
-function isCatalogSort(value: unknown): value is CatalogSort {
-	return catalogSortOptions.some((option) => option.value === value);
-}
+] as const satisfies ReadonlyArray<{ label: string; value: CatalogSort }>;
 
 const modelCapabilityIndicators = [
 	{ id: "chat", label: "Chat", icon: MessageCircleIcon },
-	{ id: "toolCalling", label: "Tool Calling", icon: WrenchIcon },
+	{ id: "toolCalling", label: "Tool calling", icon: WrenchIcon },
 	{ id: "vision", label: "Vision", icon: EyeIcon },
 	{ id: "embedding", label: "Embedding", icon: BinaryIcon },
 ] as const satisfies ReadonlyArray<{
@@ -102,7 +95,6 @@ export function LocalModelCatalog({
 		() => filterCatalogModels(catalog.data?.models ?? [], deferredSearch),
 		[catalog.data?.models, deferredSearch],
 	);
-	const hasSearch = deferredSearch.trim().length > 0;
 
 	return (
 		<div className="@container min-w-0" data-qa-id="local-model-catalog">
@@ -123,7 +115,6 @@ export function LocalModelCatalog({
 						/>
 					) : null}
 					<ModelCatalogTable
-						title={hasSearch ? "Search results" : "All models"}
 						models={filteredModels}
 						hardware={hardware.data}
 						search={search}
@@ -168,26 +159,23 @@ function ModelCatalogSearch({
 	onChange: (value: string) => void;
 }) {
 	return (
-		<div className="relative w-40 min-w-0 @xl:w-56">
-			<SearchIcon
-				className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2"
-				aria-hidden="true"
-			/>
-			<Input
+		<InputGroup size="sm" className="min-w-0 flex-1">
+			<InputGroupInput
 				type="search"
 				aria-label="Search model catalog"
 				placeholder="Search models"
-				className="h-7 pl-8 text-xs"
 				value={value}
 				data-qa-id="model-catalog-search"
 				onChange={(event) => onChange(event.currentTarget.value)}
 			/>
-		</div>
+			<InputGroupAddon>
+				<SearchIcon aria-hidden="true" />
+			</InputGroupAddon>
+		</InputGroup>
 	);
 }
 
 function ModelCatalogTable({
-	title,
 	models,
 	hardware,
 	search,
@@ -195,7 +183,6 @@ function ModelCatalogTable({
 	onSelectModel,
 	selectedModelId,
 }: {
-	title: string;
 	models: ModelCatalogEntry[];
 	hardware: LocalInferenceHardwareProfile | undefined;
 	search: string;
@@ -203,117 +190,96 @@ function ModelCatalogTable({
 	onSelectModel: (model: ModelCatalogEntry) => void;
 	selectedModelId?: string | undefined;
 }) {
-	const [sort, setSort] = useState<CatalogSort>("newest");
+	const [sort, setSort] = useState<CatalogSort>(defaultCatalogSort);
 	const rows = useMemo(() => sortCatalogModels(models, hardware, sort), [hardware, models, sort]);
+	const activeSortOption =
+		catalogSortOptions.find((option) => option.value === sort) ?? catalogSortOptions[0];
 
 	return (
-		<div className="flex min-w-0 flex-col gap-2">
-			<div className="flex items-center justify-between gap-3">
-				<h2 className="shrink-0 text-sm font-medium">{title}</h2>
-				<div className="flex min-w-0 items-center justify-end gap-2">
-					<ModelCatalogSearch value={search} onChange={onSearchChange} />
-					<Select
-						items={catalogSortOptions}
-						value={sort}
-						onValueChange={(value) => {
-							if (isCatalogSort(value)) setSort(value);
-						}}
+		<div className="flex min-w-0 flex-col gap-4">
+			<div className="flex items-center gap-2">
+				<ModelCatalogSearch value={search} onChange={onSearchChange} />
+				<DropdownMenu>
+					<DropdownMenuTrigger
+						render={
+							<Button
+								type="button"
+								variant={sort === defaultCatalogSort ? "outline" : "secondary"}
+								size="icon-sm"
+								aria-label={`Sort models: ${activeSortOption.label}`}
+								className="shrink-0"
+								data-qa-id="model-catalog-sort"
+							/>
+						}
 					>
-						<SelectTrigger
-							size="sm"
-							className="min-w-max"
-							aria-label="Sort models"
-							data-qa-id="model-catalog-sort"
-						>
-							<ArrowUpDownIcon className="text-muted-foreground" aria-hidden="true" />
-							<span className="text-muted-foreground">Sort by</span>
-							<SelectValue className="font-medium" />
-						</SelectTrigger>
-						<SelectContent className="w-max min-w-52 whitespace-nowrap">
-							<SelectGroup>
+						<ListFilterIcon aria-hidden="true" />
+					</DropdownMenuTrigger>
+					<DropdownMenuContent align="end" className="w-56">
+						<DropdownMenuGroup>
+							<DropdownMenuLabel>Sort by</DropdownMenuLabel>
+							<DropdownMenuRadioGroup value={sort}>
 								{catalogSortOptions.map((option) => (
-									<SelectItem key={option.value} value={option.value}>
+									<DropdownMenuRadioItem
+										key={option.value}
+										value={option.value}
+										closeOnClick
+										onClick={() => setSort(option.value)}
+									>
 										{option.label}
-									</SelectItem>
+									</DropdownMenuRadioItem>
 								))}
-							</SelectGroup>
-						</SelectContent>
-					</Select>
-				</div>
+							</DropdownMenuRadioGroup>
+						</DropdownMenuGroup>
+					</DropdownMenuContent>
+				</DropdownMenu>
 			</div>
 			{rows.length === 0 ? (
 				<ModelCatalogNoResults onClear={() => onSearchChange("")} />
 			) : (
-				<div
-					className="border-border min-w-0 overflow-hidden rounded-lg border [&_[data-slot=table-container]]:overflow-x-hidden"
-					data-qa-id="model-catalog-table"
-				>
-					<TooltipProvider>
-						<Table className="table-fixed">
-							<TableHeader>
-								<TableRow>
-									<TableHead scope="col" className="w-[55%] @xl:w-[44%]">
-										Model
-									</TableHead>
-									<TableHead
-										scope="col"
-										className="hidden w-[20%] whitespace-normal @xl:table-cell"
-									>
-										Capabilities
-									</TableHead>
-									<TableHead scope="col" className="w-[45%] whitespace-normal @xl:w-[36%]">
-										<span className="@xl:hidden">Performance</span>
-										<span className="hidden @xl:inline">Estimated performance</span>
-									</TableHead>
-								</TableRow>
-							</TableHeader>
-							<TableBody>
-								{rows.map(({ model, compatibility }) => {
-									return (
-										<TableRow
-											key={model.id}
-											className={cn(
-												"hover:bg-foreground/[0.07] focus-visible:bg-foreground/[0.07] cursor-pointer focus-visible:outline-none",
-												model.id === selectedModelId && "bg-foreground/[0.07]",
-											)}
-											tabIndex={0}
-											aria-selected={model.id === selectedModelId}
-											aria-label={`View ${model.name} details`}
-											data-qa-id={`model-catalog-select-${model.id}`}
-											onClick={() => onSelectModel(model)}
-											onKeyDown={(event) => {
-												if (event.key === "Enter" || event.key === " ") {
-													event.preventDefault();
-													onSelectModel(model);
-												}
-											}}
-										>
-											<TableCell className="max-w-md overflow-hidden whitespace-normal">
-												<ModelIdentity model={model} />
-											</TableCell>
-											<TableCell className="hidden overflow-hidden whitespace-normal @xl:table-cell">
-												<ModelCapabilityIndicators
-													capabilities={model.capabilities}
-													modelId={model.id}
-													modelType={model.modelType}
-												/>
-											</TableCell>
-											<TableCell className="overflow-hidden whitespace-normal">
-												<ModelPerformance
-													compatibility={compatibility}
-													hasHardware={Boolean(hardware)}
-													hasQuantizations={hasRecommendationQuantization(model)}
-													fixedFitWidth
-													wrap
-												/>
-											</TableCell>
-										</TableRow>
-									);
-								})}
-							</TableBody>
-						</Table>
-					</TooltipProvider>
-				</div>
+				<ModelCatalogTableFrame data-qa-id="model-catalog-table">
+					{rows.map(({ model, compatibility }) => {
+						return (
+							<TableRow
+								key={model.id}
+								className={cn(
+									"focus-visible:bg-muted cursor-pointer focus-visible:outline-none",
+									model.id === selectedModelId && "bg-muted",
+								)}
+								tabIndex={0}
+								aria-selected={model.id === selectedModelId}
+								aria-label={`View ${model.name} details`}
+								data-qa-id={`model-catalog-select-${model.id}`}
+								onClick={() => onSelectModel(model)}
+								onKeyDown={(event) => {
+									if (event.key === "Enter" || event.key === " ") {
+										event.preventDefault();
+										onSelectModel(model);
+									}
+								}}
+							>
+								<TableCell className={catalogTableCellClassNames.model}>
+									<ModelIdentity model={model} />
+								</TableCell>
+								<TableCell className={catalogTableCellClassNames.capabilities}>
+									<ModelCapabilityIndicators
+										capabilities={model.capabilities}
+										modelId={model.id}
+										modelType={model.modelType}
+									/>
+								</TableCell>
+								<TableCell className={catalogTableCellClassNames.performance}>
+									<ModelPerformance
+										compatibility={compatibility}
+										hasHardware={Boolean(hardware)}
+										hasQuantizations={hasRecommendationQuantization(model)}
+										fixedFitWidth
+										wrap
+									/>
+								</TableCell>
+							</TableRow>
+						);
+					})}
+				</ModelCatalogTableFrame>
 			)}
 		</div>
 	);

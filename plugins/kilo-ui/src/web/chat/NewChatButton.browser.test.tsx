@@ -11,6 +11,7 @@ import { page } from "vitest/browser";
 
 import { SdkProvider } from "@kilo-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
+import { SidebarProvider } from "@kilo-desktop/ui/components/sidebar";
 import {
 	DRAFT_RIGHT_PANEL_SESSION_KEY,
 	useRightPanelStore,
@@ -74,9 +75,11 @@ function Harness({
 	return (
 		<SdkProvider system={system}>
 			<AssistantRuntimeProvider runtime={runtime}>
-				<div style={{ width: 255 }}>
-					<NewChatButton />
-				</div>
+				<SidebarProvider>
+					<div style={{ width: 255 }}>
+						<NewChatButton />
+					</div>
+				</SidebarProvider>
 			</AssistantRuntimeProvider>
 		</SdkProvider>
 	);
@@ -103,8 +106,7 @@ describe("NewChatButton", () => {
 		await expect.element(button).toBeVisible();
 		expect(button.textContent).toBe("New Chat");
 		expect(button.querySelector('[data-slot="aui_thread-list-new-icon"]')).not.toBeNull();
-		expect(button.className).not.toContain("border-border");
-		expect(button.className).not.toContain("bg-background");
+		expect(button.className).toContain("hover:bg-sidebar-accent");
 		expect(screen.getByRole("button").elements()).toHaveLength(1);
 	});
 

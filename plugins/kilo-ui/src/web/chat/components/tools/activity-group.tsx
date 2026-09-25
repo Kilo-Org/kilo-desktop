@@ -28,6 +28,7 @@ import {
 	CollapsibleContent,
 	CollapsibleTrigger,
 } from "@kilo-desktop/ui/components/collapsible";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import {
@@ -60,7 +61,7 @@ const ThinkingStreamText: FC<PropsWithChildren<{ streaming: boolean }>> = ({
 }) => (
 	<ReasoningText
 		pinning={streaming}
-		className="scroll-fade border-border/60 text-muted-foreground mt-0.5 mb-1 ml-[12.5px] border-l ps-3 text-sm"
+		className="scroll-fade border-border-subtle text-muted-foreground mt-0.5 mb-1 ml-[12.5px] border-l ps-3 text-sm"
 	>
 		{children}
 	</ReasoningText>
@@ -137,14 +138,9 @@ const ActivityIconStack: FC<{
 	const overflow = items.length > MAX_VISIBLE_ICONS;
 	const visible = overflow ? items.slice(-MAX_VISIBLE_ICONS) : items;
 	return (
-		<AvatarGroup
-			className={cn(
-				"*:data-[slot=avatar]:ring-[var(--pane-surface,var(--color-background))]",
-				className,
-			)}
-		>
+		<AvatarGroup className={cn("*:data-[slot=avatar]:ring-pane", className)}>
 			{overflow ? (
-				<AvatarGroupCount className="size-6.5 text-xs ring-[var(--pane-surface,var(--color-background))]">
+				<AvatarGroupCount className="ring-pane size-6.5 text-xs">
 					+{items.length - MAX_VISIBLE_ICONS}
 				</AvatarGroupCount>
 			) : null}
@@ -157,26 +153,11 @@ const ActivityIconStack: FC<{
 							item.loading && "border-0",
 						)}
 					>
-						<item.icon className="size-3.5" />
 						{item.loading ? (
-							<svg
-								aria-hidden
-								viewBox="0 0 28 28"
-								fill="none"
-								className="pointer-events-none absolute inset-0 size-full animate-spin"
-							>
-								<circle
-									cx="14"
-									cy="14"
-									r="13"
-									stroke="currentColor"
-									strokeOpacity={0.4}
-									strokeWidth="2"
-									strokeLinecap="round"
-									strokeDasharray="20.4 61.3"
-								/>
-							</svg>
-						) : null}
+							<Spinner aria-hidden="true" className="size-3" />
+						) : (
+							<item.icon className="size-3.5" />
+						)}
 					</AvatarFallback>
 				</Avatar>
 			))}
@@ -649,7 +630,7 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 			return (
 				<ActivitySubgroupContext.Provider value={subgroupContext}>
 					<ActivitySubgroupManualOpenContext.Provider value={keepActivitySubgroupOpen}>
-						<div className="border-border/60 mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
+						<div className="border-border-subtle mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
 							{children}
 						</div>
 					</ActivitySubgroupManualOpenContext.Provider>
@@ -676,7 +657,7 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 							<ActivityLabel label={label} shimmer={active} />
 						</span>
 					</div>
-					<div className="border-border/60 mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
+					<div className="border-border-subtle mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
 						{children}
 					</div>
 				</ActivitySubgroupManualOpenContext.Provider>
@@ -712,7 +693,7 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 			return (
 				<ActivitySubgroupContext.Provider value={subgroupContext}>
 					<ActivitySubgroupManualOpenContext.Provider value={keepActivitySubgroupOpen}>
-						<div className="border-border/60 mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
+						<div className="border-border-subtle mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
 							{children}
 						</div>
 					</ActivitySubgroupManualOpenContext.Provider>
@@ -745,7 +726,7 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 						</span>
 					</div>
 					{showChildren ? (
-						<div className="border-border/60 mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
+						<div className="border-border-subtle mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
 							{children}
 						</div>
 					) : null}
@@ -761,7 +742,7 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 					{kind === "thinking" ? (
 						<ThinkingStreamText streaming={segment.running}>{children}</ThinkingStreamText>
 					) : (
-						<div className="border-border/60 mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
+						<div className="border-border-subtle mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
 							{children}
 						</div>
 					)}
@@ -808,7 +789,7 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 						{kind === "thinking" ? (
 							<ThinkingStreamText streaming={segment.running}>{children}</ThinkingStreamText>
 						) : (
-							<div className="border-border/60 mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
+							<div className="border-border-subtle mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
 								{children}
 							</div>
 						)}

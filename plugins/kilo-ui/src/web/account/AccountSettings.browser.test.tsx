@@ -220,6 +220,30 @@ describe("AccountSettings", () => {
 		expect(auth.logout).toHaveBeenCalledTimes(1);
 	});
 
+	it("reserves the Kilo account details while a signed-in profile is loading", async () => {
+		const { screen } = renderPage({
+			auth: { isLoading: true, authenticated: true, profile: null },
+		});
+
+		await expect
+			.element(screen.getByTestId("account-kilo-row"))
+			.toHaveAttribute("data-state", "loading");
+		await expect
+			.element(screen.getByTestId("kilo-account-settings"))
+			.toHaveAttribute("data-state", "loading");
+	});
+
+	it("does not reserve Kilo account details before the auth status is known", async () => {
+		const { screen } = renderPage({
+			auth: { isLoading: true, authenticated: null, profile: null },
+		});
+
+		await expect
+			.element(screen.getByTestId("account-kilo-row"))
+			.toHaveAttribute("data-state", "loading");
+		expect(screen.getByTestId("kilo-account-settings").query()).toBeNull();
+	});
+
 	it("loads the Kilo row independently of a slow Anaconda session resolve", async () => {
 		const { screen } = renderPage({
 			shellAuth: { getSession: () => new Promise<AuthSession>(() => {}) },
@@ -252,7 +276,7 @@ describe("AccountSettings", () => {
 
 		await vi.waitFor(() => {
 			expect(toast.error).toHaveBeenCalledWith(
-				"Sign-in failed",
+				"Could not sign in",
 				expect.objectContaining({ description: "ipc down" }),
 			);
 		});

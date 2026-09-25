@@ -13,6 +13,7 @@
 			{
 				"id": "local-model-server",
 				"title": "Local Model Server",
+				"description": "Run models on this device",
 				"component": "LocalModelServerSettings",
 				"icon": "server",
 				"category": "AI",

@@ -1,4 +1,13 @@
-import { CheckIcon, Loader2Icon } from "lucide-react";
+import { CircleCheckIcon } from "lucide-react";
+
+import {
+	Item,
+	ItemContent,
+	ItemDescription,
+	ItemMedia,
+	ItemTitle,
+} from "@kilo-desktop/ui/components/item";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 
 import { DeviceAuthPanel } from "../account/DeviceAuthPanel.js";
 import type { KiloAuthContextValue } from "../account/KiloAuthContext.js";
@@ -25,31 +34,29 @@ export function SignInStep({
 
 	if (auth.authenticated === null) {
 		return (
-			<div
-				className="border-border bg-card flex items-center gap-3 rounded-xl border px-4 py-3"
-				data-qa-id="onboarding-connecting"
-			>
-				<Loader2Icon className="text-primary-ink size-5 animate-spin" />
-				<p className="text-muted-foreground text-sm">Connecting to Kilo…</p>
-			</div>
+			<Item variant="outline" data-qa-id="onboarding-connecting">
+				<ItemMedia variant="icon">
+					<Spinner className="text-muted-foreground" />
+				</ItemMedia>
+				<ItemContent>
+					<ItemDescription>Connecting to Kilo…</ItemDescription>
+				</ItemContent>
+			</Item>
 		);
 	}
 
 	if (auth.authenticated === true) {
 		const name = auth.profile?.profile.name ?? auth.profile?.profile.email ?? "Kilo";
 		return (
-			<div
-				className="border-border bg-card flex items-center gap-3 rounded-xl border px-4 py-3"
-				data-qa-id="onboarding-signed-in"
-			>
-				<div className="bg-primary-soft text-primary-soft-foreground flex size-9 items-center justify-center rounded-full">
-					<CheckIcon className="size-4" />
-				</div>
-				<div className="min-w-0">
-					<p className="text-sm font-medium">Connected as {name}</p>
-					<p className="text-muted-foreground text-sm">Continue to create your first workspace.</p>
-				</div>
-			</div>
+			<Item variant="outline" data-qa-id="onboarding-signed-in">
+				<ItemMedia variant="icon" className="text-success">
+					<CircleCheckIcon aria-hidden="true" />
+				</ItemMedia>
+				<ItemContent className="min-w-0">
+					<ItemTitle>Connected as {name}</ItemTitle>
+					<ItemDescription>Continue to create your first workspace.</ItemDescription>
+				</ItemContent>
+			</Item>
 		);
 	}
 

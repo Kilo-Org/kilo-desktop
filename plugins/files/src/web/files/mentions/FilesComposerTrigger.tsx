@@ -91,7 +91,7 @@ export function FilesComposerTrigger({
 			renderItemIcon={(item) => <PierreFileIcon className="size-3.5 shrink-0" path={item.id} />}
 			isLoading={files.some((query) => query.isPending)}
 			emptyItemsLabel="No matching files"
-			loadingLabel="Loading files..."
+			loadingLabel="Loading files…"
 		/>
 	);
 }

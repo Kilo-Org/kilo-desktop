@@ -1,8 +1,9 @@
 "use client";
 
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 import { useAui, useAuiState } from "@assistant-ui/react";
-import { Loader2Icon, Undo2Icon } from "lucide-react";
+import { Undo2Icon } from "lucide-react";
 import type { FC } from "react";
 
 import { selectOpenCodeExtras } from "../../runtime/use-optional-opencode-runtime-extras.js";
@@ -74,11 +75,11 @@ export const RevertToHereButton: FC = () => {
 			}}
 		>
 			{reverting ? (
-				<Loader2Icon
+				<Spinner
 					role="status"
 					aria-label="Reverting"
 					data-qa-id="kilo-revert-spinner"
-					className="size-3.5 animate-spin"
+					className="size-3.5"
 				/>
 			) : (
 				<Undo2Icon className="size-3.5" />

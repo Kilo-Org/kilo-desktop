@@ -1,8 +1,10 @@
 import { useAuiState } from "@assistant-ui/react";
-import { AlertCircleIcon, ListTodoIcon } from "lucide-react";
+import { CircleAlertIcon, ListTodoIcon } from "lucide-react";
 import { memo, type FC } from "react";
 
+import { Alert, AlertTitle } from "@kilo-desktop/ui/components/alert";
 import { Button } from "@kilo-desktop/ui/components/button";
+import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { OPTIMISTIC_AGENT_CATALOG } from "../agent-selection/agent-catalog.js";
@@ -87,7 +89,7 @@ export const PlanCard: FC<PlanCardProps> = memo(({ projection }) => {
 				</span>
 				{isWriting ? (
 					<h3
-						className="shimmer text-foreground/40 min-w-0 flex-1 text-sm font-semibold motion-reduce:animate-none"
+						className="shimmer text-foreground/40 min-w-0 flex-1 text-sm font-medium motion-reduce:animate-none"
 						data-qa-id="kilo-plan-writing"
 						role="status"
 						aria-label="Writing plan"
@@ -95,43 +97,48 @@ export const PlanCard: FC<PlanCardProps> = memo(({ projection }) => {
 						Writing Plan
 					</h3>
 				) : (
-					<h3 className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</h3>
+					<h3 className="min-w-0 flex-1 truncate text-sm font-medium">{title}</h3>
 				)}
 			</header>
 
 			{showBody ? (
 				<div className="relative px-4 py-1.5">
 					{showLoading ? (
-						<p
-							className="text-muted-foreground py-2 text-sm"
+						<div
+							className="flex flex-col gap-2 py-2"
 							data-qa-id="kilo-plan-loading"
 							role="status"
+							aria-busy="true"
+							aria-label="Loading plan"
 						>
-							Loading plan…
-						</p>
+							<Skeleton className="h-3.5 w-3/4" aria-hidden="true" />
+							<Skeleton className="h-3.5 w-1/2" aria-hidden="true" />
+						</div>
 					) : null}
 					{showPreview ? (
-						<div className="relative max-h-40 overflow-hidden" data-qa-id="kilo-plan-preview">
+						<div
+							className={cn(
+								"relative max-h-40 overflow-hidden",
+								// A mask rather than a colour overlay, so the fade works on any surface.
+								isReady &&
+									"[mask-image:linear-gradient(to_bottom,black_calc(100%-4rem),transparent)]",
+							)}
+							data-qa-id="kilo-plan-preview"
+						>
 							<PlanMarkdown text={preview} />
-							{isReady ? (
-								<div className="from-card dark:from-background pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-linear-to-t to-transparent" />
-							) : null}
 						</div>
 					) : null}
 
 					{showError ? (
-						<div
-							role="alert"
-							className="bg-destructive/10 text-destructive-foreground mt-2 flex items-start gap-2 rounded-lg px-3 py-2 text-sm"
-						>
-							<AlertCircleIcon className="mt-0.5 size-4 shrink-0" />
-							<span>
+						<Alert variant="destructive" className="mt-2">
+							<CircleAlertIcon aria-hidden="true" />
+							<AlertTitle>
 								{actionError ||
 									projection.error ||
 									(isContentError ? "Could not load the plan file." : null) ||
 									"Kilo could not complete the plan."}
-							</span>
-						</div>
+							</AlertTitle>
+						</Alert>
 					) : null}
 				</div>
 			) : null}

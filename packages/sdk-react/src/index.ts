@@ -36,3 +36,8 @@ export { useWorkspaceWatcher, type UseWorkspaceWatcherOptions } from "./useWorks
 export { useSdkContributions } from "./useSdkContributions.js";
 
 export { useTelemetry } from "./useTelemetry.js";
+export {
+	SettingsPageHeader,
+	SettingsSectionProvider,
+	type SettingsSectionInfo,
+} from "./SettingsPageHeader.js";

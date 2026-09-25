@@ -229,7 +229,7 @@ describe("AppSidebarLayout account dock", () => {
 		await expect.element(sidebar.getByTestId("nav-settings")).toBeVisible();
 		// The zone outlet renders nothing while no plugin contributes a dock.
 		expect(document.querySelector('[data-qa-id="zone-sidebar-account"]')).toBeNull();
-		await expect.element(page.getByRole("button", { name: "Sign In" })).not.toBeInTheDocument();
+		await expect.element(page.getByRole("button", { name: "Sign in" })).not.toBeInTheDocument();
 	});
 
 	it("opens settings from the footer gear", async () => {

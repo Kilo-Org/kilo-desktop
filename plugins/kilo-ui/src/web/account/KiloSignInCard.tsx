@@ -33,23 +33,15 @@ export function KiloSignInCard({
 			className={cn("overflow-hidden", !embedded && "border-border bg-card rounded-xl border")}
 			data-qa-id="kilo-account-signed-out"
 		>
-			<div className="flex flex-col items-center px-6 pt-8 pb-6 text-center">
-				<KiloMark size="lg" />
-				<h2 className="font-heading mt-5 text-lg font-semibold tracking-tight">
-					Connect your Kilo account
-				</h2>
+			<div className="flex flex-col items-center px-6 pt-6 pb-5 text-center">
+				<KiloMark />
+				<h2 className="mt-4 text-sm font-medium">Connect your Kilo account</h2>
 				<p className="text-muted-foreground mt-1.5 max-w-sm text-sm text-balance">
 					One connection for frontier models, your credit balance, and team workspaces — without
 					leaving the app.
 				</p>
-				<Button
-					type="button"
-					size="lg"
-					className="mt-5"
-					onClick={onLogin}
-					data-qa-id="kilo-account-login"
-				>
-					Sign In
+				<Button type="button" className="mt-4" onClick={onLogin} data-qa-id="kilo-account-login">
+					Sign in
 					<ArrowUpRightIcon data-icon="inline-end" />
 				</Button>
 			</div>

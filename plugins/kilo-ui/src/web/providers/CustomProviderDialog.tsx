@@ -5,9 +5,18 @@ import {
 	RotateCcwIcon,
 	Trash2Icon,
 } from "lucide-react";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useId, useState, type FormEvent, type ReactNode } from "react";
 
 import { Badge } from "@kilo-desktop/ui/components/badge";
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from "@kilo-desktop/ui/components/table";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Collapsible,
@@ -15,8 +24,6 @@ import {
 	CollapsibleTrigger,
 } from "@kilo-desktop/ui/components/collapsible";
 import {
-	Dialog,
-	DialogContent,
 	DialogDescription,
 	DialogFooter,
 	DialogHeader,
@@ -32,7 +39,6 @@ import {
 	FieldSet,
 } from "@kilo-desktop/ui/components/field";
 import { Input } from "@kilo-desktop/ui/components/input";
-import { ScrollArea } from "@kilo-desktop/ui/components/scroll-area";
 import { Separator } from "@kilo-desktop/ui/components/separator";
 import { Checkbox } from "@kilo-desktop/ui/components/checkbox";
 import {
@@ -96,27 +102,25 @@ export type CustomProviderSubmitInput = {
 	apiKeyChanged: boolean;
 };
 
-type CustomProviderDialogProps = {
-	open: boolean;
+type CustomProviderFormProps = {
 	existing: ExistingCustom | null;
 	blockedIds: readonly string[];
 	pending: boolean;
 	error: string | null;
-	onOpenChange(open: boolean): void;
-	onSubmit(input: CustomProviderSubmitInput): Promise<void>;
-};
-
-type CustomProviderFormProps = Omit<CustomProviderDialogProps, "open" | "onOpenChange"> & {
+	/**
+	 * `dialog` renders inside a `DialogContent` with its own header, scroll
+	 * region, and footer; `inline` renders bare fields and actions for an
+	 * expanded settings row.
+	 */
+	layout?: "dialog" | "inline";
 	stepIndicator?: ReactNode;
 	onBack?: () => void;
 	onCancel(): void;
+	onSubmit(input: CustomProviderSubmitInput): Promise<void>;
 };
 
-export const CUSTOM_PROVIDER_DIALOG_CONTENT_CLASS_NAME =
-	"max-h-[min(90vh,48rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-xl";
-
 export const EMBEDDED_CUSTOM_PROVIDER_CONTENT_CLASS_NAME =
-	"max-h-[min(90vh,48rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0";
+	"max-h-[min(48rem,calc(100dvh-4rem))] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0";
 
 const PACKAGE_ITEMS = CUSTOM_PROVIDER_PACKAGES.map((value) => ({
 	value,
@@ -244,12 +248,25 @@ export function CustomProviderForm({
 	blockedIds,
 	pending,
 	error,
+	layout = "dialog",
 	stepIndicator,
 	onBack,
 	onCancel,
 	onSubmit,
 }: CustomProviderFormProps) {
 	const sdk = useSdk("kilo-ui");
+	// Several inline editors can be expanded at once, so field ids must be unique per form.
+	const fieldId = useId();
+	const ids = {
+		name: `${fieldId}-name`,
+		npm: `${fieldId}-npm`,
+		url: `${fieldId}-url`,
+		key: `${fieldId}-key`,
+		modelId: `${fieldId}-model-id`,
+		headerKey: `${fieldId}-header-key`,
+		headerValue: `${fieldId}-header-value`,
+	};
+	const inline = layout === "inline";
 	const editing = existing !== null;
 	const [form, setForm] = useState<CustomProviderFormState>(() => initForm(existing));
 	const [modelDraft, setModelDraft] = useState<ModelRow>(emptyModel);
@@ -360,34 +377,52 @@ export function CustomProviderForm({
 	const allModelsSupportImages =
 		form.models.length > 0 && form.models.every((model) => model.supportsImages);
 
+	const setupGuideLink = (
+		<a
+			href={CUSTOM_PROVIDER_DOCS_URL}
+			onClick={(event) => {
+				event.preventDefault();
+				void sdk.shell.openExternal(CUSTOM_PROVIDER_DOCS_URL).catch(() => undefined);
+			}}
+		>
+			Setup guide
+			<ExternalLinkIcon className="ml-1 inline size-3" />
+		</a>
+	);
+
+	const cancelOrBack = onBack ? (
+		<Button type="button" variant="outline" disabled={pending} onClick={onBack}>
+			Back
+		</Button>
+	) : (
+		<Button type="button" variant="outline" disabled={pending} onClick={onCancel}>
+			Cancel
+		</Button>
+	);
+	const submitButton = (
+		<Button type="submit" disabled={pending} data-qa-id="kilo-providers-custom-save">
+			{pending ? <Spinner data-icon="inline-start" aria-hidden="true" /> : null}
+			{pending ? (editing ? "Saving…" : "Adding…") : editing ? "Save changes" : "Add AI Provider"}
+		</Button>
+	);
+
 	return (
-		<form onSubmit={submit} className="contents">
-			<DialogHeader className="gap-4 px-4 pt-4 pr-12">
-				{stepIndicator}
-				<div className="flex flex-col gap-2">
-					<DialogTitle>{editing ? "Edit custom provider" : "Add custom AI Provider"}</DialogTitle>
+		<form onSubmit={submit} className={inline ? "flex min-w-0 flex-col gap-5" : "contents"}>
+			{inline ? null : (
+				<DialogHeader className="px-4 pt-4 pr-12">
+					<DialogTitle>{editing ? "Edit custom provider" : "Add custom AI provider"}</DialogTitle>
 					<DialogDescription>
-						Add an OpenAI- or Anthropic-compatible endpoint.{" "}
-						<a
-							href={CUSTOM_PROVIDER_DOCS_URL}
-							onClick={(event) => {
-								event.preventDefault();
-								void sdk.shell.openExternal(CUSTOM_PROVIDER_DOCS_URL).catch(() => undefined);
-							}}
-						>
-							Setup guide
-							<ExternalLinkIcon className="ml-1 inline size-3" />
-						</a>
+						Add an OpenAI- or Anthropic-compatible endpoint. {setupGuideLink}
 					</DialogDescription>
-				</div>
-			</DialogHeader>
-			<div className="scroll-fade min-h-0 overflow-y-auto px-4 py-4">
+				</DialogHeader>
+			)}
+			<div className={inline ? "min-w-0" : "scroll-fade-y min-h-0 overflow-y-auto px-4 py-4"}>
 				<FieldGroup className="gap-5">
 					<FieldGroup className="grid gap-4 sm:grid-cols-2">
 						<Field>
-							<FieldLabel htmlFor="kilo-custom-name">Provider name</FieldLabel>
+							<FieldLabel htmlFor={ids.name}>Provider name</FieldLabel>
 							<Input
-								id="kilo-custom-name"
+								id={ids.name}
 								value={form.name}
 								onChange={(event) =>
 									setForm((current) => ({ ...current, name: event.target.value }))
@@ -397,7 +432,7 @@ export function CustomProviderForm({
 							/>
 						</Field>
 						<Field>
-							<FieldLabel htmlFor="kilo-custom-npm">API format</FieldLabel>
+							<FieldLabel htmlFor={ids.npm}>API format</FieldLabel>
 							<Select
 								items={PACKAGE_ITEMS}
 								value={form.npm}
@@ -410,7 +445,7 @@ export function CustomProviderForm({
 								}}
 							>
 								<SelectTrigger
-									id="kilo-custom-npm"
+									id={ids.npm}
 									className="w-full"
 									data-qa-id="kilo-providers-custom-npm"
 								>
@@ -432,9 +467,9 @@ export function CustomProviderForm({
 					</FieldGroup>
 
 					<Field>
-						<FieldLabel htmlFor="kilo-custom-url">Base URL</FieldLabel>
+						<FieldLabel htmlFor={ids.url}>Base URL</FieldLabel>
 						<Input
-							id="kilo-custom-url"
+							id={ids.url}
 							value={form.baseURL}
 							onChange={(event) =>
 								setForm((current) => ({ ...current, baseURL: event.target.value }))
@@ -446,7 +481,7 @@ export function CustomProviderForm({
 
 					<Field className="gap-2.5">
 						<div className="flex items-center justify-between gap-3">
-							<FieldLabel htmlFor="kilo-custom-key">API key</FieldLabel>
+							<FieldLabel htmlFor={ids.key}>API key</FieldLabel>
 							<Badge variant={apiKeyRemovalPending ? "destructive" : "secondary"}>
 								{apiKeyRemovalPending
 									? "Removal pending"
@@ -456,7 +491,7 @@ export function CustomProviderForm({
 							</Badge>
 						</div>
 						<ApiKeyField
-							id="kilo-custom-key"
+							id={ids.key}
 							value={form.apiKey}
 							placeholder={editing ? "Enter a new API key" : "Enter an API key"}
 							qaId="kilo-providers-custom-key"
@@ -509,118 +544,110 @@ export function CustomProviderForm({
 							</FieldLegend>
 							<FieldDescription>Add each model ID exposed by this endpoint.</FieldDescription>
 						</div>
-						<div
-							className="border-border overflow-hidden rounded-lg border"
-							role="table"
-							aria-label="Models"
-						>
-							<div
-								className={`${MODEL_ROW_LAYOUT} border-border bg-foreground/3 text-muted-foreground border-b px-2.5 py-2 text-xs font-medium`}
-								role="row"
-							>
-								<span role="columnheader">Model ID</span>
-								<span className="text-center" role="columnheader">
-									Reasoning
-								</span>
-								<span className="text-center" role="columnheader">
-									Images
-								</span>
-								<span className="sr-only" role="columnheader">
-									Actions
-								</span>
+						<div className="border-border overflow-hidden rounded-lg border">
+							<div className="scroll-fade-y max-h-60 overflow-y-auto">
+								<Table className="table-fixed" aria-label="Models">
+									<TableHeader>
+										<TableRow>
+											<TableHead scope="col">Model ID</TableHead>
+											<TableHead scope="col" className="w-[5.5rem] text-center">
+												Reasoning
+											</TableHead>
+											<TableHead scope="col" className="w-[5.5rem] text-center">
+												Images
+											</TableHead>
+											<TableHead scope="col" className="w-14">
+												<span className="sr-only">Actions</span>
+											</TableHead>
+										</TableRow>
+									</TableHeader>
+									{form.models.length > 0 ? (
+										<TableBody>
+											<TableRow>
+												<TableCell className="text-muted-foreground font-medium">
+													All models
+												</TableCell>
+												<TableCell className="text-center">
+													<Checkbox
+														checked={allModelsSupportReasoning}
+														onCheckedChange={(checked) => updateAllModels({ reasoning: checked })}
+														aria-label="Toggle reasoning support for all models"
+														data-qa-id="kilo-providers-model-reasoning-all"
+													/>
+												</TableCell>
+												<TableCell className="text-center">
+													<Checkbox
+														checked={allModelsSupportImages}
+														onCheckedChange={(checked) =>
+															updateAllModels({ supportsImages: checked })
+														}
+														aria-label="Toggle image input support for all models"
+														data-qa-id="kilo-providers-model-images-all"
+													/>
+												</TableCell>
+												<TableCell />
+											</TableRow>
+											{form.models.map((model, index) => (
+												<TableRow
+													key={model.rowID}
+													data-qa-id={`kilo-providers-model-row-${index}`}
+												>
+													<TableCell className="truncate font-mono">{model.id}</TableCell>
+													<TableCell className="text-center">
+														<Checkbox
+															checked={model.reasoning}
+															onCheckedChange={(checked) =>
+																updateModel(index, { reasoning: checked })
+															}
+															aria-label={`Reasoning support for ${model.id}`}
+															data-qa-id={`kilo-providers-model-reasoning-${index}`}
+														/>
+													</TableCell>
+													<TableCell className="text-center">
+														<Checkbox
+															checked={model.supportsImages}
+															onCheckedChange={(checked) =>
+																updateModel(index, { supportsImages: checked })
+															}
+															aria-label={`Image input support for ${model.id}`}
+															data-qa-id={`kilo-providers-model-images-${index}`}
+														/>
+													</TableCell>
+													<TableCell className="text-center">
+														<Button
+															type="button"
+															variant="ghost"
+															size="icon-xs"
+															aria-label={`Remove ${model.id}`}
+															onClick={() =>
+																setForm((current) => ({
+																	...current,
+																	models: current.models.filter(
+																		(_, rowIndex) => rowIndex !== index,
+																	),
+																}))
+															}
+															data-qa-id={`kilo-providers-model-remove-${index}`}
+														>
+															<Trash2Icon />
+														</Button>
+													</TableCell>
+												</TableRow>
+											))}
+										</TableBody>
+									) : null}
+								</Table>
 							</div>
-							{form.models.length > 0 ? (
-								<div
-									className={`${MODEL_ROW_LAYOUT} border-border bg-foreground/2 min-h-9 border-b px-2.5`}
-									role="row"
-								>
-									<span className="text-muted-foreground text-xs font-medium" role="cell">
-										All models
-									</span>
-									<div className="flex justify-center" role="cell">
-										<Checkbox
-											checked={allModelsSupportReasoning}
-											onCheckedChange={(checked) => updateAllModels({ reasoning: checked })}
-											aria-label="Toggle reasoning support for all models"
-											data-qa-id="kilo-providers-model-reasoning-all"
-										/>
-									</div>
-									<div className="flex justify-center" role="cell">
-										<Checkbox
-											checked={allModelsSupportImages}
-											onCheckedChange={(checked) => updateAllModels({ supportsImages: checked })}
-											aria-label="Toggle image input support for all models"
-											data-qa-id="kilo-providers-model-images-all"
-										/>
-									</div>
-									<span role="cell" />
-								</div>
-							) : null}
-							{form.models.length > 0 ? (
-								<ScrollArea
-									className="border-border border-b"
-									style={{ height: Math.min(form.models.length, 5) * 36 }}
-								>
-									<div className="divide-border divide-y" role="rowgroup">
-										{form.models.map((model, index) => (
-											<div
-												key={model.rowID}
-												className={`${MODEL_ROW_LAYOUT} min-h-9 px-2.5`}
-												role="row"
-												data-qa-id={`kilo-providers-model-row-${index}`}
-											>
-												<span className="truncate font-mono text-sm" role="cell">
-													{model.id}
-												</span>
-												<div className="flex justify-center" role="cell">
-													<Checkbox
-														checked={model.reasoning}
-														onCheckedChange={(checked) =>
-															updateModel(index, { reasoning: checked })
-														}
-														aria-label={`Reasoning support for ${model.id}`}
-														data-qa-id={`kilo-providers-model-reasoning-${index}`}
-													/>
-												</div>
-												<div className="flex justify-center" role="cell">
-													<Checkbox
-														checked={model.supportsImages}
-														onCheckedChange={(checked) =>
-															updateModel(index, { supportsImages: checked })
-														}
-														aria-label={`Image input support for ${model.id}`}
-														data-qa-id={`kilo-providers-model-images-${index}`}
-													/>
-												</div>
-												<div className="flex justify-center" role="cell">
-													<Button
-														type="button"
-														variant="ghost"
-														size="icon-xs"
-														aria-label={`Remove ${model.id}`}
-														onClick={() =>
-															setForm((current) => ({
-																...current,
-																models: current.models.filter((_, rowIndex) => rowIndex !== index),
-															}))
-														}
-														data-qa-id={`kilo-providers-model-remove-${index}`}
-													>
-														<Trash2Icon />
-													</Button>
-												</div>
-											</div>
-										))}
-									</div>
-								</ScrollArea>
-							) : null}
-							<Field data-invalid={Boolean(modelDraftError)} className="p-2.5">
-								<FieldLabel htmlFor="kilo-custom-model-id" className="sr-only">
+							<Field
+								data-invalid={Boolean(modelDraftError)}
+								className="border-border border-t p-2.5"
+							>
+								<FieldLabel htmlFor={ids.modelId} className="sr-only">
 									Model ID
 								</FieldLabel>
 								<div className={MODEL_ROW_LAYOUT}>
 									<Input
-										id="kilo-custom-model-id"
+										id={ids.modelId}
 										className="min-w-40 flex-1"
 										placeholder="e.g. gpt-4.1"
 										value={modelDraft.id}
@@ -678,7 +705,7 @@ export function CustomProviderForm({
 						<div className="border-border overflow-hidden rounded-lg border">
 							<CollapsibleTrigger
 								type="button"
-								className="group hover:bg-foreground/5 flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors"
+								className="group hover:bg-muted flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors"
 								data-qa-id="kilo-providers-custom-advanced"
 							>
 								<div className="min-w-0">
@@ -698,79 +725,72 @@ export function CustomProviderForm({
 										Header values are saved to your configuration. Use {"{env:MY_API_TOKEN}"} for
 										secrets.
 									</FieldDescription>
-									<div
-										className="border-border overflow-hidden rounded-lg border"
-										role="table"
-										aria-label="Custom request headers"
-									>
-										<div
-											className={`${HEADER_ROW_LAYOUT} border-border bg-foreground/3 text-muted-foreground border-b px-2.5 py-2 text-xs font-medium`}
-											role="row"
-										>
-											<span role="columnheader">Name</span>
-											<span role="columnheader">Value</span>
-											<span className="sr-only" role="columnheader">
-												Actions
-											</span>
-										</div>
-										{form.headers.length > 0 ? (
-											<ScrollArea
-												className="border-border border-b"
-												style={{ height: Math.min(form.headers.length, 4) * 36 }}
-											>
-												<div className="divide-border divide-y" role="rowgroup">
-													{form.headers.map((header, index) => (
-														<div
-															key={header.rowID}
-															className={`${HEADER_ROW_LAYOUT} min-h-9 px-2.5 [content-visibility:auto]`}
-															role="row"
-														>
-															<span
-																className="truncate font-mono text-xs"
-																role="cell"
-																title={header.key}
-															>
-																{header.key}
-															</span>
-															<span
-																className="truncate font-mono text-xs"
-																role="cell"
-																title={header.value}
-															>
-																{header.value}
-															</span>
-															<div className="flex justify-center" role="cell">
-																<Button
-																	type="button"
-																	variant="ghost"
-																	size="icon-xs"
-																	aria-label={`Remove header ${index + 1}`}
-																	onClick={() =>
-																		setForm((current) => ({
-																			...current,
-																			headers: current.headers.filter(
-																				(_, rowIndex) => rowIndex !== index,
-																			),
-																		}))
-																	}
-																	data-qa-id={`kilo-providers-header-remove-${index}`}
+									<div className="border-border overflow-hidden rounded-lg border">
+										<div className="scroll-fade-y max-h-48 overflow-y-auto">
+											<Table className="table-fixed" aria-label="Custom request headers">
+												<TableHeader>
+													<TableRow>
+														<TableHead scope="col" className="w-[40%]">
+															Name
+														</TableHead>
+														<TableHead scope="col">Value</TableHead>
+														<TableHead scope="col" className="w-14">
+															<span className="sr-only">Actions</span>
+														</TableHead>
+													</TableRow>
+												</TableHeader>
+												{form.headers.length > 0 ? (
+													<TableBody>
+														{form.headers.map((header, index) => (
+															<TableRow key={header.rowID}>
+																<TableCell
+																	className="truncate font-mono text-xs"
+																	title={header.key}
 																>
-																	<Trash2Icon />
-																</Button>
-															</div>
-														</div>
-													))}
-												</div>
-											</ScrollArea>
-										) : null}
-										<Field data-invalid={Boolean(headerDraftError)} className="p-2.5">
+																	{header.key}
+																</TableCell>
+																<TableCell
+																	className="truncate font-mono text-xs"
+																	title={header.value}
+																>
+																	{header.value}
+																</TableCell>
+																<TableCell className="text-center">
+																	<Button
+																		type="button"
+																		variant="ghost"
+																		size="icon-xs"
+																		aria-label={`Remove header ${index + 1}`}
+																		onClick={() =>
+																			setForm((current) => ({
+																				...current,
+																				headers: current.headers.filter(
+																					(_, rowIndex) => rowIndex !== index,
+																				),
+																			}))
+																		}
+																		data-qa-id={`kilo-providers-header-remove-${index}`}
+																	>
+																		<Trash2Icon />
+																	</Button>
+																</TableCell>
+															</TableRow>
+														))}
+													</TableBody>
+												) : null}
+											</Table>
+										</div>
+										<Field
+											data-invalid={Boolean(headerDraftError)}
+											className="border-border border-t p-2.5"
+										>
 											<div className={HEADER_ROW_LAYOUT}>
 												<Field className="gap-0">
-													<FieldLabel htmlFor="kilo-custom-header-key" className="sr-only">
+													<FieldLabel htmlFor={ids.headerKey} className="sr-only">
 														Header name
 													</FieldLabel>
 													<Input
-														id="kilo-custom-header-key"
+														id={ids.headerKey}
 														placeholder="e.g. Authorization"
 														value={headerDraft.key}
 														aria-invalid={Boolean(headerDraftError) || undefined}
@@ -790,11 +810,11 @@ export function CustomProviderForm({
 													/>
 												</Field>
 												<Field className="gap-0">
-													<FieldLabel htmlFor="kilo-custom-header-value" className="sr-only">
+													<FieldLabel htmlFor={ids.headerValue} className="sr-only">
 														Header value
 													</FieldLabel>
 													<Input
-														id="kilo-custom-header-value"
+														id={ids.headerValue}
 														placeholder="e.g. Bearer {env:API_TOKEN}"
 														value={headerDraft.value}
 														aria-invalid={Boolean(headerDraftError) || undefined}
@@ -841,50 +861,23 @@ export function CustomProviderForm({
 					) : null}
 				</FieldGroup>
 			</div>
-			<DialogFooter className="m-0 rounded-b-xl px-4 py-3">
-				{onBack ? (
-					<Button type="button" variant="outline" disabled={pending} onClick={onBack}>
-						Back
-					</Button>
-				) : (
-					<Button type="button" variant="outline" disabled={pending} onClick={onCancel}>
-						Cancel
-					</Button>
-				)}
-				<Button type="submit" disabled={pending} data-qa-id="kilo-providers-custom-save">
-					{pending
-						? editing
-							? "Saving…"
-							: "Adding…"
-						: editing
-							? "Save changes"
-							: "Add AI Provider"}
-				</Button>
-			</DialogFooter>
+			{inline ? (
+				<div className="flex flex-wrap items-center justify-between gap-2">
+					<p className="text-muted-foreground text-xs">
+						OpenAI- or Anthropic-compatible endpoint. {setupGuideLink}
+					</p>
+					<div className="ml-auto flex gap-2">
+						{cancelOrBack}
+						{submitButton}
+					</div>
+				</div>
+			) : (
+				<DialogFooter className="m-0 rounded-b-xl px-4 py-3">
+					{stepIndicator}
+					{cancelOrBack}
+					{submitButton}
+				</DialogFooter>
+			)}
 		</form>
-	);
-}
-
-export function CustomProviderDialog({
-	open,
-	pending,
-	onOpenChange,
-	...formProps
-}: CustomProviderDialogProps) {
-	return (
-		<Dialog
-			open={open}
-			onOpenChange={(next) => {
-				if (!next && pending) return;
-				onOpenChange(next);
-			}}
-		>
-			<DialogContent
-				data-qa-id="kilo-providers-custom-dialog"
-				className={CUSTOM_PROVIDER_DIALOG_CONTENT_CLASS_NAME}
-			>
-				<CustomProviderForm {...formProps} pending={pending} onCancel={() => onOpenChange(false)} />
-			</DialogContent>
-		</Dialog>
 	);
 }

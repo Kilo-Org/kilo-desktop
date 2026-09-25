@@ -41,7 +41,7 @@ export const PaneLaunchToolbar: FC<{
 							/>
 						}
 					>
-						<BotIcon className="text-muted-foreground size-3.5" />
+						<BotIcon className="size-3.5" aria-hidden />
 					</TooltipTrigger>
 					<TooltipContent side="bottom">Show Chat</TooltipContent>
 				</Tooltip>

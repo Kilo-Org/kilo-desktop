@@ -1,5 +1,6 @@
 "use client";
 
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
@@ -20,6 +21,11 @@ import {
 	DropdownMenuTrigger,
 } from "@kilo-desktop/ui/components/dropdown-menu";
 import { Input } from "@kilo-desktop/ui/components/input";
+import {
+	SidebarMenu,
+	SidebarMenuButton,
+	SidebarMenuItem,
+} from "@kilo-desktop/ui/components/sidebar";
 import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
 import {
 	Tooltip,
@@ -42,11 +48,10 @@ import {
 	ArchiveRestoreIcon,
 	ChevronDownIcon,
 	CircleAlertIcon,
+	EllipsisIcon,
 	FolderIcon,
-	Loader2Icon,
-	MessageCircleQuestionIcon,
+	MessageCircleQuestionMarkIcon,
 	MessageSquareIcon,
-	MoreHorizontalIcon,
 	PencilIcon,
 	PinIcon,
 	PinOffIcon,
@@ -111,16 +116,15 @@ import {
 } from "../../session-list/session-list-view.js";
 
 /** Hide CommandItem's built-in check — opacity-0 still reserves layout space. */
-const HIDE_BUILTIN_CHECK = "[&>svg:last-child]:hidden";
 
 /**
  * Shared surface states for session rows.
  * Idle is clear; hover, focus, and selected states use the same translucent wash.
  */
 const sidebarSurfaceIdleClassName =
-	"bg-transparent text-sidebar-foreground transition-colors hover:bg-foreground/5 focus-visible:bg-foreground/5";
+	"bg-transparent text-sidebar-foreground transition-colors hover:bg-sidebar-accent focus-visible:bg-sidebar-accent";
 const sidebarSurfaceActiveClassName =
-	"bg-foreground/5 text-sidebar-foreground transition-colors hover:bg-foreground/5 focus-visible:bg-foreground/5";
+	"bg-sidebar-accent text-sidebar-foreground transition-colors hover:bg-sidebar-accent focus-visible:bg-sidebar-accent";
 
 /** Override Button/Input `rounded-lg` so radius matches sidebar menu items. */
 const sidebarNavRadiusClassName = "rounded-md!";
@@ -416,13 +420,19 @@ export const SessionListContent = memo(function SessionListContent({
 						aria-label="Chat actions"
 						data-qa-id="session-list-navigation"
 					>
-						<NewChatButton />
-						<SessionListSearch
-							onSelectWorkspace={(id) => {
-								updateView({ focus: id });
-								setActiveWorkspaceId(id);
-							}}
-						/>
+						<SidebarMenu className="gap-0.5">
+							<SidebarMenuItem>
+								<NewChatButton />
+							</SidebarMenuItem>
+							<SidebarMenuItem>
+								<SessionListSearch
+									onSelectWorkspace={(id) => {
+										updateView({ focus: id });
+										setActiveWorkspaceId(id);
+									}}
+								/>
+							</SidebarMenuItem>
+						</SidebarMenu>
 					</section>
 					<section aria-label="Chat sessions" className="flex min-h-0 min-w-0 flex-1 flex-col">
 						<div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
@@ -576,7 +586,6 @@ function SearchChatItem({ row, onSelect }: { row: SearchRow; onSelect: (row: Sea
 			value={`chat:${row.id}`}
 			keywords={row.sublabel ? [row.title, row.sublabel] : [row.title]}
 			onSelect={() => onSelect(row)}
-			className={HIDE_BUILTIN_CHECK}
 		>
 			<MessageSquareIcon />
 			<span className="min-w-0 flex-1 truncate">{row.title}</span>
@@ -605,7 +614,6 @@ function SearchWorkspaceItem({
 			value={`workspace:${workspace.id}`}
 			keywords={sublabel ? [workspace.name, sublabel] : [workspace.name]}
 			onSelect={() => onSelect(workspace.id)}
-			className={HIDE_BUILTIN_CHECK}
 		>
 			<FolderIcon {...(glyph ? { color: glyph } : {})} />
 			<span className="min-w-0 flex-1 truncate">{workspace.name}</span>
@@ -691,35 +699,32 @@ export const SessionListSearch: FC<{
 
 	return (
 		<>
-			<Button
-				type="button"
-				variant="ghost"
+			<SidebarMenuButton
 				aria-label="Search"
-				className="h-8 w-full justify-start gap-2 rounded-md px-2 text-sm font-normal"
+				className="gap-2 rounded-lg"
 				data-slot="aui_thread-list-search"
 				data-qa-id="session-list-search"
 				onClick={() => setOpen(true)}
 			>
-				<SearchIcon data-icon="inline-start" />
+				<SearchIcon />
 				<span>Search</span>
-			</Button>
+			</SidebarMenuButton>
 			<CommandDialog
 				open={open}
 				onOpenChange={setOpen}
 				title="Search"
 				description="Search chats and workspaces"
 				showCloseButton
-				className="top-1/2 -translate-y-1/2"
+				className="top-1/2 -translate-y-1/2 sm:max-w-2xl"
 			>
 				<Command label="Search chats and workspaces" filter={filterSearchItems}>
 					<CommandInput
 						value={query}
 						onValueChange={setQuery}
-						placeholder="Search chats, workspaces…"
+						placeholder="Search chats and workspaces"
 						aria-label="Search chats and workspaces"
 						className="pe-10"
 					/>
-					<CommandSeparator className="bg-border/60" />
 					<ToggleGroup
 						size="sm"
 						spacing={1}
@@ -733,17 +738,12 @@ export const SessionListSearch: FC<{
 						}}
 					>
 						{SEARCH_SCOPES.map((item) => (
-							<ToggleGroupItem
-								key={item}
-								value={item}
-								data-qa-id={`session-search-filter-${item}`}
-								className="hover:bg-secondary hover:text-secondary-foreground"
-							>
+							<ToggleGroupItem key={item} value={item} data-qa-id={`session-search-filter-${item}`}>
 								{SEARCH_SCOPE_LABELS[item]}
 							</ToggleGroupItem>
 						))}
 					</ToggleGroup>
-					<CommandList className="h-96 px-2">
+					<CommandList className="scroll-fade-y h-96 px-2">
 						<CommandEmpty>{emptyLabel}</CommandEmpty>
 						{chats.length > 0 ? (
 							<CommandGroup heading={chatHeading}>
@@ -797,10 +797,7 @@ const SessionListSkeleton: FC = () => {
 					data-slot="aui_thread-list-skeleton-wrapper"
 					className="flex h-8 items-center px-2"
 				>
-					<Skeleton
-						data-slot="aui_thread-list-skeleton"
-						className="bg-sidebar-border h-3.5 w-full"
-					/>
+					<Skeleton data-slot="aui_thread-list-skeleton" className="h-3.5 w-full" />
 				</div>
 			))}
 		</div>
@@ -814,8 +811,8 @@ const shelfMutedTone = {
 
 const shelfHeaderTones = {
 	attention: {
-		label: "text-amber-600 dark:text-amber-400",
-		chevron: "text-amber-600 dark:text-amber-400",
+		label: "text-warning",
+		chevron: "text-warning",
 	},
 	active: shelfMutedTone,
 	archived: shelfMutedTone,
@@ -841,7 +838,7 @@ const SessionShelfHeader: FC<{
 			className={cn(
 				"flex items-center",
 				tone === "workspace" &&
-					"group/workspace-row rounded-md transition-colors hover:bg-foreground/5 focus-within:bg-foreground/5",
+					"group/workspace-row rounded-md transition-colors hover:bg-sidebar-accent focus-within:bg-sidebar-accent",
 			)}
 			data-slot={`aui_session-list-${tone}-header`}
 		>
@@ -908,13 +905,12 @@ const WorkspaceShelfActions: FC<{
 											size="icon-xs"
 											aria-label={`Workspace actions for ${workspace.name}`}
 											data-qa-id={`session-list-workspace-actions-${workspace.id}`}
-											className="text-muted-foreground size-5"
 										/>
 									}
 								/>
 							}
 						>
-							<MoreHorizontalIcon aria-hidden className="size-3.5" />
+							<EllipsisIcon aria-hidden className="size-3.5" />
 						</TooltipTrigger>
 						<TooltipContent side="bottom">More</TooltipContent>
 					</Tooltip>
@@ -938,7 +934,6 @@ const WorkspaceShelfActions: FC<{
 								size="icon-xs"
 								aria-label={`New chat in ${workspace.name}`}
 								data-qa-id={`session-list-workspace-new-${workspace.id}`}
-								className="text-muted-foreground size-5"
 								onClick={() => onCreateChatInWorkspace(workspace.id)}
 							/>
 						}
@@ -956,10 +951,10 @@ const rowStateLabels: Record<
 	Exclude<SessionRowState, null>,
 	{ label: string; className: string }
 > = {
-	approval: { label: "Requires Approval", className: "text-amber-600 dark:text-amber-400" },
-	input: { label: "Requires Input", className: "text-amber-600 dark:text-amber-400" },
-	working: { label: "Working", className: "text-sky-600 dark:text-sky-400" },
-	done: { label: "Done", className: "text-green-800 dark:text-green-400" },
+	approval: { label: "Requires approval", className: "text-warning" },
+	input: { label: "Requires input", className: "text-warning" },
+	working: { label: "Working", className: "text-info" },
+	done: { label: "Done", className: "text-success" },
 };
 
 /** One shared interval per tick rate so every row doesn't open its own timer. */
@@ -1032,9 +1027,7 @@ const SessionRowGlyph: FC<{
 						/>
 					}
 				>
-					{rowState === "working" ? (
-						<Loader2Icon aria-hidden className="size-3.5 animate-spin" />
-					) : null}
+					{rowState === "working" ? <Spinner aria-hidden className="size-3.5" /> : null}
 					{rowState === "done" ? (
 						<span
 							data-qa-id="session-list-done-dot"
@@ -1044,7 +1037,7 @@ const SessionRowGlyph: FC<{
 					) : null}
 					{rowState === "approval" ? <CircleAlertIcon aria-hidden className="size-3.5" /> : null}
 					{rowState === "input" ? (
-						<MessageCircleQuestionIcon aria-hidden className="size-3.5" />
+						<MessageCircleQuestionMarkIcon aria-hidden className="size-3.5" />
 					) : null}
 				</TooltipTrigger>
 				<TooltipContent side="right">
@@ -1073,7 +1066,6 @@ const RowHoverAction: FC<{
 					type="button"
 					variant="ghost"
 					size="icon-xs"
-					className="size-5"
 					aria-label={label}
 					data-slot={slot}
 					onClick={onClick}
@@ -1208,18 +1200,19 @@ const SessionRow: FC = () => {
 		if (!deleted) return;
 		const directory = worktreeDirectory;
 		if (directory === undefined) return;
-		try {
-			await sdk.client["chat.removeWorktree"]({ directory });
-			toast.success("Worktree deleted", {
-				description: activity?.worktreeBranch
-					? `Branch ${activity.worktreeBranch} and its worktree were removed.`
-					: undefined,
-			});
-		} catch (error) {
-			toast.error("Could not remove worktree", {
+		const branch = activity?.worktreeBranch;
+		toast.promise(sdk.client["chat.removeWorktree"]({ directory }), {
+			loading: "Removing worktree…",
+			success: () => ({
+				message: "Worktree deleted",
+				description: branch ? `Branch ${branch} and its worktree were removed.` : undefined,
+			}),
+			error: (error: unknown) => ({
+				message: "Could not remove worktree",
 				description: error instanceof Error ? error.message : "The worktree was left in place.",
-			});
-		}
+				duration: Infinity,
+			}),
+		});
 	}, [sdk, deleteSession, worktreeDirectory, activity?.worktreeBranch]);
 
 	return (
@@ -1473,48 +1466,46 @@ const SessionRowContent = memo(function SessionRowContent({
 			)}
 			{!isRenaming && (
 				<span className={cn(rowHoverActionsClassName, "right-1.5 top-1 h-5")}>
-					<TooltipProvider>
-						{canArchive ? (
-							<RowHoverAction
-								label="Archive thread"
-								tooltip="Archive"
-								slot="aui_session-list-item-archive"
-								onClick={archive}
-							>
-								<ArchiveIcon aria-hidden />
-							</RowHoverAction>
-						) : null}
-						{isArchived ? (
-							<RowHoverAction
-								label="Unarchive thread"
-								tooltip="Unarchive"
-								slot="aui_session-list-item-unarchive"
-								onClick={unarchive}
-							>
-								<ArchiveRestoreIcon aria-hidden />
-							</RowHoverAction>
-						) : null}
-						{!isArchived ? (
-							<RowHoverAction
-								label={isPinned ? "Unpin thread" : "Pin thread"}
-								tooltip={isPinned ? "Unpin" : "Pin"}
-								slot="aui_session-list-item-pin"
-								onClick={() => togglePin(pinId)}
-							>
-								{isPinned ? <PinOffIcon aria-hidden /> : <PinIcon aria-hidden />}
-							</RowHoverAction>
-						) : null}
-						<SessionRowMenu
-							archiveAction={isArchived ? "unarchive" : canArchive ? "archive" : undefined}
-							canPin={!isArchived}
-							pinned={isPinned}
-							onPin={() => togglePin(pinId)}
-							onRename={startRename}
-							onArchive={archive}
-							onUnarchive={unarchive}
-							onDelete={deleteThread}
-						/>
-					</TooltipProvider>
+					{canArchive ? (
+						<RowHoverAction
+							label="Archive thread"
+							tooltip="Archive"
+							slot="aui_session-list-item-archive"
+							onClick={archive}
+						>
+							<ArchiveIcon aria-hidden />
+						</RowHoverAction>
+					) : null}
+					{isArchived ? (
+						<RowHoverAction
+							label="Unarchive thread"
+							tooltip="Unarchive"
+							slot="aui_session-list-item-unarchive"
+							onClick={unarchive}
+						>
+							<ArchiveRestoreIcon aria-hidden />
+						</RowHoverAction>
+					) : null}
+					{!isArchived ? (
+						<RowHoverAction
+							label={isPinned ? "Unpin thread" : "Pin thread"}
+							tooltip={isPinned ? "Unpin" : "Pin"}
+							slot="aui_session-list-item-pin"
+							onClick={() => togglePin(pinId)}
+						>
+							{isPinned ? <PinOffIcon aria-hidden /> : <PinIcon aria-hidden />}
+						</RowHoverAction>
+					) : null}
+					<SessionRowMenu
+						archiveAction={isArchived ? "unarchive" : canArchive ? "archive" : undefined}
+						canPin={!isArchived}
+						pinned={isPinned}
+						onPin={() => togglePin(pinId)}
+						onRename={startRename}
+						onArchive={archive}
+						onUnarchive={unarchive}
+						onDelete={deleteThread}
+					/>
 				</span>
 			)}
 		</ThreadListItemPrimitive.Root>
@@ -1542,7 +1533,6 @@ const SessionRowMenu: FC<{
 									type="button"
 									variant="ghost"
 									size="icon-xs"
-									className="size-5"
 									data-slot="aui_session-list-item-more"
 									aria-label="Thread actions"
 								/>
@@ -1550,7 +1540,7 @@ const SessionRowMenu: FC<{
 						/>
 					}
 				>
-					<MoreHorizontalIcon />
+					<EllipsisIcon />
 				</TooltipTrigger>
 				<TooltipContent side="bottom">More</TooltipContent>
 			</Tooltip>

@@ -17,7 +17,7 @@ export const ChatPaneHost: FC<{
 			className={cn(
 				"relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden",
 				frame &&
-					"border-border rounded-md border bg-(--pane-surface) [--pane-raised:color-mix(in_srgb,var(--color-card)_50%,var(--color-accent))] [--pane-surface:var(--color-card)]",
+					"border-border rounded-md border bg-pane [--pane-raised:color-mix(in_srgb,var(--color-card)_50%,var(--color-accent))] [--pane-surface:var(--color-card)]",
 			)}
 			{...(frame ? { "data-qa-id": "chat-pane-frame" } : {})}
 			data-pane-id={paneId}

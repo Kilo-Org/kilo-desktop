@@ -1,4 +1,4 @@
-import { Globe2Icon } from "lucide-react";
+import { EarthIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 
 export function BrowserIcon({ className, iconKey }: { className?: string; iconKey?: string }) {
@@ -13,7 +13,7 @@ export function BrowserIcon({ className, iconKey }: { className?: string; iconKe
 			onError={() => setFailedIcon(iconKey)}
 		/>
 	) : (
-		<Globe2Icon className={className} />
+		<EarthIcon className={className} />
 	);
 }
 

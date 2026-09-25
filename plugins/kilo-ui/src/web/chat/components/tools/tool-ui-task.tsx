@@ -1,6 +1,8 @@
 import { memo } from "react";
 import { useAuiState, type ToolCallMessagePartComponent } from "@assistant-ui/react";
-import { Loader2Icon, SquareIcon } from "lucide-react";
+import { SquareIcon } from "lucide-react";
+
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
@@ -109,7 +111,7 @@ export const TaskActivity: ToolCallMessagePartComponent = memo(({ args, status, 
 						<button
 							type="button"
 							className={cn(
-								"text-muted-foreground hover:bg-muted hover:text-foreground grid size-5 shrink-0 place-items-center rounded",
+								"text-muted-foreground hover:bg-muted hover:text-foreground grid size-5 shrink-0 place-items-center rounded-sm",
 								stopping && "cursor-wait",
 							)}
 							disabled={stopping}
@@ -117,7 +119,7 @@ export const TaskActivity: ToolCallMessagePartComponent = memo(({ args, status, 
 							aria-label={`Stop subagent: ${title}`}
 						>
 							{stopping ? (
-								<Loader2Icon className="size-2.5 animate-spin" />
+								<Spinner className="size-3" />
 							) : (
 								<SquareIcon className="size-2.5 fill-current" />
 							)}

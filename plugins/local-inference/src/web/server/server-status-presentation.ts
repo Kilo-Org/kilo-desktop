@@ -25,34 +25,34 @@ export function presentServerStatus(
 	if (status.status === "preparing-runtime") {
 		return {
 			label: "Installing llama.cpp…",
-			indicatorClass: "bg-amber-500 animate-pulse",
+			indicatorClass: "bg-warning animate-pulse",
 			checked: true,
 		};
 	}
 	if (pendingAction === "starting" || pendingAction === "retrying") {
-		return { label: "Starting…", indicatorClass: "bg-amber-500 animate-pulse", checked: true };
+		return { label: "Starting…", indicatorClass: "bg-warning animate-pulse", checked: true };
 	}
 	if (pendingAction === "stopping") {
-		return { label: "Stopping…", indicatorClass: "bg-amber-500 animate-pulse", checked: true };
+		return { label: "Stopping…", indicatorClass: "bg-warning animate-pulse", checked: true };
 	}
 
 	switch (status.status) {
 		case "idle":
 			return { label: "Idle", indicatorClass: "bg-muted-foreground/50", checked: true };
 		case "starting":
-			return { label: "Starting…", indicatorClass: "bg-amber-500 animate-pulse", checked: true };
+			return { label: "Starting…", indicatorClass: "bg-warning animate-pulse", checked: true };
 		case "loading-model":
 			return {
 				label: "Loading model…",
-				indicatorClass: "bg-amber-500 animate-pulse",
+				indicatorClass: "bg-warning animate-pulse",
 				checked: true,
 			};
 		case "ready":
-			return { label: "Running", indicatorClass: "bg-emerald-500", checked: true };
+			return { label: "Running", indicatorClass: "bg-success", checked: true };
 		case "error":
 			return { label: "Error", indicatorClass: "bg-destructive", checked: true };
 		case "stopping":
-			return { label: "Stopping…", indicatorClass: "bg-amber-500 animate-pulse", checked: true };
+			return { label: "Stopping…", indicatorClass: "bg-warning animate-pulse", checked: true };
 		case "disconnected":
 			return { label: "Stopped", indicatorClass: "bg-muted-foreground/50", checked: false };
 		default: {

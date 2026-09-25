@@ -8,6 +8,9 @@
 	--glass-blur: 12px;
 	--glass-opacity: 80%;
 	--glass-saturation: 1.14;
+	/* Shared by the docked glass outline and the draft composer border so
+	   both composers brighten the same way when the input has focus. */
+	--composer-focus-stroke: color-mix(in oklab, var(--muted-foreground) 30%, transparent);
 }
 
 [data-theme="dark"] {
@@ -33,16 +36,8 @@
 	border-color: transparent;
 }
 
-[data-theme="dark"] .chat-composer-glass {
-	--composer-glass-stroke: color-mix(in oklab, var(--muted-foreground) 15%, transparent);
-}
-
 .chat-composer-glass:focus-within {
-	--composer-glass-stroke: var(--border);
-}
-
-[data-theme="dark"] .chat-composer-glass:focus-within {
-	--composer-glass-stroke: color-mix(in oklab, var(--muted-foreground) 30%, transparent);
+	--composer-glass-stroke: var(--composer-focus-stroke);
 }
 
 .chat-composer-glass[data-dragging="true"] {
@@ -56,6 +51,10 @@
 
 .aui-lexical-editor {
 	position: relative;
+}
+
+.aui-composer-input {
+	height: fit-content;
 }
 
 .aui-lexical-input {

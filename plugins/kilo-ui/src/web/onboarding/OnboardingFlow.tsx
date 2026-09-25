@@ -71,24 +71,22 @@ export function OnboardingFlow({
 				initialFocus={panel}
 				showCloseButton={false}
 				data-qa-id="onboarding-overlay"
-				className="flex max-h-[min(960px,calc(100vh-2rem))] min-h-0 flex-col sm:max-w-2xl"
+				className="flex max-h-[min(48rem,calc(100dvh-4rem))] min-h-0 flex-col sm:max-w-2xl"
 			>
-				<WizardStepIndicator
-					steps={STEPS}
-					currentStep={step}
-					busy={busy}
-					qaPrefix="onboarding"
-					onSelect={onJump}
-				/>
+				<div className="flex flex-col gap-2">
+					<WizardStepIndicator
+						steps={STEPS}
+						currentStep={step}
+						busy={busy}
+						qaPrefix="onboarding"
+						onSelect={onJump}
+					/>
 
-				<DialogHeader>
-					<DialogTitle className="text-2xl leading-tight font-semibold tracking-tight">
-						{copy.title}
-					</DialogTitle>
-					<DialogDescription className="text-[15px] leading-relaxed">
-						{copy.subtitle}
-					</DialogDescription>
-				</DialogHeader>
+					<DialogHeader>
+						<DialogTitle className="text-lg font-semibold tracking-tight">{copy.title}</DialogTitle>
+						<DialogDescription>{copy.subtitle}</DialogDescription>
+					</DialogHeader>
+				</div>
 
 				<div className="min-h-0 flex-1 overflow-y-auto" data-qa-id="onboarding-step-body">
 					{children}

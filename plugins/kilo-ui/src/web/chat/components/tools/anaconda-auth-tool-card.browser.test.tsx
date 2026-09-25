@@ -67,7 +67,7 @@ describe("AnacondaAuthToolCard", () => {
 		);
 		const screen = page.elementLocator(baseElement);
 
-		await expect.element(screen.getByText("Sign in to use Anaconda environments")).toBeVisible();
+		await expect.element(screen.getByText("Sign in to use Conda Environments")).toBeVisible();
 		await screen.getByRole("button", { name: "Cancel" }).click();
 
 		expect(cancel).toHaveBeenCalledOnce();
@@ -156,7 +156,7 @@ describe("AnacondaAuthToolCard", () => {
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("anaconda-auth-tool-card")).toBeVisible();
-		await expect.element(screen.getByText("Sign in to use Anaconda environments")).toBeVisible();
+		await expect.element(screen.getByText("Sign in to use Conda Environments")).toBeVisible();
 
 		await screen.getByRole("button", { name: "Sign in to Anaconda" }).click();
 		expect(signIn).toHaveBeenCalledOnce();

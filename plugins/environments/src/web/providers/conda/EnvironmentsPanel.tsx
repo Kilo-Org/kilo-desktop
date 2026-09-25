@@ -1,75 +1,60 @@
-import { useState, useMemo, useCallback, useRef, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 
-import { useSdk, useSdkQuery } from "@kilo-desktop/sdk-react";
-import { Input } from "@kilo-desktop/ui/components/input";
+import { SettingsPageHeader, useSdk, useSdkQuery } from "@kilo-desktop/sdk-react";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
+	DropdownMenuGroup,
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@kilo-desktop/ui/components/dropdown-menu";
-import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "@kilo-desktop/ui/components/tooltip";
+	Empty,
+	EmptyContent,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyMedia,
+	EmptyTitle,
+} from "@kilo-desktop/ui/components/empty";
 import {
-	ArrowDownIcon,
-	ArrowUpIcon,
+	InputGroup,
+	InputGroupAddon,
+	InputGroupInput,
+} from "@kilo-desktop/ui/components/input-group";
+import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
+import {
+	BoxIcon,
+	BoxesIcon,
+	ChevronDownIcon,
+	CircleAlertIcon,
 	CopyIcon,
-	EllipsisVerticalIcon,
+	EllipsisIcon,
 	FileUpIcon,
 	PlusIcon,
+	RefreshCwIcon,
 	SearchIcon,
-	TrashIcon,
+	SearchXIcon,
+	Trash2Icon,
 } from "lucide-react";
 
 import type { CondaEnv, CondaService } from "../../../contracts/providers/conda.js";
+import { EnvironmentsListSkeleton } from "../../EnvironmentsListSkeleton.js";
 import { CloneEnvironmentDialog } from "./CloneEnvironmentDialog.js";
-import { ColumnResizer } from "./ColumnResizer.js";
-import { TablePagination } from "./TablePagination.js";
-import {
-	MIN_COLUMN_WIDTH,
-	readColumnWidths,
-	resizeColumn,
-	writeColumnWidths,
-	type EnvironmentColumnId,
-} from "./column-widths.js";
 import { CreateEnvironmentDialog } from "./CreateEnvironmentDialog.js";
 import { DeleteEnvironmentDialog } from "./DeleteEnvironmentDialog.js";
-import { EnvironmentDetail } from "./EnvironmentDetail.js";
+import { EnvironmentDetail, EnvironmentDetailLoading } from "./EnvironmentDetail.js";
 import { ImportEnvironmentDialog } from "./ImportEnvironmentDialog.js";
 import { environmentDisplayName } from "./environment-display.js";
+import { ListViewMenu, type SortDirection } from "./ListViewMenu.js";
 
-const PAGE_SIZE_OPTIONS = [10, 15, 30, 50, 100] as const;
+type EnvironmentSortField = "name" | "location";
 
-/** Width reserved for the pinned row-actions column. */
-const ACTIONS_COLUMN_PX = 56;
+const SORT_FIELDS = [
+	{ value: "name", label: "Name" },
+	{ value: "location", label: "Location" },
+] as const;
 
-/**
- * Renderer panel for the conda provider's Environments tab.
- *
- * Reads `conda.envs.list` via `useSdkQuery` (see `packages/sdk-react`),
- * which pipes through the plugin's `mainRegister` handler and, in
- * production, calls `conda env list --json` inside the plugin-scoped base.
- *
- * Features: search (name + prefix), alphabetical sort via column header,
- * and configurable pagination. All processing is client-side since the
- * full dataset is fetched in a single RPC call.
- *
- * Clicking an environment row opens the detail view, which shows the
- * installed packages for that environment. The "Back" button returns to
- * the list.
- *
- * The layout includes a search bar, item count, sortable data table, and
- * pagination bar.
- *
- * The panel uses `data-qa-id` attributes for browser and e2e tests
- * following the repo convention (see `docs/TESTING.md`).
- */
 /**
  * Read the `env` search param from the shell location. When a user selects
  * an environment, we navigate to `?env=<prefix>` via `sdk.navigate`; going
@@ -85,65 +70,30 @@ function useSelectedPrefix(sdk: ReturnType<typeof useSdk<CondaService>>): string
 	return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
-export function EnvironmentsPanel() {
-	const sdk = useSdk<CondaService>("environments");
-	const envs = useSdkQuery(sdk, "conda.envs.list");
-	const selectedPrefix = useSelectedPrefix(sdk);
-
-	const selectEnv = useCallback(
-		(env: CondaEnv) => {
-			const currentPath = sdk.location.peek().path;
-			sdk.navigate(currentPath, { search: { env: env.prefix } });
-		},
-		[sdk],
-	);
-
-	const goBack = useCallback(() => {
+function useGoBack(sdk: ReturnType<typeof useSdk<CondaService>>): () => void {
+	return useCallback(() => {
 		const currentPath = sdk.location.peek().path;
 		sdk.navigate(currentPath, { search: {} });
 	}, [sdk]);
+}
 
-	// Resolve the CondaEnv object from the prefix in the search param.
-	const selectedEnv = useMemo(() => {
-		if (!selectedPrefix || !envs.data) return null;
-		return envs.data.find((e) => e.prefix === selectedPrefix) ?? null;
-	}, [selectedPrefix, envs.data]);
-
-	if (selectedEnv) {
-		return <EnvironmentDetail env={selectedEnv} onBack={goBack} />;
-	}
-
-	if (envs.isPending) {
-		return (
-			<div
-				className="flex min-h-64 flex-col items-center justify-center gap-4"
-				data-qa-id="environments-conda-loading"
-			>
-				<Spinner size="md" className="text-primary-ink" label="Loading environments" />
-				<p className="text-muted-foreground text-sm">Loading environments…</p>
-			</div>
-		);
-	}
-
-	if (envs.isError) {
-		return (
-			<p className="text-destructive text-sm" role="alert" data-qa-id="environments-conda-error">
-				Could not load environments: {envs.error.message}
-			</p>
-		);
-	}
-
-	const rows = envs.data ?? [];
-
-	if (rows.length === 0) {
-		return (
-			<p className="text-muted-foreground text-sm" data-qa-id="environments-conda-empty">
-				No conda environments found.
-			</p>
-		);
-	}
-
-	return <EnvironmentsTable rows={rows} onSelectEnv={selectEnv} />;
+/**
+ * Loading state for callers that mount before the panel (the page's provider
+ * status wait): shaped like the view the URL selects, so a deep link to
+ * `?env=` shows the detail shape throughout instead of flashing the list.
+ */
+export function EnvironmentsPanelLoading() {
+	const sdk = useSdk<CondaService>("environments");
+	const selectedPrefix = useSelectedPrefix(sdk);
+	const goBack = useGoBack(sdk);
+	return selectedPrefix ? (
+		<EnvironmentDetailLoading prefix={selectedPrefix} onBack={goBack} />
+	) : (
+		<>
+			<SettingsPageHeader />
+			<EnvironmentsListSkeleton />
+		</>
+	);
 }
 
 type DialogState =
@@ -153,331 +103,307 @@ type DialogState =
 	| { kind: "clone"; env: CondaEnv }
 	| { kind: "delete"; env: CondaEnv };
 
+/**
+ * Renderer panel for the conda provider.
+ *
+ * Reads `conda.envs.list` via `useSdkQuery`, which pipes through the plugin's
+ * `mainRegister` handler and, in production, calls `conda env list --json`
+ * inside the plugin-scoped base. The list follows the app's settings pattern
+ * for configured entities: header actions, a search + sort toolbar, and one
+ * bordered panel of joined rows. Everything is client-side — the full dataset
+ * arrives in a single RPC call.
+ *
+ * Selecting a row opens the detail view (`?env=<prefix>`), which replaces the
+ * list and its header actions until the user goes back. While the list is
+ * still loading, a selected prefix shows the detail loading state instead of
+ * the list skeleton.
+ */
+export function EnvironmentsPanel() {
+	const sdk = useSdk<CondaService>("environments");
+	const envs = useSdkQuery(sdk, "conda.envs.list");
+	const selectedPrefix = useSelectedPrefix(sdk);
+	const [dialog, setDialog] = useState<DialogState>({ kind: "none" });
+	const closeDialog = useCallback(() => setDialog({ kind: "none" }), []);
+
+	const selectEnv = useCallback(
+		(env: CondaEnv) => {
+			const currentPath = sdk.location.peek().path;
+			sdk.navigate(currentPath, { search: { env: env.prefix } });
+		},
+		[sdk],
+	);
+
+	const goBack = useGoBack(sdk);
+
+	const selectedEnv = useMemo(() => {
+		if (!selectedPrefix || !envs.data) return null;
+		return envs.data.find((e) => e.prefix === selectedPrefix) ?? null;
+	}, [selectedPrefix, envs.data]);
+
+	if (selectedEnv) {
+		return <EnvironmentDetail env={selectedEnv} onBack={goBack} />;
+	}
+
+	if (selectedPrefix && envs.isPending) {
+		return <EnvironmentDetailLoading prefix={selectedPrefix} onBack={goBack} />;
+	}
+
+	return (
+		<div className="flex min-w-0 flex-col gap-6" data-qa-id="environments-controls">
+			<SettingsPageHeader
+				actions={
+					<DropdownMenu>
+						<DropdownMenuTrigger
+							render={<Button type="button" size="sm" data-qa-id="environments-new-menu" />}
+						>
+							<PlusIcon data-icon="inline-start" aria-hidden="true" />
+							New environment
+							<ChevronDownIcon data-icon="inline-end" aria-hidden="true" />
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="end" className="min-w-44">
+							<DropdownMenuGroup>
+								<DropdownMenuItem
+									onClick={() => setDialog({ kind: "create" })}
+									data-qa-id="environments-create-item"
+								>
+									<BoxIcon aria-hidden="true" />
+									Create new
+								</DropdownMenuItem>
+								<DropdownMenuItem
+									onClick={() => setDialog({ kind: "import" })}
+									data-qa-id="environments-import-item"
+								>
+									<FileUpIcon aria-hidden="true" />
+									Import file
+								</DropdownMenuItem>
+							</DropdownMenuGroup>
+						</DropdownMenuContent>
+					</DropdownMenu>
+				}
+			/>
+
+			<div className="flex min-w-0 flex-col gap-4">
+				{envs.isPending ? (
+					<EnvironmentsListSkeleton />
+				) : envs.isError ? (
+					<Empty className="border" data-qa-id="environments-conda-error">
+						<EmptyHeader>
+							<EmptyMedia variant="icon">
+								<CircleAlertIcon aria-hidden="true" />
+							</EmptyMedia>
+							<EmptyTitle>Could not load environments</EmptyTitle>
+							<EmptyDescription>{envs.error.message}</EmptyDescription>
+						</EmptyHeader>
+						<EmptyContent>
+							<Button
+								type="button"
+								variant="outline"
+								onClick={() => void envs.refetch()}
+								data-qa-id="environments-conda-retry"
+							>
+								<RefreshCwIcon data-icon="inline-start" aria-hidden="true" />
+								Try again
+							</Button>
+						</EmptyContent>
+					</Empty>
+				) : (envs.data ?? []).length === 0 ? (
+					<Empty className="border" data-qa-id="environments-conda-empty">
+						<EmptyHeader>
+							<EmptyMedia variant="icon">
+								<BoxesIcon aria-hidden="true" />
+							</EmptyMedia>
+							<EmptyTitle>No conda environments found</EmptyTitle>
+							<EmptyDescription>
+								Create an environment or import one from an environment file.
+							</EmptyDescription>
+						</EmptyHeader>
+					</Empty>
+				) : (
+					<EnvironmentsList
+						rows={envs.data ?? []}
+						onSelectEnv={selectEnv}
+						onClone={(env) => setDialog({ kind: "clone", env })}
+						onDelete={(env) => setDialog({ kind: "delete", env })}
+					/>
+				)}
+			</div>
+
+			<CreateEnvironmentDialog open={dialog.kind === "create"} onClose={closeDialog} />
+			<ImportEnvironmentDialog open={dialog.kind === "import"} onClose={closeDialog} />
+			{dialog.kind === "clone" && (
+				<CloneEnvironmentDialog env={dialog.env} open onClose={closeDialog} />
+			)}
+			{dialog.kind === "delete" && (
+				<DeleteEnvironmentDialog env={dialog.env} open onClose={closeDialog} />
+			)}
+		</div>
+	);
+}
+
 /** Nameless envs: base installs and prefix-only envs both have `name: ""`. */
 function isNamelessEnv(env: CondaEnv): boolean {
 	return env.name === "";
 }
 
-interface EnvironmentsTableProps {
-	rows: Array<{ name: string; prefix: string }>;
-	onSelectEnv: (env: CondaEnv) => void;
+function sortKey(env: CondaEnv, field: EnvironmentSortField): string {
+	return field === "name" ? environmentDisplayName(env) : env.prefix;
 }
 
-function EnvironmentsTable({ rows, onSelectEnv }: EnvironmentsTableProps) {
+interface EnvironmentsListProps {
+	rows: CondaEnv[];
+	onSelectEnv: (env: CondaEnv) => void;
+	onClone: (env: CondaEnv) => void;
+	onDelete: (env: CondaEnv) => void;
+}
+
+function EnvironmentsList({ rows, onSelectEnv, onClone, onDelete }: EnvironmentsListProps) {
 	const [searchQuery, setSearchQuery] = useState("");
-	const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
-	const [currentPage, setCurrentPage] = useState(1);
-	const [itemsPerPage, setItemsPerPage] = useState(15);
-	const [dialog, setDialog] = useState<DialogState>({ kind: "none" });
-	const closeDialog = useCallback(() => setDialog({ kind: "none" }), []);
+	const [sortField, setSortField] = useState<EnvironmentSortField>("name");
+	const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
 
-	const processedEnvs = useMemo(() => {
-		let result = [...rows];
-
-		if (searchQuery) {
-			const query = searchQuery.toLowerCase();
-			result = result.filter(
-				(env) =>
-					environmentDisplayName(env).toLowerCase().includes(query) ||
-					env.prefix.toLowerCase().includes(query),
-			);
-		}
-
-		result.sort((a, b) => {
-			const nameA = environmentDisplayName(a);
-			const nameB = environmentDisplayName(b);
-			const comparison = nameA.localeCompare(nameB);
-			return sortOrder === "asc" ? comparison : -comparison;
+	const visible = useMemo(() => {
+		const query = searchQuery.trim().toLowerCase();
+		const matches = query
+			? rows.filter(
+					(env) =>
+						environmentDisplayName(env).toLowerCase().includes(query) ||
+						env.prefix.toLowerCase().includes(query),
+				)
+			: rows;
+		return matches.toSorted((a, b) => {
+			const comparison = sortKey(a, sortField).localeCompare(sortKey(b, sortField));
+			return sortDirection === "asc" ? comparison : -comparison;
 		});
-
-		return result;
-	}, [rows, searchQuery, sortOrder]);
-
-	const totalItems = processedEnvs.length;
-	const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
-	// Clamp currentPage if the dataset shrinks (e.g. rows prop changes
-	// externally without going through one of our handlers).
-	const effectivePage = Math.min(currentPage, totalPages);
-	const startIndex = (effectivePage - 1) * itemsPerPage;
-	const paginatedEnvs = processedEnvs.slice(startIndex, startIndex + itemsPerPage);
-
-	const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-		setSearchQuery(e.target.value);
-		setCurrentPage(1);
-	};
-
-	const handleSortToggle = () => {
-		setSortOrder(sortOrder === "asc" ? "desc" : "asc");
-		setCurrentPage(1);
-	};
-
-	const handleItemsPerPageChange = (value: string | null) => {
-		if (value == null) return;
-		setItemsPerPage(Number(value));
-		setCurrentPage(1);
-	};
-
-	const goToPage = (page: number) => {
-		const clamped = Math.max(1, Math.min(page, totalPages));
-		setCurrentPage(clamped);
-	};
-
-	const tableWrapperRef = useRef<HTMLDivElement>(null);
-	const [columnWidths, setColumnWidths] = useState(() => readColumnWidths());
-	// Mirrored in a ref so a drag resolves against the width it started from
-	// without the pointer handlers closing over a stale render.
-	const columnWidthsRef = useRef(columnWidths);
-	columnWidthsRef.current = columnWidths;
-	const handleColumnResize = useCallback(
-		(column: EnvironmentColumnId, nextWidthPx: number, options: { persist: boolean }) => {
-			const current = columnWidthsRef.current;
-			// Cap the drag so "Prefix" keeps its minimum: the table must total its
-			// container, never overflow it sideways.
-			const available = tableWrapperRef.current?.clientWidth ?? Number.POSITIVE_INFINITY;
-			const maxWidth = available - ACTIONS_COLUMN_PX - MIN_COLUMN_WIDTH;
-			const next = resizeColumn(
-				current,
-				column,
-				nextWidthPx - current[column],
-				MIN_COLUMN_WIDTH,
-				maxWidth,
-			);
-			columnWidthsRef.current = next;
-			setColumnWidths(next);
-			if (options.persist) writeColumnWidths(next);
-		},
-		[],
-	);
+	}, [rows, searchQuery, sortField, sortDirection]);
 
 	return (
-		<TooltipProvider>
-			<div className="flex min-h-0 flex-1 flex-col gap-4" data-qa-id="environments-controls">
-				{/* Toolbar: search + action buttons */}
-				<div className="flex shrink-0 items-center gap-3">
-					<div className="relative flex-1">
-						<SearchIcon className="text-muted-foreground pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-						<Input
-							id="environments-search"
-							placeholder="Search"
-							value={searchQuery}
-							onChange={handleSearchChange}
-							className="pl-9"
-							data-qa-id="environments-search-input"
-						/>
-					</div>
-					<div className="flex items-center gap-2">
-						<Button
-							size="sm"
-							onClick={() => setDialog({ kind: "create" })}
-							data-qa-id="environments-create-btn"
-						>
-							<PlusIcon className="size-4" />
-							New environment
-						</Button>
-						<Button
-							variant="outline"
-							size="sm"
-							onClick={() => setDialog({ kind: "import" })}
-							data-qa-id="environments-import-btn"
-						>
-							<FileUpIcon className="size-4" />
-							Import from file
-						</Button>
-					</div>
-				</div>
-
-				{/* Item count */}
-				<div className="text-muted-foreground text-sm" data-qa-id="environments-results-info">
-					{totalItems} {totalItems === 1 ? "item" : "items"}
-				</div>
-
-				{/* Table */}
-				{paginatedEnvs.length === 0 ? (
-					<p
-						className="text-muted-foreground text-sm"
-						data-qa-id="environments-conda-empty-filtered"
-					>
-						No conda environments match the current filters.
-					</p>
-				) : (
-					<div className="min-h-0 overflow-auto rounded-lg border" ref={tableWrapperRef}>
-						<table className="w-full table-fixed border-separate border-spacing-0">
-							<caption className="sr-only">Conda environments</caption>
-							{/*
-							 * `table-fixed` takes each column's width from here, so resizing is
-							 * a matter of restyling these <col>s rather than touching cells.
-							 */}
-							<colgroup>
-								{/*
-								 * min() caps the stored width against a share of the table, so a
-								 * narrow window can never push the row wider than its container.
-								 */}
-								<col style={{ width: `min(${columnWidths.name}px, 60%)` }} />
-								{/* No width: "Prefix" absorbs whatever is left over. */}
-								<col />
-								<col style={{ width: `${ACTIONS_COLUMN_PX}px` }} />
-							</colgroup>
-							<thead className="bg-background sticky top-0 z-10">
-								<tr className="group/columns">
-									{/*
-									 * `aria-sort` on the th (not the button) is what assistive tech
-									 * reads for sort state; the icon alone is invisible to it.
-									 */}
-									<th
-										scope="col"
-										aria-sort={sortOrder === "asc" ? "ascending" : "descending"}
-										className="relative border-b p-0 text-left text-sm font-medium"
-									>
-										<button
-											type="button"
-											className="hover:bg-foreground/5 flex w-full items-center gap-1 px-4 py-3 text-left transition-colors"
-											onClick={handleSortToggle}
-											data-qa-id="environments-sort-toggle"
-										>
-											Name
-											{sortOrder === "asc" ? (
-												<ArrowDownIcon className="size-3.5" aria-hidden="true" />
-											) : (
-												<ArrowUpIcon className="size-3.5" aria-hidden="true" />
-											)}
-											<span className="sr-only">
-												{sortOrder === "asc" ? "sorted ascending" : "sorted descending"}
-											</span>
-										</button>
-										<ColumnResizer
-											label="Name"
-											width={columnWidths.name}
-											minWidth={MIN_COLUMN_WIDTH}
-											qaId="environments-column-resizer-name"
-											onResize={(next, options) => handleColumnResize("name", next, options)}
-										/>
-									</th>
-									<th
-										scope="col"
-										className="text-muted-foreground relative border-b px-4 py-3 text-left text-sm font-medium"
-									>
-										Prefix
-									</th>
-									<th scope="col" className="border-b px-4 py-3 text-right text-sm font-medium">
-										<span className="sr-only">Actions</span>
-									</th>
-								</tr>
-							</thead>
-							<tbody>
-								{paginatedEnvs.map((env) => (
-									<tr
-										key={env.prefix}
-										role="button"
-										tabIndex={0}
-										className="hover:bg-foreground/10 group cursor-pointer transition-colors"
-										data-qa-id="environments-conda-row"
-										onClick={() => onSelectEnv(env)}
-										onKeyDown={(e) => {
-											if (e.key === "Enter" || e.key === " ") {
-												e.preventDefault();
-												onSelectEnv(env);
-											}
-										}}
-									>
-										<td
-											className="border-b px-4 py-3 font-medium group-last:border-b-0"
-											data-qa-id="environments-conda-name"
-										>
-											{environmentDisplayName(env)}
-										</td>
-										<td
-											className="text-muted-foreground border-b px-4 py-3 font-mono text-sm group-last:border-b-0"
-											data-qa-id="environments-conda-prefix"
-										>
-											<Tooltip>
-												<TooltipTrigger render={<span className="block cursor-default truncate" />}>
-													{env.prefix}
-												</TooltipTrigger>
-												<TooltipContent side="bottom" align="start">
-													{env.prefix}
-												</TooltipContent>
-											</Tooltip>
-										</td>
-										<td
-											className="border-b px-4 py-3 text-right group-last:border-b-0"
-											onClick={(e) => e.stopPropagation()}
-											onKeyDown={(e) => e.stopPropagation()}
-										>
-											<DropdownMenu>
-												<DropdownMenuTrigger
-													render={
-														<Button
-															variant="ghost"
-															size="icon-sm"
-															aria-label={`Actions for ${environmentDisplayName(env)}`}
-															data-qa-id="environments-row-actions"
-														/>
-													}
-												>
-													<EllipsisVerticalIcon className="size-4" />
-												</DropdownMenuTrigger>
-												<DropdownMenuContent align="end">
-													{!isNamelessEnv(env) && (
-														<DropdownMenuItem
-															onClick={() => setDialog({ kind: "clone", env })}
-															data-qa-id="environments-row-clone"
-														>
-															<CopyIcon className="size-4" />
-															Clone
-														</DropdownMenuItem>
-													)}
-													{!isNamelessEnv(env) && (
-														<DropdownMenuItem
-															variant="destructive"
-															onClick={() => setDialog({ kind: "delete", env })}
-															data-qa-id="environments-row-delete"
-														>
-															<TrashIcon className="size-4" />
-															Delete
-														</DropdownMenuItem>
-													)}
-													{isNamelessEnv(env) && (
-														<DropdownMenuItem disabled>No actions available</DropdownMenuItem>
-													)}
-												</DropdownMenuContent>
-											</DropdownMenu>
-										</td>
-									</tr>
-								))}
-							</tbody>
-						</table>
-					</div>
-				)}
-
-				{/*
-				 * Hidden when the filters match nothing: a pager over an empty result
-				 * set would render a nonsensical "1 – 0 of 0 items" range.
-				 */}
-				{totalItems > 0 && (
-					<TablePagination
-						pageIndex={effectivePage - 1}
-						pageCount={totalPages}
-						onPageChange={(index) => goToPage(index + 1)}
-						rangeStart={startIndex + 1}
-						rangeEnd={Math.min(startIndex + itemsPerPage, totalItems)}
-						totalItems={totalItems}
-						pageSize={itemsPerPage}
-						pageSizeOptions={PAGE_SIZE_OPTIONS}
-						onPageSizeChange={handleItemsPerPageChange}
-						qaPrefix="environments-pagination"
-						pageSizeQaId="environments-items-per-page"
+		<>
+			<div className="flex shrink-0 items-center gap-2">
+				<InputGroup size="sm" className="min-w-40 flex-1">
+					<InputGroupInput
+						type="search"
+						value={searchQuery}
+						onChange={(event) => setSearchQuery(event.currentTarget.value)}
+						placeholder="Search environments"
+						aria-label="Search environments"
+						data-qa-id="environments-search-input"
 					/>
-				)}
-				{/* Dialogs */}
-				<CreateEnvironmentDialog open={dialog.kind === "create"} onClose={closeDialog} />
-				<ImportEnvironmentDialog open={dialog.kind === "import"} onClose={closeDialog} />
-				{dialog.kind === "clone" && (
-					<CloneEnvironmentDialog env={dialog.env} open onClose={closeDialog} />
-				)}
-				{dialog.kind === "delete" && (
-					<DeleteEnvironmentDialog env={dialog.env} open onClose={closeDialog} />
-				)}
+					<InputGroupAddon>
+						<SearchIcon aria-hidden="true" />
+					</InputGroupAddon>
+				</InputGroup>
+				<ListViewMenu
+					label="Sort environments"
+					fields={SORT_FIELDS}
+					field={sortField}
+					direction={sortDirection}
+					onFieldChange={setSortField}
+					onDirectionChange={setSortDirection}
+					qaId="environments-sort-menu"
+				/>
 			</div>
-		</TooltipProvider>
+
+			{visible.length === 0 ? (
+				<Empty className="border" data-qa-id="environments-conda-empty-filtered">
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<SearchXIcon aria-hidden="true" />
+						</EmptyMedia>
+						<EmptyTitle>No environments match</EmptyTitle>
+						<EmptyDescription>Try a different name or location.</EmptyDescription>
+					</EmptyHeader>
+					<EmptyContent>
+						<Button type="button" variant="outline" size="sm" onClick={() => setSearchQuery("")}>
+							Clear search
+						</Button>
+					</EmptyContent>
+				</Empty>
+			) : (
+				<ul
+					className="border-border bg-card divide-border min-w-0 divide-y overflow-hidden rounded-lg border"
+					aria-label="Conda environments"
+					data-qa-id="environments-conda-list"
+				>
+					{visible.map((env) => (
+						<EnvironmentRow
+							key={env.prefix}
+							env={env}
+							onSelect={() => onSelectEnv(env)}
+							onClone={() => onClone(env)}
+							onDelete={() => onDelete(env)}
+						/>
+					))}
+				</ul>
+			)}
+		</>
+	);
+}
+
+function EnvironmentRow({
+	env,
+	onSelect,
+	onClone,
+	onDelete,
+}: {
+	env: CondaEnv;
+	onSelect: () => void;
+	onClone: () => void;
+	onDelete: () => void;
+}) {
+	const displayName = environmentDisplayName(env);
+
+	return (
+		<li className="hover:bg-muted transition-colors" data-qa-id="environments-conda-row">
+			<SummaryCard.Row>
+				<SummaryCard.Button
+					className="focus-visible:ring-ring/50 rounded-md outline-none focus-visible:ring-[3px]"
+					aria-label={`Open ${displayName}`}
+					onClick={onSelect}
+					data-qa-id="environments-conda-row-open"
+				>
+					<SummaryCard.Content>
+						<SummaryCard.Title data-qa-id="environments-conda-name">
+							{displayName}
+						</SummaryCard.Title>
+						<SummaryCard.Description data-qa-id="environments-conda-prefix">
+							{env.prefix}
+						</SummaryCard.Description>
+					</SummaryCard.Content>
+				</SummaryCard.Button>
+				{isNamelessEnv(env) ? null : (
+					<SummaryCard.Actions>
+						<DropdownMenu>
+							<DropdownMenuTrigger
+								render={
+									<Button
+										type="button"
+										variant="ghost"
+										size="icon-sm"
+										aria-label={`Actions for ${displayName}`}
+										data-qa-id="environments-row-actions"
+									/>
+								}
+							>
+								<EllipsisIcon />
+							</DropdownMenuTrigger>
+							<DropdownMenuContent align="end">
+								<DropdownMenuItem onClick={onClone} data-qa-id="environments-row-clone">
+									<CopyIcon />
+									Clone
+								</DropdownMenuItem>
+								<DropdownMenuItem
+									variant="destructive"
+									onClick={onDelete}
+									data-qa-id="environments-row-delete"
+								>
+									<Trash2Icon />
+									Delete
+								</DropdownMenuItem>
+							</DropdownMenuContent>
+						</DropdownMenu>
+					</SummaryCard.Actions>
+				)}
+			</SummaryCard.Row>
+		</li>
 	);
 }

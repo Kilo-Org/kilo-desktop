@@ -4,8 +4,9 @@ import {
 	type QuestionAnswer,
 	useOpenCodeRuntimeExtras,
 } from "@assistant-ui/react-opencode";
-import { AlertCircleIcon, LoaderIcon } from "lucide-react";
+import { CircleAlertIcon } from "lucide-react";
 
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Questionnaire,
@@ -21,7 +22,7 @@ import {
 	QuestionnaireSubmit,
 	QuestionnaireTitle,
 } from "@kilo-desktop/ui/components/questionnaire";
-import { cn } from "@kilo-desktop/ui/lib/utils";
+import { ComposerShell } from "../composer-shelf.js";
 
 const questionName = (index: number) => `question-${index}`;
 
@@ -73,7 +74,7 @@ export const OpenCodeQuestionQuestionnaire = ({
 			try {
 				await replyToQuestion(request.id, answers);
 			} catch (err) {
-				setError(err instanceof Error ? err.message : "Failed to submit answers.");
+				setError(err instanceof Error ? err.message : "Could not submit answers.");
 				setSubmissionState(null);
 			}
 		})();
@@ -86,7 +87,7 @@ export const OpenCodeQuestionQuestionnaire = ({
 		try {
 			await rejectQuestion(request.id);
 		} catch (err) {
-			setError(err instanceof Error ? err.message : "Failed to reject request.");
+			setError(err instanceof Error ? err.message : "Could not reject the request.");
 			setSubmissionState(null);
 		}
 	};
@@ -94,13 +95,7 @@ export const OpenCodeQuestionQuestionnaire = ({
 	const isBusy = submissionState !== null;
 
 	return (
-		<div
-			data-slot="aui_composer-shell"
-			data-qa-id="kilo-question-questionnaire"
-			className={cn(
-				"border-border dark:border-muted-foreground/15 chat-composer-glass chat-composer-surface flex w-full flex-col gap-4 rounded-(--composer-radius) border p-4 shadow-[0_12px_28px_-18px_rgba(0,0,0,0.40)] dark:shadow-none",
-			)}
-		>
+		<ComposerShell data-qa-id="kilo-question-questionnaire" className="gap-4 p-4">
 			<Questionnaire
 				items={items}
 				onSubmit={handleSubmit}
@@ -156,7 +151,7 @@ export const OpenCodeQuestionQuestionnaire = ({
 								disabled={isBusy}
 							>
 								{submissionState === "reject" ? (
-									<LoaderIcon className="animate-spin" data-icon="inline-start" />
+									<Spinner data-icon="inline-start" aria-hidden="true" />
 								) : null}
 								Dismiss
 							</Button>
@@ -166,20 +161,20 @@ export const OpenCodeQuestionQuestionnaire = ({
 							<QuestionnaireNext disabled={isBusy} />
 							<QuestionnaireSubmit disabled={isBusy}>
 								{submissionState === "reply" ? (
-									<LoaderIcon className="animate-spin" data-icon="inline-start" />
+									<Spinner data-icon="inline-start" aria-hidden="true" />
 								) : null}
 								Submit
 							</QuestionnaireSubmit>
 						</div>
 					</div>
 					{error ? (
-						<div className="text-destructive-foreground flex min-w-0 items-center gap-2 text-xs">
-							<AlertCircleIcon className="size-3.5 shrink-0" />
+						<div className="text-destructive flex min-w-0 items-center gap-2 text-xs">
+							<CircleAlertIcon className="size-3.5 shrink-0" />
 							<span className="truncate">{error}</span>
 						</div>
 					) : null}
 				</div>
 			</Questionnaire>
-		</div>
+		</ComposerShell>
 	);
 };

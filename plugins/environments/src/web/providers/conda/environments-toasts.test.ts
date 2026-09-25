@@ -1,10 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@kilo-desktop/ui/components/sonner", () => ({
 	toast: {
 		error: vi.fn(),
 		success: vi.fn(),
-		loading: vi.fn(() => "toast-id"),
 	},
 }));
 
@@ -12,187 +11,104 @@ vi.mock("./environments-error-message.js", () => ({
 	friendlyEnvironmentsError: vi.fn((_reason: unknown, fallback: string) => fallback),
 }));
 
-// lucide-react icons import JSX — stub it so the unit project (environment: node) does not choke.
-vi.mock("lucide-react", () => ({
-	OctagonXIcon: "OctagonXIcon",
-}));
-
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import { friendlyEnvironmentsError } from "./environments-error-message.js";
 import {
-	showEnvironmentCreatedToast,
-	showEnvironmentsErrorToast,
-	showPackagesInstalledToast,
-	showPackagesUpdatedToast,
-	trackBackgroundCreateToast,
-	trackBackgroundDeleteToast,
-	trackBackgroundInstallToast,
+	backupEnvironmentJob,
+	createEnvironmentJob,
+	deleteEnvironmentJob,
+	importEnvironmentJob,
+	installPackagesJob,
+	jobToastOptions,
+	showJobError,
+	showJobSuccess,
+	updatePackagesJob,
 } from "./environments-toasts.js";
 
-describe("showEnvironmentsErrorToast", () => {
-	it("calls toast.error with title, friendly description, and infinite duration", () => {
-		showEnvironmentsErrorToast("Create failed", "some-error", "Something went wrong");
-
-		expect(toast.error).toHaveBeenCalledWith(
-			"Create failed",
-			expect.objectContaining({
-				description: "Something went wrong",
-				duration: Infinity,
-			}),
-		);
-		expect(friendlyEnvironmentsError).toHaveBeenCalledWith("some-error", "Something went wrong");
-	});
-
-	it("passes id when toastId is provided", () => {
-		showEnvironmentsErrorToast("Create failed", "err", "fallback", "my-toast");
-
-		expect(toast.error).toHaveBeenCalledWith(
-			"Create failed",
-			expect.objectContaining({ id: "my-toast" }),
-		);
-	});
+beforeEach(() => {
+	vi.clearAllMocks();
 });
 
-describe("showEnvironmentCreatedToast", () => {
-	it("calls toast.success with the environment name and description", () => {
-		showEnvironmentCreatedToast("my-env");
+describe("jobToastOptions", () => {
+	it("maps the job copy onto toast.promise loading, success and error states", () => {
+		const options = jobToastOptions(createEnvironmentJob("my-env"));
 
-		expect(toast.success).toHaveBeenCalledWith("my-env created", {
+		expect(options.loading).toBe("Creating my-env…");
+		expect(options.description).toBe("Resolving dependencies and installing packages.");
+		expect(options.success()).toEqual({
+			message: "my-env created",
 			description: "The environment is ready to use.",
 		});
 	});
-});
 
-describe("trackBackgroundCreateToast", () => {
-	it("shows loading then success on promise resolve", async () => {
-		const promise = Promise.resolve();
-		trackBackgroundCreateToast(promise, "my-env", "fallback");
+	it("keeps failures on screen with the friendly error as the description", () => {
+		const options = jobToastOptions(deleteEnvironmentJob("my-env"));
 
-		expect(toast.loading).toHaveBeenCalledWith("Creating my-env…", {
-			description: "Resolving dependencies and installing packages.",
+		expect(options.error("boom")).toEqual({
+			message: "Could not delete my-env",
+			description: "Could not delete the environment.",
+			duration: Infinity,
 		});
-
-		await promise;
-		// Flush microtask queue for the .then callback
-		await vi.waitFor(() => {
-			expect(toast.success).toHaveBeenCalledWith("my-env created", {
-				id: "toast-id",
-				description: "The environment is ready to use.",
-			});
-		});
+		expect(friendlyEnvironmentsError).toHaveBeenCalledWith(
+			"boom",
+			"Could not delete the environment.",
+		);
 	});
 
-	it("shows loading then error on promise reject", async () => {
-		const error = new Error("boom");
-		const promise = Promise.reject(error);
-		// Prevent unhandled rejection noise — trackBackgroundCreateToast attaches
-		// its own .then handler, but Node still warns for the tick before it runs.
-		promise.catch(() => {});
-
-		trackBackgroundCreateToast(promise, "my-env", "Something went wrong");
-
-		expect(toast.loading).toHaveBeenCalled();
-
-		await vi.waitFor(() => {
-			expect(toast.error).toHaveBeenCalledWith(
-				"Failed to create my-env",
-				expect.objectContaining({
-					id: "toast-id",
-					duration: Infinity,
-				}),
-			);
-		});
+	it("continues an existing toast when given an id", () => {
+		expect(jobToastOptions(updatePackagesJob("dev", 2), "t-1")).toMatchObject({ id: "t-1" });
+		expect(jobToastOptions(updatePackagesJob("dev", 2))).not.toHaveProperty("id");
 	});
 });
 
-describe("trackBackgroundDeleteToast", () => {
-	it("shows loading then success on promise resolve", async () => {
-		const promise = Promise.resolve();
-		trackBackgroundDeleteToast(promise, "my-env");
-
-		expect(toast.loading).toHaveBeenCalledWith("Deleting my-env…", {
-			description: "Removing the environment and all its packages.",
+describe("job copy", () => {
+	it("pluralises package counts and names the environment", () => {
+		expect(installPackagesJob("dev", 1)).toMatchObject({
+			loading: "Installing 1 package…",
+			successDescription: "1 package installed in dev.",
+			errorTitle: "Could not install packages",
 		});
-
-		await promise;
-		await vi.waitFor(() => {
-			expect(toast.success).toHaveBeenCalledWith("my-env deleted", {
-				id: "toast-id",
-				description: "The environment has been removed.",
-			});
+		expect(updatePackagesJob("dev", 3)).toMatchObject({
+			loading: "Updating 3 packages…",
+			successDescription: "3 packages updated in dev.",
+			errorTitle: "Could not update packages",
 		});
 	});
 
-	it("shows loading then error on promise reject", async () => {
-		const error = new Error("boom");
-		const promise = Promise.reject(error);
-		promise.catch(() => {});
+	it("uses 'Could not …' titles for every failure", () => {
+		for (const copy of [
+			createEnvironmentJob("a"),
+			importEnvironmentJob("a"),
+			deleteEnvironmentJob("a"),
+			installPackagesJob("a", 1),
+			updatePackagesJob("a", 1),
+			backupEnvironmentJob("a", "a-backup"),
+		]) {
+			expect(copy.errorTitle).toMatch(/^Could not /);
+		}
+	});
 
-		trackBackgroundDeleteToast(promise, "my-env");
-
-		expect(toast.loading).toHaveBeenCalled();
-
-		await vi.waitFor(() => {
-			expect(toast.error).toHaveBeenCalledWith(
-				"Failed to delete my-env",
-				expect.objectContaining({
-					id: "toast-id",
-					duration: Infinity,
-				}),
-			);
-		});
+	it("gives imports their own fallback message", () => {
+		expect(importEnvironmentJob("a").errorFallback).toBe(
+			"Could not create the environment from the file.",
+		);
 	});
 });
 
-describe("showPackagesInstalledToast / showPackagesUpdatedToast", () => {
-	it("pluralises the count and names the environment", () => {
-		showPackagesInstalledToast("dev", 1);
+describe("showJobSuccess / showJobError", () => {
+	it("reports a finished job with a success toast", () => {
+		showJobSuccess(installPackagesJob("dev", 2));
 		expect(toast.success).toHaveBeenCalledWith("Packages installed", {
-			description: "1 package installed in dev.",
-		});
-
-		showPackagesUpdatedToast("dev", 3, "t-1");
-		expect(toast.success).toHaveBeenCalledWith("Packages updated", {
-			id: "t-1",
-			description: "3 packages updated in dev.",
-		});
-	});
-});
-
-describe("trackBackgroundInstallToast", () => {
-	it("shows loading then success on promise resolve", async () => {
-		const promise = Promise.resolve();
-		trackBackgroundInstallToast(promise, "dev", 2, "fallback");
-
-		expect(toast.loading).toHaveBeenCalledWith("Installing 2 packages…", {
-			description: "Resolving dependencies for dev.",
-		});
-
-		await vi.waitFor(() => {
-			expect(toast.success).toHaveBeenCalledWith("Packages installed", {
-				id: "toast-id",
-				description: "2 packages installed in dev.",
-			});
+			description: "2 packages installed in dev.",
 		});
 	});
 
-	it("shows loading then a persistent error on promise reject", async () => {
-		const promise = Promise.reject(new Error("boom"));
-		promise.catch(() => {});
-
-		trackBackgroundInstallToast(promise, "dev", 1, "Could not install.");
-
-		expect(toast.loading).toHaveBeenCalledWith("Installing 1 package…", expect.anything());
-		await vi.waitFor(() => {
-			expect(toast.error).toHaveBeenCalledWith(
-				"Install failed",
-				expect.objectContaining({
-					id: "toast-id",
-					description: "Could not install.",
-					duration: Infinity,
-				}),
-			);
+	it("reports a failed job with a persistent error toast", () => {
+		showJobError(createEnvironmentJob("my-env"), new Error("boom"));
+		expect(toast.error).toHaveBeenCalledWith("Could not create my-env", {
+			description: "Could not create the environment.",
+			duration: Infinity,
 		});
 	});
 });

@@ -440,9 +440,6 @@ describe("KiloModelSelector", () => {
 		await screen.getByTestId("kilo-model-selector-rail-kilo-desktop-model-server").click();
 		expect(startLocalInference).not.toHaveBeenCalled();
 		await expect.element(screen.getByTestId("kilo-model-selector-loading")).not.toBeInTheDocument();
-		const modelList = screen.getByTestId("kilo-model-selector-list");
-		await expect.element(modelList).not.toHaveAttribute("data-scroll-fade-top");
-		await expect.element(modelList).not.toHaveAttribute("data-scroll-fade-bottom");
 		await expect
 			.element(screen.getByRole("button", { name: "Add a local model" }))
 			.not.toBeInTheDocument();
@@ -560,7 +557,7 @@ describe("KiloModelSelector", () => {
 		await screen.getByTestId("kilo-model-selector-trigger").click();
 		await expect
 			.element(screen.getByTestId("kilo-model-section-auto"))
-			.toHaveTextContent("Auto Models");
+			.toHaveTextContent("Auto models");
 		await expect
 			.element(screen.getByTestId("kilo-model-section-recommended"))
 			.toHaveTextContent("Recommended");
@@ -845,7 +842,7 @@ describe("KiloModelSelector", () => {
 			.element(screen.getByTestId("kilo-model-option-provider-kilo/auto-frontier"))
 			.not.toBeInTheDocument();
 
-		await screen.getByPlaceholder("Search models...").fill("Claude");
+		await screen.getByPlaceholder("Search models").fill("Claude");
 		await expect
 			.element(screen.getByTestId("kilo-model-option-provider-anthropic/claude-sonnet"))
 			.toBeVisible();
@@ -1043,13 +1040,13 @@ describe("KiloModelSelector", () => {
 		await expect
 			.element(screen.getByTestId("kilo-model-filter-trigger"))
 			.toHaveAccessibleName("Filter models, 2 active");
-		await screen.getByPlaceholder("Search models...").fill("Claude");
+		await screen.getByPlaceholder("Search models").fill("Claude");
 		await expect.element(screen.getByTestId("kilo-model-filter-trigger")).not.toBeInTheDocument();
 		await expect
 			.element(screen.getByTestId("kilo-model-option-kilo/anthropic/claude"))
 			.toBeVisible();
 		await expect.element(screen.getByTestId("kilo-model-option-anthropic/claude")).toBeVisible();
-		await screen.getByPlaceholder("Search models...").fill("");
+		await screen.getByPlaceholder("Search models").fill("");
 		await expect
 			.element(screen.getByTestId("kilo-model-option-kilo/openai/gpt-high"))
 			.toBeVisible();
@@ -1155,11 +1152,10 @@ describe("KiloModelSelector", () => {
 
 		await screen.getByTestId("kilo-model-selector-trigger").click();
 		const list = screen.getByTestId("kilo-model-selector-list").element();
-		expect(getComputedStyle(list).scrollbarWidth).toBe("thin");
 		expect(list.scrollTop).toBe(0);
 
 		await act(async () => {
-			fireEvent.keyDown(screen.getByPlaceholder("Search models...").element(), { key: "End" });
+			fireEvent.keyDown(screen.getByPlaceholder("Search models").element(), { key: "End" });
 		});
 
 		expect(list.scrollTop).toBeGreaterThan(700);

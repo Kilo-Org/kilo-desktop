@@ -867,7 +867,7 @@ export const ChatPaneCanvas: FC<{
 						"flex min-h-0 min-w-0",
 						scrollingColumns.length === 0 && "hidden",
 						arrangement === "carousel"
-							? "scroll-fade-x flex-1 gap-1 [overflow-anchor:none] overflow-x-auto [--scroll-fade-size:1.5rem] [--scroll-fade-reveal:1.5rem]"
+							? "scroll-fade-x flex-1 gap-1 [overflow-anchor:none] overflow-x-auto [--scroll-fade-reveal:1.5rem]"
 							: "flex-1",
 						arrangement === "tiles" && "gap-1",
 						paneExpand.isExpanded &&

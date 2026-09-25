@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { useAuiState, type ToolCallMessagePartComponent } from "@assistant-ui/react";
-import { CheckIcon, XCircleIcon } from "lucide-react";
+import { CheckIcon, CircleXIcon } from "lucide-react";
 
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
@@ -11,6 +11,7 @@ import {
 	isCancelledToolStatus,
 	normalizeBashOutput,
 	parseBashResult,
+	ToolOutputBlock,
 } from "./tool-ui-shared.js";
 
 export const BashTerminal: ToolCallMessagePartComponent = memo(
@@ -34,7 +35,7 @@ export const BashTerminal: ToolCallMessagePartComponent = memo(
 		const summaryText = getCommandSummary(args);
 
 		const completeIcon = isError ? (
-			<XCircleIcon className="text-destructive-foreground size-3 shrink-0" />
+			<CircleXIcon className="text-destructive size-3 shrink-0" />
 		) : (
 			<CheckIcon className="size-3 shrink-0" />
 		);
@@ -51,7 +52,7 @@ export const BashTerminal: ToolCallMessagePartComponent = memo(
 				completeIcon={completeIcon}
 				hideSoloWithoutDetail={!isError && !isCancelled}
 				detail={
-					<div className="bg-muted/50 max-h-96 overflow-y-auto rounded-md border p-3 font-mono text-xs">
+					<ToolOutputBlock>
 						{command ? <div className="text-muted-foreground mb-2">$ {command}</div> : null}
 						{stdout ? (
 							<pre className="text-foreground wrap-break-word whitespace-pre-wrap">{stdout}</pre>
@@ -59,14 +60,14 @@ export const BashTerminal: ToolCallMessagePartComponent = memo(
 						{stderr ? (
 							<pre
 								className={cn(
-									"text-destructive-foreground wrap-break-word whitespace-pre-wrap",
+									"text-destructive wrap-break-word whitespace-pre-wrap",
 									stdout && "mt-2",
 								)}
 							>
 								{stderr}
 							</pre>
 						) : null}
-					</div>
+					</ToolOutputBlock>
 				}
 			/>
 		);

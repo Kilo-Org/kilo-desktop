@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Radio as RadioPrimitive } from "@base-ui/react/radio";
 import { MonitorIcon, MoonIcon, SunIcon, type LucideIcon } from "lucide-react";
 
 import {
@@ -8,16 +8,15 @@ import {
 	themeChromeColors,
 	type ThemeSource,
 } from "@kilo-desktop/contracts";
+import { SettingsPageHeader } from "@kilo-desktop/sdk-react";
 import {
-	Field,
 	FieldContent,
 	FieldDescription,
-	FieldGroup,
-	FieldLabel,
 	FieldLegend,
 	FieldSet,
-	FieldTitle,
 } from "@kilo-desktop/ui/components/field";
+import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
+import { RadioGroup } from "@kilo-desktop/ui/components/radio-group";
 import { Switch } from "@kilo-desktop/ui/components/switch";
 import {
 	Select,
@@ -27,7 +26,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@kilo-desktop/ui/components/select";
-import { ToggleGroup, ToggleGroupItem } from "@kilo-desktop/ui/components/toggle-group";
+import { ColorSwatchPicker } from "@kilo-desktop/ui/components/color-swatch-picker";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { useColorScheme } from "@/platform/theme/ThemeProvider";
@@ -58,124 +57,133 @@ export function AppearanceSettings() {
 	} = useColorScheme();
 
 	return (
-		<div className="mx-auto w-full max-w-3xl" data-qa-id="appearance-settings">
-			<h1 className="text-base font-semibold tracking-tight" data-qa-id="settings-section-heading">
-				Appearance
-			</h1>
-			<FieldGroup className="gap-0">
-				<FieldSet className="mt-6 gap-0">
-					<FieldLegend variant="label" className="mb-0">
+		<div className="flex min-w-0 flex-col gap-6">
+			<SettingsPageHeader />
+			<FieldSet
+				className="min-w-0"
+				aria-labelledby="appearance-theme-heading"
+				data-qa-id="appearance-settings"
+			>
+				<FieldContent>
+					<FieldLegend id="appearance-theme-heading" variant="label" className="mb-0">
 						Theme
 					</FieldLegend>
 					<FieldDescription>Light, dark, or match your system.</FieldDescription>
-					<div
-						role="radiogroup"
-						aria-label="Theme"
-						className="mt-4 grid grid-cols-3 gap-3"
-						data-qa-id="appearance-theme"
-					>
-						{THEME_OPTIONS.map((option) => (
-							<ThemeChoice
-								key={option.value}
-								label={option.label}
-								Icon={option.Icon}
-								selected={source === option.value}
-								preview={<ThemePreview source={option.value} />}
-								onSelect={() => setSource(option.value)}
-								qaId={`appearance-theme-${option.value}`}
-							/>
-						))}
-					</div>
-				</FieldSet>
-				<Field orientation="responsive" className="mt-8">
-					<FieldContent>
-						<FieldLabel htmlFor="color-theme">Color theme</FieldLabel>
-						<FieldDescription>
-							{appTheme.themeId === "kilo"
-								? "Kilo accent colors with shadcn neutral for light mode."
-								: "One palette for the app, terminal, and code."}
-						</FieldDescription>
-					</FieldContent>
-					<Select
-						value={appTheme.themeId}
-						items={APP_THEMES.map((theme) => ({ value: theme.id, label: theme.name }))}
-						onValueChange={(themeId) => {
-							if (themeId) setAppTheme({ ...appTheme, themeId });
-						}}
-					>
-						<SelectTrigger
-							id="color-theme"
-							aria-label="Color theme"
-							className="w-full min-w-52 sm:w-52"
-							data-qa-id="appearance-color-theme"
+				</FieldContent>
+				<RadioGroup
+					aria-label="Theme"
+					value={source}
+					onValueChange={(value) => setSource(value as ThemeSource)}
+					className="grid grid-cols-3 gap-4"
+					data-qa-id="appearance-theme"
+				>
+					{THEME_OPTIONS.map(({ value, label, Icon }) => (
+						// The whole card is the radio: no indicator dot, the ring shows selection.
+						<RadioPrimitive.Root
+							key={value}
+							value={value}
+							data-qa-id={`appearance-theme-${value}`}
+							className="ring-border hover:bg-muted focus-visible:ring-ring/50 data-checked:bg-muted data-checked:ring-ring flex cursor-default flex-col gap-2 rounded-lg p-2 text-left ring-1 transition-shadow outline-none focus-visible:ring-3 data-checked:ring-2"
 						>
-							<ThemeSwatch themeId={appTheme.themeId} scheme={resolved} />
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectGroup>
-								{APP_THEMES.map((theme) => (
-									<SelectItem
-										key={theme.id}
-										value={theme.id}
-										data-qa-id={`appearance-color-theme-${theme.id}`}
+							<ThemePreview source={value} />
+							<span className="flex items-center justify-center gap-1.5 pb-0.5 text-sm">
+								<Icon aria-hidden="true" className="size-3.5" />
+								{label}
+							</span>
+						</RadioPrimitive.Root>
+					))}
+				</RadioGroup>
+				<section className="border-border bg-card divide-border min-w-0 divide-y overflow-hidden rounded-lg border">
+					<div>
+						<SummaryCard.Row>
+							<SummaryCard.Content>
+								<SummaryCard.Title>
+									<label htmlFor="color-theme">Color theme</label>
+								</SummaryCard.Title>
+								<SummaryCard.Description>
+									One palette for the app, terminal, and code.
+								</SummaryCard.Description>
+							</SummaryCard.Content>
+							<SummaryCard.Actions>
+								<Select
+									value={appTheme.themeId}
+									items={APP_THEMES.map((theme) => ({ value: theme.id, label: theme.name }))}
+									onValueChange={(themeId) => {
+										if (themeId) setAppTheme({ ...appTheme, themeId });
+									}}
+								>
+									<SelectTrigger
+										id="color-theme"
+										aria-label="Color theme"
+										className="w-52"
+										data-qa-id="appearance-color-theme"
 									>
-										<ThemeSwatch themeId={theme.id} scheme={resolved} />
-										{theme.name}
-									</SelectItem>
-								))}
-							</SelectGroup>
-						</SelectContent>
-					</Select>
-				</Field>
-				<Field orientation="responsive" className="mt-6">
-					<FieldContent>
-						<FieldTitle id="accent-label">Accent color</FieldTitle>
-						<FieldDescription>Use the theme's accent or choose your own.</FieldDescription>
-					</FieldContent>
-					<ToggleGroup
-						aria-labelledby="accent-label"
-						value={[appTheme.accentId]}
-						onValueChange={([accentId]) => {
-							if (accentId) setAppTheme({ ...appTheme, accentId });
-						}}
-						className="flex-wrap"
-					>
-						{ACCENTS.map((accent) => (
-							<ToggleGroupItem
-								key={accent.id}
-								value={accent.id}
-								aria-label={accent.name}
-								title={accent.name}
-								data-qa-id={`appearance-accent-${accent.id}`}
-							>
-								{accent.id === "theme" ? (
-									accent.name
-								) : (
-									<span
-										aria-hidden="true"
-										className="border-foreground/10 size-4 rounded-full border"
-										style={{ backgroundColor: accent[resolved].color }}
-									/>
-								)}
-							</ToggleGroupItem>
-						))}
-					</ToggleGroup>
-				</Field>
-				<Field orientation="horizontal" className="mt-8">
-					<FieldContent>
-						<FieldLabel htmlFor="sidebar-vibrancy">Sidebar vibrancy</FieldLabel>
-						<FieldDescription>Show a translucent sidebar background.</FieldDescription>
-					</FieldContent>
-					<Switch
-						id="sidebar-vibrancy"
-						className="self-center"
-						data-qa-id="appearance-sidebar-vibrancy"
-						checked={sidebarVibrancy}
-						onCheckedChange={setSidebarVibrancy}
-					/>
-				</Field>
-			</FieldGroup>
+										<ThemeSwatch themeId={appTheme.themeId} scheme={resolved} />
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectGroup>
+											{APP_THEMES.map((theme) => (
+												<SelectItem
+													key={theme.id}
+													value={theme.id}
+													data-qa-id={`appearance-color-theme-${theme.id}`}
+												>
+													<ThemeSwatch themeId={theme.id} scheme={resolved} />
+													{theme.name}
+												</SelectItem>
+											))}
+										</SelectGroup>
+									</SelectContent>
+								</Select>
+							</SummaryCard.Actions>
+						</SummaryCard.Row>
+					</div>
+					<div>
+						<SummaryCard.Row>
+							<SummaryCard.Content>
+								<SummaryCard.Title id="accent-label">Accent color</SummaryCard.Title>
+								<SummaryCard.Description>
+									Use the theme's accent or choose your own.
+								</SummaryCard.Description>
+							</SummaryCard.Content>
+							<SummaryCard.Actions>
+								<ColorSwatchPicker
+									aria-labelledby="accent-label"
+									value={appTheme.accentId}
+									onValueChange={(accentId) => setAppTheme({ ...appTheme, accentId })}
+									swatches={ACCENTS.map((accent) => ({
+										value: accent.id,
+										label: accent.name,
+										...(accent.id === "theme" ? {} : { color: accent[resolved].color }),
+										qaId: `appearance-accent-${accent.id}`,
+									}))}
+								/>
+							</SummaryCard.Actions>
+						</SummaryCard.Row>
+					</div>
+					<div>
+						<SummaryCard.Row>
+							<SummaryCard.Content>
+								<SummaryCard.Title>
+									<label htmlFor="sidebar-vibrancy">Sidebar vibrancy</label>
+								</SummaryCard.Title>
+								<SummaryCard.Description>
+									Show a translucent sidebar background.
+								</SummaryCard.Description>
+							</SummaryCard.Content>
+							<SummaryCard.Actions>
+								<Switch
+									id="sidebar-vibrancy"
+									data-qa-id="appearance-sidebar-vibrancy"
+									checked={sidebarVibrancy}
+									onCheckedChange={setSidebarVibrancy}
+								/>
+							</SummaryCard.Actions>
+						</SummaryCard.Row>
+					</div>
+				</section>
+			</FieldSet>
 		</div>
 	);
 }
@@ -185,7 +193,7 @@ function ThemeSwatch({ themeId, scheme }: { themeId: string; scheme: "light" | "
 	return (
 		<span
 			aria-hidden="true"
-			className="inline-flex size-4 shrink-0 items-center justify-center self-center rounded-sm border text-[10px] leading-none font-medium"
+			className="text-2xs inline-flex size-4 shrink-0 items-center justify-center self-center rounded-sm border leading-none font-medium"
 			style={{
 				background: tokens?.background ?? themeChromeColors[scheme].background,
 				color: tokens?.primary ?? ACCENTS[0][scheme].color,
@@ -194,43 +202,6 @@ function ThemeSwatch({ themeId, scheme }: { themeId: string; scheme: "light" | "
 		>
 			Aa
 		</span>
-	);
-}
-
-function ThemeChoice({
-	label,
-	Icon,
-	selected,
-	preview,
-	onSelect,
-	qaId,
-}: {
-	label: string;
-	Icon: LucideIcon;
-	selected: boolean;
-	preview: ReactNode;
-	onSelect: () => void;
-	qaId: string;
-}) {
-	return (
-		<button
-			type="button"
-			role="radio"
-			aria-checked={selected}
-			onClick={onSelect}
-			data-qa-id={qaId}
-			className={cn(
-				"flex flex-col gap-2 rounded-lg p-2 text-left outline-none transition-shadow",
-				"focus-visible:ring-3 focus-visible:ring-ring/50",
-				selected ? "bg-foreground/5 ring-2 ring-ring" : "ring-1 ring-border hover:bg-foreground/5",
-			)}
-		>
-			{preview}
-			<span className="flex items-center justify-center gap-1.5 pb-0.5 text-sm font-normal">
-				<Icon className="size-3.5" />
-				{label}
-			</span>
-		</button>
 	);
 }
 

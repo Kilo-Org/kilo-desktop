@@ -79,17 +79,20 @@ export function AddProviderDialog({
 		setChoice(null);
 	};
 
+	// Rendered as the leading footer item: `sm:mr-auto` pins it left of the actions.
 	const stepIndicator = skipChooseStep ? undefined : (
-		<WizardStepIndicator
-			steps={STEPS}
-			currentStep={step}
-			busy={pending}
-			qaPrefix="kilo-providers-add"
-			canSelect={(candidate) => candidate === "choose" || choice !== null}
-			onSelect={(candidate) => {
-				if (candidate === "choose") back();
-			}}
-		/>
+		<div className="flex items-center sm:mr-auto">
+			<WizardStepIndicator
+				steps={STEPS}
+				currentStep={step}
+				busy={pending}
+				qaPrefix="kilo-providers-add"
+				canSelect={(candidate) => candidate === "choose" || choice !== null}
+				onSelect={(candidate) => {
+					if (candidate === "choose") back();
+				}}
+			/>
+		</div>
 	);
 
 	const custom = choice?.type === "custom" || skipChooseStep;
@@ -104,7 +107,7 @@ export function AddProviderDialog({
 			<DialogContent
 				data-qa-id={dialogQaId}
 				style={{ transition: "none" }}
-				className={cn("sm:max-w-xl", custom && EMBEDDED_CUSTOM_PROVIDER_CONTENT_CLASS_NAME)}
+				className={cn("sm:max-w-2xl", custom && EMBEDDED_CUSTOM_PROVIDER_CONTENT_CLASS_NAME)}
 			>
 				{choice?.type === "catalog" ? (
 					<ProviderConnectForm
@@ -128,7 +131,6 @@ export function AddProviderDialog({
 					/>
 				) : (
 					<>
-						{stepIndicator}
 						<DialogHeader>
 							<DialogTitle>Add AI Provider</DialogTitle>
 						</DialogHeader>
@@ -153,7 +155,7 @@ export function AddProviderDialog({
 								render={<button type="button" disabled={pending} />}
 								variant="outline"
 								size="sm"
-								className="bg-card hover:bg-foreground/5 min-w-0 flex-nowrap text-left"
+								className="bg-card hover:bg-muted min-w-0 flex-nowrap text-left"
 								onClick={() => {
 									onResetSave();
 									setChoice({ type: "custom" });
@@ -164,7 +166,7 @@ export function AddProviderDialog({
 									<PlusIcon className="size-4" />
 								</ItemMedia>
 								<ItemContent>
-									<ItemTitle>Custom AI Provider</ItemTitle>
+									<ItemTitle>Custom AI provider</ItemTitle>
 								</ItemContent>
 								<ItemActions>
 									<ArrowRightIcon className="text-muted-foreground size-4" />
@@ -173,6 +175,7 @@ export function AddProviderDialog({
 						</div>
 
 						<DialogFooter>
+							{stepIndicator}
 							<Button type="button" variant="outline" onClick={() => changeOpen(false)}>
 								Cancel
 							</Button>
@@ -198,7 +201,7 @@ function ProviderChoiceItem({
 			render={<button type="button" disabled={disabled} />}
 			variant="outline"
 			size="sm"
-			className="bg-card hover:bg-foreground/5 min-w-0 flex-nowrap text-left"
+			className="bg-card hover:bg-muted min-w-0 flex-nowrap text-left"
 			onClick={onSelect}
 			data-qa-id={`kilo-providers-add-${provider.id}`}
 		>

@@ -116,7 +116,7 @@ describe("OnboardingFlow", () => {
 		expect(onSkip).toHaveBeenCalledOnce();
 	});
 
-	it("keeps the selected identity color ring inside the step body", async () => {
+	it("keeps the identity color swatches inside the step body", async () => {
 		const form = {
 			name: "",
 			setName: vi.fn(),
@@ -146,11 +146,11 @@ describe("OnboardingFlow", () => {
 			</OnboardingFlow>,
 		);
 		const screen = page.elementLocator(baseElement);
-		await expect.element(screen.getByRole("radiogroup", { name: "Identity color" })).toBeVisible();
+		await expect.element(screen.getByRole("group", { name: "Identity color" })).toBeVisible();
 
 		const body = screen.getByTestId("onboarding-step-body").element();
 		const swatch = screen
-			.getByRole("radiogroup", { name: "Identity color" })
+			.getByRole("group", { name: "Identity color" })
 			.element()
 			.querySelector("span");
 		expect(swatch).not.toBeNull();

@@ -15,7 +15,12 @@ import {
 import { Checkbox } from "@kilo-desktop/ui/components/checkbox";
 import { Input } from "@kilo-desktop/ui/components/input";
 import { Label } from "@kilo-desktop/ui/components/label";
+import { Badge } from "@kilo-desktop/ui/components/badge";
 import { Button } from "@kilo-desktop/ui/components/button";
+import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
+import { cn } from "@kilo-desktop/ui/lib/utils";
+import { ChevronDownIcon } from "lucide-react";
 
 // ─── Status chip styling ────────────────────────────────────────────────────────
 
@@ -26,27 +31,15 @@ import { Button } from "@kilo-desktop/ui/components/button";
  */
 const FEATURE_FLAG_KEY = "remote-anaconda-mcp";
 
-const STATUS_STYLES: Record<AnacondaMcpStatus["state"], { label: string; className: string }> = {
-	connected: {
-		label: "Connected",
-		className: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400",
-	},
-	"waiting-for-auth": {
-		label: "Waiting for login",
-		className: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
-	},
-	"waiting-for-kilo": {
-		label: "Starting…",
-		className: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
-	},
-	disabled: {
-		label: "Disabled",
-		className: "bg-muted text-muted-foreground",
-	},
-	error: {
-		label: "Error",
-		className: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-	},
+const STATUS_STYLES: Record<
+	AnacondaMcpStatus["state"],
+	{ label: string; dotClassName: string; pending?: boolean }
+> = {
+	connected: { label: "Connected", dotClassName: "bg-success" },
+	"waiting-for-auth": { label: "Waiting for login", dotClassName: "bg-warning" },
+	"waiting-for-kilo": { label: "Starting…", dotClassName: "bg-warning", pending: true },
+	disabled: { label: "Disabled", dotClassName: "bg-muted-foreground" },
+	error: { label: "Error", dotClassName: "bg-destructive" },
 };
 
 function StatusChip({ status }: { status: AnacondaMcpStatus }) {
@@ -55,14 +48,20 @@ function StatusChip({ status }: { status: AnacondaMcpStatus }) {
 		status.state === "connected" ? status.url : status.state === "error" ? status.reason : null;
 
 	return (
-		<span
+		<Badge
+			variant="outline"
 			data-qa-id="anaconda-mcp-status-chip"
 			data-state={status.state}
-			className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${style.className}`}
+			className="max-w-full"
 		>
+			{style.pending ? (
+				<Spinner data-icon="inline-start" aria-hidden="true" />
+			) : (
+				<span className={cn("size-1.5 rounded-full", style.dotClassName)} aria-hidden="true" />
+			)}
 			{style.label}
-			{detail ? <span className="max-w-48 truncate opacity-75">— {detail}</span> : null}
-		</span>
+			{detail ? <span className="text-muted-foreground max-w-48 truncate">— {detail}</span> : null}
+		</Badge>
 	);
 }
 
@@ -117,7 +116,7 @@ export function AnacondaMcpSettings() {
 
 	if (!featureEnabled) {
 		return (
-			<div className="mx-auto max-w-xl" data-qa-id="anaconda-mcp-settings" data-state="flag-off">
+			<div className="mx-auto max-w-3xl" data-qa-id="anaconda-mcp-settings" data-state="flag-off">
 				<h1 className="text-base font-semibold tracking-tight">Anaconda MCP</h1>
 				<p className="text-muted-foreground mt-0.5 text-sm leading-snug">
 					This feature is not enabled for your account. Contact your Anaconda administrator or try
@@ -128,7 +127,7 @@ export function AnacondaMcpSettings() {
 	}
 
 	return (
-		<div className="mx-auto max-w-xl" data-qa-id="anaconda-mcp-settings">
+		<div className="mx-auto max-w-3xl" data-qa-id="anaconda-mcp-settings">
 			<h1 className="text-base font-semibold tracking-tight">Anaconda MCP</h1>
 			<p className="text-muted-foreground mt-0.5 text-sm leading-snug">
 				Connects to the Anaconda Remote MCP server to provide package search and organization policy
@@ -139,7 +138,9 @@ export function AnacondaMcpSettings() {
 			<div className="mt-6 flex items-center gap-3">
 				<span className="text-sm font-medium">Status:</span>
 				{statusQuery.isPending ? (
-					<span className="text-muted-foreground text-xs">Loading…</span>
+					<span role="status" aria-busy="true" aria-label="Loading status">
+						<Skeleton className="h-5 w-24 rounded-4xl" aria-hidden="true" />
+					</span>
 				) : statusQuery.isError ? (
 					<span className="text-destructive text-xs">Could not load status</span>
 				) : status ? (
@@ -173,7 +174,7 @@ export function AnacondaMcpSettings() {
 			{/* Mutation error */}
 			{setSettings.isError ? (
 				<p className="text-destructive mt-4 text-sm" role="alert">
-					Failed to update settings: {setSettings.error.message}
+					Could not update settings: {setSettings.error.message}
 				</p>
 			) : null}
 
@@ -182,15 +183,20 @@ export function AnacondaMcpSettings() {
 				<button
 					type="button"
 					data-qa-id="anaconda-mcp-advanced-toggle"
-					className="text-muted-foreground hover:text-foreground text-sm font-medium transition-colors"
+					className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-sm font-medium transition-colors"
+					aria-expanded={showAdvanced}
 					onClick={() => setShowAdvanced(!showAdvanced)}
 				>
-					{showAdvanced ? "▾ Advanced" : "▸ Advanced"}
+					<ChevronDownIcon
+						className={cn("size-3.5 transition-transform", !showAdvanced && "-rotate-90")}
+						aria-hidden="true"
+					/>
+					Advanced
 				</button>
 
 				{showAdvanced ? (
 					<form className="mt-4 grid gap-3" onSubmit={handleUrlSubmit}>
-						<Label htmlFor="anaconda-mcp-url">MCP Server URL Override</Label>
+						<Label htmlFor="anaconda-mcp-url">MCP server URL override</Label>
 						<p className="text-muted-foreground text-xs">
 							Override the default Anaconda MCP server URL. Leave empty to use the default.
 						</p>

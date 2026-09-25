@@ -4,19 +4,12 @@ import {
 	type OpenCodePermissionResponse,
 	useOpenCodeRuntimeExtras,
 } from "@assistant-ui/react-opencode";
-import { AlertCircleIcon, LoaderIcon, ShieldAlertIcon } from "lucide-react";
+import { CircleAlertIcon, ShieldAlertIcon } from "lucide-react";
 
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
+import { Badge } from "@kilo-desktop/ui/components/badge";
 import { Button } from "@kilo-desktop/ui/components/button";
-
-import {
-	Badge,
-	Card,
-	CardContent,
-	CardDescription,
-	CardFooter,
-	CardHeader,
-	CardTitle,
-} from "./interaction-chrome.js";
+import { ComposerShell } from "../composer-shelf.js";
 
 export const OpenCodePermissionCard = ({ request }: { request: OpenCodePermissionRequest }) => {
 	const { replyToPermission } = useOpenCodeRuntimeExtras();
@@ -30,7 +23,7 @@ export const OpenCodePermissionCard = ({ request }: { request: OpenCodePermissio
 		try {
 			await replyToPermission(request.id, nextReply);
 		} catch (err) {
-			setError(err instanceof Error ? err.message : "Failed to submit reply.");
+			setError(err instanceof Error ? err.message : "Could not submit the reply.");
 			setSubmittingReply(null);
 		}
 	};
@@ -70,29 +63,27 @@ export const OpenCodePermissionCard = ({ request }: { request: OpenCodePermissio
 	const permissionLabel = request.toolName ?? request.permission;
 
 	return (
-		<Card>
-			<CardHeader className="gap-4">
+		<ComposerShell className="text-card-foreground gap-4 p-4">
+			<div className="flex flex-col gap-4">
 				<div className="flex min-h-[1lh] items-center justify-between gap-3">
 					<div className="text-muted-foreground flex min-w-0 items-center gap-1.5 text-xs font-medium">
-						<ShieldAlertIcon className="size-3.5 text-amber-700 dark:text-amber-500" />
+						<ShieldAlertIcon className="text-warning size-3.5" />
 						<span className="truncate">Permission request</span>
 					</div>
-					<Badge variant="outline" className="text-muted-foreground shrink-0">
-						{permissionLabel}
-					</Badge>
+					<Badge variant="outline">{permissionLabel}</Badge>
 				</div>
 				<div className="space-y-1.5">
-					<CardTitle className="text-base leading-snug font-medium text-pretty">
+					<h3 className="text-base leading-snug font-medium tracking-tight text-pretty">
 						{request.title ?? `Allow ${permissionLabel}?`}
-					</CardTitle>
-					<CardDescription className="text-sm text-pretty">
+					</h3>
+					<p className="text-muted-foreground text-sm text-pretty">
 						The agent is requesting permission to use {permissionLabel}.
-					</CardDescription>
+					</p>
 				</div>
-			</CardHeader>
+			</div>
 
 			{(request.patterns.length > 0 || request.toolInput !== undefined) && (
-				<CardContent className="grid min-w-0 gap-2">
+				<div className="grid min-w-0 gap-2">
 					{request.patterns.length > 0 ? (
 						<div className="grid min-w-0 gap-2">
 							{request.patterns.map((pattern) => (
@@ -113,10 +104,10 @@ export const OpenCodePermissionCard = ({ request }: { request: OpenCodePermissio
 							</pre>
 						</div>
 					) : null}
-				</CardContent>
+				</div>
 			)}
 
-			<CardFooter className="flex-col gap-2">
+			<div className="flex flex-col items-center gap-2">
 				<div className="flex w-full items-center justify-between gap-2">
 					<Button
 						variant="ghost"
@@ -124,7 +115,7 @@ export const OpenCodePermissionCard = ({ request }: { request: OpenCodePermissio
 						disabled={submittingReply !== null}
 					>
 						{submittingReply === "reject" ? (
-							<LoaderIcon className="animate-spin" data-icon="inline-start" />
+							<Spinner data-icon="inline-start" aria-hidden="true" />
 						) : null}
 						Reject
 					</Button>
@@ -135,25 +126,25 @@ export const OpenCodePermissionCard = ({ request }: { request: OpenCodePermissio
 							disabled={submittingReply !== null}
 						>
 							{submittingReply === "always" ? (
-								<LoaderIcon className="animate-spin" data-icon="inline-start" />
+								<Spinner data-icon="inline-start" aria-hidden="true" />
 							) : null}
 							Always allow
 						</Button>
 						<Button onClick={() => void submitReply("once")} disabled={submittingReply !== null}>
 							{submittingReply === "once" ? (
-								<LoaderIcon className="animate-spin" data-icon="inline-start" />
+								<Spinner data-icon="inline-start" aria-hidden="true" />
 							) : null}
 							Allow once
 						</Button>
 					</div>
 				</div>
 				{error ? (
-					<div className="text-destructive-foreground flex min-w-0 items-center gap-2 text-xs">
-						<AlertCircleIcon className="size-3.5 shrink-0" />
+					<div className="text-destructive flex min-w-0 items-center gap-2 text-xs">
+						<CircleAlertIcon className="size-3.5 shrink-0" />
 						<span className="truncate">{error}</span>
 					</div>
 				) : null}
-			</CardFooter>
-		</Card>
+			</div>
+		</ComposerShell>
 	);
 };

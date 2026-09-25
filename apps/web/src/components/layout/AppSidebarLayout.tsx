@@ -27,7 +27,6 @@ import {
 	SidebarMenuItem,
 	SidebarProvider,
 } from "@kilo-desktop/ui/components/sidebar";
-import { TooltipProvider } from "@kilo-desktop/ui/components/tooltip";
 
 /** Clears macOS traffic lights (x:16, 14px lights, 8px gaps = 74px) plus a 10px gap. */
 const MAC_DESKTOP_SIDEBAR_TOGGLE_LEFT = "84px";
@@ -170,88 +169,86 @@ export function AppSidebarLayout({
 	} as CSSProperties;
 
 	return (
-		<TooltipProvider>
-			<SidebarProvider
-				hoverReveal
-				className="app-shell-glass h-svh min-h-0"
-				style={sidebarProviderStyle}
+		<SidebarProvider
+			hoverReveal
+			className="app-shell-glass h-svh min-h-0"
+			style={sidebarProviderStyle}
+		>
+			<Sidebar
+				collapsible="offcanvas"
+				className="border-border group-data-[transient=true]:bg-sidebar! h-svh border-r bg-transparent! [&_[data-sidebar=sidebar]]:bg-transparent"
+				data-qa-id="app-sidebar"
 			>
-				<Sidebar
-					collapsible="offcanvas"
-					className="border-border group-data-[transient=true]:bg-sidebar! h-svh border-r bg-transparent! [&_[data-sidebar=sidebar]]:bg-transparent"
-					data-qa-id="app-sidebar"
-				>
-					<SidebarHeader className="relative h-12 shrink-0 p-0" data-qa-id="sidebar-titlebar">
-						{/* Keep the drag surface clear of the fixed navigation toggle. Electron
+				<SidebarHeader className="relative h-12 shrink-0 p-0" data-qa-id="sidebar-titlebar">
+					{/* Keep the drag surface clear of the fixed navigation toggle. Electron
 						    otherwise treats the overlapping button pixels as window chrome. */}
-						<div
-							className="drag-region absolute inset-y-0 right-0 flex items-center justify-end pr-2"
-							style={{ left: "calc(var(--shell-sidebar-toggle-left) + 2rem)" }}
-						>
-							{settings ? null : (
-								<ZoneOutlet
-									zone={SIDEBAR_HEADER_ACTIONS_ZONE}
-									className="flex items-center [-webkit-app-region:no-drag]"
-								/>
-							)}
-						</div>
-					</SidebarHeader>
-					<SidebarContent>
-						{settings ? <SettingsSidebar sections={settingsSections} /> : null}
-						<div
-							style={{ display: settings ? "none" : "contents" }}
-							aria-hidden={settings}
-							inert={settings}
-							data-qa-id="app-sidebar-primary"
-						>
-							{visibleNav.length > 0 ? (
-								<SidebarGroup className="pt-0">
-									<SidebarMenu>
-										{visibleNav.map((entry) => (
-											<PluginNavItem key={entry.to} entry={entry} pathname={pathname} />
-										))}
-									</SidebarMenu>
-								</SidebarGroup>
-							) : null}
-							{/* Free-form sidebar contributions registered via sdk.contribute("sidebar", ...) */}
-							{settings ? null : (
-								<ZoneOutlet zone="sidebar" className="flex min-h-0 flex-1 flex-col gap-2 px-2" />
-							)}
-						</div>
-					</SidebarContent>
-					<SidebarFooter
-						role="group"
-						aria-label="Account and settings"
-						className="gap-2 px-2 pt-[7px] pb-2"
-					>
-						<section aria-label="User controls" className="flex flex-col gap-2">
-							<SidebarUpdatePill />
-							<SidebarAccountDock settings={settings} />
-						</section>
-					</SidebarFooter>
-				</Sidebar>
-				{/* Keep overflow off SidebarInset — Electron ignores drag regions inside
-				    overflow:hidden ancestors, which would break titlebar dragging. */}
-				<ShellInset>
-					<ShellPageHeader
-						title={pageTitle}
-						leading={pluginPage?.headerLeading}
-						actions={pluginPage?.headerActions}
-						pageProps={pageProps}
-					/>
 					<div
-						data-qa-id="shell-main"
-						className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain"
+						className="drag-region absolute inset-y-0 right-0 flex items-center justify-end pr-2"
+						style={{ left: "calc(var(--shell-sidebar-toggle-left) + 2rem)" }}
 					>
-						{children}
+						{settings ? null : (
+							<ZoneOutlet
+								zone={SIDEBAR_HEADER_ACTIONS_ZONE}
+								className="flex items-center [-webkit-app-region:no-drag]"
+							/>
+						)}
 					</div>
-					{/* Status-bar contributions registered via sdk.contribute("status-bar", ...) */}
-					<ZoneOutlet
-						zone="status-bar"
-						className="text-muted-foreground flex h-6 shrink-0 items-center justify-end gap-3 px-2 pt-1 text-xs"
-					/>
-				</ShellInset>
-			</SidebarProvider>
-		</TooltipProvider>
+				</SidebarHeader>
+				<SidebarContent>
+					{settings ? <SettingsSidebar sections={settingsSections} /> : null}
+					<div
+						style={{ display: settings ? "none" : "contents" }}
+						aria-hidden={settings}
+						inert={settings}
+						data-qa-id="app-sidebar-primary"
+					>
+						{visibleNav.length > 0 ? (
+							<SidebarGroup className="pt-0">
+								<SidebarMenu>
+									{visibleNav.map((entry) => (
+										<PluginNavItem key={entry.to} entry={entry} pathname={pathname} />
+									))}
+								</SidebarMenu>
+							</SidebarGroup>
+						) : null}
+						{/* Free-form sidebar contributions registered via sdk.contribute("sidebar", ...) */}
+						{settings ? null : (
+							<ZoneOutlet zone="sidebar" className="flex min-h-0 flex-1 flex-col gap-2 px-2" />
+						)}
+					</div>
+				</SidebarContent>
+				<SidebarFooter
+					role="group"
+					aria-label="Account and settings"
+					className="gap-2 px-2 pt-[7px] pb-2"
+				>
+					<section aria-label="User controls" className="flex flex-col gap-2">
+						<SidebarUpdatePill />
+						<SidebarAccountDock settings={settings} />
+					</section>
+				</SidebarFooter>
+			</Sidebar>
+			{/* Keep overflow off SidebarInset — Electron ignores drag regions inside
+				    overflow:hidden ancestors, which would break titlebar dragging. */}
+			<ShellInset>
+				<ShellPageHeader
+					title={pageTitle}
+					leading={pluginPage?.headerLeading}
+					actions={pluginPage?.headerActions}
+					pageProps={pageProps}
+				/>
+				<div
+					data-qa-id="shell-main"
+					className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain"
+				>
+					{children}
+				</div>
+				{/* Status-bar contributions registered via sdk.contribute("status-bar", ...) */}
+				<ZoneOutlet
+					zone="status-bar"
+					className="text-muted-foreground flex h-6 shrink-0 items-center justify-end gap-3 px-2 pt-1 text-xs"
+				/>
+			</ShellInset>
+		</SidebarProvider>
 	);
 }

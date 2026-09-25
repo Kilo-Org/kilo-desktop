@@ -1,21 +1,18 @@
-import {
-	CheckIcon,
-	LoaderCircleIcon,
-	PlusIcon,
-	RotateCcwIcon,
-	Trash2Icon,
-	XIcon,
-} from "lucide-react";
+import { CheckIcon, PlusIcon, RefreshCwIcon, Trash2Icon, XIcon } from "lucide-react";
 import { useState } from "react";
 
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Badge } from "@kilo-desktop/ui/components/badge";
 import {
 	Field,
+	FieldContent,
 	FieldDescription,
 	FieldError,
 	FieldGroup,
 	FieldLabel,
+	FieldLegend,
+	FieldSet,
 } from "@kilo-desktop/ui/components/field";
 import {
 	Select,
@@ -128,19 +125,19 @@ export function ModelDownloadSection({
 	};
 
 	return (
-		<section
-			className="flex w-full flex-col gap-4"
+		<FieldSet
+			className="w-full"
 			aria-labelledby="model-download-title"
 			data-qa-id="model-catalog-download-controls"
 		>
-			<div className="flex flex-col gap-1">
-				<h2 id="model-download-title" className="text-sm font-medium">
+			<FieldContent>
+				<FieldLegend id="model-download-title" variant="label" className="mb-0">
 					Add to model server
-				</h2>
-				<p className="text-muted-foreground text-sm">
+				</FieldLegend>
+				<FieldDescription>
 					Choose a quantization to add this model to your local server.
-				</p>
-			</div>
+				</FieldDescription>
+			</FieldContent>
 			<FieldGroup>
 				<Field data-invalid={Boolean(actionError) || undefined}>
 					<FieldLabel className="sr-only" htmlFor="model-download-quantization">
@@ -231,11 +228,7 @@ export function ModelDownloadSection({
 									aria-live="polite"
 									data-qa-id="model-catalog-download"
 								>
-									<LoaderCircleIcon
-										className="size-4 animate-spin"
-										data-icon="inline-start"
-										aria-hidden="true"
-									/>
+									<Spinner aria-hidden="true" />
 									<span>
 										Downloading{" "}
 										<span className="inline-block w-[4ch] text-right tabular-nums">
@@ -254,11 +247,7 @@ export function ModelDownloadSection({
 									}
 									data-qa-id="model-catalog-download-cancel"
 								>
-									{cancelling ? (
-										<LoaderCircleIcon className="animate-spin" aria-hidden="true" />
-									) : (
-										<XIcon aria-hidden="true" />
-									)}
+									{cancelling ? <Spinner aria-hidden="true" /> : <XIcon aria-hidden="true" />}
 								</Button>
 							</div>
 						) : (
@@ -271,8 +260,8 @@ export function ModelDownloadSection({
 							>
 								{failed || actionError ? (
 									<>
-										<RotateCcwIcon data-icon="inline-start" aria-hidden="true" />
-										Retry
+										<RefreshCwIcon data-icon="inline-start" aria-hidden="true" />
+										Try again
 									</>
 								) : (
 									<>
@@ -284,7 +273,7 @@ export function ModelDownloadSection({
 						)}
 					</div>
 					{doesNotFit ? (
-						<FieldDescription id="model-download-does-not-fit" className="text-xs">
+						<FieldDescription id="model-download-does-not-fit">
 							This quantization needs more memory than this machine can safely use.
 						</FieldDescription>
 					) : null}
@@ -299,6 +288,6 @@ export function ModelDownloadSection({
 					hasQuantizations={Boolean(selectedQuantization)}
 				/>
 			</div>
-		</section>
+		</FieldSet>
 	);
 }

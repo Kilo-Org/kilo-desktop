@@ -25,12 +25,9 @@ import {
 } from "@kilo-desktop/pane-layout";
 import { useSdk, useSdkContributions } from "@kilo-desktop/sdk-react";
 import { Button } from "@kilo-desktop/ui/components/button";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "@kilo-desktop/ui/components/tooltip";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@kilo-desktop/ui/components/empty";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
 import { ChatLocationBreadcrumb, ChatSessionBreadcrumb } from "./ChatSessionBreadcrumb.js";
 import { ChatMarkdownProvider } from "./ChatMarkdownContext.js";
@@ -133,9 +130,14 @@ function DetachedSessionGate({
 
 	if (remoteId !== sessionId) {
 		return (
-			<div className="text-muted-foreground grid h-full place-items-center text-sm">
-				Loading pane…
-			</div>
+			<Empty>
+				<EmptyHeader>
+					<EmptyMedia variant="icon">
+						<Spinner aria-hidden="true" />
+					</EmptyMedia>
+					<EmptyTitle>Loading pane…</EmptyTitle>
+				</EmptyHeader>
+			</Empty>
 		);
 	}
 	return children;
@@ -716,25 +718,23 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 							qaId="detached-pane-breadcrumb"
 						/>
 					</div>
-					<TooltipProvider>
-						<Tooltip>
-							<TooltipTrigger
-								render={
-									<Button
-										type="button"
-										variant="ghost"
-										size="icon-sm"
-										aria-label="Dock"
-										data-qa-id="chat-pane-dock"
-										onClick={() => void dockPaneWindow(detached.paneId)}
-									/>
-								}
-							>
-								<Minimize2Icon />
-							</TooltipTrigger>
-							<TooltipContent side="bottom">Dock</TooltipContent>
-						</Tooltip>
-					</TooltipProvider>
+					<Tooltip>
+						<TooltipTrigger
+							render={
+								<Button
+									type="button"
+									variant="ghost"
+									size="icon-sm"
+									aria-label="Dock"
+									data-qa-id="chat-pane-dock"
+									onClick={() => void dockPaneWindow(detached.paneId)}
+								/>
+							}
+						>
+							<Minimize2Icon />
+						</TooltipTrigger>
+						<TooltipContent side="bottom">Dock</TooltipContent>
+					</Tooltip>
 				</header>
 				<main
 					className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
@@ -758,7 +758,7 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 		<div className="flex h-full min-h-0 w-full min-w-0 flex-col">
 			{tabCloseError ? (
 				<p
-					className="text-destructive-foreground px-6 pt-4 text-sm"
+					className="text-destructive px-6 pt-4 text-sm"
 					role="alert"
 					data-qa-id="chat-pane-lifecycle-close-error"
 				>

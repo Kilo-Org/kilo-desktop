@@ -1585,7 +1585,9 @@ describe("FilesView", () => {
 				throw new Error("scan failed");
 			},
 		});
-		await expect.element(page.getByTestId("files-list-error")).toHaveTextContent("scan failed");
+		await expect
+			.element(page.getByTestId("files-list-error").getByText("scan failed"))
+			.toBeVisible();
 
 		cleanup();
 		const truncatedHandlers: FilesServiceContract = {

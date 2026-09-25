@@ -121,11 +121,21 @@ async function harnessFileCount(): Promise<string> {
 		.getAttribute("data-file-count")!;
 }
 
-async function enqueueFirstEntryThenPublish(load: { enqueue(text: string): void }): Promise<void> {
+async function enqueueFirstEntryThenPublish(load: {
+	stream: ReadableStream<Uint8Array>;
+	enqueue(text: string): void;
+}): Promise<void> {
+	// The loader stamps its publish clocks just before it takes the body
+	// reader, so the lock marks the moment the publish interval starts.
+	// Timing from enqueue instead races a slow loader start on busy runners.
+	await vi.waitFor(() => {
+		expect(load.stream.locked).toBe(true);
+	});
 	load.enqueue(FIRST_ENTRY);
-	// The publish gate only opens after STREAM_PUBLISH_INTERVAL_MS (100ms);
-	// waiting past it makes the first entry publish (leaving the pending map)
-	// so the second entry's rename is a viewer rename, not a pending re-key.
+	// The first entry is only handed to the loader when the second entry's
+	// header arrives. Waiting past STREAM_PUBLISH_INTERVAL_MS (100ms) from the
+	// loader start makes it publish then (leaving the pending map), so the
+	// second entry's rename is a viewer rename, not a pending re-key.
 	await new Promise((resolve) => setTimeout(resolve, 150));
 	load.enqueue(SECOND_ENTRY);
 }

@@ -105,13 +105,12 @@ export const markdownComponents = {
 		<hr className={cn("aui-md-hr border-muted-foreground/20 my-3", className)} {...props} />
 	),
 	table: ({ className, node: _node, ...props }) => (
-		<table
-			className={cn(
-				"aui-md-table my-3 w-full border-separate border-spacing-0 overflow-y-auto",
-				className,
-			)}
-			{...props}
-		/>
+		<div className="aui-md-table-scroll my-3 overflow-x-auto">
+			<table
+				className={cn("aui-md-table w-full border-separate border-spacing-0", className)}
+				{...props}
+			/>
+		</div>
 	),
 	th: ({ className, node: _node, ...props }) => (
 		<th
@@ -152,7 +151,7 @@ export const markdownComponents = {
 	pre: ({ className, node: _node, ...props }) => (
 		<pre
 			className={cn(
-				"aui-md-pre border-border/50 bg-muted/30 overflow-x-auto rounded-xl border p-3.5 text-sm leading-relaxed",
+				"aui-md-pre border-border-subtle bg-muted/30 overflow-x-auto rounded-xl border p-3.5 text-sm leading-relaxed",
 				className,
 			)}
 			{...props}

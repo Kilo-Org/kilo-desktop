@@ -1,19 +1,26 @@
-import { CheckIcon } from "lucide-react";
-import type { ComponentPropsWithoutRef } from "react";
+import { ListFilterIcon } from "lucide-react";
 
-import { cn } from "@kilo-desktop/ui/lib/utils";
 import { Badge } from "@kilo-desktop/ui/components/badge";
 import { Button } from "@kilo-desktop/ui/components/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@kilo-desktop/ui/components/popover";
+import {
+	DropdownMenu,
+	DropdownMenuCheckboxItem,
+	DropdownMenuContent,
+	DropdownMenuGroup,
+	DropdownMenuLabel,
+	DropdownMenuTrigger,
+} from "@kilo-desktop/ui/components/dropdown-menu";
 
 import { getChannelPresentation } from "./channel-presentation.js";
 
 interface ChannelChooserPopoverProps {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
-	trigger: Omit<ComponentPropsWithoutRef<"button">, "type" | "variant"> & {
-		"data-qa-id"?: string | undefined;
-	};
+	/** Short scope label, e.g. "All channels"; announced on the trigger. */
+	summary: string;
+	/** True when the selection differs from the default channel set. */
+	customized: boolean;
+	qaId?: string;
 	availableChannels: string[];
 	selectedChannels: string[];
 	onToggle: (channel: string) => void;
@@ -24,15 +31,17 @@ interface ChannelChooserPopoverProps {
 }
 
 /**
- * Channel picker popover for environment creation, rendered as option cards
- * per configured channel. Anaconda channels stay clickable while signed out
- * but route through `onRequestSignIn` so the feature can gate them behind
- * the shared sign-in modal; conda-forge and custom channels toggle freely.
+ * Channel picker for package search, rendered as the toolbar filter button
+ * used beside other search inputs. Anaconda channels stay clickable while
+ * signed out but route through `onRequestSignIn`; conda-forge and custom
+ * channels toggle freely.
  */
 export function ChannelChooserPopover({
 	open,
 	onOpenChange,
-	trigger,
+	summary,
+	customized,
+	qaId,
 	availableChannels,
 	selectedChannels,
 	onToggle,
@@ -40,61 +49,55 @@ export function ChannelChooserPopover({
 	onRequestSignIn,
 }: ChannelChooserPopoverProps) {
 	return (
-		<Popover open={open} onOpenChange={onOpenChange}>
-			<PopoverTrigger render={<Button type="button" variant="outline" {...trigger} />} />
-			<PopoverContent
-				align="end"
-				className="w-[28rem] gap-3 p-4"
-				data-qa-id="environments-channel-chooser"
+		<DropdownMenu open={open} onOpenChange={onOpenChange}>
+			<DropdownMenuTrigger
+				render={
+					<Button
+						type="button"
+						variant={customized ? "secondary" : "outline"}
+						size="icon"
+						aria-label={`Channels: ${summary}`}
+						className="shrink-0"
+						data-active={customized || undefined}
+						data-qa-id={qaId}
+					/>
+				}
 			>
-				<p className="text-muted-foreground text-xs font-semibold tracking-widest uppercase">
-					Choose a channel
-				</p>
-				<div className="flex flex-col">
+				<ListFilterIcon aria-hidden="true" />
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end" className="w-72" data-qa-id="environments-channel-chooser">
+				<DropdownMenuGroup>
+					<DropdownMenuLabel>Channels</DropdownMenuLabel>
 					{availableChannels.map((channel) => {
 						const presentation = getChannelPresentation(channel);
 						const selected = selectedChannels.includes(channel);
 						const gated = presentation.requiresSignIn && !signedIn;
 						return (
-							<button
+							<DropdownMenuCheckboxItem
 								key={channel}
-								type="button"
-								role="checkbox"
-								aria-checked={selected}
-								aria-label={presentation.title}
+								checked={selected}
+								closeOnClick={false}
+								onCheckedChange={() => (gated ? onRequestSignIn(channel) : onToggle(channel))}
 								data-qa-id={`environments-channel-option-${channel}`}
-								className="hover:bg-accent/50 focus-visible:ring-ring/50 flex items-start gap-3 rounded-lg p-2.5 text-left outline-none focus-visible:ring-3"
-								onClick={() => (gated ? onRequestSignIn(channel) : onToggle(channel))}
 							>
-								<span
-									aria-hidden="true"
-									className={cn(
-										"mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border-2 transition-colors",
-										selected
-											? "border-primary bg-primary text-primary-foreground"
-											: "border-muted-foreground/60",
-									)}
-								>
-									{selected ? <CheckIcon className="size-3" strokeWidth={3} /> : null}
-								</span>
 								<span className="flex min-w-0 flex-col gap-0.5">
-									<span className="flex items-center gap-2 text-sm font-semibold">
-										{presentation.title}
+									<span className="flex min-w-0 items-center gap-1.5">
+										<span className="truncate">{presentation.title}</span>
 										{presentation.badge ? (
-											<Badge variant="secondary" className="px-1.5 text-[0.65rem]">
+											<Badge variant="secondary" className="shrink-0">
 												{presentation.badge}
 											</Badge>
 										) : null}
 									</span>
-									<span className="text-muted-foreground text-sm leading-snug">
+									<span className="text-muted-foreground text-xs leading-snug">
 										{presentation.description}
 									</span>
 								</span>
-							</button>
+							</DropdownMenuCheckboxItem>
 						);
 					})}
-				</div>
-			</PopoverContent>
-		</Popover>
+				</DropdownMenuGroup>
+			</DropdownMenuContent>
+		</DropdownMenu>
 	);
 }

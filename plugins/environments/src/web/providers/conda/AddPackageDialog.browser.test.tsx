@@ -13,6 +13,7 @@ import {
 	type CondaPackage,
 	type CondaPackagesInstallInput,
 	type CondaPackagesInstallResult,
+	type CondaPackagesPreviewResult,
 	type CondaRepodataFindInput,
 	type CondaRepodataPackage,
 } from "../../../contracts/providers/conda.js";
@@ -54,6 +55,7 @@ function renderDialog(
 		find?: (input: CondaRepodataFindInput) => CondaRepodataPackage[];
 		truncated?: boolean;
 		install?: (input: CondaPackagesInstallInput) => Promise<CondaPackagesInstallResult>;
+		previewInstall?: () => Promise<CondaPackagesPreviewResult>;
 		installed?: CondaPackage[];
 		channels?: string[];
 		onClose?: () => void;
@@ -81,14 +83,16 @@ function renderDialog(
 				truncated: options.truncated ?? false,
 			}),
 			"conda.packages.install": install,
-			"conda.packages.previewInstall": async () => ({
-				upgraded: [],
-				downgraded: [],
-				added: [],
-				removed: [],
-				rebuilt: [],
-				nothingToDo: true,
-			}),
+			"conda.packages.previewInstall":
+				options.previewInstall ??
+				(async () => ({
+					upgraded: [],
+					downgraded: [],
+					added: [],
+					removed: [],
+					rebuilt: [],
+					nothingToDo: true,
+				})),
 		},
 		auth: options.auth ?? {},
 	});
@@ -122,7 +126,7 @@ describe("AddPackageDialog", () => {
 
 		await waitForRows(baseElement, 1);
 		// Initial search waits for prefixOptions so the channel filter is present.
-		expect(find.mock.calls[0]![0]).toMatchObject({ channels: ["conda-forge"], limit: 200 });
+		expect(find.mock.calls[0]![0]).toMatchObject({ channels: ["conda-forge"], limit: 50 });
 		expect(find.mock.calls[0]![0].query).toBeUndefined();
 
 		await userEvent.fill(screen.getByTestId("environments-conda-add-pkg-search"), "num");
@@ -137,40 +141,113 @@ describe("AddPackageDialog", () => {
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.fill(screen.getByTestId("environments-conda-add-pkg-search"), "nothing");
-		await expect.element(screen.getByText('No results for "nothing"')).toBeVisible();
+		await expect.element(screen.getByText("No results for “nothing”")).toBeVisible();
 	});
 
-	it("dedupes repodata rows by name and notes when results were truncated", async () => {
+	it("dedupes repodata rows by name", async () => {
 		const { baseElement } = renderDialog({
 			find: () => [pkg("numpy", ["2.1.0"]), pkg("numpy", ["2.0.0"]), pkg("pandas")],
-			truncated: true,
 		});
-		const screen = page.elementLocator(baseElement);
 
 		await waitForRows(baseElement, 2);
-		await expect.element(screen.getByText(/Showing the first 2 packages/)).toBeVisible();
 	});
 
 	it("selects a package into the sidebar and removes it again", async () => {
 		const { baseElement } = renderDialog();
 		const screen = page.elementLocator(baseElement);
 		await waitForRows(baseElement, 2);
+		const panel = screen.getByRole("complementary", { name: "Selected packages" });
+		await expect.element(panel).not.toBeInTheDocument();
 
 		await userEvent.click(screen.getByText("pandas", { exact: true }));
+		await expect.element(panel).toBeVisible();
 		await expect
 			.element(screen.getByTestId("environments-conda-add-pkg-selected-count"))
 			.toHaveTextContent("1");
 		expect(
 			await screen.getByTestId("environments-conda-add-pkg-install-btn").element().textContent,
-		).toContain("Install 1 Package");
+		).toContain("Install 1 package");
 
 		await userEvent.click(screen.getByRole("button", { name: "Remove pandas" }));
 		await expect
-			.element(screen.getByTestId("environments-conda-add-pkg-selected-count"))
-			.toHaveTextContent("0");
+			.element(screen.getByRole("complementary", { name: "Selected packages" }))
+			.not.toBeInTheDocument();
 		await expect
 			.element(screen.getByTestId("environments-conda-add-pkg-install-btn"))
 			.toBeDisabled();
+	});
+
+	it("lists the solver's other dependency changes by category and filters them", async () => {
+		const { baseElement } = renderDialog({
+			previewInstall: async () => ({
+				upgraded: [{ name: "libblas", fromVersion: "3.9.0", toVersion: "3.9.1", channel: "cf" }],
+				downgraded: [],
+				added: [
+					{ name: "pandas", fromVersion: null, toVersion: "1.0.0", channel: "cf" },
+					{ name: "libgfortran", fromVersion: null, toVersion: "5.0.0", channel: "cf" },
+				],
+				removed: [],
+				rebuilt: [],
+				nothingToDo: false,
+			}),
+		});
+		const screen = page.elementLocator(baseElement);
+		await waitForRows(baseElement, 2);
+
+		await userEvent.click(screen.getByText("pandas", { exact: true }));
+
+		const changes = screen.getByRole("region", { name: "Dependency changes" });
+		const list = changes.getByTestId("environments-conda-add-pkg-preview-list");
+		await expect.element(list, { timeout: 5_000 }).toBeVisible();
+		await expect
+			.element(changes.getByTestId("environments-conda-add-pkg-preview-count"))
+			.toHaveTextContent("2");
+		const text = list.element().textContent ?? "";
+		expect(text).toContain("Upgradedlibblas3.9.03.9.1");
+		expect(text).toContain("Addedlibgfortran5.0.0");
+		// The user's own pick is not a dependency change.
+		expect(list.element().textContent).not.toContain("pandas");
+
+		const filter = changes.getByRole("button", { name: "Filter dependency changes: All" });
+		await userEvent.click(filter);
+		await userEvent.click(page.getByRole("menuitemradio", { name: /Added/ }));
+
+		await vi.waitFor(() => {
+			expect(list.element().textContent).not.toContain("libblas");
+		});
+		expect(list.element().textContent).toContain("libgfortran");
+		await expect
+			.element(changes.getByRole("button", { name: "Filter dependency changes: Added" }))
+			.toHaveAttribute("data-active");
+	});
+
+	it("retries a failed dependency preview from the solver error card", async () => {
+		let attempt = 0;
+		const previewInstall = vi.fn(async (): Promise<CondaPackagesPreviewResult> => {
+			attempt += 1;
+			if (attempt === 1) throw new Error("SOLVE_FAILED: conflict");
+			return {
+				upgraded: [],
+				downgraded: [],
+				added: [],
+				removed: [],
+				rebuilt: [],
+				nothingToDo: true,
+			};
+		});
+		const { baseElement } = renderDialog({ previewInstall });
+		const screen = page.elementLocator(baseElement);
+		await waitForRows(baseElement, 2);
+
+		await userEvent.click(screen.getByText("pandas", { exact: true }));
+		const card = screen.getByTestId("environments-conda-add-pkg-preview-error");
+		await expect.element(card, { timeout: 5_000 }).toBeVisible();
+		await userEvent.click(card.getByRole("button", { name: "Try again" }));
+
+		await vi.waitFor(() => {
+			expect(previewInstall).toHaveBeenCalledTimes(2);
+		});
+		await expect.element(screen.getByText("No other packages change.")).toBeVisible();
 	});
 
 	it("installs pinned specs for the chosen versions and closes on success", async () => {
@@ -243,23 +320,27 @@ describe("AddPackageDialog", () => {
 
 		numpyRow.click();
 		await expect
-			.element(screen.getByTestId("environments-conda-add-pkg-selected-count"))
-			.toHaveTextContent("0");
+			.element(screen.getByRole("complementary", { name: "Selected packages" }))
+			.not.toBeInTheDocument();
 	});
 
-	it("paginates results 20 per page", async () => {
-		const many = Array.from({ length: 25 }, (_, i) => pkg(`pkg-${String(i).padStart(2, "0")}`));
-		const { baseElement } = renderDialog({ find: () => many });
+	it("grows the result list on scroll instead of paginating", async () => {
+		const many = Array.from({ length: 80 }, (_, i) => pkg(`pkg-${String(i).padStart(2, "0")}`));
+		const find = vi.fn((input: CondaRepodataFindInput) => many.slice(0, input.limit));
+		const { baseElement } = renderDialog({ find, truncated: true });
 		const screen = page.elementLocator(baseElement);
 
-		await waitForRows(baseElement, 20);
-		await expect.element(screen.getByText("1–20 of 25")).toBeVisible();
+		await waitForRows(baseElement, 50);
+		const scroller = baseElement.querySelector(
+			'[data-qa-id="environments-conda-add-pkg-results"]',
+		)! as HTMLElement;
+		scroller.scrollTop = scroller.scrollHeight;
 
-		await userEvent.click(screen.getByRole("button", { name: "Next page" }));
-		await waitForRows(baseElement, 5);
-		await expect.element(screen.getByText("21–25 of 25")).toBeVisible();
-		await expect.element(screen.getByText("pkg-24", { exact: true })).toBeVisible();
-		await expect.element(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
+		await expect.element(screen.getByText("pkg-79", { exact: true })).toBeInTheDocument();
+		expect(find.mock.calls.map(([input]) => input.limit)).toEqual(
+			expect.arrayContaining([50, 100]),
+		);
+		expect(screen.getByRole("button", { name: "Next page" }).elements()).toHaveLength(0);
 	});
 
 	it("keeps the dialog open and shows the friendly error when install fails", async () => {
@@ -369,20 +450,17 @@ describe("AddPackageDialog", () => {
 		const screen = page.elementLocator(baseElement);
 		await waitForRows(baseElement, 1);
 
-		expect(
-			await screen.getByTestId("environments-conda-add-pkg-channels-btn").element().textContent,
-		).toContain("All channels");
-		await userEvent.click(screen.getByTestId("environments-conda-add-pkg-channels-btn"));
+		const trigger = screen.getByTestId("environments-conda-add-pkg-channels-btn");
+		await expect.element(trigger).toHaveAccessibleName("Channels: All channels");
+		await expect.element(trigger).not.toHaveAttribute("data-active");
+		await userEvent.click(trigger);
 		await expect.element(page.getByTestId("environments-channel-chooser")).toBeVisible();
 
 		// Toggle Anaconda off — the search must re-run with only conda-forge.
 		await userEvent.click(page.getByTestId("environments-channel-option-defaults"));
 
-		await vi.waitFor(async () => {
-			expect(
-				await screen.getByTestId("environments-conda-add-pkg-channels-btn").element().textContent,
-			).toContain("1 channel");
-		});
+		await expect.element(trigger).toHaveAccessibleName("Channels: 1 channel");
+		await expect.element(trigger).toHaveAttribute("data-active");
 		await vi.waitFor(() => {
 			expect(find.mock.calls.at(-1)![0].channels).toEqual(["conda-forge"]);
 		});
@@ -396,9 +474,10 @@ describe("AddPackageDialog", () => {
 
 		// Anonymous session drops the Anaconda channel from the seeded selection.
 		expect(find.mock.calls[0]![0].channels).toEqual(["conda-forge"]);
-		expect(
-			await screen.getByTestId("environments-conda-add-pkg-channels-btn").element().textContent,
-		).toContain("1 channel");
+		const trigger = screen.getByTestId("environments-conda-add-pkg-channels-btn");
+		await expect.element(trigger).toHaveAccessibleName("Channels: 1 channel");
+		// The signed-out default is not a user customization.
+		await expect.element(trigger).not.toHaveAttribute("data-active");
 	});
 
 	it("gates the Anaconda channel behind the sign-in modal while signed out", async () => {

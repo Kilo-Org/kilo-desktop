@@ -27,6 +27,7 @@
 		"@modelcontextprotocol/core": "^2.0.0",
 		"@modelcontextprotocol/ext-apps": "^2.0.0",
 		"@tanstack/react-query": "^5.101.4",
+		"@tanstack/react-virtual": "^3.14.9",
 		"react": "^19.2.8",
 		"react-dom": "^19.2.8",
 		"vscode-jsonrpc": "^9.0.1",

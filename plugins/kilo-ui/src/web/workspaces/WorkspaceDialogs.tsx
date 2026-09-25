@@ -12,6 +12,7 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@kilo-desktop/ui/components/alert-dialog";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Dialog,
@@ -20,6 +21,14 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@kilo-desktop/ui/components/dialog";
+import {
+	Empty,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyMedia,
+	EmptyTitle,
+} from "@kilo-desktop/ui/components/empty";
+import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
 import { FieldError } from "@kilo-desktop/ui/components/field";
 import type { Workspace, WorkspacesService } from "../../contracts/workspaces/schemas.js";
 import type { SDK } from "@kilo-desktop/feature-sdk";
@@ -77,44 +86,54 @@ function ManageWorkspacesDialog({
 				<DialogHeader>
 					<DialogTitle>Manage workspaces</DialogTitle>
 				</DialogHeader>
-				<div className="flex max-h-80 flex-col gap-1 overflow-y-auto">
-					{workspaces.length === 0 ? (
-						<p className="text-muted-foreground py-6 text-center text-sm">No workspaces yet.</p>
-					) : (
-						workspaces.map((workspace) => (
-							<div
-								key={workspace.id}
-								className="border-border flex items-center gap-2 rounded-lg border px-3 py-2"
-							>
-								<FolderIcon
-									className="text-muted-foreground size-4 shrink-0"
-									style={workspaceGlyphStyle(workspace.color)}
-								/>
-								<span className="min-w-0 flex-1 truncate text-sm font-medium">
-									{workspace.name}
-								</span>
-								<Button
-									type="button"
-									variant="ghost"
-									size="icon-sm"
-									aria-label={`Edit ${workspace.name}`}
-									onClick={() => onDialogChange({ mode: "edit", workspace })}
-								>
-									<PencilIcon />
-								</Button>
-								<Button
-									type="button"
-									variant="ghost"
-									size="icon-sm"
-									aria-label={`Delete ${workspace.name}`}
-									onClick={() => onDialogChange({ mode: "delete", workspace })}
-								>
-									<Trash2Icon />
-								</Button>
-							</div>
-						))
-					)}
-				</div>
+				{workspaces.length === 0 ? (
+					<Empty className="border">
+						<EmptyHeader>
+							<EmptyMedia variant="icon">
+								<FolderIcon aria-hidden="true" />
+							</EmptyMedia>
+							<EmptyTitle>No workspaces yet</EmptyTitle>
+							<EmptyDescription>
+								Create a workspace to group folders for your chats.
+							</EmptyDescription>
+						</EmptyHeader>
+					</Empty>
+				) : (
+					<ul className="border-border bg-card divide-border scroll-fade-y flex max-h-80 flex-col divide-y overflow-y-auto rounded-lg border">
+						{workspaces.map((workspace) => (
+							<li key={workspace.id}>
+								<SummaryCard.Row>
+									<SummaryCard.Icon>
+										<FolderIcon style={workspaceGlyphStyle(workspace.color)} aria-hidden="true" />
+									</SummaryCard.Icon>
+									<SummaryCard.Content>
+										<SummaryCard.Title>{workspace.name}</SummaryCard.Title>
+									</SummaryCard.Content>
+									<SummaryCard.Actions>
+										<Button
+											type="button"
+											variant="ghost"
+											size="icon-sm"
+											aria-label={`Edit ${workspace.name}`}
+											onClick={() => onDialogChange({ mode: "edit", workspace })}
+										>
+											<PencilIcon />
+										</Button>
+										<Button
+											type="button"
+											variant="ghost"
+											size="icon-sm"
+											aria-label={`Delete ${workspace.name}`}
+											onClick={() => onDialogChange({ mode: "delete", workspace })}
+										>
+											<Trash2Icon />
+										</Button>
+									</SummaryCard.Actions>
+								</SummaryCard.Row>
+							</li>
+						))}
+					</ul>
+				)}
 				<DialogFooter>
 					<Button type="button" variant="outline" onClick={onClose}>
 						Close
@@ -185,6 +204,7 @@ function WorkspaceFormDialog({
 							Cancel
 						</Button>
 						<Button type="submit" disabled={mutation.isPending || form.folders.length === 0}>
+							{mutation.isPending ? <Spinner data-icon="inline-start" aria-hidden="true" /> : null}
 							{mutation.isPending ? "Saving…" : workspace ? "Save" : "Create workspace"}
 						</Button>
 					</DialogFooter>

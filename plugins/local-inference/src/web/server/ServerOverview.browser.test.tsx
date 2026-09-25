@@ -84,7 +84,7 @@ describe("Local model server overview", () => {
 				'curl -sS -X POST \'http://127.0.0.1:59632/v1/chat/completions\' -H \'Authorization: Bearer local-secret\' -H \'Content-Type: application/json\' -d \'{"model":"model-id","messages":[{"role":"user","content":"Hello!"}]}\'',
 			);
 
-		await expect.element(screen.getByRole("heading", { name: "Models" })).toBeVisible();
+		await expect.element(screen.getByRole("group", { name: "Models" })).toBeVisible();
 		await expect
 			.element(screen.getByText("Manage local models and configure how each one runs."))
 			.toBeVisible();
@@ -105,17 +105,17 @@ describe("Local model server overview", () => {
 		});
 		const screen = page.elementLocator(baseElement);
 
-		await expect.element(screen.getByRole("heading", { name: "Runtime" })).toBeVisible();
+		await expect.element(screen.getByRole("group", { name: "Runtime" })).toBeVisible();
 		await expect
 			.element(screen.getByRole("button", { name: "Server settings" }))
 			.not.toBeInTheDocument();
-		await expect.element(screen.getByLabelText("Server Port")).toHaveValue(8080);
+		await expect.element(screen.getByLabelText("Server port")).toHaveValue(8080);
 		const modelLoadMode = screen.getByRole("combobox", { name: "Models kept loaded" });
 		await expect.element(modelLoadMode.getByText("All models", { exact: true })).toBeVisible();
-		const lan = screen.getByRole("switch", { name: "Serve on Local Network" });
+		const lan = screen.getByRole("switch", { name: "Serve on local network" });
 		await expect.element(lan).toHaveAttribute("aria-checked", "false");
 
-		await screen.getByLabelText("Server Port").fill("9000");
+		await screen.getByLabelText("Server port").fill("9000");
 		await modelLoadMode.click();
 		await page.getByRole("option", { name: "One model" }).click();
 		await lan.click();
@@ -148,8 +148,8 @@ describe("Local model server overview", () => {
 describe("usageIndicatorClass", () => {
 	it("uses Unsloth's green, amber, and red usage thresholds", () => {
 		expect(usageIndicatorClass(69.9)).toBe("bg-primary-ink");
-		expect(usageIndicatorClass(70)).toBe("bg-amber-500");
-		expect(usageIndicatorClass(89.9)).toBe("bg-amber-500");
+		expect(usageIndicatorClass(70)).toBe("bg-warning");
+		expect(usageIndicatorClass(89.9)).toBe("bg-warning");
 		expect(usageIndicatorClass(90)).toBe("bg-destructive");
 	});
 });

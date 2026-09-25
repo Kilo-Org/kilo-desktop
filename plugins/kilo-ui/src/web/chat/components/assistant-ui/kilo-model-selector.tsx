@@ -58,12 +58,7 @@ import {
 	PopoverTitle,
 	PopoverTrigger,
 } from "@kilo-desktop/ui/components/popover";
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from "@kilo-desktop/ui/components/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 import { CommandItem } from "@kilo-desktop/ui/components/command";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 import { useSdk } from "@kilo-desktop/sdk-react";
@@ -112,8 +107,8 @@ const SIGN_IN_ITEM_ID = "kilo-sign-in";
 const LOCAL_MODEL_SERVER_SETTINGS_PATH = "/settings/local-model-server";
 
 /** Approximate row heights (title, optional cost line, padding); measureElement corrects drift. */
-const MODEL_ROW_ESTIMATE_PX = 32;
-const MODEL_ROW_WITH_COST_ESTIMATE_PX = 50;
+const MODEL_ROW_ESTIMATE_PX = 28;
+const MODEL_ROW_WITH_COST_ESTIMATE_PX = 46;
 const MODEL_LIST_OVERSCAN = 12;
 const KILO_MODEL_PAGE_BASE_URL = "https://kilo.ai/models/";
 const MODEL_SELECTOR_COLLISION_AVOIDANCE = {
@@ -129,22 +124,13 @@ function suppressCmdkScrollIntoView(node: HTMLElement | null) {
 	}
 }
 
-const THIN_SCROLLBAR_COLOR = "color-mix(in srgb, var(--foreground) 35%, transparent) transparent";
-
 type ScrollEdges = { top: boolean; bottom: boolean };
 
-function scrollEdgeMask({ top, bottom }: ScrollEdges): string {
-	if (top && bottom) {
-		return "linear-gradient(to bottom, transparent, black 1rem, black calc(100% - 1rem), transparent)";
-	}
-	if (top) return "linear-gradient(to bottom, transparent, black 1rem)";
-	if (bottom) return "linear-gradient(to bottom, black calc(100% - 1rem), transparent)";
-	return "none";
-}
-
 /**
- * Tracks whether a scroll viewport has hidden content above/below. `contentKey`
- * re-attaches the observer when the viewport's first child is swapped.
+ * Tracks whether a scroll viewport has hidden content above/below, to drive
+ * scroll arrows (the fade itself is the CSS `scroll-fade-y` utility).
+ * `contentKey` re-attaches the observer when the viewport's first child is
+ * swapped.
  */
 function useScrollEdges(viewportRef: RefObject<HTMLElement | null>, contentKey?: unknown) {
 	const [edges, setEdges] = useState<ScrollEdges>({ top: false, bottom: false });
@@ -186,7 +172,7 @@ function isListNavigationKey(key: string): key is ListNavigationKey {
 
 type CatalogModelSection = {
 	id: "auto" | "recommended" | "kilo";
-	label: "Auto Models" | "Recommended" | "Kilo Gateway";
+	label: "Auto models" | "Recommended" | "Kilo Gateway";
 	models: readonly KiloCatalogModel[];
 };
 
@@ -245,7 +231,7 @@ function kiloGatewayModelSections(models: readonly KiloCatalogModel[]): CatalogM
 	remaining.sort((left, right) => left.name.localeCompare(right.name));
 
 	return [
-		...(auto.length > 0 ? [{ id: "auto", label: "Auto Models", models: auto } as const] : []),
+		...(auto.length > 0 ? [{ id: "auto", label: "Auto models", models: auto } as const] : []),
 		...(recommended.length > 0
 			? [{ id: "recommended", label: "Recommended", models: recommended } as const]
 			: []),
@@ -265,22 +251,22 @@ const COST_INDICATORS = {
 	low: {
 		tooltip: "Cost: Low",
 		dollars: "$",
-		marker: "bg-emerald-500",
+		marker: "bg-success",
 	},
 	medium: {
 		tooltip: "Cost: Medium",
 		dollars: "$$",
-		marker: "bg-orange-500",
+		marker: "bg-warning",
 	},
 	high: {
 		tooltip: "Cost: High",
 		dollars: "$$$",
-		marker: "bg-red-500",
+		marker: "bg-destructive",
 	},
 	"very-high": {
 		tooltip: "Cost: Very High",
 		dollars: "$$$+",
-		marker: "bg-red-500",
+		marker: "bg-destructive",
 	},
 } as const satisfies Record<ModelCostTier, { tooltip: string; dollars: string; marker: string }>;
 
@@ -289,7 +275,7 @@ const GATEWAY_COST_OPTIONS: readonly { id: GatewayCostFilter; label: string }[] 
 	{ id: "low", label: "Low" },
 	{ id: "medium", label: "Medium" },
 	{ id: "high", label: "High" },
-	{ id: "very-high", label: "Very High" },
+	{ id: "very-high", label: "Very high" },
 	{ id: "auto", label: "Auto" },
 ];
 
@@ -657,8 +643,8 @@ export const KiloModelSelector: FC<{
 						showLoadingPlaceholder ? (
 							<>
 								<span className="flex min-w-0 items-center gap-1.5" aria-hidden>
-									<Skeleton className="bg-muted-foreground/25 size-3.5 shrink-0 rounded-sm" />
-									<Skeleton className="bg-muted-foreground/25 h-3 w-24" />
+									<Skeleton className="size-3.5 shrink-0 rounded-sm" />
+									<Skeleton className="h-3 w-24" />
 								</span>
 								<span className="sr-only">Loading models…</span>
 							</>
@@ -727,12 +713,12 @@ export const KiloModelSelector: FC<{
 							onSelectRail={selectRail}
 						/>
 					) : null}
-					<div className="bg-muted/40 flex min-h-0 min-w-0 flex-1 flex-col">
+					<div className="flex min-h-0 min-w-0 flex-1 flex-col">
 						<div className="px-2 pt-2">
-							<div className="border-foreground/15 focus-within:border-ring border-b pb-2 transition-colors">
-								<div className="flex h-7 items-center gap-1 [&_[data-slot=command-input-wrapper]]:h-7 [&_[data-slot=command-input-wrapper]]:min-w-0 [&_[data-slot=command-input-wrapper]]:flex-1 [&_[data-slot=command-input-wrapper]]:gap-1.5 [&_[data-slot=command-input-wrapper]]:px-1 [&_[data-slot=command-input-wrapper]]:py-0">
+							<div className="border-b pb-2">
+								<div className="flex h-7 items-center gap-1 [&_[data-slot=command-input-wrapper]]:m-0 [&_[data-slot=command-input-wrapper]]:h-7 [&_[data-slot=command-input-wrapper]]:min-w-0 [&_[data-slot=command-input-wrapper]]:flex-1 [&_[data-slot=command-input-wrapper]]:gap-1.5 [&_[data-slot=command-input-wrapper]]:border-0 [&_[data-slot=command-input-wrapper]]:px-1 [&_[data-slot=command-input-wrapper]]:py-0">
 									<ModelSelectorSearch
-										placeholder="Search models..."
+										placeholder="Search models"
 										value={searchQuery}
 										onValueChange={(next) => {
 											setSearchQuery(next);
@@ -847,7 +833,7 @@ const GatewayModelFilter: FC<{
 						type="button"
 						variant="ghost"
 						size="icon-xs"
-						className="text-muted-foreground data-active:text-primary-soft-foreground data-active:hover:text-primary-soft-foreground data-active:data-open:text-primary-soft-foreground"
+						className="data-active:text-primary-soft-foreground data-active:hover:text-primary-soft-foreground data-active:data-open:text-primary-soft-foreground"
 						data-active={activeCount > 0 || undefined}
 						aria-label={activeCount ? `Filter models, ${activeCount} active` : "Filter models"}
 						data-qa-id="kilo-model-filter-trigger"
@@ -906,10 +892,9 @@ const GatewayModelFilter: FC<{
 							</DropdownMenuSubTrigger>
 							<DropdownMenuSubContent
 								className={cn(
-									"max-h-72 w-48 overflow-y-auto p-0 [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-foreground/35",
+									"max-h-72 w-48 overflow-y-auto p-0",
 									publishers.length > 10 && "overflow-y-scroll",
 								)}
-								style={{ scrollbarColor: THIN_SCROLLBAR_COLOR }}
 								data-qa-id="kilo-model-filter-publisher-content"
 								onKeyDown={(event) => event.stopPropagation()}
 							>
@@ -990,15 +975,15 @@ const ProviderRailSkeleton: FC = () => {
 		<div className="bg-background/40 w-11 shrink-0" aria-hidden>
 			<div className="relative flex min-h-full flex-col gap-1 p-1">
 				<div className="bg-foreground/5 flex aspect-square w-full items-center justify-center rounded-md">
-					<Skeleton className="bg-muted-foreground/25 size-5 rounded-sm" />
+					<Skeleton className="size-5 rounded-sm" />
 				</div>
-				<div className="border-foreground/15 border-b" />
+				<div className="border-b" />
 				{Array.from({ length: MODEL_CATALOG_SKELETON_RAIL_SLOTS }, (_, index) => (
 					<div
 						key={index}
 						className="flex aspect-square w-full items-center justify-center rounded-md"
 					>
-						<Skeleton className="bg-muted-foreground/25 size-5 rounded-sm" />
+						<Skeleton className="size-5 rounded-sm" />
 					</div>
 				))}
 			</div>
@@ -1012,19 +997,13 @@ const ModelListSkeleton: FC = () => {
 			{Array.from({ length: MODEL_CATALOG_SKELETON_ROWS }, (_, index) => (
 				<div key={index} className="flex items-start gap-2 rounded-md px-2 py-2">
 					<span className="flex h-5 shrink-0 items-center">
-						<Skeleton className="bg-muted-foreground/25 size-3.5 rounded-sm" />
+						<Skeleton className="size-3.5 rounded-sm" />
 					</span>
 					<span className="flex min-w-0 flex-1 flex-col gap-1.5">
-						<Skeleton
-							className="bg-muted-foreground/25 h-3.5"
-							style={{ width: MODEL_LIST_SKELETON_NAME_WIDTHS[index] }}
-						/>
-						<Skeleton
-							className="bg-muted-foreground/20 h-3"
-							style={{ width: MODEL_LIST_SKELETON_DESC_WIDTHS[index] }}
-						/>
+						<Skeleton className="h-3.5" style={{ width: MODEL_LIST_SKELETON_NAME_WIDTHS[index] }} />
+						<Skeleton className="h-3" style={{ width: MODEL_LIST_SKELETON_DESC_WIDTHS[index] }} />
 					</span>
-					<Skeleton className="bg-muted-foreground/20 mt-0.5 size-3.5 shrink-0 rounded-sm" />
+					<Skeleton className="mt-0.5 size-3.5 shrink-0 rounded-sm" />
 				</div>
 			))}
 		</div>
@@ -1069,18 +1048,12 @@ const VirtualizedCatalogList: FC<{
 	);
 	const listEntriesRef = useRef(listEntries);
 	listEntriesRef.current = listEntries;
-	const { edges: scrollFades, update: updateScrollFades } = useScrollEdges(
-		listRef,
-		listEntries.length,
-	);
-	const scrollMask = scrollEdgeMask(scrollFades);
-
 	const virtualizer = useVirtualizer({
 		count: listEntries.length,
 		getScrollElement: () => listRef.current,
 		estimateSize: (index) => {
 			const entry = listEntries[index];
-			if (entry?.kind === "section") return index === 0 ? 20 : 24;
+			if (entry?.kind === "section") return index === 0 ? 24 : 28;
 			return entry && showsCostIndicator(entry.model)
 				? MODEL_ROW_WITH_COST_ESTIMATE_PX
 				: MODEL_ROW_ESTIMATE_PX;
@@ -1117,20 +1090,12 @@ const VirtualizedCatalogList: FC<{
 			ref={listRef}
 			showScrollbar
 			className={cn(
-				"min-h-0 flex-1 px-1 py-1 [&::-webkit-scrollbar-thumb]:bg-foreground/35",
+				"scroll-fade-y min-h-0 flex-1 px-1 py-1",
 				models.length === 0 && "[&_[cmdk-list-sizer]]:h-full",
 			)}
-			style={{
-				maskImage: scrollMask,
-				WebkitMaskImage: scrollMask,
-				scrollbarColor: THIN_SCROLLBAR_COLOR,
-			}}
-			data-scroll-fade-top={scrollFades.top || undefined}
-			data-scroll-fade-bottom={scrollFades.bottom || undefined}
 			data-qa-id="kilo-model-selector-list"
 			onScroll={() => {
 				isListScrollingRef.current = true;
-				updateScrollFades();
 			}}
 		>
 			{showSignInItem ? <GatewaySignInItem onSignIn={onSignIn} /> : null}
@@ -1161,7 +1126,8 @@ const VirtualizedCatalogList: FC<{
 								>
 									<div
 										className={cn(
-											"text-muted-foreground/75 mx-1 px-1 text-[11px] font-medium",
+											// Same inset and type as CommandGroup headings, so labels line up with items.
+											"text-muted-foreground px-1.5 pb-1 text-xs font-medium",
 											virtualRow.index === 0 ? "pt-1" : "pt-2",
 										)}
 										data-qa-id={`kilo-model-section-${entry.id}`}
@@ -1203,22 +1169,19 @@ const VirtualizedCatalogList: FC<{
 
 const LocalModelServerEmptyState: FC<{ onAddModel: () => void }> = ({ onAddModel }) => {
 	return (
-		<Empty className="gap-2 rounded-none p-0">
-			<EmptyHeader className="max-w-72 gap-1">
-				<EmptyMedia
-					variant="icon"
-					className="bg-primary-soft text-primary-soft-foreground ring-primary/15 mb-0 size-10 -translate-y-2 rounded-xl ring-1"
-				>
-					<ServerIcon className="size-5" aria-hidden="true" />
+		<Empty>
+			<EmptyHeader>
+				<EmptyMedia variant="icon">
+					<ServerIcon aria-hidden="true" />
 				</EmptyMedia>
 				<EmptyTitle>Run AI on your device</EmptyTitle>
-				<EmptyDescription className="text-xs leading-normal">
+				<EmptyDescription>
 					Private local inference that keeps your prompts, outputs, and data under your control.
 				</EmptyDescription>
 			</EmptyHeader>
-			<EmptyContent className="flex-row justify-center gap-1">
-				<Button type="button" size="xs" onClick={onAddModel}>
-					<PlusIcon className="size-3.5" aria-hidden="true" />
+			<EmptyContent>
+				<Button type="button" size="sm" onClick={onAddModel}>
+					<PlusIcon data-icon="inline-start" aria-hidden="true" />
 					Add a local model
 				</Button>
 			</EmptyContent>
@@ -1229,29 +1192,27 @@ const LocalModelServerEmptyState: FC<{ onAddModel: () => void }> = ({ onAddModel
 const LocalModelServerSettingsButton: FC<{ onClick: () => void }> = ({ onClick }) => {
 	const label = "Server settings";
 	return (
-		<TooltipProvider delay={0}>
-			<Tooltip>
-				<TooltipTrigger
-					render={
-						<Button
-							type="button"
-							variant="ghost"
-							size="sm"
-							aria-label={label}
-							data-qa-id="kilo-local-model-settings"
-							className="px-2"
-							onClick={onClick}
-							onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {
-								event.stopPropagation();
-							}}
-						/>
-					}
-				>
-					<SettingsIcon className="size-3.5" aria-hidden="true" />
-				</TooltipTrigger>
-				<TooltipContent side="bottom">{label}</TooltipContent>
-			</Tooltip>
-		</TooltipProvider>
+		<Tooltip>
+			<TooltipTrigger
+				render={
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						aria-label={label}
+						data-qa-id="kilo-local-model-settings"
+						className="px-2"
+						onClick={onClick}
+						onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {
+							event.stopPropagation();
+						}}
+					/>
+				}
+			>
+				<SettingsIcon className="size-3.5" aria-hidden="true" />
+			</TooltipTrigger>
+			<TooltipContent side="bottom">{label}</TooltipContent>
+		</Tooltip>
 	);
 };
 
@@ -1271,96 +1232,95 @@ const ProviderRail: FC<{
 		});
 	}, []);
 
-	const scrollMask = scrollEdgeMask(scrollHints);
-
 	return (
-		<TooltipProvider delay={0}>
-			<div className="bg-background/40 relative w-11 shrink-0 overflow-hidden">
-				<div
-					ref={scrollRef}
-					className="h-full [scrollbar-width:none] overflow-y-auto overscroll-contain [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-					style={{ maskImage: scrollMask, WebkitMaskImage: scrollMask }}
-					data-qa-id="kilo-model-selector-rail"
-					onScroll={updateScrollHints}
-				>
-					<div className="relative flex min-h-full flex-col gap-1 p-1">
-						<RailButton
-							label="Favorites"
-							selected={selectedRail === "favorites"}
-							onSelect={() => {
-								onSelectRail("favorites");
-							}}
-							data-qa-id="kilo-model-selector-rail-favorites"
-						>
-							<StarIcon className="size-5 shrink-0 fill-current" aria-hidden />
-						</RailButton>
-						<div className="border-foreground/15 border-b" aria-hidden />
-						{providers.map((provider) => {
-							const isSelected = provider.id === selectedRail;
-							const isLocalProvider = provider.id === LOCAL_MODEL_SERVER_PROVIDER_ID;
-							const isSelectable = provider.connected || isLocalProvider;
-							const label = provider.name;
-							return (
-								<RailButton
-									key={provider.id}
-									label={isSelectable ? label : `${label} — not connected`}
-									selected={isSelected}
-									disabled={!isSelectable}
-									onSelect={() => {
-										onSelectRail(provider.id);
-									}}
-									data-qa-id={`kilo-model-selector-rail-${provider.id}`}
-								>
-									<ProviderIcon
-										provider={provider.id}
-										variant={isSelected ? "color" : "mono"}
-										size={20}
-										fallbackLabel={label}
-										className="size-5"
-									/>
-								</RailButton>
-							);
-						})}
-					</div>
+		<div className="bg-background/40 relative w-11 shrink-0 overflow-hidden">
+			<div
+				ref={scrollRef}
+				className="no-scrollbar scroll-fade-y h-full overflow-y-auto overscroll-contain"
+				data-qa-id="kilo-model-selector-rail"
+				onScroll={updateScrollHints}
+			>
+				<div className="relative flex min-h-full flex-col gap-1 p-1">
+					<RailButton
+						label="Favorites"
+						selected={selectedRail === "favorites"}
+						onSelect={() => {
+							onSelectRail("favorites");
+						}}
+						data-qa-id="kilo-model-selector-rail-favorites"
+					>
+						<StarIcon className="size-5 shrink-0 fill-current" aria-hidden />
+					</RailButton>
+					<div className="border-b" aria-hidden />
+					{providers.map((provider) => {
+						const isSelected = provider.id === selectedRail;
+						const isLocalProvider = provider.id === LOCAL_MODEL_SERVER_PROVIDER_ID;
+						const isSelectable = provider.connected || isLocalProvider;
+						const label = provider.name;
+						return (
+							<RailButton
+								key={provider.id}
+								label={isSelectable ? label : `${label} — not connected`}
+								selected={isSelected}
+								disabled={!isSelectable}
+								onSelect={() => {
+									onSelectRail(provider.id);
+								}}
+								data-qa-id={`kilo-model-selector-rail-${provider.id}`}
+							>
+								<ProviderIcon
+									provider={provider.id}
+									variant={isSelected ? "color" : "mono"}
+									size={20}
+									fallbackLabel={label}
+									className="size-5"
+								/>
+							</RailButton>
+						);
+					})}
 				</div>
-				{scrollHints.top ? (
-					<div
-						className="pointer-events-none absolute inset-x-0 top-0 z-10 flex h-8 items-start justify-center pt-1"
-						data-qa-id="kilo-model-selector-rail-more-above"
-					>
-						<Button
-							type="button"
-							variant="outline"
-							size="icon-xs"
-							className="pointer-events-auto size-5 rounded-full shadow-sm"
-							aria-label="Scroll providers up"
-							onClick={() => scrollProviders(-1)}
-							onKeyDown={(event) => event.stopPropagation()}
-						>
-							<ChevronUpIcon className="size-4 stroke-[2.5]" aria-hidden="true" />
-						</Button>
-					</div>
-				) : null}
-				{scrollHints.bottom ? (
-					<div
-						className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex h-8 items-end justify-center pb-1"
-						data-qa-id="kilo-model-selector-rail-more-below"
-					>
-						<Button
-							type="button"
-							variant="outline"
-							size="icon-xs"
-							className="pointer-events-auto size-5 rounded-full shadow-sm"
-							aria-label="Scroll providers down"
-							onClick={() => scrollProviders(1)}
-							onKeyDown={(event) => event.stopPropagation()}
-						>
-							<ChevronDownIcon className="size-4 stroke-[2.5]" aria-hidden="true" />
-						</Button>
-					</div>
-				) : null}
 			</div>
-		</TooltipProvider>
+			{scrollHints.top ? (
+				<div
+					className="absolute inset-x-0 top-0 z-10 h-6"
+					data-qa-id="kilo-model-selector-rail-more-above"
+				>
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon-xs"
+						// Same edge strip as the chat tab strip's scroll arrows, filled with
+						// the rail's own surface (background/40 over the popover).
+						className="size-full rounded-none border-0 bg-[color-mix(in_oklab,var(--background)_40%,var(--popover))] hover:bg-[color-mix(in_oklab,var(--background)_40%,var(--popover))] active:not-aria-[haspopup]:translate-y-0"
+						aria-label="Scroll providers up"
+						onClick={() => scrollProviders(-1)}
+						onKeyDown={(event) => event.stopPropagation()}
+					>
+						<ChevronUpIcon className="size-4" aria-hidden="true" />
+					</Button>
+				</div>
+			) : null}
+			{scrollHints.bottom ? (
+				<div
+					className="absolute inset-x-0 bottom-0 z-10 h-6"
+					data-qa-id="kilo-model-selector-rail-more-below"
+				>
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon-xs"
+						// Same edge strip as the chat tab strip's scroll arrows, filled with
+						// the rail's own surface (background/40 over the popover).
+						className="size-full rounded-none border-0 bg-[color-mix(in_oklab,var(--background)_40%,var(--popover))] hover:bg-[color-mix(in_oklab,var(--background)_40%,var(--popover))] active:not-aria-[haspopup]:translate-y-0"
+						aria-label="Scroll providers down"
+						onClick={() => scrollProviders(1)}
+						onKeyDown={(event) => event.stopPropagation()}
+					>
+						<ChevronDownIcon className="size-4" aria-hidden="true" />
+					</Button>
+				</div>
+			) : null}
+		</div>
 	);
 };
 
@@ -1383,8 +1343,8 @@ const RailButton: FC<{
 						disabled={disabled}
 						data-qa-id={qaId}
 						className={cn(
-							"relative isolate flex aspect-square w-full cursor-pointer items-center justify-center rounded-md transition-colors hover:bg-foreground/5 focus-visible:bg-foreground/5 focus-visible:outline-none",
-							selected && "bg-foreground/5 text-primary-soft-foreground",
+							"relative isolate flex aspect-square w-full cursor-pointer items-center justify-center rounded-md transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none",
+							selected && "bg-muted text-primary-soft-foreground",
 							disabled && "cursor-not-allowed opacity-50 hover:bg-transparent",
 						)}
 						onClick={() => {
@@ -1425,17 +1385,18 @@ const CatalogModelItem: FC<{
 		<ModelSelectorItem
 			model={model}
 			showCheck={false}
-			className={cn(
-				"group/model-item rounded-md py-1.5 ps-2 pe-2",
-				isCurrent && "bg-foreground/5 data-selected:bg-foreground/5",
-			)}
+			className="group/model-item"
 			data-current={isCurrent || undefined}
 			data-qa-id={`kilo-model-option-${model.id}`}
 			ref={suppressCmdkScrollIntoView}
 		>
 			{showProviderIcon ? (
 				<span
-					className="flex h-5 shrink-0 items-center [&_svg]:size-3.5"
+					className={cn(
+						"flex h-5 shrink-0 items-center [&_svg]:size-3.5",
+						// Two-line rows: keep the icon on the name line, not the centre.
+						showsCostIndicator(model) && "self-start",
+					)}
 					data-qa-id={`kilo-model-option-provider-${model.id}`}
 				>
 					<ProviderIcon
@@ -1474,8 +1435,8 @@ const CatalogModelItem: FC<{
 								size="icon-xs"
 								variant="ghost"
 								className={cn(
-									"text-muted-foreground/70 size-5 shrink-0 opacity-64 transition-[color,opacity] hover:text-foreground hover:opacity-100 group-hover/model-item:opacity-100",
-									isFavorite && "text-foreground opacity-100",
+									"shrink-0 opacity-64 transition-opacity hover:opacity-100 group-hover/model-item:opacity-100",
+									isFavorite && "opacity-100",
 								)}
 								aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
 								data-qa-id={`kilo-model-favorite-${model.id}`}
@@ -1545,8 +1506,7 @@ function primaryModelMetric(model: KiloCatalogModel): { label: string; value: st
 
 const EnkryptRiskIndicator: FC<{ value: number }> = ({ value }) => {
 	const display = value.toFixed(1);
-	const marker =
-		value < 100 / 3 ? "bg-emerald-500" : value < 200 / 3 ? "bg-amber-500" : "bg-red-500";
+	const marker = value < 100 / 3 ? "bg-success" : value < 200 / 3 ? "bg-warning" : "bg-destructive";
 	return (
 		<div
 			role="meter"
@@ -1621,7 +1581,6 @@ const ModelInfoPopover: FC<{ model: KiloCatalogModel }> = ({ model }) => {
 						type="button"
 						size="icon-xs"
 						variant="ghost"
-						className="text-muted-foreground/70 hover:text-foreground size-5"
 						aria-label={`Information about ${model.name}`}
 						data-qa-id={`kilo-model-info-${model.id}`}
 						onClick={(event: MouseEvent<HTMLButtonElement>) => event.stopPropagation()}
@@ -1675,7 +1634,7 @@ const ModelInfoPopover: FC<{ model: KiloCatalogModel }> = ({ model }) => {
 					<div className="flex items-center justify-between gap-3">
 						<div className="flex flex-col gap-0">
 							<span className="text-muted-foreground text-xs">Enkrypt risk score</span>
-							<span className="text-muted-foreground/70 text-[11px] leading-3">Lower is safer</span>
+							<span className="text-muted-foreground/70 text-2xs leading-3">Lower is safer</span>
 						</div>
 						<EnkryptRiskIndicator value={details.enkryptRiskScore} />
 					</div>
@@ -1685,7 +1644,7 @@ const ModelInfoPopover: FC<{ model: KiloCatalogModel }> = ({ model }) => {
 					<dl className="grid grid-cols-2 gap-x-5 gap-y-3">
 						{facts.map((fact) => (
 							<div key={fact.label} className="flex min-w-0 flex-col gap-0.5">
-								<dt className="text-muted-foreground text-[11px]">{fact.label}</dt>
+								<dt className="text-muted-foreground text-2xs">{fact.label}</dt>
 								<dd className="text-xs font-medium tabular-nums">{fact.value}</dd>
 							</div>
 						))}

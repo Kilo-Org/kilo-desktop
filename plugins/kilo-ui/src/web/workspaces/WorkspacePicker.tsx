@@ -1,9 +1,8 @@
 import {
-	CheckIcon,
+	EllipsisIcon,
 	FolderIcon,
 	FolderXIcon,
 	LayoutGridIcon,
-	MoreHorizontalIcon,
 	PencilIcon,
 	PlusIcon,
 	Trash2Icon,
@@ -46,7 +45,6 @@ const UNSCOPED_COMMAND_VALUE = "dont-work-in-a-workspace";
 const ALL_WORKSPACES_COMMAND_VALUE = "all-workspaces";
 
 /** Hide CommandItem's built-in check — opacity-0 still reserves layout space. */
-const HIDE_BUILTIN_CHECK = "[&>svg:last-child]:hidden";
 
 type PopoverAlign = "start" | "center" | "end";
 type PopoverSide = "top" | "right" | "bottom" | "left";
@@ -186,11 +184,9 @@ export function WorkspacePickerRoot({
 						value={commandValue}
 						onValueChange={setCommandValue}
 						filter={filterWorkspaceItems}
-						className="[&_[data-slot=command-input-wrapper]]:gap-1.5 [&_[data-slot=command-input-wrapper]]:px-2 [&_[data-slot=command-input-wrapper]]:py-2 [&_[data-slot=command-item]]:gap-1.5 [&_[data-slot=command-item]]:rounded-md [&_[data-slot=command-item]]:px-1.5 [&_[data-slot=command-item]]:py-1 [&_[data-slot=command-item]_[data-slot=button]]:size-5 [&_[data-slot=command-item]_span:has(>svg.lucide-check)]:size-5"
 					>
-						<CommandInput placeholder="Search workspaces…" className="w-0 min-w-0 flex-1" />
-						<CommandSeparator />
-						<CommandList className="scroll-fade max-h-[calc(1.75rem*5+0.5rem)]">
+						<CommandInput placeholder="Search workspaces" />
+						<CommandList className="scroll-fade max-h-[calc(1.75rem*5)]">
 							{workspaces.length > 0 ? <CommandEmpty>No workspaces found.</CommandEmpty> : null}
 							<CommandGroup>
 								{includeUnscoped ? (
@@ -198,17 +194,11 @@ export function WorkspacePickerRoot({
 										data-qa-id="workspace-unscoped-command"
 										value={UNSCOPED_COMMAND_VALUE}
 										keywords={["No workspace", "unscoped"]}
-										className={HIDE_BUILTIN_CHECK}
 										onSelect={() => select(null)}
 										data-checked={isUnscoped}
 									>
 										<FolderXIcon />
 										<span className="whitespace-nowrap">No workspace</span>
-										{isUnscoped ? (
-											<span className="flex size-6 shrink-0 items-center justify-center">
-												<CheckIcon className="size-3.5" />
-											</span>
-										) : null}
 									</CommandItem>
 								) : null}
 								{emptyLabel ? (
@@ -217,16 +207,10 @@ export function WorkspacePickerRoot({
 										value={ALL_WORKSPACES_COMMAND_VALUE}
 										keywords={[emptyLabel]}
 										onSelect={() => select(null)}
-										className={HIDE_BUILTIN_CHECK}
 										data-checked={isUnscoped}
 									>
 										<LayoutGridIcon />
 										<span className="min-w-0 flex-1 truncate">{emptyLabel}</span>
-										{isUnscoped ? (
-											<span className="flex size-6 shrink-0 items-center justify-center">
-												<CheckIcon className="size-3.5" />
-											</span>
-										) : null}
 									</CommandItem>
 								) : null}
 								{isLoading ? (
@@ -249,20 +233,16 @@ export function WorkspacePickerRoot({
 											value={workspace.id}
 											keywords={[workspace.name]}
 											onSelect={() => select(workspace.id)}
-											className={HIDE_BUILTIN_CHECK}
 											data-checked={isSelected}
 										>
-											<span
-												className="flex size-4 shrink-0 items-center justify-center"
+											<FolderIcon
 												aria-hidden
-											>
-												<FolderIcon
-													className={glyph ? "size-4" : "text-muted-foreground size-4"}
-													{...(glyph ? { color: glyph } : {})}
-												/>
-											</span>
+												className={glyph ? undefined : "text-muted-foreground"}
+												{...(glyph ? { color: glyph } : {})}
+											/>
 											<span className="min-w-0 flex-1 truncate">{workspace.name}</span>
-											<span className="flex shrink-0 items-center gap-0.5">
+											{/* -my-1: the 24px action sits in the row's padding so the row stays 28px. */}
+											<span className="-my-1 flex shrink-0 items-center gap-0.5">
 												<DropdownMenu>
 													<DropdownMenuTrigger
 														render={
@@ -278,7 +258,7 @@ export function WorkspacePickerRoot({
 															/>
 														}
 													>
-														<MoreHorizontalIcon />
+														<EllipsisIcon />
 													</DropdownMenuTrigger>
 													<DropdownMenuContent
 														align="end"
@@ -307,23 +287,18 @@ export function WorkspacePickerRoot({
 														</DropdownMenuItem>
 													</DropdownMenuContent>
 												</DropdownMenu>
-												{isSelected ? (
-													<span className="flex size-6 items-center justify-center">
-														<CheckIcon className="size-3.5" />
-													</span>
-												) : null}
 											</span>
 										</CommandItem>
 									);
 								})}
 							</CommandGroup>
 						</CommandList>
-						<CommandSeparator />
+						{/* Outside the list, so it must opt out of cmdk hiding it while filtering. */}
+						<CommandSeparator alwaysRender />
 						<CommandGroup forceMount>
 							<CommandItem
 								data-qa-id="workspace-create-command"
 								value="create-workspace"
-								className={HIDE_BUILTIN_CHECK}
 								onSelect={() => {
 									setOpen(false);
 									openCreate();

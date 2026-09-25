@@ -1,63 +1,52 @@
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { LogInIcon, LogOutIcon } from "lucide-react";
 
 import type { AuthSession, SDK } from "@kilo-desktop/feature-sdk";
-import { useSdk } from "@kilo-desktop/sdk-react";
+import { SettingsPageHeader, useSdk } from "@kilo-desktop/sdk-react";
 import { Button } from "@kilo-desktop/ui/components/button";
-import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
+import { SkeletonText } from "@kilo-desktop/ui/components/skeleton";
 import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 import { AnacondaLogo } from "@kilo-desktop/ui/components/anaconda-logo";
 
 import { ProviderIcon } from "../chat/model-selection/provider-icon.js";
-import { KiloGatewayAccountPanel } from "./KiloGatewayAccountPanel.js";
+import { ButtonSkeleton } from "./ButtonSkeleton.js";
+import {
+	KiloGatewayAccountLoadingState,
+	KiloGatewayAccountPanel,
+} from "./KiloGatewayAccountPanel.js";
 import { useKiloAuth } from "./KiloAuthContext.js";
 
 /**
  * Account settings: Kilo and Anaconda sign-in status with sign-out controls.
- * Rows follow the AI Providers page hierarchy (SummaryCard rows in bordered
- * cards) so account management reads the same as the rest of Settings. Kilo
+ * Rows follow the AI Providers page pattern (SummaryCard rows joined in one
+ * bordered panel) so account management reads the same as the rest of Settings. Kilo
  * state comes from the KiloAuthProvider; Anaconda state from the shell's
  * `sdk.auth` delegate.
  */
 export function AccountSettings() {
 	const auth = useKiloAuth();
 	const sdk = useSdk("kilo-ui");
-	const { resolving } = useAnacondaSession(sdk);
-	const kiloLoading = auth.isLoading && auth.deviceAuth.status === "idle";
+	const { session, resolving } = useAnacondaSession(sdk);
+	const kiloLoading = auth.isLoading && auth.deviceAuth.status === "idle" && !auth.profile;
 	const loading = kiloLoading || resolving;
 
 	return (
 		<div
-			className="mx-auto flex w-full max-w-3xl min-w-0 flex-col gap-6"
+			className="flex min-w-0 flex-col gap-6"
 			data-qa-id="account-page"
 			data-state={loading ? "loading" : "ready"}
 		>
-			<header className="flex items-start justify-between gap-3">
-				<div className="min-w-0">
-					<h1
-						className="text-base font-semibold tracking-tight"
-						data-qa-id="settings-section-heading"
-					>
-						Account
-					</h1>
-					<p className="text-muted-foreground mt-0.5 text-sm leading-snug">
-						See where you are signed in and manage your accounts.
-					</p>
-				</div>
-			</header>
-
+			<SettingsPageHeader />
 			<section
-				className="flex min-w-0 flex-col gap-2"
+				className="border-border bg-card divide-border min-w-0 divide-y overflow-hidden rounded-lg border"
 				aria-label="Accounts"
 				data-qa-id="account-rows"
 			>
-				<AccountEntrySurface>
-					{kiloLoading ? <KiloRowLoading /> : <AccountKiloRow />}
-				</AccountEntrySurface>
-				<AccountEntrySurface>
-					{resolving ? <AnacondaRowLoading /> : <AccountAnacondaRow />}
-				</AccountEntrySurface>
+				<div>
+					<AccountKiloRow />
+				</div>
+				<div>{resolving ? <AnacondaRowLoading session={session} /> : <AccountAnacondaRow />}</div>
 			</section>
 		</div>
 	);
@@ -67,21 +56,17 @@ function errorMessage(cause: unknown): string {
 	return cause instanceof Error ? cause.message : String(cause);
 }
 
-function AccountEntrySurface({ children }: { children: ReactNode }) {
-	return (
-		<div className="border-border bg-card min-w-0 overflow-hidden rounded-lg border">
-			{children}
-		</div>
-	);
-}
-
 function AccountKiloRow() {
 	const auth = useKiloAuth();
 	const showDeviceAuth = auth.deviceAuth.status !== "idle";
-	const signedIn = auth.authenticated === true && Boolean(auth.profile);
-	const profileFailed = auth.authenticated === true && !auth.profile && Boolean(auth.profileError);
+	const connected = auth.authenticated === true;
+	const signedIn = connected && Boolean(auth.profile);
+	const profileFailed = connected && !auth.profile && Boolean(auth.profileError);
+	const initialLoading = auth.isLoading && !showDeviceAuth && !auth.profile;
 	const showAccountDetails = signedIn || showDeviceAuth || profileFailed;
 	const email = auth.profile?.profile.email;
+
+	if (initialLoading) return <KiloRowLoading connected={connected} />;
 
 	return (
 		<div
@@ -122,7 +107,7 @@ function AccountKiloRow() {
 							data-qa-id="account-kilo-sign-out"
 						>
 							<LogOutIcon data-icon="inline-start" />
-							Sign Out
+							Sign out
 						</Button>
 					) : null}
 					{!signedIn && !profileFailed && !showDeviceAuth ? (
@@ -135,7 +120,7 @@ function AccountKiloRow() {
 							data-qa-id="account-kilo-sign-in"
 						>
 							<LogInIcon data-icon="inline-start" />
-							Sign In
+							Sign in
 						</Button>
 					) : null}
 				</SummaryCard.Actions>
@@ -176,12 +161,12 @@ function AccountAnacondaRow() {
 		try {
 			const next = await sdk.auth.logout();
 			if (next.status === "error") {
-				toast.error("Sign-out failed", { description: next.reason });
+				toast.error("Could not sign out", { description: next.reason });
 				return;
 			}
 			void sdk.telemetry.track({ event: "LOGGED_OUT" });
 		} catch (cause) {
-			toast.error("Sign-out failed", { description: errorMessage(cause) });
+			toast.error("Could not sign out", { description: errorMessage(cause) });
 		}
 	};
 
@@ -192,12 +177,12 @@ function AccountAnacondaRow() {
 		try {
 			const next = await sdk.auth.login();
 			if (next.status === "error") {
-				toast.error("Sign-in failed", { description: next.reason });
+				toast.error("Could not sign in", { description: next.reason });
 				return;
 			}
 			void sdk.telemetry.track({ event: "LOGGED_IN" });
 		} catch (cause) {
-			toast.error("Sign-in failed", { description: errorMessage(cause) });
+			toast.error("Could not sign in", { description: errorMessage(cause) });
 		}
 	};
 
@@ -230,7 +215,7 @@ function AccountAnacondaRow() {
 						data-qa-id="account-anaconda-sign-out"
 					>
 						<LogOutIcon data-icon="inline-start" />
-						Sign Out
+						Sign out
 					</Button>
 				) : null}
 				{session.status !== "authenticated" ? (
@@ -242,7 +227,7 @@ function AccountAnacondaRow() {
 						data-qa-id="account-anaconda-sign-in"
 					>
 						<LogInIcon data-icon="inline-start" />
-						Sign In
+						Sign in
 					</Button>
 				) : null}
 			</SummaryCard.Actions>
@@ -273,30 +258,67 @@ function useAnacondaSession(sdk: Pick<SDK, "auth">): { session: AuthSession; res
 	return { session, resolving };
 }
 
-function KiloRowLoading() {
+/**
+ * Mirrors `AccountKiloRow` while auth loads. Once credentials are known to
+ * exist, the account details panel is reserved too, so a slow profile fetch
+ * doesn't pop ~200px of balance/actions in under the row.
+ */
+function KiloRowLoading({ connected }: { connected: boolean }) {
 	return (
-		<SummaryCard.Row data-qa-id="account-kilo-row" data-state="loading">
-			<SummaryCard.Icon>
-				<ProviderIcon provider="kilo" variant="color" size={18} fallbackLabel="Kilo" />
-			</SummaryCard.Icon>
-			<SummaryCard.Content>
-				<SummaryCard.Title>Kilo</SummaryCard.Title>
-				<Skeleton className="bg-muted-foreground/25 mt-0.5 h-3 w-48" />
-			</SummaryCard.Content>
-		</SummaryCard.Row>
+		<div className="min-w-0" data-qa-id="account-kilo-row" data-state="loading" aria-busy="true">
+			<SummaryCard.Row>
+				<SummaryCard.Icon>
+					<ProviderIcon provider="kilo" variant="color" size={18} fallbackLabel="Kilo" />
+				</SummaryCard.Icon>
+				<SummaryCard.Content>
+					<SummaryCard.Title>Kilo</SummaryCard.Title>
+					<SummaryCard.Description>
+						<SkeletonText className="w-48" />
+					</SummaryCard.Description>
+				</SummaryCard.Content>
+				<SummaryCard.Actions>
+					<AccountActionSkeleton signedIn={connected} />
+				</SummaryCard.Actions>
+			</SummaryCard.Row>
+			{connected ? (
+				<div className="border-border bg-background/60 border-t p-4">
+					<KiloGatewayAccountLoadingState showSignOut={false} />
+				</div>
+			) : null}
+		</div>
 	);
 }
 
-function AnacondaRowLoading() {
+function AnacondaRowLoading({ session }: { session: AuthSession }) {
 	return (
-		<SummaryCard.Row data-qa-id="account-anaconda-row" data-state="loading">
+		<SummaryCard.Row data-qa-id="account-anaconda-row" data-state="loading" aria-busy="true">
 			<SummaryCard.Icon>
 				<AnacondaLogo className="size-[18px] text-(--color-green-700)" />
 			</SummaryCard.Icon>
 			<SummaryCard.Content>
 				<SummaryCard.Title>Anaconda</SummaryCard.Title>
-				<Skeleton className="bg-muted-foreground/25 mt-0.5 h-3 w-48" />
+				<SummaryCard.Description>
+					<SkeletonText className="w-48" />
+				</SummaryCard.Description>
 			</SummaryCard.Content>
+			<SummaryCard.Actions>
+				<AccountActionSkeleton signedIn={session.status === "authenticated"} />
+			</SummaryCard.Actions>
 		</SummaryCard.Row>
+	);
+}
+
+/** Sized to the Sign in / Sign out button the loaded row will show. */
+function AccountActionSkeleton({ signedIn }: { signedIn: boolean }) {
+	return signedIn ? (
+		<ButtonSkeleton>
+			<LogOutIcon data-icon="inline-start" />
+			Sign out
+		</ButtonSkeleton>
+	) : (
+		<ButtonSkeleton>
+			<LogInIcon data-icon="inline-start" />
+			Sign in
+		</ButtonSkeleton>
 	);
 }

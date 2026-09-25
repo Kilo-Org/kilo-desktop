@@ -117,7 +117,7 @@ describe("ElectronMcpAppRenderer", () => {
 
 		const { getByText, queryByText } = render(<TestRenderer part={localMcpAppPart} />);
 
-		expect(getByText("Loading MCP App…")).toBeDefined();
+		expect(getByText("Loading MCP app…")).toBeDefined();
 		expect(queryByText("Environments conda envs list")).toBeNull();
 		expect(host.loadResource).toHaveBeenCalledWith({
 			uri: "ui://environments/conda-envs-list",

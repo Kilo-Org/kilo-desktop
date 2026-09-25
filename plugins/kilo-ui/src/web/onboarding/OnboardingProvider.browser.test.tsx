@@ -15,6 +15,7 @@ import {
 } from "../workspaces/WorkspacesFeatureContext.js";
 
 import { OnboardingProvider } from "./OnboardingProvider.js";
+import { FORCE_ONBOARDING_FLAG } from "./resolve-onboarding.js";
 
 afterEach(() => {
 	cleanup();
@@ -72,11 +73,20 @@ function renderOnboarding(options: {
 	create?: () => Promise<Workspace>;
 	complete?: () => Promise<OnboardingState>;
 	get?: () => Promise<OnboardingState>;
+	flags?: Record<string, unknown>;
 }) {
 	let onboarding: OnboardingState = options.onboarding ?? { outcome: null, closedAt: null };
 	const setActiveWorkspaceId = vi.fn();
+	const flags = options.flags ?? {};
 	const sdk = createFakeSdk({
 		featureId: "kilo-ui",
+		featureFlags: {
+			peek: () => flags,
+			subscribe: (fn) => {
+				fn(flags);
+				return () => {};
+			},
+		},
 		channels: { ...onboardingContract, ...workspacesContract },
 		shell: {
 			canPickDirectories: true,
@@ -239,5 +249,31 @@ describe("OnboardingProvider", () => {
 
 		expect(setActiveWorkspaceId).toHaveBeenCalledWith(createdWorkspace.id);
 		await expect.element(screen.getByText("Could not save workspace.")).not.toBeInTheDocument();
+	});
+
+	it("reopens a previously skipped wizard when force-onboarding is on", async () => {
+		const { screen } = renderOnboarding({
+			onboarding: { outcome: "skipped", closedAt: 1 },
+			flags: { [FORCE_ONBOARDING_FLAG]: true },
+		});
+
+		await expect.element(screen.getByTestId("onboarding-overlay")).toBeVisible();
+
+		await screen.getByTestId("onboarding-skip").click();
+		await expect.element(screen.getByTestId("onboarding-overlay")).not.toBeInTheDocument();
+	});
+
+	it("closes a forced wizard once the user creates a workspace", async () => {
+		const { screen } = renderOnboarding({
+			auth: { authenticated: true },
+			onboarding: { outcome: "completed", closedAt: 1 },
+			flags: { [FORCE_ONBOARDING_FLAG]: true },
+		});
+
+		await screen.getByTestId("onboarding-continue").click();
+		await screen.getByRole("button", { name: /Drop folders/ }).click();
+		await screen.getByTestId("onboarding-continue").click();
+
+		await expect.element(screen.getByTestId("onboarding-overlay")).not.toBeInTheDocument();
 	});
 });

@@ -1,13 +1,7 @@
-import {
-	CircleAlertIcon,
-	Loader2Icon,
-	LogInIcon,
-	LogOutIcon,
-	SettingsIcon,
-	UserIcon,
-} from "lucide-react";
+import { CircleAlertIcon, LogInIcon, LogOutIcon, SettingsIcon, UserIcon } from "lucide-react";
 
 import { useSdk } from "@kilo-desktop/sdk-react";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Avatar, AvatarFallback } from "@kilo-desktop/ui/components/avatar";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
@@ -44,6 +38,7 @@ function AccountSkeleton() {
 				<div
 					className="flex h-8 min-w-0 items-center gap-2 px-2"
 					data-qa-id="sidebar-kilo-account-loading"
+					role="status"
 					aria-label="Loading account"
 					aria-busy="true"
 				>
@@ -58,7 +53,7 @@ function AccountSkeleton() {
 /**
  * Sidebar account dock contributed to the shell's `sidebar-account` zone.
  * Signed out: one-click Kilo device sign-in (device code shows on the AI
- * Providers page; a failed attempt falls back to the Sign In button so retry
+ * Providers page; a failed attempt falls back to the Sign in button so retry
  * stays reachable). Signed in: compact avatar/name header with a Sign out item. A
  * failed profile load links to the AI Providers page, which owns retry and
  * logout for that state. Shows a stable account-row skeleton while auth or
@@ -80,7 +75,7 @@ export function SidebarKiloAccount() {
 				onClick={() => sdk.navigate(KILO_ACCOUNT_PATH)}
 				data-qa-id="sidebar-kilo-signing-in"
 			>
-				<Loader2Icon className="animate-spin" data-icon="inline-start" />
+				<Spinner data-icon="inline-start" aria-hidden="true" />
 				Signing in…
 			</Button>
 		);
@@ -99,7 +94,7 @@ export function SidebarKiloAccount() {
 				data-qa-id="sidebar-kilo-login"
 			>
 				<LogInIcon data-icon="inline-start" />
-				Sign In
+				Sign in
 			</Button>
 		);
 	}
@@ -130,7 +125,7 @@ export function SidebarKiloAccount() {
 
 	return (
 		<SidebarMenu>
-			<SidebarMenuItem className="has-data-open:bg-foreground/5 hover:bg-foreground/5 rounded-md transition-colors">
+			<SidebarMenuItem className="has-data-open:bg-sidebar-accent hover:bg-sidebar-accent rounded-md transition-colors">
 				<DropdownMenu>
 					<DropdownMenuTrigger
 						render={
@@ -142,7 +137,7 @@ export function SidebarKiloAccount() {
 						}
 					>
 						<Avatar className="size-[22px]">
-							<AvatarFallback className="text-[10px]">{initials || <UserIcon />}</AvatarFallback>
+							<AvatarFallback className="text-2xs">{initials || <UserIcon />}</AvatarFallback>
 						</Avatar>
 						<div className="grid min-w-0 flex-1 text-left text-sm">
 							<span className="truncate font-medium">{accountName}</span>

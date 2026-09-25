@@ -5,7 +5,7 @@ import {
 	BugIcon,
 	HammerIcon,
 	ListTodoIcon,
-	MessageCircleQuestionIcon,
+	MessageCircleQuestionMarkIcon,
 } from "lucide-react";
 
 import {
@@ -40,7 +40,7 @@ describe("agent-catalog", () => {
 		expect(catalog.agents).toEqual([
 			{ name: "code", displayName: "Code", icon: HammerIcon },
 			{ name: "plan", displayName: "Plan", color: "#f97316", icon: ListTodoIcon },
-			{ name: "ask", displayName: "Ask", color: "#22c55e", icon: MessageCircleQuestionIcon },
+			{ name: "ask", displayName: "Ask", color: "#22c55e", icon: MessageCircleQuestionMarkIcon },
 			{ name: "debug", displayName: "Debug", color: "#ef4444", icon: BugIcon },
 			{ name: "explore", displayName: "Explore", icon: BotIcon },
 			{ name: "orchestrator", displayName: "Orchestrator", icon: BotIcon },

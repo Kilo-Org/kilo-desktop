@@ -10,13 +10,16 @@ const buttonVariants = cva(
 			variant: {
 				default: "bg-primary text-primary-foreground hover:bg-primary/80",
 				outline:
-					"border-border bg-background hover:bg-foreground/5 hover:text-foreground aria-expanded:bg-foreground/5 aria-expanded:text-foreground dark:border-input dark:bg-input/30",
+					"border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
 				secondary:
 					"bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
+				// local: overlay wash (--ghost-hover) instead of stock bg-muted, so ghost
+				// hover shows on any surface. One class per state, no dark: variant, so
+				// call sites can still cancel it (e.g. aria-expanded:bg-transparent).
 				ghost:
-					"hover:bg-foreground/5 hover:text-foreground aria-expanded:bg-foreground/5 aria-expanded:text-foreground",
+					"hover:bg-(color:--ghost-hover) hover:text-foreground aria-expanded:bg-(color:--ghost-hover) aria-expanded:text-foreground",
 				destructive:
-					"bg-destructive/10 text-destructive-foreground hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20",
+					"bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
 				link: "text-primary-ink underline-offset-4 hover:underline",
 			},
 			size: {

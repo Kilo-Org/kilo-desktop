@@ -3,6 +3,7 @@
 import { useState, type ComponentProps, type ReactNode } from "react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@kilo-desktop/ui/components/popover";
+import { Progress } from "@kilo-desktop/ui/components/progress";
 import { Separator } from "@kilo-desktop/ui/components/separator";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
@@ -20,8 +21,8 @@ const TOKEN_STATS = [
 	{ key: "input", label: "Input" },
 	{ key: "output", label: "Output" },
 	{ key: "reasoning", label: "Reasoning" },
-	{ key: "cacheRead", label: "Cache Read" },
-	{ key: "cacheWrite", label: "Cache Write" },
+	{ key: "cacheRead", label: "Cache read" },
+	{ key: "cacheWrite", label: "Cache write" },
 ] as const;
 
 export function ComposerContext({
@@ -103,7 +104,7 @@ export function ComposerContext({
 				align="end"
 				sideOffset={8}
 				className={cn(
-					"bg-popover/95 data-closed:hidden flex flex-col gap-3 rounded-xl backdrop-blur-sm",
+					"bg-popover/95 data-closed:hidden flex flex-col gap-3 backdrop-blur-sm",
 					children ? "w-80" : "w-64",
 				)}
 			>
@@ -122,14 +123,7 @@ export function ComposerContext({
 							{Math.round(fill)}%
 						</p>
 					</div>
-					<div className="bg-muted h-1.5 w-full overflow-hidden rounded-full">
-						{fill > 0 ? (
-							<span
-								className="bg-foreground/80 block h-full rounded-full transition-[width] duration-700 motion-reduce:transition-none"
-								style={{ width: `${fill}%` }}
-							/>
-						) : null}
-					</div>
+					<Progress value={fill} aria-label="Context used" />
 				</div>
 				<Separator />
 				<div className="flex flex-col gap-1.5">

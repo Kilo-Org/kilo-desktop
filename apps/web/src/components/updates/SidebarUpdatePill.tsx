@@ -65,11 +65,11 @@ export function SidebarUpdatePill() {
 				align="start"
 				side="top"
 				arrowClassName="hidden"
-				className="border-border bg-popover text-popover-foreground pointer-events-auto block max-h-[min(28rem,calc(100vh-5rem))] w-96 max-w-[calc(100vw-2rem)] overflow-y-auto border p-4 text-left shadow-lg"
+				className="border-border bg-popover text-popover-foreground pointer-events-auto flex max-h-[min(28rem,calc(100dvh-5rem))] w-96 max-w-[calc(100vw-2rem)] flex-col border p-4 text-left shadow-lg"
 			>
 				<div className="text-sm font-medium">{label}</div>
 				{state.releaseNotes.some(hasVisibleReleaseNotes) ? (
-					<div className="border-border mt-3 border-t pt-3">
+					<div className="border-border scroll-fade-y mt-3 min-h-0 overflow-y-auto border-t pt-3">
 						<ReleaseNotesList notes={state.releaseNotes} />
 					</div>
 				) : null}

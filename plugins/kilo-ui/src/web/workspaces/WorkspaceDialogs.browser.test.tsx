@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { page, userEvent } from "vitest/browser";
+import { page } from "vitest/browser";
 
 import type { SDK } from "@kilo-desktop/feature-sdk";
 import { SdkProvider, sdkQueryKey } from "@kilo-desktop/sdk-react";
@@ -79,7 +79,7 @@ describe("WorkspaceDialogs — manage", () => {
 	it("renders the empty state and opens create from the footer", async () => {
 		const { onDialogChange } = renderDialogs({ dialog: { mode: "manage" } });
 
-		await expect.element(page.getByText("No workspaces yet.")).toBeVisible();
+		await expect.element(page.getByText("No workspaces yet", { exact: true })).toBeVisible();
 		await page.getByRole("button", { name: "Create workspace" }).click();
 
 		expect(onDialogChange).toHaveBeenCalledWith({ mode: "create" });
@@ -162,13 +162,11 @@ describe("WorkspaceDialogs — create/edit form", () => {
 			},
 		});
 
-		await expect.element(page.getByRole("radiogroup", { name: "Identity color" })).toBeVisible();
-		page
-			.getByRole("radio", { name: `Color ${DEFAULT_WORKSPACE_IDENTITY_COLOR}` })
-			.element()
-			.focus();
-		await userEvent.keyboard("{ArrowRight}");
-		await expect.element(page.getByRole("radio", { name: "Color #34D399" })).toBeChecked();
+		await expect.element(page.getByRole("group", { name: "Identity color" })).toBeVisible();
+		await page.getByRole("button", { name: "Green", exact: true }).click();
+		await expect
+			.element(page.getByRole("button", { name: "Green", exact: true }))
+			.toHaveAttribute("aria-pressed", "true");
 		await page.getByRole("button", { name: /Drop folders/ }).click();
 		await page.getByRole("button", { name: "Create workspace" }).click();
 
@@ -190,14 +188,15 @@ describe("WorkspaceDialogs — create/edit form", () => {
 			},
 		});
 
-		const custom = page.getByRole("radio", { name: "Custom color #123456" });
-		await expect.element(custom).toBeChecked();
+		const custom = page.getByRole("button", { name: "Custom color #123456" });
+		const amber = page.getByRole("button", { name: "Amber", exact: true });
+		await expect.element(custom).toHaveAttribute("aria-pressed", "true");
 
-		custom.element().focus();
-		await userEvent.keyboard("{ArrowLeft}");
-		await expect.element(page.getByRole("radio", { name: "Color #FBBF24" })).toBeChecked();
-		await userEvent.keyboard("{ArrowRight}");
-		await expect.element(page.getByRole("radio", { name: "Custom color #123456" })).toBeChecked();
+		await amber.click();
+		await expect.element(amber).toHaveAttribute("aria-pressed", "true");
+		await expect.element(custom).toHaveAttribute("aria-pressed", "false");
+		await custom.click();
+		await expect.element(custom).toHaveAttribute("aria-pressed", "true");
 	});
 
 	it("cancels the form without saving", async () => {

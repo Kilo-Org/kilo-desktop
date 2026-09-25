@@ -56,12 +56,7 @@ export const KiloAgentSelector: FC = () => {
 				aria-busy={isCatalogPending || undefined}
 			>
 				{selected ? (
-					<span
-						className={cn(
-							"flex min-w-0 items-center gap-1.5",
-							!accent && "dark:text-foreground/90",
-						)}
-					>
+					<span className="flex min-w-0 items-center gap-1.5">
 						<AgentIcon icon={selected.icon} size={14} />
 						<span data-slot="composer-agent-label" className="whitespace-nowrap">
 							{selected.displayName}

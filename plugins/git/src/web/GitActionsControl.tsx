@@ -2,7 +2,7 @@ import {
 	ChevronDownIcon,
 	CloudUploadIcon,
 	FilesIcon,
-	GitCommitIcon,
+	GitCommitHorizontalIcon,
 	GitPullRequestCreateIcon,
 	LoaderCircleIcon,
 	type LucideIcon,
@@ -40,8 +40,8 @@ const ACTION_ICONS: Record<
 	RepositoryActionKind | "commit" | "push" | "view-pr" | "create-pr",
 	LucideIcon
 > = {
-	disabled: GitCommitIcon,
-	commit: GitCommitIcon,
+	disabled: GitCommitHorizontalIcon,
+	commit: GitCommitHorizontalIcon,
 	"commit-push": CloudUploadIcon,
 	"commit-push-pr": GitPullRequestCreateIcon,
 	pull: CloudUploadIcon,
@@ -106,8 +106,8 @@ function GitActions({
 				>
 					<FilesIcon />
 					<span className="text-muted-foreground">{actions.filesChanged}</span>
-					<span className="text-emerald-600 dark:text-emerald-300">+{actions.stats.additions}</span>
-					<span className="text-red-600 dark:text-red-300">-{actions.stats.deletions}</span>
+					<span className="text-success">+{actions.stats.additions}</span>
+					<span className="text-destructive">-{actions.stats.deletions}</span>
 				</Button>
 			) : null}
 			<ButtonGroup

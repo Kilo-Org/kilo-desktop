@@ -45,7 +45,7 @@ Features program against `@kilo-desktop/feature-sdk`, not `LocalApi`.
 - `sdk.plugins.expose/get` / `mainSdk.plugins.expose/get` — process-local cross-feature capabilities
 - `sdk.contribute` — imperatively register dynamic UI in a stable zone. The shell owns canonical `ShellZone` outlets, including the app-wide `page-header-actions` outlet. Plugin-owned hosts declare zones in `plugin.json`, and other plugins target qualified names through declarative `contributes.zones`; `useSdkContributions(zone)` lets those hosts consume the live priority-ordered registry.
 - `contributes.providers` — declarative app-lifetime React providers from a plugin's web entry, composed by the shell inside its SDK/query providers so plugin lifecycle state and listeners are route-independent
-- `contributes.settings` — declarative settings-page sections (`id` + `component` export). The shell owns `/settings`; optional `category` groups sidebar entries (default `Personal`) and optional `featureFlag` uses the same visibility semantics as `contributes.nav`
+- `contributes.settings` — declarative settings-page sections (`id` + `component` export). The shell owns `/settings`; each section renders `SettingsPageHeader` (sdk-react) as the first child of its root, which defaults to the entry's `title` + `description`, and never hand-rolls its own h1. Optional `category` groups sidebar entries (default `Personal`) and optional `featureFlag` uses the same visibility semantics as `contributes.nav`
 - `contributes.deepLinks` — OS deep links on the app scheme (`kilo-desktop://{host}/{id}`). Pure data: `host`, in-app `to`, and `searchParam` for the path segment. The shell owns scheme registration and host uniqueness (`app` is reserved).
 - `sdk.commands` — command palette entries
 - `sdk.navigate` / `sdk.location` — shell navigation delegate (the router never leaks to features; full pages and nav entries are declared in `plugin.json` `contributes` and mounted by the shell)
@@ -145,7 +145,7 @@ Three tiers decide where a dependency lives:
 - **Zod 4** for schemas (workspace catalog `^4.4.3`)
 - **React 19** — function components + hooks only
 - **TanStack Router** (file-based, hash history) + **TanStack Query**
-- **shadcn/ui** (`base-nova` style, `lucide-react` icons, `@base-ui/react` primitives)
+- **shadcn/ui** (`base-nova` style, `lucide-react` icons, `@base-ui/react` primitives) — primitives are owned source: keep them close to stock and edit them directly, marking each deviation with a `// local:` comment (`rg "local:" packages/ui/src/components` lists them). Convention: default child icons are `size-3.5` (stock `size-4`). Upgrade with `npx shadcn@latest add <name> --dry-run --diff -c packages/ui` and merge by hand; re-point stock's `cn` import to `@kilo-desktop/ui/lib/utils`. `packages/ui` is stock primitives plus a few composites shared across plugin boundaries (e.g. `SummaryCard`, `ColorSwatchPicker`); consistency comes from using stock parts without visual call-site overrides, not from new wrappers. A look repeated within one plugin is a local component in that plugin.
 - **@anaconda/shadcn-theme** for design tokens (CSS custom properties, Tailwind v4)
 - **Vitest** — `*.test.ts` (node unit), `*.integration.test.ts` (serial node), `*.browser.test.tsx` (Chromium component), `*.app.test.tsx` (full app tree)
 - **Playwright e2e** — packaged Electron via `@anaconda/playwright-utils` in the root `e2e/` package; every feature ships at least one `@smoke` spec

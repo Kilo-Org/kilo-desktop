@@ -78,7 +78,7 @@ export function CreateBranchDialog({
 		<Dialog open onOpenChange={(nextOpen) => !nextOpen && onCancel()}>
 			<DialogContent
 				data-qa-id="git-branch-create-dialog"
-				className="sm:max-w-sm"
+				className="sm:max-w-md"
 				showCloseButton={false}
 			>
 				<form onSubmit={submit} className="contents">

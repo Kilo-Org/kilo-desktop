@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useId, useState, type FormEvent, type ReactNode } from "react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
@@ -7,7 +7,14 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@kilo-desktop/ui/components/dialog";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@kilo-desktop/ui/components/field";
+import {
+	Field,
+	FieldDescription,
+	FieldError,
+	FieldGroup,
+	FieldLabel,
+} from "@kilo-desktop/ui/components/field";
+import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
 
 import { ApiKeyField } from "./ApiKeyField.js";
 
@@ -31,6 +38,17 @@ type ProviderApiKeyFormProps = {
 	inputQaId: string;
 	submitQaId: string;
 	initialApiKey?: string;
+	/**
+	 * Renders the same form with the key input reserved by a placeholder and
+	 * submit disabled, while an existing key is fetched. Remount the form (via
+	 * `key`) when loading ends so `initialApiKey` seeds the input.
+	 */
+	loading?: boolean;
+	/**
+	 * `dialog` renders a dialog header and footer; `inline` renders bare fields
+	 * and actions for an expanded settings row, omitting the title.
+	 */
+	layout?: "dialog" | "inline";
 	onSubmit(apiKey: string): Promise<void>;
 };
 
@@ -45,13 +63,18 @@ export function ProviderApiKeyForm({
 	inputQaId,
 	submitQaId,
 	initialApiKey = "",
+	loading = false,
+	layout = "dialog",
 	onSubmit,
 }: ProviderApiKeyFormProps) {
+	// Several inline editors can be expanded at once, so the input id must be unique per form.
+	const inputId = useId();
 	const [apiKey, setApiKey] = useState(initialApiKey);
 	const [localError, setLocalError] = useState<string | null>(null);
 
 	const submit = (event: FormEvent) => {
 		event.preventDefault();
+		if (loading) return;
 		const key = apiKey.trim();
 		if (!key) {
 			setLocalError("API key is required");
@@ -61,31 +84,52 @@ export function ProviderApiKeyForm({
 		void onSubmit(key);
 	};
 
+	const inline = layout === "inline";
+	const actions = (
+		<>
+			{secondaryAction}
+			<Button type="submit" disabled={pending || loading} data-qa-id={submitQaId}>
+				{pending ? pendingLabel : submitLabel}
+			</Button>
+		</>
+	);
+
 	return (
-		<form onSubmit={submit} className="contents">
-			<DialogHeader>
-				<DialogTitle>{title}</DialogTitle>
-				<DialogDescription>{description}</DialogDescription>
-			</DialogHeader>
+		<form onSubmit={submit} className={inline ? "flex min-w-0 flex-col gap-4" : "contents"}>
+			{inline ? null : (
+				<DialogHeader>
+					<DialogTitle>{title}</DialogTitle>
+					<DialogDescription>{description}</DialogDescription>
+				</DialogHeader>
+			)}
 			<FieldGroup>
 				<Field data-invalid={Boolean(localError || error) || undefined}>
-					<FieldLabel htmlFor="kilo-provider-api-key">API key</FieldLabel>
-					<ApiKeyField
-						id="kilo-provider-api-key"
-						invalid={Boolean(localError || error)}
-						value={apiKey}
-						onChange={setApiKey}
-						qaId={inputQaId}
-					/>
+					<FieldLabel htmlFor={loading ? undefined : inputId}>API key</FieldLabel>
+					{loading ? (
+						<Skeleton
+							role="status"
+							aria-label="Loading the stored API key"
+							className="h-8 w-full rounded-lg"
+							data-qa-id={`${inputQaId}-loading`}
+						/>
+					) : (
+						<ApiKeyField
+							id={inputId}
+							invalid={Boolean(localError || error)}
+							value={apiKey}
+							onChange={setApiKey}
+							qaId={inputQaId}
+						/>
+					)}
+					{inline ? <FieldDescription>{description}</FieldDescription> : null}
 					{localError || error ? <FieldError>{localError ?? error}</FieldError> : null}
 				</Field>
 			</FieldGroup>
-			<DialogFooter>
-				{secondaryAction}
-				<Button type="submit" disabled={pending} data-qa-id={submitQaId}>
-					{pending ? pendingLabel : submitLabel}
-				</Button>
-			</DialogFooter>
+			{inline ? (
+				<div className="flex justify-end gap-2">{actions}</div>
+			) : (
+				<DialogFooter>{actions}</DialogFooter>
+			)}
 		</form>
 	);
 }
@@ -99,24 +143,24 @@ export function ProviderConnectForm({
 	onSubmit,
 }: ProviderConnectFormProps) {
 	return (
-		<>
-			{stepIndicator}
-			<ProviderApiKeyForm
-				title={`Add ${providerName}`}
-				description="Enter the API key to add this provider."
-				pending={pending}
-				error={error}
-				secondaryAction={
+		<ProviderApiKeyForm
+			title={`Add ${providerName}`}
+			description="Enter the API key to add this provider."
+			pending={pending}
+			error={error}
+			secondaryAction={
+				<>
+					{stepIndicator}
 					<Button type="button" variant="outline" disabled={pending} onClick={onBack}>
 						Back
 					</Button>
-				}
-				submitLabel="Add AI Provider"
-				pendingLabel="Adding…"
-				inputQaId="kilo-providers-api-key"
-				submitQaId="kilo-providers-connect"
-				onSubmit={onSubmit}
-			/>
-		</>
+				</>
+			}
+			submitLabel="Add AI Provider"
+			pendingLabel="Adding…"
+			inputQaId="kilo-providers-api-key"
+			submitQaId="kilo-providers-connect"
+			onSubmit={onSubmit}
+		/>
 	);
 }

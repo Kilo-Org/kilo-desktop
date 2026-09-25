@@ -41,7 +41,7 @@
 		"@kilo-desktop/sdk-react": "workspace:*",
 		"@kilo-desktop/testing": "workspace:*",
 		"@kilo-desktop/ui": "workspace:*",
-		"@anaconda/playwright-utils": "2.0.2",
+		"@anaconda/playwright-utils": "2.1.0",
 		"@playwright/test": "catalog:",
 		"@tailwindcss/vite": "^4.3.3",
 		"@tanstack/react-query": "^5.101.4",

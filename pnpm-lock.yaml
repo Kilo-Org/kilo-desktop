@@ -654,8 +654,8 @@ importers:
   e2e:
     devDependencies:
       '@anaconda/playwright-utils':
-        specifier: 2.0.2
-        version: 2.0.2(@playwright/test@1.63.0)(jiti@2.7.0)(supports-color@10.2.2)
+        specifier: 2.1.0
+        version: 2.1.0(@playwright/test@1.63.0)(jiti@2.7.0)(supports-color@10.2.2)
       '@playwright/test':
         specifier: 'catalog:'
         version: 1.63.0
@@ -1007,8 +1007,8 @@ importers:
         version: 4.4.3
     devDependencies:
       '@anaconda/playwright-utils':
-        specifier: 2.0.2
-        version: 2.0.2(@playwright/test@1.63.0)(jiti@2.7.0)(supports-color@10.2.2)
+        specifier: 2.1.0
+        version: 2.1.0(@playwright/test@1.63.0)(jiti@2.7.0)(supports-color@10.2.2)
       '@kilo-desktop/e2e':
         specifier: workspace:*
         version: link:../../e2e
@@ -1105,8 +1105,8 @@ importers:
         version: 7.0.0
     devDependencies:
       '@anaconda/playwright-utils':
-        specifier: 2.0.2
-        version: 2.0.2(@playwright/test@1.63.0)(jiti@2.7.0)(supports-color@10.2.2)
+        specifier: 2.1.0
+        version: 2.1.0(@playwright/test@1.63.0)(jiti@2.7.0)(supports-color@10.2.2)
       '@kilo-desktop/e2e':
         specifier: workspace:*
         version: link:../../e2e
@@ -1217,8 +1217,8 @@ importers:
         version: 4.4.3
     devDependencies:
       '@anaconda/playwright-utils':
-        specifier: 2.0.2
-        version: 2.0.2(@playwright/test@1.63.0)(jiti@2.7.0)(supports-color@10.2.2)
+        specifier: 2.1.0
+        version: 2.1.0(@playwright/test@1.63.0)(jiti@2.7.0)(supports-color@10.2.2)
       '@kilo-desktop/e2e':
         specifier: workspace:*
         version: link:../../e2e
@@ -1305,8 +1305,8 @@ importers:
         version: 2.9.0
     devDependencies:
       '@anaconda/playwright-utils':
-        specifier: 2.0.2
-        version: 2.0.2(@playwright/test@1.63.0)(jiti@2.7.0)(supports-color@10.2.2)
+        specifier: 2.1.0
+        version: 2.1.0(@playwright/test@1.63.0)(jiti@2.7.0)(supports-color@10.2.2)
       '@kilo-desktop/e2e':
         specifier: workspace:*
         version: link:../../e2e
@@ -1521,8 +1521,8 @@ importers:
         version: 5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))
     devDependencies:
       '@anaconda/playwright-utils':
-        specifier: 2.0.2
-        version: 2.0.2(@playwright/test@1.63.0)(jiti@2.7.0)(supports-color@10.2.2)
+        specifier: 2.1.0
+        version: 2.1.0(@playwright/test@1.63.0)(jiti@2.7.0)(supports-color@10.2.2)
       '@kilo-desktop/e2e':
         specifier: workspace:*
         version: link:../../e2e
@@ -1710,8 +1710,8 @@ importers:
         specifier: ^26.2.1
         version: 26.2.1
       '@anaconda/playwright-utils':
-        specifier: 2.0.2
-        version: 2.0.2(@playwright/test@1.63.0)(jiti@2.7.0)(supports-color@10.2.2)
+        specifier: 2.1.0
+        version: 2.1.0(@playwright/test@1.63.0)(jiti@2.7.0)(supports-color@10.2.2)
       '@kilo-desktop/e2e':
         specifier: workspace:*
         version: link:../../e2e
@@ -1813,8 +1813,8 @@ importers:
         version: 1.2.0-beta.15
     devDependencies:
       '@anaconda/playwright-utils':
-        specifier: 2.0.2
-        version: 2.0.2(@playwright/test@1.63.0)(jiti@2.7.0)(supports-color@10.2.2)
+        specifier: 2.1.0
+        version: 2.1.0(@playwright/test@1.63.0)(jiti@2.7.0)(supports-color@10.2.2)
       '@kilo-desktop/e2e':
         specifier: workspace:*
         version: link:../../e2e
@@ -1919,8 +1919,8 @@ importers:
         version: 4.4.3
     devDependencies:
       '@anaconda/playwright-utils':
-        specifier: 2.0.2
-        version: 2.0.2(@playwright/test@1.63.0)(jiti@2.7.0)(supports-color@10.2.2)
+        specifier: 2.1.0
+        version: 2.1.0(@playwright/test@1.63.0)(jiti@2.7.0)(supports-color@10.2.2)
       '@kilo-desktop/e2e':
         specifier: workspace:*
         version: link:../../e2e
@@ -1999,8 +1999,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@anaconda/playwright-utils@2.0.2':
-    resolution: {integrity: sha512-W8w4LG9cmMeqft14+q5xZTp/Az1sQPieRT+DqZQz0/9in7caY38Zw+QUDInsPMaaNoEGUUlqVMu/h5bvpytfJA==, tarball: https://npm.pkg.github.com/download/@anaconda/playwright-utils/2.0.2/5597c81c3c855801785c379a14bac1476c8882c1}
+  '@anaconda/playwright-utils@2.1.0':
+    resolution: {integrity: sha512-UUqbv4boaqloqU/4JxFKX/TrxLDf4i/GkQUoHZpT5jYCi6bsBL3yots2Gzp8zKbnd+f6Aj1xCF7B6RYEfguzeA==, tarball: https://npm.pkg.github.com/download/@anaconda/playwright-utils/2.1.0/58c26cedadf083bef7eb6e39eacd9b15271a1a1d}
     engines: {node: '>=24.0.0'}
     hasBin: true
     peerDependencies:
@@ -10666,7 +10666,7 @@ snapshots:
   '@anaconda/desktop-bridge-payload-win32-x64@0.1.11':
     optional: true
 
-  '@anaconda/playwright-utils@2.0.2(@playwright/test@1.63.0)(jiti@2.7.0)(supports-color@10.2.2)':
+  '@anaconda/playwright-utils@2.1.0(@playwright/test@1.63.0)(jiti@2.7.0)(supports-color@10.2.2)':
     dependencies:
       '@eslint/js': 9.39.4
       '@playwright/test': 1.63.0

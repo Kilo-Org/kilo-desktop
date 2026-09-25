@@ -8,7 +8,11 @@ import type {
 	WorkspaceCapabilityService,
 	WorkspacesService,
 } from "../contracts/workspaces/schemas.js";
-import { FeatureError, type MainSdk } from "@kilo-desktop/feature-sdk/main";
+import {
+	EMBEDDED_WEB_HOST_CAPABILITY,
+	FeatureError,
+	type MainSdk,
+} from "@kilo-desktop/feature-sdk/main";
 
 import { kiloUiChatContract } from "../contracts/chat/schemas.js";
 import { mcpAppsContract } from "../contracts/mcp-apps/schemas.js";
@@ -16,6 +20,7 @@ import { onboardingContract } from "../contracts/onboarding/schemas.js";
 import { modelPreferencesContract } from "../contracts/model-preferences/schemas.js";
 import { kiloUiProvidersContract } from "../contracts/providers/schemas.js";
 import { workspacesContract } from "../contracts/workspaces/schemas.js";
+import { createMcpAppEmbeddedHost } from "./mcp-apps/mcp-app-host.js";
 import {
 	createMcpAppsHandlers,
 	registerLocalMcpAppResource,
@@ -131,6 +136,9 @@ export function mainRegister(
 		register: registerLocalMcpAppResource,
 		unregister: unregisterLocalMcpAppResource,
 	});
+	// Dedicated isolated origin for untrusted MCP App widget HTML (EoP 7): keeps
+	// the trusted app origin free of `script-src 'unsafe-inline'`.
+	mainSdk.plugins.expose(EMBEDDED_WEB_HOST_CAPABILITY, createMcpAppEmbeddedHost());
 	mainSdk.channels(workspacesContract).handleAll(api);
 	mainSdk.channels(kiloUiChatContract).handleAll(chatApi);
 	mainSdk.channels(onboardingContract).handleAll(onboardingApi);

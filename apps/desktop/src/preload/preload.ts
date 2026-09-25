@@ -1,3 +1,9 @@
+// Wire Sentry's renderer→main IPC bridge (ipcRenderer-based). Paired with
+// `ipcMode: IPCMode.Classic` in the main process (`platform/sentry.ts`) so
+// renderer telemetry flows over `ipcRenderer` rather than the `sentry-ipc://`
+// fetch protocol, which the app's strict CSP `connect-src` refuses.
+import "@sentry/electron/preload";
+
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 import {

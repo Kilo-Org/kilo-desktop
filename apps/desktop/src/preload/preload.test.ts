@@ -25,6 +25,10 @@ vi.mock("electron", () => ({
 	webUtils: { getPathForFile },
 }));
 
+// `preload.ts` side-effect-imports the Sentry IPC bridge; stub it so the
+// `desktopApi` exposeInMainWorld remains the only bridge call under test.
+vi.mock("@sentry/electron/preload", () => ({}));
+
 describe("preload desktopApi", { timeout: 15_000 }, () => {
 	beforeEach(() => {
 		vi.resetModules();

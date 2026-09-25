@@ -130,9 +130,9 @@ Treat `exposeToModelContext: true` as _"publish to a loopback API with no auth."
 
 The relay is `@mcp-b/webmcp-local-relay`, but **not** loaded from a CDN.
 
-- `apps/web/scripts/sync-webmcp-assets.mjs` copies `embed.js` + `widget.html` from the pinned `@mcp-b/webmcp-local-relay@5.1.0` package into `apps/web/public/webmcp/`, verifying each file's `sha256`.
+- `apps/web/scripts/sync-webmcp-assets.mjs` copies `embed.js` + `widget.html` from the pinned `@mcp-b/webmcp-local-relay@5.1.0` package into `apps/web/public/webmcp/`, verifying each file's upstream `sha256` and then applying two reviewed, marker-guarded patches (a widget discovery-timeout bump, and the same-origin embed patch below).
 - The renderer injects `<script src="/webmcp/embed.js" data-relay-host="127.0.0.1">`.
-- v5 `embed.js` fetches `widget.html` and inlines it (plus a dynamic config script) into a `blob:` iframe — there is no direct-iframe fallback, so the widget fetch must succeed. The blob document inherits the page CSP, which therefore allows `blob:` frames and `'unsafe-inline'` scripts (the config script is per-tab dynamic and cannot be hash-allowlisted).
+- **Patch — same-origin widget iframe (EoP 7).** Upstream v5 `embed.js` fetches `widget.html`, injects a per-tab dynamic `window.__WEBMCP_RELAY_CONFIG` inline `<script>`, and loads the result as a `blob:` iframe. A blob inherits the app-origin CSP, and that config script is per-tab (so it cannot be hash-allowlisted) — which forced `script-src 'unsafe-inline'` onto the trusted app origin that holds the preload bridge. The sync script patches `embed.js` to instead load a same-origin `webmcp/widget.html?<params>` document: the widget already reads its config from URL params (which `embed.js` already assembles), so there is no blob and no injected inline script. `widget.html` is served by `ElectronProtocol` with a per-response `'sha256-…'` for its bundled inline runtime, so it runs under the strict hash-based CSP with **no** `'unsafe-inline'`. (Dropping `'unsafe-inline'` without this patch was verified to break the relay in a packaged build.)
 - `installWebMcp` overrides the read-only `originAgentCluster` global before initializing the polyfill: the custom-scheme page reports `false`, which makes the polyfill reject every `registerTool()` with a `SecurityError`. (Sending `Origin-Agent-Cluster: ?1` from the protocol handler instead wedges the Chromium browser process on the custom scheme — do not use the header.)
 - CSP additions (both dev and packaged):
 
@@ -161,8 +161,7 @@ Result: **no third-party code fetched at runtime, works offline, verified at bui
 - 🔒 Relay binds loopback (`127.0.0.1`) only. Never exposed to a network interface.
 - 🔒 No auth on the relay by design — any local process running as the user can see exposed tools. Opt-in via `exposeToModelContext` is the enforcement point.
 - 🔒 Third-party relay code is pinned exact (`5.1.0`) and verified by `sha256` at build time; no CDN.
-- 🔒 CSP allows only same-origin and `blob:` frames (the relay widget and MCP App widgets) plus loopback WebSockets in the relay's port range.
-- 🔒 The relay widget runs as a `blob:` iframe inheriting the app CSP; relay code stays pinned and same-origin-served, and only loopback WebSockets in the relay's port range are connectable.
+- 🔒 The relay widget runs as a **same-origin** `webmcp/widget.html?<params>` iframe (patched off the upstream `blob:` approach) under the app's hash-based CSP — no `'unsafe-inline'`. Relay code stays pinned and same-origin-served; only loopback WebSockets in the relay's port range are connectable. `blob:` frames remain allowed only for the non-custom-scheme MCP App fallback.
 - ⚠️ `readOnlyHint` is metadata for clients, **not** enforcement — the tool handler is what actually runs. Author accordingly.
 
 ---

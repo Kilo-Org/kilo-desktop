@@ -119,6 +119,37 @@ for (const [asset, expected] of Object.entries(EXPECTED_SHA256)) {
 		await writeFile(path.join(publicDir, asset), patched);
 		continue;
 	}
+	if (asset === "embed.js") {
+		// PATCH: load the relay widget from a same-origin URL instead of a blob.
+		// Upstream v5 `embed.js` fetches `widget.html`, injects a per-tab dynamic
+		// `window.__WEBMCP_RELAY_CONFIG` inline <script>, and loads the result as a
+		// `blob:` iframe. Blob iframes inherit the app-origin CSP, and that inline
+		// config script cannot be hash-allowlisted — so it forces `'unsafe-inline'`
+		// onto the trusted app origin holding the preload bridge (threat-model EoP
+		// 7). The widget already prefers URL params over the injected global, and
+		// `embed.js` already assembles those params in `t`, so we replace the
+		// fetch + inline-config + blob construction with a direct same-origin
+		// `widget.html?<params>` URL. That response is served by ElectronProtocol
+		// with its own per-response sha256 inline-script hash, so it runs under the
+		// strict CSP with no `'unsafe-inline'`. See docs/webmcp.md §4.
+		const original = await readFile(source, "utf8");
+		const start = "let r=await fetch(e.widgetUrl);";
+		const end = "e.widgetOrigin=window.location.origin";
+		const startIndex = original.indexOf(start);
+		const endIndex = original.indexOf(end);
+		if (startIndex === -1 || endIndex === -1 || endIndex <= startIndex) {
+			throw new Error(
+				`[webmcp] embed.js blob-iframe construction markers not found; upstream changed. ` +
+					`Re-verify the same-origin patch in ${path.relative(process.cwd(), fileURLToPath(import.meta.url))}.`,
+			);
+		}
+		const patched =
+			original.slice(0, startIndex) +
+			"let o=(function(){var u=new URL(e.widgetUrl);u.search=t.toString();return u.href})();" +
+			original.slice(endIndex);
+		await writeFile(path.join(publicDir, asset), patched);
+		continue;
+	}
 	await copyFile(source, path.join(publicDir, asset));
 }
 

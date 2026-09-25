@@ -19,6 +19,14 @@ export function initSentry(): void {
 		dsn,
 		environment: RELEASE_TRACK,
 		tracesSampleRate: 0.1,
+		// Route renderer→main events over the `ipcRenderer` bridge (wired by
+		// `@sentry/electron/preload`, imported in the renderer preload) instead of
+		// the default `sentry-ipc://` fetch protocol. The trusted app origin's
+		// strict CSP has no `sentry-ipc:` in `connect-src` (and should not need
+		// one), so the Protocol transport is refused and renderer telemetry is
+		// silently dropped. Classic needs no CSP allowance and does not affect the
+		// hash-based `script-src` (EoP 7).
+		ipcMode: Sentry.IPCMode.Classic,
 		...(isDev && {
 			environment: "development",
 			tracesSampleRate: 1.0,

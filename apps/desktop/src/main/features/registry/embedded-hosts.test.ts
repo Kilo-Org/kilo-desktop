@@ -91,6 +91,30 @@ describe("collectEmbeddedHosts", () => {
 		]);
 	});
 
+	it("accepts inline documents keyed by an absolute path", async () => {
+		await boot("embedded-host-documents", (sdk) => {
+			sdk.plugins.expose(EMBEDDED_WEB_HOST_CAPABILITY, {
+				host: "mcp-app",
+				root: undefined,
+				documents: { "/widget-host.html": "<!doctype html>" },
+				securityProfiles: {
+					"/widget-host.html": ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+				},
+			});
+		});
+
+		expect(collectEmbeddedHosts()).toEqual([
+			{
+				host: "mcp-app",
+				root: undefined,
+				documents: { "/widget-host.html": "<!doctype html>" },
+				securityProfiles: {
+					"/widget-host.html": ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+				},
+			},
+		]);
+	});
+
 	it("skips a malformed contribution rather than taking down the protocol handler", async () => {
 		await boot("embedded-host-malformed", (sdk) => {
 			sdk.plugins.expose(EMBEDDED_WEB_HOST_CAPABILITY, { host: 42, root: "/bundle" });
@@ -125,6 +149,15 @@ describe("collectEmbeddedHosts", () => {
 					"output.html": ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
 				},
 			},
+		],
+		["null documents", { host: "canvas", root: "/bundle", documents: null }],
+		[
+			"a non-string document body",
+			{ host: "canvas", root: "/bundle", documents: { "/widget-host.html": 7 } },
+		],
+		[
+			"a relative document path",
+			{ host: "canvas", root: "/bundle", documents: { "widget-host.html": "<html>" } },
 		],
 	])("rejects %s", async (_label, contribution) => {
 		await boot("embedded-host-invalid", (sdk) => {

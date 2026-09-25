@@ -20,5 +20,14 @@ export interface EmbeddedWebHost {
 	readonly routes?: Readonly<
 		Record<string, (context: EmbeddedWebHostRouteContext) => Promise<unknown>>
 	>;
+	/**
+	 * Inline HTML documents served directly by the shell, keyed by absolute
+	 * request pathname (e.g. `/widget-host.html`). Use this instead of `root`
+	 * for a small static document that does not warrant a filesystem bundle —
+	 * the shell owns serving and security-policy enforcement, so the matching
+	 * `securityProfiles` entry (if any) still selects the CSP. Consulted before
+	 * `root`, so a document cannot be shadowed by a bundled file at that path.
+	 */
+	readonly documents?: Readonly<Record<string, string>>;
 	readonly securityProfiles?: Readonly<Record<string, EmbeddedWebHostSecurityProfile>>;
 }

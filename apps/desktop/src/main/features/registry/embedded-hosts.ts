@@ -31,6 +31,16 @@ function isEmbeddedWebHost(value: unknown): value is EmbeddedWebHost {
 			return false;
 		}
 	}
+	if (candidate.documents !== undefined) {
+		if (typeof candidate.documents !== "object" || candidate.documents === null) return false;
+		if (
+			!Object.entries(candidate.documents).every(
+				([route, html]) => route.startsWith("/") && typeof html === "string",
+			)
+		) {
+			return false;
+		}
+	}
 	if (candidate.routes === undefined) return true;
 	if (typeof candidate.routes !== "object" || candidate.routes === null) return false;
 	return Object.values(candidate.routes).every((route) => typeof route === "function");

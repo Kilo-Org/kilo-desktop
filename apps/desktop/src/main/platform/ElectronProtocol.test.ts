@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -141,17 +142,12 @@ describe("ElectronProtocol", () => {
 		expect(policy).not.toContain("frame-ancestors 'none'");
 	});
 
-	it("allows inline scripts via 'unsafe-inline' for sandboxed MCP App iframes", async () => {
-		// MCP App widgets render in sandboxed blob-URL iframes, which inherit this
-		// document's CSP and ship bundled inline scripts. Because CSP ignores
-		// 'unsafe-inline' when a hash/nonce is also present, the main window's
-		// script-src uses blanket 'unsafe-inline' rather than the per-response hash
-		// allowlist. This is a deliberate tradeoff; TODO(#<mcp-apps-csp>) moves MCP
-		// App HTML onto a dedicated embedded custom-scheme origin so the main
-		// window can return to a hash-based policy.
-		const inlineScript = "window.startDesktop()";
+	it("keeps 'unsafe-inline' in development for Vite HMR", async () => {
+		// Development serves through Vite, which injects and rewrites inline
+		// scripts at runtime that a static hash allowlist cannot cover, so dev
+		// retains 'unsafe-inline'. Production hash-pins instead (see below).
 		fetch.mockResolvedValue(
-			new Response(`<script>${inlineScript}</script>`, {
+			new Response(`<script>window.startDesktop()</script>`, {
 				headers: { "Content-Type": "text/html; charset=utf-8" },
 			}),
 		);
@@ -173,6 +169,68 @@ describe("ElectronProtocol", () => {
 		// JS eval stays blocked. `'wasm-unsafe-eval'` is only for bundled WASM.
 		expect(scriptSrc).toContain("'wasm-unsafe-eval'");
 		expect(scriptSrc).not.toContain("'unsafe-eval'");
+	});
+
+	it("hash-pins inline scripts and forbids 'unsafe-inline' in production (EoP 7)", async () => {
+		// The trusted app origin holds the preload bridge, so it must not allow
+		// arbitrary inline script. Each shipped inline script is pinned by its
+		// sha256; an injected inline script is therefore refused by the browser.
+		// MCP App widgets no longer force 'unsafe-inline' here — they render under
+		// the isolated `mcp-app` origin.
+		const root = await mkdtemp(path.join(os.tmpdir(), "kilo-desktop-renderer-"));
+		temporaryDirectories.push(root);
+		const inlineScript = "window.startDesktop()";
+		await writeFile(
+			path.join(root, "index.html"),
+			`<!doctype html><script>${inlineScript}</script>`,
+		);
+		const adapter = new ElectronProtocol();
+		adapter.register({ isDevelopment: false, rendererRoot: root });
+		const protocolHandler = handle.mock.calls[0]?.[1] as (request: Request) => Promise<Response>;
+
+		const response = await protocolHandler(new Request("kilo-desktop://app/"));
+
+		const scriptSrc =
+			response.headers
+				.get("Content-Security-Policy")
+				?.split(";")
+				.find((directive) => directive.trimStart().startsWith("script-src")) ?? "";
+		expect(scriptSrc).not.toContain("'unsafe-inline'");
+		const expectedHash = createHash("sha256").update(inlineScript).digest("base64");
+		expect(scriptSrc).toContain(`'sha256-${expectedHash}'`);
+		expect(scriptSrc).toContain("'wasm-unsafe-eval'");
+		expect(scriptSrc).not.toContain("'unsafe-eval'");
+	});
+
+	it("ignores a development origin in a packaged build so the strict CSP holds (EoP 7)", async () => {
+		// `developmentOrigin` derives from `KILO_WEB_DEV_SERVER_URL`, which can leak
+		// into a packaged app's environment. It must NOT re-enable 'unsafe-inline'
+		// or widen script/connect-src to the dev origin when `isDevelopment` is
+		// false — the production guarantee has to be structural, not env-dependent.
+		const root = await mkdtemp(path.join(os.tmpdir(), "kilo-desktop-renderer-"));
+		temporaryDirectories.push(root);
+		await writeFile(
+			path.join(root, "index.html"),
+			`<!doctype html><script>window.startDesktop()</script>`,
+		);
+		const adapter = new ElectronProtocol();
+		adapter.register({
+			isDevelopment: false,
+			developmentOrigin: "http://localhost:5173",
+			rendererRoot: root,
+		});
+		const protocolHandler = handle.mock.calls[0]?.[1] as (request: Request) => Promise<Response>;
+
+		const csp = (await protocolHandler(new Request("kilo-desktop://app/"))).headers.get(
+			"Content-Security-Policy",
+		);
+		const directive = (name: string) =>
+			csp?.split(";").find((entry) => entry.trimStart().startsWith(name)) ?? "";
+		expect(directive("script-src")).not.toContain("'unsafe-inline'");
+		expect(directive("script-src")).toContain("'sha256-");
+		expect(directive("script-src")).not.toContain("localhost:5173");
+		expect(directive("script-src")).not.toContain("ws:");
+		expect(directive("connect-src")).not.toContain("localhost:5173");
 	});
 
 	it("proxies development requests without forwarding custom-scheme headers", async () => {
@@ -505,6 +563,52 @@ describe("ElectronProtocol", () => {
 		);
 		expect(escape.status).toBe(404);
 		expect(escape.headers.get("Content-Security-Policy")).toContain("'wasm-unsafe-eval'");
+	});
+
+	it("serves an inline document under the active-untrusted policy", async () => {
+		const appRoot = await mkdtemp(path.join(os.tmpdir(), "kilo-desktop-renderer-"));
+		temporaryDirectories.push(appRoot);
+		await writeFile(path.join(appRoot, "index.html"), "app");
+
+		const adapter = new ElectronProtocol();
+		adapter.register({
+			isDevelopment: false,
+			rendererRoot: appRoot,
+			embeddedHosts: () => [
+				{
+					host: "mcp-app",
+					root: undefined,
+					documents: { "/widget-host.html": "<!doctype html><body><script>1</script></body>" },
+					securityProfiles: {
+						"/widget-host.html": ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+					},
+				},
+			],
+		});
+		const protocolHandler = handle.mock.calls[0]?.[1] as (request: Request) => Promise<Response>;
+
+		const shell = await protocolHandler(new Request("kilo-desktop://mcp-app/widget-host.html"));
+		expect(shell.status).toBe(200);
+		expect(shell.headers.get("Content-Type")).toContain("text/html");
+		expect(await shell.text()).toContain("<!doctype html>");
+		// The isolated widget origin — not the app — is the one that may run inline scripts.
+		const shellScriptSrc = (shell.headers.get("Content-Security-Policy") ?? "")
+			.split(";")
+			.find((directive) => directive.trimStart().startsWith("script-src"));
+		expect(shellScriptSrc).toContain("'unsafe-inline'");
+
+		// A document path with no bundled root still 404s for anything else.
+		const missing = await protocolHandler(new Request("kilo-desktop://mcp-app/other.html"));
+		expect(missing.status).toBe(404);
+
+		// The app origin learns to frame the widget host but keeps its own strict policy.
+		const appShell = await protocolHandler(new Request("kilo-desktop://app/"));
+		const appPolicy = appShell.headers.get("Content-Security-Policy") ?? "";
+		expect(appPolicy).toContain("kilo-desktop://mcp-app");
+		const appScriptSrc =
+			appPolicy.split(";").find((directive) => directive.trimStart().startsWith("script-src")) ??
+			"";
+		expect(appScriptSrc).not.toContain("'unsafe-inline'");
 	});
 
 	it("keeps the app policy byte-identical when no host is contributed", async () => {

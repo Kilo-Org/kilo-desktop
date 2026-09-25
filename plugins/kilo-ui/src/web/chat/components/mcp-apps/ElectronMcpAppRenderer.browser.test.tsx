@@ -1,8 +1,12 @@
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, waitFor } from "@testing-library/react";
 import { resource, useResource } from "@assistant-ui/tap";
-import type { McpAppsHost, ToolCallMessagePartProps } from "@assistant-ui/react";
+import type { McpAppResource, McpAppsHost, ToolCallMessagePartProps } from "@assistant-ui/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import {
+	MCP_APP_SHELL_HTML_MESSAGE,
+	MCP_APP_SHELL_READY_MESSAGE,
+} from "../../../../contracts/mcp-apps/schemas.js";
 import { ElectronMcpAppRenderer } from "./ElectronMcpAppRenderer.js";
 
 const host: McpAppsHost = {
@@ -13,6 +17,10 @@ const host: McpAppsHost = {
 };
 const TestHost = resource(() => host);
 const testHost = TestHost();
+// A stable options object so `ElectronMcpAppRenderer` memoizes one `Render`
+// across rerenders; a fresh object each render would recreate `Render` and
+// remount the frame on its own, masking what the reload test below asserts.
+const rendererOptions = { host: testHost };
 
 const notebookToolPart = {
 	type: "tool-call",
@@ -45,8 +53,50 @@ const localMcpAppPart = {
 } as ToolCallMessagePartProps;
 
 function TestRenderer({ part }: { part: ToolCallMessagePartProps }) {
-	const { render: Render } = useResource(ElectronMcpAppRenderer({ host: testHost }));
+	const { render: Render } = useResource(ElectronMcpAppRenderer(rendererOptions));
 	return <Render {...part} />;
+}
+
+function mcpAppPartFor(resourceUri: string): ToolCallMessagePartProps {
+	return {
+		...localMcpAppPart,
+		mcp: { app: { resourceUri, serverId: "desktop" } },
+	} as ToolCallMessagePartProps;
+}
+
+function widgetResource(html: string): McpAppResource {
+	return { uri: "ui://x", mimeType: "text/html;profile=mcp-app", html };
+}
+
+// Stands in for the isolated shell on the blob path (the custom-scheme shell
+// origin can't be exercised in the browser harness). It reports "test/loaded"
+// once its listener is registered, optionally announces shell readiness, and
+// echoes back any HTML the renderer hands it — so the test can observe the
+// renderer's side of the handshake through a real iframe + postMessage.
+function fakeShellHtml({ announceReady }: { announceReady: boolean }): string {
+	return `<!doctype html><html><body><script>
+		window.addEventListener("message", function (event) {
+			if (event.source !== window.parent) return;
+			var data = event.data;
+			if (data && data.type === ${JSON.stringify(MCP_APP_SHELL_HTML_MESSAGE)} && typeof data.html === "string") {
+				window.parent.postMessage({ type: "test/echo", html: data.html }, "*");
+			}
+		});
+		window.parent.postMessage({ type: "test/loaded" }, "*");
+		${announceReady ? `window.parent.postMessage({ type: ${JSON.stringify(MCP_APP_SHELL_READY_MESSAGE)} }, "*");` : ""}
+	</script></body></html>`;
+}
+
+function onceMessage(predicate: (data: { type?: string }) => boolean): Promise<{ type?: string }> {
+	return new Promise((resolve) => {
+		const handler = (event: MessageEvent) => {
+			if (predicate(event.data ?? {})) {
+				window.removeEventListener("message", handler);
+				resolve(event.data);
+			}
+		};
+		window.addEventListener("message", handler);
+	});
 }
 
 afterEach(() => {
@@ -73,5 +123,69 @@ describe("ElectronMcpAppRenderer", () => {
 			uri: "ui://environments/conda-envs-list",
 			serverId: "desktop",
 		});
+	});
+
+	it("reloads the frame when the widget HTML changes", async () => {
+		// The isolated Electron shell accepts widget HTML exactly once (it drops
+		// its own message listener before the first document.write), so new HTML
+		// for an already-mounted frame must force a fresh iframe load or the widget
+		// silently keeps showing stale content. The shell origin can't be
+		// exercised here (no custom scheme in the browser test), but the reload it
+		// depends on surfaces on the blob path as the iframe element being
+		// remounted rather than reused; that remount is the regression guard. The
+		// shell handshake itself is covered by manual/e2e checks.
+		vi.mocked(host.loadResource).mockImplementation(({ uri }) =>
+			Promise.resolve(widgetResource(`<!doctype html><title>${uri}</title>`)),
+		);
+
+		const { container, rerender, findByTitle } = render(
+			<TestRenderer part={mcpAppPartFor("ui://environments/a")} />,
+		);
+		const firstFrame = await findByTitle("MCP App");
+
+		rerender(<TestRenderer part={mcpAppPartFor("ui://environments/b")} />);
+
+		await waitFor(() => {
+			const currentFrame = container.querySelector('iframe[title="MCP App"]');
+			expect(currentFrame).not.toBeNull();
+			expect(currentFrame).not.toBe(firstFrame);
+		});
+	});
+
+	it("hands the widget HTML to the shell when it announces readiness", async () => {
+		const shellHtml = fakeShellHtml({ announceReady: true });
+		vi.mocked(host.loadResource).mockResolvedValue(widgetResource(shellHtml));
+		const echo = onceMessage((data) => data.type === "test/echo");
+
+		render(<TestRenderer part={mcpAppPartFor("ui://environments/a")} />);
+
+		// The shell announced READY; the renderer must post the widget HTML back,
+		// which the shell echoes. Getting the same HTML confirms the round-trip.
+		const received = (await echo) as { html: string };
+		expect(received.html).toBe(shellHtml);
+	});
+
+	it("ignores shell-ready messages from foreign sources", async () => {
+		const shellHtml = fakeShellHtml({ announceReady: false });
+		vi.mocked(host.loadResource).mockResolvedValue(widgetResource(shellHtml));
+
+		let echoed = false;
+		const onEcho = (event: MessageEvent) => {
+			if ((event.data as { type?: string } | null)?.type === "test/echo") echoed = true;
+		};
+		window.addEventListener("message", onEcho);
+
+		render(<TestRenderer part={mcpAppPartFor("ui://environments/a")} />);
+		// Wait until the frame's listener is up so a mis-accepted READY would in
+		// fact produce an echo (otherwise the negative could pass on timing alone).
+		await onceMessage((data) => data.type === "test/loaded");
+
+		// A READY whose source is the host window — not the frame's own window —
+		// must be rejected, so the renderer never hands over the HTML (no echo).
+		window.postMessage({ type: MCP_APP_SHELL_READY_MESSAGE }, "*");
+		await new Promise((resolve) => setTimeout(resolve, 250));
+
+		expect(echoed).toBe(false);
+		window.removeEventListener("message", onEcho);
 	});
 });

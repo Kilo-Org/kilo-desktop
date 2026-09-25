@@ -101,23 +101,29 @@ export function createContentSecurityPolicy(
 	pluginSchemes: readonly string[] = [],
 ): string {
 	const developmentSources = developmentOrigin ? ` ${new URL(developmentOrigin).origin} ws:` : "";
-	// NOTE: MCP App widgets render in sandboxed blob-URL iframes, which inherit
-	// this document's CSP. Their bundled inline scripts therefore require
-	// `'unsafe-inline'` here. Because CSP ignores `'unsafe-inline'` whenever a
-	// hash/nonce source is also present, we cannot combine it with the previous
-	// per-response `inlineScriptHashes` allowlist — the two are mutually
-	// exclusive. This trades the main window's hash-based inline-script defense
-	// for blanket inline execution. TODO(#<mcp-apps-csp>): serve MCP App HTML
-	// under a dedicated embedded custom-scheme origin (see
-	// `createEmbeddedContentSecurityPolicy`) so the main window keeps its strict
-	// hash-based policy.
-	void inlineScriptHashes;
+	// Inline-script policy for the trusted app renderer (the origin that holds
+	// the preload bridge). In development Vite injects and rewrites inline
+	// scripts at runtime that a static hash allowlist cannot cover, so dev keeps
+	// `'unsafe-inline'`. Production pins each shipped inline script by its
+	// sha256 hash instead — never `'unsafe-inline'` — so an injected inline
+	// script (XSS) cannot execute here. Both former consumers of `'unsafe-inline'`
+	// on this origin were moved off `blob:` iframes that inherit this policy:
+	// (1) MCP App widgets now render under the dedicated `mcp-app` embedded origin
+	// with the active-untrusted profile, and (2) the self-hosted WebMCP relay
+	// widget now loads a same-origin `webmcp/widget.html?<params>` document
+	// (config passed via URL params — see `sync-webmcp-assets.mjs`) instead of a
+	// blob with an injected per-tab inline config script. So no dynamic inline
+	// script needs `'unsafe-inline'` on this origin in production. `'unsafe-inline'`
+	// and hash/nonce sources are mutually exclusive in CSP, so exactly one is emitted.
+	const inlineScriptSources = developmentOrigin
+		? " 'unsafe-inline'"
+		: inlineScriptHashes.map((hash) => ` 'sha256-${hash}'`).join("");
 	return [
 		"default-src 'self'",
 		// `'wasm-unsafe-eval'` instantiates the bundled DotLottie WASM player
 		// (welcome logo). It is not `'unsafe-eval'` and does not allow remote
 		// script; the .wasm file is shipped with `@lottiefiles/dotlottie-web`.
-		`script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'${developmentSources}`,
+		`script-src 'self'${inlineScriptSources} 'wasm-unsafe-eval'${developmentSources}`,
 		"style-src 'self' 'unsafe-inline'",
 		"img-src 'self' data: blob:",
 		"font-src 'self' data:",
@@ -126,10 +132,13 @@ export function createContentSecurityPolicy(
 		// the loopback WebSockets the self-hosted WebMCP relay widget uses to
 		// reach the `@mcp-b/webmcp-local-relay` daemon.
 		`connect-src 'self' ${pluginSchemes.map((scheme) => `${scheme}:`).join(" ")} ${LOOPBACK_SERVER_CONNECT_SOURCE}${developmentSources} ${RELAY_WS_SOURCES}`,
-		// `frame-src 'self' blob:`: the WebMCP relay v5 embed.js builds its widget
-		// as a blob: iframe (which inherits this policy, including the loopback
-		// WebSocket connect-src above), and MCP App widgets render in sandboxed
-		// blob-URL iframes. `frame-ancestors 'self'`: the widget response must
+		// `frame-src 'self' blob:`: `frameOrigins` names the sibling embedded hosts
+		// (e.g. `mcp-app`, where MCP App widgets render under their own isolated
+		// origin). The WebMCP relay widget now loads a same-origin
+		// `webmcp/widget.html?<params>` document (covered by `'self'`) rather than
+		// a `blob:` iframe; `blob:` is retained only for the non-custom-scheme MCP
+		// App fallback (`ElectronMcpAppRenderer` blob path, used only where there
+		// is no preload bridge). `frame-ancestors 'self'`: the widget response must
 		// permit being framed by the same-origin app (a `'none'` here blocks the
 		// relay iframe and breaks tool discovery). No cross-origin embedders exist
 		// under the custom scheme, so `'self'` still blocks external framing.
@@ -290,6 +299,16 @@ async function serveEmbeddedHost(embedded: EmbeddedWebHost, requestUrl: URL): Pr
 		return Response.json(await route({ origin: `${requestUrl.protocol}//${requestUrl.host}` }));
 	}
 
+	// Inline documents are consulted before the filesystem so a static document
+	// (e.g. the MCP App widget shell) cannot be shadowed by a bundled file, and
+	// so a document-only host with no `root` still serves.
+	const inlineDocument = embedded.documents?.[requestUrl.pathname];
+	if (inlineDocument !== undefined) {
+		return new Response(inlineDocument, {
+			headers: { "Content-Type": "text/html; charset=utf-8" },
+		});
+	}
+
 	// No bundle in this build — an expected state, not an error.
 	if (!embedded.root) return new Response(null, { status: 404 });
 
@@ -329,13 +348,19 @@ export class ElectronProtocol {
 		if (this.#registeredScheme === scheme) return;
 
 		const appOrigin = getDesktopOrigin(input.isDevelopment);
+		// The dev-server origin only applies to the development build. Gate it on
+		// `isDevelopment` here so a packaged build can never widen the CSP or
+		// re-enable `script-src 'unsafe-inline'` (EoP 7) just because
+		// `KILO_WEB_DEV_SERVER_URL` happens to be present in its environment. The
+		// production guarantee is thus structural, not env-dependent.
+		const developmentOrigin = input.isDevelopment ? input.developmentOrigin : undefined;
 		const appPolicyFor = (embeddedHosts: readonly EmbeddedWebHost[]) => {
 			const frameOrigins = embeddedHosts.map((embedded) =>
 				getDesktopOrigin(input.isDevelopment, embedded.host),
 			);
 			return (inlineScriptHashes: readonly string[]) =>
 				createContentSecurityPolicy(
-					input.developmentOrigin,
+					developmentOrigin,
 					inlineScriptHashes,
 					frameOrigins,
 					input.pluginSchemes ?? [],
@@ -368,11 +393,9 @@ export class ElectronProtocol {
 
 			// Deliberately scoped to the app host: an embedded host's assets are not
 			// served by the web dev server and would 404 if proxied there.
-			if (input.isDevelopment && input.developmentOrigin) {
-				const targetUrl = new URL(
-					`${requestUrl.pathname}${requestUrl.search}`,
-					input.developmentOrigin,
-				);
+			// `developmentOrigin` is already gated on `isDevelopment` above.
+			if (developmentOrigin) {
+				const targetUrl = new URL(`${requestUrl.pathname}${requestUrl.search}`, developmentOrigin);
 				const response = await net.fetch(targetUrl.toString(), {
 					method: request.method,
 				});

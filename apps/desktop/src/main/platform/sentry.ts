@@ -3,6 +3,7 @@ import { app } from "electron";
 
 import { createLogger } from "./logger.js";
 import type { PreferencesStore } from "./PreferencesStore.js";
+import { scrubSentryEvent } from "./sentry-scrub.js";
 
 const log = createLogger("sentry");
 
@@ -19,6 +20,12 @@ export function initSentry(): void {
 		dsn,
 		environment: RELEASE_TRACK,
 		tracesSampleRate: 0.1,
+		// Redact user-identifying data (OS username in file paths, machine
+		// hostname) from every event/transaction before it leaves the process.
+		// Renderer events are forwarded to this main client (IPCMode.Classic),
+		// so this covers them too. Data minimization only — not a consent gate.
+		beforeSend: (event) => scrubSentryEvent(event),
+		beforeSendTransaction: (event) => scrubSentryEvent(event),
 		// Route renderer→main events over the `ipcRenderer` bridge (wired by
 		// `@sentry/electron/preload`, imported in the renderer preload) instead of
 		// the default `sentry-ipc://` fetch protocol. The trusted app origin's

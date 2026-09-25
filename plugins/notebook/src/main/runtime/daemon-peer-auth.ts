@@ -13,7 +13,8 @@
  *   answered the socket instead of our child fails immediately.
  * - `trusted-image`: we are attaching to a daemon we did not spawn, so we can
  *   only trust it by its executable — its digest must match the pinned release,
- *   or its macOS signature must meet our Developer ID requirement. This is
+ *   or its macOS signature must meet Anaconda's or nteract's Developer ID
+ *   requirement (see `MACOS_RUNTIMED_REQUIREMENT`). This is
  *   defense in depth, not a hard boundary against a
  *   same-user attacker: that user can run the genuine binary under `LD_PRELOAD`
  *   / `DYLD_INSERT_LIBRARIES` (absent a hardened runtime), attach with ptrace,

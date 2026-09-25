@@ -15,7 +15,8 @@ import type { AuthenticatePeer } from "./RuntimedDaemonManager.js";
  * attaching to one it did not start (`spawnedPid === null`); that selects the
  * expectation the pure decision enforces. Attached images are hashed by their
  * canonical path and compared with the release's pinned digest; signed macOS
- * images may instead satisfy the Anaconda Developer ID requirement.
+ * images may instead satisfy `MACOS_RUNTIMED_REQUIREMENT` (Anaconda's or
+ * nteract's Developer ID).
  */
 export interface DaemonPeerAuthenticatorDeps {
 	readonly resolvePeerIdentity: (socketPath: string) => Promise<PeerIdentity | null>;
@@ -41,12 +42,24 @@ async function hashExecutable(path: string): Promise<string> {
 }
 
 const execFileAsync = promisify(execFile);
-// Forge signs bundled native resources under the Kilo Preview Developer ID.
-// A signed executable's file digest differs from the unsigned release asset.
-const MACOS_RUNTIMED_REQUIREMENT =
-	'anchor apple generic and certificate leaf[subject.OU] = "Z5788K4JT7" and identifier "runtimed-nightly"';
+/**
+ * Signing identities trusted for a daemon we attach to but did not spawn:
+ * - Anaconda (`Z5788K4JT7`): Forge re-signs our bundled `runtimed-nightly`, so
+ *   another Kilo installation's daemon no longer matches the unsigned digest.
+ * - nteract: the notarized, hardened-runtime `runtimed` inside an installed
+ *   nteract app. Its launchd agent starts at login and owns the shared channel
+ *   singleton before Kilo Desktop launches, so without this a co-installed
+ *   nteract makes notebooks unavailable after every reboot. Releases moved
+ *   from Kyle Kelley's team (`8E54RDNN6Z`) to NumFOCUS (`2YJ64GUAVW`) in
+ *   nteract#4228 (2026-09-10); both stay trusted because installs predating
+ *   the switch keep the old-signed daemon until they update.
+ * Any version signed by these teams is accepted; protocol compatibility is
+ * not enforced here.
+ */
+export const MACOS_RUNTIMED_REQUIREMENT =
+	'anchor apple generic and ((certificate leaf[subject.OU] = "Z5788K4JT7" and identifier "runtimed-nightly") or ((certificate leaf[subject.OU] = "2YJ64GUAVW" or certificate leaf[subject.OU] = "8E54RDNN6Z") and identifier "runtimed"))';
 
-async function verifySignature(path: string): Promise<boolean> {
+export async function verifyRuntimedSignature(path: string): Promise<boolean> {
 	if (process.platform !== "darwin") return false;
 	try {
 		await execFileAsync("/usr/bin/codesign", [
@@ -64,7 +77,7 @@ async function verifySignature(path: string): Promise<boolean> {
 export function createDaemonPeerAuthenticator(deps: DaemonPeerAuthenticatorDeps): AuthenticatePeer {
 	const canonicalize = deps.canonicalize ?? defaultCanonicalize;
 	const hash = deps.hashExecutable ?? hashExecutable;
-	const verify = deps.verifySignature ?? verifySignature;
+	const verify = deps.verifySignature ?? verifyRuntimedSignature;
 	return async ({ socketPath, spawnedPid }) => {
 		const peer = await deps.resolvePeerIdentity(socketPath);
 

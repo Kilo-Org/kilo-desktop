@@ -68,7 +68,11 @@ Electron port and retain runtimed's negotiated protocol number.
   to must run an executable whose SHA-256 matches the pinned release artifact. This allows an
   identical daemon from another Kilo installation. A macOS-signed executable can differ from the
   unsigned release bytes, so the alternative is a valid signature bound to Anaconda's Developer ID
-  team and the `runtimed-nightly` identifier. A different unsigned binary still fails closed,
+  team and the `runtimed-nightly` identifier, or to one of nteract's Developer ID teams (NumFOCUS
+  `2YJ64GUAVW` since nteract#4228, or the earlier `8E54RDNN6Z`) and the `runtimed` identifier. The
+  latter admits the daemon a co-installed nteract app's launchd agent
+  starts at login, which otherwise owns the shared singleton and blocks notebooks until it is
+  stopped; any nteract-signed version is accepted. A different unsigned binary still fails closed,
   including through explicit endpoints. Without a staged bundled binary every attach fails closed.
 
 ## Release verification

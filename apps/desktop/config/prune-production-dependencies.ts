@@ -2,6 +2,7 @@ import { readdir, rm } from "node:fs/promises";
 import path from "node:path";
 
 const nonRuntimePackageDirectories = [".turbo", ".vitest", "coverage", "e2e"] as const;
+const pnpmStoreArtifacts = [".pnpm", ".modules.yaml"] as const;
 const stagedKiloCliPackages = [
 	"cli-darwin-arm64",
 	"cli-linux-x64-baseline",
@@ -24,9 +25,19 @@ export async function pruneProductionDependencies(nodeModules: string): Promise<
 		),
 	);
 
+	// pnpm 12 `deploy` under nodeLinker: hoisted also materializes a full
+	// virtual store of real copies beside the hoisted tree. Nothing resolves
+	// through it (the tree has no symlinks into it), so it only doubled
+	// app.asar, including second copies of the bridge payload and kilo CLI.
+	await Promise.all(
+		pnpmStoreArtifacts.map((entry) =>
+			rm(path.join(nodeModules, entry), { force: true, recursive: true }),
+		),
+	);
+
 	// Bridge payloads are already staged as Resources/bridge by the environments
-	// plugin, so any copy pnpm deploy left in node_modules is pure duplication
-	// (each payload is a full relocatable Python runtime, hundreds of MB).
+	// plugin, so a hoisted copy in node_modules is pure duplication (each
+	// payload is a full relocatable Python runtime, hundreds of MB).
 	//
 	// Matched by prefix rather than by an explicit platform list: the payload is
 	// an os/cpu-gated optionalDependency, so exactly one can be present on any

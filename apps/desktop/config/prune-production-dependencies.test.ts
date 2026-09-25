@@ -80,6 +80,32 @@ describe("pruneProductionDependencies", () => {
 		expect(existsSync(kept)).toBe(true);
 	});
 
+	it("removes the pnpm virtual store and keeps the hoisted tree", async () => {
+		// pnpm 12 `deploy` with nodeLinker: hoisted writes a full
+		// `.pnpm/<name>/<version>/<hash>/` store of real copies beside the
+		// hoisted packages. Nothing resolves through it, so it only doubles
+		// app.asar (and re-ships the bridge payload and kilo CLI).
+		const nodeModules = makeNodeModules();
+		const hoisted = makePackage(nodeModules, "lucide-react", ["dist/index.js"]);
+		const store = path.join(nodeModules, ".pnpm");
+		makePackage(
+			path.join(store, "@anaconda/desktop-bridge-payload-darwin-arm64/0.1.11/hash/node_modules"),
+			"@anaconda/desktop-bridge-payload-darwin-arm64",
+			["python/bin/python3.11"],
+		);
+		makePackage(path.join(store, "@/lucide-react/1.27.0/hash/node_modules"), "lucide-react", [
+			"dist/index.js",
+		]);
+		const modulesManifest = path.join(nodeModules, ".modules.yaml");
+		writeFileSync(modulesManifest, "{}");
+
+		await pruneProductionDependencies(nodeModules);
+
+		expect(existsSync(store)).toBe(false);
+		expect(existsSync(modulesManifest)).toBe(false);
+		expect(existsSync(path.join(hoisted, "dist", "index.js"))).toBe(true);
+	});
+
 	it("strips non-runtime directories from workspace packages", async () => {
 		const nodeModules = makeNodeModules();
 		const packageDirectory = makePackage(nodeModules, "@kilo-desktop/plugin-environments", [

@@ -16,10 +16,6 @@ on:
         options:
           - preview
           - stable
-      version:
-        description: Stable version, for example 1.2.3 or 1.2.3-alpha.1
-        required: false
-        type: string
 
 permissions:
   contents: read
@@ -55,14 +51,9 @@ jobs:
         shell: bash
         env:
           DISPATCH_TRACK: ${{ inputs.track }}
-          DISPATCH_VERSION: ${{ inputs.version }}
           GH_TOKEN: ${{ github.token }}
         run: |
           if [[ "$GITHUB_EVENT_NAME" == "schedule" || "$DISPATCH_TRACK" == "preview" ]]; then
-            if [[ -n "${DISPATCH_VERSION:-}" ]]; then
-              echo "Preview releases derive their version automatically; leave version empty." >&2
-              exit 1
-            fi
             echo "release_track=preview" >> "$GITHUB_OUTPUT"
             preview_build_time=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .created_at)
             if [[ -z "$preview_build_time" ]]; then
@@ -73,10 +64,20 @@ jobs:
             exit 0
           fi
 
+          # Stable versions are bumped on main through a normal pull request; the
+          # release only publishes the committed version and never writes back.
+          version=$(jq -r .version apps/desktop/package.json)
           if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
-            raw_version="$GITHUB_REF_NAME"
             if ! git merge-base --is-ancestor HEAD origin/main; then
               echo "Stable release tags must point to a commit on main." >&2
+              exit 1
+            fi
+            if [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-preview-[0-9]{6}-[0-9]{5}$ ]]; then
+              echo "Preview tags are created by Preview release runs and cannot trigger Stable publication." >&2
+              exit 1
+            fi
+            if [[ "${GITHUB_REF_NAME#v}" != "$version" ]]; then
+              echo "Tag $GITHUB_REF_NAME does not match apps/desktop/package.json version $version. Bump the version on main before tagging." >&2
               exit 1
             fi
           else
@@ -88,16 +89,10 @@ jobs:
               echo "Stable releases must be dispatched from main." >&2
               exit 1
             fi
-            raw_version="$DISPATCH_VERSION"
           fi
 
-          version="${raw_version#v}"
-          if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-preview-[0-9]{6}-[0-9]{5}$ ]]; then
-            echo "Preview tags are created by Preview release runs and cannot trigger Stable publication." >&2
-            exit 1
-          fi
-          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "Stable releases require X.Y.Z or X.Y.Z-prerelease." >&2
+          if [[ "$version" =~ -preview-[0-9]{6}-[0-9]{5}$ || ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Stable releases require apps/desktop/package.json to hold X.Y.Z or X.Y.Z-prerelease (got $version)." >&2
             exit 1
           fi
           prerelease="${version#*-}"
@@ -162,73 +157,3 @@ jobs:
       release_track: ${{ needs.preflight.outputs.release_track }}
       release_version: ${{ needs.preflight.outputs.release_version }}
       fail_fast: ${{ needs.preflight.outputs.release_track == 'stable' }}
-
-  finalize:
-    name: Finalize Stable version
-    needs: [preflight, publish]
-    if: needs.preflight.outputs.release_track == 'stable' && needs.publish.result == 'success'
-    runs-on: ubuntu-latest
-    environment: production
-    permissions:
-      contents: write
-    steps:
-      - name: Mint release app token
-        id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          app-id: ${{ secrets.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-
-      - name: Checkout main
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: main
-          token: ${{ steps.app-token.outputs.token }}
-
-      - name: Setup Node and pnpm
-        uses: ./.github/actions/setup-node-pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Resolve release app identity
-        id: app-bot
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
-        run: |
-          user_id=$(gh api "/users/${APP_SLUG}[bot]" --jq .id)
-          echo "name=${APP_SLUG}[bot]" >> "$GITHUB_OUTPUT"
-          echo "email=${user_id}+${APP_SLUG}[bot]@users.noreply.github.com" >> "$GITHUB_OUTPUT"
-
-      - name: Update release package versions
-        env:
-          RELEASE_VERSION: ${{ needs.preflight.outputs.release_version }}
-        run: pnpm --filter @kilo-desktop/desktop exec tsx config/desktop-version.ts "$RELEASE_VERSION"
-
-      - name: Refresh release lockfile
-        run: pnpm install --lockfile-only --ignore-scripts
-
-      - name: Commit Stable version
-        env:
-          RELEASE_VERSION: ${{ needs.preflight.outputs.release_version }}
-        run: |
-          if git diff --quiet -- apps/desktop/package.json apps/web/package.json packages/contracts/package.json pnpm-lock.yaml; then
-            exit 0
-          fi
-          git config user.name "${{ steps.app-bot.outputs.name }}"
-          git config user.email "${{ steps.app-bot.outputs.email }}"
-          git add apps/desktop/package.json apps/web/package.json packages/contracts/package.json pnpm-lock.yaml
-          git commit -m "chore(release): prepare v$RELEASE_VERSION"
-          for attempt in 1 2 3; do
-            git fetch origin main
-            git rebase origin/main
-            if git push origin HEAD:main; then
-              exit 0
-            fi
-            if [[ "$attempt" -lt 3 ]]; then
-              sleep $((attempt * 2))
-            fi
-          done
-          echo "Failed to push the Stable version after 3 attempts." >&2
-          exit 1

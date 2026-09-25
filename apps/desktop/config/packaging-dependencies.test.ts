@@ -215,6 +215,15 @@ describe("packaged production dependencies", () => {
 		expect(publish).not.toContain("github.run_started_at");
 	});
 
+	it("releases the committed Stable version without writing back to main", () => {
+		const release = readFileSync(path.join(workspaceRoot, ".github/workflows/release.yml"), "utf8");
+
+		expect(release).toContain("jq -r .version apps/desktop/package.json");
+		expect(release).not.toContain("inputs.version");
+		expect(release).not.toContain("create-github-app-token");
+		expect(release).not.toContain("git push");
+	});
+
 	it("finishes staging application content before ASAR integrity is sealed", () => {
 		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
 		const beforeAsar = forge.slice(forge.indexOf("beforeAsar:"), forge.indexOf("win32metadata:"));

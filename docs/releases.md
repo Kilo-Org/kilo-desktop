@@ -59,9 +59,9 @@ legs publish the same version). The packaged app `package.json` is stamped to th
 increment makes each Preview sort above the committed version, so already-installed
 `0.1.0` builds update. Electron packager native metadata (`FileVersion` /
 `ProductVersion` / `CFBundleShortVersionString`) uses only the `{nextPatch}` numeric
-prefix because Windows PE versions allow at most four integer components. Stable packaging stamps
-the tag or dispatch version for the build, then the workflow commits that version to the
-release-coupled desktop, web, and contracts manifests and refreshes `pnpm-lock.yaml` on `main`.
+prefix because Windows PE versions allow at most four integer components. Stable packaging uses
+the committed `apps/desktop/package.json` version, which is bumped on `main` through a normal
+pull request before release; the workflow never writes back to `main`.
 
 Squirrel.Windows uses a legacy NuGet comparator that parses a prerelease's trailing
 numeric suffix as a 32-bit integer, while its bundled NuGet limits that suffix to 20
@@ -171,15 +171,26 @@ with repository/environment variables:
 | `Nightly E2E` | Daily or manual                          | Full cross-platform E2E; independent from Preview releases                 |
 
 Scheduled `Release` runs compare `main` with the latest `v*-preview-*` tag and skip
-publication when the commit has not changed. Manual Preview runs always publish. Manual
-Stable runs accept `X.Y.Z` or `X.Y.Z-prerelease` from a direct `v...` tag on `main` or a
-manual dispatch from `main`. Plain `X.Y.Z` is marked latest; suffixed Stable versions are
-GitHub prereleases. Squirrel.Windows limits the prerelease portion to 20 characters. Fresh
-runs reject an existing Stable release; retrying the original workflow run may overwrite it
-to recover a partial publication. Stable workflows are serialized. After publication, the
-workflow commits the released version to `apps/desktop/package.json`, `apps/web/package.json`,
-`packages/contracts/package.json`, and `pnpm-lock.yaml` using the configured Release GitHub App,
-rebasing and retrying if `main` moved during publication.
+publication when the commit has not changed. Manual Preview runs always publish.
+
+Stable releases publish the version committed in `apps/desktop/package.json`
+(`X.Y.Z` or `X.Y.Z-prerelease`), matching Anaconda Desktop's flow:
+
+1. Open a pull request that bumps the release-coupled manifests and lockfile:
+
+   ```sh
+   pnpm --filter @kilo-desktop/desktop exec tsx config/desktop-version.ts 1.2.3
+   pnpm install --lockfile-only --ignore-scripts
+   ```
+
+2. After it merges, either push a `v1.2.3` tag on that `main` commit or dispatch `Release`
+   with track `stable` from `main`. A tag that does not match the committed version is rejected.
+
+Plain `X.Y.Z` is marked latest; suffixed Stable versions are GitHub prereleases.
+Squirrel.Windows limits the prerelease portion to 20 characters. Fresh runs reject an existing
+Stable release; retrying the original workflow run may overwrite it to recover a partial
+publication. Stable workflows are serialized. The release uses only the default
+`GITHUB_TOKEN` to create the tag and GitHub Release, so no branch-protection bypass is needed.
 
 Signing secrets and update variables live on the GitHub Environments above. `Build`
 attaches the `preview` environment so the same codesign material is available for
@@ -202,8 +213,6 @@ CI uses the following GitHub secret names:
 | `AZURE_SUBSCRIPTION_ID`        | Azure subscription                                                     |
 | `AZURE_KEY_VAULT_URI`          | Key Vault URI for `AzureSignTool`                                      |
 | `AZURE_CERT_NAME`              | Certificate name in Key Vault                                          |
-| `RELEASE_APP_ID`               | GitHub App used to commit the released Stable version to `main`        |
-| `RELEASE_APP_PRIVATE_KEY`      | Private key for the release GitHub App                                 |
 
 Forge also accepts local/optional fallbacks:
 

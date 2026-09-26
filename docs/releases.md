@@ -47,7 +47,7 @@ Forge uses only official makers:
 | Linux    | DEB                                            | Updates are provided by the package repository or manual installation |
 
 Automatic Electron update checks run only in packaged Windows and macOS builds. They are
-disabled when `UPDATE_PUBLISH_URL` was not supplied at build time and never start on
+disabled when the selected track has no update host compiled in and never start on
 Linux. Squirrel install, update, and uninstall launches are handled before normal
 application startup.
 
@@ -92,7 +92,11 @@ kilo-desktop/<update-channel>/<platform>/<arch>/<artifact>
 Preview uses update channel `preview`; Stable uses `latest`, matching T3 Code's updater
 terminology. The runtime update feed URL uses the same `update-channel/platform/arch` path,
 so a build always looks for updates where its own artifacts were uploaded.
-`UPDATE_PUBLISH_URL` must use HTTPS.
+Each track publishes from its own GitHub Environment to its own host, so packaged builds
+compile in every track's host (`UPDATE_PUBLISH_URL_PREVIEW`, `UPDATE_PUBLISH_URL_STABLE`)
+and the track selector repoints both host and channel path. A track whose host is missing
+falls back to `UPDATE_PUBLISH_URL` for the build's own track and is otherwise refused.
+All update URLs must use HTTPS.
 
 After the publish matrix completes without cancellation, the workflow gathers the
 artifacts from successful platform jobs and creates or updates a private GitHub Release
@@ -137,17 +141,19 @@ in the committed files; secrets remain in GitHub Environments.
 
 The Forge compile-time contract uses:
 
-| Variable                 | Meaning                                                                                                                 |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| `VITE_AUTH_CLIENT_ID`    | Public OAuth client ID loaded from the selected committed desktop environment file                                      |
-| `RELEASE_TRACK`          | Product release track compiled into the app; defaults to `preview`                                                      |
-| `RELEASE_VERSION`        | Explicit Stable version propagated to every packaging leg; empty for Preview                                            |
-| `PREVIEW_BUILD_TIME`     | Optional ISO timestamp shared across Preview matrix legs; defaults to now                                               |
-| `UPDATE_PUBLISH_URL`     | Public HTTPS S3/CDN base URL compiled into packaged builds                                                              |
-| `UPDATE_S3_BUCKET`       | Bucket required by `electron-forge publish`                                                                             |
-| `AWS_REGION`             | S3 region (defaults to `us-east-1` in CI when unset)                                                                    |
-| `UPDATE_REMOTE_RELEASES` | Set to `true` on Windows when an existing Squirrel feed is available for delta creation                                 |
-| `WINDOWS_PACKAGING_TEMP` | Optional short Windows temp directory; defaults to `<drive>\\t` so nuget.exe and Squirrel extract stay under `MAX_PATH` |
+| Variable                     | Meaning                                                                                                                 |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| `VITE_AUTH_CLIENT_ID`        | Public OAuth client ID loaded from the selected committed desktop environment file                                      |
+| `RELEASE_TRACK`              | Product release track compiled into the app; defaults to `preview`                                                      |
+| `RELEASE_VERSION`            | Explicit Stable version propagated to every packaging leg; empty for Preview                                            |
+| `PREVIEW_BUILD_TIME`         | Optional ISO timestamp shared across Preview matrix legs; defaults to now                                               |
+| `UPDATE_PUBLISH_URL`         | Public HTTPS S3/CDN base URL for the track being published; runtime fallback for that track                             |
+| `UPDATE_PUBLISH_URL_PREVIEW` | Public HTTPS Preview update host compiled into every packaged build for track switching                                 |
+| `UPDATE_PUBLISH_URL_STABLE`  | Public HTTPS Stable update host compiled into every packaged build for track switching                                  |
+| `UPDATE_S3_BUCKET`           | Bucket required by `electron-forge publish`                                                                             |
+| `AWS_REGION`                 | S3 region (defaults to `us-east-1` in CI when unset)                                                                    |
+| `UPDATE_REMOTE_RELEASES`     | Set to `true` on Windows when an existing Squirrel feed is available for delta creation                                 |
+| `WINDOWS_PACKAGING_TEMP`     | Optional short Windows temp directory; defaults to `<drive>\\t` so nuget.exe and Squirrel extract stay under `MAX_PATH` |
 
 ## GitHub Environments
 
@@ -160,6 +166,9 @@ with repository/environment variables:
 | `UPDATE_S3_BUCKET`   | S3 bucket for Forge publish                 |
 | `AWS_ROLE_ARN`       | IAM role assumed via GitHub OIDC            |
 | `AWS_REGION`         | Optional; defaults to `us-east-1`           |
+
+`UPDATE_PUBLISH_URL_PREVIEW` and `UPDATE_PUBLISH_URL_STABLE` are repository-level variables
+(visible to both environments) because every build needs both hosts.
 
 ## Workflows
 

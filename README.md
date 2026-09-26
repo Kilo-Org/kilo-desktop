@@ -315,7 +315,9 @@ the app for a future update-track switcher without adding runtime switching or U
 
 Forge uses only official makers (DMG/ZIP on macOS, Squirrel on Windows, DEB on Linux)
 and publishes Preview to the `preview` update namespace and Stable to `latest`. Automatic update
-checks run only in packaged macOS and Windows builds that were given `UPDATE_PUBLISH_URL`.
+checks run only in packaged macOS and Windows builds that were given an update host for the
+selected track (`UPDATE_PUBLISH_URL_PREVIEW` / `UPDATE_PUBLISH_URL_STABLE`, falling back to
+`UPDATE_PUBLISH_URL` for the build's own track).
 Preview builds stamp a UTC timestamp onto the next patch (`0.1.2-preview-260818-14305`)
 so every publication is a newer version. Stable uses the tag or dispatch version, then records that
 version across the release-coupled desktop, web, and contracts packages and lockfile on `main`.

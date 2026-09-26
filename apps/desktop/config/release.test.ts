@@ -10,6 +10,7 @@ import {
 	getReleaseNotesUrl,
 	getUpdateFeedUrl,
 	getUpdatePublishUrl,
+	getUpdatePublishUrls,
 	isStableReleaseVersion,
 	validatePublishEnvironment,
 } from "./release.js";
@@ -20,6 +21,31 @@ describe("release configuration", () => {
 		expect(getUpdatePublishUrl({ UPDATE_PUBLISH_URL: "https://updates.example.com///" })).toBe(
 			"https://updates.example.com",
 		);
+	});
+
+	it("resolves a separate update host for each track", () => {
+		expect(
+			getUpdatePublishUrls(
+				{
+					UPDATE_PUBLISH_URL: "https://preview.example.com",
+					UPDATE_PUBLISH_URL_PREVIEW: "https://preview.example.com/",
+					UPDATE_PUBLISH_URL_STABLE: " https://stable.example.com// ",
+				},
+				"preview",
+			),
+		).toEqual({
+			preview: "https://preview.example.com",
+			stable: "https://stable.example.com",
+		});
+	});
+
+	it("falls back to the build track's publish URL when per-track hosts are unset", () => {
+		expect(
+			getUpdatePublishUrls({ UPDATE_PUBLISH_URL: "https://preview.example.com" }, "preview"),
+		).toEqual({ preview: "https://preview.example.com", stable: "" });
+		expect(
+			getUpdatePublishUrls({ UPDATE_PUBLISH_URL: "https://stable.example.com" }, "stable"),
+		).toEqual({ preview: "", stable: "https://stable.example.com" });
 	});
 
 	it("keeps publisher keys and update feed URLs aligned", () => {

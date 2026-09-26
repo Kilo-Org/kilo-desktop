@@ -167,7 +167,7 @@ export class Application {
 				arch: process.arch,
 				track: preferences.getReleaseTrack(RELEASE_TRACK),
 				currentVersion: this.#app.metadata.appVersion,
-				publishUrl: UPDATE_PUBLISH_URL,
+				publishUrls: UPDATE_PUBLISH_URLS,
 				fetch: this.#http.fetch,
 				installWithShutdown: (install) => this.#shutdown.requestExternalQuit(install),
 				broadcast: (state) => this.#windows.broadcast("updates:state-changed", state),

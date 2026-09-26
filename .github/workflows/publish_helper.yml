@@ -52,6 +52,8 @@ jobs:
       RELEASE_VERSION: ${{ inputs.release_version }}
       PREVIEW_BUILD_TIME: ${{ inputs.preview_build_time }}
       UPDATE_PUBLISH_URL: ${{ vars.UPDATE_PUBLISH_URL }}
+      UPDATE_PUBLISH_URL_PREVIEW: ${{ vars.UPDATE_PUBLISH_URL_PREVIEW }}
+      UPDATE_PUBLISH_URL_STABLE: ${{ vars.UPDATE_PUBLISH_URL_STABLE }}
       UPDATE_S3_BUCKET: ${{ vars.UPDATE_S3_BUCKET }}
       AWS_REGION: ${{ vars.AWS_REGION }}
       AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}

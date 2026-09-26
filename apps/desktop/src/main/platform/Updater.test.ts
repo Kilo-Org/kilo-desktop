@@ -30,7 +30,7 @@ function createService(
 	overrides: {
 		isPackaged?: boolean;
 		platform?: NodeJS.Platform;
-		publishUrl?: string;
+		publishUrls?: Readonly<Record<ReleaseTrack, string>>;
 		fetch?: typeof fetch;
 		updater?: FakeNativeUpdater;
 		installWithShutdown?: (install: () => void) => void;
@@ -47,7 +47,10 @@ function createService(
 		arch: "arm64",
 		track: overrides.track ?? "preview",
 		currentVersion: overrides.currentVersion ?? "1.2.2",
-		publishUrl: overrides.publishUrl ?? "https://updates.example.com",
+		publishUrls: overrides.publishUrls ?? {
+			preview: "https://updates.example.com",
+			stable: "https://stable.example.com",
+		},
 		installWithShutdown: overrides.installWithShutdown ?? ((install) => install()),
 		fetch:
 			overrides.fetch ??
@@ -233,9 +236,10 @@ describe("DesktopUpdaterService", () => {
 		vi.useFakeTimers();
 		const persistTrack = vi.fn();
 		const stableNotes = { ...notes, track: "stable" as const, version: "1.3.0" };
+		const fetchNotes = vi.fn(async () => new Response(JSON.stringify(stableNotes)));
 		const { service, updater, states } = createService({
 			persistTrack,
-			fetch: (async () => new Response(JSON.stringify(stableNotes))) as typeof fetch,
+			fetch: fetchNotes as typeof fetch,
 		});
 		service.start();
 
@@ -244,13 +248,49 @@ describe("DesktopUpdaterService", () => {
 		expect(result.accepted).toBe(true);
 		expect(persistTrack).toHaveBeenCalledWith("stable");
 		expect(updater.setFeedURL).toHaveBeenLastCalledWith({
-			url: "https://updates.example.com/kilo-desktop/latest/darwin/arm64/RELEASES.json",
+			url: "https://stable.example.com/kilo-desktop/latest/darwin/arm64/RELEASES.json",
 			serverType: "json",
 		});
+		expect(fetchNotes).toHaveBeenLastCalledWith(
+			"https://stable.example.com/kilo-desktop/latest/release-notes/latest.json",
+			expect.anything(),
+		);
 		expect(updater.checkForUpdates).toHaveBeenCalledOnce();
 		expect(service.state).toMatchObject({ track: "stable", status: "checking" });
 		expect(states).toContainEqual(expect.objectContaining({ track: "stable", status: "idle" }));
 		service.dispose();
+	});
+
+	it("rejects switching to a track whose update host this build does not know", async () => {
+		vi.useFakeTimers();
+		const persistTrack = vi.fn();
+		const { service, updater } = createService({
+			persistTrack,
+			publishUrls: { preview: "https://updates.example.com", stable: "" },
+		});
+		service.start();
+		updater.setFeedURL.mockClear();
+
+		const result = await service.setTrack("stable");
+
+		expect(result).toMatchObject({
+			accepted: false,
+			state: { track: "preview", message: expect.stringContaining("Stable") },
+		});
+		expect(persistTrack).not.toHaveBeenCalled();
+		expect(updater.setFeedURL).not.toHaveBeenCalled();
+		expect(updater.checkForUpdates).not.toHaveBeenCalled();
+		service.dispose();
+	});
+
+	it("reports disabled state when the selected track has no update host", () => {
+		const { service, updater } = createService({
+			track: "stable",
+			publishUrls: { preview: "https://updates.example.com", stable: "" },
+		});
+		service.start();
+		expect(service.state).toMatchObject({ enabled: false, status: "disabled" });
+		expect(updater.setFeedURL).not.toHaveBeenCalled();
 	});
 
 	it("persists track selection without touching the native updater when disabled", async () => {

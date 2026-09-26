@@ -20,6 +20,8 @@ export interface ReleaseEnvironment {
 	readonly RELEASE_TRACK?: string;
 	readonly RELEASE_VERSION?: string;
 	readonly UPDATE_PUBLISH_URL?: string;
+	readonly UPDATE_PUBLISH_URL_PREVIEW?: string;
+	readonly UPDATE_PUBLISH_URL_STABLE?: string;
 	readonly UPDATE_S3_BUCKET?: string;
 	readonly PREVIEW_BUILD_TIME?: string;
 }
@@ -40,8 +42,33 @@ export function getReleaseTrack(environment: ReleaseEnvironment = {}): ReleaseTr
 	return track;
 }
 
+export type UpdatePublishUrls = Readonly<Record<ReleaseTrack, string>>;
+
+function normalizePublishUrl(value: string | undefined): string {
+	return value?.trim().replace(/\/+$/, "") ?? "";
+}
+
 export function getUpdatePublishUrl(environment: ReleaseEnvironment = {}): string {
-	return environment.UPDATE_PUBLISH_URL?.trim().replace(/\/+$/, "") ?? "";
+	return normalizePublishUrl(environment.UPDATE_PUBLISH_URL);
+}
+
+/**
+ * Update hosts compiled into the app for runtime track switching. Each track
+ * publishes from its own GitHub Environment (and AWS account), so a build must
+ * know every track's host, not just the one it was published to. When a
+ * per-track host is unset, the build's own track falls back to
+ * `UPDATE_PUBLISH_URL` so single-host builds keep updating on their track.
+ */
+export function getUpdatePublishUrls(
+	environment: ReleaseEnvironment,
+	buildTrack: ReleaseTrack,
+): UpdatePublishUrls {
+	const fallback = (track: ReleaseTrack) =>
+		track === buildTrack ? getUpdatePublishUrl(environment) : "";
+	return {
+		preview: normalizePublishUrl(environment.UPDATE_PUBLISH_URL_PREVIEW) || fallback("preview"),
+		stable: normalizePublishUrl(environment.UPDATE_PUBLISH_URL_STABLE) || fallback("stable"),
+	};
 }
 
 export function getUpdateChannel(track: ReleaseTrack): UpdateChannel {

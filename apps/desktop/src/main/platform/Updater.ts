@@ -8,7 +8,7 @@ import {
 	type ReleaseTrack,
 } from "@kilo-desktop/contracts";
 
-import { getReleaseNotesUrl, getUpdateFeedUrl } from "$config/release.js";
+import { getReleaseNotesUrl, getUpdateFeedUrl, type UpdatePublishUrls } from "$config/release.js";
 
 const STARTUP_DELAY_MS = 15_000;
 const POLL_INTERVAL_MS = 10 * 60_000;
@@ -33,7 +33,7 @@ interface DesktopUpdaterServiceOptions {
 	readonly arch: string;
 	readonly track: ReleaseTrack;
 	readonly currentVersion: string;
-	readonly publishUrl: string;
+	readonly publishUrls: UpdatePublishUrls;
 	readonly fetch: typeof globalThis.fetch;
 	readonly installWithShutdown: (install: () => void) => void;
 	readonly broadcast: (state: DesktopUpdateState) => void;
@@ -52,8 +52,11 @@ interface DesktopUpdaterServiceOptions {
  * this service to check, switch tracks, or install, and every native event is
  * reduced here before a validated snapshot is broadcast. Track changes are
  * persisted only when no update payload is active, and feed assignment is
- * rolled back if persistence fails. Release-note network failures are isolated
- * from the binary path so content can never make an update unavailable.
+ * rolled back if persistence fails. Each track has its own update host (tracks
+ * publish from separate environments), so switching tracks repoints both the
+ * host and the channel path; a track whose host this build lacks is refused.
+ * Release-note network failures are isolated from the binary path so content
+ * can never make an update unavailable.
  */
 export class DesktopUpdaterService {
 	readonly #options: DesktopUpdaterServiceOptions;
@@ -70,7 +73,7 @@ export class DesktopUpdaterService {
 	constructor(options: DesktopUpdaterServiceOptions) {
 		this.#options = options;
 		this.#updater = options.updater ?? (autoUpdater as unknown as NativeUpdater);
-		const disabledReason = this.#disabledReason();
+		const disabledReason = this.#disabledReason(options.track);
 		this.#state = {
 			enabled: disabledReason === null,
 			status: disabledReason === null ? "idle" : "disabled",
@@ -168,6 +171,12 @@ export class DesktopUpdaterService {
 				},
 			};
 		}
+		if (this.#state.enabled && !this.#options.publishUrls[track]) {
+			return {
+				accepted: false,
+				state: { ...this.#state, message: unconfiguredTrackMessage(track) },
+			};
+		}
 
 		const previousTrack = this.#state.track;
 		if (this.#state.enabled) this.#updater.setFeedURL(this.#feedOptions(track));
@@ -187,7 +196,7 @@ export class DesktopUpdaterService {
 			downloadedVersion: null,
 			releaseNotes: [],
 			checkedAt: null,
-			message: this.#state.enabled ? null : this.#disabledReason(),
+			message: this.#state.enabled ? null : this.#disabledReason(track),
 		};
 		this.#options.broadcast(this.#state);
 		if (this.#state.enabled) await this.check();
@@ -220,18 +229,18 @@ export class DesktopUpdaterService {
 		}
 	}
 
-	#disabledReason(): string | null {
+	#disabledReason(track: ReleaseTrack): string | null {
 		if (!this.#options.isPackaged) return "Automatic updates are available in packaged builds.";
 		if (!SUPPORTED_PLATFORMS.has(this.#options.platform)) {
 			return "Automatic updates are not available on this platform.";
 		}
-		if (!this.#options.publishUrl) return "Automatic updates are not configured for this build.";
+		if (!this.#options.publishUrls[track]) return unconfiguredTrackMessage(track);
 		return null;
 	}
 
 	#feedOptions(track: ReleaseTrack = this.#state.track): FeedURLOptions {
 		const feedUrl = getUpdateFeedUrl({
-			publishUrl: this.#options.publishUrl,
+			publishUrl: this.#options.publishUrls[track],
 			track,
 			platform: this.#options.platform,
 			arch: this.#options.arch,
@@ -355,7 +364,7 @@ export class DesktopUpdaterService {
 
 	async #fetchReleaseNotes(version?: string): Promise<DesktopReleaseNotes | null> {
 		const url = getReleaseNotesUrl({
-			publishUrl: this.#options.publishUrl,
+			publishUrl: this.#options.publishUrls[this.#state.track],
 			track: this.#state.track,
 			...(version ? { version } : {}),
 		});
@@ -389,6 +398,11 @@ export class DesktopUpdaterService {
 			return null;
 		}
 	}
+}
+
+function unconfiguredTrackMessage(track: ReleaseTrack): string {
+	const name = track === "stable" ? "Stable" : "Preview";
+	return `${name} updates are not configured for this build.`;
 }
 
 function extractVersion(releaseName: string | undefined): string | null {

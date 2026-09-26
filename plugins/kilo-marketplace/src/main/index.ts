@@ -117,7 +117,8 @@ function operationError(error: unknown): never {
  * Marketplace registration adapts Kilo's Marketplace HTTP API to Desktop's
  * multi-workspace view. Kilo owns catalog, detection, and mutation; Desktop
  * enriches those results with workspace identity, runtime inventory/status,
- * and Desktop-managed MCPs.
+ * and Desktop-managed MCPs. Global inventory is read from the mutation context
+ * because Kilo invalidates discovery per directory.
  */
 export function mainRegister(mainSdk: MainSdk): void {
 	const kilo = (): KiloServerCapabilities => {
@@ -326,36 +327,28 @@ export function mainRegister(mainSdk: MainSdk): void {
 		const selected = workspaceId
 			? availableTargets.find((target) => target.id === workspaceId)
 			: undefined;
-		const listTargets =
-			availableTargets.length > 0
-				? availableTargets
-				: [{ id: "global", name: "Global", directory: connection.globalDirectory }];
-		const [firstTarget, ...remainingTargets] = listTargets;
-		const firstList = { target: firstTarget!, result: await client.list(firstTarget!.directory) };
-		const [lists, runtime, locationStatuses, desktopEntries] = await Promise.all([
+		const [catalogSnapshot, lists, runtime, locationStatuses, desktopEntries] = await Promise.all([
+			client.list(connection.globalDirectory),
 			Promise.all(
-				remainingTargets.map(async (target) => ({
+				availableTargets.map(async (target) => ({
 					target,
 					result: await client.list(target.directory),
 				})),
-			).then((remaining) => [firstList, ...remaining]),
+			),
 			runtimeItems(selected),
 			mcpLocationStatuses(availableTargets),
 			desktopMcps(),
 		]);
-		const catalogSnapshot = lists[0]!.result;
 		const globalInstallations = catalogSnapshot.global.map((entry): MarketplaceInstalled => ({
 			...entry,
 			scope: "global",
 		}));
 		const workspaceInstallations = lists.flatMap(({ target, result }) =>
-			target.id === "global"
-				? []
-				: result.project.map((entry): MarketplaceInstalled => ({
-						...entry,
-						scope: "workspace",
-						workspaceId: target.id,
-					})),
+			result.project.map((entry): MarketplaceInstalled => ({
+				...entry,
+				scope: "workspace",
+				workspaceId: target.id,
+			})),
 		);
 		const discoveredInstallations = [...globalInstallations, ...workspaceInstallations].filter(
 			(entry) => entry.type !== "skill" || !runtime.compatibilitySkillIds.has(entry.id),
@@ -435,7 +428,9 @@ export function mainRegister(mainSdk: MainSdk): void {
 			included: [...runtimeIncluded, ...included],
 			mcpStatuses: statuses,
 			mcpInstallationStatuses: mcpInstallationStatuses(locationStatuses),
-			errors: [...new Set(lists.flatMap(({ result }) => result.errors))],
+			errors: [
+				...new Set([...catalogSnapshot.errors, ...lists.flatMap(({ result }) => result.errors)]),
+			],
 			stale: false,
 			fetchedAt: Date.now(),
 		};

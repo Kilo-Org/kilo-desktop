@@ -19,6 +19,113 @@ afterEach(async () => {
 });
 
 describe("kilo-marketplace mainRegister", () => {
+	it.each(["skill", "agent", "mcp"] as const)(
+		"lists global %s installations and removals with workspace inventory already loaded",
+		async (type) => {
+			const item = {
+				type,
+				id: "reviewing-code",
+				name: "Reviewing code",
+				description: "Code review guidance",
+				category: "engineering",
+				content:
+					type === "agent"
+						? { mode: "subagent", description: "Code review guidance", prompt: "Review carefully." }
+						: type === "mcp"
+							? '{"type":"remote","url":"https://example.com/mcp"}'
+							: "https://example.com/reviewing-code.tar.gz",
+				githubUrl: "https://github.com/example/reviewing-code",
+				url: "https://example.com/mcp",
+			};
+			let installed = false;
+			const inventories = new Map<string, boolean>();
+			const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+				const url = new URL(String(input));
+				const directory = url.searchParams.get("directory")!;
+				if (url.pathname === "/kilocode/marketplace") {
+					if (!inventories.has(directory)) inventories.set(directory, installed);
+					// Skills use cached discovery; agents and MCPs are detected from disk on each request.
+					const detected = type === "skill" ? inventories.get(directory) : installed;
+					return json({
+						items: [item],
+						installed: {
+							project: {},
+							global: detected ? { [`${type}:reviewing-code`]: { type } } : {},
+						},
+					});
+				}
+				if (
+					url.pathname === "/kilocode/marketplace/install" ||
+					url.pathname === "/kilocode/marketplace/remove"
+				) {
+					expect(directory).toBe("/runtime");
+					expect(init?.method).toBe("POST");
+					installed = url.pathname.endsWith("/install");
+					// CLI mutations invalidate only the requesting directory's inventory.
+					inventories.delete(directory);
+					return json({ success: true, slug: item.id });
+				}
+				if (url.pathname === "/agent" || url.pathname === "/skill") return json([]);
+				if (url.pathname === "/mcp") return json({});
+				throw new Error(`Unexpected request: ${url}`);
+			});
+			const harness = createFakeSdk({ featureId: "harness" });
+			const mainSdk = createFakeMainSdk({
+				featureId: "kilo-marketplace",
+				services: harness.services,
+				storageDir: "/storage",
+				fetch,
+			});
+			const kiloServer = createFakeMainSdk({
+				featureId: "kilo-server",
+				services: harness.services,
+			});
+			const kiloUi = createFakeMainSdk({ featureId: "kilo-ui", services: harness.services });
+			kiloServer.plugins.expose("connectionService", {
+				getConnection: async () => ({
+					baseUrl: "http://127.0.0.1:4321",
+					username: "kilo",
+					password: "secret",
+					globalDirectory: "/runtime",
+				}),
+			});
+			kiloServer.plugins.expose("kiloService", { mcpConfig: {} });
+			kiloUi.plugins.expose("workspaceService", {
+				list: async () => [
+					{ id: "demo", name: "Demo", folders: [{ path: "/workspaces/demo", isPrimary: true }] },
+				],
+			});
+			mainRegister(mainSdk);
+			disposables.push(async () => {
+				await Promise.all([
+					mainSdk.disposeAsync(),
+					kiloServer.disposeAsync(),
+					kiloUi.disposeAsync(),
+				]);
+				harness.destroy();
+			});
+			const list = async () =>
+				marketplaceSnapshotSchema.parse(
+					await mainSdk.invoke("marketplace.list", { workspaceId: "demo" }),
+				);
+			expect((await list()).installed).toEqual([]);
+			await mainSdk.invoke("marketplace.install", {
+				item: { type, id: item.id },
+				scope: "global",
+			});
+			expect((await list()).installed).toEqual([{ type, id: "reviewing-code", scope: "global" }]);
+
+			// Warm workspace discovery after installation to cover stale skills after removal.
+			inventories.clear();
+			expect((await list()).installed).toHaveLength(1);
+			await mainSdk.invoke("marketplace.remove", {
+				item: { type, id: item.id },
+				scope: "global",
+			});
+			expect((await list()).installed).toEqual([]);
+		},
+	);
+
 	it("adapts Kilo Marketplace across Desktop workspaces and mutations", async () => {
 		const globalDirectory = "/runtime";
 		const demo = "/workspaces/demo";
@@ -44,11 +151,16 @@ describe("kilo-marketplace mainRegister", () => {
 			},
 		];
 		const requests: Array<{ url: URL; init?: RequestInit }> = [];
+		let releaseGlobalResponse!: () => void;
+		const globalResponse = new Promise<void>((resolve) => {
+			releaseGlobalResponse = resolve;
+		});
 		const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
 			const url = new URL(String(input));
 			requests.push({ url, ...(init ? { init } : {}) });
 			if (url.pathname === "/kilocode/marketplace") {
 				const directory = url.searchParams.get("directory");
+				if (directory === globalDirectory) await globalResponse;
 				return json({
 					items: catalogItems,
 					installed: {
@@ -108,9 +220,8 @@ describe("kilo-marketplace mainRegister", () => {
 			globalDirectory,
 		};
 		kiloServer.plugins.expose("connectionService", { getConnection: async () => connection });
-		kiloServer.plugins.expose("kiloService", {
-			mcpConfig: { list: async () => [{ id: "desktop", sourceId: "desktop" }] },
-		});
+		const listDesktopMcps = vi.fn(async () => [{ id: "desktop", sourceId: "desktop" }]);
+		kiloServer.plugins.expose("kiloService", { mcpConfig: { list: listDesktopMcps } });
 		const workspaces = [
 			{ id: "demo", name: "Demo", color: "#f00", folders: [{ path: demo, isPrimary: true }] },
 			{ id: "docs", name: "Docs", folders: [{ path: docs, isPrimary: true }] },
@@ -125,9 +236,30 @@ describe("kilo-marketplace mainRegister", () => {
 			harness.destroy();
 		});
 
-		const listed = marketplaceSnapshotSchema.parse(
-			await mainSdk.invoke("marketplace.list", { workspaceId: "demo" }),
-		);
+		const listing = mainSdk.invoke("marketplace.list", { workspaceId: "demo" });
+		try {
+			await vi.waitFor(() => {
+				expect(
+					requests.map(({ url }) => `${url.pathname}:${url.searchParams.get("directory")}`),
+				).toEqual(
+					expect.arrayContaining([
+						`/kilocode/marketplace:${globalDirectory}`,
+						`/kilocode/marketplace:${demo}`,
+						`/kilocode/marketplace:${docs}`,
+						`/agent:${demo}`,
+						`/skill:${demo}`,
+						"/mcp:null",
+						`/mcp:${demo}`,
+						`/mcp:${docs}`,
+					]),
+				);
+				expect(listDesktopMcps).toHaveBeenCalledOnce();
+			});
+		} finally {
+			releaseGlobalResponse();
+			await listing;
+		}
+		const listed = marketplaceSnapshotSchema.parse(await listing);
 		expect(listed.targets).toEqual([
 			{ id: "demo", name: "Demo", color: "#f00", directory: demo },
 			{ id: "docs", name: "Docs", directory: docs },
@@ -167,7 +299,7 @@ describe("kilo-marketplace mainRegister", () => {
 			requests
 				.filter(({ url }) => url.pathname === "/kilocode/marketplace")
 				.map(({ url }) => url.searchParams.get("directory")),
-		).toEqual([demo, docs]);
+		).toEqual([globalDirectory, demo, docs]);
 		expect(requests.every(({ url }) => url.origin === connection.baseUrl)).toBe(true);
 
 		requests.length = 0;

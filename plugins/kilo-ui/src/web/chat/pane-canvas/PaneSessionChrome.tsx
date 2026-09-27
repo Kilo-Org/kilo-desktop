@@ -2,7 +2,7 @@ import { GalleryHorizontalIcon } from "lucide-react";
 import type { FC } from "react";
 
 import type { Arrangement } from "@kilo-desktop/pane-layout";
-import { Toggle } from "@kilo-desktop/ui/components/toggle";
+import { Button } from "@kilo-desktop/ui/components/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
 export const PaneSessionChrome: FC<{
@@ -14,14 +14,15 @@ export const PaneSessionChrome: FC<{
 		<Tooltip>
 			<TooltipTrigger
 				render={
-					<Toggle
+					<Button
+						type="button"
 						variant="outline"
-						size="sm"
-						className="[-webkit-app-region:no-drag]"
-						aria-label="Carousel layout"
-						pressed={carouselOn}
+						size="icon-sm"
+						className="aria-pressed:bg-muted aria-pressed:text-foreground [-webkit-app-region:no-drag]"
+						aria-label="Carousel"
+						aria-pressed={carouselOn}
 						data-qa-id="chat-pane-arrangement"
-						onPressedChange={(on) => onArrangementChange(on ? "carousel" : "tiles")}
+						onClick={() => onArrangementChange(carouselOn ? "tiles" : "carousel")}
 					/>
 				}
 			>
@@ -32,7 +33,7 @@ export const PaneSessionChrome: FC<{
 				/>
 			</TooltipTrigger>
 			<TooltipContent side="bottom" data-qa-id="chat-pane-carousel-hint">
-				{carouselOn ? "Carousel layout · Shift + scroll to pan" : "Carousel layout"}
+				{carouselOn ? "Carousel · Shift + scroll to pan" : "Carousel"}
 			</TooltipContent>
 		</Tooltip>
 	);

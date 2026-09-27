@@ -1716,7 +1716,7 @@ describe("ChatPage", () => {
 		await screen.getByTestId("chat-pane-arrangement").hover();
 		await expect
 			.poll(() => document.querySelector("[data-slot='tooltip-content']")?.textContent)
-			.toBe("Carousel layout · Shift + scroll to pan");
+			.toBe("Carousel · Shift + scroll to pan");
 
 		await screen.getByTestId("chat-pane-arrangement-carousel").click();
 		await expect

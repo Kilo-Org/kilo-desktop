@@ -61,7 +61,7 @@ export const SessionListViewMenu: FC<{
 						aria-label="Session list options"
 						data-qa-id="session-list-view-menu"
 						data-active={customized || undefined}
-						className="data-active:text-primary-soft-foreground data-active:hover:text-primary-soft-foreground data-active:data-open:text-primary-soft-foreground shrink-0 rounded-md"
+						className="text-muted-foreground shrink-0 rounded-md"
 					/>
 				}
 			>

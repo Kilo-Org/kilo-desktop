@@ -34,7 +34,7 @@ import {
 import { WorkspacesFeatureProvider } from "../workspaces/WorkspacesFeatureProvider.js";
 import { ChatConnectionProvider, useChatConnection } from "./connection/ChatConnectionContext.js";
 import { ChatFeatureProvider } from "./ChatFeatureProvider.js";
-import { ChatPage, ChatPageHeaderActions } from "./ChatPage.js";
+import { ChatPage, ChatPageHeaderActions, ChatPageHeaderLeading } from "./ChatPage.js";
 import {
 	FILES_EXPLORER_PANE_ID,
 	FILES_PANE_DEFINITION_ID,
@@ -1657,6 +1657,28 @@ describe("ChatPage", () => {
 		expect(baseElement.querySelector("[data-qa-id='kilo-chat-pane-canvas']")).toBeNull();
 		expect(baseElement.querySelector("[data-qa-id='chat-pane-arrangement']")).toBeNull();
 		expect(baseElement.querySelector("[data-qa-id='chat-pane-toolbar']")).toBeNull();
+	});
+
+	it("hides the header divider only until the chat has a canvas", async () => {
+		const { baseElement, rerenderChatPage } = renderChatPage({
+			children: (
+				<header data-qa-id="shell-page-header" className="border-border border-b">
+					<ChatPageHeaderLeading />
+				</header>
+			),
+		});
+		const header = baseElement.querySelector<HTMLElement>('[data-qa-id="shell-page-header"]')!;
+
+		await vi.waitFor(() => expect(header.querySelector("[data-chat-empty]")).not.toBeNull());
+		expect(getComputedStyle(header).borderBottomColor).toBe("rgba(0, 0, 0, 0)");
+
+		assistantState.current.thread.messages = [{ role: "user" }];
+		assistantState.current.thread.isEmpty = false;
+		assistantState.current.threadListItem.status = "regular";
+		rerenderChatPage();
+
+		await vi.waitFor(() => expect(header.querySelector("[data-chat-empty]")).toBeNull());
+		expect(getComputedStyle(header).borderBottomColor).not.toBe("rgba(0, 0, 0, 0)");
 	});
 
 	it("moves a submitted new chat into the pane canvas", async () => {

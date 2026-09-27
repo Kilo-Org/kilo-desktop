@@ -115,7 +115,7 @@ export function AppearanceSettings() {
 									<SelectTrigger
 										id="color-theme"
 										aria-label="Color theme"
-										className="w-52"
+										className="h-9! w-52 py-1!"
 										data-qa-id="appearance-color-theme"
 									>
 										<ThemeSwatch themeId={appTheme.themeId} scheme={resolved} />
@@ -190,14 +190,22 @@ export function AppearanceSettings() {
 
 function ThemeSwatch({ themeId, scheme }: { themeId: string; scheme: "light" | "dark" }) {
 	const tokens = getThemeVariant(themeId, scheme)?.tokens;
+	const background = tokens?.background ?? themeChromeColors[scheme].background;
+	const foreground = tokens?.foreground ?? themeChromeColors[scheme].foreground;
+	const kiloLight = themeId === "kilo" && scheme === "light";
 	return (
 		<span
 			aria-hidden="true"
-			className="text-2xs inline-flex size-4 shrink-0 items-center justify-center self-center rounded-sm border leading-none font-medium"
+			className="inline-flex size-6 shrink-0 items-center justify-center self-center rounded-md border text-xs leading-none font-medium"
 			style={{
-				background: tokens?.background ?? themeChromeColors[scheme].background,
-				color: tokens?.primary ?? ACCENTS[0][scheme].color,
-				borderColor: tokens?.border ?? "var(--border)",
+				background: kiloLight ? tokens?.primary : background,
+				color: kiloLight
+					? tokens?.["primary-foreground"]
+					: (tokens?.primary ?? ACCENTS[0][scheme].color),
+				borderColor:
+					themeId === "kilo" || themeId === "anaconda"
+						? `color-mix(in srgb, ${foreground} 35%, ${background})`
+						: (tokens?.border ?? "var(--border)"),
 			}}
 		>
 			Aa

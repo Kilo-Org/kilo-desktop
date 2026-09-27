@@ -18,6 +18,10 @@
 	--glass-saturation: 1.08;
 }
 
+header:has([data-chat-empty]) {
+	border-bottom-color: transparent;
+}
+
 .chat-composer-glass {
 	/* Pane frames set --pane-raised so the glass stays a step above the pane
 	   surface; outside panes it falls back to card. */

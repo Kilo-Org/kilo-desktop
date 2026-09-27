@@ -163,8 +163,12 @@ const ChatThreadSurface = memo(function ChatThreadSurface({
 });
 
 export function ChatPageHeaderLeading() {
+	const { ready, hasCanvas } = usePaneSessionHeaderStore();
 	return (
-		<div className="flex min-w-0 flex-1 items-center gap-1">
+		<div
+			className="flex min-w-0 flex-1 items-center gap-1"
+			data-chat-empty={ready && !hasCanvas ? true : undefined}
+		>
 			<ChatSessionBreadcrumb />
 		</div>
 	);

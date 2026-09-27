@@ -50,6 +50,20 @@ afterEach(() => {
 });
 
 describe("AppearanceSettings", () => {
+	it("shows Kilo light as yellow with dark lettering and no accent strip", async () => {
+		stubMatchMedia(false);
+		renderAppearance();
+
+		const swatch = page
+			.getByTestId("appearance-color-theme")
+			.element()
+			.querySelector<HTMLElement>('span[aria-hidden="true"]');
+		expect(swatch).not.toBeNull();
+		expect(getComputedStyle(swatch!).color).toBe("rgb(31, 31, 31)");
+		expect(getComputedStyle(swatch!).backgroundColor).toBe("rgb(241, 242, 0)");
+		expect(swatch!.childElementCount).toBe(0);
+	});
+
 	it("switches Dracula live and restores it after remount", async () => {
 		stubMatchMedia(true);
 		const mounted = renderAppearance();

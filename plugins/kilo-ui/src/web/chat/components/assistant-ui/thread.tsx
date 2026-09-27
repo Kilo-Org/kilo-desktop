@@ -1640,7 +1640,7 @@ const UserMessage: FC = () => {
 			<UserMessageAttachments />
 
 			<div className="aui-user-message-content-wrapper relative col-start-2 w-fit max-w-full min-w-0 justify-self-end pb-7">
-				<div className="aui-user-message-content border-border text-foreground bg-pane-raised rounded-xl border px-4 py-2 text-sm wrap-break-word whitespace-pre-wrap empty:hidden">
+				<div className="aui-user-message-content text-foreground bg-pane-raised rounded-xl px-4 py-2 text-sm wrap-break-word whitespace-pre-wrap empty:hidden">
 					<MessagePrimitive.Parts components={{ Text: KiloDirectiveText }} />
 				</div>
 				<UserActionBar />

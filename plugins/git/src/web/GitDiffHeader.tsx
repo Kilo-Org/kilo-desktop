@@ -49,7 +49,6 @@ export function GitDiffHeader({
 			data-qa-id="git-diff-header"
 		>
 			<div className="text-muted-foreground flex min-w-0 flex-1 items-center gap-2 text-xs">
-				{loading ? <Spinner className="size-3.5" data-qa-id="git-diff-loading" /> : null}
 				{refreshError != null ? (
 					<Tooltip>
 						<TooltipTrigger
@@ -81,6 +80,7 @@ export function GitDiffHeader({
 				) : (
 					<span>{loading ? "Loading changes…" : "Changes"}</span>
 				)}
+				{loading ? <Spinner className="size-3.5" data-qa-id="git-diff-loading" /> : null}
 			</div>
 			<Tooltip>
 				<TooltipTrigger

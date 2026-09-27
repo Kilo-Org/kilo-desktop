@@ -4,8 +4,8 @@
 @source "../../../packages/ui";
 @source "../../../packages/sdk-react/src";
 @source "../../../plugins";
-@import "@anaconda/shadcn-theme/styles";
-@import "@anaconda/shadcn-theme/base-global";
+@import "@anaconda/shadcn-theme/styles.css";
+@import "@anaconda/shadcn-theme/base-global.css";
 @import "tw-animate-css";
 @import "@fontsource-variable/inter";
 @import "shadcn/tailwind.css";

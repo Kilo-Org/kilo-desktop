@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { ReadonlyThreadProvider, useAuiState } from "@assistant-ui/react";
 import { BotIcon, CircleAlertIcon } from "lucide-react";
 
@@ -6,6 +7,8 @@ import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import type { ChatRightPanelContributionProps } from "../right-panel/right-panel-tab-registry.js";
 import { useOptionalOpenCodeRuntimeExtras } from "../runtime/use-optional-opencode-runtime-extras.js";
 import { ReadonlyThread } from "../components/assistant-ui/thread.js";
+import { PendingInteractionPrompt } from "../components/tools/opencode-composer-interaction.js";
+import { PendingInteractionsScope, usePendingInteractions } from "./PendingInteractionsContext.js";
 import {
 	SUBAGENT_CHILD_SESSION_METADATA_KEY,
 	childSessionIdForToolCall,
@@ -14,9 +17,35 @@ import {
 
 const EMPTY_MESSAGES: readonly never[] = [];
 
+/**
+ * Answers this subagent's prompts from its pane. The chat composer shows the
+ * same prompt, so the Enter shortcut stays with the composer.
+ */
+function SubagentPanePrompt() {
+	const { permissions, questions } = usePendingInteractions();
+	if (permissions.length === 0 && questions.length === 0) return null;
+	return (
+		<div className="shrink-0 p-3" data-qa-id="subagent-pane-prompt">
+			<PendingInteractionPrompt fallback={null} acceptOnEnter={false} />
+		</div>
+	);
+}
+
 export function SubagentPane({ metadata }: ChatRightPanelContributionProps) {
-	const extras = useOptionalOpenCodeRuntimeExtras();
 	const childSessionId = metadata?.[SUBAGENT_CHILD_SESSION_METADATA_KEY];
+	if (!childSessionId) return <SubagentPaneBody childSessionId={undefined} />;
+	return (
+		<PendingInteractionsScope sessionId={childSessionId}>
+			<div className="flex min-h-0 flex-1 flex-col">
+				<SubagentPaneBody childSessionId={childSessionId} />
+				<SubagentPanePrompt />
+			</div>
+		</PendingInteractionsScope>
+	);
+}
+
+function SubagentPaneBody({ childSessionId }: { childSessionId: string | undefined }): ReactNode {
+	const extras = useOptionalOpenCodeRuntimeExtras();
 	const messages = useAuiState((state) => {
 		if (!childSessionId) return EMPTY_MESSAGES;
 		for (const message of state.thread.messages) {

@@ -12,7 +12,9 @@
 		{ "id": "chat-composer-footer" },
 		{ "id": "chat-header-actions" },
 		{ "id": "chat-session-row-metadata" },
-		{ "id": "chat-session-metadata-provider" }
+		{ "id": "chat-session-metadata-provider" },
+		{ "id": "chat-session-details-branch" },
+		{ "id": "chat-session-details-pull-request" }
 	],
 	"contributes": {
 		"providers": [

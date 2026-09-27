@@ -53,8 +53,8 @@ describe("GitDiffView", () => {
 			const customCss = document
 				.querySelector("diffs-container")
 				?.shadowRoot?.querySelector("style[data-unsafe-css]")?.textContent;
-			expect(customCss).toContain("--diffs-font-size: 0.75rem");
-			expect(customCss).toContain("--diffs-line-height: 1.125rem");
+			expect(customCss).toContain("--diffs-font-size: 0.6875rem");
+			expect(customCss).toContain("--diffs-line-height: 1rem");
 		});
 	});
 

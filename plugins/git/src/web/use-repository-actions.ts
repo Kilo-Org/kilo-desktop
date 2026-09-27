@@ -1,10 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 import { useSdk, useSdkQuery } from "@kilo-desktop/sdk-react";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import type { GitServiceContract } from "../contracts/schemas.js";
+import { type GitActionKind, useGitActionProgressStore } from "./git-action-progress-store.js";
 import { selectPullRequest, useGitPrStatusStore } from "./git-pr-status-store.js";
 import {
 	normalizeDefaultBranch,
@@ -44,7 +45,6 @@ export type RepositoryActions = Omit<RepositoryActionModel, "menu"> & {
 	menu: readonly (RepositoryMenuAction & { run: () => void })[];
 };
 
-type BusyAction = "commit" | "pull" | "push" | "pr";
 /** Marks the step now running: its progress label and the failure copy if it throws. */
 type Step = (progressLabel: string, failureLabel: string) => void;
 
@@ -69,8 +69,7 @@ export function useRepositoryActions(workspaceDirectory: string): RepositoryActi
 			...(status?.currentBranch ? { branch: status.currentBranch } : {}),
 		}),
 	);
-	const [busyAction, setBusyAction] = useState<BusyAction | null>(null);
-	const [progressLabel, setProgressLabel] = useState<string | null>(null);
+	const progress = useGitActionProgressStore((state) => state.byDirectory[workspaceDirectory]);
 	const defaultBranch = normalizeDefaultBranch(branchesQuery.data?.defaultBranch);
 	const model =
 		status == null
@@ -111,11 +110,12 @@ export function useRepositoryActions(workspaceDirectory: string): RepositoryActi
 	 * local refresh afterwards runs regardless of outcome (earlier steps may
 	 * have succeeded) and can never turn a success into a failure toast.
 	 */
-	async function run(action: BusyAction, operation: (step: Step) => Promise<void>) {
-		setBusyAction(action);
+	async function run(action: GitActionKind, operation: (step: Step) => Promise<void>) {
+		const progressStore = useGitActionProgressStore.getState();
+		if (!progressStore.start(workspaceDirectory, action)) return;
 		let failureLabel = action === "pr" ? "create pull request" : action;
-		const step: Step = (progress, failure) => {
-			setProgressLabel(progress);
+		const step: Step = (label, failure) => {
+			progressStore.setLabel(workspaceDirectory, label);
 			failureLabel = failure;
 		};
 		try {
@@ -127,8 +127,7 @@ export function useRepositoryActions(workspaceDirectory: string): RepositoryActi
 				});
 			}
 		} finally {
-			setBusyAction(null);
-			setProgressLabel(null);
+			progressStore.finish(workspaceDirectory);
 		}
 		await invalidateRepositoryQueries().catch(() => undefined);
 		refreshPullRequest(workspaceDirectory, true);
@@ -197,6 +196,9 @@ export function useRepositoryActions(workspaceDirectory: string): RepositoryActi
 			title: generated.title,
 			body: generated.body,
 		});
+		useGitPrStatusStore
+			.getState()
+			.recordCreatedPullRequest(workspaceDirectory, currentBranch!, created);
 		const opened = await sdk.shell.openExternal(created.url).catch(() => ({ opened: false }));
 		if (!opened.opened) {
 			toast.success(`Draft PR #${created.number} created`, { description: created.url });
@@ -244,8 +246,8 @@ export function useRepositoryActions(workspaceDirectory: string): RepositoryActi
 	return {
 		...model,
 		stats: workingTreeStatsQuery.data,
-		busy: busyAction !== null,
-		progressLabel,
+		busy: progress !== undefined,
+		progressLabel: progress?.label ?? null,
 		refreshMenu: refreshRemote,
 		push,
 		runQuickAction,

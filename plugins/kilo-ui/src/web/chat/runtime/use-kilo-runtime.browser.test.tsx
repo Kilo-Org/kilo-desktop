@@ -6,7 +6,6 @@ import type { KiloClient } from "@kilocode/sdk/v2/client";
 
 import type { KiloGlobalConnection } from "../../../contracts/chat/schemas.js";
 import { createSessionActivityStore } from "../session-activity/session-activity-store.js";
-import { createKiloSuggestionStore } from "../suggestions/kilo-suggestion-store.js";
 import { createKiloRuntimeBackend } from "./create-kilo-runtime-backend.js";
 import { useKiloRuntime } from "./use-kilo-runtime.js";
 
@@ -231,18 +230,16 @@ describe("useKiloRuntime", () => {
 		});
 	});
 
-	it("forwards sessionActivity and suggestions into the backend", () => {
+	it("forwards sessionActivity into the backend", () => {
 		const connectionPromise = Promise.resolve(connection);
 		const prepareSession = vi.fn(async () => ({ directory: "/workspace", workspaceFolders: [] }));
 		const sessionActivity = createSessionActivityStore({ storage: null });
-		const suggestions = createKiloSuggestionStore();
 
 		renderHook(() =>
 			useKiloRuntime({
 				connectionPromise,
 				prepareSession,
 				sessionActivity,
-				suggestions,
 			}),
 		);
 
@@ -257,7 +254,6 @@ describe("useKiloRuntime", () => {
 			getKnownCommandNames: expect.any(Function),
 			onSessionInitialized: expect.any(Function),
 			sessionActivity,
-			suggestions,
 		});
 	});
 

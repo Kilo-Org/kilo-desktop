@@ -344,10 +344,14 @@ function ModelSelectorValue({
 		<span
 			data-slot="model-selector-value"
 			data-model-selected="true"
-			className={cn("flex items-center gap-1.5", className)}
+			className={cn("flex min-w-0 items-center gap-1.5", className)}
 		>
 			{selectedModel.icon && <ModelIcon>{selectedModel.icon}</ModelIcon>}
-			<span data-slot="model-selector-name" className="font-medium whitespace-nowrap">
+			<span
+				data-slot="model-selector-name"
+				title={selectedModel.name}
+				className="min-w-0 truncate font-medium"
+			>
 				{selectedModel.name}
 			</span>
 			{effortName && (

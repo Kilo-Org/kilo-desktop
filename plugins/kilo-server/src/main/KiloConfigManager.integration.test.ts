@@ -113,6 +113,38 @@ describe("KiloConfigManager", () => {
 		});
 	});
 
+	it("adds a Desktop-owned permission rule beside user rules", async () => {
+		const filePath = path.join(configDirectory, KILO_CONFIG_FILENAME);
+		await writeFile(filePath, `{\n  "permission": { "bash": "allow" }\n}\n`);
+		const config = new KiloConfigManager(configDirectory);
+
+		await expect(config.setPermissionEntry(SOURCE_ONE, "suggest", "deny")).resolves.toEqual({
+			kind: "written",
+			reason: "updated",
+		});
+		await expect(config.setPermissionEntry(SOURCE_ONE, "suggest", "deny")).resolves.toEqual({
+			kind: "skipped",
+			reason: "up-to-date",
+		});
+		expect(parse(await readFile(filePath, "utf8"))).toEqual({
+			permission: { bash: "allow", suggest: "deny" },
+		});
+	});
+
+	it("leaves a user-authored permission rule for the same tool alone", async () => {
+		const filePath = path.join(configDirectory, KILO_CONFIG_FILENAME);
+		await writeFile(filePath, `{\n  "permission": { "suggest": "allow" }\n}\n`);
+		const config = new KiloConfigManager(configDirectory);
+
+		await expect(config.setPermissionEntry(SOURCE_ONE, "suggest", "deny")).resolves.toEqual({
+			kind: "skipped",
+			reason: "entry-not-owned",
+		});
+		expect(parse(await readFile(filePath, "utf8"))).toEqual({
+			permission: { suggest: "allow" },
+		});
+	});
+
 	it("removes only sidecar-owned entries", async () => {
 		const config = new KiloConfigManager(configDirectory);
 		await config.setMcpEntry(SOURCE_ONE, "owned", {

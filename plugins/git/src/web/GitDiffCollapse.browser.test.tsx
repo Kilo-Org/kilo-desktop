@@ -64,6 +64,31 @@ describe("GitDiffView collapse", () => {
 		});
 	});
 
+	it("collapses and expands a file when its header is clicked", async () => {
+		stubFetch(() => new Response(patchResponseStream()));
+		renderView();
+
+		const title = () =>
+			diffContainerFor("README.md")?.shadowRoot?.querySelector<HTMLElement>(
+				"[data-diffs-header] [data-title]",
+			) ?? null;
+		await vi.waitFor(() => {
+			expect(collapseButtonFor("README.md")).not.toBeNull();
+			expect(title()).not.toBeNull();
+		});
+
+		fireEvent.click(title()!);
+		await vi.waitFor(() => {
+			expect(collapseButtonFor("README.md")?.getAttribute("aria-expanded")).toBe("false");
+			expect(collapseButtonFor("src/new.ts")?.getAttribute("aria-expanded")).toBe("true");
+		});
+
+		fireEvent.click(title()!);
+		await vi.waitFor(() => {
+			expect(collapseButtonFor("README.md")?.getAttribute("aria-expanded")).toBe("true");
+		});
+	});
+
 	it("expands a collapsed file when its tree row is selected", async () => {
 		stubFetch(() => new Response(patchResponseStream()));
 		renderView();

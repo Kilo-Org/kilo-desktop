@@ -29,12 +29,22 @@ import {
 	ManualDisclosureProvider,
 	useHasOpenManualDisclosure,
 } from "../tools/activity-group.js";
-import { createActivityGroupBy, createTurnWorkGroupBy } from "../tools/activity-grouping.js";
-import { ComposerShelf, ComposerShelfToggle } from "../composer-shelf.js";
+import {
+	DELEGATION_GROUP_PREFIX,
+	createActivityGroupBy,
+	createTurnWorkGroupBy,
+} from "../tools/activity-grouping.js";
+import { DelegationGroup } from "../tools/delegation-group.js";
+import {
+	COMPOSER_SHELF_LIST_CLASS,
+	COMPOSER_SHELF_ROW_CLASS,
+	ComposerShelf,
+	ComposerShelfToggle,
+} from "../composer-shelf.js";
 import { OpenCodeComposerInteraction } from "../tools/opencode-composer-interaction.js";
 import { OPENCODE_SNAPSHOT_PROGRESS_PART } from "../tools/opencode-data-part.js";
 import { FallbackTool } from "../tools/opencode-tools.js";
-import { activityKindFromGroupKey } from "../tools/tool-categories.js";
+import { activityKindFromGroupKey, isDelegationTool } from "../tools/tool-categories.js";
 import { getPlanProjectionForMessage } from "../../plan/index.js";
 import { useApprovePlan } from "../../plan/use-approve-plan.js";
 import { Item, ItemActions, ItemContent } from "@kilo-desktop/ui/components/item";
@@ -79,6 +89,7 @@ import {
 	DownloadIcon,
 	EllipsisIcon,
 	FileTextIcon,
+	GitForkIcon,
 	MicIcon,
 	SquareIcon,
 	Trash2Icon,
@@ -87,6 +98,7 @@ import {
 	createContext,
 	useContext,
 	useEffect,
+	useLayoutEffect,
 	useMemo,
 	useRef,
 	useState,
@@ -117,14 +129,16 @@ import { useChatModelSelection } from "../../model-selection/ChatModelSelectionC
 import { isKiloGatewayProvider } from "../../model-selection/model-catalog.js";
 import { usePlanThreadProjection } from "../../plan/use-plan-thread-projection.js";
 import { ComposerTaskList } from "../../tasks/ComposerTaskList.js";
+import { ComposerSubagentStrip } from "../../subagents/ComposerSubagentStrip.js";
+import { useDelegationRevealNonce } from "../../subagents/delegation-reveal-store.js";
 import { useSubagentActivity } from "../../subagents/SubagentActivityContext.js";
 import { useOptionalOpenCodeRuntimeExtras } from "../../runtime/use-optional-opencode-runtime-extras.js";
-import { usePendingKiloSuggestion } from "../../suggestions/KiloSuggestionContext.js";
+import { usePendingInteractions } from "../../subagents/PendingInteractionsContext.js";
 import {
 	assistantWorkingIndicatorMode,
-	isComposerPromptBusy,
 	messageHasInFlightActivity,
-} from "../../suggestions/kilo-suggestion-logic.js";
+	openCodeTextIsStreaming,
+} from "./assistant-working-indicator-mode.js";
 import { useLocalInferenceStatus } from "../../use-local-inference-status.js";
 import { LOCAL_MODEL_SERVER_PROVIDER_ID } from "../../../providers/provider-ids.js";
 import { retryFailedPrompt } from "./retry-failed-prompt.js";
@@ -254,13 +268,15 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 				autoScroll
 				scrollToBottomOnRunStart={false}
 				data-slot="aui_thread-viewport"
-				className={cn(
-					THREAD_VIEWPORT_CLASS,
-					"scroll-fade-t",
-					!isDraft && "[scrollbar-gutter:stable_both-edges]",
-				)}
+				className={cn(THREAD_VIEWPORT_CLASS, !isDraft && "[scrollbar-gutter:stable_both-edges]")}
 			>
 				<ScrollToBottomOnSend />
+				{/* A gradient, not a `scroll-fade` mask: masking the scroller disables the
+				    docked composer's backdrop blur in Chromium. */}
+				<div
+					aria-hidden
+					className="from-pane pointer-events-none sticky top-0 z-10 -mb-6 h-6 w-full shrink-0 bg-linear-to-b to-transparent"
+				/>
 				{isDraft ? null : <ConversationMapAui />}
 				<div
 					data-slot="aui_thread-column"
@@ -314,12 +330,26 @@ const WorktreeSetupIndicator: FC = () => {
 		>
 			<AvatarGroup className="*:data-[slot=avatar]:ring-pane">
 				<Avatar aria-hidden className="size-6.5">
-					<AvatarFallback className="border-0">
-						<Spinner
-							aria-hidden="true"
-							className="size-3"
+					<AvatarFallback className="relative border-0">
+						<GitForkIcon className="size-3.5" />
+						<svg
 							data-qa-id="kilo-worktree-setup-spinner"
-						/>
+							aria-hidden
+							viewBox="0 0 28 28"
+							fill="none"
+							className="pointer-events-none absolute inset-0 size-full animate-spin"
+						>
+							<circle
+								cx="14"
+								cy="14"
+								r="13"
+								stroke="currentColor"
+								strokeOpacity={0.4}
+								strokeWidth="2"
+								strokeLinecap="round"
+								strokeDasharray="20.4 61.3"
+							/>
+						</svg>
 					</AvatarFallback>
 				</Avatar>
 			</AvatarGroup>
@@ -494,7 +524,7 @@ const ComposerQueue: FC<{ steerOnEnter: boolean }> = ({ steerOnEnter }) => {
 			{!collapsed ? (
 				<div
 					id="kilo-composer-queue-items"
-					className="scroll-fade-y flex max-h-36 flex-col overflow-y-auto p-1"
+					className={cn(COMPOSER_SHELF_LIST_CLASS, "flex flex-col")}
 				>
 					<ComposerPrimitive.Queue>
 						{({ queueItem }) => <QueueItemRow queueItem={queueItem} showEnterHint={steerOnEnter} />}
@@ -515,22 +545,22 @@ const QueueItemRow: FC<{ queueItem: QueueItemState; showEnterHint: boolean }> = 
 	return (
 		<Item
 			size="xs"
-			className="group min-w-0 shrink-0 flex-nowrap"
+			className={COMPOSER_SHELF_ROW_CLASS}
 			data-qa-id="kilo-composer-queue-item"
 			data-queue-item-id={queueItem.id}
 		>
 			{attachmentPreview ? <QueueAttachmentPreview attachment={attachmentPreview} /> : null}
 			<ItemContent className="min-w-0">
-				<QueueItemPrimitive.Text className="truncate text-sm" />
+				<QueueItemPrimitive.Text className="text-foreground/90 truncate text-sm" />
 			</ItemContent>
-			<ItemActions>
+			<ItemActions className="gap-1.5">
 				<QueueItemPrimitive.Steer
 					render={
 						<Button
 							type="button"
 							size="xs"
 							variant="ghost"
-							className="opacity-65 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+							className="text-muted-foreground hover:text-foreground text-[11px] opacity-65 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
 							data-qa-id="kilo-composer-queue-send-now"
 						/>
 					}
@@ -546,7 +576,7 @@ const QueueItemRow: FC<{ queueItem: QueueItemState; showEnterHint: boolean }> = 
 							type="button"
 							variant="ghost"
 							size="icon-xs"
-							className="hover:text-destructive size-6 opacity-65 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+							className="text-muted-foreground hover:text-destructive size-6 opacity-65 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
 							aria-label="Delete queued message"
 							data-qa-id="kilo-composer-queue-delete"
 						/>
@@ -571,7 +601,6 @@ const Composer: FC = () => {
 	const inputRef = useRef<HTMLDivElement>(null);
 	const { refine, submitting, canReply } = useApprovePlan();
 	const { agent, setAgent, catalog, isCatalogPending, isCatalogError } = useChatAgentSelection();
-	const pendingSuggestion = usePendingKiloSuggestion();
 	const inferenceStatus = useLocalInferenceStatus();
 	const { model } = useChatModelSelection();
 	const isLoadingModel =
@@ -580,11 +609,6 @@ const Composer: FC = () => {
 		inferenceStatus.modelId === model.modelID;
 
 	const showPlanFollowupActions = canReply && !isConnecting && !isPending && !isLoadingModel;
-
-	const sendFollowup = () => {
-		if (isLoadingModel || isComposerEmpty) return;
-		aui.composer.send(hasMessageQueue ? { startRun: false } : undefined);
-	};
 
 	const lastPaneFocusRef = useRef<HTMLElement | null>(null);
 	const wasConnectingRef = useRef(isConnecting);
@@ -669,13 +693,6 @@ const Composer: FC = () => {
 			handlePlanRefineSubmit();
 			return;
 		}
-		// Suggest keeps thread.isRunning true, so ComposerPrimitive.Send is
-		// disabled — send through the runtime instead, matching VS Code.
-		if (pendingSuggestion) {
-			event.preventDefault();
-			sendFollowup();
-			return;
-		}
 		// When Kilo is still starting, wait before composer.send() so the draft
 		// stays visible and the send button can show a spinner. preventDefault
 		// skips ComposerPrimitive.Root's built-in send handler (Enter key).
@@ -720,11 +737,6 @@ const Composer: FC = () => {
 			handlePlanRefineSubmit();
 			return;
 		}
-		if (pendingSuggestion) {
-			event.preventDefault();
-			sendFollowup();
-			return;
-		}
 		// Queue only when a run was already in flight and Lexical skipped send.
 		if (aui.thread.getState().isRunning && hasMessageQueue && !isComposerEmpty) {
 			event.preventDefault();
@@ -742,6 +754,7 @@ const Composer: FC = () => {
 				className="aui-composer-root relative flex w-full flex-col gap-2"
 				onSubmit={handleSubmit}
 			>
+				<ComposerSubagentStrip />
 				<ComposerTaskList />
 				<ComposerQueue steerOnEnter={steerQueueOnEnter} />
 				<ComposerPrimitive.AttachmentDropzone
@@ -761,7 +774,6 @@ const Composer: FC = () => {
 					<KiloLexicalComposerInput
 						ref={inputRef}
 						disabled={isConnecting}
-						cancelOnEscape={!pendingSuggestion}
 						submitMode={isLoadingModel ? "none" : "enter"}
 						onKeyDown={handleInputKeyDown}
 					/>
@@ -771,7 +783,6 @@ const Composer: FC = () => {
 						isLoadingModel={isLoadingModel}
 						isConnectionPending={isPending}
 						onSendWhenConnected={sendWhenConnected}
-						onSendFollowup={sendFollowup}
 						modelSelectorSide={isDraft ? "bottom" : "top"}
 						showPlanFollowupActions={showPlanFollowupActions}
 						planActionPending={submitting}
@@ -788,7 +799,6 @@ const ComposerAction: FC<{
 	isLoadingModel: boolean;
 	isConnectionPending: boolean;
 	onSendWhenConnected: () => void;
-	onSendFollowup: () => void;
 	modelSelectorSide: "top" | "bottom";
 	showPlanFollowupActions: boolean;
 	planActionPending: boolean;
@@ -798,7 +808,6 @@ const ComposerAction: FC<{
 	isLoadingModel,
 	isConnectionPending,
 	onSendWhenConnected,
-	onSendFollowup,
 	modelSelectorSide,
 	showPlanFollowupActions,
 	planActionPending,
@@ -807,22 +816,34 @@ const ComposerAction: FC<{
 	const aui = useAui();
 	const isRunning = useAuiState((s) => s.thread.isRunning);
 	const { hasActiveSubagents, stopAllSubagents } = useSubagentActivity();
+	const [isStoppingAll, setIsStoppingAll] = useState(false);
+	const stopEverything = () => {
+		if (isStoppingAll) return;
+		// cancelRun pauses the message queue; stopAllSubagents aborts the parent's
+		// whole session tree regardless of whether the UI believes it is running,
+		// and surfaces failures. The server treats the duplicate abort as a no-op.
+		if (isRunning) aui.thread().cancelRun();
+		setIsStoppingAll(true);
+		void stopAllSubagents().finally(() => setIsStoppingAll(false));
+	};
 	const canSend = useAuiState((s) => s.composer.canSend);
 	const isComposerEmpty = useAuiState((s) => s.composer.isEmpty);
 	const canQueue = useAuiState((s) => s.thread.capabilities.queue);
-	const pendingSuggestion = usePendingKiloSuggestion();
-	const isPromptBusy = isComposerPromptBusy(isRunning, pendingSuggestion) || hasActiveSubagents;
+	const isPromptBusy = isRunning || hasActiveSubagents;
 	const isSendLocked = isConnecting || isLoadingModel;
 	const lockLabel = isConnecting ? "Connecting to Kilo" : LOCAL_MODEL_LOADING_TITLE;
 
 	return (
-		<div className="aui-composer-action-wrapper relative flex items-center justify-between">
-			<div className="flex min-w-0 items-center gap-1">
+		<div className="aui-composer-action-wrapper relative flex items-center gap-1.5">
+			<div className="flex shrink-0 items-center gap-1">
 				<ComposerAddAttachment />
 				<KiloAgentSelector />
 			</div>
-			<div className="flex items-center gap-1.5">
+			{/* Only the model name absorbs overflow; the action buttons keep their size. */}
+			<div className="flex min-w-0 flex-1 justify-end">
 				<KiloModelSelector side={modelSelectorSide} />
+			</div>
+			<div className="flex shrink-0 items-center gap-1.5">
 				<AuiIf condition={(s) => s.thread.capabilities.dictation}>
 					<AuiIf condition={(s) => s.composer.dictation == null}>
 						<ComposerPrimitive.Dictate
@@ -913,39 +934,22 @@ const ComposerAction: FC<{
 					</Button>
 				) : null}
 				{!showPlanFollowupActions && !isSendLocked && !isPromptBusy && !isConnectionPending ? (
-					pendingSuggestion ? (
-						<TooltipIconButton
-							tooltip="Send message"
-							side="bottom"
-							type="button"
-							variant="default"
-							size="icon"
-							disabled={!canSend}
-							className="aui-composer-send size-7 rounded-full"
-							aria-label="Send message"
-							data-qa-id="kilo-composer-send"
-							onClick={onSendFollowup}
-						>
-							<ArrowUpIcon className="aui-composer-send-icon size-4.5" />
-						</TooltipIconButton>
-					) : (
-						<ComposerPrimitive.Send
-							render={
-								<TooltipIconButton
-									tooltip="Send message"
-									side="bottom"
-									type="button"
-									variant="default"
-									size="icon"
-									className="aui-composer-send size-7 rounded-full"
-									aria-label="Send message"
-									data-qa-id="kilo-composer-send"
-								/>
-							}
-						>
-							<ArrowUpIcon className="aui-composer-send-icon size-4.5" />
-						</ComposerPrimitive.Send>
-					)
+					<ComposerPrimitive.Send
+						render={
+							<TooltipIconButton
+								tooltip="Send message"
+								side="bottom"
+								type="button"
+								variant="default"
+								size="icon"
+								className="aui-composer-send size-7 rounded-full"
+								aria-label="Send message"
+								data-qa-id="kilo-composer-send"
+							/>
+						}
+					>
+						<ArrowUpIcon className="aui-composer-send-icon size-4.5" />
+					</ComposerPrimitive.Send>
 				) : null}
 				{(!showPlanFollowupActions || hasActiveSubagents) && !isSendLocked && isPromptBusy ? (
 					<>
@@ -967,16 +971,14 @@ const ComposerAction: FC<{
 						) : null}
 						{hasActiveSubagents ? (
 							<TooltipIconButton
-								tooltip="Stop all subagents"
+								tooltip="Stop generating"
 								type="button"
 								variant="default"
 								size="icon"
 								className="aui-composer-cancel size-7 rounded-full"
-								aria-label="Stop all subagents"
-								onClick={() => {
-									if (isRunning) aui.thread().cancelRun();
-									void stopAllSubagents();
-								}}
+								aria-label="Stop generating"
+								disabled={isStoppingAll}
+								onClick={stopEverything}
 							>
 								<SquareIcon className="size-3.5 fill-current" />
 							</TooltipIconButton>
@@ -1139,23 +1141,67 @@ const TurnWorkHeader: FC<{ startedAt: number }> = ({ startedAt }) => (
 	</div>
 );
 
-const TurnWorkDisclosure: FC<
-	PropsWithChildren<{ animateCollapse: boolean; duration: string | null; interrupted: boolean }>
-> = ({ animateCollapse, duration, interrupted, children }) => {
-	const hasOpenManualDisclosure = useHasOpenManualDisclosure();
-	const [open, setOpen] = useState(animateCollapse || hasOpenManualDisclosure);
-	useEffect(() => {
-		if (!animateCollapse || hasOpenManualDisclosure) return;
-		const frameId = window.requestAnimationFrame(() => setOpen(false));
-		return () => window.cancelAnimationFrame(frameId);
-	}, [animateCollapse, hasOpenManualDisclosure]);
-	const label = interrupted
+const turnSummaryLabel = (interrupted: boolean, duration: string | null) =>
+	interrupted
 		? duration
 			? `You stopped after ${duration}`
 			: "You stopped this response"
 		: duration
 			? `Worked for ${duration}`
 			: "Worked";
+
+/**
+ * Says a turn was stopped when it has no work fold to carry that label, e.g.
+ * a stop before any output or while only text was streaming.
+ */
+const TurnStoppedNote: FC<{ duration: string | null }> = ({ duration }) => (
+	<p className="text-muted-foreground mt-2 text-xs" data-qa-id="kilo-turn-stopped">
+		{turnSummaryLabel(true, duration)}
+	</p>
+);
+
+const TurnWorkDisclosure: FC<
+	PropsWithChildren<{
+		animateCollapse: boolean;
+		duration: string | null;
+		interrupted: boolean;
+		/** A pending jump to a delegation inside this fold. */
+		revealNonce: number | null;
+		/** Reports whether the fold is on screen, so the message can skip its own stop note. */
+		onPresenceChange: (present: boolean) => void;
+	}>
+> = ({ animateCollapse, duration, interrupted, revealNonce, onPresenceChange, children }) => {
+	useLayoutEffect(() => {
+		onPresenceChange(true);
+		return () => onPresenceChange(false);
+	}, [onPresenceChange]);
+	const hasOpenManualDisclosure = useHasOpenManualDisclosure();
+	const [open, setOpen] = useState(animateCollapse || hasOpenManualDisclosure);
+	// `animateCollapse` is true only for the render in which the turn ends. The
+	// collapse is latched so the re-render that follows (e.g. `onPresenceChange`
+	// above) cannot cancel it, and it is one-shot so closing a disclosure later
+	// never folds work the user reopened.
+	const pendingCollapseRef = useRef(animateCollapse);
+	useEffect(() => {
+		if (revealNonce === null) return;
+		// A reveal outranks the end-of-turn collapse, even one already scheduled.
+		pendingCollapseRef.current = false;
+		setOpen(true);
+	}, [revealNonce]);
+	useEffect(() => {
+		if (!pendingCollapseRef.current) return;
+		if (hasOpenManualDisclosure) {
+			pendingCollapseRef.current = false;
+			return;
+		}
+		const frameId = window.requestAnimationFrame(() => {
+			if (!pendingCollapseRef.current) return;
+			pendingCollapseRef.current = false;
+			setOpen(false);
+		});
+		return () => window.cancelAnimationFrame(frameId);
+	}, [hasOpenManualDisclosure]);
+	const label = turnSummaryLabel(interrupted, duration);
 	return (
 		<Collapsible
 			open={open}
@@ -1308,8 +1354,14 @@ const AssistantMessage: FC = () => {
 	const messageParts = useAuiState((s) => s.message.parts);
 	const planThread = usePlanThreadProjection();
 	const hiddenPlanCallIds = getPlanProjectionForMessage(planThread, messageId)?.hiddenCallIds;
-	const pendingSuggestion = usePendingKiloSuggestion();
+	const pendingInteractions = usePendingInteractions();
+	const pendingUserInteractions =
+		pendingInteractions.questions.length + pendingInteractions.permissions.length;
 	const hasInFlightActivity = useAuiState((s) => messageHasInFlightActivity(s.message.parts));
+	const isStreamingText = useAuiState((s) => {
+		const custom = s.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
+		return openCodeTextIsStreaming(custom?.opencode?.parts);
+	});
 	const hasRenderablePart = useAuiState((s) =>
 		s.message.parts.some(
 			(part) =>
@@ -1337,20 +1389,7 @@ const AssistantMessage: FC = () => {
 	const threadOwnsRun = useAuiState(
 		(s) => s.thread.isRunning && s.message.index === s.thread.messages.length - 1,
 	);
-	const { hasActiveSubagents, activeToolCallIds } = useSubagentActivity();
-	const subagentBoundaryToolCallIdsRef = useRef(new Set<string>());
-	for (const toolCallId of activeToolCallIds) {
-		subagentBoundaryToolCallIdsRef.current.add(toolCallId);
-	}
-	for (const part of messageParts) {
-		if (
-			part.type === "tool-call" &&
-			part.toolName.toLowerCase() === "task" &&
-			part.status?.type === "running"
-		) {
-			subagentBoundaryToolCallIdsRef.current.add(part.toolCallId);
-		}
-	}
+	const { hasActiveSubagents } = useSubagentActivity();
 	const isLastMessage = useAuiState((s) => s.message.index === s.thread.messages.length - 1);
 	const isRunning =
 		status?.type === "running" || threadOwnsRun || (isLastMessage && hasActiveSubagents);
@@ -1366,13 +1405,19 @@ const AssistantMessage: FC = () => {
 	const groupActivityParts = useMemo(
 		() =>
 			isRunning
-				? createActivityGroupBy(messageParts, {
-						hiddenPlanCallIds,
-						activeSubagentToolCallIds: subagentBoundaryToolCallIdsRef.current,
-					})
+				? createActivityGroupBy(messageParts, { hiddenPlanCallIds })
 				: createTurnWorkGroupBy(messageParts, { hiddenPlanCallIds }),
 		[hiddenPlanCallIds, isRunning, messageParts],
 	);
+	const delegationToolCallIds = useMemo(
+		() =>
+			messageParts.flatMap((part) =>
+				part.type === "tool-call" && isDelegationTool(part.toolName) ? [part.toolCallId] : [],
+			),
+		[messageParts],
+	);
+	const delegationRevealNonce = useDelegationRevealNonce(delegationToolCallIds);
+	const [hasTurnWorkFold, setHasTurnWorkFold] = useState(false);
 	// Dim while a revert is in flight from a boundary before this message.
 	const pendingId = useRevertPending().pendingId;
 	const dimmed = useIsAfterPendingBoundary(pendingId);
@@ -1382,7 +1427,7 @@ const AssistantMessage: FC = () => {
 			data-slot="aui_assistant-message-root"
 			data-role="assistant"
 			className={cn(
-				"fade-in slide-in-from-bottom-1 animate-in relative -mb-15 pb-7.5 duration-150 transition-opacity",
+				"fade-in slide-in-from-bottom-1 animate-in relative -mb-7.5 pb-7.5 duration-150 transition-opacity",
 				virtualize && "[contain-intrinsic-size:auto_200px] [content-visibility:auto]",
 				dimmed ? "pointer-events-none opacity-50" : undefined,
 			)}
@@ -1398,13 +1443,18 @@ const AssistantMessage: FC = () => {
 							if (part.type.startsWith("group-activity-") && "indices" in part) {
 								return <ActivityGroup group={part}>{children}</ActivityGroup>;
 							}
+							if (part.type.startsWith(DELEGATION_GROUP_PREFIX) && "indices" in part) {
+								return <DelegationGroup group={part}>{children}</DelegationGroup>;
+							}
 							switch (part.type) {
 								case "group-turn-work":
 									return (
 										<TurnWorkDisclosure
 											animateCollapse={animateWorkCollapse}
+											revealNonce={delegationRevealNonce}
 											duration={duration}
 											interrupted={interrupted}
+											onPresenceChange={setHasTurnWorkFold}
 										>
 											{children}
 										</TurnWorkDisclosure>
@@ -1420,7 +1470,6 @@ const AssistantMessage: FC = () => {
 								case "group-terminal":
 								case "group-planning":
 								case "group-asking":
-								case "group-suggesting":
 								case "group-skill":
 								case "group-subagent":
 								case "group-tools": {
@@ -1459,11 +1508,19 @@ const AssistantMessage: FC = () => {
 							}
 						}}
 					</MessagePrimitive.GroupedParts>
+					{interrupted && !isRunning && !hasTurnWorkFold ? (
+						<TurnStoppedNote duration={duration} />
+					) : null}
 					{isRunning ? (
 						<AssistantWorkingIndicator
 							overlay={hasRenderablePart}
 							active={
-								assistantWorkingIndicatorMode(pendingSuggestion, hasInFlightActivity) !== "never"
+								assistantWorkingIndicatorMode({
+									pendingUserInteractions,
+									hasInFlightActivity,
+									isStreamingText,
+									hasActiveSubagents,
+								}) !== "never"
 							}
 						/>
 					) : null}

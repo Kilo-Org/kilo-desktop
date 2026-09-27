@@ -49,6 +49,28 @@ function arePathListsEqual(a: readonly string[], b: readonly string[]): boolean 
 const EMPTY_PATHS: readonly string[] = [];
 const EMPTY_GIT_STATUS: readonly GitStatusEntry[] = [];
 
+// The truncation "…" marker masks overflowing text with its own background,
+// which defaults to --trees-bg. The tree background is overridden to
+// transparent below, so the marker needs the pane surface it actually sits on
+// or it renders over the clipped label instead of hiding it.
+//
+// The scroller reserves a permanent `scrollbar-gutter: stable` sized for a 6px
+// ::-webkit-scrollbar, but the app's inherited `scrollbar-color` disables
+// those rules, so a full-width gutter leaves an empty strip on the right.
+// Reserve it only while overflowing, with symmetric padding otherwise.
+const TREE_UNSAFE_CSS = `
+	[data-type="item"] {
+		--truncate-marker-background-color: var(--pane-surface, var(--background));
+		--truncate-marker-fade-in-duration: 0s;
+	}
+
+	[data-file-tree-virtualized-scroll="true"] {
+		scrollbar-gutter: auto;
+		scrollbar-width: thin;
+		padding-inline: max(calc(var(--trees-padding-inline) - var(--trees-item-margin-x)), 0px);
+	}
+`;
+
 interface GitDiffSidebarProps {
 	readonly appearance: ThemeAppearance;
 	readonly loading: boolean;
@@ -102,6 +124,7 @@ export function GitDiffSidebar({
 		presorted: true,
 		search: false,
 		sort: PRESERVE_INPUT_ORDER_SORT,
+		unsafeCSS: TREE_UNSAFE_CSS,
 		onSelectionChange(selectedPaths) {
 			if (selectedPaths.length !== 1) return;
 			const itemId = sourceRef.current?.pathToItemId.get(selectedPaths[0] ?? "");
@@ -267,6 +290,7 @@ export function GitDiffSidebar({
 						["--trees-border-color-override" as string]: "var(--border)",
 						["--trees-focus-ring-color-override" as string]: "var(--ring)",
 						["--trees-padding-inline-override" as string]: "8px",
+						["--trees-font-size-override" as string]: "0.75rem",
 						["--trees-selected-focused-border-color-override" as string]: "var(--ring)",
 						["--trees-scrollbar-thumb-override" as string]: "var(--app-scrollbar-thumb)",
 					}}

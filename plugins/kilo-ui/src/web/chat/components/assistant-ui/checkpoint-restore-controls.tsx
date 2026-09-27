@@ -29,7 +29,7 @@ import {
 } from "./checkpoint-revert.js";
 import { selectOpenCodeExtras } from "../../runtime/use-optional-opencode-runtime-extras.js";
 import { DiffStat, RevertMessageRows } from "./checkpoint-revert-messages.js";
-import { COMPOSER_SHELF_CLASS } from "../composer-shelf.js";
+import { COMPOSER_SHELF_CLASS, COMPOSER_SHELF_LIST_CLASS } from "../composer-shelf.js";
 
 // Mirrors the kilocode clients' three revert.workspace states. The undefined
 // case covers reverts performed by older CLIs/TUI that did not report status.
@@ -111,7 +111,7 @@ export const CheckpointRestoreControls: FC = () => {
 						render={
 							<Button
 								variant="ghost"
-								className="hover:bg-muted h-full min-w-0 flex-1 justify-start rounded-none bg-clip-border px-3 pr-28 text-xs font-medium"
+								className="text-muted-foreground hover:bg-muted/35 h-full min-w-0 flex-1 justify-start rounded-none bg-clip-border px-3 pr-28 text-xs font-medium"
 							>
 								<span>{revertedCopy}</span>
 								{files.length > 0 && <DiffStat additions={additions} deletions={deletions} />}
@@ -139,7 +139,10 @@ export const CheckpointRestoreControls: FC = () => {
 					disabled={isRunning || isUndoing}
 					onClick={() => void undo()}
 					data-qa-id="kilo-revert-undo-button"
-					className={cn(rows.length > 0 ? "absolute right-[27px]" : "mr-1.5")}
+					className={cn(
+						"text-muted-foreground hover:text-foreground",
+						rows.length > 0 ? "absolute right-[27px]" : "mr-1.5",
+					)}
 				>
 					{isUndoing && <Spinner data-icon="inline-start" aria-hidden="true" />}
 					Undo revert
@@ -147,7 +150,7 @@ export const CheckpointRestoreControls: FC = () => {
 			</div>
 			{rows.length > 0 && (
 				<CollapsibleContent className="w-full overflow-hidden">
-					<div className="scroll-fade-y max-h-36 overflow-y-auto p-1">
+					<div className={COMPOSER_SHELF_LIST_CLASS}>
 						<RevertMessageRows aui={aui} rows={rows} isRunning={isRunning} />
 					</div>
 				</CollapsibleContent>

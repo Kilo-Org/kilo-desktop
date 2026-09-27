@@ -16,6 +16,8 @@ export type KiloDesktopSessionMetadata = {
 type SessionStatusType = "busy" | "retry" | "idle";
 
 export type SessionActivity = {
+	/** Set for subagent sessions; their prompts surface on the parent's row. */
+	parentId?: string | undefined;
 	directory?: string | undefined;
 	workspaceId?: string | undefined;
 	/** The session's worktree branch (`kilo/…`) when it runs in a worktree. */
@@ -115,7 +117,7 @@ export function readWorktreeBranchFromMetadata(metadata: unknown): string | unde
 }
 
 export type SessionActivityPatch = Partial<
-	Pick<SessionActivity, "directory" | "createdAt" | "updatedAt">
+	Pick<SessionActivity, "parentId" | "directory" | "createdAt" | "updatedAt">
 > & {
 	/** `null` clears a previously stamped workspace (deleted workspace). */
 	workspaceId?: string | null;
@@ -126,6 +128,8 @@ export type SessionActivityPatch = Partial<
 /** Reads directory/timestamps/workspace id off a Kilo `Session` (`session.updated` info, list rows). */
 export function readSessionInfoPatch(info: Record<string, unknown>): SessionActivityPatch {
 	const patch: SessionActivityPatch = {};
+	const parentId = asString(info.parentID);
+	if (parentId) patch.parentId = parentId;
 	const directory = asString(info.directory);
 	if (directory) patch.directory = directory;
 	const time = asRecord(info.time);
@@ -146,7 +150,7 @@ export function applySessionPatch(
 	patch: SessionActivityPatch,
 ): SessionActivity | null {
 	let next = session;
-	for (const key of ["directory", "createdAt", "updatedAt"] as const) {
+	for (const key of ["parentId", "directory", "createdAt", "updatedAt"] as const) {
 		const value = patch[key];
 		if (value !== undefined && next[key] !== value) {
 			next = { ...next, [key]: value };
@@ -183,6 +187,77 @@ export function needsAttention(activity: SessionActivity | undefined): boolean {
 }
 
 type PendingKey = "pendingPermissionIds" | "pendingQuestionIds";
+
+const unionIds = (base: readonly string[], extra: readonly string[]): readonly string[] => {
+	if (extra.every((id) => base.includes(id))) return base;
+	return [...new Set([...base, ...extra])];
+};
+
+const rolledUpCache = new WeakMap<
+	Readonly<Record<string, SessionActivity>>,
+	Readonly<Record<string, SessionActivity>>
+>();
+
+/**
+ * Copies every subagent session's pending prompt ids onto each ancestor, so a
+ * chat row needs attention while any of its subagents waits on the user.
+ * Memoized per `sessions` object so store selectors return stable records.
+ */
+export function withDescendantPrompts(
+	sessions: Readonly<Record<string, SessionActivity>>,
+): Readonly<Record<string, SessionActivity>> {
+	const cached = rolledUpCache.get(sessions);
+	if (cached) return cached;
+	let result: Record<string, SessionActivity> | undefined;
+	for (const [sessionId, activity] of Object.entries(sessions)) {
+		if (!activity.parentId || !needsAttention(activity)) continue;
+		const seen = new Set([sessionId]);
+		for (
+			let parentId: string | undefined = activity.parentId;
+			parentId && !seen.has(parentId);
+			parentId = sessions[parentId]?.parentId
+		) {
+			seen.add(parentId);
+			result ??= { ...sessions };
+			const parent = result[parentId] ?? createEmptySessionActivity();
+			result[parentId] = {
+				...parent,
+				pendingPermissionIds: unionIds(parent.pendingPermissionIds, activity.pendingPermissionIds),
+				pendingQuestionIds: unionIds(parent.pendingQuestionIds, activity.pendingQuestionIds),
+			};
+		}
+	}
+	const rolledUp = result ?? sessions;
+	rolledUpCache.set(sessions, rolledUp);
+	return rolledUp;
+}
+
+/**
+ * For each prompting session, the topmost known ancestor with no parent link
+ * yet: the next hop to look up. Starting from that ancestor rather than the
+ * prompting session covers a nested subagent whose own link arrived live while
+ * an intermediate ancestor predates the connection.
+ */
+export function sessionsAwaitingParentLookup(
+	sessions: Readonly<Record<string, SessionActivity>>,
+): string[] {
+	const pending = new Set<string>();
+	for (const [sessionId, activity] of Object.entries(sessions)) {
+		if (!needsAttention(activity)) continue;
+		const seen = new Set([sessionId]);
+		let topmost: string | undefined = sessionId;
+		for (let parentId = activity.parentId; parentId; parentId = sessions[parentId]?.parentId) {
+			if (seen.has(parentId)) {
+				topmost = undefined;
+				break;
+			}
+			seen.add(parentId);
+			topmost = parentId;
+		}
+		if (topmost) pending.add(topmost);
+	}
+	return [...pending];
+}
 
 function addPendingId(
 	state: SessionActivityState,

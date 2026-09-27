@@ -66,8 +66,6 @@ import { createWorktreeBranchNamer } from "./worktree-branch-namer.js";
 import { createKiloDirectoryClient } from "./runtime/create-kilo-runtime-client.js";
 import { createSourceControlWriter } from "./source-control-writer.js";
 import { WorktreeSetupProvider } from "./worktree-setup/WorktreeSetupContext.js";
-import { KiloSuggestionProvider } from "./suggestions/KiloSuggestionContext.js";
-import { createKiloSuggestionStore } from "./suggestions/kilo-suggestion-store.js";
 import { PierreDiffProvider } from "./PierreDiffProvider.js";
 import { KiloSessionSelectionSync } from "./session-selection/KiloSessionSelectionSync.js";
 import { SubagentActivityProvider } from "./subagents/SubagentActivityContext.js";
@@ -289,7 +287,6 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	);
 
 	const sessionActivity = useMemo(() => createSessionActivityStore(), []);
-	const suggestions = useMemo(() => createKiloSuggestionStore(), []);
 
 	const hasWorktreeWorkRef = useRef((input: { directory: string; baseBranch?: string }) =>
 		sdk.client["chat.hasWorktreeWork"](input),
@@ -421,7 +418,6 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		onSessionInitialized,
 		onError: onRuntimeError,
 		sessionActivity,
-		suggestions,
 		getKnownCommandNames: () => knownCommandNamesRef.current,
 	});
 
@@ -524,23 +520,21 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 			<ChatConnectionProvider status={connectionStatus}>
 				<KiloAuthProvider>
 					<SessionActivityProvider store={sessionActivity}>
-						<KiloSuggestionProvider store={suggestions}>
-							<ChatAgentSelectionProvider value={agentSelection}>
-								<ChatModelSelectionProvider value={modelSelection}>
-									<WorktreeSetupProvider isSettingUp={isSettingUpWorktree}>
-										<AssistantRuntimeProvider aui={aui} runtime={runtime}>
-											<SubagentActivityProvider>
-												<KiloSessionSelectionSync
-													hydrateAgent={hydrateThreadAgent}
-													hydrateModel={hydrateThreadModel}
-												/>
-												<SessionListViewProvider>{children}</SessionListViewProvider>
-											</SubagentActivityProvider>
-										</AssistantRuntimeProvider>
-									</WorktreeSetupProvider>
-								</ChatModelSelectionProvider>
-							</ChatAgentSelectionProvider>
-						</KiloSuggestionProvider>
+						<ChatAgentSelectionProvider value={agentSelection}>
+							<ChatModelSelectionProvider value={modelSelection}>
+								<WorktreeSetupProvider isSettingUp={isSettingUpWorktree}>
+									<AssistantRuntimeProvider aui={aui} runtime={runtime}>
+										<SubagentActivityProvider>
+											<KiloSessionSelectionSync
+												hydrateAgent={hydrateThreadAgent}
+												hydrateModel={hydrateThreadModel}
+											/>
+											<SessionListViewProvider>{children}</SessionListViewProvider>
+										</SubagentActivityProvider>
+									</AssistantRuntimeProvider>
+								</WorktreeSetupProvider>
+							</ChatModelSelectionProvider>
+						</ChatAgentSelectionProvider>
 					</SessionActivityProvider>
 				</KiloAuthProvider>
 				<KiloServerErrorToast />

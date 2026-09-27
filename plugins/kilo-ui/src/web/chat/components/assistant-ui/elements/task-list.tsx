@@ -16,6 +16,28 @@ export interface TaskItem {
 	reason?: string;
 }
 
+export function TaskStatusIcon({ status }: { status: TaskStatus }) {
+	return (
+		<span aria-hidden className="flex size-4 h-5 shrink-0 items-center justify-center">
+			{status === "done" ? (
+				<span className="border-foreground/20 bg-foreground/[0.06] flex size-3.5 items-center justify-center rounded-sm border">
+					<CheckIcon className="text-foreground/45 size-2.5" />
+				</span>
+			) : status === "failed" ? (
+				<span className="border-destructive/25 bg-destructive/[0.08] flex size-3.5 items-center justify-center rounded-sm border">
+					<XIcon className="text-destructive size-2.5" />
+				</span>
+			) : status === "cancelled" ? (
+				<BanIcon className="text-foreground/30 size-3.5" />
+			) : status === "active" ? (
+				<Spinner className="text-primary-ink size-3 motion-reduce:animate-none" />
+			) : (
+				<span className="border-foreground/15 size-3.5 rounded-sm border" />
+			)}
+		</span>
+	);
+}
+
 export function TaskList({
 	items,
 	className,
@@ -34,23 +56,7 @@ export function TaskList({
 					key={item.id}
 					className="fade-in slide-in-from-bottom-1 animate-in fill-mode-both flex items-start gap-2.5 py-0.5 text-sm duration-300"
 				>
-					<span aria-hidden className="flex size-4 h-5 shrink-0 items-center justify-center">
-						{item.status === "done" ? (
-							<span className="border-foreground/20 bg-foreground/[0.06] flex size-3.5 items-center justify-center rounded-sm border">
-								<CheckIcon className="text-foreground/45 size-2.5" />
-							</span>
-						) : item.status === "failed" ? (
-							<span className="border-destructive/25 bg-destructive/[0.08] flex size-3.5 items-center justify-center rounded-sm border">
-								<XIcon className="text-destructive size-2.5" />
-							</span>
-						) : item.status === "cancelled" ? (
-							<BanIcon className="text-foreground/30 size-3.5" />
-						) : item.status === "active" ? (
-							<Spinner className="text-primary-ink size-3 motion-reduce:animate-none" />
-						) : (
-							<span className="border-foreground/15 size-3.5 rounded-sm border" />
-						)}
-					</span>
+					<TaskStatusIcon status={item.status} />
 					<span className="sr-only">{item.status}</span>
 					<div className="min-w-0 flex-1 leading-5 break-words">
 						<span

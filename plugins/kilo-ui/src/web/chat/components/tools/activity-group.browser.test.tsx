@@ -18,17 +18,6 @@ const runtime = vi.hoisted(() => ({
 		tool?: { messageID?: string; callID?: string } | undefined;
 	}>,
 }));
-const subagents = vi.hoisted(() => ({
-	activities: [] as Array<{
-		childSessionId: string;
-		toolCallId: string;
-		title: string;
-		typeLabel: string;
-		status: "working" | "done";
-	}>,
-	activeToolCallIds: new Set<string>(),
-}));
-
 vi.mock("@assistant-ui/react", () => ({
 	useAuiState: (selector: (state: typeof runtime) => unknown) => selector(runtime),
 	useScrollLock: () => () => undefined,
@@ -40,27 +29,14 @@ vi.mock("@assistant-ui/react-opencode", () => ({
 	projectOpenCodeThreadMessages: () => [],
 }));
 
-vi.mock("../../subagents/SubagentActivityContext.js", () => ({
-	useSubagentActivity: () => ({
-		activities: subagents.activities,
-		hasActiveSubagents: subagents.activeToolCallIds.size > 0,
-		activeToolCallIds: subagents.activeToolCallIds,
-		stoppingIds: new Set(),
-		stopSubagent: vi.fn(),
-		stopAllSubagents: vi.fn(),
-	}),
-}));
-
 import { ActivityGroup, ActivitySubgroup, ManualDisclosureProvider } from "./activity-group.js";
 import { ApplyPatchDiff } from "./tool-ui-apply-patch.js";
 import { BashTerminal } from "./tool-ui-bash.js";
 import { ToolCallFallback } from "./tool-ui-inline.js";
 import { ReadActivity } from "./tool-ui-read-search.js";
 import { SkillActivity } from "./tool-ui-skill.js";
-import { TaskActivity } from "./tool-ui-task.js";
 import { WebFetchActivity, WebSearchActivity } from "./tool-ui-web.js";
 import type { ActivityKind } from "./tool-categories.js";
-import { useRightPanelStore } from "../../right-panel/right-panel-store.js";
 
 const toolPart = (
 	id: string,
@@ -80,15 +56,6 @@ const toolPart = (
 
 const readPart = (id: string, path: string) => toolPart(id, "read", { file_path: path });
 const skillPart = (id: string, name: string) => toolPart(id, "skill", { name });
-const taskPart = (
-	id: string,
-	args: { description?: string; prompt?: string; subagent_type?: string },
-	result?: unknown,
-): ToolCallMessagePartProps => ({
-	...toolPart(id, "task", args),
-	result,
-});
-
 const renderActivity = (
 	kind: ActivityKind,
 	parts: ToolCallMessagePartProps[],
@@ -118,9 +85,6 @@ afterEach(() => {
 	runtime.permissions.length = 0;
 	runtime.message.metadata = undefined;
 	runtime.thread.extras = undefined;
-	subagents.activeToolCallIds.clear();
-	subagents.activities.length = 0;
-	useRightPanelStore.setState({ bySessionId: {} });
 	vi.useRealTimers();
 });
 
@@ -256,188 +220,6 @@ describe("Skill activity subgroup", () => {
 	});
 });
 
-describe("Subagent activity subgroup", () => {
-	it("only renders the subgroup owning the active task as live", () => {
-		subagents.activeToolCallIds.add("other-call");
-		const completed = taskPart("call-1", {
-			description: "Explore auth flow",
-			subagent_type: "explore",
-		});
-		const view = renderActivity("subagent", [completed], TaskActivity);
-
-		expect(view.baseElement.textContent).toContain("Delegated Explore auth flow");
-		expect(view.baseElement.textContent).not.toContain("Delegating Explore auth flow");
-
-		subagents.activeToolCallIds.add("call-1");
-		view.rerender(
-			<ActivityGroup group={{ indices: [0] }}>
-				<ActivitySubgroup group={{ indices: [0] }} kind="subagent">
-					<TaskActivity {...completed} />
-				</ActivitySubgroup>
-			</ActivityGroup>,
-		);
-		expect(view.baseElement.textContent).toContain("Delegating Explore auth flow");
-	});
-
-	it("renders completed task calls as clickable rows", () => {
-		const { getAllByText, queryByText } = renderActivity(
-			"subagent",
-			[
-				taskPart(
-					"call-1",
-					{
-						description: "Explore auth flow",
-						prompt: "Find how login works.",
-						subagent_type: "explore",
-					},
-					"<task_result>\nLogin lives in `auth.ts`.\n</task_result>",
-				),
-			],
-			TaskActivity,
-		);
-		expect(getAllByText("Explore auth flow")).toHaveLength(2);
-		expect(getAllByText("Explore")).toHaveLength(1);
-		expect(queryByText("Find how login works.")).toBeNull();
-		expect(queryByText("Login lives in", { exact: false })).toBeNull();
-	});
-
-	it("does not reveal a single task result when the running call completes", () => {
-		const runningPart = {
-			...taskPart(
-				"call-1",
-				{ description: "Explore auth flow", subagent_type: "explore" },
-				"<task_result>Partial result</task_result>",
-			),
-			status: { type: "running" as const },
-		};
-		const renderGroup = (part: ToolCallMessagePartProps) => (
-			<ActivityGroup group={{ indices: [0] }}>
-				<ActivitySubgroup group={{ indices: [0] }} kind="subagent">
-					<TaskActivity {...part} />
-				</ActivitySubgroup>
-			</ActivityGroup>
-		);
-		runtime.message.parts = [runningPart];
-		runtime.message.status = { type: "running" };
-		const { queryByText, rerender } = render(renderGroup(runningPart));
-
-		const completedPart = { ...runningPart, status: { type: "complete" as const } };
-		runtime.message.parts = [completedPart];
-		runtime.message.status = { type: "complete" };
-		rerender(renderGroup(completedPart));
-
-		expect(queryByText("Partial result")).toBeNull();
-	});
-
-	it("renders a running task in the delegating group", () => {
-		const part = {
-			...taskPart("call-1", { description: "Explore auth flow", subagent_type: "explore" }),
-			status: { type: "running" as const },
-		};
-		const { baseElement, queryByRole } = renderActivity("subagent", [part], TaskActivity);
-
-		expect(baseElement.textContent).toContain("ExploreExplore auth flow");
-		expect(queryByRole("button")).toBeNull();
-	});
-
-	it("renders multiple task calls as rows", () => {
-		const { baseElement } = renderActivity(
-			"subagent",
-			[
-				taskPart("call-1", { description: "Explore auth", subagent_type: "explore" }),
-				taskPart("call-2", { description: "Review the patch", subagent_type: "code-reviewer" }),
-			],
-			TaskActivity,
-		);
-		expect(baseElement.textContent).toContain("ExploreExplore auth");
-		expect(baseElement.textContent).toContain("Code ReviewerReview the patch");
-	});
-
-	it("opens and reuses a pane from a transcript task row", () => {
-		runtime.message.metadata = {
-			custom: {
-				opencode: {
-					parts: [
-						{
-							type: "tool",
-							tool: "task",
-							callID: "call-1",
-							state: { metadata: { sessionId: "child-1" } },
-						},
-					],
-				},
-			},
-		};
-		const { getByRole } = renderActivity(
-			"subagent",
-			[taskPart("call-1", { description: "Explore auth", subagent_type: "explore" })],
-			TaskActivity,
-		);
-		const row = getByRole("button", { name: "Open subagent: Explore auth" });
-		fireEvent.click(row);
-		fireEvent.click(row);
-		expect(useRightPanelStore.getState().bySessionId["session-1"]?.tabs).toHaveLength(1);
-	});
-
-	it("does not associate a task with another child that has the same title", () => {
-		subagents.activities.push({
-			childSessionId: "other-child",
-			toolCallId: "other-call",
-			title: "Explore auth",
-			typeLabel: "Explore",
-			status: "working",
-		});
-
-		const { queryByRole } = renderActivity(
-			"subagent",
-			[taskPart("current-call", { description: "Explore auth", subagent_type: "explore" })],
-			TaskActivity,
-		);
-
-		expect(queryByRole("button", { name: "Open subagent: Explore auth" })).toBeNull();
-		expect(queryByRole("button", { name: "Stop subagent: Explore auth" })).toBeNull();
-	});
-
-	it("keeps the stop control when the child is live even if activity has not hydrated", () => {
-		runtime.message.metadata = {
-			custom: {
-				opencode: {
-					parts: [
-						{
-							type: "tool",
-							tool: "task",
-							callID: "call-1",
-							state: { metadata: { sessionId: "child-1" } },
-						},
-					],
-				},
-			},
-		};
-		runtime.thread.extras = {
-			replyToQuestion: vi.fn(),
-			rejectQuestion: vi.fn(),
-			replyToPermission: vi.fn(),
-			session: { id: "session-1", directory: "/tmp" },
-			state: {
-				childSessionsById: {
-					"child-1": {
-						sessionStatus: { type: "busy" },
-						session: { directory: "/tmp" },
-					},
-				},
-			},
-		};
-
-		const { getByRole } = renderActivity(
-			"subagent",
-			[taskPart("call-1", { description: "Explore auth", subagent_type: "explore" })],
-			TaskActivity,
-		);
-
-		expect(getByRole("button", { name: "Stop subagent: Explore auth" })).toBeTruthy();
-	});
-});
-
 describe("Editing activity subgroup", () => {
 	it("renders a multi-file patch as collapsed per-file rows", () => {
 		const patchText = `*** Begin Patch
@@ -543,6 +325,36 @@ describe("Activity group scrolling", () => {
 
 		expect(getByRole("button", { name: "Thinking..." }).getAttribute("aria-expanded")).toBe("true");
 		expect(getByText(thoughtText)).toBeDefined();
+	});
+
+	it("hides a finished board read while later thinking streams", () => {
+		const boardRead = {
+			...toolPart("board-1", "board_read", {}),
+			result: "No new messages.",
+		};
+		const thoughtText = "I am reasoning through the merged report.";
+		const runningThought = {
+			type: "reasoning",
+			text: thoughtText,
+			status: { type: "running" as const },
+		} as unknown as ToolCallMessagePartProps;
+		runtime.message.parts = [boardRead, runningThought];
+		runtime.message.status = { type: "running" };
+
+		const { getByRole, getByText, queryByText } = render(
+			<ActivityGroup group={{ indices: [0, 1] }}>
+				<ActivitySubgroup group={{ indices: [0] }} kind="subagent">
+					<ToolCallFallback {...boardRead} />
+				</ActivitySubgroup>
+				<ActivitySubgroup group={{ indices: [1] }} kind="thinking">
+					<div>{thoughtText}</div>
+				</ActivitySubgroup>
+			</ActivityGroup>,
+		);
+
+		expect(getByRole("button", { name: "Thinking..." }).getAttribute("aria-expanded")).toBe("true");
+		expect(getByText(thoughtText)).toBeDefined();
+		expect(queryByText("Read agent messages")).toBeNull();
 	});
 });
 
@@ -904,18 +716,6 @@ describe("Self-describing solo tool rows", () => {
 		expect(getByRole("button", { name: "Ran pnpm test" }).getAttribute("aria-expanded")).toBe(
 			"true",
 		);
-	});
-
-	it("renders a solo task without output as a row", () => {
-		runtime.message.status = { type: "complete" };
-		const { baseElement, queryByRole } = renderActivity(
-			"subagent",
-			[taskPart("call-1", { description: "Explore auth flow", subagent_type: "explore" })],
-			TaskActivity,
-		);
-
-		expect(baseElement.textContent).toContain("ExploreExplore auth flow");
-		expect(queryByRole("button")).toBeNull();
 	});
 });
 

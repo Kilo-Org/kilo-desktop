@@ -34,7 +34,7 @@ The web app depends on `@anaconda/shadcn-theme`, and `pnpm-workspace.yaml` maps 
 `@anaconda` scope to GitHub Packages, so install needs a token with `read:packages`. pnpm
 ignores env-expanded credentials in a project-level `.npmrc`, so store the token in user
 config. CI uses `actions/setup-node` with `NODE_AUTH_TOKEN` from the
-`GH_DESIGN_SYSTEM_TOKEN` secret.
+`ANACONDA_PACKAGES_TOKEN` secret.
 
 ```bash
 corepack enable

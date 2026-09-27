@@ -18,7 +18,6 @@ export function WorkspaceFilter({
 		<div className="min-w-0 flex-1">
 			<WorkspacePickerRoot
 				contentAlign="start"
-				contentWidth="trigger"
 				emptyLabel={EMPTY_LABEL}
 				includeUnscoped={false}
 				value={value}

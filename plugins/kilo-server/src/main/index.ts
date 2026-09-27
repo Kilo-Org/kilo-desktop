@@ -21,6 +21,7 @@ import { KiloPluginConfig } from "./KiloPluginConfig.js";
 import { resolveKiloInstallation } from "./installation.js";
 import { reconcileKiloCallerContextPlugin } from "./kilo-caller-context-plugin.js";
 import {
+	MCP_ENTRY_SOURCE_ID,
 	reconcileWebMcpRelayConfig,
 	resolveWebMcpRendezvous,
 	webMcpChannelFromStorageDir,
@@ -81,7 +82,9 @@ interface RegisterKiloServerOptions {
 		| "setProviderEntry"
 		| "removeProviderEntry"
 	> &
-		Partial<Pick<KiloConfigManager, "listMcpEntries" | "replaceProviderEntry">>;
+		Partial<
+			Pick<KiloConfigManager, "listMcpEntries" | "replaceProviderEntry" | "setPermissionEntry">
+		>;
 	/** Injected Desktop-owned plugin installer for tests. */
 	kiloPluginConfig?: Pick<KiloPluginConfig, "install" | "remove" | "listOwnedPluginIds">;
 	/** Kilo Desktop's own binary path. Defaults to `process.execPath`. */
@@ -340,6 +343,15 @@ export function registerKiloServer(
 		} catch (error) {
 			mainSdk.logger.warn(
 				`WebMCP initialization failed: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
+		try {
+			// Desktop has no UI for Kilo's `suggest` tool; left enabled, the tool
+			// would block the turn waiting on a card the user never sees.
+			await kiloConfig.setPermissionEntry?.(MCP_ENTRY_SOURCE_ID, "suggest", "deny");
+		} catch (error) {
+			mainSdk.logger.warn(
+				`Failed to disable Kilo suggest tool: ${error instanceof Error ? error.message : String(error)}`,
 			);
 		}
 	})();

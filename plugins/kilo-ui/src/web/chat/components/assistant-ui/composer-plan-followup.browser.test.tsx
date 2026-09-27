@@ -53,8 +53,9 @@ const subagents = vi.hoisted(() => ({
 vi.mock("../../subagents/SubagentActivityContext.js", () => ({
 	useSubagentActivity: () => ({
 		activities: [],
+		activeActivities: [],
+		activityByToolCallId: new Map(),
 		hasActiveSubagents: subagents.active,
-		activeToolCallIds: new Set(),
 		stoppingIds: new Set(),
 		stopSubagent: vi.fn(),
 		stopAllSubagents: subagents.stopAll,
@@ -265,7 +266,7 @@ describe("composer plan follow-up CTAs", () => {
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("kilo-composer-refine")).toBeVisible();
-		const stop = screen.getByRole("button", { name: "Stop all subagents" });
+		const stop = screen.getByRole("button", { name: "Stop generating" });
 		await expect.element(stop).toBeVisible();
 		await stop.click();
 		await expect.poll(() => subagents.stopAll).toHaveBeenCalledOnce();

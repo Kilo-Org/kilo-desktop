@@ -27,6 +27,20 @@
 				"priority": 100
 			},
 			{
+				"zone": "kilo-ui/chat-session-details-branch",
+				"id": "session-branch",
+				"component": "GitSessionDetailsBranch",
+				"label": "Session branch",
+				"priority": 100
+			},
+			{
+				"zone": "kilo-ui/chat-session-details-pull-request",
+				"id": "session-pull-request",
+				"component": "GitSessionDetailsPullRequest",
+				"label": "Session pull request",
+				"priority": 100
+			},
+			{
 				"zone": "kilo-ui/chat-header-actions",
 				"id": "repository-actions",
 				"component": "GitActionsControl",

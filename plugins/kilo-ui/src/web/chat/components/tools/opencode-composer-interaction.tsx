@@ -1,54 +1,58 @@
 import { type ReactNode, useMemo } from "react";
-import {
-	type OpenCodePermissionRequest,
-	type OpenCodeQuestionRequest,
-	useOpenCodePermissions,
-	useOpenCodeQuestions,
+import type {
+	OpenCodePermissionRequest,
+	OpenCodeQuestionRequest,
 } from "@assistant-ui/react-opencode";
 
 import { isPlanFollowupRequest } from "../../plan/index.js";
-import { usePendingKiloSuggestion } from "../../suggestions/KiloSuggestionContext.js";
+import { usePendingInteractions } from "../../subagents/PendingInteractionsContext.js";
+import { subagentOriginOf, type SubagentOrigin } from "../../subagents/pending-interactions.js";
 import { OpenCodePermissionCard } from "./opencode-permission-card.js";
 import { OpenCodeQuestionQuestionnaire } from "./opencode-question-card.js";
-import { OpenCodeSuggestBar } from "./opencode-suggest-bar.js";
 
 type PendingComposerInteraction =
-	| { kind: "permission"; request: OpenCodePermissionRequest }
-	| { kind: "question"; request: OpenCodeQuestionRequest };
+	| { kind: "permission"; request: OpenCodePermissionRequest; origin: SubagentOrigin | undefined }
+	| { kind: "question"; request: OpenCodeQuestionRequest; origin: SubagentOrigin | undefined };
 
-export const OpenCodeComposerInteraction = ({ fallback }: { fallback: ReactNode }) => {
-	const { pending: pendingPermissions } = useOpenCodePermissions();
-	const pendingQuestions = useOpenCodeQuestions();
-	const pendingSuggestion = usePendingKiloSuggestion();
+export const OpenCodeComposerInteraction = ({ fallback }: { fallback: ReactNode }) => (
+	<PendingInteractionPrompt fallback={fallback} />
+);
+
+/**
+ * The oldest permission or question waiting in the enclosing scope (the
+ * chat's own session and its subagents), or `fallback` when none is.
+ * `acceptOnEnter` lets exactly one visible surface own the Enter shortcut
+ * when the same prompt renders in the chat and a subagent pane at once.
+ */
+export const PendingInteractionPrompt = ({
+	fallback,
+	acceptOnEnter = true,
+}: {
+	fallback: ReactNode;
+	acceptOnEnter?: boolean;
+}) => {
+	const interactions = usePendingInteractions();
 	const activeInteraction = useMemo(() => {
 		// Plan follow-ups are answered via Refine on the composer (Approve lives on the plan card/tab).
-		const visibleQuestions = pendingQuestions.filter(
+		const visibleQuestions = interactions.questions.filter(
 			(question) => !isPlanFollowupRequest(question),
 		);
-		const interactions: PendingComposerInteraction[] = [
-			...pendingPermissions.map((request) => ({ kind: "permission" as const, request })),
-			...visibleQuestions.map((request) => ({ kind: "question" as const, request })),
+		const pending: PendingComposerInteraction[] = [
+			...interactions.permissions.map((request) => ({
+				kind: "permission" as const,
+				request,
+				origin: subagentOriginOf(interactions, request.sessionId),
+			})),
+			...visibleQuestions.map((request) => ({
+				kind: "question" as const,
+				request,
+				origin: subagentOriginOf(interactions, request.sessionID),
+			})),
 		];
 
-		return interactions.toSorted((a, b) => a.request.askedAt - b.request.askedAt)[0] ?? null;
-	}, [pendingPermissions, pendingQuestions]);
+		return pending.toSorted((a, b) => a.request.askedAt - b.request.askedAt)[0] ?? null;
+	}, [interactions]);
 
-	const blockingInteraction = renderBlockingInteraction(activeInteraction, fallback);
-
-	return (
-		<>
-			{pendingSuggestion ? (
-				<OpenCodeSuggestBar key={pendingSuggestion.id} request={pendingSuggestion} />
-			) : null}
-			{blockingInteraction}
-		</>
-	);
-};
-
-function renderBlockingInteraction(
-	activeInteraction: PendingComposerInteraction | null,
-	fallback: ReactNode,
-): ReactNode {
 	if (!activeInteraction) return fallback;
 	switch (activeInteraction.kind) {
 		case "permission":
@@ -56,6 +60,8 @@ function renderBlockingInteraction(
 				<OpenCodePermissionCard
 					key={activeInteraction.request.id}
 					request={activeInteraction.request}
+					origin={activeInteraction.origin}
+					acceptOnEnter={acceptOnEnter}
 				/>
 			);
 		case "question":
@@ -63,6 +69,7 @@ function renderBlockingInteraction(
 				<OpenCodeQuestionQuestionnaire
 					key={activeInteraction.request.id}
 					request={activeInteraction.request}
+					origin={activeInteraction.origin}
 				/>
 			);
 		default: {
@@ -70,4 +77,4 @@ function renderBlockingInteraction(
 			return _exhaustive;
 		}
 	}
-}
+};

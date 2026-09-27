@@ -14,15 +14,16 @@ import type {
 	KiloSessionPreparation,
 } from "../../../contracts/chat/schemas.js";
 import { LOCAL_MODEL_SERVER_PROVIDER_ID } from "../../providers/provider-ids.js";
-import { hydrateSessionActivity } from "../session-activity/hydrate-session-activity.js";
+import {
+	hydratePromptAncestry,
+	hydrateSessionActivity,
+} from "../session-activity/hydrate-session-activity.js";
 import {
 	buildKiloDesktopSessionMetadata,
 	readSessionInfoPatch,
 	readWorkspaceFoldersFromMetadata,
 } from "../session-activity/session-activity-logic.js";
 import type { SessionActivityStore } from "../session-activity/session-activity-store.js";
-import { hydrateKiloSuggestions } from "../suggestions/hydrate-kilo-suggestions.js";
-import type { KiloSuggestionStore } from "../suggestions/kilo-suggestion-store.js";
 import { createDeferredKiloRuntimeClient } from "./create-deferred-kilo-runtime-client.js";
 import { createKiloDirectoryClient, createKiloGlobalClient } from "./create-kilo-runtime-client.js";
 import { withKiloDesktopSessionListFilter } from "./with-kilo-desktop-session-list-filter.js";
@@ -34,6 +35,13 @@ import {
 
 const REQUEST_OPTIONS = { throwOnError: true } as const;
 const SESSION_LIST_TIMEOUT_MS = 10_000;
+/** A live prompt from a subagent whose parent link was never observed still has to reach its chat's row. */
+const PROMPT_ASKED_EVENT_TYPES = new Set([
+	"permission.asked",
+	"permission.v2.asked",
+	"question.asked",
+	"question.v2.asked",
+]);
 
 class SessionListTimeoutError extends Error {
 	constructor() {
@@ -67,7 +75,6 @@ export interface CreateKiloRuntimeBackendOptions extends PromptOptionGetters {
 	 */
 	onSessionCreateFailed?: (preparation: KiloSessionPreparation) => void;
 	sessionActivity?: SessionActivityStore;
-	suggestions?: KiloSuggestionStore;
 }
 
 export function createKiloRuntimeBackend({
@@ -83,7 +90,6 @@ export function createKiloRuntimeBackend({
 	getKnownCommandNames,
 	onSessionInitialized,
 	sessionActivity,
-	suggestions,
 }: CreateKiloRuntimeBackendOptions): OpenCodeRuntimeBackend {
 	const directoriesBySessionId = new Map<string, string>();
 	const clientsByDirectory = new Map<string, KiloClient>();
@@ -232,9 +238,6 @@ export function createKiloRuntimeBackend({
 		// store only learns updatedAt from live session.updated events.
 		void refreshSessions().catch(() => undefined);
 	}
-	if (suggestions) {
-		void hydrateKiloSuggestions(globalClient, suggestions);
-	}
 
 	const resolveSessionDirectory = async (sessionId: string) => {
 		const known = directoriesBySessionId.get(sessionId);
@@ -342,18 +345,17 @@ export function createKiloRuntimeBackend({
 		},
 		createEventSource: () => {
 			const source = new OpenCodeEventSource(globalClient, subscribeToGlobalEvents, rememberEvent);
-			if (sessionActivity || suggestions) {
+			if (sessionActivity) {
 				source.subscribe((event) => {
 					if (event.type === STREAM_RECONNECTED_EVENT_TYPE) {
-						if (sessionActivity) {
-							void hydrateSessionActivity(globalClient, sessionActivity);
-							void refreshSessions().catch(() => undefined);
-						}
-						if (suggestions) void hydrateKiloSuggestions(globalClient, suggestions);
+						void hydrateSessionActivity(globalClient, sessionActivity);
+						void refreshSessions().catch(() => undefined);
 						return;
 					}
-					sessionActivity?.getState().applyEvent(event);
-					suggestions?.getState().applyEvent(event);
+					sessionActivity.getState().applyEvent(event);
+					if (PROMPT_ASKED_EVENT_TYPES.has(event.type)) {
+						void hydratePromptAncestry(globalClient, sessionActivity).catch(() => undefined);
+					}
 				});
 			}
 			return source;

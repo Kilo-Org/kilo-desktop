@@ -11,6 +11,7 @@ import {
 import { toast } from "@kilo-desktop/ui/components/sonner";
 import type { FC } from "react";
 
+import { COMPOSER_SHELF_ROW_CLASS } from "../composer-shelf.js";
 import {
 	restoreThroughUserMessage,
 	type AuiClient,
@@ -47,7 +48,7 @@ const RevertMessageRow = ({
 			size="xs"
 			role="listitem"
 			data-qa-id="kilo-revert-message-row"
-			className="group hover:bg-muted after:bg-border/35 relative h-8 min-w-0 shrink-0 flex-nowrap gap-1.5 rounded-md py-0 pr-[3px] pl-2 transition-colors after:absolute after:inset-x-0 after:bottom-0 after:h-px after:content-[''] last:after:hidden"
+			className={COMPOSER_SHELF_ROW_CLASS}
 		>
 			<ItemContent className="min-w-0">
 				<ItemDescription className="text-foreground/90 line-clamp-none truncate text-sm">
@@ -67,7 +68,7 @@ const RevertMessageRow = ({
 					disabled={isRunning}
 					onClick={() => void restore()}
 					data-qa-id="kilo-revert-row-restore-button"
-					className="opacity-65 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+					className="text-muted-foreground hover:text-foreground opacity-65 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
 				>
 					Restore to here
 				</Button>

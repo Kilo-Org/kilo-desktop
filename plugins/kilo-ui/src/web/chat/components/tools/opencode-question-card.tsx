@@ -22,6 +22,7 @@ import {
 	QuestionnaireSubmit,
 	QuestionnaireTitle,
 } from "@kilo-desktop/ui/components/questionnaire";
+import type { SubagentOrigin } from "../../subagents/pending-interactions.js";
 import { ComposerShell } from "../composer-shelf.js";
 
 const questionName = (index: number) => `question-${index}`;
@@ -51,8 +52,11 @@ export const encodeAnswersFromFormData = (
 
 export const OpenCodeQuestionQuestionnaire = ({
 	request,
+	origin,
 }: {
 	request: OpenCodeQuestionRequest;
+	/** Set when a subagent, not the chat's own session, asked the question. */
+	origin?: SubagentOrigin | undefined;
 }) => {
 	const { replyToQuestion, rejectQuestion } = useOpenCodeRuntimeExtras();
 	const [submissionState, setSubmissionState] = useState<"reply" | "reject" | null>(null);
@@ -96,6 +100,11 @@ export const OpenCodeQuestionQuestionnaire = ({
 
 	return (
 		<ComposerShell data-qa-id="kilo-question-questionnaire" className="gap-4 p-4">
+			{origin ? (
+				<p className="text-muted-foreground truncate text-xs font-medium">
+					{origin.title ? `Question from subagent: ${origin.title}` : "Question from a subagent"}
+				</p>
+			) : null}
 			<Questionnaire
 				items={items}
 				onSubmit={handleSubmit}

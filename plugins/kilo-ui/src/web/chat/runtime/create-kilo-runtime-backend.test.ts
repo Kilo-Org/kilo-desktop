@@ -5,7 +5,6 @@ import { createKiloClient } from "@kilocode/sdk/v2/client";
 import type { KiloGlobalConnection } from "../../../contracts/chat/schemas.js";
 import { LOCAL_MODEL_SERVER_PROVIDER_ID } from "../../providers/provider-ids.js";
 import { createSessionActivityStore } from "../session-activity/session-activity-store.js";
-import { createKiloSuggestionStore } from "../suggestions/kilo-suggestion-store.js";
 import { createKiloRuntimeBackend } from "./create-kilo-runtime-backend.js";
 import { createKiloDirectoryClient, createKiloGlobalClient } from "./create-kilo-runtime-client.js";
 
@@ -880,41 +879,5 @@ describe("createKiloRuntimeBackend", () => {
 		expect(applySpy).not.toHaveBeenCalledWith(
 			expect.objectContaining({ type: STREAM_RECONNECTED_EVENT_TYPE }),
 		);
-	});
-
-	it("applies streamed suggestion events into the suggestion store", async () => {
-		const event = vi.fn(async () => ({
-			stream: (async function* () {
-				yield {
-					payload: {
-						type: "suggestion.shown",
-						properties: {
-							id: "sug-1",
-							sessionID: "ses-1",
-							text: "Run a local review?",
-							actions: [{ label: "Start review", prompt: "/local-review-uncommitted" }],
-						},
-					},
-				};
-				await new Promise(() => undefined);
-			})(),
-		}));
-		vi.mocked(createKiloGlobalClient).mockReturnValue({
-			global: { event },
-			experimental: { session: { list: vi.fn(async () => ({ data: [] })) } },
-			suggestion: { list: vi.fn(async () => ({ data: [] })) },
-		} as never);
-		const suggestions = createKiloSuggestionStore();
-		const backend = createKiloRuntimeBackend({
-			connectionPromise: Promise.resolve(connection),
-			prepareSession: vi.fn(),
-			suggestions,
-		});
-
-		const source = backend.createEventSource();
-		source.subscribe(() => undefined);
-
-		await vi.waitFor(() => expect(suggestions.getState().pending).toHaveLength(1));
-		expect(suggestions.getState().pending[0]?.id).toBe("sug-1");
 	});
 });

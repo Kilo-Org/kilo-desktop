@@ -1,10 +1,16 @@
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createOpenCodeThreadState } from "@assistant-ui/react-opencode";
+import type * as ReactOpenCode from "@assistant-ui/react-opencode";
+import { page } from "vitest/browser";
+import {
+	createOpenCodeThreadState,
+	type OpenCodePermissionRequest,
+} from "@assistant-ui/react-opencode";
 
 const runtime = vi.hoisted(() => ({
 	extras: undefined as unknown,
 	thread: { messages: [] as unknown[] },
+	replyToPermission: vi.fn(async () => undefined),
 }));
 
 vi.mock("../runtime/use-optional-opencode-runtime-extras.js", () => ({
@@ -14,6 +20,17 @@ vi.mock("../runtime/use-optional-opencode-runtime-extras.js", () => ({
 vi.mock("@assistant-ui/react", () => ({
 	ReadonlyThreadProvider: ({ children }: { children: React.ReactNode }) => children,
 	useAuiState: (selector: (state: typeof runtime) => unknown) => selector(runtime),
+}));
+
+vi.mock("@assistant-ui/react-opencode", async (importOriginal) => ({
+	...(await importOriginal<typeof ReactOpenCode>()),
+	useOpenCodePermissions: () => ({ pending: [], reply: vi.fn() }),
+	useOpenCodeQuestions: () => [],
+	useOpenCodeRuntimeExtras: () => ({
+		replyToPermission: runtime.replyToPermission,
+		replyToQuestion: vi.fn(async () => undefined),
+		rejectQuestion: vi.fn(async () => undefined),
+	}),
 }));
 
 vi.mock("../components/assistant-ui/thread.js", () => ({
@@ -33,6 +50,7 @@ afterEach(() => {
 	cleanup();
 	runtime.extras = undefined;
 	runtime.thread.messages = [];
+	runtime.replyToPermission.mockClear();
 });
 
 describe("SubagentPane", () => {
@@ -129,6 +147,54 @@ describe("SubagentPane", () => {
 			view.baseElement.querySelector('[data-qa-id="subagent-pane-transcript"]'),
 		).not.toBeNull();
 		expect(view.baseElement.querySelector('[data-qa-id="readonly-thread"]')).not.toBeNull();
+	});
+
+	it("answers the subagent's pending permission from the pane without claiming Enter", async () => {
+		const child = {
+			...createOpenCodeThreadState("child"),
+			loadState: { type: "ready" as const },
+		};
+		const request: OpenCodePermissionRequest = {
+			id: "permission-child",
+			sessionId: "child",
+			permission: "bash",
+			patterns: ["ls -la"],
+			metadata: {},
+			always: [],
+			toolName: "bash",
+			title: "List scoped dirs",
+			askedAt: 1,
+			raw: {} as OpenCodePermissionRequest["raw"],
+		};
+		runtime.extras = {
+			state: {
+				...createOpenCodeThreadState("parent"),
+				loadState: { type: "ready" as const },
+				childSessionsById: {
+					child: {
+						...child,
+						interactions: {
+							...child.interactions,
+							permissions: {
+								...child.interactions.permissions,
+								pending: { [request.id]: request },
+							},
+						},
+					},
+				},
+			},
+		};
+		const view = render(<SubagentPane {...props} />);
+		const screen = page.elementLocator(view.baseElement);
+
+		await expect.element(screen.getByText("List scoped dirs")).toBeVisible();
+		fireEvent.keyDown(document.body, { key: "Enter" });
+		expect(runtime.replyToPermission).not.toHaveBeenCalled();
+
+		await screen.getByRole("button", { name: "Allow once" }).click();
+		await expect
+			.poll(() => runtime.replyToPermission.mock.calls)
+			.toEqual([["permission-child", "once"]]);
 	});
 
 	it("shows an unavailable state after parent restoration cannot find the child", () => {

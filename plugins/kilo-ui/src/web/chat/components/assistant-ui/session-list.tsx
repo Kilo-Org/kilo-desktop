@@ -7,6 +7,7 @@ import { useSdkContributions } from "@kilo-desktop/sdk-react";
 
 import { useWorkspacesFeature } from "../../../workspaces/WorkspacesFeatureContext.js";
 import { useSessionActivity } from "../../session-activity/SessionActivityProvider.js";
+import { withDescendantPrompts } from "../../session-activity/session-activity-logic.js";
 import {
 	useSessionListPins,
 	useSessionListView,
@@ -22,6 +23,9 @@ export const SessionList: FC = () => {
 	const mainThreadId = useAuiState((s) => s.threads.mainThreadId);
 	const isLoading = useAuiState((s) => s.threads.isLoading);
 	const activityBySessionId = useSessionActivity((s) => s.sessions);
+	const promptAwareActivityBySessionId = useSessionActivity((s) =>
+		withDescendantPrompts(s.sessions),
+	);
 	const { workspaces, setActiveWorkspaceId } = useWorkspacesFeature();
 	const metadataProviders = useSdkContributions("kilo-ui/chat-session-metadata-provider");
 	const prTargets = useMemo(() => {
@@ -66,7 +70,7 @@ export const SessionList: FC = () => {
 				archivedThreadIds={archivedThreadIds}
 				threadItems={threadItems}
 				isLoading={isLoading}
-				activityBySessionId={activityBySessionId}
+				activityBySessionId={promptAwareActivityBySessionId}
 				workspaces={workspaces}
 				setActiveWorkspaceId={setActiveWorkspaceId}
 			/>

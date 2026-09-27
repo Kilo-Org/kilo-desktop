@@ -19,6 +19,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
 import type * as SessionModelUsage from "../../usage/session-model-usage.js";
+import type * as SubagentActivityContext from "../../subagents/SubagentActivityContext.js";
 
 vi.mock("../../usage/session-model-usage.js", async (importOriginal) => {
 	const actual = await importOriginal<typeof SessionModelUsage>();
@@ -30,7 +31,8 @@ vi.mock("../../usage/session-model-usage.js", async (importOriginal) => {
 
 import { SdkProvider } from "@kilo-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeMainSdk, createFakeSdk } from "@kilo-desktop/testing";
-import type { OpenCodeRuntimeExtras } from "@assistant-ui/react-opencode";
+import type * as ReactOpenCode from "@assistant-ui/react-opencode";
+import type { OpenCodeQuestionRequest, OpenCodeRuntimeExtras } from "@assistant-ui/react-opencode";
 
 import type { KiloGlobalConnection } from "../../../../contracts/chat/schemas.js";
 import { kiloUiBrowserRegister } from "../../../browserRegister.js";
@@ -45,6 +47,7 @@ import {
 	type ChatConnectionStatus,
 } from "../../connection/ChatConnectionContext.js";
 import { ChatModelSelectionProvider } from "../../model-selection/ChatModelSelectionContext.js";
+import { useDelegationRevealStore } from "../../subagents/delegation-reveal-store.js";
 import { Thread } from "./thread.js";
 
 const extrasRef = vi.hoisted(() => ({
@@ -55,6 +58,31 @@ vi.mock("../../runtime/use-optional-opencode-runtime-extras.js", () => ({
 	useOptionalOpenCodeRuntimeExtras: () => extrasRef.current,
 	selectOpenCodeExtras: () => extrasRef.current,
 }));
+
+const pendingQuestionsRef = vi.hoisted(() => ({
+	current: [] as OpenCodeQuestionRequest[],
+}));
+
+const subagentsRef = vi.hoisted(() => ({ active: false }));
+
+vi.mock("../../subagents/SubagentActivityContext.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof SubagentActivityContext>();
+	return {
+		...actual,
+		useSubagentActivity: () => ({
+			...actual.useSubagentActivity(),
+			hasActiveSubagents: subagentsRef.active,
+		}),
+	};
+});
+
+vi.mock("@assistant-ui/react-opencode", async (importOriginal) => {
+	const actual = await importOriginal<typeof ReactOpenCode>();
+	return {
+		...actual,
+		useOpenCodeQuestions: () => pendingQuestionsRef.current,
+	};
+});
 
 const retryFailedTurn = vi.hoisted(() =>
 	vi.fn(
@@ -76,7 +104,10 @@ afterEach(() => {
 	cleanup();
 	vi.useRealTimers();
 	extrasRef.current = undefined;
+	pendingQuestionsRef.current = [];
+	subagentsRef.active = false;
 	retryFailedTurn.mockClear();
+	useDelegationRevealStore.setState({ request: null });
 });
 
 const signedInAuth: KiloAuthContextValue = {
@@ -523,16 +554,20 @@ function renderExternalMessagesThread(
 	kiloUiBrowserRegister(mainSdk);
 	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	const { baseElement } = render(
+	const tree = (next: readonly ExternalThreadMessage[], running: boolean) => (
 		<SdkProvider system={system}>
 			<QueryClientProvider client={queryClient}>
 				<WorkspacesFeatureProvider>
-					<ExternalMessagesThreadTree messages={messages} isRunning={isRunning} />
+					<ExternalMessagesThreadTree messages={next} isRunning={running} />
 				</WorkspacesFeatureProvider>
 			</QueryClientProvider>
-		</SdkProvider>,
+		</SdkProvider>
 	);
-	return page.elementLocator(baseElement);
+	const { baseElement, rerender } = render(tree(messages, isRunning));
+	return Object.assign(page.elementLocator(baseElement), {
+		update: (next: readonly ExternalThreadMessage[], running: boolean) =>
+			rerender(tree(next, running)),
+	});
 }
 
 describe("user file mentions", () => {
@@ -585,6 +620,34 @@ describe("conversation map visibility", () => {
 		);
 
 		expect(document.querySelector('[data-slot="conversation-map-rail"]')).not.toBeNull();
+	});
+});
+
+describe("assistant message footer", () => {
+	const message = (role: "user" | "assistant", text: string, id: string): ExternalThreadMessage =>
+		fromThreadMessageLike({ role, content: [{ type: "text", text }] }, id, {
+			type: "complete",
+			reason: "stop",
+		});
+
+	it("is not overlapped by the next message, so its actions stay hoverable", async () => {
+		renderExternalMessagesThread(
+			[
+				message("user", "First prompt", "user-1"),
+				message("assistant", "First answer", "assistant-1"),
+				message("user", "Second prompt", "user-2"),
+			],
+			false,
+		);
+
+		const footer = await vi.waitUntil(() =>
+			document.querySelector('[data-slot="aui_assistant-message-footer"]'),
+		);
+		const nextMessage = document.querySelectorAll('[data-slot="aui_user-message-root"]')[1];
+		expect(nextMessage).toBeDefined();
+		expect(nextMessage!.getBoundingClientRect().top).toBeGreaterThanOrEqual(
+			footer.getBoundingClientRect().bottom,
+		);
 	});
 });
 
@@ -1230,6 +1293,103 @@ describe("assistant working status", () => {
 			.toBeVisible();
 	});
 
+	it("hides considering next steps while a plan waits for approval", async () => {
+		vi.useFakeTimers();
+		pendingQuestionsRef.current = [
+			{
+				id: "q-plan",
+				sessionID: "session-1",
+				askedAt: 1,
+				questions: [
+					{
+						question: "Ready to implement?",
+						header: "Implement",
+						options: [
+							{ label: "Continue here", description: "" },
+							{ label: "Keep refining", description: "" },
+						],
+					},
+				],
+			},
+		];
+		const messages: readonly ExternalThreadMessage[] = [
+			idleRunningMessages()[0]!,
+			fromThreadMessageLike(
+				{
+					role: "assistant",
+					status: { type: "running" },
+					content: [{ type: "text", text: "Here is the plan." }],
+				},
+				"msg-assistant",
+				{ type: "complete", reason: "stop" },
+			),
+		];
+		renderExternalMessagesThread(messages, true);
+
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(1_000);
+		});
+		expect(
+			document.querySelector('[role="status"][aria-label="Considering next steps"]'),
+		).toBeNull();
+	});
+
+	const runningTextMessages = (textTime: {
+		start: number;
+		end?: number;
+	}): readonly ExternalThreadMessage[] => [
+		idleRunningMessages()[0]!,
+		fromThreadMessageLike(
+			{
+				role: "assistant",
+				status: { type: "running" },
+				content: [{ type: "text", text: "Streaming the answer" }],
+				metadata: {
+					custom: {
+						opencode: {
+							parts: [{ type: "text", text: "Streaming the answer", time: textTime }],
+						},
+					},
+				},
+			},
+			"msg-assistant",
+			{ type: "complete", reason: "stop" },
+		),
+	];
+	const consideringIndicator = () =>
+		document.querySelector('[role="status"][aria-label="Considering next steps"]');
+
+	it("hides considering next steps while reply text is still streaming", async () => {
+		vi.useFakeTimers();
+		renderExternalMessagesThread(runningTextMessages({ start: 1 }), true);
+
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(1_000);
+		});
+		expect(consideringIndicator()).toBeNull();
+	});
+
+	it("shows considering next steps once reply text has finished streaming", async () => {
+		vi.useFakeTimers();
+		renderExternalMessagesThread(runningTextMessages({ start: 1, end: 2 }), true);
+
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(1_000);
+		});
+		expect(consideringIndicator()).not.toBeNull();
+	});
+
+	it("hides considering next steps while subagents are still working", async () => {
+		vi.useFakeTimers();
+		subagentsRef.active = true;
+		renderExternalMessagesThread(idleRunningMessages(), true);
+
+		await act(async () => {
+			await vi.advanceTimersByTimeAsync(1_000);
+		});
+		expect(consideringIndicator()).toBeNull();
+	});
+
 	it("collapses completed work while leaving the final answer visible", async () => {
 		const messages: readonly ExternalThreadMessage[] = [
 			fromThreadMessageLike(
@@ -1266,5 +1426,143 @@ describe("assistant working status", () => {
 		await toggle.click();
 		await screen.getByRole("button", { name: "Thought" }).click();
 		await expect.element(screen.getByText("I should inspect the files first.")).toBeVisible();
+	});
+
+	it("collapses the work fold when a running turn ends", async () => {
+		const user = fromThreadMessageLike(
+			{
+				role: "user",
+				createdAt: new Date(Date.now() - 2_000),
+				content: [{ type: "text", text: "Inspect the workspace" }],
+			},
+			"msg-user",
+			{ type: "complete", reason: "stop" },
+		);
+		const assistant = (status: { type: "running" } | { type: "complete"; reason: "stop" }) =>
+			fromThreadMessageLike(
+				{
+					role: "assistant",
+					status,
+					content: [
+						{ type: "reasoning", text: "I should inspect the files first." },
+						{ type: "text", text: "The workspace is ready." },
+					],
+				},
+				"msg-assistant",
+				status,
+			);
+		const screen = renderExternalMessagesThread([user, assistant({ type: "running" })], true);
+		await expect.element(screen.getByTestId("kilo-turn-working")).toBeVisible();
+
+		screen.update([user, assistant({ type: "complete", reason: "stop" })], false);
+
+		const toggle = screen.getByTestId("kilo-turn-work-toggle");
+		await expect.poll(() => toggle.element().textContent).toMatch(/^Worked for /);
+		await expect.element(toggle).toHaveAttribute("aria-expanded", "false");
+		await expect.element(screen.getByText("The workspace is ready.")).toBeVisible();
+		await expect.element(screen.getByRole("button", { name: "Thought" })).not.toBeInTheDocument();
+	});
+
+	it("keeps the work fold open when a delegation reveal lands as the turn ends", async () => {
+		const user = fromThreadMessageLike(
+			{
+				role: "user",
+				createdAt: new Date(Date.now() - 2_000),
+				content: [{ type: "text", text: "Map the auth flow" }],
+			},
+			"msg-user",
+			{ type: "complete", reason: "stop" },
+		);
+		const assistant = (status: { type: "running" } | { type: "complete"; reason: "stop" }) =>
+			fromThreadMessageLike(
+				{
+					role: "assistant",
+					status,
+					content: [
+						{
+							type: "tool-call",
+							toolCallId: "call-task",
+							toolName: "task",
+							args: { description: "Trace the login", subagent_type: "explore" },
+							result: "Done",
+						},
+						{ type: "text", text: "The auth flow is mapped." },
+					],
+				},
+				"msg-assistant",
+				status,
+			);
+		const screen = renderExternalMessagesThread([user, assistant({ type: "running" })], true);
+		await expect.element(screen.getByTestId("kilo-turn-working")).toBeVisible();
+
+		act(() => {
+			useDelegationRevealStore.getState().reveal("call-task");
+			screen.update([user, assistant({ type: "complete", reason: "stop" })], false);
+		});
+
+		const toggle = screen.getByTestId("kilo-turn-work-toggle");
+		await expect.poll(() => toggle.element().textContent).toMatch(/^Worked for /);
+		// Let the end-of-turn collapse frame run before checking the fold.
+		await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+		await expect.element(toggle).toHaveAttribute("aria-expanded", "true");
+	});
+
+	it("says a text-only reply was stopped when there is no work fold to say it", async () => {
+		const status = { type: "incomplete", reason: "cancelled" } as const;
+		const messages: readonly ExternalThreadMessage[] = [
+			fromThreadMessageLike(
+				{
+					role: "user",
+					createdAt: new Date(Date.now() - 2_000),
+					content: [{ type: "text", text: "Write an essay" }],
+				},
+				"msg-user",
+				{ type: "complete", reason: "stop" },
+			),
+			fromThreadMessageLike(
+				{ role: "assistant", status, content: [{ type: "text", text: "Once upon" }] },
+				"msg-assistant",
+				status,
+			),
+		];
+		const screen = renderExternalMessagesThread(messages, false);
+
+		await expect.element(screen.getByText("Once upon")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-turn-work-toggle")).not.toBeInTheDocument();
+		await expect
+			.poll(() => screen.getByTestId("kilo-turn-stopped").element().textContent)
+			.toMatch(/^You stopped/);
+	});
+
+	it("leaves the stop to the work fold when the turn has one", async () => {
+		const status = { type: "incomplete", reason: "cancelled" } as const;
+		const messages: readonly ExternalThreadMessage[] = [
+			fromThreadMessageLike(
+				{
+					role: "user",
+					createdAt: new Date(Date.now() - 2_000),
+					content: [{ type: "text", text: "Inspect the workspace" }],
+				},
+				"msg-user",
+				{ type: "complete", reason: "stop" },
+			),
+			fromThreadMessageLike(
+				{
+					role: "assistant",
+					status,
+					content: [
+						{ type: "reasoning", text: "I should inspect the files first." },
+						{ type: "text", text: "Partial answer" },
+					],
+				},
+				"msg-assistant",
+				status,
+			),
+		];
+		const screen = renderExternalMessagesThread(messages, false);
+
+		const toggle = screen.getByTestId("kilo-turn-work-toggle");
+		await expect.poll(() => toggle.element().textContent).toMatch(/^You stopped/);
+		await expect.element(screen.getByTestId("kilo-turn-stopped")).not.toBeInTheDocument();
 	});
 });

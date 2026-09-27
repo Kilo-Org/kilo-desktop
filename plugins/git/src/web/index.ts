@@ -11,6 +11,7 @@ export { GitDraftMenus } from "./GitDraftMenus.js";
 export { GitEventsProvider } from "./GitEventsProvider.js";
 export { GitActionsControl } from "./GitActionsControl.js";
 export { GitSessionRowMetadata } from "./GitSessionRowMetadata.js";
+export { GitSessionDetailsBranch, GitSessionDetailsPullRequest } from "./GitSessionDetails.js";
 export { GitPrStatusProvider } from "./GitPrStatusProvider.js";
 export { GitPrStatusTargets } from "./GitPrStatusTargets.js";
 

@@ -20,6 +20,8 @@ import {
 	readSessionInfoPatch,
 	readWorkspaceIdFromMetadata,
 	resolveSessionLocationLabel,
+	sessionsAwaitingParentLookup,
+	withDescendantPrompts,
 	type SessionActivity,
 	type SessionActivityState,
 } from "./session-activity-logic.js";
@@ -343,6 +345,14 @@ describe("applySessionPatch / readSessionInfoPatch", () => {
 		expect(applySessionPatch(session, {})).toBeNull();
 	});
 
+	it("records a subagent session's parent link", () => {
+		expect(readSessionInfoPatch({ id: "child", parentID: "root" })).toEqual({ parentId: "root" });
+		expect(readSessionInfoPatch({ id: "root" })).toEqual({});
+		expect(applySessionPatch(createEmptySessionActivity(), { parentId: "root" })?.parentId).toBe(
+			"root",
+		);
+	});
+
 	it("builds nested kilo-desktop metadata for scoped and unscoped sessions", () => {
 		expect(buildKiloDesktopSessionMetadata()).toEqual({
 			metadata: { [KILO_DESKTOP_METADATA_KEY]: {} },
@@ -536,6 +546,71 @@ describe("needsAttention", () => {
 		expect(needsAttention({ ...createEmptySessionActivity(), pendingQuestionIds: ["q"] })).toBe(
 			true,
 		);
+	});
+});
+
+describe("withDescendantPrompts", () => {
+	it("rolls a nested subagent's prompts up to every ancestor", () => {
+		const { sessions } = stateWith({
+			root: { directory: "/repo" },
+			child: { parentId: "root", pendingQuestionIds: ["q-child"] },
+			grandchild: { parentId: "child", pendingPermissionIds: ["perm-grandchild"] },
+		});
+
+		const rolledUp = withDescendantPrompts(sessions);
+
+		expect(rolledUp.root).toMatchObject({
+			directory: "/repo",
+			pendingPermissionIds: ["perm-grandchild"],
+			pendingQuestionIds: ["q-child"],
+		});
+		expect(deriveSessionRowState(rolledUp.root, undefined)).toBe("approval");
+		expect(rolledUp.child?.pendingPermissionIds).toEqual(["perm-grandchild"]);
+		expect(sessions.root?.pendingPermissionIds).toEqual([]);
+	});
+
+	it("returns the same record when no subagent is waiting, and memoizes per input", () => {
+		const { sessions } = stateWith({ root: {}, child: { parentId: "root" } });
+		expect(withDescendantPrompts(sessions)).toBe(sessions);
+
+		const waiting = stateWith({ root: {}, child: { parentId: "root", pendingQuestionIds: ["q"] } });
+		expect(withDescendantPrompts(waiting.sessions)).toBe(withDescendantPrompts(waiting.sessions));
+	});
+
+	it("tolerates parent cycles", () => {
+		const { sessions } = stateWith({
+			a: { parentId: "b", pendingPermissionIds: ["perm-a"] },
+			b: { parentId: "a" },
+		});
+		expect(withDescendantPrompts(sessions).b?.pendingPermissionIds).toEqual(["perm-a"]);
+	});
+});
+
+describe("sessionsAwaitingParentLookup", () => {
+	it("lists prompting sessions with no known parent", () => {
+		const { sessions } = stateWith({
+			root: { pendingPermissionIds: ["perm-root"] },
+			linked: { parentId: "root", pendingQuestionIds: ["q"] },
+			idle: {},
+		});
+		expect(sessionsAwaitingParentLookup(sessions)).toEqual(["root"]);
+	});
+
+	it("continues from the topmost known ancestor of a linked prompting session", () => {
+		const { sessions } = stateWith({
+			grandchild: { parentId: "child", pendingPermissionIds: ["perm"] },
+			child: { parentId: "subagent" },
+			subagent: {},
+		});
+		expect(sessionsAwaitingParentLookup(sessions)).toEqual(["subagent"]);
+	});
+
+	it("stops at a parent cycle instead of looping", () => {
+		const { sessions } = stateWith({
+			a: { parentId: "b", pendingQuestionIds: ["q"] },
+			b: { parentId: "a" },
+		});
+		expect(sessionsAwaitingParentLookup(sessions)).toEqual([]);
 	});
 });
 

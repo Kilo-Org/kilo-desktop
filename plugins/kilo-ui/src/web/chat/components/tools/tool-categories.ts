@@ -7,7 +7,6 @@ import {
 	FilePenIcon,
 	FilePlusIcon,
 	GlobeIcon,
-	LightbulbIcon,
 	ListTodoIcon,
 	NotebookIcon,
 	SearchIcon,
@@ -45,7 +44,6 @@ export type ToolCategory =
 	| "terminal"
 	| "planning"
 	| "asking"
-	| "suggesting"
 	| "skill"
 	| "subagent";
 
@@ -78,7 +76,6 @@ const TOOL_CATEGORY_BY_NAME: Record<string, ToolCategory> = {
 	ask_question: "asking",
 	request_user_input: "asking",
 	requestuserinput: "asking",
-	suggest: "suggesting",
 	skill: "skill",
 	task: "subagent",
 	board_read: "subagent",
@@ -91,12 +88,18 @@ export const getToolCategory = (toolName: string): ToolCategory | undefined =>
 export const isAskQuestionTool = (toolName: string): boolean =>
 	getToolCategory(toolName) === "asking";
 
-export const isSuggestTool = (toolName: string): boolean =>
-	getToolCategory(toolName) === "suggesting";
-
 export const isSkillTool = (toolName: string): boolean => getToolCategory(toolName) === "skill";
 
 export const isTaskTool = (toolName: string): boolean => getToolCategory(toolName) === "subagent";
+
+const COMPOSER_PROJECTED_TOOLS = new Set(["todowrite", "todoread"]);
+
+/** Tools whose calls surface in the composer task shelf instead of the transcript. */
+export const isComposerProjectedTool = (toolName: string): boolean =>
+	COMPOSER_PROJECTED_TOOLS.has(toolName.toLowerCase());
+
+/** Subagent delegations render in their own transcript group, never inside activity summaries. */
+export const isDelegationTool = (toolName: string): boolean => toolName.toLowerCase() === "task";
 
 /**
  * OpenCode/Kilo MCP tools are named `{server}_{toolName}`. Built-in tools with
@@ -162,7 +165,6 @@ export const activityKindFromGroupKey = (groupKey: string): ActivityKind | undef
 		rest === "terminal" ||
 		rest === "planning" ||
 		rest === "asking" ||
-		rest === "suggesting" ||
 		rest === "skill" ||
 		rest === "subagent"
 	) {
@@ -189,7 +191,7 @@ export const getActivityKind = (part: ActivityPart): ActivityKind | undefined =>
 	if (part.type === "reasoning") return "thinking";
 	if (part.type === "tool-call") {
 		if (!part.toolName) return "tools";
-		if (["todowrite", "todoread"].includes(part.toolName.toLowerCase())) return undefined;
+		if (isComposerProjectedTool(part.toolName) || isDelegationTool(part.toolName)) return undefined;
 		const category = getToolCategory(part.toolName);
 		if (category) return category;
 		const mcp = getMcpServerFromToolName(part.toolName);
@@ -276,8 +278,6 @@ export type KindStats = {
 	file?: string | undefined;
 	/** Short question prompt for asking subgroups. */
 	question?: string | undefined;
-	/** Suggestion text for a suggesting subgroup. */
-	suggestion?: string | undefined;
 	/** Description or abbreviated command for a single terminal tool call. */
 	commandSummary?: string | undefined;
 	/** Skill id for a skill subgroup that loaded exactly one skill. */
@@ -381,15 +381,6 @@ const KIND_META: Record<Exclude<ActivityKind, McpActivityKind>, KindMeta> = {
 			question ? `Asked ${question}` : `Asked ${plural(count, "question")}`,
 		circleClassName:
 			"border-indigo-600/40 bg-indigo-100 text-indigo-600 dark:border-indigo-400/40 dark:bg-indigo-950 dark:text-indigo-400",
-	},
-	suggesting: {
-		icon: LightbulbIcon,
-		label: "Suggestion",
-		liveLabel: () => "Suggesting",
-		doneLabel: ({ suggestion, count }) =>
-			suggestion ? `Suggested ${suggestion}` : `Suggested ${plural(count, "action")}`,
-		circleClassName:
-			"border-amber-600/40 bg-amber-100 text-amber-600 dark:border-amber-400/40 dark:bg-amber-950 dark:text-amber-400",
 	},
 	skill: {
 		icon: SparklesIcon,
@@ -570,16 +561,6 @@ export const getPartQuestionSummary = (part: ActivityPart): string | undefined =
 	return questionSummaryFromArgs(part.args);
 };
 
-/** OpenCode/Kilo `suggest` tool takes `{ suggest, actions }`. */
-export const getPartSuggestionSummary = (part: ActivityPart): string | undefined => {
-	if (part.type !== "tool-call" || !part.toolName || !isSuggestTool(part.toolName)) {
-		return undefined;
-	}
-	if (!part.args || typeof part.args !== "object") return undefined;
-	const text = str((part.args as Record<string, unknown>).suggest);
-	return text ? truncate(text, 48) : undefined;
-};
-
 /** OpenCode/Kilo `skill` tool takes `{ name }`. */
 export const getPartSkillName = (part: ActivityPart): string | undefined => {
 	if (part.type !== "tool-call" || !part.toolName || !isSkillTool(part.toolName)) {
@@ -642,15 +623,6 @@ export const getSegmentStats = (
 			if (question) break;
 		}
 	}
-	let suggestion: string | undefined;
-	if (segment.kind === "suggesting") {
-		for (const index of segment.indices) {
-			const part = parts[index];
-			if (!part) continue;
-			suggestion = getPartSuggestionSummary(part);
-			if (suggestion) break;
-		}
-	}
 	const commandSummary =
 		segment.kind === "terminal" && segment.indices.length === 1
 			? getCommandSummary(parts[segment.indices[0]!]?.args as Record<string, unknown> | undefined)
@@ -668,7 +640,6 @@ export const getSegmentStats = (
 		files: files.length,
 		file: files.length === 1 ? basename(files[0]!) : undefined,
 		question,
-		suggestion,
 		commandSummary: commandSummary || undefined,
 		skill: skills.length === 1 ? skills[0] : undefined,
 		task: tasks.length === 1 ? tasks[0] : undefined,

@@ -37,6 +37,13 @@ export interface GitPullRequest {
 	readonly isDraft: boolean;
 }
 
+/** A lookup match plus its commits, which stay in the main process. */
+interface PullRequestCandidate {
+	readonly pullRequest: GitPullRequest;
+	readonly headSha: string | null;
+	readonly mergeSha: string | null;
+}
+
 const REMOTE_REF_PREFIX = "refs/remotes/";
 const BRANCH_REF_PREFIXES = ["refs/heads", "refs/remotes"] as const;
 /** The only remote this plugin's default-branch detection looks at (no fork model). */
@@ -56,6 +63,10 @@ const PULL_REQUEST_TEMPLATE_DIRECTORIES = [
 ] as const;
 const PULL_REQUEST_TEMPLATE_MAX_CHARS = 8_000;
 const PULL_REQUEST_FIELDS = "number,url,title,baseRefName,headRefName,state,isDraft,updatedAt";
+/** Lookups also read the commits that tie a pull request to a checkout's history. */
+const PULL_REQUEST_LOOKUP_FIELDS = `${PULL_REQUEST_FIELDS},headRefOid,mergeCommit`;
+/** Commit ids from `gh` become git arguments, so only hex object names pass. */
+const COMMIT_SHA_PATTERN = /^[0-9a-f]{7,64}$/i;
 /** Budgets for model-bound Git context: summaries and the patch itself. */
 const SUMMARY_MAX_CHARS = 20_000;
 const PATCH_MAX_CHARS = 60_000;
@@ -340,6 +351,27 @@ function parsePullRequest(json: string): GitPullRequest {
 			state: (value.state as "OPEN" | "CLOSED" | "MERGED").toLowerCase() as GitPullRequest["state"],
 			isDraft: value.isDraft,
 		};
+	} catch {
+		throw new FeatureError("GitHub CLI returned invalid pull request data.", "BUSINESS");
+	}
+}
+
+function commitSha(value: unknown): string | null {
+	return typeof value === "string" && COMMIT_SHA_PATTERN.test(value) ? value : null;
+}
+
+function parsePullRequestCandidate(item: unknown): PullRequestCandidate {
+	const commits = (item ?? {}) as { headRefOid?: unknown; mergeCommit?: { oid?: unknown } | null };
+	return {
+		pullRequest: parsePullRequest(JSON.stringify(item)),
+		headSha: commitSha(commits.headRefOid),
+		mergeSha: commitSha(commits.mergeCommit?.oid),
+	};
+}
+
+function parseJsonValue(json: string): unknown {
+	try {
+		return JSON.parse(json) as unknown;
 	} catch {
 		throw new FeatureError("GitHub CLI returned invalid pull request data.", "BUSINESS");
 	}
@@ -646,7 +678,9 @@ export class GitService {
 	 * non-GitHub origin resolves `githubStatus: "unsupported"`, and an
 	 * unavailable GitHub CLI resolves its capability status instead of
 	 * throwing, so background polling never surfaces an error for
-	 * repositories the CLI cannot serve.
+	 * repositories the CLI cannot serve. An open match wins; otherwise the
+	 * newest closed or merged match in this checkout's history, never on the
+	 * default branch.
 	 */
 	async pullRequestSnapshot(workingDirectory: string): Promise<GitPullRequestSnapshot> {
 		await this.#assertWithinWorkspaceFolders(workingDirectory);
@@ -676,21 +710,26 @@ export class GitService {
 			if (!sha) return empty("ready");
 			const identity = `${status.currentUpstreamBranch ?? branch}|${sha}`;
 			const repositoryIdentity = await this.#githubRepositoryIdentity(workingDirectory);
-			const pullRequests = await this.#findPullRequests(
+			const candidates = await this.#findPullRequests(
 				workingDirectory,
 				branch,
+				status.currentUpstreamBranch,
 				sha,
 				repositoryIdentity.repository?.split("/")[0] ?? null,
 			);
 			const snapshot = { identity, branch, ...repositoryIdentity, githubStatus: "ready" as const };
-			const open = pullRequests.find((pullRequest) => pullRequest.state === "open");
-			if (open) return { ...snapshot, pullRequest: open };
-			if (pullRequests.length === 0) return { ...snapshot, pullRequest: null };
-			const defaultBranch = await this.defaultBranch(workingDirectory);
-			return {
-				...snapshot,
-				pullRequest: branch === defaultBranch ? null : (pullRequests[0] ?? null),
-			};
+			const open = candidates.find((candidate) => candidate.pullRequest.state === "open");
+			if (open) return { ...snapshot, pullRequest: open.pullRequest };
+			if (candidates.length === 0) return { ...snapshot, pullRequest: null };
+			if (branch === (await this.defaultBranch(workingDirectory))) {
+				return { ...snapshot, pullRequest: null };
+			}
+			for (const candidate of candidates) {
+				if (await this.#isInCheckoutHistory(workingDirectory, candidate)) {
+					return { ...snapshot, pullRequest: candidate.pullRequest };
+				}
+			}
+			return { ...snapshot, pullRequest: null };
 		} catch (error) {
 			if (error instanceof FeatureError) throw error;
 			throw ghErrorToFeatureError(error);
@@ -700,22 +739,26 @@ export class GitService {
 	/**
 	 * Candidate pull requests for `branch`, most specific lookup first:
 	 * `gh pr view` (branch config aware), an open PR whose head is exactly
-	 * HEAD (a new branch can share HEAD with a merged PR without belonging to
-	 * it), then every PR with that head branch name. `gh pr list --head`
+	 * HEAD, then every PR with that head branch name. `gh pr list --head`
 	 * rejects `owner:branch`, so the owner match is filtered client-side.
+	 *
+	 * The SHA match must also be headed by `branch` or its upstream: a new
+	 * branch (e.g. a fresh worktree) starts at its base's tip and so shares
+	 * HEAD with the base branch's PR, open or merged, without belonging to it.
 	 */
 	async #findPullRequests(
 		workingDirectory: string,
 		branch: string,
+		upstream: string | undefined,
 		sha: string,
 		owner: string | null,
-	): Promise<GitPullRequest[]> {
+	): Promise<PullRequestCandidate[]> {
 		for (const args of [
-			["pr", "view", branch, "--json", PULL_REQUEST_FIELDS],
-			["pr", "view", "--json", PULL_REQUEST_FIELDS],
+			["pr", "view", branch, "--json", PULL_REQUEST_LOOKUP_FIELDS],
+			["pr", "view", "--json", PULL_REQUEST_LOOKUP_FIELDS],
 		]) {
 			const result = await this.#gh(workingDirectory, args);
-			if (result.exitCode === 0) return [parsePullRequest(result.stdout)];
+			if (result.exitCode === 0) return [parsePullRequestCandidate(parseJsonValue(result.stdout))];
 		}
 		const bySha = await this.#gh(workingDirectory, [
 			"pr",
@@ -727,13 +770,17 @@ export class GitService {
 			"--limit",
 			"5",
 			"--json",
-			`${PULL_REQUEST_FIELDS},headRefOid`,
+			PULL_REQUEST_LOOKUP_FIELDS,
 		]);
 		if (bySha.exitCode === 0) {
-			const match = parseJsonArray(bySha.stdout).find(
-				(item) => (item as { headRefOid?: unknown }).headRefOid === sha,
-			);
-			if (match) return [parsePullRequest(JSON.stringify(match))];
+			const isOwnHead = (headRefName: unknown) =>
+				typeof headRefName === "string" &&
+				(headRefName === branch || upstream?.endsWith(`/${headRefName}`) === true);
+			const match = parseJsonArray(bySha.stdout).find((item) => {
+				const head = item as { headRefOid?: unknown; headRefName?: unknown };
+				return head.headRefOid === sha && isOwnHead(head.headRefName);
+			});
+			if (match) return [parsePullRequestCandidate(match)];
 		}
 		const byBranch = await this.#gh(workingDirectory, [
 			"pr",
@@ -745,7 +792,7 @@ export class GitService {
 			"--limit",
 			"20",
 			"--json",
-			`${PULL_REQUEST_FIELDS},headRepositoryOwner`,
+			`${PULL_REQUEST_LOOKUP_FIELDS},headRepositoryOwner`,
 		]);
 		if (byBranch.exitCode !== 0) {
 			throw Object.assign(new Error(byBranch.stderr), { stderr: byBranch.stderr });
@@ -757,7 +804,38 @@ export class GitService {
 					.headRepositoryOwner?.login;
 				return typeof login === "string" && login.toLowerCase() === owner.toLowerCase();
 			})
-			.map((item) => parsePullRequest(JSON.stringify(item)));
+			.map(parsePullRequestCandidate);
+	}
+
+	/**
+	 * Whether a closed or merged pull request belongs to this checkout.
+	 * Branch-name lookups return every pull request ever headed by the name,
+	 * so a branch recreated under an old name would inherit its merged PR.
+	 * The PR is this checkout's when HEAD contains its head, or trails it
+	 * (commits added on GitHub, e.g. accepted suggestions, never pulled), and
+	 * HEAD does not also contain its merge commit: a branch cut from the base
+	 * after the merge contains both. A commit git cannot resolve is absent
+	 * locally, so it is not in HEAD's history either.
+	 */
+	async #isInCheckoutHistory(
+		workingDirectory: string,
+		{ pullRequest, headSha, mergeSha }: PullRequestCandidate,
+	): Promise<boolean> {
+		if (pullRequest.state === "open" || !headSha) return true;
+		const related =
+			(await this.#isAncestor(workingDirectory, headSha, "HEAD")) ||
+			(await this.#isAncestor(workingDirectory, "HEAD", headSha));
+		if (!related) return false;
+		return mergeSha === null || !(await this.#isAncestor(workingDirectory, mergeSha, "HEAD"));
+	}
+
+	async #isAncestor(workingDirectory: string, ancestor: string, descendant: string) {
+		const result = await this.#client.exec(
+			["merge-base", "--is-ancestor", ancestor, descendant],
+			"pull request ancestry",
+			{ cwd: workingDirectory, successExitCodes: new Set([0, 1, 128]) },
+		);
+		return result.exitCode === 0;
 	}
 
 	#gh(workingDirectory: string, args: string[]) {

@@ -1,7 +1,7 @@
 import type { CodeViewItem } from "@pierre/diffs";
 import { CodeView, type CodeViewHandle } from "@pierre/diffs/react";
 import { FolderGitIcon, GitCompareIcon, RefreshCwIcon } from "lucide-react";
-import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useLocalStorage } from "react-use";
 
 import { useSdk } from "@kilo-desktop/sdk-react";
@@ -22,7 +22,7 @@ import {
 } from "@kilo-desktop/ui/components/resizable";
 
 import type { GitServiceContract } from "../contracts/schemas.js";
-import { CollapseDiffButton } from "./CollapseDiffButton.js";
+import { CollapseDiffButton, collapseButtonForHeaderClick } from "./CollapseDiffButton.js";
 import { DiffConfigProvider, useDiffOptions } from "./diff-options.js";
 import { GitDiffHeader } from "./GitDiffHeader.js";
 import { GitDiffSidebar } from "./GitDiffSidebar.js";
@@ -52,18 +52,21 @@ export interface GitDiffViewProps {
 const DIFF_VIEW_LAYOUT = { paddingTop: 0, gap: 1, paddingBottom: 8 } as const;
 // The default CodeView metrics assume the package's own default font metrics
 // (lineHeight: 20px, diffHeaderHeight: 44px). We override --diffs-line-height
-// to 1.125rem (18px at 16px root) and --diffs-gap-fallback is unchanged at
-// 8px, so the rendered header min-height is 1lh + (8px × 3) = 18 + 24 = 42px.
+// to 1rem (16px at 16px root) and --diffs-gap-fallback is unchanged at
+// 8px, so the rendered header min-height is 1lh + (8px × 3) = 16 + 24 = 40px.
 // Passing the corrected metrics keeps the virtualizer's size estimates in sync
 // with the actual rendered dimensions, eliminating the gap at the top of the
 // diff list caused by the stickyOffset div being sized against stale metrics.
-const DIFF_VIEW_ITEM_METRICS = { lineHeight: 18, diffHeaderHeight: 42 } as const;
+const DIFF_VIEW_ITEM_METRICS = { lineHeight: 16, diffHeaderHeight: 40 } as const;
 const DIFF_VIEW_UNSAFE_CSS = `
 	:host {
 		--diffs-bg: var(--pane-surface, var(--background));
-		--diffs-font-size: 0.75rem;
-		--diffs-line-height: 1.125rem;
+		--diffs-font-size: 0.6875rem;
+		--diffs-line-height: 1rem;
 		background-color: var(--pane-surface, var(--background));
+	}
+	[data-diffs-header] {
+		cursor: pointer;
 	}
 `;
 
@@ -280,6 +283,16 @@ function GitDiffTabContent({
 			) : null,
 		[toggleItemCollapsed],
 	);
+
+	// Native listener: the headers render inside CodeView's shadow roots, so
+	// only the composed path can tell a header click from a body click.
+	useEffect(() => {
+		const root = rootRef.current;
+		if (!root) return;
+		const onClick = (event: MouseEvent) => collapseButtonForHeaderClick(event)?.click();
+		root.addEventListener("click", onClick);
+		return () => root.removeEventListener("click", onClick);
+	}, []);
 
 	// The handle reports pointer travel since drag start and keeps the
 	// pointerdown-time onResize closure alive for the whole drag, so the

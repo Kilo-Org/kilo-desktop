@@ -25,10 +25,6 @@ const groupPaths = (parts: PartState[], options?: Parameters<typeof createActivi
 };
 
 describe("createActivityGroupBy", () => {
-	it("keeps suggest tools out of the activity groups", () => {
-		expect(groupPaths([toolPart("suggest-1", "suggest")])).toEqual([[]]);
-	});
-
 	it("treats projected task-list calls as hidden activity structure", () => {
 		expect(
 			groupPaths([toolPart("todo-write", "todowrite"), toolPart("todo-read", "todoread")]),
@@ -83,40 +79,48 @@ describe("createActivityGroupBy", () => {
 		]);
 	});
 
-	it("starts a sibling activity group when parent work follows a live delegation", () => {
+	it("seals consecutive delegations into their own group, apart from surrounding work", () => {
 		const parts = [
 			toolPart("read-1", "read"),
 			toolPart("task-1", "task"),
-			dataPart("opencode-step-finish"),
-			dataPart("opencode-step-start"),
+			toolPart("task-2", "task"),
 			toolPart("read-2", "read"),
 		];
 
-		expect(groupPaths(parts, { activeSubagentToolCallIds: new Set(["task-1"]) })).toEqual([
+		expect(groupPaths(parts)).toEqual([
 			["group-activity", "group-reading"],
-			["group-activity", "group-subagent"],
-			["group-activity", "group-subagent"],
-			["group-activity-1", "group-reading"],
-			["group-activity-1", "group-reading"],
+			["group-delegation-0"],
+			["group-delegation-0"],
+			["group-activity", "group-reading"],
 		]);
 	});
 
-	it("keeps consecutive live delegations in the same activity group", () => {
+	it("keeps a delegation run together across parts that render nothing", () => {
 		const parts = [
 			toolPart("task-1", "task"),
+			dataPart("opencode-step-finish"),
+			textPart("  "),
+			dataPart("opencode-step-start"),
 			toolPart("task-2", "task"),
-			toolPart("read-1", "read"),
 		];
 
-		expect(
-			groupPaths(parts, {
-				activeSubagentToolCallIds: new Set(["task-1", "task-2"]),
-			}),
-		).toEqual([
-			["group-activity", "group-subagent"],
-			["group-activity", "group-subagent"],
-			["group-activity-1", "group-reading"],
+		expect(groupPaths(parts)).toEqual([
+			["group-delegation-0"],
+			["group-delegation-0"],
+			["group-delegation-0"],
+			["group-delegation-0"],
+			["group-delegation-0"],
 		]);
+	});
+
+	it("starts a new delegation group after visible work", () => {
+		const parts = [
+			toolPart("task-1", "task"),
+			textPart("Reviewing the first result"),
+			toolPart("task-2", "task"),
+		];
+
+		expect(groupPaths(parts)).toEqual([["group-delegation-0"], [], ["group-delegation-1"]]);
 	});
 });
 
@@ -173,6 +177,38 @@ describe("createTurnWorkGroupBy", () => {
 			["group-activity"],
 			["group-activity"],
 			[],
+		]);
+	});
+
+	it("folds delegations into the turn without releasing later work from the fold", () => {
+		const parts = [
+			toolPart("task-1", "task"),
+			toolPart("read-1", "read"),
+			textPart("Final answer"),
+		];
+		const groupBy = createTurnWorkGroupBy(parts);
+
+		expect(parts.map((part) => groupBy(part, context))).toEqual([
+			["group-turn-work", "group-delegation-0"],
+			["group-turn-work", "group-activity", "group-reading"],
+			[],
+		]);
+	});
+
+	it("folds a turn's narration too when the turn ends in delegations", () => {
+		const parts = [
+			toolPart("read-1", "read"),
+			textPart("Launching subagents"),
+			toolPart("task-1", "task"),
+			toolPart("task-2", "task"),
+		];
+		const groupBy = createTurnWorkGroupBy(parts);
+
+		expect(parts.map((part) => groupBy(part, context))).toEqual([
+			["group-turn-work", "group-activity", "group-reading"],
+			["group-turn-work"],
+			["group-turn-work", "group-delegation-0"],
+			["group-turn-work", "group-delegation-0"],
 		]);
 	});
 });

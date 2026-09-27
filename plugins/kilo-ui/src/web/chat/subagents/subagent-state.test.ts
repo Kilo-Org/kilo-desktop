@@ -4,6 +4,7 @@ import { createOpenCodeThreadState } from "@assistant-ui/react-opencode";
 import {
 	childSessionIdForToolCall,
 	childSessionIdFromTaskPart,
+	delegationStatus,
 	selectSubagentTranscript,
 	subagentDisplayStatus,
 	subagentPaneInstanceId,
@@ -96,6 +97,20 @@ describe("subagent state", () => {
 				{ type: "complete" },
 			),
 		).toBe("waiting");
+		const grandchild = {
+			...createOpenCodeThreadState("grandchild"),
+			interactions: {
+				...child.interactions,
+				questions: { ...child.interactions.questions, pending: { question: {} as never } },
+			},
+		};
+		expect(
+			subagentDisplayStatus({
+				...child,
+				sessionStatus: { type: "busy" },
+				childSessionsById: { grandchild },
+			}),
+		).toBe("waiting");
 		expect(subagentDisplayStatus(undefined, { type: "incomplete", reason: "cancelled" })).toBe(
 			"cancelled",
 		);
@@ -105,5 +120,23 @@ describe("subagent state", () => {
 				{ type: "incomplete", reason: "cancelled" },
 			),
 		).toBe("working");
+	});
+});
+
+describe("delegationStatus", () => {
+	it("follows the live child while it runs, even after its task call returned", () => {
+		expect(delegationStatus("working", { type: "complete" })).toBe("working");
+		expect(delegationStatus("waiting", { type: "complete" })).toBe("waiting");
+	});
+
+	it("reports how the task call ended once the child settles", () => {
+		expect(delegationStatus("done", { type: "incomplete", reason: "cancelled" })).toBe("cancelled");
+		expect(delegationStatus("done", { type: "incomplete", reason: "error" })).toBe("failed");
+		expect(delegationStatus("done", { type: "complete" })).toBe("done");
+	});
+
+	it("falls back to the task call before the child session is known", () => {
+		expect(delegationStatus(undefined, { type: "running" })).toBe("working");
+		expect(delegationStatus(undefined, { type: "complete" })).toBe("done");
 	});
 });

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const storage = new Map<string, string>();
 
@@ -229,5 +229,125 @@ describe("git PR status store", () => {
 			pullRequest,
 		);
 		expect(selectPullRequest(state, { directory: "/repo", branch: "main" })).toBeNull();
+	});
+
+	it("keeps a known pull request until a snapshot names a branch", async () => {
+		const { useGitPrStatusStore } = await import("./git-pr-status-store.js");
+		const found = {
+			identity: "feature|abc",
+			branch: "feature",
+			repository: "acme/repo",
+			parentRepository: null,
+			pullRequest: {
+				number: 4,
+				url: "https://github.com/acme/repo/pull/4",
+				title: "Feature",
+				baseBranch: "main",
+				headBranch: "feature",
+				state: "open" as const,
+				isDraft: false,
+			},
+			githubStatus: "ready" as const,
+		};
+		const store = useGitPrStatusStore.getState();
+		store.setSnapshot("repo", found);
+
+		store.setSnapshot("repo", {
+			...found,
+			identity: null,
+			branch: null,
+			pullRequest: null,
+			githubStatus: "unsupported",
+		});
+		expect(useGitPrStatusStore.getState().snapshots.repo?.snapshot).toEqual(found);
+
+		store.setSnapshot("repo", { ...found, pullRequest: null });
+		expect(useGitPrStatusStore.getState().snapshots.repo?.snapshot.pullRequest).toBeNull();
+	});
+
+	describe("a pull request the user just created", () => {
+		const created = {
+			number: 7,
+			url: "https://github.com/acme/repo/pull/7",
+			title: "Feature",
+			baseBranch: "main",
+			headBranch: "feature",
+			state: "open" as const,
+			isDraft: true,
+		};
+		const noPullRequest = {
+			identity: "origin/feature|abc",
+			branch: "feature",
+			repository: "acme/repo",
+			parentRepository: null,
+			pullRequest: null,
+			githubStatus: "ready" as const,
+		};
+
+		afterEach(() => vi.restoreAllMocks());
+
+		it("is selectable for every target in its directory before any lookup runs", async () => {
+			const { selectPullRequest, useGitPrStatusStore } = await import("./git-pr-status-store.js");
+			const store = useGitPrStatusStore.getState();
+			store.setTargets([
+				{ id: "a", directory: "/repo", active: true },
+				{ id: "b", directory: "/repo", active: false },
+				{ id: "other", directory: "/elsewhere", active: false },
+			]);
+			store.setSnapshot("a", noPullRequest);
+
+			store.recordCreatedPullRequest("/repo", "feature", created);
+
+			const state = useGitPrStatusStore.getState();
+			expect(selectPullRequest(state, { directory: "/repo", branch: "feature" })).toEqual(created);
+			expect(state.snapshots.a?.snapshot).toEqual({ ...noPullRequest, pullRequest: created });
+			expect(state.snapshots.b?.snapshot).toMatchObject({
+				branch: "feature",
+				pullRequest: created,
+			});
+			expect(state.snapshots.other).toBeUndefined();
+		});
+
+		it("survives an empty lookup while GitHub catches up, then yields to later answers", async () => {
+			const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
+			const { useGitPrStatusStore } = await import("./git-pr-status-store.js");
+			const store = useGitPrStatusStore.getState();
+			store.setTargets([{ id: "a", directory: "/repo", active: true }]);
+			store.recordCreatedPullRequest("/repo", "feature", created);
+
+			now.mockReturnValue(1_000_000 + 8_000);
+			store.setSnapshot("a", noPullRequest);
+			expect(useGitPrStatusStore.getState().snapshots.a?.snapshot.pullRequest).toEqual(created);
+
+			now.mockReturnValue(1_000_000 + 60_000);
+			store.setSnapshot("a", noPullRequest);
+			expect(useGitPrStatusStore.getState().snapshots.a?.snapshot.pullRequest).toBeNull();
+		});
+
+		it("stops shielding once a lookup confirms it", async () => {
+			const { useGitPrStatusStore } = await import("./git-pr-status-store.js");
+			const store = useGitPrStatusStore.getState();
+			store.setTargets([{ id: "a", directory: "/repo", active: true }]);
+			store.recordCreatedPullRequest("/repo", "feature", created);
+
+			store.setSnapshot("a", { ...noPullRequest, pullRequest: created });
+			store.setSnapshot("a", noPullRequest);
+
+			expect(useGitPrStatusStore.getState().snapshots.a?.snapshot.pullRequest).toBeNull();
+		});
+
+		it("does not shield a lookup for a different branch", async () => {
+			const { useGitPrStatusStore } = await import("./git-pr-status-store.js");
+			const store = useGitPrStatusStore.getState();
+			store.setTargets([{ id: "a", directory: "/repo", active: true }]);
+			store.recordCreatedPullRequest("/repo", "feature", created);
+
+			store.setSnapshot("a", { ...noPullRequest, branch: "other" });
+
+			expect(useGitPrStatusStore.getState().snapshots.a?.snapshot).toMatchObject({
+				branch: "other",
+				pullRequest: null,
+			});
+		});
 	});
 });

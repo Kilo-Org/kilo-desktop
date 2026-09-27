@@ -9,6 +9,7 @@ import {
 } from "./right-panel-store.js";
 import type { CreateContributedTabOptions } from "./right-panel-tab-registry.js";
 import type { RightPanelTabUpdate } from "./right-panel-tab-registry.js";
+import { useRevealContributedPane } from "../pane-canvas/reveal-contributed-pane.js";
 
 export type ChatRightPanelCapability = {
 	setFocusedSessionId(sessionId: string | null): void;
@@ -99,6 +100,9 @@ export function createChatRightPanelCapability(): ChatRightPanelCapability {
 					);
 			if (!opened) {
 				throw new Error(`Failed to open chat pane for definition "${definition.id}".`);
+			}
+			if (options?.activate !== false) {
+				useRevealContributedPane.getState().reveal(sessionId, opened.instanceId);
 			}
 			return opened;
 		},

@@ -38,7 +38,7 @@ jobs:
       contents: read
       id-token: write
     env:
-      NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
+      NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
       RELEASE_TRACK: preview
       UPDATE_PUBLISH_URL: ${{ vars.UPDATE_PUBLISH_URL }}
       UPDATE_PUBLISH_URL_PREVIEW: ${{ vars.UPDATE_PUBLISH_URL_PREVIEW }}

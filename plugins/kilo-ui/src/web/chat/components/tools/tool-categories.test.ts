@@ -117,45 +117,6 @@ describe("asking activity grouping", () => {
 	});
 });
 
-describe("suggesting activity grouping", () => {
-	it("maps the suggest tool into its own subgroup", () => {
-		expect(getGroupKeyForTool("suggest")).toBe("group-suggesting");
-		expect(getGroupKeyForTool("Suggest")).toBe("group-suggesting");
-		expect(activityKindFromGroupKey("group-suggesting")).toBe("suggesting");
-		expect(getActivityKind({ type: "tool-call", toolName: "suggest" })).toBe("suggesting");
-		expect(getMcpServerFromToolName("suggest")).toBeUndefined();
-	});
-
-	it("labels live and completed suggestion states", () => {
-		expect(getKindMeta("suggesting").liveLabel({ count: 1, files: 0 })).toBe("Suggesting");
-		expect(
-			getKindMeta("suggesting").doneLabel({
-				count: 1,
-				files: 0,
-				suggestion: "Run a local review?",
-			}),
-		).toBe("Suggested Run a local review?");
-	});
-
-	it("pulls the suggestion text into segment stats", () => {
-		const parts: ActivityPart[] = [
-			{
-				type: "tool-call",
-				toolName: "suggest",
-				args: { suggest: "Run a local review?", actions: [{ label: "Start" }] },
-				status: { type: "complete" },
-			},
-		];
-		const stats = getSegmentStats(parts, {
-			kind: "suggesting",
-			indices: [0],
-			running: false,
-			requiresAction: false,
-		});
-		expect(stats.suggestion).toBe("Run a local review?");
-	});
-});
-
 describe("terminal activity labels", () => {
 	it("uses the command description for a single terminal tool", () => {
 		const parts: ActivityPart[] = [
@@ -259,11 +220,10 @@ describe("subagent activity grouping", () => {
 		expect(formatToolDisplayName("board_post")).toBe("Message agents");
 	});
 
-	it("maps the task tool into its own subgroup", () => {
-		expect(getGroupKeyForTool("task")).toBe("group-subagent");
-		expect(getGroupKeyForTool("Task")).toBe("group-subagent");
+	it("keeps task calls out of activity kinds so they render as delegation rows", () => {
 		expect(activityKindFromGroupKey("group-subagent")).toBe("subagent");
-		expect(getActivityKind({ type: "tool-call", toolName: "task" })).toBe("subagent");
+		expect(getActivityKind({ type: "tool-call", toolName: "task" })).toBeUndefined();
+		expect(getActivityKind({ type: "tool-call", toolName: "Task" })).toBeUndefined();
 	});
 
 	it("does not treat task as an MCP server prefix", () => {
@@ -335,18 +295,18 @@ describe("subagent activity grouping", () => {
 		expect(getKindMeta("subagent").doneLabel(stats)).toBe("Delegated 2 subagents");
 	});
 
-	it("keeps task calls out of the generic tools group", () => {
+	it("omits task calls from activity counts and icon stacks", () => {
 		const parts: ActivityPart[] = [
 			{ type: "tool-call", toolName: "skill", args: { name: "write-vitest" } },
 			{ type: "tool-call", toolName: "task", args: { description: "Explore auth" } },
 		];
-		expect(parts.map(getActivityKind)).toEqual(["skill", "subagent"]);
+		expect(parts.map(getActivityKind)).toEqual(["skill", undefined]);
 		const summary = summarizeActivity(
 			parts,
 			parts.map((_, i) => i),
 		);
-		expect(summary.segments.map((s) => s.kind)).toEqual(["skill", "subagent"]);
-		expect(summary.iconItems.map((i) => i.label)).toEqual(["Skill", "Subagent"]);
+		expect(summary.segments.map((s) => s.kind)).toEqual(["skill"]);
+		expect(summary.iconItems.map((i) => i.label)).toEqual(["Skill"]);
 	});
 });
 

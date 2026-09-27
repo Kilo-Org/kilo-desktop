@@ -633,7 +633,7 @@ export const KiloModelSelector: FC<{
 				variant="ghost"
 				size="sm"
 				disabled={disabled}
-				className="shrink-0"
+				className="min-w-0"
 				data-qa-id="kilo-model-selector-trigger"
 				aria-label={triggerLabel}
 				aria-busy={isCatalogPending || undefined}

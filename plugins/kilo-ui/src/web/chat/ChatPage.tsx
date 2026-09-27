@@ -58,6 +58,7 @@ import {
 import { PaneLaunchToolbar } from "./pane-canvas/PaneLaunchToolbar.js";
 import { PaneSessionChrome } from "./pane-canvas/PaneSessionChrome.js";
 import { PaneSessionProvider } from "./pane-canvas/PaneSessionContext.js";
+import { useRevealContributedPane } from "./pane-canvas/reveal-contributed-pane.js";
 import {
 	resetPaneSessionHeader,
 	usePaneSessionHeaderStore,
@@ -491,6 +492,32 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 		}
 		setRedockedPaneId(null);
 	}, [commitLayout, handleSelectPane, layout, redockedPaneId]);
+
+	const paneRevealRequest = useRevealContributedPane((state) => state.request);
+	const handledPaneRevealNonceRef = useRef(paneRevealRequest?.nonce ?? 0);
+	useEffect(() => {
+		if (isDetached || !paneRevealRequest || paneRevealRequest.sessionId !== sessionId) return;
+		if (paneRevealRequest.nonce === handledPaneRevealNonceRef.current) return;
+		const { paneId } = paneRevealRequest;
+		if (poppedOutPaneIds.has(paneId)) {
+			handledPaneRevealNonceRef.current = paneRevealRequest.nonce;
+			handleFocusPoppedOutPane(paneId);
+			return;
+		}
+		// A brand-new pane joins the layout on the next render; wait for it.
+		if (!findPane(layout, paneId)) return;
+		handledPaneRevealNonceRef.current = paneRevealRequest.nonce;
+		if (layout.activePaneId !== paneId) commitLayout(setActivePane(layout, paneId));
+		setRevealActivePaneNonce((current) => current + 1);
+	}, [
+		commitLayout,
+		handleFocusPoppedOutPane,
+		isDetached,
+		layout,
+		paneRevealRequest,
+		poppedOutPaneIds,
+		sessionId,
+	]);
 
 	const finishClosingTab = useCallback(
 		(closingSessionId: string, tab: RightPanelTab) => {

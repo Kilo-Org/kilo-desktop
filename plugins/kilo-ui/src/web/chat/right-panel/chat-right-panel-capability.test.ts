@@ -4,12 +4,14 @@ import {
 	chatRightPanelCapability,
 	createChatRightPanelCapability,
 } from "./chat-right-panel-capability.js";
+import { useRevealContributedPane } from "../pane-canvas/reveal-contributed-pane.js";
 import { useRightPanelStore } from "./right-panel-store.js";
 
 const SESSION = "session-1";
 
 beforeEach(() => {
 	useRightPanelStore.setState({ bySessionId: {} });
+	useRevealContributedPane.setState({ request: null });
 	chatRightPanelCapability.setFocusedSessionId(null);
 });
 
@@ -73,6 +75,27 @@ describe("createChatRightPanelCapability", () => {
 
 		expect(opened.instanceId).toBe("preview-1");
 		expect(panel.getActiveTabId(SESSION)).toBe(active.instanceId);
+	});
+
+	it("asks the canvas to reveal a re-opened pane, but not one opened in the background", () => {
+		const panel = createChatRightPanelCapability();
+		const options = { instanceId: "subagent:child-1", title: "Explore" };
+		panel.openContributedTab(SESSION, { id: "subagent", title: "Subagent" }, options);
+		const first = useRevealContributedPane.getState().request;
+		panel.openContributedTab(SESSION, { id: "subagent", title: "Subagent" }, options);
+
+		expect(useRevealContributedPane.getState().request).toEqual({
+			sessionId: SESSION,
+			paneId: "subagent:child-1",
+			nonce: (first?.nonce ?? 0) + 1,
+		});
+
+		panel.openContributedTab(
+			SESSION,
+			{ id: "preview.panel", title: "Preview" },
+			{ activate: false, instanceId: "preview-1" },
+		);
+		expect(useRevealContributedPane.getState().request?.paneId).toBe("subagent:child-1");
 	});
 
 	it("reopens an existing contributed tab with the latest resource state", () => {

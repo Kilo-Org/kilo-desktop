@@ -1,24 +1,24 @@
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type * as ReactOpenCode from "@assistant-ui/react-opencode";
 import { page } from "vitest/browser";
 
-import type {
-	OpenCodePermissionRequest,
-	OpenCodeQuestionRequest,
+import {
+	createOpenCodeThreadState,
+	type OpenCodePermissionRequest,
+	type OpenCodeQuestionRequest,
+	type OpenCodeThreadState,
 } from "@assistant-ui/react-opencode";
-
-import type { KiloSuggestionRequest } from "../../suggestions/kilo-suggestion-logic.js";
 
 const runtime = vi.hoisted(() => ({
 	permissions: [] as OpenCodePermissionRequest[],
 	questions: [] as OpenCodeQuestionRequest[],
-	suggestion: null as KiloSuggestionRequest | null,
+	state: undefined as OpenCodeThreadState | undefined,
 	replyToPermission: vi.fn(async () => undefined),
-	acceptSuggestion: vi.fn(async () => undefined),
-	dismissSuggestion: vi.fn(async () => undefined),
 }));
 
-vi.mock("@assistant-ui/react-opencode", () => ({
+vi.mock("@assistant-ui/react-opencode", async (importOriginal) => ({
+	...(await importOriginal<typeof ReactOpenCode>()),
 	useOpenCodePermissions: () => ({
 		pending: runtime.permissions,
 		reply: runtime.replyToPermission,
@@ -31,12 +31,8 @@ vi.mock("@assistant-ui/react-opencode", () => ({
 	}),
 }));
 
-vi.mock("../../suggestions/KiloSuggestionContext.js", () => ({
-	usePendingKiloSuggestion: () => runtime.suggestion,
-	useKiloSuggestionActions: () => ({
-		accept: runtime.acceptSuggestion,
-		dismiss: runtime.dismissSuggestion,
-	}),
+vi.mock("../../runtime/use-optional-opencode-runtime-extras.js", () => ({
+	useOptionalOpenCodeRuntimeExtras: () => (runtime.state ? { state: runtime.state } : undefined),
 }));
 
 import { OpenCodeComposerInteraction } from "./opencode-composer-interaction.js";
@@ -72,14 +68,51 @@ const question = (askedAt: number): OpenCodeQuestionRequest => ({
 	],
 });
 
+const withPendingPermission = (
+	state: OpenCodeThreadState,
+	request: OpenCodePermissionRequest,
+): OpenCodeThreadState => ({
+	...state,
+	interactions: {
+		...state.interactions,
+		permissions: {
+			...state.interactions.permissions,
+			pending: { [request.id]: request },
+		},
+	},
+});
+
+const withTaskCall = (
+	state: OpenCodeThreadState,
+	childSessionId: string,
+	description: string,
+): OpenCodeThreadState => ({
+	...state,
+	messageOrder: ["task-message"],
+	messagesById: {
+		"task-message": {
+			id: "task-message",
+			info: undefined,
+			shadowParts: undefined,
+			parts: [
+				{
+					id: "task-part",
+					type: "tool",
+					tool: "task",
+					callID: "task-call",
+					state: { input: { description }, metadata: { sessionId: childSessionId } },
+				} as never,
+			],
+		},
+	},
+});
+
 afterEach(() => {
 	cleanup();
 	runtime.permissions.length = 0;
 	runtime.questions.length = 0;
-	runtime.suggestion = null;
+	runtime.state = undefined;
 	runtime.replyToPermission.mockClear();
-	runtime.acceptSuggestion.mockClear();
-	runtime.dismissSuggestion.mockClear();
 });
 
 describe("OpenCodeComposerInteraction", () => {
@@ -160,39 +193,65 @@ describe("OpenCodeComposerInteraction", () => {
 		await expect.element(screen.getByText("Ready to implement?")).not.toBeInTheDocument();
 	});
 
-	it("shows a pending suggestion above the composer", async () => {
-		runtime.suggestion = {
-			id: "sug-1",
-			sessionID: "session-1",
-			text: "Run a local review?",
-			actions: [{ label: "Start review", prompt: "/local-review-uncommitted" }],
+	it("surfaces a nested subagent's permission as a labelled composer prompt", async () => {
+		const grandchildPermission = {
+			...permission(undefined, 5),
+			id: "permission-grandchild",
+			sessionId: "grandchild",
+			title: "List scoped dirs",
+		};
+		const grandchild = withPendingPermission(
+			createOpenCodeThreadState("grandchild"),
+			grandchildPermission,
+		);
+		const child = {
+			...withTaskCall(createOpenCodeThreadState("child"), "grandchild", "Audit scoped dirs"),
+			childSessionsById: { grandchild },
+		};
+		runtime.state = {
+			...withTaskCall(createOpenCodeThreadState("session-1"), "child", "Explore"),
+			childSessionsById: { child },
 		};
 		const { baseElement } = render(
 			<OpenCodeComposerInteraction fallback={<div>Message composer</div>} />,
 		);
 		const screen = page.elementLocator(baseElement);
 
-		await expect.element(screen.getByText("Run a local review?")).toBeVisible();
-		await expect.element(screen.getByText("Message composer")).toBeVisible();
+		await expect.element(screen.getByText("List scoped dirs")).toBeVisible();
+		await expect.element(screen.getByText("Subagent permission request")).toBeVisible();
+		await expect
+			.element(
+				screen.getByText("The subagent “Audit scoped dirs” is requesting permission to use bash."),
+			)
+			.toBeVisible();
+		await expect.element(screen.getByText("Message composer")).not.toBeInTheDocument();
 
-		await screen.getByRole("button", { name: "Start review" }).click();
-		await expect.poll(() => runtime.acceptSuggestion.mock.calls).toEqual([[runtime.suggestion, 0]]);
+		await screen.getByRole("button", { name: "Allow once" }).click();
+		await expect
+			.poll(() => runtime.replyToPermission.mock.calls)
+			.toEqual([["permission-grandchild", "once"]]);
 	});
 
-	it("dismisses a pending suggestion without hiding the composer", async () => {
-		runtime.suggestion = {
-			id: "sug-1",
-			sessionID: "session-1",
-			text: "Run a local review?",
-			actions: [{ label: "Start review", prompt: "/local-review-uncommitted" }],
+	it("puts the chat's own older permission ahead of a subagent's", async () => {
+		runtime.permissions.push(permission(undefined, 1));
+		runtime.state = {
+			...createOpenCodeThreadState("session-1"),
+			childSessionsById: {
+				child: withPendingPermission(createOpenCodeThreadState("child"), {
+					...permission(undefined, 2),
+					id: "permission-child",
+					sessionId: "child",
+					title: "Child command",
+				}),
+			},
 		};
 		const { baseElement } = render(
 			<OpenCodeComposerInteraction fallback={<div>Message composer</div>} />,
 		);
 		const screen = page.elementLocator(baseElement);
 
-		await screen.getByRole("button", { name: "Dismiss suggestion" }).click();
-		await expect.poll(() => runtime.dismissSuggestion.mock.calls).toEqual([[runtime.suggestion]]);
-		await expect.element(screen.getByText("Message composer")).toBeVisible();
+		await expect.element(screen.getByText("Run a shell command")).toBeVisible();
+		await expect.element(screen.getByText("Permission request")).toBeVisible();
+		await expect.element(screen.getByText("Child command")).not.toBeInTheDocument();
 	});
 });

@@ -147,7 +147,7 @@ describe("Local model server overview", () => {
 
 describe("usageIndicatorClass", () => {
 	it("uses Unsloth's green, amber, and red usage thresholds", () => {
-		expect(usageIndicatorClass(69.9)).toBe("bg-primary-ink");
+		expect(usageIndicatorClass(69.9)).toBe("bg-success");
 		expect(usageIndicatorClass(70)).toBe("bg-warning");
 		expect(usageIndicatorClass(89.9)).toBe("bg-warning");
 		expect(usageIndicatorClass(90)).toBe("bg-destructive");

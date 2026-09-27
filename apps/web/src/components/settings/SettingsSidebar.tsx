@@ -93,7 +93,7 @@ export function SettingsSidebar({ sections = EMPTY_SECTIONS }: SettingsSidebarPr
 			</div>
 			{filtered.length > 0 ? (
 				<div
-					className="scroll-fade-y flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto"
+					className="scroll-fade-y -mx-1 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-1 pb-0.5"
 					data-qa-id="settings-section-nav"
 					aria-label="Settings sections"
 				>

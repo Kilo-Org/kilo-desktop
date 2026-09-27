@@ -10,10 +10,22 @@ export type GithubCapabilityStatus = SdkChannelResult<
 	GitServiceContract,
 	"githubCliStatus"
 >["status"];
-export type PersistedGitPrSnapshot = { snapshot: GitPrSnapshot; updatedAt: number };
+export type GitPullRequest = NonNullable<GitPrSnapshot["pullRequest"]>;
+export type PersistedGitPrSnapshot = {
+	snapshot: GitPrSnapshot;
+	updatedAt: number;
+	/** Set when the snapshot was seeded by creating its pull request, not by a lookup. */
+	createdAt?: number;
+};
 
 const STORAGE_KEY = "git.pr-status:v2";
 const SNAPSHOT_MAX_AGE_MS = 24 * 60 * 60_000;
+/**
+ * How long a just-created pull request outlives empty lookups. GitHub's
+ * search can briefly miss a new PR; this spans the post-action settle
+ * refreshes (2s and 8s) plus a slow `gh` round trip.
+ */
+const CREATED_PULL_REQUEST_GRACE_MS = 30_000;
 
 function readSnapshots(): Readonly<Record<string, PersistedGitPrSnapshot>> {
 	try {
@@ -45,6 +57,16 @@ type GitPrStatusState = {
 	setTargets: (targets: readonly GitPrStatusTarget[]) => void;
 	clearTargets: () => void;
 	setSnapshot: (id: string, snapshot: GitPrSnapshot) => void;
+	/**
+	 * Shows a pull request the user just created on every target in its
+	 * directory, so the header never falls back to "Create PR" while the
+	 * background lookup catches up.
+	 */
+	recordCreatedPullRequest: (
+		directory: string,
+		branch: string,
+		pullRequest: GitPullRequest,
+	) => void;
 	setGithubStatus: (status: GithubCapabilityStatus) => void;
 	refresh: (directory: string, settle?: boolean) => void;
 	requestGithubSetup: (status: Exclude<GithubCapabilityStatus, "ready">) => void;
@@ -60,6 +82,37 @@ export function selectPullRequest(
 	const snapshot = id ? state.snapshots[id]?.snapshot : undefined;
 	if (query.branch && snapshot?.branch !== query.branch) return null;
 	return snapshot?.pullRequest ?? null;
+}
+
+/**
+ * A snapshot that cannot name a branch (detached HEAD mid-rebase, an
+ * unreadable status) says nothing about the branch's pull request, so it
+ * does not replace one that found a PR; the next snapshot naming a branch
+ * does. Unlike the VS Code Agent Manager, an empty answer on a named branch
+ * is authoritative: `gh` failures reject before reaching the store, and the
+ * main process deliberately answers empty for a PR a recreated branch name
+ * inherited. The one exception is a pull request the user just created,
+ * which GitHub may not return yet.
+ */
+function isUninformativeSnapshot(
+	previous: PersistedGitPrSnapshot | undefined,
+	next: GitPrSnapshot,
+): boolean {
+	if (previous?.snapshot.pullRequest == null || next.pullRequest != null) return false;
+	if (next.branch === null) return true;
+	return (
+		previous.createdAt !== undefined &&
+		next.branch === previous.snapshot.branch &&
+		Date.now() - previous.createdAt < CREATED_PULL_REQUEST_GRACE_MS
+	);
+}
+
+function persistSnapshots(snapshots: Readonly<Record<string, PersistedGitPrSnapshot>>) {
+	try {
+		localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshots));
+	} catch {
+		// Memory cache remains usable when persistence is unavailable.
+	}
 }
 
 export const useGitPrStatusStore = create<GitPrStatusState>((set) => ({
@@ -90,22 +143,37 @@ export const useGitPrStatusStore = create<GitPrStatusState>((set) => ({
 			const snapshots = Object.fromEntries(
 				Object.entries(state.snapshots).filter(([id]) => ids.has(id)),
 			);
-			try {
-				localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshots));
-			} catch {
-				// Memory cache remains usable when persistence is unavailable.
-			}
+			persistSnapshots(snapshots);
 			return { targets, snapshots };
 		}),
 	clearTargets: () => set({ targets: [] }),
 	setSnapshot: (id, snapshot) =>
 		set((state) => {
+			if (isUninformativeSnapshot(state.snapshots[id], snapshot)) return state;
 			const snapshots = { ...state.snapshots, [id]: { snapshot, updatedAt: Date.now() } };
-			try {
-				localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshots));
-			} catch {
-				// Memory cache remains usable when persistence is unavailable.
-			}
+			persistSnapshots(snapshots);
+			return { snapshots };
+		}),
+	recordCreatedPullRequest: (directory, branch, pullRequest) =>
+		set((state) => {
+			const now = Date.now();
+			const seeded = state.targets
+				.filter((target) => target.directory === directory)
+				.map((target): [string, PersistedGitPrSnapshot] => {
+					const previous = state.snapshots[target.id]?.snapshot;
+					const snapshot: GitPrSnapshot = {
+						identity: previous?.identity ?? null,
+						repository: previous?.repository ?? null,
+						parentRepository: previous?.parentRepository ?? null,
+						githubStatus: "ready",
+						branch,
+						pullRequest,
+					};
+					return [target.id, { snapshot, updatedAt: now, createdAt: now }];
+				});
+			if (seeded.length === 0) return state;
+			const snapshots = { ...state.snapshots, ...Object.fromEntries(seeded) };
+			persistSnapshots(snapshots);
 			return { snapshots };
 		}),
 	setGithubStatus: (status) => set({ githubStatus: { status, checkedAt: Date.now() } }),

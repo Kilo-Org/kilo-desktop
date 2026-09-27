@@ -27,6 +27,10 @@ vi.mock("@assistant-ui/react-opencode", () => ({
 	useOpenCodePermissions: () => ({ pending: [], reply: vi.fn() }),
 }));
 
+vi.mock("../../runtime/use-optional-opencode-runtime-extras.js", () => ({
+	useOptionalOpenCodeRuntimeExtras: () => undefined,
+}));
+
 import { ActivityGroup, ActivitySubgroup } from "./activity-group.js";
 import { BashTerminal } from "./tool-ui-bash.js";
 

@@ -1,37 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import { isTaskErrorOutput, unwrapTaskOutput } from "./tool-ui-shared.js";
-import { getTaskAgent, getTaskDescription, getTaskPrompt } from "./tool-ui-task.js";
-
-describe("getTaskDescription", () => {
-	it("prefers the short description over the agent type", () => {
-		expect(
-			getTaskDescription({
-				description: "Explore auth flow",
-				subagent_type: "explore",
-			}),
-		).toBe("Explore auth flow");
-	});
-
-	it("falls back to the agent type", () => {
-		expect(getTaskDescription({ subagent_type: "code-reviewer" })).toBe("code-reviewer");
-		expect(getTaskDescription({})).toBeUndefined();
-	});
-});
-
-describe("getTaskAgent", () => {
-	it("reads subagent_type", () => {
-		expect(getTaskAgent({ subagent_type: "explore" })).toBe("explore");
-		expect(getTaskAgent({ description: "Explore auth" })).toBeUndefined();
-	});
-});
-
-describe("getTaskPrompt", () => {
-	it("reads the prompt field", () => {
-		expect(getTaskPrompt({ prompt: "Find how login works." })).toBe("Find how login works.");
-		expect(getTaskPrompt({ description: "Explore auth" })).toBeUndefined();
-	});
-});
 
 describe("unwrapTaskOutput", () => {
 	it("extracts the task_result body", () => {

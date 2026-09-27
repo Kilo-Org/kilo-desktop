@@ -87,6 +87,15 @@ export function FilesTree({
 				--truncate-marker-fade-in-duration: 0s;
 			}
 
+			/* The inherited app scrollbar-color disables the tree's 6px
+			   ::-webkit-scrollbar, so a stable gutter would reserve a full-width
+			   strip; only take the space while overflowing. */
+			[data-file-tree-virtualized-scroll="true"] {
+				scrollbar-gutter: auto;
+				scrollbar-width: thin;
+				padding-inline: max(calc(var(--trees-padding-inline) - var(--trees-item-margin-x)), 0px);
+			}
+
 			button[data-type="item"][data-item-type="file"]::before {
 				display: none;
 			}

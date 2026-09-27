@@ -193,6 +193,9 @@ function variant(p: RolePalette, shiki: ShikiTheme, mode: ResolvedColorScheme) {
 			foreground: p.foreground,
 			card: p.surface,
 			"composer-draft": p.draftComposer ?? p.surface,
+			// Pane frames mix this into `--pane-raised`, which backs the glass
+			// composer; it must stay solid even when `hover` is an overlay.
+			"pane-raised-tint": p.mutedFill ?? p.hover,
 			"card-foreground": p.foreground,
 			popover: p.popover ?? p.surface,
 			"popover-foreground": p.foreground,

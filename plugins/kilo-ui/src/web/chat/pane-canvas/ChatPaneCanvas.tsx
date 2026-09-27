@@ -454,7 +454,7 @@ const PaneCanvasColumn: FC<{
 							value={pane.id}
 							/* Pane surfaces inherit the selected theme's curated card color so
 							   themed hues remain intact across frames, messages, and composer glass. */
-							className="pane-group relative flex min-h-0 min-w-0 flex-col gap-1.5 [--pane-raised:color-mix(in_srgb,var(--color-card)_50%,var(--color-accent))] [--pane-surface:var(--color-card)]"
+							className="pane-group relative flex min-h-0 min-w-0 flex-col gap-1.5 [--pane-raised:color-mix(in_srgb,var(--color-card)_50%,var(--pane-raised-tint,var(--color-accent)))] [--pane-surface:var(--color-card)]"
 							data-qa-id={`chat-pane-group-${group.id}`}
 							data-pane-group-id={group.id}
 							data-group-active={active ? "true" : undefined}

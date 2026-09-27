@@ -29,8 +29,8 @@ jobs:
   lint-format:
     runs-on: ubuntu-latest
     env:
-      NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
-      ANACONDA_NPM_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
+      NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
+      ANACONDA_NPM_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node-pnpm
@@ -41,8 +41,8 @@ jobs:
   typecheck:
     runs-on: ubuntu-latest
     env:
-      NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
-      ANACONDA_NPM_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
+      NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
+      ANACONDA_NPM_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node-pnpm
@@ -63,8 +63,8 @@ jobs:
       group: test-${{ matrix.os }}-${{ github.ref }}
       cancel-in-progress: true
     env:
-      NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
-      ANACONDA_NPM_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
+      NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
+      ANACONDA_NPM_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
       GIT_CONFIG_NOSYSTEM: "true"
     steps:
       # Job-level env cannot use the runner context, so pin GIT_CONFIG_GLOBAL
@@ -111,8 +111,8 @@ jobs:
     runs-on: WinLatest-x64-8vCPU-32GB
     timeout-minutes: 60
     env:
-      NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
-      ANACONDA_NPM_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
+      NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
+      ANACONDA_NPM_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
       PLAYWRIGHT_FAIL_ON_FLAKY_TESTS: "false"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -162,8 +162,8 @@ jobs:
       group: e2e-merge-${{ matrix.shard-name }}-${{ github.ref }}
       cancel-in-progress: true
     env:
-      NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
-      ANACONDA_NPM_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
+      NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
+      ANACONDA_NPM_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
       PLAYWRIGHT_FAIL_ON_FLAKY_TESTS: "false"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -182,8 +182,8 @@ jobs:
     needs: e2e-merge
     runs-on: ubuntu-latest
     env:
-      NODE_AUTH_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
-      ANACONDA_NPM_TOKEN: ${{ secrets.GH_DESIGN_SYSTEM_TOKEN }}
+      NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
+      ANACONDA_NPM_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/setup-node-pnpm

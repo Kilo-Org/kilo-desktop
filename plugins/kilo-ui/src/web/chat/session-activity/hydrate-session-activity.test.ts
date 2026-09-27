@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { hydrateSessionActivity } from "./hydrate-session-activity.js";
+import { createDeferredKiloRuntimeClient } from "../runtime/create-deferred-kilo-runtime-client.js";
+import { hydratePromptAncestry, hydrateSessionActivity } from "./hydrate-session-activity.js";
+import { withDescendantPrompts } from "./session-activity-logic.js";
 import { createSessionActivityStore } from "./session-activity-store.js";
 
 describe("hydrateSessionActivity", () => {
@@ -119,5 +121,93 @@ describe("hydrateSessionActivity", () => {
 		await hydration;
 
 		expect(store.getState().sessions["ses-1"]?.pendingPermissionIds).toEqual(["perm-live"]);
+	});
+
+	it("links subagent sessions holding recovered prompts to their chat", async () => {
+		const store = createSessionActivityStore({ storage: null });
+		const parents: Record<string, string | undefined> = {
+			grandchild: "child",
+			child: "root",
+			root: undefined,
+		};
+		const get = vi.fn(async ({ sessionID }: { sessionID: string }) => ({
+			data: { id: sessionID, parentID: parents[sessionID] },
+		}));
+		const client = {
+			permission: {
+				list: vi.fn(async () => ({ data: [{ id: "perm-1", sessionID: "grandchild" }] })),
+			},
+			question: { list: vi.fn(async () => ({ data: [] })) },
+			session: { status: vi.fn(async () => ({ data: {} })), get },
+		};
+
+		await hydrateSessionActivity(client, store);
+
+		const sessions = store.getState().sessions;
+		expect(sessions.grandchild?.parentId).toBe("child");
+		expect(sessions.child?.parentId).toBe("root");
+		expect(withDescendantPrompts(sessions).root?.pendingPermissionIds).toEqual(["perm-1"]);
+		expect(get.mock.calls.map(([input]) => input.sessionID)).toEqual([
+			"grandchild",
+			"child",
+			"root",
+		]);
+	});
+});
+
+describe("hydratePromptAncestry", () => {
+	it("does not touch a deferred client when no session awaits a parent lookup", async () => {
+		const store = createSessionActivityStore({ storage: null });
+		const loadClient = vi.fn(async () => {
+			throw new Error("Kilo Server requires the desktop app.");
+		});
+
+		await hydratePromptAncestry(createDeferredKiloRuntimeClient(loadClient), store);
+
+		expect(loadClient).not.toHaveBeenCalled();
+	});
+
+	it("resolves parent links through a deferred client", async () => {
+		const store = createSessionActivityStore({ storage: null });
+		store.getState().applyEvent({
+			type: "permission.asked",
+			properties: { id: "perm-1", sessionID: "child" },
+		});
+		const get = vi.fn(async ({ sessionID }: { sessionID: string }) => ({
+			data: { id: sessionID, parentID: sessionID === "child" ? "root" : undefined },
+		}));
+
+		await hydratePromptAncestry(
+			createDeferredKiloRuntimeClient(async () => ({ session: { get } }) as never),
+			store,
+		);
+
+		expect(store.getState().sessions.child?.parentId).toBe("root");
+	});
+
+	it("resolves the rest of the chain above a prompting session whose own parent is known", async () => {
+		const store = createSessionActivityStore({ storage: null });
+		// The nested subagent's link arrived live; its parent predates the connection.
+		store.getState().hydrateSessions([{ id: "grandchild", parentId: "child" }]);
+		store.getState().applyEvent({
+			type: "permission.asked",
+			properties: { id: "perm-1", sessionID: "grandchild" },
+		});
+		const parents: Record<string, string | undefined> = { child: "root", root: undefined };
+		const get = vi.fn(async ({ sessionID }: { sessionID: string }) => ({
+			data: { id: sessionID, parentID: parents[sessionID] },
+		}));
+		const client = {
+			permission: { list: vi.fn(async () => ({ data: [] })) },
+			question: { list: vi.fn(async () => ({ data: [] })) },
+			session: { status: vi.fn(async () => ({ data: {} })), get },
+		};
+
+		await hydratePromptAncestry(client, store);
+
+		expect(get.mock.calls.map(([input]) => input.sessionID)).toEqual(["child", "root"]);
+		expect(withDescendantPrompts(store.getState().sessions).root?.pendingPermissionIds).toEqual([
+			"perm-1",
+		]);
 	});
 });

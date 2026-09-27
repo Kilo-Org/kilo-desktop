@@ -101,7 +101,7 @@ describe("OpenCode message queue", () => {
 		expect(driver.send.mock.calls[1]?.[0]).toMatchObject({ content: message("first").content });
 	});
 
-	it("resumes the queue after Stop once the run finishes", async () => {
+	it("keeps queued messages parked after Stop once the run finishes", async () => {
 		const queue = createOpenCodeMessageQueue({ cancelBehavior: "pause" });
 		const driver = createDriver();
 		queue.setDriver(driver);
@@ -111,12 +111,69 @@ describe("OpenCode message queue", () => {
 
 		queue.adapter.clear("cancel-run");
 		queue.setRunning(false);
-		await vi.waitFor(() => expect(driver.send).toHaveBeenCalledOnce());
-		expect(driver.send.mock.calls[0]?.[0]).toMatchObject({ content: message("first").content });
+		await Promise.resolve();
 
+		expect(driver.send).not.toHaveBeenCalled();
+		expect(queue.adapter.items.map((item) => item.prompt)).toEqual(["first", "second"]);
+	});
+
+	it("sends a new message after Stop while earlier ones stay parked", async () => {
+		const queue = createOpenCodeMessageQueue({ cancelBehavior: "pause" });
+		const driver = createDriver();
+		queue.setDriver(driver);
+		queue.setRunning(true);
+		queue.adapter.enqueue(message("parked"), { steer: false });
+		queue.adapter.clear("cancel-run");
+		queue.setRunning(false);
+
+		queue.adapter.enqueue(message("fresh"), { steer: false });
+
+		await vi.waitFor(() => expect(driver.send).toHaveBeenCalledOnce());
+		expect(driver.send.mock.calls[0]?.[0]).toMatchObject({ content: message("fresh").content });
 		finishStartedRun(queue);
-		await vi.waitFor(() => expect(driver.send).toHaveBeenCalledTimes(2));
-		expect(driver.send.mock.calls[1]?.[0]).toMatchObject({ content: message("second").content });
+		await Promise.resolve();
+		expect(driver.send).toHaveBeenCalledOnce();
+		expect(queue.adapter.items.map((item) => item.prompt)).toEqual(["parked"]);
+	});
+
+	it("drains a message queued while the stopped run winds down", async () => {
+		const queue = createOpenCodeMessageQueue({ cancelBehavior: "pause" });
+		const driver = createDriver();
+		queue.setDriver(driver);
+		queue.setRunning(true);
+		queue.adapter.enqueue(message("parked"), { steer: false });
+		queue.adapter.clear("cancel-run");
+		queue.adapter.enqueue(message("after stop"), { steer: false });
+
+		queue.setRunning(false);
+
+		await vi.waitFor(() => expect(driver.send).toHaveBeenCalledOnce());
+		expect(driver.send.mock.calls[0]?.[0]).toMatchObject({
+			content: message("after stop").content,
+		});
+		await vi.waitFor(() =>
+			expect(queue.adapter.items.map((item) => item.prompt)).toEqual(["parked"]),
+		);
+	});
+
+	it("sends a parked message when it is explicitly steered", async () => {
+		const queue = createOpenCodeMessageQueue({ cancelBehavior: "pause" });
+		const driver = createDriver();
+		queue.setDriver(driver);
+		queue.setRunning(true);
+		queue.adapter.enqueue(message("first"), { steer: false });
+		queue.adapter.enqueue(message("second"), { steer: false });
+		queue.adapter.clear("cancel-run");
+		queue.setRunning(false);
+
+		queue.adapter.steer(queue.adapter.items[1]!.id);
+
+		await vi.waitFor(() => expect(driver.send).toHaveBeenCalledOnce());
+		expect(driver.send.mock.calls[0]?.[0]).toMatchObject({ content: message("second").content });
+		finishStartedRun(queue);
+		await Promise.resolve();
+		expect(driver.send).toHaveBeenCalledOnce();
+		expect(queue.adapter.items.map((item) => item.prompt)).toEqual(["first"]);
 	});
 
 	it("does not auto-resume when cancel-run follows a failed send", async () => {

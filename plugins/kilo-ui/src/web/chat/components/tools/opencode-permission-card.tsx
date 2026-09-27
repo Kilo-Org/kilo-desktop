@@ -9,9 +9,19 @@ import { CircleAlertIcon, ShieldAlertIcon } from "lucide-react";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Badge } from "@kilo-desktop/ui/components/badge";
 import { Button } from "@kilo-desktop/ui/components/button";
+import type { SubagentOrigin } from "../../subagents/pending-interactions.js";
 import { ComposerShell } from "../composer-shelf.js";
 
-export const OpenCodePermissionCard = ({ request }: { request: OpenCodePermissionRequest }) => {
+export const OpenCodePermissionCard = ({
+	request,
+	origin,
+	acceptOnEnter = true,
+}: {
+	request: OpenCodePermissionRequest;
+	/** Set when a subagent, not the chat's own session, raised the request. */
+	origin?: SubagentOrigin | undefined;
+	acceptOnEnter?: boolean;
+}) => {
 	const { replyToPermission } = useOpenCodeRuntimeExtras();
 	const [submittingReply, setSubmittingReply] = useState<OpenCodePermissionResponse | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -29,7 +39,8 @@ export const OpenCodePermissionCard = ({ request }: { request: OpenCodePermissio
 	};
 
 	useEffect(() => {
-		const acceptOnEnter = (event: KeyboardEvent) => {
+		if (!acceptOnEnter) return;
+		const acceptOnEnterKey = (event: KeyboardEvent) => {
 			if (
 				event.key !== "Enter" ||
 				event.shiftKey ||
@@ -56,11 +67,16 @@ export const OpenCodePermissionCard = ({ request }: { request: OpenCodePermissio
 			void submitReply("once");
 		};
 
-		document.addEventListener("keydown", acceptOnEnter);
-		return () => document.removeEventListener("keydown", acceptOnEnter);
+		document.addEventListener("keydown", acceptOnEnterKey);
+		return () => document.removeEventListener("keydown", acceptOnEnterKey);
 	});
 
 	const permissionLabel = request.toolName ?? request.permission;
+	const requester = origin
+		? origin.title
+			? `The subagent “${origin.title}” is`
+			: "A subagent is"
+		: "The agent is";
 
 	return (
 		<ComposerShell className="text-card-foreground gap-4 p-4">
@@ -68,7 +84,9 @@ export const OpenCodePermissionCard = ({ request }: { request: OpenCodePermissio
 				<div className="flex min-h-[1lh] items-center justify-between gap-3">
 					<div className="text-muted-foreground flex min-w-0 items-center gap-1.5 text-xs font-medium">
 						<ShieldAlertIcon className="text-warning size-3.5" />
-						<span className="truncate">Permission request</span>
+						<span className="truncate">
+							{origin ? "Subagent permission request" : "Permission request"}
+						</span>
 					</div>
 					<Badge variant="outline">{permissionLabel}</Badge>
 				</div>
@@ -77,7 +95,7 @@ export const OpenCodePermissionCard = ({ request }: { request: OpenCodePermissio
 						{request.title ?? `Allow ${permissionLabel}?`}
 					</h3>
 					<p className="text-muted-foreground text-sm text-pretty">
-						The agent is requesting permission to use {permissionLabel}.
+						{requester} requesting permission to use {permissionLabel}.
 					</p>
 				</div>
 			</div>

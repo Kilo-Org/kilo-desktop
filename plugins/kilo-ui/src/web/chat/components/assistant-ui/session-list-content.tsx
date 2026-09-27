@@ -98,12 +98,14 @@ import {
 	formatRelativeTimeLabel,
 	formatWorkingDurationLabel,
 	isOrphanedWorktreeSession,
+	withDescendantPrompts,
 	resolveSessionLocationLabel,
 	type SessionActivity,
 	type SessionRowState,
 } from "../../session-activity/session-activity-logic.js";
 import { SessionListViewMenu } from "../../session-list/session-list-view-menu.js";
 import { SessionDeleteWorktreeDialog } from "./session-delete-worktree-dialog.js";
+import { SessionRowHoverCard } from "./session-row-hover-card.js";
 import {
 	buildSessionListSections,
 	readSessionListArchivedExpanded,
@@ -1117,7 +1119,9 @@ const SessionRow: FC = () => {
 	const threadId = useAuiState((s) => s.threadListItem.id);
 	const itemStatus = useAuiState((s) => s.threadListItem.status);
 	const isActive = useAuiState((s) => s.threadListItem.id === s.threads.mainThreadId);
-	const activity = useSessionActivity((s) => (remoteId ? s.sessions[remoteId] : undefined));
+	const activity = useSessionActivity((s) =>
+		remoteId ? withDescendantPrompts(s.sessions)[remoteId] : undefined,
+	);
 	const lastVisitedAt = useSessionActivity((s) =>
 		remoteId ? s.lastVisitedAtBySessionId[remoteId] : undefined,
 	);
@@ -1439,30 +1443,46 @@ const SessionRowContent = memo(function SessionRowContent({
 				<div className={cn("flex h-7 items-center", rowPad)}>
 					<SessionItemRename onDone={finishRename} />
 				</div>
-			) : isArchived ? (
-				<button
-					ref={triggerRef}
-					type="button"
-					data-slot="aui_session-list-archived-trigger"
-					data-sidebar-select
-					className={cn("flex w-full flex-col py-1 text-left focus-visible:outline-none", rowPad)}
-					onClick={() => {
-						navigate();
-						switchToArchived();
-					}}
-				>
-					{rowContent}
-				</button>
 			) : (
-				<ThreadListItemPrimitive.Trigger
-					ref={triggerRef}
-					onClick={navigate}
-					data-slot="aui_session-list-item-trigger"
-					data-sidebar-select
-					className={cn("flex w-full flex-col py-1 text-left focus-visible:outline-none", rowPad)}
-				>
-					{rowContent}
-				</ThreadListItemPrimitive.Trigger>
+				<SessionRowHoverCard
+					activity={activity}
+					locationLabel={locationLabel}
+					workspaceColor={workspaceColor}
+					statusId={statusId}
+					trigger={
+						isArchived ? (
+							<button
+								ref={triggerRef}
+								type="button"
+								data-slot="aui_session-list-archived-trigger"
+								data-sidebar-select
+								className={cn(
+									"flex w-full flex-col py-1 text-left focus-visible:outline-none",
+									rowPad,
+								)}
+								onClick={() => {
+									navigate();
+									switchToArchived();
+								}}
+							>
+								{rowContent}
+							</button>
+						) : (
+							<ThreadListItemPrimitive.Trigger
+								ref={triggerRef}
+								onClick={navigate}
+								data-slot="aui_session-list-item-trigger"
+								data-sidebar-select
+								className={cn(
+									"flex w-full flex-col py-1 text-left focus-visible:outline-none",
+									rowPad,
+								)}
+							>
+								{rowContent}
+							</ThreadListItemPrimitive.Trigger>
+						)
+					}
+				/>
 			)}
 			{!isRenaming && (
 				<span className={cn(rowHoverActionsClassName, "right-1.5 top-1 h-5")}>

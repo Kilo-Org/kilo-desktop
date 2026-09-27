@@ -24,7 +24,8 @@ export type KiloOwnedMcpEntry = {
 	readonly id: string;
 	readonly sourceId: string | undefined;
 };
-type KiloConfigSection = "mcp" | "provider";
+export type KiloPermissionAction = "allow" | "ask" | "deny";
+type KiloConfigSection = "mcp" | "provider" | "permission";
 
 export type KiloConfigMutationOutcome =
 	| { readonly kind: "written"; readonly reason: "created" | "updated" }
@@ -327,7 +328,7 @@ function tryApplyModification(
 /**
  * Owns serialized mutations of Desktop's Kilo config and its ownership sidecar.
  * Unknown entries and JSONC formatting remain user-owned; only sidecar-owned
- * MCP and provider entries may be updated or removed, and MCP entries may be
+ * MCP, provider, and permission entries may be updated or removed, and MCP entries may be
  * enumerated by their owning source. Each section-qualified entry is bound to
  * the source that first claimed it. Flat historical ownership records are
  * migrated as MCP ownership. The queue prevents independent features and the
@@ -414,6 +415,19 @@ export class KiloConfigManager {
 		return this.#enqueue(() => this.#replaceProviderEntry(sourceId, entryName, snapshot));
 	}
 
+	/** A user-authored rule for the same tool is left alone. */
+	setPermissionEntry(
+		sourceId: string,
+		toolName: string,
+		action: KiloPermissionAction,
+	): Promise<KiloConfigMutationOutcome> {
+		return this.#enqueue(() =>
+			this.#updateEntry("permission", sourceId, toolName, action, {
+				adoptExisting: (current) => current === action,
+			}),
+		);
+	}
+
 	#enqueue<T>(operation: () => Promise<T>): Promise<T> {
 		const result = this.#pending.then(operation, operation);
 		this.#pending = result.then(
@@ -427,7 +441,7 @@ export class KiloConfigManager {
 		section: KiloConfigSection,
 		sourceId: string,
 		entryName: string,
-		entry: KiloConfigEntry | undefined,
+		entry: KiloConfigEntry | KiloPermissionAction | undefined,
 		options?: { readonly adoptExisting?: (current: unknown) => boolean },
 	): Promise<KiloConfigMutationOutcome> {
 		if (!sourceId.trim()) {

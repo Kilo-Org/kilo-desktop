@@ -13,6 +13,7 @@ import type { SDK } from "@kilo-desktop/feature-sdk";
 import type { ChatRightPanelCapability } from "../right-panel/chat-right-panel-capability.js";
 import { useRightPanelStore, type RightPanelTab } from "../right-panel/right-panel-store.js";
 import type { RightPanelTabUpdate } from "../right-panel/right-panel-tab-registry.js";
+import { useRevealContributedPane } from "./reveal-contributed-pane.js";
 
 export const CHAT_PANE_TAB_OPENED_EVENT = "chat-pane-tab-opened";
 export const CHAT_PANE_TAB_UPDATED_EVENT = "chat-pane-tab-updated";
@@ -76,6 +77,9 @@ export function listenChatPaneSync(sdk: SDK): () => void {
 				activate: payload.activate !== false,
 			},
 		);
+		if (payload.activate !== false) {
+			useRevealContributedPane.getState().reveal(payload.sessionId, payload.tab.instanceId);
+		}
 	});
 	const stopUpdate = sdk.events.on(`kilo-ui.${CHAT_PANE_TAB_UPDATED_EVENT}`, (payload) => {
 		if (!isPaneUpdatedPayload(payload)) return;

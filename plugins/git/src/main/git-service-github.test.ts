@@ -74,7 +74,15 @@ describe("GitService GitHub CLI capability", () => {
 
 const HEAD = "aaf0640c751fcf21b2743b189ec3e531ad02a808";
 
-function snapshotService(options: { origin?: string | null; head?: string | null } = {}) {
+function snapshotService(
+	options: {
+		origin?: string | null;
+		head?: string | null;
+		upstream?: string;
+		/** `ancestor..descendant` pairs `merge-base --is-ancestor` confirms. */
+		ancestry?: readonly string[];
+	} = {},
+) {
 	const origin = options.origin === undefined ? "git@github.com:acme/repo.git" : options.origin;
 	const head = options.head === undefined ? HEAD : options.head;
 	return new GitService({
@@ -86,6 +94,7 @@ function snapshotService(options: { origin?: string | null; head?: string | null
 					Promise.resolve({
 						exists: true,
 						currentBranch: "kilo/brawny-olivine",
+						currentUpstreamBranch: options.upstream,
 						workingDirectory: { files: [] },
 						doConflictedFilesExist: false,
 					}),
@@ -103,6 +112,10 @@ function snapshotService(options: { origin?: string | null; head?: string | null
 								? { exitCode: 0, stdout: `${origin}\n`, stderr: "" }
 								: { exitCode: 2, stdout: "", stderr: "" },
 						);
+					}
+					if (args[0] === "merge-base") {
+						const related = options.ancestry?.includes(`${args[2]}..${args[3]}`) ?? false;
+						return Promise.resolve({ exitCode: related ? 0 : 1, stdout: "", stderr: "" });
 					}
 					return Promise.reject(new Error(`unexpected git ${args.join(" ")}`));
 				},
@@ -147,7 +160,33 @@ describe("GitService pull request snapshot", () => {
 		});
 	});
 
-	it("accepts an open pull request whose head SHA is exactly HEAD", async () => {
+	it("does not adopt the base branch's open pull request for a new branch at the same HEAD", async () => {
+		execa.mockImplementation(async (_command: string, args: string[] = []) => {
+			if (args[0] === "auth") return { exitCode: 0, stdout: "", stderr: "" };
+			if (args[0] === "repo") {
+				return { exitCode: 0, stdout: JSON.stringify({ nameWithOwner: "acme/repo" }), stderr: "" };
+			}
+			if (args[1] === "view") return { exitCode: 1, stdout: "", stderr: "no pull requests found" };
+			if (args.includes("--search")) {
+				return {
+					exitCode: 0,
+					stdout: JSON.stringify([
+						pullRequest({ headRefName: "feature/base", headRefOid: HEAD, state: "OPEN" }),
+					]),
+					stderr: "",
+				};
+			}
+			if (args.includes("--head")) return { exitCode: 0, stdout: "[]", stderr: "" };
+			return { exitCode: 1, stdout: "", stderr: `unexpected ${args.join(" ")}` };
+		});
+
+		await expect(snapshotService().pullRequestSnapshot("/repo")).resolves.toMatchObject({
+			branch: "kilo/brawny-olivine",
+			pullRequest: null,
+		});
+	});
+
+	it("accepts an open pull request at HEAD whose head is the upstream branch", async () => {
 		execa.mockImplementation(async (_command: string, args: string[] = []) => {
 			if (args[0] === "auth") return { exitCode: 0, stdout: "", stderr: "" };
 			if (args[0] === "repo") {
@@ -173,7 +212,9 @@ describe("GitService pull request snapshot", () => {
 			return { exitCode: 1, stdout: "", stderr: `unexpected ${args.join(" ")}` };
 		});
 
-		await expect(snapshotService().pullRequestSnapshot("/repo")).resolves.toMatchObject({
+		await expect(
+			snapshotService({ upstream: "origin/renamed" }).pullRequestSnapshot("/repo"),
+		).resolves.toMatchObject({
 			pullRequest: { number: 12, state: "open" },
 		});
 		expect(execa).toHaveBeenCalledWith(
@@ -244,5 +285,60 @@ describe("GitService pull request snapshot", () => {
 			expect.arrayContaining(["--head", "kilo/brawny-olivine"]),
 			expect.anything(),
 		);
+	});
+
+	describe("a merged pull request found by branch name", () => {
+		const PR_HEAD = "bbf0640c751fcf21b2743b189ec3e531ad02a808";
+		const MERGE = "ccf0640c751fcf21b2743b189ec3e531ad02a808";
+
+		function mockMergedByName(patch: Record<string, unknown> = {}) {
+			execa.mockImplementation(async (_command: string, args: string[] = []) => {
+				if (args[0] === "auth") return { exitCode: 0, stdout: "", stderr: "" };
+				if (args[0] === "repo") {
+					return {
+						exitCode: 0,
+						stdout: JSON.stringify({ nameWithOwner: "acme/repo" }),
+						stderr: "",
+					};
+				}
+				if (args[1] === "view") {
+					return {
+						exitCode: 0,
+						stdout: JSON.stringify(
+							pullRequest({
+								number: 3,
+								headRefName: "kilo/brawny-olivine",
+								headRefOid: PR_HEAD,
+								mergeCommit: { oid: MERGE },
+								...patch,
+							}),
+						),
+						stderr: "",
+					};
+				}
+				return { exitCode: 1, stdout: "", stderr: `unexpected ${args.join(" ")}` };
+			});
+		}
+
+		it.each([
+			["HEAD contains its head", [`${PR_HEAD}..HEAD`], 3],
+			["HEAD trails its head", [`HEAD..${PR_HEAD}`], 3],
+			["a recreated branch shares none of its history", [], undefined],
+			["HEAD also contains its merge commit", [`${PR_HEAD}..HEAD`, `${MERGE}..HEAD`], undefined],
+		])("is kept only when it is in the checkout's history: %s", async (_, ancestry, number) => {
+			mockMergedByName();
+
+			const snapshot = await snapshotService({ ancestry }).pullRequestSnapshot("/repo");
+
+			expect(snapshot.pullRequest?.number).toBe(number);
+		});
+
+		it("treats a head that is not an object name as unknown instead of passing it to git", async () => {
+			mockMergedByName({ headRefOid: "--output=/tmp/x" });
+
+			await expect(snapshotService().pullRequestSnapshot("/repo")).resolves.toMatchObject({
+				pullRequest: { number: 3 },
+			});
+		});
 	});
 });

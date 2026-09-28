@@ -219,6 +219,35 @@ describe("TerminalSessionManager", () => {
 		await manager.dispose();
 	});
 
+	it("reads a plain-text tail from the live session, then from the saved transcript", async () => {
+		const { args, manager, processes } = await setup();
+		const identity = { sessionId: args.sessionId, terminalId: args.terminalId };
+		await expect(manager.read(identity, 10)).resolves.toBeNull();
+
+		await manager.attach(new FakePort(), args);
+		processes[0]!.emitData("\u001b[32mbuild ok\u001b[0m\r\nwatching 1%\rwatching...\r\n");
+		await expect(manager.read(identity, 1)).resolves.toEqual({
+			status: "running",
+			label: "Terminal 1",
+			cwd: "/workspace",
+			exitCode: null,
+			exitSignal: null,
+			text: "watching...",
+			lineCount: 1,
+			truncated: true,
+		});
+
+		await manager.dispose();
+		await expect(manager.read(identity, 10)).resolves.toMatchObject({
+			status: "closed",
+			label: null,
+			text: "build ok\nwatching...",
+		});
+
+		await manager.close(identity, true);
+		await expect(manager.read(identity, 10)).resolves.toBeNull();
+	});
+
 	it("reports malformed messages and input sent after the shell exits", async () => {
 		const { args, manager, processes } = await setup();
 		const port = new FakePort();

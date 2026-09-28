@@ -80,6 +80,10 @@ import {
 	type RightPanelTab,
 } from "./right-panel/right-panel-store.js";
 import { useSessionActivity } from "./session-activity/SessionActivityProvider.js";
+import {
+	withWorktreeFolder,
+	worktreeDirectoryOf,
+} from "./session-workspace/chat-session-workspace-capability.js";
 import { useWorkspacesFeature } from "../workspaces/WorkspacesFeatureContext.js";
 
 const EMPTY_WORKSPACE_FOLDERS: ChatMarkdownExtensionContext["workspaceFolders"] = [];
@@ -259,10 +263,7 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 		workspaces,
 	};
 	const workspace = resolveChatWorkspace(chatWorkspaceOptions);
-	const worktreeDirectory =
-		sessionActivity?.worktreeBranch !== undefined && sessionActivity.directory !== undefined
-			? sessionActivity.directory
-			: undefined;
+	const worktreeDirectory = worktreeDirectoryOf(sessionActivity);
 	const workspaceDirectory =
 		worktreeDirectory ??
 		workspace?.folders.find((folder) => folder.isPrimary)?.path ??
@@ -273,13 +274,7 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 			workspace?.folders[0]?.path)
 		: undefined;
 	const workspaceFolders = useMemo(
-		() =>
-			worktreeDirectory
-				? [
-						{ path: worktreeDirectory, isPrimary: true },
-						...(workspace?.folders ?? []).filter((folder) => !folder.isPrimary),
-					]
-				: (workspace?.folders ?? EMPTY_WORKSPACE_FOLDERS),
+		() => withWorktreeFolder(workspace?.folders ?? EMPTY_WORKSPACE_FOLDERS, worktreeDirectory),
 		[worktreeDirectory, workspace?.folders],
 	);
 

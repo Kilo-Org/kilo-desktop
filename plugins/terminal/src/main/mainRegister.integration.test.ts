@@ -29,6 +29,16 @@ describe("terminal mainRegister", () => {
 		const manager = {
 			attach: vi.fn(async () => undefined),
 			close: vi.fn(async () => undefined),
+			read: vi.fn(async () => ({
+				status: "running" as const,
+				label: "vite",
+				cwd: "/workspace",
+				exitCode: null,
+				exitSignal: null,
+				text: "ready",
+				lineCount: 1,
+				truncated: false,
+			})),
 			dispose: vi.fn(async () => undefined),
 		} satisfies TerminalManagerLike;
 		mainRegister(mainSdk, { manager });
@@ -66,6 +76,24 @@ describe("terminal mainRegister", () => {
 			{ sessionId: "chat-1", terminalId: "terminal-1" },
 			true,
 		);
+		await expect(
+			router.invoke("terminal", "read", {
+				sessionId: "chat-1",
+				terminalId: "terminal-1",
+				lines: 50,
+			}),
+		).resolves.toMatchObject({ status: "running", text: "ready" });
+		expect(manager.read).toHaveBeenCalledWith(
+			{ sessionId: "chat-1", terminalId: "terminal-1" },
+			50,
+		);
+		await expect(
+			router.invoke("terminal", "read", {
+				sessionId: "chat-1",
+				terminalId: "terminal-1",
+				lines: 5_000,
+			}),
+		).rejects.toMatchObject({ code: "VALIDATION" });
 		expect(mainSdk.plugins.get("terminal")?.[EMBEDDED_WEB_HOST_CAPABILITY]).toEqual({
 			host: "terminal",
 			root: "/plugins/terminal/build/terminal",

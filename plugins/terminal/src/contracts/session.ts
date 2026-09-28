@@ -81,10 +81,32 @@ export const terminalServerMessageSchema = z.discriminatedUnion("type", [
 ]);
 export type TerminalServerMessage = z.infer<typeof terminalServerMessageSchema>;
 
+export const MAX_TERMINAL_READ_LINES = 2_000;
+
+export const terminalReadoutSchema = z.object({
+	/** "closed" when no shell is attached and only the saved transcript remains. */
+	status: terminalStatusSchema,
+	label: terminalLabelSchema.nullable(),
+	cwd: z.string().nullable(),
+	exitCode: z.number().int().nullable(),
+	exitSignal: z.number().int().nullable(),
+	/** Plain text of the last `lines` lines; escape sequences removed. */
+	text: z.string(),
+	lineCount: z.number().int().nonnegative(),
+	truncated: z.boolean(),
+});
+export type TerminalReadout = z.infer<typeof terminalReadoutSchema>;
+
 export const terminalContract = defineContract({
 	close: defineMethod(
 		terminalIdentitySchema.extend({ deleteHistory: z.boolean().optional() }),
 		z.undefined(),
+	),
+	read: defineMethod(
+		terminalIdentitySchema.extend({
+			lines: z.number().int().min(0).max(MAX_TERMINAL_READ_LINES),
+		}),
+		terminalReadoutSchema.nullable(),
 	),
 });
 export type TerminalService = InferContract<typeof terminalContract>;

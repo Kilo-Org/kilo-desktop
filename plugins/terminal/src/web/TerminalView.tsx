@@ -23,10 +23,10 @@ import {
 } from "./terminal-frame-bridge.js";
 import type { ChatRightPanelCapabilities } from "./chat-right-panel.js";
 import { registerTerminalPaneOwner } from "./terminal-pane-owners.js";
+import { TERMINAL_SESSION_METADATA_KEY } from "./tab-metadata.js";
 
 const INITIAL_COLS = 120;
 const INITIAL_ROWS = 30;
-const TERMINAL_SESSION_METADATA_KEY = "terminalSessionId";
 
 function terminalThemeFromApp(appearance: ThemeAppearance, pane: HTMLElement | null) {
 	const styles = getComputedStyle(document.documentElement);

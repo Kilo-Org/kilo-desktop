@@ -11,6 +11,8 @@ import {
 	terminalContract,
 	TERMINAL_SESSION_EXITED,
 	type TerminalConnectionArgs,
+	type TerminalIdentity,
+	type TerminalReadout,
 	type TerminalService,
 } from "../contracts/session.js";
 import { createTerminalCwdResolver } from "./integrations/kilo-workspace-cwd.js";
@@ -24,6 +26,7 @@ export interface TerminalManagerLike {
 		identity: { readonly sessionId: string; readonly terminalId: string },
 		deleteHistory: boolean,
 	): Promise<void>;
+	read(identity: TerminalIdentity, lines: number): Promise<TerminalReadout | null>;
 	dispose(): Promise<void>;
 }
 
@@ -52,6 +55,7 @@ export function mainRegister(mainSdk: MainSdk, options: TerminalFeatureOptions =
 			await manager.close({ sessionId, terminalId }, deleteHistory ?? false);
 			return undefined;
 		},
+		read: ({ sessionId, terminalId, lines }) => manager.read({ sessionId, terminalId }, lines),
 	};
 	mainSdk.channels(terminalContract).handleAll(api);
 

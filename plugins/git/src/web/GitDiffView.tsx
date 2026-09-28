@@ -31,6 +31,7 @@ import { useGitDiffWatcher } from "./use-git-diff-watcher.js";
 import { useInitRepository } from "./use-init-repository.js";
 import { usePaneVisibility } from "./use-pane-visibility.js";
 import { usePatchLoader } from "./use-patch-loader.js";
+import { CHANGES_TAB_METADATA } from "./changes-tab.js";
 
 export interface GitDiffViewProps {
 	readonly sessionId: string;
@@ -129,6 +130,7 @@ export function GitDiffView(props: GitDiffViewProps) {
 	return (
 		<DiffConfigProvider>
 			<GitDiffTabContent
+				metadata={props.metadata}
 				workspaceDirectory={props.workspaceDirectory}
 				workspaceFolders={props.workspaceFolders}
 			/>
@@ -137,9 +139,11 @@ export function GitDiffView(props: GitDiffViewProps) {
 }
 
 function GitDiffTabContent({
+	metadata,
 	workspaceDirectory,
 	workspaceFolders,
 }: {
+	readonly metadata: GitDiffViewProps["metadata"];
 	readonly workspaceDirectory: string;
 	readonly workspaceFolders: GitDiffViewProps["workspaceFolders"];
 }) {
@@ -156,7 +160,21 @@ function GitDiffTabContent({
 	// The user's folder choice is session-only state and must live here
 	// (above the panel group) because the loader re-fetches automatically
 	// when the effective directory (in its effect deps) changes.
-	const [chosenDirectory, setChosenDirectory] = useState(workspaceDirectory);
+	// Reveal requests come from whoever opened this tab (e.g. the
+	// git_changes_open tool) through tab metadata. Each new revealRequest
+	// re-applies its folder choice once; the user's later picks still win.
+	const requestedDirectory = metadata?.[CHANGES_TAB_METADATA.workspaceDirectory];
+	const revealRequest = metadata?.[CHANGES_TAB_METADATA.revealRequest];
+	const revealPath = metadata?.[CHANGES_TAB_METADATA.revealPath];
+	const requestedFolder = folders.some((folder) => folder.path === requestedDirectory)
+		? requestedDirectory
+		: undefined;
+	const [chosenDirectory, setChosenDirectory] = useState(requestedFolder ?? workspaceDirectory);
+	const [appliedRevealRequest, setAppliedRevealRequest] = useState(revealRequest);
+	if (revealRequest !== appliedRevealRequest) {
+		setAppliedRevealRequest(revealRequest);
+		if (requestedFolder) setChosenDirectory(requestedFolder);
+	}
 	// The user's choice wins only while it is still one of the workspace's
 	// folders; once it leaves the list the effective directory falls back
 	// to the workspace directory prop, and the loader re-fetches.
@@ -207,6 +225,7 @@ function GitDiffTabContent({
 		refreshing,
 		toggleItemCollapsed,
 		treeSource,
+		treeSourceDirectory,
 		viewerKey,
 	} = usePatchLoader({
 		collapseMode,
@@ -510,6 +529,9 @@ function GitDiffTabContent({
 						onExpandItem={expandItem}
 						onSelectWorkspaceFolder={setChosenDirectory}
 						onRefresh={refresh}
+						{...(revealPath && revealRequest && treeSourceDirectory === effectiveDirectory
+							? { revealPath, revealRequest }
+							: {})}
 						source={treeSource}
 						treePlaceholder={treePlaceholder}
 						viewerRef={viewerRef}

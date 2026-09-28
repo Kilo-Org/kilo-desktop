@@ -57,6 +57,7 @@ import { KiloMcpAppsHost } from "./runtime/mcp-apps-host.js";
 import { ElectronMcpAppRenderer } from "./components/mcp-apps/ElectronMcpAppRenderer.js";
 import { SessionActivityProvider } from "./session-activity/SessionActivityProvider.js";
 import { createSessionActivityStore } from "./session-activity/session-activity-store.js";
+import { createChatSessionWorkspaceCapability } from "./session-workspace/chat-session-workspace-capability.js";
 import { SessionListViewProvider } from "./session-list/use-session-list-view.js";
 import {
 	readGitDraftSelection,
@@ -287,6 +288,19 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	);
 
 	const sessionActivity = useMemo(() => createSessionActivityStore(), []);
+	const workspacesRef = useRef(workspaces);
+	useEffect(() => {
+		workspacesRef.current = workspaces;
+	}, [workspaces]);
+	useEffect(() => {
+		sdk.plugins.expose(
+			"chatSessionWorkspace",
+			createChatSessionWorkspaceCapability({
+				getSessionActivity: (sessionId) => sessionActivity.getState().sessions[sessionId],
+				getWorkspaces: () => workspacesRef.current,
+			}),
+		);
+	}, [sdk, sessionActivity]);
 
 	const hasWorktreeWorkRef = useRef((input: { directory: string; baseBranch?: string }) =>
 		sdk.client["chat.hasWorktreeWork"](input),

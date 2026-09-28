@@ -82,6 +82,9 @@ interface GitDiffSidebarProps {
 	readonly onExpandItem: (itemId: string) => void;
 	readonly onSelectWorkspaceFolder: (path: string) => void;
 	readonly onRefresh: () => void;
+	/** Changed file to select once it streams into the tree; re-applied per revealRequest. */
+	readonly revealPath?: string;
+	readonly revealRequest?: string;
 	readonly source: GitDiffTreeSource | null;
 	readonly treePlaceholder: string | null;
 	readonly viewerRef: RefObject<CodeViewHandle<undefined, undefined> | null>;
@@ -96,6 +99,8 @@ export function GitDiffSidebar({
 	onExpandItem,
 	onSelectWorkspaceFolder,
 	onRefresh,
+	revealPath,
+	revealRequest,
 	source,
 	treePlaceholder,
 	viewerRef,
@@ -181,6 +186,21 @@ export function GitDiffSidebar({
 			model.setGitStatus(source.gitStatus);
 		}
 	}, [model, source]);
+
+	// Declared after the source effect so the requested path is already in
+	// the model. Selecting routes through onSelectionChange, which expands
+	// and scrolls the code view exactly like a user click.
+	const revealedRequestRef = useRef<string | undefined>(undefined);
+	useEffect(() => {
+		if (!revealPath || !revealRequest || revealedRequestRef.current === revealRequest) return;
+		if (!source?.pathToItemId.has(revealPath)) return;
+		const item = model.getItem(revealPath);
+		if (!item) return;
+		revealedRequestRef.current = revealRequest;
+		for (const selectedPath of model.getSelectedPaths()) model.getItem(selectedPath)?.deselect();
+		item.select();
+		model.scrollToPath(revealPath);
+	}, [model, revealPath, revealRequest, source]);
 
 	useEffect(() => {
 		let active = true;

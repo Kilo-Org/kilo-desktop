@@ -9,10 +9,12 @@ import {
 	terminalClientMessageSchema,
 	type TerminalConnectionArgs,
 	type TerminalIdentity,
+	type TerminalReadout,
 	type TerminalServerMessage,
 	type TerminalStatus,
 } from "../../contracts/session.js";
 import { capHistory, historyPath, sanitizeHistoryChunk } from "./history.js";
+import { terminalTail } from "./plain-text.js";
 import type { PtyAdapter, PtyProcess } from "./pty.js";
 import { inspectForegroundProcess } from "./process-activity.js";
 import {
@@ -164,6 +166,52 @@ export class TerminalSessionManager {
 		this.#broadcast(session, { type: "status", status: "closed" });
 		for (const subscriber of session.subscribers) subscriber.port.close();
 		session.subscribers.clear();
+	}
+
+	/**
+	 * Plain-text tail of a terminal's transcript for agent reads. A terminal
+	 * with no live session (e.g. after an app restart, before its tab mounts)
+	 * reads from its saved transcript as "closed"; a deleted one reads as null.
+	 */
+	async read(identity: TerminalIdentity, lines: number): Promise<TerminalReadout | null> {
+		const key = sessionKey(identity.sessionId, identity.terminalId);
+		let session = this.#sessions.get(key);
+		if (!session) {
+			try {
+				session = await this.#sessionCreations.get(key);
+			} catch {
+				// A failed creation leaves only the saved transcript, read below.
+			}
+		}
+		if (session) {
+			return {
+				status: session.status,
+				label: sessionLabel(session),
+				cwd: session.cwd,
+				exitCode: session.exitCode,
+				exitSignal: session.exitSignal,
+				...terminalTail(session.history, lines),
+			};
+		}
+		if (this.#closedSessionKeys.has(key)) return null;
+		let history: string;
+		try {
+			history = await readFile(
+				historyPath(this.#storageDir, identity.sessionId, identity.terminalId),
+				"utf8",
+			);
+		} catch (error) {
+			if (isMissingFile(error)) return null;
+			throw error;
+		}
+		return {
+			status: "closed",
+			label: null,
+			cwd: null,
+			exitCode: null,
+			exitSignal: null,
+			...terminalTail(capHistory(history), lines),
+		};
 	}
 
 	async dispose(): Promise<void> {

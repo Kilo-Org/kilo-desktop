@@ -41,6 +41,7 @@ import {
 } from "./pane-canvas/default-workspace-files-pane.js";
 import { useSessionActivity } from "./session-activity/SessionActivityProvider.js";
 import type { SessionSummaryInput } from "./session-activity/session-activity-store.js";
+import type { ChatSessionWorkspaceCapabilities } from "./session-workspace/chat-session-workspace-capability.js";
 import {
 	CHAT_RIGHT_PANEL_TAB_EXTENSION,
 	type ChatRightPanelContributionProps,
@@ -2811,6 +2812,39 @@ describe("ChatPage", () => {
 				"data-workspace-folders",
 				"/repo/.kilo/worktrees/kilo-x|/projects/reference",
 			);
+	});
+
+	it("tells other plugins which folders a background session may open", async () => {
+		const { sdk } = renderChatPage({
+			workspaces: [workspace],
+			children: (
+				<StampSessionActivity
+					sessions={[
+						{
+							id: "background-session",
+							directory: "/repo/.kilo/worktrees/kilo-y",
+							workspaceId: workspace.id,
+							worktreeBranch: "kilo/y",
+						},
+					]}
+				/>
+			),
+		});
+		const sessionWorkspace = () =>
+			sdk.plugins.get<ChatSessionWorkspaceCapabilities>("kilo-ui")?.chatSessionWorkspace;
+
+		await vi.waitFor(() => {
+			expect(sessionWorkspace()?.getFolders("background-session")).toEqual([
+				{ path: "/repo/.kilo/worktrees/kilo-y", isPrimary: true },
+			]);
+		});
+		expect(sessionWorkspace()?.resolvePath("background-session", "src/app.ts")).toEqual({
+			workspaceDirectory: "/repo/.kilo/worktrees/kilo-y",
+			relativePath: "src/app.ts",
+		});
+		expect(
+			sessionWorkspace()?.resolvePath("background-session", "/projects/workspace-1/a.ts"),
+		).toBeNull();
 	});
 
 	it("keeps the workspace root for non-worktree sessions", async () => {

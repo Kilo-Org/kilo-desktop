@@ -75,6 +75,17 @@ Namespacing is automatic: `list` becomes `todos.list` internally, and `todos_lis
 
 **Cross-plugin RPC uses `sdk.plugins.expose` / `sdk.plugins.get<T>` — never tools.**
 
+### Chat pane tools
+
+Tools that open content in a chat's pane layout (`notebook_open`, `files_open`, `git_changes_open`, `browser_open`, `terminal_open`) are owned by the plugin that contributes the tab, so each one owns its tab metadata. They share these rules:
+
+- The target chat is `context.kiloSessionId` (the Kilo caller envelope). It is never an argument and never the visually focused chat. A call without it fails.
+- Tabs are opened through kilo-ui's `chatRightPanel` capability.
+- Paths go through kilo-ui's `chatSessionWorkspace` capability. `resolvePath` maps an absolute or primary-relative path onto one of the chat's workspace folders (the worktree stands in for the primary folder), or returns null, so a tool can only show what the chat's own panes could show.
+- The opener tools display content to the user. They never return file or page content, and `terminal_open` takes no command.
+
+`terminal_list` and `terminal_read` are the one read path. They return the calling chat's Terminal tabs and a plain-text tail of a tab's output: the main process's capped transcript with escape sequences removed and carriage-return redraws collapsed (`plugins/terminal/src/main/sessions/plain-text.ts`). Nothing can write to a terminal. Output is untrusted and may contain secrets, and like every tool here it is reachable over the unauthenticated relay.
+
 ---
 
 ## 3. Trust model: internal vs external agents

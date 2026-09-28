@@ -66,6 +66,12 @@ export interface UsePatchLoaderResult {
 	refreshing: boolean;
 	toggleItemCollapsed: (itemId: string) => void;
 	treeSource: GitDiffTreeSource | null;
+	/**
+	 * Directory `treeSource` was built from. Lags `workspaceDirectory` for a
+	 * commit after it changes (the reset runs in an effect), so consumers that
+	 * act on a specific folder's paths must check it.
+	 */
+	treeSourceDirectory: string | null;
 	viewerKey: number;
 }
 
@@ -127,6 +133,7 @@ export function usePatchLoader({
 }: UsePatchLoaderOptions): UsePatchLoaderResult {
 	const [initialItems, setInitialItems] = useState<CodeViewItem<undefined>[]>([]);
 	const [treeSource, setTreeSource] = useState<GitDiffTreeSource | null>(null);
+	const [treeSourceDirectory, setTreeSourceDirectory] = useState<string | null>(null);
 	const [diffStats, setDiffStats] = useState<GitDiffStats | null>(null);
 	const [loadState, setLoadState] = useState<PatchLoadState>("fetching");
 	const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -258,6 +265,7 @@ export function usePatchLoader({
 					setViewerKey(requestId);
 					setInitialItems([]);
 					setTreeSource(null);
+					setTreeSourceDirectory(null);
 					setDiffStats(null);
 					setErrorMessage(null);
 					setErrorStatus(null);
@@ -324,6 +332,7 @@ export function usePatchLoader({
 					lastTreePublishTime = performance.now();
 					setDiffStats({ ...accumulator.diffStats });
 					setTreeSource(snapshotGitDiffTreeSource(accumulator));
+					setTreeSourceDirectory(workspaceDirectory);
 				};
 
 				const publishPendingData = async () => {
@@ -462,9 +471,13 @@ export function usePatchLoader({
 					);
 					viewer?.getInstance()?.setItems(items);
 					setInitialItems(items);
-					setTreeSource(
-						accumulator.items.length > 0 ? snapshotGitDiffTreeSource(accumulator) : null,
-					);
+					if (accumulator.items.length > 0) {
+						setTreeSource(snapshotGitDiffTreeSource(accumulator));
+						setTreeSourceDirectory(workspaceDirectory);
+					} else {
+						setTreeSource(null);
+						setTreeSourceDirectory(null);
+					}
 				} else {
 					await publishPendingData();
 					publishTreeSource();
@@ -493,6 +506,7 @@ export function usePatchLoader({
 				// next to an error panel.
 				setInitialItems([]);
 				setTreeSource(null);
+				setTreeSourceDirectory(null);
 				setDiffStats(null);
 			} finally {
 				// An aborted load (folder switch, unmount) must not clobber
@@ -530,6 +544,7 @@ export function usePatchLoader({
 		refreshing,
 		toggleItemCollapsed,
 		treeSource,
+		treeSourceDirectory,
 		viewerKey,
 	};
 }

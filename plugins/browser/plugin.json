@@ -10,6 +10,14 @@
 		"nav": [],
 		"zones": [
 			{
+				"zone": "kilo-ui/chat-markdown-extension",
+				"id": "web-links",
+				"component": "BrowserMarkdownExtension",
+				"label": "Web links in a Browser tab",
+				"description": "Open web links from chat messages in a Browser tab of the chat.",
+				"priority": 50
+			},
+			{
 				"zone": "kilo-ui/chat-right-panel-tab",
 				"id": "browser",
 				"component": "BrowserView",

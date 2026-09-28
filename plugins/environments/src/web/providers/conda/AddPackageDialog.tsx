@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { useAnacondaSignIn, useSdk, useSdkMutation, useSdkQuery } from "@kilo-desktop/sdk-react";
-import { AnacondaSignInDialog } from "@kilo-desktop/ui/components/anaconda-sign-in-dialog";
+import { useSdk, useSdkMutation, useSdkQuery } from "@kilo-desktop/sdk-react";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Dialog,
@@ -67,7 +66,6 @@ const PREVIEW_DEBOUNCE_MS = 1500;
  */
 export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) {
 	const sdk = useSdk<CondaService>("environments");
-	const signIn = useAnacondaSignIn(sdk);
 	const install = useSdkMutation(sdk, "conda.packages.install", {
 		invalidates: ["conda.packages.list", "conda.repodata.find"],
 	});
@@ -79,7 +77,7 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 	const { selected } = selection;
 
 	const prefixQuery = useSdkQuery(sdk, "conda.envs.prefixOptions");
-	const channels = useChannelSelection(prefixQuery.data?.channels, signIn);
+	const channels = useChannelSelection(prefixQuery.data?.channels);
 	const search = usePackageSearch({
 		sdk,
 		open,
@@ -280,8 +278,6 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 									availableChannels={channels.available}
 									selectedChannels={channels.selected}
 									onToggle={channels.toggle}
-									signedIn={signIn.authenticated}
-									onRequestSignIn={channels.request}
 								/>
 							</div>
 							<PackageResultsTable
@@ -344,14 +340,6 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
-
-			<AnacondaSignInDialog
-				open={channels.signInOpen}
-				onOpenChange={channels.setSignInOpen}
-				onSignIn={() => void channels.completeSignIn()}
-				pending={signIn.signingIn}
-				error={signIn.error}
-			/>
 		</>
 	);
 }

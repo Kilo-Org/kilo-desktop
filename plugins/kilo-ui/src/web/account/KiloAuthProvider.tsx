@@ -93,7 +93,11 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 		await queryClient.invalidateQueries({ queryKey: AUTH_STATUS_KEY });
 		await queryClient.invalidateQueries({ queryKey: PROFILE_KEY });
 		invalidateGatewayCatalogs(queryClient);
-	}, [client, queryClient]);
+		// Re-resolve the main-side session so sdk.auth subscribers (the gated
+		// pages) learn the new Kilo auth state — the device flow completes here,
+		// and nothing else would re-read it until a remount/restart.
+		await sdk.auth.refresh().catch(() => undefined);
+	}, [client, queryClient, sdk.auth]);
 
 	const openExternal = useCallback(
 		(url: string) => {
@@ -268,6 +272,7 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 		() => ({
 			isLoading,
 			connectionUnavailable: isError,
+			canSignIn: client !== null && directory !== undefined,
 			authenticated,
 			profile: authenticated ? (profileQuery.data ?? null) : null,
 			profileError,
@@ -285,7 +290,9 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 		}),
 		[
 			authenticated,
+			client,
 			cancelLogin,
+			directory,
 			deviceAuth,
 			dismissOrgError,
 			isError,

@@ -415,8 +415,8 @@ Never inject another feature's service — that requires importing its types and
 
 ```typescript
 // GOOD — lazy, nullable, no import of the other feature's source
-const auth = mainSdk.plugins.get<AuthCapabilities>("auth");
-const passport = await auth?.authService.getPassport();
+const auth = mainSdk.plugins.get<AuthMainCapability>("auth");
+const apiKey = await auth?.session.getApiKey();
 
 // BAD — direct import of another feature (forbidden)
 import { authService } from "../auth/index.js";

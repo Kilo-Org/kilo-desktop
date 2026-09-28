@@ -184,7 +184,7 @@ export function createFeatureSystem(options: CreateFeatureSystemOptions): Featur
 
 // ─── React context + hooks ─────────────────────────────────────────────────
 
-const FeatureSystemContext = createContext<FeatureSystem | null>(null);
+export const FeatureSystemContext = createContext<FeatureSystem | null>(null);
 
 export function SdkProvider({
 	system,

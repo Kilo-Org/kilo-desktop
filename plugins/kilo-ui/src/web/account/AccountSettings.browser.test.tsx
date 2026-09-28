@@ -3,9 +3,7 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import type { AuthSession, SDK } from "@kilo-desktop/feature-sdk";
 import { SdkProvider } from "@kilo-desktop/sdk-react";
-import { toast } from "@kilo-desktop/ui/components/sonner";
 import { createFakeFeatureSystem, createFakeSdk, type FakeSdk } from "@kilo-desktop/testing";
 
 import { KiloAuthContext, type KiloAuthContextValue } from "./KiloAuthContext.js";
@@ -51,56 +49,15 @@ const signedInProfile: KiloProfileData = {
 	currentOrgId: null,
 };
 
-/**
- * Controllable `sdk.auth` fake: seeds a session, keeps `peek()` in sync with
- * subscriber notifications, and records login/logout calls.
- */
-function makeAuthDelegate(session: AuthSession) {
-	let current = session;
-	const subscribers = new Set<(next: AuthSession) => void>();
-	const emit = () => {
-		for (const fn of [...subscribers]) fn(current);
-	};
-	const login = vi.fn(async () => {
-		current = { status: "authenticated", user: { email: "dev@anaconda.com" } };
-		emit();
-		return current;
-	});
-	const logout = vi.fn(async () => {
-		current = { status: "anonymous" };
-		emit();
-		return current;
-	});
-	const delegate = {
-		subscribe(fn: (next: AuthSession) => void) {
-			subscribers.add(fn);
-			fn(current);
-			return () => {
-				subscribers.delete(fn);
-			};
-		},
-		peek: () => current,
-		getSession: async () => current,
-		refresh: async () => current,
-		login,
-		logout,
-	};
-	return { delegate, login, logout };
-}
-
 function renderPage(
 	input: {
 		auth?: Partial<KiloAuthContextValue>;
-		session?: AuthSession;
-		shellAuth?: Partial<SDK["auth"]>;
 	} = {},
 ) {
 	const auth = idleAuth(input.auth);
 	const track = vi.fn(async () => {});
-	const anaconda = makeAuthDelegate(input.session ?? { status: "anonymous" });
 	const sdk: FakeSdk = createFakeSdk({
 		featureId: "kilo-ui",
-		auth: { ...anaconda.delegate, ...input.shellAuth },
 		telemetry: { track },
 	});
 	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
@@ -114,7 +71,7 @@ function renderPage(
 			</QueryClientProvider>
 		</SdkProvider>,
 	);
-	return { screen: page, auth, anaconda, track };
+	return { screen: page, auth, track };
 }
 
 describe("AccountSettings", () => {
@@ -175,40 +132,6 @@ describe("AccountSettings", () => {
 			.toHaveTextContent("Finish connecting your Kilo account.");
 	});
 
-	it("shows the Anaconda account email and signs out via the shell auth delegate", async () => {
-		const { screen, anaconda, track } = renderPage({
-			session: { status: "authenticated", user: { email: "dev@anaconda.com", username: "dev" } },
-		});
-
-		await expect
-			.element(screen.getByTestId("account-anaconda-email"))
-			.toHaveTextContent("Signed in as dev@anaconda.com");
-		await screen.getByTestId("account-anaconda-sign-out").click();
-		await vi.waitFor(() => expect(anaconda.logout).toHaveBeenCalledTimes(1));
-		expect(track).toHaveBeenCalledWith(expect.objectContaining({ event: "Logged Out" }));
-	});
-
-	it("starts Anaconda sign-in in the browser without a dialog", async () => {
-		const { screen, anaconda } = renderPage();
-
-		await expect
-			.element(screen.getByTestId("account-anaconda-status"))
-			.toHaveTextContent("Not signed in.");
-		await screen.getByTestId("account-anaconda-sign-in").click();
-		await vi.waitFor(() => expect(anaconda.login).toHaveBeenCalledTimes(1));
-		expect(screen.getByTestId("anaconda-sign-in-dialog").query()).toBeNull();
-	});
-
-	it("shows an Anaconda session error reason", async () => {
-		const { screen } = renderPage({
-			session: { status: "error", reason: "Keyring is unavailable." },
-		});
-
-		await expect
-			.element(screen.getByTestId("account-anaconda-status"))
-			.toHaveTextContent("Keyring is unavailable.");
-	});
-
 	it("offers Kilo sign-out when the profile fails to load", async () => {
 		const { screen, auth } = renderPage({
 			auth: { authenticated: true, profile: null, profileError: "Gateway unreachable" },
@@ -242,43 +165,5 @@ describe("AccountSettings", () => {
 			.element(screen.getByTestId("account-kilo-row"))
 			.toHaveAttribute("data-state", "loading");
 		expect(screen.getByTestId("kilo-account-settings").query()).toBeNull();
-	});
-
-	it("loads the Kilo row independently of a slow Anaconda session resolve", async () => {
-		const { screen } = renderPage({
-			shellAuth: { getSession: () => new Promise<AuthSession>(() => {}) },
-		});
-
-		await expect
-			.element(screen.getByTestId("account-kilo-status"))
-			.toHaveTextContent("Not signed in.");
-		await expect
-			.element(screen.getByTestId("account-anaconda-row"))
-			.toHaveAttribute("data-state", "loading");
-	});
-
-	it("recovers when the Anaconda session cannot be resolved", async () => {
-		const { screen } = renderPage({
-			shellAuth: { getSession: async () => Promise.reject(new Error("ipc down")) },
-		});
-
-		await expect
-			.element(screen.getByTestId("account-anaconda-status"))
-			.toHaveTextContent("Not signed in.");
-	});
-
-	it("surfaces a thrown Anaconda sign-in failure instead of an unhandled rejection", async () => {
-		const { screen } = renderPage({
-			shellAuth: { login: async () => Promise.reject(new Error("ipc down")) },
-		});
-
-		await screen.getByTestId("account-anaconda-sign-in").click();
-
-		await vi.waitFor(() => {
-			expect(toast.error).toHaveBeenCalledWith(
-				"Could not sign in",
-				expect.objectContaining({ description: "ipc down" }),
-			);
-		});
 	});
 });

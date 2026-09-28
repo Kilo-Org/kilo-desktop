@@ -15,12 +15,11 @@ import {
 	sdkQueryKey,
 	sdkQueryOptions,
 	SettingsPageHeader,
-	useAnacondaSignIn,
+	useFeatureFlag,
 	useSdk,
 	useSdkMutation,
 	useSdkQuery,
 } from "@kilo-desktop/sdk-react";
-import { AnacondaSignInDialog } from "@kilo-desktop/ui/components/anaconda-sign-in-dialog";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Alert, AlertAction, AlertTitle } from "@kilo-desktop/ui/components/alert";
 import { Button } from "@kilo-desktop/ui/components/button";
@@ -77,6 +76,7 @@ import {
 	STATUS_CHANGED_EVENT,
 } from "../../contracts/events.js";
 import { ConnectionDetails } from "../connections/ConnectionDetails.js";
+import { KiloAuthGate } from "@kilo-desktop/sdk-react";
 import { LocalModelCatalog } from "../catalog/ModelCatalog.js";
 import { ModelCatalogDialogHeader } from "../catalog/ModelCatalogAccess.js";
 import { ModelDetailPane, ModelDetailSkeleton } from "../catalog/ModelDetailPane.js";
@@ -115,18 +115,32 @@ function useCatalogModelId(sdk: ReturnType<typeof useSdk<LocalInferenceServiceCo
 	return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
+/**
+ * LaunchDarkly key hiding the Model Catalog until the unified-auth rework
+ * lands. Off by default: no "From catalog" entry, deep links stay inert, and
+ * the catalog dialog never opens. Force on locally with
+ * `VITE_FEATURE_FLAG_OVERRIDES=local-model-catalog`.
+ */
+const MODEL_CATALOG_FEATURE_FLAG = "local-model-catalog";
+
 export function LocalModelServerSettings() {
+	return (
+		<KiloAuthGate featureId="local-inference" featureName="Local Model Server">
+			<LocalModelServerSettingsContent />
+		</KiloAuthGate>
+	);
+}
+
+function LocalModelServerSettingsContent() {
 	const sdk = useSdk<LocalInferenceServiceContract>("local-inference");
 	const queryClient = useQueryClient();
-	const { authenticated, signingIn, error: signInError, signIn } = useAnacondaSignIn(sdk);
+	const catalogEnabled = useFeatureFlag<boolean>(MODEL_CATALOG_FEATURE_FLAG, false);
 	const modelFileInput = useRef<HTMLInputElement>(null);
 	const modelSaveQueue = useRef(Promise.resolve());
 	const [catalogOpen, setCatalogOpen] = useState(false);
 	const [catalogModel, setCatalogModel] = useState<ModelCatalogEntry>();
 	const catalogModelId = useCatalogModelId(sdk);
 	const [appliedCatalogModelId, setAppliedCatalogModelId] = useState<string>();
-	const [pendingCatalogModel, setPendingCatalogModel] = useState<ModelCatalogEntry | null>();
-	const [signInOpen, setSignInOpen] = useState(false);
 	const [expandedModelIds, setExpandedModelIds] = useState<ReadonlySet<string>>(() => new Set());
 	const [lastExpandedModelId, setLastExpandedModelId] = useState<string>();
 	const [modelSearch, setModelSearch] = useState("");
@@ -143,25 +157,18 @@ export function LocalModelServerSettings() {
 	});
 	const catalogHardware = useQuery({
 		...sdkQueryOptions(sdk, "hardware.profile"),
-		enabled: authenticated && catalogOpen,
+		enabled: catalogEnabled && catalogOpen,
 		retry: false,
 		staleTime: Number.POSITIVE_INFINITY,
 	});
 	const catalogMetadata = useQuery({
 		...sdkQueryOptions(sdk, "catalog.list"),
-		enabled: authenticated && (hasCatalogModels || catalogOpen),
+		// Flag-gated like catalogHardware: without it, a previously
+		// catalog-imported model would still fetch metadata (and show a dead
+		// "View in catalog" affordance) after a flag rollback.
+		enabled: catalogEnabled && (hasCatalogModels || catalogOpen),
 		retry: false,
 		staleTime: 5 * 60 * 1_000,
-	});
-	// `sdk.auth.peek()` reads anonymous until the shell's first resolve lands,
-	// so "anonymous" alone cannot tell a signed-out user from a pending check.
-	// Settling getSession() gives that signal without widening the auth API.
-	const authResolution = useQuery({
-		queryKey: ["local-inference", "auth-session-resolved"],
-		queryFn: () => sdk.auth.getSession(),
-		enabled: !authenticated,
-		retry: false,
-		staleTime: Number.POSITIVE_INFINITY,
 	});
 	const catalogDownloads = useSdkQuery(sdk, "catalog.downloads.list");
 	const start = useSdkMutation(sdk, "runtime.connect", {
@@ -216,46 +223,16 @@ export function LocalModelServerSettings() {
 		};
 	}, [queryClient, sdk]);
 
-	// Losing the session mid-browse must not leave stale catalog data on
-	// screen: close the dialog, drop the selection, and purge the cached
-	// catalog so a later sign-in starts from a fresh fetch.
-	useEffect(() => {
-		if (authenticated) return;
-		setCatalogOpen(false);
-		setCatalogModel(undefined);
-		setPendingCatalogModel(undefined);
-		queryClient.removeQueries({ queryKey: sdkQueryKey(sdk, "catalog.list"), exact: true });
-	}, [authenticated, queryClient, sdk]);
-
 	function openCatalog(model?: ModelCatalogEntry): void {
-		if (!authenticated) {
-			setPendingCatalogModel(model ?? null);
-			setSignInOpen(true);
-			return;
-		}
+		if (!catalogEnabled) return;
 		setCatalogModel(model);
 		setCatalogOpen(true);
 	}
 
-	async function handleSignIn(): Promise<void> {
-		const ok = await signIn();
-		if (!ok) return;
-		setSignInOpen(false);
-		setCatalogModel(pendingCatalogModel ?? undefined);
-		setPendingCatalogModel(undefined);
-		setCatalogOpen(true);
-	}
-
 	useEffect(() => {
-		if (!catalogModelId) return;
-		if (!authenticated) {
-			setPendingCatalogModel(null);
-			setSignInOpen(true);
-			return;
-		}
-		setSignInOpen(false);
+		if (!catalogEnabled || !catalogModelId) return;
 		setCatalogOpen(true);
-	}, [authenticated, catalogModelId]);
+	}, [catalogEnabled, catalogModelId]);
 
 	// Apply a catalogModel deep link during render, in the same pass where
 	// catalog metadata arrives: the details skeleton hands straight over to the
@@ -264,7 +241,7 @@ export function LocalModelServerSettings() {
 	if (appliedCatalogModelId !== catalogModelId) {
 		if (!catalogModelId) {
 			setAppliedCatalogModelId(undefined);
-		} else if (authenticated && catalogMetadata.data) {
+		} else if (catalogMetadata.data) {
 			setAppliedCatalogModelId(catalogModelId);
 			setCatalogModel(catalogMetadata.data.models.find((model) => model.id === catalogModelId));
 		}
@@ -295,11 +272,13 @@ export function LocalModelServerSettings() {
 	const modelRows = models.data ?? [];
 	// Catalog-backed rows wait for catalog metadata (publisher icon,
 	// quantization) so they render once, complete. The skeleton only covers the
-	// first load: once rows have rendered, a later auth change or catalog refetch
-	// updates them in place instead of flashing back to the skeleton.
+	// first load: once rows have rendered, a later catalog refetch updates them
+	// in place instead of flashing back to the skeleton.
+	// catalogMetadata is flag-gated (idle queries report isPending=true forever),
+	// so only count it when the flag is on; otherwise a catalog-imported model
+	// with the flag off would hold the skeleton open and hide the local models.
 	const modelManagementLoading =
-		models.isPending ||
-		(hasCatalogModels && (authenticated ? catalogMetadata.isPending : authResolution.isPending));
+		models.isPending || (catalogEnabled && hasCatalogModels && catalogMetadata.isPending);
 	const [modelListRendered, setModelListRendered] = useState(false);
 	if (!modelManagementLoading && !modelListRendered) setModelListRendered(true);
 	const modelManagementPending = modelManagementLoading && !modelListRendered;
@@ -487,15 +466,17 @@ export function LocalModelServerSettings() {
 							</DropdownMenuTrigger>
 							<DropdownMenuContent align="end" className="min-w-44">
 								<DropdownMenuGroup>
-									<DropdownMenuItem
-										data-qa-id="local-model-server-open-catalog"
-										onClick={() => {
-											openCatalog();
-										}}
-									>
-										<LibraryIcon aria-hidden="true" />
-										From catalog
-									</DropdownMenuItem>
+									{catalogEnabled ? (
+										<DropdownMenuItem
+											data-qa-id="local-model-server-open-catalog"
+											onClick={() => {
+												openCatalog();
+											}}
+										>
+											<LibraryIcon aria-hidden="true" />
+											From catalog
+										</DropdownMenuItem>
+									) : null}
 									<DropdownMenuItem
 										data-qa-id="local-model-server-import-gguf"
 										onClick={() => {
@@ -697,13 +678,6 @@ export function LocalModelServerSettings() {
 					</div>
 				</DialogContent>
 			</Dialog>
-			<AnacondaSignInDialog
-				open={signInOpen}
-				onOpenChange={setSignInOpen}
-				onSignIn={() => void handleSignIn()}
-				pending={signingIn}
-				error={signInError}
-			/>
 			<AlertDialog
 				open={modelPendingDeletion !== undefined}
 				onOpenChange={(open) => {

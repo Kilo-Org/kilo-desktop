@@ -5,8 +5,6 @@ export interface ChannelPresentation {
 	title: string;
 	badge?: string;
 	description: string;
-	/** Selecting this channel requires an Anaconda sign-in and ToS acceptance. */
-	requiresSignIn: boolean;
 }
 
 export const CONDA_FORGE_CHANNEL = "conda-forge";
@@ -54,8 +52,7 @@ export function getChannelPresentation(channel: string): ChannelPresentation {
 		return {
 			kind: "conda-forge",
 			title: CONDA_FORGE_CHANNEL,
-			description: "Community-maintained, open-source. No sign-in needed.",
-			requiresSignIn: false,
+			description: "Community-maintained, open-source.",
 		};
 	}
 	if (isAnacondaChannel(channel)) {
@@ -63,24 +60,17 @@ export function getChannelPresentation(channel: string): ChannelPresentation {
 			kind: "anaconda",
 			title: "Anaconda",
 			badge: "Main",
-			description: "Secure, vetted packages. Requires Anaconda sign-in and ToS acceptance.",
-			requiresSignIn: true,
+			description: "Secure, vetted packages hosted by Anaconda.",
 		};
 	}
 	return {
 		kind: "other",
 		title: channel,
 		description: "Configured in your conda settings.",
-		requiresSignIn: false,
 	};
 }
 
-/**
- * Initial channel selection for the create dialog. Signed-out users never get
- * Anaconda channels pre-selected — picking one is an explicit, sign-in-gated
- * action through the channel chooser.
- */
-export function defaultChannelSelection(channels: string[], authenticated: boolean): string[] {
-	if (authenticated) return channels;
-	return channels.filter((channel) => !getChannelPresentation(channel).requiresSignIn);
+/** Initial channel selection: every offered channel. */
+export function defaultChannelSelection(channels: string[]): string[] {
+	return channels;
 }

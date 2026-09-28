@@ -91,6 +91,9 @@ describe("LocalModelServerSettings", () => {
 			{ getPathForFile: (file) => `/models/${file.name}` },
 		);
 		const screen = page.elementLocator(baseElement);
+		// The auth gate renders content only after its refresh resolves; wait for
+		// a real piece of it before poking at the hidden file input.
+		await expect.element(screen.getByRole("button", { name: "Add model" })).toBeVisible();
 		const picker = baseElement.querySelector<HTMLInputElement>(
 			"[data-qa-id='local-model-server-file']",
 		);
@@ -182,58 +185,6 @@ describe("LocalModelServerSettings", () => {
 		await expect
 			.element(dialog.getByRole("region", { name: "Model details" }))
 			.not.toBeInTheDocument();
-	});
-
-	it("prompts for Anaconda sign-in when opening the catalog while signed out", async () => {
-		let session: AuthSession = { status: "anonymous" };
-		const listeners = new Set<(next: AuthSession) => void>();
-		const listCatalog = vi.fn(async () => ({ models: [], total: 0 }));
-		const getHardware = vi.fn(async () => hardwareProfile);
-		const login = vi.fn(async (): Promise<AuthSession> => {
-			session = {
-				status: "authenticated",
-				user: { email: "test@example.com" },
-			};
-			for (const listener of listeners) listener(session);
-			return session;
-		});
-		const { baseElement } = renderSettings(
-			{
-				"catalog.list": listCatalog,
-				"hardware.profile": getHardware,
-				"status.get": async () => ({ status: "ready", loadedModelIds: [] }),
-				"usage.get": async () => usageSnapshot,
-			},
-			{},
-			{
-				subscribe(listener) {
-					listeners.add(listener);
-					listener(session);
-					return () => listeners.delete(listener);
-				},
-				peek: () => session,
-				login,
-			},
-		);
-		const screen = page.elementLocator(baseElement);
-
-		await screen.getByRole("button", { name: "Add model" }).click();
-		await page.getByRole("menuitem", { name: "From catalog" }).click();
-
-		const modal = page.getByTestId("anaconda-sign-in-dialog");
-		await expect.element(modal).toBeVisible();
-		expect(listCatalog).not.toHaveBeenCalled();
-		expect(getHardware).not.toHaveBeenCalled();
-
-		await modal.getByTestId("anaconda-sign-in-submit").click();
-
-		expect(login).toHaveBeenCalledOnce();
-		await expect.element(modal).not.toBeInTheDocument();
-		const dialog = page.getByRole("dialog", { name: "Local Model Catalog" });
-		await expect.element(dialog).toBeVisible();
-		await expect.element(dialog.getByText("No models available")).toBeVisible();
-		expect(listCatalog).toHaveBeenCalledOnce();
-		expect(getHardware).toHaveBeenCalledOnce();
 	});
 
 	it("closes the catalog when the session is lost while browsing", async () => {

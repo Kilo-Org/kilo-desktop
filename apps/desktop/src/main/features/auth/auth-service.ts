@@ -1,133 +1,142 @@
 import isEqual from "lodash/isEqual.js";
-import memoize from "lodash/memoize.js";
 
 import { Keyring } from "./keyring/keyring.js";
-import { login as oauthLogin, type LoginDependencies } from "./oauth/oauth-flow.js";
 
 import type { AuthSession } from "@kilo-desktop/contracts";
 
 import {
-	exchangeForApiKey,
-	getUserPassport,
-	passportToUser,
-	whoamiResponseSchema,
-	type UserInfoAttribute,
-	type UserInfoOrganization,
-	type UserInfoPassport,
-} from "./actions.js";
-import { primarySubscriptionFromAttributes, type UserSubscription } from "./utils.js";
-import { startLoopbackAuthorize, electronFetch } from "./oauth/callback-server.js";
-import {
 	resolveSite,
-	buildOAuthConfig,
 	DEFAULT_DOMAIN,
 	type ConfigLoader,
 	type ResolvedSite,
 } from "./config/site.js";
-import type {
-	AuthLogger,
-	KeyringHandle,
-	LoopbackAuthorizer,
-	OAuthConfig,
-	OAuthFetch,
-} from "./types.js";
+import type { AuthLogger, KeyringHandle } from "./types.js";
 import { createLogger } from "../../platform/logger.js";
-
-export type SiteResolver = (loader?: ConfigLoader) => Promise<ResolvedSite>;
 
 /** Module-level default logger; the constructor accepts an override for tests. */
 const defaultLogger = createLogger("auth");
 
+export type SiteResolver = (loader?: ConfigLoader) => Promise<ResolvedSite>;
 export type KeyringLoader = (site: ResolvedSite) => Promise<KeyringHandle>;
 
-/** Runs the OAuth PKCE flow; matches `./oauth/oauth-flow.js`'s `login`. */
-export type OAuthLogin = typeof oauthLogin;
+/** Kilo gateway `/kilo/profile` payload (fields the session identity needs). */
+interface KiloProfile {
+	profile?: {
+		email?: string;
+		name?: string;
+		organizations?: Array<{ id: string; name: string; role: string }>;
+		selectedOrganizationId?: string;
+	};
+	currentOrgId?: string | null;
+}
 
-/** Starts the loopback callback server for the given site domain. */
-export type AuthorizeServerFactory = (domain: string) => Promise<LoopbackAuthorizer>;
+/**
+ * Main-side reader for the Kilo sidecar's auth state. Resolves the connection
+ * lazily (the sidecar spawns on demand) and reads `auth-status`/`profile`
+ * request/response — there is no push signal for Kilo auth (see the event
+ * catalogue), so identity is always read fresh per resolution and any failure
+ * degrades to anonymous rather than a stale signed-in identity.
+ */
+export interface KiloIdentityReader {
+	getIdentity(): Promise<{ email?: string; org?: { id?: string; name?: string } } | null>;
+	isAuthenticated(): Promise<boolean>;
+	/**
+	 * Whether the identity source can currently be reached. When false, an
+	 * anonymous result is transient (boot race) and must not be cached — a later
+	 * getSession() should re-resolve rather than serve a stale anonymous.
+	 */
+	available(): Promise<boolean>;
+}
 
-/** Exchanges an access token for an API key; matches `./actions.js`. */
-export type ApiKeyExchanger = (
-	domain: string,
-	accessToken: string,
-	fetchImpl: OAuthFetch,
-	userAgent: string,
-) => Promise<string>;
+/** The kilo-server sidecar connection. */
+export interface SidecarConnection {
+	baseUrl: string;
+	password: string;
+}
 
-export type UserPassportFetcher = typeof getUserPassport;
+/**
+ * Builds the default Kilo identity reader over an injected connection resolver.
+ * The resolver is injected (rather than read from the feature registry here)
+ * so this module has no Electron/Sentry import chain and stays unit-testable.
+ * Every read is fresh; failures throw so callers degrade to anonymous.
+ */
+export function createKiloIdentityReader(
+	getConnection: () => Promise<SidecarConnection | null>,
+	fetchImpl: (input: string, init?: { headers?: Record<string, string> }) => Promise<Response>,
+): KiloIdentityReader {
+	const fetchJson = async <T>(path: string): Promise<T | null> => {
+		const connection = await getConnection();
+		if (!connection) return null;
+		const auth = Buffer.from(`kilo:${connection.password}`).toString("base64");
+		const response = await fetchImpl(`${connection.baseUrl}${path}`, {
+			headers: { Authorization: `Basic ${auth}` },
+		});
+		if (!response.ok) return null;
+		return (await response.json()) as T;
+	};
+	return {
+		async available() {
+			return (await getConnection()) !== null;
+		},
+		async isAuthenticated() {
+			const status = await fetchJson<{ authenticated?: boolean }>("/kilo/auth-status");
+			return status?.authenticated === true;
+		},
+		async getIdentity() {
+			const payload = await fetchJson<KiloProfile>("/kilo/profile");
+			const profile = payload?.profile;
+			if (!profile) return null;
+			const result: { email?: string; org?: { id?: string; name?: string } } = {};
+			if (profile.email) result.email = profile.email;
+			// currentOrgId / selectedOrganizationId name the current org; map it to
+			// the matching entry in organizations[] for id+name.
+			const orgId = payload?.currentOrgId ?? profile.selectedOrganizationId;
+			const org = orgId ? profile.organizations?.find((o) => o.id === orgId) : undefined;
+			if (org) result.org = { id: org.id, name: org.name };
+			return result;
+		},
+	};
+}
 
 export interface AuthSessionServiceOptions {
-	fetch?: OAuthFetch;
 	resolveSite?: SiteResolver;
 	configLoader?: ConfigLoader;
 	loadKeyring?: KeyringLoader;
-	login?: OAuthLogin;
-	createAuthorizeServer?: AuthorizeServerFactory;
-	exchangeForApiKey?: ApiKeyExchanger;
-	getUserPassport?: UserPassportFetcher;
-	userAgent?: string;
+	kiloIdentity: KiloIdentityReader;
 	logger?: AuthLogger;
 }
 
 const ANONYMOUS: AuthSession = { status: "anonymous" };
 
 /**
- * Resolves and caches the current Anaconda session by reading the API key from
- * the keyring and fetching the passport (`whoami`). Passive only — no login /
- * logout. `fetch`, site resolution, and keyring loading are injectable for
- * tests; failures degrade to `anonymous`/`error` and never throw to callers.
+ * The app session. Identity comes from the Kilo gateway (sidecar
+ * `auth-status`/`profile`); the Anaconda keyring is retained purely as a
+ * credential store for the Anaconda API key (`getApiKey`/`getSiteDomain`),
+ * used by channel-backed fetches. Passive only — login/logout are driven by
+ * the renderer's Kilo gate and are not owned here. Resolution failures degrade
+ * to `anonymous`/`error` and never throw to callers.
  */
 export class AuthSessionService {
 	#session: AuthSession = ANONYMOUS;
 	#resolved = false;
+	// True when the last anonymous resolution happened because the sidecar
+	// connection wasn't up yet (boot race) — such a result must not be cached,
+	// or telemetry/flags read anonymous forever after the sidecar comes up.
+	#resolvedWithoutConnection = false;
 	#inFlight: Promise<AuthSession> | undefined;
-	#lastApiKey: string | null = null;
 	readonly #listeners = new Set<(session: AuthSession) => void>();
 
-	readonly #fetch: OAuthFetch;
 	readonly #resolveSite: SiteResolver;
 	readonly #configLoader: ConfigLoader | undefined;
 	readonly #loadKeyring: KeyringLoader;
-	readonly #login: OAuthLogin;
-	readonly #createAuthorizeServer: AuthorizeServerFactory;
-	readonly #exchangeForApiKey: ApiKeyExchanger;
-	readonly #userPassportAction: UserPassportFetcher;
-	readonly #userAgent: string;
+	readonly #kiloIdentity: KiloIdentityReader;
 	readonly #logger: AuthLogger;
 
-	/**
-	 * Memoized userinfo passport; cache cleared whenever the session changes.
-	 * A rejected fetch is evicted rather than cached so a transient failure does
-	 * not stick for the rest of the session — the next call retries. All
-	 * passport-derived accessors (`getUserInfo`, `getOrganizations`,
-	 * `getSubscription`) share this single cache entry.
-	 */
-	readonly #passport = memoize(async (): Promise<UserInfoPassport> => {
-		const apiKey = await this.getApiKey();
-		if (!apiKey) return {};
-		try {
-			const site = await this.#resolveSite(this.#configLoader);
-			return await this.#userPassportAction(site.domain, apiKey, this.#fetch, this.#userAgent);
-		} catch (cause) {
-			// Do not cache a transient failure: evict this rejected entry so the
-			// next getUserInfo()/getSubscription()/getOrganizations() retries once
-			// connectivity returns.
-			this.#passport.cache.delete?.(undefined);
-			throw cause;
-		}
-	});
-
-	constructor(options: AuthSessionServiceOptions = {}) {
-		this.#fetch = options.fetch ?? electronFetch;
+	constructor(options: AuthSessionServiceOptions) {
 		this.#resolveSite = options.resolveSite ?? resolveSite;
 		this.#configLoader = options.configLoader;
 		this.#loadKeyring = options.loadKeyring ?? ((site) => Keyring.load(site));
-		this.#login = options.login ?? oauthLogin;
-		this.#createAuthorizeServer =
-			options.createAuthorizeServer ?? ((domain) => startLoopbackAuthorize({ domain }));
-		this.#exchangeForApiKey = options.exchangeForApiKey ?? exchangeForApiKey;
-		this.#userPassportAction = options.getUserPassport ?? getUserPassport;
-		this.#userAgent = options.userAgent ?? "kilo-desktop";
+		this.#kiloIdentity = options.kiloIdentity;
 		this.#logger = options.logger ?? defaultLogger;
 	}
 
@@ -137,7 +146,7 @@ export class AuthSessionService {
 	}
 
 	/**
-	 * Retrieve the currently stored API key from the keyring.
+	 * Retrieve the currently stored Anaconda API key from the keyring.
 	 * Returns `null` when there is no key or the keyring is unavailable.
 	 * This method is main-process-only; the key never crosses to the renderer.
 	 */
@@ -152,8 +161,7 @@ export class AuthSessionService {
 	}
 
 	/**
-	 * The resolved Anaconda site host (e.g. `stage.anaconda.com`, or
-	 * `host:port` for self-hosted), used by consumers to derive per-site API
+	 * The resolved Anaconda site host, used by consumers to derive per-site API
 	 * URLs. Falls back to the default domain (`anaconda.com`) when the config
 	 * cannot be resolved. This method is main-process-only.
 	 */
@@ -168,8 +176,19 @@ export class AuthSessionService {
 		}
 	}
 
-	/** Resolve lazily; subsequent calls return the cached value. */
+	/**
+	 * Resolve lazily; subsequent calls return the cached value — except when the
+	 * cached result is anonymous *and* the identity source wasn't reachable at
+	 * resolution time (the sidecar spawns after features prepare). Such a
+	 * boot-time anonymous is transient, so we re-resolve on the next call.
+	 */
 	async getSession(): Promise<AuthSession> {
+		if (this.#resolved && !this.#resolvedWithoutConnection) return this.#session;
+		if (this.#resolvedWithoutConnection && (await this.#kiloIdentity.available())) {
+			// The source is up now — discard the transient boot result.
+			this.#resolved = false;
+			this.#resolvedWithoutConnection = false;
+		}
 		if (this.#resolved) return this.#session;
 		return this.#resolve();
 	}
@@ -181,115 +200,20 @@ export class AuthSessionService {
 	}
 
 	/**
-	 * OIDC userinfo passport attributes for the current session, memoized until
-	 * the session changes. Empty list when anonymous or when the passport is
-	 * genuinely empty. Rejects on a transient fetch failure (not cached), so a
-	 * subsequent call retries.
-	 */
-	async getUserInfo(): Promise<UserInfoAttribute[]> {
-		return (await this.#passport()).attributes ?? [];
-	}
-
-	/**
-	 * Organizations the authenticated user belongs to. Empty list when anonymous
-	 * or when the passport carries no organizations. Shares the memoized
-	 * passport cache with `getUserInfo`/`getSubscription`; propagates a
-	 * transient fetch rejection.
-	 */
-	async getOrganizations(): Promise<UserInfoOrganization[]> {
-		return (await this.#passport()).organizations ?? [];
-	}
-
-	/**
-	 * The resolved primary subscription tier for the current session. Single
-	 * shared entry point for consumers (feature flags, telemetry) so the tier is
-	 * derived once from userinfo attributes rather than duplicated per consumer.
-	 * Propagates a userinfo fetch rejection; consumers guard with `.catch`.
-	 */
-	async getSubscription(): Promise<UserSubscription> {
-		return primarySubscriptionFromAttributes(await this.getUserInfo());
-	}
-
-	/**
-	 * Run the interactive OAuth login: open the browser, exchange the returned
-	 * access token for an API key, persist it to the keyring, then re-resolve
-	 * the session (emitting `auth:changed`). User-initiated, so it does NOT go
-	 * through the `refresh()` in-flight dedupe. Failures never throw across the
-	 * IPC boundary — they resolve to an `error` session.
+	 * Login is not owned by main — the renderer's Kilo gate drives the device
+	 * flow against the sidecar. This re-resolves the session so a caller that
+	 * lands here (e.g. a stale sign-in prompt) reflects the current Kilo state.
 	 */
 	async login(): Promise<AuthSession> {
-		try {
-			const site = await this.#resolveSite(this.#configLoader);
-			const baseConfig = buildOAuthConfig(site);
-			if (!baseConfig.clientId) {
-				return {
-					status: "error",
-					reason: "No OAuth client ID configured (set VITE_AUTH_CLIENT_ID or site.client_id).",
-				};
-			}
-
-			// Start the loopback callback server first: it owns the concrete
-			// `redirect_uri` (host/port it actually bound to), which must match the
-			// value baked into the authorization URL and registered with the client.
-			const authorizer = await this.#createAuthorizeServer(site.domain);
-			const oauthConfig: OAuthConfig = { ...baseConfig, redirectUrl: authorizer.redirectUrl };
-
-			this.#logger.info(
-				`login: domain=${oauthConfig.domain} redirectUrl=${oauthConfig.redirectUrl}` +
-					`${oauthConfig.issuerUrl ? ` issuer=${oauthConfig.issuerUrl}` : ""}`,
-			);
-
-			const tokens = await this.#login(oauthConfig, {
-				authorize: authorizer.authorize,
-				// `OAuthFetch` (native `RequestInit`) is structurally compatible with
-				// openid-client's `CustomFetch`; the only nominal gap is `body`
-				// including `undefined`, which `exactOptionalPropertyTypes` rejects.
-				fetch: this.#fetch as LoginDependencies["fetch"],
-			});
-			this.#logger.info("login: received access token, exchanging for API key…");
-
-			const apiKey = await this.#exchangeForApiKey(
-				site.domain,
-				tokens.access_token,
-				this.#fetch,
-				this.#userAgent,
-			);
-
-			const keyring = await this.#loadKeyring(site);
-			if (!keyring.writable) {
-				return { status: "error", reason: "Keyring is read-only; cannot persist API key." };
-			}
-			await keyring.saveToken({ api_key: apiKey });
-			this.#logger.info("login: API key saved to keyring");
-		} catch (cause) {
-			// Login is fire-and-forget across IPC (returns an error session rather
-			// than throwing), so log the underlying cause here — otherwise the
-			// failure is invisible in the main-process log.
-			this.#logger.error("login failed:", cause);
-			return { status: "error", reason: errorReason(cause) };
-		}
-
 		return this.refresh();
 	}
 
-	/** Delete the persisted API key and publish an anonymous session. */
+	/**
+	 * Logout is not owned by main either (the Kilo gate signs out via the
+	 * sidecar). Re-resolve so the published session drops to anonymous.
+	 */
 	async logout(): Promise<AuthSession> {
-		try {
-			const site = await this.#resolveSite(this.#configLoader);
-			const keyring = await this.#loadKeyring(site);
-			if (!keyring.writable) {
-				return { status: "error", reason: "Keyring is read-only; cannot delete API key." };
-			}
-			await keyring.deleteToken();
-			this.#logger.info("logout: API key deleted from keyring");
-		} catch (cause) {
-			this.#logger.error("logout failed:", cause);
-			return { status: "error", reason: errorReason(cause) };
-		}
-
-		this.#resolved = true;
-		this.#commit(ANONYMOUS, null);
-		return ANONYMOUS;
+		return this.refresh();
 	}
 
 	/** Subscribe to session transitions. Returns an unsubscribe function. */
@@ -313,75 +237,55 @@ export class AuthSessionService {
 	}
 
 	async #doResolve(): Promise<AuthSession> {
-		const { session: next, apiKey } = await this.#computeSession();
+		const next = await this.#computeSession();
 		this.#resolved = true;
-		this.#commit(next, apiKey);
+		this.#commit(next);
 		return next;
 	}
 
-	async #computeSession(): Promise<{ session: AuthSession; apiKey: string | null }> {
-		let site: ResolvedSite;
+	async #computeSession(): Promise<AuthSession> {
+		let authenticated: boolean;
 		try {
-			site = await this.#resolveSite(this.#configLoader);
+			authenticated = await this.#kiloIdentity.isAuthenticated();
 		} catch (cause) {
-			return { session: { status: "error", reason: errorReason(cause) }, apiKey: null };
-		}
-
-		let apiKey: string | null;
-		try {
-			const keyring = await this.#loadKeyring(site);
-			apiKey = await keyring.getApiKey();
-		} catch {
-			// Keyring unavailable → treat as no session rather than crashing.
-			return { session: ANONYMOUS, apiKey: null };
-		}
-
-		if (!apiKey) return { session: ANONYMOUS, apiKey: null };
-
-		return { session: await this.#fetchSession(site, apiKey), apiKey };
-	}
-
-	async #fetchSession(site: ResolvedSite, apiKey: string): Promise<AuthSession> {
-		const url = `https://${site.domain}/api/auth/sessions/whoami`;
-
-		let response: Response;
-		try {
-			response = await this.#fetch(url, {
-				method: "GET",
-				headers: { Authorization: `Bearer ${apiKey}` },
-			});
-		} catch (cause) {
-			return { status: "error", reason: errorReason(cause) };
-		}
-
-		// Invalid/expired key → anonymous (drop the in-memory key; keep keyring).
-		if (response.status === 401 || response.status === 403) {
+			this.#logger.warn(`isAuthenticated read failed: ${errorReason(cause)}`);
+			// A throw (sidecar metadata resolved but the socket isn't listening yet,
+			// request timed out) is the same transient boot race as an explicit
+			// "not available" — flag it so getSession() re-resolves once the
+			// sidecar is up instead of caching this anonymous forever.
+			this.#resolvedWithoutConnection = true;
 			return ANONYMOUS;
 		}
-		if (!response.ok) {
-			return { status: "error", reason: `whoami request failed (${response.status})` };
+		if (!authenticated) {
+			// Anonymous because the source was unreachable (boot race) is
+			// transient — flag it so getSession() re-resolves once the sidecar
+			// is up instead of serving a cached anonymous to telemetry/flags.
+			this.#resolvedWithoutConnection = !(await this.#kiloIdentity.available().catch(() => false));
+			return ANONYMOUS;
 		}
+		this.#resolvedWithoutConnection = false;
 
 		try {
-			const payload = whoamiResponseSchema.parse(await response.json());
-			return { status: "authenticated", user: passportToUser(payload) };
+			const identity = await this.#kiloIdentity.getIdentity();
+			const email = identity?.email;
+			if (email === undefined || email === "") return ANONYMOUS;
+			const user: { email: string; org?: { id?: string; name?: string } } = { email };
+			if (identity?.org) user.org = identity.org;
+			return { status: "authenticated", user };
 		} catch (cause) {
+			// A transient /kilo/profile failure after a successful isAuthenticated()
+			// is the same transient class as the boot race — flag it so getSession()
+			// re-resolves once the sidecar recovers instead of pinning the session
+			// at "error" for the process lifetime.
+			this.#resolvedWithoutConnection = true;
 			return { status: "error", reason: errorReason(cause) };
 		}
 	}
 
-	#commit(next: AuthSession, apiKey?: string | null): void {
-		const sessionChanged = !isEqual(this.#session, next);
-		const keyChanged = apiKey !== undefined && apiKey !== this.#lastApiKey;
-		if (apiKey !== undefined) this.#lastApiKey = apiKey;
+	#commit(next: AuthSession): void {
+		if (isEqual(this.#session, next)) return;
 		this.#session = next;
-		if (sessionChanged || keyChanged) {
-			// Clear the passport (userinfo) cache only when the session
-			// identity itself changed — a bare key rotation preserves the
-			// user, so cached passport attributes are still valid.
-			if (sessionChanged) this.#passport.cache.clear?.();
-			for (const listener of this.#listeners) listener(next);
-		}
+		for (const listener of this.#listeners) listener(next);
 	}
 }
 

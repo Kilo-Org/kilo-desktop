@@ -1,6 +1,6 @@
 import electronDebug from "electron-debug";
 import { shellEnv } from "shell-env";
-import { nativeTheme, session } from "electron";
+import { nativeTheme, net, session } from "electron";
 import { writeFile } from "node:fs/promises";
 
 import type { IpcHandlers } from "@kilo-desktop/contracts";
@@ -13,6 +13,7 @@ import {
 	createFeatureHandlers,
 	createFeatureMessageHandlers,
 	createFeaturePortHandlers,
+	featureRouter,
 } from "./features/registry/feature-registry.js";
 import { collectEmbeddedHosts } from "./features/registry/embedded-hosts.js";
 import { FEATURES } from "./features/registry/features.js";
@@ -22,7 +23,11 @@ import {
 	PLUGIN_PROTOCOL_SCHEMES,
 } from "./features/registry/bundled-plugin-manifests.js";
 import { registerAuthCapability } from "./features/auth/auth-capability-bridge.js";
-import { AuthSessionService } from "./features/auth/auth-service.js";
+import {
+	AuthSessionService,
+	createKiloIdentityReader,
+	type KiloIdentityReader,
+} from "./features/auth/auth-service.js";
 import { createAuthHandlers } from "./features/auth/handlers.js";
 import { createFeatureFlagHandlers, FeatureFlagService } from "./features/feature-flag/index.js";
 import { registerFeatureFlagCapability } from "./features/feature-flag/feature-flag-capability-bridge.js";
@@ -59,6 +64,22 @@ import { flushSentry, identifySentryUser } from "./platform/sentry.js";
 import * as Sentry from "@sentry/electron/main";
 import { getProductionRendererRoot, getWebDevServerUrl } from "./platform/webDevServer.js";
 
+/**
+ * Test-seam identity override, available **only** in binaries built for e2e
+ * (`VITE_KILO_E2E_AUTH=1`, baked in by `package:e2e`). When present, the app
+ * skips the host Kilo credential store and reports a fixed signed-in identity,
+ * clearing the page-level KiloAuthGate without a real device flow. A production
+ * binary has no `VITE_KILO_E2E_AUTH`, so this is inert there.
+ */
+function testAuthIdentity(): KiloIdentityReader | null {
+	if (import.meta.env.VITE_KILO_E2E_AUTH !== "1") return null;
+	return {
+		available: async () => true,
+		isAuthenticated: async () => true,
+		getIdentity: async () => ({ email: "e2e@kilo.dev" }),
+	};
+}
+
 export class Application {
 	readonly #app = new ElectronApp();
 	readonly #protocol = new ElectronProtocol();
@@ -73,7 +94,24 @@ export class Application {
 		featureFsSandboxDir(this.#app.getPath("userData"), featureId),
 	);
 	readonly #auth = new AuthSessionService({
-		userAgent: `kilo-desktop/${this.#app.metadata.appVersion}`,
+		// Packaged e2e supplies a test identity (see testAuthIdentity above); the
+		// app then skips the host Kilo credential store and reports that identity as
+		// signed in, clearing the page-level KiloAuthGate without a real device flow.
+		kiloIdentity:
+			testAuthIdentity() ??
+			createKiloIdentityReader(async () => {
+				const cap = featureRouter.capabilityRegistry.get("kilo-server") as {
+					connectionService?: {
+						getConnection(): Promise<{ baseUrl: string; password: string }>;
+					};
+				} | null;
+				if (!cap?.connectionService) return null;
+				try {
+					return await cap.connectionService.getConnection();
+				} catch {
+					return null;
+				}
+			}, net.fetch.bind(net)),
 	});
 	#preferences: PreferencesStore | undefined;
 	// Restore the source before creating windows; read its persisted palette on every paint.

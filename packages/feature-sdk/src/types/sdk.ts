@@ -562,6 +562,7 @@ export interface AuthUser {
 	email?: string | undefined;
 	firstName?: string | undefined;
 	lastName?: string | undefined;
+	org?: { id?: string | undefined; name?: string | undefined } | undefined;
 }
 
 /**

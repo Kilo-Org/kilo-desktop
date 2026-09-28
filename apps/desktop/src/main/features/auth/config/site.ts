@@ -1,6 +1,4 @@
 import { AnacondaConfig, type AnacondaAuthSite, type AnacondaConfigData } from "./config.js";
-import { DEFAULT_REDIRECT_URL } from "../constants.js";
-import type { OAuthConfig } from "../types.js";
 
 export const DEFAULT_DOMAIN = "anaconda.com";
 
@@ -81,18 +79,4 @@ export async function resolveSite(loader: ConfigLoader = defaultLoader): Promise
 
 	const merged: AnacondaAuthSite = { ...pluginAuth, ...siteConfig };
 	return { ...merged, domain: merged.domain ?? DEFAULT_DOMAIN };
-}
-
-/**
- * Builds the OAuth config for a resolved site. The client id comes from the
- * site config, then the environment-specific value injected by Vite. A missing
- * value is rejected by the Vite build and guarded again by the auth service.
- */
-export function buildOAuthConfig(site: ResolvedSite): OAuthConfig {
-	return {
-		domain: site.domain,
-		clientId: site.client_id?.trim() || import.meta.env.VITE_AUTH_CLIENT_ID?.trim() || "",
-		redirectUrl: site.redirect_uri ?? DEFAULT_REDIRECT_URL,
-		...(site.auth_domain_override ? { issuerUrl: `https://${site.auth_domain_override}` } : {}),
-	};
 }

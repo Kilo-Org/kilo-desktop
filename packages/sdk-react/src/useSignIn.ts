@@ -2,7 +2,7 @@ import { useCallback, useSyncExternalStore, useState } from "react";
 
 import type { AuthSession, SDK } from "@kilo-desktop/feature-sdk";
 
-export interface AnacondaSignIn {
+export interface SignIn {
 	/** Latest auth session; resolves lazily so anonymous may briefly show first. */
 	session: AuthSession;
 	/** True when `session.status` is `"authenticated"`. */
@@ -12,19 +12,19 @@ export interface AnacondaSignIn {
 	/** Reason string from a failed login attempt, cleared on retry. */
 	error: string | undefined;
 	/**
-	 * Run the Anaconda OAuth login. Resolves `true` only when the session
+	 * Run the current identity provider's sign-in flow (Kilo). Resolves `true` only when the session
 	 * ended up authenticated; failures populate `error` instead of throwing.
 	 */
 	signIn(): Promise<boolean>;
 }
 
 /**
- * Drive the Anaconda sign-in flow for a feature renderer. Reads the auth
+ * Drive the app sign-in flow for a feature renderer. Reads the auth
  * session delegate off the feature's own SDK (`sdk.auth`) so the component
- * re-renders when the OAuth loopback completes, and tracks the `Logged In`
+ * re-renders when the sign-in flow completes, and tracks the `Logged In`
  * telemetry event on success.
  */
-export function useAnacondaSignIn(sdk: Pick<SDK, "auth" | "telemetry">): AnacondaSignIn {
+export function useSignIn(sdk: Pick<SDK, "auth" | "telemetry">): SignIn {
 	const session = useSyncExternalStore(sdk.auth.subscribe, sdk.auth.peek, sdk.auth.peek);
 	const [signingIn, setSigningIn] = useState(false);
 	const [error, setError] = useState<string>();

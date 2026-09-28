@@ -5,8 +5,7 @@ import { page } from "vitest/browser";
 import type { AuthSession, SDK } from "@kilo-desktop/feature-sdk";
 
 import { createTestShellDelegates } from "./test-helpers.js";
-import { FORCE_ANACONDA_SIGN_IN_GATE_FLAG } from "./forceAnacondaSignInGate.js";
-import { useAnacondaSignInPrompt } from "./useAnacondaSignInPrompt.js";
+import { useSignInPrompt } from "./useSignInPrompt.js";
 
 function sessionStore(initial: AuthSession) {
 	let session = initial;
@@ -27,14 +26,13 @@ function sessionStore(initial: AuthSession) {
 	};
 }
 
-function renderPrompt(auth: Partial<SDK["auth"]>, flags: Record<string, unknown> = {}) {
+function renderPrompt(auth: Partial<SDK["auth"]>) {
 	const delegates = createTestShellDelegates();
 	let result: boolean | undefined;
 	function Probe() {
-		const prompt = useAnacondaSignInPrompt({
+		const prompt = useSignInPrompt({
 			auth: { ...delegates.auth, ...auth },
 			telemetry: delegates.telemetry,
-			featureFlags: { ...delegates.featureFlags, peek: () => flags },
 		});
 		return (
 			<>
@@ -59,7 +57,7 @@ function renderPrompt(auth: Partial<SDK["auth"]>, flags: Record<string, unknown>
 
 afterEach(cleanup);
 
-describe("useAnacondaSignInPrompt", () => {
+describe("useSignInPrompt", () => {
 	it("resolves a waiting request after successful sign-in", async () => {
 		const store = sessionStore({ status: "anonymous" });
 		const login = vi.fn(async (): Promise<AuthSession> => {
@@ -84,24 +82,6 @@ describe("useAnacondaSignInPrompt", () => {
 		await screen.getByRole("button", { name: "Request" }).click();
 		await screen.getByRole("button", { name: "Dismiss" }).click();
 
-		await expect.poll(view.result).toBe(false);
-	});
-
-	it("parks a request even when authenticated while the sign-in gate flag is forced", async () => {
-		const session: AuthSession = { status: "authenticated", user: { username: "ada" } };
-		const login = vi.fn(async (): Promise<AuthSession> => session);
-		const view = renderPrompt(
-			{ ...sessionStore(session).auth, login },
-			{ [FORCE_ANACONDA_SIGN_IN_GATE_FLAG]: true },
-		);
-		const screen = page.elementLocator(view.baseElement);
-
-		await screen.getByRole("button", { name: "Request" }).click();
-
-		expect(view.result()).toBeUndefined();
-		expect(login).not.toHaveBeenCalled();
-
-		await screen.getByRole("button", { name: "Dismiss" }).click();
 		await expect.poll(view.result).toBe(false);
 	});
 });

@@ -33,6 +33,7 @@ import { useAgentSelection } from "./agent-selection/use-agent-selection.js";
 import { findCatalogAgent } from "./agent-selection/agent-catalog.js";
 import { useKiloCommandCatalog } from "./slash-commands/use-kilo-command-catalog.js";
 import { KiloAuthProvider } from "../account/KiloAuthProvider.js";
+import { KiloSignInCapabilityHost } from "../account/KiloSignInCapabilityHost.js";
 import { ChatConnectionProvider } from "./connection/ChatConnectionContext.js";
 import { ChatModelSelectionProvider } from "./model-selection/ChatModelSelectionContext.js";
 import {
@@ -601,6 +602,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		<PierreDiffProvider>
 			<ChatConnectionProvider status={connectionStatus}>
 				<KiloAuthProvider>
+					<KiloSignInCapabilityHost />
 					<SessionActivityProvider store={sessionActivity}>
 						<ChatAgentSelectionProvider value={agentSelection}>
 							<ChatAutoApproveProvider value={autoApproveSelection}>

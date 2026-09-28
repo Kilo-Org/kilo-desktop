@@ -25,7 +25,6 @@ import { registerCondaTools } from "../shared/providers/conda/tools.js";
 
 export { EnvironmentsPage } from "./EnvironmentsPage.js";
 export { EnvironmentsNavIcon } from "./EnvironmentsNavIcon.js";
-export { EnvironmentsAuthProvider } from "./EnvironmentsAuthProvider.js";
 
 export function webRegister(sdk: SDK): void {
 	registerCondaTools(sdk);

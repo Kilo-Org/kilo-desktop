@@ -3,7 +3,7 @@ import type { AuthSession, TelemetryTrackInput } from "@kilo-desktop/contracts";
 import { createLogger } from "../../platform/logger.js";
 import { isAnacondaEmployee } from "../auth/utils.js";
 import { PostHogProvider } from "./provider.js";
-import { calculatePeriodId } from "./utils.js";
+import { calculatePeriodId, maskEmail } from "./utils.js";
 import type {
 	AnonymizeOption,
 	TelemetryAuth,
@@ -139,6 +139,13 @@ export class TelemetryService {
 
 			const anonymize: AnonymizeOption = input.options?.anonymize ?? "never";
 			const identity = await deriveTelemetryIdentity(this.#auth, anonymize);
+
+			// Debug-level, sanitized: the identity a track() call resolves to.
+			// Visible with KILO_LOG_LEVEL=debug.
+			this.#logger.debug(
+				`telemetry derive event='${input.event}' anonymize=${anonymize} ` +
+					`email=${maskEmail(identity.email)} isEmployee=${identity.isEmployee} cohort=${identity.cohortId ?? "none"}`,
+			);
 
 			const entry: TelemetryEntry = {
 				...identity,

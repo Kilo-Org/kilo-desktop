@@ -2,10 +2,9 @@ import { useCallback, useEffect, useRef } from "react";
 
 import type { SDK } from "@kilo-desktop/feature-sdk";
 
-import { useAnacondaSignIn } from "./useAnacondaSignIn.js";
-import { isAnacondaSignInGateForced } from "./forceAnacondaSignInGate.js";
+import { useSignIn } from "./useSignIn.js";
 
-export interface AnacondaSignInPrompt {
+export interface SignInPrompt {
 	pending: boolean;
 	error: string | undefined;
 	requireSignIn(): Promise<boolean>;
@@ -17,10 +16,8 @@ export interface AnacondaSignInPrompt {
  * Coordinates imperative feature/tool requests with the shared sign-in modal.
  * Concurrent requests share one prompt and all resume with the same outcome.
  */
-export function useAnacondaSignInPrompt(
-	sdk: Pick<SDK, "auth" | "telemetry" | "featureFlags">,
-): AnacondaSignInPrompt {
-	const { signingIn, error, signIn } = useAnacondaSignIn(sdk);
+export function useSignInPrompt(sdk: Pick<SDK, "auth" | "telemetry">): SignInPrompt {
+	const { signingIn, error, signIn } = useSignIn(sdk);
 	const waiters = useRef(new Set<(authenticated: boolean) => void>());
 
 	const settle = useCallback((result: boolean) => {
@@ -29,7 +26,7 @@ export function useAnacondaSignInPrompt(
 	}, []);
 
 	const requireSignIn = useCallback((): Promise<boolean> => {
-		if (!isAnacondaSignInGateForced(sdk) && sdk.auth.peek().status === "authenticated") {
+		if (sdk.auth.peek().status === "authenticated") {
 			return Promise.resolve(true);
 		}
 		return new Promise<boolean>((resolve) => waiters.current.add(resolve));

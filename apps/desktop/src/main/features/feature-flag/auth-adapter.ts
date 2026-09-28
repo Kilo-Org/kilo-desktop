@@ -1,13 +1,12 @@
-import type { AuthSession, AuthUser } from "@kilo-desktop/contracts";
+import type { AuthSession } from "@kilo-desktop/contracts";
 
 import type { AuthSessionService } from "../auth/auth-service.js";
-import type { UserInfoOrganization } from "../auth/actions.js";
 import type {
 	FeatureFlagContext,
 	FeatureFlagOrganizationContext,
 	FeatureFlagProvider,
 } from "./types.js";
-import { FREE_SUBSCRIPTION, isAnacondaEmployee } from "../auth/utils.js";
+import { isAnacondaEmployee } from "../auth/utils.js";
 
 export const ANONYMOUS_CONTEXT: FeatureFlagContext = { isEmployee: false };
 
@@ -15,59 +14,40 @@ export const ANONYMOUS_CONTEXT: FeatureFlagContext = { isEmployee: false };
 export async function deriveContext(auth: AuthSessionService): Promise<FeatureFlagContext> {
 	// The three reads are independent of each other, so issue them concurrently;
 	// each falls back on error so `deriveContext` never rejects.
-	const [session, subscription, organizations] = await Promise.all([
-		auth.getSession().catch((): AuthSession => {
-			return { status: "error", reason: "Unable to retrieve user session" };
-		}),
-		auth.getSubscription().catch(() => FREE_SUBSCRIPTION),
-		auth.getOrganizations().catch((): UserInfoOrganization[] => []),
-	]);
+	const session = await auth.getSession().catch((): AuthSession => {
+		return { status: "error", reason: "Unable to retrieve user session" };
+	});
 
 	if (session.status !== "authenticated") return ANONYMOUS_CONTEXT;
 
 	const { user } = session;
-	const isEmployee = isAnacondaEmployee(user.email);
-	const context: FeatureFlagContext = { isEmployee, subscription };
-	if (user.userId !== undefined) context.userId = user.userId;
-	if (user.email !== undefined) context.email = user.email;
-	if (user.username !== undefined) context.username = user.username;
-	if (user.firstName !== undefined) context.firstName = user.firstName;
-	if (user.lastName !== undefined) context.lastName = user.lastName;
+	const context: FeatureFlagContext = { isEmployee: isAnacondaEmployee(user.email) };
+	if (user.email !== undefined) {
+		context.email = user.email;
+		// The Kilo profile has no separate user id; the email is the only stable
+		// per-user value, and already reaches LaunchDarkly as a built-in
+		// attribute — so key the context on it. Otherwise every signed-in user
+		// collapses into key "anonymous" and per-user targeting/rollouts break.
+		context.userId = user.email;
+	}
 
-	const name = fullName(user);
-	if (name !== undefined) context.name = name;
-
-	const organization = primaryOrganization(organizations);
+	const organization = organizationContext(user.org);
 	if (organization !== undefined) context.organization = organization;
 
 	return context;
 }
 
-/** `firstName lastName` when both present; otherwise whichever is; otherwise username. */
-function fullName(user: AuthUser): string | undefined {
-	const parts = [user.firstName, user.lastName].filter(
-		(part): part is string => typeof part === "string" && part.length > 0,
-	);
-	if (parts.length > 0) return parts.join(" ");
-	return user.username;
-}
-
 /**
- * Picks the first organization with a stable `id` — LaunchDarkly requires a key
- * for every context and rejects contexts without one, so an org without an id
- * is not modeled at all.
+ * Maps the Kilo current-org to a LaunchDarkly organization context. LaunchDarkly
+ * requires a key for every context, so an org without an id is dropped.
  */
-function primaryOrganization(
-	organizations: readonly UserInfoOrganization[],
+function organizationContext(
+	org: { id?: string | undefined; name?: string | undefined } | undefined,
 ): FeatureFlagOrganizationContext | undefined {
-	for (const org of organizations) {
-		if (!org.id) continue;
-		const context: FeatureFlagOrganizationContext = { id: org.id };
-		if (org.name != null) context.name = org.name;
-		if (org.role != null) context.role = org.role;
-		return context;
-	}
-	return undefined;
+	if (!org?.id) return undefined;
+	const context: FeatureFlagOrganizationContext = { id: org.id };
+	if (org.name != null) context.name = org.name;
+	return context;
 }
 
 /** Re-identify the provider on login/logout so flags re-evaluate. Returns an unsubscribe. */

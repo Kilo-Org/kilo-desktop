@@ -39,6 +39,8 @@ export const authenticatedAuth: Partial<SDK["auth"]> = {
 		return () => undefined;
 	},
 	peek: () => authenticatedSession,
+	getSession: async () => authenticatedSession,
+	refresh: async () => authenticatedSession,
 };
 
 export function renderSettings(
@@ -46,7 +48,14 @@ export function renderSettings(
 	shell: Partial<SDK["shell"]> = {},
 	auth: Partial<SDK["auth"]> = authenticatedAuth,
 	navigation?: Partial<SdkNavigation>,
+	featureFlags: Partial<SDK["featureFlags"]> = {},
 ) {
+	// The model catalog is flag-gated (local-model-catalog, off by default);
+	// most settings tests exercise it, so default it on and let callers opt out.
+	// The model catalog is flag-gated (local-model-catalog, off by default);
+	// most settings tests exercise it, so default it on and let callers opt out.
+	// useFeatureFlag reads shellDelegates.featureFlags.peek(), so set it there.
+	const flags = { "local-model-catalog": true, ...(featureFlags.peek?.() ?? {}) };
 	const sdk = createFakeSdk({
 		featureId: "local-inference",
 		channels: localInferenceContract,
@@ -59,6 +68,14 @@ export function renderSettings(
 		auth,
 		...(navigation ? { navigation } : {}),
 	});
+	sdk.services.shellDelegates.featureFlags = {
+		getAllFlags: async () => flags,
+		peek: () => flags,
+		subscribe: (fn) => {
+			fn(flags);
+			return () => undefined;
+		},
+	};
 	const system = createFakeFeatureSystem({ sdks: { "local-inference": sdk } });
 	const queryClient = new QueryClient({
 		defaultOptions: { queries: { retry: false } },

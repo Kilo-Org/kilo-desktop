@@ -13,7 +13,7 @@ import {
 	condaPackagesUpdateInputSchema,
 	condaRepodataFindInputSchema,
 } from "../../../contracts/providers/conda.js";
-import { requireEnvironmentToolSignIn } from "../../auth-capabilities.js";
+import { requireEnvironmentApiKey } from "../../auth-capabilities.js";
 
 /**
  * Register provider-scoped WebMCP tools for the conda provider. Called by
@@ -47,11 +47,10 @@ export function registerCondaTools(sdk: SDK): void {
 		description:
 			"Open Conda Environments settings in the desktop app so the user can create an environment " +
 			"and choose package channels. Use this when the user asks to set up or configure an " +
-			"environment or channel. Requires Anaconda sign-in before opening.",
+			"environment or channel.",
 		inputSchema: { type: "object", properties: {}, additionalProperties: false },
 		exposeToModelContext: true,
 		handler: async () => {
-			await requireEnvironmentToolSignIn(sdk);
 			sdk.navigate("/settings/environments");
 			return { opened: true };
 		},
@@ -83,7 +82,7 @@ export function registerCondaTools(sdk: SDK): void {
 		validate: mcpCreateSchema,
 		exposeToModelContext: true,
 		handler: async (args) => {
-			await requireEnvironmentToolSignIn(sdk);
+			await requireEnvironmentApiKey(sdk);
 			return sdk.invoke("conda.envs.create", args);
 		},
 	});
@@ -110,7 +109,7 @@ export function registerCondaTools(sdk: SDK): void {
 		validate: condaEnvsCloneInputSchema,
 		exposeToModelContext: true,
 		handler: async (args) => {
-			await requireEnvironmentToolSignIn(sdk);
+			await requireEnvironmentApiKey(sdk);
 			return sdk.invoke("conda.envs.clone", args);
 		},
 	});
@@ -158,7 +157,7 @@ export function registerCondaTools(sdk: SDK): void {
 		validate: condaPackagesInstallInputSchema,
 		exposeToModelContext: true,
 		handler: async (args) => {
-			await requireEnvironmentToolSignIn(sdk);
+			await requireEnvironmentApiKey(sdk);
 			return sdk.invoke("conda.packages.install", args);
 		},
 	});
@@ -202,7 +201,7 @@ export function registerCondaTools(sdk: SDK): void {
 		annotations: { destructiveHint: true },
 		exposeToModelContext: true,
 		handler: async (args) => {
-			await requireEnvironmentToolSignIn(sdk);
+			await requireEnvironmentApiKey(sdk);
 			return sdk.invoke("conda.packages.update", args);
 		},
 	});
@@ -240,7 +239,7 @@ export function registerCondaTools(sdk: SDK): void {
 		annotations: { readOnlyHint: true },
 		exposeToModelContext: true,
 		handler: async (args) => {
-			await requireEnvironmentToolSignIn(sdk);
+			await requireEnvironmentApiKey(sdk);
 			return sdk.invoke("conda.repodata.find", args);
 		},
 	});

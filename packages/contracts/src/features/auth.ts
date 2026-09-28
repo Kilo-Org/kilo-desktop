@@ -8,6 +8,7 @@ export const authUserSchema = z.object({
 	email: z.string().optional(),
 	firstName: z.string().optional(),
 	lastName: z.string().optional(),
+	org: z.object({ id: z.string().optional(), name: z.string().optional() }).optional(),
 });
 
 export const authSessionSchema = z.discriminatedUnion("status", [

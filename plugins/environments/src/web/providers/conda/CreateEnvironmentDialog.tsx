@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
-import { useAnacondaSignIn, useSdk, useSdkMutation, useSdkQuery } from "@kilo-desktop/sdk-react";
-import { AnacondaSignInDialog } from "@kilo-desktop/ui/components/anaconda-sign-in-dialog";
+import { useSdk, useSdkMutation, useSdkQuery } from "@kilo-desktop/sdk-react";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Combobox,
@@ -71,7 +70,6 @@ function joinEnvPath(baseDir: string, envName: string): string {
 
 export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDialogProps) {
 	const sdk = useSdk<CondaService>("environments");
-	const signIn = useAnacondaSignIn(sdk);
 	const [name, setName] = useState("");
 	const [location, setLocation] = useState("");
 	const [pythonVersion, setPythonVersion] = useState(PYTHON_LATEST);
@@ -95,7 +93,7 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 
 	const envsDirs = useMemo(() => prefixQuery.data?.envsDirs ?? [], [prefixQuery.data?.envsDirs]);
 	const defaultDir = envsDirs[0] ?? "";
-	const channels = useChannelSelection(prefixQuery.data?.channels, signIn);
+	const channels = useChannelSelection(prefixQuery.data?.channels);
 	const search = usePackageSearch({
 		sdk,
 		open,
@@ -306,8 +304,6 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 									availableChannels={channels.available}
 									selectedChannels={channels.selected}
 									onToggle={channels.toggle}
-									signedIn={signIn.authenticated}
-									onRequestSignIn={channels.request}
 								/>
 							</div>
 
@@ -365,14 +361,6 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 					</DialogFooter>
 				</form>
 			</DialogContent>
-
-			<AnacondaSignInDialog
-				open={channels.signInOpen}
-				onOpenChange={channels.setSignInOpen}
-				onSignIn={() => void channels.completeSignIn()}
-				pending={signIn.signingIn}
-				error={signIn.error}
-			/>
 		</Dialog>
 	);
 }

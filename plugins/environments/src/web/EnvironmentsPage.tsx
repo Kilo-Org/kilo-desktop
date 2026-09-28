@@ -8,6 +8,7 @@ import {
 	EnvironmentsPanel as CondaEnvironmentsPanel,
 	EnvironmentsPanelLoading as CondaEnvironmentsPanelLoading,
 } from "./providers/conda/EnvironmentsPanel.js";
+import { KiloAuthGate } from "@kilo-desktop/sdk-react";
 
 /**
  * LaunchDarkly feature-flag key that gates the entire environments plugin.
@@ -36,11 +37,10 @@ const FEATURE_FLAG_KEY = "environments-feature";
  */
 export function EnvironmentsPage() {
 	const featureEnabled = useFeatureFlag<boolean>(FEATURE_FLAG_KEY, false);
-	const sdk = useSdk<EnvironmentsStatusService>("environments");
-	const statusQuery = useSdkQuery(sdk, "environments.status");
 
-	const providersAvailable = statusQuery.data?.providersAvailable ?? false;
-
+	// The feature flag is checked outside the Kilo gate so a signed-out user
+	// sees "not enabled for your account" without a sign-in prompt they can't
+	// act on (the flag-off state changes nothing with sign-in).
 	if (!featureEnabled) {
 		return (
 			<EnvironmentsLayout state="flag-off">
@@ -51,6 +51,19 @@ export function EnvironmentsPage() {
 			</EnvironmentsLayout>
 		);
 	}
+
+	return (
+		<KiloAuthGate featureId="environments" featureName="Conda Environments">
+			<EnvironmentsPageContent />
+		</KiloAuthGate>
+	);
+}
+
+function EnvironmentsPageContent() {
+	const sdk = useSdk<EnvironmentsStatusService>("environments");
+	const statusQuery = useSdkQuery(sdk, "environments.status");
+
+	const providersAvailable = statusQuery.data?.providersAvailable ?? false;
 
 	// Wait for the status query before mounting provider panels. Rendering
 	// early would let CondaEnvironmentsPanel call conda.envs.list against an

@@ -25,8 +25,7 @@ describe("getChannelPresentation", () => {
 		expect(getChannelPresentation("conda-forge")).toEqual({
 			kind: "conda-forge",
 			title: "conda-forge",
-			description: "Community-maintained, open-source. No sign-in needed.",
-			requiresSignIn: false,
+			description: "Community-maintained, open-source.",
 		});
 	});
 
@@ -37,19 +36,14 @@ describe("getChannelPresentation", () => {
 				kind: "anaconda",
 				title: "Anaconda",
 				badge: "Main",
-				requiresSignIn: true,
 			});
 		}
 	});
 
 	it("detects Anaconda channels from repository URLs", () => {
-		expect(getChannelPresentation("https://repo.anaconda.com/pkgs/main").requiresSignIn).toBe(true);
-		expect(getChannelPresentation("https://conda.anaconda.org/anaconda/").requiresSignIn).toBe(
-			true,
-		);
-		expect(getChannelPresentation("https://conda.anaconda.org/conda-forge").requiresSignIn).toBe(
-			false,
-		);
+		expect(getChannelPresentation("https://repo.anaconda.com/pkgs/main").kind).toBe("anaconda");
+		expect(getChannelPresentation("https://conda.anaconda.org/anaconda/").kind).toBe("anaconda");
+		expect(getChannelPresentation("https://conda.anaconda.org/conda-forge").kind).toBe("other");
 	});
 
 	it("falls back to a neutral presentation for custom channels", () => {
@@ -57,21 +51,21 @@ describe("getChannelPresentation", () => {
 			kind: "other",
 			title: "bioconda",
 			description: "Configured in your conda settings.",
-			requiresSignIn: false,
 		});
 	});
 });
 
 describe("defaultChannelSelection", () => {
 	it("selects every channel for signed-in users", () => {
-		expect(defaultChannelSelection(["defaults", "conda-forge"], true)).toEqual([
+		expect(defaultChannelSelection(["defaults", "conda-forge"])).toEqual([
 			"defaults",
 			"conda-forge",
 		]);
 	});
 
-	it("skips sign-in-gated channels for signed-out users", () => {
-		expect(defaultChannelSelection(["defaults", "conda-forge", "bioconda"], false)).toEqual([
+	it("selects every offered channel", () => {
+		expect(defaultChannelSelection(["defaults", "conda-forge", "bioconda"])).toEqual([
+			"defaults",
 			"conda-forge",
 			"bioconda",
 		]);

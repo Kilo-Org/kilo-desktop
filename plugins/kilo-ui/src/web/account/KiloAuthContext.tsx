@@ -7,6 +7,14 @@ export type KiloAuthContextValue = {
 	isLoading: boolean;
 	/** Kilo server connection is unavailable (browser mode or spawn failure). */
 	connectionUnavailable: boolean;
+	/**
+	 * Whether a sign-in flow can start right now. Mirrors login()'s own guard
+	 * (`!client || !directory`): false while the chat connection is still
+	 * pending (boot/reconnect) or has failed, so a caller never kicks off a
+	 * login that would silently no-op. Optional so test fakes that don't care
+	 * about the capability don't have to populate it.
+	 */
+	canSignIn?: boolean;
 	/** Null while loading; otherwise whether Gateway credentials are present. */
 	authenticated: boolean | null;
 	profile: KiloProfileData | null;

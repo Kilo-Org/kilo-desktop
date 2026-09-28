@@ -24,17 +24,13 @@ interface ChannelChooserPopoverProps {
 	availableChannels: string[];
 	selectedChannels: string[];
 	onToggle: (channel: string) => void;
-	/** True when the user already has an Anaconda session. */
-	signedIn: boolean;
-	/** Fired when an Anaconda channel is picked while signed out. */
-	onRequestSignIn: (channel: string) => void;
 }
 
 /**
  * Channel picker for package search, rendered as the toolbar filter button
- * used beside other search inputs. Anaconda channels stay clickable while
- * signed out but route through `onRequestSignIn`; conda-forge and custom
- * channels toggle freely.
+ * used beside other search inputs. Every offered channel toggles freely with
+ * no sign-in step; channels backed by an Anaconda API key fail at fetch time
+ * with a handled error.
  */
 export function ChannelChooserPopover({
 	open,
@@ -45,8 +41,6 @@ export function ChannelChooserPopover({
 	availableChannels,
 	selectedChannels,
 	onToggle,
-	signedIn,
-	onRequestSignIn,
 }: ChannelChooserPopoverProps) {
 	return (
 		<DropdownMenu open={open} onOpenChange={onOpenChange}>
@@ -71,13 +65,12 @@ export function ChannelChooserPopover({
 					{availableChannels.map((channel) => {
 						const presentation = getChannelPresentation(channel);
 						const selected = selectedChannels.includes(channel);
-						const gated = presentation.requiresSignIn && !signedIn;
 						return (
 							<DropdownMenuCheckboxItem
 								key={channel}
 								checked={selected}
 								closeOnClick={false}
-								onCheckedChange={() => (gated ? onRequestSignIn(channel) : onToggle(channel))}
+								onCheckedChange={() => onToggle(channel)}
 								data-qa-id={`environments-channel-option-${channel}`}
 							>
 								<span className="flex min-w-0 flex-col gap-0.5">

@@ -126,13 +126,19 @@ describe("AddPackageDialog", () => {
 
 		await waitForRows(baseElement, 1);
 		// Initial search waits for prefixOptions so the channel filter is present.
-		expect(find.mock.calls[0]![0]).toMatchObject({ channels: ["conda-forge"], limit: 50 });
+		expect(find.mock.calls[0]![0]).toMatchObject({
+			channels: ["conda-forge", "defaults"],
+			limit: 50,
+		});
 		expect(find.mock.calls[0]![0].query).toBeUndefined();
 
 		await userEvent.fill(screen.getByTestId("environments-conda-add-pkg-search"), "num");
 
 		await vi.waitFor(() => {
-			expect(find.mock.calls.at(-1)![0]).toMatchObject({ query: "num", channels: ["conda-forge"] });
+			expect(find.mock.calls.at(-1)![0]).toMatchObject({
+				query: "num",
+				channels: ["conda-forge", "defaults"],
+			});
 		});
 	});
 
@@ -276,7 +282,7 @@ describe("AddPackageDialog", () => {
 			name: "dev",
 			prefix: "/opt/anaconda3/envs/dev",
 			packages: ["numpy=2.0.0", "pandas"],
-			channels: ["conda-forge"],
+			channels: ["conda-forge", "defaults"],
 		});
 		await vi.waitFor(() => {
 			expect(onClose).toHaveBeenCalledOnce();
@@ -464,84 +470,5 @@ describe("AddPackageDialog", () => {
 		await vi.waitFor(() => {
 			expect(find.mock.calls.at(-1)![0].channels).toEqual(["conda-forge"]);
 		});
-	});
-
-	it("skips Anaconda in the default channel selection for signed-out users", async () => {
-		const find = vi.fn((_input: CondaRepodataFindInput) => [pkg("numpy")]);
-		const { baseElement } = renderDialog({ find, channels: ["defaults", "conda-forge"] });
-		const screen = page.elementLocator(baseElement);
-		await waitForRows(baseElement, 1);
-
-		// Anonymous session drops the Anaconda channel from the seeded selection.
-		expect(find.mock.calls[0]![0].channels).toEqual(["conda-forge"]);
-		const trigger = screen.getByTestId("environments-conda-add-pkg-channels-btn");
-		await expect.element(trigger).toHaveAccessibleName("Channels: 1 channel");
-		// The signed-out default is not a user customization.
-		await expect.element(trigger).not.toHaveAttribute("data-active");
-	});
-
-	it("gates the Anaconda channel behind the sign-in modal while signed out", async () => {
-		const login = vi.fn(async (): Promise<AuthSession> => ({ status: "anonymous" }));
-		const { baseElement } = renderDialog({
-			channels: ["defaults", "conda-forge"],
-			auth: { login },
-		});
-		const screen = page.elementLocator(baseElement);
-		await waitForRows(baseElement, 2);
-
-		await userEvent.click(screen.getByTestId("environments-conda-add-pkg-channels-btn"));
-		await userEvent.click(page.getByTestId("environments-channel-option-defaults"));
-
-		const modal = page.getByTestId("anaconda-sign-in-dialog");
-		await expect.element(modal).toBeVisible();
-		expect(login).not.toHaveBeenCalled();
-
-		await userEvent.click(page.getByTestId("anaconda-sign-in-submit"));
-		await vi.waitFor(() => {
-			expect(login).toHaveBeenCalledOnce();
-		});
-		// Anonymous result keeps the modal open with the channel unapplied.
-		await expect.element(modal).toBeVisible();
-	});
-
-	it("applies the Anaconda channel after a successful sign-in", async () => {
-		let session: AuthSession = { status: "anonymous" };
-		const listeners = new Set<(next: AuthSession) => void>();
-		const login = vi.fn(async (): Promise<AuthSession> => {
-			session = { status: "authenticated", user: { username: "ada" } };
-			for (const listener of listeners) listener(session);
-			return session;
-		});
-		const install = vi.fn(async (_input: CondaPackagesInstallInput) => installResult());
-		const { baseElement } = renderDialog({
-			install,
-			channels: ["defaults", "conda-forge"],
-			auth: {
-				subscribe(listener) {
-					listeners.add(listener);
-					listener(session);
-					return () => listeners.delete(listener);
-				},
-				peek: () => session,
-				login,
-			},
-		});
-		const screen = page.elementLocator(baseElement);
-		await waitForRows(baseElement, 2);
-
-		await userEvent.click(screen.getByTestId("environments-conda-add-pkg-channels-btn"));
-		await userEvent.click(page.getByTestId("environments-channel-option-defaults"));
-		await userEvent.click(page.getByTestId("anaconda-sign-in-submit"));
-
-		await expect.element(page.getByTestId("anaconda-sign-in-dialog")).not.toBeInTheDocument();
-
-		// Install now sends both channels, with Anaconda applied after the OAuth landed.
-		await userEvent.click(screen.getByText("pandas", { exact: true }));
-		await userEvent.click(screen.getByTestId("environments-conda-add-pkg-install-btn"));
-
-		await vi.waitFor(() => {
-			expect(install).toHaveBeenCalledOnce();
-		});
-		expect(install.mock.calls[0]![0].channels).toEqual(["conda-forge", "defaults"]);
 	});
 });

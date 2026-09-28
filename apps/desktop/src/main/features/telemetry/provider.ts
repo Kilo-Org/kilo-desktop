@@ -1,6 +1,7 @@
 import { release } from "node:os";
 
 import { createLogger } from "../../platform/logger.js";
+import { maskEmail } from "./utils.js";
 import { HttpClient } from "../../platform/HttpClient.js";
 import type {
 	TelemetryConfig,
@@ -68,6 +69,13 @@ export class PostHogProvider implements TelemetryProvider {
 		const distinctId = email ?? entry.installationId;
 		const previousId = this.#distinctId;
 		const identityChanged = previousId !== distinctId;
+		// Debug-level, sanitized: which identity an event attributes to (email
+		// masked), whether an $identify fires. Visible with KILO_LOG_LEVEL=debug.
+		this.#logger.debug(
+			`telemetry track event='${entry.event}' email=${maskEmail(entry.email)} ` +
+				`distinctIdKind=${email !== undefined ? "email" : "installation"} ` +
+				`identityChanged=${identityChanged} identify=${email !== undefined && identityChanged}`,
+		);
 
 		const events: PostHogEvent[] = [];
 		if (email !== undefined && identityChanged) {

@@ -4,9 +4,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AuthSession, SDK } from "@kilo-desktop/feature-sdk";
 
 import { createTestShellDelegates } from "./test-helpers.js";
-import { useAnacondaSignIn } from "./useAnacondaSignIn.js";
+import { useSignIn } from "./useSignIn.js";
 
-type SignInState = ReturnType<typeof useAnacondaSignIn>;
+type SignInState = ReturnType<typeof useSignIn>;
 
 function renderHook(auth: Partial<SDK["auth"]> = {}, telemetry: Partial<SDK["telemetry"]> = {}) {
 	const delegates = createTestShellDelegates();
@@ -16,7 +16,7 @@ function renderHook(auth: Partial<SDK["auth"]> = {}, telemetry: Partial<SDK["tel
 	};
 	let state: SignInState | undefined;
 	function Probe() {
-		state = useAnacondaSignIn(sdk);
+		state = useSignIn(sdk);
 		return null;
 	}
 	const view = render(<Probe />);
@@ -47,7 +47,7 @@ function sessionStore(initial: AuthSession) {
 
 afterEach(cleanup);
 
-describe("useAnacondaSignIn", () => {
+describe("useSignIn", () => {
 	it("reports the current session and authentication state", () => {
 		const store = sessionStore({ status: "authenticated", user: { username: "ada" } });
 		const { getState } = renderHook(store.auth);

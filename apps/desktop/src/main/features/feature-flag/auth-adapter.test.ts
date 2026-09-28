@@ -3,158 +3,71 @@ import { describe, expect, it, vi } from "vitest";
 import type { AuthSession } from "@kilo-desktop/contracts";
 
 import type { AuthSessionService } from "../auth/auth-service.js";
-import type { UserInfoOrganization } from "../auth/actions.js";
-import { FREE_SUBSCRIPTION, type UserSubscription } from "../auth/utils.js";
 import { ANONYMOUS_CONTEXT, bindAuthToProvider, deriveContext } from "./auth-adapter.js";
 import type { FeatureFlagProvider } from "./types.js";
 
-function makeAuth(overrides: {
-	session: AuthSession | (() => Promise<AuthSession>);
-	subscription?: UserSubscription | (() => Promise<UserSubscription>);
-	organizations?: UserInfoOrganization[] | (() => Promise<UserInfoOrganization[]>);
-}): AuthSessionService {
-	const session = overrides.session;
-	const subscription = overrides.subscription ?? FREE_SUBSCRIPTION;
-	const organizations = overrides.organizations ?? [];
+function makeAuth(session: AuthSession | (() => Promise<AuthSession>)): AuthSessionService {
 	return {
 		getSession: vi.fn(typeof session === "function" ? session : async () => session),
-		getSubscription: vi.fn(
-			typeof subscription === "function" ? subscription : async () => subscription,
-		),
-		getOrganizations: vi.fn(
-			typeof organizations === "function" ? organizations : async () => organizations,
-		),
 	} as unknown as AuthSessionService;
 }
 
 const authenticatedSession: AuthSession = {
 	status: "authenticated",
-	user: {
-		userId: "u1",
-		username: "ada",
-		email: "dev@anaconda.com",
-		firstName: "Ada",
-		lastName: "Lovelace",
-	},
+	user: { email: "dev@anaconda.com", org: { id: "org-1", name: "Acme" } },
 };
 
 describe("deriveContext", () => {
-	it("issues all auth reads concurrently (no serialization dependency)", async () => {
-		let releaseSession: (() => void) | undefined;
-		const auth = makeAuth({
-			// Block the session read until we've confirmed the other reads were
-			// already issued — a serial implementation would await the session
-			// first and never call the others in the meantime.
-			session: () =>
-				new Promise<AuthSession>((resolve) => {
-					releaseSession = () => resolve(authenticatedSession);
-				}),
-			subscription: async () => "business_subscription",
-			organizations: async () => [{ id: "org-1", name: "Acme", role: "admin" }],
-		});
+	it("derives the context from the session email and org", async () => {
+		const auth = makeAuth(authenticatedSession);
 
-		const pending = deriveContext(auth);
-
-		expect(auth.getSession).toHaveBeenCalledTimes(1);
-		expect(auth.getSubscription).toHaveBeenCalledTimes(1);
-		expect(auth.getOrganizations).toHaveBeenCalledTimes(1);
-
-		releaseSession?.();
-		await expect(pending).resolves.toEqual({
+		await expect(deriveContext(auth)).resolves.toEqual({
 			isEmployee: true,
-			userId: "u1",
-			username: "ada",
 			email: "dev@anaconda.com",
-			firstName: "Ada",
-			lastName: "Lovelace",
-			name: "Ada Lovelace",
-			subscription: "business_subscription",
-			organization: { id: "org-1", name: "Acme", role: "admin" },
+			userId: "dev@anaconda.com",
+			organization: { id: "org-1", name: "Acme" },
 		});
 	});
 
 	it("returns the anonymous context when unauthenticated", async () => {
-		const auth = makeAuth({ session: { status: "anonymous" } });
+		const auth = makeAuth({ status: "anonymous" });
 
 		await expect(deriveContext(auth)).resolves.toEqual(ANONYMOUS_CONTEXT);
 	});
 
-	it("falls back on read failures without throwing", async () => {
-		const auth = makeAuth({
-			session: () => Promise.reject(new Error("keyring locked")),
-			subscription: () => Promise.reject(new Error("network")),
-			organizations: () => Promise.reject(new Error("network")),
-		});
+	it("returns the anonymous context when the session read rejects", async () => {
+		const auth = makeAuth(() => Promise.reject(new Error("sidecar down")));
 
 		await expect(deriveContext(auth)).resolves.toEqual(ANONYMOUS_CONTEXT);
 	});
 
-	it("defaults the subscription to free when that read rejects", async () => {
+	it("omits the organization when the profile has no current org", async () => {
 		const auth = makeAuth({
-			session: authenticatedSession,
-			subscription: () => Promise.reject(new Error("network")),
-		});
-
-		await expect(deriveContext(auth)).resolves.toMatchObject({
-			isEmployee: true,
-			userId: "u1",
-			subscription: FREE_SUBSCRIPTION,
-		});
-	});
-
-	it("omits the organization when the read rejects", async () => {
-		const auth = makeAuth({
-			session: authenticatedSession,
-			organizations: () => Promise.reject(new Error("network")),
+			status: "authenticated",
+			user: { email: "dev@example.com" },
 		});
 
 		const context = await deriveContext(auth);
 		expect(context.organization).toBeUndefined();
 	});
 
-	it("skips organizations without an id and picks the first with one", async () => {
+	it("drops an org without an id (LaunchDarkly requires a key)", async () => {
 		const auth = makeAuth({
-			session: authenticatedSession,
-			organizations: async () => [
-				{ name: "No-id org" },
-				{ id: "org-2", name: "Second" },
-				{ id: "org-3", name: "Third" },
-			],
-		});
-
-		await expect(deriveContext(auth)).resolves.toMatchObject({
-			organization: { id: "org-2", name: "Second" },
-		});
-	});
-
-	it("uses username as name when first/last name are absent", async () => {
-		const auth = makeAuth({
-			session: {
-				status: "authenticated",
-				user: { userId: "u2", username: "grace", email: "grace@example.com" },
-			},
-		});
-
-		await expect(deriveContext(auth)).resolves.toMatchObject({
-			userId: "u2",
-			name: "grace",
-			username: "grace",
-			email: "grace@example.com",
-			isEmployee: false,
-		});
-	});
-
-	it("omits the name when neither name parts nor username exist", async () => {
-		const auth = makeAuth({
-			session: {
-				status: "authenticated",
-				user: { userId: "svc-1" },
-			},
+			status: "authenticated",
+			user: { email: "dev@example.com", org: { name: "No-id org" } },
 		});
 
 		const context = await deriveContext(auth);
-		expect(context.name).toBeUndefined();
-		expect(context.username).toBeUndefined();
+		expect(context.organization).toBeUndefined();
+	});
+
+	it("marks non-anaconda emails as not employees", async () => {
+		const auth = makeAuth({
+			status: "authenticated",
+			user: { email: "person@example.com" },
+		});
+
+		await expect(deriveContext(auth)).resolves.toMatchObject({ isEmployee: false });
 	});
 });
 
@@ -164,8 +77,6 @@ describe("bindAuthToProvider", () => {
 		const unsubscribe = vi.fn();
 		const auth = {
 			getSession: vi.fn(async () => session),
-			getSubscription: vi.fn(async () => FREE_SUBSCRIPTION),
-			getOrganizations: vi.fn(async () => [] as UserInfoOrganization[]),
 			onChanged: vi.fn((fn: () => void) => {
 				listener = fn;
 				return unsubscribe;
@@ -190,7 +101,7 @@ describe("bindAuthToProvider", () => {
 		await vi.waitFor(() => expect(provider.identify).toHaveBeenCalledTimes(1));
 
 		expect(provider.identify).toHaveBeenCalledWith(
-			expect.objectContaining({ userId: "u1", isEmployee: true }),
+			expect.objectContaining({ email: "dev@anaconda.com", isEmployee: true }),
 		);
 		expect(onError).not.toHaveBeenCalled();
 	});

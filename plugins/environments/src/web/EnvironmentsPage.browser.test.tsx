@@ -34,8 +34,23 @@ function renderPage(
 	const providersAvailable = options.providersAvailable ?? true;
 	const list = options.list ?? (async () => []);
 	const flags: Record<string, unknown> = { "environments-feature": flagEnabled };
+	// Gated page: render signed-in by default so tests reach the content. The
+	// session object is a constant — peek/getSnapshot must be referentially
+	// stable or useSyncExternalStore loops.
+	const authedSession = {
+		status: "authenticated",
+		user: { email: "ada@example.com" },
+	} as const;
 	const sdk = createFakeSdk({
 		featureId: "environments",
+		auth: {
+			subscribe: (fn) => {
+				fn(authedSession);
+				return () => undefined;
+			},
+			peek: () => authedSession,
+			getSession: async () => authedSession,
+		},
 		channels: { ...condaContract, ...environmentsStatusContract },
 		handlers: {
 			"environments.status": options.status ?? (async () => ({ providersAvailable })),

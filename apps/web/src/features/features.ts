@@ -6,7 +6,6 @@ import {
 } from "@kilo-desktop/feature-sdk";
 
 import { BUNDLED_PLUGINS } from "./bundled-plugins.js";
-import { browserRegister as anacondaMcpBrowserRegister } from "./anaconda-mcp/index.js";
 
 /**
  * Feature registrations used when the app runs standalone in a browser
@@ -19,19 +18,8 @@ import { browserRegister as anacondaMcpBrowserRegister } from "./anaconda-mcp/in
  * browser-safe fakes.
  */
 
-/** No-op main register for browser-only features that only provide browserRegister. */
-function noopMainRegister(): void {
-	/* browser mode — main is unavailable */
-}
-
 /** Built-in browser-mode registrations (mirrors the desktop FEATURES array). */
-const BUILT_IN_WEB_FEATURES: readonly FeatureRegistration[] = [
-	{
-		id: "anaconda-mcp",
-		mainRegister: noopMainRegister,
-		browserRegister: anacondaMcpBrowserRegister,
-	},
-];
+const BUILT_IN_WEB_FEATURES: readonly FeatureRegistration[] = [];
 
 /**
  * Plugin discovery phase (static, build-time — Decision #10): validates the

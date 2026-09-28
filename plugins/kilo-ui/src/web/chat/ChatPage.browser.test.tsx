@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render, renderHook } from "@testing-library/react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
@@ -34,7 +34,12 @@ import {
 import { WorkspacesFeatureProvider } from "../workspaces/WorkspacesFeatureProvider.js";
 import { ChatConnectionProvider, useChatConnection } from "./connection/ChatConnectionContext.js";
 import { ChatFeatureProvider } from "./ChatFeatureProvider.js";
-import { ChatPage, ChatPageHeaderActions, ChatPageHeaderLeading } from "./ChatPage.js";
+import {
+	CHAT_HEADER_ACTIONS_ZONE,
+	ChatPage,
+	ChatPageHeaderActions,
+	ChatPageHeaderLeading,
+} from "./ChatPage.js";
 import {
 	FILES_EXPLORER_PANE_ID,
 	FILES_PANE_DEFINITION_ID,
@@ -123,11 +128,30 @@ const assistantState = vi.hoisted(() => ({
 		},
 	},
 }));
+const composer = vi.hoisted(() => ({
+	state: { text: "", attachments: [] as Array<{ id: string; name: string }> },
+	getState: vi.fn(() => composer.state),
+	setText: vi.fn((text: string) => {
+		composer.state.text = text;
+	}),
+	send: vi.fn(),
+	reset: vi.fn(),
+}));
 vi.mock("@assistant-ui/react", async (importOriginal) => {
 	const actual = await importOriginal<typeof AssistantUiReact>();
 	return {
 		...actual,
 		AssistantRuntimeProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+		useAui: (...args: Parameters<typeof actual.useAui>) => {
+			const aui = actual.useAui(...args);
+			return useMemo(
+				() =>
+					new Proxy(aui, {
+						get: (target, key) => (key === "composer" ? composer : Reflect.get(target, key)),
+					}),
+				[aui],
+			);
+		},
 		useAuiState: (selector: (state: typeof assistantState.current) => unknown) =>
 			selector(assistantState.current),
 	};
@@ -395,7 +419,149 @@ afterEach(() => {
 	assistantState.current.threadListItem.id = "draft";
 	assistantState.current.threadListItem.status = "new";
 	assistantState.current.threadListItem.title = "Session";
+	composer.state = { text: "", attachments: [] };
 	vi.clearAllMocks();
+});
+
+function AppendHeaderAction({ onAppendToChat }: { onAppendToChat?: (text: string) => void }) {
+	const [appended, setAppended] = useState(false);
+	return (
+		<button
+			onClick={() => {
+				onAppendToChat?.("Help fix this push.");
+				setAppended(true);
+			}}
+		>
+			{appended ? "Appended" : "Append to chat"}
+		</button>
+	);
+}
+
+describe("chat header append action", () => {
+	it("appends to the latest draft, preserves attachments, and reopens chat without sending", async () => {
+		assistantState.current.threadListItem.remoteId = "session-1";
+		assistantState.current.threadListItem.status = "regular";
+		useRightPanelStore.getState().openTab("session-1", { id: "canvas.canvas", title: "Canvas" });
+		useRightPanelStore.getState().setChatPaneOpen("session-1", false);
+		const { baseElement, sdk } = renderChatPage();
+		const screen = page.elementLocator(baseElement);
+		sdk.contribute(CHAT_HEADER_ACTIONS_ZONE, {
+			id: "append",
+			label: "Append",
+			component: AppendHeaderAction,
+		});
+		await expect.element(screen.getByRole("button", { name: "Append to chat" })).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).not.toBeInTheDocument();
+		const attachments = [{ id: "attachment-1", name: "notes.txt" }];
+		composer.state = { text: "Keep my notes  ", attachments };
+
+		await screen.getByRole("button", { name: "Append to chat" }).click();
+
+		expect(composer.state.text).toBe("Keep my notes  \n\nHelp fix this push.");
+		expect(composer.state.attachments).toBe(attachments);
+		expect(composer.send).not.toHaveBeenCalled();
+		expect(composer.reset).not.toHaveBeenCalled();
+		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
+	});
+
+	it("populates an empty draft and docks a popped-out chat to reveal it", async () => {
+		assistantState.current.threadListItem.remoteId = "session-1";
+		assistantState.current.threadListItem.status = "regular";
+		const dockPaneWindow = vi.fn(async () => ({ docked: true }));
+		const { baseElement, sdk } = renderChatPage({
+			shell: { openPaneWindow: async () => ({ opened: true }), dockPaneWindow },
+		});
+		const screen = page.elementLocator(baseElement);
+		sdk.contribute(CHAT_HEADER_ACTIONS_ZONE, {
+			id: "append",
+			label: "Append",
+			component: AppendHeaderAction,
+		});
+		await screen.getByTestId("chat-pane-pop-out-tab-agent:session-1").click();
+		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).not.toBeInTheDocument();
+
+		await screen.getByRole("button", { name: "Append to chat" }).click();
+
+		expect(composer.state.text).toBe("Help fix this push.");
+		expect(composer.send).not.toHaveBeenCalled();
+		expect(dockPaneWindow).toHaveBeenCalledWith({
+			pluginId: "kilo-ui",
+			sessionId: "session-1",
+			paneId: "agent:session-1",
+		});
+		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
+	});
+
+	it("docks chat before the initial window list loads and ignores its pre-dock snapshot", async () => {
+		assistantState.current.threadListItem.remoteId = "session-1";
+		assistantState.current.threadListItem.status = "regular";
+		let resolveListed!: (value: Awaited<ReturnType<SDK["shell"]["listPaneWindows"]>>) => void;
+		const listed = new Promise<Awaited<ReturnType<SDK["shell"]["listPaneWindows"]>>>((resolve) => {
+			resolveListed = resolve;
+		});
+		let notify!: Parameters<SDK["shell"]["onPaneWindowChanged"]>[0];
+		const pane = {
+			pluginId: "kilo-ui",
+			sessionId: "session-1",
+			paneId: "agent:session-1",
+		};
+		const dockPaneWindow = vi.fn(async () => {
+			notify({ ...pane, type: "docked" });
+			return { docked: true };
+		});
+		const listPaneWindows = vi.fn(() => listed);
+		const { baseElement, sdk } = renderChatPage({
+			shell: {
+				listPaneWindows,
+				dockPaneWindow,
+				onPaneWindowChanged: (listener) => {
+					notify = listener;
+					return () => {};
+				},
+			},
+		});
+		const screen = page.elementLocator(baseElement);
+		sdk.contribute(CHAT_HEADER_ACTIONS_ZONE, {
+			id: "append",
+			label: "Append",
+			component: AppendHeaderAction,
+		});
+		await expect.element(screen.getByRole("button", { name: "Append to chat" })).toBeVisible();
+		expect(listPaneWindows).toHaveBeenCalledWith("kilo-ui");
+
+		await screen.getByRole("button", { name: "Append to chat" }).click();
+
+		expect(dockPaneWindow).toHaveBeenCalledWith(pane);
+		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
+		await act(async () => {
+			resolveListed([{ ...pane, title: "Session", path: "/plugins/chat" }]);
+			await listed;
+		});
+		await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
+		expect(composer.state.text).toBe("Help fix this push.");
+		expect(composer.send).not.toHaveBeenCalled();
+	});
+
+	it("resets contributed header action state when switching chats", async () => {
+		assistantState.current.threadListItem.remoteId = "session-1";
+		assistantState.current.threadListItem.status = "regular";
+		const { baseElement, sdk, rerenderChatPage } = renderChatPage();
+		const screen = page.elementLocator(baseElement);
+		sdk.contribute(CHAT_HEADER_ACTIONS_ZONE, {
+			id: "append",
+			label: "Append",
+			component: AppendHeaderAction,
+		});
+		await screen.getByRole("button", { name: "Append to chat" }).click();
+		await expect
+			.element(screen.getByRole("button", { name: "Appended", exact: true }))
+			.toBeVisible();
+
+		assistantState.current.threadListItem.remoteId = "session-2";
+		rerenderChatPage();
+
+		await expect.element(screen.getByRole("button", { name: "Append to chat" })).toBeVisible();
+	});
 });
 
 describe("chat layout presets", () => {

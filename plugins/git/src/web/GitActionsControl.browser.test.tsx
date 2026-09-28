@@ -1,0 +1,137 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, render } from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
+import { page } from "vitest/browser";
+
+import { FeatureError } from "@kilo-desktop/feature-sdk";
+import { SdkProvider } from "@kilo-desktop/sdk-react";
+import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
+
+import { gitActionsContract, gitContract } from "../contracts/schemas.js";
+import { GitActionsControl } from "./GitActionsControl.js";
+
+const toastApi = vi.hoisted(() => ({ error: vi.fn() }));
+vi.mock("@kilo-desktop/ui/components/sonner", () => ({ toast: toastApi }));
+
+afterEach(() => {
+	cleanup();
+	vi.clearAllMocks();
+});
+
+it.each(["primary", "menu", "default branch"])(
+	"keeps long %s push errors readable within the window and allows dismissal",
+	async (entry) => {
+		const onAppendToChat = vi.fn();
+		const details = `remote: Permission denied.\n${"remote: Check repository access.\n".repeat(80)}https://example.com/${"repository".repeat(100)}\nfatal: push failed`;
+		const push = vi.fn(() => {
+			throw new FeatureError(details);
+		});
+		const sdk = createFakeSdk({
+			featureId: "git",
+			channels: { ...gitContract, ...gitActionsContract },
+			handlers: {
+				status: () => ({
+					exists: true,
+					doConflictedFilesExist: false,
+					currentBranch: "feature",
+					currentUpstreamBranch: "origin/feature",
+					branchAheadBehind: { ahead: 1, behind: 0 },
+					workingDirectory: { files: [] },
+				}),
+				branches: () => ({
+					currentBranch: "feature",
+					defaultBranch: entry === "default branch" ? "feature" : "main",
+					recentBranches: [],
+					branches: [],
+				}),
+				originUrl: () => "git@github.com:acme/repo.git",
+				workingTreeStats: () => ({ additions: 0, deletions: 0 }),
+				fetch: () => undefined,
+				push,
+			},
+		});
+		const system = createFakeFeatureSystem({ sdks: { git: sdk } });
+		const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+		try {
+			render(
+				<SdkProvider system={system}>
+					<QueryClientProvider client={queryClient}>
+						<GitActionsControl
+							workspaceDirectory="/repo/project"
+							{...(entry !== "menu" ? { onAppendToChat } : {})}
+						/>
+					</QueryClientProvider>
+				</SdkProvider>,
+			);
+			if (entry === "menu") {
+				await page.getByRole("button", { name: "Repository action options" }).click();
+				await page.getByTestId("git-action-push").click();
+			} else {
+				await page.getByTestId("git-action-primary").click();
+				if (entry === "default branch") {
+					await page
+						.getByRole("dialog", { name: "Push to default branch?" })
+						.getByRole("button", { name: "Push", exact: true })
+						.click();
+				}
+			}
+			const dialog = page.getByRole("dialog", { name: "Unable to push" });
+			await expect.element(dialog).toBeVisible();
+			expect(push).toHaveBeenCalledOnce();
+			expect(toastApi.error).not.toHaveBeenCalled();
+			expect(dialog.element().querySelector("pre")?.textContent).toBe(details);
+
+			for (const [width, height] of [
+				[1280, 800],
+				[375, 500],
+				[640, 320],
+				[375, 320],
+			] as const) {
+				await page.viewport(width, height);
+				await vi.waitFor(() => {
+					const element = dialog.element();
+					const bounds = element.getBoundingClientRect();
+					expect(bounds.left).toBeGreaterThanOrEqual(0);
+					expect(bounds.top).toBeGreaterThanOrEqual(0);
+					expect(bounds.right).toBeLessThanOrEqual(window.innerWidth);
+					expect(bounds.bottom).toBeLessThanOrEqual(window.innerHeight);
+					expect(element.scrollWidth).toBeLessThanOrEqual(element.clientWidth);
+					const viewport = element.querySelector<HTMLElement>(
+						'[data-slot="scroll-area-viewport"]',
+					)!;
+					expect(viewport.clientHeight).toBeGreaterThan(0);
+					expect(viewport.scrollHeight).toBeGreaterThan(viewport.clientHeight);
+					expect(viewport.scrollWidth).toBeLessThanOrEqual(viewport.clientWidth);
+					const footer = element.querySelector('[data-slot="dialog-footer"]')!;
+					expect(viewport.getBoundingClientRect().bottom).toBeLessThanOrEqual(
+						footer.getBoundingClientRect().top,
+					);
+					viewport.scrollTop = viewport.scrollHeight;
+					expect(viewport.scrollTop).toBeGreaterThan(0);
+				});
+			}
+			if (entry === "primary") {
+				await page.getByRole("button", { name: "Fix in chat" }).click();
+				expect(onAppendToChat).toHaveBeenCalledExactlyOnceWith(
+					`Git error output:\n${details}\n\nHelp me diagnose and fix the Git push failure above in /repo/project.`,
+				);
+				expect(push).toHaveBeenCalledOnce();
+			} else {
+				if (entry === "menu") {
+					await expect
+						.element(page.getByRole("button", { name: "Fix in chat" }))
+						.not.toBeInTheDocument();
+				}
+				await page.getByTestId("git-push-error-close").click();
+				expect(onAppendToChat).not.toHaveBeenCalled();
+			}
+			await expect.element(dialog).not.toBeInTheDocument();
+			await expect.element(page.getByTestId("git-action-primary")).toBeEnabled();
+		} finally {
+			cleanup();
+			queryClient.clear();
+			sdk.destroy();
+			await page.viewport(1280, 800);
+		}
+	},
+);

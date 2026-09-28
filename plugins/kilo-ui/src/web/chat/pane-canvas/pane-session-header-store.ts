@@ -15,6 +15,7 @@ type PaneSessionHeaderState = {
 	definitions: readonly RightPanelTabDefinition[];
 	onLaunch: (definition: RightPanelTabDefinition) => void;
 	onOpenChanges: () => void;
+	onAppendToChat: (text: string) => void;
 	onLaunchChat: () => void;
 	captureLayout: () => { template: LayoutTemplate; omittedTitles: string[] };
 	onApplyLayout: (preset: LayoutPreset) => void;
@@ -30,6 +31,7 @@ const idle: PaneSessionHeaderState = {
 	definitions: [],
 	onLaunch: () => undefined,
 	onOpenChanges: () => undefined,
+	onAppendToChat: () => undefined,
 	onLaunchChat: () => undefined,
 	captureLayout: () => {
 		throw new Error("No chat layout is available.");

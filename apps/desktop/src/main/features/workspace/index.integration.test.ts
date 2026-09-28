@@ -134,13 +134,25 @@ describe("workspace mainRegister", () => {
 	});
 
 	it("reconciles on kilo-ui workspace events: starts new folders and drops removed ones", async () => {
+		let resolveAlpha!: (path: string) => void;
+		const alphaRealpath = new Promise<string>((resolve) => {
+			resolveAlpha = resolve;
+		});
 		harness = boot();
-		await mainRegister(harness.workspaceSdk, { subscribeFn: harness.parcel.subscribe });
+		await mainRegister(harness.workspaceSdk, {
+			subscribeFn: harness.parcel.subscribe,
+			realpath: (path) => (path === PROJECT_A ? alphaRealpath : path),
+		});
 
 		harness.setWorkspaces([{ folders: [{ path: PROJECT_A }, { path: PROJECT_B }] }]);
 		harness.kiloSdk.events.emit("workspace-updated", { before: null, after: null });
+		// Native path resolution can finish out of order, even across reconciles.
 		await vi.waitFor(() => {
-			expect(harness!.parcel.subscribeAttempts).toEqual([PROJECT_A, PROJECT_B]);
+			expect(harness!.parcel.subscribeAttempts).toEqual([PROJECT_B]);
+		});
+		resolveAlpha(PROJECT_A);
+		await vi.waitFor(() => {
+			expect(harness!.parcel.subscribeAttempts.toSorted()).toEqual([PROJECT_A, PROJECT_B]);
 		});
 
 		const onFileChange = vi.fn();

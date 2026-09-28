@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { useSdk, useSdkQuery } from "@kilo-desktop/sdk-react";
 import { toast } from "@kilo-desktop/ui/components/sonner";
@@ -39,6 +39,8 @@ export type RepositoryActions = Omit<RepositoryActionModel, "menu"> & {
 	stats: { additions: number; deletions: number } | undefined;
 	busy: boolean;
 	progressLabel: string | null;
+	pushError: string | null;
+	dismissPushError: () => void;
 	refreshMenu: () => void;
 	push: () => void;
 	runQuickAction: () => void;
@@ -55,6 +57,7 @@ class ActionAbandoned extends Error {}
 export function useRepositoryActions(workspaceDirectory: string): RepositoryActions | null {
 	const sdk = useSdk<GitServiceContract>("git");
 	const queryClient = useQueryClient();
+	const [pushError, setPushError] = useState<string | null>(null);
 	const refreshPullRequest = useGitPrStatusStore((state) => state.refresh);
 	const statusQuery = useSdkQuery(sdk, "status", { workingDirectory: workspaceDirectory });
 	const branchesQuery = useSdkQuery(sdk, "branches", { workingDirectory: workspaceDirectory });
@@ -106,13 +109,15 @@ export function useRepositoryActions(workspaceDirectory: string): RepositoryActi
 	}, [refreshPullRequest, workspaceDirectory]);
 
 	/**
-	 * Runs a multi-step action. A failure toasts the step that failed; the
+	 * Runs a multi-step action. Push failures open a details dialog; other
+	 * failures toast the step that failed. The
 	 * local refresh afterwards runs regardless of outcome (earlier steps may
 	 * have succeeded) and can never turn a success into a failure toast.
 	 */
 	async function run(action: GitActionKind, operation: (step: Step) => Promise<void>) {
 		const progressStore = useGitActionProgressStore.getState();
 		if (!progressStore.start(workspaceDirectory, action)) return;
+		setPushError(null);
 		let failureLabel = action === "pr" ? "create pull request" : action;
 		const step: Step = (label, failure) => {
 			progressStore.setLabel(workspaceDirectory, label);
@@ -122,9 +127,9 @@ export function useRepositoryActions(workspaceDirectory: string): RepositoryActi
 			await operation(step);
 		} catch (error) {
 			if (!(error instanceof ActionAbandoned)) {
-				toast.error(`Unable to ${failureLabel}`, {
-					description: error instanceof Error ? error.message : "The Git operation failed.",
-				});
+				const message = error instanceof Error ? error.message : "The Git operation failed.";
+				if (failureLabel === "push") setPushError(message);
+				else toast.error(`Unable to ${failureLabel}`, { description: message });
 			}
 		} finally {
 			progressStore.finish(workspaceDirectory);
@@ -248,6 +253,8 @@ export function useRepositoryActions(workspaceDirectory: string): RepositoryActi
 		stats: workingTreeStatsQuery.data,
 		busy: progress !== undefined,
 		progressLabel: progress?.label ?? null,
+		pushError,
+		dismissPushError: () => setPushError(null),
 		refreshMenu: refreshRemote,
 		push,
 		runQuickAction,

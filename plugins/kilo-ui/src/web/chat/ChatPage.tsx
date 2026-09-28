@@ -93,6 +93,7 @@ export const CHAT_HEADER_ACTIONS_ZONE = "kilo-ui/chat-header-actions";
 export interface ChatHeaderActionProps {
 	readonly workspaceDirectory?: string;
 	readonly onOpenChanges?: () => void;
+	readonly onAppendToChat?: (text: string) => void;
 }
 
 function unpinLayout(layout: PaneLayout): PaneLayout {
@@ -189,9 +190,10 @@ export function ChatPageHeaderActions() {
 				const Component = contribution.component as ComponentType<ChatHeaderActionProps>;
 				return (
 					<Component
-						key={`${contribution.featureId}.${contribution.id}`}
+						key={`${state.sessionId}:${contribution.featureId}.${contribution.id}`}
 						{...(state.workspaceDirectory ? { workspaceDirectory: state.workspaceDirectory } : {})}
 						onOpenChanges={state.onOpenChanges}
+						onAppendToChat={state.onAppendToChat}
 					/>
 				);
 			})}
@@ -222,6 +224,7 @@ export function ChatPageHeaderActions() {
  */
 export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 	const sdk = useSdk(KILO_UI_PLUGIN_ID);
+	const aui = useAui();
 	const layoutsEnabled = useFeatureFlag(CHAT_LAYOUTS_FEATURE_FLAG, false);
 	const rightPanelDefinitions = useRightPanelTabDefinitions();
 	const availableDefinitionIds = useMemo(
@@ -657,6 +660,19 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 		rightPanelDefinitions,
 		sessionId,
 	]);
+	const handleAppendToChat = useCallback(
+		(text: string) => {
+			const draft = aui.composer.getState().text;
+			aui.composer.setText(draft ? `${draft}\n\n${text}` : text);
+			handleLaunchChat();
+			const paneId = agentPaneId(sessionId);
+			if (sdk.shell.canPopOutPanes) {
+				// Drafts are window-local; dock idempotently even while the initial window list loads.
+				void handleDockPoppedOutPane(paneId);
+			}
+		},
+		[aui, handleDockPoppedOutPane, handleLaunchChat, sdk, sessionId],
+	);
 	const handleArrangementChange = useCallback(
 		(next: Arrangement) => {
 			if (next === "tiles") {
@@ -691,6 +707,7 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 			definitions: rightPanelDefinitions,
 			onLaunch: handleLaunch,
 			onOpenChanges: handleOpenChanges,
+			onAppendToChat: handleAppendToChat,
 			onLaunchChat: handleLaunchChat,
 			captureLayout,
 			onApplyLayout: handleApplyLayout,
@@ -702,6 +719,7 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 		handleApplyLayout,
 		handleLaunch,
 		handleOpenChanges,
+		handleAppendToChat,
 		handleLaunchChat,
 		handleArrangementChange,
 		hasCanvas,

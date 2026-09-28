@@ -249,6 +249,7 @@ describe("kilo-server main registration", () => {
 			runAsNodeEnabled: async () => false,
 		});
 
+		expect(reconcileWebMcpRelayConfig).toHaveBeenCalledOnce();
 		const call = reconcileWebMcpRelayConfig.mock.calls[0];
 		if (!call) throw new Error("expected reconcileWebMcpRelayConfig to have been called once");
 		expect(call[1]).toBe(false);

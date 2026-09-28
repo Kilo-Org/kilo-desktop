@@ -5,6 +5,7 @@ import {
 	GitCommitHorizontalIcon,
 	GitPullRequestCreateIcon,
 	LoaderCircleIcon,
+	MessageSquareIcon,
 	type LucideIcon,
 } from "lucide-react";
 import { Fragment, useState } from "react";
@@ -13,12 +14,14 @@ import { Button } from "@kilo-desktop/ui/components/button";
 import { ButtonGroup } from "@kilo-desktop/ui/components/button-group";
 import {
 	Dialog,
+	DialogClose,
 	DialogContent,
 	DialogDescription,
 	DialogFooter,
 	DialogHeader,
 	DialogTitle,
 } from "@kilo-desktop/ui/components/dialog";
+import { ScrollArea } from "@kilo-desktop/ui/components/scroll-area";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 import {
 	DropdownMenu,
@@ -34,6 +37,7 @@ import { useRepositoryActions } from "./use-repository-actions.js";
 export interface GitActionsControlProps {
 	readonly workspaceDirectory?: string;
 	readonly onOpenChanges?: () => void;
+	readonly onAppendToChat?: (text: string) => void;
 }
 
 const ACTION_ICONS: Record<
@@ -50,12 +54,18 @@ const ACTION_ICONS: Record<
 	"create-pr": GitPullRequestCreateIcon,
 };
 
-export function GitActionsControl({ workspaceDirectory, onOpenChanges }: GitActionsControlProps) {
+export function GitActionsControl({
+	workspaceDirectory,
+	onOpenChanges,
+	onAppendToChat,
+}: GitActionsControlProps) {
 	if (!workspaceDirectory) return null;
 	return (
 		<GitActions
+			key={workspaceDirectory}
 			workspaceDirectory={workspaceDirectory}
 			{...(onOpenChanges ? { onOpenChanges } : {})}
+			{...(onAppendToChat ? { onAppendToChat } : {})}
 		/>
 	);
 }
@@ -63,9 +73,11 @@ export function GitActionsControl({ workspaceDirectory, onOpenChanges }: GitActi
 function GitActions({
 	workspaceDirectory,
 	onOpenChanges,
+	onAppendToChat,
 }: {
 	readonly workspaceDirectory: string;
 	readonly onOpenChanges?: () => void;
+	readonly onAppendToChat?: (text: string) => void;
 }) {
 	const actions = useRepositoryActions(workspaceDirectory);
 	const [defaultBranchConfirmation, setDefaultBranchConfirmation] = useState<{
@@ -198,6 +210,50 @@ function GitActions({
 					</DropdownMenuContent>
 				</DropdownMenu>
 			</ButtonGroup>
+			<Dialog
+				open={actions.pushError !== null}
+				onOpenChange={(open) => {
+					if (!open) {
+						actions.dismissPushError();
+					}
+				}}
+			>
+				<DialogContent className="max-h-[calc(100dvh-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-xl">
+					<DialogHeader className="min-w-0 pr-6">
+						<DialogTitle>Unable to push</DialogTitle>
+						<DialogDescription>
+							Git could not complete the push. Review the details below before trying again.
+						</DialogDescription>
+					</DialogHeader>
+					<ScrollArea className="h-[min(20rem,50dvh)] max-h-full min-h-0 min-w-0 rounded-md border">
+						<pre className="p-3 font-mono text-xs [overflow-wrap:anywhere] whitespace-pre-wrap">
+							{actions.pushError}
+						</pre>
+					</ScrollArea>
+					<DialogFooter>
+						<DialogClose render={<Button variant="outline" />} data-qa-id="git-push-error-close">
+							Close
+						</DialogClose>
+						{onAppendToChat ? (
+							<Button
+								data-qa-id="git-push-error-fix-in-chat"
+								title="Add the error to your current chat draft without sending it"
+								onClick={() => {
+									const error = actions.pushError;
+									if (error === null) return;
+									onAppendToChat(
+										`Git error output:\n${error}\n\nHelp me diagnose and fix the Git push failure above in ${workspaceDirectory}.`,
+									);
+									actions.dismissPushError();
+								}}
+							>
+								<MessageSquareIcon data-icon="inline-start" />
+								Fix in chat
+							</Button>
+						) : null}
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 			<Dialog
 				open={defaultBranchConfirmation !== null}
 				onOpenChange={(open) => {

@@ -1,0 +1,391 @@
+name: "Generate SBOM"
+# Vendored from anaconda/security-hub @ 90fc2f2b6260a4e5e738f13aa68ca853a440a8d0 (.github/actions/generate-sbom).
+# Local adaptations: sbom-name and asar-path inputs, asar extract/scan/merge steps,
+# SBOM_EXCLUDE_PURL_PREFIXES filter in merge-sboms.py, explicit-name mode in generate-sbom-name.py.
+# Re-sync against upstream when security-hub ships fixes.
+description: "Generate CycloneDX and SPDX SBOMs using Syft and Trivy with PURL-based deduplication"
+author: "Anaconda Security Team"
+
+inputs:
+  scan-type:
+    description: "Type of scan: repo (source code) or image (container)"
+    required: false
+    default: "repo"
+  image-ref:
+    description: "Container image reference (required if scan-type is image)"
+    required: false
+    default: ""
+  scan-path:
+    description: "Path to scan for repo scans (defaults to current directory)"
+    required: false
+    default: "."
+  sbom-name:
+    description: "Explicit SBOM base name (e.g. my-app_1.2.3_darwin-arm64); overrides scan-type-derived naming. Use for artifact scans of packaged builds."
+    required: false
+    default: ""
+  asar-path:
+    description: "Path to an Electron app.asar inside the scan target. If set, the asar is extracted and scanned too, and the result is merged in (Electron main-process deps are otherwise invisible inside the asar)."
+    required: false
+    default: ""
+  upload-artifact:
+    description: "Upload SBOMs as workflow artifacts"
+    required: false
+    default: "true"
+  artifact-retention-days:
+    description: "Number of days to retain artifacts"
+    required: false
+    default: "90"
+  fetch-remote-licenses:
+    description: "Fetch license info from remote sources (slower but more complete)"
+    required: false
+    default: "true"
+  strict-validation:
+    description: "Fail the workflow if SBOM validation fails (set to false to warn only)"
+    required: false
+    default: "true"
+
+outputs:
+  sbom-name:
+    description: "Base name of the generated SBOM files"
+    value: ${{ steps.naming.outputs.SBOM_BASE }}
+  artifact-name:
+    description: "Name of the uploaded artifact"
+    value: ${{ steps.naming.outputs.ARTIFACT_NAME }}
+  cyclonedx-path:
+    description: "Path to the merged CycloneDX SBOM"
+    value: ${{ steps.naming.outputs.CYCLONEDX_PATH }}
+  spdx-path:
+    description: "Path to the merged SPDX SBOM"
+    value: ${{ steps.naming.outputs.SPDX_PATH }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set SBOM naming variables
+      id: naming
+      shell: bash
+      env:
+        INPUT_SCAN_TYPE: ${{ inputs.scan-type }}
+        INPUT_IMAGE_REF: ${{ inputs.image-ref }}
+        INPUT_SBOM_NAME: ${{ inputs.sbom-name }}
+        SBOM_DIR: sbom-output
+        REPO_NAME: ${{ github.event.repository.name }}
+        EVENT_NAME: ${{ github.event_name }}
+        RELEASE_TAG: ${{ github.event.release.tag_name }}
+        REF_TYPE: ${{ github.ref_type }}
+        REF_NAME: ${{ github.ref_name }}
+        GIT_SHA: ${{ github.sha }}
+      run: |
+        if [[ -n "$INPUT_SBOM_NAME" ]]; then
+          OUTPUT=$(python3 "${{ github.action_path }}/generate-sbom-name.py" \
+            --name "$INPUT_SBOM_NAME" \
+            --sbom-dir "$SBOM_DIR")
+        elif [[ "$INPUT_SCAN_TYPE" == "image" ]]; then
+          OUTPUT=$(python3 "${{ github.action_path }}/generate-sbom-name.py" \
+            --scan-type image \
+            --image-ref "$INPUT_IMAGE_REF" \
+            --sbom-dir "$SBOM_DIR")
+        else
+          OUTPUT=$(python3 "${{ github.action_path }}/generate-sbom-name.py" \
+            --scan-type repo \
+            --repo-name "$REPO_NAME" \
+            --event-name "$EVENT_NAME" \
+            --release-tag "$RELEASE_TAG" \
+            --ref-type "$REF_TYPE" \
+            --ref-name "$REF_NAME" \
+            --git-sha "$GIT_SHA" \
+            --sbom-dir "$SBOM_DIR")
+        fi
+
+        echo "$OUTPUT" >> "$GITHUB_OUTPUT"
+
+        SBOM_BASE=$(echo "$OUTPUT" | grep "^SBOM_BASE=" | cut -d= -f2)
+        echo "SBOM_BASE=${SBOM_BASE}" >> $GITHUB_ENV
+        echo "SBOM_DIR=${SBOM_DIR}" >> $GITHUB_ENV
+
+    - name: Create output directory
+      shell: bash
+      run: mkdir -p ${{ env.SBOM_DIR }}
+
+    - name: Extract app.asar for scanning (Electron)
+      if: inputs.asar-path != ''
+      shell: bash
+      env:
+        INPUT_ASAR_PATH: ${{ inputs.asar-path }}
+      run: |
+        # Extracted contents go to runner.temp, NOT SBOM_DIR: the artifact
+        # upload later takes the whole SBOM_DIR tree, and the unpacked asar
+        # (the app's full JS source) is not ours to publish.
+        ASAR_EXTRACT_DIR="${{ runner.temp }}/asar.extracted"
+        mkdir -p "$ASAR_EXTRACT_DIR"
+        npx --yes @electron/asar extract "$INPUT_ASAR_PATH" "$ASAR_EXTRACT_DIR"
+        echo "ASAR_EXTRACT_DIR=${ASAR_EXTRACT_DIR}" >> "$GITHUB_ENV"
+
+    - name: Create Trivy config
+      shell: bash
+      run: |
+        cat > trivy.yaml << 'EOF'
+        license:
+          full: true
+        EOF
+
+    # ===========================================
+    # Generate SBOMs with Syft
+    # ===========================================
+    - name: Generate SBOM with Syft (CycloneDX)
+      uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      with:
+        format: cyclonedx-json
+        output-file: ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.syft.cyclonedx.json
+        image: ${{ inputs.scan-type == 'image' && inputs.image-ref || '' }}
+        path: ${{ inputs.scan-type != 'image' && inputs.scan-path || '' }}
+        upload-artifact: "false"
+        upload-release-assets: "false"
+      env:
+        SYFT_PYTHON_SEARCH_REMOTE_LICENSES: ${{ inputs.fetch-remote-licenses == 'true' && 'true' || 'false' }}
+        SYFT_JAVASCRIPT_SEARCH_REMOTE_LICENSES: ${{ inputs.fetch-remote-licenses == 'true' && 'true' || 'false' }}
+        SYFT_GOLANG_SEARCH_REMOTE_LICENSES: ${{ inputs.fetch-remote-licenses == 'true' && 'true' || 'false' }}
+        SYFT_JAVA_USE_NETWORK: ${{ inputs.fetch-remote-licenses == 'true' && 'true' || 'false' }}
+        SYFT_LICENSE_CONTENT: "all"
+        SYFT_FILE_METADATA_SELECTION: "none"
+        SYFT_SOURCE_NAME: ${{ github.event.repository.name }}
+        SYFT_SOURCE_VERSION: ${{ github.sha }}
+
+    - name: Generate SBOM with Syft (SPDX)
+      uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      with:
+        format: spdx-json
+        output-file: ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.syft.spdx.json
+        image: ${{ inputs.scan-type == 'image' && inputs.image-ref || '' }}
+        path: ${{ inputs.scan-type != 'image' && inputs.scan-path || '' }}
+        upload-artifact: "false"
+        upload-release-assets: "false"
+      env:
+        SYFT_PYTHON_SEARCH_REMOTE_LICENSES: ${{ inputs.fetch-remote-licenses == 'true' && 'true' || 'false' }}
+        SYFT_JAVASCRIPT_SEARCH_REMOTE_LICENSES: ${{ inputs.fetch-remote-licenses == 'true' && 'true' || 'false' }}
+        SYFT_GOLANG_SEARCH_REMOTE_LICENSES: ${{ inputs.fetch-remote-licenses == 'true' && 'true' || 'false' }}
+        SYFT_JAVA_USE_NETWORK: ${{ inputs.fetch-remote-licenses == 'true' && 'true' || 'false' }}
+        SYFT_LICENSE_CONTENT: "all"
+        SYFT_FILE_METADATA_SELECTION: "none"
+        SYFT_SOURCE_NAME: ${{ github.event.repository.name }}
+        SYFT_SOURCE_VERSION: ${{ github.sha }}
+
+    # ===========================================
+    # Generate SBOMs with Trivy
+    # ===========================================
+    - name: Generate SBOM with Trivy (CycloneDX)
+      uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+      with:
+        scan-type: ${{ inputs.scan-type == 'image' && 'image' || 'fs' }}
+        scan-ref: ${{ inputs.scan-type == 'image' && inputs.image-ref || inputs.scan-path }}
+        format: "cyclonedx"
+        output: ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.trivy.cyclonedx.json
+        scanners: "vuln,license"
+        trivy-config: trivy.yaml
+        version: "v0.73.0"
+
+    - name: Generate SBOM with Trivy (SPDX)
+      uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+      with:
+        scan-type: ${{ inputs.scan-type == 'image' && 'image' || 'fs' }}
+        scan-ref: ${{ inputs.scan-type == 'image' && inputs.image-ref || inputs.scan-path }}
+        format: "spdx-json"
+        output: ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.trivy.spdx.json
+        scanners: "license"
+        trivy-config: trivy.yaml
+        version: "v0.73.0"
+        skip-setup-trivy: true
+        cache: false
+
+    # ===========================================
+    # Scan extracted asar (optional, Electron apps)
+    # ===========================================
+    - name: Generate SBOM with Syft (CycloneDX, asar)
+      if: inputs.asar-path != ''
+      uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      with:
+        format: cyclonedx-json
+        output-file: ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.syft-asar.cyclonedx.json
+        path: ${{ env.ASAR_EXTRACT_DIR }}
+        upload-artifact: "false"
+        upload-release-assets: "false"
+      env:
+        SYFT_JAVASCRIPT_SEARCH_REMOTE_LICENSES: ${{ inputs.fetch-remote-licenses == 'true' && 'true' || 'false' }}
+        SYFT_LICENSE_CONTENT: "all"
+
+    - name: Generate SBOM with Syft (SPDX, asar)
+      if: inputs.asar-path != ''
+      uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      with:
+        format: spdx-json
+        output-file: ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.syft-asar.spdx.json
+        path: ${{ env.ASAR_EXTRACT_DIR }}
+        upload-artifact: "false"
+        upload-release-assets: "false"
+      env:
+        SYFT_JAVASCRIPT_SEARCH_REMOTE_LICENSES: ${{ inputs.fetch-remote-licenses == 'true' && 'true' || 'false' }}
+        SYFT_LICENSE_CONTENT: "all"
+
+    # ===========================================
+    # Merge SBOMs
+    # ===========================================
+    - name: Install CycloneDX CLI (for validation)
+      shell: bash
+      run: |
+        CYCLONEDX_VERSION="0.27.2"
+        case "${{ runner.os }}-${{ runner.arch }}" in
+          Linux-X64)    BIN=cyclonedx-linux-x64 ;;
+          Linux-ARM64)  BIN=cyclonedx-linux-arm64 ;;
+          macOS-X64)    BIN=cyclonedx-osx-x64 ;;
+          macOS-ARM64)  BIN=cyclonedx-osx-arm64 ;;
+          Windows-X64)  BIN=cyclonedx-win-x64.exe ;;
+          Windows-ARM64) BIN=cyclonedx-win-arm64.exe ;;
+          *) echo "::error::no cyclonedx-cli build for ${{ runner.os }}-${{ runner.arch }}"; exit 1 ;;
+        esac
+        mkdir -p "${{ runner.temp }}/bin"
+
+        # Checksum-verify the downloaded binary against the release's own digests
+        # before executing it (unlike curl|chmod+x with no verification).
+        ASSET_URL="https://github.com/CycloneDX/cyclonedx-cli/releases/download/v${CYCLONEDX_VERSION}/${BIN}"
+        DIGESTS_URL="https://github.com/CycloneDX/cyclonedx-cli/releases/download/v${CYCLONEDX_VERSION}/cyclonedx-cli_${CYCLONEDX_VERSION}_checksums.txt"
+        curl -sSfL "$ASSET_URL" -o "${{ runner.temp }}/bin/${BIN}"
+        curl -sSfL "$DIGESTS_URL" -o "${{ runner.temp }}/checksums.txt"
+        EXPECTED=$(grep " ${BIN}\$" "${{ runner.temp }}/checksums.txt" | awk '{print $1}')
+        [[ -n "$EXPECTED" ]] || { echo "::error::no checksum for ${BIN} in checksums.txt"; exit 1; }
+        ACTUAL=$(shasum -a 256 "${{ runner.temp }}/bin/${BIN}" | awk '{print $1}')
+        [[ "$EXPECTED" == "$ACTUAL" ]] || { echo "::error::checksum mismatch for ${BIN}"; exit 1; }
+
+        chmod +x "${{ runner.temp }}/bin/${BIN}"
+        # Normalize name so the validate step can invoke `cyclonedx` on every OS
+        # (keeping the .exe extension on Windows, where it is required)
+        if [[ "${{ runner.os }}" == "Windows" ]]; then
+          mv "${{ runner.temp }}/bin/${BIN}" "${{ runner.temp }}/bin/cyclonedx.exe"
+        else
+          mv "${{ runner.temp }}/bin/${BIN}" "${{ runner.temp }}/bin/cyclonedx"
+        fi
+        echo "${{ runner.temp }}/bin" >> "$GITHUB_PATH"
+
+    - name: Merge CycloneDX SBOMs
+      shell: bash
+      env:
+        SBOM_EXCLUDE_PURL_PREFIXES: "pkg:github/"
+      run: |
+        INPUTS=(
+          "${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.syft.cyclonedx.json"
+          "${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.trivy.cyclonedx.json"
+        )
+        if [[ -n "${{ env.ASAR_EXTRACT_DIR }}" ]]; then
+          INPUTS+=("${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.syft-asar.cyclonedx.json")
+        fi
+        python3 "${{ github.action_path }}/merge-sboms.py" \
+          --format cyclonedx \
+          --inputs "${INPUTS[@]}" \
+          --output ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.cyclonedx.json \
+          --name "${{ env.SBOM_BASE }}"
+
+    - name: Merge SPDX SBOMs
+      shell: bash
+      env:
+        SBOM_EXCLUDE_PURL_PREFIXES: "pkg:github/"
+      run: |
+        INPUTS=(
+          "${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.syft.spdx.json"
+          "${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.trivy.spdx.json"
+        )
+        if [[ -n "${{ env.ASAR_EXTRACT_DIR }}" ]]; then
+          INPUTS+=("${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.syft-asar.spdx.json")
+        fi
+        python3 "${{ github.action_path }}/merge-sboms.py" \
+          --format spdx \
+          --inputs "${INPUTS[@]}" \
+          --output ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.spdx.json \
+          --name "${{ env.SBOM_BASE }}"
+
+    # ===========================================
+    # Validate and report
+    # ===========================================
+    - name: Install SPDX tools (for validation)
+      shell: bash
+      run: |
+        pip install --quiet spdx-tools==0.8.3
+
+    - name: Validate SBOMs
+      id: validate
+      continue-on-error: ${{ inputs.strict-validation != 'true' }}
+      shell: bash
+      run: |
+        echo "=== Validating CycloneDX SBOM ==="
+        cyclonedx validate --input-file ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.cyclonedx.json --input-version v1_6 --fail-on-errors
+
+        echo ""
+        echo "=== Validating SPDX SBOM ==="
+        pyspdxtools -i ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.spdx.json
+
+        echo ""
+        echo "=== SBOM Statistics ==="
+        echo "CycloneDX (merged):"
+        jq -r '"  Total components: \([.components[]?] | length)"' ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.cyclonedx.json
+        jq -r '"  With licenses: \([.components[]? | select(.licenses != null and (.licenses | length) > 0)] | length)"' ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.cyclonedx.json
+
+        echo ""
+        echo "SPDX (merged):"
+        jq -r '"  Total packages: \([.packages[]?] | length)"' ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.spdx.json
+
+        echo ""
+        echo "Source breakdown (CycloneDX):"
+        echo "  Syft: $(jq '[.components[]?] | length' ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.syft.cyclonedx.json)"
+        echo "  Trivy: $(jq '[.components[]?] | length' ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.trivy.cyclonedx.json)"
+
+        echo ""
+        echo "Source breakdown (SPDX):"
+        echo "  Syft: $(jq '[.packages[]?] | length' ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.syft.spdx.json)"
+        echo "  Trivy: $(jq '[.packages[]?] | length' ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.trivy.spdx.json)"
+
+    - name: Generate license summary report
+      shell: bash
+      run: |
+        python3 "${{ github.action_path }}/generate-license-report.py" \
+          --input ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.cyclonedx.json \
+          --output ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.license-report.json
+
+    # ===========================================
+    # Upload artifacts
+    # ===========================================
+    - name: Upload SBOM artifacts
+      if: inputs.upload-artifact == 'true'
+      uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+      with:
+        name: sbom-${{ env.SBOM_BASE }}
+        path: ${{ env.SBOM_DIR }}/
+        retention-days: ${{ inputs.artifact-retention-days }}
+
+    - name: Summary
+      shell: bash
+      env:
+        VALIDATION_OUTCOME: ${{ steps.validate.outcome }}
+        STRICT_VALIDATION: ${{ inputs.strict-validation }}
+      run: |
+        CYCLONEDX_VERSION=$(jq -r '.specVersion' ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.cyclonedx.json)
+        SPDX_VERSION=$(jq -r '.spdxVersion' ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.spdx.json)
+
+        echo "## SBOM Generation Complete" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        if [[ "$VALIDATION_OUTCOME" == "failure" && "$STRICT_VALIDATION" != "true" ]]; then
+          echo "> [!WARNING]" >> $GITHUB_STEP_SUMMARY
+          echo "> SBOM validation failed but strict-validation is disabled. Review validation errors above." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+        fi
+
+        echo "**Scan Type:** ${{ inputs.scan-type }}" >> $GITHUB_STEP_SUMMARY
+        echo "**SBOM Base Name:** \`${{ env.SBOM_BASE }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Generated Files" >> $GITHUB_STEP_SUMMARY
+        echo "| File | Format | Description |" >> $GITHUB_STEP_SUMMARY
+        echo "|------|--------|-------------|" >> $GITHUB_STEP_SUMMARY
+        echo "| ${{ env.SBOM_BASE }}.sbom.cyclonedx.json | CycloneDX ${CYCLONEDX_VERSION} | Merged SBOM (Syft + Trivy) |" >> $GITHUB_STEP_SUMMARY
+        echo "| ${{ env.SBOM_BASE }}.sbom.spdx.json | ${SPDX_VERSION} | Merged SBOM (Syft + Trivy) |" >> $GITHUB_STEP_SUMMARY
+        echo "| ${{ env.SBOM_BASE }}.sbom.license-report.json | JSON | License coverage analysis |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### License Coverage" >> $GITHUB_STEP_SUMMARY
+        jq -r '"- Total components: **\(.summary.total_components)**\n- With licenses: **\(.summary.components_with_license)**\n- Coverage: **\(.summary.license_coverage_percent)%**"' ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.license-report.json >> $GITHUB_STEP_SUMMARY

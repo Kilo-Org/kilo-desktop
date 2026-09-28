@@ -1,0 +1,116 @@
+# Shipped-product SBOM generation. Phase 1 of the NPI/CRA plan: merged
+# Syft+Trivy SBOMs (CycloneDX 1.6 + SPDX 2.3) of the packaged Electron app as
+# build artifacts. Phase 2 (CRA staging S3 upload via OIDC) is intentionally
+# absent here; it lands as a separate gated job once the S3 key layout is
+# confirmed with the bucket owners.
+# The pull_request trigger exists to validate this workflow before merge
+# (workflow_dispatch requires the workflow to exist on the default branch);
+# remove it when merging if SBOMs on every PR are not wanted.
+
+name: SBOM
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: sbom-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  sbom:
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [mac, windows, linux]
+    runs-on: ${{ matrix.target == 'mac' && 'macos-latest' || matrix.target == 'windows' && 'WinLatest-x64-8vCPU-32GB' || 'ubuntu-latest' }}
+    timeout-minutes: 90
+    environment: preview
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
+      RELEASE_TRACK: preview
+      UPDATE_PUBLISH_URL: ${{ vars.UPDATE_PUBLISH_URL }}
+      UPDATE_PUBLISH_URL_PREVIEW: ${{ vars.UPDATE_PUBLISH_URL_PREVIEW }}
+      UPDATE_PUBLISH_URL_STABLE: ${{ vars.UPDATE_PUBLISH_URL_STABLE }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node and pnpm
+        uses: ./.github/actions/setup-node-pnpm
+
+      - name: Install maker prerequisites
+        if: matrix.target == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes fakeroot libsecret-1-dev pkg-config
+
+      # SBOMs only need the packaged (unsigned) app tree; production signing /
+      # notarization / Azure Key Vault secrets are intentionally not wired in.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - uses: ./plugins/notebook/actions/setup-native
+
+      - uses: ./plugins/kilo-server/actions/setup-cli
+
+      - uses: ./.github/actions/cache-electron-rebuild
+
+      - name: Package
+        run: pnpm run package
+
+      - name: Locate packaged app
+        id: packaged
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.target }}" in
+            mac)
+              APP_DIR=$(find apps/desktop/out -mindepth 2 -maxdepth 2 -name "*.app" -type d | head -n1)
+              [[ -n "$APP_DIR" ]] || { echo "::error::no .app bundle found under apps/desktop/out"; exit 1; }
+              PLATFORM_ARCH=$(basename "$(dirname "$APP_DIR")" | sed -E 's/^.*-//')
+              PLATFORM="darwin-${PLATFORM_ARCH}"
+              ASAR_PATH="$APP_DIR/Contents/Resources/app.asar"
+              ;;
+            windows)
+              APP_DIR=$(find apps/desktop/out -mindepth 1 -maxdepth 1 -type d -name "*-win32-*" | head -n1)
+              [[ -n "$APP_DIR" ]] || { echo "::error::no packaged dir (win32) found under apps/desktop/out"; exit 1; }
+              PLATFORM_ARCH=$(basename "$APP_DIR" | sed -E 's/^.*-//')
+              PLATFORM="win32-${PLATFORM_ARCH}"
+              ASAR_PATH=$(find "$APP_DIR" -maxdepth 2 -name "app.asar" | head -n1 || true)
+              ;;
+            linux)
+              APP_DIR=$(find apps/desktop/out -mindepth 1 -maxdepth 1 -type d -name "*-linux-*" | head -n1)
+              [[ -n "$APP_DIR" ]] || { echo "::error::no packaged dir (linux) found under apps/desktop/out"; exit 1; }
+              PLATFORM_ARCH=$(basename "$APP_DIR" | sed -E 's/^.*-//')
+              PLATFORM="linux-${PLATFORM_ARCH}"
+              ASAR_PATH=$(find "$APP_DIR" -maxdepth 2 -name "app.asar" | head -n1 || true)
+              ;;
+          esac
+
+          APP_VERSION=$(node -p "require('./apps/desktop/package.json').version")
+          PRODUCT=$(node -p "require('./apps/desktop/package.json').productName" | tr '[:upper:]' '[:lower:]')
+
+          echo "app-dir=$APP_DIR" >> "$GITHUB_OUTPUT"
+          echo "platform=$PLATFORM" >> "$GITHUB_OUTPUT"
+          echo "sbom-name=${PRODUCT}_${APP_VERSION}_${PLATFORM}" >> "$GITHUB_OUTPUT"
+          if [[ -n "$ASAR_PATH" && -f "$ASAR_PATH" ]]; then
+            echo "asar-path=$ASAR_PATH" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Generate SBOM
+        id: sbom
+        uses: ./.github/actions/generate-sbom
+        with:
+          scan-path: ${{ steps.packaged.outputs.app-dir }}
+          sbom-name: ${{ steps.packaged.outputs.sbom-name }}
+          asar-path: ${{ steps.packaged.outputs.asar-path }}
+          upload-artifact: "true"
+          artifact-retention-days: "90"
+          fetch-remote-licenses: "true"

@@ -183,3 +183,7 @@ ldclient-user-cache/
 /Untitled*.ipynb
 .ipynb_checkpoints/
 .virtual_documents/
+
+# Local SBOM generation output (see .github/actions/generate-sbom)
+sbom-output/
+sbom-scan/

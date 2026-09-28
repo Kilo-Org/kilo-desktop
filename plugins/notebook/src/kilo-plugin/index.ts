@@ -5,6 +5,16 @@ import { z } from "zod";
 
 import type { CellResult, CellSnapshot, ExecutionView, Session } from "@runtimed/node";
 
+import { checkTyposquats } from "../shared/typosquat.js";
+
+import {
+	declaredDependencySpecs,
+	dependencyTrust,
+	pendingApprovalLabels,
+	requireDependencyApproval,
+	withTrustGuidance,
+} from "./dependency-approval.js";
+
 type ToolAttachment = {
 	type: "file";
 	mime: string;
@@ -287,6 +297,86 @@ async function projectCell(
 	};
 }
 
+type RuntimeStatus = Awaited<ReturnType<Session["getRuntimeStatus"]>>;
+
+type KernelError = { reason?: string; details?: string };
+
+function kernelErrorOf(status: RuntimeStatus): KernelError | undefined {
+	const reason = status.errorReason?.trim();
+	const details = status.errorDetails ? stripAnsi(status.errorDetails).trim() : undefined;
+	if (!reason && !details) return undefined;
+	return { ...(reason ? { reason } : {}), ...(details ? { details } : {}) };
+}
+
+function formatKernelError(error: KernelError): string {
+	return [error.reason, error.details].filter(Boolean).join(": ");
+}
+
+// Auxiliary context for other tools: a status read failure must not mask their result.
+async function readKernelError(session: Session): Promise<KernelError | undefined> {
+	try {
+		return kernelErrorOf(await session.getRuntimeStatus());
+	} catch {
+		return undefined;
+	}
+}
+
+const APPROVAL_HINT =
+	"The user can click Review in the notebook's banner, or use notebooks_dependencies action approve_trust.";
+
+function summarizeKernelState(
+	status: RuntimeStatus,
+	error: KernelError | undefined,
+	pendingApproval: readonly string[],
+): string {
+	if (status.lifecycle === "Error") {
+		return error
+			? `Kernel failed to start: ${formatKernelError(error)}`
+			: "Kernel failed to start.";
+	}
+	const pendingList = pendingApproval.length > 0 ? `: ${pendingApproval.join(", ")}` : "";
+	const state =
+		status.lifecycle === "AwaitingTrust"
+			? `Kernel is waiting for the user to approve the notebook dependencies${pendingList}. ${APPROVAL_HINT}`
+			: status.lifecycle === "AwaitingEnvBuild"
+				? "Kernel is waiting for the environment.yml conda environment to be built."
+				: status.lifecycle === "Running"
+					? `Kernel is running (${status.activity ?? "unknown activity"}).`
+					: `Kernel lifecycle: ${status.lifecycle}.`;
+	const approval =
+		status.lifecycle !== "AwaitingTrust" && pendingApproval.length > 0
+			? ` Dependencies need approval before they can be installed${pendingList}. ${APPROVAL_HINT}`
+			: "";
+	return `${state}${approval}${error ? ` Last kernel error: ${formatKernelError(error)}` : ""}`;
+}
+
+const TRUST_PERMISSION = "notebooks_trust";
+
+/**
+ * Kilo's built-in agents default every permission to `"*": "allow"`, so a
+ * dependency approval would otherwise be granted without the user ever seeing
+ * it. Kilo runs plugin `config` hooks before building agent permissions; an
+ * explicit user setting for `notebooks_trust` still wins.
+ */
+function requireTrustPrompt(config: { permission?: unknown }): void {
+	if (config.permission === undefined) config.permission = {};
+	const permission = config.permission;
+	if (typeof permission !== "object" || permission === null) return;
+	if (!(TRUST_PERMISSION in permission)) {
+		(permission as Record<string, unknown>)[TRUST_PERMISSION] = "ask";
+	}
+}
+
+type DependencyStatus = Awaited<ReturnType<Session["getDependencyStatus"]>>;
+
+/** Agent-facing view of what is waiting for approval; omitted when nothing is. */
+function approvalReport(status: DependencyStatus) {
+	const trust = dependencyTrust(status);
+	return trust.needsApproval
+		? { approval: { needs_approval: true, unapproved: pendingApprovalLabels(trust) } }
+		: {};
+}
+
 type EditOperation =
 	| {
 			action: "update";
@@ -392,12 +482,18 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 				if (context.abort.aborted) throw new Error("Notebook execution was cancelled.");
 				const session = await sessions.open(args.notebook_id, context.sessionID);
 				if (args.dependencies?.length) {
+					await requireDependencyApproval(context, session, args.notebook_id, {
+						kind: "add",
+						packages: args.dependencies,
+					});
 					await session.addDependencies(args.dependencies);
-					await session.syncEnvironment();
+					await withTrustGuidance(session, () => session.syncEnvironment());
 				}
-				const result = await session.runCell(args.code, {
-					timeoutMs: Math.round((args.timeout_secs ?? 120) * 1000),
-				});
+				const result = await withTrustGuidance(session, () =>
+					session.runCell(args.code, {
+						timeoutMs: Math.round((args.timeout_secs ?? 120) * 1000),
+					}),
+				);
 				const projected = projectCellResult(result);
 				return {
 					...projected,
@@ -441,9 +537,11 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 				});
 				sessions.assertConnected(session);
 				if (args.and_run && cellType === "code") {
-					const result = await session.executeCell(cellId, {
-						timeoutMs: Math.round((args.timeout_secs ?? 120) * 1000),
-					});
+					const result = await withTrustGuidance(session, () =>
+						session.executeCell(cellId, {
+							timeoutMs: Math.round((args.timeout_secs ?? 120) * 1000),
+						}),
+					);
 					const projected = projectCellResult(result);
 					return {
 						...projected,
@@ -558,9 +656,11 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 				const results: CellResult[] = [];
 				for (const cellId of cellIds) {
 					if (context.abort.aborted) throw new Error("Notebook execution was cancelled.");
-					const result = await session.executeCell(cellId, {
-						timeoutMs: Math.round((args.timeout_secs ?? 120) * 1000),
-					});
+					const result = await withTrustGuidance(session, () =>
+						session.executeCell(cellId, {
+							timeoutMs: Math.round((args.timeout_secs ?? 120) * 1000),
+						}),
+					);
 					results.push(result);
 					if (!result.success && (args.stop_on_error ?? true)) break;
 				}
@@ -585,56 +685,139 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 			action: "status" | "add" | "remove" | "sync" | "approve_trust";
 			packages?: string[];
 			package_manager?: "uv" | "conda" | "pixi";
-			observed_heads?: string[];
 		}> = {
 			description:
-				"Inspect or update the notebook environment. Add and remove synchronize immediately; approving trust always asks the user first.",
+				"Inspect or update the notebook environment. Add and remove synchronize immediately. " +
+				"Adding, removing, or approving asks the user first whenever it would approve packages " +
+				"the machine has not approved yet, including dependencies the notebook already declares; " +
+				"suspected typosquats are flagged in that prompt. Status reports what is waiting for approval.",
 			args: {
 				notebook_id: NOTEBOOK_ID,
 				action: z.enum(["status", "add", "remove", "sync", "approve_trust"]),
 				packages: z.array(z.string().min(1)).min(1).max(100).optional(),
 				package_manager: z.enum(["uv", "conda", "pixi"]).optional(),
-				observed_heads: z.array(z.string().min(1)).optional(),
 			},
 			async execute(args, context) {
+				if ((args.action === "add" || args.action === "remove") && !args.packages?.length) {
+					throw new Error(`packages is required for action ${args.action}.`);
+				}
+				const packages = args.packages ?? [];
 				const session = await sessions.open(args.notebook_id, context.sessionID);
 				const editOptions = args.package_manager
 					? { packageManager: args.package_manager }
 					: undefined;
+				const syncEnvironment = () => withTrustGuidance(session, () => session.syncEnvironment());
 				switch (args.action) {
 					case "add":
-						if (!args.packages?.length) throw new Error("packages is required for action add.");
-						await session.addDependencies(args.packages, editOptions);
-						await session.syncEnvironment();
+						await requireDependencyApproval(context, session, args.notebook_id, {
+							kind: "add",
+							packages,
+						});
+						await session.addDependencies(packages, editOptions);
+						await syncEnvironment();
 						break;
 					case "remove":
-						if (!args.packages?.length) throw new Error("packages is required for action remove.");
-						await session.removeDependencies(args.packages, editOptions);
-						await session.syncEnvironment();
+						await requireDependencyApproval(context, session, args.notebook_id, {
+							kind: "remove",
+							packages,
+						});
+						await session.removeDependencies(packages, editOptions);
+						await syncEnvironment();
 						break;
 					case "sync":
-						await session.syncEnvironment();
+						await syncEnvironment();
 						break;
 					case "approve_trust":
-						await context.ask({
-							permission: "notebooks_trust",
-							patterns: [args.notebook_id],
-							always: [args.notebook_id],
-							metadata: {
-								notebook_id: args.notebook_id,
-								observed_heads: args.observed_heads ?? [],
-							},
-						});
-						await session.approveTrust(args.observed_heads);
+						if (
+							await requireDependencyApproval(context, session, args.notebook_id, {
+								kind: "approve",
+							})
+						) {
+							await session.approveTrust(undefined);
+						}
 						break;
 					case "status":
 						break;
 				}
-				const status = await session.getDependencyStatus();
+				const [status, kernelError] = await Promise.all([
+					session.getDependencyStatus(),
+					readKernelError(session),
+				]);
+				const typosquatWarnings = checkTyposquats(declaredDependencySpecs(status));
 				return {
 					title: "Notebook dependencies",
-					output: JSON.stringify({ notebook_id: args.notebook_id, action: args.action, status }),
+					output: JSON.stringify({
+						notebook_id: args.notebook_id,
+						action: args.action,
+						status,
+						...approvalReport(status),
+						...(kernelError ? { kernel_error: kernelError } : {}),
+						...(typosquatWarnings.length ? { typosquat_warnings: typosquatWarnings } : {}),
+					}),
 					metadata: { notebook_id: args.notebook_id, action: args.action },
+				};
+			},
+		};
+
+		const diagnose: ToolDefinition<{ notebook_id: string }> = {
+			description:
+				"Diagnose why a notebook is broken: kernel failed to start, environment or conda/uv/pixi " +
+				"install errors, environment.yml problems, missing ipykernel, pending dependency trust, or " +
+				"dependency names that look like typosquats of popular packages. " +
+				"Returns the exact kernel error the user sees in the notebook, plus kernel state and " +
+				"dependency metadata. Use this first when the user reports a notebook error or asks what went " +
+				"wrong. Get notebook_id from desktop_notebook_list_open. After fixing the cause, restart the " +
+				"kernel with notebooks_kernel and diagnose again to confirm.",
+			args: { notebook_id: NOTEBOOK_ID },
+			async execute(args, context) {
+				const session = await sessions.open(args.notebook_id, context.sessionID);
+				const [runtime, dependencies] = await Promise.allSettled([
+					session.getRuntimeStatus(),
+					session.getDependencyStatus(),
+				]);
+				const errorMessage = (reason: unknown) =>
+					reason instanceof Error ? reason.message : String(reason);
+				const kernelError =
+					runtime.status === "fulfilled" ? kernelErrorOf(runtime.value) : undefined;
+				const pendingApproval =
+					dependencies.status === "fulfilled"
+						? pendingApprovalLabels(dependencyTrust(dependencies.value))
+						: [];
+				const summary =
+					runtime.status === "fulfilled"
+						? summarizeKernelState(runtime.value, kernelError, pendingApproval)
+						: `Kernel status is unavailable: ${errorMessage(runtime.reason)}`;
+				const kernelState =
+					runtime.status === "fulfilled"
+						? {
+								lifecycle: runtime.value.lifecycle,
+								status: runtime.value.status,
+								...(runtime.value.activity ? { activity: runtime.value.activity } : {}),
+								starting_phase: runtime.value.startingPhase,
+								env_source: runtime.value.envSource,
+								name: runtime.value.name,
+								language: runtime.value.language,
+							}
+						: null;
+				return {
+					title: kernelError ? "Notebook error diagnosed" : "Notebook diagnosed",
+					output: JSON.stringify({
+						notebook_id: args.notebook_id,
+						summary,
+						kernel_error: kernelError ?? null,
+						kernel: kernelState,
+						...(dependencies.status === "fulfilled"
+							? {
+									dependencies: dependencies.value,
+									...approvalReport(dependencies.value),
+									typosquat_warnings: checkTyposquats(declaredDependencySpecs(dependencies.value)),
+								}
+							: { dependencies_error: errorMessage(dependencies.reason) }),
+					}),
+					metadata: {
+						notebook_id: args.notebook_id,
+						has_error: Boolean(kernelError) || kernelState?.lifecycle === "Error",
+					},
 				};
 			},
 		};
@@ -643,7 +826,9 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 			notebook_id: string;
 			action: "status" | "interrupt" | "restart";
 		}> = {
-			description: "Inspect, interrupt, or restart the kernel for an open notebook.",
+			description:
+				"Inspect, interrupt, or restart the kernel for an open notebook. To find out why a kernel " +
+				"failed to start, use notebooks_diagnose.",
 			args: {
 				notebook_id: NOTEBOOK_ID,
 				action: z.enum(["status", "interrupt", "restart"]),
@@ -707,9 +892,13 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 		};
 
 		return {
+			config: async (config: { permission?: unknown }) => {
+				requireTrustPrompt(config);
+			},
 			tool: {
 				notebooks_create_cell: createCell,
 				notebooks_dependencies: dependenciesTool,
+				notebooks_diagnose: diagnose,
 				notebooks_edit_cells: editCells,
 				notebooks_execute: execute,
 				notebooks_kernel: kernel,

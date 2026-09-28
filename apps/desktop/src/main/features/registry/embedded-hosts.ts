@@ -1,9 +1,11 @@
 import {
 	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+	CLIPBOARD_WRITE_EMBEDDED_PERMISSION,
 	EMBEDDED_WEB_HOST_CAPABILITY,
 	type EmbeddedWebHost,
 } from "@kilo-desktop/feature-sdk/main";
 
+import { DESKTOP_HOST } from "../../platform/ElectronProtocol.js";
 import { createLogger } from "../../platform/logger.js";
 import { featureRouter } from "./feature-registry.js";
 import { FEATURES } from "./features.js";
@@ -17,6 +19,8 @@ function isEmbeddedWebHost(value: unknown): value is EmbeddedWebHost {
 	if (typeof value !== "object" || value === null) return false;
 	const candidate = value as Partial<EmbeddedWebHost>;
 	if (typeof candidate.host !== "string" || candidate.host.length === 0) return false;
+	// The app shell's host is reserved: an embedded host there would share its trusted origin.
+	if (candidate.host === DESKTOP_HOST) return false;
 	if (candidate.root !== undefined && typeof candidate.root !== "string") return false;
 	if (candidate.securityProfiles !== undefined) {
 		if (typeof candidate.securityProfiles !== "object" || candidate.securityProfiles === null) {
@@ -26,6 +30,16 @@ function isEmbeddedWebHost(value: unknown): value is EmbeddedWebHost {
 			!Object.entries(candidate.securityProfiles).every(
 				([route, profile]) =>
 					route.startsWith("/") && profile === ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+			)
+		) {
+			return false;
+		}
+	}
+	if (candidate.permissions !== undefined) {
+		if (
+			!Array.isArray(candidate.permissions) ||
+			!candidate.permissions.every(
+				(permission) => permission === CLIPBOARD_WRITE_EMBEDDED_PERMISSION,
 			)
 		) {
 			return false;

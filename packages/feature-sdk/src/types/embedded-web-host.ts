@@ -3,6 +3,15 @@ export const ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE = "active-untrusted-conte
 
 export type EmbeddedWebHostSecurityProfile = typeof ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE;
 
+/**
+ * Chromium's permission for `navigator.clipboard.write*`. Write-only: reading
+ * the clipboard stays denied for every embedded host.
+ */
+export const CLIPBOARD_WRITE_EMBEDDED_PERMISSION = "clipboard-sanitized-write";
+
+/** Browser permissions an embedded host may opt into; everything else stays denied. */
+export type EmbeddedWebHostPermission = typeof CLIPBOARD_WRITE_EMBEDDED_PERMISSION;
+
 export interface EmbeddedWebHostRouteContext {
 	/** Resolved protocol origin of the document making this same-origin request. */
 	readonly origin: string;
@@ -30,4 +39,10 @@ export interface EmbeddedWebHost {
 	 */
 	readonly documents?: Readonly<Record<string, string>>;
 	readonly securityProfiles?: Readonly<Record<string, EmbeddedWebHostSecurityProfile>>;
+	/**
+	 * Browser permissions granted to documents on this host's exact origin. The
+	 * shell denies every permission by default; sandboxed frames without
+	 * `allow-same-origin` have an opaque origin and never receive these.
+	 */
+	readonly permissions?: readonly EmbeddedWebHostPermission[];
 }

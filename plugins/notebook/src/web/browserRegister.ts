@@ -1,6 +1,11 @@
 import { FeatureError, type MainSdk } from "@kilo-desktop/feature-sdk";
 
-import { notebookContract, type NotebookService } from "../contracts/schemas.js";
+import {
+	DEFAULT_NOTEBOOK_SETTINGS,
+	notebookContract,
+	type NotebookService,
+	type NotebookSettings,
+} from "../contracts/schemas.js";
 
 /**
  * Standalone browser mode has no main process, so there is no loopback relay
@@ -9,6 +14,8 @@ import { notebookContract, type NotebookService } from "../contracts/schemas.js"
  * generic service failure.
  */
 export function notebookBrowserRegister(mainSdk: MainSdk): void {
+	// Browser mode has no persistent storage; settings last for the page's lifetime.
+	let settings: NotebookSettings = { ...DEFAULT_NOTEBOOK_SETTINGS };
 	const service: NotebookService = {
 		status: async () => ({
 			availability: { status: "unavailable" },
@@ -26,6 +33,17 @@ export function notebookBrowserRegister(mainSdk: MainSdk): void {
 			reason: "Saving notebooks is unavailable in browser mode.",
 		}),
 		setDefaultSaveDirectory: async () => undefined,
+		getSettings: async () => settings,
+		updateSettings: async (patch) => {
+			settings = {
+				autoCreateEnvironmentFile:
+					patch.autoCreateEnvironmentFile ?? settings.autoCreateEnvironmentFile,
+				trustNewNotebooks: patch.trustNewNotebooks ?? settings.trustNewNotebooks,
+			};
+			return settings;
+		},
+		// No filesystem in browser mode, and no daemon to discover a file anyway.
+		prepareEnvironment: async () => ({ outcome: "skipped" }),
 	};
 	mainSdk.channels(notebookContract).handleAll(service);
 }

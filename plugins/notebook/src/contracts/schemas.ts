@@ -86,6 +86,31 @@ export const notebookOpenFileResultSchema = z.object({
 });
 export type NotebookOpenFileResult = z.infer<typeof notebookOpenFileResultSchema>;
 
+export const notebookSettingsSchema = z.object({
+	/** Write a workspace environment.yml for new notebooks; when off, notebooks open unchanged. */
+	autoCreateEnvironmentFile: z.boolean(),
+	/** Approve dependencies of notebooks created in the app so nteract's trust prompt is skipped. */
+	trustNewNotebooks: z.boolean(),
+});
+export type NotebookSettings = z.infer<typeof notebookSettingsSchema>;
+
+export const DEFAULT_NOTEBOOK_SETTINGS: NotebookSettings = {
+	autoCreateEnvironmentFile: true,
+	trustNewNotebooks: false,
+};
+
+export const notebookEnvironmentPreparationSchema = z.discriminatedUnion("outcome", [
+	/** A project file already selects this notebook's environment. */
+	z.object({ outcome: z.literal("existing"), path: z.string().min(1) }),
+	z.object({ outcome: z.literal("created"), path: z.string().min(1) }),
+	/** The workspace already has a uv environment (`uv.lock` or `.venv`). */
+	z.object({ outcome: z.literal("uv"), path: z.string().min(1) }),
+	/** Auto-create is off, or this notebook was prepared before without a file. */
+	z.object({ outcome: z.literal("skipped") }),
+	z.object({ outcome: z.literal("failed"), reason: z.string() }),
+]);
+export type NotebookEnvironmentPreparation = z.infer<typeof notebookEnvironmentPreparationSchema>;
+
 export const notebookContract = defineContract({
 	status: defineMethod(z.undefined(), notebookStatusSchema),
 	openFile: defineMethod(z.object({ path: z.string().min(1) }), notebookOpenFileResultSchema),
@@ -93,6 +118,19 @@ export const notebookContract = defineContract({
 	setDefaultSaveDirectory: defineMethod(
 		z.object({ notebookId: z.string().uuid(), directory: z.string().min(1).nullable() }),
 		z.undefined(),
+	),
+	getSettings: defineMethod(z.undefined(), notebookSettingsSchema),
+	updateSettings: defineMethod(notebookSettingsSchema.partial(), notebookSettingsSchema),
+	/**
+	 * Runs once per new (untitled) notebook before it connects, so the daemon
+	 * discovers the workspace environment.yml on its first kernel launch.
+	 */
+	prepareEnvironment: defineMethod(
+		z.object({
+			notebookId: z.string().uuid(),
+			workingDirectory: z.string().min(1).max(32_768),
+		}),
+		notebookEnvironmentPreparationSchema,
 	),
 });
 

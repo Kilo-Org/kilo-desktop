@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
 	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+	CLIPBOARD_WRITE_EMBEDDED_PERMISSION,
 	EMBEDDED_WEB_HOST_CAPABILITY,
 	FeatureRouter,
 	type HostMessagePort,
+	type KvStoreFactory,
 } from "@kilo-desktop/feature-sdk/main";
 
 import {
@@ -24,6 +26,18 @@ function fakePort(): HostMessagePort {
 	};
 }
 
+const memoryKv: KvStoreFactory = (kvOptions) => {
+	let state = { ...kvOptions.defaults };
+	return {
+		snapshot: () => ({ ...state }),
+		get: (key) => state[key],
+		set: (patch) => (state = { ...state, ...patch }),
+		clear: () => {
+			state = { ...kvOptions.defaults };
+		},
+	};
+};
+
 async function boot(options: NotebookFeatureOptions = {}) {
 	const router = new FeatureRouter();
 	const disposeKiloEnv = vi.fn();
@@ -34,6 +48,7 @@ async function boot(options: NotebookFeatureOptions = {}) {
 	router.createMainSdk("kilo-server").plugins.expose("kiloService", kiloService);
 	const mainSdk = router.createMainSdk("notebook", {
 		resolvePluginAsset: (subpath) => `/plugins/notebook/${subpath}`,
+		createKvStore: memoryKv,
 	});
 	const hostService = {
 		socketPath: "/tmp/runtimed.sock",
@@ -125,6 +140,46 @@ describe("notebook mainRegister", () => {
 		});
 	});
 
+	it("persists notebook settings with safe defaults", async () => {
+		const { router } = await boot();
+
+		await expect(router.invoke("notebook", "getSettings")).resolves.toEqual({
+			autoCreateEnvironmentFile: true,
+			trustNewNotebooks: false,
+		});
+		await expect(
+			router.invoke("notebook", "updateSettings", { trustNewNotebooks: true }),
+		).resolves.toEqual({ autoCreateEnvironmentFile: true, trustNewNotebooks: true });
+		await expect(router.invoke("notebook", "getSettings")).resolves.toMatchObject({
+			trustNewNotebooks: true,
+		});
+	});
+
+	it("trusts only notebooks created in the app, and only while the setting is on", async () => {
+		const trustSession = {
+			runtimeState$: { subscribe: () => ({ unsubscribe: () => undefined }) },
+			getDependencyStatus: vi.fn(async () => ({ trust: { status: "trusted" } })),
+			close: vi.fn(async () => undefined),
+		};
+		const openTrustSession = vi.fn(async () => trustSession as never);
+		const { hostServiceOptions, router } = await boot({ openTrustSession });
+		const created = "669d39ec-39d6-4160-815c-b46e170cde8d";
+		const opened = "2c7f2b1e-7e0a-4c1f-9d57-6a8b2f0c9e11";
+
+		hostServiceOptions?.onNotebookConnected?.({ notebookId: created, untitled: true });
+		expect(openTrustSession).not.toHaveBeenCalled();
+
+		await router.invoke("notebook", "updateSettings", { trustNewNotebooks: true });
+		hostServiceOptions?.onNotebookConnected?.({ notebookId: opened, untitled: false });
+		await vi.waitFor(() =>
+			expect(openTrustSession).toHaveBeenCalledWith(created, "/tmp/runtimed.sock"),
+		);
+		expect(openTrustSession).not.toHaveBeenCalledWith(opened, expect.anything());
+
+		hostServiceOptions?.onNotebookDisconnected?.(created);
+		await vi.waitFor(() => expect(trustSession.close).toHaveBeenCalledOnce());
+	});
+
 	it("routes notebook save requests through the host service", async () => {
 		const { hostService, router } = await boot();
 		const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
@@ -188,7 +243,7 @@ describe("notebook mainRegister", () => {
 		).rejects.toMatchObject({ code: "VALIDATION" });
 	});
 
-	it("contributes the bundle with an exact active-content CSP profile", async () => {
+	it("contributes the bundle with an exact active-content CSP profile and clipboard write", async () => {
 		const { mainSdk } = await boot();
 		const capability = mainSdk.plugins.get("notebook")?.[EMBEDDED_WEB_HOST_CAPABILITY];
 
@@ -198,6 +253,7 @@ describe("notebook mainRegister", () => {
 			securityProfiles: {
 				"/output-frame.html": ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
 			},
+			permissions: [CLIPBOARD_WRITE_EMBEDDED_PERMISSION],
 		});
 	});
 

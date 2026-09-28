@@ -8,6 +8,7 @@ import {
 } from "./notebook/notebook-webmcp-tools.js";
 
 export { NotebookView } from "./notebook/NotebookView.js";
+export { NotebookSettings } from "./settings/NotebookSettings.js";
 export { NotebookIcon } from "lucide-react";
 
 export interface NotebookViewerCapability extends Record<string, unknown> {

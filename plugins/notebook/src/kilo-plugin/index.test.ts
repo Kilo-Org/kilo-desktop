@@ -581,6 +581,570 @@ describe("nteract Kilo plugin", () => {
 		});
 	});
 
+	describe("notebooks_diagnose", () => {
+		const CONDA_ERROR =
+			"Failed to create conda env 'notebook-test' from environment.yml: Failed to fetch package metadata: HTTP status client error (403 Forbidden)";
+
+		function diagnoseHooks(session: Record<string, unknown>) {
+			return createNteractKiloPlugin({
+				loadRuntimedNode: () => ({
+					openNotebook: vi.fn(async () => ({
+						notebookId: NOTEBOOK_ID,
+						close: vi.fn(),
+						...session,
+					})),
+				}),
+			})();
+		}
+
+		it("reports the kernel startup error the user sees in the notebook", async () => {
+			const hooks = await diagnoseHooks({
+				getRuntimeStatus: vi.fn(async () => ({
+					status: "error",
+					lifecycle: "Error",
+					startingPhase: "",
+					name: "",
+					language: "",
+					envSource: "conda:env_yml",
+					runtimeAgentId: "",
+					errorReason: "conda_env_build_failed",
+					errorDetails: `\u001b[31m${CONDA_ERROR}\u001b[0m\n`,
+				})),
+				getDependencyStatus: vi.fn(async () => ({
+					conda: { dependencies: ["pandas"], channels: ["main"] },
+					trust: { status: "trusted", needsApproval: false },
+				})),
+			});
+
+			const result = await hooks.tool.notebooks_diagnose.execute(
+				{ notebook_id: NOTEBOOK_ID },
+				toolContext(),
+			);
+
+			expect(result.title).toBe("Notebook error diagnosed");
+			expect(result.metadata).toEqual({ notebook_id: NOTEBOOK_ID, has_error: true });
+			expect(JSON.parse(result.output)).toEqual({
+				notebook_id: NOTEBOOK_ID,
+				summary: `Kernel failed to start: conda_env_build_failed: ${CONDA_ERROR}`,
+				kernel_error: { reason: "conda_env_build_failed", details: CONDA_ERROR },
+				kernel: {
+					lifecycle: "Error",
+					status: "error",
+					starting_phase: "",
+					env_source: "conda:env_yml",
+					name: "",
+					language: "",
+				},
+				dependencies: {
+					conda: { dependencies: ["pandas"], channels: ["main"] },
+					trust: { status: "trusted", needsApproval: false },
+				},
+				typosquat_warnings: [],
+			});
+		});
+
+		it("reports a healthy kernel without an error", async () => {
+			const hooks = await diagnoseHooks({
+				getRuntimeStatus: vi.fn(async () => ({
+					status: "idle",
+					lifecycle: "Running",
+					activity: "Idle",
+					startingPhase: "",
+					name: "python3",
+					language: "python",
+					envSource: "uv:inline",
+					runtimeAgentId: "runtime-1",
+				})),
+				getDependencyStatus: vi.fn(async () => ({ trust: { needsApproval: false } })),
+			});
+
+			const result = await hooks.tool.notebooks_diagnose.execute(
+				{ notebook_id: NOTEBOOK_ID },
+				toolContext(),
+			);
+
+			expect(result.metadata).toEqual({ notebook_id: NOTEBOOK_ID, has_error: false });
+			expect(JSON.parse(result.output)).toMatchObject({
+				summary: "Kernel is running (Idle).",
+				kernel_error: null,
+			});
+		});
+
+		it("points at trust approval and still reports kernel state when dependency status fails", async () => {
+			const hooks = await diagnoseHooks({
+				getRuntimeStatus: vi.fn(async () => ({
+					status: "not_started",
+					lifecycle: "AwaitingTrust",
+					startingPhase: "",
+					name: "",
+					language: "",
+					envSource: "",
+					runtimeAgentId: "",
+				})),
+				getDependencyStatus: vi.fn(async () => {
+					throw new Error("dependency metadata unavailable");
+				}),
+			});
+
+			const output = JSON.parse(
+				(await hooks.tool.notebooks_diagnose.execute({ notebook_id: NOTEBOOK_ID }, toolContext()))
+					.output,
+			);
+
+			expect(output.summary).toMatch(/approve the notebook dependencies/);
+			expect(output.summary).toMatch(/approve_trust/);
+			expect(output.dependencies_error).toBe("dependency metadata unavailable");
+			expect(output).not.toHaveProperty("dependencies");
+		});
+
+		it("adds the kernel error to notebooks_dependencies results", async () => {
+			const hooks = await diagnoseHooks({
+				getRuntimeStatus: vi.fn(async () => ({
+					lifecycle: "Error",
+					errorReason: "conda_env_build_failed",
+					errorDetails: CONDA_ERROR,
+				})),
+				getDependencyStatus: vi.fn(async () => ({ fingerprint: "environment-1" })),
+			});
+
+			const result = await hooks.tool.notebooks_dependencies.execute(
+				{ notebook_id: NOTEBOOK_ID, action: "status" },
+				toolContext(),
+			);
+
+			expect(JSON.parse(result.output)).toEqual({
+				notebook_id: NOTEBOOK_ID,
+				action: "status",
+				status: { fingerprint: "environment-1" },
+				kernel_error: { reason: "conda_env_build_failed", details: CONDA_ERROR },
+			});
+		});
+	});
+
+	describe("dependency approval", () => {
+		const TRUST_REJECTION = "Trust changed before the action could run. Review the notebook again.";
+		const TRUSTED = { status: "trusted", needsApproval: false };
+		// A notebook opened from disk that declares one package the machine has not approved.
+		const UNTRUSTED_STATUS = {
+			uv: { dependencies: ["evil-pkg", "numpy"] },
+			fingerprint: "deps-1",
+			trust: { status: "untrusted", needsApproval: true, approvedUvDependencies: ["numpy"] },
+		};
+
+		type AskRequest = {
+			permission: string;
+			patterns: string[];
+			always: string[];
+			metadata: Record<string, unknown>;
+		};
+
+		function approvalSession(
+			dependencyStatus: Record<string, unknown> = { fingerprint: "deps-1", trust: TRUSTED },
+			fingerprintAfterPrompt: string | null = "deps-1",
+		) {
+			return {
+				notebookId: NOTEBOOK_ID,
+				addDependencies: vi.fn(async () => undefined),
+				removeDependencies: vi.fn(async () => 1),
+				syncEnvironment: vi.fn(async () => undefined),
+				approveTrust: vi.fn(async () => undefined),
+				dependencyFingerprint: vi.fn(async () => fingerprintAfterPrompt),
+				runCell: vi.fn(async () => ({
+					cellId: "cell-1",
+					executionId: "execution-1",
+					executionCount: 1,
+					status: "done",
+					success: true,
+					outputs: [],
+				})),
+				executeCell: vi.fn(async () => {
+					throw new Error(TRUST_REJECTION);
+				}),
+				getDependencyStatus: vi.fn(async () => dependencyStatus),
+				getRuntimeStatus: vi.fn(async () => ({
+					status: "awaiting_trust",
+					lifecycle: "AwaitingTrust",
+					startingPhase: "",
+					name: "",
+					language: "",
+					envSource: "",
+					runtimeAgentId: "",
+				})),
+				close: vi.fn(async () => undefined),
+			};
+		}
+
+		async function hooksFor(session: ReturnType<typeof approvalSession>) {
+			return createNteractKiloPlugin({
+				loadRuntimedNode: () => ({ openNotebook: vi.fn(async () => session) }),
+			})();
+		}
+
+		function approving() {
+			return vi.fn(async (_request: AskRequest) => undefined);
+		}
+
+		function contextWithAsk(ask: ReturnType<typeof vi.fn>) {
+			return { ...toolContext(), ask: ask as never };
+		}
+
+		it("makes dependency approval prompt even when the agent allows every permission", async () => {
+			const hooks = await hooksFor(approvalSession());
+			const unconfigured: { permission?: unknown } = {};
+			const allowAll: { permission?: unknown } = { permission: { "*": "allow" } };
+			const userChoice: { permission?: unknown } = { permission: { notebooks_trust: "allow" } };
+
+			for (const config of [unconfigured, allowAll, userChoice]) await hooks.config?.(config);
+
+			expect(unconfigured.permission).toEqual({ notebooks_trust: "ask" });
+			// Kilo evaluates the last matching rule, so the later entry overrides the catch-all.
+			expect(Object.entries(allowAll.permission as object)).toEqual([
+				["*", "allow"],
+				["notebooks_trust", "ask"],
+			]);
+			expect(userChoice.permission).toEqual({ notebooks_trust: "allow" });
+		});
+
+		it("adds default-approved packages to a trusted notebook without asking", async () => {
+			const session = approvalSession();
+			const ask = approving();
+
+			await (
+				await hooksFor(session)
+			).tool.notebooks_dependencies.execute(
+				{ notebook_id: NOTEBOOK_ID, action: "add", packages: ["pandas>=2", "conda-forge::numpy"] },
+				contextWithAsk(ask),
+			);
+
+			expect(ask).not.toHaveBeenCalled();
+			expect(session.addDependencies).toHaveBeenCalledWith(
+				["pandas>=2", "conda-forge::numpy"],
+				undefined,
+			);
+		});
+
+		it("asks before adding a new package and allows remembering it per package", async () => {
+			const session = approvalSession();
+			const ask = approving();
+
+			await (
+				await hooksFor(session)
+			).tool.notebooks_dependencies.execute(
+				{
+					notebook_id: NOTEBOOK_ID,
+					action: "add",
+					packages: ["requests>=2"],
+					package_manager: "uv",
+				},
+				contextWithAsk(ask),
+			);
+
+			expect(ask).toHaveBeenCalledWith({
+				permission: "notebooks_trust",
+				patterns: ["requests"],
+				always: ["requests"],
+				metadata: {
+					toolName: "Notebook packages",
+					title: "Allow the agent to install requests in this notebook?",
+					description:
+						"Approved packages can be installed into any notebook on this computer without asking again. Only approve packages you recognize.",
+					notebook_id: NOTEBOOK_ID,
+					action: "add",
+					approves: ["requests"],
+					typosquat_warnings: [],
+				},
+			});
+			expect(session.addDependencies).toHaveBeenCalledWith(["requests>=2"], {
+				packageManager: "uv",
+			});
+		});
+
+		it("lists the notebook's unapproved dependencies that an add would also approve", async () => {
+			const session = approvalSession(UNTRUSTED_STATUS);
+			const ask = approving();
+
+			await (
+				await hooksFor(session)
+			).tool.notebooks_dependencies.execute(
+				{ notebook_id: NOTEBOOK_ID, action: "add", packages: ["requests"] },
+				contextWithAsk(ask),
+			);
+
+			expect(ask.mock.calls[0]?.[0]).toMatchObject({
+				patterns: ["uv: evil-pkg", "requests"],
+				always: ["requests"],
+			});
+			expect(session.addDependencies).toHaveBeenCalledOnce();
+		});
+
+		it("titles the prompt with what the change will approve", async () => {
+			const titleFor = async (
+				status: Record<string, unknown>,
+				args: { action: "add" | "remove" | "approve_trust"; packages?: string[] },
+			) => {
+				const ask = approving();
+				await (
+					await hooksFor(approvalSession(status))
+				).tool.notebooks_dependencies.execute(
+					{ notebook_id: NOTEBOOK_ID, ...args },
+					contextWithAsk(ask),
+				);
+				return ask.mock.calls[0]?.[0].metadata["title"];
+			};
+			const trusted = { fingerprint: "deps-1", trust: TRUSTED };
+			const twoUnapproved = {
+				...UNTRUSTED_STATUS,
+				uv: { dependencies: ["evil-pkg", "other-pkg", "numpy"] },
+			};
+
+			expect(await titleFor(trusted, { action: "add", packages: ["humanize", "emoji>=2"] })).toBe(
+				"Allow the agent to install humanize and emoji in this notebook?",
+			);
+			expect(
+				await titleFor(trusted, { action: "add", packages: ["humanize", "emoji", "cowsay"] }),
+			).toBe("Allow the agent to install 3 packages in this notebook?");
+			expect(await titleFor(UNTRUSTED_STATUS, { action: "add", packages: ["tqdm"] })).toBe(
+				"Installing tqdm will also approve packages this notebook already lists",
+			);
+			expect(await titleFor(twoUnapproved, { action: "remove", packages: ["evil-pkg"] })).toBe(
+				"Removing evil-pkg will approve the packages that remain",
+			);
+			expect(await titleFor(UNTRUSTED_STATUS, { action: "approve_trust" })).toBe(
+				"Approve the packages this notebook needs?",
+			);
+		});
+
+		it("marks typosquats in the prompt and never offers to remember them", async () => {
+			const session = approvalSession();
+			const ask = approving();
+
+			await (
+				await hooksFor(session)
+			).tool.notebooks_dependencies.execute(
+				{ notebook_id: NOTEBOOK_ID, action: "add", packages: ["numppy>=1"] },
+				contextWithAsk(ask),
+			);
+
+			expect(ask.mock.calls[0]?.[0]).toMatchObject({
+				patterns: ["numppy (similar to numpy)"],
+				always: [],
+				metadata: {
+					typosquat_warnings: [{ package: "numppy", similar_to: "numpy", distance: 1 }],
+				},
+			});
+		});
+
+		it("installs nothing when the user rejects an add or run_cell dependency", async () => {
+			const session = approvalSession();
+			const hooks = await hooksFor(session);
+			const ask = vi.fn(async () => {
+				throw new Error("The user rejected permission to use this specific tool call.");
+			});
+
+			await expect(
+				hooks.tool.notebooks_dependencies.execute(
+					{ notebook_id: NOTEBOOK_ID, action: "add", packages: ["reqeusts"] },
+					contextWithAsk(ask),
+				),
+			).rejects.toThrow(/rejected/);
+			await expect(
+				hooks.tool.notebooks_run_cell.execute(
+					{ notebook_id: NOTEBOOK_ID, code: "import requests", dependencies: ["requests"] },
+					contextWithAsk(ask),
+				),
+			).rejects.toThrow(/rejected/);
+
+			expect(session.addDependencies).not.toHaveBeenCalled();
+			expect(session.syncEnvironment).not.toHaveBeenCalled();
+			expect(session.runCell).not.toHaveBeenCalled();
+		});
+
+		it("aborts when the dependencies change while the prompt is open", async () => {
+			const session = approvalSession(UNTRUSTED_STATUS, "deps-2");
+
+			await expect(
+				(await hooksFor(session)).tool.notebooks_dependencies.execute(
+					{ notebook_id: NOTEBOOK_ID, action: "approve_trust" },
+					contextWithAsk(approving()),
+				),
+			).rejects.toThrow(/changed while approval was pending/);
+			expect(session.approveTrust).not.toHaveBeenCalled();
+		});
+
+		it("asks before a removal that would approve the remaining unapproved dependencies", async () => {
+			const session = approvalSession({
+				...UNTRUSTED_STATUS,
+				uv: { dependencies: ["evil-pkg", "other-pkg", "numpy"] },
+			});
+			const hooks = await hooksFor(session);
+			const ask = approving();
+
+			await hooks.tool.notebooks_dependencies.execute(
+				{ notebook_id: NOTEBOOK_ID, action: "remove", packages: ["evil-pkg"] },
+				contextWithAsk(ask),
+			);
+			await hooks.tool.notebooks_dependencies.execute(
+				{ notebook_id: NOTEBOOK_ID, action: "remove", packages: ["evil-pkg", "other-pkg"] },
+				contextWithAsk(ask),
+			);
+
+			expect(ask).toHaveBeenCalledOnce();
+			expect(ask.mock.calls[0]?.[0]).toMatchObject({ patterns: ["uv: other-pkg"], always: [] });
+			expect(session.removeDependencies).toHaveBeenCalledTimes(2);
+		});
+
+		it("approves trust only after listing every unapproved dependency", async () => {
+			const session = approvalSession({
+				uv: { dependencies: ["numppy", "numpy"] },
+				pixi: { dependencies: [], pypiDependencies: ["polars"], channels: [] },
+				fingerprint: "deps-1",
+				trust: {
+					status: "untrusted",
+					needsApproval: true,
+					approvedUvDependencies: ["numpy"],
+					approvedPixiPypiDependencies: [],
+				},
+			});
+			const ask = approving();
+
+			await (
+				await hooksFor(session)
+			).tool.notebooks_dependencies.execute(
+				{ notebook_id: NOTEBOOK_ID, action: "approve_trust" },
+				contextWithAsk(ask),
+			);
+
+			expect(ask).toHaveBeenCalledWith({
+				permission: "notebooks_trust",
+				patterns: ["uv: numppy (similar to numpy)", "pixi-pypi: polars"],
+				always: [],
+				metadata: {
+					toolName: "Notebook packages",
+					title: "Check package names: some look like misspellings of popular packages",
+					description: expect.stringContaining("any notebook on this computer"),
+					notebook_id: NOTEBOOK_ID,
+					action: "approve",
+					approves: ["uv: numppy", "pixi-pypi: polars"],
+					typosquat_warnings: [{ package: "numppy", similar_to: "numpy", distance: 1 }],
+				},
+			});
+			expect(session.approveTrust).toHaveBeenCalledWith(undefined);
+		});
+
+		it("never offers to remember a package the notebook already declares unapproved", async () => {
+			const session = approvalSession(UNTRUSTED_STATUS);
+			const ask = approving();
+			const hooks = await hooksFor(session);
+
+			await hooks.tool.notebooks_dependencies.execute(
+				{ notebook_id: NOTEBOOK_ID, action: "add", packages: ["evil-pkg"] },
+				contextWithAsk(ask),
+			);
+			await hooks.tool.notebooks_dependencies.execute(
+				{ notebook_id: NOTEBOOK_ID, action: "add", packages: ["evil-pkg>=1"] },
+				contextWithAsk(ask),
+			);
+
+			// The exact spec is listed once, as the notebook's own dependency.
+			expect(ask.mock.calls[0]?.[0]).toMatchObject({ patterns: ["uv: evil-pkg"], always: [] });
+			// A different spec for the same package is shown but still not rememberable.
+			expect(ask.mock.calls[1]?.[0]).toMatchObject({
+				patterns: ["uv: evil-pkg", "evil-pkg"],
+				always: [],
+			});
+		});
+
+		it("asks about unapproved channels when a removal clears every unapproved package", async () => {
+			const session = approvalSession({
+				conda: { dependencies: ["evil-pkg", "numpy"], channels: ["my-org"] },
+				fingerprint: "deps-1",
+				trust: { status: "untrusted", needsApproval: true, approvedCondaDependencies: ["numpy"] },
+			});
+			const ask = approving();
+
+			await (
+				await hooksFor(session)
+			).tool.notebooks_dependencies.execute(
+				{ notebook_id: NOTEBOOK_ID, action: "remove", packages: ["evil-pkg"] },
+				contextWithAsk(ask),
+			);
+
+			expect(ask.mock.calls[0]?.[0]).toMatchObject({
+				patterns: ["conda channel: my-org"],
+				always: [],
+			});
+			expect(session.removeDependencies).toHaveBeenCalledOnce();
+		});
+
+		it("asks about unapproved conda channels when every package is approved", async () => {
+			const session = approvalSession({
+				conda: { dependencies: ["numpy"], channels: ["conda-forge", "my-org"] },
+				fingerprint: "deps-1",
+				trust: { status: "untrusted", needsApproval: true, approvedCondaDependencies: ["numpy"] },
+			});
+			const ask = approving();
+
+			await (
+				await hooksFor(session)
+			).tool.notebooks_dependencies.execute(
+				{ notebook_id: NOTEBOOK_ID, action: "approve_trust" },
+				contextWithAsk(ask),
+			);
+
+			expect(ask.mock.calls[0]?.[0]).toMatchObject({ patterns: ["conda channel: my-org"] });
+			expect(session.approveTrust).toHaveBeenCalledOnce();
+		});
+
+		it("does not ask or approve when nothing needs approval", async () => {
+			const session = approvalSession();
+			const ask = approving();
+
+			const result = await (
+				await hooksFor(session)
+			).tool.notebooks_dependencies.execute(
+				{ notebook_id: NOTEBOOK_ID, action: "approve_trust" },
+				contextWithAsk(ask),
+			);
+
+			expect(ask).not.toHaveBeenCalled();
+			expect(session.approveTrust).not.toHaveBeenCalled();
+			expect(JSON.parse(result.output)).not.toHaveProperty("approval");
+		});
+
+		it("reports what needs approval in dependency status and diagnosis", async () => {
+			const hooks = await hooksFor(approvalSession(UNTRUSTED_STATUS));
+
+			const status = JSON.parse(
+				(
+					await hooks.tool.notebooks_dependencies.execute(
+						{ notebook_id: NOTEBOOK_ID, action: "status" },
+						toolContext(),
+					)
+				).output,
+			);
+			const diagnosis = JSON.parse(
+				(await hooks.tool.notebooks_diagnose.execute({ notebook_id: NOTEBOOK_ID }, toolContext()))
+					.output,
+			);
+
+			expect(status.approval).toEqual({ needs_approval: true, unapproved: ["uv: evil-pkg"] });
+			expect(diagnosis.approval).toEqual({ needs_approval: true, unapproved: ["uv: evil-pkg"] });
+			expect(diagnosis.summary).toMatch(/waiting for the user to approve.*uv: evil-pkg/);
+			expect(diagnosis.summary).toMatch(/Review/);
+		});
+
+		it("explains a trust rejection instead of surfacing the daemon's message", async () => {
+			const hooks = await hooksFor(approvalSession(UNTRUSTED_STATUS));
+
+			await expect(
+				hooks.tool.notebooks_execute.execute(
+					{ notebook_id: NOTEBOOK_ID, cell_ids: ["cell-1"] },
+					toolContext(),
+				),
+			).rejects.toThrow(/need approval before.*uv: evil-pkg.*approve_trust/s);
+		});
+	});
+
 	it("saves a notebook to a path inside the Kilo workspace", async () => {
 		const session = {
 			notebookId: NOTEBOOK_ID,
@@ -656,44 +1220,6 @@ describe("nteract Kilo plugin", () => {
 			metadata: { notebook_id: NOTEBOOK_ID, path: "/exports/analysis.ipynb" },
 		});
 		expect(session.saveNotebook).toHaveBeenCalledWith("/exports/analysis.ipynb");
-	});
-
-	it("asks before approving notebook environment trust", async () => {
-		const session = {
-			notebookId: NOTEBOOK_ID,
-			approveTrust: vi.fn(async () => undefined),
-			getDependencyStatus: vi.fn(async () => ({ fingerprint: "environment-1" })),
-			close: vi.fn(async () => undefined),
-		};
-		const hooks = await createNteractKiloPlugin({
-			loadRuntimedNode: () => ({
-				openNotebook: vi.fn(async () => session),
-				getExecutionResult: vi.fn(),
-			}),
-		})();
-		const ask = vi.fn(async () => undefined);
-
-		await hooks.tool.notebooks_dependencies.execute(
-			{ notebook_id: NOTEBOOK_ID, action: "approve_trust", observed_heads: ["head-1"] },
-			{
-				sessionID: "kilo-session-1",
-				messageID: "message-1",
-				agent: "build",
-				directory: "/projects/demo",
-				worktree: "/projects/demo",
-				abort: new AbortController().signal,
-				metadata: vi.fn(),
-				ask,
-			},
-		);
-
-		expect(ask).toHaveBeenCalledWith({
-			permission: "notebooks_trust",
-			patterns: [NOTEBOOK_ID],
-			always: [NOTEBOOK_ID],
-			metadata: { notebook_id: NOTEBOOK_ID, observed_heads: ["head-1"] },
-		});
-		expect(session.approveTrust).toHaveBeenCalledWith(["head-1"]);
 	});
 
 	it("closes native notebook peers when their Kilo session is deleted", async () => {

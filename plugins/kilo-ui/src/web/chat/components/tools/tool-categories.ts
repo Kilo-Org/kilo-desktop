@@ -450,6 +450,7 @@ const MCP_KIND_OVERRIDES: Record<string, McpKindOverride> = {
 			interrupt_kernel: "Interrupt kernel",
 			restart_kernel: "Restart kernel",
 			manage_dependencies: "Manage dependencies",
+			diagnose: "Diagnose notebook",
 			replace_match: "Replace text",
 			replace_regex: "Replace regex",
 			create_comment: "Create comment",

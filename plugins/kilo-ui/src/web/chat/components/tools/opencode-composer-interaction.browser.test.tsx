@@ -136,6 +136,46 @@ describe("OpenCodeComposerInteraction", () => {
 			.toEqual([["permission-1", "once"]]);
 	});
 
+	it("describes a permission with its metadata and hides Always allow when nothing can be remembered", async () => {
+		runtime.permissions.push({
+			...permission(),
+			permission: "notebooks_trust",
+			toolName: "Notebook packages",
+			title: "Approve the packages this notebook needs?",
+			patterns: ["uv: evil-pkg"],
+			metadata: { description: "Approved packages can be installed into any notebook." },
+		});
+		const { baseElement } = render(
+			<OpenCodeComposerInteraction fallback={<div>Message composer</div>} />,
+		);
+		const screen = page.elementLocator(baseElement);
+
+		await expect
+			.element(screen.getByText("Approved packages can be installed into any notebook."))
+			.toBeVisible();
+		await expect.element(screen.getByText("Notebook packages")).toBeVisible();
+		await expect.element(screen.getByRole("button", { name: "Allow once" })).toBeVisible();
+		await expect
+			.element(screen.getByRole("button", { name: "Always allow" }))
+			.not.toBeInTheDocument();
+	});
+
+	it("remembers a permission when Always allow is offered and chosen", async () => {
+		runtime.permissions.push({ ...permission(), patterns: ["ls *"], always: ["ls *"] });
+		const { baseElement } = render(
+			<OpenCodeComposerInteraction fallback={<div>Message composer</div>} />,
+		);
+		const screen = page.elementLocator(baseElement);
+
+		await expect
+			.element(screen.getByText("The agent is requesting permission to use bash."))
+			.toBeVisible();
+		await screen.getByRole("button", { name: "Always allow" }).click();
+		await expect
+			.poll(() => runtime.replyToPermission.mock.calls)
+			.toEqual([["permission-1", "always"]]);
+	});
+
 	it("does not approve a permission when Enter is pressed in an editable control", async () => {
 		runtime.permissions.push(permission({ messageID: "message-1", callID: "call-1" }));
 		const { getByRole } = render(

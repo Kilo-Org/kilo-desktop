@@ -307,7 +307,8 @@ export function registerNotebookWebMcpTools(sdk: SDK): void {
 			"List notebooks open in the calling chat's pane layout. " +
 			DESKTOP_NOTEBOOK_PANEL_POLICY +
 			" Each notebook_id is the id to pass to notebooks_* cell, kernel, and save tools. " +
-			"Call this to see which notebooks are already open before creating another.",
+			"Call this to see which notebooks are already open before creating another, and to find " +
+			"the notebook_id for notebooks_diagnose when the user reports a notebook or kernel error.",
 		inputSchema: { type: "object", properties: {} },
 		annotations: { readOnlyHint: true },
 		exposeToModelContext: true,

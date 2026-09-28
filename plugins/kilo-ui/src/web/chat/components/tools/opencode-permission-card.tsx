@@ -72,6 +72,9 @@ export const OpenCodePermissionCard = ({
 	});
 
 	const permissionLabel = request.toolName ?? request.permission;
+	const description = request.metadata["description"];
+	// "Always allow" remembers exactly `request.always`; with nothing to remember it would only act as "Allow once".
+	const canRemember = request.always.length > 0;
 	const requester = origin
 		? origin.title
 			? `The subagent “${origin.title}” is`
@@ -95,7 +98,9 @@ export const OpenCodePermissionCard = ({
 						{request.title ?? `Allow ${permissionLabel}?`}
 					</h3>
 					<p className="text-muted-foreground text-sm text-pretty">
-						{requester} requesting permission to use {permissionLabel}.
+						{typeof description === "string"
+							? description
+							: `${requester} requesting permission to use ${permissionLabel}.`}
 					</p>
 				</div>
 			</div>
@@ -138,16 +143,18 @@ export const OpenCodePermissionCard = ({
 						Reject
 					</Button>
 					<div className="flex items-center gap-2">
-						<Button
-							variant="outline"
-							onClick={() => void submitReply("always")}
-							disabled={submittingReply !== null}
-						>
-							{submittingReply === "always" ? (
-								<Spinner data-icon="inline-start" aria-hidden="true" />
-							) : null}
-							Always allow
-						</Button>
+						{canRemember ? (
+							<Button
+								variant="outline"
+								onClick={() => void submitReply("always")}
+								disabled={submittingReply !== null}
+							>
+								{submittingReply === "always" ? (
+									<Spinner data-icon="inline-start" aria-hidden="true" />
+								) : null}
+								Always allow
+							</Button>
+						) : null}
 						<Button onClick={() => void submitReply("once")} disabled={submittingReply !== null}>
 							{submittingReply === "once" ? (
 								<Spinner data-icon="inline-start" aria-hidden="true" />

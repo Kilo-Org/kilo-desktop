@@ -197,6 +197,13 @@ describe("PLUGIN_SETTINGS", () => {
 		});
 	});
 
+	it("lists notebook settings directly below Conda Environments", () => {
+		const personal = PLUGIN_SETTINGS.filter((section) => section.category === "Personal").map(
+			(section) => section.id,
+		);
+		expect(personal.indexOf("notebooks")).toBe(personal.indexOf("environments") + 1);
+	});
+
 	it("lists AI settings by priority", () => {
 		const aiSections = PLUGIN_SETTINGS.filter((section) => section.category === "AI");
 		expect(aiSections.map((section) => section.id)).toEqual([

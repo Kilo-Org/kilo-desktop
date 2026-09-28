@@ -1,17 +1,17 @@
 /** Pinned release used for the staged notebook runtime executables. */
 export const NTERACT_RELEASE = {
-	tag: "v2.7.0-nightly.202608182247",
-	version: "2.7.0-nightly.202608182247",
+	tag: "v2.7.6-nightly.202609251717",
+	version: "2.7.6-nightly.202609251717",
 	channel: "nightly",
-	commit: "de7a8ed1c658ca963d117a3abc046b4af9f12be0",
+	commit: "183d2e8ee5312d8d0cdf8726aa89dbc7170e45c1",
 	repository: "https://github.com/nteract/nteract.git",
 } as const;
 
 /** Published, platform-independent notebook frontend from the pinned release. */
 export const NTERACT_NOTEBOOK_UI = {
 	assetName: "nteract-nightly-notebook-ui.tar.gz",
-	bytes: 7_816_621,
-	sha256: "094f6a644b47542fa55e178ffdea96a3890cffb3ce286f84d16ff63d4a5c1d8b",
+	bytes: 7_870_007,
+	sha256: "59fd6da7f26f3e6964b96cd33877ba00efb61aa8cd450e16cc9ce04d3e74b2bc",
 } as const satisfies ReleaseAsset;
 
 export interface NativeReleaseArtifact {
@@ -43,8 +43,8 @@ export const RUNTIMED_ARTIFACTS = [
 		arch: "arm64",
 		assetName: "runtimed-nightly-darwin-arm64",
 		executable: "runtimed-nightly",
-		bytes: 38_135_696,
-		sha256: "387b7fba72d24275005e265ee8ecae30a32c18e67b469c9e116940a473c9ab5a",
+		bytes: 38_195_488,
+		sha256: "4c9be4d807f30a8b7f5a8111b65c52ba92e5d34defa4f43376f81c256fd96249",
 	},
 	{
 		target: "darwin-x64",
@@ -52,8 +52,8 @@ export const RUNTIMED_ARTIFACTS = [
 		arch: "x64",
 		assetName: "runtimed-nightly-darwin-x64",
 		executable: "runtimed-nightly",
-		bytes: 40_518_544,
-		sha256: "f33d3a9919be7993f255ba271a2b07e278d3a3bc276a70566b77dd2bd6d192ce",
+		bytes: 40_527_472,
+		sha256: "f2191b8e35ae9ec1abac9e2c10edcdc534b22b54655051a426deaf785465ef21",
 	},
 	{
 		target: "linux-x64",
@@ -61,8 +61,8 @@ export const RUNTIMED_ARTIFACTS = [
 		arch: "x64",
 		assetName: "runtimed-nightly-linux-x64",
 		executable: "runtimed-nightly",
-		bytes: 41_957_008,
-		sha256: "99a3a913dd1875313f1a7d79f4e9a04e2027b99508250dcc7509f118d411003f",
+		bytes: 43_686_104,
+		sha256: "0e2d02c124f1b1eddd80b342538f7bf2eb46ad19776cb4e9499fb9981800e21a",
 	},
 	{
 		target: "win32-x64",
@@ -70,8 +70,8 @@ export const RUNTIMED_ARTIFACTS = [
 		arch: "x64",
 		assetName: "runtimed-nightly-windows-x64.exe",
 		executable: "runtimed-nightly.exe",
-		bytes: 40_771_936,
-		sha256: "57062f7e230905efcdbbe45fe798690c9bd0e8805a899f85b4f94b101d16ae28",
+		bytes: 40_703_328,
+		sha256: "eec3b01f466a5d38680bb82b05e048b7bde40c50053f7de7918c7cbe7b5da95c",
 	},
 ] as const satisfies readonly NativeReleaseArtifact[];
 

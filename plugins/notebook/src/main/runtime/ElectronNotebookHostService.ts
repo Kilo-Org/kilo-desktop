@@ -31,6 +31,7 @@ import { resolveDaemonSocketPath, type BuildChannel } from "./socket-path.js";
 import { RuntimedDaemonManager, type RuntimedDaemonState } from "./RuntimedDaemonManager.js";
 import { createDaemonPeerAuthenticator } from "./daemon-peer-authenticator.js";
 import { findRuntimedArtifact } from "../../packaging/artifacts.js";
+import { checkTyposquats } from "../../shared/typosquat.js";
 import {
 	isPeerCredentialBackendAvailable,
 	resolveDaemonPeerIdentity,
@@ -61,6 +62,12 @@ export interface ElectronNotebookHostServiceOptions {
 	 * probe; tests pass a stub to keep the constructor side-effect-free.
 	 */
 	readonly probePeerCredentialBackend?: () => Promise<boolean>;
+	/** Called once a notebook's host connection is live; `untitled` means created here, not opened from disk. */
+	readonly onNotebookConnected?: (notebook: {
+		readonly notebookId: string;
+		readonly untitled: boolean;
+	}) => void;
+	readonly onNotebookDisconnected?: (notebookId: string) => void;
 }
 
 export interface RuntimedDaemonManagerLike {
@@ -94,6 +101,27 @@ interface OpenedFileRelay {
 	readonly path: string;
 	readonly relay: RelaySession;
 	readonly timeout: ReturnType<typeof setTimeout>;
+}
+
+const MAX_TYPOSQUAT_PACKAGES = 500;
+const MAX_TYPOSQUAT_SPEC_LENGTH = 512;
+
+/** The notebook iframe is untrusted input; reject rather than silently report "no warnings". */
+function typosquatCheckPackages(params: unknown): string[] {
+	const packages = (params as { packages?: unknown } | null | undefined)?.packages;
+	if (
+		!Array.isArray(packages) ||
+		packages.length > MAX_TYPOSQUAT_PACKAGES ||
+		!packages.every(
+			(spec): spec is string =>
+				typeof spec === "string" && spec.length <= MAX_TYPOSQUAT_SPEC_LENGTH,
+		)
+	) {
+		throw new Error(
+			`deps.checkTyposquats requires packages: string[] (at most ${MAX_TYPOSQUAT_PACKAGES} specs of ${MAX_TYPOSQUAT_SPEC_LENGTH} characters).`,
+		);
+	}
+	return packages;
 }
 
 function notebookTitleState(title: string): { readonly dirty: boolean; readonly title: string } {
@@ -240,9 +268,13 @@ export class ElectronNotebookHostService {
 	readonly #sessions = new Map<string, NotebookHostSession>();
 	readonly #defaultSaveDirectories = new Map<string, string>();
 	readonly #openedFileRelays = new Map<string, OpenedFileRelay>();
+	readonly #onNotebookConnected: ElectronNotebookHostServiceOptions["onNotebookConnected"];
+	readonly #onNotebookDisconnected: ElectronNotebookHostServiceOptions["onNotebookDisconnected"];
 
 	constructor(options: ElectronNotebookHostServiceOptions) {
 		this.#mainSdk = options.mainSdk;
+		this.#onNotebookConnected = options.onNotebookConnected;
+		this.#onNotebookDisconnected = options.onNotebookDisconnected;
 		this.#socketPath =
 			options.socketPath ??
 			resolveDaemonSocketPath({ channel: options.runtimeChannel ?? "stable" });
@@ -470,6 +502,7 @@ export class ElectronNotebookHostService {
 				if (this.#sessions.get(session.notebookId) === session) {
 					this.#sessions.delete(session.notebookId);
 					this.#defaultSaveDirectories.delete(session.notebookId);
+					this.#onNotebookDisconnected?.(session.notebookId);
 				}
 				this.#settleSave(session, {
 					outcome: "failed",
@@ -487,6 +520,10 @@ export class ElectronNotebookHostService {
 				this.#mainSdk.host?.window.isFocused(senderId) ?? true,
 			);
 			this.#emitDirty(session);
+			this.#onNotebookConnected?.({
+				notebookId: session.notebookId,
+				untitled: !args.notebookPath,
+			});
 		} catch (error) {
 			onClose?.();
 			if (server) await server.close();
@@ -579,7 +616,7 @@ export class ElectronNotebookHostService {
 					return info.blobPort;
 				}
 				case "deps.checkTyposquats":
-					return [];
+					return checkTyposquats(typosquatCheckPackages(params));
 				case "notebook.applyPathChanged": {
 					const changed = params as { path?: unknown };
 					if (typeof changed.path === "string") {

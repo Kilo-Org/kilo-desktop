@@ -153,6 +153,11 @@ export function NotebookView({
 		| { readonly status: "available" }
 		| { readonly status: "unavailable"; readonly reason: string }
 	>(desktopFrame ? { status: "checking" } : { status: "available" });
+	// New untitled notebooks settle their workspace environment.yml before the
+	// frame connects: the daemon picks the environment when the room is created.
+	const untitled = !metadata?.[NOTEBOOK_PATH_METADATA_KEY];
+	const needsEnvironment = desktopFrame && untitled && workspaceDirectory !== undefined;
+	const [environmentReady, setEnvironmentReady] = useState(!needsEnvironment);
 
 	useEffect(() => {
 		if (!notebookId) return;
@@ -225,6 +230,21 @@ export function NotebookView({
 			active = false;
 		};
 	}, [desktopFrame, retryVersion, sdk]);
+
+	useEffect(() => {
+		if (!needsEnvironment || !notebookId || !workspaceDirectory) return;
+		if (runtime.status !== "available") return;
+		let active = true;
+		setEnvironmentReady(false);
+		// Whatever the outcome, the notebook opens: the environment file is a convenience.
+		const open = () => active && setEnvironmentReady(true);
+		void sdk.client
+			.prepareEnvironment({ notebookId, workingDirectory: workspaceDirectory })
+			.then(open, open);
+		return () => {
+			active = false;
+		};
+	}, [needsEnvironment, notebookId, runtime.status, sdk, workspaceDirectory]);
 
 	useEffect(() => {
 		if (!frameSrc || !notebookId) return;
@@ -377,6 +397,15 @@ export function NotebookView({
 							Try again
 						</Button>
 					</EmptyContent>
+				</Empty>
+			) : !environmentReady ? (
+				<Empty data-qa-id="notebook-environment-preparing">
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<Spinner aria-hidden="true" />
+						</EmptyMedia>
+						<EmptyTitle>Preparing the notebook environment…</EmptyTitle>
+					</EmptyHeader>
 				</Empty>
 			) : (
 				// Deliberately no `sandbox` attribute. The trusted nteract application is

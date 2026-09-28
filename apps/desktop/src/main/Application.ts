@@ -240,7 +240,9 @@ export class Application {
 			}
 			installProxyAgent();
 
-			this.#disposers.push(this.#security.install(session.defaultSession));
+			this.#disposers.push(
+				this.#security.install(session.defaultSession, { embeddedHosts: collectEmbeddedHosts }),
+			);
 
 			reporter.report("features", "Preparing features\u2026");
 			Sentry.addBreadcrumb({ category: "app.boot", message: "Booting features" });

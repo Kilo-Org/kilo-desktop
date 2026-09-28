@@ -71,8 +71,10 @@ export type {
 
 export {
 	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+	CLIPBOARD_WRITE_EMBEDDED_PERMISSION,
 	EMBEDDED_WEB_HOST_CAPABILITY,
 	type EmbeddedWebHost,
+	type EmbeddedWebHostPermission,
 	type EmbeddedWebHostRouteContext,
 	type EmbeddedWebHostSecurityProfile,
 } from "./types/embedded-web-host.js";

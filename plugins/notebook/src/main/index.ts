@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import {
 	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+	CLIPBOARD_WRITE_EMBEDDED_PERMISSION,
 	EMBEDDED_WEB_HOST_CAPABILITY,
 	type EmbeddedWebHost,
 	type HostMessagePort,
@@ -28,6 +29,9 @@ import { resolveNotebookBundleRoot } from "./embedding/notebook-bundle-path.js";
 import { reconcileNotebookKiloPlugin } from "./integrations/kilo-plugin-config.js";
 import type { BuildChannel } from "./runtime/socket-path.js";
 import { findRuntimedArtifact, NTERACT_RELEASE } from "../packaging/artifacts.js";
+import { WorkspaceEnvironment } from "./environment/workspace-environment.js";
+import { NewNotebookTrust, type TrustSession } from "./runtime/NewNotebookTrust.js";
+import { NotebookSettingsStore, NotebookStateStore } from "./settings/NotebookSettingsStore.js";
 
 const connectionArgsSchema = z.object({
 	notebookId: z.string().uuid(),
@@ -63,6 +67,16 @@ export interface NotebookFeatureOptions {
 	readonly createHostService?: (
 		options: ElectronNotebookHostServiceOptions,
 	) => ElectronNotebookHostServiceLike;
+	/** Test seam for the extra peer "Trust new notebooks" opens per notebook. */
+	readonly openTrustSession?: (notebookId: string, socketPath: string) => Promise<TrustSession>;
+	/** Test seam for project-file discovery's home-directory boundary. */
+	readonly homeDirectory?: string;
+}
+
+async function openNativeTrustSession(notebookId: string, socketPath: string) {
+	// Loaded on demand: the native addon is only needed while the setting is on.
+	const { openNotebook } = await import("@runtimed/node");
+	return openNotebook(notebookId, { socketPath, peerLabel: "kilo-desktop:trust" });
 }
 
 export function translateAsarToUnpackedPath(inputPath: string): string {
@@ -114,13 +128,34 @@ export async function mainRegister(
 			return existsSync(candidate) ? candidate : undefined;
 		});
 	const runtimedBinaryPath = resolveRuntimedBinary();
+	const settings = new NotebookSettingsStore(mainSdk);
+	const notebookState = new NotebookStateStore(mainSdk);
+	const workspaceEnvironment = new WorkspaceEnvironment({
+		settings: () => settings.get(),
+		state: notebookState,
+		...(options.homeDirectory ? { homeDirectory: options.homeDirectory } : {}),
+	});
+	const openTrustSession = options.openTrustSession ?? openNativeTrustSession;
+	const newNotebookTrust = new NewNotebookTrust({
+		openNotebook: (notebookId) => openTrustSession(notebookId, hostService.socketPath),
+		isEnabled: () => settings.get().trustNewNotebooks,
+		logger: mainSdk.logger,
+	});
 	const hostService = createHostService({
 		mainSdk,
 		...(socketPath ? { socketPath } : {}),
 		runtimeChannel,
 		...(runtimedBinaryPath ? { runtimedBinaryPath } : {}),
+		onNotebookConnected: ({ notebookId, untitled }) => {
+			if (untitled) notebookState.markCreatedHere(notebookId);
+			if (notebookState.isCreatedHere(notebookId)) newNotebookTrust.track(notebookId);
+		},
+		onNotebookDisconnected: (notebookId) => newNotebookTrust.untrack(notebookId),
 	});
-	mainSdk.onDispose(() => hostService.dispose());
+	mainSdk.onDispose(async () => {
+		await newNotebookTrust.dispose();
+		await hostService.dispose();
+	});
 	void hostService.start().catch((error: unknown) => {
 		mainSdk.logger.warn(
 			`Notebook runtime startup failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -178,6 +213,13 @@ export async function mainRegister(
 		setDefaultSaveDirectory: async ({ notebookId, directory }) => {
 			hostService.setDefaultSaveDirectory(notebookId, directory);
 		},
+		getSettings: async () => settings.get(),
+		updateSettings: async (patch) => {
+			const next = settings.update(patch);
+			newNotebookTrust.refresh();
+			return next;
+		},
+		prepareEnvironment: (request) => workspaceEnvironment.prepare(request),
 	};
 	mainSdk.channels(notebookContract).handleAll(api);
 	const embeddedWebHost = {
@@ -186,6 +228,9 @@ export async function mainRegister(
 		securityProfiles: {
 			"/output-frame.html": ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
 		},
+		// nteract's copy buttons call navigator.clipboard directly. Outputs render
+		// in sandboxed opaque-origin frames, so only the notebook UI gets this.
+		permissions: [CLIPBOARD_WRITE_EMBEDDED_PERMISSION],
 	} satisfies EmbeddedWebHost;
 	mainSdk.plugins.expose(EMBEDDED_WEB_HOST_CAPABILITY, embeddedWebHost);
 }

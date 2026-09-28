@@ -848,9 +848,20 @@ describe("ElectronNotebookHostService", () => {
 			expect.objectContaining({ notebook_id: "669d39ec-39d6-4160-815c-b46e170cde8d" }),
 		);
 		await expect(handler.invoke("blobs.getPort", undefined)).resolves.toBe(48637);
-		await expect(handler.invoke("deps.checkTyposquats", { packages: ["numpy"] })).resolves.toEqual(
-			[],
-		);
+		await expect(
+			handler.invoke("deps.checkTyposquats", { packages: ["numpy", "conda-forge::numppy>=1"] }),
+		).resolves.toEqual([{ package: "numppy", similar_to: "numpy", distance: 1 }]);
+		for (const invalid of [
+			undefined,
+			{ packages: "numpy" },
+			{ packages: [1] },
+			{ packages: ["x".repeat(513)] },
+			{ packages: Array.from({ length: 501 }, () => "numpy") },
+		]) {
+			await expect(handler.invoke("deps.checkTyposquats", invalid as never)).rejects.toThrow(
+				/requires packages: string\[\]/,
+			);
+		}
 		await expect(handler.invoke("relay.prepareSync", { generation: 1 })).resolves.toBeUndefined();
 		await expect(
 			handler.invoke("relay.notifySyncReady", { generation: 1 }),

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
 	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+	CLIPBOARD_WRITE_EMBEDDED_PERMISSION,
 	EMBEDDED_WEB_HOST_CAPABILITY,
 	type FeatureRegistration,
 } from "@kilo-desktop/feature-sdk";
@@ -91,6 +92,20 @@ describe("collectEmbeddedHosts", () => {
 		]);
 	});
 
+	it("accepts the platform-defined permissions a host opts into", async () => {
+		await boot("embedded-host-permissions", (sdk) => {
+			sdk.plugins.expose(EMBEDDED_WEB_HOST_CAPABILITY, {
+				host: "canvas",
+				root: "/bundle",
+				permissions: [CLIPBOARD_WRITE_EMBEDDED_PERMISSION],
+			});
+		});
+
+		expect(collectEmbeddedHosts()).toEqual([
+			{ host: "canvas", root: "/bundle", permissions: [CLIPBOARD_WRITE_EMBEDDED_PERMISSION] },
+		]);
+	});
+
 	it("accepts inline documents keyed by an absolute path", async () => {
 		await boot("embedded-host-documents", (sdk) => {
 			sdk.plugins.expose(EMBEDDED_WEB_HOST_CAPABILITY, {
@@ -151,6 +166,15 @@ describe("collectEmbeddedHosts", () => {
 			},
 		],
 		["null documents", { host: "canvas", root: "/bundle", documents: null }],
+		["non-array permissions", { host: "canvas", root: "/bundle", permissions: "clipboard" }],
+		[
+			"the reserved app-shell host",
+			{ host: "app", root: "/bundle", permissions: [CLIPBOARD_WRITE_EMBEDDED_PERMISSION] },
+		],
+		[
+			"a permission the platform does not grant",
+			{ host: "canvas", root: "/bundle", permissions: ["clipboard-read"] },
+		],
 		[
 			"a non-string document body",
 			{ host: "canvas", root: "/bundle", documents: { "/widget-host.html": 7 } },

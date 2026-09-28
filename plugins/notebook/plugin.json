@@ -19,6 +19,16 @@
 				"mountPolicy": "keep-alive",
 				"priority": 50
 			}
+		],
+		"settings": [
+			{
+				"id": "notebooks",
+				"title": "Notebooks",
+				"description": "Analyze data with interactive Python notebooks.",
+				"component": "NotebookSettings",
+				"icon": "NotebookIcon",
+				"priority": 75
+			}
 		]
 	}
 }

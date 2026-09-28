@@ -1,3 +1,4 @@
+import { realpath, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 
@@ -63,8 +64,61 @@ type PluginDependencies = {
 	loadRuntimedNode?: () => unknown;
 };
 
-const NOTEBOOK_ID = z.string().uuid().describe("Notebook id returned by the notebook panel tools.");
+const OPEN_FILE_TOOL = "desktop_notebook_open_file";
+const LIST_OPEN_TOOL = "desktop_notebook_list_open";
+// Kilo's model-facing JSON schema drops the uuid format, so the description
+// carries the contract.
+const NOTEBOOK_ID = z
+	.string()
+	.uuid()
+	.describe(
+		`Notebook UUID from ${LIST_OPEN_TOOL}, desktop_notebook_open, or ${OPEN_FILE_TOOL}. Not a file name or path; open .ipynb files with ${OPEN_FILE_TOOL} first.`,
+	);
 const NOTEBOOK_PEER_LABEL = "Kilo Desktop";
+
+type SessionContext = Pick<ToolContext, "sessionID" | "worktree">;
+
+/** Canonical path of an existing `.ipynb` file inside the workspace, after following symlinks. */
+async function workspaceNotebookPath(name: string, worktree: string): Promise<string | null> {
+	if (path.extname(name).toLowerCase() !== ".ipynb") return null;
+	try {
+		const [root, target] = await Promise.all([
+			realpath(worktree),
+			realpath(path.resolve(worktree, name)),
+		]);
+		const relative = path.relative(root, target);
+		const inside =
+			relative !== "" &&
+			relative !== ".." &&
+			!relative.startsWith(`..${path.sep}`) &&
+			!path.isAbsolute(relative);
+		if (!inside) return null;
+		return (await stat(target)).isFile() ? target : null;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Kilo does not validate plugin args before `execute()`, and the daemon reads
+ * any non-UUID notebook id as a file path. Tools therefore address notebooks
+ * only by the UUID the chat pane reports, which keeps every notebook an agent
+ * edits visible to the user. A workspace notebook name is answered with the
+ * exact open_file call rather than opened out of view.
+ */
+async function assertNotebookUuid(notebookId: string, worktree: string): Promise<void> {
+	if (NOTEBOOK_ID.safeParse(notebookId).success) return;
+	const notebookPath = await workspaceNotebookPath(notebookId, worktree);
+	if (notebookPath) {
+		throw new Error(
+			`notebook_id must be a notebook UUID. ${JSON.stringify(notebookId)} is ${notebookPath} in this workspace; ` +
+				`open it with ${OPEN_FILE_TOOL} {"path": ${JSON.stringify(notebookPath)}} and use the notebook_id it returns.`,
+		);
+	}
+	throw new Error(
+		`notebook_id must be a notebook UUID from ${LIST_OPEN_TOOL} or ${OPEN_FILE_TOOL}; got ${JSON.stringify(notebookId)}.`,
+	);
+}
 
 function defaultLoadRuntimedNode(): unknown {
 	const require = createRequire(import.meta.url);
@@ -96,8 +150,10 @@ function isDisconnectedStatus(status: unknown): boolean {
 }
 
 /**
- * Owns native notebook peers for one Kilo workspace plugin instance. Concurrent
- * opens coalesce, and failed opens leave no stale cache entry. Kilo session
+ * Owns native notebook peers for one Kilo workspace plugin instance. Only
+ * notebook UUIDs are admitted, and the check runs before any ownership or cache
+ * entry is recorded. Concurrent opens coalesce, and failed opens leave no stale
+ * cache entry. Kilo session
  * ownership is tracked separately so session deletion can release only peers
  * that are no longer referenced by another chat.
  *
@@ -119,10 +175,11 @@ class NotebookSessionRegistry {
 		this.#runtimed = runtimed;
 	}
 
-	open(notebookId: string, kiloSessionId: string): Promise<Session> {
-		const owned = this.#notebooksByKiloSession.get(kiloSessionId) ?? new Set<string>();
+	async open(notebookId: string, context: SessionContext): Promise<Session> {
+		await assertNotebookUuid(notebookId, context.worktree);
+		const owned = this.#notebooksByKiloSession.get(context.sessionID) ?? new Set<string>();
 		owned.add(notebookId);
-		this.#notebooksByKiloSession.set(kiloSessionId, owned);
+		this.#notebooksByKiloSession.set(context.sessionID, owned);
 
 		const existing = this.#sessions.get(notebookId);
 		if (existing) return existing;
@@ -436,7 +493,7 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 				include_outputs: z.boolean().optional(),
 			},
 			async execute(args, context) {
-				const session = await sessions.open(args.notebook_id, context.sessionID);
+				const session = await sessions.open(args.notebook_id, context);
 				const cells = args.cell_id
 					? [await session.getCell(args.cell_id)].filter(
 							(cell): cell is CellSnapshot => cell !== null,
@@ -480,7 +537,7 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 			},
 			async execute(args, context) {
 				if (context.abort.aborted) throw new Error("Notebook execution was cancelled.");
-				const session = await sessions.open(args.notebook_id, context.sessionID);
+				const session = await sessions.open(args.notebook_id, context);
 				if (args.dependencies?.length) {
 					await requireDependencyApproval(context, session, args.notebook_id, {
 						kind: "add",
@@ -527,7 +584,7 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 			},
 			async execute(args, context) {
 				if (context.abort.aborted) throw new Error("Notebook cell creation was cancelled.");
-				const session = await sessions.open(args.notebook_id, context.sessionID);
+				const session = await sessions.open(args.notebook_id, context);
 				const cellType = args.cell_type ?? "code";
 				await assertAnchorExists(session, args.after_cell_id);
 				const cellId = await session.createCell(args.source ?? "", {
@@ -604,7 +661,7 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 					}
 				});
 
-				const session = await sessions.open(args.notebook_id, context.sessionID);
+				const session = await sessions.open(args.notebook_id, context);
 				const results: Array<Record<string, unknown>> = [];
 				const failAt = (index: number, operation: EditOperation, reason: string): never => {
 					throw new Error(
@@ -647,7 +704,7 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 				stop_on_error: z.boolean().optional(),
 			},
 			async execute(args, context) {
-				const session = await sessions.open(args.notebook_id, context.sessionID);
+				const session = await sessions.open(args.notebook_id, context);
 				const cellIds =
 					args.cell_ids ??
 					(await session.listCells())
@@ -702,7 +759,7 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 					throw new Error(`packages is required for action ${args.action}.`);
 				}
 				const packages = args.packages ?? [];
-				const session = await sessions.open(args.notebook_id, context.sessionID);
+				const session = await sessions.open(args.notebook_id, context);
 				const editOptions = args.package_manager
 					? { packageManager: args.package_manager }
 					: undefined;
@@ -770,7 +827,7 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 				"kernel with notebooks_kernel and diagnose again to confirm.",
 			args: { notebook_id: NOTEBOOK_ID },
 			async execute(args, context) {
-				const session = await sessions.open(args.notebook_id, context.sessionID);
+				const session = await sessions.open(args.notebook_id, context);
 				const [runtime, dependencies] = await Promise.allSettled([
 					session.getRuntimeStatus(),
 					session.getDependencyStatus(),
@@ -834,7 +891,7 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 				action: z.enum(["status", "interrupt", "restart"]),
 			},
 			async execute(args, context) {
-				const session = await sessions.open(args.notebook_id, context.sessionID);
+				const session = await sessions.open(args.notebook_id, context);
 				if (args.action === "interrupt") await session.interruptKernel();
 				if (args.action === "restart") await session.restartKernel();
 				const status = await session.getRuntimeStatus();
@@ -857,7 +914,7 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 				path: z.string().min(1).optional(),
 			},
 			async execute(args, context) {
-				const session = await sessions.open(args.notebook_id, context.sessionID);
+				const session = await sessions.open(args.notebook_id, context);
 				if (!args.path) {
 					await session.saveNotebook();
 					return {

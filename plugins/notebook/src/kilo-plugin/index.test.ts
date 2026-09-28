@@ -1,3 +1,7 @@
+import { mkdir, mkdtemp, realpath, symlink, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
@@ -1542,5 +1546,79 @@ describe("nteract Kilo plugin", () => {
 		expect(session.interruptKernel).toHaveBeenCalledOnce();
 		expect(session.saveNotebook).toHaveBeenCalledWith();
 		expect(saved.output).toBe("Saved to the notebook's current path.");
+	});
+});
+
+describe("notebook_id contract", () => {
+	type AnyTool = {
+		execute(args: unknown, context: ReturnType<typeof toolContext>): Promise<unknown>;
+	};
+
+	async function pluginWithSpy() {
+		const openNotebook = vi.fn();
+		const hooks = await createNteractKiloPlugin({ loadRuntimedNode: () => ({ openNotebook }) })();
+		const tool = (name: keyof typeof hooks.tool) => hooks.tool[name] as AnyTool;
+		return { openNotebook, tool };
+	}
+
+	const minimalArgs: Record<string, Record<string, unknown>> = {
+		notebooks_create_cell: {},
+		notebooks_dependencies: { action: "status" },
+		notebooks_edit_cells: { operations: [{ action: "delete", cell_id: "cell-1" }] },
+		notebooks_execute: {},
+		notebooks_kernel: { action: "status" },
+		notebooks_read: {},
+		notebooks_run_cell: { code: "1" },
+		notebooks_save: {},
+	};
+
+	it.each(Object.entries(minimalArgs))(
+		"%s refuses a placeholder notebook_id before reaching the daemon",
+		async (toolName, args) => {
+			const { openNotebook, tool } = await pluginWithSpy();
+
+			await expect(
+				tool(toolName as never).execute({ notebook_id: "?", ...args }, toolContext()),
+			).rejects.toThrow(/notebook_id must be a notebook UUID.*desktop_notebook_list_open/);
+			expect(openNotebook).not.toHaveBeenCalled();
+		},
+	);
+
+	it("redirects a workspace notebook name to desktop_notebook_open_file without opening it", async () => {
+		const workspace = await mkdtemp(path.join(os.tmpdir(), "notebook-id-workspace-"));
+		await mkdir(path.join(workspace, "reports"));
+		await writeFile(path.join(workspace, "reports", "q3.ipynb"), "{}");
+		const resolved = await realpath(path.join(workspace, "reports", "q3.ipynb"));
+		const { openNotebook, tool } = await pluginWithSpy();
+
+		const attempt = tool("notebooks_read").execute(
+			{ notebook_id: "reports/q3.ipynb" },
+			toolContext({ worktree: workspace }),
+		);
+
+		await expect(attempt).rejects.toThrow(
+			`open it with desktop_notebook_open_file {"path": ${JSON.stringify(resolved)}}`,
+		);
+		expect(openNotebook).not.toHaveBeenCalled();
+	});
+
+	it("does not redirect notebooks outside the workspace, including through symlinks", async () => {
+		const workspace = await mkdtemp(path.join(os.tmpdir(), "notebook-id-workspace-"));
+		const elsewhere = await mkdtemp(path.join(os.tmpdir(), "notebook-id-elsewhere-"));
+		const outside = path.join(elsewhere, "private.ipynb");
+		await writeFile(outside, "{}");
+		await symlink(outside, path.join(workspace, "linked.ipynb"));
+		const { openNotebook, tool } = await pluginWithSpy();
+
+		for (const notebookId of [outside, "linked.ipynb", "../private.ipynb"]) {
+			const attempt = tool("notebooks_read").execute(
+				{ notebook_id: notebookId },
+				toolContext({ worktree: workspace }),
+			);
+			await expect(attempt).rejects.toThrow(
+				`notebook_id must be a notebook UUID from desktop_notebook_list_open or desktop_notebook_open_file; got ${JSON.stringify(notebookId)}.`,
+			);
+		}
+		expect(openNotebook).not.toHaveBeenCalled();
 	});
 });

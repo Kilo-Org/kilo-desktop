@@ -3,7 +3,7 @@ import { shellEnv } from "shell-env";
 import { nativeTheme, net, session } from "electron";
 import { writeFile } from "node:fs/promises";
 
-import type { IpcHandlers } from "@kilo-desktop/contracts";
+import { UPDATE_TRACK_SWITCHER_FLAG, type IpcHandlers } from "@kilo-desktop/contracts";
 
 import { getAppIdentity } from "$config/app-identity.js";
 import { resolveWebMcpRendezvous } from "@kilo-desktop/plugin-kilo-server/main";
@@ -463,7 +463,10 @@ export class Application {
 			...createTelemetryHandlers(telemetry),
 			...createFeatureHandlers(),
 			...createFeatureFlagHandlers(featureFlags),
-			...createUpdateHandlers(this.#updates!),
+			...createUpdateHandlers(this.#updates!, {
+				isTrackSwitchingEnabled: () =>
+					featureFlags.getFlag<boolean>(UPDATE_TRACK_SWITCHER_FLAG, false),
+			}),
 		} satisfies IpcHandlers;
 		this.#ipcServer.register(
 			handlers,

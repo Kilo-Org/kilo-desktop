@@ -20,13 +20,14 @@ configuration.
 | `stable`  | Stable customer release            | Customers                  | `vX.Y.Z` tag or manual `Release` run      |
 
 Development has an isolated identity. Preview and Stable intentionally share one durable
-packaged identity so the About settings update-track selector can move the installed app between tracks:
+packaged identity so the About settings update-track selector (gated by the `update-track-switcher`
+feature flag) can move the installed app between tracks:
 
 | Environment       | Product name | Identity suffix |
 | ----------------- | ------------ | --------------- |
 | Local development | Kilo Dev     | `dev`           |
 | `preview`         | Kilo Preview | none            |
-| `stable`          | Kilo         | none            |
+| `stable`          | Kilo Beta    | none            |
 
 The development suffix is applied consistently to macOS bundle IDs, Windows Squirrel identities,
 Linux package and executable names, and Electron's application name. Preview and Stable share the

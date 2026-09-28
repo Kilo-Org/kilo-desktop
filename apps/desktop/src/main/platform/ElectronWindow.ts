@@ -358,6 +358,9 @@ export class ElectronWindow {
 				],
 			},
 		});
+		// The renderer's static <title> would otherwise replace the per-track app
+		// name (e.g. "Kilo Beta"); titles change only through `setTitle`.
+		window.on("page-title-updated", (event) => event.preventDefault());
 		window.webContents.on("will-attach-webview", (event, webPreferences, params) => {
 			if (params.partition !== BROWSER_PARTITION || params.preload) {
 				event.preventDefault();

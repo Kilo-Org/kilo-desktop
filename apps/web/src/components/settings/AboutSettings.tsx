@@ -1,7 +1,8 @@
 import { useState } from "react";
 
-import type { DesktopUpdateState } from "@kilo-desktop/contracts";
-import { SettingsPageHeader } from "@kilo-desktop/sdk-react";
+import { UPDATE_TRACK_SWITCHER_FLAG, type DesktopUpdateState } from "@kilo-desktop/contracts";
+import { SettingsPageHeader, useFeatureFlag } from "@kilo-desktop/sdk-react";
+import { Badge } from "@kilo-desktop/ui/components/badge";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { SkeletonText } from "@kilo-desktop/ui/components/skeleton";
 import { FieldLegend, FieldSet } from "@kilo-desktop/ui/components/field";
@@ -23,6 +24,7 @@ import { useDesktopUpdates } from "@/platform/updates/UpdateProvider";
 
 export function AboutSettings() {
 	const updates = useDesktopUpdates();
+	const canSwitchTrack = useFeatureFlag<boolean>(UPDATE_TRACK_SWITCHER_FLAG, false);
 	const state = updates?.state;
 	const targetRelease = state?.releaseNotes.find(hasVisibleReleaseNotes);
 	const [pending, setPending] = useState(false);
@@ -100,6 +102,9 @@ export function AboutSettings() {
 								) : (
 									<SkeletonText className="text-2xs w-12" />
 								)}
+								<Badge variant="soft" data-qa-id="about-beta-badge">
+									Beta
+								</Badge>
 							</SummaryCard.Title>
 							{state ? (
 								<SummaryCard.Description data-qa-id="update-status-message">
@@ -138,49 +143,51 @@ export function AboutSettings() {
 						</SummaryCard.Actions>
 					</SummaryCard.Row>
 				</div>
-				<div>
-					<SummaryCard.Row>
-						<SummaryCard.Content>
-							<SummaryCard.Title>
-								<label htmlFor="update-track">Update track</label>
-							</SummaryCard.Title>
-							<SummaryCard.Description>
-								Use stable releases or preview builds.
-							</SummaryCard.Description>
-						</SummaryCard.Content>
-						<SummaryCard.Actions>
-							<Select
-								value={state?.track ?? "preview"}
-								items={[
-									{ value: "stable", label: "Stable" },
-									{ value: "preview", label: "Preview" },
-								]}
-								onValueChange={(track) => void setTrack(track)}
-							>
-								<SelectTrigger
-									id="update-track"
-									size="sm"
-									aria-label="Update track"
-									className="w-36"
-									disabled={!state?.enabled || updateBusy || state?.status === "downloaded"}
-									data-qa-id="update-track"
+				{canSwitchTrack ? (
+					<div>
+						<SummaryCard.Row>
+							<SummaryCard.Content>
+								<SummaryCard.Title>
+									<label htmlFor="update-track">Update track</label>
+								</SummaryCard.Title>
+								<SummaryCard.Description>
+									Use stable releases or preview builds.
+								</SummaryCard.Description>
+							</SummaryCard.Content>
+							<SummaryCard.Actions>
+								<Select
+									value={state?.track ?? "preview"}
+									items={[
+										{ value: "stable", label: "Stable" },
+										{ value: "preview", label: "Preview" },
+									]}
+									onValueChange={(track) => void setTrack(track)}
 								>
-									{state ? <SelectValue /> : <SkeletonText className="w-14" />}
-								</SelectTrigger>
-								<SelectContent align="end" alignItemWithTrigger={false}>
-									<SelectGroup>
-										<SelectItem value="stable" data-qa-id="update-track-stable">
-											Stable
-										</SelectItem>
-										<SelectItem value="preview" data-qa-id="update-track-preview">
-											Preview
-										</SelectItem>
-									</SelectGroup>
-								</SelectContent>
-							</Select>
-						</SummaryCard.Actions>
-					</SummaryCard.Row>
-				</div>
+									<SelectTrigger
+										id="update-track"
+										size="sm"
+										aria-label="Update track"
+										className="w-36"
+										disabled={!state?.enabled || updateBusy || state?.status === "downloaded"}
+										data-qa-id="update-track"
+									>
+										{state ? <SelectValue /> : <SkeletonText className="w-14" />}
+									</SelectTrigger>
+									<SelectContent align="end" alignItemWithTrigger={false}>
+										<SelectGroup>
+											<SelectItem value="stable" data-qa-id="update-track-stable">
+												Stable
+											</SelectItem>
+											<SelectItem value="preview" data-qa-id="update-track-preview">
+												Preview
+											</SelectItem>
+										</SelectGroup>
+									</SelectContent>
+								</Select>
+							</SummaryCard.Actions>
+						</SummaryCard.Row>
+					</div>
+				) : null}
 
 				{state?.releaseNotes.some(hasVisibleReleaseNotes) ? (
 					<FieldSet

@@ -5,6 +5,9 @@ import { defineEvent, defineMethod } from "../contract.js";
 export const releaseTracks = ["stable", "preview"] as const;
 export const releaseTrackSchema = z.enum(releaseTracks);
 
+/** Feature flag that allows users to switch between the stable and preview update tracks. */
+export const UPDATE_TRACK_SWITCHER_FLAG = "update-track-switcher";
+
 export const desktopUpdateStatusSchema = z.enum([
 	"disabled",
 	"idle",

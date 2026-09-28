@@ -7,11 +7,25 @@ type UpdateChannels = Pick<
 	"updates:get-state" | "updates:check" | "updates:set-track" | "updates:install"
 >;
 
-export function createUpdateHandlers(updates: DesktopUpdaterService): UpdateChannels {
+export interface UpdateHandlerOptions {
+	/** Whether the `update-track-switcher` feature flag currently allows changing tracks. */
+	readonly isTrackSwitchingEnabled: () => boolean;
+}
+
+export function createUpdateHandlers(
+	updates: Pick<DesktopUpdaterService, "state" | "check" | "setTrack" | "install">,
+	{ isTrackSwitchingEnabled }: UpdateHandlerOptions,
+): UpdateChannels {
 	return {
 		"updates:get-state": () => updates.state,
 		"updates:check": () => updates.check(),
-		"updates:set-track": (track) => updates.setTrack(track),
+		"updates:set-track": (track) => {
+			if (isTrackSwitchingEnabled()) return updates.setTrack(track);
+			return {
+				accepted: false,
+				state: { ...updates.state, message: "Switching update tracks is not enabled." },
+			};
+		},
 		"updates:install": () => updates.install(),
 	};
 }

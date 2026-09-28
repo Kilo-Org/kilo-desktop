@@ -308,10 +308,11 @@ Development is isolated, while Preview and Stable share one packaged identity:
 | ----------------- | ------------ |
 | Local development | Kilo Dev     |
 | `preview`         | Kilo Preview |
-| `stable`          | Kilo         |
+| `stable`          | Kilo Beta    |
 
-Preview and Stable replace one another rather than install side by side. Sharing identity prepares
-the app for a future update-track switcher without adding runtime switching or UI yet.
+Preview and Stable replace one another rather than install side by side. Sharing identity lets the
+About settings update-track switcher (behind the `update-track-switcher` feature flag) move an
+installed app between tracks.
 
 Forge uses only official makers (DMG/ZIP on macOS, Squirrel on Windows, DEB on Linux)
 and publishes Preview to the `preview` update namespace and Stable to `latest`. Automatic update

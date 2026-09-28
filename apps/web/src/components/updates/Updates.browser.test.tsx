@@ -2,7 +2,13 @@ import { act, cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import type { DesktopUpdateState, LocalApi } from "@kilo-desktop/contracts";
+import {
+	UPDATE_TRACK_SWITCHER_FLAG,
+	type DesktopUpdateState,
+	type LocalApi,
+} from "@kilo-desktop/contracts";
+import { SdkProvider } from "@kilo-desktop/sdk-react";
+import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 
 import { AboutSettings } from "@/components/settings/AboutSettings";
 import { LocalApiProvider } from "@/platform/LocalApiProvider";
@@ -52,11 +58,28 @@ function updateApi(
 	};
 }
 
-function renderUpdates(api: LocalApi, child: React.ReactNode) {
+function renderUpdates(
+	api: LocalApi,
+	child: React.ReactNode,
+	flags: Record<string, unknown> = { [UPDATE_TRACK_SWITCHER_FLAG]: true },
+) {
+	const sdk = createFakeSdk({
+		featureId: "shell",
+		featureFlags: {
+			getAllFlags: async () => flags,
+			peek: () => flags,
+			subscribe: (listener) => {
+				listener(flags);
+				return () => {};
+			},
+		},
+	});
 	return render(
-		<LocalApiProvider api={api}>
-			<UpdateProvider>{child}</UpdateProvider>
-		</LocalApiProvider>,
+		<SdkProvider system={createFakeFeatureSystem({ sdks: { shell: sdk } })}>
+			<LocalApiProvider api={api}>
+				<UpdateProvider>{child}</UpdateProvider>
+			</LocalApiProvider>
+		</SdkProvider>,
 	);
 }
 
@@ -179,6 +202,20 @@ describe("update UI", () => {
 		await expect.element(page.getByText("Update status")).not.toBeInTheDocument();
 		await expect.element(page.getByText("Last checked")).not.toBeInTheDocument();
 		expect(page.getByTestId("update-release-notes").element().textContent).not.toContain("#");
+	});
+
+	it("labels the app as beta in About", async () => {
+		renderUpdates(updateApi(downloadedState), <AboutSettings />);
+
+		await expect.element(page.getByTestId("about-beta-badge")).toHaveTextContent("Beta");
+	});
+
+	it("hides the update track selector unless the switcher flag is enabled", async () => {
+		renderUpdates(updateApi(downloadedState), <AboutSettings />, {});
+
+		await expect.element(page.getByTestId("about-settings")).toBeVisible();
+		await expect.element(page.getByTestId("update-track")).not.toBeInTheDocument();
+		await expect.element(page.getByText("Update track", { exact: true })).not.toBeInTheDocument();
 	});
 
 	it("confirms installation from About with an in-app dialog", async () => {

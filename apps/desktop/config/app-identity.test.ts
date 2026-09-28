@@ -18,7 +18,7 @@ describe("app identity", () => {
 
 	it.each([
 		["preview", "Kilo Preview", "Kilo-Preview-Setup.exe", "Kilo Desktop Preview"],
-		["stable", "Kilo", "Kilo-Setup.exe", "Kilo Desktop"],
+		["stable", "Kilo Beta", "Kilo-Beta-Setup.exe", "Kilo Desktop"],
 	] as const)(
 		"uses the %s product identity",
 		(environment, productName, setupExecutableName, userDataName) => {
@@ -40,11 +40,11 @@ describe("app identity", () => {
 
 		expect(
 			new Set(environments.map((environment) => getAppIdentity(environment).productName)),
-		).toEqual(new Set(["Kilo Dev", "Kilo Preview", "Kilo"]));
+		).toEqual(new Set(["Kilo Dev", "Kilo Preview", "Kilo Beta"]));
 	});
 
 	it("uses track-specific DMG volume titles", () => {
 		expect(getDmgVolumeTitle("preview")).toBe("Kilo Preview");
-		expect(getDmgVolumeTitle("stable")).toBe("Kilo");
+		expect(getDmgVolumeTitle("stable")).toBe("Kilo Beta");
 	});
 });

@@ -78,6 +78,10 @@ export class AppShellPage {
 			"About settings should report why updates are unavailable without a configured feed",
 		);
 		await expectElementToBeVisible(
+			getLocatorByTestId("about-beta-badge"),
+			"About settings should label the app as beta",
+		);
+		await expectElementToBeVisible(
 			getLocatorByTestId("update-track"),
 			"About settings should show the selected update track",
 		);

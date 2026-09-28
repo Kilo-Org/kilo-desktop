@@ -181,7 +181,7 @@ describe("ElectronApp", () => {
 
 	it.each([
 		["preview", "Kilo Preview", "Kilo Desktop Preview"],
-		["stable", "Kilo", "Kilo Desktop"],
+		["stable", "Kilo Beta", "Kilo Desktop"],
 	] as const)("configures the %s packaged data path", (environment, productName, userDataName) => {
 		const makeDirectory = vi.fn();
 		const electronApp = {

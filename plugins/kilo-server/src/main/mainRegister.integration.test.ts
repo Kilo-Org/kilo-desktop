@@ -1,3 +1,4 @@
+import { mkdir, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
@@ -104,6 +105,7 @@ describe("kilo-server main registration", () => {
 			contributedEnv,
 			runtimeDirectory: path.join("/plugin-data/kilo-server", "runtime"),
 			configDirectory: path.join("/plugin-data/kilo-server", "runtime", "config", "kilo"),
+			managedPluginDirectory: path.join("/plugin-data/kilo-server", "runtime", "kilo-plugins"),
 			stateDirectory: "/plugin-data/kilo-server",
 		});
 		mainSdk.dispose();
@@ -208,6 +210,31 @@ describe("kilo-server main registration", () => {
 		const [configDirectory, enabled] = call;
 		expect(configDirectory).toBe(path.join(mainSdk.storageDir, "runtime", "config", "kilo"));
 		expect(enabled).toBe(true);
+		mainSdk.dispose();
+	});
+
+	it("keeps Desktop's Kilo plugins out of the config plugin directory so Kilo never npm-installs there", async () => {
+		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const configDirectory = path.join(mainSdk.storageDir, "runtime", "config", "kilo");
+		const legacyDirectory = path.join(configDirectory, "plugin");
+		await mkdir(legacyDirectory, { recursive: true });
+		await writeFile(path.join(legacyDirectory, "anaconda-desktop-caller-context.js"), "");
+		await writeFile(
+			path.join(legacyDirectory, "anaconda-notebooks.ts"),
+			"// Kilo Desktop managed plugin: notebook/notebooks\nexport default {};\n",
+		);
+
+		await registerProductionKiloServer(mainSdk, {
+			createServer: () => fakeServer(),
+			createWebMcpRelayService: stubRelayService,
+			reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
+			runAsNodeEnabled: async () => true,
+		});
+
+		await expect(readdir(legacyDirectory)).resolves.toEqual([]);
+		await expect(
+			readdir(path.join(mainSdk.storageDir, "runtime", "kilo-plugins")),
+		).resolves.toEqual(["anaconda-desktop-caller-context.js"]);
 		mainSdk.dispose();
 	});
 

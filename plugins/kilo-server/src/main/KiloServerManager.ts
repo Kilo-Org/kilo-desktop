@@ -14,6 +14,7 @@ import isEqual from "lodash/isEqual.js";
 import type { KiloServerConnection, KiloServerStatus } from "../contracts/schemas.js";
 import { KILO_CLI_VERSION } from "./cli-distribution/artifacts.js";
 import type { ContributedEnvManager } from "./ContributedEnvManager.js";
+import { kiloPluginConfigContent, listManagedKiloPluginFiles } from "./managed-kilo-plugins.js";
 
 const execFile = promisify(execFileCallback);
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost"]);
@@ -52,6 +53,12 @@ export interface KiloServerManagerOptions {
 	 * it additively on top of the user's global config.
 	 */
 	readonly configDirectory: string;
+	/**
+	 * Desktop-owned Kilo plugin files, passed to Kilo as inline config
+	 * (`KILO_CONFIG_CONTENT`) rather than placed in `configDirectory`. See
+	 * `managed-kilo-plugins.ts`.
+	 */
+	readonly managedPluginDirectory: string;
 	/** App-local XDG state root. Honors an inherited `XDG_STATE_HOME`. */
 	readonly stateDirectory: string;
 	readonly expectedVersion?: string;
@@ -223,7 +230,11 @@ export class KiloServerManager {
 	> &
 		Pick<
 			KiloServerManagerOptions,
-			"installation" | "runtimeDirectory" | "configDirectory" | "stateDirectory"
+			| "installation"
+			| "runtimeDirectory"
+			| "configDirectory"
+			| "managedPluginDirectory"
+			| "stateDirectory"
 		>;
 	readonly #contributedEnv: ContributedEnvManager | undefined;
 	readonly #intentionalExits = new WeakSet<KiloChildProcess>();
@@ -245,6 +256,7 @@ export class KiloServerManager {
 			installation: options.installation,
 			runtimeDirectory: options.runtimeDirectory,
 			configDirectory: options.configDirectory,
+			managedPluginDirectory: options.managedPluginDirectory,
 			stateDirectory: options.stateDirectory,
 			expectedVersion: options.expectedVersion ?? KILO_CLI_VERSION,
 			allowVersionMismatch: options.allowVersionMismatch ?? false,
@@ -403,8 +415,9 @@ export class KiloServerManager {
 		let stderrCollector: StderrCollector | undefined;
 		try {
 			await this.#ensureRuntimeDirectory();
+			const configContent = await this.#managedPluginConfigContent();
 			if (this.#disposed) throw new Error("Kilo Code has shut down.");
-			const environment = this.#createEnvironment(password);
+			const environment = this.#createEnvironment(password, configContent);
 			const args = [
 				"serve",
 				"--hostname=127.0.0.1",
@@ -538,7 +551,12 @@ export class KiloServerManager {
 		return sanitized;
 	}
 
-	#createEnvironment(password: string): NodeJS.ProcessEnv {
+	async #managedPluginConfigContent(): Promise<string | undefined> {
+		const files = await listManagedKiloPluginFiles(this.#options.managedPluginDirectory);
+		return kiloPluginConfigContent(files);
+	}
+
+	#createEnvironment(password: string, configContent: string | undefined): NodeJS.ProcessEnv {
 		const contributed = this.#contributedEnv ? this.#contributedEnv.getMergedEnv() : {};
 		const sanitizedContributed = this.#sanitizeContributedEnv(contributed);
 		const inheritedXdgConfigHome =
@@ -599,6 +617,9 @@ export class KiloServerManager {
 				delete environment[name];
 			}
 		}
+		// Desktop's inline config replaces any inherited value, so the only
+		// inline layer Kilo sees is the one Desktop owns.
+		if (configContent) environment.KILO_CONFIG_CONTENT = configContent;
 		if (this.#options.platform === "linux") {
 			for (const name of Object.keys(environment)) {
 				if (name.toUpperCase() === "LD_PRELOAD") delete environment[name];

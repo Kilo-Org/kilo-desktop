@@ -1,7 +1,11 @@
 import { EventEmitter } from "node:events";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { PassThrough } from "node:stream";
+import { pathToFileURL } from "node:url";
 
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 
 import type { KiloServerStatus } from "../contracts/schemas.js";
 
@@ -64,6 +68,7 @@ function createHarness(overrides: Partial<KiloServerManagerOptions> = {}) {
 		},
 		runtimeDirectory: "/tmp/kilo-test-runtime",
 		configDirectory: "/tmp/kilo-test-runtime/config/kilo",
+		managedPluginDirectory: "/tmp/kilo-test-runtime/kilo-plugins",
 		stateDirectory: "/tmp/kilo-test-state",
 		environment: { PATH: "/bin", NODE_OPTIONS: "--inspect", LD_PRELOAD: "bad.so" },
 		platform: "linux",
@@ -568,6 +573,7 @@ describe("KiloServerManager", () => {
 			installation: { executablePath: "/kilo", treeSitterWasmDirectory: "/tree" },
 			runtimeDirectory: "/tmp/kilo-timeout",
 			configDirectory: "/tmp/kilo-timeout/config/kilo",
+			managedPluginDirectory: "/tmp/kilo-timeout/kilo-plugins",
 			stateDirectory: "/tmp/kilo-timeout-state",
 			spawn: () => child,
 			startupTimeoutMs: 1,
@@ -755,5 +761,34 @@ describe("owned config environment", () => {
 		await manager.ensureRunning();
 		expect(spawn.mock.calls[0]![2].env.KILO_CONFIG_CONTENT).toBeUndefined();
 		manager.dispose();
+	});
+
+	it("passes Desktop's managed plugins as inline config, re-read on every spawn", async () => {
+		const managedPluginDirectory = await mkdtemp(path.join(tmpdir(), "kilo-managed-plugins-"));
+		onTestFinished(() => rm(managedPluginDirectory, { recursive: true, force: true }));
+		const callerContext = path.join(managedPluginDirectory, "anaconda-desktop-caller-context.js");
+		const notebooks = path.join(managedPluginDirectory, "anaconda-notebooks.js");
+		await writeFile(callerContext, "export default {};\n");
+		const { manager, spawn } = createHarness({
+			managedPluginDirectory,
+			environment: {
+				PATH: "/bin",
+				kilo_config_content: JSON.stringify({ plugin: ["file:///inherited.js"] }),
+			},
+		});
+		onTestFinished(() => manager.dispose());
+
+		await manager.ensureRunning();
+		const firstEnv = spawn.mock.calls[0]![2].env;
+		expect(JSON.parse(firstEnv.KILO_CONFIG_CONTENT!)).toEqual({
+			plugin: [pathToFileURL(callerContext).href],
+		});
+		expect(firstEnv.kilo_config_content).toBeUndefined();
+
+		await writeFile(notebooks, "export default {};\n");
+		await manager.restart();
+		expect(JSON.parse(spawn.mock.calls[1]![2].env.KILO_CONFIG_CONTENT!)).toEqual({
+			plugin: [pathToFileURL(callerContext).href, pathToFileURL(notebooks).href],
+		});
 	});
 });

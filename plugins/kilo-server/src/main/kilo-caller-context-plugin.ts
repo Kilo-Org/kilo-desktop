@@ -7,8 +7,8 @@ export const KILO_CALLER_CONTEXT_KEY = "__anacondaDesktopKiloCaller";
 export const KILO_CALLER_CONTEXT_PLUGIN_FILENAME = "anaconda-desktop-caller-context.js";
 
 /**
- * Generates the dependency-free Kilo plugin installed in Desktop's isolated
- * config directory. Kilo is the authority for session/call identity; the
+ * Generates the dependency-free Kilo plugin installed in Desktop's managed
+ * plugin directory. Kilo is the authority for session/call identity; the
  * generic MCP transport does not expose either value to WebMCP producers.
  */
 export function createKiloCallerContextPluginSource(): string {
@@ -30,8 +30,7 @@ export default { id: "anaconda-desktop-caller-context", server: AnacondaDesktopC
 `;
 }
 
-export async function reconcileKiloCallerContextPlugin(configDirectory: string): Promise<void> {
-	const pluginDirectory = path.join(configDirectory, "plugin");
+export async function reconcileKiloCallerContextPlugin(pluginDirectory: string): Promise<void> {
 	await mkdir(pluginDirectory, { recursive: true });
 	await atomicWriteFile(
 		path.join(pluginDirectory, KILO_CALLER_CONTEXT_PLUGIN_FILENAME),

@@ -8,12 +8,12 @@ import { KiloPluginConfig } from "./KiloPluginConfig.js";
 
 describe("KiloPluginConfig", () => {
 	let tempDirectory: string;
-	let configDirectory: string;
+	let pluginDirectory: string;
 	let sourcePath: string;
 
 	beforeEach(async () => {
 		tempDirectory = await mkdtemp(path.join(tmpdir(), "kilo-plugin-config-"));
-		configDirectory = path.join(tempDirectory, "config", "kilo");
+		pluginDirectory = path.join(tempDirectory, "runtime", "kilo-plugins");
 		sourcePath = path.join(tempDirectory, "notebooks.js");
 		await writeFile(sourcePath, "export default { id: 'notebooks' };\n");
 	});
@@ -23,13 +23,13 @@ describe("KiloPluginConfig", () => {
 	});
 
 	it("installs, updates, and removes a Desktop-owned Kilo plugin", async () => {
-		const config = new KiloPluginConfig(configDirectory);
+		const config = new KiloPluginConfig(pluginDirectory);
 
 		await expect(config.install("notebook", "notebooks", sourcePath)).resolves.toEqual({
 			kind: "written",
 			reason: "created",
 		});
-		const installedPath = path.join(configDirectory, "plugin", "anaconda-notebooks.ts");
+		const installedPath = path.join(pluginDirectory, "anaconda-notebooks.js");
 		expect(await readFile(installedPath, "utf8")).toBe(
 			"// Kilo Desktop managed plugin: notebook/notebooks\n" +
 				"export default { id: 'notebooks' };\n",
@@ -54,7 +54,7 @@ describe("KiloPluginConfig", () => {
 	it("lists only plugins owned by the requested source", async () => {
 		const otherSourcePath = path.join(tempDirectory, "other.js");
 		await writeFile(otherSourcePath, "export default { id: 'other' };\n");
-		const config = new KiloPluginConfig(configDirectory);
+		const config = new KiloPluginConfig(pluginDirectory);
 		await config.install("notebook", "notebooks", sourcePath);
 		await config.install("other-feature", "other", otherSourcePath);
 
@@ -63,11 +63,10 @@ describe("KiloPluginConfig", () => {
 	});
 
 	it("refuses to overwrite or remove a plugin file it does not own", async () => {
-		const pluginDirectory = path.join(configDirectory, "plugin");
 		await mkdir(pluginDirectory, { recursive: true });
-		const installedPath = path.join(pluginDirectory, "anaconda-notebooks.ts");
+		const installedPath = path.join(pluginDirectory, "anaconda-notebooks.js");
 		await writeFile(installedPath, "export default { id: 'user-plugin' };\n");
-		const config = new KiloPluginConfig(configDirectory);
+		const config = new KiloPluginConfig(pluginDirectory);
 
 		await expect(config.install("notebook", "notebooks", sourcePath)).resolves.toEqual({
 			kind: "skipped-error",

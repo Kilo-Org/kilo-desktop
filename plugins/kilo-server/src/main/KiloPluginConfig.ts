@@ -35,14 +35,17 @@ async function readIfPresent(filePath: string): Promise<Buffer | undefined> {
  * crash cannot leave the plugin and its ownership record out of sync. Only an
  * exact source marker permits updates, removal, or source-scoped discovery;
  * user-created files are never claimed. Writes are atomic so Kilo cannot import
- * a partially copied bundle.
+ * a partially copied bundle. The directory is Desktop's managed plugin
+ * directory (see `managed-kilo-plugins.ts`), never a Kilo config `plugin/`
+ * folder, and bundles are copied out of the app so Kilo can read them outside
+ * asar.
  */
 export class KiloPluginConfig {
 	readonly #pluginDirectory: string;
 	#pending: Promise<void> = Promise.resolve();
 
-	constructor(configDirectory: string) {
-		this.#pluginDirectory = path.join(configDirectory, "plugin");
+	constructor(pluginDirectory: string) {
+		this.#pluginDirectory = pluginDirectory;
 	}
 
 	install(
@@ -59,7 +62,7 @@ export class KiloPluginConfig {
 			}
 
 			const marker = ownershipMarker(sourceId, pluginId);
-			const destinationPath = path.join(this.#pluginDirectory, `anaconda-${pluginId}.ts`);
+			const destinationPath = path.join(this.#pluginDirectory, `anaconda-${pluginId}.js`);
 			const existing = await readIfPresent(destinationPath);
 			if (existing && !existing.toString("utf8", 0, Buffer.byteLength(marker)).startsWith(marker)) {
 				return {
@@ -83,7 +86,7 @@ export class KiloPluginConfig {
 				validateId("source id", sourceId) ?? validateId("plugin id", pluginId);
 			if (validationError) return { kind: "skipped-error", reason: validationError };
 
-			const destinationPath = path.join(this.#pluginDirectory, `anaconda-${pluginId}.ts`);
+			const destinationPath = path.join(this.#pluginDirectory, `anaconda-${pluginId}.js`);
 			const existing = await readIfPresent(destinationPath);
 			if (!existing) return { kind: "skipped", reason: "nothing-to-remove" };
 			const marker = ownershipMarker(sourceId, pluginId);
@@ -109,7 +112,7 @@ export class KiloPluginConfig {
 
 			const ownedPluginIds: string[] = [];
 			for (const filename of filenames.sort()) {
-				const match = /^anaconda-(.+)\.ts$/.exec(filename);
+				const match = /^anaconda-(.+)\.js$/.exec(filename);
 				const pluginId = match?.[1];
 				if (!pluginId || validateId("plugin id", pluginId)) continue;
 				const contents = await readIfPresent(path.join(this.#pluginDirectory, filename));

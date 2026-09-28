@@ -21,6 +21,10 @@ import { KiloPluginConfig } from "./KiloPluginConfig.js";
 import { resolveKiloInstallation } from "./installation.js";
 import { reconcileKiloCallerContextPlugin } from "./kilo-caller-context-plugin.js";
 import {
+	managedKiloPluginDirectory,
+	removeLegacyKiloConfigPlugins,
+} from "./managed-kilo-plugins.js";
+import {
 	MCP_ENTRY_SOURCE_ID,
 	reconcileWebMcpRelayConfig,
 	resolveWebMcpRendezvous,
@@ -72,7 +76,7 @@ interface RegisterKiloServerOptions {
 		configDirectory: string,
 		enabled: boolean,
 	) => Promise<WebMcpRelayConfigOutcome>;
-	reconcileKiloCallerContextPlugin?: (configDirectory: string) => Promise<void>;
+	reconcileKiloCallerContextPlugin?: (managedPluginDirectory: string) => Promise<void>;
 	/** Injected serialized config writer for tests. */
 	kiloConfig?: Pick<
 		KiloConfigManager,
@@ -125,11 +129,13 @@ export type KiloServerCapabilities = {
 function resolveKiloServerDirectories(storageDirectory: string): {
 	runtimeDirectory: string;
 	configDirectory: string;
+	managedPluginDirectory: string;
 } {
 	const runtimeDirectory = path.join(storageDirectory, "runtime");
 	return {
 		runtimeDirectory,
 		configDirectory: path.join(runtimeDirectory, "config", "kilo"),
+		managedPluginDirectory: managedKiloPluginDirectory(runtimeDirectory),
 	};
 }
 
@@ -223,7 +229,9 @@ export function registerKiloServer(
 	mainSdk: MainSdk,
 	options: RegisterKiloServerOptions = {},
 ): Promise<void> {
-	const { configDirectory } = resolveKiloServerDirectories(mainSdk.storageDir);
+	const { configDirectory, managedPluginDirectory } = resolveKiloServerDirectories(
+		mainSdk.storageDir,
+	);
 	const userConfigDirectory = options.userConfigDirectory ?? resolveUserConfigDirectory();
 	const appExecutablePath = options.appExecutablePath ?? process.execPath;
 	const runAsNodeEnabled =
@@ -276,7 +284,7 @@ export function registerKiloServer(
 		((onStatusChange: (status: KiloServerStatus) => void, envManager: ContributedEnvManager) =>
 			new KiloServerManager(createKiloServerManagerOptions(mainSdk, onStatusChange, envManager)));
 	const kiloConfig = options.kiloConfig ?? new KiloConfigManager(configDirectory, mainSdk.logger);
-	const kiloPluginConfig = options.kiloPluginConfig ?? new KiloPluginConfig(configDirectory);
+	const kiloPluginConfig = options.kiloPluginConfig ?? new KiloPluginConfig(managedPluginDirectory);
 	const kiloConfiguration = new KiloConfiguration({
 		mcpConfig: kiloConfig,
 		pluginConfig: kiloPluginConfig,
@@ -331,8 +339,15 @@ export function registerKiloServer(
 	// promise, so no caller can race the config write.
 	const configReady = (async () => {
 		try {
+			await removeLegacyKiloConfigPlugins(configDirectory);
+		} catch (error) {
+			mainSdk.logger.warn(
+				`Could not remove legacy Kilo config plugins: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
+		try {
 			await (options.reconcileKiloCallerContextPlugin ?? reconcileKiloCallerContextPlugin)(
-				configDirectory,
+				managedPluginDirectory,
 			);
 			const enabled = await runAsNodeEnabled();
 			const outcome = await reconcileRelayConfig(configDirectory, enabled);

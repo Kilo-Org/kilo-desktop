@@ -58,13 +58,16 @@ describe("Kilo caller context plugin", () => {
 		expect(output.args).toEqual({ path: "/tmp/file" });
 	});
 
-	it("installs the plugin in Kilo's auto-loaded plugin directory", async () => {
-		const configDirectory = await mkdtemp(path.join(os.tmpdir(), "kilo-caller-plugin-"));
+	it("writes the plugin into Desktop's managed plugin directory", async () => {
+		const pluginDirectory = path.join(
+			await mkdtemp(path.join(os.tmpdir(), "kilo-caller-plugin-")),
+			"kilo-plugins",
+		);
 
-		await reconcileKiloCallerContextPlugin(configDirectory);
+		await reconcileKiloCallerContextPlugin(pluginDirectory);
 
 		await expect(
-			readFile(path.join(configDirectory, "plugin", KILO_CALLER_CONTEXT_PLUGIN_FILENAME), "utf8"),
+			readFile(path.join(pluginDirectory, KILO_CALLER_CONTEXT_PLUGIN_FILENAME), "utf8"),
 		).resolves.toBe(createKiloCallerContextPluginSource());
 	});
 });

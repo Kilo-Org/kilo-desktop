@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { useOpenCodePermissions, useOpenCodeQuestions } from "@assistant-ui/react-opencode";
 
+import { useVisiblePermissionRequests } from "../auto-approve/ChatAutoApproveContext.js";
 import { useOptionalOpenCodeRuntimeExtras } from "../runtime/use-optional-opencode-runtime-extras.js";
 import { collectPendingInteractions, type PendingInteractions } from "./pending-interactions.js";
 
@@ -10,7 +11,7 @@ function useSessionFamilyInteractions(scopeSessionId?: string): PendingInteracti
 	const state = useOptionalOpenCodeRuntimeExtras()?.state;
 	const { pending: permissions } = useOpenCodePermissions();
 	const questions = useOpenCodeQuestions();
-	return useMemo(
+	const collected = useMemo(
 		() =>
 			collectPendingInteractions({
 				state,
@@ -18,6 +19,15 @@ function useSessionFamilyInteractions(scopeSessionId?: string): PendingInteracti
 				own: { permissions, questions },
 			}),
 		[permissions, questions, scopeSessionId, state],
+	);
+	// Auto-approve answers subagent requests too, so the whole family is filtered.
+	const visiblePermissions = useVisiblePermissionRequests(collected.permissions);
+	return useMemo(
+		() =>
+			visiblePermissions === collected.permissions
+				? collected
+				: { ...collected, permissions: visiblePermissions },
+		[collected, visiblePermissions],
 	);
 }
 

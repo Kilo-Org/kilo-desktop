@@ -275,6 +275,56 @@ describe("createKiloRuntimeBackend", () => {
 		expect(eventCallOptions?.signal?.aborted).toBe(true);
 	});
 
+	it("holds auto-approved permission requests back from session activity", async () => {
+		const event = vi.fn(async () => ({
+			stream: (async function* () {
+				yield {
+					directory: "/workspace/events",
+					payload: { type: "permission.asked", properties: { id: "held", sessionID: "ses-1" } },
+				};
+				yield {
+					directory: "/workspace/events",
+					payload: { type: "permission.asked", properties: { id: "shown", sessionID: "ses-1" } },
+				};
+				yield {
+					directory: "/workspace/events",
+					payload: { type: "session.idle", properties: { sessionID: "ses-1" } },
+				};
+			})(),
+		}));
+		vi.mocked(createKiloGlobalClient).mockReturnValue({ global: { event } } as never);
+		const sessionActivity = createSessionActivityStore({ storage: null });
+		const onPermissionEvent = vi.fn(
+			(permissionEvent: { properties: Record<string, unknown> }) =>
+				permissionEvent.properties["id"] === "held",
+		);
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession: vi.fn(),
+			sessionActivity,
+			onPermissionEvent,
+		});
+		const source = backend.createEventSource();
+		const listener = vi.fn();
+		const unsubscribe = source.subscribe(listener);
+
+		try {
+			await vi.waitFor(() => expect(listener).toHaveBeenCalledTimes(3));
+			expect(onPermissionEvent).toHaveBeenCalledTimes(2);
+			expect(onPermissionEvent).toHaveBeenCalledWith(
+				expect.objectContaining({
+					type: "permission.asked",
+					directory: "/workspace/events",
+					sessionId: "ses-1",
+				}),
+			);
+			expect(sessionActivity.getState().sessions["ses-1"]?.pendingPermissionIds).toEqual(["shown"]);
+		} finally {
+			unsubscribe();
+			source.dispose();
+		}
+	});
+
 	it("subscribes through a real SDK client's prototype-backed global endpoint", async () => {
 		const client = createKiloClient({ baseUrl: connection.baseUrl });
 		const event = vi.fn(async () => ({
@@ -879,5 +929,31 @@ describe("createKiloRuntimeBackend", () => {
 		expect(applySpy).not.toHaveBeenCalledWith(
 			expect.objectContaining({ type: STREAM_RECONNECTED_EVENT_TYPE }),
 		);
+	});
+
+	it("notifies the auto-approve resync hook when the event stream reconnects", async () => {
+		const event = vi.fn(async () => ({
+			stream: (async function* () {
+				yield { payload: { type: STREAM_RECONNECTED_EVENT_TYPE, properties: {} } };
+				await new Promise(() => undefined);
+			})(),
+		}));
+		vi.mocked(createKiloGlobalClient).mockReturnValue({ global: { event } } as never);
+		const onStreamReconnected = vi.fn();
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession: vi.fn(),
+			onStreamReconnected,
+		});
+
+		const source = backend.createEventSource();
+		const unsubscribe = source.subscribe(() => undefined);
+
+		try {
+			await vi.waitFor(() => expect(onStreamReconnected).toHaveBeenCalledOnce());
+		} finally {
+			unsubscribe();
+			source.dispose();
+		}
 	});
 });

@@ -158,7 +158,7 @@ describe("KiloModelSelector", () => {
 		const content = screen.getByTestId("kilo-model-selector-content");
 		await expect.element(content).toBeVisible();
 		await expect.element(content).toHaveAttribute("data-side", "bottom");
-		await expect.element(content).toHaveAttribute("data-align", "end");
+		await expect.element(content).toHaveAttribute("data-align", "start");
 		await expect.element(screen.getByTestId("kilo-model-selector-loading")).toBeVisible();
 	});
 

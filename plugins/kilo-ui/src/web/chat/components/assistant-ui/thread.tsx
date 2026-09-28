@@ -16,6 +16,7 @@ import { ConversationMapAui } from "./elements/conversation-map.aui.js";
 import { DraftWelcomeHeadline } from "./draft-welcome-headline.js";
 import { ThreadFollowupSuggestions } from "./follow-up-suggestions.js";
 import { KiloAgentSelector } from "./kilo-agent-selector.js";
+import { KiloApprovalSelector } from "./kilo-approval-selector.js";
 import { KiloModelSelector } from "./kilo-model-selector.js";
 import { KiloDirectiveText } from "./kilo-directive-text.js";
 import { KiloLexicalComposerInput } from "./kilo-lexical-composer-input.js";
@@ -783,7 +784,6 @@ const Composer: FC = () => {
 						isLoadingModel={isLoadingModel}
 						isConnectionPending={isPending}
 						onSendWhenConnected={sendWhenConnected}
-						modelSelectorSide={isDraft ? "bottom" : "top"}
 						showPlanFollowupActions={showPlanFollowupActions}
 						planActionPending={submitting}
 						onRefine={refine}
@@ -799,7 +799,6 @@ const ComposerAction: FC<{
 	isLoadingModel: boolean;
 	isConnectionPending: boolean;
 	onSendWhenConnected: () => void;
-	modelSelectorSide: "top" | "bottom";
 	showPlanFollowupActions: boolean;
 	planActionPending: boolean;
 	onRefine: () => void;
@@ -808,7 +807,6 @@ const ComposerAction: FC<{
 	isLoadingModel,
 	isConnectionPending,
 	onSendWhenConnected,
-	modelSelectorSide,
 	showPlanFollowupActions,
 	planActionPending,
 	onRefine,
@@ -834,14 +832,14 @@ const ComposerAction: FC<{
 	const lockLabel = isConnecting ? "Connecting to Kilo" : LOCAL_MODEL_LOADING_TITLE;
 
 	return (
-		<div className="aui-composer-action-wrapper relative flex items-center gap-1.5">
-			<div className="flex shrink-0 items-center gap-1">
+		<div className="aui-composer-action-wrapper relative flex items-center justify-between gap-1.5">
+			{/* Only the selectors absorb overflow; the action buttons keep their size. */}
+			<div className="flex min-w-0 items-center gap-1">
 				<ComposerAddAttachment />
-				<KiloAgentSelector />
-			</div>
-			{/* Only the model name absorbs overflow; the action buttons keep their size. */}
-			<div className="flex min-w-0 flex-1 justify-end">
-				<KiloModelSelector side={modelSelectorSide} />
+				<div className="flex min-w-0 items-center gap-0">
+					<KiloAgentSelector />
+					<KiloModelSelector />
+				</div>
 			</div>
 			<div className="flex shrink-0 items-center gap-1.5">
 				<AuiIf condition={(s) => s.thread.capabilities.dictation}>
@@ -880,6 +878,7 @@ const ComposerAction: FC<{
 						</ComposerPrimitive.StopDictation>
 					</AuiIf>
 				</AuiIf>
+				<KiloApprovalSelector />
 				{isSendLocked ? (
 					<TooltipIconButton
 						tooltip={lockLabel}

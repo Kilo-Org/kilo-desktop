@@ -39,6 +39,7 @@ describe("useKiloRuntime", () => {
 		const onSessionCreateFailed = vi.fn();
 		const onError = vi.fn();
 		const onSessionInitialized = vi.fn();
+		const onPermissionEvent = vi.fn(() => true);
 
 		renderHook(() =>
 			useKiloRuntime({
@@ -48,6 +49,7 @@ describe("useKiloRuntime", () => {
 				onSessionCreateFailed,
 				onError,
 				onSessionInitialized,
+				onPermissionEvent,
 			}),
 		);
 
@@ -62,10 +64,21 @@ describe("useKiloRuntime", () => {
 			prepareModel: expect.any(Function),
 			getKnownCommandNames: expect.any(Function),
 			onSessionInitialized: expect.any(Function),
+			onPermissionEvent: expect.any(Function),
+			onStreamReconnected: expect.any(Function),
 			onSessionCreateFailed,
 		});
-		vi.mocked(createKiloRuntimeBackend).mock.calls[0]?.[0].onSessionInitialized?.("session-1");
+		const backendOptions = vi.mocked(createKiloRuntimeBackend).mock.calls[0]?.[0];
+		backendOptions?.onSessionInitialized?.("session-1");
 		expect(onSessionInitialized).toHaveBeenCalledWith("session-1");
+		const permissionEvent = {
+			type: "permission.asked",
+			properties: { id: "perm-1" },
+			sessionId: "session-1",
+			raw: undefined,
+		};
+		expect(backendOptions?.onPermissionEvent?.(permissionEvent)).toBe(true);
+		expect(onPermissionEvent).toHaveBeenCalledWith(permissionEvent);
 		expect(useOpenCodeRuntime).toHaveBeenCalledWith({
 			backend: expect.objectContaining({ globalClient: {} }),
 			defaultModel: { providerID: "anthropic", modelID: "claude-sonnet" },
@@ -253,6 +266,8 @@ describe("useKiloRuntime", () => {
 			prepareModel: expect.any(Function),
 			getKnownCommandNames: expect.any(Function),
 			onSessionInitialized: expect.any(Function),
+			onPermissionEvent: expect.any(Function),
+			onStreamReconnected: expect.any(Function),
 			sessionActivity,
 		});
 	});

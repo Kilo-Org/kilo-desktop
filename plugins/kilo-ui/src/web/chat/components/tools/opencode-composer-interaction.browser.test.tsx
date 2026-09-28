@@ -35,6 +35,10 @@ vi.mock("../../runtime/use-optional-opencode-runtime-extras.js", () => ({
 	useOptionalOpenCodeRuntimeExtras: () => (runtime.state ? { state: runtime.state } : undefined),
 }));
 
+import { act } from "react";
+import { createStore } from "zustand/vanilla";
+
+import { ChatAutoApproveProvider } from "../../auto-approve/ChatAutoApproveContext.js";
 import { OpenCodeComposerInteraction } from "./opencode-composer-interaction.js";
 
 const permission = (
@@ -144,6 +148,53 @@ describe("OpenCodeComposerInteraction", () => {
 		fireEvent.keyDown(getByRole("textbox", { name: "Unrelated editor" }), { key: "Enter" });
 
 		expect(runtime.replyToPermission).not.toHaveBeenCalled();
+	});
+
+	it("does not show the card in Auto mode, but reveals it when auto-approve reports a failure", async () => {
+		runtime.permissions.push(permission({ messageID: "message-1", callID: "call-1" }, Date.now()));
+		const revealedIds = createStore(() => ({ ids: new Set<string>() as ReadonlySet<string> }));
+		const { baseElement } = render(
+			<ChatAutoApproveProvider value={{ enabled: true, revealedIds }}>
+				<OpenCodeComposerInteraction fallback={<div>Message composer</div>} />
+			</ChatAutoApproveProvider>,
+		);
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByText("Message composer")).toBeVisible();
+		await expect.element(screen.getByText("Run a shell command")).not.toBeInTheDocument();
+
+		act(() => revealedIds.setState({ ids: new Set(["permission-1"]) }));
+
+		await expect.element(screen.getByText("Run a shell command")).toBeVisible();
+		await expect.element(screen.getByText("Message composer")).not.toBeInTheDocument();
+	});
+
+	it("shows the card in Auto mode once the request has waited too long to be auto-approved", async () => {
+		runtime.permissions.push(permission(undefined, Date.now() - 2_900));
+		const { baseElement } = render(
+			<ChatAutoApproveProvider value={{ enabled: true }}>
+				<OpenCodeComposerInteraction fallback={<div>Message composer</div>} />
+			</ChatAutoApproveProvider>,
+		);
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByText("Message composer")).toBeVisible();
+		await expect.element(screen.getByText("Run a shell command")).toBeVisible();
+	});
+
+	it("always shows prompts that need a person in Auto mode", async () => {
+		runtime.permissions.push({
+			...permission(undefined, Date.now()),
+			metadata: { sandboxEscalation: true },
+		});
+		const { baseElement } = render(
+			<ChatAutoApproveProvider value={{ enabled: true }}>
+				<OpenCodeComposerInteraction fallback={<div>Message composer</div>} />
+			</ChatAutoApproveProvider>,
+		);
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByText("Run a shell command")).toBeVisible();
 	});
 
 	it("renders the composer when no interaction is pending", async () => {

@@ -75,6 +75,14 @@ export interface CreateKiloRuntimeBackendOptions extends PromptOptionGetters {
 	 */
 	onSessionCreateFailed?: (preparation: KiloSessionPreparation) => void;
 	sessionActivity?: SessionActivityStore;
+	/**
+	 * Sees every `permission.asked` / `permission.replied` before the UI reacts
+	 * (auto-approve). Returning true holds that event back from `sessionActivity`;
+	 * the handler re-applies it itself if the request is later revealed.
+	 */
+	onPermissionEvent?: (event: OpenCodeServerEvent) => boolean;
+	/** Fires after the event stream reconnects, once events may have been missed. */
+	onStreamReconnected?: () => void;
 }
 
 export function createKiloRuntimeBackend({
@@ -90,6 +98,8 @@ export function createKiloRuntimeBackend({
 	getKnownCommandNames,
 	onSessionInitialized,
 	sessionActivity,
+	onPermissionEvent,
+	onStreamReconnected,
 }: CreateKiloRuntimeBackendOptions): OpenCodeRuntimeBackend {
 	const directoriesBySessionId = new Map<string, string>();
 	const clientsByDirectory = new Map<string, KiloClient>();
@@ -261,9 +271,18 @@ export function createKiloRuntimeBackend({
 		return client;
 	};
 
+	const heldPermissionEvents = new WeakSet<OpenCodeServerEvent>();
+	// Runs before any listener sees the event (OpenCodeEventSource calls onEvent
+	// first), so a held request never reaches the activity store or the UI.
 	const rememberEvent = (event: OpenCodeServerEvent) => {
 		if (event.sessionId && event.directory) {
 			rememberSession({ id: event.sessionId, directory: event.directory });
+		}
+		if (
+			(event.type === "permission.asked" || event.type === "permission.replied") &&
+			onPermissionEvent?.(event) === true
+		) {
+			heldPermissionEvents.add(event);
 		}
 	};
 
@@ -345,13 +364,17 @@ export function createKiloRuntimeBackend({
 		},
 		createEventSource: () => {
 			const source = new OpenCodeEventSource(globalClient, subscribeToGlobalEvents, rememberEvent);
-			if (sessionActivity) {
+			if (sessionActivity || onStreamReconnected) {
 				source.subscribe((event) => {
 					if (event.type === STREAM_RECONNECTED_EVENT_TYPE) {
-						void hydrateSessionActivity(globalClient, sessionActivity);
-						void refreshSessions().catch(() => undefined);
+						onStreamReconnected?.();
+						if (sessionActivity) {
+							void hydrateSessionActivity(globalClient, sessionActivity);
+							void refreshSessions().catch(() => undefined);
+						}
 						return;
 					}
+					if (!sessionActivity || heldPermissionEvents.has(event)) return;
 					sessionActivity.getState().applyEvent(event);
 					if (PROMPT_ASKED_EVENT_TYPES.has(event.type)) {
 						void hydratePromptAncestry(globalClient, sessionActivity).catch(() => undefined);

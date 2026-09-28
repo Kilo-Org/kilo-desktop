@@ -1,5 +1,9 @@
 import type { AssistantRuntime } from "@assistant-ui/react";
-import { OpenCodeAttachmentAdapter, useOpenCodeRuntime } from "@assistant-ui/react-opencode";
+import {
+	OpenCodeAttachmentAdapter,
+	useOpenCodeRuntime,
+	type OpenCodeServerEvent,
+} from "@assistant-ui/react-opencode";
 import * as reactOpenCode from "@assistant-ui/react-opencode";
 import { useMemo, useRef } from "react";
 
@@ -52,6 +56,10 @@ export interface UseKiloRuntimeOptions {
 	sessionActivity?: SessionActivityStore;
 	/** Known Kilo slash-command names for rewriting `/cmd` composer sends. */
 	getKnownCommandNames?: () => readonly string[];
+	/** Sees permission events as they arrive; true holds one back from the activity store. */
+	onPermissionEvent?: (event: OpenCodeServerEvent) => boolean;
+	/** Fires after the event stream reconnects. */
+	onStreamReconnected?: () => void;
 }
 
 export function useKiloRuntime({
@@ -72,6 +80,8 @@ export function useKiloRuntime({
 	onError,
 	sessionActivity,
 	getKnownCommandNames,
+	onPermissionEvent,
+	onStreamReconnected,
 }: UseKiloRuntimeOptions): AssistantRuntime {
 	// Refs so prompt injection always sees the latest composer selection even when
 	// RemoteThreadList keeps a stale defaultAgent/defaultModel closed over in onNew.
@@ -92,6 +102,10 @@ export function useKiloRuntime({
 	knownCommandNamesRef.current = getKnownCommandNames;
 	const onSessionInitializedRef = useRef(onSessionInitialized);
 	onSessionInitializedRef.current = onSessionInitialized;
+	const onPermissionEventRef = useRef(onPermissionEvent);
+	onPermissionEventRef.current = onPermissionEvent;
+	const onStreamReconnectedRef = useRef(onStreamReconnected);
+	onStreamReconnectedRef.current = onStreamReconnected;
 
 	const promptGetters = useMemo(
 		() => ({
@@ -129,6 +143,8 @@ export function useKiloRuntime({
 			prepareSession,
 			...promptGetters,
 			onSessionInitialized: (threadId: string) => onSessionInitializedRef.current?.(threadId),
+			onPermissionEvent: (event) => onPermissionEventRef.current?.(event) ?? false,
+			onStreamReconnected: () => onStreamReconnectedRef.current?.(),
 			...(onSessionCreateFailed ? { onSessionCreateFailed } : {}),
 			...(sessionActivity ? { sessionActivity } : {}),
 		});

@@ -113,7 +113,8 @@ header:has([data-chat-empty]) {
 }
 
 @container composer-actions (width <= 30rem) {
-	[data-slot="composer-agent-label"] {
+	[data-slot="composer-agent-label"],
+	[data-slot="composer-approval-label"] {
 		display: none;
 	}
 }

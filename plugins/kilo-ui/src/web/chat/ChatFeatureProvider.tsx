@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { AssistantRuntimeProvider, DataRenderers, Tools, useAui } from "@assistant-ui/react";
+import type { OpenCodeServerEvent } from "@assistant-ui/react-opencode";
 
 import { sdkQueryOptions, useSdk } from "@kilo-desktop/sdk-react";
 
@@ -25,6 +26,8 @@ import {
 } from "./use-installed-local-models.js";
 import { useLocalInferenceStatus } from "./use-local-inference-status.js";
 import { ChatAgentSelectionProvider } from "./agent-selection/ChatAgentSelectionContext.js";
+import { ChatAutoApproveProvider } from "./auto-approve/ChatAutoApproveContext.js";
+import { createAutoApprover } from "./auto-approve/auto-approver.js";
 import { useKiloAgentCatalog } from "./agent-selection/use-kilo-agent-catalog.js";
 import { useAgentSelection } from "./agent-selection/use-agent-selection.js";
 import { findCatalogAgent } from "./agent-selection/agent-catalog.js";
@@ -56,7 +59,10 @@ import { useKiloRuntime } from "./runtime/use-kilo-runtime.js";
 import { KiloMcpAppsHost } from "./runtime/mcp-apps-host.js";
 import { ElectronMcpAppRenderer } from "./components/mcp-apps/ElectronMcpAppRenderer.js";
 import { SessionActivityProvider } from "./session-activity/SessionActivityProvider.js";
-import { createSessionActivityStore } from "./session-activity/session-activity-store.js";
+import {
+	createSessionActivityStore,
+	whenSessionsRefreshed,
+} from "./session-activity/session-activity-store.js";
 import { createChatSessionWorkspaceCapability } from "./session-workspace/chat-session-workspace-capability.js";
 import { SessionListViewProvider } from "./session-list/use-session-list-view.js";
 import {
@@ -331,6 +337,61 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		[catalogQuery.data, gatewayModelDetails.data],
 	);
 	const [activeThreadId, setActiveThreadId] = useState<string>();
+	const [autoApprove, setAutoApprove] = useState(() => {
+		try {
+			return globalThis.localStorage?.getItem("kilo-ui:auto-approve") === "true";
+		} catch {
+			return false;
+		}
+	});
+	const autoApproveRef = useRef(autoApprove);
+	const autoApprover = useMemo(
+		() =>
+			createAutoApprover({
+				getConnection: () => connectionPromise,
+				isEnabled: () => autoApproveRef.current,
+				resolveDirectory: (sessionId) =>
+					sessionId ? sessionActivity.getState().sessions[sessionId]?.directory : undefined,
+				directories: () =>
+					Object.values(sessionActivity.getState().sessions).flatMap((session) =>
+						session.directory ? [session.directory] : [],
+					),
+				onReveal: (event) => sessionActivity.getState().applyEvent(event),
+			}),
+		[connectionPromise, sessionActivity],
+	);
+	useEffect(() => {
+		// A persisted Auto mode (or a recreated approver) must still answer requests
+		// that were pending before anything was listening; wait for sessions so the
+		// drain knows their directories.
+		let active = true;
+		void whenSessionsRefreshed(sessionActivity).then(() => {
+			if (active) void autoApprover.resync();
+		});
+		return () => {
+			active = false;
+			autoApprover.dispose();
+		};
+	}, [autoApprover, sessionActivity]);
+	const changeAutoApprove = useCallback(
+		(enabled: boolean) => {
+			if (enabled === autoApproveRef.current) return;
+			autoApproveRef.current = enabled;
+			setAutoApprove(enabled);
+			try {
+				globalThis.localStorage?.setItem("kilo-ui:auto-approve", String(enabled));
+			} catch {
+				// Storage can be unavailable; the selection still works until the app closes.
+			}
+			void autoApprover.setEnabled(enabled);
+		},
+		[autoApprover],
+	);
+	const onPermissionEvent = useCallback(
+		(event: OpenCodeServerEvent) => autoApprover.handleEvent(event),
+		[autoApprover],
+	);
+	const onStreamReconnected = useCallback(() => void autoApprover.resync(), [autoApprover]);
 	const agentCatalogQuery = useKiloAgentCatalog(connection.data, connection.dataUpdatedAt);
 	const {
 		preferences: modelPreferences,
@@ -433,6 +494,8 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		onError: onRuntimeError,
 		sessionActivity,
 		getKnownCommandNames: () => knownCommandNamesRef.current,
+		onPermissionEvent,
+		onStreamReconnected,
 	});
 
 	const aui = useAui({
@@ -520,6 +583,11 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 			setAgent,
 		],
 	);
+	const autoApproveSelection = {
+		enabled: autoApprove,
+		setEnabled: changeAutoApprove,
+		revealedIds: autoApprover.revealedIds,
+	};
 
 	const connectionStatus = {
 		isPending: connection.isPending,
@@ -535,19 +603,21 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 				<KiloAuthProvider>
 					<SessionActivityProvider store={sessionActivity}>
 						<ChatAgentSelectionProvider value={agentSelection}>
-							<ChatModelSelectionProvider value={modelSelection}>
-								<WorktreeSetupProvider isSettingUp={isSettingUpWorktree}>
-									<AssistantRuntimeProvider aui={aui} runtime={runtime}>
-										<SubagentActivityProvider>
-											<KiloSessionSelectionSync
-												hydrateAgent={hydrateThreadAgent}
-												hydrateModel={hydrateThreadModel}
-											/>
-											<SessionListViewProvider>{children}</SessionListViewProvider>
-										</SubagentActivityProvider>
-									</AssistantRuntimeProvider>
-								</WorktreeSetupProvider>
-							</ChatModelSelectionProvider>
+							<ChatAutoApproveProvider value={autoApproveSelection}>
+								<ChatModelSelectionProvider value={modelSelection}>
+									<WorktreeSetupProvider isSettingUp={isSettingUpWorktree}>
+										<AssistantRuntimeProvider aui={aui} runtime={runtime}>
+											<SubagentActivityProvider>
+												<KiloSessionSelectionSync
+													hydrateAgent={hydrateThreadAgent}
+													hydrateModel={hydrateThreadModel}
+												/>
+												<SessionListViewProvider>{children}</SessionListViewProvider>
+											</SubagentActivityProvider>
+										</AssistantRuntimeProvider>
+									</WorktreeSetupProvider>
+								</ChatModelSelectionProvider>
+							</ChatAutoApproveProvider>
 						</ChatAgentSelectionProvider>
 					</SessionActivityProvider>
 				</KiloAuthProvider>

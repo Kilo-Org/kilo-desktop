@@ -718,6 +718,16 @@ describe("composer local model send lock", () => {
 });
 
 describe("composer responsiveness", () => {
+	it("places the model after the agent and the approval selector before Send", async () => {
+		const screen = renderThread({ initialMessages: [] });
+		const agent = screen.getByTestId("kilo-agent-selector-trigger").element();
+		const model = screen.getByTestId("kilo-model-selector-trigger").element();
+		const approval = screen.getByTestId("kilo-approval-selector-trigger").element();
+		const send = screen.getByTestId("kilo-composer-send").element();
+		expect(agent.nextElementSibling).toBe(model);
+		expect(send.previousElementSibling).toBe(approval);
+	});
+
 	it("drops labels by priority before the toolbar can overlap", async () => {
 		const screen = renderThread({
 			selection: responsiveModelSelection,

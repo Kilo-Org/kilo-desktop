@@ -54,6 +54,7 @@ import type * as KiloModelCatalogModule from "./model-selection/use-kilo-model-c
 import { useChatModelSelection } from "./model-selection/ChatModelSelectionContext.js";
 import { useKiloAgentCatalog } from "./agent-selection/use-kilo-agent-catalog.js";
 import { useChatAgentSelection } from "./agent-selection/ChatAgentSelectionContext.js";
+import { useChatAutoApprove } from "./auto-approve/ChatAutoApproveContext.js";
 import { KILO_PROVIDER_LIST_QUERY_KEY } from "../providers/provider-queries.js";
 import { HammerIcon, ListTodoIcon } from "lucide-react";
 import type * as ThreadModule from "./components/assistant-ui/thread.js";
@@ -1063,6 +1064,26 @@ describe("ChatFeatureProvider thread + prepareSession wiring", () => {
 
 		act(() => vi.mocked(useKiloRuntime).mock.lastCall![0].onThreadIdChange!("thread-a"));
 		await vi.waitFor(() => expect(selection.agent).toBe("plan"));
+	});
+
+	it("keeps auto-approve enabled across chats and restores it after remount", async () => {
+		let autoApprove!: ReturnType<typeof useChatAutoApprove>;
+		function CaptureAutoApprove() {
+			autoApprove = useChatAutoApprove();
+			return null;
+		}
+		const first = renderChatPage({ children: <CaptureAutoApprove /> });
+		act(() => autoApprove.setEnabled?.(true));
+		expect(autoApprove.enabled).toBe(true);
+		expect(localStorage.getItem("kilo-ui:auto-approve")).toBe("true");
+		act(() => vi.mocked(useKiloRuntime).mock.lastCall![0].onThreadIdChange!("another-chat"));
+		expect(autoApprove.enabled).toBe(true);
+		first.unmount();
+
+		renderChatPage({ children: <CaptureAutoApprove /> });
+		expect(autoApprove.enabled).toBe(true);
+		act(() => autoApprove.setEnabled?.(false));
+		expect(localStorage.getItem("kilo-ui:auto-approve")).toBe("false");
 	});
 
 	it("hydrates model, effort, and agent from the active Kilo session", async () => {

@@ -12,6 +12,8 @@ import {
 	CommandSeparator,
 } from "@kilo-desktop/ui/components/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@kilo-desktop/ui/components/popover";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type { GitBranch } from "../contracts/schemas.js";
 import { branchDisplayName } from "./branch-display-name.js";
@@ -23,6 +25,13 @@ export interface BranchPickerPopoverProps {
 	/** Inline-start icon element (sized via `data-icon`), e.g. branch or fork. */
 	readonly triggerIcon: ReactNode;
 	readonly triggerLabel: string;
+	/**
+	 * When true, the trigger swaps its icon for a spinner and mutes the
+	 * label (the app's loading convention) while staying clickable and
+	 * setting `aria-busy` — the popover still opens and explains the
+	 * state, so the button's availability never changes.
+	 */
+	readonly triggerLoading?: boolean | undefined;
 	readonly triggerTestId: string;
 	readonly branches: ReadonlyArray<GitBranch>;
 	/** Contract name of the default branch, used for the group bucket. */
@@ -86,14 +95,16 @@ function BranchItem({
  * on open, on close, and on every programmatic close — branch select,
  * create, Escape). Callers own everything else: the data (branch list,
  * grouping inputs, checked branch), the side effects behind `onSelect`
- * (checkout or pure state write), the note copy for probe states, and
- * the create flow behind `onCreateBranch`. Checked state compares full
- * contract names while items display `branchDisplayName` labels — a
- * local and remote branch can share a display label by design.
+ * (checkout or pure state write), the note copy for probe states, the
+ * `triggerLoading` flag for the trigger's loading look, and the create
+ * flow behind `onCreateBranch`. Checked state compares full contract
+ * names while items display `branchDisplayName` labels — a local and
+ * remote branch can share a display label by design.
  */
 export function BranchPickerPopover({
 	triggerIcon,
 	triggerLabel,
+	triggerLoading,
 	triggerTestId,
 	branches,
 	defaultBranch,
@@ -137,11 +148,19 @@ export function BranchPickerPopover({
 						size="sm"
 						className="max-w-56"
 						data-qa-id={triggerTestId}
+						aria-busy={triggerLoading ?? false}
 					/>
 				}
 			>
-				{triggerIcon}
-				<span className="truncate">{triggerLabel}</span>
+				{triggerLoading ? (
+					// Pinned to the `sm` Button's icon size so swapping icons doesn't shift the label.
+					<Spinner data-icon="inline-start" className="size-3.5" aria-hidden="true" />
+				) : (
+					triggerIcon
+				)}
+				<span className={cn("truncate", triggerLoading && "text-muted-foreground")}>
+					{triggerLabel}
+				</span>
 				<ChevronDownIcon data-icon="inline-end" className="opacity-60" />
 			</PopoverTrigger>
 			<PopoverContent

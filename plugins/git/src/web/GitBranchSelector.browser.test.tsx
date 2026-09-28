@@ -278,7 +278,31 @@ describe("GitBranchSelector", () => {
 			branches: () => branchesResult,
 		});
 
-		await openTrigger("Loading…", "Loading…");
+		const trigger = await openTrigger("Loading…", "Loading…");
+		expect(trigger.element().querySelector('[data-slot="spinner"]')).not.toBe(null);
+		expect(
+			page.getByTestId("git-branch-selector-note").element().querySelector('[data-slot="spinner"]'),
+		).not.toBe(null);
+	});
+
+	it("shows a spinner on the trigger and note while branches are pending, then the loaded branch", async () => {
+		let resolveBranches: ((value: GitBranchesResult) => void) | undefined;
+		renderSelector({
+			branches: () => new Promise<GitBranchesResult>((resolve) => (resolveBranches = resolve)),
+		});
+
+		const trigger = page.getByTestId("git-branch-selector-trigger");
+		await expect.element(trigger).toHaveTextContent("Loading…");
+		expect(trigger.element().querySelector('[data-slot="spinner"]')).not.toBe(null);
+
+		await trigger.click();
+		const note = page.getByTestId("git-branch-selector-note");
+		await expect.element(note).toHaveTextContent("Loading…");
+		expect(note.element().querySelector('[data-slot="spinner"]')).not.toBe(null);
+
+		resolveBranches?.(branchesResult);
+		await expect.element(trigger).toHaveTextContent("main");
+		expect(trigger.element().querySelector('[data-slot="spinner"]')).toBe(null);
 	});
 
 	it("shows an inline note when the branches probe resolves null", async () => {

@@ -193,7 +193,9 @@ describe("GitDraftMenus", () => {
 		await vi.waitFor(() => {
 			expect(page.getByTestId("git-base-branch-trigger").query()).not.toBe(null);
 		});
-		await expect.element(page.getByTestId("git-base-branch-trigger")).toHaveTextContent("Loading…");
+		const baseTrigger = page.getByTestId("git-base-branch-trigger");
+		await expect.element(baseTrigger).toHaveTextContent("Loading…");
+		expect(baseTrigger.element().querySelector('[data-slot="spinner"]')).not.toBe(null);
 	});
 
 	it("defaults to the baseless worktree selection when no default branch resolves", async () => {

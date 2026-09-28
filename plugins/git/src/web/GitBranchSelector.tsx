@@ -1,7 +1,8 @@
 import { GitBranchIcon } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { toast } from "@kilo-desktop/ui/components/sonner";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { useQuery } from "@tanstack/react-query";
 import { sdkQueryOptions, useSdk, useSdkMutation } from "@kilo-desktop/sdk-react";
 
@@ -11,6 +12,8 @@ import { InitializeGitButton } from "./InitializeGitButton.js";
 import {
 	getPopoverMessage,
 	getTriggerLabel,
+	isTriggerLoading,
+	type LoadingNotice,
 	type SelectorQueryState,
 	type UnbornNotice,
 } from "./branch-selector-state.js";
@@ -27,10 +30,6 @@ export interface GitBranchSelectorProps {
 
 const EMPTY_BRANCHES: ReadonlyArray<GitBranch> = [];
 const EMPTY_RECENT: ReadonlyArray<string> = [];
-
-function isUnbornNotice(message: string | UnbornNotice | null): message is UnbornNotice {
-	return message !== null && typeof message === "object" && message.kind === "unborn";
-}
 
 /**
  * Popover body for an unborn-HEAD repository: no history to list, so
@@ -49,6 +48,30 @@ function UnbornNoticeContent() {
 			</p>
 		</div>
 	);
+}
+
+/**
+ * Popover body while a probe is in flight. `role="status"` sits on the
+ * wrapper and the spinner is hidden so screen readers announce
+ * "Loading…" once, not twice.
+ */
+function LoadingNoteContent() {
+	return (
+		<span role="status" className="flex items-center gap-2">
+			<Spinner className="size-3.5" aria-hidden="true" />
+			Loading…
+		</span>
+	);
+}
+
+/** Structured notices get their own component; plain strings render as is. */
+function noticeContent(notice: UnbornNotice | LoadingNotice): ReactNode {
+	switch (notice.kind) {
+		case "unborn":
+			return <UnbornNoticeContent />;
+		case "loading":
+			return <LoadingNoteContent />;
+	}
 }
 
 /**
@@ -160,13 +183,17 @@ export function GitBranchSelector({ workspaceDirectory }: GitBranchSelectorProps
 		);
 	};
 
-	const note = isUnbornNotice(popoverMessage) ? <UnbornNoticeContent /> : popoverMessage;
+	const note =
+		popoverMessage !== null && typeof popoverMessage === "object"
+			? noticeContent(popoverMessage)
+			: popoverMessage;
 
 	return (
 		<>
 			<BranchPickerPopover
 				triggerIcon={<GitBranchIcon data-icon="inline-start" />}
 				triggerLabel={label}
+				triggerLoading={isTriggerLoading(state, pendingBranch)}
 				triggerTestId="git-branch-selector-trigger"
 				branches={listData?.branches ?? EMPTY_BRANCHES}
 				defaultBranch={listData?.defaultBranch}

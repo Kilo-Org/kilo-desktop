@@ -28,6 +28,7 @@ export function BaseBranchPicker({
 	onSelect: (baseBranch: string | undefined) => void;
 }) {
 	const effectiveBase = selectedBase ?? defaultBase ?? undefined;
+	const loading = effectiveBase === undefined && defaultBase === undefined;
 	const label =
 		effectiveBase === undefined
 			? defaultBase === null
@@ -39,6 +40,7 @@ export function BaseBranchPicker({
 		<BranchPickerPopover
 			triggerIcon={<GitForkIcon data-icon="inline-start" />}
 			triggerLabel={label}
+			triggerLoading={loading}
 			triggerTestId="git-base-branch-trigger"
 			branches={branches}
 			defaultBranch={defaultBranch}

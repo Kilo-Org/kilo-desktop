@@ -4,6 +4,7 @@ import {
 	getPopoverMessage,
 	getReadOnlyBranchLabel,
 	getTriggerLabel,
+	isTriggerLoading,
 	isUnbornRepository,
 	type SelectorQueryState,
 } from "./branch-selector-state.js";
@@ -37,6 +38,30 @@ describe("getTriggerLabel", () => {
 
 	it("drops the pending branch once it matches the current one", () => {
 		expect(getTriggerLabel(ready, "main")).toBe("main");
+	});
+});
+
+describe("isTriggerLoading", () => {
+	it("returns true while the repository type probe is in flight", () => {
+		expect(isTriggerLoading({ ...ready, isChecking: true, data: undefined })).toBe(true);
+	});
+
+	it("returns true while the branches query is pending for a regular repo", () => {
+		expect(isTriggerLoading({ ...ready, branchesPending: true, data: undefined })).toBe(true);
+	});
+
+	it("returns false once the branch list has loaded", () => {
+		expect(isTriggerLoading(ready)).toBe(false);
+	});
+
+	it("returns false when a pending branch overrides the label", () => {
+		expect(isTriggerLoading({ ...ready, branchesPending: true, data: undefined }, "feature")).toBe(
+			false,
+		);
+	});
+
+	it("returns false for the neutral fallback (no probe in flight)", () => {
+		expect(isTriggerLoading({ ...ready, isRegular: false, data: undefined })).toBe(false);
 	});
 });
 
@@ -76,6 +101,18 @@ describe("getPopoverMessage", () => {
 
 	it("returns the unborn notice for a repo with no commits yet", () => {
 		expect(getPopoverMessage(unbornState)).toEqual({ kind: "unborn" });
+	});
+
+	it("returns the loading notice while the repository type probe is in flight", () => {
+		expect(getPopoverMessage({ ...ready, isChecking: true, data: undefined })).toEqual({
+			kind: "loading",
+		});
+	});
+
+	it("returns the loading notice while the branches query is pending", () => {
+		expect(getPopoverMessage({ ...ready, branchesPending: true, data: undefined })).toEqual({
+			kind: "loading",
+		});
 	});
 
 	it("returns 'Not a git repository.' for non-regular repos", () => {

@@ -26,6 +26,20 @@ export function isUnbornRepository(data: GitBranchesResult | null | undefined): 
 }
 
 /**
+ * Whether the trigger shows its loading state — exactly when
+ * `getTriggerLabel` returns "Loading…": no branch list yet, no
+ * pending-branch override, and a probe still in flight. Callers swap
+ * the trigger's icon for a spinner and mute the label with this.
+ */
+export function isTriggerLoading(state: SelectorQueryState, pendingBranch?: string): boolean {
+	// With no list, any pending branch differs from the (absent) current
+	// one, so it overrides the label instead of the loading state.
+	if (pendingBranch !== undefined) return false;
+	if (state.data) return false;
+	return state.isChecking || (state.isRegular && state.branchesPending);
+}
+
+/**
  * Trigger label, mirroring the workspace selector's
  * `getWorkspaceTriggerLabel`: the branch name once loaded, a loading
  * label while probing, and the neutral "Select branch" otherwise. The
@@ -39,7 +53,7 @@ export function getTriggerLabel(state: SelectorQueryState, pendingBranch?: strin
 	if (state.data) return state.data.currentBranch ?? "Detached HEAD";
 	// Both probes resolved to a state without a branch list: the neutral
 	// label, like the workspace trigger's "Select workspace" fallback.
-	if (state.isChecking || (state.isRegular && state.branchesPending)) return "Loading…";
+	if (isTriggerLoading(state)) return "Loading…";
 	return "Select branch";
 }
 
@@ -58,6 +72,14 @@ export interface UnbornNotice {
 }
 
 /**
+ * Structured loading notice. The component renders this with a spinner
+ * in front of the "Loading…" line rather than the plain-string path.
+ */
+export interface LoadingNotice {
+	readonly kind: "loading";
+}
+
+/**
  * Inline popover message (the workspace picker's "Loading workspaces…" /
  * "No workspaces yet." pattern): `null` means the branch list should
  * render. Missing, bare, and unsafe (git's dubious-ownership protection)
@@ -65,16 +87,19 @@ export interface UnbornNotice {
  * button — and their branch list is never fetched, so non-repo
  * workspaces stop spawning failing git probes.
  *
- * Unborn repositories (no commits yet) return an `UnbornNotice` so the
- * component can render structured copy (heading + body) rather than a
+ * Unborn repositories (no commits yet) return an `UnbornNotice` and
+ * in-flight probes return a `LoadingNotice` so the component can render
+ * structured content (heading + body, spinner + line) rather than a
  * single-line string.
  */
-export function getPopoverMessage(state: SelectorQueryState): string | UnbornNotice | null {
+export function getPopoverMessage(
+	state: SelectorQueryState,
+): string | UnbornNotice | LoadingNotice | null {
 	if (state.workspaceDirectory === undefined) return "No workspace selected.";
-	if (state.isChecking) return "Loading…";
+	if (state.isChecking) return { kind: "loading" };
 	if (state.typeFailed) return "Git is unavailable.";
 	if (!state.isRegular) return "Not a git repository.";
-	if (state.branchesPending) return "Loading…";
+	if (state.branchesPending) return { kind: "loading" };
 	if (state.branchesFailed || state.data === undefined || state.data === null) {
 		return "Something went wrong!";
 	}

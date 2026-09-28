@@ -273,11 +273,11 @@ providers wrap lower-priority providers; equal priorities keep plugin registry o
 
 ```jsonc
 "contributes": {
-  "settings": [{ "id": "todos", "title": "Todos", "component": "TodosSettings", "category": "Personal" }]
+  "settings": [{ "id": "todos", "title": "Todos", "component": "TodosSettings", "category": "General" }]
 }
 ```
 
-Optional `category` groups the section in the settings sidebar and defaults to `Personal`. Optional `featureFlag` hides the nav entry (same semantics as `contributes.nav`). There is no `sdk.contributeSettings` — settings are declarative only.
+Optional `category` groups the section in the settings sidebar and defaults to `General`. Optional `featureFlag` hides the nav entry (same semantics as `contributes.nav`). There is no `sdk.contributeSettings` — settings are declarative only.
 
 **Deep links** are OS URLs on the app scheme. Declare them in `plugin.json` `contributes.deepLinks`; the shell maps `kilo-desktop://{host}/{id}` to in-app navigation:
 

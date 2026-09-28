@@ -36,6 +36,7 @@ function fakeServer() {
 		contributedEnvChangedSinceSpawn: vi.fn(() => true),
 		ensureRunning: vi.fn(async () => connection),
 		restart: vi.fn(async () => connection),
+		setTelemetryEnabled: vi.fn(async (_enabled: boolean) => undefined),
 		dispose: vi.fn(),
 	} satisfies KiloServerController;
 }
@@ -62,6 +63,51 @@ function registerKiloServer(
 }
 
 describe("kilo-server main registration", () => {
+	it("keeps missing consent off without starting the CLI", async () => {
+		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const server = fakeServer();
+		await registerKiloServer(mainSdk, { createServer: () => server });
+		expect(server.setTelemetryEnabled).toHaveBeenCalledWith(false);
+		expect(server.ensureRunning).not.toHaveBeenCalled();
+		mainSdk.dispose();
+	});
+
+	it("still starts Kilo when the initial consent sync fails", async () => {
+		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const server = fakeServer();
+		server.setTelemetryEnabled.mockRejectedValueOnce(new Error("Kilo did not acknowledge"));
+		await registerKiloServer(mainSdk, { createServer: () => server });
+		await mainSdk.invoke("server.getConnection");
+		expect(server.ensureRunning).toHaveBeenCalled();
+		mainSdk.dispose();
+	});
+
+	it("subscribes to main-process consent before lazy startup and awaits runtime failures", async () => {
+		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const preferencesSdk = createMainSdk("preferences");
+		let listener: ((allow: boolean) => void | Promise<void>) | undefined;
+		const unsubscribe = vi.fn();
+		preferencesSdk.plugins.expose("preferences", {
+			get allowDataCollection() {
+				return true;
+			},
+			onDidChangeAllowDataCollection(callback: typeof listener) {
+				listener = callback;
+				return unsubscribe;
+			},
+		});
+		const server = fakeServer();
+		await registerKiloServer(mainSdk, { createServer: () => server });
+		expect(server.setTelemetryEnabled).toHaveBeenCalledWith(true);
+		expect(server.ensureRunning).not.toHaveBeenCalled();
+		expect(listener).toBeDefined();
+		server.setTelemetryEnabled.mockRejectedValue(new Error("Kilo did not acknowledge"));
+		await expect(listener!(false)).rejects.toThrow("Kilo did not acknowledge");
+		expect(server.setTelemetryEnabled).toHaveBeenLastCalledWith(false);
+		mainSdk.dispose();
+		expect(unsubscribe).toHaveBeenCalledOnce();
+	});
+
 	it("resolves the user Kilo config directory from the platform environment", () => {
 		expect(resolveUserConfigDirectory("darwin", { XDG_CONFIG_HOME: "/custom/config" })).toBe(
 			"/custom/config/kilo",
@@ -198,7 +244,7 @@ describe("kilo-server main registration", () => {
 			runAsNodeEnabled: async () => true,
 		});
 
-		expect(reconcileWebMcpRelayConfig).toHaveBeenCalledOnce();
+		await vi.waitFor(() => expect(reconcileWebMcpRelayConfig).toHaveBeenCalledOnce());
 		const call = reconcileWebMcpRelayConfig.mock.calls[0];
 		if (!call) throw new Error("expected reconcileWebMcpRelayConfig to have been called once");
 		const [configDirectory, enabled] = call;
@@ -249,7 +295,7 @@ describe("kilo-server main registration", () => {
 			runAsNodeEnabled: async () => false,
 		});
 
-		expect(reconcileWebMcpRelayConfig).toHaveBeenCalledOnce();
+		await vi.waitFor(() => expect(reconcileWebMcpRelayConfig).toHaveBeenCalledOnce());
 		const call = reconcileWebMcpRelayConfig.mock.calls[0];
 		if (!call) throw new Error("expected reconcileWebMcpRelayConfig to have been called once");
 		expect(call[1]).toBe(false);

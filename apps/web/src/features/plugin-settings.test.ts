@@ -52,6 +52,14 @@ function makeDiscovery(): PluginDiscovery {
 }
 
 describe("buildPluginSettings", () => {
+	it("registers Privacy as an ungated desktop settings section", () => {
+		expect(findSettingsSection(PLUGIN_SETTINGS, "privacy")).toMatchObject({
+			pluginId: "privacy",
+			title: "Privacy",
+			browserSafe: false,
+			featureFlag: undefined,
+		});
+	});
 	it("derives priority-ordered sections from discovery", () => {
 		const sections = buildPluginSettings(makeDiscovery());
 
@@ -61,7 +69,7 @@ describe("buildPluginSettings", () => {
 			id: "alpha",
 			title: "Alpha",
 			component: AlphaPanel,
-			category: "Personal",
+			category: "General",
 			icon: "AlphaIcon",
 			iconComponent: AlphaIcon,
 			priority: 1,
@@ -79,7 +87,7 @@ describe("buildPluginSettings", () => {
 				id: "general",
 				title: "General",
 				component: () => null,
-				category: "Personal",
+				category: "General",
 				icon: undefined,
 				iconComponent: undefined,
 				priority: 5,
@@ -119,7 +127,7 @@ describe("filterVisiblePluginSettings", () => {
 				id: "desk",
 				title: "Desk",
 				component: () => null,
-				category: "Personal",
+				category: "General",
 				icon: undefined,
 				iconComponent: undefined,
 				priority: 0,
@@ -141,19 +149,16 @@ describe("findSettingsSection", () => {
 });
 
 describe("PLUGIN_SETTINGS", () => {
-	it("starts with the kilo-ui Account section, then the shell Appearance section", () => {
-		expect(PLUGIN_SETTINGS[0]).toMatchObject({
-			pluginId: "kilo-ui",
-			id: "account",
-			title: "Account",
-			category: "Personal",
-		});
-		expect(PLUGIN_SETTINGS[1]).toMatchObject({
-			pluginId: "shell",
-			id: "appearance",
-			title: "Appearance",
-			browserSafe: true,
-		});
+	it("lists General settings alphabetically", () => {
+		const general = PLUGIN_SETTINGS.filter((section) => section.category === "General");
+		expect(general.map((section) => section.title)).toEqual([
+			"About",
+			"Account",
+			"Appearance",
+			"Conda Environments",
+			"Notebooks",
+			"Privacy",
+		]);
 	});
 
 	it("includes the kilo-ui AI Providers section", () => {
@@ -166,11 +171,11 @@ describe("PLUGIN_SETTINGS", () => {
 		});
 	});
 
-	it("includes the kilo-ui Account section under Personal", () => {
+	it("includes the kilo-ui Account section under General", () => {
 		expect(PLUGIN_SETTINGS.find((section) => section.id === "account")).toMatchObject({
 			pluginId: "kilo-ui",
 			title: "Account",
-			category: "Personal",
+			category: "General",
 			priority: 105,
 		});
 	});
@@ -198,10 +203,10 @@ describe("PLUGIN_SETTINGS", () => {
 	});
 
 	it("lists notebook settings directly below Conda Environments", () => {
-		const personal = PLUGIN_SETTINGS.filter((section) => section.category === "Personal").map(
+		const general = PLUGIN_SETTINGS.filter((section) => section.category === "General").map(
 			(section) => section.id,
 		);
-		expect(personal.indexOf("notebooks")).toBe(personal.indexOf("environments") + 1);
+		expect(general.indexOf("notebooks")).toBe(general.indexOf("environments") + 1);
 	});
 
 	it("lists AI settings by priority", () => {

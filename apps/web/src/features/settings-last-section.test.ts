@@ -14,7 +14,7 @@ function section(id: string): PluginSettingsSection {
 		id,
 		title: id,
 		component: () => null,
-		category: "Personal",
+		category: "General",
 		icon: undefined,
 		iconComponent: undefined,
 		priority: 0,

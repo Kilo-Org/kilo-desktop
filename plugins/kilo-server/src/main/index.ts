@@ -60,8 +60,16 @@ export interface KiloServerController {
 	contributedEnvChangedSinceSpawn(): boolean;
 	ensureRunning(): Promise<KiloServerConnection>;
 	restart(): Promise<KiloServerConnection>;
+	setTelemetryEnabled(enabled: boolean): Promise<void>;
 	dispose(): void;
 }
+
+type PreferencesCapability = {
+	preferences: {
+		readonly allowDataCollection: boolean;
+		onDidChangeAllowDataCollection(listener: (allow: boolean) => void | Promise<void>): () => void;
+	};
+};
 
 interface RegisterKiloServerOptions {
 	createServer?: (
@@ -315,6 +323,11 @@ export function registerKiloServer(
 		(status) => mainSdk.events.emit("server-status-changed", status),
 		contributedEnv,
 	);
+	const preferences = mainSdk.plugins.get<PreferencesCapability>("preferences")?.preferences;
+	const unsubscribeConsent = preferences?.onDidChangeAllowDataCollection((allow) =>
+		server.setTelemetryEnabled(allow),
+	);
+	const consentReady = server.setTelemetryEnabled(preferences?.allowDataCollection === true);
 	const createRelayService =
 		options.createWebMcpRelayService ??
 		(() =>
@@ -338,6 +351,14 @@ export function registerKiloServer(
 	// Every path that can start or restart Kilo awaits the same readiness
 	// promise, so no caller can race the config write.
 	const configReady = (async () => {
+		try {
+			await consentReady;
+		} catch (error) {
+			// Spawn still stamps KILO_TELEMETRY_LEVEL, so a failed sync must not block startup.
+			mainSdk.logger.warn(
+				`Could not apply the initial telemetry preference: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		}
 		try {
 			await removeLegacyKiloConfigPlugins(configDirectory);
 		} catch (error) {
@@ -486,6 +507,7 @@ export function registerKiloServer(
 	mainSdk.channels(kiloServerContract).handleAll(service);
 	mainSdk.onDispose(() => {
 		disposed = true;
+		unsubscribeConsent?.();
 		handleEnvChange.cancel();
 		relayService?.dispose();
 		server.dispose();

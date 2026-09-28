@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import pDefer from "p-defer";
 
 vi.mock("electron-store", () => ({
 	default: class {},
@@ -53,11 +54,11 @@ describe("PreferencesStore", () => {
 			expect(preferences.allowDataCollection).toBe(true);
 		});
 
-		it("round-trips an explicit false", () => {
+		it("round-trips an explicit false", async () => {
 			const store = createFakeStore();
 			const preferences = new PreferencesStore(store as never);
 
-			preferences.setAllowDataCollection(false);
+			await preferences.setAllowDataCollection(false);
 			expect(store.set).toHaveBeenCalledWith("allowDataCollection", false);
 			expect(preferences.allowDataCollection).toBe(false);
 		});
@@ -67,6 +68,53 @@ describe("PreferencesStore", () => {
 			const preferences = new PreferencesStore(store as never);
 			store.get.mockReturnValue("yes");
 			expect(preferences.allowDataCollection).toBe(true);
+		});
+
+		it("saves each change before notifying listeners and applies changes in call order", async () => {
+			const store = createFakeStore();
+			const preferences = new PreferencesStore(store as never);
+			const release = pDefer<void>();
+			const changes: boolean[] = [];
+			preferences.onDidChangeAllowDataCollection(async (allow) => {
+				expect(preferences.allowDataCollection).toBe(allow);
+				changes.push(allow);
+				if (!allow) await release.promise;
+			});
+
+			const disable = preferences.setAllowDataCollection(false);
+			const enable = preferences.setAllowDataCollection(true);
+			await vi.waitFor(() => expect(changes).toEqual([false]));
+			release.resolve();
+			await Promise.all([disable, enable]);
+
+			expect(changes).toEqual([false, true]);
+			expect(preferences.allowDataCollection).toBe(true);
+		});
+
+		it("reports a listener failure after every listener has run", async () => {
+			const preferences = new PreferencesStore(createFakeStore() as never);
+			const other = vi.fn();
+			preferences.onDidChangeAllowDataCollection(() => {
+				throw new Error("Kilo did not acknowledge");
+			});
+			preferences.onDidChangeAllowDataCollection(other);
+
+			await expect(preferences.setAllowDataCollection(false)).rejects.toThrow(/retry/i);
+			expect(other).toHaveBeenCalledWith(false);
+			expect(preferences.allowDataCollection).toBe(false);
+		});
+
+		it("does not notify listeners when the change cannot be saved", async () => {
+			const store = createFakeStore();
+			const preferences = new PreferencesStore(store as never);
+			const listener = vi.fn();
+			preferences.onDidChangeAllowDataCollection(listener);
+			store.set.mockImplementation(() => {
+				throw new Error("disk full");
+			});
+
+			await expect(preferences.setAllowDataCollection(false)).rejects.toThrow(/save.*retry/i);
+			expect(listener).not.toHaveBeenCalled();
 		});
 	});
 

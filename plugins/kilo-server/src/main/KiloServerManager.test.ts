@@ -89,7 +89,51 @@ function createHarness(overrides: Partial<KiloServerManagerOptions> = {}) {
 	return { manager, children, spawn, fetch, statuses };
 }
 
+function telemetryFetch(healthGate?: Promise<void>) {
+	return vi.fn<typeof globalThis.fetch>(async (url) => {
+		if (!String(url).endsWith("/global/health")) return Response.json(true);
+		await healthGate;
+		return Response.json({ healthy: true, version: KILO_CLI_VERSION });
+	});
+}
+
+function telemetryRequests(fetch: ReturnType<typeof telemetryFetch>) {
+	return fetch.mock.calls
+		.filter(([url]) => String(url).endsWith("/telemetry/setEnabled"))
+		.map(([, init]) => JSON.parse(String(init?.body)) as { enabled: boolean });
+}
+
 describe("KiloServerManager", () => {
+	it("defaults telemetry off and overrides inherited consent on initial spawn and crash recovery", async () => {
+		const { manager, spawn, children } = createHarness({
+			environment: { KILO_TELEMETRY_LEVEL: "all", kilo_telemetry_level: "all" },
+		});
+		onTestFinished(() => manager.dispose());
+		await manager.ensureRunning();
+		children[0]!.exit(1);
+		await manager.ensureRunning();
+		for (const [, , options] of spawn.mock.calls) {
+			expect(options.env.KILO_TELEMETRY_LEVEL).toBe("off");
+			expect(options.env.kilo_telemetry_level).toBeUndefined();
+		}
+	});
+
+	it("applies opt-in without spawning a cold server and stamps all on every later spawn", async () => {
+		const { manager, spawn, children } = createHarness();
+		onTestFinished(() => manager.dispose());
+		await manager.setTelemetryEnabled(true);
+		expect(spawn).not.toHaveBeenCalled();
+		await manager.ensureRunning();
+		await manager.restart();
+		children.at(-1)!.exit(1);
+		await manager.ensureRunning();
+		expect(spawn.mock.calls.map(([, , options]) => options.env.KILO_TELEMETRY_LEVEL)).toEqual([
+			"all",
+			"all",
+			"all",
+		]);
+	});
+
 	it("coalesces startup, authenticates health, and publishes credentials only when ready", async () => {
 		const { manager, spawn, fetch, statuses } = createHarness();
 		const [first, second] = await Promise.all([manager.ensureRunning(), manager.ensureRunning()]);
@@ -124,6 +168,97 @@ describe("KiloServerManager", () => {
 			message: "Kilo Code has shut down.",
 		});
 	});
+
+	it("enables a running CLI with an authenticated runtime request without restarting sessions", async () => {
+		const fetch = telemetryFetch();
+		const { manager, spawn } = createHarness({ fetch });
+		onTestFinished(() => manager.dispose());
+		const connection = await manager.ensureRunning();
+		await manager.setTelemetryEnabled(true);
+		expect(fetch).toHaveBeenLastCalledWith(`${connection.baseUrl}/telemetry/setEnabled`, {
+			method: "POST",
+			headers: {
+				Authorization: `Basic ${Buffer.from(`kilo:${connection.password}`).toString("base64")}`,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ enabled: true }),
+			signal: expect.any(AbortSignal),
+		});
+		expect(spawn).toHaveBeenCalledOnce();
+	});
+
+	it("withdraws consent from a running CLI at runtime without stopping it", async () => {
+		const fetch = telemetryFetch();
+		const { manager, spawn, children } = createHarness({ fetch });
+		onTestFinished(() => manager.dispose());
+		await manager.setTelemetryEnabled(true);
+		const connection = await manager.ensureRunning();
+		await manager.setTelemetryEnabled(false);
+		expect(telemetryRequests(fetch).at(-1)).toEqual({ enabled: false });
+		expect(children[0]!.exitCode).toBeNull();
+		expect(spawn).toHaveBeenCalledOnce();
+		expect(await manager.ensureRunning()).toEqual(connection);
+		await manager.restart();
+		expect(spawn.mock.calls.at(-1)![2].env.KILO_TELEMETRY_LEVEL).toBe("off");
+	});
+
+	it("syncs the latest preference whenever the sidecar becomes ready", async () => {
+		let releaseHealth!: () => void;
+		const healthGate = new Promise<void>((resolve) => {
+			releaseHealth = resolve;
+		});
+		const fetch = telemetryFetch(healthGate);
+		const { manager, spawn } = createHarness({ fetch });
+		onTestFinished(() => manager.dispose());
+		const startup = manager.ensureRunning();
+		await vi.waitFor(() => expect(spawn).toHaveBeenCalledOnce());
+		await manager.setTelemetryEnabled(true);
+		expect(telemetryRequests(fetch)).toEqual([]);
+		releaseHealth();
+		await startup;
+		await vi.waitFor(() => expect(telemetryRequests(fetch)).toEqual([{ enabled: true }]));
+		await manager.restart();
+		await vi.waitFor(() =>
+			expect(telemetryRequests(fetch)).toEqual([{ enabled: true }, { enabled: true }]),
+		);
+	});
+
+	it("applies rapid changes in order so the last choice wins", async () => {
+		const fetch = telemetryFetch();
+		const { manager } = createHarness({ fetch });
+		onTestFinished(() => manager.dispose());
+		await manager.ensureRunning();
+		await vi.waitFor(() => expect(telemetryRequests(fetch)).toHaveLength(1));
+		await Promise.all([manager.setTelemetryEnabled(true), manager.setTelemetryEnabled(false)]);
+		expect(telemetryRequests(fetch).at(-1)).toEqual({ enabled: false });
+	});
+
+	it("does not start a cold CLI to apply a change", async () => {
+		const fetch = telemetryFetch();
+		const { manager, spawn } = createHarness({ fetch });
+		onTestFinished(() => manager.dispose());
+		await manager.setTelemetryEnabled(false);
+		expect(spawn).not.toHaveBeenCalled();
+		expect(telemetryRequests(fetch)).toEqual([]);
+	});
+
+	it.each(["timeout", "http", "invalid"])(
+		"reports a user-visible error when a runtime change fails (%s) without stopping the CLI",
+		async (failure) => {
+			const fetch = vi.fn<typeof globalThis.fetch>(async (url) => {
+				if (String(url).endsWith("/global/health"))
+					return Response.json({ healthy: true, version: KILO_CLI_VERSION });
+				if (failure === "timeout") return new Promise<Response>(() => undefined);
+				return failure === "http" ? new Response(null, { status: 503 }) : Response.json(false);
+			});
+			const { manager, children, spawn } = createHarness({ fetch, telemetryTimeoutMs: 10 });
+			onTestFinished(() => manager.dispose());
+			await manager.ensureRunning();
+			await expect(manager.setTelemetryEnabled(false)).rejects.toMatchObject({ code: "BUSINESS" });
+			expect(children[0]!.exitCode).toBeNull();
+			expect(spawn).toHaveBeenCalledOnce();
+		},
+	);
 
 	it("spawns with additive Desktop config, the user's Kilo profile, loopback CORS, and a sanitized environment", async () => {
 		const { manager, spawn } = createHarness({

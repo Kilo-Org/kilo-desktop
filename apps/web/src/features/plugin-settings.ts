@@ -48,7 +48,7 @@ export function buildPluginSettings(
 		title: section.title,
 		description: section.description,
 		component: section.component as ComponentType,
-		category: section.category ?? "Personal",
+		category: section.category ?? "General",
 		icon: section.icon,
 		iconComponent: section.iconComponent as ComponentType | undefined,
 		priority: section.priority,

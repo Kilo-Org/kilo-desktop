@@ -4,16 +4,18 @@ import {
 	reportPluginDiscoveryIssues,
 } from "@kilo-desktop/feature-sdk";
 
-import { WORKSPACE_FEATURE_ID } from "@kilo-desktop/contracts";
+import { PRIVACY_FEATURE_ID, WORKSPACE_FEATURE_ID } from "@kilo-desktop/contracts";
 
 import type { FeatureRegistration } from "@kilo-desktop/feature-sdk";
 
 import { BUNDLED_PLUGINS } from "./bundled-plugins.js";
 import { orderMainFeatures } from "./feature-order.js";
 import { mainRegister as workspaceMainRegister } from "../workspace/index.js";
+import { mainRegister as privacyMainRegister } from "../privacy/index.js";
 
 /** Built-in features developed inside apps/ (three-location pattern). */
 const BUILT_IN_FEATURES: readonly FeatureRegistration[] = [
+	{ id: PRIVACY_FEATURE_ID, mainRegister: privacyMainRegister },
 	{ id: WORKSPACE_FEATURE_ID, mainRegister: workspaceMainRegister },
 ];
 

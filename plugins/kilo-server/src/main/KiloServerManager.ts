@@ -82,6 +82,7 @@ export interface KiloServerManagerOptions {
 	readonly healthRequestTimeoutMs?: number;
 	readonly healthRetryDelayMs?: number;
 	readonly shutdownTimeoutMs?: number;
+	readonly telemetryTimeoutMs?: number;
 }
 
 function appendNoProxy(current: string | undefined): string {
@@ -103,6 +104,7 @@ function defaultSpawn(
 ): KiloChildProcess {
 	return execa(executablePath, args, {
 		...options,
+		extendEnv: false,
 		buffer: false,
 		reject: false,
 		stderr: "pipe",
@@ -196,6 +198,13 @@ function appendStderrContext(baseMessage: string, stderr: string): string {
  * serialized so a rapid restart storm coalesces into one graceful stop + one
  * fresh spawn, matching the "one server per Desktop process" invariant.
  *
+ * Telemetry consent matches the VS Code client: `KILO_TELEMETRY_LEVEL` is
+ * stamped after inherited env at every spawn, and the running CLI is updated
+ * through `/telemetry/setEnabled` on every change and every time it becomes
+ * ready. Updates are serialized and always send the latest preference, so a
+ * slower earlier request cannot overwrite a later choice. Opt-out never
+ * restarts the CLI; events it queued before opting out may still be sent.
+ *
  * **Status emission contract.** `#setStatus` flows through an
  * `ObservableValue<KiloServerStatus>` gated by `isEqual`, so callers observe
  * exactly one `onStatusChange` per REAL transition. That means
@@ -226,6 +235,7 @@ export class KiloServerManager {
 			| "healthRequestTimeoutMs"
 			| "healthRetryDelayMs"
 			| "shutdownTimeoutMs"
+			| "telemetryTimeoutMs"
 		>
 	> &
 		Pick<
@@ -243,6 +253,8 @@ export class KiloServerManager {
 	#connection: (KiloServerConnection & { pid: number }) | undefined;
 	#startPromise: Promise<KiloServerConnection> | undefined;
 	#disposed = false;
+	#telemetryEnabled = false;
+	#telemetrySync: Promise<void> = Promise.resolve();
 	/**
 	 * Snapshot of the sanitized contributed env used at the last spawn.
 	 * Used by `contributedEnvChangedSinceSpawn()` to skip no-op restarts
@@ -283,6 +295,7 @@ export class KiloServerManager {
 			healthRequestTimeoutMs: options.healthRequestTimeoutMs ?? 3_000,
 			healthRetryDelayMs: options.healthRetryDelayMs ?? 250,
 			shutdownTimeoutMs: options.shutdownTimeoutMs ?? 5_000,
+			telemetryTimeoutMs: options.telemetryTimeoutMs ?? 3_000,
 		};
 		this.#contributedEnv = options.contributedEnv;
 		// Structural equality gates status emission so the caller's
@@ -306,6 +319,67 @@ export class KiloServerManager {
 
 	get isRunning(): boolean {
 		return this.#connection !== undefined;
+	}
+
+	async setTelemetryEnabled(enabled: boolean): Promise<void> {
+		this.#telemetryEnabled = enabled;
+		try {
+			await this.#syncTelemetry();
+		} catch (error) {
+			this.#options.logger.warn(
+				`Could not set Kilo CLI telemetry to ${enabled ? "on" : "off"}: ${safeErrorMessage(error)}`,
+			);
+			throw new FeatureError(
+				"Could not update Kilo's data collection setting. Retry the change.",
+				"BUSINESS",
+			);
+		}
+	}
+
+	/** Sends the latest preference to the running CLI; a cold CLI picks it up at spawn. */
+	#syncTelemetry(): Promise<void> {
+		const sync = this.#telemetrySync
+			.catch(() => undefined)
+			.then(async () => {
+				const connection = this.#connection;
+				if (!connection || this.#disposed) return;
+				const enabled = this.#telemetryEnabled;
+				await this.#updateTelemetry(connection, enabled);
+				this.#options.logger.info(`Kilo CLI telemetry set to ${enabled ? "on" : "off"}`);
+			});
+		this.#telemetrySync = sync;
+		return sync;
+	}
+
+	async #updateTelemetry(connection: KiloServerConnection, enabled: boolean): Promise<void> {
+		const controller = new AbortController();
+		let timeout: ReturnType<typeof setTimeout> | undefined;
+		try {
+			await Promise.race([
+				(async () => {
+					const response = await this.#options.fetch(`${connection.baseUrl}/telemetry/setEnabled`, {
+						method: "POST",
+						headers: {
+							Authorization: `Basic ${Buffer.from(`${connection.username}:${connection.password}`).toString("base64")}`,
+							"Content-Type": "application/json",
+						},
+						body: JSON.stringify({ enabled }),
+						signal: controller.signal,
+					});
+					if (!response.ok || (await response.json()) !== true) {
+						throw new Error("Kilo did not acknowledge telemetry consent.");
+					}
+				})(),
+				new Promise<never>((_resolve, reject) => {
+					timeout = setTimeout(() => {
+						controller.abort();
+						reject(new Error("Kilo telemetry consent request timed out."));
+					}, this.#options.telemetryTimeoutMs);
+				}),
+			]);
+		} finally {
+			clearTimeout(timeout);
+		}
 	}
 
 	/**
@@ -458,6 +532,12 @@ export class KiloServerManager {
 			};
 			this.#connection = connection;
 			this.#setStatus({ status: "ready", baseUrl, version });
+			// The preference may have changed after this process read its spawn env.
+			void this.#syncTelemetry().catch((error) =>
+				this.#options.logger.warn(
+					`Could not sync telemetry preference: ${safeErrorMessage(error, [password, authHeader])}`,
+				),
+			);
 			this.#options.logger.info(`Ready at ${baseUrl} (version ${version}).`);
 			return this.#publicConnection(connection);
 		} catch (error) {
@@ -579,6 +659,7 @@ export class KiloServerManager {
 			// spreads so inherited shell values cannot override attribution.
 			KILO_APP_NAME: "kilo-desktop",
 			KILO_PLATFORM: "desktop",
+			KILO_TELEMETRY_LEVEL: this.#telemetryEnabled ? "all" : "off",
 			// Kilo Gateway usage attribution: the CLI forwards this as the
 			// X-KILOCODE-FEATURE header. Must match a value in the gateway's
 			// FEATURE_VALUES enum (Kilo-Org/cloud feature-detection.ts) or the
@@ -599,6 +680,10 @@ export class KiloServerManager {
 		// survived the spread from process.env.
 		for (const name of Object.keys(environment)) {
 			const upper = name.toUpperCase();
+			if (upper === "KILO_TELEMETRY_LEVEL" && name !== "KILO_TELEMETRY_LEVEL") {
+				delete environment[name];
+				continue;
+			}
 			if (upper === "KILO_CONFIG_CONTENT") {
 				delete environment[name];
 				continue;

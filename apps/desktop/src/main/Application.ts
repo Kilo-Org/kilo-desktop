@@ -138,6 +138,10 @@ export class Application {
 	#deepLinks: DesktopDeepLinkService | undefined;
 	#disposePromise: Promise<void> | undefined;
 
+	constructor(preferences?: PreferencesStore) {
+		this.#preferences = preferences;
+	}
+
 	async start(): Promise<void> {
 		this.#logAppSessionStart();
 		const identity = getAppIdentity(this.#app.metadata.isPackaged ? RELEASE_TRACK : "development");
@@ -171,7 +175,7 @@ export class Application {
 		this.#deepLinks = deepLinks;
 		this.#disposers.push(() => deepLinks.dispose());
 		deepLinks.start();
-		const preferences = new PreferencesStore();
+		const preferences = this.#preferences ?? new PreferencesStore();
 		this.#preferences = preferences;
 		restoreNativeThemeFromPreferences(preferences);
 		this.#logger.debug("Installation id", preferences.getInstallationId());

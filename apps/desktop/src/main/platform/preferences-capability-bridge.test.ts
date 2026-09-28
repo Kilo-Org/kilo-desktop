@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import pDefer from "p-defer";
+import type { PreferencesMainCapability } from "@kilo-desktop/contracts";
 
 vi.mock("@sentry/electron/main", () => ({ captureException: vi.fn() }));
 
@@ -7,7 +9,7 @@ import { registerPreferencesCapability } from "./preferences-capability-bridge.j
 import type { PreferencesStore } from "./PreferencesStore.js";
 
 /**
- * Seam: `registerPreferencesCapability(prefs, env)` exposes a read-only
+ * Seam: `registerPreferencesCapability(prefs, env)` exposes the shared
  * preferences capability on the real shared `featureRouter`. Tests observe
  * behavior through `capabilityRegistry.get` and always dispose so the
  * singleton stays clean between cases.
@@ -33,6 +35,28 @@ describe("registerPreferencesCapability", () => {
 
 		expect(capability).not.toBeNull();
 		expect(capability!.preferences.allowDataCollection).toBe(true);
+	});
+
+	it("delegates awaited writes and change subscriptions to the authoritative store", async () => {
+		const listener = vi.fn();
+		const unsubscribe = vi.fn();
+		const pending = pDefer<void>();
+		const prefs = {
+			allowDataCollection: false,
+			setAllowDataCollection: vi.fn(() => pending.promise),
+			onDidChangeAllowDataCollection: vi.fn(() => unsubscribe),
+		} as unknown as PreferencesStore;
+		dispose = registerPreferencesCapability(prefs, "production");
+		const { preferences } = featureRouter.capabilityRegistry.get(
+			"preferences",
+		) as PreferencesMainCapability;
+		expect(preferences.onDidChangeAllowDataCollection(listener)).toBe(unsubscribe);
+		expect(prefs.onDidChangeAllowDataCollection).toHaveBeenCalledWith(listener);
+		const write = preferences.setAllowDataCollection(true);
+		expect(write).toBe(pending.promise);
+		expect(prefs.setAllowDataCollection).toHaveBeenCalledWith(true);
+		pending.resolve();
+		await write;
 	});
 
 	it("exposes the telemetryEnv value", () => {

@@ -367,7 +367,7 @@ Everything a feature adds to the shell is declared statically, VS Code–style �
 - `routes` — full pages the shell mounts; the component receives `PluginPageProps` (`path`, `search`). Use `sdk.location` for a live subscription instead of the render-time snapshot.
 - `nav` — sidebar entries (pure data); decoupled from routes.
 - `zones` — plugin-lifetime registrations into shell zones or plugin-owned zones (`"<plugin-id>/<zone-id>"`).
-- `settings` — sections on the shell-owned `/settings` page; optional `category` groups sidebar entries (default `Personal`).
+- `settings` — sections on the shell-owned `/settings` page; optional `category` groups sidebar entries (default `General`).
 
 ### Imperative: `sdk.contribute`
 

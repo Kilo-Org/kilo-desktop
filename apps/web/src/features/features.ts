@@ -6,6 +6,7 @@ import {
 } from "@kilo-desktop/feature-sdk";
 
 import { BUNDLED_PLUGINS } from "./bundled-plugins.js";
+import { browserRegister as privacyBrowserRegister } from "./privacy/index.js";
 
 /**
  * Feature registrations used when the app runs standalone in a browser
@@ -19,7 +20,12 @@ import { BUNDLED_PLUGINS } from "./bundled-plugins.js";
  */
 
 /** Built-in browser-mode registrations (mirrors the desktop FEATURES array). */
-const BUILT_IN_WEB_FEATURES: readonly FeatureRegistration[] = [];
+/** Main is unavailable in browser mode; only browserRegister boots. */
+function noopMainRegister(): void {}
+
+const BUILT_IN_WEB_FEATURES: readonly FeatureRegistration[] = [
+	{ id: "privacy", mainRegister: noopMainRegister, browserRegister: privacyBrowserRegister },
+];
 
 /**
  * Plugin discovery phase (static, build-time — Decision #10): validates the

@@ -16,7 +16,6 @@ if (electronSquirrelStartup) {
 	process.exitCode = 0;
 } else {
 	configureAppProfile();
-	// Read-only boot instance: Application owns the single read-write store later.
 	const preferences = new PreferencesStore();
 	configureLogging(
 		resolveLogLevel({
@@ -24,10 +23,10 @@ if (electronSquirrelStartup) {
 			stored: preferences.getLogLevel(),
 		}),
 	);
-	initSentry();
+	initSentry(preferences);
 	registerDesktopSchemes(PLUGIN_PROTOCOL_SCHEMES);
 
-	void new Application().start().catch((error: unknown) => {
+	void new Application(preferences).start().catch((error: unknown) => {
 		createLogger("startup").error("Kilo Desktop failed to start.", error);
 		process.exitCode = 1;
 	});

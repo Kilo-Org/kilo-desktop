@@ -38,7 +38,7 @@ function makeSection(overrides: Partial<PluginSettingsSection> = {}): PluginSett
 		id: "alpha",
 		title: "Alpha",
 		component: AlphaPanel,
-		category: "Personal",
+		category: "General",
 		icon: undefined,
 		iconComponent: undefined,
 		priority: 1,
@@ -102,7 +102,7 @@ describe("SettingsSidebar", () => {
 		await expect.element(screen.getByTestId("settings-back")).toBeVisible();
 		await expect.element(screen.getByTestId("settings-section-nav")).not.toBeInTheDocument();
 		await expect.element(screen.getByTestId("settings-search")).not.toBeInTheDocument();
-		await expect.element(screen.getByTestId("settings-group-personal")).not.toBeInTheDocument();
+		await expect.element(screen.getByTestId("settings-group-general")).not.toBeInTheDocument();
 		expect(
 			getComputedStyle(screen.getByTestId("settings-page").element().firstElementChild!)
 				.scrollbarGutter,
@@ -118,7 +118,7 @@ describe("SettingsSidebar", () => {
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("settings-section-nav")).toBeVisible();
-		await expect.element(screen.getByTestId("settings-group-personal")).toBeVisible();
+		await expect.element(screen.getByTestId("settings-group-general")).toBeVisible();
 		await expect.element(screen.getByTestId("alpha-panel")).toBeVisible();
 		expect(screen.getByTestId("settings-section-alpha").element()).toHaveAttribute("data-active");
 
@@ -152,9 +152,7 @@ describe("SettingsSidebar", () => {
 		const { baseElement } = renderSettings(sections);
 		const screen = page.elementLocator(baseElement);
 
-		await expect
-			.element(screen.getByTestId("settings-group-personal"))
-			.toHaveTextContent("Personal");
+		await expect.element(screen.getByTestId("settings-group-general")).toHaveTextContent("General");
 		await expect.element(screen.getByTestId("settings-group-ai")).toHaveTextContent("AI");
 		await expect.element(screen.getByTestId("settings-section-local-model-server")).toBeVisible();
 	});

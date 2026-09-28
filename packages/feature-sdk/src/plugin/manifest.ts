@@ -153,7 +153,7 @@ export const pluginSettingsContributionSchema = z.strictObject({
 	/** One sentence under the title; the default for the section's `SettingsPageHeader`. */
 	description: z.string().trim().min(1).optional(),
 	component: z.string().min(1),
-	/** Sidebar category label. Defaults to "Personal" in the shell. */
+	/** Sidebar category label. Defaults to "General" in the shell. */
 	category: z.string().trim().min(1).optional(),
 	icon: z.string().min(1).optional(),
 	priority: z.number().int().optional(),

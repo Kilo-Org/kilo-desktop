@@ -7,7 +7,24 @@ import { scrubSentryEvent } from "./sentry-scrub.js";
 
 const log = createLogger("sentry");
 
-export function initSentry(): void {
+/**
+ * Checks the preference when each envelope is actually sent. Gating the base
+ * transport (inside the offline queue) covers errors, transactions, sessions,
+ * native crash dumps, and reports replayed from disk: while collection is off
+ * they are dropped rather than stored for later.
+ */
+function makeConsentGatedTransport(preferences: PreferencesStore) {
+	return Sentry.makeElectronOfflineTransport((options) => {
+		const transport = Sentry.makeElectronTransport(options);
+		return {
+			...transport,
+			send: (envelope) =>
+				preferences.allowDataCollection ? transport.send(envelope) : Promise.resolve({}),
+		};
+	});
+}
+
+export function initSentry(preferences: PreferencesStore): void {
 	const isDev = !app.isPackaged;
 	const dsn = import.meta.env.VITE_SENTRY_DSN;
 
@@ -23,9 +40,11 @@ export function initSentry(): void {
 		// Redact user-identifying data (OS username in file paths, machine
 		// hostname) from every event/transaction before it leaves the process.
 		// Renderer events are forwarded to this main client (IPCMode.Classic),
-		// so this covers them too. Data minimization only — not a consent gate.
+		// so this covers them too. Data minimization only — consent is enforced
+		// by the transport.
 		beforeSend: (event) => scrubSentryEvent(event),
 		beforeSendTransaction: (event) => scrubSentryEvent(event),
+		transport: makeConsentGatedTransport(preferences),
 		// Route renderer→main events over the `ipcRenderer` bridge (wired by
 		// `@sentry/electron/preload`, imported in the renderer preload) instead of
 		// the default `sentry-ipc://` fetch protocol. The trusted app origin's

@@ -9,7 +9,7 @@ import type { PreferencesStore } from "./PreferencesStore.js";
  *
  * ```ts
  * const prefs = mainSdk.plugins.get<PreferencesMainCapability>("preferences");
- * const allowed = prefs?.preferences.allowDataCollection ?? true;
+ * const allowed = prefs?.preferences.allowDataCollection ?? false;
  * ```
  *
  * Returns a disposer that removes the capability.
@@ -23,6 +23,9 @@ export function registerPreferencesCapability(
 			return preferences.allowDataCollection;
 		},
 		telemetryEnv,
+		setAllowDataCollection: (allow: boolean) => preferences.setAllowDataCollection(allow),
+		onDidChangeAllowDataCollection: (listener: (allow: boolean) => void | Promise<void>) =>
+			preferences.onDidChangeAllowDataCollection(listener),
 	});
 
 	return () => {

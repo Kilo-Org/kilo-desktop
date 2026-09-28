@@ -114,16 +114,14 @@ describe("kilo-server main registration", () => {
 	it("starts the singleton server and exposes a connection capability", async () => {
 		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
 		const server = fakeServer();
-		registerKiloServer(mainSdk, {
+		await registerKiloServer(mainSdk, {
 			createServer: () => server,
 			reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
 			runAsNodeEnabled: async () => true,
 			userConfigDirectory: "/home/user/.config/kilo",
 		});
-		// Lazy spawn: no ensureRunning call until a consumer requests the
-		// connection. The initialization still runs in the background — give it a tick
-		// to complete before we assert.
-		await new Promise((resolve) => setTimeout(resolve, 0));
+		// Lazy spawn: config initialization finishing does not call ensureRunning;
+		// only a consumer requesting the connection does.
 		expect(server.ensureRunning).not.toHaveBeenCalled();
 
 		const connectionService =
@@ -155,7 +153,7 @@ describe("kilo-server main registration", () => {
 		let publishStatus: ((status: KiloServerStatus) => void) | undefined;
 		const listener = vi.fn();
 		mainSdk.events.on("kilo-server.server-status-changed", listener);
-		registerKiloServer(mainSdk, {
+		await registerKiloServer(mainSdk, {
 			createServer: (onStatusChange) => {
 				publishStatus = onStatusChange;
 				return server;
@@ -164,7 +162,6 @@ describe("kilo-server main registration", () => {
 			runAsNodeEnabled: async () => true,
 		});
 		// Lazy spawn: no ensureRunning until a consumer requests the connection.
-		await new Promise((resolve) => setTimeout(resolve, 0));
 		expect(server.ensureRunning).not.toHaveBeenCalled();
 
 		publishStatus?.({ status: "ready", baseUrl: "http://127.0.0.1:4321", version: "7.6.2" });
@@ -194,15 +191,12 @@ describe("kilo-server main registration", () => {
 			}),
 		);
 
-		registerKiloServer(mainSdk, {
+		await registerKiloServer(mainSdk, {
 			createServer: () => server,
 			reconcileWebMcpRelayConfig,
 			appExecutablePath: "/exe",
 			runAsNodeEnabled: async () => true,
 		});
-
-		// Wait for the initialization → ensureRunning sequence to settle.
-		await new Promise((resolve) => setTimeout(resolve, 0));
 
 		expect(reconcileWebMcpRelayConfig).toHaveBeenCalledOnce();
 		const call = reconcileWebMcpRelayConfig.mock.calls[0];
@@ -248,14 +242,12 @@ describe("kilo-server main registration", () => {
 			}),
 		);
 
-		registerKiloServer(mainSdk, {
+		await registerKiloServer(mainSdk, {
 			createServer: () => server,
 			reconcileWebMcpRelayConfig,
 			appExecutablePath: "/exe",
 			runAsNodeEnabled: async () => false,
 		});
-
-		await new Promise((resolve) => setTimeout(resolve, 0));
 
 		const call = reconcileWebMcpRelayConfig.mock.calls[0];
 		if (!call) throw new Error("expected reconcileWebMcpRelayConfig to have been called once");
@@ -305,10 +297,9 @@ describe("kilo-server main registration", () => {
 			runAsNodeEnabled: async () => true,
 		});
 
-		// Give the microtask queue a chance; config initialization is pending, and lazy spawn
-		// means ensureRunning hasn't run yet either.
-		await new Promise((resolve) => setTimeout(resolve, 5));
-		expect(order).toEqual(["config-start"]);
+		// Config initialization is gated, and lazy spawn means ensureRunning hasn't
+		// run yet either.
+		await vi.waitFor(() => expect(order).toEqual(["config-start"]));
 
 		// A consumer requests the connection — this must AWAIT config readiness
 		// before it can call ensureRunning.
@@ -483,8 +474,9 @@ describe("kilo-server main registration", () => {
 		expect(capability).toBeDefined();
 		const inflight = capability!.getConnection();
 
-		// Give microtasks a chance: config initialization has started, but ensureRunning MUST
-		// not have run yet — the capability call must wait for config readiness.
+		// Config initialization has started, but ensureRunning MUST not have run
+		// yet — the capability call must wait for config readiness.
+		await vi.waitFor(() => expect(order).toEqual(["config-start"]));
 		await new Promise((resolve) => setTimeout(resolve, 5));
 		expect(order).toEqual(["config-start"]);
 

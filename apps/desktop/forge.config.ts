@@ -397,6 +397,7 @@ const config: ForgeConfig = {
 					name: identity.squirrelName,
 					setupExe: identity.setupExecutableName,
 					version: appVersion,
+					loadingGif: path.join(packageRoot, "assets/installing-kilo.gif"),
 					...(remoteReleases ? { remoteReleases } : {}),
 					...(windowsPlan.squirrelCertificate ?? {}),
 				};

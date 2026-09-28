@@ -5,9 +5,28 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LAN_BIND_HOST, LOOPBACK_HOST } from "../../shared/settings/server-settings.js";
 import { allocateLoopbackPort } from "./allocatePort.js";
-import { LocalChatProxy } from "./LocalChatProxy.js";
+import { LocalChatProxy, type LocalChatProxyConnection } from "./LocalChatProxy.js";
 
 const servers: Array<{ close(): void }> = [];
+
+/**
+ * `allocateLoopbackPort` releases the port it finds, so another process on a
+ * busy CI runner can take it before the proxy binds it. Retry with a fresh
+ * port rather than failing on that race.
+ */
+async function listenOnFreshPreferredPort(
+	proxy: LocalChatProxy,
+): Promise<{ preferred: number; connection: LocalChatProxyConnection }> {
+	for (let attempt = 1; ; attempt += 1) {
+		const preferred = await allocateLoopbackPort();
+		try {
+			return { preferred, connection: await proxy.ensureListening(preferred) };
+		} catch (error) {
+			const portTaken = error instanceof Error && error.message.includes("already in use");
+			if (!portTaken || attempt === 5) throw error;
+		}
+	}
+}
 
 afterEach(() => {
 	for (const server of servers.splice(0)) server.close();
@@ -171,7 +190,6 @@ describe("LocalChatProxy", () => {
 		});
 		servers.push(proxy);
 		const first = await proxy.ensureListening();
-		const preferred = await allocateLoopbackPort();
 		const upstreamPort = await allocateLoopbackPort();
 		const upstream = createServer((_request, response) => {
 			response.setHeader("Content-Type", "application/json");
@@ -181,7 +199,7 @@ describe("LocalChatProxy", () => {
 		await new Promise<void>((resolve) => upstream.listen(upstreamPort, "127.0.0.1", resolve));
 		await proxy.ensureRunning(`http://127.0.0.1:${String(upstreamPort)}`);
 
-		const second = await proxy.ensureListening(preferred);
+		const { preferred, connection: second } = await listenOnFreshPreferredPort(proxy);
 
 		expect(second.port).toBe(preferred);
 		expect(second.port).not.toBe(first.port);

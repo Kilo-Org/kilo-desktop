@@ -29,18 +29,18 @@ interface PostHogEvent {
  * Electron `net.fetch` (per the apps/desktop networking rule) rather than
  * `posthog-node`, which would reach for plain Node `fetch`.
  *
- * Identity follows PostHog's model for backend SDKs, where there is no
- * anonymous session to merge: the lowercased email is the `distinct_id` once a
- * user is known, the installation id carries genuinely anonymous usage, and
- * `$identify` sets person properties on the email person.
- *
- * Deliberately no `$create_alias` to roll pre-login events into the user.
- * PostHog would make the *alias* the surviving id (so the machine UUID, not the
- * email, would become canonical), and it refuses a merge when the alias id was
- * already identified or is associated with more than one distinct id — both of
- * which apply here, since the installation id is shared by every account that
- * signs in on the machine. Merging it would also fuse two real users who share
- * a device. Pre-login events therefore stay on the installation persona.
+ * Identity follows PostHog's model for backend SDKs: the lowercased email is
+ * the `distinct_id` once a user is known, the installation id carries genuinely
+ * anonymous usage, `$identify` sets person properties on the email person, and
+ * `$create_alias` links the previous distinct id (the installation id, or a
+ * previous account's email) into the new one on every transition into an email
+ * identity — the same anonymous→identified merge the Kilo CLI performs in
+ * `updateIdentity`. The installation id is per OS user (electron-store under
+ * `userData`), so aliasing rarely fuses two real users; PostHog also refuses
+ * to merge an alias already tied to another person, so repeated aliasing
+ * degrades to a no-op rather than corrupting data. Worst case is a few
+ * misattributed pre-login events — the tradeoff the rest of the Kilo
+ * ecosystem (VS Code, JetBrains) already makes.
  *
  * Development builds never talk to PostHog.
  */
@@ -79,6 +79,12 @@ export class PostHogProvider implements TelemetryProvider {
 
 		const events: PostHogEvent[] = [];
 		if (email !== undefined && identityChanged) {
+			// Link the outgoing identity (anonymous installation id or a previous
+			// account) into this email so PostHog merges the personas; refused
+			// aliases degrade to no-ops server-side.
+			if (previousId !== undefined) {
+				events.push(this.#aliasEvent(email, previousId));
+			}
 			// Person properties belong to this email, so identify on every switch
 			// into it — including account→account, where the new person would
 			// otherwise never receive its properties.
@@ -112,6 +118,15 @@ export class PostHogProvider implements TelemetryProvider {
 			event: entry.event,
 			distinct_id: distinctId,
 			properties,
+			timestamp: new Date().toISOString(),
+		};
+	}
+
+	#aliasEvent(distinctId: string, alias: string): PostHogEvent {
+		return {
+			event: "$create_alias",
+			distinct_id: distinctId,
+			properties: { alias },
 			timestamp: new Date().toISOString(),
 		};
 	}

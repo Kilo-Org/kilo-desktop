@@ -120,32 +120,63 @@ describe("PostHogProvider", () => {
 		const events = calls.flatMap((call) => call.body.batch as Array<Record<string, unknown>>);
 		expect(events[0]).toMatchObject({ event: "Desktop Initialized", distinct_id: "install-1" });
 		expect(events[1]).toMatchObject({
+			event: "$create_alias",
+			distinct_id: "dev@anaconda.com",
+			properties: { alias: "install-1" },
+		});
+		expect(events[2]).toMatchObject({
 			event: "$identify",
 			distinct_id: "dev@anaconda.com",
 			properties: {
 				$set: { email: "dev@anaconda.com", cohortId: 42, is_anaconda_employee: false },
 			},
 		});
-		expect(events[2]).toMatchObject({
+		expect(events[3]).toMatchObject({
 			event: "Desktop Initialized",
 			distinct_id: "dev@anaconda.com",
 		});
 	});
 
-	it("never merges the shared installation persona into a user", async () => {
+	it("aliases the installation id to the email on the anonymous-to-identified transition", async () => {
 		const { calls, fetchMock } = fakeFetch();
 		const p = provider(baseConfig, fetchMock);
 
 		await p.track(entry());
 		await p.track(entry({ email: "dev@anaconda.com" }));
-		await p.track(entry());
-		await p.track(entry({ email: "other@example.com" }));
 
 		const events = calls.flatMap((call) => call.body.batch as Array<Record<string, unknown>>);
-		const merges = events.filter(
-			(event) => event.event === "$create_alias" || event.event === "$merge_dangerously",
-		);
-		expect(merges).toEqual([]);
+		const alias = events.find((event) => event.event === "$create_alias");
+		expect(alias).toMatchObject({
+			distinct_id: "dev@anaconda.com",
+			properties: { alias: "install-1" },
+		});
+	});
+
+	it("aliases the previous account when switching between two signed-in users", async () => {
+		const { calls, fetchMock } = fakeFetch();
+		const p = provider(baseConfig, fetchMock);
+
+		await p.track(entry({ email: "a@example.com" }));
+		await p.track(entry({ email: "b@example.com" }));
+
+		const events = calls.flatMap((call) => call.body.batch as Array<Record<string, unknown>>);
+		const alias = events.find((event) => event.event === "$create_alias");
+		expect(alias).toMatchObject({
+			distinct_id: "b@example.com",
+			properties: { alias: "a@example.com" },
+		});
+	});
+
+	it("does not alias when logging back out to anonymous", async () => {
+		const { calls, fetchMock } = fakeFetch();
+		const p = provider(baseConfig, fetchMock);
+
+		await p.track(entry({ email: "dev@anaconda.com" }));
+		await p.track(entry());
+
+		const events = calls.flatMap((call) => call.body.batch as Array<Record<string, unknown>>);
+		const aliases = events.filter((event) => event.event === "$create_alias");
+		expect(aliases).toEqual([]);
 	});
 
 	it("identifies the new account when switching between two signed-in users", async () => {

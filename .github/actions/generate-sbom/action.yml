@@ -233,27 +233,24 @@ runs:
       shell: bash
       run: |
         CYCLONEDX_VERSION="0.27.2"
+        # cyclonedx-cli releases ship no checksum file, so the expected digests
+        # are pinned here (computed from the release assets). Version bumps must
+        # update them together.
         case "${{ runner.os }}-${{ runner.arch }}" in
-          Linux-X64)    BIN=cyclonedx-linux-x64 ;;
-          Linux-ARM64)  BIN=cyclonedx-linux-arm64 ;;
-          macOS-X64)    BIN=cyclonedx-osx-x64 ;;
-          macOS-ARM64)  BIN=cyclonedx-osx-arm64 ;;
-          Windows-X64)  BIN=cyclonedx-win-x64.exe ;;
-          Windows-ARM64) BIN=cyclonedx-win-arm64.exe ;;
+          Linux-X64)     BIN=cyclonedx-linux-x64;   EXPECTED=5e1595542a6367378a3944bbd3008caab3de65d572345361d3b9597b1dbbaaa0 ;;
+          Linux-ARM64)   BIN=cyclonedx-linux-arm64; EXPECTED=5b4181f6fd4d8fbe54e55c1b3983d9af66ce2910a263814b290cbd5e351e68a4 ;;
+          macOS-X64)     BIN=cyclonedx-osx-x64;     EXPECTED=331c2245ef7dadf09fa3d2710a2aaab071ff6bea2ba3e5df8f95a4f3f6e825e9 ;;
+          macOS-ARM64)   BIN=cyclonedx-osx-arm64;   EXPECTED=2d24c331c2ccc5e4061722bd4780c8b295041b2569d130bbe80cf7da95b97171 ;;
+          Windows-X64)   BIN=cyclonedx-win-x64.exe; EXPECTED=bb26bb56293ebe6f08fa63d2bf50653fc6b180174fded975c81ac96ac192a7db ;;
+          Windows-ARM64) BIN=cyclonedx-win-arm64.exe; EXPECTED=35762d3e1979576f474ffc1c5b2273e19c33cdca44e5f1994c3de5d9cd0e9c1d ;;
           *) echo "::error::no cyclonedx-cli build for ${{ runner.os }}-${{ runner.arch }}"; exit 1 ;;
         esac
         mkdir -p "${{ runner.temp }}/bin"
 
-        # Checksum-verify the downloaded binary against the release's own digests
-        # before executing it (unlike curl|chmod+x with no verification).
         ASSET_URL="https://github.com/CycloneDX/cyclonedx-cli/releases/download/v${CYCLONEDX_VERSION}/${BIN}"
-        DIGESTS_URL="https://github.com/CycloneDX/cyclonedx-cli/releases/download/v${CYCLONEDX_VERSION}/cyclonedx-cli_${CYCLONEDX_VERSION}_checksums.txt"
         curl -sSfL "$ASSET_URL" -o "${{ runner.temp }}/bin/${BIN}"
-        curl -sSfL "$DIGESTS_URL" -o "${{ runner.temp }}/checksums.txt"
-        EXPECTED=$(grep " ${BIN}\$" "${{ runner.temp }}/checksums.txt" | awk '{print $1}')
-        [[ -n "$EXPECTED" ]] || { echo "::error::no checksum for ${BIN} in checksums.txt"; exit 1; }
         ACTUAL=$(shasum -a 256 "${{ runner.temp }}/bin/${BIN}" | awk '{print $1}')
-        [[ "$EXPECTED" == "$ACTUAL" ]] || { echo "::error::checksum mismatch for ${BIN}"; exit 1; }
+        [[ "$EXPECTED" == "$ACTUAL" ]] || { echo "::error::checksum mismatch for ${BIN} (got $ACTUAL)"; exit 1; }
 
         chmod +x "${{ runner.temp }}/bin/${BIN}"
         # Normalize name so the validate step can invoke `cyclonedx` on every OS

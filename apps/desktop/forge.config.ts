@@ -377,6 +377,21 @@ const config: ForgeConfig = {
 				// enough headroom for the suffix macOS adds when a volume name collides.
 				title: dmgVolumeTitle,
 				icon: path.join(packageRoot, "assets/volume-icon.icns"),
+				// A pre-merged 1x+2x LZW TIFF: given a PNG pair, appdmg merges them via
+				// tiffutil uncompressed, which can overflow its scratch volume. Finder
+				// pins the picture top-left and paints white past its edge, so the
+				// 660x400 art sits on an oversized canvas filled with its edge colour to
+				// keep window resizes seamless. Icon centres flank the arrow in the art.
+				background: path.join(packageRoot, "assets/dmg-background.tiff"),
+				iconSize: 128,
+				format: "ULFO",
+				contents: (opts: { appPath: string }) => [
+					{ x: 170, y: 200, type: "file", path: opts.appPath },
+					{ x: 490, y: 200, type: "link", path: "/Applications" },
+				],
+				additionalDMGOptions: {
+					window: { size: { width: 660, height: 400 } },
+				},
 			},
 		},
 		{

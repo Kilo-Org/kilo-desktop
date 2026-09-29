@@ -5,6 +5,7 @@ const nonRuntimePackageDirectories = [".turbo", ".vitest", "coverage", "e2e"] as
 const pnpmStoreArtifacts = [".pnpm", ".modules.yaml"] as const;
 const stagedKiloCliPackages = [
 	"cli-darwin-arm64",
+	"cli-linux-arm64",
 	"cli-linux-x64-baseline",
 	"cli-windows-x64-baseline",
 ] as const;

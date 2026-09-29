@@ -5,6 +5,7 @@ const CLI_PACKAGE_NAMES = [
 	"@kilocode/cli-darwin-arm64",
 	"@kilocode/cli-windows-x64-baseline",
 	"@kilocode/cli-linux-x64-baseline",
+	"@kilocode/cli-linux-arm64",
 ] as const;
 
 const versions = new Set(CLI_PACKAGE_NAMES.map((name) => packageJson.optionalDependencies[name]));
@@ -40,6 +41,13 @@ export const KILO_CLI_ARTIFACTS = [
 		packageName: "@kilocode/cli-linux-x64-baseline",
 		platform: "linux",
 		arch: "x64",
+		executable: "kilo",
+	},
+	{
+		target: "linux-arm64",
+		packageName: "@kilocode/cli-linux-arm64",
+		platform: "linux",
+		arch: "arm64",
 		executable: "kilo",
 	},
 ] as const satisfies readonly KiloCliArtifact[];

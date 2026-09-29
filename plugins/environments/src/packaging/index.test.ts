@@ -109,6 +109,17 @@ describe("createBridgePackagingPlan", () => {
 		).toThrow(/desktop-bridge-payload-linux-x64.*staged/);
 	});
 
+	it("throws when linux-arm64 payload is expected but not staged", () => {
+		const tempDir = makeTempDir();
+		expect(() =>
+			createBridgePackagingPlan({
+				pluginRoot: tempDir,
+				platform: "linux",
+				arch: "arm64",
+			}),
+		).toThrow(/desktop-bridge-payload-linux-arm64.*staged/);
+	});
+
 	it("throws when darwin-arm64 payload is expected but not staged", () => {
 		const tempDir = makeTempDir();
 		expect(() =>

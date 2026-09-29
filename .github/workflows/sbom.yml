@@ -24,8 +24,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [mac, windows, linux]
-    runs-on: ${{ matrix.target == 'mac' && 'macos-latest' || matrix.target == 'windows' && 'WinLatest-x64-8vCPU-32GB' || 'ubuntu-latest' }}
+        target: [mac, windows, linux, linux-arm64]
+    runs-on: ${{ matrix.target == 'mac' && 'macos-latest' || matrix.target == 'windows' && 'WinLatest-x64-8vCPU-32GB' || matrix.target == 'linux-arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     timeout-minutes: 90
     environment: preview
     permissions:
@@ -46,7 +46,7 @@ jobs:
         uses: ./.github/actions/setup-node-pnpm
 
       - name: Install maker prerequisites
-        if: matrix.target == 'linux'
+        if: startsWith(matrix.target, 'linux')
         run: |
           sudo apt-get update
           sudo apt-get install --yes fakeroot libsecret-1-dev pkg-config
@@ -85,7 +85,7 @@ jobs:
               PLATFORM="win32-${PLATFORM_ARCH}"
               ASAR_PATH=$(find "$APP_DIR" -maxdepth 2 -name "app.asar" | head -n1 || true)
               ;;
-            linux)
+            linux | linux-arm64)
               APP_DIR=$(find apps/desktop/out -mindepth 1 -maxdepth 1 -type d -name "*-linux-*" | head -n1)
               [[ -n "$APP_DIR" ]] || { echo "::error::no packaged dir (linux) found under apps/desktop/out"; exit 1; }
               PLATFORM_ARCH=$(basename "$APP_DIR" | sed -E 's/^.*-//')

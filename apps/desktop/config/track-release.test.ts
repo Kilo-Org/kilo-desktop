@@ -100,4 +100,21 @@ describe("track release publishing", () => {
 		);
 		expect(classifyReleaseDownload("/tmp/RELEASES.json")).toBeNull();
 	});
+
+	it("keeps x64 and arm64 Linux debs on separate latest aliases", () => {
+		const x64 = classifyReleaseDownload(
+			"/tmp/release-artifacts/release-linux/deb/x64/kilo-desktop_1.2.3_amd64.deb",
+		);
+		const arm64 = classifyReleaseDownload(
+			"/tmp/release-artifacts/release-linux-arm64/deb/arm64/kilo-desktop_1.2.3_arm64.deb",
+		);
+		expect(x64).toMatchObject({ platform: "linux", arch: "x64", type: "deb" });
+		expect(arm64).toMatchObject({ platform: "linux", arch: "arm64", type: "deb" });
+		expect(getLatestAliasKey("stable", x64!)).toBe(
+			"kilo-desktop/latest/latest/linux/x64/kilo-desktop.deb",
+		);
+		expect(getLatestAliasKey("stable", arm64!)).toBe(
+			"kilo-desktop/latest/latest/linux/arm64/kilo-desktop.deb",
+		);
+	});
 });

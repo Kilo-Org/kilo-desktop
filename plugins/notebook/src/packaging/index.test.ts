@@ -102,11 +102,11 @@ describe("notebook packaging", () => {
 		expect(() =>
 			createNotebookPackagingPlan({
 				pluginRoot: path.resolve("/plugin/notebook"),
-				platform: "linux",
+				platform: "win32",
 				arch: "arm64",
 				exists: () => true,
 			}),
-		).toThrow(/runtimed is not configured for linux\/arm64/);
+		).toThrow(/runtimed is not configured for win32\/arm64/);
 	});
 
 	it("unpacks koffi's sibling addon package so the native binding survives packaging", () => {

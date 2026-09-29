@@ -247,7 +247,7 @@ describe("stageBridge", () => {
 	it("skips gracefully when no payload package exists for the platform", async () => {
 		const resourceRoot = path.join(makeTempDir("bridge-stage-"), "bridge");
 
-		const result = await stageBridge({ resourceRoot, platform: "linux", arch: "arm64" });
+		const result = await stageBridge({ resourceRoot, platform: "win32", arch: "arm64" });
 
 		expect(result.staged).toBe(false);
 		expect(result.version).toBe("none");

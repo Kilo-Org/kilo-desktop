@@ -95,6 +95,7 @@ case "$(uname -s)-$(uname -m)" in
   Darwin-arm64)  TARGET="darwin-arm64" ;;
   Darwin-x86_64) TARGET="darwin-x64"   ;;
   Linux-x86_64)  TARGET="linux-x64-baseline" ;;
+  Linux-aarch64) TARGET="linux-arm64" ;;
   *)
     echo "error: unsupported platform $(uname -s)-$(uname -m)" >&2
     exit 1 ;;

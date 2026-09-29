@@ -128,7 +128,7 @@ export async function stageBridge(options: StageBridgeOptions): Promise<StageBri
 		if (!payload) {
 			// No payload package for this platform — skip gracefully.
 			// Published targets are listed in PAYLOAD_PACKAGES (bridge-artifacts.ts);
-			// anything else (e.g. linux-arm64) has no payload yet.
+			// anything else (e.g. win32-arm64) has no payload yet.
 			console.log(`No bridge payload package available for ${platform}/${arch} — skipping.`);
 			return { staged: false, payloadRoot: options.resourceRoot, version: "none" };
 		}

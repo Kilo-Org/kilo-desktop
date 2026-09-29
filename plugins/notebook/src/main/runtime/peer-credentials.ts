@@ -31,7 +31,7 @@ const CONNECT_TIMEOUT_MS = 2_000;
 
 // libc / xnu constants.
 // SOL_SOCKET / SO_PEERCRED are the asm-generic values: correct for x86_64 and
-// arm64 (our only Linux target is linux-x64), but different on mips (18),
+// arm64 (our Linux targets are linux-x64 and linux-arm64), but different on mips (18),
 // sparc (0x40), parisc, and alpha. They are compile-time ABI constants with no
 // runtime query, so they are hardcoded — do not reuse blindly on other arches.
 const SOL_SOCKET = 1;

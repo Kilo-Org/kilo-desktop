@@ -12,16 +12,16 @@ import {
 describe("notebook distribution artifacts", () => {
 	it("pins every bundled nteract component to the same nightly release", () => {
 		expect(NTERACT_RELEASE).toEqual({
-			tag: "v2.7.6-nightly.202609251717",
-			version: "2.7.6-nightly.202609251717",
+			tag: "v2.7.6-nightly.202609291557",
+			version: "2.7.6-nightly.202609291557",
 			channel: "nightly",
-			commit: "183d2e8ee5312d8d0cdf8726aa89dbc7170e45c1",
+			commit: "d6959be66205165cb1d422d29fbf9b54a3b80d54",
 			repository: "https://github.com/nteract/nteract.git",
 		});
 		expect(NTERACT_NOTEBOOK_UI).toEqual({
 			assetName: "nteract-nightly-notebook-ui.tar.gz",
-			bytes: 7_870_007,
-			sha256: "59fd6da7f26f3e6964b96cd33877ba00efb61aa8cd450e16cc9ce04d3e74b2bc",
+			bytes: 7_850_236,
+			sha256: "2a6cb4354043b9ed8599c3fd48578ac92f372234cc133e08adb0072c37dab78b",
 		});
 	});
 
@@ -30,6 +30,7 @@ describe("notebook distribution artifacts", () => {
 			"darwin-arm64",
 			"darwin-x64",
 			"linux-x64",
+			"linux-arm64",
 			"win32-x64",
 		]);
 		for (const artifact of RUNTIMED_ARTIFACTS) {
@@ -43,9 +44,10 @@ describe("notebook distribution artifacts", () => {
 
 	it("selects runtimed by platform and rejects unsupported targets", () => {
 		expect(getRuntimedArtifact("win32", "x64").executable).toBe("runtimed-nightly.exe");
-		expect(findRuntimedArtifact("linux", "arm64")).toBeUndefined();
-		expect(() => getRuntimedArtifact("linux", "arm64")).toThrow(
-			/runtimed is not configured for linux\/arm64/,
+		expect(getRuntimedArtifact("linux", "arm64").assetName).toBe("runtimed-nightly-linux-arm64");
+		expect(findRuntimedArtifact("win32", "arm64")).toBeUndefined();
+		expect(() => getRuntimedArtifact("win32", "arm64")).toThrow(
+			/runtimed is not configured for win32\/arm64/,
 		);
 	});
 });

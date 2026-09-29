@@ -16,6 +16,7 @@ on:
           - mac
           - windows
           - linux
+          - linux-arm64
           - all
 
 concurrency:
@@ -30,8 +31,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: ${{ inputs.platform == 'all' && fromJSON('["mac","windows","linux"]') || fromJSON(format('["{0}"]', inputs.platform)) }}
-    runs-on: ${{ matrix.target == 'mac' && 'macos-latest' || matrix.target == 'windows' && 'WinLatest-x64-8vCPU-32GB' || 'ubuntu-latest' }}
+        target: ${{ inputs.platform == 'all' && fromJSON('["mac","windows","linux","linux-arm64"]') || fromJSON(format('["{0}"]', inputs.platform)) }}
+    runs-on: ${{ matrix.target == 'mac' && 'macos-latest' || matrix.target == 'windows' && 'WinLatest-x64-8vCPU-32GB' || matrix.target == 'linux-arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     timeout-minutes: 90
     environment: preview
     permissions:
@@ -53,7 +54,7 @@ jobs:
         uses: ./.github/actions/setup-node-pnpm
 
       - name: Install maker prerequisites
-        if: matrix.target == 'linux'
+        if: startsWith(matrix.target, 'linux')
         run: |
           sudo apt-get update
           sudo apt-get install --yes fakeroot libsecret-1-dev pkg-config
@@ -92,7 +93,7 @@ jobs:
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ matrix.target == 'mac' && 'mac-arm64' || format('{0}-x64', matrix.target) }}
+          name: ${{ matrix.target == 'mac' && 'mac-arm64' || matrix.target == 'linux-arm64' && 'linux-arm64' || format('{0}-x64', matrix.target) }}
           path: |
             apps/desktop/out/make/**/*.dmg
             apps/desktop/out/make/**/*.zip

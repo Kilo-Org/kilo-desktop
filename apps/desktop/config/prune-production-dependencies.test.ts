@@ -39,6 +39,7 @@ describe("pruneProductionDependencies", () => {
 		// Resources/bridge and must not ship a second time inside node_modules.
 		for (const payload of [
 			"desktop-bridge-payload-darwin-arm64",
+			"desktop-bridge-payload-linux-arm64",
 			"desktop-bridge-payload-linux-x64",
 			"desktop-bridge-payload-win32-x64",
 		]) {
@@ -67,9 +68,12 @@ describe("pruneProductionDependencies", () => {
 
 	it("removes staged kilo CLI packages", async () => {
 		const nodeModules = makeNodeModules();
-		const staged = ["cli-darwin-arm64", "cli-linux-x64-baseline", "cli-windows-x64-baseline"].map(
-			(packageName) => makePackage(nodeModules, `@kilocode/${packageName}`),
-		);
+		const staged = [
+			"cli-darwin-arm64",
+			"cli-linux-arm64",
+			"cli-linux-x64-baseline",
+			"cli-windows-x64-baseline",
+		].map((packageName) => makePackage(nodeModules, `@kilocode/${packageName}`));
 		const kept = makePackage(nodeModules, "@kilocode/cli");
 
 		await pruneProductionDependencies(nodeModules);

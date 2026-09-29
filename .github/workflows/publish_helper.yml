@@ -35,16 +35,25 @@ jobs:
       contents: read
     strategy:
       fail-fast: ${{ inputs.fail_fast }}
+      # `target` names the uploaded artifact; `os` selects per-OS setup steps.
+      # Forge builds for the runner's own arch, so each arch needs a native runner.
       matrix:
         include:
           - target: mac
+            os: mac
             runner: macos-latest
             timeout_minutes: 90
           - target: windows
+            os: windows
             runner: WinLatest-x64-8vCPU-32GB
             timeout_minutes: 60
           - target: linux
+            os: linux
             runner: ubuntu-latest
+            timeout_minutes: 60
+          - target: linux-arm64
+            os: linux
+            runner: ubuntu-24.04-arm
             timeout_minutes: 60
     env:
       NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
@@ -66,13 +75,13 @@ jobs:
         uses: ./.github/actions/setup-node-pnpm
 
       - name: Install Linux maker prerequisites
-        if: matrix.target == 'linux'
+        if: matrix.os == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install --yes build-essential fakeroot libsecret-1-dev pkg-config
 
       - name: Setup macOS code signing
-        if: matrix.target == 'mac'
+        if: matrix.os == 'mac'
         uses: ./.github/actions/setup-macos-codesign
         with:
           certificate_base64: ${{ secrets.OSX_BUILD_CERTIFICATE_BASE64 }}
@@ -82,7 +91,7 @@ jobs:
           notarization_key_issuer: ${{ secrets.OSX_NOTARIZATION_KEY_ISSUER }}
 
       - name: Setup Windows code signing
-        if: matrix.target == 'windows'
+        if: matrix.os == 'windows'
         uses: ./.github/actions/setup-windows-codesign
         with:
           client_id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -116,7 +125,7 @@ jobs:
         run: pnpm --filter @kilo-desktop/desktop run publish -- --dry-run
 
       - name: Smoke-test updater payload
-        if: matrix.target != 'linux'
+        if: matrix.os != 'linux'
         run: pnpm --filter @kilo-desktop/desktop run release:smoke
 
       - name: Publish tested release candidate

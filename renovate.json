@@ -23,11 +23,12 @@
 			"description": "Update all bundled Kilo CLI platform packages together for manual compatibility testing.",
 			"matchPackageNames": [
 				"@kilocode/cli-darwin-arm64",
+				"@kilocode/cli-linux-arm64",
 				"@kilocode/cli-linux-x64-baseline",
 				"@kilocode/cli-windows-x64-baseline"
 			],
 			"groupName": "Kilo CLI",
-			"minimumGroupSize": 3,
+			"minimumGroupSize": 4,
 			"rangeStrategy": "pin",
 			"automerge": false
 		},

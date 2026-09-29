@@ -16,6 +16,10 @@ describe("Kilo CLI distribution artifacts", () => {
 		});
 		expect(getKiloCliArtifact("win32", "x64").target).toBe("windows-x64-baseline");
 		expect(getKiloCliArtifact("linux", "x64").target).toBe("linux-x64-baseline");
+		expect(getKiloCliArtifact("linux", "arm64")).toMatchObject({
+			target: "linux-arm64",
+			packageName: "@kilocode/cli-linux-arm64",
+		});
 	});
 
 	it("rejects targets the release pipeline does not build", () => {

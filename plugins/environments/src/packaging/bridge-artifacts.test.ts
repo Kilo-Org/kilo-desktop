@@ -67,9 +67,14 @@ describe("getPayloadPackageName", () => {
 		);
 	});
 
+	it("returns the linux-arm64 package", () => {
+		expect(getPayloadPackageName("linux", "arm64")).toBe(
+			"@anaconda/desktop-bridge-payload-linux-arm64",
+		);
+	});
+
 	it("returns null for unsupported platform/arch", () => {
 		expect(getPayloadPackageName("darwin", "x64")).toBeNull();
-		expect(getPayloadPackageName("linux", "arm64")).toBeNull();
 		expect(getPayloadPackageName("win32", "arm64")).toBeNull();
 		expect(getPayloadPackageName("freebsd" as NodeJS.Platform, "x64")).toBeNull();
 	});

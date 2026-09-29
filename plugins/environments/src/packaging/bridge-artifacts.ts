@@ -50,6 +50,7 @@ export interface BridgePayloadInfo {
 const PAYLOAD_PACKAGES: Record<string, string> = {
 	"darwin-arm64": "@anaconda/desktop-bridge-payload-darwin-arm64",
 	"linux-x64": "@anaconda/desktop-bridge-payload-linux-x64",
+	"linux-arm64": "@anaconda/desktop-bridge-payload-linux-arm64",
 	"win32-x64": "@anaconda/desktop-bridge-payload-win32-x64",
 };
 

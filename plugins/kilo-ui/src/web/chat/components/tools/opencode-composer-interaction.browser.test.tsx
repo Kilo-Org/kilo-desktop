@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type * as ReactAui from "@assistant-ui/react";
 import type * as ReactOpenCode from "@assistant-ui/react-opencode";
 import { page } from "vitest/browser";
 
@@ -15,6 +16,14 @@ const runtime = vi.hoisted(() => ({
 	questions: [] as OpenCodeQuestionRequest[],
 	state: undefined as OpenCodeThreadState | undefined,
 	replyToPermission: vi.fn(async () => undefined),
+}));
+
+vi.mock("@assistant-ui/react", async (importOriginal) => ({
+	...(await importOriginal<typeof ReactAui>()),
+	// The permission card reads the tool call's args from the thread; tests render
+	// without an AuiProvider, so stub the selector with an empty thread.
+	useAuiState: (selector: (state: { thread: { messages: unknown[] } }) => unknown) =>
+		selector({ thread: { messages: [] } }),
 }));
 
 vi.mock("@assistant-ui/react-opencode", async (importOriginal) => ({

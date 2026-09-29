@@ -4,7 +4,7 @@ import {
 	type QuestionAnswer,
 	useOpenCodeRuntimeExtras,
 } from "@assistant-ui/react-opencode";
-import { CircleAlertIcon } from "lucide-react";
+import { CircleAlertIcon, ShieldAlertIcon } from "lucide-react";
 
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Button } from "@kilo-desktop/ui/components/button";
@@ -24,6 +24,7 @@ import {
 } from "@kilo-desktop/ui/components/questionnaire";
 import type { SubagentOrigin } from "../../subagents/pending-interactions.js";
 import { ComposerShell } from "../composer-shelf.js";
+import { localCondaFileInstallWarning } from "./conda-local-file-warning.js";
 
 const questionName = (index: number) => `question-${index}`;
 
@@ -127,16 +128,33 @@ export const OpenCodeQuestionQuestionnaire = ({
 							<QuestionnaireTitle>{question.question}</QuestionnaireTitle>
 							{hasChoices || customAllowed ? (
 								<QuestionnaireChoices>
-									{question.options.map((option) => (
-										<QuestionnaireChoice key={option.label} value={option.label}>
-											<span className="font-medium">{option.label}</span>
-											{option.description ? (
-												<QuestionnaireChoiceDescription>
-													{option.description}
-												</QuestionnaireChoiceDescription>
-											) : null}
-										</QuestionnaireChoice>
-									))}
+									{question.options.map((option) => {
+										// An option that offers to install a local conda
+										// package file bypasses the Desktop guardrail; make
+										// that unmistakable, whatever the model's wording.
+										const warning = localCondaFileInstallWarning(
+											`${option.label} ${option.description ?? ""}`,
+										);
+										return (
+											<QuestionnaireChoice key={option.label} value={option.label}>
+												<span className="font-medium">{option.label}</span>
+												{option.description ? (
+													<QuestionnaireChoiceDescription>
+														{option.description}
+													</QuestionnaireChoiceDescription>
+												) : null}
+												{warning ? (
+													<span
+														data-slot="questionnaire-choice-warning"
+														className="text-destructive flex items-start gap-1.5 text-xs font-medium"
+													>
+														<ShieldAlertIcon className="mt-0.5 size-3.5 shrink-0" />
+														<span>{warning}</span>
+													</span>
+												) : null}
+											</QuestionnaireChoice>
+										);
+									})}
 									{customAllowed ? (
 										<QuestionnaireInput
 											aria-label="Other answer"

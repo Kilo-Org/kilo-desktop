@@ -26,6 +26,10 @@ import {
 import type { SessionActivityStore } from "../session-activity/session-activity-store.js";
 import { createDeferredKiloRuntimeClient } from "./create-deferred-kilo-runtime-client.js";
 import { createKiloDirectoryClient, createKiloGlobalClient } from "./create-kilo-runtime-client.js";
+import {
+	buildCondaCliPermissionRules,
+	buildMutatingCondaPermissionRules,
+} from "./conda-tool-permissions.js";
 import { withKiloDesktopSessionListFilter } from "./with-kilo-desktop-session-list-filter.js";
 import { withPromptOptions, type PromptOptionGetters } from "./with-prompt-options.js";
 import {
@@ -317,7 +321,14 @@ export function createKiloRuntimeBackend({
 					workspaceFolders,
 					...(worktree ? { worktreeBranch: worktree.branch } : {}),
 				});
-				const permission = buildWorkspacePermissionRules(workspaceFolders);
+				// Workspace folders (external_directory) plus per-action consent for
+				// the agent's mutating conda tools and for mutating conda-family
+				// commands run through bash (they prompt before executing).
+				const permission = [
+					...buildWorkspacePermissionRules(workspaceFolders),
+					...buildMutatingCondaPermissionRules(),
+					...buildCondaCliPermissionRules(),
+				];
 				const response = await directoryClient(directory).session.create(
 					{
 						...metadata,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	agentChannelSchema,
 	channelSchema,
 	condaChannelsAddInputSchema,
 	condaChannelsListResultSchema,
@@ -161,6 +162,31 @@ describe("matchSpecSchema", () => {
 		expect(matchSpecSchema.safeParse("--dry-run").success).toBe(false);
 		expect(matchSpecSchema.safeParse("-c").success).toBe(false);
 	});
+
+	it("rejects a local file path or URL as a package", () => {
+		// A path/URL spec makes conda install the referenced artifact directly
+		// and run its link scripts, bypassing any channel trust decision —
+		// high risk, unsupported by the managed tools.
+		for (const spec of [
+			"/Users/me/Downloads/pandas-3.0.6-py314hd1d6bd3_1.tar.bz2",
+			"~/pkg.tar.bz2",
+			"./pkg.conda",
+			"../pkg",
+			"file:///tmp/pkg",
+			"https://evil.example/pkg-1.0-0.conda",
+			"C:\\pkgs\\pkg.tar.bz2",
+		]) {
+			expect(matchSpecSchema.safeParse(spec).success).toBe(false);
+		}
+	});
+
+	it("explains the local-file refusal with the high-risk message", () => {
+		const result = matchSpecSchema.safeParse("/Users/me/pkg.tar.bz2");
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			expect(result.error.issues[0]?.message).toMatch(/high security risk/i);
+		}
+	});
 });
 
 describe("channelSchema", () => {
@@ -188,6 +214,38 @@ describe("channelSchema", () => {
 		// with a dash.
 		expect(channelSchema.safeParse("--override-channels").success).toBe(false);
 		expect(channelSchema.safeParse("-c").success).toBe(false);
+	});
+});
+
+describe("agentChannelSchema", () => {
+	it("accepts named channels", () => {
+		for (const ch of ["defaults", "main", "conda-forge", "bioconda"]) {
+			expect(agentChannelSchema.parse(ch)).toBe(ch);
+		}
+	});
+
+	it("refuses URL and local-path channels (C1 gate 2)", () => {
+		// A prompt injection that supplies one of these points conda at an
+		// attacker-controlled or local source whose packages run link scripts.
+		for (const ch of [
+			"https://evil.example/conda",
+			"file:///tmp/channel",
+			"/tmp/channel",
+			"~/channel",
+			"./channel",
+			"../channel",
+			"C:\\channel",
+		]) {
+			expect(agentChannelSchema.safeParse(ch).success).toBe(false);
+		}
+	});
+
+	it("explains the refusal", () => {
+		const result = agentChannelSchema.safeParse("file:///tmp/channel");
+		expect(result.success).toBe(false);
+		if (!result.success) {
+			expect(result.error.issues[0]?.message).toMatch(/cannot be a URL or a local path/i);
+		}
 	});
 });
 
@@ -245,6 +303,15 @@ describe("conda.envs I/O", () => {
 		expect(condaEnvsCreateInputSchema.safeParse({ name: "py311", channels: [] }).success).toBe(
 			false,
 		);
+	});
+
+	it("condaEnvsCreateInputSchema rejects a local file path in packages", () => {
+		expect(
+			condaEnvsCreateInputSchema.safeParse({
+				name: "py311",
+				packages: ["file:///tmp/pkg.tar.bz2"],
+			}).success,
+		).toBe(false);
 	});
 
 	it("condaEnvsCreateInputSchema accepts an absolute prefix", () => {
@@ -562,6 +629,17 @@ describe("conda.packages I/O", () => {
 	it("condaPackagesInstallInputSchema accepts prefix + packages", () => {
 		const input = { prefix: "/opt/conda", packages: ["numpy>=1.24"] };
 		expect(condaPackagesInstallInputSchema.parse(input)).toEqual(input);
+	});
+
+	it("condaPackagesInstallInputSchema rejects a local file path in packages", () => {
+		// The install tool validates against this schema, so the refusal has to
+		// reach the boundary the agent's call crosses.
+		expect(
+			condaPackagesInstallInputSchema.safeParse({
+				name: "dev",
+				packages: ["/Users/me/Downloads/pandas-3.0.6-py314hd1d6bd3_1.tar.bz2"],
+			}).success,
+		).toBe(false);
 	});
 
 	it("condaPackagesInstallResultSchema round-trips job + envName + installed", () => {

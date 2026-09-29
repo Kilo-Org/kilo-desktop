@@ -22,6 +22,8 @@
  *   provider. See {@link matchSpecSchema}.
  * - Channels are raw conda channel identifiers (short names like
  *   `"conda-forge"`, URLs, or `file://` paths). See {@link channelSchema}.
+ *   Agent-initiated tools accept only named channels — see
+ *   {@link agentChannelSchema}.
  * - Environment names follow conda's own rules: start with an
  *   alphanumeric, then alphanumerics or `.`, `_`, `-`. See
  *   {@link environmentNameSchema}.
@@ -93,6 +95,28 @@ export const envTargetSchema = z
 export type EnvTarget = z.infer<typeof envTargetSchema>;
 
 /**
+ * True when a package spec names a source directly rather than a
+ * channel-hosted package: a URL, a `file:` URI, or a local filesystem path.
+ *
+ * Such a spec would make conda install the referenced artifact directly and
+ * run its link scripts outside any channel trust decision. Mirrors the
+ * renderer's warning predicate in `conda-tool-invocation.ts`; duplicated
+ * rather than imported because a cross-plugin runtime import is forbidden.
+ */
+function isUrlOrPathSpec(value: string): boolean {
+	const spec = value.trim();
+	return (
+		spec.includes("://") ||
+		/^file:/i.test(spec) ||
+		spec.startsWith("/") ||
+		spec.startsWith("~") ||
+		spec.startsWith("./") ||
+		spec.startsWith("../") ||
+		/^[a-z]:[\\/]/i.test(spec)
+	);
+}
+
+/**
  * Raw conda MatchSpec string, e.g. `"numpy"`, `"numpy>=1.24"`,
  * `"conda-forge::pandas=2.*=py311_*"`. The contract accepts any
  * non-empty, single-line, printable string; deeper validation
@@ -103,6 +127,12 @@ export type EnvTarget = z.infer<typeof envTargetSchema>;
  * they cannot smuggle a conda CLI flag through as a positional argv —
  * Python argparse accepts options interspersed with positionals, and
  * MatchSpec strings never legitimately start with a dash.
+ *
+ * Values that name a source directly — a URL, a `file:` URI, or a local
+ * filesystem path — are also rejected. A package argument like
+ * `/…/pkg.tar.bz2` makes conda install that artifact directly and run its
+ * link scripts outside any channel trust decision, so the managed tools
+ * refuse it and require installation from a channel instead.
  */
 export const matchSpecSchema = z
 	.string()
@@ -116,6 +146,11 @@ export const matchSpecSchema = z
 	})
 	.refine((value) => !value.startsWith("-"), {
 		message: "MatchSpec must not start with '-' — that would look like a conda CLI flag.",
+	})
+	.refine((value) => !isUrlOrPathSpec(value), {
+		message:
+			"A conda package cannot be a local file path or URL — installing from a local file " +
+			"has a high security risk and is not recommended. Install from a channel instead.",
 	});
 export type MatchSpec = z.infer<typeof matchSpecSchema>;
 
@@ -128,6 +163,10 @@ export type MatchSpec = z.infer<typeof matchSpecSchema>;
  * A leading `-` is rejected so a channel identifier cannot pass for a
  * conda CLI flag when appended to argv. Legitimate channel names, URLs,
  * and file paths never start with `-`.
+ *
+ * This permissive form is for UI-driven flows (e.g. `conda.channels.add`)
+ * where a user may legitimately configure a URL channel. Agent-initiated
+ * installs use {@link agentChannelSchema} instead.
  */
 export const channelSchema = z
 	.string()
@@ -143,6 +182,26 @@ export const channelSchema = z
 		message: "Channel must not start with '-' — that would look like a conda CLI flag.",
 	});
 export type Channel = z.infer<typeof channelSchema>;
+
+export const AGENT_CHANNEL_REFUSAL_MESSAGE =
+	"A conda channel cannot be a URL or a local path — pointing conda at an untrusted " +
+	"or local source is high risk (its packages run link scripts in your real conda) and " +
+	"is not supported for agent-initiated installs. Use a named channel such as " +
+	"`defaults` or `conda-forge`.";
+
+/**
+ * Agent-facing channel: a **named** channel only. URLs (`https://…`) and local
+ * sources (`file://…`, `/…`, `~/…`, `C:\…`) are refused — a prompt injection
+ * that supplies such a channel is the C1 code-execution vector, since conda
+ * links packages from it with their post-link scripts executed.
+ *
+ * The permissive {@link channelSchema} stays in place for UI flows like
+ * `conda.channels.add`, where a user may configure a URL channel deliberately.
+ */
+export const agentChannelSchema = channelSchema.refine((value) => !isUrlOrPathSpec(value), {
+	message: AGENT_CHANNEL_REFUSAL_MESSAGE,
+});
+export type AgentChannel = z.infer<typeof agentChannelSchema>;
 
 /* --------------------------------------------------------------------- */
 /* Domain value schemas                                                  */

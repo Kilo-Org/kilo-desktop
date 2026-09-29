@@ -3,6 +3,8 @@ import { z } from "zod";
 import type { SDK } from "@kilo-desktop/feature-sdk";
 
 import {
+	AGENT_CHANNEL_REFUSAL_MESSAGE,
+	agentChannelSchema,
 	condaEnvsCloneInputSchema,
 	condaEnvsCreateFromFileInputSchema,
 	condaEnvsCreateInputSchema,
@@ -13,6 +15,23 @@ import {
 	condaPackagesUpdateInputSchema,
 	condaRepodataFindInputSchema,
 } from "../../../contracts/providers/conda.js";
+
+/**
+ * True when every entry in a model-supplied `channels` array is a named
+ * channel. Agent-initiated installs must not point conda at a URL or local
+ * source (the C1 code-execution vector), so the MCP-facing schemas reject
+ * them even though the permissive contract schema still allows them for the
+ * UI's own channel config.
+ */
+function hasOnlyNamedChannels(value: { channels?: string[] | undefined }): boolean {
+	return (value.channels ?? []).every((channel) => agentChannelSchema.safeParse(channel).success);
+}
+
+/** Shared refusal for a model-supplied non-named channel. */
+const AGENT_CHANNEL_REFUSAL = {
+	message: AGENT_CHANNEL_REFUSAL_MESSAGE,
+	path: ["channels"],
+};
 
 /**
  * Register provider-scoped WebMCP tools for the conda provider. Called by
@@ -69,14 +88,21 @@ export function registerCondaTools(sdk: SDK): void {
 	});
 
 	// The MCP-exposed schema omits `prefix` so LLMs cannot target arbitrary
-	// filesystem locations. The UI channel handler accepts the full schema.
-	const mcpCreateSchema = condaEnvsCreateInputSchema.omit({ prefix: true });
+	// filesystem locations, and refuses URL/local channels (C1 gate 2). The UI
+	// channel handler accepts the full, permissive schema.
+	const mcpCreateSchema = condaEnvsCreateInputSchema
+		.omit({ prefix: true })
+		.refine(hasOnlyNamedChannels, AGENT_CHANNEL_REFUSAL);
 	sdk.tools.register({
 		name: "conda.envs.create",
 		description:
 			"Create a new named conda environment inside the plugin-scoped base. " +
 			"Optionally installs packages from the given channels during creation. " +
-			"Fails with ENV_EXISTS if the name is already in use.",
+			"Local file paths and URLs are rejected as packages — installing from a " +
+			"local file has a high security risk and is not recommended; install from " +
+			"a channel instead. Channels must be named channels (`defaults`, " +
+			"`conda-forge`, …); URL or local-path channels are refused. Fails with " +
+			"ENV_EXISTS if the name is already in use.",
 		inputSchema: z.toJSONSchema(mcpCreateSchema, { target: "draft-2020-12" }),
 		validate: mcpCreateSchema,
 		exposeToModelContext: true,
@@ -135,6 +161,12 @@ export function registerCondaTools(sdk: SDK): void {
 		handler: (args) => sdk.invoke("conda.packages.list", args),
 	});
 
+	// Model-facing install/update/find schemas additionally refuse URL/local
+	// channels (C1 gate 2); the contract schemas stay permissive for the UI.
+	const mcpInstallSchema = condaPackagesInstallInputSchema.refine(
+		hasOnlyNamedChannels,
+		AGENT_CHANNEL_REFUSAL,
+	);
 	sdk.tools.register({
 		name: "conda.packages.install",
 		description:
@@ -142,12 +174,17 @@ export function registerCondaTools(sdk: SDK): void {
 			"(use conda.envs.create instead to make a new environment). Identify " +
 			"the environment by name or by prefix path, and pass one or more raw " +
 			'conda MatchSpec strings (e.g. "faker", "numpy>=1.24", ' +
-			'"conda-forge::pandas"). Optionally restrict solving to specific ' +
-			"channels. Adds state (not destructive); fails with SOLVE_FAILED when " +
+			'"conda-forge::pandas"). Local file paths and URLs are rejected as ' +
+			"packages — installing from a local file has a high security risk and is " +
+			"not recommended; install from a channel instead. Optionally restrict " +
+			"solving to specific named channels (`defaults`, `conda-forge`, …) — " +
+			"URL or local-path channels are refused. Adds state (not destructive); " +
+			"fails with " +
+			"SOLVE_FAILED when " +
 			"the requested specs cannot be satisfied. Call conda.repodata.find " +
 			"first if you need to confirm a package or version is available.",
-		inputSchema: z.toJSONSchema(condaPackagesInstallInputSchema, { target: "draft-2020-12" }),
-		validate: condaPackagesInstallInputSchema,
+		inputSchema: z.toJSONSchema(mcpInstallSchema, { target: "draft-2020-12" }),
+		validate: mcpInstallSchema,
 		exposeToModelContext: true,
 		handler: (args) => sdk.invoke("conda.packages.install", args),
 	});
@@ -168,6 +205,10 @@ export function registerCondaTools(sdk: SDK): void {
 		handler: (args) => sdk.invoke("conda.packages.remove", args),
 	});
 
+	const mcpUpdateSchema = condaPackagesUpdateInputSchema.refine(
+		hasOnlyNamedChannels,
+		AGENT_CHANNEL_REFUSAL,
+	);
 	sdk.tools.register({
 		name: "conda.packages.update",
 		description:
@@ -176,18 +217,23 @@ export function registerCondaTools(sdk: SDK): void {
 			'pass `packages` (one or more names/MatchSpecs, e.g. "numpy", ' +
 			'"conda-forge::pandas") to update just those, or set `updateAll: true` ' +
 			"(with no `packages`) to update every package in the environment. " +
+			"Local file paths and URLs are rejected as packages — installing from a " +
+			"local file has a high security risk and is not recommended; install from " +
+			"a channel instead. " +
 			"A version-less package updates to the newest version COMPATIBLE with " +
 			"the environment's existing constraints (not an unconditional jump to " +
 			'the absolute latest); pin a version like "numpy=1.26" to constrain it. ' +
-			"Optionally restrict solving to specific channels. WARNING: updating can " +
+			"Optionally restrict solving to specific named channels (`defaults`, " +
+			"`conda-forge`, …) — URL or local-path channels are refused. " +
+			"WARNING: updating can " +
 			"BREAK the environment — it REPLACES installed package versions and the " +
 			"solver may relink or downgrade other packages and their dependencies to " +
 			"keep the environment consistent, which can make packages that relied on " +
 			"the previous versions stop working. This applies to a single targeted " +
 			"package as much as to updateAll, so warn the user before proceeding. " +
 			"Fails with SOLVE_FAILED when the update cannot be satisfied.",
-		inputSchema: z.toJSONSchema(condaPackagesUpdateInputSchema, { target: "draft-2020-12" }),
-		validate: condaPackagesUpdateInputSchema,
+		inputSchema: z.toJSONSchema(mcpUpdateSchema, { target: "draft-2020-12" }),
+		validate: mcpUpdateSchema,
 		annotations: { destructiveHint: true },
 		exposeToModelContext: true,
 		handler: (args) => sdk.invoke("conda.packages.update", args),
@@ -207,6 +253,10 @@ export function registerCondaTools(sdk: SDK): void {
 		handler: () => sdk.invoke("conda.channels.list"),
 	});
 
+	const mcpRepodataFindSchema = condaRepodataFindInputSchema.refine(
+		hasOnlyNamedChannels,
+		AGENT_CHANNEL_REFUSAL,
+	);
 	sdk.tools.register({
 		name: "conda.repodata.find",
 		description:
@@ -215,14 +265,15 @@ export function registerCondaTools(sdk: SDK): void {
 			"partial matching (results ranked exact > prefix > substring). Use one " +
 			"or the other, not both. Omit both only to walk the whole index, which " +
 			"is slow and returns thousands of packages. Optionally narrow by " +
-			"`channels` and platform `subdirs`. Each result aggregates one package: " +
+			"`channels` (named channels only — URL or local-path channels are " +
+			"refused) and platform `subdirs`. Each result aggregates one package: " +
 			"`version` is the newest available version, `build` is that version's " +
 			"build number, and `versions` lists every version with its size. " +
 			"Results are capped at `limit` (default 100) and `truncated` is true " +
 			"when more existed. Use this to check whether a package (or a specific " +
 			"version of it) is installable before calling conda.packages.install.",
-		inputSchema: z.toJSONSchema(condaRepodataFindInputSchema, { target: "draft-2020-12" }),
-		validate: condaRepodataFindInputSchema,
+		inputSchema: z.toJSONSchema(mcpRepodataFindSchema, { target: "draft-2020-12" }),
+		validate: mcpRepodataFindSchema,
 		annotations: { readOnlyHint: true },
 		exposeToModelContext: true,
 		handler: (args) => sdk.invoke("conda.repodata.find", args),

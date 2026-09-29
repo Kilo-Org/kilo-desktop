@@ -7,6 +7,10 @@ import { LOCAL_MODEL_SERVER_PROVIDER_ID } from "../../providers/provider-ids.js"
 import { createSessionActivityStore } from "../session-activity/session-activity-store.js";
 import { createKiloRuntimeBackend } from "./create-kilo-runtime-backend.js";
 import { createKiloDirectoryClient, createKiloGlobalClient } from "./create-kilo-runtime-client.js";
+import {
+	buildCondaCliPermissionRules,
+	buildMutatingCondaPermissionRules,
+} from "./conda-tool-permissions.js";
 
 vi.mock("./create-kilo-runtime-client.js", () => ({
 	createKiloDirectoryClient: vi.fn(),
@@ -119,7 +123,11 @@ describe("createKiloRuntimeBackend", () => {
 		expect(prepareSession).toHaveBeenCalledOnce();
 		expect(createKiloDirectoryClient).toHaveBeenCalledWith(connection, "/workspace/selected");
 		expect(create).toHaveBeenCalledWith(
-			{ metadata: { "kilo-desktop": {} } },
+			{
+				metadata: { "kilo-desktop": {} },
+				// Per-action consent applies regardless of workspace folders.
+				permission: [...buildMutatingCondaPermissionRules(), ...buildCondaCliPermissionRules()],
+			},
 			{ throwOnError: true },
 		);
 
@@ -172,6 +180,10 @@ describe("createKiloRuntimeBackend", () => {
 						pattern: "/workspace/reference/*",
 						action: "allow",
 					},
+					// Mutating conda tools require per-action user approval.
+					...buildMutatingCondaPermissionRules(),
+					// Mutating conda-family CLI commands (bash) require it too.
+					...buildCondaCliPermissionRules(),
 				],
 			},
 			{ throwOnError: true },

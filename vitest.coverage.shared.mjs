@@ -17,6 +17,9 @@ export function createCoverageConfig(extraExclude = []) {
 			"**/*.integration.test.*",
 			"**/dist/**",
 			"**/.vite/**",
+			// Package-local vite/vitest caches: optimized-dep bundles copied out
+			// of node_modules land here and would dilute the thresholds.
+			"**/.vitest/**",
 			"**/*.config.ts",
 			"**/routeTree.gen.ts",
 			...extraExclude,

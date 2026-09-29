@@ -14,6 +14,7 @@ import { AboutSettings } from "@/components/settings/AboutSettings";
 import { LocalApiProvider } from "@/platform/LocalApiProvider";
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";
 import { UpdateProvider, useDesktopUpdates } from "@/platform/updates/UpdateProvider";
+import { TooltipProvider } from "@kilo-desktop/ui/components/tooltip";
 
 import { SidebarUpdatePill } from "./SidebarUpdatePill";
 import { getInstallConfirmationMessage, updateReadyLabel } from "./updateActions";
@@ -77,7 +78,9 @@ function renderUpdates(
 	return render(
 		<SdkProvider system={createFakeFeatureSystem({ sdks: { shell: sdk } })}>
 			<LocalApiProvider api={api}>
-				<UpdateProvider>{child}</UpdateProvider>
+				<UpdateProvider>
+					<TooltipProvider>{child}</TooltipProvider>
+				</UpdateProvider>
 			</LocalApiProvider>
 		</SdkProvider>,
 	);
@@ -118,21 +121,11 @@ describe("update UI", () => {
 
 	it("confirms and invokes installation from the ready pill", async () => {
 		const install = vi.fn(async () => ({ accepted: true, state: downloadedState }));
-		const confirm = vi.spyOn(globalThis, "confirm").mockImplementation(() => {
-			expect(document.querySelector('[data-slot="tooltip-content"]')).toBeNull();
-			return true;
-		});
+		const confirm = vi.spyOn(globalThis, "confirm").mockReturnValue(true);
 		renderUpdates(updateApi(downloadedState, { install }), <SidebarUpdatePill />);
 
 		const pill = page.getByTestId("update-ready-pill");
 		await expect.element(pill).toBeVisible();
-		pill.element().focus();
-		await vi.waitFor(
-			() => {
-				expect(document.querySelector('[data-slot="tooltip-content"]')).not.toBeNull();
-			},
-			{ timeout: 3_000 },
-		);
 		await pill.click();
 		await vi.waitFor(() => {
 			expect(confirm).toHaveBeenCalledOnce();

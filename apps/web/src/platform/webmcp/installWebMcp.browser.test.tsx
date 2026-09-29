@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 import type { ModelContextTesting } from "@mcp-b/webmcp-types";
@@ -24,6 +24,13 @@ function listToolNames(): string[] {
 }
 
 describe("installWebMcp", () => {
+	// The install must not depend on test order: a shuffled run executes these
+	// tests in any sequence, so the one shared install happens in beforeAll
+	// rather than in whichever test happens to run first. Repeat calls are
+	// no-ops (the "second install call" test pins that).
+	beforeAll(() => {
+		installWebMcp(system);
+	});
 	it("publishes only opted-in tools and executes them through the registry", async () => {
 		todos.tools.register({
 			name: "echo",

@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
 import { SdkProvider } from "@kilo-desktop/sdk-react";
@@ -104,7 +104,21 @@ function renderDialog(
 	);
 }
 
-afterEach(cleanup);
+/**
+ * The dialog re-solves its preview through a 2 s debounce. Fake only
+ * setTimeout/clearTimeout so the wait advances the fake clock instead of
+ * real time; `vi.waitFor` and `expect.element` polls advance it themselves,
+ * and the Playwright-driven `userEvent` interactions run over CDP on real
+ * time.
+ */
+beforeEach(() => {
+	vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+});
+
+afterEach(() => {
+	vi.useRealTimers();
+	cleanup();
+});
 
 describe("UpdateConfirmationDialog", () => {
 	it("auto-runs a preview on open with every upgradable package pinned to its latest version", async () => {

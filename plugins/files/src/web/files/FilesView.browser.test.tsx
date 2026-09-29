@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { QueryClient, QueryClientProvider, focusManager } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
@@ -233,7 +233,48 @@ async function replaceEditorText(contents: string): Promise<void> {
 	await userEvent.keyboard(contents);
 }
 
+const WATCHER_DEBOUNCE_PASSED_MS = 700;
+
+/**
+ * Fake only setTimeout/clearTimeout, before the view mounts, so the watcher
+ * debounce (including useDebounce's guarded mount-time fire) arms on the fake
+ * clock — a real timer armed before faking stays invisible to the fake clock
+ * and can fire a stale refresh after the assertions. The trees and editor
+ * still render on the real requestAnimationFrame.
+ */
+function fakeWatcherClock(): void {
+	vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+}
+
+/**
+ * Emits one watcher batch under the fake clock. `act` flushes the watcher's
+ * counter bump so the debounce re-arm lands inside the same step — otherwise
+ * the re-render waits on a real macrotask that `advanceTimersByTimeAsync`
+ * never yields to, and the debounce would not fire under the fake clock.
+ */
+async function emitWatcherBatch(
+	view: ReturnType<typeof renderView>,
+	root: string,
+	changes: WorkspaceFileChangeEvent["changes"],
+): Promise<void> {
+	await act(async () => {
+		view.system.services.featureRouter.eventBus.emit(WORKSPACE_FILE_CHANGE_EVENT, {
+			root,
+			changes,
+		} satisfies WorkspaceFileChangeEvent);
+	});
+}
+
+/** Past the 300 ms watcher debounce on the fake clock, for no-refresh assertions. */
+async function advancePastWatcherDebounce(): Promise<void> {
+	await vi.advanceTimersByTimeAsync(WATCHER_DEBOUNCE_PASSED_MS);
+}
+
 afterEach(() => {
+	// Restore real timers before cleanup: the fake clearTimeout does not
+	// cancel native timer ids, so a pending debounce must be cleared while the
+	// real clearTimeout is in place.
+	vi.useRealTimers();
 	cleanup();
 	localStorage.clear();
 	// Boolean focus notifications (configureDesktopFocusManager) make the
@@ -879,18 +920,16 @@ describe("FilesView", () => {
 			truncated: false,
 		}));
 		const gitStatus = vi.fn<FilesServiceContract["gitStatus"]>(async () => null);
+		fakeWatcherClock();
 		const view = renderView({ ...handlers(), list, gitStatus });
 		await vi.waitFor(() => expect(treeItem("docs/")).not.toBeNull());
 		const listCalls = list.mock.calls.length;
 		const gitStatusCalls = gitStatus.mock.calls.length;
 
-		view.system.services.featureRouter.eventBus.emit(WORKSPACE_FILE_CHANGE_EVENT, {
-			root: "/other-workspace",
-			changes: [{ path: "/other-workspace/new-file.txt", type: "create" }],
-		} satisfies WorkspaceFileChangeEvent);
-		await new Promise((resolve) => {
-			setTimeout(resolve, 700);
-		});
+		await emitWatcherBatch(view, "/other-workspace", [
+			{ path: "/other-workspace/new-file.txt", type: "create" },
+		]);
+		await advancePastWatcherDebounce();
 		expect(list).toHaveBeenCalledTimes(listCalls);
 		expect(gitStatus).toHaveBeenCalledTimes(gitStatusCalls);
 	});
@@ -992,17 +1031,15 @@ describe("FilesView", () => {
 			truncated: false,
 			revision: "a".repeat(64),
 		}));
+		fakeWatcherClock();
 		const view = renderView({ ...handlers(), read }, filePane("src/index.ts"));
 		await replaceEditorText("const version = 2; // local edit");
 		expect(read).toHaveBeenCalledOnce();
 
-		view.system.services.featureRouter.eventBus.emit(WORKSPACE_FILE_CHANGE_EVENT, {
-			root: "/workspace",
-			changes: [{ path: "/workspace/src/index.ts", type: "update" }],
-		} satisfies WorkspaceFileChangeEvent);
-		await new Promise((resolve) => {
-			setTimeout(resolve, 700);
-		});
+		await emitWatcherBatch(view, "/workspace", [
+			{ path: "/workspace/src/index.ts", type: "update" },
+		]);
+		await advancePastWatcherDebounce();
 
 		expect(read).toHaveBeenCalledOnce();
 	});
@@ -1030,24 +1067,22 @@ describe("FilesView", () => {
 			void relativePath; // referenced for clarity
 			return secondReadDeferred;
 		});
+		fakeWatcherClock();
 		const view = renderView({ ...handlers(), read }, filePane("src/index.ts"));
 		// Wait for file A to fully load.
 		await vi.waitFor(() => expect(diffsEditorText()).toContain("const a = 1;"));
 		expect(read).toHaveBeenCalledOnce();
 
 		// Emit a watcher update for file A — arms the 300 ms debounce.
-		view.system.services.featureRouter.eventBus.emit(WORKSPACE_FILE_CHANGE_EVENT, {
-			root: "/workspace",
-			changes: [{ path: "/workspace/src/index.ts", type: "update" }],
-		} satisfies WorkspaceFileChangeEvent);
+		await emitWatcherBatch(view, "/workspace", [
+			{ path: "/workspace/src/index.ts", type: "update" },
+		]);
 
 		// Immediately click file B — its read is now in-flight (loading: true).
 		view.rerenderView(filePane("docs/readme.md"));
 
 		// Wait past the 300 ms debounce window; the watcher must not issue a third read.
-		await new Promise((resolve) => {
-			setTimeout(resolve, 700);
-		});
+		await advancePastWatcherDebounce();
 		expect(read).toHaveBeenCalledTimes(2);
 
 		// Resolve file B's deferred read and verify its content renders.
@@ -1091,21 +1126,18 @@ describe("FilesView", () => {
 			truncated: false,
 			revision: "a".repeat(64),
 		}));
+		fakeWatcherClock();
 		const view = renderView({ ...handlers(), read }, filePane("src/index.ts"));
 		await vi.waitFor(() => expect(diffsContentEditable()?.textContent).toContain("version = 1"));
 		expect(read).toHaveBeenCalledOnce();
 
-		view.system.services.featureRouter.eventBus.emit(WORKSPACE_FILE_CHANGE_EVENT, {
-			root: "/workspace",
-			changes: [{ path: "/workspace/src/other.ts", type: "update" }],
-		} satisfies WorkspaceFileChangeEvent);
-		view.system.services.featureRouter.eventBus.emit(WORKSPACE_FILE_CHANGE_EVENT, {
-			root: "/other-workspace",
-			changes: [{ path: "/other-workspace/src/index.ts", type: "update" }],
-		} satisfies WorkspaceFileChangeEvent);
-		await new Promise((resolve) => {
-			setTimeout(resolve, 700);
-		});
+		await emitWatcherBatch(view, "/workspace", [
+			{ path: "/workspace/src/other.ts", type: "update" },
+		]);
+		await emitWatcherBatch(view, "/other-workspace", [
+			{ path: "/other-workspace/src/index.ts", type: "update" },
+		]);
+		await advancePastWatcherDebounce();
 
 		expect(read).toHaveBeenCalledOnce();
 	});
@@ -1740,8 +1772,8 @@ describe("FilesView", () => {
 			revision: "b".repeat(64),
 		});
 
-		// Give the dispatch a tick to settle.
-		await new Promise((resolve) => setTimeout(resolve, 50));
+		// Flush the dispatch that the resolved refresh read queues.
+		await act(async () => {});
 
 		// The editor must still show the typed text and be dirty.
 		expect(diffsEditorText()).toContain("const a = 2; // typed during refresh");

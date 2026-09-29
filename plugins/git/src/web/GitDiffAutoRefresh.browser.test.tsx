@@ -54,19 +54,25 @@ async function waitForSettledFetches(
 }
 
 /**
- * Lets useDebounce's mount-time fire happen on the real clock, then fakes
- * only setTimeout/clearTimeout. A real timer armed before faking is
- * invisible to the fake clock, so it would fire once more mid-test (the
- * change counter is past 0 by then) and inject a spurious refresh. The
- * load pipeline's yieldToBrowser still resolves through the real
- * requestAnimationFrame.
+ * Fakes only setTimeout/clearTimeout, and only before the view mounts: the
+ * watcher's debounce (including useDebounce's mount-time fire) then arms on
+ * the fake clock, while the load pipeline's yieldToBrowser still resolves
+ * through the real requestAnimationFrame. Faking after mount would leave a
+ * real debounce timer armed before faking, invisible to the fake clock, which
+ * fires once more mid-test (the change counter is past 0 by then) and injects
+ * a spurious refresh — the reason this helper predates renderView.
  */
-async function fakeTimersAfterMountDebounce(): Promise<void> {
-	await new Promise((resolve) => setTimeout(resolve, 1_150));
+function fakeWatcherClock(): void {
 	vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 }
 
+/** Past the 1 s mount-time debounce, whose fire is the zero-count guard. */
+async function advancePastMountDebounce(): Promise<void> {
+	await vi.advanceTimersByTimeAsync(DEBOUNCE_PASSED_MS);
+}
+
 async function renderSettledView(fetchMock: ReturnType<typeof stubFetch>) {
+	fakeWatcherClock();
 	const sdk = createFakeSdk({ featureId: "git" });
 	renderView({}, sdk);
 	await waitForTreePath("README.md");
@@ -74,6 +80,7 @@ async function renderSettledView(fetchMock: ReturnType<typeof stubFetch>) {
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 		expect(document.querySelector('[data-qa-id="git-diff-loading"]')).toBeNull();
 	});
+	await advancePastMountDebounce();
 	return sdk;
 }
 
@@ -87,7 +94,6 @@ describe("GitDiffView auto-refresh", () => {
 		const fetchMock = stubFetch(() => new Response(patchResponseStream()));
 		const sdk = await renderSettledView(fetchMock);
 		const emit = (...paths: string[]) => emitWorkspaceChanges(sdk, ROOT, paths);
-		await fakeTimersAfterMountDebounce();
 
 		const settleRefresh = async (expectedCount: number) => {
 			// Past the 1 s debounce; the refresh itself drains on the real
@@ -136,7 +142,6 @@ describe("GitDiffView auto-refresh", () => {
 	it("collapses changes during the cooldown into one follow-up", async () => {
 		const fetchMock = stubFetch(() => new Response(patchResponseStream()));
 		const sdk = await renderSettledView(fetchMock);
-		await fakeTimersAfterMountDebounce();
 
 		await emitWorkspaceChanges(sdk, ROOT, ["/workspace/project/src/a.ts"]);
 		await vi.advanceTimersByTimeAsync(DEBOUNCE_PASSED_MS);
@@ -159,7 +164,6 @@ describe("GitDiffView auto-refresh", () => {
 	it("runs a manual refresh during the cooldown immediately", async () => {
 		const fetchMock = stubFetch(() => new Response(patchResponseStream()));
 		const sdk = await renderSettledView(fetchMock);
-		await fakeTimersAfterMountDebounce();
 
 		await emitWorkspaceChanges(sdk, ROOT, ["/workspace/project/src/a.ts"]);
 		await vi.advanceTimersByTimeAsync(DEBOUNCE_PASSED_MS);
@@ -172,7 +176,6 @@ describe("GitDiffView auto-refresh", () => {
 	it("waits while the pane is hidden, then catches up once", async () => {
 		const fetchMock = stubFetch(() => new Response(patchResponseStream()));
 		const sdk = await renderSettledView(fetchMock);
-		await fakeTimersAfterMountDebounce();
 		// Stands in for a parked tab or a hidden pane group.
 		const wrapper = document.querySelector('[data-qa-id="git-diff-root"]')!.parentElement!;
 		wrapper.hidden = true;
@@ -194,7 +197,6 @@ describe("GitDiffView auto-refresh", () => {
 	it("waits while the window is hidden", async () => {
 		const fetchMock = stubFetch(() => new Response(patchResponseStream()));
 		const sdk = await renderSettledView(fetchMock);
-		await fakeTimersAfterMountDebounce();
 		setDocumentVisibility("hidden");
 
 		await emitWorkspaceChanges(sdk, ROOT, ["/workspace/project/src/a.ts"]);
@@ -213,7 +215,6 @@ describe("GitDiffView auto-refresh", () => {
 				: new Response(patchResponseStream()),
 		);
 		const sdk = await renderSettledView(fetchMock);
-		await fakeTimersAfterMountDebounce();
 
 		await emitWorkspaceChanges(sdk, ROOT, ["/workspace/project/src/a.ts"]);
 		await vi.advanceTimersByTimeAsync(DEBOUNCE_PASSED_MS);
@@ -242,7 +243,6 @@ describe("GitDiffView auto-refresh", () => {
 				: new Response(patchResponseStream()),
 		);
 		const sdk = await renderSettledView(fetchMock);
-		await fakeTimersAfterMountDebounce();
 
 		await emitWorkspaceChanges(sdk, ROOT, ["/workspace/project/.git/HEAD"]);
 		await vi.advanceTimersByTimeAsync(DEBOUNCE_PASSED_MS);
@@ -270,11 +270,12 @@ describe("GitDiffView auto-refresh", () => {
 				: new Response(patchResponseStream()),
 		);
 		const sdk = createFakeSdk({ featureId: "git" });
+		fakeWatcherClock();
 		renderView({}, sdk);
 		await vi.waitFor(() => {
 			expect(document.querySelector('[data-qa-id="git-diff-retry"]')).not.toBeNull();
 		});
-		await fakeTimersAfterMountDebounce();
+		await advancePastMountDebounce();
 
 		await emitWorkspaceChanges(sdk, ROOT, ["/workspace/project/src/a.ts"]);
 		await vi.advanceTimersByTimeAsync(DEBOUNCE_PASSED_MS);
@@ -294,6 +295,7 @@ describe("GitDiffView auto-refresh", () => {
 				: new Response(patchResponseStream()),
 		);
 		const sdk = createFakeSdk({ featureId: "git" });
+		fakeWatcherClock();
 		renderView({}, sdk);
 		await vi.waitFor(() => {
 			const errorText = document.querySelector('[data-qa-id="git-diff-error"]')?.textContent ?? "";
@@ -304,7 +306,7 @@ describe("GitDiffView auto-refresh", () => {
 				document.querySelector('[data-qa-id="git-diff-tree-placeholder"]')?.textContent ?? "",
 			).toContain("Diff too large.");
 		});
-		await fakeTimersAfterMountDebounce();
+		await advancePastMountDebounce();
 
 		await emitWorkspaceChanges(sdk, ROOT, ["/workspace/project/src/a.ts"]);
 		await vi.advanceTimersByTimeAsync(DEBOUNCE_PASSED_MS);
@@ -318,7 +320,7 @@ describe("GitDiffView auto-refresh", () => {
 		});
 	});
 
-	/** Mounts with a resolved `repositoryType`, then fakes timers once the scope applies. */
+	/** Mounts with a resolved `repositoryType`, with the fake clock armed before render. */
 	async function renderResolvedScopeView(
 		fetchMock: ReturnType<typeof stubFetch>,
 		workspaceDirectory: string,
@@ -326,11 +328,12 @@ describe("GitDiffView auto-refresh", () => {
 		topLevelWorkingDirectory: string,
 	) {
 		const sdk = createRepositoryTypeSdk({ kind: "regular", topLevelWorkingDirectory, gitDir });
+		fakeWatcherClock();
 		renderView({ workspaceDirectory }, sdk);
 		await waitForTreePath("README.md");
 		await waitForSettledFetches(fetchMock, 1);
 		await nextFrames();
-		await fakeTimersAfterMountDebounce();
+		await advancePastMountDebounce();
 		return sdk;
 	}
 

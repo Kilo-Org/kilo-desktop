@@ -1,8 +1,16 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { focusManager } from "@tanstack/react-query";
 
 import { configureDesktopFocusManager } from "./configureDesktopFocusManager.js";
+
+// `visibilityState` is an inherited getter, so an own-property stub shadows
+// it; deleting the stub restores the inherited one. Without this, a shuffled
+// run of the hidden-state test leaves `visibilityState` "hidden" for every
+// later test in the file.
+afterEach(() => {
+	Reflect.deleteProperty(document, "visibilityState");
+});
 
 // Boolean notifications make the focusManager's _focused state persist across
 // tests in this file, so each test resets it to the visibilityState fallback.
@@ -47,7 +55,6 @@ describe("configureDesktopFocusManager", () => {
 	it("notifies focusManager with false when the page becomes hidden", () => {
 		// Start focused so the transition from true → false fires.
 		focusManager.setFocused(true);
-		const originalDescriptor = Object.getOwnPropertyDescriptor(document, "visibilityState");
 		Object.defineProperty(document, "visibilityState", {
 			value: "hidden",
 			configurable: true,
@@ -59,9 +66,6 @@ describe("configureDesktopFocusManager", () => {
 
 		expect(onFocus).toHaveBeenCalledWith(false);
 		unsubscribe();
-		if (originalDescriptor) {
-			Object.defineProperty(document, "visibilityState", originalDescriptor);
-		}
 	});
 
 	it("deduplicates consecutive focus events — subscribers notified exactly once", () => {

@@ -13,6 +13,10 @@ const srcRoot = path.resolve(root, "src");
 const alias = { "@": srcRoot };
 
 export default defineConfig({
+	// Package-local cache: the hoisted workspace layout would otherwise share
+	// the root node_modules/.vite between concurrently running packages
+	// (pnpm -r), corrupting the optimized-deps bundle mid-run.
+	cacheDir: path.join(root, ".vitest/cache"),
 	test: {
 		coverage: createCoverageConfig([
 			// App bootstrap — covered by e2e shell boot; shadcn primitives are vendor UI.
@@ -44,6 +48,9 @@ export default defineConfig({
 					name: "unit",
 					include: ["src/**/*.test.ts"],
 					environment: "node",
+					// Unit transforms are re-done on every run otherwise (the run
+					// summary prints the fsModuleCache hint); persist them locally.
+					fsModuleCache: true,
 				},
 			},
 			{
@@ -92,7 +99,11 @@ export default defineConfig({
 					name: "browser",
 					include: ["src/**/*.browser.test.tsx", "src/**/*.app.test.tsx"],
 					setupFiles: ["src/test/setup.ts"],
-					fileParallelism: false,
+					// CI caps browser workers because the Linux coverage runner has only 4 vCPUs.
+					// groupOrder 1 keeps this project in a separate scheduling bucket from
+					// the unit/integration projects; Vitest requires unique groupOrders when
+					// two projects in the same config have different maxWorkers.
+					...(process.env.CI ? { maxWorkers: 2, sequence: { groupOrder: 1 } } : {}),
 					browser: {
 						enabled: true,
 						headless: true,

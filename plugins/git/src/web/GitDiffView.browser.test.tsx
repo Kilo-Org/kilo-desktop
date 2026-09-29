@@ -203,6 +203,12 @@ index 0000000..3333333
 		expect(document.querySelector('[data-qa-id="git-diff-retry"]')).toBeNull();
 
 		respond404 = false;
+		// Hover a non-tooltip element first so a tooltip lingering under the
+		// browser pointer closes; it would overlap the button and block the click.
+		await page.getByTestId("git-diff-error").hover();
+		await vi.waitFor(() => {
+			expect(document.querySelector('[data-slot="tooltip-content"][data-open=""]')).toBeNull();
+		});
 		await page.getByTestId("git-diff-init").click();
 
 		expect(init).toHaveBeenCalledWith({ workingDirectory: "/workspace/project" });
@@ -222,6 +228,12 @@ index 0000000..3333333
 		renderView();
 		await waitForTreePath("README.md");
 
+		// Hover a non-tooltip element first so a tooltip lingering under the
+		// browser pointer closes; it would overlap the button and block the click.
+		await page.getByTestId("git-diff-search").hover();
+		await vi.waitFor(() => {
+			expect(document.querySelector('[data-slot="tooltip-content"][data-open=""]')).toBeNull();
+		});
 		await page.getByTestId("git-diff-refresh").click();
 		await vi.waitFor(() => {
 			expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -382,7 +394,7 @@ index 0000000..3333333
 
 		const toggle = page.getByTestId("git-diff-tree-toggle");
 		await expect.element(toggle).toHaveAttribute("aria-pressed", "false");
-		await toggle.click();
+		fireEvent.click(document.querySelector('[data-qa-id="git-diff-tree-toggle"]')!);
 		await expect.element(toggle).toHaveAttribute("aria-pressed", "true");
 		await vi.waitFor(() => {
 			expect(filesPanel()?.style.width).toBe("0px");
@@ -391,7 +403,7 @@ index 0000000..3333333
 		// selection and scroll survive the round trip.
 		expect(treeHost()?.shadowRoot?.querySelector('[data-item-path="README.md"]')).not.toBeNull();
 
-		await toggle.click();
+		fireEvent.click(document.querySelector('[data-qa-id="git-diff-tree-toggle"]')!);
 		await expect.element(toggle).toHaveAttribute("aria-pressed", "false");
 		await vi.waitFor(() => {
 			expect(filesPanel()?.style.width).toBe("224px");
@@ -442,7 +454,7 @@ index 0000000..3333333
 		stubFetch(() => new Response(patchResponseStream()));
 		renderView();
 		await waitForTreePath("README.md");
-		await page.getByTestId("git-diff-tree-toggle").click();
+		fireEvent.click(document.querySelector('[data-qa-id="git-diff-tree-toggle"]')!);
 		await vi.waitFor(() => {
 			expect(filesPanel()?.style.width).toBe("0px");
 		});

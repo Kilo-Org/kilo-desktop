@@ -78,7 +78,11 @@ export default defineConfig({
 					name: "browser",
 					include: ["src/web/**/*.browser.test.tsx"],
 					setupFiles: ["src/test/setup.ts"],
-					fileParallelism: false,
+					// CI caps browser workers because the Linux coverage runner has only 4 vCPUs.
+					// groupOrder 1 keeps this project in a separate scheduling bucket from
+					// the unit/integration projects; Vitest requires unique groupOrders when
+					// two projects in the same config have different maxWorkers.
+					...(process.env.CI ? { maxWorkers: 2, sequence: { groupOrder: 1 } } : {}),
 					browser: {
 						enabled: true,
 						headless: true,

@@ -42,7 +42,8 @@ export default defineConfig({
 	test: {
 		name: "browser",
 		include: ["src/**/*.browser.test.tsx"],
-		fileParallelism: false,
+		// CI caps browser workers because the Linux coverage runner has only 4 vCPUs.
+		...(process.env.CI ? { maxWorkers: 2 } : {}),
 		coverage: {
 			...createCoverageConfig(["**/index.ts", "**/test-helpers.ts"]),
 			// The package-local cacheDir (above) lives inside the package root —

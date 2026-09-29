@@ -77,7 +77,7 @@ describe("BrowserView", () => {
 
 	it("retries attachment after a transient failure", async () => {
 		const attach = vi.fn().mockRejectedValueOnce(new Error("Not ready")).mockResolvedValueOnce({
-			instanceId: "browser-1",
+			instanceId: "browser-retry",
 			webContentsId: 42,
 			url: "",
 			title: "",
@@ -87,10 +87,11 @@ describe("BrowserView", () => {
 			canGoForward: false,
 			zoomFactor: 1,
 		});
-		renderView({ config: async () => ({ partition: "persist:test" }), attach });
+		renderView({ config: async () => ({ partition: "persist:test" }), attach }, "browser-retry");
 		await vi.waitFor(() => expect(attach).toHaveBeenCalledOnce());
 		await expect.element(page.getByTestId("browser-view")).toHaveAttribute("aria-busy", "true");
 
+		await vi.waitFor(() => expect(document.querySelector("webview")).not.toBeNull());
 		const webview = document.querySelector("webview");
 		if (!webview) throw new Error("Expected browser webview");
 		webview.dispatchEvent(new Event("dom-ready"));
@@ -124,6 +125,7 @@ describe("BrowserView", () => {
 		renderView({ config: async () => ({ partition: "persist:test" }), attach }, instanceId);
 		await vi.waitFor(() => expect(attach).toHaveBeenCalledOnce());
 
+		await vi.waitFor(() => expect(document.querySelector("webview")).not.toBeNull());
 		const webview = document.querySelector("webview");
 		if (!webview) throw new Error("Expected browser webview");
 		webview.dispatchEvent(new Event("dom-ready"));
@@ -145,13 +147,16 @@ describe("BrowserView", () => {
 					},
 				),
 		);
-		renderView({ config: async () => ({ partition: "persist:test" }), attach });
+		renderView(
+			{ config: async () => ({ partition: "persist:test" }), attach },
+			"browser-nav-lease",
+		);
 		const view = page.getByTestId("browser-view");
 		await expect.element(view).toHaveAttribute("aria-busy", "true");
 		await vi.waitFor(() => expect(attach).toHaveBeenCalledOnce());
 
 		resolveAttach({
-			instanceId: "browser-1",
+			instanceId: "browser-nav-lease",
 			webContentsId: 42,
 			url: "",
 			title: "",
@@ -177,11 +182,14 @@ describe("BrowserView", () => {
 					},
 				),
 		);
-		const { sdk } = renderView({ config: async () => ({ partition: "persist:test" }), attach });
+		const { sdk } = renderView(
+			{ config: async () => ({ partition: "persist:test" }), attach },
+			"browser-busy",
+		);
 		await vi.waitFor(() => expect(attach).toHaveBeenCalledOnce());
 
 		sdk.events.emit("state-changed", {
-			instanceId: "browser-1",
+			instanceId: "browser-busy",
 			webContentsId: 42,
 			url: "https://example.com/",
 			title: "Example",
@@ -197,7 +205,7 @@ describe("BrowserView", () => {
 		);
 		await expect.element(page.getByTestId("browser-view")).toHaveAttribute("aria-busy", "true");
 		resolveAttach({
-			instanceId: "browser-1",
+			instanceId: "browser-busy",
 			webContentsId: 42,
 			url: "https://example.com/",
 			title: "Example",
@@ -231,6 +239,7 @@ describe("BrowserView", () => {
 		await vi.waitFor(() => expect(attach).toHaveBeenCalledOnce());
 
 		setWebContentsId(84);
+		await vi.waitFor(() => expect(document.querySelector("webview")).not.toBeNull());
 		const webview = document.querySelector("webview");
 		if (!webview) throw new Error("Expected browser webview");
 		webview.dispatchEvent(new Event("did-attach"));
@@ -276,12 +285,15 @@ describe("BrowserView", () => {
 				),
 		);
 		const navigate = vi.fn(async () => undefined);
-		renderView({ config: async () => ({ partition: "persist:test" }), attach, navigate });
+		renderView(
+			{ config: async () => ({ partition: "persist:test" }), attach, navigate },
+			"browser-nav",
+		);
 		await vi.waitFor(() => expect(attach).toHaveBeenCalledOnce());
 
 		await page.getByTestId("browser-url").fill("example.com");
 		resolveAttach({
-			instanceId: "browser-1",
+			instanceId: "browser-nav",
 			webContentsId: 42,
 			url: "",
 			title: "",
@@ -296,7 +308,7 @@ describe("BrowserView", () => {
 
 		await vi.waitFor(() =>
 			expect(navigate).toHaveBeenCalledWith({
-				instanceId: "browser-1",
+				instanceId: "browser-nav",
 				url: "https://example.com/",
 			}),
 		);

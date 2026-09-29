@@ -2,17 +2,13 @@ import { useRef } from "react";
 import { flushSync } from "react-dom";
 import { RotateCwIcon } from "lucide-react";
 import { toast } from "@kilo-desktop/ui/components/sonner";
+import type { TooltipRoot } from "@base-ui/react/tooltip";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
 import { useDesktopUpdates } from "@/platform/updates/UpdateProvider";
 
 import { hasVisibleReleaseNotes, ReleaseNotesList } from "./ReleaseNotesList";
 import { getInstallConfirmationMessage, updateReadyLabel } from "./updateActions";
-
-type TooltipActions = {
-	close(): void;
-	unmount(): void;
-};
 
 function waitForPaint(): Promise<void> {
 	return new Promise((resolve) => {
@@ -23,12 +19,12 @@ function waitForPaint(): Promise<void> {
 export function SidebarUpdatePill() {
 	const updates = useDesktopUpdates();
 	const state = updates?.state;
-	const tooltipActionsRef = useRef<TooltipActions | null>(null);
+	const tooltipActionsRef = useRef<TooltipRoot.Actions | null>(null);
 	if (!updates || !state || state.status !== "downloaded") return null;
 
 	const label = updateReadyLabel(state);
 	const install = async () => {
-		flushSync(() => tooltipActionsRef.current?.unmount());
+		flushSync(() => tooltipActionsRef.current?.close());
 		await waitForPaint();
 		if (!globalThis.confirm(getInstallConfirmationMessage(state, navigator.platform))) return;
 		try {

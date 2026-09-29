@@ -107,7 +107,35 @@ describe("Squirrel nupkg extract path budget", () => {
 			),
 		).toBe(true);
 		expect(
+			squirrelExtractFitsMaxPath(temp, nupkgResources("kilo", "windows-arm64", "bin", "kilo.exe")),
+		).toBe(true);
+		expect(
 			squirrelExtractFitsMaxPath(temp, nupkgResources("runtimed", "win32-x64", "runtimed.exe")),
+		).toBe(true);
+		expect(
+			squirrelExtractFitsMaxPath(
+				temp,
+				nupkgResources("runtimed", "win32-arm64", "runtimed-nightly.exe"),
+			),
+		).toBe(true);
+		// Longest entry in @anaconda/desktop-bridge-payload-win32-arm64@0.1.14.
+		expect(
+			squirrelExtractFitsMaxPath(
+				temp,
+				nupkgResources(
+					"bridge",
+					"python",
+					"Lib",
+					"site-packages",
+					"conda",
+					"plugins",
+					"subcommands",
+					"doctor",
+					"health_checks",
+					"__pycache__",
+					"requests_ca_bundle.cpython-311.pyc",
+				),
+			),
 		).toBe(true);
 		expect(squirrelExtractFitsMaxPath(temp, nupkgResources("kilo-plugin", "index.js"))).toBe(true);
 	});

@@ -19,8 +19,9 @@ Forge `extraResources`.
 
 Runtime-fetch with version pinning was considered and rejected. It adds download
 progress UI, retry logic, offline handling, and signature verification for no
-near-term benefit given the single-platform (darwin-arm64) scope. This decision
-should be reconsidered if the payload size or platform matrix grows significantly.
+near-term benefit given the original single-platform (darwin-arm64) scope. The
+matrix now also includes win32-x64, win32-arm64, and linux-x64. This decision should
+be reconsidered if the payload size or platform matrix grows significantly.
 
 ## Consequences
 

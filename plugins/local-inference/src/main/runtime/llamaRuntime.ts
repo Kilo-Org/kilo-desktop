@@ -3,9 +3,14 @@ import os from "node:os";
 
 import si from "systeminformation";
 
+// Anaconda's 0.3.x and 0.4.x builds ship without subprocess support, which
+// llama-server's router mode requires. Windows ARM64 has no router-capable
+// build before 0.5.0; move the other platforms once 0.5.0 is published for them.
 const CPU_SPEC = "anaconda::llama.cpp==0.0.10068=cpu_*";
 const CUDA_SPEC = "anaconda::llama.cpp==0.0.10068=cuda*";
 const METAL_SPEC = "anaconda::llama.cpp==0.0.10068=mps_*";
+const WINDOWS_ARM64_CPU_SPEC = "anaconda::llama.cpp==0.5.0=cpu_*";
+const WINDOWS_ARM64_CUDA_SPEC = "anaconda::llama.cpp==0.5.0=cuda*";
 const INTEL_MAC_SPEC = "conda-forge::llama.cpp>=9222";
 const ENV_NAME = "local-inference-llama";
 const SERVER_NAME = "llama-server";
@@ -50,6 +55,11 @@ export function llamaPackageSpecs(host: LlamaHost): string[] {
 		const darwin = Number.parseInt(host.release.split(".")[0] ?? "", 10);
 		if (host.arch === "arm64" && darwin >= 16) return [METAL_SPEC, CPU_SPEC];
 		return [CPU_SPEC];
+	}
+	if (host.platform === "win32" && host.arch === "arm64") {
+		return hasNvidia(host.gpus)
+			? [WINDOWS_ARM64_CUDA_SPEC, WINDOWS_ARM64_CPU_SPEC]
+			: [WINDOWS_ARM64_CPU_SPEC];
 	}
 	if ((host.platform === "win32" || host.platform === "linux") && hasNvidia(host.gpus)) {
 		return [CUDA_SPEC, CPU_SPEC];

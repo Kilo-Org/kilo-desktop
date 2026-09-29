@@ -31,6 +31,7 @@ describe("notebook distribution artifacts", () => {
 			"darwin-x64",
 			"linux-x64",
 			"linux-arm64",
+			"win32-arm64",
 			"win32-x64",
 		]);
 		for (const artifact of RUNTIMED_ARTIFACTS) {
@@ -45,9 +46,12 @@ describe("notebook distribution artifacts", () => {
 	it("selects runtimed by platform and rejects unsupported targets", () => {
 		expect(getRuntimedArtifact("win32", "x64").executable).toBe("runtimed-nightly.exe");
 		expect(getRuntimedArtifact("linux", "arm64").assetName).toBe("runtimed-nightly-linux-arm64");
-		expect(findRuntimedArtifact("win32", "arm64")).toBeUndefined();
-		expect(() => getRuntimedArtifact("win32", "arm64")).toThrow(
-			/runtimed is not configured for win32\/arm64/,
+		expect(getRuntimedArtifact("win32", "arm64").assetName).toBe(
+			"runtimed-nightly-windows-arm64.exe",
+		);
+		expect(findRuntimedArtifact("win32", "ia32")).toBeUndefined();
+		expect(() => getRuntimedArtifact("win32", "ia32")).toThrow(
+			/runtimed is not configured for win32\/ia32/,
 		);
 	});
 });

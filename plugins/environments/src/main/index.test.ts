@@ -11,6 +11,7 @@ import type { EnvironmentsCapabilities } from "../contracts/capabilities.js";
 
 import { FEATURE_FLAG_KEY, mainRegister } from "./index.js";
 import { CondaProvider } from "./providers/conda/index.js";
+import type * as SharedCondaBridgeModule from "./providers/conda/SharedCondaBridge.js";
 import { SidecarCondaBackend } from "./providers/conda/SidecarCondaBackend.js";
 
 vi.mock("./providers/conda/resolveBridgePath.js", () => ({
@@ -21,8 +22,18 @@ vi.mock("./providers/conda/resolveBridgePath.js", () => ({
 
 import { resolveBridge, resolveBridgeLaunchInfo } from "./providers/conda/resolveBridgePath.js";
 
+// mainRegister reads the host platform; pin it so bridge sharing does not
+// depend on whether the suite runs on Windows ARM64.
+vi.mock("./providers/conda/SharedCondaBridge.js", async (importOriginal) => ({
+	...(await importOriginal<typeof SharedCondaBridgeModule>()),
+	pluginBridgeEnvironment: vi.fn(() => null),
+}));
+
+import { pluginBridgeEnvironment } from "./providers/conda/SharedCondaBridge.js";
+
 const mockedResolveBridge = vi.mocked(resolveBridge);
 const mockedResolveBridgeLaunchInfo = vi.mocked(resolveBridgeLaunchInfo);
+const mockedPluginBridgeEnvironment = vi.mocked(pluginBridgeEnvironment);
 
 /**
  * Build a linked SDK pair and (optionally) expose the shell-side
@@ -108,6 +119,7 @@ describe("environments plugin main entry", () => {
 		// `mockReturnValue` does not leak into the next test.
 		mockedResolveBridge.mockReset();
 		mockedResolveBridgeLaunchInfo.mockReset();
+		mockedPluginBridgeEnvironment.mockReset().mockReturnValue(null);
 	});
 
 	it("returns a Promise (async mainRegister for provider boot)", async () => {
@@ -164,6 +176,36 @@ describe("environments plugin main entry", () => {
 		expect(warmedUp).toHaveLength(1);
 		expect(created).toHaveLength(1);
 		expect(created[0]).toBe(warmedUp[0]);
+	});
+
+	it("gives the condaRuntime capability its own bridge when plugin envs need a different subdir", async () => {
+		setupFakeBridge();
+		mockedPluginBridgeEnvironment.mockReturnValue({ CONDA_SUBDIR: "win-arm64" });
+		const warmedUp: SidecarCondaBackend[] = [];
+		vi.mocked(SidecarCondaBackend.prototype.warmUp).mockImplementation(async function (
+			this: SidecarCondaBackend,
+		) {
+			warmedUp.push(this);
+		});
+		const created: SidecarCondaBackend[] = [];
+		vi.spyOn(SidecarCondaBackend.prototype, "create").mockImplementation(async function (
+			this: SidecarCondaBackend,
+		) {
+			created.push(this);
+			throw new Error("stop after acquiring the backend");
+		});
+		vi.stubEnv("HOME", await mkdtemp(path.join(os.tmpdir(), "environments-home-")));
+		const { mainSdk } = createSdkWithFlag({ featureFlagEnabled: true });
+
+		await mainRegister(mainSdk);
+		const capabilities = mainSdk.plugins.get<EnvironmentsCapabilities>("environments");
+		await capabilities?.condaRuntime
+			.ensureEnvironment({ name: "separate-bridge-test", packages: ["python"] })
+			.catch(() => undefined);
+
+		expect(warmedUp).toHaveLength(1);
+		expect(created).toHaveLength(1);
+		expect(created[0]).not.toBe(warmedUp[0]);
 	});
 
 	it("degrades gracefully when provider boot fails (bridge payload not found)", async () => {

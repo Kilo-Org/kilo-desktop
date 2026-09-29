@@ -105,6 +105,11 @@ describe("packaged production dependencies", () => {
 			"@anaconda",
 			"desktop-bridge-payload-darwin-arm64",
 		);
+		const windowsBridgePayload = path.join(
+			nodeModules,
+			"@anaconda",
+			"desktop-bridge-payload-win32-arm64",
+		);
 		const kiloCli = path.join(nodeModules, "@kilocode", "cli-darwin-arm64");
 		await Promise.all(
 			[".turbo", ".vitest", "coverage", "e2e", "dist"].map((directory) =>
@@ -112,6 +117,7 @@ describe("packaged production dependencies", () => {
 			),
 		);
 		await mkdir(bridgePayload, { recursive: true });
+		await mkdir(windowsBridgePayload, { recursive: true });
 		await mkdir(kiloCli, { recursive: true });
 
 		await pruneProductionDependencies(nodeModules);
@@ -121,6 +127,7 @@ describe("packaged production dependencies", () => {
 		}
 		expect(existsSync(path.join(packageRoot, "dist"))).toBe(true);
 		expect(existsSync(bridgePayload)).toBe(false);
+		expect(existsSync(windowsBridgePayload)).toBe(false);
 		expect(existsSync(kiloCli)).toBe(false);
 	});
 
@@ -189,6 +196,8 @@ describe("packaged production dependencies", () => {
 		expect(publish).toContain(
 			"pnpm --filter @kilo-desktop/desktop exec tsx config/run-packaging.ts publish --from-dry-run",
 		);
+		expect(publish).toContain("target: windows-arm64");
+		expect(publish).toContain("windows-11-vs2026-arm");
 		expect(publish.indexOf("run release:smoke")).toBeLessThan(
 			publish.indexOf("publish --from-dry-run"),
 		);
@@ -280,9 +289,12 @@ describe("packaged production dependencies", () => {
 		);
 		expect(setupNative).not.toContain("runtimed-node");
 		expect(setupNative).not.toContain("1.94.0");
+		expect(setupNative).toContain("runner.arch");
 		expect(setupNative).toContain("plugins/notebook/build/notebook");
 		expect(runE2e).toContain("./plugins/notebook/actions/setup-native");
 		expect(build).toContain("./plugins/notebook/actions/setup-native");
+		expect(build).toContain("windows-11-vs2026-arm");
+		expect(build).toContain("windows-arm64");
 		expect(publish).toContain("./plugins/notebook/actions/setup-native");
 	});
 
@@ -376,6 +388,7 @@ describe("packaged production dependencies", () => {
 		);
 		expect(cacheElectronRebuild).toContain("apps/desktop/.electron-rebuild-cache");
 		expect(cacheElectronRebuild).toContain("runner.os");
+		expect(cacheElectronRebuild).toContain("runner.arch");
 		expect(cacheElectronRebuild).toContain("pnpm-lock.yaml");
 		expect(cacheElectronRebuild).toContain("pnpm-workspace.yaml");
 		expect(runE2e).not.toContain("./.github/actions/cache-electron-rebuild");
@@ -402,6 +415,7 @@ describe("packaged production dependencies", () => {
 		);
 		expect(setupCli).toContain("plugins/kilo-server/resources/kilo");
 		expect(setupCli).toContain("runner.os");
+		expect(setupCli).toContain("runner.arch");
 		expect(setupCli).toContain("plugins/kilo-server/package.json");
 		expect(setupCli).toContain("pnpm-lock.yaml");
 		expect(runE2e).toContain("./plugins/kilo-server/actions/setup-cli");

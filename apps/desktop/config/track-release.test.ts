@@ -101,6 +101,23 @@ describe("track release publishing", () => {
 		expect(classifyReleaseDownload("/tmp/RELEASES.json")).toBeNull();
 	});
 
+	it("keeps Windows x64 and ARM64 setup installers on separate latest aliases", () => {
+		const x64 = classifyReleaseDownload(
+			"/tmp/release-artifacts/release-windows/squirrel.windows/x64/Kilo-Setup.exe",
+		);
+		const arm64 = classifyReleaseDownload(
+			"/tmp/release-artifacts/release-windows-arm64/squirrel.windows/arm64/Kilo-Setup.exe",
+		);
+		expect(x64).toMatchObject({ platform: "windows", arch: "x64", type: "setup" });
+		expect(arm64).toMatchObject({ platform: "windows", arch: "arm64", type: "setup" });
+		expect(getLatestAliasKey("stable", x64!)).toBe(
+			"kilo-desktop/latest/latest/windows/x64/Kilo-Beta-Setup.exe",
+		);
+		expect(getLatestAliasKey("stable", arm64!)).toBe(
+			"kilo-desktop/latest/latest/windows/arm64/Kilo-Beta-Setup.exe",
+		);
+	});
+
 	it("keeps x64 and arm64 Linux debs on separate latest aliases", () => {
 		const x64 = classifyReleaseDownload(
 			"/tmp/release-artifacts/release-linux/deb/x64/kilo-desktop_1.2.3_amd64.deb",

@@ -3,7 +3,7 @@ import { Readable, Writable } from "node:stream";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SharedCondaBridge } from "./SharedCondaBridge.js";
+import { SharedCondaBridge, pluginBridgeEnvironment } from "./SharedCondaBridge.js";
 
 vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
 vi.mock("vscode-jsonrpc/node", () => ({
@@ -164,5 +164,33 @@ describe("SharedCondaBridge", () => {
 		await vi.waitFor(() => expect(spawn).toHaveBeenCalledTimes(3));
 		expect(spawnEnv(2).BRIDGE_TELEMETRY_MACHINE_ID).toBe("desktop-installation-id");
 		bridge.dispose();
+	});
+
+	it("starts the bridge with its extra environment and the consent choice", async () => {
+		const bridge = new SharedCondaBridge({
+			resolveBridge: () => LAUNCH_INFO,
+			logger: silentLogger,
+			preferences: createFakePreferences(true),
+			environment: { CONDA_SUBDIR: "win-arm64" },
+		});
+
+		await bridge.acquire().warmUp();
+
+		expect(spawnEnv().CONDA_SUBDIR).toBe("win-arm64");
+		expect(spawnEnv().BRIDGE_TELEMETRY_ENABLED).toBe("1");
+		bridge.dispose();
+	});
+});
+
+describe("pluginBridgeEnvironment", () => {
+	it("solves plugin environments for win-arm64 on Windows ARM64", () => {
+		expect(pluginBridgeEnvironment("win32", "arm64")).toEqual({ CONDA_SUBDIR: "win-arm64" });
+	});
+
+	it("shares the user-facing bridge on every other target", () => {
+		expect(pluginBridgeEnvironment("win32", "x64")).toBeNull();
+		expect(pluginBridgeEnvironment("darwin", "arm64")).toBeNull();
+		expect(pluginBridgeEnvironment("linux", "x64")).toBeNull();
+		expect(pluginBridgeEnvironment("linux", "arm64")).toBeNull();
 	});
 });

@@ -47,6 +47,10 @@ jobs:
             os: windows
             runner: WinLatest-x64-8vCPU-32GB
             timeout_minutes: 60
+          - target: windows-arm64
+            os: windows
+            runner: windows-11-vs2026-arm
+            timeout_minutes: 90
           - target: linux
             os: linux
             runner: ubuntu-latest

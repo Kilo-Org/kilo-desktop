@@ -41,11 +41,17 @@ publishes a version that sorts newer than the installed Preview.
 
 Forge uses only official makers:
 
-| Platform | Maker output                                   | Update behavior                                                       |
-| -------- | ---------------------------------------------- | --------------------------------------------------------------------- |
-| macOS    | DMG, ZIP, and `RELEASES.json`                  | `update-electron-app` consumes the ZIP manifest                       |
-| Windows  | Squirrel Setup EXE, full NUPKG, and `RELEASES` | `update-electron-app` uses the Squirrel feed                          |
-| Linux    | DEB                                            | Updates are provided by the package repository or manual installation |
+| Platform | Architectures | Maker output                                   | Update behavior                                                       |
+| -------- | ------------- | ---------------------------------------------- | --------------------------------------------------------------------- |
+| macOS    | arm64         | DMG, ZIP, and `RELEASES.json`                  | `update-electron-app` consumes the ZIP manifest                       |
+| Windows  | x64, arm64    | Squirrel Setup EXE, full NUPKG, and `RELEASES` | `update-electron-app` uses the Squirrel feed                          |
+| Linux    | x64, arm64    | DEB                                            | Updates are provided by the package repository or manual installation |
+
+Each architecture builds on a native runner: Windows ARM64 on `windows-11-vs2026-arm` and
+Linux ARM64 on `ubuntu-24.04-arm`, with the same plugins as their x64 counterparts. Stable `@runtimed/node@0.5.6` has no Windows ARM64 binding, so
+`apps/desktop` pins the nightly `@runtimed/node-win32-arm64-msvc` as an optional
+dependency; its native API is a superset of 0.5.6's. Drop that pin once a stable
+`@runtimed/node` lists the ARM64 binding. PR and nightly E2E remain on Windows x64.
 
 Automatic Electron update checks run only in packaged Windows and macOS builds. They are
 disabled when the selected track has no update host compiled in and never start on
@@ -173,12 +179,12 @@ with repository/environment variables:
 
 ## Workflows
 
-| Workflow      | Trigger                                  | Behavior                                                                   |
-| ------------- | ---------------------------------------- | -------------------------------------------------------------------------- |
-| `CI`          | Pull request / merge queue               | Lint, format check, `pnpm check`, and package tests                        |
-| `Build`       | Manual                                   | `pnpm run make` only; uses Preview signing configuration; GitHub artifacts |
-| `Release`     | Stable tag, every three hours, or manual | Scheduled/manual Preview or tagged/manual Stable publication               |
-| `Nightly E2E` | Daily or manual                          | Full cross-platform E2E; independent from Preview releases                 |
+| Workflow      | Trigger                                  | Behavior                                                                                                              |
+| ------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `CI`          | Pull request / merge queue               | Lint, format check, `pnpm check`, and package tests                                                                   |
+| `Build`       | Manual                                   | `pnpm run make -- --arch=<arch>` only; uses Preview signing configuration; GitHub artifacts named `<platform>-<arch>` |
+| `Release`     | Stable tag, every three hours, or manual | Scheduled/manual Preview or tagged/manual Stable publication                                                          |
+| `Nightly E2E` | Daily or manual                          | Full cross-platform E2E; independent from Preview releases                                                            |
 
 Scheduled `Release` runs compare `main` with the latest `v*-preview-*` tag and skip
 publication when the commit has not changed. Manual Preview runs always publish.

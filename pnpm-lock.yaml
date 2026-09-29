@@ -490,6 +490,10 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 5.0.2(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.2)(@vitest/coverage-v8@5.0.2)(@vitest/ui@5.0.2)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+    optionalDependencies:
+      '@runtimed/node-win32-arm64-msvc':
+        specifier: 0.5.6-nightly.36594100436
+        version: 0.5.6-nightly.36594100436
 
   apps/web:
     dependencies:
@@ -1079,6 +1083,9 @@ importers:
       '@anaconda/desktop-bridge-payload-linux-x64':
         specifier: 0.1.14
         version: 0.1.14
+      '@anaconda/desktop-bridge-payload-win32-arm64':
+        specifier: 0.1.14
+        version: 0.1.14
       '@anaconda/desktop-bridge-payload-win32-x64':
         specifier: 0.1.14
         version: 0.1.14
@@ -1436,6 +1443,9 @@ importers:
         specifier: 7.7.9
         version: 7.7.9
       '@kilocode/cli-linux-x64-baseline':
+        specifier: 7.7.9
+        version: 7.7.9
+      '@kilocode/cli-windows-arm64':
         specifier: 7.7.9
         version: 7.7.9
       '@kilocode/cli-windows-x64-baseline':
@@ -2004,6 +2014,11 @@ packages:
     resolution: {integrity: sha512-ferFyIY8fzHSLd0x3dwTyvVWz7G0V/dCgSjRo9Vl/+qx/+hXJws+50B7+vObMC140k2PIU0gnqgBw1OOCqrn3g==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-linux-x64/0.1.14/1e4cb297b84d1bdc167a56bada814680b6e5af77}
     cpu: [x64]
     os: [linux]
+
+  '@anaconda/desktop-bridge-payload-win32-arm64@0.1.14':
+    resolution: {integrity: sha512-QLGFuzPtocMgPPFwDGtBqow032hi7c9YUVC3aha++kHPFFg+FqPGMjIUZj5E1I9bA1HpwEuoeiQU75pYMZb7LQ==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-win32-arm64/0.1.14/e1ef0ffafd98b79c90b6ff4a705d20073993e53c}
+    cpu: [arm64]
+    os: [win32]
 
   '@anaconda/desktop-bridge-payload-win32-x64@0.1.14':
     resolution: {integrity: sha512-Kakw3ZFIBIKrZN+3KkQ5goz3BR+J1CtPHxxk5Qpc+6pgikmr15dLckqDwf4ARo+pN9mjBHU6vfhNxHmHGm8n2A==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-win32-x64/0.1.14/93af56c3773c6a5692a152cced1ec6cb40f3ace0}
@@ -3199,6 +3214,11 @@ packages:
     resolution: {integrity: sha512-nW/4mbdYdVhu48X6UtiQRLdKcGDgEdHeeCvPNQDJ2sVj6BLduUZWxJ+O4dfwuRUTtQBTuV2S7bz90Navfl5OTQ==}
     cpu: [x64]
     os: [linux]
+
+  '@kilocode/cli-windows-arm64@7.7.9':
+    resolution: {integrity: sha512-nGeVk3C3nCFgHV5wNXueVax79SKczIaeuIsvke2w/l4moQ+zzPO6GgEFid55r/7pAqMRzV8zZNKrAjCxgmCcnA==}
+    cpu: [arm64]
+    os: [win32]
 
   '@kilocode/cli-windows-x64-baseline@7.7.9':
     resolution: {integrity: sha512-+Qqzsz91kTAflsdTa16MaVR3jVwbJQeTJL94GRxeVKV68SqJxvpcYfG8XGl5eyVeQGJujRqFYFyFAhJVa+Us3A==}
@@ -10504,6 +10524,9 @@ snapshots:
   '@anaconda/desktop-bridge-payload-linux-x64@0.1.14':
     optional: true
 
+  '@anaconda/desktop-bridge-payload-win32-arm64@0.1.14':
+    optional: true
+
   '@anaconda/desktop-bridge-payload-win32-x64@0.1.14':
     optional: true
 
@@ -11867,6 +11890,9 @@ snapshots:
     optional: true
 
   '@kilocode/cli-linux-x64-baseline@7.7.9':
+    optional: true
+
+  '@kilocode/cli-windows-arm64@7.7.9':
     optional: true
 
   '@kilocode/cli-windows-x64-baseline@7.7.9':

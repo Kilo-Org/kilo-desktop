@@ -67,6 +67,9 @@
 		"ws": "^8.21.3",
 		"zod": "catalog:"
 	},
+	"optionalDependencies": {
+		"@runtimed/node-win32-arm64-msvc": "0.5.6-nightly.36594100436"
+	},
 	"devDependencies": {
 		"@kilo-desktop/testing": "workspace:*",
 		"@kilo-desktop/vite-plugin-externalize-deps": "workspace:*",

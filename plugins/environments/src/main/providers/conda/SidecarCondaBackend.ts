@@ -176,6 +176,9 @@ export interface SidecarCondaBackendOptions {
 	 */
 	readonly bridgeBinaryPath?: string;
 
+	/** Extra environment variables for the spawned bridge process. */
+	readonly environment?: Readonly<Record<string, string>>;
+
 	/**
 	 * Data-collection consent forwarded to the bridge as env vars. The bridge
 	 * reads them once at startup and enables telemetry when they are unset, so
@@ -203,6 +206,7 @@ export class SidecarCondaBackend implements CondaBackend {
 	readonly #logger: MainSdkLogger;
 	readonly #telemetryEnv: string | undefined;
 	readonly #telemetryMachineId: string | undefined;
+	readonly #environment: Readonly<Record<string, string>>;
 	/** Children stopped on purpose, whose exit must not trigger a crash restart. */
 	readonly #plannedExits = new WeakSet<ChildProcess>();
 
@@ -222,6 +226,7 @@ export class SidecarCondaBackend implements CondaBackend {
 		this.#telemetryEnabled = options.telemetry?.enabled ?? false;
 		this.#telemetryEnv = options.telemetry?.env;
 		this.#telemetryMachineId = options.telemetry?.machineId;
+		this.#environment = options.environment ?? {};
 	}
 
 	// ─── CondaBackend implementation ──────────────────────────────────────
@@ -853,6 +858,7 @@ export class SidecarCondaBackend implements CondaBackend {
 		}
 		return {
 			...environment,
+			...this.#environment,
 			// The bridge inherits the user's real environment — no
 			// CONDA_ENVS_PATH, CONDA_PKGS_DIRS, or CONDARC override.
 			// User-created environments land in the user's standard envs_dirs

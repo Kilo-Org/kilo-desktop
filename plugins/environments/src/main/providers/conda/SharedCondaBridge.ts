@@ -46,11 +46,18 @@ interface PreferencesCapability extends Record<string, unknown> {
  * The backend is created lazily on first `acquire()`, so exposing the
  * capability or constructing this holder performs no I/O and never spawns a
  * process on its own. `dispose()` is idempotent and owned by `mainRegister`.
+ *
+ * Exception: on Windows ARM64 the `condaRuntime` capability gets a second
+ * holder (see {@link pluginBridgeEnvironment}). conda has no per-request
+ * subdir, so solving plugin environments for win-arm64 needs a process whose
+ * `CONDA_SUBDIR` differs from the one serving user environments. That holder
+ * follows the same consent preference.
  */
 export class SharedCondaBridge {
 	readonly #resolveBridge: () => BridgeLaunchInfo | null;
 	readonly #logger: MainSdkLogger;
 	readonly #preferences: BridgePreferences | undefined;
+	readonly #environment: Readonly<Record<string, string>>;
 	readonly #unsubscribeConsent: (() => void) | undefined;
 	#backend: SidecarCondaBackend | undefined;
 
@@ -58,10 +65,12 @@ export class SharedCondaBridge {
 		resolveBridge: () => BridgeLaunchInfo | null;
 		logger: MainSdkLogger;
 		preferences?: BridgePreferences | undefined;
+		environment?: Readonly<Record<string, string>>;
 	}) {
 		this.#resolveBridge = options.resolveBridge;
 		this.#logger = options.logger;
 		this.#preferences = options.preferences;
+		this.#environment = options.environment ?? {};
 		this.#unsubscribeConsent = this.#preferences?.onDidChangeAllowDataCollection((allow) =>
 			this.#backend?.setTelemetryEnabled(allow),
 		);
@@ -93,6 +102,7 @@ export class SharedCondaBridge {
 					? { machineId: preferences.installationId }
 					: {}),
 			},
+			environment: this.#environment,
 		});
 		return this.#backend;
 	}
@@ -101,6 +111,23 @@ export class SharedCondaBridge {
 		this.#unsubscribeConsent?.();
 		this.#backend?.dispose();
 	}
+}
+
+/**
+ * Bridge environment for plugin-owned environments, or `null` when they can
+ * share the user-facing bridge.
+ *
+ * conda's native-subdir detection does not recognise Windows' uppercase
+ * `ARM64` machine name and falls back to `win-64`, so it would install x64
+ * builds that run under emulation. Plugin environments pin packages published
+ * for win-arm64, so request that subdir explicitly. User environments keep
+ * conda's default, which has far wider package coverage on Windows ARM64.
+ */
+export function pluginBridgeEnvironment(
+	platform: NodeJS.Platform,
+	arch: NodeJS.Architecture,
+): Readonly<Record<string, string>> | null {
+	return platform === "win32" && arch === "arm64" ? { CONDA_SUBDIR: "win-arm64" } : null;
 }
 
 /** The shell's preferences capability, when present. */

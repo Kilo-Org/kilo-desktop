@@ -15,6 +15,10 @@ describe("Kilo CLI distribution artifacts", () => {
 			packageName: "@kilocode/cli-darwin-arm64",
 		});
 		expect(getKiloCliArtifact("win32", "x64").target).toBe("windows-x64-baseline");
+		expect(getKiloCliArtifact("win32", "arm64")).toMatchObject({
+			target: "windows-arm64",
+			packageName: "@kilocode/cli-windows-arm64",
+		});
 		expect(getKiloCliArtifact("linux", "x64").target).toBe("linux-x64-baseline");
 		expect(getKiloCliArtifact("linux", "arm64")).toMatchObject({
 			target: "linux-arm64",

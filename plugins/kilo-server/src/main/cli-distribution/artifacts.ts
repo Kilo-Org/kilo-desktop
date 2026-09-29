@@ -3,6 +3,7 @@ import packageJson from "../../../package.json" with { type: "json" };
 
 const CLI_PACKAGE_NAMES = [
 	"@kilocode/cli-darwin-arm64",
+	"@kilocode/cli-windows-arm64",
 	"@kilocode/cli-windows-x64-baseline",
 	"@kilocode/cli-linux-x64-baseline",
 	"@kilocode/cli-linux-arm64",
@@ -28,6 +29,13 @@ export const KILO_CLI_ARTIFACTS = [
 		platform: "darwin",
 		arch: "arm64",
 		executable: "kilo",
+	},
+	{
+		target: "windows-arm64",
+		packageName: "@kilocode/cli-windows-arm64",
+		platform: "win32",
+		arch: "arm64",
+		executable: "kilo.exe",
 	},
 	{
 		target: "windows-x64-baseline",

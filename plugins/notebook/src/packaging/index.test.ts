@@ -57,6 +57,26 @@ describe("notebook packaging", () => {
 		});
 	});
 
+	it("requires the Windows ARM64 daemon when packaging for win32-arm64", () => {
+		const pluginRoot = path.resolve("/plugin/notebook");
+		const required = new Set([
+			path.join(pluginRoot, "build/notebook/index.html"),
+			path.join(pluginRoot, "build/notebook/staged.json"),
+			path.join(pluginRoot, "build/kilo-plugin/index.js"),
+			path.join(pluginRoot, "resources/runtimed/win32-arm64/runtimed-nightly.exe"),
+			path.join(pluginRoot, "resources/runtimed/win32-arm64/staged.json"),
+		]);
+		const plan = (exists: (candidate: string) => boolean) =>
+			createNotebookPackagingPlan({ pluginRoot, platform: "win32", arch: "arm64", exists });
+
+		expect(plan((candidate) => required.has(candidate)).extraResources).toContain(
+			path.join(pluginRoot, "resources/runtimed"),
+		);
+		expect(() =>
+			plan((candidate) => required.has(candidate) && !candidate.includes("win32-arm64")),
+		).toThrow(/Staged notebook asset is missing/);
+	});
+
 	it("unpacks every runtime dependency of @runtimed/node for the ASAR-blind Kilo server", () => {
 		// The Kilo server is not Electron, so it cannot resolve modules left in app.asar.
 		const unpackedPackages = new Set<string>(NOTEBOOK_ASAR_UNPACK_PACKAGES);
@@ -103,10 +123,10 @@ describe("notebook packaging", () => {
 			createNotebookPackagingPlan({
 				pluginRoot: path.resolve("/plugin/notebook"),
 				platform: "win32",
-				arch: "arm64",
+				arch: "ia32",
 				exists: () => true,
 			}),
-		).toThrow(/runtimed is not configured for win32\/arm64/);
+		).toThrow(/runtimed is not configured for win32\/ia32/);
 	});
 
 	it("unpacks koffi's sibling addon package so the native binding survives packaging", () => {

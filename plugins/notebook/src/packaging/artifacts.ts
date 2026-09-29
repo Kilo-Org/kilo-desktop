@@ -74,6 +74,15 @@ export const RUNTIMED_ARTIFACTS = [
 		sha256: "2f1e4636c43403ed5f8b9681837daf63fa8ca8630997f9c3e00ff46ed7289bf5",
 	},
 	{
+		target: "win32-arm64",
+		platform: "win32",
+		arch: "arm64",
+		assetName: "runtimed-nightly-windows-arm64.exe",
+		executable: "runtimed-nightly.exe",
+		bytes: 37_730_656,
+		sha256: "5079610464b11656cb779b2d66cf1291312114de138fb22e2a6a129c5b700d99",
+	},
+	{
 		target: "win32-x64",
 		platform: "win32",
 		arch: "x64",

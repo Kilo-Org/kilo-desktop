@@ -1708,6 +1708,26 @@ describe("SidecarCondaBackend", () => {
 		});
 	});
 
+	describe("bridge environment", () => {
+		it("passes extra environment variables to the bridge without overriding consent", async () => {
+			mockConnection.sendRequest.mockResolvedValue({});
+
+			const backend = new SidecarCondaBackend({
+				command: ["/path/to/bridge"],
+				logger: silentLogger,
+				telemetry: { enabled: false, env: "production" },
+				environment: { CONDA_SUBDIR: "win-arm64", BRIDGE_TELEMETRY_ENABLED: "1" },
+			});
+			await backend.warmUp();
+
+			const spawnEnv = vi.mocked(spawn).mock.calls[0]?.[2]?.env as NodeJS.ProcessEnv;
+			expect(spawnEnv.CONDA_SUBDIR).toBe("win-arm64");
+			expect(spawnEnv.BRIDGE_TELEMETRY_ENABLED).toBe("0");
+			expect(spawnEnv.BRIDGE_PROTECT_STDIO).toBe("1");
+			backend.dispose();
+		});
+	});
+
 	describe("bridge telemetry consent", () => {
 		function spawnEnv(call = 0): NodeJS.ProcessEnv {
 			return vi.mocked(spawn).mock.calls[call]?.[2]?.env as NodeJS.ProcessEnv;

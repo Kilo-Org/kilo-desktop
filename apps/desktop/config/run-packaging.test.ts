@@ -10,5 +10,6 @@ describe("toForgeArgs", () => {
 	it("leaves Forge flags unchanged when pnpm did not insert --", () => {
 		expect(toForgeArgs(["--from-dry-run"])).toEqual(["--from-dry-run"]);
 		expect(toForgeArgs(["--dry-run"])).toEqual(["--dry-run"]);
+		expect(toForgeArgs(["--", "--dry-run", "--arch=arm64"])).toEqual(["--dry-run", "--arch=arm64"]);
 	});
 });

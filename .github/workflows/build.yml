@@ -15,6 +15,7 @@ on:
         options:
           - mac
           - windows
+          - windows-arm64
           - linux
           - linux-arm64
           - all
@@ -31,8 +32,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: ${{ inputs.platform == 'all' && fromJSON('["mac","windows","linux","linux-arm64"]') || fromJSON(format('["{0}"]', inputs.platform)) }}
-    runs-on: ${{ matrix.target == 'mac' && 'macos-latest' || matrix.target == 'windows' && 'WinLatest-x64-8vCPU-32GB' || matrix.target == 'linux-arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+        target: ${{ inputs.platform == 'all' && fromJSON('["mac","windows","windows-arm64","linux","linux-arm64"]') || fromJSON(format('["{0}"]', inputs.platform)) }}
+    runs-on: ${{ matrix.target == 'mac' && 'macos-latest' || matrix.target == 'windows' && 'WinLatest-x64-8vCPU-32GB' || matrix.target == 'windows-arm64' && 'windows-11-vs2026-arm' || matrix.target == 'linux-arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     timeout-minutes: 90
     environment: preview
     permissions:
@@ -70,7 +71,7 @@ jobs:
           notarization_key_issuer: ${{ secrets.OSX_NOTARIZATION_KEY_ISSUER }}
 
       - name: Setup Windows code signing
-        if: matrix.target == 'windows'
+        if: matrix.target == 'windows' || matrix.target == 'windows-arm64'
         uses: ./.github/actions/setup-windows-codesign
         with:
           client_id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -93,7 +94,7 @@ jobs:
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ${{ matrix.target == 'mac' && 'mac-arm64' || matrix.target == 'linux-arm64' && 'linux-arm64' || format('{0}-x64', matrix.target) }}
+          name: ${{ matrix.target == 'mac' && 'mac-arm64' || endsWith(matrix.target, '-arm64') && matrix.target || format('{0}-x64', matrix.target) }}
           path: |
             apps/desktop/out/make/**/*.dmg
             apps/desktop/out/make/**/*.zip

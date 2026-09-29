@@ -7,6 +7,7 @@ const stagedKiloCliPackages = [
 	"cli-darwin-arm64",
 	"cli-linux-arm64",
 	"cli-linux-x64-baseline",
+	"cli-windows-arm64",
 	"cli-windows-x64-baseline",
 ] as const;
 

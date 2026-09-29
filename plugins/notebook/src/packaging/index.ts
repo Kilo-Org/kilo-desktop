@@ -12,6 +12,7 @@ const RUNTIMED_EXECUTABLES = new Map([
 	["darwin-x64", "runtimed-nightly"],
 	["linux-x64", "runtimed-nightly"],
 	["linux-arm64", "runtimed-nightly"],
+	["win32-arm64", "runtimed-nightly.exe"],
 	["win32-x64", "runtimed-nightly.exe"],
 ]);
 // The Kilo server loads the notebook tool plugin, which requires the unpacked

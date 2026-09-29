@@ -9,7 +9,11 @@ import { ProviderRegistry } from "./ProviderRegistry.js";
 import { CondaRuntime } from "./providers/conda/CondaRuntime.js";
 import { CondaProvider } from "./providers/conda/index.js";
 import { resolveBridgeLaunchInfo } from "./providers/conda/resolveBridgePath.js";
-import { SharedCondaBridge, bridgePreferences } from "./providers/conda/SharedCondaBridge.js";
+import {
+	SharedCondaBridge,
+	bridgePreferences,
+	pluginBridgeEnvironment,
+} from "./providers/conda/SharedCondaBridge.js";
 
 /**
  * Capability shape exposed by kilo-ui for local MCP App resource registration.
@@ -81,14 +85,25 @@ interface FeatureFlagCapability extends Record<string, unknown> {
  */
 export async function mainRegister(mainSdk: MainSdk): Promise<void> {
 	// One bridge process for the whole plugin: the UI provider and the
-	// condaRuntime capability share it (see SharedCondaBridge).
+	// condaRuntime capability share it (see SharedCondaBridge), except on
+	// Windows ARM64 where plugin environments need a win-arm64 solve.
 	const bridge = new SharedCondaBridge({
 		resolveBridge: () => resolveBridgeLaunchInfo(),
 		logger: mainSdk.logger,
 		preferences: bridgePreferences(mainSdk),
 	});
 	mainSdk.onDispose(() => bridge.dispose());
-	const runtime = new CondaRuntime({ bridge, logger: mainSdk.logger });
+	const runtimeEnvironment = pluginBridgeEnvironment(process.platform, process.arch);
+	const runtimeBridge = runtimeEnvironment
+		? new SharedCondaBridge({
+				resolveBridge: () => resolveBridgeLaunchInfo(),
+				logger: mainSdk.logger,
+				preferences: bridgePreferences(mainSdk),
+				environment: runtimeEnvironment,
+			})
+		: bridge;
+	if (runtimeBridge !== bridge) mainSdk.onDispose(() => runtimeBridge.dispose());
+	const runtime = new CondaRuntime({ bridge: runtimeBridge, logger: mainSdk.logger });
 	const condaRuntime = {
 		ensureEnvironment: runtime.ensureEnvironment.bind(runtime),
 		executable: runtime.executable.bind(runtime),

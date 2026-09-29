@@ -112,6 +112,14 @@ async function deleteManagedModelFile(model: LocalModel, modelsDir: string): Pro
 	await rm(candidate, { force: true });
 }
 
+export interface AddLocalModelInput {
+	path: string;
+	name?: string | undefined;
+	catalog?: LocalModel["catalog"];
+	managedFile?: boolean;
+	sizeBytes?: number;
+}
+
 /**
  * Reconciles three pieces of state behind one small interface: the persisted
  * GGUF registry, the single llama.cpp router, and Kilo's managed Local provider.
@@ -173,13 +181,7 @@ export class LocalInferenceService {
 		this.#reconcileInBackground();
 	}
 
-	async add(input: {
-		path: string;
-		name?: string | undefined;
-		catalog?: LocalModel["catalog"];
-		managedFile?: boolean;
-		sizeBytes?: number;
-	}): Promise<LocalModel> {
+	async add(input: AddLocalModelInput): Promise<LocalModel> {
 		const model = await this.#options.registry.add(input.path, input.name, input.catalog, {
 			...(input.managedFile === undefined ? {} : { managedFile: input.managedFile }),
 			...(input.sizeBytes === undefined ? {} : { sizeBytes: input.sizeBytes }),

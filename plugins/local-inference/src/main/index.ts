@@ -16,6 +16,7 @@ import { ModelDownloadManager } from "./catalog/ModelDownloadManager.js";
 import { ModelCatalogService } from "./catalog/ModelCatalogService.js";
 import { type AuthMainCapability } from "./catalog/catalog-client.js";
 import { LocalInferenceService, type KiloCapability } from "./inference/LocalInferenceService.js";
+import { importAnacondaDesktopModels } from "./integrations/anaconda-desktop.js";
 import { LOCAL_PROVIDER_ID } from "./integrations/kilo-constants.js";
 import { LocalModelRegistry, type PersistedLocalModels } from "./models/LocalModelRegistry.js";
 import { allocateLoopbackPort } from "./runtime/allocatePort.js";
@@ -201,4 +202,13 @@ export async function mainRegister(mainSdk: MainSdk): Promise<void> {
 	mainSdk.logger.info(
 		`Local inference registered with managed provider "${LOCAL_PROVIDER_ID}" and event "${MODELS_CHANGED_EVENT}".`,
 	);
+
+	if (!registry.isAnacondaDesktopModelsImported()) {
+		void importAnacondaDesktopModels((input) => service.add(input), mainSdk.logger).then(
+			() => registry.setAnacondaDesktopModelsImported(true),
+			(error) => {
+				mainSdk.logger.error(`Failed to import Anaconda Desktop models: ${message(error)}`);
+			},
+		);
+	}
 }

@@ -16,6 +16,7 @@ import {
 
 export interface PersistedLocalModels extends Record<string, unknown> {
 	models: LocalModel[];
+	anacondaDesktopModelsImported?: boolean;
 	enabled?: boolean;
 	settings?: LocalServerSettings;
 }
@@ -112,6 +113,14 @@ export class LocalModelRegistry {
 		const compact = compactServerSettings(settings);
 		this.#store.set({ settings: compact ?? {} });
 		return this.serverSettings();
+	}
+
+	isAnacondaDesktopModelsImported(): boolean {
+		return this.#store.snapshot().anacondaDesktopModelsImported === true;
+	}
+
+	setAnacondaDesktopModelsImported(anacondaDesktopModelsImported: boolean): void {
+		this.#store.set({ anacondaDesktopModelsImported });
 	}
 
 	async adoptLegacyManagedFiles(modelsDir: string): Promise<void> {

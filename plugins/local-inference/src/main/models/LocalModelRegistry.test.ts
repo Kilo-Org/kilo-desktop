@@ -238,4 +238,19 @@ describe("LocalModelRegistry", () => {
 
 		expect(registry.serverSettings()).toEqual({ port: 8080 });
 	});
+
+	it("manages anacondaDesktopModelsImported value", () => {
+		const kv = store();
+		const registry = new LocalModelRegistry(kv);
+
+		expect(registry.isAnacondaDesktopModelsImported()).toBe(false);
+		registry.setAnacondaDesktopModelsImported(true);
+		expect(registry.isAnacondaDesktopModelsImported()).toBe(true);
+
+		// value is properly stored
+		expect(kv.snapshot().anacondaDesktopModelsImported).toBe(true);
+
+		// value is properly restored
+		expect(new LocalModelRegistry(kv).isAnacondaDesktopModelsImported()).toBe(true);
+	});
 });

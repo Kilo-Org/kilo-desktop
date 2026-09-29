@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { MainSdkLogger } from "@kilo-desktop/feature-sdk/main";
 
 import { CondaRuntime } from "./CondaRuntime.js";
+import { SharedCondaBridge } from "./SharedCondaBridge.js";
 import { SidecarCondaBackend } from "./SidecarCondaBackend.js";
 import type { BridgeLaunchInfo } from "./resolveBridgePath.js";
 
@@ -29,7 +30,7 @@ describe("CondaRuntime", () => {
 	it("does not resolve the bridge until an environment is requested", () => {
 		const resolveBridge = vi.fn().mockReturnValue(fakeBridge());
 		const runtime = new CondaRuntime({
-			resolveBridge,
+			bridge: new SharedCondaBridge({ resolveBridge, logger }),
 			logger,
 			platform: "linux",
 		});
@@ -44,7 +45,7 @@ describe("CondaRuntime", () => {
 	it("returns invalid input as a promise rejection", async () => {
 		const resolveBridge = vi.fn().mockReturnValue(fakeBridge());
 		const runtime = new CondaRuntime({
-			resolveBridge,
+			bridge: new SharedCondaBridge({ resolveBridge, logger }),
 			logger,
 			platform: "linux",
 		});
@@ -67,7 +68,7 @@ describe("CondaRuntime", () => {
 			prefix: prefixPath,
 		});
 		const runtime = new CondaRuntime({
-			resolveBridge: () => fakeBridge(),
+			bridge: new SharedCondaBridge({ resolveBridge: () => fakeBridge(), logger }),
 			logger,
 			platform: "linux",
 			condaFilesRoot,
@@ -96,7 +97,7 @@ describe("CondaRuntime", () => {
 				return { name: "local-inference", prefix: prefixPath };
 			});
 		const runtime = new CondaRuntime({
-			resolveBridge: () => fakeBridge(),
+			bridge: new SharedCondaBridge({ resolveBridge: () => fakeBridge(), logger }),
 			logger,
 			platform: "linux",
 			condaFilesRoot,
@@ -135,7 +136,7 @@ describe("CondaRuntime", () => {
 			prefix: prefixPath,
 		});
 		const runtime = new CondaRuntime({
-			resolveBridge: () => fakeBridge(),
+			bridge: new SharedCondaBridge({ resolveBridge: () => fakeBridge(), logger }),
 			logger,
 			platform: "linux",
 			condaFilesRoot,
@@ -161,7 +162,7 @@ describe("CondaRuntime", () => {
 		});
 		const condaFilesRoot = "/tmp/conda";
 		const runtime = new CondaRuntime({
-			resolveBridge: () => fakeBridge(),
+			bridge: new SharedCondaBridge({ resolveBridge: () => fakeBridge(), logger }),
 			logger,
 			platform: "linux",
 			condaFilesRoot,
@@ -191,7 +192,7 @@ describe("CondaRuntime", () => {
 
 	it("throws when bridge payload is not found", async () => {
 		const runtime = new CondaRuntime({
-			resolveBridge: () => null,
+			bridge: new SharedCondaBridge({ resolveBridge: () => null, logger }),
 			logger,
 			platform: "linux",
 		});
@@ -206,7 +207,7 @@ describe("CondaRuntime", () => {
 
 	it("resolves Windows conda executables from Library/bin with an exe suffix", () => {
 		const runtime = new CondaRuntime({
-			resolveBridge: () => fakeBridge(),
+			bridge: new SharedCondaBridge({ resolveBridge: () => fakeBridge(), logger }),
 			logger,
 			platform: "win32",
 		});

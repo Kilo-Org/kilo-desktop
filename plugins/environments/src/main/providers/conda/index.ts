@@ -7,22 +7,11 @@ import type {
 	ProviderWebComponents,
 } from "../../EnvironmentProvider.js";
 
-import { SidecarCondaBackend } from "./SidecarCondaBackend.js";
+import type { SidecarCondaBackend } from "./SidecarCondaBackend.js";
+import { SharedCondaBridge, bridgeTelemetry } from "./SharedCondaBridge.js";
 import { registerCondaHandlers } from "./handlers.js";
 import { resolveBridge } from "./resolveBridgePath.js";
 import { registerCondaTools } from "../../../shared/providers/conda/tools.js";
-
-/**
- * Minimal shape of the main-side preferences capability exposed by the shell.
- * Inlined so the plugin does not take a `@kilo-desktop/contracts`
- * dependency for a single call.
- */
-interface PreferencesCapability extends Record<string, unknown> {
-	preferences: {
-		readonly allowDataCollection: boolean;
-		readonly telemetryEnv: string;
-	};
-}
 
 /**
  * Conda environment provider -- the sole provider for the environments plugin.
@@ -33,7 +22,9 @@ interface PreferencesCapability extends Record<string, unknown> {
  * - After `boot()`: `#backend` is a live {@link SidecarCondaBackend}
  *   (JSON-RPC to the anaconda-bridge-sidecar binary) with a fire-and-forget
  *   warm-up spawn already in flight, so the first renderer call usually
- *   finds the bridge up.
+ *   finds the bridge up. The backend comes from the injected
+ *   {@link SharedCondaBridge} (one process shared with the `condaRuntime`
+ *   capability); without one, boot creates a private holder.
  * - After `registerHandlers()`: conda channels are served.
  *
  * `webComponents` stays as placeholder function references on the
@@ -55,6 +46,14 @@ export class CondaProvider implements EnvironmentProvider {
 	// sidecar lifecycle (warm-up at boot, dispose on shutdown), which the
 	// handler-facing interface deliberately doesn't expose.
 	#backend: SidecarCondaBackend | undefined;
+	#bridge: SharedCondaBridge | undefined;
+	// An injected bridge is shared with the condaRuntime capability and owned
+	// (disposed) by `mainRegister`; only a bridge created in `boot()` is ours.
+	#ownsBridge = false;
+
+	constructor(options: { bridge?: SharedCondaBridge } = {}) {
+		this.#bridge = options.bridge;
+	}
 
 	async boot(ctx: ProviderBootContext): Promise<void> {
 		const result = resolveBridge();
@@ -65,23 +64,16 @@ export class CondaProvider implements EnvironmentProvider {
 					`Ensure the bridge is packaged or set BRIDGE_PAYLOAD.`,
 			);
 		}
-		ctx.logger.info(
-			`[conda-provider] Using anaconda-bridge-sidecar v${result.info.version}: ${result.info.command.join(" ")}`,
-		);
-
-		const prefs = ctx.mainSdk.plugins.get<PreferencesCapability>("preferences");
-		const telemetry = prefs
-			? {
-					enabled: () => (prefs.preferences.allowDataCollection ? "1" : "0"),
-					env: prefs.preferences.telemetryEnv,
-				}
-			: undefined;
-
-		this.#backend = new SidecarCondaBackend({
-			command: result.info.command,
-			logger: ctx.logger,
-			telemetry,
-		});
+		if (!this.#bridge) {
+			const info = result.info;
+			this.#bridge = new SharedCondaBridge({
+				resolveBridge: () => info,
+				logger: ctx.logger,
+				telemetry: () => bridgeTelemetry(ctx.mainSdk),
+			});
+			this.#ownsBridge = true;
+		}
+		this.#backend = this.#bridge.acquire();
 		// Fire-and-forget: spawn the bridge during the boot window so the
 		// first renderer call doesn't pay cold-start latency. The backend
 		// dedupes a racing call against this in-flight spawn, and a failed
@@ -111,11 +103,12 @@ export class CondaProvider implements EnvironmentProvider {
 
 	/**
 	 * Teardown wired into app shutdown (`mainRegister` registers this via
-	 * `mainSdk.onDispose`). Releases the backend's long-lived resources --
+	 * `mainSdk.onDispose`). Releases a bridge this provider created itself --
 	 * `SidecarCondaBackend.dispose()` kills the spawned bridge process,
-	 * which would otherwise be orphaned on a normal app quit.
+	 * which would otherwise be orphaned on a normal app quit. An injected
+	 * shared bridge is left to `mainRegister`, which owns it.
 	 */
 	onDispose(): void {
-		this.#backend?.dispose?.();
+		if (this.#ownsBridge) this.#bridge?.dispose();
 	}
 }

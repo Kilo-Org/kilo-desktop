@@ -9,6 +9,7 @@ import { ProviderRegistry } from "./ProviderRegistry.js";
 import { CondaRuntime } from "./providers/conda/CondaRuntime.js";
 import { CondaProvider } from "./providers/conda/index.js";
 import { resolveBridgeLaunchInfo } from "./providers/conda/resolveBridgePath.js";
+import { SharedCondaBridge, bridgeTelemetry } from "./providers/conda/SharedCondaBridge.js";
 
 /**
  * Capability shape exposed by kilo-ui for local MCP App resource registration.
@@ -79,10 +80,15 @@ interface FeatureFlagCapability extends Record<string, unknown> {
  * on next launch.
  */
 export async function mainRegister(mainSdk: MainSdk): Promise<void> {
-	const runtime = new CondaRuntime({
-		resolveBridge: resolveBridgeLaunchInfo,
+	// One bridge process for the whole plugin: the UI provider and the
+	// condaRuntime capability share it (see SharedCondaBridge).
+	const bridge = new SharedCondaBridge({
+		resolveBridge: () => resolveBridgeLaunchInfo(),
 		logger: mainSdk.logger,
+		telemetry: () => bridgeTelemetry(mainSdk),
 	});
+	mainSdk.onDispose(() => bridge.dispose());
+	const runtime = new CondaRuntime({ bridge, logger: mainSdk.logger });
 	const condaRuntime = {
 		ensureEnvironment: runtime.ensureEnvironment.bind(runtime),
 		executable: runtime.executable.bind(runtime),
@@ -105,7 +111,7 @@ export async function mainRegister(mainSdk: MainSdk): Promise<void> {
 	}
 
 	const registry = new ProviderRegistry();
-	registry.register(new CondaProvider());
+	registry.register(new CondaProvider({ bridge }));
 
 	const queue = new JobQueue({
 		emit: (event) => mainSdk.events.emit(JOB_PROGRESS_LOCAL_EVENT, event),

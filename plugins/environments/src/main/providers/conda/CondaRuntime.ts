@@ -10,8 +10,7 @@ import type {
 } from "../../../contracts/capabilities.js";
 import { environmentNameSchema, matchSpecSchema } from "../../../contracts/providers/conda.js";
 
-import type { BridgeLaunchInfo } from "./resolveBridgePath.js";
-import { SidecarCondaBackend } from "./SidecarCondaBackend.js";
+import type { SharedCondaBridge } from "./SharedCondaBridge.js";
 
 // Anaconda publishes the supported llama.cpp builds on `anaconda`; `defaults`
 // supplies fallback dependencies without leaking the user's channel config.
@@ -24,7 +23,8 @@ const STAMP_NAME = "anaconda-ensure.json";
 type Paths = typeof path.posix | typeof path.win32;
 
 export interface CondaRuntimeOptions {
-	readonly resolveBridge: () => BridgeLaunchInfo | null;
+	/** The app's single bridge process, shared with the Conda UI provider. */
+	readonly bridge: SharedCondaBridge;
 	readonly logger: MainSdkLogger;
 	readonly platform?: NodeJS.Platform;
 	/**
@@ -38,10 +38,11 @@ export interface CondaRuntimeOptions {
 }
 
 /**
- * Owns lazy bridge resolution and serialized environment reconciliation
- * for main-process consumers. The bridge is resolved lazily on first
- * use; when the feature flag is off the bridge binary is never spawned
- * until a consumer actually calls `ensureEnvironment`.
+ * Owns serialized environment reconciliation for main-process consumers.
+ * It talks to the app's single shared bridge process
+ * ({@link SharedCondaBridge}), acquired lazily on first create; when the
+ * feature flag is off the bridge binary is never spawned until a consumer
+ * actually calls `ensureEnvironment` on a prefix that needs creating.
  *
  * A prefix that already has `conda-meta` is reused when its recorded
  * package pin still matches the request, so startup does not re-run
@@ -52,16 +53,15 @@ export interface CondaRuntimeOptions {
  * support concurrent transactions.
  */
 export class CondaRuntime implements CondaEnvironmentRuntime {
-	readonly #resolveBridge: () => BridgeLaunchInfo | null;
+	readonly #bridge: SharedCondaBridge;
 	readonly #logger: MainSdkLogger;
 	readonly #platform: NodeJS.Platform;
 	readonly #condaFilesRoot: string;
 	readonly #jobs = new Map<string, Promise<EnsureEnvironmentResult>>();
-	#backend: SidecarCondaBackend | undefined;
 	#tail: Promise<void> = Promise.resolve();
 
 	constructor(options: CondaRuntimeOptions) {
-		this.#resolveBridge = options.resolveBridge;
+		this.#bridge = options.bridge;
 		this.#logger = options.logger;
 		this.#platform = options.platform ?? process.platform;
 		this.#condaFilesRoot = options.condaFilesRoot ?? resolveDefaultCondaFilesRoot(this.#platform);
@@ -97,25 +97,6 @@ export class CondaRuntime implements CondaEnvironmentRuntime {
 		return path.posix.join(prefixPath, "bin", name);
 	}
 
-	#ensureBackend(): SidecarCondaBackend {
-		if (this.#backend) return this.#backend;
-		const launchInfo = this.#resolveBridge();
-		if (!launchInfo) {
-			throw new Error(
-				"[conda-runtime] anaconda-bridge-sidecar payload not found. " +
-					"Ensure the bridge is packaged or BRIDGE_PAYLOAD is set.",
-			);
-		}
-		this.#logger.info(
-			`[conda-runtime] Using anaconda-bridge-sidecar v${launchInfo.version}: ${launchInfo.command.join(" ")}`,
-		);
-		this.#backend = new SidecarCondaBackend({
-			command: launchInfo.command,
-			logger: this.#logger,
-		});
-		return this.#backend;
-	}
-
 	async #ensure(name: string, packages: readonly string[]): Promise<EnsureEnvironmentResult> {
 		const paths = this.#platform === "win32" ? path.win32 : path.posix;
 		const prefixPath = paths.join(this.#condaFilesRoot, "envs", name);
@@ -129,7 +110,7 @@ export class CondaRuntime implements CondaEnvironmentRuntime {
 		}
 		await rm(prefixPath, { recursive: true, force: true });
 
-		const backend = this.#ensureBackend();
+		const backend = this.#bridge.acquire();
 		const channels = resolveChannels(packages);
 		this.#logger.info(`Creating conda environment "${name}" at ${prefixPath}.`);
 		await backend.create({ name, packages: packages as string[], channels }, undefined, {

@@ -32,7 +32,6 @@ import type {
 	CondaPackagesUpdateResult,
 	CondaRepodataFindInput,
 	CondaRepodataFindResult,
-	CondaRepodataPackage,
 	EnvTarget,
 } from "../../../contracts/providers/conda.js";
 import { condaContract } from "../../../contracts/providers/conda.js";
@@ -44,11 +43,11 @@ import type { CondaBackend, CondaRepodataFilter } from "./CondaBackend.js";
 const READ_FILE_MAX_BYTES = 1024 * 1024;
 
 /**
- * Read-cache TTL for `repodata.find`. The channel index changes slowly and
- * an unfiltered walk is the plugin's most expensive read (the bridge
- * aggregates every configured channel), so hold results far longer than the
- * queue's 5 s default. Any successful conda write still clears the whole
- * provider bucket, so a mutation is never hidden by this TTL.
+ * Read-cache TTL for `repodata.find`. The channel index changes slowly (the
+ * bridge itself treats a catalog refreshed within the hour as current), so
+ * hold results far longer than the queue's 5 s default. Any successful conda
+ * write still clears the whole provider bucket, so a mutation is never
+ * hidden by this TTL.
  */
 const REPODATA_FIND_CACHE_TTL_MS = 8 * 60_000;
 
@@ -337,22 +336,18 @@ export function registerCondaHandlers(
 }
 
 /**
- * Repodata lookup with a bounded response, in two modes:
+ * Repodata lookup with a bounded response. `names` (exact) and `query`
+ * (partial, ranked exact > prefix > substring) both go straight to the
+ * bridge, which filters, ranks, and bounds the result over its compact
+ * package index — a few milliseconds per call, so every keystroke of an
+ * interactive search can round-trip.
  *
- * - **names** (exact): the filter goes straight to the bridge, which
- *   matches names exactly. Cache key = the filter; the backend result is
- *   the full (already bridge/backend-bounded) package set for it.
- * - **query** (partial): the bridge has no substring support, so the
- *   handler fetches the FULL channel index once (a names-less filter, with
- *   the backend's materialisation bound lifted via `unbounded`), caches it
- *   under a key that omits both `query` and `limit`, and ranks matches
- *   locally per call. One bridge walk therefore serves every keystroke of
- *   an interactive search; any successful conda write still clears the
- *   provider bucket, so mutations are never hidden by the long TTL.
- *
- * In both modes the cache key omits `limit`: truncation is applied *after*
- * the cache read, which keeps the `truncated` flag exact and lets a caller
- * widen its limit within the TTL without re-hitting the bridge.
+ * The cache key omits `limit`: truncation is applied *after* the cache
+ * read (the backend always returns up to `REPODATA_FIND_MAX_LIMIT + 1`),
+ * which keeps the `truncated` flag exact and lets a caller widen its limit
+ * within the TTL without re-hitting the bridge. Any successful conda write
+ * still clears the provider bucket, so mutations are never hidden by the
+ * long TTL.
  *
  * The "empty array means return nothing, absent means no filter" bridge
  * rule lives solely in the backend (`toRepodataFindParams`); this handler
@@ -365,12 +360,9 @@ async function readRepodataFind(
 	backend: CondaBackend,
 	input: CondaRepodataFindInput,
 ): Promise<CondaRepodataFindResult> {
-	if (input.query !== undefined) {
-		return readRepodataQuery(queue, backend, input, input.query);
-	}
-
 	const filter: CondaRepodataFilter = {
 		...(input.names ? { names: input.names } : {}),
+		...(input.query !== undefined ? { query: input.query } : {}),
 		...(input.channels ? { channels: input.channels } : {}),
 		...(input.subdirs ? { subdirs: input.subdirs } : {}),
 	};
@@ -387,57 +379,6 @@ async function readRepodataFind(
 		packages: matches.slice(0, input.limit),
 		truncated: matches.length > input.limit,
 	};
-}
-
-async function readRepodataQuery(
-	queue: JobQueue,
-	backend: CondaBackend,
-	input: CondaRepodataFindInput,
-	query: string,
-): Promise<CondaRepodataFindResult> {
-	const filter: CondaRepodataFilter = {
-		...(input.channels ? { channels: input.channels } : {}),
-		...(input.subdirs ? { subdirs: input.subdirs } : {}),
-	};
-
-	const index = await queue.read({
-		providerId: "conda",
-		opName: "repodata.index",
-		args: { channels: input.channels, subdirs: input.subdirs },
-		ttlMs: REPODATA_FIND_CACHE_TTL_MS,
-		run: (ctx) => backend.findRepodata(filter, { signal: ctx.signal }, { unbounded: true }),
-	});
-
-	const ranked = rankRepodataMatches(index, query);
-
-	return {
-		packages: ranked.slice(0, input.limit),
-		truncated: ranked.length > input.limit,
-	};
-}
-
-/**
- * Filter `packages` to those whose name matches `query`, ordered by
- * relevance: exact name, then prefix, then substring; ties keep the input
- * order (stable). Non-matching names are dropped entirely. Matching is
- * case-insensitive.
- */
-function rankRepodataMatches(
-	packages: readonly CondaRepodataPackage[],
-	query: string,
-): CondaRepodataPackage[] {
-	const needle = query.toLowerCase();
-
-	const scored: Array<{ pkg: CondaRepodataPackage; rank: number; order: number }> = [];
-	for (const [order, pkg] of packages.entries()) {
-		const name = pkg.name.toLowerCase();
-		const rank = name === needle ? 0 : name.startsWith(needle) ? 1 : name.includes(needle) ? 2 : -1;
-		if (rank === -1) continue;
-		scored.push({ pkg, rank, order });
-	}
-
-	scored.sort((a, b) => a.rank - b.rank || a.order - b.order);
-	return scored.map((entry) => entry.pkg);
 }
 
 // ─── Enqueue helpers ──────────────────────────────────────────────────────

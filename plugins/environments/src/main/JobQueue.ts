@@ -86,8 +86,10 @@ export interface ReadOptions<T> {
 	/**
 	 * Optional per-read TTL override in ms. Defaults to the queue's
 	 * {@link JobQueueOptions.ttlMs}. Use a longer TTL for expensive,
-	 * slow-changing reads (e.g. the full repodata index) that would be
-	 * wasteful to re-fetch on every call.
+	 * slow-changing reads (e.g. the repodata catalog) that would be
+	 * wasteful to re-fetch on every call. The TTL is applied when *this*
+	 * caller looks the entry up, so it holds even when the value was
+	 * produced by another caller's run that this one joined.
 	 */
 	readonly ttlMs?: number;
 	readonly run: (ctx: ReadRunContext) => Promise<T>;
@@ -123,7 +125,12 @@ interface JobRecord {
 
 interface CacheEntry {
 	readonly value: unknown;
-	readonly expiresAt: number;
+	readonly storedAt: number;
+}
+
+interface InFlightRead {
+	readonly generation: number;
+	readonly promise: Promise<unknown>;
 }
 
 /**
@@ -139,8 +146,11 @@ interface CacheEntry {
  *   {@link ENVIRONMENTS_EVENT_NAMES.JOB_PROGRESS}. Providers are
  *   independent — a slow `conda` install does not block a `uv` create.
  * - **Reads** — `read` bypasses the queue via a 5 s TTL cache keyed on
- *   `(providerId, opName, args)`. On any successful write for the same
- *   `providerId`, the bucket is cleared — no cross-provider poisoning.
+ *   `(providerId, opName, args)`. Identical concurrent reads share one
+ *   in-flight run. On any successful write for the same `providerId`, the
+ *   bucket is cleared and the provider's write generation advances: a read
+ *   that started before the write is neither joined by later callers nor
+ *   cached, so a mutation is never hidden by a stale result.
  * - **Cancellation** — `cancel(jobId)` aborts the run signal (if
  *   running) or dequeues (if queued) and emits `cancelled`. Idempotent;
  *   returns whether the cancel took effect. Terminal jobs return `false`.
@@ -160,6 +170,8 @@ export class JobQueue {
 	readonly #jobs = new Map<JobId, JobRecord>();
 	readonly #chains = new Map<Provider, Promise<void>>();
 	readonly #cache = new Map<Provider, Map<string, CacheEntry>>();
+	readonly #inFlightReads = new Map<Provider, Map<string, InFlightRead>>();
+	readonly #writeGenerations = new Map<Provider, number>();
 
 	#counter = 0;
 	#disposed = false;
@@ -216,34 +228,52 @@ export class JobQueue {
 
 	/**
 	 * Cache-first read. Returns the memoised value when it is still
-	 * within the TTL; otherwise calls `run(...)` with a fresh
-	 * `AbortSignal` and, on success, stores the result under
-	 * `(providerId, opName, args)` for future reads.
+	 * within the TTL; joins an identical read that is already running;
+	 * otherwise calls `run(...)` with a fresh `AbortSignal` and, on
+	 * success, stores the result under `(providerId, opName, args)` for
+	 * future reads.
 	 *
 	 * Failures are NOT cached — a transient conda failure should not
-	 * pin an error state.
+	 * pin an error state (every joined caller sees the same rejection).
 	 */
 	async read<T>(options: ReadOptions<T>): Promise<T> {
 		this.#assertNotDisposed();
 
+		const { providerId } = options;
 		const cacheKey = buildCacheKey(options.opName, options.args);
-		const bucket = this.#cache.get(options.providerId);
-		const cached = bucket?.get(cacheKey);
-		if (cached && cached.expiresAt > this.#now()) {
+		const cached = this.#cache.get(providerId)?.get(cacheKey);
+		if (cached && cached.storedAt + (options.ttlMs ?? this.#ttlMs) > this.#now()) {
 			return cached.value as T;
 		}
 
+		const generation = this.#writeGenerations.get(providerId) ?? 0;
+		const inFlight = this.#inFlightReads.get(providerId) ?? new Map<string, InFlightRead>();
+		const joinable = inFlight.get(cacheKey);
+		if (joinable && joinable.generation === generation) {
+			return joinable.promise as Promise<T>;
+		}
+
+		const promise = this.#runRead(options, cacheKey, generation);
+		const entry: InFlightRead = { generation, promise };
+		inFlight.set(cacheKey, entry);
+		this.#inFlightReads.set(providerId, inFlight);
+		const forget = () => {
+			if (inFlight.get(cacheKey) === entry) inFlight.delete(cacheKey);
+		};
+		promise.then(forget, forget);
+		return promise;
+	}
+
+	async #runRead<T>(options: ReadOptions<T>, cacheKey: string, generation: number): Promise<T> {
 		const controller = new AbortController();
 		const value = await options.run({ signal: controller.signal });
 
-		// Guard against a `dispose()` racing with an in-flight read — do
-		// not repopulate the cache after teardown.
+		// Do not repopulate the cache after teardown, or with a result that
+		// predates a write which landed while this read was in flight.
 		if (this.#disposed) return value;
+		if ((this.#writeGenerations.get(options.providerId) ?? 0) !== generation) return value;
 		const providerBucket = this.#cache.get(options.providerId) ?? new Map<string, CacheEntry>();
-		providerBucket.set(cacheKey, {
-			value,
-			expiresAt: this.#now() + (options.ttlMs ?? this.#ttlMs),
-		});
+		providerBucket.set(cacheKey, { value, storedAt: this.#now() });
 		this.#cache.set(options.providerId, providerBucket);
 		return value;
 	}
@@ -289,6 +319,7 @@ export class JobQueue {
 			this.cancel(jobId);
 		}
 		this.#cache.clear();
+		this.#inFlightReads.clear();
 	}
 
 	async #runJob<T>(record: JobRecord, run: (ctx: JobRunContext) => Promise<T>): Promise<T> {
@@ -338,6 +369,10 @@ export class JobQueue {
 			// A successful write invalidates every cached read for this
 			// provider — cross-provider entries stay untouched.
 			this.#cache.delete(record.providerId);
+			this.#writeGenerations.set(
+				record.providerId,
+				(this.#writeGenerations.get(record.providerId) ?? 0) + 1,
+			);
 			return value;
 		} catch (error) {
 			if (record.state === "cancelled") {

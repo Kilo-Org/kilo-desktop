@@ -5,7 +5,10 @@ import { createFakeMainSdk, createFakeSdk, createLinkedFakeSdkPair } from "@kilo
 import { JobQueue } from "../../JobQueue.js";
 import { CondaProvider } from "./index.js";
 import * as resolveBridge from "./resolveBridgePath.js";
+import { SharedCondaBridge } from "./SharedCondaBridge.js";
 import { SidecarCondaBackend } from "./SidecarCondaBackend.js";
+
+const silentLogger = { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} };
 
 /**
  * `CondaProvider` unit tests. `main/index.test.ts` covers the boot-path
@@ -235,6 +238,39 @@ describe("CondaProvider", () => {
 		await provider.boot({ mainSdk, boot: mainSdk.boot, logger: mainSdk.logger });
 
 		provider.onDispose();
+		expect(dispose).toHaveBeenCalledTimes(1);
+
+		mainSdk.dispose();
+	});
+
+	it("onDispose() leaves an injected shared bridge to its owner", async () => {
+		const dispose = vi.spyOn(SidecarCondaBackend.prototype, "dispose").mockImplementation(() => {});
+		vi.spyOn(resolveBridge, "resolveBridge").mockReturnValue({
+			kind: "found",
+			info: {
+				command: ["/fake/bridge/python", "-m", "anaconda_desktop_bridge"],
+				payloadRoot: "/fake/bridge",
+				version: "9.9.9",
+			},
+		});
+		const bridge = new SharedCondaBridge({
+			resolveBridge: () => ({
+				command: ["/fake/bridge/python", "-m", "anaconda_desktop_bridge"],
+				payloadRoot: "/fake/bridge",
+				version: "9.9.9",
+			}),
+			logger: silentLogger,
+		});
+
+		const provider = new CondaProvider({ bridge });
+		const mainSdk = createFakeMainSdk({ featureId: "environments" });
+
+		await provider.boot({ mainSdk, boot: mainSdk.boot, logger: mainSdk.logger });
+
+		provider.onDispose();
+		expect(dispose).not.toHaveBeenCalled();
+
+		bridge.dispose();
 		expect(dispose).toHaveBeenCalledTimes(1);
 
 		mainSdk.dispose();

@@ -1,3 +1,7 @@
+import { mkdtemp } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createLinkedFakeSdkPair } from "@kilo-desktop/testing";
@@ -75,6 +79,7 @@ describe("environments plugin main entry", () => {
 
 	afterEach(() => {
 		vi.restoreAllMocks();
+		vi.unstubAllEnvs();
 		// Reset module-level vi.fn mocks so a previous test's
 		// `mockReturnValue` does not leak into the next test.
 		mockedResolveBridge.mockReset();
@@ -105,6 +110,36 @@ describe("environments plugin main entry", () => {
 		await mainRegister(mainSdk);
 
 		expect(SidecarCondaBackend.prototype.warmUp).toHaveBeenCalledTimes(1);
+	});
+
+	it("shares one bridge backend between the conda provider and the condaRuntime capability", async () => {
+		setupFakeBridge();
+		const warmedUp: SidecarCondaBackend[] = [];
+		vi.mocked(SidecarCondaBackend.prototype.warmUp).mockImplementation(async function (
+			this: SidecarCondaBackend,
+		) {
+			warmedUp.push(this);
+		});
+		const created: SidecarCondaBackend[] = [];
+		vi.spyOn(SidecarCondaBackend.prototype, "create").mockImplementation(async function (
+			this: SidecarCondaBackend,
+		) {
+			created.push(this);
+			throw new Error("stop after acquiring the backend");
+		});
+		// CondaRuntime roots plugin envs under $HOME; keep the test out of the real one.
+		vi.stubEnv("HOME", await mkdtemp(path.join(os.tmpdir(), "environments-home-")));
+		const { mainSdk } = createSdkWithFlag({ featureFlagEnabled: true });
+
+		await mainRegister(mainSdk);
+		const capabilities = mainSdk.plugins.get<EnvironmentsCapabilities>("environments");
+		await capabilities?.condaRuntime
+			.ensureEnvironment({ name: "shared-bridge-test", packages: ["python"] })
+			.catch(() => undefined);
+
+		expect(warmedUp).toHaveLength(1);
+		expect(created).toHaveLength(1);
+		expect(created[0]).toBe(warmedUp[0]);
 	});
 
 	it("degrades gracefully when provider boot fails (bridge payload not found)", async () => {

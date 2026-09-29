@@ -44,6 +44,14 @@ vi.mock("vscode-jsonrpc/node", () => ({
 import { spawn } from "node:child_process";
 import { createMessageConnection, ResponseError } from "vscode-jsonrpc/node";
 
+/**
+ * The startup probe is `bridge.ping` (with a `conda.info` fallback for older
+ * payloads); mocks answer both so each test only scripts the call under test.
+ */
+function isHealthCheck(method: string): boolean {
+	return method === "bridge.ping" || method === "conda.info";
+}
+
 const silentLogger: MainSdkLogger = {
 	debug: () => {},
 	info: () => {},
@@ -110,7 +118,7 @@ describe("SidecarCondaBackend", () => {
 	describe("list()", () => {
 		it("maps describe_environments response to CondaEnv[]", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda_tools.describe_environments") {
 					return Promise.resolve({
 						environments: [
@@ -135,7 +143,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("handles bare array response from bridge", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda_tools.describe_environments") {
 					return Promise.resolve([
 						{ name: "base", prefix: "/opt/anaconda3" },
@@ -158,7 +166,7 @@ describe("SidecarCondaBackend", () => {
 	describe("findDistributions()", () => {
 		it("sends conda_tools.find_distributions with no params and maps prefix + priority", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda_tools.find_distributions") {
 					return Promise.resolve([
 						{ prefix: "/opt/miniconda3", details: { priority: 10, conda_root: true, depth: 0 } },
@@ -184,7 +192,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("defaults priority to 0 when details or priority is absent", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda_tools.find_distributions") {
 					return Promise.resolve([
 						{ prefix: "/opt/no-details" },
@@ -203,7 +211,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("skips malformed rows instead of throwing so one bad entry cannot fail discovery", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda_tools.find_distributions") {
 					return Promise.resolve([
 						null,
@@ -221,7 +229,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("tolerates an object envelope the way list() does for describe_environments", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda_tools.find_distributions") {
 					return Promise.resolve({
 						distributions: [{ prefix: "/opt/enveloped", details: { priority: 2 } }],
@@ -238,7 +246,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("returns an empty list when the bridge returns neither an array nor distributions", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda_tools.find_distributions") return Promise.resolve({});
 				return Promise.resolve({});
 			});
@@ -254,7 +262,7 @@ describe("SidecarCondaBackend", () => {
 		// assertions pin the exact camelCase wire shape.
 		it("sends conda.clone with camelCase destinationName + source name", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda.clone") {
 					return Promise.resolve({
 						success: true,
@@ -281,7 +289,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("derives destinationPrefix from sourcePrefix to preserve the root location", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda.clone") {
 					return Promise.resolve({
 						success: true,
@@ -323,7 +331,7 @@ describe("SidecarCondaBackend", () => {
 			mkdirSync(join(root, "envs"));
 			try {
 				mockConnection.sendRequest.mockImplementation((method: string) => {
-					if (method === "conda.info") return Promise.resolve({});
+					if (isHealthCheck(method)) return Promise.resolve({});
 					if (method === "conda.clone") {
 						return Promise.resolve({
 							success: true,
@@ -360,7 +368,7 @@ describe("SidecarCondaBackend", () => {
 			mkdirSync(join(prefix, "conda-meta"));
 			try {
 				mockConnection.sendRequest.mockImplementation((method: string) => {
-					if (method === "conda.info") return Promise.resolve({});
+					if (isHealthCheck(method)) return Promise.resolve({});
 					if (method === "conda.clone") {
 						return Promise.resolve({
 							success: true,
@@ -386,7 +394,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("throws SOLVE_FAILED when the bridge reports success=false", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda.clone") {
 					return Promise.resolve({
 						success: false,
@@ -407,7 +415,7 @@ describe("SidecarCondaBackend", () => {
 	describe("createFromFile()", () => {
 		it("sends conda.create_from_file with snake_case file and omits name when absent", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda.create_from_file") {
 					return Promise.resolve({
 						prefix: "/home/user/miniconda3/envs/fromfile",
@@ -435,7 +443,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("derives the name from a trailing-separator prefix instead of yielding an empty name", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda.create_from_file") {
 					return Promise.resolve({ prefix: "/envs/fromfile/", success: true });
 				}
@@ -451,7 +459,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("derives the name from a Windows prefix", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda.create_from_file") {
 					return Promise.resolve({ prefix: "C:\\Users\\me\\envs\\winenv", success: true });
 				}
@@ -467,7 +475,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("forwards the name override when provided", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda.create_from_file") {
 					return Promise.resolve({ prefix: "/envs/override", success: true });
 				}
@@ -487,7 +495,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("throws SOLVE_FAILED when the bridge reports success=false", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda.create_from_file") {
 					return Promise.resolve({
 						prefix: "/path/to/env",
@@ -508,7 +516,7 @@ describe("SidecarCondaBackend", () => {
 	describe("create()", () => {
 		it("sends conda.create with skip_preview=true", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda.create") {
 					return Promise.resolve({
 						prefix: "/home/user/miniconda3/envs/newenv",
@@ -542,7 +550,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("sends prefix instead of name when prefix option is provided", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda.create") {
 					return Promise.resolve({
 						prefix: "/custom/root/envs/newenv",
@@ -578,7 +586,7 @@ describe("SidecarCondaBackend", () => {
 	describe("remove()", () => {
 		it("sends conda.remove with all=true", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda.remove") {
 					return Promise.resolve({ prefix: "", success: true });
 				}
@@ -603,7 +611,7 @@ describe("SidecarCondaBackend", () => {
 	describe("uninstall()", () => {
 		it("sends conda.remove with the packages and skip_preview", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda.remove") {
 					return Promise.resolve({ prefix: "/path/to/env", success: true });
 				}
@@ -622,7 +630,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("reports the actual unlinked set (requested + orphaned deps) from actions.UNLINK", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda.remove") {
 					return Promise.resolve({
 						prefix: "/path/to/env",
@@ -651,7 +659,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("falls back to the requested specs — normalized to bare names — when the bridge omits actions", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda.remove") {
 					return Promise.resolve({ prefix: "/path/to/env", success: true });
 				}
@@ -673,7 +681,7 @@ describe("SidecarCondaBackend", () => {
 	describe("update()", () => {
 		it("sends conda.update with packages, update_all=false, and skip_preview", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda.update") {
 					return Promise.resolve({ prefix: "/path/to/env", success: true });
 				}
@@ -700,7 +708,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("sends conda.update with update_all=true and no packages key", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda.update") {
 					return Promise.resolve({ prefix: "/path/to/env", success: true });
 				}
@@ -721,7 +729,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("reports the LINKed set, re-listed for full records, as `updated`", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda.update") {
 					return Promise.resolve({
 						prefix: "/path/to/env",
@@ -766,7 +774,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("throws SOLVE_FAILED when the bridge returns success=false", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda.update") {
 					return Promise.resolve({ prefix: "/path/to/env", success: false, message: "conflict" });
 				}
@@ -783,7 +791,7 @@ describe("SidecarCondaBackend", () => {
 	describe("listPackages()", () => {
 		it("maps conda.list response to CondaPackage[]", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda.list") {
 					return Promise.resolve({
 						prefix: "/home/user/miniconda3/envs/myenv",
@@ -818,7 +826,7 @@ describe("SidecarCondaBackend", () => {
 	describe("listChannels()", () => {
 		it("maps wrapped list_channels response to Channel[]", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda_tools.list_channels") {
 					// The bridge returns list[ChannelMetadata] directly (not
 					// wrapped in { channels: [...] }).
@@ -838,7 +846,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("maps bare-array list_channels response to Channel[]", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda_tools.list_channels") {
 					return Promise.resolve([
 						{
@@ -863,7 +871,7 @@ describe("SidecarCondaBackend", () => {
 	describe("addChannel()", () => {
 		it("sends conda_config.add then returns updated channels", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda_config.add") {
 					return Promise.resolve({ success: true });
 				}
@@ -920,7 +928,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("calls repodata.find — not conda.search — and takes the package name from the map key", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "repodata.find") return Promise.resolve(repodataResponse());
 				return Promise.resolve({});
 			});
@@ -930,7 +938,7 @@ describe("SidecarCondaBackend", () => {
 
 			expect(mockConnection.sendRequest).toHaveBeenCalledWith(
 				"repodata.find",
-				{ names: ["numpy", "pip"] },
+				{ names: ["numpy", "pip"], limit: REPODATA_FIND_MAX_LIMIT + 1 },
 				expect.anything(),
 			);
 			expect(result).toEqual([
@@ -960,7 +968,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("forwards channels and subdirs, and omits filters the caller left unset", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "repodata.find") return Promise.resolve({});
 				return Promise.resolve({});
 			});
@@ -978,17 +986,19 @@ describe("SidecarCondaBackend", () => {
 					names: ["numpy"],
 					channels: ["conda-forge", "defaults"],
 					subdirs: ["osx-arm64", "noarch"],
+					limit: REPODATA_FIND_MAX_LIMIT + 1,
 				},
 				expect.anything(),
 			);
 		});
 
-		it("sends no params at all for an unfiltered catalog walk", async () => {
+		it("sends only the bounded limit for an unfiltered catalog walk", async () => {
 			// The bridge reads a missing `names` as "no filter" and an empty array
 			// as "return nothing", so an unset filter must be omitted, never sent
-			// as `names: []`.
+			// as `names: []`. The limit keeps the bridge from serialising the
+			// whole channel index over stdio.
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "repodata.find") return Promise.resolve({});
 				return Promise.resolve({});
 			});
@@ -998,7 +1008,7 @@ describe("SidecarCondaBackend", () => {
 
 			expect(mockConnection.sendRequest).toHaveBeenCalledWith(
 				"repodata.find",
-				{},
+				{ limit: REPODATA_FIND_MAX_LIMIT + 1 },
 				expect.anything(),
 			);
 		});
@@ -1009,7 +1019,7 @@ describe("SidecarCondaBackend", () => {
 			// `names: []`. toRepodataFindParams is the single guard that keeps
 			// that from reaching the bridge as "return nothing".
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "repodata.find") return Promise.resolve({});
 				return Promise.resolve({});
 			});
@@ -1019,7 +1029,7 @@ describe("SidecarCondaBackend", () => {
 
 			expect(mockConnection.sendRequest).toHaveBeenCalledWith(
 				"repodata.find",
-				{},
+				{ limit: REPODATA_FIND_MAX_LIMIT + 1 },
 				expect.anything(),
 			);
 		});
@@ -1041,7 +1051,7 @@ describe("SidecarCondaBackend", () => {
 				};
 			}
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "repodata.find") return Promise.resolve(oversized);
 				return Promise.resolve({});
 			});
@@ -1052,36 +1062,60 @@ describe("SidecarCondaBackend", () => {
 			expect(result).toHaveLength(REPODATA_FIND_MAX_LIMIT + 1);
 		});
 
-		it("unbounded: true skips the materialisation bound so the index cache sees the whole map", async () => {
-			// The main-process index cache that backs partial-match queries needs
-			// every package — the handler ranks and slices before anything
-			// crosses IPC, so the bound would silently hide matches.
-			const oversized: Record<string, unknown> = {};
-			for (let i = 0; i < REPODATA_FIND_MAX_LIMIT + 500; i++) {
-				oversized[`pkg-${i}`] = {
-					home: "",
-					summary: "",
-					channel: "",
-					build: 0,
-					version: "1.0.0",
-					versions: { "1.0.0": { size: 1 } },
-				};
-			}
+		it("forwards a partial-match query so the bridge filters and ranks", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
-				if (method === "repodata.find") return Promise.resolve(oversized);
+				if (isHealthCheck(method)) return Promise.resolve({});
 				return Promise.resolve({});
 			});
 
 			const backend = createBackend();
-			const result = await backend.findRepodata({}, undefined, { unbounded: true });
+			await backend.findRepodata({ query: "numpy", channels: ["conda-forge"] });
 
-			expect(result).toHaveLength(REPODATA_FIND_MAX_LIMIT + 500);
+			expect(mockConnection.sendRequest).toHaveBeenCalledWith(
+				"repodata.find",
+				{ query: "numpy", channels: ["conda-forge"], limit: REPODATA_FIND_MAX_LIMIT + 1 },
+				expect.anything(),
+			);
+		});
+
+		it("ranks query matches itself when an older bridge ignores query and returns the whole index", async () => {
+			const record = {
+				home: "",
+				summary: "",
+				channel: "",
+				build: 0,
+				version: "1.0.0",
+				versions: { "1.0.0": { size: 1 } },
+			};
+			const unfilteredIndex = {
+				unrelated: record,
+				"scikit-numpy": record,
+				numpydoc: record,
+				NumPy: record,
+				"also-numpy": record,
+			};
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (isHealthCheck(method)) return Promise.resolve({});
+				if (method === "repodata.find") return Promise.resolve(unfilteredIndex);
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			const result = await backend.findRepodata({ query: "numpy" });
+
+			// exact > prefix > substring (case-insensitive), stable within a rank;
+			// non-matches are dropped.
+			expect(result.map((pkg) => pkg.name)).toEqual([
+				"NumPy",
+				"numpydoc",
+				"scikit-numpy",
+				"also-numpy",
+			]);
 		});
 
 		it("returns an empty array when the index has no matching packages", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "repodata.find") return Promise.resolve({});
 				return Promise.resolve({});
 			});
@@ -1094,7 +1128,7 @@ describe("SidecarCondaBackend", () => {
 			// `RepodataPackage` defaults version to None and the string fields to
 			// "", so the mapping must not assume they are populated.
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "repodata.find") {
 					return Promise.resolve({
 						weird: { home: "", summary: "", channel: "", build: 0, version: null, versions: {} },
@@ -1125,7 +1159,7 @@ describe("SidecarCondaBackend", () => {
 			// on key order would silently flip such packages oldest-first.
 			// The backend must impose the newest-first contract explicitly.
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "repodata.find") {
 					return Promise.resolve({
 						calver: {
@@ -1159,7 +1193,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("orders mixed numeric and dotted version strings newest-first", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "repodata.find") {
 					return Promise.resolve({
 						mixed: {
@@ -1196,7 +1230,7 @@ describe("SidecarCondaBackend", () => {
 	describe("error handling", () => {
 		it("maps ResponseError with known domain_code to granular EnvironmentsErrorCode", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				throw new ResponseError(-32000, "env not found", {
 					code: "conda:environment:not-found",
 					message: "Requested conda environment not found",
@@ -1209,7 +1243,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("maps conda:environment:already-exists to ENV_EXISTS", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				throw new ResponseError(-32000, "already exists", {
 					code: "conda:environment:already-exists",
 					message: "Environment 'myenv' already exists",
@@ -1222,7 +1256,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("maps conda:package:not-found to PACKAGE_NOT_FOUND", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				throw new ResponseError(-32000, "not found", {
 					code: "conda:package:not-found",
 					message: "Package 'foobar' not found",
@@ -1238,7 +1272,7 @@ describe("SidecarCondaBackend", () => {
 			const loggerWithSpy: MainSdkLogger = { ...silentLogger, warn: warnSpy };
 
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				throw new ResponseError(-32000, "something novel", {
 					code: "conda:unknown:thing",
 					message: "Something unexpected",
@@ -1257,7 +1291,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("maps a 'prefix already exists' conda exception (no domain code) to ENV_EXISTS", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				// The bridge relays raw conda exceptions without a domain code.
 				throw new ResponseError(
 					-32000,
@@ -1271,7 +1305,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("falls back to PROVIDER_NOT_READY for ResponseError without data", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				throw new ResponseError(-32601, "method not found");
 			});
 
@@ -1282,7 +1316,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("wraps non-ResponseError exceptions as PROVIDER_NOT_READY", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				return Promise.reject(new Error("connection reset"));
 			});
 
@@ -1293,7 +1327,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("throws SOLVE_FAILED when bridge returns success=false on create", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda.create") {
 					return Promise.resolve({
 						prefix: "/path/to/env",
@@ -1312,7 +1346,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("throws SOLVE_FAILED when bridge returns success=false on install", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda.install") {
 					return Promise.resolve({
 						prefix: "/path/to/env",
@@ -1331,7 +1365,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("throws SOLVE_FAILED when bridge returns success=false on uninstall", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda.remove") {
 					return Promise.resolve({
 						prefix: "/path/to/env",
@@ -1350,7 +1384,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("includes bridge error message in SOLVE_FAILED detail", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda.create") {
 					return Promise.resolve({
 						prefix: "/path/to/env",
@@ -1376,7 +1410,7 @@ describe("SidecarCondaBackend", () => {
 				"└─ \u001b[31mpin on python =3.11 \u001b[0mis not installable",
 			].join("\n");
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda.install") {
 					return Promise.resolve({
 						prefix: "/path/to/env",
@@ -1403,7 +1437,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("uses bridge data.message over error.message for detail", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				throw new ResponseError(-32000, "generic rpc message", {
 					code: "conda:environment:not-found",
 					message: "Detailed: environment 'foo' not found at /path",
@@ -1420,7 +1454,7 @@ describe("SidecarCondaBackend", () => {
 	describe("abort handling", () => {
 		it("throws CANCELLED if signal is already aborted", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				return Promise.resolve({ environments: [] });
 			});
 
@@ -1450,7 +1484,7 @@ describe("SidecarCondaBackend", () => {
 	describe("warmUp()", () => {
 		it("starts the bridge process ahead of the first call, which then reuses the connection", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return Promise.resolve({});
+				if (isHealthCheck(method)) return Promise.resolve({});
 				if (method === "conda_tools.describe_environments") {
 					return Promise.resolve({ environments: [{ name: "base", prefix: "/opt/conda" }] });
 				}
@@ -1474,7 +1508,7 @@ describe("SidecarCondaBackend", () => {
 				releaseHealthCheck = resolve;
 			});
 			mockConnection.sendRequest.mockImplementation((method: string) => {
-				if (method === "conda.info") return healthCheckGate;
+				if (isHealthCheck(method)) return healthCheckGate;
 				if (method === "conda_tools.describe_environments") {
 					return Promise.resolve({ environments: [{ name: "base", prefix: "/opt/conda" }] });
 				}
@@ -1488,6 +1522,95 @@ describe("SidecarCondaBackend", () => {
 			await Promise.all([warmUp, list]);
 
 			expect(spawn).toHaveBeenCalledTimes(1);
+		});
+	});
+
+	describe("startup health check", () => {
+		it("probes liveness with bridge.ping instead of conda.info", async () => {
+			const backend = createBackend();
+			await backend.warmUp();
+
+			expect(mockConnection.sendRequest.mock.calls.map(([method]) => method)).toEqual([
+				"bridge.ping",
+			]);
+			backend.dispose();
+		});
+
+		it("falls back to conda.info when an older bridge does not know bridge.ping", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (method === "bridge.ping") {
+					return Promise.reject(new ResponseError(-32601, "Method Not Found: bridge.ping"));
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			await expect(backend.warmUp()).resolves.toBeUndefined();
+
+			expect(mockConnection.sendRequest.mock.calls.map(([method]) => method)).toEqual([
+				"bridge.ping",
+				"conda.info",
+			]);
+			backend.dispose();
+		});
+
+		it("fails startup when bridge.ping fails for a reason other than an unknown method", async () => {
+			mockConnection.sendRequest.mockRejectedValue(new ResponseError(-32000, "boom"));
+
+			const backend = createBackend();
+
+			await expect(backend.warmUp()).rejects.toThrow("PROVIDER_NOT_READY");
+			backend.dispose();
+		});
+	});
+
+	describe("automatic restart after an unexpected exit", () => {
+		beforeEach(() => {
+			vi.useFakeTimers();
+		});
+
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it("does not hand callers the restarted bridge before its health check passes", async () => {
+			const first = createMockProcess();
+			const restarted = createMockProcess();
+			const firstConnection = createMockConnection();
+			firstConnection.sendRequest.mockResolvedValue({});
+			let releasePing!: (value: unknown) => void;
+			const pingGate = new Promise((resolve) => {
+				releasePing = resolve;
+			});
+			const restartedConnection = createMockConnection();
+			restartedConnection.sendRequest.mockImplementation((method: string) =>
+				isHealthCheck(method) ? pingGate : Promise.resolve({ environments: [] }),
+			);
+			vi.mocked(spawn)
+				.mockReturnValueOnce(first as never)
+				.mockReturnValueOnce(restarted as never);
+			vi.mocked(createMessageConnection)
+				.mockReturnValueOnce(firstConnection as never)
+				.mockReturnValueOnce(restartedConnection as never);
+
+			const backend = createBackend();
+			await backend.warmUp();
+			first.exitCode = 1;
+			first.emit("exit", 1, null);
+			await vi.advanceTimersByTimeAsync(1_000);
+			expect(spawn).toHaveBeenCalledTimes(2);
+
+			const listing = backend.list();
+			await vi.advanceTimersByTimeAsync(0);
+			const sentBeforeHealthy = restartedConnection.sendRequest.mock.calls.map(
+				([method]) => method,
+			);
+			releasePing({});
+
+			await expect(listing).resolves.toEqual([]);
+			expect(sentBeforeHealthy).toEqual(["bridge.ping"]);
+			expect(spawn).toHaveBeenCalledTimes(2);
+			backend.dispose();
 		});
 	});
 

@@ -34,9 +34,9 @@
 		"zod": "catalog:"
 	},
 	"optionalDependencies": {
-		"@anaconda/desktop-bridge-payload-darwin-arm64": "0.1.11",
-		"@anaconda/desktop-bridge-payload-linux-x64": "0.1.11",
-		"@anaconda/desktop-bridge-payload-win32-x64": "0.1.11"
+		"@anaconda/desktop-bridge-payload-darwin-arm64": "0.1.13",
+		"@anaconda/desktop-bridge-payload-linux-x64": "0.1.13",
+		"@anaconda/desktop-bridge-payload-win32-x64": "0.1.13"
 	},
 	"devDependencies": {
 		"@kilo-desktop/e2e": "workspace:*",

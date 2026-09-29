@@ -680,84 +680,53 @@ describe("conda handlers → sdk.invoke round-trip", () => {
 		mainSdk.dispose();
 	});
 
-	it("ranks exact and prefix name matches ahead of substring matches before truncating", async () => {
-		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
-		const queue = new JobQueue({ emit: () => {} });
-		const named = (name: string): CondaRepodataPackage => ({
-			name,
-			version: "1.0.0",
-			build: 0,
-			channel: "",
-			summary: "",
-			home: "",
-			versions: [{ version: "1.0.0", size: 1000 }],
-		});
-		// Deliberately unordered: the exact match sits behind substring and
-		// prefix matches in index order, and a non-match is interleaved.
-		const index = [
-			named("unrelated"),
-			named("scikit-numpy"),
-			named("numpydoc"),
-			named("NumPy"),
-			named("also-numpy"),
-		];
-		const findRepodata = vi.fn().mockResolvedValue(index);
-		registerCondaHandlers(mainSdk, makeBackend({ findRepodata }), queue);
-
-		const client = rendererSdk.client as unknown as CondaService;
-		const result = await client["conda.repodata.find"]({ query: "numpy", limit: 3 });
-
-		// exact > prefix > substring (case-insensitive), stable within a rank;
-		// the non-match is dropped BEFORE truncation, so it cannot crowd out
-		// lower-ranked matches.
-		expect(result.packages.map((pkg) => pkg.name)).toEqual(["NumPy", "numpydoc", "scikit-numpy"]);
-		expect(result.truncated).toBe(true);
-		// The query never reaches the backend — it fetches the full index
-		// (names-less filter) with the materialisation bound lifted.
-		expect(findRepodata).toHaveBeenCalledWith(
-			{},
-			expect.objectContaining({ signal: expect.any(AbortSignal) }),
-			{ unbounded: true },
-		);
-
-		queue.dispose();
-		mainSdk.dispose();
-	});
-
-	it("serves different queries from one cached index — the backend walks the bridge once", async () => {
+	it("forwards a partial-match query to the backend and truncates its ranked result", async () => {
 		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
 		const queue = new JobQueue({ emit: () => {} });
 		const findRepodata = vi.fn().mockResolvedValue(makeRepodataMatches(5));
 		registerCondaHandlers(mainSdk, makeBackend({ findRepodata }), queue);
 
 		const client = rendererSdk.client as unknown as CondaService;
-		const first = await client["conda.repodata.find"]({ query: "pkg-1" });
-		const second = await client["conda.repodata.find"]({ query: "pkg-2" });
+		const result = await client["conda.repodata.find"]({ query: "pkg", limit: 3 });
 
-		// The index cache key omits `query`, so every keystroke of an
-		// interactive search re-ranks the same cached index.
-		expect(first.packages.map((pkg) => pkg.name)).toEqual(["pkg-1"]);
-		expect(second.packages.map((pkg) => pkg.name)).toEqual(["pkg-2"]);
-		expect(findRepodata).toHaveBeenCalledOnce();
+		// The backend (bridge) filters and ranks; the handler only slices.
+		expect(findRepodata).toHaveBeenCalledWith(
+			{ query: "pkg" },
+			expect.objectContaining({ signal: expect.any(AbortSignal) }),
+		);
+		expect(result.packages.map((pkg) => pkg.name)).toEqual(["pkg-0", "pkg-1", "pkg-2"]);
+		expect(result.truncated).toBe(true);
 
 		queue.dispose();
 		mainSdk.dispose();
 	});
 
-	it("names lookups bypass the query index cache and forward the exact filter", async () => {
+	it("caches each query separately — a repeated keystroke is served from the read cache", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const findRepodata = vi.fn().mockResolvedValue(makeRepodataMatches(2));
+		registerCondaHandlers(mainSdk, makeBackend({ findRepodata }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		await client["conda.repodata.find"]({ query: "pkg-1" });
+		await client["conda.repodata.find"]({ query: "pkg-2" });
+		await client["conda.repodata.find"]({ query: "pkg-1" });
+
+		expect(findRepodata).toHaveBeenCalledTimes(2);
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("names lookups forward the exact filter", async () => {
 		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
 		const queue = new JobQueue({ emit: () => {} });
 		const findRepodata = vi.fn().mockResolvedValue(makeRepodataMatches(3));
 		registerCondaHandlers(mainSdk, makeBackend({ findRepodata }), queue);
 
 		const client = rendererSdk.client as unknown as CondaService;
-		await client["conda.repodata.find"]({ query: "pkg" });
 		await client["conda.repodata.find"]({ names: ["pkg-0"] });
 
-		// The names path keeps its own cache slot (`repodata.find`) and hits
-		// the backend with the exact-name filter even while the query path's
-		// index (`repodata.index`) is warm.
-		expect(findRepodata).toHaveBeenCalledTimes(2);
 		expect(findRepodata).toHaveBeenLastCalledWith(
 			{ names: ["pkg-0"] },
 			expect.objectContaining({ signal: expect.any(AbortSignal) }),

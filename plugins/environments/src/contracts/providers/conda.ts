@@ -589,12 +589,13 @@ export type Subdir = z.infer<typeof subdirSchema>;
 /**
  * Ceiling on how many packages one `conda.repodata.find` call returns.
  *
- * The bridge's only filter is `names`; omitting it aggregates **every
- * package in every configured channel** (tens of thousands of records).
- * Each record crosses the main → renderer IPC boundary, enters the 5 s read
- * cache, and — because `conda.repodata.find` is an MCP tool — can land in a
- * model's context window. The default keeps a typical call small;
- * `REPODATA_FIND_MAX_LIMIT` caps what a caller may request.
+ * Omitting both `names` and `query` matches **every package in every
+ * configured channel** (tens of thousands of records). Each returned record
+ * crosses the main → renderer IPC boundary, enters the read cache, and —
+ * because `conda.repodata.find` is an MCP tool — can land in a model's
+ * context window. The default keeps a typical call small;
+ * `REPODATA_FIND_MAX_LIMIT` caps what a caller may request (and bounds what
+ * the bridge sends back).
  */
 export const REPODATA_FIND_DEFAULT_LIMIT = 100;
 export const REPODATA_FIND_MAX_LIMIT = 500;
@@ -602,17 +603,16 @@ export const REPODATA_FIND_MAX_LIMIT = 500;
 /**
  * Input to `conda.repodata.find`.
  *
- * Mirrors the bridge's `repodata.find` params, plus a main-process-only
- * `query`. Every filter is optional:
+ * Mirrors the bridge's `repodata.find` params. Every filter is optional:
  * - `names` restricts to these **exact** package names. Omit it to walk the
  *   whole channel index — correct for building a catalog, but expensive, so
  *   `limit` still applies. An empty array is rejected as a caller bug: use
  *   omission to mean "no filter", since the bridge reads `[]` as "return
  *   nothing".
- * - `query` is a case-insensitive **partial** match applied in the main
- *   process against the cached full index (the bridge itself has no
- *   substring support). Results are ranked exact > prefix > substring.
- *   Mutually exclusive with `names` so the two filter modes stay crisp.
+ * - `query` is a case-insensitive **partial** match, applied by the bridge
+ *   over its package-name index. Results are ranked exact > prefix >
+ *   substring. Mutually exclusive with `names` so the two filter modes stay
+ *   crisp.
  * - `channels` overrides the configured channels.
  * - `subdirs` restricts to specific platform subdirs; omitted uses conda's
  *   defaults for the host.

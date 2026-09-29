@@ -649,6 +649,116 @@ describe("JobQueue.read — cache TTL + invalidation", () => {
 	});
 });
 
+describe("JobQueue.read — in-flight sharing", () => {
+	it("shares one run between identical concurrent reads", async () => {
+		const queue = new JobQueue({ emit: () => {} });
+		const pending = deferred<string>();
+		const run = vi.fn(() => pending.promise);
+
+		const first = queue.read({ providerId: "conda", opName: "repodata.find", args: { a: 1 }, run });
+		const second = queue.read({
+			providerId: "conda",
+			opName: "repodata.find",
+			args: { a: 1 },
+			run,
+		});
+		pending.resolve("shared");
+
+		await expect(Promise.all([first, second])).resolves.toEqual(["shared", "shared"]);
+		expect(run).toHaveBeenCalledTimes(1);
+
+		queue.dispose();
+	});
+
+	it("applies each caller's own ttlMs to its cache lookups, even when it joined another caller's run", async () => {
+		let now = 0;
+		const queue = new JobQueue({ emit: () => {}, now: () => now });
+		const pending = deferred<string>();
+		const run = vi
+			.fn<() => Promise<string>>()
+			.mockImplementationOnce(() => pending.promise)
+			.mockResolvedValue("refetched");
+		const read = (ttlMs: number) =>
+			queue.read({ providerId: "conda", opName: "repodata.find", ttlMs, run });
+
+		const shortLived = read(1_000);
+		const longLived = read(60_000);
+		pending.resolve("shared");
+		await Promise.all([shortLived, longLived]);
+
+		now = 30_000;
+		// The long-TTL caller joined the short-TTL caller's run; its own TTL
+		// still governs whether the shared result is fresh for it...
+		await expect(read(60_000)).resolves.toBe("shared");
+		// ...while the short-TTL caller sees the same entry as expired.
+		await expect(read(1_000)).resolves.toBe("refetched");
+		expect(run).toHaveBeenCalledTimes(2);
+
+		queue.dispose();
+	});
+
+	it("does not share runs across different args", async () => {
+		const queue = new JobQueue({ emit: () => {} });
+		const run = vi.fn(async () => "value");
+
+		await Promise.all([
+			queue.read({ providerId: "conda", opName: "repodata.find", args: { a: 1 }, run }),
+			queue.read({ providerId: "conda", opName: "repodata.find", args: { a: 2 }, run }),
+		]);
+
+		expect(run).toHaveBeenCalledTimes(2);
+
+		queue.dispose();
+	});
+
+	it("rejects every joined caller when the shared run fails, then retries fresh", async () => {
+		const queue = new JobQueue({ emit: () => {} });
+		const pending = deferred<string>();
+		const run = vi
+			.fn<() => Promise<string>>()
+			.mockImplementationOnce(() => pending.promise)
+			.mockResolvedValueOnce("recovered");
+
+		const first = queue.read({ providerId: "conda", opName: "envs.list", run });
+		const second = queue.read({ providerId: "conda", opName: "envs.list", run });
+		pending.reject(featureError("PROVIDER_NOT_READY", "flaky"));
+
+		await expect(first).rejects.toBeInstanceOf(FeatureError);
+		await expect(second).rejects.toBeInstanceOf(FeatureError);
+		await expect(queue.read({ providerId: "conda", opName: "envs.list", run })).resolves.toBe(
+			"recovered",
+		);
+		expect(run).toHaveBeenCalledTimes(2);
+
+		queue.dispose();
+	});
+
+	it("does not hand a pre-write in-flight read to a caller that arrives after the write", async () => {
+		const queue = new JobQueue({ emit: () => {} });
+		const staleRead = deferred<string>();
+		const run = vi
+			.fn<() => Promise<string>>()
+			.mockImplementationOnce(() => staleRead.promise)
+			.mockResolvedValueOnce("after-write");
+
+		const beforeWrite = queue.read({ providerId: "conda", opName: "envs.list", run });
+		await queue.enqueue({ providerId: "conda", kind: "envs.create", run: async () => "created" })
+			.result;
+		const afterWrite = queue.read({ providerId: "conda", opName: "envs.list", run });
+		staleRead.resolve("before-write");
+
+		await expect(beforeWrite).resolves.toBe("before-write");
+		await expect(afterWrite).resolves.toBe("after-write");
+		// The pre-write result must not have been cached over the post-write one.
+		await expect(queue.read({ providerId: "conda", opName: "envs.list", run })).resolves.toBe(
+			"after-write",
+		);
+		expect(run).toHaveBeenCalledTimes(2);
+
+		queue.dispose();
+	});
+});
+
 describe("JobQueue read-cache invalidation isolation", () => {
 	it("wipes conda's cache after a successful conda write and leaves other providers untouched", async () => {
 		const emit = vi.fn<(event: JobProgressEvent) => void>();

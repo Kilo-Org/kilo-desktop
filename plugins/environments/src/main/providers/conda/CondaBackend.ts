@@ -73,28 +73,15 @@ export interface CondaCreateOptions {
 /**
  * Filters for {@link CondaBackend.findRepodata}, mirroring the bridge's
  * `repodata.find` params. Omitted fields fall back to the bridge's own
- * defaults (configured channels, host subdirs, and — for `names` — no
- * filter at all).
+ * defaults (configured channels, host subdirs, and — for `names` /
+ * `query` — no filter at all).
  */
 export interface CondaRepodataFilter {
 	readonly names?: string[];
+	/** Case-insensitive partial name match, ranked exact > prefix > substring. */
+	readonly query?: string;
 	readonly channels?: string[];
 	readonly subdirs?: string[];
-}
-
-/**
- * Options for {@link CondaBackend.findRepodata} that never reach the
- * bridge — they only shape what the backend materialises from the
- * bridge's response.
- */
-export interface CondaRepodataFindOptions {
-	/**
-	 * Skip the `REPODATA_FIND_MAX_LIMIT + 1` bound on the materialised
-	 * result. Reserved for the main-process index cache that backs
-	 * partial-match (`query`) searches: the result never crosses IPC
-	 * directly — the handler ranks and slices it first.
-	 */
-	readonly unbounded?: boolean;
 }
 
 export interface CondaBackend {
@@ -141,16 +128,14 @@ export interface CondaBackend {
 	 * Aggregate available packages from the channel repodata index.
 	 *
 	 * Every filter is optional and matches the bridge's own params. `names`
-	 * is an **exact-match** allowlist (the bridge has no substring or glob
-	 * support); omitting it walks the entire index, so callers are expected
-	 * to bound the result themselves — unless `options.unbounded` is set,
-	 * which hands back the whole materialised index (see
-	 * {@link CondaRepodataFindOptions}).
+	 * is an **exact-match** allowlist; `query` is a ranked partial match.
+	 * The result is bounded at `REPODATA_FIND_MAX_LIMIT + 1` packages (the
+	 * extra one lets callers flag truncation exactly), so callers slice it
+	 * to their own limit.
 	 */
 	findRepodata(
 		filter: CondaRepodataFilter,
 		ctx?: CondaCallContext,
-		options?: CondaRepodataFindOptions,
 	): Promise<CondaRepodataPackage[]>;
 
 	/**

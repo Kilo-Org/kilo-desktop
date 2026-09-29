@@ -12,6 +12,11 @@
  *   an explicit `warmUp()` (CondaProvider fires one during plugin boot so
  *   the first renderer call doesn't pay cold-start latency).
  * - It stays alive for the lifetime of the plugin.
+ * - Startup is verified with `bridge.ping` (lock-free, no conda work; older
+ *   payloads fall back to `conda.info`). The connection is published to
+ *   callers only after that probe passes, and every spawn — first start or
+ *   automatic restart — goes through the same in-flight dedup, so a caller
+ *   never receives a connection whose health is still unknown.
  * - On unexpected exit, it restarts with exponential backoff (max 3 retries).
  * - `dispose()` tears down the process cleanly.
  *
@@ -88,19 +93,20 @@ import type {
 	CondaCallContext,
 	CondaCreateOptions,
 	CondaRepodataFilter,
-	CondaRepodataFindOptions,
 } from "./CondaBackend.js";
+import { rankRepodataMatches } from "./rank-repodata.js";
 import { parseTransactionActions } from "./transaction-actions.js";
 
 const MAX_RESTART_ATTEMPTS = 3;
 const BASE_RESTART_DELAY_MS = 1000;
 /**
  * Ceiling on the startup health-check so a wedged spawn never hangs callers.
- * A cold bridge (bundled Python + conda imports, then `conda.info`) needed
+ * A cold bridge (bundled Python + conda imports before it can answer) needed
  * 8-18s on contended CI runners; a tighter ceiling killed healthy bridges
  * mid-startup and burned CPU on respawns.
  */
 const HEALTH_CHECK_TIMEOUT_MS = 30_000;
+const JSONRPC_METHOD_NOT_FOUND = -32601;
 const FORCE_KILL_DELAY_MS = 5_000;
 
 /** Shape of the `data` field on JSON-RPC errors from the bridge. */
@@ -489,35 +495,30 @@ export class SidecarCondaBackend implements CondaBackend {
 	 * aggregated across versions and channels: `version` is the newest
 	 * version, `build` is that version's build *number*, and `versions`
 	 * carries every version with its size. Omitted params fall back to the
-	 * bridge's defaults; `names` is an exact-match allowlist with no
-	 * substring support.
+	 * bridge's defaults; `names` is an exact-match allowlist and `query` a
+	 * ranked partial match, both applied by the bridge.
+	 *
+	 * Every request carries `limit: REPODATA_FIND_MAX_LIMIT + 1` so an
+	 * unfiltered walk never serialises the whole channel index (tens of MB)
+	 * over stdio; the one extra element keeps the handler's
+	 * `matches.length > input.limit` truncation flag exact. Bridges that
+	 * predate `query`/`limit` ignore both and return everything, so the
+	 * result is still ranked (a no-op for a bridge-ranked result) and
+	 * bounded here.
 	 */
 	async findRepodata(
 		filter: CondaRepodataFilter,
 		ctx?: CondaCallContext,
-		options?: CondaRepodataFindOptions,
 	): Promise<CondaRepodataPackage[]> {
 		const result = await this.#call<RepodataFindResult>(
 			"repodata.find",
-			toRepodataFindParams(filter),
+			{ ...toRepodataFindParams(filter), limit: REPODATA_FIND_MAX_LIMIT + 1 },
 			ctx,
 		);
-		// `repodata.find` has no native limit, so an unfiltered walk returns
-		// the entire channel index (tens of thousands of records). Bound what
-		// this method materialises, sorts, and hands to the read cache: retain
-		// at most REPODATA_FIND_MAX_LIMIT + 1 packages. The one extra element
-		// keeps the handler's `matches.length > input.limit` truncation flag
-		// exact for every valid limit (all <= REPODATA_FIND_MAX_LIMIT) while
-		// still signalling "more existed" when the index overflowed the cap.
-		// `unbounded` skips the cap for the main-process index cache that
-		// backs partial-match queries — that result never crosses IPC
-		// directly; the handler ranks and slices it first.
-		const allEntries = Object.entries(result ?? {});
-		const entries = options?.unbounded
-			? allEntries
-			: allEntries.slice(0, REPODATA_FIND_MAX_LIMIT + 1);
 		// The package name is the map key, not a field on the record.
-		return entries.map(([name, pkg]) => ({
+		const packages = Object.entries(result ?? {}).map(([name, pkg]) => ({ name, pkg }));
+		const matches = filter.query ? rankRepodataMatches(packages, filter.query) : packages;
+		return matches.slice(0, REPODATA_FIND_MAX_LIMIT + 1).map(({ name, pkg }) => ({
 			name,
 			version: pkg.version ?? null,
 			build: pkg.build ?? 0,
@@ -747,15 +748,12 @@ export class SidecarCondaBackend implements CondaBackend {
 		const connection = createMessageConnection(reader, writer);
 		connection.listen();
 
-		this.#connection = connection;
-
-		// Verify the connection is alive with a quick ping, racing against a
-		// spawn failure and a hard timeout so a broken binary can never wedge
-		// the awaited caller.
+		// Verify the connection is alive, racing against a spawn failure and a
+		// hard timeout so a broken binary can never wedge the awaited caller.
 		let healthTimer: NodeJS.Timeout | undefined;
 		try {
 			await Promise.race([
-				connection.sendRequest("conda.info", {}),
+				probeLiveness(connection),
 				startupFailure,
 				new Promise<never>((_, reject) => {
 					healthTimer = setTimeout(() => {
@@ -767,11 +765,21 @@ export class SidecarCondaBackend implements CondaBackend {
 		} catch (error: unknown) {
 			const message = error instanceof Error ? error.message : String(error);
 			this.#logger.error(`[anaconda-bridge-sidecar] Initial health check failed: ${message}`);
-			this.#teardown();
+			connection.dispose();
+			if (this.#process === child) this.#teardown();
 			throw featureError("PROVIDER_NOT_READY", `bridge failed to start: ${message}`);
 		} finally {
 			if (healthTimer) clearTimeout(healthTimer);
 		}
+
+		if (this.#process !== child) {
+			// Exited (or was torn down) between the probe answering and here.
+			connection.dispose();
+			throw featureError("PROVIDER_NOT_READY", "bridge exited during startup");
+		}
+		// Publish only now: `#ensureConnection`'s fast path must never return a
+		// connection whose health check has not passed.
+		this.#connection = connection;
 
 		this.#logger.info("[anaconda-bridge-sidecar] Bridge process started and responding.");
 		// Reset the restart counter ONLY after a confirmed-healthy start.
@@ -800,7 +808,9 @@ export class SidecarCondaBackend implements CondaBackend {
 
 		setTimeout(() => {
 			if (!this.#disposed && !this.#process) {
-				this.#startProcess().catch((error) => {
+				// Through the shared in-flight dedup, so a caller arriving mid-restart
+				// awaits this spawn's health check instead of racing a second spawn.
+				this.#ensureConnection().catch((error) => {
 					this.#logger.error(
 						`[anaconda-bridge-sidecar] Restart failed: ${error instanceof Error ? error.message : String(error)}`,
 					);
@@ -830,6 +840,22 @@ export class SidecarCondaBackend implements CondaBackend {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Lock-free liveness probe. `bridge.ping` answers as soon as the bridge is
+ * dispatching requests — it never queues behind the bridge's process-wide
+ * conda lock or pays for `conda info` (virtual-package detection spawns
+ * subprocesses on Windows). Payloads that predate it answer MethodNotFound,
+ * so fall back to the original `conda.info` probe for them.
+ */
+async function probeLiveness(connection: MessageConnection): Promise<void> {
+	try {
+		await connection.sendRequest("bridge.ping", {});
+	} catch (error) {
+		if (!(error instanceof ResponseError) || error.code !== JSONRPC_METHOD_NOT_FOUND) throw error;
+		await connection.sendRequest("conda.info", {});
+	}
+}
 
 /** `ChildProcess.killed` only means a signal was sent, not that the child exited. */
 function hasNotExited(child: ChildProcess): boolean {
@@ -916,9 +942,10 @@ function extractLinkedNames(actions: TransactionResult["actions"]): string[] {
  * `CondaRepodataFilter` type permits empty arrays) cannot accidentally send
  * `[]` to the bridge, and the IPC handler does not re-encode the same rule.
  */
-function toRepodataFindParams(filter: CondaRepodataFilter): Record<string, string[]> {
+function toRepodataFindParams(filter: CondaRepodataFilter): Record<string, string | string[]> {
 	return {
 		...(filter.names?.length ? { names: filter.names } : {}),
+		...(filter.query ? { query: filter.query } : {}),
 		...(filter.channels?.length ? { channels: filter.channels } : {}),
 		...(filter.subdirs?.length ? { subdirs: filter.subdirs } : {}),
 	};

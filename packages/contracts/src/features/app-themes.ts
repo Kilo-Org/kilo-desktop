@@ -318,11 +318,11 @@ export const APP_THEMES = [
 				"light",
 			),
 			// Based on Kilo design v0.2.0, with neutral surfaces tuned for desktop.
-			// Foreground matches Cursor Dark (#f0f0f0) so titles are less glaring than #fafafa.
+			// neutral-300: near-white halates on these near-black surfaces.
 			dark: variant(
 				{
 					background: "#111111",
-					foreground: "#f0f0f0",
+					foreground: "#d4d4d4",
 					surface: "#181818",
 					draftComposer: "#1f1f1f",
 					popover: "#2b2b2b",

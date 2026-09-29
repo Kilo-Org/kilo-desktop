@@ -748,7 +748,7 @@ describe("SessionList", () => {
 		const selectedClasses = selectedTitle?.className.split(/\s+/) ?? [];
 		const idleClasses = idleTitle?.className.split(/\s+/) ?? [];
 		expect(selectedClasses).toContain("text-sidebar-foreground");
-		expect(selectedClasses).not.toContain("text-sidebar-foreground/70");
+		expect(selectedClasses).not.toContain("text-sidebar-foreground/85");
 		expect(selectedClasses).not.toContain("text-sidebar-accent-foreground");
 		expect(idleClasses).toContain("group-hover/sidebar-row:text-sidebar-foreground");
 		expect(idleClasses).not.toContain("group-hover/sidebar-row:text-sidebar-accent-foreground");

@@ -1379,7 +1379,7 @@ const SessionRowContent = memo(function SessionRowContent({
 						? "text-muted-foreground group-hover/sidebar-row:text-sidebar-foreground"
 						: isActive
 							? "text-sidebar-foreground"
-							: "text-sidebar-foreground/70 group-hover/sidebar-row:text-sidebar-foreground",
+							: "text-sidebar-foreground/85 group-hover/sidebar-row:text-sidebar-foreground",
 				)}
 			>
 				<ThreadListItemPrimitive.Title fallback="New Chat" />
@@ -1387,7 +1387,7 @@ const SessionRowContent = memo(function SessionRowContent({
 			<span
 				data-slot="aui_session-list-item-time"
 				className={cn(
-					"text-muted-foreground/70 ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end gap-1 text-xs leading-4 tabular-nums transition-opacity",
+					"text-muted-foreground ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end gap-1 text-xs leading-4 tabular-nums transition-opacity",
 					canArchive || isArchived
 						? "group-hover/sidebar-row:min-w-24 group-has-[:focus-visible]/sidebar-row:min-w-24 group-has-[[data-popup-open]]/sidebar-row:min-w-24"
 						: "group-hover/sidebar-row:min-w-16 group-has-[:focus-visible]/sidebar-row:min-w-16 group-has-[[data-popup-open]]/sidebar-row:min-w-16",
@@ -1404,7 +1404,7 @@ const SessionRowContent = memo(function SessionRowContent({
 			<span
 				data-slot="aui_session-list-item-info"
 				className={cn(
-					"text-muted-foreground/70 flex min-w-0 items-center gap-1.5 truncate text-xs leading-4",
+					"text-muted-foreground flex min-w-0 items-center gap-1.5 truncate text-xs leading-4",
 					indented && "ml-1.5 pl-4",
 				)}
 			>

@@ -1631,7 +1631,7 @@ const ModelInfoPopover: FC<{ model: KiloCatalogModel }> = ({ model }) => {
 					<div className="flex items-center justify-between gap-3">
 						<div className="flex flex-col gap-0">
 							<span className="text-muted-foreground text-xs">Enkrypt risk score</span>
-							<span className="text-muted-foreground/70 text-2xs leading-3">Lower is safer</span>
+							<span className="text-muted-foreground text-2xs leading-3">Lower is safer</span>
 						</div>
 						<EnkryptRiskIndicator value={details.enkryptRiskScore} />
 					</div>

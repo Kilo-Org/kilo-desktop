@@ -199,12 +199,19 @@ export const Thread: FC<ThreadProps> = ({ components = EMPTY_COMPONENTS }) => {
 	);
 };
 
+/** Chat text size in place of the UI one; prose at 1.5x, the WCAG 1.4.8 minimum. */
+const CHAT_TYPOGRAPHY_CLASS =
+	"[--app-ui-text-size:var(--app-chat-text-size)] [--leading-relaxed:1.5]";
+
 /** Message-only thread surface for transcripts hosted by a readonly runtime. */
 export const ReadonlyThread: FC<ThreadProps> = ({ components = EMPTY_COMPONENTS }) => (
 	<ThreadComponentsContext.Provider value={components}>
 		<RevertPendingProvider>
 			<ThreadPrimitive.Root
-				className="aui-root aui-thread-root bg-pane @container flex h-full min-h-0 flex-col"
+				className={cn(
+					"aui-root aui-thread-root bg-pane @container flex h-full min-h-0 flex-col",
+					CHAT_TYPOGRAPHY_CLASS,
+				)}
 				style={{ ["--thread-max-width" as string]: "48rem" }}
 			>
 				<ThreadPrimitive.Viewport
@@ -254,6 +261,7 @@ const ThreadRoot: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 		<ThreadPrimitive.Root
 			className={cn(
 				"aui-root aui-thread-root @container flex h-full flex-col bg-pane",
+				CHAT_TYPOGRAPHY_CLASS,
 				isDraft
 					? "[--composer-bg:var(--composer-draft,var(--color-card))]"
 					: "[--composer-bg:var(--pane-raised)]",

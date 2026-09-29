@@ -61,9 +61,9 @@ export function TaskList({
 					<div className="min-w-0 flex-1 leading-5 break-words">
 						<span
 							className={cn(
-								item.status === "done" && "text-foreground/35 line-through decoration-[1.5px]",
+								item.status === "done" && "text-foreground/45 line-through decoration-[1.5px]",
 								item.status === "active" && "text-foreground/90",
-								item.status === "pending" && "text-foreground/50",
+								item.status === "pending" && "text-muted-foreground",
 								item.status === "cancelled" && "text-foreground/30 line-through decoration-[1.5px]",
 								item.status === "failed" && "text-destructive",
 							)}
@@ -71,7 +71,7 @@ export function TaskList({
 							{item.text}
 						</span>
 						{item.status === "failed" && item.reason ? (
-							<p className="text-foreground/45 text-xs leading-4 break-words">{item.reason}</p>
+							<p className="text-muted-foreground text-xs leading-4 break-words">{item.reason}</p>
 						) : null}
 					</div>
 				</li>

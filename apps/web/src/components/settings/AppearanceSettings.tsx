@@ -1,22 +1,28 @@
 import { Radio as RadioPrimitive } from "@base-ui/react/radio";
-import { MonitorIcon, MoonIcon, SunIcon, type LucideIcon } from "lucide-react";
+import { MonitorIcon, MoonIcon, RotateCcwIcon, SunIcon, type LucideIcon } from "lucide-react";
 
 import {
 	ACCENTS,
 	APP_THEMES,
+	DEFAULT_TEXT_SIZES,
 	getThemeVariant,
+	TEXT_SIZE_RANGE,
 	themeChromeColors,
+	type TextSizeTarget,
 	type ThemeSource,
 } from "@kilo-desktop/contracts";
 import { SettingsPageHeader } from "@kilo-desktop/sdk-react";
+import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	FieldContent,
 	FieldDescription,
 	FieldLegend,
 	FieldSet,
 } from "@kilo-desktop/ui/components/field";
+import { MarkdownContent } from "@kilo-desktop/ui/components/markdown-content";
 import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
 import { RadioGroup } from "@kilo-desktop/ui/components/radio-group";
+import { Slider } from "@kilo-desktop/ui/components/slider";
 import { Switch } from "@kilo-desktop/ui/components/switch";
 import {
 	Select,
@@ -182,8 +188,97 @@ export function AppearanceSettings() {
 							</SummaryCard.Actions>
 						</SummaryCard.Row>
 					</div>
+					<div>
+						<TextSizeRow
+							target="ui"
+							title="Interface text size"
+							description="Sidebar, menus, and settings."
+						/>
+					</div>
+					<div>
+						<TextSizeRow
+							target="chat"
+							title="Chat text size"
+							description="Messages, the composer, and tool output."
+						/>
+						<ChatTextPreview />
+					</div>
 				</section>
 			</FieldSet>
+		</div>
+	);
+}
+
+function TextSizeRow({
+	target,
+	title,
+	description,
+}: {
+	target: TextSizeTarget;
+	title: string;
+	description: string;
+}) {
+	const { textSizes, setTextSize } = useColorScheme();
+	const labelId = `appearance-${target}-text-size-label`;
+	const value = textSizes[target];
+	return (
+		<SummaryCard.Row>
+			<SummaryCard.Content>
+				<SummaryCard.Title id={labelId}>{title}</SummaryCard.Title>
+				<SummaryCard.Description>{description}</SummaryCard.Description>
+			</SummaryCard.Content>
+			<SummaryCard.Actions>
+				{/* The stock Slider is w-full, which collapses in a shrink-0 slot. */}
+				<div className="w-32">
+					<Slider
+						aria-labelledby={labelId}
+						value={value}
+						min={TEXT_SIZE_RANGE.min}
+						max={TEXT_SIZE_RANGE.max}
+						onValueChange={(next) => setTextSize(target, next as number)}
+					/>
+				</div>
+				<span
+					className="text-muted-foreground w-9 text-right text-sm tabular-nums"
+					data-qa-id={`appearance-${target}-text-size-value`}
+				>
+					{value}px
+				</span>
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon-xs"
+					aria-label={`Reset ${title.toLowerCase()}`}
+					className={cn(value === DEFAULT_TEXT_SIZES[target] && "invisible")}
+					onClick={() => setTextSize(target, DEFAULT_TEXT_SIZES[target])}
+				>
+					<RotateCcwIcon />
+				</Button>
+			</SummaryCard.Actions>
+		</SummaryCard.Row>
+	);
+}
+
+const CHAT_PREVIEW_PROMPT = "Can you make long replies easier to read?";
+const CHAT_PREVIEW_REPLY =
+	"Sure. I softened the body colour and kept `text-sm` as the base. Lines stay at 1.5× the size, so long answers keep their rhythm.";
+
+/** Mirrors the chat thread (`thread.tsx`, ChatPaneHost); keep the bubble in step with it. */
+function ChatTextPreview() {
+	return (
+		<div className="px-3 pb-3">
+			<div
+				className="bg-background border-border-subtle flex flex-col gap-3 rounded-lg border p-3 [--app-ui-text-size:var(--app-chat-text-size)] [--leading-relaxed:1.5] [--pane-raised:color-mix(in_srgb,var(--color-card)_50%,var(--color-accent))]"
+				data-qa-id="appearance-chat-text-preview"
+			>
+				<p className="text-foreground bg-pane-raised max-w-[80%] self-end rounded-xl px-4 py-2 text-sm">
+					{CHAT_PREVIEW_PROMPT}
+				</p>
+				<MarkdownContent
+					text={CHAT_PREVIEW_REPLY}
+					className="text-foreground px-2 leading-relaxed [&_.aui-md-p]:my-0"
+				/>
+			</div>
 		</div>
 	);
 }

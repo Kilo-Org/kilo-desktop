@@ -34,7 +34,7 @@ describe("app theme presets", () => {
 		});
 		expect(getThemeVariant("kilo", "dark")?.tokens).toMatchObject({
 			background: "#111111",
-			foreground: "#f0f0f0",
+			foreground: "#d4d4d4",
 			border: "rgb(255 255 255 / 0.1)",
 			input: "rgb(255 255 255 / 0.1)",
 			primary: "#f7f586",
@@ -48,7 +48,7 @@ describe("app theme presets", () => {
 			secondary: "color-mix(in oklch, var(--foreground) 5%, transparent)",
 			"sidebar-accent": "color-mix(in oklch, var(--foreground) 5%, transparent)",
 		});
-		expect(getThemeVariant("kilo", "dark")?.terminal?.selectionBackground).toBe("#1c1c1c");
+		expect(getThemeVariant("kilo", "dark")?.terminal?.selectionBackground).toBe("#1b1b1b");
 		const kiloCss = themeCss({ themeId: "kilo", accentId: "theme" });
 		expect(kiloCss).not.toContain("--shell-glass-opacity");
 		const dark = getThemeVariant("dracula", "dark")!;
@@ -80,11 +80,11 @@ describe("app theme presets", () => {
 	it("derives native chrome for Kilo and Anaconda", () => {
 		expect(getThemeChrome("kilo")).toEqual({
 			light: { background: "#ffffff", foreground: "#0a0a0a" },
-			dark: { background: "#111111", foreground: "#f0f0f0" },
+			dark: { background: "#111111", foreground: "#d4d4d4" },
 		});
 		expect(getThemeChrome("anaconda")).toEqual({
 			light: { background: "#ffffff", foreground: "#090b0c" },
-			dark: { background: "#101314", foreground: "#f1f3f3" },
+			dark: { background: "#101314", foreground: "#d0d6d8" },
 		});
 	});
 

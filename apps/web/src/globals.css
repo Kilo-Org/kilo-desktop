@@ -26,6 +26,9 @@
 	--warning: var(--color-amber-700);
 	--warning-foreground: var(--warning);
 	--warning-surface: color-mix(in oklch, var(--warning) 10%, transparent);
+	/* Defaults for the Appearance text-size settings, overridden inline on <html>. */
+	--app-ui-text-size: 13px;
+	--app-chat-text-size: 14px;
 	--app-scrollbar-width: 6px;
 	--app-scrollbar-thumb: color-mix(in oklch, var(--muted-foreground) 40%, transparent);
 	--app-scrollbar-thumb-hover: color-mix(in oklch, var(--muted-foreground) 60%, transparent);
@@ -62,14 +65,14 @@
 	--background: color-mix(in oklch, var(--color-mist-950) 50%, var(--color-mist-900));
 	--card: var(--color-mist-900);
 	--popover: var(--color-mist-900);
-	/* mist-50 is near-white; mist-100 keeps titles bright without glowing. */
-	--foreground: var(--color-mist-100);
-	--card-foreground: var(--color-mist-100);
-	--popover-foreground: var(--color-mist-100);
-	--secondary-foreground: var(--color-mist-100);
-	--accent-foreground: var(--color-mist-100);
-	--sidebar-foreground: var(--color-mist-100);
-	--sidebar-accent-foreground: var(--color-mist-100);
+	/* mist-300: brighter text halates on these near-black surfaces. */
+	--foreground: var(--color-mist-300);
+	--card-foreground: var(--color-mist-300);
+	--popover-foreground: var(--color-mist-300);
+	--secondary-foreground: var(--color-mist-300);
+	--accent-foreground: var(--color-mist-300);
+	--sidebar-foreground: var(--color-mist-300);
+	--sidebar-accent-foreground: var(--color-mist-300);
 	/* Translucent hairline: keeps one apparent weight over both the opaque
 	   content panes and the vibrancy-backed sidebar, which a solid Mist step
 	   cannot — its contrast inverts with the surface beneath it. */
@@ -100,7 +103,7 @@
 		scrollbar-width: thin;
 	}
 	html {
-		@apply font-sans;
+		@apply font-sans antialiased;
 		scrollbar-color: var(--app-scrollbar-thumb) transparent;
 	}
 }
@@ -155,11 +158,19 @@ html {
 	--color-pane-raised: var(--pane-raised);
 	--shadow-composer: var(--composer-shadow);
 	--shadow-composer-shelf: var(--composer-shelf-shadow);
-	/* Density scale: 2xs sits below stock xs for chips, counts and meta text. */
-	--text-2xs: 0.6875rem;
-	--text-2xs--line-height: 1rem;
-	--text-sm: 0.8125rem;
-	--text-sm--line-height: 1.25rem;
+	/* px offsets from the text-size setting; spacing stays rem so layouts do not move. */
+	--text-2xs: calc(var(--app-ui-text-size) - 2px);
+	--text-2xs--line-height: calc(var(--app-ui-text-size) + 3px);
+	--text-xs: calc(var(--app-ui-text-size) - 1px);
+	--text-xs--line-height: calc(var(--app-ui-text-size) + 3px);
+	--text-sm: var(--app-ui-text-size);
+	--text-sm--line-height: calc(var(--app-ui-text-size) + 7px);
+	--text-base: calc(var(--app-ui-text-size) + 3px);
+	--text-base--line-height: calc(var(--app-ui-text-size) + 11px);
+	--text-lg: calc(var(--app-ui-text-size) + 5px);
+	--text-lg--line-height: calc(var(--app-ui-text-size) + 15px);
+	--text-xl: calc(var(--app-ui-text-size) + 7px);
+	--text-xl--line-height: calc(var(--app-ui-text-size) + 15px);
 
 	@keyframes collapsible-down {
 		from {

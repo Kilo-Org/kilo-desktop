@@ -6,16 +6,39 @@ export type ResolvedColorScheme = "light" | "dark";
 export const THEME_STORAGE_KEY = "theme:v1";
 export const APP_THEME_STORAGE_KEY = "appTheme:v1";
 export const SIDEBAR_VIBRANCY_STORAGE_KEY = "sidebar-vibrancy:v1";
+export const TEXT_SIZE_STORAGE_KEY = "textSize:v1";
+
+export type TextSizes = { ui: number; chat: number };
+export type TextSizeTarget = keyof TextSizes;
+export const DEFAULT_TEXT_SIZES: TextSizes = { ui: 13, chat: 14 };
+export const TEXT_SIZE_RANGE = { min: 12, max: 18 } as const;
+export const TEXT_SIZE_CSS_VARS: Record<TextSizeTarget, string> = {
+	ui: "--app-ui-text-size",
+	chat: "--app-chat-text-size",
+};
+
+function normalizeTextSize(value: unknown, target: TextSizeTarget): number {
+	if (typeof value !== "number" || !Number.isFinite(value)) return DEFAULT_TEXT_SIZES[target];
+	return Math.min(TEXT_SIZE_RANGE.max, Math.max(TEXT_SIZE_RANGE.min, Math.round(value)));
+}
+
+export function normalizeTextSizes(input: unknown): TextSizes {
+	const stored =
+		input && typeof input === "object" && !Array.isArray(input)
+			? (input as Record<string, unknown>)
+			: {};
+	return { ui: normalizeTextSize(stored.ui, "ui"), chat: normalizeTextSize(stored.chat, "chat") };
+}
 
 /**
  * Hex paint tokens for native chrome (Linux window background, splash, title-bar symbols).
  * Hex equivalents of Anaconda surfaces — Electron cannot use oklch here.
- * Dark foreground is mist-100, not the package mist-50 title token.
+ * Dark foreground is mist-300, matching the softened `--foreground` in globals.css.
  * macOS uses a transparent window over vibrancy instead.
  */
 export const themeChromeColors = {
 	light: { background: "#ffffff", foreground: "#090b0c" },
-	dark: { background: "#101314", foreground: "#f1f3f3" },
+	dark: { background: "#101314", foreground: "#d0d6d8" },
 } as const;
 
 export type ThemeChromeColors = { background: string; foreground: string };
@@ -99,8 +122,16 @@ export function themeBootstrapScript(
 	const key = JSON.stringify(THEME_STORAGE_KEY);
 	const appThemeKey = JSON.stringify(APP_THEME_STORAGE_KEY);
 	const vibrancyKey = JSON.stringify(SIDEBAR_VIBRANCY_STORAGE_KEY);
+	const textSizeKey = JSON.stringify(TEXT_SIZE_STORAGE_KEY);
+	// Mirrors normalizeTextSizes.
+	const textSizeModel = JSON.stringify({
+		vars: TEXT_SIZE_CSS_VARS,
+		range: TEXT_SIZE_RANGE,
+		defaults: DEFAULT_TEXT_SIZES,
+	});
 	return [
 		`(function(){var k=${key},s="system",r=document.documentElement;try{if(localStorage.getItem(${vibrancyKey})==="false")r.style.setProperty("--shell-glass-opacity","100%");var v=localStorage.getItem(k);if(v==="light"||v==="dark"||v==="system")s=v}catch(e){}var d=s==="dark"||(s==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);if(d)r.dataset.theme="dark";else delete r.dataset.theme;r.style.colorScheme=d?"dark":"light";`,
+		`try{var z=localStorage.getItem(${textSizeKey});if(z){var q=JSON.parse(z),m=${textSizeModel};if(q&&typeof q==="object"&&!Array.isArray(q))for(var t in m.vars){var n=q[t];n=typeof n==="number"&&isFinite(n)?Math.min(m.range.max,Math.max(m.range.min,Math.round(n))):m.defaults[t];r.style.setProperty(m.vars[t],n+"px")}}}catch(e){}`,
 		`var themes=${JSON.stringify(themeCssById)},accents=${JSON.stringify(accentCssById)},c=themes[${JSON.stringify(defaultThemeId)}]||"";try{var p=JSON.parse(localStorage.getItem(${appThemeKey}));if(p&&typeof p==="object"&&!Array.isArray(p)){if(typeof p.themeId==="string"&&Object.hasOwn(themes,p.themeId))c=themes[p.themeId];if(typeof p.accentId==="string"&&Object.hasOwn(accents,p.accentId))c+=accents[p.accentId]}}catch(e){}`,
 		`if(c){var t=document.getElementById("app-theme");if(!t){t=document.createElement("style");t.id="app-theme";document.head.appendChild(t)}t.textContent=c}})();`,
 	].join("");

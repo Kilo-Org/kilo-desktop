@@ -11,9 +11,13 @@ import {
 
 import {
 	APP_THEME_STORAGE_KEY,
+	normalizeTextSizes,
 	SIDEBAR_VIBRANCY_STORAGE_KEY,
+	TEXT_SIZE_STORAGE_KEY,
 	THEME_STORAGE_KEY,
 	type AppThemePreferences,
+	type TextSizes,
+	type TextSizeTarget,
 	type ThemeSource,
 } from "@kilo-desktop/contracts";
 
@@ -34,6 +38,7 @@ import {
 	resolveColorScheme,
 	type ResolvedColorScheme,
 } from "@/platform/theme/color-scheme";
+import { applyTextSizes, persistTextSizes, readStoredTextSizes } from "@/platform/theme/text-size";
 
 function subscribeSystemScheme(onChange: () => void): () => void {
 	const media = globalThis.matchMedia(DARK_SCHEME_QUERY);
@@ -53,6 +58,8 @@ interface ColorSchemeContextValue {
 	readonly setSidebarVibrancy: (enabled: boolean) => void;
 	readonly appTheme: AppThemePreferences;
 	readonly setAppTheme: (preferences: AppThemePreferences) => void;
+	readonly textSizes: TextSizes;
+	readonly setTextSize: (target: TextSizeTarget, px: number) => void;
 }
 
 const ColorSchemeContext = createContext<ColorSchemeContextValue | null>(null);
@@ -61,6 +68,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 	const api = useLocalApi();
 	const [source, setSourceState] = useState<ThemeSource>(readStoredThemeSource);
 	const [sidebarVibrancy, setSidebarVibrancyState] = useState(readStoredSidebarVibrancy);
+	const [textSizes, setTextSizesState] = useState(readStoredTextSizes);
 	const appTheme = useSyncExternalStore(subscribeAppTheme, getAppThemePreferencesSnapshot);
 	const systemDark = useSyncExternalStore(subscribeSystemScheme, getSystemSchemeSnapshot);
 	const resolved = resolveColorScheme(source, systemDark);
@@ -80,6 +88,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 				setSourceState(readStoredThemeSource());
 			if (event.key === null || event.key === SIDEBAR_VIBRANCY_STORAGE_KEY)
 				setSidebarVibrancyState(readStoredSidebarVibrancy());
+			if (event.key === null || event.key === TEXT_SIZE_STORAGE_KEY)
+				setTextSizesState(readStoredTextSizes());
 		}
 		window.addEventListener("storage", onStorage);
 		return () => window.removeEventListener("storage", onStorage);
@@ -90,6 +100,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 		if (sidebarVibrancy) style.removeProperty("--shell-glass-opacity");
 		else style.setProperty("--shell-glass-opacity", "100%");
 	}, [sidebarVibrancy]);
+
+	useLayoutEffect(() => applyTextSizes(textSizes), [textSizes]);
 
 	useEffect(() => {
 		void api.theme.sync({ source, themeId: appTheme.themeId }).catch((error) => {
@@ -107,6 +119,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 		persistSidebarVibrancy(enabled);
 	}, []);
 
+	const setTextSize = useCallback(
+		(target: TextSizeTarget, px: number) => {
+			const next = normalizeTextSizes({ ...textSizes, [target]: px });
+			setTextSizesState(next);
+			persistTextSizes(next);
+		},
+		[textSizes],
+	);
+
 	return (
 		<ColorSchemeContext
 			value={{
@@ -117,6 +138,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 				setSidebarVibrancy,
 				appTheme,
 				setAppTheme: applyAppTheme,
+				textSizes,
+				setTextSize,
 			}}
 		>
 			{children}

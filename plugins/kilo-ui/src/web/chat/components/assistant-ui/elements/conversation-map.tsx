@@ -127,7 +127,7 @@ export function ConversationMap({
 							>
 								<p className="line-clamp-2 text-sm leading-snug font-medium">{entry.title}</p>
 								{entry.preview ? (
-									<p className="text-foreground/50 line-clamp-3 text-sm leading-snug">
+									<p className="text-muted-foreground line-clamp-3 text-sm leading-snug">
 										{entry.preview}
 									</p>
 								) : null}

@@ -1905,5 +1905,41 @@ describe("SidecarCondaBackend", () => {
 			expect(spawnEnv(1).BRIDGE_TELEMETRY_ENABLED).toBe("0");
 			backend.dispose();
 		});
+
+		it("stamps BRIDGE_TELEMETRY_MACHINE_ID only while telemetry is enabled", async () => {
+			const first = createExitingProcess();
+			vi.mocked(spawn).mockReturnValueOnce(first as never);
+			const backend = new SidecarCondaBackend({
+				command: ["/path/to/bridge"],
+				logger: silentLogger,
+				telemetry: { enabled: true, env: "production", machineId: "desktop-installation-id" },
+			});
+			await backend.warmUp();
+			expect(spawnEnv().BRIDGE_TELEMETRY_MACHINE_ID).toBe("desktop-installation-id");
+
+			backend.setTelemetryEnabled(false);
+			await vi.advanceTimersByTimeAsync(0);
+			expect(spawn).toHaveBeenCalledTimes(2);
+			expect(spawnEnv(1).BRIDGE_TELEMETRY_MACHINE_ID).toBeUndefined();
+			backend.dispose();
+		});
+
+		it("strips inherited BRIDGE_TELEMETRY_MACHINE_ID variants, stamping only the consented value", async () => {
+			vi.stubEnv("BRIDGE_TELEMETRY_MACHINE_ID", "inherited-machine");
+			vi.stubEnv("bridge_telemetry_machine_id", "inherited-machine");
+			const backend = new SidecarCondaBackend({
+				command: ["/path/to/bridge"],
+				logger: silentLogger,
+				telemetry: { enabled: true, env: "production", machineId: "desktop-installation-id" },
+			});
+			await backend.warmUp();
+
+			const env = spawnEnv();
+			expect(env.BRIDGE_TELEMETRY_MACHINE_ID).toBe("desktop-installation-id");
+			expect(
+				Object.keys(env).filter((name) => name.toUpperCase() === "BRIDGE_TELEMETRY_MACHINE_ID"),
+			).toEqual(["BRIDGE_TELEMETRY_MACHINE_ID"]);
+			backend.dispose();
+		});
 	});
 });

@@ -84,6 +84,21 @@ describe("registerPreferencesCapability", () => {
 		expect(capability.preferences.allowDataCollection).toBe(false);
 	});
 
+	it("reads the installation id live from the store", () => {
+		const prefs = {
+			allowDataCollection: true,
+			getInstallationId: vi.fn(() => "store-installation-id"),
+		} as unknown as PreferencesStore;
+		dispose = registerPreferencesCapability(prefs, "production");
+
+		const { preferences } = featureRouter.capabilityRegistry.get(
+			"preferences",
+		) as PreferencesMainCapability;
+
+		expect(preferences.installationId).toBe("store-installation-id");
+		expect(prefs.getInstallationId).toHaveBeenCalledOnce();
+	});
+
 	it("removes the capability when disposed", () => {
 		const disposer = registerPreferencesCapability(makePreferences(), "production");
 

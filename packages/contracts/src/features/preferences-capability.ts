@@ -30,4 +30,11 @@ export interface PreferencesMainCapabilityService {
 	 * to `"production"` when the build variable is unset.
 	 */
 	readonly telemetryEnv: string;
+
+	/**
+	 * Desktop's stable anonymous installation id. Plugins stamp it on
+	 * telemetry-bearing subprocesses (e.g. `KILO_MACHINE_ID` for the Kilo CLI)
+	 * so every Desktop-controlled surface reports one machine identity.
+	 */
+	readonly installationId: string;
 }

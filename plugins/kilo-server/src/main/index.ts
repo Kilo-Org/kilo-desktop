@@ -67,6 +67,8 @@ export interface KiloServerController {
 type PreferencesCapability = {
 	preferences: {
 		readonly allowDataCollection: boolean;
+		/** Desktop's stable anonymous installation id, stamped as `KILO_MACHINE_ID`. */
+		readonly installationId?: string;
 		onDidChangeAllowDataCollection(listener: (allow: boolean) => void | Promise<void>): () => void;
 	};
 };
@@ -166,11 +168,15 @@ export function createKiloServerManagerOptions(
 	resolveInstallation: typeof resolveKiloInstallation = resolveKiloInstallation,
 ): KiloServerManagerOptions {
 	const directories = resolveKiloServerDirectories(mainSdk.storageDir);
+	const installationId =
+		mainSdk.plugins.get<PreferencesCapability>("preferences")?.preferences.installationId;
 	return {
 		installation: resolveInstallation({
 			resourceRoots: [mainSdk.resolvePluginAsset("resources/kilo")],
 		}),
 		...directories,
+		// exactOptionalPropertyTypes: omit rather than pass `undefined`.
+		...(installationId !== undefined ? { installationId } : {}),
 		// Electron plugin storage — analogous to OpenCode desktop's userData XDG_STATE_HOME.
 		stateDirectory: mainSdk.storageDir,
 		allowVersionMismatch: Boolean(process.env.KILO_CODE_CLI_PATH?.trim()),

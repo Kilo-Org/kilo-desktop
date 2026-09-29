@@ -157,6 +157,29 @@ describe("kilo-server main registration", () => {
 		mainSdk.dispose();
 	});
 
+	it("passes the preferences capability installation id to the server manager options", () => {
+		const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({
+			featureId: "kilo-server",
+			main: { pluginDir: PLUGIN_DIR, storageDir: "/plugin-data/kilo-server" },
+		});
+		createMainSdk("preferences").plugins.expose("preferences", {
+			installationId: "pref-installation-id",
+		});
+
+		const options = createKiloServerManagerOptions(
+			mainSdk,
+			vi.fn(),
+			new ContributedEnvManager(() => undefined, mainSdk.logger),
+			vi.fn(() => ({
+				executablePath: "/plugin/kilo",
+				treeSitterWasmDirectory: "/plugin/tree-sitter",
+			})),
+		);
+
+		expect(options.installationId).toBe("pref-installation-id");
+		mainSdk.dispose();
+	});
+
 	it("starts the singleton server and exposes a connection capability", async () => {
 		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
 		const server = fakeServer();

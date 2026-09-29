@@ -22,6 +22,9 @@ export function registerPreferencesCapability(
 		get allowDataCollection() {
 			return preferences.allowDataCollection;
 		},
+		get installationId() {
+			return preferences.getInstallationId();
+		},
 		telemetryEnv,
 		setAllowDataCollection: (allow: boolean) => preferences.setAllowDataCollection(allow),
 		onDidChangeAllowDataCollection: (listener: (allow: boolean) => void | Promise<void>) =>

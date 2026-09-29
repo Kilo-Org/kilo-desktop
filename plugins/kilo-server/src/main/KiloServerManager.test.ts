@@ -118,6 +118,33 @@ describe("KiloServerManager", () => {
 		}
 	});
 
+	it("seeds KILO_MACHINE_ID from the app installation id and strips inherited variants", async () => {
+		const { manager, spawn } = createHarness({
+			installationId: "app-installation-id",
+			environment: { KILO_MACHINE_ID: "other-machine", kilo_machine_id: "other-machine" },
+		});
+		onTestFinished(() => manager.dispose());
+		await manager.ensureRunning();
+		await manager.restart();
+		expect(spawn.mock.calls.map(([, , options]) => options.env.KILO_MACHINE_ID)).toEqual([
+			"app-installation-id",
+			"app-installation-id",
+		]);
+		expect(spawn.mock.calls.map(([, , options]) => options.env.kilo_machine_id)).toEqual([
+			undefined,
+			undefined,
+		]);
+	});
+
+	it("strips an inherited KILO_MACHINE_ID when no app installation id is configured", async () => {
+		const { manager, spawn } = createHarness({
+			environment: { KILO_MACHINE_ID: "inherited-machine" },
+		});
+		onTestFinished(() => manager.dispose());
+		await manager.ensureRunning();
+		expect(spawn.mock.calls[0]![2].env.KILO_MACHINE_ID).toBeUndefined();
+	});
+
 	it("applies opt-in without spawning a cold server and stamps all on every later spawn", async () => {
 		const { manager, spawn, children } = createHarness();
 		onTestFinished(() => manager.dispose());

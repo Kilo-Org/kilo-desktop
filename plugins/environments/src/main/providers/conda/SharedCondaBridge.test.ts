@@ -32,11 +32,13 @@ function createFakeProcess() {
 	});
 }
 
-function createFakePreferences(allowDataCollection: boolean) {
+function createFakePreferences(allowDataCollection: boolean, installationId?: string) {
 	const listeners = new Set<(allow: boolean) => void>();
 	return {
 		allowDataCollection,
 		telemetryEnv: "test",
+		// exactOptionalPropertyTypes: omit rather than pass `undefined`.
+		...(installationId !== undefined ? { installationId } : {}),
 		onDidChangeAllowDataCollection(listener: (allow: boolean) => void) {
 			listeners.add(listener);
 			return () => listeners.delete(listener);
@@ -67,6 +69,7 @@ describe("SharedCondaBridge", () => {
 
 	afterEach(() => {
 		vi.clearAllMocks();
+		vi.unstubAllEnvs();
 	});
 
 	it("starts the bridge with the current data-collection choice", async () => {
@@ -127,5 +130,39 @@ describe("SharedCondaBridge", () => {
 		await new Promise((resolve) => setTimeout(resolve, 0));
 
 		expect(spawn).toHaveBeenCalledTimes(1);
+	});
+
+	it("stamps BRIDGE_TELEMETRY_MACHINE_ID from the installation id while data collection is allowed", async () => {
+		const preferences = createFakePreferences(true, "desktop-installation-id");
+		const bridge = new SharedCondaBridge({
+			resolveBridge: () => LAUNCH_INFO,
+			logger: silentLogger,
+			preferences,
+		});
+
+		await bridge.acquire().warmUp();
+
+		expect(spawnEnv().BRIDGE_TELEMETRY_MACHINE_ID).toBe("desktop-installation-id");
+		bridge.dispose();
+	});
+
+	it("stamps and withdraws BRIDGE_TELEMETRY_MACHINE_ID with data-collection consent", async () => {
+		const preferences = createFakePreferences(true, "desktop-installation-id");
+		const bridge = new SharedCondaBridge({
+			resolveBridge: () => LAUNCH_INFO,
+			logger: silentLogger,
+			preferences,
+		});
+		await bridge.acquire().warmUp();
+		expect(spawnEnv().BRIDGE_TELEMETRY_MACHINE_ID).toBe("desktop-installation-id");
+
+		preferences.change(false);
+		await vi.waitFor(() => expect(spawn).toHaveBeenCalledTimes(2));
+		expect(spawnEnv(1).BRIDGE_TELEMETRY_MACHINE_ID).toBeUndefined();
+
+		preferences.change(true);
+		await vi.waitFor(() => expect(spawn).toHaveBeenCalledTimes(3));
+		expect(spawnEnv(2).BRIDGE_TELEMETRY_MACHINE_ID).toBe("desktop-installation-id");
+		bridge.dispose();
 	});
 });

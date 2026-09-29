@@ -61,6 +61,14 @@ export interface KiloServerManagerOptions {
 	readonly managedPluginDirectory: string;
 	/** App-local XDG state root. Honors an inherited `XDG_STATE_HOME`. */
 	readonly stateDirectory: string;
+	/**
+	 * Desktop's stable installation id, stamped as `KILO_MACHINE_ID` at every
+	 * spawn so the CLI adopts the app's anonymous telemetry identity (the same
+	 * value used as the PostHog `distinct_id` before login) instead of
+	 * generating its own `telemetry-id`. Mirrors the VS Code host, which
+	 * passes `vscode.env.machineId`.
+	 */
+	readonly installationId?: string;
 	readonly expectedVersion?: string;
 	readonly allowVersionMismatch?: boolean;
 	readonly corsOrigins?: readonly string[];
@@ -245,7 +253,10 @@ export class KiloServerManager {
 			| "configDirectory"
 			| "managedPluginDirectory"
 			| "stateDirectory"
-		>;
+		> &
+		// Optional under exactOptionalPropertyTypes: absent unless the
+		// preferences capability supplies one.
+		Pick<KiloServerManagerOptions, "installationId">;
 	readonly #contributedEnv: ContributedEnvManager | undefined;
 	readonly #intentionalExits = new WeakSet<KiloChildProcess>();
 	readonly #status: ObservableValue<KiloServerStatus>;
@@ -270,6 +281,7 @@ export class KiloServerManager {
 			configDirectory: options.configDirectory,
 			managedPluginDirectory: options.managedPluginDirectory,
 			stateDirectory: options.stateDirectory,
+			...(options.installationId !== undefined ? { installationId: options.installationId } : {}),
 			expectedVersion: options.expectedVersion ?? KILO_CLI_VERSION,
 			allowVersionMismatch: options.allowVersionMismatch ?? false,
 			corsOrigins: options.corsOrigins ?? DEFAULT_CORS_ORIGINS,
@@ -660,6 +672,12 @@ export class KiloServerManager {
 			KILO_APP_NAME: "kilo-desktop",
 			KILO_PLATFORM: "desktop",
 			KILO_TELEMETRY_LEVEL: this.#telemetryEnabled ? "all" : "off",
+			// Anonymous identity attribution: the CLI's Identity takes
+			// KILO_MACHINE_ID over its own persisted telemetry-id, so Desktop's
+			// installation id becomes the CLI's anonymous PostHog distinct_id
+			// and the X-KILOCODE-MACHINEID gateway header. Set after the spreads
+			// so inherited shell values cannot override it.
+			...(this.#options.installationId ? { KILO_MACHINE_ID: this.#options.installationId } : {}),
 			// Kilo Gateway usage attribution: the CLI forwards this as the
 			// X-KILOCODE-FEATURE header. Must match a value in the gateway's
 			// FEATURE_VALUES enum (Kilo-Org/cloud feature-detection.ts) or the
@@ -677,10 +695,16 @@ export class KiloServerManager {
 			no_proxy: appendNoProxy(this.#options.environment.no_proxy),
 		};
 		// Case-insensitive scrub of dangerous keys, in case any case-variant
-		// survived the spread from process.env.
+		// survived the spread from process.env. KILO_MACHINE_ID is deleted
+		// outright when this app has no installation id to stamp, so an
+		// inherited value can never leak through to the CLI.
 		for (const name of Object.keys(environment)) {
 			const upper = name.toUpperCase();
-			if (upper === "KILO_TELEMETRY_LEVEL" && name !== "KILO_TELEMETRY_LEVEL") {
+			if (
+				(upper === "KILO_TELEMETRY_LEVEL" && name !== "KILO_TELEMETRY_LEVEL") ||
+				(upper === "KILO_MACHINE_ID" &&
+					(name !== "KILO_MACHINE_ID" || this.#options.installationId === undefined))
+			) {
 				delete environment[name];
 				continue;
 			}

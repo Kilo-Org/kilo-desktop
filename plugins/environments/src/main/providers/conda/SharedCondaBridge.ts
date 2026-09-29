@@ -10,6 +10,13 @@ import { SidecarCondaBackend } from "./SidecarCondaBackend.js";
 export interface BridgePreferences {
 	readonly allowDataCollection: boolean;
 	readonly telemetryEnv: string;
+	/**
+	 * Desktop's stable anonymous installation id. Forwarded to the bridge as
+	 * `BRIDGE_TELEMETRY_MACHINE_ID` only while data collection is allowed, so
+	 * package telemetry shares Desktop's machine identity and an opt-out
+	 * withdraws the identifier on the consent-driven respawn.
+	 */
+	readonly installationId?: string;
 	onDidChangeAllowDataCollection(listener: (allow: boolean) => void): () => void;
 }
 
@@ -79,6 +86,12 @@ export class SharedCondaBridge {
 			telemetry: preferences && {
 				enabled: preferences.allowDataCollection,
 				env: preferences.telemetryEnv,
+				// Passed regardless of the current choice: the backend stamps it
+				// only while telemetry is enabled, and consent changes respawn the
+				// bridge before the identifier is added or withdrawn.
+				...(preferences.installationId !== undefined
+					? { machineId: preferences.installationId }
+					: {}),
 			},
 		});
 		return this.#backend;

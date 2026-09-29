@@ -1071,17 +1071,17 @@ importers:
         version: 5.0.2(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.2)(@vitest/coverage-v8@5.0.2)(@vitest/ui@5.0.2)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
     optionalDependencies:
       '@anaconda/desktop-bridge-payload-darwin-arm64':
-        specifier: 0.1.13
-        version: 0.1.13
+        specifier: 0.1.14
+        version: 0.1.14
       '@anaconda/desktop-bridge-payload-linux-arm64':
-        specifier: 0.1.13
-        version: 0.1.13
+        specifier: 0.1.14
+        version: 0.1.14
       '@anaconda/desktop-bridge-payload-linux-x64':
-        specifier: 0.1.13
-        version: 0.1.13
+        specifier: 0.1.14
+        version: 0.1.14
       '@anaconda/desktop-bridge-payload-win32-x64':
-        specifier: 0.1.13
-        version: 0.1.13
+        specifier: 0.1.14
+        version: 0.1.14
 
   plugins/files:
     dependencies:
@@ -1990,23 +1990,23 @@ packages:
   7zip-bin-full@26.2.1:
     resolution: {integrity: sha512-h1DE4G8WEJ3/LI4HTcuOpouP7cy9JGqYfZm5fzLhdzw8jI3wFyA9RFu5MP+ICzelKEYmWweRWApEvVWKmJIdVQ==}
 
-  '@anaconda/desktop-bridge-payload-darwin-arm64@0.1.13':
-    resolution: {integrity: sha512-M/Cl9mXqQtwftjhqX/0eHdjbcVnptSz4le9juIDaW+jqIb1x00+bGrQuKYrGgb3I3jof6nZL8QT9bnEi5IVPrg==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-darwin-arm64/0.1.13/3061d509850d6bc306f19e6423b27c3f6bd056b8}
+  '@anaconda/desktop-bridge-payload-darwin-arm64@0.1.14':
+    resolution: {integrity: sha512-8y8lbCQk2toTZEHXzJO76eaGXhvHGpcOlgsJ9NuAJmsBrj1O0NjCrn56mHFKcylQmgRyDgPRfjjJwc5BFGCgxg==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-darwin-arm64/0.1.14/ef29e203d404dd177fd938fa2a0e57edac510454}
     cpu: [arm64]
     os: [darwin]
 
-  '@anaconda/desktop-bridge-payload-linux-arm64@0.1.13':
-    resolution: {integrity: sha512-mhPOG9NDFDElhgyVHw5bSjlhJt+anaHikIDNQtWkJySHZ4hoC2BzRovR2iFVfNn4o6wPl87/kp1UnyZh1qSYsw==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-linux-arm64/0.1.13/57f3f6c71c40b4828a47eac2f1fbbad6fc39a7f7}
+  '@anaconda/desktop-bridge-payload-linux-arm64@0.1.14':
+    resolution: {integrity: sha512-ylNSZbRRZzKzAE1pZzl1oVt2psLZnFHcQuA84XBpoIKgCpKBaLetsFJg0X8yH+PAlfVQ9hD6DLs9zCpDIerO8Q==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-linux-arm64/0.1.14/749276e275cc2c1480ae22a258ae364f04444bb2}
     cpu: [arm64]
     os: [linux]
 
-  '@anaconda/desktop-bridge-payload-linux-x64@0.1.13':
-    resolution: {integrity: sha512-tnQgc/33ZnTvw9rubSc+T0QhDMdOmUcOO8qxhLqbecgjLQdgUYwUwyehlKZy6EsbC7klccbTqE55c7lSMvM+5g==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-linux-x64/0.1.13/04cb84e13b9819868b432c34c70fa74a1aeda4f8}
+  '@anaconda/desktop-bridge-payload-linux-x64@0.1.14':
+    resolution: {integrity: sha512-ferFyIY8fzHSLd0x3dwTyvVWz7G0V/dCgSjRo9Vl/+qx/+hXJws+50B7+vObMC140k2PIU0gnqgBw1OOCqrn3g==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-linux-x64/0.1.14/1e4cb297b84d1bdc167a56bada814680b6e5af77}
     cpu: [x64]
     os: [linux]
 
-  '@anaconda/desktop-bridge-payload-win32-x64@0.1.13':
-    resolution: {integrity: sha512-BOV6CfRBJrZ6U4hZxGeWYCqz+kkiHXwRxFoaRM5OZMavn3r98bz1VO0xMwu/OOi28577CsXmXv9HBbQUkQ+xig==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-win32-x64/0.1.13/1fd8344f9e4d80836e22b1c95a83ece985a44330}
+  '@anaconda/desktop-bridge-payload-win32-x64@0.1.14':
+    resolution: {integrity: sha512-Kakw3ZFIBIKrZN+3KkQ5goz3BR+J1CtPHxxk5Qpc+6pgikmr15dLckqDwf4ARo+pN9mjBHU6vfhNxHmHGm8n2A==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-win32-x64/0.1.14/93af56c3773c6a5692a152cced1ec6cb40f3ace0}
     cpu: [x64]
     os: [win32]
 
@@ -10495,16 +10495,16 @@ snapshots:
 
   7zip-bin-full@26.2.1: {}
 
-  '@anaconda/desktop-bridge-payload-darwin-arm64@0.1.13':
+  '@anaconda/desktop-bridge-payload-darwin-arm64@0.1.14':
     optional: true
 
-  '@anaconda/desktop-bridge-payload-linux-arm64@0.1.13':
+  '@anaconda/desktop-bridge-payload-linux-arm64@0.1.14':
     optional: true
 
-  '@anaconda/desktop-bridge-payload-linux-x64@0.1.13':
+  '@anaconda/desktop-bridge-payload-linux-x64@0.1.14':
     optional: true
 
-  '@anaconda/desktop-bridge-payload-win32-x64@0.1.13':
+  '@anaconda/desktop-bridge-payload-win32-x64@0.1.14':
     optional: true
 
   '@anaconda/playwright-utils@2.1.0(@playwright/test@1.63.0)(jiti@2.7.0)(supports-color@10.2.2)':

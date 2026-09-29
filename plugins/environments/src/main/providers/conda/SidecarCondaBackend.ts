@@ -115,7 +115,11 @@ const BASE_RESTART_DELAY_MS = 1000;
 const HEALTH_CHECK_TIMEOUT_MS = 30_000;
 const JSONRPC_METHOD_NOT_FOUND = -32601;
 const FORCE_KILL_DELAY_MS = 5_000;
-const BRIDGE_TELEMETRY_VARIABLES = new Set(["BRIDGE_TELEMETRY_ENABLED", "BRIDGE_TELEMETRY_ENV"]);
+const BRIDGE_TELEMETRY_VARIABLES = new Set([
+	"BRIDGE_TELEMETRY_ENABLED",
+	"BRIDGE_TELEMETRY_ENV",
+	"BRIDGE_TELEMETRY_MACHINE_ID",
+]);
 
 /** Shape of the `data` field on JSON-RPC errors from the bridge. */
 interface BridgeErrorData {
@@ -183,6 +187,13 @@ export interface SidecarCondaBackendOptions {
 				readonly enabled: boolean;
 				/** `"development"`, `"test"`, or `"production"`. */
 				readonly env: string;
+				/**
+				 * Desktop's anonymous installation id, stamped as
+				 * `BRIDGE_TELEMETRY_MACHINE_ID` while telemetry is enabled and
+				 * never inherited from the parent process, so an opt-out fully
+				 * withdraws the identifier on the next bridge spawn.
+				 */
+				readonly machineId?: string;
 		  }
 		| undefined;
 }
@@ -191,6 +202,7 @@ export class SidecarCondaBackend implements CondaBackend {
 	readonly #command: readonly string[];
 	readonly #logger: MainSdkLogger;
 	readonly #telemetryEnv: string | undefined;
+	readonly #telemetryMachineId: string | undefined;
 	/** Children stopped on purpose, whose exit must not trigger a crash restart. */
 	readonly #plannedExits = new WeakSet<ChildProcess>();
 
@@ -209,6 +221,7 @@ export class SidecarCondaBackend implements CondaBackend {
 		this.#logger = options.logger;
 		this.#telemetryEnabled = options.telemetry?.enabled ?? false;
 		this.#telemetryEnv = options.telemetry?.env;
+		this.#telemetryMachineId = options.telemetry?.machineId;
 	}
 
 	// ─── CondaBackend implementation ──────────────────────────────────────
@@ -852,6 +865,11 @@ export class SidecarCondaBackend implements CondaBackend {
 			// (anaconda/anaconda-desktop-bridge#53), so it is always stamped.
 			BRIDGE_TELEMETRY_ENABLED: telemetryEnabled ? "1" : "0",
 			...(this.#telemetryEnv && { BRIDGE_TELEMETRY_ENV: this.#telemetryEnv }),
+			// Stamped only while telemetry is enabled so a consent opt-out fully
+			// withdraws the identifier on the consent-driven respawn.
+			...(telemetryEnabled && this.#telemetryMachineId
+				? { BRIDGE_TELEMETRY_MACHINE_ID: this.#telemetryMachineId }
+				: {}),
 		};
 	}
 

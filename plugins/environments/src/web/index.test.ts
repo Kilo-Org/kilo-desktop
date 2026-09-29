@@ -136,7 +136,7 @@ describe("environments plugin web entry", () => {
 		expect(updateSchema.properties?.updateAll?.type).toBe("boolean");
 	});
 
-	it("opens environment setup directly; channel-backed tools require an API key", async () => {
+	it("opens environment setup directly", async () => {
 		const navigate = vi.fn();
 		const sdk = createFakeSdk({ featureId: "environments", navigation: { navigate } });
 		webRegister(sdk);
@@ -145,24 +145,7 @@ describe("environments plugin web entry", () => {
 		expect(navigate).toHaveBeenCalledWith("/settings/environments", undefined);
 	});
 
-	it("fails a channel-backed environment create when no API key is stored", async () => {
-		const create = vi.fn();
-		const sdk = createFakeSdk({
-			featureId: "environments",
-			channels: condaContract,
-			handlers: { "conda.envs.create": create },
-		});
-		webRegister(sdk);
-
-		await expect(
-			sdk.services.toolRegistry.invoke("environments", "conda.envs.create", {
-				name: "chat-env",
-			}),
-		).rejects.toThrow("Anaconda API key is required");
-		expect(create).not.toHaveBeenCalled();
-	});
-
-	it("runs a channel-backed create when the keyring has an API key", async () => {
+	it("runs a channel-backed environment create without requiring a stored API key", async () => {
 		const create = vi.fn(async () => ({
 			jobId: "job-1",
 			environment: { name: "chat-env", prefix: "/envs/chat-env" },
@@ -171,10 +154,6 @@ describe("environments plugin web entry", () => {
 			featureId: "environments",
 			channels: condaContract,
 			handlers: { "conda.envs.create": create },
-		});
-		sdk.services.featureRouter.createMainSdk("auth").plugins.expose("session", {
-			getApiKey: async () => "key-123",
-			getSiteDomain: async () => "anaconda.com",
 		});
 		webRegister(sdk);
 

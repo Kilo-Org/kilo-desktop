@@ -13,7 +13,6 @@ import {
 	condaPackagesUpdateInputSchema,
 	condaRepodataFindInputSchema,
 } from "../../../contracts/providers/conda.js";
-import { requireEnvironmentApiKey } from "../../auth-capabilities.js";
 
 /**
  * Register provider-scoped WebMCP tools for the conda provider. Called by
@@ -81,10 +80,7 @@ export function registerCondaTools(sdk: SDK): void {
 		inputSchema: z.toJSONSchema(mcpCreateSchema, { target: "draft-2020-12" }),
 		validate: mcpCreateSchema,
 		exposeToModelContext: true,
-		handler: async (args) => {
-			await requireEnvironmentApiKey(sdk);
-			return sdk.invoke("conda.envs.create", args);
-		},
+		handler: (args) => sdk.invoke("conda.envs.create", args),
 	});
 
 	sdk.tools.register({
@@ -108,10 +104,7 @@ export function registerCondaTools(sdk: SDK): void {
 		inputSchema: z.toJSONSchema(condaEnvsCloneInputSchema, { target: "draft-2020-12" }),
 		validate: condaEnvsCloneInputSchema,
 		exposeToModelContext: true,
-		handler: async (args) => {
-			await requireEnvironmentApiKey(sdk);
-			return sdk.invoke("conda.envs.clone", args);
-		},
+		handler: (args) => sdk.invoke("conda.envs.clone", args),
 	});
 
 	// createFromFile accepts an unconstrained filesystem path — intentionally
@@ -156,10 +149,7 @@ export function registerCondaTools(sdk: SDK): void {
 		inputSchema: z.toJSONSchema(condaPackagesInstallInputSchema, { target: "draft-2020-12" }),
 		validate: condaPackagesInstallInputSchema,
 		exposeToModelContext: true,
-		handler: async (args) => {
-			await requireEnvironmentApiKey(sdk);
-			return sdk.invoke("conda.packages.install", args);
-		},
+		handler: (args) => sdk.invoke("conda.packages.install", args),
 	});
 
 	sdk.tools.register({
@@ -200,10 +190,7 @@ export function registerCondaTools(sdk: SDK): void {
 		validate: condaPackagesUpdateInputSchema,
 		annotations: { destructiveHint: true },
 		exposeToModelContext: true,
-		handler: async (args) => {
-			await requireEnvironmentApiKey(sdk);
-			return sdk.invoke("conda.packages.update", args);
-		},
+		handler: (args) => sdk.invoke("conda.packages.update", args),
 	});
 
 	sdk.tools.register({
@@ -238,9 +225,6 @@ export function registerCondaTools(sdk: SDK): void {
 		validate: condaRepodataFindInputSchema,
 		annotations: { readOnlyHint: true },
 		exposeToModelContext: true,
-		handler: async (args) => {
-			await requireEnvironmentApiKey(sdk);
-			return sdk.invoke("conda.repodata.find", args);
-		},
+		handler: (args) => sdk.invoke("conda.repodata.find", args),
 	});
 }

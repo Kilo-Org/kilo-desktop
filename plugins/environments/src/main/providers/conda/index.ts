@@ -8,7 +8,7 @@ import type {
 } from "../../EnvironmentProvider.js";
 
 import type { SidecarCondaBackend } from "./SidecarCondaBackend.js";
-import { SharedCondaBridge, bridgeTelemetry } from "./SharedCondaBridge.js";
+import { SharedCondaBridge, bridgePreferences } from "./SharedCondaBridge.js";
 import { registerCondaHandlers } from "./handlers.js";
 import { resolveBridge } from "./resolveBridgePath.js";
 import { registerCondaTools } from "../../../shared/providers/conda/tools.js";
@@ -69,7 +69,7 @@ export class CondaProvider implements EnvironmentProvider {
 			this.#bridge = new SharedCondaBridge({
 				resolveBridge: () => info,
 				logger: ctx.logger,
-				telemetry: () => bridgeTelemetry(ctx.mainSdk),
+				preferences: bridgePreferences(ctx.mainSdk),
 			});
 			this.#ownsBridge = true;
 		}

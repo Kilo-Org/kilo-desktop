@@ -195,6 +195,7 @@ describe("CondaProvider", () => {
 		prefsSdk.plugins.expose("preferences", {
 			allowDataCollection: false,
 			telemetryEnv: "test",
+			onDidChangeAllowDataCollection: () => () => {},
 		});
 
 		await provider.boot({ mainSdk, boot: mainSdk.boot, logger: mainSdk.logger });

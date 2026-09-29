@@ -19,6 +19,13 @@
  *   never receives a connection whose health is still unknown.
  * - On unexpected exit, it restarts with exponential backoff (max 3 retries).
  * - `dispose()` tears down the process cleanly.
+ * - Data-collection consent is stamped into the env at every spawn. The
+ *   bridge reads it once at startup and has no runtime toggle, so
+ *   `setTelemetryEnabled` restarts a bridge started with the other choice.
+ *   Killing it mid-call could leave a conda transaction half-applied, so the
+ *   restart waits until no call is active; calls made meanwhile still go to
+ *   the old bridge (a few more telemetry events at most). The exit of a
+ *   restarted child is planned, so it never counts against the crash budget.
  *
  * Mapping from CondaBackend methods to bridge JSON-RPC methods:
  * - list()              → conda_tools.describe_environments
@@ -108,6 +115,7 @@ const BASE_RESTART_DELAY_MS = 1000;
 const HEALTH_CHECK_TIMEOUT_MS = 30_000;
 const JSONRPC_METHOD_NOT_FOUND = -32601;
 const FORCE_KILL_DELAY_MS = 5_000;
+const BRIDGE_TELEMETRY_VARIABLES = new Set(["BRIDGE_TELEMETRY_ENABLED", "BRIDGE_TELEMETRY_ENV"]);
 
 /** Shape of the `data` field on JSON-RPC errors from the bridge. */
 interface BridgeErrorData {
@@ -165,18 +173,14 @@ export interface SidecarCondaBackendOptions {
 	readonly bridgeBinaryPath?: string;
 
 	/**
-	 * Bridge telemetry configuration forwarded as env vars to the
-	 * spawned sidecar process. When omitted, the bridge falls back
-	 * to its compiled-in defaults (telemetry enabled, production env).
+	 * Data-collection consent forwarded to the bridge as env vars. The bridge
+	 * reads them once at startup and enables telemetry when they are unset, so
+	 * without this option every spawn is stamped with telemetry disabled.
+	 * Later changes arrive through `setTelemetryEnabled`.
 	 */
 	readonly telemetry?:
 		| {
-				/**
-				 * Called at spawn time so a preference toggle after boot is
-				 * respected on the next bridge (re)start. Returns `"1"` to
-				 * enable, `"0"` to disable.
-				 */
-				readonly enabled: () => string;
+				readonly enabled: boolean;
 				/** `"development"`, `"test"`, or `"production"`. */
 				readonly env: string;
 		  }
@@ -186,18 +190,25 @@ export interface SidecarCondaBackendOptions {
 export class SidecarCondaBackend implements CondaBackend {
 	readonly #command: readonly string[];
 	readonly #logger: MainSdkLogger;
-	readonly #telemetry: SidecarCondaBackendOptions["telemetry"];
+	readonly #telemetryEnv: string | undefined;
+	/** Children stopped on purpose, whose exit must not trigger a crash restart. */
+	readonly #plannedExits = new WeakSet<ChildProcess>();
 
+	#telemetryEnabled: boolean;
 	#process: ChildProcess | null = null;
+	#processTelemetryEnabled = false;
 	#connection: MessageConnection | null = null;
 	#restartAttempts = 0;
 	#disposed = false;
 	#connecting: Promise<MessageConnection> | null = null;
+	/** Calls between entering `#call` and settling, including those still waiting for a connection. */
+	#activeCalls = 0;
 
 	constructor(options: SidecarCondaBackendOptions) {
 		this.#command = options.command ?? [options.bridgeBinaryPath!];
 		this.#logger = options.logger;
-		this.#telemetry = options.telemetry;
+		this.#telemetryEnabled = options.telemetry?.enabled ?? false;
+		this.#telemetryEnv = options.telemetry?.env;
 	}
 
 	// ─── CondaBackend implementation ──────────────────────────────────────
@@ -565,6 +576,17 @@ export class SidecarCondaBackend implements CondaBackend {
 		await this.#ensureConnection();
 	}
 
+	/**
+	 * Apply a data-collection consent change. The bridge only reads consent at
+	 * startup, so a running bridge started with the other choice is restarted
+	 * as soon as no call is using it. Calls made in the meantime still go to
+	 * it. Never starts a bridge that is not running.
+	 */
+	setTelemetryEnabled(enabled: boolean): void {
+		this.#telemetryEnabled = enabled;
+		this.#restartIfConsentChanged();
+	}
+
 	dispose(): void {
 		this.#disposed = true;
 		this.#teardown();
@@ -609,6 +631,18 @@ export class SidecarCondaBackend implements CondaBackend {
 	}
 
 	async #call<T>(method: string, params: unknown, ctx?: CondaCallContext): Promise<T> {
+		// Counted before awaiting the connection, so a consent restart can never
+		// tear down a connection a call has already been handed.
+		this.#activeCalls++;
+		try {
+			return await this.#send<T>(method, params, ctx);
+		} finally {
+			this.#activeCalls--;
+			this.#restartIfConsentChanged();
+		}
+	}
+
+	async #send<T>(method: string, params: unknown, ctx?: CondaCallContext): Promise<T> {
 		const connection = await this.#ensureConnection();
 
 		if (ctx?.signal?.aborted) {
@@ -660,7 +694,27 @@ export class SidecarCondaBackend implements CondaBackend {
 			return await this.#connecting;
 		} finally {
 			this.#connecting = null;
+			// Consent may have changed while this bridge was starting.
+			this.#restartIfConsentChanged();
 		}
+	}
+
+	#restartIfConsentChanged(): void {
+		const child = this.#process;
+		if (!child || this.#disposed || this.#connecting || this.#activeCalls > 0) return;
+		if (this.#processTelemetryEnabled === this.#telemetryEnabled) return;
+		this.#logger.info(
+			"[anaconda-bridge-sidecar] Restarting bridge to apply the data collection preference.",
+		);
+		this.#plannedExits.add(child);
+		this.#teardown();
+		// The bridge was running, so bring the replacement up now rather than on
+		// the next call; a failed start falls back to the usual retry on next use.
+		this.#ensureConnection().catch((error: unknown) => {
+			this.#logger.error(
+				`[anaconda-bridge-sidecar] Restart failed: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		});
 	}
 
 	async #startProcess(): Promise<MessageConnection> {
@@ -676,28 +730,14 @@ export class SidecarCondaBackend implements CondaBackend {
 		if (!binary) {
 			throw featureError("PROVIDER_NOT_READY", "Bridge command is empty.");
 		}
+		const telemetryEnabled = this.#telemetryEnabled;
 		const child = spawn(binary, args, {
 			stdio: ["pipe", "pipe", "pipe"],
-			env: {
-				...process.env,
-				// The bridge inherits the user's real environment — no
-				// CONDA_ENVS_PATH, CONDA_PKGS_DIRS, or CONDARC override.
-				// User-created environments land in the user's standard envs_dirs
-				// and share the system package cache. See ADR-002.
-				//
-				// Plugin environments (CondaRuntime) bypass this entirely via
-				// explicit `prefix` paths at ~/.kilo-desktop/conda/envs/.
-				BRIDGE_PROTECT_STDIO: "1",
-				// Telemetry — bridge defaults to production endpoints if these
-				// are unset. See anaconda/anaconda-desktop-bridge#53.
-				...(this.#telemetry && {
-					BRIDGE_TELEMETRY_ENABLED: this.#telemetry.enabled(),
-					BRIDGE_TELEMETRY_ENV: this.#telemetry.env,
-				}),
-			},
+			env: this.#createEnvironment(telemetryEnabled),
 		});
 
 		this.#process = child;
+		this.#processTelemetryEnabled = telemetryEnabled;
 
 		// Rejects the pending startup if the child fails to spawn (e.g. ENOENT)
 		// or exits before the health check resolves — without this, a wedged
@@ -730,7 +770,7 @@ export class SidecarCondaBackend implements CondaBackend {
 			// Unblock an in-flight startup that was waiting on the health check.
 			onStartupFailure(new Error(`process exited before ready (code=${code}, signal=${signal})`));
 
-			if (!this.#disposed) {
+			if (!this.#disposed && !this.#plannedExits.has(child)) {
 				this.#scheduleRestart();
 			}
 		});
@@ -789,6 +829,30 @@ export class SidecarCondaBackend implements CondaBackend {
 		this.#restartAttempts = 0;
 
 		return connection;
+	}
+
+	#createEnvironment(telemetryEnabled: boolean): NodeJS.ProcessEnv {
+		const environment: NodeJS.ProcessEnv = {};
+		for (const [name, value] of Object.entries(process.env)) {
+			// Windows env names are case-insensitive; drop every inherited
+			// variant so only the consent stamped below reaches the bridge.
+			if (!BRIDGE_TELEMETRY_VARIABLES.has(name.toUpperCase())) environment[name] = value;
+		}
+		return {
+			...environment,
+			// The bridge inherits the user's real environment — no
+			// CONDA_ENVS_PATH, CONDA_PKGS_DIRS, or CONDARC override.
+			// User-created environments land in the user's standard envs_dirs
+			// and share the system package cache. See ADR-002.
+			//
+			// Plugin environments (CondaRuntime) bypass this entirely via
+			// explicit `prefix` paths at ~/.kilo-desktop/conda/envs/.
+			BRIDGE_PROTECT_STDIO: "1",
+			// The bridge enables telemetry when this is unset
+			// (anaconda/anaconda-desktop-bridge#53), so it is always stamped.
+			BRIDGE_TELEMETRY_ENABLED: telemetryEnabled ? "1" : "0",
+			...(this.#telemetryEnv && { BRIDGE_TELEMETRY_ENV: this.#telemetryEnv }),
+		};
 	}
 
 	/* v8 ignore start -- process lifecycle tested via integration/e2e */

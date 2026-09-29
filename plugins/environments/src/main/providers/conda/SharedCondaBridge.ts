@@ -1,7 +1,21 @@
 import type { MainSdk, MainSdkLogger } from "@kilo-desktop/feature-sdk/main";
 
 import type { BridgeLaunchInfo } from "./resolveBridgePath.js";
-import { SidecarCondaBackend, type SidecarCondaBackendOptions } from "./SidecarCondaBackend.js";
+import { SidecarCondaBackend } from "./SidecarCondaBackend.js";
+
+/**
+ * Minimal shape of the shell's main-side preferences capability. Inlined so
+ * the plugin does not take a `@kilo-desktop/contracts` dependency.
+ */
+export interface BridgePreferences {
+	readonly allowDataCollection: boolean;
+	readonly telemetryEnv: string;
+	onDidChangeAllowDataCollection(listener: (allow: boolean) => void): () => void;
+}
+
+interface PreferencesCapability extends Record<string, unknown> {
+	preferences: BridgePreferences;
+}
 
 /**
  * One anaconda-bridge-sidecar process per app, shared by every main-side
@@ -16,6 +30,12 @@ import { SidecarCondaBackend, type SidecarCondaBackendOptions } from "./SidecarC
  * process-wide conda lock) and the backend multiplexes concurrent JSON-RPC
  * calls over one connection.
  *
+ * Data-collection consent follows the shell's preference: the backend is
+ * created with the current choice and every change is forwarded to it, which
+ * restarts a running bridge once it is idle (see `SidecarCondaBackend`).
+ * The listener never waits for that, so a long conda operation cannot hold
+ * up the Privacy setting.
+ *
  * The backend is created lazily on first `acquire()`, so exposing the
  * capability or constructing this holder performs no I/O and never spawns a
  * process on its own. `dispose()` is idempotent and owned by `mainRegister`.
@@ -23,17 +43,21 @@ import { SidecarCondaBackend, type SidecarCondaBackendOptions } from "./SidecarC
 export class SharedCondaBridge {
 	readonly #resolveBridge: () => BridgeLaunchInfo | null;
 	readonly #logger: MainSdkLogger;
-	readonly #telemetry: () => SidecarCondaBackendOptions["telemetry"];
+	readonly #preferences: BridgePreferences | undefined;
+	readonly #unsubscribeConsent: (() => void) | undefined;
 	#backend: SidecarCondaBackend | undefined;
 
 	constructor(options: {
 		resolveBridge: () => BridgeLaunchInfo | null;
 		logger: MainSdkLogger;
-		telemetry?: () => SidecarCondaBackendOptions["telemetry"];
+		preferences?: BridgePreferences | undefined;
 	}) {
 		this.#resolveBridge = options.resolveBridge;
 		this.#logger = options.logger;
-		this.#telemetry = options.telemetry ?? (() => undefined);
+		this.#preferences = options.preferences;
+		this.#unsubscribeConsent = this.#preferences?.onDidChangeAllowDataCollection((allow) =>
+			this.#backend?.setTelemetryEnabled(allow),
+		);
 	}
 
 	acquire(): SidecarCondaBackend {
@@ -48,37 +72,25 @@ export class SharedCondaBridge {
 		this.#logger.info(
 			`[conda-bridge] Using anaconda-bridge-sidecar v${launchInfo.version}: ${launchInfo.command.join(" ")}`,
 		);
+		const preferences = this.#preferences;
 		this.#backend = new SidecarCondaBackend({
 			command: launchInfo.command,
 			logger: this.#logger,
-			telemetry: this.#telemetry(),
+			telemetry: preferences && {
+				enabled: preferences.allowDataCollection,
+				env: preferences.telemetryEnv,
+			},
 		});
 		return this.#backend;
 	}
 
 	dispose(): void {
+		this.#unsubscribeConsent?.();
 		this.#backend?.dispose();
 	}
 }
 
-/**
- * Minimal shape of the main-side preferences capability exposed by the shell.
- * Inlined so the plugin does not take a `@kilo-desktop/contracts`
- * dependency for a single call.
- */
-interface PreferencesCapability extends Record<string, unknown> {
-	preferences: {
-		readonly allowDataCollection: boolean;
-		readonly telemetryEnv: string;
-	};
-}
-
-/** Bridge telemetry settings derived from the shell's preferences, if present. */
-export function bridgeTelemetry(mainSdk: MainSdk): SidecarCondaBackendOptions["telemetry"] {
-	const prefs = mainSdk.plugins.get<PreferencesCapability>("preferences");
-	if (!prefs) return undefined;
-	return {
-		enabled: () => (prefs.preferences.allowDataCollection ? "1" : "0"),
-		env: prefs.preferences.telemetryEnv,
-	};
+/** The shell's preferences capability, when present. */
+export function bridgePreferences(mainSdk: MainSdk): BridgePreferences | undefined {
+	return mainSdk.plugins.get<PreferencesCapability>("preferences")?.preferences;
 }

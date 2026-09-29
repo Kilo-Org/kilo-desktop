@@ -67,8 +67,8 @@ export function PrivacySettings() {
 										</label>
 									</SummaryCard.Title>
 									<SummaryCard.Description>
-										Includes the embedded Kilo service. Chat, sign-in, and updates still use the
-										network.
+										Includes the embedded Kilo service and conda environment manager. Chat, sign-in,
+										and updates still use the network.
 									</SummaryCard.Description>
 								</SummaryCard.Content>
 								<SummaryCard.Actions>

@@ -1708,73 +1708,202 @@ describe("SidecarCondaBackend", () => {
 		});
 	});
 
-	describe("bridge telemetry env vars", () => {
-		it("passes BRIDGE_TELEMETRY_ENABLED and BRIDGE_TELEMETRY_ENV when telemetry is configured", async () => {
-			mockConnection.sendRequest.mockResolvedValue({});
+	describe("bridge telemetry consent", () => {
+		function spawnEnv(call = 0): NodeJS.ProcessEnv {
+			return vi.mocked(spawn).mock.calls[call]?.[2]?.env as NodeJS.ProcessEnv;
+		}
 
-			const backend = new SidecarCondaBackend({
+		/** Mirrors Node: the child exits shortly after it is signalled. */
+		function createExitingProcess() {
+			const proc = createMockProcess();
+			proc.kill = vi.fn((signal: NodeJS.Signals) => {
+				proc.killed = true;
+				queueMicrotask(() => {
+					proc.signalCode = signal;
+					proc.emit("exit", null, signal);
+				});
+			});
+			return proc;
+		}
+
+		function createConsentBackend(enabled: boolean) {
+			return new SidecarCondaBackend({
 				command: ["/path/to/bridge"],
 				logger: silentLogger,
-				telemetry: { enabled: () => "1", env: "development" },
+				telemetry: { enabled, env: "production" },
 			});
-			await backend.warmUp();
+		}
 
-			const spawnEnv = vi.mocked(spawn).mock.calls[0]?.[2]?.env as Record<string, string>;
-			expect(spawnEnv.BRIDGE_TELEMETRY_ENABLED).toBe("1");
-			expect(spawnEnv.BRIDGE_TELEMETRY_ENV).toBe("development");
-			expect(spawnEnv.BRIDGE_PROTECT_STDIO).toBe("1");
+		/** Holds `listChannels()` calls open until the returned release is called. */
+		function holdChannelListing(): () => void {
+			let release!: () => void;
+			const listing = new Promise((resolve) => {
+				release = () => resolve({ channels: [] });
+			});
+			mockConnection.sendRequest.mockImplementation((method: string) =>
+				method === "conda_tools.list_channels" ? listing : Promise.resolve({}),
+			);
+			return release;
+		}
+
+		beforeEach(() => {
+			vi.useFakeTimers();
 		});
 
-		it("omits BRIDGE_TELEMETRY_* when telemetry is not configured", async () => {
-			mockConnection.sendRequest.mockResolvedValue({});
-
-			const backend = new SidecarCondaBackend({
-				command: ["/path/to/bridge"],
-				logger: silentLogger,
-			});
-			await backend.warmUp();
-
-			const spawnEnv = vi.mocked(spawn).mock.calls[0]?.[2]?.env as Record<string, string>;
-			expect(spawnEnv.BRIDGE_TELEMETRY_ENABLED).toBeUndefined();
-			expect(spawnEnv.BRIDGE_TELEMETRY_ENV).toBeUndefined();
-			expect(spawnEnv.BRIDGE_PROTECT_STDIO).toBe("1");
+		afterEach(() => {
+			vi.unstubAllEnvs();
+			vi.useRealTimers();
 		});
 
-		it("evaluates the enabled getter at spawn time so a runtime preference toggle takes effect on restart", async () => {
-			mockConnection.sendRequest.mockResolvedValue({});
-
-			let allowed = true;
+		it("passes the consent and telemetry environment to the bridge", async () => {
 			const backend = new SidecarCondaBackend({
 				command: ["/path/to/bridge"],
 				logger: silentLogger,
-				telemetry: { enabled: () => (allowed ? "1" : "0"), env: "production" },
+				telemetry: { enabled: true, env: "development" },
 			});
-
 			await backend.warmUp();
-			const firstEnv = vi.mocked(spawn).mock.calls[0]?.[2]?.env as Record<string, string>;
-			expect(firstEnv.BRIDGE_TELEMETRY_ENABLED).toBe("1");
 
-			// Simulate the user disabling data collection
-			allowed = false;
-
-			// Force a new spawn by simulating process exit + re-connect
+			expect(spawnEnv().BRIDGE_TELEMETRY_ENABLED).toBe("1");
+			expect(spawnEnv().BRIDGE_TELEMETRY_ENV).toBe("development");
+			expect(spawnEnv().BRIDGE_PROTECT_STDIO).toBe("1");
 			backend.dispose();
-			vi.mocked(spawn).mockClear();
-			mockProcess = createMockProcess();
-			vi.mocked(spawn).mockReturnValue(mockProcess as never);
-			mockConnection = createMockConnection();
-			mockConnection.sendRequest.mockResolvedValue({});
-			vi.mocked(createMessageConnection).mockReturnValue(mockConnection as never);
+		});
 
-			const backend2 = new SidecarCondaBackend({
-				command: ["/path/to/bridge"],
-				logger: silentLogger,
-				telemetry: { enabled: () => (allowed ? "1" : "0"), env: "production" },
+		it("disables bridge telemetry without consent, overriding inherited values", async () => {
+			vi.stubEnv("BRIDGE_TELEMETRY_ENABLED", "1");
+			vi.stubEnv("bridge_telemetry_enabled", "1");
+
+			const backend = createBackend();
+			await backend.warmUp();
+
+			const env = spawnEnv();
+			expect(env.BRIDGE_TELEMETRY_ENABLED).toBe("0");
+			expect(
+				Object.keys(env).filter((name) => name.toUpperCase() === "BRIDGE_TELEMETRY_ENABLED"),
+			).toEqual(["BRIDGE_TELEMETRY_ENABLED"]);
+			backend.dispose();
+		});
+
+		it("restarts an idle bridge so it uses the new consent", async () => {
+			const first = createExitingProcess();
+			vi.mocked(spawn).mockReturnValueOnce(first as never);
+			const backend = createConsentBackend(true);
+			await backend.warmUp();
+
+			backend.setTelemetryEnabled(false);
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(first.kill).toHaveBeenCalledWith("SIGTERM");
+			expect(spawn).toHaveBeenCalledTimes(2);
+			expect(spawnEnv(1).BRIDGE_TELEMETRY_ENABLED).toBe("0");
+			backend.dispose();
+		});
+
+		it("lets calls keep using the running bridge and restarts once they finish", async () => {
+			const first = createExitingProcess();
+			vi.mocked(spawn).mockReturnValueOnce(first as never);
+			const release = holdChannelListing();
+			const backend = createConsentBackend(true);
+			await backend.warmUp();
+			const running = backend.listChannels();
+			await vi.advanceTimersByTimeAsync(0);
+
+			backend.setTelemetryEnabled(false);
+			const arrivedAfterChange = backend.listChannels();
+			await vi.advanceTimersByTimeAsync(0);
+			expect(first.kill).not.toHaveBeenCalled();
+			expect(spawn).toHaveBeenCalledTimes(1);
+
+			release();
+			await expect(Promise.all([running, arrivedAfterChange])).resolves.toEqual([[], []]);
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(first.kill).toHaveBeenCalledWith("SIGTERM");
+			expect(spawnEnv(1).BRIDGE_TELEMETRY_ENABLED).toBe("0");
+			backend.dispose();
+		});
+
+		it("keeps the bridge when the choice is reverted before it is idle", async () => {
+			const first = createExitingProcess();
+			vi.mocked(spawn).mockReturnValueOnce(first as never);
+			const release = holdChannelListing();
+			const backend = createConsentBackend(true);
+			await backend.warmUp();
+			const running = backend.listChannels();
+			await vi.advanceTimersByTimeAsync(0);
+
+			backend.setTelemetryEnabled(false);
+			backend.setTelemetryEnabled(true);
+			release();
+			await running;
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(first.kill).not.toHaveBeenCalled();
+			expect(spawn).toHaveBeenCalledTimes(1);
+			backend.dispose();
+		});
+
+		it("restarts a bridge that was starting when consent changed once it is up", async () => {
+			const first = createExitingProcess();
+			vi.mocked(spawn).mockReturnValueOnce(first as never);
+			let releasePing!: (value: unknown) => void;
+			const firstPing = new Promise((resolve) => {
+				releasePing = resolve;
 			});
-			await backend2.warmUp();
+			mockConnection.sendRequest.mockReturnValueOnce(firstPing).mockResolvedValue({});
+			const backend = createConsentBackend(true);
+			const warmUp = backend.warmUp();
+			await vi.advanceTimersByTimeAsync(0);
 
-			const secondEnv = vi.mocked(spawn).mock.calls[0]?.[2]?.env as Record<string, string>;
-			expect(secondEnv.BRIDGE_TELEMETRY_ENABLED).toBe("0");
+			backend.setTelemetryEnabled(false);
+			expect(first.kill).not.toHaveBeenCalled();
+			releasePing({});
+			await warmUp;
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(first.kill).toHaveBeenCalledWith("SIGTERM");
+			expect(spawnEnv(1).BRIDGE_TELEMETRY_ENABLED).toBe("0");
+			backend.dispose();
+		});
+
+		it("does not treat the consent restart as a crash", async () => {
+			vi.mocked(spawn).mockReturnValueOnce(createExitingProcess() as never);
+			const backend = createConsentBackend(true);
+			await backend.warmUp();
+
+			backend.setTelemetryEnabled(false);
+			await vi.advanceTimersByTimeAsync(10_000);
+
+			expect(spawn).toHaveBeenCalledTimes(2);
+			backend.dispose();
+		});
+
+		it("does not start a bridge just to apply a change", async () => {
+			const backend = createConsentBackend(true);
+
+			backend.setTelemetryEnabled(false);
+			await vi.advanceTimersByTimeAsync(0);
+			expect(spawn).not.toHaveBeenCalled();
+
+			await backend.warmUp();
+			expect(spawnEnv().BRIDGE_TELEMETRY_ENABLED).toBe("0");
+			backend.dispose();
+		});
+
+		it("uses the current consent when the bridge restarts after a crash", async () => {
+			const first = createMockProcess();
+			vi.mocked(spawn).mockReturnValueOnce(first as never);
+			const backend = createConsentBackend(true);
+			await backend.warmUp();
+
+			first.exitCode = 1;
+			first.emit("exit", 1, null);
+			backend.setTelemetryEnabled(false);
+			await vi.advanceTimersByTimeAsync(1_000);
+
+			expect(spawn).toHaveBeenCalledTimes(2);
+			expect(spawnEnv(1).BRIDGE_TELEMETRY_ENABLED).toBe("0");
+			backend.dispose();
 		});
 	});
 });

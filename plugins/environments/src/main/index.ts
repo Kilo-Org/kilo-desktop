@@ -9,7 +9,7 @@ import { ProviderRegistry } from "./ProviderRegistry.js";
 import { CondaRuntime } from "./providers/conda/CondaRuntime.js";
 import { CondaProvider } from "./providers/conda/index.js";
 import { resolveBridgeLaunchInfo } from "./providers/conda/resolveBridgePath.js";
-import { SharedCondaBridge, bridgeTelemetry } from "./providers/conda/SharedCondaBridge.js";
+import { SharedCondaBridge, bridgePreferences } from "./providers/conda/SharedCondaBridge.js";
 
 /**
  * Capability shape exposed by kilo-ui for local MCP App resource registration.
@@ -85,7 +85,7 @@ export async function mainRegister(mainSdk: MainSdk): Promise<void> {
 	const bridge = new SharedCondaBridge({
 		resolveBridge: () => resolveBridgeLaunchInfo(),
 		logger: mainSdk.logger,
-		telemetry: () => bridgeTelemetry(mainSdk),
+		preferences: bridgePreferences(mainSdk),
 	});
 	mainSdk.onDispose(() => bridge.dispose());
 	const runtime = new CondaRuntime({ bridge, logger: mainSdk.logger });

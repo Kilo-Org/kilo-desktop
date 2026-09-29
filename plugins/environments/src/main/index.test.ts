@@ -34,7 +34,10 @@ const mockedResolveBridgeLaunchInfo = vi.mocked(resolveBridgeLaunchInfo);
 function createSdkWithFlag(options: { featureFlagEnabled: boolean | null }): {
 	mainSdk: FakeMainSdk;
 	getFlag: ReturnType<typeof vi.fn>;
-	exposePreferences: (prefs: { allowDataCollection: boolean; telemetryEnv: string }) => void;
+	exposePreferences: (prefs: {
+		allowDataCollection: boolean;
+		telemetryEnv: string;
+	}) => FakePreferences;
 } {
 	const { mainSdk, createMainSdk } = createLinkedFakeSdkPair({
 		featureId: "environments",
@@ -51,11 +54,32 @@ function createSdkWithFlag(options: { featureFlagEnabled: boolean | null }): {
 	}
 
 	const exposePreferences = (prefs: { allowDataCollection: boolean; telemetryEnv: string }) => {
-		const prefsSdk = createMainSdk("preferences");
-		prefsSdk.plugins.expose("preferences", prefs);
+		const listeners = new Set<(allow: boolean) => void>();
+		const preferences: FakePreferences = {
+			...prefs,
+			onDidChangeAllowDataCollection(listener) {
+				listeners.add(listener);
+				return () => listeners.delete(listener);
+			},
+			change(allow) {
+				preferences.allowDataCollection = allow;
+				for (const listener of listeners) listener(allow);
+			},
+		};
+		createMainSdk("preferences").plugins.expose("preferences", preferences);
+		return preferences;
 	};
 
 	return { mainSdk, getFlag, exposePreferences };
+}
+
+/** The slice of the shell's preferences capability the plugin relies on. */
+interface FakePreferences extends Record<string, unknown> {
+	allowDataCollection: boolean;
+	telemetryEnv: string;
+	onDidChangeAllowDataCollection(listener: (allow: boolean) => void): () => void;
+	/** Test helper: persist a new choice and notify subscribers, as the shell does. */
+	change(allow: boolean): void;
 }
 
 const FAKE_LAUNCH_INFO = {
@@ -242,15 +266,20 @@ describe("environments plugin main entry", () => {
 		expect(onDispose).toHaveBeenCalledTimes(1);
 	});
 
-	it("forwards preferences capability as bridge telemetry config when available", async () => {
+	it("forwards data-collection changes to the shared bridge until shutdown", async () => {
 		setupFakeBridge();
+		const setTelemetryEnabled = vi
+			.spyOn(SidecarCondaBackend.prototype, "setTelemetryEnabled")
+			.mockImplementation(() => {});
 		const { mainSdk, exposePreferences } = createSdkWithFlag({ featureFlagEnabled: true });
-		exposePreferences({ allowDataCollection: false, telemetryEnv: "test" });
+		const preferences = exposePreferences({ allowDataCollection: true, telemetryEnv: "test" });
 
 		await mainRegister(mainSdk);
+		preferences.change(false);
+		expect(setTelemetryEnabled).toHaveBeenCalledWith(false);
 
-		// The bridge warm-up fired — the telemetry config was threaded
-		// through CondaProvider.boot() to SidecarCondaBackend.
-		expect(SidecarCondaBackend.prototype.warmUp).toHaveBeenCalledTimes(1);
+		mainSdk.dispose();
+		preferences.change(true);
+		expect(setTelemetryEnabled).toHaveBeenCalledTimes(1);
 	});
 });

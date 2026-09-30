@@ -5,7 +5,7 @@ import {
 	type OpenCodeServerEvent,
 } from "@assistant-ui/react-opencode";
 import * as reactOpenCode from "@assistant-ui/react-opencode";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 
@@ -16,6 +16,7 @@ import type {
 import type { SessionActivityStore } from "../session-activity/session-activity-store.js";
 import { createKiloRuntimeBackend } from "./create-kilo-runtime-backend.js";
 import { LOCAL_MCP_APPS } from "./mcp-app-registry.js";
+import { startSessionListBackfill } from "./session-list-backfill.js";
 import { withPromptOptions, type PromptModelRef } from "./with-prompt-options.js";
 
 // Inject the Desktop-local MCP App registry into the patched
@@ -151,7 +152,7 @@ export function useKiloRuntime({
 	}, [client, onSessionCreateFailed, prepareSession, promptGetters, sessionActivity]);
 	const adapters = useMemo(() => ({ attachments: new OpenCodeAttachmentAdapter() }), []);
 
-	return useOpenCodeRuntime({
+	const runtime = useOpenCodeRuntime({
 		...(backend ? { backend } : {}),
 		...(client ? { client } : {}),
 		...(initialSessionId === undefined ? {} : { initialSessionId }),
@@ -163,4 +164,13 @@ export function useKiloRuntime({
 		messageQueue: { cancelBehavior: "pause" },
 		adapters,
 	});
+
+	useEffect(() => {
+		if (!backend) return;
+		return startSessionListBackfill(runtime.threads, {
+			consecutiveFailures: backend.consecutiveSessionPageFailures,
+		});
+	}, [backend, runtime]);
+
+	return runtime;
 }

@@ -116,7 +116,10 @@ describe("unscopeWorkspaceSessions", () => {
 
 		await unscopeWorkspaceSessions(client, "ws-1");
 
-		expect(list).toHaveBeenCalledWith({ roots: true, archived: true }, { throwOnError: true });
+		expect(list).toHaveBeenCalledWith(
+			{ roots: true, archived: true, limit: 100 },
+			{ throwOnError: true },
+		);
 		expect(update).toHaveBeenCalledWith(
 			{
 				sessionID: "ses-1",

@@ -13,6 +13,10 @@ import type {
 	KiloGlobalConnection,
 	KiloSessionPreparation,
 } from "../../../contracts/chat/schemas.js";
+import {
+	nextSessionListCursor,
+	sessionListPageQuery,
+} from "../../../contracts/chat/session-list-pages.js";
 import { LOCAL_MODEL_SERVER_PROVIDER_ID } from "../../providers/provider-ids.js";
 import {
 	hydratePromptAncestry,
@@ -20,6 +24,7 @@ import {
 } from "../session-activity/hydrate-session-activity.js";
 import {
 	buildKiloDesktopSessionMetadata,
+	hasKiloDesktopSessionMetadata,
 	readSessionInfoPatch,
 	readWorkspaceFoldersFromMetadata,
 } from "../session-activity/session-activity-logic.js";
@@ -55,7 +60,7 @@ class SessionListTimeoutError extends Error {
 	}
 }
 
-function withSessionListTimeout(request: PromiseLike<unknown>): Promise<unknown> {
+function withSessionListTimeout<T>(request: PromiseLike<T>): Promise<T> {
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	const timeout = new Promise<never>((_resolve, reject) => {
 		timer = setTimeout(() => reject(new SessionListTimeoutError()), SESSION_LIST_TIMEOUT_MS);
@@ -90,6 +95,11 @@ export interface CreateKiloRuntimeBackendOptions extends PromptOptionGetters {
 	onStreamReconnected?: () => void;
 }
 
+export type KiloRuntimeBackend = OpenCodeRuntimeBackend & {
+	/** Failed session-list pages since the last success; drives backfill backoff. */
+	consecutiveSessionPageFailures(): number;
+};
+
 export function createKiloRuntimeBackend({
 	connectionPromise,
 	getConnection,
@@ -105,7 +115,7 @@ export function createKiloRuntimeBackend({
 	sessionActivity,
 	onPermissionEvent,
 	onStreamReconnected,
-}: CreateKiloRuntimeBackendOptions): OpenCodeRuntimeBackend {
+}: CreateKiloRuntimeBackendOptions): KiloRuntimeBackend {
 	const directoriesBySessionId = new Map<string, string>();
 	const clientsByDirectory = new Map<string, KiloClient>();
 	const clientsBySessionId = new Map<string, KiloClient>();
@@ -120,6 +130,7 @@ export function createKiloRuntimeBackend({
 			return connectionPromise;
 		});
 	const globalClients = new WeakMap<KiloGlobalConnection, KiloClient>();
+	const unfilteredGlobalClients = new WeakMap<KiloGlobalConnection, KiloClient>();
 	const directoryClients = new WeakMap<KiloGlobalConnection, Map<string, KiloClient>>();
 
 	const liveRawGlobalClient = async () => {
@@ -130,19 +141,37 @@ export function createKiloRuntimeBackend({
 		globalClients.set(connection, client);
 		return client;
 	};
-	type SessionList = KiloClient["experimental"]["session"]["list"];
-	const listSessions = (async (...args: Parameters<SessionList>) => {
+	// Paging needs the unfiltered page: the cursor comes from the last server
+	// row, which may be a Kilo CLI session the Desktop filter drops.
+	const liveUnfilteredGlobalClient = async () => {
+		const connection = await liveConnection();
+		const cached = unfilteredGlobalClients.get(connection);
+		if (cached) return cached;
+		const client = createKiloGlobalClient(connection);
+		unfilteredGlobalClients.set(connection, client);
+		return client;
+	};
+	const withSessionListRetry = async <T>(
+		getClient: () => Promise<KiloClient>,
+		request: (client: KiloClient) => PromiseLike<T>,
+	): Promise<T> => {
 		let lastError: unknown;
 		for (let attempt = 0; attempt < 2; attempt += 1) {
 			try {
-				const client = await liveRawGlobalClient();
-				return await withSessionListTimeout(client.experimental.session.list(...args));
+				const client = await getClient();
+				return await withSessionListTimeout(request(client));
 			} catch (error) {
 				lastError = error;
 			}
 		}
 		throw lastError;
-	}) as SessionList;
+	};
+	type SessionList = KiloClient["experimental"]["session"]["list"];
+	type ListedSession = NonNullable<Awaited<ReturnType<SessionList>>["data"]>[number];
+	const listSessions = ((...args: Parameters<SessionList>) =>
+		withSessionListRetry<unknown>(liveRawGlobalClient, (client) =>
+			client.experimental.session.list(...args),
+		)) as SessionList;
 	const liveGlobalClient = async () => {
 		const client = await liveRawGlobalClient();
 		if (!client.experimental?.session) return client;
@@ -216,26 +245,46 @@ export function createKiloRuntimeBackend({
 		return client;
 	};
 
+	// One store write per listed page: per-session writes each copy the whole
+	// activity record, which is quadratic once every session is paged in.
+	const rememberListedSessions = (sessions: readonly ListedSession[]) => {
+		for (const session of sessions) {
+			if (session.directory) directoriesBySessionId.set(session.id, session.directory);
+			rememberWorkspaceSystem(session.id, readWorkspaceFoldersFromMetadata(session.metadata));
+		}
+		sessionActivity?.getState().hydrateSessions(
+			sessions.map((session) => ({
+				id: session.id,
+				...readSessionInfoPatch({
+					directory: session.directory,
+					time: session.time,
+					metadata: session.metadata,
+				}),
+			})),
+		);
+	};
+
+	let sessionPageFailures = 0;
+	const listSessionPage = async ({ after }: { after?: string }) => {
+		const query = sessionListPageQuery(after);
+		const response = await withSessionListRetry(liveUnfilteredGlobalClient, (client) =>
+			client.experimental.session.list(query, REQUEST_OPTIONS),
+		).catch((error: unknown) => {
+			sessionPageFailures += 1;
+			throw error;
+		});
+		sessionPageFailures = 0;
+		const rows = response.data ?? [];
+		const sessions = rows.filter((row) => hasKiloDesktopSessionMetadata(row.metadata));
+		rememberListedSessions(sessions);
+		const nextCursor = nextSessionListCursor(after, rows, query.limit);
+		return { sessions, ...(nextCursor ? { nextCursor } : {}) };
+	};
+
 	const refreshSessions = () => {
 		refreshPromise ??= globalClient.experimental.session
 			.list({ roots: true, archived: true }, REQUEST_OPTIONS)
-			.then((response) => {
-				const sessions = response.data ?? [];
-				sessionActivity?.getState().hydrateSessions(
-					sessions.map((session) => ({
-						id: session.id,
-						...readSessionInfoPatch({
-							directory: session.directory,
-							time: session.time,
-							metadata: session.metadata,
-						}),
-					})),
-				);
-				for (const session of sessions) {
-					rememberWorkspaceSystem(session.id, readWorkspaceFoldersFromMetadata(session.metadata));
-					rememberSession(session);
-				}
-			})
+			.then((response) => rememberListedSessions(response.data ?? []))
 			.finally(() => {
 				refreshPromise = undefined;
 				// Settles on success and failure alike: a missing session record
@@ -298,6 +347,8 @@ export function createKiloRuntimeBackend({
 	return {
 		globalClient,
 		getSessionClient,
+		listSessionPage,
+		consecutiveSessionPageFailures: () => sessionPageFailures,
 		initializeSession: async () => {
 			const preparation = await prepareSession();
 			const { directory, workspaceId, workspaceFolders, worktree } = preparation;

@@ -541,10 +541,16 @@ function useNavigateToChat(): () => void {
 	return useCallback(() => navigateToChat(sdk), [sdk]);
 }
 
-function filterSearchItems(value: string, search: string, keywords?: string[]): number {
-	const terms = keywords && keywords.length > 0 ? keywords : [value];
-	const query = search.trim().toLowerCase();
-	return terms.some((term) => term.toLowerCase().includes(query)) ? 1 : 0;
+/**
+ * Search filters in React rather than via cmdk: cmdk mounts every item and
+ * rescans them on each keystroke, which lags once the full session history is
+ * loaded. Capping each chat group keeps the mounted list small.
+ */
+const SEARCH_CHAT_RESULT_LIMIT = 50;
+
+function matchesSearch(terms: readonly (string | null)[], query: string): boolean {
+	if (!query) return true;
+	return terms.some((term) => term?.toLowerCase().includes(query));
 }
 
 const SEARCH_SCOPES = ["all", "chats", "workspaces"] as const;
@@ -583,11 +589,7 @@ type SearchRow = {
 
 function SearchChatItem({ row, onSelect }: { row: SearchRow; onSelect: (row: SearchRow) => void }) {
 	return (
-		<CommandItem
-			value={`chat:${row.id}`}
-			keywords={row.sublabel ? [row.title, row.sublabel] : [row.title]}
-			onSelect={() => onSelect(row)}
-		>
+		<CommandItem value={`chat:${row.id}`} onSelect={() => onSelect(row)}>
 			<MessageSquareIcon />
 			<span className="min-w-0 flex-1 truncate">{row.title}</span>
 			<span className="text-muted-foreground flex shrink-0 items-center gap-3 text-xs">
@@ -613,7 +615,6 @@ function SearchWorkspaceItem({
 		<CommandItem
 			data-qa-id={`session-search-workspace-${workspace.id}`}
 			value={`workspace:${workspace.id}`}
-			keywords={sublabel ? [workspace.name, sublabel] : [workspace.name]}
 			onSelect={() => onSelect(workspace.id)}
 		>
 			<FolderIcon {...(glyph ? { color: glyph } : {})} />
@@ -678,10 +679,23 @@ export const SessionListSearch: FC<{
 		];
 	}, [activityBySessionId, archivedThreadIds, threadIds, threadItems, workspaces]);
 
-	const chats = showChats ? rows.filter((row) => !row.archived) : [];
-	const archived = showChats ? rows.filter((row) => row.archived) : [];
-	const workspaceRows = showWorkspaces ? workspaces : [];
-	const emptyQuery = query.trim().length === 0;
+	const normalizedQuery = query.trim().toLowerCase();
+	const matchingRows = useMemo(
+		() => rows.filter((row) => matchesSearch([row.title, row.sublabel], normalizedQuery)),
+		[normalizedQuery, rows],
+	);
+	const chats = showChats
+		? matchingRows.filter((row) => !row.archived).slice(0, SEARCH_CHAT_RESULT_LIMIT)
+		: [];
+	const archived = showChats
+		? matchingRows.filter((row) => row.archived).slice(0, SEARCH_CHAT_RESULT_LIMIT)
+		: [];
+	const workspaceRows = showWorkspaces
+		? workspaces.filter((workspace) =>
+				matchesSearch([workspace.name, workspacePrimaryFolderLabel(workspace)], normalizedQuery),
+			)
+		: [];
+	const emptyQuery = normalizedQuery.length === 0;
 	const emptyLabel = searchEmptyLabel(scope, emptyQuery, isLoading);
 	const chatHeading =
 		scope === "all" || archived.length > 0 ? (emptyQuery ? "Recent chats" : "Chats") : undefined;
@@ -718,7 +732,7 @@ export const SessionListSearch: FC<{
 				showCloseButton
 				className="top-1/2 -translate-y-1/2 sm:max-w-2xl"
 			>
-				<Command label="Search chats and workspaces" filter={filterSearchItems}>
+				<Command label="Search chats and workspaces" shouldFilter={false}>
 					<CommandInput
 						value={query}
 						onValueChange={setQuery}

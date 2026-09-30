@@ -3,6 +3,7 @@ import { createKiloClient, type KiloClient } from "@kilocode/sdk/v2/client";
 import type { MainSdk } from "@kilo-desktop/feature-sdk/main";
 
 import type { KiloGlobalConnection } from "../../contracts/chat/schemas.js";
+import { listAllSessionPages } from "../../contracts/chat/session-list-pages.js";
 
 const KILO_DESKTOP_METADATA_KEY = "kilo-desktop";
 const PRE_RENAME_METADATA_KEY = "anaconda";
@@ -85,11 +86,10 @@ export function createKiloUnscopeClient(
 	});
 	return {
 		async listSessions() {
-			const response = await client.experimental.session.list(
-				{ roots: true, archived: true },
-				{ throwOnError: true },
-			);
-			return response.data ?? [];
+			return listAllSessionPages(async (query) => {
+				const response = await client.experimental.session.list(query, { throwOnError: true });
+				return response.data ?? [];
+			});
 		},
 		async updateMetadata(input) {
 			await client.session.update(

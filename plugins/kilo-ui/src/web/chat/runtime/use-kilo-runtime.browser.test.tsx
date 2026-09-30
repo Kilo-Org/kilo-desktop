@@ -13,11 +13,21 @@ vi.mock("@assistant-ui/react-opencode", () => ({
 	OpenCodeAttachmentAdapter: vi.fn(function OpenCodeAttachmentAdapter() {
 		return { accept: "image/png,text/plain" };
 	}),
-	useOpenCodeRuntime: vi.fn(() => ({ source: "kilo-test-runtime" })),
+	useOpenCodeRuntime: vi.fn(() => ({
+		source: "kilo-test-runtime",
+		threads: {
+			getState: () => ({ hasMore: false, isLoading: false, isLoadingMore: false }),
+			subscribe: () => () => undefined,
+			loadMore: async () => undefined,
+		},
+	})),
 }));
 
 vi.mock("./create-kilo-runtime-backend.js", () => ({
-	createKiloRuntimeBackend: vi.fn(() => ({ globalClient: {} })),
+	createKiloRuntimeBackend: vi.fn(() => ({
+		globalClient: {},
+		consecutiveSessionPageFailures: () => 0,
+	})),
 }));
 
 const connection: KiloGlobalConnection = {

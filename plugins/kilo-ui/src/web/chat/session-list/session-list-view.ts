@@ -277,14 +277,25 @@ function enrich(
 	});
 }
 
+/**
+ * Kilo bumps `updatedAt` after every agent step, so ranking a working session
+ * by it makes concurrent runs leapfrog. `workingSince` (the turn start, i.e.
+ * the user's last message) holds it still until the turn finishes.
+ */
+function recencyTime(activity: SessionActivity | undefined): number {
+	if (isWorking(activity) && activity?.workingSince !== undefined) return activity.workingSince;
+	return activity?.updatedAt ?? activity?.createdAt ?? 0;
+}
+
 function sortRows(rows: Enriched[], ordering: SessionListOrdering) {
 	return rows.toSorted((left, right) => {
 		if (ordering === "title") {
 			return left.title.localeCompare(right.title) || left.sourceIndex - right.sourceIndex;
 		}
-		const leftTime = left.activity?.updatedAt ?? left.activity?.createdAt ?? 0;
-		const rightTime = right.activity?.updatedAt ?? right.activity?.createdAt ?? 0;
-		return rightTime - leftTime || left.sourceIndex - right.sourceIndex;
+		return (
+			recencyTime(right.activity) - recencyTime(left.activity) ||
+			left.sourceIndex - right.sourceIndex
+		);
 	});
 }
 

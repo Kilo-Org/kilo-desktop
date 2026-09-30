@@ -210,6 +210,23 @@ describe("buildSessionListSections", () => {
 		);
 	});
 
+	it("keeps working sessions in turn-start order while their updates stream in", () => {
+		const sections = buildSessionListSections({
+			entries: [entry("started-first", 0), entry("started-second", 1), entry("idle", 2)],
+			activityBySessionId: {
+				"started-first": activity({ status: "busy", workingSince: 100, updatedAt: 500 }),
+				"started-second": activity({ status: "retry", workingSince: 200, updatedAt: 400 }),
+				idle: activity({ status: "idle", updatedAt: 150 }),
+			},
+			workspaces,
+			view: defaultView,
+		});
+
+		expect(sections.find((section) => section.key === "active")?.rows.map((row) => row.id)).toEqual(
+			["local-started-second", "local-idle", "local-started-first"],
+		);
+	});
+
 	it("filters by status without dropping source indices", () => {
 		const sections = buildSessionListSections({
 			entries,

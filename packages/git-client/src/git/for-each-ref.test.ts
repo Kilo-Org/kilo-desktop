@@ -92,5 +92,65 @@ describe("git/for-each-ref", () => {
 
 			await expect(client.branches({ cwd: plainDir })).resolves.toBe(null);
 		});
+
+		it("keeps nested names and reports the remote-tracking upstream", async () => {
+			const { path: repoPath } = await initializeWithRemote("nested-refs", undefined, "main");
+			await makeCommit(repoPath, {
+				entries: [{ path: "README.md", contents: "# repo\n" }],
+			});
+			await gitExec(["push", "-u", "origin", "HEAD:main"], repoPath);
+			await gitExec(["branch", "kilo/nested"], repoPath);
+			await gitExec(["push", "origin", "kilo/nested"], repoPath);
+			await gitExec(["fetch", "origin"], repoPath);
+
+			const branches = await clientFor(repoPath).branches({
+				prefixes: ["refs/heads", "refs/remotes"],
+			});
+
+			expect(branches).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({ name: "main", upstream: "origin/main" }),
+					expect.objectContaining({ name: "kilo/nested", ref: "refs/heads/kilo/nested" }),
+					expect.objectContaining({
+						name: "origin/kilo/nested",
+						ref: "refs/remotes/origin/kilo/nested",
+					}),
+				]),
+			);
+		});
+
+		it("names a branch that shares its name with a tag so checking it out keeps HEAD attached", async () => {
+			const repoPath = await initialize("branch-tag-collision", "main");
+			await makeCommit(repoPath, {
+				entries: [{ path: "README.md", contents: "# repo\n" }],
+			});
+			await gitExec(["tag", "release"], repoPath);
+			await gitExec(["branch", "release"], repoPath);
+			const client = clientFor(repoPath);
+
+			const branches = await client.branches();
+			const release = branches?.find((branch) => branch.ref === "refs/heads/release");
+			if (release === undefined) throw new Error("refs/heads/release is not listed");
+			await client.checkoutBranch(release.name);
+
+			await expect(client.status()).resolves.toMatchObject({ currentBranch: "release" });
+		});
+
+		it("names an upstream that shares its name with a tag by the branch name", async () => {
+			const repoPath = await initialize("upstream-tag-collision", "main");
+			await makeCommit(repoPath, {
+				entries: [{ path: "README.md", contents: "# repo\n" }],
+			});
+			await gitExec(["branch", "release"], repoPath);
+			await gitExec(["branch", "--track", "feature", "release"], repoPath);
+			// Tagged after tracking is set up: an ambiguous start point would make `--track` fail.
+			await gitExec(["tag", "release"], repoPath);
+
+			const branches = await clientFor(repoPath).branches();
+
+			expect(branches).toContainEqual(
+				expect.objectContaining({ name: "feature", upstream: "release" }),
+			);
+		});
 	});
 });

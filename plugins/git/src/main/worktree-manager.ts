@@ -575,8 +575,8 @@ export class WorktreeManager {
 		const local = locals.find((b) => b.name === currentBranch);
 		if (local?.upstream !== null && local?.upstream !== undefined) return null;
 
-		// Remote-on-branch guard: names are refname:short (e.g. origin/main);
-		// symrefs (origin/HEAD) are excluded — harmless here.
+		// Remote-on-branch guard: names are the ref minus `refs/remotes/`
+		// (e.g. origin/main); symrefs (origin/HEAD) are excluded — harmless here.
 		const remotes = remoteEntries.map((b) => b.name);
 		if (remotes.some((ref) => ref.endsWith(`/${currentBranch}`))) return null;
 
@@ -781,8 +781,8 @@ export class WorktreeManager {
 		if (baseName === null || baseName === undefined) return undefined;
 		const remoteBase = base.remote === undefined ? undefined : `${base.remote}/${baseName}`;
 
-		// Remote ref names are refname:short (e.g. origin/main); symrefs
-		// (origin/HEAD) are excluded. A null result falls through to the
+		// Remote ref names are the ref minus `refs/remotes/` (e.g. origin/main);
+		// symrefs (origin/HEAD) are excluded. A null result falls through to the
 		// bare-name commitish so git surfaces its own error for a deleted base.
 		const [branches, remoteEntries] = await Promise.all([
 			this.#client.branches({ cwd: workingDirectory }),

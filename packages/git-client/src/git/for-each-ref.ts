@@ -29,10 +29,15 @@ export async function getBranches(
 	exec: ForEachRefExec,
 	options?: ForEachRefOptions,
 ): Promise<IBranch[] | null> {
+	// `lstrip=2`, not `:short` (a deliberate divergence from GitHub Desktop):
+	// `:short` checks every other ref namespace per ref to keep names
+	// unambiguous (a filesystem probe each — seconds to minutes for thousands
+	// of refs on Windows) and renames a branch that shares its name with a tag
+	// to `heads/<name>`. `git branch` prints `lstrip=2` names too.
 	const { formatArgs, parse } = createForEachRefParser({
 		fullName: "%(refname)",
-		shortName: "%(refname:short)",
-		upstreamShortName: "%(upstream:short)",
+		shortName: "%(refname:lstrip=2)",
+		upstreamShortName: "%(upstream:lstrip=2)",
 		sha: "%(objectname)",
 		symRef: "%(symref)",
 	});

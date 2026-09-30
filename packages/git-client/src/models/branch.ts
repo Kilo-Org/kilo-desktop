@@ -9,9 +9,13 @@ export interface IBranchTip {
 }
 
 export interface IBranch {
-	/** Short name, e.g. "main". */
+	/**
+	 * The ref minus `refs/heads/` or `refs/remotes/` (e.g. "main",
+	 * "origin/main"), as `git branch` prints it. Not disambiguated against tags
+	 * or other namespaces: pass `ref` where git expects a revision.
+	 */
 	readonly name: string;
-	/** Remote-prefixed upstream short name, or `null` when untracked. */
+	/** The upstream in the same form (e.g. "origin/main"), or `null` when untracked. */
 	readonly upstream: string | null;
 	readonly tip: IBranchTip;
 	/** Canonical ref, e.g. "refs/heads/main". */

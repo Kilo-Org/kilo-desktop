@@ -319,6 +319,27 @@ describe("withPromptOptions", () => {
 		expect(prompt).toHaveBeenCalledOnce();
 	});
 
+	it("asks Kilo to wait for slow snapshots instead of prompting on every send path", async () => {
+		const prompt = vi.fn(async () => undefined);
+		const promptAsync = vi.fn(async () => undefined);
+		const command = vi.fn(async () => undefined);
+		const client = {
+			session: { promptAsync, prompt, command },
+		} as unknown as KiloClient;
+		const wrapped = withPromptOptions(client, { getKnownCommandNames: () => ["init"] });
+
+		await wrapped.session.prompt({ sessionID: "s1", parts: [{ type: "text", text: "hi" }] });
+		await wrapped.session.promptAsync({ sessionID: "s1", parts: [{ type: "text", text: "hi" }] });
+		await wrapped.session.command({ sessionID: "s1", command: "init", arguments: "" });
+		await wrapped.session.prompt({ sessionID: "s1", parts: [{ type: "text", text: "/init x" }] });
+
+		const waits = expect.objectContaining({ snapshotInitialization: "wait" });
+		expect(prompt).toHaveBeenCalledWith(waits);
+		expect(promptAsync).toHaveBeenCalledWith(waits);
+		expect(command).toHaveBeenNthCalledWith(1, waits);
+		expect(command).toHaveBeenNthCalledWith(2, waits);
+	});
+
 	it("prepends session workspace context without discarding an explicit system prompt", async () => {
 		const prompt = vi.fn(async () => undefined);
 		const client = {

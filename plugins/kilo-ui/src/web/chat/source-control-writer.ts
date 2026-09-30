@@ -2,6 +2,7 @@ import type { KiloClient, PermissionRuleset } from "@kilocode/sdk/v2/client";
 
 import { LOCAL_MODEL_SERVER_PROVIDER_ID } from "../providers/provider-ids.js";
 import type { KiloModelRef } from "./model-selection/model-catalog.js";
+import { SNAPSHOT_INITIALIZATION } from "./runtime/with-prompt-options.js";
 
 export interface CommitMessageInput {
 	readonly workspaceDirectory: string;
@@ -92,6 +93,8 @@ export function createSourceControlWriter(deps: SourceControlWriterDeps): Source
 					sessionID,
 					model,
 					...(variant ? { variant } : {}),
+					// Hidden throwaway session: a snapshot question here would block unseen.
+					snapshotInitialization: SNAPSHOT_INITIALIZATION,
 					format: { type: "json_schema", schema: input.schema },
 					system: input.system,
 					parts: [{ type: "text", text: input.text }],

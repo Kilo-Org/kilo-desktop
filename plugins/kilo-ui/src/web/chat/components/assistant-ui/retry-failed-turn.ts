@@ -1,7 +1,7 @@
 import type { KiloGlobalConnection } from "../../../../contracts/chat/schemas.js";
 import { createKiloDirectoryClient } from "../../runtime/create-kilo-runtime-client.js";
 import { withMcpWarmup } from "../../runtime/with-mcp-warmup.js";
-import type { PromptModelRef } from "../../runtime/with-prompt-options.js";
+import { SNAPSHOT_INITIALIZATION, type PromptModelRef } from "../../runtime/with-prompt-options.js";
 
 /**
  * In-place re-prompt (PyCharm retry semantics): the server rewrites the
@@ -30,7 +30,13 @@ export async function retryFailedTurn({
 }): Promise<void> {
 	const client = withMcpWarmup(createKiloDirectoryClient(connection, directory));
 	await client.session.promptAsync(
-		{ sessionID, messageID, parts: [], ...(model ? { model } : {}) },
+		{
+			sessionID,
+			messageID,
+			parts: [],
+			...(model ? { model } : {}),
+			snapshotInitialization: SNAPSHOT_INITIALIZATION,
+		},
 		{ throwOnError: true },
 	);
 }

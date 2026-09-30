@@ -3,6 +3,15 @@ import type { KiloClient } from "@kilocode/sdk/v2/client";
 import { LOCAL_MODEL_SERVER_PROVIDER_ID } from "../../providers/provider-ids.js";
 import { slashCommandFromPromptArgs } from "../slash-commands/kilo-slash-command.js";
 
+/**
+ * Sent on every prompt/command so a slow Kilo snapshot waits silently instead
+ * of raising the blocking "Snapshot is slow — disable snapshots?" question.
+ * Desktop runs many sessions and subagents against one `kilo serve`; they queue
+ * on a per-worktree snapshot lock, so the 10s threshold trips on lock wait,
+ * not repository size. Matches the VS Code Agent Manager policy.
+ */
+export const SNAPSHOT_INITIALIZATION = "wait" as const;
+
 export type PromptModelRef = {
 	providerID: string;
 	modelID: string;
@@ -89,12 +98,14 @@ function toCommandArgs(
 		...(args.agent !== undefined ? { agent: args.agent } : {}),
 		...(model !== undefined ? { model } : {}),
 		...(args.variant !== undefined ? { variant: args.variant } : {}),
+		snapshotInitialization: SNAPSHOT_INITIALIZATION,
 	};
 }
 
 /**
  * Wraps a Kilo client so `session.prompt` / `session.promptAsync` /
- * `session.command` receive the latest composer selection on every send.
+ * `session.command` receive the latest composer selection on every send,
+ * plus the desktop snapshot policy (`SNAPSHOT_INITIALIZATION`).
  *
  * Agent and model are always overwritten when getters return a value —
  * RemoteThreadList can keep a stale `defaultAgent` / `defaultModel` closed
@@ -107,7 +118,10 @@ function toCommandArgs(
  */
 export function withPromptOptions(client: KiloClient, getters: PromptOptionGetters): KiloClient {
 	const injectPromptOptions = <T extends Record<string, unknown>>(args: T): T => {
-		let next: Record<string, unknown> = args;
+		let next: Record<string, unknown> = {
+			...args,
+			snapshotInitialization: SNAPSHOT_INITIALIZATION,
+		};
 
 		const variant = getters.getVariant?.();
 		if (variant !== undefined && next.variant === undefined) {

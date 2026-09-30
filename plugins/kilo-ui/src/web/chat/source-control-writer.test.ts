@@ -72,6 +72,7 @@ describe("createSourceControlWriter", () => {
 			expect.objectContaining({
 				sessionID: "writer-session",
 				variant: "low",
+				snapshotInitialization: "wait",
 				format: expect.objectContaining({ type: "json_schema" }),
 			}),
 			{ throwOnError: true },

@@ -10,6 +10,7 @@ import {
 	useThreadWorkspaceDirectory,
 } from "../../use-workspace-directory.js";
 import { useComposerUsageView } from "../../usage/use-session-model-usage.js";
+import { useIsThreadAwaitingWorktree } from "../../worktree-setup/WorktreeSetupContext.js";
 import { ComposerContext } from "./elements/composer-context.js";
 import { CostMeter } from "./elements/cost-meter.js";
 
@@ -26,7 +27,7 @@ export interface ChatComposerFooterContributionProps {
 	/**
 	 * The session's effective working directory — the worktree when
 	 * worktree-backed, otherwise the same as `workspaceDirectory`; absent
-	 * when unscoped.
+	 * when unscoped or while the session's worktree is still being set up.
 	 */
 	readonly workingDirectory?: string;
 }
@@ -61,7 +62,11 @@ export const ComposerSessionMode: FC<{ isWorktree: boolean }> = ({ isWorktree })
 export const ComposerFooter: FC = () => {
 	const view = useComposerUsageView();
 	const workspaceDirectory = useThreadWorkspaceDirectory();
-	const workingDirectory = useThreadWorkingDirectory();
+	const resolvedWorkingDirectory = useThreadWorkingDirectory();
+	const isAwaitingWorktree = useIsThreadAwaitingWorktree();
+	// Until the worktree session exists its directory is unknown; the
+	// resolved fallback would be the workspace checkout and its branch.
+	const workingDirectory = isAwaitingWorktree ? undefined : resolvedWorkingDirectory;
 	const contributions = useSdkContributions(CHAT_COMPOSER_FOOTER_ZONE);
 	if (!view) return null;
 
@@ -77,9 +82,10 @@ export const ComposerFooter: FC = () => {
 			<div className="relative flex min-w-0 flex-1 items-center gap-2 overflow-hidden pl-2.5 @min-[32rem]:gap-4">
 				<ComposerSessionMode
 					isWorktree={
-						workspaceDirectory !== undefined &&
-						workingDirectory !== undefined &&
-						workingDirectory !== workspaceDirectory
+						isAwaitingWorktree ||
+						(workspaceDirectory !== undefined &&
+							workingDirectory !== undefined &&
+							workingDirectory !== workspaceDirectory)
 					}
 				/>
 				{contributions.map((contribution) => {

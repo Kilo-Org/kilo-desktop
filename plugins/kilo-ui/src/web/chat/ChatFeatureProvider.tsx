@@ -239,9 +239,14 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	// clearing it right after preparation left a blank gap while the session
 	// was created in the fresh directory, before the turn's working indicator.
 	const [isSettingUpWorktree, setIsSettingUpWorktree] = useState(false);
+	// Outlives `isSettingUpWorktree` until the next preparation: the session
+	// exists before the thread learns its `remoteId`, and in between the
+	// composer footer would otherwise resolve to the workspace checkout.
+	const [isAwaitingWorktreeSession, setIsAwaitingWorktreeSession] = useState(false);
 	const onRuntimeError = useCallback(
 		(error: unknown) => {
 			setIsSettingUpWorktree(false);
+			setIsAwaitingWorktreeSession(false);
 			if (isStaleKiloConnectionError(error)) void refreshConnection();
 		},
 		[refreshConnection],
@@ -277,6 +282,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 			// menu's first write) means the workspace checkout.
 			const worktree = resolvePrepareSessionWorktreeInput(readGitDraftSelection(sdk, workspaceId));
 			if (worktree !== undefined) setIsSettingUpWorktree(true);
+			setIsAwaitingWorktreeSession(worktree !== undefined);
 			try {
 				return await sdk.client["chat.prepareSession"]({
 					...(workspaceId ? { workspaceId } : {}),
@@ -284,6 +290,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 				});
 			} catch (error) {
 				setIsSettingUpWorktree(false);
+				setIsAwaitingWorktreeSession(false);
 				throw error;
 			}
 		},
@@ -617,7 +624,10 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 						<ChatAgentSelectionProvider value={agentSelection}>
 							<ChatAutoApproveProvider value={autoApproveSelection}>
 								<ChatModelSelectionProvider value={modelSelection}>
-									<WorktreeSetupProvider isSettingUp={isSettingUpWorktree}>
+									<WorktreeSetupProvider
+										isSettingUp={isSettingUpWorktree}
+										isAwaitingSession={isAwaitingWorktreeSession}
+									>
 										<AssistantRuntimeProvider aui={aui} runtime={runtime}>
 											<SubagentActivityProvider>
 												<KiloSessionSelectionSync

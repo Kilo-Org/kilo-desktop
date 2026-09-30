@@ -44,9 +44,22 @@ describe("resolveMarkdownFileLink", () => {
 				{ path: "C:\\project", isPrimary: true },
 			]),
 		).toEqual({
-			workspaceDirectory: "C:/project",
+			workspaceDirectory: "C:\\project",
 			relativePath: "src/App.tsx",
 			line: 9,
+		});
+	});
+
+	it("keeps the registered Windows workspace path so the file viewer recognizes it", () => {
+		const folders = [{ path: "C:\\Users\\me\\project\\", isPrimary: true }] as const;
+
+		expect(resolveMarkdownFileLink("docs/plans/plan.md", folders)).toEqual({
+			workspaceDirectory: "C:\\Users\\me\\project\\",
+			relativePath: "docs/plans/plan.md",
+		});
+		expect(resolveMarkdownFileLink("c:\\users\\me\\project\\docs\\plan.md", folders)).toEqual({
+			workspaceDirectory: "C:\\Users\\me\\project\\",
+			relativePath: "docs/plan.md",
 		});
 	});
 

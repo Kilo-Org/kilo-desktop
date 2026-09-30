@@ -233,10 +233,12 @@ function workspaceTarget(
 			return comparableTarget.startsWith(`${root}/`);
 		});
 	if (!owningFolder) return null;
-	const workspaceDirectory = normalizePath(owningFolder.path).replace(/\/$/u, "");
+	const normalizedRoot = normalizePath(owningFolder.path).replace(/\/$/u, "");
+	// The file viewer identifies workspaces by their registered path verbatim, so the
+	// normalized (forward-slash) form is only used for matching, never returned.
 	return {
-		workspaceDirectory,
-		relativePath: normalizedPath.slice(workspaceDirectory.length + 1),
+		workspaceDirectory: owningFolder.path,
+		relativePath: normalizedPath.slice(normalizedRoot.length + 1),
 	};
 }
 

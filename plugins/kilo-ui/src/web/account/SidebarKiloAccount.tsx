@@ -28,7 +28,7 @@ import {
 	type DeviceAuthStatus,
 } from "./kilo-auth.js";
 
-/** Device-auth statuses where the panel on the AI Providers page owns the UI. */
+/** Device-auth statuses where the panel on the Account settings page owns the UI. */
 const ACTIVE_DEVICE_AUTH: readonly DeviceAuthStatus[] = ["initiating", "waiting", "finishing"];
 
 function AccountSkeleton() {
@@ -52,10 +52,10 @@ function AccountSkeleton() {
 
 /**
  * Sidebar account dock contributed to the shell's `sidebar-account` zone.
- * Signed out: one-click Kilo device sign-in (device code shows on the AI
- * Providers page; a failed attempt falls back to the Sign in button so retry
+ * Signed out: one-click Kilo device sign-in (device code shows on the Account
+ * settings page; a failed attempt falls back to the Sign in button so retry
  * stays reachable). Signed in: compact avatar/name header with a Sign out item. A
- * failed profile load links to the AI Providers page, which owns retry and
+ * failed profile load links to the Account settings page, which owns retry and
  * logout for that state. Shows a stable account-row skeleton while auth or
  * profile state is pending, and renders nothing when Kilo is unavailable.
  */
@@ -102,7 +102,7 @@ export function SidebarKiloAccount() {
 	const profile = auth.profile?.profile;
 	if (auth.authenticated !== true) return null;
 
-	// Profile failed to load: the AI Providers page renders the retry/logout
+	// Profile failed to load: the Account settings page renders the retry/logout
 	// UI for this state, so route the user there instead of hiding the dock.
 	if (!profile) {
 		if (!auth.profileError) return <AccountSkeleton />;

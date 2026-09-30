@@ -65,17 +65,17 @@ function renderDock(auth: KiloAuthContextValue) {
 }
 
 describe("SidebarKiloAccount", () => {
-	it("starts device sign-in and opens the AI Providers page when signed out", async () => {
+	it("starts device sign-in and opens Account settings when signed out", async () => {
 		const { screen, auth, navigate } = renderDock(idleAuth());
 
 		await expect.element(screen.getByTestId("sidebar-kilo-login")).toBeVisible();
 		await screen.getByTestId("sidebar-kilo-login").click();
 
 		expect(auth.login).toHaveBeenCalledOnce();
-		expect(navigate).toHaveBeenCalledWith("/settings/kilo-providers", undefined);
+		expect(navigate).toHaveBeenCalledWith("/settings/account", undefined);
 	});
 
-	it("links to the AI Providers page while device auth is in flight", async () => {
+	it("links to Account settings while device auth is in flight", async () => {
 		const deviceAuth: DeviceAuthState = {
 			status: "waiting",
 			code: "ABCD-1234",
@@ -89,7 +89,7 @@ describe("SidebarKiloAccount", () => {
 
 		await screen.getByTestId("sidebar-kilo-signing-in").click();
 		expect(auth.login).not.toHaveBeenCalled();
-		expect(navigate).toHaveBeenCalledWith("/settings/kilo-providers", undefined);
+		expect(navigate).toHaveBeenCalledWith("/settings/account", undefined);
 	});
 
 	it("renders an account-row skeleton while auth status is pending", async () => {
@@ -123,7 +123,7 @@ describe("SidebarKiloAccount", () => {
 
 		await screen.getByTestId("sidebar-kilo-login").click();
 		expect(auth.login).toHaveBeenCalledOnce();
-		expect(navigate).toHaveBeenCalledWith("/settings/kilo-providers", undefined);
+		expect(navigate).toHaveBeenCalledWith("/settings/account", undefined);
 	});
 
 	it("keeps the signed-in menu when device auth fails for an authenticated user", async () => {
@@ -146,7 +146,7 @@ describe("SidebarKiloAccount", () => {
 		expect(screen.getByTestId("sidebar-kilo-account").query()).toBeNull();
 	});
 
-	it("links to the AI Providers page when the profile fails to load", async () => {
+	it("links to Account settings when the profile fails to load", async () => {
 		const { screen, navigate } = renderDock(
 			idleAuth({
 				authenticated: true,
@@ -157,7 +157,7 @@ describe("SidebarKiloAccount", () => {
 
 		await expect.element(screen.getByTestId("sidebar-kilo-profile-error")).toBeVisible();
 		await screen.getByTestId("sidebar-kilo-profile-error").click();
-		expect(navigate).toHaveBeenCalledWith("/settings/kilo-providers", undefined);
+		expect(navigate).toHaveBeenCalledWith("/settings/account", undefined);
 	});
 
 	it("opens the account menu with settings and sign out actions", async () => {

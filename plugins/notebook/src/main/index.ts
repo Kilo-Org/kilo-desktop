@@ -219,11 +219,17 @@ export async function mainRegister(
 	});
 	await telemetry.setAllowed(preferences?.allowDataCollection === true);
 	await telemetry.refreshFeatureFlag().catch(reportTelemetryError);
-	void hostService.start().catch((error: unknown) => {
-		mainSdk.logger.warn(
-			`Notebook runtime startup failed: ${error instanceof Error ? error.message : String(error)}`,
-		);
-	});
+	// Eager start hides daemon startup from the first notebook open. Packaged e2e
+	// defers it: no spec opens a notebook, and runtimed's environment-pool warm-up
+	// otherwise saturates CI runners while every app boots. Every notebook entry
+	// point (`status`, `openFile`, `connect`) starts the daemon on demand.
+	if (process.env["KILO_NOTEBOOK_DEFER_RUNTIMED"] !== "1") {
+		void hostService.start().catch((error: unknown) => {
+			mainSdk.logger.warn(
+				`Notebook runtime startup failed: ${error instanceof Error ? error.message : String(error)}`,
+			);
+		});
+	}
 	const resolveBundleRoot =
 		options.resolveBundleRoot ??
 		(() => resolveNotebookBundleRoot({ candidate: mainSdk.resolvePluginAsset("build/notebook") }));

@@ -106,6 +106,15 @@ describe("notebook mainRegister", () => {
 		expect(hostService.start).toHaveBeenCalledOnce();
 	});
 
+	it("defers runtimed until a notebook is first used when KILO_NOTEBOOK_DEFER_RUNTIMED=1", async () => {
+		vi.stubEnv("KILO_NOTEBOOK_DEFER_RUNTIMED", "1");
+		const { hostService, router } = await boot();
+
+		expect(hostService.start).not.toHaveBeenCalled();
+		await router.invoke("notebook", "status");
+		expect(hostService.status).toHaveBeenCalledOnce();
+	});
+
 	it("defaults every runtime consumer to the pinned release channel", async () => {
 		const { hostServiceOptions } = await boot();
 

@@ -742,6 +742,11 @@ describe("SessionList", () => {
 		// and the selected row's 600ms details card can open over the idle row
 		// on a slow runner, blocking a hover indefinitely.
 		await selected.getByRole("button", { name: /Add tests/ }).click();
+		await expect
+			.poll(
+				() => selected.element().querySelector('[data-slot="aui_session-list-item"]')?.className,
+			)
+			.toContain("bg-sidebar-accent");
 
 		const selectedTitle = selected
 			.element()

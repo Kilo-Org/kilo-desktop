@@ -57,6 +57,13 @@ export function profileKiloLogDirectory(userDataDir: string): string {
  * managed plugins are dependency-free, so npm runs offline against an empty
  * per-profile cache: the install fails in milliseconds and plugins still load.
  *
+ * The notebook plugin normally starts runtimed at boot, and on a cold cache
+ * the daemon builds Conda, Pixi, and UV kernel environments (about 90 CPU-s
+ * and 3.7 GB written in its first minute). On 3-vCPU macOS runners that
+ * starved every app sidecar, pushing the Kilo CLI's first `/provider` past the
+ * providers page's 15s bound. No spec opens a notebook, so runtimed starts
+ * only on first notebook use.
+ *
  * The CLI reads `~/.kilo` / `~/.kilocode` config and rules from its home
  * directory, not XDG; `KILO_TEST_HOME` gives each profile its own. Its log
  * level (shared with Desktop's main-process logger) is DEBUG so the attached
@@ -93,6 +100,7 @@ export function packagedAppLaunchEnv(
 		KILO_LOG_LEVEL: "DEBUG",
 		npm_config_offline: "true",
 		npm_config_cache: path.join(userDataDir, "npm-cache"),
+		KILO_NOTEBOOK_DEFER_RUNTIMED: "1",
 	};
 }
 

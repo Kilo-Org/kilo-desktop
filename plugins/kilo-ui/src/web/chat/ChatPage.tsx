@@ -136,7 +136,7 @@ function DetachedSessionGate({
 	const aui = useAui();
 	useEffect(() => {
 		if (remoteId === sessionId) return;
-		void aui.threads.switchToThread(sessionId);
+		void aui.threads.switchToThread(sessionId, { unarchive: false });
 	}, [aui, remoteId, sessionId]);
 
 	if (remoteId !== sessionId) {

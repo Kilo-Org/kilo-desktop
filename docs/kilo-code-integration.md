@@ -480,7 +480,7 @@ The cross-workspace list is cursor-paged and virtualized across section headers 
    - Line 1: workspace icon + workspace name; right slot = **status label** at rest ("Working" sky + ticking duration, "Done" emerald) or relative time when idle; **on hover** the right slot swaps to an Archive icon button.
    - Line 2: session title (double-click → inline rename; Enter commits, Esc cancels).
    - Line 3: metadata — agent/model chip, error icon when `failed`.
-4. **Section: Archived** — expanded tail of dimmed slim rows, sorted by when work ended, paged (first 10, "Show 25 more"), hover **Unarchive** (Undo2). The open session is always pulled into view. Sending a message to an archived session unarchives it (sets `archivedOverride: "active"`).
+4. **Section: Archived** — expanded tail of dimmed slim rows, sorted by when work ended, paged (first 10, "Show 25 more"). The open session is always pulled into view. Archive is one-way: there is no Unarchive action, and opening an archived session never unarchives it, because the Kilo server cannot clear a session's archive timestamp (`PATCH /session/:id` rejects `time.archived: null`).
 
 Section membership is a **partition** — a session appears in exactly one of Needs You / Active / Archived at any time (§7.3).
 
@@ -493,7 +493,7 @@ Section membership is a **partition** — a session appears in exactly one of Ne
 - **Archive model**: manual archive parks a row in Archived (this is also how a user dismisses a Needs You row without resolving it); auto-archive after N days idle (default 7, configurable in Settings — Needs You rows are exempt: an unresolved need is never auto-archived); new activity or a new need on an archived session returns it to Active or Needs You; opening an archived session keeps it readable.
 - **Keyboard**: `Cmd/Ctrl+1..9` jump to the Nth visible row (hint badges while ⌘ held); up/down traversal; Enter opens; `Cmd/Ctrl+B` collapses the chat sidebar (offcanvas — slides fully away; a thin rail re-opens on click). Bindings must not conflict with the shell sidebar — the chat sidebar owns bindings only while a `/chat` route is focused.
 - **Resize**: drag the right edge; default 256px, min 208px, max viewport−640px; width persisted in localStorage (`kilo_chat_sidebar_width`).
-- **Context menu**: right-click row → Open, Rename, Mark unread, Copy session id, Archive/Unarchive, Delete (destructive, confirm dialog). `Cmd/Ctrl`-click multi-select and `Shift`-click range select → bulk bar (Mark unread (N), Archive (N), Delete (N)).
+- **Context menu**: right-click row → Open, Rename, Mark unread, Copy session id, Archive, Delete (destructive, confirm dialog). `Cmd/Ctrl`-click multi-select and `Shift`-click range select → bulk bar (Mark unread (N), Archive (N), Delete (N)).
 - **Row tooltip**: title, workspace, agent, model, pending counts, last error.
 
 ### 7.4 Component inventory (new, `plugins/kilo-code/src/web/sidebar/`)
@@ -629,7 +629,6 @@ export const kiloCodeContract = defineContract({
 		okSchema,
 	),
 	"sessions.archive": defineMethod(z.object({ sessionId: z.string() }), okSchema),
-	"sessions.unarchive": defineMethod(z.object({ sessionId: z.string() }), okSchema),
 	"sessions.attention": defineMethod(z.undefined(), z.array(sessionSummarySchema)),
 
 	// ── Usage

@@ -830,7 +830,7 @@ describe("SessionList", () => {
 		await expect.element(screen.getByRole("status", { name: "Requires input" })).toBeVisible();
 	});
 
-	it("archives a quiet session and unarchives it", async () => {
+	it("archives a quiet session", async () => {
 		const { adapter, screen } = renderSessionList({
 			threads: [
 				{ remoteId: "ses-1", title: "Fix the bug" },
@@ -851,18 +851,28 @@ describe("SessionList", () => {
 		expect(adapter.archiveCalls).toEqual(["ses-1"]);
 
 		await screen.getByTestId("session-list-archived-toggle").click();
-		const archivedRow = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
-		await expect.element(archivedRow).toBeVisible();
-		await userEvent.hover(archivedRow);
-		await archivedRow.getByRole("button", { name: "Unarchive thread" }).click();
-
-		await expect
-			.element(screen.getByTestId("session-list-archived-toggle"))
-			.not.toBeInTheDocument();
-		expect(adapter.unarchiveCalls).toEqual(["ses-1"]);
 		await expect
 			.element(screen.getByRole("listitem").filter({ hasText: "Fix the bug" }))
 			.toBeVisible();
+	});
+
+	// The Kilo server cannot clear an archive timestamp, so an unarchive
+	// would silently revert on the next launch.
+	it("does not offer unarchive for archived sessions", async () => {
+		const { screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Old work", status: "archived" }],
+		});
+
+		await screen.getByTestId("session-list-archived-toggle").click();
+		const card = screen.getByRole("listitem").filter({ hasText: "Old work" });
+		await userEvent.hover(card);
+
+		await expect
+			.element(card.getByRole("button", { name: "Unarchive thread" }))
+			.not.toBeInTheDocument();
+		await card.getByRole("button", { name: "Thread actions" }).click();
+		await expect.element(page.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+		await expect.element(page.getByRole("menuitem", { name: "Unarchive" })).not.toBeInTheDocument();
 	});
 
 	it("keeps an archived session archived when viewing it", async () => {
@@ -885,6 +895,33 @@ describe("SessionList", () => {
 		await expect
 			.element(screen.getByRole("listitem").filter({ hasText: "Old work" }))
 			.toBeVisible();
+	});
+
+	it("keeps an archived session that needs attention archived when opening it", async () => {
+		const { adapter, screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Old work", status: "archived" }],
+			hydrate: (store) =>
+				store.getState().applyEvent({
+					type: "permission.asked",
+					properties: { id: "perm-1", sessionID: "ses-1" },
+				}),
+		});
+
+		await screen.getByTestId("session-list-archived-toggle").click();
+		await expect.element(screen.getByRole("status", { name: "Requires approval" })).toBeVisible();
+		await screen.getByRole("button", { name: /Old work/ }).click();
+
+		await vi.waitFor(() =>
+			expect(
+				screen
+					.getByRole("listitem")
+					.filter({ hasText: "Old work" })
+					.element()
+					.querySelector('[data-slot="aui_session-list-item"]')?.className,
+			).toContain("bg-sidebar-accent"),
+		);
+		expect(adapter.unarchiveCalls).toEqual([]);
+		await expect.element(screen.getByTestId("session-list-archived-toggle")).toBeVisible();
 	});
 
 	it("keeps grouped session titles aligned and inset when a status icon is present", async () => {
@@ -1380,25 +1417,6 @@ describe("SessionList", () => {
 			.toBe("More");
 	});
 
-	it("shows a tooltip on the unarchive icon", async () => {
-		const { screen } = renderSessionList({
-			threads: [{ remoteId: "ses-1", title: "Old work", status: "archived" }],
-		});
-
-		await screen.getByTestId("session-list-archived-toggle").click();
-		const card = screen.getByRole("listitem").filter({ hasText: "Old work" });
-		await userEvent.hover(card);
-
-		const unarchive = card.getByRole("button", { name: "Unarchive thread" });
-		await expect.element(unarchive).toBeVisible();
-		expect(unarchive.element().textContent?.trim()).toBe("");
-
-		await unarchive.hover();
-		await expect
-			.poll(() => document.querySelector('[data-slot="tooltip-content"]')?.textContent)
-			.toBe("Unarchive");
-	});
-
 	it("does not offer pin controls for archived sessions", async () => {
 		const { screen } = renderSessionList({
 			threads: [{ remoteId: "ses-1", title: "Old work", status: "archived" }],
@@ -1410,8 +1428,8 @@ describe("SessionList", () => {
 
 		await expect.element(card.getByRole("button", { name: "Pin thread" })).not.toBeInTheDocument();
 		await card.getByRole("button", { name: "Thread actions" }).click();
+		await expect.element(page.getByRole("menuitem", { name: "Rename" })).toBeVisible();
 		await expect.element(page.getByRole("menuitem", { name: /^Pin$/ })).not.toBeInTheDocument();
-		await expect.element(page.getByRole("menuitem", { name: "Unarchive" })).toBeVisible();
 	});
 
 	it("pins a session into Pinned and hides the section when empty", async () => {

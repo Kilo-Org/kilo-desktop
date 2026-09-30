@@ -45,7 +45,6 @@ import {
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
 	ArchiveIcon,
-	ArchiveRestoreIcon,
 	ChevronDownIcon,
 	CircleAlertIcon,
 	EllipsisIcon,
@@ -690,7 +689,7 @@ export const SessionListSearch: FC<{
 
 	const handleSelectChat = (row: SearchRow) => {
 		setOpen(false);
-		void aui.threads.switchToThread(row.id, { unarchive: !row.archived });
+		void aui.threads.switchToThread(row.id, { unarchive: false });
 		navigateToChat(sdk);
 	};
 
@@ -1138,14 +1137,13 @@ const SessionRow: FC = () => {
 	const indented = use(SessionRowIndentContext);
 	const { isRenaming, startRename, finishRename, triggerRef } = useRenameState();
 	const [worktreeDialogOpen, setWorktreeDialogOpen] = useState(false);
-	const switchToArchived = useCallback(() => {
+	// assistant-ui unarchives on switch by default, but the Kilo server cannot
+	// clear an archive timestamp, so opening a chat must never try to.
+	const switchTo = useCallback(() => {
 		void auiRef.current.threadListItem.switchTo({ unarchive: false });
 	}, []);
 	const archive = useCallback(() => {
 		void auiRef.current.threadListItem.archive();
-	}, []);
-	const unarchive = useCallback(() => {
-		void auiRef.current.threadListItem.unarchive();
 	}, []);
 	const worktreeDirectory = activity?.worktreeBranch !== undefined ? activity.directory : undefined;
 	// Every delete path funnels through here so a rejecting delete is
@@ -1238,9 +1236,8 @@ const SessionRow: FC = () => {
 				finishRename={finishRename}
 				triggerRef={triggerRef}
 				navigate={navigate}
-				switchToArchived={switchToArchived}
+				switchTo={switchTo}
 				archive={archive}
-				unarchive={unarchive}
 				deleteThread={deleteThread}
 			/>
 			{isOrphanedWorktree && worktreeDirectory !== undefined ? (
@@ -1277,9 +1274,8 @@ type SessionRowContentProps = {
 	finishRename: (restoreFocus: boolean) => void;
 	triggerRef: React.RefObject<HTMLButtonElement | null>;
 	navigate: () => void;
-	switchToArchived: () => void;
+	switchTo: () => void;
 	archive: () => void;
-	unarchive: () => void;
 	deleteThread: () => void;
 };
 
@@ -1306,9 +1302,8 @@ const SessionRowContent = memo(function SessionRowContent({
 	finishRename,
 	triggerRef,
 	navigate,
-	switchToArchived,
+	switchTo,
 	archive,
-	unarchive,
 	deleteThread,
 }: SessionRowContentProps) {
 	const rowState = deriveSessionRowState(activity, lastVisitedAt);
@@ -1450,37 +1445,25 @@ const SessionRowContent = memo(function SessionRowContent({
 					workspaceColor={workspaceColor}
 					statusId={statusId}
 					trigger={
-						isArchived ? (
-							<button
-								ref={triggerRef}
-								type="button"
-								data-slot="aui_session-list-archived-trigger"
-								data-sidebar-select
-								className={cn(
-									"flex w-full flex-col py-1 text-left focus-visible:outline-none",
-									rowPad,
-								)}
-								onClick={() => {
-									navigate();
-									switchToArchived();
-								}}
-							>
-								{rowContent}
-							</button>
-						) : (
-							<ThreadListItemPrimitive.Trigger
-								ref={triggerRef}
-								onClick={navigate}
-								data-slot="aui_session-list-item-trigger"
-								data-sidebar-select
-								className={cn(
-									"flex w-full flex-col py-1 text-left focus-visible:outline-none",
-									rowPad,
-								)}
-							>
-								{rowContent}
-							</ThreadListItemPrimitive.Trigger>
-						)
+						<ThreadListItemPrimitive.Trigger
+							ref={triggerRef}
+							data-slot={
+								isArchived ? "aui_session-list-archived-trigger" : "aui_session-list-item-trigger"
+							}
+							data-sidebar-select
+							className={cn(
+								"flex w-full flex-col py-1 text-left focus-visible:outline-none",
+								rowPad,
+							)}
+							onClick={(event) => {
+								// Skips the primitive's default switch, which would unarchive.
+								event.preventDefault();
+								navigate();
+								switchTo();
+							}}
+						>
+							{rowContent}
+						</ThreadListItemPrimitive.Trigger>
 					}
 				/>
 			)}
@@ -1496,16 +1479,6 @@ const SessionRowContent = memo(function SessionRowContent({
 							<ArchiveIcon aria-hidden />
 						</RowHoverAction>
 					) : null}
-					{isArchived ? (
-						<RowHoverAction
-							label="Unarchive thread"
-							tooltip="Unarchive"
-							slot="aui_session-list-item-unarchive"
-							onClick={unarchive}
-						>
-							<ArchiveRestoreIcon aria-hidden />
-						</RowHoverAction>
-					) : null}
 					{!isArchived ? (
 						<RowHoverAction
 							label={isPinned ? "Unpin thread" : "Pin thread"}
@@ -1517,13 +1490,12 @@ const SessionRowContent = memo(function SessionRowContent({
 						</RowHoverAction>
 					) : null}
 					<SessionRowMenu
-						archiveAction={isArchived ? "unarchive" : canArchive ? "archive" : undefined}
+						canArchive={canArchive}
 						canPin={!isArchived}
 						pinned={isPinned}
 						onPin={() => togglePin(pinId)}
 						onRename={startRename}
 						onArchive={archive}
-						onUnarchive={unarchive}
 						onDelete={deleteThread}
 					/>
 				</span>
@@ -1533,15 +1505,14 @@ const SessionRowContent = memo(function SessionRowContent({
 });
 
 const SessionRowMenu: FC<{
-	archiveAction?: "archive" | "unarchive" | undefined;
+	canArchive: boolean;
 	canPin: boolean;
 	pinned: boolean;
 	onPin: () => void;
 	onRename: () => void;
 	onArchive: () => void;
-	onUnarchive: () => void;
 	onDelete: () => void;
-}> = ({ archiveAction, canPin, pinned, onPin, onRename, onArchive, onUnarchive, onDelete }) => {
+}> = ({ canArchive, canPin, pinned, onPin, onRename, onArchive, onDelete }) => {
 	return (
 		<DropdownMenu>
 			<Tooltip>
@@ -1571,16 +1542,10 @@ const SessionRowMenu: FC<{
 						{pinned ? "Unpin" : "Pin"}
 					</DropdownMenuItem>
 				) : null}
-				{archiveAction === "archive" && (
+				{canArchive && (
 					<DropdownMenuItem onClick={onArchive}>
 						<ArchiveIcon />
 						Archive
-					</DropdownMenuItem>
-				)}
-				{archiveAction === "unarchive" && (
-					<DropdownMenuItem onClick={onUnarchive}>
-						<ArchiveRestoreIcon />
-						Unarchive
 					</DropdownMenuItem>
 				)}
 				<DropdownMenuItem onClick={onRename}>

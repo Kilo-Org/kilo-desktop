@@ -2,6 +2,7 @@ import type { GitCapabilities } from "@kilo-desktop/plugin-git/contracts";
 import { FeatureError, type MainSdk } from "@kilo-desktop/feature-sdk/main";
 
 import type { KiloUiChatService } from "../../contracts/chat/schemas.js";
+import { createKiloInstanceDisposer, type KiloInstanceDisposer } from "./dispose-kilo-instance.js";
 import { createUnscopedChatDirectory } from "./unscoped-chat-directory.js";
 import type { WorkspaceService } from "../workspaces/WorkspaceService.js";
 
@@ -24,6 +25,7 @@ function gitWorktreeService(mainSdk: MainSdk): GitCapabilities["gitService"] | n
 export function createChatWorktreeHandlers(
 	mainSdk: MainSdk,
 	workspaceService: WorkspaceService,
+	disposeKiloInstance: KiloInstanceDisposer = createKiloInstanceDisposer(mainSdk),
 ): Pick<
 	KiloUiChatService,
 	| "chat.prepareSession"
@@ -112,6 +114,15 @@ export function createChatWorktreeHandlers(
 					"BUSINESS",
 				);
 			}
+			// Best-effort: an instance that cannot be released only risks the
+			// removal failing on a locked directory, which surfaces on its own.
+			await disposeKiloInstance(directory).catch((error: unknown) => {
+				mainSdk.logger.warn(
+					`Releasing the Kilo instance for "${directory}" failed: ${
+						error instanceof Error ? error.message : String(error)
+					}`,
+				);
+			});
 			await gitService.removeWorktree({ path: directory });
 		},
 		"chat.hasWorktreeWork": async ({ directory, baseBranch }) => {

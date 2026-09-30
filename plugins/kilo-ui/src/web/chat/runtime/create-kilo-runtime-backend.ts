@@ -31,6 +31,7 @@ import {
 	buildMutatingCondaPermissionRules,
 } from "./conda-tool-permissions.js";
 import { withKiloDesktopSessionListFilter } from "./with-kilo-desktop-session-list-filter.js";
+import { withMcpWarmup } from "./with-mcp-warmup.js";
 import { withPromptOptions, type PromptOptionGetters } from "./with-prompt-options.js";
 import {
 	buildWorkspacePermissionRules,
@@ -200,9 +201,8 @@ export function createKiloRuntimeBackend({
 		}
 		const cached = clients.get(directory);
 		if (cached) return cached;
-		const client = withPromptOptions(
-			createKiloDirectoryClient(connection, directory),
-			promptGetters,
+		const client = withMcpWarmup(
+			withPromptOptions(createKiloDirectoryClient(connection, directory), promptGetters),
 		);
 		clients.set(directory, client);
 		return client;

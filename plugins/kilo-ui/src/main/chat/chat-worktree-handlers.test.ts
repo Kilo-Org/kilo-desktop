@@ -8,6 +8,7 @@ import { createFakeMainSdk, createFakeSdk } from "@kilo-desktop/testing";
 import { FeatureError } from "@kilo-desktop/feature-sdk/main";
 
 import { mainRegister } from "../index.js";
+import { createChatWorktreeHandlers } from "./chat-worktree-handlers.js";
 
 const PLUGIN_DIR = path.resolve(import.meta.dirname, "../../..");
 
@@ -255,6 +256,49 @@ describe("kilo-ui chat worktree handlers", () => {
 				directory: "/repo/.kilo/worktrees/kilo-aback-aardvark",
 			}),
 		).resolves.toBeUndefined();
+
+		expect(gitService.removeWorktree).toHaveBeenCalledWith({
+			path: "/repo/.kilo/worktrees/kilo-aback-aardvark",
+		});
+	});
+
+	it("releases the directory's Kilo instance before removing the worktree", async () => {
+		const { mainSdk, exposeGitService } = await boot();
+		const calls: string[] = [];
+		exposeGitService(
+			gitServiceDouble({
+				removeWorktree: vi.fn(async () => {
+					calls.push("removeWorktree");
+				}),
+			}),
+		);
+		const dispose = vi.fn(async (directory: string) => {
+			calls.push(`dispose ${directory}`);
+		});
+		const handlers = createChatWorktreeHandlers(mainSdk, {} as never, dispose);
+
+		await handlers["chat.removeWorktree"]({
+			directory: "/repo/.kilo/worktrees/kilo-aback-aardvark",
+		});
+
+		expect(calls).toEqual(["dispose /repo/.kilo/worktrees/kilo-aback-aardvark", "removeWorktree"]);
+	});
+
+	it("still removes the worktree when releasing the Kilo instance fails", async () => {
+		const { mainSdk, exposeGitService } = await boot();
+		const gitService = gitServiceDouble();
+		exposeGitService(gitService);
+		const handlers = createChatWorktreeHandlers(
+			mainSdk,
+			{} as never,
+			vi.fn(async () => {
+				throw new Error("Kilo Server is unavailable.");
+			}),
+		);
+
+		await handlers["chat.removeWorktree"]({
+			directory: "/repo/.kilo/worktrees/kilo-aback-aardvark",
+		});
 
 		expect(gitService.removeWorktree).toHaveBeenCalledWith({
 			path: "/repo/.kilo/worktrees/kilo-aback-aardvark",

@@ -1,5 +1,6 @@
 import type { KiloGlobalConnection } from "../../../../contracts/chat/schemas.js";
 import { createKiloDirectoryClient } from "../../runtime/create-kilo-runtime-client.js";
+import { withMcpWarmup } from "../../runtime/with-mcp-warmup.js";
 import type { PromptModelRef } from "../../runtime/with-prompt-options.js";
 
 /**
@@ -27,7 +28,7 @@ export async function retryFailedTurn({
 	messageID: string;
 	model?: PromptModelRef;
 }): Promise<void> {
-	const client = createKiloDirectoryClient(connection, directory);
+	const client = withMcpWarmup(createKiloDirectoryClient(connection, directory));
 	await client.session.promptAsync(
 		{ sessionID, messageID, parts: [], ...(model ? { model } : {}) },
 		{ throwOnError: true },

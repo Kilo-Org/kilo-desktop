@@ -82,6 +82,46 @@ describe("model-catalog", () => {
 		expect(catalog.models[0]?.costTier).toBe("high");
 	});
 
+	it("strips Gateway price markers like ($$$$) and (free) from model names", () => {
+		const catalog = buildCatalogFromProviderList({
+			all: [
+				{
+					id: "kilo",
+					name: "Kilo Gateway",
+					models: {
+						"anthropic/claude-fable-5": {
+							id: "anthropic/claude-fable-5",
+							name: "Anthropic: Claude Fable 5 ($$$$)",
+							providerID: "kilo",
+						},
+						"openai/gpt-5": { id: "openai/gpt-5", name: "OpenAI: GPT-5 ($$)", providerID: "kilo" },
+						"qwen/qwen3.8-max": {
+							id: "qwen/qwen3.8-max",
+							name: "Qwen: Qwen3.8 Max (0902)",
+							providerID: "kilo",
+						},
+						"poolside/laguna-s-2.1:free": {
+							id: "poolside/laguna-s-2.1:free",
+							name: "Poolside: Laguna S 2.1 (free)",
+							providerID: "kilo",
+						},
+						"odd/only-dollars": { id: "odd/only-dollars", name: "($)", providerID: "kilo" },
+					},
+				},
+			],
+			default: {},
+			connected: ["kilo"],
+		});
+
+		expect(catalog.models.map((model) => model.name)).toEqual([
+			"Anthropic: Claude Fable 5",
+			"OpenAI: GPT-5",
+			"Qwen: Qwen3.8 Max (0902)",
+			"Poolside: Laguna S 2.1",
+			"($)",
+		]);
+	});
+
 	it("preserves recommendation order metadata", () => {
 		const catalog = buildCatalogFromProviderList({
 			all: [
@@ -136,6 +176,66 @@ describe("model-catalog", () => {
 			kiloBenchScore: 0.75,
 			mayTrainOnYourPrompts: false,
 		});
+		expect(enriched?.models[0]?.isFree).toBeUndefined();
+	});
+
+	it("hoists the Gateway isFree flag onto the catalog model", () => {
+		const catalog = buildCatalogFromProviderList(
+			{
+				all: [
+					{
+						id: "kilo",
+						name: "Kilo Gateway",
+						models: {
+							"poolside/laguna-s-2.1:free": {
+								id: "poolside/laguna-s-2.1:free",
+								name: "Poolside Laguna S 2.1",
+								providerID: "kilo",
+							},
+						},
+					},
+				],
+				default: {},
+				connected: ["kilo"],
+			},
+			{ connectedOnly: false },
+		);
+
+		const enriched = attachGatewayModelDetails(catalog, [
+			{ modelID: "poolside/laguna-s-2.1:free", isFree: true, mayTrainOnYourPrompts: true },
+		]);
+
+		expect(enriched?.models[0]?.isFree).toBe(true);
+	});
+
+	it("does not treat paid kilo-auto/* models as free; only the Gateway flag counts", () => {
+		const catalog = buildCatalogFromProviderList({
+			all: [
+				{
+					id: "kilo",
+					name: "Kilo Gateway",
+					models: {
+						"kilo-auto/efficient": {
+							id: "kilo-auto/efficient",
+							name: "Auto Efficient",
+							providerID: "kilo",
+						},
+						"kilo-auto/free": { id: "kilo-auto/free", name: "Auto Free", providerID: "kilo" },
+					},
+				},
+			],
+			default: {},
+			connected: ["kilo"],
+		});
+
+		expect(catalog.models.some((model) => model.isFree)).toBe(false);
+
+		const enriched = attachGatewayModelDetails(catalog, [
+			{ modelID: "kilo-auto/efficient", isFree: false },
+			{ modelID: "kilo-auto/free", isFree: true },
+		]);
+		const freeIds = enriched?.models.filter((model) => model.isFree).map((model) => model.modelID);
+		expect(freeIds).toEqual(["kilo-auto/free"]);
 	});
 
 	it("uses nested model descriptions for subtitles and falls back when empty", () => {

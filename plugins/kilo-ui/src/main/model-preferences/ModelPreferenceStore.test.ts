@@ -9,7 +9,12 @@ describe("ModelPreferenceStore", () => {
 		const sdk = createFakeMainSdk({ featureId: "kilo-ui" });
 		const store = new ModelPreferenceStore(sdk);
 
-		expect(store.get()).toEqual({ modelSelections: {}, variantSelections: {}, recentModels: [] });
+		expect(store.get()).toEqual({
+			modelSelections: {},
+			variantSelections: {},
+			recentModels: [],
+			autoFreeModelsEnabled: true,
+		});
 		store.remember({
 			agent: "code",
 			model: { providerID: "kilo", modelID: "kilo-auto/free" },
@@ -34,6 +39,7 @@ describe("ModelPreferenceStore", () => {
 				{ providerID: "openai", modelID: "gpt-5.6-sol" },
 				{ providerID: "kilo", modelID: "kilo-auto/free" },
 			],
+			autoFreeModelsEnabled: true,
 		});
 		expect(new ModelPreferenceStore(sdk).get()).toEqual(saved);
 		expect(
@@ -42,6 +48,18 @@ describe("ModelPreferenceStore", () => {
 			{ providerID: "kilo", modelID: "kilo-auto/free" },
 			{ providerID: "openai", modelID: "gpt-5.6-sol" },
 		]);
+		sdk.dispose();
+	});
+
+	it("persists the free-models opt-out and survives store re-instantiation", () => {
+		const sdk = createFakeMainSdk({ featureId: "kilo-ui" });
+		const store = new ModelPreferenceStore(sdk);
+
+		const disabled = store.setAutoFreeEnabled(false);
+		expect(disabled.autoFreeModelsEnabled).toBe(false);
+		expect(new ModelPreferenceStore(sdk).get().autoFreeModelsEnabled).toBe(false);
+
+		expect(store.setAutoFreeEnabled(true).autoFreeModelsEnabled).toBe(true);
 		sdk.dispose();
 	});
 });

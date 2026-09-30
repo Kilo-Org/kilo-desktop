@@ -3,6 +3,7 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
 	ArrowRightIcon,
+	BookOpenCheckIcon,
 	CheckIcon,
 	ChevronDownIcon,
 	ChevronUpIcon,
@@ -28,6 +29,7 @@ import {
 	type RefObject,
 } from "react";
 
+import { Badge } from "@kilo-desktop/ui/components/badge";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	DropdownMenu,
@@ -247,30 +249,15 @@ function showsCostIndicator(
 }
 
 const COST_INDICATORS = {
-	low: {
-		tooltip: "Cost: Low",
-		dollars: "$",
-		marker: "bg-success",
-	},
-	medium: {
-		tooltip: "Cost: Medium",
-		dollars: "$$",
-		marker: "bg-warning",
-	},
-	high: {
-		tooltip: "Cost: High",
-		dollars: "$$$",
-		marker: "bg-destructive",
-	},
-	"very-high": {
-		tooltip: "Cost: Very High",
-		dollars: "$$$+",
-		marker: "bg-destructive",
-	},
-} as const satisfies Record<ModelCostTier, { tooltip: string; dollars: string; marker: string }>;
+	low: { tooltip: "Cost: Low", dollars: "$" },
+	medium: { tooltip: "Cost: Medium", dollars: "$$" },
+	high: { tooltip: "Cost: High", dollars: "$$$" },
+	"very-high": { tooltip: "Cost: Very High", dollars: "$$$+" },
+} as const satisfies Record<ModelCostTier, { tooltip: string; dollars: string }>;
 
-type GatewayCostFilter = ModelCostTier | "auto";
+type GatewayCostFilter = ModelCostTier | "free" | "auto";
 const GATEWAY_COST_OPTIONS: readonly { id: GatewayCostFilter; label: string }[] = [
+	{ id: "free", label: "Free" },
 	{ id: "low", label: "Low" },
 	{ id: "medium", label: "Medium" },
 	{ id: "high", label: "High" },
@@ -501,8 +488,10 @@ export const KiloModelSelector: FC = () => {
 		if (isSearching) return filterModelsBySearchQuery(scoped, searchQuery);
 		if (!kiloRailSelected || !hasGatewayFilters) return scoped;
 		return scoped.filter((entry) => {
+			// Free is orthogonal to tier/auto: Auto Free matches both "free" and "auto".
 			const matchesCost =
 				selectedCosts.size === 0 ||
+				(selectedCosts.has("free") && isFreeCatalogModel(entry)) ||
 				(isKiloAutoModel(entry)
 					? selectedCosts.has("auto")
 					: entry.costTier !== undefined && selectedCosts.has(entry.costTier));
@@ -1370,6 +1359,67 @@ const RailButton: FC<{
 	);
 };
 
+const MODEL_BADGE_CLASS = "h-4.5 px-1.5 text-[10px] font-semibold tracking-wide uppercase";
+
+function isFreeCatalogModel(model: KiloCatalogModel): boolean {
+	return model.isFree === true || model.details?.isFree === true;
+}
+
+/** Mirrors the Kilo extension: BYOK supersedes Free (the user's key is billed). */
+function showsFreeLabel(model: KiloCatalogModel): boolean {
+	return isFreeCatalogModel(model) && model.hasByok !== true;
+}
+
+/** Rows with a second line (cost or Free) top-align the provider icon. */
+function hasSecondaryLine(model: KiloCatalogModel): boolean {
+	return showsCostIndicator(model) || showsFreeLabel(model);
+}
+
+/**
+ * BYOK badge and data-training marker next to the model name; the marker
+ * follows the free flag independently of BYOK.
+ */
+const ModelNameBadges: FC<{ model: KiloCatalogModel; disabled: boolean }> = ({
+	model,
+	disabled,
+}) => {
+	const isFree = isFreeCatalogModel(model);
+	const hasByok = model.hasByok === true;
+	if (!isFree && !hasByok) return null;
+	return (
+		<span
+			className="inline-flex shrink-0 items-center gap-1"
+			data-qa-id={`kilo-model-badges-${model.id}`}
+		>
+			{hasByok ? (
+				<Badge
+					variant="soft"
+					className={MODEL_BADGE_CLASS}
+					data-qa-id={`kilo-model-byok-badge-${model.id}`}
+				>
+					BYOK
+				</Badge>
+			) : null}
+			{isFree ? (
+				<Tooltip disabled={disabled}>
+					<TooltipTrigger
+						render={
+							<span
+								className="text-muted-foreground inline-flex items-center"
+								aria-label="Data may be used for training."
+								data-qa-id={`kilo-model-data-training-${model.id}`}
+							>
+								<BookOpenCheckIcon className="size-3.5" aria-hidden="true" />
+							</span>
+						}
+					/>
+					<TooltipContent side="top">Data may be used for training.</TooltipContent>
+				</Tooltip>
+			) : null}
+		</span>
+	);
+};
+
 const CatalogModelItem: FC<{
 	model: KiloCatalogModel;
 	isCurrent: boolean;
@@ -1384,6 +1434,7 @@ const CatalogModelItem: FC<{
 			showCheck={false}
 			className="group/model-item"
 			data-current={isCurrent || undefined}
+			data-auto-free={isFreeCatalogModel(model) ? "1" : undefined}
 			data-qa-id={`kilo-model-option-${model.id}`}
 			ref={suppressCmdkScrollIntoView}
 		>
@@ -1392,7 +1443,7 @@ const CatalogModelItem: FC<{
 					className={cn(
 						"flex h-5 shrink-0 items-center [&_svg]:size-3.5",
 						// Two-line rows: keep the icon on the name line, not the centre.
-						showsCostIndicator(model) && "self-start",
+						hasSecondaryLine(model) && "self-start",
 					)}
 					data-qa-id={`kilo-model-option-provider-${model.id}`}
 				>
@@ -1407,6 +1458,7 @@ const CatalogModelItem: FC<{
 			<span className="flex min-w-0 flex-1 flex-col gap-0.5 pr-3">
 				<span className="flex min-w-0 items-center gap-1.5">
 					<span className="min-w-0 truncate text-sm leading-5 font-normal">{model.name}</span>
+					<ModelNameBadges model={model} disabled={tooltipsDisabled} />
 					{isCurrent ? (
 						<span className="text-primary-ink inline-flex shrink-0 items-center">
 							<CheckIcon className="size-3.5" aria-hidden="true" />
@@ -1414,7 +1466,14 @@ const CatalogModelItem: FC<{
 						</span>
 					) : null}
 				</span>
-				{showsCostIndicator(model) ? (
+				{showsFreeLabel(model) ? (
+					<span
+						className="text-primary-ink self-start text-xs leading-4 font-medium"
+						data-qa-id={`kilo-model-free-label-${model.id}`}
+					>
+						Free
+					</span>
+				) : showsCostIndicator(model) ? (
 					<ModelCostIndicator
 						tier={model.costTier}
 						modelId={model.id}
@@ -1559,12 +1618,13 @@ const ModelInfoPopover: FC<{ model: KiloCatalogModel }> = ({ model }) => {
 				details.maxOutputTokens !== undefined
 					? { label: "Max output", value: `${formatTokenLimit(details.maxOutputTokens)} tokens` }
 					: undefined,
-				details.isFree === true ? { label: "Billing", value: "Free" } : undefined,
+				model.hasByok === true
+					? { label: "Billing", value: "BYOK" }
+					: details.isFree === true
+						? { label: "Billing", value: "Free" }
+						: undefined,
 				details.mayTrainOnYourPrompts !== undefined
 					? { label: "Prompt training", value: details.mayTrainOnYourPrompts ? "May" : "No" }
-					: undefined,
-				details.hasUserByokAvailable === true
-					? { label: "Own API key", value: "Supported" }
 					: undefined,
 			].filter((fact): fact is { label: string; value: string } => fact !== undefined)
 		: [];
@@ -1675,15 +1735,11 @@ const ModelCostIndicator: FC<{ tier: ModelCostTier; modelId: string; disabled: b
 			<TooltipTrigger
 				render={
 					<span
-						className="text-muted-foreground inline-flex items-center gap-1.5 self-start text-xs leading-4 font-normal"
+						className="text-muted-foreground inline-flex items-center self-start text-xs leading-4 font-normal"
 						aria-label={indicator.tooltip}
 						data-qa-id={`kilo-model-cost-${modelId}`}
 					>
-						<span
-							className={cn("size-1.5 shrink-0 rounded-full", indicator.marker)}
-							aria-hidden="true"
-						/>
-						<span>{indicator.dollars}</span>
+						{indicator.dollars}
 					</span>
 				}
 			/>

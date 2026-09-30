@@ -121,6 +121,8 @@ export function mainRegister(
 				...(effort === undefined ? {} : { effort }),
 			}),
 		"modelPreferences.recordRecent": async (model) => modelPreferences.recordRecent(model),
+		"modelPreferences.setAutoFreeEnabled": async (enabled) =>
+			modelPreferences.setAutoFreeEnabled(enabled),
 	};
 
 	const providersApi: KiloUiProvidersService = {

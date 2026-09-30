@@ -10,12 +10,14 @@ interface StoredModelPreferences extends Record<string, unknown> {
 	preferred?: ModelPreferenceRef & { variant: string };
 	variantSelections: Record<string, string>;
 	recentModels: ModelPreferenceRef[];
+	autoFreeModelsEnabled: boolean;
 }
 
 const DEFAULTS: StoredModelPreferences = {
 	modelSelections: {},
 	variantSelections: {},
 	recentModels: [],
+	autoFreeModelsEnabled: true,
 };
 
 function recentModels(value: unknown): ModelPreferenceRef[] {
@@ -85,7 +87,21 @@ export class ModelPreferenceStore {
 				: {}),
 			variantSelections: variantSelections(snapshot.variantSelections),
 			recentModels: recentModels(snapshot.recentModels),
+			autoFreeModelsEnabled: snapshot.autoFreeModelsEnabled !== false,
 		};
+	}
+
+	setAutoFreeEnabled(enabled: boolean): PersistedModelPreferences {
+		const current = this.get();
+		const next: StoredModelPreferences = {
+			modelSelections: current.modelSelections,
+			...(current.preferred ? { preferred: current.preferred } : {}),
+			variantSelections: current.variantSelections,
+			recentModels: current.recentModels,
+			autoFreeModelsEnabled: enabled,
+		};
+		this.#store.set(next);
+		return this.get();
 	}
 
 	recordRecent(model: ModelPreferenceRef): PersistedModelPreferences {
@@ -102,6 +118,7 @@ export class ModelPreferenceStore {
 			...(current.preferred ? { preferred: current.preferred } : {}),
 			variantSelections: current.variantSelections,
 			recentModels,
+			autoFreeModelsEnabled: current.autoFreeModelsEnabled,
 		};
 		this.#store.set(next);
 		return next;
@@ -120,6 +137,7 @@ export class ModelPreferenceStore {
 			preferred: { ...input.model, variant },
 			variantSelections: { ...current.variantSelections, [key]: variant },
 			recentModels: this.#nextRecents(current.recentModels, input.model),
+			autoFreeModelsEnabled: current.autoFreeModelsEnabled,
 		};
 		this.#store.set(next);
 		return next;

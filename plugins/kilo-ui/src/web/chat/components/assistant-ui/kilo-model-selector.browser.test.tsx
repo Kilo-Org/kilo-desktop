@@ -86,6 +86,7 @@ function renderSelector({
 				recommendedIndex?: number;
 				providerName?: string;
 				description?: string;
+				isFree?: boolean;
 				costTier?: "low" | "medium" | "high" | "very-high";
 				details?: GatewayModelDetails;
 			}[];
@@ -1159,5 +1160,101 @@ describe("KiloModelSelector", () => {
 		});
 
 		expect(list.scrollTop).toBeGreaterThan(700);
+	});
+
+	it("marks free models with a Free label, data-training icon, and data-auto-free attribute", async () => {
+		const screen = renderSelector({
+			selection: {
+				model: { providerID: "kilo", modelID: "kilo-auto/free" },
+				name: "Auto Free",
+				catalog: {
+					providers: [{ id: "kilo", name: "Kilo Gateway", connected: true }],
+					models: [
+						{
+							id: "kilo/kilo-auto/free",
+							name: "Auto Free",
+							providerID: "kilo",
+							modelID: "kilo-auto/free",
+							description: "Kilo Gateway",
+							isFree: true,
+						},
+						{
+							id: "kilo/auto-frontier",
+							name: "Auto Frontier",
+							providerID: "kilo",
+							modelID: "auto-frontier",
+							description: "Kilo Gateway",
+						},
+					],
+					defaults: { kilo: "kilo-auto/free" },
+				},
+				isCatalogPending: false,
+			},
+		});
+
+		await screen.getByTestId("kilo-model-selector-trigger").click();
+		const freeRow = screen.getByTestId("kilo-model-option-kilo/kilo-auto/free");
+		await expect.element(freeRow).toHaveAttribute("data-auto-free", "1");
+		await expect
+			.element(screen.getByTestId("kilo-model-free-label-kilo/kilo-auto/free"))
+			.toBeVisible();
+		const trainingIndicator = screen.getByTestId("kilo-model-data-training-kilo/kilo-auto/free");
+		await expect.element(trainingIndicator).toBeVisible();
+		await expect
+			.element(trainingIndicator)
+			.toHaveAttribute("aria-label", "Data may be used for training.");
+
+		const paidRow = screen.getByTestId("kilo-model-option-kilo/auto-frontier");
+		await expect.element(paidRow).not.toHaveAttribute("data-auto-free");
+		await expect
+			.element(screen.getByTestId("kilo-model-free-label-kilo/auto-frontier"))
+			.not.toBeInTheDocument();
+	});
+
+	it("marks recommended models flagged free via Gateway details", async () => {
+		const screen = renderSelector({
+			selection: {
+				model: { providerID: "kilo", modelID: "kilo-auto/free" },
+				name: "Auto Free",
+				catalog: {
+					providers: [{ id: "kilo", name: "Kilo Gateway", connected: true }],
+					models: [
+						{
+							id: "kilo/kilo-auto/free",
+							name: "Auto Free",
+							providerID: "kilo",
+							modelID: "kilo-auto/free",
+							description: "Kilo Gateway",
+							isFree: true,
+						},
+						{
+							id: "kilo/poolside/laguna-s-2.1:free",
+							name: "Poolside Laguna S 2.1",
+							providerID: "kilo",
+							modelID: "poolside/laguna-s-2.1:free",
+							description: "Kilo Gateway",
+							recommendedIndex: 0,
+							details: {
+								modelID: "poolside/laguna-s-2.1:free",
+								isFree: true,
+								mayTrainOnYourPrompts: true,
+							},
+						},
+					],
+					defaults: { kilo: "kilo-auto/free" },
+				},
+				isCatalogPending: false,
+			},
+		});
+
+		await screen.getByTestId("kilo-model-selector-trigger").click();
+		const freeRow = screen.getByTestId("kilo-model-option-kilo/poolside/laguna-s-2.1:free");
+		await expect.element(freeRow).toHaveAttribute("data-auto-free", "1");
+		await expect
+			.element(screen.getByTestId("kilo-model-free-label-kilo/poolside/laguna-s-2.1:free"))
+			.toBeVisible();
+		await expect
+			.element(screen.getByTestId("kilo-model-data-training-kilo/poolside/laguna-s-2.1:free"))
+			.toBeVisible();
 	});
 });

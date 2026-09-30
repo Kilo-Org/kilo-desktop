@@ -188,6 +188,7 @@ function registerModelPreferencesBrowser(mainSdk: MainSdk): void {
 		modelSelections: {},
 		variantSelections: {},
 		recentModels: [],
+		autoFreeModelsEnabled: true,
 	};
 	const recordRecent = (model: { providerID: string; modelID: string }) => {
 		const key = `${model.providerID}/${model.modelID}`;
@@ -210,11 +211,16 @@ function registerModelPreferencesBrowser(mainSdk: MainSdk): void {
 					[`${agent}/${model.providerID}/${model.modelID}`]: variant,
 				},
 				recentModels: recordRecent(model),
+				autoFreeModelsEnabled: preferences.autoFreeModelsEnabled,
 			};
 			return preferences;
 		},
 		"modelPreferences.recordRecent": async (model) => {
 			preferences = { ...preferences, recentModels: recordRecent(model) };
+			return preferences;
+		},
+		"modelPreferences.setAutoFreeEnabled": async (enabled) => {
+			preferences = { ...preferences, autoFreeModelsEnabled: enabled };
 			return preferences;
 		},
 	};

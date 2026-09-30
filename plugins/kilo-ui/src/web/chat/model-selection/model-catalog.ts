@@ -42,6 +42,14 @@ export type KiloCatalogModel = ModelOption & {
 	/** Active model's context window in tokens, when the provider reports it. */
 	contextWindow?: number;
 	details?: GatewayModelDetails;
+	/** Free, no-sign-in model that may route to providers logging prompts/outputs. */
+	isFree?: boolean;
+	/**
+	 * Kilo Gateway model that can use one of the user's (or org's) own provider
+	 * keys. kilo-server fetches this per user; like the Kilo extension, treat it
+	 * as authoritative and let it supersede the Free badge.
+	 */
+	hasByok?: boolean;
 };
 
 export type KiloModelCatalog = {
@@ -75,6 +83,7 @@ type KiloProviderListModel = {
 	reasoning_options?: ReadonlyArray<KiloReasoningOption>;
 	limit?: { context?: number; output?: number };
 	contextLength?: number;
+	hasUserByokAvailable?: boolean;
 };
 
 /** Provider list payload from `client.provider.list()`. */
@@ -169,6 +178,17 @@ function sortProvidersForRail(providers: KiloProviderGroup[]): KiloProviderGroup
 	});
 }
 
+const PRICE_MARKER = /\s*\((?:\$+\+?|free)\)/gi;
+
+/**
+ * Gateway names embed price hints like "($$$$)" or "(free)"; the row's cost
+ * indicator and Free badge already convey that, so drop them (keeping the raw
+ * name if nothing is left).
+ */
+function displayModelName(name: string): string {
+	return name.replace(PRICE_MARKER, "").trim() || name;
+}
+
 export function buildCatalogFromProviderList(
 	payload: KiloProviderListPayload,
 	options?: { connectedOnly?: boolean },
@@ -199,7 +219,7 @@ export function buildCatalogFromProviderList(
 			const contextWindow = contextWindowFromProviderModel(model);
 			models.push({
 				id: modelRefToId({ providerID: modelProviderID, modelID }),
-				name: model.name,
+				name: displayModelName(model.name),
 				description: model.options?.description?.trim() || providerName,
 				keywords: [providerName, modelProviderID, modelID],
 				providerID: modelProviderID,
@@ -212,6 +232,9 @@ export function buildCatalogFromProviderList(
 				...(efforts ? { efforts } : {}),
 				...(costTier ? { costTier } : {}),
 				...(contextWindow === undefined ? {} : { contextWindow }),
+				...(modelProviderID === KILO_PROVIDER_ID && model.hasUserByokAvailable === true
+					? { hasByok: true }
+					: {}),
 			});
 		}
 	}
@@ -235,7 +258,14 @@ export function attachGatewayModelDetails(
 		models: catalog.models.map((model) => {
 			if (model.providerID !== KILO_PROVIDER_ID) return model;
 			const modelDetails = detailsByModelID.get(model.modelID);
-			return modelDetails ? { ...model, details: modelDetails } : model;
+			if (!modelDetails) return model;
+			return {
+				...model,
+				details: modelDetails,
+				// The Gateway's isFree is the only source of truth: most kilo-auto/*
+				// models (Efficient, Balanced, Frontier, Small) are paid.
+				...(modelDetails.isFree === true ? { isFree: true } : {}),
+			};
 		}),
 	};
 }

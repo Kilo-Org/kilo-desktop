@@ -44,6 +44,7 @@ export function useModelPreferences() {
 						[`${input.agent}/${input.model.providerID}/${input.model.modelID}`]: variant,
 					},
 					recentModels: nextRecents(current, input.model),
+					autoFreeModelsEnabled: current?.autoFreeModelsEnabled ?? true,
 				}),
 			);
 			mutate(input);
@@ -59,6 +60,7 @@ export function useModelPreferences() {
 					...(current?.preferred ? { preferred: current.preferred } : {}),
 					variantSelections: current?.variantSelections ?? {},
 					recentModels: nextRecents(current, model),
+					autoFreeModelsEnabled: current?.autoFreeModelsEnabled ?? true,
 				}),
 			);
 			mutateRecent(model);
@@ -70,5 +72,38 @@ export function useModelPreferences() {
 		preferences: query.data,
 		remember,
 		recordRecent,
+	};
+}
+
+/** Reads/writes `autoFreeModelsEnabled`; no consumer yet (see schema note). */
+export function useAutoFreeModels() {
+	const sdk = useSdk<ModelPreferencesService>("kilo-ui");
+	const queryClient = useQueryClient();
+	const query = useSdkQuery(sdk, "modelPreferences.get");
+	const { mutate } = useSdkMutation(sdk, "modelPreferences.setAutoFreeEnabled", {
+		invalidates: ["modelPreferences.get"],
+	});
+	const setAutoFreeEnabled = useCallback(
+		(enabled: boolean) => {
+			queryClient.setQueryData<PersistedModelPreferences>(
+				sdkQueryKey(sdk, "modelPreferences.get"),
+				(current) =>
+					current
+						? { ...current, autoFreeModelsEnabled: enabled }
+						: {
+								modelSelections: {},
+								variantSelections: {},
+								recentModels: [],
+								autoFreeModelsEnabled: enabled,
+							},
+			);
+			mutate(enabled);
+		},
+		[mutate, queryClient, sdk],
+	);
+
+	return {
+		autoFreeModelsEnabled: query.data?.autoFreeModelsEnabled ?? true,
+		setAutoFreeEnabled,
 	};
 }

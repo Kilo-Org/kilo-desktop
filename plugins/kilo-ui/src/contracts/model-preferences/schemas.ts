@@ -13,6 +13,12 @@ export const persistedModelPreferencesSchema = z.object({
 	preferred: modelPreferenceRefSchema.extend({ variant: z.string() }).optional(),
 	variantSelections: z.record(z.string(), z.string()),
 	recentModels: z.array(modelPreferenceRefSchema).max(5),
+	/**
+	 * User opt-out for free (no-sign-in) models. Persisted only for now: no
+	 * picker filters on it yet — enforcement and the settings toggle land in a
+	 * follow-up.
+	 */
+	autoFreeModelsEnabled: z.boolean(),
 });
 export type PersistedModelPreferences = z.infer<typeof persistedModelPreferencesSchema>;
 
@@ -32,6 +38,7 @@ export const modelPreferencesContract = defineContract({
 		modelPreferenceRefSchema,
 		persistedModelPreferencesSchema,
 	),
+	"modelPreferences.setAutoFreeEnabled": defineMethod(z.boolean(), persistedModelPreferencesSchema),
 });
 
 export type ModelPreferencesService = InferContract<typeof modelPreferencesContract>;

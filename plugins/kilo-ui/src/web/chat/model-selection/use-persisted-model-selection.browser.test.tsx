@@ -56,6 +56,7 @@ describe("usePersistedModelSelection", () => {
 			preferred: { ...alternateModel, variant: "max" },
 			variantSelections: {},
 			recentModels: [],
+			autoFreeModelsEnabled: true,
 		};
 		const { result } = renderHook(() =>
 			usePersistedModelSelection(
@@ -76,6 +77,7 @@ describe("usePersistedModelSelection", () => {
 			preferred: { providerID: "missing", modelID: "removed", variant: "high" },
 			variantSelections: { "code/anthropic/claude-opus": "max" },
 			recentModels: [],
+			autoFreeModelsEnabled: true,
 		};
 		const { result } = renderHook(() =>
 			usePersistedModelSelection(
@@ -134,6 +136,7 @@ describe("usePersistedModelSelection", () => {
 			modelSelections: {},
 			variantSelections: {},
 			recentModels: [alternateModel],
+			autoFreeModelsEnabled: true,
 		};
 		const { result } = renderHook(() =>
 			usePersistedModelSelection(orgCatalog, undefined, { agent: "code" }, preferences),
@@ -153,6 +156,7 @@ describe("usePersistedModelSelection", () => {
 			modelSelections: {},
 			variantSelections: {},
 			recentModels: [alternateModel],
+			autoFreeModelsEnabled: true,
 		};
 		const { result } = renderHook(() =>
 			usePersistedModelSelection(personalCatalog, undefined, { agent: "code" }, preferences),
@@ -175,6 +179,7 @@ describe("usePersistedModelSelection", () => {
 			preferred: { ...kiloModel, variant: "" },
 			variantSelections: {},
 			recentModels: [],
+			autoFreeModelsEnabled: true,
 		};
 		const externalPreferences: PersistedModelPreferences = {
 			...kiloPreferences,
@@ -212,6 +217,7 @@ describe("usePersistedModelSelection", () => {
 			preferred: { ...alternateModel, variant: "" },
 			variantSelections: { "code/anthropic/claude-opus": "max" },
 			recentModels: [],
+			autoFreeModelsEnabled: true,
 		};
 		const { result } = renderHook(() =>
 			usePersistedModelSelection(

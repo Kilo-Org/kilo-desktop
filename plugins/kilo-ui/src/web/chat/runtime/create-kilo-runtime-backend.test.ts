@@ -425,6 +425,53 @@ describe("createKiloRuntimeBackend", () => {
 		});
 	});
 
+	it("arms the namer with the worktree base ref on session create", async () => {
+		const prepareSession = vi.fn(async () => ({
+			directory: "/workspace/.kilo/worktrees/kilo-aback-aardvark",
+			workspaceFolders: [
+				{ path: "/workspace/.kilo/worktrees/kilo-aback-aardvark", isPrimary: true },
+			],
+			worktree: { branch: "kilo/aback-aardvark", baseRef: "origin/main" },
+		}));
+		const create = vi.fn(async () => ({ data: { id: "session-baseref" } }));
+		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
+		vi.mocked(createKiloDirectoryClient).mockReturnValue({ session: { create } } as never);
+		const initialized = vi.fn();
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession,
+			getVariant: () => undefined,
+			onSessionInitialized: initialized,
+		});
+
+		await backend.initializeSession();
+
+		expect(initialized).toHaveBeenCalledWith("session-baseref", {
+			worktreeBaseRef: "origin/main",
+		});
+	});
+
+	it("arms the namer with no base ref for a non-worktree preparation", async () => {
+		const prepareSession = vi.fn(async () => ({
+			directory: "/workspace/plain",
+			workspaceFolders: [],
+		}));
+		const create = vi.fn(async () => ({ data: { id: "session-plain" } }));
+		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
+		vi.mocked(createKiloDirectoryClient).mockReturnValue({ session: { create } } as never);
+		const initialized = vi.fn();
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession,
+			getVariant: () => undefined,
+			onSessionInitialized: initialized,
+		});
+
+		await backend.initializeSession();
+
+		expect(initialized).toHaveBeenCalledWith("session-plain", {});
+	});
+
 	it("shows no warning toast for a worktree without one", async () => {
 		const prepareSession = vi.fn(async () => ({
 			directory: "/workspace/worktree",
@@ -670,7 +717,7 @@ describe("createKiloRuntimeBackend", () => {
 			}),
 			expect.anything(),
 		);
-		expect(initialized).toHaveBeenCalledWith("session-getters");
+		expect(initialized).toHaveBeenCalledWith("session-getters", {});
 		await backend.getSessionClient(ref).session.prompt({
 			sessionID: ref.id,
 			parts: [{ type: "text", text: "hello" }],

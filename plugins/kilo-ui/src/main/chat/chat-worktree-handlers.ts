@@ -81,6 +81,7 @@ export function createChatWorktreeHandlers(
 						worktree: {
 							branch: created.branch,
 							...(created.warning === undefined ? {} : { warning: created.warning }),
+							...(created.baseRef === undefined ? {} : { baseRef: created.baseRef }),
 						},
 					};
 				}

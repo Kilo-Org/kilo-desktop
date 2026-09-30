@@ -158,6 +158,11 @@ export const gitWorktreeResultSchema = z.object({
 	 * local state. Surfaced to the session as a non-blocking warning.
 	 */
 	warning: z.string().optional(),
+	/**
+	 * The ref the branch was cut from (e.g. `origin/main`); absent when cut
+	 * from HEAD.
+	 */
+	baseRef: z.string().optional(),
 });
 
 export const gitRenameWorktreeBranchInputSchema = z.object({

@@ -195,6 +195,7 @@ describe("WorktreeManager", () => {
 			expect(result).toEqual({
 				directory: path.join(mainRoot, ".kilo", "worktrees", "kilo-aback-aardvark"),
 				branch: "kilo/aback-aardvark",
+				baseRef: "main",
 			});
 			expect(addWorktree).toHaveBeenCalledWith(
 				path.join(mainRoot, ".kilo", "worktrees", "kilo-aback-aardvark"),
@@ -211,13 +212,17 @@ describe("WorktreeManager", () => {
 			const addWorktree = vi.fn(() => Promise.resolve());
 			const manager = managerWith(worktreeClient(mainRoot, { addWorktree }));
 
-			await manager.createWorktree({ workingDirectory: mainRoot, baseBranch: "feature" });
+			const result = await manager.createWorktree({
+				workingDirectory: mainRoot,
+				baseBranch: "feature",
+			});
 
 			expect(addWorktree).toHaveBeenCalledWith(expect.any(String), {
 				cwd: mainRoot,
 				createBranch: expect.stringMatching(/^kilo\//),
 				commitish: "feature^{commit}",
 			});
+			expect(result.baseRef).toBe("feature");
 		});
 
 		it("resolves a bare base name to origin/<name> when only the remote-tracking ref exists", async () => {
@@ -244,13 +249,17 @@ describe("WorktreeManager", () => {
 				}),
 			);
 
-			await manager.createWorktree({ workingDirectory: mainRoot, baseBranch: "main" });
+			const result = await manager.createWorktree({
+				workingDirectory: mainRoot,
+				baseBranch: "main",
+			});
 
 			expect(addWorktree).toHaveBeenCalledWith(expect.any(String), {
 				cwd: mainRoot,
 				createBranch: expect.stringMatching(/^kilo\//),
 				commitish: "origin/main^{commit}",
 			});
+			expect(result.baseRef).toBe("origin/main");
 		});
 
 		it("omits the commitish when no base resolves (current HEAD)", async () => {
@@ -258,12 +267,13 @@ describe("WorktreeManager", () => {
 			const addWorktree = vi.fn(() => Promise.resolve());
 			const manager = managerWith(worktreeClient(mainRoot, { addWorktree }));
 
-			await manager.createWorktree({ workingDirectory: mainRoot });
+			const result = await manager.createWorktree({ workingDirectory: mainRoot });
 
 			expect(addWorktree).toHaveBeenCalledWith(expect.any(String), {
 				cwd: mainRoot,
 				createBranch: expect.stringMatching(/^kilo\//),
 			});
+			expect(result).not.toHaveProperty("baseRef");
 		});
 
 		it("fetches the base from the remote non-interactively and prefers the fresh remote ref", async () => {
@@ -322,6 +332,7 @@ describe("WorktreeManager", () => {
 				commitish: "origin/main^{commit}",
 			});
 			expect(result).not.toHaveProperty("warning");
+			expect(result.baseRef).toBe("origin/main");
 		});
 
 		it("keeps the user's GIT_SSH_COMMAND for the fetch", async () => {
@@ -391,6 +402,7 @@ describe("WorktreeManager", () => {
 				createBranch: expect.stringMatching(/^kilo\//),
 				commitish: "main^{commit}",
 			});
+			expect(result.baseRef).toBe("main");
 		});
 
 		it("skips the fetch silently for a repository without remotes", async () => {
@@ -411,6 +423,7 @@ describe("WorktreeManager", () => {
 
 			expect(execLog.some((call) => call.args[0] === "fetch")).toBe(false);
 			expect(result).not.toHaveProperty("warning");
+			expect(result.baseRef).toBe("main");
 		});
 
 		it("refetches at most once per base within the TTL window", async () => {

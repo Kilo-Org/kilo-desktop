@@ -12,6 +12,7 @@ import { FeatureError } from "@kilo-desktop/feature-sdk";
 import { GitErrorCode, GitNotDetectedError, isGitError } from "@kilo-desktop/git-client";
 
 import { KILO_WORKTREE_SEGMENTS } from "../contracts/schemas.js";
+import type { GitWorktreeResult } from "../contracts/schemas.js";
 import { availableBranchName, generateBranchName, semanticBranchName } from "./branch-naming.js";
 import type { BranchNameRandom } from "./branch-naming.js";
 import type { GitClientSlice } from "./git-service.js";
@@ -316,7 +317,7 @@ export class WorktreeManager {
 	async createWorktree(input: {
 		workingDirectory: string;
 		baseBranch?: string;
-	}): Promise<{ directory: string; branch: string; warning?: string }> {
+	}): Promise<GitWorktreeResult> {
 		try {
 			return await this.#createWorktreeInner(input);
 		} catch (error) {
@@ -327,7 +328,7 @@ export class WorktreeManager {
 	async #createWorktreeInner(input: {
 		workingDirectory: string;
 		baseBranch?: string;
-	}): Promise<{ directory: string; branch: string; warning?: string }> {
+	}): Promise<GitWorktreeResult> {
 		const { workingDirectory, baseBranch } = input;
 		const repositoryType = await this.#client.repositoryType(workingDirectory);
 		if (repositoryType.kind !== "regular") {
@@ -380,7 +381,7 @@ export class WorktreeManager {
 		mainRoot: string;
 		worktreesDir: string;
 		baseBranch?: string;
-	}): Promise<{ directory: string; branch: string; warning?: string }> {
+	}): Promise<GitWorktreeResult> {
 		const { workingDirectory, mainRoot, worktreesDir, baseBranch } = input;
 		const baseName = baseBranch ?? (await this.#resolveDefaultBranch(workingDirectory));
 		let warning: string | undefined;
@@ -400,7 +401,7 @@ export class WorktreeManager {
 		for (let attempt = 0; ; attempt++) {
 			const branch = await this.#pickBranchName(workingDirectory, worktreesDir);
 			const directory = join(worktreesDir, branch.replaceAll("/", "-"));
-			const commitish = await this.#resolveBaseCommitish(workingDirectory, baseName, {
+			const baseRef = await this.#resolveBaseRef(workingDirectory, baseName, {
 				remote,
 				freshRemoteBase,
 			});
@@ -414,7 +415,12 @@ export class WorktreeManager {
 				await this.#client.addWorktree(directory, {
 					cwd: workingDirectory,
 					createBranch: branch,
-					...(commitish === undefined ? {} : { commitish }),
+					// Dereferenced to `<ref>^{commit}` (kilocode): a resolved start
+					// point must anchor the new branch at a commit — `worktree add
+					// -b` from a remote-tracking ref would otherwise set upstream
+					// tracking on the branch, which then makes every semantic
+					// rename decline on the no-upstream guard.
+					...(baseRef === undefined ? {} : { commitish: `${baseRef}^{commit}` }),
 				});
 			} catch (error) {
 				// Post-checkout hooks (husky/lefthook) can exit non-zero after a
@@ -431,6 +437,7 @@ export class WorktreeManager {
 							directory,
 							branch,
 							...(warning === undefined ? {} : { warning }),
+							...(baseRef === undefined ? {} : { baseRef }),
 						};
 					}
 				}
@@ -438,7 +445,12 @@ export class WorktreeManager {
 				throw error;
 			}
 
-			return { directory, branch, ...(warning === undefined ? {} : { warning }) };
+			return {
+				directory,
+				branch,
+				...(warning === undefined ? {} : { warning }),
+				...(baseRef === undefined ? {} : { baseRef }),
+			};
 		}
 	}
 
@@ -761,11 +773,11 @@ export class WorktreeManager {
 	}
 
 	/**
-	 * Resolve the commitish for a new worktree base, dereferenced to
-	 * `<ref>^{commit}` (kilocode): a resolved start point must anchor the
-	 * new branch at a commit — `git worktree add -b` from a remote-tracking
-	 * ref would otherwise set upstream tracking on the branch, which then
-	 * makes every semantic rename decline on the no-upstream guard.
+	 * Resolve the base ref for a new worktree (kilocode's `remoteRef`
+	 * intent, adapted): the caller derefences it to `<ref>^{commit}` at the
+	 * `addWorktree` call site so a remote-tracking start point never sets
+	 * upstream tracking on the new branch, which would otherwise make
+	 * every semantic rename decline on the no-upstream guard.
 	 *
 	 * Preference order: the freshly fetched `${remote}/${name}` first, then
 	 * the fallback chain (local → the resolved remote's tracking ref → the
@@ -773,7 +785,7 @@ export class WorktreeManager {
 	 * for a deleted base). `undefined` means "current HEAD" (`worktree add`
 	 * defaults to HEAD).
 	 */
-	async #resolveBaseCommitish(
+	async #resolveBaseRef(
 		workingDirectory: string,
 		baseName: string | null | undefined,
 		base: { remote: string | undefined; freshRemoteBase: boolean },
@@ -783,7 +795,7 @@ export class WorktreeManager {
 
 		// Remote ref names are the ref minus `refs/remotes/` (e.g. origin/main);
 		// symrefs (origin/HEAD) are excluded. A null result falls through to the
-		// bare-name commitish so git surfaces its own error for a deleted base.
+		// bare-name ref so git surfaces its own error for a deleted base.
 		const [branches, remoteEntries] = await Promise.all([
 			this.#client.branches({ cwd: workingDirectory }),
 			this.#client.branches({ cwd: workingDirectory, prefixes: ["refs/remotes"] }),
@@ -792,14 +804,14 @@ export class WorktreeManager {
 		const remoteRefs = (remoteEntries ?? []).map((b) => b.name);
 
 		if (base.freshRemoteBase && remoteBase !== undefined && remoteRefs.includes(remoteBase)) {
-			return `${remoteBase}^{commit}`;
+			return remoteBase;
 		}
-		if (localNames.has(baseName)) return `${baseName}^{commit}`;
+		if (localNames.has(baseName)) return baseName;
 		if (remoteBase !== undefined && remoteRefs.includes(remoteBase)) {
-			return `${remoteBase}^{commit}`;
+			return remoteBase;
 		}
-		if (remoteRefs.includes(`origin/${baseName}`)) return `origin/${baseName}^{commit}`;
-		return `${baseName}^{commit}`;
+		if (remoteRefs.includes(`origin/${baseName}`)) return `origin/${baseName}`;
+		return baseName;
 	}
 
 	/**

@@ -75,7 +75,7 @@ export interface CreateKiloRuntimeBackendOptions extends PromptOptionGetters {
 	/** Latest Kilo connection; used on every request so a port change mid-prepare still lands. */
 	getConnection?: () => Promise<KiloGlobalConnection>;
 	prepareSession(): Promise<KiloSessionPreparation>;
-	onSessionInitialized?: (threadId: string) => void;
+	onSessionInitialized?: (threadId: string, info?: { worktreeBaseRef?: string }) => void;
 	/**
 	 * Compensating cleanup: fired fire-and-forget when anything after
 	 * `prepareSession` fails and the preparation included a worktree, so a
@@ -402,7 +402,9 @@ export function createKiloRuntimeBackend({
 				const ref = { id: session.id, directory };
 				rememberWorkspaceSystem(session.id, workspaceFolders);
 				rememberSession(ref);
-				onSessionInitialized?.(session.id);
+				onSessionInitialized?.(session.id, {
+					...(worktree?.baseRef ? { worktreeBaseRef: worktree.baseRef } : {}),
+				});
 				if (worktree || workspaceId) {
 					sessionActivity?.getState().hydrateSessions([
 						{

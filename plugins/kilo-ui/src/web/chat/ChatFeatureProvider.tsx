@@ -70,7 +70,7 @@ import {
 	readGitDraftSelection,
 	resolvePrepareSessionWorktreeInput,
 } from "./git-draft-selection.js";
-import { createWorktreeBranchNamer } from "./worktree-branch-namer.js";
+import { useWorktreeBranchNamer } from "./use-worktree-branch-namer.js";
 import { createKiloDirectoryClient } from "./runtime/create-kilo-runtime-client.js";
 import { createSourceControlWriter } from "./source-control-writer.js";
 import { WorktreeSetupProvider } from "./worktree-setup/WorktreeSetupContext.js";
@@ -314,20 +314,18 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		);
 	}, [sdk, sessionActivity]);
 
-	const hasWorktreeWorkRef = useRef((input: { directory: string; baseBranch?: string }) =>
-		sdk.client["chat.hasWorktreeWork"](input),
-	);
-	const branchNamer = useMemo(
-		() =>
-			createWorktreeBranchNamer({
-				getConnection: () => connectionPromise,
-				sessionActivity,
-				renameWorktreeBranch: (input) => sdk.client["chat.renameWorktreeBranch"](input),
-				hasWorktreeWork: (input) => hasWorktreeWorkRef.current(input),
-			}),
-		[connectionPromise, sessionActivity, sdk],
-	);
-	useEffect(() => () => branchNamer.dispose(), [branchNamer]);
+	// The namer holds per-session arming in memory, so it must outlive
+	// connection refreshes: the connection is read through a ref instead of
+	// being a memo dependency.
+	const namerConnectionRef = useRef(connectionPromise);
+	namerConnectionRef.current = connectionPromise;
+	const branchNamer = useWorktreeBranchNamer({
+		getConnection: () => namerConnectionRef.current,
+		sessionActivity,
+		renameWorktreeBranch: (input) => sdk.client["chat.renameWorktreeBranch"](input),
+		hasWorktreeWork: (input) => sdk.client["chat.hasWorktreeWork"](input),
+		log: (message) => console.warn(`[kilo-ui] branch naming: ${message}`),
+	});
 
 	const catalogQuery = useKiloModelCatalog(connection.data, connection.dataUpdatedAt);
 	const gatewayModelDetails = useQuery({
@@ -478,12 +476,18 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		[sdk, sessionActivity],
 	);
 	const onSessionInitialized = useCallback(
-		(threadId: string) => {
+		(threadId: string, info?: { worktreeBaseRef?: string }) => {
 			setIsSettingUpWorktree(false);
 			promoteDraftAgent(threadId);
 			promoteDraftModel(threadId);
+			// Only sessions created in this renderer lifetime may be auto-named;
+			// the namer re-checks worktree eligibility on every prompt.
+			branchNamer.arm(
+				threadId,
+				info?.worktreeBaseRef ? { baseRef: info.worktreeBaseRef } : undefined,
+			);
 		},
-		[promoteDraftAgent, promoteDraftModel],
+		[promoteDraftAgent, promoteDraftModel, branchNamer],
 	);
 
 	const runtime = useKiloRuntime({

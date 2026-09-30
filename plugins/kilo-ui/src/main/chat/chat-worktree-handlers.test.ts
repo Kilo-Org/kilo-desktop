@@ -119,6 +119,31 @@ describe("kilo-ui chat worktree handlers", () => {
 		});
 	});
 
+	it("passes the worktree baseRef through the preparation contract", async () => {
+		const { mainSdk, exposeGitService, workspace } = await boot();
+		exposeGitService(
+			gitServiceDouble({
+				createWorktree: vi.fn(async () => ({
+					directory: "/repo/.kilo/worktrees/kilo-aback-aardvark",
+					branch: "kilo/aback-aardvark",
+					baseRef: "origin/main",
+				})),
+			}),
+		);
+
+		const preparation = await mainSdk.invoke("chat.prepareSession", {
+			workspaceId: workspace.id,
+			worktree: {},
+		});
+
+		expect(preparation).toMatchObject({
+			worktree: {
+				branch: "kilo/aback-aardvark",
+				baseRef: "origin/main",
+			},
+		});
+	});
+
 	it("passes a worktree warning through the preparation contract", async () => {
 		const { mainSdk, exposeGitService, workspace } = await boot();
 		exposeGitService(

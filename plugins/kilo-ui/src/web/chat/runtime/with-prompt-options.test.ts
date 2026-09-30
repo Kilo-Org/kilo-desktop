@@ -91,6 +91,30 @@ describe("withPromptOptions", () => {
 		);
 	});
 
+	it("reports each prompt's text and resolved model to onPrompt", async () => {
+		const promptAsync = vi.fn(async () => undefined);
+		const client = {
+			session: { promptAsync, prompt: vi.fn() },
+		} as unknown as KiloClient;
+		const onPrompt = vi.fn();
+
+		const wrapped = withPromptOptions(client, {
+			getModel: () => ({ providerID: "openai", modelID: "gpt-5" }),
+			onPrompt,
+		});
+		await wrapped.session.promptAsync({
+			sessionID: "s1",
+			parts: [{ type: "text", text: "fix the login bug" }],
+		});
+
+		expect(onPrompt).toHaveBeenCalledWith({
+			sessionID: "s1",
+			text: "fix the login bug",
+			providerID: "openai",
+			modelID: "gpt-5",
+		});
+	});
+
 	it("waits for local model preparation before promptAsync reaches Kilo", async () => {
 		let release!: () => void;
 		const preparation = new Promise<void>((resolve) => {

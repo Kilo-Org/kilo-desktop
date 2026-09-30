@@ -17,7 +17,11 @@ import type { SessionActivityStore } from "../session-activity/session-activity-
 import { createKiloRuntimeBackend } from "./create-kilo-runtime-backend.js";
 import { LOCAL_MCP_APPS } from "./mcp-app-registry.js";
 import { startSessionListBackfill } from "./session-list-backfill.js";
-import { withPromptOptions, type PromptModelRef } from "./with-prompt-options.js";
+import {
+	withPromptOptions,
+	type PromptModelRef,
+	type PromptObservation,
+} from "./with-prompt-options.js";
 
 // Inject the Desktop-local MCP App registry into the patched
 // openCodeMessageProjection. Uses a namespace import + optional call rather
@@ -35,15 +39,15 @@ export interface UseKiloRuntimeOptions {
 	/** Fires when the active remote thread id changes (OpenCode session switch). */
 	onThreadIdChange?: (threadId: string | undefined) => void;
 	/** Fires after Kilo creates a remote session for the active draft. */
-	onSessionInitialized?: (threadId: string) => void;
+	onSessionInitialized?: (threadId: string, info?: { worktreeBaseRef?: string }) => void;
 	defaultAgent?: string;
 	/** Reads the current agent synchronously for prompt dispatch. */
 	getAgent?: () => string | undefined;
 	defaultModel?: PromptModelRef;
 	/** Ensures a managed local model is ready before its prompt is forwarded. */
 	prepareModel?: (modelId: string) => Promise<void>;
-	/** Observes every outgoing prompt with its session id and text. */
-	onPrompt?: (input: { sessionID: string; text: string }) => void;
+	/** Observes every outgoing prompt with its session id, text, and model. */
+	onPrompt?: (input: PromptObservation) => void;
 	/**
 	 * Compensating cleanup for a session that failed to materialize after
 	 * `prepareSession` created a worktree for it (see the backend option).
@@ -116,7 +120,7 @@ export function useKiloRuntime({
 			prepareModel: async (modelId: string) => {
 				await prepareModelRef.current?.(modelId);
 			},
-			onPrompt: (input: { sessionID: string; text: string }) => {
+			onPrompt: (input: PromptObservation) => {
 				onPromptRef.current?.(input);
 			},
 			getKnownCommandNames: () => knownCommandNamesRef.current?.() ?? [],
@@ -143,7 +147,8 @@ export function useKiloRuntime({
 			},
 			prepareSession,
 			...promptGetters,
-			onSessionInitialized: (threadId: string) => onSessionInitializedRef.current?.(threadId),
+			onSessionInitialized: (threadId: string, info?: { worktreeBaseRef?: string }) =>
+				onSessionInitializedRef.current?.(threadId, info),
 			onPermissionEvent: (event) => onPermissionEventRef.current?.(event) ?? false,
 			onStreamReconnected: () => onStreamReconnectedRef.current?.(),
 			...(onSessionCreateFailed ? { onSessionCreateFailed } : {}),

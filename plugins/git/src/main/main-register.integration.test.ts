@@ -598,6 +598,7 @@ describe("git mainRegister gitService capability", () => {
 		const worktree = await capabilities?.gitService.createWorktree({ workingDirectory: repoDir });
 		expect(worktree?.directory).toMatch(/[\\/]\.kilo[\\/]worktrees[\\/]kilo-/);
 		expect(worktree?.branch).toMatch(/^kilo\//);
+		expect(worktree?.baseRef).toBe("main");
 
 		// The created worktree is a real git worktree on a kilo/ branch.
 		const listing = execGitOutput(repoDir, ["worktree", "list", "--porcelain"]);

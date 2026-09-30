@@ -79,8 +79,10 @@ describe("useKiloRuntime", () => {
 			onSessionCreateFailed,
 		});
 		const backendOptions = vi.mocked(createKiloRuntimeBackend).mock.calls[0]?.[0];
-		backendOptions?.onSessionInitialized?.("session-1");
-		expect(onSessionInitialized).toHaveBeenCalledWith("session-1");
+		backendOptions?.onSessionInitialized?.("session-1", { worktreeBaseRef: "origin/main" });
+		expect(onSessionInitialized).toHaveBeenCalledWith("session-1", {
+			worktreeBaseRef: "origin/main",
+		});
 		const permissionEvent = {
 			type: "permission.asked",
 			properties: { id: "perm-1" },
@@ -148,7 +150,7 @@ describe("useKiloRuntime", () => {
 		backendArgs?.onSessionInitialized?.("also-ignored-session");
 
 		expect(createKiloRuntimeBackend).toHaveBeenCalledOnce();
-		expect(callback).toHaveBeenCalledExactlyOnceWith("session-1");
+		expect(callback).toHaveBeenCalledExactlyOnceWith("session-1", undefined);
 	});
 
 	it("forwards live agent and model getters that track selection changes", () => {

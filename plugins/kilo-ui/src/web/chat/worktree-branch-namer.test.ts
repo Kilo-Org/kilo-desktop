@@ -10,9 +10,14 @@ function setup(options?: {
 	generatedBranch?: string | null;
 	renamedBranch?: { branch: string } | null;
 	sessionMetadata?: unknown;
+	/** Arm session-1 as a freshly created session (default true). */
+	armed?: boolean;
+	/** Base ref to arm session-1 with, when `armed` is not `false`. */
+	armBaseRef?: string;
+	hasWorktreeWork?: (input: { directory: string; baseBranch?: string }) => Promise<boolean>;
 }) {
 	const store = createSessionActivityStore({ storage: null });
-	const generate = vi.fn(async () => ({
+	const generate = vi.fn(async (_input: Record<string, unknown>, _options?: unknown) => ({
 		// `??` is deliberately avoided: an explicit `null` (endpoint decline)
 		// is authoritative.
 		data: {
@@ -42,10 +47,16 @@ function setup(options?: {
 		branchName: { generate },
 		session: { get: sessionGet, update: sessionUpdate },
 	};
-	const renameWorktreeBranch = vi.fn(async () =>
-		options?.renamedBranch === undefined
-			? { branch: "kilo/fix-the-login-bug" }
-			: options.renamedBranch,
+	// Mirrors the git plugin's guard: declines unless `currentBranch` is
+	// still git's actual branch, so a stale caller can never rename.
+	let gitBranch = "kilo/aback-aardvark";
+	const renameWorktreeBranch = vi.fn(
+		async (input: { directory: string; currentBranch: string; requestedBranch: string }) => {
+			if (options?.renamedBranch !== undefined) return options.renamedBranch;
+			if (input.currentBranch !== gitBranch) return null;
+			gitBranch = `kilo/${input.requestedBranch}`;
+			return { branch: gitBranch };
+		},
 	);
 	const notify = vi.fn();
 	const namer = createWorktreeBranchNamer({
@@ -56,6 +67,7 @@ function setup(options?: {
 		renameWorktreeBranch,
 		createDirectoryClient: async () => client as never,
 		notify,
+		...(options?.hasWorktreeWork ? { hasWorktreeWork: options.hasWorktreeWork } : {}),
 	});
 
 	store
@@ -63,6 +75,9 @@ function setup(options?: {
 		.hydrateSessions([
 			{ id: "session-1", directory: WORKTREE_DIRECTORY, worktreeBranch: "kilo/aback-aardvark" },
 		]);
+	if (options?.armed !== false) {
+		namer.arm("session-1", options?.armBaseRef ? { baseRef: options.armBaseRef } : undefined);
+	}
 
 	const setBusy = () =>
 		store.getState().applyEvent({
@@ -75,6 +90,19 @@ function setup(options?: {
 			properties: { sessionID: "session-1" },
 		});
 
+	/** One full chat turn: send, run, settle. */
+	const turn = async (text: string) => {
+		namer.prompt({ sessionID: "session-1", text });
+		setBusy();
+		await settle();
+		setIdle();
+		await settle();
+	};
+	const successfulRenames = () =>
+		renameWorktreeBranch.mock.settledResults.filter(
+			(result) => result.type === "fulfilled" && result.value !== null,
+		).length;
+
 	return {
 		namer,
 		store,
@@ -85,8 +113,12 @@ function setup(options?: {
 		notify,
 		setBusy,
 		setIdle,
+		turn,
+		successfulRenames,
 	};
 }
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
 
 describe("createWorktreeBranchNamer", () => {
 	it("arms on the first prompt and dispatches a generation on the second", async () => {
@@ -319,6 +351,152 @@ describe("createWorktreeBranchNamer", () => {
 
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		expect(s.generate).not.toHaveBeenCalled();
+	});
+
+	it("never names a session that was not armed at creation", async () => {
+		// A reload (or a recreated namer) must not re-arm existing sessions —
+		// their branch may already carry a semantic name.
+		const s = setup({ armed: false, hasWorktreeWork: async () => true });
+
+		for (let index = 1; index <= 3; index++) await s.turn(`prompt ${index}`);
+
+		expect(s.generate).not.toHaveBeenCalled();
+		expect(s.renameWorktreeBranch).not.toHaveBeenCalled();
+	});
+
+	it("renames at most once, even across many turns with work", async () => {
+		const s = setup({ hasWorktreeWork: async () => true });
+		let generated = 0;
+		s.generate.mockImplementation(async () => ({ data: { branch: `name-${++generated}` } }));
+
+		for (let index = 1; index <= 8; index++) await s.turn(`prompt ${index}`);
+
+		expect(s.successfulRenames()).toBe(1);
+		expect(s.store.getState().sessions["session-1"]?.worktreeBranch).toBe("kilo/name-1");
+	});
+
+	it("stays disarmed after the prompt cap", async () => {
+		const s = setup({ generatedBranch: null, hasWorktreeWork: async () => false });
+
+		for (let index = 1; index <= 9; index++) await s.turn(`prompt ${index}`);
+
+		// Prompts 2–4 dispatch; nothing after the cap ever re-arms.
+		expect(s.generate).toHaveBeenCalledTimes(3);
+	});
+
+	it("ignores subagent child sessions sharing the worktree directory", async () => {
+		const s = setup();
+		s.store
+			.getState()
+			.hydrateSessions([{ id: "child-1", parentId: "session-1", directory: WORKTREE_DIRECTORY }]);
+
+		await s.turn("hello");
+		await s.turn("fix the login bug");
+
+		expect(s.successfulRenames()).toBe(1);
+	});
+
+	it("passes the armed base ref to the idle work probe as baseBranch", async () => {
+		const hasWorktreeWork = vi.fn(async () => true);
+		const s = setup({ hasWorktreeWork, armBaseRef: "origin/main" });
+
+		await s.turn("one detailed prompt");
+
+		await vi.waitFor(() => {
+			expect(hasWorktreeWork).toHaveBeenCalledWith({
+				directory: WORKTREE_DIRECTORY,
+				baseBranch: "origin/main",
+			});
+		});
+	});
+
+	it("omits baseBranch from the idle work probe when armed without a base ref", async () => {
+		const hasWorktreeWork = vi.fn(async () => true);
+		const s = setup({ hasWorktreeWork });
+
+		await s.turn("one detailed prompt");
+
+		await vi.waitFor(() => {
+			expect(hasWorktreeWork).toHaveBeenCalledWith({ directory: WORKTREE_DIRECTORY });
+		});
+	});
+
+	it("runs the single-prompt idle path only on a busy → idle transition", async () => {
+		const hasWorktreeWork = vi.fn(async () => true);
+		const s = setup({ hasWorktreeWork });
+
+		s.namer.prompt({ sessionID: "session-1", text: "one detailed prompt" });
+		// Unrelated store churn before the turn goes busy is not an idle transition.
+		s.store.getState().hydrateSessions([{ id: "other", directory: "/elsewhere" }]);
+		await settle();
+		expect(hasWorktreeWork).not.toHaveBeenCalled();
+
+		s.setBusy();
+		s.setIdle();
+		await vi.waitFor(() => {
+			expect(s.generate).toHaveBeenCalledTimes(1);
+		});
+		expect(hasWorktreeWork).toHaveBeenCalledTimes(1);
+	});
+
+	it("does not dispatch a second generation while the idle work probe is in flight", async () => {
+		let resolveWork!: (hasWork: boolean) => void;
+		const s = setup({
+			hasWorktreeWork: () => new Promise<boolean>((resolve) => (resolveWork = resolve)),
+		});
+
+		s.namer.prompt({ sessionID: "session-1", text: "detailed first prompt" });
+		s.setBusy();
+		s.setIdle();
+		// The probe holds the slot: prompt 2 must not dispatch alongside it.
+		s.namer.prompt({ sessionID: "session-1", text: "second prompt" });
+		resolveWork(true);
+
+		await vi.waitFor(() => {
+			expect(s.successfulRenames()).toBe(1);
+		});
+		await settle();
+		expect(s.generate).toHaveBeenCalledTimes(1);
+		expect(s.successfulRenames()).toBe(1);
+	});
+
+	it("forwards the prompt's model to the generator, including on the idle path", async () => {
+		const s = setup({ generatedBranch: null });
+		const model = { providerID: "kilo", modelID: "anthropic/claude" };
+
+		s.namer.prompt({ sessionID: "session-1", text: "hello", ...model });
+		s.setBusy();
+		s.setIdle();
+		await vi.waitFor(() => {
+			expect(s.generate).toHaveBeenCalledWith(
+				{ sessionID: "session-1", directory: WORKTREE_DIRECTORY, prompt: "", ...model },
+				expect.anything(),
+			);
+		});
+
+		s.namer.prompt({ sessionID: "session-1", text: "fix the login bug", ...model });
+		await vi.waitFor(() => {
+			expect(s.generate).toHaveBeenLastCalledWith(
+				{
+					sessionID: "session-1",
+					directory: WORKTREE_DIRECTORY,
+					prompt: "fix the login bug",
+					...model,
+				},
+				expect.anything(),
+			);
+		});
+	});
+
+	it("disarms once git renamed the branch, even when the re-stamp fails", async () => {
+		const s = setup({ hasWorktreeWork: async () => true });
+		s.sessionUpdate.mockRejectedValue(new Error("server unavailable"));
+
+		for (let index = 1; index <= 5; index++) await s.turn(`prompt ${index}`);
+
+		expect(s.successfulRenames()).toBe(1);
+		// The store reflects git's truth even though the server stamp failed.
+		expect(s.store.getState().sessions["session-1"]?.worktreeBranch).toBe("kilo/fix-the-login-bug");
 	});
 
 	it("dispose aborts in-flight generations and stops observing", async () => {

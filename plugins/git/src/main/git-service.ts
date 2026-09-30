@@ -23,6 +23,7 @@ import type {
 	GitBranchesResult,
 	GitRepositoryType,
 	GitStatus,
+	GitWorktreeResult,
 } from "../contracts/schemas.js";
 import type { IBranch, RepositoryType } from "@kilo-desktop/git-client";
 import { findDefaultBranch } from "./find-default-branch.js";
@@ -1585,7 +1586,7 @@ export class GitService {
 	async createWorktree(input: {
 		workingDirectory: string;
 		baseBranch?: string;
-	}): Promise<{ directory: string; branch: string; warning?: string }> {
+	}): Promise<GitWorktreeResult> {
 		return this.#worktrees.createWorktree(input);
 	}
 

@@ -17,6 +17,13 @@ export type PromptModelRef = {
 	modelID: string;
 };
 
+export type PromptObservation = {
+	sessionID: string;
+	text: string;
+	providerID?: string;
+	modelID?: string;
+};
+
 export type PromptOptionGetters = {
 	getVariant?: () => string | undefined;
 	getAgent?: () => string | undefined;
@@ -25,10 +32,11 @@ export type PromptOptionGetters = {
 	prepareModel?: (modelId: string) => Promise<void>;
 	/**
 	 * Observes every outgoing prompt (`session.prompt`/`promptAsync`) with
-	 * the session id and the concatenated `type: "text"` parts — the seam
-	 * the worktree branch namer counts prompts on. Fire-and-forget.
+	 * the session id, the concatenated `type: "text"` parts, and the
+	 * resolved model — the seam the worktree branch namer counts prompts on.
+	 * Fire-and-forget.
 	 */
-	onPrompt?: (input: { sessionID: string; text: string }) => void;
+	onPrompt?: (input: PromptObservation) => void;
 	/** Known Kilo slash-command names; used to rewrite `/cmd args` prompts. */
 	getKnownCommandNames?: () => readonly string[];
 };
@@ -176,7 +184,13 @@ export function withPromptOptions(client: KiloClient, getters: PromptOptionGette
 							if (getters.onPrompt) {
 								const sessionID = typeof next.sessionID === "string" ? next.sessionID : undefined;
 								if (sessionID) {
-									getters.onPrompt({ sessionID, text: promptText(next) });
+									getters.onPrompt({
+										sessionID,
+										text: promptText(next),
+										...(isPromptModelRef(next.model)
+											? { providerID: next.model.providerID, modelID: next.model.modelID }
+											: {}),
+									});
 								}
 							}
 							const draft = slashCommandFromPromptArgs(

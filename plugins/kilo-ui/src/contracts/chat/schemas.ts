@@ -44,6 +44,13 @@ export const kiloSessionPreparationSchema = z.object({
 			 * base fetch failed, so the branch was cut from local state).
 			 */
 			warning: z.string().min(1).optional(),
+			/**
+			 * The ref the branch was cut from (e.g. `origin/main`); absent
+			 * when cut from HEAD. Forwarded to the branch namer so the
+			 * idle-work probe compares against the worktree's real base
+			 * instead of the repository's default branch.
+			 */
+			baseRef: z.string().min(1).max(512).optional(),
 		})
 		.optional(),
 });
@@ -113,7 +120,7 @@ export const kiloUiChatContract = defineContract({
 	"chat.hasWorktreeWork": defineMethod(
 		z.object({
 			directory: z.string().min(1).max(32_768),
-			baseBranch: z.string().min(1).max(255).optional(),
+			baseBranch: z.string().min(1).max(512).optional(),
 		}),
 		z.boolean(),
 	),

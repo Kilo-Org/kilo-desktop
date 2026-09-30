@@ -971,6 +971,22 @@ describe("GitService hasWorktreeWork", () => {
 			successExitCodes: new Set([0, 128]),
 		});
 	});
+
+	it("resolves false and never calls exec when no base branch is given", async () => {
+		const exec = vi.fn(async () => ({ exitCode: 0, stdout: "2\n" }));
+		const service = new GitService({
+			logger,
+			getWorkspaceFolderPaths: folders("/repo/project"),
+			createClient: () =>
+				clientOf({
+					status: statusOn("kilo/topic"),
+					exec: exec as unknown as GitClientSlice["exec"],
+				}),
+		});
+
+		await expect(service.hasWorktreeWork({ directory: "/repo/project" })).resolves.toBe(false);
+		expect(exec).not.toHaveBeenCalled();
+	});
 });
 
 describe("GitService defaultBranch", () => {
@@ -1054,7 +1070,11 @@ describe("GitService defaultBranch", () => {
 describe("GitService worktree delegation", () => {
 	it("delegates createWorktree to WorktreeManager and passes the result through", async () => {
 		const createWorktree = vi.fn(() =>
-			Promise.resolve({ directory: "/repo/.kilo/worktrees/kilo-test", branch: "kilo/test" }),
+			Promise.resolve({
+				directory: "/repo/.kilo/worktrees/kilo-test",
+				branch: "kilo/test",
+				baseRef: "origin/main",
+			}),
 		);
 		vi.spyOn(WorktreeManager.prototype, "createWorktree").mockImplementation(createWorktree);
 
@@ -1070,6 +1090,7 @@ describe("GitService worktree delegation", () => {
 		expect(result).toEqual({
 			directory: "/repo/.kilo/worktrees/kilo-test",
 			branch: "kilo/test",
+			baseRef: "origin/main",
 		});
 
 		vi.restoreAllMocks();

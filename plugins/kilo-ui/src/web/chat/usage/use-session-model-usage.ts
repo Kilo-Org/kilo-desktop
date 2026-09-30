@@ -11,6 +11,7 @@ import {
 	lastAssistantCost,
 	lastAssistantId,
 	lastAssistantTokens,
+	resolveServerSessionId,
 	toComposerUsageView,
 	type ComposerUsageView,
 	type ThreadUsageMessage,
@@ -41,11 +42,19 @@ export function useComposerUsageView(): ComposerUsageView | undefined {
 	const { model, catalog } = useChatModelSelection();
 	const activityEpoch = useOptionalSessionActivity((state) => state.activityEpoch);
 	const activityDirectory = useOptionalSessionActivity((state) => {
-		const sessionId = session?.id ?? remoteId ?? threadId;
-		return state.sessions[sessionId]?.directory;
+		const sessionId = resolveServerSessionId({
+			sessionId: session?.id,
+			remoteId,
+			threadId,
+		});
+		return sessionId ? state.sessions[sessionId]?.directory : undefined;
 	});
 
-	const sessionID = session?.id ?? remoteId ?? threadId;
+	const sessionID = resolveServerSessionId({
+		sessionId: session?.id,
+		remoteId,
+		threadId,
+	});
 	const directory = session?.directory ?? activityDirectory ?? connection?.globalDirectory ?? "";
 	const tokens = useAuiState((state) =>
 		lastAssistantTokens(state.thread.messages as readonly ThreadUsageMessage[]),

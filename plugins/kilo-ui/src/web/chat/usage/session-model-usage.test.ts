@@ -10,6 +10,7 @@ import {
 	lastAssistantTokens,
 	modelUsageName,
 	parseSessionModelUsage,
+	resolveServerSessionId,
 	toComposerUsageView,
 	toCostLines,
 	type SessionModelUsage,
@@ -280,5 +281,39 @@ describe("session-model-usage mapper", () => {
 		});
 		expect(parseSessionModelUsage(null)).toBeUndefined();
 		expect(parseSessionModelUsage({ models: [] })).toBeUndefined();
+	});
+});
+
+describe("resolveServerSessionId", () => {
+	it("prefers the runtime extras session id", () => {
+		expect(
+			resolveServerSessionId({
+				sessionId: "ses_abc",
+				remoteId: "ses_other",
+				threadId: "__LOCALID_x",
+			}),
+		).toBe("ses_abc");
+	});
+
+	it("falls back to the remote id once initialization swaps it in", () => {
+		expect(resolveServerSessionId({ remoteId: "ses_remote", threadId: "__LOCALID_x" })).toBe(
+			"ses_remote",
+		);
+	});
+
+	it("refuses the optimistic local placeholder before the remote id resolves", () => {
+		expect(resolveServerSessionId({ threadId: "__LOCALID_mcuBplO" })).toBeUndefined();
+	});
+
+	it("refuses every placeholder-like id regardless of which source carries it", () => {
+		expect(
+			resolveServerSessionId({ sessionId: "__LOCALID_a", remoteId: "__LOCALID_b" }),
+		).toBeUndefined();
+	});
+
+	it("refuses ids that merely start with the ses substring", () => {
+		expect(
+			resolveServerSessionId({ remoteId: "session-1", threadId: "session-1" }),
+		).toBeUndefined();
 	});
 });

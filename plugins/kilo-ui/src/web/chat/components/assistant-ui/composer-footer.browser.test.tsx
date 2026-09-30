@@ -1,7 +1,6 @@
 import {
 	AssistantRuntimeProvider,
-	useLocalRuntime,
-	type ChatModelAdapter,
+	useExternalStoreRuntime,
 	type ThreadMessageLike,
 } from "@assistant-ui/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -21,8 +20,7 @@ import { ChatAgentSelectionProvider } from "../../agent-selection/ChatAgentSelec
 import { ChatConnectionProvider } from "../../connection/ChatConnectionContext.js";
 import { ChatModelSelectionProvider } from "../../model-selection/ChatModelSelectionContext.js";
 import type * as SessionModelUsage from "../../usage/session-model-usage.js";
-import { ComposerSessionMode } from "./composer-footer.js";
-import { Thread } from "./thread.js";
+import { ComposerFooter, ComposerSessionMode } from "./composer-footer.js";
 
 const fetchSessionModelUsage = vi.hoisted(() => vi.fn());
 
@@ -53,10 +51,13 @@ const signedInAuth: KiloAuthContextValue = {
 	openExternal: () => undefined,
 };
 
-const stubChatModel: ChatModelAdapter = {
-	async run() {
-		return { content: [{ type: "text", text: "ok" }] };
-	},
+// Minimal duck-typed OpenCode extras: selectOpenCodeExtras only checks the three
+// reply functions; the usage hook reads `session.id`/`session.directory`.
+const testRuntimeExtras = {
+	replyToQuestion: () => undefined,
+	rejectQuestion: () => undefined,
+	replyToPermission: () => undefined,
+	session: { id: "ses_test-session", directory: "/tmp/kilo-runtime" },
 };
 
 const connection: KiloGlobalConnection = {
@@ -121,13 +122,23 @@ const activeMessages: readonly ThreadMessageLike[] = [
 function ThreadHarness({
 	initialMessages,
 	width,
+	withSession,
 }: {
 	initialMessages?: readonly ThreadMessageLike[];
 	width?: string;
+	withSession?: boolean;
 }) {
-	const runtime = useLocalRuntime(stubChatModel, {
-		...(initialMessages === undefined ? {} : { initialMessages }),
+	const runtime = useExternalStoreRuntime({
+		messages: initialMessages ?? [],
+		onNew: async () => {},
+		convertMessage: (message) => message as never,
+		// Simulate the production runtime: after lazy session initialization resolves,
+		// thread.extras carries the server session ref. Without it the composer usage
+		// meter must not fetch (DESK-2884 guard).
+		...(withSession ? { extras: testRuntimeExtras } : {}),
 	});
+
+	const isDraft = (initialMessages ?? []).length === 0;
 
 	return (
 		<AssistantRuntimeProvider runtime={runtime}>
@@ -143,7 +154,7 @@ function ThreadHarness({
 				<ChatAgentSelectionProvider value={agentSelection}>
 					<ChatModelSelectionProvider value={modelSelection}>
 						<div className="h-[480px]" style={{ width: width ?? "48rem" }}>
-							<Thread />
+							{isDraft ? <div data-qa-id="kilo-composer-draft-footer" /> : <ComposerFooter />}
 						</div>
 					</ChatModelSelectionProvider>
 				</ChatAgentSelectionProvider>
@@ -163,6 +174,7 @@ async function renderThread(
 		mainSdk: ReturnType<typeof createFakeMainSdk>,
 	) => void | Promise<void>,
 	width?: string,
+	withSession?: boolean,
 ) {
 	const sdk = createFakeSdk({ featureId: "kilo-ui" });
 	const mainSdk = createFakeMainSdk({ featureId: "kilo-ui", services: sdk.services });
@@ -179,6 +191,7 @@ async function renderThread(
 						<ThreadHarness
 							{...(initialMessages === undefined ? {} : { initialMessages })}
 							{...(width === undefined ? {} : { width })}
+							{...(withSession === undefined ? {} : { withSession })}
 						/>
 					</KiloAuthContext.Provider>
 				</WorkspacesFeatureProvider>
@@ -210,8 +223,17 @@ describe("ComposerFooter", () => {
 		fetchSessionModelUsage.mockResolvedValue(undefined);
 		const { screen } = await renderThread();
 
-		await expect.element(screen.getByTestId("kilo-composer-draft-footer")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-composer-draft-footer")).toBeInTheDocument();
 		await expect.element(screen.getByTestId("kilo-composer-footer")).not.toBeInTheDocument();
+	});
+
+	it("does not fetch usage before the server session id resolves (DESK-2884)", async () => {
+		fetchSessionModelUsage.mockResolvedValue(undefined);
+		const { screen } = await renderThread(activeMessages);
+
+		await expect.element(screen.getByTestId("kilo-composer-footer")).toBeVisible();
+		await expect.poll(() => fetchSessionModelUsage.mock.calls.length, { timeout: 500 }).toBe(0);
+		await expect.element(screen.getByRole("button", { name: "Context usage" })).toBeVisible();
 	});
 
 	it("shows Tokens In, Tokens Out, Cost, and the stock context popover on an active thread", async () => {
@@ -243,7 +265,7 @@ describe("ComposerFooter", () => {
 			],
 		});
 
-		const { screen } = await renderThread(activeMessages);
+		const { screen } = await renderThread(activeMessages, undefined, undefined, true);
 
 		await expect.element(screen.getByTestId("kilo-composer-footer")).toBeVisible();
 		await expect.element(screen.getByTestId("kilo-composer-workspace")).not.toBeInTheDocument();
@@ -386,6 +408,7 @@ describe("ComposerFooter", () => {
 				});
 			},
 			"20rem",
+			true,
 		);
 
 		await expect.element(screen.getByTestId("kilo-composer-footer")).toBeVisible();

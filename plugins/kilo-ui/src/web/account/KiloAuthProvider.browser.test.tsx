@@ -215,7 +215,7 @@ describe("KiloAuthProvider login", () => {
 		});
 	});
 
-	it("keeps waiting when opening the verification URL is blocked", async () => {
+	it("leaves the initial browser open to the server and keeps waiting when a manual open is blocked", async () => {
 		const openExternal = vi.fn(async () => {
 			throw new Error("popup blocked");
 		});
@@ -237,11 +237,11 @@ describe("KiloAuthProvider login", () => {
 		await expect
 			.element(screen.getByTestId("kilo-account-device-code"))
 			.toHaveTextContent("ABCD-1234");
-		expect(openExternal).toHaveBeenCalledWith("https://kilo.ai/device");
+		expect(openExternal).not.toHaveBeenCalled();
 
 		await screen.getByTestId("kilo-account-open-browser").click();
 		await expect.element(panel).toHaveAttribute("data-state", "waiting");
-		expect(openExternal).toHaveBeenCalledTimes(2);
+		expect(openExternal).toHaveBeenCalledExactlyOnceWith("https://kilo.ai/device");
 	});
 });
 

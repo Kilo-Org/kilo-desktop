@@ -127,9 +127,8 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 					verificationUrl,
 					expiresIn: DEFAULT_EXPIRES_IN,
 				});
-				if (verificationUrl) {
-					openExternal(verificationUrl);
-				}
+				// No openExternal here: the kilo server's authorize() already launches
+				// the browser, so opening it again would spawn a second tab.
 
 				await client.provider.oauth.callback(
 					{ providerID: "kilo", method: 0, directory },
@@ -162,7 +161,6 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 		client,
 		directory,
 		fetchProfile,
-		openExternal,
 		profileQueryKey,
 		queryClient,
 		rebootAndRefresh,

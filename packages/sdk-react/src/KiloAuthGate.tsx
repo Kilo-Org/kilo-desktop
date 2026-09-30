@@ -1,6 +1,7 @@
 import { useContext, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import type { AuthSession, SDK } from "@kilo-desktop/feature-sdk";
+import { Button } from "@kilo-desktop/ui/components/button";
 
 import { FeatureSystemContext } from "./SdkProvider.js";
 
@@ -137,14 +138,13 @@ function GateBody({
 					<p className="text-muted-foreground text-sm">
 						{featureName} requires a Kilo account. Sign in to continue.
 					</p>
-					<button
+					<Button
 						type="button"
 						data-qa-id="kilo-auth-gate-sign-in-button"
 						onClick={() => void signInCapability?.signIn()}
-						className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2 text-sm font-medium"
 					>
 						Sign in
-					</button>
+					</Button>
 				</div>
 			</div>
 		);

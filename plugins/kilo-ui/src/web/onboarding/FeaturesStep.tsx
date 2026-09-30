@@ -65,7 +65,7 @@ export function FeaturesStep() {
 				>
 					<div
 						aria-hidden="true"
-						className="bg-foreground/3 relative flex h-38 items-center justify-center overflow-hidden px-6"
+						className="bg-foreground/3 relative flex h-32 items-center justify-center overflow-hidden px-6"
 					>
 						{feature.art}
 					</div>
@@ -316,10 +316,10 @@ const CHART = { width: 240, height: 80, top: 14, right: 12, bottom: 6, left: 4 }
  */
 function NotebookArt() {
 	return (
-		<div className="relative h-32 w-full max-w-[30rem]">
-			<span className="bg-foreground/3 absolute inset-x-8 top-1.5 h-28 rounded-2xl" />
-			<span className="bg-foreground/5 absolute inset-x-4 top-2.75 h-28 rounded-2xl" />
-			<div className="bg-background absolute inset-x-0 top-4 flex h-28 justify-between gap-6 rounded-2xl px-5 py-4 shadow-lg shadow-black/30">
+		<div className="relative h-28 w-full max-w-[30rem]">
+			<span className="bg-foreground/3 absolute inset-x-8 top-1.5 h-24 rounded-2xl" />
+			<span className="bg-foreground/5 absolute inset-x-4 top-2.75 h-24 rounded-2xl" />
+			<div className="bg-background absolute inset-x-0 top-4 flex h-24 justify-between gap-6 rounded-2xl px-5 py-4 shadow-lg shadow-black/30">
 				<div className="flex shrink-0 flex-col justify-between">
 					<div className="flex gap-2.5 font-mono text-xs leading-5">
 						<span className="text-muted-foreground/60">[4]</span>

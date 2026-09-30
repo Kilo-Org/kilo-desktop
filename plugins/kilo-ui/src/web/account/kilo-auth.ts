@@ -11,9 +11,9 @@ export const KILO_TERMS_URL = "https://kilo.ai/terms";
  */
 export const KILO_TERMS_VERSION = "2026-09-29";
 /** In-app settings section that hosts the Kilo Gateway account panel. */
-export const KILO_ACCOUNT_PATH = "/settings/kilo-providers";
+export const KILO_ACCOUNT_PATH = "/settings/account";
 
-/** Start device OAuth and open AI Providers so the user sees the Kilo panel. */
+/** Start device OAuth and open Account settings so the user sees the Kilo panel. */
 export function startKiloDeviceAuth(login: () => void, navigate: (path: string) => void): void {
 	login();
 	navigate(KILO_ACCOUNT_PATH);

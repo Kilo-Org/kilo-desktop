@@ -23,6 +23,13 @@ describe("GitDiffView collapse", () => {
 		stubFetch(() => new Response(patchResponseStream()));
 		renderView();
 		await waitForTreePath("README.md");
+		// Let the cold highlight pipeline finish first: a real (CDP) click
+		// dispatched while it holds the main thread can time out under
+		// parallel test load.
+		await vi.waitFor(() => {
+			expect(document.querySelector('[data-qa-id="git-diff-loading"]')).toBeNull();
+			expect(diffContainerFor("README.md")?.shadowRoot?.querySelector("pre")).not.toBeNull();
+		}, 10_000);
 
 		const toggle = page.getByTestId("git-diff-collapse-all");
 		await expect.element(toggle).toHaveAttribute("aria-label", "Collapse all files");

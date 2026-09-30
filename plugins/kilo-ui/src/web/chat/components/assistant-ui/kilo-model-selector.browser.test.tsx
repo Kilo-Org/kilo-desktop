@@ -205,7 +205,7 @@ describe("KiloModelSelector", () => {
 
 		await screen.getByTestId("kilo-model-selector-signin").click();
 		expect(login).toHaveBeenCalledOnce();
-		expect(navigate).toHaveBeenCalledWith("/settings/kilo-providers", undefined);
+		expect(navigate).toHaveBeenCalledWith("/settings/account", undefined);
 	});
 
 	it("hides the sign-in row unless the Kilo Gateway rail is selected", async () => {

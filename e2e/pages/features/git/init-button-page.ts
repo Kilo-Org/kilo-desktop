@@ -9,6 +9,13 @@ import {
 
 import { paveWorkspaceChat } from "./pave-workspace-chat.js";
 
+// Prevent system gitconfig reads — mirrors the fixture's HERMETIC_GIT_ENV.
+const HERMETIC_GIT_ENV: NodeJS.ProcessEnv = {
+	...process.env,
+	GIT_CONFIG_NOSYSTEM: "1",
+	GIT_CONFIG_COUNT: "0",
+};
+
 /**
  * Page object for the composer footers' "Initialize Git" buttons — the git
  * plugin's swaps inside the `kilo-ui/chat-composer-draft-footer` and
@@ -68,7 +75,7 @@ export class InitButtonPage {
 			getLocatorByTestId("git-init-draft-button"),
 			"Initialize Git button should render before external initialization",
 		);
-		execFileSync("git", ["-C", folderPath, "init"]);
+		execFileSync("git", ["-C", folderPath, "init"], { env: HERMETIC_GIT_ENV });
 		await expectElementToBeVisible(
 			getLocatorByTestId("git-branch-selector-trigger"),
 			"The branch selector should appear after external initialization",

@@ -13,6 +13,17 @@ import { getPage } from "@anaconda/playwright-utils/page-utils";
 
 import { paveWorkspaceChat } from "./pave-workspace-chat.js";
 
+// Prevent system gitconfig reads — mirrors the fixture's HERMETIC_GIT_ENV.
+const HERMETIC_GIT_ENV: NodeJS.ProcessEnv = {
+	...process.env,
+	GIT_AUTHOR_NAME: "Git Plugin E2E",
+	GIT_AUTHOR_EMAIL: "git-plugin-e2e@example.com",
+	GIT_COMMITTER_NAME: "Git Plugin E2E",
+	GIT_COMMITTER_EMAIL: "git-plugin-e2e@example.com",
+	GIT_CONFIG_NOSYSTEM: "1",
+	GIT_CONFIG_COUNT: "0",
+};
+
 /** Debounce (1 s) + cooldown (5 s) + a refresh pass — generous for CI. */
 const LIVE_RELOAD_TIMEOUT_MS = 20_000;
 
@@ -112,8 +123,12 @@ export class ChangesPage {
 
 	/** Stage everything and commit from a terminal. */
 	async stageAndCommitAll(folderPath: string, message: string): Promise<void> {
-		const git = (args: string[]) => execFileSync("git", ["-C", folderPath, ...args]);
+		const git = (args: string[]) =>
+			execFileSync("git", ["-C", folderPath, ...args], { env: HERMETIC_GIT_ENV });
 		git(["add", "-A"]);
-		git(["-c", "commit.gpgsign=false", "commit", "-m", message]);
+		// commit.gpgsign=false is already set durably in the repo's local config
+		// by the gitWorkspace fixture; the hermetic env prevents any system
+		// gitconfig from re-enabling signing.
+		git(["commit", "-m", message]);
 	}
 }

@@ -19,6 +19,33 @@ type GitFixtures = {
 	plainWorkspace: { path: string; name: string };
 };
 
+/**
+ * Minimal git identity env — mirrors GitHub Desktop's `unit-test-env.ts` and
+ * VS Code's `smoke.test.ts` suiteSetup pattern. Passed to every `execFileSync`
+ * git call so fixture repos never depend on the developer's or runner's global
+ * gitconfig for author identity or commit signing.
+ *
+ * `GIT_CONFIG_NOSYSTEM` prevents system-level gitconfig reads (e.g. Homebrew's
+ * `/etc/gitconfig`), and the explicit `GIT_CONFIG_COUNT=0` clears any ambient
+ * `GIT_CONFIG_KEY_*` chain the CI runner may have injected (GitHub Actions
+ * `checkout` action sets these for the checkout step but leaves them in the
+ * environment for subsequent steps). Together they make fixture git calls fully
+ * hermetic without needing to manipulate `process.env` globally.
+ */
+const HERMETIC_GIT_ENV: NodeJS.ProcessEnv = {
+	...process.env,
+	GIT_AUTHOR_NAME: "Git Plugin E2E",
+	GIT_AUTHOR_EMAIL: "git-plugin-e2e@example.com",
+	GIT_COMMITTER_NAME: "Git Plugin E2E",
+	GIT_COMMITTER_EMAIL: "git-plugin-e2e@example.com",
+	GIT_CONFIG_NOSYSTEM: "1",
+	// Clear any GIT_CONFIG_COUNT chain the runner injected (e.g. GitHub
+	// Actions checkout sets commit.gpgsign=false via GIT_CONFIG_KEY_*).
+	// We set commit.gpgsign=false durably in each repo's local config
+	// instead, matching VS Code's smoke-test pattern.
+	GIT_CONFIG_COUNT: "0",
+};
+
 export const test = shellTest.extend<GitFixtures>({
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
 	changesPage: async ({}, use) => {
@@ -39,13 +66,17 @@ export const test = shellTest.extend<GitFixtures>({
 		// protocol round-trip in the packaged binary).
 		const workspacePath = await mkdtemp(path.join(os.tmpdir(), "kilo-git-workspace-"));
 		removePathAfterAppStops(workspacePath);
-		const git = (args: string[]) => execFileSync("git", ["-C", workspacePath, ...args]);
+		const git = (args: string[]) =>
+			execFileSync("git", ["-C", workspacePath, ...args], { env: HERMETIC_GIT_ENV });
 		git(["init", "-b", "main"]);
+		// Mirror VS Code smoke.test.ts: set identity and gpgsign durably in
+		// local config rather than relying on global gitconfig or per-commit -c flags.
 		git(["config", "user.email", "git-plugin-e2e@example.com"]);
 		git(["config", "user.name", "Git Plugin E2E"]);
+		git(["config", "commit.gpgsign", "false"]);
 		await writeFile(path.join(workspacePath, "README.md"), "committed\n");
 		git(["add", "README.md"]);
-		git(["-c", "commit.gpgsign=false", "commit", "-m", "initial"]);
+		git(["commit", "-m", "initial"]);
 		await writeFile(path.join(workspacePath, "README.md"), "modified\n");
 		await use({ path: workspacePath, name: path.basename(workspacePath) });
 	},
@@ -56,7 +87,8 @@ export const test = shellTest.extend<GitFixtures>({
 		// untracked feature populates "Other Branches".
 		const basePath = await mkdtemp(path.join(os.tmpdir(), "kilo-git-branch-"));
 		removePathAfterAppStops(basePath);
-		const git = (dir: string, args: string[]) => execFileSync("git", ["-C", dir, ...args]);
+		const git = (dir: string, args: string[]) =>
+			execFileSync("git", ["-C", dir, ...args], { env: HERMETIC_GIT_ENV });
 		const source = path.join(basePath, "source");
 		const remote = path.join(basePath, "remote.git");
 		const clone = path.join(basePath, "clone");
@@ -64,9 +96,10 @@ export const test = shellTest.extend<GitFixtures>({
 		git(source, ["init", "-b", "main"]);
 		git(source, ["config", "user.email", "git-plugin-e2e@example.com"]);
 		git(source, ["config", "user.name", "Git Plugin E2E"]);
+		git(source, ["config", "commit.gpgsign", "false"]);
 		await writeFile(path.join(source, "README.md"), "committed\n");
 		git(source, ["add", "README.md"]);
-		git(source, ["-c", "commit.gpgsign=false", "commit", "-m", "initial"]);
+		git(source, ["commit", "-m", "initial"]);
 		await mkdir(remote);
 		git(remote, ["init", "--bare", "-b", "main"]);
 		git(source, ["remote", "add", "origin", remote]);
@@ -74,6 +107,11 @@ export const test = shellTest.extend<GitFixtures>({
 		git(source, ["push", "origin", "HEAD:feature"]);
 		await mkdir(clone);
 		git(clone, ["clone", remote, "."]);
+		// Mirror VS Code smoke.test.ts: set identity and gpgsign on the clone
+		// so the packaged app never sees a repo with ambiguous signing config.
+		git(clone, ["config", "user.email", "git-plugin-e2e@example.com"]);
+		git(clone, ["config", "user.name", "Git Plugin E2E"]);
+		git(clone, ["config", "commit.gpgsign", "false"]);
 		git(clone, ["checkout", "-b", "topic-a"]);
 		git(clone, ["checkout", "main"]);
 		await use({ path: clone, name: path.basename(clone) });

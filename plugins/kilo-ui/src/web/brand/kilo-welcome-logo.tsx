@@ -3,6 +3,8 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useState, type FC } from "react";
 
+import { cn } from "@kilo-desktop/ui/lib/utils";
+
 import { AnimatedKiloLogo } from "./animated-kilo-logo.js";
 import { KiloLogo } from "./kilo-logo.js";
 
@@ -13,7 +15,13 @@ import { KiloLogo } from "./kilo-logo.js";
  * so the WASM player cannot stall that fade-in; both layers stay mounted so
  * hover never flashes empty.
  */
-export const KiloWelcomeLogo: FC<{ lottieEnabled?: boolean }> = ({ lottieEnabled = false }) => {
+export const KiloWelcomeLogo: FC<{
+	lottieEnabled?: boolean;
+	/** Overrides the wrapper's colour / spacing classes. */
+	className?: string;
+	/** Size classes for the mark (default `size-12`). */
+	sizeClassName?: string;
+}> = ({ lottieEnabled = false, className, sizeClassName = "size-12" }) => {
 	const [isHovered, setIsHovered] = useState(false);
 	const [lottieMounted, setLottieMounted] = useState(false);
 	const showLottie = lottieEnabled || lottieMounted;
@@ -22,7 +30,10 @@ export const KiloWelcomeLogo: FC<{ lottieEnabled?: boolean }> = ({ lottieEnabled
 		<motion.div
 			data-qa-id="kilo-welcome-logo"
 			aria-hidden="true"
-			className="text-muted-foreground/30 mb-4 hover:text-[#F0F042] dark:hover:text-yellow-200"
+			className={cn(
+				"text-muted-foreground/30 mb-4 hover:text-[#F0F042] dark:hover:text-yellow-200",
+				className,
+			)}
 			onHoverStart={() => {
 				setLottieMounted(true);
 				setIsHovered(true);
@@ -31,7 +42,10 @@ export const KiloWelcomeLogo: FC<{ lottieEnabled?: boolean }> = ({ lottieEnabled
 			whileTap={{ y: -6 }}
 		>
 			<motion.div
-				className="relative flex size-12 flex-none items-center justify-center overflow-hidden font-bold"
+				className={cn(
+					"relative flex flex-none items-center justify-center overflow-hidden font-bold",
+					sizeClassName,
+				)}
 				animate={{ rotate: isHovered ? 90 : 0 }}
 				transition={{ duration: 0.3, ease: "easeInOut" }}
 				style={{ transformStyle: "preserve-3d" }}
@@ -46,7 +60,7 @@ export const KiloWelcomeLogo: FC<{ lottieEnabled?: boolean }> = ({ lottieEnabled
 						}}
 						exit={{ opacity: isHovered ? 1 : 0 }}
 						transition={{ duration: 0.2 }}
-						className="absolute top-0 left-0 size-12"
+						className={cn("absolute top-0 left-0", sizeClassName)}
 					>
 						{showLottie ? <AnimatedKiloLogo /> : <KiloLogo />}
 					</motion.div>
@@ -56,7 +70,7 @@ export const KiloWelcomeLogo: FC<{ lottieEnabled?: boolean }> = ({ lottieEnabled
 						animate={{ opacity: isHovered ? 0 : 1 }}
 						exit={{ opacity: isHovered ? 0 : 1 }}
 						transition={{ duration: 0.2 }}
-						className="absolute top-0 left-0 size-12"
+						className={cn("absolute top-0 left-0", sizeClassName)}
 					>
 						<KiloLogo />
 					</motion.div>

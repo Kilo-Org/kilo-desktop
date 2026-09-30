@@ -16,11 +16,15 @@ import type { KiloUiProvidersService } from "../contracts/providers/schemas.js";
 import { FeatureError, type MainSdk } from "@kilo-desktop/feature-sdk";
 
 import { kiloUiChatContract } from "../contracts/chat/schemas.js";
-import { onboardingContract } from "../contracts/onboarding/schemas.js";
+import { ONBOARDING_VERSION, onboardingContract } from "../contracts/onboarding/schemas.js";
 import { modelPreferencesContract } from "../contracts/model-preferences/schemas.js";
 import { kiloUiProvidersContract } from "../contracts/providers/schemas.js";
 import { workspacesContract } from "../contracts/workspaces/schemas.js";
 import { registerLayoutPresets } from "../main/layout-presets/register.js";
+import {
+	createInMemoryTermsStorage,
+	TermsAcceptanceStore,
+} from "../main/onboarding/TermsAcceptanceStore.js";
 import type { LayoutPresetsState } from "../contracts/layout-presets/schemas.js";
 
 const basename = (folderPath: string) =>
@@ -168,15 +172,19 @@ function registerProvidersBrowser(mainSdk: MainSdk): void {
 }
 
 function registerOnboardingBrowser(mainSdk: MainSdk): void {
-	let state: OnboardingState = { outcome: null, closedAt: null };
+	let state: OnboardingState = { outcome: null, closedAt: null, version: null };
+	const terms = new TermsAcceptanceStore(mainSdk, Date.now, createInMemoryTermsStorage());
 	const onboardingApi: OnboardingService = {
+		"onboarding.terms.get": async () => terms.get(),
+		"onboarding.terms.accept": async ({ version, accountKey }) => terms.accept(version, accountKey),
+		"onboarding.terms.markLinked": async ({ accountKey }) => terms.markLinked(accountKey),
 		"onboarding.get": async () => state,
 		"onboarding.complete": async () => {
-			state = { outcome: "completed", closedAt: Date.now() };
+			state = { outcome: "completed", closedAt: Date.now(), version: ONBOARDING_VERSION };
 			return state;
 		},
 		"onboarding.skip": async () => {
-			state = { outcome: "skipped", closedAt: Date.now() };
+			state = { outcome: "skipped", closedAt: Date.now(), version: ONBOARDING_VERSION };
 			return state;
 		},
 	};

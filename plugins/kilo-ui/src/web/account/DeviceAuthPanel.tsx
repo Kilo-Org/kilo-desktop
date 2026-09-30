@@ -8,10 +8,29 @@ import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type { DeviceAuthState } from "./kilo-auth.js";
 
-function formatTime(seconds: number): string {
+export function formatTime(seconds: number): string {
 	const mins = Math.floor(seconds / 60);
 	const secs = seconds % 60;
 	return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
+/** Seconds left on the device code, ticking while the login is waiting. */
+export function useDeviceAuthCountdown(deviceAuth: DeviceAuthState): number {
+	const expiresIn = deviceAuth.expiresIn ?? 900;
+	const [remaining, setRemaining] = useState(expiresIn);
+
+	useEffect(() => {
+		if (deviceAuth.status !== "waiting") return;
+		setRemaining(expiresIn);
+		const started = Date.now();
+		const id = window.setInterval(() => {
+			const elapsed = Math.floor((Date.now() - started) / 1000);
+			setRemaining(Math.max(0, expiresIn - elapsed));
+		}, 1000);
+		return () => window.clearInterval(id);
+	}, [deviceAuth.status, expiresIn]);
+
+	return remaining;
 }
 
 /**
@@ -34,19 +53,7 @@ export function DeviceAuthPanel({
 	/** Skip the outer frame when nested inside another bordered card. */
 	embedded?: boolean;
 }) {
-	const expiresIn = deviceAuth.expiresIn ?? 900;
-	const [remaining, setRemaining] = useState(expiresIn);
-
-	useEffect(() => {
-		if (deviceAuth.status !== "waiting") return;
-		setRemaining(expiresIn);
-		const started = Date.now();
-		const id = window.setInterval(() => {
-			const elapsed = Math.floor((Date.now() - started) / 1000);
-			setRemaining(Math.max(0, expiresIn - elapsed));
-		}, 1000);
-		return () => window.clearInterval(id);
-	}, [deviceAuth.status, expiresIn]);
+	const remaining = useDeviceAuthCountdown(deviceAuth);
 
 	if (deviceAuth.status === "initiating") {
 		return (

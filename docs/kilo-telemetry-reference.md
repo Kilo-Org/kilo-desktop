@@ -70,10 +70,11 @@ These originate in the UI layer and must be explicitly captured. The CLI does **
 
 ### `WORK_STYLE_ONBOARDING_SHOWN` — "Work Style Onboarding Shown"
 
-|                        |                                                                                                                     |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| **Kilocode reference** | `packages/kilo-vscode/webview-ui/src/context/work-style.tsx:98`                                                     |
-| **Trigger**            | Work-style onboarding UI becomes visible for the first time; fire once (guard with a persisted `acknowledged` flag) |
+|                        |                                                                                                                                                                   |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Kilocode reference** | `packages/kilo-vscode/webview-ui/src/context/work-style.tsx:98`                                                                                                   |
+| **Trigger**            | Work-style onboarding UI becomes visible for the first time; fire once (guard with a persisted `acknowledged` flag)                                               |
+| **Desktop**            | Implemented. Sent once per onboarding run when the "Choose how you want to work" step first renders (`plugins/kilo-ui/src/web/onboarding/OnboardingProvider.tsx`) |
 
 **Payload:** _(none)_
 
@@ -81,16 +82,17 @@ These originate in the UI layer and must be explicitly captured. The CLI does **
 
 ### `WORK_STYLE_SELECTED` — "Work Style Selected"
 
-|                        |                                                                 |
-| ---------------------- | --------------------------------------------------------------- |
-| **Kilocode reference** | `packages/kilo-vscode/webview-ui/src/context/work-style.tsx:79` |
-| **Trigger**            | User picks a work style in the onboarding flow                  |
+|                        |                                                                                                                                             |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Kilocode reference** | `packages/kilo-vscode/webview-ui/src/context/work-style.tsx:79`                                                                             |
+| **Trigger**            | User picks a work style in the onboarding flow                                                                                              |
+| **Desktop**            | Implemented. Sent when the user presses Continue (before the global config write). The step has no Skip, so Desktop never sends `"skipped"` |
 
 **Payload:**
 
 ```ts
 {
-	style: "autonomous" | "interactive" | "skipped";
+	style: "human-in-the-loop" | "autonomous" | "skipped";
 }
 ```
 

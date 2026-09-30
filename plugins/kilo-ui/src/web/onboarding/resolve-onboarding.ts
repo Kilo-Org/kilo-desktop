@@ -1,4 +1,4 @@
-import type { OnboardingState } from "../../contracts/onboarding/schemas.js";
+import { ONBOARDING_VERSION, type OnboardingState } from "../../contracts/onboarding/schemas.js";
 
 /**
  * Dev override that reopens the wizard on every launch regardless of the
@@ -7,8 +7,19 @@ import type { OnboardingState } from "../../contracts/onboarding/schemas.js";
  */
 export const FORCE_ONBOARDING_FLAG = "force-onboarding";
 
-export const ONBOARDING_STEPS = ["kilo-sign-in", "workspace"] as const;
+export const ONBOARDING_STEPS = [
+	"welcome",
+	"kilo-sign-in",
+	"work-style",
+	"workspace",
+	"features",
+] as const;
 export type OnboardingStepId = (typeof ONBOARDING_STEPS)[number];
+
+/** Steps tracked by the progress bars; the welcome splash sits before them. */
+export const PROGRESS_STEPS = ONBOARDING_STEPS.filter(
+	(id): id is Exclude<OnboardingStepId, "welcome"> => id !== "welcome",
+);
 
 export type OnboardingView = {
 	status: "loading" | "hidden" | "visible";
@@ -23,21 +34,27 @@ export type ResolveOnboardingInput = {
 };
 
 /**
- * First-run gate: hide once the user has finished or skipped, or when Kilo is
- * unavailable (browser mode). Stay loading when persisted state cannot be read
+ * First-run gate: hide once the user has finished or skipped the current
+ * onboarding version, or when Kilo is unavailable (browser mode). An outcome
+ * recorded against an older version (see `ONBOARDING_VERSION`) shows the
+ * wizard again, so existing users get a redesigned flow once. Stay loading when persisted state cannot be read
  * so a fetch error does not reopen the wizard. Existing workspaces do not
  * suppress the overlay — only a recorded complete/skip does. Do not wait for
  * Kilo auth — the sign-in step handles that while the overlay is already up.
  */
 export function resolveOnboarding(input: ResolveOnboardingInput): OnboardingView {
 	if (input.connectionUnavailable) {
-		return { status: "hidden", initialStep: "kilo-sign-in" };
+		return { status: "hidden", initialStep: "welcome" };
 	}
 	if (input.state === null) {
-		return { status: "loading", initialStep: "kilo-sign-in" };
+		return { status: "loading", initialStep: "welcome" };
 	}
-	if (input.state.outcome !== null && !input.forced) {
-		return { status: "hidden", initialStep: "kilo-sign-in" };
+	if (hasFinishedCurrentVersion(input.state) && !input.forced) {
+		return { status: "hidden", initialStep: "welcome" };
 	}
-	return { status: "visible", initialStep: "kilo-sign-in" };
+	return { status: "visible", initialStep: "welcome" };
+}
+
+function hasFinishedCurrentVersion(state: OnboardingState): boolean {
+	return state.outcome !== null && (state.version ?? 1) >= ONBOARDING_VERSION;
 }

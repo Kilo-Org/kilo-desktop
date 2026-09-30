@@ -27,6 +27,7 @@ import {
 	unregisterLocalMcpAppResource,
 } from "./mcp-apps/mcp-apps-handlers.js";
 import { OnboardingStore } from "./onboarding/OnboardingStore.js";
+import { TermsAcceptanceStore } from "./onboarding/TermsAcceptanceStore.js";
 import { ModelPreferenceStore } from "./model-preferences/ModelPreferenceStore.js";
 import { presentEnvNames } from "./providers/present-env.js";
 import { readStoredApiKey } from "./providers/stored-api-key.js";
@@ -106,10 +107,14 @@ export function mainRegister(
 	};
 
 	const onboarding = new OnboardingStore(mainSdk);
+	const terms = new TermsAcceptanceStore(mainSdk);
 	const onboardingApi: OnboardingService = {
 		"onboarding.get": async () => onboarding.get(),
 		"onboarding.complete": async () => onboarding.complete(),
 		"onboarding.skip": async () => onboarding.skip(),
+		"onboarding.terms.get": async () => terms.get(),
+		"onboarding.terms.accept": async ({ version, accountKey }) => terms.accept(version, accountKey),
+		"onboarding.terms.markLinked": async ({ accountKey }) => terms.markLinked(accountKey),
 	};
 	const modelPreferences = new ModelPreferenceStore(mainSdk);
 	const modelPreferencesApi: ModelPreferencesService = {

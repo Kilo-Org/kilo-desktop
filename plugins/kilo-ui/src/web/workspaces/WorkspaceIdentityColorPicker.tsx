@@ -12,6 +12,7 @@ type WorkspaceIdentityColorPickerProps = {
 	onChange: (color: string) => void;
 	disabled?: boolean;
 	"aria-label"?: string;
+	className?: string;
 };
 
 const PRESET_NAMES: Record<(typeof WORKSPACE_IDENTITY_COLORS)[number], string> = {
@@ -37,6 +38,7 @@ export function WorkspaceIdentityColorPicker({
 	onChange,
 	disabled = false,
 	"aria-label": ariaLabel = "Identity color",
+	className,
 }: WorkspaceIdentityColorPickerProps) {
 	const normalized = normalizeWorkspaceIdentityColor(value);
 	const current = normalized !== null && !PRESET_SET.has(normalized) ? normalized : null;
@@ -55,6 +57,7 @@ export function WorkspaceIdentityColorPicker({
 			}}
 			custom={{ color: lastCustom }}
 			disabled={disabled}
+			{...(className ? { className } : {})}
 		/>
 	);
 }

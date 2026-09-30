@@ -8,6 +8,7 @@ import { createFakeMainSdk, createFakeSdk } from "@kilo-desktop/testing";
 import type { KvStoreFactory } from "@kilo-desktop/feature-sdk";
 
 import type { KiloGlobalConnection, KiloSessionPreparation } from "../../contracts/chat/schemas.js";
+import { ONBOARDING_VERSION } from "../../contracts/onboarding/schemas.js";
 import type { WorkspaceCapabilities } from "../../contracts/workspaces/schemas.js";
 import { mainRegister } from "../index.js";
 
@@ -347,13 +348,29 @@ describe("kilo-ui mainRegister", () => {
 		await expect(mainSdk.invoke("onboarding.get")).resolves.toEqual({
 			outcome: null,
 			closedAt: null,
+			version: null,
 		});
 		const completed = await mainSdk.invoke("onboarding.complete");
-		expect(completed).toMatchObject({ outcome: "completed" });
+		expect(completed).toMatchObject({ outcome: "completed", version: ONBOARDING_VERSION });
 		expect(typeof (completed as { closedAt: number }).closedAt).toBe("number");
 		await expect(mainSdk.invoke("onboarding.get")).resolves.toEqual(completed);
 		const skipped = await mainSdk.invoke("onboarding.skip");
 		expect(skipped).toMatchObject({ outcome: "skipped" });
+		mainSdk.dispose();
+	});
+
+	it("persists terms acceptance and the accounts it is linked to", async () => {
+		const { mainSdk } = boot();
+		await expect(mainSdk.invoke("onboarding.terms.get")).resolves.toBeNull();
+		const accepted = await mainSdk.invoke("onboarding.terms.accept", { version: "v1" });
+		expect(accepted).toMatchObject({ version: "v1", linkedAccounts: [] });
+		await expect(
+			mainSdk.invoke("onboarding.terms.markLinked", { accountKey: "acct" }),
+		).resolves.toMatchObject({ linkedAccounts: ["acct"] });
+		await expect(mainSdk.invoke("onboarding.terms.get")).resolves.toMatchObject({
+			version: "v1",
+			linkedAccounts: ["acct"],
+		});
 		mainSdk.dispose();
 	});
 

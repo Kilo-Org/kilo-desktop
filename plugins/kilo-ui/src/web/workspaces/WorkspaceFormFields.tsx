@@ -23,6 +23,8 @@ const folderName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?
 
 type WorkspaceFormFieldsProps = ReturnType<typeof useWorkspaceForm> & {
 	nameId?: string;
+	/** `filled` drops the outlines for tinted surfaces (the onboarding card). */
+	appearance?: "outlined" | "filled";
 };
 
 export function WorkspaceFormFields({
@@ -40,7 +42,9 @@ export function WorkspaceFormFields({
 	removeFolder,
 	makePrimary,
 	nameId = "workspace-name",
+	appearance = "outlined",
 }: WorkspaceFormFieldsProps) {
+	const filled = appearance === "filled";
 	return (
 		<FieldGroup>
 			<Field>
@@ -50,12 +54,26 @@ export function WorkspaceFormFields({
 					value={name}
 					onChange={(event) => setName(event.target.value)}
 					placeholder="e.g. My project"
+					className={cn(
+						// The dark: fill is not redundant: it replaces Input's own dark:bg-input/30.
+						filled &&
+							"bg-foreground/5 dark:bg-foreground/5 h-9 rounded-xl border-transparent focus-visible:border-transparent",
+					)}
 					data-qa-id="workspace-name"
 				/>
 			</Field>
 			<Field>
 				<FieldLabel>Identity color</FieldLabel>
-				<WorkspaceIdentityColorPicker value={color} onChange={setColor} />
+				<WorkspaceIdentityColorPicker
+					value={color}
+					onChange={setColor}
+					// On a filled surface the stock pressed wash (bg-muted) all but vanishes,
+					// so mark the selected swatch with a foreground ring instead.
+					className={cn(
+						filled &&
+							"[&_[aria-pressed=true]]:bg-transparent [&_[aria-pressed=true]>span]:outline-2 [&_[aria-pressed=true]>span]:outline-offset-2 [&_[aria-pressed=true]>span]:outline-foreground",
+					)}
+				/>
 			</Field>
 			<Field>
 				<FieldLabel>Folders</FieldLabel>
@@ -75,9 +93,14 @@ export function WorkspaceFormFields({
 						onDrop(event);
 					}}
 					className={cn(
-						"rounded-lg border transition-colors",
+						"border transition-colors",
+						filled ? "bg-foreground/3 rounded-xl" : "rounded-lg",
 						folders.length === 0 && "border-dashed",
-						isDragging ? "border-primary-ink border-dashed bg-primary/5" : "border-border",
+						isDragging
+							? "border-primary-ink bg-primary/5 border-dashed"
+							: filled
+								? "border-transparent"
+								: "border-border",
 					)}
 				>
 					{folders.length === 0 && canPickDirectories ? (
@@ -173,7 +196,7 @@ export function WorkspaceFormFields({
 									</Item>
 								))}
 							</ItemGroup>
-							<div className="border-border border-t p-1">
+							<div className={cn("border-t p-1", filled ? "border-foreground/5" : "border-border")}>
 								{canPickDirectories ? (
 									<Item
 										size="sm"

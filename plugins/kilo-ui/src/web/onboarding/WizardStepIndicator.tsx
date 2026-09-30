@@ -12,6 +12,7 @@ export function WizardStepIndicator<T extends string>({
 	busy = false,
 	qaPrefix,
 	canSelect = () => true,
+	showCount = true,
 	onSelect,
 }: {
 	steps: readonly WizardStep<T>[];
@@ -19,6 +20,8 @@ export function WizardStepIndicator<T extends string>({
 	busy?: boolean;
 	qaPrefix: string;
 	canSelect?: (step: T) => boolean;
+	/** Visible "1 of 3" beside the bars; when false it stays for screen readers only. */
+	showCount?: boolean;
 	onSelect: (step: T) => void;
 }) {
 	const stepIndex = steps.findIndex(({ id }) => id === currentStep);
@@ -57,9 +60,10 @@ export function WizardStepIndicator<T extends string>({
 				);
 			})}
 			<span
-				className="text-muted-foreground ml-3 text-xs font-medium"
+				className={showCount ? "text-muted-foreground ml-3 text-xs font-medium" : "sr-only"}
 				data-qa-id={`${qaPrefix}-progress-label`}
 			>
+				{showCount ? null : "Step "}
 				{stepIndex + 1} of {steps.length}
 			</span>
 		</div>

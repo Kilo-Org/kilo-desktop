@@ -133,11 +133,17 @@ describe("kiloUiBrowserRegister", () => {
 		await expect(sdk.invoke("onboarding.get")).resolves.toEqual({
 			outcome: null,
 			closedAt: null,
+			version: null,
 		});
 		const completed = await sdk.invoke("onboarding.complete");
 		expect(completed).toMatchObject({ outcome: "completed" });
 		await expect(sdk.invoke("onboarding.get")).resolves.toEqual(completed);
 		await expect(sdk.invoke("onboarding.skip")).resolves.toMatchObject({ outcome: "skipped" });
+		await expect(sdk.invoke("onboarding.terms.get")).resolves.toBeNull();
+		await expect(sdk.invoke("onboarding.terms.accept", { version: "v1" })).resolves.toMatchObject({
+			version: "v1",
+			linkedAccounts: [],
+		});
 		sdk.dispose();
 	});
 });

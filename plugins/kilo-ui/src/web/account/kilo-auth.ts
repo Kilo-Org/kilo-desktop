@@ -4,6 +4,12 @@ export const PERSONAL_ORG_VALUE = "personal";
 export const KILO_PROFILE_URL = "https://app.kilo.ai/profile";
 export const KILO_CREDITS_URL = "https://app.kilo.ai/credits";
 export const KILO_PASS_URL = "https://kilo.ai/pricing/kilo-pass";
+export const KILO_TERMS_URL = "https://kilo.ai/terms";
+/**
+ * Identifies the terms the welcome step asks users to accept. Bump it when the
+ * linked terms change so acceptance is recorded (and attributed) afresh.
+ */
+export const KILO_TERMS_VERSION = "2026-09-29";
 /** In-app settings section that hosts the Kilo Gateway account panel. */
 export const KILO_ACCOUNT_PATH = "/settings/kilo-providers";
 

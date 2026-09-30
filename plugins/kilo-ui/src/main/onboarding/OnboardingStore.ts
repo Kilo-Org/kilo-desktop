@@ -1,17 +1,18 @@
 import type { KvStore, MainSdk } from "@kilo-desktop/feature-sdk";
 
-import type { OnboardingState } from "../../contracts/onboarding/schemas.js";
+import { ONBOARDING_VERSION, type OnboardingState } from "../../contracts/onboarding/schemas.js";
 
 interface PersistedOnboarding extends Record<string, unknown> {
 	outcome: OnboardingState["outcome"];
 	closedAt: number | null;
+	version: number | null;
 }
 
-const DEFAULTS: PersistedOnboarding = { outcome: null, closedAt: null };
+const DEFAULTS: PersistedOnboarding = { outcome: null, closedAt: null, version: null };
 
 const NAMESPACE = "onboarding";
 
-const SKIPPED: OnboardingState = { outcome: "skipped", closedAt: 1 };
+const SKIPPED: OnboardingState = { outcome: "skipped", closedAt: 1, version: ONBOARDING_VERSION };
 
 /**
  * First-run onboarding persistence. File-backed via `mainSdk.storage.kv`.
@@ -50,12 +51,18 @@ export class OnboardingStore {
 		const outcome =
 			snapshot.outcome === "completed" || snapshot.outcome === "skipped" ? snapshot.outcome : null;
 		const closedAt = typeof snapshot.closedAt === "number" ? snapshot.closedAt : null;
-		return { outcome, closedAt };
+		// Records written before versioning have no `version`: they belong to v1.
+		const version = typeof snapshot.version === "number" ? snapshot.version : null;
+		return { outcome, closedAt, version };
 	}
 
 	#write(outcome: "completed" | "skipped"): OnboardingState {
-		const next: PersistedOnboarding = { outcome, closedAt: this.#now() };
+		const next: PersistedOnboarding = {
+			outcome,
+			closedAt: this.#now(),
+			version: ONBOARDING_VERSION,
+		};
 		this.#store.set(next);
-		return { outcome: next.outcome, closedAt: next.closedAt };
+		return { outcome: next.outcome, closedAt: next.closedAt, version: next.version };
 	}
 }

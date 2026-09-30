@@ -15,6 +15,10 @@ export const TELEMETRY_EVENTS = [
 	"Logged Out",
 	"Page Visit",
 	"Feature Flag Evaluation",
+	"Terms Accepted",
+	"Terms Acceptance Linked",
+	"Work Style Onboarding Shown",
+	"Work Style Selected",
 ] as const;
 
 export const telemetryEventSchema = z.enum(TELEMETRY_EVENTS);

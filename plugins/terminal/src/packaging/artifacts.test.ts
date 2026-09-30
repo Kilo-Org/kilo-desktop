@@ -40,19 +40,22 @@ describe("terminal bundle artifacts", () => {
 });
 
 describe("node-pty packaging artifacts", () => {
-	it("makes the native rebuild's macOS spawn helper executable before ASAR packaging", async () => {
-		const packageDirectory = await mkdtemp(path.join(os.tmpdir(), "terminal-node-pty-"));
-		directories.push(packageDirectory);
-		const releaseDirectory = path.join(packageDirectory, "build/Release");
-		const spawnHelper = path.join(releaseDirectory, "spawn-helper");
-		await mkdir(releaseDirectory, { recursive: true });
-		await writeFile(spawnHelper, "helper");
-		await chmod(spawnHelper, 0o644);
+	it.skipIf(process.platform === "win32")(
+		"makes the native rebuild's macOS spawn helper executable before ASAR packaging",
+		async () => {
+			const packageDirectory = await mkdtemp(path.join(os.tmpdir(), "terminal-node-pty-"));
+			directories.push(packageDirectory);
+			const releaseDirectory = path.join(packageDirectory, "build/Release");
+			const spawnHelper = path.join(releaseDirectory, "spawn-helper");
+			await mkdir(releaseDirectory, { recursive: true });
+			await writeFile(spawnHelper, "helper");
+			await chmod(spawnHelper, 0o644);
 
-		await ensureNodePtySpawnHelpersExecutable(packageDirectory, "darwin", "arm64");
+			await ensureNodePtySpawnHelpersExecutable(packageDirectory, "darwin", "arm64");
 
-		expect((await stat(spawnHelper)).mode & 0o111).toBe(0o111);
-	});
+			expect((await stat(spawnHelper)).mode & 0o111).toBe(0o111);
+		},
+	);
 
 	it("fails macOS packaging when node-pty has no spawn helper", async () => {
 		const packageDirectory = await mkdtemp(path.join(os.tmpdir(), "terminal-node-pty-"));

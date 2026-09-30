@@ -38,6 +38,11 @@ function execGitOutput(cwd: string, args: string[]): string {
 	return execFileSync("git", args, { cwd, stdio: "pipe" }).toString().trim();
 }
 
+/** Git porcelain output always uses forward slashes, even on Windows. */
+function toGitPath(filePath: string): string {
+	return filePath.replaceAll("\\", "/");
+}
+
 /**
  * Create a temp git repository on branch `main` with one empty commit.
  *
@@ -591,12 +596,12 @@ describe("git mainRegister gitService capability", () => {
 		expect(capabilities).not.toBeNull();
 
 		const worktree = await capabilities?.gitService.createWorktree({ workingDirectory: repoDir });
-		expect(worktree?.directory).toMatch(/[/].kilo[/]worktrees[/]kilo-/);
+		expect(worktree?.directory).toMatch(/[\\/]\.kilo[\\/]worktrees[\\/]kilo-/);
 		expect(worktree?.branch).toMatch(/^kilo\//);
 
 		// The created worktree is a real git worktree on a kilo/ branch.
 		const listing = execGitOutput(repoDir, ["worktree", "list", "--porcelain"]);
-		expect(listing).toContain(worktree?.directory ?? "");
+		expect(listing).toContain(toGitPath(worktree?.directory ?? ""));
 		const branches = execGitOutput(repoDir, [
 			"for-each-ref",
 			"--format=%(refname:short)",
@@ -645,7 +650,7 @@ describe("git mainRegister gitService capability", () => {
 		);
 		// The degraded base still yields a healthy worktree on the local main.
 		const listing = execGitOutput(repoDir, ["worktree", "list", "--porcelain"]);
-		expect(listing).toContain(worktree?.directory ?? "");
+		expect(listing).toContain(toGitPath(worktree?.directory ?? ""));
 
 		await capabilities?.gitService.removeWorktree({ path: worktree?.directory ?? "" });
 		mainSdk.dispose();

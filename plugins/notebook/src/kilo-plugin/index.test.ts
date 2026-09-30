@@ -1177,14 +1177,15 @@ describe("nteract Kilo plugin", () => {
 			},
 		);
 
-		expect(session.saveNotebook).toHaveBeenCalledWith("/projects/demo/reports/analysis.ipynb");
+		const savedPath = path.resolve("/projects/demo/reports/analysis.ipynb");
+		expect(session.saveNotebook).toHaveBeenCalledWith(savedPath);
 		expect(ask).not.toHaveBeenCalled();
 		expect(result).toEqual({
 			title: "Notebook saved",
-			output: "/projects/demo/reports/analysis.ipynb",
+			output: savedPath,
 			metadata: {
 				notebook_id: NOTEBOOK_ID,
-				path: "/projects/demo/reports/analysis.ipynb",
+				path: savedPath,
 			},
 		});
 	});
@@ -1217,13 +1218,14 @@ describe("nteract Kilo plugin", () => {
 			},
 		);
 
+		const externalPath = path.resolve("/exports/analysis.ipynb");
 		expect(ask).toHaveBeenCalledWith({
 			permission: "external_directory",
-			patterns: ["/exports/analysis.ipynb"],
+			patterns: [externalPath],
 			always: [],
-			metadata: { notebook_id: NOTEBOOK_ID, path: "/exports/analysis.ipynb" },
+			metadata: { notebook_id: NOTEBOOK_ID, path: externalPath },
 		});
-		expect(session.saveNotebook).toHaveBeenCalledWith("/exports/analysis.ipynb");
+		expect(session.saveNotebook).toHaveBeenCalledWith(externalPath);
 	});
 
 	it("closes native notebook peers when their Kilo session is deleted", async () => {

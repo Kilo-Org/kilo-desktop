@@ -151,6 +151,9 @@ export default defineConfig({
 					// Orchestrator waits this long for each tester iframe. Default 60s
 					// is tight for session-list / ChatPage when unit workers contend.
 					env: { VITEST_BROWSER_IFRAME_TIMEOUT: "120000" },
+					// Multi-step dialog scenarios take 2-3s alone but approach the 15s browser
+					// default when every package's tests run in parallel (e.g. the pre-push hook).
+					testTimeout: 30_000,
 					browser: {
 						enabled: true,
 						headless: true,

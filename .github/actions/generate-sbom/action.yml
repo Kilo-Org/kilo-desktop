@@ -133,7 +133,7 @@ runs:
     # Generate SBOMs with Syft
     # ===========================================
     - name: Generate SBOM with Syft (CycloneDX)
-      uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
       with:
         format: cyclonedx-json
         output-file: ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.syft.cyclonedx.json
@@ -152,7 +152,7 @@ runs:
         SYFT_SOURCE_VERSION: ${{ github.sha }}
 
     - name: Generate SBOM with Syft (SPDX)
-      uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
       with:
         format: spdx-json
         output-file: ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.syft.spdx.json
@@ -202,7 +202,7 @@ runs:
     # ===========================================
     - name: Generate SBOM with Syft (CycloneDX, asar)
       if: inputs.asar-path != ''
-      uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
       with:
         format: cyclonedx-json
         output-file: ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.syft-asar.cyclonedx.json
@@ -215,7 +215,7 @@ runs:
 
     - name: Generate SBOM with Syft (SPDX, asar)
       if: inputs.asar-path != ''
-      uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
       with:
         format: spdx-json
         output-file: ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.syft-asar.spdx.json

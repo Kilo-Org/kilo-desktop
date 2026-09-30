@@ -72,16 +72,48 @@ type GitPrStatusState = {
 	requestGithubSetup: (status: Exclude<GithubCapabilityStatus, "ready">) => void;
 };
 
+/** Which branch a `git status` read found checked out, and when. */
+export type CheckedOutBranch = { branch: string | undefined; observedAt: number };
+
+type SnapshotState = Pick<GitPrStatusState, "targets" | "snapshots">;
+
+function snapshotFor(state: SnapshotState, directory: string) {
+	const id = state.targets.find((target) => target.directory === directory)?.id;
+	return id ? state.snapshots[id] : undefined;
+}
+
+/**
+ * A checked-out branch the last lookup has not seen: a status read newer than
+ * that lookup names another branch. Detached HEADs (a rebase in progress)
+ * never qualify, and neither does anything before the first lookup.
+ */
+export function selectBranchAwaitingLookup(
+	state: SnapshotState,
+	directory: string,
+	checkedOut?: CheckedOutBranch,
+): string | null {
+	const entry = snapshotFor(state, directory);
+	if (!entry || !checkedOut?.branch || checkedOut.observedAt < entry.updatedAt) return null;
+	return entry.snapshot.branch === checkedOut.branch ? null : checkedOut.branch;
+}
+
+/**
+ * The pull request for a workspace directory, shared by the header's
+ * repository actions and the session row and hover card so they always agree.
+ * The newest observation of the checked-out branch wins: while a branch
+ * awaits its lookup the PR is hidden (the header requests that lookup), and
+ * an older status read (a background session's cached status) cannot hide a
+ * fresher lookup. The session's stamped worktree branch is never consulted;
+ * it goes stale once the worktree checks out another branch, such as an
+ * existing PR's head.
+ */
 export function selectPullRequest(
-	state: Pick<GitPrStatusState, "targets" | "snapshots">,
-	query: { statusId?: string; directory?: string; branch?: string },
+	state: SnapshotState,
+	directory: string,
+	checkedOut?: CheckedOutBranch,
 ): GitPrSnapshot["pullRequest"] | null {
-	const id = query.statusId
-		? query.statusId
-		: state.targets.find((target) => target.directory === query.directory)?.id;
-	const snapshot = id ? state.snapshots[id]?.snapshot : undefined;
-	if (query.branch && snapshot?.branch !== query.branch) return null;
-	return snapshot?.pullRequest ?? null;
+	if (selectBranchAwaitingLookup(state, directory, checkedOut)) return null;
+	return snapshotFor(state, directory)?.snapshot.pullRequest ?? null;
 }
 
 /**

@@ -81,6 +81,8 @@ function snapshotService(
 		upstream?: string;
 		/** `ancestor..descendant` pairs `merge-base --is-ancestor` confirms. */
 		ancestry?: readonly string[];
+		/** `git config -z --get-regexp` output for the branch's tracking config. */
+		branchConfig?: string;
 	} = {},
 ) {
 	const origin = options.origin === undefined ? "git@github.com:acme/repo.git" : options.origin;
@@ -116,6 +118,10 @@ function snapshotService(
 					if (args[0] === "merge-base") {
 						const related = options.ancestry?.includes(`${args[2]}..${args[3]}`) ?? false;
 						return Promise.resolve({ exitCode: related ? 0 : 1, stdout: "", stderr: "" });
+					}
+					if (args[0] === "config") {
+						const stdout = options.branchConfig ?? "";
+						return Promise.resolve({ exitCode: stdout ? 0 : 1, stdout, stderr: "" });
 					}
 					return Promise.reject(new Error(`unexpected git ${args.join(" ")}`));
 				},
@@ -340,5 +346,101 @@ describe("GitService pull request snapshot", () => {
 				pullRequest: { number: 3 },
 			});
 		});
+	});
+});
+
+describe("GitService batched pull request snapshots", () => {
+	const OTHER = "/repo/.kilo/worktrees/other";
+
+	function batchService(options: Parameters<typeof snapshotService>[0] = {}) {
+		const git = snapshotService(options);
+		return {
+			snapshots: (directories: readonly string[]) => git.pullRequestSnapshots(directories),
+		};
+	}
+
+	function mockGithub(graphql: () => { exitCode: number; stdout: string }) {
+		execa.mockImplementation(async (_command: string, args: string[] = []) => {
+			if (args[0] === "auth") return { exitCode: 0, stdout: "", stderr: "" };
+			if (args[0] === "repo") {
+				return { exitCode: 0, stdout: JSON.stringify({ nameWithOwner: "acme/repo" }), stderr: "" };
+			}
+			if (args[0] === "api") return { ...graphql(), stderr: "" };
+			return { exitCode: 1, stdout: "", stderr: `unexpected ${args.join(" ")}` };
+		});
+	}
+
+	const ghCalls = (subcommand: string) =>
+		execa.mock.calls.filter(([, args]) => (args as string[])[0] === subcommand);
+
+	it("answers every directory of a repository with one GraphQL request", async () => {
+		mockGithub(() => ({
+			exitCode: 0,
+			stdout: JSON.stringify({
+				data: {
+					repository: {
+						b0: {
+							nodes: [
+								pullRequest({
+									number: 9,
+									state: "OPEN",
+									headRefName: "kilo/brawny-olivine",
+									isCrossRepository: false,
+								}),
+							],
+						},
+						c0: null,
+						b1: { nodes: [] },
+						c1: { associatedPullRequests: { nodes: [] } },
+					},
+				},
+			}),
+		}));
+
+		const results = await batchService().snapshots(["/repo", OTHER, "/outside"]);
+
+		expect(results).toEqual([
+			{
+				workingDirectory: "/repo",
+				snapshot: expect.objectContaining({ pullRequest: expect.objectContaining({ number: 9 }) }),
+			},
+			{
+				workingDirectory: OTHER,
+				snapshot: expect.objectContaining({ branch: "kilo/brawny-olivine", pullRequest: null }),
+			},
+			{ workingDirectory: "/outside", snapshot: null },
+		]);
+		expect(ghCalls("api")).toHaveLength(1);
+		expect(ghCalls("pr")).toHaveLength(0);
+	});
+
+	it("leaves a refs/pull tracking branch to the per-directory lookup", async () => {
+		mockGithub(() => ({
+			exitCode: 0,
+			stdout: JSON.stringify({ data: { repository: { b0: { nodes: [] }, c0: null } } }),
+		}));
+
+		const results = await batchService({
+			branchConfig: "branch.kilo/brawny-olivine.merge\nrefs/pull/5/head\0",
+		}).snapshots(["/repo"]);
+
+		expect(results).toEqual([{ workingDirectory: "/repo", snapshot: null }]);
+	});
+
+	it("leaves every directory to the per-directory lookup when the request fails", async () => {
+		mockGithub(() => ({ exitCode: 1, stdout: "" }));
+
+		const results = await batchService().snapshots(["/repo", OTHER]);
+
+		expect(results.map(({ snapshot }) => snapshot)).toEqual([null, null]);
+	});
+
+	it("resolves unsupported directories without spawning gh", async () => {
+		const results = await batchService({ origin: "git@gitlab.com:acme/repo.git" }).snapshots([
+			"/repo",
+		]);
+
+		expect(results[0]?.snapshot).toMatchObject({ githubStatus: "unsupported" });
+		expect(execa).not.toHaveBeenCalled();
 	});
 });

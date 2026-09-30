@@ -3,8 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { sdkQueryOptions, useSdk } from "@kilo-desktop/sdk-react";
 
 import type { GitServiceContract } from "../contracts/schemas.js";
-import { selectPullRequest, useGitPrStatusStore } from "./git-pr-status-store.js";
+import { useGitPrStatusStore } from "./git-pr-status-store.js";
 import { pullRequestClassName } from "./repository-actions.js";
+import { useSessionPullRequest } from "./use-session-pull-request.js";
 
 export interface GitSessionDetailsProps {
 	readonly statusId: string;
@@ -51,14 +52,9 @@ export function GitSessionDetailsBranch({
  * Pull request link for the session hover card
  * (`kilo-ui/chat-session-details-pull-request`). Renders nothing without a PR.
  */
-export function GitSessionDetailsPullRequest({ statusId, worktreeBranch }: GitSessionDetailsProps) {
+export function GitSessionDetailsPullRequest({ directory }: GitSessionDetailsProps) {
 	const sdk = useSdk<GitServiceContract>("git");
-	const pullRequest = useGitPrStatusStore((state) =>
-		selectPullRequest(state, {
-			statusId,
-			...(worktreeBranch ? { branch: worktreeBranch } : {}),
-		}),
-	);
+	const pullRequest = useSessionPullRequest(directory);
 
 	if (!pullRequest) return null;
 

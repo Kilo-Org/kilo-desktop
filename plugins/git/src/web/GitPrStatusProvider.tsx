@@ -4,8 +4,12 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { sdkQueryKey, useSdk } from "@kilo-desktop/sdk-react";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
-import type { GitServiceContract } from "../contracts/schemas.js";
-import { useGitPrStatusStore, type GithubCapabilityStatus } from "./git-pr-status-store.js";
+import { MAX_BATCHED_DIRECTORIES, type GitServiceContract } from "../contracts/schemas.js";
+import {
+	type GitPrSnapshot,
+	type GithubCapabilityStatus,
+	useGitPrStatusStore,
+} from "./git-pr-status-store.js";
 import { PrStatusScheduler, type PrStatusLoadResult } from "./pr-status-scheduler.js";
 
 const INSTALL_URL = "https://cli.github.com/";
@@ -54,12 +58,11 @@ export function GitPrStatusProvider({ children }: { readonly children: ReactNode
 	}
 
 	useEffect(() => {
-		const load = async (directory: string): Promise<PrStatusLoadResult> => {
+		const apply = (directory: string, snapshot: GitPrSnapshot): PrStatusLoadResult => {
 			const target = useGitPrStatusStore
 				.getState()
 				.targets.find((candidate) => candidate.directory === directory);
 			if (!target) return;
-			const snapshot = await sdk.client.pullRequestSnapshot({ workingDirectory: directory });
 			if (snapshot.githubStatus !== "unsupported") {
 				useGitPrStatusStore.getState().setGithubStatus(snapshot.githubStatus);
 			}
@@ -73,9 +76,24 @@ export function GitPrStatusProvider({ children }: { readonly children: ReactNode
 				snapshot.pullRequest,
 			);
 		};
+		const load = async (directory: string): Promise<PrStatusLoadResult> =>
+			apply(directory, await sdk.client.pullRequestSnapshot({ workingDirectory: directory }));
+		const loadMany = async (directories: readonly string[]) => {
+			const answers = new Map<string, PrStatusLoadResult>();
+			for (let start = 0; start < directories.length; start += MAX_BATCHED_DIRECTORIES) {
+				const results = await sdk.client.pullRequestSnapshots({
+					workingDirectories: directories.slice(start, start + MAX_BATCHED_DIRECTORIES),
+				});
+				for (const { workingDirectory, snapshot } of results) {
+					if (snapshot) answers.set(workingDirectory, apply(workingDirectory, snapshot));
+				}
+			}
+			return answers;
+		};
 		const scheduler = new PrStatusScheduler({
 			getTargets: () => useGitPrStatusStore.getState().targets,
 			load,
+			loadMany,
 			isVisible: () => document.visibilityState === "visible",
 		});
 		schedulerRef.current = scheduler;

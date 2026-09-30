@@ -24,7 +24,6 @@ const coverage = {
 		"src/web/use-repository-actions.ts",
 		"src/web/GitPrStatusProvider.tsx",
 		"src/web/GitPrStatusTargets.tsx",
-		"src/web/GitSessionRowMetadata.tsx",
 		// Shared browser-test scaffolding, not plugin source.
 		"src/web/test-utils.tsx",
 		"src/test/**",

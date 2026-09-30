@@ -272,6 +272,17 @@ const pullRequestSchema = z.object({
 	isDraft: z.boolean(),
 });
 
+const pullRequestSnapshotSchema = z.object({
+	identity: z.string().nullable(),
+	branch: z.string().nullable(),
+	repository: z.string().nullable(),
+	parentRepository: z.string().nullable(),
+	pullRequest: pullRequestSchema.nullable(),
+	/** `unsupported`: no branch or a non-GitHub origin; never spawns `gh`. */
+	githubStatus: z.union([githubCliStatusSchema, z.literal("unsupported")]),
+});
+export const MAX_BATCHED_DIRECTORIES = 200;
+
 export const gitActionsContract = defineContract({
 	githubCliStatus: defineMethod(
 		z.object({ force: z.boolean().optional() }),
@@ -304,17 +315,21 @@ export const gitActionsContract = defineContract({
 	pull: defineMethod(workingDirectoryInput, z.undefined()),
 	originUrl: defineMethod(workingDirectoryInput, z.string().nullable()),
 	pullRequest: defineMethod(workingDirectoryInput, pullRequestSchema.nullable()),
-	pullRequestSnapshot: defineMethod(
-		workingDirectoryInput,
+	pullRequestSnapshot: defineMethod(workingDirectoryInput, pullRequestSnapshotSchema),
+	/**
+	 * Batched `pullRequestSnapshot`; a `null` snapshot is a directory the
+	 * batch could not answer, to be looked up individually.
+	 */
+	pullRequestSnapshots: defineMethod(
 		z.object({
-			identity: z.string().nullable(),
-			branch: z.string().nullable(),
-			repository: z.string().nullable(),
-			parentRepository: z.string().nullable(),
-			pullRequest: pullRequestSchema.nullable(),
-			/** `unsupported`: no branch or a non-GitHub origin; never spawns `gh`. */
-			githubStatus: z.union([githubCliStatusSchema, z.literal("unsupported")]),
+			workingDirectories: z.array(z.string().min(1).max(32_768)).max(MAX_BATCHED_DIRECTORIES),
 		}),
+		z.array(
+			z.object({
+				workingDirectory: z.string(),
+				snapshot: pullRequestSnapshotSchema.nullable(),
+			}),
+		),
 	),
 	createPullRequest: defineMethod(
 		z.object({

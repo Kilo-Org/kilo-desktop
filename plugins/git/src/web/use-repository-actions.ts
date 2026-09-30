@@ -1,12 +1,17 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useSdk, useSdkQuery } from "@kilo-desktop/sdk-react";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import type { GitServiceContract } from "../contracts/schemas.js";
 import { type GitActionKind, useGitActionProgressStore } from "./git-action-progress-store.js";
-import { selectPullRequest, useGitPrStatusStore } from "./git-pr-status-store.js";
+import {
+	type CheckedOutBranch,
+	selectBranchAwaitingLookup,
+	selectPullRequest,
+	useGitPrStatusStore,
+} from "./git-pr-status-store.js";
 import {
 	normalizeDefaultBranch,
 	repositoryActions,
@@ -53,6 +58,31 @@ type Step = (progressLabel: string, failureLabel: string) => void;
 /** Thrown to stop a flow after the user was already guided (no error toast). */
 class ActionAbandoned extends Error {}
 
+/**
+ * Requests a pull request lookup as soon as the header's status shows a
+ * branch the last lookup has not seen, instead of waiting for the next poll.
+ * Each directory/branch pair is requested once: status re-reads while that
+ * lookup runs (file watcher churn) must not queue more, and a failed lookup
+ * is left to the poller's backoff.
+ */
+function useLookUpCheckedOutBranch(
+	directory: string,
+	checkedOut: CheckedOutBranch | undefined,
+	refreshPullRequest: (directory: string) => void,
+) {
+	const branch = useGitPrStatusStore((state) =>
+		selectBranchAwaitingLookup(state, directory, checkedOut),
+	);
+	const requested = useRef<string | null>(null);
+	useEffect(() => {
+		if (!branch) return;
+		const key = `${directory}\n${branch}`;
+		if (requested.current === key) return;
+		requested.current = key;
+		refreshPullRequest(directory);
+	}, [branch, directory, refreshPullRequest]);
+}
+
 /** One subscription for the header control: queries, PR snapshot, and runners. */
 export function useRepositoryActions(workspaceDirectory: string): RepositoryActions | null {
 	const sdk = useSdk<GitServiceContract>("git");
@@ -66,12 +96,13 @@ export function useRepositoryActions(workspaceDirectory: string): RepositoryActi
 		workingDirectory: workspaceDirectory,
 	});
 	const status = statusQuery.data;
+	const checkedOut = status
+		? { branch: status.currentBranch, observedAt: statusQuery.dataUpdatedAt }
+		: undefined;
 	const pullRequest = useGitPrStatusStore((state) =>
-		selectPullRequest(state, {
-			directory: workspaceDirectory,
-			...(status?.currentBranch ? { branch: status.currentBranch } : {}),
-		}),
+		selectPullRequest(state, workspaceDirectory, checkedOut),
 	);
+	useLookUpCheckedOutBranch(workspaceDirectory, checkedOut, refreshPullRequest);
 	const progress = useGitActionProgressStore((state) => state.byDirectory[workspaceDirectory]);
 	const defaultBranch = normalizeDefaultBranch(branchesQuery.data?.defaultBranch);
 	const model =

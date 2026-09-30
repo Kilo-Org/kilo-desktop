@@ -328,4 +328,101 @@ describe("PrStatusScheduler", () => {
 		await vi.waitFor(() => expect(loaded).toEqual(["/a", "/b"]));
 		scheduler.stop();
 	});
+
+	describe("batched loads", () => {
+		const three = [
+			{ id: "a", directory: "/a", active: true },
+			{ id: "b", directory: "/b", active: false },
+			{ id: "c", directory: "/c", active: false },
+		];
+
+		function batchedScheduler(
+			loadMany: (directories: readonly string[]) => Promise<ReadonlyMap<string, void>>,
+		) {
+			const loaded: string[] = [];
+			const batches: string[][] = [];
+			const scheduler = new PrStatusScheduler({
+				getTargets: () => three,
+				load: async (directory) => {
+					loaded.push(directory);
+				},
+				loadMany: async (directories) => {
+					batches.push([...directories]);
+					return loadMany(directories);
+				},
+				isVisible: () => true,
+				subscribeVisibility: () => () => undefined,
+			});
+			return { scheduler, loaded, batches };
+		}
+
+		it("syncs every target in one batch and loads only the unanswered ones individually", async () => {
+			const { scheduler, loaded, batches } = batchedScheduler(
+				async () =>
+					new Map([
+						["/a", undefined],
+						["/c", undefined],
+					]),
+			);
+
+			await scheduler.refreshAll();
+
+			expect(batches).toEqual([["/a", "/b", "/c"]]);
+			expect(loaded).toEqual(["/b"]);
+		});
+
+		it("falls back to individual loads when the batch fails", async () => {
+			const { scheduler, loaded } = batchedScheduler(async () => {
+				throw new Error("gh failed");
+			});
+
+			await scheduler.syncTargets(three);
+
+			expect(loaded).toEqual(["/a", "/b", "/c"]);
+		});
+
+		it("treats batched directories as in flight until the batch settles", async () => {
+			let answer: (answers: ReadonlyMap<string, void>) => void = () => undefined;
+			const { scheduler, loaded, batches } = batchedScheduler(
+				() =>
+					new Promise((resolve) => {
+						answer = resolve;
+					}),
+			);
+
+			const sync = scheduler.refreshAll();
+			await vi.waitFor(() => expect(batches).toHaveLength(1));
+			const joined = scheduler.refresh("/a");
+			answer(new Map(three.map(({ directory }) => [directory, undefined])));
+			await Promise.all([sync, joined]);
+
+			expect(loaded).toEqual([]);
+		});
+
+		it("leaves backed-off directories out and loads a lone eligible one individually", async () => {
+			const loaded: string[] = [];
+			const batches: string[][] = [];
+			const scheduler = new PrStatusScheduler({
+				getTargets: () => three,
+				load: async (directory) => {
+					loaded.push(directory);
+					if (directory !== "/a") throw new Error("offline");
+				},
+				loadMany: async (directories) => {
+					batches.push([...directories]);
+					return new Map();
+				},
+				isVisible: () => true,
+				subscribeVisibility: () => () => undefined,
+				now: () => 1_000_000,
+			});
+
+			await scheduler.refreshAll();
+			loaded.length = 0;
+			await scheduler.refreshAll();
+
+			expect(batches).toEqual([["/a", "/b", "/c"]]);
+			expect(loaded).toEqual(["/a"]);
+		});
+	});
 });

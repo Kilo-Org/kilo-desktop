@@ -82,6 +82,8 @@ export function mainRegister(mainSdk: MainSdk): void {
 		originUrl: ({ workingDirectory }) => service.originUrl(workingDirectory),
 		pullRequest: ({ workingDirectory }) => service.pullRequest(workingDirectory),
 		pullRequestSnapshot: ({ workingDirectory }) => service.pullRequestSnapshot(workingDirectory),
+		pullRequestSnapshots: ({ workingDirectories }) =>
+			service.pullRequestSnapshots(workingDirectories),
 		createPullRequest: (input) => service.createPullRequest(input),
 		pullRequestContext: ({ workingDirectory, baseBranch }) =>
 			service.pullRequestContext(workingDirectory, baseBranch),

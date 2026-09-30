@@ -17,17 +17,25 @@ import type { GitPrStatusTarget } from "./git-pr-status-store.js";
  * - A refresh is skipped while a target is backed off unless the caller
  *   forces it. Capability outcomes ("unavailable") are not backed off;
  *   snapshot failures are.
+ * - Full syncs and newly added targets go through `loadMany` (one batched
+ *   request) when there are several eligible directories. Each directory in
+ *   the batch counts as in flight for the whole batch, and the ones the batch
+ *   leaves unanswered — or all of them, when it fails — fall back to their
+ *   own `load`, so batching can only save work.
  */
 const ACTIVE_INTERVAL_MS = 15_000;
 const FULL_SYNC_INTERVAL_MS = 120_000;
 const LOAD_CONCURRENCY = 3;
 const QUARANTINE_AFTER_FAILURES = 5;
+const MIN_BATCH_SIZE = 2;
 
 export type PrStatusLoadResult = void | "unavailable";
 
 export type PrStatusSchedulerOptions = {
 	getTargets: () => readonly GitPrStatusTarget[];
 	load: (directory: string) => Promise<PrStatusLoadResult>;
+	/** Loads many directories at once; absent directories were not answered. */
+	loadMany?: (directories: readonly string[]) => Promise<ReadonlyMap<string, PrStatusLoadResult>>;
 	isVisible?: () => boolean;
 	subscribeVisibility?: (onChange: () => void) => () => void;
 	now?: () => number;
@@ -36,6 +44,7 @@ export type PrStatusSchedulerOptions = {
 export class PrStatusScheduler {
 	readonly #getTargets: PrStatusSchedulerOptions["getTargets"];
 	readonly #load: PrStatusSchedulerOptions["load"];
+	readonly #loadMany: PrStatusSchedulerOptions["loadMany"];
 	readonly #isVisible: () => boolean;
 	readonly #subscribeVisibility: (onChange: () => void) => () => void;
 	readonly #now: () => number;
@@ -54,6 +63,7 @@ export class PrStatusScheduler {
 	constructor(options: PrStatusSchedulerOptions) {
 		this.#getTargets = options.getTargets;
 		this.#load = options.load;
+		this.#loadMany = options.loadMany;
 		this.#isVisible =
 			options.isVisible ??
 			(() => typeof document === "undefined" || document.visibilityState === "visible");
@@ -99,7 +109,7 @@ export class PrStatusScheduler {
 			this.#knownTargets.get(target.id) === target.directory ? [] : [target.directory],
 		);
 		this.#knownTargets = new Map(targets.map((target) => [target.id, target.directory]));
-		await Promise.all(unique(added).map((directory) => this.refresh(directory)));
+		await this.#refreshMany(added);
 	}
 
 	consumeRefreshRequests(
@@ -129,9 +139,56 @@ export class PrStatusScheduler {
 			if (force) this.#forcedFollowUps.add(directory);
 			return running;
 		}
-		const failure = this.#failures.get(target.id);
-		if (!force && failure && failure.retryAt > this.#now()) return Promise.resolve();
-		const load = this.#limit(() => this.#loadTarget(target.id, directory)).finally(() => {
+		if (!force && this.#isBackedOff(target.id)) return Promise.resolve();
+		return this.#track(
+			directory,
+			this.#limit(() => this.#loadTarget(target.id, directory)),
+		);
+	}
+
+	async refreshAll(): Promise<void> {
+		if (this.#stopped || !this.#isVisible()) return;
+		await this.#refreshMany(this.#getTargets().map((target) => target.directory));
+	}
+
+	/** Unforced refreshes of many directories, batched when `loadMany` can serve them. */
+	async #refreshMany(directories: readonly string[]): Promise<void> {
+		const running: Promise<void>[] = [];
+		const eligible: GitPrStatusTarget[] = [];
+		for (const directory of unique(directories)) {
+			const target = this.#getTargets().find((candidate) => candidate.directory === directory);
+			if (!target) continue;
+			const inFlight = this.#inFlight.get(directory);
+			if (inFlight) running.push(inFlight);
+			else if (!this.#isBackedOff(target.id)) eligible.push(target);
+		}
+		const loadMany = this.#loadMany;
+		if (!loadMany || eligible.length < MIN_BATCH_SIZE) {
+			await Promise.all([...running, ...eligible.map(({ directory }) => this.refresh(directory))]);
+			return;
+		}
+		const batch = this.#limit(() =>
+			this.#stopped
+				? new Map<string, PrStatusLoadResult>()
+				: loadMany(eligible.map(({ directory }) => directory)),
+		).catch(() => new Map<string, PrStatusLoadResult>());
+		const loads = eligible.map(({ id, directory }) =>
+			this.#track(
+				directory,
+				batch.then((answers) => {
+					if (!answers.has(directory)) {
+						return this.#limit(() => this.#loadTarget(id, directory));
+					}
+					if (answers.get(directory) !== "unavailable") this.#failures.delete(id);
+				}),
+			),
+		);
+		await Promise.all([...running, ...loads]);
+	}
+
+	/** Registers a directory's load as in flight and runs any forced follow-up after it. */
+	#track(directory: string, work: Promise<void>): Promise<void> {
+		const load = work.finally(() => {
 			if (this.#inFlight.get(directory) === load) this.#inFlight.delete(directory);
 			if (this.#forcedFollowUps.delete(directory) && !this.#stopped) {
 				void this.refresh(directory, true);
@@ -141,10 +198,9 @@ export class PrStatusScheduler {
 		return load;
 	}
 
-	async refreshAll(): Promise<void> {
-		if (this.#stopped || !this.#isVisible()) return;
-		const directories = unique(this.#getTargets().map((target) => target.directory));
-		await Promise.all(directories.map((directory) => this.refresh(directory)));
+	#isBackedOff(id: string): boolean {
+		const failure = this.#failures.get(id);
+		return failure !== undefined && failure.retryAt > this.#now();
 	}
 
 	async #loadTarget(id: string, directory: string): Promise<void> {

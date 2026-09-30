@@ -202,33 +202,77 @@ describe("git PR status store", () => {
 		expect(useGitPrStatusStore.getState().targets).toHaveLength(1);
 	});
 
-	it("selects a pull request by target id or directory and ignores a stale branch", async () => {
-		const { selectPullRequest, useGitPrStatusStore } = await import("./git-pr-status-store.js");
+	describe("a session's pull request", () => {
 		const pullRequest = {
-			number: 4,
-			url: "https://github.com/acme/repo/pull/4",
-			title: "Feature",
+			number: 649,
+			url: "https://github.com/acme/repo/pull/649",
+			title: "Lazy runtimed",
 			baseBranch: "main",
-			headBranch: "feature",
+			headBranch: "fix/lazy",
 			state: "open" as const,
 			isDraft: false,
 		};
-		useGitPrStatusStore.getState().setTargets([{ id: "repo", directory: "/repo", active: true }]);
-		useGitPrStatusStore.getState().setSnapshot("repo", {
-			identity: "feature|abc",
-			branch: "feature",
-			repository: "acme/repo",
-			parentRepository: null,
-			pullRequest,
-			githubStatus: "ready" as const,
-		});
-		const state = useGitPrStatusStore.getState();
+		const SNAPSHOT_AT = 1_000_000;
 
-		expect(selectPullRequest(state, { statusId: "repo" })).toEqual(pullRequest);
-		expect(selectPullRequest(state, { directory: "/repo", branch: "feature" })).toEqual(
-			pullRequest,
-		);
-		expect(selectPullRequest(state, { directory: "/repo", branch: "main" })).toBeNull();
+		async function storeWithSnapshotOn(branch: string) {
+			const { selectPullRequest, useGitPrStatusStore } = await import("./git-pr-status-store.js");
+			useGitPrStatusStore.setState({
+				targets: [{ id: "wt", directory: "/wt", active: true, branch: "kilo/stamped" }],
+				snapshots: {
+					wt: {
+						updatedAt: SNAPSHOT_AT,
+						snapshot: {
+							identity: `${branch}|abc`,
+							branch,
+							repository: "acme/repo",
+							parentRepository: null,
+							pullRequest,
+							githubStatus: "ready",
+						},
+					},
+				},
+			});
+			const state = useGitPrStatusStore.getState();
+			return (checkedOut?: { branch: string | undefined; observedAt: number }) =>
+				selectPullRequest(state, "/wt", checkedOut);
+		}
+
+		it("comes from the last lookup when nothing newer says which branch is checked out", async () => {
+			const select = await storeWithSnapshotOn("fix/lazy");
+
+			expect(select()).toEqual(pullRequest);
+			expect(select({ branch: "main", observedAt: SNAPSHOT_AT - 1 })).toEqual(pullRequest);
+		});
+
+		it("hides once a newer status shows another branch checked out", async () => {
+			const select = await storeWithSnapshotOn("fix/lazy");
+
+			expect(select({ branch: "main", observedAt: SNAPSHOT_AT + 1 })).toBeNull();
+			expect(select({ branch: "fix/lazy", observedAt: SNAPSHOT_AT + 1 })).toEqual(pullRequest);
+		});
+
+		it("is not filtered by a newer status on a detached HEAD", async () => {
+			const select = await storeWithSnapshotOn("fix/lazy");
+
+			expect(select({ branch: undefined, observedAt: SNAPSHOT_AT + 1 })).toEqual(pullRequest);
+		});
+
+		it("names a branch as awaiting lookup only when a newer status shows it", async () => {
+			await storeWithSnapshotOn("fix/lazy");
+			const { selectBranchAwaitingLookup, useGitPrStatusStore } =
+				await import("./git-pr-status-store.js");
+			const state = useGitPrStatusStore.getState();
+			const awaiting = (branch: string | undefined, observedAt: number) =>
+				selectBranchAwaitingLookup(state, "/wt", { branch, observedAt });
+
+			expect(awaiting("main", SNAPSHOT_AT + 1)).toBe("main");
+			expect(awaiting("main", SNAPSHOT_AT - 1)).toBeNull();
+			expect(awaiting("fix/lazy", SNAPSHOT_AT + 1)).toBeNull();
+			expect(awaiting(undefined, SNAPSHOT_AT + 1)).toBeNull();
+			expect(
+				selectBranchAwaitingLookup(state, "/elsewhere", { branch: "main", observedAt: 0 }),
+			).toBeNull();
+		});
 	});
 
 	it("keeps a known pull request until a snapshot names a branch", async () => {
@@ -299,7 +343,9 @@ describe("git PR status store", () => {
 			store.recordCreatedPullRequest("/repo", "feature", created);
 
 			const state = useGitPrStatusStore.getState();
-			expect(selectPullRequest(state, { directory: "/repo", branch: "feature" })).toEqual(created);
+			expect(
+				selectPullRequest(state, "/repo", { branch: "feature", observedAt: Date.now() }),
+			).toEqual(created);
 			expect(state.snapshots.a?.snapshot).toEqual({ ...noPullRequest, pullRequest: created });
 			expect(state.snapshots.b?.snapshot).toMatchObject({
 				branch: "feature",

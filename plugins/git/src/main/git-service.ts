@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path, { isAbsolute, relative, resolve, sep } from "node:path";
 
 import { execa, type ExecaError } from "execa";
+import pLimit from "p-limit";
 
 import type { MainSdkLogger } from "@kilo-desktop/feature-sdk";
 import { FeatureError } from "@kilo-desktop/feature-sdk";
@@ -25,6 +26,13 @@ import type {
 } from "../contracts/schemas.js";
 import type { IBranch, RepositoryType } from "@kilo-desktop/git-client";
 import { findDefaultBranch } from "./find-default-branch.js";
+import {
+	BATCH_CHUNK_SIZE,
+	type BatchNodes,
+	batchQueryArgs,
+	finderPick,
+	parseBatchResponse,
+} from "./pull-request-batch.js";
 import { WorktreeManager } from "./worktree-manager.js";
 
 export interface GitPullRequest {
@@ -42,6 +50,35 @@ interface PullRequestCandidate {
 	readonly pullRequest: GitPullRequest;
 	readonly headSha: string | null;
 	readonly mergeSha: string | null;
+}
+
+/** A checkout whose pull request needs a GitHub lookup. */
+interface PullRequestLookupPlan {
+	readonly kind: "lookup";
+	readonly workingDirectory: string;
+	readonly branch: string;
+	readonly upstream: string | undefined;
+	readonly sha: string;
+	readonly owner: string | null;
+	/** Everything but the pull request, which the lookup decides. */
+	readonly snapshot: Omit<GitPullRequestSnapshot, "pullRequest">;
+	/** Set when the batched query can serve this checkout. */
+	readonly batch: { readonly host: string; readonly upstreamBranch: string | null } | null;
+}
+
+/** A checkout whose snapshot is known without asking GitHub. */
+interface ResolvedPullRequestLookup {
+	readonly kind: "resolved";
+	readonly workingDirectory: string;
+	readonly snapshot: GitPullRequestSnapshot;
+}
+
+/** Whether a PR head names this checkout's branch or its upstream. */
+function isOwnHead(headRefName: unknown, branch: string, upstream: string | undefined): boolean {
+	return (
+		typeof headRefName === "string" &&
+		(headRefName === branch || upstream?.endsWith(`/${headRefName}`) === true)
+	);
 }
 
 const REMOTE_REF_PREFIX = "refs/remotes/";
@@ -71,6 +108,8 @@ const COMMIT_SHA_PATTERN = /^[0-9a-f]{7,64}$/i;
 const SUMMARY_MAX_CHARS = 20_000;
 const PATCH_MAX_CHARS = 60_000;
 const GH_TIMEOUT_MS = 20_000;
+/** Local probes a batched PR lookup runs at once before its single `gh` request. */
+const BATCH_PLAN_CONCURRENCY = 4;
 const GH_PROBE_SUCCESS_TTL_MS = 300_000;
 const GH_PROBE_FAILURE_TTL_MS = 30_000;
 const FETCH_THROTTLE_MS = 60_000;
@@ -685,55 +724,240 @@ export class GitService {
 	async pullRequestSnapshot(workingDirectory: string): Promise<GitPullRequestSnapshot> {
 		await this.#assertWithinWorkspaceFolders(workingDirectory);
 		try {
-			const status = await this.status(workingDirectory);
-			const branch = status?.currentBranch ?? null;
-			const empty = (githubStatus: GithubSnapshotStatus): GitPullRequestSnapshot => ({
+			const plan = await this.#planPullRequestLookup(workingDirectory);
+			if (plan.kind === "resolved") return plan.snapshot;
+			const candidates = await this.#findPullRequests(
+				workingDirectory,
+				plan.branch,
+				plan.upstream,
+				plan.sha,
+				plan.owner,
+			);
+			return await this.#snapshotFromCandidates(plan, candidates);
+		} catch (error) {
+			if (error instanceof FeatureError) throw error;
+			throw ghErrorToFeatureError(error);
+		}
+	}
+
+	/**
+	 * `pullRequestSnapshot` for many directories with one `gh api graphql`
+	 * request per chunk of same-repository checkouts instead of up to four `gh`
+	 * processes each (the VS Code Agent Manager's batched full sync). The
+	 * batch answers only what the per-directory ladder would answer the same
+	 * way; every other directory (outside the workspace, a failed probe or
+	 * request, a fork or `refs/pull` tracking branch that `gh pr view`
+	 * resolves through branch config) comes back `null`, and the caller looks
+	 * it up individually. A failed batch is therefore never worse than no batch.
+	 */
+	async pullRequestSnapshots(
+		workingDirectories: readonly string[],
+	): Promise<{ workingDirectory: string; snapshot: GitPullRequestSnapshot | null }[]> {
+		const limit = pLimit(BATCH_PLAN_CONCURRENCY);
+		const plans = await Promise.all(
+			workingDirectories.map((workingDirectory) =>
+				limit(async () => {
+					try {
+						await this.#assertWithinWorkspaceFolders(workingDirectory);
+						return await this.#planPullRequestLookup(workingDirectory, { batch: true });
+					} catch {
+						return null;
+					}
+				}),
+			),
+		);
+		const answers = new Map<string, GitPullRequestSnapshot>();
+		const pending = new Map<string, PullRequestLookupPlan[]>();
+		for (const plan of plans) {
+			if (!plan) continue;
+			if (plan.kind === "resolved") {
+				answers.set(plan.workingDirectory, plan.snapshot);
+			} else if (plan.batch) {
+				const key = `${plan.batch.host}/${plan.snapshot.repository}`;
+				pending.set(key, [...(pending.get(key) ?? []), plan]);
+			}
+		}
+		for (const group of pending.values()) {
+			for (let start = 0; start < group.length; start += BATCH_CHUNK_SIZE) {
+				await this.#answerBatch(group.slice(start, start + BATCH_CHUNK_SIZE), answers);
+			}
+		}
+		return workingDirectories.map((workingDirectory) => ({
+			workingDirectory,
+			snapshot: answers.get(workingDirectory) ?? null,
+		}));
+	}
+
+	async #answerBatch(
+		plans: readonly PullRequestLookupPlan[],
+		answers: Map<string, GitPullRequestSnapshot>,
+	): Promise<void> {
+		const first = plans[0]!;
+		const [owner, name] = first.snapshot.repository!.split("/") as [string, string];
+		const result = await this.#gh(
+			first.workingDirectory,
+			batchQueryArgs(
+				first.batch!.host,
+				{ owner, name },
+				plans.map((plan) => ({
+					branch: plan.branch,
+					upstreamBranch: plan.batch!.upstreamBranch,
+					sha: plan.sha,
+				})),
+			),
+		);
+		// `gh api graphql` exits nonzero on partial errors but still prints the data.
+		const nodes = parseBatchResponse(result.stdout ?? "", plans.length);
+		await Promise.all(
+			plans.map(async (plan, index) => {
+				const answered = nodes[index];
+				if (!answered) return;
+				try {
+					const snapshot = await this.#snapshotFromBatch(plan, answered);
+					if (snapshot) answers.set(plan.workingDirectory, snapshot);
+				} catch {
+					// Left for the per-directory lookup.
+				}
+			}),
+		);
+	}
+
+	async #snapshotFromBatch(
+		plan: PullRequestLookupPlan,
+		nodes: BatchNodes,
+	): Promise<GitPullRequestSnapshot | null> {
+		const named = finderPick(nodes.byBranch) ?? finderPick(nodes.byUpstream);
+		if (named) return this.#snapshotFromCandidates(plan, [parsePullRequestCandidate(named)]);
+		const atHead = nodes.byHead.find(
+			(node) =>
+				node.state === "OPEN" &&
+				node.headRefOid === plan.sha &&
+				isOwnHead(node.headRefName, plan.branch, plan.upstream),
+		);
+		if (atHead) return this.#snapshotFromCandidates(plan, [parsePullRequestCandidate(atHead)]);
+		if (await this.#resolvesThroughBranchConfig(plan.workingDirectory, plan.branch)) return null;
+		return { ...plan.snapshot, pullRequest: null };
+	}
+
+	/**
+	 * Whether `gh pr view` would look the branch up somewhere a name lookup in
+	 * this repository cannot: a `refs/pull/N/head` tracking ref (`gh pr
+	 * checkout`), or a push remote other than origin (a fork's head).
+	 */
+	async #resolvesThroughBranchConfig(workingDirectory: string, branch: string): Promise<boolean> {
+		const escaped = branch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+		const result = await this.#client.exec(
+			[
+				"config",
+				"-z",
+				"--get-regexp",
+				`^(branch\\.${escaped}\\.(merge|pushremote)|remote\\.pushdefault)$`,
+			],
+			"pull request branch config",
+			{ cwd: workingDirectory, successExitCodes: new Set([0, 1]) },
+		);
+		return result.stdout
+			.split("\0")
+			.filter(Boolean)
+			.some((entry) => {
+				const [key = "", value = ""] = entry.split("\n");
+				return key.endsWith(".merge")
+					? value.startsWith("refs/pull/")
+					: value !== DEFAULT_REMOTE_NAME;
+			});
+	}
+
+	/**
+	 * Local and cached facts every pull request lookup needs, resolving the
+	 * snapshot outright when no lookup could find anything: no branch or a
+	 * non-GitHub origin (`unsupported`), an unusable GitHub CLI (its status),
+	 * or an unborn branch. `batch` also derives what the batched query needs,
+	 * leaving it unset for checkouts only the per-directory ladder can serve.
+	 */
+	async #planPullRequestLookup(
+		workingDirectory: string,
+		options: { batch?: boolean } = {},
+	): Promise<PullRequestLookupPlan | ResolvedPullRequestLookup> {
+		const status = await this.status(workingDirectory);
+		const branch = status?.currentBranch ?? null;
+		const resolved = (githubStatus: GithubSnapshotStatus) => ({
+			kind: "resolved" as const,
+			workingDirectory,
+			snapshot: {
 				identity: null,
 				branch,
 				repository: null,
 				parentRepository: null,
 				pullRequest: null,
 				githubStatus,
-			});
-			if (!status || !branch) return empty("unsupported");
-			const origin = await this.#readOriginUrl(workingDirectory);
-			if (!origin || !githubRepositoryUrl(origin)) return empty("unsupported");
-			const capability = await this.githubCliStatus();
-			if (capability.status !== "ready") return empty(capability.status);
-			const head = await this.#client.exec(
-				["rev-parse", "--verify", "--quiet", "HEAD"],
-				"head identity",
-				{ cwd: workingDirectory, successExitCodes: new Set([0, 1]) },
-			);
-			const sha = head.exitCode === 0 ? head.stdout.trim() : "";
-			// An unborn branch has nothing a pull request could contain.
-			if (!sha) return empty("ready");
-			const identity = `${status.currentUpstreamBranch ?? branch}|${sha}`;
-			const repositoryIdentity = await this.#githubRepositoryIdentity(workingDirectory);
-			const candidates = await this.#findPullRequests(
-				workingDirectory,
+			},
+		});
+		if (!status || !branch) return resolved("unsupported");
+		const origin = await this.#readOriginUrl(workingDirectory);
+		const repositoryUrl = origin ? githubRepositoryUrl(origin) : null;
+		if (!repositoryUrl) return resolved("unsupported");
+		const capability = await this.githubCliStatus();
+		if (capability.status !== "ready") return resolved(capability.status);
+		const head = await this.#client.exec(
+			["rev-parse", "--verify", "--quiet", "HEAD"],
+			"head identity",
+			{ cwd: workingDirectory, successExitCodes: new Set([0, 1]) },
+		);
+		const sha = head.exitCode === 0 ? head.stdout.trim() : "";
+		// An unborn branch has nothing a pull request could contain.
+		if (!sha) return resolved("ready");
+		const upstream = status.currentUpstreamBranch;
+		const repositoryIdentity = await this.#githubRepositoryIdentity(workingDirectory);
+		const originUpstream = upstream?.startsWith(`${DEFAULT_REMOTE_NAME}/`)
+			? upstream.slice(DEFAULT_REMOTE_NAME.length + 1)
+			: undefined;
+		const batchable =
+			options.batch &&
+			repositoryIdentity.repository !== null &&
+			COMMIT_SHA_PATTERN.test(sha) &&
+			(upstream === undefined || originUpstream !== undefined);
+		return {
+			kind: "lookup",
+			workingDirectory,
+			branch,
+			upstream,
+			sha,
+			owner: repositoryIdentity.repository?.split("/")[0] ?? null,
+			snapshot: {
+				identity: `${upstream ?? branch}|${sha}`,
 				branch,
-				status.currentUpstreamBranch,
-				sha,
-				repositoryIdentity.repository?.split("/")[0] ?? null,
-			);
-			const snapshot = { identity, branch, ...repositoryIdentity, githubStatus: "ready" as const };
-			const open = candidates.find((candidate) => candidate.pullRequest.state === "open");
-			if (open) return { ...snapshot, pullRequest: open.pullRequest };
-			if (candidates.length === 0) return { ...snapshot, pullRequest: null };
-			if (branch === (await this.defaultBranch(workingDirectory))) {
-				return { ...snapshot, pullRequest: null };
-			}
-			for (const candidate of candidates) {
-				if (await this.#isInCheckoutHistory(workingDirectory, candidate)) {
-					return { ...snapshot, pullRequest: candidate.pullRequest };
-				}
-			}
-			return { ...snapshot, pullRequest: null };
-		} catch (error) {
-			if (error instanceof FeatureError) throw error;
-			throw ghErrorToFeatureError(error);
+				...repositoryIdentity,
+				githubStatus: "ready",
+			},
+			batch: batchable
+				? {
+						host: new URL(repositoryUrl).hostname,
+						upstreamBranch: originUpstream && originUpstream !== branch ? originUpstream : null,
+					}
+				: null,
+		};
+	}
+
+	/**
+	 * An open match wins; otherwise the newest closed or merged match in this
+	 * checkout's history, never on the default branch.
+	 */
+	async #snapshotFromCandidates(
+		plan: PullRequestLookupPlan,
+		candidates: readonly PullRequestCandidate[],
+	): Promise<GitPullRequestSnapshot> {
+		const open = candidates.find((candidate) => candidate.pullRequest.state === "open");
+		if (open) return { ...plan.snapshot, pullRequest: open.pullRequest };
+		if (candidates.length === 0) return { ...plan.snapshot, pullRequest: null };
+		if (plan.branch === (await this.defaultBranch(plan.workingDirectory))) {
+			return { ...plan.snapshot, pullRequest: null };
 		}
+		for (const candidate of candidates) {
+			if (await this.#isInCheckoutHistory(plan.workingDirectory, candidate)) {
+				return { ...plan.snapshot, pullRequest: candidate.pullRequest };
+			}
+		}
+		return { ...plan.snapshot, pullRequest: null };
 	}
 
 	/**
@@ -773,12 +997,9 @@ export class GitService {
 			PULL_REQUEST_LOOKUP_FIELDS,
 		]);
 		if (bySha.exitCode === 0) {
-			const isOwnHead = (headRefName: unknown) =>
-				typeof headRefName === "string" &&
-				(headRefName === branch || upstream?.endsWith(`/${headRefName}`) === true);
 			const match = parseJsonArray(bySha.stdout).find((item) => {
 				const head = item as { headRefOid?: unknown; headRefName?: unknown };
-				return head.headRefOid === sha && isOwnHead(head.headRefName);
+				return head.headRefOid === sha && isOwnHead(head.headRefName, branch, upstream);
 			});
 			if (match) return [parsePullRequestCandidate(match)];
 		}

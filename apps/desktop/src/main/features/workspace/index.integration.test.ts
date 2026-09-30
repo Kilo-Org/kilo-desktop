@@ -199,16 +199,21 @@ describe("workspace mainRegister", () => {
 
 		const registered = mainRegister(harness.workspaceSdk, {
 			subscribeFn: harness.parcel.subscribe,
+			realpath: (p) => p,
 		});
 		folders = [{ path: PROJECT_A }, { path: PROJECT_B }];
 		harness.kiloSdk.events.emit("workspace-updated", { before: null, after: null });
 		releaseBootList();
 		await registered;
-		await tick();
 
 		const watcher = harness.workspaceSdk.plugins.get<{
 			watcher: WorkspaceWatcherCapability;
 		}>("workspace")!.watcher;
+		await vi.waitFor(() => {
+			expect(watcher.status().directories.map(({ path }) => path)).toEqual([PROJECT_A, PROJECT_B]);
+		});
+		// Both reconciles have drained; a late stale run must not drop PROJECT_B.
+		await tick();
 		expect(watcher.status().directories.map(({ path }) => path)).toEqual([PROJECT_A, PROJECT_B]);
 	});
 
@@ -222,15 +227,19 @@ describe("workspace mainRegister", () => {
 			return [{ folders: [{ path: PROJECT_B }] }];
 		});
 
-		await mainRegister(harness.workspaceSdk, { subscribeFn: harness.parcel.subscribe });
+		await mainRegister(harness.workspaceSdk, {
+			subscribeFn: harness.parcel.subscribe,
+			realpath: (p) => p,
+		});
 		// Boot reconcile failed; nothing subscribed yet.
 		expect(harness.parcel.subscribeAttempts).toHaveLength(0);
 
 		harness.kiloSdk.events.emit("workspace-updated", { before: null, after: null });
-		await tick();
 
 		// The event-triggered reconcile ran and watched PROJECT_B.
-		expect(harness.parcel.subscribeAttempts).toEqual([PROJECT_B]);
+		await vi.waitFor(() => {
+			expect(harness!.parcel.subscribeAttempts).toEqual([PROJECT_B]);
+		});
 	});
 
 	it("re-attempts a failed directory when a workspace event re-lists it", async () => {

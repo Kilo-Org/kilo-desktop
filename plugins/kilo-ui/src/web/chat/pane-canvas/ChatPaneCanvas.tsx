@@ -461,7 +461,9 @@ const PaneCanvasColumn: FC<{
 							data-pane-id={pane.id}
 							data-pinned={group.pinned ? "true" : undefined}
 							hidden={Boolean(expandedGroupId) && group.id !== expandedGroupId}
-							style={{ flex: `${group.heightWeight} 1 0%` }}
+							/* Stack weights are normalized shares (<1), so a lone expanded group
+							   would only claim that fraction of the column height. */
+							style={{ flex: expandedGroupId ? "1 1 0%" : `${group.heightWeight} 1 0%` }}
 						>
 							<PaneTabStrip
 								canDrop={canDrop}

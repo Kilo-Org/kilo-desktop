@@ -462,6 +462,54 @@ describe("ChatPaneCanvas", () => {
 			await expect.element(screen.getByTestId("chat-pane-files")).toBeVisible();
 		},
 	);
+	it.each(["files", "output"] as const)(
+		"expands the %s pane of a stacked column to the full canvas height",
+		async (paneId) => {
+			function Harness() {
+				const [layout, setLayout] = useState(() => {
+					const initial = createLayout(
+						[
+							{ id: "agent", kind: "agent", title: "Chat" },
+							{ id: "files", kind: "document", title: "Files" },
+							{ id: "output", kind: "tool", title: "Output" },
+						],
+						"agent",
+					);
+					return movePane(initial, "output", "group:files", "below");
+				});
+				return (
+					<div style={{ display: "flex", width: 900, height: 400 }}>
+						<ChatPaneCanvas
+							arrangement="tiles"
+							definitions={[]}
+							layout={layout}
+							onLaunchChat={vi.fn()}
+							onLaunch={vi.fn()}
+							onLayoutChange={setLayout}
+							onSelectPane={(id) => setLayout((current) => setActivePane(current, id))}
+							renderPane={(id) => <div>{id}</div>}
+						/>
+					</div>
+				);
+			}
+			const { baseElement } = render(<Harness />);
+			const screen = page.elementLocator(baseElement);
+			const canvas = screen.getByTestId("kilo-chat-pane-canvas");
+			const group = screen.getByTestId(`chat-pane-group-group:${paneId}`);
+			const collapsedHeight = group.element().getBoundingClientRect().height;
+			expect(collapsedHeight).toBeLessThan(250);
+
+			await screen.getByTestId(`chat-pane-tab-${paneId}`).hover();
+			await screen.getByTestId(`chat-pane-expand-${paneId}`).click();
+			await expect.element(canvas).toHaveAttribute("data-expanded", "true");
+
+			const canvasBox = canvas.element().getBoundingClientRect();
+			const groupBox = group.element().getBoundingClientRect();
+			expect(groupBox.width).toBeGreaterThan(canvasBox.width - 2);
+			expect(groupBox.height).toBeGreaterThan(canvasBox.height - 2);
+		},
+	);
+
 	it("spans the vertical column splitter across a stacked column", () => {
 		const initial = createLayout(
 			[

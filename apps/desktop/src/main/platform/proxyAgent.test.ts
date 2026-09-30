@@ -44,9 +44,18 @@ describe("installProxyAgent", () => {
 
 	it("delegates proxy resolution to the default session", async () => {
 		installProxyAgent();
+		// Abort once the proxy is resolved so the test never performs a real DNS
+		// lookup/connect, which can hang past the timeout on slow or VPN networks.
+		const request = new AbortController();
+		resolveProxy.mockImplementationOnce(async () => {
+			request.abort();
+			return "DIRECT";
+		});
 
 		// The patched fetch runs the resolver, which calls session.resolveProxy.
-		await globalThis.fetch("http://example.test/").catch(() => undefined);
+		await globalThis
+			.fetch("http://example.test/", { signal: request.signal })
+			.catch(() => undefined);
 
 		expect(resolveProxy).toHaveBeenCalledWith("http://example.test/");
 	});

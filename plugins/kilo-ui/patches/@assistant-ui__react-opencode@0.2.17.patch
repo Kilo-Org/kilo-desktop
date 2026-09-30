@@ -96,7 +96,7 @@ index 9f1e69a..7d8d2c6 100644
 +{"version":3,"file":"OpenCodeEventSource.js","names":[],"sources":["../src/OpenCodeEventSource.ts"],"sourcesContent":["import type { OpencodeClient } from \"@opencode-ai/sdk/v2/client\";\nimport type { OpenCodeServerEvent } from \"./types\";\n\ntype Listener = (event: OpenCodeServerEvent) => void;\n\nexport type OpenCodeEventSubscriber = (options: {\n  signal: AbortSignal;\n  sseMaxRetryAttempts: number;\n}) => Promise<{ stream: AsyncIterable<unknown> }>;\n\nconst asRecord = (value: unknown): Record<string, unknown> | null => {\n  return typeof value === \"object\" && value !== null\n    ? (value as Record<string, unknown>)\n    : null;\n};\n\nconst extractSessionId = (\n  type: string,\n  properties: Record<string, unknown>,\n): string | undefined => {\n  if (typeof properties.sessionID === \"string\") {\n    return properties.sessionID;\n  }\n\n  const info = asRecord(properties.info);\n  if (info) {\n    if (typeof info.sessionID === \"string\") {\n      return info.sessionID;\n    }\n\n    if (\n      (type === \"session.created\" ||\n        type === \"session.updated\" ||\n        type === \"session.deleted\") &&\n      typeof info.id === \"string\"\n    ) {\n      return info.id;\n    }\n  }\n\n  const part = asRecord(properties.part);\n  if (part && typeof part.sessionID === \"string\") {\n    return part.sessionID;\n  }\n\n  return undefined;\n};\n\nconst normalizeEventPayload = (event: unknown): OpenCodeServerEvent | null => {\n  const outer = asRecord(event);\n  if (!outer) return null;\n\n  const payload = asRecord(outer.payload);\n  const candidate = payload ?? outer;\n\n  if (\n    typeof candidate.type !== \"string\" ||\n    !(\"properties\" in candidate) ||\n    !asRecord(candidate.properties)\n  ) {\n    return null;\n  }\n\n  const normalized = {\n    type: candidate.type,\n    properties: candidate.properties as Record<string, unknown>,\n    directory: typeof outer.directory === \"string\" ? outer.directory : undefined,\n    sessionId: extractSessionId(\n      candidate.type,\n      candidate.properties as Record<string, unknown>,\n    ),\n    raw: event,\n  } satisfies OpenCodeServerEvent;\n\n  return normalized;\n};\n\nexport const STREAM_RECONNECTED_EVENT_TYPE = \"stream.reconnected\";\n\nexport class OpenCodeEventSource {\n  private readonly listeners = new Set<Listener>();\n  private readonly reconnectDelayMs = 1_000;\n  private readonly maxReconnectDelayMs = 30_000;\n  private abortController: AbortController | null = null;\n  private connectionPromise: Promise<void> | null = null;\n  private stopped = false;\n  private nextReconnectDelayMs = this.reconnectDelayMs;\n  private hadConnection = false;\n\n  private readonly client: OpencodeClient;\n  private readonly subscribeToEvents: OpenCodeEventSubscriber;\n  private readonly onEvent: ((event: OpenCodeServerEvent) => void) | undefined;\n\n  constructor(\n    client: OpencodeClient,\n    subscribeToEvents?: OpenCodeEventSubscriber,\n    onEvent?: (event: OpenCodeServerEvent) => void,\n  ) {\n    this.client = client;\n    this.subscribeToEvents =\n      subscribeToEvents ??\n      ((options) => this.client.event.subscribe(undefined, options));\n    this.onEvent = onEvent;\n  }\n\n  public subscribe(listener: Listener) {\n    this.listeners.add(listener);\n    this.connect();\n\n    return () => {\n      this.listeners.delete(listener);\n      if (this.listeners.size === 0) {\n        this.disconnect();\n      }\n    };\n  }\n\n  public dispose() {\n    this.stopped = true;\n    this.disconnect();\n  }\n\n  private emit(event: OpenCodeServerEvent) {\n    for (const listener of this.listeners) {\n      try {\n        listener(event);\n      } catch (error) {\n        console.error(\"[react-opencode] Listener threw an error\", error);\n      }\n    }\n  }\n\n  private connect() {\n    if (this.connectionPromise || this.stopped) return;\n    const connection = this.run().finally(() => {\n      if (this.connectionPromise === connection) {\n        this.connectionPromise = null;\n        if (!this.stopped && this.listeners.size > 0) {\n          this.connect();\n        }\n      }\n    });\n    this.connectionPromise = connection;\n  }\n\n  private disconnect() {\n    this.abortController?.abort();\n    this.abortController = null;\n  }\n\n  private async run() {\n    while (!this.stopped) {\n      if (this.listeners.size === 0) return;\n\n      const abortController = new AbortController();\n      this.abortController = abortController;\n      let failedToConnect = true;\n      let reconnectDelayMs = this.reconnectDelayMs;\n\n      try {\n        const subscription = await this.subscribeToEvents({\n          signal: abortController.signal,\n          sseMaxRetryAttempts: 1,\n        });\n        failedToConnect = false;\n        this.nextReconnectDelayMs = this.reconnectDelayMs;\n\n        if (this.hadConnection) {\n          this.emit({\n            type: STREAM_RECONNECTED_EVENT_TYPE,\n            sessionId: undefined,\n            raw: undefined,\n            properties: {},\n          });\n        }\n        this.hadConnection = true;\n\n        for await (const event of subscription.stream) {\n          if (abortController.signal.aborted || this.stopped) {\n            return;\n          }\n\n          const normalized = normalizeEventPayload(event);\n          if (!normalized) continue;\n          this.onEvent?.(normalized);\n          this.emit(normalized);\n        }\n        if (abortController.signal.aborted || this.stopped) {\n          return;\n        }\n      } catch (error) {\n        if (abortController.signal.aborted || this.stopped) return;\n        console.warn(\n          \"[react-opencode] OpenCode event stream disconnected\",\n          error,\n        );\n        if (failedToConnect) {\n          reconnectDelayMs = this.nextReconnectDelayMs;\n          this.nextReconnectDelayMs = Math.min(\n            this.nextReconnectDelayMs * 2,\n            this.maxReconnectDelayMs,\n          );\n        }\n      } finally {\n        if (this.abortController === abortController) {\n          this.abortController = null;\n        }\n      }\n\n      if (this.listeners.size === 0) return;\n\n      await new Promise((resolve) => setTimeout(resolve, reconnectDelayMs));\n    }\n  }\n}\n"],"mappings":"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"}
 \ No newline at end of file
 diff --git a/dist/OpenCodeThreadController.js b/dist/OpenCodeThreadController.js
-index 81f121b..f0011f1 100644
+index 81f121b..5b29761 100644
 --- a/dist/OpenCodeThreadController.js
 +++ b/dist/OpenCodeThreadController.js
 @@ -103,6 +103,13 @@ const isSupportedDelta = (state, messageId, partId, field) => {
@@ -163,7 +163,15 @@ index 81f121b..f0011f1 100644
  		this.client.permission.list(void 0, OPEN_CODE_REQUEST_OPTIONS).catch(() => null).then((response) => {
  			if (!response || token !== this.reconnectSyncToken) return;
  			for (const item of response.data ?? []) {
-@@ -424,10 +438,13 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -358,6 +372,7 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+ 		};
+ 	}
+ 	async promptMessage(message, pending, options) {
++		this.ensureEventSubscription();
+ 		this.dispatch({ type: "run.started" });
+ 		try {
+ 			await this.client.session.promptAsync({
+@@ -424,10 +439,13 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  	async revert(messageId) {
  		this.dispatch({ type: "run.reverting" });
  		try {
@@ -178,7 +186,7 @@ index 81f121b..f0011f1 100644
  		} catch (error) {
  			this.dispatch({
  				type: "run.failed",
-@@ -437,7 +454,16 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -437,7 +455,16 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  		}
  	}
  	async unrevert() {
@@ -196,7 +204,7 @@ index 81f121b..f0011f1 100644
  	}
  	async fork(messageId) {
  		const response = await this.client.session.fork({
-@@ -450,7 +476,8 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -450,7 +477,8 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  	async replyToPermission(permissionId, response) {
  		await this.client.permission.reply({
  			requestID: permissionId,
@@ -206,7 +214,7 @@ index 81f121b..f0011f1 100644
  		}, OPEN_CODE_REQUEST_OPTIONS);
  		this.dispatch({
  			type: "permission.replied",
-@@ -621,6 +648,7 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -621,6 +649,7 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  		});
  	}
  	dispatch(event) {
@@ -1434,7 +1442,7 @@ index 4acaaa7..8576332 100644
          }
          if (abortController.signal.aborted || this.stopped) {
 diff --git a/src/OpenCodeThreadController.ts b/src/OpenCodeThreadController.ts
-index 5ebfe4f..bdc4583 100644
+index 5ebfe4f..d52a6a3 100644
 --- a/src/OpenCodeThreadController.ts
 +++ b/src/OpenCodeThreadController.ts
 @@ -216,6 +216,14 @@ const isSupportedDelta = (
@@ -1516,7 +1524,19 @@ index 5ebfe4f..bdc4583 100644
  
      void this.client.permission
        .list(undefined, OPEN_CODE_REQUEST_OPTIONS)
-@@ -675,13 +696,23 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -578,6 +599,11 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+     pending: PendingUserMessage,
+     options?: OpenCodeUserMessageOptions,
+   ) {
++    // Subscribe before starting the run: a first-subscription status sync
++    // issued after run.started could land before the server marks the
++    // session busy and flip the fresh run back to idle. Issued first, its
++    // epoch is superseded by run.started and the reply is discarded.
++    this.ensureEventSubscription();
+     this.dispatch({ type: "run.started" });
+ 
+     try {
+@@ -675,13 +701,23 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
    public async revert(messageId: string) {
      this.dispatch({ type: "run.reverting" });
      try {
@@ -1541,7 +1561,7 @@ index 5ebfe4f..bdc4583 100644
      } catch (error) {
        this.dispatch({ type: "run.failed", error });
        throw error;
-@@ -689,12 +720,23 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -689,12 +725,23 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
    }
  
    public async unrevert() {
@@ -1571,7 +1591,7 @@ index 5ebfe4f..bdc4583 100644
    }
  
    public async fork(messageId: string) {
-@@ -719,6 +761,13 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -719,6 +766,13 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
        {
          requestID: permissionId,
          reply: response,
@@ -1585,7 +1605,7 @@ index 5ebfe4f..bdc4583 100644
        },
        OPEN_CODE_REQUEST_OPTIONS,
      );
-@@ -963,6 +1012,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -963,6 +1017,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
    }
  
    private dispatch(event: Parameters<typeof reduceOpenCodeThreadState>[1]) {

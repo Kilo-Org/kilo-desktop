@@ -1056,30 +1056,40 @@ const AssistantWorkingIndicator: FC<{ active: boolean; overlay: boolean }> = ({
 			? SNAPSHOT_PROGRESS_STATUS
 			: CONSIDERING_NEXT_STEPS;
 	});
-	const [visibleLabel, setVisibleLabel] = useState<string | null>(null);
+	const [isRevealed, setIsRevealed] = useState(false);
 	const [elapsedDeciseconds, setElapsedDeciseconds] = useState(() =>
 		elapsedDecisecondsSince(turnStartedAt),
 	);
 
+	// The reveal delay only debounces inactive→active gaps. Once shown, a label
+	// swap (snapshot → considering) changes text in place instead of hiding and
+	// re-delaying, which read as a flash.
 	useEffect(() => {
-		setVisibleLabel(null);
-		if (!active) return;
+		if (!active) {
+			setIsRevealed(false);
+			return;
+		}
+		if (isRevealed) return;
 
 		const delay =
 			label === CONSIDERING_NEXT_STEPS
 				? CONSIDERING_INDICATOR_DELAY_MS
 				: SNAPSHOT_INDICATOR_DELAY_MS;
-		const timeoutId = window.setTimeout(() => setVisibleLabel(label), delay);
+		const timeoutId = window.setTimeout(() => setIsRevealed(true), delay);
+		return () => window.clearTimeout(timeoutId);
+	}, [active, isRevealed, label]);
+
+	// Kept apart from the reveal effect: turnStartedAt shifts when the server's
+	// user message replaces the pending local one, which must not re-hide the row.
+	useEffect(() => {
+		if (!active) return;
 		const updateElapsedTime = () => setElapsedDeciseconds(elapsedDecisecondsSince(turnStartedAt));
 		updateElapsedTime();
 		const intervalId = window.setInterval(updateElapsedTime, 100);
-		return () => {
-			window.clearTimeout(timeoutId);
-			window.clearInterval(intervalId);
-		};
-	}, [active, label, turnStartedAt]);
+		return () => window.clearInterval(intervalId);
+	}, [active, turnStartedAt]);
 
-	const isVisible = active && visibleLabel === label;
+	const isVisible = active && isRevealed;
 
 	return (
 		<div

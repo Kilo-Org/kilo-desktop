@@ -235,8 +235,13 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		connection.isError,
 		connection.isFetching,
 	]);
+	// Worktree setup stays visible until the session exists (or startup fails):
+	// clearing it right after preparation left a blank gap while the session
+	// was created in the fresh directory, before the turn's working indicator.
+	const [isSettingUpWorktree, setIsSettingUpWorktree] = useState(false);
 	const onRuntimeError = useCallback(
 		(error: unknown) => {
+			setIsSettingUpWorktree(false);
 			if (isStaleKiloConnectionError(error)) void refreshConnection();
 		},
 		[refreshConnection],
@@ -264,7 +269,6 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 
 	const activeWorkspaceIdRef = useRef(activeWorkspaceId);
 	activeWorkspaceIdRef.current = activeWorkspaceId;
-	const [isSettingUpWorktree, setIsSettingUpWorktree] = useState(false);
 	const prepareSession = useMemo(
 		() => async () => {
 			const workspaceId = activeWorkspaceIdRef.current ?? undefined;
@@ -278,8 +282,9 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 					...(workspaceId ? { workspaceId } : {}),
 					...(worktree === undefined ? {} : worktree),
 				});
-			} finally {
-				if (worktree !== undefined) setIsSettingUpWorktree(false);
+			} catch (error) {
+				setIsSettingUpWorktree(false);
+				throw error;
 			}
 		},
 		[sdk],
@@ -474,6 +479,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	);
 	const onSessionInitialized = useCallback(
 		(threadId: string) => {
+			setIsSettingUpWorktree(false);
 			promoteDraftAgent(threadId);
 			promoteDraftModel(threadId);
 		},

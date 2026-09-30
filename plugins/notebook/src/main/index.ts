@@ -32,6 +32,21 @@ import { findRuntimedArtifact, NTERACT_RELEASE } from "../packaging/artifacts.js
 import { WorkspaceEnvironment } from "./environment/workspace-environment.js";
 import { NewNotebookTrust, type TrustSession } from "./runtime/NewNotebookTrust.js";
 import { NotebookSettingsStore, NotebookStateStore } from "./settings/NotebookSettingsStore.js";
+import {
+	NotebookTelemetryPermission,
+	type OpenTelemetryRegistration,
+} from "./runtime/NotebookTelemetryPermission.js";
+
+type PreferencesCapability = {
+	preferences: {
+		readonly allowDataCollection: boolean;
+		onDidChangeAllowDataCollection(listener: (allowed: boolean) => Promise<void>): () => void;
+	};
+};
+
+type FeatureFlagCapability = {
+	featureFlag: { getFlag(key: string, defaultValue: boolean): unknown };
+};
 
 const connectionArgsSchema = z.object({
 	notebookId: z.string().uuid(),
@@ -69,6 +84,8 @@ export interface NotebookFeatureOptions {
 	) => ElectronNotebookHostServiceLike;
 	/** Test seam for the extra peer "Trust new notebooks" opens per notebook. */
 	readonly openTrustSession?: (notebookId: string, socketPath: string) => Promise<TrustSession>;
+	/** Test seam for the optional native telemetry registration API. */
+	readonly openTelemetryRegistration?: OpenTelemetryRegistration;
 	/** Test seam for project-file discovery's home-directory boundary. */
 	readonly homeDirectory?: string;
 }
@@ -78,6 +95,22 @@ async function openNativeTrustSession(notebookId: string, socketPath: string) {
 	const { openNotebook } = await import("@runtimed/node");
 	return openNotebook(notebookId, { socketPath, peerLabel: "kilo-desktop:trust" });
 }
+
+const openNativeTelemetryRegistration: OpenTelemetryRegistration = async (options) => {
+	// The CJS root spreads native exports, which only appear on import's default.
+	// 0.5.6's declarations omit both that default and the optional telemetry API.
+	const { default: runtime } = (await import("@runtimed/node")) as unknown as {
+		default: {
+			openTelemetryRegistration?: OpenTelemetryRegistration;
+		};
+	};
+	if (
+		!("openTelemetryRegistration" in runtime) ||
+		typeof runtime.openTelemetryRegistration !== "function"
+	)
+		return null;
+	return runtime.openTelemetryRegistration(options);
+};
 
 export function translateAsarToUnpackedPath(inputPath: string): string {
 	const asarSegment = `${path.sep}app.asar${path.sep}`;
@@ -149,13 +182,43 @@ export async function mainRegister(
 		onNotebookConnected: ({ notebookId, untitled }) => {
 			if (untitled) notebookState.markCreatedHere(notebookId);
 			if (notebookState.isCreatedHere(notebookId)) newNotebookTrust.track(notebookId);
+			void telemetry.setNotebookActive(notebookId, true).catch(reportTelemetryError);
 		},
-		onNotebookDisconnected: (notebookId) => newNotebookTrust.untrack(notebookId),
+		onNotebookDisconnected: (notebookId) => {
+			newNotebookTrust.untrack(notebookId);
+			void telemetry.setNotebookActive(notebookId, false).catch(reportTelemetryError);
+		},
+	});
+	const reportTelemetryError = (_error: unknown) => {
+		mainSdk.logger.warn("Notebook telemetry permission reconciliation failed.");
+	};
+	const telemetry = new NotebookTelemetryPermission({
+		socketPath: hostService.socketPath,
+		openRegistration: options.openTelemetryRegistration ?? openNativeTelemetryRegistration,
+		readFeatureFlag: () =>
+			mainSdk.plugins
+				.get<FeatureFlagCapability>("feature-flag")
+				?.featureFlag.getFlag("notebook-host-telemetry", false),
+	});
+	const preferences = mainSdk.plugins.get<PreferencesCapability>("preferences")?.preferences;
+	const unsubscribeConsent = preferences?.onDidChangeAllowDataCollection((allowed) =>
+		telemetry.setAllowed(allowed),
+	);
+	const unsubscribeFlag = mainSdk.events.on("feature-flag.changed", () => {
+		void telemetry.refreshFeatureFlag().catch(reportTelemetryError);
 	});
 	mainSdk.onDispose(async () => {
-		await newNotebookTrust.dispose();
-		await hostService.dispose();
+		unsubscribeConsent?.();
+		unsubscribeFlag();
+		try {
+			await telemetry.dispose();
+		} finally {
+			await newNotebookTrust.dispose();
+			await hostService.dispose();
+		}
 	});
+	await telemetry.setAllowed(preferences?.allowDataCollection === true);
+	await telemetry.refreshFeatureFlag().catch(reportTelemetryError);
 	void hostService.start().catch((error: unknown) => {
 		mainSdk.logger.warn(
 			`Notebook runtime startup failed: ${error instanceof Error ? error.message : String(error)}`,

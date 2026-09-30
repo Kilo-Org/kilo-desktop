@@ -71,6 +71,15 @@ runs:
         tenant-id: ${{ inputs.tenant_id }}
         subscription-id: ${{ inputs.subscription_id }}
 
+    # The Azure CLI exchanges the GitHub OIDC assertion lazily per resource, and
+    # that assertion expires ~5 minutes after login. Slow installs (e.g. native
+    # rebuilds on windows-arm64) push the first AzureSignTool call past that, so
+    # fetch the Key Vault token now; the CLI caches it for the rest of the job.
+    - name: Prefetch Key Vault access token
+      if: steps.validate.outputs.enabled == 'true'
+      shell: bash
+      run: az account get-access-token --resource https://vault.azure.net --output none
+
     - name: Install AzureSignTool
       if: steps.validate.outputs.enabled == 'true'
       shell: bash

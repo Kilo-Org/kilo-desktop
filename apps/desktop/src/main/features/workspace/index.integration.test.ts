@@ -238,6 +238,7 @@ describe("workspace mainRegister", () => {
 		harness.parcel.failNextSubscribes(PROJECT_A, 1, new Error("boot race"));
 		await mainRegister(harness.workspaceSdk, {
 			subscribeFn: harness.parcel.subscribe,
+			realpath: (p) => p,
 			retryDelayMs: 100,
 		});
 		await tick(10);
@@ -248,8 +249,9 @@ describe("workspace mainRegister", () => {
 		expect(watcher.status().directories[0]?.state).toBe("retrying");
 
 		// The retry loop resubscribes on its own timer.
-		await tick(200);
-		expect(watcher.status().directories[0]?.state).toBe("active");
+		await vi.waitFor(() => {
+			expect(watcher.status().directories[0]?.state).toBe("active");
+		});
 		expect(harness.parcel.subscribeAttempts).toEqual([PROJECT_A, PROJECT_A]);
 	});
 });

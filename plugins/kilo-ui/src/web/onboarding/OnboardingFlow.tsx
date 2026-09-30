@@ -191,7 +191,7 @@ export function OnboardingFlow({
 												{...STEP_MOTION}
 											>
 												{step === "features" ? (
-													<div className="flex flex-col gap-6 p-6 lg:px-8">
+													<div className="flex flex-col justify-center gap-6 p-6 lg:min-h-[36rem] lg:px-8">
 														<StepHeading copy={heading ?? COPY[step]} centered />
 														<div data-qa-id="onboarding-step-body">{children}</div>
 													</div>

@@ -24,6 +24,7 @@ import { stageWebRenderer } from "./config/stage-web-renderer.js";
 import { resolvePackagedWebMcpRelayDirectory } from "./config/packaged-webmcp-relay.js";
 import { getWindowsPackagingTempDirectory } from "./config/windows-packaging-temp.js";
 import { signWindowsFile } from "./config/windows-sign.js";
+import { bundleVcRuntime, createVisualStudioRedistLocator } from "./config/windows-vc-runtime.js";
 import { pruneProductionDependencies } from "./config/prune-production-dependencies.js";
 import { createNotebookPackagingPlan } from "@kilo-desktop/plugin-notebook/packaging";
 import { createBridgePackagingPlan } from "@kilo-desktop/plugin-environments/packaging";
@@ -493,6 +494,15 @@ const config: ForgeConfig = {
 		}),
 	],
 	hooks: {
+		// Runs for `package` and `make`, so every Windows build (including the
+		// e2e package) fails if a shipped binary needs a runtime DLL it lacks.
+		postPackage: async (_forgeConfig, { platform, outputPaths }) => {
+			if (platform !== "win32") return;
+			const locateDll = createVisualStudioRedistLocator();
+			for (const outputPath of outputPaths) {
+				await bundleVcRuntime(outputPath, locateDll);
+			}
+		},
 		postMake: async (_forgeConfig, makeResults) => {
 			if (!windowsPlan.postMakeSign) return makeResults;
 			for (const result of makeResults) {

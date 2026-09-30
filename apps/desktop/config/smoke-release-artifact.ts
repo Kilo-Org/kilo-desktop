@@ -8,6 +8,7 @@ import { execa } from "execa";
 
 import { getAppIdentity } from "./app-identity.js";
 import { getReleaseTrack } from "./release.js";
+import { assertVcRuntimeBundled } from "./windows-vc-runtime.js";
 
 const desktopRoot = path.resolve(import.meta.dirname, "..");
 const makeDirectory = path.join(desktopRoot, "out", "make");
@@ -189,6 +190,9 @@ export async function smokeReleaseArtifact(platform: NodeJS.Platform): Promise<v
 			});
 			assertWindowsAuthenticodeSignature(JSON.parse(stdout) as WindowsAuthenticodeSignature);
 			await assertNativePeerCredentialAddon(path.join(path.dirname(executable), "resources"));
+			// The runner has the VC++ Redistributable in System32, so booting the
+			// app below cannot detect a binary that depends on it.
+			await assertVcRuntimeBundled(path.dirname(executable));
 		}
 
 		const readyFile = path.join(temporaryDirectory, "ready");

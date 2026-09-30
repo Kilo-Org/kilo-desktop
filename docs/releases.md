@@ -86,6 +86,14 @@ using the same limit. Windows `make`/`publish` therefore:
    `app.asar.unpacked/node_modules/@kilo-desktop/plugin-kilo-server/relay-runtime`,
    so nupkg-relative paths themselves stay under the remaining budget.
 
+Some prebuilt native binaries (`@runtimed/node`, the `runtimed` daemon) link the Visual C++
+runtime (`VCRUNTIME140.dll`) dynamically, and clean Windows installs don't have it. Build machines
+always do, so a boot test on CI cannot catch the gap. The Forge `postPackage` hook
+(`config/windows-vc-runtime.ts`) therefore copies each missing redistributable DLL from Visual
+Studio's `VC\Redist\MSVC` folder beside the binary that imports it. It then fails the build if any
+packaged binary still imports a runtime DLL that isn't bundled next to it. `release:smoke` repeats
+that audit on the extracted full nupkg.
+
 Maker artifacts are written to `apps/desktop/out/make/`.
 
 ## Artifact layout
@@ -161,6 +169,7 @@ The Forge compile-time contract uses:
 | `AWS_REGION`                 | S3 region (defaults to `us-east-1` in CI when unset)                                                                    |
 | `UPDATE_REMOTE_RELEASES`     | Set to `true` on Windows when an existing Squirrel feed is available for delta creation                                 |
 | `WINDOWS_PACKAGING_TEMP`     | Optional short Windows temp directory; defaults to `<drive>\\t` so nuget.exe and Squirrel extract stay under `MAX_PATH` |
+| `KILO_VC_REDIST_DIR`         | Optional `VC\Redist\MSVC\<version>` directory to bundle the VC++ runtime from; defaults to the one found with `vswhere` |
 
 ## GitHub Environments
 

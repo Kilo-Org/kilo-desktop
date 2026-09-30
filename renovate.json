@@ -15,9 +15,16 @@
 			"matchPackageNames": ["lexical", "@lexical/**"]
 		},
 		{
-			"description": "Group Sentry packages so @sentry/react and @sentry/electron are always bumped together. They share a @sentry/core peer and split installs cause duplicate-module type errors.",
-			"matchPackageNames": ["@sentry/react", "@sentry/electron", "@sentry/vite-plugin"],
-			"groupName": "Sentry packages"
+			"description": "@sentry/react must match the @sentry/core version pinned by @sentry/electron (the renderer passes react's init into electron's init). Never bump it on its own; bump it by hand in the @sentry/electron PR.",
+			"matchPackageNames": ["@sentry/react"],
+			"enabled": false
+		},
+		{
+			"description": "Remind the reviewer to align @sentry/react in the same PR.",
+			"matchPackageNames": ["@sentry/electron"],
+			"prBodyNotes": [
+				"Set `@sentry/react` in `pnpm-workspace.yaml` to the `@sentry/core` version listed in https://unpkg.com/@sentry/electron@{{{newVersion}}}/package.json, then run `pnpm install`. CI typecheck fails until they match."
+			]
 		},
 		{
 			"description": "Update all bundled Kilo CLI platform packages together for manual compatibility testing.",

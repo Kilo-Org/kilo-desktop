@@ -101,7 +101,6 @@ export class FilesService {
 			cwd: root,
 			dot: true,
 			followSymbolicLinks: false,
-			gitignore: true,
 			ignore: [".git", ".git/**"],
 			markDirectories: true,
 			onlyFiles: false,

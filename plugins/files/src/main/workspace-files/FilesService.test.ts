@@ -25,11 +25,12 @@ afterEach(async () => {
 });
 
 describe("FilesService", () => {
-	it("lists POSIX paths while respecting nested gitignore files and hidden entries", async () => {
+	it("lists POSIX paths including gitignored entries and hidden entries", async () => {
 		const workspace = await temporaryWorkspace();
 		await mkdir(path.join(workspace, "src", "generated"), { recursive: true });
 		await writeFile(path.join(workspace, ".hidden"), "visible");
-		await writeFile(path.join(workspace, ".gitignore"), "root-ignored.txt\n");
+		await writeFile(path.join(workspace, ".env"), "SECRET=hunter2");
+		await writeFile(path.join(workspace, ".gitignore"), ".env\nroot-ignored.txt\n");
 		await writeFile(path.join(workspace, "root-ignored.txt"), "ignored");
 		await writeFile(path.join(workspace, "src", ".gitignore"), "generated/\n");
 		await writeFile(path.join(workspace, "src", "index.ts"), "export {};");
@@ -40,7 +41,17 @@ describe("FilesService", () => {
 			gitStatus: async () => null,
 		});
 		await expect(service.list(workspace)).resolves.toEqual({
-			paths: [".gitignore", ".hidden", "src/", "src/.gitignore", "src/index.ts"],
+			paths: [
+				".env",
+				".gitignore",
+				".hidden",
+				"root-ignored.txt",
+				"src/",
+				"src/.gitignore",
+				"src/generated/",
+				"src/generated/code.ts",
+				"src/index.ts",
+			],
 			truncated: false,
 		});
 	});

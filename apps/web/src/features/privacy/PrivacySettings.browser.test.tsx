@@ -66,6 +66,17 @@ describe("Privacy settings", () => {
 		await expect.element(toggle).not.toBeChecked();
 	});
 
+	it("never truncates the data collection description", async () => {
+		const { screen } = renderSettings({
+			get: () => ({ allowDataCollection: true }),
+			set: (input) => input,
+		});
+
+		const description = screen.getByText(/Includes the embedded Kilo service/);
+		await expect.element(description).toBeVisible();
+		expect(getComputedStyle(description.query()!).webkitLineClamp).toBe("none");
+	});
+
 	it("reflects a change made in another window", async () => {
 		let allowDataCollection = true;
 		const { sdk, toggle } = renderSettings({

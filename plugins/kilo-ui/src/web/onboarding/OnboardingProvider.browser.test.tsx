@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { MotionGlobalConfig } from "motion/react";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
 import { SdkProvider } from "@kilo-desktop/sdk-react";
@@ -81,6 +82,17 @@ const connection: KiloGlobalConnection = {
 	version: "7.4.20",
 	globalDirectory: "/tmp/kilo-runtime",
 };
+
+// Every step change runs a mode="wait" exit + enter animation that Playwright
+// must wait out before acting. On the contended CI coverage runner that pushed
+// multi-step walks past the 15s browser test timeout, so settle them instantly.
+beforeAll(() => {
+	MotionGlobalConfig.skipAnimations = true;
+});
+
+afterAll(() => {
+	MotionGlobalConfig.skipAnimations = false;
+});
 
 afterEach(() => {
 	cleanup();

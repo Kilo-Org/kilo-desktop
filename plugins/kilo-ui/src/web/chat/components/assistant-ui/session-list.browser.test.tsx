@@ -738,8 +738,10 @@ describe("SessionList", () => {
 
 		const selected = screen.getByRole("listitem").filter({ hasText: "Add tests" });
 		const idle = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
+		// No hover on the idle row: the assertions read hover *variant* classes,
+		// and the selected row's 600ms details card can open over the idle row
+		// on a slow runner, blocking a hover indefinitely.
 		await selected.getByRole("button", { name: /Add tests/ }).click();
-		await userEvent.hover(idle);
 
 		const selectedTitle = selected
 			.element()

@@ -66,7 +66,7 @@ export function PrivacySettings() {
 											Share usage analytics and crash reports
 										</label>
 									</SummaryCard.Title>
-									<SummaryCard.Description>
+									<SummaryCard.Description className="line-clamp-none">
 										Includes the embedded Kilo service and conda environment manager. Chat, sign-in,
 										and updates still use the network.
 									</SummaryCard.Description>

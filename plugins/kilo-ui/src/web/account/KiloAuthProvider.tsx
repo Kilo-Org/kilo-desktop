@@ -193,8 +193,11 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 			await client.global.dispose().catch(() => undefined);
 			applySignedOut();
 			invalidateGatewayCatalogs(queryClient);
+			// Mirror login's rebootAndRefresh: Kilo auth has no push signal, so
+			// without this the gated pages keep their cached signed-in session.
+			await sdk.auth.refresh().catch(() => undefined);
 		})();
-	}, [applySignedOut, client, queryClient, sdk.telemetry]);
+	}, [applySignedOut, client, queryClient, sdk.auth, sdk.telemetry]);
 
 	const refreshProfile = useCallback(() => {
 		if (!client) return;

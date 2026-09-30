@@ -27,15 +27,20 @@ interface KiloSignInCapability extends Record<string, unknown> {
  * in place of the feature until the user is signed in to Kilo — no modal, and
  * no way to reach the feature unsigned (per product review).
  *
- * The gate resolves on the *first fresh read*, not the cached snapshot: a stale
- * `authenticated` peek (e.g. signed out elsewhere since the cache was written)
- * must not flash gated content, so `resolving` starts true regardless and only
- * clears once `sdk.auth.refresh()` settles. Auth state then tracks via the
- * `sdk.auth` subscription, so a later sign-in/out re-evaluates the gate.
+ * A cached `authenticated` session is trusted for the first render so pages
+ * open straight into their own content; the mount-time `sdk.auth.refresh()`
+ * still runs and, if the cache was stale, publishes the fresh session through
+ * the subscription, swapping in the sign-in surface. Any other cached status
+ * waits for that first fresh read — an `anonymous` cache may predate a sign-in,
+ * and flashing the sign-in surface is worse than a brief pending state. While
+ * pending the gate renders the page's `pendingFallback` (its own loading
+ * skeleton), so the wait reads as the page loading rather than a separate
+ * gate step. The subscription keeps later sign-in/out in sync.
  */
 export function KiloAuthGate({
 	featureId,
 	featureName,
+	pendingFallback = null,
 	children,
 	sdkOverride,
 }: {
@@ -43,6 +48,8 @@ export function KiloAuthGate({
 	featureId: string;
 	/** Display name shown in the sign-in prompt. */
 	featureName: string;
+	/** Rendered while the first fresh session read is in flight — pass the page's loading skeleton. */
+	pendingFallback?: ReactNode;
 	children: ReactNode;
 	/** Test seam: a prebuilt SDK instead of resolving one via `useSdk`. */
 	sdkOverride?: SDK;
@@ -53,7 +60,7 @@ export function KiloAuthGate({
 	const system = useContext(FeatureSystemContext);
 	const sdk = sdkOverride ?? (system ? (system.getSdk(featureId) as SDK) : undefined);
 	return (
-		<GateBody sdk={sdk} featureName={featureName}>
+		<GateBody sdk={sdk} featureName={featureName} pendingFallback={pendingFallback}>
 			{children}
 		</GateBody>
 	);
@@ -62,10 +69,12 @@ export function KiloAuthGate({
 function GateBody({
 	sdk,
 	featureName,
+	pendingFallback,
 	children,
 }: {
 	sdk: SDK | undefined;
 	featureName: string;
+	pendingFallback: ReactNode;
 	children: ReactNode;
 }) {
 	// Hooks run unconditionally; a missing SDK (no provider, no override — e.g.
@@ -77,7 +86,7 @@ function GateBody({
 		sdk ? sdk.auth.peek : noSdkSession,
 		sdk ? sdk.auth.peek : noSdkSession,
 	);
-	const [resolving, setResolving] = useState(true);
+	const [resolving, setResolving] = useState(() => session.status !== "authenticated");
 
 	useEffect(() => {
 		if (!sdk) return;
@@ -85,7 +94,7 @@ function GateBody({
 		// Always refresh on mount: the session is resolved at boot before the
 		// kilo-server capability is up, and the cache may be stale by the time
 		// this page opens. refresh() re-publishes to the subscription above.
-		// Bound the wait: a wedged sidecar must not leave the gate on "Loading…"
+		// Bound the wait: a wedged sidecar must not leave the gate pending
 		// forever — fall through to the sign-in surface after a short timeout.
 		void sdk.auth
 			.refresh()
@@ -108,12 +117,11 @@ function GateBody({
 	if (!sdk) return children;
 
 	if (resolving) {
+		// `contents` keeps the wrapper out of layout so the fallback sits exactly
+		// where the page's own loading state would.
 		return (
-			<div
-				className="text-muted-foreground flex flex-1 items-center justify-center p-8 text-sm"
-				data-qa-id="kilo-auth-gate-pending"
-			>
-				Loading…
+			<div className="contents" aria-busy="true" data-qa-id="kilo-auth-gate-pending">
+				{pendingFallback}
 			</div>
 		);
 	}

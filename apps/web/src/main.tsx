@@ -28,6 +28,12 @@ const featureSystem = createAppFeatureSystem(
 	createRouterNavigation(router),
 );
 
+// Hold one app-lifetime auth subscription so the renderer's session cache is
+// resolved at boot and kept current by main's pushes. Without it the cache
+// stays at its seeded `anonymous` until a Kilo-gated page mounts, so the first
+// gated visit per launch can't trust a signed-in session and has to wait.
+featureSystem.services.shellDelegates.auth.subscribe(() => undefined);
+
 // Mount plugins' declarative zone widgets (contributes.zones) once at boot so
 // they persist across navigation — distinct from page-scoped sdk.contribute.
 registerPluginZoneContributions(featureSystem, PLUGIN_ZONE_CONTRIBUTIONS, {

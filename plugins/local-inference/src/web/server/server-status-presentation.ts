@@ -1,6 +1,6 @@
 import type { LocalInferenceStatus } from "../../contracts/schemas.js";
 
-type ServerStatusPresentation = {
+export type ServerStatusPresentation = {
 	label: string;
 	indicatorClass: string;
 	checked: boolean;

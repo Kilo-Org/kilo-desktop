@@ -72,10 +72,12 @@ function renderAccount({
 	authenticated = true,
 	profileOk = true,
 	openExternal,
+	authRefresh,
 }: {
 	authenticated?: boolean;
 	profileOk?: boolean;
 	openExternal?: () => Promise<{ opened: boolean }>;
+	authRefresh?: () => Promise<{ status: "anonymous" }>;
 } = {}) {
 	authStatus.mockResolvedValue({
 		data: authenticated ? { authenticated: true, type: "oauth" } : { authenticated: false },
@@ -97,6 +99,7 @@ function renderAccount({
 		},
 		telemetry: { track },
 		...(openExternal ? { shell: { openExternal } } : {}),
+		...(authRefresh ? { auth: { refresh: authRefresh } } : {}),
 	});
 	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -278,6 +281,18 @@ describe("KiloAuthProvider logout", () => {
 			event: "Logged Out",
 			data: { featureId: "kilo-ui" },
 		});
+	});
+
+	it("re-resolves the shell session so Kilo-gated pages lock", async () => {
+		authRemove.mockResolvedValue({ data: true });
+		const authRefresh = vi.fn(async () => ({ status: "anonymous" as const }));
+		const { screen } = renderAccount({ authRefresh });
+
+		await expect.element(screen.getByTestId("kilo-account-logout")).toBeVisible();
+		expect(authRefresh).not.toHaveBeenCalled();
+		await screen.getByTestId("kilo-account-logout").click();
+
+		await vi.waitFor(() => expect(authRefresh).toHaveBeenCalled());
 	});
 });
 

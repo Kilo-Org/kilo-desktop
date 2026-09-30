@@ -59,6 +59,7 @@ import {
 } from "@kilo-desktop/ui/components/input-group";
 import { ScrollArea } from "@kilo-desktop/ui/components/scroll-area";
 import { Separator } from "@kilo-desktop/ui/components/separator";
+import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
 import { Switch } from "@kilo-desktop/ui/components/switch";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
@@ -100,7 +101,10 @@ import {
 import { formatFileSize, modelDisplayName } from "../models/model-format.js";
 import { ServerSettings, ServerSettingsSkeleton } from "../server/ServerSettings.js";
 import { SystemMonitor } from "../server/SystemMonitor.js";
-import { presentServerStatus } from "../server/server-status-presentation.js";
+import {
+	presentServerStatus,
+	type ServerStatusPresentation,
+} from "../server/server-status-presentation.js";
 
 const interactiveScrollbarClassName =
 	"[&_[data-slot=scroll-area-scrollbar]]:opacity-0 hover:[&_[data-slot=scroll-area-scrollbar]]:opacity-100 focus-within:[&_[data-slot=scroll-area-scrollbar]]:opacity-100";
@@ -125,9 +129,122 @@ const MODEL_CATALOG_FEATURE_FLAG = "local-model-catalog";
 
 export function LocalModelServerSettings() {
 	return (
-		<KiloAuthGate featureId="local-inference" featureName="Local Model Server">
+		<KiloAuthGate
+			featureId="local-inference"
+			featureName="Local Model Server"
+			pendingFallback={<LocalModelServerSettingsLoading />}
+		>
 			<LocalModelServerSettingsContent />
 		</KiloAuthGate>
+	);
+}
+
+const PENDING_SERVER_STATUS = presentServerStatus(undefined, undefined, true, false);
+const noop = () => undefined;
+
+/**
+ * The page's first-render shape (every query pending), shown while the Kilo
+ * auth gate resolves so the gate wait and the data wait read as one skeleton.
+ */
+function LocalModelServerSettingsLoading() {
+	return (
+		<div
+			className="flex min-w-0 flex-col gap-6"
+			data-qa-id="local-model-server-page-loading"
+			aria-busy="true"
+		>
+			<SettingsPageHeader
+				actions={
+					<ServerStatusToggle
+						presentation={PENDING_SERVER_STATUS}
+						labelPending
+						disabled
+						onCheckedChange={noop}
+					/>
+				}
+			/>
+			<div className="flex min-w-0 flex-col gap-8">
+				<div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
+					<SystemMonitor usage={undefined} loading />
+					<ConnectionDetails connection={undefined} modelId={undefined} onCopy={noop} />
+				</div>
+				<FieldSet className="mt-1 min-w-0" aria-labelledby="models-heading">
+					<div className="flex items-center justify-between gap-4">
+						<ModelsHeading />
+						<Button type="button" size="sm" disabled>
+							<PlusIcon data-icon="inline-start" aria-hidden="true" />
+							Add model
+							<ChevronDownIcon data-icon="inline-end" aria-hidden="true" />
+						</Button>
+					</div>
+					<ModelListSkeleton />
+				</FieldSet>
+				<FieldSet className="min-w-0" aria-labelledby="runtime-heading">
+					<RuntimeHeading />
+					<div className="bg-card min-w-0 overflow-hidden rounded-lg border">
+						<ServerSettingsSkeleton />
+					</div>
+				</FieldSet>
+			</div>
+		</div>
+	);
+}
+
+function ServerStatusToggle({
+	presentation,
+	labelPending,
+	disabled,
+	onCheckedChange,
+}: {
+	presentation: ServerStatusPresentation;
+	/** Swap the status label for a skeleton until the first status read lands. */
+	labelPending: boolean;
+	disabled: boolean;
+	onCheckedChange: (checked: boolean) => void;
+}) {
+	return (
+		<div className="flex h-7 items-center gap-2">
+			<span className="text-muted-foreground flex items-center gap-1.5 text-sm">
+				<span className={cn("size-1.5 rounded-full", presentation.indicatorClass)} aria-hidden />
+				{labelPending ? (
+					<Skeleton className="h-3.5 w-14" data-qa-id="local-model-server-status-pending" />
+				) : (
+					presentation.label
+				)}
+			</span>
+			<Switch
+				id="local-model-server-toggle"
+				aria-label="Model server"
+				checked={presentation.checked}
+				disabled={disabled}
+				onCheckedChange={onCheckedChange}
+				data-qa-id="local-model-server-toggle"
+			/>
+		</div>
+	);
+}
+
+function ModelsHeading() {
+	return (
+		<FieldContent>
+			<FieldLegend id="models-heading" variant="label" className="mb-0">
+				Models
+			</FieldLegend>
+			<FieldDescription>Manage local models and configure how each one runs.</FieldDescription>
+		</FieldContent>
+	);
+}
+
+function RuntimeHeading() {
+	return (
+		<FieldContent>
+			<FieldLegend id="runtime-heading" variant="label" className="mb-0">
+				Runtime
+			</FieldLegend>
+			<FieldDescription>
+				Configure how the server runs, loads models, and accepts connections.
+			</FieldDescription>
+		</FieldContent>
 	);
 }
 
@@ -381,33 +498,22 @@ function LocalModelServerSettingsContent() {
 		<div className="flex min-w-0 flex-col gap-6" data-qa-id="local-model-server-page">
 			<SettingsPageHeader
 				actions={
-					<div className="flex h-7 items-center gap-2">
-						<span className="text-muted-foreground flex items-center gap-1.5 text-sm">
-							<span
-								className={cn("size-1.5 rounded-full", statusPresentation.indicatorClass)}
-								aria-hidden
-							/>
-							{statusPresentation.label}
-						</span>
-						<Switch
-							id="local-model-server-toggle"
-							aria-label="Model server"
-							checked={statusPresentation.checked}
-							disabled={disabled}
-							onCheckedChange={(checked) => {
-								if (checked) {
-									start.mutate(undefined, {
-										onSuccess: () => trackLocalInference("Local Model Server Started"),
-									});
-								} else {
-									stop.mutate(undefined, {
-										onSuccess: () => trackLocalInference("Local Model Server Stopped"),
-									});
-								}
-							}}
-							data-qa-id="local-model-server-toggle"
-						/>
-					</div>
+					<ServerStatusToggle
+						presentation={statusPresentation}
+						labelPending={status.isPending}
+						disabled={disabled}
+						onCheckedChange={(checked) => {
+							if (checked) {
+								start.mutate(undefined, {
+									onSuccess: () => trackLocalInference("Local Model Server Started"),
+								});
+							} else {
+								stop.mutate(undefined, {
+									onSuccess: () => trackLocalInference("Local Model Server Stopped"),
+								});
+							}
+						}}
+					/>
 				}
 			/>
 			<div className="flex min-w-0 flex-col gap-8">
@@ -446,14 +552,7 @@ function LocalModelServerSettingsContent() {
 				</div>
 				<FieldSet className="mt-1 min-w-0" aria-labelledby="models-heading">
 					<div className="flex items-center justify-between gap-4">
-						<FieldContent>
-							<FieldLegend id="models-heading" variant="label" className="mb-0">
-								Models
-							</FieldLegend>
-							<FieldDescription>
-								Manage local models and configure how each one runs.
-							</FieldDescription>
-						</FieldContent>
+						<ModelsHeading />
 						<input
 							ref={modelFileInput}
 							type="file"
@@ -604,14 +703,7 @@ function LocalModelServerSettingsContent() {
 					)}
 				</FieldSet>
 				<FieldSet className="min-w-0" aria-labelledby="runtime-heading">
-					<FieldContent>
-						<FieldLegend id="runtime-heading" variant="label" className="mb-0">
-							Runtime
-						</FieldLegend>
-						<FieldDescription>
-							Configure how the server runs, loads models, and accepts connections.
-						</FieldDescription>
-					</FieldContent>
+					<RuntimeHeading />
 					<div className="bg-card min-w-0 overflow-hidden rounded-lg border">
 						{serverSettings.isPending ? (
 							<ServerSettingsSkeleton />

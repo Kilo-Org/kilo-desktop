@@ -53,9 +53,25 @@ export function EnvironmentsPage() {
 	}
 
 	return (
-		<KiloAuthGate featureId="environments" featureName="Conda Environments">
+		<KiloAuthGate
+			featureId="environments"
+			featureName="Conda Environments"
+			pendingFallback={<EnvironmentsPageLoading />}
+		>
 			<EnvironmentsPageContent />
 		</KiloAuthGate>
+	);
+}
+
+/**
+ * Shared by the auth-gate wait and the provider-status wait so the page shows
+ * one continuous skeleton from mount until the panel's data lands.
+ */
+function EnvironmentsPageLoading() {
+	return (
+		<EnvironmentsLayout state="loading">
+			<CondaEnvironmentsPanelLoading />
+		</EnvironmentsLayout>
 	);
 }
 
@@ -70,13 +86,7 @@ function EnvironmentsPageContent() {
 	// unregistered handler, flashing a transient error before the
 	// "unavailable" placeholder takes over. The skeleton matches the panel's
 	// own loading state so the two waits read as one.
-	if (statusQuery.isLoading) {
-		return (
-			<EnvironmentsLayout state="loading">
-				<CondaEnvironmentsPanelLoading />
-			</EnvironmentsLayout>
-		);
-	}
+	if (statusQuery.isLoading) return <EnvironmentsPageLoading />;
 
 	if (!providersAvailable) {
 		return (

@@ -79,10 +79,12 @@ function renderPage(
 			: Promise.resolve(current),
 	);
 	const openExternal = vi.fn(async () => ({ opened: true as const }));
+	const track = vi.fn(async (_input: { event: string; data: Record<string, unknown> }) => {});
 	const sdk = createFakeSdk({
 		featureId: "kilo-marketplace",
 		channels: marketplaceContract,
 		shell: { openExternal },
+		telemetry: { track },
 		handlers: {
 			"marketplace.list": list,
 			"marketplace.refresh": refresh,
@@ -116,6 +118,7 @@ function renderPage(
 			holdingList = false;
 			for (const resolve of heldLists.splice(0)) resolve();
 		},
+		track,
 		setSnapshot(next: MarketplaceSnapshot) {
 			current = next;
 		},
@@ -144,6 +147,64 @@ async function openShowFilters() {
 }
 
 describe("MarketplaceSettings", () => {
+	it("tracks browse opens and installs with item identity and destination", async () => {
+		const { track } = renderPage();
+
+		await openBrowse();
+		await page.getByTestId("marketplace-install-agent-reviewer").click();
+		await page.getByTestId("marketplace-install-confirm").click();
+		await expect.element(page.getByTestId("marketplace-install-dialog")).not.toBeInTheDocument();
+
+		expect(track.mock.calls.map(([input]) => input)).toEqual([
+			{
+				event: "Marketplace Tab Viewed",
+				data: { featureId: "kilo-marketplace" },
+			},
+			{
+				event: "Marketplace Install Button Clicked",
+				data: {
+					featureId: "kilo-marketplace",
+					itemId: "reviewer",
+					itemName: "Reviewer",
+					itemType: "agent",
+				},
+			},
+			{
+				event: "Marketplace Item Installed",
+				data: {
+					featureId: "kilo-marketplace",
+					itemId: "reviewer",
+					itemName: "Reviewer",
+					itemType: "agent",
+					target: "global",
+				},
+			},
+		]);
+	});
+
+	it("tracks a confirmed removal with item identity and destination", async () => {
+		const { track } = renderPage({
+			...snapshot,
+			installed: [{ type: "agent", id: "reviewer", scope: "global" }],
+		});
+
+		await page.getByTestId("marketplace-card-trigger-agent-reviewer").click();
+		await page.getByTestId("marketplace-remove-agent-reviewer-global").click();
+		await page.getByTestId("marketplace-remove-confirm").click();
+		await expect.poll(() => track.mock.calls.length).toBe(1);
+
+		expect(track).toHaveBeenCalledWith({
+			event: "Marketplace Item Removed",
+			data: {
+				featureId: "kilo-marketplace",
+				itemId: "reviewer",
+				itemName: "Reviewer",
+				itemType: "agent",
+				target: "global",
+			},
+		});
+	});
+
 	it("does not render supplied MCP images in Agent Behavior or the Kilo Marketplace", async () => {
 		const iconDataUrl =
 			"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";

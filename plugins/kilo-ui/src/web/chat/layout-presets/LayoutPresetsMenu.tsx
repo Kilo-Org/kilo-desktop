@@ -132,6 +132,12 @@ export function LayoutPresetsMenu({ capture, onApply }: LayoutPresetsMenuProps) 
 			await onApply(preset);
 		},
 	});
+	const trackPreset = (
+		event: "Layout Preset Saved" | "Layout Preset Default Changed" | "Layout Preset Removed",
+		data: Record<string, unknown> = {},
+	) => {
+		void sdk.telemetry.track({ event, data }).catch(() => undefined);
+	};
 	const pending = mutation.isPending || apply.isPending;
 	const error =
 		mutation.error?.message ?? apply.error?.message ?? captureError ?? query.error?.message;
@@ -309,10 +315,16 @@ export function LayoutPresetsMenu({ capture, onApply }: LayoutPresetsMenuProps) 
 															disabled={pending}
 															onClick={() => {
 																setCaptureError(null);
-																mutation.mutate(() =>
-																	sdk.client["layoutPresets.setDefault"]({
-																		id: query.data.defaultPresetId === preset.id ? null : preset.id,
-																	}),
+																const cleared = query.data.defaultPresetId === preset.id;
+																mutation.mutate(
+																	() =>
+																		sdk.client["layoutPresets.setDefault"]({
+																			id: cleared ? null : preset.id,
+																		}),
+																	{
+																		onSuccess: () =>
+																			trackPreset("Layout Preset Default Changed", { cleared }),
+																	},
 																);
 															}}
 														/>
@@ -496,7 +508,10 @@ export function LayoutPresetsMenu({ capture, onApply }: LayoutPresetsMenuProps) 
 							onClick={() => {
 								if (deleting)
 									mutation.mutate(() => sdk.client["layoutPresets.remove"]({ id: deleting.id }), {
-										onSuccess: () => setDeleting(null),
+										onSuccess: () => {
+											setDeleting(null);
+											trackPreset("Layout Preset Removed");
+										},
 									});
 							}}
 						>
@@ -524,6 +539,11 @@ export function LayoutPresetsMenu({ capture, onApply }: LayoutPresetsMenuProps) 
 							event.preventDefault();
 							if (!name.trim() || pending) return;
 							if (!snapshot) return;
+							const savedData = {
+								isUpdate: updating !== null,
+								makeDefault: !updating && makeDefault,
+								paneCount: snapshot.template.slots.length,
+							};
 							mutation.mutate(
 								() =>
 									sdk.client["layoutPresets.save"]({
@@ -532,7 +552,12 @@ export function LayoutPresetsMenu({ capture, onApply }: LayoutPresetsMenuProps) 
 										template: snapshot.template,
 										...(!updating ? { makeDefault } : {}),
 									}),
-								{ onSuccess: () => setSnapshot(null) },
+								{
+									onSuccess: () => {
+										setSnapshot(null);
+										trackPreset("Layout Preset Saved", savedData);
+									},
+								},
 							);
 						}}
 					>

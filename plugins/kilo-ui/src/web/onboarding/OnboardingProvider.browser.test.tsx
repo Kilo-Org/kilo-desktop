@@ -300,13 +300,27 @@ async function reachWorkStyle(screen: Screen) {
 		.toBeVisible();
 }
 
+function trackedEvents(track: ReturnType<typeof renderOnboarding>["track"]) {
+	return (
+		track.mock.calls as unknown as Array<[{ event: string; data: Record<string, unknown> }]>
+	).map(([input]) => {
+		const { featureId: _featureId, ...data } = input.data;
+		return { event: input.event, data };
+	});
+}
+
 function trackedWorkStyle(track: ReturnType<typeof renderOnboarding>["track"]) {
-	return (track.mock.calls as unknown as Array<[{ event: string; data: Record<string, unknown> }]>)
-		.map(([input]) => {
-			const { featureId: _featureId, ...data } = input.data;
-			return { event: input.event, data };
-		})
-		.filter(({ event }) => event.startsWith("Work Style"));
+	return trackedEvents(track).filter(({ event }) => event.startsWith("Work Style"));
+}
+
+function trackedTerms(track: ReturnType<typeof renderOnboarding>["track"]) {
+	return trackedEvents(track).filter(({ event }) => event.startsWith("Terms "));
+}
+
+function trackedLifecycle(track: ReturnType<typeof renderOnboarding>["track"]) {
+	return trackedEvents(track).filter(({ event }) =>
+		["Onboarding Shown", "Onboarding Completed", "Onboarding Skipped"].includes(event),
+	);
 }
 
 describe("OnboardingProvider", () => {
@@ -358,7 +372,7 @@ describe("OnboardingProvider", () => {
 		await expect
 			.poll(() => sdk.invoke("onboarding.terms.get"))
 			.toMatchObject({ version: KILO_TERMS_VERSION, linkedAccounts: [] });
-		await expect.poll(() => track.mock.calls.length).toBe(1);
+		await expect.poll(() => trackedTerms(track).length).toBe(1);
 		expect(track).toHaveBeenCalledWith({
 			event: "Terms Accepted",
 			data: expect.objectContaining({
@@ -366,6 +380,7 @@ describe("OnboardingProvider", () => {
 				$set_once: expect.objectContaining({ terms_version: KILO_TERMS_VERSION }),
 			}),
 		});
+		expect(trackedLifecycle(track)).toEqual([{ event: "Onboarding Shown", data: {} }]);
 	});
 
 	it("links an earlier acceptance to the account once it signs in, only once", async () => {
@@ -419,10 +434,10 @@ describe("OnboardingProvider", () => {
 		await expect
 			.poll(() => sdk.invoke("onboarding.terms.get"))
 			.toMatchObject({ linkedAccounts: [expect.any(String)] });
-		await expect.poll(() => track.mock.calls.length).toBe(1);
+		await expect.poll(() => trackedTerms(track).length).toBe(1);
 		expect(track).toHaveBeenCalledWith(expect.objectContaining({ event: "Terms Accepted" }));
 		await new Promise((resolve) => setTimeout(resolve, 100));
-		expect(track).toHaveBeenCalledOnce();
+		expect(trackedTerms(track)).toHaveLength(1);
 	});
 
 	it("does not report anything for a signed-in user who never accepted", async () => {
@@ -437,17 +452,21 @@ describe("OnboardingProvider", () => {
 	});
 
 	it("persists a skip and closes the overlay when dismissed with Escape", async () => {
-		const { screen, sdk } = renderOnboarding({});
+		const { screen, sdk, track } = renderOnboarding({});
 
 		await expect.element(screen.getByTestId("onboarding-welcome")).toBeVisible();
 		await userEvent.keyboard("{Escape}");
 
 		await expect.element(screen.getByTestId("onboarding-overlay")).not.toBeInTheDocument();
 		await expect.poll(() => sdk.invoke("onboarding.get")).toMatchObject({ outcome: "skipped" });
+		expect(trackedLifecycle(track)).toEqual([
+			{ event: "Onboarding Shown", data: {} },
+			{ event: "Onboarding Skipped", data: {} },
+		]);
 	});
 
 	it("advances through sign-in and workspace with Skip, then completes on the features slide", async () => {
-		const { screen, sdk, setActiveWorkspaceId } = renderOnboarding({});
+		const { screen, sdk, setActiveWorkspaceId, track } = renderOnboarding({});
 
 		await continueFromWelcome(screen);
 		await expect.element(screen.getByRole("heading", { name: "Sign in to Kilo" })).toBeVisible();
@@ -467,6 +486,10 @@ describe("OnboardingProvider", () => {
 		await expect.element(screen.getByTestId("onboarding-overlay")).not.toBeInTheDocument();
 		await expect.poll(() => sdk.invoke("onboarding.get")).toMatchObject({ outcome: "completed" });
 		expect(setActiveWorkspaceId).not.toHaveBeenCalled();
+		expect(trackedLifecycle(track)).toEqual([
+			{ event: "Onboarding Shown", data: {} },
+			{ event: "Onboarding Completed", data: {} },
+		]);
 	});
 
 	it("shows the wizard even when the user already has a workspace", async () => {

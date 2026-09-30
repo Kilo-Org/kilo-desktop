@@ -331,11 +331,19 @@ export function FilesView({
 		(relativePath: string) => {
 			if (!activeWorkspaceDirectory) return;
 			const explorerId = metadata?.explorerId ?? (!metadata?.relativePath ? instanceId : undefined);
-			openWorkspaceFile(sdk, {
+			void openWorkspaceFile(sdk, {
 				sessionId,
 				workspaceDirectory: activeWorkspaceDirectory,
 				relativePath,
 				...(explorerId ? { explorerId } : {}),
+			}).then((opened) => {
+				if (!opened) return;
+				void sdk.telemetry
+					.track({
+						event: isNotebookFile(relativePath) ? "Notebook Opened" : "File Opened",
+						data: { source: "tree" },
+					})
+					.catch(() => undefined);
 			});
 		},
 		[
@@ -527,7 +535,13 @@ export function FilesView({
 				return;
 			}
 			const result = await request;
-			if (result.error) setNotebookOpenError(result.error);
+			if (result.error) {
+				setNotebookOpenError(result.error);
+				return;
+			}
+			void sdk.telemetry
+				.track({ event: "Notebook Opened", data: { source: "files-button" } })
+				.catch(() => undefined);
 		} catch (error) {
 			setNotebookOpenError(errorMessage(error));
 		} finally {

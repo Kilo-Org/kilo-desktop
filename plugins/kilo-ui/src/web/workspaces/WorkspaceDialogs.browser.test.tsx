@@ -34,9 +34,11 @@ function renderDialogs(options: {
 	const onClose = vi.fn();
 	const onDialogChange = vi.fn();
 	const setActiveWorkspaceId = vi.fn();
+	const track = vi.fn(async () => {});
 	const sdk = createFakeSdk({
 		featureId: "kilo-ui",
 		channels: workspacesContract,
+		telemetry: { track },
 		shell: { canPickDirectories: true, ...options.shell },
 		handlers: {
 			list: async () => options.workspaces ?? [],
@@ -68,7 +70,7 @@ function renderDialogs(options: {
 			</QueryClientProvider>
 		</SdkProvider>,
 	);
-	return { view, onClose, onDialogChange, setActiveWorkspaceId, sdk };
+	return { view, onClose, onDialogChange, setActiveWorkspaceId, sdk, track };
 }
 
 afterEach(() => {
@@ -150,6 +152,49 @@ describe("WorkspaceDialogs — create/edit form", () => {
 		);
 		await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
 		expect(setActiveWorkspaceId).toHaveBeenCalledWith(workspaceA.id);
+	});
+
+	it("tracks a created workspace with its folder count only", async () => {
+		const { onClose, track } = renderDialogs({
+			dialog: { mode: "create" },
+			handlers: {
+				create: async ({ folders }) => ({
+					...workspaceA,
+					folders: folders.map((folder, position) => ({
+						id: `f-${position}`,
+						path: folder.path,
+						isPrimary: folder.isPrimary ?? position === 0,
+						position,
+					})),
+				}),
+			},
+			shell: {
+				showOpenDialog: vi
+					.fn()
+					.mockResolvedValue({ canceled: false, paths: ["/projects/one", "/projects/two"] }),
+			},
+		});
+
+		await page.getByRole("button", { name: /Drop folders/ }).click();
+		await page.getByRole("button", { name: "Create workspace" }).click();
+		await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
+
+		expect(track).toHaveBeenCalledWith({
+			event: "Workspace Created",
+			data: { featureId: "kilo-ui", source: "dialog", folderCount: 2 },
+		});
+	});
+
+	it("does not track a workspace edit", async () => {
+		const { onClose, track } = renderDialogs({
+			dialog: { mode: "edit", workspace: workspaceA },
+			workspaces: [workspaceA],
+		});
+
+		await page.getByRole("button", { name: "Save" }).click();
+		await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
+
+		expect(track).not.toHaveBeenCalled();
 	});
 
 	it("saves a selected identity color", async () => {
@@ -379,6 +424,21 @@ describe("WorkspaceDialogs — delete", () => {
 		await vi.waitFor(() => expect(remove).toHaveBeenCalledWith({ id: workspaceA.id }));
 		await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
 		expect(setActiveWorkspaceId).toHaveBeenCalledWith("ws-b");
+	});
+
+	it("tracks a confirmed workspace removal", async () => {
+		const { onClose, track } = renderDialogs({
+			dialog: { mode: "delete", workspace: workspaceA },
+			workspaces: [workspaceA],
+		});
+
+		await page.getByRole("button", { name: "Delete workspace" }).click();
+		await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
+
+		expect(track).toHaveBeenCalledWith({
+			event: "Workspace Removed",
+			data: { featureId: "kilo-ui", folderCount: 1 },
+		});
 	});
 
 	it("shows an error when deletion fails and keeps the dialog open", async () => {

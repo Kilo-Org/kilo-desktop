@@ -39,6 +39,12 @@ export function DeleteEnvironmentDialog({ env, open, onClose }: DeleteEnvironmen
 			prefix: env.prefix || undefined,
 		});
 		toast.promise(promise, jobToastOptions(deleteEnvironmentJob(displayName)));
+		promise.then(
+			() => {
+				void sdk.telemetry.track({ event: "Environment Removed", data: {} }).catch(() => undefined);
+			},
+			() => undefined,
+		);
 		onClose();
 	}
 

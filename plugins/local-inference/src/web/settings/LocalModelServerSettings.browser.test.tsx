@@ -82,7 +82,7 @@ describe("LocalModelServerSettings", () => {
 			available: true,
 			addedAt: 1,
 		}));
-		const { baseElement } = renderSettings(
+		const { baseElement, track } = renderSettings(
 			{
 				"models.add": addModel,
 				"status.get": async () => ({ status: "ready", loadedModelIds: [] }),
@@ -111,6 +111,12 @@ describe("LocalModelServerSettings", () => {
 		picker!.dispatchEvent(new Event("change", { bubbles: true }));
 
 		await expect.poll(() => addModel).toHaveBeenCalledWith({ path: "/models/tiny.gguf" });
+		await expect
+			.poll(() => track.mock.calls.map(([input]) => input))
+			.toContainEqual({
+				event: "Local Model Installed",
+				data: { featureId: "local-inference", source: "import" },
+			});
 	});
 
 	it("opens the local model catalog from the add model menu", async () => {
@@ -702,7 +708,7 @@ describe("LocalModelServerSettings", () => {
 
 	it("starts a disconnected server", async () => {
 		const connect = vi.fn(async () => ({ ok: true as const }));
-		const { baseElement } = renderSettings({
+		const { baseElement, track } = renderSettings({
 			"status.get": async () => ({ status: "disconnected" }),
 			"usage.get": async () => usageSnapshot,
 			"runtime.connect": connect,
@@ -714,6 +720,12 @@ describe("LocalModelServerSettings", () => {
 		await expect.element(toggle).toHaveAttribute("aria-checked", "false");
 		await toggle.click();
 		await expect.poll(() => connect).toHaveBeenCalledOnce();
+		await expect
+			.poll(() => track.mock.calls.map(([input]) => input))
+			.toContainEqual({
+				event: "Local Model Server Started",
+				data: { featureId: "local-inference" },
+			});
 	});
 
 	it("shows when llama.cpp is being installed while the server starts", async () => {
@@ -744,7 +756,7 @@ describe("LocalModelServerSettings", () => {
 
 	it("stops an active server", async () => {
 		const disconnect = vi.fn(async () => ({ ok: true as const }));
-		const { baseElement } = renderSettings({
+		const { baseElement, track } = renderSettings({
 			"status.get": async () => ({ status: "ready" }),
 			"usage.get": async () => usageSnapshot,
 			"runtime.disconnect": disconnect,
@@ -756,6 +768,12 @@ describe("LocalModelServerSettings", () => {
 		await expect.element(toggle).toHaveAttribute("aria-checked", "true");
 		await toggle.click();
 		await expect.poll(() => disconnect).toHaveBeenCalledOnce();
+		await expect
+			.poll(() => track.mock.calls.map(([input]) => input))
+			.toContainEqual({
+				event: "Local Model Server Stopped",
+				data: { featureId: "local-inference" },
+			});
 	});
 
 	it("refreshes the displayed status when the service emits a change", async () => {

@@ -62,7 +62,13 @@ function renderMenu(
 		},
 		...options.handlers,
 	} satisfies Partial<LayoutPresetsService>;
-	const sdk = createFakeSdk({ featureId: "kilo-ui", channels: layoutPresetsContract, handlers });
+	const track = vi.fn(async () => {});
+	const sdk = createFakeSdk({
+		featureId: "kilo-ui",
+		channels: layoutPresetsContract,
+		handlers,
+		telemetry: { track },
+	});
 	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const onApply = vi.fn();
@@ -75,7 +81,16 @@ function renderMenu(
 			</QueryClientProvider>
 		</SdkProvider>,
 	);
-	return { screen: page.elementLocator(view.baseElement), onApply, capture, sdk };
+	return { screen: page.elementLocator(view.baseElement), onApply, capture, sdk, track };
+}
+
+function tracked(track: ReturnType<typeof renderMenu>["track"]) {
+	return (
+		track.mock.calls as unknown as Array<[{ event: string; data: Record<string, unknown> }]>
+	).map(([input]) => {
+		const { featureId: _featureId, ...data } = input.data;
+		return { event: input.event, data };
+	});
 }
 
 afterEach(cleanup);
@@ -85,6 +100,35 @@ describe("LayoutPresetsMenu", () => {
 		const { screen } = renderMenu();
 		await screen.getByTestId("chat-layouts-menu").click();
 		await expect.element(screen.getByText("No layouts yet")).toBeVisible();
+	});
+
+	it("tracks saving, default changes, and removal of layout presets", async () => {
+		const { screen, track } = renderMenu();
+		await screen.getByTestId("chat-layouts-menu").click();
+		await screen.getByTestId("chat-layout-save-current").click();
+		await screen.getByTestId("chat-layout-name").fill("Research");
+		await screen.getByTestId("chat-layout-save").click();
+		await expect.element(screen.getByRole("dialog")).not.toBeInTheDocument();
+
+		await screen.getByTestId("chat-layouts-menu").click();
+		await screen.getByTestId("chat-layout-manage").click();
+		await screen.getByTestId("chat-layout-set-default-saved").click();
+		await expect
+			.element(screen.getByTestId("chat-layout-set-default-saved"))
+			.toHaveAttribute("aria-pressed", "true");
+		await screen.getByTestId("chat-layout-delete-saved").click();
+		await screen.getByTestId("chat-layout-delete-confirm").click();
+
+		await expect
+			.poll(() => tracked(track))
+			.toEqual([
+				{
+					event: "Layout Preset Saved",
+					data: { isUpdate: false, makeDefault: false, paneCount: 1 },
+				},
+				{ event: "Layout Preset Default Changed", data: { cleared: false } },
+				{ event: "Layout Preset Removed", data: {} },
+			]);
 	});
 
 	it("saves the current layout with omissions disclosed, marks it default, and applies it", async () => {

@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
+import { vi } from "vitest";
 import { page } from "vitest/browser";
 
 import type { AuthSession, ChannelHandlerMap, SDK, SdkNavigation } from "@kilo-desktop/feature-sdk";
@@ -56,6 +57,7 @@ export function renderSettings(
 	// most settings tests exercise it, so default it on and let callers opt out.
 	// useFeatureFlag reads shellDelegates.featureFlags.peek(), so set it there.
 	const flags = { "local-model-catalog": true, ...(featureFlags.peek?.() ?? {}) };
+	const track = vi.fn(async (_input: { event: string; data: Record<string, unknown> }) => {});
 	const sdk = createFakeSdk({
 		featureId: "local-inference",
 		channels: localInferenceContract,
@@ -66,6 +68,7 @@ export function renderSettings(
 		},
 		shell,
 		auth,
+		telemetry: { track },
 		...(navigation ? { navigation } : {}),
 	});
 	sdk.services.shellDelegates.featureFlags = {
@@ -89,7 +92,7 @@ export function renderSettings(
 		</SdkProvider>,
 	);
 
-	return { ...view, sdk };
+	return { ...view, sdk, track };
 }
 
 export async function expandModel(baseElement: HTMLElement, modelId: string) {

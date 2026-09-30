@@ -52,6 +52,7 @@ import {
 	type ChatRightPanelContributionProps,
 } from "./right-panel/right-panel-tab-registry.js";
 import { chatRightPanelCapability } from "./right-panel/chat-right-panel-capability.js";
+import { usePaneSessionHeaderStore } from "./pane-canvas/pane-session-header-store.js";
 import { useRightPanelStore } from "./right-panel/right-panel-store.js";
 import { useKiloRuntime } from "./runtime/use-kilo-runtime.js";
 import { useKiloModelCatalog } from "./model-selection/use-kilo-model-catalog.js";
@@ -248,6 +249,7 @@ function renderChatPage(options?: {
 	activeWorkspaceId?: string | null;
 	contributeFiles?: boolean;
 	contributeNotebook?: boolean;
+	contributeChanges?: boolean;
 	children?: ReactNode;
 	canvasMountPolicy?: Contribution["mountPolicy"];
 	prepareModel?: (modelId: string) => Promise<void>;
@@ -265,8 +267,10 @@ function renderChatPage(options?: {
 		localStorage.setItem("kilo-ui.active-workspace", options.activeWorkspaceId);
 	}
 
+	const track = vi.fn(async () => {});
 	const kiloUi = createFakeSdk({
 		featureId: "kilo-ui",
+		telemetry: { track },
 		channels: { ...workspacesContract, ...kiloUiChatContract, ...layoutPresetsContract },
 		handlers: {
 			list: async () => workspaces,
@@ -327,6 +331,14 @@ function renderChatPage(options?: {
 				component: NotebookPanel,
 			})
 		: undefined;
+	if (options?.contributeChanges) {
+		system.getSdk("git").contribute(CHAT_RIGHT_PANEL_TAB_EXTENSION, {
+			id: "changes",
+			label: "Changes",
+			description: "Review changes",
+			component: CanvasPanel,
+		});
+	}
 	const queryClient = testClient();
 	const renderView = () => (
 		<SdkProvider system={system}>
@@ -360,7 +372,17 @@ function renderChatPage(options?: {
 		removeFilesContribution,
 		removeNotebookContribution,
 		rerenderChatPage: () => result.rerender(renderView()),
+		track,
 	};
+}
+
+function trackedLayoutEvents(track: ReturnType<typeof renderChatPage>["track"]) {
+	return (track.mock.calls as unknown as Array<[{ event: string; data: Record<string, unknown> }]>)
+		.map(([input]) => {
+			const { featureId: _featureId, ...data } = input.data;
+			return { event: input.event, data };
+		})
+		.filter(({ event }) => event.startsWith("Pane ") || event.startsWith("Layout "));
 }
 
 async function openFirstCanvasPane(screen: ReturnType<typeof page.elementLocator>) {
@@ -2637,6 +2659,54 @@ describe("ChatPage", () => {
 		expect(useRightPanelStore.getState().bySessionId.draft?.tabs.map(({ title }) => title)).toEqual(
 			["Canvas 1", "Canvas 2"],
 		);
+	});
+
+	it("tracks user-initiated pane opens, closes, and arrangement changes only", async () => {
+		const { baseElement, track } = renderChatPage();
+		const screen = page.elementLocator(baseElement);
+
+		await openFirstCanvasPane(screen);
+		await screen.getByTestId("chat-pane-toolbar-add").click();
+		await screen.getByTestId("chat-pane-launch-canvas.canvas").click();
+		const [, opened] = useRightPanelStore.getState().bySessionId.draft?.tabs ?? [];
+		expect(opened).toBeDefined();
+		await screen.getByTestId(`chat-pane-close-tab-${opened!.instanceId}`).click();
+		await screen.getByTestId("chat-pane-arrangement").click();
+
+		await expect
+			.poll(() => trackedLayoutEvents(track))
+			.toEqual([
+				{ event: "Pane Opened", data: { paneType: "canvas.canvas" } },
+				{ event: "Pane Closed", data: { paneType: "canvas.canvas" } },
+				{ event: "Layout Arrangement Changed", data: { arrangement: "carousel" } },
+			]);
+	});
+
+	it("tracks Open Changes as a pane open only when it creates the pane", async () => {
+		const { baseElement, track } = renderChatPage({ contributeChanges: true });
+		const screen = page.elementLocator(baseElement);
+		await openFirstCanvasPane(screen);
+		await vi.waitFor(() =>
+			expect(
+				usePaneSessionHeaderStore
+					.getState()
+					.definitions.some((definition) => definition.id === "git.changes"),
+			).toBe(true),
+		);
+
+		usePaneSessionHeaderStore.getState().onOpenChanges();
+		await vi.waitFor(() =>
+			expect(
+				useRightPanelStore
+					.getState()
+					.bySessionId.draft?.tabs.some((tab) => tab.definitionId === "git.changes"),
+			).toBe(true),
+		);
+		usePaneSessionHeaderStore.getState().onOpenChanges();
+
+		expect(trackedLayoutEvents(track)).toEqual([
+			{ event: "Pane Opened", data: { paneType: "git.changes" } },
+		]);
 	});
 
 	it("keeps Chat separate in the header toolbar and reveals its existing pane", async () => {

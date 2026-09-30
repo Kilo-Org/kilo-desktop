@@ -177,11 +177,21 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 		setSuccessMessage(null);
 		const envName = name.trim();
 		const job = createEnvironmentJob(envName);
-		const promise = mutation.mutateAsync(buildPayload());
+		const payload = buildPayload();
+		const telemetryData = {
+			packageCount: selection.selected.length,
+			pythonPinned: pythonVersion !== PYTHON_LATEST,
+			customLocation: payload.prefix !== undefined,
+		};
+		const promise = mutation.mutateAsync(payload);
 		const pending = { promise, envName, backgrounded: false };
 		pendingCreateRef.current = pending;
 		promise.then(
 			() => {
+				// Tracked before the backgrounded check so jobs moved to a toast still count.
+				void sdk.telemetry
+					.track({ event: "Environment Created", data: telemetryData })
+					.catch(() => undefined);
 				if (pending.backgrounded) return;
 				showJobSuccess(job);
 				setSuccessMessage(`${envName} was created.`);

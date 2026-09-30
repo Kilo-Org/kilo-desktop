@@ -78,13 +78,17 @@ function resolveExplorerId(
 	return tabs.find(isExplorerTab)?.instanceId ?? DEFAULT_FILES_EXPLORER_ID;
 }
 
-export function openWorkspaceFile(sdk: SDK, options: OpenWorkspaceFileOptions): void {
+/** Resolves `true` once the file (or notebook) is open, `false` when it could not be opened. */
+export async function openWorkspaceFile(
+	sdk: SDK,
+	options: OpenWorkspaceFileOptions,
+): Promise<boolean> {
 	if (isNotebookFile(options.relativePath)) {
-		void openNotebookFile(sdk, options);
-		return;
+		const result = await openNotebookFile(sdk, options)?.catch(() => ({ error: "failed" }));
+		return result !== undefined && !result.error;
 	}
 	const panel = sdk.plugins.get<ChatRightPanelCapabilities>("kilo-ui")?.chatRightPanel;
-	if (!panel) return;
+	if (!panel) return false;
 	const tabs = panel.listTabs?.(options.sessionId) ?? [];
 	if (!options.explorerId) {
 		const existing = tabs.find((tab) =>
@@ -101,7 +105,7 @@ export function openWorkspaceFile(sdk: SDK, options: OpenWorkspaceFileOptions): 
 				},
 			});
 			panel.activateTab?.(options.sessionId, existing.instanceId);
-			return;
+			return true;
 		}
 	}
 	const explorerId = resolveExplorerId(options.explorerId, tabs);
@@ -121,6 +125,7 @@ export function openWorkspaceFile(sdk: SDK, options: OpenWorkspaceFileOptions): 
 			},
 		},
 	);
+	return true;
 }
 
 export function registerFileViewer(sdk: SDK): void {
@@ -128,7 +133,7 @@ export function registerFileViewer(sdk: SDK): void {
 	if (!capabilities?.fileViewer) {
 		sdk.plugins.expose("fileViewer", {
 			openFile(options: OpenWorkspaceFileOptions) {
-				openWorkspaceFile(sdk, options);
+				void openWorkspaceFile(sdk, options);
 			},
 		} satisfies FileViewerCapability);
 	}

@@ -542,6 +542,18 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 		[closeTab, dockPaneWindow, poppedOutPaneIds],
 	);
 
+	// Layout telemetry is recorded only at user-initiated entry points; store
+	// syncs, template application, and cross-window replays stay untracked.
+	const trackLayout = useCallback(
+		(
+			event: "Pane Opened" | "Pane Closed" | "Layout Arrangement Changed" | "Layout Preset Applied",
+			data: Record<string, unknown> = {},
+		) => {
+			void sdk.telemetry.track({ event, data }).catch(() => undefined);
+		},
+		[sdk.telemetry],
+	);
+
 	const handleClosePane = useCallback(
 		(paneId: string) => {
 			if (isAgentPaneId(paneId)) {
@@ -549,12 +561,14 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 				if (poppedOutPaneIds.has(paneId)) void dockPaneWindow(paneId);
 				setChatPaneOpen(sessionId, false);
 				commitLayout(removePane(layout, paneId));
+				trackLayout("Pane Closed", { paneType: "chat" });
 				return;
 			}
 			const tab = panelState.tabs.find((entry) => entry.instanceId === paneId);
 			if (!tab) return;
 			if (!tab.dirty) {
 				finishClosingTab(sessionId, tab);
+				trackLayout("Pane Closed", { paneType: tab.definitionId });
 				return;
 			}
 			setCloseRequest({ sessionId, tab });
@@ -568,13 +582,15 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 			poppedOutPaneIds,
 			sessionId,
 			setChatPaneOpen,
+			trackLayout,
 		],
 	);
 
 	const closeRequestedTab = useCallback(() => {
 		if (!closeRequest) return;
 		finishClosingTab(closeRequest.sessionId, closeRequest.tab);
-	}, [closeRequest, finishClosingTab]);
+		trackLayout("Pane Closed", { paneType: closeRequest.tab.definitionId });
+	}, [closeRequest, finishClosingTab, trackLayout]);
 
 	const wasEmptyRef = useRef(!hasMessages);
 
@@ -648,7 +664,9 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 		const changesDefinition = rightPanelDefinitions.find(
 			(definition) => definition.id === "git.changes",
 		);
-		if (changesDefinition) handleLaunch(changesDefinition);
+		if (!changesDefinition) return;
+		handleLaunch(changesDefinition);
+		trackLayout("Pane Opened", { paneType: changesDefinition.id });
 	}, [
 		activateTab,
 		commitLayout,
@@ -659,6 +677,7 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 		poppedOutPaneIds,
 		rightPanelDefinitions,
 		sessionId,
+		trackLayout,
 	]);
 	const handleAppendToChat = useCallback(
 		(text: string) => {
@@ -673,6 +692,20 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 		},
 		[aui, handleDockPoppedOutPane, handleLaunchChat, sdk, sessionId],
 	);
+	const handleUserLaunch = useCallback(
+		(definition: RightPanelTabDefinition, targetGroupId?: string) => {
+			handleLaunch(definition, targetGroupId);
+			trackLayout("Pane Opened", { paneType: definition.id });
+		},
+		[handleLaunch, trackLayout],
+	);
+	const handleUserLaunchChat = useCallback(
+		(targetGroupId?: string) => {
+			handleLaunchChat(targetGroupId);
+			trackLayout("Pane Opened", { paneType: "chat" });
+		},
+		[handleLaunchChat, trackLayout],
+	);
 	const handleArrangementChange = useCallback(
 		(next: Arrangement) => {
 			if (next === "tiles") {
@@ -680,8 +713,9 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 				if (unpinned !== layout) commitLayout(unpinned);
 			}
 			persistArrangement(sessionId, next);
+			trackLayout("Layout Arrangement Changed", { arrangement: next });
 		},
-		[commitLayout, layout, persistArrangement, sessionId],
+		[commitLayout, layout, persistArrangement, sessionId, trackLayout],
 	);
 
 	const captureLayout = useCallback(
@@ -691,8 +725,9 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 	const handleApplyLayout = useCallback(
 		(preset: LayoutPreset) => {
 			applyTemplate(sessionId, preset.template, availableDefinitionIds);
+			trackLayout("Layout Preset Applied");
 		},
-		[applyTemplate, availableDefinitionIds, sessionId],
+		[applyTemplate, availableDefinitionIds, sessionId, trackLayout],
 	);
 
 	useEffect(() => {
@@ -705,10 +740,10 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 			arrangement,
 			onArrangementChange: handleArrangementChange,
 			definitions: rightPanelDefinitions,
-			onLaunch: handleLaunch,
+			onLaunch: handleUserLaunch,
 			onOpenChanges: handleOpenChanges,
 			onAppendToChat: handleAppendToChat,
-			onLaunchChat: handleLaunchChat,
+			onLaunchChat: handleUserLaunchChat,
 			captureLayout,
 			onApplyLayout: handleApplyLayout,
 		});
@@ -717,10 +752,10 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 		arrangement,
 		captureLayout,
 		handleApplyLayout,
-		handleLaunch,
+		handleUserLaunch,
 		handleOpenChanges,
 		handleAppendToChat,
-		handleLaunchChat,
+		handleUserLaunchChat,
 		handleArrangementChange,
 		hasCanvas,
 		headerWorkspaceDirectory,
@@ -879,8 +914,8 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 							: {})}
 						definitions={rightPanelDefinitions}
 						revealActivePaneNonce={revealActivePaneNonce}
-						onLaunchChat={handleLaunchChat}
-						onLaunch={handleLaunch}
+						onLaunchChat={handleUserLaunchChat}
+						onLaunch={handleUserLaunch}
 						renderPane={renderPane}
 						paneTitleHint={paneTitleHint}
 						iconForPane={iconForPane}

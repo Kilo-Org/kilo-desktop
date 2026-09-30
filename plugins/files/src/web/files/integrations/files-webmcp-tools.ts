@@ -81,7 +81,7 @@ async function openFile(
 		return { error: `File not found (or not a file): "${args.path}".` };
 	}
 
-	openWorkspaceFile(sdk, {
+	void openWorkspaceFile(sdk, {
 		sessionId,
 		workspaceDirectory,
 		relativePath,

@@ -5,6 +5,35 @@ import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 import { openWorkspaceFile } from "./file-viewer.js";
 
 describe("openWorkspaceFile", () => {
+	const fileOptions = {
+		sessionId: "session-1",
+		workspaceDirectory: "/workspace",
+		relativePath: "docs/readme.md",
+	};
+
+	it("reports whether the file opened", async () => {
+		const filesSdk = createFakeSdk({ featureId: "files" });
+		const system = createFakeFeatureSystem({ sdks: { files: filesSdk } });
+		await expect(openWorkspaceFile(filesSdk, fileOptions)).resolves.toBe(false);
+
+		system.getSdk("kilo-ui").plugins.expose("chatRightPanel", { openContributedTab: vi.fn() });
+		await expect(openWorkspaceFile(filesSdk, fileOptions)).resolves.toBe(true);
+	});
+
+	it("reports a failed notebook open as not opened", async () => {
+		const filesSdk = createFakeSdk({ featureId: "files" });
+		const system = createFakeFeatureSystem({ sdks: { files: filesSdk } });
+		const notebook = { ...fileOptions, relativePath: "analysis.ipynb" };
+		await expect(openWorkspaceFile(filesSdk, notebook)).resolves.toBe(false);
+
+		const openFile = vi.fn(async () => ({ error: "kernel unavailable" }));
+		system.getSdk("notebook").plugins.expose("notebookViewer", { openFile });
+		await expect(openWorkspaceFile(filesSdk, notebook)).resolves.toBe(false);
+
+		openFile.mockResolvedValueOnce({} as { error: string });
+		await expect(openWorkspaceFile(filesSdk, notebook)).resolves.toBe(true);
+	});
+
 	it("opens a distinct file pane owned by the requesting explorer", () => {
 		const filesSdk = createFakeSdk({ featureId: "files" });
 		const system = createFakeFeatureSystem({ sdks: { files: filesSdk } });

@@ -23,6 +23,7 @@ function renderDialog(
 		env?: CondaEnv;
 		deleteFn?: (input: CondaEnvsDeleteInput) => CondaEnvsDeleteResult;
 		onClose?: () => void;
+		track?: () => Promise<void>;
 	} = {},
 ) {
 	const env: CondaEnv = options.env ?? { name: "myenv", prefix: "/opt/anaconda3/envs/myenv" };
@@ -56,6 +57,7 @@ function renderDialog(
 			"conda.repodata.find": notImplemented,
 			"conda.jobs.cancel": notImplemented,
 		},
+		...(options.track ? { telemetry: { track: options.track } } : {}),
 	});
 	const system = createFakeFeatureSystem({ sdks: { environments: sdk } });
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -114,6 +116,36 @@ describe("DeleteEnvironmentDialog", () => {
 			name: "myenv",
 			prefix: "/opt/anaconda3/envs/myenv",
 		});
+	});
+
+	it("tracks a removal only once deletion succeeds", async () => {
+		const track = vi.fn(async () => {});
+		const { baseElement } = renderDialog({ track });
+		const screen = page.elementLocator(baseElement);
+
+		await userEvent.click(screen.getByTestId("environments-delete-submit"));
+
+		await vi.waitFor(() =>
+			expect(track).toHaveBeenCalledExactlyOnceWith({
+				event: "Environment Removed",
+				data: { featureId: "environments" },
+			}),
+		);
+	});
+
+	it("does not track a removal when deletion fails", async () => {
+		const track = vi.fn(async () => {});
+		const deleteFn = vi.fn((): CondaEnvsDeleteResult => {
+			throw new Error("busy");
+		});
+		const { baseElement } = renderDialog({ track, deleteFn });
+		const screen = page.elementLocator(baseElement);
+
+		await userEvent.click(screen.getByTestId("environments-delete-submit"));
+		await vi.waitFor(() => expect(deleteFn).toHaveBeenCalledOnce());
+		await new Promise((resolve) => setTimeout(resolve, 50));
+
+		expect(track).not.toHaveBeenCalled();
 	});
 
 	it("uses prefix basename for nameless envs in the title", async () => {

@@ -40,6 +40,9 @@ function WebLink({ sessionId, Anchor, href, onClick, ...props }: WebLinkProps) {
 		if (event.defaultPrevented || !isPlainPrimaryClick(event) || !href) return;
 		if ("error" in openBrowserTab(sdk, sessionId, href)) return;
 		event.preventDefault();
+		void sdk.telemetry
+			.track({ event: "Browser Tab Opened", data: { source: "chat-link" } })
+			.catch(() => undefined);
 	};
 	return createElement(Anchor, { ...props, href, onClick: openInBrowserTab });
 }

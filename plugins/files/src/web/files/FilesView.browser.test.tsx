@@ -72,7 +72,13 @@ function renderView(
 	panel: Record<string, unknown> = {},
 	width = 900,
 ) {
-	const sdk = createFakeSdk({ featureId: "files", channels: filesContract, handlers });
+	const track = vi.fn(async (_input: { event: string; data: Record<string, unknown> }) => {});
+	const sdk = createFakeSdk({
+		featureId: "files",
+		channels: filesContract,
+		handlers,
+		telemetry: { track },
+	});
 	const system = createFakeFeatureSystem({ sdks: { files: sdk } });
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	system.getSdk("kilo-ui").plugins.expose("chatRightPanel", {
@@ -96,6 +102,7 @@ function renderView(
 		...result,
 		system,
 		queryClient,
+		track,
 		rerenderView(nextProps: Partial<FilesViewProps>) {
 			result.rerender(renderTree(nextProps));
 		},
@@ -633,13 +640,19 @@ describe("FilesView", () => {
 
 	it("opens a selected explorer file as a distinct file pane", async () => {
 		const openContributedTab = vi.fn();
-		renderView(handlers(), {}, { openContributedTab });
+		const { track } = renderView(handlers(), {}, { openContributedTab });
 		await expect.element(page.getByTestId("files-tree")).toBeVisible();
 		await openTreePath("docs/readme.md");
 
 		expect(document.querySelector('[data-qa-id="files-breadcrumb"]')).toBeNull();
 		await vi.waitFor(() =>
 			expect(openContributedTab).toHaveBeenCalledWith(...openedFileCall("docs/readme.md")),
+		);
+		await vi.waitFor(() =>
+			expect(track).toHaveBeenCalledExactlyOnceWith({
+				event: "File Opened",
+				data: { featureId: "files", source: "tree" },
+			}),
 		);
 	});
 
@@ -1205,6 +1218,32 @@ describe("FilesView", () => {
 				path: "/workspace/notebooks/analysis.ipynb",
 			}),
 		);
+		await vi.waitFor(() =>
+			expect(view.track).toHaveBeenCalledExactlyOnceWith({
+				event: "Notebook Opened",
+				data: { featureId: "files", source: "tree" },
+			}),
+		);
+	});
+
+	it("does not track a notebook opened from the tree when opening fails", async () => {
+		const openNotebookFile = vi.fn(async () => ({ error: "kernel unavailable" }));
+		const view = renderView({
+			...handlers(),
+			list: async () => ({
+				paths: ["notebooks/", "notebooks/analysis.ipynb"],
+				truncated: false,
+			}),
+		});
+		view.system.getSdk("notebook").plugins.expose("notebookViewer", {
+			openFile: openNotebookFile,
+		});
+
+		await openTreePath("notebooks/analysis.ipynb");
+		await vi.waitFor(() => expect(openNotebookFile).toHaveBeenCalledOnce());
+		await new Promise((resolve) => setTimeout(resolve, 50));
+
+		expect(view.track).not.toHaveBeenCalled();
 	});
 
 	it("offers to open an ipynb file pane in the notebook panel without reading raw contents", async () => {
@@ -1231,6 +1270,12 @@ describe("FilesView", () => {
 			expect(openNotebookFile).toHaveBeenCalledWith({
 				sessionId: "session-1",
 				path: "/workspace/notebooks/analysis.ipynb",
+			}),
+		);
+		await vi.waitFor(() =>
+			expect(view.track).toHaveBeenCalledWith({
+				event: "Notebook Opened",
+				data: { featureId: "files", source: "files-button" },
 			}),
 		);
 	});

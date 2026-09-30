@@ -53,4 +53,37 @@ describe("telemetry contract", () => {
 			telemetryTrackInputSchema.safeParse({ event: TELEMETRY_EVENTS[0], data: {} }).success,
 		).toBe(true);
 	});
+
+	it("accepts every approved product usage event", () => {
+		for (const event of [
+			"Marketplace Tab Viewed",
+			"Marketplace Install Button Clicked",
+			"Marketplace Item Installed",
+			"Marketplace Item Removed",
+			"Onboarding Shown",
+			"Onboarding Completed",
+			"Onboarding Skipped",
+			"Workspace Created",
+			"Workspace Removed",
+			"Pane Opened",
+			"Pane Closed",
+			"Layout Arrangement Changed",
+			"Layout Preset Saved",
+			"Layout Preset Applied",
+			"Layout Preset Removed",
+			"Layout Preset Default Changed",
+			"Commit Message Generated",
+			"Pull Request Content Generated",
+			"Environment Created",
+			"Environment Removed",
+			"Local Model Installed",
+			"Local Model Server Started",
+			"Local Model Server Stopped",
+			"File Opened",
+			"Notebook Opened",
+			"Browser Tab Opened",
+		]) {
+			expect(telemetryTrackInputSchema.safeParse({ event, data: {} }).success).toBe(true);
+		}
+	});
 });

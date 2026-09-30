@@ -27,7 +27,8 @@ afterEach(() => {
 });
 
 function renderMessage(text: string, options: { sessionId?: string; withKiloUi?: boolean } = {}) {
-	const browserSdk = createFakeSdk({ featureId: "browser" });
+	const track = vi.fn(async (_input: { event: string; data: Record<string, unknown> }) => {});
+	const browserSdk = createFakeSdk({ featureId: "browser", telemetry: { track } });
 	const system = createFakeFeatureSystem({ sdks: { browser: browserSdk } });
 	const panel = {
 		listTabs: vi.fn(() => []),
@@ -42,12 +43,12 @@ function renderMessage(text: string, options: { sessionId?: string; withKiloUi?:
 			<MarkdownContent text={text} extensions={[extension]} />
 		</SdkProvider>,
 	);
-	return { panel };
+	return { panel, track };
 }
 
 describe("BrowserMarkdownExtension", () => {
 	it("opens a web link from a chat message in a Browser tab of that chat", async () => {
-		const { panel } = renderMessage("See [the docs](https://example.com/docs).");
+		const { panel, track } = renderMessage("See [the docs](https://example.com/docs).");
 
 		await page.getByRole("link", { name: "the docs" }).click();
 
@@ -57,6 +58,10 @@ describe("BrowserMarkdownExtension", () => {
 			{ title: "example.com", metadata: { url: "https://example.com/docs" } },
 		);
 		expect(clicks).toEqual([{ defaultPrevented: true }]);
+		expect(track).toHaveBeenCalledExactlyOnceWith({
+			event: "Browser Tab Opened",
+			data: { featureId: "browser", source: "chat-link" },
+		});
 	});
 
 	it("opens autolinked URLs too", async () => {
@@ -106,10 +111,11 @@ describe("BrowserMarkdownExtension", () => {
 	});
 
 	it("falls back to the system browser when the chat pane layout is unavailable", async () => {
-		renderMessage("[docs](https://example.com)", { withKiloUi: false });
+		const { track } = renderMessage("[docs](https://example.com)", { withKiloUi: false });
 
 		await page.getByRole("link", { name: "docs" }).click();
 
 		expect(clicks).toEqual([{ defaultPrevented: false }]);
+		expect(track).not.toHaveBeenCalled();
 	});
 });

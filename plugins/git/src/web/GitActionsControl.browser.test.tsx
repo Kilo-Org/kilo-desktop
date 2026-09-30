@@ -18,6 +18,61 @@ afterEach(() => {
 	vi.clearAllMocks();
 });
 
+it("tracks a generated commit message without its content", async () => {
+	const track = vi.fn(async () => {});
+	const commit = vi.fn(() => undefined);
+	const sdk = createFakeSdk({
+		featureId: "git",
+		channels: { ...gitContract, ...gitActionsContract },
+		telemetry: { track },
+		handlers: {
+			status: () => ({
+				exists: true,
+				doConflictedFilesExist: false,
+				currentBranch: "feature",
+				workingDirectory: { files: [{ path: "a.txt", status: { kind: "Modified" as const } }] },
+			}),
+			branches: () => ({
+				currentBranch: "feature",
+				defaultBranch: "main",
+				recentBranches: [],
+				branches: [],
+			}),
+			originUrl: () => null,
+			workingTreeStats: () => ({ additions: 1, deletions: 0 }),
+			fetch: () => undefined,
+			stageChanges: () => ({ statusSummary: "M a.txt", diffPatch: "", recentCommitSubjects: [] }),
+			commit,
+		},
+	});
+	const system = createFakeFeatureSystem({ sdks: { git: sdk } });
+	system.getSdk("kilo-ui").plugins.expose("sourceControlWriter", {
+		generateCommitMessage: async () => "Secret commit subject",
+		generatePullRequest: async () => ({ title: "", body: "" }),
+	});
+	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	try {
+		render(
+			<SdkProvider system={system}>
+				<QueryClientProvider client={queryClient}>
+					<GitActionsControl workspaceDirectory="/repo/project" />
+				</QueryClientProvider>
+			</SdkProvider>,
+		);
+		await page.getByTestId("git-action-primary").click();
+		await vi.waitFor(() => expect(commit).toHaveBeenCalledOnce());
+
+		expect(track).toHaveBeenCalledExactlyOnceWith({
+			event: "Commit Message Generated",
+			data: { featureId: "git" },
+		});
+	} finally {
+		cleanup();
+		queryClient.clear();
+		sdk.destroy();
+	}
+});
+
 it.each(["primary", "menu", "default branch"])(
 	"keeps long %s push errors readable within the window and allows dismissal",
 	async (entry) => {

@@ -206,6 +206,9 @@ export function useRepositoryActions(workspaceDirectory: string): RepositoryActi
 		const context = await sdk.client.stageChanges({ workingDirectory: workspaceDirectory });
 		step("Generating commit message...", "generate a commit message");
 		const message = await generator.generateCommitMessage({ workspaceDirectory, ...context });
+		void sdk.telemetry
+			.track({ event: "Commit Message Generated", data: {} })
+			.catch(() => undefined);
 		step("Committing...", "commit");
 		await sdk.client.commit({ workingDirectory: workspaceDirectory, message });
 	}
@@ -224,6 +227,9 @@ export function useRepositoryActions(workspaceDirectory: string): RepositoryActi
 			headBranch: currentBranch!,
 			...context,
 		});
+		void sdk.telemetry
+			.track({ event: "Pull Request Content Generated", data: {} })
+			.catch(() => undefined);
 		step("Creating draft PR...", "create pull request");
 		const created = await sdk.client.createPullRequest({
 			workingDirectory: workspaceDirectory,

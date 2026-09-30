@@ -177,7 +177,15 @@ function WorkspaceFormDialog({
 				}
 				return [...current, saved];
 			});
-			if (!workspace) setActiveWorkspaceId(saved.id);
+			if (!workspace) {
+				setActiveWorkspaceId(saved.id);
+				void sdk.telemetry
+					.track({
+						event: "Workspace Created",
+						data: { source: "dialog", folderCount: saved.folders.length },
+					})
+					.catch(() => undefined);
+			}
 			await queryClient.invalidateQueries({ queryKey: listQueryKey });
 			onClose();
 		},
@@ -229,6 +237,9 @@ function DeleteWorkspaceDialog({
 		mutationFn: () => sdk.client.remove({ id: workspace.id }),
 		onMutate: () => setError(null),
 		onSuccess: async () => {
+			void sdk.telemetry
+				.track({ event: "Workspace Removed", data: { folderCount: workspace.folders.length } })
+				.catch(() => undefined);
 			if (activeWorkspaceId === workspace.id) {
 				setActiveWorkspaceId(
 					workspaces.find((candidate) => candidate.id !== workspace.id)?.id ?? null,

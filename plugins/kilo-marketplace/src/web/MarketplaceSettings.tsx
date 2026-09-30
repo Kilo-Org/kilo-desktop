@@ -154,6 +154,18 @@ const ITEM_NAME_COLLATOR = new Intl.Collator(undefined, {
 	sensitivity: "base",
 });
 const CATEGORY_PREVIEW_LIMIT = 6;
+
+function itemTelemetryData(
+	item: MarketplaceItemRef & { name: string },
+	target?: MarketplaceInstalled["scope"],
+) {
+	return {
+		itemId: item.id,
+		itemName: item.name,
+		itemType: item.type,
+		...(target ? { target } : {}),
+	};
+}
 const CATEGORY_TILE_PLACEHOLDERS = [
 	"first",
 	"second",
@@ -1286,6 +1298,12 @@ function InstallDialog({
 				}));
 		setSubmitting(true);
 		setOutcome(null);
+		void sdk.telemetry
+			.track({
+				event: "Marketplace Install Button Clicked",
+				data: itemTelemetryData(item),
+			})
+			.catch(() => undefined);
 		void (async () => {
 			// Sequential so concurrent writes never race on shared Kilo config; every destination is
 			// still attempted so one failure doesn't silently skip the rest.
@@ -1294,6 +1312,12 @@ function InstallDialog({
 			for (const destination of destinations) {
 				try {
 					await install.mutateAsync(destination.input);
+					void sdk.telemetry
+						.track({
+							event: "Marketplace Item Installed",
+							data: itemTelemetryData(item, destination.input.scope),
+						})
+						.catch(() => undefined);
 					succeeded.push(destination.label);
 				} catch (error) {
 					failed.push({
@@ -1759,6 +1783,11 @@ export function MarketplaceSettings() {
 		setMode(next);
 	};
 	const catalogOpen = mode === "browse";
+	useEffect(() => {
+		if (!catalogOpen) return;
+		void sdk.telemetry.track({ event: "Marketplace Tab Viewed", data: {} }).catch(() => undefined);
+	}, [catalogOpen, sdk.telemetry]);
+
 	const confirmRemove = () => {
 		if (!removing) return;
 		remove.mutate(
@@ -1767,7 +1796,17 @@ export function MarketplaceSettings() {
 				scope: removing.installed.scope,
 				...(removing.installed.workspaceId ? { workspaceId: removing.installed.workspaceId } : {}),
 			},
-			{ onSuccess: () => setRemoving(null) },
+			{
+				onSuccess: () => {
+					void sdk.telemetry
+						.track({
+							event: "Marketplace Item Removed",
+							data: itemTelemetryData(removing.item, removing.installed.scope),
+						})
+						.catch(() => undefined);
+					setRemoving(null);
+				},
+			},
 		);
 	};
 

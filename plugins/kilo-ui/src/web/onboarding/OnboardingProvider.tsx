@@ -127,6 +127,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 	const [workStyleResolved, setWorkStyleResolved] = useState(false);
 	const [workStyleError, setWorkStyleError] = useState<string | null>(null);
 	const workStyleShown = useRef(false);
+	const onboardingShown = useRef(false);
 
 	const view = resolveOnboarding({
 		state: persisted.data ?? null,
@@ -175,17 +176,28 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 		retry: false,
 	});
 
-	const trackWorkStyle = (
-		event: "Work Style Onboarding Shown" | "Work Style Selected",
+	const trackOnboarding = (
+		event:
+			| "Onboarding Shown"
+			| "Onboarding Completed"
+			| "Onboarding Skipped"
+			| "Work Style Onboarding Shown"
+			| "Work Style Selected",
 		data = {},
 	) => {
 		void onboardingSdk.telemetry.track({ event, data }).catch(() => undefined);
 	};
 
 	useEffect(() => {
+		if (step === null || onboardingShown.current) return;
+		onboardingShown.current = true;
+		trackOnboarding("Onboarding Shown");
+	});
+
+	useEffect(() => {
 		if (step !== "work-style" || workStyleShown.current) return;
 		workStyleShown.current = true;
-		trackWorkStyle("Work Style Onboarding Shown");
+		trackOnboarding("Work Style Onboarding Shown");
 	});
 
 	const applyStyle = useMutation({
@@ -196,7 +208,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 		},
 		onMutate: (style) => {
 			setWorkStyleError(null);
-			trackWorkStyle("Work Style Selected", { style });
+			trackOnboarding("Work Style Selected", { style });
 		},
 		onSuccess: (result) => {
 			setWorkStyleApplied(result.applied);
@@ -220,6 +232,13 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 			);
 			workspaces.setActiveWorkspaceId(saved.id);
 			setWorkspaceCreated(true);
+			void workspacesSdk.telemetry
+				.track({
+					event: "Workspace Created",
+					data: { source: "onboarding", folderCount: saved.folders.length },
+				})
+				.catch(() => undefined);
+			trackOnboarding("Onboarding Completed");
 			// Persist completion before leaving the step: if the app quits on the
 			// features slide, the wizard must not come back and create a second
 			// workspace. The step also stays busy ("Creating…") until this settles.
@@ -258,7 +277,9 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 
 	const finish = () => {
 		close();
-		if (!workspaceCreated) complete.mutate();
+		if (workspaceCreated) return;
+		complete.mutate();
+		trackOnboarding("Onboarding Completed");
 	};
 
 	const onContinue = () => {
@@ -296,7 +317,9 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 			return;
 		}
 		close();
-		if (!workspaceCreated) skip.mutate();
+		if (workspaceCreated) return;
+		skip.mutate();
+		trackOnboarding("Onboarding Skipped");
 	};
 
 	const previous = workspaceCreated ? null : previousStep(step);

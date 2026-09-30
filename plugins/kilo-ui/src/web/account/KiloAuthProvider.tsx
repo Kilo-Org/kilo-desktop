@@ -148,6 +148,7 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 					.catch(() => undefined);
 				if (attempt !== attemptRef.current) return;
 
+				void sdk.telemetry.track({ event: "Logged In", data: {} }).catch(() => undefined);
 				setDeviceAuth(IDLE_DEVICE_AUTH);
 			} catch (error) {
 				if (attempt !== attemptRef.current) return;
@@ -165,6 +166,7 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 		profileQueryKey,
 		queryClient,
 		rebootAndRefresh,
+		sdk.telemetry,
 	]);
 
 	const cancelLogin = useCallback(() => {
@@ -187,11 +189,12 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 		void (async () => {
 			// Logout is idempotent: 401 / already-cleared credentials still mean signed out.
 			await client.auth.remove({ providerID: "kilo" }).catch(() => undefined);
+			void sdk.telemetry.track({ event: "Logged Out", data: {} }).catch(() => undefined);
 			await client.global.dispose().catch(() => undefined);
 			applySignedOut();
 			invalidateGatewayCatalogs(queryClient);
 		})();
-	}, [applySignedOut, client, queryClient]);
+	}, [applySignedOut, client, queryClient, sdk.telemetry]);
 
 	const refreshProfile = useCallback(() => {
 		if (!client) return;

@@ -66,6 +66,7 @@ function renderDialog(
 		channels?: string[];
 		envsDirs?: string[];
 		auth?: Partial<SDK["auth"]>;
+		track?: SDK["telemetry"]["track"];
 	} = {},
 ) {
 	const find = options.find ?? (() => [pkg("numpy", ["1.26.4", "1.25.0"]), pkg("pandas")]);
@@ -85,6 +86,7 @@ function renderDialog(
 			"conda.envs.create": async (input: CondaEnvsCreateInput) => create(input),
 		},
 		auth: options.auth ?? {},
+		...(options.track ? { telemetry: { track: options.track } } : {}),
 	});
 	const system = createFakeFeatureSystem({ sdks: { environments: sdk } });
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -178,6 +180,27 @@ describe("CreateEnvironmentDialog (modal)", () => {
 		await expect.element(screen.getByTestId("environments-create-dialog")).toBeVisible();
 		// Form state is preserved so the user can review what was created.
 		await expect.element(screen.getByTestId("environments-create-name")).toHaveValue("myenv");
+	});
+
+	it("tracks a created environment with coarse options only", async () => {
+		const track = vi.fn(async () => {});
+		const { baseElement } = renderDialog({ track });
+		const screen = page.elementLocator(baseElement);
+
+		await userEvent.click(screen.getByText("numpy", { exact: true }));
+		await userEvent.fill(screen.getByTestId("environments-create-name"), "myenv");
+		await userEvent.click(screen.getByTestId("environments-create-submit"));
+		await expect.element(screen.getByTestId("environments-create-success")).toBeVisible();
+
+		expect(track).toHaveBeenCalledExactlyOnceWith({
+			event: "Environment Created",
+			data: {
+				featureId: "environments",
+				packageCount: 1,
+				pythonPinned: false,
+				customLocation: false,
+			},
+		});
 	});
 
 	it("opens the channel chooser popover from the Channels button", async () => {

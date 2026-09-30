@@ -20,6 +20,7 @@ const profile = vi.hoisted(() => vi.fn());
 const organizationSet = vi.hoisted(() => vi.fn());
 const authorize = vi.hoisted(() => vi.fn());
 const oauthCallback = vi.hoisted(() => vi.fn());
+const track = vi.hoisted(() => vi.fn(async () => {}));
 const latestClient = vi.hoisted(() => ({ current: null as Record<string, unknown> | null }));
 
 vi.mock("../chat/runtime/create-kilo-runtime-client.js", () => ({
@@ -94,6 +95,7 @@ function renderAccount({
 			"chat.getConnection": async () => connection,
 			"chat.prepareSession": async () => ({ directory: "/tmp", workspaceFolders: [] }),
 		},
+		telemetry: { track },
 		...(openExternal ? { shell: { openExternal } } : {}),
 	});
 	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
@@ -188,6 +190,28 @@ describe("KiloAuthProvider login", () => {
 			.toHaveAttribute("data-state", "signed-in");
 	});
 
+	it("tracks a completed sign-in once", async () => {
+		const { screen } = renderAccount({ authenticated: false });
+		authorize.mockResolvedValue({
+			data: {
+				instructions: "Go to https://kilo.ai/device and enter code: ABCD-1234",
+				url: "https://kilo.ai/device",
+			},
+		});
+		oauthCallback.mockResolvedValue({ data: true });
+
+		await screen.getByTestId("kilo-account-login").click();
+		authStatus.mockImplementation(async () => ({
+			data: { authenticated: true, type: "oauth" },
+		}));
+
+		await expect.poll(() => track.mock.calls.length).toBe(1);
+		expect(track).toHaveBeenCalledWith({
+			event: "Logged In",
+			data: { featureId: "kilo-ui" },
+		});
+	});
+
 	it("keeps waiting when opening the verification URL is blocked", async () => {
 		const openExternal = vi.fn(async () => {
 			throw new Error("popup blocked");
@@ -241,7 +265,7 @@ describe("KiloAuthProvider logout", () => {
 		expect(createKiloDirectoryClient).toHaveBeenCalledWith(connection, connection.globalDirectory);
 	});
 
-	it("returns to the signed-out view after a successful logout", async () => {
+	it("returns to the signed-out view after a successful logout and tracks it", async () => {
 		authRemove.mockResolvedValue({ data: true });
 		const { screen } = renderAccount();
 
@@ -250,6 +274,10 @@ describe("KiloAuthProvider logout", () => {
 
 		await expect.element(screen.getByTestId("kilo-account-signed-out")).toBeVisible();
 		await expect.element(screen.getByTestId("kilo-account-login")).toBeVisible();
+		expect(track).toHaveBeenCalledWith({
+			event: "Logged Out",
+			data: { featureId: "kilo-ui" },
+		});
 	});
 });
 

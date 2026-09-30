@@ -134,6 +134,12 @@ export function LocalModelServerSettings() {
 function LocalModelServerSettingsContent() {
 	const sdk = useSdk<LocalInferenceServiceContract>("local-inference");
 	const queryClient = useQueryClient();
+	const trackLocalInference = (
+		event: "Local Model Installed" | "Local Model Server Started" | "Local Model Server Stopped",
+		data: Record<string, unknown> = {},
+	) => {
+		void sdk.telemetry.track({ event, data }).catch(() => undefined);
+	};
 	const catalogEnabled = useFeatureFlag<boolean>(MODEL_CATALOG_FEATURE_FLAG, false);
 	const modelFileInput = useRef<HTMLInputElement>(null);
 	const modelSaveQueue = useRef(Promise.resolve());
@@ -358,7 +364,10 @@ function LocalModelServerSettingsContent() {
 		}
 		setModelFileError(undefined);
 		addModel.reset();
-		addModel.mutate({ path });
+		addModel.mutate(
+			{ path },
+			{ onSuccess: () => trackLocalInference("Local Model Installed", { source: "import" }) },
+		);
 	};
 	const addModelError = modelFileError ?? addModel.error?.message;
 	const saveModelSettings = (id: string, settings: LocalModelSettings) => {
@@ -386,8 +395,15 @@ function LocalModelServerSettingsContent() {
 							checked={statusPresentation.checked}
 							disabled={disabled}
 							onCheckedChange={(checked) => {
-								if (checked) start.mutate();
-								else stop.mutate();
+								if (checked) {
+									start.mutate(undefined, {
+										onSuccess: () => trackLocalInference("Local Model Server Started"),
+									});
+								} else {
+									stop.mutate(undefined, {
+										onSuccess: () => trackLocalInference("Local Model Server Stopped"),
+									});
+								}
 							}}
 							data-qa-id="local-model-server-toggle"
 						/>

@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { TriangleAlertIcon } from "lucide-react";
 
 import {
 	PRIVACY_CHANGED_EVENT,
@@ -13,10 +14,13 @@ import {
 	useSdkMutation,
 	useSdkQuery,
 } from "@kilo-desktop/sdk-react";
+import { Alert, AlertDescription, AlertTitle } from "@kilo-desktop/ui/components/alert";
 import { FieldError } from "@kilo-desktop/ui/components/field";
 import { Skeleton, SkeletonText } from "@kilo-desktop/ui/components/skeleton";
 import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
 import { Switch } from "@kilo-desktop/ui/components/switch";
+
+const FREE_MODELS_DATA_HANDLING_URL = "https://kilo.ai/docs/getting-started/using-kilo-for-free";
 
 export function PrivacySettings() {
 	const sdk = useSdk<PrivacyService>(PRIVACY_FEATURE_ID);
@@ -87,6 +91,25 @@ export function PrivacySettings() {
 						</div>
 					)}
 				</div>
+				<Alert className="mt-4" data-qa-id="privacy-free-models-note">
+					<TriangleAlertIcon aria-hidden="true" className="text-amber-500" />
+					<AlertTitle>Data handling for free models</AlertTitle>
+					<AlertDescription>
+						Free models may route your requests to providers that log prompts and outputs and use
+						them to improve their services. Do not submit personal or confidential data when using
+						free models. Learn more about data handling for free models{" "}
+						<a
+							href={FREE_MODELS_DATA_HANDLING_URL}
+							onClick={(event) => {
+								event.preventDefault();
+								void sdk.shell.openExternal(FREE_MODELS_DATA_HANDLING_URL).catch(() => undefined);
+							}}
+						>
+							here
+						</a>
+						. You can use the chat model picker filter to exclude free models.
+					</AlertDescription>
+				</Alert>
 			</div>
 		</div>
 	);

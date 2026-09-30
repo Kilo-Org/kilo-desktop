@@ -117,4 +117,33 @@ describe("Privacy settings", () => {
 		await expect.element(screen.getByText("Privacy settings are unavailable.")).toBeVisible();
 		await expect.element(toggle).toBeDisabled();
 	});
+
+	it("opens the free-models data handling docs from the note", async () => {
+		const openExternal = vi.fn(async () => ({ opened: true }));
+		const sdk = createFakeSdk({
+			featureId: "privacy",
+			channels: privacyChannels,
+			handlers: {
+				get: () => ({ allowDataCollection: true }),
+				set: (input: { allowDataCollection: boolean }) => input,
+			},
+			shell: { openExternal },
+		});
+		const system = createFakeFeatureSystem({ sdks: { privacy: sdk } });
+		const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+		const { baseElement } = render(
+			<SdkProvider system={system}>
+				<QueryClientProvider client={client}>
+					<PrivacySettings />
+				</QueryClientProvider>
+			</SdkProvider>,
+		);
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByText("Data handling for free models")).toBeVisible();
+		await screen.getByRole("link", { name: "here" }).click();
+		expect(openExternal).toHaveBeenCalledWith(
+			"https://kilo.ai/docs/getting-started/using-kilo-for-free",
+		);
+	});
 });

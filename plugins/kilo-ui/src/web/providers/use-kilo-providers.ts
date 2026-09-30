@@ -34,6 +34,21 @@ function boundedSignal(querySignal: AbortSignal): AbortSignal {
 	return AbortSignal.any([querySignal, AbortSignal.timeout(PROVIDER_MANAGEMENT_TIMEOUT_MS)]);
 }
 
+function isTimeoutError(error: unknown): boolean {
+	return error instanceof Error && error.name === "TimeoutError";
+}
+
+/**
+ * The first `/provider` for a directory waits on Kilo's instance bootstrap, which
+ * can outlast the request bound on a cold, busy machine. Aborting the request
+ * does not stop the bootstrap, so one more attempt normally lands on a warm
+ * instance instead of showing the user an error.
+ */
+function shouldRetryProviderManagement(failureCount: number, error: unknown): boolean {
+	if (isTimeoutError(error)) return failureCount < 1;
+	return shouldRetryStaleKiloQuery(failureCount, error);
+}
+
 export type ProviderManagementData = {
 	view: ProviderListView;
 	config: GlobalProviderConfig;
@@ -217,7 +232,7 @@ export function useKiloProviders(connection: KiloGlobalConnection | undefined) {
 		queryFn: ({ signal }) => fetchProviderManagement(connection, boundedSignal(signal)),
 		enabled: connection !== undefined,
 		placeholderData: keepPreviousData,
-		retry: shouldRetryStaleKiloQuery,
+		retry: shouldRetryProviderManagement,
 		retryDelay: STALE_KILO_QUERY_RETRY_DELAY_MS,
 	});
 	const queryIdentity = `${connection?.baseUrl ?? ""}\0${connection?.version ?? ""}`;

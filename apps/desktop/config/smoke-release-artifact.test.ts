@@ -8,6 +8,7 @@ import {
 	assertWindowsAuthenticodeSignature,
 	findReleaseUpdateArtifact,
 	windowsAuthenticodeCheck,
+	windowsProcessTreeKill,
 } from "./smoke-release-artifact.js";
 
 const temporaryDirectories: string[] = [];
@@ -52,6 +53,15 @@ describe("release update artifact selection", () => {
 		await expect(findReleaseUpdateArtifact(makeDirectory, "darwin")).rejects.toThrow(
 			"Expected exactly one macOS update ZIP",
 		);
+	});
+});
+
+describe("Windows smoke app termination", () => {
+	it("force-kills the whole process tree so helpers and sidecars release payload files", () => {
+		expect(windowsProcessTreeKill(4242)).toEqual({
+			file: "taskkill",
+			args: ["/PID", "4242", "/T", "/F"],
+		});
 	});
 });
 

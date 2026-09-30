@@ -128,14 +128,35 @@ async function waitForReadyFile(file: string, child: ReturnType<typeof spawn>): 
 	throw new Error(`Release app did not complete startup within ${readyTimeoutMs / 1000} seconds.`);
 }
 
-async function terminate(child: ReturnType<typeof spawn>): Promise<void> {
-	if (child.exitCode !== null) return;
-	child.kill();
-	await Promise.race([
-		new Promise<void>((resolve) => child.once("exit", () => resolve())),
-		new Promise<void>((resolve) => setTimeout(resolve, 5_000)),
-	]);
-	if (child.exitCode === null) child.kill("SIGKILL");
+/**
+ * On Windows `child.kill()` terminates only the main Electron process. Its GPU,
+ * network, and renderer helpers and the sidecars it spawned keep running with
+ * handles open on the extracted payload and user-data directory, which makes the
+ * temporary-directory cleanup fail with EPERM/EBUSY. Kill the tree while the
+ * parent is still alive, because taskkill cannot find orphaned descendants.
+ */
+export function windowsProcessTreeKill(pid: number): { file: string; args: string[] } {
+	return { file: "taskkill", args: ["/PID", String(pid), "/T", "/F"] };
+}
+
+function hasExited(child: ReturnType<typeof spawn>): boolean {
+	return child.exitCode !== null || child.signalCode !== null;
+}
+
+async function terminate(
+	child: ReturnType<typeof spawn>,
+	platform: NodeJS.Platform,
+): Promise<void> {
+	if (hasExited(child)) return;
+	const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+	if (platform === "win32" && child.pid !== undefined) {
+		const treeKill = windowsProcessTreeKill(child.pid);
+		await execa(treeKill.file, treeKill.args, { reject: false });
+	} else {
+		child.kill();
+	}
+	await Promise.race([exited, new Promise<void>((resolve) => setTimeout(resolve, 5_000))]);
+	if (!hasExited(child)) child.kill("SIGKILL");
 }
 
 export async function smokeReleaseArtifact(platform: NodeJS.Platform): Promise<void> {
@@ -186,10 +207,17 @@ export async function smokeReleaseArtifact(platform: NodeJS.Platform): Promise<v
 		try {
 			await waitForReadyFile(readyFile, child);
 		} finally {
-			await terminate(child);
+			await terminate(child, platform);
 		}
 	} finally {
-		await rm(temporaryDirectory, { recursive: true, force: true });
+		// Windows releases image and file handles asynchronously after a process
+		// exits; rm retries EBUSY/EPERM with linear backoff (~27s worst case).
+		await rm(temporaryDirectory, {
+			recursive: true,
+			force: true,
+			maxRetries: 10,
+			retryDelay: 500,
+		});
 	}
 }
 

@@ -273,6 +273,26 @@ describe("KiloProvidersSettings", () => {
 		await expect.element(screen.getByTestId("kilo-providers-error")).not.toBeInTheDocument();
 	});
 
+	it("retries a catalog load that timed out while Kilo was still starting", async () => {
+		mockConnectedCatalog();
+		providerList.mockRejectedValueOnce(new DOMException("signal timed out", "TimeoutError"));
+		const { screen } = renderPage({ isPending: false, isError: false, connection });
+		await vi.waitFor(() => expect(providerList).toHaveBeenCalledTimes(2));
+		await expect.element(screen.getByTestId("kilo-providers-row-anthropic")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-providers-error")).not.toBeInTheDocument();
+	});
+
+	it("shows the catalog error when the retried load also timed out", async () => {
+		configGet.mockResolvedValue({ data: {} });
+		providerList.mockRejectedValue(new DOMException("signal timed out", "TimeoutError"));
+		const { screen } = renderPage({ isPending: false, isError: false, connection });
+		await expect.element(screen.getByTestId("kilo-providers-error")).toBeVisible();
+		expect(screen.getByTestId("kilo-providers-error").element().textContent).toContain(
+			"signal timed out",
+		);
+		expect(providerList).toHaveBeenCalledTimes(2);
+	});
+
 	it("does not keep a dropped-connection refetch as a catalog error", async () => {
 		mockCatalog();
 		const { screen, queryClient } = renderPage({ isPending: false, isError: false, connection });

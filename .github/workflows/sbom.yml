@@ -95,7 +95,9 @@ jobs:
           esac
 
           APP_VERSION=$(node -p "require('./apps/desktop/package.json').version")
-          PRODUCT=$(node -p "require('./apps/desktop/package.json').productName" | tr '[:upper:]' '[:lower:]')
+          # Hardcoded rather than derived from productName: this names the shipped
+          # desktop product, not the bundled kilo CLI, and must be stable for S3 keys.
+          PRODUCT=kilo-desktop
 
           echo "app-dir=$APP_DIR" >> "$GITHUB_OUTPUT"
           echo "platform=$PLATFORM" >> "$GITHUB_OUTPUT"

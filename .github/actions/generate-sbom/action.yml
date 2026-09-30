@@ -249,7 +249,12 @@ runs:
 
         ASSET_URL="https://github.com/CycloneDX/cyclonedx-cli/releases/download/v${CYCLONEDX_VERSION}/${BIN}"
         curl -sSfL "$ASSET_URL" -o "${{ runner.temp }}/bin/${BIN}"
-        ACTUAL=$(shasum -a 256 "${{ runner.temp }}/bin/${BIN}" | awk '{print $1}')
+        # GitHub's bash on Windows has no shasum; use what exists on each OS.
+        if command -v shasum >/dev/null 2>&1; then
+          ACTUAL=$(shasum -a 256 "${{ runner.temp }}/bin/${BIN}" | awk '{print $1}')
+        else
+          ACTUAL=$(certutil -hashfile "${{ runner.temp }}/bin/${BIN}" SHA256 | grep -iE '^[0-9a-f]{64}$' | tr -d ' \r' | tr '[:upper:]' '[:lower:]')
+        fi
         [[ "$EXPECTED" == "$ACTUAL" ]] || { echo "::error::checksum mismatch for ${BIN} (got $ACTUAL)"; exit 1; }
 
         chmod +x "${{ runner.temp }}/bin/${BIN}"

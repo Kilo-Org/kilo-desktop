@@ -616,7 +616,7 @@ function LocalModelServerSettingsContent() {
 						<ModelListSkeleton />
 					) : modelRows.length === 0 ? (
 						<div className="border-border bg-card rounded-lg border">
-							<NoModelsEmptyState failed={models.isError} />
+							<NoModelsEmptyState failed={models.isError} catalogEnabled={catalogEnabled} />
 						</div>
 					) : (
 						<div className="flex min-w-0 flex-col gap-3">

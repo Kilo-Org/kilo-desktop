@@ -52,7 +52,13 @@ export function ModelListSkeleton() {
 	);
 }
 
-export function NoModelsEmptyState({ failed }: { failed: boolean }) {
+export function NoModelsEmptyState({
+	failed,
+	catalogEnabled,
+}: {
+	failed: boolean;
+	catalogEnabled: boolean;
+}) {
 	return (
 		<Empty data-qa-id="local-model-list-empty">
 			<EmptyHeader>
@@ -63,7 +69,9 @@ export function NoModelsEmptyState({ failed }: { failed: boolean }) {
 				<EmptyDescription>
 					{failed
 						? "Try reopening this page."
-						: "Add a model from the catalog or import a GGUF file to get started."}
+						: catalogEnabled
+							? "Add a model from the catalog or import a GGUF file to get started."
+							: "Import a GGUF file to get started."}
 				</EmptyDescription>
 			</EmptyHeader>
 		</Empty>

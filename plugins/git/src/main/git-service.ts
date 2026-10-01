@@ -1622,6 +1622,18 @@ export class GitService {
 	}
 
 	/**
+	 * Attach a session to a managed chat worktree for the VS Code Agent
+	 * Manager. Create-only and managed-path-guarded; `true` when written.
+	 */
+	async linkAgentManagerSession(input: {
+		path: string;
+		sessionId: string;
+		baseRef?: string;
+	}): Promise<boolean> {
+		return this.#worktrees.linkAgentManagerSession(input);
+	}
+
+	/**
 	 * True when the worktree at `directory` has actual work relative to
 	 * `baseBranch`: uncommitted file changes (staged, unstaged, or untracked)
 	 * or commits ahead of the base. Two-tier contract, per the channel:

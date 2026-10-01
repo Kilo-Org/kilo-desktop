@@ -159,6 +159,7 @@ function registerChatBrowser(mainSdk: MainSdk): void {
 		},
 		// Best-effort: browser mode has no git capability, so no work is possible.
 		"chat.hasWorktreeWork": async () => false,
+		"chat.linkWorktreeSession": async () => undefined,
 	};
 	mainSdk.channels(kiloUiChatContract).handleAll(chatApi);
 }

@@ -1675,4 +1675,121 @@ describe("WorktreeManager", () => {
 			await expect(manager.removeWorktree({ path: gone })).resolves.toBeUndefined();
 		});
 	});
+
+	describe("linkAgentManagerSession", () => {
+		/** A registered linked worktree whose `.git` file points at its admin dir. */
+		function linkedWorktree(mainRoot: string, name = "kilo-aback-aardvark") {
+			const worktreePath = path.join(mainRoot, ".kilo", "worktrees", name);
+			const adminDir = path.join(mainRoot, ".git", "worktrees", name);
+			fs.mkdirSync(worktreePath, { recursive: true });
+			fs.mkdirSync(adminDir, { recursive: true });
+			fs.writeFileSync(path.join(worktreePath, ".git"), `gitdir: ${adminDir}\n`);
+			const worktrees = () =>
+				Promise.resolve([
+					worktreeEntry({ path: mainRoot, type: "main" }),
+					worktreeEntry({ path: worktreePath, branch: `refs/heads/kilo/${name}` }),
+				]);
+			return {
+				worktreePath,
+				metadataFile: path.join(adminDir, "kilo-agent-manager-metadata.json"),
+				worktrees,
+			};
+		}
+
+		it("writes the session and split base into the worktree's git admin dir", async () => {
+			const mainRoot = createMainRoot();
+			const { worktreePath, metadataFile, worktrees } = linkedWorktree(mainRoot);
+			const manager = managerWith(
+				worktreeClient(mainRoot, { worktrees, remotes: () => Promise.resolve(["origin"]) }),
+			);
+
+			await expect(
+				manager.linkAgentManagerSession({
+					path: worktreePath,
+					sessionId: "ses_1",
+					baseRef: "origin/release/1.0",
+				}),
+			).resolves.toBe(true);
+
+			expect(JSON.parse(fs.readFileSync(metadataFile, "utf-8"))).toEqual({
+				sessionId: "ses_1",
+				parentBranch: "release/1.0",
+				remote: "origin",
+			});
+		});
+
+		it("keeps a base without a remote prefix as the branch name", async () => {
+			const mainRoot = createMainRoot();
+			const { worktreePath, metadataFile, worktrees } = linkedWorktree(mainRoot);
+			const manager = managerWith(
+				worktreeClient(mainRoot, { worktrees, remotes: () => Promise.resolve(["origin"]) }),
+			);
+
+			await manager.linkAgentManagerSession({
+				path: worktreePath,
+				sessionId: "ses_1",
+				baseRef: "release/1.0",
+			});
+
+			expect(JSON.parse(fs.readFileSync(metadataFile, "utf-8"))).toEqual({
+				sessionId: "ses_1",
+				parentBranch: "release/1.0",
+			});
+		});
+
+		it("never overwrites an existing metadata file", async () => {
+			const mainRoot = createMainRoot();
+			const { worktreePath, metadataFile, worktrees } = linkedWorktree(mainRoot);
+			fs.writeFileSync(metadataFile, '{"sessionId":"ses_agent_manager"}');
+			const manager = managerWith(worktreeClient(mainRoot, { worktrees }));
+
+			await expect(
+				manager.linkAgentManagerSession({ path: worktreePath, sessionId: "ses_1" }),
+			).resolves.toBe(false);
+
+			expect(fs.readFileSync(metadataFile, "utf-8")).toBe('{"sessionId":"ses_agent_manager"}');
+		});
+
+		it("declines paths outside the managed worktrees directory", async () => {
+			const mainRoot = createMainRoot();
+			const elsewhere = path.join(mainRoot, "elsewhere");
+			fs.mkdirSync(elsewhere);
+			const worktrees = vi.fn(() =>
+				Promise.resolve([
+					worktreeEntry({ path: mainRoot, type: "main" }),
+					worktreeEntry({ path: elsewhere }),
+				]),
+			);
+			const manager = managerWith(worktreeClient(mainRoot, { worktrees }));
+
+			await expect(
+				manager.linkAgentManagerSession({ path: elsewhere, sessionId: "ses_1" }),
+			).resolves.toBe(false);
+		});
+
+		it("declines a managed directory git no longer registers", async () => {
+			const mainRoot = createMainRoot();
+			const { worktreePath, metadataFile } = linkedWorktree(mainRoot);
+			const manager = managerWith(worktreeClient(mainRoot));
+
+			await expect(
+				manager.linkAgentManagerSession({ path: worktreePath, sessionId: "ses_1" }),
+			).resolves.toBe(false);
+			expect(fs.existsSync(metadataFile)).toBe(false);
+		});
+
+		it("declines a deleted worktree without spawning git", async () => {
+			const mainRoot = createMainRoot();
+			const worktrees = vi.fn(() => Promise.resolve([]));
+			const manager = managerWith(worktreeClient(mainRoot, { worktrees }));
+
+			await expect(
+				manager.linkAgentManagerSession({
+					path: path.join(mainRoot, ".kilo", "worktrees", "kilo-gone"),
+					sessionId: "ses_1",
+				}),
+			).resolves.toBe(false);
+			expect(worktrees).not.toHaveBeenCalled();
+		});
+	});
 });

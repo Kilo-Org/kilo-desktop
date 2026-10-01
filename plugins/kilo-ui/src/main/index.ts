@@ -33,6 +33,7 @@ import { presentEnvNames } from "./providers/present-env.js";
 import { readStoredApiKey } from "./providers/stored-api-key.js";
 import { createWorkspacesDatabase } from "./workspaces/db.js";
 import { WorkspaceService } from "./workspaces/WorkspaceService.js";
+import { startAgentManagerLinkBackfill } from "./chat/agent-manager-session-links.js";
 import { createChatWorktreeHandlers } from "./chat/chat-worktree-handlers.js";
 import { fetchGatewayModelDetails } from "./chat/gateway-model-details.js";
 import { createWorkspaceSessionUnscoper } from "./chat/unscope-workspace-sessions.js";
@@ -157,5 +158,10 @@ export function mainRegister(
 	const mcpAppsApi = createMcpAppsHandlers(getConnection, mainSdk.net.fetch);
 	mainSdk.channels(mcpAppsContract).handleAll(mcpAppsApi);
 
-	mainSdk.onDispose(() => db.$client.close());
+	const stopLinkBackfill = startAgentManagerLinkBackfill(mainSdk);
+
+	mainSdk.onDispose(() => {
+		stopLinkBackfill();
+		db.$client.close();
+	});
 }

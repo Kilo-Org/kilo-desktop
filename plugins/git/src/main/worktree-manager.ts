@@ -1,5 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { appendFile, mkdir, readFile, readdir, realpath, rename, rm, stat } from "node:fs/promises";
+import {
+	appendFile,
+	mkdir,
+	readFile,
+	readdir,
+	realpath,
+	rename,
+	rm,
+	stat,
+	writeFile,
+} from "node:fs/promises";
 import { basename, dirname, join, normalize, resolve } from "node:path";
 import process from "node:process";
 
@@ -69,6 +79,10 @@ function worktreeErrorToFeatureError(error: unknown): unknown {
  *   would otherwise silently fail to match (kilocode's `canonicalizePath`).
  *   On Windows the match is case-insensitive: git and Node often disagree
  *   on drive-letter / directory casing, and a miss used to no-op removal.
+ * - The VS Code Agent Manager shares `.kilo/worktrees/` and adopts every
+ *   worktree it finds there; `linkAgentManagerSession` writes its per-worktree
+ *   session file so a Desktop worktree shows its session instead of an
+ *   empty entry. Writes are create-only, so Agent Manager's own file wins.
  *
  * Concurrency and caches (kilocode's WorktreeManager, adapted): worktree
  * mutations serialize per repository through a `pLimit(1)` mutex keyed by
@@ -208,6 +222,29 @@ async function canonicalizePath(path: string): Promise<string> {
 /** Directory entry names, or `[]` when the directory does not exist yet. */
 async function readDirNames(directory: string): Promise<string[]> {
 	return readdir(directory).catch(() => []);
+}
+
+/**
+ * The VS Code extension's Agent Manager discovers every worktree under
+ * `.kilo/worktrees/`, but attaches a session to one only through this file
+ * in the worktree's git admin directory. Without it, Desktop worktrees show
+ * up there as entries with no sessions.
+ */
+const AGENT_MANAGER_METADATA_FILE = "kilo-agent-manager-metadata.json";
+
+/**
+ * The linked worktree's git admin directory, read from the `gitdir:` line of
+ * its `.git` file the way Agent Manager resolves it (relative paths resolve
+ * against the worktree). `null` when the worktree has no `.git` file.
+ */
+async function linkedWorktreeGitDir(worktreePath: string): Promise<string | null> {
+	const content = await readFile(join(worktreePath, ".git"), "utf-8").catch(() => null);
+	const match = content?.match(/^gitdir:\s*(.+)$/m);
+	return match?.[1] ? resolve(worktreePath, match[1].trim()) : null;
+}
+
+function isFileExistsError(error: unknown): boolean {
+	return error !== null && typeof error === "object" && "code" in error && error.code === "EEXIST";
 }
 
 /** Resolve `false` instead of rejecting — for best-effort probes. */
@@ -692,6 +729,60 @@ export class WorktreeManager {
 		if (branch !== null && branch.startsWith("kilo/")) {
 			await this.#deleteOwnedBranch(branch, mainRoot);
 		}
+	}
+
+	/**
+	 * Attach a Kilo session to a managed chat worktree for the VS Code Agent
+	 * Manager by writing its metadata file into the worktree's git admin
+	 * directory (git deletes it along with the worktree). An existing file is
+	 * never overwritten — Agent Manager or an earlier link owns it — so
+	 * repeated calls are safe. Resolves `true` only when this call wrote the
+	 * file; unregistered or unmanaged paths decline with `false`.
+	 */
+	async linkAgentManagerSession(input: {
+		path: string;
+		sessionId: string;
+		baseRef?: string;
+	}): Promise<boolean> {
+		const worktreePath = await canonicalizePath(input.path);
+		// Backfill walks every historical session; a deleted worktree must not
+		// cost a git spawn.
+		if (!(await pBool(stat(worktreePath)))) return false;
+		const listing = await this.#client.worktrees({ cwd: worktreePath }).catch(() => null);
+		const mainRoot = listing?.[0]?.path;
+		if (mainRoot === undefined || !isManagedWorktreePath(worktreePath, mainRoot)) return false;
+		if (!listing?.some((entry) => sameWorktreePath(entry.path, worktreePath))) return false;
+
+		const gitDir = await linkedWorktreeGitDir(worktreePath);
+		if (gitDir === null) return false;
+
+		const base = input.baseRef ? await this.#splitBaseRef(worktreePath, input.baseRef) : {};
+		const metadata = { sessionId: input.sessionId, ...base };
+		try {
+			await writeFile(join(gitDir, AGENT_MANAGER_METADATA_FILE), JSON.stringify(metadata), {
+				encoding: "utf-8",
+				flag: "wx",
+			});
+			return true;
+		} catch (error) {
+			if (isFileExistsError(error)) return false;
+			throw error;
+		}
+	}
+
+	/**
+	 * Agent Manager stores the base as a bare branch plus its remote, so a
+	 * remote-tracking ref (`origin/main`) is split only when its prefix is a
+	 * real remote — `release/1.0` stays a local branch name.
+	 */
+	async #splitBaseRef(
+		worktreePath: string,
+		baseRef: string,
+	): Promise<{ parentBranch: string; remote?: string }> {
+		const remotes = await this.#client.remotes({ cwd: worktreePath }).catch(() => [] as string[]);
+		const remote = remotes.find((name) => baseRef.startsWith(`${name}/`));
+		if (remote === undefined) return { parentBranch: baseRef };
+		return { parentBranch: baseRef.slice(remote.length + 1), remote };
 	}
 
 	/** Delete a `kilo/` branch, retrying lock / still-in-use races. */

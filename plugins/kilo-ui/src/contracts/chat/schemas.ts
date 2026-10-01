@@ -124,6 +124,23 @@ export const kiloUiChatContract = defineContract({
 		}),
 		z.boolean(),
 	),
+	/**
+	 * Best-effort: records a new worktree session for the VS Code Agent
+	 * Manager, which otherwise lists Desktop worktrees with no sessions.
+	 * Never fails the chat — git declines and errors are logged main-side.
+	 */
+	"chat.linkWorktreeSession": defineMethod(
+		z.object({
+			directory: z.string().min(1).max(32_768),
+			sessionId: z
+				.string()
+				.min(1)
+				.max(256)
+				.regex(/^[A-Za-z0-9_-]+$/),
+			baseRef: z.string().min(1).max(512).optional(),
+		}),
+		z.undefined(),
+	),
 });
 
 export type KiloUiChatService = InferContract<typeof kiloUiChatContract>;

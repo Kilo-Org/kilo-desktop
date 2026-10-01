@@ -22,6 +22,11 @@ import type { GitPrStatusTarget } from "./git-pr-status-store.js";
  *   the batch counts as in flight for the whole batch, and the ones the batch
  *   leaves unanswered — or all of them, when it fails — fall back to their
  *   own `load`, so batching can only save work.
+ * - An empty target list is transient (the sidebar unmounts on Settings and
+ *   clears the store; the store keeps snapshots for it too). Known targets
+ *   survive it, so the remount's unchanged list loads nothing instead of
+ *   re-syncing every row. Polling pauses meanwhile because every refresh
+ *   resolves its target through getTargets.
  */
 const ACTIVE_INTERVAL_MS = 15_000;
 const FULL_SYNC_INTERVAL_MS = 120_000;
@@ -105,6 +110,7 @@ export class PrStatusScheduler {
 	}
 
 	async syncTargets(targets: readonly GitPrStatusTarget[]): Promise<void> {
+		if (targets.length === 0) return;
 		const added = targets.flatMap((target) =>
 			this.#knownTargets.get(target.id) === target.directory ? [] : [target.directory],
 		);

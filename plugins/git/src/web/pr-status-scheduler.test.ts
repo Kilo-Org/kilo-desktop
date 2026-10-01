@@ -110,6 +110,27 @@ describe("PrStatusScheduler", () => {
 		expect(loaded).toEqual(["/a", "/b", "/moved"]);
 	});
 
+	it("loads only a target that first appears after an empty target list", async () => {
+		let current: typeof targets = targets;
+		const loaded: string[] = [];
+		const scheduler = new PrStatusScheduler({
+			getTargets: () => current,
+			load: async (directory) => {
+				loaded.push(directory);
+			},
+			isVisible: () => true,
+			subscribeVisibility: () => () => undefined,
+		});
+
+		await scheduler.syncTargets(current);
+		current = [];
+		await scheduler.syncTargets(current);
+		current = [...targets, { id: "c", directory: "/c", active: false }];
+		await scheduler.syncTargets(current);
+
+		expect(loaded).toEqual(["/a", "/b", "/c"]);
+	});
+
 	it("quarantines a failed refresh unless the caller forces it", async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date("2026-09-22T00:00:00Z"));
@@ -379,6 +400,19 @@ describe("PrStatusScheduler", () => {
 			await scheduler.syncTargets(three);
 
 			expect(loaded).toEqual(["/a", "/b", "/c"]);
+		});
+
+		it("keeps its known targets across a transient empty target list", async () => {
+			const { scheduler, loaded, batches } = batchedScheduler(
+				async (directories) => new Map(directories.map((directory) => [directory, undefined])),
+			);
+
+			await scheduler.syncTargets(three);
+			await scheduler.syncTargets([]);
+			await scheduler.syncTargets(three);
+
+			expect(batches).toEqual([["/a", "/b", "/c"]]);
+			expect(loaded).toEqual([]);
 		});
 
 		it("treats batched directories as in flight until the batch settles", async () => {

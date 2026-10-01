@@ -15,6 +15,7 @@ import {
 	themeStateSchema,
 	themeBootstrapScript,
 	themeChromeColors,
+	THEME_STORAGE_KEY,
 	TRANSPARENT_WINDOW_BACKGROUND,
 	shellGlassDarkSurface,
 	shellGlassOpacity,
@@ -103,6 +104,20 @@ describe("theme contracts", () => {
 		expect(context.styles).toHaveLength(1);
 		expect(context.styles[0]?.textContent).toContain("--background:#111111;");
 		expect(context.document.documentElement.dataset.theme).toBe("dark");
+	});
+
+	it("paints dark before renderer boot when no source is stored, even on a light OS", () => {
+		const context = bootstrapContext({}, false);
+		runInNewContext(bootstrapScript(), context);
+		expect(context.document.documentElement.dataset.theme).toBe("dark");
+		expect(context.document.documentElement.style.colorScheme).toBe("dark");
+	});
+
+	it("follows the OS when the stored source is system", () => {
+		const context = bootstrapContext({ [THEME_STORAGE_KEY]: "system" }, false);
+		runInNewContext(bootstrapScript(), context);
+		expect(context.document.documentElement.dataset.theme).toBeUndefined();
+		expect(context.document.documentElement.style.colorScheme).toBe("light");
 	});
 
 	it.each([

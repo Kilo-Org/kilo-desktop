@@ -1,4 +1,5 @@
 import {
+	DEFAULT_THEME_SOURCE,
 	resolveColorScheme,
 	SIDEBAR_VIBRANCY_STORAGE_KEY,
 	THEME_STORAGE_KEY,
@@ -29,7 +30,7 @@ export function readStoredThemeSource(): ThemeSource {
 	} catch {
 		// localStorage throws in private browsing / when disabled — fall back to default.
 	}
-	return "system";
+	return DEFAULT_THEME_SOURCE;
 }
 
 export function persistThemeSource(source: ThemeSource): void {

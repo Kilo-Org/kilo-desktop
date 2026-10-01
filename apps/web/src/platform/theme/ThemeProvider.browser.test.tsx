@@ -129,8 +129,19 @@ describe("ThemeProvider", () => {
 		});
 	});
 
+	it("defaults to dark on a light OS when no source is stored", async () => {
+		stubMatchMedia(false);
+		const sync = vi.fn<(state: ThemeState) => Promise<void>>().mockResolvedValue(undefined);
+
+		renderProvider(withThemeSync(createBrowserLocalApi(), sync));
+
+		await expect.poll(() => document.documentElement.dataset.theme).toBe("dark");
+		expect(sync).toHaveBeenCalledWith({ source: "dark", themeId: "kilo" });
+	});
+
 	it("follows the OS scheme and resyncs native chrome while source is system", async () => {
 		const os = stubMatchMedia(false);
+		globalThis.localStorage.setItem(THEME_STORAGE_KEY, "system");
 		const sync = vi.fn<(state: ThemeState) => Promise<void>>().mockResolvedValue(undefined);
 		const api = withThemeSync(createBrowserLocalApi(), sync);
 

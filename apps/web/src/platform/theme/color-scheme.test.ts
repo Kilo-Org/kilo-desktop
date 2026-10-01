@@ -41,21 +41,26 @@ describe("readStoredThemeSource", () => {
 		expect(readStoredThemeSource()).toBe("dark");
 	});
 
-	it("falls back to system for missing or invalid values", () => {
+	it("falls back to dark for missing or invalid values", () => {
 		stubStorage();
-		expect(readStoredThemeSource()).toBe("system");
+		expect(readStoredThemeSource()).toBe("dark");
 
 		stubStorage({ [THEME_STORAGE_KEY]: "neon" });
+		expect(readStoredThemeSource()).toBe("dark");
+	});
+
+	it("keeps an explicit system choice", () => {
+		stubStorage({ [THEME_STORAGE_KEY]: "system" });
 		expect(readStoredThemeSource()).toBe("system");
 	});
 
-	it("falls back to system when storage throws", () => {
+	it("falls back to dark when storage throws", () => {
 		vi.stubGlobal("localStorage", {
 			getItem: vi.fn(() => {
 				throw new Error("denied");
 			}),
 		});
-		expect(readStoredThemeSource()).toBe("system");
+		expect(readStoredThemeSource()).toBe("dark");
 	});
 });
 

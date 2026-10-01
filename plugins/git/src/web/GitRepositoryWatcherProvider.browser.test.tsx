@@ -31,14 +31,14 @@ function RepositoryTypeProbe() {
 	return <span data-qa-id="git-repository-kind">{query.data?.kind ?? "pending"}</span>;
 }
 
-function StatusProbe({ status }: { readonly status: () => string }) {
+function StatusProbe({ status }: { readonly status: () => string | Promise<string> }) {
 	const query = useQuery({ queryKey: ["git", "status", "/repo/project"], queryFn: status });
 	return <span data-qa-id="git-status-probe">{query.data ?? "pending"}</span>;
 }
 
 function renderProvider(handlers: {
 	repositoryType: () => GitRepositoryType | Promise<GitRepositoryType>;
-	status?: () => string;
+	status?: () => string | Promise<string>;
 }) {
 	const sdk = createFakeSdk({ featureId: "git" });
 	const mainSdk = createFakeMainSdk({ featureId: "git", services: sdk.services });
@@ -88,6 +88,22 @@ function emitWorkspaceFileChange(
 	changes: ReadonlyArray<{ path: string; type: "create" | "update" | "delete" }>,
 ): void {
 	workspaceMainSdk.events.emit("file-change", { root: "/repo/project", changes: [...changes] });
+}
+
+/** A handler result the test settles by hand, holding the query in flight until then. */
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	let reject!: (reason: unknown) => void;
+	const promise = new Promise<T>((onResolve, onReject) => {
+		resolve = onResolve;
+		reject = onReject;
+	});
+	return { promise, resolve, reject };
+}
+
+/** Longer than the provider's 75 ms debounce, so each batch gets its own flush. */
+function settle(ms = 150): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 afterEach(() => {
@@ -210,6 +226,126 @@ describe("GitRepositoryWatcherProvider", () => {
 		emitWorkspaceFileChange(workspaceMainSdk, [
 			{ path: "/repo/project/.git/HEAD", type: "update" },
 		]);
+
+		await expect.element(page.getByTestId("git-repository-kind")).toHaveTextContent("regular");
+		expect(repositoryType).toHaveBeenCalledTimes(2);
+	});
+
+	it("refetches an in-flight status query once after it settles instead of stacking fetches", async () => {
+		const repositoryType = vi.fn(() => regularRepositoryType);
+		const inFlight = deferred<string>();
+		const status = vi
+			.fn<() => string | Promise<string>>()
+			.mockReturnValueOnce("clean")
+			.mockReturnValueOnce(inFlight.promise)
+			.mockReturnValue("latest");
+		const { workspaceMainSdk } = renderProvider({ repositoryType, status });
+		await expect.element(page.getByTestId("git-status-probe")).toHaveTextContent("clean");
+
+		emitWorkspaceFileChange(workspaceMainSdk, [{ path: "/repo/project/src/a.ts", type: "update" }]);
+		await expect.poll(() => status.mock.calls.length).toBe(2);
+		for (const name of ["b", "c", "d"]) {
+			emitWorkspaceFileChange(workspaceMainSdk, [
+				{ path: `/repo/project/src/${name}.ts`, type: "update" },
+			]);
+			await settle();
+		}
+		expect(status).toHaveBeenCalledTimes(2);
+
+		inFlight.resolve("stale");
+		await expect.element(page.getByTestId("git-status-probe")).toHaveTextContent("latest");
+		await settle();
+		expect(status).toHaveBeenCalledTimes(3);
+	});
+
+	// VS Code's `_throttle` never runs its trailing call when the in-flight
+	// promise rejects; this provider must.
+	it("still runs the trailing refetch when the in-flight fetch fails", async () => {
+		const repositoryType = vi.fn(() => regularRepositoryType);
+		const inFlight = deferred<string>();
+		const status = vi
+			.fn<() => string | Promise<string>>()
+			.mockReturnValueOnce("clean")
+			.mockReturnValueOnce(inFlight.promise)
+			.mockReturnValue("recovered");
+		const { workspaceMainSdk } = renderProvider({ repositoryType, status });
+		await expect.element(page.getByTestId("git-status-probe")).toHaveTextContent("clean");
+
+		emitWorkspaceFileChange(workspaceMainSdk, [{ path: "/repo/project/src/a.ts", type: "update" }]);
+		await expect.poll(() => status.mock.calls.length).toBe(2);
+		emitWorkspaceFileChange(workspaceMainSdk, [{ path: "/repo/project/src/b.ts", type: "update" }]);
+		await settle();
+		expect(status).toHaveBeenCalledTimes(2);
+
+		inFlight.reject(new Error("git exited 128"));
+		await expect.element(page.getByTestId("git-status-probe")).toHaveTextContent("recovered");
+		expect(status).toHaveBeenCalledTimes(3);
+	});
+
+	it("does not refetch when no change arrived while the query was in flight", async () => {
+		const repositoryType = vi.fn(() => regularRepositoryType);
+		const inFlight = deferred<string>();
+		const status = vi
+			.fn<() => string | Promise<string>>()
+			.mockReturnValueOnce("clean")
+			.mockReturnValueOnce(inFlight.promise);
+		const { workspaceMainSdk } = renderProvider({ repositoryType, status });
+		await expect.element(page.getByTestId("git-status-probe")).toHaveTextContent("clean");
+
+		emitWorkspaceFileChange(workspaceMainSdk, [{ path: "/repo/project/src/a.ts", type: "update" }]);
+		await expect.poll(() => status.mock.calls.length).toBe(2);
+		inFlight.resolve("modified");
+		await expect.element(page.getByTestId("git-status-probe")).toHaveTextContent("modified");
+		await settle();
+		expect(status).toHaveBeenCalledTimes(2);
+	});
+
+	it.each([
+		"/repo/project/.git/index.lock",
+		"/repo/project/.git/refs/heads/main.lock",
+		"/repo/project/.git/objects/ab/cdef0123456789",
+		"/repo/project/.git/logs/HEAD",
+		"/repo/project/.git/logs/refs/heads/main",
+		"/repo/project/.git/worktrees/wt/logs/HEAD",
+		"/repo/project/.git/worktrees/wt/index.lock",
+		"/repo/project/.git/FETCH_HEAD",
+		"/repo/project/.git/ORIG_HEAD",
+		"/repo/project/.git/COMMIT_EDITMSG",
+		"/repo/project/.git/fsmonitor--daemon/cookies/1-2",
+		"/repo/project/.git/lfs/objects/ab/cd/abcdef",
+		"/repo/project/.git/subtree-cache/1/x",
+		"/repo/project/.git/.watchman-cookie-host-1-2",
+		String.raw`C:\repo\project\.git\index.lock`,
+	])("ignores .git noise: %s", async (path) => {
+		const repositoryType = vi.fn(() => regularRepositoryType);
+		const { workspaceMainSdk } = renderProvider({ repositoryType });
+		await expect.element(page.getByTestId("git-repository-kind")).toHaveTextContent("regular");
+
+		emitWorkspaceFileChange(workspaceMainSdk, [{ path, type: "update" }]);
+
+		await settle();
+		expect(repositoryType).toHaveBeenCalledTimes(1);
+	});
+
+	it.each([
+		[["/repo/project/.git/index"]],
+		[["/repo/project/.git/refs/heads/feature"]],
+		[["/repo/project/.git/packed-refs"]],
+		[["/repo/project/.git/worktrees/wt/HEAD"]],
+		[["/repo/project/.git/index.lock", "/repo/project/.git/index"]],
+	])("still refreshes metadata for %j", async (paths) => {
+		let missing = true;
+		const repositoryType = vi.fn((): GitRepositoryType =>
+			missing ? { kind: "missing" } : regularRepositoryType,
+		);
+		const { workspaceMainSdk } = renderProvider({ repositoryType });
+		await expect.element(page.getByTestId("git-repository-kind")).toHaveTextContent("missing");
+
+		missing = false;
+		emitWorkspaceFileChange(
+			workspaceMainSdk,
+			paths.map((path) => ({ path, type: "update" as const })),
+		);
 
 		await expect.element(page.getByTestId("git-repository-kind")).toHaveTextContent("regular");
 		expect(repositoryType).toHaveBeenCalledTimes(2);

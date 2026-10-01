@@ -136,7 +136,7 @@ describe("LocalModelServerSettings", () => {
 
 		await screen.getByRole("button", { name: "Add model" }).click();
 		await expect.element(page.getByRole("menuitem", { name: "Import GGUF" })).toBeVisible();
-		expect(page.getByRole("menuitem", { name: "From catalog" })).toHaveLength(0);
+		expect(page.getByRole("menuitem", { name: "From catalog" }).elements()).toHaveLength(0);
 	});
 
 	it("opens the local model catalog from the add model menu", async () => {

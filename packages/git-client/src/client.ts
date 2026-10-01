@@ -38,8 +38,8 @@ import type { RecentBranchesOptions } from "./git/reflog.js";
 import { getRecentBranches } from "./git/reflog.js";
 import type { ListRemotesOptions, RemoteHeadOptions } from "./git/remote.js";
 import { getRemoteHEAD, listRemotes } from "./git/remote.js";
-import type { CheckRefFormatOptions, SymbolicRefOptions } from "./git/refs.js";
-import { checkRefFormat, getSymbolicRef } from "./git/refs.js";
+import type { CheckRefFormatOptions, HeadBranch, SymbolicRefOptions } from "./git/refs.js";
+import { checkRefFormat, getHeadBranch, getSymbolicRef } from "./git/refs.js";
 import type { ShowExec } from "./git/show.js";
 import type { WorktreeEntry } from "./models/worktree.js";
 import { deleteBranch, renameBranch } from "./git/branch.js";
@@ -163,6 +163,14 @@ export interface GitClient {
 	 * defaults to the client's `path`.
 	 */
 	symbolicRef(ref: string, options?: SymbolicRefOptions): Promise<string | null>;
+	/**
+	 * The current branch and its configured upstream, from refs and config
+	 * only — no index read or working-tree scan, unlike `status()`. Resolves
+	 * `null` for a detached HEAD or outside a repository. `options.cwd`
+	 * overrides the working directory for this call; it defaults to the
+	 * client's `path`.
+	 */
+	headBranch(options?: SymbolicRefOptions): Promise<HeadBranch | null>;
 	/**
 	 * The default branch of a remote, from the remote's `HEAD` symbolic
 	 * ref (`refs/remotes/&lt;remote&gt;/HEAD`), without the remote
@@ -348,6 +356,10 @@ class GitClientImpl implements GitClient {
 
 	symbolicRef(ref: string, options?: SymbolicRefOptions): Promise<string | null> {
 		return getSymbolicRef(this.#exec, ref, options);
+	}
+
+	headBranch(options?: SymbolicRefOptions): Promise<HeadBranch | null> {
+		return getHeadBranch(this.#exec, options);
 	}
 
 	remoteHead(remote: string, options?: RemoteHeadOptions): Promise<string | null> {

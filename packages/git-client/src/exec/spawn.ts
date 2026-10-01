@@ -1,6 +1,7 @@
 import { spawn as _spawn } from "node:child_process";
 
 import { buildEnv } from "./environment.js";
+import { withDefaultConfig } from "./exec.js";
 import type { GitProcessContext } from "./exec.js";
 import { ignoreClosedInputStream } from "./ignore-closed-input-stream.js";
 
@@ -33,7 +34,7 @@ export function spawn(
 	context: GitProcessContext,
 	opts?: GitSpawnOptions,
 ) {
-	const spawnedProcess = _spawn(context.gitLocation, args, {
+	const spawnedProcess = _spawn(context.gitLocation, withDefaultConfig(args), {
 		cwd: path,
 		env: buildEnv(context.env, opts?.env),
 		windowsHide: true,

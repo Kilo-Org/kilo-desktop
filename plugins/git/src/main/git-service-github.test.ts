@@ -92,14 +92,11 @@ function snapshotService(
 		getWorkspaceFolderPaths: () => Promise.resolve(["/repo"]),
 		createClient: () =>
 			({
-				status: () =>
-					Promise.resolve({
-						exists: true,
-						currentBranch: "kilo/brawny-olivine",
-						currentUpstreamBranch: options.upstream,
-						workingDirectory: { files: [] },
-						doConflictedFilesExist: false,
-					}),
+				// Background polling runs this for every chat worktree: a full
+				// status would scan each working tree (and start its fsmonitor).
+				status: () => Promise.reject(new Error("pull request lookups must not scan the worktree")),
+				headBranch: () =>
+					Promise.resolve({ name: "kilo/brawny-olivine", upstream: options.upstream ?? null }),
 				exec: (args: readonly string[]) => {
 					if (args[0] === "rev-parse") {
 						return Promise.resolve(

@@ -115,6 +115,19 @@ export interface GitBufferExecutionOptions extends GitExecutionOptions {
 	readonly encoding: "buffer";
 }
 
+/**
+ * Config overrides prepended to every invocation. A repository (or user)
+ * `core.fsmonitor=true` makes any index-reading command start a long-lived
+ * `git fsmonitor--daemon` per working tree; background probes across many
+ * chat worktrees would leave one daemon running for each.
+ */
+const DEFAULT_CONFIG_ARGS = ["-c", "core.fsmonitor=false"] as const;
+
+/** Prefix `args` with the client-wide config overrides. */
+export function withDefaultConfig(args: readonly string[]): string[] {
+	return [...DEFAULT_CONFIG_ARGS, ...args];
+}
+
 const ENOENT_MESSAGE =
 	"ENOENT: Git failed to execute. This typically means that the path provided " +
 	"doesn't exist or that the git executable could not be found at the resolved " +
@@ -171,7 +184,8 @@ export function exec(
 	};
 
 	return new Promise<GitResult>((resolve, reject) => {
-		const cp = execFile(context.gitLocation, args, opts, (err, stdout, stderr) => {
+		const argv = withDefaultConfig(args);
+		const cp = execFile(context.gitLocation, argv, opts, (err, stdout, stderr) => {
 			if (!err || typeof err.code === "number") {
 				const exitCode = typeof err?.code === "number" ? err.code : 0;
 				resolve({ stdout, stderr, exitCode });

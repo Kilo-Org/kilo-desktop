@@ -87,8 +87,13 @@ export type {
 	RemoteHeadOptions,
 } from "./git/remote.js";
 export { getRemoteHEAD, listRemotes } from "./git/remote.js";
-export type { CheckRefFormatOptions, SymbolicRefExec, SymbolicRefOptions } from "./git/refs.js";
-export { checkRefFormat, getSymbolicRef } from "./git/refs.js";
+export type {
+	CheckRefFormatOptions,
+	HeadBranch,
+	SymbolicRefExec,
+	SymbolicRefOptions,
+} from "./git/refs.js";
+export { checkRefFormat, getHeadBranch, getSymbolicRef } from "./git/refs.js";
 export type { WorktreeEntry, WorktreeType } from "./models/worktree.js";
 export type {
 	AddWorktreeOptions,

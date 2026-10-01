@@ -95,6 +95,7 @@ function worktreeClient(mainRoot: string, overrides: FakeClientOverrides = {}): 
 	const execLog = overrides.execLog;
 	return {
 		status: overrides.status ?? (() => Promise.resolve(null)),
+		headBranch: () => Promise.resolve(null),
 		branches: overrides.branches ?? (() => Promise.resolve([])),
 		createBranch: () => Promise.resolve(),
 		checkoutBranch: () => Promise.resolve(),

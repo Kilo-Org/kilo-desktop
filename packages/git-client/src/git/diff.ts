@@ -50,7 +50,7 @@ export interface GitPatchFile {
  */
 export const DEFAULT_PATCH_MAX_BYTES = 10 * 1024 * 1024;
 
-const TEMP_INDEX_CONFIG = ["-c", "core.splitIndex=false", "-c", "core.fsmonitor=false"] as const;
+const TEMP_INDEX_CONFIG = ["-c", "core.splitIndex=false"] as const;
 
 const BYTES_PER_MIB = 1024 * 1024;
 
@@ -122,8 +122,9 @@ export class GitPatchTooLargeError extends Error {
  *
  * Hardening: temp-index commands run with `core.splitIndex=false`, so writing
  * the temp index never creates `$GIT_DIR/sharedindex.*` (which the live
- * reload watcher would see as a change), and `core.fsmonitor=false`, so a
- * patch never contacts or starts the user's fsmonitor daemon.
+ * reload watcher would see as a change). Like every git-client command they
+ * also run with `core.fsmonitor=false` (see `exec`), so a patch never
+ * contacts or starts the user's fsmonitor daemon.
  *
  * Return semantics:
  * - `null` — the working directory is not inside a git repository (the probe

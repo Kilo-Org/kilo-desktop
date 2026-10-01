@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createGitClient } from "../client.js";
 import {
 	cleanupTestDirs,
+	createTestDir,
 	gitExec,
 	initialize,
 	initializeWithRemote,
@@ -57,6 +58,74 @@ describe("git/refs", () => {
 			await expect(getSymbolicRef(execFor(repoPath), "refs/remotes/origin/HEAD")).resolves.toBe(
 				"refs/remotes/origin/main",
 			);
+		});
+	});
+
+	describe("headBranch", () => {
+		const headBranch = (path: string, cwd?: string) =>
+			createGitClient({ path, logger: noopLogger }).headBranch(cwd === undefined ? {} : { cwd });
+
+		it("reports an unborn branch without an upstream", async () => {
+			const repoPath = await initialize("head-branch-unborn", "main");
+
+			await expect(headBranch(repoPath)).resolves.toEqual({ name: "main", upstream: null });
+		});
+
+		it("reports the upstream of a tracking branch", async () => {
+			const { path: repoPath } = await initializeWithRemote(
+				"head-branch-tracking",
+				undefined,
+				"main",
+			);
+			await makeCommit(repoPath, { entries: [{ path: "README.md", contents: "# repo\n" }] });
+			await gitExec(["push", "-u", "origin", "HEAD:main"], repoPath);
+
+			await expect(headBranch(repoPath)).resolves.toEqual({
+				name: "main",
+				upstream: "origin/main",
+			});
+		});
+
+		it("still reports a configured upstream whose remote branch is gone", async () => {
+			const { path: repoPath } = await initializeWithRemote("head-branch-gone", undefined, "main");
+			await makeCommit(repoPath, { entries: [{ path: "README.md", contents: "# repo\n" }] });
+			await gitExec(["config", "branch.main.remote", "origin"], repoPath);
+			await gitExec(["config", "branch.main.merge", "refs/heads/deleted"], repoPath);
+
+			await expect(headBranch(repoPath)).resolves.toEqual({
+				name: "main",
+				upstream: "origin/deleted",
+			});
+		});
+
+		it("reports the branch checked out in a linked worktree", async () => {
+			const repoPath = await initialize("head-branch-worktree", "main");
+			await makeCommit(repoPath, { entries: [{ path: "README.md", contents: "# repo\n" }] });
+			const worktreePath = `${repoPath}-linked`;
+			await gitExec(["worktree", "add", "-b", "kilo/linked", worktreePath], repoPath);
+
+			try {
+				await expect(headBranch(repoPath, worktreePath)).resolves.toEqual({
+					name: "kilo/linked",
+					upstream: null,
+				});
+			} finally {
+				await gitExec(["worktree", "remove", "--force", worktreePath], repoPath);
+			}
+		});
+
+		it("returns null for a detached HEAD", async () => {
+			const repoPath = await initialize("head-branch-detached", "main");
+			await makeCommit(repoPath, { entries: [{ path: "README.md", contents: "# repo\n" }] });
+			await gitExec(["checkout", "--detach"], repoPath);
+
+			await expect(headBranch(repoPath)).resolves.toBe(null);
+		});
+
+		it("returns null outside a repository", async () => {
+			const directory = await createTestDir("head-branch-not-a-repo");
+
+			await expect(headBranch(directory)).resolves.toBe(null);
 		});
 	});
 

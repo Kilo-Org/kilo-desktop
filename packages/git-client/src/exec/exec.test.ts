@@ -532,4 +532,27 @@ describe("exec", () => {
 			assertHasGitError(result, GitErrorCode.RebaseWithLocalChanges);
 		});
 	});
+
+	// Git's builtin fsmonitor daemon exists only on macOS and Windows.
+	describe.skipIf(process.platform === "linux")("fsmonitor", () => {
+		const watchedRepos: string[] = [];
+
+		afterEach(async () => {
+			for (const repoPath of watchedRepos.splice(0)) {
+				await gitExec(["fsmonitor--daemon", "stop"], repoPath);
+			}
+		});
+
+		it("never starts the repository's fsmonitor daemon", async () => {
+			const repoPath = await initialize("fsmonitor-enabled");
+			watchedRepos.push(repoPath);
+			await gitExec(["config", "core.fsmonitor", "true"], repoPath);
+
+			await gitExec(["status", "--untracked-files=all", "--porcelain=2"], repoPath);
+
+			const daemon = await gitExec(["fsmonitor--daemon", "status"], repoPath);
+			expect(daemon.stdout).not.toContain("is watching");
+			expect(daemon.exitCode).not.toBe(0);
+		});
+	});
 });

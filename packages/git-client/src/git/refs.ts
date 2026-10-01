@@ -37,6 +37,47 @@ export async function checkRefFormat(
 	return result.exitCode === 0;
 }
 
+/** The branch HEAD points at, and that branch's configured upstream. */
+export interface HeadBranch {
+	/** Short branch name, e.g. `kilo/feature`. */
+	readonly name: string;
+	/** Short upstream name, e.g. `origin/main`, or `null` when none is configured. */
+	readonly upstream: string | null;
+}
+
+const LOCAL_BRANCH_PREFIX = "refs/heads/";
+
+/**
+ * The current branch and its upstream, read from refs and config only.
+ *
+ * Unlike `status()`, this never reads the index or scans the working tree, so
+ * it stays cheap for background probes across many worktrees. Resolves `null`
+ * for a detached HEAD or outside a repository. An unborn branch reports its
+ * name with no upstream (its ref does not exist yet); an upstream whose
+ * remote branch is gone is still reported, matching `status()`'s
+ * `currentUpstreamBranch`.
+ */
+export async function getHeadBranch(
+	exec: SymbolicRefExec,
+	options?: SymbolicRefOptions,
+): Promise<HeadBranch | null> {
+	const ref = await getSymbolicRef(exec, "HEAD", options);
+	if (ref === null || !ref.startsWith(LOCAL_BRANCH_PREFIX)) {
+		return null;
+	}
+
+	const result = await exec(
+		["for-each-ref", "--format=%(upstream:lstrip=2)", ref],
+		"getHeadBranch",
+		{
+			...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
+		},
+	);
+	const upstream = result.stdout.trim();
+
+	return { name: ref.slice(LOCAL_BRANCH_PREFIX.length), upstream: upstream || null };
+}
+
 /**
  * Read a symbolic ref from the repository, e.g. `HEAD` → `refs/heads/main`.
  *

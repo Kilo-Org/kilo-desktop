@@ -28,6 +28,7 @@ const logger: MainSdkLogger = {
 function clientOf(client: Partial<GitClientSlice>): GitClientSlice {
 	return {
 		status: () => Promise.reject(new Error("unused")),
+		headBranch: () => Promise.reject(new Error("unused")),
 		version: () => Promise.resolve("2.39.5"),
 		branches: () => Promise.resolve(null),
 		createBranch: () => Promise.resolve(),

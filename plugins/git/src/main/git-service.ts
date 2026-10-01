@@ -874,13 +874,20 @@ export class GitService {
 	 * non-GitHub origin (`unsupported`), an unusable GitHub CLI (its status),
 	 * or an unborn branch. `batch` also derives what the batched query needs,
 	 * leaving it unset for checkouts only the per-directory ladder can serve.
+	 *
+	 * Background polling plans every chat worktree, so the branch comes from
+	 * refs (`headBranch`), never a working-tree `status` scan.
 	 */
 	async #planPullRequestLookup(
 		workingDirectory: string,
 		options: { batch?: boolean } = {},
 	): Promise<PullRequestLookupPlan | ResolvedPullRequestLookup> {
-		const status = await this.status(workingDirectory);
-		const branch = status?.currentBranch ?? null;
+		const headBranch = await this.#client
+			.headBranch({ cwd: workingDirectory })
+			.catch((error: unknown) => {
+				throw gitNotDetectedToFeatureError(error);
+			});
+		const branch = headBranch?.name ?? null;
 		const resolved = (githubStatus: GithubSnapshotStatus) => ({
 			kind: "resolved" as const,
 			workingDirectory,
@@ -893,7 +900,7 @@ export class GitService {
 				githubStatus,
 			},
 		});
-		if (!status || !branch) return resolved("unsupported");
+		if (!branch) return resolved("unsupported");
 		const origin = await this.#readOriginUrl(workingDirectory);
 		const repositoryUrl = origin ? githubRepositoryUrl(origin) : null;
 		if (!repositoryUrl) return resolved("unsupported");
@@ -907,7 +914,7 @@ export class GitService {
 		const sha = head.exitCode === 0 ? head.stdout.trim() : "";
 		// An unborn branch has nothing a pull request could contain.
 		if (!sha) return resolved("ready");
-		const upstream = status.currentUpstreamBranch;
+		const upstream = headBranch?.upstream ?? undefined;
 		const repositoryIdentity = await this.#githubRepositoryIdentity(workingDirectory);
 		const originUpstream = upstream?.startsWith(`${DEFAULT_REMOTE_NAME}/`)
 			? upstream.slice(DEFAULT_REMOTE_NAME.length + 1)

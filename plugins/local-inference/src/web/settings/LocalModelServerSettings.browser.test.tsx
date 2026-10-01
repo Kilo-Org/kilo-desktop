@@ -119,6 +119,26 @@ describe("LocalModelServerSettings", () => {
 			});
 	});
 
+	it("hides the catalog from the empty state when the flag is off", async () => {
+		const { baseElement } = renderSettings(
+			{
+				"status.get": async () => ({ status: "ready", loadedModelIds: [] }),
+				"usage.get": async () => usageSnapshot,
+			},
+			{},
+			authenticatedAuth,
+			undefined,
+			{ peek: () => ({ "local-model-catalog": false }) },
+		);
+		const screen = page.elementLocator(baseElement);
+		await expect.element(screen.getByText("No models added", { exact: true })).toBeVisible();
+		await expect.element(screen.getByText("Import a GGUF file to get started.")).toBeVisible();
+
+		await screen.getByRole("button", { name: "Add model" }).click();
+		await expect.element(page.getByRole("menuitem", { name: "Import GGUF" })).toBeVisible();
+		expect(page.getByRole("menuitem", { name: "From catalog" })).toHaveLength(0);
+	});
+
 	it("opens the local model catalog from the add model menu", async () => {
 		const { baseElement } = renderSettings({
 			"catalog.list": async () => ({ models: [], total: 0 }),

@@ -1,6 +1,6 @@
 {
 	"name": "@kilo-desktop/desktop",
-	"version": "0.1.9",
+	"version": "0.1.10",
 	"private": true,
 	"type": "module",
 	"description": "Electron shell for Kilo Desktop",

@@ -18,7 +18,11 @@ import {
 	getUpdatePublishUrl,
 } from "./config/release.js";
 import desktopPackage from "./package.json" with { type: "json" };
-import { getAppIdentity, getDmgVolumeTitle } from "./config/app-identity.js";
+import {
+	getAppIdentity,
+	getDmgVolumeTitle,
+	getVersionedSetupExecutableName,
+} from "./config/app-identity.js";
 import { planWindowsSigning, resolveOsxNotarize, resolveOsxSign } from "./config/signing.js";
 import { stageWebRenderer } from "./config/stage-web-renderer.js";
 import { resolvePackagedWebMcpRelayDirectory } from "./config/packaged-webmcp-relay.js";
@@ -417,7 +421,7 @@ const config: ForgeConfig = {
 					// which Windows shows as the icon's hover tooltip. Without it,
 					// electron-winstaller falls back to package.json's description.
 					description: identity.productName,
-					setupExe: identity.setupExecutableName,
+					setupExe: getVersionedSetupExecutableName(identity, appVersion, arch),
 					setupIcon: path.join(packageRoot, "assets/icon.ico"),
 					version: appVersion,
 					loadingGif: path.join(packageRoot, "assets/installing-kilo.gif"),

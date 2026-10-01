@@ -27,7 +27,7 @@ feature flag) can move the installed app between tracks:
 | ----------------- | ------------ | --------------- |
 | Local development | Kilo Dev     | `dev`           |
 | `preview`         | Kilo Preview | none            |
-| `stable`          | Kilo Beta    | none            |
+| `stable`          | Kilo         | none            |
 
 The development suffix is applied consistently to macOS bundle IDs, Windows Squirrel identities,
 Linux package and executable names, and Electron's application name. Preview and Stable share the

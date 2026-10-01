@@ -190,18 +190,19 @@ export function AboutSettings() {
 				) : null}
 
 				{state?.releaseNotes.some(hasVisibleReleaseNotes) ? (
-					<FieldSet
-						className="border-border bg-background/60 border-t p-4"
-						data-qa-id="update-release-notes"
-					>
-						<FieldLegend className="flex items-baseline gap-2">
-							What's changed
-							<code className="text-muted-foreground text-2xs font-medium">
-								{targetRelease?.version}
-							</code>
-						</FieldLegend>
-						<ReleaseNotesList notes={state.releaseNotes} showHeading={false} />
-					</FieldSet>
+					// Native fieldsets paint their border and background from the legend's
+					// midline, so the surface lives on this wrapper instead.
+					<div className="bg-background/60 p-4">
+						<FieldSet data-qa-id="update-release-notes">
+							<FieldLegend className="flex items-baseline gap-2">
+								What's changed
+								<code className="text-muted-foreground text-2xs font-medium">
+									{targetRelease?.version}
+								</code>
+							</FieldLegend>
+							<ReleaseNotesList notes={state.releaseNotes} showHeading={false} />
+						</FieldSet>
+					</div>
 				) : null}
 			</section>
 			{state ? (

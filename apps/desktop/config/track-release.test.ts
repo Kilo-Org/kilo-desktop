@@ -111,10 +111,10 @@ describe("track release publishing", () => {
 		expect(x64).toMatchObject({ platform: "windows", arch: "x64", type: "setup" });
 		expect(arm64).toMatchObject({ platform: "windows", arch: "arm64", type: "setup" });
 		expect(getLatestAliasKey("stable", x64!)).toBe(
-			"kilo-desktop/latest/latest/windows/x64/Kilo-Beta-Setup.exe",
+			"kilo-desktop/latest/latest/windows/x64/Kilo-Setup.exe",
 		);
 		expect(getLatestAliasKey("stable", arm64!)).toBe(
-			"kilo-desktop/latest/latest/windows/arm64/Kilo-Beta-Setup.exe",
+			"kilo-desktop/latest/latest/windows/arm64/Kilo-Setup.exe",
 		);
 	});
 

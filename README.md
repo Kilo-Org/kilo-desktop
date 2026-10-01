@@ -308,7 +308,7 @@ Development is isolated, while Preview and Stable share one packaged identity:
 | ----------------- | ------------ |
 | Local development | Kilo Dev     |
 | `preview`         | Kilo Preview |
-| `stable`          | Kilo Beta    |
+| `stable`          | Kilo         |
 
 Preview and Stable replace one another rather than install side by side. Sharing identity lets the
 About settings update-track switcher (behind the `update-track-switcher` feature flag) move an

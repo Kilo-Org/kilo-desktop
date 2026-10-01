@@ -18,13 +18,13 @@ export interface AppIdentity {
 }
 
 export function getDmgVolumeTitle(track: ReleaseTrack): string {
-	return track === "preview" ? "Kilo Preview" : "Kilo Beta";
+	return track === "preview" ? "Kilo Preview" : "Kilo";
 }
 
 const PRODUCT_NAMES = {
 	development: "Kilo Dev",
 	preview: "Kilo Preview",
-	stable: "Kilo Beta",
+	stable: "Kilo",
 } as const satisfies Readonly<Record<AppEnvironment, string>>;
 
 const USER_DATA_NAMES = {

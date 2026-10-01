@@ -31,6 +31,8 @@ import {
 /** Clears macOS traffic lights (x:16, 14px lights, 8px gaps = 74px) plus a 10px gap. */
 const MAC_DESKTOP_SIDEBAR_TOGGLE_LEFT = "84px";
 const DEFAULT_SIDEBAR_TOGGLE_LEFT = "0.75rem";
+/** Width reserved right of the toggle's left edge for the toggle and its Beta badge. */
+const SIDEBAR_TOGGLE_CLEARANCE = "5.25rem";
 
 function resolveSidebarToggleLeft(): string {
 	if (!isDesktopBridgeAvailable()) return DEFAULT_SIDEBAR_TOGGLE_LEFT;
@@ -166,6 +168,7 @@ export function AppSidebarLayout({
 	};
 	const sidebarProviderStyle = {
 		"--shell-sidebar-toggle-left": resolveSidebarToggleLeft(),
+		"--shell-sidebar-toggle-clearance": SIDEBAR_TOGGLE_CLEARANCE,
 	} as CSSProperties;
 
 	return (
@@ -184,7 +187,9 @@ export function AppSidebarLayout({
 						    otherwise treats the overlapping button pixels as window chrome. */}
 					<div
 						className="drag-region absolute inset-y-0 right-0 flex items-center justify-end pr-2"
-						style={{ left: "calc(var(--shell-sidebar-toggle-left) + 2rem)" }}
+						style={{
+							left: "calc(var(--shell-sidebar-toggle-left) + var(--shell-sidebar-toggle-clearance))",
+						}}
 					>
 						{settings ? null : (
 							<ZoneOutlet

@@ -316,6 +316,45 @@ describe("AppSidebarLayout nav toggle", () => {
 		expectToggleOutsideDragRegions();
 	});
 
+	it("shows a beta badge beside the nav toggle, clear of title-bar content", async () => {
+		const { baseElement } = renderLayout(
+			fakeLocalApi({ status: "anonymous" }),
+			"/plugins/demo",
+			undefined,
+			[],
+			[{ ...demoPages[0]!, headerLeading: undefined, headerActions: undefined }],
+		);
+
+		const toggle = page.getByRole("button", { name: "Toggle navigation" });
+		const badge = page.getByTestId("sidebar-beta-badge");
+		await expect.element(badge).toHaveTextContent("Beta");
+		const sidebarGap = baseElement.querySelector<HTMLElement>('[data-slot="sidebar-gap"]');
+		const expectBadgeBesideToggleAndUncovered = () => {
+			const toggleRect = toggle.element().getBoundingClientRect();
+			const badgeRect = badge.element().getBoundingClientRect();
+			expect(badgeRect.left).toBeGreaterThanOrEqual(toggleRect.right);
+			const regionsStartingUnderBadge = Array.from(
+				baseElement.querySelectorAll<HTMLElement>(".drag-region"),
+			).filter((region) => {
+				const regionRect = region.getBoundingClientRect();
+				return regionRect.left < badgeRect.right && regionRect.right > badgeRect.right;
+			});
+			expect(regionsStartingUnderBadge).toHaveLength(0);
+		};
+
+		expectBadgeBesideToggleAndUncovered();
+		await toggle.click();
+		await vi.waitFor(() => {
+			expect(sidebarGap?.getBoundingClientRect().width).toBe(0);
+		});
+		expectBadgeBesideToggleAndUncovered();
+		const headingRect = page
+			.getByRole("heading", { name: "Demo" })
+			.element()
+			.getBoundingClientRect();
+		expect(headingRect.left).toBeGreaterThanOrEqual(badge.element().getBoundingClientRect().right);
+	});
+
 	it("reveals the collapsed nav transiently without moving the page while entering it", async () => {
 		const { baseElement } = renderLayout(fakeLocalApi({ status: "anonymous" }));
 		const toggle = page.getByRole("button", { name: "Toggle navigation" });

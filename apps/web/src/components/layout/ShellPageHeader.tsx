@@ -2,6 +2,7 @@ import { motion, useTransform } from "motion/react";
 import type { ComponentType } from "react";
 
 import { PAGE_HEADER_ACTIONS_ZONE, type PluginPageProps } from "@kilo-desktop/feature-sdk";
+import { Badge } from "@kilo-desktop/ui/components/badge";
 import { SidebarTrigger, useSidebar } from "@kilo-desktop/ui/components/sidebar";
 
 import { ZoneOutlet } from "@/components/zones/ZoneOutlet";
@@ -16,7 +17,7 @@ type ShellPageHeaderProps = {
 function ShellSidebarToggle({ open }: { open: boolean }) {
 	return (
 		<div
-			className="pointer-events-auto fixed top-0 z-40 flex h-12 items-center [-webkit-app-region:no-drag]"
+			className="pointer-events-auto fixed top-0 z-40 flex h-12 items-center gap-1.5 [-webkit-app-region:no-drag]"
 			style={{ left: "var(--shell-sidebar-toggle-left)" }}
 		>
 			<SidebarTrigger
@@ -25,6 +26,9 @@ function ShellSidebarToggle({ open }: { open: boolean }) {
 				data-qa-id="sidebar-nav-toggle"
 				className="[-webkit-app-region:no-drag]"
 			/>
+			<Badge variant="soft" data-qa-id="sidebar-beta-badge">
+				Beta
+			</Badge>
 		</div>
 	);
 }
@@ -36,9 +40,12 @@ function ShellSidebarToggle({ open }: { open: boolean }) {
  */
 export function ShellPageHeader({ title, leading, actions, pageProps }: ShellPageHeaderProps) {
 	const { open, progress } = useSidebar();
+	// While collapsed, clear the fixed toggle cluster; the header's own `pl-3`
+	// (0.75rem) already covers part of that distance.
 	const contentMarginLeft = useTransform(
 		progress,
-		(value) => `calc((var(--shell-sidebar-toggle-left, 0.75rem) + 1.25rem) * ${1 - value})`,
+		(value) =>
+			`calc((var(--shell-sidebar-toggle-left, 0.75rem) + var(--shell-sidebar-toggle-clearance, 2rem) - 0.75rem) * ${1 - value})`,
 	);
 	const Leading = leading;
 	const Actions = actions;

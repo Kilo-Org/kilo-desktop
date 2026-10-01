@@ -17,6 +17,7 @@ interface GitServiceDouble {
 	renameWorktreeBranch: ReturnType<typeof vi.fn>;
 	removeWorktree: ReturnType<typeof vi.fn>;
 	hasWorktreeWork: ReturnType<typeof vi.fn>;
+	linkAgentManagerSession: ReturnType<typeof vi.fn>;
 }
 
 const directories: string[] = [];
@@ -79,6 +80,7 @@ function gitServiceDouble(overrides?: Partial<GitServiceDouble>): GitServiceDoub
 		renameWorktreeBranch: vi.fn(async () => ({ branch: "kilo/fix-the-login-bug" })),
 		removeWorktree: vi.fn(async () => undefined),
 		hasWorktreeWork: vi.fn(async () => true),
+		linkAgentManagerSession: vi.fn(async () => true),
 		...overrides,
 	};
 }
@@ -388,5 +390,41 @@ describe("kilo-ui chat worktree handlers", () => {
 				directory: "/repo/.kilo/worktrees/kilo-aback-aardvark",
 			}),
 		).resolves.toBe(false);
+	});
+
+	it("links a new worktree session for the Agent Manager through the capability", async () => {
+		const { mainSdk, exposeGitService } = await boot();
+		const gitService = gitServiceDouble();
+		exposeGitService(gitService);
+
+		await mainSdk.invoke("chat.linkWorktreeSession", {
+			directory: "/repo/.kilo/worktrees/kilo-aback-aardvark",
+			sessionId: "ses_1",
+			baseRef: "origin/main",
+		});
+
+		expect(gitService.linkAgentManagerSession).toHaveBeenCalledWith({
+			path: "/repo/.kilo/worktrees/kilo-aback-aardvark",
+			sessionId: "ses_1",
+			baseRef: "origin/main",
+		});
+	});
+
+	it("never fails the chat when linking a worktree session fails", async () => {
+		const { mainSdk, exposeGitService } = await boot();
+		exposeGitService(
+			gitServiceDouble({
+				linkAgentManagerSession: vi.fn(async () => {
+					throw new Error("permission denied");
+				}),
+			}),
+		);
+
+		await expect(
+			mainSdk.invoke("chat.linkWorktreeSession", {
+				directory: "/repo/.kilo/worktrees/kilo-aback-aardvark",
+				sessionId: "ses_1",
+			}),
+		).resolves.toBeUndefined();
 	});
 });

@@ -56,6 +56,7 @@ import {
 import { isStaleKiloConnectionError } from "./kilo-connection-error.js";
 import { bindChatPaneSync, listenChatPaneSync } from "./pane-canvas/chat-pane-sync.js";
 import { chatRightPanelCapability } from "./right-panel/chat-right-panel-capability.js";
+import type { SessionInitializedInfo } from "./runtime/create-kilo-runtime-backend.js";
 import { useKiloRuntime } from "./runtime/use-kilo-runtime.js";
 import { KiloMcpAppsHost } from "./runtime/mcp-apps-host.js";
 import { ElectronMcpAppRenderer } from "./components/mcp-apps/ElectronMcpAppRenderer.js";
@@ -483,7 +484,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		[sdk, sessionActivity],
 	);
 	const onSessionInitialized = useCallback(
-		(threadId: string, info?: { worktreeBaseRef?: string }) => {
+		(threadId: string, info?: SessionInitializedInfo) => {
 			setIsSettingUpWorktree(false);
 			promoteDraftAgent(threadId);
 			promoteDraftModel(threadId);
@@ -493,8 +494,15 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 				threadId,
 				info?.worktreeBaseRef ? { baseRef: info.worktreeBaseRef } : undefined,
 			);
+			if (info?.worktreeDirectory) {
+				void sdk.client["chat.linkWorktreeSession"]({
+					directory: info.worktreeDirectory,
+					sessionId: threadId,
+					...(info.worktreeBaseRef ? { baseRef: info.worktreeBaseRef } : {}),
+				}).catch(() => undefined);
+			}
 		},
-		[promoteDraftAgent, promoteDraftModel, branchNamer],
+		[sdk, promoteDraftAgent, promoteDraftModel, branchNamer],
 	);
 
 	const runtime = useKiloRuntime({

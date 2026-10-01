@@ -14,7 +14,10 @@ import type {
 	KiloSessionPreparation,
 } from "../../../contracts/chat/schemas.js";
 import type { SessionActivityStore } from "../session-activity/session-activity-store.js";
-import { createKiloRuntimeBackend } from "./create-kilo-runtime-backend.js";
+import {
+	createKiloRuntimeBackend,
+	type SessionInitializedInfo,
+} from "./create-kilo-runtime-backend.js";
 import { LOCAL_MCP_APPS } from "./mcp-app-registry.js";
 import { startSessionListBackfill } from "./session-list-backfill.js";
 import {
@@ -39,7 +42,7 @@ export interface UseKiloRuntimeOptions {
 	/** Fires when the active remote thread id changes (OpenCode session switch). */
 	onThreadIdChange?: (threadId: string | undefined) => void;
 	/** Fires after Kilo creates a remote session for the active draft. */
-	onSessionInitialized?: (threadId: string, info?: { worktreeBaseRef?: string }) => void;
+	onSessionInitialized?: (threadId: string, info?: SessionInitializedInfo) => void;
 	defaultAgent?: string;
 	/** Reads the current agent synchronously for prompt dispatch. */
 	getAgent?: () => string | undefined;
@@ -147,7 +150,7 @@ export function useKiloRuntime({
 			},
 			prepareSession,
 			...promptGetters,
-			onSessionInitialized: (threadId: string, info?: { worktreeBaseRef?: string }) =>
+			onSessionInitialized: (threadId: string, info?: SessionInitializedInfo) =>
 				onSessionInitializedRef.current?.(threadId, info),
 			onPermissionEvent: (event) => onPermissionEventRef.current?.(event) ?? false,
 			onStreamReconnected: () => onStreamReconnectedRef.current?.(),

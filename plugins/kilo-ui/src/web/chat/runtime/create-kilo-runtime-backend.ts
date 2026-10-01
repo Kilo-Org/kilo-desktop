@@ -70,12 +70,19 @@ function withSessionListTimeout<T>(request: PromiseLike<T>): Promise<T> {
 	});
 }
 
+/** Worktree facts for a freshly created session; both absent outside a worktree. */
+export type SessionInitializedInfo = {
+	worktreeDirectory?: string;
+	/** Absent when the worktree branch was cut from HEAD. */
+	worktreeBaseRef?: string;
+};
+
 export interface CreateKiloRuntimeBackendOptions extends PromptOptionGetters {
 	connectionPromise?: Promise<KiloGlobalConnection>;
 	/** Latest Kilo connection; used on every request so a port change mid-prepare still lands. */
 	getConnection?: () => Promise<KiloGlobalConnection>;
 	prepareSession(): Promise<KiloSessionPreparation>;
-	onSessionInitialized?: (threadId: string, info?: { worktreeBaseRef?: string }) => void;
+	onSessionInitialized?: (threadId: string, info?: SessionInitializedInfo) => void;
 	/**
 	 * Compensating cleanup: fired fire-and-forget when anything after
 	 * `prepareSession` fails and the preparation included a worktree, so a
@@ -403,6 +410,7 @@ export function createKiloRuntimeBackend({
 				rememberWorkspaceSystem(session.id, workspaceFolders);
 				rememberSession(ref);
 				onSessionInitialized?.(session.id, {
+					...(worktree ? { worktreeDirectory: directory } : {}),
 					...(worktree?.baseRef ? { worktreeBaseRef: worktree.baseRef } : {}),
 				});
 				if (worktree || workspaceId) {

@@ -2,6 +2,7 @@ import type { GitCapabilities } from "@kilo-desktop/plugin-git/contracts";
 import { FeatureError, type MainSdk } from "@kilo-desktop/feature-sdk/main";
 
 import type { KiloUiChatService } from "../../contracts/chat/schemas.js";
+import { linkAgentManagerSession } from "./agent-manager-session-links.js";
 import { createKiloInstanceDisposer, type KiloInstanceDisposer } from "./dispose-kilo-instance.js";
 import { createUnscopedChatDirectory } from "./unscoped-chat-directory.js";
 import type { WorkspaceService } from "../workspaces/WorkspaceService.js";
@@ -16,7 +17,7 @@ import type { WorkspaceService } from "../workspaces/WorkspaceService.js";
  * requested worktree to the checkout; `removeWorktree` is destructive and
  * must not no-op silently), while the best-effort `renameWorktreeBranch`
  * declines with `null` — the namer treats a declined rename as an outcome,
- * not an error.
+ * not an error — and `linkWorktreeSession` no-ops.
  */
 function gitWorktreeService(mainSdk: MainSdk): GitCapabilities["gitService"] | null {
 	return mainSdk.plugins.get<GitCapabilities>("git")?.gitService ?? null;
@@ -32,6 +33,7 @@ export function createChatWorktreeHandlers(
 	| "chat.renameWorktreeBranch"
 	| "chat.removeWorktree"
 	| "chat.hasWorktreeWork"
+	| "chat.linkWorktreeSession"
 > {
 	return {
 		"chat.prepareSession": async ({ workspaceId, worktree }) => {
@@ -146,6 +148,15 @@ export function createChatWorktreeHandlers(
 				);
 				return false;
 			}
+		},
+		"chat.linkWorktreeSession": async ({ directory, sessionId, baseRef }) => {
+			const gitService = gitWorktreeService(mainSdk);
+			if (!gitService) return;
+			await linkAgentManagerSession(mainSdk, gitService, {
+				path: directory,
+				sessionId,
+				...(baseRef === undefined ? {} : { baseRef }),
+			});
 		},
 	};
 }

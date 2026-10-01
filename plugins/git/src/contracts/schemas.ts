@@ -399,6 +399,11 @@ export type GitCapabilities = {
 		renameWorktreeBranch(input: GitRenameWorktreeBranchInput): Promise<{ branch: string } | null>;
 		removeWorktree(input: GitRemoveWorktreeInput): Promise<void>;
 		hasWorktreeWork(input: { directory: string; baseBranch?: string }): Promise<boolean>;
+		linkAgentManagerSession(input: {
+			path: string;
+			sessionId: string;
+			baseRef?: string;
+		}): Promise<boolean>;
 	};
 };
 

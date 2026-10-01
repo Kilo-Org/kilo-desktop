@@ -105,6 +105,7 @@ export function mainRegister(mainSdk: MainSdk): void {
 		},
 		removeWorktree: service.removeWorktree.bind(service),
 		hasWorktreeWork: service.hasWorktreeWork.bind(service),
+		linkAgentManagerSession: service.linkAgentManagerSession.bind(service),
 	} satisfies GitCapabilities["gitService"]);
 
 	// Best-effort sweep of patch files still in flight at teardown; the

@@ -1368,6 +1368,11 @@ const SessionRowContent = memo(function SessionRowContent({
 				})
 			: null;
 
+	// Without a workspace label the info line would hold only the PR badge,
+	// stranded on its own line — it joins the title row's trailing slot
+	// instead, fading under the hover actions like the timestamp.
+	const pullRequestInTitleRow = !showWorkspace && (pullRequestMetadata?.length ?? 0) > 0;
+
 	const glyph = indented ? (
 		<span className="flex h-5 w-4 shrink-0 items-center justify-center">{leadingIcon}</span>
 	) : (
@@ -1400,16 +1405,17 @@ const SessionRowContent = memo(function SessionRowContent({
 					canArchive || isArchived
 						? "group-hover/sidebar-row:min-w-24 group-has-[:focus-visible]/sidebar-row:min-w-24 group-has-[[data-popup-open]]/sidebar-row:min-w-24"
 						: "group-hover/sidebar-row:min-w-16 group-has-[:focus-visible]/sidebar-row:min-w-16 group-has-[[data-popup-open]]/sidebar-row:min-w-16",
-					rightSlot ? rowHoverLabelFadeClassName : null,
+					rightSlot || pullRequestInTitleRow ? rowHoverLabelFadeClassName : null,
 				)}
 			>
+				{pullRequestInTitleRow ? pullRequestMetadata : null}
 				{rightSlot}
 			</span>
 		</span>
 	);
 
 	const infoLine =
-		(showWorkspace && locationLabel) || pullRequestMetadata?.length ? (
+		showWorkspace && locationLabel ? (
 			<span
 				data-slot="aui_session-list-item-info"
 				className={cn(
@@ -1417,17 +1423,13 @@ const SessionRowContent = memo(function SessionRowContent({
 					indented && "ml-1.5 pl-4",
 				)}
 			>
-				{showWorkspace && locationLabel ? (
-					<>
-						<FolderIcon
-							aria-hidden
-							data-slot="aui_session-list-workspace-icon"
-							className="size-[13px] shrink-0 opacity-70"
-							{...(workspaceColor ? { color: workspaceColor } : {})}
-						/>
-						<span className="min-w-0 flex-1 truncate">{locationLabel}</span>
-					</>
-				) : null}
+				<FolderIcon
+					aria-hidden
+					data-slot="aui_session-list-workspace-icon"
+					className="size-[13px] shrink-0 opacity-70"
+					{...(workspaceColor ? { color: workspaceColor } : {})}
+				/>
+				<span className="min-w-0 flex-1 truncate">{locationLabel}</span>
 				{pullRequestMetadata}
 			</span>
 		) : null;

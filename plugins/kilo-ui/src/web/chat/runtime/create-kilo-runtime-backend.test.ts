@@ -447,6 +447,7 @@ describe("createKiloRuntimeBackend", () => {
 		await backend.initializeSession();
 
 		expect(initialized).toHaveBeenCalledWith("session-baseref", {
+			worktreeDirectory: "/workspace/.kilo/worktrees/kilo-aback-aardvark",
 			worktreeBaseRef: "origin/main",
 		});
 	});

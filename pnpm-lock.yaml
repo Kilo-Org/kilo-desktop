@@ -396,6 +396,9 @@ importers:
       p-limit:
         specifier: 'catalog:'
         version: 7.3.2
+      semver:
+        specifier: 'catalog:'
+        version: 7.8.5
       shell-env:
         specifier: ^4.0.3
         version: 4.0.3
@@ -460,6 +463,9 @@ importers:
       '@types/node':
         specifier: ^24.13.3
         version: 24.13.3
+      '@types/semver':
+        specifier: ^7.8.0
+        version: 7.8.0
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 5.0.2(@vitest/browser@5.0.2)(vitest@5.0.2)

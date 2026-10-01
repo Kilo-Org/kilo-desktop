@@ -2,6 +2,7 @@ import electronDebug from "electron-debug";
 import { shellEnv } from "shell-env";
 import { nativeTheme, net, session } from "electron";
 import { writeFile } from "node:fs/promises";
+import path from "node:path";
 
 import { UPDATE_TRACK_SWITCHER_FLAG, type IpcHandlers } from "@kilo-desktop/contracts";
 
@@ -60,6 +61,7 @@ import { installProxyAgent } from "./platform/proxyAgent.js";
 import { ScopedFsService } from "./platform/ScopedFsService.js";
 import { SplashWindow } from "./platform/SplashWindow.js";
 import { DesktopUpdaterService } from "./platform/Updater.js";
+import { WindowsUpdateFeed } from "./platform/WindowsUpdateFeed.js";
 import { flushSentry, identifySentryUser } from "./platform/sentry.js";
 import * as Sentry from "@sentry/electron/main";
 import { getProductionRendererRoot, getWebDevServerUrl } from "./platform/webDevServer.js";
@@ -215,6 +217,13 @@ export class Application {
 				broadcast: (state) => this.#windows.broadcast("updates:state-changed", state),
 				persistTrack: (track) => preferences.setReleaseTrack(track),
 				logger: createLogger("updates"),
+				...(process.platform === "win32" && {
+					windowsFeed: new WindowsUpdateFeed({
+						directory: path.join(this.#app.getPath("userData"), "squirrel-feed"),
+						packageName: identity.squirrelName,
+						fetch: this.#http.fetch,
+					}),
+				}),
 			});
 			this.#updates = updates;
 			this.#disposers.push(updates.start());

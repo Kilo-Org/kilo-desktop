@@ -9,6 +9,9 @@ import type {
 } from "@kilo-desktop/contracts";
 
 import { DesktopUpdaterService } from "./Updater.js";
+import { UpdateFeedError, type WindowsUpdateFeed } from "./WindowsUpdateFeed.js";
+
+type FakeWindowsFeed = Pick<WindowsUpdateFeed, "directory" | "prepare" | "clear">;
 
 class FakeNativeUpdater extends EventEmitter {
 	readonly setFeedURL = vi.fn();
@@ -37,6 +40,7 @@ function createService(
 		persistTrack?: (track: ReleaseTrack) => void;
 		track?: ReleaseTrack;
 		currentVersion?: string;
+		windowsFeed?: FakeWindowsFeed;
 	} = {},
 ) {
 	const updater = overrides.updater ?? new FakeNativeUpdater();
@@ -59,8 +63,17 @@ function createService(
 		persistTrack: overrides.persistTrack ?? vi.fn(),
 		logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 		updater: updater as never,
+		...(overrides.windowsFeed && { windowsFeed: overrides.windowsFeed }),
 	});
 	return { service, updater, states };
+}
+
+function createWindowsFeed(prepare: FakeWindowsFeed["prepare"]): FakeWindowsFeed {
+	return {
+		directory: "C:\\Users\\me\\AppData\\Roaming\\Kilo\\squirrel-feed",
+		prepare,
+		clear: vi.fn(async () => {}),
+	};
 }
 
 afterEach(() => {
@@ -356,6 +369,73 @@ describe("DesktopUpdaterService", () => {
 			serverType: "json",
 		});
 		expect(service.state.track).toBe("preview");
+		service.dispose();
+	});
+});
+
+describe("DesktopUpdaterService on Windows", () => {
+	it("downloads into the local mirror, then lets Squirrel install from it", async () => {
+		vi.useFakeTimers();
+		const windowsFeed = createWindowsFeed(
+			vi.fn<FakeWindowsFeed["prepare"]>(async ({ onDownloadStart }) => {
+				onDownloadStart(notes.version);
+				return { kind: "ready", version: notes.version };
+			}),
+		);
+		const { service, updater } = createService({ platform: "win32", windowsFeed });
+		service.start();
+		expect(updater.setFeedURL).toHaveBeenCalledWith({ url: windowsFeed.directory });
+
+		await service.check();
+
+		expect(windowsFeed.prepare).toHaveBeenCalledWith(
+			expect.objectContaining({
+				remoteFeedUrl: "https://updates.example.com/kilo-desktop/preview/win32/arm64",
+				currentVersion: "1.2.2",
+			}),
+		);
+		expect(service.state).toMatchObject({ status: "downloading", availableVersion: notes.version });
+		expect(updater.checkForUpdates).toHaveBeenCalledOnce();
+		updater.emit("checking-for-update");
+		expect(service.state.status).toBe("downloading");
+
+		updater.emit("update-downloaded", {}, "", notes.version, new Date(), "");
+		await vi.waitFor(() => expect(service.state.status).toBe("downloaded"));
+		await vi.waitFor(() => expect(windowsFeed.clear).toHaveBeenCalledOnce());
+		service.dispose();
+	});
+
+	it("reports up to date without invoking Squirrel", async () => {
+		vi.useFakeTimers();
+		const windowsFeed = createWindowsFeed(vi.fn(async () => ({ kind: "up-to-date" as const })));
+		const { service, updater } = createService({ platform: "win32", windowsFeed });
+		service.start();
+
+		await service.check();
+
+		expect(service.state.status).toBe("up-to-date");
+		expect(updater.checkForUpdates).not.toHaveBeenCalled();
+		expect((await service.check()).accepted).toBe(true);
+		service.dispose();
+	});
+
+	it("names the HTTP status when the update server refuses the request", async () => {
+		vi.useFakeTimers();
+		const windowsFeed = createWindowsFeed(
+			vi.fn(async () => {
+				throw new UpdateFeedError("The update server returned HTTP 403.", 403);
+			}),
+		);
+		const { service, updater } = createService({ platform: "win32", windowsFeed });
+		service.start();
+
+		await service.check();
+
+		expect(service.state).toMatchObject({
+			status: "error",
+			message: expect.stringContaining("HTTP 403"),
+		});
+		expect(updater.checkForUpdates).not.toHaveBeenCalled();
 		service.dispose();
 	});
 });

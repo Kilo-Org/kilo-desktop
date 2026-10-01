@@ -10,9 +10,17 @@ import {
 import { PreferencesStore } from "./platform/PreferencesStore.js";
 import { registerDesktopSchemes } from "./platform/ElectronProtocol.js";
 import { initSentry } from "./platform/sentry.js";
+import { brandSquirrelUninstallEntry } from "./platform/SquirrelUninstallIcon.js";
 import electronSquirrelStartup from "electron-squirrel-startup";
+import { getAppIdentity } from "$config/app-identity.js";
 
 if (electronSquirrelStartup) {
+	brandSquirrelUninstallEntry({
+		argv: process.argv,
+		execPath: process.execPath,
+		resourcesPath: process.resourcesPath,
+		squirrelName: getAppIdentity(RELEASE_TRACK).squirrelName,
+	});
 	process.exitCode = 0;
 } else {
 	configureAppProfile();

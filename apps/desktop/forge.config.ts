@@ -91,6 +91,8 @@ const asarUnpackPackages = [
 const webMcpRelayRuntimePackage = "@kilo-desktop/webmcp-relay-runtime";
 const extraResources = [
 	path.join(packageRoot, "assets/icon.png"),
+	// Copied over Squirrel's app.ico by the install hook (SquirrelUninstallIcon.ts).
+	...(process.platform === "win32" ? [path.join(packageRoot, "assets/icon.ico")] : []),
 	// Native plugin payloads must stay outside ASAR so the shell can execute them.
 	path.join(workspaceRoot, "plugins/kilo-server/resources/kilo"),
 	...notebookPackaging.extraResources,
@@ -416,6 +418,7 @@ const config: ForgeConfig = {
 					// electron-winstaller falls back to package.json's description.
 					description: identity.productName,
 					setupExe: identity.setupExecutableName,
+					setupIcon: path.join(packageRoot, "assets/icon.ico"),
 					version: appVersion,
 					loadingGif: path.join(packageRoot, "assets/installing-kilo.gif"),
 					...(remoteReleases ? { remoteReleases } : {}),

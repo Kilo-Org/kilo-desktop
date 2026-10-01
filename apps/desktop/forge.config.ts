@@ -411,6 +411,10 @@ const config: ForgeConfig = {
 					process.env.UPDATE_REMOTE_RELEASES === "true" ? updateFeed("win32", arch) : undefined;
 				return {
 					name: identity.squirrelName,
+					// Squirrel copies this into the Start menu/desktop shortcut comment,
+					// which Windows shows as the icon's hover tooltip. Without it,
+					// electron-winstaller falls back to package.json's description.
+					description: identity.productName,
 					setupExe: identity.setupExecutableName,
 					version: appVersion,
 					loadingGif: path.join(packageRoot, "assets/installing-kilo.gif"),

@@ -141,6 +141,10 @@ describe("KiloGatewayAccountPanel", () => {
 			expect(actions?.contains(document.querySelector(`[data-qa-id=${qa}]`))).toBe(true);
 		}
 
+		// A real link, so the native context menu offers Open Link / Copy Link.
+		await expect
+			.element(screen.getByRole("link", { name: "Kilo Dashboard" }))
+			.toHaveAttribute("href", "https://app.kilo.ai/profile");
 		await screen.getByTestId("kilo-account-dashboard").click();
 		expect(auth.openExternal).toHaveBeenCalledWith("https://app.kilo.ai/profile");
 

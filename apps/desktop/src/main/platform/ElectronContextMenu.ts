@@ -1,31 +1,39 @@
 import {
 	BrowserWindow,
-	clipboard,
 	Menu,
 	type ContextMenuParams,
 	type MenuItemConstructorOptions,
 	type WebContents,
 } from "electron";
 
+import { parseSafeExternalUrl, type ElectronShell } from "./ElectronShell.js";
+
 /**
  * Electron shows no context menu by default, so every WebContents that renders
  * app or web content must opt in. The menu mirrors a browser's: spelling fixes,
- * edit actions for fields, Copy for selections, Copy Link for links, plus
- * Inspect Element in development. Components with their own right-click menu
- * call `preventDefault()` on `contextmenu`, which suppresses this event.
+ * link actions (open in the default browser, copy the URL), edit actions for
+ * fields, Copy for selections, plus Inspect Element in development. Link
+ * actions come before Copy because right-clicking a link on macOS also selects
+ * the word under the cursor, and that Copy takes the label, not the URL.
+ * Components with their own right-click menu call `preventDefault()` on
+ * `contextmenu`, which suppresses this event.
  */
 export function attachContextMenu(
 	contents: WebContents,
-	options: { readonly isDevelopment: boolean },
+	options: AttachContextMenuOptions,
 ): () => void {
 	const actions: ContextMenuActions = {
 		replaceMisspelling: (suggestion) => contents.replaceMisspelling(suggestion),
 		addToDictionary: (word) => contents.session.addWordToSpellCheckerDictionary(word),
-		copyLink: (url) => clipboard.writeText(url),
+		openLinkExternally: (url) => void options.shell.openExternal(url),
+		copyLink: (url) => options.shell.copyText(url),
 		inspectElement: (x, y) => contents.inspectElement(x, y),
 	};
 	const showMenu = (_event: Electron.Event, params: ContextMenuParams) => {
-		const template = buildContextMenuTemplate(params, { ...options, actions });
+		const template = buildContextMenuTemplate(params, {
+			isDevelopment: options.isDevelopment,
+			actions,
+		});
 		if (template.length === 0) return;
 		const window = BrowserWindow.fromWebContents(contents.hostWebContents ?? contents);
 		Menu.buildFromTemplate(template).popup({
@@ -36,6 +44,14 @@ export function attachContextMenu(
 	};
 	contents.on("context-menu", showMenu);
 	return () => contents.off("context-menu", showMenu);
+}
+
+export type ContextMenuShell = Pick<ElectronShell, "openExternal" | "copyText">;
+
+export interface AttachContextMenuOptions {
+	readonly isDevelopment: boolean;
+	/** Carries out the link actions, so they share the app's URL allowlist. */
+	readonly shell: ContextMenuShell;
 }
 
 export type ContextMenuTarget = Pick<
@@ -53,6 +69,7 @@ export type ContextMenuTarget = Pick<
 export interface ContextMenuActions {
 	replaceMisspelling(suggestion: string): void;
 	addToDictionary(word: string): void;
+	openLinkExternally(url: string): void;
 	copyLink(url: string): void;
 	inspectElement(x: number, y: number): void;
 }
@@ -70,11 +87,9 @@ export function buildContextMenuTemplate(
 ): MenuItemConstructorOptions[] {
 	const groups: MenuGroup[] = [];
 	if (target.misspelledWord) groups.push(...spellingGroups(target, actions));
+	if (target.linkURL) groups.push(linkGroup(target.linkURL, actions));
 	if (target.isEditable) groups.push(...editGroups(target.editFlags));
 	else if (target.selectionText.trim()) groups.push([{ role: "copy" }]);
-	if (target.linkURL) {
-		groups.push([{ label: "Copy Link", click: () => actions.copyLink(target.linkURL) }]);
-	}
 	if (isDevelopment) {
 		groups.push([
 			{ label: "Inspect Element", click: () => actions.inspectElement(target.x, target.y) },
@@ -99,6 +114,21 @@ function spellingGroups(target: ContextMenuTarget, actions: ContextMenuActions):
 				click: () => actions.addToDictionary(target.misspelledWord),
 			},
 		],
+	];
+}
+
+function linkGroup(linkURL: string, actions: ContextMenuActions): MenuGroup {
+	const externalUrl = parseSafeExternalUrl(linkURL);
+	return [
+		...(externalUrl
+			? [
+					{
+						label: "Open Link in Default Browser",
+						click: () => actions.openLinkExternally(externalUrl),
+					},
+				]
+			: []),
+		{ label: "Copy Link", click: () => actions.copyLink(linkURL) },
 	];
 }
 

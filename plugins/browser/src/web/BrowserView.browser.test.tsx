@@ -314,6 +314,33 @@ describe("BrowserView", () => {
 		);
 	});
 
+	it("opens the current page in the default browser from the browser menu", async () => {
+		const { sdk } = renderView(
+			{
+				config: async () => ({ partition: "persist:test" }),
+				attach: async () => ({
+					instanceId: "browser-external",
+					webContentsId: 42,
+					url: "https://example.com/docs",
+					title: "Docs",
+					faviconUrl: "",
+					loading: false,
+					canGoBack: false,
+					canGoForward: false,
+					zoomFactor: 1,
+				}),
+			},
+			"browser-external",
+		);
+		const openExternal = vi.spyOn(sdk.shell, "openExternal");
+		await expect.element(page.getByTestId("browser-view")).toHaveAttribute("aria-busy", "false");
+
+		await page.getByTestId("browser-menu").click();
+		await page.getByTestId("browser-open-external").click();
+
+		expect(openExternal).toHaveBeenCalledWith("https://example.com/docs");
+	});
+
 	it("surfaces command failures without an unhandled rejection", async () => {
 		const reload = vi.fn(async () => {
 			throw new Error("Reload failed");

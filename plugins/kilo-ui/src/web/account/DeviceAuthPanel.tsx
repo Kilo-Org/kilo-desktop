@@ -2,7 +2,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import { ArrowUpRightIcon, CircleAlertIcon, CopyIcon } from "lucide-react";
 
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
-import { Button } from "@kilo-desktop/ui/components/button";
+import { Button, buttonVariants } from "@kilo-desktop/ui/components/button";
+import { ExternalLink } from "@kilo-desktop/ui/components/external-link";
 import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
@@ -206,15 +207,15 @@ export function DeviceAuthPanel({
 									<CopyIcon data-icon="inline-start" />
 									Copy link
 								</Button>
-								<Button
-									type="button"
-									size="sm"
-									onClick={() => onOpenBrowser(deviceAuth.verificationUrl!)}
+								<ExternalLink
+									href={deviceAuth.verificationUrl}
+									onOpen={onOpenBrowser}
+									className={buttonVariants({ size: "sm" })}
 									data-qa-id="kilo-account-open-browser"
 								>
 									Open browser
 									<ArrowUpRightIcon data-icon="inline-end" />
-								</Button>
+								</ExternalLink>
 							</>
 						) : null}
 					</div>

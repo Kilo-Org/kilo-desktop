@@ -2,7 +2,8 @@ import { useMemo } from "react";
 import { ArrowUpRightIcon, CircleAlertIcon, RefreshCwIcon, ZapIcon } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@kilo-desktop/ui/components/alert";
-import { Button } from "@kilo-desktop/ui/components/button";
+import { Button, buttonVariants } from "@kilo-desktop/ui/components/button";
+import { ExternalLink } from "@kilo-desktop/ui/components/external-link";
 import {
 	Select,
 	SelectContent,
@@ -290,26 +291,24 @@ function SignedInView({
 					<div className="flex flex-wrap items-center gap-2" data-qa-id="kilo-account-actions">
 						{profile.balance ? (
 							<>
-								<Button
-									type="button"
-									variant="outline"
-									size="sm"
-									onClick={() => auth.openExternal(KILO_CREDITS_URL)}
+								<ExternalLink
+									href={KILO_CREDITS_URL}
+									onOpen={auth.openExternal}
+									className={buttonVariants({ variant: "outline", size: "sm" })}
 									data-qa-id="kilo-account-top-up"
 								>
 									Top up
 									<ArrowUpRightIcon data-icon="inline-end" />
-								</Button>
-								<Button
-									type="button"
-									variant="ghost"
-									size="sm"
-									onClick={() => auth.openExternal(KILO_PROFILE_URL)}
+								</ExternalLink>
+								<ExternalLink
+									href={KILO_PROFILE_URL}
+									onOpen={auth.openExternal}
+									className={buttonVariants({ variant: "ghost", size: "sm" })}
 									data-qa-id="kilo-account-dashboard"
 								>
 									Kilo Dashboard
 									<ArrowUpRightIcon data-icon="inline-end" />
-								</Button>
+								</ExternalLink>
 							</>
 						) : null}
 						{showSignOut ? <SignOutButton onLogout={auth.logout} /> : null}
@@ -329,16 +328,15 @@ function SignedInView({
 							Monthly credits at a flat rate for heavy usage.
 						</p>
 					</div>
-					<Button
-						type="button"
-						variant="outline"
-						size="sm"
-						onClick={() => auth.openExternal(KILO_PASS_URL)}
+					<ExternalLink
+						href={KILO_PASS_URL}
+						onOpen={auth.openExternal}
+						className={buttonVariants({ variant: "outline", size: "sm" })}
 						data-qa-id="kilo-account-get-pass"
 					>
 						Get Kilo Pass
 						<ArrowUpRightIcon data-icon="inline-end" />
-					</Button>
+					</ExternalLink>
 				</div>
 			) : null}
 		</div>

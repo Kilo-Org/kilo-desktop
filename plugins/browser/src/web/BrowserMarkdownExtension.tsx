@@ -1,9 +1,10 @@
 /**
  * Chat markdown extension (zone `kilo-ui/chat-markdown-extension`): a plain
  * click on an http(s) link in a chat message opens it in a Browser tab of that
- * chat instead of leaving the app. Modified clicks (⌘/Ctrl/Shift/Alt) and
- * clicks with no chat or pane layout fall through to the default navigation,
- * which the shell hands to the system browser.
+ * chat instead of leaving the app. A modified click (⌘/Ctrl/Shift/Alt), or a
+ * plain click when the chat pane layout is unavailable, opens the default
+ * browser. The link's tooltip names the URL and the modifier, since the app
+ * shows no status-bar URL preview. Outside a chat session links are untouched.
  */
 import { createElement, type ComponentProps, type ElementType, type MouseEvent } from "react";
 
@@ -20,7 +21,8 @@ interface ChatMarkdownExtensionContext {
 	readonly sessionId: string;
 }
 
-type WebLinkProps = ComponentProps<"a"> & {
+type WebLinkProps = Omit<ComponentProps<"a">, "href"> & {
+	readonly href: string;
 	readonly sessionId: string;
 	readonly Anchor: ElementType;
 };
@@ -29,22 +31,39 @@ function isWebUrl(href: string | undefined): href is string {
 	return href !== undefined && /^https?:\/\//iu.test(href.trim());
 }
 
-function isPlainPrimaryClick(event: MouseEvent): boolean {
-	return event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey;
+const SYSTEM_BROWSER_MODIFIER = /Mac|iPhone|iPad/iu.test(globalThis.navigator?.platform ?? "")
+	? "⌘"
+	: "Ctrl";
+
+function linkTooltip(href: string, title: string | undefined): string {
+	const hint = `${SYSTEM_BROWSER_MODIFIER}-click to open in your default browser`;
+	return [title || href, hint].join("\n");
 }
 
-function WebLink({ sessionId, Anchor, href, onClick, ...props }: WebLinkProps) {
+function hasModifier(event: MouseEvent): boolean {
+	return event.metaKey || event.ctrlKey || event.shiftKey || event.altKey;
+}
+
+function WebLink({ sessionId, Anchor, href, title, onClick, ...props }: WebLinkProps) {
 	const sdk = useSdk("browser");
-	const openInBrowserTab = (event: MouseEvent<HTMLAnchorElement>) => {
+	const open = (event: MouseEvent<HTMLAnchorElement>) => {
 		onClick?.(event);
-		if (event.defaultPrevented || !isPlainPrimaryClick(event) || !href) return;
-		if ("error" in openBrowserTab(sdk, sessionId, href)) return;
+		if (event.defaultPrevented || event.button !== 0) return;
 		event.preventDefault();
+		if (hasModifier(event) || "error" in openBrowserTab(sdk, sessionId, href)) {
+			void sdk.shell.openExternal(href).catch(() => undefined);
+			return;
+		}
 		void sdk.telemetry
 			.track({ event: "Browser Tab Opened", data: { source: "chat-link" } })
 			.catch(() => undefined);
 	};
-	return createElement(Anchor, { ...props, href, onClick: openInBrowserTab });
+	return createElement(Anchor, {
+		...props,
+		href,
+		title: linkTooltip(href, title),
+		onClick: open,
+	});
 }
 
 export const BrowserMarkdownExtension: MarkdownRendererExtensionFactory<
@@ -57,7 +76,7 @@ export const BrowserMarkdownExtension: MarkdownRendererExtensionFactory<
 			...next,
 			a({ node: _node, ...props }: ComponentProps<"a"> & { readonly node?: unknown }) {
 				return isWebUrl(props.href) ? (
-					<WebLink {...props} sessionId={sessionId} Anchor={NextAnchor} />
+					<WebLink {...props} href={props.href} sessionId={sessionId} Anchor={NextAnchor} />
 				) : (
 					createElement(NextAnchor, props)
 				);

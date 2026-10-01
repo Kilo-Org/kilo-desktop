@@ -1,20 +1,18 @@
 import type { MenuItemConstructorOptions } from "electron";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { buildFromTemplate, popup, fromWebContents, writeText } = vi.hoisted(() => {
+const { buildFromTemplate, popup, fromWebContents } = vi.hoisted(() => {
 	const popup = vi.fn();
 	return {
 		popup,
 		buildFromTemplate: vi.fn(() => ({ popup })),
 		fromWebContents: vi.fn(),
-		writeText: vi.fn(),
 	};
 });
 
 vi.mock("electron", () => ({
 	Menu: { buildFromTemplate },
 	BrowserWindow: { fromWebContents },
-	clipboard: { writeText },
 }));
 
 import {
@@ -56,6 +54,7 @@ function createActions() {
 	return {
 		replaceMisspelling: vi.fn(),
 		addToDictionary: vi.fn(),
+		openLinkExternally: vi.fn(),
 		copyLink: vi.fn(),
 		inspectElement: vi.fn(),
 	};
@@ -124,7 +123,7 @@ describe("buildContextMenuTemplate", () => {
 		expect(build(target({ selectionText: "hello world" }))).toEqual([{ role: "copy" }]);
 	});
 
-	it("offers Copy Link on a link, after any selection actions", () => {
+	it("offers link actions on a web link, ahead of copying the selected label", () => {
 		const actions = createActions();
 		const template = build(
 			target({ selectionText: "docs", linkURL: "https://example.com/docs" }),
@@ -133,12 +132,21 @@ describe("buildContextMenuTemplate", () => {
 		);
 
 		expect(template.map((item) => item.label ?? item.role ?? item.type)).toEqual([
-			"copy",
-			"separator",
+			"Open Link in Default Browser",
 			"Copy Link",
+			"separator",
+			"copy",
 		]);
-		template[2]?.click?.(...clickArgs());
+		template[0]?.click?.(...clickArgs());
+		expect(actions.openLinkExternally).toHaveBeenCalledWith("https://example.com/docs");
+		template[1]?.click?.(...clickArgs());
 		expect(actions.copyLink).toHaveBeenCalledWith("https://example.com/docs");
+	});
+
+	it("only offers Copy Link for links the system browser should not open", () => {
+		const template = build(target({ linkURL: "mailto:team@example.com" }));
+
+		expect(template.map((item) => item.label)).toEqual(["Copy Link"]);
 	});
 
 	it("adds Inspect Element at the click position only in development", () => {
@@ -156,6 +164,8 @@ describe("buildContextMenuTemplate", () => {
 		expect(build(target({ selectionText: "  \n" }))).toEqual([]);
 	});
 });
+
+const shell = { openExternal: vi.fn(async () => true), copyText: vi.fn() };
 
 function createContents(hostWebContents?: { id: number }) {
 	const listeners = new Map<string, (...args: unknown[]) => void>();
@@ -191,7 +201,7 @@ describe("attachContextMenu", () => {
 		const ownerWindow = { id: "window" };
 		fromWebContents.mockReturnValue(ownerWindow);
 		const frame = { name: "frame" };
-		attachContextMenu(contents as never, { isDevelopment: false });
+		attachContextMenu(contents as never, { isDevelopment: false, shell });
 
 		contents.rightClick({ ...target({ isEditable: true }), frame });
 
@@ -202,7 +212,7 @@ describe("attachContextMenu", () => {
 	it("resolves an embedded page's menu to the window hosting it", () => {
 		const host = { id: 7 };
 		const contents = createContents(host);
-		attachContextMenu(contents as never, { isDevelopment: false });
+		attachContextMenu(contents as never, { isDevelopment: false, shell });
 
 		contents.rightClick(target({ selectionText: "text" }));
 
@@ -211,7 +221,7 @@ describe("attachContextMenu", () => {
 
 	it("does not open an empty menu", () => {
 		const contents = createContents();
-		attachContextMenu(contents as never, { isDevelopment: false });
+		attachContextMenu(contents as never, { isDevelopment: false, shell });
 
 		contents.rightClick(target());
 
@@ -221,7 +231,7 @@ describe("attachContextMenu", () => {
 
 	it("routes menu actions to the right-clicked page", () => {
 		const contents = createContents();
-		attachContextMenu(contents as never, { isDevelopment: true });
+		attachContextMenu(contents as never, { isDevelopment: true, shell });
 
 		contents.rightClick(
 			target({
@@ -235,18 +245,20 @@ describe("attachContextMenu", () => {
 		);
 		itemLabelled("the").click?.(...clickArgs());
 		itemLabelled("Add to Dictionary").click?.(...clickArgs());
+		itemLabelled("Open Link in Default Browser").click?.(...clickArgs());
 		itemLabelled("Copy Link").click?.(...clickArgs());
 		itemLabelled("Inspect Element").click?.(...clickArgs());
 
 		expect(contents.replaceMisspelling).toHaveBeenCalledWith("the");
 		expect(contents.session.addWordToSpellCheckerDictionary).toHaveBeenCalledWith("teh");
-		expect(writeText).toHaveBeenCalledWith("https://example.com/");
+		expect(shell.openExternal).toHaveBeenCalledWith("https://example.com/");
+		expect(shell.copyText).toHaveBeenCalledWith("https://example.com/");
 		expect(contents.inspectElement).toHaveBeenCalledWith(4, 9);
 	});
 
 	it("stops showing the menu once detached", () => {
 		const contents = createContents();
-		const detach = attachContextMenu(contents as never, { isDevelopment: false });
+		const detach = attachContextMenu(contents as never, { isDevelopment: false, shell });
 
 		detach();
 		contents.rightClick(target({ isEditable: true }));

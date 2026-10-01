@@ -383,7 +383,10 @@ export class ElectronWindow {
 			event.preventDefault();
 			void this.electronShell.openExternal(url);
 		});
-		attachContextMenu(window.webContents, { isDevelopment });
+		attachContextMenu(window.webContents, {
+			isDevelopment,
+			shell: this.electronShell,
+		});
 		return window;
 	}
 

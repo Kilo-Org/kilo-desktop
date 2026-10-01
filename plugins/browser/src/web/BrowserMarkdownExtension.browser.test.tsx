@@ -28,7 +28,12 @@ afterEach(() => {
 
 function renderMessage(text: string, options: { sessionId?: string; withKiloUi?: boolean } = {}) {
 	const track = vi.fn(async (_input: { event: string; data: Record<string, unknown> }) => {});
-	const browserSdk = createFakeSdk({ featureId: "browser", telemetry: { track } });
+	const openExternal = vi.fn(async (_url: string) => ({ opened: true }));
+	const browserSdk = createFakeSdk({
+		featureId: "browser",
+		telemetry: { track },
+		shell: { openExternal },
+	});
 	const system = createFakeFeatureSystem({ sdks: { browser: browserSdk } });
 	const panel = {
 		listTabs: vi.fn(() => []),
@@ -43,12 +48,14 @@ function renderMessage(text: string, options: { sessionId?: string; withKiloUi?:
 			<MarkdownContent text={text} extensions={[extension]} />
 		</SdkProvider>,
 	);
-	return { panel, track };
+	return { panel, track, openExternal };
 }
 
 describe("BrowserMarkdownExtension", () => {
 	it("opens a web link from a chat message in a Browser tab of that chat", async () => {
-		const { panel, track } = renderMessage("See [the docs](https://example.com/docs).");
+		const { panel, track, openExternal } = renderMessage(
+			"See [the docs](https://example.com/docs).",
+		);
 
 		await page.getByRole("link", { name: "the docs" }).click();
 
@@ -58,6 +65,7 @@ describe("BrowserMarkdownExtension", () => {
 			{ title: "example.com", metadata: { url: "https://example.com/docs" } },
 		);
 		expect(clicks).toEqual([{ defaultPrevented: true }]);
+		expect(openExternal).not.toHaveBeenCalled();
 		expect(track).toHaveBeenCalledExactlyOnceWith({
 			event: "Browser Tab Opened",
 			data: { featureId: "browser", source: "chat-link" },
@@ -80,16 +88,36 @@ describe("BrowserMarkdownExtension", () => {
 		["meta", { metaKey: true }],
 		["ctrl", { ctrlKey: true }],
 		["shift", { shiftKey: true }],
-	] as const)("leaves %s-click to the system browser", async (_name, modifiers) => {
-		const { panel } = renderMessage("[docs](https://example.com)");
+		["alt", { altKey: true }],
+	] as const)("opens the default browser on %s-click", async (_name, modifiers) => {
+		const { panel, openExternal } = renderMessage("[docs](https://example.com)");
 
 		page
 			.getByRole("link", { name: "docs" })
 			.element()
 			.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ...modifiers }));
 
+		expect(openExternal).toHaveBeenCalledExactlyOnceWith("https://example.com");
 		expect(panel.openContributedTab).not.toHaveBeenCalled();
-		expect(clicks).toEqual([{ defaultPrevented: false }]);
+		expect(clicks).toEqual([{ defaultPrevented: true }]);
+	});
+
+	it("tells the reader where a web link goes and how to open it in the default browser", async () => {
+		renderMessage(
+			'[docs](https://example.com/docs) and [guide](https://example.com/guide "Setup guide")',
+		);
+
+		await expect
+			.element(page.getByRole("link", { name: "docs" }))
+			.toHaveAttribute(
+				"title",
+				expect.stringMatching(
+					/^https:\/\/example\.com\/docs\n(⌘|Ctrl)-click to open in your default browser$/u,
+				),
+			);
+		await expect
+			.element(page.getByRole("link", { name: "guide" }))
+			.toHaveAttribute("title", expect.stringMatching(/^Setup guide\n/u));
 	});
 
 	it("leaves links that are not web pages alone", async () => {
@@ -101,21 +129,27 @@ describe("BrowserMarkdownExtension", () => {
 		expect(clicks).toEqual([{ defaultPrevented: false }]);
 	});
 
-	it("falls back to the system browser outside a chat session", async () => {
-		const { panel } = renderMessage("[docs](https://example.com)", { sessionId: "" });
+	it("leaves links alone outside a chat session", async () => {
+		const { panel, openExternal } = renderMessage("[docs](https://example.com)", {
+			sessionId: "",
+		});
 
 		await page.getByRole("link", { name: "docs" }).click();
 
 		expect(panel.openContributedTab).not.toHaveBeenCalled();
+		expect(openExternal).not.toHaveBeenCalled();
 		expect(clicks).toEqual([{ defaultPrevented: false }]);
 	});
 
-	it("falls back to the system browser when the chat pane layout is unavailable", async () => {
-		const { track } = renderMessage("[docs](https://example.com)", { withKiloUi: false });
+	it("opens the default browser when the chat pane layout is unavailable", async () => {
+		const { track, openExternal } = renderMessage("[docs](https://example.com)", {
+			withKiloUi: false,
+		});
 
 		await page.getByRole("link", { name: "docs" }).click();
 
-		expect(clicks).toEqual([{ defaultPrevented: false }]);
+		expect(openExternal).toHaveBeenCalledExactlyOnceWith("https://example.com");
+		expect(clicks).toEqual([{ defaultPrevented: true }]);
 		expect(track).not.toHaveBeenCalled();
 	});
 });

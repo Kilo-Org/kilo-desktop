@@ -6,7 +6,7 @@ import type {
 	MainSdkHostBrowser,
 } from "@kilo-desktop/feature-sdk";
 
-import { attachContextMenu } from "./ElectronContextMenu.js";
+import { attachContextMenu, type ContextMenuShell } from "./ElectronContextMenu.js";
 
 export const BROWSER_PARTITION = "persist:kilo-desktop-browser";
 
@@ -47,7 +47,10 @@ export class ElectronBrowserHost implements MainSdkHostBrowser {
 	readonly partition = BROWSER_PARTITION;
 	#session: Session | undefined;
 
-	constructor(private readonly isTrustedEmbedder: (webContentsId: number) => boolean) {}
+	constructor(
+		private readonly isTrustedEmbedder: (webContentsId: number) => boolean,
+		private readonly shell: ContextMenuShell,
+	) {}
 
 	initialize(): void {
 		if (this.#session) return;
@@ -138,7 +141,10 @@ export class ElectronBrowserHost implements MainSdkHostBrowser {
 			if (isHttpUrl(url)) void guest.loadURL(url).catch(() => undefined);
 			return { action: "deny" };
 		});
-		const detachContextMenu = attachContextMenu(guest, { isDevelopment: false });
+		const detachContextMenu = attachContextMenu(guest, {
+			isDevelopment: false,
+			shell: this.shell,
+		});
 		emit();
 		updateFavicon(guest.getURL());
 

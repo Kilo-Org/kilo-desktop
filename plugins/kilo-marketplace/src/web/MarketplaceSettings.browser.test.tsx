@@ -1516,6 +1516,9 @@ describe("MarketplaceSettings", () => {
 		await expect.element(page.getByTestId("marketplace-warning")).toBeVisible();
 
 		await openBrowse();
+		await expect
+			.element(page.getByTestId("marketplace-source-mcp-docs"))
+			.toHaveAttribute("href", "https://github.com/example/docs");
 		await page.getByTestId("marketplace-source-mcp-docs").click();
 		await expect.poll(() => openExternal).toHaveBeenCalledWith("https://github.com/example/docs");
 		await page.getByTestId("marketplace-install-mcp-docs").click();

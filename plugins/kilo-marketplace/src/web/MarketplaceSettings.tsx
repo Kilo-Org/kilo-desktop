@@ -67,7 +67,8 @@ import {
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Alert, AlertDescription, AlertTitle } from "@kilo-desktop/ui/components/alert";
 import { Badge } from "@kilo-desktop/ui/components/badge";
-import { Button } from "@kilo-desktop/ui/components/button";
+import { Button, buttonVariants } from "@kilo-desktop/ui/components/button";
+import { ExternalLink } from "@kilo-desktop/ui/components/external-link";
 import { Card } from "@kilo-desktop/ui/components/card";
 import { Collapsible, CollapsibleContent } from "@kilo-desktop/ui/components/collapsible";
 import {
@@ -647,12 +648,11 @@ function SourceLinkButton({
 		<Tooltip>
 			<TooltipTrigger
 				render={
-					<Button
-						type="button"
-						variant="ghost"
-						size="icon-sm"
+					<ExternalLink
+						href={url}
+						onOpen={onOpenLink}
+						className={buttonVariants({ variant: "ghost", size: "icon-sm" })}
 						aria-label={label}
-						onClick={() => onOpenLink(url)}
 						data-qa-id={qaId}
 					/>
 				}

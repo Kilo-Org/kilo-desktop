@@ -52,6 +52,7 @@ vi.mock("electron", () => ({
 }));
 
 const detachContextMenu = vi.hoisted(() => vi.fn());
+const shell = { openExternal: vi.fn(async () => true), copyText: vi.fn() };
 vi.mock("./ElectronContextMenu.js", () => ({
 	attachContextMenu: vi.fn(() => detachContextMenu),
 }));
@@ -67,7 +68,7 @@ afterEach(() => {
 
 describe("ElectronBrowserHost", () => {
 	it("denies website permissions in the shared browser session", () => {
-		const host = new ElectronBrowserHost(() => true);
+		const host = new ElectronBrowserHost(() => true, shell);
 		host.initialize();
 
 		const request = browserSession.setPermissionRequestHandler.mock.calls[0]?.[0];
@@ -82,7 +83,7 @@ describe("ElectronBrowserHost", () => {
 		browserSession.getUserAgent.mockReturnValueOnce(
 			"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) KiloTestApp/0.1.1-beta.2 Chrome/152.0.7977.78 Electron/44.4.1 Safari/537.36",
 		);
-		const host = new ElectronBrowserHost(() => true);
+		const host = new ElectronBrowserHost(() => true, shell);
 		host.initialize();
 
 		expect(browserSession.setUserAgent).toHaveBeenCalledWith(
@@ -91,10 +92,13 @@ describe("ElectronBrowserHost", () => {
 	});
 
 	it("gives leased web pages the native context menu until the lease is disposed", () => {
-		const host = new ElectronBrowserHost(() => true);
+		const host = new ElectronBrowserHost(() => true, shell);
 		const controller = host.attach(42, vi.fn());
 
-		expect(attachContextMenu).toHaveBeenCalledWith(guest, { isDevelopment: false });
+		expect(attachContextMenu).toHaveBeenCalledWith(guest, {
+			isDevelopment: false,
+			shell,
+		});
 		expect(detachContextMenu).not.toHaveBeenCalled();
 
 		controller.dispose();
@@ -103,7 +107,7 @@ describe("ElectronBrowserHost", () => {
 	});
 
 	it("blocks unsupported main-frame navigations and redirects", () => {
-		const host = new ElectronBrowserHost(() => true);
+		const host = new ElectronBrowserHost(() => true, shell);
 		host.attach(42, vi.fn());
 
 		for (const name of ["will-navigate", "will-redirect"]) {
@@ -119,7 +123,7 @@ describe("ElectronBrowserHost", () => {
 
 	it("handles rejected popup navigation", async () => {
 		guest.loadURL.mockRejectedValueOnce(new Error("superseded"));
-		const host = new ElectronBrowserHost(() => true);
+		const host = new ElectronBrowserHost(() => true, shell);
 		host.attach(42, vi.fn());
 
 		const handler = guest.setWindowOpenHandler.mock.calls[0]?.[0];
@@ -140,7 +144,7 @@ describe("ElectronBrowserHost", () => {
 			new Response(body, { headers: { "content-type": "image/png" } }),
 		);
 		const states: { faviconUrl: string }[] = [];
-		const host = new ElectronBrowserHost(() => true);
+		const host = new ElectronBrowserHost(() => true, shell);
 		host.attach(42, (state) => states.push(state));
 
 		await vi.waitFor(() => expect(cancelled).toHaveBeenCalledOnce());

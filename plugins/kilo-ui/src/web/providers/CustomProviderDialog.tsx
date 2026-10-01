@@ -18,6 +18,7 @@ import {
 } from "@kilo-desktop/ui/components/table";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Button } from "@kilo-desktop/ui/components/button";
+import { ExternalLink } from "@kilo-desktop/ui/components/external-link";
 import {
 	Collapsible,
 	CollapsibleContent,
@@ -378,16 +379,13 @@ export function CustomProviderForm({
 		form.models.length > 0 && form.models.every((model) => model.supportsImages);
 
 	const setupGuideLink = (
-		<a
+		<ExternalLink
 			href={CUSTOM_PROVIDER_DOCS_URL}
-			onClick={(event) => {
-				event.preventDefault();
-				void sdk.shell.openExternal(CUSTOM_PROVIDER_DOCS_URL).catch(() => undefined);
-			}}
+			onOpen={(url) => void sdk.shell.openExternal(url).catch(() => undefined)}
 		>
 			Setup guide
 			<ExternalLinkIcon className="ml-1 inline size-3" />
-		</a>
+		</ExternalLink>
 	);
 
 	const cancelOrBack = onBack ? (

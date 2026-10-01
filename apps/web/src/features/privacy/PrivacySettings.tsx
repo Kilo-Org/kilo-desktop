@@ -15,6 +15,7 @@ import {
 	useSdkQuery,
 } from "@kilo-desktop/sdk-react";
 import { Alert, AlertDescription, AlertTitle } from "@kilo-desktop/ui/components/alert";
+import { ExternalLink } from "@kilo-desktop/ui/components/external-link";
 import { FieldError } from "@kilo-desktop/ui/components/field";
 import { Skeleton, SkeletonText } from "@kilo-desktop/ui/components/skeleton";
 import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
@@ -98,15 +99,12 @@ export function PrivacySettings() {
 						Free models may route your requests to providers that log prompts and outputs and use
 						them to improve their services. Do not submit personal or confidential data when using
 						free models. Learn more about data handling for free models{" "}
-						<a
+						<ExternalLink
 							href={FREE_MODELS_DATA_HANDLING_URL}
-							onClick={(event) => {
-								event.preventDefault();
-								void sdk.shell.openExternal(FREE_MODELS_DATA_HANDLING_URL).catch(() => undefined);
-							}}
+							onOpen={(url) => void sdk.shell.openExternal(url).catch(() => undefined)}
 						>
 							here
-						</a>
+						</ExternalLink>
 						. You can use the chat model picker filter to exclude free models.
 					</AlertDescription>
 				</Alert>

@@ -96,7 +96,8 @@ export function BrowserView({ sessionId, instanceId, title, metadata }: BrowserV
 	const crashCountRef = useRef(0);
 	const pendingUrlRef = useRef<string | undefined>(undefined);
 	const ready = attachmentReady;
-	const hasUrl = Boolean(state?.url || restoredUrl);
+	const currentUrl = state?.url || restoredUrl;
+	const hasUrl = Boolean(currentUrl);
 	const zoom = Math.round((state?.zoomFactor ?? 1) * 100);
 	const loadProgress = useLoadingProgress(hasUrl && (state?.loading ?? false));
 
@@ -325,6 +326,14 @@ export function BrowserView({ sessionId, instanceId, title, metadata }: BrowserV
 			void sdk.client[name]({ instanceId }).catch((cause: unknown) => {
 				setError(cause instanceof Error ? cause.message : "Unable to run browser command.");
 			});
+	const openInDefaultBrowser = () => {
+		void sdk.shell
+			.openExternal(currentUrl)
+			.catch(() => ({ opened: false }))
+			.then(({ opened }) => {
+				if (!opened) setError("Unable to open this page in your default browser.");
+			});
+	};
 	return (
 		<div
 			className="bg-pane flex min-h-0 flex-1 flex-col"
@@ -400,6 +409,14 @@ export function BrowserView({ sessionId, instanceId, title, metadata }: BrowserV
 							}
 						/>
 						<DropdownMenuContent align="end" className="min-w-52">
+							<DropdownMenuItem
+								disabled={!hasUrl}
+								onClick={openInDefaultBrowser}
+								data-qa-id="browser-open-external"
+							>
+								Open in Default Browser
+							</DropdownMenuItem>
+							<DropdownMenuSeparator />
 							<DropdownMenuItem
 								disabled={!ready || !hasUrl}
 								onClick={command("hardReload")}

@@ -30,7 +30,8 @@ import {
 } from "react";
 
 import { Badge } from "@kilo-desktop/ui/components/badge";
-import { Button } from "@kilo-desktop/ui/components/button";
+import { Button, buttonVariants } from "@kilo-desktop/ui/components/button";
+import { ExternalLink } from "@kilo-desktop/ui/components/external-link";
 import {
 	DropdownMenu,
 	DropdownMenuCheckboxItem,
@@ -1709,15 +1710,13 @@ const ModelInfoPopover: FC<{ model: KiloCatalogModel }> = ({ model }) => {
 				) : null}
 
 				{modelPageUrl ? (
-					<Button
-						type="button"
-						variant="ghost"
-						size="xs"
-						className="ml-auto"
-						onClick={() => void sdk.shell.openExternal(modelPageUrl).catch(() => undefined)}
+					<ExternalLink
+						href={modelPageUrl}
+						onOpen={(url) => void sdk.shell.openExternal(url).catch(() => undefined)}
+						className={buttonVariants({ variant: "ghost", size: "xs", className: "ml-auto" })}
 					>
 						View on Kilo <ArrowRightIcon data-icon="inline-end" />
-					</Button>
+					</ExternalLink>
 				) : null}
 			</PopoverContent>
 		</Popover>

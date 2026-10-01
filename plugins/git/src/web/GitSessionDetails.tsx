@@ -1,6 +1,7 @@
 import { ExternalLinkIcon, GitBranchIcon, GitPullRequestIcon } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { sdkQueryOptions, useSdk } from "@kilo-desktop/sdk-react";
+import { ExternalLink } from "@kilo-desktop/ui/components/external-link";
 
 import type { GitServiceContract } from "../contracts/schemas.js";
 import { useGitPrStatusStore } from "./git-pr-status-store.js";
@@ -59,15 +60,12 @@ export function GitSessionDetailsPullRequest({ directory }: GitSessionDetailsPro
 	if (!pullRequest) return null;
 
 	return (
-		<a
+		<ExternalLink
 			href={pullRequest.url}
+			onOpen={(url) => void sdk.shell.openExternal(url).catch(() => undefined)}
 			data-qa-id="git-session-details-pull-request"
 			title={pullRequest.url}
 			className="group/pr focus-visible:ring-ring flex min-w-0 items-center gap-1.5 rounded-sm hover:underline focus-visible:ring-2 focus-visible:outline-none"
-			onClick={(event) => {
-				event.preventDefault();
-				void sdk.shell.openExternal(pullRequest.url);
-			}}
 		>
 			<span
 				className={`flex shrink-0 items-center gap-1 tabular-nums ${pullRequestClassName(pullRequest)}`}
@@ -79,6 +77,6 @@ export function GitSessionDetailsPullRequest({ directory }: GitSessionDetailsPro
 				className="size-3 shrink-0 opacity-0 transition-opacity group-hover/pr:opacity-70 group-focus-visible/pr:opacity-70"
 				aria-hidden
 			/>
-		</a>
+		</ExternalLink>
 	);
 }

@@ -286,7 +286,8 @@ describe("ElectronWindow theme chrome", () => {
 	});
 
 	it("gives the main and pane windows the native context menu", () => {
-		const windows = new ElectronWindow(createShell() as never, () => false);
+		const shell = createShell();
+		const windows = new ElectronWindow(shell as never, () => false);
 		windows.create({ isDevelopment: true });
 		windows.openPaneWindow(
 			{ pluginId: "kilo-ui", sessionId: "s1", paneId: "p1", title: "File", path: "/plugins/chat" },
@@ -295,9 +296,11 @@ describe("ElectronWindow theme chrome", () => {
 
 		expect(attachContextMenu).toHaveBeenCalledWith(createdWindows[0]?.webContents, {
 			isDevelopment: true,
+			shell,
 		});
 		expect(attachContextMenu).toHaveBeenCalledWith(createdWindows[1]?.webContents, {
 			isDevelopment: false,
+			shell,
 		});
 	});
 

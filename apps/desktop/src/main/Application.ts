@@ -123,8 +123,9 @@ export class Application {
 		() => this.#preferences?.themeId,
 		resolveWebMcpRendezvous(this.#app.metadata.isPackaged ? RELEASE_TRACK : "development"),
 	);
-	readonly #browserHost = new ElectronBrowserHost((webContentsId) =>
-		this.#windows.isTrustedWebContents(webContentsId),
+	readonly #browserHost = new ElectronBrowserHost(
+		(webContentsId) => this.#windows.isTrustedWebContents(webContentsId),
+		this.#shell,
 	);
 	readonly #ipcServer = new IpcServer();
 	readonly #logger = createLogger("application");

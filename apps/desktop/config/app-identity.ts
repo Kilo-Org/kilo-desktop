@@ -33,6 +33,16 @@ const USER_DATA_NAMES = {
 	stable: "Kilo Desktop",
 } as const satisfies Readonly<Record<AppEnvironment, string>>;
 
+// The built installer carries version and arch like the DMG does; the
+// unversioned setupExecutableName stays the stable "latest" download alias.
+export function getVersionedSetupExecutableName(
+	identity: AppIdentity,
+	version: string,
+	arch: string,
+): string {
+	return identity.setupExecutableName.replace(/-Setup\.exe$/, `-${version}-${arch}-Setup.exe`);
+}
+
 export function getAppIdentity(environment: AppEnvironment): AppIdentity {
 	const machineSuffix = environment === "development" ? "dev" : undefined;
 	const productName = PRODUCT_NAMES[environment];

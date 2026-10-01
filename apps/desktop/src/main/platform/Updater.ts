@@ -10,6 +10,8 @@ import {
 
 import { getReleaseNotesUrl, getUpdateFeedUrl, type UpdatePublishUrls } from "$config/release.js";
 
+import { UpdateFeedError, type WindowsUpdateFeed } from "./WindowsUpdateFeed.js";
+
 const STARTUP_DELAY_MS = 15_000;
 const POLL_INTERVAL_MS = 10 * 60_000;
 const RELEASE_NOTES_RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 60_000, 120_000, 300_000] as const;
@@ -44,6 +46,8 @@ interface DesktopUpdaterServiceOptions {
 		error(message: string, error?: unknown): void;
 	};
 	readonly updater?: NativeUpdater;
+	/** Windows only: local mirror that Squirrel installs from instead of the remote feed. */
+	readonly windowsFeed?: Pick<WindowsUpdateFeed, "directory" | "prepare" | "clear">;
 }
 
 /**
@@ -57,10 +61,18 @@ interface DesktopUpdaterServiceOptions {
  * host and the channel path; a track whose host this build lacks is refused.
  * Release-note network failures are isolated from the binary path so content
  * can never make an update unavailable.
+ *
+ * On Windows the service downloads the package itself (via `windowsFeed`,
+ * over Electron's `net` stack) and points Squirrel at the local mirror, because
+ * Squirrel's own HTTP client is rejected by the CDN. The mirror is prepared
+ * inside `check()`, so a newer release reaches "downloading" before Squirrel
+ * runs, and an up-to-date result never invokes Squirrel at all.
  */
 export class DesktopUpdaterService {
 	readonly #options: DesktopUpdaterServiceOptions;
 	readonly #updater: NativeUpdater;
+	readonly #windowsFeed: DesktopUpdaterServiceOptions["windowsFeed"];
+	readonly #feedAbort = new AbortController();
 	readonly #listeners: Array<{ event: string; listener: (...args: never[]) => void }> = [];
 	#startupTimer: ReturnType<typeof setTimeout> | undefined;
 	#pollTimer: ReturnType<typeof setInterval> | undefined;
@@ -73,6 +85,7 @@ export class DesktopUpdaterService {
 	constructor(options: DesktopUpdaterServiceOptions) {
 		this.#options = options;
 		this.#updater = options.updater ?? (autoUpdater as unknown as NativeUpdater);
+		this.#windowsFeed = options.platform === "win32" ? options.windowsFeed : undefined;
 		const disabledReason = this.#disabledReason(options.track);
 		this.#state = {
 			enabled: disabledReason === null,
@@ -98,9 +111,11 @@ export class DesktopUpdaterService {
 		}
 
 		this.#updater.setFeedURL(this.#feedOptions());
-		this.#listen("checking-for-update", () =>
-			this.#setState({ status: "checking", message: null }),
-		);
+		this.#listen("checking-for-update", () => {
+			if (this.#state.status !== "downloading") {
+				this.#setState({ status: "checking", message: null });
+			}
+		});
 		this.#listen("update-available", () => {
 			this.#checkInFlight = false;
 			this.#setState({
@@ -146,12 +161,39 @@ export class DesktopUpdaterService {
 		this.#setState({ status: "checking", checkedAt: new Date().toISOString(), message: null });
 		this.#latestReleaseNotes = await this.#fetchReleaseNotes();
 		try {
+			if (this.#windowsFeed && !(await this.#prepareWindowsFeed(this.#windowsFeed))) {
+				return { accepted: true, state: this.#state };
+			}
 			this.#updater.checkForUpdates();
 			return { accepted: true, state: this.#state };
 		} catch (error) {
 			this.#handleError(error instanceof Error ? error : undefined);
 			return { accepted: true, state: this.#state };
 		}
+	}
+
+	/** Returns whether Squirrel should run against the prepared local mirror. */
+	async #prepareWindowsFeed(
+		feed: NonNullable<DesktopUpdaterServiceOptions["windowsFeed"]>,
+	): Promise<boolean> {
+		const prepared = await feed.prepare({
+			remoteFeedUrl: this.#remoteFeedUrl(),
+			currentVersion: this.#options.currentVersion,
+			signal: this.#feedAbort.signal,
+			onDownloadStart: (version) =>
+				this.#setState({ status: "downloading", availableVersion: version, message: null }),
+		});
+		if (this.#disposed) return false;
+		if (prepared.kind === "ready") return true;
+		this.#checkInFlight = false;
+		this.#setState({
+			status: "up-to-date",
+			availableVersion: null,
+			downloadedVersion: null,
+			releaseNotes: [],
+			message: null,
+		});
+		return false;
 	}
 
 	async setTrack(track: ReleaseTrack): Promise<DesktopUpdateActionResult> {
@@ -221,6 +263,7 @@ export class DesktopUpdaterService {
 	dispose(): void {
 		if (this.#disposed) return;
 		this.#disposed = true;
+		this.#feedAbort.abort();
 		if (this.#startupTimer) clearTimeout(this.#startupTimer);
 		if (this.#pollTimer) clearInterval(this.#pollTimer);
 		this.#clearReleaseNotesRetry();
@@ -238,7 +281,7 @@ export class DesktopUpdaterService {
 		return null;
 	}
 
-	#feedOptions(track: ReleaseTrack = this.#state.track): FeedURLOptions {
+	#remoteFeedUrl(track: ReleaseTrack = this.#state.track): string {
 		const feedUrl = getUpdateFeedUrl({
 			publishUrl: this.#options.publishUrls[track],
 			track,
@@ -246,9 +289,15 @@ export class DesktopUpdaterService {
 			arch: this.#options.arch,
 		});
 		if (!feedUrl) throw new Error("Update feed URL is unavailable.");
-		return this.#options.platform === "darwin"
-			? { url: `${feedUrl}/RELEASES.json`, serverType: "json" }
-			: { url: feedUrl };
+		return feedUrl;
+	}
+
+	#feedOptions(track: ReleaseTrack = this.#state.track): FeedURLOptions {
+		const feedUrl = this.#remoteFeedUrl(track);
+		if (this.#options.platform === "darwin") {
+			return { url: `${feedUrl}/RELEASES.json`, serverType: "json" };
+		}
+		return { url: this.#windowsFeed?.directory ?? feedUrl };
 	}
 
 	#listen(event: string, listener: (...args: never[]) => void): void {
@@ -266,11 +315,15 @@ export class DesktopUpdaterService {
 		this.#checkInFlight = false;
 		const duringDownload = this.#state.status === "downloading";
 		this.#options.logger.error("Automatic updater reported an error", error);
+		const httpDetail =
+			error instanceof UpdateFeedError && error.status !== undefined
+				? ` The update server responded with HTTP ${error.status}.`
+				: "";
 		this.#setState({
 			status: "error",
 			message: duringDownload
-				? "The update could not be downloaded. It will be retried automatically."
-				: "The update check failed. Try again later.",
+				? `The update could not be downloaded.${httpDetail} It will be retried automatically.`
+				: `The update check failed.${httpDetail} Try again later.`,
 		});
 	}
 
@@ -293,6 +346,12 @@ export class DesktopUpdaterService {
 			message: null,
 		});
 		if (version && releaseNotes.length === 0) this.#scheduleReleaseNotesRetry(version, 0);
+		// Squirrel has copied the package into its own store by now.
+		await this.#windowsFeed
+			?.clear()
+			.catch((error: unknown) =>
+				this.#options.logger.warn("Failed to remove the local update mirror", error),
+			);
 	}
 
 	#scheduleReleaseNotesRetry(version: string, attempt: number): void {

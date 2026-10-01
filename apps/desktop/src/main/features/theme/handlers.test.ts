@@ -42,11 +42,11 @@ describe("restoreNativeThemeFromPreferences", () => {
 		expect(theme.themeSource).toBe("dark");
 	});
 
-	it("defaults to system when no preference is stored", () => {
+	it("defaults to dark when no preference is stored", () => {
 		const preferences = { themeSource: undefined };
 		const theme = { themeSource: "light" as "system" | "light" | "dark" };
 
 		restoreNativeThemeFromPreferences(preferences as never, theme);
-		expect(theme.themeSource).toBe("system");
+		expect(theme.themeSource).toBe("dark");
 	});
 });

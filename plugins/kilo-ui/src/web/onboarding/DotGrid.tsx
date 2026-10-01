@@ -31,6 +31,11 @@ const SETTINGS = {
 	rippleTailStrength: 0.15,
 	rippleFadeStart: 0.66,
 	rippleFadePower: 3.3,
+	/** Fully clear rounded box (CSS px) around the welcome copy (~384×320). */
+	clearHalfSize: [210, 172],
+	clearRadius: 80,
+	/** Distance (CSS px) past the box over which dots fade back in. */
+	clearFalloff: 130,
 	maxPixelRatio: 2,
 	maxPixelCount: 4_000_000,
 } as const;
@@ -72,6 +77,9 @@ uniform float u_rippleFadeStart;
 uniform float u_rippleFadePower;
 uniform float u_hoverRadius;
 uniform float u_neighborScale;
+uniform vec2 u_clearHalfSize;
+uniform float u_clearRadius;
+uniform float u_clearFalloff;
 
 out vec4 fragColor;
 
@@ -154,20 +162,28 @@ float rippleField(vec2 dotCenter, float progress) {
   return clamp(max(primaryRing, max(secondRing, thirdRing)), 0.0, 1.0) * ringEnergy;
 }
 
-// Edge fade and the soft clearing behind the centered copy, baked in so the
-// canvas needs no CSS mask or overlay layer.
-float visibility(vec2 uv) {
+float roundedBoxDistance(vec2 p, vec2 halfSize, float radius) {
+  vec2 q = abs(p) - halfSize + radius;
+  return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - radius;
+}
+
+// Edge fade and the clearing behind the centered copy, baked in so the canvas
+// needs no CSS mask or overlay layer. The clearing is sized in CSS pixels
+// because the copy is fixed-size; a window-relative shape lets dots creep
+// under the text on larger windows.
+float visibility(vec2 cssPixel, vec2 res) {
+  vec2 uv = cssPixel / max(res, vec2(1e-6));
   vec2 edge = min(uv, 1.0 - uv);
   float edgeFade = smoothstep(0.0, 0.1, edge.x) * smoothstep(0.0, 0.1, edge.y);
-  float d = length((uv - 0.5) / vec2(0.26, 0.34));
-  float clearing = d < 0.45 ? mix(0.0, 0.3, d / 0.45) : mix(0.3, 1.0, clamp((d - 0.45) / 0.55, 0.0, 1.0));
+  float d = roundedBoxDistance(cssPixel - 0.5 * res, u_clearHalfSize, u_clearRadius);
+  float clearing = smoothstep(0.0, max(u_clearFalloff, 1.0), d);
   return edgeFade * clearing;
 }
 
 void main() {
   vec2 res = cssResolution();
   vec2 cssPixel = gl_FragCoord.xy / max(u_pixelRatio, 1e-6);
-  float fade = visibility(cssPixel / max(res, vec2(1e-6)));
+  float fade = visibility(cssPixel, res);
   if (fade < 0.004) {
     fragColor = vec4(0.0);
     return;
@@ -336,6 +352,9 @@ export function DotGrid({
 		gl.uniform1f(uniform("u_rippleTailStrength"), SETTINGS.rippleTailStrength);
 		gl.uniform1f(uniform("u_rippleFadeStart"), SETTINGS.rippleFadeStart);
 		gl.uniform1f(uniform("u_rippleFadePower"), SETTINGS.rippleFadePower);
+		gl.uniform2f(uniform("u_clearHalfSize"), ...SETTINGS.clearHalfSize);
+		gl.uniform1f(uniform("u_clearRadius"), SETTINGS.clearRadius);
+		gl.uniform1f(uniform("u_clearFalloff"), SETTINGS.clearFalloff);
 
 		const applyPalette = () => {
 			const palette = canvas.matches(':is([data-theme="dark"] *)') ? PALETTE.dark : PALETTE.light;

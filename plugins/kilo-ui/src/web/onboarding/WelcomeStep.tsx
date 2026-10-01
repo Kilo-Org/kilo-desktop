@@ -43,7 +43,7 @@ export function WelcomeStep({
 	return (
 		<div
 			data-qa-id="onboarding-welcome"
-			className="relative isolate flex flex-1 flex-col items-center justify-center overflow-hidden px-6 pt-12 pb-16 text-center"
+			className="relative isolate flex flex-1 flex-col items-center justify-center gap-8 overflow-hidden px-6 pt-12 pb-16 text-center"
 		>
 			<div aria-hidden="true" className="absolute inset-0 -z-10">
 				<DotGrid introOrigin={logoRef} />
@@ -62,7 +62,7 @@ export function WelcomeStep({
 				<BetaWordmark className="text-foreground w-15" />
 			</motion.div>
 
-			<motion.div className="mt-8 flex flex-col items-center gap-2" {...blurUp(0.25)}>
+			<motion.div className="flex flex-col items-center gap-2" {...blurUp(0.25)}>
 				<DialogTitle render={<h1 />} className="text-2xl font-medium tracking-tight">
 					Welcome to Kilo
 				</DialogTitle>
@@ -71,16 +71,16 @@ export function WelcomeStep({
 				</DialogDescription>
 			</motion.div>
 
-			<motion.div className="mt-6 flex flex-col items-center gap-4" {...blurUp(0.35)}>
-				<label className="text-muted-foreground flex max-w-sm cursor-pointer items-start gap-2.5 text-left text-sm">
+			<motion.div className="flex flex-col items-center gap-8" {...blurUp(0.35)}>
+				<label className="text-muted-foreground flex max-w-sm cursor-pointer items-center gap-4 text-left text-sm">
 					<Checkbox
-						className="mt-0.5"
+						className="border-muted-foreground size-5 rounded-[5px] [&_svg]:size-4"
 						checked={termsAccepted}
 						onCheckedChange={(checked) => onTermsAcceptedChange(checked === true)}
 						data-qa-id="onboarding-accept-terms"
 					/>
-					<span>
-						Kilo Desktop is a beta product. By checking this box, I agree to the{" "}
+					<span className="text-pretty">
+						Kilo Desktop is a beta product. By checking this box, I&nbsp;agree to the{" "}
 						<a
 							href={KILO_TERMS_URL}
 							target="_blank"

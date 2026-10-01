@@ -1,6 +1,6 @@
 import { nativeTheme, type NativeTheme } from "electron";
 
-import type { IpcHandlers } from "@kilo-desktop/contracts";
+import { DEFAULT_THEME_SOURCE, type IpcHandlers } from "@kilo-desktop/contracts";
 
 import type { ElectronWindow } from "../../platform/ElectronWindow.js";
 import type { PreferencesStore } from "../../platform/PreferencesStore.js";
@@ -13,7 +13,7 @@ export function restoreNativeThemeFromPreferences(
 	preferences: PreferencesStore,
 	theme: Pick<NativeTheme, "themeSource"> = nativeTheme,
 ): void {
-	theme.themeSource = preferences.themeSource ?? "system";
+	theme.themeSource = preferences.themeSource ?? DEFAULT_THEME_SOURCE;
 }
 
 /**

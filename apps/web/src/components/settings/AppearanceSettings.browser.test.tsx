@@ -6,7 +6,11 @@ import type { LocalApi } from "@kilo-desktop/contracts";
 
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";
 import { LocalApiProvider } from "@/platform/LocalApiProvider";
-import { DARK_SCHEME_QUERY, applyDocumentColorScheme } from "@/platform/theme/color-scheme";
+import {
+	DARK_SCHEME_QUERY,
+	THEME_STORAGE_KEY,
+	applyDocumentColorScheme,
+} from "@/platform/theme/color-scheme";
 import { ThemeProvider } from "@/platform/theme/ThemeProvider";
 
 import { AppearanceSettings } from "./AppearanceSettings";
@@ -52,6 +56,7 @@ afterEach(() => {
 describe("AppearanceSettings", () => {
 	it("shows Kilo light as yellow with dark lettering and no accent strip", async () => {
 		stubMatchMedia(false);
+		globalThis.localStorage.setItem(THEME_STORAGE_KEY, "light");
 		renderAppearance();
 
 		const swatch = page
@@ -117,16 +122,17 @@ describe("AppearanceSettings", () => {
 		await expect.poll(() => document.getElementById("app-theme")).toBeNull();
 	});
 
-	it("selects Light, Dark, and System", async () => {
-		stubMatchMedia(true);
+	it("defaults to Dark and selects Light, System, and Dark", async () => {
+		stubMatchMedia(false);
 		const { baseElement } = renderAppearance();
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("appearance-settings")).toBeVisible();
 		await expect.element(screen.getByText("Kilo", { exact: true })).toBeVisible();
 		await expect
-			.element(screen.getByRole("radio", { name: "System" }))
+			.element(screen.getByRole("radio", { name: "Dark" }))
 			.toHaveAttribute("aria-checked", "true");
+		await expect.poll(() => document.documentElement.dataset.theme).toBe("dark");
 
 		await screen.getByTestId("appearance-theme-light").click();
 		await expect.poll(() => document.documentElement.style.colorScheme).toBe("light");
@@ -135,6 +141,6 @@ describe("AppearanceSettings", () => {
 		await expect.poll(() => document.documentElement.dataset.theme).toBe("dark");
 
 		await screen.getByTestId("appearance-theme-system").click();
-		await expect.poll(() => document.documentElement.dataset.theme).toBe("dark");
+		await expect.poll(() => document.documentElement.style.colorScheme).toBe("light");
 	});
 });

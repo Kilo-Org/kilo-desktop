@@ -1,6 +1,8 @@
 export const THEME_SOURCES = ["system", "light", "dark"] as const;
 export type ThemeSource = (typeof THEME_SOURCES)[number];
 export type ResolvedColorScheme = "light" | "dark";
+/** Source used until the user picks one; "system" must be an explicit choice. */
+export const DEFAULT_THEME_SOURCE: ThemeSource = "dark";
 
 /** localStorage key for the renderer-owned theme source (and the pre-paint bootstrap). */
 export const THEME_STORAGE_KEY = "theme:v1";
@@ -120,6 +122,7 @@ export function themeBootstrapScript(
 	accentCssById: Record<string, string>,
 ): string {
 	const key = JSON.stringify(THEME_STORAGE_KEY);
+	const defaultSource = JSON.stringify(DEFAULT_THEME_SOURCE);
 	const appThemeKey = JSON.stringify(APP_THEME_STORAGE_KEY);
 	const vibrancyKey = JSON.stringify(SIDEBAR_VIBRANCY_STORAGE_KEY);
 	const textSizeKey = JSON.stringify(TEXT_SIZE_STORAGE_KEY);
@@ -130,7 +133,7 @@ export function themeBootstrapScript(
 		defaults: DEFAULT_TEXT_SIZES,
 	});
 	return [
-		`(function(){var k=${key},s="system",r=document.documentElement;try{if(localStorage.getItem(${vibrancyKey})==="false")r.style.setProperty("--shell-glass-opacity","100%");var v=localStorage.getItem(k);if(v==="light"||v==="dark"||v==="system")s=v}catch(e){}var d=s==="dark"||(s==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);if(d)r.dataset.theme="dark";else delete r.dataset.theme;r.style.colorScheme=d?"dark":"light";`,
+		`(function(){var k=${key},s=${defaultSource},r=document.documentElement;try{if(localStorage.getItem(${vibrancyKey})==="false")r.style.setProperty("--shell-glass-opacity","100%");var v=localStorage.getItem(k);if(v==="light"||v==="dark"||v==="system")s=v}catch(e){}var d=s==="dark"||(s==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);if(d)r.dataset.theme="dark";else delete r.dataset.theme;r.style.colorScheme=d?"dark":"light";`,
 		`try{var z=localStorage.getItem(${textSizeKey});if(z){var q=JSON.parse(z),m=${textSizeModel};if(q&&typeof q==="object"&&!Array.isArray(q))for(var t in m.vars){var n=q[t];n=typeof n==="number"&&isFinite(n)?Math.min(m.range.max,Math.max(m.range.min,Math.round(n))):m.defaults[t];r.style.setProperty(m.vars[t],n+"px")}}}catch(e){}`,
 		`var themes=${JSON.stringify(themeCssById)},accents=${JSON.stringify(accentCssById)},c=themes[${JSON.stringify(defaultThemeId)}]||"";try{var p=JSON.parse(localStorage.getItem(${appThemeKey}));if(p&&typeof p==="object"&&!Array.isArray(p)){if(typeof p.themeId==="string"&&Object.hasOwn(themes,p.themeId))c=themes[p.themeId];if(typeof p.accentId==="string"&&Object.hasOwn(accents,p.accentId))c+=accents[p.accentId]}}catch(e){}`,
 		`if(c){var t=document.getElementById("app-theme");if(!t){t=document.createElement("style");t.id="app-theme";document.head.appendChild(t)}t.textContent=c}})();`,

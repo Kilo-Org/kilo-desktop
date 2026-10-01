@@ -71,7 +71,7 @@ def merge_cyclonedx(input_files: list[str], output_file: str, sbom_name: str) ->
     """
     sboms = []
     for f in input_files:
-        with open(f) as fp:
+        with open(f, encoding="utf-8") as fp:
             sboms.append(json.load(fp))
 
     seen_purls = {}  # purl -> surviving bom-ref
@@ -228,7 +228,7 @@ def merge_cyclonedx(input_files: list[str], output_file: str, sbom_name: str) ->
     if merged_deps:
         merged["dependencies"] = merged_deps
 
-    with open(output_file, "w") as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         json.dump(merged, f, indent=2)
 
     stats["total"] = len(merged_components)
@@ -245,7 +245,7 @@ def merge_spdx(input_files: list[str], output_file: str, sbom_name: str) -> dict
     """
     sboms = []
     for f in input_files:
-        with open(f) as fp:
+        with open(f, encoding="utf-8") as fp:
             sboms.append(json.load(fp))
 
     seen_purls = set()
@@ -389,7 +389,7 @@ def merge_spdx(input_files: list[str], output_file: str, sbom_name: str) -> dict
         if field in sboms[0]:
             merged[field] = sboms[0][field]
 
-    with open(output_file, "w") as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         json.dump(merged, f, indent=2)
 
     stats["total"] = len(merged_packages)

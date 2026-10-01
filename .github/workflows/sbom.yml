@@ -3,17 +3,26 @@
 # build artifacts. Phase 2 (CRA staging S3 upload via OIDC) is intentionally
 # absent here; it lands as a separate gated job once the S3 key layout is
 # confirmed with the bucket owners.
-# The pull_request trigger exists to validate this workflow before merge
-# (workflow_dispatch requires the workflow to exist on the default branch);
-# remove it when merging if SBOMs on every PR are not wanted.
+# The app is packaged with the same track config as a release build
+# (RELEASE_TRACK + the track environment's UPDATE_PUBLISH_URL), so the SBOM
+# describes what that track ships.
 
 name: SBOM
 
 on:
   workflow_dispatch:
+    inputs:
+      track:
+        description: Release track whose build configuration to package
+        required: true
+        default: stable
+        type: choice
+        options:
+          - stable
+          - preview
 
 concurrency:
-  group: sbom-${{ github.ref }}
+  group: sbom-${{ github.ref }}-${{ inputs.track }}
   cancel-in-progress: true
 
 permissions:
@@ -23,17 +32,40 @@ jobs:
   sbom:
     strategy:
       fail-fast: false
+      # Keep in sync with the release matrix in publish_helper.yml: every
+      # shipped target needs an SBOM. Forge packages for the runner's own
+      # arch, so each arch needs a native runner.
       matrix:
-        target: [mac, windows, linux, linux-arm64]
-    runs-on: ${{ matrix.target == 'mac' && 'macos-latest' || matrix.target == 'windows' && 'WinLatest-x64-8vCPU-32GB' || matrix.target == 'linux-arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+        include:
+          - target: mac
+            os: mac
+            runner: macos-latest
+          - target: windows
+            os: windows
+            runner: WinLatest-x64-8vCPU-32GB
+          - target: windows-arm64
+            os: windows
+            runner: windows-11-vs2026-arm
+          - target: linux
+            os: linux
+            runner: ubuntu-latest
+          - target: linux-arm64
+            os: linux
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
-    environment: preview
+    # Same environment mapping as publish_helper.yml. The environment supplies
+    # the track's build config (UPDATE_PUBLISH_URL) and, later, the S3 upload
+    # role; this job deploys nothing, so it must not record a deployment.
+    environment:
+      name: ${{ inputs.track == 'stable' && 'production' || 'preview' }}
+      deployment: false
     permissions:
       contents: read
       id-token: write
     env:
       NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
-      RELEASE_TRACK: preview
+      RELEASE_TRACK: ${{ inputs.track }}
       UPDATE_PUBLISH_URL: ${{ vars.UPDATE_PUBLISH_URL }}
       UPDATE_PUBLISH_URL_PREVIEW: ${{ vars.UPDATE_PUBLISH_URL_PREVIEW }}
       UPDATE_PUBLISH_URL_STABLE: ${{ vars.UPDATE_PUBLISH_URL_STABLE }}
@@ -46,7 +78,7 @@ jobs:
         uses: ./.github/actions/setup-node-pnpm
 
       - name: Install maker prerequisites
-        if: startsWith(matrix.target, 'linux')
+        if: matrix.os == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install --yes fakeroot libsecret-1-dev pkg-config
@@ -62,6 +94,13 @@ jobs:
 
       - uses: ./.github/actions/cache-electron-rebuild
 
+      # Stable builds require an explicit RELEASE_VERSION; release.yml takes it
+      # from the committed package.json version, so mirror that here.
+      - name: Resolve Stable release version
+        if: inputs.track == 'stable'
+        shell: bash
+        run: echo "RELEASE_VERSION=$(node -p "require('./apps/desktop/package.json').version")" >> "$GITHUB_ENV"
+
       - name: Package
         run: pnpm run package
 
@@ -70,7 +109,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          case "${{ matrix.target }}" in
+          case "${{ matrix.os }}" in
             mac)
               APP_DIR=$(find apps/desktop/out -mindepth 2 -maxdepth 2 -name "*.app" -type d | head -n1)
               [[ -n "$APP_DIR" ]] || { echo "::error::no .app bundle found under apps/desktop/out"; exit 1; }
@@ -85,7 +124,7 @@ jobs:
               PLATFORM="win32-${PLATFORM_ARCH}"
               ASAR_PATH=$(find "$APP_DIR" -maxdepth 2 -name "app.asar" | head -n1 || true)
               ;;
-            linux | linux-arm64)
+            linux)
               APP_DIR=$(find apps/desktop/out -mindepth 1 -maxdepth 1 -type d -name "*-linux-*" | head -n1)
               [[ -n "$APP_DIR" ]] || { echo "::error::no packaged dir (linux) found under apps/desktop/out"; exit 1; }
               PLATFORM_ARCH=$(basename "$APP_DIR" | sed -E 's/^.*-//')

@@ -102,6 +102,9 @@ runs:
         SBOM_BASE=$(echo "$OUTPUT" | grep "^SBOM_BASE=" | cut -d= -f2)
         echo "SBOM_BASE=${SBOM_BASE}" >> $GITHUB_ENV
         echo "SBOM_DIR=${SBOM_DIR}" >> $GITHUB_ENV
+        # SBOMs are UTF-8; without this, Python on Windows decodes files and
+        # stdout as cp1252 (affects our scripts and pyspdxtools alike).
+        echo "PYTHONUTF8=1" >> $GITHUB_ENV
 
     - name: Create output directory
       shell: bash

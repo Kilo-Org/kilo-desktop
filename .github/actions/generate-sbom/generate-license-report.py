@@ -13,7 +13,7 @@ from collections import Counter
 
 def generate_report(input_file: str, output_file: str) -> dict:
     """Generate license coverage report from CycloneDX SBOM."""
-    with open(input_file) as f:
+    with open(input_file, encoding="utf-8") as f:
         sbom = json.load(f)
 
     components = sbom.get("components", [])
@@ -48,7 +48,7 @@ def generate_report(input_file: str, output_file: str) -> dict:
         ],
     }
 
-    with open(output_file, "w") as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
 
     return report

@@ -22,6 +22,7 @@ export const SessionList: FC = () => {
 	const threadItems = useAuiState((s) => s.threads.threadItems);
 	const mainThreadId = useAuiState((s) => s.threads.mainThreadId);
 	const isLoading = useAuiState((s) => s.threads.isLoading);
+	const hasMoreThreads = useAuiState((s) => s.threads.hasMore);
 	const activityBySessionId = useSessionActivity((s) => s.sessions);
 	const promptAwareActivityBySessionId = useSessionActivity((s) =>
 		withDescendantPrompts(s.sessions),
@@ -70,6 +71,7 @@ export const SessionList: FC = () => {
 				archivedThreadIds={archivedThreadIds}
 				threadItems={threadItems}
 				isLoading={isLoading}
+				hasMoreThreads={hasMoreThreads}
 				activityBySessionId={promptAwareActivityBySessionId}
 				workspaces={workspaces}
 				setActiveWorkspaceId={setActiveWorkspaceId}

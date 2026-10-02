@@ -342,8 +342,20 @@ function recencyBucket(
 	return { key: "older", label: "Older", order: 4 };
 }
 
-function workspaceSections(rows: Enriched[], ordering: SessionListOrdering): SessionListSection[] {
-	const groups = new Map<string, { label: string; rows: Enriched[] }>();
+/**
+ * Every known workspace gets a group, even with no chats, so a new workspace
+ * is visible before its first chat and stays visible after its last one is
+ * archived or deleted. Chats from deleted or no workspace still add groups;
+ * the "No workspace" group always comes last.
+ */
+function workspaceSections(
+	rows: Enriched[],
+	workspaces: readonly { id: string; name: string }[],
+	ordering: SessionListOrdering,
+): SessionListSection[] {
+	const groups = new Map<string, { label: string; rows: Enriched[] }>(
+		workspaces.map((workspace) => [workspace.id, { label: workspace.name, rows: [] }]),
+	);
 	for (const row of rows) {
 		const key = workspaceKey(row);
 		const group = groups.get(key);
@@ -357,7 +369,9 @@ function workspaceSections(rows: Enriched[], ordering: SessionListOrdering): Ses
 	return [...groups.entries()]
 		.toSorted(
 			(left, right) =>
-				left[1].label.localeCompare(right[1].label) || left[0].localeCompare(right[0]),
+				Number(left[0] === "unknown") - Number(right[0] === "unknown") ||
+				left[1].label.localeCompare(right[1].label) ||
+				left[0].localeCompare(right[0]),
 		)
 		.map(([key, group]) => ({
 			key: `workspace:${key}`,
@@ -416,7 +430,6 @@ export function buildSessionListSections(args: {
 		if (args.view.focus && row.activity?.workspaceId !== args.view.focus) return false;
 		return true;
 	});
-	if (rows.length === 0) return [];
 
 	const pullAttention = grouping === "lifecycle";
 	const attention = pullAttention
@@ -464,7 +477,10 @@ export function buildSessionListSections(args: {
 			break;
 		}
 		case "workspace": {
-			sections.push(...workspaceSections(unpinned, args.view.ordering));
+			// Archived chats only ever land in the Archived shelf, so under that
+			// filter every workspace group would be empty.
+			const workspaces = args.view.status === "archived" ? [] : args.workspaces;
+			sections.push(...workspaceSections(unpinned, workspaces, args.view.ordering));
 			break;
 		}
 		case "updated": {

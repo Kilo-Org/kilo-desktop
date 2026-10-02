@@ -272,13 +272,118 @@ describe("buildSessionListSections", () => {
 			activityBySessionId: {
 				"ses-unscoped": activity({ directory: "/chats/session-uSrBjH" }),
 			},
-			workspaces,
+			workspaces: [],
 			view: { ...defaultView, grouping: "workspace" },
 		});
 
 		expect(sections.map((section) => [section.key, section.label])).toEqual([
 			["workspace:unknown", "No workspace"],
 		]);
+	});
+
+	it("puts chats without a workspace in a final group after the named workspaces", () => {
+		const sections = buildSessionListSections({
+			entries: [entry("ses-unscoped", 0, false, "Unscoped greeting"), entry("ses-1", 1)],
+			activityBySessionId: {
+				"ses-unscoped": activity({ directory: "/chats/session-uSrBjH" }),
+				"ses-1": activity({ workspaceId: "ws-z" }),
+			},
+			workspaces: [...workspaces, { id: "ws-z", name: "Zeta" }],
+			view: { ...defaultView, grouping: "workspace" },
+		});
+
+		expect(sections.map((section) => section.label)).toEqual([
+			"Acme App",
+			"Beta",
+			"Zeta",
+			"No workspace",
+		]);
+	});
+
+	it("lists every workspace when grouping by workspace, even without chats", () => {
+		const sections = buildSessionListSections({
+			entries: [],
+			activityBySessionId: {},
+			workspaces,
+			view: { ...defaultView, grouping: "workspace" },
+		});
+
+		expect(sections).toEqual([
+			{
+				key: "workspace:ws-1",
+				label: "Acme App",
+				tone: "workspace",
+				rows: [],
+				workspaceId: "ws-1",
+			},
+			{
+				key: "workspace:ws-2",
+				label: "Beta",
+				tone: "workspace",
+				rows: [],
+				workspaceId: "ws-2",
+			},
+		]);
+	});
+
+	it("keeps a workspace group after its only chat is archived", () => {
+		const sections = buildSessionListSections({
+			entries: [entry("ses-1", 0, true, "Old work")],
+			activityBySessionId: { "ses-1": activity({ workspaceId: "ws-1" }) },
+			workspaces,
+			view: { ...defaultView, grouping: "workspace" },
+		});
+
+		expect(sections.map((section) => [section.key, section.rows.length])).toEqual([
+			["workspace:ws-1", 0],
+			["workspace:ws-2", 0],
+			["archived", 1],
+		]);
+	});
+
+	it("keeps empty workspace groups while a status filter hides their chats", () => {
+		const sections = buildSessionListSections({
+			entries,
+			activityBySessionId,
+			workspaces,
+			view: { ...defaultView, grouping: "workspace", status: "attention" },
+		});
+
+		expect(sections.map((section) => [section.key, section.rows.map((row) => row.id)])).toEqual([
+			["workspace:ws-1", []],
+			["workspace:ws-2", []],
+		]);
+	});
+
+	it("shows only the Archived shelf when filtering archived chats by workspace", () => {
+		const sections = buildSessionListSections({
+			entries,
+			activityBySessionId,
+			workspaces,
+			view: { ...defaultView, grouping: "workspace", status: "archived" },
+		});
+
+		expect(sections.map((section) => [section.key, section.rows.map((row) => row.id)])).toEqual([
+			["archived", ["local-ses-4", "local-ses-3"]],
+		]);
+	});
+
+	it("orders sessions from deleted workspaces among the known workspaces by label", () => {
+		const sections = buildSessionListSections({
+			entries: [entry("ses-orphan", 0, false, "Orphan")],
+			activityBySessionId: {
+				"ses-orphan": activity({ workspaceId: "ws-gone", directory: "/repo/alpha" }),
+			},
+			workspaces,
+			view: { ...defaultView, grouping: "workspace" },
+		});
+
+		expect(sections.map((section) => [section.key, section.label])).toEqual([
+			["workspace:ws-1", "Acme App"],
+			["workspace:ws-gone", "alpha"],
+			["workspace:ws-2", "Beta"],
+		]);
+		expect(sections[1]?.rows.map((row) => row.id)).toEqual(["local-ses-orphan"]);
 	});
 
 	it("omits Pinned when nothing is pinned", () => {
@@ -328,12 +433,16 @@ describe("buildSessionListSections", () => {
 
 		expect(sections.map((section) => section.key)).toEqual([
 			"pinned",
+			"workspace:ws-1",
 			"workspace:ws-2",
 			"archived",
 		]);
 		expect(sections.find((section) => section.key === "pinned")?.rows.map((row) => row.id)).toEqual(
 			["local-ses-1"],
 		);
+		expect(
+			sections.find((section) => section.key === "workspace:ws-1")?.rows.map((row) => row.id),
+		).toEqual([]);
 		expect(
 			sections.find((section) => section.key === "workspace:ws-2")?.rows.map((row) => row.id),
 		).toEqual(["local-ses-2"]);

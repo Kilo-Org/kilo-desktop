@@ -107,6 +107,7 @@ import { SessionDeleteWorktreeDialog } from "./session-delete-worktree-dialog.js
 import { SessionRowHoverCard } from "./session-row-hover-card.js";
 import {
 	buildSessionListSections,
+	SESSION_LIST_STATUS_LABELS,
 	readSessionListArchivedExpanded,
 	visibleShowFields,
 	writeSessionListArchivedExpanded,
@@ -190,6 +191,7 @@ type SessionListContentProps = {
 	archivedThreadIds: readonly string[];
 	threadItems: readonly SessionListThreadItem[];
 	isLoading: boolean;
+	hasMoreThreads: boolean;
 	activityBySessionId: Readonly<Record<string, SessionActivity>>;
 	workspaces: readonly Workspace[];
 	setActiveWorkspaceId: WorkspacesContextValue["setActiveWorkspaceId"];
@@ -216,12 +218,42 @@ type VirtualSessionListEntry =
 			row: SessionListSectionRow;
 			indented: boolean;
 			spaceBefore: boolean;
+	  }
+	| {
+			kind: "empty-workspace";
+			key: string;
+			workspaceId: string;
+			label: string;
+			spaceBefore: boolean;
 	  };
+
+/**
+ * The note under an empty workspace group. None while older session pages are
+ * loading, since the group's chats may not have arrived yet.
+ */
+function emptyWorkspaceLabel(
+	view: Pick<SessionListView, "status">,
+	hasMoreThreads: boolean,
+): string | null {
+	if (hasMoreThreads) return null;
+	return view.status === "all"
+		? "No chats yet"
+		: `No chats matching "${SESSION_LIST_STATUS_LABELS[view.status]}"`;
+}
+
+/**
+ * The Archived filter opens the Archived shelf, since it holds every match.
+ * Leaving the filter restores the persisted preference, which the filter
+ * itself never overwrites.
+ */
+function archivedShelfExpandedFor(status: SessionListView["status"]): boolean {
+	return status === "archived" || readSessionListArchivedExpanded();
+}
 
 function flattenSessionListSections(
 	sections: readonly SessionListSection[],
 	expanded: Readonly<Record<string, boolean>>,
-	options: { spaceBeforeFirst: boolean },
+	options: { spaceBeforeFirst: boolean; emptyWorkspaceLabel: string | null },
 ): VirtualSessionListEntry[] {
 	const entries: VirtualSessionListEntry[] = [];
 	let firstEntry = true;
@@ -245,6 +277,15 @@ function flattenSessionListSections(
 		}
 
 		if (!isExpanded) continue;
+		if (options.emptyWorkspaceLabel && section.workspaceId && section.rows.length === 0) {
+			entries.push({
+				kind: "empty-workspace",
+				key: `empty:${section.key}`,
+				workspaceId: section.workspaceId,
+				label: options.emptyWorkspaceLabel,
+				spaceBefore: false,
+			});
+		}
 		for (const row of section.rows) {
 			entries.push({
 				kind: "row",
@@ -270,6 +311,7 @@ export const SessionListContent = memo(function SessionListContent({
 	archivedThreadIds,
 	threadItems,
 	isLoading,
+	hasMoreThreads,
 	activityBySessionId,
 	workspaces,
 	setActiveWorkspaceId,
@@ -279,8 +321,13 @@ export const SessionListContent = memo(function SessionListContent({
 	const pinnedIds = useMemo(() => new Set(pinIds), [pinIds]);
 	const [expanded, setExpanded] = useState<Record<string, boolean>>(() => ({
 		...DEFAULT_EXPANDED_SECTIONS,
-		archived: readSessionListArchivedExpanded(),
+		archived: archivedShelfExpandedFor(view.status),
 	}));
+	const [statusFilter, setStatusFilter] = useState(view.status);
+	if (statusFilter !== view.status) {
+		setStatusFilter(view.status);
+		setExpanded((current) => ({ ...current, archived: archivedShelfExpandedFor(view.status) }));
+	}
 	const focus =
 		view.focus && workspaces.some((workspace) => workspace.id === view.focus) ? view.focus : null;
 	const resolvedView = useMemo(
@@ -356,22 +403,25 @@ export const SessionListContent = memo(function SessionListContent({
 	const listRef = useRef<HTMLDivElement>(null);
 	const virtualEntries = useMemo(() => {
 		const entries: VirtualSessionListEntry[] = [];
+		const emptyLabel = emptyWorkspaceLabel(resolvedView, hasMoreThreads);
 		entries.push(
 			...flattenSessionListSections(pinnedSections, expanded, {
 				spaceBeforeFirst: false,
+				emptyWorkspaceLabel: emptyLabel,
 			}),
 			...flattenSessionListSections(groupedSections, expanded, {
 				spaceBeforeFirst: pinnedSections.length > 0,
+				emptyWorkspaceLabel: emptyLabel,
 			}),
 		);
 		return entries;
-	}, [expanded, groupedSections, pinnedSections]);
+	}, [expanded, groupedSections, hasMoreThreads, pinnedSections, resolvedView]);
 	const virtualizer = useVirtualizer({
 		count: virtualEntries.length,
 		getScrollElement: () => listRef.current,
 		estimateSize: (index) => {
 			const entry = virtualEntries[index];
-			const baseSize = entry?.kind === "row" ? SESSION_ROW_ESTIMATE_PX : SESSION_SHELF_HEADER_PX;
+			const baseSize = entry?.kind === "header" ? SESSION_SHELF_HEADER_PX : SESSION_ROW_ESTIMATE_PX;
 			return baseSize + (entry?.spaceBefore ? SESSION_SECTION_GAP_PX : 0);
 		},
 		getItemKey: (index) => virtualEntries[index]?.key ?? index,
@@ -504,6 +554,11 @@ export const SessionListContent = memo(function SessionListContent({
 																		[entry.sectionKey]: nextExpanded,
 																	}));
 																}}
+															/>
+														) : entry.kind === "empty-workspace" ? (
+															<WorkspaceEmptyRow
+																workspaceId={entry.workspaceId}
+																label={entry.label}
 															/>
 														) : (
 															<SessionRowIndentContext value={entry.indented}>
@@ -961,6 +1016,18 @@ const WorkspaceShelfActions: FC<{
 		</TooltipProvider>
 	);
 };
+
+/** Mirrors an indented SessionRow's glyph slot so the note lines up with chat titles. */
+const WorkspaceEmptyRow: FC<{ workspaceId: string; label: string }> = ({ workspaceId, label }) => (
+	<div
+		data-slot="aui_session-list-workspace-empty"
+		data-qa-id={`session-list-workspace-empty-${workspaceId}`}
+		className="mx-px box-content flex h-5 min-w-0 items-center gap-1.5 py-1 pr-2.5 pl-2 select-none"
+	>
+		<span aria-hidden className="w-4 shrink-0" />
+		<span className="text-muted-foreground/60 min-w-0 flex-1 truncate text-sm">{label}</span>
+	</div>
+);
 
 const rowStateLabels: Record<
 	Exclude<SessionRowState, null>,

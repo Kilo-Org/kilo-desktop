@@ -21,6 +21,7 @@ import {
 } from "../../../workspaces/WorkspacesFeatureContext.js";
 import { SessionActivityProvider } from "../../session-activity/SessionActivityProvider.js";
 import { createSessionActivityStore } from "../../session-activity/session-activity-store.js";
+import { SESSION_LIST_VIEW_STORAGE_KEY } from "../../session-list/session-list-view.js";
 import { SessionListViewProvider } from "../../session-list/use-session-list-view.js";
 import { SessionList } from "./session-list.js";
 
@@ -75,6 +76,8 @@ class SeededThreadListAdapter implements RemoteThreadListAdapter {
 	readonly deleteCalls: string[] = [];
 	/** When set, `delete` rejects — the server-failure path. */
 	deleteError: Error | undefined;
+	/** When true, the first page reports more pages that are never loaded. */
+	hasMorePages = false;
 	private readonly records: Required<SeededThread>[];
 
 	constructor(threads: SeededThread[]) {
@@ -82,7 +85,10 @@ class SeededThreadListAdapter implements RemoteThreadListAdapter {
 	}
 
 	list() {
-		return Promise.resolve({ threads: this.records.map((record) => ({ ...record })) });
+		return Promise.resolve({
+			threads: this.records.map((record) => ({ ...record })),
+			...(this.hasMorePages ? { nextCursor: "page-2" } : {}),
+		});
 	}
 
 	archive(remoteId: string) {
@@ -212,6 +218,7 @@ function renderSessionList({
 	includeComposer = false,
 	removeWorktree,
 	skipDefaultHydration = false,
+	hasMorePages = false,
 }: {
 	threads: SeededThread[];
 	hydrate?: (store: ReturnType<typeof createSessionActivityStore>) => void;
@@ -220,8 +227,11 @@ function renderSessionList({
 	removeWorktree?: (input: { directory: string }) => Promise<undefined>;
 	/** Mirrors the real startup window: rows render before any session stamp arrives. */
 	skipDefaultHydration?: boolean;
+	/** Mirrors background backfill: older session pages have not loaded yet. */
+	hasMorePages?: boolean;
 }) {
 	const adapter = new SeededThreadListAdapter(threads);
+	adapter.hasMorePages = hasMorePages;
 	const navigate = vi.fn();
 	const setActiveWorkspaceId = vi.fn();
 	const openCreate = vi.fn();
@@ -698,7 +708,9 @@ describe("SessionList", () => {
 		await screen.getByRole("button", { name: "Session list options" }).click();
 		await page.getByRole("menuitem", { name: /Grouping/ }).click();
 		await page.getByRole("menuitemradio", { name: "Workspace" }).click();
-		await expect.element(screen.getByTestId("session-list-workspace-toggle")).toBeVisible();
+		await expect
+			.element(screen.getByTestId("session-list-workspace-toggle").filter({ hasText: "Acme App" }))
+			.toBeVisible();
 		await expect
 			.element(screen.getByTestId("session-list-archived-toggle"))
 			.toHaveAttribute("aria-expanded", "false");
@@ -1204,13 +1216,13 @@ describe("SessionList", () => {
 		await screen.getByRole("button", { name: "Session list options" }).click();
 		await page.getByRole("menuitem", { name: /Grouping/ }).click();
 		await page.getByRole("menuitemradio", { name: "Workspace" }).click();
-		await expect.element(screen.getByTestId("session-list-workspace-toggle")).toBeVisible();
+		await expect.element(screen.getByTestId("session-list-workspace-toggle").first()).toBeVisible();
 		await expect.element(screen.getByTestId("session-list-active-toggle")).not.toBeInTheDocument();
 		await expect.element(page.getByRole("menuitemradio", { name: "Updated" })).toBeVisible();
 		await page.getByRole("menuitemradio", { name: "Updated" }).click();
 		await expect.element(screen.getByRole("button", { name: "Today" })).toBeVisible();
 		await expect
-			.element(screen.getByTestId("session-list-workspace-toggle"))
+			.element(screen.getByTestId("session-list-workspace-toggle").first())
 			.not.toBeInTheDocument();
 		await expect.element(page.getByRole("menuitemradio", { name: "Workspace" })).toBeVisible();
 
@@ -1250,7 +1262,9 @@ describe("SessionList", () => {
 		await expect
 			.element(screen.getByTestId("session-list-attention-toggle"))
 			.not.toBeInTheDocument();
-		const workspaceToggle = screen.getByTestId("session-list-workspace-toggle");
+		const workspaceToggle = screen
+			.getByTestId("session-list-workspace-toggle")
+			.filter({ hasText: "Acme App" });
 		await expect.element(workspaceToggle).toBeVisible();
 		expect(
 			workspaceToggle.element().querySelector('[data-qa-id="session-list-view-menu"]'),
@@ -1307,6 +1321,121 @@ describe("SessionList", () => {
 
 		expect(setActiveWorkspaceId).toHaveBeenCalledWith("ws-1");
 		expect(navigate).toHaveBeenLastCalledWith("/plugins/chat", undefined);
+	});
+
+	it("lists a workspace with no chats with an empty-state note", async () => {
+		const { screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Fix the bug" }],
+			hydrate: (store) => {
+				store.getState().hydrateSessions([{ id: "ses-1", workspaceId: "ws-1" }]);
+			},
+		});
+
+		await screen.getByRole("button", { name: "Session list options" }).click();
+		await page.getByRole("menuitem", { name: /Grouping/ }).click();
+		await page.getByRole("menuitemradio", { name: "Workspace" }).click();
+		await userEvent.keyboard("{Escape}");
+		await userEvent.keyboard("{Escape}");
+
+		await expect.element(screen.getByRole("button", { name: "Beta" })).toBeVisible();
+		await expect
+			.element(screen.getByTestId("session-list-workspace-empty-ws-1"))
+			.not.toBeInTheDocument();
+		const emptyNote = screen.getByTestId("session-list-workspace-empty-ws-2");
+		await expect.element(emptyNote).toHaveTextContent("No chats yet");
+
+		await screen.getByRole("button", { name: "Beta" }).click();
+		await expect.element(emptyNote).not.toBeInTheDocument();
+	});
+
+	it("keeps a workspace group after its only chat is archived", async () => {
+		const { adapter, screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Fix the bug" }],
+			hydrate: (store) => {
+				store.getState().hydrateSessions([{ id: "ses-1", workspaceId: "ws-1" }]);
+			},
+		});
+
+		await screen.getByRole("button", { name: "Session list options" }).click();
+		await page.getByRole("menuitem", { name: /Grouping/ }).click();
+		await page.getByRole("menuitemradio", { name: "Workspace" }).click();
+		await userEvent.keyboard("{Escape}");
+		await userEvent.keyboard("{Escape}");
+
+		const card = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
+		await userEvent.hover(card);
+		await card.getByRole("button", { name: "Archive thread" }).click();
+
+		await expect.element(screen.getByTestId("session-list-archived-toggle")).toBeVisible();
+		expect(adapter.archiveCalls).toEqual(["ses-1"]);
+		await expect.element(screen.getByRole("button", { name: "Acme App" })).toBeVisible();
+		await expect.element(screen.getByTestId("session-list-workspace-empty-ws-1")).toBeVisible();
+	});
+
+	it("opens the Archived shelf while filtering by Archived and restores it afterwards", async () => {
+		const { screen } = renderSessionList({
+			threads: [
+				{ remoteId: "ses-1", title: "Active work" },
+				{ remoteId: "ses-2", title: "Old work", status: "archived" },
+			],
+		});
+
+		const archivedToggle = screen.getByTestId("session-list-archived-toggle");
+		await expect.element(archivedToggle).toHaveAttribute("aria-expanded", "false");
+
+		await screen.getByRole("button", { name: "Session list options" }).click();
+		await page.getByRole("menuitem", { name: /^Status/ }).click();
+		await page.getByRole("menuitemradio", { name: "Archived" }).click();
+
+		await expect.element(archivedToggle).toHaveAttribute("aria-expanded", "true");
+		await expect
+			.element(screen.getByRole("listitem").filter({ hasText: "Old work" }))
+			.toBeVisible();
+
+		await page.getByRole("menuitemradio", { name: "All" }).click();
+
+		await expect.element(archivedToggle).toHaveAttribute("aria-expanded", "false");
+		await expect.element(screen.getByText("Old work")).not.toBeInTheDocument();
+	});
+
+	it("says no chats match when a status filter hides a workspace's chats", async () => {
+		localStorage.setItem(
+			SESSION_LIST_VIEW_STORAGE_KEY,
+			JSON.stringify({ grouping: "workspace", status: "working" }),
+		);
+		const { screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Fix the bug" }],
+			hydrate: (store) => {
+				store.getState().hydrateSessions([{ id: "ses-1", workspaceId: "ws-2" }]);
+			},
+		});
+
+		await expect.element(screen.getByRole("button", { name: "Beta" })).toBeVisible();
+		await expect.element(screen.getByText("Fix the bug")).not.toBeInTheDocument();
+		await expect
+			.element(screen.getByTestId("session-list-workspace-empty-ws-2"))
+			.toHaveTextContent('No chats matching "Working"');
+	});
+
+	it("shows empty workspace headers without the empty-state note while older chats load", async () => {
+		const { screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Fix the bug" }],
+			hydrate: (store) => {
+				store.getState().hydrateSessions([{ id: "ses-1", workspaceId: "ws-1" }]);
+			},
+			hasMorePages: true,
+		});
+
+		await screen.getByRole("button", { name: "Session list options" }).click();
+		await page.getByRole("menuitem", { name: /Grouping/ }).click();
+		await page.getByRole("menuitemradio", { name: "Workspace" }).click();
+		await userEvent.keyboard("{Escape}");
+		await userEvent.keyboard("{Escape}");
+
+		await expect.element(screen.getByRole("button", { name: "Beta" })).toBeVisible();
+		await expect
+			.element(screen.getByTestId("session-list-workspace-empty-ws-2"))
+			.not.toBeInTheDocument();
 	});
 
 	it("opens the workspace Edit and Delete actions from its group header", async () => {
@@ -1523,7 +1652,6 @@ describe("SessionList", () => {
 
 		await userEvent.keyboard("{Escape}");
 		await userEvent.keyboard("{Escape}");
-		await screen.getByTestId("session-list-archived-toggle").click();
 		await expect.element(screen.getByText("Old work")).toBeVisible();
 		await expect.element(screen.getByText("Fix the bug")).not.toBeInTheDocument();
 		await expect.element(screen.getByTestId("session-list-active-toggle")).not.toBeInTheDocument();

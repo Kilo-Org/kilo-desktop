@@ -282,6 +282,36 @@ describe("OpenCodePermissionCard", () => {
 		expect(baseElement.textContent).not.toContain("bypasses the Desktop security guardrail");
 	});
 
+	it("warns that a bash pip install of a local wheel bypasses the guardrail", async () => {
+		const { baseElement } = render(
+			<OpenCodePermissionCard
+				request={permissionRequest({
+					permission: "bash",
+					patterns: ["pip install ./dist/foo-1.0-py3-none-any.whl"],
+				})}
+			/>,
+		);
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByText(LOCAL_CONDA_FILE_INSTALL_WARNING)).toBeVisible();
+	});
+
+	it.each([
+		'pip install -U "pandas[performance]>=2.2" python-dateutil',
+		"conda run -n dev python -m pip install requests==2.32.3",
+		"pip install -e .",
+		"test -x /Users/me/project/.conda/bin/python",
+		"/Users/me/project/.conda/bin/python --version",
+	])("does not warn for a bash command that installs no local package file: %s", (command) => {
+		const { baseElement } = render(
+			<OpenCodePermissionCard
+				request={permissionRequest({ permission: "bash", patterns: [command] })}
+			/>,
+		);
+
+		expect(baseElement.textContent).not.toContain(LOCAL_CONDA_FILE_INSTALL_WARNING);
+	});
+
 	it("warns when an update targets every package", async () => {
 		threadWithToolArgs("call-5", { name: "e", updateAll: true });
 		const { baseElement } = render(

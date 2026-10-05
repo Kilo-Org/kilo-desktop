@@ -290,22 +290,75 @@ describe("EnvironmentsPanel — search and sort", () => {
 		expect(screen.getByTestId("environments-conda-row").elements()).toHaveLength(40);
 	});
 
-	it("offers a retry when the list fails to load", async () => {
+	it("offers a retry with friendly copy when the list fails to load", async () => {
 		let calls = 0;
 		const { baseElement } = renderPanel({
 			list: async () => {
 				calls += 1;
-				if (calls === 1) throw new Error("bridge offline");
+				if (calls === 1) throw new Error("SOLVE_FAILED: numpy vs pandas conflict");
 				return mockEnvironments;
 			},
 		});
 		const screen = page.elementLocator(baseElement);
 
-		await expect.element(screen.getByTestId("environments-conda-error")).toBeVisible();
-		await expect.element(screen.getByText("bridge offline")).toBeVisible();
+		const state = screen.getByTestId("environments-conda-error");
+		await expect.element(state).toBeVisible();
+		// Curated copy, not the raw FeatureError internals.
+		await expect.element(state).not.toHaveTextContent("SOLVE_FAILED");
 
-		await userEvent.click(screen.getByTestId("environments-conda-retry"));
+		await userEvent.click(screen.getByTestId("environments-conda-error-retry"));
 		await expect.element(screen.getByTestId("environments-conda-row").first()).toBeVisible();
+	});
+
+	it("shows the backend-starting state (not an error) while the backend is not ready, and clears on recovery", async () => {
+		let calls = 0;
+		const { baseElement } = renderPanel({
+			list: async () => {
+				calls += 1;
+				if (calls === 1) {
+					throw new Error(
+						"PROVIDER_NOT_READY: anaconda-bridge-sidecar error: Pending response rejected since connection got disposed",
+					);
+				}
+				return mockEnvironments;
+			},
+		});
+		const screen = page.elementLocator(baseElement);
+
+		// Transient warm-up reads as "starting", not a hard error.
+		await expect.element(screen.getByTestId("environments-conda-starting")).toBeVisible();
+		expect(screen.getByTestId("environments-conda-error").elements()).toHaveLength(0);
+		// No opaque plumbing jargon leaks into the copy.
+		await expect
+			.element(screen.getByTestId("environments-conda-starting"))
+			.not.toHaveTextContent("connection got disposed");
+
+		// The 3s poll re-reads and clears the state once the backend comes up.
+		await expect.element(screen.getByTestId("environments-conda-row").first()).toBeVisible();
+	});
+
+	it("holds the backend-starting state across a failing poll cycle (no skeleton/error flicker)", async () => {
+		// Regression: TanStack flips a still-empty query back to pending/error:null
+		// at the start of each background refetch. The starting state must survive
+		// that transient so the 120s window accumulates and the UI does not flicker.
+		let calls = 0;
+		const { baseElement } = renderPanel({
+			list: async () => {
+				calls += 1;
+				throw new Error("PROVIDER_NOT_READY: anaconda-bridge-sidecar error: still starting");
+			},
+		});
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("environments-conda-starting")).toBeVisible();
+		const firstCalls = calls;
+
+		// Wait out at least one 3s poll (which also fails) and confirm the panel
+		// stays in the starting state — never the skeleton or the error state.
+		await vi.waitFor(() => expect(calls).toBeGreaterThan(firstCalls), { timeout: 6_000 });
+		await expect.element(screen.getByTestId("environments-conda-starting")).toBeVisible();
+		expect(screen.getByTestId("environments-conda-loading").elements()).toHaveLength(0);
+		expect(screen.getByTestId("environments-conda-error").elements()).toHaveLength(0);
 	});
 
 	it("keeps the header actions available when there are no environments", async () => {

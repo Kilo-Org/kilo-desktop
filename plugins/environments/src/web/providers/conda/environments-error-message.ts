@@ -41,13 +41,33 @@ const FRIENDLY_MESSAGE: Record<EnvironmentsErrorCode, string> = {
 };
 
 /**
+ * Opaque bridge detail fragments that carry no user-actionable information.
+ * These are transient JSON-RPC plumbing states that surface while the
+ * sidecar is starting or restarting (e.g. an in-flight request rejected
+ * because the connection was torn down mid-restart, or a spawn that has not
+ * finished its health check yet). Surfacing them only alarms the user with
+ * internal jargon, so we suppress them and show the plain "not ready" copy.
+ */
+const OPAQUE_BRIDGE_DETAIL_PREFIXES = ["bridge failed to start"] as const;
+const OPAQUE_BRIDGE_DETAIL_SUBSTRINGS = ["connection got disposed"] as const;
+
+function isOpaqueBridgeDetail(detail: string): boolean {
+	const lower = detail.toLowerCase();
+	return (
+		OPAQUE_BRIDGE_DETAIL_PREFIXES.some((prefix) => lower.startsWith(prefix)) ||
+		OPAQUE_BRIDGE_DETAIL_SUBSTRINGS.some((substring) => lower.includes(substring))
+	);
+}
+
+/**
  * Convert a caught error (or any value) into a friendly, user-facing message.
  * Recognised environments error codes map to curated copy; anything else
  * falls back to `fallback`.
  *
  * For `PROVIDER_NOT_READY` errors that contain a bridge detail string, the
  * detail is appended so the user sees something actionable (e.g. a YAML
- * parse error in `.condarc`) rather than just "backend not ready".
+ * parse error in `.condarc`) rather than just "backend not ready". Opaque
+ * plumbing details (see {@link isOpaqueBridgeDetail}) are suppressed.
  */
 export function friendlyEnvironmentsError(reason: unknown, fallback: string): string {
 	const raw = reason instanceof Error ? reason.message : typeof reason === "string" ? reason : "";
@@ -59,9 +79,24 @@ export function friendlyEnvironmentsError(reason: unknown, fallback: string): st
 	// carries real information (avoids hiding fixable config issues).
 	if (parsed.code === "PROVIDER_NOT_READY" && parsed.detail) {
 		const detail = parsed.detail.replace(/^anaconda-bridge-sidecar error:\s*/i, "").trim();
-		if (detail && !detail.startsWith("bridge failed to start")) {
+		if (detail && !isOpaqueBridgeDetail(detail)) {
 			return `${friendly} (${detail})`;
 		}
 	}
 	return friendly;
+}
+
+/**
+ * Whether a caught error is a `PROVIDER_NOT_READY` failure — the conda
+ * backend (anaconda-bridge-sidecar) is still starting up or is restarting.
+ *
+ * Distinct from a genuine failure: the backend recovers on its own via the
+ * sidecar's restart-on-exit machinery, so the UI treats these as a
+ * transient "starting up" state (polled until it clears) rather than a hard
+ * error.
+ */
+export function isProviderNotReadyError(reason: unknown): boolean {
+	const raw = reason instanceof Error ? reason.message : typeof reason === "string" ? reason : "";
+	if (!raw) return false;
+	return parseEnvironmentsErrorMessage(raw)?.code === "PROVIDER_NOT_READY";
 }

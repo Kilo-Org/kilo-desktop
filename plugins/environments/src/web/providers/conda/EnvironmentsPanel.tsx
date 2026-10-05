@@ -1,6 +1,8 @@
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 
-import { SettingsPageHeader, useSdk, useSdkQuery } from "@kilo-desktop/sdk-react";
+import { useQuery } from "@tanstack/react-query";
+
+import { SettingsPageHeader, sdkQueryOptions, useSdk } from "@kilo-desktop/sdk-react";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	DropdownMenu,
@@ -27,12 +29,10 @@ import {
 	BoxIcon,
 	BoxesIcon,
 	ChevronDownIcon,
-	CircleAlertIcon,
 	CopyIcon,
 	EllipsisIcon,
 	FileUpIcon,
 	PlusIcon,
-	RefreshCwIcon,
 	SearchIcon,
 	SearchXIcon,
 	Trash2Icon,
@@ -44,9 +44,22 @@ import { CloneEnvironmentDialog } from "./CloneEnvironmentDialog.js";
 import { CreateEnvironmentDialog } from "./CreateEnvironmentDialog.js";
 import { DeleteEnvironmentDialog } from "./DeleteEnvironmentDialog.js";
 import { EnvironmentDetail, EnvironmentDetailLoading } from "./EnvironmentDetail.js";
+import { EnvironmentsErrorState, EnvironmentsStartingState } from "./EnvironmentsPanelStates.js";
 import { ImportEnvironmentDialog } from "./ImportEnvironmentDialog.js";
 import { environmentDisplayName } from "./environment-display.js";
+import { isProviderNotReadyError } from "./environments-error-message.js";
 import { ListViewMenu, type SortDirection } from "./ListViewMenu.js";
+import { useProviderNotReadySince } from "./useProviderNotReadySince.js";
+
+/**
+ * How often to re-read `conda.envs.list` while the backend reports
+ * `PROVIDER_NOT_READY`. The sidecar restarts itself on a cold start or after
+ * an update; a short fixed poll clears the "starting" state the moment it
+ * comes up. The per-fetch `retry` is disabled so this interval is the sole
+ * re-attempt mechanism (layering TanStack's exponential backoff on top of the
+ * poll stretches real recovery-detection latency to tens of seconds).
+ */
+const PROVIDER_NOT_READY_POLL_MS = 3_000;
 
 type EnvironmentSortField = "name" | "location";
 
@@ -120,7 +133,23 @@ type DialogState =
  */
 export function EnvironmentsPanel() {
 	const sdk = useSdk<CondaService>("environments");
-	const envs = useSdkQuery(sdk, "conda.envs.list");
+	const envs = useQuery({
+		...sdkQueryOptions(sdk, "conda.envs.list"),
+		// Fixed-interval polling (below) is the sole re-attempt mechanism for a
+		// warming-up backend; see PROVIDER_NOT_READY_POLL_MS.
+		retry: false,
+		refetchInterval: (query) =>
+			isProviderNotReadyError(query.state.error) ? PROVIDER_NOT_READY_POLL_MS : false,
+	});
+	// Derive from *settled* query states only. TanStack flips a still-empty
+	// query back to pending/`error: null` during each background refetch, so
+	// `envs.error` is transiently null between polls; latching on that would
+	// flicker the UI and reset the startup window every ~3s.
+	const settledNotReady = envs.isError && isProviderNotReadyError(envs.error);
+	const notReadySince = useProviderNotReadySince({
+		notReady: settledNotReady,
+		resolved: envs.isSuccess || (envs.isError && !settledNotReady),
+	});
 	const selectedPrefix = useSelectedPrefix(sdk);
 	const [dialog, setDialog] = useState<DialogState>({ kind: "none" });
 	const closeDialog = useCallback(() => setDialog({ kind: "none" }), []);
@@ -183,48 +212,36 @@ export function EnvironmentsPanel() {
 			/>
 
 			<div className="flex min-w-0 flex-col gap-4">
-				{envs.isPending ? (
-					<EnvironmentsListSkeleton />
-				) : envs.isError ? (
-					<Empty className="border" data-qa-id="environments-conda-error">
-						<EmptyHeader>
-							<EmptyMedia variant="icon">
-								<CircleAlertIcon aria-hidden="true" />
-							</EmptyMedia>
-							<EmptyTitle>Could not load environments</EmptyTitle>
-							<EmptyDescription>{envs.error.message}</EmptyDescription>
-						</EmptyHeader>
-						<EmptyContent>
-							<Button
-								type="button"
-								variant="outline"
-								onClick={() => void envs.refetch()}
-								data-qa-id="environments-conda-retry"
-							>
-								<RefreshCwIcon data-icon="inline-start" aria-hidden="true" />
-								Try again
-							</Button>
-						</EmptyContent>
-					</Empty>
-				) : (envs.data ?? []).length === 0 ? (
-					<Empty className="border" data-qa-id="environments-conda-empty">
-						<EmptyHeader>
-							<EmptyMedia variant="icon">
-								<BoxesIcon aria-hidden="true" />
-							</EmptyMedia>
-							<EmptyTitle>No conda environments found</EmptyTitle>
-							<EmptyDescription>
-								Create an environment or import one from an environment file.
-							</EmptyDescription>
-						</EmptyHeader>
-					</Empty>
-				) : (
-					<EnvironmentsList
-						rows={envs.data ?? []}
-						onSelectEnv={selectEnv}
-						onClone={(env) => setDialog({ kind: "clone", env })}
-						onDelete={(env) => setDialog({ kind: "delete", env })}
+				{envs.isSuccess ? (
+					(envs.data ?? []).length === 0 ? (
+						<Empty className="border" data-qa-id="environments-conda-empty">
+							<EmptyHeader>
+								<EmptyMedia variant="icon">
+									<BoxesIcon aria-hidden="true" />
+								</EmptyMedia>
+								<EmptyTitle>No conda environments found</EmptyTitle>
+								<EmptyDescription>
+									Create an environment or import one from an environment file.
+								</EmptyDescription>
+							</EmptyHeader>
+						</Empty>
+					) : (
+						<EnvironmentsList
+							rows={envs.data ?? []}
+							onSelectEnv={selectEnv}
+							onClone={(env) => setDialog({ kind: "clone", env })}
+							onDelete={(env) => setDialog({ kind: "delete", env })}
+						/>
+					)
+				) : notReadySince !== null ? (
+					<EnvironmentsStartingState
+						startedAt={notReadySince}
+						onRetry={() => void envs.refetch()}
 					/>
+				) : envs.isPending ? (
+					<EnvironmentsListSkeleton />
+				) : (
+					<EnvironmentsErrorState error={envs.error} onRetry={() => void envs.refetch()} />
 				)}
 			</div>
 

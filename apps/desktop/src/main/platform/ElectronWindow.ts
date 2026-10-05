@@ -307,11 +307,19 @@ export class ElectronWindow {
 		const background = windowBackgroundFor(shouldUseDarkColors, process.platform, colors);
 		for (const window of this.liveWindows) {
 			window.setBackgroundColor(background);
-			if (process.platform !== "darwin") {
+			if (process.platform === "darwin") continue;
+			// Electron throws "Titlebar overlay is not enabled" from
+			// setTitleBarOverlay while the overlay is inactive (e.g. a fullscreen
+			// window on Windows). That is a benign, transient state: the overlay
+			// repaints on the next sync once it leaves fullscreen, so swallow it
+			// here rather than aborting the repaint of the remaining windows.
+			try {
 				window.setTitleBarOverlay({
 					color: chrome.background,
 					symbolColor: chrome.foreground,
 				});
+			} catch {
+				// Overlay is not currently paintable; skip this window.
 			}
 		}
 	}

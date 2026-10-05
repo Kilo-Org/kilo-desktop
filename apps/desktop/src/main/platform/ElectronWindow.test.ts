@@ -190,6 +190,28 @@ describe("ElectronWindow theme chrome", () => {
 		}
 	});
 
+	it("keeps repainting when a fullscreen window rejects the title bar overlay", () => {
+		Object.defineProperty(process, "platform", { value: "win32" });
+		const windows = new ElectronWindow(createShell() as never, () => true);
+		windows.create({ isDevelopment: false });
+		windows.openPaneWindow(
+			{ pluginId: "kilo-ui", sessionId: "s1", paneId: "p1", title: "File", path: "/plugins/chat" },
+			false,
+		);
+		const [fullscreen, other] = createdWindows;
+		// Electron throws this exact error from setTitleBarOverlay while the
+		// window is fullscreen on Windows, where the overlay is inactive.
+		fullscreen?.setTitleBarOverlay.mockImplementation(() => {
+			throw new Error("Titlebar overlay is not enabled");
+		});
+
+		expect(() => windows.applyColorScheme()).not.toThrow();
+
+		expect(fullscreen?.setBackgroundColor).toHaveBeenCalled();
+		expect(other?.setBackgroundColor).toHaveBeenCalled();
+		expect(other?.setTitleBarOverlay).toHaveBeenCalled();
+	});
+
 	it("leaves the macOS title bar native while keeping the vibrancy background transparent", () => {
 		Object.defineProperty(process, "platform", { value: "darwin" });
 		const windows = new ElectronWindow(createShell() as never, () => true);

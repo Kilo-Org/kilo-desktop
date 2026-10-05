@@ -1,6 +1,11 @@
 import { RelayBridgeServer, type RelayBridgeServerOptions } from "@mcp-b/webmcp-local-relay";
 
-import { WEBMCP_RELAY_ID, WEBMCP_RELAY_LABEL, WEBMCP_RELAY_PORT } from "./webmcp-relay-config.js";
+import {
+	WEBMCP_RELAY_ID,
+	WEBMCP_RELAY_LABEL,
+	WEBMCP_RELAY_PORT,
+	WEBMCP_TOOL_SOURCE_ORIGINS,
+} from "./webmcp-relay-config.js";
 import type { KiloLogger } from "./KiloServerManager.js";
 
 /**
@@ -55,6 +60,7 @@ export class WebMcpRelayService implements WebMcpRelayServiceHandle {
 			portExplicitlySet: true,
 			relayId: options.relayId ?? WEBMCP_RELAY_ID,
 			label: options.label ?? WEBMCP_RELAY_LABEL,
+			allowedOrigins: [...WEBMCP_TOOL_SOURCE_ORIGINS],
 		};
 		this.#createBridge =
 			options.createBridge ?? ((bridgeOptions) => new RelayBridgeServer(bridgeOptions));

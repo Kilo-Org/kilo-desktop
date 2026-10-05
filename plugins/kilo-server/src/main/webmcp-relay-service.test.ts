@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { RelayBridgeServer } from "@mcp-b/webmcp-local-relay";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WEBMCP_RELAY_ID, WEBMCP_RELAY_LABEL, WEBMCP_RELAY_PORT } from "./webmcp-relay-config.js";
 import { WebMcpRelayService, type WebMcpRelayBridge } from "./webmcp-relay-service.js";
@@ -31,6 +32,7 @@ describe("WebMcpRelayService", () => {
 			portExplicitlySet: true,
 			relayId: WEBMCP_RELAY_ID,
 			label: WEBMCP_RELAY_LABEL,
+			allowedOrigins: ["kilo-desktop://app", "kilo-desktop-dev://app"],
 		});
 		expect(logger.info).toHaveBeenCalledWith(
 			`WebMCP rendezvous listening on 127.0.0.1:${WEBMCP_RELAY_PORT}.`,
@@ -77,4 +79,54 @@ describe("WebMcpRelayService", () => {
 		await expect(starting).resolves.toBe(false);
 		expect(bridge.stop).toHaveBeenCalledOnce();
 	});
+});
+
+describe("WebMcpRelayService tool-source origins", () => {
+	let service: WebMcpRelayService | undefined;
+
+	afterEach(() => {
+		service?.dispose();
+		service = undefined;
+	});
+
+	async function startRealRelay(): Promise<number> {
+		let bridge: RelayBridgeServer | undefined;
+		service = new WebMcpRelayService({
+			port: 0,
+			createBridge: (options) => (bridge = new RelayBridgeServer(options)),
+		});
+		await expect(service.start()).resolves.toBe(true);
+		return bridge!.port;
+	}
+
+	function registerToolSource(port: number, origin: string): Promise<string> {
+		return new Promise((resolve, reject) => {
+			const socket = new WebSocket(`ws://127.0.0.1:${port}`, { headers: { origin } } as never);
+			socket.addEventListener("open", () =>
+				socket.send(JSON.stringify({ type: "hello", tabId: "tab-1", origin })),
+			);
+			socket.addEventListener("message", (event) => {
+				const { type } = JSON.parse(String(event.data)) as { type: string };
+				if (type !== "hello/accepted" && type !== "hello/rejected") return;
+				socket.close();
+				resolve(type);
+			});
+			socket.addEventListener("error", () => reject(new Error("relay socket error")));
+		});
+	}
+
+	it("rejects tool sources from web pages", async () => {
+		const port = await startRealRelay();
+
+		await expect(registerToolSource(port, "https://evil.example")).resolves.toBe("hello/rejected");
+	});
+
+	it.each(["kilo-desktop://app", "kilo-desktop-dev://app"])(
+		"accepts tool sources from the app renderer at %s",
+		async (origin) => {
+			const port = await startRealRelay();
+
+			await expect(registerToolSource(port, origin)).resolves.toBe("hello/accepted");
+		},
+	);
 });

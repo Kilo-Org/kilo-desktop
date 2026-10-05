@@ -171,6 +171,7 @@ Result: **no third-party code fetched at runtime, works offline, verified at bui
 
 - 🔒 Relay binds loopback (`127.0.0.1`) only. Never exposed to a network interface.
 - 🔒 No auth on the relay by design — any local process running as the user can see exposed tools. Opt-in via `exposeToModelContext` is the enforcement point.
+- 🔒 Only the app renderer (`kilo-desktop://app`, `kilo-desktop-dev://app`) may register **tool sources**. Both the in-process rendezvous and the stdio relay child pass this allowlist (`WEBMCP_TOOL_SOURCE_ORIGINS`), overriding the relay library's `["*"]` default, so a web page in the user's browser cannot inject tools the agent sees. The check keys on the browser-set `Origin` header; it does not authenticate local processes (see the bullet above).
 - 🔒 Third-party relay code is pinned exact (`5.1.0`) and verified by `sha256` at build time; no CDN.
 - 🔒 The relay widget runs as a **same-origin** `webmcp/widget.html?<params>` iframe (patched off the upstream `blob:` approach) under the app's hash-based CSP — no `'unsafe-inline'`. Relay code stays pinned and same-origin-served; only loopback WebSockets in the relay's port range are connectable. `blob:` frames remain allowed only for the non-custom-scheme MCP App fallback.
 - ⚠️ `readOnlyHint` is metadata for clients, **not** enforcement — the tool handler is what actually runs. Author accordingly.
@@ -474,7 +475,8 @@ attached to it can call them.
 Both halves are therefore pinned to each other:
 
 - Desktop-provided relay args: `--port 9345 --relay-id kilo-desktop`
-  (`WEBMCP_RELAY_PORT` / `WEBMCP_RELAY_ID` in
+  plus `--widget-origin kilo-desktop://app,kilo-desktop-dev://app`
+  (`WEBMCP_RELAY_PORT` / `WEBMCP_RELAY_ID` / `WEBMCP_TOOL_SOURCE_ORIGINS` in
   `plugins/kilo-server/src/main/webmcp-relay-config.ts`). Fixed-port mode
   refuses to chain to a non-relay owner; 9345 is far from the 9333 default
   foreign relays use, still inside the CSP-allowed range.

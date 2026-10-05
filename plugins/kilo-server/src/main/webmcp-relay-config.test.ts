@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import { parseCliOptions } from "@mcp-b/webmcp-local-relay";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -31,6 +32,8 @@ const RELAY_ARGS = [
 	WEBMCP_RELAY_ID,
 	"--label",
 	WEBMCP_RELAY_LABEL,
+	"--widget-origin",
+	"kilo-desktop://app,kilo-desktop-dev://app",
 ] as const;
 
 const EXPECTED_ENTRY: WebMcpRelayEntry = {
@@ -142,6 +145,26 @@ describe("reconcileWebMcpRelayConfig", () => {
 		// see apps/desktop/src/main/platform/ElectronProtocol.ts RELAY_WS_SOURCES.
 		expect(WEBMCP_RELAY_PORT).toBeGreaterThanOrEqual(9333);
 		expect(WEBMCP_RELAY_PORT).toBeLessThanOrEqual(9348);
+	});
+
+	it("restricts the relay child's tool sources to the app renderer origins", async () => {
+		await reconcileWebMcpRelayConfig({
+			configDirectory: configDir,
+			appExecutablePath: APP_EXE,
+			resolveRelay: fakeResolveRelay,
+		});
+		const config = await readConfig();
+		const entry = (config.mcp as Record<string, unknown>)[MCP_ENTRY_NAME] as {
+			command: string[];
+		};
+
+		// The child becomes the relay server when Desktop's in-process bridge
+		// cannot bind the port; without this its CLI default admits any web page.
+		const [, , ...relayArgs] = entry.command;
+		expect(parseCliOptions(relayArgs).allowedOrigins).toEqual([
+			"kilo-desktop://app",
+			"kilo-desktop-dev://app",
+		]);
 	});
 
 	it("is idempotent: a second run returns 'up-to-date' and does not touch the files", async () => {

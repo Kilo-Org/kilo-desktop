@@ -12,13 +12,13 @@ import { execa } from "execa";
 import isEqual from "lodash/isEqual.js";
 
 import type { KiloServerConnection, KiloServerStatus } from "../contracts/schemas.js";
+import { APP_RENDERER_ORIGINS } from "./app-renderer-origins.js";
 import { KILO_CLI_VERSION } from "./cli-distribution/artifacts.js";
 import type { ContributedEnvManager } from "./ContributedEnvManager.js";
 import { kiloPluginConfigContent, listManagedKiloPluginFiles } from "./managed-kilo-plugins.js";
 
 const execFile = promisify(execFileCallback);
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost"]);
-const DEFAULT_CORS_ORIGINS = ["kilo-desktop://app", "kilo-desktop-dev://app"] as const;
 const GENERIC_STARTUP_ERROR = "Kilo server failed to start.";
 
 class KiloOperationalError extends Error {}
@@ -284,7 +284,7 @@ export class KiloServerManager {
 			...(options.installationId !== undefined ? { installationId: options.installationId } : {}),
 			expectedVersion: options.expectedVersion ?? KILO_CLI_VERSION,
 			allowVersionMismatch: options.allowVersionMismatch ?? false,
-			corsOrigins: options.corsOrigins ?? DEFAULT_CORS_ORIGINS,
+			corsOrigins: options.corsOrigins ?? APP_RENDERER_ORIGINS,
 			environment: options.environment ?? process.env,
 			platform: options.platform ?? process.platform,
 			fetch: options.fetch,

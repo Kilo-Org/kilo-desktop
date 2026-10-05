@@ -1,5 +1,6 @@
 import path from "node:path";
 
+import { APP_RENDERER_ORIGINS } from "./app-renderer-origins.js";
 import type { KiloLogger } from "./KiloServerManager.js";
 import {
 	KILO_CONFIG_FILENAME,
@@ -25,6 +26,13 @@ const STALE_WEBMCP_RELAY_ENTRY_NAMES = ["anaconda-desktop-relay"] as const;
 export const WEBMCP_RELAY_PORT = 9345;
 export const WEBMCP_RELAY_ID = "kilo-desktop";
 export const WEBMCP_RELAY_LABEL = "Kilo Desktop";
+
+/**
+ * Page origins allowed to register tool sources on the relay. Restricts tool
+ * sources to the app renderer; the relay library's default admits any origin.
+ * External MCP clients connect without an Origin header and are unaffected.
+ */
+export const WEBMCP_TOOL_SOURCE_ORIGINS = APP_RENDERER_ORIGINS;
 
 export type WebMcpChannel = "development" | "preview" | "stable";
 
@@ -104,6 +112,8 @@ export function buildWebMcpRelayArgv(
 		options?.relayId ?? WEBMCP_RELAY_ID,
 		"--label",
 		options?.label ?? WEBMCP_RELAY_LABEL,
+		"--widget-origin",
+		WEBMCP_TOOL_SOURCE_ORIGINS.join(","),
 	];
 }
 

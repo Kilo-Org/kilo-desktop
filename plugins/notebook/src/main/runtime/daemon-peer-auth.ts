@@ -18,9 +18,8 @@
  *   defense in depth, not a hard boundary against a
  *   same-user attacker: that user can run the genuine binary under `LD_PRELOAD`
  *   / `DYLD_INSERT_LIBRARIES` (absent a hardened runtime), attach with ptrace,
- *   or replace a user-writable install outright (see the Tampering rows in
- *   `docs/security/threat-model.md`). It raises the bar; it does not by itself
- *   stop a determined local attacker.
+ *   or replace a user-writable install outright. It raises the bar; it does not
+ *   by itself stop a determined local attacker.
  *
  * Known residual risks (documented, not fully closed here):
  * - Check-vs-use (TOCTOU): the credential read uses its own short-lived

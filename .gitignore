@@ -187,3 +187,6 @@ ldclient-user-cache/
 # Local SBOM generation output (see .github/actions/generate-sbom)
 sbom-output/
 sbom-scan/
+
+# Threat-model scan reports — never committed (lists open gaps in detail)
+docs/security/local/

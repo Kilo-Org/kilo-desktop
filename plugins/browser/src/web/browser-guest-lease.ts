@@ -19,6 +19,19 @@ export type BrowserGuestLease = GuestEntry & { release(): void };
 
 const guests = new Map<string, GuestEntry>();
 
+// Removing the host disconnects its child <webview>, which synchronously runs
+// Electron's internal disconnectedCallback. When the guest's webContents was
+// already torn down, that callback throws `Invalid guestInstanceId`. The node is
+// detached regardless, so the error is a benign teardown race and must not escape
+// the release timer as an unhandled renderer error.
+function removeGuestHost(host: HTMLDivElement): void {
+	try {
+		host.remove();
+	} catch {
+		// Guest already destroyed; the host is detached either way.
+	}
+}
+
 function createGuest(instanceId: string, partition: string, src: string): GuestEntry {
 	const host = document.createElement("div");
 	host.dataset.browserWebviewHost = instanceId;
@@ -62,7 +75,7 @@ export function acquireBrowserGuest(
 			entry.releaseTimer = window.setTimeout(() => {
 				if (entry.references > 0 || guests.get(instanceId) !== entry) return;
 				guests.delete(instanceId);
-				entry.host.remove();
+				removeGuestHost(entry.host);
 			}, RELEASE_DELAY_MS);
 		},
 	};

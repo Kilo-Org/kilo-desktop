@@ -135,6 +135,11 @@ export class ElectronWindow {
 			minWidth: 480,
 			minHeight: 360,
 			webPreferences: {
+				// Pane windows can host the same plugin panes as the main window,
+				// including the browser pane's <webview>. Without this the popped-out
+				// browser renders a blank surface. The will-attach-webview guard in
+				// #createWindow still restricts guests to BROWSER_PARTITION.
+				webviewTag: true,
 				additionalArguments: ["--kilo-window-role=pane"],
 			},
 		});

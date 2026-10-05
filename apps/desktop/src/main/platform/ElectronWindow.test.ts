@@ -273,7 +273,7 @@ describe("ElectronWindow theme chrome", () => {
 		expect(windows.main).toBeUndefined();
 	});
 
-	it("enables webviews only in the main application window", () => {
+	it("enables webviews in the main window and in popped-out pane windows", () => {
 		const windows = new ElectronWindow(createShell() as never, () => false);
 		windows.create({ isDevelopment: false });
 		windows.openPaneWindow(
@@ -281,8 +281,10 @@ describe("ElectronWindow theme chrome", () => {
 			false,
 		);
 
+		// Pane windows host the same plugin panes as the main window, including the
+		// browser pane's <webview>; without the tag the popped-out browser is blank.
 		expect(createdWindows[0]?.options.webPreferences?.webviewTag).toBe(true);
-		expect(createdWindows[1]?.options.webPreferences?.webviewTag).toBe(false);
+		expect(createdWindows[1]?.options.webPreferences?.webviewTag).toBe(true);
 	});
 
 	it("gives the main and pane windows the native context menu", () => {

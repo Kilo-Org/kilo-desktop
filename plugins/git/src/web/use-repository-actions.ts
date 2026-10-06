@@ -1,7 +1,7 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
-import { useSdk, useSdkQuery } from "@kilo-desktop/sdk-react";
+import { sdkQueryOptions, useSdk, useSdkQuery } from "@kilo-desktop/sdk-react";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import type { GitServiceContract } from "../contracts/schemas.js";
@@ -90,7 +90,16 @@ export function useRepositoryActions(workspaceDirectory: string): RepositoryActi
 	const [pushError, setPushError] = useState<string | null>(null);
 	const refreshPullRequest = useGitPrStatusStore((state) => state.refresh);
 	const statusQuery = useSdkQuery(sdk, "status", { workingDirectory: workspaceDirectory });
-	const branchesQuery = useSdkQuery(sdk, "branches", { workingDirectory: workspaceDirectory });
+	// `status` tolerates a missing repository (it resolves `null`), but the
+	// branch probes do not: gate them on the repository-type probe so a
+	// non-repo workspace never spawns a failing `for-each-ref`.
+	const typeQuery = useQuery(
+		sdkQueryOptions(sdk, "repositoryType", { workingDirectory: workspaceDirectory }),
+	);
+	const branchesQuery = useQuery({
+		...sdkQueryOptions(sdk, "branches", { workingDirectory: workspaceDirectory }),
+		enabled: typeQuery.data?.kind === "regular",
+	});
 	const originQuery = useSdkQuery(sdk, "originUrl", { workingDirectory: workspaceDirectory });
 	const workingTreeStatsQuery = useSdkQuery(sdk, "workingTreeStats", {
 		workingDirectory: workspaceDirectory,

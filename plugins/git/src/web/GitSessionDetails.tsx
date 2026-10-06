@@ -17,9 +17,10 @@ export interface GitSessionDetailsProps {
 /**
  * Branch line for the session hover card (`kilo-ui/chat-session-details-branch`).
  * The card mounts only while open, so the live `branches` probe runs on
- * demand; the cached PR snapshot and the stamped worktree branch fill in
- * until it answers (or when the directory is not a repository). Renders
- * nothing when no branch is known.
+ * demand — gated on the repository-type probe, so a non-repo directory never
+ * spawns the failing `for-each-ref`; the cached PR snapshot and the stamped
+ * worktree branch fill in until it answers (or when the directory is not a
+ * repository). Renders nothing when no branch is known.
  */
 export function GitSessionDetailsBranch({
 	statusId,
@@ -30,8 +31,15 @@ export function GitSessionDetailsBranch({
 	const cachedBranch = useGitPrStatusStore(
 		(state) => state.snapshots[statusId]?.snapshot.branch ?? undefined,
 	);
+	// Only a regular repository has branches to probe: gate the live query on
+	// the repository-type probe so a non-repo directory never spawns a failing
+	// `for-each-ref` (the cached snapshot and stamped worktree branch fill in).
+	const typeQuery = useQuery(
+		sdkQueryOptions(sdk, "repositoryType", { workingDirectory: directory }),
+	);
 	const query = useQuery({
 		...sdkQueryOptions(sdk, "branches", { workingDirectory: directory }),
+		enabled: typeQuery.data?.kind === "regular",
 		retry: false,
 	});
 	const branch = query.data

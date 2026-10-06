@@ -7,11 +7,17 @@ import { FeatureError } from "@kilo-desktop/feature-sdk";
 import { SdkProvider } from "@kilo-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 
-import { gitActionsContract, gitContract } from "../contracts/schemas.js";
+import { gitActionsContract, gitContract, type GitRepositoryType } from "../contracts/schemas.js";
 import { GitActionsControl } from "./GitActionsControl.js";
 
 const toastApi = vi.hoisted(() => ({ error: vi.fn() }));
 vi.mock("@kilo-desktop/ui/components/sonner", () => ({ toast: toastApi }));
+
+const regularRepositoryType: GitRepositoryType = {
+	kind: "regular",
+	topLevelWorkingDirectory: "/repo/project",
+	gitDir: "/repo/project/.git",
+};
 
 afterEach(() => {
 	cleanup();
@@ -26,6 +32,7 @@ it("tracks a generated commit message without its content", async () => {
 		channels: { ...gitContract, ...gitActionsContract },
 		telemetry: { track },
 		handlers: {
+			repositoryType: () => regularRepositoryType,
 			status: () => ({
 				exists: true,
 				doConflictedFilesExist: false,
@@ -85,6 +92,7 @@ it.each(["primary", "menu", "default branch"])(
 			featureId: "git",
 			channels: { ...gitContract, ...gitActionsContract },
 			handlers: {
+				repositoryType: () => regularRepositoryType,
 				status: () => ({
 					exists: true,
 					doConflictedFilesExist: false,
@@ -190,3 +198,42 @@ it.each(["primary", "menu", "default branch"])(
 		}
 	},
 );
+
+it("never probes branches for a non-repository workspace", async () => {
+	const repositoryType = vi.fn(() => ({ kind: "missing" }) as const);
+	const branches = vi.fn(() => ({
+		currentBranch: "feature",
+		defaultBranch: "main",
+		recentBranches: [],
+		branches: [],
+	}));
+	const sdk = createFakeSdk({
+		featureId: "git",
+		channels: { ...gitContract, ...gitActionsContract },
+		handlers: {
+			repositoryType,
+			status: () => null,
+			branches,
+			originUrl: () => null,
+			workingTreeStats: () => ({ additions: 0, deletions: 0 }),
+		},
+	});
+	const system = createFakeFeatureSystem({ sdks: { git: sdk } });
+	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	try {
+		render(
+			<SdkProvider system={system}>
+				<QueryClientProvider client={queryClient}>
+					<GitActionsControl workspaceDirectory="/tmp/not-a-repo" />
+				</QueryClientProvider>
+			</SdkProvider>,
+		);
+
+		await vi.waitFor(() => expect(repositoryType).toHaveBeenCalled());
+		expect(branches).not.toHaveBeenCalled();
+	} finally {
+		cleanup();
+		queryClient.clear();
+		sdk.destroy();
+	}
+});

@@ -48,6 +48,8 @@ import type {
 	McpParameter,
 } from "../contracts/schemas.js";
 import { filterMarketplaceItems, installedScopes, matchesSearch } from "./marketplace-filter.js";
+import { mcpLaunchCommand, missingCommand } from "./mcp-commands.js";
+import { MissingCommandAlert, MissingCommandFix, useMissingCommand } from "./MissingCommandHelp.js";
 import {
 	sdkQueryOptions,
 	SettingsPageHeader,
@@ -670,6 +672,7 @@ function ItemMetadata({
 	onOpenLink,
 	categoryQaId,
 	authorQaId,
+	authorClassName = "text-muted-foreground",
 	className,
 }: {
 	item: MarketplaceListItem;
@@ -677,12 +680,13 @@ function ItemMetadata({
 	onOpenLink(url: string): void;
 	categoryQaId?: string;
 	authorQaId: string;
+	authorClassName?: string;
 	className?: string;
 }) {
 	const link = itemLink(item);
 	return (
 		<div className={cn("flex min-w-0 items-center gap-3 text-xs", className)}>
-			<span className="text-muted-foreground min-w-0 truncate" data-qa-id={authorQaId}>
+			<span className={cn("min-w-0 truncate", authorClassName)} data-qa-id={authorQaId}>
 				By {author}
 			</span>
 			{link ? (
@@ -964,35 +968,43 @@ function InstalledCard({
 							<LockIcon className="size-3.5" aria-hidden="true" />
 						</span>
 					) : null}
-					{needsAuth ? (
-						<Badge variant="outline" data-qa-id={`marketplace-mcp-auth-needed-${item.id}`}>
-							<CircleAlertIcon aria-hidden="true" />
-							Needs sign-in
-						</Badge>
+					{item.type === "mcp" ? (
+						<span className={cn(HEADER_SLOT_CLASS, "w-[8.25rem] justify-center")}>
+							{failed ? (
+								<Badge
+									variant="destructive"
+									className="border-destructive/50"
+									data-qa-id={`marketplace-mcp-failed-${item.id}`}
+								>
+									<CircleAlertIcon aria-hidden="true" />
+									Needs attention
+								</Badge>
+							) : needsAuth ? (
+								<Badge variant="outline" data-qa-id={`marketplace-mcp-auth-needed-${item.id}`}>
+									<CircleAlertIcon aria-hidden="true" />
+									Needs sign-in
+								</Badge>
+							) : disabled ? (
+								<Badge variant="secondary" data-qa-id={`marketplace-mcp-disabled-${item.id}`}>
+									Disabled
+								</Badge>
+							) : null}
+						</span>
 					) : null}
-					{failed ? (
-						<Badge variant="destructive" data-qa-id={`marketplace-mcp-failed-${item.id}`}>
-							<CircleAlertIcon aria-hidden="true" />
-							Failed
+					<span className={cn(HEADER_SLOT_CLASS, "hidden w-36 justify-end @xl:flex")}>
+						<Badge
+							variant="secondary"
+							className="max-w-full"
+							data-qa-id={`marketplace-card-location-summary-${item.type}-${item.id}`}
+						>
+							{included || primaryInstallation?.scope === "global" ? (
+								<EarthIcon aria-hidden="true" />
+							) : (
+								<FolderIcon aria-hidden="true" />
+							)}
+							<span className="truncate">{locationSummary}</span>
 						</Badge>
-					) : null}
-					{disabled ? (
-						<Badge variant="secondary" data-qa-id={`marketplace-mcp-disabled-${item.id}`}>
-							Disabled
-						</Badge>
-					) : null}
-					<Badge
-						variant="secondary"
-						className="hidden max-w-48 @xl:inline-flex"
-						data-qa-id={`marketplace-card-location-summary-${item.type}-${item.id}`}
-					>
-						{included || primaryInstallation?.scope === "global" ? (
-							<EarthIcon aria-hidden="true" />
-						) : (
-							<FolderIcon aria-hidden="true" />
-						)}
-						<span className="truncate">{locationSummary}</span>
-					</Badge>
+					</span>
 					<SummaryCard.Toggle
 						label={toggleLabel}
 						open={detailsOpen}
@@ -1022,6 +1034,12 @@ function InstalledCard({
 		</Collapsible>
 	);
 }
+
+// Fixed-width header slots keep badges and description truncation aligned
+// across rows. SummaryCard.Actions re-enables pointer events on its children so
+// buttons there stay clickable; these slots only hold informational badges, so
+// clicks fall through to the row's expand overlay instead.
+const HEADER_SLOT_CLASS = "pointer-events-none! flex min-w-0 shrink-0";
 
 function InstalledDetails({
 	item,
@@ -1057,6 +1075,7 @@ function InstalledDetails({
 					onOpenLink={onOpenLink}
 					categoryQaId={`marketplace-card-category-${item.type}-${item.id}`}
 					authorQaId={`marketplace-card-author-${item.type}-${item.id}`}
+					authorClassName="text-foreground"
 				/>
 			</FieldSet>
 
@@ -1101,6 +1120,8 @@ function InstalledDetails({
 								installation.scope === "workspace" &&
 								!targets.some((target) => target.id === installation.workspaceId);
 							const location = installationLabel(installation, targets);
+							const missingLaunchCommand =
+								status?.status === "failed" ? missingCommand(status.error) : undefined;
 							return (
 								<div key={destination} className="flex min-w-0 items-center gap-2 px-2.5 py-1.5">
 									{installation.scope === "global" ? (
@@ -1115,8 +1136,9 @@ function InstalledDetails({
 										>
 											{location}
 										</span>
-										{status?.status === "failed" ||
-										status?.status === "needs_client_registration" ? (
+										{(status?.status === "failed" ||
+											status?.status === "needs_client_registration") &&
+										!missingLaunchCommand ? (
 											<span
 												className="text-destructive text-2xs block leading-4 break-words"
 												data-qa-id={`marketplace-mcp-error-${item.id}-${destination}`}
@@ -1140,6 +1162,11 @@ function InstalledDetails({
 										<span className="text-destructive text-2xs shrink-0 font-medium">
 											Requires setup
 										</span>
+									) : missingLaunchCommand ? (
+										<MissingCommandFix
+											command={missingLaunchCommand}
+											qaId={`marketplace-mcp-fix-${item.id}-${destination}`}
+										/>
 									) : status?.status === "failed" ? (
 										<span className="text-destructive text-2xs shrink-0 font-medium">Failed</span>
 									) : status?.status === "disabled" ? (
@@ -1189,6 +1216,12 @@ function InstalledDetails({
 			</FieldSet>
 		</div>
 	);
+}
+
+function selectedMcpContent(item: MarketplaceItem, method: string | undefined): string | undefined {
+	if (item.type !== "mcp") return undefined;
+	if (typeof item.content === "string") return item.content;
+	return item.content.find((entry) => entry.name === method)?.content;
 }
 
 function mcpMethods(item: MarketplaceItem): McpMethod[] {
@@ -1279,6 +1312,10 @@ function InstallDialog({
 		method && item.type === "mcp"
 			? (methods.find((entry) => entry.name === method)?.prerequisites ?? item.prerequisites)
 			: item.prerequisites;
+	const selectedContent = selectedMcpContent(item, method);
+	const missingLaunchCommand = useMissingCommand(
+		selectedContent ? mcpLaunchCommand(selectedContent) : undefined,
+	);
 	const close = () => {
 		if (submitting) return;
 		onClose();
@@ -1443,6 +1480,10 @@ function InstallDialog({
 							</PopoverContent>
 						</Popover>
 					</Field>
+
+					{missingLaunchCommand ? (
+						<MissingCommandAlert missing={missingLaunchCommand} onFixInChat={close} />
+					) : null}
 
 					{methods.length > 1 || prerequisites?.length || required.length > 0 ? (
 						<div className="grid gap-4">

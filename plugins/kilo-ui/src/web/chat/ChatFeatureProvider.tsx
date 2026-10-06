@@ -12,6 +12,7 @@ import type {
 	KiloUiChatService,
 } from "../../contracts/chat/schemas.js";
 import { useWorkspacesFeature } from "../workspaces/WorkspacesFeatureContext.js";
+import { ChatComposerCapabilityHost } from "./ChatComposerCapabilityHost.js";
 import { resolveChatWorkspaceDirectory } from "./chat-workspace-directory.js";
 import { navigateToChat } from "./chat-navigation.js";
 import { resolveModelEffort } from "./components/assistant-ui/model-selector.js";
@@ -637,6 +638,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 										isAwaitingSession={isAwaitingWorktreeSession}
 									>
 										<AssistantRuntimeProvider aui={aui} runtime={runtime}>
+											<ChatComposerCapabilityHost />
 											<SubagentActivityProvider>
 												<KiloSessionSelectionSync
 													hydrateAgent={hydrateThreadAgent}

@@ -1,3 +1,7 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createFakeMainSdk, createFakeSdk } from "@kilo-desktop/testing";
@@ -386,5 +390,42 @@ describe("kilo-marketplace mainRegister", () => {
 				scope: "global",
 			}),
 		).rejects.toMatchObject({ code: "BUSINESS", message: "Config is read-only." });
+	});
+
+	it("reports which MCP launch commands are missing from the PATH Kilo inherits", async () => {
+		const bin = await mkdtemp(path.join(tmpdir(), "marketplace-commands-"));
+		await Promise.all(
+			["present-tool", "brew", "winget"].flatMap((tool) => [
+				writeFile(path.join(bin, tool), "#!/bin/sh\n", { mode: 0o755 }),
+				writeFile(path.join(bin, `${tool}.cmd`), "@echo off\r\n", { mode: 0o755 }),
+			]),
+		);
+		vi.stubEnv("PATH", bin);
+		const harness = createFakeSdk({ featureId: "harness" });
+		const mainSdk = createFakeMainSdk({
+			featureId: "kilo-marketplace",
+			services: harness.services,
+			storageDir: "/storage",
+		});
+		mainRegister(mainSdk);
+		disposables.push(async () => {
+			vi.unstubAllEnvs();
+			await mainSdk.disposeAsync();
+			harness.destroy();
+			await rm(bin, { recursive: true, force: true });
+		});
+
+		await expect(
+			mainSdk.invoke("marketplace.checkCommands", { commands: ["present-tool", "absent-tool"] }),
+		).resolves.toEqual({ missing: [{ command: "absent-tool", installCommands: [] }] });
+		const nodeInstall: Partial<Record<NodeJS.Platform, string[]>> = {
+			darwin: ["brew install node"],
+			win32: ["winget install OpenJS.NodeJS.LTS"],
+		};
+		await expect(
+			mainSdk.invoke("marketplace.checkCommands", { commands: ["npx"] }),
+		).resolves.toEqual({
+			missing: [{ command: "npx", installCommands: nodeInstall[process.platform] ?? [] }],
+		});
 	});
 });

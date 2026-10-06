@@ -8,7 +8,9 @@ import {
 	type MarketplaceService,
 	type MarketplaceTarget,
 } from "../contracts/schemas.js";
+import { installCommands } from "../contracts/runtimes.js";
 import { readFile } from "node:fs/promises";
+import which from "which";
 import { z } from "zod";
 import { parse as parseYaml } from "yaml";
 import {
@@ -117,7 +119,8 @@ function operationError(error: unknown): never {
  * Marketplace registration adapts Kilo's Marketplace HTTP API to Desktop's
  * multi-workspace view. Kilo owns catalog, detection, and mutation; Desktop
  * enriches those results with workspace identity, runtime inventory/status,
- * and Desktop-managed MCPs. Global inventory is read from the mutation context
+ * Desktop-managed MCPs, and whether MCP launch commands resolve on PATH (Kilo
+ * installs without checking). Global inventory is read from the mutation context
  * because Kilo invalidates discovery per directory.
  */
 export function mainRegister(mainSdk: MainSdk): void {
@@ -502,6 +505,19 @@ export function mainRegister(mainSdk: MainSdk): void {
 			} catch (error) {
 				return operationError(error);
 			}
+		},
+		// The Kilo server inherits Desktop's PATH (reserved from config overrides), so
+		// resolving here predicts whether Kilo can spawn a local MCP's launch command.
+		"marketplace.checkCommands": async ({ commands }) => {
+			const onPath = (command: string) => which.sync(command, { nothrow: true }) !== null;
+			return {
+				missing: commands
+					.filter((command) => !onPath(command))
+					.map((command) => ({
+						command,
+						installCommands: installCommands(command, process.platform, onPath),
+					})),
+			};
 		},
 	};
 

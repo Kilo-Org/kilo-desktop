@@ -5,6 +5,7 @@ import { page } from "vitest/browser";
 
 import {
 	marketplaceContract,
+	type MarketplaceItem,
 	type MarketplaceMutationInput,
 	type MarketplaceSnapshot,
 } from "../contracts/schemas.js";
@@ -50,7 +51,12 @@ afterEach(() => cleanup());
 
 function renderPage(
 	data: MarketplaceSnapshot = snapshot,
-	options: { activeWorkspaceId?: string; holdList?: boolean } = {},
+	options: {
+		activeWorkspaceId?: string;
+		holdList?: boolean;
+		/** Missing launch commands mapped to the install commands main suggests for them. */
+		missingCommands?: Record<string, string[]>;
+	} = {},
 ) {
 	let current = data;
 	let holdingList = options.holdList ?? false;
@@ -72,6 +78,14 @@ function renderPage(
 	});
 	const remove = vi.fn(async () => ({ ok: true as const, path: "/tmp/reviewer.md" }));
 	const authenticateMcp = vi.fn(async () => ({ ok: true as const }));
+	const missingCommands = options.missingCommands ?? {};
+	const checkCommands = vi.fn(async ({ commands }: { commands: string[] }) => ({
+		missing: commands.flatMap((command) => {
+			const installCommands = missingCommands[command];
+			return installCommands ? [{ command, installCommands }] : [];
+		}),
+	}));
+	const startNewChat = vi.fn(async (_input: { text: string }) => {});
 	const refresh = vi.fn(async () => current);
 	const list = vi.fn(() =>
 		holdingList
@@ -79,11 +93,12 @@ function renderPage(
 			: Promise.resolve(current),
 	);
 	const openExternal = vi.fn(async () => ({ opened: true as const }));
+	const copyText = vi.fn(async (_text: string) => {});
 	const track = vi.fn(async (_input: { event: string; data: Record<string, unknown> }) => {});
 	const sdk = createFakeSdk({
 		featureId: "kilo-marketplace",
 		channels: marketplaceContract,
-		shell: { openExternal },
+		shell: { openExternal, copyText },
 		telemetry: { track },
 		handlers: {
 			"marketplace.list": list,
@@ -91,9 +106,11 @@ function renderPage(
 			"marketplace.install": install,
 			"marketplace.remove": remove,
 			"marketplace.authenticateMcp": authenticateMcp,
+			"marketplace.checkCommands": checkCommands,
 		},
 	});
 	const system = createFakeFeatureSystem({ sdks: { "kilo-marketplace": sdk } });
+	system.getSdk("kilo-ui").plugins.expose("chatComposer", { startNewChat });
 	if (options.activeWorkspaceId) {
 		system.getSdk("kilo-ui").state.register("active-workspace", options.activeWorkspaceId);
 	}
@@ -109,6 +126,7 @@ function renderPage(
 		authenticateMcp,
 		baseElement,
 		client,
+		copyText,
 		install,
 		list,
 		openExternal,
@@ -122,6 +140,7 @@ function renderPage(
 		setSnapshot(next: MarketplaceSnapshot) {
 			current = next;
 		},
+		startNewChat,
 	};
 }
 
@@ -1545,6 +1564,82 @@ describe("MarketplaceSettings", () => {
 			});
 	});
 
+	const playwrightMcp: MarketplaceItem = {
+		type: "mcp",
+		id: "playwright",
+		name: "Playwright",
+		description: "Automates browsers",
+		category: "web-automation",
+		url: "https://github.com/microsoft/playwright-mcp",
+		content: [
+			{
+				name: "NPX",
+				content: '{"command":"npx","args":["-y","@playwright/mcp"]}',
+				prerequisites: ["Node.js 18+"],
+			},
+			{ name: "Remote", content: '{"url":"https://example.com/mcp"}' },
+		],
+	};
+
+	it("warns before installing an MCP whose launch command is missing, without blocking", async () => {
+		const { copyText, install, openExternal } = renderPage(
+			{ ...snapshot, items: [playwrightMcp] },
+			{ missingCommands: { npx: ["brew install node"] } },
+		);
+
+		await openBrowse();
+		await page.getByTestId("marketplace-install-mcp-playwright").click();
+		const help = page.getByTestId("marketplace-install-missing-command");
+		await expect
+			.element(help.getByText("npx was not found. Install Node.js, then restart Kilo Desktop."))
+			.toBeVisible();
+		await expect.element(help.getByText("brew install node")).toBeVisible();
+		await help.getByRole("button", { name: "Copy brew install node" }).click();
+		await expect.poll(() => copyText).toHaveBeenCalledWith("brew install node");
+		await help.getByRole("link", { name: "Installation" }).click();
+		await expect.poll(() => openExternal).toHaveBeenCalledWith("https://nodejs.org/en/download");
+
+		await page.getByTestId("marketplace-install-method").click();
+		await page.getByRole("option", { name: "Remote" }).click();
+		await expect
+			.element(page.getByTestId("marketplace-install-missing-command"))
+			.not.toBeInTheDocument();
+
+		await page.getByTestId("marketplace-install-method").click();
+		await page.getByRole("option", { name: "NPX" }).click();
+		await expect.element(page.getByTestId("marketplace-install-missing-command")).toBeVisible();
+		await page.getByTestId("marketplace-install-confirm").click();
+		await expect
+			.poll(() => install)
+			.toHaveBeenCalledWith({
+				item: { type: "mcp", id: "playwright" },
+				scope: "global",
+				method: "NPX",
+			});
+	});
+
+	it("hands a missing launch command to a new chat as an unsent draft", async () => {
+		const { install, startNewChat } = renderPage(
+			{ ...snapshot, items: [playwrightMcp] },
+			{ missingCommands: { npx: [] } },
+		);
+
+		await openBrowse();
+		await page.getByTestId("marketplace-install-mcp-playwright").click();
+		await page
+			.getByTestId("marketplace-install-missing-command")
+			.getByRole("button", { name: "Fix in chat" })
+			.click();
+
+		await expect
+			.poll(() => startNewChat)
+			.toHaveBeenCalledWith({
+				text: expect.stringContaining("Kilo Desktop can't find the `npx` command"),
+			});
+		await expect.element(page.getByTestId("marketplace-install-dialog")).not.toBeInTheDocument();
+		expect(install).not.toHaveBeenCalled();
+	});
+
 	it("merges item and method MCP parameters with method definitions taking precedence", async () => {
 		const { install } = renderPage({
 			...snapshot,
@@ -1902,7 +1997,40 @@ describe("MarketplaceSettings", () => {
 			.toHaveTextContent("Sign in");
 	});
 
-	it("flags failed and disabled MCP locations and shows the failure reason", async () => {
+	it("expands and collapses an installed card from its header status badges", async () => {
+		renderPage({
+			...snapshot,
+			items: [
+				{
+					type: "mcp",
+					id: "github",
+					name: "GitHub",
+					description: "Connects GitHub tools",
+					category: "development",
+					url: "https://mcp.example.com",
+					content: '{"type":"remote","url":"https://mcp.example.com"}',
+				},
+			],
+			installed: [
+				{ type: "mcp", id: "github", scope: "global" },
+				{ type: "mcp", id: "github", scope: "workspace", workspaceId: "workspace-1" },
+			],
+			mcpInstallationStatuses: {
+				"github:global": { status: "failed", error: "Operation timed out after 30000ms" },
+				"github:workspace-1": { status: "disabled" },
+			},
+		});
+		const trigger = page.getByTestId("marketplace-card-trigger-mcp-github");
+
+		// force: badges let clicks fall through to the row overlay, which Playwright's
+		// actionability check would otherwise report as the badge being covered.
+		await page.getByTestId("marketplace-mcp-failed-github").click({ force: true });
+		await expect.element(trigger).toHaveAttribute("aria-expanded", "true");
+		await page.getByTestId("marketplace-mcp-failed-github").click({ force: true });
+		await expect.element(trigger).toHaveAttribute("aria-expanded", "false");
+	});
+
+	it("summarises the worst MCP status in the header and lists each location's status", async () => {
 		const mcp = {
 			type: "mcp" as const,
 			id: "github",
@@ -1920,24 +2048,64 @@ describe("MarketplaceSettings", () => {
 				{ type: "mcp", id: "github", scope: "workspace", workspaceId: "workspace-1" },
 			],
 			mcpInstallationStatuses: {
-				"github:global": { status: "failed", error: "spawn npx ENOENT" },
+				"github:global": { status: "failed", error: "Operation timed out after 30000ms" },
 				"github:workspace-1": { status: "disabled" },
 			},
 		});
 
 		await expect
 			.element(page.getByTestId("marketplace-mcp-failed-github"))
-			.toHaveTextContent("Failed");
+			.toHaveTextContent("Needs attention");
 		await expect
 			.element(page.getByTestId("marketplace-mcp-disabled-github"))
-			.toHaveTextContent("Disabled");
+			.not.toBeInTheDocument();
 		await page.getByTestId("marketplace-card-trigger-mcp-github").click();
 		await expect
 			.element(page.getByTestId("marketplace-mcp-error-github-global"))
-			.toHaveTextContent("spawn npx ENOENT");
+			.toHaveTextContent("Operation timed out after 30000ms");
+		await expect
+			.element(page.getByTestId("marketplace-card-details-mcp-github").getByText("Disabled"))
+			.toBeVisible();
 		await expect
 			.element(page.getByTestId("marketplace-mcp-error-github-workspace-1"))
 			.not.toBeInTheDocument();
+	});
+
+	it("tells the user how to install an installed MCP's missing launch command", async () => {
+		const { startNewChat } = renderPage(
+			{
+				...snapshot,
+				items: [playwrightMcp],
+				installed: [{ type: "mcp", id: "playwright", scope: "global" }],
+				mcpInstallationStatuses: {
+					"playwright:global": {
+						status: "failed",
+						error: 'Executable not found in $PATH: "npx"',
+					},
+				},
+			},
+			{ missingCommands: { npx: ["brew install node"] } },
+		);
+
+		await page.getByTestId("marketplace-card-trigger-mcp-playwright").click();
+		await expect
+			.element(page.getByTestId("marketplace-mcp-error-playwright-global"))
+			.not.toBeInTheDocument();
+		await expect.element(page.getByText("brew install node")).not.toBeInTheDocument();
+
+		await page.getByRole("button", { name: "Fix", exact: true }).click();
+		const help = page.getByRole("dialog", { name: "npx was not found" });
+		await expect
+			.element(help.getByText("Install Node.js, then restart Kilo Desktop.", { exact: false }))
+			.toBeVisible();
+		await expect.element(help.getByText("brew install node")).toBeVisible();
+		await help.getByRole("button", { name: "Fix in chat" }).click();
+		await expect
+			.poll(() => startNewChat)
+			.toHaveBeenCalledWith({
+				text: expect.stringContaining("Kilo Desktop can't find the `npx` command"),
+			});
+		await expect.element(help).not.toBeInTheDocument();
 	});
 
 	it("flags an installed MCP that requires client registration", async () => {

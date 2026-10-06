@@ -151,6 +151,24 @@ export const marketplaceMcpAuthenticateInputSchema = z.object({
 	workspaceId: z.string().optional(),
 });
 
+/** A bare executable name resolved through PATH; paths and templates are never probed. */
+export const mcpCommandSchema = z.string().regex(/^[\w.+-]+$/);
+
+export const marketplaceCheckCommandsInputSchema = z.object({
+	commands: z.array(mcpCommandSchema).max(16),
+});
+
+export const missingMcpCommandSchema = z.object({
+	command: mcpCommandSchema,
+	/** Commands that install the runtime providing `command` on this OS; empty when there is no safe one-liner. */
+	installCommands: z.array(z.string()),
+});
+export type MissingMcpCommand = z.infer<typeof missingMcpCommandSchema>;
+
+export const marketplaceCheckCommandsResultSchema = z.object({
+	missing: z.array(missingMcpCommandSchema),
+});
+
 export const marketplaceContract = defineContract({
 	"marketplace.list": defineMethod(marketplaceListInputSchema, marketplaceSnapshotSchema),
 	"marketplace.refresh": defineMethod(marketplaceListInputSchema, marketplaceSnapshotSchema),
@@ -165,6 +183,10 @@ export const marketplaceContract = defineContract({
 	"marketplace.authenticateMcp": defineMethod(
 		marketplaceMcpAuthenticateInputSchema,
 		marketplaceMutationResultSchema,
+	),
+	"marketplace.checkCommands": defineMethod(
+		marketplaceCheckCommandsInputSchema,
+		marketplaceCheckCommandsResultSchema,
 	),
 });
 

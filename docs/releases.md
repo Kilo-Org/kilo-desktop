@@ -78,13 +78,9 @@ such as `0.1.2-preview-260818-14305` without overflowing the comparator.
 
 Squirrel.Windows packs with a bundled `nuget.exe` that still enforces the 260-character
 `MAX_PATH` limit, and `--releasify` extracts each nupkg entry to `{TEMP}\{guid}\{entry}`
-using the same limit. Windows `make`/`publish` therefore:
-
-1. Points `TEMP`/`TMP` and Electron Packager `tmpdir` at `<drive>\\t` (override with
-   `WINDOWS_PACKAGING_TEMP`) so nuget pack and Squirrel extract roots stay short.
-2. Stages the WebMCP relay as `resources/webmcp-relay` instead of unpacking
-   `app.asar.unpacked/node_modules/@kilo-desktop/plugin-kilo-server/relay-runtime`,
-   so nupkg-relative paths themselves stay under the remaining budget.
+using the same limit. Windows `make`/`publish` therefore points `TEMP`/`TMP` and Electron
+Packager `tmpdir` at `<drive>\\t` (override with `WINDOWS_PACKAGING_TEMP`) so nuget pack and
+Squirrel extract roots stay short.
 
 Some prebuilt native binaries (`@runtimed/node`, the `runtimed` daemon) link the Visual C++
 runtime (`VCRUNTIME140.dll`) dynamically, and clean Windows installs don't have it. Build machines

@@ -1,7 +1,6 @@
 import os from "node:os";
 import path from "node:path";
 
-import { FuseState, FuseV1Options, FuseVersion, getCurrentFuseWire } from "@electron/fuses";
 import debounce from "lodash/debounce.js";
 
 import {
@@ -31,6 +30,7 @@ import {
 	webMcpChannelFromStorageDir,
 	type WebMcpRelayConfigOutcome,
 } from "./webmcp-relay-config.js";
+import type { WebMcpHttpEndpointConnection } from "./webmcp-http-endpoint.js";
 import { WebMcpRelayService, type WebMcpRelayServiceHandle } from "./webmcp-relay-service.js";
 
 export { ContributedEnvManager } from "./ContributedEnvManager.js";
@@ -77,10 +77,11 @@ interface RegisterKiloServerOptions {
 	createServer?: (
 		onStatusChange: (status: KiloServerStatus) => void,
 		contributedEnv: ContributedEnvManager,
+		webMcpEndpoint: () => WebMcpHttpEndpointConnection | undefined,
 	) => KiloServerController;
 	/**
-	 * Interim WebMCP↔Kilo bridge (see #102).
-	 * Injected in tests; production defaults call the real initializer.
+	 * Reconciles Desktop's `mcp.desktop` entry; `enabled` is whether the
+	 * WebMCP endpoint is serving. Injected in tests.
 	 */
 	reconcileWebMcpRelayConfig?: (
 		configDirectory: string,
@@ -101,21 +102,11 @@ interface RegisterKiloServerOptions {
 		>;
 	/** Injected Desktop-owned plugin installer for tests. */
 	kiloPluginConfig?: Pick<KiloPluginConfig, "install" | "remove" | "listOwnedPluginIds">;
-	/** Kilo Desktop's own binary path. Defaults to `process.execPath`. */
-	appExecutablePath?: string;
 	/** User-owned global Kilo config directory. Injected in tests. */
 	userConfigDirectory?: string;
 	/**
-	 * Detects whether the running Electron binary honors
-	 * `ELECTRON_RUN_AS_NODE`. Defaults to reading fuses off `process.execPath`
-	 * with `@electron/fuses`. When detection fails (e.g. dev/test runs
-	 * against `node` directly, not an Electron binary), we treat the fuse as
-	 * enabled — dev/test does honor `ELECTRON_RUN_AS_NODE`.
-	 */
-	runAsNodeEnabled?: () => Promise<boolean>;
-	/**
-	 * Owns the WebMCP WS rendezvous (`:9345`) outside Kilo's lazy MCP spawn.
-	 * Injected in tests; production defaults to {@link WebMcpRelayService}.
+	 * Owns the WebMCP rendezvous (`:9345`) and the MCP endpoint Kilo connects
+	 * to. Injected in tests; production defaults to {@link WebMcpRelayService}.
 	 */
 	createWebMcpRelayService?: () => WebMcpRelayServiceHandle;
 }
@@ -166,6 +157,7 @@ export function createKiloServerManagerOptions(
 	onStatusChange: (status: KiloServerStatus) => void,
 	contributedEnv: ContributedEnvManager,
 	resolveInstallation: typeof resolveKiloInstallation = resolveKiloInstallation,
+	webMcpEndpoint?: () => WebMcpHttpEndpointConnection | undefined,
 ): KiloServerManagerOptions {
 	const directories = resolveKiloServerDirectories(mainSdk.storageDir);
 	const installationId =
@@ -184,24 +176,8 @@ export function createKiloServerManagerOptions(
 		logger: mainSdk.logger,
 		onStatusChange,
 		contributedEnv,
+		...(webMcpEndpoint ? { webMcpEndpoint } : {}),
 	};
-}
-
-async function defaultRunAsNodeEnabled(appExecutablePath: string): Promise<boolean> {
-	try {
-		const fuses = await getCurrentFuseWire(appExecutablePath);
-		if (fuses.version !== FuseVersion.V1) return true;
-		const value = fuses[FuseV1Options.RunAsNode];
-		// FuseState enum: DISABLE, ENABLE, REMOVED, INHERIT. Treat DISABLE as
-		// the only definitively-off state; every other state (including a
-		// missing/removed fuse or a fuse we cannot read) means the runtime
-		// default applies, which is "run as node when ELECTRON_RUN_AS_NODE=1".
-		return value !== FuseState.DISABLE;
-	} catch {
-		// Not an Electron binary (dev/test/CI): dev Electron honors
-		// ELECTRON_RUN_AS_NODE without a fuse wire, so configuration is safe.
-		return true;
-	}
 }
 
 /**
@@ -209,12 +185,6 @@ async function defaultRunAsNodeEnabled(appExecutablePath: string): Promise<boole
  * Allows multiple rapid contributions to coalesce into a single restart.
  */
 const ENV_RESTART_DEBOUNCE_MS = 300;
-
-function configLeftRelayEntry(outcome: WebMcpRelayConfigOutcome): boolean {
-	return (
-		outcome.kind === "written" || (outcome.kind === "skipped" && outcome.reason === "up-to-date")
-	);
-}
 
 function assertConfigMutationAccepted(
 	section: "MCP" | "provider",
@@ -247,9 +217,6 @@ export function registerKiloServer(
 		mainSdk.storageDir,
 	);
 	const userConfigDirectory = options.userConfigDirectory ?? resolveUserConfigDirectory();
-	const appExecutablePath = options.appExecutablePath ?? process.execPath;
-	const runAsNodeEnabled =
-		options.runAsNodeEnabled ?? (() => defaultRunAsNodeEnabled(appExecutablePath));
 
 	let disposed = false;
 	let configRestartRequested = false;
@@ -295,8 +262,20 @@ export function registerKiloServer(
 
 	const createServer =
 		options.createServer ??
-		((onStatusChange: (status: KiloServerStatus) => void, envManager: ContributedEnvManager) =>
-			new KiloServerManager(createKiloServerManagerOptions(mainSdk, onStatusChange, envManager)));
+		((
+			onStatusChange: (status: KiloServerStatus) => void,
+			envManager: ContributedEnvManager,
+			readWebMcpEndpoint: () => WebMcpHttpEndpointConnection | undefined,
+		) =>
+			new KiloServerManager(
+				createKiloServerManagerOptions(
+					mainSdk,
+					onStatusChange,
+					envManager,
+					resolveKiloInstallation,
+					readWebMcpEndpoint,
+				),
+			));
 	const kiloConfig = options.kiloConfig ?? new KiloConfigManager(configDirectory, mainSdk.logger);
 	const kiloPluginConfig = options.kiloPluginConfig ?? new KiloPluginConfig(managedPluginDirectory);
 	const kiloConfiguration = new KiloConfiguration({
@@ -305,29 +284,26 @@ export function registerKiloServer(
 		onChanged: requestConfigRestart,
 	});
 
-	// Interim WebMCP↔Kilo bridge — see #102. Initialize
-	// the Desktop-owned `mcp` entry before `kilo serve` boots so its first read of
-	// kilo.jsonc already sees the relay entry. Initialization is idempotent and
-	// marker-guarded; a failure never blocks Kilo from starting.
+	// The Desktop-owned `mcp.desktop` entry is reconciled before `kilo serve`
+	// boots so its first config read already points at the WebMCP endpoint.
+	// Reconciliation is idempotent and marker-guarded; a failure never blocks
+	// Kilo from starting.
 	const rendezvous = resolveWebMcpRendezvous(webMcpChannelFromStorageDir(mainSdk.storageDir));
 	const reconcileRelayConfig =
 		options.reconcileWebMcpRelayConfig ??
 		((directory: string, enabled: boolean) =>
 			reconcileWebMcpRelayConfig({
 				configDirectory: directory,
-				appExecutablePath,
-				relayRuntimeRoot: mainSdk.resolvePluginAsset("relay-runtime"),
 				enabled,
 				logger: mainSdk.logger,
 				kiloConfig,
-				port: rendezvous.port,
-				relayId: rendezvous.relayId,
-				label: rendezvous.label,
 			}));
 
+	let webMcpEndpoint: WebMcpHttpEndpointConnection | undefined;
 	const server = createServer(
 		(status) => mainSdk.events.emit("server-status-changed", status),
 		contributedEnv,
+		() => webMcpEndpoint,
 	);
 	const preferences = mainSdk.plugins.get<PreferencesCapability>("preferences")?.preferences;
 	const unsubscribeConsent = preferences?.onDidChangeAllowDataCollection((allow) =>
@@ -345,14 +321,12 @@ export function registerKiloServer(
 			}));
 	let relayService: WebMcpRelayServiceHandle | undefined;
 
-	// Interim WebMCP↔Kilo bridge — see #102.
-	//
-	// (1) detect fuse, (2) reconcile the Desktop-owned entry in kilo.jsonc,
-	// (3) start the in-process `:9345` rendezvous, (4) then allow lazy Kilo
-	// startup. Feature boot awaits this promise, so the renderer's first relay
-	// scan happens after the rendezvous attempt. An initialization or relay
-	// failure never blocks Kilo startup; its later MCP child can still bind the
-	// port through the relay package's normal fallback behavior.
+	// (1) Start the in-process rendezvous and its MCP endpoint, (2) reconcile
+	// the Desktop-owned entry so it exists only while the endpoint serves,
+	// (3) then allow lazy Kilo startup. Feature boot awaits this promise, so
+	// the renderer's first relay scan happens after the rendezvous attempt. A
+	// WebMCP failure never blocks Kilo startup; Kilo just runs without the
+	// app's tools.
 	//
 	// Every path that can start or restart Kilo awaits the same readiness
 	// promise, so no caller can race the config write.
@@ -376,12 +350,11 @@ export function registerKiloServer(
 			await (options.reconcileKiloCallerContextPlugin ?? reconcileKiloCallerContextPlugin)(
 				managedPluginDirectory,
 			);
-			const enabled = await runAsNodeEnabled();
-			const outcome = await reconcileRelayConfig(configDirectory, enabled);
-			if (configLeftRelayEntry(outcome) && !disposed) {
+			if (!disposed) {
 				relayService = createRelayService();
-				await relayService.start();
+				webMcpEndpoint = await relayService.start();
 			}
+			await reconcileRelayConfig(configDirectory, webMcpEndpoint !== undefined);
 		} catch (error) {
 			mainSdk.logger.warn(
 				`WebMCP initialization failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -516,6 +489,7 @@ export function registerKiloServer(
 		unsubscribeConsent?.();
 		handleEnvChange.cancel();
 		relayService?.dispose();
+		webMcpEndpoint = undefined;
 		server.dispose();
 	});
 

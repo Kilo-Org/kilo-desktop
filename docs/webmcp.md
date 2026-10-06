@@ -171,367 +171,148 @@ Result: **no third-party code fetched at runtime, works offline, verified at bui
 
 - 🔒 Relay binds loopback (`127.0.0.1`) only. Never exposed to a network interface.
 - 🔒 No auth on the relay by design — any local process running as the user can see exposed tools. Opt-in via `exposeToModelContext` is the enforcement point.
-- 🔒 Only the app renderer (`kilo-desktop://app`, `kilo-desktop-dev://app`) may register **tool sources**. Both the in-process rendezvous and the stdio relay child pass this allowlist (`WEBMCP_TOOL_SOURCE_ORIGINS`), overriding the relay library's `["*"]` default, so a web page in the user's browser cannot inject tools the agent sees. The check keys on the browser-set `Origin` header; it does not authenticate local processes (see the bullet above).
+- 🔒 Only the app renderer (`kilo-desktop://app`, `kilo-desktop-dev://app`) may register **tool sources**. The in-process rendezvous passes this allowlist (`WEBMCP_TOOL_SOURCE_ORIGINS`), overriding the relay library's `["*"]` default, so a web page in the user's browser cannot inject tools the agent sees. The check keys on the browser-set `Origin` header; it does not authenticate local processes (see the bullet above).
+- 🔒 The bundled `kilo serve` does not use the unauthenticated rendezvous. It reaches the tools through the main process's MCP endpoint (§7), which requires a per-launch bearer token and rejects browser requests.
+- 🔒 The `RunAsNode` fuse is off: nothing runs the app binary as Node.
 - 🔒 Third-party relay code is pinned exact (`5.1.0`) and verified by `sha256` at build time; no CDN.
 - 🔒 The relay widget runs as a **same-origin** `webmcp/widget.html?<params>` iframe (patched off the upstream `blob:` approach) under the app's hash-based CSP — no `'unsafe-inline'`. Relay code stays pinned and same-origin-served; only loopback WebSockets in the relay's port range are connectable. `blob:` frames remain allowed only for the non-custom-scheme MCP App fallback.
 - ⚠️ `readOnlyHint` is metadata for clients, **not** enforcement — the tool handler is what actually runs. Author accordingly.
 
 ---
 
-## 7. Interim: default `kilo serve` bridge
+## 7. Bundled `kilo serve` bridge
 
-> **Interim.** This section documents an interim mechanism that lets the
-> bundled `kilo serve` see the app's WebMCP tools out of the box. The
-> longer-term plan — a native `type: "webmcp"` MCP transport in Kilo Code
-> that removes the subprocess and the fuse regression — is tracked in
-> #102.
+External MCP clients (Claude Desktop, Cursor, `mcp-inspector`) start
+`@mcp-b/webmcp-local-relay` themselves as a stdio MCP subprocess, which joins
+the rendezvous below. The bundled `kilo serve` is different: Desktop ships and
+controls it, and it should see the app's tools with zero configuration.
 
-External MCP clients (Claude Desktop, Cursor, `mcp-inspector`) spawn
-`@mcp-b/webmcp-local-relay` themselves as an stdio MCP subprocess (their
-config points at `npx @mcp-b/webmcp-local-relay@latest` or a locally
-installed copy). The bundled `kilo serve` is the odd one out — we ship and
-control it and want zero end-user configuration.
+Desktop's main process therefore serves the tools to Kilo directly over
+standard MCP **Streamable HTTP**. Nothing runs the app binary as Node, so the
+`RunAsNode` fuse is off (#102).
 
-The interim ships a lockfile-pinned `@mcp-b/webmcp-local-relay` runtime inside
-the packaged app's unpacked kilo-server plugin assets,
-initializes an `mcp["desktop"]` entry into the app-owned
-`kilo.jsonc`, runs the WebSocket rendezvous in Electron main, and lets Kilo
-launch the package's CLI through Kilo Desktop's executable in Node mode
-(`ELECTRON_RUN_AS_NODE=1`) for the stdio MCP transport.
-
-### Target topology
+### Topology
 
 ```
-┌───────────────────────────── Electron main process ────────────────────────────────┐
-│                                                                                    │
-│  kilo-server plugin                                                                │
-│                                                                                    │
-│  ┌─────────────────────────────────────────────────────────────────────────────┐   │
-│  │ 1. mainRegister() — awaited config reconciliation (idempotent, sidecar-tracked)         │   │
-│  │                                                                             │   │
-│  │    defaultRunAsNodeEnabled(process.execPath)  ──► reads @electron/fuses    │   │
-│  │                                                    → true / false           │   │
-│  │                                                                             │   │
-│  │    resolveWebMcpRelayEntry()  ───►  ${app}/resources/webmcp-relay/          │   │
-│  │                                       node_modules/@mcp-b/webmcp-local-      │   │
-│  │                                       relay/dist/cli.mjs                     │   │
-│  │                                                                             │   │
-│  │    reconcileWebMcpRelayConfig(${runtime}/config/kilo/, {                             │   │
-│  │      // written to kilo.jsonc (Kilo's canonical file, JSONC-tolerant)      │   │
-│  │      mcp: {                                                                 │   │
-│  │        "desktop": {                                          │   │
-│  │          type: "local",                       ◄── Kilo's McpLocalConfig    │   │
-│  │          command: [process.execPath, <relay entry>],                        │   │
-│  │          environment: { ELECTRON_RUN_AS_NODE: "1" },                        │   │
-│  │          enabled: true                                                      │   │
-│  │        }                                                                    │   │
-│  │      }                                                                      │   │
-│  │      // Ownership marker written to a sidecar (see below); Kilo's           │   │
-│  │      // top-level Config schema is additionalProperties:false, so nothing  │   │
-│  │      // that is not part of Kilo's schema may live inside kilo.jsonc.      │   │
-│  │    })                                                                       │   │
-│  │                                                                             │   │
-│  │    Sidecar: ${runtime}/config/kilo/.kilo-desktop-ownership.json               │   │
-│  │      { "version": 3, "ownedEntryIds": ["desktop"] }                │   │
-│  │                                                                             │   │
-│  │    When RunAsNode is disabled (downgrade / rollback), initialization instead REMOVES │   │
-│  │    the Desktop-owned entry and prunes the sidecar.                               │   │
-│  └─────────────────────────────────────────────────────────────────────────────┘   │
-│                       │                                                            │
-│                       ├─ WebMcpRelayService creates RelayBridgeServer in-process │
-│                       └─ Electron main owns ws://127.0.0.1:9345               │
-│                       │                                                            │
-│                       ▼                                                            │
-│  ┌─────────────────────────────────────────────────────────────────────────────┐   │
-│  │ 2. KiloServerManager.ensureRunning()  ─►  spawn `kilo serve`                │   │
-│  │                                              │                              │   │
-│  │                                              ▼                              │   │
-│  │                                    reads kilo.jsonc (JSONC-tolerant)        │   │
-│  │                                    (Kilo never opens the sidecar)           │   │
-│  │                                              │                              │   │
-│  │                                              ▼                              │   │
-│  │                                    for each mcp entry: spawn as MCP child   │   │
-│  └──────────────────────────────────────────────┼──────────────────────────────┘   │
-│                                                 │                                  │
-│  ┌──────────────────────────────────────────────▼──────────────────────────────┐   │
-│  │ 3. spawn(process.execPath, [<relay entry>],                                 │   │
-│  │          env={ ELECTRON_RUN_AS_NODE: "1", ... })                            │   │
-│  │                                                                             │   │
-│  │      → Electron runs in headless Node mode, executes relay.js               │   │
-│  │      → Fixed port is owned by Desktop main, so this relay joins it            │   │
-│  │        in client mode and speaks MCP over stdio with kilo serve              │   │
-│  └─────────────────────────────────────────────────────────────────────────────┘   │
-│                                        │                                           │
-│                                        │ stdio MCP                                 │
-│                                        ▼                                           │
-│                            ┌────────────────────────┐                              │
-│                            │  kilo serve (child)    │                              │
-│                            │  sees `desktop-relay` as│                             │
-│                            │  relay` as an MCP      │                              │
-│                            │  server with N tools   │                              │
-│                            └────────────┬───────────┘                              │
-│                                         │                                          │
-└─────────────────────────────────────────┼──────────────────────────────────────────┘
-                                          │ REST + SSE
-                                          ▼
-┌─────────────────────────── Renderer (app://) ─────────────────────────────────────┐
-│                                                                                   │
-│    plugin.sdk.tools.register({ exposeToModelContext: true })                      │
-│              │                                                                    │
-│              ▼                                                                    │
-│    ToolRegistry ──► installWebMcp ──► document.modelContext                       │
-│                                             │                                     │
-│                                             ▼                                     │
-│    <iframe /webmcp/widget.html>   ── ws://127.0.0.1:9345 ──►  relay (above)       │
-│                                                                                   │
-└───────────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────── Electron main process ─────────────────────────────────┐
+│ kilo-server plugin — WebMcpRelayService                                                │
+│                                                                                        │
+│   RelayBridgeServer  ws://127.0.0.1:9345  ◄── renderer widget (tool source)            │
+│        │             (rendezvous; tool sources restricted to the app renderer origin;  │
+│        │              external relay children join here too)                           │
+│        │ shared registry                                                               │
+│        ▼                                                                               │
+│   WebMcpHttpEndpoint  http://127.0.0.1:<random>/mcp                                    │
+│        • Authorization: Bearer <per-launch token>, constant-time check                 │
+│        • requests carrying an Origin header (browsers) → 403                           │
+│        • one LocalRelayMcpServer per MCP session, over a view of the shared bridge     │
+└────────┼───────────────────────────────────────────────────────────────────────────────┘
+         │ MCP Streamable HTTP (POST + GET event stream)
+         ▼
+   kilo serve   mcp.desktop = { type: "remote", url: "{env:KILO_DESKTOP_WEBMCP_URL}",
+                                oauth: false,
+                                headers: { Authorization: "Bearer {env:KILO_DESKTOP_WEBMCP_TOKEN}" } }
+                KiloServerManager sets both env vars at every spawn.
 ```
 
-Four pieces beyond §1's diagram:
+Pieces:
 
-- **Relay config reconciliation** in `plugins/kilo-server/src/main/webmcp-relay-config.ts` writes
-  an `mcp` block into the app-owned `kilo.jsonc` before `KiloServerManager#start`
-  runs. Idempotent, JSONC-preserving (`jsonc-parser`), atomic (`atomically`).
-  When the runtime fuse detection reports `RunAsNode` off, the same call
-  **removes** any Desktop-owned entry it previously wrote and prunes the sidecar,
-  so downgrade / rollback / fuse re-hardening self-heals.
+- **`WebMcpRelayService`** (`plugins/kilo-server/src/main/webmcp-relay-service.ts`)
+  binds the fixed rendezvous port in server mode, then starts the endpoint. If
+  another relay owns the port, neither starts. If only the endpoint fails, the
+  rendezvous keeps serving external clients.
+- **`WebMcpHttpEndpoint`** (`plugins/kilo-server/src/main/webmcp-http-endpoint.ts`)
+  adapts Node `http` to the MCP SDK's Web-standard Streamable HTTP transport.
+  `LocalRelayMcpServer` can connect to exactly one transport, and every
+  `kilo serve` restart opens a new session, so each session gets its own server.
+  Sessions see the bridge through a view whose `start`/`stop` are no-ops and
+  whose subscriptions are released on close. Kilo opens one session per
+  workspace directory; beyond a cap of 32, the least recently used session is
+  closed, and a client whose session was evicted re-initializes. The tool names, descriptions and built-in relay tools are those
+  of the relay library, unchanged from the earlier stdio child.
+- **Config reconciliation** (`plugins/kilo-server/src/main/webmcp-relay-config.ts`)
+  writes the static `mcp.desktop` entry above into the app-owned `kilo.jsonc`
+  while the endpoint is serving, and removes it otherwise. The per-launch URL
+  and token never touch disk: Kilo expands `{env:…}` in trusted config, and
+  `KILO_CONFIG_DIR` is trusted. `KiloServerManager` strips inherited values of
+  those variables, and the `KILO_` prefix is reserved, so contributed env cannot
+  set them. Stdio relay entries written by earlier builds are recognized and
+  migrated.
 - **Ownership sidecar** at `${runtime}/config/kilo/.kilo-desktop-ownership.json`
-  tracks which MCP entry names Desktop owns and which feature source owns each
-  entry. Kilo never opens this file — Kilo's
-  top-level `Config` schema is `additionalProperties: false`, so any marker
-  stored inside `kilo.jsonc` would fail validation and stop `kilo serve` from
-  starting. Missing sidecar (deleted by user, corrupt, or absent) = "we own
-  nothing" = escape hatch.
-- **Bundled relay entry** — the same `@mcp-b/webmcp-local-relay@5.1.0` package
-  that `apps/web/scripts/sync-webmcp-assets.mjs` reads for its browser assets
-  is now also unpacked from asar (see `apps/desktop/forge.config.ts`) so its
-  `bin/cli.mjs` has a real filesystem path, and it is launched via
-  `process.execPath` + `ELECTRON_RUN_AS_NODE=1`. The sync script asserts at
-  build time that `apps/web`, `plugins/kilo-server`, and the resolved
-  installed package all pin the exact same version.
-- **Main-owned rendezvous** in
-  `plugins/kilo-server/src/main/webmcp-relay-service.ts` creates the package's
-  public `RelayBridgeServer` directly in Electron main. Feature boot awaits
-  its fixed `127.0.0.1:9345` bind before creating the renderer window, and
-  plugin disposal stops it. Kilo stays lazy; its later MCP child joins the
-  live server in client mode.
+  tracks which MCP entries Desktop owns and which feature source owns each one.
+  Kilo never opens this file; its top-level `Config` schema is
+  `additionalProperties: false`, so no marker may live inside `kilo.jsonc`. A
+  missing sidecar means "Desktop owns nothing", which is the user's escape hatch.
 
-### Boot sequence (cold start)
+### Boot sequence
 
 ```
-Time ─►
-
- t0   Electron ready
-       │
- t1    plugins/kilo-server mainRegister() runs
-       │  ├─ defaultRunAsNodeEnabled()        (reads fuses off process.execPath)
-       │  ├─ resolveWebMcpRelayEntry()        (fs check, logs+skips if missing)
-       │  └─ await reconcileWebMcpRelayConfig()    (JSONC merge + ownership write)
-       │       │
-       │       ├─ RunAsNode enabled → write Desktop-owned entry + record in sidecar
-       │       └─ RunAsNode disabled → remove any Desktop-owned entry + prune sidecar
-       │
- t2    mainRegister awaits WebMcpRelayService.start()
-       │  └─ RelayBridgeServer binds ws://127.0.0.1:9345 in-process
-       │
- t3    Renderer widget connects to 9345 and publishes tools
-       │
- t4    First chat connection lazily starts kilo serve
-       │  └─ Kilo reads mcp["desktop"]
-       │
- t5    Kilo spawns its relay subprocess
-       │  └─ joins Desktop main's fixed-port server in client mode
-       │     and proxies tools over stdio
-       │
- t6    Kilo shows the tools under `desktop` in its MCP list
-       READY
+t1  kilo-server mainRegister()
+     ├─ WebMcpRelayService.start()
+     │    ├─ RelayBridgeServer binds ws://127.0.0.1:9345 (server mode)
+     │    └─ WebMcpHttpEndpoint binds http://127.0.0.1:<random>/mcp, new token
+     └─ reconcileWebMcpRelayConfig(enabled = endpoint is serving)
+t2  renderer widget connects to 9345 and publishes tools
+t3  first chat connection lazily spawns kilo serve with
+     KILO_DESKTOP_WEBMCP_URL / KILO_DESKTOP_WEBMCP_TOKEN
+t4  Kilo initializes an MCP session, opens the event stream, lists tools
+     (later tool changes arrive as tools/list_changed)
 ```
 
-`configReady` is **awaited** before `ensureRunning`. `kilo serve` cannot read the
-config file before the atomic rename lands.
-
-Key ordering guarantee: Desktop main owns the WS rendezvous before the renderer
-window is created and independently of Kilo's lazy MCP lifecycle. A Kilo
-restart only replaces the stdio client; the renderer remains attached to the
-in-process server.
+`configReady` is awaited before `ensureRunning`, so `kilo serve` never reads
+the config before the entry is written. A Kilo restart opens a new MCP session;
+the renderer stays attached to the in-process rendezvous.
 
 ### Runtime — a Kilo agent calls a plugin tool
 
 ```
-Kilo agent LLM
-   │  "call todos_list()"
-   ▼
-kilo serve  ── stdio JSON-RPC ─►  relay (client mode)
-                                     │  WS relay-to-relay
-                                     ▼
-                       Electron main relay (server mode :9345)
-                                     │  WS frame
-                                     ▼
-                          widget.html iframe (renderer)
-                                     │
-                                     ▼  postMessage (in-page)
-                          document.modelContext.callTool("todos_list")
-                                     │
-                                     ▼
-                          installWebMcp handler
-                                     │  ToolRegistry.invoke("todos", "list", …)
-                                     ▼
-                          plugin todos web handler
-                                     │  sdk.invoke("list")
-                                     ▼
-                          IPC feature:invoke → main handler → SQLite
-                                     │
-                                     ▼  result rides all the way back
-                                (reverse path)
+kilo serve ── HTTP POST tools/call (Bearer) ─► WebMcpHttpEndpoint
+                                                  │ bridge.invokeTool
+                                                  ▼
+                                 RelayBridgeServer ── WS invoke ─► widget iframe
+                                                                       │ postMessage
+                                                                       ▼
+                                                         document.modelContext
+                                                                       │
+                                                                       ▼
+                                          installWebMcp → ToolRegistry.invoke → plugin handler
 ```
-
-All hops except stdio↔WS already exist in this repo (§1). The stdio↔WS hop is
-what the bundled relay adds.
 
 ### Config-file merge invariants
 
-```
-Before initialization (user's kilo.jsonc, if any):    After initialization:
-
-  kilo.jsonc                                     kilo.jsonc
-  ──────────                                     ──────────
-{                                              {
-  // Kilo global config.                         // Kilo global config.
-  "$schema": "https://app.kilo.ai/config.json",  "$schema": "https://app.kilo.ai/config.json",
-  "mcp": {                                       "mcp": {
-    // user's own MCP servers                      // user's own MCP servers
-    "my-custom": {                                 "my-custom": {                    ← untouched
-      "type": "local",                               "type": "local",
-      "command": ["python", "-m", "my_mcp"]          "command": ["python", "-m", "my_mcp"]
-    }                                              },
-  }                                                "desktop": {       ← added
-}                                                    "type": "local",
-                                                     "command": [
-                                                       "/Applications/Kilo.app/Contents/MacOS/kilo-desktop",
-                                                       "/…/resources/webmcp-relay/node_modules/@mcp-b/webmcp-local-relay/dist/cli.mjs"
-                                                     ],
-                                                     "environment": { "ELECTRON_RUN_AS_NODE": "1" },
-                                                     "enabled": true
-                                                   }
-                                                 }
-                                               }
-
-                                                 .kilo-desktop-ownership.json       ← sidecar
-                                                 ──────────────────────────────
-                                               {
-                                                 "version": 3,
-                                                 "ownedEntryIds": ["desktop"],
-                                                 "owners": { "desktop": "kilo-server" }
-                                               }
-```
-
-Rules:
-
-1. **Only** `mcp["desktop"]` is written inside `kilo.jsonc`.
-   Every other top-level key, every sibling MCP entry, and every JSONC
-   comment / formatting quirk is preserved by `jsonc-parser`'s `modify()`
-   API. Ownership tracking never leaks into `kilo.jsonc` because Kilo's
-   top-level `Config` schema rejects unknown keys.
-2. Overwrite or remove only if the entry's name is listed in the sidecar's
-   `ownedEntryIds` array and its recorded owner matches the calling source. This
-   prevents one feature from replacing or deleting another feature's entry.
-   Schema-v1 entries without an owner are adopted by their first successful
-   post-upgrade write. If the user deleted the sidecar or removed the entry
-   from the list, we **do not resurrect** the Desktop-owned entry — that is the
-   escape hatch.
+1. **Only** `mcp["desktop"]` is written inside `kilo.jsonc`. Every other key,
+   sibling MCP entry and JSONC comment is preserved by `jsonc-parser`'s
+   `modify()`.
+2. Overwrite or remove only if the sidecar lists the entry as owned by the
+   calling source. A user-owned `desktop` entry is never replaced.
 3. Writes are atomic (via `atomically`).
-4. Absolute paths are recomputed on every boot so app upgrades /
-   relocations self-heal.
-5. If the existing `kilo.jsonc` is unparseable (invalid JSONC, or top-level
-   not an object), we **refuse to write** and return `skipped-error` —
-   never clobbering user data. The sidecar is never touched in that case.
-6. When the sidecar's `ownedEntryIds` list becomes empty (last Desktop-owned entry
-   removed), the sidecar file itself is deleted to keep the config
-   directory tidy.
+4. An unparseable `kilo.jsonc` is never written (`skipped-error`); the sidecar
+   is untouched in that case.
+5. When the sidecar's owned list becomes empty, the sidecar file is deleted.
 
-### Split-brain: why the relay identity is pinned
+### Split-brain: why the rendezvous identity is pinned
 
 The 9333–9348 loopback range is a **shared, unauthenticated rendezvous** used
-by every WebMCP relay on the machine — Claude Desktop MCP configs, ad-hoc
-`npx @mcp-b/webmcp-local-relay` runs, other apps. Live inspection of a dev
-machine found three orphaned npx relays (one weeks old) plus Claude Desktop's
-WebMCP server, one of which owned port 9333.
+by every WebMCP relay on the machine: Claude Desktop MCP configs, ad-hoc
+`npx @mcp-b/webmcp-local-relay` runs, other apps. The widget scans that range
+and pairs with the first relay that answers, so it is pinned to Desktop's own
+rendezvous:
 
-Without identity pinning, two independent pairings race against that zoo:
-
-- The **widget** scans `127.0.0.1`+`[::1]` × 9333–9348 and pairs with the
-  FIRST relay that answers — often a foreign or orphaned relay on 9333.
-- **Kilo's relay** (ours) binds the first free port, or silently joins a
-  compatible foreign relay in client mode.
-
-When the two land on different relays, the system splits: the widget
-publishes tools into relay X while Kilo reads relay Y with **zero
-producers**. Symptoms: "No WebMCP tools available" while the todo UI works
-fine; tools that vanish after a renderer reload (the re-scan landed
-elsewhere); machine-dependent, launch-order-dependent flakiness — and our
-tools silently registering into a _foreign_ relay, where any MCP client
-attached to it can call them.
-
-Both halves are therefore pinned to each other:
-
-- Desktop-provided relay args: `--port 9345 --relay-id kilo-desktop`
-  plus `--widget-origin kilo-desktop://app,kilo-desktop-dev://app`
-  (`WEBMCP_RELAY_PORT` / `WEBMCP_RELAY_ID` / `WEBMCP_TOOL_SOURCE_ORIGINS` in
-  `plugins/kilo-server/src/main/webmcp-relay-config.ts`). Fixed-port mode
-  refuses to chain to a non-relay owner; 9345 is far from the 9333 default
-  foreign relays use, still inside the CSP-allowed range.
+- Rendezvous: fixed `--port 9345`, relay id `kilo-desktop`
+  (`WEBMCP_RELAY_PORT` / `WEBMCP_RELAY_ID` in `webmcp-relay-config.ts`).
+  Fixed-port mode refuses to chain to a non-relay owner; 9345 is far from the
+  9333 default foreign relays use, and still inside the CSP-allowed range.
 - Embed attributes: `data-relay-port="9345" data-relay-id="kilo-desktop"`
   (`apps/web/src/platform/webmcp/installWebMcp.ts`). The widget rejects any
-  relay whose `server-hello` carries a different relay id and keeps
-  scanning until it finds ours.
+  relay whose `server-hello` carries a different relay id.
+- Each channel has its own port and id (`9345` / `kilo-desktop` stable,
+  `9346` / `kilo-desktop-preview`, `9347` / `kilo-desktop-dev`), so a dev and a
+  packaged instance cannot cross-publish.
 
-The relay id is deliberately **stable** (not per-process): an orphaned relay
-from a previous run (kilo does not reap MCP subprocesses on shutdown —
-verified empirically) must still accept our widget's hello, so that its
-first stdio notification to its dead parent EPIPE-terminates it; the live
-relay then promotes itself to server mode on the freed port and the widget's
-reconnect ladder finds it. A per-process id would leave the zombie holding
-the port indefinitely.
-
-**Boot-order race + reconnect nudge.** Desktop main starts the rendezvous
-independently of Kilo's lazy MCP connection, preventing the multi-minute gap
-where the widget scanned before any process owned 9345. `installWebMcp` also
-posts a `webmcp.connect` nudge into the widget every 15 seconds as a secondary
-guard for cold Electron startup, orphan takeover, and relay restarts. The
-widget treats the nudge as a no-op while connected and immediate discovery
-while dormant or disconnected.
-
-Failure modes that remain (accepted for the interim):
-
-- Two instances of the app (e.g. dev + packaged) used to share one relay on 9345. Each channel now pins its own port and relay id (`9345` /
-  `kilo-desktop` for stable, `9346` / `kilo-desktop-preview`, `9347` /
-  `kilo-desktop-dev`) so widgets and Kilo children cannot cross-publish.
-- A non-relay process squatting exactly on 9345 puts the relay into a loud
-  error state in Kilo's MCP UI (fixed-port mode throws) rather than a
-  silent split-brain.
-
-### Security cost of the interim
-
-The interim requires `FuseV1Options.RunAsNode: true` in
-`apps/desktop/forge.config.ts` so the packaged executable honors
-`ELECTRON_RUN_AS_NODE=1`. This is a hardening regression against the specific
-class of attacks where an adversary that has local shell execution but not
-native-binary drop can turn our signed binary into a scripting engine.
-
-Mitigating factors:
-
-- Every other hardening fuse (`EnableNodeOptionsEnvironmentVariable: false`,
-  `EnableEmbeddedAsarIntegrityValidation: true`, `OnlyLoadAppFromAsar: true`,
-  `EnableCookieEncryption: true`) stays on.
-- `kilo serve` already spawns arbitrary user-approved MCP subprocesses under
-  our code-signing identity, which meaningfully weakens the fuse's guarantee
-  for our threat model regardless.
-- If a future build ships with `RunAsNode: false` (either intentionally as the
-  #102 cleanup or accidentally), the initializer detects the fuse state at boot and
-  **removes** its previously-written Desktop-owned entry, so users are not stranded
-  with a bogus `command` pointing at a binary that no longer runs as Node.
-
-The fuse flips back to `false` once #102 lands.
+`installWebMcp` posts a `webmcp.connect` nudge into the widget every 15 seconds
+as a guard for cold Electron startup and rendezvous restarts. A non-relay
+process squatting exactly on 9345 leaves the rendezvous unstarted; Kilo then
+runs without the app's tools rather than reading a foreign relay.
 
 ---
 

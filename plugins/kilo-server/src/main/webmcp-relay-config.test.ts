@@ -2,7 +2,6 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { parseCliOptions } from "@mcp-b/webmcp-local-relay";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -10,8 +9,6 @@ import {
 	OWNERSHIP_SIDECAR_FILENAME,
 	MCP_ENTRY_NAME,
 	MCP_ENTRY_SOURCE_ID,
-	WEBMCP_RELAY_ID,
-	WEBMCP_RELAY_LABEL,
 	WEBMCP_RELAY_PORT,
 	reconcileWebMcpRelayConfig,
 	resolveWebMcpRendezvous,
@@ -21,27 +18,35 @@ import {
 
 const APP_EXE = "/Applications/Kilo.app/Contents/MacOS/Kilo";
 const RELAY_ENTRY = "/opt/app.asar.unpacked/node_modules/@mcp-b/webmcp-local-relay/dist/cli.mjs";
-const RELAY_VERSION = "4.0.0";
-const fakeResolveRelay = () => ({ entry: RELAY_ENTRY, version: RELAY_VERSION });
 
-// Identity-pinned rendezvous args (split-brain fix; see docs/webmcp.md §7).
-const RELAY_ARGS = [
-	"--port",
-	String(WEBMCP_RELAY_PORT),
-	"--relay-id",
-	WEBMCP_RELAY_ID,
-	"--label",
-	WEBMCP_RELAY_LABEL,
-	"--widget-origin",
-	"kilo-desktop://app,kilo-desktop-dev://app",
-] as const;
-
+// The URL and token are per launch, so the entry references them through
+// Kilo's {env:} substitution and Kilo reads them from the `kilo serve` env.
 const EXPECTED_ENTRY: WebMcpRelayEntry = {
-	type: "local",
-	command: [APP_EXE, RELAY_ENTRY, ...RELAY_ARGS],
-	environment: { ELECTRON_RUN_AS_NODE: "1" },
+	type: "remote",
+	url: "{env:KILO_DESKTOP_WEBMCP_URL}",
+	oauth: false,
+	headers: { Authorization: "Bearer {env:KILO_DESKTOP_WEBMCP_TOKEN}" },
 	enabled: true,
 };
+
+/** The stdio relay child entry written by Desktop builds before #102 was resolved. */
+function legacyStdioEntry(relayId = "kilo-desktop"): Record<string, unknown> {
+	return {
+		type: "local",
+		command: [
+			APP_EXE,
+			RELAY_ENTRY,
+			"--port",
+			"9345",
+			"--relay-id",
+			relayId,
+			"--label",
+			"Kilo Desktop",
+		],
+		environment: { ELECTRON_RUN_AS_NODE: "1" },
+		enabled: true,
+	};
+}
 
 describe("reconcileWebMcpRelayConfig", () => {
 	let tempDir: string;
@@ -75,8 +80,6 @@ describe("reconcileWebMcpRelayConfig", () => {
 	it("writes to kilo.jsonc (not kilo.json)", async () => {
 		await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
-			appExecutablePath: APP_EXE,
-			resolveRelay: fakeResolveRelay,
 		});
 		const raw = await readFile(configFile, "utf8");
 		expect(raw).toContain(MCP_ENTRY_NAME);
@@ -86,8 +89,6 @@ describe("reconcileWebMcpRelayConfig", () => {
 	it("creates the file with a schema-clean McpLocalConfig (no unknown top-level keys)", async () => {
 		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
-			appExecutablePath: APP_EXE,
-			resolveRelay: fakeResolveRelay,
 		});
 
 		expect(outcome).toEqual({ kind: "written", reason: "created", entry: EXPECTED_ENTRY });
@@ -104,82 +105,69 @@ describe("reconcileWebMcpRelayConfig", () => {
 		expect(sidecar.owners).toEqual({ [`mcp:${MCP_ENTRY_NAME}`]: MCP_ENTRY_SOURCE_ID });
 	});
 
-	it("writes an entry that matches Kilo's McpLocalConfig schema shape", async () => {
+	it("points Kilo at the in-process MCP endpoint, not at a child process", async () => {
 		await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
-			appExecutablePath: APP_EXE,
-			resolveRelay: fakeResolveRelay,
 		});
 		const config = await readConfig();
 		const entry = (config.mcp as Record<string, unknown>)[MCP_ENTRY_NAME] as Record<
 			string,
 			unknown
 		>;
-		expect(entry.type).toBe("local");
-		expect(Array.isArray(entry.command)).toBe(true);
-		expect(entry.environment).toEqual({ ELECTRON_RUN_AS_NODE: "1" });
-		expect(entry.enabled).toBe(true);
-		// Fields that would fail Kilo's additionalProperties:false MUST be absent.
-		expect(entry).not.toHaveProperty("ownedBy");
-		expect(entry).not.toHaveProperty("args");
-		expect(entry).not.toHaveProperty("env");
+
+		expect(entry).toEqual(EXPECTED_ENTRY);
+		// No child process, so nothing runs the app binary as Node.
+		expect(entry).not.toHaveProperty("command");
+		expect(entry).not.toHaveProperty("environment");
 	});
 
-	it("pins the relay identity and port (split-brain guard, docs/webmcp.md §7)", async () => {
-		await reconcileWebMcpRelayConfig({
-			configDirectory: configDir,
-			appExecutablePath: APP_EXE,
-			resolveRelay: fakeResolveRelay,
-		});
-		const config = await readConfig();
-		const entry = (config.mcp as Record<string, unknown>)[MCP_ENTRY_NAME] as {
-			command: string[];
-		};
-		// Without these args the widget can pair with a foreign/orphaned relay
-		// on 9333 while kilo's own relay sits elsewhere with zero producers.
-		expect(entry.command).toContain("--relay-id");
-		expect(entry.command[entry.command.indexOf("--relay-id") + 1]).toBe(WEBMCP_RELAY_ID);
-		expect(entry.command).toContain("--port");
-		expect(entry.command[entry.command.indexOf("--port") + 1]).toBe(String(WEBMCP_RELAY_PORT));
-		// Port must stay inside the CSP-allowed loopback WS range (9333-9348),
-		// see apps/desktop/src/main/platform/ElectronProtocol.ts RELAY_WS_SOURCES.
-		expect(WEBMCP_RELAY_PORT).toBeGreaterThanOrEqual(9333);
-		expect(WEBMCP_RELAY_PORT).toBeLessThanOrEqual(9348);
+	it("migrates the stdio relay entry written by earlier builds", async () => {
+		await writeFile(
+			configFile,
+			`${JSON.stringify({ mcp: { [MCP_ENTRY_NAME]: legacyStdioEntry() } }, undefined, 2)}\n`,
+		);
+		await writeFile(
+			sidecarFile,
+			`${JSON.stringify({ version: 3, ownedEntryIds: [MCP_ENTRY_NAME], owners: {} }, undefined, 2)}\n`,
+		);
+
+		const outcome = await reconcileWebMcpRelayConfig({ configDirectory: configDir });
+
+		expect(outcome).toMatchObject({ kind: "written", reason: "updated" });
+		expect(await readConfig()).toEqual({ mcp: { [MCP_ENTRY_NAME]: EXPECTED_ENTRY } });
 	});
 
-	it("restricts the relay child's tool sources to the app renderer origins", async () => {
-		await reconcileWebMcpRelayConfig({
-			configDirectory: configDir,
-			appExecutablePath: APP_EXE,
-			resolveRelay: fakeResolveRelay,
-		});
-		const config = await readConfig();
-		const entry = (config.mcp as Record<string, unknown>)[MCP_ENTRY_NAME] as {
-			command: string[];
-		};
+	it("adopts unowned stdio relay entries left by earlier Desktop builds", async () => {
+		await writeFile(
+			configFile,
+			`${JSON.stringify(
+				{
+					mcp: {
+						[MCP_ENTRY_NAME]: legacyStdioEntry("anaconda-agentic-desktop"),
+						"anaconda-desktop-relay": legacyStdioEntry("anaconda-agentic-desktop"),
+					},
+				},
+				undefined,
+				2,
+			)}\n`,
+		);
+		// No sidecar: an earlier build lost its ownership record.
 
-		// The child becomes the relay server when Desktop's in-process bridge
-		// cannot bind the port; without this its CLI default admits any web page.
-		const [, , ...relayArgs] = entry.command;
-		expect(parseCliOptions(relayArgs).allowedOrigins).toEqual([
-			"kilo-desktop://app",
-			"kilo-desktop-dev://app",
-		]);
+		const outcome = await reconcileWebMcpRelayConfig({ configDirectory: configDir });
+
+		expect(outcome).toMatchObject({ kind: "written", reason: "updated" });
+		expect(await readConfig()).toEqual({ mcp: { [MCP_ENTRY_NAME]: EXPECTED_ENTRY } });
 	});
 
 	it("is idempotent: a second run returns 'up-to-date' and does not touch the files", async () => {
 		await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
-			appExecutablePath: APP_EXE,
-			resolveRelay: fakeResolveRelay,
 		});
 		const beforeConfig = await readFile(configFile, "utf8");
 		const beforeSidecar = await readFile(sidecarFile, "utf8");
 
 		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
-			appExecutablePath: APP_EXE,
-			resolveRelay: fakeResolveRelay,
 		});
 
 		expect(outcome).toEqual({ kind: "skipped", reason: "up-to-date" });
@@ -204,8 +192,6 @@ describe("reconcileWebMcpRelayConfig", () => {
 
 		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
-			appExecutablePath: APP_EXE,
-			resolveRelay: fakeResolveRelay,
 		});
 		expect(outcome).toMatchObject({ kind: "written", reason: "updated" });
 
@@ -223,8 +209,6 @@ describe("reconcileWebMcpRelayConfig", () => {
 
 		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
-			appExecutablePath: APP_EXE,
-			resolveRelay: fakeResolveRelay,
 		});
 
 		expect(outcome.kind).toBe("skipped-error");
@@ -238,93 +222,9 @@ describe("reconcileWebMcpRelayConfig", () => {
 
 		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
-			appExecutablePath: APP_EXE,
-			resolveRelay: fakeResolveRelay,
 		});
 		expect(outcome.kind).toBe("skipped-error");
 		expect(await readFile(configFile, "utf8")).toBe(badBody);
-	});
-
-	it("recomputes absolute paths on every boot so app upgrades self-heal", async () => {
-		await reconcileWebMcpRelayConfig({
-			configDirectory: configDir,
-			appExecutablePath: APP_EXE,
-			resolveRelay: fakeResolveRelay,
-		});
-		const NEW_EXE = APP_EXE.replace("Kilo.app", "Kilo v2.app");
-		const NEW_ENTRY = RELAY_ENTRY.replace("dist/cli.mjs", "dist/cli-v2.mjs");
-
-		const outcome = await reconcileWebMcpRelayConfig({
-			configDirectory: configDir,
-			appExecutablePath: NEW_EXE,
-			resolveRelay: () => ({ entry: NEW_ENTRY, version: RELAY_VERSION }),
-		});
-
-		expect(outcome).toMatchObject({ kind: "written", reason: "updated" });
-		const config = await readConfig();
-		const entry = (config.mcp as Record<string, unknown>)[MCP_ENTRY_NAME];
-		expect(entry).toMatchObject({ type: "local", command: [NEW_EXE, NEW_ENTRY, ...RELAY_ARGS] });
-	});
-
-	it("adopts an unowned leftover Desktop WebMCP relay and retargets it to this channel", async () => {
-		await writeFile(
-			configFile,
-			`${JSON.stringify(
-				{
-					mcp: {
-						desktop: {
-							type: "local",
-							command: [
-								APP_EXE,
-								RELAY_ENTRY,
-								"--port",
-								"9345",
-								"--relay-id",
-								"anaconda-agentic-desktop",
-								"--label",
-								"Anaconda Agentic Desktop",
-							],
-							environment: { ELECTRON_RUN_AS_NODE: "1" },
-							enabled: true,
-						},
-						"anaconda-desktop-relay": {
-							type: "local",
-							command: [
-								APP_EXE,
-								RELAY_ENTRY,
-								"--port",
-								"9345",
-								"--relay-id",
-								"anaconda-agentic-desktop",
-								"--label",
-								"Anaconda Agentic Desktop",
-							],
-							environment: { ELECTRON_RUN_AS_NODE: "1" },
-							enabled: true,
-						},
-					},
-				},
-				undefined,
-				2,
-			)}\n`,
-		);
-		const rendezvous = resolveWebMcpRendezvous("development");
-
-		const outcome = await reconcileWebMcpRelayConfig({
-			configDirectory: configDir,
-			appExecutablePath: APP_EXE,
-			resolveRelay: fakeResolveRelay,
-			port: rendezvous.port,
-			relayId: rendezvous.relayId,
-			label: rendezvous.label,
-		});
-
-		expect(outcome).toMatchObject({ kind: "written", reason: "updated" });
-		const config = await readConfig();
-		const desktop = (config.mcp as Record<string, { command: string[] } | undefined>).desktop;
-		expect(desktop?.command[desktop.command.indexOf("--port") + 1]).toBe("9347");
-		expect(desktop?.command[desktop.command.indexOf("--relay-id") + 1]).toBe("kilo-desktop-dev");
-		expect((config.mcp as Record<string, unknown>)["anaconda-desktop-relay"]).toBeUndefined();
 	});
 
 	it("skips initialization when the user replaces our entry with an entry Desktop does not own (sidecar gone)", async () => {
@@ -346,8 +246,6 @@ describe("reconcileWebMcpRelayConfig", () => {
 
 		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
-			appExecutablePath: APP_EXE,
-			resolveRelay: fakeResolveRelay,
 		});
 
 		expect(outcome).toEqual({ kind: "skipped", reason: "entry-not-owned" });
@@ -357,21 +255,17 @@ describe("reconcileWebMcpRelayConfig", () => {
 		});
 	});
 
-	it("removes the Desktop-owned entry when disabled=false (fuse-off / downgrade path)", async () => {
+	it("removes the Desktop-owned entry when the MCP endpoint is unavailable", async () => {
 		await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
-			appExecutablePath: APP_EXE,
-			resolveRelay: fakeResolveRelay,
 		});
 
 		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
-			appExecutablePath: APP_EXE,
 			enabled: false,
-			resolveRelay: fakeResolveRelay,
 		});
 
-		expect(outcome).toEqual({ kind: "removed", reason: "fuse-off" });
+		expect(outcome).toEqual({ kind: "removed", reason: "endpoint-unavailable" });
 		const config = await readConfig();
 		expect((config.mcp as Record<string, unknown> | undefined) ?? {}).not.toHaveProperty(
 			MCP_ENTRY_NAME,
@@ -397,9 +291,7 @@ describe("reconcileWebMcpRelayConfig", () => {
 
 		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
-			appExecutablePath: APP_EXE,
 			enabled: false,
-			resolveRelay: fakeResolveRelay,
 		});
 
 		expect(outcome).toEqual({ kind: "skipped", reason: "entry-not-owned" });
@@ -412,24 +304,11 @@ describe("reconcileWebMcpRelayConfig", () => {
 	it("is a no-op when disabled=false and no prior entry exists", async () => {
 		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
-			appExecutablePath: APP_EXE,
 			enabled: false,
-			resolveRelay: fakeResolveRelay,
 		});
 		expect(outcome).toEqual({ kind: "skipped", reason: "nothing-to-remove" });
 		await expect(readFile(configFile, "utf8")).rejects.toThrow(/ENOENT/);
 		await expect(readFile(sidecarFile, "utf8")).rejects.toThrow(/ENOENT/);
-	});
-
-	it("returns a skipped-error outcome when the relay cannot be resolved (does not throw)", async () => {
-		const outcome = await reconcileWebMcpRelayConfig({
-			configDirectory: configDir,
-			appExecutablePath: APP_EXE,
-			resolveRelay: () => {
-				throw new Error("relay not installed");
-			},
-		});
-		expect(outcome).toEqual({ kind: "skipped-error", reason: "relay not installed" });
 	});
 
 	it("treats an empty existing file as a fresh initialization", async () => {
@@ -437,8 +316,6 @@ describe("reconcileWebMcpRelayConfig", () => {
 
 		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
-			appExecutablePath: APP_EXE,
-			resolveRelay: fakeResolveRelay,
 		});
 
 		expect(outcome).toMatchObject({ kind: "written", reason: "updated" });
@@ -451,8 +328,6 @@ describe("reconcileWebMcpRelayConfig", () => {
 		const deepDir = path.join(configDir, "not", "yet", "created");
 		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: deepDir,
-			appExecutablePath: APP_EXE,
-			resolveRelay: fakeResolveRelay,
 		});
 		expect(outcome.kind).toBe("written");
 		const raw = await readFile(path.join(deepDir, KILO_CONFIG_FILENAME), "utf8");
@@ -476,8 +351,6 @@ describe("reconcileWebMcpRelayConfig", () => {
 
 		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
-			appExecutablePath: APP_EXE,
-			resolveRelay: fakeResolveRelay,
 		});
 
 		expect(outcome).toMatchObject({ kind: "written" });
@@ -496,6 +369,7 @@ describe("reconcileWebMcpRelayConfig", () => {
 			environment: { ELECTRON_RUN_AS_NODE: "1" },
 			enabled: true,
 		};
+		// Sidecar marks it as ours, so it is replaced even though it is not a relay entry.
 		await writeFile(
 			configFile,
 			`${JSON.stringify({ mcp: { [MCP_ENTRY_NAME]: staleEntry } }, undefined, 2)}\n`,
@@ -507,8 +381,6 @@ describe("reconcileWebMcpRelayConfig", () => {
 
 		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
-			appExecutablePath: APP_EXE,
-			resolveRelay: fakeResolveRelay,
 		});
 
 		expect(outcome).toMatchObject({ kind: "written", reason: "updated" });
@@ -532,8 +404,6 @@ describe("reconcileWebMcpRelayConfig", () => {
 
 		const outcome = await reconcileWebMcpRelayConfig({
 			configDirectory: configDir,
-			appExecutablePath: APP_EXE,
-			resolveRelay: fakeResolveRelay,
 		});
 
 		expect(outcome.kind).toBe("skipped-error");
@@ -564,6 +434,16 @@ describe("WebMCP channel rendezvous", () => {
 		});
 	});
 
+	it("keeps every rendezvous port inside the renderer's CSP-allowed loopback range", () => {
+		// See apps/desktop/src/main/platform/ElectronProtocol.ts RELAY_WS_SOURCES.
+		for (const channel of ["stable", "preview", "development"] as const) {
+			const { port } = resolveWebMcpRendezvous(channel);
+			expect(port).toBeGreaterThanOrEqual(9333);
+			expect(port).toBeLessThanOrEqual(9348);
+		}
+		expect(WEBMCP_RELAY_PORT).toBe(resolveWebMcpRendezvous("stable").port);
+	});
+
 	it("maps plugin storage dirs onto the matching app channel", () => {
 		expect(
 			webMcpChannelFromStorageDir(
@@ -580,34 +460,5 @@ describe("WebMCP channel rendezvous", () => {
 				"/Users/me/Library/Application Support/Kilo Desktop/plugins/kilo-server",
 			),
 		).toBe("stable");
-	});
-
-	it("writes the channel rendezvous into the Desktop MCP command", async () => {
-		const tempDir = await mkdtemp(path.join(tmpdir(), "webmcp-dev-rendezvous-"));
-		const configDir = path.join(tempDir, "config", "kilo");
-		await mkdir(configDir, { recursive: true });
-		const rendezvous = resolveWebMcpRendezvous("development");
-
-		await reconcileWebMcpRelayConfig({
-			configDirectory: configDir,
-			appExecutablePath: APP_EXE,
-			resolveRelay: fakeResolveRelay,
-			port: rendezvous.port,
-			relayId: rendezvous.relayId,
-			label: rendezvous.label,
-		});
-
-		const config = JSON.parse(
-			await readFile(path.join(configDir, KILO_CONFIG_FILENAME), "utf8"),
-		) as {
-			mcp: { desktop: { command: string[] } };
-		};
-		expect(config.mcp.desktop.command[config.mcp.desktop.command.indexOf("--port") + 1]).toBe(
-			"9347",
-		);
-		expect(config.mcp.desktop.command[config.mcp.desktop.command.indexOf("--relay-id") + 1]).toBe(
-			"kilo-desktop-dev",
-		);
-		await rm(tempDir, { recursive: true, force: true });
 	});
 });

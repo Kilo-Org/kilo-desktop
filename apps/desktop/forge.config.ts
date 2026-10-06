@@ -25,7 +25,6 @@ import {
 } from "./config/app-identity.js";
 import { planWindowsSigning, resolveOsxNotarize, resolveOsxSign } from "./config/signing.js";
 import { stageWebRenderer } from "./config/stage-web-renderer.js";
-import { resolvePackagedWebMcpRelayDirectory } from "./config/packaged-webmcp-relay.js";
 import { getWindowsPackagingTempDirectory } from "./config/windows-packaging-temp.js";
 import { signWindowsFile } from "./config/windows-sign.js";
 import { bundleVcRuntime, createVisualStudioRedistLocator } from "./config/windows-vc-runtime.js";
@@ -92,7 +91,6 @@ const asarUnpackPackages = [
 	"node-pty",
 	...notebookPackaging.asarUnpackPackages,
 ];
-const webMcpRelayRuntimePackage = "@kilo-desktop/webmcp-relay-runtime";
 const extraResources = [
 	path.join(packageRoot, "assets/icon.png"),
 	// Copied over Squirrel's app.ico by the install hook (SquirrelUninstallIcon.ts).
@@ -230,54 +228,6 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 	}
 }
 
-async function stageWebMcpRelayRuntime(buildPath: string): Promise<void> {
-	const runtimeDirectory = resolvePackagedWebMcpRelayDirectory(buildPath);
-	// Deploy into a workspace-local temp dir, then copy. Electron-packager's
-	// dest is outside the repo; `pnpm deploy --offline` against that path uses
-	// a different empty store on Windows (ERR_PNPM_NO_OFFLINE_TARBALL for
-	// @mcp-b/webmcp-local-relay) because the dest sits inside another
-	// node_modules tree. Stage beside app.asar (not inside it or under
-	// asar.unpacked) so Squirrel nupkg entries stay under the 260-character
-	// MAX_PATH extract budget and runtime can resolve process.resourcesPath.
-	const stagingDirectory = await mkdtemp(path.join(workspaceRoot, ".kilo-desktop-webmcp-relay-"));
-	try {
-		await execa(
-			"pnpm",
-			[
-				"--config.allowUnusedPatches=true",
-				"--filter",
-				webMcpRelayRuntimePackage,
-				"deploy",
-				"--prod",
-				"--ignore-scripts",
-				"--offline",
-				"--frozen-lockfile",
-				stagingDirectory,
-			],
-			{
-				cwd: workspaceRoot,
-				// See stageProductionDependencies for why the offline deploy
-				// skips the supply-chain re-verification.
-				env: { HUSKY: "0", PNPM_CONFIG_TRUST_LOCKFILE: "true" },
-				stderr: "inherit",
-				stdout: "inherit",
-			},
-		);
-		await rm(path.join(stagingDirectory, "node_modules", ".bin"), {
-			force: true,
-			recursive: true,
-		});
-		await rm(runtimeDirectory, { force: true, recursive: true });
-		await cp(stagingDirectory, runtimeDirectory, { dereference: true, recursive: true });
-		await rm(path.join(runtimeDirectory, "node_modules", ".pnpm"), {
-			force: true,
-			recursive: true,
-		});
-	} finally {
-		await rm(stagingDirectory, { recursive: true, force: true });
-	}
-}
-
 async function removeBinDirectories(directory: string): Promise<void> {
 	let entries;
 	try {
@@ -307,9 +257,7 @@ const config: ForgeConfig = {
 	packagerConfig: {
 		asar: {
 			// Native addons need real filesystem paths. All other production
-			// dependencies remain inside the integrity-checked ASAR. The WebMCP
-			// relay is staged as an extra-resource (`resources/webmcp-relay`)
-			// instead of unpacking the long plugin-kilo-server path.
+			// dependencies remain inside the integrity-checked ASAR.
 			// Keep this a single-level brace list. Wrapping it in another `{…}`
 			// makes @electron/asar match nothing, so signed builds die on
 			// `require("@runtimed/node")` with the .node still inside app.asar.
@@ -349,7 +297,6 @@ const config: ForgeConfig = {
 				await stampPackagedAppVersion(buildPath, appVersion);
 				await stageWebRenderer(buildPath, webDistDirectory);
 				await stageProductionDependencies(buildPath);
-				await stageWebMcpRelayRuntime(buildPath);
 				await ensureNodePtySpawnHelpersExecutable(
 					path.join(buildPath, "node_modules", "node-pty"),
 					platform,
@@ -486,14 +433,10 @@ const config: ForgeConfig = {
 		}),
 		new FusesPlugin({
 			version: FuseVersion.V1,
-			// INTERIM (see #102): RunAsNode must be true so
-			// the bundled `@mcp-b/webmcp-local-relay` can be spawned as a stdio MCP
-			// subprocess of `kilo serve` using `process.execPath` +
-			// `ELECTRON_RUN_AS_NODE=1`. The default-hardened value is `false`; the
-			// tracking issue restores it once Kilo Code ships a native `type:
-			// "webmcp"` MCP transport that lets Kilo connect to a main-hosted WS
-			// relay directly, removing the subprocess entirely.
-			[FuseV1Options.RunAsNode]: true,
+			// Off (Electron's recommended default): nothing in the app runs its
+			// binary as Node. Kilo reaches the WebMCP tools over the main
+			// process's MCP endpoint (docs/webmcp.md §7).
+			[FuseV1Options.RunAsNode]: false,
 			[FuseV1Options.EnableCookieEncryption]: true,
 			[FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
 			// Playwright's electron.launch requires --inspect to work (waits for

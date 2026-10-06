@@ -1413,15 +1413,15 @@ importers:
 
   plugins/kilo-server:
     dependencies:
-      '@electron/fuses':
-        specifier: ^2.1.3
-        version: 2.1.3
       '@kilo-desktop/feature-sdk':
         specifier: workspace:*
         version: link:../../packages/feature-sdk
       '@mcp-b/webmcp-local-relay':
         specifier: 5.1.0
         version: 5.1.0
+      '@modelcontextprotocol/server':
+        specifier: 2.0.0
+        version: 2.0.0
       atomically:
         specifier: 'catalog:'
         version: 2.1.1
@@ -1441,6 +1441,9 @@ importers:
       '@kilo-desktop/testing':
         specifier: workspace:*
         version: link:../../packages/testing
+      '@modelcontextprotocol/client':
+        specifier: ^2.0.0
+        version: 2.0.0
       '@types/lodash':
         specifier: ^4.17.20
         version: 4.17.24
@@ -1472,12 +1475,6 @@ importers:
       '@kilocode/cli-windows-x64-baseline':
         specifier: 7.7.9
         version: 7.7.9
-
-  plugins/kilo-server/relay-runtime:
-    dependencies:
-      '@mcp-b/webmcp-local-relay':
-        specifier: 5.1.0
-        version: 5.1.0
 
   plugins/kilo-ui:
     dependencies:

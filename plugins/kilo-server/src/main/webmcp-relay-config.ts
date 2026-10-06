@@ -8,14 +8,13 @@ import {
 	KiloConfigManager,
 	type KiloConfigMutationOutcome,
 } from "./KiloConfigManager.js";
-import { resolveWebMcpRelayEntry } from "./webmcp-relay-entry.js";
 
 /**
- * Interim WebMCP↔Kilo bridge — see #102.
- *
- * Reconciles the bundled WebMCP relay in Desktop's Kilo config. Generic
- * JSONC mutation and ownership tracking live in `KiloConfigManager`; this
- * module only resolves and builds the relay-specific entry.
+ * Reconciles the Desktop-owned `mcp.desktop` entry in Desktop's Kilo config.
+ * The entry points Kilo at the in-process Streamable HTTP endpoint
+ * (`WebMcpHttpEndpoint`). Generic JSONC mutation and ownership tracking live
+ * in `KiloConfigManager`; this module only builds the entry and recognizes the
+ * stdio relay entries that earlier builds wrote, so they are migrated.
  */
 
 export { KILO_CONFIG_FILENAME, OWNERSHIP_SIDECAR_FILENAME };
@@ -59,9 +58,34 @@ export function webMcpChannelFromStorageDir(storageDir: string): WebMcpChannel {
 	return "stable";
 }
 
-export function isDesktopWebMcpRelayEntry(entry: unknown): boolean {
-	if (!entry || typeof entry !== "object" || Array.isArray(entry)) return false;
-	const command = (entry as { command?: unknown }).command;
+/** Kilo reads the per-launch endpoint URL and token from these `kilo serve` env vars. */
+export const WEBMCP_ENDPOINT_URL_ENV = "KILO_DESKTOP_WEBMCP_URL";
+export const WEBMCP_ENDPOINT_TOKEN_ENV = "KILO_DESKTOP_WEBMCP_TOKEN";
+
+export type WebMcpRelayEntry = Readonly<{
+	type: "remote";
+	url: string;
+	oauth: false;
+	headers: Readonly<Record<string, string>>;
+	enabled: true;
+}>;
+
+const DESKTOP_WEBMCP_ENTRY: WebMcpRelayEntry = {
+	type: "remote",
+	url: `{env:${WEBMCP_ENDPOINT_URL_ENV}}`,
+	// A loopback endpoint with a bearer token; skip Kilo's OAuth discovery.
+	oauth: false,
+	headers: { Authorization: `Bearer {env:${WEBMCP_ENDPOINT_TOKEN_ENV}}` },
+	enabled: true,
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+/** The stdio relay child (`webmcp-local-relay` run as Node) written by earlier builds. */
+function isLegacyStdioRelayEntry(entry: Record<string, unknown>): boolean {
+	const command = entry.command;
 	if (!Array.isArray(command)) return false;
 	const tokens = command.map(String);
 	if (!tokens.some((token) => token.includes("webmcp-local-relay"))) return false;
@@ -74,47 +98,18 @@ export function isDesktopWebMcpRelayEntry(entry: unknown): boolean {
 	);
 }
 
-export type WebMcpRelayEntry = Readonly<Record<string, unknown>> & {
-	readonly type: "local";
-	readonly command: readonly [string, ...string[]];
-	readonly environment: Readonly<Record<string, string>>;
-	readonly enabled: true;
-};
+export function isDesktopWebMcpRelayEntry(entry: unknown): boolean {
+	if (!isRecord(entry)) return false;
+	return entry.url === DESKTOP_WEBMCP_ENTRY.url || isLegacyStdioRelayEntry(entry);
+}
 
 export interface ReconcileWebMcpRelayConfigOptions {
 	readonly configDirectory: string;
-	readonly appExecutablePath: string;
-	readonly relayRuntimeRoot?: string;
+	/** False when the in-process MCP endpoint is not running; the entry is then removed. */
 	readonly enabled?: boolean;
 	readonly logger?: Pick<KiloLogger, "info" | "warn" | "error">;
-	readonly resolveRelay?: () => { entry: string; version: string };
 	/** Shares the registration's serialized writer with runtime MCP updates. */
 	readonly kiloConfig?: Pick<KiloConfigManager, "setMcpEntry" | "removeMcpEntry">;
-	readonly port?: number;
-	readonly relayId?: string;
-	readonly label?: string;
-}
-
-/** Builds the CLI argv for Kilo's Desktop-provided stdio MCP relay child. */
-export function buildWebMcpRelayArgv(
-	relayEntry: string,
-	options?: {
-		readonly port?: number;
-		readonly relayId?: string;
-		readonly label?: string;
-	},
-): string[] {
-	return [
-		relayEntry,
-		"--port",
-		String(options?.port ?? WEBMCP_RELAY_PORT),
-		"--relay-id",
-		options?.relayId ?? WEBMCP_RELAY_ID,
-		"--label",
-		options?.label ?? WEBMCP_RELAY_LABEL,
-		"--widget-origin",
-		WEBMCP_TOOL_SOURCE_ORIGINS.join(","),
-	];
 }
 
 export type WebMcpRelayConfigOutcome =
@@ -125,7 +120,7 @@ export type WebMcpRelayConfigOutcome =
 	  }
 	| {
 			readonly kind: "removed";
-			readonly reason: "fuse-off" | "explicit";
+			readonly reason: "endpoint-unavailable" | "explicit";
 	  }
 	| {
 			readonly kind: "skipped";
@@ -137,28 +132,8 @@ export type WebMcpRelayConfigOutcome =
 	  }
 	| { readonly kind: "skipped-error"; readonly reason: string };
 
-function buildEntry(
-	appExecutablePath: string,
-	relayEntry: string,
-	rendezvous?: Pick<WebMcpRendezvous, "port" | "relayId" | "label">,
-): WebMcpRelayEntry {
-	return {
-		type: "local",
-		command: [
-			appExecutablePath,
-			...buildWebMcpRelayArgv(relayEntry, {
-				...(rendezvous?.port !== undefined ? { port: rendezvous.port } : {}),
-				...(rendezvous?.relayId ? { relayId: rendezvous.relayId } : {}),
-				...(rendezvous?.label ? { label: rendezvous.label } : {}),
-			}),
-		],
-		environment: { ELECTRON_RUN_AS_NODE: "1" },
-		enabled: true,
-	};
-}
-
 function mapRemovalOutcome(outcome: KiloConfigMutationOutcome): WebMcpRelayConfigOutcome {
-	if (outcome.kind === "removed") return { kind: "removed", reason: "fuse-off" };
+	if (outcome.kind === "removed") return { kind: "removed", reason: "endpoint-unavailable" };
 	if (outcome.kind === "written") {
 		return { kind: "skipped-error", reason: "unexpected write while removing WebMCP relay" };
 	}
@@ -184,24 +159,7 @@ export async function reconcileWebMcpRelayConfig(
 		);
 	}
 
-	let relay: { entry: string; version: string };
-	try {
-		relay = options.resolveRelay
-			? options.resolveRelay()
-			: resolveWebMcpRelayEntry({
-					...(options.relayRuntimeRoot ? { runtimeRoot: options.relayRuntimeRoot } : {}),
-				});
-	} catch (error) {
-		const reason = error instanceof Error ? error.message : String(error);
-		logger.warn(`Skipping WebMCP configuration: ${reason}`);
-		return { kind: "skipped-error", reason };
-	}
-
-	const entry = buildEntry(options.appExecutablePath, relay.entry, {
-		port: options.port ?? WEBMCP_RELAY_PORT,
-		relayId: options.relayId ?? WEBMCP_RELAY_ID,
-		label: options.label ?? WEBMCP_RELAY_LABEL,
-	});
+	const entry = DESKTOP_WEBMCP_ENTRY;
 	for (const staleName of STALE_WEBMCP_RELAY_ENTRY_NAMES) {
 		await kiloConfig.removeMcpEntry(MCP_ENTRY_SOURCE_ID, staleName, {
 			adoptExisting: isDesktopWebMcpRelayEntry,
@@ -212,8 +170,6 @@ export async function reconcileWebMcpRelayConfig(
 		adoptExisting: isDesktopWebMcpRelayEntry,
 	});
 	if (outcome.kind !== "written") return outcome;
-	logger.info(
-		`Initialized WebMCP relay entry (${outcome.reason}) using @mcp-b/webmcp-local-relay@${relay.version}.`,
-	);
+	logger.info(`Initialized the Desktop WebMCP entry (${outcome.reason}).`);
 	return { ...outcome, entry };
 }

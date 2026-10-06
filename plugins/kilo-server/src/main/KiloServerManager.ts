@@ -16,6 +16,7 @@ import { APP_RENDERER_ORIGINS } from "./app-renderer-origins.js";
 import { KILO_CLI_VERSION } from "./cli-distribution/artifacts.js";
 import type { ContributedEnvManager } from "./ContributedEnvManager.js";
 import { kiloPluginConfigContent, listManagedKiloPluginFiles } from "./managed-kilo-plugins.js";
+import { WEBMCP_ENDPOINT_TOKEN_ENV, WEBMCP_ENDPOINT_URL_ENV } from "./webmcp-relay-config.js";
 
 const execFile = promisify(execFileCallback);
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost"]);
@@ -72,6 +73,12 @@ export interface KiloServerManagerOptions {
 	readonly expectedVersion?: string;
 	readonly allowVersionMismatch?: boolean;
 	readonly corsOrigins?: readonly string[];
+	/**
+	 * The in-process WebMCP MCP endpoint, read at every spawn. Its URL and
+	 * token reach Kilo as env vars because Desktop's `mcp.desktop` config entry
+	 * references them through Kilo's `{env:}` substitution.
+	 */
+	readonly webMcpEndpoint?: () => { readonly url: string; readonly token: string } | undefined;
 	readonly environment?: NodeJS.ProcessEnv;
 	readonly contributedEnv?: ContributedEnvManager;
 	readonly platform?: NodeJS.Platform;
@@ -256,7 +263,7 @@ export class KiloServerManager {
 		> &
 		// Optional under exactOptionalPropertyTypes: absent unless the
 		// preferences capability supplies one.
-		Pick<KiloServerManagerOptions, "installationId">;
+		Pick<KiloServerManagerOptions, "installationId" | "webMcpEndpoint">;
 	readonly #contributedEnv: ContributedEnvManager | undefined;
 	readonly #intentionalExits = new WeakSet<KiloChildProcess>();
 	readonly #status: ObservableValue<KiloServerStatus>;
@@ -282,6 +289,7 @@ export class KiloServerManager {
 			managedPluginDirectory: options.managedPluginDirectory,
 			stateDirectory: options.stateDirectory,
 			...(options.installationId !== undefined ? { installationId: options.installationId } : {}),
+			...(options.webMcpEndpoint ? { webMcpEndpoint: options.webMcpEndpoint } : {}),
 			expectedVersion: options.expectedVersion ?? KILO_CLI_VERSION,
 			allowVersionMismatch: options.allowVersionMismatch ?? false,
 			corsOrigins: options.corsOrigins ?? APP_RENDERER_ORIGINS,
@@ -694,6 +702,7 @@ export class KiloServerManager {
 			NO_PROXY: appendNoProxy(this.#options.environment.NO_PROXY),
 			no_proxy: appendNoProxy(this.#options.environment.no_proxy),
 		};
+		const webMcpEndpoint = this.#options.webMcpEndpoint?.();
 		// Case-insensitive scrub of dangerous keys, in case any case-variant
 		// survived the spread from process.env. KILO_MACHINE_ID is deleted
 		// outright when this app has no installation id to stamp, so an
@@ -724,7 +733,17 @@ export class KiloServerManager {
 			}
 			if (upper === "NODE_OPTIONS" || upper === "ELECTRON_RUN_AS_NODE") {
 				delete environment[name];
+				continue;
 			}
+			// Only Desktop's own endpoint may be named here; an inherited value
+			// would point Kilo's `mcp.desktop` entry somewhere else.
+			if (upper === WEBMCP_ENDPOINT_URL_ENV || upper === WEBMCP_ENDPOINT_TOKEN_ENV) {
+				delete environment[name];
+			}
+		}
+		if (webMcpEndpoint) {
+			environment[WEBMCP_ENDPOINT_URL_ENV] = webMcpEndpoint.url;
+			environment[WEBMCP_ENDPOINT_TOKEN_ENV] = webMcpEndpoint.token;
 		}
 		// Desktop's inline config replaces any inherited value, so the only
 		// inline layer Kilo sees is the one Desktop owns.

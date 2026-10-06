@@ -2,8 +2,6 @@ import { createRequire } from "node:module";
 import path from "node:path";
 
 const PACKAGED_CLI_SUBPATH = "resources/kilo";
-const PACKAGED_RELAY_SUBPATH = "relay-runtime";
-export const PACKAGED_WEBMCP_RELAY_DIRECTORY = "webmcp-relay";
 const require = createRequire(import.meta.url);
 
 /**
@@ -26,9 +24,6 @@ export function createKiloServerResolveAsset(options: {
 	return (subpath) => {
 		if (options.isPackaged && subpath === PACKAGED_CLI_SUBPATH) {
 			return path.join(options.packagedResourcesPath, "kilo");
-		}
-		if (options.isPackaged && subpath === PACKAGED_RELAY_SUBPATH) {
-			return path.join(options.packagedResourcesPath, PACKAGED_WEBMCP_RELAY_DIRECTORY);
 		}
 		return resolvePackageAsset(subpath);
 	};

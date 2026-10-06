@@ -2,30 +2,47 @@ import { RelayBridgeServer } from "@mcp-b/webmcp-local-relay";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WEBMCP_RELAY_ID, WEBMCP_RELAY_LABEL, WEBMCP_RELAY_PORT } from "./webmcp-relay-config.js";
-import { WebMcpRelayService, type WebMcpRelayBridge } from "./webmcp-relay-service.js";
+import type { WebMcpHttpEndpointConnection } from "./webmcp-http-endpoint.js";
+import { WebMcpRelayService, type WebMcpEndpointHandle } from "./webmcp-relay-service.js";
 
-function fakeBridge(mode: "server" | "client" = "server"): WebMcpRelayBridge & {
-	start: ReturnType<typeof vi.fn<() => Promise<void>>>;
-	stop: ReturnType<typeof vi.fn<() => Promise<void>>>;
-} {
-	return {
+const CONNECTION: WebMcpHttpEndpointConnection = {
+	url: "http://127.0.0.1:50123/mcp",
+	token: "endpoint-token",
+};
+
+function fakeBridge(mode: "server" | "client" = "server") {
+	const bridge = {
 		mode,
 		port: WEBMCP_RELAY_PORT,
 		on: vi.fn(),
 		off: vi.fn(),
-		start: vi.fn(async () => undefined),
-		stop: vi.fn(async () => undefined),
+		start: vi.fn(async (): Promise<void> => undefined),
+		stop: vi.fn(async (): Promise<void> => undefined),
 	};
+	// The service only uses the members above; the endpoint is faked too.
+	return Object.assign(bridge, { asBridge: () => bridge as unknown as RelayBridgeServer });
+}
+
+function fakeEndpoint(): WebMcpEndpointHandle & {
+	start: ReturnType<typeof vi.fn<() => Promise<WebMcpHttpEndpointConnection>>>;
+	stop: ReturnType<typeof vi.fn<() => Promise<void>>>;
+} {
+	return { start: vi.fn(async () => CONNECTION), stop: vi.fn(async () => undefined) };
 }
 
 describe("WebMcpRelayService", () => {
 	it("starts an in-process server on the fixed loopback rendezvous", async () => {
 		const bridge = fakeBridge();
-		const createBridge = vi.fn(() => bridge);
+		const endpoint = fakeEndpoint();
+		const createBridge = vi.fn(() => bridge.asBridge());
 		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-		const service = new WebMcpRelayService({ createBridge, logger });
+		const service = new WebMcpRelayService({
+			createBridge,
+			createEndpoint: () => endpoint,
+			logger,
+		});
 
-		await expect(service.start()).resolves.toBe(true);
+		await expect(service.start()).resolves.toEqual(CONNECTION);
 		expect(createBridge).toHaveBeenCalledWith({
 			host: "127.0.0.1",
 			port: WEBMCP_RELAY_PORT,
@@ -40,14 +57,55 @@ describe("WebMcpRelayService", () => {
 
 		service.dispose();
 		await vi.waitFor(() => expect(bridge.stop).toHaveBeenCalledOnce());
+		expect(endpoint.stop).toHaveBeenCalledOnce();
+	});
+
+	it("serves the MCP endpoint only after owning the rendezvous", async () => {
+		const bridge = fakeBridge();
+		const createEndpoint = vi.fn((_bridge: RelayBridgeServer) => fakeEndpoint());
+		const service = new WebMcpRelayService({
+			createBridge: () => bridge.asBridge(),
+			createEndpoint,
+		});
+
+		await service.start();
+
+		expect(bridge.start.mock.invocationCallOrder[0]).toBeLessThan(
+			createEndpoint.mock.invocationCallOrder[0]!,
+		);
+		expect(createEndpoint).toHaveBeenCalledWith(bridge);
+		service.dispose();
+	});
+
+	it("keeps the rendezvous for external clients when the MCP endpoint cannot start", async () => {
+		const bridge = fakeBridge();
+		const endpoint = fakeEndpoint();
+		endpoint.start.mockRejectedValue(new Error("listen EACCES"));
+		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const service = new WebMcpRelayService({
+			createBridge: () => bridge.asBridge(),
+			createEndpoint: () => endpoint,
+			logger,
+		});
+
+		await expect(service.start()).resolves.toBeUndefined();
+		expect(bridge.stop).not.toHaveBeenCalled();
+		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("listen EACCES"));
+		service.dispose();
 	});
 
 	it("rejects client mode because the existing relay identity is unverified", async () => {
 		const bridge = fakeBridge("client");
+		const createEndpoint = vi.fn(() => fakeEndpoint());
 		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-		const service = new WebMcpRelayService({ createBridge: () => bridge, logger });
+		const service = new WebMcpRelayService({
+			createBridge: () => bridge.asBridge(),
+			createEndpoint,
+			logger,
+		});
 
-		await expect(service.start()).resolves.toBe(false);
+		await expect(service.start()).resolves.toBeUndefined();
+		expect(createEndpoint).not.toHaveBeenCalled();
 		expect(bridge.stop).toHaveBeenCalledOnce();
 		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("owned by another relay"));
 	});
@@ -56,9 +114,13 @@ describe("WebMcpRelayService", () => {
 		const bridge = fakeBridge();
 		bridge.start.mockRejectedValue(new Error("Port 9345 is already in use"));
 		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-		const service = new WebMcpRelayService({ createBridge: () => bridge, logger });
+		const service = new WebMcpRelayService({
+			createBridge: () => bridge.asBridge(),
+			createEndpoint: () => fakeEndpoint(),
+			logger,
+		});
 
-		await expect(service.start()).resolves.toBe(false);
+		await expect(service.start()).resolves.toBeUndefined();
 		expect(bridge.stop).toHaveBeenCalledOnce();
 		expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("already in use"));
 	});
@@ -70,13 +132,16 @@ describe("WebMcpRelayService", () => {
 		});
 		const bridge = fakeBridge();
 		bridge.start.mockReturnValue(startGate);
-		const service = new WebMcpRelayService({ createBridge: () => bridge });
+		const service = new WebMcpRelayService({
+			createBridge: () => bridge.asBridge(),
+			createEndpoint: () => fakeEndpoint(),
+		});
 
 		const starting = service.start();
 		service.dispose();
 		releaseStart();
 
-		await expect(starting).resolves.toBe(false);
+		await expect(starting).resolves.toBeUndefined();
 		expect(bridge.stop).toHaveBeenCalledOnce();
 	});
 });
@@ -95,7 +160,7 @@ describe("WebMcpRelayService tool-source origins", () => {
 			port: 0,
 			createBridge: (options) => (bridge = new RelayBridgeServer(options)),
 		});
-		await expect(service.start()).resolves.toBe(true);
+		await expect(service.start()).resolves.toMatchObject({ url: expect.stringContaining("/mcp") });
 		return bridge!.port;
 	}
 

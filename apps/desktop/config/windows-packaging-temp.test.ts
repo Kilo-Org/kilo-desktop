@@ -66,8 +66,6 @@ describe("Squirrel nupkg extract path budget", () => {
 	const temp = "D:\\t";
 	// electron-winstaller nuspec: resources/** → lib\net45\resources\
 	const nupkgResources = (...parts: string[]) => ["lib", "net45", "resources", ...parts].join("\\");
-	const pnpmRelayFolder = "@mcp-b+webmcp-local-relay@5.1.0";
-	const relayCli = ["node_modules", "@mcp-b", "webmcp-local-relay", "dist", "cli.mjs"];
 
 	it("extracts nupkg entries under TEMP\\{guid}\\{entry}", () => {
 		expect(squirrelExtractPath("D:\\t", "lib\\net45\\resources\\app.asar")).toBe(
@@ -76,12 +74,6 @@ describe("Squirrel nupkg extract path budget", () => {
 	});
 
 	it("keeps extra-resource and native-unpack entries under MAX_PATH after Squirrel extract", () => {
-		expect(
-			squirrelExtractFitsMaxPath(
-				temp,
-				nupkgResources("webmcp-relay", "node_modules", ".pnpm", pnpmRelayFolder, ...relayCli),
-			),
-		).toBe(true);
 		expect(
 			squirrelExtractFitsMaxPath(
 				temp,

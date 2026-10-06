@@ -2,7 +2,6 @@ packages:
   - apps/*
   - packages/*
   - plugins/*
-  - plugins/*/relay-runtime
   - plugins/kilo-ui/opencode-sdk-compat
   - e2e
 

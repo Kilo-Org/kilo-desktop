@@ -73,14 +73,10 @@ describe("packaged production dependencies", () => {
 		expect(dependencies["@mcp-b/webmcp-local-relay"]).toBeUndefined();
 	});
 
-	it("pins the isolated WebMCP runtime to the reviewed relay version", () => {
-		const runtimeManifest = JSON.parse(
-			readFileSync(
-				path.join(workspaceRoot, "plugins/kilo-server/relay-runtime/package.json"),
-				"utf8",
-			),
-		) as { dependencies?: Record<string, string> };
-		expect(runtimeManifest.dependencies?.["@mcp-b/webmcp-local-relay"]).toBe("5.1.0");
+	it("keeps the RunAsNode fuse off so nothing can run the app binary as Node", () => {
+		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
+		expect(forge).toMatch(/\[FuseV1Options\.RunAsNode\]:\s*false/);
+		expect(forge).not.toContain("webmcp-relay-runtime");
 	});
 
 	it("uses frozen lockfile-backed deploys", () => {
@@ -149,18 +145,6 @@ describe("packaged production dependencies", () => {
 	it("pins zod to one major so pnpm 12 deploy is unambiguous", () => {
 		const workspace = readFileSync(path.join(workspaceRoot, "pnpm-workspace.yaml"), "utf8");
 		expect(workspace).toContain("zod: ^4.4.3");
-	});
-
-	it("stages the isolated WebMCP runtime from a workspace-local deploy", () => {
-		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
-		// Electron-packager dest is outside the repo. `pnpm deploy --offline`
-		// against that path uses a different empty store on Windows and fails
-		// looking up @mcp-b/webmcp-local-relay. Stage inside the workspace
-		// first, then copy — same pattern as production node_modules.
-		expect(forge).toContain(".kilo-desktop-webmcp-relay-");
-		expect(forge).toMatch(
-			/mkdtemp\(\s*path\.join\(\s*workspaceRoot,\s*"\.kilo-desktop-webmcp-relay-"/,
-		);
 	});
 
 	it("only unpacks native modules from ASAR", () => {
@@ -238,7 +222,6 @@ describe("packaged production dependencies", () => {
 		const beforeAsar = forge.slice(forge.indexOf("beforeAsar:"), forge.indexOf("win32metadata:"));
 		expect(beforeAsar).toContain("stageWebRenderer");
 		expect(beforeAsar).toContain("stageProductionDependencies");
-		expect(beforeAsar).toContain("stageWebMcpRelayRuntime");
 		expect(forge).not.toContain("packageAfterCopy:");
 	});
 
@@ -328,17 +311,6 @@ describe("packaged production dependencies", () => {
 		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
 		expect(runPackaging).toContain("applyWindowsPackagingTemp");
 		expect(forge).toContain("tmpdir: windowsPackagingTemp");
-	});
-
-	it("stages the WebMCP relay as a short extra-resource so Squirrel extract stays under MAX_PATH", () => {
-		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
-		expect(forge).toContain("resolvePackagedWebMcpRelayDirectory");
-		expect(forge).not.toMatch(
-			/path\.join\(\s*buildPath,\s*"resources",\s*PACKAGED_WEBMCP_RELAY_DIRECTORY/,
-		);
-		expect(forge).toContain("dereference: true");
-		expect(forge).not.toContain("webMcpRelayRuntimeSubpath");
-		expect(forge).not.toMatch(/plugin-kilo-server["'][\s\S]*relay-runtime/);
 	});
 
 	it("stamps the desktop package version before Forge makers run", () => {

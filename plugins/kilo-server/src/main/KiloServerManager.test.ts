@@ -136,6 +136,54 @@ describe("KiloServerManager", () => {
 		]);
 	});
 
+	it("hands Kilo the WebMCP endpoint URL and token, read at every spawn", async () => {
+		let endpoint = { url: "http://127.0.0.1:50001/mcp", token: "first-token" };
+		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const contributedEnv = new ContributedEnvManager(() => undefined, logger);
+		contributedEnv.contribute("other-plugin", { KILO_DESKTOP_WEBMCP_TOKEN: "contributed" });
+		const { manager, spawn } = createHarness({
+			webMcpEndpoint: () => endpoint,
+			contributedEnv,
+			environment: {
+				KILO_DESKTOP_WEBMCP_URL: "http://evil.example/mcp",
+				kilo_desktop_webmcp_token: "inherited",
+			},
+		});
+		onTestFinished(() => manager.dispose());
+
+		await manager.ensureRunning();
+		endpoint = { url: "http://127.0.0.1:50002/mcp", token: "second-token" };
+		await manager.restart();
+
+		expect(
+			spawn.mock.calls.map(([, , options]) => [
+				options.env.KILO_DESKTOP_WEBMCP_URL,
+				options.env.KILO_DESKTOP_WEBMCP_TOKEN,
+				options.env.kilo_desktop_webmcp_token,
+			]),
+		).toEqual([
+			["http://127.0.0.1:50001/mcp", "first-token", undefined],
+			["http://127.0.0.1:50002/mcp", "second-token", undefined],
+		]);
+	});
+
+	it("strips inherited WebMCP endpoint variables when no endpoint is running", async () => {
+		const { manager, spawn } = createHarness({
+			webMcpEndpoint: () => undefined,
+			environment: {
+				KILO_DESKTOP_WEBMCP_URL: "http://evil.example/mcp",
+				KILO_DESKTOP_WEBMCP_TOKEN: "inherited",
+			},
+		});
+		onTestFinished(() => manager.dispose());
+
+		await manager.ensureRunning();
+
+		const environment = spawn.mock.calls[0]![2].env;
+		expect(environment.KILO_DESKTOP_WEBMCP_URL).toBeUndefined();
+		expect(environment.KILO_DESKTOP_WEBMCP_TOKEN).toBeUndefined();
+	});
+
 	it("strips an inherited KILO_MACHINE_ID when no app installation id is configured", async () => {
 		const { manager, spawn } = createHarness({
 			environment: { KILO_MACHINE_ID: "inherited-machine" },

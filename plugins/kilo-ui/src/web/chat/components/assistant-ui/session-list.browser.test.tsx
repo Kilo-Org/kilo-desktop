@@ -21,7 +21,11 @@ import {
 } from "../../../workspaces/WorkspacesFeatureContext.js";
 import { SessionActivityProvider } from "../../session-activity/SessionActivityProvider.js";
 import { createSessionActivityStore } from "../../session-activity/session-activity-store.js";
-import { SESSION_LIST_VIEW_STORAGE_KEY } from "../../session-list/session-list-view.js";
+import {
+	DEFAULT_SESSION_LIST_VIEW,
+	SESSION_LIST_VIEW_STORAGE_KEY,
+	type SessionListView,
+} from "../../session-list/session-list-view.js";
 import { SessionListViewProvider } from "../../session-list/use-session-list-view.js";
 import { SessionList } from "./session-list.js";
 
@@ -174,12 +178,14 @@ function SessionListHarness({
 	system,
 	workspaces,
 	includeComposer,
+	width,
 }: {
 	adapter: SeededThreadListAdapter;
 	store: ReturnType<typeof createSessionActivityStore>;
 	system: ReturnType<typeof createFakeFeatureSystem>;
 	workspaces: WorkspacesContextValue;
 	includeComposer: boolean;
+	width: number | undefined;
 }) {
 	const runtime = useRemoteThreadListRuntime({
 		adapter,
@@ -194,7 +200,7 @@ function SessionListHarness({
 						<WorkspacesContext.Provider value={workspaces}>
 							<SessionListViewProvider>
 								<div data-qa-id="sidebar-header-actions" />
-								<div className="flex h-[420px] flex-col">
+								<div className="flex h-[420px] flex-col" style={{ width }}>
 									<SessionList />
 								</div>
 								{includeComposer ? (
@@ -218,6 +224,7 @@ function renderSessionList({
 	includeComposer = false,
 	removeWorktree,
 	skipDefaultHydration = false,
+	width,
 	hasMorePages = false,
 }: {
 	threads: SeededThread[];
@@ -227,6 +234,7 @@ function renderSessionList({
 	removeWorktree?: (input: { directory: string }) => Promise<undefined>;
 	/** Mirrors the real startup window: rows render before any session stamp arrives. */
 	skipDefaultHydration?: boolean;
+	width?: number;
 	/** Mirrors background backfill: older session pages have not loaded yet. */
 	hasMorePages?: boolean;
 }) {
@@ -286,6 +294,7 @@ function renderSessionList({
 			system={system}
 			workspaces={workspaces}
 			includeComposer={includeComposer}
+			width={width}
 		/>,
 	);
 	return {
@@ -299,6 +308,17 @@ function renderSessionList({
 		screen: page.elementLocator(result.baseElement),
 		...result,
 	};
+}
+
+function storeView(view: Partial<SessionListView>) {
+	localStorage.setItem(
+		SESSION_LIST_VIEW_STORAGE_KEY,
+		JSON.stringify({ ...DEFAULT_SESSION_LIST_VIEW, ...view }),
+	);
+}
+
+function rowSlot(card: ReturnType<typeof page.elementLocator>, slot: string) {
+	return card.element().querySelector<HTMLElement>(`[data-slot="aui_session-list-item-${slot}"]`);
 }
 
 afterEach(() => {
@@ -1151,6 +1171,44 @@ describe("SessionList", () => {
 		expect(card.element().getBoundingClientRect().height).toBeGreaterThan(36);
 	});
 
+	it.each([
+		["the default view", {}],
+		["workspace grouping", { grouping: "workspace", show: ["workspace", "pr"] }],
+	] as const)("keeps the PR beside the title in %s", async (_, view) => {
+		storeView(view);
+		const { screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Fix the bug" }],
+			hydrate: (store) => {
+				store.getState().hydrateSessions([{ id: "ses-1", workspaceId: "ws-1" }]);
+			},
+		});
+
+		const card = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
+		await expect.element(card.getByText("PR #42")).toBeVisible();
+		expect(rowSlot(card, "time")).toHaveTextContent("PR #42");
+		expect(rowSlot(card, "info")).toBeNull();
+	});
+
+	it("drops the time before squeezing the title when a PR shares a narrow row", async () => {
+		storeView({ show: ["updated", "pr"] });
+		const { screen } = renderSessionList({
+			width: 208,
+			threads: [
+				{ remoteId: "ses-1", title: "Fix the bug" },
+				{ remoteId: "ses-2", title: "Unscoped question" },
+			],
+			hydrate: (store) => {
+				store.getState().hydrateSessions([{ id: "ses-1", workspaceId: "ws-1" }]);
+			},
+		});
+
+		const withPr = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
+		const withoutPr = screen.getByRole("listitem").filter({ hasText: "Unscoped question" });
+		await expect.element(withPr.getByText("PR #42")).toBeVisible();
+		expect(getComputedStyle(rowSlot(withPr, "updated")!).display).toBe("none");
+		expect(getComputedStyle(rowSlot(withoutPr, "updated")!).display).not.toBe("none");
+	});
+
 	it("shows workspace info only while viewing all workspaces", async () => {
 		const { screen } = renderSessionList({
 			threads: [
@@ -1230,7 +1288,7 @@ describe("SessionList", () => {
 		await expect.element(screen.getByRole("button", { name: "Last 7 Days" })).toBeVisible();
 		await expect.element(screen.getByText("Fix the bug")).toBeVisible();
 		await expect.element(screen.getByText("Add tests")).toBeVisible();
-		await expect.element(screen.getByText("3d")).toBeVisible();
+		await expect.element(screen.getByText("3d")).not.toBeInTheDocument();
 	});
 
 	it("groups sessions by workspace without a Needs Attention section", async () => {

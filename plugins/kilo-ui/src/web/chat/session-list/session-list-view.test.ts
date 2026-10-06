@@ -139,13 +139,16 @@ describe("visibleShowFields", () => {
 		).toEqual(["updated"]);
 	});
 
-	it("always shows updated time when grouping by updated", () => {
-		expect(visibleShowFields({ ...defaultView, grouping: "updated", show: [] })).toEqual([
-			"updated",
+	it("omits workspace while a workspace is focused", () => {
+		expect(
+			visibleShowFields({ ...defaultView, focus: "ws-1", show: ["workspace", "updated", "pr"] }),
+		).toEqual(["updated", "pr"]);
+	});
+
+	it("respects an unticked Updated when grouping by updated", () => {
+		expect(visibleShowFields({ ...defaultView, grouping: "updated", show: ["pr"] })).toEqual([
+			"pr",
 		]);
-		expect(visibleShowFields({ ...defaultView, grouping: "updated", show: ["workspace"] })).toEqual(
-			["workspace", "updated"],
-		);
 	});
 });
 

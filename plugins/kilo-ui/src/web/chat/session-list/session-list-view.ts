@@ -499,14 +499,6 @@ export function buildSessionListSections(args: {
 }
 
 export function visibleShowFields(view: SessionListView): SessionListShowField[] {
-	const grouping = resolveSessionListGrouping(view);
-	if (grouping === "workspace") {
-		return view.show.filter((field) => field !== "workspace");
-	}
-	if (grouping === "updated") {
-		return SESSION_LIST_SHOW_FIELDS.filter(
-			(field) => field === "updated" || view.show.includes(field),
-		);
-	}
-	return [...view.show];
+	const workspaceStated = view.focus !== null || view.grouping === "workspace";
+	return view.show.filter((field) => !(field === "workspace" && workspaceStated));
 }

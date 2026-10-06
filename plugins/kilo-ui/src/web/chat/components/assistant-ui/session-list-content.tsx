@@ -142,6 +142,8 @@ const rowHoverActionsClassName =
 const rowHoverLabelFadeClassName =
 	"group-hover/sidebar-row:opacity-0 group-has-[:focus-visible]/sidebar-row:opacity-0 group-has-[[data-popup-open]]/sidebar-row:opacity-0";
 
+const narrowRowYieldsTimeClassName = "@max-[14rem]/session-row:peer-[:not(:empty)]/pr:hidden";
+
 const workspaceHeaderActionsClassName =
 	"pointer-events-none mr-1 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/workspace-row:pointer-events-auto group-hover/workspace-row:opacity-100 group-focus-within/workspace-row:pointer-events-auto group-focus-within/workspace-row:opacity-100 group-has-[[data-popup-open]]/workspace-row:pointer-events-auto group-has-[[data-popup-open]]/workspace-row:opacity-100";
 
@@ -335,14 +337,7 @@ export const SessionListContent = memo(function SessionListContent({
 		[focus, view],
 	);
 	const show = useMemo(() => visibleShowFields(resolvedView), [resolvedView]);
-	const visibleRowFields = useMemo(
-		() => (focus ? show.filter((field) => field !== "workspace") : show),
-		[focus, show],
-	);
-	const chrome = useMemo(
-		() => ({ show: visibleRowFields, pinnedIds, togglePin }),
-		[pinnedIds, togglePin, visibleRowFields],
-	);
+	const chrome = useMemo(() => ({ show, pinnedIds, togglePin }), [pinnedIds, show, togglePin]);
 
 	const sections = useMemo(() => {
 		const itemsById = new Map(threadItems.map((item) => [item.id, item]));
@@ -1419,7 +1414,12 @@ const SessionRowContent = memo(function SessionRowContent({
 			<span className="inline-flex size-3.5 shrink-0" aria-hidden />
 		);
 
-	const rightSlot = updatedAt !== undefined ? <SessionRelativeTime timestamp={updatedAt} /> : null;
+	const rightSlot =
+		updatedAt !== undefined ? (
+			<span data-slot="aui_session-list-item-updated" className={narrowRowYieldsTimeClassName}>
+				<SessionRelativeTime timestamp={updatedAt} />
+			</span>
+		) : null;
 	const pullRequestMetadata =
 		showPullRequest && activity?.directory && statusId
 			? metadataContributions.map((contribution) => {
@@ -1475,7 +1475,9 @@ const SessionRowContent = memo(function SessionRowContent({
 					rightSlot || pullRequestInTitleRow ? rowHoverLabelFadeClassName : null,
 				)}
 			>
-				{pullRequestInTitleRow ? pullRequestMetadata : null}
+				{pullRequestInTitleRow ? (
+					<span className="peer/pr contents">{pullRequestMetadata}</span>
+				) : null}
 				{rightSlot}
 			</span>
 		</span>
@@ -1513,7 +1515,7 @@ const SessionRowContent = memo(function SessionRowContent({
 		<ThreadListItemPrimitive.Root
 			data-slot={isArchived ? "aui_session-list-archived-item" : "aui_session-list-item"}
 			className={cn(
-				"group/sidebar-row relative mx-px min-w-0 cursor-pointer rounded-md text-left outline-none select-none",
+				"group/sidebar-row @container/session-row relative mx-px min-w-0 cursor-pointer rounded-md text-left outline-none select-none",
 				isActive ? sidebarSurfaceActiveClassName : sidebarSurfaceIdleClassName,
 			)}
 		>

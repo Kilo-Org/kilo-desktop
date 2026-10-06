@@ -13,6 +13,7 @@ import {
 	type CondaPackage,
 	type CondaPackagesInstallInput,
 	type CondaPackagesInstallResult,
+	type CondaPackagesPreviewInput,
 	type CondaPackagesPreviewResult,
 	type CondaRepodataFindInput,
 	type CondaRepodataPackage,
@@ -50,12 +51,23 @@ function installResult(): CondaPackagesInstallResult {
 	return { jobId: "job-1", envName: "dev", installed: [] };
 }
 
+function solvedPreview(): CondaPackagesPreviewResult {
+	return {
+		upgraded: [],
+		downgraded: [],
+		added: [],
+		removed: [],
+		rebuilt: [],
+		nothingToDo: true,
+	};
+}
+
 function renderDialog(
 	options: {
 		find?: (input: CondaRepodataFindInput) => CondaRepodataPackage[];
 		truncated?: boolean;
 		install?: (input: CondaPackagesInstallInput) => Promise<CondaPackagesInstallResult>;
-		previewInstall?: () => Promise<CondaPackagesPreviewResult>;
+		previewInstall?: (input: CondaPackagesPreviewInput) => Promise<CondaPackagesPreviewResult>;
 		installed?: CondaPackage[];
 		channels?: string[];
 		onClose?: () => void;
@@ -64,6 +76,7 @@ function renderDialog(
 ) {
 	const find = options.find ?? (() => [pkg("numpy", ["2.1.0", "2.0.0"]), pkg("pandas")]);
 	const install = options.install ?? (async () => installResult());
+	const previewInstall = options.previewInstall ?? (async () => solvedPreview());
 	const onClose = options.onClose ?? (() => {});
 
 	const sdk = createFakeSdk({
@@ -83,16 +96,7 @@ function renderDialog(
 				truncated: options.truncated ?? false,
 			}),
 			"conda.packages.install": install,
-			"conda.packages.previewInstall":
-				options.previewInstall ??
-				(async () => ({
-					upgraded: [],
-					downgraded: [],
-					added: [],
-					removed: [],
-					rebuilt: [],
-					nothingToDo: true,
-				})),
+			"conda.packages.previewInstall": previewInstall,
 		},
 		auth: options.auth ?? {},
 	});
@@ -114,6 +118,23 @@ async function waitForRows(baseElement: HTMLElement, count: number) {
 		const rows = baseElement.querySelectorAll('[data-qa-id="environments-conda-add-pkg-row"]');
 		expect(rows).toHaveLength(count);
 	});
+}
+
+/**
+ * The install button is locked until the debounced solver preview returns a
+ * solution. The preview debounce is 1500 ms, so poll with a generous timeout.
+ */
+async function waitForInstallEnabled(baseElement: HTMLElement) {
+	await vi.waitFor(
+		() => {
+			const btn = baseElement.querySelector(
+				'[data-qa-id="environments-conda-add-pkg-install-btn"]',
+			);
+			expect(btn).not.toBeNull();
+			expect(btn).not.toBeDisabled();
+		},
+		{ timeout: 3000 },
+	);
 }
 
 afterEach(cleanup);
@@ -273,6 +294,7 @@ describe("AddPackageDialog", () => {
 			await screen.getByTestId("environments-conda-add-pkg-selected-list").element().textContent,
 		).toContain("numpy2.0.0");
 
+		await waitForInstallEnabled(baseElement);
 		await userEvent.click(screen.getByTestId("environments-conda-add-pkg-install-btn"));
 
 		await vi.waitFor(() => {
@@ -300,6 +322,7 @@ describe("AddPackageDialog", () => {
 		await userEvent.click(screen.getByRole("combobox", { name: "Version for numpy" }));
 		await userEvent.click(screen.getByRole("option", { name: "2.0.0" }));
 
+		await waitForInstallEnabled(baseElement);
 		await userEvent.click(screen.getByTestId("environments-conda-add-pkg-install-btn"));
 		await vi.waitFor(() => {
 			expect(install).toHaveBeenCalledOnce();
@@ -361,6 +384,7 @@ describe("AddPackageDialog", () => {
 		await waitForRows(baseElement, 2);
 
 		await userEvent.click(screen.getByText("pandas", { exact: true }));
+		await waitForInstallEnabled(baseElement);
 		await userEvent.click(screen.getByTestId("environments-conda-add-pkg-install-btn"));
 
 		await expect.element(screen.getByTestId("environments-conda-add-pkg-error")).toBeVisible();
@@ -382,6 +406,7 @@ describe("AddPackageDialog", () => {
 		await waitForRows(baseElement, 2);
 
 		await userEvent.click(screen.getByText("pandas", { exact: true }));
+		await waitForInstallEnabled(baseElement);
 		await userEvent.click(screen.getByTestId("environments-conda-add-pkg-install-btn"));
 
 		await expect.element(screen.getByTestId("environments-conda-add-pkg-background")).toBeVisible();
@@ -407,6 +432,7 @@ describe("AddPackageDialog", () => {
 		await waitForRows(baseElement, 2);
 
 		await userEvent.click(screen.getByText("pandas", { exact: true }));
+		await waitForInstallEnabled(baseElement);
 		await userEvent.click(screen.getByTestId("environments-conda-add-pkg-install-btn"));
 		await expect.element(screen.getByTestId("environments-conda-add-pkg-background")).toBeVisible();
 
@@ -429,6 +455,7 @@ describe("AddPackageDialog", () => {
 		await waitForRows(baseElement, 2);
 
 		await userEvent.click(screen.getByText("numpy", { exact: true }));
+		await waitForInstallEnabled(baseElement);
 		await userEvent.click(screen.getByTestId("environments-conda-add-pkg-install-btn"));
 		await expect.element(screen.getByTestId("environments-conda-add-pkg-background")).toBeVisible();
 
@@ -470,5 +497,176 @@ describe("AddPackageDialog", () => {
 		await vi.waitFor(() => {
 			expect(find.mock.calls.at(-1)![0].channels).toEqual(["conda-forge"]);
 		});
+	});
+	it("keeps the install button disabled until the solver returns a solution", async () => {
+		let resolvePreview!: (value: CondaPackagesPreviewResult) => void;
+		const previewInstall = vi.fn(
+			() =>
+				new Promise<CondaPackagesPreviewResult>((resolve) => {
+					resolvePreview = resolve;
+				}),
+		);
+		const { baseElement } = renderDialog({ previewInstall });
+		const screen = page.elementLocator(baseElement);
+		await waitForRows(baseElement, 2);
+
+		await userEvent.click(screen.getByText("pandas", { exact: true }));
+
+		// Wait for the debounced solve to be dispatched (it stays pending).
+		await vi.waitFor(() => expect(previewInstall).toHaveBeenCalled(), { timeout: 3000 });
+
+		// A package is selected but the solver has not returned yet: locked.
+		await expect
+			.element(screen.getByTestId("environments-conda-add-pkg-install-btn"))
+			.toBeDisabled();
+
+		resolvePreview(solvedPreview());
+
+		// Solver returned a solution: the button unlocks.
+		await waitForInstallEnabled(baseElement);
+	});
+
+	it("re-locks the install button when the selection changes until the solver re-solves", async () => {
+		const gate = { release: () => {} };
+		let solveCount = 0;
+		const previewInstall = vi.fn(
+			() =>
+				new Promise<CondaPackagesPreviewResult>((resolve) => {
+					solveCount += 1;
+					if (solveCount === 1) {
+						// First solve resolves immediately so the button can enable.
+						resolve(solvedPreview());
+					} else {
+						// Hold the second solve pending so we can assert the re-lock.
+						gate.release = () => resolve(solvedPreview());
+					}
+				}),
+		);
+		const { baseElement } = renderDialog({ previewInstall });
+		const screen = page.elementLocator(baseElement);
+		await waitForRows(baseElement, 2);
+
+		await userEvent.click(screen.getByText("numpy", { exact: true }));
+		await waitForInstallEnabled(baseElement);
+
+		// Change the selection: the prior solution is now stale, so the button
+		// must re-lock until the solver returns for the new specs.
+		await userEvent.click(screen.getByText("pandas", { exact: true }));
+		await expect
+			.element(screen.getByTestId("environments-conda-add-pkg-install-btn"))
+			.toBeDisabled();
+
+		await vi.waitFor(() => expect(solveCount).toBe(2), { timeout: 3000 });
+		gate.release();
+		await waitForInstallEnabled(baseElement);
+	});
+
+	it("re-locks the install button when the channel selection changes until the solver re-solves", async () => {
+		const gate = { release: () => {} };
+		let solveCount = 0;
+		const channelsByCall: (string[] | undefined)[] = [];
+		const previewInstall = vi.fn(
+			(input: CondaPackagesPreviewInput) =>
+				new Promise<CondaPackagesPreviewResult>((resolve) => {
+					solveCount += 1;
+					channelsByCall.push(input.channels);
+					if (solveCount === 1) {
+						// First solve resolves immediately so the button can enable.
+						resolve(solvedPreview());
+					} else {
+						// Hold the re-solve pending so we can assert the re-lock.
+						gate.release = () => resolve(solvedPreview());
+					}
+				}),
+		);
+		const { baseElement } = renderDialog({
+			previewInstall,
+			channels: ["defaults", "conda-forge"],
+			auth: authenticatedAuth,
+		});
+		const screen = page.elementLocator(baseElement);
+		await waitForRows(baseElement, 2);
+
+		await userEvent.click(screen.getByText("numpy", { exact: true }));
+		await waitForInstallEnabled(baseElement);
+
+		// Toggle a channel off. The solver resolves against channels too, so the
+		// prior solution is now stale and Install must re-lock until the solver
+		// re-solves for the new channel set.
+		await userEvent.click(screen.getByTestId("environments-conda-add-pkg-channels-btn"));
+		await userEvent.click(page.getByTestId("environments-channel-option-defaults"));
+		await expect
+			.element(screen.getByTestId("environments-conda-add-pkg-install-btn"))
+			.toBeDisabled();
+
+		// The re-solve must run with the narrowed channel set before Install re-enables.
+		await vi.waitFor(() => expect(solveCount).toBe(2), { timeout: 3000 });
+		expect(channelsByCall[1]).toEqual(["conda-forge"]);
+		gate.release();
+		await waitForInstallEnabled(baseElement);
+	});
+
+	it("ignores a stale in-flight solve that lands during the debounce after the selection changed", async () => {
+		// Each solve stays pending until we resolve it.
+		const resolvers: ((value: CondaPackagesPreviewResult) => void)[] = [];
+		const previewInstall = vi.fn(
+			() =>
+				new Promise<CondaPackagesPreviewResult>((resolve) => {
+					resolvers.push(resolve);
+				}),
+		);
+		const { baseElement } = renderDialog({ previewInstall });
+		const screen = page.elementLocator(baseElement);
+		await waitForRows(baseElement, 2);
+
+		// Selection A dispatches the first (still pending) solve.
+		await userEvent.click(screen.getByText("numpy", { exact: true }));
+		await vi.waitFor(() => expect(resolvers).toHaveLength(1), { timeout: 3000 });
+
+		// Change to selection B. The re-solve for B is still inside its 1500ms
+		// debounce, so no second solve has dispatched yet.
+		await userEvent.click(screen.getByText("pandas", { exact: true }));
+		expect(resolvers).toHaveLength(1);
+
+		// The stale solve for selection A lands during that debounce window. It
+		// must NOT unlock Install for the new, unvalidated selection B. Give the
+		// stale result time to flush through React, then assert the button stayed
+		// locked — polling assertions could pass on a transient re-lock, so read
+		// the settled state directly.
+		resolvers[0]!(solvedPreview());
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		const installBtn = baseElement.querySelector(
+			'[data-qa-id="environments-conda-add-pkg-install-btn"]',
+		);
+		expect(installBtn?.hasAttribute("disabled")).toBe(true);
+
+		// Once the debounced solve for B dispatches and resolves, Install unlocks.
+		await vi.waitFor(() => expect(resolvers).toHaveLength(2), { timeout: 3000 });
+		resolvers[1]!(solvedPreview());
+		await waitForInstallEnabled(baseElement);
+	});
+
+	it("keeps the install button disabled when the solver cannot find a solution", async () => {
+		const previewInstall = vi.fn(async () => {
+			throw new Error("SOLVE_FAILED: package conflict");
+		});
+		const install = vi.fn(async () => installResult());
+		const { baseElement } = renderDialog({ previewInstall, install });
+		const screen = page.elementLocator(baseElement);
+		await waitForRows(baseElement, 2);
+
+		await userEvent.click(screen.getByText("pandas", { exact: true }));
+
+		// The solver reports no solution: the button must never enable.
+		await vi.waitFor(() => expect(previewInstall).toHaveBeenCalled(), { timeout: 3000 });
+		await expect
+			.element(screen.getByTestId("environments-conda-add-pkg-install-btn"))
+			.toBeDisabled();
+
+		// Force a click anyway — install must not be attempted.
+		await userEvent.click(screen.getByTestId("environments-conda-add-pkg-install-btn"), {
+			force: true,
+		});
+		expect(install).not.toHaveBeenCalled();
 	});
 });

@@ -105,16 +105,30 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 	);
 	const [depFilter, setDepFilter] = useState<ChangeFilter>("all");
 	const previewGenRef = useRef(0);
-	const lastSpecsKeyRef = useRef("");
+	const lastSolveKeyRef = useRef("");
 	const previewRef = useRef<CondaPackagesPreviewResult | null>(null);
 	const previewErrorRef = useRef<{ message: string; detail?: string } | null>(null);
+	// Key of the selection+channels the current `preview` was solved for. Install
+	// eligibility compares this against the live `solveKey` so a preview can only
+	// unlock the button for the exact specs and channels the solver validated.
+	const solvedKeyRef = useRef("");
+
+	// The solve identity: the solver resolves against both the package specs and
+	// the selected channels, so a channel toggle must invalidate a prior solve
+	// just like a spec change. Keying on specs alone would leave Install enabled
+	// against channels the solver never saw.
+	const solveKey = useMemo(
+		() =>
+			`${selected.map(selectedPackageToSpec).join(",")}|${(channels.channelsArg ?? []).join(",")}`,
+		[selected, channels.channelsArg],
+	);
 
 	const runPreview = useCallback(() => {
 		if (selected.length === 0) return;
 		const specs = selected.map(selectedPackageToSpec);
-		const key = specs.join(",");
-		if (key === lastSpecsKeyRef.current && previewRef.current && !previewErrorRef.current) return;
-		lastSpecsKeyRef.current = key;
+		if (solveKey === lastSolveKeyRef.current && previewRef.current && !previewErrorRef.current)
+			return;
+		lastSolveKeyRef.current = solveKey;
 		const gen = ++previewGenRef.current;
 		setPreviewLoading(true);
 		setPreviewError(null);
@@ -130,6 +144,7 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 				if (gen !== previewGenRef.current) return;
 				const typed = result as CondaPackagesPreviewResult;
 				previewRef.current = typed;
+				solvedKeyRef.current = solveKey;
 				setPreview(typed);
 			})
 			.catch((reason) => {
@@ -148,7 +163,7 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 			.finally(() => {
 				if (gen === previewGenRef.current) setPreviewLoading(false);
 			});
-	}, [selected, targetName, env.prefix, channels.channelsArg, sdk]);
+	}, [selected, targetName, env.prefix, channels.channelsArg, sdk, solveKey]);
 
 	// Auto-preview when the selection changes — debounced so rapid clicks
 	// don't fire a solver request per toggle.
@@ -156,18 +171,43 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 		if (!open || selected.length === 0) {
 			setPreview(null);
 			setPreviewError(null);
-			lastSpecsKeyRef.current = "";
+			lastSolveKeyRef.current = "";
 			return;
+		}
+		// Drop the previous solution as soon as the selection or channels change
+		// so the install button re-locks until the solver re-solves the new
+		// specs — otherwise it would stay enabled against a stale solve during
+		// the debounce window. Bumping the generation also invalidates any solve
+		// still in flight for the old key, so a late-landing result for a
+		// superseded selection cannot unlock Install for the new, unvalidated one.
+		if (solveKey !== lastSolveKeyRef.current) {
+			previewGenRef.current += 1;
+			previewRef.current = null;
+			previewErrorRef.current = null;
+			setPreview(null);
+			setPreviewError(null);
 		}
 		const timer = setTimeout(runPreview, PREVIEW_DEBOUNCE_MS);
 		return () => clearTimeout(timer);
-	}, [open, selected, runPreview]);
+	}, [open, selected, solveKey, runPreview]);
 
 	const selectedNames = useMemo(() => new Set(selected.map((s) => s.name)), [selected]);
 	const changes = useMemo(
 		() => summarizeChanges(preview, selectedNames, depFilter),
 		[preview, selectedNames, depFilter],
 	);
+
+	// The install button stays locked until the solver returns a usable
+	// solution: a preview result must exist for the current solve key with no
+	// solver error and nothing in flight. Requiring `solvedKeyRef` to match the
+	// live `solveKey` closes the one-render window where `preview` is still the
+	// old solution (it is cleared in a passive effect), so the button cannot
+	// enable for a selection/channel set the solver has not validated. A
+	// SOLVE_FAILED preview (previewError) or an unresolved/loading solve also
+	// leaves the button disabled.
+	const solverSolved =
+		preview !== null && !previewError && !previewLoading && solvedKeyRef.current === solveKey;
+	const canInstall = !install.isPending && selected.length > 0 && solverSolved;
 
 	// The in-flight install job, so "Run in background" can adopt it.
 	// `backgrounded` mutes the foreground handlers.
@@ -185,7 +225,8 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 		setPreviewLoading(false);
 		setPreviewError(null);
 		setDepFilter("all");
-		lastSpecsKeyRef.current = "";
+		lastSolveKeyRef.current = "";
+		solvedKeyRef.current = "";
 		previewGenRef.current = 0;
 		previewRef.current = null;
 		previewErrorRef.current = null;
@@ -331,7 +372,7 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 						<Button
 							type="button"
 							onClick={handleInstall}
-							disabled={install.isPending || selected.length === 0 || previewLoading}
+							disabled={!canInstall}
 							data-qa-id="environments-conda-add-pkg-install-btn"
 						>
 							{install.isPending ? <Spinner data-icon="inline-start" aria-hidden="true" /> : null}

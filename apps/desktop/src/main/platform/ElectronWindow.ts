@@ -358,7 +358,7 @@ export class ElectronWindow {
 			...titleBarOptions(chrome),
 			...options,
 			webPreferences: {
-				preload: preloadPath ?? path.join(import.meta.dirname, "preload.js"),
+				preload: preloadPath ?? path.join(import.meta.dirname, "preload.cjs"),
 				sandbox: true,
 				contextIsolation: true,
 				nodeIntegration: false,

@@ -16,7 +16,7 @@ const { createdWindows, electronApp } = vi.hoisted(() => {
 			visualEffectState?: string;
 			icon?: string;
 			titleBarOverlay?: { color: string; symbolColor: string; height: number };
-			webPreferences?: { additionalArguments?: string[]; webviewTag?: boolean };
+			webPreferences?: { additionalArguments?: string[]; preload?: string; webviewTag?: boolean };
 			windowStatePersistence?: boolean;
 		};
 		webContents: {
@@ -159,6 +159,18 @@ describe("ElectronWindow theme chrome", () => {
 		expect(createdWindows[0]?.options.backgroundColor).toBe("#ffffff");
 		expect(createdWindows[0]?.options.icon).toBe(
 			path.join(electronApp.getAppPath(), "assets/icon.png"),
+		);
+	});
+
+	it("loads Forge's CommonJS preload bundle by default", () => {
+		const windows = new ElectronWindow(createShell() as never, () => false);
+
+		windows.create({ isDevelopment: false });
+
+		// Forge 8 emits the sandboxed preload as `preload.cjs` (`.js` under
+		// `"type": "module"` would be parsed as ESM and rejected by Electron).
+		expect(path.basename(createdWindows[0]?.options.webPreferences?.preload ?? "")).toBe(
+			"preload.cjs",
 		);
 	});
 

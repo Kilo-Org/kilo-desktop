@@ -413,32 +413,32 @@ importers:
         version: 4.4.3
     devDependencies:
       '@electron-forge/cli':
-        specifier: 8.0.0-alpha.10
-        version: 8.0.0-alpha.10(supports-color@10.2.2)
+        specifier: 8.0.1
+        version: 8.0.1(@types/react@19.2.17)(supports-color@10.2.2)
       '@electron-forge/maker-deb':
-        specifier: 8.0.0-alpha.10
-        version: 8.0.0-alpha.10(supports-color@10.2.2)
+        specifier: 8.0.1
+        version: 8.0.1(supports-color@10.2.2)
       '@electron-forge/maker-dmg':
-        specifier: 8.0.0-alpha.10
-        version: 8.0.0-alpha.10(supports-color@10.2.2)
+        specifier: 8.0.1
+        version: 8.0.1(supports-color@10.2.2)
       '@electron-forge/maker-squirrel':
-        specifier: 8.0.0-alpha.10
-        version: 8.0.0-alpha.10(supports-color@10.2.2)
+        specifier: 8.0.1
+        version: 8.0.1(supports-color@10.2.2)
       '@electron-forge/maker-zip':
-        specifier: 8.0.0-alpha.10
-        version: 8.0.0-alpha.10(supports-color@10.2.2)
+        specifier: 8.0.1
+        version: 8.0.1(supports-color@10.2.2)
       '@electron-forge/plugin-fuses':
-        specifier: 8.0.0-alpha.10
-        version: 8.0.0-alpha.10(@electron/fuses@2.1.3)(supports-color@10.2.2)
+        specifier: 8.0.1
+        version: 8.0.1(@electron/fuses@2.1.3)(supports-color@10.2.2)
       '@electron-forge/plugin-vite':
-        specifier: 8.0.0-alpha.10
-        version: 8.0.0-alpha.10(supports-color@10.2.2)
+        specifier: 8.0.1
+        version: 8.0.1(supports-color@10.2.2)
       '@electron-forge/publisher-s3':
-        specifier: 8.0.0-alpha.10
-        version: 8.0.0-alpha.10(supports-color@10.2.2)
+        specifier: 8.0.1
+        version: 8.0.1(supports-color@10.2.2)
       '@electron-forge/shared-types':
-        specifier: 8.0.0-alpha.10
-        version: 8.0.0-alpha.10(supports-color@10.2.2)
+        specifier: 8.0.1
+        version: 8.0.1(supports-color@10.2.2)
       '@electron/fuses':
         specifier: ^2.0.0
         version: 2.1.3
@@ -2021,6 +2021,10 @@ packages:
   7zip-bin-full@26.2.1:
     resolution: {integrity: sha512-h1DE4G8WEJ3/LI4HTcuOpouP7cy9JGqYfZm5fzLhdzw8jI3wFyA9RFu5MP+ICzelKEYmWweRWApEvVWKmJIdVQ==}
 
+  '@alcalzone/ansi-tokenize@0.3.1':
+    resolution: {integrity: sha512-cUD0PT0YX+rImRhfn7BfMRduP/tX/Zqt/N0dHlAyn2RlcJssCb5KsCJkhln61eh9vuJDkH8wKn3L8zJzzWXPFg==}
+    engines: {node: '>=18'}
+
   '@anaconda/desktop-bridge-payload-darwin-arm64@0.1.14':
     resolution: {integrity: sha512-8y8lbCQk2toTZEHXzJO76eaGXhvHGpcOlgsJ9NuAJmsBrj1O0NjCrn56mHFKcylQmgRyDgPRfjjJwc5BFGCgxg==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-darwin-arm64/0.1.14/ef29e203d404dd177fd938fa2a0e57edac510454}
     cpu: [arm64]
@@ -2422,72 +2426,76 @@ packages:
   '@drizzle-team/brocli@0.10.2':
     resolution: {integrity: sha512-z33Il7l5dKjUgGULTqBsQBQwckHh5AbIuxhdsIxDDiZAzBOrZO6q9ogcWC65kU382AfynTfgNumVcNIjuIua6w==}
 
-  '@electron-forge/cli@8.0.0-alpha.10':
-    resolution: {integrity: sha512-3fkKH50xTVN1A+UhsX6BzwFfP7JVTadIrA3Cs4jpR7Yl/PChH4w/cyi99LNnZnVAypiywkOkqrQU9t+1SZy1YA==}
-    engines: {node: '>= 22.12.0'}
+  '@electron-forge/cli@8.0.1':
+    resolution: {integrity: sha512-zbkmgt7vtL8OBY7YDwVizhCfAHJLpmQtA35iOKGWPpLWRZbGADVyIUZz3QZrbc2V81/BkrBerURIBXdd/fnyhQ==}
+    engines: {node: '>= 22.13.0'}
     hasBin: true
 
-  '@electron-forge/core-utils@8.0.0-alpha.10':
-    resolution: {integrity: sha512-edL4xReqbWStPhdhgSEE55AXXLtJLxMRtHEghulmZlf4UaSfS86zwSBtqDwYcUB1cd9LpcEm3GKKek/awOJB0A==}
-    engines: {node: '>= 22.12.0'}
+  '@electron-forge/core-utils@8.0.1':
+    resolution: {integrity: sha512-lSPxwPt4Yum64NFzCLmE3E4TKtYWp63y5NguMYmm3VDOxIiGfw7kbcBcEvzHly3avbZDACeZfvpjF8SuKoUcMQ==}
+    engines: {node: '>= 22.13.0'}
 
-  '@electron-forge/core@8.0.0-alpha.10':
-    resolution: {integrity: sha512-sg52Ay0vy9ShC7G4CL9fsfzcUC4yAI9HdP7D18tdmbPwZJ6DLqDLKT/pFw297V7IjX4AYlpsW/71yPEqadDm3w==}
-    engines: {node: '>= 22.12.0'}
+  '@electron-forge/core@8.0.1':
+    resolution: {integrity: sha512-8K46Qf6bd+VCUv5XZlKT/ippvSzHWRgEDTGc9SNXbf92N1mZ1kNk/qHscImOxpNR06KTXSNVzV4dJtUCbv4bRQ==}
+    engines: {node: '>= 22.13.0'}
 
-  '@electron-forge/maker-base@8.0.0-alpha.10':
-    resolution: {integrity: sha512-aZ7YlU785r/1VPy0h1HHy1VEiufqMX0fd4tzHcAWwDfZguajfhnGioPfgCaEVKBWyAgV3v7Pge2FkL7YcRsxsQ==}
-    engines: {node: '>= 22.12.0'}
+  '@electron-forge/maker-base@8.0.1':
+    resolution: {integrity: sha512-DNuGxgICA8RisFlq1zfu1jUAPGsB/8DDM0pJd/iWlpMYtgDvJS4jc/QZVfnMDQopWIVlFaiYwsLzPApqkA9j1g==}
+    engines: {node: '>= 22.13.0'}
 
-  '@electron-forge/maker-deb@8.0.0-alpha.10':
-    resolution: {integrity: sha512-0uk9bCW+UsPSyIASvCRzhUJii0WRCWo2oQKGZGFelIEdfPo8ojriM2ip2zVQP21c2Q0sSiaky+Ehizsymtcd6w==}
-    engines: {node: '>= 22.12.0'}
+  '@electron-forge/maker-deb@8.0.1':
+    resolution: {integrity: sha512-KuHftOJKbP4Xoq51pxDrBRCpbcO99hA38KrYyr0Kpd3my+eZeg7fmo8D43TmWzQov8enXBgZi5vtLYt91KuqMQ==}
+    engines: {node: '>= 22.13.0'}
 
-  '@electron-forge/maker-dmg@8.0.0-alpha.10':
-    resolution: {integrity: sha512-TR7Frau1M6VOn280ljHkyhpxwyUVVSXDapq2TrMyKfN085qVq8OfK8i58MwhY9KqzU07AB0Su9AbjEDkB3QcLg==}
-    engines: {node: '>= 22.12.0'}
+  '@electron-forge/maker-dmg@8.0.1':
+    resolution: {integrity: sha512-/FtNihspOpY+SKzyUClCsSgc+W4BJdHttA+eZh7mMs6DFNjJzO8xgJwOjLuHi1oVahrpRsw8UVRejs1wrk7YBw==}
+    engines: {node: '>= 22.13.0'}
 
-  '@electron-forge/maker-squirrel@8.0.0-alpha.10':
-    resolution: {integrity: sha512-AFCeuAgUWyr4G61hIXLr0pLZDNV4hvd8IgBXkfrWToMp09esE9jXS9o0SFpU40iETFCst2KxhqhraDt6URAj9Q==}
-    engines: {node: '>= 22.12.0'}
+  '@electron-forge/maker-squirrel@8.0.1':
+    resolution: {integrity: sha512-V6QrJvvmX2xbITXP1+/bXYe2hkMM7BYnQ8vzVHDOca2P6pn68MZsCSewqm8wiBIBSEeYuRhrztvV8aMlJ5n5Mg==}
+    engines: {node: '>= 22.13.0'}
 
-  '@electron-forge/maker-zip@8.0.0-alpha.10':
-    resolution: {integrity: sha512-I3N9FI8xJW7f+Ld05f2hSSuukfI2Oh9vKN7HWSPmM8+7PqN4Dwigp7DRv/s3HPFwrMdayDJKm/2me5rvXh32DQ==}
-    engines: {node: '>= 22.12.0'}
+  '@electron-forge/maker-zip@8.0.1':
+    resolution: {integrity: sha512-EyMyAMFRZTPKbe6K1HEAgnpAMC7OvR8tQ2iG/5Vd++iG2AVdFJ9usChfW72n172jk9CTfFc7L88IF8lXMYYvIQ==}
+    engines: {node: '>= 22.13.0'}
 
-  '@electron-forge/plugin-base@8.0.0-alpha.10':
-    resolution: {integrity: sha512-AoL+VuuFVLgqeRzO0dLvrx4f2t1nMeHQ1YKj/EoqAQ6uU7D4HS2D4FNEXyxTQFVrNj4OqSte7U3sqGenc327XA==}
-    engines: {node: '>= 22.12.0'}
+  '@electron-forge/multi-logger@8.0.1':
+    resolution: {integrity: sha512-cgYcETMtlkcYiMC8YcaaW8jFDmVZ6mbNBL0Yi0ekjoOjcBecJS/uy7+9GvM9DWq3Ie5YCfe4+AWuVR3HF56/sQ==}
+    engines: {node: '>= 22.13.0'}
 
-  '@electron-forge/plugin-fuses@8.0.0-alpha.10':
-    resolution: {integrity: sha512-tGcnbigz25iTnMH2fPCljO8J5KfXD9r4VSOsBy1Ybj1EkjpoQ7cldbergp09A72k74tbb56LOZzcGsHTaGJD6A==}
-    engines: {node: '>= 22.12.0'}
+  '@electron-forge/plugin-base@8.0.1':
+    resolution: {integrity: sha512-lN0ZQyRmMNC/m/XV+Pc7mb/YnLlmSGzWb46McZrk5/vwDyS6t4ZqyA9LDpKs21chjEoQS7q7PLNDRuyh4Lb6KQ==}
+    engines: {node: '>= 22.13.0'}
+
+  '@electron-forge/plugin-fuses@8.0.1':
+    resolution: {integrity: sha512-H1mbQgRfyWkudz4nsDWVOXK15DodVYIKNXGmR+OZJhSBQTirLWlPYqG+JR3OnnDtdSklb/nsllogh2SGt151VA==}
+    engines: {node: '>= 22.13.0'}
     peerDependencies:
-      '@electron/fuses': ^2.0.0
+      '@electron/fuses': ^2.1.3
 
-  '@electron-forge/plugin-vite@8.0.0-alpha.10':
-    resolution: {integrity: sha512-ctt+M1D1K5Or07oGWGUByLHfPJW91Qn1JKHWhJEkEZmrp6ggJrSrp7JqgBhNAqe5XtpEhhPCtDMaRfFmcSL+2g==}
-    engines: {node: '>= 22.12.0'}
+  '@electron-forge/plugin-vite@8.0.1':
+    resolution: {integrity: sha512-6A8bV6vZnCxttIrc6vbg8aUWX0nYEsJBqqQ0WuvKziv2suG+CI0MzTMwFoZB9ofdRjrhxyHJ71+9wUndmZDpYQ==}
+    engines: {node: '>= 22.13.0'}
 
-  '@electron-forge/publisher-base@8.0.0-alpha.10':
-    resolution: {integrity: sha512-UjGRM13jVr1oq+HLayJAUiQcfxvs8LyTQYm5sazxlfG9LO9UJAI/2jbNic/OXYehr5xGrJSCMXDTm/cCy5LfZQ==}
-    engines: {node: '>= 22.12.0'}
+  '@electron-forge/publisher-base@8.0.1':
+    resolution: {integrity: sha512-b+Rm5/RAyVRYRWzFgtsh2LDjuqYDZAUVnm/3LjvwNOmt2lM/ET0nUENdlGPsvjEf55SwRAlgRiKXxYKApeaT8Q==}
+    engines: {node: '>= 22.13.0'}
 
-  '@electron-forge/publisher-s3@8.0.0-alpha.10':
-    resolution: {integrity: sha512-Lp6KzWyYI6kHKrInFN31UULIPISBsFkffPig3P1PEVuHSMwJgeNP2Az9M/3SPjPkEJ6260zUaqER4B+gjSkBIA==}
-    engines: {node: '>= 22.12.0'}
+  '@electron-forge/publisher-s3@8.0.1':
+    resolution: {integrity: sha512-UUpWobuZvT4NM46kqqdUDMa7xwYFXynM+Y0T6PjcyJtVNK3Uemqlsx0bTGGiE62+0maHU0REoVE9rG4Sl/FkqA==}
+    engines: {node: '>= 22.13.0'}
 
-  '@electron-forge/publisher-static@8.0.0-alpha.10':
-    resolution: {integrity: sha512-SaGp9m8QNTibCaDNxKekEnU3WV7qaysiY2jHqWULziiHiqwtj60W1RksYSjOrl70AimkO8oAIWGQyb23FfaECw==}
-    engines: {node: '>= 22.12.0'}
+  '@electron-forge/publisher-static@8.0.1':
+    resolution: {integrity: sha512-Mz9S7ZrtfpXypuJ2qnsyIX6sH3EQfBx6yQRQNgSg9L+uCsW651eLBeF2Tjrkk2haK2yf4HWdf/P2a1UlR64PSw==}
+    engines: {node: '>= 22.13.0'}
 
-  '@electron-forge/shared-types@8.0.0-alpha.10':
-    resolution: {integrity: sha512-JdwOXHXXjh1L1rgLcQJfyCX8cHgvognmuol/udDUIx9/JzMc+AZhNnsFN8JriRYunYaFrVLTHe0H8f8GQXO/LA==}
-    engines: {node: '>= 22.12.0'}
+  '@electron-forge/shared-types@8.0.1':
+    resolution: {integrity: sha512-ErJ5an0HQnJhT3YkwbuogH+9YVi8icM7j2Lg1lkVaLjGa2JzKHCspMQ8rr2dUtPl6MSxhAWo6pAvRR9+b3nbbg==}
+    engines: {node: '>= 22.13.0'}
 
-  '@electron-forge/tracer@8.0.0-alpha.10':
-    resolution: {integrity: sha512-aoW9P+KoTtO0KQaISdJXi3sVB5k12P1kA6pK0NsgJTEbsB2i5O6c8zfor/U5eJUeb9GAVscAIHKShYuUycgZqg==}
-    engines: {node: '>= 22.12.0'}
+  '@electron-forge/tracer@8.0.1':
+    resolution: {integrity: sha512-vaUAFyD0QHlD90QdzW4hZh3oKCiTiPGmlWxvr3yBEgFFQr2iNw9t8l/dt0UrfbRMHnW9sGaoe6GzPGEpHbvImQ==}
+    engines: {node: '>= 22.13.0'}
 
   '@electron-internal/extract-zip@1.0.4':
     resolution: {integrity: sha512-Zr1Vs7E9tpCNhZHDAbFVXc2gEVCG9RqPDjrno5+bdgB6LRAuvgyMHJut4NCVyYwtAieapMzc3fiQ3CSTi75ARg==}
@@ -2521,8 +2529,8 @@ packages:
     engines: {node: '>=22.12.0'}
     hasBin: true
 
-  '@electron/packager@20.0.4':
-    resolution: {integrity: sha512-61iD4rkg0cofTn5z9xN4sdhtMR+l7G1i/X5/CmN74ZywOW1tUW+qa/J/w5itxidMemAQJjKLb9YYMHFxsbnk7A==}
+  '@electron/packager@20.3.0':
+    resolution: {integrity: sha512-3MvgJgy6YJ5ti0oGGBKrWKdYwpTaoRrhranMDgHSQ6i5t56yZV9IRDyoXTuqBp97LiKqnZeAMe2wTcF/9+fP5g==}
     engines: {node: '>= 22.12.0'}
     hasBin: true
 
@@ -5982,10 +5990,6 @@ packages:
     resolution: {integrity: sha512-/6w/C21Pm1A7aZitlI5Ni/2J6FFQN8i1Cvz3kHABAAbw93v/NlvKdVOqz7CCWz/3iv/JplRSEEZ83XION15ovw==}
     engines: {node: '>=6'}
 
-  ansi-escapes@5.0.0:
-    resolution: {integrity: sha512-5GFMVX8HqE/TB+FuBJGuO5XG0WrsA6ptUqoODaT/n9mmUaZFkqnBueB4leqGBCmrUHnCnC4PCZTCd0E7QQ83bA==}
-    engines: {node: '>=12'}
-
   ansi-escapes@7.3.0:
     resolution: {integrity: sha512-BvU8nYgGQBxcmMuEeUEmNTvrMVjJNSH7RgW24vXexN4Ven6qCvy4TntnvlnwnMLTVlcRQQdbRY8NKnaIoeWDNg==}
     engines: {node: '>=18'}
@@ -6141,6 +6145,10 @@ packages:
   author-regex@1.0.0:
     resolution: {integrity: sha512-KbWgR8wOYRAPekEmMXrYYdc7BRyhn2Ftk7KWfMUnQ43hFdojWEFRxhhRUm3/OFEdPa1r0KAvTTg9YQK57xTe0g==}
     engines: {node: '>=0.8'}
+
+  auto-bind@5.0.1:
+    resolution: {integrity: sha512-ooviqdwwgfIfNmDwo94wlshcdzfO64XV0Cg6oDsDYBJfITDz1EngD2z7DkbvCWn+XIMsIqW27sEVF6qcpJrRcg==}
+    engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
 
   ava@5.3.1:
     resolution: {integrity: sha512-Scv9a4gMOXB6+ni4toLuhAm9KYWEjsgBglJl+kMGI5+IVDt120CCDZyB5HNU9DjmLI2t4I0GbnxGLmmRfGTJGg==}
@@ -6339,6 +6347,10 @@ packages:
     resolution: {integrity: sha512-3yONmlN9CSAkzNwnRCiJQ7Q2xK5mWuEfL3PuTZcAUzhObbXsfsnMptJzXwz93nc5zn9V9TwCVMmV7w4xsm43dw==}
     engines: {node: '>=0.10.0'}
 
+  cli-boxes@4.0.1:
+    resolution: {integrity: sha512-5IOn+jcCEHEraYolBPs/sT4BxYCe2nHg374OPiItB1O96KZFseS2gthU4twyYzeDcFew4DaUM/xwc5BQf08JJw==}
+    engines: {node: '>=18.20 <19 || >=20.10'}
+
   cli-cursor@4.0.0:
     resolution: {integrity: sha512-VGtlMu3x/4DOtIUwEkRezxUZ2lBacNJCHash0N0WeZDBS+7Ux1dm3XWAgWYxLJFMMdOeXMHXorshEFhbMSGelg==}
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
@@ -6359,8 +6371,9 @@ packages:
     resolution: {integrity: sha512-xRwvIOMGrfOAnM1JYtqQImuaNtDEv9v6oIYAs4LIHwTiKee8uwvIi363igssOC0O5U04i4AlENs79LQLu9tEMw==}
     engines: {node: '>=20'}
 
-  cliui@7.0.4:
-    resolution: {integrity: sha512-OcRE68cOsVMXp1Yvonl/fzkQOyjLSu/8bhPDfQt0e0/Eb283TKP20Fs2MqoPsr9SwA595rRCA+QMzYc9nBP+JQ==}
+  cli-truncate@6.1.1:
+    resolution: {integrity: sha512-06p9vyLahLa4zkGcgsGxU6iEkSOiuI4fhCH6Emhe2lPAcoUv73n72DnODsnHA+5wwXGnV0n9M9/qOQJSjYhFhw==}
+    engines: {node: '>=22'}
 
   cliui@8.0.1:
     resolution: {integrity: sha512-BSeNnyus75C4//NQ9gQt1/csTXyo/8Sb+afLAkzAptFuMsod9HFokGNudZpi/oQV73hnVK+sR+5PVRMd+Dr7YQ==}
@@ -6841,9 +6854,9 @@ packages:
     resolution: {integrity: sha512-8gMNPXfAqUE5CfXg8RL0vXpLE9HAaPkgLXVoHE3BMUzogMWenf4LmwQ27BdCUrEhkjrKl+igs2IHJibclR3z3Q==}
     engines: {node: '>= 10.0.0'}
 
-  electron-installer-debian@3.2.0:
-    resolution: {integrity: sha512-58ZrlJ1HQY80VucsEIG9tQ//HrTlG6sfofA3nRGr6TmkX661uJyu4cMPPh6kXW+aHdq/7+q25KyQhDrXvRL7jw==}
-    engines: {node: '>= 10.0.0'}
+  electron-installer-debian@4.0.0:
+    resolution: {integrity: sha512-v7WUgN/S9WVh9FMJ8JG8G9QdUorQfAG/pnQU/rZNcVo7/jxuVVma1S8ZEBbC0M+6pnR5lTmfXN6nmQ8+SaWnNg==}
+    engines: {node: '>= 22.12.0'}
     os: [darwin, linux]
     hasBin: true
 
@@ -7414,10 +7427,6 @@ packages:
     resolution: {integrity: sha512-HmKyTFGomdAchz4umx8MwBnrnfFmdpwiTyGA4ZOF7rya2Lmgbc9qate4yweInL+0gUBVImhaz12SBGpW3SY4Yg==}
     engines: {node: '>=22.12.0'}
 
-  gar@1.0.4:
-    resolution: {integrity: sha512-w4n9cPWyP7aHxKxYHFQMegj7WIAsL/YX/C4Bs5Rr8s1H9M1rNtRWRsw+ovYMkXDQ5S4ZbYHsHAPmevPjPgw44w==}
-    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
-
   generate-function@2.3.1:
     resolution: {integrity: sha512-eeB5GfMNeevm/GRYq20ShmsaGcmI81kIX2K9XQx5miC8KdHaC6Jm0qQ8ZNeGOi7wYB8OsdxKs+Y2oVuTFuVwKQ==}
 
@@ -7439,10 +7448,6 @@ packages:
   get-east-asian-width@1.6.0:
     resolution: {integrity: sha512-QRbvDIbx6YklUe6RxeTeleMR0yv3cYH6PsPZHcnVn7xv7zO1BHN8r0XETu8n6Ye3Q+ahtSarc3WgtNWmehIBfA==}
     engines: {node: '>=18'}
-
-  get-folder-size@2.0.1:
-    resolution: {integrity: sha512-+CEb+GDCM7tkOS2wdMKTn9vU7DgnKUTuDlehkNJKNSovdCOVxs14OfKCk4cvSaR3za4gj+OBdl9opPN9xrJ0zA==}
-    hasBin: true
 
   get-intrinsic@1.3.0:
     resolution: {integrity: sha512-9fSjSaos/fRIVIp+xSJlE6lfwhES7LNtKaCBIamHsjr2na1BiABJPo0mOjjz8GJDURarmCPGqaiVg5mfjb98CQ==}
@@ -7664,6 +7669,19 @@ packages:
   inherits@2.0.4:
     resolution: {integrity: sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ==}
 
+  ink@7.1.1:
+    resolution: {integrity: sha512-Y43xxa1ZSPvpmfLHcN5o+OdP8Rf8ykkNJEuKYOUNZKT8wXVNLFTtEm1nSDMQkfBH+YANF4Xuu0hhZ4ejqAtN2w==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      '@types/react': '>=19.2.0'
+      react: '>=19.2.0'
+      react-devtools-core: '>=6.1.2'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      react-devtools-core:
+        optional: true
+
   inline-style-parser@0.2.7:
     resolution: {integrity: sha512-Nb2ctOyNR8DqQoR0OwRG95uNWIC0C1lCgf5Naz5H6Ji72KZ8OcFZLz2P5sNgwlyoJ8Yif11oMuYs5pBQa86csA==}
 
@@ -7784,6 +7802,11 @@ packages:
 
   is-hexadecimal@2.0.1:
     resolution: {integrity: sha512-DgZQp241c8oO6cA1SbTEWiXeoxV42vlcJxgH+B3hi1AiqqKruZR3ZGF8In3fj4+/y/7rHvlOZLZtgJ/4ttYGZg==}
+
+  is-in-ci@2.0.0:
+    resolution: {integrity: sha512-cFeerHriAnhrQSbpAxL37W1wcJKUUX07HyLWZCW1URJT/ra3GyUTzBgUnh24TMVfNTV2Hij2HLxkPHFZfOZy5w==}
+    engines: {node: '>=20'}
+    hasBin: true
 
   is-in-ssh@1.0.0:
     resolution: {integrity: sha512-jYa6Q9rH90kR1vKB6NM7qqd1mge3Fx4Dhw5TVlK1MUBqhEOuCagrEHMevNuCcbECmXZ0ThXkRm+Ymr51HwEPAw==}
@@ -8221,9 +8244,9 @@ packages:
     engines: {node: '>=22.22.1'}
     hasBin: true
 
-  listr2@7.0.2:
-    resolution: {integrity: sha512-rJysbR9GKIalhTbVL2tYbF2hVyDnrf7pFUZBwjPaMIdadYHmeT+EVi/Bu3qd7ETQPahTotg2WRCatXwRBW554g==}
-    engines: {node: '>=16.0.0'}
+  listr2@11.1.1:
+    resolution: {integrity: sha512-zArGFXg2/nhA1vYBz789VpwzMQQXkGZiRxeguxFCsDrg4S+LOR22v4oQlSdTN7dR14XgOW+pW33UfvKf+i8nrQ==}
+    engines: {node: '>=22.13.0'}
 
   listr2@9.0.5:
     resolution: {integrity: sha512-ME4Fb83LgEgwNw96RKNvKV4VTLuXfoKudAmm2lP8Kk87KaMK0/Xrx/aAkMWmT8mDb+3MlFDspfbCs7adjRxA2g==}
@@ -8258,13 +8281,13 @@ packages:
     resolution: {integrity: sha512-i24m8rpwhmPIS4zscNzK6MSEhk0DUWa/8iYQWxhffV8jkI4Phvs3F+quL5xvS0gdQR0FyTCMMH33Y78dDTzzIw==}
     engines: {node: '>=18'}
 
-  log-update@5.0.1:
-    resolution: {integrity: sha512-5UtUDQ/6edw4ofyljDNcOVJQ4c7OjDro4h3y8e1GQL5iYElYclVHJ3zeWchylvMaKnDbDilC8irOVyexnA/Slw==}
-    engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
-
   log-update@6.1.0:
     resolution: {integrity: sha512-9ie8ItPR6tjY5uYJh8K/Zrv/RMZ5VOlOWvtZdEHYSTFKZfIBPQa9tOAEeAWhd+AnIneLJ22w5fjOYtoutpWq5w==}
     engines: {node: '>=18'}
+
+  log-update@8.0.0:
+    resolution: {integrity: sha512-lddSgOt3bPASrylL54ZSpy8nBHns+vBVSoILlVOx+dei300pnLRN958rj/EdlVLKuWlSESU3qdnDZdAI7FXYGg==}
+    engines: {node: '>=22'}
 
   logform@2.7.0:
     resolution: {integrity: sha512-TFYA4jnP7PVbmlBIfhlSe+WKxs9dklXMTEGcBCIvLhE/Tn3H6Gk1norupVW7m5Cnd4bLcr08AytbyV/xj7f/kQ==}
@@ -8906,6 +8929,10 @@ packages:
     resolution: {integrity: sha512-CiyeOxFT/JZyN5m0z9PfXw4SCBJ6Sygz1Dpl0wqjlhDEGGBP1GnsUVEL0p63hoG1fcj3fHynXi9NYO4nWOL+qQ==}
     engines: {node: '>= 0.8'}
 
+  patch-console@2.0.0:
+    resolution: {integrity: sha512-0YNdUceMdaQwoKce1gatDScmMo5pu/tfABfnzEqeG0gtTmd7mh/WcwgUjtAeOU7N8nFFlbQBnFK2gXW5fGvmMA==}
+    engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
+
   path-browserify@1.0.1:
     resolution: {integrity: sha512-b7uo2UCUOYZcnF/3ID0lulOJi/bafxa1xPe7ZPsammBSpjSWQkjNxlt635YGS2MiR9GjvuXCtz2emr3jbsz98g==}
 
@@ -9172,6 +9199,12 @@ packages:
     peerDependencies:
       '@types/react': '>=18'
       react: '>=18'
+
+  react-reconciler@0.33.0:
+    resolution: {integrity: sha512-KetWRytFv1epdpJc3J4G75I4WrplZE5jOL7Yq0p34+OVOKF4Se7WrdIdVC45XsSSmUTlht2FM/fM1FZb1mfQeA==}
+    engines: {node: '>=0.10.0'}
+    peerDependencies:
+      react: ^19.2.0
 
   react-remove-scroll-bar@2.3.8:
     resolution: {integrity: sha512-9r+yi9+mgU33AKcj6IbT9oRCO78WriSj6t/cF8DWBZJ9aOGPOTEDvdUDz1FwKim7QXWwmHqtdHnRJfhAxEG46Q==}
@@ -9560,6 +9593,10 @@ packages:
     resolution: {integrity: sha512-stxByr12oeeOyY2BlviTNQlYV5xOj47GirPr4yA1hE9JCtxfQN0+tVbkxwCtYDQWhEKWFHsEK48ORg5jrouCAg==}
     engines: {node: '>=20'}
 
+  slice-ansi@9.0.1:
+    resolution: {integrity: sha512-aBY19bn/XA+hKOKX0qL7Z0UfdBsbQvc9hn993U8ALUjzxCvDcuZqLoRXjGJrUARWAlwMnsRVD9sw2AFNOYvalA==}
+    engines: {node: '>=22'}
+
   smart-buffer@4.2.0:
     resolution: {integrity: sha512-94hK0Hh8rPqQl2xXc3HsaBoOXKV20MToPkcXvwbISWLEs+64sBq5kFgn2kJDHb1Pry9yrP0dxrCI9RRci7RXKg==}
     engines: {node: '>= 6.0.0', npm: '>= 3.0.0'}
@@ -9818,6 +9855,10 @@ packages:
     resolution: {integrity: sha512-yYrrsWnrXMcdsnu/7YMYAofM1ktpL5By7vZhf15CrXijWWrEYZks5AXBudalfSWJLlnen/QUJUB5aoB0kqZUGA==}
     engines: {node: '>=6.0.0'}
 
+  terminal-size@4.0.1:
+    resolution: {integrity: sha512-avMLDQpUI9I5XFrklECw1ZEUPJhqzcwSWsyyI8blhRLT+8N1jLJWLWWYQpB2q2xthq8xDvjZPISVh53T/+CLYQ==}
+    engines: {node: '>=18'}
+
   text-hex@1.0.0:
     resolution: {integrity: sha512-uuVGNWzgJ4yhRaNSiubPY7OjISw4sw4E5Uv0wbjp+OzcbmVU/rsT8ujgcXJhn9ypzsgr5vlzpPqP+MBBKcGvbg==}
 
@@ -9828,9 +9869,6 @@ packages:
   time-zone@1.0.0:
     resolution: {integrity: sha512-TIsDdtKo6+XrPtiTm1ssmMngN1sAhyKnTO2kunQWqNPWIVvCm15Wmw4SWInwTVgJ5u/Tr04+8Ei9TNcw4x4ONA==}
     engines: {node: '>=4'}
-
-  tiny-each-async@2.0.3:
-    resolution: {integrity: sha512-5ROII7nElnAirvFn8g7H7MtpfV1daMcyfTGQwsn/x2VtyV+VPiO5CjReCJtWLvoKTDEDmZocf3cNPraiMnBXLA==}
 
   tiny-invariant@1.3.3:
     resolution: {integrity: sha512-+FbBPE1o9QAYvviau/qC5SE3caw21q3xkvWKBtja5vgqOWIHHJ3ioaq1VPfn/Szqctz2bU/oYeKd9/z5BL+PVg==}
@@ -9968,10 +10006,6 @@ packages:
 
   type-fest@0.13.1:
     resolution: {integrity: sha512-34R7HTnG0XIJcBSn5XhDd7nNFPRcXYRZrBB2O2jdKqYODldSzBAqzsWoZYYvduky73toYS/ESqxPvkDf/F0XMg==}
-    engines: {node: '>=10'}
-
-  type-fest@1.4.0:
-    resolution: {integrity: sha512-yGSza74xk0UG8k+pLh5oeoYirvIiWo5t0/o3zHHAO2tRDiZcxWP7fywNlXhqb6/r6sWvwi+RsyQMWhVLe4BVuA==}
     engines: {node: '>=10'}
 
   type-fest@5.8.0:
@@ -10368,6 +10402,10 @@ packages:
     engines: {node: '>=20.11'}
     hasBin: true
 
+  widest-line@6.0.0:
+    resolution: {integrity: sha512-U89AsyEeAsyoF0zVJBkG9zBgekjgjK7yk9sje3F4IQpXBJ10TF6ByLlIfjMhcmHMJgHZI4KHt4rdNfktzxIAMA==}
+    engines: {node: '>=20'}
+
   winston-transport@4.9.0:
     resolution: {integrity: sha512-8drMJ4rkgaPo1Me4zD/3WLfI/zPdA9o2IipKODunnGDcuqbHwjsbB79ylv04LCGGzU0xQ6vTznOMpQGaLhhm6A==}
     engines: {node: '>= 12.0.0'}
@@ -10380,13 +10418,13 @@ packages:
     resolution: {integrity: sha512-BN22B5eaMMI9UMtjrGd5g5eCYPpCPDUy0FJXbYsaT5zYxjFOckS53SQDE3pWkVoWpHXVb3BrYcEN4Twa55B5cA==}
     engines: {node: '>=0.10.0'}
 
+  wrap-ansi@10.0.2:
+    resolution: {integrity: sha512-6OLRNZqRntVGBm26ghZ5eZhCuWWyOkRCSn8XsOIuq5stpCE/tjLbdozd93naILZig0lmD8ANfRwnhn0DLeXGlg==}
+    engines: {node: '>=20'}
+
   wrap-ansi@7.0.0:
     resolution: {integrity: sha512-YVGIj2kamLSTxw6NsZjoBxfSwsn0ycdesmc4p+Q21c5zPuZ1pl+NfxVdxPtdHvmNVOQ6XSYG4AUtyt/Fi7D16Q==}
     engines: {node: '>=10'}
-
-  wrap-ansi@8.1.0:
-    resolution: {integrity: sha512-si7QWI6zUMq56bESFvagtmzMdGOtoxfR+Sez11Mobfc7tm+VkUckk9bW2UeffTGVUbOksxmSw0AA2gs8g71NCQ==}
-    engines: {node: '>=12'}
 
   wrap-ansi@9.0.2:
     resolution: {integrity: sha512-42AtmgqjV+X1VpdOfyTGOYRi0/zsoLqtXQckTmqTeybT+BDIbM/Guxo7x3pE2vtpr1ok6xRqM9OpBe+Jyoqyww==}
@@ -10443,10 +10481,6 @@ packages:
     engines: {node: '>= 14.6'}
     hasBin: true
 
-  yargs-parser@20.2.9:
-    resolution: {integrity: sha512-y11nGElTIV+CT3Zv9t7VKl+Q3hTQoT9a1Qzezhhl6Rp21gJ/IVTW7Z3y9EWXhuUBC2Shnf+DX0antecpAwSP8w==}
-    engines: {node: '>=10'}
-
   yargs-parser@21.1.1:
     resolution: {integrity: sha512-tVpsJW7DdjecAiFpbIB1e3qxIQsE6NoPc5/eTdrbbIC4h0LVsWhnoa3g+m2HclBIujHzsxZ4VJVA+GUuc2/LBw==}
     engines: {node: '>=12'}
@@ -10454,10 +10488,6 @@ packages:
   yargs-parser@22.0.0:
     resolution: {integrity: sha512-rwu/ClNdSMpkSrUb+d6BRsSkLUq1fmfsY6TOpYzTwvwkg1/NRG85KBy3kq++A8LKQwX6lsu+aWad+2khvuXrqw==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=23}
-
-  yargs@16.2.2:
-    resolution: {integrity: sha512-Nt9ZJjXTv5R8MHbqby/wXQ6Gi0Bb3TcYZkR1bzuL4yB2OxWPkXknz513gEF0GoA6tn00UpbPvERW8rzCuWCA6w==}
-    engines: {node: '>=10'}
 
   yargs@17.7.3:
     resolution: {integrity: sha512-GZtjxm/J/4TSxuL3FNYjCmLktBTnIw/rVmKSIyKeYAZpmJB2ig9VauCC5xsa82GNKVKDAqpOn3KVzNt0zmrU0g==}
@@ -10486,6 +10516,9 @@ packages:
   yoctocolors@2.2.0:
     resolution: {integrity: sha512-xYqdZFUK/VYazNl/oCDYN+3WloWQwMfZxBoiNt6qNyk+xfOdi598muWE42rNZFp1kNOiqW936q5RhUdnpqElSg==}
     engines: {node: '>=18'}
+
+  yoga-layout@3.2.1:
+    resolution: {integrity: sha512-0LPOt3AxKqMdFBZA3HBAt/t/8vIKq7VaQYbuA8WxCgung+p9TVyKRYdpvCb80HcdTN2NkbIKbhNwKUfm3tQywQ==}
 
   zod-to-json-schema@3.25.2:
     resolution: {integrity: sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA==}
@@ -10519,6 +10552,11 @@ packages:
 snapshots:
 
   7zip-bin-full@26.2.1: {}
+
+  '@alcalzone/ansi-tokenize@0.3.1':
+    dependencies:
+      ansi-styles: 6.2.3
+      is-fullwidth-code-point: 5.1.0
 
   '@anaconda/desktop-bridge-payload-darwin-arm64@0.1.14':
     optional: true
@@ -11119,22 +11157,26 @@ snapshots:
 
   '@drizzle-team/brocli@0.10.2': {}
 
-  '@electron-forge/cli@8.0.0-alpha.10(supports-color@10.2.2)':
+  '@electron-forge/cli@8.0.1(@types/react@19.2.17)(supports-color@10.2.2)':
     dependencies:
-      '@electron-forge/core': 8.0.0-alpha.10(supports-color@10.2.2)
-      '@electron-forge/core-utils': 8.0.0-alpha.10(supports-color@10.2.2)
-      '@electron-forge/shared-types': 8.0.0-alpha.10(supports-color@10.2.2)
+      '@electron-forge/core': 8.0.1(@types/react@19.2.17)(supports-color@10.2.2)
+      '@electron-forge/core-utils': 8.0.1(supports-color@10.2.2)
+      '@electron-forge/shared-types': 8.0.1(supports-color@10.2.2)
       '@electron/get': 5.1.0(supports-color@10.2.2)
       commander: 11.1.0
       debug: 4.4.3(supports-color@10.2.2)
-      listr2: 7.0.2
+      listr2: 11.1.1
       semver: 7.8.5
     transitivePeerDependencies:
+      - '@types/react'
+      - bufferutil
+      - react-devtools-core
       - supports-color
+      - utf-8-validate
 
-  '@electron-forge/core-utils@8.0.0-alpha.10(supports-color@10.2.2)':
+  '@electron-forge/core-utils@8.0.1(supports-color@10.2.2)':
     dependencies:
-      '@electron-forge/shared-types': 8.0.0-alpha.10(supports-color@10.2.2)
+      '@electron-forge/shared-types': 8.0.1(supports-color@10.2.2)
       '@electron/rebuild': 4.2.0(supports-color@10.2.2)
       '@malept/cross-spawn-promise': 2.0.0
       debug: 4.4.3(supports-color@10.2.2)
@@ -11143,125 +11185,145 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@electron-forge/core@8.0.0-alpha.10(supports-color@10.2.2)':
+  '@electron-forge/core@8.0.1(@types/react@19.2.17)(supports-color@10.2.2)':
     dependencies:
-      '@electron-forge/core-utils': 8.0.0-alpha.10(supports-color@10.2.2)
-      '@electron-forge/maker-base': 8.0.0-alpha.10(supports-color@10.2.2)
-      '@electron-forge/plugin-base': 8.0.0-alpha.10(supports-color@10.2.2)
-      '@electron-forge/publisher-base': 8.0.0-alpha.10(supports-color@10.2.2)
-      '@electron-forge/shared-types': 8.0.0-alpha.10(supports-color@10.2.2)
-      '@electron-forge/tracer': 8.0.0-alpha.10
+      '@electron-forge/core-utils': 8.0.1(supports-color@10.2.2)
+      '@electron-forge/maker-base': 8.0.1(supports-color@10.2.2)
+      '@electron-forge/multi-logger': 8.0.1(@types/react@19.2.17)(supports-color@10.2.2)
+      '@electron-forge/plugin-base': 8.0.1(supports-color@10.2.2)
+      '@electron-forge/publisher-base': 8.0.1(supports-color@10.2.2)
+      '@electron-forge/shared-types': 8.0.1(supports-color@10.2.2)
+      '@electron-forge/tracer': 8.0.1
       '@electron/get': 5.1.0(supports-color@10.2.2)
-      '@electron/packager': 20.0.4(supports-color@10.2.2)
+      '@electron/packager': 20.3.0(supports-color@10.2.2)
       debug: 4.4.3(supports-color@10.2.2)
       graceful-fs: 4.2.11
       jiti: 2.7.0
-      listr2: 7.0.2
+      listr2: 11.1.1
+      semver: 7.8.5
     transitivePeerDependencies:
+      - '@types/react'
+      - bufferutil
+      - react-devtools-core
       - supports-color
+      - utf-8-validate
 
-  '@electron-forge/maker-base@8.0.0-alpha.10(supports-color@10.2.2)':
+  '@electron-forge/maker-base@8.0.1(supports-color@10.2.2)':
     dependencies:
-      '@electron-forge/shared-types': 8.0.0-alpha.10(supports-color@10.2.2)
+      '@electron-forge/shared-types': 8.0.1(supports-color@10.2.2)
       which: 6.0.1
     transitivePeerDependencies:
       - supports-color
 
-  '@electron-forge/maker-deb@8.0.0-alpha.10(supports-color@10.2.2)':
+  '@electron-forge/maker-deb@8.0.1(supports-color@10.2.2)':
     dependencies:
-      '@electron-forge/maker-base': 8.0.0-alpha.10(supports-color@10.2.2)
-      '@electron-forge/shared-types': 8.0.0-alpha.10(supports-color@10.2.2)
+      '@electron-forge/maker-base': 8.0.1(supports-color@10.2.2)
+      '@electron-forge/shared-types': 8.0.1(supports-color@10.2.2)
     optionalDependencies:
-      electron-installer-debian: 3.2.0(supports-color@10.2.2)
+      electron-installer-debian: 4.0.0(supports-color@10.2.2)
     transitivePeerDependencies:
       - supports-color
 
-  '@electron-forge/maker-dmg@8.0.0-alpha.10(supports-color@10.2.2)':
+  '@electron-forge/maker-dmg@8.0.1(supports-color@10.2.2)':
     dependencies:
-      '@electron-forge/maker-base': 8.0.0-alpha.10(supports-color@10.2.2)
-      '@electron-forge/shared-types': 8.0.0-alpha.10(supports-color@10.2.2)
+      '@electron-forge/maker-base': 8.0.1(supports-color@10.2.2)
+      '@electron-forge/shared-types': 8.0.1(supports-color@10.2.2)
     optionalDependencies:
       electron-installer-dmg: 5.0.1(supports-color@10.2.2)
     transitivePeerDependencies:
       - supports-color
 
-  '@electron-forge/maker-squirrel@8.0.0-alpha.10(supports-color@10.2.2)':
+  '@electron-forge/maker-squirrel@8.0.1(supports-color@10.2.2)':
     dependencies:
-      '@electron-forge/core-utils': 8.0.0-alpha.10(supports-color@10.2.2)
-      '@electron-forge/maker-base': 8.0.0-alpha.10(supports-color@10.2.2)
-      '@electron-forge/shared-types': 8.0.0-alpha.10(supports-color@10.2.2)
+      '@electron-forge/core-utils': 8.0.1(supports-color@10.2.2)
+      '@electron-forge/maker-base': 8.0.1(supports-color@10.2.2)
+      '@electron-forge/shared-types': 8.0.1(supports-color@10.2.2)
     optionalDependencies:
       electron-winstaller: 5.4.4(supports-color@10.2.2)
     transitivePeerDependencies:
       - supports-color
 
-  '@electron-forge/maker-zip@8.0.0-alpha.10(supports-color@10.2.2)':
+  '@electron-forge/maker-zip@8.0.1(supports-color@10.2.2)':
     dependencies:
-      '@electron-forge/core-utils': 8.0.0-alpha.10(supports-color@10.2.2)
-      '@electron-forge/maker-base': 8.0.0-alpha.10(supports-color@10.2.2)
-      '@electron-forge/shared-types': 8.0.0-alpha.10(supports-color@10.2.2)
+      '@electron-forge/core-utils': 8.0.1(supports-color@10.2.2)
+      '@electron-forge/maker-base': 8.0.1(supports-color@10.2.2)
+      '@electron-forge/shared-types': 8.0.1(supports-color@10.2.2)
       cross-zip: 4.0.1
     transitivePeerDependencies:
       - supports-color
 
-  '@electron-forge/plugin-base@8.0.0-alpha.10(supports-color@10.2.2)':
+  '@electron-forge/multi-logger@8.0.1(@types/react@19.2.17)(supports-color@10.2.2)':
     dependencies:
-      '@electron-forge/shared-types': 8.0.0-alpha.10(supports-color@10.2.2)
+      debug: 4.4.3(supports-color@10.2.2)
+      ink: 7.1.1(@types/react@19.2.17)(react@19.2.8)
+      react: 19.2.8
+      string-width: 8.2.2
+      wrap-ansi: 10.0.2
+    transitivePeerDependencies:
+      - '@types/react'
+      - bufferutil
+      - react-devtools-core
+      - supports-color
+      - utf-8-validate
+
+  '@electron-forge/plugin-base@8.0.1(supports-color@10.2.2)':
+    dependencies:
+      '@electron-forge/shared-types': 8.0.1(supports-color@10.2.2)
     transitivePeerDependencies:
       - supports-color
 
-  '@electron-forge/plugin-fuses@8.0.0-alpha.10(@electron/fuses@2.1.3)(supports-color@10.2.2)':
+  '@electron-forge/plugin-fuses@8.0.1(@electron/fuses@2.1.3)(supports-color@10.2.2)':
     dependencies:
-      '@electron-forge/plugin-base': 8.0.0-alpha.10(supports-color@10.2.2)
-      '@electron-forge/shared-types': 8.0.0-alpha.10(supports-color@10.2.2)
+      '@electron-forge/plugin-base': 8.0.1(supports-color@10.2.2)
+      '@electron-forge/shared-types': 8.0.1(supports-color@10.2.2)
       '@electron/fuses': 2.1.3
     transitivePeerDependencies:
       - supports-color
 
-  '@electron-forge/plugin-vite@8.0.0-alpha.10(supports-color@10.2.2)':
+  '@electron-forge/plugin-vite@8.0.1(supports-color@10.2.2)':
     dependencies:
-      '@electron-forge/core-utils': 8.0.0-alpha.10(supports-color@10.2.2)
-      '@electron-forge/plugin-base': 8.0.0-alpha.10(supports-color@10.2.2)
-      '@electron-forge/shared-types': 8.0.0-alpha.10(supports-color@10.2.2)
+      '@electron-forge/core-utils': 8.0.1(supports-color@10.2.2)
+      '@electron-forge/plugin-base': 8.0.1(supports-color@10.2.2)
+      '@electron-forge/shared-types': 8.0.1(supports-color@10.2.2)
       debug: 4.4.3(supports-color@10.2.2)
-      listr2: 7.0.2
+      listr2: 11.1.1
     transitivePeerDependencies:
       - supports-color
 
-  '@electron-forge/publisher-base@8.0.0-alpha.10(supports-color@10.2.2)':
+  '@electron-forge/publisher-base@8.0.1(supports-color@10.2.2)':
     dependencies:
-      '@electron-forge/shared-types': 8.0.0-alpha.10(supports-color@10.2.2)
+      '@electron-forge/shared-types': 8.0.1(supports-color@10.2.2)
     transitivePeerDependencies:
       - supports-color
 
-  '@electron-forge/publisher-s3@8.0.0-alpha.10(supports-color@10.2.2)':
+  '@electron-forge/publisher-s3@8.0.1(supports-color@10.2.2)':
     dependencies:
       '@aws-sdk/client-s3': 3.1096.0
       '@aws-sdk/lib-storage': 3.1096.0(@aws-sdk/client-s3@3.1096.0)
       '@aws-sdk/types': 3.974.2
-      '@electron-forge/publisher-static': 8.0.0-alpha.10(supports-color@10.2.2)
-      '@electron-forge/shared-types': 8.0.0-alpha.10(supports-color@10.2.2)
+      '@electron-forge/publisher-static': 8.0.1(supports-color@10.2.2)
+      '@electron-forge/shared-types': 8.0.1(supports-color@10.2.2)
       debug: 4.4.3(supports-color@10.2.2)
     transitivePeerDependencies:
       - supports-color
 
-  '@electron-forge/publisher-static@8.0.0-alpha.10(supports-color@10.2.2)':
+  '@electron-forge/publisher-static@8.0.1(supports-color@10.2.2)':
     dependencies:
-      '@electron-forge/publisher-base': 8.0.0-alpha.10(supports-color@10.2.2)
-      '@electron-forge/shared-types': 8.0.0-alpha.10(supports-color@10.2.2)
+      '@electron-forge/publisher-base': 8.0.1(supports-color@10.2.2)
+      '@electron-forge/shared-types': 8.0.1(supports-color@10.2.2)
     transitivePeerDependencies:
       - supports-color
 
-  '@electron-forge/shared-types@8.0.0-alpha.10(supports-color@10.2.2)':
+  '@electron-forge/shared-types@8.0.1(supports-color@10.2.2)':
     dependencies:
-      '@electron-forge/tracer': 8.0.0-alpha.10
-      '@electron/packager': 20.0.4(supports-color@10.2.2)
+      '@electron-forge/tracer': 8.0.1
+      '@electron/packager': 20.3.0(supports-color@10.2.2)
       '@electron/rebuild': 4.2.0(supports-color@10.2.2)
-      listr2: 7.0.2
+      listr2: 11.1.1
     transitivePeerDependencies:
       - supports-color
 
-  '@electron-forge/tracer@8.0.0-alpha.10':
+  '@electron-forge/tracer@8.0.1':
     dependencies:
       chrome-trace-event: 1.0.4
 
@@ -11309,7 +11371,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@electron/packager@20.0.4(supports-color@10.2.2)':
+  '@electron/packager@20.3.0(supports-color@10.2.2)':
     dependencies:
       '@electron-internal/extract-zip': 1.0.4
       '@electron/asar': 4.2.1
@@ -14448,10 +14510,6 @@ snapshots:
 
   ansi-colors@4.1.3: {}
 
-  ansi-escapes@5.0.0:
-    dependencies:
-      type-fest: 1.4.0
-
   ansi-escapes@7.3.0:
     dependencies:
       environment: 1.1.0
@@ -14628,6 +14686,8 @@ snapshots:
 
   author-regex@1.0.0:
     optional: true
+
+  auto-bind@5.0.1: {}
 
   ava@5.3.1(supports-color@10.2.2):
     dependencies:
@@ -14887,6 +14947,8 @@ snapshots:
 
   clean-yaml-object@0.1.0: {}
 
+  cli-boxes@4.0.1: {}
+
   cli-cursor@4.0.0:
     dependencies:
       restore-cursor: 4.0.0
@@ -14907,12 +14969,10 @@ snapshots:
       slice-ansi: 8.0.0
       string-width: 8.2.2
 
-  cliui@7.0.4:
+  cli-truncate@6.1.1:
     dependencies:
-      string-width: 4.2.3
-      strip-ansi: 6.0.1
-      wrap-ansi: 7.0.0
-    optional: true
+      slice-ansi: 9.0.1
+      string-width: 8.2.2
 
   cliui@8.0.1:
     dependencies:
@@ -15309,16 +15369,14 @@ snapshots:
       - supports-color
     optional: true
 
-  electron-installer-debian@3.2.0(supports-color@10.2.2):
+  electron-installer-debian@4.0.0(supports-color@10.2.2):
     dependencies:
-      '@malept/cross-spawn-promise': 1.1.1
+      '@malept/cross-spawn-promise': 2.0.0
       debug: 4.4.3(supports-color@10.2.2)
       electron-installer-common: 0.10.4(supports-color@10.2.2)
-      fs-extra: 9.1.0
-      get-folder-size: 2.0.1
-      lodash: 4.18.1
+      parse-author: 2.0.0
       word-wrap: 1.2.5
-      yargs: 16.2.2
+      yargs: 18.0.0
     transitivePeerDependencies:
       - supports-color
     optional: true
@@ -16163,9 +16221,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  gar@1.0.4:
-    optional: true
-
   generate-function@2.3.1:
     dependencies:
       is-property: 1.0.2
@@ -16183,12 +16238,6 @@ snapshots:
   get-caller-file@2.0.5: {}
 
   get-east-asian-width@1.6.0: {}
-
-  get-folder-size@2.0.1:
-    dependencies:
-      gar: 1.0.4
-      tiny-each-async: 2.0.3
-    optional: true
 
   get-intrinsic@1.3.0:
     dependencies:
@@ -16442,6 +16491,40 @@ snapshots:
 
   inherits@2.0.4: {}
 
+  ink@7.1.1(@types/react@19.2.17)(react@19.2.8):
+    dependencies:
+      '@alcalzone/ansi-tokenize': 0.3.1
+      ansi-escapes: 7.3.0
+      ansi-styles: 6.2.3
+      auto-bind: 5.0.1
+      chalk: 5.6.2
+      cli-boxes: 4.0.1
+      cli-cursor: 4.0.0
+      cli-truncate: 6.1.1
+      code-excerpt: 4.0.0
+      es-toolkit: 1.50.0
+      indent-string: 5.0.0
+      is-in-ci: 2.0.0
+      patch-console: 2.0.0
+      react: 19.2.8
+      react-reconciler: 0.33.0(react@19.2.8)
+      scheduler: 0.27.0
+      signal-exit: 3.0.7
+      slice-ansi: 9.0.1
+      stack-utils: 2.0.6
+      string-width: 8.2.2
+      terminal-size: 4.0.1
+      type-fest: 5.8.0
+      widest-line: 6.0.0
+      wrap-ansi: 10.0.2
+      ws: 8.21.3
+      yoga-layout: 3.2.1
+    optionalDependencies:
+      '@types/react': 19.2.17
+    transitivePeerDependencies:
+      - bufferutil
+      - utf-8-validate
+
   inline-style-parser@0.2.7: {}
 
   inline-style-prefixer@7.0.1:
@@ -16556,6 +16639,8 @@ snapshots:
       is-extglob: 2.1.1
 
   is-hexadecimal@2.0.1: {}
+
+  is-in-ci@2.0.0: {}
 
   is-in-ssh@1.0.0: {}
 
@@ -16912,14 +16997,11 @@ snapshots:
     optionalDependencies:
       yaml: 2.9.0
 
-  listr2@7.0.2:
+  listr2@11.1.1:
     dependencies:
-      cli-truncate: 3.1.0
-      colorette: 2.0.20
-      eventemitter3: 5.0.4
-      log-update: 5.0.1
-      rfdc: 1.4.1
-      wrap-ansi: 8.1.0
+      cli-truncate: 6.1.1
+      log-update: 8.0.0
+      wrap-ansi: 10.0.2
 
   listr2@9.0.5:
     dependencies:
@@ -16956,14 +17038,6 @@ snapshots:
       chalk: 5.6.2
       is-unicode-supported: 1.3.0
 
-  log-update@5.0.1:
-    dependencies:
-      ansi-escapes: 5.0.0
-      cli-cursor: 4.0.0
-      slice-ansi: 5.0.0
-      strip-ansi: 7.2.0
-      wrap-ansi: 8.1.0
-
   log-update@6.1.0:
     dependencies:
       ansi-escapes: 7.3.0
@@ -16971,6 +17045,15 @@ snapshots:
       slice-ansi: 7.1.2
       strip-ansi: 7.2.0
       wrap-ansi: 9.0.2
+
+  log-update@8.0.0:
+    dependencies:
+      ansi-escapes: 7.3.0
+      cli-cursor: 5.0.0
+      slice-ansi: 9.0.1
+      string-width: 8.2.2
+      strip-ansi: 7.2.0
+      wrap-ansi: 10.0.2
 
   logform@2.7.0:
     dependencies:
@@ -17838,6 +17921,8 @@ snapshots:
 
   parseurl@1.3.3: {}
 
+  patch-console@2.0.0: {}
+
   path-browserify@1.0.1: {}
 
   path-exists@3.0.0: {}
@@ -18122,6 +18207,11 @@ snapshots:
       vfile: 6.0.3
     transitivePeerDependencies:
       - supports-color
+
+  react-reconciler@0.33.0(react@19.2.8):
+    dependencies:
+      react: 19.2.8
+      scheduler: 0.27.0
 
   react-remove-scroll-bar@2.3.8(@types/react@19.2.17)(react@19.2.8):
     dependencies:
@@ -18655,6 +18745,11 @@ snapshots:
       ansi-styles: 6.2.3
       is-fullwidth-code-point: 5.1.0
 
+  slice-ansi@9.0.1:
+    dependencies:
+      ansi-styles: 6.2.3
+      is-fullwidth-code-point: 5.1.0
+
   smart-buffer@4.2.0: {}
 
   smol-toml@1.7.1: {}
@@ -18904,14 +18999,13 @@ snapshots:
       mkdirp: 0.5.6
       rimraf: 2.6.3
 
+  terminal-size@4.0.1: {}
+
   text-hex@1.0.0: {}
 
   throttle-debounce@3.0.1: {}
 
   time-zone@1.0.0: {}
-
-  tiny-each-async@2.0.3:
-    optional: true
 
   tiny-invariant@1.3.3: {}
 
@@ -19041,8 +19135,6 @@ snapshots:
       prelude-ls: 1.2.1
 
   type-fest@0.13.1: {}
-
-  type-fest@1.4.0: {}
 
   type-fest@5.8.0:
     dependencies:
@@ -19424,6 +19516,10 @@ snapshots:
 
   why-is-node-running@3.2.1: {}
 
+  widest-line@6.0.0:
+    dependencies:
+      string-width: 8.2.2
+
   winston-transport@4.9.0:
     dependencies:
       logform: 2.7.0
@@ -19446,17 +19542,16 @@ snapshots:
 
   word-wrap@1.2.5: {}
 
+  wrap-ansi@10.0.2:
+    dependencies:
+      ansi-styles: 6.2.3
+      string-width: 8.2.2
+
   wrap-ansi@7.0.0:
     dependencies:
       ansi-styles: 4.3.0
       string-width: 4.2.3
       strip-ansi: 6.0.1
-
-  wrap-ansi@8.1.0:
-    dependencies:
-      ansi-styles: 6.2.3
-      string-width: 5.1.2
-      strip-ansi: 7.2.0
 
   wrap-ansi@9.0.2:
     dependencies:
@@ -19493,23 +19588,9 @@ snapshots:
 
   yaml@2.9.0: {}
 
-  yargs-parser@20.2.9:
-    optional: true
-
   yargs-parser@21.1.1: {}
 
   yargs-parser@22.0.0: {}
-
-  yargs@16.2.2:
-    dependencies:
-      cliui: 7.0.4
-      escalade: 3.2.0
-      get-caller-file: 2.0.5
-      require-directory: 2.1.1
-      string-width: 4.2.3
-      y18n: 5.0.8
-      yargs-parser: 20.2.9
-    optional: true
 
   yargs@17.7.3:
     dependencies:
@@ -19541,6 +19622,8 @@ snapshots:
       yoctocolors: 2.2.0
 
   yoctocolors@2.2.0: {}
+
+  yoga-layout@3.2.1: {}
 
   zod-to-json-schema@3.25.2(zod@4.4.3):
     dependencies:

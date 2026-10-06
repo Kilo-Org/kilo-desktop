@@ -34,6 +34,21 @@ function idFor(filePath: string, name: string): string {
 	return `${slug(name)}-${suffix}`;
 }
 
+/**
+ * The KV store is shape-agnostic, so a model persisted before `addedAt`
+ * existed (or by a build that omitted it) reaches the contract validator
+ * without the field and rejects the whole `models.list` response. Treat an
+ * absent or invalid `addedAt` as the epoch so legacy entries stay listable and
+ * sort as oldest; `refresh()` writes the repaired value back.
+ */
+function withAddedAt(model: LocalModel): LocalModel {
+	const addedAt = model.addedAt as unknown;
+	if (typeof addedAt === "number" && Number.isInteger(addedAt) && addedAt >= 0) {
+		return model;
+	}
+	return { ...model, addedAt: 0 };
+}
+
 async function isReadableFile(filePath: string): Promise<boolean> {
 	try {
 		return (await stat(filePath)).isFile();
@@ -93,7 +108,7 @@ export class LocalModelRegistry {
 
 	list(): LocalModel[] {
 		const models = this.#store.snapshot().models;
-		return Array.isArray(models) ? structuredClone(models) : [];
+		return Array.isArray(models) ? structuredClone(models.map(withAddedAt)) : [];
 	}
 
 	isEnabled(): boolean {

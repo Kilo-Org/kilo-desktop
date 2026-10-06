@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { KvStore } from "@kilo-desktop/feature-sdk";
 
 import { LocalModelRegistry, type PersistedLocalModels } from "./LocalModelRegistry.js";
+import type { LocalModel } from "../../contracts/schemas.js";
 
 const roots: string[] = [];
 
@@ -156,6 +157,24 @@ describe("LocalModelRegistry", () => {
 		);
 
 		expect(registry.list()).toEqual([]);
+	});
+
+	it("backfills a missing addedAt on legacy persisted models", async () => {
+		const file = await fixture("legacy.gguf");
+		const legacy = {
+			id: "legacy",
+			name: "Legacy",
+			path: await realpath(file),
+			available: true,
+		} as unknown as LocalModel;
+		const kv = store({ models: [legacy] });
+		const registry = new LocalModelRegistry(kv);
+
+		expect(registry.list()).toEqual([{ ...legacy, addedAt: 0 }]);
+
+		await registry.refresh();
+
+		expect(kv.snapshot().models).toEqual([{ ...legacy, addedAt: 0 }]);
 	});
 
 	it("updates model settings and omits empty values", async () => {

@@ -656,6 +656,32 @@ describe("FilesView", () => {
 		);
 	});
 
+	it("reopens the file pane when the already-selected explorer file is clicked again", async () => {
+		const openContributedTab = vi.fn();
+		renderView(handlers(), {}, { openContributedTab });
+		await expect.element(page.getByTestId("files-tree")).toBeVisible();
+		await openTreePath("docs/readme.md");
+		await vi.waitFor(() => expect(openContributedTab).toHaveBeenCalledOnce());
+
+		treeItem("docs/readme.md")?.click();
+
+		await vi.waitFor(() => expect(openContributedTab).toHaveBeenCalledTimes(2));
+		expect(openContributedTab).toHaveBeenLastCalledWith(...openedFileCall("docs/readme.md"));
+	});
+
+	it("opens an explorer file once when its row is double-clicked", async () => {
+		const openContributedTab = vi.fn();
+		renderView(handlers(), {}, { openContributedTab });
+		await expect.element(page.getByTestId("files-tree")).toBeVisible();
+		await expandTreePath("docs/");
+		await vi.waitFor(() => expect(treeItem("docs/readme.md")).not.toBeNull());
+
+		await page.elementLocator(treeItem("docs/readme.md")!).dblClick();
+
+		await vi.waitFor(() => expect(openContributedTab).toHaveBeenCalled());
+		expect(openContributedTab).toHaveBeenCalledOnce();
+	});
+
 	it("shows git status decorations on tree rows", async () => {
 		renderView({
 			...handlers(),

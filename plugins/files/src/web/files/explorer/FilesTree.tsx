@@ -2,7 +2,14 @@ import { resolveTheme } from "@pierre/diffs";
 import { themeToTreeStyles } from "@pierre/trees";
 import { FileTree, useFileTree, useFileTreeSearch } from "@pierre/trees/react";
 import { CircleAlertIcon, FolderIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import {
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+	type CSSProperties,
+	type MouseEvent as ReactMouseEvent,
+} from "react";
 
 import type { SDK } from "@kilo-desktop/feature-sdk";
 import { Button } from "@kilo-desktop/ui/components/button";
@@ -163,10 +170,23 @@ export function FilesTree({
 		};
 	}, [sdk]);
 
+	// The tree only reports selection *changes*, so clicking the already-selected
+	// file (e.g. after its pane was closed) would otherwise do nothing. Capture
+	// runs before the tree's own row handler, while the selection is still the
+	// pre-click one.
+	const reopenSelectedFileOnClick = (event: ReactMouseEvent) => {
+		if (!isPlainSingleClick(event)) return;
+		const path = clickedFileRowPath(event.nativeEvent);
+		if (!path) return;
+		const selected = model.getSelectedPaths();
+		if (selected.length === 1 && selected[0] === path) openFileRef.current(path);
+	};
+
 	return (
 		<div
 			className="flex min-h-0 min-w-0 flex-1 flex-col bg-transparent"
 			data-qa-id="files-explorer"
+			onClickCapture={reopenSelectedFileOnClick}
 		>
 			{folderOptions.length > 1 ? (
 				<div className="shrink-0 border-b px-2 py-1.5">
@@ -294,4 +314,27 @@ export function FilesTree({
 			)}
 		</div>
 	);
+}
+
+function isPlainSingleClick(event: ReactMouseEvent): boolean {
+	return (
+		event.button === 0 &&
+		event.detail <= 1 &&
+		!event.metaKey &&
+		!event.ctrlKey &&
+		!event.shiftKey &&
+		!event.altKey
+	);
+}
+
+// Rows live in the tree's open shadow root, so the React event target is
+// retargeted to the host; composedPath() still reaches the row button.
+function clickedFileRowPath(event: MouseEvent): string | null {
+	for (const node of event.composedPath()) {
+		if (!(node instanceof Element)) continue;
+		if (node.matches('button[data-type="item"][data-item-type="file"]')) {
+			return node.getAttribute("data-item-path");
+		}
+	}
+	return null;
 }

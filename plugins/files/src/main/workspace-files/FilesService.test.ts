@@ -1,4 +1,13 @@
-import { mkdtemp, mkdir, readFile, realpath, stat, symlink, writeFile } from "node:fs/promises";
+import {
+	chmod,
+	mkdtemp,
+	mkdir,
+	readFile,
+	realpath,
+	stat,
+	symlink,
+	writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -7,6 +16,32 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { FeatureError } from "@kilo-desktop/feature-sdk";
 
 import { FilesService } from "./FilesService.js";
+
+/**
+ * Capture the options passed to `globbyStream` so the scan's error-suppression
+ * contract can be asserted, while delegating to the real implementation for the
+ * filesystem-backed listing tests.
+ */
+const globbyStreamOptions = vi.hoisted(() => [] as Record<string, unknown>[]);
+
+vi.mock("globby", async (importOriginal) => {
+	const actual = (await importOriginal()) as {
+		globbyStream: (patterns: string, options: Record<string, unknown>) => AsyncIterable<unknown>;
+	};
+	return {
+		...actual,
+		globbyStream: (patterns: string, options: Record<string, unknown>) => {
+			globbyStreamOptions.push(options);
+			return actual.globbyStream(patterns, options);
+		},
+	};
+});
+
+/**
+ * Permission-based tests need POSIX mode bits and a non-root user: Windows
+ * ignores `chmod` read bits and root bypasses them.
+ */
+const cannotRestrictReadAccess = process.platform === "win32" || process.getuid?.() === 0;
 
 const temporaryDirectories: string[] = [];
 
@@ -102,6 +137,65 @@ describe("FilesService", () => {
 		expect(result.paths).toHaveLength(3);
 		expect(result.truncated).toBe(true);
 	});
+
+	it("suppresses per-directory traversal errors so a locked or vanishing directory cannot fail the whole listing", async () => {
+		const workspace = await temporaryWorkspace();
+		await writeFile(path.join(workspace, "a.txt"), "a");
+		const service = new FilesService({
+			authorize: async () => undefined,
+			gitStatus: async () => null,
+		});
+
+		await expect(service.list(workspace)).resolves.toEqual({ paths: ["a.txt"], truncated: false });
+		// fast-glob only suppresses ENOENT by default; an EPERM/EACCES from a
+		// directory removed mid-walk (e.g. a temp dir) would otherwise reject
+		// the entire scan.
+		expect(globbyStreamOptions.at(-1)).toMatchObject({ suppressErrors: true });
+	});
+
+	it.skipIf(cannotRestrictReadAccess)(
+		"skips an unreadable subdirectory and still lists the rest of the workspace",
+		async () => {
+			const workspace = await temporaryWorkspace();
+			await writeFile(path.join(workspace, "ok.txt"), "ok");
+			const locked = path.join(workspace, "locked");
+			await mkdir(locked);
+			await writeFile(path.join(locked, "secret.txt"), "secret");
+			await chmod(locked, 0o000);
+			const service = new FilesService({
+				authorize: async () => undefined,
+				gitStatus: async () => null,
+			});
+
+			try {
+				await expect(service.list(workspace)).resolves.toEqual({
+					paths: ["locked/", "ok.txt"],
+					truncated: false,
+				});
+			} finally {
+				await chmod(locked, 0o755);
+			}
+		},
+	);
+
+	it.skipIf(cannotRestrictReadAccess)(
+		"still rejects when the workspace root itself is unreadable",
+		async () => {
+			const workspace = await temporaryWorkspace();
+			await writeFile(path.join(workspace, "a.txt"), "a");
+			await chmod(workspace, 0o000);
+			const service = new FilesService({
+				authorize: async () => undefined,
+				gitStatus: async () => null,
+			});
+
+			try {
+				await expect(service.list(workspace)).rejects.toMatchObject({ code: "VALIDATION" });
+			} finally {
+				await chmod(workspace, 0o755);
+			}
+		},
+	);
 
 	it("finds existing files in one authorized batch without scanning the workspace", async () => {
 		const workspace = await temporaryWorkspace();

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { open, realpath, stat } from "node:fs/promises";
+import { open, opendir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { writeFile as atomicWriteFile } from "atomically";
@@ -94,6 +94,16 @@ export class FilesService {
 
 	async list(workspaceDirectory: string): Promise<{ paths: string[]; truncated: boolean }> {
 		const root = await this.authorizedRoot(workspaceDirectory);
+		// The walk below suppresses traversal errors, which would turn an
+		// unreadable root into a silently empty listing. Read the root once
+		// so root-level failures still surface; only descendants are
+		// best-effort. `opendir` (not `access`) because Windows `access`
+		// ignores ACLs.
+		try {
+			await (await opendir(root)).close();
+		} catch (error) {
+			throw featureErrorForFilesystem(error, "Workspace directory is not readable.");
+		}
 		const paths: string[] = [];
 		let truncated = false;
 
@@ -104,6 +114,11 @@ export class FilesService {
 			ignore: [".git", ".git/**"],
 			markDirectories: true,
 			onlyFiles: false,
+			// A directory can vanish or be locked mid-walk (temp dirs, AV scans,
+			// editors). fast-glob only suppresses ENOENT by default, so a
+			// transient EPERM/EACCES from `scandir` would fail the entire
+			// listing; skip the offending directory instead.
+			suppressErrors: true,
 		})) {
 			if (paths.length === this.scanLimit) {
 				truncated = true;

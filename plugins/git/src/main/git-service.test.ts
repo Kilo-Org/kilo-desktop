@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { FeatureError, type MainSdkLogger } from "@kilo-desktop/feature-sdk";
 import {
 	AppFileStatusKind,
+	GitError,
+	GitErrorCode,
 	GitFileTooLargeError,
 	GitNotDetectedError,
 } from "@kilo-desktop/git-client";
@@ -73,6 +75,27 @@ function localBranch(name: string, upstream: string | null = null) {
 		tip: { sha: "abc123" },
 		ref: `refs/heads/${name}`,
 	};
+}
+
+const XCODE_LICENSE_STDERR =
+	"You have not agreed to the Xcode license agreements. Please run 'sudo xcodebuild -license' from within a Terminal window to review and agree to the Xcode and Apple SDKs license.";
+const XCODE_LICENSE_DESCRIPTION =
+	"Git is blocked until you agree to the Xcode license. Open a terminal and run 'sudo xcodebuild -license accept', then try again.";
+
+/** The GitError git-client throws when the macOS git shim reports an unaccepted Xcode license. */
+function xcodeLicenseError(): GitError {
+	return new GitError(
+		{
+			stdout: "",
+			stderr: XCODE_LICENSE_STDERR,
+			exitCode: 69,
+			gitError: GitErrorCode.XcodeLicenseNotAgreed,
+			gitErrorDescription: XCODE_LICENSE_DESCRIPTION,
+			path: "/repo",
+		},
+		["status"],
+		XCODE_LICENSE_STDERR,
+	);
 }
 
 const temporaryDirectories: string[] = [];
@@ -164,6 +187,24 @@ describe("GitService", () => {
 		});
 
 		await expect(service.status("/some/repo")).rejects.toBe(failure);
+	});
+
+	it("maps a license-blocked GitError to a BUSINESS FeatureError with its description", async () => {
+		const service = new GitService({
+			logger,
+			getWorkspaceFolderPaths: folders("/some/repo"),
+			createClient: () =>
+				clientOf({
+					status: () => Promise.reject(xcodeLicenseError()),
+					version: () => Promise.resolve("2.39.5"),
+				}),
+		});
+
+		await expect(service.status("/some/repo")).rejects.toMatchObject({
+			name: "FeatureError",
+			code: "BUSINESS",
+			message: XCODE_LICENSE_DESCRIPTION,
+		});
 	});
 
 	it("runs status in the given working directory and passes the result through", async () => {
@@ -439,9 +480,41 @@ describe("GitService", () => {
 
 			await expect(service.branches("/not/a/repo")).resolves.toBe(null);
 		});
+
+		it("maps a license-blocked GitError to a BUSINESS FeatureError with its description", async () => {
+			const service = new GitService({
+				logger,
+				getWorkspaceFolderPaths: folders("/repos/project"),
+				createClient: () =>
+					clientOf({
+						branches: () => Promise.reject(xcodeLicenseError()),
+						status: statusOn("main"),
+					}),
+			});
+
+			await expect(service.branches("/repos/project")).rejects.toMatchObject({
+				name: "FeatureError",
+				code: "BUSINESS",
+				message: XCODE_LICENSE_DESCRIPTION,
+			});
+		});
 	});
 
 	describe("repositoryType", () => {
+		it("maps a license-blocked GitError to a BUSINESS FeatureError with its description", async () => {
+			const service = new GitService({
+				logger,
+				getWorkspaceFolderPaths: folders("/some/repo"),
+				createClient: () => clientOf({ repositoryType: () => Promise.reject(xcodeLicenseError()) }),
+			});
+
+			await expect(service.repositoryType("/some/repo")).rejects.toMatchObject({
+				name: "FeatureError",
+				code: "BUSINESS",
+				message: XCODE_LICENSE_DESCRIPTION,
+			});
+		});
+
 		it("probes the given working directory and passes each kind through", async () => {
 			const kinds: RepositoryType[] = [
 				{ kind: "missing" },
@@ -567,6 +640,37 @@ describe("GitService", () => {
 
 			expect(createBranch).toHaveBeenCalledWith("topic", "main", { cwd: "/some/repo" });
 			expect(checkoutBranch).toHaveBeenCalledWith("topic", { cwd: "/some/repo" });
+		});
+
+		it("maps a license-blocked GitError to a BUSINESS FeatureError with its description", async () => {
+			const service = new GitService({
+				logger,
+				getWorkspaceFolderPaths: folders("/some/repo"),
+				createClient: () => clientOf({ checkoutBranch: () => Promise.reject(xcodeLicenseError()) }),
+			});
+
+			await expect(service.checkout("/some/repo", "topic")).rejects.toMatchObject({
+				name: "FeatureError",
+				code: "BUSINESS",
+				message: XCODE_LICENSE_DESCRIPTION,
+			});
+		});
+	});
+
+	it("maps a license-blocked GitError from an action to a BUSINESS FeatureError with its description", async () => {
+		const service = new GitService({
+			logger,
+			getWorkspaceFolderPaths: folders("/some/repo"),
+			createClient: () =>
+				clientOf({
+					exec: (() => Promise.reject(xcodeLicenseError())) as unknown as GitClientSlice["exec"],
+				}),
+		});
+
+		await expect(service.commit("/some/repo", "message")).rejects.toMatchObject({
+			name: "FeatureError",
+			code: "BUSINESS",
+			message: XCODE_LICENSE_DESCRIPTION,
 		});
 	});
 
@@ -721,6 +825,25 @@ describe("GitService getDiffContents", () => {
 			service.getDiffContents({ workingDirectory: "/repos/project", path: "file.txt" }),
 		).rejects.toMatchObject({ name: "FeatureError", code: "BUSINESS" });
 	});
+
+	it("maps a license-blocked GitError to a BUSINESS FeatureError with its description", async () => {
+		const service = new GitService({
+			logger,
+			getWorkspaceFolderPaths: folders("/repos/project"),
+			createClient: () =>
+				clientOf({
+					getFileContents: () => Promise.reject(xcodeLicenseError()),
+				}),
+		});
+
+		await expect(
+			service.getDiffContents({ workingDirectory: "/repos/project", path: "file.txt" }),
+		).rejects.toMatchObject({
+			name: "FeatureError",
+			code: "BUSINESS",
+			message: XCODE_LICENSE_DESCRIPTION,
+		});
+	});
 });
 
 describe("GitService createPatch", () => {
@@ -760,6 +883,23 @@ describe("GitService createPatch", () => {
 
 		await service.createPatch({ cwd: "/repos/project" });
 		expect(createWorkingDirectoryPatch).toHaveBeenCalledWith({ cwd: "/repos/project" });
+	});
+
+	it("maps a license-blocked GitError to a BUSINESS FeatureError with its description", async () => {
+		const service = new GitService({
+			logger,
+			getWorkspaceFolderPaths: folders("/repos/project"),
+			createClient: () =>
+				clientOf({
+					createWorkingDirectoryPatch: () => Promise.reject(xcodeLicenseError()),
+				}),
+		});
+
+		await expect(service.createPatch({ cwd: "/repos/project" })).rejects.toMatchObject({
+			name: "FeatureError",
+			code: "BUSINESS",
+			message: XCODE_LICENSE_DESCRIPTION,
+		});
 	});
 
 	it("passes null through and maps GitNotDetectedError to a FeatureError", async () => {
@@ -917,6 +1057,15 @@ describe("GitService hasWorktreeWork", () => {
 			createClient: () => clientOf({ status: () => Promise.reject(new Error("spawn failed")) }),
 		});
 		await expect(spawnFailure.hasWorktreeWork({ directory: "/repo/project" })).resolves.toBe(false);
+
+		const licenseBlocked = new GitService({
+			logger,
+			getWorkspaceFolderPaths: folders("/repo/project"),
+			createClient: () => clientOf({ status: () => Promise.reject(xcodeLicenseError()) }),
+		});
+		await expect(licenseBlocked.hasWorktreeWork({ directory: "/repo/project" })).resolves.toBe(
+			false,
+		);
 	});
 
 	it("resolves false when the directory is not a repository", async () => {

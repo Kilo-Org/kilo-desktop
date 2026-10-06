@@ -124,6 +124,16 @@ mark them as resolved using git add`,
 			"fatal: path 'README.md' exists on disk, but not in '4b825dc642cb6eb9a060e54bf8d69288fbee4904'",
 			GitErrorCode.PathExistsButNotInRef,
 		],
+		[
+			"Xcode license not agreed error",
+			"You have not agreed to the Xcode license agreements. Please run 'sudo xcodebuild -license' from within a Terminal window to review and agree to the Xcode and Apple SDKs license.",
+			GitErrorCode.XcodeLicenseNotAgreed,
+		],
+		[
+			"Xcode license requires admin privileges error",
+			"Agreeing to the Xcode/iOS license requires admin privileges, please re-run as root via sudo.",
+			GitErrorCode.XcodeLicenseNotAgreed,
+		],
 	] as const;
 
 	it.each(cases)("can parse %s", (_, stderr, expected) => {

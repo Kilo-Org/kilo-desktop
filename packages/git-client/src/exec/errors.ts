@@ -49,6 +49,7 @@ export const GitErrorCode = {
 	MergeCommitNoMainlineOption: 46,
 	UnsafeDirectory: 47,
 	PathExistsButNotInRef: 48,
+	XcodeLicenseNotAgreed: 49,
 } as const;
 export type GitErrorCode = (typeof GitErrorCode)[keyof typeof GitErrorCode];
 
@@ -126,6 +127,8 @@ export const GitErrorRegexes: { [regexp: string]: GitErrorCode } = {
 		GitErrorCode.MergeCommitNoMainlineOption,
 	"fatal: detected dubious ownership in repository at (.+)": GitErrorCode.UnsafeDirectory,
 	"fatal: path '(.+)' exists on disk, but not in '(.+)'": GitErrorCode.PathExistsButNotInRef,
+	"You have not agreed to the Xcode license agreements": GitErrorCode.XcodeLicenseNotAgreed,
+	"Agreeing to the Xcode/iOS license requires admin privileges": GitErrorCode.XcodeLicenseNotAgreed,
 };
 
 export class ExecError extends Error {

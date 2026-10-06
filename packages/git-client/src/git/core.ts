@@ -237,6 +237,8 @@ export function getDescriptionForError(error: GitErrorCode, stderr: string): str
 			return "Unable to switch branches as there are working directory changes which would be overwritten. Please commit or stash your changes.";
 		case GitErrorCode.UnresolvedConflicts:
 			return "There are unresolved conflicts in the working directory.";
+		case GitErrorCode.XcodeLicenseNotAgreed:
+			return "Git is blocked until you agree to the Xcode license. Open a terminal and run 'sudo xcodebuild -license accept', then try again.";
 		case GitErrorCode.ConfigLockFileAlreadyExists:
 			// Not using a custom message yet. Returning a null message here means the stderr will
 			// be used as the error message (or stdout if stderr is empty), i.e. the

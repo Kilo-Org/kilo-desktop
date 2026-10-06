@@ -252,17 +252,21 @@ function createDefaultClient(logger: MainSdkLogger): GitClientSlice {
 }
 
 /**
- * The one error mapped to a `FeatureError` across every method: no git
- * binary means the message must survive the IPC boundary. Everything else
- * propagates unwrapped (the IPC boundary scrubs generic errors, and
- * git-client logs the detail via the adapted logger).
+ * The git-unavailability errors mapped to a `FeatureError` across every
+ * method: no git binary, and the macOS shim failing every invocation while
+ * the Xcode license is unaccepted. Their messages must survive the IPC
+ * boundary. Everything else propagates unwrapped (the IPC boundary scrubs
+ * generic errors, and git-client logs the detail via the adapted logger).
  */
-function gitNotDetectedToFeatureError(error: unknown): unknown {
+function gitUnavailableToFeatureError(error: unknown): unknown {
 	if (error instanceof GitNotDetectedError) {
 		return new FeatureError(
 			"Git executable not found. Install git and make sure it is on your PATH.",
 			"BUSINESS",
 		);
+	}
+	if (isGitError(error, GitErrorCode.XcodeLicenseNotAgreed)) {
+		return new FeatureError(error.result.gitErrorDescription ?? error.message, "BUSINESS");
 	}
 	return error;
 }
@@ -270,8 +274,9 @@ function gitNotDetectedToFeatureError(error: unknown): unknown {
 /**
  * Expected user-facing checkout failures: git's parsed description (the
  * "already exists" / "local changes overwritten" copy) must survive the IPC
- * boundary, so they map to `FeatureError`s; anything else propagates
- * unwrapped (scrubbed at IPC, logged by git-client).
+ * boundary, so they map to `FeatureError`s; git-unavailability maps through
+ * the shared fallthrough; anything else propagates unwrapped (scrubbed at
+ * IPC, logged by git-client).
  */
 function checkoutErrorToFeatureError(error: unknown): unknown {
 	if (isGitError(error, GitErrorCode.BranchAlreadyExists)) {
@@ -280,14 +285,14 @@ function checkoutErrorToFeatureError(error: unknown): unknown {
 	if (isGitError(error, GitErrorCode.LocalChangesOverwritten)) {
 		return new FeatureError(error.result.gitErrorDescription ?? error.message, "BUSINESS");
 	}
-	return gitNotDetectedToFeatureError(error);
+	return gitUnavailableToFeatureError(error);
 }
 
 function gitActionErrorToFeatureError(error: unknown): unknown {
 	if (isGitError(error)) {
 		return new FeatureError(error.result.gitErrorDescription ?? error.message, "BUSINESS");
 	}
-	return gitNotDetectedToFeatureError(error);
+	return gitUnavailableToFeatureError(error);
 }
 
 export function ghErrorToFeatureError(error: unknown): FeatureError {
@@ -447,13 +452,17 @@ function parseJsonValue(json: string): unknown {
  *   the data probes ever run. It never resolves `null` — `missing` is an
  *   explicit kind, and `unsafe` crosses the contract so a trust flow can
  *   be added later without schema changes.
- * - `GitNotDetectedError` (no git binary on PATH) is mapped to a
- *   `FeatureError` on every method so its message survives the IPC boundary;
- *   every other unexpected error propagates unwrapped (the IPC boundary
- *   scrubs generic errors, and git-client logs the detail via the adapted
- *   logger). The worktree delegate methods additionally map `GitError`s to
- *   `FeatureError`s carrying git's parsed descriptions, because their
- *   failures (missing base branch, locked worktree, …) are user-facing copy.
+ * - The git-unavailability errors are mapped to a `FeatureError` on every
+ *   method so their messages survive the IPC boundary: `GitNotDetectedError`
+ *   (no git binary on PATH) and `GitErrorCode.XcodeLicenseNotAgreed` (the
+ *   macOS `/usr/bin/git` shim exits 69 on every invocation while the Xcode
+ *   license is unaccepted — resolution succeeds, so without the mapping the
+ *   raw `GitError` would cross IPC as an unexpected failure). Every other
+ *   unexpected error propagates unwrapped (the IPC boundary scrubs generic
+ *   errors, and git-client logs the detail via the adapted logger). The
+ *   worktree delegate methods additionally map `GitError`s to `FeatureError`s
+ *   carrying git's parsed descriptions, because their failures (missing base
+ *   branch, locked worktree, …) are user-facing copy.
  * - `checkout` additionally maps the two expected user-facing failures
  *   (`BranchAlreadyExists`, `LocalChangesOverwritten`) to `FeatureError`s
  *   carrying git's parsed descriptions, so the UI can surface them. With
@@ -559,7 +568,7 @@ export class GitService {
 				workingDirectory: { files: [...result.workingDirectory.files] },
 			};
 		} catch (error) {
-			throw gitNotDetectedToFeatureError(error);
+			throw gitUnavailableToFeatureError(error);
 		}
 	}
 
@@ -885,7 +894,7 @@ export class GitService {
 		const headBranch = await this.#client
 			.headBranch({ cwd: workingDirectory })
 			.catch((error: unknown) => {
-				throw gitNotDetectedToFeatureError(error);
+				throw gitUnavailableToFeatureError(error);
 			});
 		const branch = headBranch?.name ?? null;
 		const resolved = (githubStatus: GithubSnapshotStatus) => ({
@@ -1410,7 +1419,7 @@ export class GitService {
 				recentBranches: recentBranchNamesOf(branches, recentNames, defaultBranch),
 			};
 		} catch (error) {
-			throw gitNotDetectedToFeatureError(error);
+			throw gitUnavailableToFeatureError(error);
 		}
 	}
 
@@ -1428,7 +1437,7 @@ export class GitService {
 			// `tsc` enforces the alignment at this assignment.
 			return result;
 		} catch (error) {
-			throw gitNotDetectedToFeatureError(error);
+			throw gitUnavailableToFeatureError(error);
 		}
 	}
 
@@ -1471,7 +1480,7 @@ export class GitService {
 		try {
 			await this.#client.initRepository({ cwd: workingDirectory });
 		} catch (error) {
-			throw gitNotDetectedToFeatureError(error);
+			throw gitUnavailableToFeatureError(error);
 		}
 	}
 
@@ -1494,13 +1503,7 @@ export class GitService {
 			this.#inFlightPatchPaths.add(patch.patchPath);
 			return patch;
 		} catch (error) {
-			if (error instanceof GitNotDetectedError) {
-				throw new FeatureError(
-					"Git executable not found. Install git and make sure it is on your PATH.",
-					"BUSINESS",
-				);
-			}
-			throw error;
+			throw gitUnavailableToFeatureError(error);
 		}
 	}
 
@@ -1532,16 +1535,10 @@ export class GitService {
 				...(options.oldPath ? { oldPath: options.oldPath } : {}),
 			});
 		} catch (error) {
-			if (error instanceof GitNotDetectedError) {
-				throw new FeatureError(
-					"Git executable not found. Install git and make sure it is on your PATH.",
-					"BUSINESS",
-				);
-			}
 			if (error instanceof GitFileTooLargeError) {
 				throw new FeatureError(`"${error.path}" is too large to expand.`, "BUSINESS");
 			}
-			throw error;
+			throw gitUnavailableToFeatureError(error);
 		}
 	}
 
@@ -1580,7 +1577,7 @@ export class GitService {
 			if (names.includes("master")) return "master";
 			return null;
 		} catch (error) {
-			throw gitNotDetectedToFeatureError(error);
+			throw gitUnavailableToFeatureError(error);
 		}
 	}
 

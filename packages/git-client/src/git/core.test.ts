@@ -119,6 +119,10 @@ const cases: ReadonlyArray<readonly [GitErrorCode, string | null | RegExp]> = [
 	[GitErrorCode.MergeCommitNoMainlineOption, null],
 	[GitErrorCode.UnsafeDirectory, null],
 	[GitErrorCode.PathExistsButNotInRef, null],
+	[
+		GitErrorCode.XcodeLicenseNotAgreed,
+		"Git is blocked until you agree to the Xcode license. Open a terminal and run 'sudo xcodebuild -license accept', then try again.",
+	],
 ];
 
 function createCoreTestClient(path: string): GitClient {

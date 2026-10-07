@@ -54,7 +54,7 @@ describe("renderRouterArgs", () => {
 		expect(
 			renderRouterArgs({
 				port: 43123,
-				apiKey: "secret",
+				apiKeyPath: "/tmp/api-key",
 				presetPath: "/tmp/models.ini",
 				modelCount: 3,
 			}),
@@ -63,8 +63,8 @@ describe("renderRouterArgs", () => {
 			"127.0.0.1",
 			"--port",
 			"43123",
-			"--api-key",
-			"secret",
+			"--api-key-file",
+			"/tmp/api-key",
 			"--models-preset",
 			"/tmp/models.ini",
 			"--models-max",
@@ -78,7 +78,7 @@ describe("renderRouterArgs", () => {
 		expect(
 			renderRouterArgs({
 				port: 8080,
-				apiKey: "secret",
+				apiKeyPath: "/tmp/api-key",
 				presetPath: "/tmp/models.ini",
 				modelCount: 1,
 				settings: { serveOnLocalNetwork: true },
@@ -88,8 +88,8 @@ describe("renderRouterArgs", () => {
 			"127.0.0.1",
 			"--port",
 			"8080",
-			"--api-key",
-			"secret",
+			"--api-key-file",
+			"/tmp/api-key",
 			"--models-preset",
 			"/tmp/models.ini",
 			"--models-max",
@@ -103,7 +103,7 @@ describe("renderRouterArgs", () => {
 		expect(
 			renderRouterArgs({
 				port: 8080,
-				apiKey: "secret",
+				apiKeyPath: "/tmp/api-key",
 				presetPath: "/tmp/models.ini",
 				modelCount: 5,
 				settings: {
@@ -116,8 +116,8 @@ describe("renderRouterArgs", () => {
 			"127.0.0.1",
 			"--port",
 			"8080",
-			"--api-key",
-			"secret",
+			"--api-key-file",
+			"/tmp/api-key",
 			"--models-preset",
 			"/tmp/models.ini",
 			"--models-max",

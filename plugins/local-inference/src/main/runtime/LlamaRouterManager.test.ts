@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { mkdir, readFile, rm } from "node:fs/promises";
+import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { PassThrough } from "node:stream";
@@ -94,7 +94,7 @@ async function setup(
 		}
 		return new Response("{}", { status: 200 });
 	});
-	const spawn = vi.fn(() => process);
+	const spawn = vi.fn((_executable: string, _args: readonly string[]) => process);
 	const resolveExecutable = vi.fn(async () => "/bin/llama-server");
 	const manager = new LlamaRouterManager({
 		storageDir: root,
@@ -165,6 +165,24 @@ describe("LlamaRouterManager", () => {
 			{ status: "starting" },
 			{ status: "ready", loadedModelIds: [] },
 		]);
+	});
+
+	it("passes the api key via a 0600 file instead of the command line", async () => {
+		const ctx = await setup();
+
+		await ctx.manager.ensureRunning([model()]);
+
+		const keyPath = path.join(ctx.root, "runtime", "api-key");
+		const args = ctx.spawn.mock.calls[0]?.[1] ?? [];
+		expect(args).toEqual(expect.arrayContaining(["--api-key-file", keyPath]));
+		expect(args).not.toContain("--api-key");
+		expect(args).not.toContain("secret");
+
+		expect(await readFile(keyPath, "utf8")).toBe("secret");
+		if (process.platform !== "win32") {
+			const info = await stat(keyPath);
+			expect(info.mode & 0o777).toBe(0o600);
+		}
 	});
 
 	it("restarts when model load mode or router flags change", async () => {

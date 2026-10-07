@@ -417,6 +417,10 @@ export class LlamaRouterManager {
 			const temporaryPath = `${presetPath}.${crypto.randomUUID()}.tmp`;
 			await writeFile(temporaryPath, preset, "utf8");
 			await rename(temporaryPath, presetPath);
+			const apiKeyPath = path.join(runtime, "api-key");
+			const temporaryApiKeyPath = `${apiKeyPath}.${crypto.randomUUID()}.tmp`;
+			await writeFile(temporaryApiKeyPath, this.#options.apiKey, { mode: 0o600 });
+			await rename(temporaryApiKeyPath, apiKeyPath);
 			await this.#options.reclaimStaleRouters(presetPath);
 			const port = await this.#options.allocatePort();
 			if (this.#disposed || this.#generation !== generation) {
@@ -424,7 +428,7 @@ export class LlamaRouterManager {
 			}
 			const args = renderRouterArgs({
 				port,
-				apiKey: this.#options.apiKey,
+				apiKeyPath,
 				presetPath,
 				modelCount: available(models).length,
 				settings,

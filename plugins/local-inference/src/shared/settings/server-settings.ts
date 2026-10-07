@@ -100,7 +100,7 @@ export function proxyBindHost(serveOnLocalNetwork?: boolean): string {
 
 export function renderRouterArgs(input: {
 	readonly port: number;
-	readonly apiKey: string;
+	readonly apiKeyPath: string;
 	readonly presetPath: string;
 	readonly modelCount: number;
 	readonly settings?: LocalServerSettings;
@@ -111,8 +111,8 @@ export function renderRouterArgs(input: {
 		LOOPBACK_HOST,
 		"--port",
 		String(input.port),
-		"--api-key",
-		input.apiKey,
+		"--api-key-file",
+		input.apiKeyPath,
 		"--models-preset",
 		input.presetPath,
 		"--models-max",

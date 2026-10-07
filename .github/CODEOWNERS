@@ -3,3 +3,4 @@
 # unless a later, more specific rule below matches instead.
 #
 *       @anaconda/desktop
+/e2e/   @anaconda/qde @JoshuaLowe1002

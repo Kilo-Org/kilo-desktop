@@ -4,7 +4,7 @@
 	"private": true,
 	"type": "module",
 	"description": "Kilo Desktop",
-	"packageManager": "pnpm@12.6.0",
+	"packageManager": "pnpm@12.10.1",
 	"engines": {
 		"node": ">=24"
 	},

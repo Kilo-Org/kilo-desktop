@@ -1,6 +1,10 @@
-import { cleanup, render } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { cleanup, render as renderView } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
+
+import { SdkProvider } from "@kilo-desktop/sdk-react";
+import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 
 import { DEFAULT_WORKSPACE_IDENTITY_COLOR } from "../../contracts/workspaces/schemas.js";
 import type { useWorkspaceForm } from "../workspaces/useWorkspaceForm.js";
@@ -8,6 +12,14 @@ import type { useWorkspaceForm } from "../workspaces/useWorkspaceForm.js";
 import { FeaturesStep } from "./FeaturesStep.js";
 import { OnboardingFlow } from "./OnboardingFlow.js";
 import { WorkspaceStep } from "./WorkspaceStep.js";
+
+function render(children: ReactNode) {
+	const sdk = createFakeSdk({ featureId: "kilo-ui" });
+	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
+	return renderView(children, {
+		wrapper: ({ children }) => <SdkProvider system={system}>{children}</SdkProvider>,
+	});
+}
 
 afterEach(() => {
 	cleanup();

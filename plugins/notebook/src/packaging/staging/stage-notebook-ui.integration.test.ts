@@ -26,10 +26,10 @@ import {
 const directories: string[] = [];
 
 const NIGHTLY_RELEASE = {
-	tag: "v2.7.6-nightly.202609291557",
-	version: "2.7.6-nightly.202609291557",
+	tag: "v2.8.1-nightly.202610070906",
+	version: "2.8.1-nightly.202610070906",
 	channel: "nightly",
-	commit: "d6959be66205165cb1d422d29fbf9b54a3b80d54",
+	commit: "217d6fe019133b96138678b4184bd4b62aafc3ab",
 	repository: "https://github.com/nteract/nteract.git",
 } as const;
 
@@ -341,9 +341,9 @@ describe("injectKiloEmbedChromeHtml", () => {
 		expect(injectKiloEmbedChromeHtml(refreshed)).toBe(refreshed);
 	});
 
-	it("does not hardcode a host palette onto --background", () => {
+	it("leaves rail presentation and the palette to the host", () => {
 		expect(KILO_EMBED_CHROME_CSS).not.toContain("--background");
-		expect(KILO_EMBED_CHROME_CSS).toContain('[data-testid="notebook-rail"]');
+		expect(KILO_EMBED_CHROME_CSS).not.toContain('[data-testid="notebook-rail"]');
 	});
 
 	it("matches the host tab font size without scaling rem-based chrome", () => {

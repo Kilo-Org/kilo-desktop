@@ -48,10 +48,10 @@ Forge uses only official makers:
 | Linux    | x64, arm64    | DEB                                            | Updates are provided by the package repository or manual installation |
 
 Each architecture builds on a native runner: Windows ARM64 on `windows-11-vs2026-arm` and
-Linux ARM64 on `ubuntu-24.04-arm`, with the same plugins as their x64 counterparts. Stable `@runtimed/node@0.5.6` has no Windows ARM64 binding, so
-`apps/desktop` pins the nightly `@runtimed/node-win32-arm64-msvc` as an optional
-dependency; its native API is a superset of 0.5.6's. Drop that pin once a stable
-`@runtimed/node` lists the ARM64 binding. PR and nightly E2E remain on Windows x64.
+Linux ARM64 on `ubuntu-24.04-arm`, with the same plugins as their x64 counterparts. The pinned
+`@runtimed/node` nightly includes native bindings for every release target. The explicit
+`@runtimed/node-win32-arm64-msvc` optional dependency in `apps/desktop` uses the same version
+as the wrapper. PR and nightly E2E remain on Windows x64.
 
 Automatic Electron update checks run only in packaged Windows and macOS builds. They are
 disabled when the selected track has no update host compiled in and never start on

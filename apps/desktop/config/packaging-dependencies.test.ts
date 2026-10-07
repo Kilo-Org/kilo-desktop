@@ -45,7 +45,7 @@ describe("packaged production dependencies", () => {
 	});
 
 	it("installs the published @runtimed/node package in production", () => {
-		expect(dependencies["@runtimed/node"]).toBe("0.5.6-nightly.36594100436");
+		expect(dependencies["@runtimed/node"]).toBe("0.6.1-nightly.37598349389");
 	});
 
 	it("does not shadow the production @runtimed/node package with a development link", () => {
@@ -65,8 +65,8 @@ describe("packaged production dependencies", () => {
 			peerDependencies?: Record<string, string>;
 			devDependencies?: Record<string, string>;
 		};
-		expect(notebookManifest.peerDependencies?.["@runtimed/node"]).toBe("0.5.6-nightly.36594100436");
-		expect(notebookManifest.devDependencies?.["@runtimed/node"]).toBe("0.5.6-nightly.36594100436");
+		expect(notebookManifest.peerDependencies?.["@runtimed/node"]).toBe("0.6.1-nightly.37598349389");
+		expect(notebookManifest.devDependencies?.["@runtimed/node"]).toBe("0.6.1-nightly.37598349389");
 	});
 
 	it("keeps the WebMCP relay out of the desktop dependency graph", () => {

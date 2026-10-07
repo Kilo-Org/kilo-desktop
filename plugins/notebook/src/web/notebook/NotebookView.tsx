@@ -257,7 +257,11 @@ export function NotebookView({
 		const onMessage = (event: MessageEvent<unknown>) => {
 			const frameWindow = frameRef.current?.contentWindow;
 			if (event.source !== frameWindow || event.origin !== frameOrigin) return;
-			const message = event.data as { type?: unknown; protocolVersion?: unknown } | null;
+			const message = event.data as {
+				type?: unknown;
+				protocolVersion?: unknown;
+				capabilities?: unknown;
+			} | null;
 			if (
 				message?.type !== "nteract:electron-host-ready" ||
 				message.protocolVersion !== NTERACT_ELECTRON_HOST_PROTOCOL_VERSION ||
@@ -266,6 +270,8 @@ export function NotebookView({
 			) {
 				return;
 			}
+			const supportsRailPresentation =
+				Array.isArray(message.capabilities) && message.capabilities.includes("presentation.rail");
 			port = sdk.ports.open<MessagePort>(
 				"host",
 				notebookHostConnectionArgs({
@@ -283,6 +289,9 @@ export function NotebookView({
 						bootstrap: {
 							protocolVersion: NTERACT_ELECTRON_HOST_PROTOCOL_VERSION,
 							outputDocumentUrl: `${frameOrigin}/output-frame.html`,
+							...(supportsRailPresentation
+								? { presentation: { rail: { visible: false, side: "right" } } }
+								: {}),
 						},
 					},
 					frameOrigin,

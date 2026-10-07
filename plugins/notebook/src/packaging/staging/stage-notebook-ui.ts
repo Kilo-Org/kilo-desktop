@@ -30,12 +30,11 @@ export const KILO_EMBED_CHROME_STYLE_ATTR = "data-kilo-embed-chrome";
 export const KILO_EMBED_THEME_SCRIPT_ATTR = "data-kilo-embed-theme";
 
 /**
- * Host-side chrome overrides for the embedded notebook SPA. nteract has no
- * embed flag to hide the rail; we own the staged bytes, so we inject CSS.
+ * Font overrides for the embedded notebook SPA. NotebookView configures rail
+ * presentation through the Electron bootstrap rather than staged CSS.
  * Surface colors come from the parent at runtime via the theme bridge script.
  */
 export const KILO_EMBED_CHROME_CSS = [
-	'[data-testid="notebook-rail"]{display:none!important}',
 	"#root{font-size:12px}",
 	'#root :where(.text-sm,.text-base,button,input,select,textarea,[contenteditable="true"]){font-size:12px}',
 	"#root .cm-editor,#root .cm-content,#root .cm-gutters{font-size:12px}",

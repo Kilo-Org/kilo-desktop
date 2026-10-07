@@ -35,6 +35,7 @@ function renderView(
 	viewProps: Partial<NotebookViewProps> = {},
 	options: {
 		panel?: Partial<ChatRightPanelCapability>;
+		status?: NotebookService["status"];
 		save?: NotebookService["save"];
 		setDefaultSaveDirectory?: NotebookService["setDefaultSaveDirectory"];
 		theme?: ReturnType<typeof createFakeTheme>;
@@ -47,11 +48,13 @@ function renderView(
 		channels: notebookContract,
 		...(options.theme ? { theme: options.theme } : {}),
 		handlers: {
-			status: async () => ({
-				availability: { status: "unavailable" as const },
-				process: { status: "failed" as const, reason: "Not staged for this test." },
-				daemon: null,
-			}),
+			status:
+				options.status ??
+				(async () => ({
+					availability: { status: "unavailable" as const },
+					process: { status: "failed" as const, reason: "Not staged for this test." },
+					daemon: null,
+				})),
 			openFile: async ({ path }: { path: string }) => ({
 				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
 				path,
@@ -107,6 +110,82 @@ describe("NotebookView", () => {
 		expect(url.searchParams.get("notebook_id")).toBe("669d39ec-39d6-4160-815c-b46e170cde8d");
 		expect(url.searchParams.get("nteract-host")).toBe("electron");
 		expect(url.searchParams.get("nteract-parent-origin")).toBe("kilo-desktop://app");
+	});
+
+	it.each([
+		{
+			name: "hides the rail with right-side placement when supported",
+			capabilities: ["presentation.rail"],
+			presentation: { rail: { visible: false, side: "right" } },
+		},
+		{
+			name: "omits rail configuration when capabilities are absent",
+			capabilities: undefined,
+			presentation: undefined,
+		},
+		{
+			name: "omits rail configuration when its capability is absent",
+			capabilities: ["another.capability"],
+			presentation: undefined,
+		},
+		{
+			name: "does not accept a string as a capability list",
+			capabilities: "presentation.rail",
+			presentation: undefined,
+		},
+	])("$name", async ({ capabilities, presentation }) => {
+		vi.stubEnv("VITE_NTERACT_ORIGIN", "kilo-desktop://notebook");
+		const { sdk } = renderView(
+			{},
+			{
+				status: async () => ({
+					availability: { status: "available" },
+					process: { status: "external" },
+					daemon: null,
+				}),
+			},
+		);
+		await expect.element(page.getByTestId("notebook-frame")).toBeVisible();
+		const frame = document.querySelector<HTMLIFrameElement>('[data-qa-id="notebook-frame"]');
+		if (!frame?.contentWindow) throw new Error("Expected notebook iframe window");
+		const channel = new MessageChannel();
+		const openPort = vi.spyOn(sdk.ports, "open").mockReturnValue(channel.port1);
+		const postMessage = vi.spyOn(frame.contentWindow, "postMessage").mockImplementation(() => {});
+		try {
+			window.dispatchEvent(
+				new MessageEvent("message", {
+					origin: "kilo-desktop://notebook",
+					source: frame.contentWindow,
+					data: {
+						type: "nteract:electron-host-ready",
+						protocolVersion: 1,
+						capabilities,
+					},
+				}),
+			);
+			expect(openPort).toHaveBeenCalledExactlyOnceWith("host", {
+				notebookId: "instance-1",
+				sessionId: "session-1",
+				title: "Notebook 1",
+			});
+			expect(postMessage).toHaveBeenCalledExactlyOnceWith(
+				{
+					type: "nteract:electron-host-connect",
+					bootstrap: {
+						protocolVersion: 1,
+						outputDocumentUrl: "kilo-desktop://notebook/output-frame.html",
+						...(presentation ? { presentation } : {}),
+					},
+				},
+				"kilo-desktop://notebook",
+				[channel.port1],
+			);
+		} finally {
+			postMessage.mockRestore();
+			openPort.mockRestore();
+			channel.port1.close();
+			channel.port2.close();
+		}
 	});
 
 	it("shows a placeholder while nteract's bundle is not served from our protocol", async () => {

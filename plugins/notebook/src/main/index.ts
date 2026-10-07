@@ -98,7 +98,7 @@ async function openNativeTrustSession(notebookId: string, socketPath: string) {
 
 const openNativeTelemetryRegistration: OpenTelemetryRegistration = async (options) => {
 	// The CJS root spreads native exports, which only appear on import's default.
-	// 0.5.6's declarations omit both that default and the optional telemetry API.
+	// Its declarations omit that default, so the native API is feature-detected.
 	const { default: runtime } = (await import("@runtimed/node")) as unknown as {
 		default: {
 			openTelemetryRegistration?: OpenTelemetryRegistration;

@@ -35,7 +35,7 @@ if (electronSquirrelStartup) {
 
 	// The anaconda-desktop-bridge sidecar reads its Sentry DSN from the
 	// BRIDGE_SENTRY_DSN env var. The value is a build-time constant per release
-	// track (empty for dev/preview); publish it into process.env so the bridge
+	// track (empty for development); publish it into process.env so the bridge
 	// inherits it when SidecarCondaBackend spawns the child. Consent gating is
 	// handled separately by BRIDGE_TELEMETRY_ENABLED.
 	const bridgeSentryDsn = import.meta.env.VITE_BRIDGE_SENTRY_DSN;

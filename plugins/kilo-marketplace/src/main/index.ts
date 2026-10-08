@@ -7,7 +7,9 @@ import {
 	type MarketplaceMutationInput,
 	type MarketplaceService,
 	type MarketplaceTarget,
+	type McpMarketplaceItem,
 } from "../contracts/schemas.js";
+import { mcpInstallContent } from "../contracts/mcp-config.js";
 import { installCommands } from "../contracts/runtimes.js";
 import { readFile } from "node:fs/promises";
 import which from "which";
@@ -105,6 +107,23 @@ function displayName(id: string): string {
 			return index === 0 ? `${word.charAt(0).toLocaleUpperCase()}${word.slice(1)}` : word;
 		})
 		.join(" ");
+}
+
+/**
+ * An MCP install launches whatever its catalog template says, so the user's confirmation is bound
+ * to the exact template the dialog showed. The catalog is re-read at install time; if it now holds
+ * anything else, the install is refused rather than running a command the user never saw.
+ */
+function assertReviewed(item: McpMarketplaceItem, input: MarketplaceMutationInput): void {
+	if (input.reviewedContent === undefined) {
+		throw new FeatureError("Review this MCP’s configuration before installing it.", "BUSINESS");
+	}
+	if (mcpInstallContent(item, input.method) !== input.reviewedContent) {
+		throw new FeatureError(
+			"This MCP’s configuration changed since you reviewed it. Check the updated configuration, then install again.",
+			"BUSINESS",
+		);
+	}
 }
 
 function operationError(error: unknown): never {
@@ -453,6 +472,7 @@ export function mainRegister(mainSdk: MainSdk): void {
 				if (!selected) {
 					throw new FeatureError("Marketplace item is no longer available.", "NOT_FOUND");
 				}
+				if (selected.type === "mcp") assertReviewed(selected, input);
 				const path = await client.install(
 					directory,
 					selected,

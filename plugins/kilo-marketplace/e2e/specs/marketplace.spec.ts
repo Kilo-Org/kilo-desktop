@@ -51,7 +51,7 @@ test.describe("Agent Behavior settings @smoke", () => {
 		await appShellPage.verifyShellIsLoaded();
 		await appShellPage.openSettings();
 		await marketplacePage.openFromSettings();
-		await marketplacePage.installGlobalMcp();
+		await marketplacePage.installGlobalMcp("node local-tools.js");
 		await marketplacePage.removeGlobalMcp();
 		await appShellPage.leaveSettings();
 	});

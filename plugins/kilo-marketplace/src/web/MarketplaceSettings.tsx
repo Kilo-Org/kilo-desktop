@@ -32,7 +32,7 @@ import {
 	WorkflowIcon,
 	ZapIcon,
 } from "lucide-react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type {
 	MarketplaceIncludedItem,
@@ -48,6 +48,9 @@ import type {
 	McpParameter,
 } from "../contracts/schemas.js";
 import { filterMarketplaceItems, installedScopes, matchesSearch } from "./marketplace-filter.js";
+import { mcpInstallContent } from "../contracts/mcp-config.js";
+import { McpConfigReview } from "./McpConfigReview.js";
+import { mcpConfigPreview } from "./mcp-config-preview.js";
 import { mcpLaunchCommand, missingCommand } from "./mcp-commands.js";
 import { MissingCommandAlert, MissingCommandFix, useMissingCommand } from "./MissingCommandHelp.js";
 import {
@@ -1218,10 +1221,16 @@ function InstalledDetails({
 	);
 }
 
-function selectedMcpContent(item: MarketplaceItem, method: string | undefined): string | undefined {
-	if (item.type !== "mcp") return undefined;
-	if (typeof item.content === "string") return item.content;
-	return item.content.find((entry) => entry.name === method)?.content;
+/** The latest catalog copy of `item`, so an open install dialog always reviews current content. */
+function currentCatalogItem(
+	item: MarketplaceItem,
+	items: readonly MarketplaceItem[],
+): MarketplaceItem {
+	return items.find((entry) => entry.type === item.type && entry.id === item.id) ?? item;
+}
+
+function isSecretParameter(key: string): boolean {
+	return /key|token|password|secret/i.test(key);
 }
 
 function mcpMethods(item: MarketplaceItem): McpMethod[] {
@@ -1248,6 +1257,7 @@ function InstallDialog({
 	onClose,
 }: InstallDialogProps) {
 	const sdk = useSdk<MarketplaceService>("kilo-marketplace");
+	const queryClient = useQueryClient();
 	const install = useSdkMutation(sdk, "marketplace.install", {
 		invalidates: ["marketplace.list"],
 	});
@@ -1312,7 +1322,15 @@ function InstallDialog({
 		method && item.type === "mcp"
 			? (methods.find((entry) => entry.name === method)?.prerequisites ?? item.prerequisites)
 			: item.prerequisites;
-	const selectedContent = selectedMcpContent(item, method);
+	const selectedContent = item.type === "mcp" ? mcpInstallContent(item, method) : undefined;
+	const configPreview =
+		selectedContent === undefined
+			? undefined
+			: mcpConfigPreview(
+					selectedContent,
+					parameters,
+					new Set(Object.keys(parameters).filter(isSecretParameter)),
+				);
 	const missingLaunchCommand = useMissingCommand(
 		selectedContent ? mcpLaunchCommand(selectedContent) : undefined,
 	);
@@ -1326,6 +1344,7 @@ function InstallDialog({
 			item: { type: item.type, id: item.id },
 			...(method ? { method } : {}),
 			...(Object.keys(parameters).length > 0 ? { parameters } : {}),
+			...(selectedContent === undefined ? {} : { reviewedContent: selectedContent }),
 		};
 		const destinations: InstallDestination[] = globalSelected
 			? [{ label: "All workspaces", input: { ...baseInput, scope: "global" } }]
@@ -1369,8 +1388,11 @@ function InstallDialog({
 				onClose();
 				return;
 			}
-			// Successful workspaces are pruned by the availability effect once the list refreshes;
-			// narrowing explicitly keeps the retry selection correct even before that lands.
+			// A failure may mean the catalog changed since review; refetching re-renders the dialog with
+			// the current configuration so a retry confirms what is actually installed. Successful
+			// workspaces are pruned by the availability effect once the list refreshes; narrowing
+			// explicitly keeps the retry selection correct even before that lands.
+			void queryClient.invalidateQueries({ queryKey: [sdk.featureId, "marketplace.list"] });
 			setWorkspaceIds(
 				failed.flatMap(({ input }) => (input.workspaceId ? [input.workspaceId] : [])),
 			);
@@ -1391,10 +1413,10 @@ function InstallDialog({
 				</DialogHeader>
 
 				<FieldGroup
-					className="scroll-fade-y min-h-0 gap-5 overflow-y-auto overscroll-contain px-4 py-4"
+					className="scroll-fade-y min-h-0 overflow-y-auto overscroll-contain px-4 py-4"
 					data-qa-id="marketplace-install-content"
 				>
-					<Field className="gap-2">
+					<Field>
 						<FieldLabel>Install in</FieldLabel>
 						<Popover open={destinationOpen} onOpenChange={setDestinationOpen}>
 							<PopoverTrigger
@@ -1485,92 +1507,90 @@ function InstallDialog({
 						<MissingCommandAlert missing={missingLaunchCommand} onFixInChat={close} />
 					) : null}
 
-					{methods.length > 1 || prerequisites?.length || required.length > 0 ? (
-						<div className="grid gap-4">
-							<p className="font-medium">Configuration</p>
-							{methods.length > 1 ? (
-								<Field>
-									<FieldLabel htmlFor="marketplace-install-method">Install method</FieldLabel>
-									<Select
-										items={methods.map((entry) => ({
-											label: entry.name,
-											value: entry.name,
-										}))}
-										value={method}
-										onValueChange={(value) => {
-											setMethod(value ?? undefined);
-											setParameters({});
-										}}
-									>
-										<SelectTrigger
-											id="marketplace-install-method"
-											className="w-full"
-											data-qa-id="marketplace-install-method"
-										>
-											<SelectValue />
-										</SelectTrigger>
-										<SelectContent>
-											<SelectGroup>
-												{methods.map((entry) => (
-													<SelectItem key={entry.name} value={entry.name}>
-														{entry.name}
-													</SelectItem>
-												))}
-											</SelectGroup>
-										</SelectContent>
-									</Select>
-								</Field>
-							) : null}
-
-							{prerequisites?.length ? (
-								<Alert>
-									<CircleAlertIcon aria-hidden="true" />
-									<AlertTitle>Requirements</AlertTitle>
-									<AlertDescription>
-										<ul className="list-outside list-disc pl-3.5 marker:text-current">
-											{prerequisites.map((value) => (
-												<li key={value}>{value}</li>
-											))}
-										</ul>
-									</AlertDescription>
-								</Alert>
-							) : null}
-
-							{required.map((parameter) => (
-								<Field key={parameter.key}>
-									<FieldLabel htmlFor={`marketplace-param-${parameter.key}`}>
-										{parameter.name}
-										{parameter.optional ? " (optional)" : ""}
-									</FieldLabel>
-									<Input
-										id={`marketplace-param-${parameter.key}`}
-										type={/key|token|password|secret/i.test(parameter.key) ? "password" : "text"}
-										value={parameters[parameter.key] ?? ""}
-										placeholder={parameter.placeholder}
-										onChange={(event) => {
-											const value = event.currentTarget.value;
-											setParameters((current) => ({
-												...current,
-												[parameter.key]: value,
-											}));
-										}}
-										data-qa-id={`marketplace-param-${parameter.key}`}
-									/>
-								</Field>
-							))}
-
-							{item.type === "mcp" && !globalSelected && required.length > 0 ? (
-								<Alert data-qa-id="marketplace-secret-warning">
-									<CircleAlertIcon aria-hidden="true" />
-									<AlertTitle>Workspace configuration may contain secrets</AlertTitle>
-									<AlertDescription>
-										Parameter values are written to <code>.kilo/kilo.json</code>. Keep that file out
-										of version control if it contains secrets.
-									</AlertDescription>
-								</Alert>
-							) : null}
-						</div>
+					{methods.length > 1 ? (
+						<Field>
+							<FieldLabel htmlFor="marketplace-install-method">Install method</FieldLabel>
+							<Select
+								items={methods.map((entry) => ({
+									label: entry.name,
+									value: entry.name,
+								}))}
+								value={method}
+								onValueChange={(value) => {
+									setMethod(value ?? undefined);
+									setParameters({});
+								}}
+							>
+								<SelectTrigger
+									id="marketplace-install-method"
+									className="w-full"
+									data-qa-id="marketplace-install-method"
+								>
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectGroup>
+										{methods.map((entry) => (
+											<SelectItem key={entry.name} value={entry.name}>
+												{entry.name}
+											</SelectItem>
+										))}
+									</SelectGroup>
+								</SelectContent>
+							</Select>
+						</Field>
 					) : null}
+
+					{prerequisites?.length ? (
+						<Alert>
+							<CircleAlertIcon aria-hidden="true" />
+							<AlertTitle>Requirements</AlertTitle>
+							<AlertDescription>
+								<ul className="list-outside list-disc pl-3.5 marker:text-current">
+									{prerequisites.map((value) => (
+										<li key={value}>{value}</li>
+									))}
+								</ul>
+							</AlertDescription>
+						</Alert>
+					) : null}
+
+					{required.map((parameter) => (
+						<Field key={parameter.key}>
+							<FieldLabel htmlFor={`marketplace-param-${parameter.key}`}>
+								{parameter.name}
+								{parameter.optional ? " (optional)" : ""}
+							</FieldLabel>
+							<Input
+								id={`marketplace-param-${parameter.key}`}
+								type={isSecretParameter(parameter.key) ? "password" : "text"}
+								value={parameters[parameter.key] ?? ""}
+								placeholder={parameter.placeholder}
+								onChange={(event) => {
+									const value = event.currentTarget.value;
+									setParameters((current) => ({
+										...current,
+										[parameter.key]: value,
+									}));
+								}}
+								data-qa-id={`marketplace-param-${parameter.key}`}
+							/>
+						</Field>
+					))}
+
+					{item.type === "mcp" && !globalSelected && required.length > 0 ? (
+						<Alert data-qa-id="marketplace-secret-warning">
+							<CircleAlertIcon aria-hidden="true" />
+							<AlertTitle>Workspace configuration may contain secrets</AlertTitle>
+							<AlertDescription>
+								Parameter values are written to <code>.kilo/kilo.json</code>. Keep that file out of
+								version control if it contains secrets.
+							</AlertDescription>
+						</Alert>
+					) : null}
+
+					{configPreview ? <McpConfigReview preview={configPreview} /> : null}
+
 					{outcome ? (
 						<FieldError className="grid gap-1" data-qa-id="marketplace-install-error">
 							{outcome.failed.map(({ label, input, message }) => (
@@ -2218,7 +2238,7 @@ export function MarketplaceSettings() {
 			{installing ? (
 				<InstallDialog
 					key={`${installing.type}:${installing.id}`}
-					item={installing}
+					item={currentCatalogItem(installing, snapshot?.items ?? [])}
 					installed={installedScopes(installing, snapshot?.installed ?? [])}
 					targets={snapshot?.targets ?? []}
 					defaultWorkspaceId={activeWorkspaceId}

@@ -2,6 +2,7 @@ import {
 	click,
 	expectElementToBeHidden,
 	expectElementToBeVisible,
+	expectElementToHaveText,
 	getLocatorByTestId,
 } from "@anaconda/playwright-utils";
 
@@ -20,6 +21,7 @@ export class MarketplacePage {
 	private readonly item = () => getLocatorByTestId("marketplace-item-mcp-local-tools");
 	private readonly install = () => getLocatorByTestId("marketplace-install-mcp-local-tools");
 	private readonly installDialog = () => getLocatorByTestId("marketplace-install-dialog");
+	private readonly installCommand = () => getLocatorByTestId("marketplace-install-command");
 	private readonly installConfirm = () => getLocatorByTestId("marketplace-install-confirm");
 	private readonly remove = () => getLocatorByTestId("marketplace-remove-mcp-local-tools-global");
 	private readonly removeDialog = () => getLocatorByTestId("marketplace-remove-dialog");
@@ -37,8 +39,11 @@ export class MarketplacePage {
 		});
 	}
 
-	async installGlobalMcp(): Promise<void> {
+	async installGlobalMcp(commandLine: string): Promise<void> {
 		await click(this.install());
+		await expectElementToHaveText(this.installCommand(), commandLine, {
+			message: "Install dialog should show the command that starts the MCP before confirmation",
+		});
 		await click(this.installConfirm());
 		await expectElementToBeHidden(this.installDialog(), {
 			message: "Install dialog should close once the install lands",

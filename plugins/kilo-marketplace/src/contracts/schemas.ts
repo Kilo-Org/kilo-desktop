@@ -138,6 +138,11 @@ export const marketplaceMutationInputSchema = z.object({
 	workspaceId: z.string().optional(),
 	method: z.string().optional(),
 	parameters: z.record(z.string(), z.string()).optional(),
+	/**
+	 * The MCP configuration template shown to the user when they confirmed. Required for MCP
+	 * installs: main refuses to install if the catalog no longer holds exactly this template.
+	 */
+	reviewedContent: z.string().optional(),
 });
 export type MarketplaceMutationInput = z.infer<typeof marketplaceMutationInputSchema>;
 
@@ -177,7 +182,7 @@ export const marketplaceContract = defineContract({
 		marketplaceMutationResultSchema,
 	),
 	"marketplace.remove": defineMethod(
-		marketplaceMutationInputSchema.omit({ method: true, parameters: true }),
+		marketplaceMutationInputSchema.omit({ method: true, parameters: true, reviewedContent: true }),
 		marketplaceMutationResultSchema,
 	),
 	"marketplace.authenticateMcp": defineMethod(

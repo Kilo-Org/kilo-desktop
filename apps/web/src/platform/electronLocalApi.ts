@@ -26,10 +26,12 @@ export function createElectronLocalApi(bridge: DesktopApi): LocalApi {
 		shell: {
 			canPickDirectories: true,
 			canPopOutPanes: true,
+			canShowLogFile: true,
 			windowRole: bridge.windowRole,
 			openExternal: (input) => invoke("shell:open-external", input),
 			copyText: (input) => invoke("shell:copy-text", input),
 			showItemInFolder: (input) => invoke("shell:show-item-in-folder", input),
+			showLogFile: () => invoke("shell:show-log-file"),
 			showOpenDialog: (input) => invoke("shell:show-open-dialog", input),
 			getPathForFile: (file) => bridge.getPathForFile(file),
 			openPaneWindow: (input) => invoke("shell:open-pane-window", input),

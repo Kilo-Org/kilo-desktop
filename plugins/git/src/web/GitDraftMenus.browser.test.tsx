@@ -209,13 +209,8 @@ describe("GitDraftMenus", () => {
 			.toHaveTextContent("From current branch");
 	});
 
-	it("switches to local mode and back, writing the store each time", async () => {
-		// Start from local default; switch to worktree then back.
-		const { peekStore } = renderMenus();
-
-		await vi.waitFor(() => {
-			expect(peekStore()?.["workspace-1"]).toMatchObject({ mode: "local" });
-		});
+	it("describes the draft modes", async () => {
+		renderMenus();
 
 		await page.getByTestId("git-draft-mode-trigger").click();
 		await expect
@@ -224,9 +219,14 @@ describe("GitDraftMenus", () => {
 		await expect
 			.element(page.getByTestId("git-draft-mode-item-local"))
 			.toHaveTextContent("Local repositoryWorks in the repository already on your machine");
-		// Local mode keeps the existing checkout selector.
-		await expect.element(page.getByTestId("git-draft-mode-item-local")).toBeVisible();
-		await userEvent.keyboard("{Escape}");
+	});
+
+	it("switches to local mode and back, writing the store each time", async () => {
+		const { peekStore } = renderMenus();
+
+		await vi.waitFor(() => {
+			expect(peekStore()?.["workspace-1"]).toMatchObject({ mode: "local" });
+		});
 
 		await selectMode("worktree");
 		expect(peekStore()).toEqual({ "workspace-1": { mode: "worktree", baseBranch: "main" } });

@@ -19,6 +19,15 @@ import { TooltipProvider } from "@kilo-desktop/ui/components/tooltip";
 import { SidebarUpdatePill } from "./SidebarUpdatePill";
 import { getInstallConfirmationMessage, updateReadyLabel } from "./updateActions";
 
+const toastApi = vi.hoisted(() => ({
+	error: vi.fn(),
+	info: vi.fn(),
+}));
+
+vi.mock("@kilo-desktop/ui/components/sonner", () => ({
+	toast: toastApi,
+}));
+
 const downloadedState: DesktopUpdateState = {
 	enabled: true,
 	status: "downloaded",
@@ -94,6 +103,8 @@ function UpdateStateProbe() {
 afterEach(() => {
 	cleanup();
 	vi.restoreAllMocks();
+	toastApi.error.mockReset();
+	toastApi.info.mockReset();
 });
 
 describe("update UI", () => {
@@ -201,6 +212,49 @@ describe("update UI", () => {
 		renderUpdates(updateApi(downloadedState), <AboutSettings />);
 
 		await expect.element(page.getByTestId("about-beta-badge")).toHaveTextContent("Beta");
+	});
+
+	it("reveals the application log from About", async () => {
+		const showLogFile = vi.fn(async () => ({ revealed: true }));
+		const base = updateApi(downloadedState);
+		renderUpdates(
+			{
+				...base,
+				shell: { ...base.shell, canShowLogFile: true, showLogFile },
+			},
+			<AboutSettings />,
+		);
+
+		await page.getByTestId("about-show-log-file").click();
+
+		await vi.waitFor(() => expect(showLogFile).toHaveBeenCalledOnce());
+	});
+
+	it("reports when the application log cannot be revealed", async () => {
+		const base = updateApi(downloadedState);
+		renderUpdates(
+			{
+				...base,
+				shell: {
+					...base.shell,
+					canShowLogFile: true,
+					showLogFile: async () => ({ revealed: false }),
+				},
+			},
+			<AboutSettings />,
+		);
+
+		await page.getByTestId("about-show-log-file").click();
+
+		await vi.waitFor(() =>
+			expect(toastApi.error).toHaveBeenCalledWith("Could not show the application log file"),
+		);
+	});
+
+	it("hides the application log action outside the desktop app", async () => {
+		renderUpdates(updateApi(downloadedState), <AboutSettings />);
+
+		await expect.element(page.getByTestId("about-show-log-file")).not.toBeInTheDocument();
 	});
 
 	it("hides the update track selector unless the switcher flag is enabled", async () => {

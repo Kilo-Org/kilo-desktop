@@ -113,6 +113,14 @@ describe("createElectronLocalApi", () => {
 		expect(invoke).toHaveBeenCalledWith("fs:remove", scope);
 	});
 
+	it("forwards the application log action without a renderer-provided path", async () => {
+		const invoke = vi.fn().mockResolvedValue({ ok: true, value: { revealed: true } });
+		const api = createElectronLocalApi(makeBridge({ invoke }));
+
+		await expect(api.shell.showLogFile()).resolves.toEqual({ revealed: true });
+		expect(invoke).toHaveBeenCalledWith("shell:show-log-file");
+	});
+
 	it("forwards feature-flag reads and relays feature-flag:changed", async () => {
 		const invoke = vi.fn(async (channel: string) => {
 			switch (channel) {

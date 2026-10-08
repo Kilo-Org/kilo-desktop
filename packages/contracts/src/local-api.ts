@@ -24,10 +24,12 @@ export interface LocalApi {
 	shell: {
 		readonly canPickDirectories: boolean;
 		readonly canPopOutPanes: boolean;
+		readonly canShowLogFile: boolean;
 		readonly windowRole: "main" | "pane";
 		openExternal(input: { url: string }): Promise<{ opened: boolean }>;
 		copyText(input: { text: string }): Promise<void>;
 		showItemInFolder(input: { path: string }): Promise<{ revealed: boolean }>;
+		showLogFile(): Promise<{ revealed: boolean }>;
 		showOpenDialog(input: {
 			kind: "directory";
 			multiple?: boolean;

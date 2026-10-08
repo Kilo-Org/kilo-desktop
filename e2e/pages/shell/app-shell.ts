@@ -85,6 +85,10 @@ export class AppShellPage {
 			getLocatorByTestId("update-track"),
 			"About settings should show the selected update track",
 		);
+		await expectElementToBeVisible(
+			getLocatorByTestId("about-show-log-file"),
+			"About settings should offer access to the application log file",
+		);
 	}
 
 	async openAccountSettings(): Promise<void> {

@@ -18,11 +18,14 @@ import {
 import { toast } from "@kilo-desktop/ui/components/sonner";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 
+import { getShowLogFileLabel } from "@/components/settings/applicationLogs";
 import { hasVisibleReleaseNotes, ReleaseNotesList } from "@/components/updates/ReleaseNotesList";
 import { InstallUpdateDialog } from "@/components/updates/InstallUpdateDialog";
+import { useLocalApi } from "@/platform/LocalApiProvider";
 import { useDesktopUpdates } from "@/platform/updates/UpdateProvider";
 
 export function AboutSettings() {
+	const api = useLocalApi();
 	const updates = useDesktopUpdates();
 	const canSwitchTrack = useFeatureFlag<boolean>(UPDATE_TRACK_SWITCHER_FLAG, false);
 	const state = updates?.state;
@@ -78,6 +81,17 @@ export function AboutSettings() {
 			}
 		} catch (error) {
 			toast.error("Could not install update", {
+				description: error instanceof Error ? error.message : "An unexpected error occurred.",
+			});
+		}
+	};
+
+	const showLogFile = async () => {
+		try {
+			const { revealed } = await api.shell.showLogFile();
+			if (!revealed) toast.error("Could not show the application log file");
+		} catch (error) {
+			toast.error("Could not show the application log file", {
 				description: error instanceof Error ? error.message : "An unexpected error occurred.",
 			});
 		}
@@ -205,6 +219,31 @@ export function AboutSettings() {
 					</div>
 				) : null}
 			</section>
+			{api.shell.canShowLogFile ? (
+				<section
+					className="border-border bg-card min-w-0 overflow-hidden rounded-lg border"
+					data-qa-id="about-logs"
+				>
+					<SummaryCard.Row>
+						<SummaryCard.Content>
+							<SummaryCard.Title>Application logs</SummaryCard.Title>
+							<SummaryCard.Description>
+								When reporting an issue send this file in the support request.
+							</SummaryCard.Description>
+						</SummaryCard.Content>
+						<SummaryCard.Actions>
+							<Button
+								size="sm"
+								variant="outline"
+								data-qa-id="about-show-log-file"
+								onClick={() => void showLogFile()}
+							>
+								{getShowLogFileLabel(navigator.platform)}
+							</Button>
+						</SummaryCard.Actions>
+					</SummaryCard.Row>
+				</section>
+			) : null}
 			{state ? (
 				<InstallUpdateDialog
 					open={confirmOpen}

@@ -38,7 +38,7 @@ const BUILT_IN_SETTINGS: readonly PluginSettingsSection[] = [
 		pluginId: "shell",
 		id: "about",
 		title: "About",
-		description: "Check the app version and manage updates.",
+		description: "Check the app version, manage updates, and find application logs.",
 		component: AboutSettings,
 		category: "General",
 		icon: undefined,

@@ -18,7 +18,9 @@ test.describe("Settings", () => {
 		await appShellPage.verifyShellIsLoaded();
 	});
 
-	test("reads automatic update state over the desktop bridge", async ({ appShellPage }) => {
+	test("reads update state and offers application logs in About @smoke @packaged", async ({
+		appShellPage,
+	}) => {
 		await appShellPage.verifyShellIsLoaded();
 		await appShellPage.openSettings();
 		await appShellPage.openAboutSettings();

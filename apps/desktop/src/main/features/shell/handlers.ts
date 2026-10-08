@@ -2,16 +2,19 @@ import type { IpcHandlers } from "@kilo-desktop/contracts";
 
 import type { ElectronShell } from "../../platform/ElectronShell.js";
 import type { ElectronWindow } from "../../platform/ElectronWindow.js";
+import { getLogFilePath } from "../../platform/logger.js";
 
 export function createShellHandlers(
 	electronShell: ElectronShell,
 	electronWindow: ElectronWindow,
 	isDevelopment: boolean,
+	resolveLogFilePath: () => string = getLogFilePath,
 ): Pick<
 	IpcHandlers,
 	| "shell:open-external"
 	| "shell:copy-text"
 	| "shell:show-item-in-folder"
+	| "shell:show-log-file"
 	| "shell:show-open-dialog"
 	| "shell:open-pane-window"
 	| "shell:list-pane-windows"
@@ -28,6 +31,9 @@ export function createShellHandlers(
 		},
 		"shell:show-item-in-folder": async ({ path }) => ({
 			revealed: electronShell.showItemInFolder(path),
+		}),
+		"shell:show-log-file": async () => ({
+			revealed: electronShell.showItemInFolder(resolveLogFilePath()),
 		}),
 		"shell:show-open-dialog": (input) => electronShell.showOpenDialog(input),
 		"shell:open-pane-window": (input) => electronWindow.openPaneWindow(input, isDevelopment),
@@ -48,6 +54,7 @@ export function createShellHandlers(
 		| "shell:open-external"
 		| "shell:copy-text"
 		| "shell:show-item-in-folder"
+		| "shell:show-log-file"
 		| "shell:show-open-dialog"
 		| "shell:open-pane-window"
 		| "shell:list-pane-windows"

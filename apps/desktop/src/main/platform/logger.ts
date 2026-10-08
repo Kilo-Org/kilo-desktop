@@ -26,6 +26,10 @@ export function createLogger(scope: string): Logger {
 	return log.scope(scope);
 }
 
+export function getLogFilePath(): string {
+	return log.transports.file.getFile().path;
+}
+
 /**
  * Log level configuration. electron-log defaults every transport to `silly`,
  * so without this the on-disk log collects debug chatter (e.g. a notebook UI

@@ -16,6 +16,7 @@ export function createBrowserLocalApi(): LocalApi {
 		shell: {
 			canPickDirectories: false,
 			canPopOutPanes: false,
+			canShowLogFile: false,
 			windowRole: "main",
 			async openExternal(input) {
 				const opened = globalThis.open(input.url, "_blank", "noopener,noreferrer");
@@ -33,6 +34,9 @@ export function createBrowserLocalApi(): LocalApi {
 			},
 			async showItemInFolder() {
 				throw new LocalApiError("TRANSPORT", "Revealing files requires the desktop app.");
+			},
+			async showLogFile() {
+				throw new LocalApiError("TRANSPORT", "Application logs are available in the desktop app.");
 			},
 			async showOpenDialog() {
 				throw new LocalApiError("TRANSPORT", "Folder selection requires the desktop app.");

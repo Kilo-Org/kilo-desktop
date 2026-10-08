@@ -96,8 +96,7 @@ describe("ElectronProtocol", () => {
 		expect(policy).toContain("http://127.0.0.1:*");
 		expect(policy).not.toContain("http://localhost:*");
 		expect(policy).toContain("object-src 'none'");
-		// `'self'` (not `'none'`): the relay widget iframe is same-origin. Still
-		// blocks cross-origin framing — no external origins exist under the scheme.
+		// Blocks cross-origin framing — no external origins exist under the scheme.
 		expect(policy).toContain("frame-ancestors 'self'");
 		// Bundled DotLottie WASM (not `'unsafe-eval'`, which would allow JS eval).
 		expect(policy).toContain("'wasm-unsafe-eval'");
@@ -122,24 +121,13 @@ describe("ElectronProtocol", () => {
 		expect(response.headers.get("Content-Security-Policy")).toContain("kilo-git:");
 	});
 
-	it("allows the self-hosted WebMCP relay (same-origin frame + loopback websockets)", () => {
-		const policy = createContentSecurityPolicy();
-		const connectSrc = policy
+	it("lets the renderer open no loopback WebSockets (agent tools travel over IPC)", () => {
+		const connectSrc = createContentSecurityPolicy()
 			.split(";")
 			.map((directive) => directive.trim())
 			.find((directive) => directive.startsWith("connect-src"));
-		// Scoped to the relay's discovery range on IPv4 loopback, not a `:*`
-		// wildcard. IPv6 literals are omitted — Chromium rejects them as invalid
-		// CSP sources.
-		expect(connectSrc).toContain("ws://127.0.0.1:9333");
-		expect(connectSrc).toContain("ws://127.0.0.1:9348");
-		expect(connectSrc).not.toContain("ws://[::1]");
-		expect(connectSrc).not.toContain("ws://127.0.0.1:*");
-		expect(policy).toContain("frame-src 'self'");
-		// The relay widget loads in a same-origin iframe, so the shared CSP must
-		// allow same-origin framing; `'none'` would block it.
-		expect(policy).toContain("frame-ancestors 'self'");
-		expect(policy).not.toContain("frame-ancestors 'none'");
+
+		expect(connectSrc).not.toContain("ws://127.0.0.1");
 	});
 
 	it("keeps 'unsafe-inline' in development for Vite HMR", async () => {
@@ -294,10 +282,7 @@ describe("ElectronProtocol", () => {
 		adapter.dispose();
 	});
 
-	it("serves the relay widget fetch probe (v5 embed.js builds the blob iframe from it)", async () => {
-		// `@mcp-b/webmcp-local-relay@5` embed.js fetches widget.html and inlines it
-		// into a blob: iframe; there is no direct-iframe fallback anymore, so a 404
-		// here leaves the relay with zero connected sources.
+	it("serves a nested HTML document to fetch() requests in development", async () => {
 		fetch.mockResolvedValue(
 			new Response("<html></html>", {
 				headers: { "Content-Type": "text/html; charset=utf-8" },
@@ -314,24 +299,22 @@ describe("ElectronProtocol", () => {
 		) => Promise<Response>;
 
 		const response = await protocolHandler(
-			new Request("kilo-desktop-dev://app/webmcp/widget.html", {
+			new Request("kilo-desktop-dev://app/nested/page.html", {
 				headers: { "Sec-Fetch-Dest": "empty" },
 			}),
 		);
 
-		expect(fetch).toHaveBeenCalledWith("http://localhost:5173/webmcp/widget.html", {
+		expect(fetch).toHaveBeenCalledWith("http://localhost:5173/nested/page.html", {
 			method: "GET",
 		});
 		expect(response.status).toBe(200);
 	});
 
-	it("serves the relay widget from the filesystem in production", async () => {
-		// v5 embed.js has no fallback when the widget fetch fails, so the
-		// production filesystem path must serve it for probe-shaped requests.
+	it("serves a nested HTML document from the filesystem in production", async () => {
 		const root = await mkdtemp(path.join(os.tmpdir(), "kilo-desktop-renderer-"));
 		temporaryDirectories.push(root);
-		await mkdir(path.join(root, "webmcp"));
-		await writeFile(path.join(root, "webmcp", "widget.html"), "<html>widget</html>");
+		await mkdir(path.join(root, "nested"));
+		await writeFile(path.join(root, "nested", "page.html"), "<html>page</html>");
 
 		const adapter = new ElectronProtocol();
 		adapter.register({ isDevelopment: false, rendererRoot: root });
@@ -340,16 +323,16 @@ describe("ElectronProtocol", () => {
 		) => Promise<Response>;
 
 		const response = await protocolHandler(
-			new Request("kilo-desktop://app/webmcp/widget.html"),
-			// no Sec-Fetch-Dest, no query string — the probe shape
+			new Request("kilo-desktop://app/nested/page.html"),
+			// no Sec-Fetch-Dest, no query string
 		);
 
 		expect(response.status).toBe(200);
 		expect(response.headers.get("Content-Type")).toContain("text/html");
-		expect(await response.text()).toBe("<html>widget</html>");
+		expect(await response.text()).toBe("<html>page</html>");
 	});
 
-	it("serves the relay widget for iframe navigations", async () => {
+	it("serves a nested HTML document for iframe navigations", async () => {
 		fetch.mockResolvedValue(
 			new Response("<html></html>", {
 				headers: { "Content-Type": "text/html; charset=utf-8" },
@@ -366,18 +349,18 @@ describe("ElectronProtocol", () => {
 		) => Promise<Response>;
 
 		const response = await protocolHandler(
-			new Request("kilo-desktop-dev://app/webmcp/widget.html", {
+			new Request("kilo-desktop-dev://app/nested/page.html", {
 				headers: { "Sec-Fetch-Dest": "iframe", Accept: "text/html" },
 			}),
 		);
 
-		expect(fetch).toHaveBeenCalledWith("http://localhost:5173/webmcp/widget.html", {
+		expect(fetch).toHaveBeenCalledWith("http://localhost:5173/nested/page.html", {
 			method: "GET",
 		});
 		expect(response.status).toBe(200);
 	});
 
-	it("serves the relay widget for iframe navigations even when Sec-Fetch-Dest is missing (custom scheme)", async () => {
+	it("serves a nested HTML document for iframe navigations even when Sec-Fetch-Dest is missing (custom scheme)", async () => {
 		// Under our custom scheme, Chromium does not always populate Sec-Fetch-Dest
 		// for iframe navigations — serving must not depend on those headers.
 		fetch.mockResolvedValue(
@@ -397,21 +380,20 @@ describe("ElectronProtocol", () => {
 
 		const response = await protocolHandler(
 			new Request(
-				"kilo-desktop-dev://app/webmcp/widget.html?tabId=abc123&hostOrigin=kilo-desktop-dev%3A%2F%2Fapp",
+				"kilo-desktop-dev://app/nested/page.html?tab=abc123",
 				// no Sec-Fetch-Dest, no Accept
 			),
 		);
 
-		expect(fetch).toHaveBeenCalledWith(
-			"http://localhost:5173/webmcp/widget.html?tabId=abc123&hostOrigin=kilo-desktop-dev%3A%2F%2Fapp",
-			{ method: "GET" },
-		);
+		expect(fetch).toHaveBeenCalledWith("http://localhost:5173/nested/page.html?tab=abc123", {
+			method: "GET",
+		});
 		expect(response.status).toBe(200);
 	});
 
-	it("serves the fetch() probe even without query string or iframe headers", async () => {
+	it("serves a nested HTML document without query string or fetch metadata headers", async () => {
 		// Chromium does not always populate Sec-Fetch-* under the custom scheme;
-		// probe detection must not be a condition for serving the widget at all.
+		// serving must not depend on those headers.
 		fetch.mockResolvedValue(
 			new Response("<html></html>", {
 				headers: { "Content-Type": "text/html; charset=utf-8" },
@@ -428,8 +410,8 @@ describe("ElectronProtocol", () => {
 		) => Promise<Response>;
 
 		const response = await protocolHandler(
-			new Request("kilo-desktop-dev://app/webmcp/widget.html"),
-			// no headers, no query — this is the probe shape
+			new Request("kilo-desktop-dev://app/nested/page.html"),
+			// no headers, no query
 		);
 
 		expect(response.status).toBe(200);

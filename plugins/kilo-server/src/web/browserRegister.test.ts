@@ -24,4 +24,23 @@ describe("kiloServerBrowserRegister", () => {
 		rendererSdk.destroy();
 		mainSdk.dispose();
 	});
+
+	it("reports external AI apps as unavailable and refuses to change them", async () => {
+		const { mainSdk, rendererSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		kiloServerBrowserRegister(mainSdk);
+
+		await expect(rendererSdk.invoke("externalClients.getState")).resolves.toMatchObject({
+			enabled: false,
+			status: { status: "error", message: "Kilo Server requires the desktop app." },
+			clients: [],
+		});
+		await expect(
+			rendererSdk.invoke("externalClients.setEnabled", { enabled: true }),
+		).rejects.toMatchObject({ code: "BUSINESS" });
+		await expect(
+			rendererSdk.invoke("externalClients.createClient", { name: "Cursor" }),
+		).rejects.toMatchObject({ code: "BUSINESS" });
+		rendererSdk.destroy();
+		mainSdk.dispose();
+	});
 });

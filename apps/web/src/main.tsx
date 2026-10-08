@@ -15,7 +15,7 @@ import { createLocalApi } from "@/platform/createLocalApi";
 import { isDesktopBridgeAvailable } from "@/platform/desktopBridge";
 import { createAppFeatureSystem } from "@/platform/featureSystem";
 import { createRouterNavigation } from "@/platform/navigation";
-import { installWebMcp } from "@/platform/webmcp/installWebMcp";
+import { startToolCatalogPublisher } from "@/platform/agent-tools/tool-catalog-publisher";
 import { router } from "@/router";
 
 const root = document.querySelector<HTMLDivElement>("#root");
@@ -39,16 +39,16 @@ featureSystem.services.shellDelegates.auth.subscribe(() => undefined);
 registerPluginZoneContributions(featureSystem, PLUGIN_ZONE_CONTRIBUTIONS, {
 	desktopAvailable: isDesktopBridgeAvailable(),
 });
-// Publish the ToolRegistry to document.modelContext and start the local relay
-// bridge for external MCP clients. Tools are owned by plugins: each plugin's
-// `webRegister` (invoked by createFeatureSystem) registers its own tools via
-// `sdk.tools`, and this bridge auto-picks them up through the registry's
-// change notifications (see issue #74).
-// Pane windows must not become a second WebMCP producer — opening a notebook
+// Publish the ToolRegistry to the main process, which serves it to the bundled
+// Kilo CLI and to paired external AI apps. Tools are owned by plugins: each
+// plugin's `webRegister` (invoked by createFeatureSystem) registers its own
+// tools via `sdk.tools`, and the publisher picks them up through the
+// registry's change notifications.
+// Pane windows must not become a second tool producer — opening a notebook
 // (or any UI-local tool) from a popped-out chat would mutate that window's
 // store, and the main canvas would never see the pane.
 if (localApi.shell.windowRole !== "pane") {
-	installWebMcp(featureSystem);
+	startToolCatalogPublisher(featureSystem);
 }
 
 createRoot(root, {

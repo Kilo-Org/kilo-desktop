@@ -310,7 +310,7 @@ await caps?.environmentService.list();
 
 ## Tool Registration (AI Exposure)
 
-Tools adapt a domain function for AI runtimes (the WebMCP bridge). Register them from `webRegister` so they work without central-file edits:
+Tools adapt a domain function for AI agents (see [Agent tools](./agent-tools.md)). Register them from `webRegister` so they work without central-file edits:
 
 ```typescript
 import type { SDK } from "@kilo-desktop/feature-sdk";
@@ -334,7 +334,7 @@ export function webRegister(sdk: SDK) {
 
 - `inputSchema` is the JSON Schema advertised to MCP clients; `validate` is the Zod schema run before the handler (the handler receives its parsed output). Derive both from the same contract schema so they cannot drift.
 - `annotations` mirror the MCP hint vocabulary (`readOnlyHint`, `destructiveHint`, `idempotentHint`, `openWorldHint`).
-- **`exposeToModelContext` defaults to `false` and is a security boundary**: opting in publishes the tool to the local, _unauthenticated_ MCP relay reachable by any local process. Leave mutating or destructive tools unexposed unless external agent access is intended.
+- **`exposeToModelContext` defaults to `false` and is a security boundary**: opting in serves the tool to the bundled Kilo agent and, while the user allows it, to every paired external AI app — without a Desktop approval prompt for those apps. Gate mutating tools behind Kilo permission rules and leave a tool unexposed if external agent access is not intended.
 - Prefer `[A-Za-z0-9_]`-only tool names — names are namespaced internally as `featureId.name` and sanitized to `featureId_name` on the MCP wire.
 - Tools are the AI adapter over a domain function, not an RPC mechanism. Plugin code must never round-trip through a tool to reach code it owns; cross-plugin calls go through `sdk.plugins.get`. The idiomatic pattern: (1) write the domain function, (2) expose it via `sdk.plugins.expose`, (3) optionally adapt it as a tool whose handler calls the same function.
 - Gate tools on feature flags with `sdk.featureFlags.subscribe` so the LLM only sees them while the flag is on (see `plugins/todos/src/web/index.ts`).

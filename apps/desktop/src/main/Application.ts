@@ -7,7 +7,6 @@ import path from "node:path";
 import { UPDATE_TRACK_SWITCHER_FLAG, type IpcHandlers } from "@kilo-desktop/contracts";
 
 import { getAppIdentity } from "$config/app-identity.js";
-import { resolveWebMcpRendezvous } from "@kilo-desktop/plugin-kilo-server/main";
 
 import {
 	bootFeatures,
@@ -122,7 +121,6 @@ export class Application {
 		this.#shell,
 		() => nativeTheme.shouldUseDarkColors,
 		() => this.#preferences?.themeId,
-		resolveWebMcpRendezvous(this.#app.metadata.isPackaged ? RELEASE_TRACK : "development"),
 	);
 	readonly #browserHost = new ElectronBrowserHost(
 		(webContentsId) => this.#windows.isTrustedWebContents(webContentsId),

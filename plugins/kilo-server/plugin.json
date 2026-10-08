@@ -8,6 +8,18 @@
 		"providers": [],
 		"routes": [],
 		"nav": [],
-		"zones": []
+		"zones": [],
+		"settings": [
+			{
+				"id": "external-ai-apps",
+				"title": "External AI apps",
+				"description": "Let apps like Cursor and Claude Code use Kilo Desktop's tools.",
+				"component": "ExternalAiAppsSettings",
+				"icon": "ExternalAiAppsNavIcon",
+				"featureFlag": "external-api-apps-settings",
+				"category": "AI",
+				"priority": 70
+			}
+		]
 	}
 }

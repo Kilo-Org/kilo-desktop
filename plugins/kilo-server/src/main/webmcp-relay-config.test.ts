@@ -9,9 +9,7 @@ import {
 	OWNERSHIP_SIDECAR_FILENAME,
 	MCP_ENTRY_NAME,
 	MCP_ENTRY_SOURCE_ID,
-	WEBMCP_RELAY_PORT,
 	reconcileWebMcpRelayConfig,
-	resolveWebMcpRendezvous,
 	webMcpChannelFromStorageDir,
 	type WebMcpRelayEntry,
 } from "./webmcp-relay-config.js";
@@ -415,35 +413,7 @@ describe("reconcileWebMcpRelayConfig", () => {
 	});
 });
 
-describe("WebMCP channel rendezvous", () => {
-	it("gives each app channel its own port and relay id", () => {
-		expect(resolveWebMcpRendezvous("stable")).toEqual({
-			port: 9345,
-			relayId: "kilo-desktop",
-			label: "Kilo Desktop",
-		});
-		expect(resolveWebMcpRendezvous("preview")).toEqual({
-			port: 9346,
-			relayId: "kilo-desktop-preview",
-			label: "Kilo Desktop Preview",
-		});
-		expect(resolveWebMcpRendezvous("development")).toEqual({
-			port: 9347,
-			relayId: "kilo-desktop-dev",
-			label: "Kilo Desktop Dev",
-		});
-	});
-
-	it("keeps every rendezvous port inside the renderer's CSP-allowed loopback range", () => {
-		// See apps/desktop/src/main/platform/ElectronProtocol.ts RELAY_WS_SOURCES.
-		for (const channel of ["stable", "preview", "development"] as const) {
-			const { port } = resolveWebMcpRendezvous(channel);
-			expect(port).toBeGreaterThanOrEqual(9333);
-			expect(port).toBeLessThanOrEqual(9348);
-		}
-		expect(WEBMCP_RELAY_PORT).toBe(resolveWebMcpRendezvous("stable").port);
-	});
-
+describe("app channel", () => {
 	it("maps plugin storage dirs onto the matching app channel", () => {
 		expect(
 			webMcpChannelFromStorageDir(

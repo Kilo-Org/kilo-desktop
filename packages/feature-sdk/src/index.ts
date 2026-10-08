@@ -125,6 +125,21 @@ export { ContributionRegistry } from "./services/contribution-registry.js";
 export { CommandRegistry } from "./services/command-registry.js";
 export { ToolRegistry } from "./services/tool-registry.js";
 export {
+	MAX_CATALOG_TOOLS,
+	TOOL_CATALOG_FEATURE_ID,
+	TOOL_CATALOG_PORT_CHANNEL,
+	TOOL_CATALOG_PROTOCOL_VERSION,
+	TOOL_NAME_PATTERN,
+	toolCallContextSchema,
+	toolCatalogConsumerMessageSchema,
+	toolCatalogPortArgsSchema,
+	toolCatalogProducerMessageSchema,
+	toolDescriptorSchema,
+	type ToolCatalogConsumerMessage,
+	type ToolCatalogProducerMessage,
+	type ToolDescriptor,
+} from "./services/tool-catalog-protocol.js";
+export {
 	FeatureRouter,
 	type CreateMainSdkOptions,
 	type FeatureRouterOptions,

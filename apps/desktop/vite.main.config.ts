@@ -95,9 +95,9 @@ export default defineConfig(({ command }) => {
 			rollupOptions: {
 				// Vite treats this lib build as a client consumer, so Rolldown would
 				// default `platform` to `browser` for ESM output. Browser platform does
-				// not inject `module.createRequire`, and CJS deps such as `ws` (pulled
-				// in by `@mcp-b/webmcp-local-relay`) then throw on `require("events")`
-				// via Rolldown's `__require` shim. Pin Node so those requires resolve.
+				// not inject `module.createRequire`, and CJS deps (e.g. `ws`) then
+				// throw on `require("events")` via Rolldown's `__require` shim. Pin
+				// Node so those requires resolve.
 				platform: "node",
 			},
 		},

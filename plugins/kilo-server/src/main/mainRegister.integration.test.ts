@@ -16,9 +16,8 @@ import {
 } from "./index.js";
 import type { KiloConfigMutationOutcome } from "./KiloConfigManager.js";
 import type { KiloPluginMutationOutcome } from "./KiloPluginConfig.js";
-import type { WebMcpHttpEndpointConnection } from "./webmcp-http-endpoint.js";
+import type { KiloToolEndpointConnection, ToolGateway } from "./tool-gateway/index.js";
 import type { WebMcpRelayEntry } from "./webmcp-relay-config.js";
-import type { WebMcpRelayServiceHandle } from "./webmcp-relay-service.js";
 
 const PLUGIN_DIR = path.resolve(import.meta.dirname, "../..");
 type RegisterKiloServerOptions = NonNullable<Parameters<typeof registerProductionKiloServer>[1]>;
@@ -51,18 +50,44 @@ const DESKTOP_ENTRY: WebMcpRelayEntry = {
 	enabled: true,
 };
 
-const ENDPOINT: WebMcpHttpEndpointConnection = {
+const ENDPOINT: KiloToolEndpointConnection = {
 	url: "http://127.0.0.1:50123/mcp",
 	token: "endpoint-token",
 };
 
-function stubRelayService(): WebMcpRelayServiceHandle & {
-	start: ReturnType<typeof vi.fn<() => Promise<WebMcpHttpEndpointConnection | undefined>>>;
-	dispose: ReturnType<typeof vi.fn<() => void>>;
+const EXTERNAL_STATE = {
+	enabled: false,
+	port: 9352,
+	defaultPort: 9352,
+	status: { status: "stopped" as const },
+	clients: [],
+};
+
+function stubToolGateway(): ToolGateway & {
+	startKiloEndpoint: ReturnType<
+		typeof vi.fn<() => Promise<KiloToolEndpointConnection | undefined>>
+	>;
+	startExternalClients: ReturnType<typeof vi.fn<() => Promise<void>>>;
+	dispose: ReturnType<typeof vi.fn<() => Promise<void>>>;
 } {
 	return {
-		start: vi.fn(async () => ENDPOINT),
-		dispose: vi.fn(),
+		startKiloEndpoint: vi.fn(async () => ENDPOINT),
+		startExternalClients: vi.fn(async () => undefined),
+		externalClients: {
+			getState: vi.fn(() => EXTERNAL_STATE),
+			setEnabled: vi.fn(async (enabled: boolean) => ({ ...EXTERNAL_STATE, enabled })),
+			setPort: vi.fn(async (port: number | null) => ({
+				...EXTERNAL_STATE,
+				port: port ?? EXTERNAL_STATE.defaultPort,
+			})),
+			createClient: vi.fn(async (name: string) => ({
+				client: { id: "client-1", name, createdAt: "2026-10-07T12:00:00.000Z" },
+				token: "token",
+				state: EXTERNAL_STATE,
+			})),
+			revokeClient: vi.fn(async () => EXTERNAL_STATE),
+		},
+		dispose: vi.fn(async () => undefined),
 	};
 }
 
@@ -71,7 +96,7 @@ function registerKiloServer(
 	options: RegisterKiloServerOptions = {},
 ): Promise<void> {
 	return registerProductionKiloServer(mainSdk, {
-		createWebMcpRelayService: stubRelayService,
+		createToolGateway: stubToolGateway,
 		reconcileKiloCallerContextPlugin: async () => undefined,
 		...options,
 	});
@@ -295,7 +320,7 @@ describe("kilo-server main registration", () => {
 
 		await registerProductionKiloServer(mainSdk, {
 			createServer: () => fakeServer(),
-			createWebMcpRelayService: stubRelayService,
+			createToolGateway: stubToolGateway,
 			reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
 		});
 
@@ -309,8 +334,8 @@ describe("kilo-server main registration", () => {
 	it("removes the Desktop WebMCP entry when the endpoint cannot start, and still starts Kilo", async () => {
 		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
 		const server = fakeServer();
-		const relayService = stubRelayService();
-		relayService.start.mockResolvedValue(undefined);
+		const toolGateway = stubToolGateway();
+		toolGateway.startKiloEndpoint.mockResolvedValue(undefined);
 		const reconcileWebMcpRelayConfig = vi.fn(
 			async (_configDirectory: string, _enabled: boolean) => ({
 				kind: "removed" as const,
@@ -320,7 +345,7 @@ describe("kilo-server main registration", () => {
 
 		await registerKiloServer(mainSdk, {
 			createServer: () => server,
-			createWebMcpRelayService: () => relayService,
+			createToolGateway: () => toolGateway,
 			reconcileWebMcpRelayConfig,
 		});
 
@@ -330,18 +355,18 @@ describe("kilo-server main registration", () => {
 		mainSdk.dispose();
 	});
 
-	it("starts the WebMCP endpoint before writing the entry that points Kilo at it", async () => {
+	it("starts the agent tool endpoint before writing the entry that points Kilo at it", async () => {
 		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
 		const order: string[] = [];
-		const relayService = stubRelayService();
-		relayService.start.mockImplementation(async () => {
+		const toolGateway = stubToolGateway();
+		toolGateway.startKiloEndpoint.mockImplementation(async () => {
 			order.push("endpoint-start");
 			return ENDPOINT;
 		});
 
 		await registerKiloServer(mainSdk, {
 			createServer: () => fakeServer(),
-			createWebMcpRelayService: () => relayService,
+			createToolGateway: () => toolGateway,
 			reconcileWebMcpRelayConfig: async () => {
 				order.push("config-write");
 				return { kind: "written", reason: "created", entry: DESKTOP_ENTRY };
@@ -354,7 +379,7 @@ describe("kilo-server main registration", () => {
 
 	it("hands the running WebMCP endpoint to the Kilo server it creates", async () => {
 		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
-		let readEndpoint: (() => WebMcpHttpEndpointConnection | undefined) | undefined;
+		let readEndpoint: (() => KiloToolEndpointConnection | undefined) | undefined;
 
 		await registerKiloServer(mainSdk, {
 			createServer: (_onStatusChange, _contributedEnv, webMcpEndpoint) => {
@@ -440,15 +465,15 @@ describe("kilo-server main registration", () => {
 		mainSdk.dispose();
 	});
 
-	it("starts the WebMCP rendezvous during feature boot without starting Kilo", async () => {
+	it("starts the agent tool endpoints during feature boot without starting Kilo", async () => {
 		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
 		const server = fakeServer();
-		const relayService = stubRelayService();
-		let releaseRelay!: (endpoint: WebMcpHttpEndpointConnection | undefined) => void;
-		const relayGate = new Promise<WebMcpHttpEndpointConnection | undefined>((resolve) => {
-			releaseRelay = resolve;
+		const toolGateway = stubToolGateway();
+		let releaseEndpoint!: (endpoint: KiloToolEndpointConnection | undefined) => void;
+		const endpointGate = new Promise<KiloToolEndpointConnection | undefined>((resolve) => {
+			releaseEndpoint = resolve;
 		});
-		relayService.start.mockReturnValue(relayGate);
+		toolGateway.startKiloEndpoint.mockReturnValue(endpointGate);
 
 		let registrationFinished = false;
 		const registration = registerKiloServer(mainSdk, {
@@ -458,20 +483,49 @@ describe("kilo-server main registration", () => {
 				reason: "created",
 				entry: DESKTOP_ENTRY,
 			}),
-			createWebMcpRelayService: () => relayService,
+			createToolGateway: () => toolGateway,
 		}).then(() => {
 			registrationFinished = true;
 		});
 
-		await vi.waitFor(() => expect(relayService.start).toHaveBeenCalledOnce());
+		await vi.waitFor(() => expect(toolGateway.startKiloEndpoint).toHaveBeenCalledOnce());
+		expect(toolGateway.startExternalClients).toHaveBeenCalledOnce();
 		expect(registrationFinished).toBe(false);
 		expect(server.ensureRunning).not.toHaveBeenCalled();
 
-		releaseRelay(ENDPOINT);
+		releaseEndpoint(ENDPOINT);
 		await registration;
 		expect(registrationFinished).toBe(true);
 		mainSdk.dispose();
-		expect(relayService.dispose).toHaveBeenCalledOnce();
+		expect(toolGateway.dispose).toHaveBeenCalledOnce();
+	});
+
+	it("serves the external AI apps settings through the kilo-server contract", async () => {
+		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		const toolGateway = stubToolGateway();
+		await registerKiloServer(mainSdk, {
+			createServer: () => fakeServer(),
+			createToolGateway: () => toolGateway,
+			reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
+		});
+
+		await expect(mainSdk.invoke("externalClients.getState")).resolves.toEqual(EXTERNAL_STATE);
+		await expect(
+			mainSdk.invoke("externalClients.setEnabled", { enabled: true }),
+		).resolves.toMatchObject({ enabled: true });
+		await expect(mainSdk.invoke("externalClients.setPort", { port: 9400 })).resolves.toMatchObject({
+			port: 9400,
+		});
+		await expect(
+			mainSdk.invoke("externalClients.createClient", { name: "  Cursor  " }),
+		).resolves.toMatchObject({ client: { name: "Cursor" }, token: "token" });
+		await mainSdk.invoke("externalClients.revokeClient", { id: "client-1" });
+
+		expect(toolGateway.externalClients.revokeClient).toHaveBeenCalledWith("client-1");
+		await expect(mainSdk.invoke("externalClients.setPort", { port: 80 })).rejects.toMatchObject({
+			code: "VALIDATION",
+		});
+		mainSdk.dispose();
 	});
 
 	it("getConnection called during the initialization window awaits config readiness and does not race ensureRunning", async () => {

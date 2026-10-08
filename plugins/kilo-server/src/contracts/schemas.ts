@@ -49,12 +49,78 @@ export interface KiloConfigurationState {
 	readonly plugins: Readonly<Record<string, string>>;
 }
 
+// ─── External AI apps (paired MCP clients) ──────────────────────────────────────
+
+/** A paired external MCP client. Its token is shown once and stored only as a hash. */
+export const externalClientSchema = z.object({
+	id: z.string().min(1),
+	name: z.string().min(1),
+	createdAt: z.string().min(1),
+	lastUsedAt: z.string().min(1).optional(),
+});
+
+export const externalClientsStatusSchema = z.discriminatedUnion("status", [
+	z.object({ status: z.literal("stopped") }),
+	z.object({ status: z.literal("running"), url: z.url() }),
+	z.object({ status: z.literal("error"), message: z.string().min(1) }),
+]);
+
+export const externalClientsStateSchema = z.object({
+	/** Whether paired external AI apps may connect. Off by default. */
+	enabled: z.boolean(),
+	/** The loopback port the endpoint listens on while enabled. */
+	port: z.number().int(),
+	/** The channel's default port, used when the user has not chosen one. */
+	defaultPort: z.number().int(),
+	status: externalClientsStatusSchema,
+	clients: z.array(externalClientSchema),
+});
+
+export const EXTERNAL_CLIENT_NAME_MAX_LENGTH = 64;
+export const externalClientPortSchema = z.number().int().min(1024).max(65535);
+
+export type ExternalClient = z.infer<typeof externalClientSchema>;
+export type ExternalClientsStatus = z.infer<typeof externalClientsStatusSchema>;
+export type ExternalClientsState = z.infer<typeof externalClientsStateSchema>;
+
+/**
+ * LaunchDarkly flag gating External AI apps: the settings section
+ * (`plugin.json`) and, in main, starting, enabling and pairing.
+ */
+export const EXTERNAL_AI_APPS_FEATURE_FLAG = "external-api-apps-settings";
+
+/** Emitted (qualified as `kilo-server.external-clients-changed`) with the new state. */
+export const EXTERNAL_CLIENTS_CHANGED_EVENT = "external-clients-changed";
+
 // ─── Contract ───────────────────────────────────────────────────────────────────
 
 export const kiloServerContract = defineContract({
 	"server.getConnection": defineMethod(z.undefined(), kiloServerConnectionSchema),
 	"server.restart": defineMethod(z.undefined(), kiloServerConnectionSchema),
 	"server.status": defineMethod(z.undefined(), kiloServerStatusSchema),
+	"externalClients.getState": defineMethod(z.undefined(), externalClientsStateSchema),
+	"externalClients.setEnabled": defineMethod(
+		z.object({ enabled: z.boolean() }),
+		externalClientsStateSchema,
+	),
+	/** `null` returns to the channel's default port. */
+	"externalClients.setPort": defineMethod(
+		z.object({ port: externalClientPortSchema.nullable() }),
+		externalClientsStateSchema,
+	),
+	"externalClients.createClient": defineMethod(
+		z.object({ name: z.string().trim().min(1).max(EXTERNAL_CLIENT_NAME_MAX_LENGTH) }),
+		z.object({
+			client: externalClientSchema,
+			/** Shown once; Desktop keeps only its hash. */
+			token: z.string().min(1),
+			state: externalClientsStateSchema,
+		}),
+	),
+	"externalClients.revokeClient": defineMethod(
+		z.object({ id: z.string().min(1) }),
+		externalClientsStateSchema,
+	),
 });
 
 export type KiloServerService = InferContract<typeof kiloServerContract>;

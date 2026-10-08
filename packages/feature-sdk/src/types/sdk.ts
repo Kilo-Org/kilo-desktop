@@ -756,12 +756,12 @@ export interface ToolDefinition<TArgs = unknown, TResult = unknown> {
 	validate?: SchemaLike<TArgs>;
 	annotations?: ToolAnnotations;
 	/**
-	 * Opt-in to publishing this tool to external AI runtimes — specifically the
-	 * WebMCP bridge (`document.modelContext`), which relays it to the local,
-	 * UNAUTHENTICATED MCP relay reachable by any local process. Defaults to
-	 * `false`: a tool is registered for in-app use but NOT exposed externally
-	 * unless it explicitly opts in. Prefer leaving mutating/destructive tools
-	 * unexposed unless external agent access is intended.
+	 * Opt-in to serving this tool to AI agents: the bundled Kilo agent and,
+	 * while the user allows it, every paired external AI app (which approves
+	 * calls itself, without a Desktop prompt). Defaults to `false`: a tool is
+	 * registered for in-app use but NOT served to any agent unless it
+	 * explicitly opts in. Leave a tool unexposed if agent access is not
+	 * intended.
 	 */
 	exposeToModelContext?: boolean;
 	handler: (args: TArgs, context: ToolInvocationContext) => TResult | Promise<TResult>;
@@ -777,15 +777,15 @@ export interface RegisteredTool {
 	description: string;
 	inputSchema?: Readonly<Record<string, unknown>>;
 	annotations?: ToolAnnotations;
-	/** Whether the tool opted in to external WebMCP exposure (see ToolDefinition). */
+	/** Whether the tool opted in to being served to AI agents (see ToolDefinition). */
 	exposeToModelContext: boolean;
 }
 
 /**
  * Feature-registered tools for an AI runtime. Tool names are auto-namespaced by
  * feature id (`featureId.name` internally, `featureId_name` on the MCP wire).
- * A consumer (the WebMCP bridge) reads {@link all} and subscribes to registry
- * change notifications to publish them to `document.modelContext`.
+ * The shell's tool catalog publisher reads the registry and subscribes to its
+ * change notifications to serve opted-in tools to AI agents.
  *
  * Note there is deliberately no `invoke` on this plugin-facing surface. Tools
  * are the AI adapter over a domain function; plugin code should never

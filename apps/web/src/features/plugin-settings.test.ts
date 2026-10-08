@@ -215,6 +215,7 @@ describe("PLUGIN_SETTINGS", () => {
 			"kilo-marketplace",
 			"kilo-providers",
 			"local-model-server",
+			"external-ai-apps",
 		]);
 	});
 });

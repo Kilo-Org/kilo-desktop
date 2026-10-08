@@ -32,12 +32,9 @@
 			"outputs": []
 		},
 		"build": {
-			"dependsOn": ["^build", "sync:webmcp"],
+			"dependsOn": ["^build"],
 			"outputs": ["dist/**"],
 			"env": ["SENTRY_AUTH_TOKEN", "APP_MODE", "NODE_ENV"]
-		},
-		"sync:webmcp": {
-			"cache": false
 		},
 		"db:generate": {
 			"cache": false

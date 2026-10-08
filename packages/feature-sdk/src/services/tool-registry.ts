@@ -4,9 +4,9 @@ import type { RegisteredTool, ToolDefinition, ToolInvocationContext } from "../t
  * In-memory tool registry backing `sdk.tools`.
  *
  * Shell infrastructure — features never construct this; they use
- * `sdk.tools.register`, which delegates here. An AI runtime (the WebMCP bridge)
- * consumes all()/invoke() and subscribes to change notifications to publish
- * tools to `document.modelContext`.
+ * `sdk.tools.register`, which delegates here. The shell's tool catalog
+ * publisher consumes all()/invoke() and subscribes to change notifications to
+ * serve opted-in tools to AI agents through the main process.
  *
  * Tool names are auto-namespaced "featureId.name". Duplicate registration warns
  * and replaces. Registration/removal notifies subscribers so consumers re-sync.

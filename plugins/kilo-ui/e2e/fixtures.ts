@@ -4,6 +4,8 @@ import path from "node:path";
 
 import { removePathAfterAppStops, test as shellTest } from "@kilo-desktop/e2e/fixtures";
 
+import { AgentToolsPage } from "./pages/agent-tools-page.js";
+import { ExternalAiAppsPage } from "./pages/external-ai-apps-page.js";
 import { KiloCodePage } from "./pages/kilo-code-page.js";
 import { LayoutPresetsPage } from "./pages/layout-presets-page.js";
 import { KiloProvidersPage } from "./pages/kilo-providers-page.js";
@@ -13,6 +15,8 @@ import { WorkspacesPage } from "./pages/workspaces-page.js";
 import { GitWorktreesPage, initializeGitRepository } from "./pages/git-worktrees-page.js";
 
 type KiloUiFixtures = {
+	agentToolsPage: AgentToolsPage;
+	externalAiAppsPage: ExternalAiAppsPage;
 	kiloCodePage: KiloCodePage;
 	layoutPresetsPage: LayoutPresetsPage;
 	kiloProvidersPage: KiloProvidersPage;
@@ -25,6 +29,14 @@ type KiloUiFixtures = {
 };
 
 export const test = shellTest.extend<KiloUiFixtures>({
+	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
+	agentToolsPage: async ({}, use) => {
+		await use(new AgentToolsPage());
+	},
+	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
+	externalAiAppsPage: async ({}, use) => {
+		await use(new ExternalAiAppsPage());
+	},
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
 	layoutPresetsPage: async ({}, use) => {
 		await use(new LayoutPresetsPage());

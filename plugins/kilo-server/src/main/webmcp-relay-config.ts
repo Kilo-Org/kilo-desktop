@@ -1,6 +1,5 @@
 import path from "node:path";
 
-import { APP_RENDERER_ORIGINS } from "./app-renderer-origins.js";
 import type { KiloLogger } from "./KiloServerManager.js";
 import {
 	KILO_CONFIG_FILENAME,
@@ -12,7 +11,7 @@ import {
 /**
  * Reconciles the Desktop-owned `mcp.desktop` entry in Desktop's Kilo config.
  * The entry points Kilo at the in-process Streamable HTTP endpoint
- * (`WebMcpHttpEndpoint`). Generic JSONC mutation and ownership tracking live
+ * (`KiloToolEndpoint`). Generic JSONC mutation and ownership tracking live
  * in `KiloConfigManager`; this module only builds the entry and recognizes the
  * stdio relay entries that earlier builds wrote, so they are migrated.
  */
@@ -22,34 +21,15 @@ export const MCP_ENTRY_NAME = "desktop";
 export const MCP_ENTRY_SOURCE_ID = "kilo-server";
 const STALE_WEBMCP_RELAY_ENTRY_NAMES = ["anaconda-desktop-relay"] as const;
 
-export const WEBMCP_RELAY_PORT = 9345;
-export const WEBMCP_RELAY_ID = "kilo-desktop";
-export const WEBMCP_RELAY_LABEL = "Kilo Desktop";
-
-/**
- * Page origins allowed to register tool sources on the relay. Restricts tool
- * sources to the app renderer; the relay library's default admits any origin.
- * External MCP clients connect without an Origin header and are unaffected.
- */
-export const WEBMCP_TOOL_SOURCE_ORIGINS = APP_RENDERER_ORIGINS;
-
 export type WebMcpChannel = "development" | "preview" | "stable";
 
-export interface WebMcpRendezvous {
-	readonly port: number;
-	readonly relayId: string;
-	readonly label: string;
-}
-
-const WEBMCP_RENDEZVOUS_BY_CHANNEL = {
-	stable: { port: 9345, relayId: "kilo-desktop", label: "Kilo Desktop" },
-	preview: { port: 9346, relayId: "kilo-desktop-preview", label: "Kilo Desktop Preview" },
-	development: { port: 9347, relayId: "kilo-desktop-dev", label: "Kilo Desktop Dev" },
-} as const satisfies Record<WebMcpChannel, WebMcpRendezvous>;
-
-export function resolveWebMcpRendezvous(channel: WebMcpChannel = "stable"): WebMcpRendezvous {
-	return WEBMCP_RENDEZVOUS_BY_CHANNEL[channel];
-}
+/** Stdio relay ids that earlier builds wrote into `mcp.desktop`, one per channel. */
+const LEGACY_STDIO_RELAY_IDS = new Set([
+	"kilo-desktop",
+	"kilo-desktop-preview",
+	"kilo-desktop-dev",
+	"anaconda-agentic-desktop",
+]);
 
 export function webMcpChannelFromStorageDir(storageDir: string): WebMcpChannel {
 	const profile = path.basename(path.dirname(path.dirname(storageDir)));
@@ -90,12 +70,7 @@ function isLegacyStdioRelayEntry(entry: Record<string, unknown>): boolean {
 	const tokens = command.map(String);
 	if (!tokens.some((token) => token.includes("webmcp-local-relay"))) return false;
 	const relayId = tokens[tokens.indexOf("--relay-id") + 1];
-	return (
-		relayId === WEBMCP_RELAY_ID ||
-		relayId === "kilo-desktop-preview" ||
-		relayId === "kilo-desktop-dev" ||
-		relayId === "anaconda-agentic-desktop"
-	);
+	return relayId !== undefined && LEGACY_STDIO_RELAY_IDS.has(relayId);
 }
 
 export function isDesktopWebMcpRelayEntry(entry: unknown): boolean {

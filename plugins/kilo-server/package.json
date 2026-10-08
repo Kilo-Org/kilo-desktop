@@ -22,13 +22,37 @@
 	},
 	"dependencies": {
 		"@kilo-desktop/feature-sdk": "workspace:*",
-		"@mcp-b/webmcp-local-relay": "5.1.0",
 		"@modelcontextprotocol/server": "2.0.0",
 		"atomically": "catalog:",
 		"execa": "catalog:",
 		"jsonc-parser": "^3.3.1",
 		"lodash": "catalog:",
+		"lucide-react": "catalog:",
 		"zod": "catalog:"
+	},
+	"peerDependencies": {
+		"@kilo-desktop/sdk-react": "^0.1.0",
+		"@kilo-desktop/ui": "^0.1.0",
+		"@tanstack/react-query": "^5.101.4",
+		"react": "^19.0.0",
+		"react-dom": "^19.0.0"
+	},
+	"peerDependenciesMeta": {
+		"@kilo-desktop/sdk-react": {
+			"optional": true
+		},
+		"@kilo-desktop/ui": {
+			"optional": true
+		},
+		"@tanstack/react-query": {
+			"optional": true
+		},
+		"react": {
+			"optional": true
+		},
+		"react-dom": {
+			"optional": true
+		}
 	},
 	"optionalDependencies": {
 		"@kilocode/cli-darwin-arm64": "7.7.9",
@@ -38,12 +62,27 @@
 		"@kilocode/cli-windows-x64-baseline": "7.7.9"
 	},
 	"devDependencies": {
+		"@kilo-desktop/sdk-react": "workspace:*",
 		"@kilo-desktop/testing": "workspace:*",
+		"@kilo-desktop/ui": "workspace:*",
 		"@modelcontextprotocol/client": "^2.0.0",
+		"@tailwindcss/vite": "^4.3.3",
+		"@tanstack/react-query": "^5.101.4",
+		"@testing-library/react": "^16.3.2",
 		"@types/lodash": "^4.17.20",
 		"@types/node": "^24.13.3",
+		"@types/react": "^19.2.17",
+		"@types/react-dom": "^19.2.3",
+		"@vitejs/plugin-react": "^6.0.4",
+		"@vitest/browser": "5.0.3",
+		"@vitest/browser-playwright": "5.0.3",
+		"playwright": "catalog:",
+		"react": "^19.2.8",
+		"react-dom": "^19.2.8",
+		"tailwindcss": "^4.3.3",
 		"tsx": "^4.23.1",
 		"typescript": "catalog:",
+		"vite": "catalog:",
 		"vitest": "catalog:"
 	}
 }

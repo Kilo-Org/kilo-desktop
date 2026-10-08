@@ -33,8 +33,6 @@ export type InvokeArguments<TChannel extends IpcMethodChannel> =
 export interface DesktopApi {
 	/** Renderer role derived from BrowserWindow additionalArguments by the preload. */
 	readonly windowRole: "main" | "pane";
-	/** Identity-pinned WebMCP rendezvous for this app channel (dev / preview / stable). */
-	readonly webmcpRelay: { readonly port: string; readonly relayId: string };
 	/** Preload-only resolver for Electron's opaque dropped File objects. */
 	getPathForFile(file: File): string | null;
 	invoke<TChannel extends IpcMethodChannel>(

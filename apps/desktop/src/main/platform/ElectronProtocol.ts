@@ -84,15 +84,6 @@ export function registerDesktopSchemes(pluginSchemes: readonly string[]): void {
 	);
 }
 
-/** Loopback WebSocket origins the WebMCP relay widget probes (ports 9333–9348).
- * IPv4 only: Chromium rejects bracketed IPv6 literals (`ws://[::1]:PORT`) as
- * invalid CSP sources, and the relay daemon + injected embed use `127.0.0.1`.
- * Scoped to this range instead of a `:*` wildcard so renderer script cannot open
- * WebSockets to arbitrary local ports. */
-const RELAY_WS_SOURCES = Array.from({ length: 9348 - 9333 + 1 }, (_unused, index) => 9333 + index)
-	.map((port) => `ws://127.0.0.1:${port}`)
-	.join(" ");
-
 export function createContentSecurityPolicy(
 	developmentOrigin?: string,
 	inlineScriptHashes: readonly string[] = [],
@@ -109,10 +100,8 @@ export function createContentSecurityPolicy(
 	// script (XSS) cannot execute here. Both former consumers of `'unsafe-inline'`
 	// on this origin were moved off `blob:` iframes that inherit this policy:
 	// (1) MCP App widgets now render under the dedicated `mcp-app` embedded origin
-	// with the active-untrusted profile, and (2) the self-hosted WebMCP relay
-	// widget now loads a same-origin `webmcp/widget.html?<params>` document
-	// (config passed via URL params — see `sync-webmcp-assets.mjs`) instead of a
-	// blob with an injected per-tab inline config script. So no dynamic inline
+	// with the active-untrusted profile, and (2) the former WebMCP relay widget
+	// is gone (agent tools reach the main process over IPC). So no dynamic inline
 	// script needs `'unsafe-inline'` on this origin in production. `'unsafe-inline'`
 	// and hash/nonce sources are mutually exclusive in CSP, so exactly one is emitted.
 	const inlineScriptSources = developmentOrigin
@@ -128,20 +117,14 @@ export function createContentSecurityPolicy(
 		"img-src 'self' data: blob:",
 		"font-src 'self' data:",
 		// `connect-src`: `LOOPBACK_SERVER_CONNECT_SOURCE` reaches app-managed
-		// loopback servers (e.g. the local Kilo server); `RELAY_WS_SOURCES` are
-		// the loopback WebSockets the self-hosted WebMCP relay widget uses to
-		// reach the `@mcp-b/webmcp-local-relay` daemon.
-		`connect-src 'self' ${pluginSchemes.map((scheme) => `${scheme}:`).join(" ")} ${LOOPBACK_SERVER_CONNECT_SOURCE}${developmentSources} ${RELAY_WS_SOURCES}`,
+		// loopback servers (e.g. the local Kilo server).
+		`connect-src 'self' ${pluginSchemes.map((scheme) => `${scheme}:`).join(" ")} ${LOOPBACK_SERVER_CONNECT_SOURCE}${developmentSources}`,
 		// `frame-src 'self' blob:`: `frameOrigins` names the sibling embedded hosts
 		// (e.g. `mcp-app`, where MCP App widgets render under their own isolated
-		// origin). The WebMCP relay widget now loads a same-origin
-		// `webmcp/widget.html?<params>` document (covered by `'self'`) rather than
-		// a `blob:` iframe; `blob:` is retained only for the non-custom-scheme MCP
-		// App fallback (`ElectronMcpAppRenderer` blob path, used only where there
-		// is no preload bridge). `frame-ancestors 'self'`: the widget response must
-		// permit being framed by the same-origin app (a `'none'` here blocks the
-		// relay iframe and breaks tool discovery). No cross-origin embedders exist
-		// under the custom scheme, so `'self'` still blocks external framing.
+		// origin); `blob:` is retained only for the non-custom-scheme MCP App
+		// fallback (`ElectronMcpAppRenderer` blob path, used only where there is
+		// no preload bridge). `frame-ancestors 'self'`: no cross-origin embedders
+		// exist under the custom scheme, so `'self'` blocks external framing.
 		`frame-src 'self' blob:${frameOrigins.length > 0 ? ` ${frameOrigins.join(" ")}` : ""}`,
 		"object-src 'none'",
 		"base-uri 'none'",

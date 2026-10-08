@@ -38,20 +38,8 @@ function getWindowArgument(name: string): string | undefined {
 	return process.argv.find((argument) => argument.startsWith(prefix))?.slice(prefix.length);
 }
 
-function webmcpRelayFromArguments(): DesktopApi["webmcpRelay"] {
-	const port = getWindowArgument("--kilo-webmcp-port");
-	const relayId = getWindowArgument("--kilo-webmcp-relay-id");
-	const portValid = port !== undefined && /^(933[3-9]|934[0-8])$/.test(port);
-	const relayIdValid = relayId !== undefined && /^kilo-desktop(?:-[a-z0-9]+)?$/.test(relayId);
-	return {
-		port: portValid ? port : "9345",
-		relayId: relayIdValid ? relayId : "kilo-desktop",
-	};
-}
-
 const desktopApi: DesktopApi = {
 	windowRole: getWindowArgument("--kilo-window-role") === "pane" ? "pane" : "main",
-	webmcpRelay: webmcpRelayFromArguments(),
 	getPathForFile(file) {
 		const resolved = webUtils.getPathForFile(file);
 		return resolved || null;

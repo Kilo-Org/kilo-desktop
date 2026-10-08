@@ -4,6 +4,8 @@ import path from "node:path";
 import debounce from "lodash/debounce.js";
 
 import {
+	EXTERNAL_AI_APPS_FEATURE_FLAG,
+	EXTERNAL_CLIENTS_CHANGED_EVENT,
 	kiloServerContract,
 	type KiloServerCapabilityService,
 	type KiloServerService,
@@ -24,22 +26,18 @@ import {
 	removeLegacyKiloConfigPlugins,
 } from "./managed-kilo-plugins.js";
 import {
+	createToolGateway,
+	type KiloToolEndpointConnection,
+	type ToolGateway,
+} from "./tool-gateway/index.js";
+import {
 	MCP_ENTRY_SOURCE_ID,
 	reconcileWebMcpRelayConfig,
-	resolveWebMcpRendezvous,
 	webMcpChannelFromStorageDir,
 	type WebMcpRelayConfigOutcome,
 } from "./webmcp-relay-config.js";
-import type { WebMcpHttpEndpointConnection } from "./webmcp-http-endpoint.js";
-import { WebMcpRelayService, type WebMcpRelayServiceHandle } from "./webmcp-relay-service.js";
 
 export { ContributedEnvManager } from "./ContributedEnvManager.js";
-export {
-	resolveWebMcpRendezvous,
-	webMcpChannelFromStorageDir,
-	type WebMcpChannel,
-	type WebMcpRendezvous,
-} from "./webmcp-relay-config.js";
 
 export interface KiloServerController {
 	readonly status: KiloServerStatus;
@@ -73,15 +71,29 @@ type PreferencesCapability = {
 	};
 };
 
+/**
+ * Minimal shape of the shell's main-side `feature-flag` capability (see
+ * `packages/contracts/src/features/feature-flag-capability.ts`), inlined so
+ * the plugin takes no `@kilo-desktop/contracts` dependency.
+ */
+type FeatureFlagCapability = {
+	featureFlag: { getFlag<T>(key: string, defaultValue: T): T };
+};
+
+function isFeatureFlagOn(mainSdk: MainSdk, key: string): boolean {
+	const capability = mainSdk.plugins.get<FeatureFlagCapability>("feature-flag");
+	return capability?.featureFlag.getFlag<boolean>(key, false) ?? false;
+}
+
 interface RegisterKiloServerOptions {
 	createServer?: (
 		onStatusChange: (status: KiloServerStatus) => void,
 		contributedEnv: ContributedEnvManager,
-		webMcpEndpoint: () => WebMcpHttpEndpointConnection | undefined,
+		webMcpEndpoint: () => KiloToolEndpointConnection | undefined,
 	) => KiloServerController;
 	/**
 	 * Reconciles Desktop's `mcp.desktop` entry; `enabled` is whether the
-	 * WebMCP endpoint is serving. Injected in tests.
+	 * agent tool endpoint is serving. Injected in tests.
 	 */
 	reconcileWebMcpRelayConfig?: (
 		configDirectory: string,
@@ -105,10 +117,11 @@ interface RegisterKiloServerOptions {
 	/** User-owned global Kilo config directory. Injected in tests. */
 	userConfigDirectory?: string;
 	/**
-	 * Owns the WebMCP rendezvous (`:9345`) and the MCP endpoint Kilo connects
-	 * to. Injected in tests; production defaults to {@link WebMcpRelayService}.
+	 * Owns the app's tool catalog and the endpoints serving it to Kilo and to
+	 * paired external AI apps. Injected in tests; production defaults to
+	 * {@link createToolGateway}.
 	 */
-	createWebMcpRelayService?: () => WebMcpRelayServiceHandle;
+	createToolGateway?: (mainSdk: MainSdk) => ToolGateway;
 }
 
 export type KiloServerCapabilities = {
@@ -157,7 +170,7 @@ export function createKiloServerManagerOptions(
 	onStatusChange: (status: KiloServerStatus) => void,
 	contributedEnv: ContributedEnvManager,
 	resolveInstallation: typeof resolveKiloInstallation = resolveKiloInstallation,
-	webMcpEndpoint?: () => WebMcpHttpEndpointConnection | undefined,
+	webMcpEndpoint?: () => KiloToolEndpointConnection | undefined,
 ): KiloServerManagerOptions {
 	const directories = resolveKiloServerDirectories(mainSdk.storageDir);
 	const installationId =
@@ -265,7 +278,7 @@ export function registerKiloServer(
 		((
 			onStatusChange: (status: KiloServerStatus) => void,
 			envManager: ContributedEnvManager,
-			readWebMcpEndpoint: () => WebMcpHttpEndpointConnection | undefined,
+			readWebMcpEndpoint: () => KiloToolEndpointConnection | undefined,
 		) =>
 			new KiloServerManager(
 				createKiloServerManagerOptions(
@@ -285,10 +298,9 @@ export function registerKiloServer(
 	});
 
 	// The Desktop-owned `mcp.desktop` entry is reconciled before `kilo serve`
-	// boots so its first config read already points at the WebMCP endpoint.
+	// boots so its first config read already points at the agent tool endpoint.
 	// Reconciliation is idempotent and marker-guarded; a failure never blocks
 	// Kilo from starting.
-	const rendezvous = resolveWebMcpRendezvous(webMcpChannelFromStorageDir(mainSdk.storageDir));
 	const reconcileRelayConfig =
 		options.reconcileWebMcpRelayConfig ??
 		((directory: string, enabled: boolean) =>
@@ -299,7 +311,27 @@ export function registerKiloServer(
 				kiloConfig,
 			}));
 
-	let webMcpEndpoint: WebMcpHttpEndpointConnection | undefined;
+	// Created during registration so the renderer's catalog port handler exists
+	// before any window can transfer one.
+	const toolGateway = (
+		options.createToolGateway ??
+		((sdk: MainSdk) =>
+			createToolGateway({
+				ports: sdk.ports,
+				storage: sdk.storage,
+				logger: sdk.logger,
+				channel: webMcpChannelFromStorageDir(sdk.storageDir),
+				onExternalClientsChange: (state) => sdk.events.emit(EXTERNAL_CLIENTS_CHANGED_EVENT, state),
+				isExternalClientsAvailable: () => isFeatureFlagOn(sdk, EXTERNAL_AI_APPS_FEATURE_FLAG),
+			}))
+	)(mainSdk);
+	// Independent of Kilo: paired external AI apps can connect without a chat.
+	void toolGateway.startExternalClients().catch((error: unknown) => {
+		mainSdk.logger.warn(
+			`External AI apps endpoint failed: ${error instanceof Error ? error.message : String(error)}`,
+		);
+	});
+	let webMcpEndpoint: KiloToolEndpointConnection | undefined;
 	const server = createServer(
 		(status) => mainSdk.events.emit("server-status-changed", status),
 		contributedEnv,
@@ -310,23 +342,11 @@ export function registerKiloServer(
 		server.setTelemetryEnabled(allow),
 	);
 	const consentReady = server.setTelemetryEnabled(preferences?.allowDataCollection === true);
-	const createRelayService =
-		options.createWebMcpRelayService ??
-		(() =>
-			new WebMcpRelayService({
-				logger: mainSdk.logger,
-				port: rendezvous.port,
-				relayId: rendezvous.relayId,
-				label: rendezvous.label,
-			}));
-	let relayService: WebMcpRelayServiceHandle | undefined;
 
-	// (1) Start the in-process rendezvous and its MCP endpoint, (2) reconcile
-	// the Desktop-owned entry so it exists only while the endpoint serves,
-	// (3) then allow lazy Kilo startup. Feature boot awaits this promise, so
-	// the renderer's first relay scan happens after the rendezvous attempt. A
-	// WebMCP failure never blocks Kilo startup; Kilo just runs without the
-	// app's tools.
+	// (1) Start the agent tool endpoint Kilo connects to, (2) reconcile the
+	// Desktop-owned entry so it exists only while the endpoint serves, (3)
+	// then allow lazy Kilo startup. A tool failure never blocks Kilo startup;
+	// Kilo just runs without the app's tools.
 	//
 	// Every path that can start or restart Kilo awaits the same readiness
 	// promise, so no caller can race the config write.
@@ -350,14 +370,11 @@ export function registerKiloServer(
 			await (options.reconcileKiloCallerContextPlugin ?? reconcileKiloCallerContextPlugin)(
 				managedPluginDirectory,
 			);
-			if (!disposed) {
-				relayService = createRelayService();
-				webMcpEndpoint = await relayService.start();
-			}
+			if (!disposed) webMcpEndpoint = await toolGateway.startKiloEndpoint();
 			await reconcileRelayConfig(configDirectory, webMcpEndpoint !== undefined);
 		} catch (error) {
 			mainSdk.logger.warn(
-				`WebMCP initialization failed: ${error instanceof Error ? error.message : String(error)}`,
+				`Agent tool initialization failed: ${error instanceof Error ? error.message : String(error)}`,
 			);
 		}
 		try {
@@ -409,6 +426,11 @@ export function registerKiloServer(
 			return server.restart();
 		},
 		"server.status": async () => server.status,
+		"externalClients.getState": async () => toolGateway.externalClients.getState(),
+		"externalClients.setEnabled": ({ enabled }) => toolGateway.externalClients.setEnabled(enabled),
+		"externalClients.setPort": ({ port }) => toolGateway.externalClients.setPort(port),
+		"externalClients.createClient": ({ name }) => toolGateway.externalClients.createClient(name),
+		"externalClients.revokeClient": ({ id }) => toolGateway.externalClients.revokeClient(id),
 	};
 
 	const kiloService: KiloServerCapabilityService = {
@@ -488,7 +510,7 @@ export function registerKiloServer(
 		disposed = true;
 		unsubscribeConsent?.();
 		handleEnvChange.cancel();
-		relayService?.dispose();
+		void toolGateway.dispose();
 		webMcpEndpoint = undefined;
 		server.dispose();
 	});

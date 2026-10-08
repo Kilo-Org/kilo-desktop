@@ -158,8 +158,6 @@ Thumbs.db
 
 # App specific
 apps/desktop/.data/
-# WebMCP relay assets are synced from @mcp-b/webmcp-local-relay at build time
-apps/web/public/webmcp/
 plugins/kilo-server/resources/kilo/
 # Fetched Kilo binaries under any plugin path (guards against stale copies
 # left behind by a plugin rename).

@@ -33,6 +33,7 @@ vi.mock("electron", () => ({
 			workAreaSize: { width: 1920, height: 1080 },
 		}),
 	},
+	app: { isPackaged: false },
 }));
 
 const noopLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() } as never;

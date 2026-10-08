@@ -1,5 +1,8 @@
+import { app } from "electron";
+
 import { Application } from "./Application.js";
 import { PLUGIN_PROTOCOL_SCHEMES } from "./features/registry/bundled-plugin-manifests.js";
+import { hasForbiddenDebugArgs } from "./platform/debug-args.js";
 import { configureAppProfile } from "./platform/ElectronApp.js";
 import {
 	configureLogging,
@@ -22,6 +25,11 @@ if (electronSquirrelStartup) {
 		squirrelName: getAppIdentity(RELEASE_TRACK).squirrelName,
 	});
 	process.exitCode = 0;
+} else if (shouldRefuseDebugLaunch()) {
+	createLogger("startup").warn(
+		"Refusing to start: debugging launch arguments are not allowed in packaged builds.",
+	);
+	app.exit(1);
 } else {
 	configureAppProfile();
 
@@ -47,4 +55,11 @@ if (electronSquirrelStartup) {
 		createLogger("startup").error("Kilo Desktop failed to start.", error);
 		process.exitCode = 1;
 	});
+}
+
+// E2E builds bake VITE_KILO_E2E_AUTH and launch with inspector flags on purpose.
+function shouldRefuseDebugLaunch(): boolean {
+	if (!app.isPackaged) return false;
+	if (import.meta.env.VITE_KILO_E2E_AUTH === "1") return false;
+	return hasForbiddenDebugArgs(process.argv, (name) => app.commandLine.hasSwitch(name));
 }

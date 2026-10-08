@@ -364,6 +364,8 @@ export class ElectronWindow {
 				nodeIntegration: false,
 				webviewTag: false,
 				...options?.webPreferences,
+				// After the caller spread so a caller cannot re-enable it.
+				devTools: !app.isPackaged,
 				additionalArguments: [
 					`--kilo-webmcp-port=${this.webmcpRendezvous.port}`,
 					`--kilo-webmcp-relay-id=${this.webmcpRendezvous.relayId}`,

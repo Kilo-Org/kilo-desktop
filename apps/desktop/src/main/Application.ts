@@ -51,6 +51,7 @@ import { ElectronProtocol, getDesktopScheme } from "./platform/ElectronProtocol.
 import { ElectronSecurity } from "./platform/ElectronSecurity.js";
 import { ElectronShell } from "./platform/ElectronShell.js";
 import { ElectronBrowserHost } from "./platform/ElectronBrowserHost.js";
+import { installAppMenu } from "./platform/ElectronAppMenu.js";
 import { ElectronWindow } from "./platform/ElectronWindow.js";
 import { featureFsSandboxDir } from "./platform/featureStorage.js";
 import { HttpClient } from "./platform/HttpClient.js";
@@ -191,6 +192,8 @@ export class Application {
 		);
 
 		await this.#app.whenReady();
+		// Replace Electron's default menu, which carries View → Toggle Developer Tools.
+		installAppMenu();
 		if (isDevelopment) {
 			electronDebug({ showDevTools: false });
 		}

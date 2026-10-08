@@ -16,7 +16,12 @@ const { createdWindows, electronApp } = vi.hoisted(() => {
 			visualEffectState?: string;
 			icon?: string;
 			titleBarOverlay?: { color: string; symbolColor: string; height: number };
-			webPreferences?: { additionalArguments?: string[]; preload?: string; webviewTag?: boolean };
+			webPreferences?: {
+				additionalArguments?: string[];
+				preload?: string;
+				webviewTag?: boolean;
+				devTools?: boolean;
+			};
 			windowStatePersistence?: boolean;
 		};
 		webContents: {
@@ -581,5 +586,24 @@ describe("ElectronWindow theme chrome", () => {
 				configurable: true,
 			});
 		}
+	});
+
+	it("disables renderer DevTools in packaged builds", () => {
+		// darwin skips linuxWindowIcon(), which would read an unset process.resourcesPath.
+		Object.defineProperty(process, "platform", { value: "darwin" });
+		electronApp.isPackaged = true;
+		try {
+			const windows = new ElectronWindow(createShell() as never, () => false);
+			windows.create({ isDevelopment: false });
+			expect(createdWindows[0]?.options.webPreferences?.devTools).toBe(false);
+		} finally {
+			electronApp.isPackaged = false;
+		}
+	});
+
+	it("leaves renderer DevTools enabled in development (unpackaged) builds", () => {
+		const windows = new ElectronWindow(createShell() as never, () => false);
+		windows.create({ isDevelopment: true });
+		expect(createdWindows[0]?.options.webPreferences?.devTools).toBe(true);
 	});
 });

@@ -1,4 +1,4 @@
-import { BrowserWindow, screen } from "electron";
+import { app, BrowserWindow, screen } from "electron";
 
 import { getThemeVariant, themeChromeColors } from "@kilo-desktop/contracts";
 
@@ -101,6 +101,7 @@ export class SplashWindow {
 				contextIsolation: true,
 				nodeIntegration: false,
 				webviewTag: false,
+				devTools: !app.isPackaged,
 			},
 		});
 

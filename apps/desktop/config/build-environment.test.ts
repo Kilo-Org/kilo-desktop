@@ -4,7 +4,6 @@ import {
 	createViteEnvironmentDefinitions,
 	getBuildEnvironment,
 	requireViteEnvironmentVariable,
-	shouldUploadSentrySourceMaps,
 } from "./build-environment.js";
 
 describe("build environment", () => {
@@ -18,12 +17,6 @@ describe("build environment", () => {
 			expect(getBuildEnvironment("build", track)).toBe(track);
 		},
 	);
-
-	it("uploads Sentry source maps only for Stable builds with credentials", () => {
-		expect(shouldUploadSentrySourceMaps("stable", "token")).toBe(true);
-		expect(shouldUploadSentrySourceMaps("stable", undefined)).toBe(false);
-		expect(shouldUploadSentrySourceMaps("preview", "token")).toBe(false);
-	});
 
 	it("requires non-blank environment variables", () => {
 		expect(

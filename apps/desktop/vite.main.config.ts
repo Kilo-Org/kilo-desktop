@@ -10,7 +10,6 @@ import {
 	createViteEnvironmentDefinitions,
 	getBuildEnvironment,
 	requireViteEnvironmentVariable,
-	shouldUploadSentrySourceMaps,
 } from "./config/build-environment.js";
 import { getReleaseTrack, getUpdatePublishUrls } from "./config/release.js";
 import appInfo from "./package.json";
@@ -23,7 +22,7 @@ export default defineConfig(({ command }) => {
 	const viteEnvironment = loadEnv(environment, root, "VITE_");
 	requireViteEnvironmentVariable(environment, viteEnvironment, "VITE_AUTH_CLIENT_ID");
 
-	const uploadSourcemaps = shouldUploadSentrySourceMaps(track, process.env.SENTRY_AUTH_TOKEN);
+	const uploadSourcemaps = Boolean(process.env.SENTRY_AUTH_TOKEN);
 
 	return {
 		plugins: [

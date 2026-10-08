@@ -11,13 +11,6 @@ export function getBuildEnvironment(
 	return command === "serve" ? "development" : releaseTrack;
 }
 
-export function shouldUploadSentrySourceMaps(
-	releaseTrack: ReleaseTrack,
-	authToken: string | undefined,
-): boolean {
-	return releaseTrack === "stable" && Boolean(authToken);
-}
-
 /** Fail during bundling rather than leaving login broken at runtime. */
 export function requireViteEnvironmentVariable(
 	environment: AppEnvironment,

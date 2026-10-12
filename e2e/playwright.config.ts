@@ -35,6 +35,11 @@ export default defineConfig({
 	globalSetup: "./global-setup.ts",
 	testDir: repoRoot,
 	testMatch: ["e2e/specs/**/*.spec.ts", "plugins/*/e2e/specs/**/*.spec.ts"],
+	// testIgnore matches against absolute paths. Anchoring to repoRoot ensures
+	// running from inside a .kilo/worktrees/<name> checkout (where repoRoot is
+	// inside .kilo/worktrees/) still discovers real tests and only ignores
+	// sibling worktrees under the same .kilo/ directory.
+	testIgnore: [path.join(repoRoot, ".kilo", "**"), path.join(repoRoot, "node_modules", "**")],
 	...(selectedGrep ? { grep: selectedGrep } : {}),
 	...(shard ? { shard } : {}),
 	outputDir: path.join(repoRoot, "test-results"),

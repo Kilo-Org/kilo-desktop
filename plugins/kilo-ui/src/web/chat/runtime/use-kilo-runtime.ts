@@ -68,6 +68,8 @@ export interface UseKiloRuntimeOptions {
 	onPermissionEvent?: (event: OpenCodeServerEvent) => boolean;
 	/** Fires after the event stream reconnects. */
 	onStreamReconnected?: () => void;
+	/** Sees each live event after it reaches `sessionActivity`. */
+	onLiveEvent?: (event: OpenCodeServerEvent) => void;
 }
 
 export function useKiloRuntime({
@@ -90,6 +92,7 @@ export function useKiloRuntime({
 	getKnownCommandNames,
 	onPermissionEvent,
 	onStreamReconnected,
+	onLiveEvent,
 }: UseKiloRuntimeOptions): AssistantRuntime {
 	// Refs so prompt injection always sees the latest composer selection even when
 	// RemoteThreadList keeps a stale defaultAgent/defaultModel closed over in onNew.
@@ -114,6 +117,8 @@ export function useKiloRuntime({
 	onPermissionEventRef.current = onPermissionEvent;
 	const onStreamReconnectedRef = useRef(onStreamReconnected);
 	onStreamReconnectedRef.current = onStreamReconnected;
+	const onLiveEventRef = useRef(onLiveEvent);
+	onLiveEventRef.current = onLiveEvent;
 
 	const promptGetters = useMemo(
 		() => ({
@@ -154,6 +159,7 @@ export function useKiloRuntime({
 				onSessionInitializedRef.current?.(threadId, info),
 			onPermissionEvent: (event) => onPermissionEventRef.current?.(event) ?? false,
 			onStreamReconnected: () => onStreamReconnectedRef.current?.(),
+			onLiveEvent: (event) => onLiveEventRef.current?.(event),
 			...(onSessionCreateFailed ? { onSessionCreateFailed } : {}),
 			...(sessionActivity ? { sessionActivity } : {}),
 		});

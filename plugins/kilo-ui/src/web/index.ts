@@ -3,6 +3,8 @@ export { AccountSettings } from "./account/AccountSettings.js";
 export { kiloUiBrowserRegister as browserRegister } from "./browserRegister.js";
 export { KiloProvidersNavIcon } from "./providers/KiloProvidersNavIcon.js";
 export { KiloProvidersSettings } from "./providers/KiloProvidersSettings.js";
+export { NotificationSettings } from "./chat/notifications/NotificationSettings.js";
+export { BellIcon as NotificationsNavIcon } from "lucide-react";
 export { ChatFeatureProvider } from "./chat/ChatFeatureProvider.js";
 export { ChatPage, ChatPageHeaderActions, ChatPageHeaderLeading } from "./chat/ChatPage.js";
 export { OnboardingProvider } from "./onboarding/OnboardingProvider.js";

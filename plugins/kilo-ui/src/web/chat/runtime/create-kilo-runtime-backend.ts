@@ -100,6 +100,8 @@ export interface CreateKiloRuntimeBackendOptions extends PromptOptionGetters {
 	onPermissionEvent?: (event: OpenCodeServerEvent) => boolean;
 	/** Fires after the event stream reconnects, once events may have been missed. */
 	onStreamReconnected?: () => void;
+	/** Sees each live event after it reaches `sessionActivity` (held permissions excluded). */
+	onLiveEvent?: (event: OpenCodeServerEvent) => void;
 }
 
 export type KiloRuntimeBackend = OpenCodeRuntimeBackend & {
@@ -122,6 +124,7 @@ export function createKiloRuntimeBackend({
 	sessionActivity,
 	onPermissionEvent,
 	onStreamReconnected,
+	onLiveEvent,
 }: CreateKiloRuntimeBackendOptions): KiloRuntimeBackend {
 	const directoriesBySessionId = new Map<string, string>();
 	const clientsByDirectory = new Map<string, KiloClient>();
@@ -448,6 +451,7 @@ export function createKiloRuntimeBackend({
 					}
 					if (!sessionActivity || heldPermissionEvents.has(event)) return;
 					sessionActivity.getState().applyEvent(event);
+					onLiveEvent?.(event);
 					if (PROMPT_ASKED_EVENT_TYPES.has(event.type)) {
 						void hydratePromptAncestry(globalClient, sessionActivity).catch(() => undefined);
 					}

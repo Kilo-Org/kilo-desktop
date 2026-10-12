@@ -5,9 +5,12 @@ type ChatNavigation = {
 	navigate(path: string): void;
 };
 
+export function isChatRoutePath(path: string): boolean {
+	return path === CHAT_ROUTE_PATH || path.startsWith(`${CHAT_ROUTE_PATH}/`);
+}
+
 export function navigateToChat(navigation: ChatNavigation): void {
-	const path = navigation.location.peek().path;
-	if (path !== CHAT_ROUTE_PATH && !path.startsWith(`${CHAT_ROUTE_PATH}/`)) {
+	if (!isChatRoutePath(navigation.location.peek().path)) {
 		navigation.navigate(CHAT_ROUTE_PATH);
 	}
 }

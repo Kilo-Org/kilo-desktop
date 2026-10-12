@@ -157,6 +157,7 @@ describe("PLUGIN_SETTINGS", () => {
 			"Appearance",
 			"Conda Environments",
 			"Notebooks",
+			"Notifications",
 			"Privacy",
 		]);
 	});

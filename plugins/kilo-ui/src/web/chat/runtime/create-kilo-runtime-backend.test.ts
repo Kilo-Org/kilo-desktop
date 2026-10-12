@@ -287,7 +287,7 @@ describe("createKiloRuntimeBackend", () => {
 		expect(eventCallOptions?.signal?.aborted).toBe(true);
 	});
 
-	it("holds auto-approved permission requests back from session activity", async () => {
+	it("holds auto-approved permission requests back from session activity and live listeners", async () => {
 		const event = vi.fn(async () => ({
 			stream: (async function* () {
 				yield {
@@ -310,11 +310,13 @@ describe("createKiloRuntimeBackend", () => {
 			(permissionEvent: { properties: Record<string, unknown> }) =>
 				permissionEvent.properties["id"] === "held",
 		);
+		const onLiveEvent = vi.fn();
 		const backend = createKiloRuntimeBackend({
 			connectionPromise: Promise.resolve(connection),
 			prepareSession: vi.fn(),
 			sessionActivity,
 			onPermissionEvent,
+			onLiveEvent,
 		});
 		const source = backend.createEventSource();
 		const listener = vi.fn();
@@ -331,6 +333,10 @@ describe("createKiloRuntimeBackend", () => {
 				}),
 			);
 			expect(sessionActivity.getState().sessions["ses-1"]?.pendingPermissionIds).toEqual(["shown"]);
+			expect(onLiveEvent.mock.calls.map(([live]) => live.properties.id ?? live.type)).toEqual([
+				"shown",
+				"session.idle",
+			]);
 		} finally {
 			unsubscribe();
 			source.dispose();

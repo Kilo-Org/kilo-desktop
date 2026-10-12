@@ -73,6 +73,7 @@ import {
 	resolvePrepareSessionWorktreeInput,
 } from "./git-draft-selection.js";
 import { useWorktreeBranchNamer } from "./use-worktree-branch-namer.js";
+import { useChatNotifier } from "./notifications/use-chat-notifier.js";
 import { createKiloDirectoryClient } from "./runtime/create-kilo-runtime-client.js";
 import { createSourceControlWriter } from "./source-control-writer.js";
 import { WorktreeSetupProvider } from "./worktree-setup/WorktreeSetupContext.js";
@@ -335,6 +336,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		hasWorktreeWork: (input) => sdk.client["chat.hasWorktreeWork"](input),
 		log: (message) => console.warn(`[kilo-ui] branch naming: ${message}`),
 	});
+	const onLiveEvent = useChatNotifier(sdk, sessionActivity);
 
 	const catalogQuery = useKiloModelCatalog(connection.data, connection.dataUpdatedAt);
 	const gatewayModelDetails = useQuery({
@@ -523,6 +525,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		getKnownCommandNames: () => knownCommandNamesRef.current,
 		onPermissionEvent,
 		onStreamReconnected,
+		...(onLiveEvent ? { onLiveEvent } : {}),
 	});
 
 	const aui = useAui({

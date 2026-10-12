@@ -50,6 +50,7 @@ describe("useKiloRuntime", () => {
 		const onError = vi.fn();
 		const onSessionInitialized = vi.fn();
 		const onPermissionEvent = vi.fn(() => true);
+		const onLiveEvent = vi.fn();
 
 		renderHook(() =>
 			useKiloRuntime({
@@ -60,6 +61,7 @@ describe("useKiloRuntime", () => {
 				onError,
 				onSessionInitialized,
 				onPermissionEvent,
+				onLiveEvent,
 			}),
 		);
 
@@ -76,6 +78,7 @@ describe("useKiloRuntime", () => {
 			onSessionInitialized: expect.any(Function),
 			onPermissionEvent: expect.any(Function),
 			onStreamReconnected: expect.any(Function),
+			onLiveEvent: expect.any(Function),
 			onSessionCreateFailed,
 		});
 		const backendOptions = vi.mocked(createKiloRuntimeBackend).mock.calls[0]?.[0];
@@ -91,6 +94,8 @@ describe("useKiloRuntime", () => {
 		};
 		expect(backendOptions?.onPermissionEvent?.(permissionEvent)).toBe(true);
 		expect(onPermissionEvent).toHaveBeenCalledWith(permissionEvent);
+		backendOptions?.onLiveEvent?.(permissionEvent);
+		expect(onLiveEvent).toHaveBeenCalledWith(permissionEvent);
 		expect(useOpenCodeRuntime).toHaveBeenCalledWith({
 			backend: expect.objectContaining({ globalClient: {} }),
 			defaultModel: { providerID: "anthropic", modelID: "claude-sonnet" },
@@ -280,6 +285,7 @@ describe("useKiloRuntime", () => {
 			onSessionInitialized: expect.any(Function),
 			onPermissionEvent: expect.any(Function),
 			onStreamReconnected: expect.any(Function),
+			onLiveEvent: expect.any(Function),
 			sessionActivity,
 		});
 	});

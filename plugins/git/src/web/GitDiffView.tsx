@@ -77,6 +77,7 @@ const PATCH_TOO_LARGE_STATUS = 413;
 const DEFAULT_FILES_WIDTH = 224;
 const MIN_FILES_WIDTH = 160;
 const FILES_WIDTH_STORAGE_KEY = "git.diffFilesWidth";
+const TREE_COLLAPSED_STORAGE_KEY = "git.diffTreeCollapsed:v1";
 
 /**
  * Storage is untrusted: accept only a finite positive number, anything else
@@ -185,9 +186,14 @@ function GitDiffTabContent({
 	const groupRef = useRef<HTMLDivElement | null>(null);
 	const rootRef = useRef<HTMLDivElement | null>(null);
 	const [collapseMode, setCollapseMode] = useState<"expanded" | "collapsed">("expanded");
-	// Tree collapse is session-only state that must live here because the
-	// header (outside the panel group) renders the toggle.
-	const [treeCollapsed, setTreeCollapsed] = useState(false);
+	// Tree collapse must live here because the header (outside the panel
+	// group) renders the toggle. Strict `=== true` so a non-boolean stored
+	// value falls back to open.
+	const [storedTreeCollapsed, setTreeCollapsed] = useLocalStorage(
+		TREE_COLLAPSED_STORAGE_KEY,
+		false,
+	);
+	const treeCollapsed = storedTreeCollapsed === true;
 	// Destructured per field so the CodeView `options` memo below keeps its
 	// fine-grained primitive deps — a whole `opts` dep would churn the options
 	// revision across every virtualized item on any future added field.
@@ -195,12 +201,11 @@ function GitDiffTabContent({
 		useDiffOptions()[0];
 	const appearance = useSyncExternalStore(sdk.theme.subscribe, sdk.theme.appearance);
 	const { mode: themeType, shiki } = appearance;
-	// File-tree width persistence: read once at mount, write on user resize.
-	// Multiple Changes tabs may be mounted at once and react-use does not
-	// sync same-tab instances; each tab reads at mount and its writes blindly
-	// win — the same read-once/blind-write behavior this used when the
-	// helpers were manual. Full-value writes only, so the stale-closure
-	// caveat from diff-options.tsx does not apply here.
+	// File-tree width and collapse persistence: read once at mount, write on
+	// user action. Multiple Changes tabs may be mounted at once and react-use
+	// does not sync same-tab instances; each tab reads at mount and its
+	// writes blindly win. Full-value writes only — react-use's functional
+	// setter form reads stale state (see diff-options.tsx).
 	const [storedFilesWidth, setStoredFilesWidth] = useLocalStorage<number | undefined>(
 		FILES_WIDTH_STORAGE_KEY,
 		undefined,
@@ -336,12 +341,12 @@ function GitDiffTabContent({
 				Math.min(maxWidth, Math.max(MIN_FILES_WIDTH, (treeCollapsed ? 0 : filesWidth) - delta)),
 			);
 		},
-		[filesWidth, setStoredFilesWidth, treeCollapsed],
+		[filesWidth, setStoredFilesWidth, setTreeCollapsed, treeCollapsed],
 	);
 
 	const toggleTreeCollapsed = useCallback(() => {
-		setTreeCollapsed((collapsed) => !collapsed);
-	}, []);
+		setTreeCollapsed(!treeCollapsed);
+	}, [setTreeCollapsed, treeCollapsed]);
 
 	const loading = loadState === "fetching" || loadState === "streaming";
 	// First-load `loading` and in-place `refreshing` share one busy flag for

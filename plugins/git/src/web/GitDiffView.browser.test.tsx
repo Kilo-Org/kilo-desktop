@@ -410,6 +410,48 @@ index 0000000..3333333
 		});
 	});
 
+	it("persists the file tree panel toggle", async () => {
+		stubFetch(() => new Response(patchResponseStream()));
+		renderView();
+		await waitForTreePath("README.md");
+
+		fireEvent.click(document.querySelector('[data-qa-id="git-diff-tree-toggle"]')!);
+		await vi.waitFor(() => {
+			expect(localStorage.getItem("git.diffTreeCollapsed:v1")).toBe("true");
+		});
+
+		fireEvent.click(document.querySelector('[data-qa-id="git-diff-tree-toggle"]')!);
+		await vi.waitFor(() => {
+			expect(localStorage.getItem("git.diffTreeCollapsed:v1")).toBe("false");
+		});
+	});
+
+	it("mounts with the file tree panel hidden when it was persisted hidden", async () => {
+		localStorage.setItem("git.diffTreeCollapsed:v1", "true");
+		stubFetch(() => new Response(patchResponseStream()));
+		renderView();
+		await waitForTreePath("README.md");
+
+		await expect
+			.element(page.getByTestId("git-diff-tree-toggle"))
+			.toHaveAttribute("aria-pressed", "true");
+		expect(filesPanel()?.style.width).toBe("0px");
+	});
+
+	it("mounts with the file tree panel shown when the persisted toggle is not a boolean", async () => {
+		localStorage.setItem("git.diffTreeCollapsed:v1", '"yes"');
+		stubFetch(() => new Response(patchResponseStream()));
+		renderView();
+		await waitForTreePath("README.md");
+
+		await expect
+			.element(page.getByTestId("git-diff-tree-toggle"))
+			.toHaveAttribute("aria-pressed", "false");
+		await vi.waitFor(() => {
+			expect(filesPanel()?.style.width).toBe("224px");
+		});
+	});
+
 	it("resizes the file tree panel from the keyboard, clamped to the minimum width", async () => {
 		localStorage.setItem("git.diffFilesWidth", "170");
 		stubFetch(() => new Response(patchResponseStream()));
@@ -470,5 +512,6 @@ index 0000000..3333333
 		await expect
 			.element(page.getByTestId("git-diff-tree-toggle"))
 			.toHaveAttribute("aria-pressed", "false");
+		expect(localStorage.getItem("git.diffTreeCollapsed:v1")).toBe("false");
 	});
 });

@@ -10,13 +10,13 @@ import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 import type { AuthSession } from "@kilo-desktop/feature-sdk";
 
 import {
+	KILO_TERMS_VERSION,
 	ONBOARDING_VERSION,
 	onboardingContract,
 	type OnboardingState,
 	type TermsAcceptance,
 } from "../../contracts/onboarding/schemas.js";
 import type { KiloGlobalConnection } from "../../contracts/chat/schemas.js";
-import { KILO_TERMS_VERSION } from "../account/kilo-auth.js";
 import { ChatConnectionProvider } from "../chat/connection/ChatConnectionContext.js";
 import { workspacesContract, type Workspace } from "../../contracts/workspaces/schemas.js";
 import { KiloAuthContext, type KiloAuthContextValue } from "../account/KiloAuthContext.js";
@@ -110,6 +110,12 @@ const createdWorkspace: Workspace = {
 	updatedAt: 1,
 };
 
+const acceptedTerms: TermsAcceptance = {
+	version: KILO_TERMS_VERSION,
+	acceptedAt: 1,
+	linkedAccounts: [],
+};
+
 function idleAuth(overrides: Partial<KiloAuthContextValue> = {}): KiloAuthContextValue {
 	return {
 		isLoading: false,
@@ -156,6 +162,9 @@ function renderOnboarding(options: {
 	flags?: Record<string, unknown>;
 	session?: AuthSession;
 	terms?: TermsAcceptance | null;
+	getTerms?: () => Promise<TermsAcceptance | null>;
+	/** Runs before the fake records an acceptance; throw to fail the write. */
+	beforeAcceptTerms?: () => Promise<void>;
 }) {
 	let onboarding: OnboardingState = options.onboarding ?? {
 		outcome: null,
@@ -205,7 +214,7 @@ function renderOnboarding(options: {
 				onboarding = { outcome: "skipped", closedAt: Date.now(), version: ONBOARDING_VERSION };
 				return onboarding;
 			},
-			"onboarding.terms.get": async () => terms,
+			"onboarding.terms.get": options.getTerms ?? (async () => terms),
 			"onboarding.terms.accept": async ({
 				version,
 				accountKey,
@@ -213,6 +222,7 @@ function renderOnboarding(options: {
 				version: string;
 				accountKey?: string | undefined;
 			}) => {
+				await options.beforeAcceptTerms?.();
 				const base: TermsAcceptance =
 					terms?.version === version
 						? terms
@@ -440,29 +450,115 @@ describe("OnboardingProvider", () => {
 		expect(trackedTerms(track)).toHaveLength(1);
 	});
 
-	it("does not report anything for a signed-in user who never accepted", async () => {
+	it("does not link anything for a signed-in user who never accepted", async () => {
 		const { screen, track } = renderOnboarding({
 			onboarding: { outcome: "skipped", closedAt: 1, version: ONBOARDING_VERSION },
 			session: { status: "authenticated", user: { email: "ada@example.com" } },
 		});
 
-		await expect.element(screen.getByTestId("app-body")).toBeVisible();
+		await expect.element(screen.getByTestId("onboarding-welcome")).toBeVisible();
 		await new Promise((resolve) => setTimeout(resolve, 100));
 		expect(track).not.toHaveBeenCalled();
 	});
 
-	it("persists a skip and closes the overlay when dismissed with Escape", async () => {
+	it("keeps the welcome step open on Escape until the terms are accepted", async () => {
 		const { screen, sdk, track } = renderOnboarding({});
 
 		await expect.element(screen.getByTestId("onboarding-welcome")).toBeVisible();
 		await userEvent.keyboard("{Escape}");
+		await new Promise((resolve) => setTimeout(resolve, 100));
+
+		await expect.element(screen.getByTestId("onboarding-welcome")).toBeVisible();
+		expect(await sdk.invoke("onboarding.get")).toMatchObject({ outcome: null });
+		expect(trackedLifecycle(track)).toEqual([{ event: "Onboarding Shown", data: {} }]);
+	});
+
+	it("gates a user who skipped onboarding without accepting the terms, then lets them in", async () => {
+		const { screen, sdk, track } = renderOnboarding({
+			onboarding: { outcome: "skipped", closedAt: 1, version: ONBOARDING_VERSION },
+		});
+
+		await expect.element(screen.getByTestId("onboarding-welcome")).toBeVisible();
+		await userEvent.keyboard("{Escape}");
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		await expect.element(screen.getByTestId("onboarding-welcome")).toBeVisible();
+
+		await screen.getByTestId("onboarding-accept-terms").click();
+		await screen.getByTestId("onboarding-get-started").click();
 
 		await expect.element(screen.getByTestId("onboarding-overlay")).not.toBeInTheDocument();
-		await expect.poll(() => sdk.invoke("onboarding.get")).toMatchObject({ outcome: "skipped" });
-		expect(trackedLifecycle(track)).toEqual([
-			{ event: "Onboarding Shown", data: {} },
-			{ event: "Onboarding Skipped", data: {} },
-		]);
+		await expect.element(screen.getByTestId("app-body")).toBeVisible();
+		expect(await sdk.invoke("onboarding.terms.get")).toMatchObject({
+			version: KILO_TERMS_VERSION,
+		});
+		expect(await sdk.invoke("onboarding.get")).toMatchObject({ outcome: "skipped" });
+		expect(trackedLifecycle(track)).toEqual([]);
+		await expect
+			.poll(() => trackedTerms(track).map(({ event }) => event))
+			.toEqual(["Terms Accepted"]);
+	});
+
+	it("gates again when the terms version changes", async () => {
+		const { screen } = renderOnboarding({
+			onboarding: { outcome: "completed", closedAt: 1, version: ONBOARDING_VERSION },
+			terms: { version: "2020-01-01", acceptedAt: 1, linkedAccounts: [] },
+		});
+
+		await expect.element(screen.getByTestId("onboarding-welcome")).toBeVisible();
+	});
+
+	it("stays on the welcome step when recording the acceptance fails, and retries", async () => {
+		let failAccept = true;
+		const { screen } = renderOnboarding({
+			beforeAcceptTerms: async () => {
+				if (failAccept) throw new Error("kv write failed");
+			},
+		});
+
+		await screen.getByTestId("onboarding-accept-terms").click();
+		await screen.getByTestId("onboarding-get-started").click();
+
+		await expect.element(screen.getByTestId("onboarding-terms-error")).toBeVisible();
+		await expect.element(screen.getByTestId("onboarding-welcome")).toBeVisible();
+
+		failAccept = false;
+		await screen.getByTestId("onboarding-get-started").click();
+		await expect.element(screen.getByRole("heading", { name: "Sign in to Kilo" })).toBeVisible();
+	});
+
+	it("gates the app when the terms record cannot be read", async () => {
+		const { screen } = renderOnboarding({
+			onboarding: { outcome: "completed", closedAt: 1, version: ONBOARDING_VERSION },
+			getTerms: async () => {
+				throw new Error("kv unavailable");
+			},
+		});
+
+		await expect.element(screen.getByTestId("onboarding-welcome")).toBeVisible();
+	});
+
+	it("keeps the app covered while the terms record is loading", async () => {
+		const { screen } = renderOnboarding({
+			onboarding: { outcome: "completed", closedAt: 1, version: ONBOARDING_VERSION },
+			getTerms: () => new Promise<TermsAcceptance | null>(() => undefined),
+		});
+
+		await expect.element(screen.getByTestId("onboarding-pending")).toBeInTheDocument();
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		await expect.element(screen.getByTestId("onboarding-pending")).toBeInTheDocument();
+	});
+
+	it("gates the app when Kilo is unavailable and the terms are not accepted", async () => {
+		const { screen } = renderOnboarding({
+			auth: { connectionUnavailable: true },
+		});
+
+		await expect.element(screen.getByTestId("onboarding-welcome")).toBeVisible();
+		await screen.getByTestId("onboarding-accept-terms").click();
+		await screen.getByTestId("onboarding-get-started").click();
+
+		await expect.element(screen.getByTestId("onboarding-overlay")).not.toBeInTheDocument();
+		await expect.element(screen.getByTestId("app-body")).toBeVisible();
 	});
 
 	it("advances through sign-in and workspace with Skip, then completes on the features slide", async () => {
@@ -536,6 +632,7 @@ describe("OnboardingProvider", () => {
 	it("hides the wizard when onboarding was previously completed", async () => {
 		const { screen } = renderOnboarding({
 			onboarding: { outcome: "completed", closedAt: 1, version: ONBOARDING_VERSION },
+			terms: acceptedTerms,
 			workspaces: { workspaces: [createdWorkspace] },
 		});
 
@@ -546,6 +643,7 @@ describe("OnboardingProvider", () => {
 	it("hides the wizard when onboarding was previously skipped", async () => {
 		const { screen } = renderOnboarding({
 			onboarding: { outcome: "skipped", closedAt: 1, version: ONBOARDING_VERSION },
+			terms: acceptedTerms,
 			workspaces: { workspaces: [createdWorkspace] },
 		});
 
@@ -607,7 +705,8 @@ describe("OnboardingProvider", () => {
 			onboarding: { outcome: "completed", closedAt: 1, version: null },
 		});
 
-		await expect.element(screen.getByTestId("onboarding-welcome")).toBeVisible();
+		await continueFromWelcome(screen);
+		await expect.element(screen.getByRole("heading", { name: "Sign in to Kilo" })).toBeVisible();
 		await userEvent.keyboard("{Escape}");
 
 		await expect.element(screen.getByTestId("onboarding-overlay")).not.toBeInTheDocument();
@@ -619,6 +718,7 @@ describe("OnboardingProvider", () => {
 	it("lifts the cover for a returning user without showing the wizard", async () => {
 		const { screen } = renderOnboarding({
 			onboarding: { outcome: "completed", closedAt: 1, version: ONBOARDING_VERSION },
+			terms: acceptedTerms,
 		});
 
 		await expect.element(screen.getByTestId("app-body")).toBeVisible();
@@ -626,8 +726,9 @@ describe("OnboardingProvider", () => {
 		await expect.element(screen.getByTestId("onboarding-overlay")).not.toBeInTheDocument();
 	});
 
-	it("hides the wizard when persisted onboarding state cannot be read", async () => {
+	it("hides the wizard for an accepted user when persisted onboarding state cannot be read", async () => {
 		const { screen } = renderOnboarding({
+			terms: acceptedTerms,
 			get: async () => {
 				throw new Error("kv unavailable");
 			},
@@ -638,8 +739,9 @@ describe("OnboardingProvider", () => {
 		await expect.element(screen.getByTestId("onboarding-pending")).not.toBeInTheDocument();
 	});
 
-	it("hides the wizard when Kilo is unavailable", async () => {
+	it("hides the wizard for an accepted user when Kilo is unavailable", async () => {
 		const { screen } = renderOnboarding({
+			terms: acceptedTerms,
 			auth: { connectionUnavailable: true },
 		});
 
@@ -721,11 +823,13 @@ describe("OnboardingProvider", () => {
 	it("reopens a previously skipped wizard when force-onboarding is on", async () => {
 		const { screen } = renderOnboarding({
 			onboarding: { outcome: "skipped", closedAt: 1, version: ONBOARDING_VERSION },
+			terms: acceptedTerms,
 			flags: { [FORCE_ONBOARDING_FLAG]: true },
 		});
 
 		await expect.element(screen.getByTestId("onboarding-overlay")).toBeVisible();
 
+		await continueFromWelcome(screen);
 		await userEvent.keyboard("{Escape}");
 		await expect.element(screen.getByTestId("onboarding-overlay")).not.toBeInTheDocument();
 	});
@@ -905,7 +1009,7 @@ describe("OnboardingProvider", () => {
 		});
 
 		it("still saves onboarding as skipped when dismissed with Escape", async () => {
-			const { screen, sdk } = renderOnboarding({ auth: { authenticated: true } });
+			const { screen, sdk, track } = renderOnboarding({ auth: { authenticated: true } });
 			await reachWorkStyle(screen);
 
 			await userEvent.keyboard("{Escape}");
@@ -913,6 +1017,10 @@ describe("OnboardingProvider", () => {
 			await expect.element(screen.getByTestId("onboarding-overlay")).not.toBeInTheDocument();
 			await expect.poll(() => sdk.invoke("onboarding.get")).toMatchObject({ outcome: "skipped" });
 			expect(kilo.updates).toEqual([]);
+			expect(trackedLifecycle(track)).toEqual([
+				{ event: "Onboarding Shown", data: {} },
+				{ event: "Onboarding Skipped", data: {} },
+			]);
 		});
 	});
 });

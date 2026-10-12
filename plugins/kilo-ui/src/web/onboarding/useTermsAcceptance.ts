@@ -3,8 +3,12 @@ import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import type { AuthSession, SDK } from "@kilo-desktop/feature-sdk";
 import { useSdkMutation, useSdkQuery } from "@kilo-desktop/sdk-react";
 
-import type { OnboardingService, TermsAcceptance } from "../../contracts/onboarding/schemas.js";
-import { KILO_TERMS_URL, KILO_TERMS_VERSION } from "../account/kilo-auth.js";
+import {
+	KILO_TERMS_VERSION,
+	type OnboardingService,
+	type TermsAcceptance,
+} from "../../contracts/onboarding/schemas.js";
+import { KILO_TERMS_URL } from "../account/kilo-auth.js";
 
 /**
  * Person properties marking the acceptance. `$set_once` keeps the first
@@ -34,10 +38,11 @@ async function accountKey(accountId: string): Promise<string> {
 }
 
 /**
- * Records terms-of-service acceptance and attributes it to signed-in accounts
- * in telemetry.
+ * Reads and records terms-of-service acceptance, and attributes it to
+ * signed-in accounts in telemetry. `accepted` drives the onboarding terms gate.
  *
- * `record()` persists the acceptance locally and sends "Terms Accepted" — keyed
+ * `record()` persists the acceptance locally (resolving once the terms record
+ * is refetched, so the gate lifts in step) and sends "Terms Accepted" — keyed
  * by email when a session already exists, otherwise by the install's anonymous
  * id. Whenever a session is authenticated, this also sends "Terms Acceptance
  * Linked" on that account once, setting the acceptance as person properties:
@@ -58,7 +63,12 @@ async function accountKey(accountId: string): Promise<string> {
  * Telemetry is still subject to the user's data-collection setting; the local
  * record is not.
  */
-export function useTermsAcceptance(sdk: SDK<OnboardingService>): { record: () => void } {
+export function useTermsAcceptance(sdk: SDK<OnboardingService>): {
+	/** Whether the current terms version is accepted; `null` while the record loads. */
+	accepted: boolean | null;
+	/** Resolves once the acceptance is persisted; rejects if it could not be. */
+	record: () => Promise<void>;
+} {
 	const session = useSyncExternalStore(sdk.auth.subscribe, sdk.auth.peek, sdk.auth.peek);
 	const accountId = signedInAccountId(session);
 	const terms = useSdkQuery(sdk, "onboarding.terms.get");
@@ -70,17 +80,17 @@ export function useTermsAcceptance(sdk: SDK<OnboardingService>): { record: () =>
 	});
 	const linking = useRef<string | null>(null);
 
-	const record = useCallback(() => {
+	const record = useCallback(async () => {
 		const previous = terms.data ?? null;
-		void (async () => {
-			const key = accountId ? await accountKey(accountId) : undefined;
-			const acceptance = await acceptTerms({
-				version: KILO_TERMS_VERSION,
-				...(key !== undefined ? { accountKey: key } : {}),
-			});
-			if (previous?.version === acceptance.version) return;
-			await sdk.telemetry.track({ event: "Terms Accepted", data: termsProperties(acceptance) });
-		})().catch(() => undefined);
+		const key = accountId ? await accountKey(accountId) : undefined;
+		const acceptance = await acceptTerms({
+			version: KILO_TERMS_VERSION,
+			...(key !== undefined ? { accountKey: key } : {}),
+		});
+		if (previous?.version === acceptance.version) return;
+		void sdk.telemetry
+			.track({ event: "Terms Accepted", data: termsProperties(acceptance) })
+			.catch(() => undefined);
 	}, [acceptTerms, accountId, sdk.telemetry, terms.data]);
 
 	const acceptance = terms.data ?? null;
@@ -106,5 +116,7 @@ export function useTermsAcceptance(sdk: SDK<OnboardingService>): { record: () =>
 		};
 	}, [acceptance, accountId, linkAccount, sdk.telemetry]);
 
-	return { record };
+	// A record that cannot be read counts as not accepted: the gate fails closed.
+	const accepted = terms.isPending ? null : acceptance?.version === KILO_TERMS_VERSION;
+	return { accepted, record };
 }

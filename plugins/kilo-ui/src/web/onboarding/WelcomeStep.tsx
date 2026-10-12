@@ -31,10 +31,15 @@ const blurUp = (delay: number) => ({
  */
 export function WelcomeStep({
 	termsAccepted,
+	busy = false,
+	error = null,
 	onTermsAcceptedChange,
 	onContinue,
 }: {
 	termsAccepted: boolean;
+	/** Recording the acceptance is in flight. */
+	busy?: boolean;
+	error?: string | null;
 	onTermsAcceptedChange: (accepted: boolean) => void;
 	onContinue: () => void;
 }) {
@@ -93,9 +98,14 @@ export function WelcomeStep({
 						. This product is not intended for production use.
 					</span>
 				</label>
+				{error ? (
+					<p role="alert" className="text-destructive text-sm" data-qa-id="onboarding-terms-error">
+						{error}
+					</p>
+				) : null}
 				<Button
 					type="button"
-					disabled={!termsAccepted}
+					disabled={!termsAccepted || busy}
 					onClick={onContinue}
 					data-qa-id="onboarding-get-started"
 				>

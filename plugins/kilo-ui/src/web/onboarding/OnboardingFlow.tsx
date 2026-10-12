@@ -58,8 +58,8 @@ const STEP_MOTION = {
 } as const;
 
 /**
- * Full-window onboarding frame. A modal dialog (focus trap, Escape to leave)
- * stretched over the whole window: a draggable title bar with the exit and the
+ * Full-window onboarding frame. A modal dialog (focus trap; Escape leaves once
+ * past the welcome step) stretched over the whole window: a draggable title bar with the exit and the
  * animated step canvas. Every step after the welcome splash sits in one
  * borderless card between the progress bars and its actions; sign-in and
  * workspace split it with a showcase `aside`, the feature tour fills it.
@@ -77,6 +77,7 @@ export function OnboardingFlow({
 	progressSteps = PROGRESS_STEPS,
 	heading,
 	termsAccepted = false,
+	termsError = null,
 	onTermsAcceptedChange = () => undefined,
 	onBack,
 	onContinue,
@@ -101,11 +102,13 @@ export function OnboardingFlow({
 	heading?: { title: string; subtitle: string } | undefined;
 	/** Terms-of-service checkbox on the welcome step; gates Get started. */
 	termsAccepted?: boolean;
+	/** Shown on the welcome step when recording the acceptance failed. */
+	termsError?: string | null;
 	onTermsAcceptedChange?: (accepted: boolean) => void;
 	onBack: () => void;
 	onContinue: () => void;
 	onSkip: () => void;
-	/** Escape or "Exit setup": leave onboarding entirely rather than advancing a step. */
+	/** Escape or "Exit setup": leave onboarding entirely rather than advancing a step (ignored on welcome). */
 	onDismiss: () => void;
 	onJump: (step: OnboardingStepId) => void;
 	children?: ReactNode;
@@ -161,6 +164,8 @@ export function OnboardingFlow({
 									<motion.div key="welcome" className="flex flex-1 flex-col" {...STEP_MOTION}>
 										<WelcomeStep
 											termsAccepted={termsAccepted}
+											busy={busy}
+											error={termsError}
 											onTermsAcceptedChange={onTermsAcceptedChange}
 											onContinue={onContinue}
 										/>

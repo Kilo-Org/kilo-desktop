@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createFakeMainSdk } from "@kilo-desktop/testing";
 
+import { KILO_TERMS_VERSION } from "../../contracts/onboarding/schemas.js";
 import type { Workspace, WorkspaceCapabilities } from "../../contracts/workspaces/schemas.js";
 import { kiloUiBrowserRegister } from "../browserRegister.js";
 
@@ -139,10 +140,17 @@ describe("kiloUiBrowserRegister", () => {
 		expect(completed).toMatchObject({ outcome: "completed" });
 		await expect(sdk.invoke("onboarding.get")).resolves.toEqual(completed);
 		await expect(sdk.invoke("onboarding.skip")).resolves.toMatchObject({ outcome: "skipped" });
-		await expect(sdk.invoke("onboarding.terms.get")).resolves.toBeNull();
 		await expect(sdk.invoke("onboarding.terms.accept", { version: "v1" })).resolves.toMatchObject({
 			version: "v1",
 			linkedAccounts: [],
+		});
+		sdk.dispose();
+	});
+
+	it("treats the current terms as accepted, so the dev harness is not gated", async () => {
+		const sdk = boot();
+		await expect(sdk.invoke("onboarding.terms.get")).resolves.toMatchObject({
+			version: KILO_TERMS_VERSION,
 		});
 		sdk.dispose();
 	});

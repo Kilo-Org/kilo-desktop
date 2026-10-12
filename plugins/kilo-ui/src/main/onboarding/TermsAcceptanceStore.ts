@@ -1,6 +1,6 @@
 import type { KvStore, MainSdk } from "@kilo-desktop/feature-sdk";
 
-import type { TermsAcceptance } from "../../contracts/onboarding/schemas.js";
+import { KILO_TERMS_VERSION, type TermsAcceptance } from "../../contracts/onboarding/schemas.js";
 
 export interface PersistedTerms extends Record<string, unknown> {
 	version: string | null;
@@ -14,8 +14,10 @@ const NAMESPACE = "terms-acceptance";
 
 export type TermsStorage = Pick<KvStore<PersistedTerms>, "snapshot" | "set">;
 
-export function createInMemoryTermsStorage(): TermsStorage {
-	let value: PersistedTerms = { ...DEFAULTS, linkedAccounts: [] };
+export function createInMemoryTermsStorage(
+	initial: PersistedTerms = { ...DEFAULTS, linkedAccounts: [] },
+): TermsStorage {
+	let value: PersistedTerms = initial;
 	return {
 		snapshot: () => value,
 		set: (patch) => {
@@ -39,8 +41,11 @@ export function createInMemoryTermsStorage(): TermsStorage {
  * telemetry alias to the signed-in email doesn't: sign-ins on a later launch
  * and additional accounts on the same install.
  *
- * Desktop persists through durable KV; browser mode has no KV, so it injects
- * {@link createInMemoryTermsStorage} and the record lasts for the page session.
+ * Desktop persists through durable KV; browser mode (the dev harness) has no
+ * KV, so it injects {@link createInMemoryTermsStorage}, seeded as accepted.
+ * `KILO_SKIP_ONBOARDING=1` (packaged e2e, like `OnboardingStore`) swaps in
+ * memory storage seeded with the current terms, so the terms gate stays out of
+ * the way without writing to the profile.
  */
 export class TermsAcceptanceStore {
 	readonly #store: TermsStorage;
@@ -48,14 +53,22 @@ export class TermsAcceptanceStore {
 
 	constructor(
 		sdk: MainSdk,
-		now: () => number = Date.now,
-		store: TermsStorage = sdk.storage.kv<PersistedTerms>({
-			namespace: NAMESPACE,
-			defaults: DEFAULTS,
-		}),
+		options: {
+			now?: () => number;
+			storage?: TermsStorage;
+			env?: Record<string, string | undefined>;
+		} = {},
 	) {
-		this.#store = store;
-		this.#now = now;
+		this.#now = options.now ?? Date.now;
+		this.#store =
+			options.storage ??
+			(options.env?.KILO_SKIP_ONBOARDING === "1"
+				? createInMemoryTermsStorage({
+						version: KILO_TERMS_VERSION,
+						acceptedAt: 1,
+						linkedAccounts: [],
+					})
+				: sdk.storage.kv<PersistedTerms>({ namespace: NAMESPACE, defaults: DEFAULTS }));
 	}
 
 	get(): TermsAcceptance | null {

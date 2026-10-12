@@ -108,7 +108,7 @@ export function mainRegister(
 	};
 
 	const onboarding = new OnboardingStore(mainSdk);
-	const terms = new TermsAcceptanceStore(mainSdk);
+	const terms = new TermsAcceptanceStore(mainSdk, { env: process.env });
 	const onboardingApi: OnboardingService = {
 		"onboarding.get": async () => onboarding.get(),
 		"onboarding.complete": async () => onboarding.complete(),

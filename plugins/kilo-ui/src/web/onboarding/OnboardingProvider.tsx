@@ -72,8 +72,9 @@ const WORK_STYLE_INDEX = ONBOARDING_STEPS.indexOf("work-style");
  * First-run overlay: welcome splash → Kilo sign-in → work style → create a
  * workspace → feature overview. Skip advances past the sign-in or workspace
  * step (the work-style step has none: High autonomy is its no-write choice);
- * Escape leaves onboarding entirely and is persisted as skipped. Reaching the end
- * (or creating the workspace) is persisted as completed, so the wizard never
+ * past the welcome step, Escape leaves onboarding entirely and is persisted as
+ * skipped. Reaching the end (or creating the workspace) is persisted as
+ * completed, so the wizard never
  * returns. Creating the workspace records completion immediately, but the
  * overlay stays open for the feature slide — once the session opens the
  * wizard, only an explicit close in that session hides it. After creation
@@ -88,9 +89,14 @@ const WORK_STYLE_INDEX = ONBOARDING_STEPS.indexOf("work-style");
  * Continue advances only once the write succeeds; later steps can't be jumped
  * to until the step is applied.
  *
- * Get started requires accepting the terms of service; pressing it records the
- * acceptance locally and in telemetry, and `useTermsAcceptance` attributes it
- * to each account that signs in afterwards.
+ * Terms acceptance is a hard gate, separate from the wizard's outcome: while
+ * no acceptance of `KILO_TERMS_VERSION` is recorded locally (or the record
+ * can't be read), the welcome step covers the app and cannot be dismissed —
+ * regardless of a recorded complete/skip or Kilo being unavailable. If the
+ * wizard would otherwise stay hidden, accepting closes the overlay instead of
+ * replaying it. Get started advances only once the acceptance is persisted;
+ * `useTermsAcceptance` also reports it in telemetry and attributes it to each
+ * account that signs in afterwards.
  *
  * Existing workspaces do not suppress a first showing, but they skip the
  * workspace step: users who already have one (typically returning users seeing
@@ -117,6 +123,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 	const [chosenStep, setStep] = useState<OnboardingStepId | null>(null);
 	const [workspaceCreated, setWorkspaceCreated] = useState(false);
 	const [termsAccepted, setTermsAccepted] = useState(false);
+	const [termsError, setTermsError] = useState<string | null>(null);
 	const terms = useTermsAcceptance(onboardingSdk);
 	const forceFlag = useFeatureFlag(FORCE_ONBOARDING_FLAG);
 	const [closedThisSession, setClosedThisSession] = useState(false);
@@ -137,8 +144,15 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 
 	// Derived during render (not set from an effect) so the wizard is on screen
 	// in the same frame the persisted state resolves.
-	const step =
+	const wizardStep =
 		chosenStep ?? (view.status === "visible" && !closedThisSession ? view.initialStep : null);
+	// Terms are a hard gate, independent of the wizard: no recorded outcome,
+	// Escape, or Kilo connection state lets the app through without them.
+	const mustAcceptTerms = terms.accepted === false;
+	// Re-prompt for the terms alone when the wizard itself would stay hidden
+	// (finished or skipped before, or Kilo unavailable).
+	const termsOnly = mustAcceptTerms && wizardStep === null;
+	const step: OnboardingStepId | null = mustAcceptTerms ? "welcome" : wizardStep;
 
 	const close = () => {
 		setClosedThisSession(true);
@@ -189,7 +203,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 	};
 
 	useEffect(() => {
-		if (step === null || onboardingShown.current) return;
+		if (step === null || termsOnly || onboardingShown.current) return;
 		onboardingShown.current = true;
 		trackOnboarding("Onboarding Shown");
 	});
@@ -220,6 +234,16 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 				reason instanceof Error ? reason.message : "Could not save your work style.",
 			);
 		},
+	});
+
+	const acceptTerms = useMutation({
+		mutationFn: terms.record,
+		onMutate: () => setTermsError(null),
+		// The terms query is already refetched here, so the gate has lifted.
+		onSuccess: () => {
+			if (!termsOnly) setStep(nextStep("welcome"));
+		},
+		onError: () => setTermsError("Could not save your acceptance. Try again."),
 	});
 
 	const createWorkspace = useMutation({
@@ -253,11 +277,14 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 		},
 	});
 
-	if (step === null || auth.connectionUnavailable) {
+	if (step === null || (auth.connectionUnavailable && !mustAcceptTerms)) {
 		// Until we know whether to onboard, cover the app so it doesn't flash
-		// before the wizard; the app still mounts underneath. A failed read
-		// resolves to hidden and lifts the cover.
-		const pending = persisted.isPending && !auth.connectionUnavailable && !closedThisSession;
+		// before the wizard; the app still mounts underneath. A failed
+		// onboarding read resolves to hidden and lifts the cover; the terms
+		// record must load before the app is ever uncovered.
+		const pending =
+			terms.accepted === null ||
+			(persisted.isPending && !auth.connectionUnavailable && !closedThisSession);
 		return (
 			<>
 				{children}
@@ -272,7 +299,8 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 		);
 	}
 
-	const busy = skip.isPending || createWorkspace.isPending || applyStyle.isPending;
+	const busy =
+		skip.isPending || createWorkspace.isPending || applyStyle.isPending || acceptTerms.isPending;
 	const signedIn = auth.authenticated === true;
 
 	const finish = () => {
@@ -284,8 +312,8 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 
 	const onContinue = () => {
 		if (step === "welcome") {
-			if (!termsAccepted) return;
-			terms.record();
+			if (termsAccepted) acceptTerms.mutate();
+			return;
 		}
 		if (step === "work-style") {
 			if (workStyle) applyStyle.mutate(workStyle);
@@ -312,6 +340,9 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 	};
 
 	const onDismiss = () => {
+		// Covers every close request (Escape, any future affordance): the
+		// welcome step only opens onto the app through accepting the terms.
+		if (step === "welcome") return;
 		if (step === "features") {
 			finish();
 			return;
@@ -357,6 +388,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
 				onDismiss={onDismiss}
 				progressSteps={progressSteps}
 				termsAccepted={termsAccepted}
+				termsError={termsError}
 				onTermsAcceptedChange={setTermsAccepted}
 				heading={step === "kilo-sign-in" && signedIn ? SIGNED_IN_HEADING : undefined}
 				aside={

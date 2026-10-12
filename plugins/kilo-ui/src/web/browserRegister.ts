@@ -16,7 +16,11 @@ import type { KiloUiProvidersService } from "../contracts/providers/schemas.js";
 import { FeatureError, type MainSdk } from "@kilo-desktop/feature-sdk";
 
 import { kiloUiChatContract } from "../contracts/chat/schemas.js";
-import { ONBOARDING_VERSION, onboardingContract } from "../contracts/onboarding/schemas.js";
+import {
+	KILO_TERMS_VERSION,
+	ONBOARDING_VERSION,
+	onboardingContract,
+} from "../contracts/onboarding/schemas.js";
 import { modelPreferencesContract } from "../contracts/model-preferences/schemas.js";
 import { kiloUiProvidersContract } from "../contracts/providers/schemas.js";
 import { workspacesContract } from "../contracts/workspaces/schemas.js";
@@ -174,7 +178,15 @@ function registerProvidersBrowser(mainSdk: MainSdk): void {
 
 function registerOnboardingBrowser(mainSdk: MainSdk): void {
 	let state: OnboardingState = { outcome: null, closedAt: null, version: null };
-	const terms = new TermsAcceptanceStore(mainSdk, Date.now, createInMemoryTermsStorage());
+	// Browser mode is the unshipped dev/test harness (no Kilo CLI), where
+	// onboarding never showed; keep the terms gate out of its way too.
+	const terms = new TermsAcceptanceStore(mainSdk, {
+		storage: createInMemoryTermsStorage({
+			version: KILO_TERMS_VERSION,
+			acceptedAt: Date.now(),
+			linkedAccounts: [],
+		}),
+	});
 	const onboardingApi: OnboardingService = {
 		"onboarding.terms.get": async () => terms.get(),
 		"onboarding.terms.accept": async ({ version, accountKey }) => terms.accept(version, accountKey),

@@ -23,6 +23,13 @@ export const onboardingStateSchema = z.object({
 export type OnboardingState = z.infer<typeof onboardingStateSchema>;
 
 /**
+ * Identifies the terms the welcome step asks users to accept. Bump it when the
+ * linked terms change: the app stays gated until the new version is accepted,
+ * and the acceptance is recorded (and attributed) afresh.
+ */
+export const KILO_TERMS_VERSION = "2026-09-29";
+
+/**
  * Local record of the user accepting the terms of service on the welcome step.
  * `linkedAccounts` holds opaque hashes of the signed-in accounts the acceptance
  * has been attributed to in telemetry, so each account is linked once.

@@ -84,7 +84,7 @@ describe("SplashWindow", () => {
 		expect(opts.backgroundColor).toBe(resolveSplashTheme("kilo", false).background);
 	});
 
-	it("uses the selected dark theme surfaces and keeps the dark Kilo logo color", () => {
+	it("uses the selected dark theme surfaces and keeps the Kilo logo color", () => {
 		const theme = resolveSplashTheme("dracula", true);
 		const splash = new SplashWindow(reporter, {
 			isDark: true,
@@ -98,16 +98,16 @@ describe("SplashWindow", () => {
 		const loadedUrl = created.loadURL.mock.calls[0]?.[0] as string;
 		const html = decodeURIComponent(loadedUrl.replace("data:text/html;charset=utf-8,", ""));
 		expect(html).toContain(`background:${theme.primary}`);
-		expect(html).toContain("background:#f7f586");
+		expect(html).toContain("background:#ffdd00");
 	});
 
-	it("uses the light Kilo logo color in light mode", () => {
+	it("uses the Kilo logo color in light mode", () => {
 		const splash = new SplashWindow(reporter, { isDark: false, logger: noopLogger });
 		splash.show();
 
 		const loadedUrl = fakeWindows.created[0]!.loadURL.mock.calls[0]?.[0] as string;
 		const html = decodeURIComponent(loadedUrl.replace("data:text/html;charset=utf-8,", ""));
-		expect(html).toContain("background:#f0f042");
+		expect(html).toContain("background:#ffdd00");
 	});
 
 	it("centers the window on the primary display", () => {
@@ -208,7 +208,7 @@ describe("SplashWindow", () => {
 		const html = decodeURIComponent(loadedUrl.replace("data:text/html;charset=utf-8,", ""));
 		expect(html).toContain('id="status"');
 		expect(html).toContain("progress-bar");
-		expect(html).toContain("#f0f042");
+		expect(html).toContain("#ffdd00");
 		expect(html).toContain("mask:url");
 		expect(html).toContain("viewBox='0 0 100 100'");
 		expect(html).toContain("M0,0v100h100V0H0Z");

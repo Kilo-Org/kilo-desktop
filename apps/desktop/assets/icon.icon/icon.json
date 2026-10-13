@@ -1,6 +1,6 @@
 {
 	"fill": {
-		"solid": "display-p3:0.97833,0.96927,0.43002,1.00000"
+		"solid": "display-p3:0.97656,0.87061,0.29419,1.00000"
 	},
 	"groups": [
 		{
@@ -19,12 +19,9 @@
 				{
 					"fill-specializations": [
 						{
-							"value": "automatic"
-						},
-						{
 							"appearance": "dark",
 							"value": {
-								"solid": "display-p3:0.97881,0.96683,0.43002,1.00000"
+								"solid": "display-p3:0.97656,0.87061,0.29419,1.00000"
 							}
 						},
 						{
@@ -34,16 +31,7 @@
 							}
 						}
 					],
-					"glass-specializations": [
-						{
-							"value": true
-						},
-						{
-							"idiom": "square",
-							"value": true
-						}
-					],
-					"hidden": false,
+					"glass": true,
 					"image-name": "logo-mark.png",
 					"name": "logo-mark",
 					"position": {
@@ -53,13 +41,14 @@
 				}
 			],
 			"lighting": "individual",
+			"name": "Group",
 			"shadow": {
-				"kind": "neutral",
+				"kind": "layer-color",
 				"opacity": 0.5
 			},
 			"specular-specializations": [
 				{
-					"value": true
+					"value": false
 				},
 				{
 					"appearance": "dark",

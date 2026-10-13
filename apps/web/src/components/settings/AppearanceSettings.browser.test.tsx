@@ -65,7 +65,7 @@ describe("AppearanceSettings", () => {
 			.querySelector<HTMLElement>('span[aria-hidden="true"]');
 		expect(swatch).not.toBeNull();
 		expect(getComputedStyle(swatch!).color).toBe("rgb(31, 31, 31)");
-		expect(getComputedStyle(swatch!).backgroundColor).toBe("rgb(241, 242, 0)");
+		expect(getComputedStyle(swatch!).backgroundColor).toBe("rgb(255, 221, 0)");
 		expect(swatch!.childElementCount).toBe(0);
 	});
 

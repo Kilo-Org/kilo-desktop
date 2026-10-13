@@ -29,7 +29,7 @@ describe("app theme presets", () => {
 			sidebar: "#fafafa",
 			muted: "#f5f5f5",
 			border: "#e5e5e5",
-			primary: "#f1f200",
+			primary: "#ffdd00",
 			ring: "#737373",
 		});
 		expect(getThemeVariant("kilo", "dark")?.tokens).toMatchObject({
@@ -37,7 +37,7 @@ describe("app theme presets", () => {
 			foreground: "#d4d4d4",
 			border: "rgb(255 255 255 / 0.1)",
 			input: "rgb(255 255 255 / 0.1)",
-			primary: "#f7f586",
+			primary: "#ffdd00",
 			"primary-foreground": "#1f1f1f",
 			card: "#181818",
 			popover: "#2b2b2b",

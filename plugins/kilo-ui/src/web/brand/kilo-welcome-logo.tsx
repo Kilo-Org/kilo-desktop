@@ -30,10 +30,7 @@ export const KiloWelcomeLogo: FC<{
 		<motion.div
 			data-qa-id="kilo-welcome-logo"
 			aria-hidden="true"
-			className={cn(
-				"text-muted-foreground/30 mb-4 hover:text-[#F0F042] dark:hover:text-yellow-200",
-				className,
-			)}
+			className={cn("text-muted-foreground/30 mb-4 hover:text-[#ffdd00]", className)}
 			onHoverStart={() => {
 				setLottieMounted(true);
 				setIsHovered(true);

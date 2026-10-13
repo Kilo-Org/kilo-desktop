@@ -285,10 +285,10 @@ export const APP_THEMES = [
 					hover: "#f5f5f5",
 					muted: "#737373",
 					border: "#e5e5e5",
-					primary: "#f1f200",
+					primary: "#ffdd00",
 					primaryForeground: "#1f1f1f",
 					ring: "#737373",
-					// Neon is ~1.2:1 on white: keep it as a filled surface, use gray for small marks.
+					// Yellow is ~1.35:1 on white: keep it as a filled surface, use gray for small marks.
 					roles: {
 						"primary-ink": "var(--muted-foreground)",
 						"primary-ink-foreground": "var(--background)",
@@ -337,7 +337,7 @@ export const APP_THEMES = [
 					// background as before, #404040 over the #2b2b2b popover (a solid
 					// #292929 vanished there).
 					border: "rgb(255 255 255 / 0.1)",
-					primary: "#f7f586",
+					primary: "#ffdd00",
 					primaryForeground: "#1f1f1f",
 					ansi: [
 						"#111111",

@@ -13,9 +13,7 @@ const SKIP_THRESHOLD_MS = 300;
 
 const SPLASH_WIDTH = 320;
 const SPLASH_HEIGHT = 200;
-const KILO_LOGO_LIGHT = "#f0f042";
-const KILO_LOGO_DARK = "#f7f586";
-const KILO_LOGO_YELLOW = KILO_LOGO_LIGHT;
+const KILO_LOGO_YELLOW = "#ffdd00";
 
 export interface SplashTheme {
 	readonly background: string;
@@ -36,7 +34,7 @@ export function resolveSplashTheme(themeId: string, isDark: boolean): SplashThem
 		mutedForeground: tokens?.["muted-foreground"] ?? (isDark ? "#9ca8ab" : "#67787c"),
 		border: tokens?.border ?? (isDark ? "#22292b" : "#e3e7e8"),
 		primary: tokens?.primary ?? (isDark ? "#96f778" : "#07ca4a"),
-		logo: isDark ? KILO_LOGO_DARK : KILO_LOGO_LIGHT,
+		logo: KILO_LOGO_YELLOW,
 	};
 }
 

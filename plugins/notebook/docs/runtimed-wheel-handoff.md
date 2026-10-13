@@ -18,7 +18,7 @@ plan for the sidecar problem — see [Why the wheel](#why-the-wheel).
 
 - The relay + daemon client transport is built, registered in `FEATURES`, and
   tested at all four tiers. Full gate green: `pnpm check && pnpm lint &&
-pnpm format:check && pnpm test` (652 tests), plus `pnpm coverage` (80% gate).
+  pnpm format:check && pnpm test` (652 tests), plus `pnpm coverage` (80% gate).
 - The notebook suite was run 10× consecutively — 99/99 each time, no
   socket-timing flakiness.
 - `e29cb35` fixed a real packaging regression: `ws` was missing from the main
@@ -175,7 +175,7 @@ nothing from here on has ever run in a packaged build.
   `SKIP_BUILD=true pnpm test:e2e:smoke`.
 - Building nteract in a fresh worktree needs gitignored generated assets first:
   `git lfs pull && cargo xtask artifacts ensure runtime,sift,renderer &&
-cargo xtask artifacts ensure mcp-widget`. Without them `-p runtimed` panics on
+  cargo xtask artifacts ensure mcp-widget`. Without them `-p runtimed` panics on
   `Missing renderer plugin asset` and `-p runt` on `assets/_output.html is
-missing`; neither is a real problem. Beware chaining cargo with
+  missing`; neither is a real problem. Beware chaining cargo with
   `echo exit=$?` — it can report a stale/wrong code. Check for the binary on disk.

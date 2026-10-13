@@ -403,7 +403,7 @@ nothing from here on has ever run in a packaged build.
 
 - Relay + daemon client transport + spawn/supervision built, registered in
   `FEATURES`, tested at all four tiers. Full gate green: `pnpm check && pnpm lint
-&& pnpm format:check && pnpm test` (**693 tests**).
+  && pnpm format:check && pnpm test` (**693 tests**).
 - Notebook suite run 10× consecutively — 130/130 each time, no socket-timing
   flakiness.
 - Notebook feature coverage 93.7% stmts / 96.0% lines; the two uncovered lines in
@@ -462,11 +462,11 @@ nothing from here on has ever run in a packaged build.
   error. Cost me a 10-minute dead end this session.
 - Building nteract in a fresh worktree needs gitignored generated assets first:
   `git lfs pull && cargo xtask artifacts ensure runtime,sift,renderer &&
-cargo xtask artifacts ensure mcp-widget`. Without them `-p runtimed` panics on
+  cargo xtask artifacts ensure mcp-widget`. Without them `-p runtimed` panics on
   `Missing renderer plugin asset` and `-p runt` on `assets/_output.html is
-missing`; neither is a real problem. Beware chaining cargo with
+  missing`; neither is a real problem. Beware chaining cargo with
   `echo exit=$?` — it can report a stale/wrong code. Check for the binary on
   disk.
 - Reproducing the wheel finding needs no nteract build: `gh release download
-v2.6.3-nightly.202607290952 --repo nteract/nteract --pattern 'runtimed-*.whl'`
+  v2.6.3-nightly.202607290952 --repo nteract/nteract --pattern 'runtimed-*.whl'`
   then `unzip -l`. A `.whl` is just a zip.

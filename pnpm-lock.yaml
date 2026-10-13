@@ -1522,20 +1522,20 @@ importers:
         version: 5.0.3(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.3)(@vitest/coverage-v8@5.0.3)(@vitest/ui@5.0.3)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
     optionalDependencies:
       '@kilocode/cli-darwin-arm64':
-        specifier: 7.7.9
-        version: 7.7.9
+        specifier: 7.8.8
+        version: 7.8.8
       '@kilocode/cli-linux-arm64':
-        specifier: 7.7.9
-        version: 7.7.9
+        specifier: 7.8.8
+        version: 7.8.8
       '@kilocode/cli-linux-x64-baseline':
-        specifier: 7.7.9
-        version: 7.7.9
+        specifier: 7.8.8
+        version: 7.8.8
       '@kilocode/cli-windows-arm64':
-        specifier: 7.7.9
-        version: 7.7.9
+        specifier: 7.8.8
+        version: 7.8.8
       '@kilocode/cli-windows-x64-baseline':
-        specifier: 7.7.9
-        version: 7.7.9
+        specifier: 7.8.8
+        version: 7.8.8
 
   plugins/kilo-ui:
     dependencies:
@@ -3282,28 +3282,28 @@ packages:
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
 
-  '@kilocode/cli-darwin-arm64@7.7.9':
-    resolution: {integrity: sha512-/2Lc4lUJfbJGJIbVwen7RjRwYTkROb1mkoQqWsBDvh4dLeNZ7HxDTJ2e/oYmBe7AFFEbkRXh+dJNv2R11G8cnA==}
+  '@kilocode/cli-darwin-arm64@7.8.8':
+    resolution: {integrity: sha512-+ed1qYwfmFX3Ofmfm6SdFUW/ygCcvDS2aAB3jyphgT8u6p0hrn0tBj/IeghW8ouztv9Kcep2FR17eGB0+bRZpg==}
     cpu: [arm64]
     os: [darwin]
 
-  '@kilocode/cli-linux-arm64@7.7.9':
-    resolution: {integrity: sha512-QZFspzNs5pEVbKUV6fh3S+SDuNuFpfQ9KmxmqTBXbS1ImKawRi5+qqUvHYcgKsXqdwHD4oC9G5tMElNZJemIog==}
+  '@kilocode/cli-linux-arm64@7.8.8':
+    resolution: {integrity: sha512-JrZu4EsdaajRsafvgXN+dEcscV7VKM6sGp3Xm51EndrTnI7+76tKeyrPs6J5Bvn2yR/BNKhoId4LEjwjQGSHYg==}
     cpu: [arm64]
     os: [linux]
 
-  '@kilocode/cli-linux-x64-baseline@7.7.9':
-    resolution: {integrity: sha512-nW/4mbdYdVhu48X6UtiQRLdKcGDgEdHeeCvPNQDJ2sVj6BLduUZWxJ+O4dfwuRUTtQBTuV2S7bz90Navfl5OTQ==}
+  '@kilocode/cli-linux-x64-baseline@7.8.8':
+    resolution: {integrity: sha512-EroORIb8BtRTm0sT7kdufz3IG24k8czJVSHHnXAffzl+h25HSrljvZBGHLa7p4D+R5BTPCkbDohg6+Qo+WxpXg==}
     cpu: [x64]
     os: [linux]
 
-  '@kilocode/cli-windows-arm64@7.7.9':
-    resolution: {integrity: sha512-nGeVk3C3nCFgHV5wNXueVax79SKczIaeuIsvke2w/l4moQ+zzPO6GgEFid55r/7pAqMRzV8zZNKrAjCxgmCcnA==}
+  '@kilocode/cli-windows-arm64@7.8.8':
+    resolution: {integrity: sha512-0wn/ZreligkRRXnqkevRKn1kyQFVa9ZJDBr6FiAApui9NZIjCz2ai2h4ZM0E5TxvdGMcGJhN6krU7jMM5rdouw==}
     cpu: [arm64]
     os: [win32]
 
-  '@kilocode/cli-windows-x64-baseline@7.7.9':
-    resolution: {integrity: sha512-+Qqzsz91kTAflsdTa16MaVR3jVwbJQeTJL94GRxeVKV68SqJxvpcYfG8XGl5eyVeQGJujRqFYFyFAhJVa+Us3A==}
+  '@kilocode/cli-windows-x64-baseline@7.8.8':
+    resolution: {integrity: sha512-I64lcq/S42hyBiPx6nYgkiMP7iW/jNb3vWpQcy8P3LvrA1syQgZ14k68yTD4BWSXa8UBwpyQ8UYE1hK9FksMrQ==}
     cpu: [x64]
     os: [win32]
 
@@ -11979,19 +11979,19 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
 
-  '@kilocode/cli-darwin-arm64@7.7.9':
+  '@kilocode/cli-darwin-arm64@7.8.8':
     optional: true
 
-  '@kilocode/cli-linux-arm64@7.7.9':
+  '@kilocode/cli-linux-arm64@7.8.8':
     optional: true
 
-  '@kilocode/cli-linux-x64-baseline@7.7.9':
+  '@kilocode/cli-linux-x64-baseline@7.8.8':
     optional: true
 
-  '@kilocode/cli-windows-arm64@7.7.9':
+  '@kilocode/cli-windows-arm64@7.8.8':
     optional: true
 
-  '@kilocode/cli-windows-x64-baseline@7.7.9':
+  '@kilocode/cli-windows-x64-baseline@7.8.8':
     optional: true
 
   '@kilocode/sdk@7.7.6':

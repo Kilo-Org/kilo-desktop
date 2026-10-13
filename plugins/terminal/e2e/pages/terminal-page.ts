@@ -105,6 +105,16 @@ export class TerminalPage {
 		});
 	}
 
+	/** Closes the tab while its shell is still running, so main must kill the PTY. */
+	async close(instanceId: string): Promise<void> {
+		// Tab actions are only interactive on the active tab (or on hover).
+		await this.activate(instanceId);
+		await click(getLocatorByTestId(`chat-pane-close-tab-${instanceId}`));
+		await expectElementToHaveCount(getLocatorByTestId(`chat-pane-tab-${instanceId}`), 0, {
+			message: `Terminal ${instanceId} should close when its tab is closed`,
+		});
+	}
+
 	frame(instanceId: string): FrameLocator {
 		return getLocatorByTestId(`chat-pane-${instanceId}`)
 			.getByTestId("terminal-frame")

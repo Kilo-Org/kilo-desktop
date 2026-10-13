@@ -29,7 +29,11 @@ afterEach(() => {
 });
 
 function createMainRoot(): string {
-	const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "worktree-manager-test-")));
+	// `.native` matches the source's `fs/promises` realpath, which expands
+	// Windows 8.3 short names (C:\Users\DGRAML~1) that the JS impl keeps.
+	const dir = fs.realpathSync.native(
+		fs.mkdtempSync(path.join(os.tmpdir(), "worktree-manager-test-")),
+	);
 	directories.push(dir);
 	return dir;
 }

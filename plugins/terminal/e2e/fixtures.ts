@@ -4,14 +4,19 @@ import path from "node:path";
 
 import { removePathAfterAppStops, test as shellTest } from "@kilo-desktop/e2e/fixtures";
 
+import { MainProcessErrors } from "./pages/main-process-errors.js";
 import { TerminalPage } from "./pages/terminal-page.js";
 
 type TerminalFixtures = {
 	terminalPage: TerminalPage;
 	terminalWorkspace: { path: string; name: string };
+	mainProcessErrors: MainProcessErrors;
 };
 
 export const test = shellTest.extend<TerminalFixtures>({
+	mainProcessErrors: async ({ sharedApp }, use) => {
+		await use(new MainProcessErrors(sharedApp.log));
+	},
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
 	terminalPage: async ({}, use) => {
 		await use(new TerminalPage());

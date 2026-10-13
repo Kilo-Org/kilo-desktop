@@ -7,6 +7,7 @@ import {
 	type TerminalClientMessage,
 	type TerminalServerMessage,
 } from "../contracts/session.js";
+import { toAccessibleText } from "./accessible-text.js";
 import { dominantOpaqueColor } from "./edge-background.js";
 
 export interface TerminalFrameElements {
@@ -380,23 +381,8 @@ export class TerminalFrameController {
 	}
 
 	#appendAccessibleOutput(data: string): void {
-		const escape = String.fromCharCode(0x1b);
-		const bell = String.fromCharCode(0x07);
-		const osc = new RegExp(`${escape}\\][^${bell}]*(?:${bell}|${escape}\\\\)`, "g");
-		const csi = new RegExp(`${escape}\\[[0-?]*[ -/]*[@-~]`, "g");
-		const plain = [...data.replace(osc, "").replace(csi, "")]
-			.filter((character) => {
-				const code = character.charCodeAt(0);
-				return (
-					(code > 0x1f && code !== 0x7f) ||
-					character === "\n" ||
-					character === "\r" ||
-					character === "\t"
-				);
-			})
-			.join("");
 		this.#elements.accessibleOutput.textContent =
-			`${this.#elements.accessibleOutput.textContent ?? ""}${plain}`.slice(-8_192);
+			`${this.#elements.accessibleOutput.textContent ?? ""}${toAccessibleText(data)}`.slice(-8_192);
 	}
 
 	#setStatus(status: string, exitCode: number | null, exitSignal: number | null): void {

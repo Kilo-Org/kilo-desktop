@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 2,
+  "name": "Playwright QA AI reconciliation profile (template — replace the placeholder values with your project's facts)",
+  "packageName": "@anaconda/playwright-utils",
+  "keepLocalCommand": "npx anaconda-pw-setup --keep-local",
+  "overwriteCommand": "npx anaconda-pw-setup --overwrite-all",
+  "stagingRule": "After the keep-local pass, stage every in-scope AI file that shows any git status (dirty or untracked) as the recovery baseline; skip clean committed files (HEAD is their baseline). Never run the overwrite pass without this staged baseline.",
+  "historyDirectory": ".claude/reconcile-ai-history",
+  "projectSkill": {
+    "name": "<your-project>",
+    "path": ".claude/skills/<your-project>/SKILL.md",
+    "repoStructureReference": ".claude/skills/<your-project>/references/repo-structure.md",
+    "planningContextReference": ".claude/skills/<your-project>/references/planning-context.md",
+    "knownLocatorsReference": ".claude/skills/<your-project>/references/known-locators.md"
+  },
+  "canonicalFacts": {
+    "fixtureAlias": "@fixture",
+    "fixturePath": "tests/fixtures/fixture.ts",
+    "pageAlias": "@pages/*",
+    "testDataAlias": "@testdata/*",
+    "configAlias": "@playwright-config",
+    "testIdAttribute": "data-qa-id"
+  },
+  "projectOwnedPaths": [
+    ".claude/reconcile-ai-profile.json",
+    ".claude/settings.json",
+    ".claude/skills/<your-project>/**",
+    "tests/**",
+    "playwright.config.ts",
+    "tsconfig.json"
+  ],
+  "projectFacingAiFiles": ["CLAUDE.md", "AGENTS.md", ".claude/commands/*.md"],
+  "managePackageOwnedScope": true,
+  "libraryOwnedAiFiles": [
+    ".claude/skills/anaconda-playwright-utils/**",
+    ".claude/skills/api-test-automation/**",
+    ".claude/skills/playwright-cli/**",
+    ".claude/skills/qa-automation-quality/**",
+    ".claude/agents/**",
+    ".kilo/agents/**",
+    ".kilo/commands/**",
+    ".kilo/instructions/**"
+  ],
+  "preserveRules": [
+    "For project-facing docs and commands, keep your project's real path aliases and fixture paths over the library's generic @fixture / tests/fixtures/fixture.ts examples.",
+    "Keep any project-added pointers (for example a /pr-review usage line) in AGENTS.md and CLAUDE.md — upstream overwrites can drop them.",
+    "Do not turn generic library skill or agent docs into project-only docs; keep them library-generic."
+  ],
+  "forbiddenProjectFacingReplacements": [],
+  "exampleFiles": {
+    "pageObject": "tests/pages/login-page.ts",
+    "fixture": "tests/fixtures/fixture.ts",
+    "spec": "tests/specs/login.spec.ts"
+  },
+  "verification": {
+    "formatCommand": "./node_modules/.bin/prettier --check CLAUDE.md AGENTS.md .claude/commands/*.md .kilo/commands/*.md .claude/skills/anaconda-playwright-utils/SKILL.md",
+    "formatWriteCommand": "./node_modules/.bin/prettier --write <touched markdown files>",
+    "whitespaceCommand": "git diff --check"
+  }
+}

@@ -155,6 +155,7 @@ Thumbs.db
 # Agent plans
 .omo
 .kilo
+!e2e/.kilo/
 
 # App specific
 apps/desktop/.data/

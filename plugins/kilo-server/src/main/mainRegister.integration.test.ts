@@ -87,6 +87,11 @@ function stubToolGateway(): ToolGateway & {
 			})),
 			revokeClient: vi.fn(async () => EXTERNAL_STATE),
 		},
+		signIn: {
+			getState: vi.fn(() => ({ declined: false })),
+			decline: vi.fn(() => ({ declined: true })),
+			signedIn: vi.fn(),
+		},
 		dispose: vi.fn(async () => undefined),
 	};
 }
@@ -526,6 +531,70 @@ describe("kilo-server main registration", () => {
 			code: "VALIDATION",
 		});
 		mainSdk.dispose();
+	});
+
+	describe("agent tools that require sign-in", () => {
+		async function setup() {
+			const pair = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+			const authSdk = pair.createMainSdk("auth");
+			const toolGateway = stubToolGateway();
+			let gatewaySignIn: Parameters<NonNullable<RegisterKiloServerOptions["createToolGateway"]>>[1];
+			await registerKiloServer(pair.mainSdk, {
+				createServer: () => fakeServer(),
+				createToolGateway: (_sdk, signIn) => {
+					gatewaySignIn = signIn;
+					return toolGateway;
+				},
+				reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
+			});
+			return { ...pair, authSdk, toolGateway, gatewaySignIn: gatewaySignIn! };
+		}
+
+		it("asks the auth capability whether the user is signed in", async () => {
+			const { authSdk, gatewaySignIn, mainSdk } = await setup();
+			await expect(gatewaySignIn.isSignedIn()).resolves.toBe(false);
+
+			authSdk.plugins.expose("session", {
+				getSession: async () => ({ status: "authenticated", user: {} }),
+			});
+
+			await expect(gatewaySignIn.isSignedIn()).resolves.toBe(true);
+			mainSdk.dispose();
+		});
+
+		it("serves the sign-in state and a decline through the kilo-server contract", async () => {
+			const { mainSdk, toolGateway } = await setup();
+
+			await expect(mainSdk.invoke("agentToolSignIn.getState")).resolves.toEqual({
+				declined: false,
+			});
+			await expect(mainSdk.invoke("agentToolSignIn.decline")).resolves.toEqual({ declined: true });
+
+			expect(toolGateway.signIn.decline).toHaveBeenCalledOnce();
+			mainSdk.dispose();
+		});
+
+		it("announces sign-in state changes to every window", async () => {
+			const { mainSdk, gatewaySignIn } = await setup();
+			const listener = vi.fn();
+			mainSdk.events.on("kilo-server.agent-tool-sign-in-changed", listener);
+
+			gatewaySignIn.onSignInChange({ declined: true });
+
+			expect(listener).toHaveBeenCalledWith({ declined: true });
+			mainSdk.dispose();
+		});
+
+		it("forgets a decline when the user signs in", async () => {
+			const { authSdk, mainSdk, toolGateway } = await setup();
+
+			authSdk.events.emit("changed", { status: "anonymous" });
+			expect(toolGateway.signIn.signedIn).not.toHaveBeenCalled();
+			authSdk.events.emit("changed", { status: "authenticated", user: {} });
+
+			expect(toolGateway.signIn.signedIn).toHaveBeenCalledOnce();
+			mainSdk.dispose();
+		});
 	});
 
 	it("getConnection called during the initialization window awaits config readiness and does not race ensureRunning", async () => {

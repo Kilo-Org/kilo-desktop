@@ -4,8 +4,10 @@ import path from "node:path";
 import debounce from "lodash/debounce.js";
 
 import {
+	AGENT_TOOL_SIGN_IN_CHANGED_EVENT,
 	EXTERNAL_AI_APPS_FEATURE_FLAG,
 	EXTERNAL_CLIENTS_CHANGED_EVENT,
+	type AgentToolSignInState,
 	kiloServerContract,
 	type KiloServerCapabilityService,
 	type KiloServerService,
@@ -121,8 +123,19 @@ interface RegisterKiloServerOptions {
 	 * paired external AI apps. Injected in tests; production defaults to
 	 * {@link createToolGateway}.
 	 */
-	createToolGateway?: (mainSdk: MainSdk) => ToolGateway;
+	createToolGateway?: (mainSdk: MainSdk, signIn: ToolGatewaySignIn) => ToolGateway;
 }
+
+/** How the tool gateway learns sign-in state and reports changes to its gating. */
+export interface ToolGatewaySignIn {
+	isSignedIn(): Promise<boolean>;
+	onSignInChange(state: AgentToolSignInState): void;
+}
+
+/** The slice of the shell's main-side auth capability (`plugins.get("auth")`) used here. */
+type AuthSessionCapability = {
+	readonly session: { getSession(): Promise<{ readonly status: string }> };
+};
 
 export type KiloServerCapabilities = {
 	connectionService: {
@@ -313,9 +326,23 @@ export function registerKiloServer(
 
 	// Created during registration so the renderer's catalog port handler exists
 	// before any window can transfer one.
+	// Tools that require sign-in are gated in the gateway; the session is asked
+	// of the shell's auth capability on every gated call (fail closed without it).
+	const gatewaySignIn: ToolGatewaySignIn = {
+		isSignedIn: async () => {
+			const auth = mainSdk.plugins.get<AuthSessionCapability>("auth");
+			if (!auth) return false;
+			try {
+				return (await auth.session.getSession()).status === "authenticated";
+			} catch {
+				return false;
+			}
+		},
+		onSignInChange: (state) => mainSdk.events.emit(AGENT_TOOL_SIGN_IN_CHANGED_EVENT, state),
+	};
 	const toolGateway = (
 		options.createToolGateway ??
-		((sdk: MainSdk) =>
+		((sdk: MainSdk, signIn: ToolGatewaySignIn) =>
 			createToolGateway({
 				ports: sdk.ports,
 				storage: sdk.storage,
@@ -323,8 +350,15 @@ export function registerKiloServer(
 				channel: webMcpChannelFromStorageDir(sdk.storageDir),
 				onExternalClientsChange: (state) => sdk.events.emit(EXTERNAL_CLIENTS_CHANGED_EVENT, state),
 				isExternalClientsAvailable: () => isFeatureFlagOn(sdk, EXTERNAL_AI_APPS_FEATURE_FLAG),
+				isSignedIn: signIn.isSignedIn,
+				onSignInChange: signIn.onSignInChange,
 			}))
-	)(mainSdk);
+	)(mainSdk, gatewaySignIn);
+	const unsubscribeAuth = mainSdk.events.on("auth.changed", (session) => {
+		if ((session as { status?: unknown } | undefined)?.status === "authenticated") {
+			toolGateway.signIn.signedIn();
+		}
+	});
 	// Independent of Kilo: paired external AI apps can connect without a chat.
 	void toolGateway.startExternalClients().catch((error: unknown) => {
 		mainSdk.logger.warn(
@@ -431,6 +465,8 @@ export function registerKiloServer(
 		"externalClients.setPort": ({ port }) => toolGateway.externalClients.setPort(port),
 		"externalClients.createClient": ({ name }) => toolGateway.externalClients.createClient(name),
 		"externalClients.revokeClient": ({ id }) => toolGateway.externalClients.revokeClient(id),
+		"agentToolSignIn.getState": async () => toolGateway.signIn.getState(),
+		"agentToolSignIn.decline": async () => toolGateway.signIn.decline(),
 	};
 
 	const kiloService: KiloServerCapabilityService = {
@@ -509,6 +545,7 @@ export function registerKiloServer(
 	mainSdk.onDispose(() => {
 		disposed = true;
 		unsubscribeConsent?.();
+		unsubscribeAuth();
 		handleEnvChange.cancel();
 		void toolGateway.dispose();
 		webMcpEndpoint = undefined;

@@ -1,3 +1,5 @@
+import type { AuthSession } from "./auth.js";
+
 /**
  * Main-process-only capability contract exposed by the auth shell delegate.
  *
@@ -29,4 +31,7 @@ export interface AuthMainCapabilityService {
 	 * site config cannot be resolved. Main-process only.
 	 */
 	getSiteDomain(): Promise<string>;
+
+	/** The current session, re-resolved when the cached one may be stale. */
+	getSession(): Promise<AuthSession>;
 }

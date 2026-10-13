@@ -18,9 +18,11 @@ function makeAuth(session: AuthSession = { status: "anonymous" }) {
 	const unsubscribe = vi.fn();
 	const getApiKey = vi.fn(async () => "ak-from-auth");
 	const getSiteDomain = vi.fn(async () => "stage.anaconda.com");
+	const getSession = vi.fn(async () => session);
 	const auth = {
 		getApiKey,
 		getSiteDomain,
+		getSession,
 		onChanged: vi.fn((fn: (session: AuthSession) => void) => {
 			listener = fn;
 			return unsubscribe;
@@ -61,6 +63,18 @@ describe("registerAuthCapability", () => {
 		expect(capability).not.toBeNull();
 		await expect(capability!.session.getSiteDomain()).resolves.toBe("stage.anaconda.com");
 		expect(getSiteDomain).toHaveBeenCalledTimes(1);
+	});
+
+	it("exposes a session capability whose getSession resolves the current session", async () => {
+		const session: AuthSession = { status: "authenticated", user: { userId: "u1" } };
+		const { auth } = makeAuth(session);
+		dispose = registerAuthCapability(auth);
+
+		const capability = featureRouter.capabilityRegistry.get("auth") as {
+			session: { getSession: () => Promise<AuthSession> };
+		} | null;
+
+		await expect(capability!.session.getSession()).resolves.toEqual(session);
 	});
 
 	it("relays auth session changes onto the feature event bus as auth.changed", () => {

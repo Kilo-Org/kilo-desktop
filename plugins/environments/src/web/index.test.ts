@@ -20,6 +20,31 @@ describe("environments plugin web entry", () => {
 		expect(EnvironmentsNavIcon).toBeDefined();
 	});
 
+	it("requires sign-in for every conda tool, matching the gated Conda Environments page", () => {
+		const sdk = createFakeSdk({ featureId: "environments" });
+		webRegister(sdk);
+
+		const tools = sdk.services.toolRegistry.all();
+		expect(tools).toHaveLength(12);
+		expect(tools.filter((tool) => !tool.requiresSignIn).map((tool) => tool.name)).toEqual([]);
+	});
+
+	it("asks for sign-in with the governed-packages prompt for every conda tool", () => {
+		const sdk = createFakeSdk({ featureId: "environments" });
+		webRegister(sdk);
+
+		const prompts = new Set(sdk.services.toolRegistry.all().map((tool) => tool.signInPrompt));
+		expect([...prompts]).toEqual([
+			{
+				title: "Enable use of secure & governed Anaconda packages for Python environments?",
+				body:
+					"The agent wants to use Desktop's Python environment tools. To use secure & governed " +
+					"packages built by Anaconda, you must sign in to a Kilo account. Do you want to sign in?",
+				toolsLabel: "Desktop's Python environment tools",
+			},
+		]);
+	});
+
 	it("webRegister registers the conda provider's tools", () => {
 		const sdk = createFakeSdk({ featureId: "environments" });
 		expect(() => webRegister(sdk)).not.toThrow();

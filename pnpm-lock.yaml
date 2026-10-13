@@ -1627,6 +1627,9 @@ importers:
       '@kilo-desktop/plugin-git':
         specifier: workspace:*
         version: link:../git
+      '@kilo-desktop/plugin-kilo-server':
+        specifier: workspace:*
+        version: link:../kilo-server
       '@kilo-desktop/sdk-react':
         specifier: workspace:*
         version: link:../../packages/sdk-react

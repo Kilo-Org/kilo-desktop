@@ -1,12 +1,20 @@
 import type { CallToolResult, Tool } from "@modelcontextprotocol/server";
 
+import {
+	SIGN_IN_DECLINED_TOOL_MESSAGE,
+	signInRequiredToolMessage,
+	type SignInRefusalAudience,
+} from "@kilo-desktop/feature-sdk";
+
 import { KILO_CALLER_CONTEXT_KEY } from "../kilo-caller-context-plugin.js";
+import type { AgentToolSignIn } from "./agent-tool-sign-in.js";
 import type { ToolCallContext, ToolCatalog } from "./tool-catalog.js";
 
 /**
  * How one class of MCP consumer sees the catalog: which tools are listed, with
  * what schemas, and how a call's arguments become handler arguments plus
- * trusted caller context.
+ * trusted caller context. With a sign-in gate, tools that require sign-in are
+ * refused while the user is signed out and withdrawn while they have declined.
  */
 export interface CatalogView {
 	listTools(): Tool[];
@@ -34,8 +42,9 @@ const KILO_CALLER_CONTEXT_SCHEMA = {
  * the schemas advertise that property so Kilo's argument validation keeps it,
  * and calls lift it out of the arguments into the handler's context.
  */
-export function createKiloCatalogView(catalog: ToolCatalog): CatalogView {
-	return createCatalogView(catalog, {
+export function createKiloCatalogView(catalog: ToolCatalog, signIn?: AgentToolSignIn): CatalogView {
+	return createCatalogView(catalog, signIn, {
+		audience: "kilo",
 		inputSchema: (schema) => {
 			const { additionalProperties: _ignored, ...rest } = schema;
 			return {
@@ -57,8 +66,12 @@ export function createKiloCatalogView(catalog: ToolCatalog): CatalogView {
  * forged envelope is dropped — so session-bound tools refuse their calls
  * instead of acting on some chat.
  */
-export function createExternalCatalogView(catalog: ToolCatalog): CatalogView {
-	return createCatalogView(catalog, {
+export function createExternalCatalogView(
+	catalog: ToolCatalog,
+	signIn?: AgentToolSignIn,
+): CatalogView {
+	return createCatalogView(catalog, signIn, {
+		audience: "external",
 		inputSchema: (schema) => schema as Tool["inputSchema"],
 		splitArgs: (rawArgs) => {
 			const { [KILO_CALLER_CONTEXT_KEY]: _untrusted, ...args } = rawArgs;
@@ -68,6 +81,8 @@ export function createExternalCatalogView(catalog: ToolCatalog): CatalogView {
 }
 
 interface ViewPolicy {
+	/** Who reads a sign-in refusal: the Kilo agent (chat prompts) or an external app. */
+	audience: SignInRefusalAudience;
 	inputSchema(schema: Record<string, unknown>): Tool["inputSchema"];
 	splitArgs(args: Record<string, unknown>): {
 		readonly args: Record<string, unknown>;
@@ -75,23 +90,34 @@ interface ViewPolicy {
 	};
 }
 
-function createCatalogView(catalog: ToolCatalog, policy: ViewPolicy): CatalogView {
-	let cachedVersion = -1;
+function createCatalogView(
+	catalog: ToolCatalog,
+	signIn: AgentToolSignIn | undefined,
+	policy: ViewPolicy,
+): CatalogView {
+	let cachedKey = "";
 	let cachedTools: Tool[] = [];
+	const isWithdrawn = (requiresSignIn: boolean | undefined): boolean =>
+		requiresSignIn === true && signIn?.state.declined === true;
 	return {
 		listTools() {
-			if (cachedVersion !== catalog.version) {
-				cachedTools = catalog.tools.map((tool) => ({
-					name: tool.name,
-					description: tool.description,
-					inputSchema: policy.inputSchema(tool.inputSchema),
-					...(tool.annotations ? { annotations: tool.annotations } : {}),
-				}));
-				cachedVersion = catalog.version;
+			const key = `${catalog.version}:${signIn?.state.declined === true}`;
+			if (cachedKey !== key) {
+				cachedTools = catalog.tools
+					.filter((tool) => !isWithdrawn(tool.requiresSignIn))
+					.map((tool) => ({
+						name: tool.name,
+						description: tool.description,
+						inputSchema: policy.inputSchema(tool.inputSchema),
+						...(tool.annotations ? { annotations: tool.annotations } : {}),
+					}));
+				cachedKey = key;
 			}
 			return cachedTools;
 		},
 		async callTool(name, rawArgs, signal) {
+			const refusal = await signInRefusal(name);
+			if (refusal) return { isError: true, content: [{ type: "text", text: refusal }] };
 			const { args, context } = policy.splitArgs(rawArgs);
 			try {
 				const result = await catalog.invoke(name, args, context, signal);
@@ -101,8 +127,24 @@ function createCatalogView(catalog: ToolCatalog, policy: ViewPolicy): CatalogVie
 				return { isError: true, content: [{ type: "text", text: message }] };
 			}
 		},
-		subscribe: (listener) => catalog.subscribe(listener),
+		subscribe(listener) {
+			const unsubscribeCatalog = catalog.subscribe(listener);
+			const unsubscribeSignIn = signIn?.subscribe(listener);
+			return () => {
+				unsubscribeCatalog();
+				unsubscribeSignIn?.();
+			};
+		},
 	};
+
+	async function signInRefusal(name: string): Promise<string | undefined> {
+		if (!signIn) return undefined;
+		const tool = catalog.tools.find((candidate) => candidate.name === name);
+		if (tool?.requiresSignIn !== true) return undefined;
+		if (signIn.state.declined) return SIGN_IN_DECLINED_TOOL_MESSAGE;
+		if (await signIn.isSignedIn()) return undefined;
+		return signInRequiredToolMessage(policy.audience);
+	}
 }
 
 function extractKiloCallerContext(rawArgs: Record<string, unknown>): {

@@ -165,6 +165,41 @@ describe("ElectronMcpAppRenderer", () => {
 		expect(received.html).toBe(shellHtml);
 	});
 
+	it("tells the widget when the tool result is an error", async () => {
+		// A failed call's result is the error text; without the flag the widget
+		// tries to parse it as data and reports a parse failure instead.
+		const widgetHtml = `<!doctype html><html><body><script>
+			window.addEventListener("message", function (event) {
+				if (event.source !== window.parent) return;
+				var data = event.data;
+				if (data && data.method === "ui/notifications/tool-result") {
+					window.parent.postMessage({ type: "test/tool-result", params: data.params }, "*");
+				}
+			});
+			window.parent.postMessage({ jsonrpc: "2.0", id: 1, method: "ui/initialize", params: {} }, "*");
+		</script></body></html>`;
+		vi.mocked(host.loadResource).mockResolvedValue(widgetResource(widgetHtml));
+		const toolResult = onceMessage((data) => data.type === "test/tool-result");
+
+		render(
+			<TestRenderer
+				part={
+					{
+						...mcpAppPartFor("ui://environments/a"),
+						result: "MCP error -32000: Connection closed",
+						isError: true,
+					} as ToolCallMessagePartProps
+				}
+			/>,
+		);
+
+		const received = (await toolResult) as { params: unknown };
+		expect(received.params).toEqual({
+			content: [{ type: "text", text: "MCP error -32000: Connection closed" }],
+			isError: true,
+		});
+	});
+
 	it("ignores shell-ready messages from foreign sources", async () => {
 		const shellHtml = fakeShellHtml({ announceReady: false });
 		vi.mocked(host.loadResource).mockResolvedValue(widgetResource(shellHtml));

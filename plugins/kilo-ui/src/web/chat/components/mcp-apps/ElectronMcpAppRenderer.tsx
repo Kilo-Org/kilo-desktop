@@ -75,13 +75,20 @@ function isJsonRpcMessage(data: unknown): data is JsonRpcMessage {
 	return (data as Record<string, unknown>).jsonrpc === "2.0";
 }
 
-function sendToolResult(post: (msg: JsonRpcMessage) => void, output: unknown) {
-	const text = typeof output === "string" ? output : JSON.stringify(output);
-	post({ jsonrpc: "2.0", method: "notifications/tools/call/result", params: { result: output } });
+/** A tool call's output, and whether it is an error (the output is then its message). */
+type ToolOutput = { readonly value: unknown; readonly isError: boolean };
+
+function sendToolResult(post: (msg: JsonRpcMessage) => void, output: ToolOutput) {
+	const text = typeof output.value === "string" ? output.value : JSON.stringify(output.value);
+	post({
+		jsonrpc: "2.0",
+		method: "notifications/tools/call/result",
+		params: { result: output.value },
+	});
 	post({
 		jsonrpc: "2.0",
 		method: "ui/notifications/tool-result",
-		params: { content: [{ type: "text", text }] },
+		params: { content: [{ type: "text", text }], ...(output.isError ? { isError: true } : {}) },
 	});
 }
 
@@ -89,6 +96,7 @@ function ElectronMcpAppFrame({
 	html,
 	input,
 	output,
+	isError = false,
 	serverId,
 	// Generous default: content-sized widgets stay fully visible (dynamic
 	// height), while absurd values from a buggy widget are still rejected.
@@ -100,6 +108,8 @@ function ElectronMcpAppFrame({
 	html: string;
 	input: unknown;
 	output: unknown;
+	/** The output is an error message, not the tool's data. */
+	isError?: boolean | undefined;
 	/** Server that owns this app — widget calls are scoped to it. */
 	serverId?: string | undefined;
 	/**
@@ -131,7 +141,7 @@ function ElectronMcpAppFrame({
 		return () => URL.revokeObjectURL(url);
 	}, [html, shellSrc]);
 	const widgetReady = useRef(false);
-	const pendingOutput = useRef<unknown>(undefined);
+	const pendingOutput = useRef<ToolOutput | undefined>(undefined);
 	// Whether the isolated shell has announced readiness for the current frame.
 	// Distinct from `widgetReady` (the widget's own `ui/initialize`): the shell
 	// handshake gates delivery of the HTML; `ui/initialize` gates delivery of the
@@ -243,7 +253,7 @@ function ElectronMcpAppFrame({
 							sendToolResult(post, pendingOutput.current);
 							pendingOutput.current = undefined;
 						} else if (output !== undefined) {
-							sendToolResult(post, output);
+							sendToolResult(post, { value: output, isError });
 						}
 						return;
 					}
@@ -306,16 +316,17 @@ function ElectronMcpAppFrame({
 
 		window.addEventListener("message", onMessage);
 		return () => window.removeEventListener("message", onMessage);
-	}, [host, hostContext, hostInfo, input, maxHeight, output, serverId, html]);
+	}, [host, hostContext, hostInfo, input, maxHeight, output, isError, serverId, html]);
 
 	useEffect(() => {
 		if (output === undefined) return;
+		const toolOutput = { value: output, isError };
 		if (!widgetReady.current) {
-			pendingOutput.current = output;
+			pendingOutput.current = toolOutput;
 			return;
 		}
-		sendToolResult(post, output);
-	}, [output]);
+		sendToolResult(post, toolOutput);
+	}, [output, isError]);
 
 	if (shellError)
 		return (
@@ -413,6 +424,7 @@ function InlineRenderer({
 			html={loadedHtml}
 			input={part.args}
 			output={part.result}
+			isError={part.isError === true}
 			serverId={serverId}
 			maxHeight={options.maxHeight}
 			hostInfo={options.hostInfo}

@@ -218,6 +218,26 @@ describe("OpenCodeComposerInteraction", () => {
 		await expect.element(screen.getByText("Message composer")).not.toBeInTheDocument();
 	});
 
+	it("does not show the card while checking whether the gateway will refuse it for sign-in", async () => {
+		runtime.permissions.push(permission({ messageID: "message-1", callID: "call-1" }, Date.now()));
+		const checkingIds = createStore(() => ({
+			ids: new Set(["permission-1"]) as ReadonlySet<string>,
+		}));
+		const { baseElement } = render(
+			<ChatAutoApproveProvider value={{ enabled: false, checkingIds }}>
+				<OpenCodeComposerInteraction fallback={<div>Message composer</div>} />
+			</ChatAutoApproveProvider>,
+		);
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByText("Message composer")).toBeVisible();
+		await expect.element(screen.getByText("Run a shell command")).not.toBeInTheDocument();
+
+		act(() => checkingIds.setState({ ids: new Set() }));
+
+		await expect.element(screen.getByText("Run a shell command")).toBeVisible();
+	});
+
 	it("shows the card in Auto mode once the request has waited too long to be auto-approved", async () => {
 		runtime.permissions.push(permission(undefined, Date.now() - 2_900));
 		const { baseElement } = render(

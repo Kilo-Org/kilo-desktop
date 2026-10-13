@@ -5,7 +5,8 @@ import {
 	type MainSdkStorage,
 } from "@kilo-desktop/feature-sdk";
 
-import type { ExternalClientsState } from "../../contracts/schemas.js";
+import type { AgentToolSignInState, ExternalClientsState } from "../../contracts/schemas.js";
+import { AgentToolSignIn } from "./agent-tool-sign-in.js";
 import {
 	DEFAULT_EXTERNAL_CLIENTS_SETTINGS,
 	ExternalClients,
@@ -51,6 +52,15 @@ export interface ExternalClientsControl {
 	revokeClient(id: string): Promise<ExternalClientsState>;
 }
 
+/** Sign-in gating for tools that require sign-in, shared by every agent. */
+export interface AgentToolSignInControl {
+	getState(): AgentToolSignInState;
+	/** The user chose not to sign in: withdraw sign-in tools from agents until they do. */
+	decline(): AgentToolSignInState;
+	/** The user signed in: forget a decline. */
+	signedIn(): void;
+}
+
 export interface ToolGateway {
 	/**
 	 * Start the endpoint the bundled Kilo CLI connects to. Resolves undefined
@@ -60,6 +70,7 @@ export interface ToolGateway {
 	/** Start the external AI apps endpoint if the user enabled it. */
 	startExternalClients(): Promise<void>;
 	readonly externalClients: ExternalClientsControl;
+	readonly signIn: AgentToolSignInControl;
 	dispose(): Promise<void>;
 }
 
@@ -71,6 +82,12 @@ export interface CreateToolGatewayOptions {
 	readonly onExternalClientsChange?: (state: ExternalClientsState) => void;
 	/** Whether External AI apps is available (feature flag); defaults to always. */
 	readonly isExternalClientsAvailable?: () => boolean;
+	/**
+	 * Whether the user is signed in, asked on every call to a tool that requires
+	 * sign-in. Without it such calls are refused (fail closed).
+	 */
+	readonly isSignedIn?: () => Promise<boolean>;
+	readonly onSignInChange?: (state: AgentToolSignInState) => void;
 }
 
 export function createToolGateway({
@@ -80,11 +97,16 @@ export function createToolGateway({
 	channel,
 	onExternalClientsChange,
 	isExternalClientsAvailable,
+	isSignedIn = async () => false,
+	onSignInChange,
 }: CreateToolGatewayOptions): ToolGateway {
 	const catalog = new ToolCatalog({ logger });
-	const kiloEndpoint = new KiloToolEndpoint({ catalog });
+	const signIn = new AgentToolSignIn(isSignedIn);
+	if (onSignInChange) signIn.subscribe(() => onSignInChange(signIn.state));
+	const kiloEndpoint = new KiloToolEndpoint({ catalog, signIn });
 	const externalClients = new ExternalClients({
 		catalog,
+		signIn,
 		store: storage.kv<ExternalClientsSettings>({
 			defaults: DEFAULT_EXTERNAL_CLIENTS_SETTINGS,
 			namespace: "external-clients",
@@ -131,6 +153,11 @@ export function createToolGateway({
 			setPort: (port) => externalClients.setPort(port),
 			createClient: (name) => externalClients.createClient(name),
 			revokeClient: (id) => externalClients.revokeClient(id),
+		},
+		signIn: {
+			getState: () => signIn.state,
+			decline: () => signIn.decline(),
+			signedIn: () => signIn.signedIn(),
 		},
 		async dispose() {
 			if (disposed) return;

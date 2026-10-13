@@ -29,6 +29,15 @@ vi.mock("../../usage/session-model-usage.js", async (importOriginal) => {
 	};
 });
 
+import {
+	SIGN_IN_DECLINED_TOOL_MESSAGE,
+	signInRequiredToolMessage,
+	type ToolDefinition,
+} from "@kilo-desktop/feature-sdk";
+import type {
+	AgentToolSignInCapability,
+	AgentToolSignInState,
+} from "@kilo-desktop/plugin-kilo-server/contracts";
 import { SdkProvider } from "@kilo-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeMainSdk, createFakeSdk } from "@kilo-desktop/testing";
 import type * as ReactOpenCode from "@assistant-ui/react-opencode";
@@ -95,6 +104,22 @@ const retryFailedTurn = vi.hoisted(() =>
 		}) => undefined,
 	),
 );
+
+const tellAgentToolsAvailable = vi.hoisted(() =>
+	vi.fn(
+		async (_args: {
+			connection: unknown;
+			sessionID: string;
+			directory: string;
+			toolsLabel: string;
+		}) => undefined,
+	),
+);
+
+vi.mock("../tools/tell-agent-tools-available.js", () => ({
+	tellAgentToolsAvailable: (args: Parameters<typeof tellAgentToolsAvailable>[0]) =>
+		tellAgentToolsAvailable(args),
+}));
 
 vi.mock("./retry-failed-turn.js", () => ({
 	retryFailedTurn: (args: Parameters<typeof retryFailedTurn>[0]) => retryFailedTurn(args),
@@ -290,6 +315,9 @@ function LastUserIdProbe() {
 	return <output data-qa-id="last-user-id">{lastUserId}</output>;
 }
 
+/** Lets a test change the Kilo auth state of a rendered thread (e.g. sign-in completes). */
+type AuthControl = { set?: (auth: KiloAuthContextValue) => void };
+
 function ThreadTree({
 	auth,
 	selection = kiloModelSelection,
@@ -305,8 +333,10 @@ function ThreadTree({
 	},
 	probe = false,
 	isSettingUpWorktree = false,
+	authControl,
 }: {
 	auth: KiloAuthContextValue;
+	authControl?: AuthControl;
 	selection?: ChatModelSelectionValue;
 	initialMessages: readonly ThreadMessageLike[];
 	adapter?: ChatModelAdapter;
@@ -319,8 +349,10 @@ function ThreadTree({
 		initialMessages,
 		unstable_enableMessageQueue: enableMessageQueue,
 	});
+	const [controlledAuth, setControlledAuth] = useState(auth);
+	if (authControl) authControl.set = setControlledAuth;
 	return (
-		<KiloAuthContext.Provider value={auth}>
+		<KiloAuthContext.Provider value={authControl ? controlledAuth : auth}>
 			<AssistantRuntimeProvider runtime={runtime}>
 				<ChatConnectionProvider status={connectionStatus}>
 					<ChatAgentSelectionProvider value={agentSelection}>
@@ -354,8 +386,15 @@ function renderThread({
 	extras,
 	openFile,
 	isSettingUpWorktree,
+	authControl,
+	agentToolSignIn,
+	environmentsTools = [envsListTool],
 }: {
 	auth?: KiloAuthContextValue;
+	authControl?: AuthControl;
+	agentToolSignIn?: AgentToolSignInCapability;
+	/** Tools registered as the environments plugin would, e.g. with a sign-in prompt. */
+	environmentsTools?: readonly ToolDefinition[];
 	selection?: ChatModelSelectionValue;
 	initialMessages: readonly ThreadMessageLike[];
 	adapter?: ChatModelAdapter;
@@ -375,6 +414,10 @@ function renderThread({
 	kiloUiBrowserRegister(mainSdk);
 	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
 	if (openFile) system.getSdk("files").plugins.expose("fileViewer", { openFile });
+	if (agentToolSignIn) {
+		system.getSdk("kilo-server").plugins.expose("agentToolSignIn", { ...agentToolSignIn });
+	}
+	for (const tool of environmentsTools) system.getSdk("environments").tools.register(tool);
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const { baseElement } = render(
 		<SdkProvider system={system}>
@@ -384,6 +427,7 @@ function renderThread({
 						auth={auth}
 						selection={selection}
 						initialMessages={initialMessages}
+						{...(authControl ? { authControl } : {})}
 						{...(enableMessageQueue === undefined ? {} : { enableMessageQueue })}
 						{...(adapter ? { adapter } : {})}
 						{...(connectionStatus ? { connectionStatus } : {})}
@@ -1177,6 +1221,378 @@ describe("message error sign-in", () => {
 		await expect
 			.element(screen.getByTestId("kilo-message-error-signed-in"))
 			.not.toBeInTheDocument();
+	});
+});
+
+function refusedToolCallMessages(result: string): readonly ThreadMessageLike[] {
+	return [
+		{ role: "user", content: [{ type: "text", text: "List my environments" }] },
+		{
+			role: "assistant",
+			content: [
+				{
+					type: "tool-call",
+					toolCallId: "call-conda",
+					toolName: "desktop_environments_conda_envs_list",
+					args: {},
+					result,
+					isError: true,
+				},
+				{ type: "text", text: "I'll wait for you to sign in." },
+			],
+		},
+	];
+}
+
+/** Stands in for kilo-server's main-owned sign-in gating state. */
+function fakeAgentToolSignIn(initial: AgentToolSignInState = { declined: false }) {
+	let state = initial;
+	const listeners = new Set<(state: AgentToolSignInState) => void>();
+	return {
+		getState: async () => state,
+		decline: vi.fn(async () => {
+			state = { declined: true };
+			for (const listener of [...listeners]) listener(state);
+			return state;
+		}),
+		subscribe: (listener: (state: AgentToolSignInState) => void) => {
+			listeners.add(listener);
+			return () => listeners.delete(listener);
+		},
+		/** Main forgets the decline, as it does when the user signs in. */
+		forgetDecline() {
+			state = { declined: false };
+			for (const listener of [...listeners]) listener(state);
+		},
+	} satisfies AgentToolSignInCapability & { forgetDecline(): void };
+}
+
+const ENV_SIGN_IN_PROMPT = {
+	title: "Use governed packages for environments?",
+	body: "The agent wants the environment tools. Sign in to a Kilo account?",
+	toolsLabel: "the environment tools",
+};
+
+/** The refused tool as the environments plugin registers it, with its own prompt. */
+const envsListTool: ToolDefinition = {
+	name: "conda.envs.list",
+	description: "List environments",
+	exposeToModelContext: true,
+	requiresSignIn: ENV_SIGN_IN_PROMPT,
+	handler: () => [],
+};
+
+describe("tool sign-in prompt", () => {
+	const required = signInRequiredToolMessage("kilo");
+
+	afterEach(() => {
+		localStorage.clear();
+	});
+	const continued = () => vi.fn(async () => ({ content: [{ type: "text" as const, text: "ok" }] }));
+
+	it("asks a signed-out user to sign in where the refused tool call was", async () => {
+		const login = vi.fn();
+		const screen = renderThread({
+			auth: { ...signedOutAuth, login },
+			initialMessages: refusedToolCallMessages(required),
+			agentToolSignIn: fakeAgentToolSignIn(),
+			environmentsTools: [envsListTool],
+		});
+
+		await expect.element(screen.getByTestId("kilo-tool-signin-prompt")).toBeVisible();
+		await expect.element(screen.getByText(ENV_SIGN_IN_PROMPT.title)).toBeVisible();
+		await expect.element(screen.getByText(ENV_SIGN_IN_PROMPT.body)).toBeVisible();
+		await expect.element(screen.getByText(/desktop:sign-in-required/)).not.toBeInTheDocument();
+
+		await screen.getByTestId("kilo-tool-signin-prompt-signin").click();
+		expect(login).toHaveBeenCalledOnce();
+	});
+
+	it("falls back to neutral wording when the tool supplies no prompt", async () => {
+		const screen = renderThread({
+			auth: signedOutAuth,
+			initialMessages: refusedToolCallMessages(required),
+			agentToolSignIn: fakeAgentToolSignIn(),
+			environmentsTools: [{ ...envsListTool, requiresSignIn: true }],
+		});
+
+		await expect.element(screen.getByText("Sign in to let the agent use this tool?")).toBeVisible();
+		await expect
+			.element(
+				screen.getByText(
+					"This Desktop tool needs you to be signed in to a Kilo account. Do you want to sign in?",
+				),
+			)
+			.toBeVisible();
+	});
+
+	it("continues the task automatically once the user signs in from the prompt", async () => {
+		const run = continued();
+		const authControl: AuthControl = {};
+		const screen = renderThread({
+			auth: { ...signedOutAuth, login: () => authControl.set?.(signedInAuth) },
+			authControl,
+			initialMessages: refusedToolCallMessages(required),
+			adapter: { run },
+			agentToolSignIn: fakeAgentToolSignIn(),
+		});
+
+		await screen.getByTestId("kilo-tool-signin-prompt-signin").click();
+
+		await expect.poll(() => run.mock.calls.length).toBe(1);
+		await expect.element(screen.getByText("I've signed in. Please continue.")).toBeVisible();
+	});
+
+	it("waits for sign-in to finish before continuing, so the turn uses the signed-in model", async () => {
+		// Sign-in flips to authenticated before it refreshes the model catalog; a
+		// turn sent then still carries the signed-out model and fails.
+		const run = continued();
+		const authControl: AuthControl = {};
+		const screen = renderThread({
+			auth: signedOutAuth,
+			authControl,
+			initialMessages: refusedToolCallMessages(required),
+			adapter: { run },
+			agentToolSignIn: fakeAgentToolSignIn(),
+		});
+		await screen.getByTestId("kilo-tool-signin-prompt-signin").click();
+
+		authControl.set?.({ ...signedInAuth, deviceAuth: { status: "finishing" } });
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		expect(run).not.toHaveBeenCalled();
+
+		authControl.set?.(signedInAuth);
+		await expect.poll(() => run.mock.calls.length).toBe(1);
+	});
+
+	it("does not continue while the model catalog is still refreshing", async () => {
+		const run = continued();
+		const authControl: AuthControl = {};
+		const screen = renderThread({
+			auth: { ...signedOutAuth, login: () => authControl.set?.(signedInAuth) },
+			authControl,
+			selection: { ...kiloModelSelection, isCatalogFetching: true },
+			initialMessages: refusedToolCallMessages(required),
+			adapter: { run },
+			agentToolSignIn: fakeAgentToolSignIn(),
+		});
+
+		await screen.getByTestId("kilo-tool-signin-prompt-signin").click();
+		await expect.element(screen.getByTestId("kilo-tool-signin-signed-in")).toBeVisible();
+		await new Promise((resolve) => setTimeout(resolve, 100));
+
+		expect(run).not.toHaveBeenCalled();
+		await expect.element(screen.getByTestId("kilo-tool-signin-continue")).not.toBeInTheDocument();
+	});
+
+	it("records a decline and continues the task without the tools", async () => {
+		const run = continued();
+		const signIn = fakeAgentToolSignIn();
+		const screen = renderThread({
+			auth: signedOutAuth,
+			initialMessages: refusedToolCallMessages(required),
+			adapter: { run },
+			agentToolSignIn: signIn,
+			environmentsTools: [envsListTool],
+		});
+
+		await screen.getByTestId("kilo-tool-signin-prompt-decline").click();
+
+		expect(signIn.decline).toHaveBeenCalledOnce();
+		await expect.poll(() => run.mock.calls.length).toBe(1);
+		await expect
+			.element(
+				screen.getByText(
+					"I'd rather not sign in for now. Please continue without the environment tools.",
+				),
+			)
+			.toBeVisible();
+		await expect.element(screen.getByTestId("kilo-tool-signin-declined")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-tool-signin-prompt")).not.toBeInTheDocument();
+	});
+
+	describe("after a decline", () => {
+		afterEach(() => {
+			tellAgentToolsAvailable.mockClear();
+		});
+
+		function renderDeclinedCall(auth: KiloAuthContextValue) {
+			return renderThread({
+				auth,
+				extras: makeExtras({ id: "ses_1", directory: "/workspace/project" }),
+				initialMessages: refusedToolCallMessages(SIGN_IN_DECLINED_TOOL_MESSAGE),
+				agentToolSignIn: fakeAgentToolSignIn(),
+				environmentsTools: [envsListTool],
+			});
+		}
+
+		it("tells the agent the tools are back once the user is signed in, once", async () => {
+			const screen = renderDeclinedCall(signedInAuth);
+
+			await expect
+				.poll(() => tellAgentToolsAvailable.mock.calls)
+				.toEqual([
+					[
+						{
+							connection,
+							sessionID: "ses_1",
+							directory: "/workspace/project",
+							toolsLabel: "the environment tools",
+						},
+					],
+				]);
+			await expect.element(screen.getByTestId("kilo-tool-signin-declined-signed-in")).toBeVisible();
+			cleanup();
+			renderDeclinedCall(signedInAuth);
+			await new Promise((resolve) => setTimeout(resolve, 50));
+
+			expect(tellAgentToolsAvailable).toHaveBeenCalledOnce();
+		});
+
+		it("tells the agent the tools are back when the user declines in this chat, then signs in", async () => {
+			const signIn = fakeAgentToolSignIn();
+			const authControl: AuthControl = {};
+			const screen = renderThread({
+				auth: signedOutAuth,
+				authControl,
+				extras: makeExtras({ id: "ses_1", directory: "/workspace/project" }),
+				initialMessages: refusedToolCallMessages(required),
+				agentToolSignIn: signIn,
+				environmentsTools: [envsListTool],
+			});
+			await screen.getByTestId("kilo-tool-signin-prompt-decline").click();
+			await expect.element(screen.getByTestId("kilo-tool-signin-declined")).toBeVisible();
+
+			signIn.forgetDecline();
+			authControl.set?.(signedInAuth);
+
+			await expect.poll(() => tellAgentToolsAvailable.mock.calls.length).toBe(1);
+			expect(tellAgentToolsAvailable.mock.calls[0]?.[0]).toMatchObject({ sessionID: "ses_1" });
+			await expect.element(screen.getByTestId("kilo-tool-signin-declined-signed-in")).toBeVisible();
+		});
+
+		it("does not tell the agent anything while the user is still signed out", async () => {
+			const screen = renderDeclinedCall(signedOutAuth);
+
+			await expect.element(screen.getByTestId("kilo-tool-signin-declined")).toBeVisible();
+			expect(tellAgentToolsAvailable).not.toHaveBeenCalled();
+		});
+	});
+
+	it("does not ask again on a refused call once the user has declined", async () => {
+		const screen = renderThread({
+			auth: signedOutAuth,
+			initialMessages: refusedToolCallMessages(required),
+			agentToolSignIn: fakeAgentToolSignIn({ declined: true }),
+		});
+
+		await expect.element(screen.getByTestId("kilo-tool-signin-declined")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-tool-signin-prompt")).not.toBeInTheDocument();
+	});
+
+	it("notes that the tools are off when a call was refused after a decline", async () => {
+		const screen = renderThread({
+			auth: signedOutAuth,
+			initialMessages: refusedToolCallMessages(SIGN_IN_DECLINED_TOOL_MESSAGE),
+			agentToolSignIn: fakeAgentToolSignIn({ declined: true }),
+			environmentsTools: [envsListTool],
+		});
+
+		await expect.element(screen.getByTestId("kilo-tool-signin-declined")).toBeVisible();
+		await expect
+			.element(screen.getByText(/so the agent won.t use the environment tools until you do\./))
+			.toBeVisible();
+		await expect.element(screen.getByText(/desktop:sign-in-declined/)).not.toBeInTheDocument();
+	});
+
+	it("asks the agent to switch back to the tools once a declined user signs in", async () => {
+		const run = continued();
+		const screen = renderThread({
+			initialMessages: refusedToolCallMessages(SIGN_IN_DECLINED_TOOL_MESSAGE),
+			adapter: { run },
+			agentToolSignIn: fakeAgentToolSignIn(),
+			environmentsTools: [envsListTool],
+		});
+
+		await expect
+			.element(screen.getByText(/signed in\. The agent can use the environment tools again\./))
+			.toBeVisible();
+		await screen.getByTestId("kilo-tool-signin-use-tools").click();
+
+		await expect.poll(() => run.mock.calls.length).toBe(1);
+		await expect
+			.element(screen.getByText(/please use the environment tools again instead of/))
+			.toBeVisible();
+	});
+
+	it("lets the user continue a refused call they have since signed in for", async () => {
+		const run = continued();
+		const screen = renderThread({
+			initialMessages: refusedToolCallMessages(required),
+			adapter: { run },
+			agentToolSignIn: fakeAgentToolSignIn(),
+		});
+
+		await expect.element(screen.getByTestId("kilo-tool-signin-signed-in")).toBeVisible();
+		await screen.getByTestId("kilo-tool-signin-continue").click();
+
+		await expect.poll(() => run.mock.calls.length).toBe(1);
+	});
+
+	it("renders other tools normally even when their output mentions the sign-in marker", async () => {
+		const screen = renderThread({
+			auth: signedOutAuth,
+			initialMessages: [
+				{ role: "user", content: [{ type: "text", text: "Grep the repo" }] },
+				{
+					role: "assistant",
+					content: [
+						{
+							type: "tool-call",
+							toolCallId: "call-bash",
+							toolName: "bash",
+							args: { command: "rg sign-in-required" },
+							result: `sign-in-required.ts: ${required}`,
+						},
+						{ type: "text", text: "Found it." },
+					],
+				},
+			],
+			agentToolSignIn: fakeAgentToolSignIn(),
+		});
+
+		await expect.element(screen.getByText("Found it.")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-tool-signin-prompt")).not.toBeInTheDocument();
+		await expect.element(screen.getByTestId("kilo-tool-signin-signed-in")).not.toBeInTheDocument();
+	});
+
+	it("does not offer sign-in for a Desktop tool that does not require it, even if its error carries the marker", async () => {
+		// A tool's own error can echo input containing the marker; only the
+		// gateway refuses registered sign-in tools, and "Not now" changes a global gate.
+		const screen = renderThread({
+			auth: signedOutAuth,
+			initialMessages: refusedToolCallMessages(required),
+			agentToolSignIn: fakeAgentToolSignIn(),
+			environmentsTools: [{ ...envsListTool, requiresSignIn: false }],
+		});
+
+		await expect.element(screen.getByText("I'll wait for you to sign in.")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-tool-signin-prompt")).not.toBeInTheDocument();
+		await expect
+			.element(screen.getByTestId("kilo-tool-signin-prompt-decline"))
+			.not.toBeInTheDocument();
+	});
+
+	it("does not prompt for sign-in on an ordinary tool error", async () => {
+		const screen = renderThread({
+			auth: signedOutAuth,
+			initialMessages: refusedToolCallMessages("ENV_EXISTS: environment already exists"),
+			agentToolSignIn: fakeAgentToolSignIn(),
+		});
+
+		await expect.element(screen.getByText("I'll wait for you to sign in.")).toBeVisible();
+		await expect.element(screen.getByTestId("kilo-tool-signin-prompt")).not.toBeInTheDocument();
+		await expect.element(screen.getByTestId("kilo-tool-signin-declined")).not.toBeInTheDocument();
 	});
 });
 

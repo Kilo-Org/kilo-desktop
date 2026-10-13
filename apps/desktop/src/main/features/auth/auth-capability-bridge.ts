@@ -25,6 +25,7 @@ export function registerAuthCapability(auth: AuthSessionService): () => void {
 	featureRouter.capabilityRegistry.expose("auth", "session", {
 		getApiKey: () => auth.getApiKey(),
 		getSiteDomain: () => auth.getSiteDomain(),
+		getSession: () => auth.getSession(),
 	});
 
 	// Relay auth session changes to the feature event bus so main-side

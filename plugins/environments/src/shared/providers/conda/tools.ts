@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { SDK } from "@kilo-desktop/feature-sdk";
+import type { SDK, ToolDefinition, ToolSignInPrompt } from "@kilo-desktop/feature-sdk";
 
 import {
 	AGENT_CHANNEL_REFUSAL_MESSAGE,
@@ -33,6 +33,15 @@ const AGENT_CHANNEL_REFUSAL = {
 	path: ["channels"],
 };
 
+/** DESK-3147 copy, one prompt for every conda tool. */
+const CONDA_SIGN_IN_PROMPT: ToolSignInPrompt = {
+	title: "Enable use of secure & governed Anaconda packages for Python environments?",
+	body:
+		"The agent wants to use Desktop's Python environment tools. To use secure & governed " +
+		"packages built by Anaconda, you must sign in to a Kilo account. Do you want to sign in?",
+	toolsLabel: "Desktop's Python environment tools",
+};
+
 /**
  * Register provider-scoped WebMCP tools for the conda provider. Called by
  * both `webRegister` and `CondaProvider.registerTools` — lives in `shared/`
@@ -58,9 +67,18 @@ const AGENT_CHANNEL_REFUSAL = {
  * the wire name a host advertises to MCP clients
  * (`environments_conda_envs_create`) matches the provider seam and the
  * contract keys — no rename layer between contracts and tools.
+ *
+ * Every conda tool requires sign-in (`requiresSignIn`), matching the gated
+ * Conda Environments page — including local operations (DESK-3147). The tool
+ * gateway refuses signed-out agent calls and chat asks the user to sign in
+ * with this prompt.
  */
 export function registerCondaTools(sdk: SDK): void {
-	sdk.tools.register({
+	const register = (definition: ToolDefinition): void => {
+		sdk.tools.register({ ...definition, requiresSignIn: CONDA_SIGN_IN_PROMPT });
+	};
+
+	register({
 		name: "conda.setup.open",
 		description:
 			"Open Conda Environments settings in the desktop app so the user can create an environment " +
@@ -74,7 +92,7 @@ export function registerCondaTools(sdk: SDK): void {
 		},
 	});
 
-	sdk.tools.register({
+	register({
 		name: "conda.envs.list",
 		description:
 			"The result is rendered as an interactive UI widget in the chat. " +
@@ -93,7 +111,7 @@ export function registerCondaTools(sdk: SDK): void {
 	const mcpCreateSchema = condaEnvsCreateInputSchema
 		.omit({ prefix: true })
 		.refine(hasOnlyNamedChannels, AGENT_CHANNEL_REFUSAL);
-	sdk.tools.register({
+	register({
 		name: "conda.envs.create",
 		description:
 			"Create a new named conda environment inside the plugin-scoped base. " +
@@ -109,7 +127,7 @@ export function registerCondaTools(sdk: SDK): void {
 		handler: (args) => sdk.invoke("conda.envs.create", args),
 	});
 
-	sdk.tools.register({
+	register({
 		name: "conda.envs.delete",
 		description:
 			"Delete a conda environment from the plugin-scoped base. This action " +
@@ -122,7 +140,7 @@ export function registerCondaTools(sdk: SDK): void {
 		handler: (args) => sdk.invoke("conda.envs.delete", args),
 	});
 
-	sdk.tools.register({
+	register({
 		name: "conda.envs.clone",
 		description:
 			"Clone an existing conda environment into a new named environment. " +
@@ -137,7 +155,7 @@ export function registerCondaTools(sdk: SDK): void {
 	// NOT exposed to the model context so an LLM cannot invoke it with
 	// arbitrary paths. The renderer UI provides paths only from the trusted
 	// native file picker or Electron's getPathForFile (drag-and-drop).
-	sdk.tools.register({
+	register({
 		name: "conda.envs.createFromFile",
 		description:
 			"Create a conda environment from a YAML environment file (.yml/.yaml). " +
@@ -147,7 +165,7 @@ export function registerCondaTools(sdk: SDK): void {
 		handler: (args) => sdk.invoke("conda.envs.createFromFile", args),
 	});
 
-	sdk.tools.register({
+	register({
 		name: "conda.packages.list",
 		description:
 			"List all packages installed in a conda environment, including " +
@@ -167,7 +185,7 @@ export function registerCondaTools(sdk: SDK): void {
 		hasOnlyNamedChannels,
 		AGENT_CHANNEL_REFUSAL,
 	);
-	sdk.tools.register({
+	register({
 		name: "conda.packages.install",
 		description:
 			"Install one or more packages into an EXISTING conda environment " +
@@ -189,7 +207,7 @@ export function registerCondaTools(sdk: SDK): void {
 		handler: (args) => sdk.invoke("conda.packages.install", args),
 	});
 
-	sdk.tools.register({
+	register({
 		name: "conda.packages.remove",
 		description:
 			"Remove (uninstall) one or more packages from an EXISTING conda " +
@@ -209,7 +227,7 @@ export function registerCondaTools(sdk: SDK): void {
 		hasOnlyNamedChannels,
 		AGENT_CHANNEL_REFUSAL,
 	);
-	sdk.tools.register({
+	register({
 		name: "conda.packages.update",
 		description:
 			"Update packages in an EXISTING conda environment. Identify the " +
@@ -239,7 +257,7 @@ export function registerCondaTools(sdk: SDK): void {
 		handler: (args) => sdk.invoke("conda.packages.update", args),
 	});
 
-	sdk.tools.register({
+	register({
 		name: "conda.channels.list",
 		description:
 			"List the conda channels configured for the plugin-scoped base, in solver " +
@@ -257,7 +275,7 @@ export function registerCondaTools(sdk: SDK): void {
 		hasOnlyNamedChannels,
 		AGENT_CHANNEL_REFUSAL,
 	);
-	sdk.tools.register({
+	register({
 		name: "conda.repodata.find",
 		description:
 			"Look up available conda packages in the channel repodata index. " +

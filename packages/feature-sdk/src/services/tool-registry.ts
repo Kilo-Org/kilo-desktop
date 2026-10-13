@@ -57,6 +57,10 @@ export class ToolRegistry {
 			name: definition.name,
 			description: definition.description,
 			exposeToModelContext: definition.exposeToModelContext === true,
+			requiresSignIn: Boolean(definition.requiresSignIn),
+			...(typeof definition.requiresSignIn === "object"
+				? { signInPrompt: definition.requiresSignIn }
+				: {}),
 			...(definition.inputSchema ? { inputSchema: definition.inputSchema } : {}),
 			...(definition.annotations ? { annotations: definition.annotations } : {}),
 		}));

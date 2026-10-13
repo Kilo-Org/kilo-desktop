@@ -92,6 +92,38 @@ export const EXTERNAL_AI_APPS_FEATURE_FLAG = "external-api-apps-settings";
 /** Emitted (qualified as `kilo-server.external-clients-changed`) with the new state. */
 export const EXTERNAL_CLIENTS_CHANGED_EVENT = "external-clients-changed";
 
+// ─── Agent tools that require sign-in ───────────────────────────────────────────
+
+/**
+ * Sign-in gating state for agent tools that declare `requiresSignIn`, owned by
+ * main. `declined`: the user chose not to sign in, so those tools are withdrawn
+ * from agents until they sign in or the app restarts.
+ */
+export const agentToolSignInStateSchema = z.object({ declined: z.boolean() });
+
+export type AgentToolSignInState = z.infer<typeof agentToolSignInStateSchema>;
+
+/** Emitted (qualified as `kilo-server.agent-tool-sign-in-changed`) with the new state. */
+export const AGENT_TOOL_SIGN_IN_CHANGED_EVENT = "agent-tool-sign-in-changed";
+
+/**
+ * Renderer-side capability for other plugins (chat) to read and change the
+ * main-owned sign-in gating state:
+ * `sdk.plugins.get<KiloServerWebCapabilities>("kilo-server")?.agentToolSignIn`.
+ */
+export interface AgentToolSignInCapability {
+	getState(): Promise<AgentToolSignInState>;
+	/** The user chose not to sign in. */
+	decline(): Promise<AgentToolSignInState>;
+	/** Hears every change, from any window. */
+	subscribe(listener: (state: AgentToolSignInState) => void): () => void;
+}
+
+export interface KiloServerWebCapabilities {
+	readonly [key: string]: unknown;
+	readonly agentToolSignIn: AgentToolSignInCapability;
+}
+
 // ─── Contract ───────────────────────────────────────────────────────────────────
 
 export const kiloServerContract = defineContract({
@@ -121,6 +153,9 @@ export const kiloServerContract = defineContract({
 		z.object({ id: z.string().min(1) }),
 		externalClientsStateSchema,
 	),
+	"agentToolSignIn.getState": defineMethod(z.undefined(), agentToolSignInStateSchema),
+	/** The user chose not to sign in: withdraw sign-in tools from agents until they do. */
+	"agentToolSignIn.decline": defineMethod(z.undefined(), agentToolSignInStateSchema),
 });
 
 export type KiloServerService = InferContract<typeof kiloServerContract>;

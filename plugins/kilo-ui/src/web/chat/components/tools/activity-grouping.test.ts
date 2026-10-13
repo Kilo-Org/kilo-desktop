@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { GroupByContext, PartState } from "@assistant-ui/react";
 
+import {
+	SIGN_IN_DECLINED_TOOL_MESSAGE,
+	signInRequiredToolMessage,
+} from "@kilo-desktop/feature-sdk";
+
 import { createActivityGroupBy, createTurnWorkGroupBy } from "./activity-grouping.js";
 
 const context: GroupByContext = {};
@@ -14,6 +19,9 @@ const toolPart = (toolCallId: string, toolName: string): PartState =>
 		argsText: "{}",
 		status: { type: "complete" },
 	}) as PartState;
+
+const refusedToolPart = (toolCallId: string, toolName: string, result: string): PartState =>
+	({ ...toolPart(toolCallId, toolName), result, isError: true }) as PartState;
 
 const dataPart = (name: string): PartState => ({ type: "data", name, data: {} }) as PartState;
 
@@ -191,6 +199,38 @@ describe("createTurnWorkGroupBy", () => {
 		expect(parts.map((part) => groupBy(part, context))).toEqual([
 			["group-turn-work", "group-delegation-0"],
 			["group-turn-work", "group-activity", "group-reading"],
+			[],
+		]);
+	});
+
+	it("groups a non-Desktop or successful tool whose output only mentions a sign-in marker", () => {
+		const parts = [
+			toolPart("read-1", "read"),
+			{ ...toolPart("bash-1", "bash"), result: signInRequiredToolMessage("kilo") } as PartState,
+			{
+				...toolPart("conda-1", "desktop_environments_conda_envs_list"),
+				result: `found ${SIGN_IN_DECLINED_TOOL_MESSAGE}`,
+			} as PartState,
+		];
+		const groupBy = createActivityGroupBy(parts);
+
+		expect(parts.map((part) => groupBy(part, context).length > 0)).toEqual([true, true, true]);
+	});
+
+	it.each([
+		["sign-in-required", signInRequiredToolMessage("kilo")],
+		["sign-in-declined", SIGN_IN_DECLINED_TOOL_MESSAGE],
+	])("keeps a %s tool call outside the activity groups and the turn fold", (_label, result) => {
+		const parts = [
+			toolPart("read-1", "read"),
+			refusedToolPart("conda-1", "desktop_environments_conda_envs_create", result),
+			textPart("Waiting for you to sign in."),
+		];
+		const groupBy = createTurnWorkGroupBy(parts);
+
+		expect(parts.map((part) => groupBy(part, context))).toEqual([
+			["group-turn-work", "group-activity", "group-reading"],
+			[],
 			[],
 		]);
 	});

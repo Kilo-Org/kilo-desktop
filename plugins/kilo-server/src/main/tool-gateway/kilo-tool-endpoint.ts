@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { createCatalogMcpServer, type McpSessionServer } from "./catalog-mcp-server.js";
 import { createKiloCatalogView, type CatalogView } from "./catalog-view.js";
 import { hasBearerToken, MCP_PATH, McpHttpServer, UNAUTHORIZED } from "./mcp-http-server.js";
+import type { AgentToolSignIn } from "./agent-tool-sign-in.js";
 import type { ToolCatalog } from "./tool-catalog.js";
 
 /**
@@ -20,6 +21,8 @@ export interface KiloToolEndpointConnection {
 
 export interface KiloToolEndpointOptions {
 	readonly catalog: ToolCatalog;
+	/** Gates tools that require sign-in; without it every tool is served ungated. */
+	readonly signIn?: AgentToolSignIn;
 	/**
 	 * Open sessions kept before the least recently used one is closed. Kilo
 	 * opens one session per workspace directory, and a `kilo serve` restart
@@ -35,7 +38,7 @@ export class KiloToolEndpoint {
 	#connection: KiloToolEndpointConnection | undefined;
 
 	constructor(options: KiloToolEndpointOptions) {
-		const view = createKiloCatalogView(options.catalog);
+		const view = createKiloCatalogView(options.catalog, options.signIn);
 		const createSessionServer = options.createSessionServer ?? createCatalogMcpServer;
 		this.#http = new McpHttpServer<"kilo">({
 			authorize: (request) => {

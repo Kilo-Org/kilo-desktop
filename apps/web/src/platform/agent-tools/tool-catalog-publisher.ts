@@ -2,6 +2,7 @@ import {
 	TOOL_CATALOG_FEATURE_ID,
 	TOOL_CATALOG_PORT_CHANNEL,
 	TOOL_CATALOG_PROTOCOL_VERSION,
+	agentToolName,
 	toolCatalogConsumerMessageSchema,
 	type RegisteredTool,
 	type ToolCatalogConsumerMessage,
@@ -32,11 +33,6 @@ type CallMessage = Extract<ToolCatalogConsumerMessage, { type: "call" }>;
 export interface ToolCatalogPublisherOptions {
 	/** Delays between reconnect attempts; the last one repeats. */
 	readonly retryDelaysMs?: readonly number[];
-}
-
-/** Namespaced MCP tool name: `featureId_name`, sanitized to `[A-Za-z0-9_]`. */
-function toMcpToolName(tool: Pick<RegisteredTool, "featureId" | "name">): string {
-	return `${tool.featureId}_${tool.name}`.replace(/[^A-Za-z0-9_]/g, "_");
 }
 
 /** Starts publishing; returns a function that stops it and closes the port. */
@@ -164,7 +160,7 @@ function buildSnapshot(all: readonly RegisteredTool[]): {
 	const routes = new Map<string, RegisteredTool>();
 	for (const tool of all) {
 		if (!tool.exposeToModelContext) continue;
-		const name = toMcpToolName(tool);
+		const name = agentToolName(tool);
 		if (routes.has(name)) {
 			console.warn(
 				`[tool-catalog] Tool "${tool.id}" sanitizes to "${name}", which "${routes.get(name)!.id}" ` +
@@ -180,6 +176,7 @@ function buildSnapshot(all: readonly RegisteredTool[]): {
 				...EMPTY_INPUT_SCHEMA,
 			},
 			...(tool.annotations ? { annotations: tool.annotations } : {}),
+			...(tool.requiresSignIn ? { requiresSignIn: true } : {}),
 		});
 	}
 	return { tools, routes };

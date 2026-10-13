@@ -45,6 +45,7 @@ import {
 import { OpenCodeComposerInteraction } from "../tools/opencode-composer-interaction.js";
 import { OPENCODE_SNAPSHOT_PROGRESS_PART } from "../tools/opencode-data-part.js";
 import { FallbackTool } from "../tools/opencode-tools.js";
+import { ToolCallSignInGate } from "../tools/tool-sign-in-card.js";
 import { activityKindFromGroupKey, isDelegationTool } from "../tools/tool-categories.js";
 import { getPlanProjectionForMessage } from "../../plan/index.js";
 import { useApprovePlan } from "../../plan/use-approve-plan.js";
@@ -1503,7 +1504,16 @@ const AssistantMessage: FC = () => {
 								case "reasoning":
 									return <Reasoning {...part} />;
 								case "tool-call":
-									return part.toolUI ?? <ToolFallbackComponent {...part} />;
+									return (
+										<ToolCallSignInGate
+											toolCallId={part.toolCallId}
+											toolName={part.toolName}
+											result={part.result}
+											isError={part.isError}
+										>
+											{part.toolUI ?? <ToolFallbackComponent {...part} />}
+										</ToolCallSignInGate>
+									);
 								case "data":
 									return part.dataRendererUI;
 								default: {

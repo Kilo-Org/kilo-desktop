@@ -7,7 +7,8 @@ import { createKiloDirectoryClient } from "../runtime/create-kilo-runtime-client
 /** How long an auto-approvable request stays hidden before it is shown anyway. */
 export const AUTO_APPROVE_REVEAL_MS = 3_000;
 
-export type RevealedIdsStore = StoreApi<{ ids: ReadonlySet<string> }>;
+/** A set of permission request ids the UI reacts to. */
+export type RequestIdsStore = StoreApi<{ ids: ReadonlySet<string> }>;
 
 /**
  * Prompts auto-approve never answers, so a person always sees them. Sandbox
@@ -49,6 +50,16 @@ function neverAutoReplied(metadata: unknown): boolean {
  *
  * `generation` is bumped on every enable/disable so an in-flight drain stops as
  * soon as the mode changes.
+ *
+ * In manual mode one kind of request is still answered here: a call the tool
+ * gateway will refuse for sign-in (`isRefusedForSignIn` — a sign-in tool while
+ * the user is signed out). Asking permission for it is pointless, and makes
+ * Kilo's permission prompt appear before the sign-in prompt (or, if denied,
+ * instead of it). Such requests are held in `checkingIds` (hidden from the UI)
+ * while the check runs; refused calls are answered "once", so the call reaches
+ * the gateway and chat shows the sign-in prompt. Anything else — the user is
+ * signed in, the check or reply fails, or it takes longer than
+ * `revealAfterMs` — is shown to the user as usual.
  */
 export type AutoApprover = {
 	/**
@@ -62,7 +73,9 @@ export type AutoApprover = {
 	/** Drains requests already pending when Auto is on (startup, reconnect); otherwise a no-op. */
 	resync: () => Promise<void>;
 	/** Requests auto-approve could not answer; their cards show immediately. */
-	revealedIds: RevealedIdsStore;
+	revealedIds: RequestIdsStore;
+	/** Manual-mode requests being checked for a sign-in refusal; hidden meanwhile. */
+	checkingIds: RequestIdsStore;
 	dispose: () => void;
 };
 
@@ -73,9 +86,14 @@ export function createAutoApprover(options: {
 	directories: () => Iterable<string>;
 	onReveal: (event: OpenCodeServerEvent) => void;
 	revealAfterMs?: number;
+	/** Whether the gateway will refuse this permission's tool call for sign-in. */
+	isRefusedForSignIn?: (permission: string) => Promise<boolean>;
 }): AutoApprover {
 	const revealAfterMs = options.revealAfterMs ?? AUTO_APPROVE_REVEAL_MS;
-	const revealedIds: RevealedIdsStore = createStore(() => ({
+	const revealedIds: RequestIdsStore = createStore(() => ({
+		ids: new Set<string>() as ReadonlySet<string>,
+	}));
+	const checkingIds: RequestIdsStore = createStore(() => ({
 		ids: new Set<string>() as ReadonlySet<string>,
 	}));
 	const held = new Map<
@@ -84,16 +102,19 @@ export function createAutoApprover(options: {
 	>();
 	let generation = 0;
 
-	const setRevealed = (requestID: string, revealed: boolean) => {
-		const current = revealedIds.getState().ids;
-		if (current.has(requestID) === revealed) return;
+	const setMember = (store: RequestIdsStore, requestID: string, member: boolean) => {
+		const current = store.getState().ids;
+		if (current.has(requestID) === member) return;
 		const next = new Set(current);
-		if (revealed) next.add(requestID);
+		if (member) next.add(requestID);
 		else next.delete(requestID);
-		revealedIds.setState({ ids: next });
+		store.setState({ ids: next });
 	};
+	const setRevealed = (requestID: string, revealed: boolean) =>
+		setMember(revealedIds, requestID, revealed);
 
 	const release = (requestID: string) => {
+		setMember(checkingIds, requestID, false);
 		const entry = held.get(requestID);
 		if (!entry) return undefined;
 		clearTimeout(entry.timer);
@@ -105,6 +126,37 @@ export function createAutoApprover(options: {
 		setRevealed(requestID, true);
 		const event = release(requestID);
 		if (event) options.onReveal(event);
+	};
+
+	/** Manual mode: answer a call the gateway will refuse for sign-in, show anything else. */
+	const handleSignInRefusal = (
+		event: OpenCodeServerEvent,
+		isRefusedForSignIn: (permission: string) => Promise<boolean>,
+	): boolean => {
+		const requestID = event.properties["id"];
+		const permission = event.properties["permission"];
+		if (typeof requestID !== "string" || typeof permission !== "string") return false;
+		if (needsPerson(event.properties["metadata"])) return false;
+		const directory = event.directory ?? options.resolveDirectory(event.sessionId);
+		if (!directory) return false;
+		setMember(checkingIds, requestID, true);
+		held.set(requestID, { event, timer: setTimeout(() => reveal(requestID), revealAfterMs) });
+		void isRefusedForSignIn(permission)
+			.then(async (refused) => {
+				if (!held.has(requestID)) return;
+				if (!refused) {
+					// The call would run: the user decides, as usual.
+					const asked = release(requestID);
+					if (asked) options.onReveal(asked);
+					return;
+				}
+				await reply(requestID, directory);
+			})
+			.catch((error: unknown) => {
+				console.error("[kilo-ui] sign-in: failed to skip a pointless permission", error);
+				reveal(requestID);
+			});
+		return true;
 	};
 
 	const reply = async (requestID: string, directory: string) => {
@@ -121,7 +173,12 @@ export function createAutoApprover(options: {
 			}
 			return false;
 		}
-		if (event.type !== "permission.asked" || !options.isEnabled()) return false;
+		if (event.type !== "permission.asked") return false;
+		if (!options.isEnabled()) {
+			return options.isRefusedForSignIn
+				? handleSignInRefusal(event, options.isRefusedForSignIn)
+				: false;
+		}
 		const requestID = event.properties["id"];
 		const metadata = event.properties["metadata"];
 		if (typeof requestID !== "string" || neverAutoReplied(metadata)) return false;
@@ -173,6 +230,7 @@ export function createAutoApprover(options: {
 			if (options.isEnabled()) await drain(generation);
 		},
 		revealedIds,
+		checkingIds,
 		dispose: () => {
 			generation += 1;
 			for (const entry of held.values()) clearTimeout(entry.timer);

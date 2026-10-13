@@ -29,6 +29,7 @@ import { useLocalInferenceStatus } from "./use-local-inference-status.js";
 import { ChatAgentSelectionProvider } from "./agent-selection/ChatAgentSelectionContext.js";
 import { ChatAutoApproveProvider } from "./auto-approve/ChatAutoApproveContext.js";
 import { createAutoApprover } from "./auto-approve/auto-approver.js";
+import { isRefusedForSignIn } from "./components/tools/tool-sign-in.js";
 import { useKiloAgentCatalog } from "./agent-selection/use-kilo-agent-catalog.js";
 import { useAgentSelection } from "./agent-selection/use-agent-selection.js";
 import { findCatalogAgent } from "./agent-selection/agent-catalog.js";
@@ -372,8 +373,15 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 						session.directory ? [session.directory] : [],
 					),
 				onReveal: (event) => sessionActivity.getState().applyEvent(event),
+				// A signed-out call to a sign-in tool is refused by the gateway, so
+				// skip Kilo's permission prompt and let chat show the sign-in prompt.
+				isRefusedForSignIn: (permission) =>
+					isRefusedForSignIn(permission, {
+						tools: sdk.tools.all(),
+						getSession: () => sdk.auth.getSession(),
+					}),
 			}),
-		[connectionPromise, sessionActivity],
+		[connectionPromise, sdk, sessionActivity],
 	);
 	useEffect(() => {
 		// A persisted Auto mode (or a recreated approver) must still answer requests
@@ -617,6 +625,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		enabled: autoApprove,
 		setEnabled: changeAutoApprove,
 		revealedIds: autoApprover.revealedIds,
+		checkingIds: autoApprover.checkingIds,
 	};
 
 	const connectionStatus = {

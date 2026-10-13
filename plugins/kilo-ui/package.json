@@ -46,6 +46,7 @@
 	"peerDependencies": {
 		"@kilo-desktop/feature-sdk": "workspace:*",
 		"@kilo-desktop/plugin-git": "workspace:*",
+		"@kilo-desktop/plugin-kilo-server": "workspace:*",
 		"@kilo-desktop/sdk-react": "workspace:*",
 		"@kilo-desktop/ui": "workspace:*",
 		"@tanstack/react-query": "^5.101.4",
@@ -55,6 +56,9 @@
 	},
 	"peerDependenciesMeta": {
 		"@kilo-desktop/plugin-git": {
+			"optional": true
+		},
+		"@kilo-desktop/plugin-kilo-server": {
 			"optional": true
 		},
 		"@kilo-desktop/sdk-react": {
@@ -77,6 +81,7 @@
 		"@kilo-desktop/e2e": "workspace:*",
 		"@kilo-desktop/feature-sdk": "workspace:*",
 		"@kilo-desktop/plugin-git": "workspace:*",
+		"@kilo-desktop/plugin-kilo-server": "workspace:*",
 		"@kilo-desktop/sdk-react": "workspace:*",
 		"@kilo-desktop/testing": "workspace:*",
 		"@kilo-desktop/ui": "workspace:*",

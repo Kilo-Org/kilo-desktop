@@ -14,7 +14,10 @@ afterEach(async () => {
 	for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
-function setup(onExternalClientsChange = vi.fn()): { gateway: ToolGateway; router: FeatureRouter } {
+function setup(
+	onExternalClientsChange = vi.fn(),
+	signIn: Pick<Parameters<typeof createToolGateway>[0], "isSignedIn" | "onSignInChange"> = {},
+): { gateway: ToolGateway; router: FeatureRouter } {
 	const router = new FeatureRouter();
 	const gateway = createToolGateway({
 		ports: router.createMainSdk("kilo-server").ports,
@@ -22,6 +25,7 @@ function setup(onExternalClientsChange = vi.fn()): { gateway: ToolGateway; route
 		logger,
 		channel: "development",
 		onExternalClientsChange,
+		...signIn,
 	});
 	cleanups.push(() => gateway.dispose());
 	return { gateway, router };
@@ -55,6 +59,42 @@ describe("createToolGateway", () => {
 		).resolves.toMatchObject({
 			content: [{ type: "text", text: JSON.stringify({ text: "hi" }, null, 2) }],
 		});
+	});
+
+	it("gates tools that require sign-in for Kilo, and withdraws them after a decline", async () => {
+		let signedIn = false;
+		const onSignInChange = vi.fn();
+		const { gateway, router } = setup(vi.fn(), {
+			isSignedIn: async () => signedIn,
+			onSignInChange,
+		});
+		const producer = new FakeToolProducer();
+		await router.connectPort("kilo-server", "tool-catalog", producer.port, { version: 1 });
+		producer.publish([
+			descriptor("environments_conda_envs_list", { requiresSignIn: true }),
+			descriptor("todos_echo"),
+		]);
+		producer.respond = () => "ran";
+		const connection = await gateway.startKiloEndpoint();
+		const client = await connectKilo(connection!.url, connection!.token);
+		const names = async () => (await client.listTools()).tools.map((tool) => tool.name);
+
+		await expect(
+			client.callTool({ name: "environments_conda_envs_list", arguments: {} }),
+		).resolves.toMatchObject({ isError: true });
+		expect(producer.calls()).toEqual([]);
+
+		expect(gateway.signIn.decline()).toEqual({ declined: true });
+		expect(onSignInChange).toHaveBeenLastCalledWith({ declined: true });
+		expect(await names()).toEqual(["todos_echo"]);
+
+		signedIn = true;
+		gateway.signIn.signedIn();
+		expect(gateway.signIn.getState()).toEqual({ declined: false });
+		expect(await names()).toEqual(["environments_conda_envs_list", "todos_echo"]);
+		await expect(
+			client.callTool({ name: "environments_conda_envs_list", arguments: {} }),
+		).resolves.not.toHaveProperty("isError");
 	});
 
 	it("refuses a catalog port that speaks another protocol version", async () => {

@@ -764,6 +764,18 @@ export interface ToolDefinition<TArgs = unknown, TResult = unknown> {
 	 * intended.
 	 */
 	exposeToModelContext?: boolean;
+	/**
+	 * Agents may call this tool only while the user is signed in. Enforced by
+	 * the main-process tool gateway: a signed-out call is refused before it
+	 * reaches the handler, and chat asks the user to sign in, using the prompt
+	 * given here (or neutral default wording for `true`). In-app callers
+	 * (`sdk.invoke`) are not affected.
+	 *
+	 * Declining is all-or-nothing: it withdraws every `requiresSignIn` tool,
+	 * from every feature, until the user signs in or the app restarts. Scope it
+	 * per feature before a second feature gates tools.
+	 */
+	requiresSignIn?: boolean | ToolSignInPrompt;
 	handler: (args: TArgs, context: ToolInvocationContext) => TResult | Promise<TResult>;
 }
 
@@ -779,6 +791,20 @@ export interface RegisteredTool {
 	annotations?: ToolAnnotations;
 	/** Whether the tool opted in to being served to AI agents (see ToolDefinition). */
 	exposeToModelContext: boolean;
+	/** Whether agents may call it only while the user is signed in (see ToolDefinition). */
+	requiresSignIn: boolean;
+	/** The tool's own sign-in prompt, when it supplied one. */
+	signInPrompt?: ToolSignInPrompt;
+}
+
+/** What chat asks when an agent call to a sign-in tool is refused. */
+export interface ToolSignInPrompt {
+	/** Prompt title, a question. */
+	readonly title: string;
+	/** Prompt body: why sign-in is needed, ending with the question. */
+	readonly body: string;
+	/** How to name this tool's group in follow-ups, e.g. "Desktop's Python environment tools". */
+	readonly toolsLabel: string;
 }
 
 /**

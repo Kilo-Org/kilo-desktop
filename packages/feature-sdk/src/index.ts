@@ -31,6 +31,7 @@ export type {
 	ShellFsDelegate,
 	SdkTools,
 	ToolDefinition,
+	ToolSignInPrompt,
 	ToolAnnotations,
 	ToolInvocationContext,
 	RegisteredTool,
@@ -124,6 +125,16 @@ export { CapabilityRegistry } from "./services/capability-registry.js";
 export { ContributionRegistry } from "./services/contribution-registry.js";
 export { CommandRegistry } from "./services/command-registry.js";
 export { ToolRegistry } from "./services/tool-registry.js";
+export { agentToolName } from "./services/agent-tool-name.js";
+export {
+	SIGN_IN_DECLINED_TOOL_ERROR_CODE,
+	SIGN_IN_DECLINED_TOOL_MESSAGE,
+	SIGN_IN_REQUIRED_TOOL_ERROR_CODE,
+	isSignInDeclinedToolResult,
+	isSignInRequiredToolResult,
+	signInRequiredToolMessage,
+	type SignInRefusalAudience,
+} from "./services/sign-in-required.js";
 export {
 	MAX_CATALOG_TOOLS,
 	TOOL_CATALOG_FEATURE_ID,

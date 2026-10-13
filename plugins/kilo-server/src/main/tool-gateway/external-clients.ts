@@ -9,6 +9,7 @@ import type {
 	ExternalClientsStatus,
 } from "../../contracts/schemas.js";
 import { createCatalogMcpServer } from "./catalog-mcp-server.js";
+import type { AgentToolSignIn } from "./agent-tool-sign-in.js";
 import { createExternalCatalogView } from "./catalog-view.js";
 import { bearerToken, MCP_PATH, McpHttpServer, UNAUTHORIZED } from "./mcp-http-server.js";
 import type { ToolCatalog } from "./tool-catalog.js";
@@ -68,6 +69,8 @@ export interface ExternalClientsLogger {
 
 export interface ExternalClientsOptions {
 	readonly catalog: ToolCatalog;
+	/** Gates tools that require sign-in; without it every tool is served ungated. */
+	readonly signIn?: AgentToolSignIn;
 	readonly store: KvStore<ExternalClientsSettings>;
 	readonly defaultPort: number;
 	readonly logger: ExternalClientsLogger;
@@ -107,7 +110,7 @@ export class ExternalClients {
 		this.#now = options.now ?? (() => new Date());
 		this.#isAvailable = options.isAvailable ?? (() => true);
 		this.#indexTokens();
-		const view = createExternalCatalogView(options.catalog);
+		const view = createExternalCatalogView(options.catalog, options.signIn);
 		this.#http = new McpHttpServer<string>({
 			authorize: (request) => this.#authorize(request),
 			createSession: () => createCatalogMcpServer(view),

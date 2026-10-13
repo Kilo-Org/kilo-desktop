@@ -19,6 +19,7 @@ describe("ToolRegistry", () => {
 				name: "greet",
 				description: "Greet someone",
 				exposeToModelContext: false,
+				requiresSignIn: false,
 			},
 		]);
 		unregister();
@@ -151,5 +152,19 @@ describe("ToolRegistry", () => {
 		registry.subscribe(listener);
 		unregister();
 		expect(listener).not.toHaveBeenCalled();
+	});
+
+	it("marks requiresSignIn when a tool opts in", () => {
+		const registry = new ToolRegistry();
+		registry.register("todos", { ...base, requiresSignIn: true });
+		expect(registry.all()[0]).toMatchObject({ requiresSignIn: true });
+		expect(registry.all()[0]).not.toHaveProperty("signInPrompt");
+	});
+
+	it("keeps the sign-in prompt a tool supplies", () => {
+		const registry = new ToolRegistry();
+		const signInPrompt = { title: "Sign in?", body: "Needs an account.", toolsLabel: "Todo tools" };
+		registry.register("todos", { ...base, requiresSignIn: signInPrompt });
+		expect(registry.all()[0]).toMatchObject({ requiresSignIn: true, signInPrompt });
 	});
 });

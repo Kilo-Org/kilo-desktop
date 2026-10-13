@@ -3,6 +3,7 @@ import { getMcpAppFromToolPart, type GroupByContext, type PartState } from "@ass
 import { shouldExcludeToolCallFromActivityGroup } from "../../plan/plan-projection.js";
 import { isHostableMcpAppTool } from "../../runtime/mcp-app-registry.js";
 import { isHiddenOpenCodeDataPart } from "./opencode-data-part.js";
+import { isSignInRefusedToolPart } from "./tool-sign-in.js";
 import {
 	getGroupKeyForTool,
 	isComposerProjectedTool,
@@ -93,6 +94,7 @@ const shouldKeepPartOutsideActivity = (
 ): boolean =>
 	part.type === "tool-call" &&
 	(isComposerProjectedPart(part) ||
+		isSignInRefusedToolPart(part) ||
 		Boolean(getMcpAppFromToolPart(part) && isHostableMcpAppTool(part.toolName)) ||
 		Boolean(context.toolUIs?.[part.toolName]?.[0]?.standalone) ||
 		shouldExcludeToolCallFromActivityGroup(part, options));

@@ -38,6 +38,8 @@ export const toolDescriptorSchema = z.object({
 			openWorldHint: z.boolean().optional(),
 		})
 		.optional(),
+	/** Agents may call it only while the user is signed in; main enforces it. */
+	requiresSignIn: z.boolean().optional(),
 });
 
 export type ToolDescriptor = z.infer<typeof toolDescriptorSchema>;

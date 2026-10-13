@@ -8,7 +8,7 @@ packages:
 catalog:
   "@pierre/diffs": 1.5.2
   "@pierre/trees": 1.0.0-beta.6
-  "@playwright/test": 1.63.0
+  "@playwright/test": 1.64.0
   "@sentry/electron": 7.20.0
   "@sentry/react": 10.75.0
   "@sentry/vite-plugin": ^5.0.0
@@ -21,7 +21,7 @@ catalog:
   which: ^7.0.0
   lodash: ^4.17.21
   lucide-react: ^1.27.0
-  playwright: 1.63.0
+  playwright: 1.64.0
   react-use: ^17.6.1
   type-fest: ^5.8.0
   typescript: ^7.0.2

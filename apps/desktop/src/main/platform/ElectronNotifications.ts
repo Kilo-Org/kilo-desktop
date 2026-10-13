@@ -12,6 +12,8 @@ export interface ShowNotificationInput {
 	message: string;
 	/** Reserved for styling/urgency mapping; the OS toast renders title+body. */
 	type: "info" | "success" | "warning" | "error";
+	/** Mute the OS sound (macOS plays one by default), for callers with their own cue. */
+	silent?: boolean | undefined;
 }
 
 /**
@@ -27,6 +29,7 @@ export class ElectronNotifications {
 		private readonly createNotification: (options: {
 			title: string;
 			body: string;
+			silent: boolean;
 		}) => SystemNotificationLike = (options) => new Notification(options),
 	) {}
 
@@ -35,7 +38,11 @@ export class ElectronNotifications {
 			return { delivered: false, reason: "OS notifications are not supported on this system." };
 		}
 		try {
-			this.createNotification({ title: input.title, body: input.message }).show();
+			this.createNotification({
+				title: input.title,
+				body: input.message,
+				silent: input.silent ?? false,
+			}).show();
 			return { delivered: true };
 		} catch {
 			return { delivered: false, reason: "The OS notification could not be shown." };

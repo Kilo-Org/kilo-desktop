@@ -352,6 +352,8 @@ export interface SdkNotifications {
 		title: string;
 		message: string;
 		type: "info" | "success" | "warning" | "error";
+		/** Mute the OS notification sound, for callers that play their own cue. */
+		silent?: boolean | undefined;
 	}): Promise<NotificationResult>;
 	setBadge(count: number): Promise<NotificationResult>;
 }

@@ -77,7 +77,10 @@ describe("createBrowserLocalApi", () => {
 		await expect(
 			api.notifications.show({ title: "Hi", message: "There", type: "info" }),
 		).resolves.toEqual({ delivered: true });
-		expect(created).toEqual([{ title: "Hi", options: { body: "There" } }]);
+		expect(created).toEqual([{ title: "Hi", options: { body: "There", silent: false } }]);
+
+		await api.notifications.show({ title: "Hi", message: "There", type: "info", silent: true });
+		expect(created.at(-1)).toEqual({ title: "Hi", options: { body: "There", silent: true } });
 
 		FakeNotification.permission = "denied";
 		const denied = await api.notifications.show({ title: "Hi", message: "There", type: "info" });

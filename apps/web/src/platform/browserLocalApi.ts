@@ -81,7 +81,7 @@ export function createBrowserLocalApi(): LocalApi {
 					};
 				}
 				try {
-					new Notification(input.title, { body: input.message });
+					new Notification(input.title, { body: input.message, silent: input.silent ?? false });
 					return { delivered: true };
 				} catch {
 					// Some platforms require ServiceWorkerRegistration.showNotification

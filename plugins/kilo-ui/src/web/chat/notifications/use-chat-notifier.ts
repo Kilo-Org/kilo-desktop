@@ -39,6 +39,8 @@ export function useChatNotifier(sdk: SDK, sessionActivity: SessionActivityStore)
 						title: ALERT_TITLES[reason],
 						message: "Open Kilo to continue.",
 						type: reason === "error" ? "error" : "info",
+						// Our cue is the sound; the OS default would play on top of it.
+						silent: true,
 					})
 					.catch(() => undefined);
 			},

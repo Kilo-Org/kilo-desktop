@@ -18,7 +18,7 @@ function makeNotifications(options?: {
 	setBadgeCount?: (count: number) => boolean;
 	create?: () => { show(): void };
 }) {
-	const shown: Array<{ title: string; body: string }> = [];
+	const shown: Array<{ title: string; body: string; silent: boolean }> = [];
 	const setBadgeCount = options?.setBadgeCount ?? vi.fn(() => true);
 	const notifications = new ElectronNotifications(
 		{ setBadgeCount } as unknown as App,
@@ -38,7 +38,13 @@ describe("ElectronNotifications", () => {
 		const { notifications, shown } = makeNotifications();
 		const result = notifications.show({ title: "Hi", message: "There", type: "info" });
 		expect(result).toEqual({ delivered: true });
-		expect(shown).toEqual([{ title: "Hi", body: "There" }]);
+		expect(shown).toEqual([{ title: "Hi", body: "There", silent: false }]);
+	});
+
+	it("mutes the OS sound when the caller plays its own", () => {
+		const { notifications, shown } = makeNotifications();
+		notifications.show({ title: "Hi", message: "There", type: "info", silent: true });
+		expect(shown).toEqual([{ title: "Hi", body: "There", silent: true }]);
 	});
 
 	it("reports undelivered when OS notifications are unsupported", () => {

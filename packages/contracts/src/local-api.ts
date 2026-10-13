@@ -52,6 +52,7 @@ export interface LocalApi {
 			title: string;
 			message: string;
 			type: "info" | "success" | "warning" | "error";
+			silent?: boolean | undefined;
 		}): Promise<NotificationDeliveryResult>;
 		setBadge(input: { count: number }): Promise<NotificationDeliveryResult>;
 	};

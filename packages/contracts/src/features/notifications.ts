@@ -22,6 +22,8 @@ export const notificationsMethods = {
 			title: z.string().min(1),
 			message: z.string(),
 			type: notificationTypeSchema,
+			/** Mute the OS sound, for callers that play their own cue. */
+			silent: z.boolean().optional(),
 		}),
 		notificationResultSchema,
 	),

@@ -24,7 +24,7 @@
 		"coverage": "vitest run --coverage"
 	},
 	"dependencies": {
-		"koffi": "3.3.1",
+		"koffi": "3.3.3",
 		"lucide-react": "catalog:"
 	},
 	"peerDependencies": {

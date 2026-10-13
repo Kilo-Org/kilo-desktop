@@ -188,6 +188,57 @@ describe("NotebookView", () => {
 		}
 	});
 
+	it("ignores a host-ready handshake from a foreign origin", async () => {
+		vi.stubEnv("VITE_NTERACT_ORIGIN", "kilo-desktop://notebook");
+		const { sdk } = renderView(
+			{},
+			{
+				status: async () => ({
+					availability: { status: "available" },
+					process: { status: "external" },
+					daemon: null,
+				}),
+			},
+		);
+		await expect.element(page.getByTestId("notebook-frame")).toBeVisible();
+		const frame = document.querySelector<HTMLIFrameElement>('[data-qa-id="notebook-frame"]');
+		if (!frame?.contentWindow) throw new Error("Expected notebook iframe window");
+		const channel = new MessageChannel();
+		const openPort = vi.spyOn(sdk.ports, "open").mockReturnValue(channel.port1);
+		const postMessage = vi.spyOn(frame.contentWindow, "postMessage").mockImplementation(() => {});
+		try {
+			// Right source, foreign origin: the guard's `event.origin !== frameOrigin` half.
+			window.dispatchEvent(
+				new MessageEvent("message", {
+					origin: "https://evil.example",
+					source: frame.contentWindow,
+					data: {
+						type: "nteract:electron-host-ready",
+						protocolVersion: 1,
+					},
+				}),
+			);
+			// Right origin, wrong source: the guard's `event.source !== frameWindow` half.
+			window.dispatchEvent(
+				new MessageEvent("message", {
+					origin: "kilo-desktop://notebook",
+					source: window,
+					data: {
+						type: "nteract:electron-host-ready",
+						protocolVersion: 1,
+					},
+				}),
+			);
+			expect(openPort).not.toHaveBeenCalled();
+			expect(postMessage).not.toHaveBeenCalled();
+		} finally {
+			postMessage.mockRestore();
+			openPort.mockRestore();
+			channel.port1.close();
+			channel.port2.close();
+		}
+	});
+
 	it("shows a placeholder while nteract's bundle is not served from our protocol", async () => {
 		renderView();
 

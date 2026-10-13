@@ -912,6 +912,24 @@ describe("ElectronNotebookHostService", () => {
 		);
 	});
 
+	it("rejects an unsupported host method", async () => {
+		const mainSdk = createFakeMainSdk({ featureId: "notebook", host: desktopHost() });
+		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/nightly.sock" });
+		await service.connect(
+			port(),
+			{
+				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				sessionId: "kilo-1",
+				title: "Analysis",
+			},
+			91,
+		);
+
+		await expect(
+			handler.invoke("totally.not.a.method" as never, undefined as never),
+		).rejects.toThrow(/Unsupported Electron notebook host method/);
+	});
+
 	it("opens files and external links through the desktop host", async () => {
 		const openFile = vi.fn(async () => "/tmp/opened.ipynb");
 		const openLink = vi.fn(async () => true);

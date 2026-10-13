@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { open, opendir, realpath, stat } from "node:fs/promises";
+import fs from "node:fs";
+import { open, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { writeFile as atomicWriteFile } from "atomically";
@@ -26,6 +27,9 @@ const IMAGE_TYPES = new Map<string, string>([
 
 const DEFERRED_PREVIEW_EXTENSIONS = new Set([".htm", ".html", ".pdf"]);
 
+/** Filesystem module used for the workspace scan; injectable as a test seam. */
+type FileSystem = typeof fs;
+
 export interface FilesServiceOptions {
 	readonly authorize: (canonicalWorkspaceDirectory: string) => Promise<void>;
 	/**
@@ -38,6 +42,12 @@ export interface FilesServiceOptions {
 	readonly scanLimit?: number;
 	readonly textLimitBytes?: number;
 	readonly imageLimitBytes?: number;
+	/**
+	 * Filesystem module backing the workspace scan (defaults to `node:fs`).
+	 * Test seam: lets the scan's traversal-error handling run without real
+	 * POSIX permission bits.
+	 */
+	readonly fileSystem?: FileSystem;
 }
 
 function sha256(contents: Uint8Array): string {
@@ -85,11 +95,13 @@ export class FilesService {
 	private readonly scanLimit: number;
 	private readonly textLimitBytes: number;
 	private readonly imageLimitBytes: number;
+	private readonly fileSystem: FileSystem;
 
 	constructor(private readonly options: FilesServiceOptions) {
 		this.scanLimit = options.scanLimit ?? DEFAULT_SCAN_LIMIT;
 		this.textLimitBytes = options.textLimitBytes ?? DEFAULT_TEXT_LIMIT_BYTES;
 		this.imageLimitBytes = options.imageLimitBytes ?? DEFAULT_IMAGE_LIMIT_BYTES;
+		this.fileSystem = options.fileSystem ?? fs;
 	}
 
 	async list(workspaceDirectory: string): Promise<{ paths: string[]; truncated: boolean }> {
@@ -100,7 +112,7 @@ export class FilesService {
 		// best-effort. `opendir` (not `access`) because Windows `access`
 		// ignores ACLs.
 		try {
-			await (await opendir(root)).close();
+			await (await this.fileSystem.promises.opendir(root)).close();
 		} catch (error) {
 			throw featureErrorForFilesystem(error, "Workspace directory is not readable.");
 		}
@@ -114,6 +126,7 @@ export class FilesService {
 			ignore: [".git", ".git/**"],
 			markDirectories: true,
 			onlyFiles: false,
+			fs: this.fileSystem,
 			// A directory can vanish or be locked mid-walk (temp dirs, AV scans,
 			// editors). fast-glob only suppresses ENOENT by default, so a
 			// transient EPERM/EACCES from `scandir` would fail the entire

@@ -1,13 +1,5 @@
-import {
-	chmod,
-	mkdtemp,
-	mkdir,
-	readFile,
-	realpath,
-	stat,
-	symlink,
-	writeFile,
-} from "node:fs/promises";
+import fs from "node:fs";
+import { mkdtemp, mkdir, readFile, realpath, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -17,33 +9,46 @@ import { FeatureError } from "@kilo-desktop/feature-sdk";
 
 import { FilesService } from "./FilesService.js";
 
-/**
- * Capture the options passed to `globbyStream` so the scan's error-suppression
- * contract can be asserted, while delegating to the real implementation for the
- * filesystem-backed listing tests.
- */
-const globbyStreamOptions = vi.hoisted(() => [] as Record<string, unknown>[]);
+const temporaryDirectories: string[] = [];
 
-vi.mock("globby", async (importOriginal) => {
-	const actual = (await importOriginal()) as {
-		globbyStream: (patterns: string, options: Record<string, unknown>) => AsyncIterable<unknown>;
-	};
+/**
+ * Filesystem whose directory reads fail with the `EPERM … scandir` error a
+ * Windows scan sees when a directory is locked or removed mid-walk. Injecting
+ * it exercises the scan's error handling on every platform, without relying on
+ * POSIX permission bits.
+ */
+function fakeFileSystem(fail: (directory: string) => boolean): typeof fs {
+	const eperm = (directory: string): NodeJS.ErrnoException =>
+		Object.assign(new Error(`EPERM: operation not permitted, scandir '${directory}'`), {
+			code: "EPERM",
+			syscall: "scandir",
+			path: directory,
+		});
+
 	return {
-		...actual,
-		globbyStream: (patterns: string, options: Record<string, unknown>) => {
-			globbyStreamOptions.push(options);
-			return actual.globbyStream(patterns, options);
+		...fs,
+		readdir: ((
+			directory: fs.PathLike,
+			options: unknown,
+			callback: (error: NodeJS.ErrnoException | null, entries?: unknown) => void,
+		) => {
+			const target = String(directory);
+			if (fail(target)) {
+				process.nextTick(callback, eperm(target));
+				return;
+			}
+			return (fs.readdir as (...args: unknown[]) => unknown)(directory, options, callback);
+		}) as typeof fs.readdir,
+		promises: {
+			...fs.promises,
+			opendir: (async (directory: fs.PathLike) => {
+				const target = String(directory);
+				if (fail(target)) throw eperm(target);
+				return fs.promises.opendir(directory);
+			}) as typeof fs.promises.opendir,
 		},
 	};
-});
-
-/**
- * Permission-based tests need POSIX mode bits and a non-root user: Windows
- * ignores `chmod` read bits and root bypasses them.
- */
-const cannotRestrictReadAccess = process.platform === "win32" || process.getuid?.() === 0;
-
-const temporaryDirectories: string[] = [];
+}
 
 async function temporaryWorkspace(): Promise<string> {
 	const directory = await mkdtemp(path.join(tmpdir(), "files-plugin-"));
@@ -138,64 +143,36 @@ describe("FilesService", () => {
 		expect(result.truncated).toBe(true);
 	});
 
-	it("suppresses per-directory traversal errors so a locked or vanishing directory cannot fail the whole listing", async () => {
+	it("skips an unreadable subdirectory and still lists the rest of the workspace", async () => {
 		const workspace = await temporaryWorkspace();
-		await writeFile(path.join(workspace, "a.txt"), "a");
+		await writeFile(path.join(workspace, "ok.txt"), "ok");
+		await mkdir(path.join(workspace, "locked"));
+		await writeFile(path.join(workspace, "locked", "secret.txt"), "secret");
 		const service = new FilesService({
 			authorize: async () => undefined,
 			gitStatus: async () => null,
+			// A directory removed or locked mid-walk fails as an EPERM scandir.
+			fileSystem: fakeFileSystem((directory) => path.basename(directory) === "locked"),
 		});
 
-		await expect(service.list(workspace)).resolves.toEqual({ paths: ["a.txt"], truncated: false });
-		// fast-glob only suppresses ENOENT by default; an EPERM/EACCES from a
-		// directory removed mid-walk (e.g. a temp dir) would otherwise reject
-		// the entire scan.
-		expect(globbyStreamOptions.at(-1)).toMatchObject({ suppressErrors: true });
+		await expect(service.list(workspace)).resolves.toEqual({
+			paths: ["locked/", "ok.txt"],
+			truncated: false,
+		});
 	});
 
-	it.skipIf(cannotRestrictReadAccess)(
-		"skips an unreadable subdirectory and still lists the rest of the workspace",
-		async () => {
-			const workspace = await temporaryWorkspace();
-			await writeFile(path.join(workspace, "ok.txt"), "ok");
-			const locked = path.join(workspace, "locked");
-			await mkdir(locked);
-			await writeFile(path.join(locked, "secret.txt"), "secret");
-			await chmod(locked, 0o000);
-			const service = new FilesService({
-				authorize: async () => undefined,
-				gitStatus: async () => null,
-			});
+	it("still rejects when the workspace root itself is unreadable", async () => {
+		const workspace = await temporaryWorkspace();
+		await writeFile(path.join(workspace, "a.txt"), "a");
+		const root = await realpath(workspace);
+		const service = new FilesService({
+			authorize: async () => undefined,
+			gitStatus: async () => null,
+			fileSystem: fakeFileSystem((directory) => directory === root),
+		});
 
-			try {
-				await expect(service.list(workspace)).resolves.toEqual({
-					paths: ["locked/", "ok.txt"],
-					truncated: false,
-				});
-			} finally {
-				await chmod(locked, 0o755);
-			}
-		},
-	);
-
-	it.skipIf(cannotRestrictReadAccess)(
-		"still rejects when the workspace root itself is unreadable",
-		async () => {
-			const workspace = await temporaryWorkspace();
-			await writeFile(path.join(workspace, "a.txt"), "a");
-			await chmod(workspace, 0o000);
-			const service = new FilesService({
-				authorize: async () => undefined,
-				gitStatus: async () => null,
-			});
-
-			try {
-				await expect(service.list(workspace)).rejects.toMatchObject({ code: "VALIDATION" });
-			} finally {
-				await chmod(workspace, 0o755);
-			}
-		},
-	);
+		await expect(service.list(workspace)).rejects.toMatchObject({ code: "VALIDATION" });
+	});
 
 	it("finds existing files in one authorized batch without scanning the workspace", async () => {
 		const workspace = await temporaryWorkspace();

@@ -128,7 +128,7 @@ function ThreadHarness({ initialMessages }: { initialMessages?: readonly ThreadM
 	);
 }
 
-type RevertWorkspace = "restored" | "snapshots-disabled" | "unavailable";
+type RevertWorkspace = "restored" | "snapshots-disabled" | "unavailable" | "not-a-git-repo";
 
 function makePendingRevertExtras(workspace: RevertWorkspace | null): OpenCodeRuntimeExtras {
 	return {

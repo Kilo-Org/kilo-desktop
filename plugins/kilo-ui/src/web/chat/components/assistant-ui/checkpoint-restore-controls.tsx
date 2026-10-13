@@ -31,13 +31,15 @@ import { selectOpenCodeExtras } from "../../runtime/use-optional-opencode-runtim
 import { DiffStat, RevertMessageRows } from "./checkpoint-revert-messages.js";
 import { COMPOSER_SHELF_CLASS, COMPOSER_SHELF_LIST_CLASS } from "../composer-shelf.js";
 
-// Mirrors the kilocode clients' three revert.workspace states. The undefined
-// case covers reverts performed by older CLIs/TUI that did not report status.
+// Mirrors the kilocode clients' non-restored revert.workspace states. The
+// undefined case covers reverts performed by older CLIs/TUI that did not report status.
 const WORKSPACE_NOT_RESTORED_COPY = {
 	"snapshots-disabled":
 		"Conversation reverted. File changes were not restored because snapshots are disabled.",
 	unavailable:
 		"Conversation reverted. No file checkpoint was available, so workspace changes were not restored.",
+	"not-a-git-repo":
+		"Conversation reverted. File changes were not restored because this folder is not a git repository.",
 	legacy:
 		"Conversation reverted. Workspace restoration status is unavailable for this earlier revert.",
 } as const;

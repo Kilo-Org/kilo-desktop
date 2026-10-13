@@ -26,6 +26,7 @@ export const useRevertWorkspace = ():
 	| "restored"
 	| "snapshots-disabled"
 	| "unavailable"
+	| "not-a-git-repo"
 	| undefined =>
 	useAuiState((s) => selectOpenCodeExtras(s.thread.extras)?.session?.revert?.workspace);
 

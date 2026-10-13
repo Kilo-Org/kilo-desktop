@@ -147,7 +147,7 @@ type SnapshotFileDiffFixture = {
 	status?: "added" | "deleted" | "modified";
 };
 
-type RevertWorkspace = "restored" | "snapshots-disabled" | "unavailable";
+type RevertWorkspace = "restored" | "snapshots-disabled" | "unavailable" | "not-a-git-repo";
 
 function serverMessage(
 	id: string,
@@ -426,6 +426,15 @@ describe("CheckpointRestoreControls", () => {
 		await expect.poll(() => toastWarning.mock.calls.length).toBe(1);
 		expect(toastWarning).toHaveBeenCalledWith(
 			"Conversation reverted. File changes were not restored because snapshots are disabled.",
+		);
+	});
+
+	it("warns that files were not restored when the workspace is not a git repository", async () => {
+		renderThread({ revertWorkspace: "not-a-git-repo", boundaryId: "msg-2" });
+
+		await expect.poll(() => toastWarning.mock.calls.length).toBe(1);
+		expect(toastWarning).toHaveBeenCalledWith(
+			"Conversation reverted. File changes were not restored because this folder is not a git repository.",
 		);
 	});
 

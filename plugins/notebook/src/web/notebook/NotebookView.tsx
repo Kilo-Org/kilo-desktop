@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-import { useSdk } from "@kilo-desktop/sdk-react";
+import { KiloAuthGate, useSdk } from "@kilo-desktop/sdk-react";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Empty,
@@ -131,7 +131,42 @@ export function notebookHostConnectionArgs(
 	};
 }
 
-export function NotebookView({
+/**
+ * A notebook tab, contributed to Kilo's chat pane. Embedded notebooks require
+ * a Kilo account (DESK-3152), so the tab sits behind the same sign-in gate as
+ * the Notebooks settings page. Gating here covers every way a tab opens: the
+ * "+" menu, Files, chat links, agent tools, and tabs restored after sign-out.
+ * While signed out the notebook frame is unmounted; the daemon keeps the
+ * notebook, and the frame reconnects once the user signs in.
+ */
+export function NotebookView(props: NotebookViewProps) {
+	return (
+		<div className="bg-pane flex min-h-0 flex-1 flex-col">
+			<KiloAuthGate
+				featureId="notebook"
+				featureName="Notebooks"
+				pendingFallback={<NotebookViewLoading />}
+			>
+				<NotebookViewContent {...props} />
+			</KiloAuthGate>
+		</div>
+	);
+}
+
+function NotebookViewLoading() {
+	return (
+		<Empty data-qa-id="notebook-view-loading">
+			<EmptyHeader>
+				<EmptyMedia variant="icon">
+					<Spinner aria-hidden="true" />
+				</EmptyMedia>
+				<EmptyTitle>Loading notebook…</EmptyTitle>
+			</EmptyHeader>
+		</Empty>
+	);
+}
+
+function NotebookViewContent({
 	instanceId,
 	sessionId,
 	title,

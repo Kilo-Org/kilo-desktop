@@ -10,28 +10,40 @@ describe("AgentToolSignIn", () => {
 		expect(isSignedIn).toHaveBeenCalledOnce();
 	});
 
-	it("remembers a decline and announces it once", () => {
+	it("remembers a decline for its feature and announces it once", () => {
 		const signIn = new AgentToolSignIn(async () => false);
 		const listener = vi.fn();
 		signIn.subscribe(listener);
 
-		expect(signIn.decline()).toEqual({ declined: true });
-		signIn.decline();
+		expect(signIn.decline("environments")).toEqual({ declined: ["environments"] });
+		signIn.decline("environments");
 
-		expect(signIn.state).toEqual({ declined: true });
+		expect(signIn.state).toEqual({ declined: ["environments"] });
 		expect(listener).toHaveBeenCalledOnce();
 	});
 
-	it("forgets a decline when the user signs in", () => {
+	it("keeps declines for different features apart", () => {
 		const signIn = new AgentToolSignIn(async () => false);
-		signIn.decline();
+
+		signIn.decline("notebook");
+
+		expect(signIn.isDeclined("notebook")).toBe(true);
+		expect(signIn.isDeclined("environments")).toBe(false);
+		expect(signIn.isDeclined(undefined)).toBe(false);
+		expect(signIn.decline("environments")).toEqual({ declined: ["notebook", "environments"] });
+	});
+
+	it("forgets every decline when the user signs in", () => {
+		const signIn = new AgentToolSignIn(async () => false);
+		signIn.decline("environments");
+		signIn.decline("notebook");
 		const listener = vi.fn();
 		signIn.subscribe(listener);
 
 		signIn.signedIn();
 		signIn.signedIn();
 
-		expect(signIn.state).toEqual({ declined: false });
+		expect(signIn.state).toEqual({ declined: [] });
 		expect(listener).toHaveBeenCalledOnce();
 	});
 
@@ -40,7 +52,7 @@ describe("AgentToolSignIn", () => {
 		const listener = vi.fn();
 		signIn.subscribe(listener)();
 
-		signIn.decline();
+		signIn.decline("environments");
 
 		expect(listener).not.toHaveBeenCalled();
 	});

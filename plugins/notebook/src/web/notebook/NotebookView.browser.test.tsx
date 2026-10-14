@@ -25,6 +25,11 @@ import {
 	type NotebookViewProps,
 } from "./NotebookView.js";
 
+// Sessions are constants: peek/getSnapshot must be referentially stable or
+// useSyncExternalStore loops.
+const SIGNED_IN = { status: "authenticated", user: { email: "ada@example.com" } } as const;
+const SIGNED_OUT = { status: "anonymous" } as const;
+
 const DEFAULT_PROPS: NotebookViewProps = {
 	sessionId: "session-1",
 	instanceId: "instance-1",
@@ -39,12 +44,22 @@ function renderView(
 		save?: NotebookService["save"];
 		setDefaultSaveDirectory?: NotebookService["setDefaultSaveDirectory"];
 		theme?: ReturnType<typeof createFakeTheme>;
+		session?: typeof SIGNED_IN | typeof SIGNED_OUT;
 	} = {},
 ) {
+	const session = options.session ?? SIGNED_IN;
 	const save = options.save ?? (async () => ({ outcome: "saved" as const }));
 	const setDefaultSaveDirectory = options.setDefaultSaveDirectory ?? (async () => undefined);
 	const sdk = createFakeSdk({
 		featureId: "notebook",
+		auth: {
+			subscribe: (fn) => {
+				fn(session);
+				return () => undefined;
+			},
+			peek: () => session,
+			getSession: async () => session,
+		},
 		channels: notebookContract,
 		...(options.theme ? { theme: options.theme } : {}),
 		handlers: {
@@ -86,6 +101,30 @@ afterEach(() => {
 });
 
 describe("NotebookView", () => {
+	it("asks a signed-out user to sign in instead of showing the notebook", async () => {
+		const status = vi.fn(async () => ({
+			availability: { status: "available" as const },
+			process: { status: "external" as const },
+			daemon: null,
+		}));
+		const screen = page.elementLocator(
+			renderView(
+				{ instanceId: "669d39ec-39d6-4160-815c-b46e170cde8d" },
+				{
+					session: SIGNED_OUT,
+					status,
+				},
+			).baseElement,
+		);
+
+		await expect.element(screen.getByTestId("kilo-auth-gate-signin")).toBeVisible();
+		await expect
+			.element(screen.getByText("Notebooks requires a Kilo account. Sign in to continue."))
+			.toBeVisible();
+		expect(document.querySelector('[data-qa-id="notebook-view"]')).toBeNull();
+		expect(status).not.toHaveBeenCalled();
+	});
+
 	it("derives the notebook origin by substituting the host on our own", () => {
 		// The renderer cannot read app.isPackaged, so the scheme has to come from its
 		// own origin — otherwise a dev build would frame the production host.

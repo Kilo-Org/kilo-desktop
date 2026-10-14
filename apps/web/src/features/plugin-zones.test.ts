@@ -240,6 +240,8 @@ describe("PLUGIN_ZONE_CONTRIBUTIONS", () => {
 				zone: "kilo-ui/chat-right-panel-tab",
 				label: "Notebook",
 				mountPolicy: "keep-alive",
+				requiresSignIn: true,
+				signInHint: "Sign in to Kilo to use embedded notebooks.",
 			}),
 		);
 	});

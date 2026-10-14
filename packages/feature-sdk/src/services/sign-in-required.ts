@@ -34,7 +34,7 @@ export function signInRequiredToolMessage(audience: SignInRefusalAudience): stri
 }
 
 export const SIGN_IN_DECLINED_TOOL_MESSAGE =
-	`${SIGN_IN_DECLINED_TOOL_ERROR_CODE} The user chose not to sign in, so this tool and the other ` +
+	`${SIGN_IN_DECLINED_TOOL_ERROR_CODE} The user chose not to sign in, so this tool and the related ` +
 	"Desktop tools that need sign-in are turned off until they sign in. Do not call them while " +
 	"they are off. If the user signs in later, the tools reappear in your tool list: from then on, " +
 	"use them again instead of running the equivalent commands yourself.";

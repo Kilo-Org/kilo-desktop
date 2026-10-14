@@ -237,6 +237,10 @@ export interface ResolvedPluginZoneContribution {
 	mountPolicy?: ContributionMountPolicy | undefined;
 	/** Higher renders first within the zone. Default 0. */
 	priority: number;
+	/** The contribution needs a Kilo sign-in (see `pluginZoneContributionSchema`). */
+	requiresSignIn?: boolean | undefined;
+	/** Hint shown while a sign-in contribution is disabled. */
+	signInHint?: string | undefined;
 	browserSafe: boolean;
 }
 
@@ -584,6 +588,10 @@ function resolveContributions(
 			...(hasRenderableIcon ? { icon } : {}),
 			...(contribution.mountPolicy === undefined ? {} : { mountPolicy: contribution.mountPolicy }),
 			priority: contribution.priority ?? 0,
+			...(contribution.requiresSignIn === undefined
+				? {}
+				: { requiresSignIn: contribution.requiresSignIn }),
+			...(contribution.signInHint === undefined ? {} : { signInHint: contribution.signInHint }),
 			browserSafe,
 		});
 	}

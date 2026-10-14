@@ -71,7 +71,10 @@ describe("createToolGateway", () => {
 		const producer = new FakeToolProducer();
 		await router.connectPort("kilo-server", "tool-catalog", producer.port, { version: 1 });
 		producer.publish([
-			descriptor("environments_conda_envs_list", { requiresSignIn: true }),
+			descriptor("environments_conda_envs_list", {
+				requiresSignIn: true,
+				signInScope: "environments",
+			}),
 			descriptor("todos_echo"),
 		]);
 		producer.respond = () => "ran";
@@ -84,13 +87,13 @@ describe("createToolGateway", () => {
 		).resolves.toMatchObject({ isError: true });
 		expect(producer.calls()).toEqual([]);
 
-		expect(gateway.signIn.decline()).toEqual({ declined: true });
-		expect(onSignInChange).toHaveBeenLastCalledWith({ declined: true });
+		expect(gateway.signIn.decline("environments")).toEqual({ declined: ["environments"] });
+		expect(onSignInChange).toHaveBeenLastCalledWith({ declined: ["environments"] });
 		expect(await names()).toEqual(["todos_echo"]);
 
 		signedIn = true;
 		gateway.signIn.signedIn();
-		expect(gateway.signIn.getState()).toEqual({ declined: false });
+		expect(gateway.signIn.getState()).toEqual({ declined: [] });
 		expect(await names()).toEqual(["environments_conda_envs_list", "todos_echo"]);
 		await expect(
 			client.callTool({ name: "environments_conda_envs_list", arguments: {} }),

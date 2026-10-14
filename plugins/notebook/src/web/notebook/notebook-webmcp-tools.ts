@@ -6,7 +6,12 @@
  * Tool descriptions are the model-facing contract: create and show stay in this
  * layout. nteract MCP is for cells, kernel, and save only.
  */
-import type { SDK, ToolInvocationContext } from "@kilo-desktop/feature-sdk";
+import type {
+	SDK,
+	ToolDefinition,
+	ToolInvocationContext,
+	ToolSignInPrompt,
+} from "@kilo-desktop/feature-sdk";
 import { z } from "zod";
 
 import {
@@ -300,8 +305,27 @@ const DESKTOP_NOTEBOOK_PANEL_POLICY =
 	"Do not call notebooks_create_notebook, notebooks_show_notebook, or notebooks_open_notebook. " +
 	"Always use these desktop notebook tools to open the notebook in the chat pane layout.";
 
+/** DESK-3152: one prompt for every notebook tool. */
+export const NOTEBOOK_SIGN_IN_PROMPT: ToolSignInPrompt = {
+	title: "Sign in to use embedded notebooks?",
+	body:
+		"The agent wants to use Desktop's notebook tools. To use embedded notebooks, you must " +
+		"sign in to a Kilo account. Do you want to sign in?",
+	toolsLabel: "Desktop's notebook tools",
+};
+
+/**
+ * Every notebook tool requires sign-in (`requiresSignIn`), matching the gated
+ * Notebooks settings page and "+" menu entry (DESK-3152). The tool gateway
+ * refuses signed-out agent calls and chat asks the user to sign in with this
+ * prompt; declining withdraws only these tools.
+ */
 export function registerNotebookWebMcpTools(sdk: SDK): void {
-	sdk.tools.register({
+	const register = (definition: ToolDefinition): void => {
+		sdk.tools.register({ ...definition, requiresSignIn: NOTEBOOK_SIGN_IN_PROMPT });
+	};
+
+	register({
 		name: "list_open",
 		description:
 			"List notebooks open in the calling chat's pane layout. " +
@@ -329,7 +353,7 @@ export function registerNotebookWebMcpTools(sdk: SDK): void {
 		},
 	});
 
-	sdk.tools.register({
+	register({
 		name: "open",
 		description:
 			"Open a new notebook in the calling chat's pane layout and return its " +
@@ -348,7 +372,7 @@ export function registerNotebookWebMcpTools(sdk: SDK): void {
 	});
 
 	const openFileInput = notebookContract.openFile.input;
-	sdk.tools.register({
+	register({
 		name: "open_file",
 		description:
 			"Open an existing .ipynb file in the calling chat's pane layout. " +

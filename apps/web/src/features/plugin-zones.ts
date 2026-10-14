@@ -24,6 +24,8 @@ export interface PluginZoneContribution {
 	icon?: unknown | undefined;
 	mountPolicy?: ContributionMountPolicy | undefined;
 	priority: number;
+	requiresSignIn?: boolean | undefined;
+	signInHint?: string | undefined;
 	/** False for Electron-only plugins — omitted in standalone browser mode. */
 	browserSafe: boolean;
 }
@@ -40,8 +42,21 @@ export function buildPluginZoneContributions(discovery: PluginDiscovery): Plugin
 		...(contribution.icon === undefined ? {} : { icon: contribution.icon }),
 		...(contribution.mountPolicy === undefined ? {} : { mountPolicy: contribution.mountPolicy }),
 		priority: contribution.priority,
+		...signInFields(contribution),
 		browserSafe: contribution.browserSafe,
 	}));
+}
+
+function signInFields(contribution: {
+	readonly requiresSignIn?: boolean | undefined;
+	readonly signInHint?: string | undefined;
+}): { requiresSignIn?: boolean; signInHint?: string } {
+	return {
+		...(contribution.requiresSignIn === undefined
+			? {}
+			: { requiresSignIn: contribution.requiresSignIn }),
+		...(contribution.signInHint === undefined ? {} : { signInHint: contribution.signInHint }),
+	};
 }
 
 type RegisterOptions = {
@@ -72,6 +87,7 @@ export function registerPluginZoneContributions(
 			...(contribution.icon === undefined ? {} : { icon: contribution.icon }),
 			...(contribution.mountPolicy === undefined ? {} : { mountPolicy: contribution.mountPolicy }),
 			priority: contribution.priority,
+			...signInFields(contribution),
 		});
 		registered += 1;
 	}

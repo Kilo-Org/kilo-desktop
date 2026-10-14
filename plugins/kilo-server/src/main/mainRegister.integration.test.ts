@@ -88,8 +88,8 @@ function stubToolGateway(): ToolGateway & {
 			revokeClient: vi.fn(async () => EXTERNAL_STATE),
 		},
 		signIn: {
-			getState: vi.fn(() => ({ declined: false })),
-			decline: vi.fn(() => ({ declined: true })),
+			getState: vi.fn(() => ({ declined: [] as string[] })),
+			decline: vi.fn((scope: string) => ({ declined: [scope] })),
 			signedIn: vi.fn(),
 		},
 		dispose: vi.fn(async () => undefined),
@@ -566,11 +566,13 @@ describe("kilo-server main registration", () => {
 			const { mainSdk, toolGateway } = await setup();
 
 			await expect(mainSdk.invoke("agentToolSignIn.getState")).resolves.toEqual({
-				declined: false,
+				declined: [],
 			});
-			await expect(mainSdk.invoke("agentToolSignIn.decline")).resolves.toEqual({ declined: true });
+			await expect(
+				mainSdk.invoke("agentToolSignIn.decline", { scope: "notebook" }),
+			).resolves.toEqual({ declined: ["notebook"] });
 
-			expect(toolGateway.signIn.decline).toHaveBeenCalledOnce();
+			expect(toolGateway.signIn.decline).toHaveBeenCalledExactlyOnceWith("notebook");
 			mainSdk.dispose();
 		});
 
@@ -579,9 +581,9 @@ describe("kilo-server main registration", () => {
 			const listener = vi.fn();
 			mainSdk.events.on("kilo-server.agent-tool-sign-in-changed", listener);
 
-			gatewaySignIn.onSignInChange({ declined: true });
+			gatewaySignIn.onSignInChange({ declined: ["notebook"] });
 
-			expect(listener).toHaveBeenCalledWith({ declined: true });
+			expect(listener).toHaveBeenCalledWith({ declined: ["notebook"] });
 			mainSdk.dispose();
 		});
 

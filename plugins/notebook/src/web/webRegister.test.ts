@@ -9,6 +9,7 @@ import {
 	openNotebookFileInPanel,
 	openNotebookInPanel,
 	NOTEBOOK_TAB_DEFINITION_ID,
+	NOTEBOOK_SIGN_IN_PROMPT,
 	NOTEBOOK_TAB_TITLE,
 	type ChatRightPanelCapability,
 } from "./notebook/notebook-webmcp-tools.js";
@@ -136,6 +137,16 @@ describe("notebook plugin webRegister", () => {
 		]);
 		expect(tools.every((tool) => tool.exposeToModelContext)).toBe(true);
 		expect(tools.find((tool) => tool.name === "list_open")?.annotations?.readOnlyHint).toBe(true);
+	});
+
+	it("requires sign-in for every notebook tool, with the notebook prompt", () => {
+		const { system, notebookSdk } = makeSystem();
+		webRegister(notebookSdk);
+
+		const tools = system.services.toolRegistry.all();
+		expect(tools.every((tool) => tool.requiresSignIn)).toBe(true);
+		expect(tools.every((tool) => tool.signInPrompt === NOTEBOOK_SIGN_IN_PROMPT)).toBe(true);
+		expect(NOTEBOOK_SIGN_IN_PROMPT.toolsLabel).toBe("Desktop's notebook tools");
 	});
 
 	it("tells the model to open notebooks only in the chat pane layout", () => {

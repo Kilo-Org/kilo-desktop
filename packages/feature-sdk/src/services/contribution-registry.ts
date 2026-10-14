@@ -49,6 +49,12 @@ export class ContributionRegistry {
 		if (options.size !== undefined) {
 			contribution.size = options.size;
 		}
+		if (options.requiresSignIn !== undefined) {
+			contribution.requiresSignIn = options.requiresSignIn;
+		}
+		if (options.signInHint !== undefined) {
+			contribution.signInHint = options.signInHint;
+		}
 		this.contributions.push(contribution);
 		this.notifyChange();
 		return () => {

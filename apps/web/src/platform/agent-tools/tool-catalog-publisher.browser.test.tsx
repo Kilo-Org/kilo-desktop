@@ -85,7 +85,7 @@ describe("startToolCatalogPublisher", () => {
 			]);
 	});
 
-	it("marks tools that require sign-in so the gateway can gate them", async () => {
+	it("marks tools that require sign-in, scoped to their feature, so the gateway can gate them", async () => {
 		const harness = setup();
 		harness.todos.tools.register({
 			name: "gated",
@@ -111,11 +111,12 @@ describe("startToolCatalogPublisher", () => {
 					?.tools.map((tool) => [
 						(tool as { name: string }).name,
 						(tool as { requiresSignIn?: boolean }).requiresSignIn,
+						(tool as { signInScope?: string }).signInScope,
 					]),
 			)
 			.toEqual([
-				["todos_gated", true],
-				["todos_open", undefined],
+				["todos_gated", true, "todos"],
+				["todos_open", undefined, undefined],
 			]);
 	});
 

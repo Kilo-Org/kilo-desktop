@@ -13,7 +13,7 @@ export function createAgentToolSignInCapability(
 ): AgentToolSignInCapability {
 	return {
 		getState: () => sdk.client["agentToolSignIn.getState"](),
-		decline: () => sdk.client["agentToolSignIn.decline"](),
+		decline: (scope) => sdk.client["agentToolSignIn.decline"]({ scope }),
 		subscribe(listener) {
 			return sdk.events.on(`${sdk.featureId}.${AGENT_TOOL_SIGN_IN_CHANGED_EVENT}`, (payload) => {
 				const parsed = agentToolSignInStateSchema.safeParse(payload);

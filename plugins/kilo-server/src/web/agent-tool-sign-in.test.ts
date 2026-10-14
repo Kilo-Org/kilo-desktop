@@ -10,12 +10,12 @@ import {
 import { webRegister } from "./index.js";
 
 function setup() {
-	const decline = vi.fn(async () => ({ declined: true }));
+	const decline = vi.fn(async ({ scope }: { scope: string }) => ({ declined: [scope] }));
 	const sdk = createFakeSdk({
 		featureId: "kilo-server",
 		channels: kiloServerContract,
 		handlers: {
-			"agentToolSignIn.getState": async () => ({ declined: false }),
+			"agentToolSignIn.getState": async () => ({ declined: [] }),
 			"agentToolSignIn.decline": decline,
 		},
 	});
@@ -28,14 +28,15 @@ describe("agentToolSignIn capability", () => {
 	it("reads the sign-in state from main", async () => {
 		const { capability } = setup();
 
-		await expect(capability.getState()).resolves.toEqual({ declined: false });
+		await expect(capability.getState()).resolves.toEqual({ declined: [] });
 	});
 
-	it("records a decline in main", async () => {
+	it("records a feature's decline in main", async () => {
 		const { capability, decline } = setup();
 
-		await expect(capability.decline()).resolves.toEqual({ declined: true });
+		await expect(capability.decline("notebook")).resolves.toEqual({ declined: ["notebook"] });
 		expect(decline).toHaveBeenCalledOnce();
+		expect(decline.mock.calls[0]?.[0]).toEqual({ scope: "notebook" });
 	});
 
 	it("passes main's change announcements to subscribers, ignoring malformed ones", () => {
@@ -43,11 +44,11 @@ describe("agentToolSignIn capability", () => {
 		const listener = vi.fn();
 		const unsubscribe = capability.subscribe(listener);
 
+		sdk.events.emit(AGENT_TOOL_SIGN_IN_CHANGED_EVENT, { declined: ["notebook"] });
 		sdk.events.emit(AGENT_TOOL_SIGN_IN_CHANGED_EVENT, { declined: true });
-		sdk.events.emit(AGENT_TOOL_SIGN_IN_CHANGED_EVENT, { declined: "yes" });
 		unsubscribe();
-		sdk.events.emit(AGENT_TOOL_SIGN_IN_CHANGED_EVENT, { declined: false });
+		sdk.events.emit(AGENT_TOOL_SIGN_IN_CHANGED_EVENT, { declined: [] });
 
-		expect(listener.mock.calls).toEqual([[{ declined: true }]]);
+		expect(listener.mock.calls).toEqual([[{ declined: ["notebook"] }]]);
 	});
 });

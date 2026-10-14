@@ -4,6 +4,7 @@ import {
 	SIGN_IN_DECLINED_TOOL_MESSAGE,
 	signInRequiredToolMessage,
 	type SignInRefusalAudience,
+	type ToolDescriptor,
 } from "@kilo-desktop/feature-sdk";
 
 import { KILO_CALLER_CONTEXT_KEY } from "../kilo-caller-context-plugin.js";
@@ -14,7 +15,8 @@ import type { ToolCallContext, ToolCatalog } from "./tool-catalog.js";
  * How one class of MCP consumer sees the catalog: which tools are listed, with
  * what schemas, and how a call's arguments become handler arguments plus
  * trusted caller context. With a sign-in gate, tools that require sign-in are
- * refused while the user is signed out and withdrawn while they have declined.
+ * refused while the user is signed out and withdrawn while their feature's
+ * scope is declined.
  */
 export interface CatalogView {
 	listTools(): Tool[];
@@ -97,14 +99,14 @@ function createCatalogView(
 ): CatalogView {
 	let cachedKey = "";
 	let cachedTools: Tool[] = [];
-	const isWithdrawn = (requiresSignIn: boolean | undefined): boolean =>
-		requiresSignIn === true && signIn?.state.declined === true;
+	const isWithdrawn = (tool: ToolDescriptor): boolean =>
+		tool.requiresSignIn === true && signIn?.isDeclined(tool.signInScope) === true;
 	return {
 		listTools() {
-			const key = `${catalog.version}:${signIn?.state.declined === true}`;
+			const key = `${catalog.version}:${(signIn?.state.declined ?? []).join(" ")}`;
 			if (cachedKey !== key) {
 				cachedTools = catalog.tools
-					.filter((tool) => !isWithdrawn(tool.requiresSignIn))
+					.filter((tool) => !isWithdrawn(tool))
 					.map((tool) => ({
 						name: tool.name,
 						description: tool.description,
@@ -141,7 +143,7 @@ function createCatalogView(
 		if (!signIn) return undefined;
 		const tool = catalog.tools.find((candidate) => candidate.name === name);
 		if (tool?.requiresSignIn !== true) return undefined;
-		if (signIn.state.declined) return SIGN_IN_DECLINED_TOOL_MESSAGE;
+		if (signIn.isDeclined(tool.signInScope)) return SIGN_IN_DECLINED_TOOL_MESSAGE;
 		if (await signIn.isSignedIn()) return undefined;
 		return signInRequiredToolMessage(policy.audience);
 	}

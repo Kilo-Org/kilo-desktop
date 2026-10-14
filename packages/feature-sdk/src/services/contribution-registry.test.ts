@@ -45,6 +45,8 @@ describe("ContributionRegistry", () => {
 			description: "Scratch notebook",
 			icon,
 			mountPolicy: "keep-alive",
+			requiresSignIn: true,
+			signInHint: "Sign in to use notebooks.",
 		});
 		expect(registry.getForZone("chat-right-panel")[0]).toMatchObject({
 			featureId: "notebook",
@@ -52,6 +54,8 @@ describe("ContributionRegistry", () => {
 			description: "Scratch notebook",
 			icon,
 			mountPolicy: "keep-alive",
+			requiresSignIn: true,
+			signInHint: "Sign in to use notebooks.",
 		});
 	});
 

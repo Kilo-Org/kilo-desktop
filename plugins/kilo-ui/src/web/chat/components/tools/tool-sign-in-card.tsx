@@ -38,8 +38,11 @@ type FollowUp = "after-sign-in" | "without-sign-in";
  */
 const pendingFollowUps = new Map<string, FollowUp>();
 
-/** Main-owned sign-in gating state for agent tools, and the decline action. */
-function useAgentToolSignIn(): { declined: boolean; decline: () => Promise<void> } {
+/**
+ * Main-owned sign-in gating state for one feature's agent tools (`scope`, the
+ * refused tool's feature id), and the decline action for that feature.
+ */
+function useAgentToolSignIn(scope: string): { declined: boolean; decline: () => Promise<void> } {
 	const sdk = useSdk("kilo-ui");
 	const capability = sdk.plugins.get<KiloServerWebCapabilities>("kilo-server")?.agentToolSignIn;
 	const [declined, setDeclined] = useState(false);
@@ -49,20 +52,22 @@ function useAgentToolSignIn(): { declined: boolean; decline: () => Promise<void>
 		capability
 			.getState()
 			.then((state) => {
-				if (live) setDeclined(state.declined);
+				if (live) setDeclined(state.declined.includes(scope));
 			})
 			.catch(() => undefined);
-		const unsubscribe = capability.subscribe((state) => setDeclined(state.declined));
+		const unsubscribe = capability.subscribe((state) =>
+			setDeclined(state.declined.includes(scope)),
+		);
 		return () => {
 			live = false;
 			unsubscribe();
 		};
-	}, [capability]);
+	}, [capability, scope]);
 	const decline = useCallback(async () => {
 		if (!capability) return;
-		const state = await capability.decline();
-		setDeclined(state.declined);
-	}, [capability]);
+		const state = await capability.decline(scope);
+		setDeclined(state.declined.includes(scope));
+	}, [capability, scope]);
 	return { declined, decline };
 }
 
@@ -102,12 +107,14 @@ export const ToolCallSignInGate: FC<{
 	const refusal = signInRefusalOf({ toolName, result, isError });
 	// Only a registered sign-in tool can be refused by the gateway; any other
 	// tool's error may merely echo the marker, and the card's "Not now"
-	// changes a gate shared by every agent.
+	// changes a gate shared by every agent. The decline is scoped to the
+	// refused tool's feature, so other features' gated tools keep asking.
 	const signInTool = refusal ? findSignInTool(tools.all(), toolName) : undefined;
 	if (!refusal || !signInTool) return children;
 	return (
 		<RefusedToolCall
 			toolCallId={toolCallId}
+			scope={signInTool.featureId}
 			prompt={toolSignInPrompt(signInTool)}
 			declinedResult={refusal === "declined"}
 		/>
@@ -116,13 +123,14 @@ export const ToolCallSignInGate: FC<{
 
 const RefusedToolCall: FC<{
 	toolCallId: string;
+	scope: string;
 	prompt: ToolSignInPrompt;
 	declinedResult: boolean;
-}> = ({ toolCallId, prompt, declinedResult }) => {
+}> = ({ toolCallId, scope, prompt, declinedResult }) => {
 	const auth = useKiloAuth();
 	const aui = useAui();
 	const isRunning = useAuiState((s) => s.thread.isRunning);
-	const { declined, decline } = useAgentToolSignIn();
+	const { declined, decline } = useAgentToolSignIn(scope);
 	const signedIn = auth.authenticated === true;
 	const ready = useReadyAfterSignIn();
 

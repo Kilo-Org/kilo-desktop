@@ -120,6 +120,13 @@ export const pluginZoneContributionSchema = z.strictObject({
 	mountPolicy: contributionMountPolicySchema.optional(),
 	/** Higher renders first within the zone. Default 0 — matches `sdk.contribute`. */
 	priority: z.number().int().optional(),
+	/**
+	 * The contribution needs a Kilo sign-in. Zone hosts that offer it in a
+	 * picker disable it while the user is signed out.
+	 */
+	requiresSignIn: z.boolean().optional(),
+	/** Shown by such hosts while it is disabled, e.g. "Sign in to Kilo to use …". */
+	signInHint: z.string().min(1).optional(),
 });
 export type PluginZoneContribution = z.infer<typeof pluginZoneContributionSchema>;
 

@@ -35,10 +35,19 @@ describe("right-panel-tab-registry", () => {
 				title: "Canvas",
 				description: "Scratch canvas",
 				addable: true,
+				requiresSignIn: false,
 				mountPolicy: "active-only",
 				Content: Canvas,
 			},
 		]);
+	});
+
+	it("carries a contribution's sign-in requirement and hint", () => {
+		expect(
+			buildContributedTabDefinitions([
+				{ ...contribution, requiresSignIn: true, signInHint: "Sign in to draw." },
+			]),
+		).toMatchObject([{ requiresSignIn: true, signInHint: "Sign in to draw." }]);
 	});
 
 	it("preserves a contribution's keep-alive mount policy", () => {

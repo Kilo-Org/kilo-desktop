@@ -389,12 +389,15 @@ function renderThread({
 	authControl,
 	agentToolSignIn,
 	environmentsTools = [envsListTool],
+	notebookTools = [],
 }: {
 	auth?: KiloAuthContextValue;
 	authControl?: AuthControl;
 	agentToolSignIn?: AgentToolSignInCapability;
 	/** Tools registered as the environments plugin would, e.g. with a sign-in prompt. */
 	environmentsTools?: readonly ToolDefinition[];
+	/** Tools registered as the notebook plugin would. */
+	notebookTools?: readonly ToolDefinition[];
 	selection?: ChatModelSelectionValue;
 	initialMessages: readonly ThreadMessageLike[];
 	adapter?: ChatModelAdapter;
@@ -418,6 +421,7 @@ function renderThread({
 		system.getSdk("kilo-server").plugins.expose("agentToolSignIn", { ...agentToolSignIn });
 	}
 	for (const tool of environmentsTools) system.getSdk("environments").tools.register(tool);
+	for (const tool of notebookTools) system.getSdk("notebook").tools.register(tool);
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const { baseElement } = render(
 		<SdkProvider system={system}>
@@ -1224,7 +1228,10 @@ describe("message error sign-in", () => {
 	});
 });
 
-function refusedToolCallMessages(result: string): readonly ThreadMessageLike[] {
+function refusedToolCallMessages(
+	result: string,
+	toolName = "desktop_environments_conda_envs_list",
+): readonly ThreadMessageLike[] {
 	return [
 		{ role: "user", content: [{ type: "text", text: "List my environments" }] },
 		{
@@ -1232,8 +1239,9 @@ function refusedToolCallMessages(result: string): readonly ThreadMessageLike[] {
 			content: [
 				{
 					type: "tool-call",
-					toolCallId: "call-conda",
-					toolName: "desktop_environments_conda_envs_list",
+					toolCallId:
+						toolName === "desktop_environments_conda_envs_list" ? "call-conda" : `call-${toolName}`,
+					toolName,
 					args: {},
 					result,
 					isError: true,
@@ -1245,13 +1253,13 @@ function refusedToolCallMessages(result: string): readonly ThreadMessageLike[] {
 }
 
 /** Stands in for kilo-server's main-owned sign-in gating state. */
-function fakeAgentToolSignIn(initial: AgentToolSignInState = { declined: false }) {
+function fakeAgentToolSignIn(initial: AgentToolSignInState = { declined: [] }) {
 	let state = initial;
 	const listeners = new Set<(state: AgentToolSignInState) => void>();
 	return {
 		getState: async () => state,
-		decline: vi.fn(async () => {
-			state = { declined: true };
+		decline: vi.fn(async (scope: string) => {
+			state = { declined: [...state.declined, scope] };
 			for (const listener of [...listeners]) listener(state);
 			return state;
 		}),
@@ -1261,7 +1269,7 @@ function fakeAgentToolSignIn(initial: AgentToolSignInState = { declined: false }
 		},
 		/** Main forgets the decline, as it does when the user signs in. */
 		forgetDecline() {
-			state = { declined: false };
+			state = { declined: [] };
 			for (const listener of [...listeners]) listener(state);
 		},
 	} satisfies AgentToolSignInCapability & { forgetDecline(): void };
@@ -1280,6 +1288,20 @@ const envsListTool: ToolDefinition = {
 	exposeToModelContext: true,
 	requiresSignIn: ENV_SIGN_IN_PROMPT,
 	handler: () => [],
+};
+
+const NOTEBOOK_SIGN_IN_PROMPT = {
+	title: "Sign in to use embedded notebooks?",
+	body: "The agent wants the notebook tools. Sign in to a Kilo account?",
+	toolsLabel: "the notebook tools",
+};
+
+const notebookOpenTool: ToolDefinition = {
+	name: "open",
+	description: "Open a notebook",
+	exposeToModelContext: true,
+	requiresSignIn: NOTEBOOK_SIGN_IN_PROMPT,
+	handler: () => ({}),
 };
 
 describe("tool sign-in prompt", () => {
@@ -1398,7 +1420,7 @@ describe("tool sign-in prompt", () => {
 
 		await screen.getByTestId("kilo-tool-signin-prompt-decline").click();
 
-		expect(signIn.decline).toHaveBeenCalledOnce();
+		expect(signIn.decline).toHaveBeenCalledExactlyOnceWith("environments");
 		await expect.poll(() => run.mock.calls.length).toBe(1);
 		await expect
 			.element(
@@ -1479,11 +1501,37 @@ describe("tool sign-in prompt", () => {
 		});
 	});
 
+	it("declines only the refused tool's feature, so another feature's tools still ask", async () => {
+		const signIn = fakeAgentToolSignIn();
+		const screen = renderThread({
+			auth: signedOutAuth,
+			initialMessages: refusedToolCallMessages(required, "desktop_notebook_open"),
+			agentToolSignIn: signIn,
+			notebookTools: [notebookOpenTool],
+		});
+
+		await expect.element(screen.getByText(NOTEBOOK_SIGN_IN_PROMPT.title)).toBeVisible();
+		await screen.getByTestId("kilo-tool-signin-prompt-decline").click();
+
+		expect(signIn.decline).toHaveBeenCalledExactlyOnceWith("notebook");
+		cleanup();
+		const environments = renderThread({
+			auth: signedOutAuth,
+			initialMessages: refusedToolCallMessages(required),
+			agentToolSignIn: signIn,
+			environmentsTools: [envsListTool],
+		});
+		await expect.element(environments.getByTestId("kilo-tool-signin-prompt")).toBeVisible();
+		await expect
+			.element(environments.getByTestId("kilo-tool-signin-declined"))
+			.not.toBeInTheDocument();
+	});
+
 	it("does not ask again on a refused call once the user has declined", async () => {
 		const screen = renderThread({
 			auth: signedOutAuth,
 			initialMessages: refusedToolCallMessages(required),
-			agentToolSignIn: fakeAgentToolSignIn({ declined: true }),
+			agentToolSignIn: fakeAgentToolSignIn({ declined: ["environments"] }),
 		});
 
 		await expect.element(screen.getByTestId("kilo-tool-signin-declined")).toBeVisible();
@@ -1494,7 +1542,7 @@ describe("tool sign-in prompt", () => {
 		const screen = renderThread({
 			auth: signedOutAuth,
 			initialMessages: refusedToolCallMessages(SIGN_IN_DECLINED_TOOL_MESSAGE),
-			agentToolSignIn: fakeAgentToolSignIn({ declined: true }),
+			agentToolSignIn: fakeAgentToolSignIn({ declined: ["environments"] }),
 			environmentsTools: [envsListTool],
 		});
 

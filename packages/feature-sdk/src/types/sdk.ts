@@ -282,6 +282,13 @@ export interface ContributionOptions {
 	size?: string;
 	/** Higher priority renders first. Default 0. */
 	priority?: number;
+	/**
+	 * The contribution needs a Kilo sign-in. Hosts that offer it in a picker
+	 * disable it while the user is signed out.
+	 */
+	requiresSignIn?: boolean;
+	/** Shown by such hosts while it is disabled. */
+	signInHint?: string;
 }
 
 export interface Contribution {
@@ -295,6 +302,8 @@ export interface Contribution {
 	mountPolicy?: ContributionMountPolicy;
 	size?: string;
 	priority: number;
+	requiresSignIn?: boolean;
+	signInHint?: string;
 }
 
 // ─── Commands ────────────────────────────────────────────────────────────────
@@ -773,9 +782,9 @@ export interface ToolDefinition<TArgs = unknown, TResult = unknown> {
 	 * given here (or neutral default wording for `true`). In-app callers
 	 * (`sdk.invoke`) are not affected.
 	 *
-	 * Declining is all-or-nothing: it withdraws every `requiresSignIn` tool,
-	 * from every feature, until the user signs in or the app restarts. Scope it
-	 * per feature before a second feature gates tools.
+	 * Declining is scoped to the owning feature: it withdraws that feature's
+	 * `requiresSignIn` tools until the user signs in or the app restarts, while
+	 * other features' gated tools keep asking.
 	 */
 	requiresSignIn?: boolean | ToolSignInPrompt;
 	handler: (args: TArgs, context: ToolInvocationContext) => TResult | Promise<TResult>;

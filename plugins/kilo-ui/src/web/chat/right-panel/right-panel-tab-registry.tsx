@@ -39,6 +39,10 @@ export interface RightPanelTabDefinition {
 	description: string;
 	Icon: ComponentType<RightPanelTabIconProps>;
 	addable: boolean;
+	/** Offered in the "+" menu only while the user is signed in to Kilo. */
+	requiresSignIn: boolean;
+	/** Why the "+" menu entry is disabled while signed out. */
+	signInHint?: string;
 	mountPolicy: ContributionMountPolicy;
 	Content: ComponentType<ChatRightPanelContributionProps>;
 }
@@ -82,6 +86,7 @@ const PLAN_TAB_DEFINITION: RightPanelTabDefinition = {
 	description: "Proposed plan from the plan agent.",
 	Icon: ListTodoIcon,
 	addable: false,
+	requiresSignIn: false,
 	mountPolicy: "active-only",
 	Content: PlanTab,
 };
@@ -92,6 +97,7 @@ export const SUBAGENT_TAB_DEFINITION: RightPanelTabDefinition = {
 	description: "Read-only live subagent conversation.",
 	Icon: BotIcon,
 	addable: false,
+	requiresSignIn: false,
 	mountPolicy: "active-only",
 	Content: SubagentPane,
 };
@@ -121,6 +127,8 @@ export function buildContributedTabDefinitions(
 					? (contribution.icon as ComponentType<RightPanelTabIconProps>)
 					: LayoutTemplateIcon,
 				addable: true,
+				requiresSignIn: contribution.requiresSignIn === true,
+				...(contribution.signInHint ? { signInHint: contribution.signInHint } : {}),
 				mountPolicy: contribution.mountPolicy ?? "active-only",
 				Content: contribution.component,
 			},

@@ -176,7 +176,7 @@ function buildSnapshot(all: readonly RegisteredTool[]): {
 				...EMPTY_INPUT_SCHEMA,
 			},
 			...(tool.annotations ? { annotations: tool.annotations } : {}),
-			...(tool.requiresSignIn ? { requiresSignIn: true } : {}),
+			...(tool.requiresSignIn ? { requiresSignIn: true, signInScope: tool.featureId } : {}),
 		});
 	}
 	return { tools, routes };

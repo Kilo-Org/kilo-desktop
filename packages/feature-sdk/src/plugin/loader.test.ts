@@ -354,6 +354,32 @@ describe("contribution resolution", () => {
 		]);
 	});
 
+	it("carries a zone contribution's sign-in requirement and hint", () => {
+		const gatedManifest = {
+			...routedManifest,
+			contributes: {
+				...routedManifest.contributes,
+				zones: [
+					{
+						zone: "status-bar",
+						component: "PingStatus",
+						requiresSignIn: true,
+						signInHint: "Sign in to Kilo to ping.",
+					},
+				],
+			},
+		};
+		const discovery = discoverPlugins(
+			[{ manifest: gatedManifest, module: { browserRegister, PingPage, PingStatus } }],
+			"web",
+		);
+
+		expect(pluginZoneContributions(discovery)[0]).toMatchObject({
+			requiresSignIn: true,
+			signInHint: "Sign in to Kilo to ping.",
+		});
+	});
+
 	it("resolves app-lifetime providers against the web entry module", () => {
 		const PingProvider = () => null;
 		const providerManifest = {

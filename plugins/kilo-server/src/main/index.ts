@@ -466,7 +466,7 @@ export function registerKiloServer(
 		"externalClients.createClient": ({ name }) => toolGateway.externalClients.createClient(name),
 		"externalClients.revokeClient": ({ id }) => toolGateway.externalClients.revokeClient(id),
 		"agentToolSignIn.getState": async () => toolGateway.signIn.getState(),
-		"agentToolSignIn.decline": async () => toolGateway.signIn.decline(),
+		"agentToolSignIn.decline": async ({ scope }) => toolGateway.signIn.decline(scope),
 	};
 
 	const kiloService: KiloServerCapabilityService = {

@@ -27,7 +27,7 @@ export function kiloServerBrowserRegister(mainSdk: MainSdk): void {
 		"externalClients.setPort": async () => unavailable(),
 		"externalClients.createClient": async () => unavailable(),
 		"externalClients.revokeClient": async () => unavailable(),
-		"agentToolSignIn.getState": async () => ({ declined: false }),
+		"agentToolSignIn.getState": async () => ({ declined: [] }),
 		"agentToolSignIn.decline": async () => unavailable(),
 	};
 	mainSdk.channels(kiloServerContract).handleAll(service);

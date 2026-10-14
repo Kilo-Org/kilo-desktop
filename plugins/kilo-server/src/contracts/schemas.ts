@@ -96,10 +96,11 @@ export const EXTERNAL_CLIENTS_CHANGED_EVENT = "external-clients-changed";
 
 /**
  * Sign-in gating state for agent tools that declare `requiresSignIn`, owned by
- * main. `declined`: the user chose not to sign in, so those tools are withdrawn
- * from agents until they sign in or the app restarts.
+ * main. `declined`: the feature ids the user chose not to sign in for, so those
+ * features' gated tools are withdrawn from agents until they sign in or the app
+ * restarts.
  */
-export const agentToolSignInStateSchema = z.object({ declined: z.boolean() });
+export const agentToolSignInStateSchema = z.object({ declined: z.array(z.string().min(1)) });
 
 export type AgentToolSignInState = z.infer<typeof agentToolSignInStateSchema>;
 
@@ -113,8 +114,8 @@ export const AGENT_TOOL_SIGN_IN_CHANGED_EVENT = "agent-tool-sign-in-changed";
  */
 export interface AgentToolSignInCapability {
 	getState(): Promise<AgentToolSignInState>;
-	/** The user chose not to sign in. */
-	decline(): Promise<AgentToolSignInState>;
+	/** The user chose not to sign in for this feature's gated tools. */
+	decline(scope: string): Promise<AgentToolSignInState>;
 	/** Hears every change, from any window. */
 	subscribe(listener: (state: AgentToolSignInState) => void): () => void;
 }
@@ -154,8 +155,14 @@ export const kiloServerContract = defineContract({
 		externalClientsStateSchema,
 	),
 	"agentToolSignIn.getState": defineMethod(z.undefined(), agentToolSignInStateSchema),
-	/** The user chose not to sign in: withdraw sign-in tools from agents until they do. */
-	"agentToolSignIn.decline": defineMethod(z.undefined(), agentToolSignInStateSchema),
+	/**
+	 * The user chose not to sign in for a feature: withdraw that feature's
+	 * sign-in tools from agents until they sign in.
+	 */
+	"agentToolSignIn.decline": defineMethod(
+		z.object({ scope: z.string().min(1) }),
+		agentToolSignInStateSchema,
+	),
 });
 
 export type KiloServerService = InferContract<typeof kiloServerContract>;

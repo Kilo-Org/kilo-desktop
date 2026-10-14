@@ -40,6 +40,11 @@ export const toolDescriptorSchema = z.object({
 		.optional(),
 	/** Agents may call it only while the user is signed in; main enforces it. */
 	requiresSignIn: z.boolean().optional(),
+	/**
+	 * The owning feature's id when the tool requires sign-in. A decline to sign
+	 * in is scoped to it: only this feature's sign-in tools are withdrawn.
+	 */
+	signInScope: z.string().min(1).optional(),
 });
 
 export type ToolDescriptor = z.infer<typeof toolDescriptorSchema>;

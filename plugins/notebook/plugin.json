@@ -17,7 +17,9 @@
 				"description": "Analyze data with interactive Python notebooks.",
 				"icon": "NotebookIcon",
 				"mountPolicy": "keep-alive",
-				"priority": 50
+				"priority": 50,
+				"requiresSignIn": true,
+				"signInHint": "Sign in to Kilo to use embedded notebooks."
 			}
 		],
 		"settings": [

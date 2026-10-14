@@ -1,4 +1,10 @@
-import { SettingsPageHeader, useSdk, useSdkMutation, useSdkQuery } from "@kilo-desktop/sdk-react";
+import {
+	KiloAuthGate,
+	SettingsPageHeader,
+	useSdk,
+	useSdkMutation,
+	useSdkQuery,
+} from "@kilo-desktop/sdk-react";
 import { FieldError } from "@kilo-desktop/ui/components/field";
 import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
 import { Switch } from "@kilo-desktop/ui/components/switch";
@@ -52,7 +58,24 @@ function SettingRow({
 	);
 }
 
+/**
+ * Notebooks settings section (plugin.json `contributes.settings`). Embedded
+ * notebooks require a Kilo account (DESK-3152), so the page sits behind the
+ * same sign-in gate as the Conda Environments page.
+ */
 export function NotebookSettings() {
+	return (
+		<KiloAuthGate
+			featureId="notebook"
+			featureName="Notebooks"
+			pendingFallback={<SettingsPageHeader />}
+		>
+			<NotebookSettingsContent />
+		</KiloAuthGate>
+	);
+}
+
+function NotebookSettingsContent() {
 	const sdk = useSdk<NotebookService>("notebook");
 	const settingsQuery = useSdkQuery(sdk, "getSettings");
 	const updateSettings = useSdkMutation(sdk, "updateSettings", { invalidates: ["getSettings"] });

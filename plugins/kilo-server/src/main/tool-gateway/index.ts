@@ -55,8 +55,11 @@ export interface ExternalClientsControl {
 /** Sign-in gating for tools that require sign-in, shared by every agent. */
 export interface AgentToolSignInControl {
 	getState(): AgentToolSignInState;
-	/** The user chose not to sign in: withdraw sign-in tools from agents until they do. */
-	decline(): AgentToolSignInState;
+	/**
+	 * The user chose not to sign in for a feature (`scope`, its feature id):
+	 * withdraw that feature's sign-in tools from agents until they do.
+	 */
+	decline(scope: string): AgentToolSignInState;
 	/** The user signed in: forget a decline. */
 	signedIn(): void;
 }
@@ -156,7 +159,7 @@ export function createToolGateway({
 		},
 		signIn: {
 			getState: () => signIn.state,
-			decline: () => signIn.decline(),
+			decline: (scope) => signIn.decline(scope),
 			signedIn: () => signIn.signedIn(),
 		},
 		async dispose() {

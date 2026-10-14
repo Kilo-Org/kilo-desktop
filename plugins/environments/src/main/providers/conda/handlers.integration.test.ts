@@ -604,6 +604,52 @@ describe("conda handlers → sdk.invoke round-trip", () => {
 		mainSdk.dispose();
 	});
 
+	it("conda.envs.checkPrefix reports a free prefix, then an existing env, without touching the backend", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const backend = makeBackend();
+		registerCondaHandlers(mainSdk, backend, queue);
+		const prefix = join(tmpdir(), `conda-check-prefix-${process.pid}-${Date.now()}`);
+		tmpFiles.push(join(prefix, "conda-meta"), prefix);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		await expect(client["conda.envs.checkPrefix"]({ prefix })).resolves.toEqual({
+			available: true,
+		});
+
+		await mkdir(join(prefix, "conda-meta"), { recursive: true });
+		// Not read-cached: the second call sees the env created since the first.
+		await expect(client["conda.envs.checkPrefix"]({ prefix })).resolves.toEqual({
+			available: false,
+			reason: "exists-environment",
+		});
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.envs.create rejects with ENV_EXISTS before calling the bridge when the prefix is already an env", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const events: JobProgressEvent[] = [];
+		const queue = new JobQueue({ emit: (event) => events.push(event) });
+		const create = vi.fn();
+		registerCondaHandlers(mainSdk, makeBackend({ create }), queue);
+		const prefix = join(tmpdir(), `conda-create-exists-${process.pid}-${Date.now()}`);
+		await mkdir(join(prefix, "conda-meta"), { recursive: true });
+		tmpFiles.push(join(prefix, "conda-meta"), prefix);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		await expect(client["conda.envs.create"]({ name: "dev", prefix })).rejects.toThrow(
+			`ENV_EXISTS: ${prefix}`,
+		);
+
+		expect(create).not.toHaveBeenCalled();
+		expect(events.map((e) => e.status)).toEqual(["queued", "running", "failed"]);
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
 	it("conda.channels.list returns the backend's channel list and caches within TTL", async () => {
 		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
 		const queue = new JobQueue({ emit: () => {} });

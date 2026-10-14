@@ -14,6 +14,23 @@ describe("friendlyEnvironmentsError", () => {
 		expect(result).not.toContain("ENV_EXISTS");
 	});
 
+	it("names the occupied prefix when ENV_EXISTS carries a path", () => {
+		expect(
+			friendlyEnvironmentsError(new Error("ENV_EXISTS: /Users/me/.conda/envs/alpha-bet"), "x"),
+		).toBe(
+			"An environment already exists at /Users/me/.conda/envs/alpha-bet. It may have been created by an earlier or concurrent request — check the environments list, or choose a different name or location.",
+		);
+		expect(
+			friendlyEnvironmentsError(new Error("ENV_EXISTS: C:\\Users\\me\\envs\\alpha-bet"), "x"),
+		).toContain("at C:\\Users\\me\\envs\\alpha-bet.");
+	});
+
+	it("keeps the generic ENV_EXISTS copy when the detail is not a path", () => {
+		expect(
+			friendlyEnvironmentsError(new Error("ENV_EXISTS: Environment 'dev' already exists"), "x"),
+		).toBe("An environment already exists at that location. Choose a different name or location.");
+	});
+
 	it("maps SOLVE_FAILED to a resolution-focused message", () => {
 		const result = friendlyEnvironmentsError(
 			new Error("SOLVE_FAILED: found conflicts"),

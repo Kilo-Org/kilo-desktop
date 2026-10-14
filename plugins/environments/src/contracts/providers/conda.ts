@@ -396,6 +396,32 @@ export const condaEnvsPrefixOptionsResultSchema = z.object({
 });
 export type CondaEnvsPrefixOptionsResult = z.infer<typeof condaEnvsPrefixOptionsResultSchema>;
 
+export const condaEnvsCheckPrefixInputSchema = z.object({ prefix: envPrefixSchema });
+export type CondaEnvsCheckPrefixInput = z.infer<typeof condaEnvsCheckPrefixInputSchema>;
+
+/**
+ * Why a create target is unusable. `exists-*` mirror conda's own
+ * "prefix already exists" rule; the rest are failures conda would hit
+ * later in the create (reserved name, path delimiter, unwritable or
+ * unreadable location).
+ */
+export const createPrefixUnavailableReasonSchema = z.enum([
+	"exists-environment",
+	"exists-file",
+	"reserved-name",
+	"invalid-path",
+	"not-writable",
+	"inaccessible",
+]);
+export type CreatePrefixUnavailableReason = z.infer<typeof createPrefixUnavailableReasonSchema>;
+
+/** Result of `conda.envs.checkPrefix` — whether `conda.create` may target the prefix. */
+export const condaEnvsCheckPrefixResultSchema = z.discriminatedUnion("available", [
+	z.object({ available: z.literal(true) }),
+	z.object({ available: z.literal(false), reason: createPrefixUnavailableReasonSchema }),
+]);
+export type CondaEnvsCheckPrefixResult = z.infer<typeof condaEnvsCheckPrefixResultSchema>;
+
 /* --------------------------------------------------------------------- */
 /* Method I/O — packages                                                 */
 /* --------------------------------------------------------------------- */
@@ -765,6 +791,10 @@ export const condaContract = defineContract({
 	"conda.envs.pickFile": defineMethod(condaEnvsPickFileInputSchema, condaEnvsPickFileResultSchema),
 	"conda.envs.readFile": defineMethod(condaEnvsReadFileInputSchema, condaEnvsReadFileResultSchema),
 	"conda.envs.prefixOptions": defineMethod(z.undefined(), condaEnvsPrefixOptionsResultSchema),
+	"conda.envs.checkPrefix": defineMethod(
+		condaEnvsCheckPrefixInputSchema,
+		condaEnvsCheckPrefixResultSchema,
+	),
 
 	"conda.packages.list": defineMethod(condaPackagesListInputSchema, condaPackagesListResultSchema),
 	"conda.packages.install": defineMethod(

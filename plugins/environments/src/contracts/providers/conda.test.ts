@@ -9,6 +9,8 @@ import {
 	condaContract,
 	condaDistributionSchema,
 	condaEnvSchema,
+	condaEnvsCheckPrefixInputSchema,
+	condaEnvsCheckPrefixResultSchema,
 	condaEnvsCloneInputSchema,
 	condaEnvsCloneResultSchema,
 	condaEnvsCreateFromFileInputSchema,
@@ -913,6 +915,32 @@ describe("conda.repodata I/O", () => {
 	});
 });
 
+describe("conda.envs.checkPrefix schemas", () => {
+	it("requires an absolute prefix", () => {
+		expect(condaEnvsCheckPrefixInputSchema.parse({ prefix: "/opt/conda/envs/dev" })).toEqual({
+			prefix: "/opt/conda/envs/dev",
+		});
+		expect(condaEnvsCheckPrefixInputSchema.safeParse({ prefix: "envs/dev" }).success).toBe(false);
+		expect(condaEnvsCheckPrefixInputSchema.safeParse({}).success).toBe(false);
+	});
+
+	it("round-trips available and unavailable results", () => {
+		expect(condaEnvsCheckPrefixResultSchema.parse({ available: true })).toEqual({
+			available: true,
+		});
+		expect(
+			condaEnvsCheckPrefixResultSchema.parse({ available: false, reason: "exists-environment" }),
+		).toEqual({ available: false, reason: "exists-environment" });
+	});
+
+	it("requires a known reason when unavailable", () => {
+		expect(condaEnvsCheckPrefixResultSchema.safeParse({ available: false }).success).toBe(false);
+		expect(
+			condaEnvsCheckPrefixResultSchema.safeParse({ available: false, reason: "nope" }).success,
+		).toBe(false);
+	});
+});
+
 describe("condaContract", () => {
 	it("declares every v1 tool the delivery plan pins", () => {
 		expect(new Set(Object.keys(condaContract))).toEqual(
@@ -926,6 +954,7 @@ describe("condaContract", () => {
 				"conda.envs.pickFile",
 				"conda.envs.readFile",
 				"conda.envs.prefixOptions",
+				"conda.envs.checkPrefix",
 				"conda.packages.list",
 				"conda.packages.install",
 				"conda.packages.remove",

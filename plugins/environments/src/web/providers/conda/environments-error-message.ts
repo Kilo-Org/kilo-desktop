@@ -2,10 +2,10 @@
  * User-facing messages for environments failures.
  *
  * FeatureErrors cross the IPC boundary as `"CODE: detail"` strings
- * (see contracts/common.ts). Surfacing that raw form to users leaks Python
- * traceback fragments like
- * `PROVIDER_NOT_READY: conda.exceptions.CondaValueError: prefix already
- * exists: /Users/…`. This helper recovers the granular
+ * (see contracts/common.ts). Surfacing that raw form to users leaks internal
+ * fragments like
+ * `PROVIDER_NOT_READY: anaconda-bridge-sidecar error: Unexpected error in
+ * conda.create: KeyError`. This helper recovers the granular
  * {@link EnvironmentsErrorCode} and returns a short, actionable sentence
  * instead, falling back to a generic message when the error does not follow
  * the plugin's convention.
@@ -59,6 +59,19 @@ function isOpaqueBridgeDetail(detail: string): boolean {
 	);
 }
 
+function isAbsolutePath(value: string): boolean {
+	return /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(value);
+}
+
+/**
+ * The create was rejected because the prefix is taken — most often by a
+ * duplicate or concurrent create that already succeeded, so say so rather
+ * than implying the user did something wrong.
+ */
+function existingPrefixMessage(prefix: string): string {
+	return `An environment already exists at ${prefix}. It may have been created by an earlier or concurrent request — check the environments list, or choose a different name or location.`;
+}
+
 /**
  * Convert a caught error (or any value) into a friendly, user-facing message.
  * Recognised environments error codes map to curated copy; anything else
@@ -73,6 +86,10 @@ export function friendlyEnvironmentsError(reason: unknown, fallback: string): st
 	const raw = reason instanceof Error ? reason.message : typeof reason === "string" ? reason : "";
 	const parsed = raw ? parseEnvironmentsErrorMessage(raw) : null;
 	if (!parsed) return fallback;
+
+	if (parsed.code === "ENV_EXISTS" && parsed.detail && isAbsolutePath(parsed.detail)) {
+		return existingPrefixMessage(parsed.detail);
+	}
 
 	const friendly = FRIENDLY_MESSAGE[parsed.code];
 	// For opaque "not ready" errors, surface the bridge detail when it

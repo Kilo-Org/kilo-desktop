@@ -1300,7 +1300,54 @@ describe("SidecarCondaBackend", () => {
 			});
 
 			const backend = createBackend();
-			await expect(backend.create({ name: "faker", packages: [] })).rejects.toThrow("ENV_EXISTS");
+			await expect(backend.create({ name: "faker", packages: [] })).rejects.toThrow(
+				/^ENV_EXISTS: \/Users\/x\/\.conda\/envs\/faker$/,
+			);
+		});
+
+		it("maps the bridge's internal-error wrapper around 'prefix already exists' to ENV_EXISTS with the prefix", async () => {
+			const prefix = "/Users/x/.conda/envs/alpha-bet";
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (isHealthCheck(method)) return Promise.resolve({});
+				// Shape sent by bridge 0.1.17 (rpc.py): the conda text lives only
+				// in the traceback; the top-level message names just the class.
+				throw new ResponseError(-32603, "Unexpected error in conda.create: CondaValueError", {
+					code: "conda:internal-error",
+					message: "Unexpected error in conda.create: CondaValueError",
+					details: {
+						exception_type: "CondaValueError",
+						method: "conda.create",
+						traceback: [
+							"Traceback (most recent call last):",
+							'  File "conda/cli/install.py", line 149, in check_prefix',
+							"    raise CondaValueError(error, json)",
+							`conda.exceptions.CondaValueError: prefix already exists: ${prefix}`,
+							"",
+						].join("\n"),
+					},
+				});
+			});
+
+			const backend = createBackend();
+			await expect(backend.create({ name: "alpha-bet", packages: [] })).rejects.toThrow(
+				new RegExp(`^ENV_EXISTS: ${prefix}$`),
+			);
+		});
+
+		it("keeps the PROVIDER_NOT_READY fallback for an internal error whose traceback is unrecognised", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (isHealthCheck(method)) return Promise.resolve({});
+				throw new ResponseError(-32603, "Unexpected error in conda.create: KeyError", {
+					code: "conda:internal-error",
+					message: "Unexpected error in conda.create: KeyError",
+					details: { exception_type: "KeyError", traceback: "KeyError: 'channels'\n" },
+				});
+			});
+
+			const backend = createBackend();
+			await expect(backend.create({ name: "dev", packages: [] })).rejects.toThrow(
+				"PROVIDER_NOT_READY: anaconda-bridge-sidecar error: Unexpected error in conda.create: KeyError",
+			);
 		});
 
 		it("falls back to PROVIDER_NOT_READY for ResponseError without data", async () => {

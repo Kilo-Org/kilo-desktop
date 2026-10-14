@@ -6,9 +6,12 @@ import { page, userEvent } from "vitest/browser";
 import { SdkProvider } from "@kilo-desktop/sdk-react";
 import type { AuthSession, SDK } from "@kilo-desktop/feature-sdk";
 import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
+import { Toaster, toast } from "@kilo-desktop/ui/components/sonner";
 
 import {
 	condaContract,
+	type CondaEnvsCheckPrefixInput,
+	type CondaEnvsCheckPrefixResult,
 	type CondaEnvsCreateInput,
 	type CondaEnvsCreateResult,
 	type CondaRepodataFindInput,
@@ -63,6 +66,13 @@ function renderDialog(
 		/** Full control over the search response, e.g. to page by `limit`. */
 		search?: (input: CondaRepodataFindInput) => CondaRepodataFindResult;
 		create?: (input: CondaEnvsCreateInput) => CondaEnvsCreateResult;
+		/**
+		 * Override the prefix check. By default it behaves like the real one
+		 * against an in-memory disk: `taken` prefixes plus every prefix a
+		 * successful create produced are reported as existing environments.
+		 */
+		checkPrefix?: (input: CondaEnvsCheckPrefixInput) => Promise<CondaEnvsCheckPrefixResult>;
+		taken?: string[];
 		channels?: string[];
 		envsDirs?: string[];
 		auth?: Partial<SDK["auth"]>;
@@ -72,6 +82,11 @@ function renderDialog(
 	const find = options.find ?? (() => [pkg("numpy", ["1.26.4", "1.25.0"]), pkg("pandas")]);
 	const create: (input: CondaEnvsCreateInput) => CondaEnvsCreateResult =
 		options.create ?? (() => ({ jobId: "job-1", environment: { name: "x", prefix: "/x" } }));
+	const disk = new Set(options.taken ?? []);
+	const checkPrefix =
+		options.checkPrefix ??
+		(async ({ prefix }: CondaEnvsCheckPrefixInput): Promise<CondaEnvsCheckPrefixResult> =>
+			disk.has(prefix) ? { available: false, reason: "exists-environment" } : { available: true });
 	const sdk = createFakeSdk({
 		featureId: "environments",
 		channels: condaContract,
@@ -81,9 +96,14 @@ function renderDialog(
 				envsDirs: options.envsDirs ?? ["/opt/anaconda3/envs"],
 				channels: options.channels ?? ["defaults", "conda-forge"],
 			}),
+			"conda.envs.checkPrefix": checkPrefix,
 			"conda.repodata.find": async (input: CondaRepodataFindInput) =>
 				options.search ? options.search(input) : { packages: find(), truncated: false },
-			"conda.envs.create": async (input: CondaEnvsCreateInput) => create(input),
+			"conda.envs.create": async (input: CondaEnvsCreateInput) => {
+				const result = create(input);
+				if (input.prefix) disk.add(input.prefix);
+				return result;
+			},
 		},
 		auth: options.auth ?? {},
 		...(options.track ? { telemetry: { track: options.track } } : {}),
@@ -95,12 +115,24 @@ function renderDialog(
 		<SdkProvider system={system}>
 			<QueryClientProvider client={queryClient}>
 				<CreateEnvironmentDialog open onClose={() => {}} />
+				<Toaster />
 			</QueryClientProvider>
 		</SdkProvider>,
 	);
 }
 
-afterEach(cleanup);
+function deferred<T>() {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((r) => {
+		resolve = r;
+	});
+	return { promise, resolve };
+}
+
+afterEach(() => {
+	toast.dismiss();
+	cleanup();
+});
 
 describe("CreateEnvironmentDialog (modal)", () => {
 	it("renders the manual create modal with the package grid populated", async () => {
@@ -165,21 +197,162 @@ describe("CreateEnvironmentDialog (modal)", () => {
 		expect(payload.name).toBe("myenv");
 		expect(payload.packages).toContain("numpy=1.25.0");
 		expect(payload.packages).toContain("python=3.11.9");
+		// The default location is sent explicitly too, so conda creates the env
+		// exactly where the preview (and the prefix check) pointed.
+		expect(payload.prefix).toBe("/opt/anaconda3/envs/myenv");
 	});
 
-	it("keeps the dialog open after a successful create and shows an inline confirmation", async () => {
-		const { baseElement } = renderDialog();
+	it("keeps Create disabled until the prefix check for the typed name passes", async () => {
+		const check = deferred<CondaEnvsCheckPrefixResult>();
+		const checkPrefix = vi.fn(() => check.promise);
+		const { baseElement } = renderDialog({ checkPrefix });
+		const screen = page.elementLocator(baseElement);
+		const submit = screen.getByTestId("environments-create-submit");
+
+		await userEvent.fill(screen.getByTestId("environments-create-name"), "myenv");
+
+		await expect.element(screen.getByTestId("environments-create-prefix-status")).toBeVisible();
+		await vi.waitFor(() => {
+			expect(checkPrefix).toHaveBeenCalledWith({ prefix: "/opt/anaconda3/envs/myenv" });
+		});
+		await expect.element(submit).toBeDisabled();
+
+		check.resolve({ available: true });
+
+		await expect.element(submit).toBeEnabled();
+		await expect
+			.element(screen.getByTestId("environments-create-prefix-status"))
+			.not.toBeInTheDocument();
+	});
+
+	it("checks only the final prefix once typing settles", async () => {
+		const checkPrefix = vi.fn(
+			async (_input: CondaEnvsCheckPrefixInput): Promise<CondaEnvsCheckPrefixResult> => ({
+				available: true,
+			}),
+		);
+		const { baseElement } = renderDialog({ checkPrefix });
+		const screen = page.elementLocator(baseElement);
+
+		await userEvent.type(screen.getByTestId("environments-create-name"), "alpha-bet");
+
+		await expect.element(screen.getByTestId("environments-create-submit")).toBeEnabled();
+		expect(checkPrefix.mock.calls.map(([input]) => input.prefix)).toEqual([
+			"/opt/anaconda3/envs/alpha-bet",
+		]);
+	});
+
+	it("blocks a prefix that already holds an environment, including Enter-key submits", async () => {
+		const create = vi.fn((_input: CondaEnvsCreateInput): CondaEnvsCreateResult => ({
+			jobId: "j",
+			environment: { name: "alpha-bet", prefix: "/opt/anaconda3/envs/alpha-bet" },
+		}));
+		const { baseElement } = renderDialog({ create, taken: ["/opt/anaconda3/envs/alpha-bet"] });
+		const screen = page.elementLocator(baseElement);
+
+		await userEvent.fill(screen.getByTestId("environments-create-name"), "alpha-bet");
+
+		await expect
+			.element(screen.getByTestId("environments-create-prefix-error"))
+			.toHaveTextContent(
+				"An environment already exists at /opt/anaconda3/envs/alpha-bet. Choose a different name or location.",
+			);
+		await expect.element(screen.getByTestId("environments-create-submit")).toBeDisabled();
+
+		await userEvent.type(screen.getByTestId("environments-create-name"), "{Enter}");
+		expect(create).not.toHaveBeenCalled();
+	});
+
+	it("explains a location the user cannot write to", async () => {
+		const { baseElement } = renderDialog({
+			checkPrefix: async () => ({ available: false, reason: "not-writable" }),
+		});
+		const screen = page.elementLocator(baseElement);
+
+		await userEvent.fill(screen.getByTestId("environments-create-name"), "myenv");
+
+		await expect
+			.element(screen.getByTestId("environments-create-prefix-error"))
+			.toHaveTextContent(
+				"You don't have permission to create environments in /opt/anaconda3/envs.",
+			);
+		await expect.element(screen.getByTestId("environments-create-submit")).toBeDisabled();
+	});
+
+	it("shows the name rule as soon as an invalid name is typed", async () => {
+		const checkPrefix = vi.fn(async () => ({ available: true }) as const);
+		const { baseElement } = renderDialog({ checkPrefix });
+		const screen = page.elementLocator(baseElement);
+
+		await userEvent.fill(screen.getByTestId("environments-create-name"), "-bad");
+
+		await expect.element(screen.getByTestId("environments-create-name-error")).toBeVisible();
+		await expect.element(screen.getByTestId("environments-create-submit")).toBeDisabled();
+		expect(checkPrefix).not.toHaveBeenCalled();
+	});
+
+	it("keeps the dialog open after a successful create but blocks re-creating the same env", async () => {
+		const create = vi.fn((_input: CondaEnvsCreateInput): CondaEnvsCreateResult => ({
+			jobId: "j",
+			environment: { name: "myenv", prefix: "/opt/anaconda3/envs/myenv" },
+		}));
+		const { baseElement } = renderDialog({ create });
+		const screen = page.elementLocator(baseElement);
+		const submit = screen.getByTestId("environments-create-submit");
+
+		await userEvent.fill(screen.getByTestId("environments-create-name"), "myenv");
+		await userEvent.click(submit);
+
+		const success = screen.getByTestId("environments-create-success");
+		await expect.element(success).toHaveTextContent("myenv was created.");
+		await expect.element(screen.getByTestId("environments-create-dialog")).toBeVisible();
+		// Form state is preserved so the user can review what was created...
+		await expect.element(screen.getByTestId("environments-create-name")).toHaveValue("myenv");
+		// ...but the re-run check now finds the env, so it can't be submitted twice.
+		await expect.element(submit).toBeDisabled();
+		await expect
+			.element(screen.getByTestId("environments-create-prefix-error"))
+			.not.toBeInTheDocument();
+		expect(create).toHaveBeenCalledOnce();
+
+		await userEvent.fill(screen.getByTestId("environments-create-name"), "myenv2");
+
+		await expect.element(success).not.toBeInTheDocument();
+		await expect.element(submit).toBeEnabled();
+	});
+
+	it("tells the user the prefix was taken when the create itself hits an existing env", async () => {
+		const prefix = "/opt/anaconda3/envs/myenv";
+		let checks = 0;
+		const { baseElement } = renderDialog({
+			// Free when checked, then taken by a concurrent create before ours runs.
+			checkPrefix: async () => {
+				checks += 1;
+				return checks === 1
+					? { available: true }
+					: { available: false, reason: "exists-environment" };
+			},
+			create: () => {
+				throw new Error(`ENV_EXISTS: ${prefix}`);
+			},
+		});
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.fill(screen.getByTestId("environments-create-name"), "myenv");
 		await userEvent.click(screen.getByTestId("environments-create-submit"));
 
-		const success = screen.getByTestId("environments-create-success");
-		await expect.element(success).toBeVisible();
-		expect(await success.element().textContent).toContain("myenv was created.");
-		await expect.element(screen.getByTestId("environments-create-dialog")).toBeVisible();
-		// Form state is preserved so the user can review what was created.
-		await expect.element(screen.getByTestId("environments-create-name")).toHaveValue("myenv");
+		await expect.element(page.getByText("Could not create myenv")).toBeVisible();
+		await expect
+			.element(
+				page.getByText(
+					`An environment already exists at ${prefix}. It may have been created by an earlier or concurrent request`,
+					{ exact: false },
+				),
+			)
+			.toBeVisible();
+		// The failure refreshes the check, so the field now explains it too.
+		await expect.element(screen.getByTestId("environments-create-prefix-error")).toBeVisible();
+		await expect.element(screen.getByTestId("environments-create-submit")).toBeDisabled();
 	});
 
 	it("tracks a created environment with coarse options only", async () => {

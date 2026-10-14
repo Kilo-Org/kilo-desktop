@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
 import { useSdk, useSdkMutation, useSdkQuery } from "@kilo-desktop/sdk-react";
@@ -25,6 +26,7 @@ import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 import { CheckIcon, FolderIcon } from "lucide-react";
 
+import { parseEnvironmentsErrorMessage } from "../../../contracts/common.js";
 import type { CondaRepodataFindResult, CondaService } from "../../../contracts/providers/conda.js";
 import { ChannelChooserPopover } from "./ChannelChooserPopover.js";
 import { useChannelSelection } from "./use-channel-selection.js";
@@ -43,6 +45,7 @@ import {
 	usePackageSelection,
 } from "./PackageSearch.js";
 import { PythonVersionPicker, PYTHON_LATEST } from "./PythonVersionPicker.js";
+import { useCreatePrefixCheck, type CreatePrefixCheckState } from "./use-create-prefix-check.js";
 import { usePackageSearch } from "./use-package-search.js";
 
 interface CreateEnvironmentDialogProps {
@@ -68,6 +71,31 @@ function joinEnvPath(baseDir: string, envName: string): string {
 	return envName ? `${base}${sep}${envName}` : base;
 }
 
+/** Why the target can't be created, or `null` while it is (or may be) available. */
+function prefixCheckError(
+	check: CreatePrefixCheckState,
+	target: { prefix: string; location: string; name: string },
+): string | null {
+	if (check.status === "error") {
+		return "Couldn't check whether this location is available. Edit the name or location to try again.";
+	}
+	if (check.status !== "unavailable") return null;
+	switch (check.reason) {
+		case "exists-environment":
+			return `An environment already exists at ${target.prefix}. Choose a different name or location.`;
+		case "exists-file":
+			return `A file already exists at ${target.prefix}. Choose a different name or location.`;
+		case "reserved-name":
+			return `"${target.name}" is reserved by conda. Choose a different name.`;
+		case "invalid-path":
+			return "The location must be an absolute path to a folder.";
+		case "not-writable":
+			return `You don't have permission to create environments in ${target.location}.`;
+		case "inaccessible":
+			return `Couldn't access ${target.prefix}. Check the location's permissions.`;
+	}
+}
+
 export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDialogProps) {
 	const sdk = useSdk<CondaService>("environments");
 	const [name, setName] = useState("");
@@ -75,9 +103,11 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 	const [pythonVersion, setPythonVersion] = useState(PYTHON_LATEST);
 	const [pythonVersions, setPythonVersions] = useState<string[]>(PYTHON_VERSIONS_FALLBACK);
 	const [query, setQuery] = useState("");
-	const [validationError, setValidationError] = useState<string | null>(null);
-	const [successMessage, setSuccessMessage] = useState<string | null>(null);
+	// The last environment created from this dialog. Its confirmation shows
+	// only while the form still targets the same prefix.
+	const [created, setCreated] = useState<{ prefix: string; envName: string } | null>(null);
 	const selection = usePackageSelection();
+	const queryClient = useQueryClient();
 	// The in-flight create job, so "Run in background" can adopt it instead
 	// of enqueueing a duplicate. `backgrounded` mutes the foreground handlers.
 	const pendingCreateRef = useRef<{
@@ -88,11 +118,31 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 
 	const prefixQuery = useSdkQuery(sdk, "conda.envs.prefixOptions");
 	const mutation = useSdkMutation(sdk, "conda.envs.create", {
-		invalidates: ["conda.envs.list"],
+		invalidates: ["conda.envs.list", "conda.envs.checkPrefix"],
 	});
 
 	const envsDirs = useMemo(() => prefixQuery.data?.envsDirs ?? [], [prefixQuery.data?.envsDirs]);
 	const defaultDir = envsDirs[0] ?? "";
+
+	const trimmedName = name.trim();
+	const trimmedLocation = location.trim();
+	const nameError = trimmedName ? validateEnvironmentName(name) : null;
+	// Always sent as an explicit prefix: a bare name would resolve against the
+	// bridge's own envs_dirs, not the location shown (and checked) here.
+	const targetPrefix =
+		trimmedName && !nameError && trimmedLocation ? joinEnvPath(trimmedLocation, trimmedName) : null;
+	const prefixCheck = useCreatePrefixCheck(sdk, targetPrefix);
+	const createdHere = created?.prefix === targetPrefix ? created : null;
+	const justCreated = createdHere !== null;
+	const prefixError =
+		targetPrefix && !justCreated
+			? prefixCheckError(prefixCheck, {
+					prefix: targetPrefix,
+					location: trimmedLocation,
+					name: trimmedName,
+				})
+			: null;
+	const canCreate = prefixCheck.status === "available" && !mutation.isPending;
 	const channels = useChannelSelection(prefixQuery.data?.channels);
 	const search = usePackageSearch({
 		sdk,
@@ -141,8 +191,7 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 		selection.reset();
 		channels.reset();
 		setQuery("");
-		setValidationError(null);
-		setSuccessMessage(null);
+		setCreated(null);
 	}
 
 	const packageSpecs = useMemo(() => {
@@ -151,37 +200,37 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 		return specs;
 	}, [selection.selected, pythonVersion]);
 
-	function buildPayload() {
-		const trimmedName = name.trim();
-		const trimmedLocation = location.trim();
-		// The env is created at `<location>/<name>` (what the preview shows), so
-		// the prefix sent to conda must be that joined path, not the bare
-		// directory the user picked.
-		const prefix =
-			trimmedLocation && trimmedLocation !== defaultDir
-				? joinEnvPath(trimmedLocation, trimmedName)
-				: undefined;
+	function buildPayload(prefix: string) {
 		return {
 			name: trimmedName,
 			...(packageSpecs.length > 0 ? { packages: packageSpecs } : {}),
 			...(channels.selected.length > 0 ? { channels: channels.selected } : {}),
-			...(prefix ? { prefix } : {}),
+			prefix,
 		};
+	}
+
+	/** A create that hit an occupied prefix means our view is stale: refresh it. */
+	function refreshAfterPrefixConflict(reason: unknown) {
+		const message = reason instanceof Error ? reason.message : String(reason);
+		if (parseEnvironmentsErrorMessage(message)?.code !== "ENV_EXISTS") return;
+		for (const channel of ["conda.envs.checkPrefix", "conda.envs.list"] as const) {
+			void queryClient.invalidateQueries({ queryKey: [sdk.featureId, channel] });
+		}
 	}
 
 	function handleSubmit(e: FormEvent) {
 		e.preventDefault();
-		const nameError = validateEnvironmentName(name);
-		setValidationError(nameError);
-		if (nameError) return;
-		setSuccessMessage(null);
-		const envName = name.trim();
+		// Gate the handler too, not only the button: the form can be submitted
+		// programmatically or by assistive tech.
+		if (!canCreate || !targetPrefix) return;
+		setCreated(null);
+		const envName = trimmedName;
 		const job = createEnvironmentJob(envName);
-		const payload = buildPayload();
+		const payload = buildPayload(targetPrefix);
 		const telemetryData = {
 			packageCount: selection.selected.length,
 			pythonPinned: pythonVersion !== PYTHON_LATEST,
-			customLocation: payload.prefix !== undefined,
+			customLocation: trimmedLocation !== defaultDir,
 		};
 		const promise = mutation.mutateAsync(payload);
 		const pending = { promise, envName, backgrounded: false };
@@ -194,9 +243,10 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 					.catch(() => undefined);
 				if (pending.backgrounded) return;
 				showJobSuccess(job);
-				setSuccessMessage(`${envName} was created.`);
+				setCreated({ prefix: payload.prefix, envName });
 			},
 			(reason) => {
+				refreshAfterPrefixConflict(reason);
 				if (!pending.backgrounded) showJobError(job, reason);
 			},
 		);
@@ -282,7 +332,7 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 										value={name}
 										onChange={(e) => setName(e.target.value)}
 										placeholder="Enter environment name"
-										aria-invalid={validationError ? true : undefined}
+										aria-invalid={nameError || prefixError ? true : undefined}
 										autoFocus
 										data-qa-id="environments-create-name"
 									/>
@@ -297,7 +347,20 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 								</Field>
 							</FieldGroup>
 
-							{validationError ? <FieldError>{validationError}</FieldError> : null}
+							{nameError ? (
+								<FieldError data-qa-id="environments-create-name-error">{nameError}</FieldError>
+							) : prefixError ? (
+								<FieldError data-qa-id="environments-create-prefix-error">{prefixError}</FieldError>
+							) : prefixCheck.status === "checking" && !justCreated && !mutation.isPending ? (
+								<p
+									className="text-muted-foreground flex items-center gap-1.5 text-sm"
+									role="status"
+									data-qa-id="environments-create-prefix-status"
+								>
+									<Spinner aria-hidden="true" />
+									Checking availability…
+								</p>
+							) : null}
 
 							<div className="flex shrink-0 items-center gap-2">
 								<PackageSearchInput
@@ -331,14 +394,14 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 					</div>
 
 					<DialogFooter className="sm:items-center">
-						{successMessage ? (
+						{createdHere ? (
 							<p
 								className="text-muted-foreground flex items-center gap-1.5 sm:mr-auto"
 								role="status"
 								data-qa-id="environments-create-success"
 							>
 								<CheckIcon className="text-success size-3.5 shrink-0" aria-hidden="true" />
-								{successMessage}
+								{createdHere.envName} was created.
 							</p>
 						) : null}
 						{mutation.isPending ? (
@@ -360,11 +423,7 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 						>
 							Cancel
 						</Button>
-						<Button
-							type="submit"
-							disabled={mutation.isPending || !name.trim()}
-							data-qa-id="environments-create-submit"
-						>
+						<Button type="submit" disabled={!canCreate} data-qa-id="environments-create-submit">
 							{mutation.isPending ? <Spinner data-icon="inline-start" aria-hidden="true" /> : null}
 							{mutation.isPending ? "Creating…" : "Create environment"}
 						</Button>

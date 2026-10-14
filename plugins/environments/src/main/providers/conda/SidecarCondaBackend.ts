@@ -167,6 +167,27 @@ function classifyByMessage(message: string): EnvironmentsErrorCode | undefined {
 	return undefined;
 }
 
+const PREFIX_ALREADY_EXISTS_LINE = /prefix already exists:\s*(\S.*)$/im;
+
+/**
+ * Detail to attach to a message-classified error. An existing prefix is
+ * reduced to the bare path so the renderer can name it.
+ */
+function classifiedDetail(code: EnvironmentsErrorCode, message: string): string {
+	if (code !== "ENV_EXISTS") return message;
+	return PREFIX_ALREADY_EXISTS_LINE.exec(message)?.[1]?.trim() || message;
+}
+
+/** Classify a Python traceback by its final line, which carries conda's exception text. */
+function classifyTraceback(
+	traceback: unknown,
+): { code: EnvironmentsErrorCode; detail: string } | undefined {
+	if (typeof traceback !== "string") return undefined;
+	const lastLine = traceback.trimEnd().split("\n").at(-1)?.trim() ?? "";
+	const code = classifyByMessage(lastLine);
+	return code ? { code, detail: classifiedDetail(code, lastLine) } : undefined;
+}
+
 export interface SidecarCondaBackendOptions {
 	/** Launch command for the bridge (first element is the binary, rest are args). */
 	readonly command?: readonly string[];
@@ -623,7 +644,6 @@ export class SidecarCondaBackend implements CondaBackend {
 				if (mapped) {
 					return featureError(mapped, detail);
 				}
-				this.#logger.warn(`[anaconda-bridge-sidecar] Unmapped domain_code: ${domainCode}`);
 			}
 
 			// The bridge does not always attach a domain code — some failures
@@ -631,14 +651,23 @@ export class SidecarCondaBackend implements CondaBackend {
 			// so the UI can show a friendly, actionable message instead of a
 			// Python traceback fragment.
 			const byMessage = classifyByMessage(detail);
-			if (byMessage) return featureError(byMessage, detail);
+			if (byMessage) return featureError(byMessage, classifiedDetail(byMessage, detail));
 
+			// `conda:internal-error` wraps an unhandled conda exception and
+			// names only its class in `message`; conda's own text is the
+			// traceback's last line.
+			const fromTraceback = classifyTraceback(data?.details?.traceback);
+			if (fromTraceback) return featureError(fromTraceback.code, fromTraceback.detail);
+
+			if (domainCode) {
+				this.#logger.warn(`[anaconda-bridge-sidecar] Unmapped domain_code: ${domainCode}`);
+			}
 			return featureError("PROVIDER_NOT_READY", `anaconda-bridge-sidecar error: ${detail}`);
 		}
 
 		const message = error instanceof Error ? error.message : String(error);
 		const byMessage = classifyByMessage(message);
-		if (byMessage) return featureError(byMessage, message);
+		if (byMessage) return featureError(byMessage, classifiedDetail(byMessage, message));
 		return featureError("PROVIDER_NOT_READY", `anaconda-bridge-sidecar error: ${message}`);
 	}
 

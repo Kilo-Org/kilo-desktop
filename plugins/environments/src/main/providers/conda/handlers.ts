@@ -3,10 +3,17 @@ import { lstat, readFile, realpath, stat } from "node:fs/promises";
 import { FeatureError } from "@kilo-desktop/feature-sdk";
 import type { MainSdk } from "@kilo-desktop/feature-sdk/main";
 
-import type { CancelInput, CancelResult } from "../../../contracts/common.js";
+import {
+	environmentsErrorCodeToFeatureErrorCode,
+	formatEnvironmentsErrorMessage,
+	type CancelInput,
+	type CancelResult,
+} from "../../../contracts/common.js";
 import type {
 	CondaChannelsListResult,
 	CondaDistribution,
+	CondaEnvsCheckPrefixInput,
+	CondaEnvsCheckPrefixResult,
 	CondaEnvsCloneInput,
 	CondaEnvsCloneResult,
 	CondaEnvsCreateFromFileInput,
@@ -38,6 +45,7 @@ import { condaContract } from "../../../contracts/providers/conda.js";
 import type { JobQueue } from "../../JobQueue.js";
 
 import type { CondaBackend, CondaRepodataFilter } from "./CondaBackend.js";
+import { checkCreatePrefix } from "./create-prefix-check.js";
 
 /** Ceiling on how many bytes `conda.envs.readFile` reads and ships over IPC. */
 const READ_FILE_MAX_BYTES = 1024 * 1024;
@@ -268,6 +276,15 @@ export function registerCondaHandlers(
 		}),
 	);
 
+	// Deliberately neither queued nor read-cached: it is a few stat calls,
+	// must not wait behind a running create, and must see envs created
+	// moments ago.
+	handlers.handle(
+		"conda.envs.checkPrefix",
+		(input: CondaEnvsCheckPrefixInput): Promise<CondaEnvsCheckPrefixResult> =>
+			checkCreatePrefix(input.prefix),
+	);
+
 	handlers.handle(
 		"conda.packages.install",
 		(input: CondaPackagesInstallInput): Promise<CondaPackagesInstallResult> =>
@@ -418,15 +435,37 @@ async function enqueueEnvsCreate(
 	backend: CondaBackend,
 	input: CondaEnvsCreateInput,
 ): Promise<CondaEnvsCreateResult> {
-	const options = input.prefix ? { prefix: input.prefix } : undefined;
+	const prefix = input.prefix;
+	const options = prefix ? { prefix } : undefined;
 	const { jobId, result } = queue.enqueue({
 		providerId: "conda",
 		kind: "envs.create",
-		run: (ctx) =>
-			backend.create(input, { signal: ctx.signal, onProgress: ctx.onProgress }, options),
+		run: async (ctx) => {
+			// Re-checked inside the job, i.e. after every earlier queued write
+			// has settled, so a duplicate submit or a concurrent create of the
+			// same prefix fails with a clear ENV_EXISTS instead of the bridge's
+			// opaque internal error.
+			if (prefix) await assertPrefixNotTaken(prefix);
+			return backend.create(input, { signal: ctx.signal, onProgress: ctx.onProgress }, options);
+		},
 	});
 	const environment = await result;
 	return { jobId, environment };
+}
+
+/**
+ * Only an occupied prefix blocks here; other unavailable reasons are left to
+ * conda, which reports them in its own terms.
+ */
+async function assertPrefixNotTaken(prefix: string): Promise<void> {
+	const check = await checkCreatePrefix(prefix);
+	if (check.available) return;
+	if (check.reason === "exists-environment" || check.reason === "exists-file") {
+		throw new FeatureError(
+			formatEnvironmentsErrorMessage("ENV_EXISTS", prefix),
+			environmentsErrorCodeToFeatureErrorCode("ENV_EXISTS"),
+		);
+	}
 }
 
 async function enqueueEnvsClone(

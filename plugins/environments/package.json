@@ -34,11 +34,11 @@
 		"zod": "catalog:"
 	},
 	"optionalDependencies": {
-		"@anaconda/desktop-bridge-payload-darwin-arm64": "0.1.17",
-		"@anaconda/desktop-bridge-payload-linux-arm64": "0.1.17",
-		"@anaconda/desktop-bridge-payload-linux-x64": "0.1.17",
-		"@anaconda/desktop-bridge-payload-win32-arm64": "0.1.17",
-		"@anaconda/desktop-bridge-payload-win32-x64": "0.1.17"
+		"@anaconda/desktop-bridge-payload-darwin-arm64": "0.1.18",
+		"@anaconda/desktop-bridge-payload-linux-arm64": "0.1.18",
+		"@anaconda/desktop-bridge-payload-linux-x64": "0.1.18",
+		"@anaconda/desktop-bridge-payload-win32-arm64": "0.1.18",
+		"@anaconda/desktop-bridge-payload-win32-x64": "0.1.18"
 	},
 	"devDependencies": {
 		"@kilo-desktop/e2e": "workspace:*",

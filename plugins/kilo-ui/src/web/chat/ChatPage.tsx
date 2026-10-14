@@ -168,12 +168,8 @@ const ChatThreadSurface = memo(function ChatThreadSurface({
 });
 
 export function ChatPageHeaderLeading() {
-	const { ready, hasCanvas } = usePaneSessionHeaderStore();
 	return (
-		<div
-			className="flex min-w-0 flex-1 items-center gap-1"
-			data-chat-empty={ready && !hasCanvas ? true : undefined}
-		>
+		<div className="flex min-w-0 flex-1 items-center gap-1">
 			<ChatSessionBreadcrumb />
 		</div>
 	);
@@ -730,7 +726,9 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 		[applyTemplate, availableDefinitionIds, sessionId, trackLayout],
 	);
 
-	useEffect(() => {
+	// Before paint: the shell header sizes itself from these actions, so a late
+	// publish would grow the header a frame after the canvas appears.
+	useLayoutEffect(() => {
 		if (isDetached) return;
 		usePaneSessionHeaderStore.setState({
 			ready: true,
@@ -893,10 +891,14 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 					onClose={closeRequestedTab}
 				/>
 			) : null}
+			{/* Islands carry their own tab row, so their top edge sits where the
+			    bare pane's does (the negative margin cancels the group's drop-zone
+			    padding) and the switch rides the header's height transition alone. */}
 			{hasCanvas ? (
 				<div
-					className="relative flex min-h-0 flex-1 overflow-hidden p-1.5"
+					className="relative -mt-0.5 flex min-h-0 flex-1 overflow-hidden p-1.5 pt-0"
 					data-qa-id="kilo-chat-page"
+					data-shell-canvas
 				>
 					<ChatPaneCanvas
 						layout={layout}

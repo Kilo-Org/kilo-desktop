@@ -772,7 +772,7 @@ const Composer: FC = () => {
 						<div
 							data-slot="aui_composer-shell"
 							className={cn(
-								"border-border chat-composer-surface data-[dragging=true]:border-ring flex w-full flex-col gap-2 rounded-(--composer-radius) border px-(--composer-padding) pt-2 pb-(--composer-padding) transition-[border-color,outline-color,box-shadow] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]",
+								"border-border-subtle chat-composer-surface data-[dragging=true]:border-ring flex w-full flex-col gap-2 rounded-(--composer-radius) border px-(--composer-padding) pt-2 pb-(--composer-padding) transition-[border-color,outline-color,box-shadow] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))]",
 								isDraft
 									? "relative z-10 bg-(--composer-bg) focus-within:border-(--composer-focus-stroke)"
 									: "relative z-10 chat-composer-glass shadow-composer",

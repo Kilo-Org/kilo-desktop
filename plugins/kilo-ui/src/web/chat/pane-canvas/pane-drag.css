@@ -129,8 +129,9 @@
 	inset: auto 0 0;
 	height: calc(var(--pane-drop-space) - 2px);
 }
+/* Below the island's 40px tab row and its divider (after the group's 2px padding). */
 .pane-group[data-drop-zone="inside"] > .pane-drop-preview {
-	inset: 40px 6px 6px;
+	inset: 46px 6px 6px;
 }
 
 .pane-tab-drop-preview {

@@ -4,7 +4,9 @@ import type { PaneKind } from "@kilo-desktop/pane-layout";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 // The frame and its floating elements use the theme's curated card surface so
-// theme-specific hues remain intact inside detached pane hosts.
+// theme-specific hues remain intact inside detached pane hosts. The enclosing
+// island draws the edge; the frame keeps its bottom radii because native
+// guests (the browser webview) copy them from here.
 export const ChatPaneHost: FC<{
 	kind: PaneKind;
 	active: boolean;
@@ -17,7 +19,7 @@ export const ChatPaneHost: FC<{
 			className={cn(
 				"relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden",
 				frame &&
-					"border-border rounded-md border bg-pane [--pane-raised:color-mix(in_srgb,var(--color-card)_50%,var(--pane-raised-tint,var(--color-accent)))] [--pane-surface:var(--color-card)]",
+					"rounded-b-lg bg-pane [--pane-raised:color-mix(in_srgb,var(--color-card)_50%,var(--pane-raised-tint,var(--color-accent)))] [--pane-surface:var(--color-card)]",
 			)}
 			{...(frame ? { "data-qa-id": "chat-pane-frame" } : {})}
 			data-pane-id={paneId}

@@ -36,7 +36,7 @@ export const PaneAddTab: FC<{
 	const label = isToolbar ? "Add tab group" : "Add tab";
 	const trigger = (
 		<DropdownMenuTrigger
-			render={<Button variant={isToolbar ? "outline" : "ghost"} size="icon-sm" />}
+			render={<Button variant="ghost" size="icon-sm" />}
 			aria-label={label}
 			aria-haspopup="menu"
 			data-qa-id={isToolbar ? "chat-pane-toolbar-add" : "chat-pane-add-tab"}

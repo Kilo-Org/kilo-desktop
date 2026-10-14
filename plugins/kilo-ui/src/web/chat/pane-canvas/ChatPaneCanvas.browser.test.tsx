@@ -63,12 +63,10 @@ describe("ChatPaneCanvas", () => {
 		expect(tab).toHaveAttribute("data-active", "true");
 		expect(frame).toHaveAttribute("data-pane-active", "true");
 
-		expect(tab?.className).toMatch(/border-primary-ink\/60/);
-		expect(tab?.className).toMatch(/bg-secondary/);
+		expect(tab?.className).toMatch(/bg-state-selected-strong/);
 		expect(tab?.className).toMatch(/text-foreground/);
 		expect(tab?.className).not.toMatch(/text-primary/);
-		expect(frame?.className).toMatch(/border-border/);
-		expect(frame?.className).not.toMatch(/border-info/);
+		expect(frame?.className).not.toMatch(/border/);
 	});
 
 	it("lets the active tab close action receive clicks through a long title", async () => {
@@ -261,10 +259,11 @@ describe("ChatPaneCanvas", () => {
 		expect(baseElement.querySelector("[data-qa-id='chat-pane-parked-files']")).not.toBeVisible();
 		const strip = group?.querySelector<HTMLElement>("[data-qa-id='chat-pane-tabs']");
 		const pane = group?.querySelector<HTMLElement>("[data-qa-id='chat-pane-agent']");
-		expect(strip?.getBoundingClientRect().height).toBe(28);
-		expect(pane?.getBoundingClientRect().top).toBeLessThanOrEqual(
-			(strip?.getBoundingClientRect().bottom ?? 0) + 10,
-		);
+		const island = group?.querySelector<HTMLElement>("[data-qa-id='chat-pane-island']");
+		expect(strip?.getBoundingClientRect().height).toBe(40);
+		expect(island?.contains(strip ?? null)).toBe(true);
+		expect(island?.contains(pane ?? null)).toBe(true);
+		expect(pane?.getBoundingClientRect().top).toBe(strip?.getBoundingClientRect().bottom);
 
 		const outputGroup = grouped.groups.find((candidate) =>
 			candidate.tabs.some((tab) => tab.id === "output"),
@@ -1107,7 +1106,7 @@ describe("ChatPaneCanvas", () => {
 		const addBox = add?.getBoundingClientRect();
 		const unpinBox = unpin?.getBoundingClientRect();
 		expect(addBox?.right).toBeLessThan(unpinBox?.left ?? 0);
-		expect(unpinBox?.right).toBeGreaterThan((stripBox?.right ?? 0) - 2);
+		expect(unpinBox?.right).toBeGreaterThan((stripBox?.right ?? 0) - 10);
 
 		const filesTab = baseElement.querySelector("[data-pane-tab='files']");
 		const agentTab = baseElement.querySelector("[data-pane-tab='agent']");
@@ -1115,7 +1114,6 @@ describe("ChatPaneCanvas", () => {
 		expect(filesTab).not.toHaveAttribute("data-pinned");
 		expect(filesTab?.className).not.toMatch(/border-primary/);
 		expect(filesTab?.className).not.toMatch(/border-info-foreground/);
-		expect(filesFrame?.className).toMatch(/border-border/);
 		expect(filesFrame?.className).not.toMatch(/border-primary/);
 		expect(filesFrame?.className).not.toMatch(/border-info-foreground/);
 		const agentFrame = baseElement.querySelector(

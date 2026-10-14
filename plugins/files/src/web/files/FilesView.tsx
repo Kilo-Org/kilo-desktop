@@ -575,7 +575,7 @@ export function FilesView({
 				data-qa-id="files-view"
 			>
 				{selectedPath ? (
-					<div className="flex h-10 shrink-0 items-center gap-1 border-b px-2">
+					<div className="flex h-10 shrink-0 items-center gap-1 px-2">
 						<div
 							className="text-muted-foreground min-w-0 flex-1 truncate px-1 text-xs"
 							data-qa-id="files-breadcrumb"
@@ -636,7 +636,7 @@ export function FilesView({
 
 				{externalEditors.error ? (
 					<div
-						className="text-destructive text-2xs border-b px-3 py-1.5"
+						className="text-destructive text-2xs px-3 py-1.5"
 						data-qa-id="files-external-editor-error"
 					>
 						{externalEditors.error}
@@ -644,7 +644,7 @@ export function FilesView({
 				) : null}
 
 				{file?.kind === "text" && file.truncated ? (
-					<div className="text-2xs text-warning border-b px-3 py-1.5" data-qa-id="files-truncated">
+					<div className="text-2xs text-warning px-3 py-1.5" data-qa-id="files-truncated">
 						Preview limited to the first 1 MiB. This file is read-only.
 					</div>
 				) : null}

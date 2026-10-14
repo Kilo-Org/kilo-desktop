@@ -115,7 +115,8 @@ function ShellInset({ children }: { children: ReactNode }) {
 	return (
 		// Keep overflow off SidebarInset — Electron ignores drag regions inside
 		// overflow:hidden ancestors, which would break titlebar dragging.
-		<SidebarInset className="bg-background h-svh min-h-0 min-w-0">{children}</SidebarInset>
+		// Transparent so the chrome and sidebar share one shell glass surface.
+		<SidebarInset className="h-svh min-h-0 min-w-0 bg-transparent">{children}</SidebarInset>
 	);
 }
 
@@ -179,14 +180,19 @@ export function AppSidebarLayout({
 		>
 			<Sidebar
 				collapsible="offcanvas"
-				className="border-border group-data-[transient=true]:bg-sidebar! h-svh border-r bg-transparent! [&_[data-sidebar=sidebar]]:bg-transparent"
+				className="group-data-[transient=true]:bg-sidebar! h-svh bg-transparent! group-data-[side=left]:border-r-0 group-data-[transient=true]:shadow-xl [&_[data-sidebar=sidebar]]:bg-transparent"
 				data-qa-id="app-sidebar"
 			>
-				<SidebarHeader className="relative h-12 shrink-0 p-0" data-qa-id="sidebar-titlebar">
+				{/* Titlebar plus the pane gutter (ShellPageHeader's mb-2), so sidebar
+				    content starts level with the main pane's top edge. */}
+				<SidebarHeader
+					className="relative h-[calc(var(--shell-titlebar-height)+0.5rem)] shrink-0 p-0"
+					data-qa-id="sidebar-titlebar"
+				>
 					{/* Keep the drag surface clear of the fixed navigation toggle. Electron
 						    otherwise treats the overlapping button pixels as window chrome. */}
 					<div
-						className="drag-region absolute inset-y-0 right-0 flex items-center justify-end pr-2"
+						className="drag-region titlebar-row absolute top-0 right-0 flex items-center justify-end pr-2"
 						style={{
 							left: "calc(var(--shell-sidebar-toggle-left) + var(--shell-sidebar-toggle-clearance))",
 						}}
@@ -244,7 +250,7 @@ export function AppSidebarLayout({
 				/>
 				<div
 					data-qa-id="shell-main"
-					className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain"
+					className="bg-card pane-edge mx-2 mb-2 flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain rounded-lg [--pane-surface:var(--color-card)] has-[[data-shell-canvas]]:m-0 has-[[data-shell-canvas]]:overflow-visible has-[[data-shell-canvas]]:rounded-none has-[[data-shell-canvas]]:bg-transparent has-[[data-shell-canvas]]:ring-0"
 				>
 					{children}
 				</div>

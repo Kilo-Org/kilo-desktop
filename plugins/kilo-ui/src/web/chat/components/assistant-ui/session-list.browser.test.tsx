@@ -495,7 +495,7 @@ describe("SessionList", () => {
 		await vi.waitFor(() =>
 			expect(
 				row.element().querySelector('[data-slot="aui_session-list-archived-item"]')?.className,
-			).toContain("bg-sidebar-accent"),
+			).toContain("bg-state-selected"),
 		);
 		expect(adapter.unarchiveCalls).toEqual([]);
 	});
@@ -778,7 +778,7 @@ describe("SessionList", () => {
 			.poll(
 				() => selected.element().querySelector('[data-slot="aui_session-list-item"]')?.className,
 			)
-			.toContain("bg-sidebar-accent");
+			.toContain("bg-state-selected");
 
 		const selectedTitle = selected
 			.element()
@@ -795,9 +795,9 @@ describe("SessionList", () => {
 		const idleRow = idle.element().querySelector('[data-slot="aui_session-list-item"]');
 		const selectedRowClasses = selectedRow?.className.split(/\s+/) ?? [];
 		const idleRowClasses = idleRow?.className.split(/\s+/) ?? [];
-		expect(selectedRowClasses).toContain("bg-sidebar-accent");
+		expect(selectedRowClasses).toContain("bg-state-selected");
 		expect(selectedRowClasses).not.toContain("bg-muted");
-		expect(idleRowClasses).not.toContain("bg-sidebar-accent");
+		expect(idleRowClasses).not.toContain("bg-state-selected");
 	});
 
 	it("uses a single-row card without a location for unscoped sessions", async () => {
@@ -955,7 +955,7 @@ describe("SessionList", () => {
 					.filter({ hasText: "Old work" })
 					.element()
 					.querySelector('[data-slot="aui_session-list-item"]')?.className,
-			).toContain("bg-sidebar-accent"),
+			).toContain("bg-state-selected"),
 		);
 		expect(adapter.unarchiveCalls).toEqual([]);
 		await expect.element(screen.getByTestId("session-list-archived-toggle")).toBeVisible();

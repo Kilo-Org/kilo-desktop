@@ -29,7 +29,7 @@ interface GitDiffHeaderProps {
 }
 
 /**
- * Toolbar above the panels. Relies on the shell-level `TooltipProvider`
+ * Toolbar atop the diff column. Relies on the shell-level `TooltipProvider`
  * (`AppSidebarLayout`) instead of a local one — same as `ShellPageHeader`.
  */
 export function GitDiffHeader({
@@ -44,10 +44,7 @@ export function GitDiffHeader({
 	treeCollapsed,
 }: GitDiffHeaderProps) {
 	return (
-		<div
-			className="flex h-10 shrink-0 items-center gap-2 border-b px-2"
-			data-qa-id="git-diff-header"
-		>
+		<div className="flex h-10 shrink-0 items-center gap-2 px-2" data-qa-id="git-diff-header">
 			<div className="text-muted-foreground flex min-w-0 flex-1 items-center gap-2 text-xs">
 				{refreshError != null ? (
 					<Tooltip>

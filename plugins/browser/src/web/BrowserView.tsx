@@ -340,7 +340,7 @@ export function BrowserView({ sessionId, instanceId, title, metadata }: BrowserV
 			data-qa-id="browser-view"
 			aria-busy={!ready}
 		>
-			<div className="border-border relative shrink-0 border-b">
+			<div className="relative shrink-0">
 				<form className="flex h-10 items-center gap-1 px-2" onSubmit={submit}>
 					<div className="flex items-center" role="group" aria-label="Browser navigation">
 						<IconButton
@@ -368,7 +368,7 @@ export function BrowserView({ sessionId, instanceId, title, metadata }: BrowserV
 							<RefreshCwIcon className={cn(state?.loading && "animate-spin")} />
 						</IconButton>
 					</div>
-					<InputGroup className="h-7 flex-1">
+					<InputGroup size="sm" variant="filled" className="flex-1">
 						<InputGroupInput
 							ref={inputRef}
 							value={focused ? draft : (state?.url ?? draft)}
@@ -483,7 +483,7 @@ export function BrowserView({ sessionId, instanceId, title, metadata }: BrowserV
 				) : null}
 			</div>
 			{error ? (
-				<p className="text-destructive border-border border-b px-3 py-1 text-xs" role="alert">
+				<p className="text-destructive px-3 py-1 text-xs" role="alert">
 					{error}
 				</p>
 			) : null}

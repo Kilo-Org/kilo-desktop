@@ -21,13 +21,16 @@ import { PaneTabScrollArea } from "./PaneTabScrollArea.js";
 import { usePaneDrag } from "./use-pane-drag.js";
 import "./pane-drag.css";
 
-// Match the Cloud Agent workspace tabs: muted inactive surfaces and a neutral,
-// raised secondary surface for the selected tab.
-function tabChromeClassName(selected: boolean) {
-	return selected
-		? "border-primary-ink/60 bg-secondary text-foreground shadow-sm"
-		: "border-border bg-muted/40 text-muted-foreground hover:bg-muted hover:text-foreground";
-}
+// Only the tab an island is showing carries a fill, stronger while its group
+// has focus, so the island header stays quiet like an editor split's. The
+// fills are the app's state scale, shared with the session list.
+type TabTone = "focused" | "selected" | "idle";
+
+const TAB_TONE_CLASS_NAME: Record<TabTone, string> = {
+	focused: "bg-state-selected-strong text-foreground",
+	selected: "bg-state-selected text-foreground",
+	idle: "text-muted-foreground hover:bg-state-hover hover:text-foreground",
+};
 
 function stopActionBubble(event: { stopPropagation: () => void }) {
 	event.stopPropagation();
@@ -38,6 +41,8 @@ export const PaneTabStrip: FC<{
 	groupId: string;
 	panes: readonly PaneDescriptor[];
 	activePaneId: string;
+	/** The tab the group is showing; `activePaneId` is empty while the group lacks focus. */
+	selectedPaneId?: string;
 	highlighted?: boolean;
 	showPinned?: boolean;
 	pinned?: boolean;
@@ -60,6 +65,7 @@ export const PaneTabStrip: FC<{
 	groupId,
 	panes,
 	activePaneId,
+	selectedPaneId = activePaneId,
 	highlighted = true,
 	showPinned = false,
 	pinned = false,
@@ -86,7 +92,7 @@ export const PaneTabStrip: FC<{
 			scrollRef={stripRef}
 			tabIds={panes.map((pane) => pane.id)}
 			activeTabId={activePaneId}
-			className="group/pane-tabs no-scrollbar scroll-fade-x flex h-7 min-w-0 shrink-0 [scroll-padding-inline:1.25rem] items-stretch gap-1 overflow-x-auto overflow-y-hidden [--scroll-fade-reveal:1.25rem]"
+			className="group/pane-tabs no-scrollbar scroll-fade-x flex h-10 min-w-0 shrink-0 [scroll-padding-inline:1.25rem] items-stretch gap-1 overflow-x-auto overflow-y-hidden p-1.5 [--scroll-fade-reveal:1.25rem]"
 			data-qa-id="chat-pane-tabs"
 			data-pane-group-tabs={groupId}
 			data-selected={panes.some((pane) => pane.id === activePaneId) || undefined}
@@ -103,6 +109,8 @@ export const PaneTabStrip: FC<{
 			>
 				{panes.map((pane) => {
 					const active = pane.id === activePaneId;
+					const tone: TabTone =
+						active && highlighted ? "focused" : pane.id === selectedPaneId ? "selected" : "idle";
 					const poppedOut = poppedOutPaneIds?.has(pane.id) === true;
 					const dockable = poppedOut && Boolean(onDockPoppedOut);
 					const poppable = !poppedOut && Boolean(onPopOut);
@@ -110,6 +118,8 @@ export const PaneTabStrip: FC<{
 					const paneExpanded = active && expanded;
 					const iconOverride = iconForPane?.(pane.id);
 					const Icon = iconOverride?.Icon ?? PANE_KIND_ICON[pane.kind];
+					const ExpandIcon = paneExpanded ? Minimize2Icon : Maximize2Icon;
+					const WindowIcon = poppedOut ? Minimize2Icon : ExternalLinkIcon;
 					const closable = Boolean(onClose) && (canClose?.(pane) ?? pane.kind !== "agent");
 					const actionCount = Number(Boolean(onExpand)) + Number(windowable) + Number(closable);
 					const actionVisibilityClassName = cn(
@@ -120,9 +130,9 @@ export const PaneTabStrip: FC<{
 						<div
 							key={pane.id}
 							className={cn(
-								"group/pane-tab relative flex h-7 min-w-40 max-w-56 shrink-0 overflow-hidden rounded-md border transition-colors",
-								tabChromeClassName(active && highlighted),
-								poppedOut && "border-dashed border-info/70",
+								"group/pane-tab relative flex h-7 min-w-40 max-w-56 shrink-0 overflow-hidden rounded-md transition-colors",
+								TAB_TONE_CLASS_NAME[tone],
+								poppedOut && "border border-dashed border-info/70",
 							)}
 							data-pane-kind={pane.kind}
 							data-pane-tab={pane.id}
@@ -139,7 +149,7 @@ export const PaneTabStrip: FC<{
 								type="button"
 								className={cn(
 									buttonVariants({ variant: "ghost", size: "sm" }),
-									"h-full min-w-0 flex-1 cursor-grab touch-none justify-start gap-1.5 rounded-none px-2 text-xs text-inherit hover:bg-transparent focus-visible:ring-inset active:not-aria-[haspopup]:translate-y-0",
+									"h-full min-w-0 flex-1 cursor-grab touch-none justify-start gap-1.5 rounded-none border-0 px-2 text-sm text-inherit hover:bg-transparent focus-visible:ring-inset active:not-aria-[haspopup]:translate-y-0",
 								)}
 								data-qa-id={`chat-pane-tab-${pane.id}`}
 								data-popped-out={poppedOut ? "true" : undefined}
@@ -165,7 +175,7 @@ export const PaneTabStrip: FC<{
 							>
 								<Icon
 									className={cn(
-										"size-3 shrink-0",
+										"size-3.5 shrink-0",
 										iconOverride ? undefined : PANE_KIND_ICON_CLASS[pane.kind],
 									)}
 									{...(iconOverride?.iconKey ? { iconKey: iconOverride.iconKey } : {})}
@@ -197,7 +207,7 @@ export const PaneTabStrip: FC<{
 												onExpand(pane.id);
 											}}
 										>
-											{paneExpanded ? <Minimize2Icon /> : <Maximize2Icon />}
+											<ExpandIcon className="size-3.5" />
 										</Button>
 									</PaneTabTooltip>
 								) : null}
@@ -220,7 +230,7 @@ export const PaneTabStrip: FC<{
 												onPopOut?.(pane.id);
 											}}
 										>
-											{poppedOut ? <Minimize2Icon /> : <ExternalLinkIcon />}
+											<WindowIcon className="size-3.5" />
 										</Button>
 									</PaneTabTooltip>
 								) : null}
@@ -237,7 +247,7 @@ export const PaneTabStrip: FC<{
 											onClose(pane.id);
 										}}
 									>
-										<XIcon />
+										<XIcon className="size-3.5" />
 									</Button>
 								) : null}
 							</div>
@@ -250,7 +260,7 @@ export const PaneTabStrip: FC<{
 				<button
 					type="button"
 					aria-label="Drag pane group"
-					className="-ml-1 min-w-8 flex-1 shrink-0 cursor-grab touch-none active:cursor-grabbing"
+					className="-my-1.5 -ml-1 min-w-8 flex-1 shrink-0 cursor-grab touch-none active:cursor-grabbing"
 					data-qa-id={`chat-pane-group-drag-${groupId}`}
 					onClick={() => {
 						if (
@@ -284,7 +294,7 @@ export const PaneTabStrip: FC<{
 						onClick={stopActionBubble}
 						onPressedChange={() => onPin()}
 					>
-						{pinned ? <PinOffIcon className="size-3" /> : <PinIcon className="size-3" />}
+						{pinned ? <PinOffIcon className="size-3.5" /> : <PinIcon className="size-3.5" />}
 					</Toggle>
 				</PaneTabTooltip>
 			) : null}

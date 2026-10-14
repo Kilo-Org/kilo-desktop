@@ -148,7 +148,8 @@ it("moves an external preview through every gap in both directions", async () =>
 	] as const) {
 		const target = tab(id);
 		const box = target.getBoundingClientRect();
-		move(position === "before" ? box.left + 2 : box.right - 2);
+		const visibleRight = Math.min(box.right, strip.getBoundingClientRect().right);
+		move(position === "before" ? box.left + 2 : visibleRight - 2);
 		expect(target).toHaveAttribute("data-drop-zone", position);
 		expect(group.querySelectorAll("[data-qa-id='chat-pane-drop-preview']")).toHaveLength(1);
 		const preview = strip.querySelector<HTMLElement>("[data-qa-id='chat-pane-drop-preview']")!;

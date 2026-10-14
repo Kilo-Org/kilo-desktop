@@ -33,7 +33,7 @@ export const PaneLaunchToolbar: FC<{
 						render={
 							<Button
 								type="button"
-								variant="outline"
+								variant="ghost"
 								size="icon-sm"
 								aria-label="Chat"
 								data-qa-id="chat-pane-launch-chat"

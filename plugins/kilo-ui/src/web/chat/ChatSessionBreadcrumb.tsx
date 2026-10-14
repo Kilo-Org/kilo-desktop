@@ -22,7 +22,10 @@ export const ChatLocationBreadcrumb: FC<{
 	qaId: string;
 	scale?: "compact" | "header";
 }> = ({ locationLabel, locationColor, title, qaId, scale = "compact" }) => (
-	<Breadcrumb data-qa-id={qaId} className="min-w-0">
+	<Breadcrumb
+		data-qa-id={qaId}
+		className="min-w-0 transition-opacity duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] starting:opacity-0"
+	>
 		<BreadcrumbList className="flex-nowrap text-sm">
 			{locationLabel ? (
 				<>

@@ -40,6 +40,9 @@
 	--window-controls-width: calc(
 		100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)
 	);
+	/* Titlebar rows centre on the traffic-light line (TITLEBAR_HEIGHT / 2 in
+	   ElectronWindow.ts) and never end above a Window Controls Overlay. */
+	--shell-titlebar-height: max(2.5rem, env(titlebar-area-height, 0px));
 	/* Accent roles (ACCENT_ROLE_DEFAULTS in app-themes.ts) for CSS-owned themes. */
 	--primary-ink: var(--primary);
 	--primary-ink-foreground: var(--primary-foreground);
@@ -51,21 +54,32 @@
 	/* Quiet dividers (activity rails, code headers, nested rows). Derived so
 	   every theme's border weight carries through. */
 	--border-subtle: color-mix(in oklch, var(--border) 60%, transparent);
-	/* Ghost-button wash: an overlay, so it reads on muted trays and cards too. */
-	--ghost-hover: color-mix(in oklch, var(--foreground) 5%, transparent);
+	/* Interaction state scale: overlays, so one definition reads on every
+	   surface (shell glass, panes, popovers) in every theme and mode. Themes own
+	   solid surfaces and never restate these; one whose identity hue is not in
+	   its text may retint them through --state-tint. Selected is the session
+	   list's current row and an unfocused pane's shown tab; strong is the
+	   focused pane's tab. */
+	--state-tint: var(--foreground);
+	--state-hover: color-mix(in oklch, var(--state-tint) 4%, transparent);
+	--state-selected: color-mix(in oklch, var(--state-tint) 7%, transparent);
+	--state-selected-strong: color-mix(in oklch, var(--state-tint) 10%, transparent);
+	--ghost-hover: var(--state-hover);
+	/* Pane hairline: the island edge and its tab-row divider. */
+	--pane-hairline: color-mix(in oklch, var(--foreground) 15%, transparent);
 	/* Pane frames override these locally; outside a pane they fall back to the
 	   page and card surfaces. */
 	--pane-surface: var(--background);
 	--pane-raised: var(--card);
+	--sidebar: var(--color-mist-100);
+	/* The sidebar's hover wash; selected rows step up to --state-selected. */
+	--sidebar-accent: var(--state-hover);
 	--composer-shadow: 0 12px 28px -18px rgb(0 0 0 / 0.4);
 	--composer-shelf-shadow: 0 8px 24px -20px rgb(0 0 0 / 0.7);
 }
 
 [data-theme="dark"] {
-	/* Glass chrome over vibrancy, opaque stepped content: the translucent
-	   sidebar tint and raised surfaces (cards, composer) sit on 900;
-	   content panes sit between 950 and 900. */
-	--sidebar: var(--color-mist-900);
+	--sidebar: var(--background);
 	--background: color-mix(in oklch, var(--color-mist-950) 50%, var(--color-mist-900));
 	--card: var(--color-mist-900);
 	--popover: var(--color-mist-900);
@@ -139,6 +153,21 @@ html {
 	-webkit-app-region: no-drag;
 }
 
+/* Hairline edge for panes on the shell glass: one device pixel on HiDPI, and
+   a ring so it follows the radius without shifting layout. */
+@utility pane-edge {
+	@apply ring-[0.5px] ring-(--pane-hairline);
+}
+
+@utility titlebar-row {
+	height: var(--shell-titlebar-height);
+	padding-top: calc(3rem - var(--shell-titlebar-height));
+}
+
+/* A docked sidebar carries the traffic lights, so a page header with nothing
+   to show can shrink to the pane gutter. */
+@custom-variant empty-titlebar (&[data-sidebar-docked]:not(:has([data-shell-header-content] :is(nav, h1, button, a))));
+
 @custom-variant data-open (&:where([data-state="open"], [data-open]:not([data-open="false"])));
 
 @custom-variant data-closed (&:where([data-state="closed"], [data-closed]:not([data-closed="false"])));
@@ -160,6 +189,9 @@ html {
 	--color-border-subtle: var(--border-subtle);
 	--color-pane: var(--pane-surface);
 	--color-pane-raised: var(--pane-raised);
+	--color-state-hover: var(--state-hover);
+	--color-state-selected: var(--state-selected);
+	--color-state-selected-strong: var(--state-selected-strong);
 	--shadow-composer: var(--composer-shadow);
 	--shadow-composer-shelf: var(--composer-shelf-shadow);
 	/* px offsets from the text-size setting; spacing stays rem so layouts do not move. */

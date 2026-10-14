@@ -17,7 +17,7 @@ type ShellPageHeaderProps = {
 function ShellSidebarToggle({ open }: { open: boolean }) {
 	return (
 		<div
-			className="pointer-events-auto fixed top-0 z-40 flex h-12 items-center gap-1.5 [-webkit-app-region:no-drag]"
+			className="titlebar-row pointer-events-auto fixed top-0 z-40 flex items-center gap-1.5 [-webkit-app-region:no-drag]"
 			style={{ left: "var(--shell-sidebar-toggle-left)" }}
 		>
 			<SidebarTrigger
@@ -40,25 +40,31 @@ function ShellSidebarToggle({ open }: { open: boolean }) {
  */
 export function ShellPageHeader({ title, leading, actions, pageProps }: ShellPageHeaderProps) {
 	const { open, progress } = useSidebar();
-	// While collapsed, clear the fixed toggle cluster; the header's own `pl-3`
-	// (0.75rem) already covers part of that distance.
+	// While collapsed, clear the fixed toggle cluster; the header's own `pl-5.5`
+	// (1.375rem) already covers part of that distance.
 	const contentMarginLeft = useTransform(
 		progress,
 		(value) =>
-			`calc((var(--shell-sidebar-toggle-left, 0.75rem) + var(--shell-sidebar-toggle-clearance, 2rem) - 0.75rem) * ${1 - value})`,
+			`calc((var(--shell-sidebar-toggle-left, 0.75rem) + var(--shell-sidebar-toggle-clearance, 2rem) - 1.375rem) * ${1 - value})`,
 	);
 	const Leading = leading;
 	const Actions = actions;
 
+	// pl-5.5 puts the leading icon over the first pane tab's icon: the 8px pane
+	// gutter, the tab row's 6px inset, then the tab's own 8px padding.
+	// mb-2 mirrors titlebar-row's 8px top padding so the row sits centred in the
+	// 48px band above the pane, on the traffic-light line.
 	return (
 		<header
-			className="border-border bg-background flex h-12 shrink-0 items-center border-b pr-[calc(0.75rem+var(--window-controls-width))] pl-3"
+			className="titlebar-row empty-titlebar:h-[max(0.5rem,env(titlebar-area-height,0px))] empty-titlebar:pt-0 empty-titlebar:mb-0 empty-titlebar:[&>[data-shell-header-content]]:opacity-0 mb-2 flex shrink-0 items-center pr-[calc(0.75rem+var(--window-controls-width))] pl-5.5 transition-[height,padding-top,margin-bottom] duration-150 ease-out motion-reduce:transition-none"
 			data-qa-id="shell-page-header"
+			data-sidebar-docked={open || undefined}
 		>
 			<ShellSidebarToggle open={open} />
 			<motion.div
-				className="drag-region flex h-full min-w-0 flex-1 items-center gap-2"
+				className="drag-region flex h-full min-w-0 flex-1 items-center gap-2 transition-opacity duration-150 ease-[cubic-bezier(0.23,1,0.32,1)]"
 				style={{ marginLeft: contentMarginLeft }}
+				data-shell-header-content
 			>
 				<div className="flex min-w-0 flex-1 items-center gap-1">
 					{Leading ? (

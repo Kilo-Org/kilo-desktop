@@ -48,8 +48,8 @@ export interface GitDiffViewProps {
 // 1px gap lets adjacent containers' hairline separators overlap into a
 // single line between files (diffshub-style); the hairlines themselves are
 // drawn by the diffs-container box-shadow on the CodeView below. No top
-// padding: the toolbar's border-b is the list's top edge, and the first
-// container's top hairline is clipped by the scrollport.
+// padding: the first container's top hairline is clipped by the scrollport,
+// so the toolbar flows into the first file without a rule of its own.
 const DIFF_VIEW_LAYOUT = { paddingTop: 0, gap: 1, paddingBottom: 8 } as const;
 // The default CodeView metrics assume the package's own default font metrics
 // (lineHeight: 20px, diffHeaderHeight: 44px). We override --diffs-line-height
@@ -373,79 +373,85 @@ function GitDiffTabContent({
 
 	return (
 		<div className="flex min-h-0 min-w-0 flex-1 flex-col" data-qa-id="git-diff-root" ref={rootRef}>
-			<GitDiffHeader
-				addedLines={diffStats?.addedLines ?? 0}
-				collapseMode={collapseMode}
-				deletedLines={diffStats?.deletedLines ?? 0}
-				fileCount={fileCount}
-				loading={busy}
-				onToggleCollapseMode={toggleCollapseMode}
-				onToggleTreeCollapsed={toggleTreeCollapsed}
-				refreshError={refreshError}
-				treeCollapsed={treeCollapsed}
-			/>
+			{/*
+				Each column owns its toolbar on one shared row (diff actions here,
+				search and refresh atop the tree), so the split runs unbroken from
+				the tab divider to the bottom.
+			*/}
 			<ResizablePanelGroup className="min-h-0 min-w-0 flex-1" ref={groupRef}>
-				<ResizablePanel className="min-h-0 min-w-0">
-					{loadState === "error" ? (
-						// h-full: ResizablePanel is a block container, so
-						// Empty's flex-1 is inert here and the block would
-						// pin to the top without it.
-						<Empty className="h-full" data-qa-id="git-diff-error">
-							<EmptyHeader>
-								<EmptyMedia variant="icon">
-									<GitCompareIcon />
-								</EmptyMedia>
-								<EmptyTitle aria-level={2} role="heading">
-									{errorStatus === NOT_A_REPOSITORY_STATUS
-										? "Not a git repository"
-										: errorStatus === PATCH_TOO_LARGE_STATUS
-											? "The diff is too large to show"
-											: "The diff could not be loaded"}
-								</EmptyTitle>
-								<EmptyDescription>
-									{errorStatus === NOT_A_REPOSITORY_STATUS
-										? "This folder isn't a git repository. Initialize git to track its changes, or choose a different workspace folder."
-										: errorStatus === PATCH_TOO_LARGE_STATUS
-											? `${errorMessage} Live reload is paused. Try again once the changes are smaller.`
-											: errorMessage}
-								</EmptyDescription>
-							</EmptyHeader>
-							<EmptyContent>
-								{errorStatus === NOT_A_REPOSITORY_STATUS ? (
-									<Button
-										data-qa-id="git-diff-init"
-										disabled={initRepository.isPending || refreshing}
-										onClick={() => initRepository.init(effectiveDirectory, refresh)}
-										size="sm"
-										variant="outline"
-									>
-										{initRepository.isPending || refreshing ? (
-											<Spinner data-icon="inline-start" aria-hidden="true" />
-										) : (
-											<FolderGitIcon data-icon="inline-start" />
-										)}
-										Initialize Git
-									</Button>
-								) : (
-									<Button
-										data-qa-id="git-diff-retry"
-										disabled={refreshing}
-										onClick={refresh}
-										size="sm"
-										variant="outline"
-									>
-										{refreshing ? (
-											<Spinner data-icon="inline-start" aria-hidden="true" />
-										) : (
-											<RefreshCwIcon data-icon="inline-start" aria-hidden="true" />
-										)}
-										Try again
-									</Button>
-								)}
-							</EmptyContent>
-						</Empty>
-					) : initialItems.length > 0 ? (
-						/*
+				<ResizablePanel className="flex min-h-0 min-w-0 flex-col">
+					<GitDiffHeader
+						addedLines={diffStats?.addedLines ?? 0}
+						collapseMode={collapseMode}
+						deletedLines={diffStats?.deletedLines ?? 0}
+						fileCount={fileCount}
+						loading={busy}
+						onToggleCollapseMode={toggleCollapseMode}
+						onToggleTreeCollapsed={toggleTreeCollapsed}
+						refreshError={refreshError}
+						treeCollapsed={treeCollapsed}
+					/>
+					<div className="min-h-0 min-w-0 flex-1">
+						{loadState === "error" ? (
+							// h-full: ResizablePanel is a block container, so
+							// Empty's flex-1 is inert here and the block would
+							// pin to the top without it.
+							<Empty className="h-full" data-qa-id="git-diff-error">
+								<EmptyHeader>
+									<EmptyMedia variant="icon">
+										<GitCompareIcon />
+									</EmptyMedia>
+									<EmptyTitle aria-level={2} role="heading">
+										{errorStatus === NOT_A_REPOSITORY_STATUS
+											? "Not a git repository"
+											: errorStatus === PATCH_TOO_LARGE_STATUS
+												? "The diff is too large to show"
+												: "The diff could not be loaded"}
+									</EmptyTitle>
+									<EmptyDescription>
+										{errorStatus === NOT_A_REPOSITORY_STATUS
+											? "This folder isn't a git repository. Initialize git to track its changes, or choose a different workspace folder."
+											: errorStatus === PATCH_TOO_LARGE_STATUS
+												? `${errorMessage} Live reload is paused. Try again once the changes are smaller.`
+												: errorMessage}
+									</EmptyDescription>
+								</EmptyHeader>
+								<EmptyContent>
+									{errorStatus === NOT_A_REPOSITORY_STATUS ? (
+										<Button
+											data-qa-id="git-diff-init"
+											disabled={initRepository.isPending || refreshing}
+											onClick={() => initRepository.init(effectiveDirectory, refresh)}
+											size="sm"
+											variant="outline"
+										>
+											{initRepository.isPending || refreshing ? (
+												<Spinner data-icon="inline-start" aria-hidden="true" />
+											) : (
+												<FolderGitIcon data-icon="inline-start" />
+											)}
+											Initialize Git
+										</Button>
+									) : (
+										<Button
+											data-qa-id="git-diff-retry"
+											disabled={refreshing}
+											onClick={refresh}
+											size="sm"
+											variant="outline"
+										>
+											{refreshing ? (
+												<Spinner data-icon="inline-start" aria-hidden="true" />
+											) : (
+												<RefreshCwIcon data-icon="inline-start" aria-hidden="true" />
+											)}
+											Try again
+										</Button>
+									)}
+								</EmptyContent>
+							</Empty>
+						) : initialItems.length > 0 ? (
+							/*
 								Imperative CodeView ownership: initialItems seeds ONLY at
 								mount (later prop changes are ignored), so the viewer must
 								mount after the loader's first publish, and remount (key)
@@ -453,53 +459,54 @@ function GitDiffTabContent({
 								through setItems; initialItems mirrors the current list so
 								the panel branches follow (0 items shows the empty state).
 							*/
-						<div className="h-full min-h-0 min-w-0" data-qa-id="git-diff-view">
-							<CodeView
-								key={viewerKey}
-								ref={viewerRef}
-								className="h-full overflow-y-auto [&_diffs-container]:shadow-[0_-1px_0_var(--border),0_1px_0_var(--border)]"
-								initialItems={initialItems}
-								options={options}
-								renderHeaderPrefix={renderHeaderPrefix}
-							/>
-						</div>
-					) : loadState === "ready" && fileCount === 0 ? (
-						<Empty className="h-full" data-qa-id="git-diff-empty">
-							<EmptyHeader>
-								<EmptyMedia variant="icon">
-									<GitCompareIcon />
-								</EmptyMedia>
-								<EmptyTitle aria-level={2} role="heading">
-									No changes
-								</EmptyTitle>
-								<EmptyDescription>The working directory matches HEAD.</EmptyDescription>
-							</EmptyHeader>
-						</Empty>
-					) : loading ? (
-						// h-full: ResizablePanel is a block container, so Empty's
-						// flex-1 is inert here (same as the error branch above).
-						<Empty
-							aria-busy="true"
-							aria-live="polite"
-							className="h-full"
-							data-qa-id="git-diff-viewer-loading"
-							role="status"
-						>
-							<EmptyHeader>
-								<EmptyMedia>
-									<Spinner aria-hidden="true" className="text-muted-foreground size-5" />
-								</EmptyMedia>
-								<EmptyTitle aria-level={2} role="heading">
-									{loadState === "streaming" ? "Streaming changes" : "Fetching changes"}
-								</EmptyTitle>
-								<EmptyDescription>
-									{loadState === "streaming"
-										? "Showing files as they arrive…"
-										: "Reading the working tree…"}
-								</EmptyDescription>
-							</EmptyHeader>
-						</Empty>
-					) : null}
+							<div className="h-full min-h-0 min-w-0" data-qa-id="git-diff-view">
+								<CodeView
+									key={viewerKey}
+									ref={viewerRef}
+									className="h-full overflow-y-auto [&_diffs-container]:shadow-[0_-1px_0_var(--border),0_1px_0_var(--border)]"
+									initialItems={initialItems}
+									options={options}
+									renderHeaderPrefix={renderHeaderPrefix}
+								/>
+							</div>
+						) : loadState === "ready" && fileCount === 0 ? (
+							<Empty className="h-full" data-qa-id="git-diff-empty">
+								<EmptyHeader>
+									<EmptyMedia variant="icon">
+										<GitCompareIcon />
+									</EmptyMedia>
+									<EmptyTitle aria-level={2} role="heading">
+										No changes
+									</EmptyTitle>
+									<EmptyDescription>The working directory matches HEAD.</EmptyDescription>
+								</EmptyHeader>
+							</Empty>
+						) : loading ? (
+							// h-full: ResizablePanel is a block container, so Empty's
+							// flex-1 is inert here (same as the error branch above).
+							<Empty
+								aria-busy="true"
+								aria-live="polite"
+								className="h-full"
+								data-qa-id="git-diff-viewer-loading"
+								role="status"
+							>
+								<EmptyHeader>
+									<EmptyMedia>
+										<Spinner aria-hidden="true" className="text-muted-foreground size-5" />
+									</EmptyMedia>
+									<EmptyTitle aria-level={2} role="heading">
+										{loadState === "streaming" ? "Streaming changes" : "Fetching changes"}
+									</EmptyTitle>
+									<EmptyDescription>
+										{loadState === "streaming"
+											? "Showing files as they arrive…"
+											: "Reading the working tree…"}
+									</EmptyDescription>
+								</EmptyHeader>
+							</Empty>
+						) : null}
+					</div>
 				</ResizablePanel>
 				{/*
 				Zero-width handle anchor: ResizableHandle is absolutely
@@ -511,12 +518,12 @@ function GitDiffTabContent({
 					{/*
 					The shared handle is centered on a 4px column gutter (chat
 					canvas); Changes has no gutter, so re-center the hit area on
-					the divider and pin a persistent, pixel-aligned 1px hairline
-					to the sidebar's left edge.
+					the divider and pin a persistent pane hairline (the island's
+					edge weight) to the sidebar's left edge.
 				*/}
 					<ResizableHandle
 						ariaLabel="Resize file tree"
-						className="before:bg-border -right-1 before:w-px before:translate-x-0"
+						className="-right-1 before:w-[0.5px] before:translate-x-0 before:bg-(color:--pane-hairline)"
 						onResize={handleFilesResize}
 						qaId="git-diff-tree-resize"
 					/>

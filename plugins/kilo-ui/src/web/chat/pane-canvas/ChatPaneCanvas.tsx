@@ -64,7 +64,7 @@ import { usePaneExpand } from "./pane-expand.js";
 import { usePaneFrameFocus } from "./use-pane-frame-focus.js";
 
 const FALLBACK_VIEWPORT_WIDTH = 960;
-const STACK_PANE_GAP = 8;
+const STACK_PANE_GAP = 4;
 const PANE_REVEAL_SPRING = {
 	stiffness: 180,
 	damping: 24,
@@ -311,7 +311,7 @@ const StackResizeHandle: FC<{
 	);
 
 	return (
-		<div className="relative h-2 shrink-0">
+		<div className="relative h-1 shrink-0">
 			<div
 				role="separator"
 				aria-label={`Resize ${upperGroup.pane.title} and ${lowerGroup.pane.title}`}
@@ -319,7 +319,7 @@ const StackResizeHandle: FC<{
 				tabIndex={0}
 				data-qa-id="chat-pane-stack-resize"
 				className={cn(
-					"group absolute inset-x-0 -inset-y-0.5 z-10 cursor-row-resize touch-none bg-transparent outline-none",
+					"group absolute inset-x-0 -inset-y-1 z-10 cursor-row-resize touch-none bg-transparent outline-none",
 					"before:absolute before:inset-x-0 before:top-1/2 before:h-0.5 before:-translate-y-1/2 before:bg-transparent before:content-['']",
 					"hover:before:bg-muted-foreground/35 focus-visible:before:bg-muted-foreground/60 active:before:bg-muted-foreground/60 before:transition-colors before:duration-150 motion-reduce:before:transition-none",
 				)}
@@ -454,7 +454,7 @@ const PaneCanvasColumn: FC<{
 							value={pane.id}
 							/* Pane surfaces inherit the selected theme's curated card color so
 							   themed hues remain intact across frames, messages, and composer glass. */
-							className="pane-group relative flex min-h-0 min-w-0 flex-col gap-1.5 [--pane-raised:color-mix(in_srgb,var(--color-card)_50%,var(--pane-raised-tint,var(--color-accent)))] [--pane-surface:var(--color-card)]"
+							className="pane-group relative flex min-h-0 min-w-0 flex-col [--pane-raised:color-mix(in_srgb,var(--color-card)_50%,var(--pane-raised-tint,var(--color-accent)))] [--pane-surface:var(--color-card)]"
 							data-qa-id={`chat-pane-group-${group.id}`}
 							data-pane-group-id={group.id}
 							data-group-active={active ? "true" : undefined}
@@ -465,92 +465,102 @@ const PaneCanvasColumn: FC<{
 							   would only claim that fraction of the column height. */
 							style={{ flex: expandedGroupId ? "1 1 0%" : `${group.heightWeight} 1 0%` }}
 						>
-							<PaneTabStrip
-								canDrop={canDrop}
-								groupId={group.id}
-								panes={sourceGroup.tabs}
-								activePaneId={active ? group.pane.id : ""}
-								showPinned={arrangement === "carousel" && index === 0}
-								pinned={arrangement === "carousel" && column.pinned}
-								{...(arrangement === "carousel" && index === 0
-									? {
-											onPin: () => onLayoutChange(togglePin(layout, group.id)),
-										}
-									: {})}
-								{...(onToggleExpand
-									? {
-											expanded,
-											onExpand: (paneId: string) => onToggleExpand(group.id, paneId),
-										}
-									: {})}
-								{...(poppedOutPaneIds ? { poppedOutPaneIds } : {})}
-								{...(onPopOutPane ? { onPopOut: onPopOutPane } : {})}
-								{...(onDockPoppedOutPane ? { onDockPoppedOut: onDockPoppedOutPane } : {})}
-								titleHint={(paneId) => {
-									const fromCaller = paneTitleHint?.(paneId);
-									if (fromCaller) return fromCaller;
-									const tab = sourceGroup.tabs.find((entry) => entry.id === paneId);
-									return tab?.kind === "agent" ? tab.title : undefined;
-								}}
-								{...(iconForPane ? { iconForPane } : {})}
-								onSelect={(paneId) => {
-									onLayoutChange(setActivePane(layout, paneId));
-									onSelectPane(paneId);
-								}}
-								onActivateGroup={() => {
-									onLayoutChange(setActivePane(layout, group.pane.id));
-									onSelectPane(group.pane.id);
-								}}
-								onDrop={onDrop}
-								{...(onClosePane ? { onClose: onClosePane } : {})}
-								canClose={(tab) => tab.kind !== "agent" || paneCount > 1}
-								trailing={
-									<PaneAddTab
-										definitions={definitions}
-										showChat={showChatInAddMenu}
-										onLaunchChat={() => onLaunchChat(group.id)}
-										onLaunch={(definition) => onLaunch(definition, group.id)}
-									/>
-								}
-							/>
+							{/* One island per group: the tab row is the pane's own header, not a
+							    strip floating on the shell glass. Drop previews stay outside it.
+							    The focused island's tab divider takes the accent. */}
 							<div
-								className="relative min-h-0 min-w-0 flex-1"
-								data-qa-id={`chat-pane-${pane.id}`}
-								onPointerDownCapture={(event) => {
-									if (active || event.button !== 0) return;
-									onLayoutChange(setActivePane(layout, pane.id));
-									onSelectPane(pane.id);
-								}}
+								className="pane-edge bg-pane group/island relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg"
+								data-qa-id="chat-pane-island"
+								data-active={active || undefined}
 							>
-								<ChatPaneHost kind={pane.kind} active={active} paneId={pane.id}>
-									{poppedOutPaneIds?.has(pane.id) ? (
-										<TabsContent value={pane.id} className="flex min-h-0 flex-col">
-											<PoppedOutPanePlaceholder
-												paneId={pane.id}
-												{...(onFocusPoppedOutPane ? { onFocus: onFocusPoppedOutPane } : {})}
-												{...(onDockPoppedOutPane ? { onDock: onDockPoppedOutPane } : {})}
-											/>
-										</TabsContent>
-									) : (
-										group.tabs.map((tab) => {
-											if (poppedOutPaneIds?.has(tab.id)) return null;
-											const shown = tab.id === pane.id;
-											return (
-												<TabsContent
-													key={tab.id}
-													value={tab.id}
-													keepMounted
-													className="flex min-h-0 flex-1 flex-col overflow-hidden"
-													data-qa-id={
-														shown ? `chat-pane-content-${tab.id}` : `chat-pane-parked-${tab.id}`
-													}
-												>
-													<PaneContentTarget paneId={tab.id} registry={contentRegistry} />
-												</TabsContent>
-											);
-										})
-									)}
-								</ChatPaneHost>
+								<PaneTabStrip
+									canDrop={canDrop}
+									groupId={group.id}
+									panes={sourceGroup.tabs}
+									activePaneId={active ? group.pane.id : ""}
+									selectedPaneId={group.pane.id}
+									showPinned={arrangement === "carousel" && index === 0}
+									pinned={arrangement === "carousel" && column.pinned}
+									{...(arrangement === "carousel" && index === 0
+										? {
+												onPin: () => onLayoutChange(togglePin(layout, group.id)),
+											}
+										: {})}
+									{...(onToggleExpand
+										? {
+												expanded,
+												onExpand: (paneId: string) => onToggleExpand(group.id, paneId),
+											}
+										: {})}
+									{...(poppedOutPaneIds ? { poppedOutPaneIds } : {})}
+									{...(onPopOutPane ? { onPopOut: onPopOutPane } : {})}
+									{...(onDockPoppedOutPane ? { onDockPoppedOut: onDockPoppedOutPane } : {})}
+									titleHint={(paneId) => {
+										const fromCaller = paneTitleHint?.(paneId);
+										if (fromCaller) return fromCaller;
+										const tab = sourceGroup.tabs.find((entry) => entry.id === paneId);
+										return tab?.kind === "agent" ? tab.title : undefined;
+									}}
+									{...(iconForPane ? { iconForPane } : {})}
+									onSelect={(paneId) => {
+										onLayoutChange(setActivePane(layout, paneId));
+										onSelectPane(paneId);
+									}}
+									onActivateGroup={() => {
+										onLayoutChange(setActivePane(layout, group.pane.id));
+										onSelectPane(group.pane.id);
+									}}
+									onDrop={onDrop}
+									{...(onClosePane ? { onClose: onClosePane } : {})}
+									canClose={(tab) => tab.kind !== "agent" || paneCount > 1}
+									trailing={
+										<PaneAddTab
+											definitions={definitions}
+											showChat={showChatInAddMenu}
+											onLaunchChat={() => onLaunchChat(group.id)}
+											onLaunch={(definition) => onLaunch(definition, group.id)}
+										/>
+									}
+								/>
+								<div
+									className="group-data-active/island:border-primary-ink relative min-h-0 min-w-0 flex-1 border-t-[0.5px] border-(--pane-hairline) transition-colors"
+									data-qa-id={`chat-pane-${pane.id}`}
+									onPointerDownCapture={(event) => {
+										if (active || event.button !== 0) return;
+										onLayoutChange(setActivePane(layout, pane.id));
+										onSelectPane(pane.id);
+									}}
+								>
+									<ChatPaneHost kind={pane.kind} active={active} paneId={pane.id}>
+										{poppedOutPaneIds?.has(pane.id) ? (
+											<TabsContent value={pane.id} className="flex min-h-0 flex-col">
+												<PoppedOutPanePlaceholder
+													paneId={pane.id}
+													{...(onFocusPoppedOutPane ? { onFocus: onFocusPoppedOutPane } : {})}
+													{...(onDockPoppedOutPane ? { onDock: onDockPoppedOutPane } : {})}
+												/>
+											</TabsContent>
+										) : (
+											group.tabs.map((tab) => {
+												if (poppedOutPaneIds?.has(tab.id)) return null;
+												const shown = tab.id === pane.id;
+												return (
+													<TabsContent
+														key={tab.id}
+														value={tab.id}
+														keepMounted
+														className="flex min-h-0 flex-1 flex-col overflow-hidden"
+														data-qa-id={
+															shown ? `chat-pane-content-${tab.id}` : `chat-pane-parked-${tab.id}`
+														}
+													>
+														<PaneContentTarget paneId={tab.id} registry={contentRegistry} />
+													</TabsContent>
+												);
+											})
+										)}
+									</ChatPaneHost>
+								</div>
 							</div>
 						</Tabs>
 						{!expandedGroupId && index < column.groups.length - 1 && column.groups[index + 1] ? (

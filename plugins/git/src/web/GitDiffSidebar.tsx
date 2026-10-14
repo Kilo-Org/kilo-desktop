@@ -220,7 +220,7 @@ export function GitDiffSidebar({
 	return (
 		<div className="flex h-full min-h-0 flex-col" data-qa-id="git-diff-sidebar">
 			{folderOptions.length > 1 ? (
-				<div className="shrink-0 border-b px-2 py-1.5">
+				<div className="shrink-0 px-2 pt-1.5">
 					<Select
 						items={folderOptions}
 						value={workspaceDirectory}
@@ -253,8 +253,8 @@ export function GitDiffSidebar({
 					</Select>
 				</div>
 			) : null}
-			<div className="flex h-10 shrink-0 items-center gap-1 border-b px-2">
-				<InputGroup size="sm" className="min-w-0 flex-1">
+			<div className="flex h-10 shrink-0 items-center gap-1 px-2">
+				<InputGroup size="sm" variant="filled" className="min-w-0 flex-1">
 					<InputGroupInput
 						type="search"
 						aria-label="Search changed files"

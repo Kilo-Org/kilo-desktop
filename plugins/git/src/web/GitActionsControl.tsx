@@ -11,7 +11,7 @@ import {
 import { Fragment, useState } from "react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
-import { ButtonGroup } from "@kilo-desktop/ui/components/button-group";
+import { ButtonGroup, ButtonGroupSeparator } from "@kilo-desktop/ui/components/button-group";
 import {
 	Dialog,
 	DialogClose,
@@ -39,6 +39,12 @@ export interface GitActionsControlProps {
 	readonly onOpenChanges?: () => void;
 	readonly onAppendToChat?: (text: string) => void;
 }
+
+// Split button halves: at rest the pair reads as one ghost control; hovering
+// either half (or opening the menu) lights the whole pill, reveals the seam and
+// steps the half under the pointer up, so the seam never reads as a divider.
+const SPLIT_HALF_CLASS_NAME =
+	"hover:bg-(color:--state-selected) group-hover/split:bg-(color:--state-hover) group-has-[[aria-expanded=true]]/split:bg-(color:--state-hover)";
 
 const ACTION_ICONS: Record<
 	RepositoryActionKind | "commit" | "push" | "view-pr" | "create-pr",
@@ -104,11 +110,11 @@ function GitActions({
 	};
 
 	return (
-		<div className="border-border mr-0.5 flex items-center gap-1 border-r pr-1.5">
+		<div className="mr-0.5 flex items-center gap-1 border-r-[0.5px] border-(--pane-hairline) pr-1.5">
 			{actions.stats && actions.hasChanges ? (
 				<Button
 					type="button"
-					variant="outline"
+					variant="ghost"
 					size="sm"
 					className="gap-2 rounded-md px-2"
 					disabled={!onOpenChanges}
@@ -124,12 +130,13 @@ function GitActions({
 			) : null}
 			<ButtonGroup
 				aria-label="Repository actions"
-				className="[&>[data-slot]:first-child]:rounded-l-md! [&>[data-slot]:last-child]:rounded-r-md!"
+				className="group/split [&>[data-slot]:first-child]:rounded-l-md! [&>[data-slot]:last-child]:rounded-r-md!"
 			>
 				<Button
 					type="button"
-					variant="outline"
+					variant="ghost"
 					size="sm"
+					className={SPLIT_HALF_CLASS_NAME}
 					disabled={actions.busy || actions.quickAction.disabledReason !== null}
 					title={actions.quickAction.disabledReason ?? undefined}
 					aria-label={
@@ -157,6 +164,7 @@ function GitActions({
 								: actions.quickAction.label)}
 					</span>
 				</Button>
+				<ButtonGroupSeparator className="bg-(color:--pane-hairline) opacity-0 transition-opacity group-hover/split:opacity-100 group-has-[[aria-expanded=true]]/split:opacity-100 data-vertical:my-1.5 data-vertical:w-[0.5px]" />
 				<DropdownMenu
 					onOpenChange={(open) => {
 						if (open) actions.refreshMenu();
@@ -166,8 +174,9 @@ function GitActions({
 						render={
 							<Button
 								type="button"
-								variant="outline"
+								variant="ghost"
 								size="icon-sm"
+								className={`${SPLIT_HALF_CLASS_NAME} aria-expanded:bg-(color:--state-selected)`}
 								aria-label="Repository action options"
 							/>
 						}

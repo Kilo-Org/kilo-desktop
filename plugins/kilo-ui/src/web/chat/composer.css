@@ -18,15 +18,11 @@
 	--glass-saturation: 1.08;
 }
 
-header:has([data-chat-empty]) {
-	border-bottom-color: transparent;
-}
-
 .chat-composer-glass {
 	/* Pane frames set --pane-raised so the glass stays a step above the pane
 	   surface; outside panes it falls back to card. */
 	--composer-glass-surface: var(--pane-raised, var(--card));
-	--composer-glass-stroke: var(--border);
+	--composer-glass-stroke: var(--border-subtle);
 	background: color-mix(in srgb, var(--composer-glass-surface) var(--glass-opacity), transparent);
 	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
 	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));

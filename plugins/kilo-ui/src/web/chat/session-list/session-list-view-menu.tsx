@@ -57,7 +57,7 @@ export const SessionListViewMenu: FC<{
 					<Button
 						type="button"
 						variant="ghost"
-						size="icon"
+						size="icon-xs"
 						aria-label="Session list options"
 						data-qa-id="session-list-view-menu"
 						data-active={customized || undefined}

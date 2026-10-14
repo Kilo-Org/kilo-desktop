@@ -189,7 +189,7 @@ export function FilesTree({
 			onClickCapture={reopenSelectedFileOnClick}
 		>
 			{folderOptions.length > 1 ? (
-				<div className="shrink-0 border-b px-2 py-1.5">
+				<div className="shrink-0 px-2 pt-1.5">
 					<Select
 						items={folderOptions}
 						value={workspaceDirectory}
@@ -226,8 +226,8 @@ export function FilesTree({
 					</Select>
 				</div>
 			) : null}
-			<div className="flex h-10 shrink-0 items-center gap-1 border-b px-2">
-				<InputGroup size="sm" className="min-w-0 flex-1">
+			<div className="flex h-10 shrink-0 items-center gap-1 px-2">
+				<InputGroup size="sm" variant="filled" className="min-w-0 flex-1">
 					<InputGroupInput
 						type="search"
 						aria-label="Search workspace files"
@@ -263,7 +263,7 @@ export function FilesTree({
 				</Tooltip>
 			</div>
 			{truncated ? (
-				<p className="text-muted-foreground text-2xs border-b px-3 py-1.5">
+				<p className="text-muted-foreground text-2xs px-3 py-1.5">
 					Showing the first 25,000 entries.
 				</p>
 			) : null}

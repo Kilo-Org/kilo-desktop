@@ -183,7 +183,7 @@ export function LayoutPresetsMenu({ capture, onApply }: LayoutPresetsMenuProps) 
 								<DropdownMenuTrigger
 									data-qa-id="chat-layouts-menu"
 									aria-label="Layouts"
-									render={<Button variant="outline" size="icon-sm" disabled={pending} />}
+									render={<Button variant="ghost" size="icon-sm" disabled={pending} />}
 								/>
 							}
 						>

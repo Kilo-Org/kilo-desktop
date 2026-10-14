@@ -26,7 +26,7 @@ describe("app theme presets", () => {
 		]);
 		expect(APP_THEMES[0]!.name).toBe("Kilo");
 		expect(getThemeVariant("kilo", "light")?.tokens).toMatchObject({
-			sidebar: "#fafafa",
+			sidebar: "#f4f4f4",
 			muted: "#f5f5f5",
 			border: "#e5e5e5",
 			primary: "#ffdd00",
@@ -41,18 +41,21 @@ describe("app theme presets", () => {
 			"primary-foreground": "#1f1f1f",
 			card: "#181818",
 			popover: "#2b2b2b",
-			sidebar: "#161616",
+			sidebar: "#0e0e0e",
 			"sidebar-border": "rgb(255 255 255 / 0.1)",
 			muted: "#333333",
 			accent: "color-mix(in oklch, var(--foreground) 5%, transparent)",
 			secondary: "color-mix(in oklch, var(--foreground) 5%, transparent)",
-			"sidebar-accent": "color-mix(in oklch, var(--foreground) 5%, transparent)",
 		});
 		expect(getThemeVariant("kilo", "dark")?.terminal?.selectionBackground).toBe("#1b1b1b");
 		const kiloCss = themeCss({ themeId: "kilo", accentId: "theme" });
 		expect(kiloCss).not.toContain("--shell-glass-opacity");
 		const dark = getThemeVariant("dracula", "dark")!;
 		expect(dark.tokens?.background).toBe("#282a36");
+		expect(dark.tokens?.sidebar).toBe(dark.tokens?.background);
+		expect(dark.tokens).not.toHaveProperty("sidebar-accent");
+		expect(dark.tokens?.["state-tint"]).toBe("#bd93f9");
+		expect(getThemeVariant("kilo", "dark")?.tokens).not.toHaveProperty("state-tint");
 		expect(Object.keys(dark.terminal ?? {})).toHaveLength(22);
 	});
 

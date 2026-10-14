@@ -65,8 +65,19 @@ type RolePalette = {
 	surface: string;
 	draftComposer?: string;
 	popover?: string;
-	sidebar: string;
+	/**
+	 * Shell glass behind the sidebar, title bar and pane gutters. Defaults to
+	 * `background`, one step below the panes; a palette's deeper sidebar shade
+	 * would put the chrome two steps down and read as too dark.
+	 */
+	sidebar?: string;
 	hover: string;
+	/**
+	 * Hue of the shared state overlays (hover, selected). Defaults to the
+	 * foreground; set it when the theme's identity hue lives in its surfaces
+	 * rather than its text, or foreground washes read grey on them.
+	 */
+	stateTint?: string;
 	/** Standing `--muted` fill. Defaults to `hover` when omitted. */
 	mutedFill?: string;
 	muted: string;
@@ -217,12 +228,14 @@ function variant(p: RolePalette, shiki: ShikiTheme, mode: ResolvedColorScheme) {
 			"chart-3": ansi.yellow,
 			"chart-4": ansi.magenta,
 			"chart-5": ansi.cyan,
-			sidebar: p.sidebar,
+			sidebar: p.sidebar ?? p.background,
 			"sidebar-foreground": p.foreground,
 			"sidebar-primary": p.primary,
 			"sidebar-primary-foreground": p.primaryForeground,
-			"sidebar-accent": p.hover,
+			// No `sidebar-accent`: sidebar hover/selected come from the shared
+			// state scale in globals.css, so they match pane tabs in every theme.
 			"sidebar-accent-foreground": p.foreground,
+			...(p.stateTint ? { "state-tint": p.stateTint } : {}),
 			"sidebar-border": p.border,
 			"sidebar-ring": p.ring ?? p.primary,
 			...ACCENT_ROLE_DEFAULTS,
@@ -281,8 +294,10 @@ export const APP_THEMES = [
 					background: "#ffffff",
 					foreground: "#0a0a0a",
 					surface: "#ffffff",
-					sidebar: "#fafafa",
-					hover: "#f5f5f5",
+					sidebar: "#f4f4f4",
+					// Overlay so it reads on the grey chrome and white panes alike.
+					hover: "color-mix(in oklch, var(--foreground) 5%, transparent)",
+					mutedFill: "#f5f5f5",
 					muted: "#737373",
 					border: "#e5e5e5",
 					primary: "#ffdd00",
@@ -326,7 +341,7 @@ export const APP_THEMES = [
 					surface: "#181818",
 					draftComposer: "#1f1f1f",
 					popover: "#2b2b2b",
-					sidebar: "#161616",
+					sidebar: "#0e0e0e",
 					// Overlay, not a solid step: #333333 lifts the sidebar too hard,
 					// and any solid dark enough for the sidebar reads as a hole on the
 					// #2b2b2b popover. 5% matches main's stock foreground/5 hover.
@@ -449,8 +464,10 @@ export const APP_THEMES = [
 					background: "#282a36",
 					foreground: "#f8f8f2",
 					surface: "#303341",
-					sidebar: "#21222c",
 					hover: "#44475a",
+					// Dracula purple: its neutral foreground would wash the violet
+					// surfaces toward grey.
+					stateTint: "#bd93f9",
 					muted: "#a6a9c6",
 					border: "#555970",
 					primary: "#bd93f9",
@@ -521,7 +538,6 @@ export const APP_THEMES = [
 					background: "#1e1e2e",
 					foreground: "#cdd6f4",
 					surface: "#313244",
-					sidebar: "#181825",
 					hover: "#45475a",
 					muted: "#a6adc8",
 					border: "#585b70",
@@ -593,7 +609,6 @@ export const APP_THEMES = [
 					background: "#282828",
 					foreground: "#ebdbb2",
 					surface: "#32302f",
-					sidebar: "#1d2021",
 					hover: "#3c3836",
 					muted: "#bdae93",
 					border: "#504945",
@@ -665,7 +680,6 @@ export const APP_THEMES = [
 					background: "#0d1117",
 					foreground: "#e6edf3",
 					surface: "#161b22",
-					sidebar: "#010409",
 					hover: "#21262d",
 					muted: "#8b949e",
 					border: "#30363d",
@@ -737,7 +751,6 @@ export const APP_THEMES = [
 					background: "#2d353b",
 					foreground: "#d3c6aa",
 					surface: "#343f44",
-					sidebar: "#232a2e",
 					hover: "#3d484d",
 					muted: "#a7b4aa",
 					border: "#4f585e",
@@ -810,7 +823,6 @@ export const APP_THEMES = [
 					background: "#2e3440",
 					foreground: "#eceff4",
 					surface: "#3b4252",
-					sidebar: "#292e39",
 					hover: "#434c5e",
 					muted: "#a5b1c5",
 					border: "#4c566a",

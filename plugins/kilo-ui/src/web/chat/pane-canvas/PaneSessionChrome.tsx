@@ -16,7 +16,7 @@ export const PaneSessionChrome: FC<{
 				render={
 					<Button
 						type="button"
-						variant="outline"
+						variant="ghost"
 						size="icon-sm"
 						className="aria-pressed:bg-muted aria-pressed:text-foreground [-webkit-app-region:no-drag]"
 						aria-label="Carousel"

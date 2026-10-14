@@ -120,13 +120,13 @@ import {
 /** Hide CommandItem's built-in check — opacity-0 still reserves layout space. */
 
 /**
- * Shared surface states for session rows.
- * Idle is clear; hover, focus, and selected states use the same translucent wash.
+ * Shared surface states for session rows, on the app's state scale: idle is
+ * clear, hover and focus take the hover wash, and the current row the selected
+ * wash (the same fill as an unfocused pane's shown tab).
  */
 const sidebarSurfaceIdleClassName =
 	"bg-transparent text-sidebar-foreground transition-colors hover:bg-sidebar-accent focus-visible:bg-sidebar-accent";
-const sidebarSurfaceActiveClassName =
-	"bg-sidebar-accent text-sidebar-foreground transition-colors hover:bg-sidebar-accent focus-visible:bg-sidebar-accent";
+const sidebarSurfaceActiveClassName = "bg-state-selected text-sidebar-foreground transition-colors";
 
 /** Override Button/Input `rounded-lg` so radius matches sidebar menu items. */
 const sidebarNavRadiusClassName = "rounded-md!";
@@ -484,7 +484,7 @@ export const SessionListContent = memo(function SessionListContent({
 						<div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 							<div
 								data-qa-id="session-list-grouping-header"
-								className="flex h-8 min-w-0 shrink-0 items-center gap-0.5"
+								className="hover:bg-sidebar-accent focus-within:bg-sidebar-accent has-[[data-popup-open]]:bg-sidebar-accent flex h-[30px] min-w-0 shrink-0 items-center gap-0.5 rounded-md pr-1 transition-colors"
 							>
 								<WorkspaceFilter
 									value={focus}

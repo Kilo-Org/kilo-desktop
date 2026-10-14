@@ -43,7 +43,8 @@ function WorkspaceFilterTrigger() {
 					variant="ghost"
 					size="default"
 					data-qa-id="session-list-workspace-filter"
-					className="w-full min-w-0 justify-start gap-2 rounded-md font-normal"
+					// The enclosing sidebar row owns the hover wash, as on workspace rows.
+					className="h-[30px] w-full min-w-0 justify-start gap-2 rounded-md font-normal hover:bg-transparent aria-expanded:bg-transparent"
 				/>
 			}
 		>

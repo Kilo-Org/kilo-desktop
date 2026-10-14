@@ -158,7 +158,7 @@ export function PaneTabScrollArea({
 						variant="ghost"
 						size="icon-xs"
 						aria-label="Scroll tabs left"
-						className="bg-background hover:bg-background absolute inset-y-0 left-0 h-full w-5 rounded-none border-0 active:not-aria-[haspopup]:translate-y-0"
+						className="bg-pane hover:bg-pane absolute inset-y-0 left-0 h-full w-5 rounded-none border-0 active:not-aria-[haspopup]:translate-y-0"
 						onPointerDown={(event) => event.stopPropagation()}
 						onClick={(event) => {
 							event.stopPropagation();
@@ -173,7 +173,7 @@ export function PaneTabScrollArea({
 						variant="ghost"
 						size="icon-xs"
 						aria-label="Scroll tabs right"
-						className="bg-background hover:bg-background absolute inset-y-0 right-0 h-full w-5 rounded-none border-0 active:not-aria-[haspopup]:translate-y-0"
+						className="bg-pane hover:bg-pane absolute inset-y-0 right-0 h-full w-5 rounded-none border-0 active:not-aria-[haspopup]:translate-y-0"
 						onPointerDown={(event) => event.stopPropagation()}
 						onClick={(event) => {
 							event.stopPropagation();

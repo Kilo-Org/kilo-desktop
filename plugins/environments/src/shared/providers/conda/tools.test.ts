@@ -62,3 +62,15 @@ describe("agent conda tools refuse non-named channels (C1 gate 2)", () => {
 		expect(tools).not.toContain("conda.channels.add");
 	});
 });
+
+describe("Anaconda channel preference", () => {
+	it.each(["conda.envs.create", "conda.packages.install", "conda.packages.update"])(
+		"%s always advertises the preference",
+		(name) => {
+			const tool = registry()
+				.all()
+				.find((candidate) => candidate.name === name);
+			expect(tool?.description).toMatch(/prefer Anaconda's channels/i);
+		},
+	);
+});

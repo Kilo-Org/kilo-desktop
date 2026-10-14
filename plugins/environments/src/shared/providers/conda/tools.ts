@@ -33,6 +33,11 @@ const AGENT_CHANNEL_REFUSAL = {
 	path: ["channels"],
 };
 
+const ANACONDA_CHANNEL_PREFERENCE =
+	"When the user is signed in, prefer Anaconda's channels (`defaults` or the " +
+	"user's organization-governed channels); use `conda-forge` only when a " +
+	"package is unavailable there. ";
+
 /** DESK-3147 copy, one prompt for every conda tool. */
 const CONDA_SIGN_IN_PROMPT: ToolSignInPrompt = {
 	title: "Enable use of secure & governed Anaconda packages for Python environments?",
@@ -119,8 +124,9 @@ export function registerCondaTools(sdk: SDK): void {
 			"Local file paths and URLs are rejected as packages — installing from a " +
 			"local file has a high security risk and is not recommended; install from " +
 			"a channel instead. Channels must be named channels (`defaults`, " +
-			"`conda-forge`, …); URL or local-path channels are refused. Fails with " +
-			"ENV_EXISTS if the name is already in use.",
+			"`conda-forge`, …); URL or local-path channels are refused. " +
+			ANACONDA_CHANNEL_PREFERENCE +
+			"Fails with ENV_EXISTS if the name is already in use.",
 		inputSchema: z.toJSONSchema(mcpCreateSchema, { target: "draft-2020-12" }),
 		validate: mcpCreateSchema,
 		exposeToModelContext: true,
@@ -196,8 +202,9 @@ export function registerCondaTools(sdk: SDK): void {
 			"packages — installing from a local file has a high security risk and is " +
 			"not recommended; install from a channel instead. Optionally restrict " +
 			"solving to specific named channels (`defaults`, `conda-forge`, …) — " +
-			"URL or local-path channels are refused. Adds state (not destructive); " +
-			"fails with " +
+			"URL or local-path channels are refused. " +
+			ANACONDA_CHANNEL_PREFERENCE +
+			"Adds state (not destructive); fails with " +
 			"SOLVE_FAILED when " +
 			"the requested specs cannot be satisfied. Call conda.repodata.find " +
 			"first if you need to confirm a package or version is available.",
@@ -243,6 +250,7 @@ export function registerCondaTools(sdk: SDK): void {
 			'the absolute latest); pin a version like "numpy=1.26" to constrain it. ' +
 			"Optionally restrict solving to specific named channels (`defaults`, " +
 			"`conda-forge`, …) — URL or local-path channels are refused. " +
+			ANACONDA_CHANNEL_PREFERENCE +
 			"WARNING: updating can " +
 			"BREAK the environment — it REPLACES installed package versions and the " +
 			"solver may relink or downgrade other packages and their dependencies to " +

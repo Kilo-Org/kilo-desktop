@@ -8,11 +8,9 @@ import {
 	type LlamaHost,
 } from "./llamaRuntime.js";
 
-const CPU = "anaconda::llama.cpp==0.0.10068=cpu_*";
-const CUDA = "anaconda::llama.cpp==0.0.10068=cuda*";
-const METAL = "anaconda::llama.cpp==0.0.10068=mps_*";
-const WINDOWS_ARM64_CPU = "anaconda::llama.cpp==0.5.0=cpu_*";
-const WINDOWS_ARM64_CUDA = "anaconda::llama.cpp==0.5.0=cuda*";
+const CPU = "anaconda::llama.cpp==0.6.0=cpu_*";
+const CUDA = "anaconda::llama.cpp==0.6.0=cuda*";
+const METAL = "anaconda::llama.cpp==0.6.0=mps_*";
 const INTEL_MAC = "conda-forge::llama.cpp>=9222";
 
 const nvidia = [{ vendor: "NVIDIA", model: "GeForce RTX 4080" }];
@@ -40,16 +38,14 @@ describe("llamaPackageSpecs", () => {
 		]);
 	});
 
-	it("uses the router-capable 0.5.0 CPU build on Windows ARM64", () => {
-		expect(llamaPackageSpecs(host({ platform: "win32", arch: "arm64" }))).toEqual([
-			WINDOWS_ARM64_CPU,
-		]);
+	it("uses only CPU on Windows ARM64 without an NVIDIA GPU", () => {
+		expect(llamaPackageSpecs(host({ platform: "win32", arch: "arm64" }))).toEqual([CPU]);
 	});
 
-	it("prefers the 0.5.0 CUDA build then CPU on Windows ARM64 with an NVIDIA GPU", () => {
+	it("prefers CUDA then CPU on Windows ARM64 when an NVIDIA GPU is present", () => {
 		expect(llamaPackageSpecs(host({ platform: "win32", arch: "arm64", gpus: nvidia }))).toEqual([
-			WINDOWS_ARM64_CUDA,
-			WINDOWS_ARM64_CPU,
+			CUDA,
+			CPU,
 		]);
 	});
 

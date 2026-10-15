@@ -30,14 +30,17 @@ export const KILO_EMBED_CHROME_STYLE_ATTR = "data-kilo-embed-chrome";
 export const KILO_EMBED_THEME_SCRIPT_ATTR = "data-kilo-embed-theme";
 
 /**
- * Font overrides for the embedded notebook SPA. NotebookView configures rail
- * presentation through the Electron bootstrap rather than staged CSS.
+ * Font and branding overrides for the embedded notebook SPA. NotebookView
+ * configures rail visibility and placement through the Electron bootstrap.
  * Surface colors come from the parent at runtime via the theme bridge script.
  */
 export const KILO_EMBED_CHROME_CSS = [
 	"#root{font-size:12px}",
 	'#root :where(.text-sm,.text-base,button,input,select,textarea,[contenteditable="true"]){font-size:12px}',
 	"#root .cm-editor,#root .cm-content,#root .cm-gutters{font-size:12px}",
+	'#root [data-testid="notebook-rail"] [data-slot="rail-leading-slot"]{display:none}',
+	'#root [data-testid="notebook-rail"] [data-slot="rail-strip-grid"]{grid-template-rows:minmax(0,1fr)}',
+	'#root [data-testid="notebook-rail"] [data-slot="rail-body"]{padding-top:0.5rem}',
 ].join("");
 
 const THEME_MESSAGE_TYPE = JSON.stringify(NOTEBOOK_THEME_MESSAGE_TYPE);

@@ -341,9 +341,22 @@ describe("injectKiloEmbedChromeHtml", () => {
 		expect(injectKiloEmbedChromeHtml(refreshed)).toBe(refreshed);
 	});
 
-	it("leaves rail presentation and the palette to the host", () => {
+	it("hides embedded rail branding without hiding the rail or overriding its side", () => {
+		expect(KILO_EMBED_CHROME_CSS).toContain(
+			'#root [data-testid="notebook-rail"] [data-slot="rail-leading-slot"]{display:none}',
+		);
+		expect(KILO_EMBED_CHROME_CSS).toContain(
+			'#root [data-testid="notebook-rail"] [data-slot="rail-strip-grid"]{grid-template-rows:minmax(0,1fr)}',
+		);
+		expect(KILO_EMBED_CHROME_CSS).toContain(
+			'#root [data-testid="notebook-rail"] [data-slot="rail-body"]{padding-top:0.5rem}',
+		);
+		expect(KILO_EMBED_CHROME_CSS).not.toContain('[data-testid="notebook-rail"]{display:none}');
+		expect(KILO_EMBED_CHROME_CSS).not.toContain("data-rail-side");
+	});
+
+	it("leaves the palette to the host", () => {
 		expect(KILO_EMBED_CHROME_CSS).not.toContain("--background");
-		expect(KILO_EMBED_CHROME_CSS).not.toContain('[data-testid="notebook-rail"]');
 	});
 
 	it("matches the host tab font size without scaling rem-based chrome", () => {

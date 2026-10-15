@@ -325,7 +325,11 @@ function NotebookViewContent({
 							protocolVersion: NTERACT_ELECTRON_HOST_PROTOCOL_VERSION,
 							outputDocumentUrl: `${frameOrigin}/output-frame.html`,
 							...(supportsRailPresentation
-								? { presentation: { rail: { visible: false, side: "right" } } }
+								? {
+										presentation: {
+											rail: { visible: true, side: "right", initialCollapsed: true },
+										},
+									}
 								: {}),
 						},
 					},

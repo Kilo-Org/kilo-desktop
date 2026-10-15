@@ -153,9 +153,9 @@ describe("NotebookView", () => {
 
 	it.each([
 		{
-			name: "hides the rail with right-side placement when supported",
+			name: "shows the right-side rail with its drawer initially collapsed when supported",
 			capabilities: ["presentation.rail"],
-			presentation: { rail: { visible: false, side: "right" } },
+			presentation: { rail: { visible: true, side: "right", initialCollapsed: true } },
 		},
 		{
 			name: "omits rail configuration when capabilities are absent",

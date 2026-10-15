@@ -49,7 +49,7 @@ export function SidebarUpdatePill() {
 						type="button"
 						aria-label={`Restart to update: ${label}`}
 						data-qa-id="update-ready-pill"
-						className="flex h-8 w-full cursor-pointer items-center gap-2 rounded-lg bg-[var(--update-surface)] px-2.5 text-xs font-medium text-[var(--update)] transition-colors hover:bg-[var(--update-surface-hover)] focus-visible:ring-2 focus-visible:ring-[var(--update)]/40 focus-visible:outline-none"
+						className="bg-primary-soft text-primary-soft-foreground focus-visible:ring-ring/50 flex h-8 w-full cursor-pointer items-center gap-2 rounded-lg px-2.5 text-xs font-medium transition-colors hover:bg-[color-mix(in_oklch,var(--primary-soft),var(--foreground)_5%)] focus-visible:ring-2 focus-visible:outline-none"
 						onClick={() => void install()}
 					>
 						<RotateCwIcon className="size-3.5" />

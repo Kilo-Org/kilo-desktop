@@ -46,8 +46,8 @@
 	/* Accent roles (ACCENT_ROLE_DEFAULTS in app-themes.ts) for CSS-owned themes. */
 	--primary-ink: var(--primary);
 	--primary-ink-foreground: var(--primary-foreground);
-	--primary-soft: color-mix(in oklab, var(--primary) 10%, transparent);
-	--primary-soft-foreground: var(--primary);
+	--primary-soft: var(--primary);
+	--primary-soft-foreground: var(--primary-foreground);
 	--update: var(--color-green-850);
 	--update-surface: color-mix(in oklch, var(--primary) 12%, transparent);
 	--update-surface-hover: color-mix(in oklch, var(--primary) 18%, transparent);
@@ -105,6 +105,8 @@
 	--warning: var(--color-amber-400);
 	--shell-glass-opacity: 80%;
 	--update: var(--primary);
+	--primary-soft: color-mix(in oklab, var(--primary) 10%, transparent);
+	--primary-soft-foreground: var(--primary);
 	/* Dark glass reads by its stroke; the drop shadow only muddies it. */
 	--composer-shadow: 0 0 #0000;
 }

@@ -29,6 +29,13 @@
 				"title": "Chat",
 				"surface": "transparent",
 				"header": { "leading": "ChatPageHeaderLeading", "actions": "ChatPageHeaderActions" }
+			},
+			{
+				"path": "/workspace-board",
+				"component": "WorkspaceBoardPage",
+				"title": "Workspace Board",
+				"surface": "transparent",
+				"header": { "actions": "WorkspaceBoardHeaderActions" }
 			}
 		],
 		"nav": [],

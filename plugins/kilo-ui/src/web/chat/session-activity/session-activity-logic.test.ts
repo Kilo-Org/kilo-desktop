@@ -20,6 +20,8 @@ import {
 	readSessionInfoPatch,
 	readWorkspaceIdFromMetadata,
 	resolveSessionLocationLabel,
+	sessionGitStatusId,
+	sessionRowCapabilities,
 	sessionsAwaitingParentLookup,
 	withDescendantPrompts,
 	type SessionActivity,
@@ -713,5 +715,50 @@ describe("resolveSessionLocationLabel", () => {
 
 	it("has no location without any location data", () => {
 		expect(resolveSessionLocationLabel(undefined, workspaces)).toBeNull();
+	});
+});
+
+describe("sessionRowCapabilities", () => {
+	it("lets idle and finished chats be archived and pinned", () => {
+		expect(sessionRowCapabilities(false, null)).toEqual({
+			isArchived: false,
+			canArchive: true,
+			canPin: true,
+		});
+		expect(sessionRowCapabilities(false, "done").canArchive).toBe(true);
+	});
+
+	it("keeps working chats and chats waiting on the user from being archived", () => {
+		for (const rowState of ["working", "approval", "input"] as const) {
+			expect(sessionRowCapabilities(false, rowState).canArchive).toBe(false);
+		}
+	});
+
+	it("treats an archived chat that is waiting on the user as live", () => {
+		expect(sessionRowCapabilities(true, "approval")).toEqual({
+			isArchived: false,
+			canArchive: false,
+			canPin: true,
+		});
+		expect(sessionRowCapabilities(true, null)).toEqual({
+			isArchived: true,
+			canArchive: false,
+			canPin: false,
+		});
+	});
+});
+
+describe("sessionGitStatusId", () => {
+	it("shares one status per workspace checkout or worktree branch", () => {
+		const local = { ...createEmptySessionActivity(), workspaceId: "w1" };
+		expect(sessionGitStatusId(local)).toBe("w1:local");
+		expect(sessionGitStatusId({ ...local, worktreeBranch: "kilo/fix" })).toBe(
+			"w1:worktree:kilo/fix",
+		);
+	});
+
+	it("has no status outside a workspace", () => {
+		expect(sessionGitStatusId(undefined)).toBeNull();
+		expect(sessionGitStatusId(createEmptySessionActivity())).toBeNull();
 	});
 });

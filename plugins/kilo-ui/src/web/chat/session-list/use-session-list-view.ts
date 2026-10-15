@@ -4,6 +4,7 @@ import {
 	useCallback,
 	useContext,
 	useEffect,
+	useMemo,
 	useRef,
 	useState,
 	type ReactNode,
@@ -40,16 +41,27 @@ function useSessionListViewState() {
 		setView(DEFAULT_SESSION_LIST_VIEW);
 	}, []);
 
-	return { view, update, reset };
+	return useMemo(() => ({ view, update, reset }), [reset, update, view]);
 }
 
 type SessionListViewContextValue = ReturnType<typeof useSessionListViewState>;
+type SessionListPinsContextValue = ReturnType<typeof useSessionListPinsState>;
 
 const SessionListViewContext = createContext<SessionListViewContextValue | null>(null);
+const SessionListPinsContext = createContext<SessionListPinsContextValue | null>(null);
 
+/**
+ * Shares the list's view options and pins with every surface showing these
+ * chats (the sidebar and the workspace board), so a change in one shows in both.
+ */
 export function SessionListViewProvider({ children }: { children: ReactNode }) {
-	const value = useSessionListViewState();
-	return createElement(SessionListViewContext.Provider, { value }, children);
+	const view = useSessionListViewState();
+	const pins = useSessionListPinsState();
+	return createElement(
+		SessionListViewContext.Provider,
+		{ value: view },
+		createElement(SessionListPinsContext.Provider, { value: pins }, children),
+	);
 }
 
 export function useSessionListView(): SessionListViewContextValue {
@@ -60,7 +72,15 @@ export function useSessionListView(): SessionListViewContextValue {
 	return value;
 }
 
-export function useSessionListPins() {
+export function useSessionListPins(): SessionListPinsContextValue {
+	const value = useContext(SessionListPinsContext);
+	if (!value) {
+		throw new Error("useSessionListPins must be used within a SessionListViewProvider.");
+	}
+	return value;
+}
+
+function useSessionListPinsState() {
 	const [ids, setIds] = useState(readSessionListPins);
 	const skip = useRef(true);
 
@@ -76,5 +96,5 @@ export function useSessionListPins() {
 		setIds((current) => toggleSessionListPin(current, id));
 	}, []);
 
-	return { ids, toggle };
+	return useMemo(() => ({ ids, toggle }), [ids, toggle]);
 }

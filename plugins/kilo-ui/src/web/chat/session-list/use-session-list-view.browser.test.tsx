@@ -58,7 +58,9 @@ describe("useSessionListView", () => {
 
 describe("useSessionListPins", () => {
 	it("composes sequential toggles and persists the result", () => {
-		const { result } = renderHook(() => useSessionListPins());
+		const { result } = renderHook(() => useSessionListPins(), {
+			wrapper: SessionListViewProvider,
+		});
 
 		act(() => {
 			result.current.toggle("ses-1");

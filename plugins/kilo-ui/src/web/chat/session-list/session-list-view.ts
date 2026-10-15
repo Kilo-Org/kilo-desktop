@@ -502,3 +502,11 @@ export function visibleShowFields(view: SessionListView): SessionListShowField[]
 	const workspaceStated = view.focus !== null || view.grouping === "workspace";
 	return view.show.filter((field) => !(field === "workspace" && workspaceStated));
 }
+
+/** The focused workspace, or null when there is none or it no longer exists. */
+export function resolveWorkspaceFocus(
+	focus: string | null,
+	workspaces: readonly { id: string }[],
+): string | null {
+	return focus && workspaces.some((workspace) => workspace.id === focus) ? focus : null;
+}

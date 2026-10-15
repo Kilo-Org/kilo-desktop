@@ -26,6 +26,11 @@ import { kiloUiProvidersContract } from "../contracts/providers/schemas.js";
 import { workspacesContract } from "../contracts/workspaces/schemas.js";
 import { registerLayoutPresets } from "../main/layout-presets/register.js";
 import {
+	registerWorkspaceBoard,
+	type WorkspaceBoardStore,
+} from "../main/workspace-board/register.js";
+import { DEFAULT_WORKSPACE_BOARD } from "../contracts/workspace-board/board-model.js";
+import {
 	createInMemoryTermsStorage,
 	TermsAcceptanceStore,
 } from "../main/onboarding/TermsAcceptanceStore.js";
@@ -261,4 +266,12 @@ export function kiloUiBrowserRegister(mainSdk: MainSdk): void {
 			layouts = value;
 		},
 	});
+	let board: unknown = { version: 1, state: DEFAULT_WORKSPACE_BOARD };
+	const boardStore: WorkspaceBoardStore = {
+		snapshot: () => board,
+		set: (value) => {
+			board = value;
+		},
+	};
+	registerWorkspaceBoard(mainSdk, boardStore);
 }

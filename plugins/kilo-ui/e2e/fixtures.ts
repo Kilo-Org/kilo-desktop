@@ -11,6 +11,7 @@ import { LayoutPresetsPage } from "./pages/layout-presets-page.js";
 import { KiloProvidersPage } from "./pages/kilo-providers-page.js";
 import { LocalProvidersPage } from "./pages/local-providers-page.js";
 import { OnboardingPage } from "./pages/onboarding-page.js";
+import { WorkspaceBoardPage } from "./pages/workspace-board-page.js";
 import { WorkspacesPage } from "./pages/workspaces-page.js";
 import { GitWorktreesPage, initializeGitRepository } from "./pages/git-worktrees-page.js";
 
@@ -22,6 +23,7 @@ type KiloUiFixtures = {
 	kiloProvidersPage: KiloProvidersPage;
 	localProvidersPage: LocalProvidersPage;
 	onboardingPage: OnboardingPage;
+	workspaceBoardPage: WorkspaceBoardPage;
 	workspacesPage: WorkspacesPage;
 	workspaceFolder: { path: string; name: string };
 	gitWorktreesPage: GitWorktreesPage;
@@ -73,6 +75,10 @@ export const test = shellTest.extend<KiloUiFixtures>({
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
 	onboardingPage: async ({}, use) => {
 		await use(new OnboardingPage());
+	},
+	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
+	workspaceBoardPage: async ({}, use) => {
+		await use(new WorkspaceBoardPage());
 	},
 	workspacesPage: async ({ electronApp, workspaceFolder }, use) => {
 		await electronApp.evaluate(({ dialog }, selectedPath) => {

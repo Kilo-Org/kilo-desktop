@@ -7,7 +7,10 @@ import { useSdkContributions } from "@kilo-desktop/sdk-react";
 
 import { useWorkspacesFeature } from "../../../workspaces/WorkspacesFeatureContext.js";
 import { useSessionActivity } from "../../session-activity/SessionActivityProvider.js";
-import { withDescendantPrompts } from "../../session-activity/session-activity-logic.js";
+import {
+	sessionGitStatusId,
+	withDescendantPrompts,
+} from "../../session-activity/session-activity-logic.js";
 import {
 	useSessionListPins,
 	useSessionListView,
@@ -36,10 +39,8 @@ export const SessionList: FC = () => {
 			{ id: string; directory: string; active: boolean; branch?: string }
 		>();
 		for (const [sessionId, activity] of Object.entries(activityBySessionId)) {
-			if (!activity.directory || !activity.workspaceId) continue;
-			const id = activity.worktreeBranch
-				? `${activity.workspaceId}:worktree:${activity.worktreeBranch}`
-				: `${activity.workspaceId}:local`;
+			const id = sessionGitStatusId(activity);
+			if (!activity.directory || !id) continue;
 			const current = byId.get(id);
 			byId.set(id, {
 				id,

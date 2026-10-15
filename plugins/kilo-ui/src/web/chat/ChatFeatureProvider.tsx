@@ -69,6 +69,7 @@ import {
 } from "./session-activity/session-activity-store.js";
 import { createChatSessionWorkspaceCapability } from "./session-workspace/chat-session-workspace-capability.js";
 import { SessionListViewProvider } from "./session-list/use-session-list-view.js";
+import { WorkspaceBoardProvider } from "./workspace-board/WorkspaceBoardProvider.js";
 import {
 	readGitDraftSelection,
 	resolvePrepareSessionWorktreeInput,
@@ -656,7 +657,9 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 													hydrateAgent={hydrateThreadAgent}
 													hydrateModel={hydrateThreadModel}
 												/>
-												<SessionListViewProvider>{children}</SessionListViewProvider>
+												<SessionListViewProvider>
+													<WorkspaceBoardProvider>{children}</WorkspaceBoardProvider>
+												</SessionListViewProvider>
 											</SubagentActivityProvider>
 										</AssistantRuntimeProvider>
 									</WorktreeSetupProvider>

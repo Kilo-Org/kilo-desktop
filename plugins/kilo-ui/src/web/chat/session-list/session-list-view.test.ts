@@ -10,6 +10,7 @@ import {
 	isDefaultSessionListView,
 	parseSessionListView,
 	resolveSessionListGrouping,
+	resolveWorkspaceFocus,
 	visibleShowFields,
 	writeSessionListPins,
 	writeSessionListView,
@@ -578,5 +579,18 @@ describe("buildSessionListSections", () => {
 			"local-ses-1",
 			"local-ses-3",
 		]);
+	});
+});
+
+describe("resolveWorkspaceFocus", () => {
+	const workspaces = [{ id: "w1" }, { id: "w2" }];
+
+	it("keeps a focus on an existing workspace", () => {
+		expect(resolveWorkspaceFocus("w2", workspaces)).toBe("w2");
+	});
+
+	it("drops no focus or a focus on a workspace that no longer exists", () => {
+		expect(resolveWorkspaceFocus(null, workspaces)).toBeNull();
+		expect(resolveWorkspaceFocus("deleted", workspaces)).toBeNull();
 	});
 });

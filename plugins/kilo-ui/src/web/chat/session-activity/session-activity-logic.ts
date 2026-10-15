@@ -483,6 +483,24 @@ export function isOrphanedWorktreeSession(
 	return Object.values(sessions).every((other) => other === own || other.directory !== directory);
 }
 
+/** What a chat allows: chats waiting on the user count as live even when archived. */
+export function sessionRowCapabilities(archived: boolean, rowState: SessionRowState) {
+	const isArchived = archived && rowState !== "approval" && rowState !== "input";
+	return {
+		isArchived,
+		canArchive: !isArchived && (rowState === null || rowState === "done"),
+		canPin: !isArchived,
+	};
+}
+
+/** Git status target shared by sessions in the same workspace checkout or worktree. */
+export function sessionGitStatusId(activity: SessionActivity | undefined): string | null {
+	if (!activity?.workspaceId) return null;
+	return activity.worktreeBranch
+		? `${activity.workspaceId}:worktree:${activity.worktreeBranch}`
+		: `${activity.workspaceId}:local`;
+}
+
 /** Priority per session: approval > input > working > done (unread) > none. */
 export function deriveSessionRowState(
 	activity: SessionActivity | undefined,

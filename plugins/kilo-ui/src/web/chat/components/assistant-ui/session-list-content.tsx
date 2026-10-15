@@ -1,7 +1,5 @@
 "use client";
 
-import { Spinner } from "@kilo-desktop/ui/components/spinner";
-import { toast } from "@kilo-desktop/ui/components/sonner";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Command,
@@ -18,10 +16,8 @@ import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
-	DropdownMenuShortcut,
 	DropdownMenuTrigger,
 } from "@kilo-desktop/ui/components/dropdown-menu";
-import { Input } from "@kilo-desktop/ui/components/input";
 import {
 	SidebarMenu,
 	SidebarMenuButton,
@@ -47,16 +43,15 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import {
 	ArchiveIcon,
 	ChevronDownIcon,
-	CircleAlertIcon,
 	EllipsisIcon,
 	FolderIcon,
-	MessageCircleQuestionMarkIcon,
 	MessageSquareIcon,
 	PencilIcon,
 	PinIcon,
 	PinOffIcon,
 	PlusIcon,
 	SearchIcon,
+	SquareKanbanIcon,
 	Trash2Icon,
 } from "lucide-react";
 import isEqual from "lodash/isEqual.js";
@@ -74,7 +69,6 @@ import {
 } from "react";
 
 import type { Workspace } from "../../../../contracts/workspaces/schemas.js";
-import type { KiloUiChatService } from "../../../../contracts/chat/schemas.js";
 import { NewChatButton } from "../../NewChatButton.js";
 import { WorkspaceFilter } from "../../../workspaces/WorkspaceFilter.js";
 import {
@@ -87,28 +81,42 @@ import {
 	DRAFT_RIGHT_PANEL_SESSION_KEY,
 	useRightPanelStore,
 } from "../../right-panel/right-panel-store.js";
-import {
-	useSessionActivity,
-	useSessionActivityStore,
-} from "../../session-activity/SessionActivityProvider.js";
-import { whenSessionsRefreshed } from "../../session-activity/session-activity-store.js";
+import { useSessionActivity } from "../../session-activity/SessionActivityProvider.js";
 import {
 	deriveSessionRowState,
 	directoryBasename,
 	formatRelativeTimeLabel,
-	formatWorkingDurationLabel,
-	isOrphanedWorktreeSession,
 	withDescendantPrompts,
 	resolveSessionLocationLabel,
+	sessionGitStatusId,
+	sessionRowCapabilities,
 	type SessionActivity,
-	type SessionRowState,
 } from "../../session-activity/session-activity-logic.js";
 import { SessionListViewMenu } from "../../session-list/session-list-view-menu.js";
-import { SessionDeleteWorktreeDialog } from "./session-delete-worktree-dialog.js";
+import { WorkspaceBoardToggle } from "../../workspace-board/WorkspaceBoardToggle.js";
+import { useWorkspaceBoard } from "../../workspace-board/WorkspaceBoardProvider.js";
+import { UNTITLED_CHAT } from "../../workspace-board/workspace-board-sessions.js";
+import {
+	useSessionRowBoard,
+	type SessionRowBoard,
+} from "../../workspace-board/use-session-row-board.js";
 import { SessionRowHoverCard } from "./session-row-hover-card.js";
+import {
+	SessionRelativeTime,
+	SessionRowGlyph,
+	type SessionRowMetadataProps,
+} from "./session-row-display.js";
+import {
+	SessionItemRename,
+	SessionRowMenu,
+	SessionRowWorktreeDialog,
+	useRenameState,
+	useSessionRowActions,
+} from "./session-row-actions.js";
 import {
 	buildSessionListSections,
 	SESSION_LIST_STATUS_LABELS,
+	resolveWorkspaceFocus,
 	readSessionListArchivedExpanded,
 	visibleShowFields,
 	writeSessionListArchivedExpanded,
@@ -331,8 +339,7 @@ export const SessionListContent = memo(function SessionListContent({
 		setStatusFilter(view.status);
 		setExpanded((current) => ({ ...current, archived: archivedShelfExpandedFor(view.status) }));
 	}
-	const focus =
-		view.focus && workspaces.some((workspace) => workspace.id === view.focus) ? view.focus : null;
+	const focus = resolveWorkspaceFocus(view.focus, workspaces);
 	const resolvedView = useMemo(
 		() => (focus === view.focus ? view : { ...view, focus }),
 		[focus, view],
@@ -495,6 +502,7 @@ export const SessionListContent = memo(function SessionListContent({
 									}}
 								/>
 								{viewMenu}
+								<WorkspaceBoardToggle />
 							</div>
 							<div
 								ref={listRef}
@@ -980,7 +988,7 @@ const WorkspaceShelfActions: FC<{
 						</TooltipTrigger>
 						<TooltipContent side="bottom">More</TooltipContent>
 					</Tooltip>
-					<DropdownMenuContent align="end" side="right" sideOffset={6}>
+					<DropdownMenuContent align="end" side="right" sideOffset={6} className="w-auto">
 						<DropdownMenuItem onClick={() => openEdit(workspace)}>
 							<PencilIcon />
 							Edit
@@ -1025,111 +1033,6 @@ const WorkspaceEmptyRow: FC<{ workspaceId: string; label: string }> = ({ workspa
 	</div>
 );
 
-const rowStateLabels: Record<
-	Exclude<SessionRowState, null>,
-	{ label: string; className: string }
-> = {
-	approval: { label: "Requires approval", className: "text-warning" },
-	input: { label: "Requires input", className: "text-warning" },
-	working: { label: "Working", className: "text-info" },
-	done: { label: "Done", className: "text-success" },
-};
-
-/** One shared interval per tick rate so every row doesn't open its own timer. */
-const nowListeners = new Map<number, Set<(now: number) => void>>();
-const nowIntervals = new Map<number, ReturnType<typeof setInterval>>();
-
-function subscribeSharedNow(intervalMs: number, listener: (now: number) => void): () => void {
-	let listeners = nowListeners.get(intervalMs);
-	if (!listeners) {
-		listeners = new Set();
-		nowListeners.set(intervalMs, listeners);
-		nowIntervals.set(
-			intervalMs,
-			setInterval(() => {
-				const now = Date.now();
-				for (const notify of listeners!) notify(now);
-			}, intervalMs),
-		);
-	}
-	listeners.add(listener);
-	return () => {
-		listeners!.delete(listener);
-		if (listeners!.size > 0) return;
-		clearInterval(nowIntervals.get(intervalMs)!);
-		nowListeners.delete(intervalMs);
-		nowIntervals.delete(intervalMs);
-	};
-}
-
-function useNow(intervalMs: number): number {
-	const [now, setNow] = useState(() => Date.now());
-	useEffect(() => subscribeSharedNow(intervalMs, setNow), [intervalMs]);
-	return now;
-}
-
-const SessionRelativeTime: FC<{ timestamp: number }> = ({ timestamp }) => {
-	const now = useNow(30_000);
-	return <>{formatRelativeTimeLabel(timestamp, now)}</>;
-};
-
-const WorkingTooltipLabel: FC<{ label: string; startedAt: number }> = ({ label, startedAt }) => {
-	const now = useNow(1_000);
-	return (
-		<>
-			{label} · {formatWorkingDurationLabel(now - startedAt)}
-		</>
-	);
-};
-
-const SessionRowGlyph: FC<{
-	rowState: SessionRowState;
-	isActive: boolean;
-	workingSince: number | undefined;
-}> = ({ rowState, isActive, workingSince }) => {
-	if (rowState === null) return null;
-	const { label, className } = rowStateLabels[rowState];
-	return (
-		<TooltipProvider delay={300}>
-			<Tooltip>
-				<TooltipTrigger
-					render={
-						<span
-							role="status"
-							aria-label={label}
-							className={cn(
-								"inline-flex size-3.5 shrink-0 items-center justify-center",
-								rowState !== "done" && className,
-								rowState === "working" && !isActive && "opacity-75",
-							)}
-						/>
-					}
-				>
-					{rowState === "working" ? <Spinner aria-hidden className="size-3.5" /> : null}
-					{rowState === "done" ? (
-						<span
-							data-qa-id="session-list-done-dot"
-							aria-hidden
-							className="bg-primary-ink size-1.5 rounded-full"
-						/>
-					) : null}
-					{rowState === "approval" ? <CircleAlertIcon aria-hidden className="size-3.5" /> : null}
-					{rowState === "input" ? (
-						<MessageCircleQuestionMarkIcon aria-hidden className="size-3.5" />
-					) : null}
-				</TooltipTrigger>
-				<TooltipContent side="right">
-					{rowState === "working" && workingSince !== undefined ? (
-						<WorkingTooltipLabel label={label} startedAt={workingSince} />
-					) : (
-						label
-					)}
-				</TooltipContent>
-			</Tooltip>
-		</TooltipProvider>
-	);
-};
-
 const RowHoverAction: FC<{
 	label: string;
 	tooltip: string;
@@ -1156,143 +1059,40 @@ const RowHoverAction: FC<{
 	</Tooltip>
 );
 
-function useRenameState(): {
-	isRenaming: boolean;
-	startRename: () => void;
-	finishRename: (restoreFocus: boolean) => void;
-	triggerRef: React.RefObject<HTMLButtonElement | null>;
-} {
-	const [isRenaming, setIsRenaming] = useState(false);
-	const triggerRef = useRef<HTMLButtonElement>(null);
-	const restoreFocusRef = useRef(false);
-
-	useEffect(() => {
-		if (isRenaming || !restoreFocusRef.current) return;
-		restoreFocusRef.current = false;
-		triggerRef.current?.focus();
-	}, [isRenaming]);
-	const startRename = useCallback(() => setIsRenaming(true), []);
-	const finishRename = useCallback((restoreFocus: boolean) => {
-		restoreFocusRef.current = restoreFocus;
-		setIsRenaming(false);
-	}, []);
-
-	return {
-		isRenaming,
-		startRename,
-		finishRename,
-		triggerRef,
-	};
-}
-
 const SessionRow: FC = () => {
 	const aui = useAui();
 	const auiRef = useRef(aui);
 	auiRef.current = aui;
 	const navigate = useNavigateToChat();
-	const sdk = useSdk<KiloUiChatService>("kilo-ui");
 	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
 	const threadId = useAuiState((s) => s.threadListItem.id);
 	const itemStatus = useAuiState((s) => s.threadListItem.status);
-	const isActive = useAuiState((s) => s.threadListItem.id === s.threads.mainThreadId);
+	const isMainThread = useAuiState((s) => s.threadListItem.id === s.threads.mainThreadId);
+	const boardOpen = useWorkspaceBoard()?.isOpen ?? false;
+	// While the board is open it is the selected view, not the last chat.
+	const isActive = isMainThread && !boardOpen;
 	const activity = useSessionActivity((s) =>
 		remoteId ? withDescendantPrompts(s.sessions)[remoteId] : undefined,
 	);
 	const lastVisitedAt = useSessionActivity((s) =>
 		remoteId ? s.lastVisitedAtBySessionId[remoteId] : undefined,
 	);
-	// Orphan check (t3code): the delete dialog only offers worktree removal
-	// when no other known session shares the directory. The selector closes
-	// over `remoteId`, which is safe — `useStore` re-runs it on every render —
-	// and returns a primitive so the row only re-renders when the flag flips.
-	const isOrphanedWorktree = useSessionActivity(
-		(s) => remoteId !== undefined && isOrphanedWorktreeSession(s.sessions, remoteId),
-	);
-	const activityStore = useSessionActivityStore();
 	const { workspaces } = useWorkspacesFeature();
+	const title = useAuiState((s) => s.threadListItem.title);
+	const board = useSessionRowBoard(remoteId, title);
 	const { show, pinnedIds, togglePin } = use(SessionListChromeContext);
 	const indented = use(SessionRowIndentContext);
 	const { isRenaming, startRename, finishRename, triggerRef } = useRenameState();
-	const [worktreeDialogOpen, setWorktreeDialogOpen] = useState(false);
 	// assistant-ui unarchives on switch by default, but the Kilo server cannot
 	// clear an archive timestamp, so opening a chat must never try to.
 	const switchTo = useCallback(() => {
 		void auiRef.current.threadListItem.switchTo({ unarchive: false });
 	}, []);
-	const archive = useCallback(() => {
-		void auiRef.current.threadListItem.archive();
-	}, []);
-	const worktreeDirectory = activity?.worktreeBranch !== undefined ? activity.directory : undefined;
-	// Every delete path funnels through here so a rejecting delete is
-	// reported, never an unhandled rejection.
-	const deleteSession = useCallback(async (): Promise<boolean> => {
-		try {
-			await auiRef.current.threadListItem.delete();
-			return true;
-		} catch (error) {
-			toast.error("Could not delete chat", {
-				description: error instanceof Error ? error.message : "The chat was not deleted.",
-			});
-			return false;
-		}
-	}, []);
-	// A session with no hydrated record may be mid-refresh, not local: wait
-	// for the refresh to settle (bounded), re-evaluate, then delete — a
-	// worktree session must never leak behind a premature direct delete.
-	const deleteAfterRefresh = useCallback(async () => {
-		if (remoteId === undefined) return;
-		await whenSessionsRefreshed(activityStore);
-		if (isOrphanedWorktreeSession(activityStore.getState().sessions, remoteId)) {
-			setWorktreeDialogOpen(true);
-			return;
-		}
-		await deleteSession();
-	}, [activityStore, remoteId, deleteSession]);
-	const deleteThread = useCallback(() => {
-		// Worktree-backed and orphaned: confirm before removing the worktree.
-		if (isOrphanedWorktree) {
-			setWorktreeDialogOpen(true);
-			return;
-		}
-		// The refresh has not settled: the record may be missing entirely or
-		// present without its worktree stamp (e.g. only `directory` was
-		// hydrated so far). Wait for the refresh to complete so the orphan
-		// check runs against the full picture — a premature direct delete
-		// would silently leak the worktree.
-		if (remoteId !== undefined && !activityStore.getState().sessionsRefreshed) {
-			void deleteAfterRefresh();
-			return;
-		}
-		void deleteSession();
-	}, [isOrphanedWorktree, activityStore, remoteId, deleteAfterRefresh, deleteSession]);
-	const keepWorktreeAndDelete = useCallback(() => {
-		setWorktreeDialogOpen(false);
-		void deleteSession();
-	}, [deleteSession]);
-	const deleteThreadAndWorktree = useCallback(async () => {
-		setWorktreeDialogOpen(false);
-		const deleted = await deleteSession();
-		// Removal only runs after the session delete resolves; a failed delete
-		// returns early — the surviving session may still reference the
-		// worktree. Otherwise failure keeps the worktree on disk and only
-		// reports — the session is already gone.
-		if (!deleted) return;
-		const directory = worktreeDirectory;
-		if (directory === undefined) return;
-		const branch = activity?.worktreeBranch;
-		toast.promise(sdk.client["chat.removeWorktree"]({ directory }), {
-			loading: "Removing worktree…",
-			success: () => ({
-				message: "Worktree deleted",
-				description: branch ? `Branch ${branch} and its worktree were removed.` : undefined,
-			}),
-			error: (error: unknown) => ({
-				message: "Could not remove worktree",
-				description: error instanceof Error ? error.message : "The worktree was left in place.",
-				duration: Infinity,
-			}),
-		});
-	}, [sdk, deleteSession, worktreeDirectory, activity?.worktreeBranch]);
+	const { archive, deleteThread, worktreeDialog } = useSessionRowActions({
+		remoteId,
+		activity,
+		onDeleted: board?.remove,
+	});
 
 	return (
 		<>
@@ -1316,20 +1116,9 @@ const SessionRow: FC = () => {
 				switchTo={switchTo}
 				archive={archive}
 				deleteThread={deleteThread}
+				board={board}
 			/>
-			{isOrphanedWorktree && worktreeDirectory !== undefined ? (
-				<SessionDeleteWorktreeDialog
-					open={worktreeDialogOpen}
-					onOpenChange={(open) => {
-						if (!open) setWorktreeDialogOpen(false);
-					}}
-					worktreeBranch={activity?.worktreeBranch}
-					onKeepWorktree={keepWorktreeAndDelete}
-					onDeleteWorktree={() => {
-						void deleteThreadAndWorktree();
-					}}
-				/>
-			) : null}
+			<SessionRowWorktreeDialog dialog={worktreeDialog} />
 		</>
 	);
 };
@@ -1354,12 +1143,7 @@ type SessionRowContentProps = {
 	switchTo: () => void;
 	archive: () => void;
 	deleteThread: () => void;
-};
-
-type SessionRowMetadataProps = {
-	statusId: string;
-	directory: string;
-	worktreeBranch?: string;
+	board: SessionRowBoard | null;
 };
 
 const SessionRowContent = memo(function SessionRowContent({
@@ -1382,10 +1166,13 @@ const SessionRowContent = memo(function SessionRowContent({
 	switchTo,
 	archive,
 	deleteThread,
+	board,
 }: SessionRowContentProps) {
 	const rowState = deriveSessionRowState(activity, lastVisitedAt);
-	const isArchived = itemStatus === "archived" && rowState !== "approval" && rowState !== "input";
-	const canArchive = !isArchived && (rowState === null || rowState === "done");
+	const { isArchived, canArchive, canPin } = sessionRowCapabilities(
+		itemStatus === "archived",
+		rowState,
+	);
 	const pinId = remoteId ?? threadId;
 	const isPinned = pinnedIds.has(pinId);
 	const locationLabel = resolveSessionLocationLabel(activity, workspaces);
@@ -1396,11 +1183,7 @@ const SessionRowContent = memo(function SessionRowContent({
 	const showUpdated = show.includes("updated");
 	const showWorkspace = show.includes("workspace") && locationLabel !== null;
 	const showPullRequest = show.includes("pr");
-	const statusId = activity?.workspaceId
-		? activity.worktreeBranch
-			? `${activity.workspaceId}:worktree:${activity.worktreeBranch}`
-			: `${activity.workspaceId}:local`
-		: null;
+	const statusId = sessionGitStatusId(activity);
 	const updatedAt = showUpdated ? activity?.updatedAt : undefined;
 	const metadataContributions = useSdkContributions("kilo-ui/chat-session-row-metadata");
 
@@ -1464,8 +1247,24 @@ const SessionRowContent = memo(function SessionRowContent({
 							: "text-sidebar-foreground/85 group-hover/sidebar-row:text-sidebar-foreground",
 				)}
 			>
-				<ThreadListItemPrimitive.Title fallback="New Chat" />
+				<ThreadListItemPrimitive.Title fallback={UNTITLED_CHAT} />
 			</span>
+			{board?.placement ? (
+				<Tooltip>
+					<TooltipTrigger
+						render={
+							<span
+								role="img"
+								aria-label={`On board: ${board.placement.label}`}
+								className="text-muted-foreground inline-flex shrink-0"
+							/>
+						}
+					>
+						<SquareKanbanIcon aria-hidden className="size-3" />
+					</TooltipTrigger>
+					<TooltipContent side="right">{`On board: ${board.placement.label}`}</TooltipContent>
+				</Tooltip>
+			) : null}
 			<span
 				data-slot="aui_session-list-item-time"
 				className={cn(
@@ -1514,6 +1313,8 @@ const SessionRowContent = memo(function SessionRowContent({
 
 	return (
 		<ThreadListItemPrimitive.Root
+			onPointerDown={board?.onDragPointerDown}
+			data-session-id={remoteId}
 			data-slot={isArchived ? "aui_session-list-archived-item" : "aui_session-list-item"}
 			className={cn(
 				"group/sidebar-row @container/session-row relative mx-px min-w-0 cursor-pointer rounded-md text-left outline-none select-none",
@@ -1570,7 +1371,7 @@ const SessionRowContent = memo(function SessionRowContent({
 							<ArchiveIcon aria-hidden />
 						</RowHoverAction>
 					) : null}
-					{!isArchived ? (
+					{canPin ? (
 						<RowHoverAction
 							label={isPinned ? "Unpin thread" : "Pin thread"}
 							tooltip={isPinned ? "Unpin" : "Pin"}
@@ -1582,137 +1383,16 @@ const SessionRowContent = memo(function SessionRowContent({
 					) : null}
 					<SessionRowMenu
 						canArchive={canArchive}
-						canPin={!isArchived}
+						canPin={canPin}
 						pinned={isPinned}
 						onPin={() => togglePin(pinId)}
 						onRename={startRename}
 						onArchive={archive}
 						onDelete={deleteThread}
+						board={board}
 					/>
 				</span>
 			)}
 		</ThreadListItemPrimitive.Root>
 	);
 });
-
-const SessionRowMenu: FC<{
-	canArchive: boolean;
-	canPin: boolean;
-	pinned: boolean;
-	onPin: () => void;
-	onRename: () => void;
-	onArchive: () => void;
-	onDelete: () => void;
-}> = ({ canArchive, canPin, pinned, onPin, onRename, onArchive, onDelete }) => {
-	return (
-		<DropdownMenu>
-			<Tooltip>
-				<TooltipTrigger
-					render={
-						<DropdownMenuTrigger
-							render={
-								<Button
-									type="button"
-									variant="ghost"
-									size="icon-xs"
-									data-slot="aui_session-list-item-more"
-									aria-label="Thread actions"
-								/>
-							}
-						/>
-					}
-				>
-					<EllipsisIcon />
-				</TooltipTrigger>
-				<TooltipContent side="bottom">More</TooltipContent>
-			</Tooltip>
-			<DropdownMenuContent align="end" side="right" sideOffset={6} className="w-auto">
-				{canPin ? (
-					<DropdownMenuItem onClick={onPin}>
-						{pinned ? <PinOffIcon /> : <PinIcon />}
-						{pinned ? "Unpin" : "Pin"}
-						<DropdownMenuShortcut aria-hidden>Shift+Click</DropdownMenuShortcut>
-					</DropdownMenuItem>
-				) : null}
-				{canArchive && (
-					<DropdownMenuItem onClick={onArchive}>
-						<ArchiveIcon />
-						Archive
-					</DropdownMenuItem>
-				)}
-				<DropdownMenuItem onClick={onRename}>
-					<PencilIcon />
-					Rename
-				</DropdownMenuItem>
-				<DropdownMenuItem variant="destructive" onClick={onDelete}>
-					<Trash2Icon />
-					Delete
-				</DropdownMenuItem>
-			</DropdownMenuContent>
-		</DropdownMenu>
-	);
-};
-
-const SessionItemRename: FC<{
-	onDone: (restoreFocus: boolean) => void;
-}> = ({ onDone }) => {
-	const aui = useAui();
-	const title = useAuiState((s) => s.threadListItem.title) ?? "";
-	const [value, setValue] = useState(title);
-	const inputRef = useRef<HTMLInputElement>(null);
-	const settledRef = useRef(false);
-
-	useEffect(() => {
-		inputRef.current?.select();
-	}, []);
-
-	const commit = (restoreFocus: boolean) => {
-		if (settledRef.current) return;
-		settledRef.current = true;
-
-		const next = value.trim();
-		if (!next || next === title) {
-			onDone(restoreFocus);
-			return;
-		}
-
-		// Deferred so a synchronous throw lands on the rejection path too.
-		Promise.resolve()
-			.then(() => aui.threadListItem.rename(next))
-			.then(
-				() => onDone(restoreFocus),
-				() => {
-					settledRef.current = false;
-					if (restoreFocus) inputRef.current?.focus();
-				},
-			);
-	};
-
-	const cancel = () => {
-		if (settledRef.current) return;
-		settledRef.current = true;
-		onDone(true);
-	};
-
-	return (
-		<Input
-			ref={inputRef}
-			autoFocus
-			data-slot="aui_session-list-item-rename"
-			aria-label="Rename thread"
-			value={value}
-			className="h-7 min-w-0 flex-1 px-1 text-sm"
-			onChange={(event) => setValue(event.target.value)}
-			onBlur={() => commit(false)}
-			onKeyDown={(event) => {
-				if (event.key === "Enter") {
-					event.preventDefault();
-					commit(true);
-				} else if (event.key === "Escape") {
-					event.preventDefault();
-					cancel();
-				}
-			}}
-		/>
-	);
-};

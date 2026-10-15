@@ -6,15 +6,30 @@ import {
 	type ChatModelAdapter,
 	type RemoteThreadListAdapter,
 } from "@assistant-ui/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render } from "@testing-library/react";
+import { useState, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
 import { SdkProvider } from "@kilo-desktop/sdk-react";
+import { createStaticNavigation } from "@kilo-desktop/feature-sdk";
 import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 import { SidebarProvider } from "@kilo-desktop/ui/components/sidebar";
 
 import { kiloUiChatContract } from "../../../../contracts/chat/schemas.js";
+import {
+	DEFAULT_WORKSPACE_BOARD,
+	placeSession,
+	type WorkspaceBoardState,
+} from "../../../../contracts/workspace-board/board-model.js";
+import { workspaceBoardContract } from "../../../../contracts/workspace-board/schemas.js";
+import { WorkspaceBoardProvider } from "../../workspace-board/WorkspaceBoardProvider.js";
+import { WORKSPACE_BOARD_ROUTE_PATH } from "../../workspace-board/workspace-board-constants.js";
+import {
+	createWorkspaceBoardBackend,
+	workspaceBoardFlags,
+} from "../../workspace-board/test-helpers.js";
 import {
 	WorkspacesContext,
 	type WorkspacesContextValue,
@@ -200,9 +215,11 @@ function SessionListHarness({
 						<WorkspacesContext.Provider value={workspaces}>
 							<SessionListViewProvider>
 								<div data-qa-id="sidebar-header-actions" />
-								<div className="flex h-[420px] flex-col" style={{ width }}>
-									<SessionList />
-								</div>
+								<BoardWrapper>
+									<div className="flex h-[420px] flex-col" style={{ width }}>
+										<SessionList />
+									</div>
+								</BoardWrapper>
 								{includeComposer ? (
 									<ComposerPrimitive.Root>
 										<ComposerPrimitive.Input aria-label="Test composer" />
@@ -217,6 +234,23 @@ function SessionListHarness({
 	);
 }
 
+/** Always mounted, as in the app: the `workspace-board` flag alone turns the board on. */
+function BoardWrapper({ children }: { children: ReactNode }) {
+	const [queryClient] = useState(
+		() => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+	);
+	return (
+		<QueryClientProvider client={queryClient}>
+			<WorkspaceBoardProvider>{children}</WorkspaceBoardProvider>
+		</QueryClientProvider>
+	);
+}
+
+const boardBackends: ReturnType<typeof createWorkspaceBoardBackend>[] = [];
+afterEach(() => {
+	for (const backend of boardBackends.splice(0)) backend.dispose();
+});
+
 function renderSessionList({
 	threads,
 	hydrate,
@@ -226,6 +260,8 @@ function renderSessionList({
 	skipDefaultHydration = false,
 	width,
 	hasMorePages = false,
+	board,
+	path = "/",
 }: {
 	threads: SeededThread[];
 	hydrate?: (store: ReturnType<typeof createSessionActivityStore>) => void;
@@ -237,6 +273,10 @@ function renderSessionList({
 	width?: number;
 	/** Mirrors background backfill: older session pages have not loaded yet. */
 	hasMorePages?: boolean;
+	/** Enables the workspace board with this persisted state. */
+	board?: WorkspaceBoardState;
+	/** The current route, e.g. the board's to have it open. */
+	path?: string;
 }) {
 	const adapter = new SeededThreadListAdapter(threads);
 	adapter.hasMorePages = hasMorePages;
@@ -253,13 +293,17 @@ function renderSessionList({
 		openEdit,
 		openDelete,
 	};
+	const boardBackend = createWorkspaceBoardBackend(board);
+	boardBackends.push(boardBackend);
 	const sdk = createFakeSdk({
 		featureId: "kilo-ui",
-		navigation: { navigate },
-		channels: kiloUiChatContract,
+		navigation: { ...createStaticNavigation({ path, search: {} }), navigate },
+		channels: { ...kiloUiChatContract, ...workspaceBoardContract },
 		handlers: {
 			"chat.removeWorktree": removeWorktree ?? (async () => undefined),
+			...boardBackend.handlers,
 		},
+		featureFlags: workspaceBoardFlags(board !== undefined),
 	});
 	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
 	system.getSdk("metadata-probe").contribute("kilo-ui/chat-session-row-metadata", {
@@ -298,6 +342,7 @@ function renderSessionList({
 		/>,
 	);
 	return {
+		board: boardBackend.stored,
 		adapter,
 		navigate,
 		openCreate,
@@ -1062,7 +1107,7 @@ describe("SessionList", () => {
 		});
 
 		const card = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
-		const status = card.getByRole("status", { name: "Done" });
+		const status = card.getByRole("status", { name: "Unread" });
 		const dot = card.getByTestId("session-list-done-dot");
 		await expect.element(status).toBeVisible();
 		await expect.element(dot).toBeVisible();
@@ -2221,5 +2266,93 @@ describe("SessionList worktree deletion", () => {
 			.not.toBeInTheDocument();
 		expect(adapter.deleteCalls).toEqual([]);
 		expect(removeWorktree).not.toHaveBeenCalled();
+	});
+});
+
+describe("SessionList board actions", () => {
+	it("opens the board from the toggle in the workspace header", async () => {
+		const { screen, navigate } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Fix login" }],
+			board: DEFAULT_WORKSPACE_BOARD,
+		});
+		const header = screen.getByTestId("session-list-grouping-header");
+		const toggle = header.getByRole("button", { name: "Workspace Board" });
+		await expect.element(toggle).toHaveAttribute("aria-pressed", "false");
+
+		await toggle.click();
+		expect(navigate).toHaveBeenCalledWith(WORKSPACE_BOARD_ROUTE_PATH, undefined);
+	});
+
+	it("goes back to the chat when the toggle is pressed on the board", async () => {
+		const { screen, navigate } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Fix login" }],
+			board: DEFAULT_WORKSPACE_BOARD,
+			path: WORKSPACE_BOARD_ROUTE_PATH,
+		});
+		const toggle = screen.getByRole("button", { name: "Workspace Board" });
+		await expect.element(toggle).toHaveAttribute("aria-pressed", "true");
+
+		await toggle.click();
+		expect(navigate).toHaveBeenCalledWith("/plugins/chat", undefined);
+	});
+
+	it("offers no board actions while the board is off", async () => {
+		const { screen } = renderSessionList({ threads: [{ remoteId: "ses-1", title: "Fix login" }] });
+		await expect.element(screen.getByTestId("session-list-search")).toBeVisible();
+		await expect.element(screen.getByTestId("session-list-board")).not.toBeInTheDocument();
+		const card = screen.getByRole("listitem").filter({ hasText: "Fix login" });
+		await userEvent.hover(card);
+		await card.getByRole("button", { name: "Thread actions" }).click();
+		await expect.element(page.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+		await expect.element(page.getByTestId("session-list-item-board-menu")).not.toBeInTheDocument();
+	});
+
+	it("adds a chat to a board column from its menu and marks the row", async () => {
+		const { screen, board } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Fix login" }],
+			board: DEFAULT_WORKSPACE_BOARD,
+		});
+		const card = screen.getByRole("listitem").filter({ hasText: "Fix login" });
+		await userEvent.hover(card);
+		await card.getByRole("button", { name: "Thread actions" }).click();
+		await page.getByTestId("session-list-item-board-menu").click();
+		await page.getByTestId("session-list-item-board-review").click();
+
+		await expect.element(card.getByRole("img", { name: "On board: Review" })).toBeInTheDocument();
+		await vi.waitFor(() =>
+			expect(board().columns.find((column) => column.id === "review")?.sessionIds).toEqual([
+				"ses-1",
+			]),
+		);
+	});
+
+	it("takes a deleted chat off the board", async () => {
+		const { screen, board, adapter } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Fix login" }],
+			board: placeSession(DEFAULT_WORKSPACE_BOARD, "ses-1", "done", 0),
+		});
+		const card = screen.getByRole("listitem").filter({ hasText: "Fix login" });
+		await expect.element(card.getByRole("img", { name: "On board: Done" })).toBeInTheDocument();
+		await userEvent.hover(card);
+		await card.getByRole("button", { name: "Thread actions" }).click();
+		await page.getByRole("menuitem", { name: "Delete" }).click();
+
+		await vi.waitFor(() => expect(adapter.deleteCalls).toEqual(["ses-1"]));
+		await vi.waitFor(() => expect(board()).toEqual(DEFAULT_WORKSPACE_BOARD));
+	});
+
+	it("removes a chat from the board from its menu", async () => {
+		const { screen, board } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Fix login" }],
+			board: placeSession(DEFAULT_WORKSPACE_BOARD, "ses-1", "done", 0),
+		});
+		const card = screen.getByRole("listitem").filter({ hasText: "Fix login" });
+		await expect.element(card.getByRole("img", { name: "On board: Done" })).toBeInTheDocument();
+		await userEvent.hover(card);
+		await card.getByRole("button", { name: "Thread actions" }).click();
+		await page.getByTestId("session-list-item-board-remove").click();
+
+		await expect.element(card.getByRole("img", { name: "On board: Done" })).not.toBeInTheDocument();
+		await vi.waitFor(() => expect(board()).toEqual(DEFAULT_WORKSPACE_BOARD));
 	});
 });

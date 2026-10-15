@@ -31,6 +31,7 @@ interface CondaRuntimeCapability extends Record<string, unknown> {
 		ensureEnvironment(input: {
 			name: string;
 			packages: readonly string[];
+			channels?: readonly string[];
 		}): Promise<{ prefixPath: string }>;
 		executable(prefixPath: string, name: string): string;
 	};

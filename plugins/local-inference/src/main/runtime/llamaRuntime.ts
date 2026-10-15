@@ -3,12 +3,33 @@ import os from "node:os";
 
 import si from "systeminformation";
 
-// Anaconda's 0.3.x and 0.4.x builds ship without subprocess support, which
-// llama-server's router mode requires.
-const CPU_SPEC = "anaconda::llama.cpp==0.6.0=cpu_*";
-const CUDA_SPEC = "anaconda::llama.cpp==0.6.0=cuda*";
-const METAL_SPEC = "anaconda::llama.cpp==0.6.0=mps_*";
-const INTEL_MAC_SPEC = "conda-forge::llama.cpp>=9222";
+export interface LlamaFlavor {
+	readonly spec: string;
+	/** Channel names, resolved through the user's conda configuration. */
+	readonly channels: readonly string[];
+	/** The same channels as URLs, tried when the user's configuration lacks the build. */
+	readonly channelUrls: readonly string[];
+}
+
+const MAIN_URL = "https://repo.anaconda.com/pkgs/main";
+const FROM_DEFAULTS = { channels: ["defaults"], channelUrls: [MAIN_URL] };
+
+// `defaults` expands through `default_channels` (repo.anaconda.com/pkgs/main
+// by default), never through a user's `channel_alias`, which can point named
+// channels like `anaconda` at a host that lacks them. Specs carry no
+// `channel::` prefix so both attempts record the same pin and a successful
+// install is reused. Anaconda's 0.3.x and 0.4.x builds ship without
+// subprocess support, which llama-server's router mode requires. Check every
+// subdir in pkgs/main publishes the build before bumping the pin.
+const CPU: LlamaFlavor = { spec: "llama.cpp==0.6.0=cpu_*", ...FROM_DEFAULTS };
+const CUDA: LlamaFlavor = { spec: "llama.cpp==0.6.0=cuda*", ...FROM_DEFAULTS };
+const METAL: LlamaFlavor = { spec: "llama.cpp==0.6.0=mps_*", ...FROM_DEFAULTS };
+// pkgs/main has no osx-64 build.
+const INTEL_MAC: LlamaFlavor = {
+	spec: "llama.cpp>=9222",
+	channels: ["conda-forge", "defaults"],
+	channelUrls: ["https://conda.anaconda.org/conda-forge", MAIN_URL],
+};
 const ENV_NAME = "local-inference-llama";
 const SERVER_NAME = "llama-server";
 
@@ -28,6 +49,7 @@ export interface LlamaCondaRuntime {
 	ensureEnvironment(input: {
 		name: string;
 		packages: readonly string[];
+		channels?: readonly string[];
 	}): Promise<{ prefixPath: string }>;
 	executable(prefixPath: string, name: string): string;
 }
@@ -43,20 +65,21 @@ export interface ResolveLlamaExecutableOptions {
 /**
  * Picks llama.cpp conda builds using NVIDIA presence (vendor+model string)
  * plus OS/arch, then CUDA → Metal → CPU.
- * Install tries that ordered list and keeps going when a flavor fails so a
- * missing CUDA/Metal package still yields a working CPU server.
+ * Install tries each flavor from the user's configured channels, then from
+ * their canonical URLs, and keeps going when a flavor fails so a missing
+ * CUDA/Metal package still yields a working CPU server.
  */
-export function llamaPackageSpecs(host: LlamaHost): string[] {
+export function llamaFlavors(host: LlamaHost): LlamaFlavor[] {
 	if (host.platform === "darwin") {
-		if (host.arch === "x64") return [INTEL_MAC_SPEC, CPU_SPEC];
+		if (host.arch === "x64") return [INTEL_MAC, CPU];
 		const darwin = Number.parseInt(host.release.split(".")[0] ?? "", 10);
-		if (host.arch === "arm64" && darwin >= 16) return [METAL_SPEC, CPU_SPEC];
-		return [CPU_SPEC];
+		if (host.arch === "arm64" && darwin >= 16) return [METAL, CPU];
+		return [CPU];
 	}
 	if ((host.platform === "win32" || host.platform === "linux") && hasNvidia(host.gpus)) {
-		return [CUDA_SPEC, CPU_SPEC];
+		return [CUDA, CPU];
 	}
-	return [CPU_SPEC];
+	return [CPU];
 }
 
 export async function readLlamaHost(
@@ -83,22 +106,24 @@ export async function resolveLlamaExecutable(
 		throw new Error("The local inference runtime is unavailable.");
 	}
 	const conda = options.conda;
-	const specs = llamaPackageSpecs(options.host);
 	let lastError: unknown;
-	for (const spec of specs) {
-		try {
-			const runtime = await conda.ensureEnvironment({
-				name: ENV_NAME,
-				packages: [spec],
-			});
-			const executable = conda.executable(runtime.prefixPath, SERVER_NAME);
-			await accessFile(executable);
-			return executable;
-		} catch (error) {
-			lastError = error;
-			options.logger?.warn(
-				`Could not install llama.cpp build "${spec}": ${error instanceof Error ? error.message : String(error)}`,
-			);
+	for (const { spec, channels, channelUrls } of llamaFlavors(options.host)) {
+		for (const attemptChannels of [channels, channelUrls]) {
+			try {
+				const runtime = await conda.ensureEnvironment({
+					name: ENV_NAME,
+					packages: [spec],
+					channels: attemptChannels,
+				});
+				const executable = conda.executable(runtime.prefixPath, SERVER_NAME);
+				await accessFile(executable);
+				return executable;
+			} catch (error) {
+				lastError = error;
+				options.logger?.warn(
+					`Could not install llama.cpp build "${spec}" from ${attemptChannels.join(", ")}: ${error instanceof Error ? error.message : String(error)}`,
+				);
+			}
 		}
 	}
 	throw lastError instanceof Error

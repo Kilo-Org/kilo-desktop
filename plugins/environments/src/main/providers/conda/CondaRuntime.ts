@@ -8,14 +8,17 @@ import type {
 	EnsureEnvironmentInput,
 	EnsureEnvironmentResult,
 } from "../../../contracts/capabilities.js";
-import { environmentNameSchema, matchSpecSchema } from "../../../contracts/providers/conda.js";
+import {
+	channelSchema,
+	environmentNameSchema,
+	matchSpecSchema,
+} from "../../../contracts/providers/conda.js";
 
 import type { SharedCondaBridge } from "./SharedCondaBridge.js";
 
-// Anaconda publishes the supported llama.cpp builds on `anaconda`; `defaults`
-// supplies fallback dependencies without leaking the user's channel config.
-// Keep `anaconda` first because strict priority otherwise excludes its builds
-// when a package with the same name also exists in `defaults`.
+// Used when a caller passes no explicit channels. Keep `anaconda` first
+// because strict priority otherwise excludes its builds when a package with
+// the same name also exists in `defaults`.
 const FALLBACK_CHANNELS = ["anaconda", "defaults"] as const;
 const EXECUTABLE_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const STAMP_NAME = "anaconda-ensure.json";
@@ -48,7 +51,9 @@ export interface CondaRuntimeOptions {
  * package pin still matches the request, so startup does not re-run
  * `conda create`. A different pin recreates the prefix. An incomplete
  * prefix (present without `conda-meta`) is removed first so create is
- * not blocked. Identical concurrent requests share one operation, while
+ * not blocked. The pin records packages only, so retrying the same packages
+ * from other channels reuses whichever install succeeded. Identical
+ * concurrent requests share one operation, while
  * distinct writes serialize because conda's package cache does not
  * support concurrent transactions.
  */
@@ -70,11 +75,14 @@ export class CondaRuntime implements CondaEnvironmentRuntime {
 	async ensureEnvironment(input: EnsureEnvironmentInput): Promise<EnsureEnvironmentResult> {
 		const name = environmentNameSchema.parse(input.name);
 		const packages = [...new Set(input.packages.map((spec) => matchSpecSchema.parse(spec)))].sort();
-		const key = JSON.stringify([name, packages]);
+		const channels = input.channels
+			? [...new Set(input.channels.map((channel) => channelSchema.parse(channel)))]
+			: resolveChannels(packages);
+		const key = JSON.stringify([name, packages, channels]);
 		const active = this.#jobs.get(key);
 		if (active) return active;
 
-		const job = this.#tail.then(() => this.#ensure(name, packages));
+		const job = this.#tail.then(() => this.#ensure(name, packages, channels));
 		const tracked = job.finally(() => {
 			if (this.#jobs.get(key) === tracked) this.#jobs.delete(key);
 		});
@@ -97,7 +105,11 @@ export class CondaRuntime implements CondaEnvironmentRuntime {
 		return path.posix.join(prefixPath, "bin", name);
 	}
 
-	async #ensure(name: string, packages: readonly string[]): Promise<EnsureEnvironmentResult> {
+	async #ensure(
+		name: string,
+		packages: string[],
+		channels: string[],
+	): Promise<EnsureEnvironmentResult> {
 		const paths = this.#platform === "win32" ? path.win32 : path.posix;
 		const prefixPath = paths.join(this.#condaFilesRoot, "envs", name);
 		if (await ready(prefixPath, paths)) {
@@ -111,9 +123,10 @@ export class CondaRuntime implements CondaEnvironmentRuntime {
 		await rm(prefixPath, { recursive: true, force: true });
 
 		const backend = this.#bridge.acquire();
-		const channels = resolveChannels(packages);
-		this.#logger.info(`Creating conda environment "${name}" at ${prefixPath}.`);
-		await backend.create({ name, packages: packages as string[], channels }, undefined, {
+		this.#logger.info(
+			`Creating conda environment "${name}" at ${prefixPath} from ${channels.join(", ")}.`,
+		);
+		await backend.create({ name, packages, channels }, undefined, {
 			prefix: prefixPath,
 		});
 		if (await ready(prefixPath, paths)) await writeStamp(prefixPath, packages, paths);

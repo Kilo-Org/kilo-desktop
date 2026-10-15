@@ -190,6 +190,90 @@ describe("CondaRuntime", () => {
 		}
 	});
 
+	it("passes explicit channels to create verbatim", async () => {
+		const create = vi.spyOn(SidecarCondaBackend.prototype, "create").mockResolvedValue({
+			name: "local-inference",
+			prefix: "/tmp/conda/envs/local-inference",
+		});
+		const runtime = new CondaRuntime({
+			bridge: new SharedCondaBridge({ resolveBridge: () => fakeBridge(), logger }),
+			logger,
+			platform: "linux",
+			condaFilesRoot: "/tmp/conda",
+		});
+
+		try {
+			await runtime.ensureEnvironment({
+				name: "local-inference",
+				packages: ["llama.cpp==0.6.0=cpu_*"],
+				channels: ["https://repo.anaconda.com/pkgs/main", "https://repo.anaconda.com/pkgs/main"],
+			});
+			expect(create).toHaveBeenCalledWith(
+				{
+					name: "local-inference",
+					packages: ["llama.cpp==0.6.0=cpu_*"],
+					channels: ["https://repo.anaconda.com/pkgs/main"],
+				},
+				undefined,
+				{ prefix: path.posix.join("/tmp/conda", "envs", "local-inference") },
+			);
+		} finally {
+			create.mockRestore();
+		}
+	});
+
+	it("reuses a prefix installed from other channels when the packages match", async () => {
+		const condaFilesRoot = await mkdtemp(path.join(os.tmpdir(), "conda-runtime-"));
+		const prefixPath = path.join(condaFilesRoot, "envs", "local-inference");
+		const create = vi
+			.spyOn(SidecarCondaBackend.prototype, "create")
+			.mockImplementation(async () => {
+				await mkdir(path.join(prefixPath, "conda-meta"), { recursive: true });
+				return { name: "local-inference", prefix: prefixPath };
+			});
+		const runtime = new CondaRuntime({
+			bridge: new SharedCondaBridge({ resolveBridge: () => fakeBridge(), logger }),
+			logger,
+			platform: "linux",
+			condaFilesRoot,
+		});
+
+		try {
+			await runtime.ensureEnvironment({
+				name: "local-inference",
+				packages: ["llama.cpp==0.6.0=cpu_*"],
+				channels: ["https://repo.anaconda.com/pkgs/main"],
+			});
+			await runtime.ensureEnvironment({
+				name: "local-inference",
+				packages: ["llama.cpp==0.6.0=cpu_*"],
+				channels: ["defaults"],
+			});
+			expect(create).toHaveBeenCalledTimes(1);
+		} finally {
+			create.mockRestore();
+			await rm(condaFilesRoot, { recursive: true, force: true });
+		}
+	});
+
+	it("rejects a channel that would look like a conda CLI flag", async () => {
+		const resolveBridge = vi.fn().mockReturnValue(fakeBridge());
+		const runtime = new CondaRuntime({
+			bridge: new SharedCondaBridge({ resolveBridge, logger }),
+			logger,
+			platform: "linux",
+		});
+
+		await expect(
+			runtime.ensureEnvironment({
+				name: "local-inference",
+				packages: ["llama.cpp=1.2"],
+				channels: ["--override-channels"],
+			}),
+		).rejects.toThrow();
+		expect(resolveBridge).not.toHaveBeenCalled();
+	});
+
 	it("throws when bridge payload is not found", async () => {
 		const runtime = new CondaRuntime({
 			bridge: new SharedCondaBridge({ resolveBridge: () => null, logger }),

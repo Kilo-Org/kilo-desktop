@@ -493,7 +493,8 @@ Section membership is a **partition** — a session appears in exactly one of Ne
 - **Archive model**: manual archive parks a row in Archived (this is also how a user dismisses a Needs You row without resolving it); auto-archive after N days idle (default 7, configurable in Settings — Needs You rows are exempt: an unresolved need is never auto-archived); new activity or a new need on an archived session returns it to Active or Needs You; opening an archived session keeps it readable.
 - **Keyboard**: `Cmd/Ctrl+1..9` jump to the Nth visible row (hint badges while ⌘ held); up/down traversal; Enter opens; `Cmd/Ctrl+B` collapses the chat sidebar (offcanvas — slides fully away; a thin rail re-opens on click). Bindings must not conflict with the shell sidebar — the chat sidebar owns bindings only while a `/chat` route is focused.
 - **Resize**: drag the right edge; default 256px, min 208px, max viewport−640px; width persisted in localStorage (`kilo_chat_sidebar_width`).
-- **Context menu**: right-click row → Open, Rename, Mark unread, Copy session id, Archive, Delete (destructive, confirm dialog). `Cmd/Ctrl`-click multi-select and `Shift`-click range select → bulk bar (Mark unread (N), Archive (N), Delete (N)).
+- **Context menu**: right-click row → Open, Rename, Mark unread, Copy session id, Archive, Delete (destructive, confirm dialog). `Cmd/Ctrl`-click multi-select → bulk bar (Mark unread (N), Archive (N), Delete (N)).
+- **Pinning**: `Shift`-click on a non-archived row toggles its pin without opening it, as in Kilo VS Code. On an archived row, `Shift`-click opens it. The row details card and the row menu show the hint.
 - **Row tooltip**: title, workspace, agent, model, pending counts, last error.
 
 ### 7.4 Component inventory (new, `plugins/kilo-code/src/web/sidebar/`)

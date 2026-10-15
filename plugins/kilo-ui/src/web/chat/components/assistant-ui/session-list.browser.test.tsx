@@ -1695,6 +1695,71 @@ describe("SessionList", () => {
 		await expect.element(screen.getByText("Fix the bug")).toBeVisible();
 	});
 
+	it("toggles a session pin on Shift+click without opening it", async () => {
+		const { navigate, screen } = renderSessionList({
+			threads: [
+				{ remoteId: "ses-1", title: "Fix the bug" },
+				{ remoteId: "ses-2", title: "Add tests" },
+			],
+		});
+		const card = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
+		const trigger = card.getByRole("button", { name: /Fix the bug/ });
+		const row = () => card.element().querySelector('[data-slot="aui_session-list-item"]');
+
+		await trigger.click({ modifiers: ["Shift"] });
+		await expect.element(screen.getByTestId("session-list-pinned-toggle")).toBeVisible();
+
+		await trigger.click({ modifiers: ["Shift"] });
+		await expect.element(screen.getByTestId("session-list-pinned-toggle")).not.toBeInTheDocument();
+
+		expect(navigate).not.toHaveBeenCalled();
+		expect(row()?.classList.contains("bg-state-selected")).toBe(false);
+	});
+
+	it("hints Shift+click pinning for active sessions only", async () => {
+		const { screen } = renderSessionList({
+			threads: [
+				{ remoteId: "ses-1", title: "Fix the bug" },
+				{ remoteId: "ses-2", title: "Old work", status: "archived" },
+			],
+		});
+		const detailsText = () =>
+			document.querySelector('[data-slot="aui_session-list-item-details"]')?.textContent ?? "";
+
+		const card = screen.getByRole("listitem").filter({ hasText: "Fix the bug" });
+		await userEvent.hover(card.getByRole("button", { name: /Fix the bug/ }));
+		await expect.poll(detailsText, { timeout: 3000 }).toContain("Shift+click to pin or unpin");
+		await card.getByRole("button", { name: "Thread actions" }).click();
+		await expect
+			.element(page.getByRole("menuitem", { name: "Pin" }).getByText("Shift+Click"))
+			.toBeVisible();
+		await userEvent.keyboard("{Escape}");
+
+		await screen.getByTestId("session-list-archived-toggle").click();
+		const archivedRow = screen.getByRole("listitem").filter({ hasText: "Old work" });
+		await userEvent.hover(archivedRow.getByRole("button", { name: /Old work/ }));
+		await expect.poll(detailsText, { timeout: 3000 }).toContain("Old work");
+		expect(detailsText()).not.toContain("Shift+click to pin or unpin");
+	});
+
+	it("opens an archived session on Shift+click without pinning or unarchiving it", async () => {
+		const { adapter, navigate, screen } = renderSessionList({
+			threads: [
+				{ remoteId: "ses-1", title: "Active work" },
+				{ remoteId: "ses-2", title: "Old work", status: "archived" },
+			],
+		});
+
+		await screen.getByTestId("session-list-archived-toggle").click();
+		const archivedRow = screen.getByRole("listitem").filter({ hasText: "Old work" });
+		await archivedRow.getByRole("button", { name: /Old work/ }).click({ modifiers: ["Shift"] });
+
+		expect(navigate).toHaveBeenCalledWith("/plugins/chat", undefined);
+		expect(adapter.unarchiveCalls).toEqual([]);
+		await expect.element(screen.getByTestId("session-list-pinned-toggle")).not.toBeInTheDocument();
+		await expect.element(screen.getByTestId("session-list-archived-toggle")).toBeVisible();
+	});
+
 	it("filters the list to archived sessions", async () => {
 		const { screen } = renderSessionList({
 			threads: [

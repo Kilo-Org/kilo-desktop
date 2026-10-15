@@ -18,6 +18,7 @@ import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
+	DropdownMenuShortcut,
 	DropdownMenuTrigger,
 } from "@kilo-desktop/ui/components/dropdown-menu";
 import { Input } from "@kilo-desktop/ui/components/input";
@@ -1529,6 +1530,7 @@ const SessionRowContent = memo(function SessionRowContent({
 					locationLabel={locationLabel}
 					workspaceColor={workspaceColor}
 					statusId={statusId}
+					showPinHint={!isArchived}
 					trigger={
 						<ThreadListItemPrimitive.Trigger
 							ref={triggerRef}
@@ -1543,6 +1545,10 @@ const SessionRowContent = memo(function SessionRowContent({
 							onClick={(event) => {
 								// Skips the primitive's default switch, which would unarchive.
 								event.preventDefault();
+								if (event.shiftKey && !isArchived) {
+									togglePin(pinId);
+									return;
+								}
 								navigate();
 								switchTo();
 							}}
@@ -1620,11 +1626,12 @@ const SessionRowMenu: FC<{
 				</TooltipTrigger>
 				<TooltipContent side="bottom">More</TooltipContent>
 			</Tooltip>
-			<DropdownMenuContent align="end" side="right" sideOffset={6}>
+			<DropdownMenuContent align="end" side="right" sideOffset={6} className="w-auto">
 				{canPin ? (
 					<DropdownMenuItem onClick={onPin}>
 						{pinned ? <PinOffIcon /> : <PinIcon />}
 						{pinned ? "Unpin" : "Pin"}
+						<DropdownMenuShortcut aria-hidden>Shift+Click</DropdownMenuShortcut>
 					</DropdownMenuItem>
 				) : null}
 				{canArchive && (

@@ -7,7 +7,7 @@ import {
 } from "@kilo-desktop/ui/components/preview-card";
 import { useSdkContributions } from "@kilo-desktop/sdk-react";
 import { ThreadListItemPrimitive } from "@assistant-ui/react";
-import { FolderIcon, GitBranchIcon, GitForkIcon, MonitorIcon } from "lucide-react";
+import { FolderIcon, GitBranchIcon, GitForkIcon, MonitorIcon, PinIcon } from "lucide-react";
 import type { FC, ReactElement, ReactNode } from "react";
 
 import {
@@ -33,6 +33,7 @@ type SessionRowHoverCardProps = {
 	locationLabel: string | null;
 	workspaceColor: string | undefined;
 	statusId: string | null;
+	showPinHint: boolean;
 };
 
 export const SessionRowHoverCard: FC<SessionRowHoverCardProps> = ({ trigger, ...details }) => {
@@ -57,6 +58,7 @@ const SessionRowDetails: FC<Omit<SessionRowHoverCardProps, "trigger">> = ({
 	locationLabel,
 	workspaceColor,
 	statusId,
+	showPinHint,
 }) => {
 	const branchContributions = useSdkContributions(SESSION_DETAILS_BRANCH_ZONE);
 	const pullRequestContributions = useSdkContributions(SESSION_DETAILS_PULL_REQUEST_ZONE);
@@ -116,6 +118,13 @@ const SessionRowDetails: FC<Omit<SessionRowHoverCardProps, "trigger">> = ({
 				) : null}
 				{renderZone(pullRequestContributions)}
 			</div>
+			{showPinHint ? (
+				<div className="text-muted-foreground border-t pt-2 text-xs">
+					<SessionDetailItem icon={<PinIcon aria-hidden />}>
+						Shift+click to pin or unpin
+					</SessionDetailItem>
+				</div>
+			) : null}
 		</>
 	);
 };

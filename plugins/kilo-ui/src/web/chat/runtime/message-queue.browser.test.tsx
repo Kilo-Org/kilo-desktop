@@ -240,6 +240,50 @@ describe("OpenCode message queue", () => {
 		await vi.waitFor(() => expect(queue.adapter.items).toHaveLength(0));
 	});
 
+	it("drops a send returned to the composer and dispatches the next message immediately", async () => {
+		const queue = createOpenCodeMessageQueue({ cancelBehavior: "pause" });
+		const driver = {
+			send: vi
+				.fn<(message: AppendMessage) => Promise<void | "returned-to-composer">>()
+				.mockResolvedValueOnce("returned-to-composer")
+				.mockResolvedValue(undefined),
+			cancel: vi.fn(async () => undefined),
+		};
+		queue.setDriver(driver);
+
+		queue.adapter.enqueue(message("bounced"), { steer: false });
+		await vi.waitFor(() => expect(driver.send).toHaveBeenCalledOnce());
+		await Promise.resolve();
+		expect(queue.adapter.items).toHaveLength(0);
+
+		queue.adapter.enqueue(message("retry"), { steer: false });
+
+		expect(driver.send).toHaveBeenCalledTimes(2);
+		expect(driver.send.mock.calls[1]?.[0]).toMatchObject({ content: message("retry").content });
+		expect(queue.adapter.items).toHaveLength(0);
+	});
+
+	it("resumes dispatching once the last entry of a paused queue is removed", async () => {
+		const queue = createOpenCodeMessageQueue({ cancelBehavior: "pause" });
+		const driver = {
+			send: vi
+				.fn<(message: AppendMessage) => Promise<void>>()
+				.mockRejectedValueOnce(new Error("send failed"))
+				.mockResolvedValue(undefined),
+			cancel: vi.fn(async () => undefined),
+		};
+		queue.setDriver(driver);
+		queue.adapter.enqueue(message("failed"), { steer: false });
+		await vi.waitFor(() => expect(queue.adapter.items).toHaveLength(1));
+
+		queue.adapter.remove(queue.adapter.items[0]!.id);
+		queue.adapter.enqueue(message("fresh"), { steer: false });
+
+		expect(driver.send).toHaveBeenCalledTimes(2);
+		expect(driver.send.mock.calls[1]?.[0]).toMatchObject({ content: message("fresh").content });
+		expect(queue.adapter.items).toHaveLength(0);
+	});
+
 	it("keeps a selected item queued when cancellation fails", async () => {
 		const queue = createOpenCodeMessageQueue({ cancelBehavior: "pause" });
 		const driver = {

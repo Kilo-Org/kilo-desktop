@@ -77,6 +77,7 @@ function RuntimeState() {
 	const aui = useAui();
 	const remoteId = useAuiState((state) => state.threadListItem.remoteId);
 	const attachmentCount = useAuiState((state) => state.composer.attachments.length);
+	const queuedCount = useAuiState((state) => state.composer.queue.length);
 	const messageCount = useAuiState((state) => state.thread.messages.length);
 	const userMessageCount = useAuiState(
 		(state) => state.thread.messages.filter((message) => message.role === "user").length,
@@ -108,6 +109,7 @@ function RuntimeState() {
 			</button>
 			<output data-qa-id="remote-session-id">{remoteId ?? "none"}</output>
 			<output data-qa-id="attachment-count">{attachmentCount}</output>
+			<output data-qa-id="queued-count">{queuedCount}</output>
 			<output data-qa-id="message-count">{messageCount}</output>
 			<output data-qa-id="user-message-count">{userMessageCount}</output>
 			<output data-qa-id="last-user-text">{lastUserText}</output>
@@ -121,17 +123,21 @@ function RuntimeHarness({
 	initialSessionId,
 	onError,
 	onRuntime,
+	withMessageQueue = false,
 }: {
 	client: KiloClient;
 	initialSessionId?: string;
 	onError?: (error: unknown) => void;
 	onRuntime?: (runtime: ReturnType<typeof useOpenCodeRuntime>) => void;
+	/** Mirrors the production option in use-kilo-runtime.ts. */
+	withMessageQueue?: boolean;
 }) {
 	const runtime = useOpenCodeRuntime({
 		client,
 		adapters: { attachments: new OpenCodeAttachmentAdapter() },
 		...(initialSessionId === undefined ? {} : { initialSessionId }),
 		...(onError === undefined ? {} : { onError }),
+		...(withMessageQueue ? { messageQueue: { cancelBehavior: "pause" as const } } : {}),
 	});
 
 	useEffect(() => onRuntime?.(runtime), [onRuntime, runtime]);
@@ -381,6 +387,42 @@ describe("patched OpenCode lazy session initialization", () => {
 
 		await waitFor(() => expect(fake.create).toHaveBeenCalledTimes(2));
 		await waitFor(() => expect(fake.promptAsync).toHaveBeenCalledOnce());
+	});
+
+	it("sends a retry after a failed first send when the message queue is enabled", async () => {
+		const creationError = new Error("Session creation failed");
+		const fake = createFakeClient(
+			vi
+				.fn<() => Promise<SessionCreateResult>>()
+				.mockRejectedValueOnce(creationError)
+				.mockResolvedValueOnce({ data: { id: "session-1" } }),
+		);
+		const onError = vi.fn();
+		const { baseElement } = renderRuntime({ client: fake.client, onError, withMessageQueue: true });
+		const screen = page.elementLocator(baseElement);
+		const input = screen.getByRole("textbox", { name: "Message" });
+
+		await input.fill("Keep this draft");
+
+		const suppressCreationFailure = (event: PromiseRejectionEvent) => {
+			if (event.reason === creationError) {
+				event.preventDefault();
+			}
+		};
+		window.addEventListener("unhandledrejection", suppressCreationFailure);
+		try {
+			await screen.getByRole("button", { name: "Send" }).click();
+			await waitFor(() => expect(onError).toHaveBeenCalledWith(creationError));
+		} finally {
+			window.removeEventListener("unhandledrejection", suppressCreationFailure);
+		}
+
+		await expect.element(input).toHaveValue("Keep this draft");
+		await screen.getByRole("button", { name: "Send" }).click();
+
+		await waitFor(() => expect(fake.create).toHaveBeenCalledTimes(2));
+		await waitFor(() => expect(fake.promptAsync).toHaveBeenCalledOnce());
+		await expect.element(screen.getByTestId("queued-count")).toHaveTextContent("0");
 	});
 
 	it("restores the draft when the first prompt fails after session creation", async () => {

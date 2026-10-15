@@ -478,17 +478,23 @@ index 1ccd945..de628fb 100644
 \ No newline at end of file
 diff --git a/dist/openCodeMessageQueue.d.ts b/dist/openCodeMessageQueue.d.ts
 new file mode 100644
-index 0000000..bda96db
+index 0000000..a05bee3
 --- /dev/null
 +++ b/dist/openCodeMessageQueue.d.ts
-@@ -0,0 +1,29 @@
+@@ -0,0 +1,35 @@
 +import { AppendMessage, ExternalThreadQueueAdapter } from "@assistant-ui/react";
 +//#region src/openCodeMessageQueue.d.ts
 +type OpenCodeMessageQueueOptions = {
 +  cancelBehavior: "clear" | "pause";
 +};
++/**
++ * Resolving with "returned-to-composer" means the send failed but the driver
++ * already handed the message back to the user, so the queue drops it instead
++ * of pausing on it. Resolving with nothing means the message was accepted.
++ */
++type OpenCodeMessageQueueSendOutcome = void | "returned-to-composer";
 +type OpenCodeMessageQueueDriver = {
-+  send(message: AppendMessage): Promise<void>;
++  send(message: AppendMessage): Promise<OpenCodeMessageQueueSendOutcome>;
 +  cancel(): Promise<void>;
 +};
 +type OpenCodeMessageQueueController = {
@@ -509,7 +515,7 @@ index 0000000..bda96db
 + */
 +declare const createOpenCodeMessageQueue: (options: OpenCodeMessageQueueOptions) => OpenCodeMessageQueueController;
 +//#endregion
-+export { OpenCodeMessageQueueController, OpenCodeMessageQueueDriver, OpenCodeMessageQueueOptions, createOpenCodeMessageQueue };
++export { OpenCodeMessageQueueController, OpenCodeMessageQueueDriver, OpenCodeMessageQueueOptions, OpenCodeMessageQueueSendOutcome, createOpenCodeMessageQueue };
 +//# sourceMappingURL=openCodeMessageQueue.d.ts.map
 \ No newline at end of file
 diff --git a/dist/openCodeMessageQueue.d.ts.map b/dist/openCodeMessageQueue.d.ts.map
@@ -522,10 +528,10 @@ index 0000000..fb956a1
 \ No newline at end of file
 diff --git a/dist/openCodeMessageQueue.js b/dist/openCodeMessageQueue.js
 new file mode 100644
-index 0000000..3f8d3a3
+index 0000000..9506f09
 --- /dev/null
 +++ b/dist/openCodeMessageQueue.js
-@@ -0,0 +1,222 @@
+@@ -0,0 +1,231 @@
 +//#region src/openCodeMessageQueue.ts
 +const queuePreview = (message) => {
 +	const text = message.content.flatMap((part) => part.type === "text" ? [part.text] : []).join("").trim();
@@ -557,6 +563,9 @@ index 0000000..3f8d3a3
 +* Stop (cancel-run with cancelBehavior "pause") parks every waiting entry:
 +* parked entries never drain on their own and only send when explicitly
 +* steered, while messages queued after Stop keep draining normally.
++* A rejected send pauses the queue and keeps the entry for an explicit retry,
++* unless the driver reports it "returned-to-composer": then the user already
++* holds the message, so the entry is dropped and the queue stays live.
 +*/
 +const createOpenCodeMessageQueue = (options) => {
 +	let entries = [];
@@ -602,19 +611,23 @@ index 0000000..3f8d3a3
 +			notify();
 +		}
 +		const message = entry.immediateFollowup ? messageForImmediateFollowup(entry.message) : entry.message;
-+		driver.send(message).then(() => {
-+			removeEntry(id);
-+			operation = "idle";
-+			activeId = void 0;
-+			advance();
-+		}, () => {
-+			operation = "idle";
-+			activeId = void 0;
++		const releaseUnstartedRun = () => {
 +			if (startsNewRun && awaitingRunStart) {
 +				awaitingRunStart = false;
 +				running = false;
 +				ignoredIdleSnapshots.clear();
 +			}
++		};
++		driver.send(message).then((outcome) => {
++			removeEntry(id);
++			operation = "idle";
++			activeId = void 0;
++			if (outcome === "returned-to-composer") releaseUnstartedRun();
++			advance();
++		}, () => {
++			operation = "idle";
++			activeId = void 0;
++			releaseUnstartedRun();
 +			paused = true;
 +			entries = entries.map((entry) => entry.state.id === id ? {
 +				...entry,
@@ -691,7 +704,9 @@ index 0000000..3f8d3a3
 +		steer,
 +		remove: (id) => {
 +			if (id === activeId || id === pendingSteerId) return;
-+			removeEntry(id);
++			entries = entries.filter((entry) => entry.state.id !== id);
++			if (entries.length === 0) paused = false;
++			notify();
 +		},
 +		clear: (reason) => {
 +			if (reason === "cancel-run" && options.cancelBehavior === "pause") {
@@ -1054,7 +1069,7 @@ index 48cc456..651f9e8 100644
 +{"version":3,"file":"useOpenCodeRuntime.d.ts","names":[],"sources":["../src/useOpenCodeRuntime.ts"],"mappings":";;;cAsea,qBACX,UAAS,2BACR"}
 \ No newline at end of file
 diff --git a/dist/useOpenCodeRuntime.js b/dist/useOpenCodeRuntime.js
-index d795d57..382e695 100644
+index d795d57..b2d2211 100644
 --- a/dist/useOpenCodeRuntime.js
 +++ b/dist/useOpenCodeRuntime.js
 @@ -1,27 +1,31 @@
@@ -1214,7 +1229,7 @@ index d795d57..382e695 100644
  			} catch (error) {
  				options.onError?.(error);
  				throw error;
-@@ -131,36 +185,150 @@ const useOpenCodeThreadRuntime = (controller, options) => {
+@@ -131,36 +185,158 @@ const useOpenCodeThreadRuntime = (controller, options) => {
  				throw error;
  			}
  		}
@@ -1316,7 +1331,15 @@ index d795d57..382e695 100644
 +	const queue = options.messageQueue ? getQueue(registry, localThreadId, options.messageQueue) : void 0;
 +	const queueVersion = useSyncExternalStore(queue?.subscribe ?? subscribeToNothing, queue?.getSnapshot ?? getZeroSnapshot, queue?.getSnapshot ?? getZeroSnapshot);
 +	queue?.setDriver({
-+		send: selectedStore.onNew,
++		send: async (message) => {
++			try {
++				await selectedStore.onNew(message);
++				return;
++			} catch (error) {
++				if (scheduledRestorationsRef.current.has(message)) return "returned-to-composer";
++				throw error;
++			}
++		},
 +		cancel: async () => {
 +			await selectedStore.onCancel?.();
 +		}
@@ -1914,10 +1937,10 @@ index 2c792f2..c660a69 100644
        projectServerMessage(state, message, messageTiming[message.id]),
 diff --git a/src/openCodeMessageQueue.ts b/src/openCodeMessageQueue.ts
 new file mode 100644
-index 0000000..baa7356
+index 0000000..2015982
 --- /dev/null
 +++ b/src/openCodeMessageQueue.ts
-@@ -0,0 +1,304 @@
+@@ -0,0 +1,323 @@
 +import type {
 +  AppendMessage,
 +  ExternalThreadQueueAdapter,
@@ -1928,8 +1951,15 @@ index 0000000..baa7356
 +  cancelBehavior: "clear" | "pause";
 +};
 +
++/**
++ * Resolving with "returned-to-composer" means the send failed but the driver
++ * already handed the message back to the user, so the queue drops it instead
++ * of pausing on it. Resolving with nothing means the message was accepted.
++ */
++export type OpenCodeMessageQueueSendOutcome = void | "returned-to-composer";
++
 +export type OpenCodeMessageQueueDriver = {
-+  send(message: AppendMessage): Promise<void>;
++  send(message: AppendMessage): Promise<OpenCodeMessageQueueSendOutcome>;
 +  cancel(): Promise<void>;
 +};
 +
@@ -1996,6 +2026,9 @@ index 0000000..baa7356
 + * Stop (cancel-run with cancelBehavior "pause") parks every waiting entry:
 + * parked entries never drain on their own and only send when explicitly
 + * steered, while messages queued after Stop keep draining normally.
++ * A rejected send pauses the queue and keeps the entry for an explicit retry,
++ * unless the driver reports it "returned-to-composer": then the user already
++ * holds the message, so the entry is dropped and the queue stays live.
 + */
 +export const createOpenCodeMessageQueue = (
 +  options: OpenCodeMessageQueueOptions,
@@ -2053,21 +2086,26 @@ index 0000000..baa7356
 +      ? messageForImmediateFollowup(entry.message)
 +      : entry.message;
 +
++    const releaseUnstartedRun = () => {
++      if (startsNewRun && awaitingRunStart) {
++        awaitingRunStart = false;
++        running = false;
++        ignoredIdleSnapshots.clear();
++      }
++    };
++
 +    void driver.send(message).then(
-+      () => {
++      (outcome) => {
 +        removeEntry(id);
 +        operation = "idle";
 +        activeId = undefined;
++        if (outcome === "returned-to-composer") releaseUnstartedRun();
 +        advance();
 +      },
 +      () => {
 +        operation = "idle";
 +        activeId = undefined;
-+        if (startsNewRun && awaitingRunStart) {
-+          awaitingRunStart = false;
-+          running = false;
-+          ignoredIdleSnapshots.clear();
-+        }
++        releaseUnstartedRun();
 +        paused = true;
 +        entries = entries.map((entry) =>
 +          entry.state.id === id ? { ...entry, visible: true } : entry,
@@ -2167,7 +2205,11 @@ index 0000000..baa7356
 +    steer,
 +    remove: (id) => {
 +      if (id === activeId || id === pendingSteerId) return;
-+      removeEntry(id);
++      entries = entries.filter((entry) => entry.state.id !== id);
++      // A pause only holds entries for an explicit retry; with none left
++      // it would silently swallow the next send.
++      if (entries.length === 0) paused = false;
++      notify();
 +    },
 +    clear: (reason) => {
 +      if (reason === "cancel-run" && options.cancelBehavior === "pause") {
@@ -2502,7 +2544,7 @@ index a87d890..45923eb 100644
    properties: Record<string, unknown>;
  };
 diff --git a/src/useOpenCodeRuntime.ts b/src/useOpenCodeRuntime.ts
-index 66a324b..69960b3 100644
+index 66a324b..b2ba37d 100644
 --- a/src/useOpenCodeRuntime.ts
 +++ b/src/useOpenCodeRuntime.ts
 @@ -3,6 +3,7 @@
@@ -2716,7 +2758,7 @@ index 66a324b..69960b3 100644
    const isRunning = isOpenCodeStateRunning(state);
  
    const messageTiming = useOpenCodeStreamingTiming(state, isRunning);
-@@ -154,90 +258,230 @@ const useOpenCodeThreadRuntime = (
+@@ -154,90 +258,242 @@ const useOpenCodeThreadRuntime = (
      [controller, state],
    );
  
@@ -2784,14 +2826,6 @@ index 66a324b..69960b3 100644
 -          agent: options.defaultAgent,
 -        });
 -        if (sentStagedMessage) return;
--
--        await controller.revert(parentId);
--      } catch (error) {
--        options.onError?.(error);
--        throw error;
--      }
--    },
--  });
 +      },
 +      onCancel: async () => {
 +        try {
@@ -2823,7 +2857,14 @@ index 66a324b..69960b3 100644
 +            },
 +          );
 +          if (sentStagedMessage) return;
-+
+ 
+-        await controller.revert(parentId);
+-      } catch (error) {
+-        options.onError?.(error);
+-        throw error;
+-      }
+-    },
+-  });
 +          await controller.revert(parentId);
 +        } catch (error) {
 +          options.onError?.(error);
@@ -2920,12 +2961,7 @@ index 66a324b..69960b3 100644
 +  const liveState = useOpenCodeControllerState(controller);
 +  const liveHasUserMessage = liveThreadHasUserMessage(liveState);
 +  const threadStore = useOpenCodeThreadStore(controller, options);
- 
--  const fallbackRuntime = useExternalStoreRuntime<ThreadMessage>({
--    isDisabled: true,
--    isLoading: true,
--    messageRepository: ExportedMessageRepository.fromArray([]),
--    onNew: NOOP_ON_NEW,
++
 +  const optimisticRepository = useMemo(
 +    () => ExportedMessageRepository.fromArray(optimisticMessages),
 +    [optimisticMessages],
@@ -2977,7 +3013,12 @@ index 66a324b..69960b3 100644
 +    }),
 +    [optimisticRepository, options, threadStatus],
 +  );
-+
+ 
+-  const fallbackRuntime = useExternalStoreRuntime<ThreadMessage>({
+-    isDisabled: true,
+-    isLoading: true,
+-    messageRepository: ExportedMessageRepository.fromArray([]),
+-    onNew: NOOP_ON_NEW,
 +  const selectedStore =
 +    !sessionId || optimisticMessages.length > 0 ? newThreadStore : threadStore;
 +  const queue = options.messageQueue
@@ -2990,7 +3031,19 @@ index 66a324b..69960b3 100644
 +  );
 +
 +  queue?.setDriver({
-+    send: selectedStore.onNew,
++    send: async (message) => {
++      try {
++        await selectedStore.onNew(message);
++        return undefined;
++      } catch (error) {
++        // A draft send that failed before the session existed is restored to
++        // the composer; the composer then owns the retry, not the queue.
++        if (scheduledRestorationsRef.current.has(message)) {
++          return "returned-to-composer" as const;
++        }
++        throw error;
++      }
++    },
 +    cancel: async () => {
 +      await selectedStore.onCancel?.();
 +    },
@@ -3014,7 +3067,7 @@ index 66a324b..69960b3 100644
  };
  
  export const useOpenCodeRuntime = (
-@@ -245,10 +489,35 @@ export const useOpenCodeRuntime = (
+@@ -245,10 +501,35 @@ export const useOpenCodeRuntime = (
  ): AssistantRuntime => {
    const baseUrl = options.baseUrl ?? "http://localhost:4096";
    const client = useMemo(
@@ -3053,7 +3106,7 @@ index 66a324b..69960b3 100644
  
    useEffect(() => {
      return () => {
-@@ -257,8 +526,8 @@ export const useOpenCodeRuntime = (
+@@ -257,8 +538,8 @@ export const useOpenCodeRuntime = (
    }, [registry]);
  
    const adapter = useMemo(
@@ -3064,7 +3117,7 @@ index 66a324b..69960b3 100644
    );
  
    return useRemoteThreadListRuntime({
-@@ -267,6 +536,6 @@ export const useOpenCodeRuntime = (
+@@ -267,6 +548,6 @@ export const useOpenCodeRuntime = (
      initialThreadId: options.initialSessionId,
      onThreadIdChange: options.onThreadIdChange,
      // oxlint-disable-next-line react-hooks/rules-of-hooks -- runtimeHook callback is invoked by useRemoteThreadListRuntime at the appropriate hook position

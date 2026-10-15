@@ -18,7 +18,7 @@ vi.mock("./create-kilo-runtime-client.js", () => ({
 }));
 
 vi.mock("@kilo-desktop/ui/components/sonner", () => ({
-	toast: { warning: vi.fn() },
+	toast: { warning: vi.fn(), error: vi.fn() },
 }));
 
 const connection: KiloGlobalConnection = {
@@ -542,6 +542,45 @@ describe("createKiloRuntimeBackend", () => {
 		});
 
 		await expect(backend.initializeSession()).rejects.toThrow(/Failed to create Kilo session/);
+	});
+
+	it("reports why the session could not start when preparation fails", async () => {
+		vi.spyOn(console, "error").mockImplementation(() => undefined);
+		const create = vi.fn();
+		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
+		vi.mocked(createKiloDirectoryClient).mockReturnValue({ session: { create } } as never);
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession: vi.fn(async () => {
+				throw new Error("Unable to create '.git/index.lock': File exists.");
+			}),
+		});
+
+		await expect(backend.initializeSession()).rejects.toThrow(/index\.lock/);
+
+		expect(create).not.toHaveBeenCalled();
+		expect(toast.error).toHaveBeenCalledWith("Could not start the chat", {
+			description: "Unable to create '.git/index.lock': File exists.",
+		});
+	});
+
+	it("reports why the session could not start when session creation fails", async () => {
+		vi.spyOn(console, "error").mockImplementation(() => undefined);
+		const create = vi.fn(async () => {
+			throw new Error("server unreachable");
+		});
+		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
+		vi.mocked(createKiloDirectoryClient).mockReturnValue({ session: { create } } as never);
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession: vi.fn(async () => ({ directory: "/workspace/x", workspaceFolders: [] })),
+		});
+
+		await expect(backend.initializeSession()).rejects.toThrow(/server unreachable/);
+
+		expect(toast.error).toHaveBeenCalledWith("Could not start the chat", {
+			description: "server unreachable",
+		});
 	});
 
 	it("removes the prepared worktree when session creation rejects", async () => {

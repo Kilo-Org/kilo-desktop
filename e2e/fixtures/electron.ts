@@ -27,6 +27,7 @@ const PLAYWRIGHT_DEFAULT_TIMEOUT_MS = 30_000;
 const deferredRemovalPaths = new Set<string>();
 const CHAT_ISOLATION_KEYS = new Set([
 	"browser",
+	"chat",
 	"files",
 	"git",
 	"git-branch-selector",

@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+
 import { defineConfig } from "vitest/config";
 
 import { createCoverageConfig } from "../../vitest.coverage.shared.mjs";
@@ -6,6 +8,14 @@ export default defineConfig({
 	test: {
 		include: ["src/**/*.test.ts"],
 		environment: "node",
+		// Spawned git reads this empty global config and no system config, so a
+		// developer's ~/.gitconfig (diff.ignoreSubmodules, core.excludesFile,
+		// init.defaultBranch, ...) cannot change what the suite observes. CI
+		// runners have no ambient git config; this keeps local runs equivalent.
+		env: {
+			GIT_CONFIG_GLOBAL: fileURLToPath(new URL("./src/test/isolated.gitconfig", import.meta.url)),
+			GIT_CONFIG_NOSYSTEM: "1",
+		},
 		// Serial on Windows: every test shells out to real git processes and
 		// each spawn costs hundreds of ms there. Everywhere else the tests are
 		// parallel-safe — every helper builds its own mkdtemp repository and

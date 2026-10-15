@@ -80,6 +80,99 @@ it("tracks a generated commit message without its content", async () => {
 	}
 });
 
+it("opens the pull request from the branch checked out after a mid-flow rename", async () => {
+	let checkedOutBranch = "kilo/old-name";
+	const push = vi.fn(() => undefined);
+	const createPullRequest = vi.fn(() => ({
+		number: 7,
+		title: "Title",
+		url: "https://github.com/acme/repo/pull/7",
+		state: "open" as const,
+		isDraft: true,
+		headBranch: checkedOutBranch,
+		baseBranch: "main",
+	}));
+	const generatePullRequest = vi.fn(async () => ({ title: "Title", body: "Body" }));
+	const sdk = createFakeSdk({
+		featureId: "git",
+		channels: { ...gitContract, ...gitActionsContract },
+		handlers: {
+			repositoryType: () => regularRepositoryType,
+			status: () => ({
+				exists: true,
+				doConflictedFilesExist: false,
+				currentBranch: checkedOutBranch,
+				workingDirectory: { files: [{ path: "a.txt", status: { kind: "Modified" as const } }] },
+			}),
+			branches: () => ({
+				currentBranch: checkedOutBranch,
+				defaultBranch: "main",
+				recentBranches: [],
+				branches: [],
+			}),
+			originUrl: () => "git@github.com:acme/repo.git",
+			workingTreeStats: () => ({ additions: 1, deletions: 0 }),
+			fetch: () => undefined,
+			stageChanges: () => ({ statusSummary: "M a.txt", diffPatch: "", recentCommitSubjects: [] }),
+			commit: () => {
+				// The session's worktree auto-rename lands while the flow is running.
+				checkedOutBranch = "kilo/new-name";
+				return undefined;
+			},
+			push,
+			githubCliStatus: () => ({ status: "ready" as const }),
+			pullRequestContext: () => ({
+				commitSummary: "",
+				diffSummary: "",
+				diffPatch: "",
+				recentCommitSubjects: [],
+				pullRequestTemplate: null,
+			}),
+			createPullRequest,
+			pullRequestSnapshot: () => ({
+				identity: null,
+				branch: checkedOutBranch,
+				repository: "acme/repo",
+				parentRepository: null,
+				pullRequest: null,
+				githubStatus: "ready" as const,
+			}),
+		},
+	});
+	const system = createFakeFeatureSystem({ sdks: { git: sdk } });
+	system.getSdk("kilo-ui").plugins.expose("sourceControlWriter", {
+		generateCommitMessage: async () => "Subject",
+		generatePullRequest,
+	});
+	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	try {
+		render(
+			<SdkProvider system={system}>
+				<QueryClientProvider client={queryClient}>
+					<GitActionsControl workspaceDirectory="/repo/project" />
+				</QueryClientProvider>
+			</SdkProvider>,
+		);
+		await expect
+			.element(page.getByTestId("git-action-primary"))
+			.toHaveTextContent("Commit, push & PR");
+		await page.getByTestId("git-action-primary").click();
+		await vi.waitFor(() => expect(createPullRequest).toHaveBeenCalledOnce());
+
+		expect(push).toHaveBeenCalledExactlyOnceWith({ workingDirectory: "/repo/project" });
+		expect(generatePullRequest).toHaveBeenCalledWith(
+			expect.objectContaining({ headBranch: "kilo/new-name" }),
+		);
+		expect(createPullRequest).toHaveBeenCalledWith(
+			expect.objectContaining({ headBranch: "kilo/new-name" }),
+		);
+	} finally {
+		cleanup();
+		queryClient.clear();
+		sdk.destroy();
+	}
+});
+
 it.each(["primary", "menu", "default branch"])(
 	"keeps long %s push errors readable within the window and allows dismissal",
 	async (entry) => {

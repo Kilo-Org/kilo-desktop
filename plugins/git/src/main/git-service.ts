@@ -644,13 +644,24 @@ export class GitService {
 		return promise;
 	}
 
-	async push(workingDirectory: string, branch: string, hasUpstream: boolean): Promise<void> {
+	/**
+	 * Pushes whatever branch is checked out right now. The branch and its
+	 * upstream are read from git at push time, never taken from the caller:
+	 * a chat worktree's branch can be auto-renamed between the renderer's
+	 * last status read and the push.
+	 */
+	async push(workingDirectory: string): Promise<void> {
 		await this.#assertWithinWorkspaceFolders(workingDirectory);
-		if (branch.startsWith("-")) {
-			throw new FeatureError(`"${branch}" is not a valid branch name.`, "VALIDATION");
-		}
 		try {
-			const args = hasUpstream ? ["push"] : ["push", "--set-upstream", DEFAULT_REMOTE_NAME, branch];
+			const status = await this.#client.status({ cwd: workingDirectory });
+			const branch = status?.currentBranch;
+			if (!branch) throw new FeatureError("Checkout a branch before pushing.", "BUSINESS");
+			if (branch.startsWith("-")) {
+				throw new FeatureError(`"${branch}" is not a valid branch name.`, "VALIDATION");
+			}
+			const args = status.currentUpstreamBranch
+				? ["push"]
+				: ["push", "--set-upstream", DEFAULT_REMOTE_NAME, branch];
 			await this.#client.exec(args, "push", { cwd: workingDirectory });
 		} catch (error) {
 			throw gitActionErrorToFeatureError(error);

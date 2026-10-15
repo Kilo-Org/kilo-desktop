@@ -49,4 +49,37 @@ describe("GitEventsProvider", () => {
 
 		mainSdk.dispose();
 	});
+
+	it("invalidates status queries when worktree-branch-renamed fires", async () => {
+		const sdk = createFakeSdk({ featureId: "git" });
+		const mainSdk = createFakeMainSdk({ featureId: "git", services: sdk.services });
+		const system = createFakeFeatureSystem({ sdks: { git: sdk } });
+		const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+		const statusKey = ["git", "status", { workingDirectory: "/repo" }];
+		queryClient.setQueryData(statusKey, {
+			exists: true,
+			currentBranch: "kilo/old-name",
+			workingDirectory: { files: [] },
+			doConflictedFilesExist: false,
+		});
+
+		render(
+			<SdkProvider system={system}>
+				<QueryClientProvider client={queryClient}>
+					<GitEventsProvider />
+				</QueryClientProvider>
+			</SdkProvider>,
+		);
+
+		mainSdk.events.emit("worktree-branch-renamed", {
+			path: "/repo/.kilo/worktrees/kilo-old-name",
+			branch: "kilo/new-name",
+		});
+
+		await vi.waitFor(() => {
+			expect(queryClient.getQueryState(statusKey)?.isInvalidated).toBe(true);
+		});
+
+		mainSdk.dispose();
+	});
 });

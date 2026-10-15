@@ -133,12 +133,81 @@ describe("GitService", () => {
 		const service = new GitService({
 			logger,
 			getWorkspaceFolderPaths: folders("/some/repo"),
-			createClient: () => clientOf({ exec }),
+			createClient: () => clientOf({ exec, status: statusOn("--force") }),
 		});
 
-		await expect(service.push("/some/repo", "--force", false)).rejects.toMatchObject({
+		await expect(service.push("/some/repo")).rejects.toMatchObject({
 			name: "FeatureError",
 			code: "VALIDATION",
+		});
+		expect(exec).not.toHaveBeenCalled();
+	});
+
+	it("publishes the branch checked out at push time, not a caller-supplied name", async () => {
+		const exec = vi.fn(() => Promise.resolve({ exitCode: 0, stdout: "", stderr: "" }));
+		const service = new GitService({
+			logger,
+			getWorkspaceFolderPaths: folders("/some/repo"),
+			createClient: () =>
+				clientOf({
+					exec: exec as unknown as GitClientSlice["exec"],
+					status: statusOn("kilo/renamed-branch"),
+				}),
+		});
+
+		await service.push("/some/repo");
+
+		expect(exec).toHaveBeenCalledWith(
+			["push", "--set-upstream", "origin", "kilo/renamed-branch"],
+			"push",
+			{ cwd: "/some/repo" },
+		);
+	});
+
+	it("pushes to the tracked upstream when the branch already has one", async () => {
+		const exec = vi.fn(() => Promise.resolve({ exitCode: 0, stdout: "", stderr: "" }));
+		const service = new GitService({
+			logger,
+			getWorkspaceFolderPaths: folders("/some/repo"),
+			createClient: () =>
+				clientOf({
+					exec: exec as unknown as GitClientSlice["exec"],
+					status: () =>
+						Promise.resolve({
+							exists: true,
+							currentBranch: "feature",
+							currentUpstreamBranch: "origin/feature",
+							workingDirectory: { files: [] },
+							doConflictedFilesExist: false,
+						}),
+				}),
+		});
+
+		await service.push("/some/repo");
+
+		expect(exec).toHaveBeenCalledWith(["push"], "push", { cwd: "/some/repo" });
+	});
+
+	it("refuses to push a detached HEAD", async () => {
+		const exec = vi.fn();
+		const service = new GitService({
+			logger,
+			getWorkspaceFolderPaths: folders("/some/repo"),
+			createClient: () =>
+				clientOf({
+					exec,
+					status: () =>
+						Promise.resolve({
+							exists: true,
+							workingDirectory: { files: [] },
+							doConflictedFilesExist: false,
+						}),
+				}),
+		});
+
+		await expect(service.push("/some/repo")).rejects.toMatchObject({
+			name: "FeatureError",
+			code: "BUSINESS",
 		});
 		expect(exec).not.toHaveBeenCalled();
 	});

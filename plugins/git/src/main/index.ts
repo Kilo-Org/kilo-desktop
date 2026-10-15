@@ -71,8 +71,8 @@ export function mainRegister(mainSdk: MainSdk): void {
 			await service.commit(workingDirectory, message);
 			return undefined;
 		},
-		push: async ({ workingDirectory, branch, hasUpstream }) => {
-			await service.push(workingDirectory, branch, hasUpstream);
+		push: async ({ workingDirectory }) => {
+			await service.push(workingDirectory);
 			return undefined;
 		},
 		pull: async ({ workingDirectory }) => {

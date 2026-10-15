@@ -18,7 +18,9 @@ export function GitEventsProvider({ children }: { readonly children?: ReactNode 
 	useEffect(
 		() =>
 			sdk.events.on(`${sdk.featureId}.worktree-branch-renamed`, () => {
-				void queryClient.invalidateQueries({ queryKey: [sdk.featureId, "branches"] });
+				for (const channel of ["branches", "status"] as const) {
+					void queryClient.invalidateQueries({ queryKey: [sdk.featureId, channel] });
+				}
 			}),
 		[sdk, queryClient],
 	);

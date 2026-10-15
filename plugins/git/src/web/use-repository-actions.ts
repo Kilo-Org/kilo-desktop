@@ -178,8 +178,18 @@ export function useRepositoryActions(workspaceDirectory: string): RepositoryActi
 		refreshPullRequest(workspaceDirectory, true);
 	}
 
-	const currentBranch = model?.currentBranch;
 	const hasUpstream = model?.hasUpstream ?? false;
+
+	/**
+	 * The branch checked out now, read from git rather than the rendered
+	 * status: a chat worktree's branch can be auto-renamed mid-flow (e.g.
+	 * while a commit message is generating).
+	 */
+	async function readCheckedOutBranch() {
+		const live = await sdk.client.status({ workingDirectory: workspaceDirectory });
+		if (!live?.currentBranch) throw new Error("Checkout a branch before creating a pull request.");
+		return live.currentBranch;
+	}
 
 	function writer() {
 		const capability = sdk.plugins.get<SourceControlWriterCapability>("kilo-ui");
@@ -202,11 +212,7 @@ export function useRepositoryActions(workspaceDirectory: string): RepositoryActi
 
 	async function pushStep(step: Step) {
 		step("Pushing...", "push");
-		await sdk.client.push({
-			workingDirectory: workspaceDirectory,
-			branch: currentBranch!,
-			hasUpstream,
-		});
+		await sdk.client.push({ workingDirectory: workspaceDirectory });
 	}
 
 	async function commitStep(step: Step) {
@@ -226,6 +232,7 @@ export function useRepositoryActions(workspaceDirectory: string): RepositoryActi
 		await ensureGithubCli();
 		const generator = writer();
 		step("Generating PR content...", "generate pull request content");
+		const headBranch = await readCheckedOutBranch();
 		const context = await sdk.client.pullRequestContext({
 			workingDirectory: workspaceDirectory,
 			baseBranch: defaultBranch!,
@@ -233,7 +240,7 @@ export function useRepositoryActions(workspaceDirectory: string): RepositoryActi
 		const generated = await generator.generatePullRequest({
 			workspaceDirectory,
 			baseBranch: defaultBranch!,
-			headBranch: currentBranch!,
+			headBranch,
 			...context,
 		});
 		void sdk.telemetry
@@ -243,13 +250,13 @@ export function useRepositoryActions(workspaceDirectory: string): RepositoryActi
 		const created = await sdk.client.createPullRequest({
 			workingDirectory: workspaceDirectory,
 			baseBranch: defaultBranch!,
-			headBranch: currentBranch!,
+			headBranch,
 			title: generated.title,
 			body: generated.body,
 		});
 		useGitPrStatusStore
 			.getState()
-			.recordCreatedPullRequest(workspaceDirectory, currentBranch!, created);
+			.recordCreatedPullRequest(workspaceDirectory, headBranch, created);
 		const opened = await sdk.shell.openExternal(created.url).catch(() => ({ opened: false }));
 		if (!opened.opened) {
 			toast.success(`Draft PR #${created.number} created`, { description: created.url });

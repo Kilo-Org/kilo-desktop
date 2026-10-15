@@ -309,14 +309,8 @@ export const gitActionsContract = defineContract({
 		}),
 		z.undefined(),
 	),
-	push: defineMethod(
-		z.object({
-			workingDirectory: z.string().min(1).max(32_768),
-			branch: z.string().min(1).max(255),
-			hasUpstream: z.boolean(),
-		}),
-		z.undefined(),
-	),
+	/** Pushes the branch checked out at call time (resolved main-side). */
+	push: defineMethod(workingDirectoryInput, z.undefined()),
 	pull: defineMethod(workingDirectoryInput, z.undefined()),
 	originUrl: defineMethod(workingDirectoryInput, z.string().nullable()),
 	pullRequest: defineMethod(workingDirectoryInput, pullRequestSchema.nullable()),

@@ -35,6 +35,7 @@ import {
 	buildCondaCliPermissionRules,
 	buildMutatingCondaPermissionRules,
 } from "./conda-tool-permissions.js";
+import { SANDBOX_DISABLED_SESSION_METADATA } from "./sandbox-session-metadata.js";
 import { withKiloDesktopSessionListFilter } from "./with-kilo-desktop-session-list-filter.js";
 import { withMcpWarmup } from "./with-mcp-warmup.js";
 import { withPromptOptions, type PromptOptionGetters } from "./with-prompt-options.js";
@@ -398,7 +399,7 @@ export function createKiloRuntimeBackend({
 			];
 			const response = await directoryClient(directory).session.create(
 				{
-					...metadata,
+					metadata: { ...metadata.metadata, ...SANDBOX_DISABLED_SESSION_METADATA },
 					...(agent ? { agent } : {}),
 					...(model
 						? {

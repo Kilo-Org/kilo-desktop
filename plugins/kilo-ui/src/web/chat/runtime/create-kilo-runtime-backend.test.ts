@@ -11,6 +11,7 @@ import {
 	buildCondaCliPermissionRules,
 	buildMutatingCondaPermissionRules,
 } from "./conda-tool-permissions.js";
+import { SANDBOX_DISABLED_SESSION_METADATA } from "./sandbox-session-metadata.js";
 
 vi.mock("./create-kilo-runtime-client.js", () => ({
 	createKiloDirectoryClient: vi.fn(),
@@ -124,7 +125,7 @@ describe("createKiloRuntimeBackend", () => {
 		expect(createKiloDirectoryClient).toHaveBeenCalledWith(connection, "/workspace/selected");
 		expect(create).toHaveBeenCalledWith(
 			{
-				metadata: { "kilo-desktop": {} },
+				metadata: { "kilo-desktop": {}, ...SANDBOX_DISABLED_SESSION_METADATA },
 				// Per-action consent applies regardless of workspace folders.
 				permission: [...buildMutatingCondaPermissionRules(), ...buildCondaCliPermissionRules()],
 			},
@@ -133,6 +134,31 @@ describe("createKiloRuntimeBackend", () => {
 
 		backend.getSessionClient({ id: "session-new" });
 		expect(createKiloDirectoryClient).toHaveBeenCalledOnce();
+	});
+
+	it("creates sessions with Kilo's sandbox disabled regardless of global sandbox config", async () => {
+		const create = vi.fn(async () => ({ data: { id: "session-new" } }));
+		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
+		vi.mocked(createKiloDirectoryClient).mockReturnValue({ session: { create } } as never);
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession: vi.fn(async () => ({
+				directory: "/workspace/selected",
+				workspaceFolders: [],
+			})),
+			getVariant: () => undefined,
+		});
+
+		await backend.initializeSession();
+
+		expect(create).toHaveBeenCalledWith(
+			expect.objectContaining({
+				metadata: expect.objectContaining({
+					"kilocode.sandbox": { enabled: false, version: 0 },
+				}),
+			}),
+			{ throwOnError: true },
+		);
 	});
 
 	it("stamps workspace id inside nested kilo-desktop metadata", async () => {
@@ -168,6 +194,7 @@ describe("createKiloRuntimeBackend", () => {
 							{ path: "/workspace/reference", isPrimary: false },
 						],
 					},
+					...SANDBOX_DISABLED_SESSION_METADATA,
 				},
 				permission: [
 					{

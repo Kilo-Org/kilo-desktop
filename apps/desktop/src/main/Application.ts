@@ -75,10 +75,13 @@ import { getProductionRendererRoot, getWebDevServerUrl } from "./platform/webDev
  * (`VITE_KILO_E2E_AUTH=1`, baked in by `package:e2e`). When present, the app
  * skips the host Kilo credential store and reports a fixed signed-in identity,
  * clearing the page-level KiloAuthGate without a real device flow. A production
- * binary has no `VITE_KILO_E2E_AUTH`, so this is inert there.
+ * binary has no `VITE_KILO_E2E_AUTH`, so this is inert there. Launching with
+ * `KILO_E2E_SIGNED_OUT=1` falls back to the real reader, whose isolated e2e
+ * profile has no credentials, so signed-out specs share the same binary.
  */
 function testAuthIdentity(): KiloIdentityReader | null {
 	if (import.meta.env.VITE_KILO_E2E_AUTH !== "1") return null;
+	if (process.env.KILO_E2E_SIGNED_OUT === "1") return null;
 	return {
 		available: async () => true,
 		isAuthenticated: async () => true,

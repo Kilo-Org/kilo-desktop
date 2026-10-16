@@ -12,6 +12,7 @@ export const SHELL_ZONES = [
 	"status-bar",
 	"dashboard",
 	"page-header-actions",
+	"settings-about-support",
 ] as const;
 
 /** Union of the canonical shell zone ids rendered by the app shell. */
@@ -29,6 +30,8 @@ export const STATUS_BAR_ZONE = "status-bar" satisfies ShellZone;
 export const DASHBOARD_ZONE = "dashboard" satisfies ShellZone;
 /** App-wide plugin actions aligned to the trailing edge of the shell page header. */
 export const PAGE_HEADER_ACTIONS_ZONE = "page-header-actions" satisfies ShellZone;
+/** Extra rows in the Support card of Settings → About (one `SummaryCard.Row` each). */
+export const SETTINGS_ABOUT_SUPPORT_ZONE = "settings-about-support" satisfies ShellZone;
 
 /** Whether a free-form zone string is one of the canonical shell zones. */
 export function isShellZone(zone: string): zone is ShellZone {

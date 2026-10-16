@@ -21,6 +21,9 @@ describe("kiloServerBrowserRegister", () => {
 			code: "BUSINESS",
 			message: "Kilo Server requires the desktop app.",
 		});
+		await expect(rendererSdk.invoke("config.globalConfigFile")).rejects.toMatchObject({
+			code: "BUSINESS",
+		});
 		rendererSdk.destroy();
 		mainSdk.dispose();
 	});

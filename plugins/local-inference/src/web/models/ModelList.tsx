@@ -19,12 +19,12 @@ import {
 	DropdownMenuTrigger,
 } from "@kilo-desktop/ui/components/dropdown-menu";
 import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
+import { revealInFileManagerLabel } from "@kilo-desktop/ui/lib/reveal-in-file-manager";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type { LocalModel, ModelCatalogEntry } from "../../contracts/schemas.js";
 import { getPublisherDisplayName, ModelPublisherIcon } from "../catalog/ModelPublisherIcon.js";
 import { formatFileSize, formatParameterCount, modelDisplayName } from "./model-format.js";
-import { revealInFileManagerLabel } from "./reveal-file-label.js";
 
 // lucide-react 1.27 does not export Eject yet; this is the upstream glyph.
 const EjectIcon = createLucideIcon("eject", [

@@ -153,13 +153,36 @@ describe("kilo-server main registration", () => {
 		expect(unsubscribe).toHaveBeenCalledOnce();
 	});
 
-	it("resolves the user Kilo config directory from the platform environment", () => {
-		expect(resolveUserConfigDirectory("darwin", { XDG_CONFIG_HOME: "/custom/config" })).toBe(
-			"/custom/config/kilo",
+	it("resolves the user Kilo config directory the way the Kilo CLI does (xdg-basedir)", () => {
+		expect(resolveUserConfigDirectory({ XDG_CONFIG_HOME: "/custom/config" }, "/home/me")).toBe(
+			path.join("/custom/config", "kilo"),
 		);
+		expect(resolveUserConfigDirectory({}, "/home/me")).toBe(
+			path.join("/home/me", ".config", "kilo"),
+		);
+		// An empty XDG_CONFIG_HOME counts as unset, matching xdg-basedir.
+		expect(resolveUserConfigDirectory({ XDG_CONFIG_HOME: "" }, "/home/me")).toBe(
+			path.join("/home/me", ".config", "kilo"),
+		);
+		// Kilo ignores APPDATA on Windows: its config lives under the home directory there too.
 		expect(
-			resolveUserConfigDirectory("win32", { APPDATA: "C:\\Users\\me\\AppData\\Roaming" }),
-		).toBe("C:\\Users\\me\\AppData\\Roaming\\kilo");
+			resolveUserConfigDirectory({ APPDATA: "C:\\Users\\me\\AppData\\Roaming" }, "C:\\Users\\me"),
+		).toBe(path.join("C:\\Users\\me", ".config", "kilo"));
+	});
+
+	it("resolves the global Kilo config file inside the user config directory", async () => {
+		const { mainSdk } = createLinkedFakeSdkPair({ featureId: "kilo-server" });
+		await registerKiloServer(mainSdk, {
+			createServer: () => fakeServer(),
+			reconcileWebMcpRelayConfig: async () => ({ kind: "skipped", reason: "up-to-date" }),
+			userConfigDirectory: "/nonexistent/kilo-desktop-test/kilo",
+		});
+
+		await expect(mainSdk.invoke("config.globalConfigFile")).resolves.toEqual({
+			path: path.join("/nonexistent/kilo-desktop-test/kilo", "kilo.jsonc"),
+			exists: false,
+		});
+		mainSdk.dispose();
 	});
 
 	it("builds the server from plugin assets and host networking and logging delegates", () => {

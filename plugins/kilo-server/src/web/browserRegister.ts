@@ -10,6 +10,7 @@ const unavailable = (): never => {
 
 export function kiloServerBrowserRegister(mainSdk: MainSdk): void {
 	const service: KiloServerService = {
+		"config.globalConfigFile": async () => unavailable(),
 		"server.getConnection": async () => unavailable(),
 		"server.restart": async () => unavailable(),
 		"server.status": async () => ({

@@ -17,6 +17,7 @@ import {
 import type { MainSdk } from "@kilo-desktop/feature-sdk/main";
 
 import { ContributedEnvManager } from "./ContributedEnvManager.js";
+import { resolveGlobalConfigFile } from "./global-config-file.js";
 import { KiloConfiguration } from "./KiloConfiguration.js";
 import { KiloServerManager, type KiloServerManagerOptions } from "./KiloServerManager.js";
 import { KiloConfigManager, type KiloConfigMutationOutcome } from "./KiloConfigManager.js";
@@ -166,16 +167,16 @@ function resolveKiloServerDirectories(storageDirectory: string): {
 	};
 }
 
+/**
+ * Mirrors the Kilo CLI's `Global.Path.config`, which uses `xdg-basedir` on
+ * every platform (Windows included — not `%APPDATA%`). `||` because
+ * xdg-basedir treats an empty `XDG_CONFIG_HOME` as unset.
+ */
 export function resolveUserConfigDirectory(
-	platform: NodeJS.Platform = process.platform,
 	env: NodeJS.ProcessEnv = process.env,
+	homeDirectory: string = os.homedir(),
 ): string {
-	if (platform === "win32") {
-		const { join } = path.win32;
-		return join(env.APPDATA ?? join(os.homedir(), "AppData", "Roaming"), "kilo");
-	}
-	const { join } = path.posix;
-	return join(env.XDG_CONFIG_HOME ?? join(os.homedir(), ".config"), "kilo");
+	return path.join(env.XDG_CONFIG_HOME || path.join(homeDirectory, ".config"), "kilo");
 }
 
 export function createKiloServerManagerOptions(
@@ -455,6 +456,7 @@ export function registerKiloServer(
 	} satisfies KiloServerCapabilities["connectionService"];
 
 	const service: KiloServerService = {
+		"config.globalConfigFile": () => resolveGlobalConfigFile(userConfigDirectory),
 		"server.getConnection": connectionService.getConnection,
 		"server.restart": async () => {
 			// Restart may run long after boot, but wait defensively in case it

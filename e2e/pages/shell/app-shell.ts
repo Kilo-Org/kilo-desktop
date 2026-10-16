@@ -89,6 +89,10 @@ export class AppShellPage {
 			getLocatorByTestId("about-show-log-file"),
 			"About settings should offer access to the application log file",
 		);
+		await expectElementToBeVisible(
+			getLocatorByTestId("about-global-kilo-config"),
+			"About settings should list the Kilo config contributed by kilo-server under Support",
+		);
 	}
 
 	async openAccountSettings(): Promise<void> {

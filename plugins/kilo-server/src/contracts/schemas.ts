@@ -125,9 +125,20 @@ export interface KiloServerWebCapabilities {
 	readonly agentToolSignIn: AgentToolSignInCapability;
 }
 
+// ─── User-owned global Kilo config ──────────────────────────────────────────────
+
+/** The file Kilo reads as the user's global config; `exists: false` means not created yet. */
+export const kiloGlobalConfigFileSchema = z.object({
+	path: z.string().min(1),
+	exists: z.boolean(),
+});
+
+export type KiloGlobalConfigFile = z.infer<typeof kiloGlobalConfigFileSchema>;
+
 // ─── Contract ───────────────────────────────────────────────────────────────────
 
 export const kiloServerContract = defineContract({
+	"config.globalConfigFile": defineMethod(z.undefined(), kiloGlobalConfigFileSchema),
 	"server.getConnection": defineMethod(z.undefined(), kiloServerConnectionSchema),
 	"server.restart": defineMethod(z.undefined(), kiloServerConnectionSchema),
 	"server.status": defineMethod(z.undefined(), kiloServerStatusSchema),

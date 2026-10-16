@@ -38,6 +38,9 @@ export function createBrowserLocalApi(): LocalApi {
 			async showLogFile() {
 				throw new LocalApiError("TRANSPORT", "Application logs are available in the desktop app.");
 			},
+			async getLogFilePath() {
+				throw new LocalApiError("TRANSPORT", "Application logs are available in the desktop app.");
+			},
 			async showOpenDialog() {
 				throw new LocalApiError("TRANSPORT", "Folder selection requires the desktop app.");
 			},

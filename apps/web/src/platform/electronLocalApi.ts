@@ -32,6 +32,7 @@ export function createElectronLocalApi(bridge: DesktopApi): LocalApi {
 			copyText: (input) => invoke("shell:copy-text", input),
 			showItemInFolder: (input) => invoke("shell:show-item-in-folder", input),
 			showLogFile: () => invoke("shell:show-log-file"),
+			getLogFilePath: () => invoke("shell:get-log-file-path"),
 			showOpenDialog: (input) => invoke("shell:show-open-dialog", input),
 			getPathForFile: (file) => bridge.getPathForFile(file),
 			openPaneWindow: (input) => invoke("shell:open-pane-window", input),

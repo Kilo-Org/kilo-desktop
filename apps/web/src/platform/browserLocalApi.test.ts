@@ -54,6 +54,10 @@ describe("createBrowserLocalApi", () => {
 			code: "TRANSPORT",
 			message: "Application logs are available in the desktop app.",
 		});
+		await expect(api.shell.getLogFilePath()).rejects.toMatchObject({
+			code: "TRANSPORT",
+			message: "Application logs are available in the desktop app.",
+		});
 		await expect(
 			api.shell.showOpenDialog({ kind: "directory", multiple: true }),
 		).rejects.toMatchObject({

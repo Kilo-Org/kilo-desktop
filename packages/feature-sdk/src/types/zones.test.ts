@@ -4,6 +4,7 @@ import {
 	DASHBOARD_ZONE,
 	isShellZone,
 	PAGE_HEADER_ACTIONS_ZONE,
+	SETTINGS_ABOUT_SUPPORT_ZONE,
 	SHELL_ZONES,
 	SIDEBAR_ACCOUNT_ZONE,
 	SIDEBAR_HEADER_ACTIONS_ZONE,
@@ -20,6 +21,7 @@ describe("shell zones (Decision #21)", () => {
 			"status-bar",
 			"dashboard",
 			"page-header-actions",
+			"settings-about-support",
 		]);
 		expect(SIDEBAR_ZONE).toBe("sidebar");
 		expect(SIDEBAR_ACCOUNT_ZONE).toBe("sidebar-account");
@@ -27,6 +29,7 @@ describe("shell zones (Decision #21)", () => {
 		expect(STATUS_BAR_ZONE).toBe("status-bar");
 		expect(DASHBOARD_ZONE).toBe("dashboard");
 		expect(PAGE_HEADER_ACTIONS_ZONE).toBe("page-header-actions");
+		expect(SETTINGS_ABOUT_SUPPORT_ZONE).toBe("settings-about-support");
 	});
 
 	it("isShellZone accepts canonical ids and rejects drifted ones", () => {
@@ -36,6 +39,7 @@ describe("shell zones (Decision #21)", () => {
 		expect(isShellZone("sidebar")).toBe(true);
 		expect(isShellZone("dashboard")).toBe(true);
 		expect(isShellZone("page-header-actions")).toBe(true);
+		expect(isShellZone("settings-about-support")).toBe(true);
 		expect(isShellZone("header-leading")).toBe(false);
 		expect(isShellZone("header-trailing")).toBe(false);
 		// The historical drift this union exists to prevent:

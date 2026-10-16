@@ -7,6 +7,7 @@ import {
 	type DesktopUpdateState,
 	type LocalApi,
 } from "@kilo-desktop/contracts";
+import { SETTINGS_ABOUT_SUPPORT_ZONE } from "@kilo-desktop/feature-sdk";
 import { SdkProvider } from "@kilo-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 
@@ -14,19 +15,11 @@ import { AboutSettings } from "@/components/settings/AboutSettings";
 import { LocalApiProvider } from "@/platform/LocalApiProvider";
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";
 import { UpdateProvider, useDesktopUpdates } from "@/platform/updates/UpdateProvider";
+import { Toaster, toast } from "@kilo-desktop/ui/components/sonner";
 import { TooltipProvider } from "@kilo-desktop/ui/components/tooltip";
 
 import { SidebarUpdatePill } from "./SidebarUpdatePill";
 import { getInstallConfirmationMessage, updateReadyLabel } from "./updateActions";
-
-const toastApi = vi.hoisted(() => ({
-	error: vi.fn(),
-	info: vi.fn(),
-}));
-
-vi.mock("@kilo-desktop/ui/components/sonner", () => ({
-	toast: toastApi,
-}));
 
 const downloadedState: DesktopUpdateState = {
 	enabled: true,
@@ -84,15 +77,19 @@ function renderUpdates(
 			},
 		},
 	});
-	return render(
+	const rendered = render(
 		<SdkProvider system={createFakeFeatureSystem({ sdks: { shell: sdk } })}>
 			<LocalApiProvider api={api}>
 				<UpdateProvider>
-					<TooltipProvider>{child}</TooltipProvider>
+					<TooltipProvider>
+						{child}
+						<Toaster />
+					</TooltipProvider>
 				</UpdateProvider>
 			</LocalApiProvider>
 		</SdkProvider>,
 	);
+	return { ...rendered, sdk };
 }
 
 function UpdateStateProbe() {
@@ -103,8 +100,7 @@ function UpdateStateProbe() {
 afterEach(() => {
 	cleanup();
 	vi.restoreAllMocks();
-	toastApi.error.mockReset();
-	toastApi.info.mockReset();
+	toast.dismiss();
 });
 
 describe("update UI", () => {
@@ -230,6 +226,47 @@ describe("update UI", () => {
 		await vi.waitFor(() => expect(showLogFile).toHaveBeenCalledOnce());
 	});
 
+	it("shows the application log path in About", async () => {
+		const base = updateApi(downloadedState);
+		renderUpdates(
+			{
+				...base,
+				shell: {
+					...base.shell,
+					canShowLogFile: true,
+					getLogFilePath: async () => ({ path: "/user-data/logs/main.log" }),
+				},
+			},
+			<AboutSettings />,
+		);
+
+		await expect
+			.element(
+				page.getByTestId("about-logs").getByText("/user-data/logs/main.log", { exact: true }),
+			)
+			.toBeVisible();
+	});
+
+	it("shows a placeholder while the application log path loads", async () => {
+		const base = updateApi(downloadedState);
+		renderUpdates(
+			{
+				...base,
+				shell: {
+					...base.shell,
+					canShowLogFile: true,
+					getLogFilePath: () => new Promise(() => {}),
+				},
+			},
+			<AboutSettings />,
+		);
+
+		await expect.element(page.getByTestId("about-show-log-file")).toBeVisible();
+		expect(
+			page.getByTestId("about-logs").element().querySelector('[data-slot="skeleton-text"]'),
+		).not.toBeNull();
+	});
+
 	it("reports when the application log cannot be revealed", async () => {
 		const base = updateApi(downloadedState);
 		renderUpdates(
@@ -246,14 +283,50 @@ describe("update UI", () => {
 
 		await page.getByTestId("about-show-log-file").click();
 
-		await vi.waitFor(() =>
-			expect(toastApi.error).toHaveBeenCalledWith("Could not show the application log file"),
-		);
+		await expect.element(page.getByText("Could not show the application log file")).toBeVisible();
 	});
 
-	it("hides the application log action outside the desktop app", async () => {
+	it("hides the Support section when there is nothing to show", async () => {
 		renderUpdates(updateApi(downloadedState), <AboutSettings />);
 
+		await expect.element(page.getByTestId("about-settings")).toBeVisible();
+		await expect.element(page.getByTestId("about-show-log-file")).not.toBeInTheDocument();
+		await expect.element(page.getByTestId("about-support")).not.toBeInTheDocument();
+	});
+
+	it("lists plugin-contributed rows in the Support section", async () => {
+		const base = updateApi(downloadedState);
+		const { sdk } = renderUpdates(
+			{ ...base, shell: { ...base.shell, canShowLogFile: true } },
+			<AboutSettings />,
+		);
+
+		act(() => {
+			sdk.contribute(SETTINGS_ABOUT_SUPPORT_ZONE, {
+				id: "contributed-row",
+				label: "Contributed row",
+				component: () => <div data-qa-id="contributed-support-row">Contributed row</div>,
+			});
+		});
+
+		const support = page.getByTestId("about-support");
+		await expect.element(support.getByText("Support", { exact: true })).toBeVisible();
+		await expect.element(support.getByTestId("about-show-log-file")).toBeVisible();
+		await expect.element(support.getByTestId("contributed-support-row")).toBeVisible();
+	});
+
+	it("shows contributed Support rows outside the desktop app", async () => {
+		const { sdk } = renderUpdates(updateApi(downloadedState), <AboutSettings />);
+
+		act(() => {
+			sdk.contribute(SETTINGS_ABOUT_SUPPORT_ZONE, {
+				id: "contributed-row",
+				label: "Contributed row",
+				component: () => <div data-qa-id="contributed-support-row">Contributed row</div>,
+			});
+		});
+
+		await expect.element(page.getByTestId("contributed-support-row")).toBeVisible();
 		await expect.element(page.getByTestId("about-show-log-file")).not.toBeInTheDocument();
 	});
 

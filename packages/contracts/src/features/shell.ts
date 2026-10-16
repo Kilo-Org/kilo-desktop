@@ -38,6 +38,7 @@ export const shellMethods = {
 		z.object({ revealed: z.boolean() }),
 	),
 	"shell:show-log-file": defineMethod(z.undefined(), z.object({ revealed: z.boolean() })),
+	"shell:get-log-file-path": defineMethod(z.undefined(), z.object({ path: z.string() })),
 	"shell:show-open-dialog": defineMethod(
 		z.object({ kind: z.literal("directory"), multiple: z.boolean().optional() }),
 		z.object({ canceled: z.boolean(), paths: z.array(z.string()) }),

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
 import { createStaticNavigation, type AuthSession } from "@kilo-desktop/feature-sdk";
+import { revealInFileManagerLabel } from "@kilo-desktop/ui/lib/reveal-in-file-manager";
 
 import type {
 	LocalInferenceHardwareProfile,
@@ -17,7 +18,6 @@ import {
 	renderSettings,
 	usageSnapshot,
 } from "../../test/render-local-model-server-settings.js";
-import { revealInFileManagerLabel } from "../models/reveal-file-label.js";
 
 afterEach(() => {
 	cleanup();

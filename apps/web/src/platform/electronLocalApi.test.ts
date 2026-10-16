@@ -121,6 +121,18 @@ describe("createElectronLocalApi", () => {
 		expect(invoke).toHaveBeenCalledWith("shell:show-log-file");
 	});
 
+	it("forwards the application log path read", async () => {
+		const invoke = vi
+			.fn()
+			.mockResolvedValue({ ok: true, value: { path: "/user-data/logs/main.log" } });
+		const api = createElectronLocalApi(makeBridge({ invoke }));
+
+		await expect(api.shell.getLogFilePath()).resolves.toEqual({
+			path: "/user-data/logs/main.log",
+		});
+		expect(invoke).toHaveBeenCalledWith("shell:get-log-file-path");
+	});
+
 	it("forwards feature-flag reads and relays feature-flag:changed", async () => {
 		const invoke = vi.fn(async (channel: string) => {
 			switch (channel) {

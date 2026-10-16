@@ -15,6 +15,7 @@ export function createShellHandlers(
 	| "shell:copy-text"
 	| "shell:show-item-in-folder"
 	| "shell:show-log-file"
+	| "shell:get-log-file-path"
 	| "shell:show-open-dialog"
 	| "shell:open-pane-window"
 	| "shell:list-pane-windows"
@@ -35,6 +36,7 @@ export function createShellHandlers(
 		"shell:show-log-file": async () => ({
 			revealed: electronShell.showItemInFolder(resolveLogFilePath()),
 		}),
+		"shell:get-log-file-path": async () => ({ path: resolveLogFilePath() }),
 		"shell:show-open-dialog": (input) => electronShell.showOpenDialog(input),
 		"shell:open-pane-window": (input) => electronWindow.openPaneWindow(input, isDevelopment),
 		"shell:list-pane-windows": ({ pluginId }) => electronWindow.listPaneWindows(pluginId),
@@ -55,6 +57,7 @@ export function createShellHandlers(
 		| "shell:copy-text"
 		| "shell:show-item-in-folder"
 		| "shell:show-log-file"
+		| "shell:get-log-file-path"
 		| "shell:show-open-dialog"
 		| "shell:open-pane-window"
 		| "shell:list-pane-windows"

@@ -30,6 +30,7 @@ export interface LocalApi {
 		copyText(input: { text: string }): Promise<void>;
 		showItemInFolder(input: { path: string }): Promise<{ revealed: boolean }>;
 		showLogFile(): Promise<{ revealed: boolean }>;
+		getLogFilePath(): Promise<{ path: string }>;
 		showOpenDialog(input: {
 			kind: "directory";
 			multiple?: boolean;

@@ -6,6 +6,7 @@ import { createAgentToolSignInCapability } from "./agent-tool-sign-in.js";
 export { kiloServerBrowserRegister as browserRegister } from "./browserRegister.js";
 export { ExternalAiAppsNavIcon } from "./settings/ExternalAiAppsNavIcon.js";
 export { ExternalAiAppsSettings } from "./settings/ExternalAiAppsSettings.js";
+export { GlobalKiloConfigRow } from "./settings/GlobalKiloConfigRow.js";
 
 /** Renderer setup: lets chat read and change sign-in gating for agent tools. */
 export function webRegister(sdk: SDK): void {

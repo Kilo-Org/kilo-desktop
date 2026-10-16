@@ -89,6 +89,7 @@ export {
 	STATUS_BAR_ZONE,
 	DASHBOARD_ZONE,
 	PAGE_HEADER_ACTIONS_ZONE,
+	SETTINGS_ABOUT_SUPPORT_ZONE,
 	isShellZone,
 	type ShellZone,
 } from "./types/zones.js";

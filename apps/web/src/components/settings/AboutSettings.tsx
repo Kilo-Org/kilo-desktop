@@ -18,14 +18,12 @@ import {
 import { toast } from "@kilo-desktop/ui/components/sonner";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 
-import { getShowLogFileLabel } from "@/components/settings/applicationLogs";
+import { AboutSupportSection } from "@/components/settings/AboutSupportSection";
 import { hasVisibleReleaseNotes, ReleaseNotesList } from "@/components/updates/ReleaseNotesList";
 import { InstallUpdateDialog } from "@/components/updates/InstallUpdateDialog";
-import { useLocalApi } from "@/platform/LocalApiProvider";
 import { useDesktopUpdates } from "@/platform/updates/UpdateProvider";
 
 export function AboutSettings() {
-	const api = useLocalApi();
 	const updates = useDesktopUpdates();
 	const canSwitchTrack = useFeatureFlag<boolean>(UPDATE_TRACK_SWITCHER_FLAG, false);
 	const state = updates?.state;
@@ -86,164 +84,136 @@ export function AboutSettings() {
 		}
 	};
 
-	const showLogFile = async () => {
-		try {
-			const { revealed } = await api.shell.showLogFile();
-			if (!revealed) toast.error("Could not show the application log file");
-		} catch (error) {
-			toast.error("Could not show the application log file", {
-				description: error instanceof Error ? error.message : "An unexpected error occurred.",
-			});
-		}
-	};
-
 	return (
 		<div className="flex min-w-0 flex-col gap-6" data-qa-id="about-settings">
-			<SettingsPageHeader />
-			<section
-				className="border-border bg-card divide-border min-w-0 divide-y overflow-hidden rounded-lg border"
-				data-qa-id="about-version"
-			>
-				<div>
-					<SummaryCard.Row>
-						<SummaryCard.Content>
-							<SummaryCard.Title>
-								Version
-								{state ? (
-									<code className="text-muted-foreground text-2xs font-medium">
-										{state.currentVersion}
-									</code>
-								) : (
-									<SkeletonText className="text-2xs w-12" />
-								)}
-								<Badge variant="soft" data-qa-id="about-beta-badge">
-									Beta
-								</Badge>
-							</SummaryCard.Title>
-							{state ? (
-								<SummaryCard.Description data-qa-id="update-status-message">
-									{getUpdateDescription(state)}
-								</SummaryCard.Description>
-							) : (
-								<SummaryCard.Description
-									role="status"
-									aria-busy="true"
-									aria-label="Loading update information"
-									data-qa-id="update-status-message"
-								>
-									<SkeletonText className="w-56" />
-								</SummaryCard.Description>
-							)}
-						</SummaryCard.Content>
-						<SummaryCard.Actions>
-							{state?.status === "downloaded" ? (
-								<Button size="sm" data-qa-id="update-install" onClick={() => setConfirmOpen(true)}>
-									Restart to update
-								</Button>
-							) : (
-								<Button
-									size="sm"
-									variant="outline"
-									disabled={!state?.enabled || updateBusy}
-									data-qa-id="update-check"
-									onClick={() => void check()}
-								>
-									{pending || state?.status === "checking" || state?.status === "downloading" ? (
-										<Spinner data-icon="inline-start" aria-hidden="true" />
-									) : null}
-									{getUpdateButtonLabel(state, pending)}
-								</Button>
-							)}
-						</SummaryCard.Actions>
-					</SummaryCard.Row>
-				</div>
-				{canSwitchTrack ? (
+			{/* Matches the Support FieldSet's heading-to-card gap. */}
+			<div className="flex min-w-0 flex-col gap-4">
+				<SettingsPageHeader />
+				<section
+					className="border-border bg-card divide-border min-w-0 divide-y overflow-hidden rounded-lg border"
+					data-qa-id="about-version"
+				>
 					<div>
 						<SummaryCard.Row>
 							<SummaryCard.Content>
 								<SummaryCard.Title>
-									<label htmlFor="update-track">Update track</label>
+									Version
+									{state ? (
+										<code className="text-muted-foreground text-2xs font-medium">
+											{state.currentVersion}
+										</code>
+									) : (
+										<SkeletonText className="text-2xs w-12" />
+									)}
+									<Badge variant="soft" data-qa-id="about-beta-badge">
+										Beta
+									</Badge>
 								</SummaryCard.Title>
-								<SummaryCard.Description>
-									Use stable releases or preview builds.
-								</SummaryCard.Description>
+								{state ? (
+									<SummaryCard.Description data-qa-id="update-status-message">
+										{getUpdateDescription(state)}
+									</SummaryCard.Description>
+								) : (
+									<SummaryCard.Description
+										role="status"
+										aria-busy="true"
+										aria-label="Loading update information"
+										data-qa-id="update-status-message"
+									>
+										<SkeletonText className="w-56" />
+									</SummaryCard.Description>
+								)}
 							</SummaryCard.Content>
 							<SummaryCard.Actions>
-								<Select
-									value={state?.track ?? "preview"}
-									items={[
-										{ value: "stable", label: "Stable" },
-										{ value: "preview", label: "Preview" },
-									]}
-									onValueChange={(track) => void setTrack(track)}
-								>
-									<SelectTrigger
-										id="update-track"
+								{state?.status === "downloaded" ? (
+									<Button
 										size="sm"
-										aria-label="Update track"
-										className="w-36"
-										disabled={!state?.enabled || updateBusy || state?.status === "downloaded"}
-										data-qa-id="update-track"
+										data-qa-id="update-install"
+										onClick={() => setConfirmOpen(true)}
 									>
-										{state ? <SelectValue /> : <SkeletonText className="w-14" />}
-									</SelectTrigger>
-									<SelectContent align="end" alignItemWithTrigger={false}>
-										<SelectGroup>
-											<SelectItem value="stable" data-qa-id="update-track-stable">
-												Stable
-											</SelectItem>
-											<SelectItem value="preview" data-qa-id="update-track-preview">
-												Preview
-											</SelectItem>
-										</SelectGroup>
-									</SelectContent>
-								</Select>
+										Restart to update
+									</Button>
+								) : (
+									<Button
+										size="sm"
+										variant="outline"
+										disabled={!state?.enabled || updateBusy}
+										data-qa-id="update-check"
+										onClick={() => void check()}
+									>
+										{pending || state?.status === "checking" || state?.status === "downloading" ? (
+											<Spinner data-icon="inline-start" aria-hidden="true" />
+										) : null}
+										{getUpdateButtonLabel(state, pending)}
+									</Button>
+								)}
 							</SummaryCard.Actions>
 						</SummaryCard.Row>
 					</div>
-				) : null}
+					{canSwitchTrack ? (
+						<div>
+							<SummaryCard.Row>
+								<SummaryCard.Content>
+									<SummaryCard.Title>
+										<label htmlFor="update-track">Update track</label>
+									</SummaryCard.Title>
+									<SummaryCard.Description>
+										Use stable releases or preview builds.
+									</SummaryCard.Description>
+								</SummaryCard.Content>
+								<SummaryCard.Actions>
+									<Select
+										value={state?.track ?? "preview"}
+										items={[
+											{ value: "stable", label: "Stable" },
+											{ value: "preview", label: "Preview" },
+										]}
+										onValueChange={(track) => void setTrack(track)}
+									>
+										<SelectTrigger
+											id="update-track"
+											size="sm"
+											aria-label="Update track"
+											className="w-36"
+											disabled={!state?.enabled || updateBusy || state?.status === "downloaded"}
+											data-qa-id="update-track"
+										>
+											{state ? <SelectValue /> : <SkeletonText className="w-14" />}
+										</SelectTrigger>
+										<SelectContent align="end" alignItemWithTrigger={false}>
+											<SelectGroup>
+												<SelectItem value="stable" data-qa-id="update-track-stable">
+													Stable
+												</SelectItem>
+												<SelectItem value="preview" data-qa-id="update-track-preview">
+													Preview
+												</SelectItem>
+											</SelectGroup>
+										</SelectContent>
+									</Select>
+								</SummaryCard.Actions>
+							</SummaryCard.Row>
+						</div>
+					) : null}
 
-				{state?.releaseNotes.some(hasVisibleReleaseNotes) ? (
-					// Native fieldsets paint their border and background from the legend's
-					// midline, so the surface lives on this wrapper instead.
-					<div className="bg-background/60 p-4">
-						<FieldSet data-qa-id="update-release-notes">
-							<FieldLegend className="flex items-baseline gap-2">
-								What's changed
-								<code className="text-muted-foreground text-2xs font-medium">
-									{targetRelease?.version}
-								</code>
-							</FieldLegend>
-							<ReleaseNotesList notes={state.releaseNotes} showHeading={false} />
-						</FieldSet>
-					</div>
-				) : null}
-			</section>
-			{api.shell.canShowLogFile ? (
-				<section
-					className="border-border bg-card min-w-0 overflow-hidden rounded-lg border"
-					data-qa-id="about-logs"
-				>
-					<SummaryCard.Row>
-						<SummaryCard.Content>
-							<SummaryCard.Title>Application logs</SummaryCard.Title>
-							<SummaryCard.Description>
-								When reporting an issue send this file in the support request.
-							</SummaryCard.Description>
-						</SummaryCard.Content>
-						<SummaryCard.Actions>
-							<Button
-								size="sm"
-								variant="outline"
-								data-qa-id="about-show-log-file"
-								onClick={() => void showLogFile()}
-							>
-								{getShowLogFileLabel(navigator.platform)}
-							</Button>
-						</SummaryCard.Actions>
-					</SummaryCard.Row>
+					{state?.releaseNotes.some(hasVisibleReleaseNotes) ? (
+						// Native fieldsets paint their border and background from the legend's
+						// midline, so the surface lives on this wrapper instead.
+						<div className="bg-background/60 p-4">
+							<FieldSet data-qa-id="update-release-notes">
+								<FieldLegend className="flex items-baseline gap-2">
+									What's changed
+									<code className="text-muted-foreground text-2xs font-medium">
+										{targetRelease?.version}
+									</code>
+								</FieldLegend>
+								<ReleaseNotesList notes={state.releaseNotes} showHeading={false} />
+							</FieldSet>
+						</div>
+					) : null}
 				</section>
-			) : null}
+			</div>
+			<AboutSupportSection />
 			{state ? (
 				<InstallUpdateDialog
 					open={confirmOpen}

@@ -15,4 +15,17 @@ describe("shell handlers", () => {
 		await expect(handlers["shell:show-log-file"](undefined)).resolves.toEqual({ revealed: true });
 		expect(showItemInFolder).toHaveBeenCalledWith("/user-data/logs/main.log");
 	});
+
+	it("reports the current application log path for display", async () => {
+		const handlers = createShellHandlers(
+			{} as never,
+			{} as never,
+			false,
+			() => "/user-data/logs/main.log",
+		);
+
+		await expect(handlers["shell:get-log-file-path"](undefined)).resolves.toEqual({
+			path: "/user-data/logs/main.log",
+		});
+	});
 });

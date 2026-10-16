@@ -1,19 +1,25 @@
 import { homedir } from "node:os";
 
+import type { makeElectronTransport } from "@sentry/electron/main";
+
 /**
  * Client-side PII scrubbing for Sentry events.
  *
- * With no `beforeSend`, Sentry sends whatever it captures by default. `sendDefaultPii`
- * is off (no IP/cookies), but two identifying leaks remain and are NOT covered by
- * Sentry's built-in secret scrubbers:
+ * With no `beforeSend`, Sentry sends whatever it captures by default. `dataCollection`
+ * is pinned to the restrictive v10 baseline (no user info/IP, cookies, or bodies), but
+ * two identifying leaks remain and are NOT covered by Sentry's built-in secret scrubbers:
  *
  * 1. The **OS username**, embedded in absolute file paths in stack frames, exception
  *    messages, and breadcrumbs (`/Users/<name>/…`, `/home/<name>/…`, `\Users\<name>\…`).
  * 2. The **machine hostname**, attached as `server_name` (and possibly `contexts.device.name`).
  *
- * This module removes both before the event leaves the process. Renderer events are
- * forwarded to the main-process client (IPCMode.Classic), so wiring this into the main
- * `Sentry.init` covers renderer events too.
+ * This module removes both before data leaves the process. Errors are scrubbed in
+ * `beforeSend`: renderer errors are forwarded to the main-process client
+ * (IPCMode.Classic) and re-captured there, so that hook covers them too. Streamed spans
+ * (SDK v11 has no transactions), logs and metrics are scrubbed at the transport via
+ * `scrubEnvelope`, because @sentry/electron forwards those from renderers straight to
+ * the transport without running main's `beforeSendSpan` / `beforeSendLog` /
+ * `beforeSendMetric`.
  *
  * This is data minimization only — it does NOT grant collection consent. Gating Sentry
  * on `allowDataCollection` is a separate concern (threat-model Privacy 2).
@@ -98,4 +104,30 @@ export function scrubSentryEvent<T>(event: T, home: string = homedir()): T {
 
 	deepRedact(record, home, new WeakSet<object>(), 0);
 	return event;
+}
+
+/** Sentry's `Envelope`, reached via an export we depend on (`@sentry/core` is not a direct dependency). */
+export type SentryEnvelope = Parameters<ReturnType<typeof makeElectronTransport>["send"]>[0];
+
+/** Item types renderers forward straight to the transport, bypassing main's `beforeSend*` hooks. */
+const TRANSPORT_SCRUBBED_ITEM_TYPES: ReadonlySet<string> = new Set(["span", "log", "trace_metric"]);
+
+/**
+ * Redact the home dir / OS username from every span, log and metric item in an
+ * envelope, in place, and return it. Other items (errors, already scrubbed in
+ * `beforeSend`; binary attachments) are left untouched.
+ */
+export function scrubEnvelope(envelope: SentryEnvelope, home: string = homedir()): SentryEnvelope {
+	const items: unknown = envelope?.[1];
+	if (!Array.isArray(items)) return envelope;
+	for (const [itemHeader, payload] of items as SentryEnvelope[1]) {
+		if (
+			TRANSPORT_SCRUBBED_ITEM_TYPES.has(itemHeader?.type) &&
+			payload !== null &&
+			typeof payload === "object"
+		) {
+			deepRedact(payload, home, new WeakSet<object>(), 0);
+		}
+	}
+	return envelope;
 }

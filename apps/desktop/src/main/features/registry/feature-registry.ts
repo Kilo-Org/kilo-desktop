@@ -32,6 +32,8 @@ export const featureRouter = new FeatureRouter();
 const bootedFeatureIds = new Set<string>();
 
 export interface BootFeaturesOptions {
+	/** App-shell origins trusted for this build (packaged-aware). */
+	readonly trustedAppOrigins?: readonly string[];
 	/** Relay main-emitted events to every renderer window. */
 	emitEvent?: (event: FeatureEvent) => void;
 	/** Create the host logger scoped to a feature id. */
@@ -116,6 +118,7 @@ export async function bootFeatures(
 		const protocol = options?.createProtocolDelegate?.(feature.id);
 		const host = options?.createHost?.(feature.id);
 		const mainSdk = featureRouter.createMainSdk(feature.id, {
+			...(options?.trustedAppOrigins ? { trustedAppOrigins: options.trustedAppOrigins } : {}),
 			...(options?.emitEvent ? { emitEvent: options.emitEvent } : {}),
 			...(options?.createLogger ? { logger: options.createLogger(feature.id) } : {}),
 			...(options?.fetch ? { fetch: options.fetch } : {}),

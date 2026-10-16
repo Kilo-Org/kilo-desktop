@@ -2,18 +2,18 @@ import type { IpcMainInvokeEvent, Session } from "electron";
 
 import type { EmbeddedWebHost } from "@kilo-desktop/feature-sdk/main";
 
-import {
-	DESKTOP_DEVELOPMENT_SCHEME,
-	DESKTOP_HOST,
-	DESKTOP_PRODUCTION_SCHEME,
-} from "./ElectronProtocol.js";
+import { DESKTOP_HOST, DESKTOP_PRODUCTION_SCHEME, getDesktopScheme } from "./ElectronProtocol.js";
 
-const DESKTOP_SCHEMES = new Set([DESKTOP_PRODUCTION_SCHEME, DESKTOP_DEVELOPMENT_SCHEME]);
+let activeTrustedScheme = DESKTOP_PRODUCTION_SCHEME;
+
+export function configureTrustedSchemes(isDevelopment: boolean): void {
+	activeTrustedScheme = getDesktopScheme(isDevelopment);
+}
 
 export function isTrustedRendererUrl(rawUrl: string): boolean {
 	try {
 		const url = new URL(rawUrl);
-		return DESKTOP_SCHEMES.has(url.protocol.slice(0, -1)) && url.host === DESKTOP_HOST;
+		return url.protocol.slice(0, -1) === activeTrustedScheme && url.host === DESKTOP_HOST;
 	} catch {
 		return false;
 	}
@@ -41,7 +41,7 @@ export function isEmbeddedHostPermissionGranted(
 	} catch {
 		return false;
 	}
-	if (!DESKTOP_SCHEMES.has(url.protocol.slice(0, -1))) return false;
+	if (url.protocol.slice(0, -1) !== activeTrustedScheme) return false;
 	// Never extend the trusted app shell, whatever an embedded host declares.
 	if (url.host === DESKTOP_HOST) return false;
 	return embeddedHosts.some(

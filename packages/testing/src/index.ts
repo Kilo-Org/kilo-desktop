@@ -547,6 +547,8 @@ export interface FakeMainSdkOptions {
 	featureId?: string;
 	storageDir?: string;
 	pluginDir?: string;
+	/** App-shell origins trusted for this build. Defaults to the production origin. */
+	trustedAppOrigins?: readonly string[];
 	/** Feature-scoped logger fake. Defaults to a no-op logger. */
 	logger?: MainSdkLogger;
 	/** Network fake. Defaults to the current runtime's global fetch. */
@@ -572,7 +574,9 @@ export function createFakeMainSdk(options?: FakeMainSdkOptions): FakeMainSdk {
 	const router = options?.services?.featureRouter ?? new FeatureRouter();
 	const pluginDir = options?.pluginDir;
 	const createKvStore = options?.createKvStore ?? createInMemoryKvStoreFactory();
+	const trustedAppOrigins = options?.trustedAppOrigins ?? ["kilo-desktop://app"];
 	const mainSdk = router.createMainSdk(featureId, {
+		trustedAppOrigins,
 		logger: options?.logger ?? noopMainSdkLogger,
 		fetch: options?.fetch ?? ((input, init) => globalThis.fetch(input, init)),
 		...(options?.host ? { host: options.host } : {}),
@@ -600,6 +604,7 @@ export function createFakeMainSdk(options?: FakeMainSdkOptions): FakeMainSdk {
 
 	return {
 		featureId: mainSdk.featureId,
+		trustedAppOrigins: mainSdk.trustedAppOrigins,
 		logger: mainSdk.logger,
 		net: mainSdk.net,
 		events: mainSdk.events,

@@ -90,7 +90,10 @@ export function mainRegister(mainSdk: MainSdk): void {
 		workingTreeStats: ({ workingDirectory }) => service.workingTreeStats(workingDirectory),
 	});
 
-	mainSdk.protocol?.handle("kilo-git", createGitProtocolHandler({ service }));
+	mainSdk.protocol?.handle(
+		"kilo-git",
+		createGitProtocolHandler({ service, allowedOrigins: mainSdk.trustedAppOrigins }),
+	);
 
 	mainSdk.plugins.expose("gitService", {
 		status: service.status.bind(service),

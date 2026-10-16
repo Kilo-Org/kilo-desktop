@@ -215,4 +215,23 @@ describe("createGitProtocolHandler", () => {
 		);
 		expect(response.headers.get("Access-Control-Allow-Origin")).toBe("kilo-desktop-dev://app");
 	});
+
+	it("does not echo the development origin when the allowlist is production-only", async () => {
+		const { service } = createFakeService(async () => null);
+		const handler = createGitProtocolHandler({
+			service,
+			existsDirectory: alwaysExists,
+			allowedOrigins: [DESKTOP_ORIGIN],
+		});
+
+		const devResponse = await handler(
+			requestFor("kilo-git://diff/patch?cwd=/repo", "kilo-desktop-dev://app"),
+		);
+		expect(devResponse.headers.get("Access-Control-Allow-Origin")).toBeNull();
+
+		const prodResponse = await handler(
+			requestFor("kilo-git://diff/patch?cwd=/repo", DESKTOP_ORIGIN),
+		);
+		expect(prodResponse.headers.get("Access-Control-Allow-Origin")).toBe(DESKTOP_ORIGIN);
+	});
 });

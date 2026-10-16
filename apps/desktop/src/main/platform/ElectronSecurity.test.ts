@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({}));
 
@@ -8,6 +8,7 @@ import {
 } from "@kilo-desktop/feature-sdk/main";
 
 import {
+	configureTrustedSchemes,
 	ElectronSecurity,
 	isEmbeddedHostPermissionGranted,
 	isTrustedIpcSender,
@@ -15,7 +16,11 @@ import {
 } from "./ElectronSecurity.js";
 
 describe("ElectronSecurity", () => {
-	it.each(["kilo-desktop://app/", "kilo-desktop://app/settings/", "kilo-desktop-dev://app/"])(
+	beforeEach(() => {
+		configureTrustedSchemes(false);
+	});
+
+	it.each(["kilo-desktop://app/", "kilo-desktop://app/settings/"])(
 		"trusts renderer URL %s",
 		(url) => {
 			expect(isTrustedRendererUrl(url)).toBe(true);
@@ -79,7 +84,7 @@ describe("ElectronSecurity", () => {
 			permissions: [CLIPBOARD_WRITE_EMBEDDED_PERMISSION],
 		};
 
-		it.each(["kilo-desktop://notebook", "kilo-desktop-dev://notebook/index.html?notebook_id=1"])(
+		it.each(["kilo-desktop://notebook", "kilo-desktop://notebook/index.html?notebook_id=1"])(
 			"grants clipboard write to the declaring host at %s",
 			(requesting) => {
 				expect(
@@ -103,7 +108,7 @@ describe("ElectronSecurity", () => {
 		it("never grants the app shell's reserved host, even if a host claims it", () => {
 			const claimsAppHost: EmbeddedWebHost = { ...notebookHost, host: "app" };
 
-			for (const requesting of ["kilo-desktop://app/", "kilo-desktop-dev://app/index.html"]) {
+			for (const requesting of ["kilo-desktop://app/", "kilo-desktop://app/index.html"]) {
 				expect(
 					isEmbeddedHostPermissionGranted("clipboard-sanitized-write", requesting, [claimsAppHost]),
 				).toBe(false);
@@ -129,6 +134,17 @@ describe("ElectronSecurity", () => {
 				requestingUrl: "kilo-desktop://notebook/index.html",
 			});
 			expect(callback.mock.calls).toEqual([[true], [false]]);
+		});
+	});
+
+	describe("development build", () => {
+		beforeEach(() => {
+			configureTrustedSchemes(true);
+		});
+
+		it("trusts the dev-scheme renderer URL and rejects the production scheme", () => {
+			expect(isTrustedRendererUrl("kilo-desktop-dev://app/")).toBe(true);
+			expect(isTrustedRendererUrl("kilo-desktop://app/")).toBe(false);
 		});
 	});
 });

@@ -1075,6 +1075,8 @@ export interface ChannelHandlers<C extends ChannelMap> {
  */
 export interface MainSdk {
 	readonly featureId: string;
+	/** App-shell origins trusted for this build (packaged-aware). */
+	readonly trustedAppOrigins: readonly string[];
 	/** Feature-scoped host logger (Electron uses electron-log). */
 	readonly logger: MainSdkLogger;
 	/** Host networking delegate (Electron uses net.fetch). */

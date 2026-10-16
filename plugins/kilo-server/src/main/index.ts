@@ -197,6 +197,9 @@ export function createKiloServerManagerOptions(
 		...(installationId !== undefined ? { installationId } : {}),
 		// Electron plugin storage — analogous to OpenCode desktop's userData XDG_STATE_HOME.
 		stateDirectory: mainSdk.storageDir,
+		// Shell-injected, packaged-aware renderer origins for the CLI `--cors`
+		// allowlist. Omit when empty so the static default still applies.
+		...(mainSdk.trustedAppOrigins.length > 0 ? { corsOrigins: mainSdk.trustedAppOrigins } : {}),
 		allowVersionMismatch: Boolean(process.env.KILO_CODE_CLI_PATH?.trim()),
 		fetch: mainSdk.net.fetch,
 		logger: mainSdk.logger,

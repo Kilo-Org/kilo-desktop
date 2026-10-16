@@ -380,6 +380,16 @@ describe("KiloServerManager", () => {
 		manager.dispose();
 	});
 
+	it("spawns with only the injected CORS origins in packaged mode (no dev origin)", async () => {
+		const { manager, spawn } = createHarness({ corsOrigins: ["kilo-desktop://app"] });
+		onTestFinished(() => manager.dispose());
+		await manager.ensureRunning();
+		const [, args] = spawn.mock.calls[0]!;
+
+		expect(args).toContain("--cors=kilo-desktop://app");
+		expect(args).not.toContain("--cors=kilo-desktop-dev://app");
+	});
+
 	it("preserves the user config root and defaults state while owning the additive config directory", async () => {
 		const { manager, spawn } = createHarness({
 			environment: {

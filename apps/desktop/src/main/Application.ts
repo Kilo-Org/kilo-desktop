@@ -46,8 +46,12 @@ import { AwaitedShutdownBarrier } from "./platform/AwaitedShutdownBarrier.js";
 import { DesktopDeepLinkService } from "./platform/DesktopDeepLinkService.js";
 import { ElectronApp } from "./platform/ElectronApp.js";
 import { ElectronNotifications } from "./platform/ElectronNotifications.js";
-import { ElectronProtocol, getDesktopScheme } from "./platform/ElectronProtocol.js";
-import { ElectronSecurity } from "./platform/ElectronSecurity.js";
+import {
+	ElectronProtocol,
+	getDesktopOrigin,
+	getDesktopScheme,
+} from "./platform/ElectronProtocol.js";
+import { configureTrustedSchemes, ElectronSecurity } from "./platform/ElectronSecurity.js";
 import { ElectronShell } from "./platform/ElectronShell.js";
 import { ElectronBrowserHost } from "./platform/ElectronBrowserHost.js";
 import { installAppMenu } from "./platform/ElectronAppMenu.js";
@@ -153,6 +157,8 @@ export class Application {
 			return;
 		}
 		const isDevelopment = !this.#app.metadata.isPackaged;
+		const trustedAppOrigins = [getDesktopOrigin(isDevelopment)];
+		configureTrustedSchemes(isDevelopment);
 		const deepLinks = new DesktopDeepLinkService({
 			scheme: getDesktopScheme(isDevelopment),
 			links: PLUGIN_DEEP_LINKS,
@@ -261,7 +267,7 @@ export class Application {
 
 			reporter.report("features", "Preparing features\u2026");
 			Sentry.addBreadcrumb({ category: "app.boot", message: "Booting features" });
-			await this.#registerIpc(preferences, isDevelopment, reporter);
+			await this.#registerIpc(preferences, isDevelopment, trustedAppOrigins, reporter);
 			Sentry.addBreadcrumb({ category: "app.boot", message: "Features booted" });
 			this.#registerPushEvents();
 
@@ -369,6 +375,7 @@ export class Application {
 	async #registerIpc(
 		preferences: PreferencesStore,
 		isDevelopment: boolean,
+		trustedAppOrigins: readonly string[],
 		reporter?: BootProgressReporter,
 	): Promise<void> {
 		// Expose main-side plugin capabilities BEFORE booting features:
@@ -397,6 +404,7 @@ export class Application {
 		// runs each feature's onDispose callbacks (DB close, etc.) on shutdown.
 		this.#disposers.push(
 			await bootFeatures(FEATURES, {
+				trustedAppOrigins,
 				storageRoot: this.#app.getPath("userData"),
 				emitEvent: (event) => this.#windows.broadcast("feature:event", event),
 				createLogger,

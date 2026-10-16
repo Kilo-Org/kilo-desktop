@@ -20,6 +20,8 @@ export interface CreateGitProtocolHandlerOptions {
 	readonly service: GitProtocolService;
 	/** Injectable directory probe so unit tests need no filesystem. */
 	readonly existsDirectory?: (directory: string) => Promise<boolean>;
+	/** App-shell origins allowed to read kilo-git responses; injected by the shell, packaged-aware. */
+	readonly allowedOrigins?: readonly string[];
 }
 
 /**
@@ -30,14 +32,11 @@ export interface CreateGitProtocolHandlerOptions {
 const PATCH_ROUTE = new URLPattern("kilo-git://diff/patch");
 
 /**
- * Origins allowed to read cross-scheme responses. The renderer lives on the
- * desktop app scheme (dev/prod), so `corsEnabled` on the `kilo-git` scheme
- * makes these fetches CORS-checked and the handler must echo a permitted
- * origin. Mirrors the shell's ElectronProtocol constants — plugins cannot
- * import shell internals, and the values are part of the app's public
- * identity.
+ * Backward-compat fallback when the shell does not inject an allowlist (older
+ * callers/tests): both dev and prod app-shell origins. Real runs always inject
+ * the packaged-aware list via `options.allowedOrigins`.
  */
-const DESKTOP_ORIGINS = new Set(["kilo-desktop://app", "kilo-desktop-dev://app"]);
+const DEFAULT_ALLOWED_ORIGINS: readonly string[] = ["kilo-desktop://app", "kilo-desktop-dev://app"];
 
 const defaultExistsDirectory = async (directory: string): Promise<boolean> => {
 	try {
@@ -46,10 +45,6 @@ const defaultExistsDirectory = async (directory: string): Promise<boolean> => {
 		return false;
 	}
 };
-
-function isDesktopOrigin(origin: string): boolean {
-	return DESKTOP_ORIGINS.has(origin);
-}
 
 function createTextResponse(
 	body: string,
@@ -90,11 +85,12 @@ export function createGitProtocolHandler(
 	options: CreateGitProtocolHandlerOptions,
 ): (request: Request) => Promise<Response> {
 	const existsDirectory = options.existsDirectory ?? defaultExistsDirectory;
+	const allowed = new Set(options.allowedOrigins ?? DEFAULT_ALLOWED_ORIGINS);
 	return async (request: Request): Promise<Response> => {
-		// Echo only known desktop origins; anything else simply gets no CORS
-		// grant (and the renderer's fetch fails closed).
+		// Echo only allowed origins; anything else gets no CORS grant (and the
+		// renderer's fetch fails closed).
 		const origin = request.headers.get("Origin");
-		const corsOrigin = origin !== null && isDesktopOrigin(origin) ? origin : undefined;
+		const corsOrigin = origin !== null && allowed.has(origin) ? origin : undefined;
 
 		const routeMatch = PATCH_ROUTE.exec(request.url);
 		if (routeMatch === null) {

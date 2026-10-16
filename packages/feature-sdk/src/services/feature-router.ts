@@ -66,6 +66,8 @@ export interface FeatureRouterOptions {
 }
 
 export interface CreateMainSdkOptions {
+	/** App-shell origins trusted for this build (packaged-aware). */
+	readonly trustedAppOrigins?: readonly string[];
 	/** Optional main-to-renderer relay. Browser mode omits it. */
 	emitEvent?: (event: FeatureEvent) => void;
 	/** Feature-scoped host logger. Defaults to a console-backed logger. */
@@ -283,6 +285,7 @@ export class FeatureRouter {
 
 		return {
 			featureId,
+			trustedAppOrigins: options?.trustedAppOrigins ?? [],
 			logger,
 			net: { fetch: fetchImpl },
 			events,

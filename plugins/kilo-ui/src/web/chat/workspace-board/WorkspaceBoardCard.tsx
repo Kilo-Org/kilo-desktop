@@ -2,13 +2,7 @@ import { MessageSquareIcon } from "lucide-react";
 import type { FC, PointerEvent as ReactPointerEvent, PointerEventHandler, RefObject } from "react";
 
 import { useSdkContributions } from "@kilo-desktop/sdk-react";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "@kilo-desktop/ui/components/card";
+import { Card, CardDescription, CardHeader, CardTitle } from "@kilo-desktop/ui/components/card";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type { Workspace } from "../../../contracts/workspaces/schemas.js";
@@ -144,33 +138,38 @@ export const WorkspaceBoardCard: FC<WorkspaceBoardCardProps> = ({
 					<CardDescription className="flex h-4 w-full min-w-0 items-center gap-2 text-xs">
 						<span
 							data-qa-id="workspace-board-card-status"
-							className={cn("shrink-0", statusLabel.className)}
+							className={cn("min-w-0 truncate", statusLabel.className)}
 						>
 							{statusLabel.label}
 						</span>
-						{activity?.updatedAt !== undefined ? (
-							<span className="ml-auto shrink-0 tabular-nums">
+						<span className="ml-auto flex shrink-0 items-center gap-2 tabular-nums">
+							{showMetadata ? (
+								// Contributions render nothing for chats without a PR. Rendered
+								// `interactive`, they take the pointer for their own controls; the rest
+								// of the line still opens the chat.
+								<span className="flex items-center gap-1 empty:hidden">
+									{metadataContributions.map((contribution) => {
+										const Component = contribution.component as FC<SessionRowMetadataProps>;
+										return (
+											<Component
+												key={`${contribution.featureId}.${contribution.id}`}
+												statusId={statusId!}
+												directory={activity!.directory!}
+												{...(activity?.worktreeBranch
+													? { worktreeBranch: activity.worktreeBranch }
+													: {})}
+												interactive
+											/>
+										);
+									})}
+								</span>
+							) : null}
+							{activity?.updatedAt !== undefined ? (
 								<SessionRelativeTime timestamp={activity.updatedAt} />
-							</span>
-						) : null}
+							) : null}
+						</span>
 					</CardDescription>
 				</CardHeader>
-				{showMetadata ? (
-					// Contributions render nothing for chats without a PR; `empty:hidden` drops the row and its gap.
-					<CardContent className="relative flex min-w-0 flex-wrap items-center gap-1 text-xs empty:hidden">
-						{metadataContributions.map((contribution) => {
-							const Component = contribution.component as FC<SessionRowMetadataProps>;
-							return (
-								<Component
-									key={`${contribution.featureId}.${contribution.id}`}
-									statusId={statusId!}
-									directory={activity!.directory!}
-									{...(activity?.worktreeBranch ? { worktreeBranch: activity.worktreeBranch } : {})}
-								/>
-							);
-						})}
-					</CardContent>
-				) : null}
 			</Card>
 		</li>
 	);

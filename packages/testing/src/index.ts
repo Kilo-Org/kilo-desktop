@@ -359,6 +359,7 @@ function buildFakeServices(options: FakeSdkShellOptions): SdkFactoryServices {
 				focusPaneWindow: async () => ({ focused: true }),
 				dockPaneWindow: async () => ({ docked: true }),
 				syncPaneWindows: async () => undefined,
+				focusMainWindow: async () => undefined,
 				onPaneWindowChanged: () => noop,
 			},
 			options.shell,

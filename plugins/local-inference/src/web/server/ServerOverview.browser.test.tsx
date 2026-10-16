@@ -123,10 +123,10 @@ describe("Local model server overview", () => {
 		await expect
 			.element(screen.getByRole("button", { name: "Save settings" }))
 			.not.toBeInTheDocument();
-		await expect.poll(() => update.mock.calls.length).toBe(1);
+		// Edits slower than the autosave delay save separately, so assert what is saved last.
 		await expect
-			.poll(() => update)
-			.toHaveBeenCalledWith({
+			.poll(() => update.mock.lastCall?.[0])
+			.toEqual({
 				port: 9000,
 				serveOnLocalNetwork: true,
 				llamaFlags: { timeout: "120" },

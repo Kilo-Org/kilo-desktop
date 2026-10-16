@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { app, BrowserWindow, type BrowserWindowConstructorOptions } from "electron";
+import { app, BrowserWindow, screen, type BrowserWindowConstructorOptions } from "electron";
 
 import {
 	chromeFor,
@@ -33,10 +33,12 @@ type PaneWindowRecord = {
 };
 
 /**
- * Owns the main BrowserWindow and session-scoped pane windows. Pane windows
- * remain keyed by plugin/session/pane identity, are hidden when their session
- * is inactive, and emit one lifecycle event whenever native window state
- * changes so renderer tabs remain the source of navigation truth.
+ * Owns the main BrowserWindow and its pane windows. Pane windows remain keyed
+ * by plugin/session/pane identity and emit one lifecycle event whenever native
+ * window state changes so renderer tabs remain the source of navigation truth.
+ * A session-scoped pane window is hidden while its session is inactive; one
+ * opened without a session belongs to the plugin as a whole and only follows
+ * the main window's visibility.
  * Chrome reads the last renderer-synced preferences on creation and repaint,
  * falling back to the app's default palette before the first renderer sync;
  * macOS retains native vibrancy regardless of the selected palette.
@@ -119,7 +121,7 @@ export class ElectronWindow {
 		const window = this.#createWindow(isDevelopment, undefined, {
 			title: descriptor.title,
 			name: paneWindowName(descriptor),
-			width: 960,
+			...this.#paneWindowWidth(descriptor.width),
 			height: 720,
 			minWidth: 480,
 			minHeight: 360,
@@ -152,7 +154,7 @@ export class ElectronWindow {
 			getDesktopRouteUrl(isDevelopment, descriptor.path, {
 				paneWindow: "true",
 				panePluginId: descriptor.pluginId,
-				paneSessionId: descriptor.sessionId,
+				...(descriptor.sessionId ? { paneSessionId: descriptor.sessionId } : {}),
 				paneId: descriptor.paneId,
 				...(descriptor.workspaceId ? { paneWorkspaceId: descriptor.workspaceId } : {}),
 			}),
@@ -205,11 +207,7 @@ export class ElectronWindow {
 			) {
 				continue;
 			}
-			const activeSessionId = this.#activePaneSessions.get(record.descriptor.pluginId);
-			if (
-				(activeSessionId === undefined || record.descriptor.sessionId === activeSessionId) &&
-				this.main?.isVisible()
-			) {
+			if (this.#isPaneSessionActive(record.descriptor) && this.main?.isVisible()) {
 				if (!record.window.isVisible()) record.window.showInactive();
 				continue;
 			}
@@ -390,7 +388,17 @@ export class ElectronWindow {
 		return window;
 	}
 
+	/** A requested width sizes the content, capped to the display the main window is on. */
+	#paneWindowWidth(width: number | undefined): BrowserWindowConstructorOptions {
+		if (width === undefined) return { width: 960 };
+		const display = this.main
+			? screen.getDisplayMatching(this.main.getBounds())
+			: screen.getPrimaryDisplay();
+		return { width: Math.min(width, display.workArea.width), useContentSize: true };
+	}
+
 	#isPaneSessionActive(descriptor: PaneWindow): boolean {
+		if (descriptor.sessionId === undefined) return true;
 		const active = this.#activePaneSessions.get(descriptor.pluginId);
 		return active === undefined || active === descriptor.sessionId;
 	}
@@ -417,7 +425,9 @@ function paneWindowKey(identity: Pick<PaneWindow, "pluginId" | "sessionId" | "pa
 }
 
 function paneWindowName(identity: Pick<PaneWindow, "pluginId" | "sessionId" | "paneId">): string {
-	return `pane:${identity.pluginId}:${identity.sessionId}:${identity.paneId}`;
+	return ["pane", identity.pluginId, identity.sessionId, identity.paneId]
+		.filter((part) => part !== undefined)
+		.join(":");
 }
 
 function systemMaterialOptions(): BrowserWindowConstructorOptions {

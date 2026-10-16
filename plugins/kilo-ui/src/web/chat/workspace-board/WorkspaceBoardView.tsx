@@ -5,7 +5,6 @@ import { ScrollArea } from "@kilo-desktop/ui/components/scroll-area";
 import type { Workspace } from "../../../contracts/workspaces/schemas.js";
 import type { BoardColumnView, BoardSession } from "./workspace-board-sessions.js";
 import { WorkspaceBoardCard, type WorkspaceBoardCardActions } from "./WorkspaceBoardCard.js";
-import { WorkspaceBoardAddColumnButton } from "./WorkspaceBoardAddColumnButton.js";
 import { headingId, WorkspaceBoardColumnHeader } from "./WorkspaceBoardColumnHeader.js";
 import type { BoardDragItem } from "./workspace-board-drag-target.js";
 
@@ -16,8 +15,6 @@ type WorkspaceBoardViewProps = {
 	onOpen: (session: BoardSession) => void;
 	/** Chat actions for each card; omitted where there is no chat runtime. */
 	cardActions?: WorkspaceBoardCardActions | undefined;
-	/** Adds a column after the last one; the add slot is disabled when absent. */
-	onAddColumn?: (() => void) | undefined;
 	/** A just-added column whose header should start renaming it. */
 	columnToName?: string | null | undefined;
 	onColumnNamingStarted?: (() => void) | undefined;
@@ -29,10 +26,11 @@ type WorkspaceBoardViewProps = {
 /**
  * The `data-workspace-board*` attributes are the drag controller's contract: it
  * finds columns, card lists and cards by geometry rather than through React.
+ * Popping the board out also measures the column strip to size its window.
  *
  * Fixed-width columns sit on one row that scrolls sideways. As in Trello, each
  * column is only as tall as its cards until it reaches the board's height, then
- * scrolls them. The add-column slot follows the last column.
+ * scrolls them.
  */
 export const WorkspaceBoardView: FC<WorkspaceBoardViewProps> = ({
 	columns,
@@ -40,7 +38,6 @@ export const WorkspaceBoardView: FC<WorkspaceBoardViewProps> = ({
 	onDragStart,
 	onOpen,
 	cardActions,
-	onAddColumn,
 	columnToName,
 	onColumnNamingStarted,
 	onRenameColumn,
@@ -109,7 +106,6 @@ export const WorkspaceBoardView: FC<WorkspaceBoardViewProps> = ({
 					</ScrollArea>
 				</section>
 			))}
-			<WorkspaceBoardAddColumnButton disabled={!onAddColumn} onAdd={() => onAddColumn?.()} />
 		</div>
 	</div>
 );

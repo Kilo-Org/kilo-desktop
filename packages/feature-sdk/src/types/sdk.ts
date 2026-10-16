@@ -464,17 +464,24 @@ export interface DirectoryOpenDialogOptions {
 
 export interface PaneWindow {
 	pluginId: string;
-	sessionId: string;
+	/**
+	 * Ties the window to one of the plugin's sessions: `syncPaneWindows` hides it
+	 * while another session is active. Omit for a window that belongs to the
+	 * plugin as a whole.
+	 */
+	sessionId?: string | undefined;
 	paneId: string;
 	title: string;
 	path: string;
 	workspaceId?: string | undefined;
+	/** Initial content width in pixels; the shell keeps the window within the screen. */
+	width?: number | undefined;
 }
 
 export type PaneWindowEvent = {
 	type: "opened" | "docked" | "focused" | "blurred";
 	pluginId: string;
-	sessionId: string;
+	sessionId?: string | undefined;
 	paneId: string;
 };
 
@@ -499,6 +506,8 @@ export interface SdkShell {
 		input: Pick<PaneWindow, "pluginId" | "sessionId" | "paneId">,
 	): Promise<{ docked: boolean }>;
 	syncPaneWindows(pluginId: string, activeSessionId: string | null): Promise<void>;
+	/** Brings the main window forward, e.g. after a pane window hands it work. */
+	focusMainWindow(): Promise<void>;
 	onPaneWindowChanged(listener: (event: PaneWindowEvent) => void): () => void;
 }
 

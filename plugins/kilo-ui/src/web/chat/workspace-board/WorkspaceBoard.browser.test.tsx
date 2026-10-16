@@ -16,7 +16,7 @@ import {
 	useWorkspaceBoard,
 	type WorkspaceBoardContextValue,
 } from "./WorkspaceBoardProvider.js";
-import { useAddColumnForNaming } from "./use-add-column-for-naming.js";
+import { WorkspaceBoardHeaderActions } from "./WorkspaceBoardHeaderActions.js";
 import { WorkspaceBoardView } from "./WorkspaceBoardView.js";
 import { useSessionRowBoard } from "./use-session-row-board.js";
 import { WORKSPACE_BOARD_ROUTE_PATH } from "./workspace-board-constants.js";
@@ -51,7 +51,7 @@ function SidebarRow({ sessionId, title }: { sessionId: string; title: string }) 
 				Archive
 			</button>
 			{board?.placement ? (
-				<span data-qa-id={`badge-${sessionId}`}>{board.placement.label}</span>
+				<span data-qa-id={`badge-${sessionId}`}>{board.placement.columnId}</span>
 			) : null}
 		</li>
 	);
@@ -70,7 +70,6 @@ function HarnessBoard({
 	board: WorkspaceBoardContextValue;
 	onOpen: (sessionId: string) => void;
 }) {
-	const naming = useAddColumnForNaming(board);
 	return (
 		<div className="flex gap-6 p-4">
 			<ul className="flex shrink-0 flex-col gap-1">
@@ -79,14 +78,15 @@ function HarnessBoard({
 				))}
 			</ul>
 			<div className="h-[480px] min-w-0 flex-1">
+				{/* The shell renders the route's header actions in the title bar. */}
+				<WorkspaceBoardHeaderActions />
 				<WorkspaceBoardView
 					columns={resolveBoardColumns(board.board, sessions, null)}
 					workspaces={[]}
 					onDragStart={board.startDrag}
 					onOpen={(session) => onOpen(session.sessionId)}
-					onAddColumn={naming.onAddColumn}
-					columnToName={naming.columnToName}
-					onColumnNamingStarted={naming.onColumnNamingStarted}
+					columnToName={board.columnNaming.columnToName}
+					onColumnNamingStarted={board.columnNaming.onNamingStarted}
 					onRenameColumn={board.renameColumn}
 					onMoveColumn={board.moveColumn}
 					onDeleteColumn={board.deleteColumn}
@@ -205,7 +205,7 @@ describe("workspace board drag and drop", () => {
 			index: 0,
 		});
 		expect(cardTitles("in-progress")).toEqual(["Chat two"]);
-		await expect.element(screen.getByTestId("badge-ses_two")).toHaveTextContent("In progress");
+		await expect.element(screen.getByTestId("badge-ses_two")).toHaveTextContent("in-progress");
 		expect(document.querySelector("[data-qa-id='workspace-board-drag-preview']")).toBeNull();
 	});
 
@@ -399,9 +399,9 @@ describe("workspace board columns", () => {
 	const lastColumnMenu = () =>
 		[...document.querySelectorAll("[data-qa-id^='workspace-board-column-menu-']")].at(-1);
 
-	it("adds a column from the slot after the last column and opens its name for editing", async () => {
+	it("adds a column from the title bar and opens its name for editing", async () => {
 		const { screen, stored } = await setupSeeded();
-		await screen.getByRole("button", { name: "Add another column" }).click();
+		await screen.getByRole("button", { name: "Add column" }).click();
 
 		const name = screen.getByTestId("workspace-board-column-rename");
 		await expect.element(name).toHaveFocus();
@@ -418,7 +418,7 @@ describe("workspace board columns", () => {
 
 	it("keeps the default name when naming a new column is cancelled", async () => {
 		const { screen, stored } = await setupSeeded();
-		await screen.getByRole("button", { name: "Add another column" }).click();
+		await screen.getByRole("button", { name: "Add column" }).click();
 		await expect.element(screen.getByTestId("workspace-board-column-rename")).toHaveFocus();
 		await userEvent.keyboard("{Escape}");
 
@@ -439,13 +439,11 @@ describe("workspace board columns", () => {
 		};
 		const { screen } = setup({ initial: full });
 		await expect.element(screen.getByTestId("workspace-board-card-ses_one")).toBeVisible();
+		const add = screen.getByRole("button", { name: "Add column" });
+		await expect.element(add).toBeDisabled();
 		await expect
-			.element(
-				screen.getByRole("button", {
-					name: "Add another column (A board can have at most 20 columns)",
-				}),
-			)
-			.toBeDisabled();
+			.element(add)
+			.toHaveAttribute("aria-description", "A board can have at most 20 columns");
 	});
 
 	it("renames a column from its menu", async () => {

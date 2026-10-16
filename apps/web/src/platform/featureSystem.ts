@@ -179,6 +179,7 @@ export function createShellDelegates(api: LocalApi, navigation?: SdkNavigation):
 			dockPaneWindow: (input) => api.shell.dockPaneWindow(input),
 			syncPaneWindows: (pluginId, activeSessionId) =>
 				api.shell.syncPaneWindows({ pluginId, activeSessionId }),
+			focusMainWindow: () => api.shell.focusMainWindow(),
 			onPaneWindowChanged: (listener) => api.shell.onPaneWindowChanged(listener),
 		},
 		// Scoped fs — the SDK binds each feature's id onto this delegate, and

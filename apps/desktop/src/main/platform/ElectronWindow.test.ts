@@ -12,6 +12,8 @@ const { createdWindows, electronApp } = vi.hoisted(() => {
 			backgroundColor?: string;
 			backgroundMaterial?: string;
 			name?: string;
+			width?: number;
+			useContentSize?: boolean;
 			vibrancy?: string;
 			visualEffectState?: string;
 			icon?: string;
@@ -62,8 +64,14 @@ const { createdWindows, electronApp } = vi.hoisted(() => {
 	};
 });
 
+const workArea = vi.hoisted(() => ({ x: 0, y: 0, width: 1440, height: 900 }));
+
 vi.mock("electron", () => ({
 	app: electronApp,
+	screen: {
+		getDisplayMatching: () => ({ workArea }),
+		getPrimaryDisplay: () => ({ workArea }),
+	},
 	BrowserWindow: class {
 		static getAllWindows() {
 			return createdWindows;
@@ -94,6 +102,7 @@ vi.mock("electron", () => ({
 		readonly setTitle = vi.fn();
 		readonly isFocused = vi.fn(() => true);
 		readonly off = vi.fn();
+		readonly getBounds = vi.fn(() => ({ x: 0, y: 0, width: 1280, height: 860 }));
 
 		constructor(readonly options: (typeof createdWindows)[number]["options"]) {
 			createdWindows.push(this as unknown as (typeof createdWindows)[number]);
@@ -472,6 +481,79 @@ describe("ElectronWindow theme chrome", () => {
 			sessionId: "session-1",
 			paneId: "file:readme.md",
 		});
+	});
+
+	const boardWindow: PaneWindow = {
+		pluginId: "kilo-ui",
+		paneId: "workspace-board",
+		title: "Workspace Board",
+		path: "/plugins/workspace-board",
+	};
+
+	it("opens a session-independent pane window without a session in its route or events", () => {
+		const windows = new ElectronWindow(createShell() as never, () => false);
+		windows.create({ isDevelopment: false });
+
+		expect(windows.openPaneWindow(boardWindow, false)).toEqual({ opened: true });
+
+		expect(getDesktopRouteUrl).toHaveBeenLastCalledWith(false, "/plugins/workspace-board", {
+			paneWindow: "true",
+			panePluginId: "kilo-ui",
+			paneId: "workspace-board",
+		});
+		expect(windows.listPaneWindows("kilo-ui")).toEqual([boardWindow]);
+		expect(createdWindows[0]?.webContents.send).toHaveBeenCalledWith("shell:pane-window-changed", {
+			type: "opened",
+			pluginId: "kilo-ui",
+			paneId: "workspace-board",
+		});
+	});
+
+	it("opens a pane window at the content width it asks for, kept within the screen", () => {
+		const windows = new ElectronWindow(createShell() as never, () => false);
+		windows.create({ isDevelopment: false });
+
+		windows.openPaneWindow({ ...boardWindow, width: 1204 }, false);
+		expect(createdWindows[1]?.options).toMatchObject({ width: 1204, useContentSize: true });
+
+		windows.openPaneWindow({ ...boardWindow, paneId: "wide", width: 5000 }, false);
+		expect(createdWindows[2]?.options).toMatchObject({ width: 1440 });
+
+		windows.openPaneWindow({ ...boardWindow, paneId: "default" }, false);
+		expect(createdWindows[3]?.options).toMatchObject({ width: 960 });
+		expect(createdWindows[3]?.options).not.toHaveProperty("useContentSize");
+	});
+
+	it("keeps a session-independent pane window visible whatever session is active", () => {
+		const windows = new ElectronWindow(createShell() as never, () => false);
+		windows.create({ isDevelopment: false });
+		windows.openPaneWindow(boardWindow, false);
+		const detached = createdWindows[1];
+
+		createdWindows[0]?.isVisible.mockReturnValue(true);
+		windows.syncPaneWindows("kilo-ui", "session-2");
+		const ready = detached?.once.mock.calls.find((call) => call[0] === "ready-to-show")?.[1];
+		ready?.();
+		expect(detached?.show).toHaveBeenCalled();
+
+		detached?.isVisible.mockReturnValue(true);
+		windows.syncPaneWindows("kilo-ui", null);
+		expect(detached?.hide).not.toHaveBeenCalled();
+	});
+
+	it("reveals an open session-independent pane window rather than opening another", () => {
+		const windows = new ElectronWindow(createShell() as never, () => false);
+		windows.create({ isDevelopment: false });
+		windows.openPaneWindow(boardWindow, false);
+
+		expect(windows.openPaneWindow(boardWindow, false)).toEqual({ opened: false });
+		expect(createdWindows).toHaveLength(2);
+		expect(windows.focusPaneWindow({ pluginId: "kilo-ui", paneId: "workspace-board" })).toEqual({
+			focused: true,
+		});
+		expect(
+			windows.focusPaneWindow({ pluginId: "kilo-ui", sessionId: "s", paneId: "workspace-board" }),
+		).toEqual({ focused: false });
 	});
 
 	it("keeps a pane window hidden when the main window hides before the pane is ready", () => {

@@ -14,16 +14,35 @@ import {
 	DEFAULT_SESSION_LIST_VIEW,
 	readSessionListPins,
 	readSessionListView,
+	SESSION_LIST_PINS_STORAGE_KEY,
+	SESSION_LIST_VIEW_STORAGE_KEY,
 	toggleSessionListPin,
 	writeSessionListPins,
 	writeSessionListView,
 	type SessionListView,
 } from "./session-list-view.js";
 
+/**
+ * Adopts writes another window (e.g. a popped-out workspace board) makes to
+ * the same storage key. `storage` events only fire in the other windows, and
+ * the write-back this causes stores an identical value, so nothing echoes.
+ */
+function useStorageSync(key: string, read: () => void) {
+	useEffect(() => {
+		const onStorage = (event: StorageEvent) => {
+			if (event.key === key) read();
+		};
+		window.addEventListener("storage", onStorage);
+		return () => window.removeEventListener("storage", onStorage);
+	}, [key, read]);
+}
+
 /** Persist after commit so updaters stay pure; skip the hydrate write. */
 function useSessionListViewState() {
 	const [view, setView] = useState(readSessionListView);
 	const skip = useRef(true);
+	const reread = useCallback(() => setView(readSessionListView()), []);
+	useStorageSync(SESSION_LIST_VIEW_STORAGE_KEY, reread);
 
 	useEffect(() => {
 		if (skip.current) {
@@ -83,6 +102,8 @@ export function useSessionListPins(): SessionListPinsContextValue {
 function useSessionListPinsState() {
 	const [ids, setIds] = useState(readSessionListPins);
 	const skip = useRef(true);
+	const reread = useCallback(() => setIds(readSessionListPins()), []);
+	useStorageSync(SESSION_LIST_PINS_STORAGE_KEY, reread);
 
 	useEffect(() => {
 		if (skip.current) {

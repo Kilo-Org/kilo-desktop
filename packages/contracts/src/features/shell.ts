@@ -4,7 +4,12 @@ import { defineEvent, defineMethod } from "../contract.js";
 
 const paneWindowIdentity = z.object({
 	pluginId: z.string().min(1).max(120),
-	sessionId: z.string().min(1).max(256),
+	/**
+	 * Ties the window to one of the plugin's sessions: it is hidden while another
+	 * session is active (`shell:sync-pane-windows`). Omit for a window that
+	 * belongs to the plugin as a whole and stays visible whatever is active.
+	 */
+	sessionId: z.string().min(1).max(256).optional(),
 	paneId: z.string().min(1).max(256),
 });
 
@@ -12,6 +17,8 @@ export const paneWindow = paneWindowIdentity.extend({
 	title: z.string().min(1).max(256),
 	path: z.string().regex(/^\/plugins\/[a-zA-Z0-9/_-]{1,200}$/),
 	workspaceId: z.string().min(1).max(256).optional(),
+	/** Initial content width in pixels; the shell keeps the window within the screen. */
+	width: z.number().int().positive().max(16_384).optional(),
 });
 
 export const paneWindowEvent = paneWindowIdentity.extend({
@@ -50,6 +57,7 @@ export const shellMethods = {
 	),
 	"shell:focus-pane-window": defineMethod(paneWindowIdentity, z.object({ focused: z.boolean() })),
 	"shell:dock-pane-window": defineMethod(paneWindowIdentity, z.object({ docked: z.boolean() })),
+	"shell:focus-main-window": defineMethod(z.undefined(), z.undefined()),
 	"shell:sync-pane-windows": defineMethod(
 		z.object({
 			pluginId: z.string().min(1).max(120),

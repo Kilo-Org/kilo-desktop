@@ -57,7 +57,7 @@ export function WorkspaceBoardColumnHeader({
 	onMove: (columnId: string, index: number) => void;
 	onDelete: (columnId: string) => void;
 	onDragStart: (event: ReactPointerEvent<HTMLElement>, item: BoardDragItem) => void;
-	/** The column was just added from the add-column slot: open its name for editing. */
+	/** The column was just added from the title bar: open its name for editing. */
 	startNaming?: boolean;
 	onNamingStarted?: (() => void) | undefined;
 }) {

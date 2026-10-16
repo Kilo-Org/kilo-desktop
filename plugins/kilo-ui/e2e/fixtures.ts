@@ -78,7 +78,11 @@ export const test = shellTest.extend<KiloUiFixtures>({
 	},
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
 	workspaceBoardPage: async ({}, use) => {
-		await use(new WorkspaceBoardPage());
+		const workspaceBoardPage = new WorkspaceBoardPage();
+		await use(workspaceBoardPage);
+		// The worker's app outlives the test: a board left popped out would hide the
+		// board, and its title-bar actions, from every later test and retry.
+		await workspaceBoardPage.closeBoardWindows();
 	},
 	workspacesPage: async ({ electronApp, workspaceFolder }, use) => {
 		await electronApp.evaluate(({ dialog }, selectedPath) => {

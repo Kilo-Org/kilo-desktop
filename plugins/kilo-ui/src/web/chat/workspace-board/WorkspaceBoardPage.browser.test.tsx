@@ -11,8 +11,10 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
+import type { SDK } from "@kilo-desktop/feature-sdk";
 import { SdkProvider } from "@kilo-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
+import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import type { WorkspaceBoardState } from "../../../contracts/workspace-board/board-model.js";
 import { workspaceBoardContract } from "../../../contracts/workspace-board/schemas.js";
@@ -20,6 +22,7 @@ import {
 	WorkspacesContext,
 	type WorkspacesContextValue,
 } from "../../workspaces/WorkspacesFeatureContext.js";
+import type { SessionRowMetadataProps } from "../components/assistant-ui/session-row-display.js";
 import { SessionActivityProvider } from "../session-activity/SessionActivityProvider.js";
 import { createSessionActivityStore } from "../session-activity/session-activity-store.js";
 import {
@@ -33,6 +36,11 @@ import {
 import { WorkspaceBoardHeaderActions } from "./WorkspaceBoardHeaderActions.js";
 import { WorkspaceBoardPage } from "./WorkspaceBoardPage.js";
 import { WorkspaceBoardProvider } from "./WorkspaceBoardProvider.js";
+import { WorkspaceBoardWindowBridge } from "./WorkspaceBoardWindowBridge.js";
+import {
+	WORKSPACE_BOARD_DOCKED_EVENT,
+	WORKSPACE_BOARD_OPEN_SESSION_EVENT,
+} from "./workspace-board-window.js";
 import { createWorkspaceBoardBackend, workspaceBoardFlags } from "./test-helpers.js";
 
 const stubChatModel: ChatModelAdapter = {
@@ -104,9 +112,11 @@ function MainThreadProbe() {
 function Harness({
 	system,
 	store,
+	shellHeader,
 }: {
 	system: ReturnType<typeof createFakeFeatureSystem>;
 	store: ReturnType<typeof createSessionActivityStore>;
+	shellHeader: boolean;
 }) {
 	const runtime = useRemoteThreadListRuntime({
 		adapter,
@@ -119,8 +129,9 @@ function Harness({
 					<WorkspacesContext.Provider value={workspaces}>
 						<SessionListViewProvider>
 							<WorkspaceBoardProvider>
-								{/* The shell renders the route's header actions in the title bar. */}
-								<WorkspaceBoardHeaderActions />
+								<WorkspaceBoardWindowBridge />
+								{/* The main window's shell renders the route's header actions in the title bar. */}
+								{shellHeader ? <WorkspaceBoardHeaderActions /> : null}
 								<div className="h-[480px]">
 									<WorkspaceBoardPage />
 								</div>
@@ -135,7 +146,13 @@ function Harness({
 	);
 }
 
-function setup({ enabled = true }: { enabled?: boolean } = {}) {
+function setup({
+	enabled = true,
+	shell,
+}: {
+	enabled?: boolean;
+	shell?: Partial<SDK["shell"]>;
+} = {}) {
 	const store = createSessionActivityStore({ storage: null });
 	store.getState().hydrateSessions([
 		{ id: "ses_acme", directory: "/repo/acme", workspaceId: "ws-acme" },
@@ -150,21 +167,35 @@ function setup({ enabled = true }: { enabled?: boolean } = {}) {
 		handlers: backend.handlers,
 		featureFlags: workspaceBoardFlags(enabled),
 		navigation: { navigate },
+		...(shell ? { shell } : {}),
 	});
 	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
+	system.getSdk("metadata-probe").contribute("kilo-ui/chat-session-row-metadata", {
+		id: "probe",
+		label: "PR status",
+		component: ({ directory, interactive }: SessionRowMetadataProps) => (
+			<span
+				data-qa-id={`row-metadata-${directory}`}
+				className={interactive ? "pointer-events-auto" : undefined}
+			>
+				{interactive ? "interactive" : "inert"}
+			</span>
+		),
+	});
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const { baseElement } = render(
 		<QueryClientProvider client={queryClient}>
-			<Harness system={system} store={store} />
+			<Harness system={system} store={store} shellHeader={shell?.windowRole !== "pane"} />
 		</QueryClientProvider>,
 	);
-	return { screen: page.elementLocator(baseElement), navigate, backend };
+	return { screen: page.elementLocator(baseElement), navigate, backend, sdk };
 }
 
 afterEach(() => {
 	cleanup();
 	localStorage.clear();
 	for (const spy of [archiveThread, renameThread, deleteThread]) spy.mockClear();
+	vi.restoreAllMocks();
 });
 
 describe("WorkspaceBoardPage", () => {
@@ -203,6 +234,26 @@ describe("WorkspaceBoardPage", () => {
 		await screen.getByRole("button", { name: "Open Beta feature in Beta" }).click();
 		await expect.element(screen.getByTestId("main-thread")).toHaveTextContent("ses_beta");
 		expect(navigate).toHaveBeenCalledWith("/plugins/chat", undefined);
+	});
+
+	it("renders a card's row metadata as interactive", async () => {
+		const { screen } = setup();
+		const card = screen.getByTestId("workspace-board-card-ses_beta");
+		await expect
+			.element(card.getByTestId("row-metadata-/repo/beta"))
+			.toHaveTextContent("interactive");
+	});
+
+	it("puts the row metadata, not the card, under the pointer, so a PR link takes the click", async () => {
+		const { screen } = setup();
+		const metadata = screen
+			.getByTestId("workspace-board-card-ses_beta")
+			.getByTestId("row-metadata-/repo/beta");
+		await expect.element(metadata).toBeVisible();
+		metadata.element().scrollIntoView({ block: "center", inline: "center" });
+		const rect = metadata.element().getBoundingClientRect();
+		const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+		expect(metadata.element().contains(hit)).toBe(true);
 	});
 
 	it("explains that the board is unavailable while its feature flag is off", async () => {
@@ -367,9 +418,9 @@ describe("WorkspaceBoardPage clear board", () => {
 		await expect.element(screen.getByText("Beta feature")).not.toBeInTheDocument();
 		await vi.waitFor(() => expect(placedIds(backend)).toEqual([]));
 		expect(backend.stored().columns.map((column) => column.id)).toEqual(["backlog", "done"]);
-		await expect
-			.element(screen.getByRole("button", { name: "Clear board (the board is empty)" }))
-			.toBeDisabled();
+		const clear = screen.getByRole("button", { name: "Clear board" });
+		await expect.element(clear).toBeDisabled();
+		await expect.element(clear).toHaveAttribute("aria-description", "The board is already empty");
 	});
 
 	it("leaves the board as it was when clearing is cancelled", async () => {
@@ -381,5 +432,185 @@ describe("WorkspaceBoardPage clear board", () => {
 		await expect.element(page.getByTestId("workspace-board-clear-dialog")).not.toBeInTheDocument();
 		await expect.element(screen.getByText("Beta feature")).toBeVisible();
 		expect(placedIds(backend)).toEqual(["ses_acme", "ses_unloaded", "ses_beta", "ses_old"]);
+	});
+});
+
+describe("WorkspaceBoardPage in its own window", () => {
+	const boardWindow = {
+		pluginId: "kilo-ui",
+		paneId: "workspace-board",
+		title: "Workspace Board",
+		path: "/plugins/workspace-board",
+	};
+	const boardWindowIdentity = { pluginId: "kilo-ui", paneId: "workspace-board" };
+
+	it("pops the board out into its own window and returns the main window to the chat", async () => {
+		const openPaneWindow = vi.fn(async () => ({ opened: true }));
+		const { screen, navigate } = setup({ shell: { openPaneWindow } });
+		await expect.element(screen.getByText("Beta feature")).toBeVisible();
+
+		// Wide enough for every column, so the board's window opens without a sideways scrollbar.
+		const columnsWidth = document.querySelector<HTMLElement>(
+			"[data-workspace-board-columns]",
+		)!.scrollWidth;
+		await screen.getByRole("button", { name: "Pop out" }).click();
+
+		await vi.waitFor(() =>
+			expect(openPaneWindow).toHaveBeenCalledWith({ ...boardWindow, width: columnsWidth }),
+		);
+		await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith("/plugins/chat", undefined));
+		await expect.element(screen.getByTestId("workspace-board-popped-out")).toBeVisible();
+		await expect.element(screen.getByText("Beta feature")).not.toBeInTheDocument();
+	});
+
+	it("stays on the board and says so when its window cannot open", async () => {
+		const toastError = vi.spyOn(toast, "error").mockImplementation(() => "");
+		const { screen, navigate } = setup({
+			shell: { openPaneWindow: async () => Promise.reject(new Error("No display")) },
+		});
+		await expect.element(screen.getByText("Beta feature")).toBeVisible();
+
+		await screen.getByRole("button", { name: "Pop out" }).click();
+
+		await vi.waitFor(() =>
+			expect(toastError).toHaveBeenCalledWith("Could not pop out the board", {
+				description: "No display",
+			}),
+		);
+		expect(navigate).not.toHaveBeenCalled();
+		await expect.element(screen.getByText("Beta feature")).toBeVisible();
+	});
+
+	it("offers no pop-out where the app cannot open windows", async () => {
+		const { screen } = setup({ shell: { canPopOutPanes: false } });
+		await expect.element(screen.getByText("Beta feature")).toBeVisible();
+		await expect.element(screen.getByRole("button", { name: "Pop out" })).not.toBeInTheDocument();
+	});
+
+	it("points to the board's window while it is open, and brings the board back", async () => {
+		const focusPaneWindow = vi.fn(async () => ({ focused: true }));
+		const dockPaneWindow = vi.fn(async () => ({ docked: true }));
+		const { screen, navigate } = setup({
+			shell: {
+				listPaneWindows: async () => [boardWindow],
+				focusPaneWindow,
+				dockPaneWindow,
+			},
+		});
+		const placeholder = screen.getByTestId("workspace-board-popped-out");
+		await expect.element(placeholder).toBeVisible();
+		// The board's actions belong with it, in its own window.
+		for (const name of ["Add column", "Clear board", "Pop out"]) {
+			await expect.element(screen.getByRole("button", { name })).not.toBeInTheDocument();
+		}
+
+		await placeholder.getByRole("button", { name: "Bring to front" }).click();
+		expect(focusPaneWindow).toHaveBeenCalledWith(boardWindowIdentity);
+
+		await placeholder.getByRole("button", { name: "Dock" }).click();
+		expect(dockPaneWindow).toHaveBeenCalledWith(boardWindowIdentity);
+		expect(navigate).toHaveBeenCalledWith("/plugins/workspace-board", undefined);
+		await expect.element(screen.getByText("Beta feature")).toBeVisible();
+	});
+
+	it("shows the board again once its window is closed", async () => {
+		let notify!: Parameters<SDK["shell"]["onPaneWindowChanged"]>[0];
+		const { screen } = setup({
+			shell: {
+				listPaneWindows: async () => [boardWindow],
+				onPaneWindowChanged: (listener) => {
+					notify = listener;
+					return () => undefined;
+				},
+			},
+		});
+		await expect.element(screen.getByTestId("workspace-board-popped-out")).toBeVisible();
+
+		// A chat pane's window closing is not the board's.
+		notify({ type: "docked", pluginId: "kilo-ui", sessionId: "ses_beta", paneId: "file:a" });
+		await expect.element(screen.getByTestId("workspace-board-popped-out")).toBeVisible();
+
+		notify({ type: "docked", ...boardWindowIdentity });
+		await expect.element(screen.getByText("Beta feature")).toBeVisible();
+	});
+
+	it("opens a chat the popped-out board asks for in the main window", async () => {
+		const { screen, navigate, sdk } = setup();
+		await expect.element(screen.getByText("Beta feature")).toBeVisible();
+
+		sdk.events.emit(WORKSPACE_BOARD_OPEN_SESSION_EVENT, { sessionId: "ses_beta" });
+
+		await expect.element(screen.getByTestId("main-thread")).toHaveTextContent("ses_beta");
+		expect(navigate).toHaveBeenCalledWith("/plugins/chat", undefined);
+	});
+
+	it("shows the board when the popped-out board docks itself", async () => {
+		const { screen, navigate, sdk } = setup({
+			shell: { listPaneWindows: async () => [boardWindow] },
+		});
+		await expect.element(screen.getByTestId("workspace-board-popped-out")).toBeVisible();
+
+		sdk.events.emit(WORKSPACE_BOARD_DOCKED_EVENT, undefined);
+
+		await expect.element(screen.getByText("Beta feature")).toBeVisible();
+		expect(navigate).toHaveBeenCalledWith("/plugins/workspace-board", undefined);
+	});
+
+	describe("as the popped-out window", () => {
+		const paneShell = (overrides: Partial<SDK["shell"]> = {}) => ({
+			windowRole: "pane" as const,
+			...overrides,
+		});
+
+		it("draws its own title bar with the board's actions and no pop-out", async () => {
+			const { screen } = setup({ shell: paneShell() });
+			const header = screen.getByTestId("workspace-board-window-header");
+			await expect.element(header).toBeVisible();
+			await expect.element(header.getByText("Workspace Board")).toBeVisible();
+			await expect.element(header.getByRole("button", { name: "Add column" })).toBeVisible();
+			await expect.element(header.getByRole("button", { name: "Clear board" })).toBeVisible();
+			await expect.element(header.getByRole("button", { name: "Dock" })).toBeVisible();
+			await expect.element(screen.getByRole("button", { name: "Pop out" })).not.toBeInTheDocument();
+			await expect.element(screen.getByText("Beta feature")).toBeVisible();
+		});
+
+		it("names the sidebar's focused workspace in its title bar", async () => {
+			localStorage.setItem(
+				SESSION_LIST_VIEW_STORAGE_KEY,
+				JSON.stringify({ ...DEFAULT_SESSION_LIST_VIEW, focus: "ws-beta" }),
+			);
+			const { screen } = setup({ shell: paneShell() });
+			await expect
+				.element(screen.getByTestId("workspace-board-window-header").getByText("Beta"))
+				.toBeVisible();
+		});
+
+		it("docks back into the main window", async () => {
+			const focusMainWindow = vi.fn(async () => undefined);
+			const dockPaneWindow = vi.fn(async () => ({ docked: true }));
+			const { screen, sdk } = setup({ shell: paneShell({ focusMainWindow, dockPaneWindow }) });
+			const docked = vi.fn();
+			sdk.events.on(`kilo-ui.${WORKSPACE_BOARD_DOCKED_EVENT}`, docked);
+
+			await screen.getByRole("button", { name: "Dock" }).click();
+
+			expect(docked).toHaveBeenCalled();
+			expect(focusMainWindow).toHaveBeenCalled();
+			expect(dockPaneWindow).toHaveBeenCalledWith(boardWindowIdentity);
+		});
+
+		it("hands a card's chat to the main window instead of opening it here", async () => {
+			const focusMainWindow = vi.fn(async () => undefined);
+			const { screen, navigate, sdk } = setup({ shell: paneShell({ focusMainWindow }) });
+			const requested = vi.fn();
+			sdk.events.on(`kilo-ui.${WORKSPACE_BOARD_OPEN_SESSION_EVENT}`, requested);
+
+			await screen.getByRole("button", { name: "Open Beta feature in Beta" }).click();
+
+			expect(requested).toHaveBeenCalledWith({ sessionId: "ses_beta" });
+			expect(focusMainWindow).toHaveBeenCalled();
+			expect(navigate).not.toHaveBeenCalled();
+			await expect.element(screen.getByTestId("main-thread")).toHaveTextContent("draft");
+		});
 	});
 });

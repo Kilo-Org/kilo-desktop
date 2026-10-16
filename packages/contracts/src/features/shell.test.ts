@@ -19,6 +19,40 @@ describe("pane window contracts", () => {
 		).toThrow();
 	});
 
+	it("accepts a session-independent pane window", () => {
+		const input = {
+			pluginId: "kilo-ui",
+			paneId: "workspace-board",
+			title: "Workspace Board",
+			path: "/plugins/workspace-board",
+		};
+		const identity = { pluginId: "kilo-ui", paneId: "workspace-board" };
+
+		expect(shellMethods["shell:open-pane-window"].input.parse(input)).toEqual(input);
+		expect(shellMethods["shell:dock-pane-window"].input.parse(identity)).toEqual(identity);
+		expect(paneWindowEvent.parse({ ...identity, type: "docked" })).toEqual({
+			...identity,
+			type: "docked",
+		});
+		expect(() =>
+			shellMethods["shell:open-pane-window"].input.parse({ ...input, sessionId: "" }),
+		).toThrow();
+	});
+
+	it("accepts a pane window's preferred width in whole pixels", () => {
+		const input = {
+			pluginId: "kilo-ui",
+			paneId: "workspace-board",
+			title: "Workspace Board",
+			path: "/plugins/workspace-board",
+		};
+		const open = shellMethods["shell:open-pane-window"].input;
+
+		expect(open.parse({ ...input, width: 1204 })).toEqual({ ...input, width: 1204 });
+		expect(() => open.parse({ ...input, width: 0 })).toThrow();
+		expect(() => open.parse({ ...input, width: 12.5 })).toThrow();
+	});
+
 	it("validates pane lifecycle events", () => {
 		const event = {
 			type: "opened",

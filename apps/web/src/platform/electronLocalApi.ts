@@ -40,6 +40,7 @@ export function createElectronLocalApi(bridge: DesktopApi): LocalApi {
 			focusPaneWindow: (input) => invoke("shell:focus-pane-window", input),
 			dockPaneWindow: (input) => invoke("shell:dock-pane-window", input),
 			syncPaneWindows: (input) => invoke("shell:sync-pane-windows", input),
+			focusMainWindow: () => invoke("shell:focus-main-window"),
 			onPaneWindowChanged: (listener) => bridge.on("shell:pane-window-changed", listener),
 			onNavigate: (listener) => bridge.on("shell:navigate", listener),
 		},

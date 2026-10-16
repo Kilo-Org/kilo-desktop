@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
 import { SdkProvider } from "@kilo-desktop/sdk-react";
-import { createStaticNavigation } from "@kilo-desktop/feature-sdk";
+import { createStaticNavigation, type SDK } from "@kilo-desktop/feature-sdk";
 import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 import { SidebarProvider } from "@kilo-desktop/ui/components/sidebar";
 
@@ -43,6 +43,7 @@ import {
 } from "../../session-list/session-list-view.js";
 import { SessionListViewProvider } from "../../session-list/use-session-list-view.js";
 import { SessionList } from "./session-list.js";
+import type { SessionRowMetadataProps } from "./session-row-display.js";
 
 type ToastResult = { message: string; [key: string]: unknown };
 const toastApi = vi.hoisted(() => {
@@ -262,6 +263,7 @@ function renderSessionList({
 	hasMorePages = false,
 	board,
 	path = "/",
+	shell,
 }: {
 	threads: SeededThread[];
 	hydrate?: (store: ReturnType<typeof createSessionActivityStore>) => void;
@@ -277,6 +279,7 @@ function renderSessionList({
 	board?: WorkspaceBoardState;
 	/** The current route, e.g. the board's to have it open. */
 	path?: string;
+	shell?: Partial<SDK["shell"]>;
 }) {
 	const adapter = new SeededThreadListAdapter(threads);
 	adapter.hasMorePages = hasMorePages;
@@ -304,13 +307,16 @@ function renderSessionList({
 			...boardBackend.handlers,
 		},
 		featureFlags: workspaceBoardFlags(board !== undefined),
+		...(shell ? { shell } : {}),
 	});
 	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
 	system.getSdk("metadata-probe").contribute("kilo-ui/chat-session-row-metadata", {
 		id: "probe",
 		label: "PR status",
-		component: ({ statusId }: { statusId: string }) => (
-			<span data-qa-id={`pr-status-${statusId}`}>PR #42</span>
+		component: ({ statusId, interactive }: SessionRowMetadataProps) => (
+			<span data-qa-id={`pr-status-${statusId}`} data-interactive={interactive ? "" : undefined}>
+				PR #42
+			</span>
 		),
 	});
 	const store = createSessionActivityStore({ storage: null });
@@ -1232,6 +1238,22 @@ describe("SessionList", () => {
 		await expect.element(card.getByText("PR #42")).toBeVisible();
 		expect(rowSlot(card, "time")).toHaveTextContent("PR #42");
 		expect(rowSlot(card, "info")).toBeNull();
+	});
+
+	it("keeps row metadata inert, since the whole row opens the chat", async () => {
+		const { screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Fix the bug" }],
+			hydrate: (store) => {
+				store.getState().hydrateSessions([{ id: "ses-1", workspaceId: "ws-1" }]);
+			},
+		});
+
+		const badge = screen
+			.getByRole("listitem")
+			.filter({ hasText: "Fix the bug" })
+			.getByText("PR #42");
+		await expect.element(badge).toBeVisible();
+		await expect.element(badge).not.toHaveAttribute("data-interactive");
 	});
 
 	it("drops the time before squeezing the title when a PR shares a narrow row", async () => {
@@ -2296,6 +2318,37 @@ describe("SessionList board actions", () => {
 		expect(navigate).toHaveBeenCalledWith("/plugins/chat", undefined);
 	});
 
+	it("brings the board's window forward while the board is popped out", async () => {
+		const focusPaneWindow = vi.fn(async () => ({ focused: true }));
+		const { screen, navigate } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Fix login" }],
+			board: DEFAULT_WORKSPACE_BOARD,
+			shell: {
+				listPaneWindows: async () => [
+					{
+						pluginId: "kilo-ui",
+						paneId: "workspace-board",
+						title: "Workspace Board",
+						path: WORKSPACE_BOARD_ROUTE_PATH,
+					},
+				],
+				focusPaneWindow,
+			},
+		});
+		const toggle = screen.getByRole("button", { name: "Workspace Board" });
+		await toggle.hover();
+		await expect.element(page.getByText("Bring Workspace Board to front")).toBeVisible();
+		// It brings a window forward rather than toggling, so it is not a pressed/unpressed toggle.
+		await expect.element(toggle).not.toHaveAttribute("aria-pressed");
+
+		await toggle.click();
+		expect(focusPaneWindow).toHaveBeenCalledWith({
+			pluginId: "kilo-ui",
+			paneId: "workspace-board",
+		});
+		expect(navigate).not.toHaveBeenCalled();
+	});
+
 	it("offers no board actions while the board is off", async () => {
 		const { screen } = renderSessionList({ threads: [{ remoteId: "ses-1", title: "Fix login" }] });
 		await expect.element(screen.getByTestId("session-list-search")).toBeVisible();
@@ -2307,7 +2360,7 @@ describe("SessionList board actions", () => {
 		await expect.element(page.getByTestId("session-list-item-board-menu")).not.toBeInTheDocument();
 	});
 
-	it("adds a chat to a board column from its menu and marks the row", async () => {
+	it("adds a chat to a board column from its menu, which then offers to move it", async () => {
 		const { screen, board } = renderSessionList({
 			threads: [{ remoteId: "ses-1", title: "Fix login" }],
 			board: DEFAULT_WORKSPACE_BOARD,
@@ -2318,12 +2371,18 @@ describe("SessionList board actions", () => {
 		await page.getByTestId("session-list-item-board-menu").click();
 		await page.getByTestId("session-list-item-board-review").click();
 
-		await expect.element(card.getByRole("img", { name: "On board: Review" })).toBeInTheDocument();
 		await vi.waitFor(() =>
 			expect(board().columns.find((column) => column.id === "review")?.sessionIds).toEqual([
 				"ses-1",
 			]),
 		);
+		await userEvent.keyboard("{Escape}{Escape}");
+		await expect.element(page.getByRole("menu")).not.toBeInTheDocument();
+		await userEvent.hover(card);
+		await card.getByRole("button", { name: "Thread actions" }).click();
+		await expect
+			.element(page.getByTestId("session-list-item-board-menu"))
+			.toHaveTextContent("Move on board");
 	});
 
 	it("takes a deleted chat off the board", async () => {
@@ -2332,7 +2391,6 @@ describe("SessionList board actions", () => {
 			board: placeSession(DEFAULT_WORKSPACE_BOARD, "ses-1", "done", 0),
 		});
 		const card = screen.getByRole("listitem").filter({ hasText: "Fix login" });
-		await expect.element(card.getByRole("img", { name: "On board: Done" })).toBeInTheDocument();
 		await userEvent.hover(card);
 		await card.getByRole("button", { name: "Thread actions" }).click();
 		await page.getByRole("menuitem", { name: "Delete" }).click();
@@ -2347,12 +2405,10 @@ describe("SessionList board actions", () => {
 			board: placeSession(DEFAULT_WORKSPACE_BOARD, "ses-1", "done", 0),
 		});
 		const card = screen.getByRole("listitem").filter({ hasText: "Fix login" });
-		await expect.element(card.getByRole("img", { name: "On board: Done" })).toBeInTheDocument();
 		await userEvent.hover(card);
 		await card.getByRole("button", { name: "Thread actions" }).click();
 		await page.getByTestId("session-list-item-board-remove").click();
 
-		await expect.element(card.getByRole("img", { name: "On board: Done" })).not.toBeInTheDocument();
 		await vi.waitFor(() => expect(board()).toEqual(DEFAULT_WORKSPACE_BOARD));
 	});
 });

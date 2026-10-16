@@ -45,6 +45,7 @@ export interface LocalApi {
 			input: Pick<PaneWindow, "pluginId" | "sessionId" | "paneId">,
 		): Promise<{ docked: boolean }>;
 		syncPaneWindows(input: { pluginId: string; activeSessionId: string | null }): Promise<void>;
+		focusMainWindow(): Promise<void>;
 		onPaneWindowChanged(listener: (event: PaneWindowEvent) => void): () => void;
 		onNavigate(listener: (target: ShellNavigationTarget) => void): () => void;
 	};

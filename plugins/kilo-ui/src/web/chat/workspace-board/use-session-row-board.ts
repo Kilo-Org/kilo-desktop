@@ -7,7 +7,7 @@ import { UNTITLED_CHAT } from "./workspace-board-sessions.js";
 export type SessionRowBoard = {
 	/** Starts a drag toward the board; undefined while the board is not on screen. */
 	onDragPointerDown: PointerEventHandler<HTMLElement> | undefined;
-	placement: { columnId: string; label: string } | null;
+	placement: { columnId: string } | null;
 	columns: readonly { id: string; label: string }[];
 	place: (columnId: string) => void;
 	remove: () => void;
@@ -31,9 +31,7 @@ export function useSessionRowBoard(
 	// Rows read only their own placement and the column names, so a card moving
 	// elsewhere on the board does not re-render every row.
 	const current = board && sessionId ? findSessionPlacement(board.board, sessionId) : null;
-	const column = board?.board.columns.find((candidate) => candidate.id === current?.columnId);
-	const placementId = column?.id;
-	const placementLabel = column?.label;
+	const placementId = current?.columnId;
 	const columnsKey = JSON.stringify(
 		board?.board.columns.map((entry) => [entry.id, entry.label]) ?? [],
 	);
@@ -68,16 +66,13 @@ export function useSessionRowBoard(
 			enabled
 				? {
 						onDragPointerDown: isOpen ? onDragPointerDown : undefined,
-						placement:
-							placementId && placementLabel !== undefined
-								? { columnId: placementId, label: placementLabel }
-								: null,
+						placement: placementId ? { columnId: placementId } : null,
 						columns,
 						place,
 						remove,
 					}
 				: null,
-		[columns, enabled, isOpen, onDragPointerDown, place, placementId, placementLabel, remove],
+		[columns, enabled, isOpen, onDragPointerDown, place, placementId, remove],
 	);
 }
 

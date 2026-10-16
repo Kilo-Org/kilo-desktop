@@ -21,6 +21,7 @@ export function createShellHandlers(
 	| "shell:list-pane-windows"
 	| "shell:focus-pane-window"
 	| "shell:dock-pane-window"
+	| "shell:focus-main-window"
 	| "shell:sync-pane-windows"
 > {
 	return {
@@ -48,6 +49,9 @@ export function createShellHandlers(
 			if (exists) setTimeout(() => electronWindow.dockPaneWindow(input), 0);
 			return { docked: exists };
 		},
+		"shell:focus-main-window": () => {
+			electronWindow.reveal();
+		},
 		"shell:sync-pane-windows": ({ pluginId, activeSessionId }) => {
 			electronWindow.syncPaneWindows(pluginId, activeSessionId);
 		},
@@ -63,6 +67,7 @@ export function createShellHandlers(
 		| "shell:list-pane-windows"
 		| "shell:focus-pane-window"
 		| "shell:dock-pane-window"
+		| "shell:focus-main-window"
 		| "shell:sync-pane-windows"
 	>;
 }

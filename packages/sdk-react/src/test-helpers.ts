@@ -65,6 +65,7 @@ export function createTestShellDelegates(): ShellDelegates {
 			focusPaneWindow: async () => ({ focused: true }),
 			dockPaneWindow: async () => ({ docked: true }),
 			syncPaneWindows: async () => undefined,
+			focusMainWindow: async () => undefined,
 			onPaneWindowChanged: () => () => {},
 		},
 		fs: {

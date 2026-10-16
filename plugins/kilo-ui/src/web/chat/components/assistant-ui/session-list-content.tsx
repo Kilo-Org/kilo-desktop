@@ -51,7 +51,6 @@ import {
 	PinOffIcon,
 	PlusIcon,
 	SearchIcon,
-	SquareKanbanIcon,
 	Trash2Icon,
 } from "lucide-react";
 import isEqual from "lodash/isEqual.js";
@@ -1249,22 +1248,6 @@ const SessionRowContent = memo(function SessionRowContent({
 			>
 				<ThreadListItemPrimitive.Title fallback={UNTITLED_CHAT} />
 			</span>
-			{board?.placement ? (
-				<Tooltip>
-					<TooltipTrigger
-						render={
-							<span
-								role="img"
-								aria-label={`On board: ${board.placement.label}`}
-								className="text-muted-foreground inline-flex shrink-0"
-							/>
-						}
-					>
-						<SquareKanbanIcon aria-hidden className="size-3" />
-					</TooltipTrigger>
-					<TooltipContent side="right">{`On board: ${board.placement.label}`}</TooltipContent>
-				</Tooltip>
-			) : null}
 			<span
 				data-slot="aui_session-list-item-time"
 				className={cn(

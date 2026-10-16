@@ -30,6 +30,7 @@ import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
 import { ChatLocationBreadcrumb, ChatSessionBreadcrumb } from "./ChatSessionBreadcrumb.js";
+import { DetachedWindowLayout } from "./DetachedWindowLayout.js";
 import { ChatMarkdownProvider } from "./ChatMarkdownContext.js";
 import type { ChatMarkdownExtensionContext } from "./chat-markdown-extensions.js";
 import { resolveChatWorkspace } from "./chat-workspace-directory.js";
@@ -822,49 +823,48 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 		const pane = findPane(layout, detached.paneId);
 		const paneTitle = pane?.title ?? "Pane";
 		return (
-			<div className="flex h-full min-h-0 w-full min-w-0 flex-col">
-				<header className="drag-region border-border bg-card flex h-12 shrink-0 items-center gap-3 border-b pr-2 pl-20">
-					<div className="min-w-0 flex-1 translate-y-0.5">
-						<ChatLocationBreadcrumb
-							{...(workspace?.name ? { locationLabel: workspace.name } : {})}
-							{...(workspace?.color ? { locationColor: workspace.color } : {})}
-							title={paneTitle}
-							qaId="detached-pane-breadcrumb"
-						/>
+			<DetachedWindowLayout
+				title={
+					<ChatLocationBreadcrumb
+						{...(workspace?.name ? { locationLabel: workspace.name } : {})}
+						{...(workspace?.color ? { locationColor: workspace.color } : {})}
+						title={paneTitle}
+						qaId="detached-pane-breadcrumb"
+					/>
+				}
+				actions={
+					<div className="-mr-1 flex items-center gap-1 [-webkit-app-region:no-drag]">
+						<Tooltip>
+							<TooltipTrigger
+								render={
+									<Button
+										type="button"
+										variant="ghost"
+										size="icon-sm"
+										aria-label="Dock"
+										data-qa-id="chat-pane-dock"
+										onClick={() => void dockPaneWindow(detached.paneId)}
+									/>
+								}
+							>
+								<Minimize2Icon />
+							</TooltipTrigger>
+							<TooltipContent side="bottom">Dock</TooltipContent>
+						</Tooltip>
 					</div>
-					<Tooltip>
-						<TooltipTrigger
-							render={
-								<Button
-									type="button"
-									variant="ghost"
-									size="icon-sm"
-									aria-label="Dock"
-									data-qa-id="chat-pane-dock"
-									onClick={() => void dockPaneWindow(detached.paneId)}
-								/>
-							}
-						>
-							<Minimize2Icon />
-						</TooltipTrigger>
-						<TooltipContent side="bottom">Dock</TooltipContent>
-					</Tooltip>
-				</header>
-				<main
-					className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-					data-qa-id="detached-pane-content"
-				>
-					<DetachedSessionGate remoteId={remoteId} sessionId={detached.sessionId}>
-						{pane ? (
-							renderPane(pane.id)
-						) : (
-							<div className="text-muted-foreground grid h-full place-items-center text-sm">
-								This pane is no longer available.
-							</div>
-						)}
-					</DetachedSessionGate>
-				</main>
-			</div>
+				}
+				contentQaId="detached-pane-content"
+			>
+				<DetachedSessionGate remoteId={remoteId} sessionId={detached.sessionId}>
+					{pane ? (
+						renderPane(pane.id)
+					) : (
+						<div className="text-muted-foreground grid h-full place-items-center text-sm">
+							This pane is no longer available.
+						</div>
+					)}
+				</DetachedSessionGate>
+			</DetachedWindowLayout>
 		);
 	}
 

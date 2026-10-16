@@ -1,5 +1,5 @@
-import { BrushCleaningIcon } from "lucide-react";
-import { useState } from "react";
+import { BrushCleaningIcon, ExternalLinkIcon, Minimize2Icon, PlusIcon } from "lucide-react";
+import { useState, type ReactNode } from "react";
 
 import {
 	AlertDialog,
@@ -14,49 +14,47 @@ import {
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
+import { WORKSPACE_BOARD_MAX_COLUMNS } from "../../../contracts/workspace-board/schemas.js";
 import { useWorkspaceBoard } from "./WorkspaceBoardProvider.js";
 
 /**
- * The board page's title-bar actions, styled like the chat page's header
- * toolbar (ghost icon buttons on the shell glass). Clearing takes every card off so the board can start fresh (e.g. each
- * morning); columns and the chats themselves stay.
+ * The board's title-bar actions, in the main window's title bar or, once
+ * popped out, the board window's own. Adding a column lives here so it is
+ * reachable without scrolling the board. Clearing takes every card off so the
+ * board can start fresh (e.g. each morning); columns and chats stay.
  */
 export function WorkspaceBoardHeaderActions() {
 	const board = useWorkspaceBoard();
 	const [confirming, setConfirming] = useState(false);
-	if (!board) return null;
+	if (!board || board.window.isPoppedOut) return null;
 	// Every card, including ones the workspace filter hides or that are not loaded.
 	const cardCount = board.board.columns.reduce(
 		(count, column) => count + column.sessionIds.length,
 		0,
 	);
 	const empty = cardCount === 0;
+	const { add: addColumn } = board.columnNaming;
 
 	return (
 		<div className="-mr-1 flex items-center gap-1 [-webkit-app-region:no-drag]">
-			<Tooltip>
-				<TooltipTrigger
-					render={
-						// A wrapper keeps the tooltip working while the button is disabled.
-						<span className="inline-flex" />
-					}
-				>
-					<Button
-						type="button"
-						variant="ghost"
-						size="icon-sm"
-						aria-label={empty ? "Clear board (the board is empty)" : "Clear board"}
-						data-qa-id="workspace-board-clear"
-						disabled={empty}
-						onClick={() => setConfirming(true)}
-					>
-						<BrushCleaningIcon className="size-3.5" aria-hidden />
-					</Button>
-				</TooltipTrigger>
-				<TooltipContent side="bottom">
-					{empty ? "The board is already empty" : "Clear board"}
-				</TooltipContent>
-			</Tooltip>
+			<HeaderIconButton
+				label="Add column"
+				qaId="workspace-board-add-column"
+				disabledReason={
+					addColumn ? undefined : `A board can have at most ${WORKSPACE_BOARD_MAX_COLUMNS} columns`
+				}
+				onClick={() => addColumn?.()}
+			>
+				<PlusIcon className="size-3.5" aria-hidden />
+			</HeaderIconButton>
+			<HeaderIconButton
+				label="Clear board"
+				qaId="workspace-board-clear"
+				disabledReason={empty ? "The board is already empty" : undefined}
+				onClick={() => setConfirming(true)}
+			>
+				<BrushCleaningIcon className="size-3.5" aria-hidden />
+			</HeaderIconButton>
 			<AlertDialog open={confirming} onOpenChange={setConfirming}>
 				<AlertDialogContent data-qa-id="workspace-board-clear-dialog">
 					<AlertDialogHeader>
@@ -78,7 +76,60 @@ export function WorkspaceBoardHeaderActions() {
 					</AlertDialogFooter>
 				</AlertDialogContent>
 			</AlertDialog>
+			{board.window.canPopOut ? (
+				<HeaderIconButton
+					label="Pop out"
+					qaId="workspace-board-pop-out"
+					onClick={board.window.popOut}
+				>
+					<ExternalLinkIcon className="size-3.5" aria-hidden />
+				</HeaderIconButton>
+			) : null}
+			{board.window.isDetached ? (
+				<HeaderIconButton label="Dock" qaId="workspace-board-dock" onClick={board.window.dock}>
+					<Minimize2Icon className="size-3.5" aria-hidden />
+				</HeaderIconButton>
+			) : null}
 		</div>
+	);
+}
+
+/** Disabled with a reason: the tooltip shows it and the button describes itself with it. */
+function HeaderIconButton({
+	label,
+	qaId,
+	disabledReason,
+	onClick,
+	children,
+}: {
+	label: string;
+	qaId: string;
+	disabledReason?: string | undefined;
+	onClick: () => void;
+	children: ReactNode;
+}) {
+	const buttonProps = {
+		type: "button",
+		variant: "ghost",
+		size: "icon-sm",
+		"aria-label": label,
+		"aria-description": disabledReason,
+		"data-qa-id": qaId,
+		disabled: disabledReason !== undefined,
+		onClick,
+	} as const;
+	return (
+		<Tooltip>
+			{disabledReason ? (
+				// A wrapper keeps the tooltip working while the button is disabled.
+				<TooltipTrigger render={<span className="inline-flex" />}>
+					<Button {...buttonProps}>{children}</Button>
+				</TooltipTrigger>
+			) : (
+				<TooltipTrigger render={<Button {...buttonProps} />}>{children}</TooltipTrigger>
+			)}
+			<TooltipContent side="bottom">{disabledReason ?? label}</TooltipContent>
+		</Tooltip>
 	);
 }
 

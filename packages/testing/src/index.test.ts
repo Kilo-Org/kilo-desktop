@@ -294,6 +294,7 @@ describe("createFakeSdk", () => {
 		await expect(sdk.shell.focusPaneWindow(pane)).resolves.toEqual({ focused: true });
 		await expect(sdk.shell.dockPaneWindow(pane)).resolves.toEqual({ docked: true });
 		await expect(sdk.shell.syncPaneWindows("kilo-ui", "session-1")).resolves.toBeUndefined();
+		await expect(sdk.shell.focusMainWindow()).resolves.toBeUndefined();
 		const unsubscribe = sdk.shell.onPaneWindowChanged(vi.fn());
 		expect(() => unsubscribe()).not.toThrow();
 	});

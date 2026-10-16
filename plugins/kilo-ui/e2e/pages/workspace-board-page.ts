@@ -9,8 +9,8 @@ import {
 	getLocatorByTestId,
 	hover,
 } from "@anaconda/playwright-utils";
-import { getPage } from "@anaconda/playwright-utils/page-utils";
-import type { Locator } from "@playwright/test";
+import { getAllPages, getPage } from "@anaconda/playwright-utils/page-utils";
+import { expect, type Locator, type Page } from "@playwright/test";
 import { openNewChatDraft } from "@kilo-desktop/e2e";
 
 /**
@@ -20,6 +20,7 @@ import { openNewChatDraft } from "@kilo-desktop/e2e";
  */
 export class WorkspaceBoardPage {
 	private sessionId: string | undefined;
+	private boardWindow: Page | undefined;
 
 	async startChat(): Promise<void> {
 		await getPage().evaluate(() => {
@@ -39,16 +40,12 @@ export class WorkspaceBoardPage {
 		this.sessionId = (await getAttribute(row, "data-session-id")) ?? undefined;
 	}
 
-	async addChatToColumn(columnId: string, label: string): Promise<void> {
+	async addChatToColumn(columnId: string): Promise<void> {
 		const row = this.chatRow();
 		await hover(row);
 		await click(row.getByRole("button", { name: "Thread actions" }));
 		await click(getLocatorByTestId("session-list-item-board-menu"));
 		await click(getLocatorByTestId(`session-list-item-board-${columnId}`));
-		await expectElementToBeVisible(
-			row.getByRole("img", { name: `On board: ${label}` }),
-			"The sidebar row should show its board column",
-		);
 	}
 
 	/** The sidebar button toggles the board, so it is only clicked while the board is closed. */
@@ -84,6 +81,74 @@ export class WorkspaceBoardPage {
 		);
 	}
 
+	/** Pops the open board out; the main window goes back to the chat. */
+	async popOut(): Promise<void> {
+		await click(getLocatorByTestId("workspace-board-pop-out"));
+		this.boardWindow = await this.waitForBoardWindow();
+		await expectElementToBeVisible(
+			this.boardWindow.getByTestId("workspace-board"),
+			"The board should open in its own window",
+		);
+		await expectElementToBeVisible(
+			getLocatorByTestId("kilo-chat-thread"),
+			"The main window should go back to the chat",
+		);
+	}
+
+	async expectChatInBoardWindow(columnId: string): Promise<void> {
+		await expectElementToBeVisible(
+			this.boardWindowCard(columnId),
+			`The chat should be in the board window's ${columnId} column`,
+		);
+	}
+
+	/** Leaves the main window on a fresh draft first, so the card has to switch it. */
+	async openChatFromBoardWindow(columnId: string): Promise<void> {
+		await openNewChatDraft();
+		await click(this.boardWindowCard(columnId).getByTestId("workspace-board-card-open"));
+		await expectElementToBeVisible(
+			this.activeRow().and(this.chatRow()),
+			"The board window should open the chat in the main window",
+		);
+	}
+
+	async dockBoardWindow(): Promise<void> {
+		const boardWindow = this.requireBoardWindow();
+		const closed = boardWindow.waitForEvent("close");
+		await click(boardWindow.getByTestId("workspace-board-dock"));
+		await closed;
+		this.boardWindow = undefined;
+		await expectElementToBeVisible(
+			getLocatorByTestId("workspace-board"),
+			"The board should be back in the main window",
+		);
+	}
+
+	async closeBoardWindows(): Promise<void> {
+		for (const page of getAllPages().filter(isBoardWindow)) await page.close();
+		this.boardWindow = undefined;
+	}
+
+	private async waitForBoardWindow(): Promise<Page> {
+		await expect
+			.poll(() => getAllPages().some(isBoardWindow), { message: "The board window should open" })
+			.toBe(true);
+		const boardWindow = getAllPages().find(isBoardWindow);
+		if (!boardWindow) throw new Error("The board window closed as it opened.");
+		return boardWindow;
+	}
+
+	private boardWindowCard(columnId: string): Locator {
+		return this.requireBoardWindow()
+			.getByTestId(`workspace-board-column-${columnId}`)
+			.getByTestId(`workspace-board-card-${this.requireSessionId()}`);
+	}
+
+	private requireBoardWindow(): Page {
+		if (!this.boardWindow) throw new Error("Pop the board out first.");
+		return this.boardWindow;
+	}
+
 	private activeRow(): Locator {
 		return getLocator('[data-slot="aui_session-list-item"][data-active="true"]');
 	}
@@ -106,4 +171,10 @@ export class WorkspaceBoardPage {
 		if (!this.sessionId) throw new Error("Start a chat before using the board.");
 		return this.sessionId;
 	}
+}
+
+function isBoardWindow(page: Page): boolean {
+	return (
+		page.url().includes("#/plugins/workspace-board?") && page.url().includes("paneWindow=true")
+	);
 }

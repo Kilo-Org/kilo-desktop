@@ -26,6 +26,12 @@ export type SessionRowMetadataProps = {
 	statusId: string;
 	directory: string;
 	worktreeBranch?: string;
+	/**
+	 * The metadata can be clicked on its own, so it may render controls such as
+	 * links. Board cards set it; sidebar rows do not, since the whole row is the
+	 * control that opens the chat.
+	 */
+	interactive?: boolean;
 };
 
 export const SESSION_ROW_STATE_LABELS: Record<

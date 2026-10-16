@@ -60,6 +60,7 @@ export function createBrowserLocalApi(): LocalApi {
 				return { docked: false };
 			},
 			async syncPaneWindows() {},
+			async focusMainWindow() {},
 			onPaneWindowChanged() {
 				return () => {};
 			},

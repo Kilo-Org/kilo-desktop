@@ -17,8 +17,13 @@ import {
 } from "./workspace-board-constants.js";
 
 import type { BoardDragItem, BoardDrop } from "./workspace-board-drag-target.js";
+import { useAddColumnForNaming, type ColumnNaming } from "./use-add-column-for-naming.js";
 import { useWorkspaceBoardDrag } from "./use-workspace-board-drag.js";
 import { useWorkspaceBoardStore } from "./use-workspace-board-store.js";
+import {
+	useWorkspaceBoardWindow,
+	type WorkspaceBoardWindow,
+} from "./use-workspace-board-window.js";
 
 export type WorkspaceBoardContextValue = {
 	board: WorkspaceBoardState;
@@ -28,14 +33,16 @@ export type WorkspaceBoardContextValue = {
 	remove: (sessionId: string) => void;
 	/** Takes every card off the board; columns stay. */
 	clear: () => void;
-	/** Appends a column and returns its id. */
-	addColumn: (label: string) => string;
+	/** Adding a column from the title bar and opening its name on the board. */
+	columnNaming: ColumnNaming;
 	renameColumn: (columnId: string, label: string) => void;
 	moveColumn: (columnId: string, index: number) => void;
 	/** Moves the column's cards to its neighbour; the last column is never deleted. */
 	deleteColumn: (columnId: string) => void;
 	/** Pointer-down handler that begins dragging a chat or a column. */
 	startDrag: (event: ReactPointerEvent<HTMLElement>, item: BoardDragItem) => void;
+	/** The board's pop-out window, as seen from this window (main or pop-out). */
+	window: WorkspaceBoardWindow;
 };
 
 const WorkspaceBoardContext = createContext<WorkspaceBoardContextValue | null>(null);
@@ -63,6 +70,9 @@ function useIsBoardRoute(): boolean {
  *
  * Gated by the `workspace-board` feature flag: while off, the context is null so
  * the sidebar shows no board affordances and the board query never runs.
+ *
+ * Every window mounts its own provider; a popped-out board window shares the
+ * persisted board with the main window through the store's change event.
  */
 export function WorkspaceBoardProvider({ children }: { children: ReactNode }) {
 	const enabled = useFeatureFlag(WORKSPACE_BOARD_FEATURE_FLAG, false);
@@ -77,6 +87,8 @@ export function WorkspaceBoardProvider({ children }: { children: ReactNode }) {
 		[moveColumn, place],
 	);
 	const { startDrag } = useWorkspaceBoardDrag(onDrop);
+	const boardWindow = useWorkspaceBoardWindow(enabled);
+	const columnNaming = useAddColumnForNaming(board.columns.length, addColumn);
 
 	// Placement clamps to the column's length, so the largest index means "at the
 	// end" without reading the board, which keeps this callback stable.
@@ -92,16 +104,18 @@ export function WorkspaceBoardProvider({ children }: { children: ReactNode }) {
 			isOpen,
 			addToColumn,
 			remove,
-			addColumn,
+			columnNaming,
 			renameColumn,
 			moveColumn,
 			deleteColumn,
 			startDrag,
+			window: boardWindow,
 		}),
 		[
-			addColumn,
+			columnNaming,
 			addToColumn,
 			board,
+			boardWindow,
 			clear,
 			deleteColumn,
 			isOpen,

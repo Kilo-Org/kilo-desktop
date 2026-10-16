@@ -22,6 +22,7 @@ export type {
 	SdkFeatureFlags,
 	FeatureFlagMap,
 	SdkShell,
+	PaneWindow,
 	SdkFs,
 	SdkWorkspace,
 	WorkspaceFileChangeType,

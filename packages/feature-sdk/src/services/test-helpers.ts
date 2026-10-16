@@ -75,6 +75,7 @@ export function makeServices(featureRouter?: FeatureRouter) {
 			focusPaneWindow: async () => ({ focused: true }),
 			dockPaneWindow: async () => ({ docked: true }),
 			syncPaneWindows: async () => undefined,
+			focusMainWindow: async () => undefined,
 			onPaneWindowChanged: () => noop,
 		},
 		fs: {

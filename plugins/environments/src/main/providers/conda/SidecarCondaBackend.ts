@@ -42,8 +42,8 @@
  * - previewUpdate()     → conda.update (dry_run=true)
  * - previewInstall()    → conda.install (dry_run=true)
  * - listChannels()      → conda_tools.list_channels
- * - addChannel()        → conda_config.add (key="channels")
- * - removeChannel()     → not yet implemented in anaconda-bridge-sidecar
+ * - addChannel()        → conda_tools.add_channel
+ * - removeChannel()     → conda_tools.remove_channel
  * - findRepodata()      → repodata.find
  *
  * Bridge method names are NOT derivable from the conda CLI verb or from a
@@ -76,6 +76,7 @@ import {
 import { REPODATA_FIND_MAX_LIMIT } from "../../../contracts/providers/conda.js";
 import type {
 	Channel,
+	CondaChannelsAddInput,
 	CondaChannelsListResult,
 	CondaDistribution,
 	CondaEnv,
@@ -120,6 +121,19 @@ const BRIDGE_TELEMETRY_VARIABLES = new Set([
 	"BRIDGE_TELEMETRY_ENV",
 	"BRIDGE_TELEMETRY_MACHINE_ID",
 ]);
+
+/**
+ * Condarc the channel add/remove writes target, passed to the bridge's
+ * `conda_tools.add_channel` / `conda_tools.remove_channel` `location` param.
+ *
+ * `"user"` resolves to the running user's `~/.condarc` in the bridge. The
+ * plugin-scoped condarc (`resolveDefaultCondaFilesRoot` →
+ * `~/.kilo-desktop/conda`) is not yet wired into the bridge spawn (no
+ * `CONDARC`), so `~/.condarc` is the only target that round-trips with
+ * `conda_tools.list_channels` today. Revisit together with the bridge-side
+ * channel confinement tracked in `c1-gate-4-bridge-channel-allowlist-prefix-jail.md`.
+ */
+const CHANNELS_CONDARC_LOCATION = "user";
 
 /** Shape of the `data` field on JSON-RPC errors from the bridge. */
 interface BridgeErrorData {
@@ -523,12 +537,17 @@ export class SidecarCondaBackend implements CondaBackend {
 		return channels.map((ch) => ch.name ?? ch.url ?? "");
 	}
 
-	async addChannel(channel: Channel, ctx?: CondaCallContext): Promise<CondaChannelsListResult> {
-		await this.#call<AddChannelResult>(
-			"conda_config.add",
+	async addChannel(
+		input: CondaChannelsAddInput,
+		ctx?: CondaCallContext,
+	): Promise<CondaChannelsListResult> {
+		await this.#call<ChannelMutationResult>(
+			"conda_tools.add_channel",
 			{
-				key: "channels",
-				value: channel,
+				channel: input.channel,
+				location: CHANNELS_CONDARC_LOCATION,
+				// Omit when unset so the bridge's own default (append last) applies.
+				...(input.position === undefined ? {} : { position: input.position }),
 			},
 			ctx,
 		);
@@ -589,14 +608,13 @@ export class SidecarCondaBackend implements CondaBackend {
 		}));
 	}
 
-	async removeChannel(
-		_channel: Channel,
-		_ctx?: CondaCallContext,
-	): Promise<CondaChannelsListResult> {
-		throw featureError(
-			"PROVIDER_NOT_READY",
-			"removeChannel is not yet implemented in the anaconda-bridge-sidecar.",
+	async removeChannel(channel: Channel, ctx?: CondaCallContext): Promise<CondaChannelsListResult> {
+		await this.#call<ChannelMutationResult>(
+			"conda_tools.remove_channel",
+			{ channel, location: CHANNELS_CONDARC_LOCATION },
+			ctx,
 		);
+		return this.listChannels(ctx);
 	}
 
 	// ─── Lifecycle ────────────────────────────────────────────────────────
@@ -1144,8 +1162,17 @@ interface ListChannelsResult {
 	channels: BridgeChannel[];
 }
 
-interface AddChannelResult {
+/**
+ * Result of `conda_tools.add_channel` / `conda_tools.remove_channel`. The
+ * `channels` field is the condarc's channel list after the change; callers
+ * still re-read via `listChannels` so the full, ordered, merged context is
+ * what gets returned to the renderer.
+ */
+interface ChannelMutationResult {
 	success: boolean;
+	message?: string;
+	location?: string;
+	channels?: string[];
 }
 
 /**

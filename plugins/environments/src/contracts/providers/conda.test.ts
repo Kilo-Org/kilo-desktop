@@ -740,6 +740,13 @@ describe("conda.channels I/O", () => {
 		expect(condaChannelsAddInputSchema.parse({ channel: "conda-forge" })).toEqual({
 			channel: "conda-forge",
 		});
+		expect(condaChannelsAddInputSchema.parse({ channel: "conda-forge", position: 1 })).toEqual({
+			channel: "conda-forge",
+			position: 1,
+		});
+		expect(
+			condaChannelsAddInputSchema.safeParse({ channel: "conda-forge", position: 0 }).success,
+		).toBe(false);
 		expect(condaChannelsRemoveInputSchema.parse({ channel: "conda-forge" })).toEqual({
 			channel: "conda-forge",
 		});

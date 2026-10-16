@@ -55,11 +55,25 @@ describe("agent conda tools refuse non-named channels (C1 gate 2)", () => {
 		).rejects.not.toThrow(CHANNEL_REFUSAL);
 	});
 
-	it("does not restrict the UI-only channels.add flow", async () => {
+	it("exposes channel add/remove and refuses non-named channels", async () => {
 		const tools = registry()
 			.all()
 			.map((tool) => tool.name);
-		expect(tools).not.toContain("conda.channels.add");
+		expect(tools).toContain("conda.channels.add");
+		expect(tools).toContain("conda.channels.remove");
+
+		for (const tool of ["conda.channels.add", "conda.channels.remove"] as const) {
+			for (const channel of NON_NAMED_CHANNELS) {
+				await expect(registry().invoke("environments", tool, { channel })).rejects.toThrow(
+					CHANNEL_REFUSAL,
+				);
+			}
+			// A named channel clears the guard; any later failure (unregistered
+			// main handler) is fine.
+			await expect(
+				registry().invoke("environments", tool, { channel: "conda-forge" }),
+			).rejects.not.toThrow(CHANNEL_REFUSAL);
+		}
 	});
 });
 

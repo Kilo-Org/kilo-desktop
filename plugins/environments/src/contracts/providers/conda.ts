@@ -588,7 +588,17 @@ export type CondaPackagesPreviewResult = z.infer<typeof condaPackagesPreviewResu
 export const condaChannelsListResultSchema = z.array(channelSchema);
 export type CondaChannelsListResult = z.infer<typeof condaChannelsListResultSchema>;
 
-export const condaChannelsAddInputSchema = z.object({ channel: channelSchema });
+export const condaChannelsAddInputSchema = z.object({
+	channel: channelSchema,
+	/**
+	 * 1-based priority rank for the channel: `1` is the highest priority (first
+	 * in the list), larger values rank lower, and a rank past the end lands at
+	 * the bottom. Omitted, the bridge appends it last, so the channels already
+	 * configured keep precedence. When given for an already-configured channel,
+	 * the existing entry is moved to that rank (never duplicated).
+	 */
+	position: z.number().int().min(1).optional(),
+});
 export type CondaChannelsAddInput = z.infer<typeof condaChannelsAddInputSchema>;
 
 export const condaChannelsRemoveInputSchema = z.object({ channel: channelSchema });

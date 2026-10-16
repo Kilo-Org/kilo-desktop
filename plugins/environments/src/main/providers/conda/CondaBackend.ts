@@ -1,5 +1,6 @@
 import type {
 	Channel,
+	CondaChannelsAddInput,
 	CondaChannelsListResult,
 	CondaDistribution,
 	CondaEnv,
@@ -121,7 +122,10 @@ export interface CondaBackend {
 	): Promise<CondaPackagesPreviewResult>;
 
 	listChannels(ctx?: CondaCallContext): Promise<CondaChannelsListResult>;
-	addChannel(channel: Channel, ctx?: CondaCallContext): Promise<CondaChannelsListResult>;
+	addChannel(
+		input: CondaChannelsAddInput,
+		ctx?: CondaCallContext,
+	): Promise<CondaChannelsListResult>;
 	removeChannel(channel: Channel, ctx?: CondaCallContext): Promise<CondaChannelsListResult>;
 
 	/**

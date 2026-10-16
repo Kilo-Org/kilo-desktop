@@ -25,7 +25,7 @@ describe("environments plugin web entry", () => {
 		webRegister(sdk);
 
 		const tools = sdk.services.toolRegistry.all();
-		expect(tools).toHaveLength(12);
+		expect(tools).toHaveLength(14);
 		expect(tools.filter((tool) => !tool.requiresSignIn).map((tool) => tool.name)).toEqual([]);
 	});
 
@@ -51,7 +51,9 @@ describe("environments plugin web entry", () => {
 
 		const tools = sdk.services.toolRegistry.all();
 		expect(tools.map((tool) => tool.name).sort()).toEqual([
+			"conda.channels.add",
 			"conda.channels.list",
+			"conda.channels.remove",
 			"conda.envs.clone",
 			"conda.envs.create",
 			"conda.envs.createFromFile",

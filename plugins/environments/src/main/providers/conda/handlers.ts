@@ -10,7 +10,9 @@ import {
 	type CancelResult,
 } from "../../../contracts/common.js";
 import type {
+	CondaChannelsAddInput,
 	CondaChannelsListResult,
+	CondaChannelsRemoveInput,
 	CondaDistribution,
 	CondaEnvsCheckPrefixInput,
 	CondaEnvsCheckPrefixResult,
@@ -332,17 +334,36 @@ export function registerCondaHandlers(
 	);
 
 	// ─── Channels (writes) ────────────────────────────────────────────
-	// Stub handlers so callers get a descriptive error instead of a
-	// generic "No handler" rejection. A global channel management UI
-	// would implement these in a follow-up.
+	// Channel add/remove are quick condarc edits, but they run through the
+	// same per-provider queue as every other write so a successful change
+	// invalidates the read cache (notably `conda.channels.list`, and any
+	// cached read whose result depends on the channel list). The contract
+	// returns the updated channel list inline rather than a jobId, so the
+	// queue-assigned id is intentionally not surfaced.
 
-	handlers.handle("conda.channels.add", () => {
-		throw new FeatureError("conda.channels.add is not yet implemented.", "BUSINESS");
-	});
+	handlers.handle(
+		"conda.channels.add",
+		async (input: CondaChannelsAddInput): Promise<CondaChannelsListResult> => {
+			const { result } = queue.enqueue({
+				providerId: "conda",
+				kind: "channels.add",
+				run: (ctx) => backend.addChannel(input, { signal: ctx.signal }),
+			});
+			return result;
+		},
+	);
 
-	handlers.handle("conda.channels.remove", () => {
-		throw new FeatureError("conda.channels.remove is not yet implemented.", "BUSINESS");
-	});
+	handlers.handle(
+		"conda.channels.remove",
+		async (input: CondaChannelsRemoveInput): Promise<CondaChannelsListResult> => {
+			const { result } = queue.enqueue({
+				providerId: "conda",
+				kind: "channels.remove",
+				run: (ctx) => backend.removeChannel(input.channel, { signal: ctx.signal }),
+			});
+			return result;
+		},
+	);
 
 	// ─── Cancel ───────────────────────────────────────────────────────
 

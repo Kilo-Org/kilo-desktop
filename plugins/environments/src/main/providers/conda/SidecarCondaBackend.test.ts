@@ -869,11 +869,11 @@ describe("SidecarCondaBackend", () => {
 	});
 
 	describe("addChannel()", () => {
-		it("sends conda_config.add then returns updated channels", async () => {
+		it("sends conda_tools.add_channel then returns updated channels", async () => {
 			mockConnection.sendRequest.mockImplementation((method: string) => {
 				if (isHealthCheck(method)) return Promise.resolve({});
-				if (method === "conda_config.add") {
-					return Promise.resolve({ success: true });
+				if (method === "conda_tools.add_channel") {
+					return Promise.resolve({ success: true, channels: ["my-channel"] });
 				}
 				if (method === "conda_tools.list_channels") {
 					return Promise.resolve([{ name: "my-channel" }, { name: "conda-forge" }]);
@@ -882,17 +882,43 @@ describe("SidecarCondaBackend", () => {
 			});
 
 			const backend = createBackend();
-			const result = await backend.addChannel("my-channel");
+			const result = await backend.addChannel({ channel: "my-channel" });
 
 			expect(mockConnection.sendRequest).toHaveBeenCalledWith(
-				"conda_config.add",
+				"conda_tools.add_channel",
 				{
-					key: "channels",
-					value: "my-channel",
+					channel: "my-channel",
+					location: "user",
 				},
 				expect.anything(),
 			);
 			expect(result).toEqual(["my-channel", "conda-forge"]);
+		});
+
+		it("forwards position so the bridge ranks the channel", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (isHealthCheck(method)) return Promise.resolve({});
+				if (method === "conda_tools.add_channel") {
+					return Promise.resolve({ success: true, channels: ["my-channel"] });
+				}
+				if (method === "conda_tools.list_channels") {
+					return Promise.resolve([{ name: "my-channel" }]);
+				}
+				return Promise.resolve({});
+			});
+
+			const backend = createBackend();
+			await backend.addChannel({ channel: "my-channel", position: 1 });
+
+			expect(mockConnection.sendRequest).toHaveBeenCalledWith(
+				"conda_tools.add_channel",
+				{
+					channel: "my-channel",
+					location: "user",
+					position: 1,
+				},
+				expect.anything(),
+			);
 		});
 	});
 
@@ -1221,9 +1247,30 @@ describe("SidecarCondaBackend", () => {
 	});
 
 	describe("removeChannel()", () => {
-		it("throws PROVIDER_NOT_READY", async () => {
+		it("sends conda_tools.remove_channel then returns updated channels", async () => {
+			mockConnection.sendRequest.mockImplementation((method: string) => {
+				if (isHealthCheck(method)) return Promise.resolve({});
+				if (method === "conda_tools.remove_channel") {
+					return Promise.resolve({ success: true, channels: [] });
+				}
+				if (method === "conda_tools.list_channels") {
+					return Promise.resolve([{ name: "defaults" }]);
+				}
+				return Promise.resolve({});
+			});
+
 			const backend = createBackend();
-			await expect(backend.removeChannel("conda-forge")).rejects.toThrow("PROVIDER_NOT_READY");
+			const result = await backend.removeChannel("conda-forge");
+
+			expect(mockConnection.sendRequest).toHaveBeenCalledWith(
+				"conda_tools.remove_channel",
+				{
+					channel: "conda-forge",
+					location: "user",
+				},
+				expect.anything(),
+			);
+			expect(result).toEqual(["defaults"]);
 		});
 	});
 

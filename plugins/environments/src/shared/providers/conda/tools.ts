@@ -5,6 +5,8 @@ import type { SDK, ToolDefinition, ToolSignInPrompt } from "@kilo-desktop/featur
 import {
 	AGENT_CHANNEL_REFUSAL_MESSAGE,
 	agentChannelSchema,
+	condaChannelsAddInputSchema,
+	condaChannelsRemoveInputSchema,
 	condaEnvsCloneInputSchema,
 	condaEnvsCreateFromFileInputSchema,
 	condaEnvsCreateInputSchema,
@@ -46,6 +48,21 @@ const CONDA_SIGN_IN_PROMPT: ToolSignInPrompt = {
 		"packages built by Anaconda, you must sign in to a Kilo account. Do you want to sign in?",
 	toolsLabel: "Desktop's Python environment tools",
 };
+
+/**
+ * Refuse a non-named channel supplied as a single `channel` field (the
+ * channel-management tools) rather than inside a `channels` array. Same C1
+ * gate-2 rationale: an agent must not point conda at a URL or local source.
+ */
+const AGENT_SINGLE_CHANNEL_REFUSAL = {
+	message: AGENT_CHANNEL_REFUSAL_MESSAGE,
+	path: ["channel"],
+};
+
+/** True when a single `channel` field is a named channel. */
+function isNamedChannel(value: { channel: string }): boolean {
+	return agentChannelSchema.safeParse(value.channel).success;
+}
 
 /**
  * Register provider-scoped WebMCP tools for the conda provider. Called by
@@ -277,6 +294,48 @@ export function registerCondaTools(sdk: SDK): void {
 		annotations: { readOnlyHint: true },
 		exposeToModelContext: true,
 		handler: () => sdk.invoke("conda.channels.list"),
+	});
+
+	// Agent-initiated channel management. The channel is constrained to a
+	// named channel (no URL / file:// / local path) — the same C1 gate-2 guard
+	// the install/create/update tools apply — because a channel the agent adds
+	// changes what every later install in this conda trusts.
+	const mcpChannelAddSchema = condaChannelsAddInputSchema.refine(
+		isNamedChannel,
+		AGENT_SINGLE_CHANNEL_REFUSAL,
+	);
+	register({
+		name: "conda.channels.add",
+		description:
+			"Add a named conda channel to the configured channels. By default " +
+			"it is appended last (lowest priority), so the channels already " +
+			"configured keep precedence; pass `position` to rank it — `1` is " +
+			"the highest priority, larger numbers rank lower, and a position " +
+			"past the end lands at the bottom (an existing channel is moved to " +
+			"the given position). Only named channels (`defaults`, " +
+			"`conda-forge`, …) are accepted — URL or local-path channels are " +
+			"refused. Returns the updated channel list in priority order.",
+		inputSchema: z.toJSONSchema(mcpChannelAddSchema, { target: "draft-2020-12" }),
+		validate: mcpChannelAddSchema,
+		exposeToModelContext: true,
+		handler: (args) => sdk.invoke("conda.channels.add", args),
+	});
+
+	const mcpChannelRemoveSchema = condaChannelsRemoveInputSchema.refine(
+		isNamedChannel,
+		AGENT_SINGLE_CHANNEL_REFUSAL,
+	);
+	register({
+		name: "conda.channels.remove",
+		description:
+			"Remove a named conda channel from the configured channels. Only " +
+			"named channels (`defaults`, `conda-forge`, …) are accepted — URL or " +
+			"local-path channels are refused. Returns the updated channel list in " +
+			"priority order.",
+		inputSchema: z.toJSONSchema(mcpChannelRemoveSchema, { target: "draft-2020-12" }),
+		validate: mcpChannelRemoveSchema,
+		exposeToModelContext: true,
+		handler: (args) => sdk.invoke("conda.channels.remove", args),
 	});
 
 	const mcpRepodataFindSchema = condaRepodataFindInputSchema.refine(

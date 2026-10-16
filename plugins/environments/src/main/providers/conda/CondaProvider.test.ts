@@ -87,6 +87,8 @@ describe("CondaProvider", () => {
 		expect(mainSdk.has("conda.envs.readFile")).toBe(true);
 		expect(mainSdk.has("conda.envs.prefixOptions")).toBe(true);
 		expect(mainSdk.has("conda.channels.list")).toBe(true);
+		expect(mainSdk.has("conda.channels.add")).toBe(true);
+		expect(mainSdk.has("conda.channels.remove")).toBe(true);
 		expect(mainSdk.has("conda.repodata.find")).toBe(true);
 		expect(mainSdk.has("conda.packages.install")).toBe(true);
 		expect(mainSdk.has("conda.packages.list")).toBe(true);
@@ -102,7 +104,9 @@ describe("CondaProvider", () => {
 		provider.registerTools(sdk);
 		const names = sdk.services.toolRegistry.all().map((tool) => tool.name);
 		expect(names.sort()).toEqual([
+			"conda.channels.add",
 			"conda.channels.list",
+			"conda.channels.remove",
 			"conda.envs.clone",
 			"conda.envs.create",
 			"conda.envs.createFromFile",

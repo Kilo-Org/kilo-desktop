@@ -6,6 +6,7 @@ import {
 	ImageIcon,
 	NotebookIcon,
 	SaveIcon,
+	TableIcon,
 	TriangleAlertIcon,
 } from "lucide-react";
 import { type Editor, type EditorOptions } from "@pierre/diffs/edit";
@@ -55,6 +56,9 @@ import {
 	openNotebookFile,
 } from "./integrations/notebook-viewer.js";
 import { MarkdownPreview } from "./markdown/MarkdownPreview.js";
+import type { SiftTableSource } from "./table-viewer/sift-runtime.js";
+import { tableViewKind } from "./table-viewer/table-format.js";
+import { TableError, TableViewer } from "./table-viewer/TableViewer.js";
 
 import "./files.css";
 
@@ -89,7 +93,24 @@ function unsupportedMessage(file: Extract<FileReadResult, { kind: "unsupported" 
 			return "This file is too large to preview.";
 		case "preview-deferred":
 			return "Preview support for this file type is not available yet.";
+		case "invalid-table":
+			return "This file is not a valid Parquet table.";
 	}
+}
+
+function bytesFromBase64(base64: string): Uint8Array {
+	const binary = atob(base64);
+	const bytes = new Uint8Array(binary.length);
+	for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+	return bytes;
+}
+
+const TEXT_TABLE_LIMIT_LABEL = "1 MiB";
+
+type DocumentMode = "table" | "edit";
+
+function documentKey(workspaceDirectory: string, relativePath: string): string {
+	return JSON.stringify([workspaceDirectory, relativePath]);
 }
 
 function positiveInteger(value: string | undefined): number | undefined {
@@ -166,6 +187,10 @@ export function FilesView({
 	const [selectionSyncVersion, setSelectionSyncVersion] = useState(0);
 	const appearance = useSyncExternalStore(sdk.theme.subscribe, sdk.theme.appearance);
 	const editorRef = useRef<Editor<"file", undefined, undefined> | null>(null);
+	const [chosenMode, setChosenMode] = useState<{
+		readonly document: string;
+		readonly mode: DocumentMode;
+	} | null>(null);
 	const readFile = useCallback<FilesServiceContract["read"]>(
 		async ({ workspaceDirectory: requestedDirectory, relativePath }) =>
 			isNotebookFile(relativePath)
@@ -234,6 +259,35 @@ export function FilesView({
 		null,
 	);
 	const handledFileRequestRef = useRef<string | null>(null);
+	const tableKind = selectedPath ? tableViewKind(selectedPath) : null;
+	// Delimited files open as a table unless the tab was opened at a source
+	// location. The choice belongs to one document (workspace + path), so
+	// another file — or the same relative path in another folder — starts fresh.
+	const currentDocument =
+		documentWorkspaceDirectory && selectedPath
+			? documentKey(documentWorkspaceDirectory, selectedPath)
+			: null;
+	const documentMode: DocumentMode =
+		chosenMode && chosenMode.document === currentDocument
+			? chosenMode.mode
+			: revealLine === undefined
+				? "table"
+				: "edit";
+	const showDelimitedTable =
+		tableKind?.kind === "delimited" && file?.kind === "text" && documentMode === "table";
+	const setDocumentMode = useCallback(
+		(mode: DocumentMode) => {
+			if (!currentDocument) return;
+			if (mode === "table") {
+				// The editor unmounts in table mode; a retained handle would let
+				// Save read text from a detached editor instead of the live draft.
+				editorRef.current = null;
+				setAttachedEditor(null);
+			}
+			setChosenMode({ document: currentDocument, mode });
+		},
+		[currentDocument],
+	);
 	const editorOptions = useMemo<EditorOptions<"file", undefined, undefined>>(
 		() => ({
 			onAttach(editor) {
@@ -263,6 +317,11 @@ export function FilesView({
 			} = {},
 		) => {
 			if (!requestedDirectory) return;
+			// A source location can only be revealed in the editor, even if the
+			// same document is currently shown as a table.
+			if (line !== undefined) {
+				setChosenMode({ document: documentKey(requestedDirectory, relativePath), mode: "edit" });
+			}
 			const outcome = await openDocument({
 				workspaceDirectory: requestedDirectory,
 				relativePath,
@@ -520,6 +579,24 @@ export function FilesView({
 		() => (file?.kind === "image" ? `data:${file.mimeType};base64,${file.base64}` : null),
 		[file],
 	);
+	const delimiter = tableKind?.kind === "delimited" ? tableKind.delimiter : null;
+	const truncatedText = file?.kind === "text" && file.truncated;
+	// Tables are all-or-error: a truncated read is never parsed, because a cut
+	// point (even at a newline) can fall inside a quoted multi-line record.
+	const delimitedSource = useMemo<SiftTableSource | null>(
+		() =>
+			delimiter && showDelimitedTable && !truncatedText
+				? { kind: "csv", text: draft, delimiter }
+				: null,
+		[delimiter, draft, showDelimitedTable, truncatedText],
+	);
+	const binarySource = useMemo<SiftTableSource | null>(
+		() =>
+			file?.kind === "table"
+				? { kind: "bytes", format: file.format, bytes: bytesFromBase64(file.base64) }
+				: null,
+		[file],
+	);
 	const openInNotebookPanel = useCallback(async () => {
 		if (!documentWorkspaceDirectory || !selectedPath) return;
 		setNotebookOpenError(null);
@@ -568,6 +645,18 @@ export function FilesView({
 	}
 
 	const markdownToggleLabel = renderMarkdown ? "Show Markdown source" : "Show rendered Markdown";
+	const tableToggleLabel = documentMode === "table" ? "Edit source" : "Show as table";
+	const showSourceAction = (
+		<Button
+			data-qa-id="files-table-show-source"
+			onClick={() => setDocumentMode("edit")}
+			size="sm"
+			variant="outline"
+		>
+			<CodeXmlIcon data-icon="inline-start" />
+			{truncatedText ? "Show text preview" : "Show source"}
+		</Button>
+	);
 	return (
 		<FilesEditProvider>
 			<div
@@ -613,6 +702,24 @@ export function FilesView({
 							</Button>
 						) : null}
 						<ExternalEditorActions model={externalEditors} />
+						{tableKind?.kind === "delimited" && file?.kind === "text" ? (
+							<Tooltip disableHoverablePopup>
+								<TooltipTrigger
+									render={
+										<Toggle
+											aria-label={tableToggleLabel}
+											pressed={documentMode === "table"}
+											onPressedChange={(pressed) => setDocumentMode(pressed ? "table" : "edit")}
+											data-qa-id="files-table-toggle"
+											size="sm"
+										/>
+									}
+								>
+									{documentMode === "table" ? <CodeXmlIcon /> : <TableIcon />}
+								</TooltipTrigger>
+								<TooltipContent side="bottom">{tableToggleLabel}</TooltipContent>
+							</Tooltip>
+						) : null}
 						{(fileLoading || file?.kind === "text") && isMarkdown(selectedPath) ? (
 							<Tooltip disableHoverablePopup>
 								<TooltipTrigger
@@ -730,6 +837,20 @@ export function FilesView({
 										) : null}
 									</EmptyContent>
 								</Empty>
+							) : showDelimitedTable && truncatedText ? (
+								<TableError
+									actions={showSourceAction}
+									message={`Table view needs the whole file, and this file is larger than the ${TEXT_TABLE_LIMIT_LABEL} limit for text files. Use the read-only text preview or open it in an external editor.`}
+									title="File too large for table view"
+								/>
+							) : delimitedSource && selectedPath ? (
+								<TableViewer
+									errorActions={showSourceAction}
+									fileName={basename(selectedPath)}
+									source={delimitedSource}
+								/>
+							) : binarySource && selectedPath ? (
+								<TableViewer fileName={basename(selectedPath)} source={binarySource} />
 							) : file?.kind === "text" && selectedPath ? (
 								renderMarkdown && isMarkdown(selectedPath) ? (
 									<MarkdownPreview

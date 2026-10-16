@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import { mkdtemp, mkdir, readFile, realpath, stat, symlink, writeFile } from "node:fs/promises";
+import type * as FsPromises from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -8,6 +9,46 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { FeatureError } from "@kilo-desktop/feature-sdk";
 
 import { FilesService } from "./FilesService.js";
+
+/**
+ * Table-read seam: optionally caps every `FileHandle.read` (short reads are
+ * legal) and runs a hook before the first read (e.g. growing the file after
+ * the service's `stat`). Delegates to the real filesystem otherwise.
+ */
+const tableReads = vi.hoisted(() => ({
+	maxChunk: undefined as number | undefined,
+	beforeFirstRead: undefined as (() => Promise<void>) | undefined,
+	allocations: [] as number[],
+}));
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+	const actual = await importOriginal<typeof FsPromises>();
+	return {
+		...actual,
+		open: async (...args: Parameters<typeof actual.open>) => {
+			const handle = await actual.open(...args);
+			let first = true;
+			const read = handle.read.bind(handle) as (
+				buffer: Buffer,
+				offset: number,
+				length: number,
+				position: number,
+			) => Promise<{ bytesRead: number; buffer: Buffer }>;
+			return Object.assign(handle, {
+				read: async (buffer: Buffer, offset: number, length: number, position: number) => {
+					if (first) {
+						first = false;
+						tableReads.allocations.push(buffer.byteLength);
+						await tableReads.beforeFirstRead?.();
+					}
+					const chunk =
+						tableReads.maxChunk === undefined ? length : Math.min(length, tableReads.maxChunk);
+					return read(buffer, offset, chunk, position);
+				},
+			});
+		},
+	};
+});
 
 const temporaryDirectories: string[] = [];
 
@@ -55,6 +96,12 @@ async function temporaryWorkspace(): Promise<string> {
 	temporaryDirectories.push(directory);
 	return directory;
 }
+
+afterEach(() => {
+	tableReads.maxChunk = undefined;
+	tableReads.beforeFirstRead = undefined;
+	tableReads.allocations.length = 0;
+});
 
 afterEach(async () => {
 	await Promise.all(
@@ -330,6 +377,199 @@ describe("FilesService", () => {
 			kind: "unsupported",
 			reason: "too-large",
 			byteLength: 3,
+		});
+	});
+
+	it("degrades to null when the injected git status lookup rejects", async () => {
+		const workspace = await temporaryWorkspace();
+		const service = new FilesService({
+			authorize: async () => undefined,
+			gitStatus: async () => {
+				throw new Error("git exploded");
+			},
+		});
+
+		await expect(service.gitStatus(workspace)).resolves.toBeNull();
+	});
+
+	it("saves atomically, preserves mode, detects conflicts, and permits explicit overwrite", async () => {
+		const workspace = await temporaryWorkspace();
+		const file = path.join(workspace, "script.sh");
+		await writeFile(file, "one\n", { mode: 0o755 });
+		const service = new FilesService({
+			authorize: async () => undefined,
+			gitStatus: async () => null,
+		});
+		const opened = await service.read(workspace, "script.sh");
+		if (opened.kind !== "text" || !opened.revision) throw new Error("Expected editable text");
+
+		const originalMode = (await stat(file)).mode & 0o777;
+		const saved = await service.write(workspace, "script.sh", "two\n", opened.revision);
+		expect(saved.status).toBe("saved");
+		expect((await stat(file)).mode & 0o777).toBe(originalMode);
+		await writeFile(file, "external\n", { mode: 0o755 });
+
+		const conflict = await service.write(
+			workspace,
+			"script.sh",
+			"three\n",
+			saved.status === "saved" ? saved.revision : "",
+		);
+		expect(conflict).toMatchObject({ status: "conflict" });
+		expect(await readFile(file, "utf8")).toBe("external\n");
+
+		const overwritten = await service.write(
+			workspace,
+			"script.sh",
+			"three\n",
+			saved.status === "saved" ? saved.revision : "",
+			true,
+		);
+		expect(overwritten.status).toBe("saved");
+		expect(await readFile(file, "utf8")).toBe("three\n");
+	});
+
+	describe("binary table files", () => {
+		// Synthetic byte layouts: only the container magic matters to the
+		// service; decoding is the renderer's (Sift's) job.
+		const parquetBytes = Buffer.from("PAR1\x01\x02\x03PAR1", "latin1");
+
+		function tableService(tableLimitBytes?: number): FilesService {
+			return new FilesService({
+				authorize: async () => undefined,
+				gitStatus: async () => null,
+				...(tableLimitBytes !== undefined ? { tableLimitBytes } : {}),
+			});
+		}
+
+		it("reads Parquet files as bounded binary tables with a revision", async () => {
+			const workspace = await temporaryWorkspace();
+			await writeFile(path.join(workspace, "data.parquet"), parquetBytes);
+			const service = tableService();
+
+			const parquet = await service.read(workspace, "data.parquet");
+			expect(parquet).toMatchObject({
+				kind: "table",
+				format: "parquet",
+				base64: parquetBytes.toString("base64"),
+				byteLength: parquetBytes.byteLength,
+			});
+			expect(parquet.kind === "table" && parquet.revision).toMatch(/^[a-f0-9]{64}$/);
+		});
+
+		it("does not treat Arrow IPC files or Feather as tables", async () => {
+			// Sift's binary loader only accepts uncompressed Arrow IPC streams.
+			const workspace = await temporaryWorkspace();
+			await writeFile(path.join(workspace, "data.arrow"), Buffer.from("ARROW1\0\0ARROW1"));
+			await writeFile(path.join(workspace, "data.feather"), Buffer.from("ARROW1\0\0ARROW1"));
+			const service = tableService();
+
+			for (const name of ["data.arrow", "data.feather"]) {
+				await expect(service.read(workspace, name)).resolves.not.toMatchObject({ kind: "table" });
+			}
+		});
+
+		it("refuses table files over the byte limit without reading them into the result", async () => {
+			const workspace = await temporaryWorkspace();
+			await writeFile(path.join(workspace, "big.parquet"), parquetBytes);
+
+			await expect(
+				tableService(parquetBytes.byteLength - 1).read(workspace, "big.parquet"),
+			).resolves.toEqual({
+				kind: "unsupported",
+				reason: "too-large",
+				byteLength: parquetBytes.byteLength,
+			});
+			expect(tableReads.allocations).toEqual([]);
+		});
+
+		it("rejects table files whose container magic does not match the extension", async () => {
+			const workspace = await temporaryWorkspace();
+			await writeFile(path.join(workspace, "fake.parquet"), "a,b\n1,2\n");
+			await writeFile(path.join(workspace, "truncated.parquet"), "PAR1\x01\x02");
+			await writeFile(path.join(workspace, "empty.parquet"), "");
+			const service = tableService();
+
+			for (const name of ["fake.parquet", "truncated.parquet", "empty.parquet"]) {
+				await expect(service.read(workspace, name)).resolves.toMatchObject({
+					kind: "unsupported",
+					reason: "invalid-table",
+				});
+			}
+		});
+
+		it("applies the workspace and symlink boundary to table reads", async () => {
+			const workspace = await temporaryWorkspace();
+			const outside = await temporaryWorkspace();
+			await writeFile(path.join(outside, "secret.parquet"), parquetBytes);
+			await symlink(path.join(outside, "secret.parquet"), path.join(workspace, "link.parquet"));
+			const service = tableService();
+
+			await expect(service.read(workspace, "link.parquet")).rejects.toMatchObject({
+				code: "VALIDATION",
+			});
+			await expect(service.read(workspace, "../secret.parquet")).rejects.toMatchObject({
+				code: "VALIDATION",
+			});
+		});
+
+		it("assembles a table from short reads instead of reporting it invalid", async () => {
+			const workspace = await temporaryWorkspace();
+			await writeFile(path.join(workspace, "data.parquet"), parquetBytes);
+			tableReads.maxChunk = 1;
+
+			await expect(tableService().read(workspace, "data.parquet")).resolves.toMatchObject({
+				kind: "table",
+				base64: parquetBytes.toString("base64"),
+				byteLength: parquetBytes.byteLength,
+			});
+		});
+
+		it("sizes the read buffer from the file, not the table cap", async () => {
+			const workspace = await temporaryWorkspace();
+			await writeFile(path.join(workspace, "small.parquet"), parquetBytes);
+
+			await tableService().read(workspace, "small.parquet");
+
+			expect(tableReads.allocations).toEqual([parquetBytes.byteLength + 1]);
+		});
+
+		it("reads a file that grew after stat in full when it stays within the cap", async () => {
+			const workspace = await temporaryWorkspace();
+			const file = path.join(workspace, "growing.parquet");
+			const grown = Buffer.concat([parquetBytes, Buffer.from("PAR1")]);
+			await writeFile(file, parquetBytes);
+			tableReads.beforeFirstRead = () => writeFile(file, grown);
+
+			await expect(tableService(1024).read(workspace, "growing.parquet")).resolves.toMatchObject({
+				kind: "table",
+				base64: grown.toString("base64"),
+				byteLength: grown.byteLength,
+			});
+		});
+
+		it("refuses a file that grew past the cap after stat", async () => {
+			const workspace = await temporaryWorkspace();
+			const file = path.join(workspace, "growing.parquet");
+			await writeFile(file, parquetBytes);
+			tableReads.beforeFirstRead = () =>
+				writeFile(file, Buffer.concat([parquetBytes, Buffer.alloc(64), Buffer.from("PAR1")]));
+
+			await expect(
+				tableService(parquetBytes.byteLength + 8).read(workspace, "growing.parquet"),
+			).resolves.toMatchObject({ kind: "unsupported", reason: "too-large" });
+		});
+
+		it("keeps CSV and TSV on the editable text path", async () => {
+			const workspace = await temporaryWorkspace();
+			await writeFile(path.join(workspace, "data.csv"), "name,score\nÅsa,1\n");
+			await writeFile(path.join(workspace, "data.tsv"), "name\tscore\n");
+			const service = tableService();
+
+			const csv = await service.read(workspace, "data.csv");
+			expect(csv).toMatchObject({ kind: "text", contents: "name,score\nÅsa,1\n" });
+			expect(csv.kind === "text" && csv.revision).toMatch(/^[a-f0-9]{64}$/);
+			await expect(service.read(workspace, "data.tsv")).resolves.toMatchObject({ kind: "text" });
 		});
 	});
 

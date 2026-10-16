@@ -43,6 +43,17 @@ export const filesListResultSchema = z.object({
 	truncated: z.boolean(),
 });
 
+/**
+ * Largest table file main will read and ship whole. Loads are all-or-error on
+ * the renderer's main thread, so this bounds IPC payload and decode time; it
+ * is not a Parquet or WASM limit. The renderer passes the same number to Sift
+ * so a file main ships is never refused on arrival.
+ */
+export const TABLE_LIMIT_BYTES = 64 * 1024 * 1024;
+
+export const binaryTableFormatSchema = z.enum(["parquet"]);
+export type BinaryTableFormat = z.infer<typeof binaryTableFormatSchema>;
+
 export const fileReadResultSchema = z.discriminatedUnion("kind", [
 	z.object({
 		kind: z.literal("text"),
@@ -58,8 +69,15 @@ export const fileReadResultSchema = z.discriminatedUnion("kind", [
 		byteLength: z.number().int().nonnegative(),
 	}),
 	z.object({
+		kind: z.literal("table"),
+		format: binaryTableFormatSchema,
+		base64: z.string(),
+		byteLength: z.number().int().nonnegative(),
+		revision: z.string(),
+	}),
+	z.object({
 		kind: z.literal("unsupported"),
-		reason: z.enum(["binary", "too-large", "preview-deferred"]),
+		reason: z.enum(["binary", "too-large", "preview-deferred", "invalid-table"]),
 		byteLength: z.number().int().nonnegative(),
 	}),
 ]);

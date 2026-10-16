@@ -302,6 +302,15 @@ export function useFileSession({
 			// on an identical revision, otherwise image/binary reloads would
 			// never dispatch.
 			if (result.kind === "text" && result.revision === revision) return;
+			// Tables carry their own revision; an unchanged one must not re-decode
+			// and remount the table view.
+			if (
+				result.kind === "table" &&
+				latest.file?.kind === "table" &&
+				latest.file.revision === result.revision
+			) {
+				return;
+			}
 			dispatch({ type: "refresh-succeeded", file: result, workspaceDirectory });
 		} catch {
 			// Silently swallow: the file may have been deleted before the read landed.

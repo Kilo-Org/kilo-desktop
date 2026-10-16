@@ -3,6 +3,8 @@ import path from "node:path";
 
 import { test } from "../fixtures.js";
 
+test.use({ appIsolationKey: "files" });
+
 test.describe("Files @packaged", () => {
 	test("opens the bundled files pane and exposes a workspace file", async ({
 		appShellPage,

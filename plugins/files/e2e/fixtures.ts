@@ -1,15 +1,23 @@
 import { execFileSync } from "node:child_process";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { removePathAfterAppStops, test as shellTest } from "@kilo-desktop/e2e/fixtures";
 
 import { FilesPage } from "./pages/files-page.js";
+import { TableViewerPage } from "./pages/table-viewer-page.js";
+
+const SYNTHETIC_PARQUET = fileURLToPath(
+	new URL("../src/web/files/table-viewer/fixtures/synthetic.parquet", import.meta.url),
+);
 
 type FilesFixtures = {
 	filesPage: FilesPage;
 	filesWorkspace: { path: string; name: string; fileName: string; untrackedFileName: string };
+	tableViewerPage: TableViewerPage;
+	tableWorkspace: { path: string; name: string; csvFileName: string; parquetFileName: string };
 };
 
 function execGit(cwd: string, args: string[]): void {
@@ -44,6 +52,25 @@ export const test = shellTest.extend<FilesFixtures>({
 			name: path.basename(workspacePath),
 			fileName,
 			untrackedFileName,
+		});
+	},
+	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
+	tableViewerPage: async ({}, use) => {
+		await use(new TableViewerPage());
+	},
+	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
+	tableWorkspace: async ({}, use) => {
+		const workspacePath = await mkdtemp(path.join(os.tmpdir(), "kilo-files-tables-"));
+		removePathAfterAppStops(workspacePath);
+		const csvFileName = "scores.csv";
+		const parquetFileName = "synthetic.parquet";
+		await writeFile(path.join(workspacePath, csvFileName), "city,score\nÅre,3\nOslo,1\n");
+		await copyFile(SYNTHETIC_PARQUET, path.join(workspacePath, parquetFileName));
+		await use({
+			path: workspacePath,
+			name: path.basename(workspacePath),
+			csvFileName,
+			parquetFileName,
 		});
 	},
 });

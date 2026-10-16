@@ -7,6 +7,7 @@ import {
 	FILE_ICON_CUSTOM_SPRITE_SHEET,
 	FILE_ICONS,
 	NOTEBOOK_FILE_ICON_NAME,
+	TABLE_FILE_ICON_NAME,
 } from "./file-icons.js";
 
 const PIERRE_ICON_SPRITE_ID = "pierre-file-icon-sprite";
@@ -55,6 +56,8 @@ const ICON_COLORS: Record<string, string> = {
 	svgo: "light-dark(#199f43, #5ecc71)",
 	swift: "light-dark(#d47628, #ffa359)",
 	table: "light-dark(#17a5af, #64d1db)",
+	// Remapped extensions carry the symbol name, not a token (see FILE_ICONS).
+	[TABLE_FILE_ICON_NAME]: "light-dark(#17a5af, #64d1db)",
 	tailwind: "light-dark(#1ca1c7, #68cdf2)",
 	terraform: "light-dark(#693acf, #9d6afb)",
 	text: "light-dark(#84848a, #adadb1)",

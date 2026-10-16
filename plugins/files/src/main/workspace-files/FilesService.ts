@@ -8,7 +8,12 @@ import { globbyStream } from "globby";
 
 import { FeatureError } from "@kilo-desktop/feature-sdk";
 
-import type { FileGitStatusEntry, FileReadResult } from "../../contracts/schemas.js";
+import {
+	type BinaryTableFormat,
+	type FileGitStatusEntry,
+	type FileReadResult,
+	TABLE_LIMIT_BYTES,
+} from "../../contracts/schemas.js";
 
 const DEFAULT_SCAN_LIMIT = 25_000;
 const DEFAULT_TEXT_LIMIT_BYTES = 1024 * 1024;
@@ -30,6 +35,23 @@ const DEFERRED_PREVIEW_EXTENSIONS = new Set([".htm", ".html", ".pdf"]);
 /** Filesystem module used for the workspace scan; injectable as a test seam. */
 type FileSystem = typeof fs;
 
+// Arrow IPC files/Feather are deliberately absent: Sift's binary loader only
+// accepts uncompressed Arrow IPC streams, which have no reliable extension.
+const BINARY_TABLE_TYPES = new Map<string, BinaryTableFormat>([[".parquet", "parquet"]]);
+
+const PARQUET_MAGIC = Buffer.from("PAR1", "latin1");
+
+function hasTableMagic(format: BinaryTableFormat, contents: Buffer): boolean {
+	switch (format) {
+		case "parquet":
+			return (
+				contents.byteLength >= PARQUET_MAGIC.byteLength * 2 &&
+				contents.subarray(0, PARQUET_MAGIC.byteLength).equals(PARQUET_MAGIC) &&
+				contents.subarray(-PARQUET_MAGIC.byteLength).equals(PARQUET_MAGIC)
+			);
+	}
+}
+
 export interface FilesServiceOptions {
 	readonly authorize: (canonicalWorkspaceDirectory: string) => Promise<void>;
 	/**
@@ -48,6 +70,7 @@ export interface FilesServiceOptions {
 	 * POSIX permission bits.
 	 */
 	readonly fileSystem?: FileSystem;
+	readonly tableLimitBytes?: number;
 }
 
 function sha256(contents: Uint8Array): string {
@@ -90,18 +113,23 @@ function featureErrorForFilesystem(error: unknown, message: string): FeatureErro
  * Git status is the one best-effort operation: it shares the authorization
  * boundary (authorization failures still reject), while a failure of the
  * injected lookup itself degrades to `null` instead of failing the operation.
+ * Binary table files (Parquet) are all-or-nothing under a byte cap
+ * and container-magic checked; decoding stays in the renderer so no file
+ * contents are parsed in main.
  */
 export class FilesService {
 	private readonly scanLimit: number;
 	private readonly textLimitBytes: number;
 	private readonly imageLimitBytes: number;
 	private readonly fileSystem: FileSystem;
+	private readonly tableLimitBytes: number;
 
 	constructor(private readonly options: FilesServiceOptions) {
 		this.scanLimit = options.scanLimit ?? DEFAULT_SCAN_LIMIT;
 		this.textLimitBytes = options.textLimitBytes ?? DEFAULT_TEXT_LIMIT_BYTES;
 		this.imageLimitBytes = options.imageLimitBytes ?? DEFAULT_IMAGE_LIMIT_BYTES;
 		this.fileSystem = options.fileSystem ?? fs;
+		this.tableLimitBytes = options.tableLimitBytes ?? TABLE_LIMIT_BYTES;
 	}
 
 	async list(workspaceDirectory: string): Promise<{ paths: string[]; truncated: boolean }> {
@@ -174,6 +202,9 @@ export class FilesService {
 		if (DEFERRED_PREVIEW_EXTENSIONS.has(extension)) {
 			return { kind: "unsupported", reason: "preview-deferred", byteLength };
 		}
+
+		const tableFormat = BINARY_TABLE_TYPES.get(extension);
+		if (tableFormat) return this.readTable(target, tableFormat, byteLength);
 
 		const imageType = IMAGE_TYPES.get(extension);
 		if (imageType) {
@@ -279,6 +310,64 @@ export class FilesService {
 			return target;
 		} catch (error) {
 			throw featureErrorForFilesystem(error, "File path is invalid.");
+		}
+	}
+
+	private async readTable(
+		target: string,
+		format: BinaryTableFormat,
+		byteLength: number,
+	): Promise<FileReadResult> {
+		if (byteLength > this.tableLimitBytes) {
+			return { kind: "unsupported", reason: "too-large", byteLength };
+		}
+		const contents = await this.readUpTo(target, byteLength + 1, this.tableLimitBytes + 1);
+		if (contents.byteLength > this.tableLimitBytes) {
+			return { kind: "unsupported", reason: "too-large", byteLength: contents.byteLength };
+		}
+		if (!hasTableMagic(format, contents)) {
+			return { kind: "unsupported", reason: "invalid-table", byteLength: contents.byteLength };
+		}
+		return {
+			kind: "table",
+			format,
+			base64: contents.toString("base64"),
+			byteLength: contents.byteLength,
+			revision: sha256(contents),
+		};
+	}
+
+	/**
+	 * Reads to EOF, tolerating short reads, but never more than `maxBytes`.
+	 * The buffer starts at the expected size (stat size + 1, so growth is
+	 * noticed without a cap-sized allocation for small files) and only grows
+	 * toward `maxBytes` if the file grew after `stat`. Callers pass one byte
+	 * past their limit so an oversized or growing file is detectable and a
+	 * partial (footer-less) payload never passes as complete.
+	 */
+	private async readUpTo(target: string, initialBytes: number, maxBytes: number): Promise<Buffer> {
+		const handle = await open(target, "r");
+		try {
+			let contents = Buffer.allocUnsafe(Math.min(initialBytes, maxBytes));
+			let length = 0;
+			while (length < maxBytes) {
+				if (length === contents.byteLength) {
+					const grown = Buffer.allocUnsafe(Math.min(contents.byteLength * 2, maxBytes));
+					contents.copy(grown, 0, 0, length);
+					contents = grown;
+				}
+				const { bytesRead } = await handle.read(
+					contents,
+					length,
+					contents.byteLength - length,
+					length,
+				);
+				if (bytesRead === 0) break;
+				length += bytesRead;
+			}
+			return contents.subarray(0, length);
+		} finally {
+			await handle.close();
 		}
 	}
 

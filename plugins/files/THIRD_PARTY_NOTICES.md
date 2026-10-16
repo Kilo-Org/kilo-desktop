@@ -24,3 +24,11 @@ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE.
+
+## @nteract/sift and @nteract/sift-csv
+
+The table viewer uses `@nteract/sift` (Parquet and Arrow decoding, the table)
+and `@nteract/sift-csv` (CSV and TSV to Arrow), both BSD-3-Clause
+(`lib/LICENSE` in each package). Each package compiles Rust crates into its
+WebAssembly module (Apache Arrow and Parquet, Zstandard, and others) and lists
+them with their license texts in its own `lib/THIRD_PARTY_NOTICES.md`.

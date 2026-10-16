@@ -9,10 +9,15 @@ export const FILE_ICON_CUSTOM_SPRITE_SHEET = `<svg data-icon-sprite aria-hidden=
 	</symbol>
 </svg>`;
 
+/** The "complete" set's table icon, which it already uses for .csv and .tsv. */
+export const TABLE_FILE_ICON_NAME = "file-tree-builtin-table";
+
 export const FILE_ICONS = {
 	set: "complete",
 	spriteSheet: FILE_ICON_CUSTOM_SPRITE_SHEET,
 	byFileExtension: {
 		ipynb: { name: NOTEBOOK_FILE_ICON_NAME, viewBox: "0 0 16 16" },
+		// Parquet opens in the same table viewer as CSV/TSV, so it shares the icon.
+		parquet: TABLE_FILE_ICON_NAME,
 	},
 } as const satisfies FileTreeIcons;

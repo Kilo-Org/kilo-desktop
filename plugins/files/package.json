@@ -16,6 +16,9 @@
 		"coverage": "vitest run --coverage"
 	},
 	"dependencies": {
+		"@chenglou/pretext": "^0.0.9",
+		"@nteract/sift": "0.5.5-nightly.38500811922",
+		"@nteract/sift-csv": "0.1.1-nightly.38500811922",
 		"@pierre/diffs": "catalog:",
 		"@pierre/trees": "catalog:",
 		"atomically": "catalog:",

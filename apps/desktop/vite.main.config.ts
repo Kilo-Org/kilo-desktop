@@ -2,7 +2,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { defineConfig, loadEnv } from "vite";
-import { sentryVitePlugin } from "@sentry/vite-plugin";
+// Temporary: see the @sentry/bundler-plugins note in pnpm-workspace.yaml; revert to @sentry/vite-plugin.
+import { sentryVitePlugin } from "@sentry/bundler-plugins/vite";
 import { externalizeDeps } from "@kilo-desktop/vite-plugin-externalize-deps";
 import { NOTEBOOK_MAIN_EXTERNALS } from "@kilo-desktop/plugin-notebook/packaging";
 

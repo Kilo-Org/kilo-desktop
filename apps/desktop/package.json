@@ -86,7 +86,7 @@
 		"@electron-forge/shared-types": "8.0.1",
 		"@electron/fuses": "^2.0.0",
 		"@playwright/test": "catalog:",
-		"@sentry/vite-plugin": "catalog:",
+		"@sentry/bundler-plugins": "catalog:",
 		"@types/electron-squirrel-startup": "1.0.2",
 		"@types/lodash": "^4.17.20",
 		"@types/node": "^24.13.3",

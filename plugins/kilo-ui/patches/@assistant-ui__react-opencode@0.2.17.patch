@@ -223,13 +223,13 @@ index 81f121b..5b29761 100644
  		if (nextState === this.state) return;
  		this.state = nextState;
 diff --git a/dist/index.d.ts b/dist/index.d.ts
-index e97bb56..14dea74 100644
+index e97bb56..efa630c 100644
 --- a/dist/index.d.ts
 +++ b/dist/index.d.ts
 @@ -1,11 +1,12 @@
 -import { AssistantMessage, Event, FilePart, GlobalSession, Message, MessageWithParts, Model, OpenCodeLoadState, OpenCodePartPayload, OpenCodePermissionRequest, OpenCodePermissionResponse, OpenCodeProjectedThreadMessage, OpenCodeQuestionRequest, OpenCodeRunState, OpenCodeRuntime, OpenCodeRuntimeExtras, OpenCodeRuntimeOptions, OpenCodeServerEvent, OpenCodeServerMessage, OpenCodeStateEvent, OpenCodeThreadControllerLike, OpenCodeThreadControllerSnapshot, OpenCodeThreadState, OpenCodeThreadStateSelector, OpenCodeUnhandledEvent, OpenCodeUserMessageOptions, OpencodeClient, OpencodeClientConfig, Part, PendingUserMessage, PermissionRequest, Provider, QuestionAnswer, QuestionRequest, ReasoningPart, Session, SessionStatus, SnapshotPart, StepFinishPart, StepStartPart, TextPart, ToolPart, ToolState, UserMessage } from "./types.js";
 -import { OpenCodeEventSource, STREAM_RECONNECTED_EVENT_TYPE } from "./OpenCodeEventSource.js";
-+import { OpenCodeMessageQueueController, OpenCodeMessageQueueDriver, OpenCodeMessageQueueOptions, createOpenCodeMessageQueue } from "./openCodeMessageQueue.js";
++import { OpenCodeMessageQueueController, OpenCodeMessageQueueControls, OpenCodeMessageQueueDriver, OpenCodeMessageQueueOptions, createOpenCodeMessageQueue } from "./openCodeMessageQueue.js";
 +import { AssistantMessage, Event, FilePart, GlobalSession, Message, MessageWithParts, Model, OpenCodeEventSourceLike, OpenCodeLoadState, OpenCodePartPayload, OpenCodePermissionRequest, OpenCodePermissionResponse, OpenCodeProjectedThreadMessage, OpenCodeQuestionRequest, OpenCodeRunState, OpenCodeRuntime, OpenCodeRuntimeBackend, OpenCodeRuntimeExtras, OpenCodeRuntimeOptions, OpenCodeServerEvent, OpenCodeServerMessage, OpenCodeSessionRef, OpenCodeStateEvent, OpenCodeThreadControllerLike, OpenCodeThreadControllerSnapshot, OpenCodeThreadState, OpenCodeThreadStateSelector, OpenCodeUnhandledEvent, OpenCodeUserMessageOptions, OpencodeClient, OpencodeClientConfig, Part, PendingUserMessage, PermissionRequest, Provider, QuestionAnswer, QuestionRequest, ReasoningPart, Session, SessionStatus, SnapshotPart, StepFinishPart, StepStartPart, TextPart, ToolPart, ToolState, UserMessage } from "./types.js";
 +import { OpenCodeEventSource, OpenCodeEventSubscriber, STREAM_RECONNECTED_EVENT_TYPE } from "./OpenCodeEventSource.js";
  import { OpenCodeThreadController } from "./OpenCodeThreadController.js";
@@ -243,7 +243,7 @@ index e97bb56..14dea74 100644
  import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 -export { type AssistantMessage, type Event, type FilePart, type GlobalSession, type Message, type MessageWithParts, type Model, OpenCodeAttachmentAdapter, type OpenCodeAttachmentAdapterOptions, OpenCodeEventSource, type OpenCodeLoadState, type OpenCodePartPayload, type OpenCodePermissionRequest, type OpenCodePermissionResponse, type OpenCodeProjectedThreadMessage, type OpenCodeQuestionRequest, type OpenCodeRunState, type OpenCodeRuntime, type OpenCodeRuntimeExtras, type OpenCodeRuntimeOptions, type OpenCodeServerEvent, type OpenCodeServerMessage, type OpenCodeStateEvent, OpenCodeThreadController, type OpenCodeThreadControllerLike, type OpenCodeThreadControllerSnapshot, type OpenCodeThreadState, type OpenCodeThreadStateSelector, type OpenCodeUnhandledEvent, type OpenCodeUserMessageOptions, type OpencodeClient, type OpencodeClientConfig, type Part, type PendingUserMessage, type PermissionRequest, type Provider, type QuestionAnswer, type QuestionRequest, type ReasoningPart, STREAM_RECONNECTED_EVENT_TYPE, type Session, type SessionStatus, type SnapshotPart, type StepFinishPart, type StepStartPart, type TextPart, type ToolPart, type ToolState, type UserMessage, createOpenCodeThreadState, createOpencodeClient, projectOpenCodeThreadMessages, reduceOpenCodeThreadState, useOpenCodePermissions, useOpenCodeQuestions, useOpenCodeRuntime, useOpenCodeRuntimeExtras, useOpenCodeSession, useOpenCodeStreamingTiming, useOpenCodeThreadState };
 \ No newline at end of file
-+export { type AssistantMessage, type Event, type FilePart, type GlobalSession, type LocalMcpApp, type Message, type MessageWithParts, type Model, OpenCodeAttachmentAdapter, type OpenCodeAttachmentAdapterOptions, OpenCodeEventSource, type OpenCodeEventSourceLike, type OpenCodeEventSubscriber, type OpenCodeLoadState, type OpenCodeMessageQueueController, type OpenCodeMessageQueueDriver, type OpenCodeMessageQueueOptions, type OpenCodePartPayload, type OpenCodePermissionRequest, type OpenCodePermissionResponse, type OpenCodeProjectedThreadMessage, type OpenCodeQuestionRequest, type OpenCodeRunState, type OpenCodeRuntime, type OpenCodeRuntimeBackend, type OpenCodeRuntimeExtras, type OpenCodeRuntimeOptions, type OpenCodeServerEvent, type OpenCodeServerMessage, type OpenCodeSessionRef, type OpenCodeStateEvent, OpenCodeThreadController, type OpenCodeThreadControllerLike, type OpenCodeThreadControllerSnapshot, type OpenCodeThreadState, type OpenCodeThreadStateSelector, type OpenCodeUnhandledEvent, type OpenCodeUserMessageOptions, type OpencodeClient, type OpencodeClientConfig, type Part, type PendingUserMessage, type PermissionRequest, type Provider, type QuestionAnswer, type QuestionRequest, type ReasoningPart, STREAM_RECONNECTED_EVENT_TYPE, type Session, type SessionStatus, type SnapshotPart, type StepFinishPart, type StepStartPart, type TextPart, type ToolPart, type ToolState, type UserMessage, createOpenCodeMessageQueue, createOpenCodeThreadState, createOpencodeClient, projectOpenCodeThreadMessages, reduceOpenCodeThreadState, setLocalMcpApps, useOpenCodePermissions, useOpenCodeQuestions, useOpenCodeRuntime, useOpenCodeRuntimeExtras, useOpenCodeSession, useOpenCodeStreamingTiming, useOpenCodeThreadState };
++export { type AssistantMessage, type Event, type FilePart, type GlobalSession, type LocalMcpApp, type Message, type MessageWithParts, type Model, OpenCodeAttachmentAdapter, type OpenCodeAttachmentAdapterOptions, OpenCodeEventSource, type OpenCodeEventSourceLike, type OpenCodeEventSubscriber, type OpenCodeLoadState, type OpenCodeMessageQueueController, type OpenCodeMessageQueueControls, type OpenCodeMessageQueueDriver, type OpenCodeMessageQueueOptions, type OpenCodePartPayload, type OpenCodePermissionRequest, type OpenCodePermissionResponse, type OpenCodeProjectedThreadMessage, type OpenCodeQuestionRequest, type OpenCodeRunState, type OpenCodeRuntime, type OpenCodeRuntimeBackend, type OpenCodeRuntimeExtras, type OpenCodeRuntimeOptions, type OpenCodeServerEvent, type OpenCodeServerMessage, type OpenCodeSessionRef, type OpenCodeStateEvent, OpenCodeThreadController, type OpenCodeThreadControllerLike, type OpenCodeThreadControllerSnapshot, type OpenCodeThreadState, type OpenCodeThreadStateSelector, type OpenCodeUnhandledEvent, type OpenCodeUserMessageOptions, type OpencodeClient, type OpencodeClientConfig, type Part, type PendingUserMessage, type PermissionRequest, type Provider, type QuestionAnswer, type QuestionRequest, type ReasoningPart, STREAM_RECONNECTED_EVENT_TYPE, type Session, type SessionStatus, type SnapshotPart, type StepFinishPart, type StepStartPart, type TextPart, type ToolPart, type ToolState, type UserMessage, createOpenCodeMessageQueue, createOpenCodeThreadState, createOpencodeClient, projectOpenCodeThreadMessages, reduceOpenCodeThreadState, setLocalMcpApps, useOpenCodePermissions, useOpenCodeQuestions, useOpenCodeRuntime, useOpenCodeRuntimeExtras, useOpenCodeSession, useOpenCodeStreamingTiming, useOpenCodeThreadState };
 \ No newline at end of file
 diff --git a/dist/index.js b/dist/index.js
 index 835997d..49cd4cf 100644
@@ -478,14 +478,20 @@ index 1ccd945..de628fb 100644
 \ No newline at end of file
 diff --git a/dist/openCodeMessageQueue.d.ts b/dist/openCodeMessageQueue.d.ts
 new file mode 100644
-index 0000000..a05bee3
+index 0000000..4a3f99d
 --- /dev/null
 +++ b/dist/openCodeMessageQueue.d.ts
-@@ -0,0 +1,35 @@
+@@ -0,0 +1,93 @@
 +import { AppendMessage, ExternalThreadQueueAdapter } from "@assistant-ui/react";
 +//#region src/openCodeMessageQueue.d.ts
 +type OpenCodeMessageQueueOptions = {
 +  cancelBehavior: "clear" | "pause";
++  /**
++   * Opts into user queue controls (pause/resume, reorder, inline edit) backed
++   * by one visible paused state. Off keeps the legacy semantics: Stop parks
++   * the waiting entries and a failed send pauses until an entry is steered.
++   */
++  userControls?: boolean | undefined;
 +};
 +/**
 + * Resolving with "returned-to-composer" means the send failed but the driver
@@ -497,10 +503,39 @@ index 0000000..a05bee3
 +  send(message: AppendMessage): Promise<OpenCodeMessageQueueSendOutcome>;
 +  cancel(): Promise<void>;
 +};
-+type OpenCodeMessageQueueController = {
++type OpenCodeMessageQueueControlsState = {
++  /** No queued message sends on its own; explicit steering still works. */
++  readonly paused: boolean;
++  /** The message held back for an inline edit, if any. */
++  readonly editingId: string | undefined;
++};
++type OpenCodeMessageQueueActions = {
++  pause(): void;
++  resume(): void;
++  /** Reorders waiting messages; unknown ids are ignored. */
++  reorder(orderedIds: readonly string[]): void;
++  /**
++   * Holds draining for an edit and returns its draft: the message's raw text
++   * for a new edit, or the saved draft when the same edit is reopened.
++   */
++  beginEdit(id: string): string | undefined;
++  /** Keeps the open edit's draft so it survives the editor unmounting. */
++  setEditDraft(text: string): void;
++  /** The open edit's draft, if an edit is open. */
++  getEditDraft(): string | undefined;
++  /** Replaces the text parts in place; false when the result would be empty. */
++  commitEdit(id: string, text: string): boolean;
++  cancelEdit(): void;
++};
++/** Queue state and actions published to the UI through thread extras. */
++type OpenCodeMessageQueueControls = OpenCodeMessageQueueControlsState & OpenCodeMessageQueueActions;
++type OpenCodeMessageQueueController = OpenCodeMessageQueueActions & {
 +  readonly adapter: ExternalThreadQueueAdapter;
 +  readonly subscribe: (listener: () => void) => () => void;
 +  readonly getSnapshot: () => number;
++  getControlsState(): OpenCodeMessageQueueControlsState;
++  /** Applies options to a live queue, e.g. when a feature flag flips. */
++  setOptions(options: OpenCodeMessageQueueOptions): void;
 +  setDriver(driver: OpenCodeMessageQueueDriver): void;
 +  setRunning(running: boolean, snapshot?: object): void;
 +};
@@ -512,12 +547,34 @@ index 0000000..a05bee3
 + * run from stale idle effects replayed after an optimistic run start.
 + * Cancellation is deliberately separated from steering so a failed abort can
 + * leave the selected item in place and pause the queue without losing drafts.
++ *
++ * A rejected send or abort sets `paused` so nothing retries without intent,
++ * and keeps the entry for an explicit retry, unless the driver reports it
++ * "returned-to-composer": then the user already holds the message, so the
++ * entry is dropped. The pause clears itself once the queue empties so it
++ * never swallows a later send.
++ *
++ * Two modes, switchable live via setOptions:
++ * - Legacy (no `userControls`): the pause is invisible and steering clears
++ *   it. Stop (cancel-run with cancelBehavior "pause") parks every waiting
++ *   entry: parked entries only send when steered, while messages queued after
++ *   Stop keep draining.
++ * - `userControls`: one visible `paused` flag holds every waiting entry. The
++ *   user toggles it, and Stop sets it when entries are waiting. Steering a
++ *   paused entry leaves the queue paused, and a message sent while the agent
++ *   is idle still dispatches right away. An inline edit holds automatic
++ *   draining (tool-blocking follow-ups still go) and pins its entry so it
++ *   cannot be steered mid-edit. The edit and its draft live here, not in the
++ *   editor, so leaving the editor keeps the hold and the draft; only saving
++ *   or cancelling releases it, and draining resumes at once. Reordering only
++ *   moves visible entries; in-flight and follow-up entries keep their slots.
++ * Switching modes maps parked entries onto the visible pause and back, and an
++ * open edit onto parking, so a flag flip never releases messages the user held.
 + */
 +declare const createOpenCodeMessageQueue: (options: OpenCodeMessageQueueOptions) => OpenCodeMessageQueueController;
 +//#endregion
-+export { OpenCodeMessageQueueController, OpenCodeMessageQueueDriver, OpenCodeMessageQueueOptions, OpenCodeMessageQueueSendOutcome, createOpenCodeMessageQueue };
++export { OpenCodeMessageQueueActions, OpenCodeMessageQueueController, OpenCodeMessageQueueControls, OpenCodeMessageQueueControlsState, OpenCodeMessageQueueDriver, OpenCodeMessageQueueOptions, OpenCodeMessageQueueSendOutcome, createOpenCodeMessageQueue };
 +//# sourceMappingURL=openCodeMessageQueue.d.ts.map
-\ No newline at end of file
 diff --git a/dist/openCodeMessageQueue.d.ts.map b/dist/openCodeMessageQueue.d.ts.map
 new file mode 100644
 index 0000000..fb956a1
@@ -528,13 +585,14 @@ index 0000000..fb956a1
 \ No newline at end of file
 diff --git a/dist/openCodeMessageQueue.js b/dist/openCodeMessageQueue.js
 new file mode 100644
-index 0000000..9506f09
+index 0000000..7e8af96
 --- /dev/null
 +++ b/dist/openCodeMessageQueue.js
-@@ -0,0 +1,231 @@
+@@ -0,0 +1,374 @@
 +//#region src/openCodeMessageQueue.ts
++const messageText = (message) => message.content.flatMap((part) => part.type === "text" ? [part.text] : []).join("");
 +const queuePreview = (message) => {
-+	const text = message.content.flatMap((part) => part.type === "text" ? [part.text] : []).join("").trim();
++	const text = messageText(message).trim();
 +	if (text) return text;
 +	if ((message.attachments?.length ?? 0) > 0) return "Attachment";
 +	return "Message";
@@ -552,6 +610,19 @@ index 0000000..9506f09
 +	...message,
 +	startRun: true
 +});
++const withEditedText = (message, text) => {
++	const trimmed = text.trim();
++	const otherParts = message.content.filter((part) => part.type !== "text");
++	const hasAttachments = (message.attachments?.length ?? 0) > 0;
++	if (!trimmed && otherParts.length === 0 && !hasAttachments) return void 0;
++	return {
++		...message,
++		content: trimmed ? [{
++			type: "text",
++			text: trimmed
++		}, ...otherParts] : otherParts
++	};
++};
 +/**
 +* Owns one thread's client-side prompt queue. Messages remain in the queue
 +* until OpenCode accepts them, while backend run state gates FIFO draining.
@@ -560,12 +631,29 @@ index 0000000..9506f09
 +* run from stale idle effects replayed after an optimistic run start.
 +* Cancellation is deliberately separated from steering so a failed abort can
 +* leave the selected item in place and pause the queue without losing drafts.
-+* Stop (cancel-run with cancelBehavior "pause") parks every waiting entry:
-+* parked entries never drain on their own and only send when explicitly
-+* steered, while messages queued after Stop keep draining normally.
-+* A rejected send pauses the queue and keeps the entry for an explicit retry,
-+* unless the driver reports it "returned-to-composer": then the user already
-+* holds the message, so the entry is dropped and the queue stays live.
++*
++* A rejected send or abort sets `paused` so nothing retries without intent,
++* and keeps the entry for an explicit retry, unless the driver reports it
++* "returned-to-composer": then the user already holds the message, so the
++* entry is dropped. The pause clears itself once the queue empties so it
++* never swallows a later send.
++*
++* Two modes, switchable live via setOptions:
++* - Legacy (no `userControls`): the pause is invisible and steering clears
++*   it. Stop (cancel-run with cancelBehavior "pause") parks every waiting
++*   entry: parked entries only send when steered, while messages queued after
++*   Stop keep draining.
++* - `userControls`: one visible `paused` flag holds every waiting entry. The
++*   user toggles it, and Stop sets it when entries are waiting. Steering a
++*   paused entry leaves the queue paused, and a message sent while the agent
++*   is idle still dispatches right away. An inline edit holds automatic
++*   draining (tool-blocking follow-ups still go) and pins its entry so it
++*   cannot be steered mid-edit. The edit and its draft live here, not in the
++*   editor, so leaving the editor keeps the hold and the draft; only saving
++*   or cancelling releases it, and draining resumes at once. Reordering only
++*   moves visible entries; in-flight and follow-up entries keep their slots.
++* Switching modes maps parked entries onto the visible pause and back, and an
++* open edit onto parking, so a flag flip never releases messages the user held.
 +*/
 +const createOpenCodeMessageQueue = (options) => {
 +	let entries = [];
@@ -574,16 +662,29 @@ index 0000000..9506f09
 +	let awaitingRunStart = false;
 +	let observedSnapshot;
 +	const ignoredIdleSnapshots = /* @__PURE__ */ new Set();
++	let cancelBehavior = options.cancelBehavior;
++	let userControls = options.userControls ?? false;
 +	let paused = false;
++	let editingId;
++	let editDraft;
 +	let operation = "idle";
 +	let activeId;
 +	let pendingSteerId;
 +	let version = 0;
 +	let nextId = 0;
++	let controlsState = {
++		paused,
++		editingId
++	};
 +	const listeners = /* @__PURE__ */ new Set();
 +	const notify = () => {
++		if (entries.length === 0) paused = false;
 +		version += 1;
 +		adapter.items = entries.filter((entry) => entry.visible).map((entry) => entry.state);
++		if (controlsState.paused !== paused || controlsState.editingId !== editingId) controlsState = {
++			paused,
++			editingId
++		};
 +		for (const listener of listeners) listener();
 +	};
 +	const removeEntry = (id) => {
@@ -644,14 +745,15 @@ index 0000000..9506f09
 +			dispatch(immediateFollowup.state.id);
 +			return;
 +		}
-+		if (paused || running) return;
++		if (paused || running || editingId !== void 0) return;
 +		const head = entries.find((entry) => !entry.parked);
 +		if (head) dispatch(head.state.id);
 +	};
 +	const steer = (id) => {
 +		if (!driver || operation !== "idle") return;
++		if (id === editingId) return;
 +		if (!entries.some((entry) => entry.state.id === id)) return;
-+		paused = false;
++		if (!userControls) paused = false;
 +		pendingSteerId = id;
 +		if (!running) {
 +			pendingSteerId = void 0;
@@ -684,7 +786,8 @@ index 0000000..9506f09
 +			const id = `opencode-queue:${nextId++}`;
 +			const attachmentPreview = queueAttachmentPreview(message);
 +			const immediateFollowup = message.startRun === false;
-+			const dispatchImmediately = driver !== void 0 && (immediateFollowup && operation === "idle" || steerImmediately || !running && !paused && operation === "idle");
++			const sendsFromIdle = !immediateFollowup && !steerImmediately && !running && operation === "idle" && (userControls || !paused);
++			const dispatchImmediately = driver !== void 0 && (immediateFollowup && operation === "idle" || steerImmediately || sendsFromIdle);
 +			entries = [...entries, {
 +				state: {
 +					id,
@@ -699,30 +802,39 @@ index 0000000..9506f09
 +			if (!dispatchImmediately) notify();
 +			if (immediateFollowup) dispatch(id);
 +			else if (steerImmediately) steer(id);
++			else if (dispatchImmediately) dispatch(id);
 +			else advance();
 +		},
 +		steer,
 +		remove: (id) => {
 +			if (id === activeId || id === pendingSteerId) return;
 +			entries = entries.filter((entry) => entry.state.id !== id);
-+			if (entries.length === 0) paused = false;
++			if (id === editingId) closeEdit();
 +			notify();
++			advance();
 +		},
 +		clear: (reason) => {
-+			if (reason === "cancel-run" && options.cancelBehavior === "pause") {
-+				entries = entries.map((entry) => entry.immediateFollowup ? entry : {
++			if (reason === "cancel-run" && cancelBehavior === "pause") {
++				if (!userControls) entries = entries.map((entry) => entry.immediateFollowup ? entry : {
 +					...entry,
 +					parked: true
 +				});
++				else if (entries.some((entry) => entry.visible && !entry.immediateFollowup)) paused = true;
 +				notify();
 +				return;
 +			}
 +			entries = [];
 +			pendingSteerId = void 0;
++			closeEdit();
 +			paused = false;
 +			notify();
 +		}
 +	};
++	function closeEdit() {
++		editingId = void 0;
++		editDraft = void 0;
++	}
++	const findWaiting = (id) => entries.find((entry) => entry.visible && entry.state.id === id);
 +	return {
 +		adapter,
 +		subscribe: (listener) => {
@@ -730,6 +842,94 @@ index 0000000..9506f09
 +			return () => listeners.delete(listener);
 +		},
 +		getSnapshot: () => version,
++		getControlsState: () => controlsState,
++		setOptions: (nextOptions) => {
++			cancelBehavior = nextOptions.cancelBehavior;
++			const nextUserControls = nextOptions.userControls ?? false;
++			if (nextUserControls === userControls) return;
++			userControls = nextUserControls;
++			if (userControls) {
++				if (entries.some((entry) => entry.parked)) paused = true;
++				entries = entries.map((entry) => entry.parked ? {
++					...entry,
++					parked: false
++				} : entry);
++			} else {
++				if (paused || editingId !== void 0) entries = entries.map((entry) => entry.visible && !entry.immediateFollowup ? {
++					...entry,
++					parked: true
++				} : entry);
++				paused = false;
++				closeEdit();
++			}
++			notify();
++			advance();
++		},
++		pause: () => {
++			if (paused) return;
++			paused = true;
++			notify();
++		},
++		resume: () => {
++			if (!paused) return;
++			paused = false;
++			notify();
++			advance();
++		},
++		reorder: (orderedIds) => {
++			const waiting = entries.filter((entry) => entry.visible);
++			const unlisted = new Map(waiting.map((entry) => [entry.state.id, entry]));
++			const listed = [];
++			for (const id of orderedIds) {
++				const entry = unlisted.get(id);
++				if (!entry) continue;
++				listed.push(entry);
++				unlisted.delete(id);
++			}
++			const sorted = [...listed, ...unlisted.values()];
++			if (sorted.every((entry, index) => entry === waiting[index])) return;
++			let slot = 0;
++			entries = entries.map((entry) => entry.visible ? sorted[slot++] : entry);
++			notify();
++		},
++		beginEdit: (id) => {
++			if (id === editingId) return editDraft;
++			if (id === activeId || id === pendingSteerId) return void 0;
++			const entry = findWaiting(id);
++			if (!entry) return void 0;
++			editingId = id;
++			editDraft = messageText(entry.message);
++			notify();
++			return editDraft;
++		},
++		setEditDraft: (text) => {
++			if (editingId !== void 0) editDraft = text;
++		},
++		getEditDraft: () => editDraft,
++		commitEdit: (id, text) => {
++			if (id !== editingId) return false;
++			const entry = findWaiting(id);
++			const message = entry && withEditedText(entry.message, text);
++			if (!message) return false;
++			entries = entries.map((candidate) => candidate.state.id === id ? {
++				...candidate,
++				message,
++				state: {
++					...candidate.state,
++					prompt: queuePreview(message)
++				}
++			} : candidate);
++			closeEdit();
++			notify();
++			advance();
++			return true;
++		},
++		cancelEdit: () => {
++			if (editingId === void 0) return;
++			closeEdit();
++			notify();
++			advance();
++		},
 +		setDriver: (nextDriver) => {
 +			driver = nextDriver;
 +		},
@@ -763,7 +963,6 @@ index 0000000..9506f09
 +export { createOpenCodeMessageQueue };
 +
 +//# sourceMappingURL=openCodeMessageQueue.js.map
-\ No newline at end of file
 diff --git a/dist/openCodeMessageQueue.js.map b/dist/openCodeMessageQueue.js.map
 new file mode 100644
 index 0000000..0a659c2
@@ -974,11 +1173,11 @@ index 6c2e3a5..9798f4c 100644
 +{"version":3,"file":"openCodeThreadState.js","names":[],"sources":["../src/openCodeThreadState.ts"],"sourcesContent":["import type {\n  Message,\n  MessageWithParts,\n  OpenCodeServerMessage,\n  OpenCodeStateEvent,\n  OpenCodeThreadState,\n  Part,\n  PendingUserMessage,\n  ThreadUserMessagePart,\n} from \"./types\";\nimport { serializeOpenCodeParts } from \"./serializeUserParts\";\n\nconst PENDING_MATCH_WINDOW_MS = 2 * 60 * 1000;\nconst MAX_UNHANDLED_EVENTS = 25;\n\nconst extractCreatedAt = (message: Message | undefined): number | undefined => {\n  const created = message?.time?.created;\n  return typeof created === \"number\" ? created : undefined;\n};\n\nconst normalizeText = (value: string) =>\n  value.trim().replace(/\\s+/g, \" \").toLowerCase();\n\nconst pendingFingerprint = (pending: PendingUserMessage) =>\n  normalizeText(pending.contentText);\n\nconst partTextFingerprint = (parts: readonly ThreadUserMessagePart[]) =>\n  normalizeText(serializeOpenCodeParts(parts));\n\nconst serverFingerprint = (message: MessageWithParts) =>\n  normalizeText(serializeOpenCodeParts(message.parts));\n\nconst sortMessageIds = (\n  messagesById: Readonly<Record<string, OpenCodeServerMessage>>,\n  ids: Iterable<string>,\n) => {\n  return [...ids].sort((leftId, rightId) => {\n    const left = messagesById[leftId];\n    const right = messagesById[rightId];\n    const leftCreated = extractCreatedAt(left?.info) ?? Number.MAX_SAFE_INTEGER;\n    const rightCreated =\n      extractCreatedAt(right?.info) ?? Number.MAX_SAFE_INTEGER;\n    if (leftCreated !== rightCreated) return leftCreated - rightCreated;\n    return leftId.localeCompare(rightId);\n  });\n};\n\nconst upsertMessage = (\n  state: OpenCodeThreadState,\n  messageId: string,\n  updater: (\n    current: OpenCodeServerMessage | undefined,\n  ) => OpenCodeServerMessage,\n): OpenCodeThreadState => {\n  const current = state.messagesById[messageId];\n  const nextMessage = updater(current);\n  const messagesById = {\n    ...state.messagesById,\n    [messageId]: nextMessage,\n  };\n  const messageOrder = current\n    ? state.messageOrder\n    : sortMessageIds(messagesById, [...state.messageOrder, messageId]);\n\n  return {\n    ...state,\n    messagesById,\n    messageOrder,\n  };\n};\n\nconst updateExistingMessage = (\n  state: OpenCodeThreadState,\n  messageId: string,\n  updater: (current: OpenCodeServerMessage) => OpenCodeServerMessage,\n): OpenCodeThreadState => {\n  const current = state.messagesById[messageId];\n  if (!current) return state;\n\n  return {\n    ...state,\n    messagesById: {\n      ...state.messagesById,\n      [messageId]: updater(current),\n    },\n  };\n};\n\nconst removePending = (\n  state: OpenCodeThreadState,\n  clientId: string,\n): OpenCodeThreadState => {\n  if (!(clientId in state.pendingUserMessages)) return state;\n  const pendingUserMessages = { ...state.pendingUserMessages };\n  delete pendingUserMessages[clientId];\n  return {\n    ...state,\n    pendingUserMessages,\n  };\n};\n\nconst findPendingMatchByHistory = (\n  state: OpenCodeThreadState,\n  message: MessageWithParts,\n) => {\n  const createdAt = extractCreatedAt(message.info);\n  const fingerprint = serverFingerprint(message);\n  const candidates = (\n    Object.values(state.pendingUserMessages) as PendingUserMessage[]\n  ).filter(\n    (pending) =>\n      pending.status === \"pending\" &&\n      (createdAt === undefined ||\n        Math.abs(pending.createdAt - createdAt) <= PENDING_MATCH_WINDOW_MS) &&\n      (fingerprint.length === 0 ||\n        pendingFingerprint(pending) === fingerprint ||\n        partTextFingerprint(pending.parts) === fingerprint),\n  );\n\n  if (candidates.length === 1) return candidates[0];\n  if (candidates.length > 1) {\n    return candidates.sort(\n      (left, right) => left.createdAt - right.createdAt,\n    )[0];\n  }\n  return undefined;\n};\n\nconst findPendingMatchByMessageInfo = (\n  state: OpenCodeThreadState,\n  message: Message,\n) => {\n  const createdAt = extractCreatedAt(message);\n  const candidates = (\n    Object.values(state.pendingUserMessages) as PendingUserMessage[]\n  ).filter(\n    (pending) =>\n      pending.status === \"pending\" &&\n      (createdAt === undefined ||\n        Math.abs(pending.createdAt - createdAt) <= PENDING_MATCH_WINDOW_MS),\n  );\n\n  if (candidates.length === 1) return candidates[0];\n  return undefined;\n};\n\nconst historyLoaded = (\n  state: OpenCodeThreadState,\n  session: OpenCodeThreadState[\"session\"],\n  messages: readonly MessageWithParts[],\n): OpenCodeThreadState => {\n  let nextState: OpenCodeThreadState = {\n    ...state,\n    session,\n    loadState: { type: \"ready\" },\n    messagesById: {} as Readonly<Record<string, OpenCodeServerMessage>>,\n    messageOrder: [],\n    sync: {\n      ...state.sync,\n      lastHistoryLoadAt: Date.now(),\n    },\n  };\n\n  const nextMessagesById: Record<string, OpenCodeServerMessage> = {};\n  for (const message of messages) {\n    const pendingMatch =\n      message.info.role === \"user\"\n        ? findPendingMatchByHistory(nextState, message)\n        : undefined;\n\n    nextMessagesById[message.info.id] = {\n      id: message.info.id,\n      info: message.info,\n      parts: message.parts,\n      shadowParts:\n        message.parts.length === 0 && pendingMatch\n          ? pendingMatch.parts\n          : undefined,\n    };\n\n    if (pendingMatch) {\n      nextState = removePending(nextState, pendingMatch.clientId);\n    }\n  }\n\n  nextState = {\n    ...nextState,\n    messagesById: nextMessagesById,\n    messageOrder: sortMessageIds(\n      nextMessagesById,\n      Object.keys(nextMessagesById),\n    ),\n  };\n\n  return nextState;\n};\n\nconst removeMessagePart = (parts: readonly Part[], partId: string) =>\n  parts.filter((part) => part.id !== partId);\n\nconst upsertMessagePart = (parts: readonly Part[], part: Part) => {\n  if (!part.id) return [...parts, part];\n  const index = parts.findIndex((candidate) => candidate.id === part.id);\n  if (index === -1) return [...parts, part];\n  const nextParts = [...parts];\n  nextParts[index] = part;\n  return nextParts;\n};\n\nconst applyMessagePartDelta = (\n  parts: readonly Part[],\n  partId: string,\n  field: string,\n  delta: string,\n) => {\n  const index = parts.findIndex((candidate) => candidate.id === partId);\n  if (index === -1) return null;\n\n  const current = parts[index];\n  if (!current) return null;\n  if (\n    field === \"text\" &&\n    (current.type === \"text\" || current.type === \"reasoning\")\n  ) {\n    const nextParts = [...parts];\n    nextParts[index] = {\n      ...current,\n      text: (current.text ?? \"\") + delta,\n    };\n    return nextParts;\n  }\n\n  return null;\n};\n\n// Parts imply activity only while status is unknown or busy. While cancelling,\n// reverting, or after an explicit idle they are cleanup output, not a new turn;\n// a new turn always announces itself with a busy session.status first.\nconst activityFromPartEvent = (\n  state: OpenCodeThreadState,\n): Pick<OpenCodeThreadState, \"runState\" | \"sessionStatus\"> => {\n  if (\n    state.runState.type === \"cancelling\" ||\n    state.sessionStatus?.type === \"idle\"\n  ) {\n    return { runState: state.runState, sessionStatus: state.sessionStatus };\n  }\n  return {\n    runState: { type: \"streaming\" },\n    sessionStatus:\n      state.sessionStatus?.type === \"retry\"\n        ? state.sessionStatus\n        : { type: \"busy\" },\n  };\n};\n\nexport const createOpenCodeThreadState = (\n  sessionId: string,\n): OpenCodeThreadState => ({\n  sessionId,\n  session: null,\n  sessionStatus: null,\n  loadState: { type: \"idle\" },\n  runState: { type: \"idle\" },\n  messageOrder: [],\n  messagesById: {} as Readonly<Record<string, OpenCodeServerMessage>>,\n  childSessionsById: {} as Readonly<Record<string, OpenCodeThreadState>>,\n  pendingUserMessages: {} as Readonly<Record<string, PendingUserMessage>>,\n  interactions: {\n    permissions: {\n      pending: {} as Readonly<\n        Record<string, import(\"./types\").OpenCodePermissionRequest>\n      >,\n      resolved: {} as Readonly<\n        Record<\n          string,\n          {\n            request: import(\"./types\").OpenCodePermissionRequest;\n            reply: import(\"./types\").OpenCodePermissionResponse;\n            respondedAt: number;\n          }\n        >\n      >,\n    },\n    questions: {\n      pending: {} as Readonly<\n        Record<string, import(\"./types\").OpenCodeQuestionRequest>\n      >,\n      answered: {} as Readonly<\n        Record<\n          string,\n          {\n            request: import(\"./types\").OpenCodeQuestionRequest;\n            answers: readonly import(\"./types\").QuestionAnswer[];\n            respondedAt: number;\n          }\n        >\n      >,\n      rejected: {} as Readonly<\n        Record<\n          string,\n          {\n            request: import(\"./types\").OpenCodeQuestionRequest;\n            rejectedAt: number;\n          }\n        >\n      >,\n    },\n  },\n  unhandledEvents: [],\n  sync: {},\n});\n\nexport const reduceOpenCodeThreadState = (\n  state: OpenCodeThreadState,\n  event: OpenCodeStateEvent,\n): OpenCodeThreadState => {\n  switch (event.type) {\n    case \"history.loading\":\n      return {\n        ...state,\n        loadState: { type: \"loading\" },\n      };\n\n    case \"history.loaded\":\n      return historyLoaded(state, event.session, event.messages);\n\n    case \"history.failed\":\n      return {\n        ...state,\n        loadState: { type: \"error\", error: event.error },\n      };\n\n    case \"run.started\":\n      return {\n        ...state,\n        runState: { type: \"streaming\" },\n        sessionStatus: { type: \"busy\" },\n      };\n\n    case \"run.cancelling\":\n      return {\n        ...state,\n        runState: { type: \"cancelling\" },\n      };\n\n    case \"run.reverting\":\n      return {\n        ...state,\n        runState: { type: \"reverting\" },\n      };\n\n    case \"run.failed\":\n      return {\n        ...state,\n        runState: { type: \"error\", error: event.error },\n      };\n\n    case \"session.updated\":\n      return {\n        ...state,\n        session: event.session,\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n\n    case \"session.status\":\n      return {\n        ...state,\n        sessionStatus: event.status,\n        runState:\n          event.status.type === \"idle\"\n            ? { type: \"idle\" }\n            : state.runState.type === \"cancelling\" ||\n                state.runState.type === \"reverting\"\n              ? state.runState\n              : { type: \"streaming\" },\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n\n    case \"session.idle\":\n      return {\n        ...state,\n        sessionStatus: { type: \"idle\" },\n        runState: { type: \"idle\" },\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n\n    case \"session.compacted\":\n      return {\n        ...state,\n        sync: {\n          ...state.sync,\n          lastCompactionAt: Date.now(),\n          lastEventAt: Date.now(),\n        },\n      };\n\n    case \"message.updated\": {\n      const pendingMatch =\n        event.info.role === \"user\"\n          ? findPendingMatchByMessageInfo(state, event.info)\n          : undefined;\n\n      let nextState = upsertMessage(state, event.info.id, (current) => ({\n        id: event.info.id,\n        info: event.info,\n        parts: current?.parts ?? [],\n        shadowParts:\n          current?.shadowParts ??\n          (pendingMatch && (current?.parts?.length ?? 0) === 0\n            ? pendingMatch.parts\n            : undefined),\n      }));\n\n      if (pendingMatch) {\n        nextState = removePending(nextState, pendingMatch.clientId);\n      }\n\n      return {\n        ...nextState,\n        sync: {\n          ...nextState.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n    }\n\n    case \"message.removed\": {\n      if (!(event.messageId in state.messagesById)) return state;\n      const messagesById = { ...state.messagesById };\n      delete messagesById[event.messageId];\n      return {\n        ...state,\n        messagesById,\n        messageOrder: state.messageOrder.filter((id) => id !== event.messageId),\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n    }\n\n    case \"part.updated\": {\n      const nextState = updateExistingMessage(\n        state,\n        event.messageId,\n        (current) => ({\n          id: event.messageId,\n          info: current.info,\n          parts: upsertMessagePart(current.parts, event.part),\n          shadowParts: current.shadowParts,\n        }),\n      );\n\n      if (nextState === state) return state;\n\n      return {\n        ...nextState,\n        ...activityFromPartEvent(state),\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n    }\n\n    case \"part.delta\": {\n      const current = state.messagesById[event.messageId];\n      const nextParts = current\n        ? applyMessagePartDelta(\n            current.parts,\n            event.partId,\n            event.field,\n            event.delta,\n          )\n        : null;\n\n      if (!current || !nextParts) return state;\n\n      return {\n        ...updateExistingMessage(state, event.messageId, () => ({\n          ...current,\n          parts: nextParts,\n        })),\n        ...activityFromPartEvent(state),\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n    }\n\n    case \"part.removed\": {\n      const nextState = updateExistingMessage(\n        state,\n        event.messageId,\n        (current) => ({\n          id: event.messageId,\n          info: current.info,\n          parts: removeMessagePart(current.parts, event.partId),\n          shadowParts: current.shadowParts,\n        }),\n      );\n\n      if (nextState === state) return state;\n\n      return {\n        ...nextState,\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n    }\n\n    case \"permission.asked\":\n      return {\n        ...state,\n        interactions: {\n          ...state.interactions,\n          permissions: {\n            ...state.interactions.permissions,\n            pending: {\n              ...state.interactions.permissions.pending,\n              [event.request.id]: event.request,\n            },\n          },\n        },\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n\n    case \"permission.replied\": {\n      const pending = { ...state.interactions.permissions.pending };\n      const request = pending[event.permissionId];\n      delete pending[event.permissionId];\n      if (!request) return state;\n\n      return {\n        ...state,\n        interactions: {\n          ...state.interactions,\n          permissions: {\n            pending,\n            resolved: {\n              ...state.interactions.permissions.resolved,\n              [event.permissionId]: {\n                request,\n                reply: event.reply,\n                respondedAt: Date.now(),\n              },\n            },\n          },\n        },\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n    }\n\n    case \"question.asked\":\n      return {\n        ...state,\n        interactions: {\n          ...state.interactions,\n          questions: {\n            ...state.interactions.questions,\n            pending: {\n              ...state.interactions.questions.pending,\n              [event.request.id]: event.request,\n            },\n          },\n        },\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n\n    case \"question.replied\": {\n      const pending = { ...state.interactions.questions.pending };\n      const request = pending[event.questionId];\n      delete pending[event.questionId];\n      if (!request) return state;\n\n      return {\n        ...state,\n        interactions: {\n          ...state.interactions,\n          questions: {\n            ...state.interactions.questions,\n            pending,\n            answered: {\n              ...state.interactions.questions.answered,\n              [event.questionId]: {\n                request,\n                answers: event.answers,\n                respondedAt: Date.now(),\n              },\n            },\n          },\n        },\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n    }\n\n    case \"question.rejected\": {\n      const pending = { ...state.interactions.questions.pending };\n      const request = pending[event.questionId];\n      delete pending[event.questionId];\n      if (!request) return state;\n\n      return {\n        ...state,\n        interactions: {\n          ...state.interactions,\n          questions: {\n            ...state.interactions.questions,\n            pending,\n            rejected: {\n              ...state.interactions.questions.rejected,\n              [event.questionId]: {\n                request,\n                rejectedAt: Date.now(),\n              },\n            },\n          },\n        },\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n    }\n\n    case \"unhandled.event\":\n      return {\n        ...state,\n        unhandledEvents: [\n          ...state.unhandledEvents.slice(-(MAX_UNHANDLED_EVENTS - 1)),\n          event.event,\n        ],\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n\n    case \"local.message.queued\":\n      return {\n        ...state,\n        pendingUserMessages: {\n          ...state.pendingUserMessages,\n          [event.pending.clientId]: event.pending,\n        },\n      };\n\n    case \"local.message.reconciled\":\n      return removePending(state, event.clientId);\n\n    case \"local.message.failed\": {\n      const current = state.pendingUserMessages[event.clientId];\n      if (!current) return state;\n      return {\n        ...state,\n        pendingUserMessages: {\n          ...state.pendingUserMessages,\n          [event.clientId]: {\n            ...current,\n            status: \"failed\",\n            error: event.error,\n          },\n        },\n        runState: { type: \"error\", error: event.error },\n      };\n    }\n  }\n};\n\n/** Stable placeholder state used before a session controller is attached. */\nexport const EMPTY_OPENCODE_THREAD_STATE =\n  createOpenCodeThreadState(\"__pending__\");\n"],"mappings":"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"}
 \ No newline at end of file
 diff --git a/dist/types.d.ts b/dist/types.d.ts
-index 20262e5..c80b4cb 100644
+index 20262e5..6eaf51d 100644
 --- a/dist/types.d.ts
 +++ b/dist/types.d.ts
 @@ -1,3 +1,4 @@
-+import { OpenCodeMessageQueueOptions } from "./openCodeMessageQueue.js";
++import { OpenCodeMessageQueueControls, OpenCodeMessageQueueOptions } from "./openCodeMessageQueue.js";
  import { AppendMessage, AppendMessage as AppendMessage$1, AssistantRuntime, AttachmentAdapter, DictationAdapter, ExternalStoreSharedOptions, FeedbackAdapter, RealtimeVoiceAdapter, SpeechSynthesisAdapter, ThreadMessageLike, ThreadMessageLike as ThreadMessageLike$1, ThreadUserMessagePart, ThreadUserMessagePart as ThreadUserMessagePart$1 } from "@assistant-ui/react";
  import { AssistantMessage, Event, EventMessagePartDelta, FilePart, GlobalSession, Message, Message as Message$1, Model, OpencodeClient, OpencodeClient as OpencodeClient$1, OpencodeClientConfig, Part, Part as Part$1, PermissionRequest, PermissionRequest as PermissionRequest$1, Provider, QuestionAnswer, QuestionAnswer as QuestionAnswer$1, QuestionRequest, QuestionRequest as QuestionRequest$1, ReasoningPart, Session, Session as Session$1, SessionStatus, SessionStatus as SessionStatus$1, SnapshotPart, StepFinishPart, StepStartPart, TextPart, ToolPart, ToolState, UserMessage } from "@opencode-ai/sdk/v2/client";
  //#region src/types.d.ts
@@ -1034,7 +1233,15 @@ index 20262e5..c80b4cb 100644
    adapters?: {
      attachments?: AttachmentAdapter;
      speech?: SpeechSynthesisAdapter;
-@@ -162,6 +194,7 @@ type OpenCodeThreadStateSelector<T> = (state: OpenCodeThreadState) => T;
+@@ -156,12 +188,15 @@ type OpenCodeRuntimeExtras = {
+   replyToPermission: (permissionId: string, response: OpenCodePermissionResponse) => Promise<void>;
+   replyToQuestion: (questionId: string, answers: readonly QuestionAnswer$1[]) => Promise<void>;
+   rejectQuestion: (questionId: string) => Promise<void>;
++  /** Present when the runtime was created with `messageQueue`. */
++  messageQueue?: OpenCodeMessageQueueControls | undefined;
+ };
+ type OpenCodeRuntime = AssistantRuntime;
+ type OpenCodeThreadStateSelector<T> = (state: OpenCodeThreadState) => T;
  type OpenCodeServerEvent = {
    type: string;
    sessionId: string | undefined;
@@ -1042,7 +1249,7 @@ index 20262e5..c80b4cb 100644
    raw: unknown;
    properties: Record<string, unknown>;
  };
-@@ -270,5 +303,5 @@ type OpenCodePartPayload = {
+@@ -270,5 +305,5 @@ type OpenCodePartPayload = {
  };
  type OpenCodeProjectedThreadMessage = ThreadMessageLike$1;
  //#endregion
@@ -1069,7 +1276,7 @@ index 48cc456..651f9e8 100644
 +{"version":3,"file":"useOpenCodeRuntime.d.ts","names":[],"sources":["../src/useOpenCodeRuntime.ts"],"mappings":";;;cAsea,qBACX,UAAS,2BACR"}
 \ No newline at end of file
 diff --git a/dist/useOpenCodeRuntime.js b/dist/useOpenCodeRuntime.js
-index d795d57..b2d2211 100644
+index d795d57..f50d159 100644
 --- a/dist/useOpenCodeRuntime.js
 +++ b/dist/useOpenCodeRuntime.js
 @@ -1,27 +1,31 @@
@@ -1108,7 +1315,7 @@ index d795d57..b2d2211 100644
  		dispose() {
  			eventSource?.dispose();
  			eventSource = null;
-@@ -29,10 +33,19 @@ const createRegistry = (client) => {
+@@ -29,10 +33,40 @@ const createRegistry = (client) => {
  		}
  	};
  };
@@ -1122,6 +1329,27 @@ index d795d57..b2d2211 100644
 +};
 +const subscribeToNothing = () => () => {};
 +const getZeroSnapshot = () => 0;
++const messageQueueControls = (queue) => ({
++	...queue.getControlsState(),
++	pause: queue.pause,
++	resume: queue.resume,
++	reorder: queue.reorder,
++	beginEdit: queue.beginEdit,
++	setEditDraft: queue.setEditDraft,
++	getEditDraft: queue.getEditDraft,
++	commitEdit: queue.commitEdit,
++	cancelEdit: queue.cancelEdit
++});
++const withMessageQueueExtras = (extras, messageQueue) => {
++	if (openCodeExtras.is(extras)) return openCodeExtras.provide({
++		...extras,
++		messageQueue
++	});
++	return {
++		...typeof extras === "object" && extras !== null ? extras : {},
++		messageQueue
++	};
++};
 +const getController = (registry, backend, sessionId) => {
  	const existing = registry.controllers.get(sessionId);
  	if (existing) return existing;
@@ -1130,7 +1358,7 @@ index d795d57..b2d2211 100644
  	registry.controllers.set(sessionId, controller);
  	return controller;
  };
-@@ -52,10 +65,46 @@ const NOOP_CONTROLLER = {
+@@ -52,10 +86,46 @@ const NOOP_CONTROLLER = {
  	replyToQuestion: async () => {},
  	rejectQuestion: async () => {}
  };
@@ -1179,7 +1407,7 @@ index d795d57..b2d2211 100644
  	const onLoadError = useEffectEvent((error) => {
  		options.onError?.(error);
  	});
-@@ -63,7 +112,20 @@ const useOpenCodeThreadRuntime = (controller, options) => {
+@@ -63,7 +133,20 @@ const useOpenCodeThreadRuntime = (controller, options) => {
  		if (controller === NOOP_CONTROLLER) return;
  		controller.load().catch(onLoadError);
  	}, [controller]);
@@ -1201,7 +1429,7 @@ index d795d57..b2d2211 100644
  	const messageRepository = useMemo(() => projectOpenCodeThreadRepository(state, messageTiming), [state, messageTiming]);
  	const extras = useMemo(() => openCodeExtras.provide({
  		session: state.session,
-@@ -79,24 +141,16 @@ const useOpenCodeThreadRuntime = (controller, options) => {
+@@ -79,24 +162,16 @@ const useOpenCodeThreadRuntime = (controller, options) => {
  		replyToQuestion: (questionId, answers) => controller.replyToQuestion(questionId, answers),
  		rejectQuestion: (questionId) => controller.rejectQuestion(questionId)
  	}), [controller, state]);
@@ -1229,7 +1457,7 @@ index d795d57..b2d2211 100644
  			} catch (error) {
  				options.onError?.(error);
  				throw error;
-@@ -131,36 +185,158 @@ const useOpenCodeThreadRuntime = (controller, options) => {
+@@ -131,36 +206,179 @@ const useOpenCodeThreadRuntime = (controller, options) => {
  				throw error;
  			}
  		}
@@ -1346,6 +1574,18 @@ index d795d57..b2d2211 100644
  	});
 -	if (!sessionId) return fallbackRuntime;
 -	return threadRuntime;
++	const cancelBehavior = options.messageQueue?.cancelBehavior;
++	const userControls = options.messageQueue?.userControls ?? false;
++	useEffect(() => {
++		if (cancelBehavior) queue?.setOptions({
++			cancelBehavior,
++			userControls
++		});
++	}, [
++		cancelBehavior,
++		queue,
++		userControls
++	]);
 +	useEffect(() => {
 +		queue?.setRunning(selectedStore.isRunning, liveState.sync);
 +	}, [
@@ -1353,13 +1593,22 @@ index d795d57..b2d2211 100644
 +		queue,
 +		selectedStore.isRunning
 +	]);
-+	const storeWithQueue = useMemo(() => queue ? {
-+		...selectedStore,
-+		queue: queue.adapter
-+	} : selectedStore, [
++	const storeWithQueue = useMemo(() => {
++		if (!queue) return selectedStore;
++		if (!userControls) return {
++			...selectedStore,
++			queue: queue.adapter
++		};
++		return {
++			...selectedStore,
++			queue: queue.adapter,
++			extras: withMessageQueueExtras(selectedStore.extras, messageQueueControls(queue))
++		};
++	}, [
 +		queue,
 +		queueVersion,
-+		selectedStore
++		selectedStore,
++		userControls
 +	]);
 +	return useExternalStoreRuntime(storeWithQueue);
  };
@@ -1670,10 +1919,10 @@ index 5ebfe4f..d52a6a3 100644
      if (nextState === this.state) return;
      this.state = nextState;
 diff --git a/src/index.ts b/src/index.ts
-index 4ac43be..71e8926 100644
+index 4ac43be..3ad2e24 100644
 --- a/src/index.ts
 +++ b/src/index.ts
-@@ -19,17 +19,29 @@ export { useOpenCodeStreamingTiming } from "./useOpenCodeStreamingTiming";
+@@ -19,17 +19,30 @@ export { useOpenCodeStreamingTiming } from "./useOpenCodeStreamingTiming";
  export {
    OpenCodeEventSource,
    STREAM_RECONNECTED_EVENT_TYPE,
@@ -1683,6 +1932,7 @@ index 4ac43be..71e8926 100644
 +export {
 +  createOpenCodeMessageQueue,
 +  type OpenCodeMessageQueueController,
++  type OpenCodeMessageQueueControls,
 +  type OpenCodeMessageQueueDriver,
 +  type OpenCodeMessageQueueOptions,
 +} from "./openCodeMessageQueue";
@@ -1704,7 +1954,7 @@ index 4ac43be..71e8926 100644
    OpenCodePartPayload,
    OpenCodePermissionRequest,
    OpenCodePermissionResponse,
-@@ -37,9 +49,11 @@ export type {
+@@ -37,9 +50,11 @@ export type {
    OpenCodeQuestionRequest,
    OpenCodeRunState,
    OpenCodeRuntime,
@@ -1937,10 +2187,10 @@ index 2c792f2..c660a69 100644
        projectServerMessage(state, message, messageTiming[message.id]),
 diff --git a/src/openCodeMessageQueue.ts b/src/openCodeMessageQueue.ts
 new file mode 100644
-index 0000000..2015982
+index 0000000..8d922b7
 --- /dev/null
 +++ b/src/openCodeMessageQueue.ts
-@@ -0,0 +1,323 @@
+@@ -0,0 +1,530 @@
 +import type {
 +  AppendMessage,
 +  ExternalThreadQueueAdapter,
@@ -1949,6 +2199,12 @@ index 0000000..2015982
 +
 +export type OpenCodeMessageQueueOptions = {
 +  cancelBehavior: "clear" | "pause";
++  /**
++   * Opts into user queue controls (pause/resume, reorder, inline edit) backed
++   * by one visible paused state. Off keeps the legacy semantics: Stop parks
++   * the waiting entries and a failed send pauses until an entry is steered.
++   */
++  userControls?: boolean | undefined;
 +};
 +
 +/**
@@ -1968,7 +2224,7 @@ index 0000000..2015982
 +  readonly message: AppendMessage;
 +  readonly immediateFollowup: boolean;
 +  readonly visible: boolean;
-+  /** Held back by Stop; sends only when explicitly steered. */
++  /** Legacy Stop hold (no user controls): sends only when explicitly steered. */
 +  readonly parked: boolean;
 +};
 +
@@ -1979,19 +2235,54 @@ index 0000000..2015982
 +  };
 +};
 +
-+export type OpenCodeMessageQueueController = {
++export type OpenCodeMessageQueueControlsState = {
++  /** No queued message sends on its own; explicit steering still works. */
++  readonly paused: boolean;
++  /** The message held back for an inline edit, if any. */
++  readonly editingId: string | undefined;
++};
++
++export type OpenCodeMessageQueueActions = {
++  pause(): void;
++  resume(): void;
++  /** Reorders waiting messages; unknown ids are ignored. */
++  reorder(orderedIds: readonly string[]): void;
++  /**
++   * Holds draining for an edit and returns its draft: the message's raw text
++   * for a new edit, or the saved draft when the same edit is reopened.
++   */
++  beginEdit(id: string): string | undefined;
++  /** Keeps the open edit's draft so it survives the editor unmounting. */
++  setEditDraft(text: string): void;
++  /** The open edit's draft, if an edit is open. */
++  getEditDraft(): string | undefined;
++  /** Replaces the text parts in place; false when the result would be empty. */
++  commitEdit(id: string, text: string): boolean;
++  cancelEdit(): void;
++};
++
++/** Queue state and actions published to the UI through thread extras. */
++export type OpenCodeMessageQueueControls = OpenCodeMessageQueueControlsState &
++  OpenCodeMessageQueueActions;
++
++export type OpenCodeMessageQueueController = OpenCodeMessageQueueActions & {
 +  readonly adapter: ExternalThreadQueueAdapter;
 +  readonly subscribe: (listener: () => void) => () => void;
 +  readonly getSnapshot: () => number;
++  getControlsState(): OpenCodeMessageQueueControlsState;
++  /** Applies options to a live queue, e.g. when a feature flag flips. */
++  setOptions(options: OpenCodeMessageQueueOptions): void;
 +  setDriver(driver: OpenCodeMessageQueueDriver): void;
 +  setRunning(running: boolean, snapshot?: object): void;
 +};
 +
-+const queuePreview = (message: AppendMessage) => {
-+  const text = message.content
++const messageText = (message: AppendMessage) =>
++  message.content
 +    .flatMap((part) => (part.type === "text" ? [part.text] : []))
-+    .join("")
-+    .trim();
++    .join("");
++
++const queuePreview = (message: AppendMessage) => {
++  const text = messageText(message).trim();
 +  if (text) return text;
 +  if ((message.attachments?.length ?? 0) > 0) return "Attachment";
 +  return "Message";
@@ -2015,6 +2306,22 @@ index 0000000..2015982
 +  startRun: true,
 +});
 +
++const withEditedText = (
++  message: AppendMessage,
++  text: string,
++): AppendMessage | undefined => {
++  const trimmed = text.trim();
++  const otherParts = message.content.filter((part) => part.type !== "text");
++  const hasAttachments = (message.attachments?.length ?? 0) > 0;
++  if (!trimmed && otherParts.length === 0 && !hasAttachments) return undefined;
++  return {
++    ...message,
++    content: (trimmed
++      ? [{ type: "text", text: trimmed }, ...otherParts]
++      : otherParts) as AppendMessage["content"],
++  };
++};
++
 +/**
 + * Owns one thread's client-side prompt queue. Messages remain in the queue
 + * until OpenCode accepts them, while backend run state gates FIFO draining.
@@ -2023,12 +2330,29 @@ index 0000000..2015982
 + * run from stale idle effects replayed after an optimistic run start.
 + * Cancellation is deliberately separated from steering so a failed abort can
 + * leave the selected item in place and pause the queue without losing drafts.
-+ * Stop (cancel-run with cancelBehavior "pause") parks every waiting entry:
-+ * parked entries never drain on their own and only send when explicitly
-+ * steered, while messages queued after Stop keep draining normally.
-+ * A rejected send pauses the queue and keeps the entry for an explicit retry,
-+ * unless the driver reports it "returned-to-composer": then the user already
-+ * holds the message, so the entry is dropped and the queue stays live.
++ *
++ * A rejected send or abort sets `paused` so nothing retries without intent,
++ * and keeps the entry for an explicit retry, unless the driver reports it
++ * "returned-to-composer": then the user already holds the message, so the
++ * entry is dropped. The pause clears itself once the queue empties so it
++ * never swallows a later send.
++ *
++ * Two modes, switchable live via setOptions:
++ * - Legacy (no `userControls`): the pause is invisible and steering clears
++ *   it. Stop (cancel-run with cancelBehavior "pause") parks every waiting
++ *   entry: parked entries only send when steered, while messages queued after
++ *   Stop keep draining.
++ * - `userControls`: one visible `paused` flag holds every waiting entry. The
++ *   user toggles it, and Stop sets it when entries are waiting. Steering a
++ *   paused entry leaves the queue paused, and a message sent while the agent
++ *   is idle still dispatches right away. An inline edit holds automatic
++ *   draining (tool-blocking follow-ups still go) and pins its entry so it
++ *   cannot be steered mid-edit. The edit and its draft live here, not in the
++ *   editor, so leaving the editor keeps the hold and the draft; only saving
++ *   or cancelling releases it, and draining resumes at once. Reordering only
++ *   moves visible entries; in-flight and follow-up entries keep their slots.
++ * Switching modes maps parked entries onto the visible pause and back, and an
++ * open edit onto parking, so a flag flip never releases messages the user held.
 + */
 +export const createOpenCodeMessageQueue = (
 +  options: OpenCodeMessageQueueOptions,
@@ -2039,19 +2363,34 @@ index 0000000..2015982
 +  let awaitingRunStart = false;
 +  let observedSnapshot: object | undefined;
 +  const ignoredIdleSnapshots = new Set<object>();
++  let cancelBehavior = options.cancelBehavior;
++  let userControls = options.userControls ?? false;
 +  let paused = false;
++  let editingId: string | undefined;
++  let editDraft: string | undefined;
 +  let operation: "idle" | "sending" | "cancelling" = "idle";
 +  let activeId: string | undefined;
 +  let pendingSteerId: string | undefined;
 +  let version = 0;
 +  let nextId = 0;
++  let controlsState: OpenCodeMessageQueueControlsState = {
++    paused,
++    editingId,
++  };
 +  const listeners = new Set<() => void>();
 +
 +  const notify = () => {
++    if (entries.length === 0) paused = false;
 +    version += 1;
 +    adapter.items = entries
 +      .filter((entry) => entry.visible)
 +      .map((entry) => entry.state);
++    if (
++      controlsState.paused !== paused ||
++      controlsState.editingId !== editingId
++    ) {
++      controlsState = { paused, editingId };
++    }
 +    for (const listener of listeners) listener();
 +  };
 +
@@ -2123,16 +2462,18 @@ index 0000000..2015982
 +      dispatch(immediateFollowup.state.id);
 +      return;
 +    }
-+    if (paused || running) return;
++    if (paused || running || editingId !== undefined) return;
 +    const head = entries.find((entry) => !entry.parked);
 +    if (head) dispatch(head.state.id);
 +  };
 +
 +  const steer = (id: string) => {
 +    if (!driver || operation !== "idle") return;
++    if (id === editingId) return;
 +    if (!entries.some((entry) => entry.state.id === id)) return;
 +
-+    paused = false;
++    // Only the legacy pause is an invisible retry hold that steering releases.
++    if (!userControls) paused = false;
 +    pendingSteerId = id;
 +    if (!running) {
 +      pendingSteerId = undefined;
@@ -2170,11 +2511,19 @@ index 0000000..2015982
 +      const id = `opencode-queue:${nextId++}`;
 +      const attachmentPreview = queueAttachmentPreview(message);
 +      const immediateFollowup = message.startRun === false;
++      // With user controls an idle agent takes a new message right away, even
++      // with the queue paused: the pause holds entries that were already waiting.
++      const sendsFromIdle =
++        !immediateFollowup &&
++        !steerImmediately &&
++        !running &&
++        operation === "idle" &&
++        (userControls || !paused);
 +      const dispatchImmediately =
 +        driver !== undefined &&
 +        ((immediateFollowup && operation === "idle") ||
 +          steerImmediately ||
-+          (!running && !paused && operation === "idle"));
++          sendsFromIdle);
 +      entries = [
 +        ...entries,
 +        {
@@ -2198,6 +2547,8 @@ index 0000000..2015982
 +        dispatch(id);
 +      } else if (steerImmediately) {
 +        steer(id);
++      } else if (dispatchImmediately) {
++        dispatch(id);
 +      } else {
 +        advance();
 +      }
@@ -2206,25 +2557,39 @@ index 0000000..2015982
 +    remove: (id) => {
 +      if (id === activeId || id === pendingSteerId) return;
 +      entries = entries.filter((entry) => entry.state.id !== id);
-+      // A pause only holds entries for an explicit retry; with none left
-+      // it would silently swallow the next send.
-+      if (entries.length === 0) paused = false;
++      if (id === editingId) closeEdit();
 +      notify();
++      advance();
 +    },
 +    clear: (reason) => {
-+      if (reason === "cancel-run" && options.cancelBehavior === "pause") {
-+        entries = entries.map((entry) =>
-+          entry.immediateFollowup ? entry : { ...entry, parked: true },
-+        );
++      if (reason === "cancel-run" && cancelBehavior === "pause") {
++        if (!userControls) {
++          entries = entries.map((entry) =>
++            entry.immediateFollowup ? entry : { ...entry, parked: true },
++          );
++        } else if (
++          entries.some((entry) => entry.visible && !entry.immediateFollowup)
++        ) {
++          paused = true;
++        }
 +        notify();
 +        return;
 +      }
 +      entries = [];
 +      pendingSteerId = undefined;
++      closeEdit();
 +      paused = false;
 +      notify();
 +    },
 +  };
++
++  function closeEdit() {
++    editingId = undefined;
++    editDraft = undefined;
++  }
++
++  const findWaiting = (id: string) =>
++    entries.find((entry) => entry.visible && entry.state.id === id);
 +
 +  return {
 +    adapter,
@@ -2233,6 +2598,98 @@ index 0000000..2015982
 +      return () => listeners.delete(listener);
 +    },
 +    getSnapshot: () => version,
++    getControlsState: () => controlsState,
++    setOptions: (nextOptions) => {
++      cancelBehavior = nextOptions.cancelBehavior;
++      const nextUserControls = nextOptions.userControls ?? false;
++      if (nextUserControls === userControls) return;
++      userControls = nextUserControls;
++      if (userControls) {
++        if (entries.some((entry) => entry.parked)) paused = true;
++        entries = entries.map((entry) =>
++          entry.parked ? { ...entry, parked: false } : entry,
++        );
++      } else {
++        // Without Resume or an editor, a held queue degrades to legacy parking.
++        if (paused || editingId !== undefined) {
++          entries = entries.map((entry) =>
++            entry.visible && !entry.immediateFollowup
++              ? { ...entry, parked: true }
++              : entry,
++          );
++        }
++        paused = false;
++        closeEdit();
++      }
++      notify();
++      advance();
++    },
++    pause: () => {
++      if (paused) return;
++      paused = true;
++      notify();
++    },
++    resume: () => {
++      if (!paused) return;
++      paused = false;
++      notify();
++      advance();
++    },
++    reorder: (orderedIds) => {
++      const waiting = entries.filter((entry) => entry.visible);
++      const unlisted = new Map(waiting.map((entry) => [entry.state.id, entry]));
++      const listed: QueueEntry[] = [];
++      for (const id of orderedIds) {
++        const entry = unlisted.get(id);
++        if (!entry) continue;
++        listed.push(entry);
++        unlisted.delete(id);
++      }
++      const sorted = [...listed, ...unlisted.values()];
++      if (sorted.every((entry, index) => entry === waiting[index])) return;
++      let slot = 0;
++      entries = entries.map((entry) => (entry.visible ? sorted[slot++]! : entry));
++      notify();
++    },
++    beginEdit: (id) => {
++      if (id === editingId) return editDraft;
++      if (id === activeId || id === pendingSteerId) return undefined;
++      const entry = findWaiting(id);
++      if (!entry) return undefined;
++      editingId = id;
++      editDraft = messageText(entry.message);
++      notify();
++      return editDraft;
++    },
++    setEditDraft: (text) => {
++      if (editingId !== undefined) editDraft = text;
++    },
++    getEditDraft: () => editDraft,
++    commitEdit: (id, text) => {
++      if (id !== editingId) return false;
++      const entry = findWaiting(id);
++      const message = entry && withEditedText(entry.message, text);
++      if (!message) return false;
++      entries = entries.map((candidate) =>
++        candidate.state.id === id
++          ? {
++              ...candidate,
++              message,
++              state: { ...candidate.state, prompt: queuePreview(message) },
++            }
++          : candidate,
++      );
++      closeEdit();
++      notify();
++      advance();
++      return true;
++    },
++    cancelEdit: () => {
++      if (editingId === undefined) return;
++      closeEdit();
++      notify();
++      advance();
++    },
 +    setDriver: (nextDriver) => {
 +      driver = nextDriver;
 +    },
@@ -2462,7 +2919,7 @@ index 36f2d25..17e25be 100644
            ...state.sync,
            lastEventAt: Date.now(),
 diff --git a/src/types.ts b/src/types.ts
-index a87d890..45923eb 100644
+index a87d890..fe9d28f 100644
 --- a/src/types.ts
 +++ b/src/types.ts
 @@ -11,6 +11,7 @@ import type {
@@ -2473,15 +2930,18 @@ index a87d890..45923eb 100644
    Message,
    OpencodeClient,
    Part,
-@@ -20,6 +21,7 @@ import type {
+@@ -20,6 +21,10 @@ import type {
    Session,
    SessionStatus,
  } from "@opencode-ai/sdk/v2/client";
-+import type { OpenCodeMessageQueueOptions } from "./openCodeMessageQueue";
++import type {
++  OpenCodeMessageQueueControls,
++  OpenCodeMessageQueueOptions,
++} from "./openCodeMessageQueue";
  
  export type {
    AssistantMessage,
-@@ -183,6 +185,36 @@ export type OpenCodeUserMessageOptions = {
+@@ -183,6 +188,36 @@ export type OpenCodeUserMessageOptions = {
    noReply?: boolean | undefined;
  };
  
@@ -2518,7 +2978,7 @@ index a87d890..45923eb 100644
  export type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
    /**
     * Called whenever the active thread's canonical (remote) ID changes, so the
-@@ -194,6 +226,7 @@ export type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
+@@ -194,6 +229,7 @@ export type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
     */
    onThreadIdChange?: ((threadId: string | undefined) => void) | undefined;
    client?: OpencodeClient;
@@ -2526,7 +2986,7 @@ index a87d890..45923eb 100644
    baseUrl?: string | undefined;
    initialSessionId?: string | undefined;
    defaultModel?:
-@@ -204,6 +237,8 @@ export type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
+@@ -204,6 +240,8 @@ export type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
      | undefined;
    defaultAgent?: string | undefined;
    onError?: (error: unknown) => void;
@@ -2535,7 +2995,16 @@ index a87d890..45923eb 100644
    adapters?:
      | {
          attachments?: AttachmentAdapter;
-@@ -243,6 +278,7 @@ export type OpenCodeThreadStateSelector<T> = (state: OpenCodeThreadState) => T;
+@@ -234,6 +272,8 @@ export type OpenCodeRuntimeExtras = {
+     answers: readonly QuestionAnswer[],
+   ) => Promise<void>;
+   rejectQuestion: (questionId: string) => Promise<void>;
++  /** Present when the runtime was created with `messageQueue`. */
++  messageQueue?: OpenCodeMessageQueueControls | undefined;
+ };
+ 
+ export type OpenCodeRuntime = AssistantRuntime;
+@@ -243,6 +283,7 @@ export type OpenCodeThreadStateSelector<T> = (state: OpenCodeThreadState) => T;
  export type OpenCodeServerEvent = {
    type: string;
    sessionId: string | undefined;
@@ -2544,7 +3013,7 @@ index a87d890..45923eb 100644
    properties: Record<string, unknown>;
  };
 diff --git a/src/useOpenCodeRuntime.ts b/src/useOpenCodeRuntime.ts
-index 66a324b..b2ba37d 100644
+index 66a324b..cf8080c 100644
 --- a/src/useOpenCodeRuntime.ts
 +++ b/src/useOpenCodeRuntime.ts
 @@ -3,6 +3,7 @@
@@ -2578,7 +3047,7 @@ index 66a324b..b2ba37d 100644
    OpenCodeRuntimeOptions,
    OpenCodeThreadControllerLike,
    OpenCodeThreadState,
-@@ -26,29 +37,39 @@ import { projectOpenCodeThreadRepository } from "./openCodeMessageProjection";
+@@ -26,29 +37,40 @@ import { projectOpenCodeThreadRepository } from "./openCodeMessageProjection";
  import { EMPTY_OPENCODE_THREAD_STATE } from "./openCodeThreadState";
  import { openCodeExtras } from "./openCodeExtras";
  import { createOpenCodeThreadListAdapter } from "./openCodeThreadListAdapter";
@@ -2586,6 +3055,7 @@ index 66a324b..b2ba37d 100644
 +import {
 +  createOpenCodeMessageQueue,
 +  type OpenCodeMessageQueueController,
++  type OpenCodeMessageQueueControls,
 +} from "./openCodeMessageQueue";
  import { useOpenCodeControllerState } from "./useOpenCodeControllerState";
  import { useOpenCodeStreamingTiming } from "./useOpenCodeStreamingTiming";
@@ -2622,7 +3092,7 @@ index 66a324b..b2ba37d 100644
      dispose() {
        eventSource?.dispose();
        eventSource = null;
-@@ -61,16 +82,31 @@ const createRegistry = (
+@@ -61,16 +83,62 @@ const createRegistry = (
    };
  };
  
@@ -2641,6 +3111,37 @@ index 66a324b..b2ba37d 100644
 +const subscribeToNothing = () => () => {};
 +const getZeroSnapshot = () => 0;
 +
++const messageQueueControls = (
++  queue: OpenCodeMessageQueueController,
++): OpenCodeMessageQueueControls => ({
++  ...queue.getControlsState(),
++  pause: queue.pause,
++  resume: queue.resume,
++  reorder: queue.reorder,
++  beginEdit: queue.beginEdit,
++  setEditDraft: queue.setEditDraft,
++  getEditDraft: queue.getEditDraft,
++  commitEdit: queue.commitEdit,
++  cancelEdit: queue.cancelEdit,
++});
++
++/**
++ * The extras brand is a non-enumerable symbol, so spreading drops it; branded
++ * extras are re-provided or `useOpenCodeRuntimeExtras` would stop resolving.
++ */
++const withMessageQueueExtras = (
++  extras: unknown,
++  messageQueue: OpenCodeMessageQueueControls,
++): unknown => {
++  if (openCodeExtras.is(extras)) {
++    return openCodeExtras.provide({ ...extras, messageQueue });
++  }
++  return {
++    ...(typeof extras === "object" && extras !== null ? extras : {}),
++    messageQueue,
++  };
++};
++
  const getController = (
    registry: OpenCodeControllerRegistry,
 -  client: ReturnType<typeof createOpencodeClient>,
@@ -2656,7 +3157,7 @@ index 66a324b..b2ba37d 100644
      registry.getEventSource,
      sessionId,
    );
-@@ -95,9 +131,6 @@ const NOOP_CONTROLLER: OpenCodeThreadControllerLike = {
+@@ -95,9 +163,6 @@ const NOOP_CONTROLLER: OpenCodeThreadControllerLike = {
    rejectQuestion: async () => {},
  };
  
@@ -2666,7 +3167,7 @@ index 66a324b..b2ba37d 100644
  const isOpenCodeStateRunning = (state: OpenCodeThreadState): boolean =>
    state.runState.type === "streaming" ||
    state.runState.type === "cancelling" ||
-@@ -105,11 +138,71 @@ const isOpenCodeStateRunning = (state: OpenCodeThreadState): boolean =>
+@@ -105,11 +170,71 @@ const isOpenCodeStateRunning = (state: OpenCodeThreadState): boolean =>
    state.sessionStatus?.type === "busy" ||
    state.sessionStatus?.type === "retry";
  
@@ -2740,7 +3241,7 @@ index 66a324b..b2ba37d 100644
    const onLoadError = useEffectEvent((error: unknown) => {
      options.onError?.(error);
    });
-@@ -119,6 +212,17 @@ const useOpenCodeThreadRuntime = (
+@@ -119,6 +244,17 @@ const useOpenCodeThreadRuntime = (
      void controller.load().catch(onLoadError);
    }, [controller]);
  
@@ -2758,7 +3259,7 @@ index 66a324b..b2ba37d 100644
    const isRunning = isOpenCodeStateRunning(state);
  
    const messageTiming = useOpenCodeStreamingTiming(state, isRunning);
-@@ -154,90 +258,242 @@ const useOpenCodeThreadRuntime = (
+@@ -154,90 +290,257 @@ const useOpenCodeThreadRuntime = (
      [controller, state],
    );
  
@@ -2971,7 +3472,12 @@ index 66a324b..b2ba37d 100644
 +    if (!liveHasUserMessage || optimisticMessages.length === 0) return;
 +    setOptimisticMessages([]);
 +  }, [liveHasUserMessage, optimisticMessages.length]);
-+
+ 
+-  const fallbackRuntime = useExternalStoreRuntime<ThreadMessage>({
+-    isDisabled: true,
+-    isLoading: true,
+-    messageRepository: ExportedMessageRepository.fromArray([]),
+-    onNew: NOOP_ON_NEW,
 +  const newThreadStore = useMemo<ExternalStoreAdapter<ThreadMessage>>(
 +    () => ({
 +      ...pickExternalStoreSharedOptions(options),
@@ -3013,12 +3519,7 @@ index 66a324b..b2ba37d 100644
 +    }),
 +    [optimisticRepository, options, threadStatus],
 +  );
- 
--  const fallbackRuntime = useExternalStoreRuntime<ThreadMessage>({
--    isDisabled: true,
--    isLoading: true,
--    messageRepository: ExportedMessageRepository.fromArray([]),
--    onNew: NOOP_ON_NEW,
++
 +  const selectedStore =
 +    !sessionId || optimisticMessages.length > 0 ? newThreadStore : threadStore;
 +  const queue = options.messageQueue
@@ -3051,14 +3552,29 @@ index 66a324b..b2ba37d 100644
  
 -  if (!sessionId) return fallbackRuntime;
 -  return threadRuntime;
++  const cancelBehavior = options.messageQueue?.cancelBehavior;
++  const userControls = options.messageQueue?.userControls ?? false;
++  // Queues outlive renders, so a flipped option is applied to the live queue.
++  useEffect(() => {
++    if (cancelBehavior) queue?.setOptions({ cancelBehavior, userControls });
++  }, [cancelBehavior, queue, userControls]);
++
 +  useEffect(() => {
 +    queue?.setRunning(selectedStore.isRunning, liveState.sync);
 +  }, [liveState.sync, queue, selectedStore.isRunning]);
 +
-+  const storeWithQueue = useMemo<ExternalStoreAdapter<ThreadMessage>>(
-+    () => (queue ? { ...selectedStore, queue: queue.adapter } : selectedStore),
-+    [queue, queueVersion, selectedStore],
-+  );
++  const storeWithQueue = useMemo<ExternalStoreAdapter<ThreadMessage>>(() => {
++    if (!queue) return selectedStore;
++    if (!userControls) return { ...selectedStore, queue: queue.adapter };
++    return {
++      ...selectedStore,
++      queue: queue.adapter,
++      extras: withMessageQueueExtras(
++        selectedStore.extras,
++        messageQueueControls(queue),
++      ),
++    };
++  }, [queue, queueVersion, selectedStore, userControls]);
 +
 +  // One runtime whose store CONTENT switches. Alternating runtime instances
 +  // remount the thread and break remote-thread-list main binding (see react-pi).
@@ -3067,7 +3583,7 @@ index 66a324b..b2ba37d 100644
  };
  
  export const useOpenCodeRuntime = (
-@@ -245,10 +501,35 @@ export const useOpenCodeRuntime = (
+@@ -245,10 +548,35 @@ export const useOpenCodeRuntime = (
  ): AssistantRuntime => {
    const baseUrl = options.baseUrl ?? "http://localhost:4096";
    const client = useMemo(
@@ -3106,7 +3622,7 @@ index 66a324b..b2ba37d 100644
  
    useEffect(() => {
      return () => {
-@@ -257,8 +538,8 @@ export const useOpenCodeRuntime = (
+@@ -257,8 +585,8 @@ export const useOpenCodeRuntime = (
    }, [registry]);
  
    const adapter = useMemo(
@@ -3117,7 +3633,7 @@ index 66a324b..b2ba37d 100644
    );
  
    return useRemoteThreadListRuntime({
-@@ -267,6 +548,6 @@ export const useOpenCodeRuntime = (
+@@ -267,6 +595,6 @@ export const useOpenCodeRuntime = (
      initialThreadId: options.initialSessionId,
      onThreadIdChange: options.onThreadIdChange,
      // oxlint-disable-next-line react-hooks/rules-of-hooks -- runtimeHook callback is invoked by useRemoteThreadListRuntime at the appropriate hook position

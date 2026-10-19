@@ -260,6 +260,18 @@ describe("useKiloRuntime", () => {
 		});
 	});
 
+	it("turns on queue user controls when prompt queue editing is enabled", () => {
+		const client = { session: {} } as KiloClient;
+
+		renderHook(() => useKiloRuntime({ client, promptQueueEditing: true }));
+
+		expect(useOpenCodeRuntime).toHaveBeenCalledWith(
+			expect.objectContaining({
+				messageQueue: { cancelBehavior: "pause", userControls: true },
+			}),
+		);
+	});
+
 	it("forwards sessionActivity into the backend", () => {
 		const connectionPromise = Promise.resolve(connection);
 		const prepareSession = vi.fn(async () => ({ directory: "/workspace", workspaceFolders: [] }));

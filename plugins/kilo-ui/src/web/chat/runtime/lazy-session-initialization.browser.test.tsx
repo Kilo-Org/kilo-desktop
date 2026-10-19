@@ -4,7 +4,11 @@ import {
 	useAui,
 	useAuiState,
 } from "@assistant-ui/react";
-import { OpenCodeAttachmentAdapter, useOpenCodeRuntime } from "@assistant-ui/react-opencode";
+import {
+	OpenCodeAttachmentAdapter,
+	useOpenCodeRuntime,
+	useOpenCodeSession,
+} from "@assistant-ui/react-opencode";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -95,6 +99,12 @@ function RuntimeState() {
 		if (!lastUser || lastUser.role !== "user") return 0;
 		return lastUser.attachments.length;
 	});
+	const queueControls = useAuiState((state) => {
+		const extras = state.thread.extras as { messageQueue?: { pause?: unknown } } | undefined;
+		return typeof extras?.messageQueue?.pause === "function" ? "available" : "none";
+	});
+	// Resolves only through the branded extras, so it reads "none" if the brand is lost.
+	const openCodeSessionId = useOpenCodeSession()?.id ?? "none";
 	return (
 		<>
 			<button
@@ -114,6 +124,8 @@ function RuntimeState() {
 			<output data-qa-id="user-message-count">{userMessageCount}</output>
 			<output data-qa-id="last-user-text">{lastUserText}</output>
 			<output data-qa-id="last-user-attachment-count">{lastUserAttachmentCount}</output>
+			<output data-qa-id="queue-controls">{queueControls}</output>
+			<output data-qa-id="opencode-session-id">{openCodeSessionId}</output>
 		</>
 	);
 }
@@ -124,6 +136,7 @@ function RuntimeHarness({
 	onError,
 	onRuntime,
 	withMessageQueue = false,
+	queueUserControls = false,
 }: {
 	client: KiloClient;
 	initialSessionId?: string;
@@ -131,13 +144,22 @@ function RuntimeHarness({
 	onRuntime?: (runtime: ReturnType<typeof useOpenCodeRuntime>) => void;
 	/** Mirrors the production option in use-kilo-runtime.ts. */
 	withMessageQueue?: boolean;
+	/** Mirrors the prompt-queue-editing flag. */
+	queueUserControls?: boolean;
 }) {
 	const runtime = useOpenCodeRuntime({
 		client,
 		adapters: { attachments: new OpenCodeAttachmentAdapter() },
 		...(initialSessionId === undefined ? {} : { initialSessionId }),
 		...(onError === undefined ? {} : { onError }),
-		...(withMessageQueue ? { messageQueue: { cancelBehavior: "pause" as const } } : {}),
+		...(withMessageQueue
+			? {
+					messageQueue: {
+						cancelBehavior: "pause" as const,
+						...(queueUserControls ? { userControls: true } : {}),
+					},
+				}
+			: {}),
 	});
 
 	useEffect(() => onRuntime?.(runtime), [onRuntime, runtime]);
@@ -452,6 +474,45 @@ describe("patched OpenCode lazy session initialization", () => {
 
 		await expect.element(input).toHaveValue("Prompt a local model");
 		expect(fake.promptAsync).toHaveBeenCalledOnce();
+	});
+
+	it("exposes message queue controls only once user controls are switched on", async () => {
+		const fake = createFakeClient();
+		const props = {
+			client: fake.client,
+			initialSessionId: "existing-session",
+			withMessageQueue: true,
+		};
+		const rendered = renderRuntime(props);
+		const screen = page.elementLocator(rendered.baseElement);
+
+		await expect
+			.element(screen.getByTestId("opencode-session-id"))
+			.toHaveTextContent("existing-session");
+		await expect.element(screen.getByTestId("queue-controls")).toHaveTextContent("none");
+
+		rendered.rerender(<RuntimeHarness {...props} queueUserControls />);
+
+		await expect.element(screen.getByTestId("queue-controls")).toHaveTextContent("available");
+	});
+
+	it("exposes message queue controls without breaking OpenCode extras", async () => {
+		const fake = createFakeClient();
+		const { baseElement } = renderRuntime({
+			client: fake.client,
+			initialSessionId: "existing-session",
+			withMessageQueue: true,
+			queueUserControls: true,
+		});
+		const screen = page.elementLocator(baseElement);
+
+		await expect
+			.element(screen.getByTestId("remote-session-id"))
+			.toHaveTextContent("existing-session");
+		await expect.element(screen.getByTestId("queue-controls")).toHaveTextContent("available");
+		await expect
+			.element(screen.getByTestId("opencode-session-id"))
+			.toHaveTextContent("existing-session");
 	});
 
 	it("uses an existing session without creating another one", async () => {

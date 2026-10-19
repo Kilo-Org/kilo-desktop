@@ -176,6 +176,25 @@ describe("OpenCode message queue", () => {
 		expect(queue.adapter.items.map((item) => item.prompt)).toEqual(["first"]);
 	});
 
+	it("queues a new message behind a failed send instead of sending it", async () => {
+		const queue = createOpenCodeMessageQueue({ cancelBehavior: "pause" });
+		const driver = {
+			send: vi
+				.fn<(message: AppendMessage) => Promise<void>>()
+				.mockRejectedValueOnce(new Error("send failed"))
+				.mockResolvedValue(undefined),
+			cancel: vi.fn(async () => undefined),
+		};
+		queue.setDriver(driver);
+		queue.adapter.enqueue(message("failed"), { steer: false });
+		await vi.waitFor(() => expect(queue.adapter.items).toHaveLength(1));
+
+		queue.adapter.enqueue(message("held"), { steer: false });
+
+		expect(driver.send).toHaveBeenCalledOnce();
+		expect(queue.adapter.items.map((item) => item.prompt)).toEqual(["failed", "held"]);
+	});
+
 	it("does not auto-resume when cancel-run follows a failed send", async () => {
 		const queue = createOpenCodeMessageQueue({ cancelBehavior: "pause" });
 		const failingDriver = {
@@ -229,6 +248,7 @@ describe("OpenCode message queue", () => {
 
 		await vi.waitFor(() => expect(failedDriver.send).toHaveBeenCalledOnce());
 		await vi.waitFor(() => expect(queue.adapter.items).toHaveLength(1));
+		expect(queue.getControlsState().paused).toBe(true);
 		queue.setRunning(false);
 		await Promise.resolve();
 		expect(failedDriver.send).toHaveBeenCalledOnce();
@@ -547,5 +567,384 @@ describe("OpenCode message queue", () => {
 		expect(queue.adapter.items[0]).toMatchObject({
 			attachmentPreview: { name: "first.png", src: firstImage },
 		});
+	});
+});
+
+const prompts = (queue: ReturnType<typeof createOpenCodeMessageQueue>) =>
+	queue.adapter.items.map((item) => item.prompt);
+
+const idOf = (queue: ReturnType<typeof createOpenCodeMessageQueue>, prompt: string) => {
+	const item = queue.adapter.items.find((candidate) => candidate.prompt === prompt);
+	if (!item) throw new Error(`No queued item "${prompt}"`);
+	return item.id;
+};
+
+const USER_CONTROLS = { cancelBehavior: "pause", userControls: true } as const;
+
+const runningQueueWith = (...texts: string[]) => {
+	const queue = createOpenCodeMessageQueue(USER_CONTROLS);
+	const driver = createDriver();
+	queue.setDriver(driver);
+	queue.setRunning(true);
+	for (const text of texts) queue.adapter.enqueue(message(text), { steer: false });
+	return { queue, driver };
+};
+
+describe("OpenCode message queue with user controls: Stop", () => {
+	it("pauses the queue on Stop so nothing sends once the run finishes", async () => {
+		const { queue, driver } = runningQueueWith("first", "second");
+
+		queue.adapter.clear("cancel-run");
+		queue.setRunning(false);
+		await Promise.resolve();
+
+		expect(driver.send).not.toHaveBeenCalled();
+		expect(prompts(queue)).toEqual(["first", "second"]);
+		expect(queue.getControlsState().paused).toBe(true);
+	});
+
+	it("does not pause future queueing when Stop hits an empty queue", () => {
+		const { queue } = runningQueueWith();
+
+		queue.adapter.clear("cancel-run");
+
+		expect(queue.getControlsState().paused).toBe(false);
+	});
+
+	it("holds a message queued while the stopped run winds down behind the pause", async () => {
+		const { queue, driver } = runningQueueWith("held");
+		queue.adapter.clear("cancel-run");
+		queue.adapter.enqueue(message("after stop"), { steer: false });
+
+		queue.setRunning(false);
+		await Promise.resolve();
+
+		expect(driver.send).not.toHaveBeenCalled();
+		expect(prompts(queue)).toEqual(["held", "after stop"]);
+	});
+
+	it("sends a paused message when it is explicitly steered and stays paused", async () => {
+		const { queue, driver } = runningQueueWith("first", "second");
+		queue.adapter.clear("cancel-run");
+		queue.setRunning(false);
+
+		queue.adapter.steer(idOf(queue, "second"));
+
+		await vi.waitFor(() => expect(driver.send).toHaveBeenCalledOnce());
+		expect(driver.send.mock.calls[0]?.[0]).toMatchObject({ content: message("second").content });
+		finishStartedRun(queue);
+		await Promise.resolve();
+		expect(driver.send).toHaveBeenCalledOnce();
+		expect(prompts(queue)).toEqual(["first"]);
+		expect(queue.getControlsState().paused).toBe(true);
+	});
+
+	it("shows a failed send as a visible pause", async () => {
+		const queue = createOpenCodeMessageQueue(USER_CONTROLS);
+		queue.setDriver({
+			send: vi.fn(async (_message: AppendMessage) => Promise.reject(new Error("send failed"))),
+			cancel: vi.fn(async () => undefined),
+		});
+
+		queue.adapter.enqueue(message("retry me"), { steer: false });
+
+		await vi.waitFor(() => expect(queue.getControlsState().paused).toBe(true));
+		expect(prompts(queue)).toEqual(["retry me"]);
+	});
+});
+
+describe("OpenCode message queue mode switch", () => {
+	it("turns legacy parked messages into a visible pause when user controls switch on", async () => {
+		const queue = createOpenCodeMessageQueue({ cancelBehavior: "pause" });
+		const driver = createDriver();
+		queue.setDriver(driver);
+		queue.setRunning(true);
+		queue.adapter.enqueue(message("parked"), { steer: false });
+		queue.adapter.clear("cancel-run");
+		queue.setRunning(false);
+
+		queue.setOptions(USER_CONTROLS);
+
+		expect(queue.getControlsState().paused).toBe(true);
+		expect(driver.send).not.toHaveBeenCalled();
+		queue.resume();
+		await vi.waitFor(() => expect(driver.send).toHaveBeenCalledOnce());
+	});
+
+	it("parks paused messages and drops the edit hold when user controls switch off", async () => {
+		const { queue, driver } = runningQueueWith("held", "editing");
+		queue.pause();
+		queue.beginEdit(idOf(queue, "editing"));
+
+		queue.setOptions({ cancelBehavior: "pause" });
+		queue.setRunning(false);
+		await Promise.resolve();
+
+		expect(queue.getControlsState()).toEqual({ paused: false, editingId: undefined });
+		expect(driver.send).not.toHaveBeenCalled();
+		expect(prompts(queue)).toEqual(["held", "editing"]);
+
+		queue.adapter.enqueue(message("fresh"), { steer: false });
+		await vi.waitFor(() => expect(driver.send).toHaveBeenCalledOnce());
+		expect(driver.send.mock.calls[0]?.[0]).toMatchObject({ content: message("fresh").content });
+	});
+
+	it("parks the message being edited instead of sending it when user controls switch off", async () => {
+		const { queue, driver } = runningQueueWith("editing", "next");
+		queue.beginEdit(idOf(queue, "editing"));
+		queue.setEditDraft("unsaved");
+		queue.setRunning(false);
+		await Promise.resolve();
+
+		queue.setOptions({ cancelBehavior: "pause" });
+		await Promise.resolve();
+
+		expect(driver.send).not.toHaveBeenCalled();
+		expect(prompts(queue)).toEqual(["editing", "next"]);
+		expect(queue.getControlsState()).toEqual({ paused: false, editingId: undefined });
+		expect(queue.getEditDraft()).toBeUndefined();
+
+		queue.setOptions(USER_CONTROLS);
+
+		expect(queue.getControlsState().paused).toBe(true);
+	});
+
+	it("keeps draining when user controls switch off on a live queue", async () => {
+		const { queue, driver } = runningQueueWith("next");
+
+		queue.setOptions({ cancelBehavior: "pause" });
+		queue.setRunning(false);
+
+		await vi.waitFor(() => expect(driver.send).toHaveBeenCalledOnce());
+	});
+});
+
+describe("OpenCode message queue reorder", () => {
+	it("reorders waiting messages and drains the new head first", async () => {
+		const { queue, driver } = runningQueueWith("a", "b", "c");
+
+		queue.reorder([idOf(queue, "c"), idOf(queue, "a"), idOf(queue, "b")]);
+
+		expect(prompts(queue)).toEqual(["c", "a", "b"]);
+		queue.setRunning(false);
+		await vi.waitFor(() => expect(driver.send).toHaveBeenCalledOnce());
+		expect(driver.send.mock.calls[0]?.[0]).toMatchObject({ content: message("c").content });
+	});
+
+	it("ignores unknown ids and keeps unlisted messages after the listed ones", () => {
+		const { queue } = runningQueueWith("a", "b", "c");
+
+		queue.reorder(["missing", idOf(queue, "c")]);
+
+		expect(prompts(queue)).toEqual(["c", "a", "b"]);
+	});
+
+	it("keeps an in-flight message out of the reorder", async () => {
+		const queue = createOpenCodeMessageQueue({ cancelBehavior: "pause" });
+		let accept: (() => void) | undefined;
+		const driver = {
+			send: vi
+				.fn<(message: AppendMessage) => Promise<void>>()
+				.mockImplementationOnce(
+					() =>
+						new Promise<void>((resolve) => {
+							accept = resolve;
+						}),
+				)
+				.mockResolvedValue(undefined),
+			cancel: vi.fn(async () => undefined),
+		};
+		queue.setDriver(driver);
+		queue.adapter.enqueue(message("in flight"), { steer: false });
+		queue.adapter.enqueue(message("b"), { steer: false });
+		queue.adapter.enqueue(message("c"), { steer: false });
+
+		queue.reorder([idOf(queue, "c"), idOf(queue, "b")]);
+		accept?.();
+
+		await vi.waitFor(() => expect(prompts(queue)).toEqual(["c", "b"]));
+		expect(driver.send).toHaveBeenCalledOnce();
+	});
+});
+
+describe("OpenCode message queue pause", () => {
+	it("does not auto-send while paused and drains on resume", async () => {
+		const { queue, driver } = runningQueueWith("a", "b");
+
+		queue.pause();
+		queue.setRunning(false);
+		await Promise.resolve();
+
+		expect(queue.getControlsState().paused).toBe(true);
+		expect(driver.send).not.toHaveBeenCalled();
+
+		queue.resume();
+
+		expect(queue.getControlsState().paused).toBe(false);
+		await vi.waitFor(() => expect(driver.send).toHaveBeenCalledOnce());
+		expect(driver.send.mock.calls[0]?.[0]).toMatchObject({ content: message("a").content });
+	});
+
+	it("waits for the active run to finish when resumed while running", async () => {
+		const { queue, driver } = runningQueueWith("a");
+
+		queue.pause();
+		queue.resume();
+		await Promise.resolve();
+		expect(driver.send).not.toHaveBeenCalled();
+
+		queue.setRunning(false);
+		await vi.waitFor(() => expect(driver.send).toHaveBeenCalledOnce());
+	});
+
+	it("sends a new message immediately while paused if the agent is idle", async () => {
+		const { queue, driver } = runningQueueWith("held");
+		queue.pause();
+		queue.setRunning(false);
+
+		queue.adapter.enqueue(message("fresh"), { steer: false });
+
+		await vi.waitFor(() => expect(driver.send).toHaveBeenCalledOnce());
+		expect(driver.send.mock.calls[0]?.[0]).toMatchObject({ content: message("fresh").content });
+		expect(prompts(queue)).toEqual(["held"]);
+	});
+
+	it("unpauses once the queue empties", () => {
+		const { queue } = runningQueueWith("only");
+		queue.pause();
+
+		queue.adapter.remove(idOf(queue, "only"));
+
+		expect(queue.getControlsState().paused).toBe(false);
+	});
+
+	it("notifies subscribers when the paused state changes", () => {
+		const { queue } = runningQueueWith("a");
+		const listener = vi.fn();
+		queue.subscribe(listener);
+		const before = queue.getSnapshot();
+
+		queue.pause();
+
+		expect(listener).toHaveBeenCalled();
+		expect(queue.getSnapshot()).not.toBe(before);
+	});
+});
+
+describe("OpenCode message queue edit", () => {
+	it("returns the raw text and holds draining while a message is edited", async () => {
+		const { queue, driver } = runningQueueWith("a", "b");
+
+		expect(queue.beginEdit(idOf(queue, "a"))).toBe("a");
+		expect(queue.getControlsState().editingId).toBe(idOf(queue, "a"));
+
+		queue.setRunning(false);
+		await Promise.resolve();
+		expect(driver.send).not.toHaveBeenCalled();
+
+		queue.cancelEdit();
+
+		expect(queue.getControlsState().editingId).toBeUndefined();
+		await vi.waitFor(() => expect(driver.send).toHaveBeenCalledOnce());
+		expect(driver.send.mock.calls[0]?.[0]).toMatchObject({ content: message("a").content });
+	});
+
+	it("replaces the text in place and keeps attachments", async () => {
+		const queue = createOpenCodeMessageQueue({ cancelBehavior: "pause" });
+		const driver = createDriver();
+		queue.setDriver(driver);
+		queue.setRunning(true);
+		const attachment = {
+			id: "file-1",
+			type: "file" as const,
+			name: "notes.txt",
+			contentType: "text/plain",
+			status: { type: "complete" as const },
+			content: [],
+		};
+		queue.adapter.enqueue({ ...message("old"), attachments: [attachment] }, { steer: false });
+		queue.adapter.enqueue(message("next"), { steer: false });
+		const id = idOf(queue, "old");
+
+		queue.beginEdit(id);
+		expect(queue.commitEdit(id, "new text")).toBe(true);
+
+		expect(prompts(queue)).toEqual(["new text", "next"]);
+		expect(queue.adapter.items[0]).toMatchObject({ id, attachmentPreview: { name: "notes.txt" } });
+		expect(queue.getControlsState().editingId).toBeUndefined();
+
+		queue.setRunning(false);
+		await vi.waitFor(() => expect(driver.send).toHaveBeenCalledOnce());
+		expect(driver.send.mock.calls[0]?.[0]).toMatchObject({
+			content: [{ type: "text", text: "new text" }],
+			attachments: [attachment],
+		});
+	});
+
+	it("keeps an edit and its draft open until it is saved, then drains right away", async () => {
+		const { queue, driver } = runningQueueWith("original", "next");
+		const id = idOf(queue, "original");
+		queue.beginEdit(id);
+		queue.setEditDraft("revised");
+
+		queue.setRunning(false);
+		await Promise.resolve();
+
+		expect(driver.send).not.toHaveBeenCalled();
+		expect(queue.beginEdit(id)).toBe("revised");
+		expect(queue.getEditDraft()).toBe("revised");
+
+		queue.commitEdit(id, queue.getEditDraft() ?? "");
+
+		await vi.waitFor(() => expect(driver.send).toHaveBeenCalledOnce());
+		expect(driver.send.mock.calls[0]?.[0]).toMatchObject({
+			content: [{ type: "text", text: "revised" }],
+		});
+		expect(queue.getEditDraft()).toBeUndefined();
+	});
+
+	it("drops the draft when an edit is cancelled", () => {
+		const { queue } = runningQueueWith("original");
+		queue.beginEdit(idOf(queue, "original"));
+		queue.setEditDraft("revised");
+
+		queue.cancelEdit();
+
+		expect(queue.getEditDraft()).toBeUndefined();
+		expect(queue.beginEdit(idOf(queue, "original"))).toBe("original");
+	});
+
+	it("rejects an edit that would leave an empty message", () => {
+		const { queue } = runningQueueWith("a");
+		const id = idOf(queue, "a");
+		queue.beginEdit(id);
+
+		expect(queue.commitEdit(id, "   ")).toBe(false);
+		expect(prompts(queue)).toEqual(["a"]);
+		expect(queue.getControlsState().editingId).toBe(id);
+	});
+
+	it("refuses to steer the message being edited", async () => {
+		const { queue, driver } = runningQueueWith("a");
+		const id = idOf(queue, "a");
+		queue.beginEdit(id);
+
+		queue.adapter.steer(id);
+		await Promise.resolve();
+
+		expect(driver.cancel).not.toHaveBeenCalled();
+		expect(prompts(queue)).toEqual(["a"]);
+	});
+
+	it("releases the edit hold when the edited message is removed", async () => {
+		const { queue, driver } = runningQueueWith("a", "b");
+		queue.beginEdit(idOf(queue, "a"));
+
+		queue.adapter.remove(idOf(queue, "a"));
+		queue.setRunning(false);
+
+		expect(queue.getControlsState().editingId).toBeUndefined();
+		await vi.waitFor(() => expect(driver.send).toHaveBeenCalledOnce());
+		expect(driver.send.mock.calls[0]?.[0]).toMatchObject({ content: message("b").content });
 	});
 });

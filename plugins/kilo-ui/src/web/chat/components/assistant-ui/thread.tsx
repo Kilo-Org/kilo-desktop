@@ -9,6 +9,7 @@ import { RevertToHereButton } from "./revert-to-here-button.js";
 import { RevertPendingProvider, useRevertPending } from "./revert-pending.js";
 import { useIsAfterPendingBoundary } from "./checkpoint-revert.js";
 import { ComposerDraftFooter } from "./composer-draft-footer.js";
+import { ComposerQueue } from "./composer-queue.js";
 import { ComposerFooter } from "./composer-footer.js";
 import { ComposerHeader } from "./composer-header.js";
 import { ComposerTriggers } from "./composer-triggers.js";
@@ -36,12 +37,6 @@ import {
 	createTurnWorkGroupBy,
 } from "../tools/activity-grouping.js";
 import { DelegationGroup } from "../tools/delegation-group.js";
-import {
-	COMPOSER_SHELF_LIST_CLASS,
-	COMPOSER_SHELF_ROW_CLASS,
-	ComposerShelf,
-	ComposerShelfToggle,
-} from "../composer-shelf.js";
 import { OpenCodeComposerInteraction } from "../tools/opencode-composer-interaction.js";
 import { OPENCODE_SNAPSHOT_PROGRESS_PART } from "../tools/opencode-data-part.js";
 import { FallbackTool } from "../tools/opencode-tools.js";
@@ -49,7 +44,6 @@ import { ToolCallSignInGate } from "../tools/tool-sign-in-card.js";
 import { activityKindFromGroupKey, isDelegationTool } from "../tools/tool-categories.js";
 import { getPlanProjectionForMessage } from "../../plan/index.js";
 import { useApprovePlan } from "../../plan/use-approve-plan.js";
-import { Item, ItemActions, ItemContent } from "@kilo-desktop/ui/components/item";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Avatar, AvatarFallback, AvatarGroup } from "@kilo-desktop/ui/components/avatar";
 import { Button } from "@kilo-desktop/ui/components/button";
@@ -70,10 +64,8 @@ import {
 	ComposerPrimitive,
 	ErrorPrimitive,
 	MessagePrimitive,
-	QueueItemPrimitive,
 	SuggestionPrimitive,
 	ThreadPrimitive,
-	type QueueItemState,
 	type ToolCallMessagePartComponent,
 	useAui,
 	useAuiEvent,
@@ -87,14 +79,11 @@ import {
 	ChevronLeftIcon,
 	ChevronRightIcon,
 	CircleCheckIcon,
-	CornerDownLeftIcon,
 	DownloadIcon,
 	EllipsisIcon,
-	FileTextIcon,
 	GitForkIcon,
 	MicIcon,
 	SquareIcon,
-	Trash2Icon,
 } from "lucide-react";
 import {
 	createContext,
@@ -480,122 +469,6 @@ const ThreadSuggestionItem: FC = () => {
 				<SuggestionPrimitive.Description className="aui-thread-welcome-suggestion-text-2 empty:hidden" />
 			</SuggestionPrimitive.Trigger>
 		</div>
-	);
-};
-
-type QueueItemAttachmentPreview = {
-	readonly name: string;
-	readonly src?: string;
-};
-
-type QueueItemWithAttachmentPreview = QueueItemState & {
-	readonly attachmentPreview?: QueueItemAttachmentPreview;
-};
-
-const QueueAttachmentPreview: FC<{ attachment: QueueItemAttachmentPreview }> = ({ attachment }) => {
-	return (
-		<div
-			className="border-border-subtle bg-muted flex size-6 shrink-0 items-center justify-center overflow-hidden rounded-md border"
-			data-qa-id="kilo-composer-queue-attachment"
-		>
-			{attachment.src ? (
-				<img
-					src={attachment.src}
-					alt={`${attachment.name} attachment preview`}
-					className="size-full object-cover"
-				/>
-			) : (
-				<FileTextIcon
-					role="img"
-					aria-label={`${attachment.name} attachment`}
-					className="text-muted-foreground size-3.5"
-				/>
-			)}
-		</div>
-	);
-};
-
-const ComposerQueue: FC<{ steerOnEnter: boolean }> = ({ steerOnEnter }) => {
-	const queueLength = useAuiState((s) => s.composer.queue.length);
-	const [collapsed, setCollapsed] = useState(false);
-
-	if (queueLength === 0) return null;
-
-	return (
-		<ComposerShelf data-qa-id="kilo-composer-queue">
-			<ComposerShelfToggle
-				collapsed={collapsed}
-				aria-controls="kilo-composer-queue-items"
-				onClick={() => setCollapsed((value) => !value)}
-				data-qa-id="kilo-composer-queue-toggle"
-			>
-				<span>{queueLength} queued</span>
-			</ComposerShelfToggle>
-			{!collapsed ? (
-				<div
-					id="kilo-composer-queue-items"
-					className={cn(COMPOSER_SHELF_LIST_CLASS, "flex flex-col")}
-				>
-					<ComposerPrimitive.Queue>
-						{({ queueItem }) => <QueueItemRow queueItem={queueItem} showEnterHint={steerOnEnter} />}
-					</ComposerPrimitive.Queue>
-				</div>
-			) : null}
-		</ComposerShelf>
-	);
-};
-
-const QueueItemRow: FC<{ queueItem: QueueItemState; showEnterHint: boolean }> = ({
-	queueItem,
-	showEnterHint,
-}) => {
-	const isFirst = useAuiState((s) => s.composer.queue[0]?.id === queueItem.id);
-	const attachmentPreview = (queueItem as QueueItemWithAttachmentPreview).attachmentPreview;
-
-	return (
-		<Item
-			size="xs"
-			className={COMPOSER_SHELF_ROW_CLASS}
-			data-qa-id="kilo-composer-queue-item"
-			data-queue-item-id={queueItem.id}
-		>
-			{attachmentPreview ? <QueueAttachmentPreview attachment={attachmentPreview} /> : null}
-			<ItemContent className="min-w-0">
-				<QueueItemPrimitive.Text className="text-foreground/90 truncate text-sm" />
-			</ItemContent>
-			<ItemActions className="gap-1.5">
-				<QueueItemPrimitive.Steer
-					render={
-						<Button
-							type="button"
-							size="xs"
-							variant="ghost"
-							className="text-muted-foreground hover:text-foreground text-[11px] opacity-65 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
-							data-qa-id="kilo-composer-queue-send-now"
-						/>
-					}
-				>
-					{showEnterHint && isFirst ? <CornerDownLeftIcon aria-hidden className="size-3" /> : null}
-					Send now
-				</QueueItemPrimitive.Steer>
-				<QueueItemPrimitive.Remove
-					render={
-						<TooltipIconButton
-							tooltip="Delete queued message"
-							side="bottom"
-							type="button"
-							variant="ghost"
-							size="icon-xs"
-							className="text-muted-foreground hover:text-destructive size-6 opacity-65 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
-							aria-label="Delete queued message"
-							data-qa-id="kilo-composer-queue-delete"
-						/>
-					}
-				>
-					<Trash2Icon className="size-3" />
-				</QueueItemPrimitive.Remove>
-			</ItemActions>
-		</Item>
 	);
 };
 

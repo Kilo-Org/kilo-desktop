@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { AssistantRuntimeProvider, DataRenderers, Tools, useAui } from "@assistant-ui/react";
 import type { OpenCodeServerEvent } from "@assistant-ui/react-opencode";
 
-import { sdkQueryOptions, useSdk } from "@kilo-desktop/sdk-react";
+import { sdkQueryOptions, useFeatureFlag, useSdk } from "@kilo-desktop/sdk-react";
 
 import type {
 	KiloGlobalConnection,
@@ -60,6 +60,7 @@ import { bindChatPaneSync, listenChatPaneSync } from "./pane-canvas/chat-pane-sy
 import { chatRightPanelCapability } from "./right-panel/chat-right-panel-capability.js";
 import type { SessionInitializedInfo } from "./runtime/create-kilo-runtime-backend.js";
 import { useKiloRuntime } from "./runtime/use-kilo-runtime.js";
+import { PROMPT_QUEUE_EDITING_FEATURE_FLAG } from "./prompt-queue-editing/feature-flag.js";
 import { KiloMcpAppsHost } from "./runtime/mcp-apps-host.js";
 import { ElectronMcpAppRenderer } from "./components/mcp-apps/ElectronMcpAppRenderer.js";
 import { SessionActivityProvider } from "./session-activity/SessionActivityProvider.js";
@@ -518,6 +519,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		[sdk, promoteDraftAgent, promoteDraftModel, branchNamer],
 	);
 
+	const promptQueueEditing = useFeatureFlag(PROMPT_QUEUE_EDITING_FEATURE_FLAG, false);
 	const runtime = useKiloRuntime({
 		connectionPromise,
 		prepareSession,
@@ -536,6 +538,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		onPermissionEvent,
 		onStreamReconnected,
 		...(onLiveEvent ? { onLiveEvent } : {}),
+		promptQueueEditing,
 	});
 
 	const aui = useAui({

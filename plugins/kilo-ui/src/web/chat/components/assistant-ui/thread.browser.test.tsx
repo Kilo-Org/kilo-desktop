@@ -6,6 +6,7 @@ import {
 	useAui,
 	useAuiState,
 	useLocalRuntime,
+	type AppendMessage,
 	type ChatModelAdapter,
 	type ExternalThreadMessage,
 	type ExternalThreadQueueAdapter,
@@ -14,7 +15,14 @@ import {
 } from "@assistant-ui/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render } from "@testing-library/react";
-import { useState, type ComponentProps } from "react";
+import {
+	useEffect,
+	useMemo,
+	useState,
+	useSyncExternalStore,
+	type ComponentProps,
+	type ReactNode,
+} from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
@@ -38,10 +46,14 @@ import type {
 	AgentToolSignInCapability,
 	AgentToolSignInState,
 } from "@kilo-desktop/plugin-kilo-server/contracts";
-import { SdkProvider } from "@kilo-desktop/sdk-react";
+import { SdkProvider, useFeatureFlag } from "@kilo-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeMainSdk, createFakeSdk } from "@kilo-desktop/testing";
 import type * as ReactOpenCode from "@assistant-ui/react-opencode";
-import type { OpenCodeQuestionRequest, OpenCodeRuntimeExtras } from "@assistant-ui/react-opencode";
+import {
+	createOpenCodeMessageQueue,
+	type OpenCodeQuestionRequest,
+	type OpenCodeRuntimeExtras,
+} from "@assistant-ui/react-opencode";
 
 import type { KiloGlobalConnection } from "../../../../contracts/chat/schemas.js";
 import { kiloUiBrowserRegister } from "../../../browserRegister.js";
@@ -57,6 +69,7 @@ import {
 } from "../../connection/ChatConnectionContext.js";
 import { ChatModelSelectionProvider } from "../../model-selection/ChatModelSelectionContext.js";
 import { useDelegationRevealStore } from "../../subagents/delegation-reveal-store.js";
+import { PROMPT_QUEUE_EDITING_FEATURE_FLAG } from "../../prompt-queue-editing/feature-flag.js";
 import { Thread } from "./thread.js";
 
 const extrasRef = vi.hoisted(() => ({
@@ -504,12 +517,14 @@ function ExternalQueueThreadTree({
 	queue,
 	isRunning = true,
 	connectionStatus,
+	extras,
 }: {
 	queue: ExternalThreadQueueAdapter;
 	isRunning?: boolean;
 	connectionStatus?: ChatConnectionStatus;
+	extras?: unknown;
 }) {
-	const aui = useAui({ thread: ExternalThread({ messages: [], isRunning, queue }) });
+	const aui = useAui({ thread: ExternalThread({ messages: [], isRunning, queue, extras }) });
 
 	return (
 		<KiloAuthContext.Provider value={signedInAuth}>
@@ -540,9 +555,46 @@ function ExternalQueueThreadTree({
 
 function renderExternalQueueThread(
 	queue: ExternalThreadQueueAdapter,
-	options?: { isRunning?: boolean; connectionStatus?: ChatConnectionStatus },
+	options?: {
+		isRunning?: boolean;
+		connectionStatus?: ChatConnectionStatus;
+		promptQueueEditing?: boolean;
+	},
 ) {
-	const sdk = createFakeSdk({ featureId: "kilo-ui" });
+	const { promptQueueEditing = false, ...treeOptions } = options ?? {};
+	return renderWithQueueProviders(<ExternalQueueThreadTree queue={queue} {...treeOptions} />, {
+		promptQueueEditing,
+	});
+}
+
+/** Feature-flag delegate whose prompt-queue-editing value can flip mid-test, like LaunchDarkly. */
+function promptQueueEditingFlags(enabled: boolean) {
+	let flags = { [PROMPT_QUEUE_EDITING_FEATURE_FLAG]: enabled };
+	const listeners = new Set<(value: typeof flags) => void>();
+	return {
+		peek: () => flags,
+		subscribe: (listener: (value: typeof flags) => void) => {
+			listeners.add(listener);
+			listener(flags);
+			return () => {
+				listeners.delete(listener);
+			};
+		},
+		set: (next: boolean) => {
+			flags = { [PROMPT_QUEUE_EDITING_FEATURE_FLAG]: next };
+			act(() => {
+				for (const listener of listeners) listener(flags);
+			});
+		},
+	};
+}
+
+function renderWithQueueProviders(
+	children: ReactNode,
+	{ promptQueueEditing }: { promptQueueEditing: boolean },
+) {
+	const featureFlags = promptQueueEditingFlags(promptQueueEditing);
+	const sdk = createFakeSdk({ featureId: "kilo-ui", featureFlags });
 	const mainSdk = createFakeMainSdk({ featureId: "kilo-ui", services: sdk.services });
 	kiloUiBrowserRegister(mainSdk);
 	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
@@ -550,14 +602,88 @@ function renderExternalQueueThread(
 	const { baseElement } = render(
 		<SdkProvider system={system}>
 			<QueryClientProvider client={queryClient}>
-				<WorkspacesFeatureProvider>
-					<ExternalQueueThreadTree queue={queue} {...options} />
-				</WorkspacesFeatureProvider>
+				<WorkspacesFeatureProvider>{children}</WorkspacesFeatureProvider>
 			</QueryClientProvider>
 		</SdkProvider>,
 	);
-	return page.elementLocator(baseElement);
+	return Object.assign(page.elementLocator(baseElement), {
+		setPromptQueueEditing: featureFlags.set,
+	});
 }
+
+type MessageQueueController = ReturnType<typeof createOpenCodeMessageQueue>;
+
+const queuedMessage = (text: string, attachments: AppendMessage["attachments"] = []) =>
+	({
+		role: "user",
+		content: text ? [{ type: "text", text }] : [],
+		attachments,
+		createdAt: new Date(),
+		parentId: null,
+		sourceId: null,
+		runConfig: {},
+		metadata: { custom: {} },
+	}) satisfies AppendMessage;
+
+/**
+ * Mirrors how the patched OpenCode runtime drives a live queue: the flag maps
+ * to `userControls` via setOptions. Controls stay published even with the
+ * flag off so tests prove the UI gates on the flag itself.
+ */
+function LiveQueueThreadTree({ controller }: { controller: MessageQueueController }) {
+	const userControls = useFeatureFlag(PROMPT_QUEUE_EDITING_FEATURE_FLAG, false);
+	useEffect(() => {
+		controller.setOptions({ cancelBehavior: "pause", userControls });
+	}, [controller, userControls]);
+	const version = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
+	const queue = useMemo(() => ({ ...controller.adapter }), [controller, version]);
+	const extras = useMemo(
+		() => ({
+			messageQueue: {
+				...controller.getControlsState(),
+				pause: controller.pause,
+				resume: controller.resume,
+				reorder: controller.reorder,
+				beginEdit: controller.beginEdit,
+				setEditDraft: controller.setEditDraft,
+				getEditDraft: controller.getEditDraft,
+				commitEdit: controller.commitEdit,
+				cancelEdit: controller.cancelEdit,
+			},
+		}),
+		[controller, version],
+	);
+	return <ExternalQueueThreadTree queue={queue} extras={extras} />;
+}
+
+function renderLiveQueueThread(...prompts: readonly (string | AppendMessage)[]) {
+	return renderLiveQueueThreadWith({ promptQueueEditing: true }, ...prompts);
+}
+
+function renderLiveQueueThreadWith(
+	{ promptQueueEditing }: { promptQueueEditing: boolean },
+	...prompts: readonly (string | AppendMessage)[]
+) {
+	const controller = createOpenCodeMessageQueue({ cancelBehavior: "pause", userControls: true });
+	const driver = {
+		send: vi.fn(async (_message: AppendMessage) => undefined),
+		cancel: vi.fn(async () => undefined),
+	};
+	controller.setDriver(driver);
+	controller.setRunning(true);
+	for (const prompt of prompts) {
+		controller.adapter.enqueue(typeof prompt === "string" ? queuedMessage(prompt) : prompt, {
+			steer: false,
+		});
+	}
+	const screen = renderWithQueueProviders(<LiveQueueThreadTree controller={controller} />, {
+		promptQueueEditing,
+	});
+	return { screen, controller, driver };
+}
+
+const queuedPrompts = (controller: MessageQueueController) =>
+	controller.adapter.items.map((item) => item.prompt);
 
 function ExternalMessagesThreadTree({
 	messages,
@@ -999,6 +1125,203 @@ describe("composer message queue", () => {
 		await screen.getByRole("button", { name: "Delete queued message" }).click();
 
 		await expect.element(screen.getByTestId("kilo-composer-queue")).not.toBeInTheDocument();
+	});
+
+	it("offers no reorder, edit or pause controls when the runtime has none", async () => {
+		const queue: ExternalThreadQueueAdapter = {
+			items: [
+				{ id: "a", prompt: "First" },
+				{ id: "b", prompt: "Second" },
+			],
+			enqueue: vi.fn(),
+			steer: vi.fn(),
+			remove: vi.fn(),
+			clear: vi.fn(),
+		};
+
+		const screen = renderExternalQueueThread(queue, { promptQueueEditing: true });
+
+		await expect.element(screen.getByText("2 queued")).toBeVisible();
+		expect(screen.getByTestId("kilo-composer-queue-grip").elements()).toHaveLength(0);
+		expect(screen.getByTestId("kilo-composer-queue-edit").elements()).toHaveLength(0);
+		expect(screen.getByTestId("kilo-composer-queue-pause").elements()).toHaveLength(0);
+	});
+});
+
+describe("composer message queue with prompt-queue-editing off", () => {
+	it("hides reorder, edit and pause controls even when the runtime offers them", async () => {
+		const { screen } = renderLiveQueueThreadWith({ promptQueueEditing: false }, "First", "Second");
+
+		await expect.element(screen.getByText("2 queued")).toBeVisible();
+		await expect.element(screen.getByRole("button", { name: "Send now" }).first()).toBeVisible();
+		expect(screen.getByTestId("kilo-composer-queue-grip").elements()).toHaveLength(0);
+		expect(screen.getByTestId("kilo-composer-queue-edit").elements()).toHaveLength(0);
+		expect(screen.getByTestId("kilo-composer-queue-pause").elements()).toHaveLength(0);
+	});
+
+	it("does not show a full-text tooltip for a truncated prompt", async () => {
+		const longPrompt =
+			`Summarize the release. ${"Include every merged change and its risk. ".repeat(12)}`.trim();
+		const { screen } = renderLiveQueueThreadWith({ promptQueueEditing: false }, longPrompt);
+
+		await userEvent.hover(screen.getByText(longPrompt));
+
+		await expect.element(screen.getByTestId("kilo-composer-queue-tooltip")).not.toBeInTheDocument();
+	});
+});
+
+describe("composer message queue controls", () => {
+	it("pauses and resumes the queue from the shelf header", async () => {
+		const { screen, controller } = renderLiveQueueThread("First", "Second");
+
+		await screen.getByRole("button", { name: "Pause queue" }).click();
+
+		await expect.element(screen.getByTestId("kilo-composer-queue-paused")).toBeVisible();
+		await expect.element(screen.getByText("2 queued · Paused")).toBeVisible();
+		expect(controller.getControlsState().paused).toBe(true);
+
+		await screen.getByRole("button", { name: "Resume queue" }).click();
+
+		await expect.element(screen.getByTestId("kilo-composer-queue-paused")).not.toBeInTheDocument();
+		await expect.element(screen.getByRole("button", { name: "Pause queue" })).toBeVisible();
+		expect(controller.getControlsState().paused).toBe(false);
+	});
+
+	it("shows the full prompt in a tooltip only when it is truncated", async () => {
+		const longPrompt =
+			`Refactor the payment module. ${"Keep the public API stable and cover every edge case. ".repeat(12)}`.trim();
+		const { screen } = renderLiveQueueThread(longPrompt, "Short");
+		const [longText, shortText] = screen.getByTestId("kilo-composer-queue-text").all();
+
+		await userEvent.hover(shortText!);
+		await expect.element(screen.getByTestId("kilo-composer-queue-tooltip")).not.toBeInTheDocument();
+
+		await userEvent.hover(longText!);
+		const tooltip = screen.getByTestId("kilo-composer-queue-tooltip");
+		await expect.element(tooltip).toBeVisible();
+		await expect.element(tooltip).toHaveTextContent(longPrompt);
+	});
+
+	it("edits a queued prompt inline and keeps its position", async () => {
+		const { screen, controller } = renderLiveQueueThread("Original prompt", "Next prompt");
+
+		await screen.getByRole("button", { name: "Edit queued message" }).first().click();
+		const input = screen.getByRole("textbox", { name: "Edit queued message" });
+		await expect.element(input).toHaveValue("Original prompt");
+		await expect.element(input).toHaveFocus();
+		expect(controller.getControlsState().editingId).toBe(controller.adapter.items[0]?.id);
+
+		await input.fill("Rewritten prompt");
+		await userEvent.keyboard("{Enter}");
+
+		await expect.element(input).not.toBeInTheDocument();
+		await expect.element(screen.getByText("Rewritten prompt")).toBeVisible();
+		expect(queuedPrompts(controller)).toEqual(["Rewritten prompt", "Next prompt"]);
+		await expect
+			.element(screen.getByRole("button", { name: "Edit queued message" }).first())
+			.toHaveFocus();
+	});
+
+	it("cancels an inline edit with Escape and keeps the original prompt", async () => {
+		const { screen, controller } = renderLiveQueueThread("Keep me");
+
+		await screen.getByRole("button", { name: "Edit queued message" }).click();
+		const input = screen.getByRole("textbox", { name: "Edit queued message" });
+		await input.fill("Discard this");
+		await userEvent.keyboard("{Escape}");
+
+		await expect.element(input).not.toBeInTheDocument();
+		expect(queuedPrompts(controller)).toEqual(["Keep me"]);
+		expect(controller.getControlsState().editingId).toBeUndefined();
+	});
+
+	it("disables saving an edit that would leave the message empty", async () => {
+		const { screen } = renderLiveQueueThread("Some text");
+
+		await screen.getByRole("button", { name: "Edit queued message" }).click();
+		await screen.getByRole("textbox", { name: "Edit queued message" }).fill("   ");
+
+		await expect.element(screen.getByTestId("kilo-composer-queue-edit-save")).toBeDisabled();
+	});
+
+	it("keeps an edit and its draft open while the shelf is collapsed, then resumes on save", async () => {
+		const { screen, controller, driver } = renderLiveQueueThread("Hold me", "After me");
+
+		await screen.getByRole("button", { name: "Edit queued message" }).first().click();
+		await screen.getByRole("textbox", { name: "Edit queued message" }).fill("Draft in progress");
+		await screen.getByTestId("kilo-composer-queue-toggle").click();
+
+		await expect.element(screen.getByTestId("kilo-composer-queue-editing")).toBeVisible();
+		act(() => controller.setRunning(false));
+		await Promise.resolve();
+		expect(driver.send).not.toHaveBeenCalled();
+
+		await screen.getByTestId("kilo-composer-queue-toggle").click();
+		const input = screen.getByRole("textbox", { name: "Edit queued message" });
+		await expect.element(input).toHaveValue("Draft in progress");
+		input.element().focus();
+		await userEvent.keyboard("{Enter}");
+
+		await expect.poll(() => driver.send.mock.calls.length).toBe(1);
+		expect(driver.send.mock.calls[0]?.[0]).toMatchObject({
+			content: [{ type: "text", text: "Draft in progress" }],
+		});
+		await expect.element(screen.getByTestId("kilo-composer-queue-editing")).not.toBeInTheDocument();
+	});
+
+	it("does not send the prompt being edited when the flag turns off", async () => {
+		const { screen, controller, driver } = renderLiveQueueThread("Editing me", "Next");
+
+		await screen.getByRole("button", { name: "Edit queued message" }).first().click();
+		await screen.getByRole("textbox", { name: "Edit queued message" }).fill("Unsaved");
+		act(() => controller.setRunning(false));
+		screen.setPromptQueueEditing(false);
+
+		await expect
+			.element(screen.getByRole("textbox", { name: "Edit queued message" }))
+			.not.toBeInTheDocument();
+		await Promise.resolve();
+		expect(driver.send).not.toHaveBeenCalled();
+		expect(queuedPrompts(controller)).toEqual(["Editing me", "Next"]);
+	});
+
+	it("reorders queued prompts with the keyboard from the drag handle", async () => {
+		const { screen, controller } = renderLiveQueueThread("First", "Second", "Third");
+
+		const firstGrip = screen.getByRole("button", { name: "Reorder queued message" }).first();
+		(firstGrip.element() as HTMLElement).focus();
+		await userEvent.keyboard("{ArrowDown}");
+
+		expect(queuedPrompts(controller)).toEqual(["Second", "First", "Third"]);
+		await expect
+			.element(screen.getByTestId("kilo-composer-queue-announcer"))
+			.toHaveTextContent("Moved to position 2 of 3");
+		await expect
+			.poll(() =>
+				screen
+					.getByTestId("kilo-composer-queue-text")
+					.all()
+					.map((text) => text.element().textContent),
+			)
+			.toEqual(["Second", "First", "Third"]);
+	});
+
+	it("reorders queued prompts by dragging the handle", async () => {
+		const { screen, controller } = renderLiveQueueThread("First", "Second", "Third");
+		const grips = screen.getByRole("button", { name: "Reorder queued message" }).all();
+		const lastRow = screen.getByTestId("kilo-composer-queue-item").all()[2]!;
+
+		await userEvent.dragAndDrop(grips[0]!, lastRow);
+
+		await expect.poll(() => queuedPrompts(controller)[0]).not.toBe("First");
+		expect(queuedPrompts(controller)).toContain("First");
+	});
+
+	it("hides the drag handle when only one prompt is queued", async () => {
+		const { screen } = renderLiveQueueThread("Alone");
+
+		await expect.element(screen.getByText("Alone")).toBeVisible();
+		expect(screen.getByTestId("kilo-composer-queue-grip").elements()).toHaveLength(0);
 	});
 });
 

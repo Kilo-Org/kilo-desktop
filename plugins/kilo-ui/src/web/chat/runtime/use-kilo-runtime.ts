@@ -70,6 +70,8 @@ export interface UseKiloRuntimeOptions {
 	onStreamReconnected?: () => void;
 	/** Sees each live event after it reaches `sessionActivity`. */
 	onLiveEvent?: (event: OpenCodeServerEvent) => void;
+	/** Enables queue pause/reorder/edit controls (prompt-queue-editing flag). */
+	promptQueueEditing?: boolean;
 }
 
 export function useKiloRuntime({
@@ -93,6 +95,7 @@ export function useKiloRuntime({
 	onPermissionEvent,
 	onStreamReconnected,
 	onLiveEvent,
+	promptQueueEditing = false,
 }: UseKiloRuntimeOptions): AssistantRuntime {
 	// Refs so prompt injection always sees the latest composer selection even when
 	// RemoteThreadList keeps a stale defaultAgent/defaultModel closed over in onNew.
@@ -175,7 +178,10 @@ export function useKiloRuntime({
 		...(defaultModel === undefined ? {} : { defaultModel }),
 		...(isSendDisabled === undefined ? {} : { isSendDisabled }),
 		...(onError === undefined ? {} : { onError }),
-		messageQueue: { cancelBehavior: "pause" },
+		messageQueue: {
+			cancelBehavior: "pause",
+			...(promptQueueEditing ? { userControls: true } : {}),
+		},
 		adapters,
 	});
 

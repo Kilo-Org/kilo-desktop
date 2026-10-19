@@ -37,23 +37,28 @@ type ComposerShelfToggleProps = Omit<ComponentProps<"button">, "type"> & {
 	collapsed: boolean;
 	/** Right-aligned content before the chevron (e.g. a count). */
 	trailing?: ReactNode;
+	/** Header controls beside the toggle (e.g. icon buttons); kept outside it so buttons never nest. */
+	actions?: ReactNode;
 };
 
 /** The shelf's 32px header row; its trailing chevron shows the collapse state. */
 export function ComposerShelfToggle({
 	collapsed,
 	trailing,
+	actions,
 	className,
 	children,
 	...props
 }: ComposerShelfToggleProps) {
-	return (
+	const divider = !collapsed && "border-border-subtle border-b";
+	const toggle = (
 		<button
 			type="button"
 			aria-expanded={!collapsed}
 			className={cn(
 				COMPOSER_SHELF_HEADER_CLASS,
-				!collapsed && "border-border-subtle border-b",
+				!actions && divider,
+				actions && "min-w-0 flex-1",
 				className,
 			)}
 			{...props}
@@ -67,6 +72,13 @@ export function ComposerShelfToggle({
 				/>
 			</span>
 		</button>
+	);
+	if (!actions) return toggle;
+	return (
+		<div className={cn("flex items-center", divider)}>
+			{toggle}
+			<div className="flex shrink-0 items-center gap-1 pr-[3px]">{actions}</div>
+		</div>
 	);
 }
 

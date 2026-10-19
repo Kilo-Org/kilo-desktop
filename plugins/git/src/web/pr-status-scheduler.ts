@@ -17,11 +17,12 @@ import type { GitPrStatusTarget } from "./git-pr-status-store.js";
  * - A refresh is skipped while a target is backed off unless the caller
  *   forces it. Capability outcomes ("unavailable") are not backed off;
  *   snapshot failures are.
- * - Full syncs and newly added targets go through `loadMany` (one batched
- *   request) when there are several eligible directories. Each directory in
- *   the batch counts as in flight for the whole batch, and the ones the batch
- *   leaves unanswered — or all of them, when it fails — fall back to their
- *   own `load`, so batching can only save work.
+ * - Full syncs, the active interval, and newly added targets go through
+ *   `loadMany` (one batched request), even for a single directory: one
+ *   `gh api graphql` replaces up to four `gh` lookups that each run git.
+ *   Each directory in the batch counts as in flight for the whole batch, and
+ *   the ones the batch leaves unanswered — or all of them, when it fails —
+ *   fall back to their own `load`, so batching can only save work.
  * - An empty target list is transient (the sidebar unmounts on Settings and
  *   clears the store; the store keeps snapshots for it too). Known targets
  *   survive it, so the remount's unchanged list loads nothing instead of
@@ -32,7 +33,6 @@ const ACTIVE_INTERVAL_MS = 15_000;
 const FULL_SYNC_INTERVAL_MS = 120_000;
 const LOAD_CONCURRENCY = 3;
 const QUARANTINE_AFTER_FAILURES = 5;
-const MIN_BATCH_SIZE = 2;
 
 export type PrStatusLoadResult = void | "unavailable";
 
@@ -169,7 +169,7 @@ export class PrStatusScheduler {
 			else if (!this.#isBackedOff(target.id)) eligible.push(target);
 		}
 		const loadMany = this.#loadMany;
-		if (!loadMany || eligible.length < MIN_BATCH_SIZE) {
+		if (!loadMany || eligible.length === 0) {
 			await Promise.all([...running, ...eligible.map(({ directory }) => this.refresh(directory))]);
 			return;
 		}
@@ -231,9 +231,7 @@ export class PrStatusScheduler {
 	#refreshActive(): void {
 		if (this.#stopped || !this.#isVisible()) return;
 		const active = this.#getTargets().filter((target) => target.active);
-		for (const directory of unique(active.map((target) => target.directory))) {
-			void this.refresh(directory);
-		}
+		void this.#refreshMany(active.map((target) => target.directory));
 	}
 }
 

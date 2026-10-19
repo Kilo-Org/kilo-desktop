@@ -433,7 +433,7 @@ describe("PrStatusScheduler", () => {
 			expect(loaded).toEqual([]);
 		});
 
-		it("leaves backed-off directories out and loads a lone eligible one individually", async () => {
+		it("leaves backed-off directories out of the next batch", async () => {
 			const loaded: string[] = [];
 			const batches: string[][] = [];
 			const scheduler = new PrStatusScheduler({
@@ -455,8 +455,24 @@ describe("PrStatusScheduler", () => {
 			loaded.length = 0;
 			await scheduler.refreshAll();
 
-			expect(batches).toEqual([["/a", "/b", "/c"]]);
+			expect(batches).toEqual([["/a", "/b", "/c"], ["/a"]]);
 			expect(loaded).toEqual(["/a"]);
+		});
+
+		it("refreshes the active directory through a batch of one on the short interval", async () => {
+			vi.useFakeTimers();
+			const { scheduler, loaded, batches } = batchedScheduler(
+				async (directories) => new Map(directories.map((directory) => [directory, undefined])),
+			);
+
+			scheduler.start();
+			await vi.waitFor(() => expect(batches).toHaveLength(1));
+			batches.length = 0;
+			await vi.advanceTimersByTimeAsync(15_000);
+
+			expect(batches).toEqual([["/a"]]);
+			expect(loaded).toEqual([]);
+			scheduler.stop();
 		});
 	});
 });

@@ -401,8 +401,8 @@ importers:
         specifier: ^1.0.1
         version: 1.0.1(supports-color@10.2.2)
       electron-store:
-        specifier: ^11.0.2
-        version: 11.0.2
+        specifier: ^12.0.0
+        version: 12.0.0
       execa:
         specifier: 'catalog:'
         version: 10.0.1
@@ -6596,9 +6596,9 @@ packages:
     resolution: {integrity: sha512-8fLl9F04EJqjSqH+QjITQfJF8BrOVaYr1jewVgSRAEWePfxT0sku4w2hrGQ60BC/TNLGQ2pgxNlTbWQmMPFvXg==}
     engines: {node: '>=12'}
 
-  conf@15.1.0:
-    resolution: {integrity: sha512-Uy5YN9KEu0WWDaZAVJ5FAmZoaJt9rdK6kH+utItPyGsCqCgaTKkrmZx3zoE0/3q6S3bcp3Ihkk+ZqPxWxFK5og==}
-    engines: {node: '>=20'}
+  conf@16.0.0:
+    resolution: {integrity: sha512-CwqpY9jSpU6uYeObCwfRGqiEsd/DnU7rruwiFNapZPsOB8p2U65p+MzccEsdvg+KLis1Y1d1Mo3rKkTTzWONSA==}
+    engines: {node: '>=22'}
 
   content-disposition@0.5.4:
     resolution: {integrity: sha512-FveZTNuGw04cxlAiWbzi6zTAL/lhehaWbTtgluJh4/E95DqMwTmha3KZN1aAWA8cFIhHzMZUvLevkw5Rqk+tSQ==}
@@ -6997,9 +6997,9 @@ packages:
   electron-squirrel-startup@1.0.1:
     resolution: {integrity: sha512-sTfFIHGku+7PsHLJ7v0dRcZNkALrV+YEozINTW8X1nM//e5O3L+rfYuvSW00lmGHnYmUjARZulD8F2V8ISI9RA==}
 
-  electron-store@11.0.2:
-    resolution: {integrity: sha512-4VkNRdN+BImL2KcCi41WvAYbh6zLX5AUTi4so68yPqiItjbgTjqpEnGAqasgnG+lB6GuAyUltKwVopp6Uv+gwQ==}
-    engines: {node: '>=20'}
+  electron-store@12.0.0:
+    resolution: {integrity: sha512-Ju7DzgBm/gcbtTqcAd6vvgdg/FXr9AE31MdlN/OMcERBiBhHGlGZWHBFZb+nK9chqSHSGw/oIIPCFT29tPnLMQ==}
+    engines: {node: '>=22'}
 
   electron-to-chromium@1.5.397:
     resolution: {integrity: sha512-khGTy9U9x02KEtsKM8vx5A62BsRmcOsIgDpWr1ImE32Ax8GxHGPHZf+Eu9H8zOOyHJnB0jTbseyTHbq2XCT8yw==}
@@ -7054,6 +7054,10 @@ packages:
   env-paths@3.0.0:
     resolution: {integrity: sha512-dtJUTepzMW3Lm/NPxRf3wP4642UWhjL2sQxc+ym2YMj1m/H2zDNQOlezafzkHwn6sMstjHTwG6iQQsctDW/b1A==}
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
+
+  env-paths@4.0.0:
+    resolution: {integrity: sha512-pxP8eL2SwwaTRi/KHYwLYXinDs7gL3jxFcBYmEdYfZmZXbaVDvdppd0XBU8qVz03rDfKZMXg1omHCbsJjZrMsw==}
+    engines: {node: '>=20'}
 
   environment@1.1.0:
     resolution: {integrity: sha512-xUtoPkMggbz0MPyPiIWr1Kp4aeWJjDZ6SMvURhimjdZgsRuDplF5/s9hcgGhyXMhs+6vpnuoiZ2kFiu3FMnS8Q==}
@@ -7996,6 +8000,10 @@ packages:
   is-regexp@3.1.0:
     resolution: {integrity: sha512-rbku49cWloU5bSMI+zaRaXdQHXnthP6DZ/vLnfdSKyL4zUzuWnomtOEiZZOd+ioQ+avFo/qau3KPTc7Fjy1uPA==}
     engines: {node: '>=12'}
+
+  is-safe-filename@0.1.1:
+    resolution: {integrity: sha512-4SrR7AdnY11LHfDKTZY1u6Ga3RuxZdl3YKWWShO5iyuG5h8QS4GD2tOb04peBJ5I7pXbR+CGBNEhTcwK+FzN3g==}
+    engines: {node: '>=20'}
 
   is-set@2.0.3:
     resolution: {integrity: sha512-iPAjerrse27/ygGLxw+EBR9agv9Y6uLeYVJMu+QNCoouJ1/1ri0mGrcWpfCqFZuzzx3WjtwxG098X+n4OuRkPg==}
@@ -10142,6 +10150,10 @@ packages:
   type-fest@0.13.1:
     resolution: {integrity: sha512-34R7HTnG0XIJcBSn5XhDd7nNFPRcXYRZrBB2O2jdKqYODldSzBAqzsWoZYYvduky73toYS/ESqxPvkDf/F0XMg==}
     engines: {node: '>=10'}
+
+  type-fest@5.10.0:
+    resolution: {integrity: sha512-NoSdpq/WEiAg5sjmBkmV/hfxv6HJH4NqPNrqjtSO5CwRmpsDfaf4begxW34KdJykH/l1yHtwBWQkCRdoXO8mPA==}
+    engines: {node: '>=20'}
 
   type-fest@5.8.0:
     resolution: {integrity: sha512-YGYEVz3Fm5iy/AybuA0oyNFq7H4CgQNfRp/qfe8nurE1kuCeNm3/vfm9X4Mtl+qLyaKJUh5xrFZwogr41SMjYA==}
@@ -15202,14 +15214,14 @@ snapshots:
       pkg-up: 3.1.0
       semver: 7.8.5
 
-  conf@15.1.0:
+  conf@16.0.0:
     dependencies:
       ajv: 8.20.0
       ajv-formats: 3.0.1
       atomically: 2.1.1
       debounce-fn: 6.0.0
       dot-prop: 10.2.0
-      env-paths: 3.0.0
+      env-paths: 4.0.0
       json-schema-typed: 8.0.2
       semver: 7.8.5
       uint8array-extras: 1.5.0
@@ -15519,10 +15531,10 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  electron-store@11.0.2:
+  electron-store@12.0.0:
     dependencies:
-      conf: 15.1.0
-      type-fest: 5.8.0
+      conf: 16.0.0
+      type-fest: 5.10.0
 
   electron-to-chromium@1.5.397: {}
 
@@ -15580,6 +15592,10 @@ snapshots:
   env-paths@2.2.1: {}
 
   env-paths@3.0.0: {}
+
+  env-paths@4.0.0:
+    dependencies:
+      is-safe-filename: 0.1.1
 
   environment@1.1.0: {}
 
@@ -16809,6 +16825,8 @@ snapshots:
       hasown: 2.0.4
 
   is-regexp@3.1.0: {}
+
+  is-safe-filename@0.1.1: {}
 
   is-set@2.0.3: {}
 
@@ -19273,6 +19291,10 @@ snapshots:
       prelude-ls: 1.2.1
 
   type-fest@0.13.1: {}
+
+  type-fest@5.10.0:
+    dependencies:
+      tagged-tag: 1.0.0
 
   type-fest@5.8.0:
     dependencies:

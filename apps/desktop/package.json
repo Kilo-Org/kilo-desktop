@@ -56,7 +56,7 @@
 		"electron-debug": "^5.0.0",
 		"electron-log": "catalog:",
 		"electron-squirrel-startup": "^1.0.1",
-		"electron-store": "^11.0.2",
+		"electron-store": "^12.0.0",
 		"execa": "catalog:",
 		"koffi": "3.3.3",
 		"lodash": "catalog:",

@@ -1,4 +1,4 @@
-import Store from "electron-store";
+import Store, { type Options } from "electron-store";
 
 import type { KvStore, KvStoreFactory, KvStoreOptions } from "@kilo-desktop/feature-sdk";
 
@@ -48,12 +48,15 @@ export function createFeatureKvStoreFactory(storageDir: string): KvStoreFactory 
 	return <T extends Record<string, unknown>>(options: KvStoreOptions<T>): KvStore<T> => {
 		const namespace = options.namespace ?? "kv";
 		assertValidKvNamespace(namespace);
-		const store = new Store<T>({
+
+		const storeOptions = {
 			cwd: storageDir,
 			name: namespace,
 			defaults: options.defaults,
 			clearInvalidConfig: true,
-		});
+		};
+
+		const store = new Store<T>(storeOptions as Options<T>);
 
 		return {
 			snapshot: () => ({ ...store.store }),

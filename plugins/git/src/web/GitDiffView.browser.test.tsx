@@ -38,10 +38,15 @@ describe("GitDiffView", () => {
 				shiki: "catppuccin-latte",
 			}),
 		);
-		await vi.waitFor(() => {
-			expect(themeCss()).toContain("#4c4f69");
-			expect(treeHost()?.style.getPropertyValue("--trees-theme-sidebar-fg")).toBe("#4c4f69");
-		});
+		// The new preset's Shiki theme loads on demand, which can take longer than
+		// the default wait when the whole monorepo's tests run at once.
+		await vi.waitFor(
+			() => {
+				expect(themeCss()).toContain("#4c4f69");
+				expect(treeHost()?.style.getPropertyValue("--trees-theme-sidebar-fg")).toBe("#4c4f69");
+			},
+			{ timeout: 5_000 },
+		);
 	});
 
 	it("uses the app's compact text scale for diff content", async () => {

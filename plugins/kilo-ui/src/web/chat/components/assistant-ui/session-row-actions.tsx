@@ -56,7 +56,8 @@ import { SessionDeleteWorktreeDialog } from "./session-delete-worktree-dialog.js
  * the workspace board cards): the archive and worktree-aware delete flow, the
  * actions menu, and inline rename. The row actions and inline rename act on
  * assistant-ui's thread-list-item scope, so callers outside the thread list
- * provide one (ThreadListItemByIndexProvider).
+ * provide one (ThreadListItemByIndexProvider), or pass operations of their own
+ * (the popped-out board, whose chats live in the main window's thread list).
  */
 
 export function useRenameState(): {
@@ -91,16 +92,38 @@ type SessionRowWorktreeDialogProps = {
 	onDeleteWorktree: () => void;
 };
 
-/** Archive and delete for the chat in scope, including the orphaned-worktree confirm. */
+/** How a surface archives and deletes a chat, when not through the thread-list-item scope. */
+export type SessionRowOperations = {
+	archive: () => Promise<void>;
+	delete: () => Promise<void>;
+	/**
+	 * Whether deleting should offer to remove the chat's worktree, for a surface
+	 * whose own activity store cannot tell (it settles the store's refresh itself).
+	 */
+	checkOrphanedWorktree?: () => Promise<boolean>;
+};
+
+// The scope's methods are typed void but return the thread list's promises.
+const threadListItemOperations = (aui: ReturnType<typeof useAui>): SessionRowOperations => ({
+	archive: async () => aui.threadListItem.archive(),
+	delete: async () => aui.threadListItem.delete(),
+});
+
+/**
+ * Archive and delete for the chat, including the orphaned-worktree confirm.
+ * They act on the thread-list-item scope unless `operations` says otherwise.
+ */
 export function useSessionRowActions({
 	remoteId,
 	activity,
 	onDeleted,
+	operations,
 }: {
 	remoteId: string | undefined;
 	activity: SessionActivity | undefined;
 	/** Runs after the chat is deleted (e.g. to take it off the board). */
 	onDeleted?: (() => void) | undefined;
+	operations?: SessionRowOperations | undefined;
 }): {
 	archive: () => void;
 	deleteThread: () => void;
@@ -108,28 +131,36 @@ export function useSessionRowActions({
 	worktreeDialog: SessionRowWorktreeDialogProps | null;
 } {
 	const aui = useAui();
-	const auiRef = useRef(aui);
-	auiRef.current = aui;
+	const operationsRef = useRef<SessionRowOperations>(threadListItemOperations(aui));
+	operationsRef.current = operations ?? threadListItemOperations(aui);
 	const sdk = useSdk<KiloUiChatService>("kilo-ui");
 	// Orphan check (t3code): the delete dialog only offers worktree removal
 	// when no other known session shares the directory. The selector closes
 	// over `remoteId`, which is safe — `useStore` re-runs it on every render —
 	// and returns a primitive so the row only re-renders when the flag flips.
-	const isOrphanedWorktree = useSessionActivity(
+	const isLocallyOrphanedWorktree = useSessionActivity(
 		(s) => remoteId !== undefined && isOrphanedWorktreeSession(s.sessions, remoteId),
 	);
+	const [isCheckedOrphanedWorktree, setCheckedOrphanedWorktree] = useState(false);
+	const isOrphanedWorktree = operations?.checkOrphanedWorktree
+		? isCheckedOrphanedWorktree
+		: isLocallyOrphanedWorktree;
 	const activityStore = useSessionActivityStore();
 	const [worktreeDialogOpen, setWorktreeDialogOpen] = useState(false);
 	const worktreeDirectory = activity?.worktreeBranch !== undefined ? activity.directory : undefined;
 
 	const archive = useCallback(() => {
-		void auiRef.current.threadListItem.archive();
+		operationsRef.current.archive().catch((error: unknown) => {
+			toast.error("Could not archive chat", {
+				description: error instanceof Error ? error.message : "The chat was not archived.",
+			});
+		});
 	}, []);
 	// Every delete path funnels through here so a rejecting delete is
 	// reported, never an unhandled rejection.
 	const deleteSession = useCallback(async (): Promise<boolean> => {
 		try {
-			await auiRef.current.threadListItem.delete();
+			await operationsRef.current.delete();
 			onDeleted?.();
 			return true;
 		} catch (error) {
@@ -151,10 +182,35 @@ export function useSessionRowActions({
 		}
 		await deleteSession();
 	}, [activityStore, remoteId, deleteSession]);
+	const deleteAfterCheck = useCallback(
+		async (checkOrphanedWorktree: () => Promise<boolean>) => {
+			let orphaned: boolean;
+			try {
+				orphaned = await checkOrphanedWorktree();
+			} catch (error) {
+				toast.error("Could not delete chat", {
+					description: error instanceof Error ? error.message : "The chat was not deleted.",
+				});
+				return;
+			}
+			if (!orphaned) {
+				await deleteSession();
+				return;
+			}
+			setCheckedOrphanedWorktree(true);
+			setWorktreeDialogOpen(true);
+		},
+		[deleteSession],
+	);
 	const deleteThread = useCallback(() => {
 		// Worktree-backed and orphaned: confirm before removing the worktree.
 		if (isOrphanedWorktree) {
 			setWorktreeDialogOpen(true);
+			return;
+		}
+		const checkOrphanedWorktree = operationsRef.current.checkOrphanedWorktree;
+		if (checkOrphanedWorktree) {
+			void deleteAfterCheck(checkOrphanedWorktree);
 			return;
 		}
 		// The refresh has not settled: the record may be missing entirely or
@@ -167,7 +223,14 @@ export function useSessionRowActions({
 			return;
 		}
 		void deleteSession();
-	}, [isOrphanedWorktree, activityStore, remoteId, deleteAfterRefresh, deleteSession]);
+	}, [
+		isOrphanedWorktree,
+		activityStore,
+		remoteId,
+		deleteAfterCheck,
+		deleteAfterRefresh,
+		deleteSession,
+	]);
 	const keepWorktreeAndDelete = useCallback(() => {
 		setWorktreeDialogOpen(false);
 		void deleteSession();
@@ -362,11 +425,27 @@ const SessionRowBoardMenuItems: FC<{ board: SessionRowBoard }> = ({ board }) => 
 	</>
 );
 
+/** Inline rename for the chat in the thread-list-item scope. */
 export const SessionItemRename: FC<{
 	onDone: (restoreFocus: boolean) => void;
 }> = ({ onDone }) => {
 	const aui = useAui();
 	const title = useAuiState((s) => s.threadListItem.title) ?? "";
+	return (
+		<SessionRenameInput
+			title={title}
+			onRename={async (next) => aui.threadListItem.rename(next)}
+			onDone={onDone}
+		/>
+	);
+};
+
+/** Inline rename: commits on Enter or blur, says why and keeps editing when the rename fails. */
+export const SessionRenameInput: FC<{
+	title: string;
+	onRename: (title: string) => Promise<void>;
+	onDone: (restoreFocus: boolean) => void;
+}> = ({ title, onRename, onDone }) => {
 	const [value, setValue] = useState(title);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const settledRef = useRef(false);
@@ -387,10 +466,13 @@ export const SessionItemRename: FC<{
 
 		// Deferred so a synchronous throw lands on the rejection path too.
 		Promise.resolve()
-			.then(() => aui.threadListItem.rename(next))
+			.then(() => onRename(next))
 			.then(
 				() => onDone(restoreFocus),
-				() => {
+				(error: unknown) => {
+					toast.error("Could not rename chat", {
+						description: error instanceof Error ? error.message : "The chat was not renamed.",
+					});
 					settledRef.current = false;
 					if (restoreFocus) inputRef.current?.focus();
 				},

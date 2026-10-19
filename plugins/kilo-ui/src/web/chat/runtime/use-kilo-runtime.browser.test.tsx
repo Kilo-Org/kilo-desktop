@@ -23,10 +23,14 @@ vi.mock("@assistant-ui/react-opencode", () => ({
 	})),
 }));
 
+const releaseEventStream = vi.fn();
+const retainEventStream = vi.fn(() => releaseEventStream);
+
 vi.mock("./create-kilo-runtime-backend.js", () => ({
 	createKiloRuntimeBackend: vi.fn(() => ({
 		globalClient: {},
 		consecutiveSessionPageFailures: () => 0,
+		retainEventStream,
 	})),
 }));
 
@@ -300,6 +304,32 @@ describe("useKiloRuntime", () => {
 			onLiveEvent: expect.any(Function),
 			sessionActivity,
 		});
+	});
+
+	it("keeps the backend's event stream open while mounted when asked to", () => {
+		const { unmount } = renderHook(() =>
+			useKiloRuntime({
+				connectionPromise: Promise.resolve(connection),
+				prepareSession: vi.fn(async () => ({ directory: "/workspace", workspaceFolders: [] })),
+				keepEventStreamOpen: true,
+			}),
+		);
+
+		expect(retainEventStream).toHaveBeenCalledOnce();
+		expect(releaseEventStream).not.toHaveBeenCalled();
+		unmount();
+		expect(releaseEventStream).toHaveBeenCalledOnce();
+	});
+
+	it("leaves the event stream to the chats shown by default", () => {
+		renderHook(() =>
+			useKiloRuntime({
+				connectionPromise: Promise.resolve(connection),
+				prepareSession: vi.fn(async () => ({ directory: "/workspace", workspaceFolders: [] })),
+			}),
+		);
+
+		expect(retainEventStream).not.toHaveBeenCalled();
 	});
 
 	it("throws when neither a client nor connectionPromise with prepareSession is provided", () => {

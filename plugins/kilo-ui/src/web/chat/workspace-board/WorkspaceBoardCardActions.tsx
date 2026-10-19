@@ -1,17 +1,24 @@
 import { ThreadListItemByIndexProvider, useAuiState } from "@assistant-ui/react";
-import type { FC, ReactNode } from "react";
+import { useMemo, type FC, type ReactNode } from "react";
+
+import { useSdk } from "@kilo-desktop/sdk-react";
 
 import {
 	SessionItemRename,
+	SessionRenameInput,
 	SessionRowMenu,
 	SessionRowWorktreeDialog,
 	useSessionRowActions,
+	type SessionRowOperations,
 } from "../components/assistant-ui/session-row-actions.js";
 import { sessionRowCapabilities } from "../session-activity/session-activity-logic.js";
 import { useSessionListPins } from "../session-list/use-session-list-view.js";
 import { useSessionRowBoard } from "./use-session-row-board.js";
+import { requestMainWindowChatAction, type ChatAction } from "./workspace-board-window.js";
 import type { WorkspaceBoardCardActions } from "./WorkspaceBoardCard.js";
 import type { BoardSession } from "./workspace-board-sessions.js";
+
+type MenuProps = Parameters<WorkspaceBoardCardActions["Menu"]>[0];
 
 /**
  * The sidebar's chat actions act on assistant-ui's thread-list-item scope. A card
@@ -29,18 +36,20 @@ const ThreadScope: FC<{ threadId: string; children: ReactNode }> = ({ threadId, 
 	);
 };
 
-const CardMenu: WorkspaceBoardCardActions["Menu"] = ({ session, triggerRef, onRename }) => {
-	const itemStatus = useAuiState((s) => s.threadListItem.status);
-	const { canArchive, canPin } = sessionRowCapabilities(
-		itemStatus === "archived",
-		session.rowState,
-	);
+const CardMenu: FC<MenuProps & { operations?: SessionRowOperations }> = ({
+	session,
+	triggerRef,
+	onRename,
+	operations,
+}) => {
+	const { canArchive, canPin } = sessionRowCapabilities(session.archived, session.rowState);
 	const pins = useSessionListPins();
 	const board = useSessionRowBoard(session.sessionId, session.title);
 	const { archive, deleteThread, worktreeDialog } = useSessionRowActions({
 		remoteId: session.sessionId,
 		activity: session.activity,
 		onDeleted: board?.remove,
+		operations,
 	});
 	return (
 		<>
@@ -63,7 +72,7 @@ const CardMenu: WorkspaceBoardCardActions["Menu"] = ({ session, triggerRef, onRe
 	);
 };
 
-function ScopedCardMenu(props: Parameters<WorkspaceBoardCardActions["Menu"]>[0]) {
+function ScopedCardMenu(props: MenuProps) {
 	return (
 		<ThreadScope threadId={props.session.threadId}>
 			<CardMenu {...props} />
@@ -71,13 +80,9 @@ function ScopedCardMenu(props: Parameters<WorkspaceBoardCardActions["Menu"]>[0])
 	);
 }
 
-function ScopedCardRename({
-	session,
-	onDone,
-}: {
-	session: BoardSession;
-	onDone: (restoreFocus: boolean) => void;
-}) {
+type CardRenameProps = { session: BoardSession; onDone: (restoreFocus: boolean) => void };
+
+function ScopedCardRename({ session, onDone }: CardRenameProps) {
 	return (
 		<ThreadScope threadId={session.threadId}>
 			<SessionItemRename onDone={onDone} />
@@ -85,7 +90,49 @@ function ScopedCardRename({
 	);
 }
 
+/** The board in this window acts on chats through this window's thread list. */
 export const workspaceBoardCardActions: WorkspaceBoardCardActions = {
 	Menu: ScopedCardMenu,
 	Rename: ScopedCardRename,
+};
+
+function useMainWindowChatOperations(sessionId: string) {
+	const sdk = useSdk("kilo-ui");
+	return useMemo(() => {
+		const request = (action: ChatAction) => requestMainWindowChatAction(sdk.events, action);
+		return {
+			rename: async (title: string) => {
+				await request({ action: "rename", sessionId, title });
+			},
+			archive: async () => {
+				await request({ action: "archive", sessionId });
+			},
+			delete: async () => {
+				await request({ action: "delete", sessionId });
+			},
+			checkOrphanedWorktree: async () => {
+				const { orphanedWorktree } = await request({
+					action: "check-orphaned-worktree",
+					sessionId,
+				});
+				return orphanedWorktree === true;
+			},
+		};
+	}, [sdk, sessionId]);
+}
+
+function MainWindowCardMenu(props: MenuProps) {
+	const operations = useMainWindowChatOperations(props.session.sessionId);
+	return <CardMenu {...props} operations={operations} />;
+}
+
+function MainWindowCardRename({ session, onDone }: CardRenameProps) {
+	const { rename } = useMainWindowChatOperations(session.sessionId);
+	return <SessionRenameInput title={session.title} onRename={rename} onDone={onDone} />;
+}
+
+/** The popped-out board acts on chats through the main window (see `workspace-board-window`). */
+export const mainWindowCardActions: WorkspaceBoardCardActions = {
+	Menu: MainWindowCardMenu,
+	Rename: MainWindowCardRename,
 };

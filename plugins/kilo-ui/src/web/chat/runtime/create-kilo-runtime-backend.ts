@@ -1,6 +1,7 @@
 import {
 	OpenCodeEventSource,
 	STREAM_RECONNECTED_EVENT_TYPE,
+	type OpenCodeEventSourceLike,
 	type OpenCodeEventSubscriber,
 	type OpenCodeRuntimeBackend,
 	type OpenCodeServerEvent,
@@ -124,6 +125,8 @@ export interface CreateKiloRuntimeBackendOptions extends PromptOptionGetters {
 export type KiloRuntimeBackend = OpenCodeRuntimeBackend & {
 	/** Failed session-list pages since the last success; drives backfill backoff. */
 	consecutiveSessionPageFailures(): number;
+	/** Keeps the event stream open until the returned release is called. */
+	retainEventStream(): () => void;
 };
 
 export function createKiloRuntimeBackend({
@@ -450,6 +453,52 @@ export function createKiloRuntimeBackend({
 		return { stream: subscription.stream as AsyncIterable<unknown> };
 	};
 
+	const openEventSource = () => {
+		const source = new OpenCodeEventSource(globalClient, subscribeToGlobalEvents, rememberEvent);
+		if (sessionActivity || onStreamReconnected) {
+			source.subscribe((event) => {
+				if (event.type === STREAM_RECONNECTED_EVENT_TYPE) {
+					onStreamReconnected?.();
+					if (sessionActivity) {
+						void hydrateSessionActivity(globalClient, sessionActivity);
+						void refreshSessions().catch(() => undefined);
+					}
+					return;
+				}
+				if (!sessionActivity || heldPermissionEvents.has(event)) return;
+				sessionActivity.getState().applyEvent(event);
+				onLiveEvent?.(event);
+				if (PROMPT_ASKED_EVENT_TYPES.has(event.type)) {
+					void hydratePromptAncestry(globalClient, sessionActivity).catch(() => undefined);
+				}
+			});
+		}
+		return source;
+	};
+
+	// One stream per backend, shared by the thread controllers and the runtime
+	// itself. Controllers only open it once a chat is shown, but the activity
+	// store must stay live in windows that show none (the popped-out board), so
+	// the runtime holds it too; it closes when the last holder lets go.
+	let sharedEvents: { source: OpenCodeEventSource; holders: number } | undefined;
+	const retainEventSource = (): OpenCodeEventSourceLike => {
+		sharedEvents ??= { source: openEventSource(), holders: 0 };
+		const shared = sharedEvents;
+		shared.holders += 1;
+		let released = false;
+		return {
+			subscribe: (listener) => shared.source.subscribe(listener),
+			dispose: () => {
+				if (released) return;
+				released = true;
+				shared.holders -= 1;
+				if (shared.holders > 0) return;
+				shared.source.dispose();
+				if (sharedEvents === shared) sharedEvents = undefined;
+			},
+		};
+	};
+
 	return {
 		globalClient,
 		getSessionClient,
@@ -463,27 +512,10 @@ export function createKiloRuntimeBackend({
 				throw error;
 			}
 		},
-		createEventSource: () => {
-			const source = new OpenCodeEventSource(globalClient, subscribeToGlobalEvents, rememberEvent);
-			if (sessionActivity || onStreamReconnected) {
-				source.subscribe((event) => {
-					if (event.type === STREAM_RECONNECTED_EVENT_TYPE) {
-						onStreamReconnected?.();
-						if (sessionActivity) {
-							void hydrateSessionActivity(globalClient, sessionActivity);
-							void refreshSessions().catch(() => undefined);
-						}
-						return;
-					}
-					if (!sessionActivity || heldPermissionEvents.has(event)) return;
-					sessionActivity.getState().applyEvent(event);
-					onLiveEvent?.(event);
-					if (PROMPT_ASKED_EVENT_TYPES.has(event.type)) {
-						void hydratePromptAncestry(globalClient, sessionActivity).catch(() => undefined);
-					}
-				});
-			}
-			return source;
+		createEventSource: retainEventSource,
+		retainEventStream: () => {
+			const handle = retainEventSource();
+			return () => handle.dispose();
 		},
 	};
 }

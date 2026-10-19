@@ -43,10 +43,14 @@ function sessionMetadataTargets(
  * window's chats use, so they can fetch what `chat-session-row-metadata`
  * contributions show (the git plugin polls each checkout's pull request).
  * Mount exactly one per window: a contribution keeps one window-wide target
- * set, which a second mount would overwrite and clear on unmount.
+ * set, which a second mount would overwrite and clear on unmount. A window
+ * showing another window's chats passes their activity instead of its own.
  */
-export const SessionMetadataProviders: FC = () => {
-	const activityBySessionId = useSessionActivity((s) => s.sessions);
+export const SessionMetadataProviders: FC<{
+	activityBySessionId?: Readonly<Record<string, SessionActivity>>;
+}> = ({ activityBySessionId: shown }) => {
+	const own = useSessionActivity((s) => s.sessions);
+	const activityBySessionId = shown ?? own;
 	const activeSessionId = useAuiState(
 		(s) => s.threads.threadItems.find((item) => item.id === s.threads.mainThreadId)?.remoteId,
 	);

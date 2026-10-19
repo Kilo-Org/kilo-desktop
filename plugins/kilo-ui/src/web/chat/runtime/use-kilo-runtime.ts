@@ -72,6 +72,12 @@ export interface UseKiloRuntimeOptions {
 	onLiveEvent?: (event: OpenCodeServerEvent) => void;
 	/** Enables queue pause/reorder/edit controls (prompt-queue-editing flag). */
 	promptQueueEditing?: boolean;
+	/**
+	 * Keeps the event stream open with no chat on screen, so `sessionActivity`
+	 * stays live for the sidebar and board. Otherwise the stream opens with the
+	 * first chat shown.
+	 */
+	keepEventStreamOpen?: boolean;
 }
 
 export function useKiloRuntime({
@@ -96,6 +102,7 @@ export function useKiloRuntime({
 	onStreamReconnected,
 	onLiveEvent,
 	promptQueueEditing = false,
+	keepEventStreamOpen = false,
 }: UseKiloRuntimeOptions): AssistantRuntime {
 	// Refs so prompt injection always sees the latest composer selection even when
 	// RemoteThreadList keeps a stale defaultAgent/defaultModel closed over in onNew.
@@ -184,6 +191,11 @@ export function useKiloRuntime({
 		},
 		adapters,
 	});
+
+	useEffect(
+		() => (keepEventStreamOpen ? backend?.retainEventStream() : undefined),
+		[backend, keepEventStreamOpen],
+	);
 
 	useEffect(() => {
 		if (!backend) return;

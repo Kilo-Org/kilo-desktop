@@ -24,6 +24,7 @@ import {
 } from "../../workspaces/WorkspacesFeatureContext.js";
 import type { SessionRowMetadataProps } from "../components/assistant-ui/session-row-display.js";
 import { SessionActivityProvider } from "../session-activity/SessionActivityProvider.js";
+import { createEmptySessionActivity } from "../session-activity/session-activity-logic.js";
 import { createSessionActivityStore } from "../session-activity/session-activity-store.js";
 import {
 	DEFAULT_SESSION_LIST_VIEW,
@@ -37,11 +38,18 @@ import { WorkspaceBoardHeaderActions } from "./WorkspaceBoardHeaderActions.js";
 import { WorkspaceBoardPage } from "./WorkspaceBoardPage.js";
 import { WorkspaceBoardProvider } from "./WorkspaceBoardProvider.js";
 import { WorkspaceBoardWindowBridge } from "./WorkspaceBoardWindowBridge.js";
+import { buildBoardSessions, type BoardSession } from "./workspace-board-sessions.js";
 import {
+	WORKSPACE_BOARD_CARDS_EVENT,
+	WORKSPACE_BOARD_CARDS_REQUEST_EVENT,
+	WORKSPACE_BOARD_CHAT_ACTION_EVENT,
+	WORKSPACE_BOARD_CHAT_ACTION_RESULT_EVENT,
 	WORKSPACE_BOARD_DOCKED_EVENT,
 	WORKSPACE_BOARD_OPEN_SESSION_EVENT,
 } from "./workspace-board-window.js";
 import { createWorkspaceBoardBackend, workspaceBoardFlags } from "./test-helpers.js";
+
+const emptyActivity = createEmptySessionActivity();
 
 const stubChatModel: ChatModelAdapter = {
 	async run() {
@@ -149,9 +157,11 @@ function Harness({
 function setup({
 	enabled = true,
 	shell,
+	beforeRender,
 }: {
 	enabled?: boolean;
 	shell?: Partial<SDK["shell"]>;
+	beforeRender?: (sdk: SDK) => void;
 } = {}) {
 	const store = createSessionActivityStore({ storage: null });
 	store.getState().hydrateSessions([
@@ -192,12 +202,13 @@ function setup({
 		),
 	});
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	beforeRender?.(sdk);
 	const { baseElement } = render(
 		<QueryClientProvider client={queryClient}>
 			<Harness system={system} store={store} shellHeader={shell?.windowRole !== "pane"} />
 		</QueryClientProvider>,
 	);
-	return { screen: page.elementLocator(baseElement), navigate, backend, sdk };
+	return { screen: page.elementLocator(baseElement), navigate, backend, sdk, store };
 }
 
 afterEach(() => {
@@ -277,15 +288,15 @@ describe("WorkspaceBoardPage", () => {
 	});
 });
 
-describe("WorkspaceBoardPage card actions", () => {
-	async function openCardMenu(screen: ReturnType<typeof setup>["screen"], sessionId: string) {
-		const card = screen.getByTestId(`workspace-board-card-${sessionId}`);
-		await expect.element(card).toBeVisible();
-		await card.hover();
-		await card.getByRole("button", { name: /^Chat actions for / }).click();
-		return card;
-	}
+async function openCardMenu(screen: ReturnType<typeof setup>["screen"], sessionId: string) {
+	const card = screen.getByTestId(`workspace-board-card-${sessionId}`);
+	await expect.element(card).toBeVisible();
+	await card.hover();
+	await card.getByRole("button", { name: /^Chat actions for / }).click();
+	return card;
+}
 
+describe("WorkspaceBoardPage card actions", () => {
 	it("groups the chat actions, then the board actions, then Delete on its own", async () => {
 		const { screen } = setup();
 		await openCardMenu(screen, "ses_beta");
@@ -581,6 +592,71 @@ describe("WorkspaceBoardPage in its own window", () => {
 		expect(navigate).toHaveBeenCalledWith("/plugins/chat", undefined);
 	});
 
+	it("runs the popped-out board's chat actions on its own thread list and activity", async () => {
+		const { screen, sdk, store } = setup();
+		await expect.element(screen.getByText("Beta feature")).toBeVisible();
+		const results = vi.fn();
+		sdk.events.on(`kilo-ui.${WORKSPACE_BOARD_CHAT_ACTION_RESULT_EVENT}`, results);
+
+		sdk.events.emit(WORKSPACE_BOARD_CHAT_ACTION_EVENT, {
+			requestId: "r1",
+			action: "rename",
+			sessionId: "ses_beta",
+			title: "Beta launch",
+		});
+		sdk.events.emit(WORKSPACE_BOARD_CHAT_ACTION_EVENT, {
+			requestId: "r2",
+			action: "archive",
+			sessionId: "ses_unknown",
+		});
+		store
+			.getState()
+			.hydrateSessions([{ id: "ses_wt", directory: "/repo/acme-wt", worktreeBranch: "fix-login" }]);
+		sdk.events.emit(WORKSPACE_BOARD_CHAT_ACTION_EVENT, {
+			requestId: "r3",
+			action: "check-orphaned-worktree",
+			sessionId: "ses_wt",
+		});
+
+		await vi.waitFor(() => expect(results).toHaveBeenCalledTimes(3));
+		expect(results).toHaveBeenCalledWith({ requestId: "r3", orphanedWorktree: true });
+		expect(renameThread).toHaveBeenCalledWith("ses_beta", "Beta launch");
+		expect(results).toHaveBeenCalledWith({ requestId: "r1" });
+		expect(results).toHaveBeenCalledWith({
+			requestId: "r2",
+			error: "The chat is not loaded in the main window.",
+		});
+		expect(archiveThread).not.toHaveBeenCalled();
+	});
+
+	it("sends the popped-out board its cards when asked, and again as they change", async () => {
+		const { sdk, store } = setup({ shell: { listPaneWindows: async () => [boardWindow] } });
+		const sent = vi.fn();
+		sdk.events.on(`kilo-ui.${WORKSPACE_BOARD_CARDS_EVENT}`, sent);
+
+		const titles = () =>
+			(sent.mock.lastCall?.[0] as { cards: BoardSession[] } | undefined)?.cards.map(
+				(card) => card.title,
+			);
+		// In board order; a placed chat this window has not loaded is left out.
+		await vi.waitFor(() => expect(titles()).toEqual(["Acme bug", "Beta feature", "Old notes"]));
+		sent.mockClear();
+		sdk.events.emit(WORKSPACE_BOARD_CARDS_REQUEST_EVENT, undefined);
+		expect(titles()).toEqual(["Acme bug", "Beta feature", "Old notes"]);
+
+		sent.mockClear();
+		store.getState().hydrateStatuses({ ses_beta: { type: "busy" } });
+		await vi.waitFor(() => expect(sent).toHaveBeenCalledOnce());
+		expect(sent.mock.lastCall?.[0]).toMatchObject({
+			cards: [{ sessionId: "ses_acme" }, { sessionId: "ses_beta", rowState: "working" }, {}],
+		});
+
+		// Activity for a chat that is not on the board sends nothing.
+		store.getState().hydrateStatuses({ ses_elsewhere: { type: "busy" } });
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		expect(sent).toHaveBeenCalledOnce();
+	});
+
 	it("shows the board when the popped-out board docks itself", async () => {
 		const { screen, navigate, sdk } = setup({
 			shell: { listPaneWindows: async () => [boardWindow] },
@@ -599,8 +675,59 @@ describe("WorkspaceBoardPage in its own window", () => {
 			...overrides,
 		});
 
+		/** The main window's cards for the fixture chats, as it would publish them. */
+		const mainWindowCards = (overrides: Record<string, Partial<BoardSession>> = {}) =>
+			[
+				...buildBoardSessions({
+					threadItems: threads.map((record) => ({ id: `local-${record.remoteId}`, ...record })),
+					activityBySessionId: {
+						ses_acme: { ...emptyActivity, directory: "/repo/acme", workspaceId: "ws-acme" },
+						ses_beta: { ...emptyActivity, directory: "/repo/beta", workspaceId: "ws-beta" },
+					},
+					lastVisitedAtBySessionId: {},
+				}).values(),
+			].map((card) => ({ ...card, ...overrides[card.sessionId] }));
+
+		/**
+		 * Stands in for the main window: answers the board window's request for
+		 * cards and runs nothing for its chat actions but a reply.
+		 */
+		function setupBoardWindow({
+			shell = {},
+			cards = mainWindowCards(),
+			actionError,
+			orphanedWorktree = false,
+		}: {
+			shell?: Partial<SDK["shell"]>;
+			cards?: BoardSession[];
+			actionError?: string;
+			orphanedWorktree?: boolean;
+		} = {}) {
+			const actions = vi.fn();
+			const result = setup({
+				shell: paneShell(shell),
+				beforeRender: (sdk) => {
+					sdk.events.on(`kilo-ui.${WORKSPACE_BOARD_CARDS_REQUEST_EVENT}`, () =>
+						sdk.events.emit(WORKSPACE_BOARD_CARDS_EVENT, { cards }),
+					);
+					sdk.events.on(`kilo-ui.${WORKSPACE_BOARD_CHAT_ACTION_EVENT}`, (payload) => {
+						actions(payload);
+						const { requestId, action } = payload as { requestId: string; action: string };
+						sdk.events.emit(WORKSPACE_BOARD_CHAT_ACTION_RESULT_EVENT, {
+							requestId,
+							...(actionError ? { error: actionError } : {}),
+							...(action === "check-orphaned-worktree" ? { orphanedWorktree } : {}),
+						});
+					});
+				},
+			});
+			const publish = (next: BoardSession[]) =>
+				result.sdk.events.emit(WORKSPACE_BOARD_CARDS_EVENT, { cards: next });
+			return { ...result, actions, publish };
+		}
+
 		it("draws its own title bar with the board's actions and no pop-out", async () => {
-			const { screen } = setup({ shell: paneShell() });
+			const { screen } = setupBoardWindow();
 			const header = screen.getByTestId("workspace-board-window-header");
 			await expect.element(header).toBeVisible();
 			await expect.element(header.getByText("Workspace Board")).toBeVisible();
@@ -612,7 +739,7 @@ describe("WorkspaceBoardPage in its own window", () => {
 		});
 
 		it("looks up its chats' pull requests itself, as no sidebar does so in its window", async () => {
-			const { screen } = setup({ shell: paneShell() });
+			const { screen } = setupBoardWindow();
 			await expect
 				.element(screen.getByTestId("metadata-targets"))
 				.toHaveTextContent("/repo/acme,/repo/beta");
@@ -623,7 +750,7 @@ describe("WorkspaceBoardPage in its own window", () => {
 				SESSION_LIST_VIEW_STORAGE_KEY,
 				JSON.stringify({ ...DEFAULT_SESSION_LIST_VIEW, focus: "ws-beta" }),
 			);
-			const { screen } = setup({ shell: paneShell() });
+			const { screen } = setupBoardWindow();
 			await expect
 				.element(screen.getByTestId("workspace-board-window-header").getByText("Beta"))
 				.toBeVisible();
@@ -632,7 +759,7 @@ describe("WorkspaceBoardPage in its own window", () => {
 		it("docks back into the main window", async () => {
 			const focusMainWindow = vi.fn(async () => undefined);
 			const dockPaneWindow = vi.fn(async () => ({ docked: true }));
-			const { screen, sdk } = setup({ shell: paneShell({ focusMainWindow, dockPaneWindow }) });
+			const { screen, sdk } = setupBoardWindow({ shell: { focusMainWindow, dockPaneWindow } });
 			const docked = vi.fn();
 			sdk.events.on(`kilo-ui.${WORKSPACE_BOARD_DOCKED_EVENT}`, docked);
 
@@ -645,7 +772,7 @@ describe("WorkspaceBoardPage in its own window", () => {
 
 		it("hands a card's chat to the main window instead of opening it here", async () => {
 			const focusMainWindow = vi.fn(async () => undefined);
-			const { screen, navigate, sdk } = setup({ shell: paneShell({ focusMainWindow }) });
+			const { screen, navigate, sdk } = setupBoardWindow({ shell: { focusMainWindow } });
 			const requested = vi.fn();
 			sdk.events.on(`kilo-ui.${WORKSPACE_BOARD_OPEN_SESSION_EVENT}`, requested);
 
@@ -655,6 +782,130 @@ describe("WorkspaceBoardPage in its own window", () => {
 			expect(focusMainWindow).toHaveBeenCalled();
 			expect(navigate).not.toHaveBeenCalled();
 			await expect.element(screen.getByTestId("main-thread")).toHaveTextContent("draft");
+		});
+
+		it("shows the main window's chats as it publishes them, new ones and their status too", async () => {
+			const { screen, publish, sdk, backend } = setupBoardWindow();
+			await expect.element(screen.getByText("Beta feature")).toBeVisible();
+			await backend.handlers["workspaceBoard.place"]({
+				sessionId: "ses_new",
+				columnId: "backlog",
+				index: 0,
+			});
+			sdk.events.emit("workspace-board-changed", undefined);
+
+			publish([
+				...mainWindowCards({ ses_beta: { rowState: "working" } }),
+				{
+					sessionId: "ses_new",
+					threadId: "__LOCALID_new",
+					title: "Made in main",
+					archived: false,
+					activity: { ...emptyActivity, workspaceId: "ws-acme" },
+					rowState: null,
+				},
+			]);
+
+			await expect
+				.element(screen.getByTestId("workspace-board-column-backlog").getByText("Made in main"))
+				.toBeVisible();
+			await expect
+				.element(screen.getByTestId("workspace-board-card-ses_beta").getByText("Working"))
+				.toBeVisible();
+		});
+
+		it("ignores cards that are not well formed", async () => {
+			const { screen, publish } = setupBoardWindow();
+			await expect.element(screen.getByText("Beta feature")).toBeVisible();
+
+			publish([{ sessionId: "ses_beta" } as BoardSession]);
+
+			await expect.element(screen.getByText("Beta feature")).toBeVisible();
+		});
+
+		it("renames a chat through the main window", async () => {
+			const { screen, actions, publish } = setupBoardWindow();
+			const card = await openCardMenu(screen, "ses_beta");
+			await page.getByRole("menuitem", { name: "Rename" }).click();
+			await card.getByRole("textbox", { name: "Rename thread" }).fill("Beta launch");
+			await userEvent.keyboard("{Enter}");
+
+			await vi.waitFor(() =>
+				expect(actions).toHaveBeenCalledWith(
+					expect.objectContaining({
+						action: "rename",
+						sessionId: "ses_beta",
+						title: "Beta launch",
+					}),
+				),
+			);
+			publish(mainWindowCards({ ses_beta: { title: "Beta launch" } }));
+			await expect.element(card.getByText("Beta launch")).toBeVisible();
+			expect(renameThread).not.toHaveBeenCalled();
+		});
+
+		it("keeps the rename open and says why when the main window cannot rename", async () => {
+			const toastError = vi.spyOn(toast, "error").mockImplementation(() => "");
+			const { screen } = setupBoardWindow({
+				actionError: "The chat is not loaded in the main window.",
+			});
+			const card = await openCardMenu(screen, "ses_beta");
+			await page.getByRole("menuitem", { name: "Rename" }).click();
+			await card.getByRole("textbox", { name: "Rename thread" }).fill("Beta launch");
+			await userEvent.keyboard("{Enter}");
+
+			await vi.waitFor(() =>
+				expect(toastError).toHaveBeenCalledWith("Could not rename chat", {
+					description: "The chat is not loaded in the main window.",
+				}),
+			);
+			await expect.element(card.getByRole("textbox", { name: "Rename thread" })).toBeVisible();
+		});
+
+		it("archives and deletes chats through the main window", async () => {
+			const { screen, actions, backend } = setupBoardWindow();
+
+			await openCardMenu(screen, "ses_beta");
+			await page.getByRole("menuitem", { name: "Archive" }).click();
+			await vi.waitFor(() => expect(actions).toHaveBeenCalledTimes(1));
+
+			await openCardMenu(screen, "ses_acme");
+			await page.getByRole("menuitem", { name: "Delete" }).click();
+			await vi.waitFor(() =>
+				expect(backend.stored().columns.flatMap((column) => column.sessionIds)).not.toContain(
+					"ses_acme",
+				),
+			);
+
+			expect(actions.mock.calls.map(([request]) => request)).toEqual([
+				expect.objectContaining({ action: "archive", sessionId: "ses_beta" }),
+				expect.objectContaining({ action: "check-orphaned-worktree", sessionId: "ses_acme" }),
+				expect.objectContaining({ action: "delete", sessionId: "ses_acme" }),
+			]);
+			expect(archiveThread).not.toHaveBeenCalled();
+			expect(deleteThread).not.toHaveBeenCalled();
+		});
+
+		it("offers to remove a worktree the main window says no other chat uses", async () => {
+			const worktree = { directory: "/repo/acme-wt", worktreeBranch: "fix-login" };
+			const { screen, actions } = setupBoardWindow({
+				orphanedWorktree: true,
+				cards: mainWindowCards({
+					ses_acme: { activity: { ...emptyActivity, workspaceId: "ws-acme", ...worktree } },
+				}),
+			});
+
+			await openCardMenu(screen, "ses_acme");
+			await page.getByRole("menuitem", { name: "Delete" }).click();
+			await expect.element(page.getByText("Delete session and worktree?")).toBeVisible();
+			expect(actions).not.toHaveBeenCalledWith(expect.objectContaining({ action: "delete" }));
+
+			await page.getByRole("button", { name: "Keep worktree" }).click();
+			await vi.waitFor(() =>
+				expect(actions).toHaveBeenCalledWith(
+					expect.objectContaining({ action: "delete", sessionId: "ses_acme" }),
+				),
+			);
 		});
 	});
 });

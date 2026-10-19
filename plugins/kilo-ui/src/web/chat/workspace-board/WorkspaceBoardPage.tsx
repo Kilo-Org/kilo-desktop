@@ -15,15 +15,18 @@ import { useWorkspacesFeature } from "../../workspaces/WorkspacesFeatureContext.
 import { ChatLocationBreadcrumb } from "../ChatSessionBreadcrumb.js";
 import { SessionMetadataProviders } from "../components/assistant-ui/session-metadata-providers.js";
 import { DetachedWindowLayout } from "../DetachedWindowLayout.js";
+import type { SessionActivity } from "../session-activity/session-activity-logic.js";
 import { resolveWorkspaceFocus } from "../session-list/session-list-view.js";
 import { useSessionListView } from "../session-list/use-session-list-view.js";
-import { resolveBoardColumns } from "./workspace-board-sessions.js";
+import { resolveBoardColumns, type BoardSession } from "./workspace-board-sessions.js";
 import { WORKSPACE_BOARD_TITLE } from "./workspace-board-constants.js";
 import { useWorkspaceBoard, type WorkspaceBoardContextValue } from "./WorkspaceBoardProvider.js";
 import { WorkspaceBoardHeaderActions } from "./WorkspaceBoardHeaderActions.js";
 import { WorkspaceBoardView } from "./WorkspaceBoardView.js";
-import { workspaceBoardCardActions } from "./WorkspaceBoardCardActions.js";
+import { mainWindowCardActions, workspaceBoardCardActions } from "./WorkspaceBoardCardActions.js";
+import type { WorkspaceBoardCardActions } from "./WorkspaceBoardCard.js";
 import {
+	useMainWindowBoardSessions,
 	useWorkspaceBoardSessions,
 	useOpenWorkspaceBoardSession,
 } from "./use-workspace-board-sessions.js";
@@ -45,23 +48,45 @@ export function WorkspaceBoardPage() {
 	}
 	if (board.window.isDetached) return <DetachedWorkspaceBoard board={board} />;
 	if (board.window.isPoppedOut) return <PoppedOutWorkspaceBoard board={board} />;
-	return <WorkspaceBoardContent board={board} />;
+	return <LocalWorkspaceBoard board={board} />;
+}
+
+function LocalWorkspaceBoard({ board }: { board: WorkspaceBoardContextValue }) {
+	const sessions = useWorkspaceBoardSessions();
+	return (
+		<WorkspaceBoardContent
+			board={board}
+			sessions={sessions}
+			cardActions={workspaceBoardCardActions}
+		/>
+	);
 }
 
 /**
- * The board in its own window, naming the workspace the sidebar focuses
- * because that sidebar is now in another window. For the same reason it
- * mounts the session metadata providers the sidebar would, without which its
- * cards would never learn their chats' pull requests.
+ * The board in its own window: a view of the main window's chats, which that
+ * window publishes and acts on (see `workspace-board-window`). It names the
+ * workspace the sidebar focuses because that sidebar is now in another window.
+ * For the same reason it mounts the session metadata providers the sidebar
+ * would, without which its cards would never learn their chats' pull requests.
  */
 function DetachedWorkspaceBoard({ board }: { board: WorkspaceBoardContextValue }) {
+	const sessions = useMainWindowBoardSessions();
+	const activityBySessionId = useMemo(
+		() =>
+			Object.fromEntries(
+				[...sessions.values()].flatMap((session): [string, SessionActivity][] =>
+					session.activity ? [[session.sessionId, session.activity]] : [],
+				),
+			),
+		[sessions],
+	);
 	const { view } = useSessionListView();
 	const { workspaces } = useWorkspacesFeature();
 	const focus = resolveWorkspaceFocus(view.focus, workspaces);
 	const workspace = focus ? workspaces.find((candidate) => candidate.id === focus) : undefined;
 	return (
 		<>
-			<SessionMetadataProviders />
+			<SessionMetadataProviders activityBySessionId={activityBySessionId} />
 			<DetachedWindowLayout
 				title={
 					<ChatLocationBreadcrumb
@@ -74,7 +99,11 @@ function DetachedWorkspaceBoard({ board }: { board: WorkspaceBoardContextValue }
 				actions={<WorkspaceBoardHeaderActions />}
 				headerQaId="workspace-board-window-header"
 			>
-				<WorkspaceBoardContent board={board} />
+				<WorkspaceBoardContent
+					board={board}
+					sessions={sessions}
+					cardActions={mainWindowCardActions}
+				/>
 			</DetachedWindowLayout>
 		</>
 	);
@@ -122,8 +151,15 @@ function PoppedOutWorkspaceBoard({ board }: { board: WorkspaceBoardContextValue 
  * the sidebar stays beside the board, and the board is a second view of the
  * same chats.
  */
-function WorkspaceBoardContent({ board }: { board: WorkspaceBoardContextValue }) {
-	const sessions = useWorkspaceBoardSessions();
+function WorkspaceBoardContent({
+	board,
+	sessions,
+	cardActions,
+}: {
+	board: WorkspaceBoardContextValue;
+	sessions: ReadonlyMap<string, BoardSession>;
+	cardActions: WorkspaceBoardCardActions;
+}) {
 	const openSession = useOpenWorkspaceBoardSession();
 	const { view } = useSessionListView();
 	const { workspaces } = useWorkspacesFeature();
@@ -139,7 +175,7 @@ function WorkspaceBoardContent({ board }: { board: WorkspaceBoardContextValue })
 			workspaces={workspaces}
 			onDragStart={board.startDrag}
 			onOpen={openSession}
-			cardActions={workspaceBoardCardActions}
+			cardActions={cardActions}
 			columnToName={board.columnNaming.columnToName}
 			onColumnNamingStarted={board.columnNaming.onNamingStarted}
 			onRenameColumn={board.renameColumn}

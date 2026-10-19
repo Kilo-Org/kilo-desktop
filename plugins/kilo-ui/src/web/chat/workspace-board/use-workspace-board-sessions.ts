@@ -1,5 +1,5 @@
 import { useAui, useAuiState } from "@assistant-ui/react";
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useSdk } from "@kilo-desktop/sdk-react";
 
@@ -7,7 +7,7 @@ import { navigateToChat } from "../chat-navigation.js";
 import { useSessionActivity } from "../session-activity/SessionActivityProvider.js";
 import { withDescendantPrompts } from "../session-activity/session-activity-logic.js";
 import { buildBoardSessions, type BoardSession } from "./workspace-board-sessions.js";
-import { WORKSPACE_BOARD_OPEN_SESSION_EVENT } from "./workspace-board-window.js";
+import { followBoardCards, WORKSPACE_BOARD_OPEN_SESSION_EVENT } from "./workspace-board-window.js";
 import { useWorkspaceBoard } from "./WorkspaceBoardProvider.js";
 
 /** Loaded chats with their live activity, keyed by Kilo session id. */
@@ -19,6 +19,20 @@ export function useWorkspaceBoardSessions(): ReadonlyMap<string, BoardSession> {
 		() => buildBoardSessions({ threadItems, activityBySessionId, lastVisitedAtBySessionId }),
 		[activityBySessionId, lastVisitedAtBySessionId, threadItems],
 	);
+}
+
+/** The popped-out board's chats: the main window's, as it publishes them. */
+export function useMainWindowBoardSessions(): ReadonlyMap<string, BoardSession> {
+	const sdk = useSdk("kilo-ui");
+	const [sessions, setSessions] = useState<ReadonlyMap<string, BoardSession>>(() => new Map());
+	useEffect(
+		() =>
+			followBoardCards(sdk.events, (cards) =>
+				setSessions(new Map(cards.map((card) => [card.sessionId, card]))),
+			),
+		[sdk],
+	);
+	return sessions;
 }
 
 /**

@@ -402,6 +402,84 @@ describe("createKiloRuntimeBackend", () => {
 		}
 	});
 
+	it("keeps session activity live while the stream is retained, with no chat listening", async () => {
+		let eventCallOptions: { signal?: AbortSignal } | undefined;
+		const event = vi.fn(async (options: { signal?: AbortSignal }) => {
+			eventCallOptions = options;
+			return {
+				stream: (async function* () {
+					yield {
+						directory: "/workspace/events",
+						payload: {
+							type: "session.status",
+							properties: { sessionID: "ses-1", status: { type: "busy" } },
+						},
+					};
+					await new Promise<void>((resolve) => {
+						options.signal?.addEventListener("abort", () => resolve(), { once: true });
+					});
+				})(),
+			};
+		});
+		vi.mocked(createKiloGlobalClient).mockReturnValue({ global: { event } } as never);
+		const sessionActivity = createSessionActivityStore({ storage: null });
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession: vi.fn(),
+			sessionActivity,
+		});
+
+		const release = backend.retainEventStream();
+
+		await vi.waitFor(() =>
+			expect(sessionActivity.getState().sessions["ses-1"]?.status).toBe("busy"),
+		);
+		release();
+		expect(eventCallOptions?.signal?.aborted).toBe(true);
+	});
+
+	it("shares one stream between its holders and closes it when the last lets go", async () => {
+		const signals: AbortSignal[] = [];
+		const event = vi.fn(async (options: { signal: AbortSignal }) => {
+			signals.push(options.signal);
+			const aborted = new Promise<void>((resolve) => {
+				options.signal.addEventListener("abort", () => resolve(), { once: true });
+			});
+			return {
+				stream: {
+					async *[Symbol.asyncIterator]() {
+						yield* [];
+						await aborted;
+					},
+				},
+			};
+		});
+		vi.mocked(createKiloGlobalClient).mockReturnValue({ global: { event } } as never);
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession: vi.fn(),
+			sessionActivity: createSessionActivityStore({ storage: null }),
+		});
+
+		const release = backend.retainEventStream();
+		const source = backend.createEventSource();
+		const unsubscribe = source.subscribe(() => undefined);
+		await vi.waitFor(() => expect(event).toHaveBeenCalledOnce());
+
+		unsubscribe();
+		source.dispose();
+		source.dispose();
+		expect(signals[0]?.aborted).toBe(false);
+
+		release();
+		expect(signals[0]?.aborted).toBe(true);
+
+		const reopened = backend.createEventSource();
+		await vi.waitFor(() => expect(event).toHaveBeenCalledTimes(2));
+		reopened.dispose();
+		expect(signals[1]?.aborted).toBe(true);
+	});
+
 	it("shows a warning toast when the prepared worktree carries one", async () => {
 		const prepareSession = vi.fn(async () => ({
 			directory: "/workspace/worktree",

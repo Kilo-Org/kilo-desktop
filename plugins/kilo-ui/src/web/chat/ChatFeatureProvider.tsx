@@ -539,6 +539,9 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		onStreamReconnected,
 		...(onLiveEvent ? { onLiveEvent } : {}),
 		promptQueueEditing,
+		// The main window's activity backs the sidebar and every board view,
+		// including the popped-out board's; other windows only need their chat's.
+		keepEventStreamOpen: sdk.shell.windowRole === "main",
 	});
 
 	const aui = useAui({

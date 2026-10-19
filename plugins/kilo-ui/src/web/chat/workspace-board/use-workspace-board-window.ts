@@ -113,8 +113,17 @@ export function useWorkspaceBoardWindow(enabled: boolean): WorkspaceBoardWindow 
 /**
  * The full width of the board's columns, read from the board on screen when it
  * is popped out (its title bar is the only place that offers it), so its window
- * opens wide enough not to scroll sideways.
+ * opens wide enough not to scroll sideways. Measured to the last column rather
+ * than by `scrollWidth`, which never reports less than the strip's own width, so
+ * a board with room to spare would open a window wider than its columns.
  */
 function boardColumnsWidth(): number | undefined {
-	return document.querySelector<HTMLElement>("[data-workspace-board-columns]")?.scrollWidth;
+	const strip = document.querySelector<HTMLElement>("[data-workspace-board-columns]");
+	const lastColumn = strip?.lastElementChild;
+	if (!strip || !lastColumn) return undefined;
+	const lastColumnEnd =
+		lastColumn.getBoundingClientRect().right -
+		strip.getBoundingClientRect().left +
+		strip.scrollLeft;
+	return Math.ceil(lastColumnEnd + Number.parseFloat(getComputedStyle(strip).paddingRight));
 }

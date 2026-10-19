@@ -13,6 +13,7 @@ import {
 
 import { useWorkspacesFeature } from "../../workspaces/WorkspacesFeatureContext.js";
 import { ChatLocationBreadcrumb } from "../ChatSessionBreadcrumb.js";
+import { SessionMetadataProviders } from "../components/assistant-ui/session-metadata-providers.js";
 import { DetachedWindowLayout } from "../DetachedWindowLayout.js";
 import { resolveWorkspaceFocus } from "../session-list/session-list-view.js";
 import { useSessionListView } from "../session-list/use-session-list-view.js";
@@ -49,7 +50,9 @@ export function WorkspaceBoardPage() {
 
 /**
  * The board in its own window, naming the workspace the sidebar focuses
- * because that sidebar is now in another window.
+ * because that sidebar is now in another window. For the same reason it
+ * mounts the session metadata providers the sidebar would, without which its
+ * cards would never learn their chats' pull requests.
  */
 function DetachedWorkspaceBoard({ board }: { board: WorkspaceBoardContextValue }) {
 	const { view } = useSessionListView();
@@ -57,20 +60,23 @@ function DetachedWorkspaceBoard({ board }: { board: WorkspaceBoardContextValue }
 	const focus = resolveWorkspaceFocus(view.focus, workspaces);
 	const workspace = focus ? workspaces.find((candidate) => candidate.id === focus) : undefined;
 	return (
-		<DetachedWindowLayout
-			title={
-				<ChatLocationBreadcrumb
-					{...(workspace ? { locationLabel: workspace.name } : {})}
-					{...(workspace?.color ? { locationColor: workspace.color } : {})}
-					title={WORKSPACE_BOARD_TITLE}
-					qaId="workspace-board-window-title"
-				/>
-			}
-			actions={<WorkspaceBoardHeaderActions />}
-			headerQaId="workspace-board-window-header"
-		>
-			<WorkspaceBoardContent board={board} />
-		</DetachedWindowLayout>
+		<>
+			<SessionMetadataProviders />
+			<DetachedWindowLayout
+				title={
+					<ChatLocationBreadcrumb
+						{...(workspace ? { locationLabel: workspace.name } : {})}
+						{...(workspace?.color ? { locationColor: workspace.color } : {})}
+						title={WORKSPACE_BOARD_TITLE}
+						qaId="workspace-board-window-title"
+					/>
+				}
+				actions={<WorkspaceBoardHeaderActions />}
+				headerQaId="workspace-board-window-header"
+			>
+				<WorkspaceBoardContent board={board} />
+			</DetachedWindowLayout>
+		</>
 	);
 }
 

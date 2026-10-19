@@ -182,6 +182,15 @@ function setup({
 			</span>
 		),
 	});
+	system.getSdk("metadata-probe").contribute("kilo-ui/chat-session-metadata-provider", {
+		id: "probe-targets",
+		label: "PR status targets",
+		component: ({ targets }: { targets: readonly { directory: string }[] }) => (
+			<output data-qa-id="metadata-targets">
+				{targets.map((target) => target.directory).join(",")}
+			</output>
+		),
+	});
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const { baseElement } = render(
 		<QueryClientProvider client={queryClient}>
@@ -242,6 +251,12 @@ describe("WorkspaceBoardPage", () => {
 		await expect
 			.element(card.getByTestId("row-metadata-/repo/beta"))
 			.toHaveTextContent("interactive");
+	});
+
+	it("leaves which chats' pull requests to look up to the sidebar beside it", async () => {
+		const { screen } = setup();
+		await expect.element(screen.getByText("Beta feature")).toBeVisible();
+		await expect.element(screen.getByTestId("metadata-targets")).not.toBeInTheDocument();
 	});
 
 	it("puts the row metadata, not the card, under the pointer, so a PR link takes the click", async () => {
@@ -443,24 +458,46 @@ describe("WorkspaceBoardPage in its own window", () => {
 		path: "/plugins/workspace-board",
 	};
 	const boardWindowIdentity = { pluginId: "kilo-ui", paneId: "workspace-board" };
+	/** The columns' span, with the margin before the first column repeated after the last. */
+	const columnsWidth = () => {
+		const strip = document
+			.querySelector<HTMLElement>("[data-workspace-board-columns]")!
+			.getBoundingClientRect();
+		const columns = [
+			...document.querySelectorAll<HTMLElement>("[data-workspace-board-column]"),
+		].map((column) => column.getBoundingClientRect());
+		const first = columns[0]!;
+		const margin = first.left - strip.left;
+		return Math.ceil(columns.at(-1)!.right - first.left + 2 * margin);
+	};
 
 	it("pops the board out into its own window and returns the main window to the chat", async () => {
 		const openPaneWindow = vi.fn(async () => ({ opened: true }));
 		const { screen, navigate } = setup({ shell: { openPaneWindow } });
 		await expect.element(screen.getByText("Beta feature")).toBeVisible();
+		const width = columnsWidth();
 
-		// Wide enough for every column, so the board's window opens without a sideways scrollbar.
-		const columnsWidth = document.querySelector<HTMLElement>(
-			"[data-workspace-board-columns]",
-		)!.scrollWidth;
 		await screen.getByRole("button", { name: "Pop out" }).click();
 
-		await vi.waitFor(() =>
-			expect(openPaneWindow).toHaveBeenCalledWith({ ...boardWindow, width: columnsWidth }),
-		);
+		// Wide enough for every column, so the board's window opens without a sideways scrollbar.
+		await vi.waitFor(() => expect(openPaneWindow).toHaveBeenCalledWith({ ...boardWindow, width }));
 		await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith("/plugins/chat", undefined));
 		await expect.element(screen.getByTestId("workspace-board-popped-out")).toBeVisible();
 		await expect.element(screen.getByText("Beta feature")).not.toBeInTheDocument();
+	});
+
+	it("opens the board's window only as wide as its columns when the board has room to spare", async () => {
+		await page.viewport(1400, 800);
+		const openPaneWindow = vi.fn(async () => ({ opened: true }));
+		const { screen } = setup({ shell: { openPaneWindow } });
+		await expect.element(screen.getByText("Beta feature")).toBeVisible();
+		const width = columnsWidth();
+		const strip = document.querySelector<HTMLElement>("[data-workspace-board-columns]")!;
+		expect(width).toBeLessThan(strip.clientWidth);
+
+		await screen.getByRole("button", { name: "Pop out" }).click();
+
+		await vi.waitFor(() => expect(openPaneWindow).toHaveBeenCalledWith({ ...boardWindow, width }));
 	});
 
 	it("stays on the board and says so when its window cannot open", async () => {
@@ -572,6 +609,13 @@ describe("WorkspaceBoardPage in its own window", () => {
 			await expect.element(header.getByRole("button", { name: "Dock" })).toBeVisible();
 			await expect.element(screen.getByRole("button", { name: "Pop out" })).not.toBeInTheDocument();
 			await expect.element(screen.getByText("Beta feature")).toBeVisible();
+		});
+
+		it("looks up its chats' pull requests itself, as no sidebar does so in its window", async () => {
+			const { screen } = setup({ shell: paneShell() });
+			await expect
+				.element(screen.getByTestId("metadata-targets"))
+				.toHaveTextContent("/repo/acme,/repo/beta");
 		});
 
 		it("names the sidebar's focused workspace in its title bar", async () => {

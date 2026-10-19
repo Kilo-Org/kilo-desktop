@@ -2,6 +2,7 @@ import type { SDK } from "@kilo-desktop/feature-sdk";
 
 import { registerDraftSelectionStore } from "./draft-selection-store.js";
 import { registerGitWebMcpTools } from "./git-webmcp-tools.js";
+import { registerPullRequestStatusStore } from "./pull-request-status-store.js";
 
 export { GitBranchLabel } from "./GitBranchLabel.js";
 export { GitBranchSelector } from "./GitBranchSelector.js";
@@ -24,5 +25,6 @@ export { GitPrStatusTargets } from "./GitPrStatusTargets.js";
  */
 export function webRegister(sdk: SDK): void {
 	registerDraftSelectionStore(sdk);
+	registerPullRequestStatusStore(sdk);
 	registerGitWebMcpTools(sdk);
 }

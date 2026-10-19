@@ -435,3 +435,31 @@ export type GitDraftWorktreeSelection =
  * serves every workspace and updates preserve other entries' references.
  */
 export type GitDraftSelectionStoreValue = Record<string, GitDraftWorktreeSelection>;
+
+/**
+ * The pull-request status state store is a cross-plugin contract like the
+ * draft selection: git owns its name, key, and value shape; kilo-ui reads
+ * it to filter the session list by pull request.
+ */
+
+/** Store name within the git feature; the namespaced key is `git.<name>`. */
+export const PULL_REQUEST_STATUS_STORE_NAME = "pull-request-status";
+
+/** Fully-qualified store key: the known pull request per PR status target. */
+export const GIT_PULL_REQUEST_STATUS_STORE_KEY = `git.${PULL_REQUEST_STATUS_STORE_NAME}`;
+
+/**
+ * What the session list filter needs to know about a target's pull request;
+ * drafts are `open`. Add fields when a consumer reads them, since every
+ * field change re-publishes the store.
+ */
+export type GitPullRequestSummary = {
+	state: "open" | "closed" | "merged";
+};
+
+/**
+ * Store value: pull requests keyed by PR status target id (the session's
+ * git status id). Only targets with a known pull request have an entry, so
+ * a missing key means "no pull request" or "not looked up yet".
+ */
+export type GitPullRequestStatusStoreValue = Record<string, GitPullRequestSummary>;

@@ -22,6 +22,8 @@ import {
 	SESSION_LIST_GROUPING_LABELS,
 	SESSION_LIST_ORDERINGS,
 	SESSION_LIST_ORDERING_LABELS,
+	SESSION_LIST_PULL_REQUEST_FILTERS,
+	SESSION_LIST_PULL_REQUEST_LABELS,
 	SESSION_LIST_SHOW_FIELDS,
 	SESSION_LIST_SHOW_LABELS,
 	SESSION_LIST_STATUS_FILTERS,
@@ -30,6 +32,7 @@ import {
 	resolveSessionListGrouping,
 	type SessionListGrouping,
 	type SessionListOrdering,
+	type SessionListPullRequestFilter,
 	type SessionListShowField,
 	type SessionListStatusFilter,
 	type SessionListView,
@@ -37,13 +40,24 @@ import {
 
 export const SessionListViewMenu: FC<{
 	view: SessionListView;
+	/** False when pull request status is unavailable (no git plugin). */
+	pullRequestFilterAvailable: boolean;
 	onViewChange: (patch: Partial<SessionListView>) => void;
 	onReset: () => void;
 	canCollapse: boolean;
 	allCollapsed: boolean;
 	onCollapseAll: () => void;
 	onExpandAll: () => void;
-}> = ({ view, onViewChange, onReset, canCollapse, allCollapsed, onCollapseAll, onExpandAll }) => {
+}> = ({
+	view,
+	pullRequestFilterAvailable,
+	onViewChange,
+	onReset,
+	canCollapse,
+	allCollapsed,
+	onCollapseAll,
+	onExpandAll,
+}) => {
 	const customized = !isDefaultSessionListView(view);
 	const grouping = resolveSessionListGrouping(view);
 	const groupings = view.focus
@@ -157,6 +171,30 @@ export const SessionListViewMenu: FC<{
 							</DropdownMenuRadioGroup>
 						</DropdownMenuSubContent>
 					</DropdownMenuSub>
+					{pullRequestFilterAvailable ? (
+						<DropdownMenuSub>
+							<SessionListSubTrigger
+								label="Pull request"
+								value={SESSION_LIST_PULL_REQUEST_LABELS[view.pullRequest]}
+							/>
+							<DropdownMenuSubContent>
+								<DropdownMenuRadioGroup
+									value={view.pullRequest}
+									onValueChange={(value) => {
+										if (value) {
+											onViewChange({ pullRequest: value as SessionListPullRequestFilter });
+										}
+									}}
+								>
+									{SESSION_LIST_PULL_REQUEST_FILTERS.map((filter) => (
+										<DropdownMenuRadioItem key={filter} value={filter} closeOnClick={false}>
+											{SESSION_LIST_PULL_REQUEST_LABELS[filter]}
+										</DropdownMenuRadioItem>
+									))}
+								</DropdownMenuRadioGroup>
+							</DropdownMenuSubContent>
+						</DropdownMenuSub>
+					) : null}
 				</DropdownMenuGroup>
 				<DropdownMenuSeparator />
 				<DropdownMenuGroup>

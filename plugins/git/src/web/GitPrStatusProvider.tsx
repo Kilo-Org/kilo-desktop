@@ -11,6 +11,7 @@ import {
 	useGitPrStatusStore,
 } from "./git-pr-status-store.js";
 import { PrStatusScheduler, type PrStatusLoadResult } from "./pr-status-scheduler.js";
+import { syncPullRequestStatusStore } from "./pull-request-status-store.js";
 
 const INSTALL_URL = "https://cli.github.com/";
 const NON_BLOCKING_TOAST_CLASS = "pointer-events-none [&_button]:pointer-events-auto";
@@ -111,6 +112,8 @@ export function GitPrStatusProvider({ children }: { readonly children: ReactNode
 			if (schedulerRef.current === scheduler) schedulerRef.current = null;
 		};
 	}, [queryClient, sdk]);
+
+	useEffect(() => syncPullRequestStatusStore(sdk), [sdk]);
 
 	useEffect(
 		() =>

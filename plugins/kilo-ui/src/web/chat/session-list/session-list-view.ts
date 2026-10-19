@@ -1,6 +1,9 @@
+import type { GitPullRequestStatusStoreValue } from "@kilo-desktop/plugin-git/contracts";
+
 import {
 	needsAttention,
 	resolveSessionLocationLabel,
+	sessionGitStatusId,
 	type SessionActivity,
 } from "../session-activity/session-activity-logic.js";
 
@@ -17,17 +20,21 @@ export const SESSION_LIST_STATUS_FILTERS = [
 	"idle",
 	"archived",
 ] as const;
+/** `open` includes drafts; `any` also keeps merged and closed pull requests. */
+export const SESSION_LIST_PULL_REQUEST_FILTERS = ["all", "any", "open"] as const;
 
 export type SessionListGrouping = (typeof SESSION_LIST_GROUPINGS)[number];
 export type SessionListOrdering = (typeof SESSION_LIST_ORDERINGS)[number];
 export type SessionListShowField = (typeof SESSION_LIST_SHOW_FIELDS)[number];
 export type SessionListStatusFilter = (typeof SESSION_LIST_STATUS_FILTERS)[number];
+export type SessionListPullRequestFilter = (typeof SESSION_LIST_PULL_REQUEST_FILTERS)[number];
 
 export type SessionListView = {
 	grouping: SessionListGrouping;
 	ordering: SessionListOrdering;
 	show: readonly SessionListShowField[];
 	status: SessionListStatusFilter;
+	pullRequest: SessionListPullRequestFilter;
 	/** Workspace id to focus, or `null` for all workspaces. */
 	focus: string | null;
 };
@@ -37,8 +44,16 @@ export const DEFAULT_SESSION_LIST_VIEW: SessionListView = {
 	ordering: "recency",
 	show: ["pr"],
 	status: "all",
+	pullRequest: "all",
 	focus: null,
 };
+
+/**
+ * The pull request a session row shows, keyed by session git status id
+ * (`sessionGitStatusId`). A missing key means none or not looked up yet.
+ * Git's store contract by type import, so the two cannot drift.
+ */
+export type SessionListPullRequests = Readonly<GitPullRequestStatusStoreValue>;
 
 export const SESSION_LIST_GROUPING_LABELS: Record<SessionListGrouping, string> = {
 	lifecycle: "Status",
@@ -63,6 +78,12 @@ export const SESSION_LIST_STATUS_LABELS: Record<SessionListStatusFilter, string>
 	working: "Working",
 	idle: "Idle",
 	archived: "Archived",
+};
+
+export const SESSION_LIST_PULL_REQUEST_LABELS: Record<SessionListPullRequestFilter, string> = {
+	all: "All",
+	any: "Any PR",
+	open: "Open PR",
 };
 
 export type SessionListViewEntry = {
@@ -126,6 +147,9 @@ export function parseSessionListView(value: unknown): SessionListView {
 		status: isMember(record.status, SESSION_LIST_STATUS_FILTERS)
 			? record.status
 			: DEFAULT_SESSION_LIST_VIEW.status,
+		pullRequest: isMember(record.pullRequest, SESSION_LIST_PULL_REQUEST_FILTERS)
+			? record.pullRequest
+			: DEFAULT_SESSION_LIST_VIEW.pullRequest,
 		focus: typeof record.focus === "string" && record.focus.length > 0 ? record.focus : null,
 	};
 }
@@ -135,6 +159,7 @@ export function isDefaultSessionListView(view: SessionListView): boolean {
 		view.grouping === DEFAULT_SESSION_LIST_VIEW.grouping &&
 		view.ordering === DEFAULT_SESSION_LIST_VIEW.ordering &&
 		view.status === DEFAULT_SESSION_LIST_VIEW.status &&
+		view.pullRequest === DEFAULT_SESSION_LIST_VIEW.pullRequest &&
 		view.show.length === DEFAULT_SESSION_LIST_VIEW.show.length &&
 		DEFAULT_SESSION_LIST_VIEW.show.every((field) => view.show.includes(field)) &&
 		view.focus === DEFAULT_SESSION_LIST_VIEW.focus
@@ -409,6 +434,23 @@ function updatedSections(
 }
 
 /**
+ * Matches the row's PR badge: worktree chats use their branch's pull
+ * request, and every chat in a workspace's main checkout shares the pull
+ * request of the branch checked out there.
+ */
+function matchesPullRequestFilter(
+	activity: SessionActivity | undefined,
+	filter: SessionListPullRequestFilter,
+	pullRequests: SessionListPullRequests,
+): boolean {
+	if (filter === "all") return true;
+	const statusId = sessionGitStatusId(activity);
+	const pullRequest = statusId ? pullRequests[statusId] : undefined;
+	if (!pullRequest) return false;
+	return filter === "any" || pullRequest.state === "open";
+}
+
+/**
  * Groups filtered session-list entries for the sidebar. Status grouping
  * partitions attention into its own first section. Workspace and updated
  * grouping keep those sessions in their folder/day, sorted to the top.
@@ -421,13 +463,21 @@ export function buildSessionListSections(args: {
 	workspaces: readonly { id: string; name: string }[];
 	view: SessionListView;
 	pinnedIds?: ReadonlySet<string>;
+	/** `null`/absent when pull request status is unavailable; the filter is then ignored. */
+	pullRequestByStatusId?: SessionListPullRequests | null;
 	now?: number;
 }): SessionListSection[] {
 	const pinnedIds = args.pinnedIds ?? new Set<string>();
 	const grouping = resolveSessionListGrouping(args.view);
+	const pullRequests = args.pullRequestByStatusId;
 	const rows = enrich(args.entries, args.activityBySessionId, args.workspaces).filter((row) => {
 		if (args.view.status !== "all" && row.lifecycle !== args.view.status) return false;
 		if (args.view.focus && row.activity?.workspaceId !== args.view.focus) return false;
+		if (
+			pullRequests &&
+			!matchesPullRequestFilter(row.activity, args.view.pullRequest, pullRequests)
+		)
+			return false;
 		return true;
 	});
 

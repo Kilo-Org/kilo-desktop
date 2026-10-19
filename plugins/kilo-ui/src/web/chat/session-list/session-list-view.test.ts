@@ -101,8 +101,16 @@ describe("parseSessionListView", () => {
 			ordering: "title",
 			show: ["workspace", "pr"],
 			status: "working",
+			pullRequest: "all",
 			focus: null,
 		});
+	});
+
+	it("keeps a known pull request filter and defaults the rest to all", () => {
+		expect(parseSessionListView({ pullRequest: "open" }).pullRequest).toBe("open");
+		expect(parseSessionListView({ pullRequest: "any" }).pullRequest).toBe("any");
+		expect(parseSessionListView({ pullRequest: "draft" }).pullRequest).toBe("all");
+		expect(parseSessionListView({ grouping: "updated" }).pullRequest).toBe("all");
 	});
 
 	it("keeps a focused workspace id", () => {
@@ -118,6 +126,103 @@ describe("isDefaultSessionListView", () => {
 		expect(isDefaultSessionListView({ ...defaultView, grouping: "workspace" })).toBe(false);
 		expect(isDefaultSessionListView({ ...defaultView, show: ["workspace"] })).toBe(false);
 		expect(isDefaultSessionListView({ ...defaultView, focus: "ws-1" })).toBe(false);
+		expect(isDefaultSessionListView({ ...defaultView, pullRequest: "any" })).toBe(false);
+	});
+});
+
+describe("buildSessionListSections pull request filter", () => {
+	const entries = [
+		entry("open-worktree", 0),
+		entry("merged-worktree", 1),
+		entry("draft-worktree", 2),
+		entry("local-a", 3),
+		entry("local-b", 4),
+		entry("unknown-worktree", 5),
+		entry("no-workspace", 6),
+		entry("other-local", 7),
+		entry("archived-open", 0, true),
+	];
+	const activityBySessionId = {
+		"open-worktree": activity({ workspaceId: "ws-1", worktreeBranch: "kilo/open", updatedAt: 90 }),
+		"merged-worktree": activity({
+			workspaceId: "ws-1",
+			worktreeBranch: "kilo/merged",
+			updatedAt: 80,
+		}),
+		"draft-worktree": activity({
+			workspaceId: "ws-1",
+			worktreeBranch: "kilo/draft",
+			updatedAt: 70,
+		}),
+		"local-a": activity({ workspaceId: "ws-1", updatedAt: 60 }),
+		"local-b": activity({ workspaceId: "ws-1", updatedAt: 50 }),
+		"unknown-worktree": activity({
+			workspaceId: "ws-1",
+			worktreeBranch: "kilo/unknown",
+			updatedAt: 40,
+		}),
+		"no-workspace": activity({ updatedAt: 30 }),
+		"other-local": activity({ workspaceId: "ws-2", updatedAt: 20, status: "busy" }),
+		"archived-open": activity({ workspaceId: "ws-1", worktreeBranch: "kilo/open", updatedAt: 10 }),
+	};
+	const pullRequestByStatusId = {
+		"ws-1:worktree:kilo/open": { state: "open" as const },
+		"ws-1:worktree:kilo/merged": { state: "merged" as const },
+		// Drafts arrive as `open`, so Open PR keeps them.
+		"ws-1:worktree:kilo/draft": { state: "open" as const },
+		"ws-1:local": { state: "closed" as const },
+		"ws-2:local": { state: "open" as const },
+	};
+
+	function visibleIds(view: Partial<SessionListView>, map = pullRequestByStatusId) {
+		return buildSessionListSections({
+			entries,
+			activityBySessionId,
+			workspaces,
+			view: { ...defaultView, ...view },
+			pullRequestByStatusId: map,
+		}).flatMap((section) => section.rows.map((row) => row.id.replace("local-", "")));
+	}
+
+	it("keeps every chat whose row has a pull request in any state", () => {
+		expect(visibleIds({ pullRequest: "any" })).toEqual([
+			"open-worktree",
+			"merged-worktree",
+			"draft-worktree",
+			"local-a",
+			"local-b",
+			"other-local",
+			"archived-open",
+		]);
+	});
+
+	it("keeps only open and draft pull requests under Open PR", () => {
+		expect(visibleIds({ pullRequest: "open" })).toEqual([
+			"open-worktree",
+			"draft-worktree",
+			"other-local",
+			"archived-open",
+		]);
+	});
+
+	it("combines with the status filter", () => {
+		expect(visibleIds({ pullRequest: "open", status: "working" })).toEqual(["other-local"]);
+	});
+
+	it("does not filter when set to all", () => {
+		expect(visibleIds({ pullRequest: "all" })).toHaveLength(entries.length);
+	});
+
+	it("ignores the filter when pull request status is unavailable", () => {
+		expect(
+			buildSessionListSections({
+				entries,
+				activityBySessionId,
+				workspaces,
+				view: { ...defaultView, pullRequest: "open" },
+				pullRequestByStatusId: null,
+			}).flatMap((section) => section.rows),
+		).toHaveLength(entries.length);
 	});
 });
 

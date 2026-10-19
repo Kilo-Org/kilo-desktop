@@ -119,6 +119,7 @@ import {
 	readSessionListArchivedExpanded,
 	visibleShowFields,
 	writeSessionListArchivedExpanded,
+	type SessionListPullRequests,
 	type SessionListSection,
 	type SessionListSectionRow,
 	type SessionListShowField,
@@ -203,6 +204,8 @@ type SessionListContentProps = {
 	isLoading: boolean;
 	hasMoreThreads: boolean;
 	activityBySessionId: Readonly<Record<string, SessionActivity>>;
+	/** `null` when the git plugin is inactive; the pull request filter is then unavailable. */
+	pullRequestByStatusId: SessionListPullRequests | null;
 	workspaces: readonly Workspace[];
 	setActiveWorkspaceId: WorkspacesContextValue["setActiveWorkspaceId"];
 };
@@ -242,13 +245,22 @@ type VirtualSessionListEntry =
  * loading, since the group's chats may not have arrived yet.
  */
 function emptyWorkspaceLabel(
-	view: Pick<SessionListView, "status">,
+	view: Pick<SessionListView, "status" | "pullRequest">,
 	hasMoreThreads: boolean,
 ): string | null {
 	if (hasMoreThreads) return null;
-	return view.status === "all"
-		? "No chats yet"
-		: `No chats matching "${SESSION_LIST_STATUS_LABELS[view.status]}"`;
+	return filteredEmptyLabel(view) ?? "No chats yet";
+}
+
+/** Why a filtered list is empty, or null when no filter is active. */
+function filteredEmptyLabel(view: Pick<SessionListView, "status" | "pullRequest">): string | null {
+	const byStatus = view.status !== "all";
+	const byPullRequest = view.pullRequest !== "all";
+	if (byStatus && byPullRequest) return "No matching chats";
+	if (byStatus) return `No chats matching "${SESSION_LIST_STATUS_LABELS[view.status]}"`;
+	if (view.pullRequest === "open") return "No chats with open pull requests";
+	if (byPullRequest) return "No chats with pull requests";
+	return null;
 }
 
 /**
@@ -323,6 +335,7 @@ export const SessionListContent = memo(function SessionListContent({
 	isLoading,
 	hasMoreThreads,
 	activityBySessionId,
+	pullRequestByStatusId,
 	workspaces,
 	setActiveWorkspaceId,
 }: SessionListContentProps) {
@@ -339,9 +352,14 @@ export const SessionListContent = memo(function SessionListContent({
 		setExpanded((current) => ({ ...current, archived: archivedShelfExpandedFor(view.status) }));
 	}
 	const focus = resolveWorkspaceFocus(view.focus, workspaces);
+	const pullRequestFilterAvailable = pullRequestByStatusId !== null;
+	const pullRequest = pullRequestFilterAvailable ? view.pullRequest : "all";
 	const resolvedView = useMemo(
-		() => (focus === view.focus ? view : { ...view, focus }),
-		[focus, view],
+		() =>
+			focus === view.focus && pullRequest === view.pullRequest
+				? view
+				: { ...view, focus, pullRequest },
+		[focus, pullRequest, view],
 	);
 	const show = useMemo(() => visibleShowFields(resolvedView), [resolvedView]);
 	const chrome = useMemo(() => ({ show, pinnedIds, togglePin }), [pinnedIds, show, togglePin]);
@@ -368,11 +386,13 @@ export const SessionListContent = memo(function SessionListContent({
 			workspaces,
 			view: resolvedView,
 			pinnedIds,
+			pullRequestByStatusId,
 		});
 	}, [
 		activityBySessionId,
 		archivedThreadIds,
 		pinnedIds,
+		pullRequestByStatusId,
 		resolvedView,
 		threadIds,
 		threadItems,
@@ -392,7 +412,11 @@ export const SessionListContent = memo(function SessionListContent({
 	const focusedWorkspace = focus
 		? workspaces.find((workspace) => workspace.id === focus)
 		: undefined;
-	const emptyLabel = focusedWorkspace ? `No chats in ${focusedWorkspace.name}` : null;
+	const emptyLabel = focusedWorkspace
+		? `No chats in ${focusedWorkspace.name}`
+		: resolvedView.pullRequest !== "all" && !hasMoreThreads
+			? filteredEmptyLabel(resolvedView)
+			: null;
 	const createChatInWorkspace = useCallback(
 		(workspaceId: string) => {
 			useRightPanelStore.getState().clearSession(DRAFT_RIGHT_PANEL_SESSION_KEY);
@@ -432,11 +456,18 @@ export const SessionListContent = memo(function SessionListContent({
 	});
 	useEffect(() => {
 		listRef.current?.scrollTo({ top: 0 });
-	}, [resolvedView.focus, resolvedView.grouping, resolvedView.ordering, resolvedView.status]);
+	}, [
+		resolvedView.focus,
+		resolvedView.grouping,
+		resolvedView.ordering,
+		resolvedView.status,
+		resolvedView.pullRequest,
+	]);
 
 	const viewMenu = (
 		<SessionListViewMenu
 			view={resolvedView}
+			pullRequestFilterAvailable={pullRequestFilterAvailable}
 			onViewChange={(patch) => {
 				updateView(patch);
 				if (patch.focus) setActiveWorkspaceId(patch.focus);

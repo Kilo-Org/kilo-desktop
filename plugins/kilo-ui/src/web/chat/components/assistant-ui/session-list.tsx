@@ -3,9 +3,10 @@
 import { useAuiState } from "@assistant-ui/react";
 import { useMemo, type ComponentType, type FC } from "react";
 
-import { useSdkContributions } from "@kilo-desktop/sdk-react";
+import { useSdk, useSdkContributions } from "@kilo-desktop/sdk-react";
 
 import { useWorkspacesFeature } from "../../../workspaces/WorkspacesFeatureContext.js";
+import { useGitPullRequestStatus } from "../../git-pull-request-status.js";
 import { useSessionActivity } from "../../session-activity/SessionActivityProvider.js";
 import {
 	sessionGitStatusId,
@@ -32,6 +33,7 @@ export const SessionList: FC = () => {
 	);
 	const { workspaces, setActiveWorkspaceId } = useWorkspacesFeature();
 	const metadataProviders = useSdkContributions("kilo-ui/chat-session-metadata-provider");
+	const pullRequestByStatusId = useGitPullRequestStatus(useSdk("kilo-ui"));
 	const prTargets = useMemo(() => {
 		const activeRemoteId = threadItems.find((item) => item.id === mainThreadId)?.remoteId;
 		const byId = new Map<
@@ -74,6 +76,7 @@ export const SessionList: FC = () => {
 				isLoading={isLoading}
 				hasMoreThreads={hasMoreThreads}
 				activityBySessionId={promptAwareActivityBySessionId}
+				pullRequestByStatusId={pullRequestByStatusId}
 				workspaces={workspaces}
 				setActiveWorkspaceId={setActiveWorkspaceId}
 			/>

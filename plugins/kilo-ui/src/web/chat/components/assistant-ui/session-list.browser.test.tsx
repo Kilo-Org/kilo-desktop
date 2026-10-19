@@ -17,6 +17,8 @@ import { createStaticNavigation, type SDK } from "@kilo-desktop/feature-sdk";
 import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 import { SidebarProvider } from "@kilo-desktop/ui/components/sidebar";
 
+import type { GitPullRequestStatusStoreValue } from "@kilo-desktop/plugin-git/contracts";
+
 import { kiloUiChatContract } from "../../../../contracts/chat/schemas.js";
 import {
 	DEFAULT_WORKSPACE_BOARD,
@@ -264,6 +266,7 @@ function renderSessionList({
 	board,
 	path = "/",
 	shell,
+	pullRequests,
 }: {
 	threads: SeededThread[];
 	hydrate?: (store: ReturnType<typeof createSessionActivityStore>) => void;
@@ -280,6 +283,8 @@ function renderSessionList({
 	/** The current route, e.g. the board's to have it open. */
 	path?: string;
 	shell?: Partial<SDK["shell"]>;
+	/** Registers git's pull-request status store, as the git plugin does at boot. */
+	pullRequests?: GitPullRequestStatusStoreValue;
 }) {
 	const adapter = new SeededThreadListAdapter(threads);
 	adapter.hasMorePages = hasMorePages;
@@ -309,6 +314,9 @@ function renderSessionList({
 		featureFlags: workspaceBoardFlags(board !== undefined),
 		...(shell ? { shell } : {}),
 	});
+	const pullRequestStatus = pullRequests
+		? sdk.services.stateBroker.register("git", "pull-request-status", pullRequests)
+		: undefined;
 	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
 	system.getSdk("metadata-probe").contribute("kilo-ui/chat-session-row-metadata", {
 		id: "probe",
@@ -356,6 +364,7 @@ function renderSessionList({
 		openEdit,
 		setActiveWorkspaceId,
 		store,
+		pullRequestStatus,
 		screen: page.elementLocator(result.baseElement),
 		...result,
 	};
@@ -1540,6 +1549,98 @@ describe("SessionList", () => {
 		await expect
 			.element(screen.getByTestId("session-list-workspace-empty-ws-2"))
 			.toHaveTextContent('No chats matching "Working"');
+	});
+
+	describe("pull request filter", () => {
+		const prThreads: SeededThread[] = [
+			{ remoteId: "ses-open", title: "Open PR work" },
+			{ remoteId: "ses-merged", title: "Merged PR work" },
+			{ remoteId: "ses-none", title: "No PR work" },
+		];
+		const hydratePrSessions = (store: ReturnType<typeof createSessionActivityStore>) => {
+			store.getState().hydrateSessions([
+				{ id: "ses-open", workspaceId: "ws-1", worktreeBranch: "kilo/open" },
+				{ id: "ses-merged", workspaceId: "ws-1", worktreeBranch: "kilo/merged" },
+				{ id: "ses-none", workspaceId: "ws-1", worktreeBranch: "kilo/none" },
+			]);
+		};
+		const pullRequests: GitPullRequestStatusStoreValue = {
+			"ws-1:worktree:kilo/open": { state: "open" },
+			"ws-1:worktree:kilo/merged": { state: "merged" },
+		};
+
+		async function pickPullRequestFilter(
+			screen: ReturnType<typeof page.elementLocator>,
+			label: string,
+		) {
+			await screen.getByRole("button", { name: "Session list options" }).click();
+			await page.getByRole("menuitem", { name: /^Pull request/ }).click();
+			await page.getByRole("menuitemradio", { name: label }).click();
+		}
+
+		it("is hidden without the git plugin's pull request status", async () => {
+			storeView({ pullRequest: "open" });
+			const { screen } = renderSessionList({ threads: prThreads, hydrate: hydratePrSessions });
+
+			await expect.element(screen.getByText("No PR work")).toBeVisible();
+			await screen.getByRole("button", { name: "Session list options" }).click();
+			await expect.element(page.getByRole("menuitem", { name: /^Status/ })).toBeVisible();
+			await expect
+				.element(page.getByRole("menuitem", { name: /^Pull request/ }))
+				.not.toBeInTheDocument();
+		});
+
+		it("shows only chats with a pull request, or only open ones", async () => {
+			const { screen } = renderSessionList({
+				threads: prThreads,
+				hydrate: hydratePrSessions,
+				pullRequests,
+			});
+
+			await pickPullRequestFilter(screen, "Any PR");
+			await expect.element(screen.getByText("Open PR work")).toBeVisible();
+			await expect.element(screen.getByText("Merged PR work")).toBeVisible();
+			await expect.element(screen.getByText("No PR work")).not.toBeInTheDocument();
+
+			await page.getByRole("menuitemradio", { name: "Open PR" }).click();
+			await expect.element(screen.getByText("Open PR work")).toBeVisible();
+			await expect.element(screen.getByText("Merged PR work")).not.toBeInTheDocument();
+			expect(JSON.parse(localStorage.getItem(SESSION_LIST_VIEW_STORAGE_KEY) ?? "{}")).toMatchObject(
+				{ pullRequest: "open" },
+			);
+		});
+
+		it("updates as pull request status arrives", async () => {
+			storeView({ pullRequest: "any" });
+			const { screen, pullRequestStatus } = renderSessionList({
+				threads: prThreads,
+				hydrate: hydratePrSessions,
+				pullRequests: {},
+			});
+
+			await expect.element(screen.getByText("No chats with pull requests")).toBeVisible();
+
+			act(() => pullRequestStatus?.set(pullRequests));
+
+			await expect.element(screen.getByText("Open PR work")).toBeVisible();
+			await expect.element(screen.getByText("No PR work")).not.toBeInTheDocument();
+		});
+
+		it("clears with Reset view", async () => {
+			storeView({ pullRequest: "open" });
+			const { screen } = renderSessionList({
+				threads: prThreads,
+				hydrate: hydratePrSessions,
+				pullRequests,
+			});
+
+			await expect.element(screen.getByText("No PR work")).not.toBeInTheDocument();
+			await screen.getByRole("button", { name: "Session list options" }).click();
+			await page.getByRole("menuitem", { name: "Reset view" }).click();
+
+			await expect.element(screen.getByText("No PR work")).toBeVisible();
+			await expect.element(screen.getByText("Merged PR work")).toBeVisible();
+		});
 	});
 
 	it("shows empty workspace headers without the empty-state note while older chats load", async () => {

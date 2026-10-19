@@ -1105,8 +1105,8 @@ importers:
         specifier: 0.5.6
         version: 0.5.6(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@nteract/sift-csv':
-        specifier: 0.1.1-nightly.38500811922
-        version: 0.1.1-nightly.38500811922
+        specifier: 0.1.2
+        version: 0.1.2
       '@pierre/diffs':
         specifier: 'catalog:'
         version: 1.5.2(@shikijs/themes@4.4.2)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -3637,8 +3637,8 @@ packages:
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
 
-  '@nteract/sift-csv@0.1.1-nightly.38500811922':
-    resolution: {integrity: sha512-x+Qq++Xu5LXWq6TqS1bMjSpj3OqOXWE47p4h1kQTC2Cl+aP8gYurIH6JYKFgc04cOLP4wqhCoaXacTTEbFdkyw==}
+  '@nteract/sift-csv@0.1.2':
+    resolution: {integrity: sha512-1bVTdG3h4yEPFm00Ljb9cLeWbndd/v+NmhUY5YUudbNmD76E8BMiLmtHqtsPdLNawiqYnYWpGloF+FQnNhmGSw==}
 
   '@nteract/sift@0.5.6':
     resolution: {integrity: sha512-J+q3e9cQI77d5DadoZvq7LJTS1Vnmi+iVqEN0lBM1lkV3dWrz9yiKNUGbFHiWj/3SKdFdEiehPnKqBUKvbz1Qw==}
@@ -12309,7 +12309,7 @@ snapshots:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.20.1
 
-  '@nteract/sift-csv@0.1.1-nightly.38500811922': {}
+  '@nteract/sift-csv@0.1.2': {}
 
   '@nteract/sift@0.5.6(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:

@@ -28,6 +28,7 @@ import { Button } from "@kilo-desktop/ui/components/button";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@kilo-desktop/ui/components/empty";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
+import { FIND_BAR_FEATURE_FLAG, FindScope } from "@kilo-desktop/ui/components/find-bar";
 
 import { ChatLocationBreadcrumb, ChatSessionBreadcrumb } from "./ChatSessionBreadcrumb.js";
 import { DetachedWindowLayout } from "./DetachedWindowLayout.js";
@@ -159,10 +160,19 @@ const ChatThreadSurface = memo(function ChatThreadSurface({
 	sessionId,
 	workspaceFolders,
 }: ChatMarkdownExtensionContext) {
+	const findEnabled = useFeatureFlag(FIND_BAR_FEATURE_FLAG, false);
 	return (
 		<PaneSessionProvider sessionId={sessionId}>
 			<ChatMarkdownProvider sessionId={sessionId} workspaceFolders={workspaceFolders}>
-				<Thread />
+				<FindScope
+					enabled={findEnabled}
+					className="flex min-h-0 flex-1 flex-col"
+					searchRootSelector='[data-slot="aui_message-group"]'
+					qaPrefix="chat-find"
+					placeholder="Find in transcript"
+				>
+					<Thread />
+				</FindScope>
 			</ChatMarkdownProvider>
 		</PaneSessionProvider>
 	);

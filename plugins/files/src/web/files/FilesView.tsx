@@ -13,7 +13,8 @@ import { type Editor, type EditorOptions } from "@pierre/diffs/edit";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-import { useSdk } from "@kilo-desktop/sdk-react";
+import { useFeatureFlag, useSdk } from "@kilo-desktop/sdk-react";
+import { FIND_BAR_FEATURE_FLAG, FindScope } from "@kilo-desktop/ui/components/find-bar";
 import { Toggle } from "@kilo-desktop/ui/components/toggle";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Button } from "@kilo-desktop/ui/components/button";
@@ -186,6 +187,7 @@ export function FilesView({
 	const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 	const [selectionSyncVersion, setSelectionSyncVersion] = useState(0);
 	const appearance = useSyncExternalStore(sdk.theme.subscribe, sdk.theme.appearance);
+	const findEnabled = useFeatureFlag(FIND_BAR_FEATURE_FLAG, false);
 	const editorRef = useRef<Editor<"file", undefined, undefined> | null>(null);
 	const [chosenMode, setChosenMode] = useState<{
 		readonly document: string;
@@ -853,13 +855,21 @@ export function FilesView({
 								<TableViewer fileName={basename(selectedPath)} source={binarySource} />
 							) : file?.kind === "text" && selectedPath ? (
 								renderMarkdown && isMarkdown(selectedPath) ? (
-									<MarkdownPreview
-										contents={draft}
-										onOpenFile={openFileFromTree}
-										read={readForMarkdown}
-										relativePath={selectedPath}
-										workspaceDirectory={documentWorkspaceDirectory ?? activeWorkspaceDirectory}
-									/>
+									<FindScope
+										enabled={findEnabled}
+										className="flex min-h-0 flex-1 flex-col"
+										searchRootSelector='[data-qa-id="files-markdown-preview"]'
+										qaPrefix="files-find"
+										placeholder="Find in file"
+									>
+										<MarkdownPreview
+											contents={draft}
+											onOpenFile={openFileFromTree}
+											read={readForMarkdown}
+											relativePath={selectedPath}
+											workspaceDirectory={documentWorkspaceDirectory ?? activeWorkspaceDirectory}
+										/>
+									</FindScope>
 								) : (
 									<FileEditor
 										contents={draft}

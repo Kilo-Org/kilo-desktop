@@ -12,6 +12,7 @@ import {
 	type SDK,
 } from "@kilo-desktop/feature-sdk";
 import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
+import { FIND_BAR_FEATURE_FLAG } from "@kilo-desktop/ui/components/find-bar";
 import { SidebarProvider } from "@kilo-desktop/ui/components/sidebar";
 
 import type * as AssistantUiReact from "@assistant-ui/react";
@@ -693,6 +694,53 @@ describe("chat layout presets", () => {
 		});
 		await expect.element(screen.getByTestId("chat-layouts-menu")).not.toBeInTheDocument();
 		expect(useRightPanelStore.getState().bySessionId.draft?.arrangement).toBe("carousel");
+	});
+
+	describe("transcript find behind the searchbar-windows-panels flag", () => {
+		function findFlags(enabled: boolean): SDK["featureFlags"] {
+			const flags = { "chat-layouts": true, [FIND_BAR_FEATURE_FLAG]: enabled };
+			return {
+				getAllFlags: async () => flags,
+				peek: () => flags,
+				subscribe: (listener) => {
+					listener(flags);
+					return () => undefined;
+				},
+			};
+		}
+
+		function pressFindChord(): KeyboardEvent {
+			const modifier = navigator.platform.startsWith("Mac") ? "metaKey" : "ctrlKey";
+			const event = new KeyboardEvent("keydown", {
+				key: "f",
+				[modifier]: true,
+				bubbles: true,
+				cancelable: true,
+			});
+			window.dispatchEvent(event);
+			return event;
+		}
+
+		it("opens the transcript find bar on the chord when the flag is on", async () => {
+			const { baseElement } = renderChatPage({ featureFlags: findFlags(true) });
+			const screen = page.elementLocator(baseElement);
+			await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
+
+			pressFindChord();
+
+			await expect.element(screen.getByTestId("chat-find-bar")).toBeVisible();
+		});
+
+		it("leaves the chord alone while the flag is off", async () => {
+			const { baseElement } = renderChatPage({ featureFlags: findFlags(false) });
+			const screen = page.elementLocator(baseElement);
+			await expect.element(screen.getByTestId("kilo-chat-thread-mock")).toBeVisible();
+
+			const event = pressFindChord();
+
+			expect(event.defaultPrevented).toBe(false);
+			expect(baseElement.querySelector("[data-find-scope]")).toBeNull();
+		});
 	});
 
 	it("saves the current layout from the pane canvas header", async () => {

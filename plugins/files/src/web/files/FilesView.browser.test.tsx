@@ -9,6 +9,7 @@ import {
 } from "@kilo-desktop/feature-sdk";
 import { SdkProvider } from "@kilo-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
+import { FIND_BAR_FEATURE_FLAG } from "@kilo-desktop/ui/components/find-bar";
 
 import { filesContract, type FilesServiceContract } from "../../contracts/schemas.js";
 import { FilesView, type FilesViewProps } from "./FilesView.js";
@@ -66,11 +67,22 @@ function openedFileCall(
 	];
 }
 
+function staticFlags(flags: Record<string, unknown>) {
+	return {
+		peek: () => flags,
+		subscribe: (listener: (value: Record<string, unknown>) => void) => {
+			listener(flags);
+			return () => undefined;
+		},
+	};
+}
+
 function renderView(
 	handlers: FilesServiceContract,
 	props: Partial<FilesViewProps> = {},
 	panel: Record<string, unknown> = {},
 	width = 900,
+	flags: Record<string, unknown> = {},
 ) {
 	const track = vi.fn(async (_input: { event: string; data: Record<string, unknown> }) => {});
 	const sdk = createFakeSdk({
@@ -78,6 +90,7 @@ function renderView(
 		channels: filesContract,
 		handlers,
 		telemetry: { track },
+		featureFlags: staticFlags(flags),
 	});
 	const system = createFakeFeatureSystem({ sdks: { files: sdk } });
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -1598,6 +1611,54 @@ describe("FilesView", () => {
 			expect(openContributedTab).toHaveBeenCalledWith(...openedFileCall("src/index.ts")),
 		);
 		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("docs/readme.md");
+	});
+
+	describe("Markdown preview find", () => {
+		const readme: FilesServiceContract["read"] = async () => ({
+			kind: "text",
+			contents: "# Read me\n\nInstall the deps, then install the app.",
+			byteLength: 52,
+			truncated: false,
+			revision: "a".repeat(64),
+		});
+
+		async function openPreview(flags: Record<string, unknown>) {
+			renderView({ ...handlers(), read: readme }, filePane("docs/readme.md"), {}, 900, flags);
+			await page.getByTestId("files-markdown-toggle").click();
+			await expect.element(page.getByTestId("files-markdown-preview")).toBeVisible();
+		}
+
+		function pressFindChord(): KeyboardEvent {
+			const modifier = navigator.platform.startsWith("Mac") ? "metaKey" : "ctrlKey";
+			const event = new KeyboardEvent("keydown", {
+				key: "f",
+				[modifier]: true,
+				bubbles: true,
+				cancelable: true,
+			});
+			window.dispatchEvent(event);
+			return event;
+		}
+
+		it("finds text in the preview with the find chord", async () => {
+			await openPreview({ [FIND_BAR_FEATURE_FLAG]: true });
+
+			pressFindChord();
+			await page.getByTestId("files-find-input").fill("install");
+
+			await vi.waitFor(() =>
+				expect(document.querySelector('[data-qa-id="files-find-count"]')?.textContent).toBe("1/2"),
+			);
+		});
+
+		it("leaves the chord alone while the searchbar flag is off", async () => {
+			await openPreview({});
+
+			const event = pressFindChord();
+
+			expect(event.defaultPrevented).toBe(false);
+			expect(document.querySelector("[data-find-scope]")).toBeNull();
+		});
 	});
 
 	it("loads workspace-relative Markdown images and leaves fragment links in the preview", async () => {

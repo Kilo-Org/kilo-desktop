@@ -4,6 +4,8 @@ import { CircleAlertIcon } from "lucide-react";
 
 import { Alert, AlertTitle } from "@kilo-desktop/ui/components/alert";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@kilo-desktop/ui/components/empty";
+import { useFeatureFlag } from "@kilo-desktop/sdk-react";
+import { FIND_BAR_FEATURE_FLAG, FindScope } from "@kilo-desktop/ui/components/find-bar";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 
 import { ApprovePlanButton } from "../plan/ApprovePlanButton.js";
@@ -63,6 +65,7 @@ const PlanTabContent: FC<{
 	planThread: ReturnType<typeof usePlanThreadProjection>;
 	sessionId: string;
 }> = ({ projection, planThread, sessionId }) => {
+	const findEnabled = useFeatureFlag(FIND_BAR_FEATURE_FLAG, false);
 	const { approve, submitting, approved } = useApprovePlan({
 		fallbackApprovalScope: `${sessionId}:${projection.anchorCallId}`,
 	});
@@ -74,7 +77,15 @@ const PlanTabContent: FC<{
 		projection.status === "ready" && isCurrentPlanVersion(planThread, projection.anchorCallId);
 
 	return (
-		<div className="flex min-h-0 flex-1 flex-col" data-qa-id="chat-pane-plan">
+		<FindScope
+			enabled={findEnabled}
+			className="flex min-h-0 flex-1 flex-col"
+			data-qa-id="chat-pane-plan"
+			searchRootSelector='[data-qa-id="chat-pane-plan-body"]'
+			qaPrefix="plan-find"
+			placeholder="Find in plan"
+			barClassName="top-14"
+		>
 			<div className="flex h-11 shrink-0 items-center gap-3 px-4">
 				<p className="min-w-0 flex-1 truncate text-sm font-medium">{title}</p>
 				<ApprovePlanButton
@@ -87,7 +98,7 @@ const PlanTabContent: FC<{
 					approvedQaId="chat-pane-plan-approved"
 				/>
 			</div>
-			<div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+			<div className="min-h-0 flex-1 overflow-y-auto px-4 py-4" data-qa-id="chat-pane-plan-body">
 				{isLoading && !markdown ? (
 					<Empty>
 						<EmptyHeader>
@@ -106,6 +117,6 @@ const PlanTabContent: FC<{
 				) : null}
 				{body ? <PlanMarkdown text={body} /> : null}
 			</div>
-		</div>
+		</FindScope>
 	);
 };

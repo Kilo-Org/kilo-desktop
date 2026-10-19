@@ -90,7 +90,7 @@ export function MarkdownPreview({
 	);
 	return (
 		<MarkdownContent
-			className="max-w-none overflow-auto px-6 py-5"
+			className="min-h-0 max-w-none flex-1 overflow-auto px-6 py-5"
 			components={{
 				img: ({ alt, src }) => (
 					<MarkdownImage

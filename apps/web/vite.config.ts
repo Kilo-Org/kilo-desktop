@@ -60,7 +60,13 @@ export default defineConfig({
 			org: "anaconda-nq",
 			project: "kilo-desktop",
 			...(uploadSourcemaps && {
-				sourcemaps: { filesToDeleteAfterUpload: ["**/*.map"] },
+				// Absolute and rooted at `dist/`: Sentry resolves a relative glob
+				// against the process cwd, so a bare `**/*.map` would sweep the
+				// whole repo if the build ever ran from the root. Forward slashes
+				// because glob treats `\` as an escape on Windows hosts.
+				sourcemaps: {
+					filesToDeleteAfterUpload: [`${root.replaceAll("\\", "/")}/dist/**/*.map`],
+				},
 			}),
 		}),
 	],

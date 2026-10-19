@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -32,6 +32,20 @@ function makePackage(nodeModules: string, packageName: string, files: string[] =
 	return packageDirectory;
 }
 
+// Mirrors the real workspace: scoped plugins, a package published under a
+// third-party name (the opencode SDK shim), and one that is never deployed.
+const workspacePackageNames = [
+	"@kilo-desktop/contracts",
+	"@kilo-desktop/e2e",
+	"@kilo-desktop/plugin-notebook",
+	"@kilo-desktop/plugin-todos",
+	"@opencode-ai/sdk",
+];
+
+function prune(nodeModules: string): Promise<void> {
+	return pruneProductionDependencies(nodeModules, workspacePackageNames);
+}
+
 describe("pruneProductionDependencies", () => {
 	it("removes the bridge payload for whichever platform was installed", async () => {
 		// The payload is an os/cpu-gated optionalDependency, so the package name
@@ -49,7 +63,7 @@ describe("pruneProductionDependencies", () => {
 				"manifest.json",
 			]);
 
-			await pruneProductionDependencies(nodeModules);
+			await prune(nodeModules);
 
 			expect(existsSync(payloadDirectory)).toBe(false);
 		}
@@ -60,7 +74,7 @@ describe("pruneProductionDependencies", () => {
 		const unrelated = makePackage(nodeModules, "@anaconda/some-runtime-dependency");
 		const payload = makePackage(nodeModules, "@anaconda/desktop-bridge-payload-linux-x64");
 
-		await pruneProductionDependencies(nodeModules);
+		await prune(nodeModules);
 
 		expect(existsSync(unrelated)).toBe(true);
 		expect(existsSync(payload)).toBe(false);
@@ -76,7 +90,7 @@ describe("pruneProductionDependencies", () => {
 		].map((packageName) => makePackage(nodeModules, `@kilocode/${packageName}`));
 		const kept = makePackage(nodeModules, "@kilocode/cli");
 
-		await pruneProductionDependencies(nodeModules);
+		await prune(nodeModules);
 
 		for (const directory of staged) {
 			expect(existsSync(directory)).toBe(false);
@@ -103,35 +117,101 @@ describe("pruneProductionDependencies", () => {
 		const modulesManifest = path.join(nodeModules, ".modules.yaml");
 		writeFileSync(modulesManifest, "{}");
 
-		await pruneProductionDependencies(nodeModules);
+		await prune(nodeModules);
 
 		expect(existsSync(store)).toBe(false);
 		expect(existsSync(modulesManifest)).toBe(false);
 		expect(existsSync(path.join(hoisted, "dist", "index.js"))).toBe(true);
 	});
 
-	it("strips non-runtime directories from workspace packages", async () => {
+	it("strips source, tests, configs and docs from workspace packages", async () => {
+		// Workspace packages are bundled into main.js, so their TypeScript is
+		// dead weight that only discloses source when app.asar is extracted.
 		const nodeModules = makeNodeModules();
-		const packageDirectory = makePackage(nodeModules, "@kilo-desktop/plugin-environments", [
+		const packageDirectory = makePackage(nodeModules, "@kilo-desktop/plugin-notebook", [
+			".gitignore",
 			".turbo/log.txt",
 			".vitest/results.json",
+			"actions/setup-native/action.yml",
 			"coverage/index.html",
+			"docs/handoff.md",
 			"e2e/spec.ts",
-			"dist/index.js",
+			"README.md",
+			"scripts/fetch.ts",
+			"src/main/index.ts",
+			"src/main/index.test.ts",
+			"tsconfig.json",
+			"vitest.config.ts",
 		]);
 
-		await pruneProductionDependencies(nodeModules);
+		await prune(nodeModules);
 
-		for (const directory of [".turbo", ".vitest", "coverage", "e2e"]) {
-			expect(existsSync(path.join(packageDirectory, directory))).toBe(false);
+		expect(readdirSync(packageDirectory)).toEqual(["package.json"]);
+	});
+
+	it("keeps the runtime assets workspace packages resolve at runtime", async () => {
+		const nodeModules = makeNodeModules();
+		const runtimeEntries = [
+			"build/terminal/index.html",
+			"dist/index.js",
+			"drizzle/0000_init.sql",
+			"drizzle/meta/_journal.json",
+			"LICENSE",
+			"node_modules/picomatch/index.js",
+			"plugin.json",
+			"THIRD_PARTY_NOTICES.md",
+		];
+		const packageDirectory = makePackage(nodeModules, "@kilo-desktop/plugin-todos", [
+			...runtimeEntries,
+			"src/main/db.ts",
+		]);
+
+		await prune(nodeModules);
+
+		for (const entry of ["package.json", ...runtimeEntries]) {
+			expect(existsSync(path.join(packageDirectory, entry))).toBe(true);
 		}
-		expect(existsSync(path.join(packageDirectory, "dist", "index.js"))).toBe(true);
+		expect(existsSync(path.join(packageDirectory, "src"))).toBe(false);
+	});
+
+	it("prunes workspace packages deployed under a non-workspace scope", async () => {
+		// The opencode SDK shim is a workspace package published as
+		// `@opencode-ai/sdk`, so scope alone cannot identify our packages.
+		const nodeModules = makeNodeModules();
+		const shim = makePackage(nodeModules, "@opencode-ai/sdk", [
+			"src/v2/client.ts",
+			"tsconfig.json",
+		]);
+
+		await prune(nodeModules);
+
+		expect(readdirSync(shim)).toEqual(["package.json"]);
+	});
+
+	it("skips workspace packages that were not deployed and stray scope files", async () => {
+		const nodeModules = makeNodeModules();
+		const packageDirectory = makePackage(nodeModules, "@kilo-desktop/contracts", ["src/index.ts"]);
+		writeFileSync(path.join(nodeModules, "@kilo-desktop", ".DS_Store"), "");
+
+		await prune(nodeModules);
+
+		expect(readdirSync(packageDirectory)).toEqual(["package.json"]);
+	});
+
+	it("leaves third-party package contents untouched", async () => {
+		const nodeModules = makeNodeModules();
+		const thirdParty = makePackage(nodeModules, "zod", ["src/index.ts", "README.md"]);
+
+		await prune(nodeModules);
+
+		expect(existsSync(path.join(thirdParty, "src", "index.ts"))).toBe(true);
+		expect(existsSync(path.join(thirdParty, "README.md"))).toBe(true);
 	});
 
 	it("is a no-op when the scopes are absent", async () => {
 		const nodeModules = makeNodeModules();
 		mkdirSync(nodeModules, { recursive: true });
 
-		await expect(pruneProductionDependencies(nodeModules)).resolves.toBeUndefined();
+		await expect(prune(nodeModules)).resolves.toBeUndefined();
 	});
 });

@@ -88,7 +88,9 @@ describe("packaged production dependencies", () => {
 
 	it("moves the staged production dependency tree into the package", () => {
 		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
-		expect(forge).toContain("await pruneProductionDependencies(stagedNodeModules)");
+		expect(forge).toContain(
+			"await pruneProductionDependencies(stagedNodeModules, workspacePackageNames)",
+		);
 		expect(forge).toContain("await moveDirectory(stagedNodeModules, packagedNodeModules)");
 	});
 
@@ -116,7 +118,7 @@ describe("packaged production dependencies", () => {
 		await mkdir(windowsBridgePayload, { recursive: true });
 		await mkdir(kiloCli, { recursive: true });
 
-		await pruneProductionDependencies(nodeModules);
+		await pruneProductionDependencies(nodeModules, ["@kilo-desktop/plugin-example"]);
 
 		for (const directory of [".turbo", ".vitest", "coverage", "e2e"]) {
 			expect(existsSync(path.join(packageRoot, directory))).toBe(false);
@@ -137,7 +139,7 @@ describe("packaged production dependencies", () => {
 		);
 		await mkdir(bridgePayload, { recursive: true });
 
-		await pruneProductionDependencies(nodeModules);
+		await pruneProductionDependencies(nodeModules, []);
 
 		expect(existsSync(bridgePayload)).toBe(false);
 	});
@@ -223,6 +225,22 @@ describe("packaged production dependencies", () => {
 		expect(beforeAsar).toContain("stageWebRenderer");
 		expect(beforeAsar).toContain("stageProductionDependencies");
 		expect(forge).not.toContain("packageAfterCopy:");
+	});
+
+	it("checks for shipped source after every staging step, before ASAR is sealed", () => {
+		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
+		const beforeAsar = forge.slice(forge.indexOf("beforeAsar:"), forge.indexOf("win32metadata:"));
+		const guard = beforeAsar.indexOf(
+			"await assertNoShippedSource(buildPath, workspacePackageNames)",
+		);
+		expect(guard).toBeGreaterThan(-1);
+		for (const step of [
+			"stageWebRenderer",
+			"stageProductionDependencies",
+			"ensureNodePtySpawnHelpersExecutable",
+		]) {
+			expect(beforeAsar.indexOf(step)).toBeLessThan(guard);
+		}
 	});
 
 	it("stages and unpacks the terminal plugin's node-pty native runtime", () => {

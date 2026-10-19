@@ -1,7 +1,27 @@
 import { readdir, rm } from "node:fs/promises";
 import path from "node:path";
 
-const nonRuntimePackageDirectories = [".turbo", ".vitest", "coverage", "e2e"] as const;
+// Workspace packages are bundled into main.js (and the renderer), so the copy
+// in node_modules only needs what is resolved from disk at runtime: the
+// manifest and `plugin.json` anchor `bundledPluginAssetResolver`, `drizzle/`
+// holds migrations, `build/` holds prebuilt plugin UIs, `node_modules/` holds
+// nested third-party deps, plus license notices. Everything else — notably
+// `src/`, tests, configs and internal docs — would only disclose source to
+// anyone who extracts app.asar. An allowlist keeps new top-level folders from
+// shipping by default, whether they arrive via `pnpm deploy` or the
+// linked-plugin copy in forge.config.ts. Workspace packages are identified by
+// the caller's workspace listing, not by scope: some ship under third-party
+// names (the `@opencode-ai/sdk` shim).
+const workspacePackageRuntimeEntries = new Set([
+	"build",
+	"dist",
+	"drizzle",
+	"node_modules",
+	"package.json",
+	"plugin.json",
+	"THIRD_PARTY_NOTICES.md",
+]);
+const licenseFilePattern = /^(LICENSE|LICENCE|NOTICE)(\..+)?$/i;
 const pnpmStoreArtifacts = [".pnpm", ".modules.yaml"] as const;
 const stagedKiloCliPackages = [
 	"cli-darwin-arm64",
@@ -11,19 +31,13 @@ const stagedKiloCliPackages = [
 	"cli-windows-x64-baseline",
 ] as const;
 
-export async function pruneProductionDependencies(nodeModules: string): Promise<void> {
-	const workspacePackages = path.join(nodeModules, "@kilo-desktop");
-	let packageNames: string[] = [];
-	try {
-		packageNames = await readdir(workspacePackages);
-	} catch (error) {
-		if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-	}
+export async function pruneProductionDependencies(
+	nodeModules: string,
+	workspacePackageNames: readonly string[],
+): Promise<void> {
 	await Promise.all(
-		packageNames.flatMap((packageName) =>
-			nonRuntimePackageDirectories.map((directory) =>
-				rm(path.join(workspacePackages, packageName, directory), { force: true, recursive: true }),
-			),
+		workspacePackageNames.map((packageName) =>
+			pruneWorkspacePackage(path.join(nodeModules, packageName)),
 		),
 	);
 
@@ -50,6 +64,24 @@ export async function pruneProductionDependencies(nodeModules: string): Promise<
 		stagedKiloCliPackages.map((packageName) =>
 			rm(path.join(nodeModules, "@kilocode", packageName), { force: true, recursive: true }),
 		),
+	);
+}
+
+async function pruneWorkspacePackage(packageDirectory: string): Promise<void> {
+	let entries: string[];
+	try {
+		entries = await readdir(packageDirectory);
+	} catch (error) {
+		// Not every workspace package is a production dependency of desktop.
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+		throw error;
+	}
+	await Promise.all(
+		entries
+			.filter(
+				(entry) => !workspacePackageRuntimeEntries.has(entry) && !licenseFilePattern.test(entry),
+			)
+			.map((entry) => rm(path.join(packageDirectory, entry), { force: true, recursive: true })),
 	);
 }
 

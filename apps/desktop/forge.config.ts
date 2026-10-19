@@ -29,6 +29,8 @@ import { getWindowsPackagingTempDirectory } from "./config/windows-packaging-tem
 import { signWindowsFile } from "./config/windows-sign.js";
 import { bundleVcRuntime, createVisualStudioRedistLocator } from "./config/windows-vc-runtime.js";
 import { pruneProductionDependencies } from "./config/prune-production-dependencies.js";
+import { assertNoShippedSource } from "./config/assert-no-shipped-source.js";
+import { listWorkspacePackageNames } from "./config/workspace-packages.js";
 import { createNotebookPackagingPlan } from "@kilo-desktop/plugin-notebook/packaging";
 import { createBridgePackagingPlan } from "@kilo-desktop/plugin-environments/packaging";
 import { ensureNodePtySpawnHelpersExecutable } from "@kilo-desktop/plugin-terminal/packaging";
@@ -116,7 +118,10 @@ function updateFeed(platform: string, arch: string): string | undefined {
 	return getUpdateFeedUrl({ publishUrl, track, platform, arch });
 }
 
-async function stageProductionDependencies(buildPath: string): Promise<void> {
+async function stageProductionDependencies(
+	buildPath: string,
+	workspacePackageNames: readonly string[],
+): Promise<void> {
 	const stagingDirectory = await mkdtemp(path.join(workspaceRoot, ".kilo-desktop-production-"));
 	const linkedDependencies = [
 		{
@@ -213,7 +218,7 @@ async function stageProductionDependencies(buildPath: string): Promise<void> {
 			});
 		}
 		const stagedNodeModules = path.join(stagingDirectory, "node_modules");
-		await pruneProductionDependencies(stagedNodeModules);
+		await pruneProductionDependencies(stagedNodeModules, workspacePackageNames);
 		const packagedNodeModules = path.join(buildPath, "node_modules");
 		await moveDirectory(stagedNodeModules, packagedNodeModules);
 		// pnpm deploy creates `.bin` directories (top-level and nested inside
@@ -294,14 +299,16 @@ const config: ForgeConfig = {
 		},
 		beforeAsar: [
 			async ({ buildPath, platform, arch }) => {
+				const workspacePackageNames = await listWorkspacePackageNames(workspaceRoot);
 				await stampPackagedAppVersion(buildPath, appVersion);
 				await stageWebRenderer(buildPath, webDistDirectory);
-				await stageProductionDependencies(buildPath);
+				await stageProductionDependencies(buildPath, workspacePackageNames);
 				await ensureNodePtySpawnHelpersExecutable(
 					path.join(buildPath, "node_modules", "node-pty"),
 					platform,
 					arch,
 				);
+				await assertNoShippedSource(buildPath, workspacePackageNames);
 			},
 		],
 		win32metadata: {

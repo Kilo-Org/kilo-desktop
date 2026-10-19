@@ -57,7 +57,14 @@ export default defineConfig(({ command }) => {
 					},
 				},
 				...(uploadSourcemaps && {
-					sourcemaps: { filesToDeleteAfterUpload: ["**/*.map"] },
+					// Absolute and rooted at `.vite/`: Sentry globs this without
+					// `dot: true`, so a bare `**/*.map` never descends into the
+					// dot-prefixed Forge output and the map (with full
+					// `sourcesContent`) shipped inside app.asar. Forward slashes
+					// because glob treats `\` as an escape on Windows hosts.
+					sourcemaps: {
+						filesToDeleteAfterUpload: [`${root.replaceAll("\\", "/")}/.vite/build/**/*.map`],
+					},
 				}),
 			}),
 		],

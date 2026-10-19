@@ -26,10 +26,10 @@ import {
 const directories: string[] = [];
 
 const NIGHTLY_RELEASE = {
-	tag: "v2.8.1-nightly.202610070906",
-	version: "2.8.1-nightly.202610070906",
+	tag: "v2.8.6-nightly.202610190909",
+	version: "2.8.6-nightly.202610190909",
 	channel: "nightly",
-	commit: "217d6fe019133b96138678b4184bd4b62aafc3ab",
+	commit: "488928b6765e7c5513fdbcd5e28f433f039fb05c",
 	repository: "https://github.com/nteract/nteract.git",
 } as const;
 

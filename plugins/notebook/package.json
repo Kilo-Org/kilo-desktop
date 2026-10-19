@@ -28,7 +28,7 @@
 		"lucide-react": "catalog:"
 	},
 	"peerDependencies": {
-		"@runtimed/node": "0.6.1-nightly.37598349389",
+		"@runtimed/node": "0.6.6-nightly.39227923380",
 		"@kilo-desktop/feature-sdk": "^0.1.0",
 		"@kilo-desktop/sdk-react": "^0.1.0",
 		"@kilo-desktop/ui": "^0.1.0",
@@ -61,7 +61,7 @@
 		"@kilo-desktop/testing": "workspace:*",
 		"@kilo-desktop/ui": "workspace:*",
 		"@anaconda/playwright-utils": "2.1.0",
-		"@runtimed/node": "0.6.1-nightly.37598349389",
+		"@runtimed/node": "0.6.6-nightly.39227923380",
 		"@playwright/test": "catalog:",
 		"@tailwindcss/vite": "^4.3.3",
 		"@tanstack/react-query": "^5.101.4",

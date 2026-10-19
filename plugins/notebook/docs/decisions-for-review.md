@@ -43,7 +43,7 @@ MessagePort exclusively.
 
 - Bundle the `runtimed` daemon and published notebook UI archive from the pinned nteract release,
   plus a direct Kilo tool plugin using `@runtimed/node` against the same singleton endpoint.
-- Depend on the exact registry release `@runtimed/node@0.6.1-nightly.37598349389`, built from the
+- Depend on the exact registry release `@runtimed/node@0.6.6-nightly.39227923380`, built from the
   same nteract commit as the pinned daemon. Do not vendor, source-build, or use a Git dependency
   for the Electron adapter.
 - Reuse a compatible running singleton; only start the bundled daemon when the canonical endpoint

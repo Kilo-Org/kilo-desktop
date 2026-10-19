@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
 	classifyReleaseDownload,
+	classifyReleaseNote,
 	extractReleaseNoteItems,
+	findPreviousTrackTag,
+	groupGeneratedReleaseNotes,
 	getTrackReleaseName,
 	getTrackReleaseTag,
 	getTrackReleaseVersionFromTag,
@@ -67,6 +70,142 @@ describe("track release publishing", () => {
 			"Keep issue 42 visible",
 			"Faster startup",
 		]);
+	});
+
+	it("removes pull-request references credited to bot authors", () => {
+		const sanitized = sanitizeGeneratedReleaseNotes(
+			"* chore(deps): update pnpm to v12.10.1 by @anaconda-renovate[bot] in https://github.com/acme/app/pull/630",
+		);
+		expect(sanitized).toBe("* chore(deps): update pnpm to v12.10.1");
+	});
+
+	it("removes internal ticket ids from release-note items", () => {
+		const markdown = [
+			"## What's Changed",
+			"* [DESK-3108]fix: transient directory EPERM - Windows",
+			"* [DESK-3129] Keep the workspace file tree resilient",
+			"* DESK-3122: serve agent tools from the main process",
+			"* DESK-3129 fix(files): keep the tree resilient",
+			"* [DESK-1] [DESK-2] feat: two tickets",
+			"* fix: retry the send (DESK-42)",
+			"* fix: retry the send [DESK-43]",
+			"* fix: keep UTF-8 names and HTTP-2 support",
+		].join("\n");
+		expect(extractReleaseNoteItems(sanitizeGeneratedReleaseNotes(markdown))).toEqual([
+			"fix: transient directory EPERM - Windows",
+			"Keep the workspace file tree resilient",
+			"serve agent tools from the main process",
+			"fix(files): keep the tree resilient",
+			"feat: two tickets",
+			"fix: retry the send",
+			"fix: retry the send",
+			"fix: keep UTF-8 names and HTTP-2 support",
+		]);
+	});
+
+	it("groups generated notes into Features, Fixes, Dependencies, then Other", () => {
+		const markdown = [
+			"## What's Changed",
+			"* chore(codeowners): give QA ownership of e2e by @ada in https://github.com/acme/app/pull/1",
+			"* fix(files): reopen the file pane by @ada in https://github.com/acme/app/pull/2",
+			"* chore(deps): update pnpm to v12.10.1 by @anaconda-renovate[bot] in https://github.com/acme/app/pull/3",
+			"* feat(shell): reveal the app log by @grace in https://github.com/acme/app/pull/4",
+			"* Forward bridge Sentry DSN by @grace in https://github.com/acme/app/pull/5",
+			"* feat(kilo-ui): play sounds by @ada in https://github.com/acme/app/pull/6",
+			"",
+			"## New Contributors",
+			"* @grace made their first contribution in https://github.com/acme/app/pull/4",
+			"",
+			"**Full Changelog**: https://github.com/acme/app/compare/v1...v2",
+		].join("\n");
+
+		expect(sanitizeGeneratedReleaseNotes(groupGeneratedReleaseNotes(markdown))).toBe(
+			[
+				"## What's Changed",
+				"",
+				"### Features",
+				"* feat(shell): reveal the app log",
+				"* feat(kilo-ui): play sounds",
+				"",
+				"### Fixes",
+				"* fix(files): reopen the file pane",
+				"",
+				"### Dependencies",
+				"* chore(deps): update pnpm to v12.10.1",
+				"",
+				"### Other",
+				"* chore(codeowners): give QA ownership of e2e",
+				"* Forward bridge Sentry DSN",
+				"",
+				"## New Contributors",
+				"* @grace made their first contribution in https://github.com/acme/app/pull/4",
+				"",
+				"**Full Changelog**: https://github.com/acme/app/compare/v1...v2",
+			].join("\n"),
+		);
+	});
+
+	it("orders app items by section so features survive the item cap", () => {
+		const grouped = groupGeneratedReleaseNotes(
+			[
+				"## What's Changed",
+				"* test: cover handshake",
+				"* fix: retry send",
+				"* feat: pin chats",
+			].join("\n"),
+		);
+		expect(extractReleaseNoteItems(grouped)).toEqual([
+			"feat: pin chats",
+			"fix: retry send",
+			"test: cover handshake",
+		]);
+	});
+
+	it("leaves notes without a What's Changed list untouched", () => {
+		const markdown = "**Full Changelog**: https://github.com/acme/app/compare/v1...v2";
+		expect(groupGeneratedReleaseNotes(markdown)).toBe(markdown);
+	});
+
+	it.each([
+		["feat(marketplace): show the MCP command", "Features"],
+		["feat!: drop legacy config", "Features"],
+		["fix: transient EPERM", "Fixes"],
+		["[DESK-3108]fix: transient directory EPERM - Windows", "Fixes"],
+		["DESK-3129 fix(files): keep the tree resilient", "Fixes"],
+		["chore(deps): update electron version", "Dependencies"],
+		["fix(deps): update dependency koffi to v3.3.3", "Dependencies"],
+		["chore(deps-dev): bump vitest", "Dependencies"],
+		["fix(e2e): exclude .kilo worktrees from discovery", "Other"],
+		["feat(ci): cache pnpm store", "Other"],
+		["test(notebook): cover the port handshake", "Other"],
+		["chore: bump anaconda-desktop-bridge to 0.1.17", "Other"],
+		["DESK-3122: serve agent tools from the main process", "Other"],
+		["Enable conda bridge error reporting", "Other"],
+	] as const)("classifies %j as %s", (title, section) => {
+		expect(classifyReleaseNote(title)).toBe(section);
+	});
+
+	it("classifies dependency-bot pull requests as Dependencies regardless of title", () => {
+		expect(
+			classifyReleaseNote("update actions/upload-artifact action to v7", "renovate[bot]"),
+		).toBe("Dependencies");
+		expect(classifyReleaseNote("Bump koffi", "dependabot[bot]")).toBe("Dependencies");
+	});
+
+	it("finds the previous release on the same track, skipping newer and other-track tags", () => {
+		const newestFirst = [
+			"v0.1.13-preview-261015-21043",
+			"v0.1.12",
+			"v0.1.12-preview-261015-18064",
+			"v0.1.11",
+			"v0.1.10",
+		];
+		expect(findPreviousTrackTag(newestFirst, "stable", "v0.1.12")).toBe("v0.1.11");
+		expect(findPreviousTrackTag(newestFirst, "stable", "v0.1.13")).toBe("v0.1.12");
+		expect(findPreviousTrackTag(newestFirst, "preview", "v0.1.13-preview-261015-21043")).toBe(
+			"v0.1.12-preview-261015-18064",
+		);
+		expect(findPreviousTrackTag(newestFirst, "stable", "v0.1.10")).toBeUndefined();
 	});
 
 	it("excludes contributor and changelog boilerplate from app items", () => {

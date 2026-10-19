@@ -2,6 +2,7 @@ import { autoUpdater, type FeedURLOptions } from "electron";
 
 import {
 	desktopReleaseNotesSchema,
+	MAX_VISIBLE_RELEASE_NOTE_ITEMS,
 	type DesktopReleaseNotes,
 	type DesktopUpdateActionResult,
 	type DesktopUpdateState,
@@ -17,7 +18,6 @@ const POLL_INTERVAL_MS = 10 * 60_000;
 const RELEASE_NOTES_RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 60_000, 120_000, 300_000] as const;
 const MAX_RELEASE_NOTES_BYTES = 256 * 1024;
 const MAX_RELEASE_NOTE_GROUPS = 6;
-const MAX_RELEASE_NOTE_ITEMS = 8;
 const MAX_RELEASE_NOTE_ITEM_LENGTH = 220;
 const SUPPORTED_PLATFORMS = new Set<NodeJS.Platform>(["darwin", "win32"]);
 
@@ -449,7 +449,7 @@ export class DesktopUpdaterService {
 			return {
 				...parsed.data,
 				items: parsed.data.items
-					.slice(0, MAX_RELEASE_NOTE_ITEMS)
+					.slice(0, MAX_VISIBLE_RELEASE_NOTE_ITEMS)
 					.map((item) => truncate(item, MAX_RELEASE_NOTE_ITEM_LENGTH)),
 			};
 		} catch (error) {

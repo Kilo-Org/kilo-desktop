@@ -23,6 +23,7 @@
 		"package:e2e": "cross-env ELECTRON_ENABLE_INSPECT=true ELECTRON_SKIP_NATIVE_REBUILD=true VITE_FEATURE_FLAG_OVERRIDES=chat-layouts,update-track-switcher,external-api-apps-settings,workspace-board,searchbar-windows-panels VITE_KILO_E2E_AUTH=1 pnpm run package",
 		"publish": "tsx config/run-packaging.ts publish",
 		"release:smoke": "tsx config/smoke-release-artifact.ts",
+		"release:notes": "tsx config/preview-release-notes.ts",
 		"start": "electron-forge start -- --remote-debugging-port=9222",
 		"test": "vitest run",
 		"coverage": "vitest run --coverage"

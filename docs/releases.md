@@ -114,8 +114,12 @@ artifacts from successful platform jobs and creates or updates a private GitHub 
 tagged with the exact packaged version: `vX.Y.Z-preview-YYMMDD-HHmmS` for Preview or
 `vX.Y.Z[-prerelease]` for Stable. The finalizer still runs when another platform job
 fails so release notes remain available for native update feeds that were already
-published. Generated notes are sanitized to remove pull-request numbers and links before
-the same body is used by GitHub and the public in-app release-note document.
+published. Generated notes are grouped by pull-request title prefix into Features
+(`feat`), Fixes (`fix`), Dependencies (`deps` scope or Renovate/Dependabot), and Other
+(everything else, including `e2e`/`test`/`ci` scopes), then sanitized to remove
+pull-request numbers, links, and internal ticket ids such as `[DESK-123]` before the same body is used by GitHub and the public
+in-app release-note document. Preview the result for any tag without publishing with
+`pnpm --filter @kilo-desktop/desktop release:notes <tag>`.
 
 Each update channel exposes stable public download pointers in addition to its immutable maker
 artifacts:

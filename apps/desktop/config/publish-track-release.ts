@@ -9,12 +9,14 @@ import { execa } from "execa";
 import {
 	classifyReleaseDownload,
 	extractReleaseNoteItems,
+	findPreviousTrackTag,
 	getTrackReleaseName,
 	getTrackReleaseTag,
 	getTrackReleaseVersionFromTag,
 	getGithubReleaseWrite,
 	getGithubReleaseFlags,
 	getLatestAliasKey,
+	groupGeneratedReleaseNotes,
 	sanitizeGeneratedReleaseNotes,
 	type ReleaseDownload,
 } from "./track-release.js";
@@ -55,7 +57,7 @@ async function main(): Promise<void> {
 	if (artifactFiles.length === 0)
 		throw new Error(`No release artifacts found under ${artifactsRoot}.`);
 
-	const previousTag = await findPreviousTrackTag(repository, token, track, tag);
+	const previousTag = await findPreviousPublishedTrackTag(repository, token, track, tag);
 	const generated = await githubJson<{ body: string }>(
 		repository,
 		token,
@@ -69,7 +71,7 @@ async function main(): Promise<void> {
 			},
 		},
 	);
-	const bodyMarkdown = sanitizeGeneratedReleaseNotes(generated.body);
+	const bodyMarkdown = sanitizeGeneratedReleaseNotes(groupGeneratedReleaseNotes(generated.body));
 	const publishedAt = new Date().toISOString();
 	const releaseNotes = {
 		schemaVersion: 1 as const,
@@ -116,24 +118,22 @@ async function main(): Promise<void> {
 	});
 }
 
-async function findPreviousTrackTag(
+async function findPreviousPublishedTrackTag(
 	repository: string,
 	token: string,
 	track: ReleaseTrack,
 	currentTag: string,
 ): Promise<string | undefined> {
+	const tags: string[] = [];
 	for (let page = 1; page <= 10; page += 1) {
 		const releases = await githubJson<Array<{ tag_name: string }>>(
 			repository,
 			token,
 			`/releases?per_page=100&page=${page}`,
 		);
-		const match = releases.find(
-			(release) =>
-				release.tag_name !== currentTag &&
-				getTrackReleaseVersionFromTag(track, release.tag_name) !== null,
-		);
-		if (match) return match.tag_name;
+		tags.push(...releases.map((release) => release.tag_name));
+		const match = findPreviousTrackTag(tags, track, currentTag);
+		if (match) return match;
 		if (releases.length < 100) return undefined;
 	}
 	return undefined;

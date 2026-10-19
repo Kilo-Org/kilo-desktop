@@ -18,6 +18,11 @@ export const desktopUpdateStatusSchema = z.enum([
 	"error",
 ]);
 
+/** Most items a published release-notes document may carry. */
+export const MAX_PUBLISHED_RELEASE_NOTE_ITEMS = 50;
+/** Most items per release the app keeps and shows from a release-notes document. */
+export const MAX_VISIBLE_RELEASE_NOTE_ITEMS = 8;
+
 export const desktopReleaseNotesSchema = z.object({
 	schemaVersion: z.literal(1),
 	track: releaseTrackSchema,
@@ -26,7 +31,7 @@ export const desktopReleaseNotesSchema = z.object({
 	title: z.string().min(1),
 	publishedAt: z.string().min(1),
 	bodyMarkdown: z.string(),
-	items: z.array(z.string().min(1)).max(50),
+	items: z.array(z.string().min(1)).max(MAX_PUBLISHED_RELEASE_NOTE_ITEMS),
 });
 
 export const desktopUpdateStateSchema = z.object({

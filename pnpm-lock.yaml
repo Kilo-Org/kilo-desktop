@@ -1127,8 +1127,8 @@ importers:
         specifier: ^0.0.9
         version: 0.0.9
       '@nteract/sift':
-        specifier: 0.5.5-nightly.38500811922
-        version: 0.5.5-nightly.38500811922(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        specifier: 0.5.6
+        version: 0.5.6(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@nteract/sift-csv':
         specifier: 0.1.1-nightly.38500811922
         version: 0.1.1-nightly.38500811922
@@ -3722,8 +3722,8 @@ packages:
   '@nteract/sift-csv@0.1.1-nightly.38500811922':
     resolution: {integrity: sha512-x+Qq++Xu5LXWq6TqS1bMjSpj3OqOXWE47p4h1kQTC2Cl+aP8gYurIH6JYKFgc04cOLP4wqhCoaXacTTEbFdkyw==}
 
-  '@nteract/sift@0.5.5-nightly.38500811922':
-    resolution: {integrity: sha512-E/ufckQsG6uSNBAe1+8XH4UMGjWUv+pMZKrNVhlsjZ5PSzBpdaeitGQzjXNrHV/7cTu3KjJIHy54jnZHvi/VWQ==}
+  '@nteract/sift@0.5.6':
+    resolution: {integrity: sha512-J+q3e9cQI77d5DadoZvq7LJTS1Vnmi+iVqEN0lBM1lkV3dWrz9yiKNUGbFHiWj/3SKdFdEiehPnKqBUKvbz1Qw==}
     peerDependencies:
       react: '>=18'
       react-dom: '>=18'
@@ -12530,7 +12530,7 @@ snapshots:
 
   '@nteract/sift-csv@0.1.1-nightly.38500811922': {}
 
-  '@nteract/sift@0.5.5-nightly.38500811922(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@nteract/sift@0.5.6(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
       '@chenglou/pretext': 0.0.9
       '@radix-ui/react-popover': 1.1.23(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)

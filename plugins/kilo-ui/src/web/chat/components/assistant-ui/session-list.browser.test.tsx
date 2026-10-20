@@ -487,11 +487,11 @@ describe("SessionList", () => {
 		await expect.element(screen.getByText("Session 0")).not.toBeInTheDocument();
 	});
 
-	it("creates a chat from the New Chat entry", async () => {
+	it("creates a chat from the New session entry", async () => {
 		const { baseElement, navigate, screen } = renderSessionList({ threads: [] });
 
 		await expect.element(page.getByTestId("kilo-thread-list")).toBeVisible();
-		const trigger = screen.getByRole("button", { name: "New Chat" });
+		const trigger = screen.getByRole("button", { name: "New session" });
 		await expect.element(trigger).toBeVisible();
 		expect(baseElement.querySelector('[data-slot="aui_thread-list-new"]')).not.toBeNull();
 		expect(baseElement.querySelector('[data-slot="aui_thread-list-items"]')?.className).toContain(
@@ -533,7 +533,7 @@ describe("SessionList", () => {
 		expect(chat.element().getBoundingClientRect().height).toBeLessThan(56);
 		await expect.element(page.getByRole("option", { name: /Add tests/ })).toBeVisible();
 
-		await page.getByRole("combobox", { name: "Search chats and workspaces" }).fill("Add tests");
+		await page.getByRole("combobox", { name: "Search sessions and workspaces" }).fill("Add tests");
 		await expect.element(page.getByRole("option", { name: /Add tests/ })).toBeVisible();
 		await expect.element(page.getByRole("option", { name: /Fix the bug/ })).not.toBeInTheDocument();
 
@@ -575,14 +575,14 @@ describe("SessionList", () => {
 		expect(workspace.element().getBoundingClientRect().height).toBeLessThan(48);
 		await expect.element(page.getByTestId("session-search-workspace-ws-2")).toBeVisible();
 
-		await page.getByRole("combobox", { name: "Search chats and workspaces" }).fill("Beta");
+		await page.getByRole("combobox", { name: "Search sessions and workspaces" }).fill("Beta");
 		await expect.element(page.getByTestId("session-search-workspace-ws-2")).toBeVisible();
 		await expect.element(page.getByTestId("session-search-workspace-ws-1")).not.toBeInTheDocument();
 		await expect.element(page.getByRole("option", { name: /Fix the bug/ })).not.toBeInTheDocument();
 
 		await page.getByTestId("session-search-workspace-ws-2").click();
 		expect(setActiveWorkspaceId).toHaveBeenCalledWith("ws-2");
-		await expect.element(screen.getByText("No chats in Beta")).toBeVisible();
+		await expect.element(screen.getByText("No sessions in Beta")).toBeVisible();
 		await expect.element(dialog).not.toBeInTheDocument();
 	});
 
@@ -601,7 +601,7 @@ describe("SessionList", () => {
 		expect(workspace.element().textContent).not.toContain("Active workspace");
 	});
 
-	it("filters search results with All, Chats, and Workspaces chips", async () => {
+	it("filters search results with All, Sessions, and Workspaces chips", async () => {
 		const { screen } = renderSessionList({
 			threads: [{ remoteId: "ses-1", title: "Fix the bug" }],
 		});
@@ -610,9 +610,9 @@ describe("SessionList", () => {
 		await expect.element(page.getByRole("option", { name: /Fix the bug/ })).toBeVisible();
 		await expect.element(page.getByTestId("session-search-workspace-ws-1")).toBeVisible();
 		const all = page.getByRole("button", { name: "All" });
-		const chats = page.getByRole("button", { name: "Chats" });
+		const sessions = page.getByRole("button", { name: "Sessions" });
 		expect(all.element().getAttribute("aria-pressed")).toBe("true");
-		expect(chats.element().getAttribute("aria-pressed")).toBe("false");
+		expect(sessions.element().getAttribute("aria-pressed")).toBe("false");
 		expect(all.element().className).not.toContain("border-input");
 		expect(all.element().className).toContain("hover:bg-muted");
 		expect(all.element().className).toContain("aria-pressed:bg-muted");
@@ -622,7 +622,7 @@ describe("SessionList", () => {
 		await expect.element(page.getByTestId("session-search-workspace-ws-2")).toBeVisible();
 		await expect.element(page.getByRole("option", { name: /Fix the bug/ })).not.toBeInTheDocument();
 
-		await page.getByRole("button", { name: "Chats" }).click();
+		await page.getByRole("button", { name: "Sessions" }).click();
 		await expect.element(page.getByRole("option", { name: /Fix the bug/ })).toBeVisible();
 		await expect.element(page.getByTestId("session-search-workspace-ws-1")).not.toBeInTheDocument();
 
@@ -1416,7 +1416,7 @@ describe("SessionList", () => {
 		});
 
 		await expect
-			.element(screen.getByRole("button", { name: "New chat in Acme App" }))
+			.element(screen.getByRole("button", { name: "New session in Acme App" }))
 			.not.toBeInTheDocument();
 		await screen.getByRole("button", { name: "Session list options" }).click();
 		await page.getByRole("menuitem", { name: /Grouping/ }).click();
@@ -1424,7 +1424,7 @@ describe("SessionList", () => {
 		await userEvent.keyboard("{Escape}");
 		await userEvent.keyboard("{Escape}");
 
-		const createChat = screen.getByRole("button", { name: "New chat in Acme App" });
+		const createChat = screen.getByRole("button", { name: "New session in Acme App" });
 		const controls = screen.getByTestId("session-list-workspace-controls-ws-1");
 		await expect.element(createChat).toBeVisible();
 		expect(createChat.element().querySelector("svg")?.classList.contains("lucide-plus")).toBe(true);
@@ -1434,7 +1434,7 @@ describe("SessionList", () => {
 		await workspaceRow.hover();
 		await expect.poll(() => getComputedStyle(controls.element()).opacity).toBe("1");
 		await createChat.hover();
-		await expect.element(page.getByText("New chat", { exact: true })).toBeVisible();
+		await expect.element(page.getByText("New session", { exact: true })).toBeVisible();
 		await workspaceRow.click();
 		await expect.element(workspaceRow).toHaveAttribute("aria-expanded", "false");
 		await expect.element(screen.getByText("Fix the bug")).not.toBeInTheDocument();
@@ -1465,7 +1465,7 @@ describe("SessionList", () => {
 			.element(screen.getByTestId("session-list-workspace-empty-ws-1"))
 			.not.toBeInTheDocument();
 		const emptyNote = screen.getByTestId("session-list-workspace-empty-ws-2");
-		await expect.element(emptyNote).toHaveTextContent("No chats yet");
+		await expect.element(emptyNote).toHaveTextContent("No sessions yet");
 
 		await screen.getByRole("button", { name: "Beta" }).click();
 		await expect.element(emptyNote).not.toBeInTheDocument();
@@ -1537,7 +1537,7 @@ describe("SessionList", () => {
 		await expect.element(screen.getByText("Fix the bug")).not.toBeInTheDocument();
 		await expect
 			.element(screen.getByTestId("session-list-workspace-empty-ws-2"))
-			.toHaveTextContent('No chats matching "Working"');
+			.toHaveTextContent('No sessions matching "Working"');
 	});
 
 	describe("pull request filter", () => {
@@ -1607,7 +1607,7 @@ describe("SessionList", () => {
 				pullRequests: {},
 			});
 
-			await expect.element(screen.getByText("No chats with pull requests")).toBeVisible();
+			await expect.element(screen.getByText("No sessions with pull requests")).toBeVisible();
 
 			act(() => pullRequestStatus?.set(pullRequests));
 
@@ -1911,7 +1911,7 @@ describe("SessionList", () => {
 		await expect.element(screen.getByTestId("session-list-active-toggle")).not.toBeInTheDocument();
 	});
 
-	it("shows New Chat above the session list", async () => {
+	it("shows New session above the session list", async () => {
 		const { screen } = renderSessionList({
 			threads: [{ remoteId: "ses-1", title: "Fix the bug" }],
 		});
@@ -1948,7 +1948,7 @@ describe("SessionList", () => {
 		expect(groupingHeaderEl.compareDocumentPosition(inbox) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
 			Node.DOCUMENT_POSITION_FOLLOWING,
 		);
-		expect(newButton.textContent).toBe("New Chat");
+		expect(newButton.textContent).toBe("New session");
 		await expect
 			.element(screen.getByRole("button", { name: "Session list options" }))
 			.toBeVisible();
@@ -2088,7 +2088,7 @@ describe("SessionList", () => {
 		await screen.getByRole("combobox", { name: "Filter by workspace" }).click();
 		await page.getByRole("option", { name: "No workspace" }).click();
 
-		await expect.element(screen.getByText("No chats outside a workspace")).toBeVisible();
+		await expect.element(screen.getByText("No sessions outside a workspace")).toBeVisible();
 		await expect.element(screen.getByText("Fix the bug")).not.toBeInTheDocument();
 	});
 });
@@ -2283,7 +2283,7 @@ describe("SessionList worktree deletion", () => {
 
 		await vi.waitFor(() => {
 			expect(toastApi.error).toHaveBeenCalledWith(
-				"Could not delete chat",
+				"Could not delete session",
 				expect.objectContaining({ description: "network unreachable" }),
 			);
 		});

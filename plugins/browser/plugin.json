@@ -14,7 +14,7 @@
 				"id": "web-links",
 				"component": "BrowserMarkdownExtension",
 				"label": "Web links in a Browser tab",
-				"description": "Open web links from chat messages in a Browser tab of the chat.",
+				"description": "Open web links from chat messages in a Browser tab of the session.",
 				"priority": 50
 			},
 			{
@@ -22,7 +22,7 @@
 				"id": "browser",
 				"component": "BrowserView",
 				"label": "Browser",
-				"description": "Browse the web alongside this chat.",
+				"description": "Browse the web alongside this session.",
 				"icon": "BrowserIcon",
 				"mountPolicy": "keep-alive",
 				"priority": 40

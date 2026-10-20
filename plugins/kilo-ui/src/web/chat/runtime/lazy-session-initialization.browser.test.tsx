@@ -18,6 +18,8 @@ import type { KiloClient } from "@kilocode/sdk/v2/client";
 
 type SessionCreateResult = { data: { id: string } };
 
+const KILO_DEFAULT_TITLE = "New session - 2026-10-20T17:00:00.000Z";
+
 function deferred<T>() {
 	let resolve!: (value: T) => void;
 	let reject!: (reason: unknown) => void;
@@ -35,7 +37,7 @@ function createFakeClient(
 ) {
 	const session = {
 		id: "session-1",
-		title: "New session",
+		title: KILO_DEFAULT_TITLE,
 		directory: "/workspace",
 		time: { created: Date.now(), updated: Date.now() },
 	};
@@ -46,6 +48,7 @@ function createFakeClient(
 		data: { ...session, id: sessionID },
 	}));
 	const messages = vi.fn(async () => ({ data: [] }));
+	const update = vi.fn(async () => ({ data: undefined }));
 	const eventSubscribe = vi.fn(async (_input: unknown, options: { signal: AbortSignal }) => ({
 		stream: (async function* () {
 			await new Promise<void>((resolve) => {
@@ -69,17 +72,19 @@ function createFakeClient(
 			get,
 			messages,
 			promptAsync,
+			update,
 			summarize: vi.fn(async () => ({ data: undefined })),
 		},
 		event: { subscribe: eventSubscribe },
 	} as unknown as KiloClient;
 
-	return { client, create, list, promptAsync };
+	return { client, create, list, promptAsync, update };
 }
 
 function RuntimeState() {
 	const aui = useAui();
 	const remoteId = useAuiState((state) => state.threadListItem.remoteId);
+	const threadTitle = useAuiState((state) => state.threadListItem.title);
 	const attachmentCount = useAuiState((state) => state.composer.attachments.length);
 	const queuedCount = useAuiState((state) => state.composer.queue.length);
 	const messageCount = useAuiState((state) => state.thread.messages.length);
@@ -118,6 +123,7 @@ function RuntimeState() {
 				Add attachment
 			</button>
 			<output data-qa-id="remote-session-id">{remoteId ?? "none"}</output>
+			<output data-qa-id="thread-title">{threadTitle ?? "none"}</output>
 			<output data-qa-id="attachment-count">{attachmentCount}</output>
 			<output data-qa-id="queued-count">{queuedCount}</output>
 			<output data-qa-id="message-count">{messageCount}</output>
@@ -205,6 +211,63 @@ describe("patched OpenCode lazy session initialization", () => {
 				parts: [{ type: "text", text: "Inspect the workspace" }],
 			}),
 			expect.objectContaining({ throwOnError: true }),
+		);
+	});
+
+	it("titles a new chat with Kilo's session title without writing it back", async () => {
+		const fake = createFakeClient();
+		const { baseElement } = renderRuntime({ client: fake.client });
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("thread-title")).toHaveTextContent("none");
+		await screen.getByRole("textbox", { name: "Message" }).fill("Inspect the workspace");
+		await screen.getByRole("button", { name: "Send" }).click();
+
+		await expect.element(screen.getByTestId("thread-title")).toHaveTextContent(KILO_DEFAULT_TITLE);
+		expect(fake.update).not.toHaveBeenCalled();
+	});
+
+	it("keeps Kilo's session title when the first run ends", async () => {
+		const fake = createFakeClient();
+		let runtime: ReturnType<typeof useOpenCodeRuntime> | undefined;
+		const { baseElement } = renderRuntime({
+			client: fake.client,
+			onRuntime: (value) => {
+				runtime = value;
+			},
+		});
+		const screen = page.elementLocator(baseElement);
+		await screen.getByRole("textbox", { name: "Message" }).fill("Inspect the workspace");
+		await screen.getByRole("button", { name: "Send" }).click();
+		await expect.element(screen.getByTestId("thread-title")).toHaveTextContent(KILO_DEFAULT_TITLE);
+
+		// RemoteThreadList calls generateTitle on the first runEnd.
+		await runtime!.threads.mainItem.generateTitle();
+
+		expect(runtime!.threads.mainItem.getState().title).toBe(KILO_DEFAULT_TITLE);
+		await expect.element(screen.getByTestId("thread-title")).toHaveTextContent(KILO_DEFAULT_TITLE);
+		expect(fake.update).not.toHaveBeenCalled();
+	});
+
+	it("still sends a user rename of a mirrored title to Kilo", async () => {
+		const fake = createFakeClient();
+		let runtime: ReturnType<typeof useOpenCodeRuntime> | undefined;
+		const { baseElement } = renderRuntime({
+			client: fake.client,
+			initialSessionId: "existing-session",
+			onRuntime: (value) => {
+				runtime = value;
+			},
+		});
+		const screen = page.elementLocator(baseElement);
+		await expect.element(screen.getByTestId("thread-title")).toHaveTextContent(KILO_DEFAULT_TITLE);
+
+		await runtime!.threads.mainItem.rename("Workspace audit");
+
+		await expect.element(screen.getByTestId("thread-title")).toHaveTextContent("Workspace audit");
+		expect(fake.update).toHaveBeenCalledWith(
+			expect.objectContaining({ sessionID: "existing-session", title: "Workspace audit" }),
+			expect.anything(),
 		);
 	});
 

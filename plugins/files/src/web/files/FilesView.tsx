@@ -640,7 +640,9 @@ export function FilesView({
 						<FolderIcon aria-hidden="true" />
 					</EmptyMedia>
 					<EmptyTitle>No workspace selected</EmptyTitle>
-					<EmptyDescription>Choose a workspace for this chat to browse its files.</EmptyDescription>
+					<EmptyDescription>
+						Choose a workspace for this session to browse its files.
+					</EmptyDescription>
 				</EmptyHeader>
 			</Empty>
 		);

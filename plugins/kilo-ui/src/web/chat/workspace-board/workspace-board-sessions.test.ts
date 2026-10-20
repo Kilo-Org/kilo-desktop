@@ -38,7 +38,7 @@ describe("buildBoardSessions", () => {
 			rowState: "working",
 		});
 		expect(sessions.get("ses_2")).toMatchObject({
-			title: "New Chat",
+			title: "New session",
 			archived: true,
 			rowState: "approval",
 		});

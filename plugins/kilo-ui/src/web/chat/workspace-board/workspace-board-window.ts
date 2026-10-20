@@ -192,7 +192,7 @@ async function runChatAction(
 	const known = aui.threads
 		.getState()
 		.threadItems.find((item) => item.remoteId === action.sessionId);
-	if (!known) throw new Error("The chat is not loaded in the main window.");
+	if (!known) throw new Error("The session is not loaded in the main window.");
 	const item = aui.threads.item({ id: known.id });
 	// The item's methods are typed void but return the thread list's promises.
 	if (action.action === "rename") await item.rename(action.title);

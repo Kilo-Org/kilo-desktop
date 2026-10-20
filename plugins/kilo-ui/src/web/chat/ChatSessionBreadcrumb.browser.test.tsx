@@ -114,14 +114,14 @@ describe("ChatSessionBreadcrumb", () => {
 		await expect.element(screen.getByText("Refactor breadcrumbs")).toBeVisible();
 	});
 
-	it("falls back to New Chat when the session has no title", async () => {
+	it("falls back to New session when the session has no title", async () => {
 		threadListItem.status = "regular";
 		threadListItem.remoteId = "session-1";
 
 		const { baseElement } = renderBreadcrumb();
 		const screen = page.elementLocator(baseElement);
 
-		await expect.element(screen.getByText("New Chat")).toBeVisible();
+		await expect.element(screen.getByText("New session")).toBeVisible();
 	});
 
 	it("shows only the session title for an unscoped session", async () => {

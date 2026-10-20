@@ -219,7 +219,7 @@ describe("PLUGIN_ZONE_CONTRIBUTIONS", () => {
 		expect(contribution).toMatchObject({
 			pluginId: "kilo-ui",
 			zone: "sidebar",
-			label: "Chats",
+			label: "Sessions",
 			priority: 10,
 		});
 		expect(contribution?.component).toBeTypeOf("function");

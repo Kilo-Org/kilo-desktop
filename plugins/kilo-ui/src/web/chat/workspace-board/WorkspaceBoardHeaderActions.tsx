@@ -134,6 +134,6 @@ function HeaderIconButton({
 }
 
 function clearDescription(cardCount: number): string {
-	const chats = cardCount === 1 ? "the chat" : `all ${cardCount} chats`;
-	return `This takes ${chats} off the board. Your columns and the chats themselves are kept.`;
+	const sessions = cardCount === 1 ? "the session" : `all ${cardCount} sessions`;
+	return `This takes ${sessions} off the board. Your columns and the sessions themselves are kept.`;
 }

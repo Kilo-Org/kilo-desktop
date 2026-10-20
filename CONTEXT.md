@@ -137,6 +137,8 @@ Three tiers decide where a dependency lives:
 | **Contribution**   | UI or lifecycle behavior a plugin adds through `plugin.json`: app-lifetime providers, zone entries, routes, nav, and settings sections; conditional zone UI uses `sdk.contribute`.           |
 | **Capability**     | A named API exposed by one feature for others to consume via `sdk.plugins.expose/get`.                                                                                                       |
 | **Anaconda MCP**   | Core feature that owns the optional Anaconda Remote MCP entry and contributes its API key to the Kilo server without writing the credential into config.                                     |
+| **Session**        | A unit of work in a workspace, listed in the sidebar; owns its panes and layout. A session _has_ a chat (today always; later it may start without one, e.g. from a terminal).                |
+| **Chat**           | A session's conversation with the agent, backed by a Kilo session. Use "chat" only for the conversation (chat pane, transcript, composer), "session" for the container.                      |
 
 ## Conventions
 

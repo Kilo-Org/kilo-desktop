@@ -23,7 +23,7 @@ const MODES: { value: NotificationMode; label: string }[] = [
 ];
 
 const CUES: { cue: ChatCue; title: string; description: string }[] = [
-	{ cue: "done", title: "When a chat finishes", description: "The chat completed its turn." },
+	{ cue: "done", title: "When Kilo finishes", description: "Kilo completed its turn." },
 	{
 		cue: "needsYou",
 		title: "When Kilo needs you",

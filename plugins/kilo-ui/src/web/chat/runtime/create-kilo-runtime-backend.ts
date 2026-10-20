@@ -79,8 +79,8 @@ function withSessionListTimeout<T>(request: PromiseLike<T>): Promise<T> {
  * one place the user and the console learn why.
  */
 function reportSessionStartFailure(error: unknown): void {
-	console.error("[kilo-ui] Could not start the chat session", error);
-	toast.error("Could not start the chat", {
+	console.error("[kilo-ui] Could not start the session", error);
+	toast.error("Could not start the session", {
 		description:
 			error instanceof Error && error.message
 				? error.message

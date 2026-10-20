@@ -30,7 +30,7 @@ export function NewChatButton() {
 			onClick={createChat}
 		>
 			<MessageSquareIcon data-slot="aui_thread-list-new-icon" />
-			<span data-slot="aui_thread-list-new-label">New Chat</span>
+			<span data-slot="aui_thread-list-new-label">New session</span>
 		</SidebarMenuButton>
 	);
 }

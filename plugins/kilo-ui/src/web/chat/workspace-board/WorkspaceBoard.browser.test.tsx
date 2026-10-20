@@ -483,7 +483,7 @@ describe("workspace board columns", () => {
 		await screen.getByTestId("workspace-board-column-delete-action").click();
 		const dialog = screen.getByTestId("workspace-board-column-delete-dialog");
 		await expect.element(dialog).toBeVisible();
-		expect(dialog.element().textContent).toContain("This moves its 2 chats to “Done”");
+		expect(dialog.element().textContent).toContain("This moves its 2 sessions to “Done”");
 		await screen.getByTestId("workspace-board-column-delete-confirm").click();
 
 		await vi.waitFor(() => expect(columnLabels()).toEqual(["Backlog", "Done"]));
@@ -500,7 +500,7 @@ describe("workspace board columns", () => {
 
 		await drag(header, { x: review.right + 4, y: review.top + 20 }, () => {
 			const ghost = document.querySelector("[data-qa-id='workspace-board-drag-preview']");
-			expect(ghost?.textContent).toBe("Backlog1 chat");
+			expect(ghost?.textContent).toBe("Backlog1 session");
 			expect(
 				document.querySelector("[data-qa-id='workspace-board-column-drop-preview']"),
 			).not.toBeNull();

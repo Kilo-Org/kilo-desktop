@@ -8,6 +8,7 @@ import {
 	type SessionRowState,
 } from "../session-activity/session-activity-logic.js";
 import { matchesWorkspaceFocus } from "../session-list/session-list-view.js";
+import { UNTITLED_SESSION_TITLE } from "../session-title.js";
 
 /** A chat as the board needs to render it, keyed by its Kilo session id. */
 export type BoardSession = {
@@ -30,9 +31,6 @@ export type BoardColumnView = {
 	deleteDestination: string | null;
 };
 
-/** Title for a chat that has none yet, as the sidebar shows it. */
-export const UNTITLED_CHAT = "New Chat";
-
 type ThreadItem = {
 	id: string;
 	remoteId: string | undefined;
@@ -53,7 +51,7 @@ export function buildBoardSessions(input: {
 		sessions.set(item.remoteId, {
 			sessionId: item.remoteId,
 			threadId: item.id,
-			title: item.title || UNTITLED_CHAT,
+			title: item.title || UNTITLED_SESSION_TITLE,
 			archived: item.status === "archived",
 			activity,
 			rowState: deriveSessionRowState(activity, input.lastVisitedAtBySessionId[item.remoteId]),

@@ -99,7 +99,7 @@ export const WorkspaceBoardView: FC<WorkspaceBoardViewProps> = ({
 									data-workspace-board-empty
 									className="text-muted-foreground flex h-15 list-none items-center justify-center rounded-xl border border-dashed text-xs"
 								>
-									Drop chats here
+									Drop sessions here
 								</li>
 							) : null}
 						</ol>

@@ -131,7 +131,7 @@ async function waitForThreadListHydrated(page: Page): Promise<void> {
 		await waitForChatRoute(page);
 		if (await waitForEnabledNewChat(page, THREAD_LIST_HYDRATION_PROBE_MS)) return;
 		throw new Error(
-			"Chat thread list did not hydrate: New Chat remained disabled after the bounded runtime retry",
+			"Chat thread list did not hydrate: New session remained disabled after the bounded runtime retry",
 		);
 	} finally {
 		page.setDefaultTimeout(PLAYWRIGHT_DEFAULT_TIMEOUT_MS);
@@ -313,7 +313,7 @@ export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerF
 		});
 		if (CHAT_ISOLATION_KEYS.has(appIsolationKey)) {
 			// Hash reset remounts chat; wait out the redirect so the next spec
-			// does not click New Chat against a tearing-down runtime.
+			// does not click New session against a tearing-down runtime.
 			await waitForThreadListHydrated(page);
 		}
 		await use(sharedApp.app);

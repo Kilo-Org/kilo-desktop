@@ -93,6 +93,7 @@ import {
 	worktreeDirectoryOf,
 } from "./session-workspace/chat-session-workspace-capability.js";
 import { useWorkspacesFeature } from "../workspaces/WorkspacesFeatureContext.js";
+import { UNTITLED_SESSION_TITLE } from "./session-title.js";
 
 const EMPTY_WORKSPACE_FOLDERS: ChatMarkdownExtensionContext["workspaceFolders"] = [];
 const KILO_UI_PLUGIN_ID = "kilo-ui";
@@ -247,7 +248,7 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
 	const localThreadId = useAuiState((s) => s.threadListItem.id);
 	const sessionTitle = useAuiState((s) => s.threadListItem.title);
-	const chatTitle = sessionTitle?.trim() || "New Chat";
+	const chatTitle = sessionTitle?.trim() || UNTITLED_SESSION_TITLE;
 	const hasMessages = useAuiState((s) => s.thread.messages.length > 0);
 	const threadStatus = useAuiState((s) => s.threadListItem.status);
 	const detached = detachedPaneRequest(search);

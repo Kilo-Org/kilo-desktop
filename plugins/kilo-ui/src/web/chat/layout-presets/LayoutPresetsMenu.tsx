@@ -218,7 +218,7 @@ export function LayoutPresetsMenu({ capture, onApply }: LayoutPresetsMenuProps) 
 								aria-label={`Apply ${preset.name}`}
 								aria-description={
 									query.data.defaultPresetId === preset.id
-										? "Default layout for new chats"
+										? "Default layout for new sessions"
 										: undefined
 								}
 								disabled={pending}
@@ -275,7 +275,7 @@ export function LayoutPresetsMenu({ capture, onApply }: LayoutPresetsMenuProps) 
 					<DialogHeader>
 						<DialogTitle>Manage layouts</DialogTitle>
 						<DialogDescription>
-							The default layout is used for new chats. Existing chats are unchanged.
+							The default layout is used for new sessions. Existing sessions are unchanged.
 						</DialogDescription>
 					</DialogHeader>
 					<div className="flex max-h-80 flex-col gap-1 overflow-y-auto">
@@ -493,7 +493,7 @@ export function LayoutPresetsMenu({ capture, onApply }: LayoutPresetsMenuProps) 
 					<AlertDialogHeader>
 						<AlertDialogTitle>Delete {deleting?.name}?</AlertDialogTitle>
 						<AlertDialogDescription>
-							This removes the saved layout, not its chats or resources. This cannot be undone.
+							This removes the saved layout, not its sessions or resources. This cannot be undone.
 						</AlertDialogDescription>
 					</AlertDialogHeader>
 					{errorAlert}
@@ -596,7 +596,7 @@ export function LayoutPresetsMenu({ capture, onApply }: LayoutPresetsMenuProps) 
 										disabled={pending}
 									/>
 									<FieldLabel htmlFor={`${fieldId}-default`}>
-										Use as default for new chats
+										Use as default for new sessions
 									</FieldLabel>
 								</Field>
 							) : null}
@@ -605,8 +605,8 @@ export function LayoutPresetsMenu({ capture, onApply }: LayoutPresetsMenuProps) 
 							<Alert>
 								<AlertTitle>Some panes will not be saved</AlertTitle>
 								<AlertDescription>
-									{snapshot.omittedTitles.join(", ")} cannot be recreated in a new chat and will be
-									omitted.
+									{snapshot.omittedTitles.join(", ")} cannot be recreated in a new session and will
+									be omitted.
 								</AlertDescription>
 							</Alert>
 						) : null}

@@ -93,11 +93,11 @@ import {
 	type SessionActivity,
 } from "../../session-activity/session-activity-logic.js";
 import { SessionListViewMenu } from "../../session-list/session-list-view-menu.js";
+import { UNTITLED_SESSION_TITLE } from "../../session-title.js";
 import { ShortcutHintChip, useShortcutHints } from "../../keyboard/shortcut-hints.js";
 import { useSessionShortcuts } from "../../keyboard/use-session-shortcuts.js";
 import { WorkspaceBoardToggle } from "../../workspace-board/WorkspaceBoardToggle.js";
 import { useWorkspaceBoard } from "../../workspace-board/WorkspaceBoardProvider.js";
-import { UNTITLED_CHAT } from "../../workspace-board/workspace-board-sessions.js";
 import {
 	useSessionRowBoard,
 	type SessionRowBoard,
@@ -255,17 +255,17 @@ function emptyWorkspaceLabel(
 	hasMoreThreads: boolean,
 ): string | null {
 	if (hasMoreThreads) return null;
-	return filteredEmptyLabel(view) ?? "No chats yet";
+	return filteredEmptyLabel(view) ?? "No sessions yet";
 }
 
 /** Why a filtered list is empty, or null when no filter is active. */
 function filteredEmptyLabel(view: Pick<SessionListView, "status" | "pullRequest">): string | null {
 	const byStatus = view.status !== "all";
 	const byPullRequest = view.pullRequest !== "all";
-	if (byStatus && byPullRequest) return "No matching chats";
-	if (byStatus) return `No chats matching "${SESSION_LIST_STATUS_LABELS[view.status]}"`;
-	if (view.pullRequest === "open") return "No chats with open pull requests";
-	if (byPullRequest) return "No chats with pull requests";
+	if (byStatus && byPullRequest) return "No matching sessions";
+	if (byStatus) return `No sessions matching "${SESSION_LIST_STATUS_LABELS[view.status]}"`;
+	if (view.pullRequest === "open") return "No sessions with open pull requests";
+	if (byPullRequest) return "No sessions with pull requests";
 	return null;
 }
 
@@ -275,9 +275,9 @@ function sessionListEmptyLabel(
 	workspaces: readonly { id: string; name: string }[],
 	hasMoreThreads: boolean,
 ): string | null {
-	if (view.focus === UNSCOPED_WORKSPACE_FOCUS) return "No chats outside a workspace";
+	if (view.focus === UNSCOPED_WORKSPACE_FOCUS) return "No sessions outside a workspace";
 	const focusedWorkspace = workspaces.find((workspace) => workspace.id === view.focus);
-	if (focusedWorkspace) return `No chats in ${focusedWorkspace.name}`;
+	if (focusedWorkspace) return `No sessions in ${focusedWorkspace.name}`;
 	if (view.pullRequest === "all" || hasMoreThreads) return null;
 	return filteredEmptyLabel(view);
 }
@@ -561,7 +561,7 @@ export const SessionListContent = memo(function SessionListContent({
 				>
 					<section
 						className="mb-3 flex shrink-0 flex-col gap-0.5 pt-0.5"
-						aria-label="Chat actions"
+						aria-label="Session actions"
 						data-qa-id="session-list-navigation"
 					>
 						<SidebarMenu className="gap-0.5">
@@ -578,7 +578,7 @@ export const SessionListContent = memo(function SessionListContent({
 							</SidebarMenuItem>
 						</SidebarMenu>
 					</section>
-					<section aria-label="Chat sessions" className="flex min-h-0 min-w-0 flex-1 flex-col">
+					<section aria-label="Sessions" className="flex min-h-0 min-w-0 flex-1 flex-col">
 						<div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 							<div
 								data-qa-id="session-list-grouping-header"
@@ -708,7 +708,7 @@ type SearchScope = (typeof SEARCH_SCOPES)[number];
 
 const SEARCH_SCOPE_LABELS: Record<SearchScope, string> = {
 	all: "All",
-	chats: "Chats",
+	chats: "Sessions",
 	workspaces: "Workspaces",
 };
 
@@ -718,7 +718,7 @@ function isSearchScope(value: string | undefined): value is SearchScope {
 
 function searchEmptyLabel(scope: SearchScope, emptyQuery: boolean, isLoading: boolean): string {
 	if (!emptyQuery) return "No results.";
-	if (scope !== "workspaces") return "No recent chats.";
+	if (scope !== "workspaces") return "No recent sessions.";
 	if (isLoading) return "Loading workspaces…";
 	return "No workspaces yet.";
 }
@@ -800,7 +800,7 @@ export const SessionListSearch: FC<{
 
 	useCommand("kilo-ui", {
 		id: "search",
-		label: "Search chats and workspaces",
+		label: "Search sessions and workspaces",
 		group: "App",
 		keybinding: { mac: "Mod+K", default: "Ctrl+Shift+K" },
 		order: 0,
@@ -815,7 +815,7 @@ export const SessionListSearch: FC<{
 			const activity = remoteId ? activityBySessionId[remoteId] : undefined;
 			return {
 				id,
-				title: item?.title || "New Chat",
+				title: item?.title || UNTITLED_SESSION_TITLE,
 				sublabel: resolveSessionLocationLabel(activity, workspaces),
 				updatedAt: activity?.updatedAt,
 				archived,
@@ -846,7 +846,11 @@ export const SessionListSearch: FC<{
 	const emptyQuery = normalizedQuery.length === 0;
 	const emptyLabel = searchEmptyLabel(scope, emptyQuery, isLoading);
 	const chatHeading =
-		scope === "all" || archived.length > 0 ? (emptyQuery ? "Recent chats" : "Chats") : undefined;
+		scope === "all" || archived.length > 0
+			? emptyQuery
+				? "Recent sessions"
+				: "Sessions"
+			: undefined;
 	const workspaceHeading = scope === "all" ? "Workspaces" : undefined;
 
 	const handleSelectChat = (row: SearchRow) => {
@@ -876,16 +880,16 @@ export const SessionListSearch: FC<{
 				open={open}
 				onOpenChange={setOpen}
 				title="Search"
-				description="Search chats and workspaces"
+				description="Search sessions and workspaces"
 				showCloseButton
 				className="top-1/2 -translate-y-1/2 sm:max-w-2xl"
 			>
-				<Command label="Search chats and workspaces" shouldFilter={false}>
+				<Command label="Search sessions and workspaces" shouldFilter={false}>
 					<CommandInput
 						value={query}
 						onValueChange={setQuery}
-						placeholder="Search chats and workspaces"
-						aria-label="Search chats and workspaces"
+						placeholder="Search sessions and workspaces"
+						aria-label="Search sessions and workspaces"
 						className="pe-10"
 					/>
 					<ToggleGroup
@@ -1095,7 +1099,7 @@ const WorkspaceShelfActions: FC<{
 								type="button"
 								variant="ghost"
 								size="icon-xs"
-								aria-label={`New chat in ${workspace.name}`}
+								aria-label={`New session in ${workspace.name}`}
 								data-qa-id={`session-list-workspace-new-${workspace.id}`}
 								onClick={() => onCreateChatInWorkspace(workspace.id)}
 							/>
@@ -1103,7 +1107,7 @@ const WorkspaceShelfActions: FC<{
 					>
 						<PlusIcon aria-hidden className="size-3.5" />
 					</TooltipTrigger>
-					<TooltipContent side="bottom">New chat</TooltipContent>
+					<TooltipContent side="bottom">New session</TooltipContent>
 				</Tooltip>
 			</div>
 		</TooltipProvider>
@@ -1339,7 +1343,7 @@ const SessionRowContent = memo(function SessionRowContent({
 							: "text-sidebar-foreground/85 group-hover/sidebar-row:text-sidebar-foreground",
 				)}
 			>
-				<ThreadListItemPrimitive.Title fallback={UNTITLED_CHAT} />
+				<ThreadListItemPrimitive.Title fallback={UNTITLED_SESSION_TITLE} />
 			</span>
 			<span
 				data-slot="aui_session-list-item-time"

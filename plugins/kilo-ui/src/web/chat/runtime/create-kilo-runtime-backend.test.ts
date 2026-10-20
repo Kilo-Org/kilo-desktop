@@ -664,7 +664,7 @@ describe("createKiloRuntimeBackend", () => {
 		await expect(backend.initializeSession()).rejects.toThrow(/index\.lock/);
 
 		expect(create).not.toHaveBeenCalled();
-		expect(toast.error).toHaveBeenCalledWith("Could not start the chat", {
+		expect(toast.error).toHaveBeenCalledWith("Could not start the session", {
 			description: "Unable to create '.git/index.lock': File exists.",
 		});
 	});
@@ -683,7 +683,7 @@ describe("createKiloRuntimeBackend", () => {
 
 		await expect(backend.initializeSession()).rejects.toThrow(/server unreachable/);
 
-		expect(toast.error).toHaveBeenCalledWith("Could not start the chat", {
+		expect(toast.error).toHaveBeenCalledWith("Could not start the session", {
 			description: "server unreachable",
 		});
 	});

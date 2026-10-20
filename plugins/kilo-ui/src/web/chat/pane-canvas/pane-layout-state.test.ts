@@ -34,7 +34,7 @@ describe("ensureAgentPane", () => {
 		const layout = ensureAgentPane(createLayout([]), "session-1");
 		expect(flattenPanes(layout).map((pane) => pane.id)).toEqual(["agent:session-1"]);
 		expect(layout.activePaneId).toBe("agent:session-1");
-		expect(findPane(layout, "agent:session-1")?.title).toBe("New Chat");
+		expect(findPane(layout, "agent:session-1")?.title).toBe("New session");
 	});
 
 	it("does not duplicate an existing chat pane", () => {
@@ -365,7 +365,7 @@ describe("applyAgentPaneTitle", () => {
 		expect(applyAgentPaneTitle(layout, "session-1", "Chat")).toBe(layout);
 		expect(
 			findPane(applyAgentPaneTitle(layout, "session-1", "  "), agentPaneId("session-1"))?.title,
-		).toBe("New Chat");
+		).toBe("New session");
 	});
 });
 

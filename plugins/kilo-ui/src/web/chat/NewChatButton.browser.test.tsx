@@ -99,12 +99,12 @@ afterEach(() => {
 });
 
 describe("NewChatButton", () => {
-	it("renders New Chat", async () => {
+	it("renders New session", async () => {
 		const { screen } = renderNewChatButton();
 
-		const button = screen.getByRole("button", { name: "New Chat" }).element();
+		const button = screen.getByRole("button", { name: "New session" }).element();
 		await expect.element(button).toBeVisible();
-		expect(button.textContent).toBe("New Chat");
+		expect(button.textContent).toBe("New session");
 		expect(button.querySelector('[data-slot="aui_thread-list-new-icon"]')).not.toBeNull();
 		expect(button.className).toContain("hover:bg-sidebar-accent");
 		expect(screen.getByRole("button").elements()).toHaveLength(1);
@@ -112,7 +112,7 @@ describe("NewChatButton", () => {
 
 	it("creates a chat from the button", async () => {
 		const { navigate, screen } = renderNewChatButton();
-		const button = screen.getByRole("button", { name: "New Chat" });
+		const button = screen.getByRole("button", { name: "New session" });
 
 		await expect.element(button).toBeEnabled();
 		fireEvent.click(button.element());
@@ -122,7 +122,7 @@ describe("NewChatButton", () => {
 
 	it("waits for the remote thread list before creating a fresh draft", async () => {
 		const { navigate, screen } = renderNewChatButton({ threadsPending: true });
-		const button = screen.getByRole("button", { name: "New Chat" });
+		const button = screen.getByRole("button", { name: "New session" });
 
 		await expect.element(button).toBeDisabled();
 		fireEvent.click(button.element());
@@ -137,7 +137,7 @@ describe("NewChatButton", () => {
 		});
 		const { screen } = renderNewChatButton();
 
-		await screen.getByRole("button", { name: "New Chat" }).click();
+		await screen.getByRole("button", { name: "New session" }).click();
 
 		expect(
 			useRightPanelStore.getState().bySessionId[DRAFT_RIGHT_PANEL_SESSION_KEY],

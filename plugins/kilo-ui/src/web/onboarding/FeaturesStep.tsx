@@ -32,8 +32,8 @@ const FEATURES: readonly Feature[] = [
 	},
 	{
 		id: "layouts",
-		title: "Customizable chat layouts",
-		description: "Split chats into tiles and tab groups, side by side or stacked.",
+		title: "Customizable session layouts",
+		description: "Split panes into tiles and tab groups, side by side or stacked.",
 		className: "",
 		art: <LayoutArt />,
 	},

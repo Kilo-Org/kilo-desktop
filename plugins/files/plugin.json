@@ -30,7 +30,7 @@
 				"id": "files",
 				"component": "FilesView",
 				"label": "Files",
-				"description": "Browse and edit files in this chat's workspace.",
+				"description": "Browse and edit files in this session's workspace.",
 				"icon": "FilesTabIcon",
 				"priority": 60
 			}

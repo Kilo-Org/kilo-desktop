@@ -14,6 +14,7 @@ import { useWorkspacesFeature } from "../workspaces/WorkspacesFeatureContext.js"
 import { workspaceGlyphStyle } from "../workspaces/workspace-glyph-style.js";
 import { resolveSessionLocationLabel } from "./session-activity/session-activity-logic.js";
 import { useSessionActivity } from "./session-activity/SessionActivityProvider.js";
+import { UNTITLED_SESSION_TITLE } from "./session-title.js";
 
 export const ChatLocationBreadcrumb: FC<{
 	locationLabel?: string | null;
@@ -70,7 +71,7 @@ export const ChatSessionBreadcrumb: FC = () => {
 
 	const locationLabel = resolveSessionLocationLabel(activity, workspaces);
 	const workspace = workspaces.find((candidate) => candidate.id === activity?.workspaceId);
-	const title = sessionTitle?.trim() || "New Chat";
+	const title = sessionTitle?.trim() || UNTITLED_SESSION_TITLE;
 
 	return (
 		<ChatLocationBreadcrumb

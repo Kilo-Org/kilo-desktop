@@ -22,15 +22,15 @@ describe("NotificationSettings", () => {
 
 	it("sets each cue independently and saves it to local storage", async () => {
 		render(<NotificationSettings />);
-		await expect.poll(selectedLabel("When a chat finishes")).toContain("When I'm not looking");
+		await expect.poll(selectedLabel("When Kilo finishes")).toContain("When I'm not looking");
 		await expect.poll(selectedLabel("When Kilo needs you")).toContain("When I'm not looking");
 
-		await modeSelect("When a chat finishes").click();
+		await modeSelect("When Kilo finishes").click();
 		await page.getByRole("option", { name: "Never" }).click();
 		await modeSelect("When Kilo needs you").click();
 		await page.getByRole("option", { name: "Always" }).click();
 
-		await expect.poll(selectedLabel("When a chat finishes")).toContain("Never");
+		await expect.poll(selectedLabel("When Kilo finishes")).toContain("Never");
 		await expect.poll(selectedLabel("When Kilo needs you")).toContain("Always");
 		const stored = JSON.parse(localStorage.getItem(NOTIFICATION_PREFERENCES_STORAGE_KEY) ?? "{}");
 		expect(stored.state).toMatchObject({ done: "off", needsYou: "always" });

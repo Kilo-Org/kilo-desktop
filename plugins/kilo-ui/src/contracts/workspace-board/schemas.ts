@@ -30,7 +30,7 @@ export const workspaceBoardStateSchema = z
 		}
 		const sessionIds = state.columns.flatMap((column) => column.sessionIds);
 		if (new Set(sessionIds).size !== sessionIds.length) {
-			ctx.addIssue({ code: "custom", message: "A chat can only appear once on the board." });
+			ctx.addIssue({ code: "custom", message: "A session can only appear once on the board." });
 		}
 		if (sessionIds.length > WORKSPACE_BOARD_MAX_CARDS) {
 			ctx.addIssue({ code: "custom", message: "The board is full." });

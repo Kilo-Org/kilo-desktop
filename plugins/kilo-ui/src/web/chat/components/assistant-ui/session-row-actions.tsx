@@ -150,8 +150,8 @@ export function useSessionRowActions({
 
 	const archive = useCallback(() => {
 		operationsRef.current.archive().catch((error: unknown) => {
-			toast.error("Could not archive chat", {
-				description: error instanceof Error ? error.message : "The chat was not archived.",
+			toast.error("Could not archive session", {
+				description: error instanceof Error ? error.message : "The session was not archived.",
 			});
 		});
 	}, []);
@@ -163,8 +163,8 @@ export function useSessionRowActions({
 			onDeleted?.();
 			return true;
 		} catch (error) {
-			toast.error("Could not delete chat", {
-				description: error instanceof Error ? error.message : "The chat was not deleted.",
+			toast.error("Could not delete session", {
+				description: error instanceof Error ? error.message : "The session was not deleted.",
 			});
 			return false;
 		}
@@ -187,8 +187,8 @@ export function useSessionRowActions({
 			try {
 				orphaned = await checkOrphanedWorktree();
 			} catch (error) {
-				toast.error("Could not delete chat", {
-					description: error instanceof Error ? error.message : "The chat was not deleted.",
+				toast.error("Could not delete session", {
+					description: error instanceof Error ? error.message : "The session was not deleted.",
 				});
 				return;
 			}
@@ -463,8 +463,8 @@ export const SessionRenameInput: FC<{
 			.then(
 				() => onDone(restoreFocus),
 				(error: unknown) => {
-					toast.error("Could not rename chat", {
-						description: error instanceof Error ? error.message : "The chat was not renamed.",
+					toast.error("Could not rename session", {
+						description: error instanceof Error ? error.message : "The session was not renamed.",
 					});
 					settledRef.current = false;
 					if (restoreFocus) inputRef.current?.focus();

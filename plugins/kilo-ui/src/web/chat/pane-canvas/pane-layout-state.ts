@@ -19,10 +19,9 @@ import {
 } from "./default-workspace-files-pane.js";
 import { placeExplorerBesideChat, placeNewExplorerDocument } from "./explorer-document-group.js";
 import type { RightPanelTab } from "../right-panel/right-panel-tab-registry.js";
+import { UNTITLED_SESSION_TITLE } from "../session-title.js";
 
 export { rewritePaneId };
-
-export const DEFAULT_CHAT_TITLE = "New Chat";
 
 export function paneKindForDefinition(definitionId: string): PaneKind {
 	if (definitionId === "notebook.notebook") return "notebook";
@@ -46,7 +45,7 @@ export function ensureAgentPane(
 	layout: PaneLayout,
 	sessionId: string,
 	aliases: readonly string[] = [],
-	title = DEFAULT_CHAT_TITLE,
+	title = UNTITLED_SESSION_TITLE,
 ): PaneLayout {
 	const paneId = agentPaneId(sessionId);
 	if (findPane(layout, paneId)) return layout;
@@ -122,7 +121,7 @@ export function applyAgentPaneTitle(
 	title: string | undefined,
 ): PaneLayout {
 	const paneId = agentPaneId(sessionId);
-	const nextTitle = title?.trim() || DEFAULT_CHAT_TITLE;
+	const nextTitle = title?.trim() || UNTITLED_SESSION_TITLE;
 	const pane = findPane(layout, paneId);
 	if (!pane || pane.title === nextTitle) return layout;
 	const group = findPaneGroup(layout, paneId);

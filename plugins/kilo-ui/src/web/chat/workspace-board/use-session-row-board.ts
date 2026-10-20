@@ -2,7 +2,7 @@ import { useCallback, useMemo, type PointerEventHandler } from "react";
 
 import { findSessionPlacement } from "../../../contracts/workspace-board/board-model.js";
 import { useWorkspaceBoard } from "./WorkspaceBoardProvider.js";
-import { UNTITLED_CHAT } from "./workspace-board-sessions.js";
+import { UNTITLED_SESSION_TITLE } from "../session-title.js";
 
 export type SessionRowBoard = {
 	/** Starts a drag toward the board; undefined while the board is not on screen. */
@@ -23,7 +23,7 @@ export function useSessionRowBoard(
 	title: string | undefined,
 ): SessionRowBoard | null {
 	const board = useWorkspaceBoard();
-	const label = title || UNTITLED_CHAT;
+	const label = title || UNTITLED_SESSION_TITLE;
 	const startDrag = board?.startDrag;
 	const isOpen = board?.isOpen ?? false;
 	const addToColumn = board?.addToColumn;

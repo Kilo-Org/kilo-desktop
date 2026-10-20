@@ -15,7 +15,7 @@ const DRAFT_PROBE_TIMEOUT_MS = 5_000;
  * Put the chat pane into a fresh draft: the active thread has status "new"
  * and no messages, which is exactly when the composer draft footer renders.
  *
- * A one-shot "footer present? otherwise click New Chat" check raced the
+ * A one-shot "footer present? otherwise click New session" check raced the
  * runtime: right after a hash reset or thread-list hydration the active
  * thread can still switch, so the footer seen at check time could disappear
  * (or a click could land mid-switch) and the test waited out its budget on a
@@ -27,11 +27,11 @@ export async function openNewChatDraft(): Promise<void> {
 	const draftFooter = getLocatorByTestId("kilo-composer-draft-footer");
 	await expect(async () => {
 		if (!(await draftFooter.isVisible())) {
-			await expectElementToBeEnabled(newChat, "New Chat should be enabled once threads load");
+			await expectElementToBeEnabled(newChat, "New session should be enabled once threads load");
 			await click(newChat);
 		}
 		await expectElementToBeVisible(draftFooter, {
-			message: "New Chat should show a draft",
+			message: "New session should show a draft",
 			timeout: DRAFT_PROBE_TIMEOUT_MS,
 		});
 	}).toPass({ timeout: DRAFT_SETTLED_TIMEOUT_MS });

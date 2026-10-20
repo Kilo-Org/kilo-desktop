@@ -40,7 +40,7 @@
 		],
 		"nav": [],
 		"zones": [
-			{ "zone": "sidebar", "component": "SessionList", "label": "Chats", "priority": 10 },
+			{ "zone": "sidebar", "component": "SessionList", "label": "Sessions", "priority": 10 },
 			{
 				"zone": "sidebar-account",
 				"component": "SidebarKiloAccount",
@@ -61,7 +61,7 @@
 			{
 				"id": "notifications",
 				"title": "Notifications",
-				"description": "A sound, plus a system notification while Kilo is in the background. “When I'm not looking” skips the chat you have open.",
+				"description": "A sound, plus a system notification while Kilo is in the background. “When I'm not looking” skips the session you have open.",
 				"component": "NotificationSettings",
 				"icon": "NotificationsNavIcon",
 				"category": "General",

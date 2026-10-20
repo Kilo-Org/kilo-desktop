@@ -92,7 +92,7 @@ export function WorkspaceBoardColumnHeader({
 			kind: "column",
 			columnId: column.id,
 			title: column.label,
-			detail: chatCount(column.cards.length),
+			detail: sessionCount(column.cards.length),
 		});
 	};
 
@@ -130,7 +130,7 @@ export function WorkspaceBoardColumnHeader({
 						<span aria-hidden data-qa-id={`workspace-board-column-count-${column.id}`}>
 							{column.cards.length}
 						</span>
-						<span className="sr-only">{chatCount(column.cards.length)}</span>
+						<span className="sr-only">{sessionCount(column.cards.length)}</span>
 					</span>
 					<DropdownMenu>
 						<MoreActionsTrigger
@@ -203,16 +203,16 @@ export function WorkspaceBoardColumnHeader({
 	);
 }
 
-/** Counts every chat in the column, and says how many of them the board is not showing. */
+/** Counts every session in the column, and says how many of them the board is not showing. */
 function deleteDescription(column: BoardColumnView): string {
-	const chats = column.cardCount === 1 ? "its chat" : `its ${column.cardCount} chats`;
+	const sessions = column.cardCount === 1 ? "its session" : `its ${column.cardCount} sessions`;
 	const hidden = column.cardCount - column.cards.length;
-	// Includes chats the workspace filter hides and chats that are not loaded yet.
+	// Includes sessions the workspace filter hides and sessions that are not loaded yet.
 	const filtered = hidden > 0 ? ` (${hidden} not shown)` : "";
-	return `This moves ${chats}${filtered} to “${column.deleteDestination}”. The chats themselves are not deleted.`;
+	return `This moves ${sessions}${filtered} to “${column.deleteDestination}”. The sessions themselves are not deleted.`;
 }
 
 /** Names the column's region after its heading. */
 export const headingId = (columnId: string) => `workspace-board-column-heading-${columnId}`;
 
-const chatCount = (count: number) => (count === 1 ? "1 chat" : `${count} chats`);
+const sessionCount = (count: number) => (count === 1 ? "1 session" : `${count} sessions`);

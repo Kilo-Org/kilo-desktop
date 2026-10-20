@@ -113,7 +113,7 @@ export function GitDiffView(props: GitDiffViewProps) {
 							No workspace
 						</EmptyTitle>
 						<EmptyDescription>
-							Open a workspace chat to review its uncommitted changes.
+							Open a workspace session to review its uncommitted changes.
 						</EmptyDescription>
 					</EmptyHeader>
 				</Empty>

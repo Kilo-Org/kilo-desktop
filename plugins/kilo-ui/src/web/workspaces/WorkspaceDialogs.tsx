@@ -94,7 +94,7 @@ function ManageWorkspacesDialog({
 							</EmptyMedia>
 							<EmptyTitle>No workspaces yet</EmptyTitle>
 							<EmptyDescription>
-								Create a workspace to group folders for your chats.
+								Create a workspace to group folders for your sessions.
 							</EmptyDescription>
 						</EmptyHeader>
 					</Empty>

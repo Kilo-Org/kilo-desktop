@@ -9,10 +9,10 @@ import { useNotificationPreferences } from "./notification-preferences.js";
 import { playNotificationSound } from "./notification-sounds.js";
 
 const ALERT_TITLES: Record<AlertReason, string> = {
-	done: "Chat finished",
+	done: "Kilo finished",
 	permission: "Kilo needs your approval",
 	question: "Kilo has a question",
-	error: "A chat stopped with an error",
+	error: "Kilo stopped with an error",
 };
 
 /**

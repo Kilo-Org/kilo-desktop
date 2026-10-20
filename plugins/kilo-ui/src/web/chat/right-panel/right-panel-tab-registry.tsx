@@ -122,7 +122,7 @@ export function buildContributedTabDefinitions(
 				id: contributionDefinitionId(contribution),
 				title: contribution.label,
 				description:
-					contribution.description ?? `Open another ${contribution.label} for this chat.`,
+					contribution.description ?? `Open another ${contribution.label} for this session.`,
 				Icon: isRenderableComponent(contribution.icon)
 					? (contribution.icon as ComponentType<RightPanelTabIconProps>)
 					: LayoutTemplateIcon,

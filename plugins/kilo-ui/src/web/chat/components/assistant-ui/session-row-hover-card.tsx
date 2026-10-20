@@ -15,6 +15,7 @@ import {
 	formatRelativeTimeLabel,
 	type SessionActivity,
 } from "../../session-activity/session-activity-logic.js";
+import { UNTITLED_SESSION_TITLE } from "../../session-title.js";
 
 export const SESSION_DETAILS_BRANCH_ZONE = "kilo-ui/chat-session-details-branch";
 export const SESSION_DETAILS_PULL_REQUEST_ZONE = "kilo-ui/chat-session-details-pull-request";
@@ -79,7 +80,7 @@ const SessionRowDetails: FC<Omit<SessionRowHoverCardProps, "trigger">> = ({
 		<>
 			<div className="flex min-w-0 items-baseline gap-2">
 				<span className="min-w-0 flex-1 truncate font-medium">
-					<ThreadListItemPrimitive.Title fallback="New Chat" />
+					<ThreadListItemPrimitive.Title fallback={UNTITLED_SESSION_TITLE} />
 				</span>
 				{activity?.updatedAt !== undefined ? (
 					<time

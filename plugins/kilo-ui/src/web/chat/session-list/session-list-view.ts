@@ -6,6 +6,7 @@ import {
 	sessionGitStatusId,
 	type SessionActivity,
 } from "../session-activity/session-activity-logic.js";
+import { UNTITLED_SESSION_TITLE } from "../session-title.js";
 
 /** Versioned key — bump the suffix if the stored shape changes. */
 export const SESSION_LIST_VIEW_STORAGE_KEY = "kilo-ui.session-list-view:v1";
@@ -306,7 +307,7 @@ function enrich(
 			activity,
 			lifecycle: lifecycleOf(activity, entry.archived),
 			location: resolveSessionLocationLabel(activity, workspaces),
-			title: entry.title || "New Chat",
+			title: entry.title || UNTITLED_SESSION_TITLE,
 		};
 	});
 }

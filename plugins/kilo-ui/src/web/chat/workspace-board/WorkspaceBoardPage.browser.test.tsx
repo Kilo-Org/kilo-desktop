@@ -292,7 +292,7 @@ async function openCardMenu(screen: ReturnType<typeof setup>["screen"], sessionI
 	const card = screen.getByTestId(`workspace-board-card-${sessionId}`);
 	await expect.element(card).toBeVisible();
 	await card.hover();
-	await card.getByRole("button", { name: /^Chat actions for / }).click();
+	await card.getByRole("button", { name: /^Session actions for / }).click();
 	return card;
 }
 
@@ -323,7 +323,7 @@ describe("WorkspaceBoardPage card actions", () => {
 		await expect.element(card).toBeVisible();
 		await card.hover();
 		await expect
-			.element(card.getByRole("button", { name: "Chat actions for Beta feature" }))
+			.element(card.getByRole("button", { name: "Session actions for Beta feature" }))
 			.toBeInTheDocument();
 	});
 
@@ -343,7 +343,7 @@ describe("WorkspaceBoardPage card actions", () => {
 		const card = screen.getByTestId("workspace-board-card-ses_beta");
 		await expect.element(card).toBeVisible();
 		await card.hover();
-		const trigger = card.getByRole("button", { name: /^Chat actions for / }).element();
+		const trigger = card.getByRole("button", { name: /^Session actions for / }).element();
 		await vi.waitFor(() => expect(trigger.getBoundingClientRect().width).toBeGreaterThan(0));
 		const rect = trigger.getBoundingClientRect();
 		const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
@@ -373,7 +373,7 @@ describe("WorkspaceBoardPage card actions", () => {
 
 		await vi.waitFor(() => expect(renameThread).toHaveBeenCalledWith("ses_beta", "Beta launch"));
 		await expect.element(card.getByText("Beta launch")).toBeVisible();
-		await expect.element(card.getByRole("button", { name: /^Chat actions for / })).toHaveFocus();
+		await expect.element(card.getByRole("button", { name: /^Session actions for / })).toHaveFocus();
 	});
 
 	it("deletes the chat and takes it off the board", async () => {
@@ -421,7 +421,7 @@ describe("WorkspaceBoardPage card actions", () => {
 		const dialog = page.getByTestId("workspace-board-column-delete-dialog");
 		await expect.element(dialog).toBeVisible();
 		expect(dialog.element().textContent).toContain(
-			"This moves its 2 chats (2 not shown) to “Done”",
+			"This moves its 2 sessions (2 not shown) to “Done”",
 		);
 	});
 });
@@ -438,7 +438,7 @@ describe("WorkspaceBoardPage clear board", () => {
 		const dialog = page.getByTestId("workspace-board-clear-dialog");
 		await expect.element(dialog).toBeVisible();
 		// Counts chats that are not shown too (an unloaded one here).
-		expect(dialog.element().textContent).toContain("This takes all 4 chats off the board.");
+		expect(dialog.element().textContent).toContain("This takes all 4 sessions off the board.");
 		await page.getByTestId("workspace-board-clear-confirm").click();
 
 		await expect.element(screen.getByText("Beta feature")).not.toBeInTheDocument();
@@ -624,7 +624,7 @@ describe("WorkspaceBoardPage in its own window", () => {
 		expect(results).toHaveBeenCalledWith({ requestId: "r1" });
 		expect(results).toHaveBeenCalledWith({
 			requestId: "r2",
-			error: "The chat is not loaded in the main window.",
+			error: "The session is not loaded in the main window.",
 		});
 		expect(archiveThread).not.toHaveBeenCalled();
 	});
@@ -847,7 +847,7 @@ describe("WorkspaceBoardPage in its own window", () => {
 		it("keeps the rename open and says why when the main window cannot rename", async () => {
 			const toastError = vi.spyOn(toast, "error").mockImplementation(() => "");
 			const { screen } = setupBoardWindow({
-				actionError: "The chat is not loaded in the main window.",
+				actionError: "The session is not loaded in the main window.",
 			});
 			const card = await openCardMenu(screen, "ses_beta");
 			await page.getByRole("menuitem", { name: "Rename" }).click();
@@ -855,8 +855,8 @@ describe("WorkspaceBoardPage in its own window", () => {
 			await userEvent.keyboard("{Enter}");
 
 			await vi.waitFor(() =>
-				expect(toastError).toHaveBeenCalledWith("Could not rename chat", {
-					description: "The chat is not loaded in the main window.",
+				expect(toastError).toHaveBeenCalledWith("Could not rename session", {
+					description: "The session is not loaded in the main window.",
 				}),
 			);
 			await expect.element(card.getByRole("textbox", { name: "Rename thread" })).toBeVisible();

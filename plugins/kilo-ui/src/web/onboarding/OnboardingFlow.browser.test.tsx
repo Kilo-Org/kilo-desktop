@@ -223,7 +223,7 @@ describe("OnboardingFlow", () => {
 			.toHaveTextContent("Step 4 of 4");
 		for (const title of [
 			"Use any model from any provider",
-			"Customizable chat layouts",
+			"Customizable session layouts",
 			"Interactive Python notebooks",
 			"Local models",
 		]) {

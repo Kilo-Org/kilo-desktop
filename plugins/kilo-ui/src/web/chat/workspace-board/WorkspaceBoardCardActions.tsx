@@ -63,7 +63,7 @@ const CardMenu: FC<MenuProps & { operations?: SessionRowOperations }> = ({
 				onDelete={deleteThread}
 				board={board}
 				triggerRef={triggerRef}
-				label={`Chat actions for ${session.title}`}
+				label={`Session actions for ${session.title}`}
 				side="bottom"
 			/>
 			<SessionRowWorktreeDialog dialog={worktreeDialog} />

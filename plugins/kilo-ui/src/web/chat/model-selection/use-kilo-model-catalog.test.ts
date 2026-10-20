@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { EmptyKiloCatalogError } from "../kilo-connection-error.js";
 import { fetchModelCatalogForConnection, isModelCatalogPending } from "./use-kilo-model-catalog.js";
 
 const connection = {
@@ -79,6 +80,64 @@ describe("fetchModelCatalogForConnection", () => {
 		try {
 			await expect(fetchModelCatalogForConnection(connection)).resolves.toMatchObject({
 				configuredModel: { providerID: "anthropic", modelID: "claude-sonnet" },
+			});
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
+	it("throws when Kilo reports no providers yet so the query can retry", async () => {
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = async (input) => {
+			const url = input instanceof Request ? input.url : String(input);
+			const pathname = new URL(url).pathname;
+			if (pathname === "/provider") return Response.json({ all: [], default: {}, connected: [] });
+			if (pathname === "/config") return Response.json({});
+			if (pathname === "/kilo/auth/status") return Response.json({ authenticated: false });
+			throw new Error(`Unexpected URL: ${url}`);
+		};
+
+		try {
+			await expect(fetchModelCatalogForConnection(connection)).rejects.toBeInstanceOf(
+				EmptyKiloCatalogError,
+			);
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
+	it("resolves a populated but unconnected provider list instead of throwing", async () => {
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = async (input) => {
+			const url = input instanceof Request ? input.url : String(input);
+			const pathname = new URL(url).pathname;
+			if (pathname === "/provider") {
+				return Response.json({
+					all: [
+						{
+							id: "anthropic",
+							name: "Anthropic",
+							models: {
+								"claude-sonnet": {
+									id: "claude-sonnet",
+									name: "Claude Sonnet",
+									providerID: "anthropic",
+								},
+							},
+						},
+					],
+					default: { anthropic: "claude-sonnet" },
+					connected: [],
+				});
+			}
+			if (pathname === "/config") return Response.json({});
+			if (pathname === "/kilo/auth/status") return Response.json({ authenticated: false });
+			throw new Error(`Unexpected URL: ${url}`);
+		};
+
+		try {
+			await expect(fetchModelCatalogForConnection(connection)).resolves.toMatchObject({
+				models: [],
 			});
 		} finally {
 			globalThis.fetch = originalFetch;

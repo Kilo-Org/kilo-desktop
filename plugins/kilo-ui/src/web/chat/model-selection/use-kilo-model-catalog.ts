@@ -2,7 +2,10 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import type { KiloGlobalConnection } from "../../../contracts/chat/schemas.js";
 import {
-	shouldRetryStaleKiloQuery,
+	EMPTY_KILO_CATALOG_RETRY_DELAY_MS,
+	EmptyKiloCatalogError,
+	isEmptyKiloCatalogError,
+	shouldRetryModelCatalogQuery,
 	STALE_KILO_QUERY_RETRY_DELAY_MS,
 } from "../kilo-connection-error.js";
 import {
@@ -34,7 +37,13 @@ export async function fetchModelCatalogForConnection(
 			.then(({ data }) => data)
 			.catch(() => undefined),
 	]);
-	const catalog = buildCatalogFromProviderList(providers as KiloProviderListPayload, {
+	const providerList = providers as KiloProviderListPayload;
+	// No providers at all usually means Kilo is still starting them; treat it as a
+	// failure so the query refetches (bounded) instead of caching no models. A
+	// populated-but-unconnected list is a legitimate steady state (e.g. signed out)
+	// and must resolve to a normal catalog, not an error.
+	if (providerList.all.length === 0) throw new EmptyKiloCatalogError();
+	const catalog = buildCatalogFromProviderList(providerList, {
 		connectedOnly: true,
 	});
 	const configuredModel = config.model ? parseModelId(config.model) : null;
@@ -66,7 +75,7 @@ export function useKiloModelCatalog(
 	connection: KiloGlobalConnection | undefined,
 	connectionUpdatedAt = 0,
 ) {
-	return useQuery({
+	const query = useQuery({
 		queryKey: [
 			...KILO_PROVIDER_LIST_QUERY_KEY,
 			connection?.baseUrl,
@@ -76,13 +85,21 @@ export function useKiloModelCatalog(
 		],
 		queryFn: () => fetchModelCatalogForConnection(connection),
 		enabled: connection !== undefined,
+		// An empty catalog is expected for a moment while Kilo starts its
+		// providers; the query retries, so don't report it to Sentry.
+		meta: { reportToSentry: false },
 		placeholderData: keepPreviousData,
-		retry: shouldRetryStaleKiloQuery,
-		retryDelay: STALE_KILO_QUERY_RETRY_DELAY_MS,
+		retry: shouldRetryModelCatalogQuery,
+		retryDelay: (_failureCount, error) =>
+			isEmptyKiloCatalogError(error)
+				? EMPTY_KILO_CATALOG_RETRY_DELAY_MS
+				: STALE_KILO_QUERY_RETRY_DELAY_MS,
 		staleTime: Number.POSITIVE_INFINITY,
 		gcTime: Number.POSITIVE_INFINITY,
 		refetchOnMount: false,
 		refetchOnReconnect: false,
 		refetchOnWindowFocus: false,
 	});
+
+	return query;
 }

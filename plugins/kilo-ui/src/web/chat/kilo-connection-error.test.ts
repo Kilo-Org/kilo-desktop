@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { isStaleKiloConnectionError, shouldRetryStaleKiloQuery } from "./kilo-connection-error.js";
+import {
+	EMPTY_KILO_CATALOG_RETRY_LIMIT,
+	EmptyKiloCatalogError,
+	isEmptyKiloCatalogError,
+	isStaleKiloConnectionError,
+	shouldRetryModelCatalogQuery,
+	shouldRetryStaleKiloQuery,
+} from "./kilo-connection-error.js";
 
 describe("isStaleKiloConnectionError", () => {
 	it("is true for dropped or unauthorized Kilo connections", () => {
@@ -41,5 +48,23 @@ describe("shouldRetryStaleKiloQuery", () => {
 		expect(shouldRetryStaleKiloQuery(0, new Error("The local model could not be prepared."))).toBe(
 			false,
 		);
+	});
+});
+
+describe("shouldRetryModelCatalogQuery", () => {
+	it("retries an empty catalog a bounded number of times, then gives up", () => {
+		const empty = new EmptyKiloCatalogError();
+		expect(isEmptyKiloCatalogError(empty)).toBe(true);
+		expect(isEmptyKiloCatalogError(new Error("Kilo returned an empty model catalog"))).toBe(false);
+		expect(shouldRetryModelCatalogQuery(0, empty)).toBe(true);
+		expect(shouldRetryModelCatalogQuery(EMPTY_KILO_CATALOG_RETRY_LIMIT - 1, empty)).toBe(true);
+		expect(shouldRetryModelCatalogQuery(EMPTY_KILO_CATALOG_RETRY_LIMIT, empty)).toBe(false);
+	});
+
+	it("still applies the stale-query retry to other errors", () => {
+		const unavailable = new Error("503 Service Unavailable");
+		expect(shouldRetryModelCatalogQuery(0, unavailable)).toBe(true);
+		expect(shouldRetryModelCatalogQuery(3, unavailable)).toBe(false);
+		expect(shouldRetryModelCatalogQuery(0, new Error("Failed to fetch"))).toBe(false);
 	});
 });

@@ -18,3 +18,29 @@ export function shouldRetryStaleKiloQuery(failureCount: number, error: unknown):
 }
 
 export const STALE_KILO_QUERY_RETRY_DELAY_MS = 200;
+
+/**
+ * Kilo can answer `GET /provider` with an empty list while its providers are
+ * still starting (cold start / restart). The model catalog treats that as a
+ * failure so it refetches a bounded number of times instead of caching an empty
+ * picker forever.
+ */
+export class EmptyKiloCatalogError extends Error {
+	constructor() {
+		super("Kilo returned an empty model catalog");
+		this.name = "EmptyKiloCatalogError";
+	}
+}
+
+export function isEmptyKiloCatalogError(error: unknown): boolean {
+	return error instanceof EmptyKiloCatalogError;
+}
+
+/** Bounded refetches for an empty catalog before giving up and logging. */
+export const EMPTY_KILO_CATALOG_RETRY_LIMIT = 3;
+export const EMPTY_KILO_CATALOG_RETRY_DELAY_MS = 1_000;
+
+export function shouldRetryModelCatalogQuery(failureCount: number, error: unknown): boolean {
+	if (isEmptyKiloCatalogError(error)) return failureCount < EMPTY_KILO_CATALOG_RETRY_LIMIT;
+	return shouldRetryStaleKiloQuery(failureCount, error);
+}

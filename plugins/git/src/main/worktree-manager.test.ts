@@ -920,6 +920,7 @@ describe("WorktreeManager", () => {
 			await expect(manager.createWorktree({ workingDirectory: mainRoot })).rejects.toMatchObject({
 				name: "FeatureError",
 				code: "BUSINESS",
+				message: "Git was not found. Install Git, then restart Kilo Desktop.",
 			});
 		});
 

@@ -50,6 +50,7 @@ export const GitErrorCode = {
 	UnsafeDirectory: 47,
 	PathExistsButNotInRef: 48,
 	XcodeLicenseNotAgreed: 49,
+	XcodeCommandLineToolsMissing: 50,
 } as const;
 export type GitErrorCode = (typeof GitErrorCode)[keyof typeof GitErrorCode];
 
@@ -129,6 +130,7 @@ export const GitErrorRegexes: { [regexp: string]: GitErrorCode } = {
 	"fatal: path '(.+)' exists on disk, but not in '(.+)'": GitErrorCode.PathExistsButNotInRef,
 	"You have not agreed to the Xcode license agreements": GitErrorCode.XcodeLicenseNotAgreed,
 	"Agreeing to the Xcode/iOS license requires admin privileges": GitErrorCode.XcodeLicenseNotAgreed,
+	"xcode-select: note: No developer tools were found": GitErrorCode.XcodeCommandLineToolsMissing,
 };
 
 export class ExecError extends Error {

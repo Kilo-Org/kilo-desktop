@@ -134,6 +134,11 @@ mark them as resolved using git add`,
 			"Agreeing to the Xcode/iOS license requires admin privileges, please re-run as root via sudo.",
 			GitErrorCode.XcodeLicenseNotAgreed,
 		],
+		[
+			"Xcode command line tools missing error",
+			"xcode-select: note: No developer tools were found, requesting install.\nIf developer tools are located at a non-default location on disk, use `sudo xcode-select --switch path/to/Xcode.app` to specify the Xcode that you wish to use for command line developer tools, and cancel the installation dialog.\nSee `man xcode-select` for more details.\n",
+			GitErrorCode.XcodeCommandLineToolsMissing,
+		],
 	] as const;
 
 	it.each(cases)("can parse %s", (_, stderr, expected) => {

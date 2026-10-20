@@ -268,6 +268,9 @@ export interface GitClient {
  * Binary resolution is sync (`which.sync`) and memoized because
  * `LOCAL_GIT_DIRECTORY`/`PATH` only influence the first resolution — later
  * changes to the process environment deliberately do not re-resolve.
+ * A failed resolution (`GitNotDetectedError`) is memoized too, as VS Code
+ * does: re-resolving would re-run the synchronous macOS Command Line Tools
+ * probe on every call, so a fixed install is picked up after a restart.
  */
 class GitClientImpl implements GitClient {
 	readonly path: string;
@@ -275,7 +278,7 @@ class GitClientImpl implements GitClient {
 	readonly #gitPath: string | undefined;
 	readonly #clientEnv: Record<string, string | undefined>;
 	readonly #injectedLogger: GitLogger | undefined;
-	#context: GitProcessContext | undefined;
+	#context: { ok: true; value: GitProcessContext } | { ok: false; error: unknown } | undefined;
 	#logger: GitLogger | undefined;
 	#version: Promise<string> | undefined;
 
@@ -444,11 +447,18 @@ class GitClientImpl implements GitClient {
 	}
 
 	#resolveContext(): GitProcessContext {
-		this.#context ??= {
-			gitLocation: resolveGitBinary(this.#gitPath, buildEnv(this.#clientEnv)),
-			env: this.#clientEnv,
-		};
-		return this.#context;
+		this.#context ??= this.#createContext();
+		if (!this.#context.ok) throw this.#context.error;
+		return this.#context.value;
+	}
+
+	#createContext(): { ok: true; value: GitProcessContext } | { ok: false; error: unknown } {
+		try {
+			const gitLocation = resolveGitBinary(this.#gitPath, buildEnv(this.#clientEnv));
+			return { ok: true, value: { gitLocation, env: this.#clientEnv } };
+		} catch (error) {
+			return { ok: false, error };
+		}
 	}
 
 	#resolveLogger(): GitLogger {

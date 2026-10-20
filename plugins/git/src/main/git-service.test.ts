@@ -240,6 +240,7 @@ describe("GitService", () => {
 		await expect(service.status("/some/repo")).rejects.toMatchObject({
 			name: "FeatureError",
 			code: "BUSINESS",
+			message: "Git was not found. Install Git, then restart Kilo Desktop.",
 		});
 	});
 
@@ -273,6 +274,40 @@ describe("GitService", () => {
 			name: "FeatureError",
 			code: "BUSINESS",
 			message: XCODE_LICENSE_DESCRIPTION,
+		});
+	});
+
+	it("maps a missing-command-line-tools GitError to a BUSINESS FeatureError with its description", async () => {
+		const description =
+			"Git needs the Xcode Command Line Tools. Install them from the macOS prompt or run 'xcode-select --install' in a terminal, then try again.";
+		const stderr = "xcode-select: note: No developer tools were found, requesting install.";
+		const service = new GitService({
+			logger,
+			getWorkspaceFolderPaths: folders("/some/repo"),
+			createClient: () =>
+				clientOf({
+					status: () =>
+						Promise.reject(
+							new GitError(
+								{
+									stdout: "",
+									stderr,
+									exitCode: 1,
+									gitError: GitErrorCode.XcodeCommandLineToolsMissing,
+									gitErrorDescription: description,
+									path: "/repo",
+								},
+								["status"],
+								stderr,
+							),
+						),
+				}),
+		});
+
+		await expect(service.status("/some/repo")).rejects.toMatchObject({
+			name: "FeatureError",
+			code: "BUSINESS",
+			message: description,
 		});
 	});
 

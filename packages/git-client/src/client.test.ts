@@ -1,4 +1,4 @@
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import process from "node:process";
@@ -114,6 +114,21 @@ describe("createGitClient", () => {
 
 		await expect(git.exec(["--version"], "version")).rejects.toThrowError(GitNotDetectedError);
 	});
+
+	it.skipIf(process.platform === "win32")(
+		"keeps reporting GitNotDetectedError after git appears on the PATH",
+		async () => {
+			const binDir = createDir("desktop-git-client-late-git");
+			const git = createGitClient({ env: { PATH: binDir }, logger: noopLogger });
+
+			await expect(git.exec(["--version"], "version")).rejects.toThrowError(GitNotDetectedError);
+			const fakeGit = join(binDir, "git");
+			writeFileSync(fakeGit, "#!/bin/sh\necho 'git version 2.39.5'\n");
+			chmodSync(fakeGit, 0o755);
+
+			await expect(git.exec(["--version"], "version")).rejects.toThrowError(GitNotDetectedError);
+		},
+	);
 
 	it("throws ExecError when an explicit gitPath cannot be executed", async () => {
 		const path = createDir("desktop-git-client-bad-git-path");

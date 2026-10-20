@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { join, resolve } from "node:path";
 import process from "node:process";
 
@@ -22,10 +23,16 @@ import { GitNotDetectedError } from "./errors.js";
  * process immediately; callers memoize the result. Packaged Electron builds
  * inherit the login-shell PATH via the app bootstrap's shellEnv merge, so
  * system-git discovery works correctly without a separate PATH lookup here.
+ *
+ * A PATH lookup that lands on the macOS `/usr/bin/git` shim is treated as
+ * not detected when the Command Line Tools are missing: every spawn of the
+ * shim then fails and re-requests the CLT install dialog. Mirrors VS Code's
+ * `findGitDarwin`, including only treating `xcode-select -p` exit 2 as missing.
  */
 export function resolveGitBinary(
 	gitPath: string | undefined,
 	env: Record<string, string | undefined>,
+	developerToolsMissing: () => boolean = probeXcodeDeveloperToolsMissing,
 ): string {
 	if (gitPath !== undefined) {
 		return gitPath;
@@ -46,7 +53,21 @@ export function resolveGitBinary(
 		throw new GitNotDetectedError();
 	}
 
+	if (
+		process.platform === "darwin" &&
+		location === MACOS_GIT_SHIM_PATH &&
+		developerToolsMissing()
+	) {
+		throw new GitNotDetectedError();
+	}
+
 	return location;
+}
+
+const MACOS_GIT_SHIM_PATH = "/usr/bin/git";
+
+function probeXcodeDeveloperToolsMissing(): boolean {
+	return spawnSync("xcode-select", ["-p"], { stdio: "ignore" }).status === 2;
 }
 
 function resolveGitBinaryFromGitDir(localGitDir: string): string {

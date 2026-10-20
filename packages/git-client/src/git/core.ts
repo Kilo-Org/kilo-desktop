@@ -239,6 +239,8 @@ export function getDescriptionForError(error: GitErrorCode, stderr: string): str
 			return "There are unresolved conflicts in the working directory.";
 		case GitErrorCode.XcodeLicenseNotAgreed:
 			return "Git is blocked until you agree to the Xcode license. Open a terminal and run 'sudo xcodebuild -license accept', then try again.";
+		case GitErrorCode.XcodeCommandLineToolsMissing:
+			return "Git needs the Xcode Command Line Tools. Install them from the macOS prompt or run 'xcode-select --install' in a terminal, then try again.";
 		case GitErrorCode.ConfigLockFileAlreadyExists:
 			// Not using a custom message yet. Returning a null message here means the stderr will
 			// be used as the error message (or stdout if stderr is empty), i.e. the

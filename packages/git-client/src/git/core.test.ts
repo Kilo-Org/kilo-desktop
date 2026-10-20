@@ -123,6 +123,10 @@ const cases: ReadonlyArray<readonly [GitErrorCode, string | null | RegExp]> = [
 		GitErrorCode.XcodeLicenseNotAgreed,
 		"Git is blocked until you agree to the Xcode license. Open a terminal and run 'sudo xcodebuild -license accept', then try again.",
 	],
+	[
+		GitErrorCode.XcodeCommandLineToolsMissing,
+		"Git needs the Xcode Command Line Tools. Install them from the macOS prompt or run 'xcode-select --install' in a terminal, then try again.",
+	],
 ];
 
 function createCoreTestClient(path: string): GitClient {

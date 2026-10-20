@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { GitNotDetectedError } from "./errors.js";
 import { resolveGitBinary } from "./resolve-git.js";
@@ -65,6 +65,27 @@ describe("resolveGitBinary", () => {
 		expect(() => resolveGitBinary(undefined, { PATH: emptyPathDir })).toThrowError(
 			GitNotDetectedError,
 		);
+	});
+
+	it("never probes the developer tools for an explicit gitPath or LOCAL_GIT_DIRECTORY", () => {
+		const developerToolsMissing = vi.fn(() => true);
+
+		expect(resolveGitBinary("/usr/bin/git", {}, developerToolsMissing)).toBe("/usr/bin/git");
+		resolveGitBinary(undefined, { LOCAL_GIT_DIRECTORY: "/usr" }, developerToolsMissing);
+
+		expect(developerToolsMissing).not.toHaveBeenCalled();
+	});
+
+	describe.skipIf(process.platform !== "darwin")("the macOS /usr/bin/git shim", () => {
+		it("throws GitNotDetectedError when the Command Line Tools are missing", () => {
+			expect(() => resolveGitBinary(undefined, { PATH: "/usr/bin" }, () => true)).toThrowError(
+				GitNotDetectedError,
+			);
+		});
+
+		it("resolves the shim when the Command Line Tools are installed", () => {
+			expect(resolveGitBinary(undefined, { PATH: "/usr/bin" }, () => false)).toBe("/usr/bin/git");
+		});
 	});
 
 	it("describes how to remedy a missing git executable", () => {

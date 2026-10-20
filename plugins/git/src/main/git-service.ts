@@ -34,7 +34,7 @@ import {
 	finderPick,
 	parseBatchResponse,
 } from "./pull-request-batch.js";
-import { WorktreeManager } from "./worktree-manager.js";
+import { GIT_NOT_FOUND_MESSAGE, WorktreeManager } from "./worktree-manager.js";
 
 export interface GitPullRequest {
 	readonly number: number;
@@ -254,18 +254,19 @@ function createDefaultClient(logger: MainSdkLogger): GitClientSlice {
 /**
  * The git-unavailability errors mapped to a `FeatureError` across every
  * method: no git binary, and the macOS shim failing every invocation while
- * the Xcode license is unaccepted. Their messages must survive the IPC
- * boundary. Everything else propagates unwrapped (the IPC boundary scrubs
- * generic errors, and git-client logs the detail via the adapted logger).
+ * the Xcode license is unaccepted or the Command Line Tools are missing.
+ * Their messages must survive the IPC boundary. Everything else propagates
+ * unwrapped (the IPC boundary scrubs generic errors, and git-client logs the
+ * detail via the adapted logger).
  */
 function gitUnavailableToFeatureError(error: unknown): unknown {
 	if (error instanceof GitNotDetectedError) {
-		return new FeatureError(
-			"Git executable not found. Install git and make sure it is on your PATH.",
-			"BUSINESS",
-		);
+		return new FeatureError(GIT_NOT_FOUND_MESSAGE, "BUSINESS");
 	}
-	if (isGitError(error, GitErrorCode.XcodeLicenseNotAgreed)) {
+	if (
+		isGitError(error, GitErrorCode.XcodeLicenseNotAgreed) ||
+		isGitError(error, GitErrorCode.XcodeCommandLineToolsMissing)
+	) {
 		return new FeatureError(error.result.gitErrorDescription ?? error.message, "BUSINESS");
 	}
 	return error;
@@ -454,10 +455,14 @@ function parseJsonValue(json: string): unknown {
  *   be added later without schema changes.
  * - The git-unavailability errors are mapped to a `FeatureError` on every
  *   method so their messages survive the IPC boundary: `GitNotDetectedError`
- *   (no git binary on PATH) and `GitErrorCode.XcodeLicenseNotAgreed` (the
- *   macOS `/usr/bin/git` shim exits 69 on every invocation while the Xcode
- *   license is unaccepted — resolution succeeds, so without the mapping the
- *   raw `GitError` would cross IPC as an unexpected failure). Every other
+ *   (no git binary on PATH — git-client also reports the macOS
+ *   `/usr/bin/git` shim this way when the Command Line Tools are missing,
+ *   without ever spawning it), `GitErrorCode.XcodeLicenseNotAgreed` (the
+ *   shim exits 69 on every invocation while the Xcode license is
+ *   unaccepted — resolution succeeds, so without the mapping the raw
+ *   `GitError` would cross IPC as an unexpected failure and reach Sentry),
+ *   and `GitErrorCode.XcodeCommandLineToolsMissing` (the fallback for a
+ *   shim spawned despite the probe, e.g. CLT removed mid-session). Every other
  *   unexpected error propagates unwrapped (the IPC boundary scrubs generic
  *   errors, and git-client logs the detail via the adapted logger). The
  *   worktree delegate methods additionally map `GitError`s to `FeatureError`s

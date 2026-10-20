@@ -28,6 +28,13 @@ import type { BranchNameRandom } from "./branch-naming.js";
 import type { GitClientSlice } from "./git-service.js";
 
 /**
+ * User-facing copy for a git binary that could not be resolved. git-client
+ * memoizes the failed resolution for the client's lifetime, so installing
+ * git only takes effect after a restart — the copy says so.
+ */
+export const GIT_NOT_FOUND_MESSAGE = "Git was not found. Install Git, then restart Kilo Desktop.";
+
+/**
  * Worktree failures are user-facing copy (missing base branch, locked
  * worktree, …): git's parsed description must survive the IPC boundary, so
  * `GitError`s map to `FeatureError`s instead of being scrubbed to a
@@ -39,10 +46,7 @@ function worktreeErrorToFeatureError(error: unknown): unknown {
 		return new FeatureError(error.result.gitErrorDescription ?? error.message, "BUSINESS");
 	}
 	if (error instanceof GitNotDetectedError) {
-		return new FeatureError(
-			"Git executable not found. Install git and make sure it is on your PATH.",
-			"BUSINESS",
-		);
+		return new FeatureError(GIT_NOT_FOUND_MESSAGE, "BUSINESS");
 	}
 	return error;
 }

@@ -22,6 +22,12 @@ const execFile = promisify(execFileCallback);
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost"]);
 const GENERIC_STARTUP_ERROR = "Kilo server failed to start.";
 
+// Dropped from the inherited env so the host shell can't hand the CLI a Kilo credential.
+const INHERITED_KILO_CREDENTIAL_ENV = new Set(["KILO_API_KEY"]);
+
+// The CLI's own default gateway origin, used when nothing injects KILO_API_URL.
+const DEFAULT_KILO_GATEWAY_ORIGIN = "https://api.kilo.ai";
+
 class KiloOperationalError extends Error {}
 
 export interface KiloInstallation {
@@ -229,6 +235,9 @@ function appendStderrContext(baseMessage: string, stderr: string): string {
  * "stopped" branch after `dispose()` already emitted it. Subscribers that
  * need a periodic resync must use a separate signal (the boot progress
  * channel or an explicit refresh IPC), not the status event stream.
+ *
+ * `#createEnvironment` scrubs the inherited Kilo credential and pins the kilo
+ * origin via `KILO_CONFIG_CONTENT` so project config cannot repoint it.
  */
 export class KiloServerManager {
 	readonly #options: Required<
@@ -651,12 +660,17 @@ export class KiloServerManager {
 		return sanitized;
 	}
 
-	async #managedPluginConfigContent(): Promise<string | undefined> {
-		const files = await listManagedKiloPluginFiles(this.#options.managedPluginDirectory);
-		return kiloPluginConfigContent(files);
+	// Mirrors the CLI's default; an injected KILO_API_URL (the e2e stub) steers it.
+	#kiloBaseUrl(): string {
+		return this.#options.environment.KILO_API_URL ?? DEFAULT_KILO_GATEWAY_ORIGIN;
 	}
 
-	#createEnvironment(password: string, configContent: string | undefined): NodeJS.ProcessEnv {
+	async #managedPluginConfigContent(): Promise<string> {
+		const files = await listManagedKiloPluginFiles(this.#options.managedPluginDirectory);
+		return kiloPluginConfigContent(files, this.#kiloBaseUrl());
+	}
+
+	#createEnvironment(password: string, configContent: string): NodeJS.ProcessEnv {
 		const contributed = this.#contributedEnv ? this.#contributedEnv.getMergedEnv() : {};
 		const sanitizedContributed = this.#sanitizeContributedEnv(contributed);
 		const inheritedXdgConfigHome =
@@ -691,6 +705,8 @@ export class KiloServerManager {
 			// FEATURE_VALUES enum (Kilo-Org/cloud feature-detection.ts) or the
 			// gateway drops it to NULL.
 			KILOCODE_FEATURE: "desktop",
+			// Covers the CLI's env-default paths; the pinned config also sets it.
+			KILO_API_URL: this.#kiloBaseUrl(),
 			KILO_ENABLE_QUESTION_TOOL: "true",
 			KILO_EXPERIMENTAL_MCP_APPS: "true",
 			KILO_TREE_SITTER_WASM_DIR: this.#options.installation.treeSitterWasmDirectory,
@@ -732,6 +748,10 @@ export class KiloServerManager {
 				continue;
 			}
 			if (upper === "NODE_OPTIONS" || upper === "ELECTRON_RUN_AS_NODE") {
+				delete environment[name];
+				continue;
+			}
+			if (INHERITED_KILO_CREDENTIAL_ENV.has(upper)) {
 				delete environment[name];
 				continue;
 			}

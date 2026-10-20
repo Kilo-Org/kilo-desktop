@@ -28,9 +28,21 @@ export async function listManagedKiloPluginFiles(directory: string): Promise<str
 		.map((filename) => path.join(directory, filename));
 }
 
-export function kiloPluginConfigContent(pluginFiles: readonly string[]): string | undefined {
-	if (pluginFiles.length === 0) return undefined;
-	return JSON.stringify({ plugin: pluginFiles.map((file) => pathToFileURL(file).href) });
+// Pins the embedder origin. `KILO_CONFIG_CONTENT` is deep-merged last, so a
+// project `.kilo/kilo.json` cannot repoint it. The chat/model-list origin is
+// steered by `KILO_API_URL`, not pinned here: the CLI derives those paths from
+// `provider.kilo.options.baseURL` in a way no single value serves correctly.
+export function kiloPluginConfigContent(pluginFiles: readonly string[], baseUrl: string): string {
+	const config: {
+		indexing: { kilo: { baseUrl: string } };
+		plugin?: string[];
+	} = {
+		indexing: { kilo: { baseUrl } },
+	};
+	if (pluginFiles.length > 0) {
+		config.plugin = pluginFiles.map((file) => pathToFileURL(file).href);
+	}
+	return JSON.stringify(config);
 }
 
 const LEGACY_MANAGED_PLUGIN_MARKER = "// Kilo Desktop managed plugin: ";

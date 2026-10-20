@@ -971,7 +971,7 @@ describe("KiloServerManager", () => {
 });
 
 describe("owned config environment", () => {
-	it("removes inherited KILO_CONFIG_CONTENT so the file is authoritative", async () => {
+	it("replaces inherited KILO_CONFIG_CONTENT with the Desktop-owned pinned config", async () => {
 		const { manager, spawn } = createHarness({
 			environment: {
 				PATH: "/bin",
@@ -979,7 +979,12 @@ describe("owned config environment", () => {
 			},
 		});
 		await manager.ensureRunning();
-		expect(spawn.mock.calls[0]![2].env.KILO_CONFIG_CONTENT).toBeUndefined();
+		const content = JSON.parse(spawn.mock.calls[0]![2].env.KILO_CONFIG_CONTENT!) as {
+			mcp?: unknown;
+			indexing: { kilo: { baseUrl: string } };
+		};
+		expect(content.mcp).toBeUndefined();
+		expect(content.indexing.kilo.baseUrl).toBe("https://api.kilo.ai");
 		manager.dispose();
 	});
 
@@ -1001,6 +1006,7 @@ describe("owned config environment", () => {
 		await manager.ensureRunning();
 		const firstEnv = spawn.mock.calls[0]![2].env;
 		expect(JSON.parse(firstEnv.KILO_CONFIG_CONTENT!)).toEqual({
+			indexing: { kilo: { baseUrl: "https://api.kilo.ai" } },
 			plugin: [pathToFileURL(callerContext).href],
 		});
 		expect(firstEnv.kilo_config_content).toBeUndefined();
@@ -1008,7 +1014,79 @@ describe("owned config environment", () => {
 		await writeFile(notebooks, "export default {};\n");
 		await manager.restart();
 		expect(JSON.parse(spawn.mock.calls[1]![2].env.KILO_CONFIG_CONTENT!)).toEqual({
+			indexing: { kilo: { baseUrl: "https://api.kilo.ai" } },
 			plugin: [pathToFileURL(callerContext).href, pathToFileURL(notebooks).href],
 		});
+	});
+
+	it("strips an inherited KILO_API_KEY from the child env", async () => {
+		const { manager, spawn } = createHarness({
+			environment: { PATH: "/bin", KILO_API_KEY: "sentinel" },
+		});
+		await manager.ensureRunning();
+		const environment = spawn.mock.calls[0]![2].env;
+		expect(environment.KILO_API_KEY).toBeUndefined();
+		expect(Object.values(environment)).not.toContain("sentinel");
+		manager.dispose();
+	});
+
+	it("pins the kilo origin from an injected KILO_API_URL (e2e gateway)", async () => {
+		const { manager, spawn } = createHarness({
+			environment: { PATH: "/bin", KILO_API_URL: "http://127.0.0.1:9/api" },
+		});
+		await manager.ensureRunning();
+		const environment = spawn.mock.calls[0]![2].env;
+		expect(environment.KILO_API_URL).toBe("http://127.0.0.1:9/api");
+		const content = JSON.parse(environment.KILO_CONFIG_CONTENT!) as {
+			indexing: { kilo: { baseUrl: string } };
+		};
+		expect(content.indexing.kilo.baseUrl).toBe("http://127.0.0.1:9/api");
+		manager.dispose();
+	});
+
+	it("defaults the child KILO_API_URL to the production kilo origin when none is inherited", async () => {
+		const { manager, spawn } = createHarness({
+			environment: { PATH: "/bin" },
+		});
+		await manager.ensureRunning();
+		const environment = spawn.mock.calls[0]![2].env;
+		expect(environment.KILO_API_URL).toBe("https://api.kilo.ai");
+		manager.dispose();
+	});
+
+	it("keeps inherited non-credential KILO_ config such as KILO_MARKETPLACE_BASE_URL", async () => {
+		const { manager, spawn } = createHarness({
+			environment: { PATH: "/bin", KILO_MARKETPLACE_BASE_URL: "http://127.0.0.1:1234" },
+		});
+		await manager.ensureRunning();
+		const environment = spawn.mock.calls[0]![2].env;
+		expect(environment.KILO_MARKETPLACE_BASE_URL).toBe("http://127.0.0.1:1234");
+		manager.dispose();
+	});
+
+	it("strips a case-variant inherited kilo_api_key from the child env", async () => {
+		const { manager, spawn } = createHarness({
+			environment: { PATH: "/bin", kilo_api_key: "s3" },
+		});
+		await manager.ensureRunning();
+		const environment = spawn.mock.calls[0]![2].env;
+		expect(environment.kilo_api_key).toBeUndefined();
+		expect(Object.values(environment)).not.toContain("s3");
+		manager.dispose();
+	});
+
+	it("does not scrub a contributed ANACONDA_API_KEY", async () => {
+		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+		const contributedEnv = new ContributedEnvManager(() => undefined, logger);
+		contributedEnv.contribute("anaconda-mcp", { ANACONDA_API_KEY: "contributed-key" });
+		const { manager, spawn } = createHarness({
+			contributedEnv,
+			environment: { PATH: "/bin", KILO_API_KEY: "sentinel" },
+		});
+		await manager.ensureRunning();
+		const environment = spawn.mock.calls[0]![2].env;
+		expect(environment.ANACONDA_API_KEY).toBe("contributed-key");
+		expect(environment.KILO_API_KEY).toBeUndefined();
+		manager.dispose();
 	});
 });

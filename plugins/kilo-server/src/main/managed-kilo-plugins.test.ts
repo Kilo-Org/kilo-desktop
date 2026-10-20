@@ -41,13 +41,25 @@ describe("managed Kilo plugins", () => {
 		);
 	});
 
-	it("passes plugins to Kilo as file URLs in inline config", () => {
+	it("passes plugins to Kilo as file URLs in inline config alongside the pinned indexing base", () => {
 		const file = path.join(tempDirectory, "kilo plugins", "anaconda-notebooks.js");
 
-		expect(JSON.parse(kiloPluginConfigContent([file])!)).toEqual({
+		expect(JSON.parse(kiloPluginConfigContent([file], "https://api.kilo.ai"))).toEqual({
+			indexing: { kilo: { baseUrl: "https://api.kilo.ai" } },
 			plugin: [pathToFileURL(file).href],
 		});
-		expect(kiloPluginConfigContent([])).toBeUndefined();
+	});
+
+	it("pins the kilo indexing base even when there are no managed plugin files", () => {
+		expect(JSON.parse(kiloPluginConfigContent([], "https://api.kilo.ai"))).toEqual({
+			indexing: { kilo: { baseUrl: "https://api.kilo.ai" } },
+		});
+	});
+
+	it("flows the base URL into the indexing pin unchanged", () => {
+		expect(JSON.parse(kiloPluginConfigContent([], "http://127.0.0.1:4999"))).toEqual({
+			indexing: { kilo: { baseUrl: "http://127.0.0.1:4999" } },
+		});
 	});
 
 	it("removes Desktop's plugins from the legacy config plugin directory and keeps user plugins", async () => {

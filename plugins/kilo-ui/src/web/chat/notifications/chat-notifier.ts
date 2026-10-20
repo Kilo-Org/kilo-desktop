@@ -1,6 +1,9 @@
 import type { OpenCodeServerEvent } from "@assistant-ui/react-opencode";
 
-import type { SessionActivity } from "../session-activity/session-activity-logic.js";
+import {
+	hasKiloDesktopSessionMetadata,
+	type SessionActivity,
+} from "../session-activity/session-activity-logic.js";
 import type { NotificationMode } from "./notification-preferences.js";
 
 export type ChatCue = "done" | "needsYou";
@@ -28,12 +31,17 @@ export interface ChatNotifierDeps {
  * - done: a known root chat goes idle after working, unless that turn failed.
  * - needs you: an approval or question (a subagent's, at any depth, counts as
  *   its chat), or a root chat's turn failing. Pressing stop is not a failure.
+ *
+ * Root sessions created without Kilo Desktop metadata (the hidden throwaway
+ * sessions behind commit/PR text generation) are not chats and never notify.
  */
 export function createChatNotifier(deps: ChatNotifierDeps): (event: OpenCodeServerEvent) => void {
 	const working = new Set<string>();
 	const failed = new Set<string>();
+	const hidden = new Set<string>();
 
 	const isRootChat = (id: string) => {
+		if (hidden.has(id)) return false;
 		const session = deps.sessions()[id];
 		return session?.createdAt !== undefined && session.parentId === undefined;
 	};
@@ -62,10 +70,17 @@ export function createChatNotifier(deps: ChatNotifierDeps): (event: OpenCodeServ
 	};
 
 	return (event) => {
-		const info = event.properties["info"] as { id?: string } | undefined;
+		const info = event.properties["info"] as
+			| { id?: string; parentID?: string; metadata?: unknown }
+			| undefined;
 		const id = event.sessionId ?? info?.id;
 		if (!id) return;
 		switch (event.type) {
+			case "session.created":
+				if (info && !info.parentID && !hasKiloDesktopSessionMetadata(info.metadata)) {
+					hidden.add(id);
+				}
+				return;
 			case "session.status": {
 				const status = event.properties["status"] as { type?: string } | undefined;
 				if (status?.type === "idle") return finished(id);
@@ -84,6 +99,7 @@ export function createChatNotifier(deps: ChatNotifierDeps): (event: OpenCodeServ
 			case "session.deleted":
 				working.delete(id);
 				failed.delete(id);
+				hidden.delete(id);
 				return;
 			case "session.error": {
 				const error = event.properties["error"] as { name?: string } | undefined;

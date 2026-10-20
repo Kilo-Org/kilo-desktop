@@ -81,6 +81,19 @@ describe("createChatNotifier", () => {
 		expect(sounds).toEqual([]);
 	});
 
+	it("ignores hidden root sessions created without Kilo Desktop metadata", () => {
+		const { sounds, banners, emit, finishTurn, fail } = setup();
+
+		emit("session.created", "ses-1", { info: { id: "ses-1" } });
+		finishTurn("ses-1");
+		fail("ses-1");
+		emit("session.created", "ses-2", { info: { id: "ses-2", metadata: { "kilo-desktop": {} } } });
+		finishTurn("ses-2");
+
+		expect(sounds).toEqual(["done"]);
+		expect(banners).toEqual(["done"]);
+	});
+
 	it("plays needs-you for approvals, questions, and failed turns", () => {
 		const { sounds, emit, fail } = setup();
 

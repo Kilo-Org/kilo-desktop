@@ -1,4 +1,4 @@
-import { ChevronDownIcon, FolderIcon, LayoutGridIcon } from "lucide-react";
+import { ChevronDownIcon, FolderIcon, FolderXIcon, LayoutGridIcon } from "lucide-react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
 
@@ -7,19 +7,22 @@ import { workspaceGlyphColor } from "./workspace-glyph-style";
 
 const EMPTY_LABEL = "All workspaces";
 
+/** `null` is "All workspaces"; `unscopedValue` is "No workspace". */
 export function WorkspaceFilter({
 	value,
+	unscopedValue,
 	onValueChange,
 }: {
 	value: string | null;
-	onValueChange: (workspaceId: string | null) => void;
+	unscopedValue: string;
+	onValueChange: (value: string | null) => void;
 }) {
 	return (
 		<div className="min-w-0 flex-1">
 			<WorkspacePickerRoot
 				contentAlign="start"
 				emptyLabel={EMPTY_LABEL}
-				includeUnscoped={false}
+				unscopedValue={unscopedValue}
 				value={value}
 				onValueChange={onValueChange}
 			>
@@ -30,9 +33,9 @@ export function WorkspaceFilter({
 }
 
 function WorkspaceFilterTrigger() {
-	const { triggerLabel, active } = useWorkspacePicker();
+	const { triggerLabel, active, isUnscoped } = useWorkspacePicker();
 	const glyph = workspaceGlyphColor(active?.color);
-	const Icon = active ? FolderIcon : LayoutGridIcon;
+	const Icon = active ? FolderIcon : isUnscoped ? FolderXIcon : LayoutGridIcon;
 
 	return (
 		<WorkspacePickerTrigger

@@ -115,9 +115,11 @@ import {
 import {
 	buildSessionListSections,
 	SESSION_LIST_STATUS_LABELS,
+	UNSCOPED_WORKSPACE_FOCUS,
 	resolveWorkspaceFocus,
 	readSessionListArchivedExpanded,
 	visibleShowFields,
+	workspaceIdForFocus,
 	writeSessionListArchivedExpanded,
 	type SessionListPullRequests,
 	type SessionListSection,
@@ -261,6 +263,19 @@ function filteredEmptyLabel(view: Pick<SessionListView, "status" | "pullRequest"
 	if (view.pullRequest === "open") return "No chats with open pull requests";
 	if (byPullRequest) return "No chats with pull requests";
 	return null;
+}
+
+/** Why the whole list is empty, or null when there is nothing to explain. */
+function sessionListEmptyLabel(
+	view: Pick<SessionListView, "focus" | "status" | "pullRequest">,
+	workspaces: readonly { id: string; name: string }[],
+	hasMoreThreads: boolean,
+): string | null {
+	if (view.focus === UNSCOPED_WORKSPACE_FOCUS) return "No chats outside a workspace";
+	const focusedWorkspace = workspaces.find((workspace) => workspace.id === view.focus);
+	if (focusedWorkspace) return `No chats in ${focusedWorkspace.name}`;
+	if (view.pullRequest === "all" || hasMoreThreads) return null;
+	return filteredEmptyLabel(view);
 }
 
 /**
@@ -409,14 +424,7 @@ export const SessionListContent = memo(function SessionListContent({
 	const collapsibleKeys = sections.flatMap((section) => (section.label ? [section.key] : []));
 	const allCollapsed =
 		collapsibleKeys.length > 0 && collapsibleKeys.every((key) => expanded[key] === false);
-	const focusedWorkspace = focus
-		? workspaces.find((workspace) => workspace.id === focus)
-		: undefined;
-	const emptyLabel = focusedWorkspace
-		? `No chats in ${focusedWorkspace.name}`
-		: resolvedView.pullRequest !== "all" && !hasMoreThreads
-			? filteredEmptyLabel(resolvedView)
-			: null;
+	const emptyLabel = sessionListEmptyLabel(resolvedView, workspaces, hasMoreThreads);
 	const createChatInWorkspace = useCallback(
 		(workspaceId: string) => {
 			useRightPanelStore.getState().clearSession(DRAFT_RIGHT_PANEL_SESSION_KEY);
@@ -470,7 +478,7 @@ export const SessionListContent = memo(function SessionListContent({
 			pullRequestFilterAvailable={pullRequestFilterAvailable}
 			onViewChange={(patch) => {
 				updateView(patch);
-				if (patch.focus) setActiveWorkspaceId(patch.focus);
+				if (patch.focus) setActiveWorkspaceId(workspaceIdForFocus(patch.focus));
 			}}
 			onReset={resetView}
 			canCollapse={collapsibleKeys.length > 0}
@@ -526,9 +534,10 @@ export const SessionListContent = memo(function SessionListContent({
 							>
 								<WorkspaceFilter
 									value={focus}
-									onValueChange={(id) => {
-										updateView({ focus: id });
-										setActiveWorkspaceId(id);
+									unscopedValue={UNSCOPED_WORKSPACE_FOCUS}
+									onValueChange={(nextFocus) => {
+										updateView({ focus: nextFocus });
+										setActiveWorkspaceId(workspaceIdForFocus(nextFocus));
 									}}
 								/>
 								{viewMenu}

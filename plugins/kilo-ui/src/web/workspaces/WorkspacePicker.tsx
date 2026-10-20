@@ -43,6 +43,7 @@ import { workspaceGlyphColor } from "./workspace-glyph-style";
 const NO_COMMAND_SELECTION = "__no-workspace-command-selection__";
 const UNSCOPED_COMMAND_VALUE = "dont-work-in-a-workspace";
 const ALL_WORKSPACES_COMMAND_VALUE = "all-workspaces";
+const UNSCOPED_LABEL = "No workspace";
 
 /** Hide CommandItem's built-in check — opacity-0 still reserves layout space. */
 
@@ -56,12 +57,19 @@ function filterWorkspaceItems(value: string, search: string, keywords?: string[]
 	return terms.some((term) => term.toLowerCase().includes(query)) ? 1 : 0;
 }
 
-function getWorkspaceTriggerLabel(
-	active: Workspace | undefined,
-	isLoading: boolean,
-	emptyLabel?: string,
-): string {
+function getWorkspaceTriggerLabel({
+	active,
+	showUnscoped,
+	isLoading,
+	emptyLabel,
+}: {
+	active: Workspace | undefined;
+	showUnscoped: boolean;
+	isLoading: boolean;
+	emptyLabel: string | undefined;
+}): string {
 	if (active) return active.name;
+	if (showUnscoped) return UNSCOPED_LABEL;
 	if (isLoading) return "Loading workspaces…";
 	return emptyLabel ?? "Select workspace";
 }
@@ -71,6 +79,7 @@ type WorkspacePickerContextValue = {
 	setOpen: (open: boolean) => void;
 	onTriggerKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => void;
 	active: Workspace | undefined;
+	isUnscoped: boolean;
 	isLoading: boolean;
 	triggerLabel: string;
 };
@@ -107,6 +116,7 @@ export function WorkspacePickerRoot({
 	contentWidth = "max",
 	emptyLabel,
 	includeUnscoped = true,
+	unscopedValue = null,
 	value,
 	onValueChange,
 }: {
@@ -116,6 +126,8 @@ export function WorkspacePickerRoot({
 	contentWidth?: "max" | "fit" | "trigger";
 	emptyLabel?: string;
 	includeUnscoped?: boolean;
+	/** What "No workspace" selects; set it when `null` already means "All" (`emptyLabel`). */
+	unscopedValue?: string | null;
 	value?: string | null;
 	onValueChange?: (workspaceId: string | null) => void;
 }) {
@@ -133,9 +145,16 @@ export function WorkspacePickerRoot({
 	const [commandValue, setCommandValue] = useState(NO_COMMAND_SELECTION);
 	const selectedId = onValueChange ? (value ?? null) : activeWorkspaceId;
 	const active = workspaces.find((workspace) => workspace.id === selectedId);
-	const isUnscoped = selectedId === null;
+	const isUnscoped = selectedId === unscopedValue;
+	const isEmpty = selectedId === null;
 	const stop = (event: MouseEvent | KeyboardEvent) => event.stopPropagation();
-	const triggerLabel = getWorkspaceTriggerLabel(active, isLoading, emptyLabel);
+	// With the default `null`, unscoped is indistinguishable from "nothing chosen".
+	const triggerLabel = getWorkspaceTriggerLabel({
+		active,
+		showUnscoped: isUnscoped && unscopedValue !== null,
+		isLoading,
+		emptyLabel,
+	});
 
 	const select = (workspaceId: string | null) => {
 		if (onValueChange) onValueChange(workspaceId);
@@ -157,6 +176,7 @@ export function WorkspacePickerRoot({
 				setOpen,
 				onTriggerKeyDown,
 				active,
+				isUnscoped,
 				isLoading,
 				triggerLabel,
 			}}
@@ -189,28 +209,28 @@ export function WorkspacePickerRoot({
 						<CommandList className="scroll-fade max-h-[calc(1.75rem*5)]">
 							{workspaces.length > 0 ? <CommandEmpty>No workspaces found.</CommandEmpty> : null}
 							<CommandGroup>
-								{includeUnscoped ? (
-									<CommandItem
-										data-qa-id="workspace-unscoped-command"
-										value={UNSCOPED_COMMAND_VALUE}
-										keywords={["No workspace", "unscoped"]}
-										onSelect={() => select(null)}
-										data-checked={isUnscoped}
-									>
-										<FolderXIcon />
-										<span className="whitespace-nowrap">No workspace</span>
-									</CommandItem>
-								) : null}
 								{emptyLabel ? (
 									<CommandItem
 										data-qa-id="workspace-all-command"
 										value={ALL_WORKSPACES_COMMAND_VALUE}
 										keywords={[emptyLabel]}
 										onSelect={() => select(null)}
-										data-checked={isUnscoped}
+										data-checked={isEmpty}
 									>
 										<LayoutGridIcon />
 										<span className="min-w-0 flex-1 truncate">{emptyLabel}</span>
+									</CommandItem>
+								) : null}
+								{includeUnscoped ? (
+									<CommandItem
+										data-qa-id="workspace-unscoped-command"
+										value={UNSCOPED_COMMAND_VALUE}
+										keywords={[UNSCOPED_LABEL, "unscoped"]}
+										onSelect={() => select(unscopedValue)}
+										data-checked={isUnscoped}
+									>
+										<FolderXIcon />
+										<span className="whitespace-nowrap">{UNSCOPED_LABEL}</span>
 									</CommandItem>
 								) : null}
 								{isLoading ? (

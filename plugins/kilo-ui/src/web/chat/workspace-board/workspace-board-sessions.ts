@@ -7,6 +7,7 @@ import {
 	type SessionActivity,
 	type SessionRowState,
 } from "../session-activity/session-activity-logic.js";
+import { matchesWorkspaceFocus } from "../session-list/session-list-view.js";
 
 /** A chat as the board needs to render it, keyed by its Kilo session id. */
 export type BoardSession = {
@@ -78,7 +79,7 @@ export function resolveBoardColumns(
 		cards: column.sessionIds.flatMap((sessionId) => {
 			const session = sessions.get(sessionId);
 			if (!session) return [];
-			if (workspaceFocus && session.activity?.workspaceId !== workspaceFocus) return [];
+			if (!matchesWorkspaceFocus(session.activity?.workspaceId, workspaceFocus)) return [];
 			return [session];
 		}),
 	}));

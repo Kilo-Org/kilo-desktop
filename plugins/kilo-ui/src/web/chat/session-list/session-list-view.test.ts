@@ -6,6 +6,7 @@ import {
 } from "../session-activity/session-activity-logic.js";
 import {
 	DEFAULT_SESSION_LIST_VIEW,
+	UNSCOPED_WORKSPACE_FOCUS,
 	buildSessionListSections,
 	isDefaultSessionListView,
 	parseSessionListView,
@@ -671,6 +672,27 @@ describe("buildSessionListSections", () => {
 		]);
 	});
 
+	it("keeps only sessions without a workspace while focused on no workspace", () => {
+		const sections = buildSessionListSections({
+			entries: [
+				entry("ses-unscoped", 0, false, "Unscoped greeting"),
+				entry("ses-1", 1),
+				entry("ses-gone", 2),
+			],
+			activityBySessionId: {
+				"ses-unscoped": activity({ directory: "/chats/session-uSrBjH" }),
+				"ses-1": activity({ workspaceId: "ws-1" }),
+				"ses-gone": activity({ workspaceId: "ws-deleted" }),
+			},
+			workspaces,
+			view: { ...defaultView, focus: UNSCOPED_WORKSPACE_FOCUS },
+		});
+
+		expect(sections.flatMap((section) => section.rows.map((row) => row.id))).toEqual([
+			"local-ses-unscoped",
+		]);
+	});
+
 	it("uses status grouping while focused even if workspace grouping is stored", () => {
 		const sections = buildSessionListSections({
 			entries,
@@ -692,6 +714,12 @@ describe("resolveWorkspaceFocus", () => {
 
 	it("keeps a focus on an existing workspace", () => {
 		expect(resolveWorkspaceFocus("w2", workspaces)).toBe("w2");
+	});
+
+	it("keeps a focus on chats without a workspace", () => {
+		expect(resolveWorkspaceFocus(UNSCOPED_WORKSPACE_FOCUS, workspaces)).toBe(
+			UNSCOPED_WORKSPACE_FOCUS,
+		);
 	});
 
 	it("drops no focus or a focus on a workspace that no longer exists", () => {

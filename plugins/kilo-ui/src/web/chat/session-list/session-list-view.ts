@@ -29,13 +29,22 @@ export type SessionListShowField = (typeof SESSION_LIST_SHOW_FIELDS)[number];
 export type SessionListStatusFilter = (typeof SESSION_LIST_STATUS_FILTERS)[number];
 export type SessionListPullRequestFilter = (typeof SESSION_LIST_PULL_REQUEST_FILTERS)[number];
 
+/**
+ * Focus value for chats not attached to any workspace. Workspace ids are
+ * UUIDs, so this cannot collide with one.
+ */
+export const UNSCOPED_WORKSPACE_FOCUS = "unscoped";
+
 export type SessionListView = {
 	grouping: SessionListGrouping;
 	ordering: SessionListOrdering;
 	show: readonly SessionListShowField[];
 	status: SessionListStatusFilter;
 	pullRequest: SessionListPullRequestFilter;
-	/** Workspace id to focus, or `null` for all workspaces. */
+	/**
+	 * Workspace id to focus, `UNSCOPED_WORKSPACE_FOCUS` for chats without a
+	 * workspace, or `null` for all chats.
+	 */
 	focus: string | null;
 };
 
@@ -472,7 +481,7 @@ export function buildSessionListSections(args: {
 	const pullRequests = args.pullRequestByStatusId;
 	const rows = enrich(args.entries, args.activityBySessionId, args.workspaces).filter((row) => {
 		if (args.view.status !== "all" && row.lifecycle !== args.view.status) return false;
-		if (args.view.focus && row.activity?.workspaceId !== args.view.focus) return false;
+		if (!matchesWorkspaceFocus(row.activity?.workspaceId, args.view.focus)) return false;
 		if (
 			pullRequests &&
 			!matchesPullRequestFilter(row.activity, args.view.pullRequest, pullRequests)
@@ -553,10 +562,25 @@ export function visibleShowFields(view: SessionListView): SessionListShowField[]
 	return view.show.filter((field) => !(field === "workspace" && workspaceStated));
 }
 
-/** The focused workspace, or null when there is none or it no longer exists. */
+export function matchesWorkspaceFocus(
+	workspaceId: string | undefined,
+	focus: string | null,
+): boolean {
+	if (focus === null) return true;
+	if (focus === UNSCOPED_WORKSPACE_FOCUS) return !workspaceId;
+	return workspaceId === focus;
+}
+
+/** The workspace a new chat should start in while this focus is shown. */
+export function workspaceIdForFocus(focus: string | null): string | null {
+	return focus === UNSCOPED_WORKSPACE_FOCUS ? null : focus;
+}
+
+/** The focus, or null when there is none or its workspace no longer exists. */
 export function resolveWorkspaceFocus(
 	focus: string | null,
 	workspaces: readonly { id: string }[],
 ): string | null {
+	if (focus === UNSCOPED_WORKSPACE_FOCUS) return focus;
 	return focus && workspaces.some((workspace) => workspace.id === focus) ? focus : null;
 }

@@ -2073,6 +2073,61 @@ describe("SessionList", () => {
 		expect(allIcon?.classList.contains("lucide-layout-grid")).toBe(true);
 		expect(allIcon?.getAttribute("stroke")).toBe("currentColor");
 	});
+
+	it("focuses the inbox on chats without a workspace and targets new chats there", async () => {
+		const { screen, setActiveWorkspaceId } = renderSessionList({
+			threads: [
+				{ remoteId: "ses-1", title: "Fix the bug" },
+				{ remoteId: "ses-2", title: "Loose question" },
+			],
+			hydrate: (store) => {
+				store.getState().hydrateSessions([{ id: "ses-1", workspaceId: "ws-1" }, { id: "ses-2" }]);
+			},
+		});
+
+		await expect.element(screen.getByText("Fix the bug")).toBeVisible();
+		await expect.element(screen.getByText("Loose question")).toBeVisible();
+
+		const workspaceFilter = screen.getByRole("combobox", { name: "Filter by workspace" });
+		await workspaceFilter.click();
+		const options = page.getByRole("option").elements();
+		expect(options.slice(0, 2).map((option) => option.textContent)).toEqual([
+			"All workspaces",
+			"No workspace",
+		]);
+		await page.getByRole("option", { name: "No workspace" }).click();
+
+		await expect.element(workspaceFilter).toHaveTextContent("No workspace");
+		expect(
+			workspaceFilter.element().querySelector("svg")?.classList.contains("lucide-folder-x"),
+		).toBe(true);
+		await expect.element(screen.getByText("Loose question")).toBeVisible();
+		await expect.element(screen.getByText("Fix the bug")).not.toBeInTheDocument();
+		expect(setActiveWorkspaceId).toHaveBeenLastCalledWith(null);
+
+		await workspaceFilter.click();
+		await expect
+			.element(page.getByRole("option", { name: "No workspace" }))
+			.toHaveAttribute("data-checked", "true");
+		await expect
+			.element(page.getByRole("option", { name: "All workspaces" }))
+			.toHaveAttribute("data-checked", "false");
+	});
+
+	it("explains an empty list while focused on chats without a workspace", async () => {
+		const { screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Fix the bug" }],
+			hydrate: (store) => {
+				store.getState().hydrateSessions([{ id: "ses-1", workspaceId: "ws-1" }]);
+			},
+		});
+
+		await screen.getByRole("combobox", { name: "Filter by workspace" }).click();
+		await page.getByRole("option", { name: "No workspace" }).click();
+
+		await expect.element(screen.getByText("No chats outside a workspace")).toBeVisible();
+		await expect.element(screen.getByText("Fix the bug")).not.toBeInTheDocument();
+	});
 });
 
 describe("SessionList worktree deletion", () => {

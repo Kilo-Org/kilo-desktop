@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { WorkspaceBoardState } from "../../../contracts/workspace-board/board-model.js";
 import { createEmptySessionActivity } from "../session-activity/session-activity-logic.js";
+import { UNSCOPED_WORKSPACE_FOCUS } from "../session-list/session-list-view.js";
 import {
 	boardCardStatus,
 	buildBoardSessions,
@@ -48,7 +49,7 @@ describe("resolveBoardColumns", () => {
 	const board: WorkspaceBoardState = {
 		columns: [
 			{ id: "backlog", label: "Backlog", sessionIds: ["ses_1", "gone", "ses_2"] },
-			{ id: "done", label: "Done", sessionIds: ["ses_3"] },
+			{ id: "done", label: "Done", sessionIds: ["ses_3", "ses_4"] },
 		],
 	};
 	const sessions = buildBoardSessions({
@@ -56,11 +57,13 @@ describe("resolveBoardColumns", () => {
 			{ id: "t1", remoteId: "ses_1", title: "One", status: "regular" },
 			{ id: "t2", remoteId: "ses_2", title: "Two", status: "regular" },
 			{ id: "t3", remoteId: "ses_3", title: "Three", status: "regular" },
+			{ id: "t4", remoteId: "ses_4", title: "Four", status: "regular" },
 		],
 		activityBySessionId: {
 			ses_1: activity({ workspaceId: "w1" }),
 			ses_2: activity({ workspaceId: "w2" }),
 			ses_3: activity({ workspaceId: "w1" }),
+			ses_4: activity({}),
 		},
 		lastVisitedAtBySessionId: {},
 	});
@@ -69,7 +72,7 @@ describe("resolveBoardColumns", () => {
 		const columns = resolveBoardColumns(board, sessions, null);
 		expect(columns.map((column) => [column.id, column.cards.map((card) => card.title)])).toEqual([
 			["backlog", ["One", "Two"]],
-			["done", ["Three"]],
+			["done", ["Three", "Four"]],
 		]);
 	});
 
@@ -79,7 +82,7 @@ describe("resolveBoardColumns", () => {
 			columns.map(({ cardCount, deleteDestination }) => [cardCount, deleteDestination]),
 		).toEqual([
 			[3, "Done"],
-			[1, "Backlog"],
+			[2, "Backlog"],
 		]);
 	});
 
@@ -88,6 +91,14 @@ describe("resolveBoardColumns", () => {
 		expect(columns.map((column) => column.cards.map((card) => card.sessionId))).toEqual([
 			["ses_1"],
 			["ses_3"],
+		]);
+	});
+
+	it("shows only cards without a workspace while focused on no workspace", () => {
+		const columns = resolveBoardColumns(board, sessions, UNSCOPED_WORKSPACE_FOCUS);
+		expect(columns.map((column) => column.cards.map((card) => card.sessionId))).toEqual([
+			[],
+			["ses_4"],
 		]);
 	});
 });

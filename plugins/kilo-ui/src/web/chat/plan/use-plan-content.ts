@@ -22,7 +22,15 @@ export function usePlanContent(projection: PlanProjection): PlanContentState {
 	const needsFile = Boolean(projection.path) && !projection.markdown;
 
 	const contentQuery = useQuery({
-		queryKey: ["kilo-ui", "plan-content", session?.id, sessionDirectory, projection.path],
+		// Revisions share a path; keying by snapshot keeps one revision's file read from serving another.
+		queryKey: [
+			"kilo-ui",
+			"plan-content",
+			session?.id,
+			sessionDirectory,
+			projection.path,
+			projection.anchorCallId,
+		],
 		enabled: needsFile && !isConnectionPending && Boolean(sessionDirectory),
 		queryFn: async () => {
 			if (!projection.path || !sessionDirectory) return "";

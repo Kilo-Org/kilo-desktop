@@ -23,6 +23,7 @@ export {
 	getPlanProjectionFromParts,
 	isCurrentPlanVersion,
 	projectPlanThread,
+	resolveDisplayedPlan,
 	resolvePlanMarkdownFromWrites,
 	shouldExcludeToolCallFromActivityGroup,
 	type PlanProjection,

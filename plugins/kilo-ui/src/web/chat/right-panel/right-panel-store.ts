@@ -58,6 +58,8 @@ export interface SessionRightPanelState {
 	tabs: RightPanelTab[];
 	/** Tool-call id of the plan snapshot shown in the plan tab; null = newest. */
 	planAnchorCallId: string | null;
+	/** Newest plan snapshot when the plan tab was opened; a later ready plan supersedes the anchor. */
+	planNewestAnchorCallIdAtOpen?: string | null;
 	/** False when the Chat pane is hidden while artifact panes remain. */
 	chatPaneOpen?: boolean;
 	/** Tiles / Carousel. Invalid persisted values fall back to Tiles. */
@@ -70,6 +72,8 @@ export interface SessionRightPanelState {
 export type OpenPlanOptions = {
 	/** When set, the plan tab shows this card's snapshot instead of the newest plan. */
 	anchorCallId?: string;
+	/** Newest ready plan snapshot at open time, so the tab can follow revisions that finish later. */
+	newestAnchorCallId?: string;
 };
 
 interface RightPanelStoreState {
@@ -217,14 +221,13 @@ function mergeSessionState(
 			? (source.arrangement as Arrangement)
 			: DEFAULT_ARRANGEMENT;
 
+	const planOwner = targetHasPlan ? target : sourceHasSurvivingPlan ? source : undefined;
+
 	return {
 		activeTabId,
 		tabs,
-		planAnchorCallId: targetHasPlan
-			? target.planAnchorCallId
-			: sourceHasSurvivingPlan
-				? source.planAnchorCallId
-				: null,
+		planAnchorCallId: planOwner?.planAnchorCallId ?? null,
+		planNewestAnchorCallIdAtOpen: planOwner?.planNewestAnchorCallIdAtOpen ?? null,
 		...(tabs.length === 0
 			? { chatPaneOpen: true }
 			: preferredChatPaneOpen === undefined
@@ -282,6 +285,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
 					bySessionId: updateSession(state.bySessionId, sessionId, (current) => ({
 						...upsertTab(current, createPlanTab()),
 						planAnchorCallId: options?.anchorCallId?.trim() || null,
+						planNewestAnchorCallIdAtOpen: options?.newestAnchorCallId?.trim() || null,
 					})),
 				})),
 			activateTab: (sessionId, tabId) =>
@@ -330,15 +334,15 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
 						const tabs = current.tabs.filter((tab) => tab.instanceId !== tabId);
 						const chatPaneOpen =
 							current.chatPaneOpen === false && tabs.length === 0 ? true : current.chatPaneOpen;
-						const planAnchorCallId =
+						const planSnapshot =
 							closing?.definitionId === PLAN_TAB_DEFINITION_ID
-								? null
-								: (current.planAnchorCallId ?? null);
+								? { planAnchorCallId: null, planNewestAnchorCallIdAtOpen: null }
+								: { planAnchorCallId: current.planAnchorCallId ?? null };
 						if (current.activeTabId !== tabId) {
 							return {
 								...current,
 								tabs,
-								planAnchorCallId,
+								...planSnapshot,
 								...(chatPaneOpen === undefined ? {} : { chatPaneOpen }),
 							};
 						}
@@ -347,7 +351,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
 							...current,
 							tabs,
 							activeTabId: fallback?.instanceId ?? null,
-							planAnchorCallId,
+							...planSnapshot,
 							...(chatPaneOpen === undefined ? {} : { chatPaneOpen }),
 						};
 					}),

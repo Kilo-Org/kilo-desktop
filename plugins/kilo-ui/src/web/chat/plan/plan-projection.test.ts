@@ -104,6 +104,7 @@ const threadSource = (
 		role: "assistant" | "user";
 		agent?: string;
 		finish?: string;
+		error?: unknown;
 		parts?: readonly Part[];
 	}[],
 ): PlanThreadSource => ({
@@ -116,6 +117,7 @@ const threadSource = (
 					role: message.role,
 					...(message.agent ? { agent: message.agent } : {}),
 					...(message.finish ? { finish: message.finish } : {}),
+					...(message.error ? { error: message.error } : {}),
 				},
 				parts: message.parts ?? [],
 			},
@@ -337,6 +339,56 @@ describe("projectPlanThread", () => {
 		expect(getPlanProjectionForMessage(projected, "msg-plan")?.status).toBe("writing");
 	});
 
+	it("keeps a busy run's plan writing between tool-call steps", () => {
+		const projected = projectPlanThread({
+			...threadSource([
+				{ id: "msg-plan", role: "assistant", agent: "plan", parts: [writePart(), exitPart()] },
+				{ id: "msg-user", role: "user" },
+				{
+					id: "msg-step-1",
+					role: "assistant",
+					agent: "plan",
+					finish: "tool-calls",
+					parts: [editPart("edit-1")],
+				},
+				{
+					id: "msg-step-2",
+					role: "assistant",
+					agent: "plan",
+					finish: "unknown",
+					parts: [
+						editPart("edit-2", {
+							filePath: ".kilo/plans/ship.md",
+							oldString: "- step 1",
+							newString: "- step 1\n- step 2",
+						}),
+					],
+				},
+			]),
+			sessionStatus: { type: "busy" },
+		});
+
+		expect(getPlanProjectionForMessage(projected, "msg-step-2")?.status).toBe("writing");
+		expect(isCurrentPlanVersion(projected, "write-1")).toBe(false);
+	});
+
+	it("settles a run whose last step failed without a finish reason", () => {
+		const projected = projectPlanThread({
+			...threadSource([
+				{
+					id: "msg-plan",
+					role: "assistant",
+					agent: "plan",
+					error: { name: "MessageAbortedError" },
+					parts: [writePart()],
+				},
+			]),
+			sessionStatus: { type: "busy" },
+		});
+
+		expect(getPlanProjectionForMessage(projected, "msg-plan")?.status).toBe("ready");
+	});
+
 	it("projects each message once and enriches chained edits in order", () => {
 		const source = threadSource([
 			{ id: "msg-plan", role: "assistant", parts: [writePart(), exitPart()] },
@@ -382,6 +434,108 @@ describe("projectPlanThread", () => {
 			]),
 		);
 		expect(getPlanProjectionForMessage(projected, "msg-implement")).toBeUndefined();
+	});
+
+	it("keeps a denied scratch-script write out of the refined plan", () => {
+		const projected = projectPlanThread(
+			threadSource([
+				{ id: "msg-plan", role: "assistant", agent: "plan", parts: [writePart(), exitPart()] },
+				{ id: "msg-user", role: "user" },
+				{
+					id: "msg-refine",
+					role: "assistant",
+					agent: "plan",
+					parts: [
+						toolPart("bash", "bash-denied", {
+							status: "error",
+							input: { command: "curl -sL https://example.test/Ubuntu.terminal | python3 -" },
+							error: "The user has specified a rule which prevents you from using this tool call.",
+						}),
+						toolPart("write", "write-script", {
+							status: "error",
+							input: {
+								filePath: "/var/folders/lz/T/kilo/decode_ubuntu_terminal.py",
+								content: "import plistlib\nimport urllib.request\n",
+							},
+							error: "The user has specified a rule which prevents you from using this tool call.",
+						}),
+						editPart("edit-colors", {
+							filePath: "/repo/.kilo/plans/ship.md",
+							oldString: "- step 1",
+							newString: "- step 1 with real Ubuntu colors",
+						}),
+						exitPart("exit-2"),
+					],
+				},
+			]),
+		);
+
+		const refined = getPlanProjectionForMessage(projected, "msg-refine");
+		expect(refined?.status).toBe("ready");
+		expect(refined?.markdown).toBe("# Ship it\n\n- step 1 with real Ubuntu colors");
+		expect(refined?.hiddenCallIds).not.toContain("write-script");
+	});
+
+	it("ignores a failed edit to the plan file and keeps the plan ready", () => {
+		const projection = getPlanProjectionFromParts(
+			[
+				writePart(),
+				toolPart("edit", "edit-failed", {
+					status: "error",
+					input: {
+						filePath: ".kilo/plans/ship.md",
+						oldString: "# Ship it",
+						newString: "# Dropped",
+					},
+					error: "File changed since it was last read",
+				}),
+				editPart("edit-applied", {
+					filePath: ".kilo/plans/ship.md",
+					oldString: "- step 1",
+					newString: "- step 1\n- step 2",
+				}),
+				exitPart("exit-2"),
+			],
+			{ treatWritesAsPlan: true },
+		);
+
+		expect(projection?.status).toBe("ready");
+		expect(projection?.markdown).toBe("# Ship it\n\n- step 1\n- step 2");
+		expect(projection?.hiddenCallIds).not.toContain("edit-failed");
+	});
+
+	it("only treats writes to the file plan_exit names as the plan", () => {
+		const projection = getPlanProjectionFromParts(
+			[
+				writePart(),
+				writePart("write-notes", { filePath: "docs/notes.md", content: "# Scratch notes" }),
+				exitPart("exit-1"),
+			],
+			{ treatWritesAsPlan: true },
+		);
+
+		expect(projection?.path).toBe(".kilo/plans/ship.md");
+		expect(projection?.markdown).toBe("# Ship it\n\n- step 1");
+		expect(projection?.anchorCallId).toBe("write-1");
+		expect(projection?.hiddenCallIds).not.toContain("write-notes");
+	});
+
+	it("does not project a plan-agent script write before the handoff", () => {
+		const projected = projectPlanThread(
+			threadSource([
+				{
+					id: "msg-plan",
+					role: "assistant",
+					agent: "plan",
+					finish: "stop",
+					parts: [
+						writePart("write-script", { filePath: "scripts/fetch.py", content: "import requests" }),
+					],
+				},
+			]),
+		);
+
+		expect(getPlanProjectionForMessage(projected, "msg-plan")).toBeUndefined();
 	});
 
 	it("indexes historical and current plan versions", () => {

@@ -10,9 +10,8 @@ import { Spinner } from "@kilo-desktop/ui/components/spinner";
 
 import { ApprovePlanButton } from "../plan/ApprovePlanButton.js";
 import {
-	findNewestPlanProjection,
-	findPlanProjectionByAnchorCallId,
 	isCurrentPlanVersion,
+	resolveDisplayedPlan,
 	type PlanProjection,
 } from "../plan/plan-projection.js";
 import { proposedPlanTitle, stripDisplayedPlanMarkdown } from "../plan/plan-markdown.js";
@@ -34,16 +33,13 @@ export const PlanTab: FC = () => {
 	const planAnchorCallId = useRightPanelStore(
 		(state) => selectSessionRightPanelState(state.bySessionId, sessionId).planAnchorCallId,
 	);
+	const newestAnchorCallIdAtOpen = useRightPanelStore(
+		(state) =>
+			selectSessionRightPanelState(state.bySessionId, sessionId).planNewestAnchorCallIdAtOpen ??
+			null,
+	);
 
-	const projection = (() => {
-		if (planAnchorCallId) {
-			return (
-				findPlanProjectionByAnchorCallId(planThread, planAnchorCallId) ??
-				findNewestPlanProjection(planThread)
-			);
-		}
-		return findNewestPlanProjection(planThread);
-	})();
+	const projection = resolveDisplayedPlan(planThread, planAnchorCallId, newestAnchorCallIdAtOpen);
 
 	if (!projection) {
 		return (
@@ -57,7 +53,15 @@ export const PlanTab: FC = () => {
 		);
 	}
 
-	return <PlanTabContent projection={projection} planThread={planThread} sessionId={sessionId} />;
+	// Keyed per snapshot so scroll and find-bar matches reset with the content they describe.
+	return (
+		<PlanTabContent
+			key={projection.anchorCallId}
+			projection={projection}
+			planThread={planThread}
+			sessionId={sessionId}
+		/>
+	);
 };
 
 const PlanTabContent: FC<{

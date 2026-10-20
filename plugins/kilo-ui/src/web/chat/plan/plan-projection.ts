@@ -26,7 +26,7 @@ export type PlanThreadSource = {
 								role: string;
 								agent?: string | undefined;
 								finish?: unknown;
-								time?: { created?: unknown; completed?: unknown } | undefined;
+								error?: unknown;
 						  }
 						| undefined;
 					parts: readonly Part[];
@@ -120,11 +120,13 @@ const isToolPart = (part: Part): part is ToolPart => part.type === "tool";
 
 type GetPlanProjectionOptions = {
 	priorMarkdown?: string;
-	/** Plan-agent writes belong to the plan even when project instructions choose another path. */
+	/** Plan-agent markdown writes belong to the plan even when project instructions choose another path. */
 	treatWritesAsPlan?: boolean;
 	/** The owning assistant run has stopped producing tool updates. */
 	settled?: boolean;
 };
+
+const isMarkdownPath = (path: string): boolean => /\.md$/i.test(path);
 
 const hasPlanExitPart = (parts: readonly Part[]): boolean =>
 	parts.some((part) => isToolPart(part) && part.tool === "plan_exit");
@@ -135,12 +137,19 @@ export function getPlanProjectionFromParts(
 ): PlanProjection | undefined {
 	const treatWritesAsPlan = options?.treatWritesAsPlan === true;
 	const tools = parts.filter(isToolPart);
+	const exits = tools.filter((part) => part.tool === "plan_exit");
+	// Like Kilo's own clients, the file named by plan_exit is the plan once it is known.
+	const handoffPath = exits.map(getToolPath).findLast(Boolean) ?? "";
 	const writes = tools.filter((part) => {
 		if (part.tool !== "write" && part.tool !== "edit") return false;
+		// A rejected or failed write never changed the file on disk.
+		if (part.state.status === "error") return false;
 		const path = getToolPath(part);
-		return treatWritesAsPlan || isPlanFilePath(path);
+		if (handoffPath) return pathsMatch(path, handoffPath);
+		if (isPlanFilePath(path)) return true;
+		// Pathless covers a write whose arguments are still streaming.
+		return treatWritesAsPlan && (!path || isMarkdownPath(path));
 	});
-	const exits = tools.filter((part) => part.tool === "plan_exit");
 	if (writes.length === 0 && exits.length === 0) return undefined;
 
 	const latestWrite = writes.at(-1);
@@ -219,6 +228,17 @@ const findPriorMarkdown = (
 
 const planThreadProjectionCache = new WeakMap<PlanThreadSource, PlanThreadProjection>();
 
+/**
+ * Every OpenCode step is its own message and gets `time.completed`; `tool-calls`
+ * and `unknown` finishes mean the loop may continue. Mirrors Kilo's clients.
+ */
+const endsAssistantRun = (info: { finish?: unknown; error?: unknown }): boolean =>
+	Boolean(info.error) ||
+	(typeof info.finish === "string" &&
+		info.finish.length > 0 &&
+		info.finish !== "tool-calls" &&
+		info.finish !== "unknown");
+
 const isPlanningAgent = (agent: string | undefined): boolean => {
 	const normalized = agent?.toLowerCase();
 	return normalized === "plan" || normalized === "architect";
@@ -279,13 +299,13 @@ export function projectPlanThread(source: PlanThreadSource): PlanThreadProjectio
 			assistantRun.messageIds.push(messageId);
 			assistantRun.parts.push(...message.parts);
 			assistantRun.planningAgent ||= isPlanningAgent(message.info.agent);
-			assistantRun.settled ||= Boolean(message.info.finish || message.info.time?.completed);
+			assistantRun.settled ||= endsAssistantRun(message.info);
 		} else {
 			assistantRun = {
 				messageIds: [messageId],
 				parts: [...message.parts],
 				planningAgent: isPlanningAgent(message.info.agent),
-				settled: Boolean(message.info.finish || message.info.time?.completed),
+				settled: endsAssistantRun(message.info),
 			};
 		}
 	}
@@ -320,6 +340,24 @@ export const findPlanProjectionByAnchorCallId = (
 	thread: PlanThreadProjection,
 	anchorCallId: string,
 ): PlanProjection | undefined => thread.byAnchorCallId.get(anchorCallId);
+
+/**
+ * The plan the tab should show: the snapshot the user opened, until a newer plan
+ * than the one that was newest at open time finishes. Writing revisions never
+ * replace what the user is reading; a missing snapshot falls back to newest.
+ */
+export function resolveDisplayedPlan(
+	thread: PlanThreadProjection,
+	anchorCallId: string | null,
+	newestAnchorCallIdAtOpen: string | null,
+): PlanProjection | undefined {
+	const pinned = anchorCallId ? thread.byAnchorCallId.get(anchorCallId) : undefined;
+	if (!pinned) return thread.newest;
+	const baseline = newestAnchorCallIdAtOpen ?? anchorCallId;
+	const newest = thread.newest;
+	const newerRevisionIsReady = newest?.status === "ready" && newest.anchorCallId !== baseline;
+	return newerRevisionIsReady ? newest : pinned;
+}
 
 export const isCurrentPlanVersion = (thread: PlanThreadProjection, anchorCallId: string): boolean =>
 	!thread.newest || thread.newest.anchorCallId === anchorCallId;

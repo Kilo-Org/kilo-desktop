@@ -68,7 +68,13 @@ export const PlanCard: FC<PlanCardProps> = memo(({ projection }) => {
 	const canApprove = isReady && isCurrentPlanVersion(planThread, projection.anchorCallId);
 
 	const handleViewPlan = () => {
-		openPlan(sessionId, { anchorCallId: projection.anchorCallId });
+		// An unfinished newest plan has not been seen yet, so it must not become the baseline.
+		const newest = planThread.newest;
+		openPlan(sessionId, {
+			anchorCallId: projection.anchorCallId,
+			newestAnchorCallId:
+				newest?.status === "ready" ? newest.anchorCallId : projection.anchorCallId,
+		});
 	};
 
 	return (

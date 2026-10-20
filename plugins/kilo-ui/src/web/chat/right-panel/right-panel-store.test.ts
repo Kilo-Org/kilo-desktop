@@ -212,6 +212,33 @@ describe("right-panel-store", () => {
 		expect(state.planAnchorCallId).toBe("edit-2");
 	});
 
+	it("forgets which plan snapshot was open when the Plan tab closes", () => {
+		useRightPanelStore.getState().openTab(SESSION, CANVAS);
+		useRightPanelStore
+			.getState()
+			.openPlan(SESSION, { anchorCallId: "write-1", newestAnchorCallId: "write-2" });
+
+		useRightPanelStore.getState().closeTab(SESSION, "plan");
+
+		const state = selectSessionRightPanelState(useRightPanelStore.getState().bySessionId, SESSION);
+		expect(state.planAnchorCallId).toBeNull();
+		expect(state.planNewestAnchorCallIdAtOpen ?? null).toBeNull();
+	});
+
+	it("keeps the open plan snapshot when a draft becomes a session", () => {
+		useRightPanelStore.getState().openPlan(DRAFT_RIGHT_PANEL_SESSION_KEY, {
+			anchorCallId: "write-1",
+			newestAnchorCallId: "write-2",
+		});
+		useRightPanelStore.getState().openTab(SESSION, CANVAS);
+
+		useRightPanelStore.getState().moveSessionState(DRAFT_RIGHT_PANEL_SESSION_KEY, SESSION);
+
+		const state = selectSessionRightPanelState(useRightPanelStore.getState().bySessionId, SESSION);
+		expect(state.planAnchorCallId).toBe("write-1");
+		expect(state.planNewestAnchorCallIdAtOpen).toBe("write-2");
+	});
+
 	it("returns empty state after closing the last tab", () => {
 		useRightPanelStore.getState().openTab(SESSION, CANVAS);
 		const [tab] = useRightPanelStore.getState().bySessionId[SESSION]!.tabs;

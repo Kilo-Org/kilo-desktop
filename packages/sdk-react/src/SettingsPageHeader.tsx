@@ -22,7 +22,7 @@ export function SettingsPageHeader({
 	title,
 	description,
 	titleQaId = "settings-section-heading",
-	descriptionQaId,
+	descriptionQaId = "settings-section-description",
 	leading,
 	actions,
 	children,

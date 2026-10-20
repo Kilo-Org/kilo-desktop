@@ -22,13 +22,13 @@ describe("SettingsPageHeader", () => {
 	it("defaults to the section's manifest title and description", () => {
 		renderInSection(
 			{ title: "Appearance", description: "Theme and density." },
-			<SettingsPageHeader descriptionQaId="desc" />,
+			<SettingsPageHeader />,
 		);
 
 		expect(heading().textContent).toBe("Appearance");
 		expect(heading().getAttribute("data-qa-id")).toBe("settings-section-heading");
 		const description = screen.getByText("Theme and density.");
-		expect(description.getAttribute("data-qa-id")).toBe("desc");
+		expect(description.getAttribute("data-qa-id")).toBe("settings-section-description");
 		expect(description.getAttribute("title")).toBe("Theme and density.");
 	});
 

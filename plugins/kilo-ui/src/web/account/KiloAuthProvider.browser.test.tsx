@@ -21,6 +21,7 @@ const organizationSet = vi.hoisted(() => vi.fn());
 const authorize = vi.hoisted(() => vi.fn());
 const oauthCallback = vi.hoisted(() => vi.fn());
 const track = vi.hoisted(() => vi.fn(async () => {}));
+const focusMainWindow = vi.hoisted(() => vi.fn(async () => {}));
 const latestClient = vi.hoisted(() => ({ current: null as Record<string, unknown> | null }));
 
 vi.mock("../chat/runtime/create-kilo-runtime-client.js", () => ({
@@ -98,7 +99,7 @@ function renderAccount({
 			"chat.prepareSession": async () => ({ directory: "/tmp", workspaceFolders: [] }),
 		},
 		telemetry: { track },
-		...(openExternal ? { shell: { openExternal } } : {}),
+		shell: { focusMainWindow, ...(openExternal ? { openExternal } : {}) },
 		...(authRefresh ? { auth: { refresh: authRefresh } } : {}),
 	});
 	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
@@ -213,6 +214,46 @@ describe("KiloAuthProvider login", () => {
 			event: "Logged In",
 			data: { featureId: "kilo-ui" },
 		});
+	});
+
+	it("brings the app back to the front once the browser approval completes", async () => {
+		const { screen } = renderAccount({ authenticated: false });
+		authorize.mockResolvedValue({
+			data: {
+				instructions: "Go to https://kilo.ai/device and enter code: ABCD-1234",
+				url: "https://kilo.ai/device",
+			},
+		});
+		let approve: (value: { data: boolean }) => void = () => {};
+		oauthCallback.mockReturnValue(
+			new Promise((resolve) => {
+				approve = resolve;
+			}),
+		);
+
+		await screen.getByTestId("kilo-account-login").click();
+		await vi.waitFor(() => expect(oauthCallback).toHaveBeenCalled());
+		expect(focusMainWindow).not.toHaveBeenCalled();
+
+		approve({ data: true });
+
+		await vi.waitFor(() => expect(focusMainWindow).toHaveBeenCalledTimes(1));
+	});
+
+	it("does not bring the app to the front when sign-in fails", async () => {
+		const { screen } = renderAccount({ authenticated: false });
+		authorize.mockResolvedValue({
+			data: {
+				instructions: "Go to https://kilo.ai/device and enter code: ABCD-1234",
+				url: "https://kilo.ai/device",
+			},
+		});
+		oauthCallback.mockRejectedValue(new Error("Device code expired"));
+
+		await screen.getByTestId("kilo-account-login").click();
+
+		await expect.element(page.getByText("Device code expired")).toBeVisible();
+		expect(focusMainWindow).not.toHaveBeenCalled();
 	});
 
 	it("leaves the initial browser open to the server and keeps waiting when a manual open is blocked", async () => {

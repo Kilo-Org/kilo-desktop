@@ -136,6 +136,9 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 				);
 				if (attempt !== attemptRef.current) return;
 
+				// Approval happens in the browser; bring the user back to the app so
+				// they see the connection finish.
+				void sdk.shell.focusMainWindow().catch(() => undefined);
 				setDeviceAuth({ status: "finishing" });
 				await rebootAndRefresh();
 				// Hold the finishing state until the profile is cached, so the panel
@@ -164,6 +167,7 @@ export function KiloAuthProvider({ children }: { children: ReactNode }) {
 		profileQueryKey,
 		queryClient,
 		rebootAndRefresh,
+		sdk.shell,
 		sdk.telemetry,
 	]);
 

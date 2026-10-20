@@ -8,6 +8,7 @@ const { browserSession, guest, sessionFromPartition, webContentsFromId } = vi.ho
 		setPermissionCheckHandler: vi.fn(),
 		setPermissionRequestHandler: vi.fn(),
 		setUserAgent: vi.fn(),
+		webRequest: { onBeforeRequest: vi.fn() },
 	};
 	const guest = {
 		id: 42,
@@ -57,7 +58,7 @@ vi.mock("./ElectronContextMenu.js", () => ({
 	attachContextMenu: vi.fn(() => detachContextMenu),
 }));
 
-import { ElectronBrowserHost } from "./ElectronBrowserHost.js";
+import { ElectronBrowserHost, shouldCancelLoopbackRequest } from "./ElectronBrowserHost.js";
 import { attachContextMenu } from "./ElectronContextMenu.js";
 
 afterEach(() => {
@@ -119,6 +120,155 @@ describe("ElectronBrowserHost", () => {
 			listener?.(allowed, "https://example.com/next");
 			expect(allowed.preventDefault).not.toHaveBeenCalled();
 		}
+	});
+
+	it("allows the user's own top-level navigation to a loopback dev server", () => {
+		expect(
+			shouldCancelLoopbackRequest({
+				url: "http://127.0.0.1:5000/",
+				resourceType: "mainFrame",
+			}),
+		).toBe(false);
+		expect(
+			shouldCancelLoopbackRequest({
+				url: "http://localhost:3000/",
+				resourceType: "mainFrame",
+			}),
+		).toBe(false);
+	});
+
+	it("cancels loopback sub-resources embedded by a remote top-frame", () => {
+		expect(
+			shouldCancelLoopbackRequest({
+				url: "http://127.0.0.1:47830/output-frame",
+				resourceType: "subFrame",
+				frame: { top: { url: "https://evil.com/" } },
+			}),
+		).toBe(true);
+		expect(
+			shouldCancelLoopbackRequest({
+				url: "http://127.0.0.1:47830/blob/abc",
+				resourceType: "image",
+				frame: { top: { url: "https://wikipedia.org/" } },
+			}),
+		).toBe(true);
+		expect(
+			shouldCancelLoopbackRequest({
+				url: "http://127.0.0.1:47830/blob/abc",
+				resourceType: "xhr",
+				frame: { top: { url: "https://wikipedia.org/" } },
+			}),
+		).toBe(true);
+	});
+
+	it("cancels loopback reached via normalization-evading spellings", () => {
+		for (const url of [
+			"http://[::ffff:127.0.0.1]:47830/output-frame",
+			"http://[::ffff:7f00:1]:47830/output-frame",
+			"http://[0:0:0:0:0:ffff:7f00:1]:47830/output-frame",
+			"http://[::ffff:127.0.0.2]:47830/output-frame",
+			"http://[::ffff:127.1.1.1]:47830/output-frame",
+			"http://localhost.:47830/output-frame",
+		]) {
+			expect(
+				shouldCancelLoopbackRequest({
+					url,
+					resourceType: "subFrame",
+					frame: { top: { url: "https://evil.com/" } },
+				}),
+				`${url} embedded by a remote top-frame must be cancelled`,
+			).toBe(true);
+		}
+	});
+
+	it("allows a loopback dev server loading its own same-origin sub-resources", () => {
+		expect(
+			shouldCancelLoopbackRequest({
+				url: "http://127.0.0.1:5000/widget",
+				resourceType: "subFrame",
+				frame: { top: { url: "http://127.0.0.1:5000/" } },
+			}),
+		).toBe(false);
+		expect(
+			shouldCancelLoopbackRequest({
+				url: "http://127.0.0.1:5000/api",
+				resourceType: "xhr",
+				frame: { top: { url: "http://localhost:5000/" } },
+			}),
+		).toBe(false);
+	});
+
+	it("fails closed when the embedder of a loopback sub-resource is unknown", () => {
+		expect(
+			shouldCancelLoopbackRequest({
+				url: "http://127.0.0.1:47830/x",
+				resourceType: "subFrame",
+			}),
+		).toBe(true);
+	});
+
+	it("falls back to initiatorOrigin when frame.top.url is unavailable", () => {
+		expect(
+			shouldCancelLoopbackRequest({
+				url: "http://127.0.0.1:47830/x",
+				resourceType: "subFrame",
+				initiatorOrigin: "https://evil.com",
+			}),
+		).toBe(true);
+		expect(
+			shouldCancelLoopbackRequest({
+				url: "http://127.0.0.1:5000/x",
+				resourceType: "subFrame",
+				initiatorOrigin: "http://127.0.0.1:5000",
+			}),
+		).toBe(false);
+	});
+
+	it("only polices loopback request URLs", () => {
+		expect(
+			shouldCancelLoopbackRequest({
+				url: "https://example.com/",
+				resourceType: "xhr",
+				frame: { top: { url: "https://evil.com/" } },
+			}),
+		).toBe(false);
+		expect(
+			shouldCancelLoopbackRequest({
+				url: "http://93.184.216.34/",
+				resourceType: "subFrame",
+				frame: { top: { url: "https://evil.com/" } },
+			}),
+		).toBe(false);
+		expect(
+			shouldCancelLoopbackRequest({
+				url: "http://[::ffff:93.184.216.34]/",
+				resourceType: "subFrame",
+				frame: { top: { url: "https://evil.com/" } },
+			}),
+		).toBe(false);
+	});
+
+	it("registers an onBeforeRequest listener that applies the narrowed loopback rule", () => {
+		const host = new ElectronBrowserHost(() => true, shell);
+		host.initialize();
+
+		const onBeforeRequest = browserSession.webRequest.onBeforeRequest.mock.calls[0]?.[0];
+		expect(onBeforeRequest).toBeTypeOf("function");
+
+		const cancelled = vi.fn();
+		onBeforeRequest?.(
+			{
+				url: "http://127.0.0.1:47830/output-frame",
+				resourceType: "subFrame",
+				frame: { top: { url: "https://evil.com/" } },
+			},
+			cancelled,
+		);
+		expect(cancelled).toHaveBeenCalledWith({ cancel: true });
+
+		const allowed = vi.fn();
+		onBeforeRequest?.({ url: "http://127.0.0.1:5000/", resourceType: "mainFrame" }, allowed);
+		expect(allowed).toHaveBeenCalledWith({ cancel: false });
 	});
 
 	it("handles rejected popup navigation", async () => {

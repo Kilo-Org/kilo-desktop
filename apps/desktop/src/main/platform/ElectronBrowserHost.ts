@@ -60,6 +60,9 @@ export class ElectronBrowserHost implements MainSdkHostBrowser {
 			callback(false);
 		});
 		browserSession.setPermissionCheckHandler(() => false);
+		browserSession.webRequest.onBeforeRequest((details, callback) => {
+			callback({ cancel: shouldCancelLoopbackRequest(details) });
+		});
 		this.#session = browserSession;
 	}
 
@@ -254,4 +257,52 @@ function isHttpUrl(rawUrl: string): boolean {
 	} catch {
 		return false;
 	}
+}
+
+const IPV4_LOOPBACK = /^127(?:\.\d{1,3}){3}$/;
+
+// `URL` canonicalizes an IPv4-mapped IPv6 host to `::ffff:<hi>:<lo>` with the
+// trailing IPv4 compressed to two hex groups (`::ffff:7f00:1` is `127.0.0.1`).
+// Returns the dotted-quad so the whole `127.0.0.0/8` block is matched, not just
+// `127.0.0.1`.
+function mappedIpv4(hostname: string): string | undefined {
+	const groups = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(hostname);
+	if (!groups) return undefined;
+	const value = (parseInt(groups[1]!, 16) << 16) | parseInt(groups[2]!, 16);
+	return [(value >>> 24) & 0xff, (value >>> 16) & 0xff, (value >>> 8) & 0xff, value & 0xff].join(
+		".",
+	);
+}
+
+function isLoopbackUrl(rawUrl: string): boolean {
+	let hostname: string;
+	try {
+		hostname = new URL(rawUrl).hostname.toLowerCase().replace(/^\[|\]$/g, "");
+	} catch {
+		return false;
+	}
+	// `URL` keeps a trailing dot on names (`localhost.`), so normalize first.
+	hostname = hostname.replace(/\.$/, "");
+	if (hostname === "localhost" || hostname.endsWith(".localhost")) return true;
+	if (hostname === "0.0.0.0" || hostname === "::1" || hostname === "::") return true;
+	return IPV4_LOOPBACK.test(mappedIpv4(hostname) ?? hostname);
+}
+
+/**
+ * Blocks a remote page in the browser partition from reaching a loopback daemon
+ * as a sub-resource (the embed-and-drive-via-postMessage attack). A top-level
+ * navigation to loopback (the user's own dev server) and a loopback sub-resource
+ * whose top-frame is itself loopback stay allowed; an unknown embedder fails closed.
+ */
+export function shouldCancelLoopbackRequest(details: {
+	url: string;
+	resourceType: string;
+	frame?: { top?: { url?: string } | null } | null;
+	initiatorOrigin?: string;
+}): boolean {
+	if (details.resourceType === "mainFrame") return false;
+	if (!isLoopbackUrl(details.url)) return false;
+	const embedderUrl = details.frame?.top?.url ?? details.initiatorOrigin;
+	if (!embedderUrl || embedderUrl === "null") return true;
+	return !isLoopbackUrl(embedderUrl);
 }

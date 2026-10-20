@@ -28,6 +28,7 @@ const deferredRemovalPaths = new Set<string>();
 const CHAT_ISOLATION_KEYS = new Set([
 	"browser",
 	"chat",
+	"browser-loopback",
 	"files",
 	"git",
 	"git-branch-selector",

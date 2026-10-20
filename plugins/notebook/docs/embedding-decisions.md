@@ -145,6 +145,28 @@ The old standalone `/notebook` page, route `sidecar` manifest field, built-in si
 generic split-page layout are removed. If the notebook plugin unloads while persisted tabs exist,
 Kilo renders a closeable unavailable state until the contribution returns.
 
+## D9. The in-app browser blocks remote-embedded loopback; the daemon blob server stays on loopback HTTP
+
+The daemon's unauthenticated blob/output HTTP server (`ACAO: *`, `unsafe-eval`, no `frame-ancestors`,
+an `nteract/eval` handler that checks `event.source` but not `event.origin`) is third-party and
+cannot be hardened by spawn flags. A remote page in the in-app browser (`persist:kilo-desktop-browser`)
+could iframe `/output-frame` and `eval()` there, or read `/blob/<hash>`.
+
+Chosen: close the crossing at the partition, not the daemon. `ElectronBrowserHost.initialize()`
+installs a `webRequest.onBeforeRequest` filter (`shouldCancelLoopbackRequest`) that cancels loopback
+**sub-resources** (nested iframe / `fetch` / `img`) whose top-frame is a remote origin — the attack
+shape. It allows a top-level navigation to loopback (the user's own dev server) and loopback
+sub-resources whose top-frame is itself loopback (that server's same-origin assets), and fails closed
+when the embedder is unknown. Loopback = `localhost`, `127.0.0.0/8`, `0.0.0.0`, `::1`, `::`,
+`::ffff:127.0.0.1`. The notebook feature is unaffected — it renders over the custom protocol and the
+feature port in the default session, not this partition.
+
+Not the D4 custom-protocol migration: the loopback URL is minted inside nteract's prebuilt bundle from
+`blobs.getPort`, and the host protocol exposes no resolver seam, so that remains upstream-gated.
+
+Residual (informational, local-only): the daemon keeps listening; a same-user local process can still
+reach it directly, crossing no new boundary. Auth/`ACAO`/`eval` removal is upstream `runtimed` work.
+
 ## D8. Kilo uses direct Node bindings for notebook tools
 
 Chosen: bundle a Kilo plugin that loads the packaged `@runtimed/node` entry and connects to the

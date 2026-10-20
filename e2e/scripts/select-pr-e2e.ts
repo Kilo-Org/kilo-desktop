@@ -43,8 +43,8 @@ function specDirectory(...segments: string[]): string {
 
 /** Plugins without their own specs (or with specs elsewhere) → the spec paths that cover them. */
 const RELATED_SPECS: Readonly<Record<string, readonly string[]>> = {
-	"kilo-server": [specDirectory("plugins", "kilo-ui", "e2e")],
 	"kilo-ui": [specDirectory("e2e", "specs", "features", "chat")],
+	"kilo-server": [specDirectory("plugins", "kilo-ui", "e2e")],
 	git: [
 		specDirectory("e2e", "specs", "features", "git"),
 		specDirectory("plugins", "kilo-ui", "e2e", "specs") + "git-worktrees",

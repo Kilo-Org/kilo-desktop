@@ -1,15 +1,33 @@
+import { stat } from "node:fs/promises";
+
 import {
+	click,
 	expectElementToBeDisabled,
+	expectElementToBeEnabled,
 	expectElementToBeHidden,
 	expectElementToBeVisible,
 	expectElementToHaveCount,
 	expectElementToHaveText,
 	getLocatorByTestId,
+	getText,
 } from "@anaconda/playwright-utils";
+import { expect } from "@playwright/test";
+import type { ElectronApplication } from "playwright";
 
 import { aboutData } from "../../../testdata/about.js";
 
+type RevealedPaths = { __kiloE2eRevealedPaths?: string[] };
+type FileManagerStubScope = typeof globalThis &
+	RevealedPaths & { __kiloE2eOriginalShowItemInFolder?: (fullPath: string) => void };
+
+/**
+ * "Show in Finder" opens an OS window Playwright cannot observe or close, so
+ * `stubFileManager` swaps `shell.showItemInFolder` in the main process for a
+ * recorder. The click still travels the real renderer → IPC → main path.
+ */
 export class AboutPage {
+	constructor(private readonly app: ElectronApplication) {}
+
 	private readonly aboutSettings = () => getLocatorByTestId("about-settings");
 	private readonly loadingPlaceholders = () =>
 		this.aboutSettings().locator('[data-slot="skeleton-text"]');
@@ -45,7 +63,16 @@ export class AboutPage {
 		this.applicationLogsRow().locator('[data-slot="item-title"]');
 
 	private readonly kiloConfigRow = () => getLocatorByTestId("about-global-kilo-config");
+	private readonly applicationLogsPath = () =>
+		this.applicationLogsRow().locator('[data-slot="item-description"] code');
+	private readonly showLogFileButton = () => getLocatorByTestId("about-show-log-file");
+
 	private readonly kiloConfigTitle = () => this.kiloConfigRow().locator('[data-slot="item-title"]');
+	private readonly kiloConfigDescription = () =>
+		this.kiloConfigRow().locator('[data-slot="item-description"]');
+	private readonly kiloConfigPath = () =>
+		this.kiloConfigRow().locator('[data-slot="item-description"] code');
+	private readonly showKiloConfigButton = () => getLocatorByTestId("about-show-global-kilo-config");
 
 	/** Update state, the log path, and the Kilo config row each render a skeleton until they load. */
 	async waitForAboutSettled(): Promise<void> {
@@ -179,10 +206,132 @@ export class AboutPage {
 		});
 	}
 
+	async verifyLogFilePath(): Promise<void> {
+		await expectElementToBeVisible(
+			this.applicationLogsPath(),
+			"Application logs row should show the log file path",
+		);
+		await expectElementToHaveText(this.applicationLogsPath(), aboutData.logFilePathPattern, {
+			message: "Log file path should be absolute and point at main.log",
+		});
+	}
+
+	/** Visibility, label, and enabled state only — clicking opens an OS file manager window. */
+	async verifyShowLogFileButton(): Promise<void> {
+		await expectElementToBeVisible(
+			this.showLogFileButton(),
+			"Application logs row should offer to reveal the log file",
+		);
+		await expectElementToHaveText(this.showLogFileButton(), aboutData.revealInFileManagerLabel, {
+			message: "Reveal log button should be named for the platform's file manager",
+		});
+		await expectElementToBeEnabled(
+			this.showLogFileButton(),
+			"Reveal log button should be enabled once the log path is known",
+		);
+	}
+
+	async stubFileManager(): Promise<void> {
+		await this.app.evaluate(({ shell }) => {
+			const scope = globalThis as FileManagerStubScope;
+			scope.__kiloE2eOriginalShowItemInFolder ??= shell.showItemInFolder;
+			scope.__kiloE2eRevealedPaths = [];
+			shell.showItemInFolder = (fullPath: string) => {
+				scope.__kiloE2eRevealedPaths?.push(fullPath);
+			};
+		});
+	}
+
+	async restoreFileManager(): Promise<void> {
+		await this.app.evaluate(({ shell }) => {
+			const scope = globalThis as FileManagerStubScope;
+			if (scope.__kiloE2eOriginalShowItemInFolder) {
+				shell.showItemInFolder = scope.__kiloE2eOriginalShowItemInFolder;
+			}
+			delete scope.__kiloE2eOriginalShowItemInFolder;
+			delete scope.__kiloE2eRevealedPaths;
+		});
+	}
+
+	async clickShowLogFile(): Promise<void> {
+		await click(this.showLogFileButton());
+	}
+
+	async verifyLogFileRevealed(): Promise<void> {
+		await this.verifyRevealedFilePath(
+			await getText(this.applicationLogsPath()),
+			"Show in file manager should reveal the log file shown in the row",
+		);
+	}
+
+	async verifyRevealedFilePath(expected: string | RegExp, message: string): Promise<void> {
+		const matcher = typeof expected === "string" ? expected : expect.stringMatching(expected);
+		await expect.poll(() => this.revealedPaths(), { message }).toEqual([matcher]);
+	}
+
+	/** Every OS file manager is handed the path as-is, so it must name a real file on this machine. */
+	async verifyRevealedFileExists(): Promise<void> {
+		const [revealedPath] = (await this.revealedPaths()) ?? [];
+		if (!revealedPath) throw new Error("Show in file manager should have revealed a path");
+		const isFile = await stat(revealedPath).then(
+			(stats) => stats.isFile(),
+			() => false,
+		);
+		expect(isFile, `Revealed path should be an existing file: ${revealedPath}`).toBe(true);
+	}
+
+	private revealedPaths(): Promise<string[] | undefined> {
+		return this.app.evaluate(() => (globalThis as RevealedPaths).__kiloE2eRevealedPaths);
+	}
+
 	async verifyKiloConfigTitle(): Promise<void> {
 		await expectElementToBeVisible(this.kiloConfigRow(), "Support should list the Kilo config row");
 		await expectElementToHaveText(this.kiloConfigTitle(), aboutData.kiloConfigTitle, {
 			message: "Kilo config row should be titled Kilo config",
 		});
+	}
+
+	async verifyKiloConfigNotCreated(): Promise<void> {
+		await expectElementToHaveText(
+			this.kiloConfigDescription(),
+			aboutData.kiloConfigMissingDescription,
+			{ message: "Kilo config row should say no global config exists in a fresh profile" },
+		);
+	}
+
+	async verifyShowKiloConfigButtonDisabled(): Promise<void> {
+		await this.verifyShowKiloConfigButtonLabel();
+		await expectElementToBeDisabled(
+			this.showKiloConfigButton(),
+			"Reveal config button should be disabled while no global config file exists",
+		);
+	}
+
+	async verifyKiloConfigPath(expectedPath: string): Promise<void> {
+		await expectElementToHaveText(this.kiloConfigPath(), expectedPath, {
+			message: "Kilo config row should show the path of the existing global config",
+		});
+	}
+
+	async verifyShowKiloConfigButtonEnabled(): Promise<void> {
+		await this.verifyShowKiloConfigButtonLabel();
+		await expectElementToBeEnabled(
+			this.showKiloConfigButton(),
+			"Reveal config button should be enabled once a global config file exists",
+		);
+	}
+
+	private async verifyShowKiloConfigButtonLabel(): Promise<void> {
+		await expectElementToBeVisible(
+			this.showKiloConfigButton(),
+			"Kilo config row should show the reveal button",
+		);
+		await expectElementToHaveText(this.showKiloConfigButton(), aboutData.revealInFileManagerLabel, {
+			message: "Reveal config button should be named for the platform's file manager",
+		});
+	}
+
+	async clickShowKiloConfig(): Promise<void> {
+		await click(this.showKiloConfigButton());
 	}
 }

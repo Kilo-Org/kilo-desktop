@@ -16,11 +16,13 @@ import type { PluginPageProps } from "@kilo-desktop/feature-sdk";
 import {
 	findPane,
 	flattenPanes,
+	findPaneGroup,
 	movePane,
 	removePane,
 	serializeLayout,
 	setActivePane,
 	type Arrangement,
+	type DropPosition,
 	type PaneLayout,
 } from "@kilo-desktop/pane-layout";
 import { useFeatureFlag, useSdk, useSdkContributions } from "@kilo-desktop/sdk-react";
@@ -42,6 +44,10 @@ import { captureLayoutTemplate } from "./layout-presets/layout-template.js";
 import { useDefaultLayout } from "./layout-presets/use-default-layout.js";
 import { CHAT_LAYOUTS_FEATURE_FLAG } from "./layout-presets/feature-flag.js";
 
+import { NewTabPicker } from "./keyboard/NewTabPicker.js";
+import { useComposerShortcuts } from "./keyboard/use-composer-shortcuts.js";
+import { useShortcutHints } from "./keyboard/shortcut-hints.js";
+import { useTabShortcuts } from "./keyboard/use-tab-shortcuts.js";
 import { ChatPaneCanvas } from "./pane-canvas/ChatPaneCanvas.js";
 import {
 	FILES_PANE_DEFINITION_ID,
@@ -621,7 +627,11 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 	);
 
 	const handleLaunch = useCallback(
-		(definition: RightPanelTabDefinition, targetGroupId?: string) => {
+		(
+			definition: RightPanelTabDefinition,
+			targetGroupId?: string,
+			position: DropPosition = "inside",
+		) => {
 			openTab(
 				sessionId,
 				definition,
@@ -640,17 +650,17 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 			const paneId = current.activeTabId;
 			if (!paneId) return;
 			const withPane = mergeArtifactPanes(layout, current.tabs, paneId);
-			commitLayout(setActivePane(movePane(withPane, paneId, targetGroupId, "inside"), paneId));
+			commitLayout(setActivePane(movePane(withPane, paneId, targetGroupId, position), paneId));
 		},
 		[commitLayout, layout, openTab, sessionId, workspaceDirectory],
 	);
 
 	const handleLaunchChat = useCallback(
-		(targetGroupId?: string) => {
+		(targetGroupId?: string, position: DropPosition = "inside") => {
 			const paneId = agentPaneId(sessionId);
 			const withAgent = ensureAgentPane(layout, sessionId, aliases, chatTitle);
 			setChatPaneOpen(sessionId, true);
-			const next = targetGroupId ? movePane(withAgent, paneId, targetGroupId, "inside") : withAgent;
+			const next = targetGroupId ? movePane(withAgent, paneId, targetGroupId, position) : withAgent;
 			commitLayout(setActivePane(next, paneId));
 			setRevealActivePaneNonce((current) => current + 1);
 		},
@@ -700,19 +710,56 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 		[aui, handleDockPoppedOutPane, handleLaunchChat, sdk, sessionId],
 	);
 	const handleUserLaunch = useCallback(
-		(definition: RightPanelTabDefinition, targetGroupId?: string) => {
-			handleLaunch(definition, targetGroupId);
+		(definition: RightPanelTabDefinition, targetGroupId?: string, position?: DropPosition) => {
+			handleLaunch(definition, targetGroupId, position);
 			trackLayout("Pane Opened", { paneType: definition.id });
 		},
 		[handleLaunch, trackLayout],
 	);
 	const handleUserLaunchChat = useCallback(
-		(targetGroupId?: string) => {
-			handleLaunchChat(targetGroupId);
+		(targetGroupId?: string, position?: DropPosition) => {
+			handleLaunchChat(targetGroupId, position);
 			trackLayout("Pane Opened", { paneType: "chat" });
 		},
 		[handleLaunchChat, trackLayout],
 	);
+	// ⌘T opens the picked tab inside the focused group, like the strip's own "+";
+	// ⌘\ / ⌥⌘\ open it in a new group after or below the focused one.
+	const [newTabPlacement, setNewTabPlacement] = useState<DropPosition | null>(null);
+	const activeTabGroupId = hasCanvas ? findPaneGroup(layout, layout.activePaneId)?.id : undefined;
+	const shortcutPaneIds = useMemo(
+		() => (hasCanvas ? flattenPanes(layout).map((pane) => pane.id) : []),
+		[hasCanvas, layout],
+	);
+	const tabShortcutHints = useShortcutHints("tab", shortcutPaneIds);
+	const focusPane = useCallback(
+		(paneId: string) => {
+			if (poppedOutPaneIds.has(paneId)) {
+				handleFocusPoppedOutPane(paneId);
+				return;
+			}
+			if (layout.activePaneId !== paneId) commitLayout(setActivePane(layout, paneId));
+			handleSelectPane(paneId);
+			setRevealActivePaneNonce((current) => current + 1);
+		},
+		[commitLayout, handleFocusPoppedOutPane, handleSelectPane, layout, poppedOutPaneIds],
+	);
+	const openPaneKind = useCallback(
+		(definitionId: string) => {
+			const existing = panelState.tabs.findLast((tab) => tab.definitionId === definitionId);
+			if (existing) {
+				focusPane(existing.instanceId);
+				return;
+			}
+			const definition = rightPanelDefinitions.find((entry) => entry.id === definitionId);
+			if (definition) handleUserLaunch(definition);
+		},
+		[focusPane, handleUserLaunch, panelState.tabs, rightPanelDefinitions],
+	);
+	useComposerShortcuts(() => {
+		if (hasCanvas && !isDetached) handleLaunchChat();
+	});
+
 	const handleArrangementChange = useCallback(
 		(next: Arrangement) => {
 			if (next === "tiles") {
@@ -724,6 +771,18 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 		},
 		[commitLayout, layout, persistArrangement, sessionId, trackLayout],
 	);
+	useTabShortcuts(!isDetached, {
+		paneIds: shortcutPaneIds,
+		activePaneId: hasCanvas ? layout.activePaneId : undefined,
+		focusPane,
+		closePane: handleClosePane,
+		openNewTabPicker: () => setNewTabPlacement("inside"),
+		openNewGroupPicker: setNewTabPlacement,
+		openPaneKind,
+		availableDefinitionIds,
+		toggleCarousel: () =>
+			handleArrangementChange(arrangement === "carousel" ? "tiles" : "carousel"),
+	});
 
 	const captureLayout = useCallback(
 		() => captureLayoutTemplate(layout, panelState),
@@ -901,6 +960,20 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 					onClose={closeRequestedTab}
 				/>
 			) : null}
+			<NewTabPicker
+				open={newTabPlacement !== null}
+				onOpenChange={(open) => {
+					if (!open) setNewTabPlacement(null);
+				}}
+				title={
+					newTabPlacement === "inside" || newTabPlacement === null ? "New tab" : "New tab group"
+				}
+				definitions={rightPanelDefinitions}
+				onLaunchChat={() => handleUserLaunchChat(activeTabGroupId, newTabPlacement ?? undefined)}
+				onLaunch={(definition) =>
+					handleUserLaunch(definition, activeTabGroupId, newTabPlacement ?? undefined)
+				}
+			/>
 			{/* Islands carry their own tab row, so their top edge sits where the
 			    bare pane's does (the negative margin cancels the group's drop-zone
 			    padding) and the switch rides the header's height transition alone. */}
@@ -931,6 +1004,7 @@ export function ChatPage({ search = {} }: Partial<PluginPageProps> = {}) {
 						renderPane={renderPane}
 						paneTitleHint={paneTitleHint}
 						iconForPane={iconForPane}
+						{...(isDetached ? {} : { shortcutHints: tabShortcutHints })}
 					/>
 				</div>
 			) : (

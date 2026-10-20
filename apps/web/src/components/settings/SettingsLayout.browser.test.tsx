@@ -8,11 +8,12 @@ import {
 	RouterProvider,
 } from "@tanstack/react-router";
 import { afterEach, describe, expect, it } from "vitest";
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 
 import { SdkProvider, SettingsPageHeader } from "@kilo-desktop/sdk-react";
 import { SidebarProvider } from "@kilo-desktop/ui/components/sidebar";
 import { createBrowserLocalApi } from "@/platform/browserLocalApi";
+import { HOME_PLUGIN_SPLAT } from "@/features/home-route";
 import { createAppFeatureSystem } from "@/platform/featureSystem";
 
 import { SettingsEmptyState } from "./SettingsEmptyState";
@@ -83,13 +84,14 @@ function renderSettings(sections: PluginSettingsSection[], initial = "/settings"
 		routeTree: rootRoute.addChildren([settingsRoute.addChildren([indexRoute, sectionRoute])]),
 		history: createMemoryHistory({ initialEntries: [initial] }),
 	});
-	return render(
+	const view = render(
 		<SdkProvider system={system}>
 			<SidebarProvider>
 				<RouterProvider router={router as never} />
 			</SidebarProvider>
 		</SdkProvider>,
 	);
+	return Object.assign(view, { router });
 }
 
 describe("SettingsSidebar", () => {
@@ -242,5 +244,20 @@ describe("SettingsSectionView", () => {
 		await expect.element(screen.getByTestId("env-back")).toBeVisible();
 		await expect.element(screen.getByTestId("env-badge")).toBeVisible();
 		await expect.element(screen.getByText("Alpha settings.")).not.toBeInTheDocument();
+	});
+});
+
+describe("SettingsLayout", () => {
+	it("keeps Esc while the search field has text, and leaves Settings once it is empty", async () => {
+		const { baseElement, router } = renderSettings([makeSection()], "/settings/alpha");
+		const screen = page.elementLocator(baseElement);
+		await expect.element(screen.getByTestId("alpha-panel")).toBeVisible();
+
+		await screen.getByTestId("settings-search").click();
+		await userEvent.keyboard("alp{Escape}");
+		expect(router.state.location.pathname).toBe("/settings/alpha");
+
+		await userEvent.keyboard("{Backspace}{Backspace}{Backspace}{Escape}");
+		await expect.poll(() => router.state.location.pathname).toBe(`/plugins/${HOME_PLUGIN_SPLAT}`);
 	});
 });

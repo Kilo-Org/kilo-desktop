@@ -26,6 +26,7 @@ export {
 export { configureDesktopFocusManager } from "./configureDesktopFocusManager.js";
 
 export { useFeatureFlag } from "./useFeatureFlag.js";
+export { useCommand, useCommands, useEffectiveKeybindings } from "./useKeyboardShortcuts.js";
 export { useSignIn, type SignIn } from "./useSignIn.js";
 export { useSignInPrompt, type SignInPrompt } from "./useSignInPrompt.js";
 export { KiloAuthGate } from "./KiloAuthGate.js";

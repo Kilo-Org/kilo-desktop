@@ -291,15 +291,18 @@ Optional `category` groups the section in the settings sidebar and defaults to `
 
 `host` is kebab-case and unique across plugins (`app` is reserved). `{id}` is the single path segment and is written to `searchParam` on `to`. There is no imperative `sdk.contributeDeepLink`.
 
-### `sdk.commands` — command palette entries
+### `sdk.commands` — commands and keyboard shortcuts
 
 ```ts
-sdk.commands.register({
+const unregister = sdk.commands.register({
 	id: "add", // becomes "todos.add"
 	label: "Add todo",
+	keybinding: "Mod+Shift+N", // optional; ⌘ on macOS, Ctrl elsewhere
 	handler: () => openAddDialog(),
 });
 ```
+
+In React, use `useCommand(featureId, definition)` from `@kilo-desktop/sdk-react`; it unregisters on unmount.
 
 ### Shell delegates: `sdk.theme`, `sdk.shell`, `sdk.notifications`, `sdk.fs`
 

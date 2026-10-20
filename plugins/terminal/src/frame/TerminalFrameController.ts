@@ -1,6 +1,10 @@
 import { FitAddon, Terminal, init } from "ghostty-web";
 
-import { terminalFrameConnectSchema, type TerminalTheme } from "../contracts/frame.js";
+import {
+	terminalFrameClearSchema,
+	terminalFrameConnectSchema,
+	type TerminalTheme,
+} from "../contracts/frame.js";
 import {
 	TERMINAL_PROTOCOL_VERSION,
 	terminalServerMessageSchema,
@@ -102,6 +106,12 @@ export class TerminalFrameController {
 
 	readonly #onParentMessage = (event: MessageEvent<unknown>) => {
 		if (event.source !== this.#window.parent || event.origin !== this.#trustedParentOrigin) return;
+		if (terminalFrameClearSchema.safeParse(event.data).success) {
+			if (this.#snapshotReceived) {
+				this.#send({ type: "clear", requestId: this.#window.crypto.randomUUID() });
+			}
+			return;
+		}
 		const connectMessage = terminalFrameConnectSchema.safeParse(event.data);
 		if (!connectMessage.success || this.#connected || event.ports.length !== 1) return;
 		this.#connected = true;

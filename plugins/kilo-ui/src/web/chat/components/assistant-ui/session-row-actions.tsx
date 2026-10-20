@@ -28,7 +28,6 @@ import {
 	DropdownMenuRadioGroup,
 	DropdownMenuRadioItem,
 	DropdownMenuSeparator,
-	DropdownMenuShortcut,
 	DropdownMenuSub,
 	DropdownMenuSubContent,
 	DropdownMenuSubTrigger,
@@ -326,8 +325,6 @@ export const SessionRowMenu: FC<{
 	triggerRef?: RefObject<HTMLButtonElement | null> | undefined;
 	/** Names the chat when many menus share a surface (one per board card). */
 	label?: string;
-	/** Shift+Click pins sidebar rows; other surfaces have no such shortcut. */
-	showPinShortcut?: boolean;
 	side?: "right" | "bottom";
 }> = ({
 	canArchive,
@@ -340,7 +337,6 @@ export const SessionRowMenu: FC<{
 	board,
 	triggerRef,
 	label = "Thread actions",
-	showPinShortcut = true,
 	side = "right",
 }) => (
 	<DropdownMenu>
@@ -359,9 +355,6 @@ export const SessionRowMenu: FC<{
 				<DropdownMenuItem onClick={onPin}>
 					{pinned ? <PinOffIcon /> : <PinIcon />}
 					{pinned ? "Unpin" : "Pin"}
-					{showPinShortcut ? (
-						<DropdownMenuShortcut aria-hidden>Shift+Click</DropdownMenuShortcut>
-					) : null}
 				</DropdownMenuItem>
 			) : null}
 			{canArchive && (

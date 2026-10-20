@@ -4,6 +4,7 @@ import { RouterProvider } from "@tanstack/react-router";
 import type { LocalApi } from "@kilo-desktop/contracts";
 
 import { PluginProviderStack } from "@/features/plugin-providers";
+import { ShortcutsHost } from "@/features/shortcuts/ShortcutsHost";
 import { createDesktopQueryClient } from "@/lib/query/client";
 import { LocalApiProvider } from "@/platform/LocalApiProvider";
 import { ShellNavigationListener } from "@/platform/ShellNavigationListener";
@@ -34,6 +35,7 @@ export function AppProviders({ localApi, system, children }: AppProvidersProps) 
 						{/* One provider for the whole app so adjacent tooltips share the
 						    open delay; features must not add their own. */}
 						<TooltipProvider>
+							<ShortcutsHost />
 							<PluginProviderStack>
 								{children ?? <RouterProvider router={router} />}
 							</PluginProviderStack>

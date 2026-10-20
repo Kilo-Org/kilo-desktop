@@ -159,6 +159,7 @@ describe("PLUGIN_SETTINGS", () => {
 			"Notebooks",
 			"Notifications",
 			"Privacy",
+			"Shortcuts",
 		]);
 	});
 

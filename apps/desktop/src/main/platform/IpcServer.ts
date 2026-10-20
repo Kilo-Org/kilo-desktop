@@ -82,7 +82,11 @@ export class IpcServer {
 					const parsedPayload = ipcMessages[channel].payload.safeParse(rawPayload);
 					if (!parsedPayload.success) return;
 					try {
-						messageHandlers[channel](parsedPayload.data, { senderId: event.sender.id });
+						const handler = messageHandlers[channel] as (
+							payload: unknown,
+							context: { senderId: number },
+						) => void;
+						handler(parsedPayload.data, { senderId: event.sender.id });
 					} catch (error) {
 						this.logger.error(`IPC message handler failed for ${channel}`, error);
 					}

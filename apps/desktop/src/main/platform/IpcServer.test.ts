@@ -80,7 +80,7 @@ describe("IpcServer", () => {
 	it("validates trusted feature events and exposes the sender id", () => {
 		const handler = vi.fn();
 		const server = new IpcServer(ipcMain as never);
-		server.register({} as IpcHandlers, { "feature:event": handler });
+		server.register({} as IpcHandlers, { "feature:event": handler, "shortcuts:sync": vi.fn() });
 		const listener = listeners.get("feature:event")!;
 		const event = { sender: { id: 7 } };
 		const payload = { featureId: "producer", name: "changed", payload: { id: "1" } };
@@ -98,7 +98,7 @@ describe("IpcServer", () => {
 
 	it("removes the exact message listener on dispose", () => {
 		const server = new IpcServer(ipcMain as never);
-		server.register({} as IpcHandlers, { "feature:event": vi.fn() });
+		server.register({} as IpcHandlers, { "feature:event": vi.fn(), "shortcuts:sync": vi.fn() });
 		const listener = listeners.get("feature:event")!;
 
 		server.dispose();
@@ -115,6 +115,7 @@ describe("IpcServer", () => {
 			"feature:event": () => {
 				throw error;
 			},
+			"shortcuts:sync": vi.fn(),
 		});
 		const listener = listeners.get("feature:event")!;
 

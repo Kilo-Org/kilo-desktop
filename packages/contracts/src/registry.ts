@@ -6,6 +6,7 @@ import { featurePorts } from "./features/feature-port.js";
 import { fsMethods } from "./features/fs.js";
 import { notificationsMethods } from "./features/notifications.js";
 import { shellEvents, shellMethods } from "./features/shell.js";
+import { shortcutsEvents, shortcutsMessages } from "./features/shortcuts.js";
 import { telemetryMethods } from "./features/telemetry.js";
 import { themeMethods } from "./features/theme.js";
 import { updateEvents, updateMethods } from "./features/updates.js";
@@ -39,8 +40,15 @@ assertNoDuplicateChannels(
 	telemetryMethods,
 	updateMethods,
 );
-assertNoDuplicateChannels(shellEvents, featureEvents, authEvents, featureFlagEvents, updateEvents);
-assertNoDuplicateChannels(featureMessages);
+assertNoDuplicateChannels(
+	shellEvents,
+	featureEvents,
+	authEvents,
+	featureFlagEvents,
+	updateEvents,
+	shortcutsEvents,
+);
+assertNoDuplicateChannels(featureMessages, shortcutsMessages);
 assertNoDuplicateChannels(featurePorts);
 assertNoDuplicateChannels(featurePorts, {
 	...shellMethods,
@@ -56,7 +64,9 @@ assertNoDuplicateChannels(featurePorts, {
 	...featureEvents,
 	...featureFlagEvents,
 	...updateEvents,
+	...shortcutsEvents,
 	...featureMessages,
+	...shortcutsMessages,
 });
 
 export const ipcMethods = {
@@ -76,8 +86,9 @@ export const ipcEvents = {
 	...featureEvents,
 	...featureFlagEvents,
 	...updateEvents,
+	...shortcutsEvents,
 };
 // feature:event is intentionally duplex: the same validated envelope is a
 // renderer-to-main message and a main-to-renderer event.
-export const ipcMessages = { ...featureMessages };
+export const ipcMessages = { ...featureMessages, ...shortcutsMessages };
 export const ipcPorts = { ...featurePorts };

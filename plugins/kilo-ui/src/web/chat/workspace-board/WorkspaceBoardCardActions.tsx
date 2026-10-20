@@ -64,7 +64,6 @@ const CardMenu: FC<MenuProps & { operations?: SessionRowOperations }> = ({
 				board={board}
 				triggerRef={triggerRef}
 				label={`Chat actions for ${session.title}`}
-				showPinShortcut={false}
 				side="bottom"
 			/>
 			<SessionRowWorktreeDialog dialog={worktreeDialog} />

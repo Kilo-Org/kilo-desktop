@@ -1,14 +1,33 @@
 import { useEffect, useRef, type ReactNode } from "react";
 
-import { useSdk } from "@kilo-desktop/sdk-react";
+import { useCommand, useSdk } from "@kilo-desktop/sdk-react";
 
 import {
+	TERMINAL_PROTOCOL_VERSION,
 	TERMINAL_SESSION_EXITED_EVENT,
 	terminalSessionExitedSchema,
 	type TerminalService,
 } from "../contracts/session.js";
 import type { ChatRightPanelCapabilities } from "./chat-right-panel.js";
 import { getTerminalPaneOwner, terminalIdentityKey } from "./terminal-pane-owners.js";
+
+function focusedTerminalFrame(): HTMLIFrameElement | null {
+	const active = document.activeElement;
+	return active instanceof HTMLIFrameElement && active.dataset["qaId"] === "terminal-frame"
+		? active
+		: null;
+}
+
+function clearFocusedTerminal(): void {
+	const frame = focusedTerminalFrame();
+	if (!frame?.contentWindow) return;
+	// URL.origin is "null" for custom schemes like kilo-desktop://terminal.
+	const { protocol, host } = new URL(frame.src);
+	frame.contentWindow.postMessage(
+		{ type: "terminal:clear", protocolVersion: TERMINAL_PROTOCOL_VERSION },
+		`${protocol}//${host}`,
+	);
+}
 
 /**
  * Owns terminal-exit reconciliation for the lifetime of the renderer. The main
@@ -19,6 +38,16 @@ import { getTerminalPaneOwner, terminalIdentityKey } from "./terminal-pane-owner
 export function TerminalLifecycleProvider({ children }: { readonly children: ReactNode }) {
 	const sdk = useSdk<TerminalService>("terminal");
 	const handled = useRef(new Set<string>());
+
+	// One registration for every terminal pane; ⌘K stays search elsewhere.
+	useCommand("terminal", {
+		id: "clear",
+		label: "Clear terminal",
+		group: "Terminal",
+		keybinding: { mac: "Mod+K" },
+		when: () => focusedTerminalFrame() !== null,
+		handler: clearFocusedTerminal,
+	});
 
 	useEffect(
 		() =>

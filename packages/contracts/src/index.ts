@@ -13,6 +13,7 @@ export * from "./features/feature-port.js";
 export * from "./features/fs.js";
 export * from "./features/notifications.js";
 export * from "./features/shell.js";
+export * from "./features/shortcuts.js";
 export * from "./features/telemetry.js";
 export * from "./features/theme.js";
 export * from "./features/updates.js";

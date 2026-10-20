@@ -401,6 +401,7 @@ const PaneCanvasColumn: FC<{
 	contentRegistry: PaneContentMountRegistry;
 	paneTitleHint?: (paneId: string) => string | undefined;
 	iconForPane?: (paneId: string) => PaneIconOverride | undefined;
+	shortcutHints?: ReadonlyMap<string, string>;
 }> = ({
 	canDrop,
 	column,
@@ -427,6 +428,7 @@ const PaneCanvasColumn: FC<{
 	contentRegistry,
 	paneTitleHint,
 	iconForPane,
+	shortcutHints,
 }) => {
 	const paneCount = flattenPanes(layout).length;
 	const columnExpanded = expandedGroupId
@@ -502,6 +504,7 @@ const PaneCanvasColumn: FC<{
 										return tab?.kind === "agent" ? tab.title : undefined;
 									}}
 									{...(iconForPane ? { iconForPane } : {})}
+									{...(shortcutHints ? { shortcutHints } : {})}
 									onSelect={(paneId) => {
 										onLayoutChange(setActivePane(layout, paneId));
 										onSelectPane(paneId);
@@ -600,6 +603,7 @@ export const ChatPaneCanvas: FC<{
 	renderPane: (paneId: string) => ReactNode;
 	paneTitleHint?: (paneId: string) => string | undefined;
 	iconForPane?: (paneId: string) => PaneIconOverride | undefined;
+	shortcutHints?: ReadonlyMap<string, string>;
 }> = ({
 	layout,
 	arrangement,
@@ -617,6 +621,7 @@ export const ChatPaneCanvas: FC<{
 	renderPane,
 	paneTitleHint,
 	iconForPane,
+	shortcutHints,
 }) => {
 	const viewportRef = useRef<HTMLDivElement>(null);
 	const trackRef = useRef<HTMLDivElement>(null);
@@ -801,6 +806,7 @@ export const ChatPaneCanvas: FC<{
 			contentRegistry={contentRegistry}
 			{...(paneTitleHint ? { paneTitleHint } : {})}
 			{...(iconForPane ? { iconForPane } : {})}
+			{...(shortcutHints ? { shortcutHints } : {})}
 		/>
 	);
 

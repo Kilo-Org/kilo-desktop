@@ -13,7 +13,7 @@ import { findPluginPage, type PluginPage } from "@/features/plugin-pages";
 import { isSettingsPath, type PluginSettingsSection } from "@/features/plugin-settings";
 import { isDesktopBridgeAvailable } from "@/platform/desktopBridge";
 import { SIDEBAR_ACCOUNT_ZONE, SIDEBAR_HEADER_ACTIONS_ZONE } from "@kilo-desktop/feature-sdk";
-import { useTelemetry } from "@kilo-desktop/sdk-react";
+import { useCommand, useTelemetry } from "@kilo-desktop/sdk-react";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Sidebar,
@@ -26,7 +26,10 @@ import {
 	SidebarMenuButton,
 	SidebarMenuItem,
 	SidebarProvider,
+	useSidebar,
 } from "@kilo-desktop/ui/components/sidebar";
+
+import { SHELL_FEATURE_ID } from "@/features/shortcuts/shell-feature";
 
 /** Clears macOS traffic lights (x:16, 14px lights, 8px gaps = 74px) plus a 10px gap. */
 const MAC_DESKTOP_SIDEBAR_TOGGLE_LEFT = "84px";
@@ -111,6 +114,32 @@ function SidebarAccountDock({ settings }: { settings: boolean }) {
 	);
 }
 
+function OpenSettingsCommand() {
+	const navigate = useNavigate();
+	useCommand(SHELL_FEATURE_ID, {
+		id: "open-settings",
+		label: "Open settings",
+		group: "App",
+		keybinding: "Mod+,",
+		order: 20,
+		handler: () => void navigate({ to: "/settings" }),
+	});
+	return null;
+}
+
+function SidebarToggleCommand() {
+	const { toggleSidebar } = useSidebar();
+	useCommand(SHELL_FEATURE_ID, {
+		id: "toggle-sidebar",
+		label: "Show or hide the sidebar",
+		group: "App",
+		keybinding: { mac: "Mod+B", default: "Ctrl+Shift+S" },
+		order: 30,
+		handler: toggleSidebar,
+	});
+	return null;
+}
+
 function ShellInset({ children }: { children: ReactNode }) {
 	return (
 		// Keep overflow off SidebarInset — Electron ignores drag regions inside
@@ -126,24 +155,6 @@ export function AppSidebarLayout({
 	settingsSections = EMPTY_SETTINGS,
 	pages = EMPTY_PAGES,
 }: AppSidebarLayoutProps) {
-	const navigate = useNavigate();
-	useEffect(() => {
-		const handleKeyDown = (event: KeyboardEvent) => {
-			if (
-				event.key === "," &&
-				event.metaKey &&
-				!event.ctrlKey &&
-				!event.altKey &&
-				!event.shiftKey
-			) {
-				event.preventDefault();
-				void navigate({ to: "/settings" });
-			}
-		};
-		window.addEventListener("keydown", handleKeyDown);
-		return () => window.removeEventListener("keydown", handleKeyDown);
-	}, [navigate]);
-
 	const location = useRouterState({ select: (state) => state.location });
 	const pathname = location.pathname;
 	// Page Visit is a shell-level, cross-feature concern, so it uses the
@@ -175,9 +186,12 @@ export function AppSidebarLayout({
 	return (
 		<SidebarProvider
 			hoverReveal
+			keyboardShortcut={false}
 			className="app-shell-glass h-svh min-h-0"
 			style={sidebarProviderStyle}
 		>
+			<SidebarToggleCommand />
+			<OpenSettingsCommand />
 			<Sidebar
 				collapsible="offcanvas"
 				className="group-data-[transient=true]:bg-sidebar! h-svh bg-transparent! group-data-[side=left]:border-r-0 group-data-[transient=true]:shadow-xl [&_[data-sidebar=sidebar]]:bg-transparent"

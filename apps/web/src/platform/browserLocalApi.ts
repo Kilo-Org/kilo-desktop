@@ -1,5 +1,7 @@
 import { LocalApiError, type AuthSession, type LocalApi } from "@kilo-desktop/contracts";
 
+import { createWindowShortcutCapture } from "./shortcuts/windowShortcutCapture";
+
 async function browserFsUnavailable(): Promise<never> {
 	throw new LocalApiError(
 		"TRANSPORT",
@@ -68,6 +70,7 @@ export function createBrowserLocalApi(): LocalApi {
 				return () => {};
 			},
 		},
+		shortcuts: createWindowShortcutCapture(),
 		notifications: {
 			// Web Notification API, permission-gated. Never request permission
 			// here (no surprise prompts) — report undelivered honestly instead.

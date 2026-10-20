@@ -15,6 +15,7 @@ import { Button, buttonVariants } from "@kilo-desktop/ui/components/button";
 import { Toggle } from "@kilo-desktop/ui/components/toggle";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
+import { ShortcutHintChip } from "../keyboard/shortcut-hints.js";
 import type { PaneDrop } from "./pane-drop.js";
 import { PANE_KIND_ICON, PANE_KIND_ICON_CLASS, type PaneIconOverride } from "./pane-kind-icon.js";
 import { PaneTabScrollArea } from "./PaneTabScrollArea.js";
@@ -60,6 +61,7 @@ export const PaneTabStrip: FC<{
 	trailing?: ReactNode;
 	titleHint?: (paneId: string) => string | undefined;
 	iconForPane?: (paneId: string) => PaneIconOverride | undefined;
+	shortcutHints?: ReadonlyMap<string, string>;
 }> = ({
 	canDrop,
 	groupId,
@@ -83,6 +85,7 @@ export const PaneTabStrip: FC<{
 	trailing,
 	titleHint,
 	iconForPane,
+	shortcutHints,
 }) => {
 	const { stripRef, suppressClickRef, startPointerDrag, onPointerDrag, finishPointerDrag } =
 		usePaneDrag({ onDrop, canDrop });
@@ -117,6 +120,7 @@ export const PaneTabStrip: FC<{
 					const windowable = dockable || poppable;
 					const paneExpanded = active && expanded;
 					const iconOverride = iconForPane?.(pane.id);
+					const shortcutHint = shortcutHints?.get(pane.id);
 					const Icon = iconOverride?.Icon ?? PANE_KIND_ICON[pane.kind];
 					const ExpandIcon = paneExpanded ? Minimize2Icon : Maximize2Icon;
 					const WindowIcon = poppedOut ? Minimize2Icon : ExternalLinkIcon;
@@ -184,14 +188,23 @@ export const PaneTabStrip: FC<{
 								<span
 									className={cn(
 										"min-w-0 flex-1 truncate text-left",
-										actionCount > 0 &&
-											"group-hover/pane-tab:[mask-image:linear-gradient(to_right,black_calc(100%-var(--pane-tab-actions-width)),transparent_calc(100%-var(--pane-tab-actions-width)+0.5rem))] group-focus-within/pane-tab:[mask-image:linear-gradient(to_right,black_calc(100%-var(--pane-tab-actions-width)),transparent_calc(100%-var(--pane-tab-actions-width)+0.5rem))] group-data-[active]/pane-tab:[mask-image:linear-gradient(to_right,black_calc(100%-var(--pane-tab-actions-width)),transparent_calc(100%-var(--pane-tab-actions-width)+0.5rem))]",
+										shortcutHint
+											? // Room for the widest chip ("Ctrl+9"), which overlays the title's end.
+												"[mask-image:linear-gradient(to_right,black_calc(100%-3.25rem),transparent_calc(100%-2.75rem))]"
+											: actionCount > 0 &&
+													"group-hover/pane-tab:[mask-image:linear-gradient(to_right,black_calc(100%-var(--pane-tab-actions-width)),transparent_calc(100%-var(--pane-tab-actions-width)+0.5rem))] group-focus-within/pane-tab:[mask-image:linear-gradient(to_right,black_calc(100%-var(--pane-tab-actions-width)),transparent_calc(100%-var(--pane-tab-actions-width)+0.5rem))] group-data-[active]/pane-tab:[mask-image:linear-gradient(to_right,black_calc(100%-var(--pane-tab-actions-width)),transparent_calc(100%-var(--pane-tab-actions-width)+0.5rem))]",
 									)}
 								>
 									{pane.title}
 								</span>
 							</TabsPrimitive.Tab>
-							<div className={actionVisibilityClassName}>
+							{shortcutHint ? (
+								// Overlaid, not in the flow, so holding the modifier never resizes the tab.
+								<span className="pointer-events-none absolute inset-y-0 right-1.5 flex items-center">
+									<ShortcutHintChip label={shortcutHint} />
+								</span>
+							) : null}
+							<div className={cn(actionVisibilityClassName, shortcutHint && "hidden")}>
 								{onExpand ? (
 									<PaneTabTooltip content={paneExpanded ? "Restore" : "Expand"}>
 										<Button

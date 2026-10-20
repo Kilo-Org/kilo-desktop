@@ -43,6 +43,12 @@ export const terminalFrameConnectSchema = z.object({
 	theme: terminalThemeSchema,
 });
 
+/** Host → frame: clear the screen and scrollback (⌘K while the terminal has focus). */
+export const terminalFrameClearSchema = z.object({
+	type: z.literal("terminal:clear"),
+	protocolVersion: z.literal(TERMINAL_PROTOCOL_VERSION),
+});
+
 export const terminalFrameLabelSchema = z.object({
 	type: z.literal("terminal:label"),
 	protocolVersion: z.literal(TERMINAL_PROTOCOL_VERSION),

@@ -44,6 +44,11 @@ export function createElectronLocalApi(bridge: DesktopApi): LocalApi {
 			onPaneWindowChanged: (listener) => bridge.on("shell:pane-window-changed", listener),
 			onNavigate: (listener) => bridge.on("shell:navigate", listener),
 		},
+		shortcuts: {
+			sync: ({ bindings, recording }) =>
+				bridge.send("shortcuts:sync", { bindings: [...bindings], recording }),
+			onTriggered: (listener) => bridge.on("shortcuts:triggered", listener),
+		},
 		notifications: {
 			show: (input) => invoke("notifications:show", input),
 			setBadge: (input) => invoke("notifications:set-badge", input),

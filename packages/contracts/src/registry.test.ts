@@ -8,6 +8,7 @@ import { featurePorts } from "./features/feature-port.js";
 import { fsMethods } from "./features/fs.js";
 import { notificationsMethods } from "./features/notifications.js";
 import { shellEvents, shellMethods } from "./features/shell.js";
+import { shortcutsEvents, shortcutsMessages } from "./features/shortcuts.js";
 import { telemetryMethods } from "./features/telemetry.js";
 import { themeMethods } from "./features/theme.js";
 import { updateEvents, updateMethods } from "./features/updates.js";
@@ -40,9 +41,12 @@ describe("IPC registry", () => {
 				Object.keys(authEvents).length +
 				Object.keys(featureEvents).length +
 				Object.keys(featureFlagEvents).length +
-				Object.keys(updateEvents).length,
+				Object.keys(updateEvents).length +
+				Object.keys(shortcutsEvents).length,
 		);
-		expect(Object.keys(ipcMessages)).toHaveLength(Object.keys(featureMessages).length);
+		expect(Object.keys(ipcMessages)).toHaveLength(
+			Object.keys(featureMessages).length + Object.keys(shortcutsMessages).length,
+		);
 		expect(Object.keys(ipcPorts)).toHaveLength(Object.keys(featurePorts).length);
 	});
 

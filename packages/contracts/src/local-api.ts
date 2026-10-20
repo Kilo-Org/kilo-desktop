@@ -1,6 +1,7 @@
 import type { AuthSession } from "./features/auth.js";
 import type { NotificationDeliveryResult } from "./features/notifications.js";
 import type { PaneWindow, PaneWindowEvent, ShellNavigationTarget } from "./features/shell.js";
+import type { ShortcutBinding } from "./features/shortcuts.js";
 import type { TelemetryTrackInput } from "./features/telemetry.js";
 import type { ThemeState } from "./features/theme.js";
 import type {
@@ -48,6 +49,14 @@ export interface LocalApi {
 		focusMainWindow(): Promise<void>;
 		onPaneWindowChanged(listener: (event: PaneWindowEvent) => void): () => void;
 		onNavigate(listener: (target: ShellNavigationTarget) => void): () => void;
+	};
+	/**
+	 * Shortcut capture: the renderer pushes bindings, the host matches keys anywhere
+	 * (iframes, webviews) and reports the command id back.
+	 */
+	shortcuts: {
+		sync(input: { bindings: readonly ShortcutBinding[]; recording?: boolean }): void;
+		onTriggered(listener: (event: { commandId: string; chord: string }) => void): () => void;
 	};
 	notifications: {
 		show(input: {

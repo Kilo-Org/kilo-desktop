@@ -1,8 +1,9 @@
-import { InfoIcon, PaletteIcon, ShieldIcon } from "lucide-react";
+import { InfoIcon, KeyboardIcon, PaletteIcon, ShieldIcon } from "lucide-react";
 
 import { AppearanceSettings } from "@/components/settings/AppearanceSettings";
 import { AboutSettings } from "@/components/settings/AboutSettings";
 import { PrivacySettings } from "./privacy/PrivacySettings.js";
+import { KeyboardShortcutsSettings } from "./shortcuts/KeyboardShortcutsSettings.js";
 
 import { PLUGIN_DISCOVERY } from "./features.js";
 import { buildPluginSettings, type PluginSettingsSection } from "./plugin-settings.js";
@@ -31,6 +32,19 @@ const BUILT_IN_SETTINGS: readonly PluginSettingsSection[] = [
 		icon: undefined,
 		iconComponent: PaletteIcon,
 		priority: 100,
+		featureFlag: undefined,
+		browserSafe: true,
+	},
+	{
+		pluginId: "shell",
+		id: "keyboard-shortcuts",
+		title: "Shortcuts",
+		description: "See, change, or turn off the app's keyboard shortcuts.",
+		component: KeyboardShortcutsSettings,
+		category: "General",
+		icon: undefined,
+		iconComponent: KeyboardIcon,
+		priority: 65,
 		featureFlag: undefined,
 		browserSafe: true,
 	},

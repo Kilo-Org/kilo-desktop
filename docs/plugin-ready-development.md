@@ -388,7 +388,7 @@ Zone hosts consume the live, priority-ordered registry with `useSdkContributions
 ### Navigation and commands
 
 - Navigate with `sdk.navigate(path)`; read the router with `sdk.location`. Never import the router — it's deliberately shell-only.
-- Command palette entries: `sdk.commands.register({ id, label, handler })`.
+- Commands and keyboard shortcuts: `sdk.commands.register({ id, label, keybinding, handler })`.
 
 ---
 
@@ -511,7 +511,7 @@ Remove the feature from `FEATURES` / `WEB_FEATURES`; add it to `BUNDLED_PLUGINS`
 | Conditional UI in a zone                    | `sdk.contribute(zone, { id, component, ... })`                                  |
 | Static UI (pages, nav, settings, providers) | `plugin.json` `contributes`                                                     |
 | Navigation                                  | `sdk.navigate` / `sdk.location` (never the router)                              |
-| Command palette                             | `sdk.commands.register({ id, label, handler })`                                 |
+| Commands and keyboard shortcuts             | `sdk.commands.register({ id, label, keybinding, handler })`                     |
 | Per-feature file storage (renderer)         | `sdk.fs.readFile` / `writeFile` (sandboxed, Electron-only)                      |
 | Persistence (main)                          | own SQLite under `mainSdk.storageDir`; `mainSdk.storage.kv` for settings        |
 | AI tool exposure                            | `sdk.tools.register({ name, inputSchema, validate, handler, ... })`             |

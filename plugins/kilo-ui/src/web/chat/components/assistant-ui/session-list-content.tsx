@@ -31,7 +31,7 @@ import {
 	TooltipTrigger,
 } from "@kilo-desktop/ui/components/tooltip";
 import { cn } from "@kilo-desktop/ui/lib/utils";
-import { useSdk, useSdkContributions } from "@kilo-desktop/sdk-react";
+import { useCommand, useSdk, useSdkContributions } from "@kilo-desktop/sdk-react";
 import {
 	ThreadListItemPrimitive,
 	ThreadListPrimitive,
@@ -85,6 +85,7 @@ import {
 	deriveSessionRowState,
 	directoryBasename,
 	formatRelativeTimeLabel,
+	needsAttention,
 	withDescendantPrompts,
 	resolveSessionLocationLabel,
 	sessionGitStatusId,
@@ -92,6 +93,8 @@ import {
 	type SessionActivity,
 } from "../../session-activity/session-activity-logic.js";
 import { SessionListViewMenu } from "../../session-list/session-list-view-menu.js";
+import { ShortcutHintChip, useShortcutHints } from "../../keyboard/shortcut-hints.js";
+import { useSessionShortcuts } from "../../keyboard/use-session-shortcuts.js";
 import { WorkspaceBoardToggle } from "../../workspace-board/WorkspaceBoardToggle.js";
 import { useWorkspaceBoard } from "../../workspace-board/WorkspaceBoardProvider.js";
 import { UNTITLED_CHAT } from "../../workspace-board/workspace-board-sessions.js";
@@ -168,7 +171,8 @@ const SessionListChromeContext = createContext<{
 	show: readonly SessionListShowField[];
 	pinnedIds: ReadonlySet<string>;
 	togglePin: (id: string) => void;
-}>({ show: [], pinnedIds: new Set(), togglePin: () => undefined });
+	shortcutHints: ReadonlyMap<string, string>;
+}>({ show: [], pinnedIds: new Set(), togglePin: () => undefined, shortcutHints: new Map() });
 
 const SessionRowIndentContext = createContext(false);
 
@@ -377,7 +381,6 @@ export const SessionListContent = memo(function SessionListContent({
 		[focus, pullRequest, view],
 	);
 	const show = useMemo(() => visibleShowFields(resolvedView), [resolvedView]);
-	const chrome = useMemo(() => ({ show, pinnedIds, togglePin }), [pinnedIds, show, togglePin]);
 
 	const sections = useMemo(() => {
 		const itemsById = new Map(threadItems.map((item) => [item.id, item]));
@@ -472,6 +475,55 @@ export const SessionListContent = memo(function SessionListContent({
 		resolvedView.pullRequest,
 	]);
 
+	const visibleSessionIds = useMemo(
+		() =>
+			virtualEntries.flatMap((entry) =>
+				entry.kind === "row" && !entry.row.archived ? [entry.row.id] : [],
+			),
+		[virtualEntries],
+	);
+	const shortcutHints = useShortcutHints("session", visibleSessionIds);
+	const chrome = useMemo(
+		() => ({ show, pinnedIds, togglePin, shortcutHints }),
+		[pinnedIds, shortcutHints, show, togglePin],
+	);
+	const remoteIdByThreadId = useMemo(
+		() => new Map(threadItems.map((item) => [item.id, item.remoteId])),
+		[threadItems],
+	);
+	const attentionSessionIds = useMemo(
+		() =>
+			visibleSessionIds.filter((id) => {
+				const remoteId = remoteIdByThreadId.get(id);
+				return remoteId !== undefined && needsAttention(activityBySessionId[remoteId]);
+			}),
+		[activityBySessionId, remoteIdByThreadId, visibleSessionIds],
+	);
+	const activeSessionId = useAuiState((s) => s.threads.mainThreadId);
+	const activeWorkspaceIdForSession = (sessionId: string | undefined) => {
+		const remoteId = sessionId ? remoteIdByThreadId.get(sessionId) : undefined;
+		return remoteId ? activityBySessionId[remoteId]?.workspaceId : undefined;
+	};
+	useSessionShortcuts(true, {
+		sessionIds: visibleSessionIds,
+		activeSessionId,
+		attentionSessionIds,
+		openSession: (sessionId) => {
+			void aui.threads.switchToThread(sessionId, { unarchive: false });
+			navigate();
+		},
+		newSession: () => {
+			const workspaceId = activeWorkspaceIdForSession(activeSessionId);
+			if (workspaceId) {
+				createChatInWorkspace(workspaceId);
+				return;
+			}
+			useRightPanelStore.getState().clearSession(DRAFT_RIGHT_PANEL_SESSION_KEY);
+			void aui.threads.switchToNewThread();
+			navigate();
+		},
+		togglePin: (sessionId) => togglePin(remoteIdByThreadId.get(sessionId) ?? sessionId),
+	});
 	const viewMenu = (
 		<SessionListViewMenu
 			view={resolvedView}
@@ -746,16 +798,14 @@ export const SessionListSearch: FC<{
 		setScope("all");
 	}, [open]);
 
-	useEffect(() => {
-		const onKeyDown = (event: KeyboardEvent) => {
-			if (event.key.toLowerCase() !== "k") return;
-			if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return;
-			event.preventDefault();
-			setOpen((current) => !current);
-		};
-		window.addEventListener("keydown", onKeyDown);
-		return () => window.removeEventListener("keydown", onKeyDown);
-	}, []);
+	useCommand("kilo-ui", {
+		id: "search",
+		label: "Search chats and workspaces",
+		group: "App",
+		keybinding: { mac: "Mod+K", default: "Ctrl+Shift+K" },
+		order: 0,
+		handler: () => setOpen((current) => !current),
+	});
 
 	const rows = useMemo(() => {
 		const itemsById = new Map(threadItems.map((item) => [item.id, item]));
@@ -1119,7 +1169,7 @@ const SessionRow: FC = () => {
 	const { workspaces } = useWorkspacesFeature();
 	const title = useAuiState((s) => s.threadListItem.title);
 	const board = useSessionRowBoard(remoteId, title);
-	const { show, pinnedIds, togglePin } = use(SessionListChromeContext);
+	const { show, pinnedIds, togglePin, shortcutHints } = use(SessionListChromeContext);
 	const indented = use(SessionRowIndentContext);
 	const { isRenaming, startRename, finishRename, triggerRef } = useRenameState();
 	// assistant-ui unarchives on switch by default, but the Kilo server cannot
@@ -1147,6 +1197,7 @@ const SessionRow: FC = () => {
 				pinnedIds={pinnedIds}
 				togglePin={togglePin}
 				indented={indented}
+				shortcutHint={shortcutHints.get(threadId)}
 				isRenaming={isRenaming}
 				startRename={startRename}
 				finishRename={finishRename}
@@ -1174,6 +1225,7 @@ type SessionRowContentProps = {
 	pinnedIds: ReadonlySet<string>;
 	togglePin: (id: string) => void;
 	indented: boolean;
+	shortcutHint: string | undefined;
 	isRenaming: boolean;
 	startRename: () => void;
 	finishRename: (restoreFocus: boolean) => void;
@@ -1197,6 +1249,7 @@ const SessionRowContent = memo(function SessionRowContent({
 	pinnedIds,
 	togglePin,
 	indented,
+	shortcutHint,
 	isRenaming,
 	startRename,
 	finishRename,
@@ -1298,10 +1351,16 @@ const SessionRowContent = memo(function SessionRowContent({
 					rightSlot || pullRequestInTitleRow ? rowHoverLabelFadeClassName : null,
 				)}
 			>
-				{pullRequestInTitleRow ? (
-					<span className="peer/pr contents">{pullRequestMetadata}</span>
-				) : null}
-				{rightSlot}
+				{shortcutHint ? (
+					<ShortcutHintChip label={shortcutHint} />
+				) : (
+					<>
+						{pullRequestInTitleRow ? (
+							<span className="peer/pr contents">{pullRequestMetadata}</span>
+						) : null}
+						{rightSlot}
+					</>
+				)}
 			</span>
 		</span>
 	);
@@ -1354,7 +1413,6 @@ const SessionRowContent = memo(function SessionRowContent({
 					locationLabel={locationLabel}
 					workspaceColor={workspaceColor}
 					statusId={statusId}
-					showPinHint={!isArchived}
 					trigger={
 						<ThreadListItemPrimitive.Trigger
 							ref={triggerRef}
@@ -1382,7 +1440,7 @@ const SessionRowContent = memo(function SessionRowContent({
 					}
 				/>
 			)}
-			{!isRenaming && (
+			{!isRenaming && !shortcutHint && (
 				<span className={cn(rowHoverActionsClassName, "right-1.5 top-1 h-5")}>
 					{canArchive ? (
 						<RowHoverAction

@@ -6,6 +6,7 @@ import type {
 } from "../channel-map.js";
 import type { ShellZone } from "./zones.js";
 import type { SchemaLike } from "./schema.js";
+import type { KeybindingSpec } from "../keybindings.js";
 
 export type { SchemaLike } from "./schema.js";
 
@@ -75,7 +76,7 @@ export interface SDK<T extends SdkClient = SdkClient> {
 	 */
 	contribute(zone: ShellZone | (string & {}), options: ContributionOptions): () => void;
 
-	/** Register commands in the command palette. See {@link SdkCommands}. */
+	/** Register commands and their keyboard shortcuts. See {@link SdkCommands}. */
 	readonly commands: SdkCommands;
 
 	/** Shell-level services (delegated to the shell). fs is sandboxed per feature — see {@link SdkFs}. */
@@ -313,23 +314,47 @@ export interface CommandDefinition {
 	id: string;
 	label: string;
 	handler: () => void | Promise<void>;
+	/** Heading the command is listed under in the shortcut list and settings (e.g. "Tabs"). */
+	group?: string;
+	/** Default shortcut(s), captured app-wide and user-rebindable. Syntax: `resolveKeybinding`. */
+	keybinding?: KeybindingSpec | readonly KeybindingSpec[];
+	/** The owner handles the key (e.g. Enter in the composer); listed, never dispatched. */
+	handledLocally?: boolean;
+	/** Keep auto-repeat dispatching while the key is held (e.g. next/previous). */
+	repeatable?: boolean;
+	/** False for fixed shortcuts (e.g. ⌘1–9): listed and dispatched, not rebindable. */
+	configurable?: boolean;
+	/** Lists related commands as one row, e.g. "Go to tab 1–9". */
+	series?: {
+		readonly id: string;
+		readonly label: string;
+		/** The user picks the series' modifier instead of rebinding each member. */
+		readonly modifierChoice?: boolean;
+	};
+	/** Sort position within its group; lower first. Defaults to registration order. */
+	order?: number;
+	/**
+	 * Focus-scoped: takes its shortcut only while this returns true (e.g. its pane
+	 * has focus) and never conflicts; otherwise the key goes to the app-wide owner.
+	 */
+	when?: () => boolean;
 }
 
-export interface Command {
+export interface Command extends CommandDefinition {
+	/** Fully-qualified "featureId.id". */
 	id: string;
 	featureId: string;
-	label: string;
-	handler: () => void | Promise<void>;
 }
 
 /**
- * Command palette entries.
+ * Commands and their keyboard shortcuts. Call the returned disposer
+ * on unmount to release the shortcut.
  *
  * @example
- * sdk.commands.register({ id: "add", label: "Add todo", handler: () => openAddDialog() });
+ * useEffect(() => sdk.commands.register({ id: "add", label: "Add", keybinding: "Mod+Shift+N", handler }), [sdk]);
  */
 export interface SdkCommands {
-	register(definition: CommandDefinition): void;
+	register(definition: CommandDefinition): () => void;
 }
 
 // ─── Shell-level services ────────────────────────────────────────────────────

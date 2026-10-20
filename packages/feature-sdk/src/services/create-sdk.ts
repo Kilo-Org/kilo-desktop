@@ -171,7 +171,12 @@ export function createSdk(featureId: string, services: SdkFactoryServices): SDK 
 		register(definition) {
 			assertAlive();
 			const unregister = services.commandRegistry.register(featureId, definition);
-			disposables.add(unregister);
+			const dispose = () => {
+				disposables.delete(dispose);
+				unregister();
+			};
+			disposables.add(dispose);
+			return dispose;
 		},
 	};
 

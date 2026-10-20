@@ -55,6 +55,7 @@ import { configureTrustedSchemes, ElectronSecurity } from "./platform/ElectronSe
 import { ElectronShell } from "./platform/ElectronShell.js";
 import { ElectronBrowserHost } from "./platform/ElectronBrowserHost.js";
 import { installAppMenu } from "./platform/ElectronAppMenu.js";
+import { ElectronShortcuts } from "./platform/ElectronShortcuts.js";
 import { ElectronWindow } from "./platform/ElectronWindow.js";
 import { featureFsSandboxDir } from "./platform/featureStorage.js";
 import { HttpClient } from "./platform/HttpClient.js";
@@ -134,6 +135,7 @@ export class Application {
 		this.#shell,
 	);
 	readonly #ipcServer = new IpcServer();
+	readonly #shortcuts = new ElectronShortcuts();
 	readonly #logger = createLogger("application");
 	readonly #disposers: Array<() => void | Promise<void>> = [];
 	readonly #shutdown = new AwaitedShutdownBarrier({
@@ -201,6 +203,7 @@ export class Application {
 		await this.#app.whenReady();
 		// Replace Electron's default menu, which carries View → Toggle Developer Tools.
 		installAppMenu();
+		this.#disposers.push(this.#shortcuts.install());
 		if (isDevelopment) {
 			electronDebug({ showDevTools: false });
 		}
@@ -492,9 +495,13 @@ export class Application {
 		} satisfies IpcHandlers;
 		this.#ipcServer.register(
 			handlers,
-			createFeatureMessageHandlers((event, senderId) =>
-				this.#windows.broadcast("feature:event", event, senderId),
-			),
+			{
+				...createFeatureMessageHandlers((event, senderId) =>
+					this.#windows.broadcast("feature:event", event, senderId),
+				),
+				"shortcuts:sync": ({ bindings, recording }, { senderId }) =>
+					this.#shortcuts.sync(senderId, bindings, recording ?? false),
+			},
 			createFeaturePortHandlers(),
 		);
 		this.#disposers.push(() => this.#ipcServer.dispose());

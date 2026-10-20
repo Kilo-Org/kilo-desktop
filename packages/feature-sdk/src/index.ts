@@ -81,6 +81,23 @@ export {
 	type EmbeddedWebHostSecurityProfile,
 } from "./types/embedded-web-host.js";
 
+// Keyboard shortcuts
+export {
+	EFFECTIVE_KEYBINDINGS_STORE,
+	chordFromKeyboardEvent,
+	detectKeyboardPlatform,
+	formatChord,
+	hasCommandModifier,
+	parseChord,
+	reservedChordAction,
+	resolveKeybinding,
+	serializeChord,
+	type KeyChord,
+	type KeyboardEventLike,
+	type KeyboardPlatform,
+	type KeybindingSpec,
+} from "./keybindings.js";
+
 // Canonical shell zone ids (Decision #21)
 export {
 	SHELL_ZONES,

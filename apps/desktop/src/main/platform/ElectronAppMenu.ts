@@ -1,12 +1,18 @@
 import { app, Menu, type MenuItemConstructorOptions } from "electron";
 
 // Replaces Electron's default menu. Keeps the standard roles but the View
-// submenu has zoom/fullscreen only, no devtools or reload.
+// submenu has zoom/fullscreen only, no devtools or reload. Close Window moves
+// off ⌘W (close tab): ⌘⇧W on macOS, Alt+F4 elsewhere.
+
 export function buildAppMenuTemplate(
 	platform: NodeJS.Platform = process.platform,
 ): MenuItemConstructorOptions[] {
 	const isMac = platform === "darwin";
 	const appName = app.getName();
+	const closeWindow: MenuItemConstructorOptions = {
+		role: "close",
+		accelerator: isMac ? "Cmd+Shift+W" : "Alt+F4",
+	};
 
 	const editMenu: MenuItemConstructorOptions = {
 		label: "Edit",
@@ -45,7 +51,7 @@ export function buildAppMenuTemplate(
 						{ type: "separator" },
 						{ role: "front" },
 					] as MenuItemConstructorOptions[])
-				: ([{ role: "close" }] as MenuItemConstructorOptions[])),
+				: [closeWindow]),
 		],
 	};
 
@@ -70,7 +76,7 @@ export function buildAppMenuTemplate(
 			: []),
 		{
 			label: "File",
-			submenu: [isMac ? { role: "close" } : { role: "quit" }],
+			submenu: [isMac ? closeWindow : { role: "quit" }],
 		},
 		editMenu,
 		viewMenu,

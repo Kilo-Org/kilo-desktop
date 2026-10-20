@@ -39,6 +39,11 @@ describe("friendlyEnvironmentsError", () => {
 		expect(result.toLowerCase()).toContain("resolve");
 	});
 
+	it("maps NO_CHANNELS_CONFIGURED to channel-setup copy", () => {
+		const result = friendlyEnvironmentsError(new Error("NO_CHANNELS_CONFIGURED"), "fallback");
+		expect(result.toLowerCase()).toContain("no conda channels are configured");
+	});
+
 	it("accepts a bare string reason", () => {
 		expect(friendlyEnvironmentsError("ENV_NOT_FOUND", "fallback")).toContain("could not be found");
 	});

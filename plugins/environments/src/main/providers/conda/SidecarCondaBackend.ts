@@ -162,6 +162,7 @@ const DOMAIN_CODE_MAP: Record<string, EnvironmentsErrorCode> = {
  * Ordered most-specific first; the first matching pattern wins.
  */
 const MESSAGE_PATTERNS: ReadonlyArray<{ pattern: RegExp; code: EnvironmentsErrorCode }> = [
+	{ pattern: /no channels are configured/i, code: "NO_CHANNELS_CONFIGURED" },
 	{ pattern: /prefix already exists/i, code: "ENV_EXISTS" },
 	{ pattern: /environment .* already exists/i, code: "ENV_EXISTS" },
 	{

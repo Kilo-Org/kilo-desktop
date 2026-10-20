@@ -88,3 +88,25 @@ describe("Anaconda channel preference", () => {
 		},
 	);
 });
+
+describe("no-channels ask flow", () => {
+	it.each(["conda.envs.create", "conda.packages.install", "conda.packages.update"])(
+		"%s offers `defaults` as a yes/no and names no alternative channel",
+		(name) => {
+			const tool = registry()
+				.all()
+				.find((candidate) => candidate.name === name);
+			expect(tool?.description).toMatch(/no_channels_configured/);
+			expect(tool?.description).toMatch(/do not pick or propose a channel yourself/i);
+			expect(tool?.description).toMatch(/do not offer or name any other channel/i);
+			expect(tool?.description).toMatch(/Shall I use `defaults`\?/);
+		},
+	);
+
+	it("conda.channels.list explains that an empty list means nothing is configured", () => {
+		const tool = registry()
+			.all()
+			.find((candidate) => candidate.name === "conda.channels.list");
+		expect(tool?.description).toMatch(/EMPTY array means no channels are configured/);
+	});
+});

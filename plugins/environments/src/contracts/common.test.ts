@@ -163,6 +163,7 @@ describe("environmentsErrorCodeSchema", () => {
 		"ENV_EXISTS",
 		"PACKAGE_NOT_FOUND",
 		"CHANNEL_NOT_FOUND",
+		"NO_CHANNELS_CONFIGURED",
 		"SOLVE_FAILED",
 		"JOB_NOT_FOUND",
 		"JOB_CANCELLED",

@@ -25,6 +25,8 @@ const FRIENDLY_MESSAGE: Record<EnvironmentsErrorCode, string> = {
 		"One or more selected packages could not be found in the chosen channels. Check the names or add a channel that provides them.",
 	CHANNEL_NOT_FOUND:
 		"A selected channel could not be reached. Check the channel name and your connection.",
+	NO_CHANNELS_CONFIGURED:
+		"No conda channels are configured, so there is nothing to install from. Add a channel, or install from Anaconda's `defaults` channel.",
 	SOLVE_FAILED:
 		"Could not resolve a compatible set of packages. Try removing a package or relaxing a version.",
 	INVALID_MATCHSPEC:

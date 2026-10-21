@@ -108,6 +108,10 @@ export class AppShellPage {
 			getLocatorByTestId("account-kilo-row"),
 			"Account settings should show the Kilo account row",
 		);
+		await expectElementToBeVisible(
+			getLocatorByTestId("account-anaconda-row"),
+			"Account settings should show the Anaconda account row",
+		);
 	}
 
 	async leaveSettings(): Promise<void> {

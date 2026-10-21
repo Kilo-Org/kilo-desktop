@@ -1,0 +1,18 @@
+{
+	"id": "anaconda-account",
+	"displayName": "Anaconda Account",
+	"version": "0.1.0",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
+	"contributes": {
+		"zones": [
+			{
+				"zone": "kilo-ui/account-panels",
+				"id": "anaconda",
+				"component": "AnacondaAccountRow",
+				"label": "Anaconda",
+				"priority": 10
+			}
+		]
+	}
+}

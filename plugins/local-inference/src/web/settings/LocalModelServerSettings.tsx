@@ -81,6 +81,8 @@ import { KiloAuthGate } from "@kilo-desktop/sdk-react";
 import { LocalModelCatalog } from "../catalog/ModelCatalog.js";
 import { ModelCatalogDialogHeader } from "../catalog/ModelCatalogAccess.js";
 import { ModelDetailPane, ModelDetailSkeleton } from "../catalog/ModelDetailPane.js";
+import { catalogListQueryOptions } from "../catalog/catalog-query.js";
+import { useCatalogAnacondaAccount } from "../catalog/use-anaconda-account.js";
 import {
 	catalogArtifactKey,
 	type DownloadIdentity,
@@ -284,14 +286,13 @@ function LocalModelServerSettingsContent() {
 		retry: false,
 		staleTime: Number.POSITIVE_INFINITY,
 	});
+	const catalogAccount = useCatalogAnacondaAccount(sdk);
 	const catalogMetadata = useQuery({
-		...sdkQueryOptions(sdk, "catalog.list"),
+		...catalogListQueryOptions(sdk, catalogAccount),
 		// Flag-gated like catalogHardware: without it, a previously
 		// catalog-imported model would still fetch metadata (and show a dead
 		// "View in catalog" affordance) after a flag rollback.
-		enabled: catalogEnabled && (hasCatalogModels || catalogOpen),
-		retry: false,
-		staleTime: 5 * 60 * 1_000,
+		enabled: !catalogAccount.resolving && catalogEnabled && (hasCatalogModels || catalogOpen),
 	});
 	const catalogDownloads = useSdkQuery(sdk, "catalog.downloads.list");
 	const start = useSdkMutation(sdk, "runtime.connect", {
@@ -751,11 +752,14 @@ function LocalModelServerSettingsContent() {
 							<ScrollArea
 								className={cn(
 									"min-h-0 min-w-0 [&_[data-slot=scroll-area-viewport]]:scroll-fade-y [&_[data-slot=scroll-area-viewport]]:overflow-x-hidden",
+									// Let the catalog fill the pane so full-pane states (sign-in,
+									// error, empty) can center vertically.
+									"[&_[data-slot=scroll-area-viewport]>div]:flex [&_[data-slot=scroll-area-viewport]>div]:min-h-full [&_[data-slot=scroll-area-viewport]>div]:flex-col",
 									interactiveScrollbarClassName,
 								)}
 								data-qa-id="model-catalog-pane"
 							>
-								<div className="w-full min-w-0 overflow-x-hidden px-4 pr-3 pb-4">
+								<div className="flex w-full min-w-0 flex-1 flex-col overflow-x-hidden px-4 pr-3 pb-4">
 									<LocalModelCatalog
 										onSelectModel={setCatalogModel}
 										selectedModelId={catalogModel?.id}

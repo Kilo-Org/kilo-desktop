@@ -15,6 +15,8 @@ import type { BundledPlugin } from "@kilo-desktop/feature-sdk";
  * plugins are skipped there with the standard warning.
  */
 
+import anacondaAccountManifest from "@kilo-desktop/plugin-anaconda-account/plugin.json" with { type: "json" };
+import * as anacondaAccountWeb from "@kilo-desktop/plugin-anaconda-account/web";
 import environmentsManifest from "@kilo-desktop/plugin-environments/plugin.json" with { type: "json" };
 import browserManifest from "@kilo-desktop/plugin-browser/plugin.json" with { type: "json" };
 import * as browserWeb from "@kilo-desktop/plugin-browser/web";
@@ -50,4 +52,5 @@ export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
 	{ manifest: todosManifest, module: todosWeb },
 	{ manifest: environmentsManifest, module: environmentsWeb },
 	{ manifest: localInferenceManifest, module: localInferenceWeb },
+	{ manifest: anacondaAccountManifest, module: anacondaAccountWeb },
 ];

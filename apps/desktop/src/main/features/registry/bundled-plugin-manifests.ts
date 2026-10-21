@@ -14,6 +14,7 @@ import {
 	DESKTOP_PRODUCTION_SCHEME,
 } from "../../platform/ElectronProtocol.js";
 
+import anacondaAccountManifest from "@kilo-desktop/plugin-anaconda-account/plugin.json" with { type: "json" };
 import environmentsManifest from "@kilo-desktop/plugin-environments/plugin.json" with { type: "json" };
 import browserManifest from "@kilo-desktop/plugin-browser/plugin.json" with { type: "json" };
 import filesManifest from "@kilo-desktop/plugin-files/plugin.json" with { type: "json" };
@@ -39,6 +40,7 @@ export type BundledPluginManifest = Pick<PluginManifest, "id"> & {
 
 /** Manifests keyed for registry pairing (`bundled-plugins.ts` imports from here). */
 export const bundledPluginManifests = {
+	anacondaAccount: anacondaAccountManifest,
 	browser: browserManifest,
 	environments: environmentsManifest,
 	files: filesManifest,

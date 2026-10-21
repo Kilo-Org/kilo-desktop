@@ -1,23 +1,12 @@
 import isEqual from "lodash/isEqual.js";
 
-import { Keyring } from "./keyring/keyring.js";
-
 import type { AuthSession } from "@kilo-desktop/contracts";
 
-import {
-	resolveSite,
-	DEFAULT_DOMAIN,
-	type ConfigLoader,
-	type ResolvedSite,
-} from "./config/site.js";
-import type { AuthLogger, KeyringHandle } from "./types.js";
+import type { AuthLogger } from "./types.js";
 import { createLogger } from "../../platform/logger.js";
 
 /** Module-level default logger; the constructor accepts an override for tests. */
 const defaultLogger = createLogger("auth");
-
-export type SiteResolver = (loader?: ConfigLoader) => Promise<ResolvedSite>;
-export type KeyringLoader = (site: ResolvedSite) => Promise<KeyringHandle>;
 
 /** Kilo gateway `/kilo/profile` payload (fields the session identity needs). */
 interface KiloProfile {
@@ -99,9 +88,6 @@ export function createKiloIdentityReader(
 }
 
 export interface AuthSessionServiceOptions {
-	resolveSite?: SiteResolver;
-	configLoader?: ConfigLoader;
-	loadKeyring?: KeyringLoader;
 	kiloIdentity: KiloIdentityReader;
 	logger?: AuthLogger;
 }
@@ -110,11 +96,10 @@ const ANONYMOUS: AuthSession = { status: "anonymous" };
 
 /**
  * The app session. Identity comes from the Kilo gateway (sidecar
- * `auth-status`/`profile`); the Anaconda keyring is retained purely as a
- * credential store for the Anaconda API key (`getApiKey`/`getSiteDomain`),
- * used by channel-backed fetches. Passive only — login/logout are driven by
- * the renderer's Kilo gate and are not owned here. Resolution failures degrade
- * to `anonymous`/`error` and never throw to callers.
+ * `auth-status`/`profile`). The Anaconda API key is a separate credential,
+ * owned by `AnacondaCredentialStore`. Passive only — login/logout are driven
+ * by the renderer's Kilo gate and are not owned here. Resolution failures
+ * degrade to `anonymous`/`error` and never throw to callers.
  */
 export class AuthSessionService {
 	#session: AuthSession = ANONYMOUS;
@@ -126,16 +111,10 @@ export class AuthSessionService {
 	#inFlight: Promise<AuthSession> | undefined;
 	readonly #listeners = new Set<(session: AuthSession) => void>();
 
-	readonly #resolveSite: SiteResolver;
-	readonly #configLoader: ConfigLoader | undefined;
-	readonly #loadKeyring: KeyringLoader;
 	readonly #kiloIdentity: KiloIdentityReader;
 	readonly #logger: AuthLogger;
 
 	constructor(options: AuthSessionServiceOptions) {
-		this.#resolveSite = options.resolveSite ?? resolveSite;
-		this.#configLoader = options.configLoader;
-		this.#loadKeyring = options.loadKeyring ?? ((site) => Keyring.load(site));
 		this.#kiloIdentity = options.kiloIdentity;
 		this.#logger = options.logger ?? defaultLogger;
 	}
@@ -143,37 +122,6 @@ export class AuthSessionService {
 	/** Current cached session without triggering resolution. */
 	peek(): AuthSession {
 		return this.#session;
-	}
-
-	/**
-	 * Retrieve the currently stored Anaconda API key from the keyring.
-	 * Returns `null` when there is no key or the keyring is unavailable.
-	 * This method is main-process-only; the key never crosses to the renderer.
-	 */
-	async getApiKey(): Promise<string | null> {
-		try {
-			const site = await this.#resolveSite(this.#configLoader);
-			const keyring = await this.#loadKeyring(site);
-			return await keyring.getApiKey();
-		} catch {
-			return null;
-		}
-	}
-
-	/**
-	 * The resolved Anaconda site host, used by consumers to derive per-site API
-	 * URLs. Falls back to the default domain (`anaconda.com`) when the config
-	 * cannot be resolved. This method is main-process-only.
-	 */
-	async getSiteDomain(): Promise<string> {
-		try {
-			return (await this.#resolveSite(this.#configLoader)).domain;
-		} catch (cause) {
-			this.#logger.warn(
-				`getSiteDomain: site resolution failed, using default: ${errorReason(cause)}`,
-			);
-			return DEFAULT_DOMAIN;
-		}
 	}
 
 	/**

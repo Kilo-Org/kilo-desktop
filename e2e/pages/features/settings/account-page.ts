@@ -18,7 +18,8 @@ export class AccountPage {
 	private readonly kiloRow = () => getLocatorByTestId("account-kilo-row");
 	private readonly settledKiloRow = () =>
 		getLocator('[data-qa-id="account-kilo-row"]:not([data-state="loading"])');
-	private readonly kiloRowTitle = () => this.kiloRow().locator('[data-slot="item-title"]');
+	// The status shares the title line ("Kilo · Not signed in."), so target the name itself.
+	private readonly kiloRowTitle = () => getLocatorByTestId("account-kilo-title");
 	private readonly kiloStatus = () => getLocatorByTestId("account-kilo-status");
 	private readonly signInButton = () => getLocatorByTestId("account-kilo-sign-in");
 	private readonly signOutButton = () => getLocatorByTestId("account-kilo-sign-out");

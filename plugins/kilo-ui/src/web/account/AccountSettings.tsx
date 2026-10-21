@@ -1,6 +1,7 @@
+import type { ComponentType } from "react";
 import { LogInIcon, LogOutIcon } from "lucide-react";
 
-import { SettingsPageHeader } from "@kilo-desktop/sdk-react";
+import { SettingsPageHeader, useSdkContributions } from "@kilo-desktop/sdk-react";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { SkeletonText } from "@kilo-desktop/ui/components/skeleton";
 import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
@@ -14,13 +15,22 @@ import {
 import { useKiloAuth } from "./KiloAuthContext.js";
 
 /**
- * Account settings: Kilo sign-in status with sign-out controls. Rows follow
- * the AI Providers page pattern (SummaryCard rows joined in one bordered
- * panel) so account management reads the same as the rest of Settings. State
- * comes from the KiloAuthProvider.
+ * Qualified id of the zone for additional account panels on the Account page,
+ * owned by kilo-ui. Other plugins contribute a component (typically a
+ * `SummaryCard.Row`) through `contributes.zones`; kilo-ui renders each in its
+ * own bordered panel below the Kilo account panel.
+ */
+export const ACCOUNT_PANELS_ZONE = "kilo-ui/account-panels";
+
+/**
+ * Account settings: the Kilo account panel (sign-in status with sign-in/out
+ * controls), followed by one panel per contributed account. Panels use the
+ * SummaryCard row pattern so account management reads the same as the rest of
+ * Settings. Kilo state comes from the KiloAuthProvider.
  */
 export function AccountSettings() {
 	const auth = useKiloAuth();
+	const contributedPanels = useSdkContributions(ACCOUNT_PANELS_ZONE);
 	const kiloLoading = auth.isLoading && auth.deviceAuth.status === "idle" && !auth.profile;
 
 	return (
@@ -31,17 +41,48 @@ export function AccountSettings() {
 		>
 			<SettingsPageHeader />
 			<section
-				className="border-border bg-card divide-border min-w-0 divide-y overflow-hidden rounded-lg border"
+				className="flex min-w-0 flex-col gap-4"
 				aria-label="Accounts"
 				data-qa-id="account-rows"
 			>
-				<div>
-					<AccountKiloRow />
-				</div>
+				<section
+					className="border-border bg-card divide-border min-w-0 divide-y overflow-hidden rounded-lg border"
+					aria-label="Kilo"
+					data-qa-id="account-panel-kilo"
+				>
+					<div>
+						<AccountKiloRow />
+					</div>
+				</section>
+				{contributedPanels.map((contribution) => {
+					if (typeof contribution.component !== "function") {
+						console.warn(
+							`[AccountSettings] Skipping contribution "${contribution.label}" from ` +
+								`"${contribution.featureId}" in zone "${ACCOUNT_PANELS_ZONE}": component is not a React component.`,
+						);
+						return null;
+					}
+					const Panel = contribution.component as ComponentType;
+					return (
+						<section
+							key={`${contribution.featureId}:${contribution.id}`}
+							// `empty:hidden`: a contribution may render nothing (e.g. behind a
+							// feature flag); don't leave an empty bordered frame behind.
+							className="border-border bg-card min-w-0 overflow-hidden rounded-lg border empty:hidden"
+							aria-label={contribution.label}
+							data-qa-id={`account-panel-${contribution.featureId}-${contribution.id}`}
+						>
+							<Panel />
+						</section>
+					);
+				})}
 			</section>
 		</div>
 	);
 }
+
+/** What a Kilo account gives you; matches the onboarding sign-in step. */
+const KILO_ACCOUNT_SUMMARY = "One account for frontier models, credits, and your team's settings.";
 
 function AccountKiloRow() {
 	const auth = useKiloAuth();
@@ -66,19 +107,30 @@ function AccountKiloRow() {
 					<ProviderIcon provider="kilo" variant="color" size={18} fallbackLabel="Kilo" />
 				</SummaryCard.Icon>
 				<SummaryCard.Content>
-					<SummaryCard.Title>Kilo</SummaryCard.Title>
-					<SummaryCard.Description
-						{...(signedIn && email
-							? { "data-qa-id": "account-kilo-email" }
-							: { "data-qa-id": "account-kilo-status" })}
-					>
-						{kiloDescription({
-							connectionUnavailable: auth.connectionUnavailable,
-							showDeviceAuth,
-							signedIn,
-							profileFailed,
-							email,
-						})}
+					<SummaryCard.Title className="w-full min-w-0 gap-1.5">
+						<span className="shrink-0" data-qa-id="account-kilo-title">
+							Kilo
+						</span>
+						<span aria-hidden="true" className="text-muted-foreground font-normal">
+							·
+						</span>
+						<span
+							className="text-muted-foreground min-w-0 truncate font-normal"
+							{...(signedIn && email
+								? { "data-qa-id": "account-kilo-email" }
+								: { "data-qa-id": "account-kilo-status" })}
+						>
+							{kiloDescription({
+								connectionUnavailable: auth.connectionUnavailable,
+								showDeviceAuth,
+								signedIn,
+								profileFailed,
+								email,
+							})}
+						</span>
+					</SummaryCard.Title>
+					<SummaryCard.Description className="line-clamp-none">
+						{KILO_ACCOUNT_SUMMARY}
 					</SummaryCard.Description>
 				</SummaryCard.Content>
 				<SummaryCard.Actions className="gap-1" data-qa-id="account-kilo-actions">
@@ -149,9 +201,14 @@ function KiloRowLoading({ connected }: { connected: boolean }) {
 					<ProviderIcon provider="kilo" variant="color" size={18} fallbackLabel="Kilo" />
 				</SummaryCard.Icon>
 				<SummaryCard.Content>
-					<SummaryCard.Title>Kilo</SummaryCard.Title>
-					<SummaryCard.Description>
-						<SkeletonText className="w-48" />
+					<SummaryCard.Title className="w-full min-w-0 gap-1.5">
+						<span className="shrink-0" data-qa-id="account-kilo-title">
+							Kilo
+						</span>
+						<SkeletonText className="w-40" />
+					</SummaryCard.Title>
+					<SummaryCard.Description className="line-clamp-none">
+						{KILO_ACCOUNT_SUMMARY}
 					</SummaryCard.Description>
 				</SummaryCard.Content>
 				<SummaryCard.Actions>

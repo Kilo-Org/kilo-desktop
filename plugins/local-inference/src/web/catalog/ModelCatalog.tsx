@@ -27,6 +27,7 @@ import {
 	DropdownMenuTrigger,
 } from "@kilo-desktop/ui/components/dropdown-menu";
 import { TableCell, TableRow } from "@kilo-desktop/ui/components/table";
+import { toast } from "@kilo-desktop/ui/components/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
@@ -43,12 +44,15 @@ import {
 	ModelCatalogError,
 	ModelCatalogLoading,
 	ModelCatalogNoResults,
+	ModelCatalogSignIn,
 } from "./CatalogStates.js";
 import { catalogTableCellClassNames, ModelCatalogTableFrame } from "./ModelCatalogTableLayout.js";
 import { ModelIdentity } from "./ModelIdentity.js";
 import { ModelPerformance } from "./ModelPerformance.js";
 import { ModelRecommendations } from "./ModelRecommendations.js";
 import { getPublisherDisplayName } from "./ModelPublisherIcon.js";
+import { catalogListQueryOptions } from "./catalog-query.js";
+import { useCatalogAnacondaAccount } from "./use-anaconda-account.js";
 
 const defaultCatalogSort: CatalogSort = "newest";
 
@@ -81,25 +85,50 @@ export function LocalModelCatalog({
 	const sdk = useSdk<LocalInferenceServiceContract>("local-inference");
 	const [search, setSearch] = useState("");
 	const deferredSearch = useDeferredValue(search);
-	const catalog = useQuery({
-		...sdkQueryOptions(sdk, "catalog.list"),
-		retry: false,
-		staleTime: 5 * 60 * 1_000,
-	});
+	const anaconda = useCatalogAnacondaAccount(sdk);
+	const catalog = useQuery(catalogListQueryOptions(sdk, anaconda));
 	const hardware = useQuery({
 		...sdkQueryOptions(sdk, "hardware.profile"),
 		retry: false,
 		staleTime: Number.POSITIVE_INFINITY,
 	});
+	// Only a definite "no usable key" (anonymous) prompts sign-in; an `error`
+	// session (e.g. offline whoami) or a missing anaconda-account plugin falls
+	// through to the generic retry state.
+	const needsAnacondaSignIn =
+		catalog.isError &&
+		anaconda.available &&
+		!anaconda.resolving &&
+		anaconda.session.status === "anonymous";
+	const signInToAnaconda = async (): Promise<void> => {
+		const result = await anaconda.signIn();
+		if (!result.ok && !result.cancelled) {
+			toast.error("Could not sign in to Anaconda", { description: result.reason });
+		}
+	};
+	// Sign-in, error and empty replace the whole catalog and center in the pane.
+	const showsFullPaneState =
+		!catalog.isPending &&
+		!hardware.isPending &&
+		(needsAnacondaSignIn || catalog.isError || catalog.data.models.length === 0);
 	const filteredModels = useMemo(
 		() => filterCatalogModels(catalog.data?.models ?? [], deferredSearch),
 		[catalog.data?.models, deferredSearch],
 	);
 
 	return (
-		<div className="@container min-w-0" data-qa-id="local-model-catalog">
+		<div
+			className={cn("@container min-w-0", showsFullPaneState && "flex flex-1 flex-col")}
+			data-qa-id="local-model-catalog"
+		>
 			{catalog.isPending || hardware.isPending ? (
 				<ModelCatalogLoading />
+			) : needsAnacondaSignIn ? (
+				<ModelCatalogSignIn
+					signingIn={anaconda.signingIn}
+					onSignIn={() => void signInToAnaconda()}
+					onCancel={() => void anaconda.cancelSignIn()}
+				/>
 			) : catalog.isError ? (
 				<ModelCatalogError message={catalog.error.message} onRetry={() => void catalog.refetch()} />
 			) : catalog.data.models.length === 0 ? (

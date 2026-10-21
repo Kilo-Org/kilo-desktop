@@ -1,0 +1,74 @@
+{
+	"name": "@kilo-desktop/plugin-anaconda-account",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "Anaconda account sign-in that stores an Anaconda API key",
+	"exports": {
+		"./plugin.json": "./plugin.json",
+		"./main": "./src/main/index.ts",
+		"./web": "./src/web/index.ts",
+		"./contracts": "./src/contracts/schemas.ts"
+	},
+	"scripts": {
+		"check": "tsc --noEmit -p tsconfig.json",
+		"test": "vitest run",
+		"coverage": "vitest run --coverage"
+	},
+	"dependencies": {
+		"lodash": "catalog:",
+		"lucide-react": "^1.27.0",
+		"openid-client": "^6.6.3",
+		"p-defer": "^4.0.1"
+	},
+	"peerDependencies": {
+		"@kilo-desktop/feature-sdk": "^0.1.0",
+		"@kilo-desktop/sdk-react": "^0.1.0",
+		"@kilo-desktop/ui": "^0.1.0",
+		"react": "^19.0.0",
+		"react-dom": "^19.0.0",
+		"zod": "^4.0.0"
+	},
+	"peerDependenciesMeta": {
+		"@kilo-desktop/sdk-react": {
+			"optional": true
+		},
+		"@kilo-desktop/ui": {
+			"optional": true
+		},
+		"react": {
+			"optional": true
+		},
+		"react-dom": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@anaconda/playwright-utils": "2.1.0",
+		"@kilo-desktop/e2e": "workspace:*",
+		"@kilo-desktop/feature-sdk": "workspace:*",
+		"@kilo-desktop/sdk-react": "workspace:*",
+		"@kilo-desktop/testing": "workspace:*",
+		"@kilo-desktop/ui": "workspace:*",
+		"@playwright/test": "catalog:",
+		"@tailwindcss/vite": "^4.3.3",
+		"@tanstack/react-query": "^5.101.4",
+		"@testing-library/react": "^16.3.2",
+		"@types/lodash": "^4.17.20",
+		"@types/node": "^24.13.3",
+		"@types/react": "^19.2.17",
+		"@types/react-dom": "^19.2.3",
+		"@vitejs/plugin-react": "^6.0.4",
+		"@vitest/browser": "5.0.5",
+		"@vitest/browser-playwright": "5.0.5",
+		"@vitest/coverage-v8": "catalog:",
+		"playwright": "catalog:",
+		"react": "^19.2.8",
+		"react-dom": "^19.2.8",
+		"tailwindcss": "^4.3.3",
+		"typescript": "catalog:",
+		"vite": "catalog:",
+		"vitest": "catalog:",
+		"zod": "catalog:"
+	}
+}

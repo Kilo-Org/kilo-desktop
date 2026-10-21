@@ -459,8 +459,7 @@ describe("listModelCatalog", () => {
 			listModelCatalog({ fetch, getApiKey: async () => null, getSiteDomain }),
 		).rejects.toMatchObject({
 			name: "FeatureError",
-			message:
-				"An Anaconda API key is required to view the model catalog. Add one to your conda config or keyring.",
+			message: "Sign in to your Anaconda account (Settings → Account) to view the model catalog.",
 		});
 		expect(fetch).not.toHaveBeenCalled();
 		expect(getSiteDomain).not.toHaveBeenCalled();

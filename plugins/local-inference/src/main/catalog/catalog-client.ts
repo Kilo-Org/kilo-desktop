@@ -55,7 +55,7 @@ export async function listModelCatalog({
 	const apiKey = await getApiKey();
 	if (!apiKey) {
 		throw new FeatureError(
-			"An Anaconda API key is required to view the model catalog. Add one to your conda config or keyring.",
+			"Sign in to your Anaconda account (Settings → Account) to view the model catalog.",
 		);
 	}
 

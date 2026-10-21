@@ -26,6 +26,7 @@ import { app } from "electron";
  *    seed data, ...).
  */
 
+import * as anacondaAccountMain from "@kilo-desktop/plugin-anaconda-account/main";
 import * as environmentsMain from "@kilo-desktop/plugin-environments/main";
 import * as browserMain from "@kilo-desktop/plugin-browser/main";
 import * as filesMain from "@kilo-desktop/plugin-files/main";
@@ -104,5 +105,10 @@ export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
 		manifest: bundledPluginManifests.git,
 		module: gitMain,
 		resolveAsset: bundledPluginAssetResolver("@kilo-desktop/plugin-git"),
+	},
+	{
+		manifest: bundledPluginManifests.anacondaAccount,
+		module: anacondaAccountMain,
+		resolveAsset: bundledPluginAssetResolver("@kilo-desktop/plugin-anaconda-account"),
 	},
 ];

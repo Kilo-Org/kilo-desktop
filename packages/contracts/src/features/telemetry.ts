@@ -13,6 +13,9 @@ export const TELEMETRY_EVENTS = [
 	"Desktop Initialized",
 	"Logged In",
 	"Logged Out",
+	// Anaconda account sign-in (credential source only; Kilo sign-in is "Logged In").
+	"Anaconda Logged In",
+	"Anaconda Logged Out",
 	"Page Visit",
 	"Feature Flag Evaluation",
 	"Terms Accepted",

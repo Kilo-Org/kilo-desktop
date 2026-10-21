@@ -8,7 +8,7 @@ import { createFakeFeatureSystem, createFakeSdk, type FakeSdk } from "@kilo-desk
 
 import { KiloAuthContext, type KiloAuthContextValue } from "./KiloAuthContext.js";
 import type { KiloProfileData } from "./kilo-auth.js";
-import { AccountSettings } from "./AccountSettings.js";
+import { ACCOUNT_PANELS_ZONE, AccountSettings } from "./AccountSettings.js";
 
 vi.mock("@kilo-desktop/ui/components/sonner", () => ({
 	Toaster: () => null,
@@ -52,6 +52,7 @@ const signedInProfile: KiloProfileData = {
 function renderPage(
 	input: {
 		auth?: Partial<KiloAuthContextValue>;
+		beforeRender?: (sdk: FakeSdk) => void;
 	} = {},
 ) {
 	const auth = idleAuth(input.auth);
@@ -60,6 +61,7 @@ function renderPage(
 		featureId: "kilo-ui",
 		telemetry: { track },
 	});
+	input.beforeRender?.(sdk);
 	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	render(
@@ -165,5 +167,43 @@ describe("AccountSettings", () => {
 			.element(screen.getByTestId("account-kilo-row"))
 			.toHaveAttribute("data-state", "loading");
 		expect(screen.getByTestId("kilo-account-settings").query()).toBeNull();
+	});
+
+	it("draws no panel frame for a contribution that renders nothing", async () => {
+		const { screen } = renderPage({
+			beforeRender: (sdk) => {
+				sdk.contribute(ACCOUNT_PANELS_ZONE, {
+					id: "hidden",
+					label: "Hidden account",
+					component: () => null,
+				});
+			},
+		});
+
+		await expect.element(screen.getByTestId("account-panel-kilo")).toBeVisible();
+		await expect.element(screen.getByTestId("account-panel-kilo-ui-hidden")).not.toBeVisible();
+	});
+
+	it("renders each contributed account in its own panel after the Kilo panel", async () => {
+		const { screen } = renderPage({
+			beforeRender: (sdk) => {
+				sdk.contribute(ACCOUNT_PANELS_ZONE, {
+					id: "other",
+					label: "Other account",
+					component: () => <div data-qa-id="contributed-account-row">Other account</div>,
+				});
+			},
+		});
+
+		const accounts = screen.getByTestId("account-rows");
+		await expect.element(accounts).toHaveAccessibleName("Accounts");
+		await expect.element(accounts.getByTestId("account-panel-kilo")).toHaveAccessibleName("Kilo");
+		const panel = accounts.getByTestId("account-panel-kilo-ui-other");
+		await expect.element(panel).toHaveAccessibleName("Other account");
+		await expect.element(panel.getByTestId("contributed-account-row")).toBeVisible();
+		// The Kilo panel stays separate: the contribution is not inside it.
+		expect(
+			screen.getByTestId("account-panel-kilo").getByTestId("contributed-account-row").query(),
+		).toBeNull();
 	});
 });

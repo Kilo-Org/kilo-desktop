@@ -340,6 +340,9 @@ importers:
       '@kilo-desktop/feature-sdk':
         specifier: workspace:*
         version: link:../../packages/feature-sdk
+      '@kilo-desktop/plugin-anaconda-account':
+        specifier: workspace:*
+        version: link:../../plugins/anaconda-account
       '@kilo-desktop/plugin-browser':
         specifier: workspace:*
         version: link:../../plugins/browser
@@ -412,9 +415,6 @@ importers:
       lodash:
         specifier: 'catalog:'
         version: 4.18.1
-      openid-client:
-        specifier: ^6.6.3
-        version: 6.8.4
       p-defer:
         specifier: ^4.0.1
         version: 4.0.1
@@ -552,6 +552,9 @@ importers:
       '@kilo-desktop/pane-layout':
         specifier: workspace:*
         version: link:../../packages/pane-layout
+      '@kilo-desktop/plugin-anaconda-account':
+        specifier: workspace:*
+        version: link:../../plugins/anaconda-account
       '@kilo-desktop/plugin-browser':
         specifier: workspace:*
         version: link:../../plugins/browser
@@ -943,6 +946,100 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.5)(@vitest/coverage-v8@5.0.5)(@vitest/ui@5.0.5)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+
+  plugins/anaconda-account:
+    dependencies:
+      lodash:
+        specifier: 'catalog:'
+        version: 4.18.1
+      lucide-react:
+        specifier: ^1.27.0
+        version: 1.27.0(react@19.2.8)
+      openid-client:
+        specifier: ^6.6.3
+        version: 6.8.4
+      p-defer:
+        specifier: ^4.0.1
+        version: 4.0.1
+    devDependencies:
+      '@anaconda/playwright-utils':
+        specifier: 2.1.0
+        version: 2.1.0(@playwright/test@1.64.1)(jiti@2.7.0)(supports-color@10.2.2)
+      '@kilo-desktop/e2e':
+        specifier: workspace:*
+        version: link:../../e2e
+      '@kilo-desktop/feature-sdk':
+        specifier: workspace:*
+        version: link:../../packages/feature-sdk
+      '@kilo-desktop/sdk-react':
+        specifier: workspace:*
+        version: link:../../packages/sdk-react
+      '@kilo-desktop/testing':
+        specifier: workspace:*
+        version: link:../../packages/testing
+      '@kilo-desktop/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+      '@playwright/test':
+        specifier: 'catalog:'
+        version: 1.64.1
+      '@tailwindcss/vite':
+        specifier: ^4.3.3
+        version: 4.3.3(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+      '@tanstack/react-query':
+        specifier: ^5.101.4
+        version: 5.101.4(react@19.2.8)
+      '@testing-library/react':
+        specifier: ^16.3.2
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@types/lodash':
+        specifier: ^4.17.20
+        version: 4.17.24
+      '@types/node':
+        specifier: ^24.13.3
+        version: 24.13.3
+      '@types/react':
+        specifier: ^19.2.17
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: ^19.2.3
+        version: 19.2.3(@types/react@19.2.17)
+      '@vitejs/plugin-react':
+        specifier: ^6.0.4
+        version: 6.0.4(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+      '@vitest/browser':
+        specifier: 5.0.5
+        version: 5.0.5(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))(vitest@5.0.5)
+      '@vitest/browser-playwright':
+        specifier: 5.0.5
+        version: 5.0.5(playwright@1.64.1)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))(vitest@5.0.5)
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 5.0.5(@vitest/browser@5.0.5)(vitest@5.0.5)
+      playwright:
+        specifier: 'catalog:'
+        version: 1.64.1
+      react:
+        specifier: ^19.2.8
+        version: 19.2.8
+      react-dom:
+        specifier: ^19.2.8
+        version: 19.2.8(react@19.2.8)
+      tailwindcss:
+        specifier: ^4.3.3
+        version: 4.3.3
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vite:
+        specifier: 'catalog:'
+        version: 8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0)
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.5)(@vitest/coverage-v8@5.0.5)(@vitest/ui@5.0.5)(vite@8.1.5(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
 
   plugins/browser:
     dependencies:
@@ -1743,6 +1840,9 @@ importers:
       '@kilo-desktop/feature-sdk':
         specifier: workspace:*
         version: link:../../packages/feature-sdk
+      '@kilo-desktop/plugin-anaconda-account':
+        specifier: workspace:*
+        version: link:../anaconda-account
       '@kilo-desktop/sdk-react':
         specifier: workspace:*
         version: link:../../packages/sdk-react

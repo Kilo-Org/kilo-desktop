@@ -1,4 +1,4 @@
-import { CircleAlertIcon, LibraryIcon, RefreshCwIcon, SearchXIcon } from "lucide-react";
+import { CircleAlertIcon, LibraryIcon, LogInIcon, RefreshCwIcon, SearchXIcon } from "lucide-react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
@@ -120,6 +120,50 @@ export function ModelCatalogError({ message, onRetry }: { message: string; onRet
 					<RefreshCwIcon data-icon="inline-start" />
 					Try again
 				</Button>
+			</EmptyContent>
+		</Empty>
+	);
+}
+
+/**
+ * The catalog needs an Anaconda API key. Signing in runs the browser flow that
+ * stores one in the Anaconda keyring; it does not change the app (Kilo) session.
+ */
+export function ModelCatalogSignIn({
+	signingIn,
+	onSignIn,
+	onCancel,
+}: {
+	signingIn: boolean;
+	onSignIn: () => void;
+	onCancel: () => void;
+}) {
+	return (
+		<Empty data-qa-id="model-catalog-sign-in">
+			<EmptyHeader>
+				<EmptyMedia variant="icon">
+					<LibraryIcon />
+				</EmptyMedia>
+				<EmptyTitle>Sign in to Anaconda</EmptyTitle>
+				<EmptyDescription>
+					The model catalog uses your Anaconda account. Sign in to browse and download models.
+				</EmptyDescription>
+			</EmptyHeader>
+			<EmptyContent className="flex-row justify-center">
+				<Button
+					variant="outline"
+					disabled={signingIn}
+					onClick={onSignIn}
+					data-qa-id="model-catalog-sign-in-button"
+				>
+					<LogInIcon data-icon="inline-start" />
+					{signingIn ? "Waiting for browser…" : "Sign in to Anaconda"}
+				</Button>
+				{signingIn ? (
+					<Button variant="ghost" onClick={onCancel} data-qa-id="model-catalog-cancel-sign-in">
+						Cancel
+					</Button>
+				) : null}
 			</EmptyContent>
 		</Empty>
 	);

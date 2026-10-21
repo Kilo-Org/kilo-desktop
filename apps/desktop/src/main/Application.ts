@@ -22,6 +22,7 @@ import {
 	PLUGIN_PROTOCOLS_BY_FEATURE_ID,
 	PLUGIN_PROTOCOL_SCHEMES,
 } from "./features/registry/bundled-plugin-manifests.js";
+import { AnacondaCredentialStore } from "./features/auth/anaconda-credential-store.js";
 import { registerAuthCapability } from "./features/auth/auth-capability-bridge.js";
 import {
 	AuthSessionService,
@@ -103,6 +104,9 @@ export class Application {
 	readonly #scopedFs = new ScopedFsService((featureId) =>
 		featureFsSandboxDir(this.#app.getPath("userData"), featureId),
 	);
+	readonly #anacondaCredentials = new AnacondaCredentialStore({
+		userAgent: `kilo-desktop/${this.#app.metadata.appVersion}`,
+	});
 	readonly #auth = new AuthSessionService({
 		// Packaged e2e supplies a test identity (see testAuthIdentity above); the
 		// app then skips the host Kilo credential store and reports that identity as
@@ -366,7 +370,7 @@ export class Application {
 			featureFlags,
 			disposers: [
 				// The auth service's getApiKey, resolved via plugins.get("auth").
-				registerAuthCapability(this.#auth),
+				registerAuthCapability(this.#auth, this.#anacondaCredentials),
 				// The feature-flag service so features/plugins can gate behavior
 				// on flags. Flag changes are relayed to the feature event bus as
 				// `feature-flag.changed`.

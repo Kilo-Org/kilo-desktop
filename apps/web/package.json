@@ -15,6 +15,7 @@
 		"@base-ui/react": "^1.6.0",
 		"@kilo-desktop/contracts": "workspace:*",
 		"@kilo-desktop/feature-sdk": "workspace:*",
+		"@kilo-desktop/plugin-anaconda-account": "workspace:*",
 		"@kilo-desktop/plugin-browser": "workspace:*",
 		"@kilo-desktop/plugin-environments": "workspace:*",
 		"@kilo-desktop/plugin-files": "workspace:*",

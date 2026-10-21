@@ -34,5 +34,8 @@ export interface KeyringBackend {
 	deleteToken(domain: string): Promise<void>;
 }
 
-/** Minimal keyring surface `AuthSessionService` depends on, derived from `Keyring` itself. */
-export type KeyringHandle = Pick<Keyring, "getApiKey" | "saveToken" | "deleteToken" | "writable">;
+/** Minimal keyring surface `AnacondaCredentialStore` depends on, derived from `Keyring` itself. */
+export type KeyringHandle = Pick<
+	Keyring,
+	"getToken" | "getApiKey" | "saveToken" | "deleteToken" | "writable"
+>;

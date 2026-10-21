@@ -7,7 +7,7 @@ import {
 	SessionItemRename,
 	SessionRenameInput,
 	SessionRowMenu,
-	SessionRowWorktreeDialog,
+	SessionRowDeleteDialogs,
 	useSessionRowActions,
 	type SessionRowOperations,
 } from "../components/assistant-ui/session-row-actions.js";
@@ -45,7 +45,7 @@ const CardMenu: FC<MenuProps & { operations?: SessionRowOperations }> = ({
 	const { canArchive, canPin } = sessionRowCapabilities(session.archived, session.rowState);
 	const pins = useSessionListPins();
 	const board = useSessionRowBoard(session.sessionId, session.title);
-	const { archive, deleteThread, worktreeDialog } = useSessionRowActions({
+	const { archive, deleteThread, deleteDialogs } = useSessionRowActions({
 		remoteId: session.sessionId,
 		activity: session.activity,
 		onDeleted: board?.remove,
@@ -66,7 +66,7 @@ const CardMenu: FC<MenuProps & { operations?: SessionRowOperations }> = ({
 				label={`Session actions for ${session.title}`}
 				side="bottom"
 			/>
-			<SessionRowWorktreeDialog dialog={worktreeDialog} />
+			<SessionRowDeleteDialogs dialogs={deleteDialogs} />
 		</>
 	);
 };

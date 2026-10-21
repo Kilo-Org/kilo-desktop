@@ -2,6 +2,7 @@ import { useAui, useAuiState } from "@assistant-ui/react";
 import {
 	ArchiveIcon,
 	EllipsisIcon,
+	MessageSquareIcon,
 	PencilIcon,
 	PinIcon,
 	PinOffIcon,
@@ -20,6 +21,16 @@ import {
 } from "react";
 
 import { useSdk } from "@kilo-desktop/sdk-react";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@kilo-desktop/ui/components/alert-dialog";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	DropdownMenu,
@@ -126,8 +137,7 @@ export function useSessionRowActions({
 }): {
 	archive: () => void;
 	deleteThread: () => void;
-	/** Present only for an orphaned worktree chat, which confirms before deleting. */
-	worktreeDialog: SessionRowWorktreeDialogProps | null;
+	deleteDialogs: SessionRowDeleteDialogsProps;
 } {
 	const aui = useAui();
 	const operationsRef = useRef<SessionRowOperations>(threadListItemOperations(aui));
@@ -146,6 +156,7 @@ export function useSessionRowActions({
 		: isLocallyOrphanedWorktree;
 	const activityStore = useSessionActivityStore();
 	const [worktreeDialogOpen, setWorktreeDialogOpen] = useState(false);
+	const [confirmOpen, setConfirmOpen] = useState(false);
 	const worktreeDirectory = activity?.worktreeBranch !== undefined ? activity.directory : undefined;
 
 	const archive = useCallback(() => {
@@ -169,67 +180,52 @@ export function useSessionRowActions({
 			return false;
 		}
 	}, [onDeleted]);
-	// A session with no hydrated record may be mid-refresh, not local: wait
-	// for the refresh to settle (bounded), re-evaluate, then delete — a
-	// worktree session must never leak behind a premature direct delete.
-	const deleteAfterRefresh = useCallback(async () => {
-		if (remoteId === undefined) return;
-		await whenSessionsRefreshed(activityStore);
-		if (isOrphanedWorktreeSession(activityStore.getState().sessions, remoteId)) {
-			setWorktreeDialogOpen(true);
+	// The surface's own orphan check runs before any dialog, so the user sees
+	// exactly one: the worktree dialog for an orphan, the plain confirm otherwise.
+	const checkThenConfirm = useCallback(async (checkOrphanedWorktree: () => Promise<boolean>) => {
+		let orphaned: boolean;
+		try {
+			orphaned = await checkOrphanedWorktree();
+		} catch (error) {
+			toast.error("Could not delete session", {
+				description: error instanceof Error ? error.message : "The session was not deleted.",
+			});
 			return;
 		}
-		await deleteSession();
-	}, [activityStore, remoteId, deleteSession]);
-	const deleteAfterCheck = useCallback(
-		async (checkOrphanedWorktree: () => Promise<boolean>) => {
-			let orphaned: boolean;
-			try {
-				orphaned = await checkOrphanedWorktree();
-			} catch (error) {
-				toast.error("Could not delete session", {
-					description: error instanceof Error ? error.message : "The session was not deleted.",
-				});
-				return;
-			}
-			if (!orphaned) {
-				await deleteSession();
-				return;
-			}
-			setCheckedOrphanedWorktree(true);
-			setWorktreeDialogOpen(true);
-		},
-		[deleteSession],
-	);
+		if (!orphaned) {
+			setConfirmOpen(true);
+			return;
+		}
+		setCheckedOrphanedWorktree(true);
+		setWorktreeDialogOpen(true);
+	}, []);
+	// Deletion is permanent, so every chat delete is confirmed first; the
+	// orphaned-worktree dialog is itself that confirmation.
 	const deleteThread = useCallback(() => {
-		// Worktree-backed and orphaned: confirm before removing the worktree.
 		if (isOrphanedWorktree) {
 			setWorktreeDialogOpen(true);
 			return;
 		}
 		const checkOrphanedWorktree = operationsRef.current.checkOrphanedWorktree;
-		if (checkOrphanedWorktree) {
-			void deleteAfterCheck(checkOrphanedWorktree);
-			return;
+		if (checkOrphanedWorktree) void checkThenConfirm(checkOrphanedWorktree);
+		else setConfirmOpen(true);
+	}, [isOrphanedWorktree, checkThenConfirm]);
+	// Without a surface check, the local refresh may not have settled: the
+	// record may be missing entirely or present without its worktree stamp
+	// (e.g. only `directory` was hydrated so far). Wait for it (bounded) and
+	// re-run the orphan check — a worktree session must never leak behind a
+	// premature direct delete.
+	const confirmDelete = useCallback(async () => {
+		setConfirmOpen(false);
+		if (remoteId !== undefined && !operationsRef.current.checkOrphanedWorktree) {
+			await whenSessionsRefreshed(activityStore);
+			if (isOrphanedWorktreeSession(activityStore.getState().sessions, remoteId)) {
+				setWorktreeDialogOpen(true);
+				return;
+			}
 		}
-		// The refresh has not settled: the record may be missing entirely or
-		// present without its worktree stamp (e.g. only `directory` was
-		// hydrated so far). Wait for the refresh to complete so the orphan
-		// check runs against the full picture — a premature direct delete
-		// would silently leak the worktree.
-		if (remoteId !== undefined && !activityStore.getState().sessionsRefreshed) {
-			void deleteAfterRefresh();
-			return;
-		}
-		void deleteSession();
-	}, [
-		isOrphanedWorktree,
-		activityStore,
-		remoteId,
-		deleteAfterCheck,
-		deleteAfterRefresh,
-		deleteSession,
-	]);
+		await deleteSession();
+	}, [activityStore, remoteId, deleteSession]);
 	const keepWorktreeAndDelete = useCallback(() => {
 		setWorktreeDialogOpen(false);
 		void deleteSession();
@@ -274,12 +270,79 @@ export function useSessionRowActions({
 				}
 			: null;
 
-	return { archive, deleteThread, worktreeDialog };
+	const confirmDialog = {
+		open: confirmOpen,
+		onOpenChange: (open: boolean) => {
+			if (!open) setConfirmOpen(false);
+		},
+		onConfirm: () => {
+			void confirmDelete();
+		},
+	};
+
+	return { archive, deleteThread, deleteDialogs: { confirmDialog, worktreeDialog } };
 }
 
-export const SessionRowWorktreeDialog: FC<{ dialog: SessionRowWorktreeDialogProps | null }> = ({
-	dialog,
-}) => (dialog ? <SessionDeleteWorktreeDialog {...dialog} /> : null);
+type SessionRowConfirmDialogProps = {
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+	onConfirm: () => void;
+};
+
+export type SessionRowDeleteDialogsProps = {
+	confirmDialog: SessionRowConfirmDialogProps;
+	/** Present only for an orphaned worktree chat. */
+	worktreeDialog: SessionRowWorktreeDialogProps | null;
+};
+
+/** Renders inside the chat's thread-list-item scope, which supplies the title. */
+export const SessionRowDeleteDialogs: FC<{ dialogs: SessionRowDeleteDialogsProps }> = ({
+	dialogs: { confirmDialog, worktreeDialog },
+}) => (
+	<>
+		<SessionDeleteConfirmDialog {...confirmDialog} />
+		{worktreeDialog ? <SessionDeleteWorktreeDialog {...worktreeDialog} /> : null}
+	</>
+);
+
+const SessionDeleteConfirmDialog: FC<SessionRowConfirmDialogProps> = ({
+	open,
+	onOpenChange,
+	onConfirm,
+}) => {
+	const title = useAuiState((s) => s.threadListItem.title);
+	return (
+		<AlertDialog open={open} onOpenChange={onOpenChange}>
+			<AlertDialogContent data-qa-id="session-delete-dialog">
+				<AlertDialogHeader>
+					<AlertDialogTitle>Delete this session?</AlertDialogTitle>
+					{title ? (
+						<div
+							data-qa-id="session-delete-chat-preview"
+							className="bg-foreground/6 ring-foreground/6 my-1 flex h-9 w-full min-w-0 items-center gap-2 rounded-lg px-2.5 ring-1 ring-inset"
+						>
+							<MessageSquareIcon aria-hidden className="text-muted-foreground size-3.5 shrink-0" />
+							<span className="truncate text-sm font-medium">{title}</span>
+						</div>
+					) : null}
+					<AlertDialogDescription>
+						This permanently deletes the session and its history. This cannot be undone.
+					</AlertDialogDescription>
+				</AlertDialogHeader>
+				<AlertDialogFooter>
+					<AlertDialogCancel data-qa-id="session-delete-cancel">Cancel</AlertDialogCancel>
+					<AlertDialogAction
+						variant="destructive"
+						data-qa-id="session-delete-confirm"
+						onClick={onConfirm}
+					>
+						Delete session
+					</AlertDialogAction>
+				</AlertDialogFooter>
+			</AlertDialogContent>
+		</AlertDialog>
+	);
+};
 
 /** The "…" button that opens an actions menu: ghost, extra small, with a "More" tooltip. */
 export function MoreActionsTrigger({
@@ -357,12 +420,6 @@ export const SessionRowMenu: FC<{
 					{pinned ? "Unpin" : "Pin"}
 				</DropdownMenuItem>
 			) : null}
-			{canArchive && (
-				<DropdownMenuItem onClick={onArchive}>
-					<ArchiveIcon />
-					Archive
-				</DropdownMenuItem>
-			)}
 			<DropdownMenuItem onClick={onRename}>
 				<PencilIcon />
 				Rename
@@ -373,8 +430,14 @@ export const SessionRowMenu: FC<{
 					<SessionRowBoardMenuItems board={board} />
 				</>
 			) : null}
-			{/* Destructive last, set apart, as in the app's other menus. */}
+			{/* Removal actions last, set apart, as in the app's other menus. */}
 			<DropdownMenuSeparator />
+			{canArchive && (
+				<DropdownMenuItem onClick={onArchive}>
+					<ArchiveIcon />
+					Archive
+				</DropdownMenuItem>
+			)}
 			<DropdownMenuItem variant="destructive" onClick={onDelete}>
 				<Trash2Icon />
 				Delete

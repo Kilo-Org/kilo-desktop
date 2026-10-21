@@ -297,7 +297,7 @@ async function openCardMenu(screen: ReturnType<typeof setup>["screen"], sessionI
 }
 
 describe("WorkspaceBoardPage card actions", () => {
-	it("groups the chat actions, then the board actions, then Delete on its own", async () => {
+	it("groups the chat actions, then the board actions, then Archive and Delete", async () => {
 		const { screen } = setup();
 		await openCardMenu(screen, "ses_beta");
 		const menu = page.getByRole("menu");
@@ -307,12 +307,12 @@ describe("WorkspaceBoardPage card actions", () => {
 		);
 		expect(entries).toEqual([
 			"Pin",
-			"Archive",
 			"Rename",
 			"—",
 			"Move on board",
 			"Remove from board",
 			"—",
+			"Archive",
 			"Delete",
 		]);
 	});
@@ -380,6 +380,7 @@ describe("WorkspaceBoardPage card actions", () => {
 		const { screen, backend } = setup();
 		await openCardMenu(screen, "ses_beta");
 		await page.getByRole("menuitem", { name: "Delete" }).click();
+		await page.getByTestId("session-delete-confirm").click();
 
 		await vi.waitFor(() => expect(deleteThread).toHaveBeenCalledWith("ses_beta"));
 		await expect.element(screen.getByText("Beta feature")).not.toBeInTheDocument();
@@ -871,6 +872,7 @@ describe("WorkspaceBoardPage in its own window", () => {
 
 			await openCardMenu(screen, "ses_acme");
 			await page.getByRole("menuitem", { name: "Delete" }).click();
+			await page.getByTestId("session-delete-confirm").click();
 			await vi.waitFor(() =>
 				expect(backend.stored().columns.flatMap((column) => column.sessionIds)).not.toContain(
 					"ses_acme",

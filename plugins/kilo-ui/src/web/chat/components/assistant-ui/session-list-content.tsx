@@ -110,8 +110,8 @@ import {
 } from "./session-row-display.js";
 import {
 	SessionItemRename,
+	SessionRowDeleteDialogs,
 	SessionRowMenu,
-	SessionRowWorktreeDialog,
 	useRenameState,
 	useSessionRowActions,
 } from "./session-row-actions.js";
@@ -1027,6 +1027,12 @@ const SessionShelfHeader: FC<{
 						className="size-3.5 shrink-0"
 						{...(glyph ? { color: glyph } : {})}
 					/>
+				) : tone === "archived" ? (
+					<ArchiveIcon
+						aria-hidden
+						data-slot="aui_session-list-archived-icon"
+						className="size-3.5 shrink-0"
+					/>
 				) : null}
 				<span className={cn("min-w-0 truncate text-sm font-normal", classes.label)}>{label}</span>
 				<ChevronDownIcon
@@ -1181,7 +1187,7 @@ const SessionRow: FC = () => {
 	const switchTo = useCallback(() => {
 		void auiRef.current.threadListItem.switchTo({ unarchive: false });
 	}, []);
-	const { archive, deleteThread, worktreeDialog } = useSessionRowActions({
+	const { archive, deleteThread, deleteDialogs } = useSessionRowActions({
 		remoteId,
 		activity,
 		onDeleted: board?.remove,
@@ -1212,7 +1218,7 @@ const SessionRow: FC = () => {
 				deleteThread={deleteThread}
 				board={board}
 			/>
-			<SessionRowWorktreeDialog dialog={worktreeDialog} />
+			<SessionRowDeleteDialogs dialogs={deleteDialogs} />
 		</>
 	);
 };

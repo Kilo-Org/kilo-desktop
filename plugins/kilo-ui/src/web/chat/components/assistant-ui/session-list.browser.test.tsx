@@ -377,6 +377,10 @@ function storeView(view: Partial<SessionListView>) {
 	);
 }
 
+function confirmChatDelete() {
+	return page.getByTestId("session-delete-confirm").click();
+}
+
 function rowSlot(card: ReturnType<typeof page.elementLocator>, slot: string) {
 	return card.element().querySelector<HTMLElement>(`[data-slot="aui_session-list-item-${slot}"]`);
 }
@@ -1174,10 +1178,34 @@ describe("SessionList", () => {
 		await userEvent.hover(card);
 		await card.getByRole("button", { name: "Thread actions" }).click();
 		await page.getByRole("menuitem", { name: "Delete" }).click();
+		await expect
+			.element(page.getByRole("alertdialog", { name: "Delete this session?" }))
+			.toBeVisible();
+		await expect
+			.element(page.getByTestId("session-delete-chat-preview"))
+			.toHaveTextContent("Delete me");
+		expect(adapter.deleteCalls).toEqual([]);
+		await confirmChatDelete();
 
 		await expect.element(screen.getByText("Delete me")).not.toBeInTheDocument();
 		await expect.element(screen.getByText("Keep me")).toBeVisible();
 		expect(adapter.deleteCalls).toEqual(["ses-2"]);
+	});
+
+	it("keeps the chat when the delete confirmation is cancelled", async () => {
+		const { adapter, screen } = renderSessionList({
+			threads: [{ remoteId: "ses-1", title: "Keep me" }],
+		});
+
+		const card = screen.getByRole("listitem").filter({ hasText: "Keep me" });
+		await userEvent.hover(card);
+		await card.getByRole("button", { name: "Thread actions" }).click();
+		await page.getByRole("menuitem", { name: "Delete" }).click();
+		await page.getByTestId("session-delete-cancel").click();
+
+		await expect.element(page.getByTestId("session-delete-dialog")).not.toBeInTheDocument();
+		await expect.element(screen.getByText("Keep me")).toBeVisible();
+		expect(adapter.deleteCalls).toEqual([]);
 	});
 
 	it("does not offer Status in the Show menu", async () => {
@@ -2190,7 +2218,7 @@ describe("SessionList worktree deletion", () => {
 		});
 	});
 
-	it("one-click deletes a worktree session that shares its directory with another session", async () => {
+	it("deletes a worktree session that shares its directory with another session after the chat confirm", async () => {
 		const removeWorktree = vi.fn(async () => undefined);
 		const { adapter, screen } = renderSessionList({
 			threads: [
@@ -2207,6 +2235,7 @@ describe("SessionList worktree deletion", () => {
 		});
 
 		await deleteViaRowMenu(screen, "Shared one");
+		await confirmChatDelete();
 
 		await expect
 			.element(page.getByTestId("session-delete-worktree-dialog"))
@@ -2215,7 +2244,7 @@ describe("SessionList worktree deletion", () => {
 		expect(removeWorktree).not.toHaveBeenCalled();
 	});
 
-	it("one-click deletes sessions without a worktree stamp", async () => {
+	it("deletes sessions without a worktree stamp after the chat confirm", async () => {
 		const removeWorktree = vi.fn(async () => undefined);
 		const { adapter, screen } = renderSessionList({
 			threads: [{ remoteId: "ses-1", title: "Local chat" }],
@@ -2223,6 +2252,7 @@ describe("SessionList worktree deletion", () => {
 		});
 
 		await deleteViaRowMenu(screen, "Local chat");
+		await confirmChatDelete();
 
 		await expect
 			.element(page.getByTestId("session-delete-worktree-dialog"))
@@ -2308,6 +2338,7 @@ describe("SessionList worktree deletion", () => {
 
 		await expect.element(screen.getByText("Worktree chat")).toBeVisible();
 		await deleteViaRowMenu(screen, "Worktree chat");
+		await confirmChatDelete();
 
 		// Direct delete must not have happened: the store has no record yet
 		// and the refresh has not settled.
@@ -2346,6 +2377,7 @@ describe("SessionList worktree deletion", () => {
 
 		await expect.element(screen.getByText("Worktree chat")).toBeVisible();
 		await deleteViaRowMenu(screen, "Worktree chat");
+		await confirmChatDelete();
 
 		// The record exists but has no worktree stamp and the refresh has not
 		// settled — the delete must not have proceeded yet.
@@ -2378,6 +2410,7 @@ describe("SessionList worktree deletion", () => {
 		store.getState().markSessionsRefreshed();
 
 		await deleteViaRowMenu(screen, "Local chat");
+		await confirmChatDelete();
 
 		await vi.waitFor(() => {
 			expect(adapter.deleteCalls).toEqual(["ses-1"]);
@@ -2513,6 +2546,7 @@ describe("SessionList board actions", () => {
 		await userEvent.hover(card);
 		await card.getByRole("button", { name: "Thread actions" }).click();
 		await page.getByRole("menuitem", { name: "Delete" }).click();
+		await confirmChatDelete();
 
 		await vi.waitFor(() => expect(adapter.deleteCalls).toEqual(["ses-1"]));
 		await vi.waitFor(() => expect(board()).toEqual(DEFAULT_WORKSPACE_BOARD));

@@ -189,3 +189,18 @@ export class GitNotDetectedError extends Error {
 		this.name = "GitNotDetectedError";
 	}
 }
+
+/**
+ * Thrown when the resolved git is older than the client's minimum version.
+ * Every command is refused up front, so an old git fails once with this
+ * error instead of each command failing on whichever option it lacks.
+ */
+export class UnsupportedGitVersionError extends Error {
+	constructor(
+		public readonly version: string,
+		public readonly minimumVersion: string,
+	) {
+		super(`Git ${version} is not supported. Git ${minimumVersion} or newer is required.`);
+		this.name = "UnsupportedGitVersionError";
+	}
+}

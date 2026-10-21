@@ -7,7 +7,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { MainSdkLogger } from "@kilo-desktop/feature-sdk";
 import type { IBranch, WorktreeEntry } from "@kilo-desktop/git-client";
-import { GitError, GitErrorCode, GitNotDetectedError } from "@kilo-desktop/git-client";
+import {
+	GitError,
+	GitErrorCode,
+	GitNotDetectedError,
+	UnsupportedGitVersionError,
+} from "@kilo-desktop/git-client";
 import type { IGitStringResult } from "@kilo-desktop/git-client";
 
 import type { GitClientSlice } from "./git-service.js";
@@ -922,6 +927,22 @@ describe("WorktreeManager", () => {
 				code: "BUSINESS",
 				message: "Git was not found. Install Git, then restart Kilo Desktop.",
 			});
+		});
+
+		it("maps a git older than the minimum version to a FeatureError naming both versions", async () => {
+			const mainRoot = createMainRoot();
+			const manager = managerWith(
+				worktreeClient(mainRoot, {
+					addWorktree: () => Promise.reject(new UnsupportedGitVersionError("2.14.1", "2.17.0")),
+				}),
+			);
+
+			const error = await manager
+				.createWorktree({ workingDirectory: mainRoot })
+				.catch((e: unknown) => e);
+			expect(error).toMatchObject({ name: "FeatureError", code: "BUSINESS" });
+			expect((error as Error).message).toContain("Git 2.14.1");
+			expect((error as Error).message).toContain("Git 2.17 or newer");
 		});
 
 		it("rejects before registering the worktree when the git exclude write fails", async () => {

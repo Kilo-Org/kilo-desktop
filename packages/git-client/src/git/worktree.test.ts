@@ -11,7 +11,8 @@ import {
 	makeCommit,
 	noopLogger,
 } from "../test/util.js";
-import { parseWorktreePorcelainOutput } from "./worktree.js";
+import { listWorktrees, parseWorktreePorcelainOutput } from "./worktree.js";
+import type { WorktreeExec } from "./worktree.js";
 
 afterEach(cleanupTestDirs);
 
@@ -206,6 +207,89 @@ describe("git/worktree", () => {
 			const entries = parseWorktreePorcelainOutput(output);
 			expect(entries[0]?.path).toBe(normalize("/path/to/my\nrepo"));
 			expect(entries[1]?.path).toBe(normalize("/path/to/my\nother\nworktree"));
+		});
+
+		describe("newline-terminated output (git before 2.36, no -z)", () => {
+			it("parses blocks separated by a blank line", () => {
+				const output =
+					[
+						[
+							"worktree /path/to/my repo",
+							"HEAD abc1234abc1234abc1234abc1234abc1234abc123",
+							"branch refs/heads/main",
+						].join("\n"),
+						[
+							"worktree /path/to/linked",
+							"HEAD def5678def5678def5678def5678def5678def567",
+							"detached",
+							"locked reason why it is locked",
+						].join("\n"),
+					].join("\n\n") + "\n\n";
+
+				const entries = parseWorktreePorcelainOutput(output, { nulTerminated: false });
+				expect(entries).toEqual([
+					{
+						path: normalize("/path/to/my repo"),
+						head: "abc1234abc1234abc1234abc1234abc1234abc123",
+						branch: "refs/heads/main",
+						isDetached: false,
+						type: "main",
+						isLocked: false,
+						isPrunable: false,
+					},
+					{
+						path: normalize("/path/to/linked"),
+						head: "def5678def5678def5678def5678def5678def567",
+						branch: null,
+						isDetached: true,
+						type: "linked",
+						isLocked: true,
+						isPrunable: false,
+					},
+				]);
+			});
+
+			it("returns empty array for empty output", () => {
+				expect(parseWorktreePorcelainOutput("\n", { nulTerminated: false })).toEqual([]);
+			});
+		});
+	});
+
+	describe("listWorktrees", () => {
+		const mainBlock = ["worktree /repo", "HEAD abc1234abc1234abc1234abc1234abc1234abc123"];
+
+		function recordingExec(stdout: string) {
+			const calls: string[][] = [];
+			const exec: WorktreeExec = async (args) => {
+				calls.push(args);
+				return {
+					stdout,
+					stderr: "",
+					exitCode: 0,
+					gitError: null,
+					gitErrorDescription: null,
+					path: "/repo",
+				};
+			};
+			return { calls, exec };
+		}
+
+		it("asks for NUL-terminated output by default", async () => {
+			const { calls, exec } = recordingExec(mainBlock.join("\0") + "\0");
+
+			const entries = await listWorktrees(exec);
+
+			expect(calls).toEqual([["worktree", "list", "--porcelain", "-z"]]);
+			expect(entries[0]?.path).toBe(normalize("/repo"));
+		});
+
+		it("omits -z and parses newline output when NUL termination is off", async () => {
+			const { calls, exec } = recordingExec(mainBlock.join("\n") + "\n\n");
+
+			const entries = await listWorktrees(exec, { nulTerminated: false });
+
+			expect(calls).toEqual([["worktree", "list", "--porcelain"]]);
+			expect(entries[0]?.path).toBe(normalize("/repo"));
 		});
 	});
 

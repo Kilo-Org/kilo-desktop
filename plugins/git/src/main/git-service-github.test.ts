@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { execa } = vi.hoisted(() => ({ execa: vi.fn() }));
 vi.mock("execa", () => ({ execa }));
 
+import { UnsupportedGitVersionError } from "@kilo-desktop/git-client";
 import type { GitClient } from "@kilo-desktop/git-client";
 
 import { classifyGithubCliError, ghErrorToFeatureError, GitService } from "./git-service.js";
@@ -257,6 +258,23 @@ describe("GitService pull request snapshot", () => {
 			pullRequest: null,
 		});
 		expect(execa).toHaveBeenCalledTimes(1);
+	});
+
+	it("reports a too-old git as a git problem, not a GitHub CLI failure", async () => {
+		const git = new GitService({
+			logger,
+			getWorkspaceFolderPaths: () => Promise.resolve(["/repo"]),
+			createClient: () =>
+				({
+					headBranch: () => Promise.resolve({ name: "kilo/brawny-olivine", upstream: null }),
+					exec: () => Promise.reject(new UnsupportedGitVersionError("2.14.1", "2.17.0")),
+					defaultBranch: () => Promise.resolve("main"),
+				}) as unknown as GitClient,
+		});
+
+		const error = await git.pullRequestSnapshot("/repo").catch((e: unknown) => e);
+		expect(error).toMatchObject({ name: "FeatureError", code: "BUSINESS" });
+		expect((error as Error).message).toContain("Git 2.14.1");
 	});
 
 	it("filters branch-name matches to the origin owner", async () => {

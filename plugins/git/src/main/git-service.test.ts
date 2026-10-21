@@ -10,6 +10,7 @@ import {
 	GitErrorCode,
 	GitFileTooLargeError,
 	GitNotDetectedError,
+	UnsupportedGitVersionError,
 } from "@kilo-desktop/git-client";
 import type { IStatusResult, RepositoryType } from "@kilo-desktop/git-client";
 
@@ -242,6 +243,22 @@ describe("GitService", () => {
 			code: "BUSINESS",
 			message: "Git was not found. Install Git, then restart Kilo Desktop.",
 		});
+	});
+
+	it("rejects with a BUSINESS FeatureError naming both versions when git is too old", async () => {
+		const service = new GitService({
+			logger,
+			getWorkspaceFolderPaths: folders("/some/repo"),
+			createClient: () =>
+				clientOf({
+					status: () => Promise.reject(new UnsupportedGitVersionError("2.14.1", "2.17.0")),
+				}),
+		});
+
+		const error = await service.status("/some/repo").catch((e: unknown) => e);
+		expect(error).toMatchObject({ name: "FeatureError", code: "BUSINESS" });
+		expect((error as Error).message).toContain("Git 2.14.1");
+		expect((error as Error).message).toContain("Git 2.17 or newer");
 	});
 
 	it("lets other errors propagate unwrapped", async () => {

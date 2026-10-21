@@ -5,7 +5,7 @@ import process from "node:process";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createGitClient } from "./client.js";
-import { ExecError, GitNotDetectedError } from "./exec/errors.js";
+import { ExecError, GitNotDetectedError, UnsupportedGitVersionError } from "./exec/errors.js";
 import { noopLogger } from "./test/util.js";
 
 const directories: string[] = [];
@@ -216,6 +216,29 @@ describe("createGitClient", () => {
 			const git = createGitClient();
 			await expect(git.satisfies(">=0.0.1")).resolves.toBe(true);
 			await expect(git.satisfies("^99.0.0")).resolves.toBe(false);
+		});
+	});
+
+	describe("minimum version", () => {
+		it("rejects every command when git is older than the minimum", async () => {
+			const path = createDir("desktop-git-client-min-version");
+			const git = createGitClient({ path, minimumVersion: "99.0.0", logger: noopLogger });
+			const installed = await git.version();
+
+			const execError = await git.exec(["init"], "init").catch((e: unknown) => e);
+			const statusError = await git.status().catch((e: unknown) => e);
+
+			for (const error of [execError, statusError]) {
+				expect(error).toBeInstanceOf(UnsupportedGitVersionError);
+				expect(error).toMatchObject({ version: installed, minimumVersion: "99.0.0" });
+			}
+		});
+
+		it("runs commands when git meets the minimum", async () => {
+			const path = createDir("desktop-git-client-min-version-ok");
+			const git = createGitClient({ path, minimumVersion: "0.0.1", logger: noopLogger });
+
+			await expect(git.exec(["init"], "init")).resolves.toMatchObject({ exitCode: 0 });
 		});
 	});
 });

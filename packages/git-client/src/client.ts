@@ -16,6 +16,7 @@ import { createGitLogger } from "./logger.js";
 import type { GitLogger } from "./logger.js";
 import { resolveGitBinary } from "./exec/resolve-git.js";
 import { parseGitVersion, satisfies as satisfiesRange } from "./exec/version.js";
+import { UnsupportedGitVersionError } from "./exec/errors.js";
 import type { BranchOptions } from "./git/branch.js";
 import { createBranch } from "./git/branch.js";
 import type { CheckoutOptions } from "./git/checkout.js";
@@ -63,6 +64,21 @@ type CwdAwareExec = <O extends IGitStringExecutionOptions | IGitBufferExecutionO
 	opts: O,
 ) => Promise<O extends IGitBufferExecutionOptions ? IGitBufferResult : IGitStringResult>;
 
+/**
+ * The oldest git the client's own commands work with: `removeWorktree`
+ * runs `git worktree remove`, which arrived in git 2.17. Raise it only when
+ * a command cannot work without a newer git; an optional improvement is
+ * gated on the detected version instead (see {@link NUL_TERMINATED_WORKTREE_LIST_VERSION}).
+ */
+export const MINIMUM_GIT_VERSION = "2.17.0";
+
+/**
+ * `git worktree list --porcelain -z` arrived in git 2.36. Older git lists
+ * newline-terminated output, which only misparses worktree paths that
+ * contain a newline.
+ */
+const NUL_TERMINATED_WORKTREE_LIST_VERSION = "2.36.0";
+
 export interface GitClientOptions {
 	/** Working directory for git commands. Defaults to process.cwd(). */
 	readonly path?: string;
@@ -72,6 +88,12 @@ export interface GitClientOptions {
 	readonly env?: Record<string, string | undefined>;
 	/** Logger sink for unexpected git failures. Defaults to `console.error`. */
 	readonly logger?: GitLogger;
+	/**
+	 * Oldest supported git version. Every command rejects with
+	 * `UnsupportedGitVersionError` when the resolved git is older.
+	 * Defaults to {@link MINIMUM_GIT_VERSION}.
+	 */
+	readonly minimumVersion?: string;
 }
 
 export interface GitClient {
@@ -79,7 +101,8 @@ export interface GitClient {
 	readonly path: string;
 	/**
 	 * Execute a git command with desktop `git()` semantics: unexpected exit
-	 * codes and unexpected parsed errors throw `GitError`.
+	 * codes and unexpected parsed errors throw `GitError`. Rejects with
+	 * `UnsupportedGitVersionError` when git is older than the minimum version.
 	 *
 	 * @param args    Full argument vector after `git` (leading `-c`/`-C`
 	 *                global args work naturally).
@@ -203,7 +226,7 @@ export interface GitClient {
 	recentBranches(limit: number, options?: RecentBranchesOptions): Promise<string[]>;
 	/**
 	 * Worktrees of the repository containing the given working directory,
-	 * via `git worktree list --porcelain -z` (the main worktree first).
+	 * via `git worktree list --porcelain` (the main worktree first; `-z` on git 2.36+).
 	 * `options.cwd` overrides the working directory for this call.
 	 */
 	worktrees(options?: WorktreeOptions): Promise<ReadonlyArray<WorktreeEntry>>;
@@ -278,15 +301,18 @@ class GitClientImpl implements GitClient {
 	readonly #gitPath: string | undefined;
 	readonly #clientEnv: Record<string, string | undefined>;
 	readonly #injectedLogger: GitLogger | undefined;
+	readonly #minimumVersion: string;
 	#context: { ok: true; value: GitProcessContext } | { ok: false; error: unknown } | undefined;
 	#logger: GitLogger | undefined;
 	#version: Promise<string> | undefined;
+	#supportedVersion: Promise<string> | undefined;
 
 	constructor(options: GitClientOptions = {}) {
 		this.path = options.path ?? process.cwd();
 		this.#gitPath = options.gitPath;
 		this.#clientEnv = options.env ?? {};
 		this.#injectedLogger = options.logger;
+		this.#minimumVersion = options.minimumVersion ?? MINIMUM_GIT_VERSION;
 	}
 
 	exec(
@@ -300,8 +326,45 @@ class GitClientImpl implements GitClient {
 		options: IGitBufferExecutionOptions,
 	): Promise<IGitBufferResult>;
 	async exec(args: string[], name: string, options?: IGitExecutionOptions): Promise<IGitResult> {
+		await this.#ensureSupportedVersion();
 		const { cwd, ...rest } = options ?? {};
 		return git(args, cwd ?? this.path, name, this.#resolveContext(), this.#resolveLogger(), rest);
+	}
+
+	/**
+	 * Gates every command on the minimum version, checked once per client,
+	 * and resolves the detected version so optional newer-git behaviour can
+	 * be chosen without spawning git again.
+	 *
+	 * Runs `--version` through `git()` rather than reusing `version()`: a git
+	 * that cannot run at all (e.g. the macOS shim blocked on the Xcode
+	 * license) then rejects with the same parsed `GitError` the command
+	 * itself would have, instead of a version-parsing failure. A git that is
+	 * too old stays memoized; any other failure is dropped so the next
+	 * command retries (the user may have fixed the install meanwhile).
+	 */
+	#ensureSupportedVersion(): Promise<string> {
+		this.#supportedVersion ??= git(
+			["--version"],
+			this.path,
+			"version",
+			this.#resolveContext(),
+			this.#resolveLogger(),
+		)
+			.then(({ stdout }) => {
+				const version = parseGitVersion(stdout);
+				if (!satisfiesRange(version, `>=${this.#minimumVersion}`)) {
+					throw new UnsupportedGitVersionError(version, this.#minimumVersion);
+				}
+				return version;
+			})
+			.catch((error: unknown) => {
+				if (!(error instanceof UnsupportedGitVersionError)) {
+					this.#supportedVersion = undefined;
+				}
+				throw error;
+			});
+		return this.#supportedVersion;
 	}
 
 	version(): Promise<string> {
@@ -405,8 +468,12 @@ class GitClientImpl implements GitClient {
 		return exec;
 	}
 
-	worktrees(options?: WorktreeOptions): Promise<ReadonlyArray<WorktreeEntry>> {
-		return listWorktrees(this.#cwdExecutor(options), options);
+	async worktrees(options?: WorktreeOptions): Promise<ReadonlyArray<WorktreeEntry>> {
+		const version = await this.#ensureSupportedVersion();
+		return listWorktrees(this.#cwdExecutor(options), {
+			...options,
+			nulTerminated: satisfiesRange(version, `>=${NUL_TERMINATED_WORKTREE_LIST_VERSION}`),
+		});
 	}
 
 	addWorktree(worktreePath: string, options?: AddWorktreeOptions): Promise<void> {

@@ -1,4 +1,4 @@
-export { createGitClient } from "./client.js";
+export { MINIMUM_GIT_VERSION, createGitClient } from "./client.js";
 export type { GitClient, GitClientOptions } from "./client.js";
 
 export type {
@@ -97,6 +97,7 @@ export { checkRefFormat, getHeadBranch, getSymbolicRef } from "./git/refs.js";
 export type { WorktreeEntry, WorktreeType } from "./models/worktree.js";
 export type {
 	AddWorktreeOptions,
+	ListWorktreesOptions,
 	PruneWorktreeOptions,
 	RemoveWorktreeOptions,
 	WorktreeExec,
@@ -119,7 +120,13 @@ export type {
 	GitStringExecutionOptions,
 	GitStringResult,
 } from "./exec/exec.js";
-export { ExecError, GitErrorCode, GitErrorRegexes, GitNotDetectedError } from "./exec/errors.js";
+export {
+	ExecError,
+	GitErrorCode,
+	GitErrorRegexes,
+	GitNotDetectedError,
+	UnsupportedGitVersionError,
+} from "./exec/errors.js";
 export type { GitLogger } from "./logger.js";
 export { parseBadConfigValueErrorInfo } from "./exec/parse-bad-config-value-error-info.js";
 export { parseError } from "./exec/parse-error.js";

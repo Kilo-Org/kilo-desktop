@@ -13,6 +13,7 @@ import {
 	GitErrorCode,
 	GitFileTooLargeError,
 	GitNotDetectedError,
+	UnsupportedGitVersionError,
 	createGitClient,
 	isGitError,
 	isMaxBufferExceededError,
@@ -34,6 +35,7 @@ import {
 	finderPick,
 	parseBatchResponse,
 } from "./pull-request-batch.js";
+import { unsupportedGitVersionToFeatureError } from "./unsupported-git-version.js";
 import { GIT_NOT_FOUND_MESSAGE, WorktreeManager } from "./worktree-manager.js";
 
 export interface GitPullRequest {
@@ -253,15 +255,19 @@ function createDefaultClient(logger: MainSdkLogger): GitClientSlice {
 
 /**
  * The git-unavailability errors mapped to a `FeatureError` across every
- * method: no git binary, and the macOS shim failing every invocation while
- * the Xcode license is unaccepted or the Command Line Tools are missing.
- * Their messages must survive the IPC boundary. Everything else propagates
- * unwrapped (the IPC boundary scrubs generic errors, and git-client logs the
- * detail via the adapted logger).
+ * method: no git binary, a git older than git-client's minimum version, and
+ * the macOS shim failing every invocation while the Xcode license is
+ * unaccepted or the Command Line Tools are missing. Their messages must
+ * survive the IPC boundary. Everything else propagates unwrapped (the IPC
+ * boundary scrubs generic errors, and git-client logs the detail via the
+ * adapted logger).
  */
 function gitUnavailableToFeatureError(error: unknown): unknown {
 	if (error instanceof GitNotDetectedError) {
 		return new FeatureError(GIT_NOT_FOUND_MESSAGE, "BUSINESS");
+	}
+	if (error instanceof UnsupportedGitVersionError) {
+		return unsupportedGitVersionToFeatureError(error);
 	}
 	if (
 		isGitError(error, GitErrorCode.XcodeLicenseNotAgreed) ||
@@ -457,7 +463,9 @@ function parseJsonValue(json: string): unknown {
  *   method so their messages survive the IPC boundary: `GitNotDetectedError`
  *   (no git binary on PATH — git-client also reports the macOS
  *   `/usr/bin/git` shim this way when the Command Line Tools are missing,
- *   without ever spawning it), `GitErrorCode.XcodeLicenseNotAgreed` (the
+ *   without ever spawning it), `UnsupportedGitVersionError` (git-client
+ *   refuses every command below its minimum version, naming the found and
+ *   required versions), `GitErrorCode.XcodeLicenseNotAgreed` (the
  *   shim exits 69 on every invocation while the Xcode license is
  *   unaccepted — resolution succeeds, so without the mapping the raw
  *   `GitError` would cross IPC as an unexpected failure and reach Sentry),
@@ -504,7 +512,10 @@ function parseJsonValue(json: string): unknown {
  * `GitNotDetectedError`, which `version()` can throw synchronously because
  * binary resolution runs before the memoized promise exists, hence
  * `try { await }` rather than a `.catch()` — and `false` is an expected
- * outcome, not an error, so nothing is logged. `version()` memoizes its
+ * outcome, not an error, so nothing is logged. A git below the minimum
+ * version still probes `true` on purpose: the UI stays enabled and the
+ * first real call surfaces the "update Git" message instead of the git
+ * features silently disappearing. `version()` memoizes its
  * promise per client (rejections included) and the service shares one
  * client, so the probe result is effectively cached for the app's lifetime.
  */
@@ -762,6 +773,11 @@ export class GitService {
 			return await this.#snapshotFromCandidates(plan, candidates);
 		} catch (error) {
 			if (error instanceof FeatureError) throw error;
+			// The lookup interleaves git and gh calls; a too-old git must not
+			// read as a GitHub CLI failure.
+			if (error instanceof UnsupportedGitVersionError) {
+				throw unsupportedGitVersionToFeatureError(error);
+			}
 			throw ghErrorToFeatureError(error);
 		}
 	}

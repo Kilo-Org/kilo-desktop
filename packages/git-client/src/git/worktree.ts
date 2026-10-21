@@ -27,22 +27,35 @@ export interface RemoveWorktreeOptions extends WorktreeOptions {
 	readonly force?: boolean;
 }
 
+export interface ListWorktreesOptions extends WorktreeOptions {
+	/**
+	 * Request NUL-terminated output (`-z`, git 2.36+). Defaults to `true`.
+	 * Without it, git prints newline-terminated fields, which misparse only
+	 * when a worktree path itself contains a newline.
+	 */
+	readonly nulTerminated?: boolean;
+}
+
 /**
- * Parse `git worktree list --porcelain -z` output (ported from GitHub
- * Desktop). Blocks are separated by a double NUL, fields within a block by
- * a single NUL; block 0 is the main worktree.
+ * Parse `git worktree list --porcelain` output (ported from GitHub
+ * Desktop). Fields within a block end with the terminator (NUL with `-z`,
+ * newline without), blocks are separated by an empty field; block 0 is the
+ * main worktree.
  */
-export function parseWorktreePorcelainOutput(stdout: string): ReadonlyArray<WorktreeEntry> {
+export function parseWorktreePorcelainOutput(
+	stdout: string,
+	options?: { readonly nulTerminated?: boolean },
+): ReadonlyArray<WorktreeEntry> {
 	if (stdout.trim().length === 0) {
 		return [];
 	}
 
-	const trimmed = stdout.endsWith("\u0000") ? stdout.slice(0, -1) : stdout;
-	const blocks = trimmed.split("\u0000\u0000");
+	const terminator = (options?.nulTerminated ?? true) ? "\0" : "\n";
+	const blocks = stdout.split(terminator + terminator).filter((block) => block.trim().length > 0);
 	const entries: WorktreeEntry[] = [];
 
 	for (let i = 0; i < blocks.length; i++) {
-		const lines = blocks[i]?.split("\0") ?? [];
+		const lines = blocks[i]?.split(terminator) ?? [];
 		let path = "";
 		let head = "";
 		let branch: string | null = null;
@@ -88,13 +101,15 @@ export function parseWorktreePorcelainOutput(stdout: string): ReadonlyArray<Work
  */
 export async function listWorktrees(
 	exec: WorktreeExec,
-	options?: WorktreeOptions,
+	options?: ListWorktreesOptions,
 ): Promise<ReadonlyArray<WorktreeEntry>> {
-	const result = await exec(["worktree", "list", "--porcelain", "-z"], "listWorktrees", {
+	const nulTerminated = options?.nulTerminated ?? true;
+	const args = ["worktree", "list", "--porcelain", ...(nulTerminated ? ["-z"] : [])];
+	const result = await exec(args, "listWorktrees", {
 		...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
 	});
 
-	return parseWorktreePorcelainOutput(result.stdout);
+	return parseWorktreePorcelainOutput(result.stdout, { nulTerminated });
 }
 
 /**

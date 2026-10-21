@@ -19,13 +19,19 @@ import type { LimitFunction } from "p-limit";
 import type { MainSdkLogger } from "@kilo-desktop/feature-sdk";
 import { FeatureError } from "@kilo-desktop/feature-sdk";
 
-import { GitErrorCode, GitNotDetectedError, isGitError } from "@kilo-desktop/git-client";
+import {
+	GitErrorCode,
+	GitNotDetectedError,
+	UnsupportedGitVersionError,
+	isGitError,
+} from "@kilo-desktop/git-client";
 
 import { KILO_WORKTREE_SEGMENTS } from "../contracts/schemas.js";
 import type { GitWorktreeResult } from "../contracts/schemas.js";
 import { availableBranchName, generateBranchName, semanticBranchName } from "./branch-naming.js";
 import type { BranchNameRandom } from "./branch-naming.js";
 import type { GitClientSlice } from "./git-service.js";
+import { unsupportedGitVersionToFeatureError } from "./unsupported-git-version.js";
 
 /**
  * User-facing copy for a git binary that could not be resolved. git-client
@@ -48,6 +54,9 @@ function worktreeErrorToFeatureError(error: unknown): unknown {
 	if (error instanceof GitNotDetectedError) {
 		return new FeatureError(GIT_NOT_FOUND_MESSAGE, "BUSINESS");
 	}
+	if (error instanceof UnsupportedGitVersionError) {
+		return unsupportedGitVersionToFeatureError(error);
+	}
 	return error;
 }
 
@@ -57,7 +66,7 @@ function worktreeErrorToFeatureError(error: unknown): unknown {
  * Worktree ownership model (kilocode's conventions, adapted):
  * - Chat worktrees live at `<main worktree root>/.kilo/worktrees/<name>`,
  *   where `<main worktree root>` is the first entry of
- *   `git worktree list --porcelain -z` (block 0, linked-worktree-safe) and
+ *   `git worktree list --porcelain` (block 0, linked-worktree-safe) and
  *   `<name>` is the branch with `/` flattened to `-`. The
  *   `.kilo/worktrees/` line is appended to `<git common dir>/info/exclude`
  *   so the worktrees never show as untracked noise.

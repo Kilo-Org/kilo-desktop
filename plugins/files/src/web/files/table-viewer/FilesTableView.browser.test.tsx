@@ -72,6 +72,7 @@ function baseHandlers(read: FilesServiceContract["read"]): FilesServiceContract 
 	return {
 		list: async () => ({ paths: [], truncated: false }),
 		existingPaths: async ({ relativePaths }) => ({ paths: relativePaths }),
+		resolveFileLink: async () => ({ kind: "none", paths: [], truncated: false }),
 		read,
 		listExternalEditors: async () => ({ editors: [] }),
 		openExternalEditor: async () => ({ opened: true }),

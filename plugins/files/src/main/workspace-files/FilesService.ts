@@ -11,11 +11,22 @@ import { FeatureError } from "@kilo-desktop/feature-sdk";
 import {
 	type BinaryTableFormat,
 	type FileGitStatusEntry,
+	type FileLinkResolution,
+	FILE_LINK_MATCH_LIMIT,
 	type FileReadResult,
 	TABLE_LIMIT_BYTES,
 } from "../../contracts/schemas.js";
 
 const DEFAULT_SCAN_LIMIT = 25_000;
+const DEFAULT_RESOLVE_SCAN_LIMIT = 1000;
+/**
+ * Gitignored paths are skipped by the walk itself (`gitignore: true`), so dependency
+ * and environment trees such as `node_modules` or `.venv` never use up the scan limit.
+ * Worktrees live under `{repo}/.kilo/worktrees`; anchoring that ignore to the walk root
+ * keeps a main repo's search out of its worktrees and a worktree's out of nested ones.
+ */
+const LINK_WALK_IGNORES = ["**/.git/**", ".kilo/worktrees/**"];
+const GLOB_SPECIAL_CHARACTERS = /[[\]()*?!{}]/gu;
 const DEFAULT_TEXT_LIMIT_BYTES = 1024 * 1024;
 const DEFAULT_IMAGE_LIMIT_BYTES = 10 * 1024 * 1024;
 
@@ -71,6 +82,8 @@ export interface FilesServiceOptions {
 	 */
 	readonly fileSystem?: FileSystem;
 	readonly tableLimitBytes?: number;
+	/** Maximum basename hits collected per link lookup before the search reports truncation. */
+	readonly resolveScanLimit?: number;
 }
 
 function sha256(contents: Uint8Array): string {
@@ -92,6 +105,28 @@ function validRelativePath(relativePath: string): boolean {
 	}
 	const segments = relativePath.split(/[\\/]+/u);
 	return segments.length > 0 && segments.every((segment) => segment !== "" && segment !== "..");
+}
+
+function normalizeLinkPath(relativePath: string): string {
+	return relativePath.replaceAll("\\", "/").replace(/^(?:\.\/)+/u, "");
+}
+
+/** Escapes glob metacharacters with character classes, which globby honours on every platform. */
+function escapeGlobSegment(segment: string): string {
+	return segment.replace(GLOB_SPECIAL_CHARACTERS, (character) => `[${character}]`);
+}
+
+function isSuffixLinkMatch(candidate: string, linkPath: string): boolean {
+	return candidate === linkPath || candidate.endsWith(`/${linkPath}`);
+}
+
+function byPathLengthThenName(left: string, right: string): number {
+	return left.length - right.length || left.localeCompare(right);
+}
+
+interface BasenameWalk {
+	readonly paths: string[];
+	readonly truncated: boolean;
 }
 
 function featureErrorForFilesystem(error: unknown, message: string): FeatureError {
@@ -123,6 +158,8 @@ export class FilesService {
 	private readonly imageLimitBytes: number;
 	private readonly fileSystem: FileSystem;
 	private readonly tableLimitBytes: number;
+	private readonly resolveScanLimit: number;
+	private readonly pendingBasenameWalks = new Map<string, Promise<BasenameWalk>>();
 
 	constructor(private readonly options: FilesServiceOptions) {
 		this.scanLimit = options.scanLimit ?? DEFAULT_SCAN_LIMIT;
@@ -130,6 +167,7 @@ export class FilesService {
 		this.imageLimitBytes = options.imageLimitBytes ?? DEFAULT_IMAGE_LIMIT_BYTES;
 		this.fileSystem = options.fileSystem ?? fs;
 		this.tableLimitBytes = options.tableLimitBytes ?? TABLE_LIMIT_BYTES;
+		this.resolveScanLimit = options.resolveScanLimit ?? DEFAULT_RESOLVE_SCAN_LIMIT;
 	}
 
 	async list(workspaceDirectory: string): Promise<{ paths: string[]; truncated: boolean }> {
@@ -179,18 +217,93 @@ export class FilesService {
 		const root = await this.authorizedRoot(workspaceDirectory);
 		const uniquePaths = [...new Set(relativePaths)];
 		const results = await Promise.all(
-			uniquePaths.map(async (relativePath) => {
-				if (!validRelativePath(relativePath)) return null;
-				try {
-					const target = await realpath(path.resolve(root, ...relativePath.split(/[\\/]+/u)));
-					if (!inside(root, target) || !(await stat(target)).isFile()) return null;
-					return relativePath;
-				} catch {
-					return null;
-				}
-			}),
+			uniquePaths.map(async (relativePath) =>
+				(await this.isContainedFile(root, relativePath)) ? relativePath : null,
+			),
 		);
 		return results.filter((relativePath): relativePath is string => relativePath !== null);
+	}
+
+	/**
+	 * Resolves a link written by a model or a user against the workspace root.
+	 * An exact root file wins. Otherwise every file with the same basename is
+	 * walked (shared across concurrent callers) and kept only when its path ends
+	 * with the link on a `/` boundary, so `lib/a.ts` never answers `src/a.ts`.
+	 */
+	async resolveFileLink(
+		workspaceDirectory: string,
+		relativePath: string,
+	): Promise<FileLinkResolution> {
+		const linkPath = normalizeLinkPath(relativePath);
+		if (!validRelativePath(linkPath)) {
+			throw new FeatureError("File path must stay within the workspace.", "VALIDATION");
+		}
+		const root = await this.authorizedRoot(workspaceDirectory);
+		if (await this.isContainedFile(root, linkPath)) {
+			return { kind: "exact", paths: [linkPath], truncated: false };
+		}
+
+		const basename = linkPath.split("/").at(-1) ?? linkPath;
+		const walk = await this.basenameWalk(root, basename);
+		const verified = await Promise.all(
+			walk.paths
+				.filter((candidate) => isSuffixLinkMatch(candidate, linkPath))
+				.map(async (candidate) =>
+					(await this.isContainedFile(root, candidate)) ? candidate : null,
+				),
+		);
+		const paths = verified
+			.filter((candidate): candidate is string => candidate !== null)
+			.toSorted(byPathLengthThenName)
+			.slice(0, FILE_LINK_MATCH_LIMIT);
+		return {
+			kind: paths.length > 0 ? "matches" : "none",
+			paths,
+			truncated: walk.truncated,
+		};
+	}
+
+	private basenameWalk(root: string, basename: string): Promise<BasenameWalk> {
+		const key = `${root}\0${basename}`;
+		const pending = this.pendingBasenameWalks.get(key);
+		if (pending) return pending;
+		const walk = this.walkBasename(root, basename).finally(() => {
+			this.pendingBasenameWalks.delete(key);
+		});
+		this.pendingBasenameWalks.set(key, walk);
+		return walk;
+	}
+
+	private async walkBasename(root: string, basename: string): Promise<BasenameWalk> {
+		const paths: string[] = [];
+		let truncated = false;
+		for await (const entry of globbyStream(`**/${escapeGlobSegment(basename)}`, {
+			cwd: root,
+			dot: true,
+			followSymbolicLinks: false,
+			onlyFiles: true,
+			gitignore: true,
+			ignore: LINK_WALK_IGNORES,
+			fs: this.fileSystem,
+			suppressErrors: true,
+		})) {
+			if (paths.length === this.resolveScanLimit) {
+				truncated = true;
+				break;
+			}
+			paths.push(String(entry).replaceAll("\\", "/"));
+		}
+		return { paths, truncated };
+	}
+
+	private async isContainedFile(root: string, relativePath: string): Promise<boolean> {
+		if (!validRelativePath(relativePath)) return false;
+		try {
+			const target = await realpath(path.resolve(root, ...relativePath.split(/[\\/]+/u)));
+			return inside(root, target) && (await stat(target)).isFile();
+		} catch {
+			return false;
+		}
 	}
 
 	async read(workspaceDirectory: string, relativePath: string): Promise<FileReadResult> {

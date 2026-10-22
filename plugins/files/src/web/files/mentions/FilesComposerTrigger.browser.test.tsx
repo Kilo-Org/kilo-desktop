@@ -18,6 +18,7 @@ it("offers files from every workspace folder", async () => {
 	const handlers: FilesServiceContract = {
 		list,
 		existingPaths: async ({ relativePaths }) => ({ paths: relativePaths }),
+		resolveFileLink: async () => ({ kind: "none", paths: [], truncated: false }),
 		read: async () => ({ kind: "unsupported", reason: "binary", byteLength: 0 }),
 		listExternalEditors: async () => ({ editors: [] }),
 		openExternalEditor: async () => ({ opened: true }),

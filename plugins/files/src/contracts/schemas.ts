@@ -11,6 +11,7 @@ const fileRequestSchema = workspaceRequestSchema.extend({
 });
 
 export const FILE_EXISTENCE_BATCH_LIMIT = 512;
+export const FILE_LINK_MATCH_LIMIT = 50;
 
 export const EXTERNAL_EDITORS = [
 	{ id: "cursor", label: "Cursor", commands: ["cursor"] },
@@ -96,8 +97,16 @@ export const fileGitStatusEntrySchema = z.object({
 });
 export type FileGitStatusEntry = z.infer<typeof fileGitStatusEntrySchema>;
 
+export const fileLinkResolutionSchema = z.object({
+	kind: z.enum(["exact", "matches", "none"]),
+	paths: z.array(z.string()).max(FILE_LINK_MATCH_LIMIT),
+	truncated: z.boolean(),
+});
+export type FileLinkResolution = z.infer<typeof fileLinkResolutionSchema>;
+
 export const filesContract = defineContract({
 	list: defineMethod(workspaceRequestSchema, filesListResultSchema),
+	resolveFileLink: defineMethod(fileRequestSchema, fileLinkResolutionSchema),
 	existingPaths: defineMethod(
 		workspaceRequestSchema.extend({
 			relativePaths: z.array(z.string().min(1).max(32_768)).min(1).max(FILE_EXISTENCE_BATCH_LIMIT),

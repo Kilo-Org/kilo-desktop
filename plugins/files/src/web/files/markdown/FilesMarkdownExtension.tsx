@@ -1,10 +1,13 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 
 import { useSdk } from "@kilo-desktop/sdk-react";
 import type { MarkdownRendererExtensionFactory } from "@kilo-desktop/ui/components/markdown-extension";
+import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import { type FilesServiceContract } from "../../../contracts/schemas.js";
-import { FileLinkChip } from "./FileLinkChip.js";
+import { FileLinkCandidatesDialog } from "./FileLinkCandidatesDialog.js";
+import { FileLinkChip, type FileLinkChipProps } from "./FileLinkChip.js";
 import {
 	createFileMarkdownExtension,
 	type FileMarkdownLinkProps,
@@ -46,6 +49,97 @@ function useWorkspaceFileExists(fileTarget: MarkdownFileLinkTarget | null): bool
 	return query.data ?? false;
 }
 
+const RESOLVED_LINK_STALE_TIME_MS = 30_000;
+
+function notFoundMessage(relativePath: string, truncated: boolean): string {
+	const message = `File not found: ${relativePath}`;
+	return truncated ? `${message}. The search was incomplete.` : message;
+}
+
+type ResolvableFileLinkChipProps = Omit<FileLinkChipProps, "onOpenFile"> & {
+	readonly linkContext: ChatFileLinkContext;
+};
+
+/**
+ * Resolves a link against the workspace only when it is clicked, so rendering
+ * a transcript never walks the workspace. An exact or single match opens
+ * directly, several matches open a picker, and no match reports the miss
+ * without opening the Files pane.
+ */
+function ResolvableFileLinkChip({
+	fileTarget,
+	linkContext,
+	...props
+}: ResolvableFileLinkChipProps) {
+	const sdk = useSdk<FilesServiceContract>("files");
+	const queryClient = useQueryClient();
+	const [pending, setPending] = useState(false);
+	const [candidates, setCandidates] = useState<readonly string[]>([]);
+
+	const openResolvedFile = (relativePath: string) => {
+		sdk.plugins.get<FilesCapabilities>("files")?.fileViewer.openFile({
+			sessionId: linkContext.sessionId,
+			...fileTarget,
+			relativePath,
+		});
+	};
+
+	const resolveAndOpen = async () => {
+		setPending(true);
+		try {
+			const resolution = await queryClient.fetchQuery({
+				queryKey: [
+					sdk.featureId,
+					"resolve-file-link",
+					fileTarget.workspaceDirectory,
+					fileTarget.relativePath,
+				],
+				queryFn: () =>
+					sdk.client.resolveFileLink({
+						workspaceDirectory: fileTarget.workspaceDirectory,
+						relativePath: fileTarget.relativePath,
+					}),
+				staleTime: RESOLVED_LINK_STALE_TIME_MS,
+			});
+			const [onlyPath] = resolution.paths;
+			if (resolution.paths.length === 1 && onlyPath !== undefined) {
+				openResolvedFile(onlyPath);
+			} else if (resolution.paths.length > 1) {
+				setCandidates(resolution.paths);
+			} else {
+				toast.error(notFoundMessage(fileTarget.relativePath, resolution.truncated));
+			}
+		} catch {
+			toast.error(`Could not open ${fileTarget.relativePath}.`);
+		} finally {
+			setPending(false);
+		}
+	};
+
+	return (
+		<>
+			<FileLinkChip
+				{...props}
+				aria-busy={pending ? true : undefined}
+				fileTarget={fileTarget}
+				onOpenFile={() => void resolveAndOpen()}
+			/>
+			{candidates.length > 0 ? (
+				<FileLinkCandidatesDialog
+					paths={candidates}
+					onOpenChange={(open) => {
+						if (!open) setCandidates([]);
+					}}
+					onSelect={(relativePath) => {
+						setCandidates([]);
+						openResolvedFile(relativePath);
+					}}
+				/>
+			) : null}
+		</>
+	);
+}
+
 function ChatFileLink({
 	fileTarget,
 	linkContext,
@@ -54,7 +148,6 @@ function ChatFileLink({
 	children,
 	...props
 }: FileMarkdownLinkProps<ChatFileLinkContext>) {
-	const sdk = useSdk("files");
 	if (requiresWorkspaceFile) {
 		return (
 			<WorkspaceCandidateFileLink
@@ -68,16 +161,11 @@ function ChatFileLink({
 		);
 	}
 	return (
-		<FileLinkChip
+		<ResolvableFileLinkChip
 			{...props}
 			children={children}
 			fileTarget={fileTarget}
-			onOpenFile={(file) => {
-				sdk.plugins.get<FilesCapabilities>("files")?.fileViewer.openFile({
-					sessionId: linkContext.sessionId,
-					...file,
-				});
-			}}
+			linkContext={linkContext}
 			{...(parentSuffix ? { parentSuffix } : {})}
 		/>
 	);

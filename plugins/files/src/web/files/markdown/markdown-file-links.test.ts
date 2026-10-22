@@ -17,6 +17,18 @@ describe("resolveMarkdownFileLink", () => {
 		});
 	});
 
+	it("does not claim scheme-less web hostnames as workspace files", () => {
+		const folders = [{ path: "/workspace/project", isPrimary: true }];
+
+		expect(resolveMarkdownFileLink("github.com/anaconda/repo", folders)).toBeNull();
+		expect(resolveMarkdownFileLink("docs.anaconda.com/guide.html", folders)).toBeNull();
+		expect(resolveMarkdownFileLink("docs.anaconda.com/guide.html#L3", folders)).toBeNull();
+		expect(resolveMarkdownFileLink("src/github.com/a.ts", folders)).toEqual({
+			workspaceDirectory: "/workspace/project",
+			relativePath: "src/github.com/a.ts",
+		});
+	});
+
 	it("maps an absolute file URL to the workspace that owns it", () => {
 		expect(
 			resolveMarkdownFileLink("file:///workspace/docs/My%20Guide.md#L8", [

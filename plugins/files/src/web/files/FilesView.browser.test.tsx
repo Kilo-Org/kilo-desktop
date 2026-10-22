@@ -170,6 +170,7 @@ const handlers = (): FilesServiceContract => ({
 		truncated: false,
 	}),
 	existingPaths: async ({ relativePaths }) => ({ paths: relativePaths }),
+	resolveFileLink: async () => ({ kind: "none", paths: [], truncated: false }),
 	read: async ({ relativePath }) => ({
 		kind: "text",
 		contents: relativePath.endsWith(".md") ? "# Read me" : "export const value = 1;",

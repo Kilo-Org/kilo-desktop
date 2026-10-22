@@ -621,4 +621,246 @@ describe("FilesService", () => {
 		expect(overwritten.status).toBe("saved");
 		expect(await readFile(file, "utf8")).toBe("three\n");
 	});
+
+	describe("resolveFileLink", () => {
+		async function writeWorkspaceFile(workspace: string, relativePath: string): Promise<void> {
+			await mkdir(path.dirname(path.join(workspace, relativePath)), { recursive: true });
+			await writeFile(path.join(workspace, relativePath), relativePath);
+		}
+
+		function serviceFor(options: { scanLimit?: number; fileSystem?: typeof fs } = {}) {
+			return new FilesService({
+				authorize: async () => undefined,
+				gitStatus: async () => null,
+				...(options.fileSystem ? { fileSystem: options.fileSystem } : {}),
+				...(options.scanLimit !== undefined ? { resolveScanLimit: options.scanLimit } : {}),
+			});
+		}
+
+		it("returns exact for a file at the root", async () => {
+			const workspace = await temporaryWorkspace();
+			await writeWorkspaceFile(workspace, "src/a.ts");
+
+			await expect(serviceFor().resolveFileLink(workspace, "src/a.ts")).resolves.toEqual({
+				kind: "exact",
+				paths: ["src/a.ts"],
+				truncated: false,
+			});
+		});
+
+		it("returns the one suffix match for a link written against a subfolder", async () => {
+			const workspace = await temporaryWorkspace();
+			await writeWorkspaceFile(workspace, "pkg/src/a.ts");
+
+			await expect(serviceFor().resolveFileLink(workspace, "src/a.ts")).resolves.toEqual({
+				kind: "matches",
+				paths: ["pkg/src/a.ts"],
+				truncated: false,
+			});
+		});
+
+		it("rejects a basename match in a different directory", async () => {
+			const workspace = await temporaryWorkspace();
+			await writeWorkspaceFile(workspace, "lib/a.ts");
+
+			await expect(serviceFor().resolveFileLink(workspace, "src/a.ts")).resolves.toEqual({
+				kind: "none",
+				paths: [],
+				truncated: false,
+			});
+		});
+
+		it("requires a path-segment boundary before the link path", async () => {
+			const workspace = await temporaryWorkspace();
+			await writeWorkspaceFile(workspace, "xsrc/a.ts");
+
+			await expect(serviceFor().resolveFileLink(workspace, "src/a.ts")).resolves.toMatchObject({
+				kind: "none",
+			});
+		});
+
+		it("excludes matches in gitignored directories", async () => {
+			const workspace = await temporaryWorkspace();
+			await writeFile(path.join(workspace, ".gitignore"), "node_modules/\n.venv/\n");
+			await writeWorkspaceFile(workspace, "node_modules/x/src/a.ts");
+			await writeWorkspaceFile(workspace, ".venv/lib/site-packages/src/a.ts");
+			await writeWorkspaceFile(workspace, "pkg/src/a.ts");
+
+			await expect(serviceFor().resolveFileLink(workspace, "src/a.ts")).resolves.toEqual({
+				kind: "matches",
+				paths: ["pkg/src/a.ts"],
+				truncated: false,
+			});
+		});
+
+		it("does not let gitignored copies use up the scan limit", async () => {
+			const workspace = await temporaryWorkspace();
+			await writeFile(path.join(workspace, ".gitignore"), ".venv/\n");
+			for (const index of [1, 2, 3, 4]) {
+				await writeWorkspaceFile(workspace, `.venv/p${String(index)}/__init__.py`);
+			}
+			await writeWorkspaceFile(workspace, "src/pkg/__init__.py");
+
+			await expect(
+				serviceFor({ scanLimit: 3 }).resolveFileLink(workspace, "pkg/__init__.py"),
+			).resolves.toEqual({ kind: "matches", paths: ["src/pkg/__init__.py"], truncated: false });
+		});
+
+		it("still searches node_modules when it is not gitignored", async () => {
+			const workspace = await temporaryWorkspace();
+			await writeWorkspaceFile(workspace, "node_modules/x/src/a.ts");
+
+			await expect(serviceFor().resolveFileLink(workspace, "src/a.ts")).resolves.toEqual({
+				kind: "matches",
+				paths: ["node_modules/x/src/a.ts"],
+				truncated: false,
+			});
+		});
+
+		it("excludes matches under .git", async () => {
+			const workspace = await temporaryWorkspace();
+			await writeWorkspaceFile(workspace, ".git/src/a.ts");
+
+			await expect(serviceFor().resolveFileLink(workspace, "src/a.ts")).resolves.toMatchObject({
+				kind: "none",
+			});
+		});
+
+		it("excludes copies inside the main repo's .kilo/worktrees directory", async () => {
+			const workspace = await temporaryWorkspace();
+			await writeWorkspaceFile(workspace, ".kilo/worktrees/wt-one/src/a.ts");
+			await writeWorkspaceFile(workspace, "pkg/src/a.ts");
+
+			await expect(serviceFor().resolveFileLink(workspace, "src/a.ts")).resolves.toEqual({
+				kind: "matches",
+				paths: ["pkg/src/a.ts"],
+				truncated: false,
+			});
+		});
+
+		it("returns none when the only copy lives in a worktree", async () => {
+			const workspace = await temporaryWorkspace();
+			await writeWorkspaceFile(workspace, ".kilo/worktrees/wt-one/src/a.ts");
+
+			await expect(serviceFor().resolveFileLink(workspace, "src/a.ts")).resolves.toEqual({
+				kind: "none",
+				paths: [],
+				truncated: false,
+			});
+		});
+
+		it("does not search nested worktrees from inside a worktree root", async () => {
+			const main = await temporaryWorkspace();
+			const worktree = path.join(main, ".kilo", "worktrees", "wt-one");
+			await writeWorkspaceFile(worktree, ".kilo/worktrees/wt-two/src/a.ts");
+
+			await expect(serviceFor().resolveFileLink(worktree, "src/a.ts")).resolves.toEqual({
+				kind: "none",
+				paths: [],
+				truncated: false,
+			});
+		});
+
+		it("finds bracketed Next.js route names literally", async () => {
+			const workspace = await temporaryWorkspace();
+			await writeWorkspaceFile(workspace, "web/app/[id]/page.tsx");
+
+			await expect(serviceFor().resolveFileLink(workspace, "app/[id]/page.tsx")).resolves.toEqual({
+				kind: "matches",
+				paths: ["web/app/[id]/page.tsx"],
+				truncated: false,
+			});
+		});
+
+		it("does not return a symlink whose target is outside the root", async () => {
+			const workspace = await temporaryWorkspace();
+			const outside = await temporaryWorkspace();
+			await writeFile(path.join(outside, "secret.ts"), "secret");
+			await mkdir(path.join(workspace, "pkg", "src"), { recursive: true });
+			await symlink(path.join(outside, "secret.ts"), path.join(workspace, "pkg", "src", "a.ts"));
+
+			await expect(serviceFor().resolveFileLink(workspace, "src/a.ts")).resolves.toMatchObject({
+				kind: "none",
+				paths: [],
+			});
+		});
+
+		it("stops walking at the limit and reports truncation", async () => {
+			const workspace = await temporaryWorkspace();
+			for (const index of [1, 2, 3, 4, 5]) {
+				await writeWorkspaceFile(workspace, `d${String(index)}/lib/a.ts`);
+			}
+
+			await expect(
+				serviceFor({ scanLimit: 3 }).resolveFileLink(workspace, "src/a.ts"),
+			).resolves.toEqual({ kind: "none", paths: [], truncated: true });
+		});
+
+		it("returns none when nothing matches", async () => {
+			const workspace = await temporaryWorkspace();
+			await writeWorkspaceFile(workspace, "other.ts");
+
+			await expect(serviceFor().resolveFileLink(workspace, "src/a.ts")).resolves.toEqual({
+				kind: "none",
+				paths: [],
+				truncated: false,
+			});
+		});
+
+		it("skips an unreadable subdirectory and still finds matches elsewhere", async () => {
+			const workspace = await temporaryWorkspace();
+			await writeWorkspaceFile(workspace, "locked/inner.txt");
+			await writeWorkspaceFile(workspace, "pkg/src/a.ts");
+			const lockedDirectory = path.join(workspace, "locked");
+			const fileSystem = fakeFileSystem((directory) => directory === lockedDirectory);
+
+			await expect(
+				serviceFor({ fileSystem }).resolveFileLink(workspace, "src/a.ts"),
+			).resolves.toEqual({ kind: "matches", paths: ["pkg/src/a.ts"], truncated: false });
+		});
+
+		it("shares one walk between concurrent calls for the same basename", async () => {
+			const workspace = await temporaryWorkspace();
+			await writeWorkspaceFile(workspace, "pkg/src/a.ts");
+			await writeWorkspaceFile(workspace, "pkg/lib/a.ts");
+			const root = await realpath(workspace);
+			let rootReads = 0;
+			const countingFileSystem = {
+				...fs,
+				readdir: ((
+					directory: fs.PathLike,
+					options: unknown,
+					callback: (error: NodeJS.ErrnoException | null, entries?: unknown) => void,
+				) => {
+					if (String(directory) === root) rootReads += 1;
+					return (fs.readdir as (...args: unknown[]) => unknown)(directory, options, callback);
+				}) as typeof fs.readdir,
+			};
+			const service = serviceFor({ fileSystem: countingFileSystem });
+			await service.resolveFileLink(workspace, "src/a.ts");
+			const rootReadsPerWalk = rootReads;
+			rootReads = 0;
+
+			const [first, second] = await Promise.all([
+				service.resolveFileLink(workspace, "src/a.ts"),
+				service.resolveFileLink(workspace, "lib/a.ts"),
+			]);
+
+			expect(rootReadsPerWalk).toBeGreaterThan(0);
+			expect(rootReads).toBe(rootReadsPerWalk);
+			expect(first.paths).toEqual(["pkg/src/a.ts"]);
+			expect(second.paths).toEqual(["pkg/lib/a.ts"]);
+		});
+
+		it("rejects a link containing a parent segment with a validation error", async () => {
+			const workspace = await temporaryWorkspace();
+
+			const rejection = await serviceFor()
+				.resolveFileLink(workspace, "../secret.ts")
+				.catch((error: unknown) => error);
+
+			expect(rejection).toBeInstanceOf(FeatureError);
+			expect(rejection).toMatchObject({ code: "VALIDATION" });
+		});
+	});
 });

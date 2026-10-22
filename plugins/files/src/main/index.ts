@@ -31,6 +31,8 @@ export function mainRegister(
 		existingPaths: async ({ workspaceDirectory, relativePaths }) => ({
 			paths: await service.existingPaths(workspaceDirectory, relativePaths),
 		}),
+		resolveFileLink: ({ workspaceDirectory, relativePath }) =>
+			service.resolveFileLink(workspaceDirectory, relativePath),
 		read: ({ workspaceDirectory, relativePath }) => service.read(workspaceDirectory, relativePath),
 		listExternalEditors: async () => ({ editors: [...(await editorLauncher.listAvailable())] }),
 		openExternalEditor: async ({ workspaceDirectory, relativePath, editor }) => {

@@ -244,6 +244,7 @@ describe("Sift adapter (real @nteract/sift)", () => {
 		const handlers: FilesServiceContract = {
 			list: async () => ({ paths: [], truncated: false }),
 			existingPaths: async ({ relativePaths }) => ({ paths: relativePaths }),
+			resolveFileLink: async () => ({ kind: "none", paths: [], truncated: false }),
 			read: async () => ({
 				kind: "text",
 				contents,

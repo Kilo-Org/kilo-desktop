@@ -212,6 +212,14 @@ function looksLikeHostname(segment: string, hasPosition: boolean): boolean {
 	return !hasPosition && COUNTRY_HOSTNAME_TLDS.has(lastLabel);
 }
 
+/** `github.com/a/b` is a web address written without a scheme, not a workspace path. */
+function isBareHostnamePath(path: string, hasPosition: boolean): boolean {
+	if (RELATIVE_PATH_PREFIX_PATTERN.test(path) || path.startsWith("/")) return false;
+	if (WINDOWS_DRIVE_PATH_PATTERN.test(path) || WINDOWS_UNC_PATH_PATTERN.test(path)) return false;
+	const firstSegment = path.split("/")[0] ?? path;
+	return path.includes("/") && looksLikeHostname(firstSegment, hasPosition);
+}
+
 function hasExternalScheme(path: string): boolean {
 	const match = path.match(URI_SCHEME);
 	if (!match) return false;
@@ -284,6 +292,8 @@ export function resolveMarkdownFileLink(
 			column = suffix[3] ? Number.parseInt(suffix[3], 10) : undefined;
 		}
 	}
+
+	if (isBareHostnamePath(decodedPath, line !== undefined)) return null;
 
 	const relativeDirectory = relativeTo
 		? normalizePath(relativeTo).split("/").slice(0, -1).join("/")

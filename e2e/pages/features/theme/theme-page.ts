@@ -2,16 +2,47 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { click, expectElementToContainText, getLocatorByTestId } from "@anaconda/playwright-utils";
+import {
+	click,
+	expectElementToContainText,
+	expectElementToHaveAttribute,
+	getLocatorByTestId,
+} from "@anaconda/playwright-utils";
 import { getPage, setPage } from "@anaconda/playwright-utils/page-utils";
 import { expect } from "@playwright/test";
 import { _electron as electron, type ElectronApplication } from "playwright";
 
 import { removePathAfterAppStops, waitForMainWindow } from "../../../fixtures/electron.js";
 import { packagedAppLaunchEnv } from "../../../utils/app-launcher.js";
+import { type ThemeSource } from "../../../testdata/theme.js";
 import { packagedExecutable } from "../../../utils/paths.js";
 
 export class ThemePage {
+	private readonly themeCard = (source: ThemeSource) =>
+		getLocatorByTestId(`appearance-theme-${source}`);
+
+	constructor(private readonly app: ElectronApplication) {}
+
+	async openAppearanceSettings(): Promise<void> {
+		await click(getLocatorByTestId("nav-settings"));
+		await click(getLocatorByTestId("settings-section-appearance"));
+	}
+
+	async selectThemeSource(source: ThemeSource): Promise<void> {
+		await click(this.themeCard(source));
+	}
+
+	async verifyNativeThemeSource(source: ThemeSource): Promise<void> {
+		await expectElementToHaveAttribute(this.themeCard(source), "aria-checked", "true", {
+			message: `The ${source} theme card should be selected`,
+		});
+		await expect
+			.poll(() => this.app.evaluate(({ nativeTheme }) => nativeTheme.themeSource), {
+				message: `Native menus and dialogs should follow the ${source} selection without a restart`,
+			})
+			.toBe(source);
+	}
+
 	async verifyThemeSurvivesRestart(): Promise<void> {
 		// Keep the worker's shared app alive; restart only this disposable profile.
 		const sharedPage = getPage();

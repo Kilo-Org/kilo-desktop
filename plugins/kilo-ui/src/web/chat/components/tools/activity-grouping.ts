@@ -1,5 +1,9 @@
 import { getMcpAppFromToolPart, type GroupByContext, type PartState } from "@assistant-ui/react";
 
+import {
+	HTML_RENDER_AGENT_TOOL_NAME,
+	readHtmlRenderArgs,
+} from "../../../../contracts/html-render/schemas.js";
 import { shouldExcludeToolCallFromActivityGroup } from "../../plan/plan-projection.js";
 import { isHostableMcpAppTool } from "../../runtime/mcp-app-registry.js";
 import { isHiddenOpenCodeDataPart } from "./opencode-data-part.js";
@@ -24,6 +28,25 @@ type ActivityNeighbors = {
 	before?: PartState | undefined;
 	after?: PartState | undefined;
 };
+
+/**
+ * Tool calls whose result is part of the answer (an `html_render` page). Like
+ * t3code, they never fold: while the turn runs they show in place, outside any
+ * activity group; once it settles they join the turn fold invisibly, so the
+ * work on both sides folds as one, and the message shows them right below the
+ * fold (`FoldHoistedParts`).
+ */
+export const isFoldHoistedPart = (part: PartState): boolean =>
+	part.type === "tool-call" && part.toolName === HTML_RENDER_AGENT_TOOL_NAME;
+
+/**
+ * Whether a fold-hoisted call has a page to show. One that failed has none;
+ * it stays in the fold as an ordinary row.
+ */
+export const showsHoistedPage = (part: {
+	readonly args: unknown;
+	readonly status: { readonly type: string };
+}): boolean => part.status.type === "complete" && readHtmlRenderArgs(part.args) !== undefined;
 
 const isComposerProjectedPart = (part: PartState): boolean =>
 	part.type === "tool-call" && isComposerProjectedTool(part.toolName);
@@ -83,7 +106,9 @@ const getDirectActivityPath = (
 		return ["group-activity", "group-thinking"];
 	}
 	if (part.type !== "tool-call") return undefined;
-	if (shouldKeepPartOutsideActivity(part, context, options)) return undefined;
+	if (isFoldHoistedPart(part) || shouldKeepPartOutsideActivity(part, context, options)) {
+		return undefined;
+	}
 	return ["group-activity", getGroupKeyForTool(part.toolName)];
 };
 
@@ -164,7 +189,9 @@ const isFoldableWork = (
 	options: ActivityGroupingOptions,
 ): boolean =>
 	(part.type === "reasoning" && Boolean(part.text.trim())) ||
-	(part.type === "tool-call" && !shouldKeepPartOutsideActivity(part, context, options));
+	(part.type === "tool-call" &&
+		!isFoldHoistedPart(part) &&
+		!shouldKeepPartOutsideActivity(part, context, options));
 
 type TurnWorkLayout = {
 	/** -1 when the turn has no final answer to leave outside the fold. */
@@ -178,6 +205,8 @@ type TurnWorkLayout = {
  * A turn that ends in work (e.g. narration followed by delegations) has no
  * final answer, so its last text folds with the rest. Standalone tools stay
  * outside because they can remain actionable after the surrounding turn settles.
+ * Fold-hoisted parts sit inside the fold, borrowing a neighbor's path so they
+ * never split an activity group; the message renders them below the fold.
  */
 export const createTurnWorkGroupBy = (
 	parts: readonly PartState[],
@@ -213,20 +242,41 @@ export const createTurnWorkGroupBy = (
 		return layout;
 	};
 
-	return (part: PartState, context: GroupByContext): readonly `group-${string}`[] => {
+	const isInFoldRange = (index: number, layout: TurnWorkLayout): boolean =>
+		layout.hasVisibleWork &&
+		index >= 0 &&
+		!(layout.firstStandaloneIndex >= 0 && layout.firstStandaloneIndex < index) &&
+		!(layout.finalTextIndex >= 0 && index >= layout.finalTextIndex);
+
+	const pathFor = (part: PartState, context: GroupByContext): readonly `group-${string}`[] => {
 		const activityPath = activityGroupBy(part, context);
-		const index = indices.get(part) ?? -1;
-		const { finalTextIndex, firstStandaloneIndex, hasVisibleWork } = layoutFor(context);
-		const followsStandalonePart = firstStandaloneIndex >= 0 && firstStandaloneIndex < index;
 		if (
-			!hasVisibleWork ||
-			index < 0 ||
-			followsStandalonePart ||
-			(finalTextIndex >= 0 && index >= finalTextIndex) ||
+			!isInFoldRange(indices.get(part) ?? -1, layoutFor(context)) ||
 			(shouldKeepPartOutsideActivity(part, context, options) && !isHiddenStructuralPart(part))
 		) {
 			return activityPath;
 		}
 		return ["group-turn-work", ...activityPath];
+	};
+
+	const foldedNeighborPath = (index: number, step: 1 | -1, context: GroupByContext) => {
+		for (let at = index + step; at >= 0 && at < parts.length; at += step) {
+			const neighbor = parts[at]!;
+			if (isFoldHoistedPart(neighbor)) continue;
+			const path = pathFor(neighbor, context);
+			return path[0] === "group-turn-work" ? path : undefined;
+		}
+		return undefined;
+	};
+
+	return (part: PartState, context: GroupByContext): readonly `group-${string}`[] => {
+		if (!isFoldHoistedPart(part)) return pathFor(part, context);
+		const index = indices.get(part) ?? -1;
+		if (!isInFoldRange(index, layoutFor(context))) return activityGroupBy(part, context);
+		if (part.type !== "tool-call" || !showsHoistedPage(part)) return ["group-turn-work"];
+		return (
+			foldedNeighborPath(index, -1, context) ??
+			foldedNeighborPath(index, 1, context) ?? ["group-turn-work"]
+		);
 	};
 };

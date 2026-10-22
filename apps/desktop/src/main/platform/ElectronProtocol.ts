@@ -6,7 +6,11 @@ import { net, protocol } from "electron";
 
 import {
 	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+	HTML_RENDER_CONTENT_SECURITY_PROFILE,
+	BROWSER_LOCAL_FILE_SCHEME,
+	createHtmlRenderContentSecurityPolicy,
 	type EmbeddedWebHost,
+	type EmbeddedWebHostSecurityProfile,
 } from "@kilo-desktop/feature-sdk/main";
 
 export const DESKTOP_HOST = "app";
@@ -20,6 +24,8 @@ const HOLOVIZ_CDN_SOURCE = "https://cdn.holoviz.org";
 
 const MIME_TYPES: Readonly<Record<string, string>> = {
 	".css": "text/css; charset=utf-8",
+	".gif": "image/gif",
+	".htm": "text/html; charset=utf-8",
 	".html": "text/html; charset=utf-8",
 	".ico": "image/x-icon",
 	".jpeg": "image/jpeg",
@@ -70,8 +76,8 @@ export function getDesktopRouteUrl(
 }
 
 export function registerDesktopSchemes(pluginSchemes: readonly string[]): void {
-	protocol.registerSchemesAsPrivileged(
-		[DESKTOP_PRODUCTION_SCHEME, DESKTOP_DEVELOPMENT_SCHEME, ...pluginSchemes].map((scheme) => ({
+	protocol.registerSchemesAsPrivileged([
+		...[DESKTOP_PRODUCTION_SCHEME, DESKTOP_DEVELOPMENT_SCHEME, ...pluginSchemes].map((scheme) => ({
 			scheme,
 			privileges: {
 				standard: true,
@@ -81,7 +87,11 @@ export function registerDesktopSchemes(pluginSchemes: readonly string[]): void {
 				stream: true,
 			},
 		})),
-	);
+		// Workspace files in the Browser tab (handled on the browser partition
+		// only). Standard so a page's relative links resolve and `'self'` names
+		// its folder; no fetch/CORS privileges, matching its `connect-src 'none'`.
+		{ scheme: BROWSER_LOCAL_FILE_SCHEME, privileges: { standard: true, stream: true } },
+	]);
 }
 
 export function createContentSecurityPolicy(
@@ -194,6 +204,21 @@ export function createActiveUntrustedContentSecurityPolicy(): string {
 	].join("; ");
 }
 
+function embeddedPolicyFor(
+	profile: EmbeddedWebHostSecurityProfile | undefined,
+	appOrigin: string,
+): ContentSecurityPolicyBuilder {
+	switch (profile) {
+		case ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE:
+			return () => createActiveUntrustedContentSecurityPolicy();
+		case HTML_RENDER_CONTENT_SECURITY_PROFILE:
+			return () => createHtmlRenderContentSecurityPolicy();
+		default:
+			return (inlineScriptHashes) =>
+				createEmbeddedContentSecurityPolicy(appOrigin, inlineScriptHashes);
+	}
+}
+
 /** Exact host match, so a near-miss cannot borrow an embedded host's policy. */
 export function findEmbeddedHost(
 	hosts: readonly EmbeddedWebHost[],
@@ -268,7 +293,7 @@ async function withSecurityHeaders(
 	});
 }
 
-function contentTypeFor(filePath: string): string {
+export function contentTypeFor(filePath: string): string {
 	return MIME_TYPES[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
 }
 
@@ -362,15 +387,9 @@ export class ElectronProtocol {
 						appPolicyFor(embeddedHosts),
 					);
 				}
-				const embeddedPolicy = (inlineScriptHashes: readonly string[]) =>
-					createEmbeddedContentSecurityPolicy(appOrigin, inlineScriptHashes);
-				const activeUntrustedContentPolicy = () => createActiveUntrustedContentSecurityPolicy();
 				return withSecurityHeaders(
 					await serveEmbeddedHost(embedded, requestUrl),
-					embedded.securityProfiles?.[requestUrl.pathname] ===
-						ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE
-						? activeUntrustedContentPolicy
-						: embeddedPolicy,
+					embeddedPolicyFor(embedded.securityProfiles?.[requestUrl.pathname], appOrigin),
 				);
 			}
 

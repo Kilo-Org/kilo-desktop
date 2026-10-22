@@ -23,6 +23,7 @@ import { protocol } from "electron";
 
 import {
 	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+	HTML_RENDER_CONTENT_SECURITY_PROFILE,
 	type EmbeddedWebHost,
 } from "@kilo-desktop/feature-sdk/main";
 
@@ -591,6 +592,40 @@ describe("ElectronProtocol", () => {
 			appPolicy.split(";").find((directive) => directive.trimStart().startsWith("script-src")) ??
 			"";
 		expect(appScriptSrc).not.toContain("'unsafe-inline'");
+	});
+
+	it("serves an inline document under the html-render policy without network access", async () => {
+		const appRoot = await mkdtemp(path.join(os.tmpdir(), "kilo-desktop-renderer-"));
+		temporaryDirectories.push(appRoot);
+		await writeFile(path.join(appRoot, "index.html"), "app");
+
+		const adapter = new ElectronProtocol();
+		adapter.register({
+			isDevelopment: false,
+			rendererRoot: appRoot,
+			embeddedHosts: () => [
+				{
+					host: "mcp-app",
+					root: undefined,
+					documents: { "/html-render.html": "<!doctype html><body><script>1</script></body>" },
+					securityProfiles: { "/html-render.html": HTML_RENDER_CONTENT_SECURITY_PROFILE },
+				},
+			],
+		});
+		const protocolHandler = handle.mock.calls[0]?.[1] as (request: Request) => Promise<Response>;
+
+		const page = await protocolHandler(new Request("kilo-desktop://mcp-app/html-render.html"));
+		const directives = (page.headers.get("Content-Security-Policy") ?? "")
+			.split(";")
+			.map((directive) => directive.trim());
+		const directive = (name: string) => directives.find((entry) => entry.startsWith(`${name} `));
+
+		expect(directive("script-src")).toContain("'unsafe-inline'");
+		expect(directive("script-src")).toContain("https://cdn.jsdelivr.net");
+		expect(directive("connect-src")).toBe("connect-src 'none'");
+		expect(directive("img-src")).toBe("img-src data: blob:");
+		expect(directive("form-action")).toBe("form-action 'none'");
+		expect(directives.join(";")).not.toMatch(/127\.0\.0\.1|localhost/);
 	});
 
 	it("keeps the app policy byte-identical when no host is contributed", async () => {

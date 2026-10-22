@@ -41,6 +41,8 @@ import { OpenCodeComposerInteraction } from "../tools/opencode-composer-interact
 import { OPENCODE_SNAPSHOT_PROGRESS_PART } from "../tools/opencode-data-part.js";
 import { FallbackTool } from "../tools/opencode-tools.js";
 import { ToolCallSignInGate } from "../tools/tool-sign-in-card.js";
+import { TurnWorkFoldContext } from "../tools/turn-work-fold-context.js";
+import { FoldHoistedParts } from "../../html-render/HtmlRenderToolUI.js";
 import { activityKindFromGroupKey, isDelegationTool } from "../tools/tool-categories.js";
 import { getPlanProjectionForMessage } from "../../plan/index.js";
 import { useApprovePlan } from "../../plan/use-approve-plan.js";
@@ -1112,7 +1114,9 @@ const TurnWorkDisclosure: FC<
 				)}
 			</CollapsibleTrigger>
 			<CollapsibleContent className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] data-[ending-style]:h-0 data-[starting-style]:h-0 motion-reduce:transition-none">
-				<div className="pt-2 [&>[data-slot=activity-group]:last-child]:mb-0">{children}</div>
+				<div className="pt-2 [&>[data-slot=activity-group]:last-child]:mb-0">
+					<TurnWorkFoldContext.Provider value>{children}</TurnWorkFoldContext.Provider>
+				</div>
 			</CollapsibleContent>
 		</Collapsible>
 	);
@@ -1340,15 +1344,22 @@ const AssistantMessage: FC = () => {
 							switch (part.type) {
 								case "group-turn-work":
 									return (
-										<TurnWorkDisclosure
-											animateCollapse={animateWorkCollapse}
-											revealNonce={delegationRevealNonce}
-											duration={duration}
-											interrupted={interrupted}
-											onPresenceChange={setHasTurnWorkFold}
-										>
-											{children}
-										</TurnWorkDisclosure>
+										<>
+											<TurnWorkDisclosure
+												animateCollapse={animateWorkCollapse}
+												revealNonce={delegationRevealNonce}
+												duration={duration}
+												interrupted={interrupted}
+												onPresenceChange={setHasTurnWorkFold}
+											>
+												{children}
+											</TurnWorkDisclosure>
+											{"indices" in part ? (
+												<FoldHoistedParts
+													parts={part.indices.map((index) => messageParts[index]!)}
+												/>
+											) : null}
+										</>
 									);
 								case "group-activity":
 									return <ActivityGroup group={part}>{children}</ActivityGroup>;

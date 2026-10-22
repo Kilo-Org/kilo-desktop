@@ -3,11 +3,21 @@ export {
 	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
 	CLIPBOARD_WRITE_EMBEDDED_PERMISSION,
 	EMBEDDED_WEB_HOST_CAPABILITY,
+	EMBEDDED_WEB_HOST_SECURITY_PROFILES,
+	HTML_RENDER_CONTENT_SECURITY_PROFILE,
+	createBrowserLocalFileContentSecurityPolicy,
+	createHtmlRenderContentSecurityPolicy,
 	type EmbeddedWebHost,
 	type EmbeddedWebHostPermission,
 	type EmbeddedWebHostRouteContext,
 	type EmbeddedWebHostSecurityProfile,
 } from "./types/embedded-web-host.js";
+export {
+	BROWSER_LOCAL_FILE_SCHEME,
+	browserLocalFilePath,
+	browserLocalFileUrl,
+	isBrowserLocalFileUrl,
+} from "./types/browser-local-file.js";
 
 export type {
 	MainSdk,

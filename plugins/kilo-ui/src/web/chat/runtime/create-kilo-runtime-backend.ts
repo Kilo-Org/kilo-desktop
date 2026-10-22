@@ -19,6 +19,7 @@ import {
 	sessionListPageQuery,
 } from "../../../contracts/chat/session-list-pages.js";
 import { LOCAL_MODEL_SERVER_PROVIDER_ID } from "../../providers/provider-ids.js";
+import { HTML_RENDER_SYSTEM_PROMPT } from "../html-render/html-render-tool.js";
 import {
 	hydratePromptAncestry,
 	hydrateSessionActivity,
@@ -245,7 +246,10 @@ export function createKiloRuntimeBackend({
 		...(getKnownCommandNames ? { getKnownCommandNames } : {}),
 		getSystem: (prompt) => {
 			const sessionId = typeof prompt.sessionID === "string" ? prompt.sessionID : undefined;
-			return sessionId ? workspaceSystemBySessionId.get(sessionId) : undefined;
+			const workspaceSystem = sessionId ? workspaceSystemBySessionId.get(sessionId) : undefined;
+			// The html_render tool is registered by this plugin, so the prompt that
+			// tells the model to use it ships with it.
+			return [workspaceSystem, HTML_RENDER_SYSTEM_PROMPT].filter(Boolean).join("\n\n");
 		},
 	};
 

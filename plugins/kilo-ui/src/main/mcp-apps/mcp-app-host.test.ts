@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE } from "@kilo-desktop/feature-sdk/main";
+import {
+	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+	HTML_RENDER_CONTENT_SECURITY_PROFILE,
+} from "@kilo-desktop/feature-sdk/main";
 
+import { HTML_RENDER_DOCUMENT_PATH } from "../../contracts/html-render/schemas.js";
 import {
 	MCP_APP_SHELL_READY_MESSAGE,
 	MCP_APP_WIDGET_DOCUMENT_PATH,
@@ -10,30 +14,32 @@ import {
 import { createMcpAppEmbeddedHost } from "./mcp-app-host.js";
 
 describe("createMcpAppEmbeddedHost", () => {
-	it("serves only the inline widget shell document (no filesystem bundle)", () => {
+	it("serves only the inline shell documents (no filesystem bundle)", () => {
 		const host = createMcpAppEmbeddedHost();
 
 		expect(host.host).toBe(MCP_APP_WIDGET_HOST);
-		// Document-only host: no bundled root to serve or shadow the shell.
+		// Document-only host: no bundled root to serve or shadow the shells.
 		expect(host.root).toBeUndefined();
-		expect(Object.keys(host.documents ?? {})).toEqual([MCP_APP_WIDGET_DOCUMENT_PATH]);
-		// The shell carries the handshake the renderer depends on.
-		expect(host.documents?.[MCP_APP_WIDGET_DOCUMENT_PATH]).toContain(MCP_APP_SHELL_READY_MESSAGE);
+		expect(Object.keys(host.documents ?? {})).toEqual([
+			MCP_APP_WIDGET_DOCUMENT_PATH,
+			HTML_RENDER_DOCUMENT_PATH,
+		]);
+		// Each shell carries the handshake the renderer depends on.
+		for (const document of Object.values(host.documents ?? {})) {
+			expect(document).toContain(MCP_APP_SHELL_READY_MESSAGE);
+		}
 	});
 
-	it("applies the active-untrusted profile to exactly the served document (fail-closed on a key typo)", () => {
+	it("gives every served document its own isolated profile (fail-closed on a key typo)", () => {
 		const host = createMcpAppEmbeddedHost();
-		const documents: Record<string, string> = host.documents ?? {};
 		const profiles: Record<string, string> = host.securityProfiles ?? {};
 
-		expect(Object.keys(profiles)).toEqual([MCP_APP_WIDGET_DOCUMENT_PATH]);
-		expect(profiles[MCP_APP_WIDGET_DOCUMENT_PATH]).toBe(ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE);
-		// Every served document must carry the profile: a mismatched (typo'd)
-		// profile key leaves the shell on the strict embedded policy — the widget
-		// simply fails closed (inline scripts blocked) rather than the shell
-		// silently loosening the app policy.
-		for (const path of Object.keys(documents)) {
-			expect(profiles[path]).toBe(ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE);
-		}
+		// A mismatched (typo'd) profile key would leave a shell on the strict
+		// embedded policy — its inline scripts are blocked, failing closed rather
+		// than silently loosening the app policy.
+		expect(profiles).toEqual({
+			[MCP_APP_WIDGET_DOCUMENT_PATH]: ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+			[HTML_RENDER_DOCUMENT_PATH]: HTML_RENDER_CONTENT_SECURITY_PROFILE,
+		});
 	});
 });

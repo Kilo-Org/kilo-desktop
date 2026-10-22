@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { defineContract, defineMethod, type InferContract } from "@kilo-desktop/feature-sdk";
 
+import { saveHtmlPageInput, saveHtmlPageResult } from "../html-render/schemas.js";
 import { workspaceFolderInputSchema } from "../workspaces/schemas.js";
 
 export const kiloSessionPreparationInputSchema = z.object({
@@ -155,6 +156,8 @@ export const kiloUiChatContract = defineContract({
 		}),
 		z.undefined(),
 	),
+	/** Saves an `html_render` page into the chat's workspace (see `saveHtmlPageInput`). */
+	"chat.saveHtmlPage": defineMethod(saveHtmlPageInput, saveHtmlPageResult),
 });
 
 export type KiloUiChatService = InferContract<typeof kiloUiChatContract>;

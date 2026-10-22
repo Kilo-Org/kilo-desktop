@@ -1,7 +1,7 @@
 import {
-	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
 	CLIPBOARD_WRITE_EMBEDDED_PERMISSION,
 	EMBEDDED_WEB_HOST_CAPABILITY,
+	EMBEDDED_WEB_HOST_SECURITY_PROFILES,
 	type EmbeddedWebHost,
 } from "@kilo-desktop/feature-sdk/main";
 
@@ -29,7 +29,7 @@ function isEmbeddedWebHost(value: unknown): value is EmbeddedWebHost {
 		if (
 			!Object.entries(candidate.securityProfiles).every(
 				([route, profile]) =>
-					route.startsWith("/") && profile === ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+					route.startsWith("/") && EMBEDDED_WEB_HOST_SECURITY_PROFILES.includes(profile),
 			)
 		) {
 			return false;

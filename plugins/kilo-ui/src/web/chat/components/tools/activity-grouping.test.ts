@@ -6,6 +6,7 @@ import {
 	signInRequiredToolMessage,
 } from "@kilo-desktop/feature-sdk";
 
+import { HTML_RENDER_AGENT_TOOL_NAME } from "../../../../contracts/html-render/schemas.js";
 import { createActivityGroupBy, createTurnWorkGroupBy } from "./activity-grouping.js";
 
 const context: GroupByContext = {};
@@ -27,12 +28,24 @@ const dataPart = (name: string): PartState => ({ type: "data", name, data: {} })
 
 const textPart = (text: string): PartState => ({ type: "text", text }) as PartState;
 
+const pagePart = (toolCallId: string): PartState =>
+	({
+		...toolPart(toolCallId, HTML_RENDER_AGENT_TOOL_NAME),
+		args: { title: "Chart", html: "<p>chart</p>" },
+	}) as PartState;
+
 const groupPaths = (parts: PartState[], options?: Parameters<typeof createActivityGroupBy>[1]) => {
 	const groupBy = createActivityGroupBy(parts, options);
 	return parts.map((part) => groupBy(part, context));
 };
 
 describe("createActivityGroupBy", () => {
+	it("keeps a page outside activity groups while the turn runs", () => {
+		expect(
+			groupPaths([toolPart("read-1", "read"), pagePart("page-1"), toolPart("read-2", "read")]),
+		).toEqual([["group-activity", "group-reading"], [], ["group-activity", "group-reading"]]);
+	});
+
 	it("treats projected task-list calls as hidden activity structure", () => {
 		expect(
 			groupPaths([toolPart("todo-write", "todowrite"), toolPart("todo-read", "todoread")]),
@@ -186,6 +199,46 @@ describe("createTurnWorkGroupBy", () => {
 			["group-activity"],
 			[],
 		]);
+	});
+
+	it("folds the work on both sides of a shown page into one fold, the page invisibly inside it", () => {
+		const parts = [
+			toolPart("read-1", "read"),
+			pagePart("page-1"),
+			toolPart("read-2", "read"),
+			toolPart("bash-1", "bash"),
+			textPart("Final answer"),
+		];
+		const groupBy = createTurnWorkGroupBy(parts);
+
+		expect(parts.map((part) => groupBy(part, context))).toEqual([
+			["group-turn-work", "group-activity", "group-reading"],
+			["group-turn-work", "group-activity", "group-reading"],
+			["group-turn-work", "group-activity", "group-reading"],
+			["group-turn-work", "group-activity", "group-terminal"],
+			[],
+		]);
+	});
+
+	it("keeps a failed page call in the fold as its own row", () => {
+		const parts = [
+			toolPart("read-1", "read"),
+			{ ...pagePart("page-1"), status: { type: "incomplete", reason: "error" } } as PartState,
+			textPart("Final answer"),
+		];
+		const groupBy = createTurnWorkGroupBy(parts);
+
+		expect(groupBy(parts[1]!, context)).toEqual(["group-turn-work"]);
+	});
+
+	it("leaves a page in place when there is no work to fold or it follows the answer", () => {
+		const pageOnly = [pagePart("page-1"), textPart("Final answer")];
+		const pageOnlyGroupBy = createTurnWorkGroupBy(pageOnly);
+		expect(pageOnly.map((part) => pageOnlyGroupBy(part, context))).toEqual([[], []]);
+
+		const afterAnswer = [toolPart("read-1", "read"), textPart("Answer"), pagePart("page-1")];
+		const afterAnswerGroupBy = createTurnWorkGroupBy(afterAnswer);
+		expect(afterAnswerGroupBy(afterAnswer[2]!, context)).toEqual([]);
 	});
 
 	it("folds delegations into the turn without releasing later work from the fold", () => {

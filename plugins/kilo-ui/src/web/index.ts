@@ -1,3 +1,7 @@
+import type { SDK } from "@kilo-desktop/feature-sdk";
+
+import { registerHtmlRenderTool } from "./chat/html-render/html-render-tool.js";
+
 export { AccountNavIcon } from "./account/AccountNavIcon.js";
 export { AccountSettings } from "./account/AccountSettings.js";
 export { kiloUiBrowserRegister as browserRegister } from "./browserRegister.js";
@@ -14,3 +18,7 @@ export { WorkspaceBoardHeaderActions } from "./chat/workspace-board/WorkspaceBoa
 export { SidebarKiloAccount } from "./account/SidebarKiloAccount.js";
 export { WorkspacesFeatureProvider } from "./workspaces/WorkspacesFeatureProvider.js";
 export { WorkspaceSelector } from "./workspaces/WorkspaceSelector.js";
+
+export function webRegister(sdk: SDK): void {
+	registerHtmlRenderTool(sdk);
+}

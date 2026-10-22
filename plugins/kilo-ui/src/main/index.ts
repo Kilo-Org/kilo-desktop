@@ -20,6 +20,7 @@ import { onboardingContract } from "../contracts/onboarding/schemas.js";
 import { modelPreferencesContract } from "../contracts/model-preferences/schemas.js";
 import { kiloUiProvidersContract } from "../contracts/providers/schemas.js";
 import { workspacesContract } from "../contracts/workspaces/schemas.js";
+import { createSaveHtmlPageHandler } from "./html-render/save-html-page.js";
 import { createMcpAppEmbeddedHost } from "./mcp-apps/mcp-app-host.js";
 import {
 	createMcpAppsHandlers,
@@ -106,6 +107,9 @@ export function mainRegister(
 		"chat.getConnection": async () => getConnection(),
 		"chat.getGatewayModelDetails": async () => fetchGatewayModelDetails(mainSdk.net.fetch),
 		...createChatWorktreeHandlers(mainSdk, service),
+		"chat.saveHtmlPage": createSaveHtmlPageHandler(() =>
+			service.list().flatMap(({ folders }) => folders.map(({ path }) => path)),
+		),
 	};
 
 	const onboarding = new OnboardingStore(mainSdk);

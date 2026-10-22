@@ -11,12 +11,14 @@ import {
 	type BrowserState,
 } from "../contracts/browser.js";
 import { normalizeBrowserUrl } from "./browser-url.js";
+import { createWorkspaceFileAuthorization } from "./workspace-file-authorization.js";
 
 type Attachment = { controller: HostBrowserController; state: BrowserState };
 
 export function mainRegister(mainSdk: MainSdk): void {
 	const browser = mainSdk.host?.browser;
 	if (!browser) throw new Error("Browser host is unavailable.");
+	browser.serveLocalFiles(createWorkspaceFileAuthorization(mainSdk));
 	const attachments = new Map<string, Attachment>();
 	const required = (instanceId: string) => {
 		const attachment = attachments.get(instanceId);

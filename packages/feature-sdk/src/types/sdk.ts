@@ -1018,6 +1018,12 @@ export interface MainSdkHostBrowser {
 	readonly partition: string;
 	initialize(): void;
 	attach(webContentsId: number, onState: (state: HostBrowserState) => void): HostBrowserController;
+	/**
+	 * Serve local files to the browser guest at `kilo-file:` URLs (see
+	 * `browserLocalFileUrl`). `authorize` gets each request's canonical path
+	 * and decides whether it may be served; until it is set, nothing is.
+	 */
+	serveLocalFiles(authorize: (canonicalPath: string) => Promise<boolean>): void;
 }
 
 /** Narrow shell-owned desktop capabilities available to main-process plugins. */

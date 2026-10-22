@@ -1,11 +1,14 @@
 import { app, session, webContents, type Session, type WebContents } from "electron";
 
-import type {
-	HostBrowserController,
-	HostBrowserState,
-	MainSdkHostBrowser,
+import {
+	BROWSER_LOCAL_FILE_SCHEME,
+	isBrowserLocalFileUrl,
+	type HostBrowserController,
+	type HostBrowserState,
+	type MainSdkHostBrowser,
 } from "@kilo-desktop/feature-sdk";
 
+import { serveBrowserLocalFile, type LocalFileAuthorizer } from "./browser-local-files.js";
 import { attachContextMenu, type ContextMenuShell } from "./ElectronContextMenu.js";
 
 export const BROWSER_PARTITION = "persist:kilo-desktop-browser";
@@ -42,10 +45,18 @@ function cleanUserAgent(userAgent: string): string {
  * Owns the shared persistent guest session and verified WebContents leases.
  * A controller exists only while its exact guest is alive and embedded by a
  * trusted app window; disposing it removes every listener installed here.
+ *
+ * Besides http(s), the guest can show workspace files at `kilo-file:` URLs,
+ * served on this partition only (see `browser-local-files.ts`). Navigation
+ * keeps the two worlds apart: a web page can never navigate into a local
+ * file, and a local page can only move to other local files — never out to
+ * the web, where the URL itself could carry its data away. The user (URL
+ * bar, Back) can still go anywhere.
  */
 export class ElectronBrowserHost implements MainSdkHostBrowser {
 	readonly partition = BROWSER_PARTITION;
 	#session: Session | undefined;
+	#authorizeLocalFile: LocalFileAuthorizer | undefined;
 
 	constructor(
 		private readonly isTrustedEmbedder: (webContentsId: number) => boolean,
@@ -63,7 +74,14 @@ export class ElectronBrowserHost implements MainSdkHostBrowser {
 		browserSession.webRequest.onBeforeRequest((details, callback) => {
 			callback({ cancel: shouldCancelLoopbackRequest(details) });
 		});
+		browserSession.protocol.handle(BROWSER_LOCAL_FILE_SCHEME, (request) =>
+			serveBrowserLocalFile(request, this.#authorizeLocalFile),
+		);
 		this.#session = browserSession;
+	}
+
+	serveLocalFiles(authorize: LocalFileAuthorizer): void {
+		this.#authorizeLocalFile = authorize;
 	}
 
 	attach(webContentsId: number, onState: (state: HostBrowserState) => void): HostBrowserController {
@@ -124,8 +142,10 @@ export class ElectronBrowserHost implements MainSdkHostBrowser {
 			failure = { code, description: description.slice(0, MAX_ERROR_LENGTH) };
 			emit();
 		};
+		const pageMayNavigateTo = (url: string) =>
+			isBrowserLocalFileUrl(guest.getURL()) ? isBrowserLocalFileUrl(url) : isHttpUrl(url);
 		const blockUnsupportedNavigation = (event: Electron.Event, url: string) => {
-			if (!isHttpUrl(url)) event.preventDefault();
+			if (!pageMayNavigateTo(url)) event.preventDefault();
 		};
 		const listeners: ReadonlyArray<readonly [string, (...args: never[]) => void]> = [
 			["will-navigate", blockUnsupportedNavigation as (...args: never[]) => void],
@@ -141,7 +161,7 @@ export class ElectronBrowserHost implements MainSdkHostBrowser {
 		];
 		for (const [name, listener] of listeners) guest.on(name as never, listener);
 		guest.setWindowOpenHandler(({ url }) => {
-			if (isHttpUrl(url)) void guest.loadURL(url).catch(() => undefined);
+			if (pageMayNavigateTo(url)) void guest.loadURL(url).catch(() => undefined);
 			return { action: "deny" };
 		});
 		const detachContextMenu = attachContextMenu(guest, {

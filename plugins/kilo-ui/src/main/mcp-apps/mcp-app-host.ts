@@ -1,8 +1,10 @@
 import {
 	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+	HTML_RENDER_CONTENT_SECURITY_PROFILE,
 	type EmbeddedWebHost,
 } from "@kilo-desktop/feature-sdk/main";
 
+import { HTML_RENDER_DOCUMENT_PATH } from "../../contracts/html-render/schemas.js";
 import {
 	MCP_APP_SHELL_HTML_MESSAGE,
 	MCP_APP_SHELL_READY_MESSAGE,
@@ -28,14 +30,17 @@ import {
  * the iframe commits, so a single READY posted on load can race ahead of that
  * listener and be dropped, leaving a permanently blank frame. Retrying closes
  * the race and stops on the first HTML message (or after the attempt cap).
+ *
+ * Agent-authored `html_render` pages use the same shell at a second path, so
+ * they run under the stricter html-render profile (no network, no loopback).
  */
 const WIDGET_SHELL_READY_RETRY_MS = 100;
 const WIDGET_SHELL_READY_MAX_ATTEMPTS = 50;
-const WIDGET_SHELL_HTML = `<!doctype html>
+const shellHtml = (title: string) => `<!doctype html>
 <html>
 	<head>
 		<meta charset="utf-8" />
-		<title>MCP App</title>
+		<title>${title}</title>
 	</head>
 	<body>
 		<script>
@@ -74,7 +79,8 @@ const WIDGET_SHELL_HTML = `<!doctype html>
 
 /**
  * The `mcp-app` embedded host contribution. Ships no filesystem bundle — just
- * the inline shell document, served with the active-untrusted CSP.
+ * the inline shell documents: the MCP App widget shell under the
+ * active-untrusted CSP and the html-render shell under its own CSP.
  */
 export function createMcpAppEmbeddedHost() {
 	// `satisfies` (not an `EmbeddedWebHost` annotation) so the inferred literal
@@ -83,9 +89,13 @@ export function createMcpAppEmbeddedHost() {
 	return {
 		host: MCP_APP_WIDGET_HOST,
 		root: undefined,
-		documents: { [MCP_APP_WIDGET_DOCUMENT_PATH]: WIDGET_SHELL_HTML },
+		documents: {
+			[MCP_APP_WIDGET_DOCUMENT_PATH]: shellHtml("MCP App"),
+			[HTML_RENDER_DOCUMENT_PATH]: shellHtml("HTML page"),
+		},
 		securityProfiles: {
 			[MCP_APP_WIDGET_DOCUMENT_PATH]: ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+			[HTML_RENDER_DOCUMENT_PATH]: HTML_RENDER_CONTENT_SECURITY_PROFILE,
 		},
 	} satisfies EmbeddedWebHost;
 }

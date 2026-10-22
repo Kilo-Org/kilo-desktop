@@ -1,5 +1,7 @@
 import { defineToolkit } from "@assistant-ui/react";
 
+import { HTML_RENDER_AGENT_TOOL_NAME } from "../../../../contracts/html-render/schemas.js";
+import { HtmlRenderToolUI } from "../../html-render/HtmlRenderToolUI.js";
 import {
 	ApplyPatchTool,
 	AskQuestionTool,
@@ -52,4 +54,7 @@ export default defineToolkit({
 	task: { type: "backend", render: TaskTool },
 	todowrite: { type: "backend", render: TaskListTool },
 	todoread: { type: "backend", render: TaskListTool },
+	// Desktop MCP relay tool, hence the full wire name. Not `standalone`: the turn
+	// fold places it (see `isFoldHoistedPart`).
+	[HTML_RENDER_AGENT_TOOL_NAME]: { type: "backend", render: HtmlRenderToolUI },
 });

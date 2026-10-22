@@ -34,6 +34,31 @@ describe("openWorkspaceFile", () => {
 		await expect(openWorkspaceFile(filesSdk, notebook)).resolves.toBe(true);
 	});
 
+	it("renders HTML in a Browser tab, falling back to its source without one", async () => {
+		const filesSdk = createFakeSdk({ featureId: "files" });
+		const system = createFakeFeatureSystem({ sdks: { files: filesSdk } });
+		const openContributedTab = vi.fn();
+		system.getSdk("kilo-ui").plugins.expose("chatRightPanel", { openContributedTab });
+		const page = { ...fileOptions, relativePath: "reports/Chart.HTML" };
+
+		await expect(openWorkspaceFile(filesSdk, page)).resolves.toBe(true);
+		expect(openContributedTab).toHaveBeenCalledWith(
+			"session-1",
+			{ id: "files.files", title: "Files" },
+			expect.objectContaining({ title: "Chart.HTML" }),
+		);
+
+		openContributedTab.mockClear();
+		const openFile = vi.fn(() => ({}));
+		system.getSdk("browser").plugins.expose("browserViewer", { openFile });
+		await expect(openWorkspaceFile(filesSdk, page)).resolves.toBe(true);
+		expect(openFile).toHaveBeenCalledWith({
+			sessionId: "session-1",
+			path: "/workspace/reports/Chart.HTML",
+		});
+		expect(openContributedTab).not.toHaveBeenCalled();
+	});
+
 	it("opens a distinct file pane owned by the requesting explorer", () => {
 		const filesSdk = createFakeSdk({ featureId: "files" });
 		const system = createFakeFeatureSystem({ sdks: { files: filesSdk } });

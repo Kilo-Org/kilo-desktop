@@ -3,6 +3,7 @@ import type { ComponentType } from "react";
 
 import type { ChatRightPanelCapabilities } from "./chat-right-panel.js";
 import { PierreFileIcon } from "../file-icons/PierreFileIcon.js";
+import { isHtmlFile, openHtmlInBrowser } from "./browser-viewer.js";
 import { isNotebookFile, openNotebookFile } from "./notebook-viewer.js";
 
 const DEFAULT_FILES_EXPLORER_ID = "files:explorer";
@@ -78,11 +79,16 @@ function resolveExplorerId(
 	return tabs.find(isExplorerTab)?.instanceId ?? DEFAULT_FILES_EXPLORER_ID;
 }
 
-/** Resolves `true` once the file (or notebook) is open, `false` when it could not be opened. */
+/**
+ * Resolves `true` once the file is open, `false` when it could not be opened.
+ * Notebooks open in the Notebook panel and HTML renders in a Browser tab
+ * (falling back to its source here when no Browser is available).
+ */
 export async function openWorkspaceFile(
 	sdk: SDK,
 	options: OpenWorkspaceFileOptions,
 ): Promise<boolean> {
+	if (isHtmlFile(options.relativePath) && openHtmlInBrowser(sdk, options)) return true;
 	if (isNotebookFile(options.relativePath)) {
 		const result = await openNotebookFile(sdk, options)?.catch(() => ({ error: "failed" }));
 		return result !== undefined && !result.error;

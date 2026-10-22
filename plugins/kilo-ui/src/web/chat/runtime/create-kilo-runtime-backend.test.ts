@@ -223,7 +223,7 @@ describe("createKiloRuntimeBackend", () => {
 		expect(prompt).toHaveBeenCalledWith(
 			expect.objectContaining({
 				system: expect.stringMatching(
-					/Primary folder.*\/workspace\/selected[\s\S]*Additional workspace folder.*\/workspace\/reference/,
+					/Primary folder.*\/workspace\/selected[\s\S]*Additional workspace folder.*\/workspace\/reference[\s\S]*## Showing visuals/,
 				),
 			}),
 		);

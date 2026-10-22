@@ -27,6 +27,7 @@ function createBrowserHost() {
 	const host = {
 		partition: "persist:test-browser",
 		initialize: vi.fn(),
+		serveLocalFiles: vi.fn(),
 		attach: vi.fn((_id, listener) => {
 			emit = listener;
 			listener({

@@ -9,6 +9,7 @@ const { browserSession, guest, sessionFromPartition, webContentsFromId } = vi.ho
 		setPermissionRequestHandler: vi.fn(),
 		setUserAgent: vi.fn(),
 		webRequest: { onBeforeRequest: vi.fn() },
+		protocol: { handle: vi.fn() },
 	};
 	const guest = {
 		id: 42,
@@ -120,6 +121,45 @@ describe("ElectronBrowserHost", () => {
 			listener?.(allowed, "https://example.com/next");
 			expect(allowed.preventDefault).not.toHaveBeenCalled();
 		}
+	});
+
+	it("keeps web pages out of local files and local pages off the web", () => {
+		const host = new ElectronBrowserHost(() => true, shell);
+		host.attach(42, vi.fn());
+		const willNavigate = guest.on.mock.calls.find((call) => call[0] === "will-navigate")?.[1];
+		const openWindow = guest.setWindowOpenHandler.mock.calls[0]?.[0] as (details: {
+			url: string;
+		}) => { action: string };
+		const blocked = (url: string) => {
+			const event = { preventDefault: vi.fn() };
+			willNavigate?.(event, url);
+			return event.preventDefault.mock.calls.length > 0;
+		};
+		const localPage = "kilo-file://local/workspace/Chart.html";
+
+		expect(blocked(localPage)).toBe(true);
+
+		guest.getURL.mockReturnValue(localPage);
+		expect(blocked("https://evil.example/?data=secret")).toBe(true);
+		expect(blocked("kilo-file://local/workspace/about.html")).toBe(false);
+		expect(openWindow({ url: "https://evil.example/?data=secret" })).toEqual({ action: "deny" });
+		expect(guest.loadURL).not.toHaveBeenCalled();
+	});
+
+	it("serves local files only on the browser partition, as the browser plugin authorizes", async () => {
+		const host = new ElectronBrowserHost(() => true, shell);
+		host.initialize();
+		const [scheme, handler] = browserSession.protocol.handle.mock.calls[0] as unknown as [
+			string,
+			(request: Request) => Promise<Response>,
+		];
+
+		expect(scheme).toBe("kilo-file");
+		expect((await handler(new Request("kilo-file://local/etc/hosts"))).status).toBe(404);
+		const authorize = vi.fn(async () => false);
+		host.serveLocalFiles(authorize);
+		expect((await handler(new Request("kilo-file://local/etc/hosts"))).status).toBe(404);
+		expect(authorize).toHaveBeenCalled();
 	});
 
 	it("allows the user's own top-level navigation to a loopback dev server", () => {

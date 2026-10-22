@@ -15,6 +15,15 @@ describe("normalizeBrowserUrl", () => {
 		);
 	});
 
+	it("accepts workspace file URLs, which the host authorizes per request", () => {
+		expect(normalizeBrowserUrl("kilo-file://local/Users/me/project/Chart%20one.html")).toBe(
+			"kilo-file://local/Users/me/project/Chart%20one.html",
+		);
+		expect(() => normalizeBrowserUrl("file:///etc/passwd")).toThrow(
+			"Only HTTP and HTTPS URLs are supported.",
+		);
+	});
+
 	it("rejects malformed and unsupported URLs without returning the raw input", () => {
 		expect(() => normalizeBrowserUrl("ftp://user:secret@example.com/file")).toThrow(
 			"Only HTTP and HTTPS URLs are supported.",

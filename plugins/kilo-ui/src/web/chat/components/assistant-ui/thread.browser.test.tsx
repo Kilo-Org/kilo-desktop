@@ -2225,6 +2225,61 @@ describe("assistant working status", () => {
 		await expect.element(screen.getByText("I should inspect the files first.")).toBeVisible();
 	});
 
+	it("shows an html_render page below the fold, folding the work on both sides of it", async () => {
+		const messages: readonly ExternalThreadMessage[] = [
+			fromThreadMessageLike(
+				{
+					role: "user",
+					createdAt: new Date(Date.now() - 2_000),
+					content: [{ type: "text", text: "Chart the results" }],
+				},
+				"msg-user",
+				{ type: "complete", reason: "stop" },
+			),
+			fromThreadMessageLike(
+				{
+					role: "assistant",
+					status: { type: "complete", reason: "stop" },
+					content: [
+						{
+							type: "tool-call",
+							toolCallId: "read-1",
+							toolName: "read",
+							args: { file_path: "/workspace/results.csv" },
+							result: "a,b",
+						},
+						{
+							type: "tool-call",
+							toolCallId: "page-1",
+							toolName: "desktop_kilo_ui_html_render",
+							args: { title: "Results chart", html: "<p>chart</p>" },
+							result: { rendered: true },
+						},
+						{
+							type: "tool-call",
+							toolCallId: "read-2",
+							toolName: "read",
+							args: { file_path: "/workspace/notes.md" },
+							result: "notes",
+						},
+						{ type: "text", text: "Revenue doubled in Q3." },
+					],
+				},
+				"msg-assistant",
+				{ type: "complete", reason: "stop" },
+			),
+		];
+		const screen = renderExternalMessagesThread(messages, false);
+
+		const toggle = screen.getByTestId("kilo-turn-work-toggle");
+		await expect.poll(() => toggle.element().textContent).toMatch(/^Worked for /);
+		await expect.element(toggle).toHaveAttribute("aria-expanded", "false");
+		const frames = () => [...document.querySelectorAll('iframe[title="Results chart"]')];
+		await expect.poll(() => frames().length).toBe(1);
+		expect(frames()[0]!.closest('[data-qa-id="kilo-turn-work"]')).toBeNull();
+		await expect.element(screen.getByText("Revenue doubled in Q3.")).toBeVisible();
+	});
+
 	it("collapses the work fold when a running turn ends", async () => {
 		const user = fromThreadMessageLike(
 			{

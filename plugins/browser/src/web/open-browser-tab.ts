@@ -1,4 +1,4 @@
-import type { SDK } from "@kilo-desktop/feature-sdk";
+import { browserLocalFileUrl, type SDK } from "@kilo-desktop/feature-sdk";
 
 import { normalizeBrowserUrl } from "../main/browser-url.js";
 import type { ChatRightPanelCapabilities } from "./chat-right-panel.js";
@@ -11,10 +11,15 @@ export type OpenBrowserTabResult =
 
 /**
  * Shows `rawUrl` in a Browser tab of the given chat's pane layout, focusing a
- * tab already on that URL instead of duplicating it. Only http(s) URLs pass,
- * using the same normalization as the address bar.
+ * tab already on that URL instead of duplicating it. Only http(s) and
+ * workspace-file URLs pass, using the same normalization as the address bar.
  */
-export function openBrowserTab(sdk: SDK, sessionId: string, rawUrl: string): OpenBrowserTabResult {
+export function openBrowserTab(
+	sdk: SDK,
+	sessionId: string,
+	rawUrl: string,
+	title?: string,
+): OpenBrowserTabResult {
 	let url: string;
 	try {
 		url = normalizeBrowserUrl(rawUrl);
@@ -34,8 +39,21 @@ export function openBrowserTab(sdk: SDK, sessionId: string, rawUrl: string): Ope
 		return { instanceId: existing.instanceId, url };
 	}
 	const tab = panel.openContributedTab(sessionId, BROWSER_TAB_DEFINITION, {
-		title: new URL(url).host,
+		title: title ?? new URL(url).host,
 		metadata: { url },
 	});
 	return { instanceId: tab.instanceId, url };
+}
+
+function basename(path: string): string {
+	return path.replaceAll("\\", "/").split("/").at(-1) ?? path;
+}
+
+/** Shows a local (workspace) file in a Browser tab, titled with its name. */
+export function openBrowserLocalFile(
+	sdk: SDK,
+	sessionId: string,
+	absolutePath: string,
+): OpenBrowserTabResult {
+	return openBrowserTab(sdk, sessionId, browserLocalFileUrl(absolutePath), basename(absolutePath));
 }

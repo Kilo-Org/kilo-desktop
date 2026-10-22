@@ -127,6 +127,7 @@ const cases: ReadonlyArray<readonly [GitErrorCode, string | null | RegExp]> = [
 		GitErrorCode.XcodeCommandLineToolsMissing,
 		"Git needs the Xcode Command Line Tools. Install them from the macOS prompt or run 'xcode-select --install' in a terminal, then try again.",
 	],
+	[GitErrorCode.BranchAlreadyCheckedOut, "This branch is already checked out in another worktree."],
 ];
 
 function createCoreTestClient(path: string): GitClient {

@@ -8,13 +8,19 @@ export const kiloSessionPreparationInputSchema = z.object({
 	workspaceId: z.string().min(1).optional(),
 	/**
 	 * Request a git worktree for the session instead of the workspace
-	 * checkout. `baseBranch` is the branch to base it on — omitted means
-	 * the git plugin's default-branch chain.
+	 * checkout: either create one (`baseBranch` picks what to base it on,
+	 * omitted means the git plugin's default-branch chain) or reuse an
+	 * already registered one (`existingDirectory`, re-validated fresh
+	 * through the git plugin's `resolveWorktree` — the directory is never
+	 * trusted blindly as the session directory). `existingDirectory` is
+	 * `strictObject`-guarded so `{}` cannot ambiguously match both
+	 * branches — callers check `"existingDirectory" in worktree`.
 	 */
 	worktree: z
-		.object({
-			baseBranch: z.string().min(1).max(255).optional(),
-		})
+		.union([
+			z.strictObject({ baseBranch: z.string().min(1).max(255).optional() }),
+			z.strictObject({ existingDirectory: z.string().min(1).max(32_768) }),
+		])
 		.optional(),
 });
 
@@ -35,10 +41,18 @@ export const kiloSessionPreparationSchema = z.object({
 	 * pass through unchanged.
 	 */
 	workspaceFolders: z.array(workspaceFolderInputSchema),
-	/** Present when a worktree was created for this session. */
+	/** Present when this call produced a worktree for the session. */
 	worktree: z
 		.object({
 			branch: z.string().min(1),
+			/**
+			 * True only when this very call created the worktree
+			 * (`createWorktree`); false when it re-validated an existing one
+			 * (`resolveWorktree`). Only a `created: true` worktree is removed
+			 * by the failed-session cleanup — a reused worktree is the user's
+			 * live checkout and must never be deleted.
+			 */
+			created: z.boolean(),
 			/**
 			 * Non-blocking degradation notice from the git plugin (e.g. the
 			 * base fetch failed, so the branch was cut from local state).

@@ -133,4 +133,17 @@ describe("GitService repository actions (real git)", () => {
 		expect(context.diffPatch.length).toBeLessThan(61_000);
 		expect(context.diffPatch.endsWith("[truncated]")).toBe(true);
 	});
+
+	it("maps checking out a branch already checked out in another worktree", async () => {
+		const repo = initRepo();
+		commitFile(repo, "base.txt", "base\n", "initial");
+		const worktreeDirectory = path.join(tempDir(), "wt");
+		git(repo, ["worktree", "add", "-b", "feature", worktreeDirectory]);
+
+		await expect(service(repo, worktreeDirectory).checkout(repo, "feature")).rejects.toMatchObject({
+			name: "FeatureError",
+			code: "BUSINESS",
+			message: "This branch is already checked out in another worktree.",
+		});
+	});
 });

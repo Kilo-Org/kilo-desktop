@@ -88,6 +88,13 @@ export class GitWorktreesPage {
 		await click(getLocatorByTestId("git-draft-mode-item-worktree"));
 	}
 
+	/** Opens the mode dropdown's "Existing worktrees" submenu and picks the named entry. */
+	async selectExistingWorktree(name: string): Promise<void> {
+		await click(getLocatorByTestId("git-draft-mode-trigger"));
+		await click(getLocatorByTestId("git-draft-mode-sub-existing"));
+		await click(getLocatorByTestId(`git-draft-mode-item-existing-${name}`));
+	}
+
 	/** The local mode keeps the checkout branch selector with the current branch. */
 	async assertLocalModeShowsBranchSelector(currentBranch: string): Promise<void> {
 		await expect
@@ -144,13 +151,13 @@ export class GitWorktreesPage {
 		return { directory, branch };
 	}
 
-	/** The active composer footer labels this thread as a worktree session. */
-	async assertComposerShowsWorktreeMode(): Promise<void> {
+	/** The active composer footer labels this thread with the worktree's directory name. */
+	async assertComposerShowsWorktreeName(name: string): Promise<void> {
 		await expect
 			.poll(() => getPage().getByTestId("kilo-composer-session-mode").textContent(), {
 				timeout: 30_000,
 			})
-			.toContain("Worktree");
+			.toContain(name);
 	}
 
 	/**
@@ -158,9 +165,9 @@ export class GitWorktreesPage {
 	 * the worktree dialog. Filters the list first so leftover sessions from
 	 * the shared worker app cannot steal `.first()`.
 	 */
-	async deleteSessionViaRowMenu(workspaceName: string): Promise<void> {
+	async deleteSessionViaRowMenu(workspaceName: string, worktreeName: string): Promise<void> {
 		const page = getPage();
-		await this.assertComposerShowsWorktreeMode();
+		await this.assertComposerShowsWorktreeName(worktreeName);
 		await page.getByRole("combobox", { name: "Filter by workspace" }).click();
 		await page.getByRole("option", { name: workspaceName }).click();
 		const row = page

@@ -9,12 +9,18 @@ import { SdkProvider } from "@kilo-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeMainSdk, createFakeSdk } from "@kilo-desktop/testing";
 
 import {
+	GIT_DRAFT_SELECTION_STORE_KEY,
+	SESSION_DIRECTORIES_STORE_NAME,
 	gitContract,
 	type GitBranchesResult,
+	type GitDraftSelectionStoreValue,
 	type GitRepositoryType,
 	type GitServiceContract,
+	type GitWorktreeEntry,
+	type SessionDirectoriesStoreValue,
 } from "../contracts/schemas.js";
 import { GitBranchSelector } from "./GitBranchSelector.js";
+import { webRegister } from "./index.js";
 
 const toastApi = vi.hoisted(() => ({
 	error: vi.fn(),
@@ -40,6 +46,14 @@ const branchesResult: GitBranchesResult = {
 		},
 		{ name: "main", upstream: null, tip: { sha: "a" }, ref: "refs/heads/main", kind: "local" },
 	],
+};
+
+/** What the worktree itself reports: it is checked out on `kilo/feature`. */
+const worktreeBranchesResult: GitBranchesResult = {
+	currentBranch: "kilo/feature",
+	defaultBranch: "main",
+	recentBranches: [],
+	branches: [...branchesResult.branches],
 };
 
 const featureBranchesResult: GitBranchesResult = {
@@ -116,22 +130,38 @@ function renderSelector(
 		branches: () => GitBranchesResult | null | Promise<GitBranchesResult | null>;
 		checkout?: (input: CheckoutInput) => Promise<void>;
 		init?: (input: { workingDirectory: string }) => Promise<void> | void;
+		worktrees?: () => GitWorktreeEntry[] | null | Promise<GitWorktreeEntry[] | null>;
 	},
-	options?: { workspaceDirectory?: string | undefined },
+	options?: {
+		workspaceDirectory?: string | undefined;
+		workspaceId?: string | undefined;
+		workingDirectory?: string | undefined;
+		sessionCounts?: SessionDirectoriesStoreValue;
+	},
 ) {
 	// `options` present means its value is authoritative — including an
 	// explicit `undefined` (unscoped chat), so `??` is deliberately avoided.
 	const workspaceDirectory = options === undefined ? "/repo/project" : options.workspaceDirectory;
+	const workspaceId = options?.workspaceId ?? "workspace-1";
+	const workingDirectory = options?.workingDirectory ?? workspaceDirectory;
 	const sdk = createFakeSdk({ featureId: "git" });
+	webRegister(sdk);
+	if (options?.sessionCounts !== undefined) {
+		sdk.services.stateBroker.register(
+			"kilo-ui",
+			SESSION_DIRECTORIES_STORE_NAME,
+			options.sessionCounts,
+		);
+	}
 	const mainSdk = createFakeMainSdk({ featureId: "git", services: sdk.services });
 	mainSdk.channels(gitContract).handleAll({
 		repositoryType: ({ workingDirectory: probedDirectory }) => {
-			if (workspaceDirectory === undefined) throw new Error("probed without a workspace");
-			expect(probedDirectory).toBe(workspaceDirectory);
+			if (workingDirectory === undefined) throw new Error("probed without a workspace");
+			expect(probedDirectory).toBe(workingDirectory);
 			return handlers.repositoryType?.() ?? regularRepositoryType;
 		},
 		branches: ({ workingDirectory: probedDirectory }) => {
-			expect(probedDirectory).toBe(workspaceDirectory);
+			expect(probedDirectory).toBe(workingDirectory);
 			return handlers.branches();
 		},
 		checkout: async (input) => {
@@ -152,6 +182,7 @@ function renderSelector(
 		defaultBranch: () => {
 			throw new Error("unused in this test");
 		},
+		worktrees: () => handlers.worktrees?.() ?? [],
 	});
 	const system = createFakeFeatureSystem({ sdks: { git: sdk } });
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -159,11 +190,17 @@ function renderSelector(
 	const result = render(
 		<SdkProvider system={system}>
 			<QueryClientProvider client={queryClient}>
-				<GitBranchSelector workspaceDirectory={workspaceDirectory} />
+				<GitBranchSelector
+					workspaceId={workspaceId}
+					workspaceDirectory={workspaceDirectory}
+					workingDirectory={workingDirectory}
+				/>
 			</QueryClientProvider>
 		</SdkProvider>,
 	);
-	return { ...result, sdk, mainSdk, queryClient };
+	const peekDraftSelection = (): GitDraftSelectionStoreValue | null =>
+		sdk.state.get<GitDraftSelectionStoreValue>(GIT_DRAFT_SELECTION_STORE_KEY).peek();
+	return { ...result, sdk, mainSdk, queryClient, peekDraftSelection };
 }
 
 /**
@@ -180,6 +217,28 @@ async function openTrigger(label: string, note: string) {
 	await expect.element(noteElement).toBeVisible();
 	await expect.element(noteElement).toHaveTextContent(note);
 	return trigger;
+}
+
+/**
+ * Waits for the shared worktrees cache entry to settle. `GitBranchSelector`
+ * fetches it alongside (not after) the branches probe it needs for the
+ * item list, so a bare `.click()` on a rendered branch item does not by
+ * itself guarantee the retarget check has data yet — in the real app,
+ * `GitDraftMenus` primes the same cache entry well before the popover
+ * ever opens.
+ */
+async function waitForWorktrees(queryClient: QueryClient, workspaceDirectory: string) {
+	await vi.waitFor(() => {
+		const queries = queryClient.getQueryCache().findAll({ queryKey: ["git", "worktrees"] });
+		expect(
+			queries.some(
+				(query) =>
+					query.state.status === "success" &&
+					(query.queryKey[2] as { workingDirectory?: string } | undefined)?.workingDirectory ===
+						workspaceDirectory,
+			),
+		).toBe(true);
+	});
 }
 
 afterEach(() => {
@@ -712,6 +771,235 @@ describe("GitBranchSelector", () => {
 			});
 		});
 		await expect.element(page.getByTestId("git-branch-selector-trigger")).toHaveTextContent("main");
+	});
+
+	it("invalidates the worktrees query after a failed checkout", async () => {
+		const worktrees = vi.fn(() => []);
+		const { queryClient } = renderSelector({
+			branches: () => branchesResult,
+			worktrees,
+			checkout: () =>
+				Promise.reject(new FeatureError("A branch with that name already exists.", "BUSINESS")),
+		});
+		const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+		await page.getByTestId("git-branch-selector-trigger").click();
+		await page.getByTestId("git-branch-item-feature-x").click();
+
+		await vi.waitFor(() => {
+			expect(invalidateSpy).toHaveBeenCalledWith(
+				expect.objectContaining({
+					queryKey: expect.arrayContaining(["git", "worktrees"]),
+				}),
+			);
+		});
+	});
+
+	describe("worktree retargeting and the switch-branch confirm", () => {
+		const worktreeEntries: GitWorktreeEntry[] = [
+			{ path: "/repo/project", name: "project", branch: "main", isMain: true },
+			{
+				path: "/repo/project/.kilo/worktrees/kilo-feature",
+				name: "kilo-feature",
+				branch: "kilo/feature",
+				isMain: false,
+			},
+		];
+
+		it("retargets the draft to the worktree that already has the branch, without checking out", async () => {
+			const checkout = vi.fn(() => Promise.resolve());
+			const { peekDraftSelection, queryClient } = renderSelector({
+				branches: () => ({
+					currentBranch: "main",
+					defaultBranch: "main",
+					recentBranches: [],
+					branches: [
+						...branchesResult.branches,
+						{
+							name: "kilo/feature",
+							upstream: null,
+							tip: { sha: "d" },
+							ref: "refs/heads/kilo/feature",
+							kind: "local",
+						},
+					],
+				}),
+				worktrees: () => worktreeEntries,
+				checkout,
+			});
+			await waitForWorktrees(queryClient, "/repo/project");
+
+			await page.getByTestId("git-branch-selector-trigger").click();
+			await page.getByTestId("git-branch-item-kilo/feature").click();
+
+			await vi.waitFor(() => {
+				expect(peekDraftSelection()).toEqual({
+					"workspace-1": {
+						mode: "existing-worktree",
+						directory: "/repo/project/.kilo/worktrees/kilo-feature",
+					},
+				});
+			});
+			expect(checkout).not.toHaveBeenCalled();
+			expect(toastApi.error).not.toHaveBeenCalled();
+		});
+
+		it("retargets back to local when the branch is checked out in the workspace checkout", async () => {
+			const checkout = vi.fn(() => Promise.resolve());
+			const { peekDraftSelection, queryClient } = renderSelector(
+				{
+					branches: () => branchesResult,
+					worktrees: () => worktreeEntries,
+					checkout,
+				},
+				{
+					workspaceDirectory: "/repo/project",
+					workingDirectory: "/repo/project/.kilo/worktrees/kilo-feature",
+				},
+			);
+			await waitForWorktrees(queryClient, "/repo/project");
+
+			await page.getByTestId("git-branch-selector-trigger").click();
+			await page.getByTestId("git-branch-item-main").click();
+
+			await vi.waitFor(() => {
+				expect(peekDraftSelection()).toEqual({ "workspace-1": { mode: "local" } });
+			});
+			expect(checkout).not.toHaveBeenCalled();
+		});
+
+		it("shows the confirm dialog when a session is in sync with the worktree's current branch", async () => {
+			const checkout = vi.fn(() => Promise.resolve());
+			const { queryClient } = renderSelector(
+				{ branches: () => worktreeBranchesResult, worktrees: () => worktreeEntries, checkout },
+				{
+					workspaceDirectory: "/repo/project",
+					workingDirectory: "/repo/project/.kilo/worktrees/kilo-feature",
+					sessionCounts: {
+						"/repo/project/.kilo/worktrees/kilo-feature": { "kilo/feature": 2 },
+					},
+				},
+			);
+			await waitForWorktrees(queryClient, "/repo/project");
+
+			await page.getByTestId("git-branch-selector-trigger").click();
+			await page.getByTestId("git-branch-item-feature-x").click();
+
+			await expect.element(page.getByTestId("git-branch-switch-confirm")).toBeVisible();
+			await expect
+				.element(page.getByTestId("git-branch-switch-confirm"))
+				.toHaveTextContent(
+					"Switch branch in this worktree?" +
+						"kilo-feature is used by 2 sessions. Switching to feature-x changes the branch under them." +
+						"CancelSwitch anyway",
+				);
+			expect(checkout).not.toHaveBeenCalled();
+		});
+
+		it("skips the confirm when no session is stamped on the worktree's current branch", async () => {
+			const checkout = vi.fn(() => Promise.resolve());
+			const { queryClient } = renderSelector(
+				{ branches: () => worktreeBranchesResult, worktrees: () => worktreeEntries, checkout },
+				{
+					workspaceDirectory: "/repo/project",
+					workingDirectory: "/repo/project/.kilo/worktrees/kilo-feature",
+					// Sessions exist in this worktree, but their branch stamps
+					// predate an earlier switch — they are out of sync already.
+					sessionCounts: {
+						"/repo/project/.kilo/worktrees/kilo-feature": { "kilo/old-branch": 2 },
+					},
+				},
+			);
+			await waitForWorktrees(queryClient, "/repo/project");
+
+			await page.getByTestId("git-branch-selector-trigger").click();
+			await page.getByTestId("git-branch-item-feature-x").click();
+
+			await vi.waitFor(() => {
+				expect(checkout).toHaveBeenCalledWith(
+					expect.objectContaining({
+						workingDirectory: "/repo/project/.kilo/worktrees/kilo-feature",
+						branch: "feature-x",
+					}),
+				);
+			});
+			expect(page.getByTestId("git-branch-switch-confirm").query()).toBe(null);
+		});
+
+		it("cancel closes the confirm dialog without checking out", async () => {
+			const checkout = vi.fn(() => Promise.resolve());
+			const { queryClient } = renderSelector(
+				{ branches: () => worktreeBranchesResult, worktrees: () => worktreeEntries, checkout },
+				{
+					workspaceDirectory: "/repo/project",
+					workingDirectory: "/repo/project/.kilo/worktrees/kilo-feature",
+					sessionCounts: {
+						"/repo/project/.kilo/worktrees/kilo-feature": { "kilo/feature": 1 },
+					},
+				},
+			);
+			await waitForWorktrees(queryClient, "/repo/project");
+
+			await page.getByTestId("git-branch-selector-trigger").click();
+			await page.getByTestId("git-branch-item-feature-x").click();
+			await expect.element(page.getByTestId("git-branch-switch-confirm")).toBeVisible();
+
+			await page.getByTestId("git-branch-switch-confirm-cancel").click();
+
+			await expect.element(page.getByTestId("git-branch-switch-confirm")).not.toBeInTheDocument();
+			expect(checkout).not.toHaveBeenCalled();
+		});
+
+		it("accept runs the held checkout", async () => {
+			const checkout = vi.fn(() => Promise.resolve());
+			const { queryClient } = renderSelector(
+				{ branches: () => worktreeBranchesResult, worktrees: () => worktreeEntries, checkout },
+				{
+					workspaceDirectory: "/repo/project",
+					workingDirectory: "/repo/project/.kilo/worktrees/kilo-feature",
+					sessionCounts: {
+						"/repo/project/.kilo/worktrees/kilo-feature": { "kilo/feature": 1 },
+					},
+				},
+			);
+			await waitForWorktrees(queryClient, "/repo/project");
+
+			await page.getByTestId("git-branch-selector-trigger").click();
+			await page.getByTestId("git-branch-item-feature-x").click();
+			await expect.element(page.getByTestId("git-branch-switch-confirm")).toBeVisible();
+
+			await page.getByTestId("git-branch-switch-confirm-accept").click();
+
+			await vi.waitFor(() => {
+				expect(checkout).toHaveBeenCalledWith(
+					expect.objectContaining({
+						workingDirectory: "/repo/project/.kilo/worktrees/kilo-feature",
+						branch: "feature-x",
+					}),
+				);
+			});
+			await expect.element(page.getByTestId("git-branch-switch-confirm")).not.toBeInTheDocument();
+		});
+
+		it("never shows the confirm dialog in local mode, even with a stray session-count entry", async () => {
+			const checkout = vi.fn(() => Promise.resolve());
+			const { queryClient } = renderSelector(
+				{ branches: () => branchesResult, worktrees: () => worktreeEntries, checkout },
+				{
+					workspaceDirectory: "/repo/project",
+					sessionCounts: { "/repo/project": { main: 3 } },
+				},
+			);
+			await waitForWorktrees(queryClient, "/repo/project");
+
+			await page.getByTestId("git-branch-selector-trigger").click();
+			await page.getByTestId("git-branch-item-feature-x").click();
+
+			await vi.waitFor(() => {
+				expect(checkout).toHaveBeenCalled();
+			});
+			expect(page.getByTestId("git-branch-switch-confirm").query()).toBe(null);
+		});
 	});
 
 	describe("CreateBranchDialog based-on choice", () => {

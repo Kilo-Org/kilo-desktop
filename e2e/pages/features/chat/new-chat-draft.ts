@@ -4,7 +4,6 @@ import {
 	expectElementToBeVisible,
 	getLocatorByRole,
 	getLocatorByTestId,
-	getLocatorByText,
 } from "@anaconda/playwright-utils";
 import { expect } from "@playwright/test";
 
@@ -40,5 +39,7 @@ export async function openNewChatDraft(): Promise<void> {
 /** Scope the current draft to a workspace through the draft footer's selector. */
 export async function selectDraftWorkspace(workspaceName: string): Promise<void> {
 	await click(getLocatorByRole("combobox", { name: "Select workspace" }));
-	await click(getLocatorByText(workspaceName, { exact: true }));
+	await click(
+		getLocatorByRole("listbox", { name: "Suggestions" }).getByText(workspaceName, { exact: true }),
+	);
 }

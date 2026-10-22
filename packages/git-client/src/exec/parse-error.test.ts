@@ -139,6 +139,16 @@ mark them as resolved using git add`,
 			"xcode-select: note: No developer tools were found, requesting install.\nIf developer tools are located at a non-default location on disk, use `sudo xcode-select --switch path/to/Xcode.app` to specify the Xcode that you wish to use for command line developer tools, and cancel the installation dialog.\nSee `man xcode-select` for more details.\n",
 			GitErrorCode.XcodeCommandLineToolsMissing,
 		],
+		[
+			"branch already checked out in another worktree (git >= 2.42)",
+			"fatal: 'feature' is already used by worktree at '/repo/.kilo/worktrees/feature'",
+			GitErrorCode.BranchAlreadyCheckedOut,
+		],
+		[
+			"branch already checked out in another worktree (older git)",
+			"fatal: 'feature' is already checked out at '/repo/.kilo/worktrees/feature'",
+			GitErrorCode.BranchAlreadyCheckedOut,
+		],
 	] as const;
 
 	it.each(cases)("can parse %s", (_, stderr, expected) => {

@@ -32,16 +32,34 @@ export function readGitDraftSelection(
 /**
  * Map a read selection onto the `chat.prepareSession` input's `worktree`
  * field: `null`, missing entries, and `local` mode all omit it (the
- * workspace checkout — the safe direction), worktree mode always sends
- * an explicit object so the base-branch chain lives in git's main.
+ * workspace checkout — the safe direction), `worktree` mode always sends
+ * an explicit object so the base-branch chain lives in git's main, and
+ * `existing-worktree` mode sends the directory for main to re-validate
+ * fresh through the git plugin's `resolveWorktree` — never trusted
+ * blindly as the session directory.
  */
 export function resolvePrepareSessionWorktreeInput(
 	selection: GitDraftWorktreeSelection | null,
-): { worktree: { baseBranch?: string } } | undefined {
-	if (selection?.mode !== "worktree") return undefined;
+): { worktree: { baseBranch?: string } | { existingDirectory: string } } | undefined {
+	if (selection === null) return undefined;
+	if (selection.mode === "existing-worktree") {
+		return { worktree: { existingDirectory: selection.directory } };
+	}
+	if (selection.mode !== "worktree") return undefined;
 	return {
 		worktree: {
 			...(selection.baseBranch === undefined ? {} : { baseBranch: selection.baseBranch }),
 		},
 	};
+}
+
+/**
+ * Whether the selection requests a brand-new worktree (as opposed to
+ * reusing an existing one, or the local checkout). Drives only the
+ * "setting up your worktree" spinner — failed-session cleanup is gated
+ * separately, per attempt, on the preparation's `worktree.created` flag
+ * decided by main.
+ */
+export function isNewWorktreeRequest(selection: GitDraftWorktreeSelection | null): boolean {
+	return selection?.mode === "worktree";
 }

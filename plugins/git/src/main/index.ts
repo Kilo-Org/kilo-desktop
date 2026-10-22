@@ -58,6 +58,7 @@ export function mainRegister(mainSdk: MainSdk): void {
 		},
 		getDiffContents: (args) => service.getDiffContents(args),
 		defaultBranch: ({ workingDirectory }) => service.defaultBranch(workingDirectory),
+		worktrees: ({ workingDirectory }) => service.worktrees(workingDirectory),
 	});
 
 	mainSdk.channels(gitActionsContract).handleAll({
@@ -109,6 +110,7 @@ export function mainRegister(mainSdk: MainSdk): void {
 		removeWorktree: service.removeWorktree.bind(service),
 		hasWorktreeWork: service.hasWorktreeWork.bind(service),
 		linkAgentManagerSession: service.linkAgentManagerSession.bind(service),
+		resolveWorktree: service.resolveWorktree.bind(service),
 	} satisfies GitCapabilities["gitService"]);
 
 	// Best-effort sweep of patch files still in flight at teardown; the

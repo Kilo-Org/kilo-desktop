@@ -12,7 +12,12 @@ import {
 	GitNotDetectedError,
 	UnsupportedGitVersionError,
 } from "@kilo-desktop/git-client";
-import type { IStatusResult, RepositoryType } from "@kilo-desktop/git-client";
+import type {
+	IStatusResult,
+	IGitStringResult,
+	RepositoryType,
+	WorktreeEntry,
+} from "@kilo-desktop/git-client";
 
 import { GitService, type GitClientSlice } from "./git-service.js";
 import { WorktreeManager } from "./worktree-manager.js";
@@ -126,6 +131,18 @@ function folders(...paths: string[]): () => Promise<readonly string[]> {
 /** Folder provider whose workspaces capability is absent (kilo-ui missing). */
 function absentFolders(): () => Promise<readonly string[] | null> {
 	return () => Promise.resolve(null);
+}
+
+function stringResult(overrides: Partial<IGitStringResult> = {}): IGitStringResult {
+	return {
+		stdout: "",
+		stderr: "",
+		exitCode: 1,
+		gitError: null,
+		gitErrorDescription: null,
+		path: "",
+		...overrides,
+	};
 }
 
 describe("GitService", () => {
@@ -776,6 +793,28 @@ describe("GitService", () => {
 				message: XCODE_LICENSE_DESCRIPTION,
 			});
 		});
+
+		it("maps a branch already checked out in another worktree to a FeatureError", async () => {
+			const gitError = new GitError(
+				stringResult({
+					gitError: GitErrorCode.BranchAlreadyCheckedOut,
+					gitErrorDescription: "This branch is already checked out in another worktree.",
+				}),
+				["checkout", "feature"],
+				"",
+			);
+			const service = new GitService({
+				logger,
+				getWorkspaceFolderPaths: folders("/some/repo"),
+				createClient: () => clientOf({ checkoutBranch: () => Promise.reject(gitError) }),
+			});
+
+			await expect(service.checkout("/some/repo", "feature")).rejects.toMatchObject({
+				name: "FeatureError",
+				code: "BUSINESS",
+				message: "This branch is already checked out in another worktree.",
+			});
+		});
 	});
 
 	it("maps a license-blocked GitError from an action to a BUSINESS FeatureError with its description", async () => {
@@ -792,6 +831,203 @@ describe("GitService", () => {
 			name: "FeatureError",
 			code: "BUSINESS",
 			message: XCODE_LICENSE_DESCRIPTION,
+		});
+	});
+
+	describe("worktrees", () => {
+		function entry(overrides: Partial<WorktreeEntry> = {}): WorktreeEntry {
+			return {
+				path: "/repos/project",
+				head: "abc123",
+				branch: "refs/heads/main",
+				isDetached: false,
+				type: "main",
+				isLocked: false,
+				isPrunable: false,
+				...overrides,
+			};
+		}
+
+		it("maps in-workspace entries and marks the main worktree", async () => {
+			const service = new GitService({
+				logger,
+				getWorkspaceFolderPaths: folders("/repos/project"),
+				createClient: () =>
+					clientOf({
+						worktrees: () =>
+							Promise.resolve([
+								entry(),
+								entry({
+									path: "/repos/project/.kilo/worktrees/feature",
+									branch: "refs/heads/kilo/feature",
+									type: "linked",
+								}),
+							]),
+					}),
+			});
+
+			await expect(service.worktrees("/repos/project")).resolves.toEqual([
+				{ path: "/repos/project", name: "project", branch: "main", isMain: true },
+				{
+					path: "/repos/project/.kilo/worktrees/feature",
+					name: "feature",
+					branch: "kilo/feature",
+					isMain: false,
+				},
+			]);
+		});
+
+		it("drops detached, prunable and outside-workspace entries", async () => {
+			const service = new GitService({
+				logger,
+				getWorkspaceFolderPaths: folders("/repos/project"),
+				createClient: () =>
+					clientOf({
+						worktrees: () =>
+							Promise.resolve([
+								entry(),
+								entry({
+									path: "/repos/project/.kilo/worktrees/detached",
+									branch: null,
+									isDetached: true,
+									type: "linked",
+								}),
+								entry({
+									path: "/repos/project/.kilo/worktrees/prunable",
+									branch: "refs/heads/kilo/prunable",
+									isPrunable: true,
+									type: "linked",
+								}),
+								entry({
+									path: "/elsewhere/outside",
+									branch: "refs/heads/kilo/outside",
+									type: "linked",
+								}),
+							]),
+					}),
+			});
+
+			await expect(service.worktrees("/repos/project")).resolves.toEqual([
+				{ path: "/repos/project", name: "project", branch: "main", isMain: true },
+			]);
+		});
+
+		it("resolves null for a non-repository directory", async () => {
+			const gitError = new GitError(
+				stringResult({ gitError: GitErrorCode.NotAGitRepository, exitCode: 128 }),
+				["worktree", "list"],
+				"fatal: not a git repository",
+			);
+			const service = new GitService({
+				logger,
+				getWorkspaceFolderPaths: folders("/not/a/repo"),
+				createClient: () => clientOf({ worktrees: () => Promise.reject(gitError) }),
+			});
+
+			await expect(service.worktrees("/not/a/repo")).resolves.toBeNull();
+		});
+
+		it("propagates every other failure", async () => {
+			const service = new GitService({
+				logger,
+				getWorkspaceFolderPaths: folders("/repos/project"),
+				createClient: () =>
+					clientOf({ worktrees: () => Promise.reject(new GitNotDetectedError()) }),
+			});
+
+			await expect(service.worktrees("/repos/project")).rejects.toMatchObject({
+				name: "FeatureError",
+				code: "BUSINESS",
+			});
+		});
+
+		it("rejects a directory outside every workspace folder", async () => {
+			const worktrees = vi.fn(() => Promise.resolve([]));
+			const service = new GitService({
+				logger,
+				getWorkspaceFolderPaths: folders("/workspaces/project"),
+				createClient: () => clientOf({ worktrees }),
+			});
+
+			await expect(service.worktrees("/elsewhere/other")).rejects.toMatchObject({
+				name: "FeatureError",
+				code: "VALIDATION",
+			});
+			expect(worktrees).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("resolveWorktree", () => {
+		function entry(overrides: Partial<WorktreeEntry> = {}): WorktreeEntry {
+			return {
+				path: "/repos/project",
+				head: "abc123",
+				branch: "refs/heads/main",
+				isDetached: false,
+				type: "main",
+				isLocked: false,
+				isPrunable: false,
+				...overrides,
+			};
+		}
+
+		it("resolves the matching non-main worktree's directory and branch", async () => {
+			const service = new GitService({
+				logger,
+				getWorkspaceFolderPaths: folders("/repos/project"),
+				createClient: () =>
+					clientOf({
+						worktrees: () =>
+							Promise.resolve([
+								entry(),
+								entry({
+									path: "/repos/project/.kilo/worktrees/feature",
+									branch: "refs/heads/kilo/feature",
+									type: "linked",
+								}),
+							]),
+					}),
+			});
+
+			await expect(
+				service.resolveWorktree({
+					workingDirectory: "/repos/project",
+					directory: "/repos/project/.kilo/worktrees/feature",
+				}),
+			).resolves.toEqual({
+				directory: "/repos/project/.kilo/worktrees/feature",
+				branch: "kilo/feature",
+			});
+		});
+
+		it("throws NOT_FOUND when the directory no longer resolves to a worktree", async () => {
+			const service = new GitService({
+				logger,
+				getWorkspaceFolderPaths: folders("/repos/project"),
+				createClient: () => clientOf({ worktrees: () => Promise.resolve([entry()]) }),
+			});
+
+			await expect(
+				service.resolveWorktree({
+					workingDirectory: "/repos/project",
+					directory: "/repos/project/.kilo/worktrees/gone",
+				}),
+			).rejects.toMatchObject({ name: "FeatureError", code: "NOT_FOUND" });
+		});
+
+		it("throws NOT_FOUND for the main worktree itself (not an 'existing worktree' target)", async () => {
+			const service = new GitService({
+				logger,
+				getWorkspaceFolderPaths: folders("/repos/project"),
+				createClient: () => clientOf({ worktrees: () => Promise.resolve([entry()]) }),
+			});
+
+			await expect(
+				service.resolveWorktree({
+					workingDirectory: "/repos/project",
+					directory: "/repos/project",
+				}),
+			).rejects.toMatchObject({ name: "FeatureError", code: "NOT_FOUND" });
 		});
 	});
 

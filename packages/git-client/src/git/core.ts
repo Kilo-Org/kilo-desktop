@@ -258,6 +258,8 @@ export function getDescriptionForError(error: GitErrorCode, stderr: string): str
 		case GitErrorCode.UnsafeDirectory:
 		case GitErrorCode.PathExistsButNotInRef:
 			return null;
+		case GitErrorCode.BranchAlreadyCheckedOut:
+			return "This branch is already checked out in another worktree.";
 		default:
 			return assertNever(error, `Unknown error: ${error}`);
 	}

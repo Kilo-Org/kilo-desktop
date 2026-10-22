@@ -10,6 +10,7 @@ import {
 	GIT_DRAFT_SELECTION_STORE_KEY,
 	readGitDraftSelection,
 	resolvePrepareSessionWorktreeInput,
+	isNewWorktreeRequest,
 } from "./git-draft-selection.js";
 
 /**
@@ -73,6 +74,32 @@ describe("resolvePrepareSessionWorktreeInput", () => {
 	it("omits the worktree field for local mode and null selections", () => {
 		expect(resolvePrepareSessionWorktreeInput({ mode: "local" })).toBeUndefined();
 		expect(resolvePrepareSessionWorktreeInput(null)).toBeUndefined();
+	});
+
+	it("sends the existing directory for an existing-worktree selection", () => {
+		expect(
+			resolvePrepareSessionWorktreeInput({
+				mode: "existing-worktree",
+				directory: "/repo/.kilo/worktrees/feature",
+			}),
+		).toEqual({
+			worktree: { existingDirectory: "/repo/.kilo/worktrees/feature" },
+		});
+	});
+});
+
+describe("isNewWorktreeRequest", () => {
+	it("is true only for a fresh worktree request", () => {
+		expect(isNewWorktreeRequest({ mode: "worktree" })).toBe(true);
+		expect(isNewWorktreeRequest({ mode: "worktree", baseBranch: "main" })).toBe(true);
+	});
+
+	it("is false for local, existing-worktree and null selections", () => {
+		expect(isNewWorktreeRequest({ mode: "local" })).toBe(false);
+		expect(
+			isNewWorktreeRequest({ mode: "existing-worktree", directory: "/repo/.kilo/worktrees/x" }),
+		).toBe(false);
+		expect(isNewWorktreeRequest(null)).toBe(false);
 	});
 });
 

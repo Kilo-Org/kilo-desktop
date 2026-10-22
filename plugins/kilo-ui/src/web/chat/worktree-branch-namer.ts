@@ -86,7 +86,9 @@ interface ArmedSession {
  * to a semantic, LLM-generated name (keeping the `kilo/` prefix).
  *
  * Arming is explicit and one-shot (kilocode's `autoNameSessionId`): only a
- * session `arm`ed at creation is ever considered, and disarming — a
+ * session `arm`ed at creation is ever considered — and callers arm only when
+ * that session's preparation *created* its worktree, never for a reused
+ * existing worktree (kilocode's `branchOwned` gate) — and disarming — a
  * successful git rename, the prompt cap, or lost eligibility — is terminal.
  * The `kilo/` prefix cannot serve as the arming signal because the rename
  * keeps it. Arming is in-memory, so a reload fails closed: sessions from a

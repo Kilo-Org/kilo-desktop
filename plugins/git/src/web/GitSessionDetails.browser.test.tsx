@@ -48,6 +48,7 @@ function renderBranch(
 		},
 		available: () => true,
 		init: async () => undefined,
+		worktrees: () => [],
 		getDiffContents: () => {
 			throw new Error("unused in this test");
 		},

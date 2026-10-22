@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { open, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import path, { isAbsolute, relative, resolve, sep } from "node:path";
+import path, { basename, isAbsolute, relative, resolve, sep } from "node:path";
 
 import { execa, type ExecaError } from "execa";
 import pLimit from "p-limit";
@@ -24,9 +24,10 @@ import type {
 	GitBranchesResult,
 	GitRepositoryType,
 	GitStatus,
+	GitWorktreeEntry,
 	GitWorktreeResult,
 } from "../contracts/schemas.js";
-import type { IBranch, RepositoryType } from "@kilo-desktop/git-client";
+import type { IBranch, RepositoryType, WorktreeEntry } from "@kilo-desktop/git-client";
 import { findDefaultBranch } from "./find-default-branch.js";
 import {
 	BATCH_CHUNK_SIZE,
@@ -247,6 +248,42 @@ function isSameOrWithin(folder: string, candidate: string): boolean {
 	);
 }
 
+/** Whether `candidatePath` equals or is inside any of `folders`. */
+function isWithinFolders(candidatePath: string, folders: readonly string[]): boolean {
+	return folders.some((folderPath) => isSameOrWithin(folderPath, candidatePath));
+}
+
+const REF_HEADS_PREFIX = "refs/heads/";
+
+/**
+ * Map git-client's raw worktree entries to the contract shape, dropping
+ * everything the renderer must never see: detached HEAD (no branch to
+ * report — and `worktreeBranch` is what marks a session as worktree-backed,
+ * so a detached entry could never be one), prunable (stale registration),
+ * and anything outside the workspace's folders (never adopt external
+ * worktrees — mirrors kilocode). Pure and git-free, so it is unit-tested
+ * without a repository.
+ */
+export function toWorktreeEntries(
+	entries: ReadonlyArray<WorktreeEntry>,
+	folders: readonly string[],
+): GitWorktreeEntry[] {
+	return entries.flatMap((entry) => {
+		if (entry.isDetached || entry.isPrunable || entry.branch === null) return [];
+		if (!isWithinFolders(entry.path, folders)) return [];
+		return [
+			{
+				path: entry.path,
+				name: basename(entry.path),
+				branch: entry.branch.startsWith(REF_HEADS_PREFIX)
+					? entry.branch.slice(REF_HEADS_PREFIX.length)
+					: entry.branch,
+				isMain: entry.type === "main",
+			},
+		];
+	});
+}
+
 function createDefaultClient(logger: MainSdkLogger): GitClientSlice {
 	// git-client's `GitLogger` is the narrow `{ error }` interface, which
 	// `MainSdkLogger` satisfies directly.
@@ -290,6 +327,9 @@ function checkoutErrorToFeatureError(error: unknown): unknown {
 		return new FeatureError(error.result.gitErrorDescription ?? error.message, "BUSINESS");
 	}
 	if (isGitError(error, GitErrorCode.LocalChangesOverwritten)) {
+		return new FeatureError(error.result.gitErrorDescription ?? error.message, "BUSINESS");
+	}
+	if (isGitError(error, GitErrorCode.BranchAlreadyCheckedOut)) {
 		return new FeatureError(error.result.gitErrorDescription ?? error.message, "BUSINESS");
 	}
 	return gitUnavailableToFeatureError(error);
@@ -564,7 +604,7 @@ export class GitService {
 				"VALIDATION",
 			);
 		}
-		if (!folderPaths.some((folderPath) => isSameOrWithin(folderPath, directory))) {
+		if (!isWithinFolders(directory, folderPaths)) {
 			throw new FeatureError(`"${directory}" is not inside a workspace folder.`, "VALIDATION");
 		}
 	}
@@ -1611,6 +1651,49 @@ export class GitService {
 		} catch (error) {
 			throw gitUnavailableToFeatureError(error);
 		}
+	}
+
+	/**
+	 * In-workspace worktrees (main first, per git-client), for the draft
+	 * "Existing worktrees" submenu and branch-pick retargeting. `null`
+	 * means `workingDirectory` is not a regular repository — every other
+	 * failure propagates (git-client logs the detail via the adapted
+	 * logger). The workspace-folder resolution runs alongside the
+	 * `git worktree list` probe rather than being reused from the
+	 * containment guard: the two are independent lookups.
+	 */
+	async worktrees(workingDirectory: string): Promise<GitWorktreeEntry[] | null> {
+		await this.#assertWithinWorkspaceFolders(workingDirectory);
+		try {
+			const [entries, folderPaths] = await Promise.all([
+				this.#client.worktrees({ cwd: workingDirectory }),
+				this.#getWorkspaceFolderPaths(),
+			]);
+			return toWorktreeEntries(entries, folderPaths ?? []);
+		} catch (error) {
+			if (isGitError(error, GitErrorCode.NotAGitRepository)) return null;
+			throw gitUnavailableToFeatureError(error);
+		}
+	}
+
+	/**
+	 * Re-validate a renderer-supplied directory as a registered, in-
+	 * workspace, non-detached, non-main worktree and read its branch
+	 * fresh — the directory is never trusted blindly as a session
+	 * directory. Read-only, so it does not take the worktree manager's
+	 * per-repo lock (only mutations serialize there).
+	 */
+	async resolveWorktree(input: {
+		workingDirectory: string;
+		directory: string;
+	}): Promise<{ directory: string; branch: string }> {
+		const resolvedDirectory = resolve(input.directory);
+		const entries = await this.worktrees(input.workingDirectory);
+		const match = entries?.find((entry) => !entry.isMain && entry.path === resolvedDirectory);
+		if (!match) {
+			throw new FeatureError("That worktree no longer exists.", "NOT_FOUND");
+		}
+		return { directory: match.path, branch: match.branch };
 	}
 
 	/**

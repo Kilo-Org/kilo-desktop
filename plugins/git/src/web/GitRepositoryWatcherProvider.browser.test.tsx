@@ -60,6 +60,9 @@ function renderProvider(handlers: {
 		defaultBranch: () => {
 			throw new Error("unused in this test");
 		},
+		worktrees: () => {
+			throw new Error("unused in this test");
+		},
 		getDiffContents: () => {
 			throw new Error("unused in this test");
 		},

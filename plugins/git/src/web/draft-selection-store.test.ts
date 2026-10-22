@@ -45,4 +45,19 @@ describe("git plugin webRegister (draft-selection store)", () => {
 
 		expect(peekSelection(sdk, "workspace-1")).toBeNull();
 	});
+
+	it("round-trips an existing-worktree selection", () => {
+		const sdk = createFakeSdk({ featureId: "git" });
+		webRegister(sdk);
+
+		setSelection(sdk, "workspace-1", {
+			mode: "existing-worktree",
+			directory: "/repo/.kilo/worktrees/feature",
+		});
+
+		expect(peekSelection(sdk, "workspace-1")).toEqual({
+			mode: "existing-worktree",
+			directory: "/repo/.kilo/worktrees/feature",
+		});
+	});
 });

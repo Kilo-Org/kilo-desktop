@@ -3,11 +3,18 @@ import { useState, type ReactNode } from "react";
 
 import { toast } from "@kilo-desktop/ui/components/sonner";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
-import { useQuery } from "@tanstack/react-query";
-import { sdkQueryOptions, useSdk, useSdkMutation } from "@kilo-desktop/sdk-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { sdkQueryKey, sdkQueryOptions, useSdk, useSdkMutation } from "@kilo-desktop/sdk-react";
 
-import type { GitBranch, GitServiceContract, GitBranchesResult } from "../contracts/schemas.js";
+import type {
+	GitBranch,
+	GitServiceContract,
+	GitBranchesResult,
+	SessionDirectoriesStoreValue,
+} from "../contracts/schemas.js";
+import { SESSION_DIRECTORIES_STORE_KEY } from "../contracts/schemas.js";
 import { branchDisplayName } from "./branch-display-name.js";
+import { resolveBranchPick } from "./branch-pick.js";
 import { InitializeGitButton } from "./InitializeGitButton.js";
 import {
 	getPopoverMessage,
@@ -19,13 +26,30 @@ import {
 } from "./branch-selector-state.js";
 import { BranchPickerPopover } from "./BranchPickerPopover.js";
 import { CreateBranchDialog } from "./CreateBranchDialog.js";
+import { setSelection } from "./draft-selection-store.js";
+import { SwitchWorktreeBranchDialog } from "./SwitchWorktreeBranchDialog.js";
+import { linkedWorktrees, worktreesQueryOptions } from "./worktree-queries.js";
 
 export interface GitBranchSelectorProps {
 	/**
-	 * Working directory to operate on. Absent when the chat is unscoped —
-	 * the selector stays rendered and says so in its popover.
+	 * Id of the active workspace; needed to write a retarget selection.
+	 * Absent when the chat is unscoped.
+	 */
+	readonly workspaceId?: string | undefined;
+	/**
+	 * The repository's checkout — "Local" in the draft mode menu, and the
+	 * directory the worktree list (retarget candidates) is queried against.
+	 * Absent when the chat is unscoped.
 	 */
 	readonly workspaceDirectory?: string | undefined;
+	/**
+	 * Working directory to operate on: the checkout target. Equals
+	 * `workspaceDirectory` in local mode; a worktree's directory in
+	 * existing-worktree mode. Defaults to `workspaceDirectory` when
+	 * omitted. Absent when the chat is unscoped — the selector stays
+	 * rendered and says so in its popover.
+	 */
+	readonly workingDirectory?: string | undefined;
 }
 
 const EMPTY_BRANCHES: ReadonlyArray<GitBranch> = [];
@@ -74,6 +98,12 @@ function noticeContent(notice: UnbornNotice | LoadingNotice): ReactNode {
 	}
 }
 
+/** Browser-safe basename fallback for the confirm dialog while the worktree list is still loading. */
+function directoryBasename(directory: string): string {
+	const segments = directory.split(/[\\/]/).filter(Boolean);
+	return segments[segments.length - 1] ?? directory;
+}
+
 /**
  * Branch switcher contributed to the composer draft footer zone
  * (`kilo-ui/chat-composer-draft-footer`), rendered in the toolbar strip
@@ -91,33 +121,51 @@ function noticeContent(notice: UnbornNotice | LoadingNotice): ReactNode {
  * detected default branch when it differs
  * from the current one, per Desktop's dialog).
  */
-export function GitBranchSelector({ workspaceDirectory }: GitBranchSelectorProps) {
+export function GitBranchSelector({
+	workspaceId,
+	workspaceDirectory,
+	workingDirectory: workingDirectoryProp,
+}: GitBranchSelectorProps) {
+	const workingDirectory = workingDirectoryProp ?? workspaceDirectory;
 	const sdk = useSdk<GitServiceContract>("git");
+	const queryClient = useQueryClient();
 	// Disabled rather than stubbed when there is no workspace directory: a
 	// stub input would fail contract validation on every mount.
 	const typeQuery = useQuery({
-		...sdkQueryOptions(sdk, "repositoryType", { workingDirectory: workspaceDirectory ?? "" }),
-		enabled: workspaceDirectory !== undefined,
+		...sdkQueryOptions(sdk, "repositoryType", { workingDirectory: workingDirectory ?? "" }),
+		enabled: workingDirectory !== undefined,
 	});
 	const isRegular = typeQuery.data?.kind === "regular";
 	const query = useQuery({
-		...sdkQueryOptions(sdk, "branches", { workingDirectory: workspaceDirectory ?? "" }),
-		enabled: workspaceDirectory !== undefined && isRegular,
+		...sdkQueryOptions(sdk, "branches", { workingDirectory: workingDirectory ?? "" }),
+		enabled: workingDirectory !== undefined && isRegular,
 	});
 	const data = query.data;
+	// Always keyed by the *workspace* directory (never the worktree), so
+	// this query shares a cache entry with `GitDraftMenus`' submenu list.
+	const worktreesQuery = useQuery({
+		...worktreesQueryOptions(sdk, workspaceDirectory ?? ""),
+		enabled: workspaceDirectory !== undefined,
+	});
 	const [createOpen, setCreateOpen] = useState(false);
 	const [createName, setCreateName] = useState("");
 	const [createError, setCreateError] = useState<string | undefined>();
 	const [pending, setPending] = useState<{ directory: string; branch: string } | undefined>();
-	const checkout = useSdkMutation(sdk, "checkout", { invalidates: ["branches", "status"] });
+	// The one new hook this feature adds (hook budget, `rerender-defer-reads`):
+	// the pending branch name awaiting the switch-worktree-branch confirm.
+	// Session counts are read on demand in the handler, never subscribed to.
+	const [pendingConfirmBranch, setPendingConfirmBranch] = useState<string | undefined>();
+	const checkout = useSdkMutation(sdk, "checkout", {
+		invalidates: ["branches", "status", "worktrees"],
+	});
 
 	// The swap is derived during render from the already-subscribed probe —
 	// no extra subscription or effect. It must sit below every hook above
 	// (rules-of-hooks); the helpers below it are plain functions.
-	if (workspaceDirectory !== undefined && typeQuery.data?.kind === "missing") {
+	if (workingDirectory !== undefined && typeQuery.data?.kind === "missing") {
 		return (
 			<InitializeGitButton
-				workspaceDirectory={workspaceDirectory}
+				workspaceDirectory={workingDirectory}
 				size="sm"
 				testId="git-init-draft-button"
 			/>
@@ -125,10 +173,10 @@ export function GitBranchSelector({ workspaceDirectory }: GitBranchSelectorProps
 	}
 
 	const state: SelectorQueryState = {
-		workspaceDirectory,
+		workspaceDirectory: workingDirectory,
 		// A disabled query is forever pending — only report "checking"
 		// once there is a directory to probe.
-		isChecking: workspaceDirectory !== undefined && typeQuery.isPending,
+		isChecking: workingDirectory !== undefined && typeQuery.isPending,
 		isRegular,
 		typeFailed: typeQuery.isError,
 		// Same forever-pending caveat: the branches query only runs for
@@ -138,7 +186,7 @@ export function GitBranchSelector({ workspaceDirectory }: GitBranchSelectorProps
 		data,
 	};
 	const pendingBranch =
-		pending !== undefined && pending.directory === (workspaceDirectory ?? "")
+		pending !== undefined && pending.directory === (workingDirectory ?? "")
 			? pending.branch
 			: undefined;
 	const label = getTriggerLabel(state, pendingBranch);
@@ -158,7 +206,7 @@ export function GitBranchSelector({ workspaceDirectory }: GitBranchSelectorProps
 	) => {
 		checkout.mutate(
 			{
-				workingDirectory: workspaceDirectory ?? "",
+				workingDirectory: workingDirectory ?? "",
 				branch,
 				...(kind === "remote" ? { kind } : {}),
 				...(create ? { create, ...(startPoint !== undefined ? { startPoint } : {}) } : {}),
@@ -178,15 +226,73 @@ export function GitBranchSelector({ workspaceDirectory }: GitBranchSelectorProps
 					toast.error("Could not switch branches", {
 						description: error instanceof Error ? error.message : "Unknown git error.",
 					});
+					// Piggyback on the toast path: a stale worktree list is the
+					// most likely reason a retarget didn't happen (e.g.
+					// `BranchAlreadyCheckedOut`), so the next pick retargets.
+					void queryClient.invalidateQueries({
+						queryKey: sdkQueryKey(sdk, "worktrees", { workingDirectory: workspaceDirectory ?? "" }),
+					});
 				},
 			},
 		);
+	};
+
+	/**
+	 * Picking a branch either retargets the draft silently (no checkout, no
+	 * toast — the branch is already checked out somewhere else in the
+	 * workspace), opens the switch-worktree-branch confirm when sessions
+	 * already use this worktree, or checks out normally. Decision logic is
+	 * pure (`resolveBranchPick`); this handler only dispatches on it
+	 * (`rerender-move-effect-to-event`: the whole thing runs in the click
+	 * handler, no effect).
+	 */
+	const handleBranchPick = (selected: GitBranch) => {
+		const resolution = resolveBranchPick({
+			branch: selected.name,
+			worktrees: worktreesQuery.data,
+			workspaceDirectory: workspaceDirectory ?? "",
+			workingDirectory: workingDirectory ?? "",
+		});
+		if (resolution.kind === "retarget") {
+			if (workspaceId !== undefined) setSelection(sdk, workspaceId, resolution.selection);
+			return;
+		}
+		const targetsWorktree =
+			workingDirectory !== undefined && workingDirectory !== workspaceDirectory;
+		// In-sync sessions only: sessions whose creation-time branch stamp
+		// still equals what this worktree actually has checked out right
+		// now (`data.currentBranch`). After a confirmed switch the old
+		// sessions' stamps no longer match, so repeat switches skip the
+		// prompt until a new session re-stamps the worktree's branch.
+		const sessionCount = targetsWorktree
+			? (sdk.state.get<SessionDirectoriesStoreValue>(SESSION_DIRECTORIES_STORE_KEY).peek()?.[
+					workingDirectory
+				]?.[data?.currentBranch ?? ""] ?? 0)
+			: 0;
+		if (sessionCount > 0) {
+			setPendingConfirmBranch(selected.name);
+			return;
+		}
+		setPending({ directory: workingDirectory ?? "", branch: branchDisplayName(selected) });
+		runCheckout(selected.name, false, undefined, undefined, selected.kind);
 	};
 
 	const note =
 		popoverMessage !== null && typeof popoverMessage === "object"
 			? noticeContent(popoverMessage)
 			: popoverMessage;
+	const pendingConfirmSessionCount =
+		pendingConfirmBranch !== undefined && workingDirectory !== undefined
+			? (sdk.state.get<SessionDirectoriesStoreValue>(SESSION_DIRECTORIES_STORE_KEY).peek()?.[
+					workingDirectory
+				]?.[data?.currentBranch ?? ""] ?? 0)
+			: 0;
+	const pendingConfirmWorktreeName =
+		workingDirectory !== undefined
+			? (linkedWorktrees(worktreesQuery.data, workspaceDirectory ?? "").find(
+					(entry) => entry.path === workingDirectory,
+				)?.name ?? directoryBasename(workingDirectory))
+			: "";
 
 	return (
 		<>
@@ -203,13 +309,7 @@ export function GitBranchSelector({ workspaceDirectory }: GitBranchSelectorProps
 				itemTestIdPrefix="git-branch-item-"
 				note={note}
 				noteTestId="git-branch-selector-note"
-				onSelect={(selected) => {
-					setPending({
-						directory: workspaceDirectory ?? "",
-						branch: branchDisplayName(selected),
-					});
-					runCheckout(selected.name, false, undefined, undefined, selected.kind);
-				}}
+				onSelect={handleBranchPick}
 				onCreateBranch={(searchText) => {
 					setCreateName(searchText);
 					// A stale error from a previous attempt must not survive into a fresh dialog.
@@ -238,6 +338,24 @@ export function GitBranchSelector({ workspaceDirectory }: GitBranchSelectorProps
 						runCheckout(name, true, startPoint, () => {
 							setCreateOpen(false);
 						});
+					}}
+				/>
+			) : null}
+			{pendingConfirmBranch !== undefined ? (
+				<SwitchWorktreeBranchDialog
+					open
+					onOpenChange={(open) => {
+						if (!open) setPendingConfirmBranch(undefined);
+					}}
+					worktreeName={pendingConfirmWorktreeName}
+					branch={pendingConfirmBranch}
+					sessionCount={pendingConfirmSessionCount}
+					onConfirm={() => {
+						const branch = pendingConfirmBranch;
+						const selectedKind = listData?.branches.find((entry) => entry.name === branch)?.kind;
+						setPendingConfirmBranch(undefined);
+						setPending({ directory: workingDirectory ?? "", branch });
+						runCheckout(branch, false, undefined, undefined, selectedKind);
 					}}
 				/>
 			) : null}

@@ -93,6 +93,12 @@ export type SessionInitializedInfo = {
 	worktreeDirectory?: string;
 	/** Absent when the worktree branch was cut from HEAD. */
 	worktreeBaseRef?: string;
+	/**
+	 * True only when this session's preparation created the worktree; absent
+	 * for a reused existing worktree. Gates one-shot branch auto-naming so a
+	 * worktree the user chose to reuse is never renamed under them.
+	 */
+	worktreeCreated?: boolean;
 };
 
 export interface CreateKiloRuntimeBackendOptions extends PromptOptionGetters {
@@ -425,6 +431,7 @@ export function createKiloRuntimeBackend({
 			onSessionInitialized?.(session.id, {
 				...(worktree ? { worktreeDirectory: directory } : {}),
 				...(worktree?.baseRef ? { worktreeBaseRef: worktree.baseRef } : {}),
+				...(worktree?.created ? { worktreeCreated: true } : {}),
 			});
 			if (worktree || workspaceId) {
 				sessionActivity?.getState().hydrateSessions([
@@ -438,10 +445,12 @@ export function createKiloRuntimeBackend({
 			}
 			return ref;
 		} catch (error) {
-			// Compensating cleanup: the preparation already created a
-			// worktree, and the session will never own it. Fire-and-forget
+			// Compensating cleanup: only a worktree *created by this very
+			// attempt* is removed when the session will never own it. A
+			// reused existing worktree (`created: false`) is the user's
+			// live checkout and must never be force-removed. Fire-and-forget
 			// and failure-swallowing so the original error survives.
-			if (preparation.worktree !== undefined) {
+			if (preparation.worktree?.created === true) {
 				void Promise.resolve(onSessionCreateFailed?.(preparation)).catch(() => undefined);
 			}
 			throw error;

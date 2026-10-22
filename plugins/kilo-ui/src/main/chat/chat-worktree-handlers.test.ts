@@ -18,6 +18,7 @@ interface GitServiceDouble {
 	removeWorktree: ReturnType<typeof vi.fn>;
 	hasWorktreeWork: ReturnType<typeof vi.fn>;
 	linkAgentManagerSession: ReturnType<typeof vi.fn>;
+	resolveWorktree: ReturnType<typeof vi.fn>;
 }
 
 const directories: string[] = [];
@@ -81,6 +82,10 @@ function gitServiceDouble(overrides?: Partial<GitServiceDouble>): GitServiceDoub
 		removeWorktree: vi.fn(async () => undefined),
 		hasWorktreeWork: vi.fn(async () => true),
 		linkAgentManagerSession: vi.fn(async () => true),
+		resolveWorktree: vi.fn(async () => ({
+			directory: "/repo/.kilo/worktrees/kilo-aback-aardvark",
+			branch: "kilo/aback-aardvark",
+		})),
 		...overrides,
 	};
 }
@@ -117,7 +122,7 @@ describe("kilo-ui chat worktree handlers", () => {
 			directory: "/repo/.kilo/worktrees/kilo-aback-aardvark",
 			workspaceId: workspace.id,
 			workspaceFolders: [{ path: "/repo/.kilo/worktrees/kilo-aback-aardvark", isPrimary: true }],
-			worktree: { branch: "kilo/aback-aardvark" },
+			worktree: { branch: "kilo/aback-aardvark", created: true },
 		});
 	});
 
@@ -197,7 +202,7 @@ describe("kilo-ui chat worktree handlers", () => {
 				{ path: "/repo/.kilo/worktrees/kilo-aback-aardvark", isPrimary: true },
 				{ path: secondary, isPrimary: false },
 			],
-			worktree: { branch: "kilo/aback-aardvark" },
+			worktree: { branch: "kilo/aback-aardvark", created: true },
 		});
 	});
 
@@ -233,6 +238,80 @@ describe("kilo-ui chat worktree handlers", () => {
 			mainSdk.invoke("chat.prepareSession", {
 				workspaceId: workspace.id,
 				worktree: {},
+			}),
+		).rejects.toMatchObject({
+			name: "FeatureError",
+			code: "BUSINESS",
+			message: expect.stringContaining("Git worktrees are unavailable"),
+		});
+	});
+
+	it("resolves an existing worktree instead of creating a new one", async () => {
+		const { mainSdk, exposeGitService, project, workspace } = await boot();
+		const gitService = gitServiceDouble();
+		exposeGitService(gitService);
+
+		const preparation = await mainSdk.invoke("chat.prepareSession", {
+			workspaceId: workspace.id,
+			worktree: { existingDirectory: "/repo/.kilo/worktrees/kilo-aback-aardvark" },
+		});
+
+		expect(gitService.resolveWorktree).toHaveBeenCalledWith({
+			workingDirectory: project,
+			directory: "/repo/.kilo/worktrees/kilo-aback-aardvark",
+		});
+		expect(gitService.createWorktree).not.toHaveBeenCalled();
+		expect(preparation).toEqual({
+			directory: "/repo/.kilo/worktrees/kilo-aback-aardvark",
+			workspaceId: workspace.id,
+			workspaceFolders: [{ path: "/repo/.kilo/worktrees/kilo-aback-aardvark", isPrimary: true }],
+			worktree: { branch: "kilo/aback-aardvark", created: false },
+		});
+	});
+
+	it("propagates a resolveWorktree failure for a vanished existing-worktree request", async () => {
+		const { mainSdk, exposeGitService, workspace } = await boot();
+		exposeGitService(
+			gitServiceDouble({
+				resolveWorktree: vi.fn(async () => {
+					throw new FeatureError("That worktree no longer exists.", "NOT_FOUND");
+				}),
+			}),
+		);
+
+		await expect(
+			mainSdk.invoke("chat.prepareSession", {
+				workspaceId: workspace.id,
+				worktree: { existingDirectory: "/repo/.kilo/worktrees/gone" },
+			}),
+		).rejects.toMatchObject({
+			name: "FeatureError",
+			code: "NOT_FOUND",
+			message: "That worktree no longer exists.",
+		});
+	});
+
+	it("rejects an existing-worktree request without a workspace", async () => {
+		const { mainSdk } = await boot();
+
+		await expect(
+			mainSdk.invoke("chat.prepareSession", {
+				worktree: { existingDirectory: "/repo/.kilo/worktrees/kilo-aback-aardvark" },
+			}),
+		).rejects.toMatchObject({
+			name: "FeatureError",
+			code: "BUSINESS",
+			message: "Worktree sessions require a workspace.",
+		});
+	});
+
+	it("rejects an existing-worktree request when the git capability is missing", async () => {
+		const { mainSdk, workspace } = await boot();
+
+		await expect(
+			mainSdk.invoke("chat.prepareSession", {
+				workspaceId: workspace.id,
+				worktree: { existingDirectory: "/repo/.kilo/worktrees/kilo-aback-aardvark" },
 			}),
 		).rejects.toMatchObject({
 			name: "FeatureError",

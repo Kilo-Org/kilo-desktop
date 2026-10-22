@@ -176,6 +176,22 @@ export const gitRemoveWorktreeInputSchema = z.object({
 });
 
 /**
+ * A worktree entry surfaced to the renderer: `path` is the resolved
+ * absolute directory, `name` its `basename` (GitHub Desktop convention,
+ * e.g. `kilo-ambitious-keyboard`), `branch` the short branch name (no
+ * `refs/heads/` prefix), and `isMain` marks the workspace's own checkout
+ * (always first in `git worktree list`). Bare, detached and prunable
+ * entries, and anything outside the workspace folders, never reach this
+ * shape — see `toWorktreeEntries`.
+ */
+export const gitWorktreeEntrySchema = z.object({
+	path: z.string(),
+	name: z.string(),
+	branch: z.string(),
+	isMain: z.boolean(),
+});
+
+/**
  * Feature-SDK contract (unprefixed; scoped by featureId).
  *
  * `status` resolves `null` when the working directory is not inside a git
@@ -262,6 +278,15 @@ export const gitContract = defineContract({
 	defaultBranch: defineMethod(
 		z.object({ workingDirectory: z.string().min(1).max(32_768) }),
 		z.string().nullable(),
+	),
+	/**
+	 * In-workspace worktrees (bare, detached, prunable and outside-workspace
+	 * entries excluded — see `toWorktreeEntries`), main worktree first.
+	 * `null` means `workingDirectory` is not a regular repository.
+	 */
+	worktrees: defineMethod(
+		z.object({ workingDirectory: z.string().min(1).max(32_768) }),
+		z.array(gitWorktreeEntrySchema).nullable(),
 	),
 });
 
@@ -370,6 +395,7 @@ export type GitCreateWorktreeInput = z.infer<typeof gitCreateWorktreeInputSchema
 export type GitWorktreeResult = z.infer<typeof gitWorktreeResultSchema>;
 export type GitRenameWorktreeBranchInput = z.infer<typeof gitRenameWorktreeBranchInputSchema>;
 export type GitRemoveWorktreeInput = z.infer<typeof gitRemoveWorktreeInputSchema>;
+export type GitWorktreeEntry = z.infer<typeof gitWorktreeEntrySchema>;
 
 /**
  * Capability type for consumers resolving the git plugin via
@@ -398,6 +424,16 @@ export type GitCapabilities = {
 			sessionId: string;
 			baseRef?: string;
 		}): Promise<boolean>;
+		/**
+		 * Re-validate a renderer-supplied directory as a registered,
+		 * in-workspace, non-detached worktree and read its branch fresh —
+		 * the directory is never trusted blindly as a session directory.
+		 * Throws a `NOT_FOUND` `FeatureError` when it no longer resolves.
+		 */
+		resolveWorktree(input: {
+			workingDirectory: string;
+			directory: string;
+		}): Promise<{ directory: string; branch: string }>;
 	};
 };
 
@@ -423,12 +459,18 @@ export const DRAFT_SELECTION_STORE_NAME = "draft-worktree-selection";
 export const GIT_DRAFT_SELECTION_STORE_KEY = `git.${DRAFT_SELECTION_STORE_NAME}`;
 
 /**
- * One workspace's selection: `local` (the main checkout) or `worktree`
- * (based on `baseBranch` — absent means the service's default-branch chain).
+ * One workspace's selection: `local` (the main checkout), `worktree`
+ * (based on `baseBranch` — absent means the service's default-branch
+ * chain), or `existing-worktree` (the next session runs in an already
+ * registered worktree at `directory`, re-validated fresh through
+ * `resolveWorktree` at send time — the directory is never trusted
+ * blindly). Not persisted: `git.draftMode:v1` only ever stores `local` /
+ * `worktree`, and sanitize-on-read maps anything else to local.
  */
 export type GitDraftWorktreeSelection =
 	| { mode: "local" }
-	| { mode: "worktree"; baseBranch?: string };
+	| { mode: "worktree"; baseBranch?: string }
+	| { mode: "existing-worktree"; directory: string };
 
 /**
  * Store value: selections keyed by workspace id, so one store instance
@@ -463,3 +505,34 @@ export type GitPullRequestSummary = {
  * a missing key means "no pull request" or "not looked up yet".
  */
 export type GitPullRequestStatusStoreValue = Record<string, GitPullRequestSummary>;
+
+/**
+ * Session-directories store: an inversion of the usual ownership
+ * direction. Git needs to know how many sessions use a directory (to warn
+ * before switching a shared worktree's branch), but git cannot import
+ * kilo-ui's contracts (`kilo-ui → git` is the only allowed dependency
+ * direction) — so git's contracts declare the shape it consumes, and
+ * kilo-ui registers and writes the store under its own feature namespace.
+ * The fully-qualified key is therefore `kilo-ui.<name>`, not `git.<name>`.
+ * A missing store (`sdk.state.get` on an unregistered key resolves `null`)
+ * means "no sessions" — kilo-ui being inactive or not yet booted never
+ * blocks a git-only workflow.
+ */
+export const SESSION_DIRECTORIES_STORE_NAME = "session-directories";
+
+/** Fully-qualified key: registered by kilo-ui, read by git. */
+export const SESSION_DIRECTORIES_STORE_KEY = `kilo-ui.${SESSION_DIRECTORIES_STORE_NAME}`;
+
+/**
+ * Store value: directory → stamped worktree branch → number of sessions
+ * (of any status) whose directory equals the directory and whose
+ * creation-time branch stamp equals the branch. Sessions without a
+ * branch stamp do not participate. Git reads the bucket for the
+ * worktree's *current* branch: a positive count means at least one
+ * session is still in sync with what the worktree actually has checked
+ * out, so changing that branch under it needs a confirm. After a switch
+ * the old sessions' stamps no longer match (stamps are set at creation
+ * and never rewritten), so repeat switches skip the prompt until a new
+ * session re-stamps the worktree's branch.
+ */
+export type SessionDirectoriesStoreValue = Record<string, Record<string, number>>;

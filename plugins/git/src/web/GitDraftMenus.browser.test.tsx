@@ -12,6 +12,7 @@ import {
 	type GitBranchesResult,
 	type GitDraftSelectionStoreValue,
 	type GitRepositoryType,
+	type GitWorktreeEntry,
 } from "../contracts/schemas.js";
 import { DRAFT_MODE_STORAGE_KEY, GitDraftMenus } from "./GitDraftMenus.js";
 import { setSelection } from "./draft-selection-store.js";
@@ -70,6 +71,7 @@ interface RenderOptions {
 	repositoryType?: () => GitRepositoryType | Promise<GitRepositoryType>;
 	branches?: () => GitBranchesResult | null | Promise<GitBranchesResult | null>;
 	defaultBranch?: () => string | null | Promise<string | null>;
+	worktrees?: () => GitWorktreeEntry[] | null | Promise<GitWorktreeEntry[] | null>;
 	workspaceDirectory?: string | undefined;
 	workspaceId?: string | undefined;
 	/** Pre-seeds localStorage before render; mirrors how a returning user has a stored preference. */
@@ -108,6 +110,7 @@ function renderMenus(options: RenderOptions = {}) {
 		getDiffContents: () => {
 			throw new Error("unused in this test");
 		},
+		worktrees: () => (options.worktrees === undefined ? [] : options.worktrees()),
 	});
 	const system = createFakeFeatureSystem({ sdks: { git: sdk } });
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -502,5 +505,239 @@ describe("GitDraftMenus", () => {
 			expect(peekStore()).toEqual({ "workspace-1": { mode: "local" } });
 		});
 		await expect.element(page.getByTestId("git-draft-mode-trigger")).toHaveTextContent("Local");
+	});
+
+	it("lists in-workspace worktrees in the Existing worktrees submenu", async () => {
+		renderMenus({
+			worktrees: () => [
+				{ path: "/repo/project", name: "project", branch: "main", isMain: true },
+				{
+					path: "/repo/project/.kilo/worktrees/kilo-feature",
+					name: "kilo-feature",
+					branch: "kilo/feature",
+					isMain: false,
+				},
+			],
+		});
+
+		await page.getByTestId("git-draft-mode-trigger").click();
+		await expect.element(page.getByTestId("git-draft-mode-sub-existing")).toBeVisible();
+		await page.getByTestId("git-draft-mode-sub-existing").click();
+		await expect
+			.element(page.getByTestId("git-draft-mode-item-existing-kilo-feature"))
+			.toHaveTextContent("kilo-featurekilo/feature");
+	});
+
+	it("selecting an existing worktree sets the selection without touching git.draftMode:v1", async () => {
+		const { peekStore } = renderMenus({
+			worktrees: () => [
+				{ path: "/repo/project", name: "project", branch: "main", isMain: true },
+				{
+					path: "/repo/project/.kilo/worktrees/kilo-feature",
+					name: "kilo-feature",
+					branch: "kilo/feature",
+					isMain: false,
+				},
+			],
+		});
+		await vi.waitFor(() => {
+			expect(peekStore()?.["workspace-1"]).toMatchObject({ mode: "local" });
+		});
+		const draftModeBefore = localStorage.getItem(DRAFT_MODE_STORAGE_KEY);
+
+		await page.getByTestId("git-draft-mode-trigger").click();
+		await page.getByTestId("git-draft-mode-sub-existing").click();
+		await page.getByTestId("git-draft-mode-item-existing-kilo-feature").click();
+
+		expect(peekStore()).toEqual({
+			"workspace-1": {
+				mode: "existing-worktree",
+				directory: "/repo/project/.kilo/worktrees/kilo-feature",
+			},
+		});
+		expect(localStorage.getItem(DRAFT_MODE_STORAGE_KEY)).toBe(draftModeBefore);
+		await expect
+			.element(page.getByTestId("git-draft-mode-trigger"))
+			.toHaveTextContent("kilo-feature");
+		await expect.element(page.getByTestId("git-draft-mode-item-worktree")).not.toBeInTheDocument();
+	});
+
+	describe("searching existing worktrees", () => {
+		const manyWorktrees = (): GitWorktreeEntry[] => [
+			{ path: "/repo/project", name: "project", branch: "main", isMain: true },
+			{
+				path: "/repo/project/.kilo/worktrees/kilo-alpha",
+				name: "kilo-alpha",
+				branch: "feat/login",
+				isMain: false,
+			},
+			{
+				path: "/repo/project/.kilo/worktrees/kilo-beta",
+				name: "kilo-beta",
+				branch: "fix/crash",
+				isMain: false,
+			},
+			{
+				path: "/repo/project/.kilo/worktrees/kilo-gamma",
+				name: "kilo-gamma",
+				branch: "chore/deps",
+				isMain: false,
+			},
+		];
+
+		async function openExistingSubmenu() {
+			await page.getByTestId("git-draft-mode-trigger").click();
+			await page.getByTestId("git-draft-mode-sub-existing").click();
+			const search = page.getByTestId("git-draft-mode-existing-search");
+			await expect.element(search).toHaveFocus();
+			return search;
+		}
+
+		it("filters the list by worktree name", async () => {
+			renderMenus({ worktrees: manyWorktrees });
+			await openExistingSubmenu();
+
+			await userEvent.keyboard("beta");
+
+			await expect
+				.element(page.getByTestId("git-draft-mode-item-existing-kilo-beta"))
+				.toBeVisible();
+			await expect
+				.element(page.getByTestId("git-draft-mode-item-existing-kilo-alpha"))
+				.not.toBeInTheDocument();
+			await expect
+				.element(page.getByTestId("git-draft-mode-item-existing-kilo-gamma"))
+				.not.toBeInTheDocument();
+		});
+
+		it("filters the list by branch, but not by path", async () => {
+			renderMenus({ worktrees: manyWorktrees });
+			await openExistingSubmenu();
+
+			await userEvent.keyboard("chore");
+			await expect
+				.element(page.getByTestId("git-draft-mode-item-existing-kilo-gamma"))
+				.toBeVisible();
+			await expect
+				.element(page.getByTestId("git-draft-mode-item-existing-kilo-alpha"))
+				.not.toBeInTheDocument();
+
+			await userEvent.clear(page.getByTestId("git-draft-mode-existing-search"));
+			await userEvent.keyboard(".kilo/worktrees");
+			await expect.element(page.getByText("No worktrees found.")).toBeVisible();
+		});
+
+		it("keeps the submenu's size and position stable while filtering", async () => {
+			renderMenus({ worktrees: manyWorktrees });
+			await openExistingSubmenu();
+			const submenu = page.getByRole("menu", { name: "Existing worktrees" });
+			await expect
+				.element(page.getByTestId("git-draft-mode-item-existing-kilo-gamma"))
+				.toBeVisible();
+			const before = submenu.element().getBoundingClientRect();
+
+			await userEvent.keyboard("beta");
+			await expect
+				.element(page.getByTestId("git-draft-mode-item-existing-kilo-alpha"))
+				.not.toBeInTheDocument();
+			const filtered = submenu.element().getBoundingClientRect();
+
+			await userEvent.keyboard("zzz");
+			await expect.element(page.getByText("No worktrees found.")).toBeVisible();
+			const empty = submenu.element().getBoundingClientRect();
+
+			for (const rect of [filtered, empty]) {
+				expect(rect.top).toBe(before.top);
+				expect(rect.height).toBe(before.height);
+			}
+		});
+
+		it("keeps the menu open while typing and arrowing inside the search input", async () => {
+			renderMenus({ worktrees: manyWorktrees });
+			const search = await openExistingSubmenu();
+
+			// Letters that would trigger menu typeahead ("l" → Local repository).
+			await userEvent.keyboard("lo");
+			await userEvent.keyboard("{ArrowLeft}{ArrowRight}");
+
+			await expect.element(search).toHaveFocus();
+			await expect.element(search).toHaveValue("lo");
+			await expect
+				.element(page.getByTestId("git-draft-mode-item-existing-kilo-alpha"))
+				.toBeVisible();
+		});
+
+		it("selects the highlighted match with Enter and closes the menu", async () => {
+			const { peekStore } = renderMenus({ worktrees: manyWorktrees });
+			await vi.waitFor(() => {
+				expect(peekStore()?.["workspace-1"]).toMatchObject({ mode: "local" });
+			});
+			const draftModeBefore = localStorage.getItem(DRAFT_MODE_STORAGE_KEY);
+			await openExistingSubmenu();
+
+			await userEvent.keyboard("gamma");
+			await userEvent.keyboard("{Enter}");
+
+			expect(peekStore()).toEqual({
+				"workspace-1": {
+					mode: "existing-worktree",
+					directory: "/repo/project/.kilo/worktrees/kilo-gamma",
+				},
+			});
+			expect(localStorage.getItem(DRAFT_MODE_STORAGE_KEY)).toBe(draftModeBefore);
+			await expect
+				.element(page.getByTestId("git-draft-mode-existing-search"))
+				.not.toBeInTheDocument();
+			await expect
+				.element(page.getByTestId("git-draft-mode-trigger"))
+				.toHaveTextContent("kilo-gamma");
+		});
+
+		it("closes the menu on Escape", async () => {
+			renderMenus({ worktrees: manyWorktrees });
+			await openExistingSubmenu();
+
+			await userEvent.keyboard("{Escape}");
+
+			await expect
+				.element(page.getByTestId("git-draft-mode-item-worktree"))
+				.not.toBeInTheDocument();
+		});
+	});
+
+	it("hides the Existing worktrees submenu when there are no linked worktrees", async () => {
+		renderMenus({
+			worktrees: () => [{ path: "/repo/project", name: "project", branch: "main", isMain: true }],
+		});
+
+		await page.getByTestId("git-draft-mode-trigger").click();
+		expect(page.getByTestId("git-draft-mode-sub-existing").query()).toBe(null);
+	});
+
+	it("refetches the worktree list when the mode menu opens, so a worktree created since the last open is listed", async () => {
+		let linked = false;
+		renderMenus({
+			worktrees: () => [
+				{ path: "/repo/project", name: "project", branch: "main", isMain: true },
+				...(linked
+					? [
+							{
+								path: "/repo/project/.kilo/worktrees/kilo-new",
+								name: "kilo-new",
+								branch: "kilo/new",
+								isMain: false,
+							},
+						]
+					: []),
+			],
+		});
+
+		await page.getByTestId("git-draft-mode-trigger").click();
+		expect(page.getByTestId("git-draft-mode-sub-existing").query()).toBe(null);
+		await page.getByTestId("git-draft-mode-trigger").click();
+
+		linked = true;
+		await page.getByTestId("git-draft-mode-trigger").click();
+		await expect.element(page.getByTestId("git-draft-mode-sub-existing")).toBeVisible();
 	});
 });

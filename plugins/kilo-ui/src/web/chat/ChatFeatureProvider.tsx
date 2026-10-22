@@ -72,7 +72,9 @@ import { createChatSessionWorkspaceCapability } from "./session-workspace/chat-s
 import { SessionListViewProvider } from "./session-list/use-session-list-view.js";
 import { WorkspaceBoardProvider } from "./workspace-board/WorkspaceBoardProvider.js";
 import { WorkspaceBoardWindowBridge } from "./workspace-board/WorkspaceBoardWindowBridge.js";
+import { bindSessionDirectoriesStore } from "./session-directories-store.js";
 import {
+	isNewWorktreeRequest,
 	readGitDraftSelection,
 	resolvePrepareSessionWorktreeInput,
 } from "./git-draft-selection.js";
@@ -287,8 +289,10 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 			// Cross-feature read of the git plugin's draft selection store:
 			// a `worktree` mode with no entry (git inactive, race with the
 			// menu's first write) means the workspace checkout.
-			const worktree = resolvePrepareSessionWorktreeInput(readGitDraftSelection(sdk, workspaceId));
-			if (worktree !== undefined) setIsSettingUpWorktree(true);
+			const selection = readGitDraftSelection(sdk, workspaceId);
+			const worktree = resolvePrepareSessionWorktreeInput(selection);
+			const isNewWorktree = isNewWorktreeRequest(selection);
+			if (isNewWorktree) setIsSettingUpWorktree(true);
 			setIsAwaitingWorktreeSession(worktree !== undefined);
 			try {
 				return await sdk.client["chat.prepareSession"]({
@@ -296,7 +300,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 					...(worktree === undefined ? {} : worktree),
 				});
 			} catch (error) {
-				setIsSettingUpWorktree(false);
+				if (isNewWorktree) setIsSettingUpWorktree(false);
 				setIsAwaitingWorktreeSession(false);
 				throw error;
 			}
@@ -304,16 +308,22 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		[sdk],
 	);
 
-	// Compensating cleanup: a worktree prepared for a session whose creation
-	// then failed is removed fire-and-forget; git's managed-path guard makes
-	// this a no-op for anything that is not a Kilo worktree.
+	// Compensating cleanup: a worktree *created* for a session whose
+	// creation then failed is removed fire-and-forget (git's managed-path
+	// guard makes this a no-op for anything that is not a Kilo worktree).
+	// Main decides ownership per attempt: the preparation's
+	// `worktree.created` flag is true only when that very call created the
+	// worktree, and the runtime backend gates this callback on it — a
+	// reused existing worktree is never removed.
 	const onSessionCreateFailed = useCallback(
-		(preparation: KiloSessionPreparation) =>
-			sdk.client["chat.removeWorktree"]({ directory: preparation.directory }),
+		(preparation: KiloSessionPreparation) => {
+			return sdk.client["chat.removeWorktree"]({ directory: preparation.directory });
+		},
 		[sdk],
 	);
 
 	const sessionActivity = useMemo(() => createSessionActivityStore(), []);
+	useEffect(() => bindSessionDirectoriesStore(sdk, sessionActivity), [sdk, sessionActivity]);
 	const workspacesRef = useRef(workspaces);
 	useEffect(() => {
 		workspacesRef.current = workspaces;
@@ -502,12 +512,15 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 			setIsSettingUpWorktree(false);
 			promoteDraftAgent(threadId);
 			promoteDraftModel(threadId);
-			// Only sessions created in this renderer lifetime may be auto-named;
-			// the namer re-checks worktree eligibility on every prompt.
-			branchNamer.arm(
-				threadId,
-				info?.worktreeBaseRef ? { baseRef: info.worktreeBaseRef } : undefined,
-			);
+			// Only a session whose preparation created its worktree (in this
+			// renderer lifetime) may auto-name the branch — never a reused
+			// existing worktree. The namer re-checks eligibility on every prompt.
+			if (info?.worktreeCreated === true) {
+				branchNamer.arm(
+					threadId,
+					info.worktreeBaseRef ? { baseRef: info.worktreeBaseRef } : undefined,
+				);
+			}
 			if (info?.worktreeDirectory) {
 				void sdk.client["chat.linkWorktreeSession"]({
 					directory: info.worktreeDirectory,

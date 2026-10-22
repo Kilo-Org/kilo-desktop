@@ -207,16 +207,30 @@ afterEach(() => {
 });
 
 describe("ComposerFooter", () => {
-	it("labels a worktree-backed active session as Worktree", async () => {
-		const { baseElement } = render(<ComposerSessionMode isWorktree />);
+	it("labels a worktree-backed active session with the worktree's directory name", async () => {
+		const { baseElement } = render(
+			<ComposerSessionMode isWorktree name="kilo-ambitious-keyboard" />,
+		);
 		const screen = page.elementLocator(baseElement);
 
 		await expect
 			.element(screen.getByTestId("kilo-composer-session-mode"))
-			.toHaveTextContent("Worktree");
+			.toHaveTextContent("kilo-ambitious-keyboard");
 		await expect
 			.element(screen.getByTestId("kilo-composer-session-mode"))
-			.toHaveAttribute("aria-label", "Session mode Worktree");
+			.toHaveAttribute("aria-label", "Session mode kilo-ambitious-keyboard");
+	});
+
+	it("labels a local session Local", async () => {
+		const { baseElement } = render(<ComposerSessionMode isWorktree={false} />);
+		const screen = page.elementLocator(baseElement);
+
+		await expect
+			.element(screen.getByTestId("kilo-composer-session-mode"))
+			.toHaveTextContent("Local");
+		await expect
+			.element(screen.getByTestId("kilo-composer-session-mode"))
+			.toHaveAttribute("aria-label", "Session mode Local");
 	});
 
 	it("hides the footer on an empty draft", async () => {

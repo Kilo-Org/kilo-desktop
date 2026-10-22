@@ -9,6 +9,7 @@ import {
 	useThreadWorkingDirectory,
 	useThreadWorkspaceDirectory,
 } from "../../use-workspace-directory.js";
+import { directoryBasename } from "../../session-activity/session-activity-logic.js";
 import { useComposerUsageView } from "../../usage/use-session-model-usage.js";
 import { useIsThreadAwaitingWorktree } from "../../worktree-setup/WorktreeSetupContext.js";
 import { ComposerContext } from "./elements/composer-context.js";
@@ -43,8 +44,11 @@ const Metric: FC<{ icon?: ReactNode; value: string; qa: string }> = ({ icon, val
 
 const metricIcon = "size-3 text-foreground/40";
 
-export const ComposerSessionMode: FC<{ isWorktree: boolean }> = ({ isWorktree }) => {
-	const label = isWorktree ? "Worktree" : "Local";
+export const ComposerSessionMode: FC<{ isWorktree: boolean; name?: string | undefined }> = ({
+	isWorktree,
+	name,
+}) => {
+	const label = isWorktree ? (name ?? "Worktree") : "Local";
 	const Icon = isWorktree ? GitForkIcon : FolderIcon;
 	return (
 		<span
@@ -86,6 +90,13 @@ export const ComposerFooter: FC = () => {
 						(workspaceDirectory !== undefined &&
 							workingDirectory !== undefined &&
 							workingDirectory !== workspaceDirectory)
+					}
+					name={
+						workspaceDirectory !== undefined &&
+						workingDirectory !== undefined &&
+						workingDirectory !== workspaceDirectory
+							? directoryBasename(workingDirectory)
+							: undefined
 					}
 				/>
 				{contributions.map((contribution) => {

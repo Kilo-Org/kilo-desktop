@@ -51,6 +51,7 @@ export const GitErrorCode = {
 	PathExistsButNotInRef: 48,
 	XcodeLicenseNotAgreed: 49,
 	XcodeCommandLineToolsMissing: 50,
+	BranchAlreadyCheckedOut: 51,
 } as const;
 export type GitErrorCode = (typeof GitErrorCode)[keyof typeof GitErrorCode];
 
@@ -131,6 +132,9 @@ export const GitErrorRegexes: { [regexp: string]: GitErrorCode } = {
 	"You have not agreed to the Xcode license agreements": GitErrorCode.XcodeLicenseNotAgreed,
 	"Agreeing to the Xcode/iOS license requires admin privileges": GitErrorCode.XcodeLicenseNotAgreed,
 	"xcode-select: note: No developer tools were found": GitErrorCode.XcodeCommandLineToolsMissing,
+	// git >= 2.42 says "used by worktree"; older versions say "checked out".
+	"fatal: '(.+)' is already (?:checked out|used by worktree) at '(.+)'":
+		GitErrorCode.BranchAlreadyCheckedOut,
 };
 
 export class ExecError extends Error {

@@ -66,24 +66,51 @@ export function createChatWorktreeHandlers(
 							"BUSINESS",
 						);
 					}
-					const created = await gitService.createWorktree({
-						workingDirectory: primary.path,
-						...(worktree.baseBranch === undefined ? {} : { baseBranch: worktree.baseBranch }),
-					});
+					// Ownership splits here: `created` tells the renderer whether
+					// this very call created the worktree (safe to remove when
+					// session creation later fails) or merely re-validated an
+					// existing one (never removed — it is the user's live
+					// worktree). Rename the local away from `created` so the
+					// ownership flag is not shadowed.
+					const resolved: {
+						directory: string;
+						branch: string;
+						created: boolean;
+						warning?: string | undefined;
+						baseRef?: string | undefined;
+					} =
+						"existingDirectory" in worktree
+							? {
+									created: false,
+									...(await gitService.resolveWorktree({
+										workingDirectory: primary.path,
+										directory: worktree.existingDirectory,
+									})),
+								}
+							: {
+									created: true,
+									...(await gitService.createWorktree({
+										workingDirectory: primary.path,
+										...(worktree.baseBranch === undefined
+											? {}
+											: { baseBranch: worktree.baseBranch }),
+									})),
+								};
 					// The worktree is the session's entire primary context
 					// (kilocode's Agent Manager shape): the original checkout
 					// is dropped from the folders, non-primary folders stay.
 					return {
-						directory: created.directory,
+						directory: resolved.directory,
 						workspaceId,
 						workspaceFolders: [
-							{ path: created.directory, isPrimary: true },
+							{ path: resolved.directory, isPrimary: true },
 							...workspaceFolders.filter((folder) => !folder.isPrimary),
 						],
 						worktree: {
-							branch: created.branch,
-							...(created.warning === undefined ? {} : { warning: created.warning }),
-							...(created.baseRef === undefined ? {} : { baseRef: created.baseRef }),
+							branch: resolved.branch,
+							created: resolved.created,
+							...(resolved.warning === undefined ? {} : { warning: resolved.warning }),
+							...(resolved.baseRef === undefined ? {} : { baseRef: resolved.baseRef }),
 						},
 					};
 				}

@@ -2148,6 +2148,9 @@ describe("SessionList worktree deletion", () => {
 
 		await deleteViaRowMenu(screen, "Worktree chat");
 		await expect.element(page.getByTestId("session-delete-worktree-dialog")).toBeVisible();
+		const items = page.getByTestId("session-delete-worktree-items");
+		await expect.element(items.getByText("Worktree chat")).toBeVisible();
+		await expect.element(items.getByText("kilo/aback-aardvark")).toBeVisible();
 
 		await page.getByTestId("session-delete-keep-worktree").click();
 

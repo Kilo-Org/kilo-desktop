@@ -298,19 +298,21 @@ export type SessionRowDeleteDialogsProps = {
 /** Renders inside the chat's thread-list-item scope, which supplies the title. */
 export const SessionRowDeleteDialogs: FC<{ dialogs: SessionRowDeleteDialogsProps }> = ({
 	dialogs: { confirmDialog, worktreeDialog },
-}) => (
-	<>
-		<SessionDeleteConfirmDialog {...confirmDialog} />
-		{worktreeDialog ? <SessionDeleteWorktreeDialog {...worktreeDialog} /> : null}
-	</>
-);
-
-const SessionDeleteConfirmDialog: FC<SessionRowConfirmDialogProps> = ({
-	open,
-	onOpenChange,
-	onConfirm,
 }) => {
 	const title = useAuiState((s) => s.threadListItem.title);
+	return (
+		<>
+			<SessionDeleteConfirmDialog {...confirmDialog} title={title} />
+			{worktreeDialog ? (
+				<SessionDeleteWorktreeDialog {...worktreeDialog} sessionTitle={title} />
+			) : null}
+		</>
+	);
+};
+
+const SessionDeleteConfirmDialog: FC<
+	SessionRowConfirmDialogProps & { title: string | undefined }
+> = ({ open, onOpenChange, onConfirm, title }) => {
 	return (
 		<AlertDialog open={open} onOpenChange={onOpenChange}>
 			<AlertDialogContent data-qa-id="session-delete-dialog">

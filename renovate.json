@@ -15,15 +15,15 @@
 			"matchPackageNames": ["lexical", "@lexical/**"]
 		},
 		{
-			"description": "@sentry/react and @sentry/bundler-plugins must match the @sentry/core version pinned by @sentry/electron (the renderer passes react's init into electron's init; bundler-plugins keeps a single core in the repo). Never bump them on their own; bump them by hand in the @sentry/electron PR.",
-			"matchPackageNames": ["@sentry/react", "@sentry/bundler-plugins"],
+			"description": "@sentry/react and @sentry/vite-plugin must match the @sentry/core version pinned by @sentry/electron (the renderer passes react's init into electron's init; vite-plugin keeps a single core in the repo). Never bump them on their own; bump them by hand in the @sentry/electron PR.",
+			"matchPackageNames": ["@sentry/react", "@sentry/vite-plugin"],
 			"enabled": false
 		},
 		{
-			"description": "Remind the reviewer to align @sentry/react and @sentry/bundler-plugins in the same PR.",
+			"description": "Remind the reviewer to align @sentry/react and @sentry/vite-plugin in the same PR.",
 			"matchPackageNames": ["@sentry/electron"],
 			"prBodyNotes": [
-				"Set `@sentry/react` and `@sentry/bundler-plugins` in `pnpm-workspace.yaml` to the `@sentry/core` version listed in https://unpkg.com/@sentry/electron@{{{newVersion}}}/package.json, then run `pnpm install`. CI typecheck fails until react matches. If `@sentry/vite-plugin` has published that same version, switch back to it (see the note in `pnpm-workspace.yaml`)."
+				"Set `@sentry/react` and `@sentry/vite-plugin` in `pnpm-workspace.yaml` to the `@sentry/core` version listed in https://unpkg.com/@sentry/electron@{{{newVersion}}}/package.json, then run `pnpm install`. CI typecheck fails until react matches. If no `@sentry/vite-plugin` release matches that version, temporarily use `@sentry/bundler-plugins` (`sentryVitePlugin` from `@sentry/bundler-plugins/vite`) at that version instead."
 			]
 		},
 		{

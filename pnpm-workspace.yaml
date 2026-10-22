@@ -11,14 +11,9 @@ catalog:
   "@playwright/test": 1.64.1
   # Every Sentry package must resolve to the exact @sentry/core pinned by
   # @sentry/electron, so the repo carries a single core.
-  # @sentry/bundler-plugins temporarily stands in for @sentry/vite-plugin:
-  # vite-plugin jumped from 5.x to 11.8.0, so no release matches electron's
-  # core 11.7.0. vite-plugin only re-exports `@sentry/bundler-plugins/vite`.
-  # TODO: switch back to @sentry/vite-plugin (same `sentryVitePlugin` export)
-  # once a vite-plugin release matches @sentry/electron's @sentry/core.
-  "@sentry/bundler-plugins": 11.7.0
-  "@sentry/electron": 8.2.0
-  "@sentry/react": 11.7.0
+  "@sentry/electron": 8.3.0
+  "@sentry/react": 11.8.0
+  "@sentry/vite-plugin": 11.8.0
   atomically: ^2.1.1
   electron: ^44.9.3
   electron-log: ^5.4.3

@@ -4,8 +4,7 @@ import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
-// Temporary: see the @sentry/bundler-plugins note in pnpm-workspace.yaml; revert to @sentry/vite-plugin.
-import { sentryVitePlugin } from "@sentry/bundler-plugins/vite";
+import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig, type Plugin } from "vite";
 
 import {

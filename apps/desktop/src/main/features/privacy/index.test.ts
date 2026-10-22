@@ -6,7 +6,7 @@ import { mainRegister } from "./index.js";
 
 vi.mock("electron-store", () => ({ default: class {} }));
 
-function setup() {
+function setup(options: { forceDataCollectionOff?: boolean } = {}) {
 	const data = new Map<string, unknown>();
 	const store = {
 		get: (key: string) => data.get(key),
@@ -14,11 +14,14 @@ function setup() {
 			data.set(key, value);
 		}),
 	};
-	const preferences = new PreferencesStore(store as never);
+	const preferences = new PreferencesStore(store as never, options);
 	const pair = createLinkedFakeSdkPair({ featureId: "privacy" });
 	pair.createMainSdk("preferences").plugins.expose("preferences", {
 		get allowDataCollection() {
 			return preferences.allowDataCollection;
+		},
+		get dataCollectionChoice() {
+			return preferences.dataCollectionChoice;
 		},
 		setAllowDataCollection: (allow: boolean) => preferences.setAllowDataCollection(allow),
 		onDidChangeAllowDataCollection: (listener: (allow: boolean) => void | Promise<void>) =>
@@ -43,6 +46,25 @@ describe("Privacy SDK settings", () => {
 		mainSdk.dispose();
 		await preferences.setAllowDataCollection(false);
 		expect(changed).toHaveBeenCalledTimes(1);
+	});
+
+	it("shows and saves the user's choice while the build forces collection off", async () => {
+		const { rendererSdk, preferences, mainSdk } = setup({ forceDataCollectionOff: true });
+		const changed = vi.fn();
+		rendererSdk.events.on(PRIVACY_CHANGED_EVENT, changed);
+		expect(await rendererSdk.invoke("get")).toEqual({ allowDataCollection: true });
+		expect(await rendererSdk.invoke("set", { allowDataCollection: false })).toEqual({
+			allowDataCollection: false,
+		});
+		expect(await rendererSdk.invoke("set", { allowDataCollection: true })).toEqual({
+			allowDataCollection: true,
+		});
+		expect(changed.mock.calls).toEqual([
+			[{ allowDataCollection: false }],
+			[{ allowDataCollection: true }],
+		]);
+		expect(preferences.allowDataCollection).toBe(false);
+		mainSdk.dispose();
 	});
 
 	it("reports a failed save and keeps the saved preference", async () => {

@@ -22,6 +22,9 @@ export function registerPreferencesCapability(
 		get allowDataCollection() {
 			return preferences.allowDataCollection;
 		},
+		get dataCollectionChoice() {
+			return preferences.dataCollectionChoice;
+		},
 		get installationId() {
 			return preferences.getInstallationId();
 		},

@@ -41,7 +41,8 @@ if (electronSquirrelStartup) {
 	const bridgeSentryDsn = import.meta.env.VITE_BRIDGE_SENTRY_DSN;
 	if (bridgeSentryDsn) process.env.BRIDGE_SENTRY_DSN = bridgeSentryDsn;
 
-	const preferences = new PreferencesStore();
+	// E2E runs must never reach PostHog, Sentry, or subprocess telemetry.
+	const preferences = new PreferencesStore(undefined, { forceDataCollectionOff: isE2eBuild() });
 	configureLogging(
 		resolveLogLevel({
 			env: process.env[LOG_LEVEL_ENV_VAR],
@@ -57,9 +58,14 @@ if (electronSquirrelStartup) {
 	});
 }
 
-// E2E builds bake VITE_KILO_E2E_AUTH and launch with inspector flags on purpose.
+/** `package:e2e` bakes `VITE_KILO_E2E_AUTH=1` into binaries built for Playwright. */
+function isE2eBuild(): boolean {
+	return import.meta.env.VITE_KILO_E2E_AUTH === "1";
+}
+
+// E2E builds launch with inspector flags on purpose.
 function shouldRefuseDebugLaunch(): boolean {
 	if (!app.isPackaged) return false;
-	if (import.meta.env.VITE_KILO_E2E_AUTH === "1") return false;
+	if (isE2eBuild()) return false;
 	return hasForbiddenDebugArgs(process.argv, (name) => app.commandLine.hasSwitch(name));
 }

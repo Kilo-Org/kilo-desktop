@@ -104,6 +104,33 @@ describe("PreferencesStore", () => {
 			expect(preferences.allowDataCollection).toBe(false);
 		});
 
+		it("reports the saved choice as the effective consent by default", async () => {
+			const preferences = new PreferencesStore(createFakeStore() as never);
+			expect(preferences.dataCollectionChoice).toBe(true);
+
+			await preferences.setAllowDataCollection(false);
+			expect(preferences.dataCollectionChoice).toBe(false);
+			expect(preferences.allowDataCollection).toBe(false);
+		});
+
+		it("keeps collection off while still saving the user's choice when the build forces it off", async () => {
+			const store = createFakeStore();
+			const preferences = new PreferencesStore(store as never, { forceDataCollectionOff: true });
+			const listener = vi.fn();
+			preferences.onDidChangeAllowDataCollection(listener);
+
+			expect(preferences.allowDataCollection).toBe(false);
+			expect(preferences.dataCollectionChoice).toBe(true);
+
+			await preferences.setAllowDataCollection(false);
+			await preferences.setAllowDataCollection(true);
+
+			expect(store.set).toHaveBeenLastCalledWith("allowDataCollection", true);
+			expect(preferences.dataCollectionChoice).toBe(true);
+			expect(preferences.allowDataCollection).toBe(false);
+			expect(listener.mock.calls).toEqual([[false], [false]]);
+		});
+
 		it("does not notify listeners when the change cannot be saved", async () => {
 			const store = createFakeStore();
 			const preferences = new PreferencesStore(store as never);

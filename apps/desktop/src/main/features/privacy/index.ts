@@ -3,6 +3,8 @@ import { FeatureError, type MainSdk } from "@kilo-desktop/feature-sdk/main";
 
 const onOff = (allow: boolean) => (allow ? "on" : "off");
 
+// Settings show the user's saved choice, not effective consent: builds that
+// force collection off (e2e) must still let the toggle round-trip.
 export function mainRegister(sdk: MainSdk): void {
 	const { logger } = sdk;
 	let subscribed: PreferencesMainCapability["preferences"] | undefined;
@@ -14,22 +16,22 @@ export function mainRegister(sdk: MainSdk): void {
 		if (subscribed !== service) {
 			unsubscribe?.();
 			subscribed = service;
-			unsubscribe = service.onDidChangeAllowDataCollection((allowDataCollection) => {
-				sdk.events.emit("changed", { allowDataCollection });
+			unsubscribe = service.onDidChangeAllowDataCollection(() => {
+				sdk.events.emit("changed", { allowDataCollection: service.dataCollectionChoice });
 			});
 		}
 		return service;
 	}
 	if (sdk.plugins.get<PreferencesMainCapability>("preferences")) preferences();
 	sdk.channels(privacyChannels).handleAll({
-		get: () => ({ allowDataCollection: preferences().allowDataCollection }),
+		get: () => ({ allowDataCollection: preferences().dataCollectionChoice }),
 		set: async ({ allowDataCollection }) => {
 			const service = preferences();
 			try {
 				await service.setAllowDataCollection(allowDataCollection);
 			} catch (cause) {
 				logger.warn(
-					`Data collection change to ${onOff(allowDataCollection)} failed; now ${onOff(service.allowDataCollection)}`,
+					`Data collection change to ${onOff(allowDataCollection)} failed; now ${onOff(service.dataCollectionChoice)}`,
 					cause,
 				);
 				throw new FeatureError(
@@ -38,8 +40,8 @@ export function mainRegister(sdk: MainSdk): void {
 						: "Could not update privacy settings. Retry the change.",
 				);
 			}
-			logger.info(`Data collection turned ${onOff(service.allowDataCollection)}`);
-			return { allowDataCollection: service.allowDataCollection };
+			logger.info(`Data collection turned ${onOff(service.dataCollectionChoice)}`);
+			return { allowDataCollection: service.dataCollectionChoice };
 		},
 	});
 	sdk.onDispose(() => unsubscribe?.());

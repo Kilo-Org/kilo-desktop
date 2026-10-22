@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
 	assertWindowsAuthenticodeSignature,
 	findReleaseUpdateArtifact,
+	seedDataCollectionOptOut,
 	windowsAuthenticodeCheck,
 	windowsProcessTreeKill,
 } from "./smoke-release-artifact.js";
@@ -53,6 +54,19 @@ describe("release update artifact selection", () => {
 		await expect(findReleaseUpdateArtifact(makeDirectory, "darwin")).rejects.toThrow(
 			"Expected exactly one macOS update ZIP",
 		);
+	});
+});
+
+describe("release smoke profile", () => {
+	it("opts the fresh profile out of data collection so the smoke launch sends no telemetry", async () => {
+		const userDataDirectory = path.join(await temporaryMakeDirectory(), "user-data");
+
+		await seedDataCollectionOptOut(userDataDirectory);
+
+		const preferences = JSON.parse(
+			await readFile(path.join(userDataDirectory, "preferences.json"), "utf8"),
+		);
+		expect(preferences).toEqual({ allowDataCollection: false });
 	});
 });
 

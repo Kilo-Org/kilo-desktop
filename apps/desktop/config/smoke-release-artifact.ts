@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { access, mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -113,6 +113,21 @@ async function assertNativePeerCredentialAddon(resourcesDirectory: string): Prom
 	}
 }
 
+/**
+ * The smoke launch boots the shipped binary on a fresh profile, where consent
+ * defaults on, so every publish would report a new anonymous production user.
+ * Saving the user's opt-out keeps it out of PostHog, Sentry, and subprocess
+ * telemetry. Must match PreferencesStore's electron-store file and key
+ * (`src/main/platform/PreferencesStore.ts`); a rename silently re-enables it.
+ */
+export async function seedDataCollectionOptOut(userDataDirectory: string): Promise<void> {
+	await mkdir(userDataDirectory, { recursive: true });
+	await writeFile(
+		path.join(userDataDirectory, "preferences.json"),
+		JSON.stringify({ allowDataCollection: false }),
+	);
+}
+
 async function waitForReadyFile(file: string, child: ReturnType<typeof spawn>): Promise<void> {
 	const deadline = Date.now() + readyTimeoutMs;
 	while (Date.now() < deadline) {
@@ -197,6 +212,7 @@ export async function smokeReleaseArtifact(platform: NodeJS.Platform): Promise<v
 
 		const readyFile = path.join(temporaryDirectory, "ready");
 		const userDataDirectory = path.join(temporaryDirectory, "user-data");
+		await seedDataCollectionOptOut(userDataDirectory);
 		const child = spawn(executable, [`--user-data-dir=${userDataDirectory}`], {
 			env: {
 				...process.env,

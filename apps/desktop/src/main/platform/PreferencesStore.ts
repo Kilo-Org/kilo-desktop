@@ -24,18 +24,37 @@ export interface AppPreferences {
 	logLevel?: LogLevel;
 }
 
+export interface PreferencesStoreOptions {
+	/**
+	 * Keeps effective consent off regardless of the saved choice, so a build
+	 * (e2e) never emits telemetry while the privacy setting still round-trips.
+	 */
+	forceDataCollectionOff?: boolean;
+}
+
 /**
  * Owns persisted shell preferences; invalid theme values fall back to application
  * defaults. Data collection changes run one at a time in call order: each is saved,
  * then every listener is notified before the next change starts.
+ *
+ * Data collection has two views: `dataCollectionChoice` is the user's saved
+ * setting (what Privacy settings show), and `allowDataCollection` is the
+ * effective consent every telemetry sink enforces. They are equal unless the
+ * build forces collection off; listeners always receive effective consent.
  */
 export class PreferencesStore {
 	readonly #store: Store<AppPreferences>;
+	readonly #forceDataCollectionOff: boolean;
 	readonly #consentListeners = new Set<(allow: boolean) => void | Promise<void>>();
 	#consentQueue: Promise<void> = Promise.resolve();
 
-	constructor(store: Store<AppPreferences> = new Store<AppPreferences>({ name: "preferences" })) {
+	constructor(
+		// config/smoke-release-artifact.ts seeds `preferences.json` / `allowDataCollection`.
+		store: Store<AppPreferences> = new Store<AppPreferences>({ name: "preferences" }),
+		options: PreferencesStoreOptions = {},
+	) {
 		this.#store = store;
+		this.#forceDataCollectionOff = options.forceDataCollectionOff ?? false;
 	}
 
 	get themeSource(): ThemeSource | undefined {
@@ -55,10 +74,15 @@ export class PreferencesStore {
 		this.#store.set("themeId", normalizeAppThemePreferences({ themeId }).themeId);
 	}
 
-	/** Whether telemetry may collect data. Opt-out model: defaults to `true` when unset. */
-	get allowDataCollection(): boolean {
+	/** The user's saved data-collection setting. Opt-out model: defaults to `true` when unset. */
+	get dataCollectionChoice(): boolean {
 		const value = this.#store.get("allowDataCollection");
 		return typeof value === "boolean" ? value : true;
+	}
+
+	/** Whether telemetry may collect data: the saved choice unless the build forces it off. */
+	get allowDataCollection(): boolean {
+		return !this.#forceDataCollectionOff && this.dataCollectionChoice;
 	}
 
 	setAllowDataCollection(allow: boolean): Promise<void> {
@@ -69,7 +93,7 @@ export class PreferencesStore {
 				throw new Error("Could not save data collection preference. Retry the change.", { cause });
 			}
 			const results = await Promise.allSettled(
-				[...this.#consentListeners].map(async (listener) => listener(allow)),
+				[...this.#consentListeners].map(async (listener) => listener(this.allowDataCollection)),
 			);
 			const failures = results.flatMap((result) =>
 				result.status === "rejected" ? [result.reason] : [],

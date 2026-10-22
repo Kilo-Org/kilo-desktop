@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+	CLIPBOARD_WRITE_EMBEDDED_PERMISSION,
 	EMBEDDED_WEB_HOST_CAPABILITY,
 	FeatureRouter,
 	type HostMessagePort,
@@ -97,6 +98,7 @@ describe("terminal mainRegister", () => {
 		expect(mainSdk.plugins.get("terminal")?.[EMBEDDED_WEB_HOST_CAPABILITY]).toEqual({
 			host: "terminal",
 			root: "/plugins/terminal/build/terminal",
+			permissions: [CLIPBOARD_WRITE_EMBEDDED_PERMISSION],
 		});
 
 		await router.destroyFeatureAsync("terminal");

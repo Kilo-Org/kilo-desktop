@@ -1,4 +1,5 @@
 import { TerminalFrameController } from "./TerminalFrameController.js";
+import { terminalKeyPlatformFrom } from "./terminal-key-bindings.js";
 import "./styles.css";
 
 const ALLOWED_PARENT_PROTOCOLS = new Set(["kilo-desktop:", "kilo-desktop-dev:"]);
@@ -34,6 +35,7 @@ new TerminalFrameController({
 	hostWindow: window,
 	documentElement: document.documentElement,
 	trustedParentOrigin: trustedParentOriginFrom(window.location.href),
+	platform: terminalKeyPlatformFrom(navigator),
 	elements: {
 		container: requiredElement("terminal"),
 		scrollbar: requiredElement("terminal-scrollbar"),

@@ -13,6 +13,10 @@ import {
 } from "../contracts/session.js";
 import { toAccessibleText } from "./accessible-text.js";
 import { dominantOpaqueColor } from "./edge-background.js";
+import { terminalKeyAction, type TerminalKeyPlatform } from "./terminal-key-bindings.js";
+
+/** DEC private mode 1: application cursor keys. */
+const DECCKM = 1;
 
 export interface TerminalFrameElements {
 	readonly container: HTMLElement;
@@ -35,7 +39,9 @@ export class TerminalFrameController {
 	readonly #documentElement: HTMLElement;
 	readonly #trustedParentOrigin: string;
 	readonly #elements: TerminalFrameElements;
+	readonly #platform: TerminalKeyPlatform;
 	readonly #pendingCommands = new Map<string, HTMLButtonElement>();
+	readonly #pendingClears = new Set<string>();
 	#started = false;
 	#connected = false;
 	#disposed = false;
@@ -56,11 +62,13 @@ export class TerminalFrameController {
 		readonly documentElement: HTMLElement;
 		readonly trustedParentOrigin: string;
 		readonly elements: TerminalFrameElements;
+		readonly platform: TerminalKeyPlatform;
 	}) {
 		this.#window = options.hostWindow;
 		this.#documentElement = options.documentElement;
 		this.#trustedParentOrigin = options.trustedParentOrigin;
 		this.#elements = options.elements;
+		this.#platform = options.platform;
 	}
 
 	start(): void {
@@ -130,6 +138,45 @@ export class TerminalFrameController {
 		this.#send({ type: "restart", requestId });
 	};
 
+	/** Returning true tells ghostty-web the chord is consumed. */
+	readonly #onTerminalKey = (event: KeyboardEvent): boolean => {
+		const terminal = this.#terminal;
+		const action = terminal
+			? terminalKeyAction(event, this.#platform, {
+					cursorKeysApplication: terminal.getMode(DECCKM),
+				})
+			: null;
+		if (!terminal || !action) return false;
+		switch (action.kind) {
+			case "input":
+				terminal.input(action.data, true);
+				return true;
+			case "copy":
+				// Ghostty marks copy "performable": with nothing selected the chord reaches the shell.
+				return terminal.copySelection();
+			case "select-all":
+				terminal.selectAll();
+				return true;
+			case "clear":
+				// Ghostty skips emulator-level clears on the alternate screen; a
+				// full-screen app would lose track of its own cursor.
+				if (terminal.buffer.active.type !== "alternate") this.#requestClear();
+				return true;
+			case "scroll":
+				if (action.to === "top") terminal.scrollToTop();
+				else if (action.to === "bottom") terminal.scrollToBottom();
+				else terminal.scrollPages(action.to === "page-up" ? -1 : 1);
+				return true;
+		}
+	};
+
+	#requestClear(): void {
+		if (!this.#snapshotReceived) return;
+		const requestId = this.#window.crypto.randomUUID();
+		this.#pendingClears.add(requestId);
+		this.#send({ type: "clear", requestId });
+	}
+
 	async #connect(messagePort: MessagePort, theme: TerminalTheme): Promise<void> {
 		this.#port = messagePort;
 		this.#applyTheme(theme);
@@ -150,6 +197,7 @@ export class TerminalFrameController {
 		// no public visibility option. Keep its scrolling model, but render the
 		// indicator as an app-owned DOM scrollbar in the reserved gutter instead.
 		Reflect.set(this.#terminal, "showScrollbar", () => undefined);
+		this.#terminal.attachCustomKeyEventHandler(this.#onTerminalKey);
 		this.#fitAddon = new FitAddon();
 		this.#terminal.loadAddon(this.#fitAddon);
 		this.#terminal.open(this.#elements.container);
@@ -354,7 +402,8 @@ export class TerminalFrameController {
 				this.#appendAccessibleOutput(message.data);
 				break;
 			case "cleared":
-				this.#terminal.clear();
+				// Erase the screen and scrollback together: main dropped the whole transcript.
+				this.#terminal.write("\x1b[2J\x1b[3J\x1b[H");
 				this.#scheduleGutterBackgroundSync();
 				this.#scheduleScrollbarSync();
 				this.#elements.accessibleOutput.textContent = "";
@@ -376,6 +425,11 @@ export class TerminalFrameController {
 				if (button) {
 					button.disabled = false;
 					this.#pendingCommands.delete(message.requestId);
+				}
+				// The transcript is gone once main acks; a form feed asks the shell
+				// to repaint its prompt so the fresh transcript starts with it.
+				if (this.#pendingClears.delete(message.requestId) && message.ok) {
+					this.#terminal.input("\x0c", true);
 				}
 				if (!message.ok) this.#showError(message.error ?? "The terminal command failed.");
 				break;

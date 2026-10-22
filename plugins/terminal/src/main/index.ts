@@ -1,4 +1,5 @@
 import {
+	CLIPBOARD_WRITE_EMBEDDED_PERMISSION,
 	EMBEDDED_WEB_HOST_CAPABILITY,
 	type EmbeddedWebHost,
 	type HostMessagePort,
@@ -62,6 +63,9 @@ export function mainRegister(mainSdk: MainSdk, options: TerminalFeatureOptions =
 	const embeddedWebHost = {
 		host: TERMINAL_HOST,
 		root: options.resolveBundleRoot?.() ?? mainSdk.resolvePluginAsset("build/terminal"),
+		// ghostty-web copies selections through navigator.clipboard; without this
+		// grant every copy falls back to an execCommand focus dance.
+		permissions: [CLIPBOARD_WRITE_EMBEDDED_PERMISSION],
 	} satisfies EmbeddedWebHost;
 	mainSdk.plugins.expose(EMBEDDED_WEB_HOST_CAPABILITY, embeddedWebHost);
 }

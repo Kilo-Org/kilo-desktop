@@ -39,9 +39,16 @@ type ShikiTheme =
 type TerminalRolePalette = {
 	background: string;
 	foreground: string;
-	hover: string;
 	ansi: readonly [string, string, string, string, string, string, string, string];
 };
+
+/**
+ * 30% foreground over the terminal background, xterm.js's default selection
+ * strength. UI hover tints sit around 5% and disappear on the terminal canvas.
+ */
+function terminalSelectionBackground(foreground: string, background: string): string {
+	return mixHex(foreground, background, 0.3);
+}
 
 function terminalPalette(palette: TerminalRolePalette): TerminalPalette {
 	return {
@@ -49,7 +56,7 @@ function terminalPalette(palette: TerminalRolePalette): TerminalPalette {
 		foreground: palette.foreground,
 		cursor: palette.foreground,
 		cursorAccent: palette.background,
-		selectionBackground: palette.hover,
+		selectionBackground: terminalSelectionBackground(palette.foreground, palette.background),
 		selectionForeground: palette.foreground,
 		...(Object.fromEntries(
 			[...palette.ansi, ...palette.ansi].map((color, index) => [ansiRoles[index], color]),
@@ -140,10 +147,6 @@ function relativeLuminance(hex: string): number {
 		return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
 	}) as [number, number, number];
 	return r * 0.2126 + g * 0.7152 + b * 0.0722;
-}
-
-function isHexColor(value: string): boolean {
-	return /^#[0-9a-f]{6}$/i.test(value);
 }
 
 function mixHex(top: string, bottom: string, amount: number): string {
@@ -260,7 +263,7 @@ function variant(p: RolePalette, shiki: ShikiTheme, mode: ResolvedColorScheme) {
 			foreground: p.foreground,
 			cursor: p.foreground,
 			cursorAccent: p.background,
-			selectionBackground: isHexColor(p.hover) ? p.hover : mixHex(p.foreground, p.background, 0.05),
+			selectionBackground: terminalSelectionBackground(p.foreground, p.background),
 			selectionForeground: p.foreground,
 		},
 		shiki,
@@ -387,7 +390,6 @@ export const APP_THEMES = [
 				{
 					background: "#ffffff",
 					foreground: "#090b0c",
-					hover: "#f1f3f3",
 					ansi: [
 						"#090b0c",
 						"#e7000b",
@@ -405,7 +407,6 @@ export const APP_THEMES = [
 				{
 					background: "#101314",
 					foreground: "#f9fbfb",
-					hover: "#22292b",
 					ansi: [
 						"#22292b",
 						"#ff6467",

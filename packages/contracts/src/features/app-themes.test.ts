@@ -12,6 +12,30 @@ import {
 	themeCss,
 } from "./app-themes.js";
 
+function luminance(hex: string): number {
+	const channels = hex
+		.slice(1)
+		.match(/../g)!
+		.map((channel) => {
+			const value = Number.parseInt(channel, 16) / 255;
+			return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+		});
+	return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
+}
+
+function contrast(text: string, background: string): number {
+	const a = luminance(text);
+	const b = luminance(background);
+	return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
+/** CIE L* (0–100); unlike the WCAG ratio it is perceptually even across light and dark. */
+function lightness(hex: string): number {
+	const y = luminance(hex);
+	const f = y > (6 / 29) ** 3 ? Math.cbrt(y) : (y * (29 / 6) ** 2) / 3 + 4 / 29;
+	return 116 * f - 16;
+}
+
 describe("app theme presets", () => {
 	it("provides Anaconda and complete paired palettes", () => {
 		expect(APP_THEMES.map(({ id }) => id)).toEqual([
@@ -47,7 +71,6 @@ describe("app theme presets", () => {
 			accent: "color-mix(in oklch, var(--foreground) 5%, transparent)",
 			secondary: "color-mix(in oklch, var(--foreground) 5%, transparent)",
 		});
-		expect(getThemeVariant("kilo", "dark")?.terminal?.selectionBackground).toBe("#1b1b1b");
 		const kiloCss = themeCss({ themeId: "kilo", accentId: "theme" });
 		expect(kiloCss).not.toContain("--shell-glass-opacity");
 		const dark = getThemeVariant("dracula", "dark")!;
@@ -192,21 +215,6 @@ describe("app theme presets", () => {
 	});
 
 	it("keeps semantic and accent text readable on content surfaces and tinted controls", () => {
-		function luminance(hex: string): number {
-			const channels = hex
-				.slice(1)
-				.match(/../g)!
-				.map((channel) => {
-					const value = Number.parseInt(channel, 16) / 255;
-					return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-				});
-			return channels[0]! * 0.2126 + channels[1]! * 0.7152 + channels[2]! * 0.0722;
-		}
-		function contrast(text: string, background: string): number {
-			const a = luminance(text);
-			const b = luminance(background);
-			return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
-		}
 		for (const theme of APP_THEMES) {
 			for (const mode of ["light", "dark"] as const) {
 				const variant = theme.variants[mode];
@@ -279,6 +287,28 @@ describe("app theme presets", () => {
 						`${accent.id} ${mode} on ${background}`,
 					).toBeGreaterThanOrEqual(4.5);
 				}
+			}
+		}
+	});
+
+	it("gives every terminal palette a selection highlight that separates from its background", () => {
+		// 30% foreground over #111111 for Kilo dark; the former hover tint (#1b1b1b) vanished on the pane.
+		expect(getThemeVariant("kilo", "dark")?.terminal?.selectionBackground).toBe("#4c4c4c");
+		expect(getThemeVariant("kilo", "light")?.terminal?.selectionBackground).toBe("#b6b6b6");
+		for (const theme of APP_THEMES) {
+			for (const mode of ["light", "dark"] as const) {
+				const terminal = theme.variants[mode]?.terminal;
+				if (!terminal) continue;
+				expect(
+					Math.abs(lightness(terminal.selectionBackground) - lightness(terminal.background)),
+					`${theme.id} ${mode} selection on terminal background`,
+				).toBeGreaterThanOrEqual(15);
+				// WCAG large-text / non-text floor. Everforest is a low-contrast palette
+				// by design (fg/bg 5.2:1 light) and sits at 3.5:1 here; the rest clear 4.4:1.
+				expect(
+					contrast(terminal.selectionForeground, terminal.selectionBackground),
+					`${theme.id} ${mode} selected text`,
+				).toBeGreaterThanOrEqual(3);
 			}
 		}
 	});

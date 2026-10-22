@@ -165,9 +165,46 @@ describe("summarizeCondaInvocation", () => {
 		).toEqual([]);
 	});
 
+	it("summarises the channel being added or removed", () => {
+		expect(
+			summarizeCondaInvocation("desktop_environments_conda_channels_add", {
+				channel: "conda-forge",
+			}),
+		).toEqual({
+			packages: [],
+			channels: ["conda-forge"],
+			channelsUnspecified: false,
+			warnings: [],
+		});
+		expect(
+			summarizeCondaInvocation("desktop_environments_conda_channels_remove", {
+				channel: "defaults",
+			})?.channels,
+		).toEqual(["defaults"]);
+	});
+
+	it("warns when the agent adds an unknown channel", () => {
+		expect(
+			summarizeCondaInvocation("desktop_environments_conda_channels_add", { channel: "bioconda" })
+				?.warnings,
+		).toEqual(["Unknown channel: bioconda"]);
+	});
+
+	it("warns when an added channel takes highest priority", () => {
+		expect(
+			summarizeCondaInvocation("desktop_environments_conda_channels_add", {
+				channel: "conda-forge",
+				position: 1,
+			})?.warnings,
+		).toEqual(["Takes highest priority over your existing channels."]);
+	});
+
 	it("identifies the mutating conda tools the consent gate covers", () => {
 		expect(isMutatingCondaTool("desktop_environments_conda_packages_install")).toBe(true);
 		expect(isMutatingCondaTool("desktop_environments_conda_envs_delete")).toBe(true);
+		expect(isMutatingCondaTool("desktop_environments_conda_channels_add")).toBe(true);
+		expect(isMutatingCondaTool("desktop_environments_conda_channels_remove")).toBe(true);
+		expect(isMutatingCondaTool("desktop_environments_conda_channels_list")).toBe(false);
 		expect(isMutatingCondaTool("desktop_environments_conda_envs_list")).toBe(false);
 		expect(isMutatingCondaTool("desktop_environments_conda_setup_open")).toBe(false);
 		expect(isMutatingCondaTool("bash")).toBe(false);

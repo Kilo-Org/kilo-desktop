@@ -25,6 +25,12 @@ const CHANNEL_TOOLS = new Set<string>([
 	"desktop_environments_conda_packages_update",
 ]);
 
+/** Channel-management tools, which take a single `channel` argument. */
+const CHANNEL_MANAGEMENT_TOOLS = new Set<string>([
+	"desktop_environments_conda_channels_add",
+	"desktop_environments_conda_channels_remove",
+]);
+
 /** Channels we treat as trusted (quiet). */
 const TRUSTED_CHANNELS = new Set(["main", "defaults"]);
 /** Channels we recognise but do not vouch for (displayed, not warned). */
@@ -95,7 +101,7 @@ export function isMutatingCondaTool(toolName: string): boolean {
 
 /**
  * Whether a permission request is a conda mutation that must stay **per-action**
- * — either one of the six gated MCP tools, or a `bash` command that runs a
+ * — either one of the gated MCP tools, or a `bash` command that runs a
  * mutating conda-family CLI (`conda install …`). Both are approved one call at
  * a time: a standing "Always allow" would let a later, possibly injection-
  * driven, call skip this dialog.
@@ -156,7 +162,12 @@ export function summarizeCondaInvocation(
 	const packages = asStringArray(record.packages);
 	// De-duplicate so a repeated channel doesn't render twice nor produce a
 	// duplicate warning (the warnings are keyed by their text in the dialog).
-	const channels = unique(asStringArray(record.channels));
+	const managedChannel = CHANNEL_MANAGEMENT_TOOLS.has(toolName)
+		? asNonEmptyString(record.channel)
+		: undefined;
+	const channels = unique(
+		managedChannel !== undefined ? [managedChannel] : asStringArray(record.channels),
+	);
 
 	const warnings: string[] = [];
 	for (const channel of channels) {
@@ -183,6 +194,11 @@ export function summarizeCondaInvocation(
 	// itself warns this can break it, and there are no packages to list.
 	if (toolName === `${CONDA_TOOL_PREFIX}packages_update` && record.updateAll === true) {
 		warnings.push("Updates all packages in the environment; this can break it.");
+	}
+	// Rank 1 puts the channel ahead of every configured channel, so it wins
+	// package resolution for every later install.
+	if (toolName === `${CONDA_TOOL_PREFIX}channels_add` && record.position === 1) {
+		warnings.push("Takes highest priority over your existing channels.");
 	}
 
 	return {

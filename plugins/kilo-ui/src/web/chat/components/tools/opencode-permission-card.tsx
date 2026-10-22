@@ -106,7 +106,7 @@ export const OpenCodePermissionCard = ({
 	// "Always allow" remembers exactly `request.always`; with nothing to remember it would only act as "Allow once".
 	const canRemember = request.always.length > 0;
 	// A conda mutation is approved one call at a time — whether it is one of the
-	// six gated MCP tools or a conda-family CLI command the `ask` rules gate. A
+	// gated MCP tools or a conda-family CLI command the `ask` rules gate. A
 	// standing allow would let a later call skip this dialog.
 	const perActionOnly = isPerActionCondaMutation(permissionLabel, patterns);
 	const requester = origin

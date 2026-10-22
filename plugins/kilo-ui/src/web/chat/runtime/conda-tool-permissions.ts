@@ -11,8 +11,10 @@ import type { PermissionRuleset } from "@kilocode/sdk/v2/client";
  *
  * Source of truth for which conda tools mutate state:
  * `plugins/environments/src/shared/providers/conda/tools.ts` — the tools that
- * set `exposeToModelContext: true` and change environments/packages
- * (`create`, `delete`, `clone`, `install`, `remove`, `update`). The read-only
+ * set `exposeToModelContext: true` and change environments, packages, or the
+ * configured channels (`create`, `delete`, `clone`, `install`, `remove`,
+ * `update`, `channels.add`, `channels.remove`). Channel changes are gated
+ * because they alter what every later install trusts. The read-only
  * tools (`envs.list`, `packages.list`, `channels.list`, `repodata.find`) are
  * deliberately **not** listed: they stay prompt-free.
  *
@@ -27,6 +29,8 @@ export const MUTATING_CONDA_TOOL_NAMES = [
 	"desktop_environments_conda_packages_install",
 	"desktop_environments_conda_packages_remove",
 	"desktop_environments_conda_packages_update",
+	"desktop_environments_conda_channels_add",
+	"desktop_environments_conda_channels_remove",
 ] as const;
 
 /**

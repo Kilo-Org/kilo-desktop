@@ -13,6 +13,8 @@ const PERMISSION_ACTION_LABELS: Readonly<Record<string, string>> = {
 	desktop_environments_conda_packages_install: "installing conda packages",
 	desktop_environments_conda_packages_remove: "removing conda packages",
 	desktop_environments_conda_packages_update: "updating conda packages",
+	desktop_environments_conda_channels_add: "adding a conda channel",
+	desktop_environments_conda_channels_remove: "removing a conda channel",
 };
 
 /** Returns the friendly action phrase for a tool, or undefined when unmapped. */

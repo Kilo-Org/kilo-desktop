@@ -22,6 +22,12 @@ describe("describePermissionAction", () => {
 		expect(describePermissionAction("desktop_environments_conda_packages_update")).toBe(
 			"updating conda packages",
 		);
+		expect(describePermissionAction("desktop_environments_conda_channels_add")).toBe(
+			"adding a conda channel",
+		);
+		expect(describePermissionAction("desktop_environments_conda_channels_remove")).toBe(
+			"removing a conda channel",
+		);
 	});
 
 	it("returns undefined for unmapped tools so the caller falls back to the raw name", () => {

@@ -14,6 +14,8 @@ const MUTATING = [
 	"desktop_environments_conda_packages_install",
 	"desktop_environments_conda_packages_remove",
 	"desktop_environments_conda_packages_update",
+	"desktop_environments_conda_channels_add",
+	"desktop_environments_conda_channels_remove",
 ] as const;
 
 // Tools that must NOT be gated. `envs_createFromFile` mutates but is
@@ -28,7 +30,7 @@ const NOT_GATED = [
 ] as const;
 
 describe("mutating conda tool permissions", () => {
-	it("gates exactly the six mutating conda tools", () => {
+	it("gates exactly the mutating conda tools, including channel add/remove", () => {
 		expect([...MUTATING_CONDA_TOOL_NAMES].sort()).toEqual([...MUTATING].sort());
 	});
 

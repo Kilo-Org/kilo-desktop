@@ -1,4 +1,5 @@
 import { test } from "../../../fixtures/features/chat.js";
+import { chatModelSelectorData } from "../../../testdata/chat-model-selector.js";
 
 /**
  * Model selector visibility coverage against the packaged app: the trigger, the
@@ -6,8 +7,7 @@ import { test } from "../../../fixtures/features/chat.js";
  * the two empty states, plus menu dismissal and rail switching.
  *
  * Visibility only — no model selection, favorites toggling, persistence, or
- * sending. The default model and the Kilo Gateway model list need a catalog
- * fixture and are covered by a follow-up PR. The signed-out variant is not
+ * sending. The default model is out of scope. The signed-out variant is not
  * covered here: the packaged build always reports signed-in.
  */
 test.describe("Chat model selector", () => {
@@ -88,5 +88,63 @@ test.describe("Chat model selector", () => {
 		await chatModelSelectorPage.verifySearchVisible();
 		await chatModelSelectorPage.closeWithEscape();
 		await chatModelSelectorPage.verifyMenuClosed();
+	});
+
+	test("opens a well-formed info tooltip for a Kilo Gateway model @smoke", async ({
+		appShellPage,
+		chatComposerPage,
+		chatModelSelectorPage,
+	}) => {
+		const { query, publisherPrefix } = chatModelSelectorData.gatewayInfoSmokeSearchTerm;
+		await appShellPage.verifyShellIsLoaded();
+		await chatComposerPage.openDraft();
+		await chatModelSelectorPage.openModelSelector();
+		await chatModelSelectorPage.selectKiloGateway();
+		await chatModelSelectorPage.searchModels(query);
+		const modelId = await chatModelSelectorPage.getPublisherModelId(publisherPrefix);
+		const modelName = await chatModelSelectorPage.getPublisherModelName(modelId);
+		const groundTruth = await chatModelSelectorPage.fetchGatewayModelGroundTruth(modelId);
+
+		await chatModelSelectorPage.openModelInfo(modelId);
+		await chatModelSelectorPage.verifyModelInfoOpen(modelId);
+		await chatModelSelectorPage.verifyModelInfoTitleAndDescription(modelId, modelName, groundTruth);
+
+		await chatModelSelectorPage.closeModelInfo(modelId);
+		await chatModelSelectorPage.verifyModelInfoClosed(modelId);
+		await chatModelSelectorPage.closeWithEscape();
+		await chatModelSelectorPage.verifyMenuClosed();
+	});
+
+	test("shows a well-formed, non-overlapping info tooltip for Kilo Gateway models @reg", async ({
+		appShellPage,
+		chatComposerPage,
+		chatModelSelectorPage,
+	}) => {
+		await appShellPage.verifyShellIsLoaded();
+		await chatComposerPage.openDraft();
+		for (const { query, publisherPrefix } of chatModelSelectorData.gatewayInfoSearchTerms) {
+			await chatModelSelectorPage.openModelSelector();
+			await chatModelSelectorPage.selectKiloGateway();
+			await chatModelSelectorPage.searchModels(query);
+			const modelId = await chatModelSelectorPage.getPublisherModelId(publisherPrefix);
+			const modelName = await chatModelSelectorPage.getPublisherModelName(modelId);
+			const groundTruth = await chatModelSelectorPage.fetchGatewayModelGroundTruth(modelId);
+
+			await chatModelSelectorPage.openModelInfo(modelId);
+			await chatModelSelectorPage.verifyModelInfoOpen(modelId);
+			await chatModelSelectorPage.verifyModelInfoTitleAndDescription(
+				modelId,
+				modelName,
+				groundTruth,
+			);
+			await chatModelSelectorPage.verifyModelInfoFacts(modelId, groundTruth);
+			await chatModelSelectorPage.verifyModelInfoOptionalCopySpelledCorrectly(modelId);
+			await chatModelSelectorPage.verifyModelInfoSectionsDoNotOverlap(modelId);
+
+			await chatModelSelectorPage.closeModelInfo(modelId);
+			await chatModelSelectorPage.verifyModelInfoClosed(modelId);
+			await chatModelSelectorPage.closeWithEscape();
+			await chatModelSelectorPage.verifyMenuClosed();
+		}
 	});
 });

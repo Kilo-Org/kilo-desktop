@@ -23,7 +23,7 @@ import {
 	type ComponentProps,
 	type ReactNode,
 } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
 import type * as SessionModelUsage from "../../usage/session-model-usage.js";
@@ -794,6 +794,30 @@ describe("conversation map visibility", () => {
 		);
 
 		expect(document.querySelector('[data-slot="conversation-map-rail"]')).not.toBeNull();
+	});
+
+	it("spans the viewport edge to edge whatever width the OS scrollbar gutter has", async () => {
+		await page.viewport(1200, 800);
+		onTestFinished(() => page.viewport(414, 896));
+		renderExternalMessagesThread(
+			[
+				message("user", "First prompt", "user-1"),
+				message("assistant", "First answer", "assistant-1"),
+				message("user", "Second prompt", "user-2"),
+				message("assistant", "Second answer", "assistant-2"),
+			],
+			false,
+		);
+
+		const viewport = document.querySelector<HTMLElement>('[data-slot="aui_thread-viewport"]');
+		const rail = document.querySelector<HTMLElement>('[data-slot="conversation-map-rail"]');
+
+		await vi.waitFor(() => {
+			const view = viewport!.getBoundingClientRect();
+			const box = rail!.getBoundingClientRect();
+			expect(box.left).toBeCloseTo(view.left, 0);
+			expect(box.right).toBeCloseTo(view.right, 0);
+		});
 	});
 });
 

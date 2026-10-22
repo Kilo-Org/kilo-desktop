@@ -40,6 +40,23 @@ const readingLine = (viewport: HTMLElement) => {
 	return rect.top + rect.height * descent + TOP_TOLERANCE;
 };
 
+type Gutter = { left: number; right: number };
+
+const NO_GUTTER: Gutter = { left: 0, right: 0 };
+
+/**
+ * The space the viewport reserves for its scrollbar. It depends on the OS
+ * scrollbar mode — about 11px for classic scrollbars, 0 for macOS overlay
+ * scrollbars — so it is measured rather than assumed.
+ */
+const gutterOf = (viewport: HTMLElement): Gutter => {
+	const style = getComputedStyle(viewport);
+	const borders = parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth);
+	const total = Math.max(0, viewport.offsetWidth - viewport.clientWidth - borders);
+	const left = style.scrollbarGutter.includes("both-edges") ? total / 2 : 0;
+	return { left, right: total - left };
+};
+
 const partsOf = (message: ThreadMessage) => [...message.content];
 
 const textOf = (message: ThreadMessage) =>
@@ -134,6 +151,7 @@ export function ConversationMapAui({
 	const viewportHeight = useThreadViewport((s) => s.height.viewport);
 	const [activeId, setActiveId] = useState<string | undefined>(undefined);
 	const [visibleIds, setVisibleIds] = useState<readonly string[]>([]);
+	const [gutter, setGutter] = useState<Gutter>(NO_GUTTER);
 	const scheduleRef = useRef<(() => void) | undefined>(undefined);
 
 	const turns = useMemo(() => groupIntoTurns(messages), [messages]);
@@ -209,6 +227,21 @@ export function ConversationMapAui({
 		scheduleRef.current?.();
 	}, [turnKey]);
 
+	// Switching between overlay and classic scrollbars resizes the content box,
+	// so the observer also catches a gutter that appears or disappears.
+	useEffect(() => {
+		if (!viewport) return undefined;
+		const update = () =>
+			setGutter((previous) => {
+				const next = gutterOf(viewport);
+				return next.left === previous.left && next.right === previous.right ? previous : next;
+			});
+		update();
+		const observer = new ResizeObserver(update);
+		observer.observe(viewport);
+		return () => observer.disconnect();
+	}, [viewport]);
+
 	const select = useCallback(
 		(id: string) => {
 			if (!viewport) return;
@@ -234,14 +267,21 @@ export function ConversationMapAui({
 		<div
 			data-slot="conversation-map-rail"
 			className={cn(
-				"pointer-events-none sticky top-0 z-10 -mx-[var(--app-scrollbar-width)] hidden h-0 w-[calc(100%+var(--app-scrollbar-width)+var(--app-scrollbar-width))] @min-[54rem]:block",
+				"pointer-events-none sticky top-0 z-10 hidden h-0 @min-[54rem]:block",
 				className,
 			)}
+			// Spans the scrollbar gutters so the ticks sit a fixed distance from the
+			// pane edge whatever the OS scrollbar mode.
+			style={{
+				marginLeft: -gutter.left,
+				marginRight: -gutter.right,
+				width: `calc(100% + ${gutter.left + gutter.right}px)`,
+			}}
 		>
 			<div
 				className={cn(
 					"pointer-events-auto absolute top-0 px-2 py-10",
-					side === "right" ? "right-0" : "-left-1",
+					side === "right" ? "right-0" : "left-0",
 				)}
 				style={{ height: viewportHeight }}
 			>

@@ -14,6 +14,7 @@ type ChatFixtures = {
 };
 
 export const test = shellTest.extend<ChatFixtures>({
+	appIsolationKey: "chat",
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
 	chatApprovalSelectorPage: async ({}, use) => {
 		await use(new ChatApprovalSelectorPage());
@@ -35,7 +36,5 @@ export const test = shellTest.extend<ChatFixtures>({
 		await use(new ChatWelcomePage());
 	},
 });
-
-test.use({ appIsolationKey: "chat" });
 
 export const { expect } = test;

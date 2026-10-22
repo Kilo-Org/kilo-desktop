@@ -13,6 +13,7 @@ type BrowserFixtures = {
 };
 
 export const test = shellTest.extend<BrowserFixtures>({
+	appIsolationKey: "browser",
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
 	browserPage: async ({}, use) => use(new BrowserPage()),
 	browserGuestSessionPage: async ({ electronApp }, use) =>
@@ -24,7 +25,5 @@ export const test = shellTest.extend<BrowserFixtures>({
 		await use({ path: workspacePath, name: path.basename(workspacePath) });
 	},
 });
-
-test.use({ appIsolationKey: "browser" });
 
 export const { expect } = test;

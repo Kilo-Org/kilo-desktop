@@ -117,6 +117,4 @@ export const test = shellTest.extend<KiloUiFixtures>({
 	},
 });
 
-test.use({ appIsolationKey: "kilo-ui" });
-
 export const { expect } = test;

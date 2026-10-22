@@ -126,6 +126,4 @@ export const test = shellTest.extend<GitFixtures>({
 	},
 });
 
-test.use({ appIsolationKey: "git" });
-
 export const { expect } = test;

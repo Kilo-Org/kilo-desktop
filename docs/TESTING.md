@@ -30,6 +30,13 @@ teardown. The macOS merge-queue leg is additionally split into two shards
 into one HTML report. E2E jobs do not download a Playwright browser — specs use
 `_electron.launch`; Linux only installs Chromium's system libraries for Electron.
 
+Specs that need their own app share a worker by `appIsolationKey`. A feature
+fixture sets its default key in `extend` (`shellTest.extend({ appIsolationKey:
+"my-feature", ... })`); only spec files call `test.use()`, and only to choose a
+different key. A `test.use()` in a shared fixture module binds to whichever spec
+loads it first, so pools differ between processes and Playwright fails with
+"inconsistent test.use() options".
+
 E2E apps are hermetic. Each worker's profile owns its own XDG data, cache,
 config, and state directories, so Kilo CLI sessions, databases, and cache locks
 never cross workers (or reach a developer's real Kilo data). Provider loading

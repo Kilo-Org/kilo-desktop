@@ -14,6 +14,18 @@ type TerminalFixtures = {
 };
 
 export const test = shellTest.extend<TerminalFixtures>({
+	// Terminal smoke coverage creates persistent chats, panes, and sessions. Give
+	// that stateful flow its own app/profile instead of inheriting another spec's
+	// worker-scoped state.
+	appIsolationKey: "terminal",
+	appLaunchEnv:
+		process.platform === "win32"
+			? {}
+			: {
+					BASH_ENV: "",
+					ENV: "",
+					SHELL: "/bin/sh",
+				},
 	mainProcessErrors: async ({ sharedApp }, use) => {
 		await use(new MainProcessErrors(sharedApp.log));
 	},
@@ -27,21 +39,6 @@ export const test = shellTest.extend<TerminalFixtures>({
 		removePathAfterAppStops(workspacePath);
 		await use({ path: workspacePath, name: path.basename(workspacePath) });
 	},
-});
-
-// Terminal smoke coverage creates persistent chats, panes, and sessions. Give
-// that stateful flow its own app/profile instead of inheriting another spec's
-// worker-scoped state.
-test.use({
-	appIsolationKey: "terminal",
-	appLaunchEnv:
-		process.platform === "win32"
-			? {}
-			: {
-					BASH_ENV: "",
-					ENV: "",
-					SHELL: "/bin/sh",
-				},
 });
 
 export const { expect } = test;

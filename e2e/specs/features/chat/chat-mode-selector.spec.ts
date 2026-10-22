@@ -1,8 +1,6 @@
 import { test } from "../../../fixtures/features/chat.js";
 import { chatModeSelectorData } from "../../../testdata/chat-mode-selector.js";
 
-test.use({ appIsolationKey: "chat" });
-
 /**
  * Mode selector coverage against the packaged app: CLI-backed mode options,
  * selection and dismissal behavior, per-chat state, and the agent recorded by

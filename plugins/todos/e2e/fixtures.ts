@@ -8,12 +8,11 @@ import { TodosPage } from "./pages/todos-page.js";
  * plugins/*\/e2e/specs/**\/*.spec.ts from the repo-root config).
  */
 export const test = shellTest.extend<{ todosPage: TodosPage }>({
+	appIsolationKey: "todos",
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
 	todosPage: async ({}, use) => {
 		await use(new TodosPage());
 	},
 });
-
-test.use({ appIsolationKey: "todos" });
 
 export const { expect } = test;

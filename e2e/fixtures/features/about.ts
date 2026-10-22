@@ -9,6 +9,10 @@ import { aboutData } from "../../testdata/about.js";
 import { test as shellTest } from "../shell.js";
 
 export const test = shellTest.extend<{ aboutPage: AboutPage; globalKiloConfigPath: string }>({
+	// A fresh profile keeps the Kilo config row deterministic: specs sharing the default worker
+	// may run Kilo flows that create the global config file this page reports on.
+	appIsolationKey: "about",
+
 	aboutPage: async ({ electronApp }, use) => {
 		const aboutPage = new AboutPage(electronApp);
 		await aboutPage.stubFileManager();
@@ -44,7 +48,3 @@ async function reloadAtHome(): Promise<void> {
 	});
 	await reloadPage();
 }
-
-// A fresh profile keeps the Kilo config row deterministic: specs sharing the default worker
-// may run Kilo flows that create the global config file this page reports on.
-test.use({ appIsolationKey: "about" });

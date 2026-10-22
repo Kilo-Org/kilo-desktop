@@ -11,6 +11,7 @@ type WorkspaceFixtures = {
 };
 
 export const test = shellTest.extend<WorkspaceFixtures>({
+	appIsolationKey: "workspace-watcher",
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
 	watcherPage: async ({}, use) => {
 		await use(new WorkspaceWatcherPage());
@@ -29,7 +30,5 @@ export const test = shellTest.extend<WorkspaceFixtures>({
 		await use({ path: folderPath, name: path.basename(folderPath) });
 	},
 });
-
-test.use({ appIsolationKey: "workspace-watcher" });
 
 export const { expect } = test;

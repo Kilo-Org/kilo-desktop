@@ -13,7 +13,11 @@ export interface GitDiffStats {
 	fileCount: number;
 }
 
-/** One snapshot of tree input, linked to the previous snapshot it extends. */
+/**
+ * One snapshot of tree input, linked to the previous snapshot it extends.
+ * The link is absent on the first snapshot and on the first snapshot after
+ * the accumulator renames an already-published path, forcing a full reset.
+ */
 export interface GitDiffTreeSource {
 	gitStatus: GitStatusEntry[];
 	gitStatusPatch: FileTreeGitStatusPatch | undefined;
@@ -32,11 +36,15 @@ interface CodeViewPathState {
 	currentItem: CodeViewItem<undefined>;
 	currentItemId: string;
 	currentType: ChangeTypes;
+	pathIndex: number;
 	sawDeleted: boolean;
+	// Usually the patch path; suffixed when a directory claims that path.
+	treePath: string;
 }
 
 export interface GitDiffDataAccumulator {
 	diffStats: GitDiffStats;
+	directoryPaths: Set<string>;
 	gitStatusByPath: Map<string, GitStatusEntry>;
 	items: CodeViewItem<undefined>[];
 	// The last tree source emitted by snapshotGitDiffTreeSource for this
@@ -49,6 +57,7 @@ export interface GitDiffDataAccumulator {
 	pendingItems: CodeViewItem<undefined>[];
 	pendingItemById: Map<string, CodeViewItem<undefined>>;
 	pathToItemId: Map<string, string>;
+	pathStateByPatchPath: Map<string, CodeViewPathState>;
 	pathStateByTreePath: Map<string, CodeViewPathState>;
 	paths: string[];
 	// Every item id ever issued, including superseded ones. Upstream
@@ -60,6 +69,7 @@ export interface GitDiffDataAccumulator {
 export function createGitDiffDataAccumulator(): GitDiffDataAccumulator {
 	return {
 		diffStats: { addedLines: 0, deletedLines: 0, fileCount: 0 },
+		directoryPaths: new Set(),
 		gitStatusByPath: new Map(),
 		items: [],
 		lastTreeSource: undefined,
@@ -69,6 +79,7 @@ export function createGitDiffDataAccumulator(): GitDiffDataAccumulator {
 		pendingItems: [],
 		pendingItemById: new Map(),
 		pathToItemId: new Map(),
+		pathStateByPatchPath: new Map(),
 		pathStateByTreePath: new Map(),
 		paths: [],
 		usedItemIds: new Set(),
@@ -88,7 +99,7 @@ export function appendFileDiffToGitDiffData(
 
 	const path = fileDiff.name;
 	const previousPathState =
-		path.length === 0 ? undefined : accumulator.pathStateByTreePath.get(path);
+		path.length === 0 ? undefined : accumulator.pathStateByPatchPath.get(path);
 	const itemIdRename =
 		previousPathState == null
 			? undefined
@@ -109,20 +120,102 @@ export function appendFileDiffToGitDiffData(
 		return itemIdRename;
 	}
 
-	if (previousPathState == null) {
-		accumulator.paths.push(path);
+	let pathState = previousPathState;
+	if (pathState == null) {
+		const treePath = claimTreePath(accumulator, path);
+		pathState = {
+			currentItem: item,
+			currentItemId: id,
+			currentType: fileDiff.type,
+			pathIndex: accumulator.paths.length,
+			sawDeleted: false,
+			treePath,
+		};
+		accumulator.paths.push(treePath);
+		accumulator.pathStateByPatchPath.set(path, pathState);
+		accumulator.pathStateByTreePath.set(treePath, pathState);
 	}
+	const { treePath } = pathState;
 	accumulator.usedItemIds.add(id);
-	accumulator.pathToItemId.set(path, id);
-	updateGitStatusByPath(accumulator, path, fileDiff.type, previousPathState?.sawDeleted === true);
-	accumulator.pathStateByTreePath.set(path, {
-		currentItem: item,
-		currentItemId: id,
-		currentType: fileDiff.type,
-		sawDeleted: previousPathState?.sawDeleted === true || fileDiff.type === "deleted",
-	});
+	accumulator.pathToItemId.set(treePath, id);
+	updateGitStatusByPath(accumulator, treePath, fileDiff.type, pathState.sawDeleted);
+	pathState.currentItem = item;
+	pathState.currentItemId = id;
+	pathState.currentType = fileDiff.type;
+	pathState.sawDeleted ||= fileDiff.type === "deleted";
 
 	return itemIdRename;
+}
+
+// Picks the tree path for a patch path seen for the first time. The tree
+// cannot hold a file and a directory at the same path, yet a patch can (a
+// deleted symlink `lib/actions` next to an added `lib/actions/index.ts`).
+// The directory always keeps its real path; the file gets a suffixed name,
+// so an already-placed file that a later patch path turns into a directory
+// is renamed.
+function claimTreePath(accumulator: GitDiffDataAccumulator, patchPath: string): string {
+	const { directoryPaths, pathStateByTreePath } = accumulator;
+	// Ancestors are visited deepest-first, so reaching a known directory means
+	// every shallower ancestor is already a directory too.
+	let slashIndex = patchPath.lastIndexOf("/");
+	while (slashIndex > 0) {
+		const directoryPath = patchPath.slice(0, slashIndex);
+		if (directoryPaths.has(directoryPath)) break;
+		const fileState = pathStateByTreePath.get(directoryPath);
+		if (fileState != null) renameTreeFile(accumulator, fileState);
+		directoryPaths.add(directoryPath);
+		slashIndex = patchPath.lastIndexOf("/", slashIndex - 1);
+	}
+
+	return directoryPaths.has(patchPath) || pathStateByTreePath.has(patchPath)
+		? createFileTreePath(accumulator, patchPath)
+		: patchPath;
+}
+
+// Moves a file already in the tree to a suffixed path, carrying its item link
+// and git status. Published snapshots alias `paths` and `pathToItemId`, so
+// renaming a file the last snapshot already shows first copies both and drops
+// the snapshot link: the next snapshot is unlinked and the sidebar rebuilds
+// in patch order instead of extending a tree that still holds the old path.
+function renameTreeFile(accumulator: GitDiffDataAccumulator, pathState: CodeViewPathState): void {
+	const { lastTreeSource } = accumulator;
+	if (lastTreeSource != null && pathState.pathIndex < lastTreeSource.pathCount) {
+		accumulator.paths = accumulator.paths.slice();
+		accumulator.pathToItemId = new Map(accumulator.pathToItemId);
+		accumulator.lastTreeSource = undefined;
+	}
+
+	const { gitStatusByPath, pathStateByTreePath, pathToItemId } = accumulator;
+	const from = pathState.treePath;
+	const to = createFileTreePath(accumulator, from);
+	pathState.treePath = to;
+	accumulator.paths[pathState.pathIndex] = to;
+	pathStateByTreePath.delete(from);
+	pathStateByTreePath.set(to, pathState);
+	pathToItemId.delete(from);
+	pathToItemId.set(to, pathState.currentItemId);
+
+	const gitStatusEntry = gitStatusByPath.get(from);
+	if (gitStatusEntry != null) {
+		gitStatusByPath.delete(from);
+		recordGitStatusRemove(accumulator, from);
+		const renamedEntry = { path: to, status: gitStatusEntry.status };
+		gitStatusByPath.set(to, renamedEntry);
+		recordGitStatusSet(accumulator, renamedEntry);
+	}
+}
+
+// Returns an unused tree path for a file whose own path is taken by a
+// directory (or by another file that was already renamed).
+function createFileTreePath(accumulator: GitDiffDataAccumulator, path: string): string {
+	const { directoryPaths, pathStateByTreePath } = accumulator;
+	let treePath = `${path} (file)`;
+	let suffix = 2;
+	while (directoryPaths.has(treePath) || pathStateByTreePath.has(treePath)) {
+		treePath = `${path} (file ${suffix})`;
+		suffix++;
+	}
+	return treePath;
 }
 
 export function takePendingGitDiffItems(
@@ -178,7 +271,7 @@ function takePendingGitStatusPatch(
 // rebuilding.
 function renameCurrentPathItem(
 	accumulator: GitDiffDataAccumulator,
-	treePath: string,
+	patchPath: string,
 	pathState: CodeViewPathState,
 ): GitDiffItemIdRename | undefined {
 	const oldId = pathState.currentItemId;
@@ -186,7 +279,7 @@ function renameCurrentPathItem(
 	// same way) lets the newest entry for this path re-take the canonical
 	// tree id, so navigation stays path-stable without rebuilding.
 	accumulator.usedItemIds.delete(oldId);
-	const newId = createSupersededItemId(accumulator, treePath, pathState.currentType);
+	const newId = createSupersededItemId(accumulator, patchPath, pathState.currentType);
 	accumulator.usedItemIds.add(newId);
 	pathState.currentItem.id = newId;
 	pathState.currentItemId = newId;
@@ -203,15 +296,15 @@ function renameCurrentPathItem(
 
 function createSupersededItemId(
 	accumulator: GitDiffDataAccumulator,
-	treePath: string,
+	patchPath: string,
 	changeType: ChangeTypes,
 ): string {
 	const semanticSuffix = changeType === "deleted" ? "?deleted" : "?previous";
-	return createUniqueItemId(accumulator, `${treePath}${semanticSuffix}`);
+	return createUniqueItemId(accumulator, `${patchPath}${semanticSuffix}`);
 }
 
-function createFallbackItemId(accumulator: GitDiffDataAccumulator, treePath: string): string {
-	return createUniqueItemId(accumulator, `${treePath}?2`);
+function createFallbackItemId(accumulator: GitDiffDataAccumulator, patchPath: string): string {
+	return createUniqueItemId(accumulator, `${patchPath}?2`);
 }
 
 // Resolves rare id collisions by advancing a per-base suffix instead of

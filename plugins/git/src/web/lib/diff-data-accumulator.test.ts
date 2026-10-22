@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { processFile, type FileDiffMetadata } from "@pierre/diffs";
+import { FileTree } from "@pierre/trees";
 
 import {
 	appendFileDiffToGitDiffData,
 	createGitDiffDataAccumulator,
 	snapshotGitDiffTreeSource,
 	takePendingGitDiffItems,
+	type GitDiffDataAccumulator,
+	type GitDiffTreeSource,
 } from "./diff-data-accumulator.js";
 
 function fileDiffOf(patchText: string): FileDiffMetadata {
@@ -174,5 +177,148 @@ index 0000000..8888888
 		expect(accumulator.usedItemIds.has(item?.id ?? "")).toBe(true);
 		// The tree keys the real path to that unique id.
 		expect(accumulator.pathToItemId.get("gone.txt?deleted")).toBe(item?.id);
+	});
+});
+
+// The path-collision suite below is derived from Pierre's diffshub
+// (apps/diffshub/test/diffsHubDataAccumulator.test.ts), Copyright 2025 Pierre Computer Company,
+// Apache-2.0. Modified for Kilo Desktop; see THIRD_PARTY_NOTICES.md.
+//
+// A patch can hold a file and a directory at the same path (e.g. a deleted
+// symlink replaced by a real directory); the file tree cannot.
+const DELETED_SYMLINK_PATCH = `diff --git a/pkg/actions b/pkg/actions
+deleted file mode 120000
+index 7045925..0000000
+--- a/pkg/actions
++++ /dev/null
+@@ -1 +0,0 @@
+-../lib/actions
+\\ No newline at end of file
+`;
+
+const ADDED_DIRECTORY_FILE_PATCH = `diff --git a/pkg/actions/index.py b/pkg/actions/index.py
+new file mode 100644
+index 0000000..e69de29
+--- /dev/null
++++ b/pkg/actions/index.py
+@@ -0,0 +1 @@
++print("hi")
+`;
+
+const ADDED_SIBLING_FILE_PATCH = `diff --git a/pkg/zed.py b/pkg/zed.py
+new file mode 100644
+index 0000000..e69de29
+--- /dev/null
++++ b/pkg/zed.py
+@@ -0,0 +1 @@
++print("zed")
+`;
+
+function createTree(source: GitDiffTreeSource): FileTree {
+	return new FileTree({
+		flattenEmptyDirectories: false,
+		gitStatus: source.gitStatus,
+		initialExpansion: "open",
+		paths: source.paths.slice(0, source.pathCount),
+		sort: () => 0,
+	});
+}
+
+// Mirrors GitDiffSidebar: linked snapshots append, anything else rebuilds.
+function applySource(tree: FileTree, previous: GitDiffTreeSource, source: GitDiffTreeSource): void {
+	if (source.previousSource !== previous) {
+		tree.resetPaths(source.paths.slice(0, source.pathCount));
+		tree.setGitStatus(source.gitStatus);
+		return;
+	}
+	tree.batch(
+		source.paths
+			.slice(previous.pathCount, source.pathCount)
+			.map((path) => ({ type: "add" as const, path })),
+	);
+	if (source.gitStatusPatch != null) tree.applyGitStatusPatch(source.gitStatusPatch);
+}
+
+function visibleRows(tree: FileTree): string[] {
+	return tree.getVisibleRows(0, tree.getVisibleCount()).map((row) => row.path);
+}
+
+function accumulate(...patches: string[]): GitDiffDataAccumulator {
+	const accumulator = createGitDiffDataAccumulator();
+	for (const patch of patches) appendFileDiffToGitDiffData(accumulator, fileDiffOf(patch));
+	return accumulator;
+}
+
+describe("GitDiffDataAccumulator file/directory path collisions", () => {
+	it("gives a file replaced by a same-named directory a suffixed tree path", () => {
+		const source = snapshotGitDiffTreeSource(
+			accumulate(DELETED_SYMLINK_PATCH, ADDED_DIRECTORY_FILE_PATCH),
+		);
+
+		expect(source.paths).toEqual(["pkg/actions (file)", "pkg/actions/index.py"]);
+		expect(source.gitStatus).toEqual([
+			{ path: "pkg/actions (file)", status: "deleted" },
+			{ path: "pkg/actions/index.py", status: "added" },
+		]);
+		// Item ids stay keyed by the real patch path.
+		expect(source.pathToItemId.get("pkg/actions (file)")).toBe("pkg/actions");
+		expect(() => createTree(source)).not.toThrow();
+	});
+
+	it("gives a file arriving after a same-named directory a suffixed tree path", () => {
+		const source = snapshotGitDiffTreeSource(
+			accumulate(ADDED_DIRECTORY_FILE_PATCH, DELETED_SYMLINK_PATCH),
+		);
+
+		expect(source.paths).toEqual(["pkg/actions/index.py", "pkg/actions (file)"]);
+		expect(() => createTree(source)).not.toThrow();
+	});
+
+	it("rebuilds the tree in patch order after renaming a published file", () => {
+		const accumulator = accumulate(DELETED_SYMLINK_PATCH, ADDED_SIBLING_FILE_PATCH);
+		const first = snapshotGitDiffTreeSource(accumulator);
+		const tree = createTree(first);
+
+		appendFileDiffToGitDiffData(accumulator, fileDiffOf(ADDED_DIRECTORY_FILE_PATCH));
+		const second = snapshotGitDiffTreeSource(accumulator);
+		expect(second.previousSource).toBeUndefined();
+		applySource(tree, first, second);
+
+		expect(visibleRows(tree)).toEqual(visibleRows(createTree(second)));
+		expect(tree.getItem("pkg/actions (file)")?.isDirectory()).toBe(false);
+		expect(tree.getItem("pkg/actions/")?.isDirectory()).toBe(true);
+		expect(second.pathToItemId.get("pkg/actions (file)")).toBe("pkg/actions");
+	});
+
+	it("keeps a published snapshot's paths intact after a later rename", () => {
+		const accumulator = createGitDiffDataAccumulator();
+		const empty = snapshotGitDiffTreeSource(accumulator);
+		const tree = createTree(empty);
+		appendFileDiffToGitDiffData(accumulator, fileDiffOf(DELETED_SYMLINK_PATCH));
+		const first = snapshotGitDiffTreeSource(accumulator);
+
+		// The stream keeps appending before the tree renders `first`.
+		appendFileDiffToGitDiffData(accumulator, fileDiffOf(ADDED_DIRECTORY_FILE_PATCH));
+		applySource(tree, empty, first);
+		expect(visibleRows(tree)).toEqual(["pkg/", "pkg/actions"]);
+		expect(first.pathToItemId.get("pkg/actions")).toBe("pkg/actions");
+		expect(first.gitStatus).toEqual([{ path: "pkg/actions", status: "deleted" }]);
+
+		const second = snapshotGitDiffTreeSource(accumulator);
+		applySource(tree, first, second);
+		expect(visibleRows(tree)).toEqual(visibleRows(createTree(second)));
+	});
+
+	it("streams a file renamed before its first publish as a plain append", () => {
+		const accumulator = createGitDiffDataAccumulator();
+		const first = snapshotGitDiffTreeSource(accumulator);
+		const tree = createTree(first);
+		appendFileDiffToGitDiffData(accumulator, fileDiffOf(DELETED_SYMLINK_PATCH));
+		appendFileDiffToGitDiffData(accumulator, fileDiffOf(ADDED_DIRECTORY_FILE_PATCH));
+		const second = snapshotGitDiffTreeSource(accumulator);
+
+		expect(second.previousSource).toBe(first);
+		applySource(tree, first, second);
+		expect(visibleRows(tree)).toEqual(visibleRows(createTree(second)));
 	});
 });

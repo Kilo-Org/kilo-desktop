@@ -115,6 +115,7 @@ Derived from [Pierre diffshub](https://github.com/pierrecomputer/pierre/tree/mai
 - `src/web/lib/stream-git-patch-files.ts` ← `apps/diffshub/lib/streamGitPatchFiles.ts`
 - `src/web/lib/map-change-type-to-git-status.ts` ← `apps/diffshub/lib/mapChangeTypeToGitStatus.ts`
 - `src/web/lib/diff-data-accumulator.ts` ← `apps/diffshub/lib/diffsHubDataAccumulator.ts`
+- `src/web/lib/diff-data-accumulator.test.ts` (the file/directory path collision suite) ← `apps/diffshub/test/diffsHubDataAccumulator.test.ts`
 - `src/web/GitDiffSidebar.tsx` ← `apps/diffshub/components/DiffsHubFileTree.tsx`
 
 License: Apache-2.0. Copyright 2025 Pierre Computer Company. Each derived file carries a notice that it was modified for Kilo Desktop. diffshub ships no NOTICE file.

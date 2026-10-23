@@ -21,6 +21,7 @@ export const chatModelSelectorData = {
 		factRow: "dl > div",
 		factLabel: "dl > div > dt",
 		factValue: "dd",
+		favoriteButtonTestIdPrefix: "kilo-model-favorite-",
 	},
 	searchPlaceholder: "Search models",
 	addLocalModelButtonName: "Add a local model",
@@ -29,6 +30,13 @@ export const chatModelSelectorData = {
 		localServerTitle: "Run AI on your device",
 		localServerDescription:
 			"Private local inference that keeps your prompts, outputs, and data under your control.",
+	},
+	/** Favorite star button's two accessible-name states (kilo-model-selector.tsx). */
+	favoriteCopy: {
+		addLabel: "Add to favorites",
+		removeLabel: "Remove from favorites",
+		// Active-star styling (StarIcon className when favorited).
+		activeClass: /^(?=.*\bfill-current\b)(?=.*\btext-yellow-500\b).*$/,
 	},
 	/**
 	 * Provider-family search terms rather than exact model ids or versions:

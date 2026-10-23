@@ -7,6 +7,7 @@ import {
 	expectElementToBeVisible,
 	expectElementToContainText,
 	expectElementToHaveAttribute,
+	expectElementToHaveClass,
 	expectElementToHaveCount,
 	expectElementToHaveText,
 	fill,
@@ -93,6 +94,12 @@ export class ChatModelSelectorPage {
 	private readonly emptyIcon = () => this.menu().locator(chatModelSelectorData.locators.emptyIcon);
 	private readonly addLocalModelButton = () =>
 		getLocatorByRole("button", { name: chatModelSelectorData.addLocalModelButtonName });
+	private readonly favoriteButton = (modelId: string) =>
+		getLocatorByTestId(`${chatModelSelectorData.locators.favoriteButtonTestIdPrefix}${modelId}`);
+	private readonly favoritesListModelName = (modelName: string) =>
+		this.list().locator(chatModelSelectorData.locators.modelOptionName).getByText(modelName, {
+			exact: true,
+		});
 	private readonly infoIcon = (modelId: string) =>
 		getLocatorByTestId(`${chatModelSelectorData.locators.infoIconTestIdPrefix}${modelId}`);
 	private readonly infoPopover = (modelId: string) =>
@@ -197,6 +204,10 @@ export class ChatModelSelectorPage {
 		return await getText(
 			this.modelOption(modelId).locator(chatModelSelectorData.locators.modelOptionName),
 		);
+	}
+
+	async toggleFavorite(modelId: string): Promise<void> {
+		await click(this.favoriteButton(modelId));
 	}
 
 	/**
@@ -322,6 +333,37 @@ export class ChatModelSelectorPage {
 		await expectElementToHaveCount(this.modelOptions(), 0, {
 			message: "Favorites list should render no model rows",
 		});
+	}
+
+	/**
+	 * Favoriting has no dedicated boolean attribute (no `aria-pressed`/
+	 * `data-favorite`), so both signals the app actually exposes are checked:
+	 * the accessible name flips to "Remove from favorites", and the star
+	 * icon itself picks up the active fill/yellow class.
+	 */
+	async verifyModelFavorited(modelId: string): Promise<void> {
+		await expectElementToHaveAttribute(
+			this.favoriteButton(modelId),
+			"aria-label",
+			chatModelSelectorData.favoriteCopy.removeLabel,
+			{
+				message: `Favorite button for "${modelId}" should flip to "${chatModelSelectorData.favoriteCopy.removeLabel}" once favorited`,
+			},
+		);
+		await expectElementToHaveClass(
+			this.favoriteButton(modelId).locator("svg"),
+			chatModelSelectorData.favoriteCopy.activeClass,
+			{
+				message: `Favorite star for "${modelId}" should turn active (filled/yellow) once favorited`,
+			},
+		);
+	}
+
+	async verifyModelInFavoritesList(modelName: string): Promise<void> {
+		await expectElementToBeVisible(
+			this.favoritesListModelName(modelName),
+			`Favorites list should show "${modelName}"`,
+		);
 	}
 
 	async verifyLocalServerEmptyState(): Promise<void> {

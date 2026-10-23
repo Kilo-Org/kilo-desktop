@@ -1,0 +1,60 @@
+import { test } from "../../../fixtures/features/appearance.js";
+import { appearanceData } from "../../../testdata/appearance.js";
+
+const { textSizeRange, textSizeSettings } = appearanceData;
+
+test.describe("Appearance text size @smoke @packaged", () => {
+	test.beforeEach(async ({ appShellPage, appearancePage }) => {
+		// The fixture clears storage between tests, but the open window keeps the last sizes in
+		// memory; reloading makes every test start from the defaults.
+		await appearancePage.reloadApp();
+		await appShellPage.verifyShellIsLoaded();
+		await appShellPage.openSettings();
+		await appearancePage.openAppearanceSettings();
+	});
+
+	for (const { setting, other } of textSizeSettings) {
+		const name = setting.title.toLowerCase();
+
+		test(`adjusts and persists the ${name}`, async ({ appShellPage, appearancePage }) => {
+			await appearancePage.verifyTextSizeAtDefault(setting);
+
+			await appearancePage.increaseTextSize(setting);
+			await appearancePage.verifyTextSize(setting, setting.defaultPx + 1);
+			await appearancePage.verifyTextSizeAtDefault(other);
+
+			await appearancePage.reloadApp();
+			await appShellPage.verifyShellIsLoaded();
+			await appShellPage.openSettings();
+			await appearancePage.openAppearanceSettings();
+			await appearancePage.verifyTextSize(setting, setting.defaultPx + 1);
+		});
+
+		test(`resets the ${name} to its default`, async ({ appShellPage, appearancePage }) => {
+			await appearancePage.verifyResetNotOffered(setting);
+
+			await appearancePage.increaseTextSize(setting);
+			await appearancePage.verifyResetOffered(setting);
+			await appearancePage.verifyResetNotOffered(other);
+
+			await appearancePage.clickResetTextSize(setting);
+			await appearancePage.verifyTextSizeAtDefault(setting);
+			await appearancePage.verifyResetNotOffered(setting);
+
+			await appearancePage.reloadApp();
+			await appShellPage.verifyShellIsLoaded();
+			await appShellPage.openSettings();
+			await appearancePage.openAppearanceSettings();
+			await appearancePage.verifyTextSizeAtDefault(setting);
+		});
+
+		test(`limits the ${name} to its supported range`, async ({ appearancePage }) => {
+			await appearancePage.setTextSizeToMaximum(setting);
+			await appearancePage.verifyTextSize(setting, textSizeRange.maxPx);
+
+			await appearancePage.setTextSizeToMinimum(setting);
+			await appearancePage.verifyTextSize(setting, textSizeRange.minPx);
+			await appearancePage.verifyTextSizeAtDefault(other);
+		});
+	}
+});

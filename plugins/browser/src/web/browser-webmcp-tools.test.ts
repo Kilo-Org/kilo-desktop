@@ -22,6 +22,10 @@ function makeSystem(options: { tabs?: Tab[]; withKiloUi?: boolean } = {}) {
 	};
 	if (options.withKiloUi !== false) {
 		system.getSdk("kilo-ui").plugins.expose("chatRightPanel", panel);
+		// Each fixture chat's session shares its id, to keep assertions readable.
+		system
+			.getSdk("kilo-ui")
+			.plugins.expose("sessions", { sessionIdOfChat: (kiloSessionId: string) => kiloSessionId });
 	}
 	webRegister(browserSdk);
 	const openBrowser = (args: Record<string, unknown>, kiloSessionId: string | null = "chat-1") =>

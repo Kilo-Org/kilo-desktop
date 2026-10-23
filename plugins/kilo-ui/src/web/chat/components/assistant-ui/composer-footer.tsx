@@ -8,8 +8,8 @@ import { useSdkContributions } from "@kilo-desktop/sdk-react";
 import {
 	useThreadWorkingDirectory,
 	useThreadWorkspaceDirectory,
-} from "../../use-workspace-directory.js";
-import { directoryBasename } from "../../session-activity/session-activity-logic.js";
+} from "../../../session/workspace/use-workspace-directory.js";
+import { directoryBasename } from "../../../session/activity/session-activity-logic.js";
 import { useComposerUsageView } from "../../usage/use-session-model-usage.js";
 import { useIsThreadAwaitingWorktree } from "../../worktree-setup/WorktreeSetupContext.js";
 import { ComposerContext } from "./elements/composer-context.js";

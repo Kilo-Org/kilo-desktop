@@ -1,7 +1,13 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { AssistantRuntimeProvider, DataRenderers, Tools, useAui } from "@assistant-ui/react";
+import {
+	AssistantRuntimeProvider,
+	DataRenderers,
+	Tools,
+	useAui,
+	type AssistantRuntime,
+} from "@assistant-ui/react";
 import type { OpenCodeServerEvent } from "@assistant-ui/react-opencode";
 
 import { sdkQueryOptions, useFeatureFlag, useSdk } from "@kilo-desktop/sdk-react";
@@ -13,7 +19,7 @@ import type {
 } from "../../contracts/chat/schemas.js";
 import { useWorkspacesFeature } from "../workspaces/WorkspacesFeatureContext.js";
 import { ChatComposerCapabilityHost } from "./ChatComposerCapabilityHost.js";
-import { resolveChatWorkspaceDirectory } from "./chat-workspace-directory.js";
+import { resolveSessionWorkspaceDirectory } from "../session/workspace/session-workspace-directory.js";
 import { navigateToChat } from "./chat-navigation.js";
 import { resolveModelEffort } from "./components/assistant-ui/model-selector.js";
 import { OpenCodeDataPart } from "./components/tools/opencode-data-part.js";
@@ -56,23 +62,23 @@ import {
 	KILO_PROVIDER_LIST_QUERY_KEY,
 } from "../providers/provider-queries.js";
 import { isStaleKiloConnectionError } from "./kilo-connection-error.js";
-import { bindChatPaneSync, listenChatPaneSync } from "./pane-canvas/chat-pane-sync.js";
-import { chatRightPanelCapability } from "./right-panel/chat-right-panel-capability.js";
+import { bindChatPaneSync, listenChatPaneSync } from "../session/pane-canvas/chat-pane-sync.js";
+import { chatRightPanelCapability } from "../session/right-panel/chat-right-panel-capability.js";
 import type { SessionInitializedInfo } from "./runtime/create-kilo-runtime-backend.js";
 import { useKiloRuntime } from "./runtime/use-kilo-runtime.js";
 import { PROMPT_QUEUE_EDITING_FEATURE_FLAG } from "./prompt-queue-editing/feature-flag.js";
 import { KiloMcpAppsHost } from "./runtime/mcp-apps-host.js";
 import { ElectronMcpAppRenderer } from "./components/mcp-apps/ElectronMcpAppRenderer.js";
-import { SessionActivityProvider } from "./session-activity/SessionActivityProvider.js";
+import { SessionActivityProvider } from "../session/activity/SessionActivityProvider.js";
 import {
 	createSessionActivityStore,
 	whenSessionsRefreshed,
-} from "./session-activity/session-activity-store.js";
-import { createChatSessionWorkspaceCapability } from "./session-workspace/chat-session-workspace-capability.js";
-import { SessionListViewProvider } from "./session-list/use-session-list-view.js";
-import { WorkspaceBoardProvider } from "./workspace-board/WorkspaceBoardProvider.js";
-import { WorkspaceBoardWindowBridge } from "./workspace-board/WorkspaceBoardWindowBridge.js";
-import { bindSessionDirectoriesStore } from "./session-directories-store.js";
+} from "../session/activity/session-activity-store.js";
+import { createChatSessionWorkspaceCapability } from "../session/workspace/chat-session-workspace-capability.js";
+import { SessionListViewProvider } from "../session/list/use-session-list-view.js";
+import { WorkspaceBoardProvider } from "../session/workspace-board/WorkspaceBoardProvider.js";
+import { WorkspaceBoardWindowBridge } from "../session/workspace-board/WorkspaceBoardWindowBridge.js";
+import { bindSessionDirectoriesStore } from "../session/activity/session-directories-store.js";
 import {
 	isNewWorktreeRequest,
 	readGitDraftSelection,
@@ -86,15 +92,24 @@ import { WorktreeSetupProvider } from "./worktree-setup/WorktreeSetupContext.js"
 import { PierreDiffProvider } from "./PierreDiffProvider.js";
 import { KiloSessionSelectionSync } from "./session-selection/KiloSessionSelectionSync.js";
 import { SubagentActivityProvider } from "./subagents/SubagentActivityContext.js";
+import { SessionChatAdoption } from "../session/SessionChatAdoption.js";
+import { sessionIdOfThread } from "../session/session-identity.js";
+import { createSessionsCapability } from "../session/sessions-capability.js";
+import { SessionsProvider } from "../session/SessionsProvider.js";
+import { createSessionsStore } from "../session/sessions-store.js";
+import { deletedChatIdOf, startSessionsSync, type SessionsSync } from "../session/sessions-sync.js";
+import { renamePinnedSessions } from "../session/list/use-session-list-view.js";
+import type { SessionsService } from "../../contracts/sessions/schemas.js";
+import { useRightPanelStore } from "../session/right-panel/right-panel-store.js";
 
 import "./composer.css";
 
 /**
  * App-lifetime chat runtime: connection, model selection, and a single
- * `AssistantRuntimeProvider` shared by the shell sidebar SessionList and ChatPage.
+ * `AssistantRuntimeProvider` shared by the shell sidebar SessionList and SessionPage.
  */
 export function ChatFeatureProvider({ children }: { children: ReactNode }) {
-	const sdk = useSdk<KiloUiChatService>("kilo-ui");
+	const sdk = useSdk<KiloUiChatService & SessionsService>("kilo-ui");
 	const queryClient = useQueryClient();
 	const { activeWorkspaceId, workspaces } = useWorkspacesFeature();
 	const localInference = resolveLocalInferenceCapability(sdk.plugins.get("local-inference"));
@@ -328,15 +343,38 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	useEffect(() => {
 		workspacesRef.current = workspaces;
 	}, [workspaces]);
+	// Work sessions: main saves them; this window mirrors them and sends its writes.
+	const sessions = useMemo(() => createSessionsStore(), []);
+	const [sessionsSync, setSessionsSync] = useState<SessionsSync | null>(null);
+	const sessionsSyncRef = useRef<SessionsSync | null>(null);
 	useEffect(() => {
+		const sync = startSessionsSync({
+			store: sessions,
+			client: sdk.client,
+			events: sdk.events,
+			onAdopted: (adopted) => {
+				useRightPanelStore.getState().renameSessions(adopted);
+				renamePinnedSessions(adopted);
+			},
+		});
+		sessionsSyncRef.current = sync;
+		setSessionsSync(sync);
+		return () => {
+			sync.dispose();
+			sessionsSyncRef.current = null;
+		};
+	}, [sdk, sessions]);
+	useEffect(() => {
+		sdk.plugins.expose("sessions", createSessionsCapability(sessions));
 		sdk.plugins.expose(
 			"chatSessionWorkspace",
 			createChatSessionWorkspaceCapability({
-				getSessionActivity: (sessionId) => sessionActivity.getState().sessions[sessionId],
+				getChatOfSession: (sessionId) => sessions.getState().sessions[sessionId]?.chatIds[0],
+				getChatActivity: (kiloSessionId) => sessionActivity.getState().sessions[kiloSessionId],
 				getWorkspaces: () => workspacesRef.current,
 			}),
 		);
-	}, [sdk, sessionActivity]);
+	}, [sdk, sessionActivity, sessions]);
 
 	// The namer holds per-session arming in memory, so it must outlive
 	// connection refreshes: the connection is read through a ref instead of
@@ -350,7 +388,17 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		hasWorktreeWork: (input) => sdk.client["chat.hasWorktreeWork"](input),
 		log: (message) => console.warn(`[kilo-ui] branch naming: ${message}`),
 	});
-	const onLiveEvent = useChatNotifier(sdk, sessionActivity);
+	const notifyLiveEvent = useChatNotifier(sdk, sessionActivity);
+	// Only the main window keeps the event stream open, so it alone reacts to
+	// chats deleted anywhere (here, another window, or another Kilo client).
+	const onLiveEvent = useMemo(() => {
+		if (!notifyLiveEvent) return undefined;
+		return (event: Parameters<typeof notifyLiveEvent>[0]) => {
+			notifyLiveEvent(event);
+			const deletedChatId = deletedChatIdOf(event);
+			if (deletedChatId) sessionsSyncRef.current?.detachChat(deletedChatId);
+		};
+	}, [notifyLiveEvent]);
 
 	const catalogQuery = useKiloModelCatalog(connection.data, connection.dataUpdatedAt);
 	const gatewayModelDetails = useQuery({
@@ -479,8 +527,8 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 	);
 
 	const commandDirectory =
-		resolveChatWorkspaceDirectory({
-			remoteId: undefined,
+		resolveSessionWorkspaceDirectory({
+			followsActiveWorkspace: true,
 			activeWorkspaceId,
 			sessionWorkspaceId: undefined,
 			workspaces,
@@ -532,10 +580,27 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		[sdk, promoteDraftAgent, promoteDraftModel, branchNamer],
 	);
 
+	// A chat is created by the first send from the main thread, so the session
+	// it joins is the one that thread shows when the send starts.
+	const runtimeRef = useRef<AssistantRuntime | null>(null);
+	const getSessionForNewChat = useCallback(() => {
+		const thread = runtimeRef.current?.threads.mainItem.getState();
+		if (!thread) return undefined;
+		return sessionIdOfThread(
+			{ remoteId: thread.remoteId, localThreadId: thread.id },
+			sessions.getState().sessionIdByChat,
+		);
+	}, [sessions]);
+	const onChatCreated = useCallback((kiloSessionId: string, sessionId: string) => {
+		sessionsSyncRef.current?.attachChat(sessionId, kiloSessionId);
+	}, []);
+
 	const promptQueueEditing = useFeatureFlag(PROMPT_QUEUE_EDITING_FEATURE_FLAG, false);
 	const runtime = useKiloRuntime({
 		connectionPromise,
 		prepareSession,
+		getSessionForNewChat,
+		onChatCreated,
 		onSessionCreateFailed,
 		...(agent ? { defaultAgent: agent } : {}),
 		getAgent,
@@ -556,6 +621,7 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 		// including the popped-out board's; other windows only need their chat's.
 		keepEventStreamOpen: sdk.shell.windowRole === "main",
 	});
+	runtimeRef.current = runtime;
 
 	const aui = useAui({
 		dataRenderers: DataRenderers(),
@@ -663,32 +729,35 @@ export function ChatFeatureProvider({ children }: { children: ReactNode }) {
 				<KiloAuthProvider>
 					<KiloSignInCapabilityHost />
 					<SessionActivityProvider store={sessionActivity}>
-						<ChatAgentSelectionProvider value={agentSelection}>
-							<ChatAutoApproveProvider value={autoApproveSelection}>
-								<ChatModelSelectionProvider value={modelSelection}>
-									<WorktreeSetupProvider
-										isSettingUp={isSettingUpWorktree}
-										isAwaitingSession={isAwaitingWorktreeSession}
-									>
-										<AssistantRuntimeProvider aui={aui} runtime={runtime}>
-											<ChatComposerCapabilityHost />
-											<SubagentActivityProvider>
-												<KiloSessionSelectionSync
-													hydrateAgent={hydrateThreadAgent}
-													hydrateModel={hydrateThreadModel}
-												/>
-												<SessionListViewProvider>
-													<WorkspaceBoardProvider>
-														<WorkspaceBoardWindowBridge />
-														{children}
-													</WorkspaceBoardProvider>
-												</SessionListViewProvider>
-											</SubagentActivityProvider>
-										</AssistantRuntimeProvider>
-									</WorktreeSetupProvider>
-								</ChatModelSelectionProvider>
-							</ChatAutoApproveProvider>
-						</ChatAgentSelectionProvider>
+						<SessionsProvider store={sessions} sync={sessionsSync}>
+							<ChatAgentSelectionProvider value={agentSelection}>
+								<ChatAutoApproveProvider value={autoApproveSelection}>
+									<ChatModelSelectionProvider value={modelSelection}>
+										<WorktreeSetupProvider
+											isSettingUp={isSettingUpWorktree}
+											isAwaitingSession={isAwaitingWorktreeSession}
+										>
+											<AssistantRuntimeProvider aui={aui} runtime={runtime}>
+												<ChatComposerCapabilityHost />
+												{sdk.shell.windowRole === "main" ? <SessionChatAdoption /> : null}
+												<SubagentActivityProvider>
+													<KiloSessionSelectionSync
+														hydrateAgent={hydrateThreadAgent}
+														hydrateModel={hydrateThreadModel}
+													/>
+													<SessionListViewProvider>
+														<WorkspaceBoardProvider>
+															<WorkspaceBoardWindowBridge />
+															{children}
+														</WorkspaceBoardProvider>
+													</SessionListViewProvider>
+												</SubagentActivityProvider>
+											</AssistantRuntimeProvider>
+										</WorktreeSetupProvider>
+									</ChatModelSelectionProvider>
+								</ChatAutoApproveProvider>
+							</ChatAgentSelectionProvider>
+						</SessionsProvider>
 					</SessionActivityProvider>
 				</KiloAuthProvider>
 				<KiloServerErrorToast />

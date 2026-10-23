@@ -4,7 +4,7 @@ import { toast } from "@kilo-desktop/ui/components/sonner";
 import { createKiloClient } from "@kilocode/sdk/v2/client";
 import type { KiloGlobalConnection } from "../../../contracts/chat/schemas.js";
 import { LOCAL_MODEL_SERVER_PROVIDER_ID } from "../../providers/provider-ids.js";
-import { createSessionActivityStore } from "../session-activity/session-activity-store.js";
+import { createSessionActivityStore } from "../../session/activity/session-activity-store.js";
 import { createKiloRuntimeBackend } from "./create-kilo-runtime-backend.js";
 import { createKiloDirectoryClient, createKiloGlobalClient } from "./create-kilo-runtime-client.js";
 import {
@@ -535,6 +535,34 @@ describe("createKiloRuntimeBackend", () => {
 			workspaceId: "ws-1",
 			worktreeBranch: "kilo/aback-aardvark",
 		});
+	});
+
+	it("links the new chat to the work session it joins before anything learns of it", async () => {
+		const create = vi.fn(async () => ({ data: { id: "session-new" } }));
+		vi.mocked(createKiloGlobalClient).mockReturnValue({} as never);
+		vi.mocked(createKiloDirectoryClient).mockReturnValue({ session: { create } } as never);
+		const store = createSessionActivityStore({ storage: null });
+		let sessionForNewChat = "wses_a";
+		const onChatCreated = vi.fn((_kiloSessionId: string, _sessionId: string) => {
+			expect(store.getState().sessions["session-new"]).toBeUndefined();
+		});
+		const backend = createKiloRuntimeBackend({
+			connectionPromise: Promise.resolve(connection),
+			prepareSession: vi.fn(async () => ({ directory: "/workspace", workspaceFolders: [] })),
+			getSessionForNewChat: () => sessionForNewChat,
+			onChatCreated,
+			getVariant: () => undefined,
+			sessionActivity: store,
+		});
+
+		const initialized = backend.initializeSession();
+		// The session is read when the send starts, not after preparation settles.
+		sessionForNewChat = "wses_other";
+		await initialized;
+
+		expect(onChatCreated).toHaveBeenCalledWith("session-new", "wses_a");
+		// The link lives with the session, not on the chat.
+		expect(JSON.stringify(create.mock.calls)).not.toContain("wses_a");
 	});
 
 	it("arms the namer with the worktree base ref on session create", async () => {

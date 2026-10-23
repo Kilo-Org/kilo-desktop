@@ -10,11 +10,15 @@ export { KiloProvidersSettings } from "./providers/KiloProvidersSettings.js";
 export { NotificationSettings } from "./chat/notifications/NotificationSettings.js";
 export { BellIcon as NotificationsNavIcon } from "lucide-react";
 export { ChatFeatureProvider } from "./chat/ChatFeatureProvider.js";
-export { ChatPage, ChatPageHeaderActions, ChatPageHeaderLeading } from "./chat/ChatPage.js";
+export {
+	SessionPage,
+	SessionPageHeaderActions,
+	SessionPageHeaderLeading,
+} from "./session/SessionPage.js";
 export { OnboardingProvider } from "./onboarding/OnboardingProvider.js";
-export { SessionList } from "./chat/components/assistant-ui/session-list.js";
-export { WorkspaceBoardPage } from "./chat/workspace-board/WorkspaceBoardPage.js";
-export { WorkspaceBoardHeaderActions } from "./chat/workspace-board/WorkspaceBoardHeaderActions.js";
+export { SessionList } from "./session/components/session-list.js";
+export { WorkspaceBoardPage } from "./session/workspace-board/WorkspaceBoardPage.js";
+export { WorkspaceBoardHeaderActions } from "./session/workspace-board/WorkspaceBoardHeaderActions.js";
 export { SidebarKiloAccount } from "./account/SidebarKiloAccount.js";
 export { WorkspacesFeatureProvider } from "./workspaces/WorkspacesFeatureProvider.js";
 export { WorkspaceSelector } from "./workspaces/WorkspaceSelector.js";

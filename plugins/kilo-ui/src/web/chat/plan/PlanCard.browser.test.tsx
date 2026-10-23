@@ -8,8 +8,12 @@ import type * as AssistantUiReact from "@assistant-ui/react";
 
 import { ChatAgentSelectionProvider } from "../agent-selection/ChatAgentSelectionContext.js";
 import { ChatConnectionProvider } from "../connection/ChatConnectionContext.js";
-import { useRightPanelStore } from "../right-panel/right-panel-store.js";
+import { useRightPanelStore } from "../../session/right-panel/right-panel-store.js";
 import { PlanCard } from "./PlanCard.js";
+import { SessionsFixture } from "../../session/test-helpers.js";
+// The fixture chat's session shares its id, to keep assertions readable.
+const PLAN_SESSION_CHATS = { "session-plan": "session-plan" };
+
 import type { PlanProjection } from "./plan-projection.js";
 import { resetPlanApprovalUiState } from "./use-approve-plan.js";
 
@@ -156,7 +160,7 @@ function renderPlanCard(projection: PlanProjection) {
 						isCatalogError: false,
 					}}
 				>
-					{children}
+					<SessionsFixture chats={PLAN_SESSION_CHATS}>{children}</SessionsFixture>
 				</ChatAgentSelectionProvider>
 			</ChatConnectionProvider>
 		</QueryClientProvider>

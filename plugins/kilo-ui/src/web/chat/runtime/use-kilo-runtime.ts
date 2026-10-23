@@ -13,7 +13,7 @@ import type {
 	KiloGlobalConnection,
 	KiloSessionPreparation,
 } from "../../../contracts/chat/schemas.js";
-import type { SessionActivityStore } from "../session-activity/session-activity-store.js";
+import type { SessionActivityStore } from "../../session/activity/session-activity-store.js";
 import {
 	createKiloRuntimeBackend,
 	type SessionInitializedInfo,
@@ -36,6 +36,10 @@ reactOpenCode.setLocalMcpApps?.(LOCAL_MCP_APPS);
 export interface UseKiloRuntimeOptions {
 	connectionPromise?: Promise<KiloGlobalConnection>;
 	prepareSession?: () => Promise<KiloSessionPreparation>;
+	/** The work session a chat created now joins; see the backend option. */
+	getSessionForNewChat?: () => string | undefined;
+	/** Links a new chat to its session; see the backend option. */
+	onChatCreated?: (kiloSessionId: string, sessionId: string) => void;
 	/** Pre-built client injection for focused tests. */
 	client?: KiloClient;
 	initialSessionId?: string;
@@ -83,6 +87,8 @@ export interface UseKiloRuntimeOptions {
 export function useKiloRuntime({
 	connectionPromise,
 	prepareSession,
+	getSessionForNewChat,
+	onChatCreated,
 	client: clientOption,
 	initialSessionId,
 	onThreadIdChange,
@@ -121,6 +127,10 @@ export function useKiloRuntime({
 	connectionRef.current = connectionPromise;
 	const knownCommandNamesRef = useRef(getKnownCommandNames);
 	knownCommandNamesRef.current = getKnownCommandNames;
+	const getSessionForNewChatRef = useRef(getSessionForNewChat);
+	getSessionForNewChatRef.current = getSessionForNewChat;
+	const onChatCreatedRef = useRef(onChatCreated);
+	onChatCreatedRef.current = onChatCreated;
 	const onSessionInitializedRef = useRef(onSessionInitialized);
 	onSessionInitializedRef.current = onSessionInitialized;
 	const onPermissionEventRef = useRef(onPermissionEvent);
@@ -164,6 +174,9 @@ export function useKiloRuntime({
 				return next;
 			},
 			prepareSession,
+			getSessionForNewChat: () => getSessionForNewChatRef.current?.(),
+			onChatCreated: (kiloSessionId, sessionId) =>
+				onChatCreatedRef.current?.(kiloSessionId, sessionId),
 			...promptGetters,
 			onSessionInitialized: (threadId: string, info?: SessionInitializedInfo) =>
 				onSessionInitializedRef.current?.(threadId, info),

@@ -1,4 +1,3 @@
-import { useAuiState } from "@assistant-ui/react";
 import { CircleAlertIcon, ListTodoIcon } from "lucide-react";
 import { memo, type FC } from "react";
 
@@ -8,10 +7,8 @@ import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { OPTIMISTIC_AGENT_CATALOG } from "../agent-selection/agent-catalog.js";
-import {
-	resolveRightPanelSessionKey,
-	useRightPanelStore,
-} from "../right-panel/right-panel-store.js";
+import { useRightPanelStore } from "../../session/right-panel/right-panel-store.js";
+import { useThreadSessionId } from "../../session/use-thread-session-id.js";
 import { ApprovePlanButton } from "./ApprovePlanButton.js";
 import { buildCollapsedProposedPlanPreviewMarkdown, proposedPlanTitle } from "./plan-markdown.js";
 import { isCurrentPlanVersion, type PlanProjection } from "./plan-projection.js";
@@ -34,10 +31,8 @@ type PlanCardProps = {
 };
 
 export const PlanCard: FC<PlanCardProps> = memo(({ projection }) => {
-	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
-	const localThreadId = useAuiState((s) => s.threadListItem.id);
 	const planThread = usePlanThreadProjection();
-	const sessionId = resolveRightPanelSessionKey(remoteId, localThreadId);
+	const sessionId = useThreadSessionId();
 	const openPlan = useRightPanelStore((state) => state.openPlan);
 	const {
 		approve,
@@ -68,6 +63,7 @@ export const PlanCard: FC<PlanCardProps> = memo(({ projection }) => {
 	const canApprove = isReady && isCurrentPlanVersion(planThread, projection.anchorCallId);
 
 	const handleViewPlan = () => {
+		if (!sessionId) return;
 		// An unfinished newest plan has not been seen yet, so it must not become the baseline.
 		const newest = planThread.newest;
 		openPlan(sessionId, {

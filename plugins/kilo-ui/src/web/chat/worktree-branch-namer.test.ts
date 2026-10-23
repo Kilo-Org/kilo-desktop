@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createSessionActivityStore } from "./session-activity/session-activity-store.js";
+import { createSessionActivityStore } from "../session/activity/session-activity-store.js";
 import { createWorktreeBranchNamer } from "./worktree-branch-namer.js";
 
 const WORKTREE_DIRECTORY = "/repo/.kilo/worktrees/kilo-aback-aardvark";

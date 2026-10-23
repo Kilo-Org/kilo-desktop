@@ -43,14 +43,19 @@ const readInput = z.object({
 		.describe(`How many of the most recent lines to return (default ${DEFAULT_READ_LINES}).`),
 });
 
+/** The calling chat's work session owns the terminals a tool reads and opens. */
 function callerContext(
 	sdk: SDK,
 	context: ToolInvocationContext,
 ): { sessionId: string; panel: Panel } | { error: string } {
-	const sessionId = context.kiloSessionId?.trim();
-	if (!sessionId) return { error: NO_CALLER_SESSION };
-	const panel = sdk.plugins.get<ChatRightPanelCapabilities>("kilo-ui")?.chatRightPanel;
+	const kiloSessionId = context.kiloSessionId?.trim();
+	if (!kiloSessionId) return { error: NO_CALLER_SESSION };
+	const kiloUi = sdk.plugins.get<ChatRightPanelCapabilities>("kilo-ui");
+	const panel = kiloUi?.chatRightPanel;
 	if (!panel?.listTabs) return { error: KILO_UI_UNAVAILABLE };
+	// A chat no session owns (e.g. a subagent's) has no terminals to act on.
+	const sessionId = kiloUi?.sessions?.sessionIdOfChat(kiloSessionId);
+	if (!sessionId) return { error: NO_CALLER_SESSION };
 	return { sessionId, panel };
 }
 

@@ -18,9 +18,11 @@ export default defineConfig({
 				"src/main/index.ts",
 				"src/web/index.ts",
 				"src/web/chat/components/**",
+				"src/web/session/components/**",
 				"src/test/**",
-				"src/web/chat/pane-canvas/test-helpers.tsx",
-				"src/web/chat/workspace-board/test-helpers.ts",
+				"src/web/session/test-helpers.tsx",
+				"src/web/session/pane-canvas/test-helpers.tsx",
+				"src/web/session/workspace-board/test-helpers.ts",
 				// Drizzle table definitions; behavior is covered by workspaces
 				// integration tests, not by unit-testing the schema declarations.
 				"src/main/workspaces/schema.ts",
@@ -150,7 +152,7 @@ export default defineConfig({
 					// two projects in the same config have different maxWorkers.
 					...(process.env.CI ? { maxWorkers: 2, sequence: { groupOrder: 1 } } : {}),
 					// Orchestrator waits this long for each tester iframe. Default 60s
-					// is tight for session-list / ChatPage when unit workers contend.
+					// is tight for session-list / SessionPage when unit workers contend.
 					env: { VITEST_BROWSER_IFRAME_TIMEOUT: "120000" },
 					// Multi-step dialog scenarios take 2-3s alone but approach the 15s browser
 					// default when every package's tests run in parallel (e.g. the pre-push hook).

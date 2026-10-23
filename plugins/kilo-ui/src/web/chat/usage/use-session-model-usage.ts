@@ -4,7 +4,7 @@ import { useAuiState } from "@assistant-ui/react";
 import { useChatConnection } from "../connection/ChatConnectionContext.js";
 import { useChatModelSelection } from "../model-selection/ChatModelSelectionContext.js";
 import { useOptionalOpenCodeRuntimeExtras } from "../runtime/use-optional-opencode-runtime-extras.js";
-import { useOptionalSessionActivity } from "../session-activity/SessionActivityProvider.js";
+import { useOptionalSessionActivity } from "../../session/activity/SessionActivityProvider.js";
 import {
 	fallbackTotalsFromMessages,
 	fetchSessionModelUsage,

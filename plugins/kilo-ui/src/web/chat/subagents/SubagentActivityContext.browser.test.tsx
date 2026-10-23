@@ -4,8 +4,8 @@ import { createOpenCodeThreadState } from "@assistant-ui/react-opencode";
 
 import type { KiloGlobalConnection } from "../../../contracts/chat/schemas.js";
 import { ChatConnectionProvider } from "../connection/ChatConnectionContext.js";
-import { SessionActivityProvider } from "../session-activity/SessionActivityProvider.js";
-import { createSessionActivityStore } from "../session-activity/session-activity-store.js";
+import { SessionActivityProvider } from "../../session/activity/SessionActivityProvider.js";
+import { createSessionActivityStore } from "../../session/activity/session-activity-store.js";
 
 const runtime = vi.hoisted(() => ({ extras: undefined as unknown }));
 

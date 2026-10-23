@@ -17,10 +17,7 @@ import {
 	ChatComposerCapabilityHost,
 	type ChatComposerCapability,
 } from "./ChatComposerCapabilityHost.js";
-import {
-	DRAFT_RIGHT_PANEL_SESSION_KEY,
-	useRightPanelStore,
-} from "./right-panel/right-panel-store.js";
+import { useRightPanelStore } from "../session/right-panel/right-panel-store.js";
 
 const stubChatModel: ChatModelAdapter = {
 	async run() {
@@ -86,10 +83,6 @@ describe("ChatComposerCapabilityHost", () => {
 		const kiloUi = createFakeSdk({ featureId: "kilo-ui", navigation: { navigate } });
 		const system = createFakeFeatureSystem({ sdks: { "kilo-ui": kiloUi } });
 		const marketplace = system.getSdk("kilo-marketplace");
-		useRightPanelStore.getState().openTab(DRAFT_RIGHT_PANEL_SESSION_KEY, {
-			id: "files.files",
-			title: "Files",
-		});
 		render(<Harness system={system} />);
 
 		await vi.waitFor(() =>
@@ -105,8 +98,5 @@ describe("ChatComposerCapabilityHost", () => {
 			.element(page.getByTestId("composer-text"))
 			.toHaveTextContent("Help me install Node.js.");
 		expect(navigate).toHaveBeenCalledWith("/plugins/chat", undefined);
-		expect(
-			useRightPanelStore.getState().bySessionId[DRAFT_RIGHT_PANEL_SESSION_KEY],
-		).toBeUndefined();
 	});
 });

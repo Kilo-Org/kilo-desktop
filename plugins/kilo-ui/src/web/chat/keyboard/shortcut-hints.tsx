@@ -19,7 +19,7 @@ import { idAtShortcutSlot, NUMBERED_SLOTS } from "./numbered-shortcuts.js";
  * releasing the number key of a jump does not, so they stay while held.
  *
  * Hiding flips a root attribute first so the chips vanish on the next paint;
- * the React update that drops them re-renders ChatPage and the session list,
+ * the React update that drops them re-renders SessionPage and the session list,
  * so it runs after that paint instead of delaying it.
  *
  * Main consumes a jump's keydown, after which Chromium drops key events until

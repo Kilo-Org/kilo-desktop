@@ -82,12 +82,16 @@ Tools that open content in a chat's pane layout (`notebook_open`, `files_open`,
 `git_changes_open`, `browser_open`, `terminal_open`) are owned by the plugin that contributes the
 tab. They share these rules:
 
-- The target chat is `context.kiloSessionId` (the Kilo caller envelope). It is never an argument
+- The calling chat is `context.kiloSessionId` (the Kilo caller envelope). It is never an argument
   and never the visually focused chat. A call without it fails — which is also what every
   external app gets, since external apps never carry caller context.
+- Panes belong to the chat's work session, not the chat. Tools map the caller to its session with
+  kilo-ui's `sessions.sessionIdOfChat(kiloSessionId)` and pass that session id to the other
+  capabilities. A chat no session owns (such as a subagent's) gets no session, and the call fails;
+  never use the Kilo session id as a session id.
 - Tabs are opened through kilo-ui's `chatRightPanel` capability.
 - Paths go through kilo-ui's `chatSessionWorkspace` capability, so a tool can only show what the
-  chat's own panes could show.
+  session's own panes could show.
 - The opener tools display content to the user. They never return file or page content, and
   `terminal_open` takes no command.
 

@@ -15,6 +15,13 @@
 			"when": 1787181137853,
 			"tag": "0001_eminent_venom",
 			"breakpoints": true
+		},
+		{
+			"idx": 2,
+			"version": "6",
+			"when": 1792687301586,
+			"tag": "0002_work_sessions",
+			"breakpoints": true
 		}
 	]
 }

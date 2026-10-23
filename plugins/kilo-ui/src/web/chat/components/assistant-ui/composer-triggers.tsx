@@ -4,7 +4,7 @@ import type { ComponentType, FC } from "react";
 
 import { useSdkContributions } from "@kilo-desktop/sdk-react";
 
-import { useThreadWorkspace } from "../../use-workspace-directory.js";
+import { useThreadWorkspace } from "../../../session/workspace/use-workspace-directory.js";
 import { ComposerTriggerPopover } from "./elements/composer-trigger-popover.aui.js";
 import { KiloSlashTrigger } from "./kilo-slash-trigger.js";
 

@@ -42,8 +42,11 @@ describe("createWorkspacesDatabase", () => {
 			)
 			.all();
 		expect(tables).toEqual([{ name: "workspace_folders" }, { name: "workspaces" }]);
+		const journal = JSON.parse(
+			fs.readFileSync(path.join(MIGRATIONS, "meta/_journal.json"), "utf8"),
+		) as { entries: unknown[] };
 		expect(db.$client.prepare("select count(*) as count from __drizzle_migrations").get()).toEqual({
-			count: 2,
+			count: journal.entries.length,
 		});
 		db.$client.close();
 	});

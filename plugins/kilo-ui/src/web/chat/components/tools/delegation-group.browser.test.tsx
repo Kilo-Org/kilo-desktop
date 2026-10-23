@@ -5,10 +5,12 @@ import { page } from "vitest/browser";
 import type { ToolCallMessagePartProps } from "@assistant-ui/react";
 
 import type { SubagentActivity } from "../../subagents/SubagentActivityContext.js";
+import { SessionsFixture } from "../../../session/test-helpers.js";
 
 const runtime = vi.hoisted(() => ({
 	message: { parts: [] as ToolCallMessagePartProps[], metadata: undefined as unknown },
-	threadListItem: { id: "thread-1", remoteId: "session-1" },
+	// A listed thread's id is its Kilo session id.
+	threadListItem: { id: "session-1", remoteId: "session-1" },
 	activities: new Map<string, SubagentActivity>(),
 	stopSubagent: vi.fn(),
 }));
@@ -29,7 +31,7 @@ vi.mock("../../subagents/SubagentActivityContext.js", () => ({
 	}),
 }));
 
-import { useRightPanelStore } from "../../right-panel/right-panel-store.js";
+import { useRightPanelStore } from "../../../session/right-panel/right-panel-store.js";
 import { useDelegationRevealStore } from "../../subagents/delegation-reveal-store.js";
 import { ManualDisclosureProvider } from "./activity-group.js";
 import { DelegationGroup } from "./delegation-group.js";
@@ -61,13 +63,15 @@ const trackChild = (toolCallId: string, status: SubagentActivity["status"]) => {
 const renderGroup = (parts: ToolCallMessagePartProps[]) => {
 	runtime.message.parts = parts;
 	return render(
-		<ManualDisclosureProvider>
-			<DelegationGroup group={{ indices: parts.map((_, index) => index) }}>
-				{parts.map((part) => (
-					<TaskActivity key={part.toolCallId} {...part} />
-				))}
-			</DelegationGroup>
-		</ManualDisclosureProvider>,
+		<SessionsFixture chats={{ "session-1": "session-1" }}>
+			<ManualDisclosureProvider>
+				<DelegationGroup group={{ indices: parts.map((_, index) => index) }}>
+					{parts.map((part) => (
+						<TaskActivity key={part.toolCallId} {...part} />
+					))}
+				</DelegationGroup>
+			</ManualDisclosureProvider>
+		</SessionsFixture>,
 	);
 };
 

@@ -3,7 +3,7 @@ import type { OpenCodeServerEvent } from "@assistant-ui/react-opencode";
 import {
 	hasKiloDesktopSessionMetadata,
 	type SessionActivity,
-} from "../session-activity/session-activity-logic.js";
+} from "../../session/activity/session-activity-logic.js";
 import type { NotificationMode } from "./notification-preferences.js";
 
 export type ChatCue = "done" | "needsYou";

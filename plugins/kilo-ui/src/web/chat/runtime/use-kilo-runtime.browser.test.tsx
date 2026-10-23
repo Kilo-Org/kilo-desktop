@@ -5,7 +5,7 @@ import { OpenCodeAttachmentAdapter, useOpenCodeRuntime } from "@assistant-ui/rea
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 
 import type { KiloGlobalConnection } from "../../../contracts/chat/schemas.js";
-import { createSessionActivityStore } from "../session-activity/session-activity-store.js";
+import { createSessionActivityStore } from "../../session/activity/session-activity-store.js";
 import { createKiloRuntimeBackend } from "./create-kilo-runtime-backend.js";
 import { useKiloRuntime } from "./use-kilo-runtime.js";
 
@@ -73,6 +73,8 @@ describe("useKiloRuntime", () => {
 		expect(createKiloRuntimeBackend).toHaveBeenCalledWith({
 			getConnection: expect.any(Function),
 			prepareSession,
+			getSessionForNewChat: expect.any(Function),
+			onChatCreated: expect.any(Function),
 			getVariant: expect.any(Function),
 			getAgent: expect.any(Function),
 			getModel: expect.any(Function),
@@ -292,6 +294,8 @@ describe("useKiloRuntime", () => {
 		expect(createKiloRuntimeBackend).toHaveBeenCalledWith({
 			getConnection: expect.any(Function),
 			prepareSession,
+			getSessionForNewChat: expect.any(Function),
+			onChatCreated: expect.any(Function),
 			getVariant: expect.any(Function),
 			getAgent: expect.any(Function),
 			getModel: expect.any(Function),

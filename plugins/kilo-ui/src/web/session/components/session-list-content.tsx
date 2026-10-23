@@ -1,0 +1,1505 @@
+"use client";
+
+import { Button } from "@kilo-desktop/ui/components/button";
+import {
+	Command,
+	CommandDialog,
+	CommandEmpty,
+	CommandGroup,
+	CommandInput,
+	CommandItem,
+	CommandList,
+	CommandSeparator,
+} from "@kilo-desktop/ui/components/command";
+import { ToggleGroup, ToggleGroupItem } from "@kilo-desktop/ui/components/toggle-group";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@kilo-desktop/ui/components/dropdown-menu";
+import {
+	SidebarMenu,
+	SidebarMenuButton,
+	SidebarMenuItem,
+} from "@kilo-desktop/ui/components/sidebar";
+import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "@kilo-desktop/ui/components/tooltip";
+import { cn } from "@kilo-desktop/ui/lib/utils";
+import { useCommand, useSdk, useSdkContributions } from "@kilo-desktop/sdk-react";
+import {
+	ThreadListItemPrimitive,
+	ThreadListPrimitive,
+	useAui,
+	useAuiState,
+	type ThreadListItemStatus,
+} from "@assistant-ui/react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import {
+	ArchiveIcon,
+	ChevronDownIcon,
+	EllipsisIcon,
+	FolderIcon,
+	MessageSquareIcon,
+	PencilIcon,
+	PinIcon,
+	PinOffIcon,
+	PlusIcon,
+	SearchIcon,
+	Trash2Icon,
+} from "lucide-react";
+import isEqual from "lodash/isEqual.js";
+import {
+	createContext,
+	memo,
+	use,
+	useEffect,
+	useCallback,
+	useMemo,
+	useRef,
+	useState,
+	type FC,
+	type ReactNode,
+} from "react";
+
+import type { Workspace } from "../../../contracts/workspaces/schemas.js";
+import { NewSessionButton } from "../NewSessionButton.js";
+import { WorkspaceFilter } from "../../workspaces/WorkspaceFilter.js";
+import {
+	useWorkspacesFeature,
+	type WorkspacesContextValue,
+} from "../../workspaces/WorkspacesFeatureContext.js";
+import { workspaceGlyphColor } from "../../workspaces/workspace-glyph-style.js";
+import { navigateToChat } from "../../chat/chat-navigation.js";
+import { useSessionActivity } from "../activity/SessionActivityProvider.js";
+import { sessionIdOfThread } from "../session-identity.js";
+import { useThreadSessionId } from "../use-thread-session-id.js";
+import { useSessions } from "../SessionsProvider.js";
+import {
+	deriveSessionRowState,
+	directoryBasename,
+	formatRelativeTimeLabel,
+	needsAttention,
+	withDescendantPrompts,
+	resolveSessionLocationLabel,
+	sessionGitStatusId,
+	sessionRowCapabilities,
+	type SessionActivity,
+} from "../activity/session-activity-logic.js";
+import { SessionListViewMenu } from "../list/session-list-view-menu.js";
+import { UNTITLED_SESSION_TITLE } from "../session-title.js";
+import { ShortcutHintChip, useShortcutHints } from "../../chat/keyboard/shortcut-hints.js";
+import { useSessionShortcuts } from "../../chat/keyboard/use-session-shortcuts.js";
+import { WorkspaceBoardToggle } from "../workspace-board/WorkspaceBoardToggle.js";
+import { useWorkspaceBoard } from "../workspace-board/WorkspaceBoardProvider.js";
+import {
+	useSessionRowBoard,
+	type SessionRowBoard,
+} from "../workspace-board/use-session-row-board.js";
+import { SessionRowHoverCard } from "./session-row-hover-card.js";
+import {
+	SessionRelativeTime,
+	SessionRowGlyph,
+	type SessionRowMetadataProps,
+} from "./session-row-display.js";
+import {
+	SessionItemRename,
+	SessionRowDeleteDialogs,
+	SessionRowMenu,
+	useRenameState,
+	useSessionRowActions,
+} from "./session-row-actions.js";
+import {
+	buildSessionListSections,
+	SESSION_LIST_STATUS_LABELS,
+	UNSCOPED_WORKSPACE_FOCUS,
+	resolveWorkspaceFocus,
+	readSessionListArchivedExpanded,
+	visibleShowFields,
+	workspaceIdForFocus,
+	writeSessionListArchivedExpanded,
+	type SessionListPullRequests,
+	type SessionListSection,
+	type SessionListSectionRow,
+	type SessionListShowField,
+	type SessionListView,
+} from "../list/session-list-view.js";
+
+/** Hide CommandItem's built-in check — opacity-0 still reserves layout space. */
+
+/**
+ * Shared surface states for session rows, on the app's state scale: idle is
+ * clear, hover and focus take the hover wash, and the current row the selected
+ * wash (the same fill as an unfocused pane's shown tab).
+ */
+const sidebarSurfaceIdleClassName =
+	"bg-transparent text-sidebar-foreground transition-colors hover:bg-sidebar-accent focus-visible:bg-sidebar-accent";
+const sidebarSurfaceActiveClassName = "bg-state-selected text-sidebar-foreground transition-colors";
+
+/** Override Button/Input `rounded-lg` so radius matches sidebar menu items. */
+const sidebarNavRadiusClassName = "rounded-md!";
+
+/**
+ * Hover actions sit over the status slot: hidden until row hover, keyboard
+ * focus, or an open dropdown, then cross-fade with the status label (which
+ * fades out via the matching group classes on the label itself).
+ */
+const rowHoverActionsClassName =
+	"pointer-events-none absolute flex items-center opacity-0 transition-opacity group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100 has-[[data-popup-open]]:pointer-events-auto has-[[data-popup-open]]:opacity-100";
+
+const rowHoverLabelFadeClassName =
+	"group-hover/sidebar-row:opacity-0 group-has-[:focus-visible]/sidebar-row:opacity-0 group-has-[[data-popup-open]]/sidebar-row:opacity-0";
+
+const narrowRowYieldsTimeClassName = "@max-[14rem]/session-row:peer-[:not(:empty)]/pr:hidden";
+
+const workspaceHeaderActionsClassName =
+	"pointer-events-none mr-1 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/workspace-row:pointer-events-auto group-hover/workspace-row:opacity-100 group-focus-within/workspace-row:pointer-events-auto group-focus-within/workspace-row:opacity-100 group-has-[[data-popup-open]]/workspace-row:pointer-events-auto group-has-[[data-popup-open]]/workspace-row:opacity-100";
+
+const SESSION_LIST_OVERSCAN = 10;
+const SESSION_ROW_ESTIMATE_PX = 30;
+const SESSION_SHELF_HEADER_PX = 30;
+const SESSION_SECTION_GAP_PX = 5;
+const DEFAULT_EXPANDED_SECTIONS: Readonly<Record<string, boolean>> = { archived: false };
+
+const SessionListChromeContext = createContext<{
+	show: readonly SessionListShowField[];
+	pinnedIds: ReadonlySet<string>;
+	togglePin: (id: string) => void;
+	shortcutHints: ReadonlyMap<string, string>;
+}>({ show: [], pinnedIds: new Set(), togglePin: () => undefined, shortcutHints: new Map() });
+
+const SessionRowIndentContext = createContext(false);
+
+/**
+ * Resolve ItemByIndex from a stable thread id. Virtual rows are keyed by id,
+ * while assistant-ui addresses items by their current list index.
+ */
+const SessionListItemSlot: FC<{
+	id: string;
+	archived?: boolean;
+}> = ({ id, archived = false }) => {
+	const index = useAuiState((s) => {
+		const ids = archived ? s.threads.archivedThreadIds : s.threads.threadIds;
+		return ids.indexOf(id);
+	});
+	if (index < 0) return null;
+	return (
+		<ThreadListPrimitive.ItemByIndex
+			index={index}
+			archived={archived}
+			components={{ ThreadListItem: SessionRow }}
+		/>
+	);
+};
+
+type SessionListContentProps = {
+	view: SessionListView;
+	updateView: (patch: Partial<SessionListView>) => void;
+	resetView: () => void;
+	pinIds: readonly string[];
+	togglePin: (id: string) => void;
+	threadIds: readonly string[];
+	archivedThreadIds: readonly string[];
+	threadItems: readonly SessionListThreadItem[];
+	isLoading: boolean;
+	hasMoreThreads: boolean;
+	activityBySessionId: Readonly<Record<string, SessionActivity>>;
+	/** `null` when the git plugin is inactive; the pull request filter is then unavailable. */
+	pullRequestByStatusId: SessionListPullRequests | null;
+	workspaces: readonly Workspace[];
+	setActiveWorkspaceId: WorkspacesContextValue["setActiveWorkspaceId"];
+};
+
+type SessionListThreadItem = ReturnType<
+	ReturnType<typeof useAui>["threads"]["getState"]
+>["threadItems"][number];
+
+type VirtualSessionListEntry =
+	| {
+			kind: "header";
+			key: string;
+			sectionKey: string;
+			tone: SessionListSection["tone"];
+			label: string;
+			workspaceId: string | undefined;
+			expanded: boolean;
+			spaceBefore: boolean;
+	  }
+	| {
+			kind: "row";
+			key: string;
+			row: SessionListSectionRow;
+			indented: boolean;
+			spaceBefore: boolean;
+	  }
+	| {
+			kind: "empty-workspace";
+			key: string;
+			workspaceId: string;
+			label: string;
+			spaceBefore: boolean;
+	  };
+
+/**
+ * The note under an empty workspace group. None while older session pages are
+ * loading, since the group's chats may not have arrived yet.
+ */
+function emptyWorkspaceLabel(
+	view: Pick<SessionListView, "status" | "pullRequest">,
+	hasMoreThreads: boolean,
+): string | null {
+	if (hasMoreThreads) return null;
+	return filteredEmptyLabel(view) ?? "No sessions yet";
+}
+
+/** Why a filtered list is empty, or null when no filter is active. */
+function filteredEmptyLabel(view: Pick<SessionListView, "status" | "pullRequest">): string | null {
+	const byStatus = view.status !== "all";
+	const byPullRequest = view.pullRequest !== "all";
+	if (byStatus && byPullRequest) return "No matching sessions";
+	if (byStatus) return `No sessions matching "${SESSION_LIST_STATUS_LABELS[view.status]}"`;
+	if (view.pullRequest === "open") return "No sessions with open pull requests";
+	if (byPullRequest) return "No sessions with pull requests";
+	return null;
+}
+
+/** Why the whole list is empty, or null when there is nothing to explain. */
+function sessionListEmptyLabel(
+	view: Pick<SessionListView, "focus" | "status" | "pullRequest">,
+	workspaces: readonly { id: string; name: string }[],
+	hasMoreThreads: boolean,
+): string | null {
+	if (view.focus === UNSCOPED_WORKSPACE_FOCUS) return "No sessions outside a workspace";
+	const focusedWorkspace = workspaces.find((workspace) => workspace.id === view.focus);
+	if (focusedWorkspace) return `No sessions in ${focusedWorkspace.name}`;
+	if (view.pullRequest === "all" || hasMoreThreads) return null;
+	return filteredEmptyLabel(view);
+}
+
+/**
+ * The Archived filter opens the Archived shelf, since it holds every match.
+ * Leaving the filter restores the persisted preference, which the filter
+ * itself never overwrites.
+ */
+function archivedShelfExpandedFor(status: SessionListView["status"]): boolean {
+	return status === "archived" || readSessionListArchivedExpanded();
+}
+
+function flattenSessionListSections(
+	sections: readonly SessionListSection[],
+	expanded: Readonly<Record<string, boolean>>,
+	options: { spaceBeforeFirst: boolean; emptyWorkspaceLabel: string | null },
+): VirtualSessionListEntry[] {
+	const entries: VirtualSessionListEntry[] = [];
+	let firstEntry = true;
+	let hasHeader = false;
+
+	for (const section of sections) {
+		const isExpanded = !section.label || expanded[section.key] !== false;
+		if (section.label) {
+			entries.push({
+				kind: "header",
+				key: `header:${section.key}`,
+				sectionKey: section.key,
+				tone: section.tone,
+				label: section.label,
+				workspaceId: section.workspaceId,
+				expanded: isExpanded,
+				spaceBefore: (firstEntry && options.spaceBeforeFirst) || hasHeader,
+			});
+			firstEntry = false;
+			hasHeader = true;
+		}
+
+		if (!isExpanded) continue;
+		if (options.emptyWorkspaceLabel && section.workspaceId && section.rows.length === 0) {
+			entries.push({
+				kind: "empty-workspace",
+				key: `empty:${section.key}`,
+				workspaceId: section.workspaceId,
+				label: options.emptyWorkspaceLabel,
+				spaceBefore: false,
+			});
+		}
+		for (const row of section.rows) {
+			entries.push({
+				kind: "row",
+				key: `row:${row.id}`,
+				row,
+				indented: Boolean(section.label),
+				spaceBefore: firstEntry && options.spaceBeforeFirst,
+			});
+			firstEntry = false;
+		}
+	}
+
+	return entries;
+}
+
+export const SessionListContent = memo(function SessionListContent({
+	view,
+	updateView,
+	resetView,
+	pinIds,
+	togglePin,
+	threadIds,
+	archivedThreadIds,
+	threadItems,
+	isLoading,
+	hasMoreThreads,
+	activityBySessionId,
+	pullRequestByStatusId,
+	workspaces,
+	setActiveWorkspaceId,
+}: SessionListContentProps) {
+	const aui = useAui();
+	const navigate = useNavigateToChat();
+	const sessionIdByChat = useSessions((state) => state.sessionIdByChat);
+	const pinnedIds = useMemo(() => new Set(pinIds), [pinIds]);
+	const [expanded, setExpanded] = useState<Record<string, boolean>>(() => ({
+		...DEFAULT_EXPANDED_SECTIONS,
+		archived: archivedShelfExpandedFor(view.status),
+	}));
+	const [statusFilter, setStatusFilter] = useState(view.status);
+	if (statusFilter !== view.status) {
+		setStatusFilter(view.status);
+		setExpanded((current) => ({ ...current, archived: archivedShelfExpandedFor(view.status) }));
+	}
+	const focus = resolveWorkspaceFocus(view.focus, workspaces);
+	const pullRequestFilterAvailable = pullRequestByStatusId !== null;
+	const pullRequest = pullRequestFilterAvailable ? view.pullRequest : "all";
+	const resolvedView = useMemo(
+		() =>
+			focus === view.focus && pullRequest === view.pullRequest
+				? view
+				: { ...view, focus, pullRequest },
+		[focus, pullRequest, view],
+	);
+	const show = useMemo(() => visibleShowFields(resolvedView), [resolvedView]);
+
+	const sections = useMemo(() => {
+		const itemsById = new Map(threadItems.map((item) => [item.id, item]));
+		const toEntry = (id: string, sourceIndex: number, archived: boolean) => {
+			const item = itemsById.get(id);
+			return {
+				id,
+				remoteId: item?.remoteId,
+				sessionId: sessionIdOfThread(
+					{ remoteId: item?.remoteId, localThreadId: id },
+					sessionIdByChat,
+				),
+				title: item?.title,
+				sourceIndex,
+				archived,
+			};
+		};
+		const entries = [
+			...threadIds.map((id, index) => toEntry(id, index, false)),
+			...archivedThreadIds.map((id, index) => toEntry(id, index, true)),
+		];
+		return buildSessionListSections({
+			entries,
+			activityBySessionId,
+			workspaces,
+			view: resolvedView,
+			pinnedIds,
+			pullRequestByStatusId,
+		});
+	}, [
+		activityBySessionId,
+		archivedThreadIds,
+		pinnedIds,
+		pullRequestByStatusId,
+		resolvedView,
+		threadIds,
+		threadItems,
+		workspaces,
+	]);
+
+	const [pinnedSections, groupedSections] = useMemo(
+		() => [
+			sections.filter((section) => section.tone === "pinned"),
+			sections.filter((section) => section.tone !== "pinned"),
+		],
+		[sections],
+	);
+	const collapsibleKeys = sections.flatMap((section) => (section.label ? [section.key] : []));
+	const allCollapsed =
+		collapsibleKeys.length > 0 && collapsibleKeys.every((key) => expanded[key] === false);
+	const emptyLabel = sessionListEmptyLabel(resolvedView, workspaces, hasMoreThreads);
+	const createChatInWorkspace = useCallback(
+		(workspaceId: string) => {
+			setActiveWorkspaceId(workspaceId);
+			void aui.threads.switchToNewThread();
+			navigate();
+		},
+		[aui, navigate, setActiveWorkspaceId],
+	);
+	const listRef = useRef<HTMLDivElement>(null);
+	const virtualEntries = useMemo(() => {
+		const entries: VirtualSessionListEntry[] = [];
+		const emptyLabel = emptyWorkspaceLabel(resolvedView, hasMoreThreads);
+		entries.push(
+			...flattenSessionListSections(pinnedSections, expanded, {
+				spaceBeforeFirst: false,
+				emptyWorkspaceLabel: emptyLabel,
+			}),
+			...flattenSessionListSections(groupedSections, expanded, {
+				spaceBeforeFirst: pinnedSections.length > 0,
+				emptyWorkspaceLabel: emptyLabel,
+			}),
+		);
+		return entries;
+	}, [expanded, groupedSections, hasMoreThreads, pinnedSections, resolvedView]);
+	const virtualizer = useVirtualizer({
+		count: virtualEntries.length,
+		getScrollElement: () => listRef.current,
+		estimateSize: (index) => {
+			const entry = virtualEntries[index];
+			const baseSize = entry?.kind === "header" ? SESSION_SHELF_HEADER_PX : SESSION_ROW_ESTIMATE_PX;
+			return baseSize + (entry?.spaceBefore ? SESSION_SECTION_GAP_PX : 0);
+		},
+		getItemKey: (index) => virtualEntries[index]?.key ?? index,
+		overscan: SESSION_LIST_OVERSCAN,
+		gap: 1,
+	});
+	useEffect(() => {
+		listRef.current?.scrollTo({ top: 0 });
+	}, [
+		resolvedView.focus,
+		resolvedView.grouping,
+		resolvedView.ordering,
+		resolvedView.status,
+		resolvedView.pullRequest,
+	]);
+
+	const visibleSessionIds = useMemo(
+		() =>
+			virtualEntries.flatMap((entry) =>
+				entry.kind === "row" && !entry.row.archived ? [entry.row.id] : [],
+			),
+		[virtualEntries],
+	);
+	const shortcutHints = useShortcutHints("session", visibleSessionIds);
+	const chrome = useMemo(
+		() => ({ show, pinnedIds, togglePin, shortcutHints }),
+		[pinnedIds, shortcutHints, show, togglePin],
+	);
+	const remoteIdByThreadId = useMemo(
+		() => new Map(threadItems.map((item) => [item.id, item.remoteId])),
+		[threadItems],
+	);
+	const sessionIdOfThreadId = (threadId: string) =>
+		sessionIdOfThread(
+			{ remoteId: remoteIdByThreadId.get(threadId), localThreadId: threadId },
+			sessionIdByChat,
+		);
+	const attentionSessionIds = useMemo(
+		() =>
+			visibleSessionIds.filter((id) => {
+				const remoteId = remoteIdByThreadId.get(id);
+				return remoteId !== undefined && needsAttention(activityBySessionId[remoteId]);
+			}),
+		[activityBySessionId, remoteIdByThreadId, visibleSessionIds],
+	);
+	const activeSessionId = useAuiState((s) => s.threads.mainThreadId);
+	const activeWorkspaceIdForSession = (sessionId: string | undefined) => {
+		const remoteId = sessionId ? remoteIdByThreadId.get(sessionId) : undefined;
+		return remoteId ? activityBySessionId[remoteId]?.workspaceId : undefined;
+	};
+	useSessionShortcuts(true, {
+		sessionIds: visibleSessionIds,
+		activeSessionId,
+		attentionSessionIds,
+		openSession: (sessionId) => {
+			void aui.threads.switchToThread(sessionId, { unarchive: false });
+			navigate();
+		},
+		newSession: () => {
+			const workspaceId = activeWorkspaceIdForSession(activeSessionId);
+			if (workspaceId) {
+				createChatInWorkspace(workspaceId);
+				return;
+			}
+			void aui.threads.switchToNewThread();
+			navigate();
+		},
+		togglePin: (threadId) => {
+			const sessionId = sessionIdOfThreadId(threadId);
+			if (sessionId) togglePin(sessionId);
+		},
+	});
+	const viewMenu = (
+		<SessionListViewMenu
+			view={resolvedView}
+			pullRequestFilterAvailable={pullRequestFilterAvailable}
+			onViewChange={(patch) => {
+				updateView(patch);
+				if (patch.focus) setActiveWorkspaceId(workspaceIdForFocus(patch.focus));
+			}}
+			onReset={resetView}
+			canCollapse={collapsibleKeys.length > 0}
+			allCollapsed={allCollapsed}
+			onCollapseAll={() => {
+				if (collapsibleKeys.includes("archived")) writeSessionListArchivedExpanded(false);
+				setExpanded((current) => ({
+					...current,
+					...Object.fromEntries(collapsibleKeys.map((key) => [key, false])),
+				}));
+			}}
+			onExpandAll={() => {
+				if (collapsibleKeys.includes("archived")) writeSessionListArchivedExpanded(true);
+				setExpanded((current) => ({
+					...current,
+					...Object.fromEntries(collapsibleKeys.map((key) => [key, true])),
+				}));
+			}}
+		/>
+	);
+
+	return (
+		<div data-qa-id="kilo-thread-list" className="flex min-h-0 flex-1 flex-col">
+			<SessionListChromeContext value={chrome}>
+				<ThreadListPrimitive.Root
+					data-slot="aui_thread-list-root"
+					className="flex min-h-0 flex-1 flex-col"
+				>
+					<section
+						className="mb-3 flex shrink-0 flex-col gap-0.5 pt-0.5"
+						aria-label="Session actions"
+						data-qa-id="session-list-navigation"
+					>
+						<SidebarMenu className="gap-0.5">
+							<SidebarMenuItem>
+								<NewSessionButton />
+							</SidebarMenuItem>
+							<SidebarMenuItem>
+								<SessionListSearch
+									onSelectWorkspace={(id) => {
+										updateView({ focus: id });
+										setActiveWorkspaceId(id);
+									}}
+								/>
+							</SidebarMenuItem>
+						</SidebarMenu>
+					</section>
+					<section aria-label="Sessions" className="flex min-h-0 min-w-0 flex-1 flex-col">
+						<div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+							<div
+								data-qa-id="session-list-grouping-header"
+								className="hover:bg-sidebar-accent focus-within:bg-sidebar-accent has-[[data-popup-open]]:bg-sidebar-accent flex h-[30px] min-w-0 shrink-0 items-center gap-0.5 rounded-md pr-1 transition-colors"
+							>
+								<WorkspaceFilter
+									value={focus}
+									unscopedValue={UNSCOPED_WORKSPACE_FOCUS}
+									onValueChange={(nextFocus) => {
+										updateView({ focus: nextFocus });
+										setActiveWorkspaceId(workspaceIdForFocus(nextFocus));
+									}}
+								/>
+								{viewMenu}
+								<WorkspaceBoardToggle />
+							</div>
+							<div
+								ref={listRef}
+								data-slot="aui_thread-list-items"
+								data-qa-id="session-list-inbox"
+								className="scroll-fade no-scrollbar relative min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain"
+							>
+								{isLoading ? <SessionListSkeleton /> : null}
+								{!isLoading && virtualEntries.length > 0 ? (
+									<ul
+										role="list"
+										className="relative w-full min-w-0"
+										style={{ height: virtualizer.getTotalSize() }}
+										data-qa-id="session-list-virtual-list"
+									>
+										{virtualizer.getVirtualItems().map((virtualItem) => {
+											const entry = virtualEntries[virtualItem.index];
+											if (!entry) return null;
+											return (
+												<li
+													key={entry.key}
+													ref={virtualizer.measureElement}
+													data-index={virtualItem.index}
+													aria-posinset={virtualItem.index + 1}
+													aria-setsize={virtualEntries.length}
+													className={cn(
+														"absolute top-0 left-0 min-w-0 w-full list-none",
+														entry.spaceBefore && "pt-0",
+													)}
+													style={{ transform: `translateY(${virtualItem.start}px)` }}
+												>
+													<div>
+														{entry.kind === "header" ? (
+															<SessionShelfHeader
+																tone={entry.tone}
+																label={entry.label}
+																workspace={
+																	entry.workspaceId
+																		? workspaces.find(
+																				(workspace) => workspace.id === entry.workspaceId,
+																			)
+																		: undefined
+																}
+																onCreateChatInWorkspace={createChatInWorkspace}
+																expanded={entry.expanded}
+																onToggle={() => {
+																	const nextExpanded = !entry.expanded;
+																	if (entry.sectionKey === "archived") {
+																		writeSessionListArchivedExpanded(nextExpanded);
+																	}
+																	setExpanded((current) => ({
+																		...current,
+																		[entry.sectionKey]: nextExpanded,
+																	}));
+																}}
+															/>
+														) : entry.kind === "empty-workspace" ? (
+															<WorkspaceEmptyRow
+																workspaceId={entry.workspaceId}
+																label={entry.label}
+															/>
+														) : (
+															<SessionRowIndentContext value={entry.indented}>
+																<SessionListItemSlot
+																	id={entry.row.id}
+																	archived={entry.row.archived}
+																/>
+															</SessionRowIndentContext>
+														)}
+													</div>
+												</li>
+											);
+										})}
+									</ul>
+								) : null}
+								{!isLoading && emptyLabel && sections.length === 0 ? (
+									<div
+										data-slot="aui_thread-list-empty"
+										className="text-muted-foreground px-2.5 py-4 text-sm"
+									>
+										{emptyLabel}
+									</div>
+								) : null}
+							</div>
+						</div>
+					</section>
+				</ThreadListPrimitive.Root>
+			</SessionListChromeContext>
+		</div>
+	);
+}, isEqual);
+
+function useNavigateToChat(): () => void {
+	const sdk = useSdk("kilo-ui");
+	return useCallback(() => navigateToChat(sdk), [sdk]);
+}
+
+/**
+ * Search filters in React rather than via cmdk: cmdk mounts every item and
+ * rescans them on each keystroke, which lags once the full session history is
+ * loaded. Capping each chat group keeps the mounted list small.
+ */
+const SEARCH_CHAT_RESULT_LIMIT = 50;
+
+function matchesSearch(terms: readonly (string | null)[], query: string): boolean {
+	if (!query) return true;
+	return terms.some((term) => term?.toLowerCase().includes(query));
+}
+
+const SEARCH_SCOPES = ["all", "chats", "workspaces"] as const;
+type SearchScope = (typeof SEARCH_SCOPES)[number];
+
+const SEARCH_SCOPE_LABELS: Record<SearchScope, string> = {
+	all: "All",
+	chats: "Sessions",
+	workspaces: "Workspaces",
+};
+
+function isSearchScope(value: string | undefined): value is SearchScope {
+	return value === "all" || value === "chats" || value === "workspaces";
+}
+
+function searchEmptyLabel(scope: SearchScope, emptyQuery: boolean, isLoading: boolean): string {
+	if (!emptyQuery) return "No results.";
+	if (scope !== "workspaces") return "No recent sessions.";
+	if (isLoading) return "Loading workspaces…";
+	return "No workspaces yet.";
+}
+
+function workspacePrimaryFolderLabel(workspace: Workspace): string | null {
+	const path =
+		workspace.folders.find((folder) => folder.isPrimary)?.path ?? workspace.folders[0]?.path;
+	return path ? directoryBasename(path) : null;
+}
+
+type SearchRow = {
+	id: string;
+	title: string;
+	sublabel: string | null;
+	updatedAt: number | undefined;
+	archived: boolean;
+};
+
+function SearchChatItem({ row, onSelect }: { row: SearchRow; onSelect: (row: SearchRow) => void }) {
+	return (
+		<CommandItem value={`chat:${row.id}`} onSelect={() => onSelect(row)}>
+			<MessageSquareIcon />
+			<span className="min-w-0 flex-1 truncate">{row.title}</span>
+			<span className="text-muted-foreground flex shrink-0 items-center gap-3 text-xs">
+				{row.sublabel ? <span className="max-w-36 truncate">{row.sublabel}</span> : null}
+				{row.updatedAt ? (
+					<span className="tabular-nums">{formatRelativeTimeLabel(row.updatedAt, Date.now())}</span>
+				) : null}
+			</span>
+		</CommandItem>
+	);
+}
+
+function SearchWorkspaceItem({
+	workspace,
+	onSelect,
+}: {
+	workspace: Workspace;
+	onSelect: (id: string) => void;
+}) {
+	const glyph = workspaceGlyphColor(workspace.color);
+	const sublabel = workspacePrimaryFolderLabel(workspace);
+	return (
+		<CommandItem
+			data-qa-id={`session-search-workspace-${workspace.id}`}
+			value={`workspace:${workspace.id}`}
+			onSelect={() => onSelect(workspace.id)}
+		>
+			<FolderIcon {...(glyph ? { color: glyph } : {})} />
+			<span className="min-w-0 flex-1 truncate">{workspace.name}</span>
+			{sublabel ? (
+				<span className="text-muted-foreground max-w-36 shrink-0 truncate text-xs">{sublabel}</span>
+			) : null}
+		</CommandItem>
+	);
+}
+
+export const SessionListSearch: FC<{
+	onSelectWorkspace: (workspaceId: string) => void;
+}> = ({ onSelectWorkspace }) => {
+	const [open, setOpen] = useState(false);
+	const [query, setQuery] = useState("");
+	const [scope, setScope] = useState<SearchScope>("all");
+	const aui = useAui();
+	const sdk = useSdk("kilo-ui");
+	const threadIds = useAuiState((s) => s.threads.threadIds);
+	const archivedThreadIds = useAuiState((s) => s.threads.archivedThreadIds);
+	const threadItems = useAuiState((s) => s.threads.threadItems);
+	const activityBySessionId = useSessionActivity((s) => s.sessions);
+	const { isLoading, isUnavailable, workspaces } = useWorkspacesFeature();
+	const showChats = scope !== "workspaces";
+	const showWorkspaces = scope !== "chats" && !isUnavailable;
+
+	useEffect(() => {
+		if (open) return;
+		setQuery("");
+		setScope("all");
+	}, [open]);
+
+	useCommand("kilo-ui", {
+		id: "search",
+		label: "Search sessions and workspaces",
+		group: "App",
+		keybinding: { mac: "Mod+K", default: "Ctrl+Shift+K" },
+		order: 0,
+		handler: () => setOpen((current) => !current),
+	});
+
+	const rows = useMemo(() => {
+		const itemsById = new Map(threadItems.map((item) => [item.id, item]));
+		const toRow = (id: string, archived: boolean): SearchRow => {
+			const item = itemsById.get(id);
+			const remoteId = item?.remoteId;
+			const activity = remoteId ? activityBySessionId[remoteId] : undefined;
+			return {
+				id,
+				title: item?.title || UNTITLED_SESSION_TITLE,
+				sublabel: resolveSessionLocationLabel(activity, workspaces),
+				updatedAt: activity?.updatedAt,
+				archived,
+			};
+		};
+		return [
+			...threadIds.map((id) => toRow(id, false)),
+			...archivedThreadIds.map((id) => toRow(id, true)),
+		];
+	}, [activityBySessionId, archivedThreadIds, threadIds, threadItems, workspaces]);
+
+	const normalizedQuery = query.trim().toLowerCase();
+	const matchingRows = useMemo(
+		() => rows.filter((row) => matchesSearch([row.title, row.sublabel], normalizedQuery)),
+		[normalizedQuery, rows],
+	);
+	const chats = showChats
+		? matchingRows.filter((row) => !row.archived).slice(0, SEARCH_CHAT_RESULT_LIMIT)
+		: [];
+	const archived = showChats
+		? matchingRows.filter((row) => row.archived).slice(0, SEARCH_CHAT_RESULT_LIMIT)
+		: [];
+	const workspaceRows = showWorkspaces
+		? workspaces.filter((workspace) =>
+				matchesSearch([workspace.name, workspacePrimaryFolderLabel(workspace)], normalizedQuery),
+			)
+		: [];
+	const emptyQuery = normalizedQuery.length === 0;
+	const emptyLabel = searchEmptyLabel(scope, emptyQuery, isLoading);
+	const chatHeading =
+		scope === "all" || archived.length > 0
+			? emptyQuery
+				? "Recent sessions"
+				: "Sessions"
+			: undefined;
+	const workspaceHeading = scope === "all" ? "Workspaces" : undefined;
+
+	const handleSelectChat = (row: SearchRow) => {
+		setOpen(false);
+		void aui.threads.switchToThread(row.id, { unarchive: false });
+		navigateToChat(sdk);
+	};
+
+	const handleSelectWorkspace = (id: string) => {
+		setOpen(false);
+		onSelectWorkspace(id);
+	};
+
+	return (
+		<>
+			<SidebarMenuButton
+				aria-label="Search"
+				className="gap-2 rounded-lg"
+				data-slot="aui_thread-list-search"
+				data-qa-id="session-list-search"
+				onClick={() => setOpen(true)}
+			>
+				<SearchIcon />
+				<span>Search</span>
+			</SidebarMenuButton>
+			<CommandDialog
+				open={open}
+				onOpenChange={setOpen}
+				title="Search"
+				description="Search sessions and workspaces"
+				showCloseButton
+				className="top-1/2 -translate-y-1/2 sm:max-w-2xl"
+			>
+				<Command label="Search sessions and workspaces" shouldFilter={false}>
+					<CommandInput
+						value={query}
+						onValueChange={setQuery}
+						placeholder="Search sessions and workspaces"
+						aria-label="Search sessions and workspaces"
+						className="pe-10"
+					/>
+					<ToggleGroup
+						size="sm"
+						spacing={1}
+						value={[scope]}
+						aria-label="Search in"
+						className="px-4 pt-3 pb-1"
+						onMouseDown={(event) => event.preventDefault()}
+						onValueChange={(value) => {
+							const next = value[0];
+							if (isSearchScope(next)) setScope(next);
+						}}
+					>
+						{SEARCH_SCOPES.map((item) => (
+							<ToggleGroupItem key={item} value={item} data-qa-id={`session-search-filter-${item}`}>
+								{SEARCH_SCOPE_LABELS[item]}
+							</ToggleGroupItem>
+						))}
+					</ToggleGroup>
+					<CommandList className="scroll-fade-y h-96 px-2">
+						<CommandEmpty>{emptyLabel}</CommandEmpty>
+						{chats.length > 0 ? (
+							<CommandGroup heading={chatHeading}>
+								{chats.map((row) => (
+									<SearchChatItem key={row.id} row={row} onSelect={handleSelectChat} />
+								))}
+							</CommandGroup>
+						) : null}
+						{archived.length > 0 ? (
+							<>
+								{chats.length > 0 ? <CommandSeparator /> : null}
+								<CommandGroup heading="Archived">
+									{archived.map((row) => (
+										<SearchChatItem key={row.id} row={row} onSelect={handleSelectChat} />
+									))}
+								</CommandGroup>
+							</>
+						) : null}
+						{workspaceRows.length > 0 ? (
+							<>
+								{chats.length > 0 || archived.length > 0 ? <CommandSeparator /> : null}
+								<CommandGroup
+									heading={workspaceHeading}
+									className="in-data-[slot=dialog-content]:**:[[cmdk-group-heading]]:px-0"
+								>
+									{workspaceRows.map((workspace) => (
+										<SearchWorkspaceItem
+											key={workspace.id}
+											workspace={workspace}
+											onSelect={handleSelectWorkspace}
+										/>
+									))}
+								</CommandGroup>
+							</>
+						) : null}
+					</CommandList>
+				</Command>
+			</CommandDialog>
+		</>
+	);
+};
+
+const SessionListSkeleton: FC = () => {
+	return (
+		<div className="flex flex-col gap-0.5">
+			{Array.from({ length: 5 }, (_, i) => (
+				<div
+					key={i}
+					role="status"
+					aria-label="Loading threads"
+					data-slot="aui_thread-list-skeleton-wrapper"
+					className="flex h-8 items-center px-2"
+				>
+					<Skeleton data-slot="aui_thread-list-skeleton" className="h-3.5 w-full" />
+				</div>
+			))}
+		</div>
+	);
+};
+
+const shelfMutedTone = {
+	label: "text-muted-foreground",
+	chevron: "text-muted-foreground",
+} as const;
+
+const shelfHeaderTones = {
+	attention: {
+		label: "text-warning",
+		chevron: "text-warning",
+	},
+	active: shelfMutedTone,
+	archived: shelfMutedTone,
+	workspace: shelfMutedTone,
+	pinned: shelfMutedTone,
+	updated: shelfMutedTone,
+} as const;
+
+const SessionShelfHeader: FC<{
+	tone: SessionListSection["tone"];
+	label: string;
+	workspace?: Workspace | undefined;
+	onCreateChatInWorkspace: (workspaceId: string) => void;
+	expanded: boolean;
+	onToggle: () => void;
+}> = ({ tone, label, workspace, onCreateChatInWorkspace, expanded, onToggle }) => {
+	const classes = shelfHeaderTones[tone];
+	const glyph = workspaceGlyphColor(workspace?.color);
+	const qaId =
+		tone === "workspace" ? "session-list-workspace-toggle" : `session-list-${tone}-toggle`;
+	return (
+		<div
+			className={cn(
+				"flex items-center",
+				tone === "workspace" &&
+					"group/workspace-row rounded-md transition-colors hover:bg-sidebar-accent focus-within:bg-sidebar-accent",
+			)}
+			data-slot={`aui_session-list-${tone}-header`}
+		>
+			<Button
+				type="button"
+				variant="ghost"
+				onClick={onToggle}
+				aria-expanded={expanded}
+				data-qa-id={qaId}
+				className={cn(
+					"group/shelf h-[30px] min-w-0 flex-1 justify-start gap-2 bg-transparent px-2 font-normal hover:bg-transparent aria-expanded:bg-transparent",
+					sidebarNavRadiusClassName,
+				)}
+			>
+				{tone === "workspace" ? (
+					<FolderIcon
+						aria-hidden
+						data-slot="aui_session-list-workspace-icon"
+						className="size-3.5 shrink-0"
+						{...(glyph ? { color: glyph } : {})}
+					/>
+				) : tone === "archived" ? (
+					<ArchiveIcon
+						aria-hidden
+						data-slot="aui_session-list-archived-icon"
+						className="size-3.5 shrink-0"
+					/>
+				) : null}
+				<span className={cn("min-w-0 truncate text-sm font-normal", classes.label)}>{label}</span>
+				<ChevronDownIcon
+					aria-hidden
+					className={cn(
+						"size-3 opacity-0 transition-[opacity,transform] group-hover/shelf:opacity-100 group-focus-visible/shelf:opacity-100 group-hover/workspace-row:opacity-100 group-focus-within/workspace-row:opacity-100",
+						classes.chevron,
+						!expanded && "-rotate-90",
+					)}
+				/>
+			</Button>
+			{tone === "workspace" && workspace ? (
+				<WorkspaceShelfActions
+					workspace={workspace}
+					onCreateChatInWorkspace={onCreateChatInWorkspace}
+				/>
+			) : null}
+		</div>
+	);
+};
+
+const WorkspaceShelfActions: FC<{
+	workspace: Workspace;
+	onCreateChatInWorkspace: (workspaceId: string) => void;
+}> = ({ workspace, onCreateChatInWorkspace }) => {
+	const { openEdit, openDelete } = useWorkspacesFeature();
+
+	return (
+		<TooltipProvider delay={300}>
+			<div
+				className={workspaceHeaderActionsClassName}
+				data-qa-id={`session-list-workspace-controls-${workspace.id}`}
+			>
+				<DropdownMenu>
+					<Tooltip>
+						<TooltipTrigger
+							render={
+								<DropdownMenuTrigger
+									render={
+										<Button
+											type="button"
+											variant="ghost"
+											size="icon-xs"
+											aria-label={`Workspace actions for ${workspace.name}`}
+											data-qa-id={`session-list-workspace-actions-${workspace.id}`}
+										/>
+									}
+								/>
+							}
+						>
+							<EllipsisIcon aria-hidden className="size-3.5" />
+						</TooltipTrigger>
+						<TooltipContent side="bottom">More</TooltipContent>
+					</Tooltip>
+					<DropdownMenuContent align="end" side="right" sideOffset={6} className="w-auto">
+						<DropdownMenuItem onClick={() => openEdit(workspace)}>
+							<PencilIcon />
+							Edit
+						</DropdownMenuItem>
+						<DropdownMenuItem variant="destructive" onClick={() => openDelete(workspace)}>
+							<Trash2Icon />
+							Delete
+						</DropdownMenuItem>
+					</DropdownMenuContent>
+				</DropdownMenu>
+				<Tooltip>
+					<TooltipTrigger
+						render={
+							<Button
+								type="button"
+								variant="ghost"
+								size="icon-xs"
+								aria-label={`New session in ${workspace.name}`}
+								data-qa-id={`session-list-workspace-new-${workspace.id}`}
+								onClick={() => onCreateChatInWorkspace(workspace.id)}
+							/>
+						}
+					>
+						<PlusIcon aria-hidden className="size-3.5" />
+					</TooltipTrigger>
+					<TooltipContent side="bottom">New session</TooltipContent>
+				</Tooltip>
+			</div>
+		</TooltipProvider>
+	);
+};
+
+/** Mirrors an indented SessionRow's glyph slot so the note lines up with chat titles. */
+const WorkspaceEmptyRow: FC<{ workspaceId: string; label: string }> = ({ workspaceId, label }) => (
+	<div
+		data-slot="aui_session-list-workspace-empty"
+		data-qa-id={`session-list-workspace-empty-${workspaceId}`}
+		className="mx-px box-content flex h-5 min-w-0 items-center gap-1.5 py-1 pr-2.5 pl-2 select-none"
+	>
+		<span aria-hidden className="w-4 shrink-0" />
+		<span className="text-muted-foreground/60 min-w-0 flex-1 truncate text-sm">{label}</span>
+	</div>
+);
+
+const RowHoverAction: FC<{
+	label: string;
+	tooltip: string;
+	slot: string;
+	onClick: () => void;
+	children: ReactNode;
+}> = ({ label, tooltip, slot, onClick, children }) => (
+	<Tooltip>
+		<TooltipTrigger
+			render={
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon-xs"
+					aria-label={label}
+					data-slot={slot}
+					onClick={onClick}
+				/>
+			}
+		>
+			{children}
+		</TooltipTrigger>
+		<TooltipContent side="bottom">{tooltip}</TooltipContent>
+	</Tooltip>
+);
+
+const SessionRow: FC = () => {
+	const aui = useAui();
+	const auiRef = useRef(aui);
+	auiRef.current = aui;
+	const navigate = useNavigateToChat();
+	const remoteId = useAuiState((s) => s.threadListItem.remoteId);
+	const threadId = useAuiState((s) => s.threadListItem.id);
+	const sessionId = useThreadSessionId();
+	const itemStatus = useAuiState((s) => s.threadListItem.status);
+	const isMainThread = useAuiState((s) => s.threadListItem.id === s.threads.mainThreadId);
+	const boardOpen = useWorkspaceBoard()?.isOpen ?? false;
+	// While the board is open it is the selected view, not the last chat.
+	const isActive = isMainThread && !boardOpen;
+	const activity = useSessionActivity((s) =>
+		remoteId ? withDescendantPrompts(s.sessions)[remoteId] : undefined,
+	);
+	const lastVisitedAt = useSessionActivity((s) =>
+		remoteId ? s.lastVisitedAtBySessionId[remoteId] : undefined,
+	);
+	const { workspaces } = useWorkspacesFeature();
+	const title = useAuiState((s) => s.threadListItem.title);
+	// Only a session whose chat exists can be placed on the board.
+	const board = useSessionRowBoard(remoteId ? sessionId : undefined, title);
+	const { show, pinnedIds, togglePin, shortcutHints } = use(SessionListChromeContext);
+	const indented = use(SessionRowIndentContext);
+	const { isRenaming, startRename, finishRename, triggerRef } = useRenameState();
+	// assistant-ui unarchives on switch by default, but the Kilo server cannot
+	// clear an archive timestamp, so opening a chat must never try to.
+	const switchTo = useCallback(() => {
+		void auiRef.current.threadListItem.switchTo({ unarchive: false });
+	}, []);
+	const { archive, deleteThread, deleteDialogs } = useSessionRowActions({
+		remoteId,
+		activity,
+		onDeleted: board?.remove,
+	});
+
+	return (
+		<>
+			<SessionRowContent
+				sessionId={sessionId}
+				remoteId={remoteId}
+				itemStatus={itemStatus}
+				isActive={isActive}
+				activity={activity}
+				lastVisitedAt={lastVisitedAt}
+				workspaces={workspaces}
+				show={show}
+				pinnedIds={pinnedIds}
+				togglePin={togglePin}
+				indented={indented}
+				shortcutHint={shortcutHints.get(threadId)}
+				isRenaming={isRenaming}
+				startRename={startRename}
+				finishRename={finishRename}
+				triggerRef={triggerRef}
+				navigate={navigate}
+				switchTo={switchTo}
+				archive={archive}
+				deleteThread={deleteThread}
+				board={board}
+			/>
+			<SessionRowDeleteDialogs dialogs={deleteDialogs} />
+		</>
+	);
+};
+
+type SessionRowContentProps = {
+	remoteId: string | undefined;
+	/** Unset until a session is known to own the row's chat; it cannot be pinned before. */
+	sessionId: string | undefined;
+	itemStatus: ThreadListItemStatus;
+	isActive: boolean;
+	activity: SessionActivity | undefined;
+	lastVisitedAt: number | undefined;
+	workspaces: readonly Workspace[];
+	show: readonly SessionListShowField[];
+	pinnedIds: ReadonlySet<string>;
+	togglePin: (id: string) => void;
+	indented: boolean;
+	shortcutHint: string | undefined;
+	isRenaming: boolean;
+	startRename: () => void;
+	finishRename: (restoreFocus: boolean) => void;
+	triggerRef: React.RefObject<HTMLButtonElement | null>;
+	navigate: () => void;
+	switchTo: () => void;
+	archive: () => void;
+	deleteThread: () => void;
+	board: SessionRowBoard | null;
+};
+
+const SessionRowContent = memo(function SessionRowContent({
+	sessionId,
+	remoteId,
+	itemStatus,
+	isActive,
+	activity,
+	lastVisitedAt,
+	workspaces,
+	show,
+	pinnedIds,
+	togglePin,
+	indented,
+	shortcutHint,
+	isRenaming,
+	startRename,
+	finishRename,
+	triggerRef,
+	navigate,
+	switchTo,
+	archive,
+	deleteThread,
+	board,
+}: SessionRowContentProps) {
+	const rowState = deriveSessionRowState(activity, lastVisitedAt);
+	const { isArchived, canArchive, canPin } = sessionRowCapabilities(
+		itemStatus === "archived",
+		rowState,
+	);
+	const isPinned = sessionId !== undefined && pinnedIds.has(sessionId);
+	const togglePinned = () => {
+		if (sessionId !== undefined) togglePin(sessionId);
+	};
+	const locationLabel = resolveSessionLocationLabel(activity, workspaces);
+	const workspace = activity?.workspaceId
+		? workspaces.find((candidate) => candidate.id === activity.workspaceId)
+		: undefined;
+	const workspaceColor = workspaceGlyphColor(workspace?.color);
+	const showUpdated = show.includes("updated");
+	const showWorkspace = show.includes("workspace") && locationLabel !== null;
+	const showPullRequest = show.includes("pr");
+	const statusId = sessionGitStatusId(activity);
+	const updatedAt = showUpdated ? activity?.updatedAt : undefined;
+	const metadataContributions = useSdkContributions("kilo-ui/chat-session-row-metadata");
+
+	const leadingIcon =
+		rowState !== null ? (
+			<SessionRowGlyph
+				rowState={rowState}
+				isActive={isActive}
+				workingSince={activity?.workingSince}
+			/>
+		) : (
+			<span className="inline-flex size-3.5 shrink-0" aria-hidden />
+		);
+
+	const rightSlot =
+		updatedAt !== undefined ? (
+			<span data-slot="aui_session-list-item-updated" className={narrowRowYieldsTimeClassName}>
+				<SessionRelativeTime timestamp={updatedAt} />
+			</span>
+		) : null;
+	const pullRequestMetadata =
+		showPullRequest && activity?.directory && statusId
+			? metadataContributions.map((contribution) => {
+					const Component = contribution.component as FC<SessionRowMetadataProps>;
+					return (
+						<Component
+							key={`${contribution.featureId}.${contribution.id}`}
+							statusId={statusId}
+							directory={activity.directory!}
+							{...(activity.worktreeBranch ? { worktreeBranch: activity.worktreeBranch } : {})}
+						/>
+					);
+				})
+			: null;
+
+	// Without a workspace label the info line would hold only the PR badge,
+	// stranded on its own line — it joins the title row's trailing slot
+	// instead, fading under the hover actions like the timestamp.
+	const pullRequestInTitleRow = !showWorkspace && (pullRequestMetadata?.length ?? 0) > 0;
+
+	const glyph = indented ? (
+		<span className="flex h-5 w-4 shrink-0 items-center justify-center">{leadingIcon}</span>
+	) : (
+		leadingIcon
+	);
+
+	const titleRow = (
+		<span className={cn("flex h-5 min-w-0 items-center", indented ? "gap-1.5" : glyph && "gap-2")}>
+			{glyph}
+			<span
+				data-slot="aui_session-list-item-title"
+				className={cn(
+					"min-w-0 flex-1 truncate text-sm",
+					// sidebar-accent-foreground is a muted storm step for filled
+					// accent chips; titles sit on a faint wash, so hover/selected
+					// use full sidebar-foreground.
+					isArchived && !isActive
+						? "text-muted-foreground group-hover/sidebar-row:text-sidebar-foreground"
+						: isActive
+							? "text-sidebar-foreground"
+							: "text-sidebar-foreground/85 group-hover/sidebar-row:text-sidebar-foreground",
+				)}
+			>
+				<ThreadListItemPrimitive.Title fallback={UNTITLED_SESSION_TITLE} />
+			</span>
+			<span
+				data-slot="aui_session-list-item-time"
+				className={cn(
+					"text-muted-foreground ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end gap-1 text-xs leading-4 tabular-nums transition-opacity",
+					canArchive || isArchived
+						? "group-hover/sidebar-row:min-w-24 group-has-[:focus-visible]/sidebar-row:min-w-24 group-has-[[data-popup-open]]/sidebar-row:min-w-24"
+						: "group-hover/sidebar-row:min-w-16 group-has-[:focus-visible]/sidebar-row:min-w-16 group-has-[[data-popup-open]]/sidebar-row:min-w-16",
+					rightSlot || pullRequestInTitleRow ? rowHoverLabelFadeClassName : null,
+				)}
+			>
+				{shortcutHint ? (
+					<ShortcutHintChip label={shortcutHint} />
+				) : (
+					<>
+						{pullRequestInTitleRow ? (
+							<span className="peer/pr contents">{pullRequestMetadata}</span>
+						) : null}
+						{rightSlot}
+					</>
+				)}
+			</span>
+		</span>
+	);
+
+	const infoLine =
+		showWorkspace && locationLabel ? (
+			<span
+				data-slot="aui_session-list-item-info"
+				className={cn(
+					"text-muted-foreground flex min-w-0 items-center gap-1.5 truncate text-xs leading-4",
+					indented && "ml-1.5 pl-4",
+				)}
+			>
+				<FolderIcon
+					aria-hidden
+					data-slot="aui_session-list-workspace-icon"
+					className="size-[13px] shrink-0 opacity-70"
+					{...(workspaceColor ? { color: workspaceColor } : {})}
+				/>
+				<span className="min-w-0 flex-1 truncate">{locationLabel}</span>
+				{pullRequestMetadata}
+			</span>
+		) : null;
+
+	const rowContent = (
+		<span className="flex min-w-0 -translate-y-px flex-col">
+			{titleRow}
+			{infoLine}
+		</span>
+	);
+	const rowPad = indented ? "pl-2 pr-2.5" : "px-2.5";
+
+	return (
+		<ThreadListItemPrimitive.Root
+			onPointerDown={board?.onDragPointerDown}
+			data-session-id={sessionId}
+			data-kilo-session-id={remoteId}
+			data-slot={isArchived ? "aui_session-list-archived-item" : "aui_session-list-item"}
+			className={cn(
+				"group/sidebar-row @container/session-row relative mx-px min-w-0 cursor-pointer rounded-md text-left outline-none select-none",
+				isActive ? sidebarSurfaceActiveClassName : sidebarSurfaceIdleClassName,
+			)}
+		>
+			{isRenaming ? (
+				<div className={cn("flex h-7 items-center", rowPad)}>
+					<SessionItemRename onDone={finishRename} />
+				</div>
+			) : (
+				<SessionRowHoverCard
+					activity={activity}
+					locationLabel={locationLabel}
+					workspaceColor={workspaceColor}
+					statusId={statusId}
+					trigger={
+						<ThreadListItemPrimitive.Trigger
+							ref={triggerRef}
+							data-slot={
+								isArchived ? "aui_session-list-archived-trigger" : "aui_session-list-item-trigger"
+							}
+							data-sidebar-select
+							className={cn(
+								"flex w-full flex-col py-1 text-left focus-visible:outline-none",
+								rowPad,
+							)}
+							onClick={(event) => {
+								// Skips the primitive's default switch, which would unarchive.
+								event.preventDefault();
+								if (event.shiftKey && !isArchived) {
+									togglePinned();
+									return;
+								}
+								navigate();
+								switchTo();
+							}}
+						>
+							{rowContent}
+						</ThreadListItemPrimitive.Trigger>
+					}
+				/>
+			)}
+			{!isRenaming && !shortcutHint && (
+				<span className={cn(rowHoverActionsClassName, "right-1.5 top-1 h-5")}>
+					{canArchive ? (
+						<RowHoverAction
+							label="Archive thread"
+							tooltip="Archive"
+							slot="aui_session-list-item-archive"
+							onClick={archive}
+						>
+							<ArchiveIcon aria-hidden />
+						</RowHoverAction>
+					) : null}
+					{canPin ? (
+						<RowHoverAction
+							label={isPinned ? "Unpin thread" : "Pin thread"}
+							tooltip={isPinned ? "Unpin" : "Pin"}
+							slot="aui_session-list-item-pin"
+							onClick={togglePinned}
+						>
+							{isPinned ? <PinOffIcon aria-hidden /> : <PinIcon aria-hidden />}
+						</RowHoverAction>
+					) : null}
+					<SessionRowMenu
+						canArchive={canArchive}
+						canPin={canPin}
+						pinned={isPinned}
+						onPin={togglePinned}
+						onRename={startRename}
+						onArchive={archive}
+						onDelete={deleteThread}
+						board={board}
+					/>
+				</span>
+			)}
+		</ThreadListItemPrimitive.Root>
+	);
+});

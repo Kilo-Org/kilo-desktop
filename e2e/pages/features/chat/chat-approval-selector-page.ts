@@ -36,7 +36,7 @@ export class ChatApprovalSelectorPage {
 	private readonly sendButton = () => getLocatorByTestId(/^kilo-composer-send(-when-connected)?$/);
 	private readonly newChatButton = () => getLocatorByTestId("new-chat");
 	private readonly sessionListItem = (sessionId: string) =>
-		getLocator(`[data-session-id="${sessionId}"] [data-slot="aui_session-list-item-trigger"]`);
+		getLocator(`[data-kilo-session-id="${sessionId}"] [data-slot="aui_session-list-item-trigger"]`);
 
 	private createdSessions: CreatedKiloSession[] = [];
 

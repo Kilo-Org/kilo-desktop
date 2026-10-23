@@ -81,6 +81,10 @@ export type ChatRightPanelCapability = {
 
 export type ChatRightPanelCapabilities = {
 	readonly chatRightPanel: ChatRightPanelCapability;
+	/** Maps the calling chat to the work session whose panes it acts on. */
+	readonly sessions?: {
+		sessionIdOfChat(kiloSessionId: string): string | undefined;
+	};
 };
 
 const NO_FOCUSED_SESSION =
@@ -175,8 +179,18 @@ function openNotebookInSession(
 	return { sessionId, notebook_id: tab.instanceId, title: tab.title };
 }
 
-function callerSessionId(context: ToolInvocationContext): string | undefined {
-	return context.kiloSessionId?.trim() || undefined;
+/** The calling chat's work session, which owns the notebook panes a tool acts on. */
+function callerSession(
+	sdk: SDK,
+	context: ToolInvocationContext,
+): { sessionId: string } | { error: string } {
+	const kiloSessionId = context.kiloSessionId?.trim();
+	if (!kiloSessionId) return { error: NO_CALLER_SESSION };
+	const sessions = sdk.plugins.get<Partial<ChatRightPanelCapabilities>>("kilo-ui")?.sessions;
+	if (!sessions) return { error: KILO_UI_UNAVAILABLE };
+	// A chat no session owns (e.g. a subagent's) has no panes to open into.
+	const sessionId = sessions.sessionIdOfChat(kiloSessionId);
+	return sessionId ? { sessionId } : { error: NO_CALLER_SESSION };
 }
 
 export type NotebookPanelOpenFileResult =
@@ -337,8 +351,9 @@ export function registerNotebookWebMcpTools(sdk: SDK): void {
 		annotations: { readOnlyHint: true },
 		exposeToModelContext: true,
 		handler: (_args, context) => {
-			const sessionId = callerSessionId(context);
-			if (!sessionId) return { sessionId: null, notebooks: [], error: NO_CALLER_SESSION };
+			const caller = callerSession(sdk, context);
+			if ("error" in caller) return { sessionId: null, notebooks: [], error: caller.error };
+			const { sessionId } = caller;
 			const panelOrError = resolvePanel(sdk);
 			if ("error" in panelOrError) {
 				return { sessionId: null, notebooks: [], error: panelOrError.error };
@@ -366,8 +381,8 @@ export function registerNotebookWebMcpTools(sdk: SDK): void {
 		inputSchema: { type: "object", properties: {} },
 		exposeToModelContext: true,
 		handler: (_args, context) => {
-			const sessionId = callerSessionId(context);
-			return sessionId ? openNotebookInSession(sdk, sessionId) : { error: NO_CALLER_SESSION };
+			const caller = callerSession(sdk, context);
+			return "error" in caller ? caller : openNotebookInSession(sdk, caller.sessionId);
 		},
 	});
 
@@ -383,10 +398,10 @@ export function registerNotebookWebMcpTools(sdk: SDK): void {
 		validate: openFileInput,
 		exposeToModelContext: true,
 		handler: (args, context) => {
-			const sessionId = callerSessionId(context);
-			return sessionId
-				? openNotebookFileInSession(sdk, openFileInput.parse(args).path, sessionId)
-				: { error: NO_CALLER_SESSION };
+			const caller = callerSession(sdk, context);
+			return "error" in caller
+				? caller
+				: openNotebookFileInSession(sdk, openFileInput.parse(args).path, caller.sessionId);
 		},
 	});
 }

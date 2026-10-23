@@ -17,7 +17,7 @@ import {
 import { SLASH_CATEGORY_ICONS } from "../../slash-commands/kilo-slash-icons.js";
 import { useKiloCommandCatalog } from "../../slash-commands/use-kilo-command-catalog.js";
 import { useKiloSlashFormatter } from "../../slash-commands/use-kilo-slash-formatter.js";
-import { useWorkspaceDirectory } from "../../use-workspace-directory.js";
+import { useWorkspaceDirectory } from "../../../session/workspace/use-workspace-directory.js";
 import { ComposerTriggerPopover } from "./elements/composer-trigger-popover.aui.js";
 
 export const KiloSlashTrigger: FC = () => {

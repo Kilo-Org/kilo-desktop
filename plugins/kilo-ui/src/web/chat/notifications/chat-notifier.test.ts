@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	createEmptySessionActivity,
 	type SessionActivity,
-} from "../session-activity/session-activity-logic.js";
+} from "../../session/activity/session-activity-logic.js";
 import { createChatNotifier, type AlertReason, type ChatCue } from "./chat-notifier.js";
 import type { NotificationMode } from "./notification-preferences.js";
 

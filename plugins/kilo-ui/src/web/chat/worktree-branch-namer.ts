@@ -8,8 +8,8 @@ import {
 	buildKiloDesktopSessionMetadata,
 	readKiloDesktopSessionMetadata,
 	type SessionActivity,
-} from "./session-activity/session-activity-logic.js";
-import type { SessionActivityStore } from "./session-activity/session-activity-store.js";
+} from "../session/activity/session-activity-logic.js";
+import type { SessionActivityStore } from "../session/activity/session-activity-store.js";
 
 /**
  * Maximum prompts considered for automatic naming before disarming

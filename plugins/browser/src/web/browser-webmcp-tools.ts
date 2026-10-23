@@ -8,6 +8,8 @@ import { z } from "zod";
 
 import { openBrowserTab } from "./open-browser-tab.js";
 
+const KILO_UI_UNAVAILABLE =
+	"The chat pane layout is unavailable. The chat UI plugin may not be loaded.";
 const NO_CALLER_SESSION =
 	"Opening a browser tab requires an originating Kilo chat session; visual focus is never used to pick the chat.";
 
@@ -19,13 +21,35 @@ const openBrowserInput = z.object({
 		.describe("http(s) URL. A bare host such as localhost:3000 or example.com is accepted."),
 });
 
+/** Structural shape of kilo-ui's capability — asserted, not imported. */
+interface SessionsCapabilities extends Record<string, unknown> {
+	readonly sessions?: {
+		sessionIdOfChat(kiloSessionId: string): string | undefined;
+	};
+}
+
+/** The calling chat's work session, which owns the panes a tool opens. */
+function callerSession(
+	sdk: SDK,
+	context: ToolInvocationContext,
+): { sessionId: string } | { error: string } {
+	const kiloSessionId = context.kiloSessionId?.trim();
+	if (!kiloSessionId) return { error: NO_CALLER_SESSION };
+	const sessions = sdk.plugins.get<SessionsCapabilities>("kilo-ui")?.sessions;
+	if (!sessions) return { error: KILO_UI_UNAVAILABLE };
+	// A chat no session owns (e.g. a subagent's) has no panes to open into.
+	const sessionId = sessions.sessionIdOfChat(kiloSessionId);
+	return sessionId ? { sessionId } : { error: NO_CALLER_SESSION };
+}
+
 function openBrowser(
 	sdk: SDK,
 	args: z.infer<typeof openBrowserInput>,
 	context: ToolInvocationContext,
 ) {
-	const sessionId = context.kiloSessionId?.trim();
-	if (!sessionId) return { error: NO_CALLER_SESSION };
+	const caller = callerSession(sdk, context);
+	if ("error" in caller) return caller;
+	const { sessionId } = caller;
 	const result = openBrowserTab(sdk, sessionId, args.url);
 	return "error" in result ? result : { sessionId, ...result };
 }

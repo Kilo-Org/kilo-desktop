@@ -23,14 +23,14 @@ import { HTML_RENDER_SYSTEM_PROMPT } from "../html-render/html-render-tool.js";
 import {
 	hydratePromptAncestry,
 	hydrateSessionActivity,
-} from "../session-activity/hydrate-session-activity.js";
+} from "../../session/activity/hydrate-session-activity.js";
 import {
 	buildKiloDesktopSessionMetadata,
 	hasKiloDesktopSessionMetadata,
 	readSessionInfoPatch,
 	readWorkspaceFoldersFromMetadata,
-} from "../session-activity/session-activity-logic.js";
-import type { SessionActivityStore } from "../session-activity/session-activity-store.js";
+} from "../../session/activity/session-activity-logic.js";
+import type { SessionActivityStore } from "../../session/activity/session-activity-store.js";
 import { createDeferredKiloRuntimeClient } from "./create-deferred-kilo-runtime-client.js";
 import { createKiloDirectoryClient, createKiloGlobalClient } from "./create-kilo-runtime-client.js";
 import {
@@ -107,6 +107,14 @@ export interface CreateKiloRuntimeBackendOptions extends PromptOptionGetters {
 	/** Latest Kilo connection; used on every request so a port change mid-prepare still lands. */
 	getConnection?: () => Promise<KiloGlobalConnection>;
 	prepareSession(): Promise<KiloSessionPreparation>;
+	/**
+	 * The work session a chat created now joins (today: the draft being sent).
+	 * Read synchronously when the send starts, so a thread switch during
+	 * preparation cannot redirect the chat.
+	 */
+	getSessionForNewChat?: () => string | undefined;
+	/** Links the new chat to its session; runs before anything learns the chat exists. */
+	onChatCreated?: (kiloSessionId: string, sessionId: string) => void;
 	onSessionInitialized?: (threadId: string, info?: SessionInitializedInfo) => void;
 	/**
 	 * Compensating cleanup: fired fire-and-forget when anything after
@@ -140,6 +148,8 @@ export function createKiloRuntimeBackend({
 	connectionPromise,
 	getConnection,
 	prepareSession,
+	getSessionForNewChat,
+	onChatCreated,
 	onSessionCreateFailed,
 	getVariant,
 	getAgent,
@@ -380,6 +390,7 @@ export function createKiloRuntimeBackend({
 	};
 
 	const createSession = async (): Promise<OpenCodeSessionRef> => {
+		const sessionId = getSessionForNewChat?.();
 		const preparation = await prepareSession();
 		const { directory, workspaceId, workspaceFolders, worktree } = preparation;
 		// A degraded base (e.g. offline fetch fallback) must not block
@@ -429,6 +440,7 @@ export function createKiloRuntimeBackend({
 			);
 			const session = response.data;
 			if (!session?.id) throw new Error("Failed to create Kilo session.");
+			if (sessionId) onChatCreated?.(session.id, sessionId);
 			const ref = { id: session.id, directory };
 			rememberWorkspaceSystem(session.id, workspaceFolders);
 			rememberSession(ref);

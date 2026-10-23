@@ -1,6 +1,6 @@
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 
-import { hasKiloDesktopSessionMetadata } from "../session-activity/session-activity-logic.js";
+import { hasKiloDesktopSessionMetadata } from "../../session/activity/session-activity-logic.js";
 
 /**
  * Filters `experimental.session.list` to sessions stamped with Kilo Desktop

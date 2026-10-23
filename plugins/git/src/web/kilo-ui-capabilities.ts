@@ -6,6 +6,10 @@ export interface ChatPaneTab {
 }
 
 export interface KiloUiCapabilities extends Record<string, unknown> {
+	/** Maps the calling chat to the work session whose panes and folders it acts on. */
+	readonly sessions: {
+		sessionIdOfChat(kiloSessionId: string): string | undefined;
+	};
 	readonly chatRightPanel: {
 		listTabs(sessionId: string): readonly ChatPaneTab[];
 		activateTab(sessionId: string, instanceId: string): void;

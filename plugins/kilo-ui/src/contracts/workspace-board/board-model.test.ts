@@ -11,6 +11,7 @@ import {
 	placeSession,
 	removeSession,
 	renameColumn,
+	renameSessions,
 	type WorkspaceBoardState,
 } from "./board-model.js";
 
@@ -176,5 +177,23 @@ describe("clearing the session board", () => {
 	it("leaves an already empty board untouched", () => {
 		const empty = clearBoard(board);
 		expect(clearBoard(empty)).toBe(empty);
+	});
+});
+
+describe("renameSessions", () => {
+	it("re-keys cards in place", () => {
+		expect(ids(renameSessions(board, { b: "session-b", d: "session-d" }))).toEqual({
+			backlog: ["a", "session-b", "c"],
+			doing: ["session-d"],
+			done: [],
+		});
+	});
+
+	it("drops a renamed card whose new id is already on the board", () => {
+		expect(ids(renameSessions(board, { b: "d" })).backlog).toEqual(["a", "c"]);
+	});
+
+	it("returns the same board when no card is renamed", () => {
+		expect(renameSessions(board, { unknown: "x" })).toBe(board);
 	});
 });

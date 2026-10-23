@@ -1,8 +1,9 @@
 /**
  * WebMCP `files_open`: lets the Kilo agent show the user a workspace file in
- * the calling chat's pane layout. The chat session comes from trusted caller
- * context, and kilo-ui's `chatSessionWorkspace` capability confines the path to
- * that session's workspace folders — the same folders the Files pane browses.
+ * the calling chat's pane layout. The chat comes from trusted caller context;
+ * kilo-ui maps it to its work session, and its `chatSessionWorkspace` capability
+ * confines the path to that session's workspace folders — the same folders the
+ * Files pane browses.
  */
 import type { SDK, ToolInvocationContext } from "@kilo-desktop/feature-sdk";
 import { z } from "zod";
@@ -11,7 +12,14 @@ import { filesContract } from "../../../contracts/schemas.js";
 import type { ChatRightPanelCapabilities } from "./chat-right-panel.js";
 import { openWorkspaceFile } from "./file-viewer.js";
 
-/** Structural shape of kilo-ui's capability — asserted, not imported. */
+/** Structural shapes of kilo-ui's capabilities — asserted, not imported. */
+interface SessionsCapabilities extends Record<string, unknown> {
+	/** Maps the calling chat to the work session whose panes and folders it acts on. */
+	readonly sessions: {
+		sessionIdOfChat(kiloSessionId: string): string | undefined;
+	};
+}
+
 interface ChatSessionWorkspaceCapabilities extends Record<string, unknown> {
 	readonly chatSessionWorkspace: {
 		getFolders(sessionId: string): readonly { readonly path: string }[];
@@ -37,8 +45,21 @@ const openFileInput = z.object({
 	column: z.number().int().positive().optional().describe("1-based column to reveal."),
 });
 
-function callerSessionId(context: ToolInvocationContext): string | undefined {
-	return context.kiloSessionId?.trim() || undefined;
+type KiloUiCapabilities = Partial<
+	ChatRightPanelCapabilities & ChatSessionWorkspaceCapabilities & SessionsCapabilities
+>;
+
+/** The calling chat's work session, which owns the panes and folders a tool acts on. */
+function callerSession(
+	kiloUi: KiloUiCapabilities | null | undefined,
+	context: ToolInvocationContext,
+): { sessionId: string } | { error: string } {
+	const kiloSessionId = context.kiloSessionId?.trim();
+	if (!kiloSessionId) return { error: NO_CALLER_SESSION };
+	if (!kiloUi?.sessions) return { error: KILO_UI_UNAVAILABLE };
+	// A chat no session owns (e.g. a subagent's) has no panes to open into.
+	const sessionId = kiloUi.sessions.sessionIdOfChat(kiloSessionId);
+	return sessionId ? { sessionId } : { error: NO_CALLER_SESSION };
 }
 
 async function openFile(
@@ -46,12 +67,10 @@ async function openFile(
 	args: z.infer<typeof openFileInput>,
 	context: ToolInvocationContext,
 ) {
-	const sessionId = callerSessionId(context);
-	if (!sessionId) return { error: NO_CALLER_SESSION };
-	const kiloUi =
-		sdk.plugins.get<Partial<ChatRightPanelCapabilities & ChatSessionWorkspaceCapabilities>>(
-			"kilo-ui",
-		);
+	const kiloUi = sdk.plugins.get<KiloUiCapabilities>("kilo-ui");
+	const caller = callerSession(kiloUi, context);
+	if ("error" in caller) return caller;
+	const { sessionId } = caller;
 	const sessionWorkspace = kiloUi?.chatSessionWorkspace;
 	if (!kiloUi?.chatRightPanel || !sessionWorkspace) return { error: KILO_UI_UNAVAILABLE };
 

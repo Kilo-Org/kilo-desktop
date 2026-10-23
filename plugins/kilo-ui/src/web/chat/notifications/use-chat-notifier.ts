@@ -3,7 +3,7 @@ import { useMemo } from "react";
 import type { SDK } from "@kilo-desktop/feature-sdk";
 
 import { isChatRoutePath } from "../chat-navigation.js";
-import type { SessionActivityStore } from "../session-activity/session-activity-store.js";
+import type { SessionActivityStore } from "../../session/activity/session-activity-store.js";
 import { createChatNotifier, type AlertReason } from "./chat-notifier.js";
 import { useNotificationPreferences } from "./notification-preferences.js";
 import { playNotificationSound } from "./notification-sounds.js";

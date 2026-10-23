@@ -13,7 +13,7 @@ import { toast } from "@kilo-desktop/ui/components/sonner";
 import { useChatConnection } from "../connection/ChatConnectionContext.js";
 import { createKiloDirectoryClient } from "../runtime/create-kilo-runtime-client.js";
 import { useOptionalOpenCodeRuntimeExtras } from "../runtime/use-optional-opencode-runtime-extras.js";
-import { useSessionActivity } from "../session-activity/SessionActivityProvider.js";
+import { useSessionActivity } from "../../session/activity/SessionActivityProvider.js";
 import {
 	childSessionIdFromTaskPart,
 	isActiveSubagentStatus,

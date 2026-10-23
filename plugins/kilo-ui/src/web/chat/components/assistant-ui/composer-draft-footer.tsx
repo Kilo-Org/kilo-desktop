@@ -4,7 +4,7 @@ import type { ComponentType, FC } from "react";
 
 import { useSdkContributions } from "@kilo-desktop/sdk-react";
 
-import { useWorkspaceDirectory } from "../../use-workspace-directory.js";
+import { useWorkspaceDirectory } from "../../../session/workspace/use-workspace-directory.js";
 import { useWorkspacesFeature } from "../../../workspaces/WorkspacesFeatureContext.js";
 import { WorkspaceSelector } from "../../../workspaces/WorkspaceSelector.js";
 

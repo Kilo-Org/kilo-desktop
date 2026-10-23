@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 /** @type {import("drizzle-kit").Config} */
 export default {
-	schema: "./src/main/workspaces/schema.ts",
+	schema: ["./src/main/workspaces/schema.ts", "./src/main/sessions/schema.ts"],
 	out: "./drizzle",
 	dialect: "sqlite",
 	dbCredentials: {

@@ -2,7 +2,10 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 
-import * as schema from "./schema.js";
+import * as sessionsSchema from "../sessions/schema.js";
+import * as workspacesSchema from "./schema.js";
+
+const schema = { ...workspacesSchema, ...sessionsSchema };
 
 export function createWorkspacesDatabase(dbPath: string, migrationsFolder: string) {
 	const sqlite = new Database(dbPath);

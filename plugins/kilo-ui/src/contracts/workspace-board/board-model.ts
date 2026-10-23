@@ -75,6 +75,28 @@ export function removeSession(state: WorkspaceBoardState, sessionId: string): Wo
 	};
 }
 
+/** Re-keys cards whose session id changed, keeping their places; ids already on the board win. */
+export function renameSessions(
+	state: WorkspaceBoardState,
+	renames: Readonly<Record<string, string>>,
+): WorkspaceBoardState {
+	const onBoard = new Set(state.columns.flatMap((column) => column.sessionIds));
+	let changed = false;
+	const columns = state.columns.map((column) => {
+		const sessionIds = column.sessionIds.flatMap((id) => {
+			const renamed = renames[id];
+			if (renamed === undefined || renamed === id) return [id];
+			changed = true;
+			return onBoard.has(renamed) ? [] : [renamed];
+		});
+		return sessionIds.length === column.sessionIds.length &&
+			sessionIds.every((id, index) => id === column.sessionIds[index])
+			? column
+			: { ...column, sessionIds };
+	});
+	return changed ? { columns } : state;
+}
+
 export function addColumn(
 	state: WorkspaceBoardState,
 	columnId: string,

@@ -450,26 +450,26 @@ describe("FilesView", () => {
 				relativePath: "src/index.ts",
 			}),
 		);
-		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("src/index.ts");
+		// The highlighted viewer renders asynchronously and can take well over
+		// the default second when every package's browser tests run at once.
+		const renderTimeout = { timeout: 5_000 };
+		await expect
+			.element(page.getByTestId("files-breadcrumb"), renderTimeout)
+			.toHaveTextContent("src/index.ts");
 		await vi.waitFor(() => {
 			const customCss = document
 				.querySelector("diffs-container")
 				?.shadowRoot?.querySelector("style[data-unsafe-css]")?.textContent;
 			expect(customCss).toContain("--diffs-font-size: 0.75rem");
 			expect(customCss).toContain("--diffs-line-height: 1.125rem");
-		});
-		await vi.waitFor(
-			() => {
-				const selectedLines = Array.from(document.querySelectorAll("diffs-container")).flatMap(
-					(host) =>
-						Array.from(
-							host.shadowRoot?.querySelectorAll<HTMLElement>("[data-selected-line]") ?? [],
-						),
-				);
-				expect(selectedLines.some((line) => line.dataset.line === "2")).toBe(true);
-			},
-			{ timeout: 5_000 },
-		);
+		}, renderTimeout);
+		await vi.waitFor(() => {
+			const selectedLines = Array.from(document.querySelectorAll("diffs-container")).flatMap(
+				(host) =>
+					Array.from(host.shadowRoot?.querySelectorAll<HTMLElement>("[data-selected-line]") ?? []),
+			);
+			expect(selectedLines.some((line) => line.dataset.line === "2")).toBe(true);
+		}, renderTimeout);
 	});
 
 	it("reads a requested file before loading and caching its workspace list", async () => {

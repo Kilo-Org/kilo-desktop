@@ -10,6 +10,7 @@ import {
 	placeSession,
 	removeSession,
 	renameColumn,
+	renameSessions,
 	type WorkspaceBoardState,
 } from "../../contracts/workspace-board/board-model.js";
 import {
@@ -37,6 +38,8 @@ export type WorkspaceBoardStore = {
  * removes a chat's card when it deletes that chat; otherwise card ids that no
  * longer match a known session are kept and hidden, because the session list is
  * paginated and an unloaded session is indistinguishable from a deleted one here.
+ * Cards are keyed by work session id; when chats are adopted into sessions,
+ * cards saved under their Kilo session ids are re-keyed (`renameSessions`).
  */
 export function registerWorkspaceBoard(
 	mainSdk: MainSdk,
@@ -44,7 +47,7 @@ export function registerWorkspaceBoard(
 		namespace: "workspace-board",
 		defaults: { version: 1, state: DEFAULT_WORKSPACE_BOARD },
 	}),
-): void {
+): { renameSessions: (renames: Readonly<Record<string, string>>) => void } {
 	const read = (): WorkspaceBoardState => {
 		const parsed = storedSchema.safeParse(store.snapshot());
 		if (parsed.success) return parsed.data.state;
@@ -120,4 +123,10 @@ export function registerWorkspaceBoard(
 			return commit(before, deleteColumn(before, columnId));
 		},
 	});
+	return {
+		renameSessions: (renames) => {
+			const before = read();
+			commit(before, renameSessions(before, renames));
+		},
+	};
 }

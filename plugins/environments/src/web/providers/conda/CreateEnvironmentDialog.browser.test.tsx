@@ -234,9 +234,17 @@ describe("CreateEnvironmentDialog (modal)", () => {
 		const { baseElement } = renderDialog({ checkPrefix });
 		const screen = page.elementLocator(baseElement);
 
-		await userEvent.type(screen.getByTestId("environments-create-name"), "alpha-bet");
+		// Typing runs over CDP on real time; on a loaded machine one keystroke gap
+		// can outlast the debounce. A fake debounce clock stands still while
+		// typing, and the `expect.element` poll below advances it.
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+		try {
+			await userEvent.type(screen.getByTestId("environments-create-name"), "alpha-bet");
 
-		await expect.element(screen.getByTestId("environments-create-submit")).toBeEnabled();
+			await expect.element(screen.getByTestId("environments-create-submit")).toBeEnabled();
+		} finally {
+			vi.useRealTimers();
+		}
 		expect(checkPrefix.mock.calls.map(([input]) => input.prefix)).toEqual([
 			"/opt/anaconda3/envs/alpha-bet",
 		]);

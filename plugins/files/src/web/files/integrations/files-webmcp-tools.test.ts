@@ -47,6 +47,10 @@ function makeSystem(
 	if (options.withKiloUi !== false) {
 		const kiloUi = system.getSdk("kilo-ui");
 		kiloUi.plugins.expose("chatRightPanel", panel);
+		// Each fixture chat's session shares its id, to keep assertions readable.
+		kiloUi.plugins.expose("sessions", {
+			sessionIdOfChat: (kiloSessionId: string) => kiloSessionId,
+		});
 		kiloUi.plugins.expose("chatSessionWorkspace", {
 			getFolders: (sessionId: string) => (sessionId === "chat-1" ? FOLDERS : []),
 			resolvePath: (sessionId: string, path: string) =>

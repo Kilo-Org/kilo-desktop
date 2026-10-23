@@ -45,7 +45,9 @@ export class ChatModeSelectorPage {
 	private readonly sendButton = () =>
 		getLocatorByTestId(chatModeSelectorData.locators.sendButtonTestId);
 	private readonly sessionListItem = (sessionId: string) =>
-		getLocator(`[data-session-id="${sessionId}"] ${chatModeSelectorData.locators.sessionListItem}`);
+		getLocator(
+			`[data-kilo-session-id="${sessionId}"] ${chatModeSelectorData.locators.sessionListItem}`,
+		);
 
 	private sessionIdsBeforeSend: readonly string[] = [];
 	private lastSentSession: ChatModeSession | undefined;

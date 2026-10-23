@@ -29,8 +29,17 @@ const openChangesInput = z.object({
 		),
 });
 
-function callerSessionId(context: ToolInvocationContext): string | undefined {
-	return context.kiloSessionId?.trim() || undefined;
+/** The calling chat's work session, which owns the panes and folders a tool acts on. */
+function callerSession(
+	kiloUi: Partial<KiloUiCapabilities> | null | undefined,
+	context: ToolInvocationContext,
+): { sessionId: string } | { error: string } {
+	const kiloSessionId = context.kiloSessionId?.trim();
+	if (!kiloSessionId) return { error: NO_CALLER_SESSION };
+	if (!kiloUi?.sessions) return { error: KILO_UI_UNAVAILABLE };
+	// A chat no session owns (e.g. a subagent's) has no panes to open into.
+	const sessionId = kiloUi.sessions.sessionIdOfChat(kiloSessionId);
+	return sessionId ? { sessionId } : { error: NO_CALLER_SESSION };
 }
 
 function openChanges(
@@ -38,9 +47,10 @@ function openChanges(
 	args: z.infer<typeof openChangesInput>,
 	context: ToolInvocationContext,
 ) {
-	const sessionId = callerSessionId(context);
-	if (!sessionId) return { error: NO_CALLER_SESSION };
 	const kiloUi = sdk.plugins.get<Partial<KiloUiCapabilities>>("kilo-ui");
+	const caller = callerSession(kiloUi, context);
+	if ("error" in caller) return caller;
+	const { sessionId } = caller;
 	const panel = kiloUi?.chatRightPanel;
 	const sessionWorkspace = kiloUi?.chatSessionWorkspace;
 	if (!panel || !sessionWorkspace) return { error: KILO_UI_UNAVAILABLE };

@@ -1,4 +1,8 @@
 export interface ChatRightPanelCapabilities extends Record<string, unknown> {
+	/** Maps the calling chat to the work session whose panes it acts on. */
+	sessions?: {
+		sessionIdOfChat(kiloSessionId: string): string | undefined;
+	};
 	chatRightPanel?: {
 		listTabs?(sessionId: string): readonly {
 			readonly instanceId: string;

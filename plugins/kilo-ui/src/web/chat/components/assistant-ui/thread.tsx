@@ -553,7 +553,7 @@ const Composer: FC = () => {
 				await connectionPromise;
 				aui.composer.send();
 			} catch {
-				// Connection errors surface via the ChatPage banner.
+				// Connection errors surface via the SessionPage banner.
 			} finally {
 				isConnectingRef.current = false;
 				setIsConnecting(false);

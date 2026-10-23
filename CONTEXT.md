@@ -27,7 +27,7 @@ e2e/              @kilo-desktop/e2e          Playwright/Electron e2e (plugin-awa
 plugins/          Bundled plugins — self-contained workspace packages
 ├── todos/        @kilo-desktop/plugin-todos Demo plugin (plugin.json + src/{contracts,main,web})
 ├── kilo-server/  @kilo-desktop/plugin-kilo-server Kilo CLI packaging and server lifecycle
-├── kilo-ui/      @kilo-desktop/plugin-kilo-ui Chat UI and workspace management
+├── kilo-ui/      @kilo-desktop/plugin-kilo-ui Work sessions (sidebar, pane canvas), chat UI, and workspace management
 ├── notebook/     @kilo-desktop/plugin-notebook Ephemeral nteract notebooks for chat right panels
 ├── anaconda-account/ @kilo-desktop/plugin-anaconda-account Anaconda account sign-in that stores an Anaconda API key via the shell `auth` capability
 └── git/          @kilo-desktop/plugin-git Git status and live-reloading working-directory "Changes" panel (custom `kilo-git://` protocol), branch switching in the composer draft footer, and the chat worktree lifecycle exposed to other plugins as a main-side `gitService` capability
@@ -125,21 +125,21 @@ Three tiers decide where a dependency lives:
 
 ## Terminology
 
-| Term               | Meaning                                                                                                                                                                                      |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Feature**        | A product capability developed inside `apps/` that programs against the SDK. Will become a plugin later.                                                                                     |
-| **Plugin**         | A self-contained package in `plugins/` (or external repo) with its own manifest, web code, main code, and contracts.                                                                         |
-| **Shell**          | The host application infrastructure: Electron lifecycle, routing, theme, notifications, IPC server. Lives in `apps/` and `packages/contracts`.                                               |
-| **SDK**            | `@kilo-desktop/feature-sdk` — the stable interface. Today it's a shim; later it becomes the real plugin SDK.                                                                                 |
-| **MainSdk**        | The main-process counterpart of the SDK. Features register typed handlers, use `mainSdk.events` / `mainSdk.plugins` for main-side communication, and consume host logging/network delegates. |
-| **`sdk.invoke`**   | Transport-agnostic call from renderer to a handler registered by the same feature's `mainRegister`. NOT raw IPC.                                                                             |
-| **FEATURES array** | `apps/desktop/src/main/features/registry/features.ts` — mandatory data-driven registration for all features.                                                                                 |
-| **Shell delegate** | A shell-owned service exposed through the SDK (theme, notifications, shell, fs, auth).                                                                                                       |
-| **Contribution**   | UI or lifecycle behavior a plugin adds through `plugin.json`: app-lifetime providers, zone entries, routes, nav, and settings sections; conditional zone UI uses `sdk.contribute`.           |
-| **Capability**     | A named API exposed by one feature for others to consume via `sdk.plugins.expose/get`.                                                                                                       |
-| **Anaconda MCP**   | Core feature that owns the optional Anaconda Remote MCP entry and contributes its API key to the Kilo server without writing the credential into config.                                     |
-| **Session**        | A unit of work in a workspace, listed in the sidebar; owns its panes and layout. A session _has_ a chat (today always; later it may start without one, e.g. from a terminal).                |
-| **Chat**           | A session's conversation with the agent, backed by a Kilo session. Use "chat" only for the conversation (chat pane, transcript, composer), "session" for the container.                      |
+| Term               | Meaning                                                                                                                                                                                                                       |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Feature**        | A product capability developed inside `apps/` that programs against the SDK. Will become a plugin later.                                                                                                                      |
+| **Plugin**         | A self-contained package in `plugins/` (or external repo) with its own manifest, web code, main code, and contracts.                                                                                                          |
+| **Shell**          | The host application infrastructure: Electron lifecycle, routing, theme, notifications, IPC server. Lives in `apps/` and `packages/contracts`.                                                                                |
+| **SDK**            | `@kilo-desktop/feature-sdk` — the stable interface. Today it's a shim; later it becomes the real plugin SDK.                                                                                                                  |
+| **MainSdk**        | The main-process counterpart of the SDK. Features register typed handlers, use `mainSdk.events` / `mainSdk.plugins` for main-side communication, and consume host logging/network delegates.                                  |
+| **`sdk.invoke`**   | Transport-agnostic call from renderer to a handler registered by the same feature's `mainRegister`. NOT raw IPC.                                                                                                              |
+| **FEATURES array** | `apps/desktop/src/main/features/registry/features.ts` — mandatory data-driven registration for all features.                                                                                                                  |
+| **Shell delegate** | A shell-owned service exposed through the SDK (theme, notifications, shell, fs, auth).                                                                                                                                        |
+| **Contribution**   | UI or lifecycle behavior a plugin adds through `plugin.json`: app-lifetime providers, zone entries, routes, nav, and settings sections; conditional zone UI uses `sdk.contribute`.                                            |
+| **Capability**     | A named API exposed by one feature for others to consume via `sdk.plugins.expose/get`.                                                                                                                                        |
+| **Anaconda MCP**   | Core feature that owns the optional Anaconda Remote MCP entry and contributes its API key to the Kilo server without writing the credential into config.                                                                      |
+| **Session**        | A unit of work in a workspace ("work session"), listed in the sidebar; owns its panes and layout and has zero or more chats (today the UI gives it at most one). Has its own id, saved by kilo-ui, never derived from a chat. |
+| **Chat**           | A session's conversation with the agent, backed by a Kilo session. Use "chat" only for the conversation (chat pane, transcript, composer), "session" for the container.                                                       |
 
 ## Conventions
 

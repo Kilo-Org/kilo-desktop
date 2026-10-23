@@ -4,7 +4,7 @@ import { BotIcon, CircleAlertIcon } from "lucide-react";
 
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 
-import type { ChatRightPanelContributionProps } from "../right-panel/right-panel-tab-registry.js";
+import type { ChatRightPanelContributionProps } from "../../session/right-panel/right-panel-tab-registry.js";
 import { useOptionalOpenCodeRuntimeExtras } from "../runtime/use-optional-opencode-runtime-extras.js";
 import { ReadonlyThread } from "../components/assistant-ui/thread.js";
 import { PendingInteractionPrompt } from "../components/tools/opencode-composer-interaction.js";

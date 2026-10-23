@@ -26,10 +26,10 @@
 		"routes": [
 			{
 				"path": "/chat",
-				"component": "ChatPage",
+				"component": "SessionPage",
 				"title": "Chat",
 				"surface": "transparent",
-				"header": { "leading": "ChatPageHeaderLeading", "actions": "ChatPageHeaderActions" }
+				"header": { "leading": "SessionPageHeaderLeading", "actions": "SessionPageHeaderActions" }
 			},
 			{
 				"path": "/workspace-board",

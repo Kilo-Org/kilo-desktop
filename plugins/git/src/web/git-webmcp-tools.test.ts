@@ -22,7 +22,9 @@ type Tab = {
 	metadata?: Readonly<Record<string, string>>;
 };
 
-function makeSystem(options: { tabs?: Tab[]; withKiloUi?: boolean } = {}) {
+function makeSystem(
+	options: { tabs?: Tab[]; withKiloUi?: boolean; sessionOfChat?: Record<string, string> } = {},
+) {
 	const gitSdk = createFakeSdk({ featureId: "git" });
 	const system = createFakeFeatureSystem({ sdks: { git: gitSdk } });
 	const panel = {
@@ -34,6 +36,12 @@ function makeSystem(options: { tabs?: Tab[]; withKiloUi?: boolean } = {}) {
 	if (options.withKiloUi !== false) {
 		const kiloUi = system.getSdk("kilo-ui");
 		kiloUi.plugins.expose("chatRightPanel", panel);
+		// By default each fixture chat's session shares its id, to keep assertions readable.
+		const sessionOfChat = options.sessionOfChat;
+		kiloUi.plugins.expose("sessions", {
+			sessionIdOfChat: (kiloSessionId: string) =>
+				sessionOfChat ? sessionOfChat[kiloSessionId] : kiloSessionId,
+		});
 		kiloUi.plugins.expose("chatSessionWorkspace", {
 			getFolders: (sessionId: string) => (sessionId === "chat-1" ? FOLDERS : []),
 			resolvePath: (sessionId: string, path: string) =>
@@ -74,6 +82,29 @@ describe("git_changes_open WebMCP tool", () => {
 			{ id: "git.changes", title: "Changes" },
 			undefined,
 		);
+	});
+
+	it("opens the Changes tab in the calling chat's work session", async () => {
+		const { panel, openChanges } = makeSystem({ sessionOfChat: { ses_1: "chat-1" } });
+
+		await expect(openChanges({}, "ses_1")).resolves.toEqual({
+			sessionId: "chat-1",
+			instanceId: "changes-new",
+		});
+		expect(panel.openContributedTab).toHaveBeenCalledWith(
+			"chat-1",
+			{ id: "git.changes", title: "Changes" },
+			undefined,
+		);
+	});
+
+	it("refuses a chat that no work session owns", async () => {
+		const { panel, openChanges } = makeSystem({ sessionOfChat: {} });
+
+		await expect(openChanges({}, "ses_subagent")).resolves.toMatchObject({
+			error: expect.any(String),
+		});
+		expect(panel.openContributedTab).not.toHaveBeenCalled();
 	});
 
 	it("focuses an open Changes tab without resetting its folder or selection", async () => {

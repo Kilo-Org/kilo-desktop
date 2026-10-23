@@ -10,6 +10,7 @@ import type {
 export const CHAT_MARKDOWN_EXTENSION = "kilo-ui/chat-markdown-extension";
 
 export interface ChatMarkdownExtensionContext {
+	/** The work session the transcript belongs to; panes opened from markdown join it. */
 	readonly sessionId: string;
 	readonly workspaceFolders: readonly {
 		readonly path: string;

@@ -11,7 +11,7 @@ import {
 	CommandList,
 } from "@kilo-desktop/ui/components/command";
 
-import type { RightPanelTabDefinition } from "../right-panel/right-panel-tab-registry.js";
+import type { RightPanelTabDefinition } from "../../session/right-panel/right-panel-tab-registry.js";
 
 /** Chat comes first, so Enter on the untouched picker opens a chat tab. */
 export const NewTabPicker: FC<{

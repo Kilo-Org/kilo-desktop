@@ -2,7 +2,7 @@ import { StrictMode } from "react";
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { createSessionActivityStore } from "./session-activity/session-activity-store.js";
+import { createSessionActivityStore } from "../session/activity/session-activity-store.js";
 import { useWorktreeBranchNamer } from "./use-worktree-branch-namer.js";
 import type { WorktreeBranchNamerDeps } from "./worktree-branch-namer.js";
 

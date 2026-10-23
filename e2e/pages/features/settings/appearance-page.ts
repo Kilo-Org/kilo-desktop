@@ -2,6 +2,7 @@ import {
 	click,
 	expectElementToBeHidden,
 	expectElementToBeVisible,
+	expectElementToHaveAttribute,
 	expectElementToHaveCSS,
 	expectElementToHaveText,
 	getLocator,
@@ -12,11 +13,14 @@ import {
 } from "@anaconda/playwright-utils";
 import { getPage } from "@anaconda/playwright-utils/page-utils";
 
-import { px, type TextSizeSetting } from "../../../testdata/appearance.js";
+import { appearanceData, px, type TextSizeSetting } from "../../../testdata/appearance.js";
+
+const { sidebarVibrancy } = appearanceData;
 
 export class AppearancePage {
 	private readonly appearanceSettings = () => getLocatorByTestId("appearance-settings");
 	private readonly documentRoot = () => getLocator("html");
+	private readonly sidebarVibrancySwitch = () => getLocatorByTestId("appearance-sidebar-vibrancy");
 	// The sliders have no test id; each range input is named by its row title.
 	private readonly slider = (setting: TextSizeSetting) =>
 		getLocatorByRole("slider", { name: setting.title });
@@ -44,6 +48,46 @@ export class AppearancePage {
 			globalThis.location.hash = "#/";
 		});
 		await reloadPage();
+	}
+
+	async toggleSidebarVibrancy(): Promise<void> {
+		await click(this.sidebarVibrancySwitch());
+	}
+
+	async verifySidebarVibrancyOn(): Promise<void> {
+		await expectElementToHaveAttribute(this.sidebarVibrancySwitch(), "aria-checked", "true", {
+			message: "Sidebar vibrancy should be on",
+		});
+		await expectElementToHaveCSS(
+			this.documentRoot(),
+			sidebarVibrancy.cssVar,
+			sidebarVibrancy.onOpacity,
+			{ message: "The sidebar glass should use the theme's translucent opacity" },
+		);
+		await expectElementToHaveCSS(
+			this.documentRoot(),
+			"background-color",
+			sidebarVibrancy.translucentBackground,
+			{ message: "The window background should stay translucent while vibrancy is on" },
+		);
+	}
+
+	async verifySidebarVibrancyOff(): Promise<void> {
+		await expectElementToHaveAttribute(this.sidebarVibrancySwitch(), "aria-checked", "false", {
+			message: "Sidebar vibrancy should be off",
+		});
+		await expectElementToHaveCSS(
+			this.documentRoot(),
+			sidebarVibrancy.cssVar,
+			sidebarVibrancy.offOpacity,
+			{ message: "The sidebar glass should be fully opaque while vibrancy is off" },
+		);
+		await expectElementToHaveCSS(
+			this.documentRoot(),
+			"background-color",
+			sidebarVibrancy.opaqueBackground,
+			{ message: "The window background should be opaque while vibrancy is off" },
+		);
 	}
 
 	async increaseTextSize(setting: TextSizeSetting): Promise<void> {

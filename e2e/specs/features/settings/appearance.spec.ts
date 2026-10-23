@@ -58,3 +58,43 @@ test.describe("Appearance text size @smoke @packaged", () => {
 		});
 	}
 });
+
+test.describe("Appearance sidebar vibrancy @regression @packaged", () => {
+	test.beforeEach(async ({ appShellPage, appearancePage }) => {
+		// The open window keeps the last setting in memory; reload so each test starts from the default.
+		await appearancePage.reloadApp();
+		await appShellPage.verifyShellIsLoaded();
+		await appShellPage.openSettings();
+		await appearancePage.openAppearanceSettings();
+	});
+
+	test("turns sidebar vibrancy off and keeps it off after a reload", async ({
+		appShellPage,
+		appearancePage,
+	}) => {
+		await appearancePage.verifySidebarVibrancyOn();
+
+		await appearancePage.toggleSidebarVibrancy();
+		await appearancePage.verifySidebarVibrancyOff();
+
+		await appearancePage.reloadApp();
+		await appShellPage.verifyShellIsLoaded();
+		await appShellPage.openSettings();
+		await appearancePage.openAppearanceSettings();
+		await appearancePage.verifySidebarVibrancyOff();
+	});
+
+	test("turns sidebar vibrancy back on", async ({ appShellPage, appearancePage }) => {
+		await appearancePage.toggleSidebarVibrancy();
+		await appearancePage.verifySidebarVibrancyOff();
+
+		await appearancePage.toggleSidebarVibrancy();
+		await appearancePage.verifySidebarVibrancyOn();
+
+		await appearancePage.reloadApp();
+		await appShellPage.verifyShellIsLoaded();
+		await appShellPage.openSettings();
+		await appearancePage.openAppearanceSettings();
+		await appearancePage.verifySidebarVibrancyOn();
+	});
+});

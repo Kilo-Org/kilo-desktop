@@ -24,6 +24,15 @@ const chatTextSize: TextSizeSetting = {
 };
 
 export const appearanceData = {
+	// The e2e profile starts on the default Dark theme, whose glass opacity is 80%.
+	sidebarVibrancy: {
+		cssVar: "--shell-glass-opacity",
+		onOpacity: "80%",
+		offOpacity: "100%",
+		// <html> paints the sidebar colour at that opacity; the alpha is dropped when opaque.
+		translucentBackground: /\/ 0\.8\)$/,
+		opaqueBackground: /^(?:rgb\([^)]*\)|color\(srgb [\d.]+ [\d.]+ [\d.]+\))$/,
+	},
 	textSizeRange: { minPx: 12, maxPx: 18 },
 	// Each slider paired with the one it must leave alone.
 	textSizeSettings: [

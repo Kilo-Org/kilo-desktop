@@ -383,8 +383,8 @@ importers:
         specifier: ^2.6.0
         version: 2.6.0
       '@runtimed/node':
-        specifier: 0.6.6-nightly.39227923380
-        version: 0.6.6-nightly.39227923380
+        specifier: 0.7.0-nightly.39892597707
+        version: 0.7.0-nightly.39892597707
       '@sentry/electron':
         specifier: 'catalog:'
         version: 8.3.0(@babel/core@7.29.7(supports-color@10.2.2))
@@ -523,8 +523,8 @@ importers:
         version: 5.0.5(@opentelemetry/api@1.9.1)(@types/node@24.13.3)(@vitest/browser-playwright@5.0.5)(@vitest/coverage-v8@5.0.5)(@vitest/ui@5.0.5)(vite@8.1.6(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
     optionalDependencies:
       '@runtimed/node-win32-arm64-msvc':
-        specifier: 0.6.6-nightly.39227923380
-        version: 0.6.6-nightly.39227923380
+        specifier: 0.7.0-nightly.39892597707
+        version: 0.7.0-nightly.39892597707
 
   apps/web:
     dependencies:
@@ -1938,8 +1938,8 @@ importers:
         specifier: 'catalog:'
         version: 1.64.1
       '@runtimed/node':
-        specifier: 0.6.6-nightly.39227923380
-        version: 0.6.6-nightly.39227923380
+        specifier: 0.7.0-nightly.39892597707
+        version: 0.7.0-nightly.39892597707
       '@tailwindcss/vite':
         specifier: ^4.3.3
         version: 4.3.3(vite@8.1.6(@types/node@24.13.3)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
@@ -5099,35 +5099,35 @@ packages:
   '@rtsao/scc@1.1.0':
     resolution: {integrity: sha512-zt6OdqaDoOnJ1ZYsCYGt9YmWzDXl4vQdKTyJev62gFhRGKdx7mcT54V9KIjg+d2wi9EXsPvAPKe7i7WjfVWB8g==}
 
-  '@runtimed/node-darwin-arm64@0.6.6-nightly.39227923380':
-    resolution: {integrity: sha512-F8r5l2ndlg/hCVxEfmXI2HrJBSWG7luEFEkm9057BuuXoiUOYyDgzM2o6CMW0dIgNBY40SvX6QmY75DxaT3E7w==}
+  '@runtimed/node-darwin-arm64@0.7.0-nightly.39892597707':
+    resolution: {integrity: sha512-r5bZfeTBKilf63+XnntNzPdnOUX4zIqIzBDktISx7HHj64h24iWgmuPDhYe2al/qrUizMQRuuIEgTaqjFGcNCw==}
     cpu: [arm64]
     os: [darwin]
 
-  '@runtimed/node-linux-arm64-gnu@0.6.6-nightly.39227923380':
-    resolution: {integrity: sha512-2e/OrTmVdghNOzBgOB301LkIzn91r3WIEZvaFNkl43ji+0+qCxg3Q3zZuH26WTXH0dTKsPUXfH70ozUV1q7bGg==}
+  '@runtimed/node-linux-arm64-gnu@0.7.0-nightly.39892597707':
+    resolution: {integrity: sha512-EWjfY3LgbKqoaQ0PnxNc3fRbQiMfZ/kPtrbC8UkRUa/noWy4hDptdUwice8/kc7WEeS1QH+PG0yE2uQQNqfhFA==}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
 
-  '@runtimed/node-linux-x64-gnu@0.6.6-nightly.39227923380':
-    resolution: {integrity: sha512-kHmpiUbIhO2RvCaAJjsyyXa2TvUqa2DZzfyZkJbgyscS5wRzQoYzir2sHcEOwzgA8F0uWzi1mza/CSXAXLvDsA==}
+  '@runtimed/node-linux-x64-gnu@0.7.0-nightly.39892597707':
+    resolution: {integrity: sha512-ZD+5TuD8WOtzl595vtNQ7guf3AZ1byGffASKTuyhJwzUIO4UaXDiJ3suU4Jstb3DnT7YoKx/jrIuSXuubZ1g9Q==}
     cpu: [x64]
     os: [linux]
     libc: [glibc]
 
-  '@runtimed/node-win32-arm64-msvc@0.6.6-nightly.39227923380':
-    resolution: {integrity: sha512-uqrZSQrlUzGd9enaLq3e/WGOR6VWosVvVu1zE1JNcrMNAaxoX4wbb98DLyo0nfEusQapdRD2MJVv54DbGp5IMQ==}
+  '@runtimed/node-win32-arm64-msvc@0.7.0-nightly.39892597707':
+    resolution: {integrity: sha512-kaCQTobD7uClBnZURLGq4ODTubifoTAhGoGQdq0JmmtLKbJqm7saqJHhE699AxaDa7G6B5AYX5oO7KksWZ4nbg==}
     cpu: [arm64]
     os: [win32]
 
-  '@runtimed/node-win32-x64-msvc@0.6.6-nightly.39227923380':
-    resolution: {integrity: sha512-zvi0EIXT3z+sJm2+zwAYUoxkDdu4MGVLRlv+K5T+TyK3++uOMScFmmYUkKGyGC59CfRj2JkBo9doKSUSXUqjyQ==}
+  '@runtimed/node-win32-x64-msvc@0.7.0-nightly.39892597707':
+    resolution: {integrity: sha512-e8T31IHWiDLRGQnrpcXchMiia2Uzw0SgBHoG8kjWhTlXg/0sSkRnZCIZN0p0D3jmV64836x3+STMLFh8VWv3KA==}
     cpu: [x64]
     os: [win32]
 
-  '@runtimed/node@0.6.6-nightly.39227923380':
-    resolution: {integrity: sha512-YfPcPEUx5EkeGsk4iWNYIrV40md10EcnMjhaT194gZeiCK13MHDNEScNbwrJ39dfFeUGcdXJ7bsiP56mBZvBbw==}
+  '@runtimed/node@0.7.0-nightly.39892597707':
+    resolution: {integrity: sha512-KKy4RtkL9BCvmbOkrDERaI3ex03s7zERyKijcCF3ESiUzRRu485yssuA2PJIjZ2oGcSEj8fslMtDFlgiiWaQ7w==}
 
   '@sec-ant/readable-stream@0.4.1':
     resolution: {integrity: sha512-831qok9r2t8AlxLko40y2ebgSDhenenCatLVeW/uBtnHPyhHOvG0C7TvfgecV+wHzIm5KUICgzmVpWS+IMEAeg==}
@@ -13447,30 +13447,30 @@ snapshots:
 
   '@rtsao/scc@1.1.0': {}
 
-  '@runtimed/node-darwin-arm64@0.6.6-nightly.39227923380':
+  '@runtimed/node-darwin-arm64@0.7.0-nightly.39892597707':
     optional: true
 
-  '@runtimed/node-linux-arm64-gnu@0.6.6-nightly.39227923380':
+  '@runtimed/node-linux-arm64-gnu@0.7.0-nightly.39892597707':
     optional: true
 
-  '@runtimed/node-linux-x64-gnu@0.6.6-nightly.39227923380':
+  '@runtimed/node-linux-x64-gnu@0.7.0-nightly.39892597707':
     optional: true
 
-  '@runtimed/node-win32-arm64-msvc@0.6.6-nightly.39227923380':
+  '@runtimed/node-win32-arm64-msvc@0.7.0-nightly.39892597707':
     optional: true
 
-  '@runtimed/node-win32-x64-msvc@0.6.6-nightly.39227923380':
+  '@runtimed/node-win32-x64-msvc@0.7.0-nightly.39892597707':
     optional: true
 
-  '@runtimed/node@0.6.6-nightly.39227923380':
+  '@runtimed/node@0.7.0-nightly.39892597707':
     dependencies:
       rxjs: 7.8.2
     optionalDependencies:
-      '@runtimed/node-darwin-arm64': 0.6.6-nightly.39227923380
-      '@runtimed/node-linux-arm64-gnu': 0.6.6-nightly.39227923380
-      '@runtimed/node-linux-x64-gnu': 0.6.6-nightly.39227923380
-      '@runtimed/node-win32-arm64-msvc': 0.6.6-nightly.39227923380
-      '@runtimed/node-win32-x64-msvc': 0.6.6-nightly.39227923380
+      '@runtimed/node-darwin-arm64': 0.7.0-nightly.39892597707
+      '@runtimed/node-linux-arm64-gnu': 0.7.0-nightly.39892597707
+      '@runtimed/node-linux-x64-gnu': 0.7.0-nightly.39892597707
+      '@runtimed/node-win32-arm64-msvc': 0.7.0-nightly.39892597707
+      '@runtimed/node-win32-x64-msvc': 0.7.0-nightly.39892597707
 
   '@sec-ant/readable-stream@0.4.1': {}
 

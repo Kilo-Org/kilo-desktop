@@ -12,16 +12,16 @@ import {
 describe("notebook distribution artifacts", () => {
 	it("pins every bundled nteract component to the same nightly release", () => {
 		expect(NTERACT_RELEASE).toEqual({
-			tag: "v2.8.6-nightly.202610190909",
-			version: "2.8.6-nightly.202610190909",
+			tag: "v2.9.0-nightly.202610230300",
+			version: "2.9.0-nightly.202610230300",
 			channel: "nightly",
-			commit: "488928b6765e7c5513fdbcd5e28f433f039fb05c",
+			commit: "9c85319021bdcd4b03bdfe010ccb4bbc4dc8ed57",
 			repository: "https://github.com/nteract/nteract.git",
 		});
 		expect(NTERACT_NOTEBOOK_UI).toEqual({
 			assetName: "nteract-nightly-notebook-ui.tar.gz",
-			bytes: 8_632_923,
-			sha256: "289c9b70f9cf19d51a27353303594c4c7cd2c2f4a25b7387ded22fdca4198055",
+			bytes: 8_662_653,
+			sha256: "0c63a75a9115197cbdba88e18fcbf769c58935a735eca2b1873cbd51bb7678a5",
 		});
 	});
 

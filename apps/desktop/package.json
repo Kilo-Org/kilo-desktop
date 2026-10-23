@@ -50,7 +50,7 @@
 		"@github/keytar": "^7.10.6",
 		"@launchdarkly/node-client-sdk": "^4.0.0",
 		"@parcel/watcher": "^2.6.0",
-		"@runtimed/node": "0.6.6-nightly.39227923380",
+		"@runtimed/node": "0.7.0-nightly.39892597707",
 		"@sentry/electron": "catalog:",
 		"@vscode/proxy-agent": "^0.45.0",
 		"atomically": "catalog:",
@@ -70,7 +70,7 @@
 		"zod": "catalog:"
 	},
 	"optionalDependencies": {
-		"@runtimed/node-win32-arm64-msvc": "0.6.6-nightly.39227923380"
+		"@runtimed/node-win32-arm64-msvc": "0.7.0-nightly.39892597707"
 	},
 	"devDependencies": {
 		"@kilo-desktop/testing": "workspace:*",

@@ -42,3 +42,28 @@ export const appearanceData = {
 } as const;
 
 export const px = (size: number): string => `${size}px`;
+
+export type ColorTheme = {
+	id: string;
+	name: string;
+	/** The theme's background as sRGB channels. */
+	background: number[];
+};
+
+export type AccentColor = {
+	id: string;
+	name: string;
+	/** As the browser reports computed colours (slider fill, thumb border, card ring). */
+	rgb: string;
+};
+
+/** Settings > Appearance color theme and accent controls, as seen in the default Dark theme. */
+export const colorThemeData = {
+	accentColor: {
+		// The e2e profile starts on Dark, so that card carries the selection ring.
+		selectedThemeCard: "dark",
+		// "Theme" shows a label instead of a colour, so its expected colour (Kilo's own accent) lives
+		// here; the custom accents are read from their swatches.
+		theme: { id: "theme", name: "Theme", rgb: "rgb(255, 221, 0)" } satisfies AccentColor,
+	},
+} as const;

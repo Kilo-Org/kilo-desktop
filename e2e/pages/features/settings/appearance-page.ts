@@ -2,20 +2,50 @@ import {
 	click,
 	expectElementToBeHidden,
 	expectElementToBeVisible,
+	expectElementToContainText,
 	expectElementToHaveAttribute,
 	expectElementToHaveCSS,
 	expectElementToHaveText,
 	getLocator,
 	getLocatorByRole,
+	getAttribute,
 	getLocatorByTestId,
+	getLocatorCount,
+	getText,
+	logger,
 	pressLocatorKeyboard,
+	pressPageKeyboard,
 	reloadPage,
 } from "@anaconda/playwright-utils";
 import { getPage } from "@anaconda/playwright-utils/page-utils";
+import { expect, type Locator } from "@playwright/test";
 
-import { appearanceData, px, type TextSizeSetting } from "../../../testdata/appearance.js";
+import {
+	appearanceData,
+	colorThemeData,
+	px,
+	type AccentColor,
+	type ColorTheme,
+	type TextSizeSetting,
+} from "../../../testdata/appearance.js";
 
-const { sidebarVibrancy } = appearanceData;
+const { accentColor } = colorThemeData;
+const { sidebarVibrancy, textSizeSettings } = appearanceData;
+
+/** Paints the element's background on a canvas so oklch, color-mix and rgb compare as sRGB bytes. */
+const readBackgroundAsSrgb = (element: Locator): Promise<number[]> =>
+	element.evaluate((node) => {
+		const context = document.createElement("canvas").getContext("2d")!;
+		context.fillStyle = getComputedStyle(node).backgroundColor;
+		context.fillRect(0, 0, 1, 1);
+		return [...context.getImageData(0, 0, 1, 1).data.slice(0, 3)];
+	});
+
+const largestChannelGap = (a: number[], b: number[]): number =>
+	Math.max(...a.map((channel, index) => Math.abs(channel - b[index]!)));
+
+const containsColor = (accent: AccentColor): RegExp =>
+	new RegExp(accent.rgb.replace(/[()]/g, "\\$&"));
 
 export class AppearancePage {
 	private readonly appearanceSettings = () => getLocatorByTestId("appearance-settings");
@@ -36,6 +66,31 @@ export class AppearancePage {
 		setting.id === "ui"
 			? getLocatorByTestId("settings-section-about")
 			: getLocatorByTestId("appearance-chat-text-preview").locator(":scope > p");
+
+	private readonly colorThemePicker = () => getLocatorByTestId("appearance-color-theme");
+	private readonly colorThemeOption = (theme: ColorTheme) =>
+		getLocatorByTestId(`appearance-color-theme-${theme.id}`);
+	// Options render in a portal; the prefix excludes the picker trigger itself.
+	private readonly colorThemeOptions = () => getLocator('[data-qa-id^="appearance-color-theme-"]');
+	// The "Aa" chip painted with the theme's own background.
+	private readonly colorThemeSwatch = (option: Locator) =>
+		option.locator('span[aria-hidden="true"]', { hasText: "Aa" });
+	// Painted with `bg-background`, so it shows the applied theme's background.
+	private readonly themedSurface = () => getLocatorByTestId("appearance-chat-text-preview");
+	private readonly accentSwatch = (accent: AccentColor) =>
+		getLocatorByTestId(`appearance-accent-${accent.id}`);
+	// Only colour swatches render a dot; text options such as "Theme" do not.
+	private readonly customAccentSwatches = () =>
+		getLocator('[data-qa-id^="appearance-accent-"]:has(> span[aria-hidden="true"])');
+	private readonly selectedThemeCard = () =>
+		getLocatorByTestId(`appearance-theme-${accentColor.selectedThemeCard}`);
+	// The slider's filled part (`bg-primary`) and its thumb (`border-ring`) carry the accent.
+	private readonly sliderFill = (setting: TextSizeSetting) =>
+		this.sliderControl(setting).locator('[data-slot="slider-range"]');
+	private readonly sliderThumb = (setting: TextSizeSetting) =>
+		this.sliderControl(setting).locator('[data-slot="slider-thumb"]');
+	private readonly sliderControl = (setting: TextSizeSetting) =>
+		this.appearanceSettings().locator('[data-slot="slider"]', { has: this.slider(setting) });
 
 	async openAppearanceSettings(): Promise<void> {
 		await click(getLocatorByTestId("settings-section-appearance"));
@@ -135,5 +190,102 @@ export class AppearancePage {
 			this.resetButton(setting),
 			`Reset should not be offered at the default ${setting.title.toLowerCase()}`,
 		);
+	}
+
+	async openColorThemePicker(): Promise<void> {
+		await click(this.colorThemePicker());
+	}
+
+	async chooseColorTheme(theme: ColorTheme): Promise<void> {
+		await click(this.colorThemeOption(theme));
+	}
+
+	async closeColorThemePicker(): Promise<void> {
+		await pressPageKeyboard("Escape");
+	}
+
+	/**
+	 * Reads the themes from the open picker, so added or changed themes need no test data update.
+	 * Each option's swatch uses the same tokens the app applies, which makes it the expected colour.
+	 */
+	async getColorThemeOptions(): Promise<ColorTheme[]> {
+		const count = await getLocatorCount(this.colorThemeOptions());
+		if (count === 0) throw new Error("The color theme picker should list at least one theme");
+		const themes: ColorTheme[] = [];
+		for (let index = 0; index < count; index++) {
+			// nth: options are siblings told apart only by the id this loop is reading.
+			const option = this.colorThemeOptions().nth(index);
+			const swatch = this.colorThemeSwatch(option);
+			const qaId = (await getAttribute(option, "data-qa-id"))!;
+			themes.push({
+				id: qaId.replace("appearance-color-theme-", ""),
+				name: (await getText(option)).replace(await getText(swatch), "").trim(),
+				background: await readBackgroundAsSrgb(swatch),
+			});
+		}
+		logger.info(
+			`Color themes: ${themes.map(({ name, background }) => `${name} rgb(${background.join(", ")})`).join(", ")}`,
+		);
+		return themes;
+	}
+
+	async verifyColorThemeApplied(theme: ColorTheme): Promise<void> {
+		await expectElementToContainText(this.colorThemePicker(), theme.name, {
+			message: `The color theme picker should show ${theme.name} as selected`,
+		});
+		// Off by one at most: the default palette is oklch, which rounds differently from the swatch hex.
+		await expect
+			.poll(
+				async () =>
+					largestChannelGap(await readBackgroundAsSrgb(this.themedSurface()), theme.background),
+				{ message: `The app background should switch to the ${theme.name} palette` },
+			)
+			.toBeLessThanOrEqual(1);
+	}
+
+	/** Reads the accent from its swatch, so added or changed accents need no test data update. */
+	async pickRandomCustomAccent(): Promise<AccentColor> {
+		const count = await getLocatorCount(this.customAccentSwatches());
+		if (count === 0) throw new Error("The accent picker should list at least one custom accent");
+		// nth: the swatches are siblings with no other distinguishing attribute to pick a random one by.
+		const swatch = this.customAccentSwatches().nth(Math.floor(Math.random() * count));
+		const qaId = (await getAttribute(swatch, "data-qa-id"))!;
+		const accent = {
+			id: qaId.replace("appearance-accent-", ""),
+			name: (await getAttribute(swatch, "aria-label"))!,
+			rgb: await swatch
+				.locator(':scope > span[aria-hidden="true"]')
+				.evaluate((dot) => getComputedStyle(dot).backgroundColor),
+		};
+		logger.info(`Picked the ${accent.name} accent (${accent.rgb})`);
+		return accent;
+	}
+
+	async selectAccent(accent: AccentColor): Promise<void> {
+		await click(this.accentSwatch(accent));
+	}
+
+	async verifyAccentApplied(accent: AccentColor): Promise<void> {
+		await expectElementToHaveAttribute(this.accentSwatch(accent), "aria-pressed", "true", {
+			message: `The ${accent.name} accent swatch should be selected`,
+		});
+		// box-shadow also lists the transparent shadow layers, so match the accent within it.
+		await expectElementToHaveCSS(this.selectedThemeCard(), "box-shadow", containsColor(accent), {
+			message: `The selected theme card should be outlined in the ${accent.name} accent`,
+		});
+		for (const { setting } of textSizeSettings) {
+			await expectElementToHaveCSS(this.sliderFill(setting), "background-color", accent.rgb, {
+				message: `The ${setting.title.toLowerCase()} slider should fill with the ${accent.name} accent`,
+			});
+			await expectElementToHaveCSS(this.sliderThumb(setting), "border-color", accent.rgb, {
+				message: `The ${setting.title.toLowerCase()} slider thumb should be outlined in the ${accent.name} accent`,
+			});
+		}
+	}
+
+	async verifyAccentNotSelected(accent: AccentColor): Promise<void> {
+		await expectElementToHaveAttribute(this.accentSwatch(accent), "aria-pressed", "false", {
+			message: `The ${accent.name} accent swatch should not be selected`,
+		});
 	}
 }

@@ -1,7 +1,66 @@
 import { test } from "../../../fixtures/features/appearance.js";
-import { appearanceData } from "../../../testdata/appearance.js";
+import { appearanceData, colorThemeData } from "../../../testdata/appearance.js";
 
 const { textSizeRange, textSizeSettings } = appearanceData;
+const { accentColor } = colorThemeData;
+
+test.describe("Appearance color theme and accent @regression @packaged", () => {
+	test.beforeEach(async ({ appShellPage, appearancePage }) => {
+		// The open window keeps the last choices in memory; reload so each test starts from the defaults.
+		await appearancePage.reloadApp();
+		await appShellPage.verifyShellIsLoaded();
+		await appShellPage.openSettings();
+		await appearancePage.openAppearanceSettings();
+	});
+
+	test("applies every color theme from the picker", async ({ appearancePage }) => {
+		await appearancePage.openColorThemePicker();
+		const colorThemes = await appearancePage.getColorThemeOptions();
+		await appearancePage.closeColorThemePicker();
+
+		for (const theme of colorThemes) {
+			await test.step(`selects ${theme.name}`, async () => {
+				await appearancePage.openColorThemePicker();
+				await appearancePage.chooseColorTheme(theme);
+				await appearancePage.verifyColorThemeApplied(theme);
+			});
+		}
+	});
+
+	test("applies an accent color and keeps it after a reload", async ({
+		appShellPage,
+		appearancePage,
+	}) => {
+		const accent = await appearancePage.pickRandomCustomAccent();
+		await appearancePage.verifyAccentApplied(accentColor.theme);
+
+		await appearancePage.selectAccent(accent);
+		await appearancePage.verifyAccentApplied(accent);
+		await appearancePage.verifyAccentNotSelected(accentColor.theme);
+
+		await appearancePage.reloadApp();
+		await appShellPage.verifyShellIsLoaded();
+		await appShellPage.openSettings();
+		await appearancePage.openAppearanceSettings();
+		await appearancePage.verifyAccentApplied(accent);
+	});
+
+	test("restores the theme's accent color", async ({ appShellPage, appearancePage }) => {
+		const accent = await appearancePage.pickRandomCustomAccent();
+		await appearancePage.selectAccent(accent);
+		await appearancePage.verifyAccentApplied(accent);
+
+		await appearancePage.selectAccent(accentColor.theme);
+		await appearancePage.verifyAccentApplied(accentColor.theme);
+		await appearancePage.verifyAccentNotSelected(accent);
+
+		await appearancePage.reloadApp();
+		await appShellPage.verifyShellIsLoaded();
+		await appShellPage.openSettings();
+		await appearancePage.openAppearanceSettings();
+		await appearancePage.verifyAccentApplied(accentColor.theme);
+	});
+});
 
 test.describe("Appearance text size @smoke @packaged", () => {
 	test.beforeEach(async ({ appShellPage, appearancePage }) => {

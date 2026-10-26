@@ -1,6 +1,7 @@
 import { useCallback, useReducer, useRef } from "react";
 
 import type { FileReadResult, FilesServiceContract } from "../../../contracts/schemas.js";
+import { rendersByDefault } from "./rendered-documents.js";
 
 interface FileDocumentState {
 	readonly selectedPath: string | null;
@@ -88,6 +89,7 @@ function initialFileDocument(request: InitialFileDocument | undefined): FileDocu
 		loading: true,
 		revealLine: request.revealLine,
 		revealColumn: request.revealColumn,
+		renderMarkdown: rendersByDefault(request.relativePath, request.revealLine),
 	};
 }
 
@@ -119,7 +121,11 @@ function fileDocumentReducer(
 	action: FileDocumentAction,
 ): FileDocumentState {
 	switch (action.type) {
-		case "open-started":
+		case "open-started": {
+			// Reopening the current document (e.g. a conflict reload) keeps the
+			// user's rendered/source choice; a line target always opens source.
+			const reopensCurrent =
+				action.relativePath === state.selectedPath && action.line === undefined;
 			return {
 				...state,
 				selectedPath: action.relativePath,
@@ -127,8 +133,11 @@ function fileDocumentReducer(
 				revealColumn: action.column,
 				loading: true,
 				error: null,
-				renderMarkdown: false,
+				renderMarkdown: reopensCurrent
+					? state.renderMarkdown
+					: rendersByDefault(action.relativePath, action.line),
 			};
+		}
 		case "open-succeeded":
 			return openedState(state, action.file, action.workspaceDirectory, action.reload);
 		case "refresh-succeeded":

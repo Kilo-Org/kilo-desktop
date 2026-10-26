@@ -15,6 +15,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 
 import { useFeatureFlag, useSdk } from "@kilo-desktop/sdk-react";
 import { FIND_BAR_FEATURE_FLAG, FindScope } from "@kilo-desktop/ui/components/find-bar";
+import { MermaidDiagram } from "@kilo-desktop/ui/components/mermaid-diagram";
 import { Toggle } from "@kilo-desktop/ui/components/toggle";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Button } from "@kilo-desktop/ui/components/button";
@@ -42,6 +43,7 @@ import { type FileReadResult, type FilesServiceContract } from "../../contracts/
 import { useDocumentWatcher } from "./document/document-watcher.js";
 import { FileEditor, FilesEditProvider } from "./document/FileEditor.js";
 import { useFileSession } from "./document/file-session.js";
+import { hasRenderedPreview, isMermaidFile } from "./document/rendered-documents.js";
 import { FilesTree, type FilesWorkspaceFolder } from "./explorer/FilesTree.js";
 import { explorerRootTitle } from "./explorer/explorer-title.js";
 import { filesGitStatusQueryKey, filesListQueryKey } from "./explorer/file-tree-watcher.js";
@@ -80,10 +82,6 @@ function errorMessage(error: unknown): string {
 
 function basename(relativePath: string): string {
 	return relativePath.split("/").at(-1) ?? relativePath;
-}
-
-function isMarkdown(relativePath: string): boolean {
-	return /\.(?:md|mdown|markdown)$/iu.test(relativePath);
 }
 
 function unsupportedMessage(file: Extract<FileReadResult, { kind: "unsupported" }>): string {
@@ -648,7 +646,12 @@ export function FilesView({
 		);
 	}
 
-	const markdownToggleLabel = renderMarkdown ? "Show Markdown source" : "Show rendered Markdown";
+	const selectedHasPreview = selectedPath !== null && hasRenderedPreview(selectedPath);
+	const selectedIsMermaid = selectedPath !== null && isMermaidFile(selectedPath);
+	const previewLanguage = selectedIsMermaid ? "Mermaid" : "Markdown";
+	const markdownToggleLabel = renderMarkdown
+		? `Show ${previewLanguage} source`
+		: `Show rendered ${previewLanguage}`;
 	const tableToggleLabel = documentMode === "table" ? "Edit source" : "Show as table";
 	const showSourceAction = (
 		<Button
@@ -724,7 +727,7 @@ export function FilesView({
 								<TooltipContent side="bottom">{tableToggleLabel}</TooltipContent>
 							</Tooltip>
 						) : null}
-						{(fileLoading || file?.kind === "text") && isMarkdown(selectedPath) ? (
+						{(fileLoading || file?.kind === "text") && selectedHasPreview ? (
 							<Tooltip disableHoverablePopup>
 								<TooltipTrigger
 									render={
@@ -856,21 +859,30 @@ export function FilesView({
 							) : binarySource && selectedPath ? (
 								<TableViewer fileName={basename(selectedPath)} source={binarySource} />
 							) : file?.kind === "text" && selectedPath ? (
-								renderMarkdown && isMarkdown(selectedPath) ? (
+								renderMarkdown && selectedHasPreview ? (
 									<FindScope
 										enabled={findEnabled}
 										className="flex min-h-0 flex-1 flex-col"
-										searchRootSelector='[data-qa-id="files-markdown-preview"]'
+										searchRootSelector={`[data-qa-id="files-${selectedIsMermaid ? "mermaid" : "markdown"}-preview"]`}
 										qaPrefix="files-find"
 										placeholder="Find in file"
 									>
-										<MarkdownPreview
-											contents={draft}
-											onOpenFile={openFileFromTree}
-											read={readForMarkdown}
-											relativePath={selectedPath}
-											workspaceDirectory={documentWorkspaceDirectory ?? activeWorkspaceDirectory}
-										/>
+										{selectedIsMermaid ? (
+											<div
+												className="min-h-0 flex-1 overflow-auto p-6"
+												data-qa-id="files-mermaid-preview"
+											>
+												<MermaidDiagram code={draft} />
+											</div>
+										) : (
+											<MarkdownPreview
+												contents={draft}
+												onOpenFile={openFileFromTree}
+												read={readForMarkdown}
+												relativePath={selectedPath}
+												workspaceDirectory={documentWorkspaceDirectory ?? activeWorkspaceDirectory}
+											/>
+										)}
 									</FindScope>
 								) : (
 									<FileEditor

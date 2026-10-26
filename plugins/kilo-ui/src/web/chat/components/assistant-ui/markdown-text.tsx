@@ -13,7 +13,7 @@ import {
 } from "@assistant-ui/react-markdown";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 import { CheckIcon, CopyIcon } from "lucide-react";
-import { type FC, memo, useMemo, useState } from "react";
+import { type FC, memo, useMemo } from "react";
 import remarkGfm from "remark-gfm";
 
 import { useChatMarkdownContext } from "../../ChatMarkdownContext.js";
@@ -22,11 +22,17 @@ import {
 	type ChatMarkdownExtensionContext,
 } from "../../chat-markdown-extensions.js";
 import { TooltipIconButton } from "./tooltip-icon-button.js";
+import { MermaidCodeBlock, MermaidCodeHeader } from "./mermaid-code-block.js";
+import { useCopyToClipboard } from "./use-copy-to-clipboard.js";
 import { useShellCopyText } from "./use-shell-copy-text.js";
 
 const EMPTY_MARKDOWN_CONTEXT: ChatMarkdownExtensionContext = {
 	sessionId: "",
 	workspaceFolders: [],
+};
+
+const componentsByLanguage = {
+	mermaid: { CodeHeader: MermaidCodeHeader, SyntaxHighlighter: MermaidCodeBlock },
 };
 
 const MarkdownTextImpl = () => {
@@ -41,6 +47,7 @@ const MarkdownTextImpl = () => {
 			remarkPlugins={[remarkGfm, ...renderer.remarkPlugins]}
 			className="aui-md text-sm"
 			components={renderer.components}
+			componentsByLanguage={componentsByLanguage}
 			defer
 		/>
 	);
@@ -67,27 +74,6 @@ const CodeHeader: FC<CodeHeaderProps> = ({ language, code }) => {
 			</TooltipIconButton>
 		</div>
 	);
-};
-
-const useCopyToClipboard = (
-	writeText: (value: string) => Promise<void>,
-	{ copiedDuration = 3000 }: { copiedDuration?: number } = {},
-) => {
-	const [isCopied, setIsCopied] = useState<boolean>(false);
-
-	const copyToClipboard = (value: string) => {
-		if (!value) return;
-
-		void writeText(value).then(
-			() => {
-				setIsCopied(true);
-				setTimeout(() => setIsCopied(false), copiedDuration);
-			},
-			() => {},
-		);
-	};
-
-	return { isCopied, copyToClipboard };
 };
 
 const markdownComponents = memoizeMarkdownComponents({

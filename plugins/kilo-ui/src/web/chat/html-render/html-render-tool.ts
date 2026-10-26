@@ -1,6 +1,6 @@
 /**
  * WebMCP `html_render`: lets the agent show a self-contained HTML page (chart,
- * table, diagram, mockup) inline in the chat, above its final reply. The tool
+ * data table, mockup) inline in the chat, above its final reply. The tool
  * itself only validates and acknowledges — the page lives in the tool-call
  * args, which the session already persists, and the chat's tool UI renders it
  * in an isolated frame (`HtmlRenderToolUI`).
@@ -33,7 +33,7 @@ const LAYOUT_GUIDE = [
 ].join(" ");
 
 export const HTML_RENDER_TOOL_DESCRIPTION = [
-	"Show a finished HTML page (chart, table, diagram, collage, mockup) inline in this chat, above your final text reply; call it right before writing that reply.",
+	"Show a finished HTML page (chart, data table, collage, mockup, or a custom diagram Mermaid can't express) inline in this chat, above your final text reply; call it right before writing that reply.",
 	"The reader already sees the page, so the reply should not announce it, say where it is, or restate it: add only what the page doesn't say.",
 	`The frame fits the page's height, up to ${HTML_RENDER_MAX_HEIGHT}px or the given height; taller content scrolls inside it.`,
 	PAGE_RULES,
@@ -43,11 +43,13 @@ export const HTML_RENDER_TOOL_DESCRIPTION = [
 
 /**
  * System-prompt section that tells the model when to reach for the tool; the
- * tool description above covers how.
+ * tool description above covers how. Chat renders ```mermaid fences natively,
+ * so diagrams Mermaid can express go in a fence rather than an HTML page.
  */
 export const HTML_RENDER_SYSTEM_PROMPT = [
 	"## Showing visuals",
-	`When a chart, table, diagram, image collage, or mockup would say more than prose, build a self-contained HTML page and publish it with \`${HTML_RENDER_AGENT_TOOL_NAME}\` before your final reply. The reader sees the page above that reply, so don't announce or restate it; add only what it doesn't say.`,
+	"For flowcharts and sequence, class, state, ER, Gantt, git, and other diagrams Mermaid can express, write a ```mermaid code block in your reply; Kilo renders it as a diagram.",
+	`When a chart, data table, image collage, mockup, or interactive view would say more than prose, build a self-contained HTML page and publish it with \`${HTML_RENDER_AGENT_TOOL_NAME}\` before your final reply. The reader sees the page above that reply, so don't announce or restate it; add only what it doesn't say.`,
 ].join("\n");
 
 export function registerHtmlRenderTool(sdk: SDK): void {

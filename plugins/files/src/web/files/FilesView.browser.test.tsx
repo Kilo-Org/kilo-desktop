@@ -1614,6 +1614,83 @@ describe("FilesView", () => {
 		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("docs/readme.md");
 	});
 
+	it("renders Mermaid fences as diagrams in Markdown preview", async () => {
+		const read: FilesServiceContract["read"] = async () => ({
+			kind: "text",
+			contents: "# Diagram\n\n```mermaid\nflowchart LR\n  Start --> Done\n```",
+			byteLength: 58,
+			truncated: false,
+			revision: "a".repeat(64),
+		});
+		renderView({ ...handlers(), read }, filePane("docs/readme.md"));
+		await page.getByTestId("files-markdown-toggle").click();
+
+		await expect.element(page.getByTestId("files-markdown-preview")).toBeVisible();
+		await expect
+			.element(page.getByTestId("mermaid-diagram"), { timeout: 5_000 })
+			.toHaveAttribute("aria-busy", "false");
+		expect(document.querySelector('[data-qa-id="mermaid-diagram"] svg')).not.toBeNull();
+		expect(
+			document.querySelector('[data-qa-id="files-markdown-preview"]')?.textContent,
+		).not.toContain("flowchart LR");
+	});
+	it.each(["diagram.mmd", "diagram.mermaid"])(
+		"renders standalone %s files by default and toggles to source",
+		async (relativePath) => {
+			const read: FilesServiceContract["read"] = async () => ({
+				kind: "text",
+				contents: "flowchart TD\n  Input --> Output",
+				byteLength: 30,
+				truncated: false,
+				revision: "a".repeat(64),
+			});
+			renderView({ ...handlers(), read }, filePane(relativePath));
+
+			await vi.waitFor(
+				() => expect(document.querySelector('[data-qa-id="mermaid-diagram"] svg')).not.toBeNull(),
+				{ timeout: 5_000 },
+			);
+			await page.getByTestId("files-markdown-toggle").click();
+			await expect.element(page.getByRole("textbox", { name: relativePath })).toBeVisible();
+			expect(document.querySelector('[data-qa-id="mermaid-diagram"]')).toBeNull();
+		},
+	);
+
+	it("opens a diagram file as source when targeting a line", async () => {
+		const read: FilesServiceContract["read"] = async () => ({
+			kind: "text",
+			contents: "flowchart TD\n  Input --> Output",
+			byteLength: 30,
+			truncated: false,
+			revision: "a".repeat(64),
+		});
+		renderView(
+			{ ...handlers(), read },
+			filePane("diagram.mmd", {
+				metadata: { workspaceDirectory: "/workspace", relativePath: "diagram.mmd", line: "2" },
+			}),
+		);
+
+		await expect.element(page.getByRole("textbox", { name: "diagram.mmd" })).toBeVisible();
+		expect(document.querySelector('[data-qa-id="mermaid-diagram"]')).toBeNull();
+	});
+
+	it("shows an alert and the source when a diagram file cannot be rendered", async () => {
+		const read: FilesServiceContract["read"] = async () => ({
+			kind: "text",
+			contents: "notADiagram\n  this is not Mermaid",
+			byteLength: 32,
+			truncated: false,
+			revision: "a".repeat(64),
+		});
+		renderView({ ...handlers(), read }, filePane("broken.mmd"));
+
+		const preview = page.getByTestId("files-mermaid-preview");
+		const alert = preview.getByRole("alert");
+		await expect.element(alert.getByText("Could not render this Mermaid diagram")).toBeVisible();
+		await expect.element(preview.getByText(/this is not Mermaid/u)).toBeVisible();
+	});
+
 	describe("Markdown preview find", () => {
 		const readme: FilesServiceContract["read"] = async () => ({
 			kind: "text",
@@ -2052,5 +2129,31 @@ describe("FilesView", () => {
 		await page.getByTestId("files-conflict-reload").click();
 		await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
 		await expect.element(page.getByTestId("files-breadcrumb")).toHaveTextContent("src/index.ts");
+	});
+
+	it("keeps a diagram file in source mode when reloading after a conflict", async () => {
+		const read = vi.fn<FilesServiceContract["read"]>(async () => ({
+			kind: "text",
+			contents: "flowchart TD\n  Input --> Output",
+			byteLength: 30,
+			truncated: false,
+			revision: "a".repeat(64),
+		}));
+		const write = vi.fn<FilesServiceContract["write"]>(async () => ({
+			status: "conflict",
+			diskRevision: "c".repeat(64),
+		}));
+		renderView({ ...handlers(), read, write }, filePane("diagram.mmd"));
+		await expect.element(page.getByTestId("files-mermaid-preview")).toBeVisible();
+		await page.getByTestId("files-markdown-toggle").click();
+		await replaceEditorText("flowchart TD\n  Input --> Changed");
+		fireEvent.click(document.querySelector('[data-qa-id="files-save"]')!);
+		await expect.element(page.getByTestId("files-conflict-dialog")).toBeVisible();
+
+		await page.getByTestId("files-conflict-reload").click();
+		await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+
+		await expect.element(page.getByRole("textbox", { name: "diagram.mmd" })).toBeVisible();
+		expect(document.querySelector('[data-qa-id="files-mermaid-preview"]')).toBeNull();
 	});
 });

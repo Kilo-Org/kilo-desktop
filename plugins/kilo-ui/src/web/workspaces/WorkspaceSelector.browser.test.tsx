@@ -8,6 +8,8 @@ import { SdkProvider } from "@kilo-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeMainSdk, createFakeSdk } from "@kilo-desktop/testing";
 
 import { kiloUiBrowserRegister } from "../browserRegister.js";
+import { workspacesContract, type Workspace } from "../../contracts/workspaces/schemas.js";
+import { workspaceStatusContract } from "../../contracts/workspaces/status.js";
 import { WorkspaceSelector } from "./WorkspaceSelector";
 import { WorkspacesFeatureProvider } from "./WorkspacesFeatureProvider";
 
@@ -57,6 +59,61 @@ async function renderSelectorWithWorkspaces(
 	return { ...result, sdk, mainSdk };
 }
 
+function renderSelectorWithUnavailableFolders() {
+	localStorage.setItem("kilo-ui.active-workspace", "workspace-unavailable");
+	const workspaces: Workspace[] = [
+		{
+			id: "workspace-unavailable",
+			name: "Unavailable workspace",
+			folders: [
+				{
+					id: "folder-unavailable",
+					path: "/projects/unavailable",
+					isPrimary: true,
+					position: 0,
+				},
+			],
+			createdAt: 1,
+			updatedAt: 1,
+		},
+		{
+			id: "workspace-available",
+			name: "Available workspace",
+			folders: [
+				{ id: "folder-available", path: "/projects/available", isPrimary: true, position: 0 },
+			],
+			createdAt: 1,
+			updatedAt: 1,
+		},
+	];
+	const sdk = createFakeSdk({
+		featureId: "kilo-ui",
+		channels: workspacesContract,
+		handlers: { list: async () => workspaces },
+	});
+	const mainSdk = createFakeMainSdk({ featureId: "kilo-ui", services: sdk.services });
+	mainSdk.channels(workspaceStatusContract).handleAll({
+		"workspaceStatus.list": async () => [
+			{
+				workspaceId: "workspace-unavailable",
+				unavailableFolders: ["/projects/unavailable"],
+			},
+			{ workspaceId: "workspace-available", unavailableFolders: [] },
+		],
+	});
+	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
+	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	return render(
+		<SdkProvider system={system}>
+			<QueryClientProvider client={queryClient}>
+				<WorkspacesFeatureProvider>
+					<WorkspaceSelector />
+				</WorkspacesFeatureProvider>
+			</QueryClientProvider>
+		</SdkProvider>,
+	);
+}
+
 afterEach(() => {
 	cleanup();
 	localStorage.clear();
@@ -83,6 +140,25 @@ describe("WorkspaceSelector", () => {
 		fireEvent.pointerMove(beta);
 		await waitFor(() => expect(beta).toHaveAttribute("aria-selected", "true"));
 		expect(betaGlyph!.getAttribute("stroke")).toBe("#34D399");
+	});
+
+	it("opens edit for unavailable folders without selecting the workspace", async () => {
+		renderSelectorWithUnavailableFolders();
+
+		await expect
+			.element(page.getByRole("combobox", { name: "Select workspace" }))
+			.toHaveTextContent("Unavailable workspace");
+		await page.getByRole("combobox", { name: "Select workspace" }).click();
+		await expect.element(page.getByTestId("workspace-unavailable-folders-indicator")).toBeVisible();
+		expect(page.getByTestId("workspace-unavailable-folders-indicator").elements()).toHaveLength(1);
+
+		await page.getByTestId("workspace-unavailable-folders-indicator").click();
+
+		await expect.element(page.getByRole("heading", { name: "Edit workspace" })).toBeVisible();
+		await page.getByRole("button", { name: "Cancel" }).click();
+		await expect
+			.element(page.getByRole("combobox", { name: "Select workspace" }))
+			.toHaveTextContent("Unavailable workspace");
 	});
 
 	it("moves the workspace popover above the trigger when there is not enough room below", async () => {

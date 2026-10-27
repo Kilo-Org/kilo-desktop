@@ -31,6 +31,9 @@ describe("kiloUiBrowserRegister", () => {
 		const capability = sdk.plugins.get<WorkspaceCapabilities>("kilo-ui")?.workspaceService;
 		expect(capability).toBeDefined();
 		await expect(capability!.get(project.id)).resolves.toEqual(project);
+		await expect(sdk.invoke("workspaceStatus.list")).resolves.toEqual([
+			{ workspaceId: project.id, unavailableFolders: [] },
+		]);
 
 		const duplicate = (await sdk.invoke("create", {
 			folders: [{ path: "C:\\projects\\Project", isPrimary: true }],

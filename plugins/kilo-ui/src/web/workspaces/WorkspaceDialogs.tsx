@@ -31,6 +31,7 @@ import {
 import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
 import { FieldError } from "@kilo-desktop/ui/components/field";
 import type { Workspace, WorkspacesService } from "../../contracts/workspaces/schemas.js";
+import type { WorkspaceFolderStatus } from "../../contracts/workspaces/status.js";
 import type { SDK } from "@kilo-desktop/feature-sdk";
 import { sdkQueryKey } from "@kilo-desktop/sdk-react";
 
@@ -52,6 +53,7 @@ type WorkspaceDialogsProps = {
 	sdk: SDK<WorkspacesService>;
 	queryClient: QueryClient;
 	workspaces: Workspace[];
+	workspaceFolderStatuses?: WorkspaceFolderStatus[] | undefined;
 	activeWorkspaceId: string | null;
 	setActiveWorkspaceId(id: string | null): void;
 };
@@ -154,9 +156,14 @@ function WorkspaceFormDialog({
 	sdk,
 	queryClient,
 	setActiveWorkspaceId,
+	workspaceFolderStatuses,
 	workspace,
 }: WorkspaceDialogsProps & { workspace?: Workspace }) {
 	const form = useWorkspaceForm({ workspace, shell: sdk.shell });
+	const unavailablePaths = new Set(
+		workspaceFolderStatuses?.find((status) => status.workspaceId === workspace?.id)
+			?.unavailableFolders,
+	);
 
 	const mutation = useMutation({
 		mutationFn: () =>
@@ -206,7 +213,7 @@ function WorkspaceFormDialog({
 					<DialogHeader>
 						<DialogTitle>{workspace ? "Edit workspace" : "Create workspace"}</DialogTitle>
 					</DialogHeader>
-					<WorkspaceFormFields {...form} />
+					<WorkspaceFormFields {...form} unavailablePaths={unavailablePaths} />
 					<DialogFooter>
 						<Button type="button" variant="outline" onClick={onClose}>
 							Cancel

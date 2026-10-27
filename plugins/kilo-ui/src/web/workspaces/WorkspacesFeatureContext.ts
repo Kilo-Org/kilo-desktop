@@ -1,9 +1,12 @@
 import { createContext, useContext } from "react";
 
 import type { Workspace } from "../../contracts/workspaces/schemas.js";
+import type { WorkspaceFolderStatus } from "../../contracts/workspaces/status.js";
 
 export type WorkspacesContextValue = {
 	workspaces: Workspace[];
+	workspaceFolderStatuses?: WorkspaceFolderStatus[];
+	hasUnavailableFolders?(workspaceId: string): boolean;
 	activeWorkspaceId: string | null;
 	setActiveWorkspaceId(id: string | null): void;
 	isLoading: boolean;

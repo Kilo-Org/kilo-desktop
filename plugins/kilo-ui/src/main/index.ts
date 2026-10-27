@@ -20,6 +20,7 @@ import { onboardingContract } from "../contracts/onboarding/schemas.js";
 import { modelPreferencesContract } from "../contracts/model-preferences/schemas.js";
 import { kiloUiProvidersContract } from "../contracts/providers/schemas.js";
 import { workspacesContract } from "../contracts/workspaces/schemas.js";
+import { workspaceStatusContract } from "../contracts/workspaces/status.js";
 import { createSaveHtmlPageHandler } from "./html-render/save-html-page.js";
 import { createMcpAppEmbeddedHost } from "./mcp-apps/mcp-app-host.js";
 import {
@@ -34,6 +35,7 @@ import { presentEnvNames } from "./providers/present-env.js";
 import { readStoredApiKey } from "./providers/stored-api-key.js";
 import { createWorkspacesDatabase } from "./workspaces/db.js";
 import { WorkspaceService } from "./workspaces/WorkspaceService.js";
+import { WorkspaceFolderStatusService } from "./workspaces/WorkspaceFolderStatusService.js";
 import { startAgentManagerLinkBackfill } from "./chat/agent-manager-session-links.js";
 import { createChatWorktreeHandlers } from "./chat/chat-worktree-handlers.js";
 import { fetchGatewayModelDetails } from "./chat/gateway-model-details.js";
@@ -58,6 +60,7 @@ export function mainRegister(
 		mainSdk.resolvePluginAsset("drizzle"),
 	);
 	const service = new WorkspaceService(db);
+	const workspaceStatus = new WorkspaceFolderStatusService();
 	const unscopeWorkspaceSessions =
 		options.unscopeWorkspaceSessions ?? createWorkspaceSessionUnscoper(mainSdk);
 	const cleanup = new WorkspaceSessionCleanupQueue(mainSdk, unscopeWorkspaceSessions);
@@ -155,6 +158,9 @@ export function mainRegister(
 	// the trusted app origin free of `script-src 'unsafe-inline'`.
 	mainSdk.plugins.expose(EMBEDDED_WEB_HOST_CAPABILITY, createMcpAppEmbeddedHost());
 	mainSdk.channels(workspacesContract).handleAll(api);
+	mainSdk.channels(workspaceStatusContract).handleAll({
+		"workspaceStatus.list": () => workspaceStatus.list(service.list()),
+	});
 	mainSdk.channels(kiloUiChatContract).handleAll(chatApi);
 	mainSdk.channels(onboardingContract).handleAll(onboardingApi);
 	mainSdk.channels(modelPreferencesContract).handleAll(modelPreferencesApi);

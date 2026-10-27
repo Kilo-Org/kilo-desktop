@@ -6,6 +6,7 @@ import {
 	PencilIcon,
 	PlusIcon,
 	Trash2Icon,
+	TriangleAlertIcon,
 } from "lucide-react";
 import {
 	cloneElement,
@@ -137,6 +138,7 @@ export function WorkspacePickerRoot({
 		setActiveWorkspaceId,
 		isLoading,
 		isUnavailable,
+		hasUnavailableFolders,
 		openCreate,
 		openEdit,
 		openDelete,
@@ -247,6 +249,7 @@ export function WorkspacePickerRoot({
 								{workspaces.map((workspace) => {
 									const isSelected = selectedId === workspace.id;
 									const glyph = workspaceGlyphColor(workspace.color);
+									const unavailableFolders = hasUnavailableFolders?.(workspace.id) ?? false;
 									return (
 										<CommandItem
 											key={workspace.id}
@@ -263,6 +266,25 @@ export function WorkspacePickerRoot({
 											<span className="min-w-0 flex-1 truncate">{workspace.name}</span>
 											{/* -my-1: the 24px action sits in the row's padding so the row stays 28px. */}
 											<span className="-my-1 flex shrink-0 items-center gap-0.5">
+												{unavailableFolders ? (
+													<Button
+														type="button"
+														variant="ghost"
+														size="icon-xs"
+														className="text-warning"
+														data-qa-id="workspace-unavailable-folders-indicator"
+														aria-label={`Unavailable folders: open ${workspace.name} settings`}
+														onPointerDown={stop}
+														onKeyDown={stop}
+														onClick={(event) => {
+															stop(event);
+															setOpen(false);
+															openEdit(workspace);
+														}}
+													>
+														<TriangleAlertIcon />
+													</Button>
+												) : null}
 												<DropdownMenu>
 													<DropdownMenuTrigger
 														render={

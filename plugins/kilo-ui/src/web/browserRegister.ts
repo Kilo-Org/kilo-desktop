@@ -24,6 +24,7 @@ import {
 import { modelPreferencesContract } from "../contracts/model-preferences/schemas.js";
 import { kiloUiProvidersContract } from "../contracts/providers/schemas.js";
 import { workspacesContract } from "../contracts/workspaces/schemas.js";
+import { workspaceStatusContract } from "../contracts/workspaces/status.js";
 import { registerLayoutPresets } from "../main/layout-presets/register.js";
 import {
 	registerWorkspaceBoard,
@@ -148,6 +149,10 @@ function registerWorkspacesBrowser(mainSdk: MainSdk): void {
 
 	mainSdk.plugins.expose("workspaceService", workspaceService);
 	mainSdk.channels(workspacesContract).handleAll(service);
+	mainSdk.channels(workspaceStatusContract).handleAll({
+		"workspaceStatus.list": async () =>
+			workspaces.map((workspace) => ({ workspaceId: workspace.id, unavailableFolders: [] })),
+	});
 }
 
 function registerChatBrowser(mainSdk: MainSdk): void {

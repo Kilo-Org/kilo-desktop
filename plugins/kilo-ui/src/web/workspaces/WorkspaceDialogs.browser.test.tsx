@@ -13,6 +13,7 @@ import {
 	type Workspace,
 	type WorkspacesService,
 } from "../../contracts/workspaces/schemas.js";
+import type { WorkspaceFolderStatus } from "../../contracts/workspaces/status.js";
 import { WorkspaceDialogs, type WorkspaceDialogState } from "./WorkspaceDialogs.js";
 
 const workspaceA: Workspace = {
@@ -26,6 +27,7 @@ const workspaceA: Workspace = {
 function renderDialogs(options: {
 	dialog: WorkspaceDialogState;
 	workspaces?: Workspace[];
+	workspaceFolderStatuses?: WorkspaceFolderStatus[];
 	shell?: Partial<SDK["shell"]>;
 	handlers?: Partial<WorkspacesService>;
 	activeWorkspaceId?: string | null;
@@ -64,6 +66,7 @@ function renderDialogs(options: {
 					sdk={sdk as unknown as SDK<WorkspacesService>}
 					queryClient={queryClient}
 					workspaces={options.workspaces ?? []}
+					workspaceFolderStatuses={options.workspaceFolderStatuses}
 					activeWorkspaceId={options.activeWorkspaceId ?? null}
 					setActiveWorkspaceId={setActiveWorkspaceId}
 				/>
@@ -281,6 +284,28 @@ describe("WorkspaceDialogs — create/edit form", () => {
 			}),
 		);
 		await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
+	});
+
+	it("marks unavailable stored folders in edit mode", async () => {
+		const workspace: Workspace = {
+			...workspaceA,
+			folders: [
+				{ id: "folder-1", path: "/projects/available", isPrimary: true, position: 0 },
+				{ id: "folder-2", path: "/projects/unavailable", isPrimary: false, position: 1 },
+			],
+		};
+		renderDialogs({
+			dialog: { mode: "edit", workspace },
+			workspaces: [workspace],
+			workspaceFolderStatuses: [
+				{ workspaceId: workspace.id, unavailableFolders: ["/projects/unavailable"] },
+			],
+		});
+
+		await expect
+			.element(page.getByTestId("workspace-folder-unavailable"))
+			.toHaveTextContent("This folder is unavailable. Select its new location or remove it.");
+		expect(page.getByTestId("workspace-folder-unavailable").elements()).toHaveLength(1);
 	});
 
 	it("shows a save error message when the mutation fails", async () => {

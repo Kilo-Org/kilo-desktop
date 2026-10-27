@@ -9,8 +9,12 @@ import {
 	type WorkspaceCapabilities,
 	type WorkspacesService,
 } from "../../contracts/workspaces/schemas.js";
+import {
+	workspaceStatusContract,
+	type WorkspaceStatusService,
+} from "../../contracts/workspaces/status.js";
 import { SdkProvider } from "@kilo-desktop/sdk-react";
-import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
+import { createFakeFeatureSystem, createFakeMainSdk, createFakeSdk } from "@kilo-desktop/testing";
 
 import { useWorkspacesFeature } from "./WorkspacesFeatureContext";
 import { WorkspacesFeatureProvider } from "./WorkspacesFeatureProvider";
@@ -36,11 +40,15 @@ afterEach(() => {
 });
 
 function Harness() {
-	const { activeWorkspaceId, openDelete, workspaces } = useWorkspacesFeature();
+	const { activeWorkspaceId, hasUnavailableFolders, openDelete, workspaces } =
+		useWorkspacesFeature();
 	const selected = workspaces[0];
 	return (
 		<>
 			<output aria-label="Active workspace">{activeWorkspaceId ?? "none"}</output>
+			<output aria-label="Workspace folder status">
+				{selected && hasUnavailableFolders?.(selected.id) ? "unavailable" : "available"}
+			</output>
 			<button type="button" disabled={!selected} onClick={() => selected && openDelete(selected)}>
 				Open delete
 			</button>
@@ -48,11 +56,19 @@ function Harness() {
 	);
 }
 
-function renderProvider(handlers: Partial<WorkspacesService>) {
+function renderProvider(
+	handlers: Partial<WorkspacesService>,
+	statusHandlers: Partial<WorkspaceStatusService> = {},
+) {
 	const sdk = createFakeSdk({
 		featureId: "kilo-ui",
 		channels: workspacesContract,
 		handlers,
+	});
+	const statusMainSdk = createFakeMainSdk({ featureId: "kilo-ui", services: sdk.services });
+	statusMainSdk.channels(workspaceStatusContract).handleAll({
+		"workspaceStatus.list": async () => [],
+		...statusHandlers,
 	});
 	const system = createFakeFeatureSystem({ sdks: { "kilo-ui": sdk } });
 	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -100,6 +116,21 @@ describe("WorkspacesFeatureProvider", () => {
 		renderProvider({ list: async () => [workspace] });
 
 		await expect.element(page.getByLabelText("Active workspace")).toHaveTextContent("none");
+	});
+
+	it("provides unavailable folder status for matching workspaces", async () => {
+		renderProvider(
+			{ list: async () => [workspace] },
+			{
+				"workspaceStatus.list": async () => [
+					{ workspaceId: workspace.id, unavailableFolders: [workspace.folders[0]!.path] },
+				],
+			},
+		);
+
+		await expect
+			.element(page.getByLabelText("Workspace folder status"))
+			.toHaveTextContent("unavailable");
 	});
 
 	it("clears an invalid stored workspace id to null", async () => {

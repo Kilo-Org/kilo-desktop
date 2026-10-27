@@ -139,6 +139,18 @@ describe("kilo-ui mainRegister", () => {
 		mainSdk.dispose();
 	});
 
+	it("reports stored workspace folders that become unavailable", async () => {
+		const { mainSdk, project } = boot();
+		const created = (await mainSdk.invoke("create", {
+			folders: [{ path: project, isPrimary: true }],
+		})) as { id: string };
+		fs.rmSync(project, { recursive: true });
+
+		await expect(mainSdk.invoke("workspaceStatus.list")).resolves.toEqual([
+			{ workspaceId: created.id, unavailableFolders: [project] },
+		]);
+	});
+
 	it("clears the deleted workspace from matching chats", async () => {
 		const unscopeWorkspaceSessions = vi.fn(async () => undefined);
 		const userData = fs.mkdtempSync(path.join(os.tmpdir(), "kilo-ui-main-"));

@@ -1,4 +1,4 @@
-import { FolderIcon, FolderPlusIcon, XIcon } from "lucide-react";
+import { FolderIcon, FolderPlusIcon, FolderXIcon, XIcon } from "lucide-react";
 import { motion } from "motion/react";
 import type { DragEvent, KeyboardEvent } from "react";
 
@@ -22,6 +22,7 @@ import { WorkspaceIdentityColorPicker } from "./WorkspaceIdentityColorPicker.js"
 const folderName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 
 type WorkspaceFormFieldsProps = ReturnType<typeof useWorkspaceForm> & {
+	unavailablePaths?: ReadonlySet<string>;
 	nameId?: string;
 	/** `filled` drops the outlines for tinted surfaces (the onboarding card). */
 	appearance?: "outlined" | "filled";
@@ -33,6 +34,7 @@ export function WorkspaceFormFields({
 	color,
 	setColor,
 	folders,
+	unavailablePaths,
 	error,
 	isDragging,
 	setIsDragging,
@@ -132,69 +134,83 @@ export function WorkspaceFormFields({
 					) : (
 						<div className="flex flex-col">
 							<ItemGroup className="gap-0.5 p-1 has-data-[size=sm]:gap-0.5">
-								{folders.map((folder) => (
-									<Item
-										key={folder.path}
-										size="sm"
-										role="listitem"
-										className="flex-nowrap gap-2 px-2 py-1"
-										render={
-											<motion.div
-												layout="position"
-												transition={{
-													type: "spring",
-													stiffness: 500,
-													damping: 35,
-													mass: 0.8,
-												}}
-											/>
-										}
-									>
-										<ItemMedia variant="icon" className="text-muted-foreground">
-											<FolderIcon />
-										</ItemMedia>
-										<ItemContent className="min-w-0">
-											<Tooltip>
-												<TooltipTrigger
-													render={<ItemTitle className="max-w-full cursor-default" />}
-												>
-													{folderName(folder.path)}
-												</TooltipTrigger>
-												<TooltipContent className="max-w-sm font-mono break-all">
-													{folder.path}
-												</TooltipContent>
-											</Tooltip>
-										</ItemContent>
-										<ItemActions className="gap-1">
-											{folder.isPrimary ? (
-												<span className="bg-primary-soft text-primary-soft-foreground rounded-full px-2 py-0.5 text-xs font-medium">
-													Primary
-												</span>
-											) : (
+								{folders.map((folder) => {
+									const unavailable = unavailablePaths?.has(folder.path) ?? false;
+									return (
+										<Item
+											key={folder.path}
+											size="sm"
+											role="listitem"
+											className="flex-nowrap gap-2 px-2 py-1"
+											render={
+												<motion.div
+													layout="position"
+													transition={{
+														type: "spring",
+														stiffness: 500,
+														damping: 35,
+														mass: 0.8,
+													}}
+												/>
+											}
+										>
+											<ItemMedia
+												variant="icon"
+												className={cn(unavailable ? "text-warning" : "text-muted-foreground")}
+											>
+												{unavailable ? <FolderXIcon /> : <FolderIcon />}
+											</ItemMedia>
+											<ItemContent className="min-w-0">
+												<Tooltip>
+													<TooltipTrigger
+														render={<ItemTitle className="max-w-full cursor-default" />}
+													>
+														{folderName(folder.path)}
+													</TooltipTrigger>
+													<TooltipContent className="max-w-sm font-mono break-all">
+														{folder.path}
+													</TooltipContent>
+												</Tooltip>
+												{unavailable ? (
+													<p
+														className="text-warning text-xs"
+														data-qa-id="workspace-folder-unavailable"
+													>
+														This folder is unavailable. Select its new location or remove it.
+													</p>
+												) : null}
+											</ItemContent>
+											<ItemActions className="gap-1">
+												{folder.isPrimary ? (
+													<span className="bg-primary-soft text-primary-soft-foreground rounded-full px-2 py-0.5 text-xs font-medium">
+														Primary
+													</span>
+												) : (
+													<Button
+														type="button"
+														variant="ghost"
+														size="xs"
+														className="opacity-0 group-focus-within/item:opacity-100 group-hover/item:opacity-100"
+														onClick={() => makePrimary(folder.path)}
+													>
+														Make primary
+													</Button>
+												)}
 												<Button
 													type="button"
 													variant="ghost"
-													size="xs"
-													className="opacity-0 group-focus-within/item:opacity-100 group-hover/item:opacity-100"
-													onClick={() => makePrimary(folder.path)}
+													size="icon-xs"
+													aria-label={`Remove ${folder.path}`}
+													className="-mr-1.5"
+													disabled={!canPickDirectories && folders.length === 1}
+													onClick={() => removeFolder(folder.path)}
 												>
-													Make primary
+													<XIcon />
 												</Button>
-											)}
-											<Button
-												type="button"
-												variant="ghost"
-												size="icon-xs"
-												aria-label={`Remove ${folder.path}`}
-												className="-mr-1.5"
-												disabled={!canPickDirectories && folders.length === 1}
-												onClick={() => removeFolder(folder.path)}
-											>
-												<XIcon />
-											</Button>
-										</ItemActions>
-									</Item>
-								))}
+											</ItemActions>
+										</Item>
+									);
+								})}
 							</ItemGroup>
 							<div className={cn("border-t p-1", filled ? "border-foreground/5" : "border-border")}>
 								{canPickDirectories ? (

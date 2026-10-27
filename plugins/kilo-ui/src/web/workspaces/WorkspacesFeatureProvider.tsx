@@ -1,4 +1,4 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import type {
@@ -6,8 +6,9 @@ import type {
 	WorkspaceCapabilities,
 	WorkspacesService,
 } from "../../contracts/workspaces/schemas.js";
+import type { WorkspaceStatusService } from "../../contracts/workspaces/status.js";
 import { type SDK, type StoreHandle } from "@kilo-desktop/feature-sdk";
-import { sdkQueryKey, useSdk, useSdkQuery } from "@kilo-desktop/sdk-react";
+import { sdkQueryKey, sdkQueryOptions, useSdk, useSdkQuery } from "@kilo-desktop/sdk-react";
 
 import { WorkspaceDialogs, type WorkspaceDialogState } from "./WorkspaceDialogs";
 import { WorkspacesContext, type WorkspacesContextValue } from "./WorkspacesFeatureContext";
@@ -44,6 +45,7 @@ function ensureBootstrap(sdk: WorkspacesSdk): Bootstrap {
 
 export function WorkspacesFeatureProvider({ children }: { children: ReactNode }) {
 	const sdk = useSdk<WorkspacesService>("kilo-ui");
+	const statusSdk = useSdk<WorkspaceStatusService>("kilo-ui");
 	const queryClient = useQueryClient();
 	const bootstrap = ensureBootstrap(sdk);
 	const activeStore = sdk.state.get<string | null>(ACTIVE_WORKSPACE_KEY);
@@ -54,7 +56,14 @@ export function WorkspacesFeatureProvider({ children }: { children: ReactNode })
 	);
 	const [dialog, setDialog] = useState<WorkspaceDialogState>(null);
 	const query = useSdkQuery(sdk, "list");
+	const statusQuery = useQuery({
+		...sdkQueryOptions(statusSdk, "workspaceStatus.list"),
+		refetchOnWindowFocus: "always",
+		refetchInterval: 4000,
+		refetchIntervalInBackground: false,
+	});
 	const workspaces = query.data ?? [];
+	const workspaceFolderStatuses = statusQuery.data ?? [];
 
 	const setActiveWorkspaceId = (id: string | null) => bootstrap.activeHandle.set(id);
 
@@ -76,6 +85,9 @@ export function WorkspacesFeatureProvider({ children }: { children: ReactNode })
 	useEffect(() => {
 		const invalidate = () => {
 			void queryClient.invalidateQueries({ queryKey: sdkQueryKey(sdk, "list") });
+			void queryClient.invalidateQueries({
+				queryKey: sdkQueryKey(statusSdk, "workspaceStatus.list"),
+			});
 		};
 		const unsubscribers = [
 			sdk.events.on("kilo-ui.workspace-created", invalidate),
@@ -86,11 +98,16 @@ export function WorkspacesFeatureProvider({ children }: { children: ReactNode })
 			),
 		];
 		return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
-	}, [queryClient, sdk, workspaces.length]);
+	}, [queryClient, sdk, statusSdk, workspaces.length]);
 
 	const context = useMemo<WorkspacesContextValue>(
 		() => ({
 			workspaces,
+			workspaceFolderStatuses,
+			hasUnavailableFolders: (workspaceId) =>
+				workspaceFolderStatuses.some(
+					(status) => status.workspaceId === workspaceId && status.unavailableFolders.length > 0,
+				),
 			activeWorkspaceId,
 			setActiveWorkspaceId,
 			isLoading: query.isLoading,
@@ -99,7 +116,7 @@ export function WorkspacesFeatureProvider({ children }: { children: ReactNode })
 			openEdit: (workspace) => setDialog({ mode: "edit", workspace }),
 			openDelete: (workspace) => setDialog({ mode: "delete", workspace }),
 		}),
-		[activeWorkspaceId, query.isError, query.isLoading, workspaces],
+		[activeWorkspaceId, query.isError, query.isLoading, workspaceFolderStatuses, workspaces],
 	);
 
 	return (
@@ -112,6 +129,7 @@ export function WorkspacesFeatureProvider({ children }: { children: ReactNode })
 				sdk={sdk}
 				queryClient={queryClient}
 				workspaces={workspaces}
+				workspaceFolderStatuses={workspaceFolderStatuses}
 				activeWorkspaceId={activeWorkspaceId}
 				setActiveWorkspaceId={setActiveWorkspaceId}
 			/>

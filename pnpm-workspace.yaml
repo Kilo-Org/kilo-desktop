@@ -15,7 +15,7 @@ catalog:
   "@sentry/react": 11.8.0
   "@sentry/vite-plugin": 11.8.0
   atomically: ^2.1.1
-  electron: ^44.9.3
+  electron: ^45.0.0
   electron-log: ^5.4.3
   execa: ^10.0.1
   p-limit: ^7.3.2

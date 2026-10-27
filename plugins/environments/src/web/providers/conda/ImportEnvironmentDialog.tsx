@@ -109,6 +109,7 @@ export function ImportEnvironmentDialog({ open, onClose }: ImportEnvironmentDial
 	const [filePath, setFilePath] = useState<string | null>(null);
 	const [fileName, setFileName] = useState<string | null>(null);
 	const [fileContent, setFileContent] = useState<string | null>(null);
+	const [stagedHandle, setStagedHandle] = useState<string | null>(null);
 	const [name, setName] = useState("");
 	const [isDragging, setIsDragging] = useState(false);
 	const [validationError, setValidationError] = useState<string | null>(null);
@@ -119,6 +120,11 @@ export function ImportEnvironmentDialog({ open, onClose }: ImportEnvironmentDial
 		envName: string;
 		backgrounded: boolean;
 	} | null>(null);
+	// Latest selected path, read at submit time so a re-stage targets the
+	// current selection, not a stale closure value.
+	const filePathRef = useRef<string | null>(null);
+	// Invalidates in-flight reads when the selection changes or a newer stage starts.
+	const stageTokenRef = useRef(0);
 
 	const mutation = useSdkMutation(sdk, "conda.envs.createFromFile", {
 		invalidates: ["conda.envs.list"],
@@ -126,17 +132,21 @@ export function ImportEnvironmentDialog({ open, onClose }: ImportEnvironmentDial
 
 	// Fetch file content when a file is selected and extract the env name.
 	useEffect(() => {
+		filePathRef.current = filePath;
+		const token = ++stageTokenRef.current;
 		if (!filePath) {
 			setFileContent(null);
+			setStagedHandle(null);
 			return;
 		}
-		let cancelled = false;
+		setStagedHandle(null);
 		sdk
 			.invoke("conda.envs.readFile", { filePath })
 			.then((result) => {
-				if (cancelled) return;
-				const content = (result as CondaEnvsReadFileResult).content;
+				if (token !== stageTokenRef.current) return;
+				const { content, stagedHandle: handle } = result as CondaEnvsReadFileResult;
 				setFileContent(content);
+				setStagedHandle(handle);
 				// Extract the top-level `name:` key from the YAML. Without `/m`,
 				// `^` anchors to the start of the string so nested or indented
 				// `name:` keys inside mappings are not matched.
@@ -146,23 +156,48 @@ export function ImportEnvironmentDialog({ open, onClose }: ImportEnvironmentDial
 				}
 			})
 			.catch(() => {
-				if (!cancelled) setFileContent(null);
+				if (token !== stageTokenRef.current) return;
+				failStage();
 			});
 		return () => {
-			cancelled = true;
+			stageTokenRef.current += 1;
 		};
 	}, [filePath, sdk]);
+
+	// Re-stage after a failed import, whose handle the main side already released.
+	async function restageFile(path: string): Promise<void> {
+		const token = ++stageTokenRef.current;
+		setStagedHandle(null);
+		try {
+			const { content, stagedHandle: handle } = (await sdk.invoke("conda.envs.readFile", {
+				filePath: path,
+			})) as CondaEnvsReadFileResult;
+			if (token !== stageTokenRef.current) return;
+			setFileContent(content);
+			setStagedHandle(handle);
+		} catch {
+			if (token !== stageTokenRef.current) return;
+			failStage();
+		}
+	}
+
+	// A failed read leaves no usable file, so drop the selection and explain.
+	function failStage(): void {
+		resetForm();
+		setValidationError("Could not read the selected file. Select it again.");
+	}
 
 	function resetForm() {
 		setFilePath(null);
 		setFileName(null);
 		setFileContent(null);
+		setStagedHandle(null);
 		setName("");
 		setValidationError(null);
 	}
 
 	function validate(): boolean {
-		if (!filePath) {
+		if (!filePath || !stagedHandle) {
 			setValidationError("An environment file is required.");
 			return false;
 		}
@@ -225,7 +260,7 @@ export function ImportEnvironmentDialog({ open, onClose }: ImportEnvironmentDial
 		const envDisplayName = trimmedName || fileName || "environment";
 		const job = importEnvironmentJob(envDisplayName);
 		const promise = mutation.mutateAsync({
-			file: filePath!,
+			stagedHandle: stagedHandle!,
 			...(trimmedName ? { name: trimmedName } : {}),
 		});
 		const pending = { promise, envName: envDisplayName, backgrounded: false };
@@ -238,7 +273,10 @@ export function ImportEnvironmentDialog({ open, onClose }: ImportEnvironmentDial
 				onClose();
 			},
 			(reason) => {
-				if (!pending.backgrounded) showJobError(job, reason);
+				if (pending.backgrounded) return;
+				showJobError(job, reason);
+				const current = filePathRef.current;
+				if (current) void restageFile(current);
 			},
 		);
 	}
@@ -263,6 +301,7 @@ export function ImportEnvironmentDialog({ open, onClose }: ImportEnvironmentDial
 		setFilePath(null);
 		setFileName(null);
 		setFileContent(null);
+		setStagedHandle(null);
 	}
 
 	return (
@@ -387,7 +426,7 @@ export function ImportEnvironmentDialog({ open, onClose }: ImportEnvironmentDial
 						</Button>
 						<Button
 							type="submit"
-							disabled={mutation.isPending || !filePath}
+							disabled={mutation.isPending || !filePath || !stagedHandle}
 							data-qa-id="environments-import-submit"
 						>
 							{mutation.isPending ? <Spinner data-icon="inline-start" aria-hidden="true" /> : null}

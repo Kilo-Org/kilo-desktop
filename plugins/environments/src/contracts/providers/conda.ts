@@ -331,11 +331,23 @@ export const environmentFilePathSchema = z
 	});
 
 /**
- * Input to `conda.envs.createFromFile`. Creates an environment from an
- * exported YAML/txt file. `name` overrides the name inside the file.
+ * Opaque, server-minted handle for a staged environment-file copy. `readFile`
+ * returns it; `createFromFile` accepts only it, never a path, so the import is
+ * bound to the bytes the user reviewed.
+ */
+export const STAGED_IMPORT_HANDLE_PATTERN =
+	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export const stagedImportHandleSchema = z.string().regex(STAGED_IMPORT_HANDLE_PATTERN, {
+	message: "Staged import handle must be a server-minted id.",
+});
+
+/**
+ * Input to `conda.envs.createFromFile`. Creates an environment from the staged
+ * copy of a reviewed YAML environment file; `name` overrides the name inside it.
  */
 export const condaEnvsCreateFromFileInputSchema = z.object({
-	file: environmentFilePathSchema,
+	stagedHandle: stagedImportHandleSchema,
 	name: environmentNameSchema.optional(),
 });
 export type CondaEnvsCreateFromFileInput = z.infer<typeof condaEnvsCreateFromFileInputSchema>;
@@ -366,22 +378,28 @@ export const condaEnvsPickFileResultSchema = z.object({
 });
 export type CondaEnvsPickFileResult = z.infer<typeof condaEnvsPickFileResultSchema>;
 
+/** True when a path ends in a YAML environment-file extension. */
+export function isYamlEnvFilePath(value: string): boolean {
+	return /\.ya?ml$/i.test(value);
+}
+
 /**
  * Input to `conda.envs.readFile` — reads the text content of a YAML env file.
  * Reuses {@link environmentFilePathSchema} so the same path guards (null
- * bytes, control characters, padding, length cap, leading `-`) apply to both
- * `readFile` and the `createFromFile` call the path is later sent to; the
+ * bytes, control characters, padding, length cap, leading `-`) apply; the
  * extension refinement is the only `readFile`-specific rule.
  */
 export const condaEnvsReadFileInputSchema = z.object({
-	filePath: environmentFilePathSchema.refine((v) => /\.ya?ml$/i.test(v), {
+	filePath: environmentFilePathSchema.refine(isYamlEnvFilePath, {
 		message: "File must be a YAML environment file (.yml or .yaml).",
 	}),
 });
 export type CondaEnvsReadFileInput = z.infer<typeof condaEnvsReadFileInputSchema>;
 
+/** Result of `conda.envs.readFile`: the reviewed text plus its staged handle. */
 export const condaEnvsReadFileResultSchema = z.object({
 	content: z.string(),
+	stagedHandle: stagedImportHandleSchema,
 });
 export type CondaEnvsReadFileResult = z.infer<typeof condaEnvsReadFileResultSchema>;
 

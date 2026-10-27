@@ -81,7 +81,6 @@ import type {
 	CondaDistribution,
 	CondaEnv,
 	CondaEnvsCloneInput,
-	CondaEnvsCreateFromFileInput,
 	CondaEnvsCreateInput,
 	CondaPackage,
 	CondaPackagesInstallInput,
@@ -99,6 +98,7 @@ import { cloneDestinationParam } from "./clone-destination.js";
 import type {
 	CondaBackend,
 	CondaCallContext,
+	CondaCreateFromFileRequest,
 	CondaCreateOptions,
 	CondaRepodataFilter,
 } from "./CondaBackend.js";
@@ -362,7 +362,7 @@ export class SidecarCondaBackend implements CondaBackend {
 	}
 
 	async createFromFile(
-		input: CondaEnvsCreateFromFileInput,
+		input: CondaCreateFromFileRequest,
 		ctx?: CondaCallContext,
 	): Promise<CondaEnv> {
 		// Bridge method uses snake_case wire format.

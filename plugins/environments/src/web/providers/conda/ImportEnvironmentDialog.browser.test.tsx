@@ -16,6 +16,7 @@ import { condaContract } from "../../../contracts/providers/conda.js";
 import { ImportEnvironmentDialog } from "./ImportEnvironmentDialog.js";
 
 const YAML_CONTENT = "name: testenv\ndependencies:\n  - numpy\n  - pandas\n";
+const STAGED_HANDLE = "11111111-1111-4111-8111-111111111111";
 
 function notImplemented(): never {
 	throw new Error("not implemented");
@@ -24,13 +25,14 @@ function notImplemented(): never {
 function renderDialog(
 	options: {
 		pickFile?: () => CondaEnvsPickFileResult;
-		readFile?: () => CondaEnvsReadFileResult;
+		readFile?: () => CondaEnvsReadFileResult | Promise<CondaEnvsReadFileResult>;
 		createFromFile?: (input: CondaEnvsCreateFromFileInput) => CondaEnvsCreateFromFileResult;
 		onClose?: () => void;
 	} = {},
 ) {
 	const pickFile = options.pickFile ?? (() => ({ filePath: "/tmp/env.yml" }));
-	const readFile = options.readFile ?? (() => ({ content: YAML_CONTENT }));
+	const readFile =
+		options.readFile ?? (() => ({ content: YAML_CONTENT, stagedHandle: STAGED_HANDLE }));
 	const createFromFile: (input: CondaEnvsCreateFromFileInput) => CondaEnvsCreateFromFileResult =
 		options.createFromFile ??
 		(() => ({ jobId: "j", environment: { name: "testenv", prefix: "/opt/envs/testenv" } }));
@@ -123,8 +125,10 @@ describe("ImportEnvironmentDialog", () => {
 			expect(createFromFile).toHaveBeenCalledOnce();
 		});
 		const payload = createFromFile.mock.calls[0]![0];
-		expect(payload.file).toBe("/tmp/env.yml");
+		expect(payload.stagedHandle).toBe(STAGED_HANDLE);
 		expect(payload.name).toBe("testenv");
+		// The raw path must never cross the boundary — only the staged handle.
+		expect(payload).not.toHaveProperty("file");
 
 		await vi.waitFor(() => {
 			expect(onClose).toHaveBeenCalledOnce();
@@ -176,6 +180,107 @@ describe("ImportEnvironmentDialog", () => {
 		await expect.element(screen.getByTestId("environments-import-dropzone")).toBeVisible();
 	});
 
+	it("clears the file and explains when the read fails", async () => {
+		const readFile = vi.fn(async () => {
+			throw new Error("cannot read");
+		});
+		const { baseElement } = renderDialog({ readFile });
+		const screen = page.elementLocator(baseElement);
+
+		await userEvent.click(screen.getByTestId("environments-import-browse"));
+
+		await expect
+			.element(screen.getByText("Could not read the selected file. Select it again."))
+			.toBeVisible();
+		await expect.element(screen.getByTestId("environments-import-dropzone")).toBeVisible();
+	});
+
+	it("stages each selected file and submits the newest handle", async () => {
+		const paths = ["/tmp/first.yml", "/tmp/second.yml"];
+		const handles = [
+			"11111111-1111-4111-8111-111111111111",
+			"22222222-2222-4222-8222-222222222222",
+		];
+		let pick = 0;
+		let read = 0;
+		const createFromFile = vi.fn(
+			(_input: CondaEnvsCreateFromFileInput): CondaEnvsCreateFromFileResult => ({
+				jobId: "j",
+				environment: { name: "testenv", prefix: "/opt/envs/testenv" },
+			}),
+		);
+		const { baseElement } = renderDialog({
+			pickFile: () => ({ filePath: paths[Math.min(pick++, paths.length - 1)]! }),
+			readFile: () => ({
+				content: YAML_CONTENT,
+				stagedHandle: handles[Math.min(read++, handles.length - 1)]!,
+			}),
+			createFromFile,
+		});
+		const screen = page.elementLocator(baseElement);
+		const submit = screen.getByTestId("environments-import-submit");
+
+		await userEvent.click(screen.getByTestId("environments-import-browse"));
+		await expect.element(submit).toBeEnabled();
+
+		// Clearing drops the staged handle — submit stays disabled until a new
+		// file is staged.
+		await userEvent.click(screen.getByRole("button", { name: "Remove file" }));
+		await expect.element(submit).toBeDisabled();
+
+		await userEvent.click(screen.getByTestId("environments-import-browse"));
+		await expect.element(submit).toBeEnabled();
+		await userEvent.click(submit);
+
+		await vi.waitFor(() => expect(createFromFile).toHaveBeenCalledOnce());
+		expect(createFromFile.mock.calls[0]![0].stagedHandle).toBe(handles[1]);
+	});
+
+	it("re-stages the file after a failed import so a retry submits a fresh handle", async () => {
+		const handles = [
+			"11111111-1111-4111-8111-111111111111",
+			"22222222-2222-4222-8222-222222222222",
+		];
+		let settleRestage: ((value: CondaEnvsReadFileResult) => void) | undefined;
+		const readFile = vi
+			.fn<() => CondaEnvsReadFileResult | Promise<CondaEnvsReadFileResult>>()
+			.mockImplementationOnce(() => ({ content: YAML_CONTENT, stagedHandle: handles[0]! }))
+			.mockImplementationOnce(
+				() =>
+					new Promise<CondaEnvsReadFileResult>((resolve) => {
+						settleRestage = resolve;
+					}),
+			);
+		const createFromFile = vi
+			.fn<(input: CondaEnvsCreateFromFileInput) => CondaEnvsCreateFromFileResult>()
+			.mockRejectedValueOnce(new Error("environment already exists"))
+			.mockResolvedValueOnce({
+				jobId: "j",
+				environment: { name: "testenv", prefix: "/opt/envs/testenv" },
+			});
+		const { baseElement } = renderDialog({ readFile, createFromFile });
+		const screen = page.elementLocator(baseElement);
+		const submit = screen.getByTestId("environments-import-submit");
+
+		await userEvent.click(screen.getByTestId("environments-import-browse"));
+		await expect.element(submit).toBeEnabled();
+		await userEvent.click(submit);
+
+		await vi.waitFor(() => expect(createFromFile).toHaveBeenCalledTimes(1));
+		// The failure triggers a re-stage; submit stays disabled until the
+		// fresh handle arrives.
+		await vi.waitFor(() => expect(readFile).toHaveBeenCalledTimes(2));
+		await expect.element(submit).toBeDisabled();
+
+		settleRestage?.({ content: YAML_CONTENT, stagedHandle: handles[1]! });
+		await expect.element(submit).toBeEnabled();
+		await userEvent.click(submit);
+
+		await vi.waitFor(() => expect(createFromFile).toHaveBeenCalledTimes(2));
+		expect(createFromFile.mock.calls[0]![0].stagedHandle).toBe(handles[0]);
+		expect(createFromFile.mock.calls[1]![0].stagedHandle).toBe(handles[1]);
+	});
+
 	it("handles a cancelled Browse (null filePath) gracefully", async () => {
 		const { baseElement } = renderDialog({
 			pickFile: () => ({ filePath: null }),
@@ -209,7 +314,7 @@ describe("ImportEnvironmentDialog", () => {
 			expect(createFromFile).toHaveBeenCalledOnce();
 		});
 		const payload = createFromFile.mock.calls[0]![0];
-		expect(payload.file).toBe("/tmp/env.yml");
+		expect(payload.stagedHandle).toBe(STAGED_HANDLE);
 		// name should not be sent when field is empty
 		expect(payload.name).toBeUndefined();
 	});

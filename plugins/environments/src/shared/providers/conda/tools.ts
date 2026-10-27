@@ -191,15 +191,13 @@ export function registerCondaTools(sdk: SDK): void {
 		handler: (args) => sdk.invoke("conda.envs.clone", args),
 	});
 
-	// createFromFile accepts an unconstrained filesystem path — intentionally
-	// NOT exposed to the model context so an LLM cannot invoke it with
-	// arbitrary paths. The renderer UI provides paths only from the trusted
-	// native file picker or Electron's getPathForFile (drag-and-drop).
+	// Not exposed to the model context: the handle comes from a reviewed
+	// `conda.envs.readFile` preview, so an LLM cannot drive an import.
 	register({
 		name: "conda.envs.createFromFile",
 		description:
-			"Create a conda environment from a YAML environment file (.yml/.yaml). " +
-			"Optionally override the name declared in the file by passing a `name` parameter.",
+			"Create a conda environment from a previously reviewed YAML environment file " +
+			"(.yml/.yaml). Optionally override the name declared in the file by passing a `name` parameter.",
 		inputSchema: z.toJSONSchema(condaEnvsCreateFromFileInputSchema, { target: "draft-2020-12" }),
 		validate: condaEnvsCreateFromFileInputSchema,
 		handler: (args) => sdk.invoke("conda.envs.createFromFile", args),

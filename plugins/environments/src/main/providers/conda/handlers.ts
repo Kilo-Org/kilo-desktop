@@ -1,4 +1,4 @@
-import { lstat, readFile, realpath, stat } from "node:fs/promises";
+import { lstat, realpath, stat } from "node:fs/promises";
 
 import { FeatureError } from "@kilo-desktop/feature-sdk";
 import type { MainSdk } from "@kilo-desktop/feature-sdk/main";
@@ -43,14 +43,16 @@ import type {
 	CondaRepodataFindResult,
 	EnvTarget,
 } from "../../../contracts/providers/conda.js";
-import { condaContract } from "../../../contracts/providers/conda.js";
+import { condaContract, isYamlEnvFilePath } from "../../../contracts/providers/conda.js";
 import type { JobQueue } from "../../JobQueue.js";
 
-import type { CondaBackend, CondaRepodataFilter } from "./CondaBackend.js";
+import type {
+	CondaBackend,
+	CondaCreateFromFileRequest,
+	CondaRepodataFilter,
+} from "./CondaBackend.js";
 import { checkCreatePrefix } from "./create-prefix-check.js";
-
-/** Ceiling on how many bytes `conda.envs.readFile` reads and ships over IPC. */
-const READ_FILE_MAX_BYTES = 1024 * 1024;
+import { ImportStagingRegistry, READ_FILE_MAX_BYTES, readFileNoFollow } from "./importStaging.js";
 
 /**
  * Read-cache TTL for `repodata.find`. The channel index changes slowly (the
@@ -133,6 +135,21 @@ export function registerCondaHandlers(
 ): void {
 	const handlers = mainSdk.channels(condaContract);
 
+	let staging: ImportStagingRegistry | undefined;
+	const getStaging = (): ImportStagingRegistry => {
+		if (!staging) {
+			let rootDir: string;
+			try {
+				rootDir = mainSdk.storageDir;
+			} catch {
+				throw new FeatureError("Environment file staging is unavailable in this host.", "BUSINESS");
+			}
+			staging = new ImportStagingRegistry({ rootDir });
+		}
+		return staging;
+	};
+	mainSdk.onDispose(() => staging?.dispose());
+
 	// ─── Reads ────────────────────────────────────────────────────────
 
 	handlers.handle("conda.envs.list", () =>
@@ -191,8 +208,18 @@ export function registerCondaHandlers(
 
 	handlers.handle(
 		"conda.envs.createFromFile",
-		(input: CondaEnvsCreateFromFileInput): Promise<CondaEnvsCreateFromFileResult> =>
-			enqueueEnvsCreateFromFile(queue, backend, input),
+		async (input: CondaEnvsCreateFromFileInput): Promise<CondaEnvsCreateFromFileResult> => {
+			const entry = await getStaging().resolve(input.stagedHandle);
+			const request: CondaCreateFromFileRequest = {
+				file: entry.stagedPath,
+				...(input.name ? { name: input.name } : {}),
+			};
+			try {
+				return await enqueueEnvsCreateFromFile(queue, backend, request);
+			} finally {
+				await getStaging().release(input.stagedHandle);
+			}
+		},
 	);
 
 	handlers.handle(
@@ -226,29 +253,25 @@ export function registerCondaHandlers(
 			// and re-validated so a `foo.yml → /etc/shadow` cannot bypass the
 			// extension check.
 			const info = await lstat(input.filePath);
+			let readPath = input.filePath;
 			if (info.isSymbolicLink()) {
-				const resolved = await realpath(input.filePath);
-				if (!/\.ya?ml$/i.test(resolved)) {
+				readPath = await realpath(input.filePath);
+				if (!isYamlEnvFilePath(readPath)) {
 					throw new FeatureError(
 						"Symlink target must be a YAML environment file (.yml or .yaml).",
 						"VALIDATION",
 					);
 				}
 			}
-			if (!info.isFile() && !info.isSymbolicLink()) {
+			// stat follows symlinks, so a symlink to a directory is rejected here
+			// instead of failing later with EISDIR on the read.
+			const target = info.isSymbolicLink() ? await stat(readPath) : info;
+			if (!target.isFile()) {
 				throw new FeatureError("File path must point to a regular file.", "VALIDATION");
 			}
-			// lstat returns the size of the symlink entry, not the target.
-			// Use stat (which follows symlinks) for the size bound.
-			const targetSize = info.isSymbolicLink() ? (await stat(input.filePath)).size : info.size;
-			if (targetSize > READ_FILE_MAX_BYTES) {
-				throw new FeatureError(
-					`File is too large to preview (max ${READ_FILE_MAX_BYTES / 1024 / 1024} MB).`,
-					"VALIDATION",
-				);
-			}
-			const content = await readFile(input.filePath, "utf-8");
-			return { content };
+			const bytes = await readFileNoFollow(readPath, READ_FILE_MAX_BYTES);
+			const entry = await getStaging().stage(bytes);
+			return { content: bytes.toString("utf-8"), stagedHandle: entry.handle };
 		},
 	);
 
@@ -506,7 +529,7 @@ async function enqueueEnvsClone(
 async function enqueueEnvsCreateFromFile(
 	queue: JobQueue,
 	backend: CondaBackend,
-	input: CondaEnvsCreateFromFileInput,
+	input: CondaCreateFromFileRequest,
 ): Promise<CondaEnvsCreateFromFileResult> {
 	const { jobId, result } = queue.enqueue({
 		providerId: "conda",

@@ -23,6 +23,7 @@ import {
 	condaEnvsPickFileInputSchema,
 	condaEnvsPickFileResultSchema,
 	condaEnvsReadFileInputSchema,
+	condaEnvsReadFileResultSchema,
 	condaPackageSchema,
 	condaPackagesInstallInputSchema,
 	condaPackagesInstallResultSchema,
@@ -381,12 +382,13 @@ describe("conda.envs I/O", () => {
 	});
 
 	it("condaEnvsCreateFromFile I/O round-trip", () => {
-		expect(condaEnvsCreateFromFileInputSchema.parse({ file: "/tmp/env.yml" })).toEqual({
-			file: "/tmp/env.yml",
+		const handle = "123e4567-e89b-12d3-a456-426614174000";
+		expect(condaEnvsCreateFromFileInputSchema.parse({ stagedHandle: handle })).toEqual({
+			stagedHandle: handle,
 		});
 		expect(
-			condaEnvsCreateFromFileInputSchema.parse({ file: "/tmp/env.yml", name: "myenv" }),
-		).toEqual({ file: "/tmp/env.yml", name: "myenv" });
+			condaEnvsCreateFromFileInputSchema.parse({ stagedHandle: handle, name: "myenv" }),
+		).toEqual({ stagedHandle: handle, name: "myenv" });
 		const result = {
 			jobId: "j-6",
 			environment: { name: "myenv", prefix: "/opt/envs/myenv" },
@@ -394,98 +396,22 @@ describe("conda.envs I/O", () => {
 		expect(condaEnvsCreateFromFileResultSchema.parse(result)).toEqual(result);
 	});
 
-	it("condaEnvsCreateFromFileInputSchema rejects empty file path", () => {
-		expect(condaEnvsCreateFromFileInputSchema.safeParse({ file: "" }).success).toBe(false);
-	});
-
-	it("condaEnvsCreateFromFileInputSchema rejects paths that could be mistaken for a conda CLI flag", () => {
-		// Same rationale as matchSpecSchema / channelSchema: argparse accepts
-		// options interspersed with positionals, so a leading `-` could smuggle
-		// a flag through the argv boundary.
-		for (const bad of ["--dry-run", "-c", "--file"]) {
-			expect(condaEnvsCreateFromFileInputSchema.safeParse({ file: bad }).success).toBe(false);
+	it("condaEnvsCreateFromFileInputSchema requires a UUID-shaped staged handle", () => {
+		const valid = "123e4567-e89b-12d3-a456-426614174000";
+		expect(condaEnvsCreateFromFileInputSchema.safeParse({ stagedHandle: valid }).success).toBe(
+			true,
+		);
+		for (const bad of ["", "/tmp/env.yml", "not-a-uuid", "../../etc/passwd", `${valid}x`]) {
+			expect(condaEnvsCreateFromFileInputSchema.safeParse({ stagedHandle: bad }).success).toBe(
+				false,
+			);
 		}
 	});
 
-	it("condaEnvsCreateFromFileInputSchema rejects null bytes, newlines, tabs, and padded paths", () => {
-		for (const bad of [
-			"/tmp/env.yml\0/etc/passwd",
-			"/tmp/env.yml\nrm -rf /",
-			"/tmp/env\t.yml",
-			" /tmp/env.yml",
-			"/tmp/env.yml ",
-		]) {
-			expect(condaEnvsCreateFromFileInputSchema.safeParse({ file: bad }).success).toBe(false);
-		}
-	});
-
-	it("condaEnvsCreateFromFileInputSchema allows interior spaces and caps length at PATH_MAX", () => {
-		// Interior spaces are legitimate in real paths and must not be rejected.
-		expect(
-			condaEnvsCreateFromFileInputSchema.safeParse({ file: "/Users/me/My Documents/env.yml" })
-				.success,
-		).toBe(true);
-		expect(
-			condaEnvsCreateFromFileInputSchema.safeParse({ file: `/${"a".repeat(4095)}` }).success,
-		).toBe(true);
-		expect(
-			condaEnvsCreateFromFileInputSchema.safeParse({ file: `/${"a".repeat(4096)}` }).success,
-		).toBe(false);
-	});
-
-	it("condaEnvsDistributionsResultSchema round-trips", () => {
-		const result = {
-			distributions: [
-				{ prefix: "/opt/miniconda3", priority: 10 },
-				{ prefix: "/home/user/anaconda3", priority: 5 },
-			],
-		};
-		expect(condaEnvsDistributionsResultSchema.parse(result)).toEqual(result);
-	});
-
-	it("condaEnvsDistributionsResultSchema accepts empty list", () => {
-		expect(condaEnvsDistributionsResultSchema.parse({ distributions: [] })).toEqual({
-			distributions: [],
-		});
-	});
-
-	it("condaEnvsCreateFromFileInputSchema rejects empty file path", () => {
-		expect(condaEnvsCreateFromFileInputSchema.safeParse({ file: "" }).success).toBe(false);
-	});
-
-	it("condaEnvsCreateFromFileInputSchema rejects paths that could be mistaken for a conda CLI flag", () => {
-		// Same rationale as matchSpecSchema / channelSchema: argparse accepts
-		// options interspersed with positionals, so a leading `-` could smuggle
-		// a flag through the argv boundary.
-		for (const bad of ["--dry-run", "-c", "--file"]) {
-			expect(condaEnvsCreateFromFileInputSchema.safeParse({ file: bad }).success).toBe(false);
-		}
-	});
-
-	it("condaEnvsCreateFromFileInputSchema rejects null bytes, newlines, tabs, and padded paths", () => {
-		for (const bad of [
-			"/tmp/env.yml\0/etc/passwd",
-			"/tmp/env.yml\nrm -rf /",
-			"/tmp/env\t.yml",
-			" /tmp/env.yml",
-			"/tmp/env.yml ",
-		]) {
-			expect(condaEnvsCreateFromFileInputSchema.safeParse({ file: bad }).success).toBe(false);
-		}
-	});
-
-	it("condaEnvsCreateFromFileInputSchema allows interior spaces and caps length at PATH_MAX", () => {
-		// Interior spaces are legitimate in real paths and must not be rejected.
-		expect(
-			condaEnvsCreateFromFileInputSchema.safeParse({ file: "/Users/me/My Documents/env.yml" })
-				.success,
-		).toBe(true);
-		expect(
-			condaEnvsCreateFromFileInputSchema.safeParse({ file: `/${"a".repeat(4095)}` }).success,
-		).toBe(true);
-		expect(
-			condaEnvsCreateFromFileInputSchema.safeParse({ file: `/${"a".repeat(4096)}` }).success,
-		).toBe(false);
+	it("condaEnvsCreateFromFileInputSchema rejects a raw file path — only a staged handle is accepted", () => {
+		expect(condaEnvsCreateFromFileInputSchema.safeParse({ file: "/tmp/env.yml" }).success).toBe(
+			false,
+		);
 	});
 
 	it("condaEnvsDistributionsResultSchema round-trips", () => {
@@ -581,6 +507,15 @@ describe("conda.envs.readFile I/O", () => {
 		const longPath = `/${"a".repeat(4092)}.yml`;
 		expect(longPath.length).toBeGreaterThan(4096);
 		expect(condaEnvsReadFileInputSchema.safeParse({ filePath: longPath }).success).toBe(false);
+	});
+
+	it("condaEnvsReadFileResultSchema carries content plus a server-minted staged handle", () => {
+		const handle = "123e4567-e89b-12d3-a456-426614174000";
+		expect(
+			condaEnvsReadFileResultSchema.parse({ content: "name: x\n", stagedHandle: handle }),
+		).toEqual({ content: "name: x\n", stagedHandle: handle });
+		// The handle is required — a preview that cannot stage is not importable.
+		expect(condaEnvsReadFileResultSchema.safeParse({ content: "name: x\n" }).success).toBe(false);
 	});
 });
 

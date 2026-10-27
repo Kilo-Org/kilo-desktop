@@ -1,4 +1,4 @@
-import { mkdir, rmdir, symlink, unlink, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, rmdir, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -14,7 +14,7 @@ import {
 } from "../../../contracts/providers/conda.js";
 import { JobQueue } from "../../JobQueue.js";
 import { registerCondaHandlers } from "./handlers.js";
-import type { CondaBackend } from "./CondaBackend.js";
+import type { CondaBackend, CondaCreateFromFileRequest } from "./CondaBackend.js";
 
 /**
  * Full-pipeline integration test: bind the conda handlers via the same
@@ -242,7 +242,7 @@ describe("conda handlers → sdk.invoke round-trip", () => {
 		mainSdk.dispose();
 	});
 
-	it("conda.envs.createFromFile returns { jobId, environment } and emits terminal succeeded", async () => {
+	it("conda.envs.createFromFile imports the staged copy and emits terminal succeeded", async () => {
 		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
 		const events: JobProgressEvent[] = [];
 		const queue = new JobQueue({ emit: (event) => events.push(event) });
@@ -251,13 +251,22 @@ describe("conda handlers → sdk.invoke round-trip", () => {
 			.mockResolvedValue({ name: "fromfile", prefix: "/tmp/envs/fromfile" });
 		registerCondaHandlers(mainSdk, makeBackend({ createFromFile }), queue);
 
+		const tmpDir = join(tmpdir(), "conda-handlers-test");
+		await mkdir(tmpDir, { recursive: true });
+		const tmpPath = join(tmpDir, "create-from-file.yml");
+		await writeFile(tmpPath, "name: fromfile\n", "utf-8");
+		tmpFiles.push(tmpPath);
+
 		const client = rendererSdk.client as unknown as CondaService;
-		const result = await client["conda.envs.createFromFile"]({ file: "/tmp/env.yml" });
+		const preview = await client["conda.envs.readFile"]({ filePath: tmpPath });
+		const result = await client["conda.envs.createFromFile"]({
+			stagedHandle: preview.stagedHandle,
+		});
 
 		expect(result.environment).toEqual({ name: "fromfile", prefix: "/tmp/envs/fromfile" });
 		expect(result.jobId).toMatch(/^conda-/);
 		expect(createFromFile).toHaveBeenCalledWith(
-			{ file: "/tmp/env.yml" },
+			{ file: expect.stringContaining("import-staging") },
 			expect.objectContaining({ signal: expect.any(AbortSignal) }),
 		);
 		expect(events.map((e) => e.status)).toEqual(["queued", "running", "succeeded"]);
@@ -1003,7 +1012,10 @@ describe("conda handlers → sdk.invoke round-trip", () => {
 		const client = rendererSdk.client as unknown as CondaService;
 		const result = await client["conda.envs.readFile"]({ filePath: tmpPath });
 
-		expect(result).toEqual({ content: yamlContent });
+		expect(result.content).toBe(yamlContent);
+		expect(result.stagedHandle).toMatch(
+			/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+		);
 
 		queue.dispose();
 		mainSdk.dispose();
@@ -1060,7 +1072,8 @@ describe("conda handlers → sdk.invoke round-trip", () => {
 
 		const client = rendererSdk.client as unknown as CondaService;
 		const result = await client["conda.envs.readFile"]({ filePath: symlinkPath });
-		expect(result).toEqual({ content: yamlContent });
+		expect(result.content).toBe(yamlContent);
+		expect(result.stagedHandle).toBeTruthy();
 
 		queue.dispose();
 		mainSdk.dispose();
@@ -1084,6 +1097,28 @@ describe("conda handlers → sdk.invoke round-trip", () => {
 		mainSdk.dispose();
 	});
 
+	it("conda.envs.readFile rejects a symlink to a directory", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		registerCondaHandlers(mainSdk, makeBackend(), queue);
+
+		// The target keeps a .yml name so the extension guard passes and the
+		// regular-file guard is what rejects it.
+		const targetDir = join(tmpdir(), "conda-handlers-test", "target-dir.yml");
+		await mkdir(targetDir, { recursive: true });
+		const linkPath = join(tmpdir(), "conda-handlers-test", "dir-link.yml");
+		await symlink(targetDir, linkPath);
+		tmpFiles.push(linkPath, targetDir);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		await expect(client["conda.envs.readFile"]({ filePath: linkPath })).rejects.toThrow(
+			/regular file/,
+		);
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
 	it("conda.envs.readFile rejects files exceeding the size limit", async () => {
 		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
 		const queue = new JobQueue({ emit: () => {} });
@@ -1098,6 +1133,146 @@ describe("conda handlers → sdk.invoke round-trip", () => {
 
 		const client = rendererSdk.client as unknown as CondaService;
 		await expect(client["conda.envs.readFile"]({ filePath: tmpPath })).rejects.toThrow(/too large/);
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.envs.createFromFile imports the reviewed bytes even if the source file is swapped", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		let stagedFile: string | undefined;
+		let stagedContent: string | undefined;
+		const createFromFile = vi.fn(async (request: CondaCreateFromFileRequest) => {
+			stagedFile = request.file;
+			stagedContent = await readFile(request.file, "utf-8");
+			return { name: "reviewed", prefix: "/tmp/envs/reviewed" };
+		});
+		registerCondaHandlers(mainSdk, makeBackend({ createFromFile }), queue);
+
+		const tmpDir = join(tmpdir(), "conda-handlers-test");
+		await mkdir(tmpDir, { recursive: true });
+		const tmpPath = join(tmpDir, "swap.yml");
+		const reviewed = "name: reviewed\ndependencies:\n  - safe-pkg\n";
+		await writeFile(tmpPath, reviewed, "utf-8");
+		tmpFiles.push(tmpPath);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		const preview = await client["conda.envs.readFile"]({ filePath: tmpPath });
+		expect(preview.content).toBe(reviewed);
+
+		// A collaborator swaps the source file between review and import.
+		await writeFile(tmpPath, "name: reviewed\ndependencies:\n  - evil-pkg\n", "utf-8");
+
+		await client["conda.envs.createFromFile"]({ stagedHandle: preview.stagedHandle });
+
+		expect(stagedFile).toContain("import-staging");
+		expect(stagedContent).toBe(reviewed);
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.envs.createFromFile uses the reviewed bytes when the source symlink is repointed", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		let stagedContent: string | undefined;
+		const createFromFile = vi.fn(async (request: CondaCreateFromFileRequest) => {
+			stagedContent = await readFile(request.file, "utf-8");
+			return { name: "linked", prefix: "/tmp/envs/linked" };
+		});
+		registerCondaHandlers(mainSdk, makeBackend({ createFromFile }), queue);
+
+		const tmpDir = join(tmpdir(), "conda-handlers-test");
+		await mkdir(tmpDir, { recursive: true });
+		const first = join(tmpDir, "first.yml");
+		const second = join(tmpDir, "second.yml");
+		const linkPath = join(tmpDir, "repoint.yml");
+		const reviewed = "name: linked\ndependencies:\n  - scipy\n";
+		await writeFile(first, reviewed, "utf-8");
+		await writeFile(second, "name: linked\ndependencies:\n  - evil\n", "utf-8");
+		await symlink(first, linkPath);
+		tmpFiles.push(first, second, linkPath);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		const preview = await client["conda.envs.readFile"]({ filePath: linkPath });
+		expect(preview.content).toBe(reviewed);
+
+		// Repoint the symlink after review.
+		await unlink(linkPath);
+		await symlink(second, linkPath);
+
+		await client["conda.envs.createFromFile"]({ stagedHandle: preview.stagedHandle });
+		expect(stagedContent).toBe(reviewed);
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.envs.createFromFile rejects an unknown staged handle with VALIDATION", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const createFromFile = vi.fn();
+		registerCondaHandlers(mainSdk, makeBackend({ createFromFile }), queue);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		await expect(
+			client["conda.envs.createFromFile"]({
+				stagedHandle: "123e4567-e89b-12d3-a456-426614174000",
+			}),
+		).rejects.toThrow(/staged file not found/i);
+		expect(createFromFile).not.toHaveBeenCalled();
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.envs.createFromFile removes the staged copy after a successful job", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const createFromFile = vi
+			.fn()
+			.mockResolvedValue({ name: "cleanup", prefix: "/tmp/envs/cleanup" });
+		registerCondaHandlers(mainSdk, makeBackend({ createFromFile }), queue);
+
+		const tmpDir = join(tmpdir(), "conda-handlers-test");
+		await mkdir(tmpDir, { recursive: true });
+		const tmpPath = join(tmpDir, "cleanup.yml");
+		await writeFile(tmpPath, "name: cleanup\n", "utf-8");
+		tmpFiles.push(tmpPath);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		const preview = await client["conda.envs.readFile"]({ filePath: tmpPath });
+		const stagedDir = join(mainSdk.storageDir, "import-staging", preview.stagedHandle);
+		await expect(access(stagedDir)).resolves.toBeUndefined();
+
+		await client["conda.envs.createFromFile"]({ stagedHandle: preview.stagedHandle });
+		await expect(access(stagedDir)).rejects.toThrow();
+
+		queue.dispose();
+		mainSdk.dispose();
+	});
+
+	it("conda.envs.createFromFile removes the staged copy after a failed job", async () => {
+		const { rendererSdk, mainSdk } = createLinkedFakeSdkPair({ featureId: "environments" });
+		const queue = new JobQueue({ emit: () => {} });
+		const createFromFile = vi.fn().mockRejectedValue(new Error("conda failed"));
+		registerCondaHandlers(mainSdk, makeBackend({ createFromFile }), queue);
+
+		const tmpDir = join(tmpdir(), "conda-handlers-test");
+		await mkdir(tmpDir, { recursive: true });
+		const tmpPath = join(tmpDir, "cleanup-fail.yml");
+		await writeFile(tmpPath, "name: cleanup\n", "utf-8");
+		tmpFiles.push(tmpPath);
+
+		const client = rendererSdk.client as unknown as CondaService;
+		const preview = await client["conda.envs.readFile"]({ filePath: tmpPath });
+		const stagedDir = join(mainSdk.storageDir, "import-staging", preview.stagedHandle);
+
+		await expect(
+			client["conda.envs.createFromFile"]({ stagedHandle: preview.stagedHandle }),
+		).rejects.toThrow(/conda failed/);
+		await expect(access(stagedDir)).rejects.toThrow();
 
 		queue.dispose();
 		mainSdk.dispose();

@@ -5,7 +5,6 @@ import type {
 	CondaDistribution,
 	CondaEnv,
 	CondaEnvsCloneInput,
-	CondaEnvsCreateFromFileInput,
 	CondaEnvsCreateInput,
 	CondaPackage,
 	CondaPackagesInstallInput,
@@ -85,6 +84,16 @@ export interface CondaRepodataFilter {
 	readonly subdirs?: string[];
 }
 
+/**
+ * Backend-facing input for {@link CondaBackend.createFromFile}. The handler
+ * resolves the contract's staged handle to this server-controlled `file` path,
+ * so the bridge seam stays on a plain path.
+ */
+export interface CondaCreateFromFileRequest {
+	readonly file: string;
+	readonly name?: string;
+}
+
 export interface CondaBackend {
 	list(ctx?: CondaCallContext): Promise<CondaEnv[]>;
 	findDistributions(ctx?: CondaCallContext): Promise<CondaDistribution[]>;
@@ -96,7 +105,7 @@ export interface CondaBackend {
 		options?: CondaCreateOptions,
 	): Promise<CondaEnv>;
 	clone(input: CondaEnvsCloneInput, ctx?: CondaCallContext): Promise<CondaEnv>;
-	createFromFile(input: CondaEnvsCreateFromFileInput, ctx?: CondaCallContext): Promise<CondaEnv>;
+	createFromFile(input: CondaCreateFromFileRequest, ctx?: CondaCallContext): Promise<CondaEnv>;
 	remove(target: EnvTarget, ctx?: CondaCallContext): Promise<void>;
 
 	listPackages(target: EnvTarget, ctx?: CondaCallContext): Promise<CondaPackage[]>;

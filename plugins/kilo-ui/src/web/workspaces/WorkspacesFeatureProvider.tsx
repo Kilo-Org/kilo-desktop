@@ -10,6 +10,11 @@ import type { WorkspaceStatusService } from "../../contracts/workspaces/status.j
 import { type SDK, type StoreHandle } from "@kilo-desktop/feature-sdk";
 import { sdkQueryKey, sdkQueryOptions, useSdk, useSdkQuery } from "@kilo-desktop/sdk-react";
 
+import {
+	readSessionListView,
+	resolveWorkspaceFocus,
+	writeSessionListView,
+} from "../session/list/session-list-view.js";
 import { WorkspaceDialogs, type WorkspaceDialogState } from "./WorkspaceDialogs";
 import { WorkspacesContext, type WorkspacesContextValue } from "./WorkspacesFeatureContext";
 
@@ -81,6 +86,14 @@ export function WorkspacesFeatureProvider({ children }: { children: ReactNode })
 		if (query.isFetching) return;
 		setActiveWorkspaceId(null);
 	}, [activeWorkspaceId, query.isFetching, query.isSuccess, workspaces]);
+
+	useEffect(() => {
+		if (!query.isSuccess || query.isFetching) return;
+		const view = readSessionListView();
+		const resolved = resolveWorkspaceFocus(view.focus, workspaces);
+		if (resolved === view.focus) return;
+		writeSessionListView({ ...view, focus: resolved });
+	}, [query.isFetching, query.isSuccess, workspaces]);
 
 	useEffect(() => {
 		const invalidate = () => {

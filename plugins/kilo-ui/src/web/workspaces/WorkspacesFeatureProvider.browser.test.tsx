@@ -13,6 +13,12 @@ import {
 	workspaceStatusContract,
 	type WorkspaceStatusService,
 } from "../../contracts/workspaces/status.js";
+import {
+	readSessionListView,
+	SESSION_LIST_VIEW_STORAGE_KEY,
+	UNSCOPED_WORKSPACE_FOCUS,
+	writeSessionListView,
+} from "../session/list/session-list-view.js";
 import { SdkProvider } from "@kilo-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeMainSdk, createFakeSdk } from "@kilo-desktop/testing";
 
@@ -140,8 +146,65 @@ describe("WorkspacesFeatureProvider", () => {
 		await expect.element(page.getByLabelText("Active workspace")).toHaveTextContent("none");
 	});
 
+	it("reconciles stored active and focused workspace ids missing from the list", async () => {
+		localStorage.setItem("kilo-ui.active-workspace", "missing-workspace");
+		writeSessionListView({
+			grouping: "lifecycle",
+			ordering: "recency",
+			show: ["pr"],
+			status: "all",
+			pullRequest: "all",
+			focus: "missing-workspace",
+		});
+		renderProvider({ list: async () => [workspace] });
+
+		await expect.element(page.getByLabelText("Active workspace")).toHaveTextContent("none");
+		expect(localStorage.getItem("kilo-ui.active-workspace")).toBeNull();
+		expect(readSessionListView().focus).toBeNull();
+	});
+
+	it("preserves a stored focus for a workspace in the list", async () => {
+		writeSessionListView({
+			grouping: "lifecycle",
+			ordering: "recency",
+			show: ["pr"],
+			status: "all",
+			pullRequest: "all",
+			focus: workspace.id,
+		});
+		const setItem = vi.spyOn(Storage.prototype, "setItem");
+		renderProvider({ list: async () => [workspace] });
+
+		await expect.element(page.getByLabelText("Active workspace")).toHaveTextContent("none");
+		expect(readSessionListView().focus).toBe(workspace.id);
+		expect(setItem).not.toHaveBeenCalledWith(SESSION_LIST_VIEW_STORAGE_KEY, expect.any(String));
+	});
+
+	it("preserves the unscoped focus sentinel when workspaces exist", async () => {
+		writeSessionListView({
+			grouping: "lifecycle",
+			ordering: "recency",
+			show: ["pr"],
+			status: "all",
+			pullRequest: "all",
+			focus: UNSCOPED_WORKSPACE_FOCUS,
+		});
+		renderProvider({ list: async () => [workspace] });
+
+		await expect.element(page.getByLabelText("Active workspace")).toHaveTextContent("none");
+		expect(readSessionListView().focus).toBe(UNSCOPED_WORKSPACE_FOCUS);
+	});
+
 	it("does not reactivate a deleted workspace while its list refetch is pending", async () => {
 		localStorage.setItem("kilo-ui.active-workspace", workspace.id);
+		writeSessionListView({
+			grouping: "lifecycle",
+			ordering: "recency",
+			show: ["pr"],
+			status: "all",
+			pullRequest: "all",
+			focus: workspace.id,
+		});
 		let resolveRefetch!: (workspaces: Workspace[]) => void;
 		const refetch = new Promise<Workspace[]>((resolve) => {
 			resolveRefetch = resolve;
@@ -162,6 +225,8 @@ describe("WorkspacesFeatureProvider", () => {
 			.element(page.getByRole("heading", { name: `Delete ${workspace.name}?` }))
 			.not.toBeInTheDocument();
 		await expect.element(page.getByLabelText("Active workspace")).toHaveTextContent("none");
+		expect(localStorage.getItem("kilo-ui.active-workspace")).toBeNull();
+		expect(readSessionListView().focus).toBeNull();
 	});
 
 	it("shows the failure when deleting a workspace rejects", async () => {

@@ -121,6 +121,7 @@ export class ElectronWindow {
 		const window = this.#createWindow(isDevelopment, undefined, {
 			title: descriptor.title,
 			name: paneWindowName(descriptor),
+			fullscreen: false,
 			...this.#paneWindowWidth(descriptor.width),
 			height: 720,
 			minWidth: 480,

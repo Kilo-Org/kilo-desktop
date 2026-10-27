@@ -11,6 +11,7 @@ const { createdWindows, electronApp } = vi.hoisted(() => {
 		options: {
 			backgroundColor?: string;
 			backgroundMaterial?: string;
+			fullscreen?: boolean;
 			name?: string;
 			width?: number;
 			useContentSize?: boolean;
@@ -481,6 +482,18 @@ describe("ElectronWindow theme chrome", () => {
 			sessionId: "session-1",
 			paneId: "file:readme.md",
 		});
+	});
+
+	it("opens a pane window outside full screen", () => {
+		const windows = new ElectronWindow(createShell() as never, () => false);
+		windows.create({ isDevelopment: false });
+
+		windows.openPaneWindow(
+			{ pluginId: "kilo-ui", sessionId: "s1", paneId: "p1", title: "File", path: "/plugins/chat" },
+			false,
+		);
+
+		expect(createdWindows[1]?.options.fullscreen).toBe(false);
 	});
 
 	const boardWindow: PaneWindow = {

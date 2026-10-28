@@ -873,8 +873,8 @@ importers:
         specifier: ^14.0.0
         version: 14.3.0(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       pele:
-        specifier: 1.10.1
-        version: 1.10.1
+        specifier: 1.12.0
+        version: 1.12.0
       react-markdown:
         specifier: ^10.1.0
         version: 10.1.0(@types/react@19.2.17)(react@19.2.8)(supports-color@10.2.2)
@@ -9042,8 +9042,8 @@ packages:
     resolution: {integrity: sha512-nh39Mo1eGWmZS7y+mK/dQIqg7S1lp38DpRxkyoHf0ZcUs/HDc+yyTjuOtTvSMZHmfSLuSQaX945u05Y2Q6UWZg==}
     engines: {node: '>=14', npm: '>=7'}
 
-  pele@1.10.1:
-    resolution: {integrity: sha512-beU/HA96TdYrUYv+dbt6h4G3DqFyBIAGEGjfY5RbP1mUBCqcOrtV67/AhSQggxfL5gphFH5XJ0BsPzL6x/RP2w==}
+  pele@1.12.0:
+    resolution: {integrity: sha512-3OdOK6rvkaTB569R4/I8U0H82MqPRxj7vfkbowa2rRhgSBPFhvWlfFy5eae0jP+2A6hE8abE17nsdyxJz2VBiQ==}
     engines: {node: '>=20'}
 
   picocolors@1.1.1:
@@ -17815,7 +17815,7 @@ snapshots:
 
   pe-library@1.0.1: {}
 
-  pele@1.10.1: {}
+  pele@1.12.0: {}
 
   picocolors@1.1.1: {}
 

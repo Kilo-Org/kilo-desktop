@@ -63,8 +63,8 @@ Electron port and retain runtimed's negotiated protocol number.
   scoped to the renderer that opened the feature port.
 - Missing, failed, or incompatible runtimed fails closed with a retryable status. There is no
   transport fallback to a listening WebSocket.
-- The process answering the daemon socket is authenticated before any notebook code is sent
-  (see `daemon-peer-auth.ts`): a daemon we spawned must match our child pid; a daemon we attach
+- The process answering the daemon socket is authenticated before the daemon is trusted with
+  notebook code (see `daemon-peer-auth.ts`): a daemon we spawned must match our child pid; a daemon we attach
   to must run an executable whose SHA-256 matches the pinned release artifact. This allows an
   identical daemon from another Kilo installation. A macOS-signed executable can differ from the
   unsigned release bytes, so the alternative is a valid signature bound to Anaconda's Developer ID
@@ -74,6 +74,9 @@ Electron port and retain runtimed's negotiated protocol number.
   starts at login, which otherwise owns the shared singleton and blocks notebooks until it is
   stopped; any nteract-signed version is accepted. A different unsigned binary still fails closed,
   including through explicit endpoints. Without a staged bundled binary every attach fails closed.
+  Known residual risks (DESK-3090) are listed in the `daemon-peer-auth.ts` header: the check is not
+  bound to the relay connections (TOCTOU), the readiness probe runs before it, and Windows applies
+  no same-user (SID) check.
 
 ## Release verification
 

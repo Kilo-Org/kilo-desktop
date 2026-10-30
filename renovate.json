@@ -53,6 +53,19 @@
 			"rebaseWhen": "behind-base-branch"
 		},
 		{
+			"description": "Reformat the repo when oxfmt updates so new formatter output lands in the same PR instead of failing format:check.",
+			"matchPackageNames": ["oxfmt"],
+			"postUpgradeTasks": {
+				"commands": ["pnpm install --frozen-lockfile --ignore-scripts", "pnpm format"],
+				"installTools": {
+					"node": {},
+					"pnpm": {}
+				},
+				"executionMode": "branch",
+				"fileFilters": ["**/*"]
+			}
+		},
+		{
 			"description": "Ensure lock file maintenance PRs are never throttled",
 			"matchUpdateTypes": ["lockFileMaintenance"],
 			"prPriority": 10

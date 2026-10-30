@@ -19,7 +19,7 @@
 		"@lobehub/icons": "^6.0.0",
 		"execa": "catalog:",
 		"lucide-react": "^1.27.0",
-		"systeminformation": "5.33.16"
+		"systeminformation": "5.33.18"
 	},
 	"peerDependencies": {
 		"@kilo-desktop/feature-sdk": "^0.1.0",

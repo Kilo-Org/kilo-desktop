@@ -17,7 +17,7 @@
 	},
 	"dependencies": {
 		"@chenglou/pretext": "^1.0.0",
-		"@nteract/sift": "0.5.6",
+		"@nteract/sift": "0.6.0",
 		"@nteract/sift-csv": "0.2.0",
 		"@pierre/diffs": "catalog:",
 		"@pierre/trees": "catalog:",

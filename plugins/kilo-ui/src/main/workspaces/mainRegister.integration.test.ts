@@ -68,7 +68,10 @@ describe("kilo-ui mainRegister", () => {
 	});
 
 	function boot() {
-		const userData = fs.mkdtempSync(path.join(os.tmpdir(), "kilo-ui-main-"));
+		// WorkspaceService stores canonical folder paths; macOS tmpdir is a /var -> /private/var symlink.
+		const userData = fs.realpathSync.native(
+			fs.mkdtempSync(path.join(os.tmpdir(), "kilo-ui-main-")),
+		);
 		const storageDir = path.join(userData, "plugins", "kilo-ui");
 		const project = path.join(userData, "Project");
 		fs.mkdirSync(storageDir, { recursive: true });

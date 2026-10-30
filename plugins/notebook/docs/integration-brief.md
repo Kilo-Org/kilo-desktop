@@ -82,7 +82,7 @@ Electron port and retain runtimed's negotiated protocol number.
 
 1. Pin the notebook UI and `runtimed` to one nteract release and use that release's channel for
    the singleton endpoint.
-2. Keep Kilo Desktop pinned to the published `@runtimed/node@0.7.0-nightly.39892597707` package containing
+2. Keep Kilo Desktop pinned to the published `@runtimed/node@0.7.0-nightly.40958541191` package containing
    `@runtimed/node/electron` and its platform-native optional dependencies.
 3. Run the full repository gate and packaged Electron smoke both from a clean daemon state and
    against an already-running compatible singleton.

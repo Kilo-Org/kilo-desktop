@@ -223,6 +223,7 @@ function readyInfo(info: RelayInfo) {
 		...(info.runtime === undefined ? {} : { runtime: info.runtime }),
 		...(info.actorLabel === undefined ? {} : { actor_label: info.actorLabel }),
 		...(info.connectionScope === undefined ? {} : { connection_scope: info.connectionScope }),
+		...(info.keyedDocKinds.length > 0 ? { keyed_doc_kinds: info.keyedDocKinds } : {}),
 		comments_doc_id: info.commentsDocId ?? null,
 		comments_notebook_ref: info.commentsNotebookRef,
 	};

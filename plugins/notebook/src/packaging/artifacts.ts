@@ -1,17 +1,17 @@
 /** Pinned release used for the staged notebook runtime executables. */
 export const NTERACT_RELEASE = {
-	tag: "v2.9.0-nightly.202610230300",
-	version: "2.9.0-nightly.202610230300",
+	tag: "v2.9.0-nightly.202610292131",
+	version: "2.9.0-nightly.202610292131",
 	channel: "nightly",
-	commit: "9c85319021bdcd4b03bdfe010ccb4bbc4dc8ed57",
+	commit: "cea400364a391f6aee5753bf2a5ef6ea79d2991d",
 	repository: "https://github.com/nteract/nteract.git",
 } as const;
 
 /** Published, platform-independent notebook frontend from the pinned release. */
 export const NTERACT_NOTEBOOK_UI = {
 	assetName: "nteract-nightly-notebook-ui.tar.gz",
-	bytes: 8_662_653,
-	sha256: "0c63a75a9115197cbdba88e18fcbf769c58935a735eca2b1873cbd51bb7678a5",
+	bytes: 8_741_567,
+	sha256: "901c8f7bb646d8510eab55e066383a35654ef2c97b2b85a8a1906a56dc39a807",
 } as const satisfies ReleaseAsset;
 
 export interface NativeReleaseArtifact {
@@ -43,8 +43,8 @@ export const RUNTIMED_ARTIFACTS = [
 		arch: "arm64",
 		assetName: "runtimed-nightly-darwin-arm64",
 		executable: "runtimed-nightly",
-		bytes: 39_457_728,
-		sha256: "0bc27f788c90082ee202a748990ea8ad79bcc8f7d8ffc00f391264ee41ab0248",
+		bytes: 45_570_016,
+		sha256: "b2f45cb9475aa9f9f6fe915fc9fa9eaba2669e28facb1f021d9fb04348406ba2",
 	},
 	{
 		target: "darwin-x64",
@@ -52,8 +52,8 @@ export const RUNTIMED_ARTIFACTS = [
 		arch: "x64",
 		assetName: "runtimed-nightly-darwin-x64",
 		executable: "runtimed-nightly",
-		bytes: 41_908_368,
-		sha256: "2bc74516273950aaa337d12db5b7a8d48f5a7f2cccb5bc26dc4e20b61b27ffdc",
+		bytes: 47_262_208,
+		sha256: "8cd12bef9c9edfcead1bc8f47e198047e3507733a89e9feb5183c177ec411c07",
 	},
 	{
 		target: "linux-x64",
@@ -61,8 +61,8 @@ export const RUNTIMED_ARTIFACTS = [
 		arch: "x64",
 		assetName: "runtimed-nightly-linux-x64",
 		executable: "runtimed-nightly",
-		bytes: 45_089_960,
-		sha256: "b30d6bd49b0b2f4dfcd1f9998db5f52289522a39c12d7796235b15ea122f5018",
+		bytes: 51_672_024,
+		sha256: "8e770e37ba03bd082ba2b952de4362e239a547d26974232a772299bb2ae7e2d0",
 	},
 	{
 		target: "linux-arm64",
@@ -70,8 +70,8 @@ export const RUNTIMED_ARTIFACTS = [
 		arch: "arm64",
 		assetName: "runtimed-nightly-linux-arm64",
 		executable: "runtimed-nightly",
-		bytes: 47_358_592,
-		sha256: "d482233b8b64e78687c8610d0a224edcff5143823f60644c5a863392464d5e0c",
+		bytes: 53_926_312,
+		sha256: "9ba3c5bb9f2920616d4c32a909fb67fc96194813e2e4bbb33f5eddf33d18e158",
 	},
 	{
 		target: "win32-arm64",
@@ -79,8 +79,8 @@ export const RUNTIMED_ARTIFACTS = [
 		arch: "arm64",
 		assetName: "runtimed-nightly-windows-arm64.exe",
 		executable: "runtimed-nightly.exe",
-		bytes: 39_294_816,
-		sha256: "df1d2fa32d1f79db2f6608256a936484d7495f24418600dcea55bb81074c7e66",
+		bytes: 43_348_832,
+		sha256: "aea64ca91857ea49311fb5d2be8760ea59567a9fe4aec7db2c636a381e289572",
 	},
 	{
 		target: "win32-x64",
@@ -88,8 +88,8 @@ export const RUNTIMED_ARTIFACTS = [
 		arch: "x64",
 		assetName: "runtimed-nightly-windows-x64.exe",
 		executable: "runtimed-nightly.exe",
-		bytes: 42_325_344,
-		sha256: "62b9a03b2bfbd063f9552a0e15d92fead8898d593a45cb568ed6a79071f2d302",
+		bytes: 46_461_792,
+		sha256: "5fbf730ac0325dedfd3abe9f77ed1f43d85af5a57abf82151959522321923f85",
 	},
 ] as const satisfies readonly NativeReleaseArtifact[];
 

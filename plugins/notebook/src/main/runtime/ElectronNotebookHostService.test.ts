@@ -37,9 +37,14 @@ vi.mock("./daemon-peer-authenticator.js", () => ({
 
 import { ElectronNotebookHostService } from "./ElectronNotebookHostService.js";
 
-function relay(notebookId: string, notebookPath?: string): RelaySession {
+function relay(
+	notebookId: string,
+	notebookPath?: string,
+	keyedDocKinds: string[] = [],
+): RelaySession {
 	const info: RelayInfo = {
 		notebookId,
+		keyedDocKinds,
 		commentsNotebookRef: null,
 		protocol: "runtimed",
 		protocolVersion: 7,
@@ -170,6 +175,32 @@ describe("ElectronNotebookHostService", () => {
 		expect(server.emit).toHaveBeenCalledWith(
 			"daemon.ready",
 			expect.objectContaining({ notebook_id: "669d39ec-39d6-4160-815c-b46e170cde8d" }),
+		);
+		expect(vi.mocked(server.emit).mock.calls[0]?.[1]).not.toHaveProperty("keyed_doc_kinds");
+	});
+
+	it("forwards the keyed document kinds the room routes in the ready payload", async () => {
+		mocks.createRelay.mockResolvedValueOnce(
+			relay("669d39ec-39d6-4160-815c-b46e170cde8d", undefined, ["bokeh_session"]),
+		);
+		const service = new ElectronNotebookHostService({
+			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			socketPath: "/tmp/nightly.sock",
+		});
+
+		await service.connect(
+			port(),
+			{
+				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
+				sessionId: "kilo-1",
+				title: "Analysis",
+			},
+			42,
+		);
+
+		expect(server.emit).toHaveBeenCalledWith(
+			"daemon.ready",
+			expect.objectContaining({ keyed_doc_kinds: ["bokeh_session"] }),
 		);
 	});
 

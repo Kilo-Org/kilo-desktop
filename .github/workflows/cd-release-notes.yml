@@ -33,7 +33,7 @@ concurrency:
 
 jobs:
   release-notes:
-    uses: anaconda/internal-actions/.github/workflows/release-notes.yml@a99bdffa898d142ea060d540e8908b0733aeb013 # v2.22.0
+    uses: anaconda/internal-actions/.github/workflows/release-notes.yml@f476a9b2c6a30af447cd2305038a65075498b39f # v2.23.0
     permissions:
       contents: read
       pull-requests: read

@@ -165,8 +165,8 @@ settings:
 catalogs:
   default:
     '@pierre/diffs':
-      specifier: 1.6.1
-      version: 1.6.1
+      specifier: 1.6.2
+      version: 1.6.2
     '@pierre/trees':
       specifier: 1.0.0-beta.6
       version: 1.0.0-beta.6
@@ -1212,7 +1212,7 @@ importers:
         version: 0.2.0
       '@pierre/diffs':
         specifier: 'catalog:'
-        version: 1.6.1(@shikijs/themes@4.4.2)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.6.2(@shikijs/themes@4.4.2)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@pierre/trees':
         specifier: 'catalog:'
         version: 1.0.0-beta.6(@shikijs/themes@4.4.2)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(shiki@4.4.2)
@@ -1324,7 +1324,7 @@ importers:
         version: link:../../packages/git-client
       '@pierre/diffs':
         specifier: 'catalog:'
-        version: 1.6.1(@shikijs/themes@4.4.2)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.6.2(@shikijs/themes@4.4.2)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@pierre/trees':
         specifier: 'catalog:'
         version: 1.0.0-beta.6(@shikijs/themes@4.4.2)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(shiki@4.4.2)
@@ -1667,7 +1667,7 @@ importers:
         version: link:opencode-sdk-compat
       '@pierre/diffs':
         specifier: 'catalog:'
-        version: 1.6.1(@shikijs/themes@4.4.2)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.6.2(@shikijs/themes@4.4.2)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@tanstack/react-virtual':
         specifier: ^3.14.9
         version: 3.14.9(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -4210,8 +4210,8 @@ packages:
     resolution: {integrity: sha512-7FNeNl8NCE7aINx7WXiKQrPYZWC/hvrTsmk6zmxbI7LTXE7hVek/n8AfVgpe2y82zl3w0HvCHN0bVKMBoJcC0w==}
     engines: {node: '>= 10.0.0'}
 
-  '@pierre/diffs@1.6.1':
-    resolution: {integrity: sha512-XTfLW4bFETyosZfFNUoyRh1zPE4tmAijOoxdHx4X805tlaq/7/fuQXIiJSm21+jLkDo8vn5elQ+2O4YtMTKM0Q==}
+  '@pierre/diffs@1.6.2':
+    resolution: {integrity: sha512-Hpk+HjjsJ2IWRZ3ALAa7rdBfhF2Zeyh5Kk7L4riMXRo3eHal9yQR1TgBryp+OzGyxfFfwsnEBOQztoANZIzpMQ==}
     peerDependencies:
       react: ^18.3.1 || ^19.0.0
       react-dom: ^18.3.1 || ^19.0.0
@@ -4221,8 +4221,8 @@ packages:
       react-dom:
         optional: true
 
-  '@pierre/highlights@0.2.0':
-    resolution: {integrity: sha512-hTpcOU1EzDAP4bYtEhxmMu2jwMvtkUydRUBUpWMSHTs3dw0IaC3Ld5ansMy18L0GE3b6Vfl2OGkLK+pWWpnBmw==}
+  '@pierre/highlights@0.3.0':
+    resolution: {integrity: sha512-s6xZ/giPPrSeCO2w254GiysUXD4ditKMTOrl1vHynvPqP7VdlujYi01O9joxJ0T16XkoXGQMN6zkRi9+O8NCzg==}
 
   '@pierre/theme@2.0.0':
     resolution: {integrity: sha512-yNDd9GYLQl1mEUJR8AneJ5e4ohLIHQd/wZLWr4fagt78vS2RwwZNW530vVgHqXFAyFVcFlRmGUD5ramXH46OXw==}
@@ -12583,9 +12583,9 @@ snapshots:
       '@parcel/watcher-win32-arm64': 2.6.0
       '@parcel/watcher-win32-x64': 2.6.0
 
-  '@pierre/diffs@1.6.1(@shikijs/themes@4.4.2)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+  '@pierre/diffs@1.6.2(@shikijs/themes@4.4.2)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
     dependencies:
-      '@pierre/highlights': 0.2.0
+      '@pierre/highlights': 0.3.0
       '@pierre/theme': 2.0.0
       '@pierre/theming': 1.0.2(@pierre/theme@2.0.0)(@shikijs/themes@4.4.2)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(shiki@4.4.2)
       diff: 9.0.0
@@ -12598,7 +12598,7 @@ snapshots:
     transitivePeerDependencies:
       - '@shikijs/themes'
 
-  '@pierre/highlights@0.2.0': {}
+  '@pierre/highlights@0.3.0': {}
 
   '@pierre/theme@2.0.0': {}
 

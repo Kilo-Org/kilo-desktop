@@ -1,4 +1,4 @@
-import { access, constants, realpath, stat } from "node:fs/promises";
+import { realpath, stat } from "node:fs/promises";
 
 import type { WorkspaceFolderStatus } from "../../contracts/workspaces/status.js";
 import type { Workspace } from "../../contracts/workspaces/schemas.js";
@@ -8,7 +8,7 @@ const PROBE_CONCURRENCY = 8;
 
 /**
  * Reads stored workspace folders without mutating workspace records. The
- * bounded, timed probes prevent an inaccessible mount from stalling the main
+ * bounded, timed probes prevent an unreachable mount from stalling the main
  * process while still reporting its original stored path to the UI.
  */
 export class WorkspaceFolderStatusService {
@@ -42,7 +42,6 @@ async function isAvailableDirectory(folderPath: string): Promise<boolean> {
 async function probeDirectory(folderPath: string): Promise<boolean> {
 	const resolvedPath = await realpath(folderPath);
 	if (!(await stat(resolvedPath)).isDirectory()) return false;
-	await access(resolvedPath, constants.R_OK | constants.X_OK);
 	return true;
 }
 

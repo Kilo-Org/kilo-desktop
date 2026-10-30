@@ -33,6 +33,10 @@ function useThreadWorkspaceOptions() {
 	};
 }
 
+export function useThreadWorkspaceId(): string | undefined {
+	return useThreadWorkspaceOptions().sessionWorkspaceId;
+}
+
 /** Session workspace when the thread is bound, otherwise the active workspace. */
 export function useThreadWorkspace(): Workspace | undefined {
 	return resolveSessionWorkspace(useThreadWorkspaceOptions());

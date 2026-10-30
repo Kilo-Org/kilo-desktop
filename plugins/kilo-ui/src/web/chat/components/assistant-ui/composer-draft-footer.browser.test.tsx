@@ -28,6 +28,7 @@ import { SdkProvider } from "@kilo-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeMainSdk, createFakeSdk } from "@kilo-desktop/testing";
 
 import type { KiloGlobalConnection } from "../../../../contracts/chat/schemas.js";
+import { workspaceStatusContract } from "../../../../contracts/workspaces/status.js";
 import { kiloUiBrowserRegister } from "../../../browserRegister.js";
 import { OPTIMISTIC_AGENT_CATALOG } from "../../agent-selection/agent-catalog.js";
 import { ChatAgentSelectionProvider } from "../../agent-selection/ChatAgentSelectionContext.js";
@@ -349,6 +350,28 @@ describe("ComposerDraftFooter zone host", () => {
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("footer-probe")).toHaveTextContent("/repo/primary");
+	});
+
+	it("opens workspace settings for unavailable active workspace folders", async () => {
+		const { sdk, mainSdk } = await bootedFooterSdk();
+		const saved = (await mainSdk.invoke("create", {
+			name: "Project",
+			color: "#F87171",
+			folders: [{ path: "/repo/project", isPrimary: true }],
+		})) as { id: string };
+		localStorage.setItem("kilo-ui.active-workspace", saved.id);
+		mainSdk.channels(workspaceStatusContract).handleAll({
+			"workspaceStatus.list": async () => [
+				{ workspaceId: saved.id, unavailableFolders: ["/repo/project"] },
+			],
+		});
+
+		const { baseElement } = renderFooter(sdk);
+		const screen = page.elementLocator(baseElement);
+
+		await expect.element(screen.getByTestId("kilo-composer-unavailable-folders")).toBeVisible();
+		await screen.getByTestId("kilo-composer-unavailable-folders").click();
+		await expect.element(screen.getByRole("heading", { name: "Edit workspace" })).toBeVisible();
 	});
 
 	it("renders only the workspace selector when the zone is empty", async () => {

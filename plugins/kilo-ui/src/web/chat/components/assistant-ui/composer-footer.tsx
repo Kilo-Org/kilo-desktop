@@ -8,10 +8,12 @@ import { useSdkContributions } from "@kilo-desktop/sdk-react";
 import {
 	useThreadWorkingDirectory,
 	useThreadWorkspaceDirectory,
+	useThreadWorkspaceId,
 } from "../../../session/workspace/use-workspace-directory.js";
 import { directoryBasename } from "../../../session/activity/session-activity-logic.js";
 import { useComposerUsageView } from "../../usage/use-session-model-usage.js";
 import { useIsThreadAwaitingWorktree } from "../../worktree-setup/WorktreeSetupContext.js";
+import { WorkspaceUnavailableFoldersIndicator } from "../../../workspaces/WorkspaceUnavailableFoldersIndicator.js";
 import { ComposerContext } from "./elements/composer-context.js";
 import { CostMeter } from "./elements/cost-meter.js";
 
@@ -65,6 +67,7 @@ export const ComposerSessionMode: FC<{ isWorktree: boolean; name?: string | unde
 /** Active-thread strip under the composer: contributed session chrome and usage. */
 export const ComposerFooter: FC = () => {
 	const view = useComposerUsageView();
+	const workspaceId = useThreadWorkspaceId();
 	const workspaceDirectory = useThreadWorkspaceDirectory();
 	const resolvedWorkingDirectory = useThreadWorkingDirectory();
 	const isAwaitingWorktree = useIsThreadAwaitingWorktree();
@@ -83,41 +86,46 @@ export const ComposerFooter: FC = () => {
 				aria-hidden
 				className="bg-pane pointer-events-none absolute -inset-x-4 -top-1.5 -bottom-1.5"
 			/>
-			<div className="relative flex min-w-0 flex-1 items-center gap-2 overflow-hidden pl-2.5 @min-[32rem]:gap-4">
-				<ComposerSessionMode
-					isWorktree={
-						isAwaitingWorktree ||
-						(workspaceDirectory !== undefined &&
+			<div className="relative flex min-w-0 flex-1 items-center gap-1 overflow-hidden pl-2.5">
+				<div className="flex shrink-0 items-center gap-1.5">
+					<ComposerSessionMode
+						isWorktree={
+							isAwaitingWorktree ||
+							(workspaceDirectory !== undefined &&
+								workingDirectory !== undefined &&
+								workingDirectory !== workspaceDirectory)
+						}
+						name={
+							workspaceDirectory !== undefined &&
 							workingDirectory !== undefined &&
-							workingDirectory !== workspaceDirectory)
-					}
-					name={
-						workspaceDirectory !== undefined &&
-						workingDirectory !== undefined &&
-						workingDirectory !== workspaceDirectory
-							? directoryBasename(workingDirectory)
-							: undefined
-					}
-				/>
-				{contributions.map((contribution) => {
-					if (typeof contribution.component !== "function") {
-						console.warn(
-							`[ComposerFooter] Skipping contribution "${contribution.label}" from ` +
-								`"${contribution.featureId}" in zone "${CHAT_COMPOSER_FOOTER_ZONE}": component is not a React component.`,
+							workingDirectory !== workspaceDirectory
+								? directoryBasename(workingDirectory)
+								: undefined
+						}
+					/>
+					<WorkspaceUnavailableFoldersIndicator workspaceId={workspaceId} compact />
+				</div>
+				<div className="flex items-center gap-1.5">
+					{contributions.map((contribution) => {
+						if (typeof contribution.component !== "function") {
+							console.warn(
+								`[ComposerFooter] Skipping contribution "${contribution.label}" from ` +
+									`"${contribution.featureId}" in zone "${CHAT_COMPOSER_FOOTER_ZONE}": component is not a React component.`,
+							);
+							return null;
+						}
+						const Component =
+							contribution.component as ComponentType<ChatComposerFooterContributionProps>;
+						return (
+							<span key={`${contribution.featureId}:${contribution.id}`} className="flex min-w-0">
+								<Component
+									{...(workspaceDirectory === undefined ? {} : { workspaceDirectory })}
+									{...(workingDirectory === undefined ? {} : { workingDirectory })}
+								/>
+							</span>
 						);
-						return null;
-					}
-					const Component =
-						contribution.component as ComponentType<ChatComposerFooterContributionProps>;
-					return (
-						<span key={`${contribution.featureId}:${contribution.id}`} className="flex min-w-0">
-							<Component
-								{...(workspaceDirectory === undefined ? {} : { workspaceDirectory })}
-								{...(workingDirectory === undefined ? {} : { workingDirectory })}
-							/>
-						</span>
-					);
-				})}
+					})}
+				</div>
 			</div>
 			<ComposerContext
 				className="relative shrink-0"

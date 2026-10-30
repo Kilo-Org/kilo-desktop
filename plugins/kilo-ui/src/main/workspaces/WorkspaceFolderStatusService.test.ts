@@ -1,15 +1,28 @@
 import fs from "node:fs";
+import { access } from "node:fs/promises";
+import type * as FsPromises from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Workspace } from "../../contracts/workspaces/schemas.js";
 import { WorkspaceFolderStatusService } from "./WorkspaceFolderStatusService.js";
 
+vi.mock("node:fs/promises", async (importOriginal) => {
+	const actual = await importOriginal<typeof FsPromises>();
+	return {
+		...actual,
+		access: vi.fn(async () => {
+			throw Object.assign(new Error("Desktop folder access denied"), { code: "EACCES" });
+		}),
+	};
+});
+
 const directories: string[] = [];
 
 afterEach(() => {
+	vi.clearAllMocks();
 	for (const directory of directories.splice(0)) {
 		fs.rmSync(directory, { recursive: true, force: true });
 	}
@@ -26,7 +39,7 @@ function workspace(folders: Workspace["folders"]): Workspace {
 }
 
 describe("WorkspaceFolderStatusService", () => {
-	it("returns no unavailable folders for an existing directory", async () => {
+	it("returns no unavailable folders for a directory that resolves", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "workspace-folder-status-"));
 		directories.push(root);
 
@@ -35,6 +48,7 @@ describe("WorkspaceFolderStatusService", () => {
 				workspace([{ id: "folder-1", path: root, isPrimary: true, position: 0 }]),
 			]),
 		).resolves.toEqual([{ workspaceId: "workspace-1", unavailableFolders: [] }]);
+		expect(access).not.toHaveBeenCalled();
 	});
 
 	it("returns stored paths for deleted directories and files", async () => {

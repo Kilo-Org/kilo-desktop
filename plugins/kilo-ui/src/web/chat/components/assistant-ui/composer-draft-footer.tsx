@@ -7,6 +7,7 @@ import { useSdkContributions } from "@kilo-desktop/sdk-react";
 import { useWorkspaceDirectory } from "../../../session/workspace/use-workspace-directory.js";
 import { useWorkspacesFeature } from "../../../workspaces/WorkspacesFeatureContext.js";
 import { WorkspaceSelector } from "../../../workspaces/WorkspaceSelector.js";
+import { WorkspaceUnavailableFoldersIndicator } from "../../../workspaces/WorkspaceUnavailableFoldersIndicator.js";
 
 /**
  * Qualified id of the composer draft footer zone, owned by kilo-ui. Other
@@ -42,6 +43,7 @@ export const ComposerDraftFooter: FC = () => {
 		>
 			<div className="flex min-w-0 flex-1 items-center gap-1">
 				<WorkspaceSelector />
+				<WorkspaceUnavailableFoldersIndicator />
 				{contributions.map((contribution) => {
 					if (typeof contribution.component !== "function") {
 						console.warn(

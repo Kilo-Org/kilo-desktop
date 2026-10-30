@@ -12,6 +12,7 @@ import { SdkProvider } from "@kilo-desktop/sdk-react";
 import { createFakeFeatureSystem, createFakeMainSdk, createFakeSdk } from "@kilo-desktop/testing";
 
 import type { KiloGlobalConnection } from "../../../../contracts/chat/schemas.js";
+import { workspaceStatusContract } from "../../../../contracts/workspaces/status.js";
 import { kiloUiBrowserRegister } from "../../../browserRegister.js";
 import { KiloAuthContext, type KiloAuthContextValue } from "../../../account/KiloAuthContext.js";
 import { WorkspacesFeatureProvider } from "../../../workspaces/WorkspacesFeatureProvider.js";
@@ -388,6 +389,41 @@ describe("ComposerFooter", () => {
 			.element(screen.getByRole("button", { name: "Select workspace" }))
 			.not.toBeInTheDocument();
 		await expect.element(screen.getByTestId("footer-probe")).toHaveTextContent("/repo/primary");
+	});
+
+	it("opens workspace settings for unavailable active chat folders", async () => {
+		fetchSessionModelUsage.mockResolvedValue({
+			sessionIDs: ["ses-1"],
+			totals: {
+				steps: 1,
+				cost: 0.01,
+				tokens: {
+					input: 1_200,
+					output: 300,
+					reasoning: 0,
+					cache: { read: 0, write: 0 },
+				},
+			},
+			models: [],
+		});
+
+		const { screen } = await renderThread(activeMessages, async (_sdk, mainSdk) => {
+			const saved = (await mainSdk.invoke("create", {
+				name: "Project",
+				color: "#F87171",
+				folders: [{ path: "/repo/project", isPrimary: true }],
+			})) as { id: string };
+			localStorage.setItem("kilo-ui.active-workspace", saved.id);
+			mainSdk.channels(workspaceStatusContract).handleAll({
+				"workspaceStatus.list": async () => [
+					{ workspaceId: saved.id, unavailableFolders: ["/repo/project"] },
+				],
+			});
+		});
+
+		await expect.element(screen.getByTestId("kilo-composer-unavailable-folders")).toBeVisible();
+		await screen.getByTestId("kilo-composer-unavailable-folders").click();
+		await expect.element(screen.getByRole("heading", { name: "Edit workspace" })).toBeVisible();
 	});
 
 	it("keeps cost and hides token counts on a narrow footer", async () => {

@@ -6,7 +6,7 @@ import type * as AssistantUiReact from "@assistant-ui/react";
 
 import { SessionActivityProvider } from "../activity/SessionActivityProvider.js";
 import { createSessionActivityStore } from "../activity/session-activity-store.js";
-import { useThreadWorkingDirectory } from "./use-workspace-directory.js";
+import { useThreadWorkingDirectory, useThreadWorkspaceId } from "./use-workspace-directory.js";
 
 const threadListItem = vi.hoisted(() => ({
 	remoteId: null as string | null,
@@ -33,6 +33,23 @@ function withStore(children: ReactNode, store: ReturnType<typeof createSessionAc
 }
 
 describe("useThreadWorkingDirectory", () => {
+	it("returns the stored workspace id when the bound workspace no longer resolves", () => {
+		threadListItem.remoteId = "ses-deleted-workspace";
+		const store = createSessionActivityStore({ storage: null });
+		store.getState().hydrateSessions([
+			{
+				id: "ses-deleted-workspace",
+				workspaceId: "workspace-deleted",
+			},
+		]);
+
+		const { result } = renderHook(() => useThreadWorkspaceId(), {
+			wrapper: ({ children }) => withStore(children, store),
+		});
+
+		expect(result.current).toBe("workspace-deleted");
+	});
+
 	it("returns the worktree directory when the session is worktree-backed", () => {
 		threadListItem.remoteId = "ses-worktree";
 		const store = createSessionActivityStore({ storage: null });

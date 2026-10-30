@@ -14,4 +14,6 @@ export const chatComposerData = {
 		// used by new-chat-draft.ts to scope the same dropdown.
 		suggestionsListboxName: "Suggestions",
 	},
+	/** Bounds the wait for the mock chat-completions stub's reply to render on the assistant message (session setup + round trip through the packaged Kilo CLI, not a real model's latency). */
+	assistantReplyTimeoutMs: 20_000,
 } as const;

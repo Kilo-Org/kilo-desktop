@@ -1,0 +1,3 @@
+Kilo E2E attachment fixture.
+Order reference: ORDER-4471
+Status: text/plain fixture for chat attachment e2e coverage.

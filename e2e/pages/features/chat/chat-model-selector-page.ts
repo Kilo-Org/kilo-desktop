@@ -154,6 +154,16 @@ export class ChatModelSelectorPage {
 		await this.selectRail(this.railKiloGateway());
 	}
 
+	/** Selects a custom provider's rail entry by the provider id its name slugifies to (`kilo-model-selector-rail-<providerId>`, same pattern as the built-in Favorites/Local Server/Kilo Gateway rails above). */
+	async selectCustomProviderRail(providerId: string): Promise<void> {
+		await this.selectRail(getLocatorByTestId(`kilo-model-selector-rail-${providerId}`));
+	}
+
+	/** Clicks a model option by its full id (`<providerId>/<modelId>`) once its rail is already selected and the option is visible. */
+	async selectModel(modelId: string): Promise<void> {
+		await click(this.modelOption(modelId));
+	}
+
 	async searchModels(query: string): Promise<void> {
 		await fill(this.searchInput(), query);
 	}

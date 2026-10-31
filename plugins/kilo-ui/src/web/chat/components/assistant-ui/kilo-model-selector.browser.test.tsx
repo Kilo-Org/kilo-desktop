@@ -986,6 +986,56 @@ describe("KiloModelSelector", () => {
 		await expect.element(screen.getByTestId("kilo-model-option-kilo/openai/gpt-low")).toBeVisible();
 	});
 
+	it("groups ~-prefixed latest aliases under their publisher's single filter choice", async () => {
+		const screen = renderSelector({
+			selection: {
+				model: { providerID: "kilo", modelID: "anthropic/claude-pinned" },
+				catalog: {
+					providers: [{ id: "kilo", name: "Kilo Gateway", connected: true }],
+					models: [
+						{
+							id: "kilo/anthropic/claude-pinned",
+							name: "Anthropic: Claude Pinned",
+							providerID: "kilo",
+							modelID: "anthropic/claude-pinned",
+						},
+						{
+							id: "kilo/~anthropic/claude-latest",
+							name: "Anthropic: Claude Latest",
+							providerID: "kilo",
+							modelID: "~anthropic/claude-latest",
+						},
+						{
+							id: "kilo/openai/gpt",
+							name: "OpenAI: GPT",
+							providerID: "kilo",
+							modelID: "openai/gpt",
+						},
+					],
+					defaults: { kilo: "anthropic/claude-pinned" },
+				},
+				isCatalogPending: false,
+			},
+		});
+
+		await screen.getByTestId("kilo-model-selector-trigger").click();
+		await screen.getByTestId("kilo-model-filter-trigger").click();
+		await screen.getByTestId("kilo-model-filter-publisher-trigger").click();
+		await expect
+			.element(screen.getByTestId("kilo-model-filter-publisher-~anthropic"))
+			.not.toBeInTheDocument();
+		await screen.getByTestId("kilo-model-filter-publisher-anthropic").click();
+		await expect
+			.element(screen.getByTestId("kilo-model-option-kilo/anthropic/claude-pinned"))
+			.toBeVisible();
+		await expect
+			.element(screen.getByTestId("kilo-model-option-kilo/~anthropic/claude-latest"))
+			.toBeVisible();
+		await expect
+			.element(screen.getByTestId("kilo-model-option-kilo/openai/gpt"))
+			.not.toBeInTheDocument();
+	});
+
 	it("scopes Gateway filters away from other providers and cross-provider search", async () => {
 		const screen = renderSelector({
 			selection: {

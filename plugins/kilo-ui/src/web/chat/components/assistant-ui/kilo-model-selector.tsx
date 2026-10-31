@@ -194,8 +194,10 @@ function isKiloAutoModel(model: KiloCatalogModel): boolean {
 
 function gatewayPublisherId(model: KiloCatalogModel): string | undefined {
 	if (model.providerID !== KILO_PROVIDER_ID || isKiloAutoModel(model)) return undefined;
-	const separator = model.modelID.indexOf("/");
-	return separator > 0 ? model.modelID.slice(0, separator) : "other";
+	// "~vendor/..." ids are floating "latest" aliases from the same publisher as "vendor/...".
+	const modelID = model.modelID.replace(/^~/, "");
+	const separator = modelID.indexOf("/");
+	return separator > 0 ? modelID.slice(0, separator) : "other";
 }
 
 function gatewayPublisherLabel(model: KiloCatalogModel, id: string): string {

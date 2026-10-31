@@ -16,7 +16,7 @@
 		"vite": "*"
 	},
 	"devDependencies": {
-		"@types/node": "^24.13.3",
+		"@types/node": "^26.0.0",
 		"@vitest/coverage-v8": "catalog:",
 		"typescript": "catalog:",
 		"vite": "catalog:",

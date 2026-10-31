@@ -89,7 +89,7 @@
 		"@sentry/vite-plugin": "catalog:",
 		"@types/electron-squirrel-startup": "1.0.2",
 		"@types/lodash": "^4.17.20",
-		"@types/node": "^24.13.3",
+		"@types/node": "^26.0.0",
 		"@types/semver": "^7.8.0",
 		"@vitest/coverage-v8": "catalog:",
 		"cross-env": "^10.1.0",

@@ -47,7 +47,7 @@
 		"@kilo-desktop/sdk-react": "workspace:*",
 		"@kilo-desktop/ui": "workspace:*",
 		"@opencode-ai/sdk": "workspace:*",
-		"@types/node": "^24.13.3",
+		"@types/node": "^26.0.0",
 		"@vitest/coverage-v8": "catalog:",
 		"concurrently": "^10.0.6",
 		"cross-env": "^10.1.0",

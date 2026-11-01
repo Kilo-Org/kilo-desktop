@@ -189,7 +189,9 @@ export function createActiveUntrustedContentSecurityPolicy(): string {
 		`script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: ${BOKEH_CDN_SOURCE} ${HOLOVIZ_CDN_SOURCE}`,
 		`style-src 'self' 'unsafe-inline' ${HOLOVIZ_CDN_SOURCE}`,
 		`img-src 'self' data: blob: ${loopback}`,
-		"font-src 'self' data: blob:",
+		// panel-material-ui's stylesheet on the HoloViz CDN references its Roboto
+		// and Material Icons fonts there.
+		`font-src 'self' data: blob: ${HOLOVIZ_CDN_SOURCE}`,
 		`media-src 'self' data: blob: ${loopback}`,
 		`connect-src 'self' ${loopback}`,
 		"worker-src 'self' blob:",

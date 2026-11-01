@@ -456,10 +456,15 @@ describe("ElectronProtocol", () => {
 			.split(";")
 			.map((directive) => directive.trim())
 			.find((directive) => directive.startsWith("style-src"));
+		const fontSrc = outputPolicy
+			.split(";")
+			.map((directive) => directive.trim())
+			.find((directive) => directive.startsWith("font-src"));
 
 		expect(scriptSrc).toContain("https://cdn.bokeh.org");
 		expect(scriptSrc).toContain("https://cdn.holoviz.org");
 		expect(styleSrc).toContain("https://cdn.holoviz.org");
+		expect(fontSrc).toContain("https://cdn.holoviz.org");
 
 		expect(createContentSecurityPolicy()).not.toContain("cdn.bokeh.org");
 		expect(createContentSecurityPolicy()).not.toContain("cdn.holoviz.org");

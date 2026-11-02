@@ -183,10 +183,12 @@ export class SplashWindow {
 
 	#sendStatus(message: string): void {
 		if (!this.#window || this.#window.isDestroyed()) return;
-		// Execute JS in the renderer to update the status text.
-		void this.#window.webContents.executeJavaScript(
-			`document.getElementById("status").textContent=${JSON.stringify(message)}`,
-		);
+		// Best-effort: close() can destroy the splash while an update is in flight.
+		// Since Electron 45 that rejects ("Render frame was disposed…") instead of
+		// never settling, and a stale status line on a dying window is irrelevant.
+		this.#window.webContents
+			.executeJavaScript(`document.getElementById("status").textContent=${JSON.stringify(message)}`)
+			.catch(() => {});
 	}
 }
 

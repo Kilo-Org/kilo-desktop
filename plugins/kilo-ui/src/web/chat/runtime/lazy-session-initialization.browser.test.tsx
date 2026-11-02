@@ -261,6 +261,12 @@ describe("patched OpenCode lazy session initialization", () => {
 		});
 		const screen = page.elementLocator(baseElement);
 		await expect.element(screen.getByTestId("thread-title")).toHaveTextContent(KILO_DEFAULT_TITLE);
+		// The list title above can come from the thread-list fetch alone. Rename only
+		// once the controller has loaded the session it mirrors, or its late load
+		// mirrors Kilo's title back over the rename.
+		await expect
+			.element(screen.getByTestId("opencode-session-id"))
+			.toHaveTextContent("existing-session");
 
 		await runtime!.threads.mainItem.rename("Workspace audit");
 

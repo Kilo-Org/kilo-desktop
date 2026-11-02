@@ -22,7 +22,7 @@ vi.mock("electron", () => ({
 		readonly show = vi.fn();
 		readonly destroy = vi.fn();
 		readonly isDestroyed = vi.fn(() => false);
-		readonly webContents = { executeJavaScript: vi.fn() };
+		readonly webContents = { executeJavaScript: vi.fn(() => Promise.resolve()) };
 
 		constructor(readonly options: Record<string, unknown>) {
 			fakeWindows.created.push(this as unknown as (typeof fakeWindows.created)[number]);
@@ -145,6 +145,29 @@ describe("SplashWindow", () => {
 		expect(fakeWindows.created[0]!.webContents.executeJavaScript).toHaveBeenCalledWith(
 			expect.stringContaining("Preparing todos"),
 		);
+	});
+
+	it("does not leak a rejection when the splash is destroyed while a status update is in flight", async () => {
+		const unhandledRejection = vi.fn();
+		process.on("unhandledRejection", unhandledRejection);
+		try {
+			const splash = new SplashWindow(reporter, { isDark: false, logger: noopLogger });
+			splash.show();
+			// A plain function, not vi.fn: vi.fn subscribes to returned promises to
+			// record settledResults, which would mark the rejection as handled.
+			Object.assign(fakeWindows.created[0]!.webContents, {
+				executeJavaScript: () =>
+					Promise.reject(new Error("Render frame was disposed before the request completed")),
+			});
+
+			reporter.complete();
+			await splash.close();
+			await new Promise((resolve) => setImmediate(resolve));
+
+			expect(unhandledRejection).not.toHaveBeenCalled();
+		} finally {
+			process.off("unhandledRejection", unhandledRejection);
+		}
 	});
 
 	it("close() destroys the window when it was never shown (fast boot skip)", async () => {

@@ -146,7 +146,8 @@ describe("packaged production dependencies", () => {
 
 	it("pins zod to one major so pnpm 12 deploy is unambiguous", () => {
 		const workspace = readFileSync(path.join(workspaceRoot, "pnpm-workspace.yaml"), "utf8");
-		expect(workspace).toContain("zod: ^4.4.3");
+		const overrides = workspace.slice(workspace.indexOf("\noverrides:")).split(/\n(?=\S)/)[1];
+		expect(overrides).toMatch(/^\s+zod: \^4\.\d+\.\d+$/m);
 	});
 
 	it("only unpacks native modules from ASAR", () => {

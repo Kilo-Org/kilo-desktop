@@ -33,7 +33,7 @@ catalog:
   "@tanstack/react-query": ^5.101.4
   react: ^19.0.0
   react-dom: ^19.0.0
-  zod: ^4.4.3
+  zod: ^4.6.6
 
 savePrefix: ^
 
@@ -50,7 +50,7 @@ overrides:
   # pnpm 12 deploy fails with ERR_PNPM_DEPLOY_AMBIGUOUS_PEER when workspace
   # packages peer on zod and the graph contains both 3.x (MCP SDK 1) and
   # catalog 4.x.
-  zod: ^4.4.3
+  zod: ^4.6.6
 
 allowBuilds:
   electron: true

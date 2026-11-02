@@ -11,7 +11,7 @@
 		"check": "tsc --noEmit -p tsconfig.json"
 	},
 	"dependencies": {
-		"@kilocode/sdk": "7.8.17"
+		"@kilocode/sdk": "7.8.18"
 	},
 	"devDependencies": {
 		"typescript": "catalog:"

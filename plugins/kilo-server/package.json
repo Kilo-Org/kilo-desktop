@@ -55,11 +55,11 @@
 		}
 	},
 	"optionalDependencies": {
-		"@kilocode/cli-darwin-arm64": "7.8.17",
-		"@kilocode/cli-linux-arm64": "7.8.17",
-		"@kilocode/cli-linux-x64-baseline": "7.8.17",
-		"@kilocode/cli-windows-arm64": "7.8.17",
-		"@kilocode/cli-windows-x64-baseline": "7.8.17"
+		"@kilocode/cli-darwin-arm64": "7.8.18",
+		"@kilocode/cli-linux-arm64": "7.8.18",
+		"@kilocode/cli-linux-x64-baseline": "7.8.18",
+		"@kilocode/cli-windows-arm64": "7.8.18",
+		"@kilocode/cli-windows-x64-baseline": "7.8.18"
 	},
 	"devDependencies": {
 		"@kilo-desktop/sdk-react": "workspace:*",

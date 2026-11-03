@@ -1660,8 +1660,8 @@ importers:
         specifier: 0.21.0
         version: 0.21.0(react@19.2.8)
       '@lottiefiles/dotlottie-web':
-        specifier: 0.81.0
-        version: 0.81.0
+        specifier: 0.82.0
+        version: 0.82.0
       '@opencode-ai/sdk':
         specifier: workspace:*
         version: link:opencode-sdk-compat
@@ -3655,10 +3655,6 @@ packages:
     engines: {node: '>=18.17.0', npm: '>=9.5.0'}
     peerDependencies:
       react: ^17 || ^18 || ^19
-
-  '@lottiefiles/dotlottie-web@0.81.0':
-    resolution: {integrity: sha512-BmX/+0eaK2unVexuB0VZLvBsax2BS8fLwwIdUqF4AO9C7tFw97eTi90C//20QVK4q08SDhnnszysCGX0Qt7XPA==}
-    engines: {node: '>=18.17.0', npm: '>=9.5.0'}
 
   '@lottiefiles/dotlottie-web@0.82.0':
     resolution: {integrity: sha512-Gp0rKaBAWHs3KXO69oNu7tgh+9VYVaJqv6NDYvH0YdUJR4JxDujvX1kE03yp6o9NgeQiYnvUgHZgnZisw1Mr+Q==}
@@ -12136,8 +12132,6 @@ snapshots:
     dependencies:
       '@lottiefiles/dotlottie-web': 0.82.0
       react: 19.2.8
-
-  '@lottiefiles/dotlottie-web@0.81.0': {}
 
   '@lottiefiles/dotlottie-web@0.82.0': {}
 

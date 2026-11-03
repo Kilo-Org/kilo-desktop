@@ -34,7 +34,7 @@ export function assertValidKvNamespace(namespace: string): void {
 /**
  * `electron-store`-backed implementation of the `mainSdk.storage.kv` factory.
  *
- * The shell binds this factory to a feature's Decision #20 storage directory
+ * The shell binds this factory to a feature's own storage directory
  * so each opened store persists to `<storageDir>/<namespace>.json` — atomic
  * writes, corrupt-file recovery (`clearInvalidConfig: true`), and default
  * backfill for missing keys are all `electron-store`'s job here, which the

@@ -34,7 +34,7 @@
 		"build": {
 			"dependsOn": ["^build"],
 			"outputs": ["dist/**"],
-			"env": ["SENTRY_AUTH_TOKEN", "APP_MODE", "NODE_ENV"]
+			"env": ["SENTRY_AUTH_TOKEN", "SENTRY_ORG", "SENTRY_PROJECT", "APP_MODE", "NODE_ENV"]
 		},
 		"db:generate": {
 			"cache": false

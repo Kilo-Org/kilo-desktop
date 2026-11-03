@@ -47,9 +47,17 @@ jobs:
       UPDATE_PUBLISH_URL_STABLE: ${{ vars.UPDATE_PUBLISH_URL_STABLE }}
       AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
       AZURE_CERT_NAME: ${{ secrets.AZURE_CERT_NAME }}
+      # Service IDs for official builds (see docs/releases.md); not committed.
+      VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
+      VITE_BRIDGE_SENTRY_DSN: ${{ vars.VITE_BRIDGE_SENTRY_DSN }}
+      VITE_LAUNCHDARKLY_CLIENT_SIDE_ID: ${{ vars.VITE_LAUNCHDARKLY_CLIENT_SIDE_ID }}
+      VITE_POSTHOG_KEY: ${{ vars.VITE_POSTHOG_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Require service configuration
+        uses: ./.github/actions/require-service-config
 
       - name: Setup Node and pnpm
         uses: ./.github/actions/setup-node-pnpm

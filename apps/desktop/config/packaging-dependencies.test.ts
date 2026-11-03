@@ -160,7 +160,7 @@ describe("packaged production dependencies", () => {
 		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
 		// Nested `{**/node_modules/{a,b}/**}` does not expand in @electron/asar.
 		// Signed Preview then ships .node files inside app.asar and dies at boot
-		// requiring @runtimed/node (#163).
+		// requiring @runtimed/node.
 		expect(forge).not.toMatch(/unpack:\s*`\{/);
 		expect(forge).toContain('unpack: `**/node_modules/{${asarUnpackPackages.join(",")}}/**`');
 	});

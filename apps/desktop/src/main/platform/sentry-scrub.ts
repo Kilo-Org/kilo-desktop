@@ -22,7 +22,7 @@ import type { makeElectronTransport } from "@sentry/electron/main";
  * `beforeSendMetric`.
  *
  * This is data minimization only — it does NOT grant collection consent. Gating Sentry
- * on `allowDataCollection` is a separate concern (threat-model Privacy 2).
+ * on `allowDataCollection` is a separate concern.
  */
 
 const USER_PATH_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [

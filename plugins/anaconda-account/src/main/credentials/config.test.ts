@@ -62,7 +62,7 @@ default_site = "anaconda.com"
 [plugin.auth]
 domain = "anaconda.com"
 ssl_verify = true
-client_id = "b4ad7f1d-c784-46b5-a9fe-106e50441f5a"
+client_id = "00000000-0000-4000-8000-000000000001"
 
 [sites.local]
 domain = "localhost"
@@ -216,7 +216,7 @@ default_site = "test.com"
 					auth: {
 						domain: "anaconda.com",
 						ssl_verify: true,
-						client_id: "b4ad7f1d-c784-46b5-a9fe-106e50441f5a",
+						client_id: "00000000-0000-4000-8000-000000000001",
 						api_key: "secret-key",
 						keyring_path: "~/.anaconda/keyring",
 						redirect_uri: "http://127.0.0.1:8000/auth/oidc",

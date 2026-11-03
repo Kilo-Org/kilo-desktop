@@ -160,7 +160,7 @@ describe("ElectronProtocol", () => {
 		expect(scriptSrc).not.toContain("'unsafe-eval'");
 	});
 
-	it("hash-pins inline scripts and forbids 'unsafe-inline' in production (EoP 7)", async () => {
+	it("hash-pins inline scripts and forbids 'unsafe-inline' in production", async () => {
 		// The trusted app origin holds the preload bridge, so it must not allow
 		// arbitrary inline script. Each shipped inline script is pinned by its
 		// sha256; an injected inline script is therefore refused by the browser.
@@ -191,7 +191,7 @@ describe("ElectronProtocol", () => {
 		expect(scriptSrc).not.toContain("'unsafe-eval'");
 	});
 
-	it("ignores a development origin in a packaged build so the strict CSP holds (EoP 7)", async () => {
+	it("ignores a development origin in a packaged build so the strict CSP holds", async () => {
 		// `developmentOrigin` derives from `KILO_WEB_DEV_SERVER_URL`, which can leak
 		// into a packaged app's environment. It must NOT re-enable 'unsafe-inline'
 		// or widen script/connect-src to the dev origin when `isDevelopment` is

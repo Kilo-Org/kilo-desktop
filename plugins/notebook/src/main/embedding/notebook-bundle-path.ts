@@ -14,7 +14,7 @@ export interface NotebookBundlePathOptions {
  * error, the same contract as a missing daemon: the host is still contributed
  * and the protocol handler serves 404 for it. Note the renderer cannot tell that
  * apart from a broken bundle today, so it frames an empty document rather than
- * showing its placeholder; see the handoff's loose ends.
+ * showing its placeholder.
  */
 export function resolveNotebookBundleRoot(options: NotebookBundlePathOptions): string | undefined {
 	const exists = options.exists ?? existsSync;

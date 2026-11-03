@@ -446,7 +446,7 @@ const config: ForgeConfig = {
 			version: FuseVersion.V1,
 			// Off (Electron's recommended default): nothing in the app runs its
 			// binary as Node. Kilo reaches the WebMCP tools over the main
-			// process's MCP endpoint (docs/webmcp.md §7).
+			// process's MCP endpoint (docs/agent-tools.md).
 			[FuseV1Options.RunAsNode]: false,
 			[FuseV1Options.EnableCookieEncryption]: true,
 			[FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,

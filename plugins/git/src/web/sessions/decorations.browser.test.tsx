@@ -39,9 +39,9 @@ function entry(branch: string, pullRequest: PullRequestEntry["snapshot"]["pullRe
 }
 
 const PULL_REQUEST = {
-	number: 649,
-	url: "https://github.com/acme/repo/pull/649",
-	title: "Lazy runtimed",
+	number: 42,
+	url: "https://github.com/acme/repo/pull/42",
+	title: "Example change",
 	baseBranch: "main",
 	headBranch: "fix/lazy",
 	state: "open" as const,
@@ -94,8 +94,8 @@ describe("a session's pull request", () => {
 		await renderSlot("row", { pullRequests: WITH_PR });
 
 		const badge = page.getByTestId("git-session-row-pull-request");
-		await expect.element(badge.getByText("#649")).toBeVisible();
-		await expect.element(badge).toHaveAttribute("title", "PR #649: Lazy runtimed");
+		await expect.element(badge.getByText("#42")).toBeVisible();
+		await expect.element(badge).toHaveAttribute("title", "PR #42: Example change");
 		await expect.element(page.getByRole("link")).not.toBeInTheDocument();
 	});
 
@@ -108,7 +108,7 @@ describe("a session's pull request", () => {
 
 		await host.setPullRequests(WITH_PR);
 
-		await expect.element(page.getByText("#649")).toBeVisible();
+		await expect.element(page.getByText("#42")).toBeVisible();
 	});
 
 	it("uses the workspace's primary folder for a session in the checkout", async () => {
@@ -118,7 +118,7 @@ describe("a session's pull request", () => {
 			session("wses_1"),
 		);
 
-		await expect.element(page.getByText("#649")).toBeVisible();
+		await expect.element(page.getByText("#42")).toBeVisible();
 	});
 
 	it("is a link in its hover details that opens in the browser", async () => {
@@ -126,7 +126,7 @@ describe("a session's pull request", () => {
 
 		const link = page.getByTestId("git-session-details-pull-request");
 		await expect.element(link).toHaveAttribute("href", PULL_REQUEST.url);
-		await expect.element(link.getByText("Lazy runtimed")).toBeVisible();
+		await expect.element(link.getByText("Example change")).toBeVisible();
 		await link.click();
 
 		await vi.waitFor(() => expect(host.opens).toEqual([PULL_REQUEST.url]), WAIT);

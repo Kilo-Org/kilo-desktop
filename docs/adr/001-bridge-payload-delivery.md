@@ -4,7 +4,7 @@
 
 ## Context
 
-PR #301 removed the `CondaService` execa fallback and the Miniconda staging
+An earlier change removed the `CondaService` execa fallback and the Miniconda staging
 pipeline. The bridge sidecar is now the sole conda backend. The payload
 (Python interpreter + bridge module + manifest) must be present at runtime.
 

@@ -120,9 +120,8 @@ function useCatalogModelId(): string | undefined {
 }
 
 /**
- * The Model Catalog stays hidden behind kilo.flags' `local-model-catalog`
- * until the unified-auth rework lands. Off by default: no "From catalog"
- * entry, deep links stay inert, and the catalog dialog never opens.
+ * The Model Catalog stays hidden behind kilo.flags' `local-model-catalog`.
+ * Off by default: no "From catalog" entry, deep links stay inert, and the catalog dialog never opens.
  */
 export function LocalModelServerSettings() {
 	return (

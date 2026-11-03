@@ -74,7 +74,7 @@ export function initSentry(preferences: PreferencesStore): void {
 		// strict CSP has no `sentry-ipc:` in `connect-src` (and should not need
 		// one), so the Protocol transport is refused and renderer telemetry is
 		// silently dropped. Classic needs no CSP allowance and does not affect the
-		// hash-based `script-src` (EoP 7).
+		// hash-based `script-src`.
 		ipcMode: Sentry.IPCMode.Classic,
 		...(isDev && {
 			environment: "development",

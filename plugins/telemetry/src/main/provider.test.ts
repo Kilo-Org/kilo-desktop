@@ -59,6 +59,16 @@ describe("PostHogProvider", () => {
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 
+	it("suppresses sends when no project key is configured (source builds)", async () => {
+		const { fetchMock } = fakeFetch();
+		const p = provider({ ...baseConfig, posthogKey: "" }, fetchMock);
+
+		await p.track(entry());
+		await p.dispose();
+
+		expect(fetchMock).not.toHaveBeenCalled();
+	});
+
 	it("captures an anonymous event against the installation id with base props", async () => {
 		const { calls, fetchMock } = fakeFetch();
 		await provider(baseConfig, fetchMock).track(entry());

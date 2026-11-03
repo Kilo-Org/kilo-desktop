@@ -27,7 +27,7 @@ describe("redactPiiString", () => {
 	});
 
 	it("redacts a Windows user-home segment", () => {
-		expect(redactPiiString("C:\\Users\\dave\\z.log", "/Users/alice")).toBe(
+		expect(redactPiiString("C:\\Users\\user\\z.log", "/Users/alice")).toBe(
 			"C:\\Users\\<redacted>\\z.log",
 		);
 		expect(redactPiiString("\\Users\\erin\\z", "/Users/alice")).toBe("\\Users\\<redacted>\\z");

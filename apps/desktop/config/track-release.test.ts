@@ -74,7 +74,7 @@ describe("track release publishing", () => {
 
 	it("removes pull-request references credited to bot authors", () => {
 		const sanitized = sanitizeGeneratedReleaseNotes(
-			"* chore(deps): update pnpm to v12.10.1 by @anaconda-renovate[bot] in https://github.com/acme/app/pull/630",
+			"* chore(deps): update pnpm to v12.10.1 by @renovate[bot] in https://github.com/acme/app/pull/630",
 		);
 		expect(sanitized).toBe("* chore(deps): update pnpm to v12.10.1");
 	});
@@ -82,13 +82,13 @@ describe("track release publishing", () => {
 	it("removes internal ticket ids from release-note items", () => {
 		const markdown = [
 			"## What's Changed",
-			"* [DESK-3108]fix: transient directory EPERM - Windows",
-			"* [DESK-3129] Keep the workspace file tree resilient",
-			"* DESK-3122: serve agent tools from the main process",
-			"* DESK-3129 fix(files): keep the tree resilient",
-			"* [DESK-1] [DESK-2] feat: two tickets",
-			"* fix: retry the send (DESK-42)",
-			"* fix: retry the send [DESK-43]",
+			"* [ABC-3108]fix: transient directory EPERM - Windows",
+			"* [ABC-3129] Keep the workspace file tree resilient",
+			"* ABC-3122: serve agent tools from the main process",
+			"* ABC-3129 fix(files): keep the tree resilient",
+			"* [ABC-1] [ABC-2] feat: two tickets",
+			"* fix: retry the send (ABC-42)",
+			"* fix: retry the send [ABC-43]",
 			"* fix: keep UTF-8 names and HTTP-2 support",
 		].join("\n");
 		expect(extractReleaseNoteItems(sanitizeGeneratedReleaseNotes(markdown))).toEqual([
@@ -108,7 +108,7 @@ describe("track release publishing", () => {
 			"## What's Changed",
 			"* chore(codeowners): give QA ownership of e2e by @ada in https://github.com/acme/app/pull/1",
 			"* fix(files): reopen the file pane by @ada in https://github.com/acme/app/pull/2",
-			"* chore(deps): update pnpm to v12.10.1 by @anaconda-renovate[bot] in https://github.com/acme/app/pull/3",
+			"* chore(deps): update pnpm to v12.10.1 by @renovate[bot] in https://github.com/acme/app/pull/3",
 			"* feat(shell): reveal the app log by @grace in https://github.com/acme/app/pull/4",
 			"* Forward bridge Sentry DSN by @grace in https://github.com/acme/app/pull/5",
 			"* feat(kilo-ui): play sounds by @ada in https://github.com/acme/app/pull/6",
@@ -170,16 +170,16 @@ describe("track release publishing", () => {
 		["feat(marketplace): show the MCP command", "Features"],
 		["feat!: drop legacy config", "Features"],
 		["fix: transient EPERM", "Fixes"],
-		["[DESK-3108]fix: transient directory EPERM - Windows", "Fixes"],
-		["DESK-3129 fix(files): keep the tree resilient", "Fixes"],
+		["[ABC-3108]fix: transient directory EPERM - Windows", "Fixes"],
+		["ABC-3129 fix(files): keep the tree resilient", "Fixes"],
 		["chore(deps): update electron version", "Dependencies"],
 		["fix(deps): update dependency koffi to v3.3.3", "Dependencies"],
 		["chore(deps-dev): bump vitest", "Dependencies"],
 		["fix(e2e): exclude .kilo worktrees from discovery", "Other"],
 		["feat(ci): cache pnpm store", "Other"],
 		["test(notebook): cover the port handshake", "Other"],
-		["chore: bump anaconda-desktop-bridge to 0.1.17", "Other"],
-		["DESK-3122: serve agent tools from the main process", "Other"],
+		["chore: bump desktop-bridge to 0.1.17", "Other"],
+		["ABC-3122: serve agent tools from the main process", "Other"],
 		["Enable conda bridge error reporting", "Other"],
 	] as const)("classifies %j as %s", (title, section) => {
 		expect(classifyReleaseNote(title)).toBe(section);

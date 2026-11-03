@@ -593,7 +593,7 @@ describe("KiloServerManager", () => {
 				const child = new FakeChild();
 				queueMicrotask(() => {
 					child.stderr.write(
-						"\x1b[91m\x1b[1mError: \x1b[0mConfiguration is invalid at /Users/marius/.config/kilo/kilo.jsonc\n",
+						"\x1b[91m\x1b[1mError: \x1b[0mConfiguration is invalid at /Users/me/.config/kilo/kilo.jsonc\n",
 					);
 					child.stderr.write("↳ Unrecognized key: reasoning_display\n");
 					child.exit(1);
@@ -840,7 +840,7 @@ describe("KiloServerManager", () => {
 	it("includes contributed environment variables in the spawn environment", async () => {
 		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 		const contributedEnv = new ContributedEnvManager(() => undefined, logger);
-		contributedEnv.contribute("anaconda-mcp", { ANACONDA_API_KEY: "test-key-123" });
+		contributedEnv.contribute("example-plugin", { ANACONDA_API_KEY: "test-key-123" });
 		contributedEnv.contribute("other-source", { CUSTOM_VAR: "custom-value" });
 
 		const { manager, spawn } = createHarness({ contributedEnv });
@@ -911,7 +911,7 @@ describe("KiloServerManager", () => {
 		manager.dispose();
 	});
 
-	// Regression: PR #116 review — WARNING KiloServerManager.ts:334. The
+	// Regression: the
 	// original reserved list was a fixed narrow set that missed PATH, dynamic
 	// linker vars, and any new KILO_*/XDG_* key. Now: exact list for high-
 	// value single keys, PLUS prefix families (KILO_, XDG_, DYLD_, LD_) so
@@ -1124,7 +1124,7 @@ describe("owned config environment", () => {
 	it("does not scrub a contributed ANACONDA_API_KEY", async () => {
 		const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 		const contributedEnv = new ContributedEnvManager(() => undefined, logger);
-		contributedEnv.contribute("anaconda-mcp", { ANACONDA_API_KEY: "contributed-key" });
+		contributedEnv.contribute("example-plugin", { ANACONDA_API_KEY: "contributed-key" });
 		const { manager, spawn } = createHarness({
 			contributedEnv,
 			environment: { PATH: "/bin", KILO_API_KEY: "sentinel" },

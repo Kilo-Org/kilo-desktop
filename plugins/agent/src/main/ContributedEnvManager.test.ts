@@ -160,7 +160,7 @@ describe("ContributedEnvManager", () => {
 		});
 	});
 
-	// Regression: PR #116 review — WARNING ContributedEnvManager.ts:54.
+	// Regression:
 	// The doc-and-log said "last-write-wins" but Map iteration is INSERTION
 	// order; a source re-contributing after another source's first
 	// contribution would still lose because its slot was allocated earlier.

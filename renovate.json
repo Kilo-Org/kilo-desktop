@@ -1,9 +1,29 @@
 {
 	"$schema": "https://docs.renovatebot.com/renovate-schema.json",
-	"extends": ["local>anaconda/renovate-config"],
+	"extends": [
+		"config:recommended",
+		"helpers:pinGitHubActionDigestsToSemver",
+		"customManagers:githubActionsVersions"
+	],
+	"dependencyDashboard": true,
+	"osvVulnerabilityAlerts": true,
+	"dependencyDashboardOSVVulnerabilitySummary": "all",
+	"labels": ["renovate"],
+	"prConcurrentLimit": 10,
+	"prHourlyLimit": 0,
+	"reviewersFromCodeOwners": true,
+	"schedule": ["every weekday"],
+	"semanticCommits": "enabled",
+	"timezone": "UTC",
 	"rangeStrategy": "replace",
 	"minimumReleaseAge": "1 day",
 	"packageRules": [
+		{
+			"description": "Block compromised axios versions 0.30.4 & 1.14.1. See https://osv.dev/vulnerability/MAL-2026-2307",
+			"matchDatasources": ["npm"],
+			"matchPackageNames": ["axios"],
+			"allowedVersions": "!/^(0\\.30\\.4|1\\.14\\.1)$/"
+		},
 		{
 			"description": "Exclude all @assistant-ui packages from automated updates",
 			"enabled": false,

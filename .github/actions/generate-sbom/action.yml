@@ -1,10 +1,7 @@
 name: "Generate SBOM"
-# Vendored from anaconda/security-hub @ 90fc2f2b6260a4e5e738f13aa68ca853a440a8d0 (.github/actions/generate-sbom).
 # Local adaptations: sbom-name and asar-path inputs, asar extract/scan/merge steps,
 # SBOM_EXCLUDE_PURL_PREFIXES filter in merge-sboms.py, explicit-name mode in generate-sbom-name.py.
-# Re-sync against upstream when security-hub ships fixes.
 description: "Generate CycloneDX and SPDX SBOMs using Syft and Trivy with PURL-based deduplication"
-author: "Anaconda Security Team"
 
 inputs:
   scan-type:

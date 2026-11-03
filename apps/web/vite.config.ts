@@ -54,8 +54,8 @@ export default defineConfig({
 		injectThemeBootstrap(),
 		sentryVitePlugin({
 			authToken: process.env.SENTRY_AUTH_TOKEN,
-			org: "anaconda-nq",
-			project: "kilo-desktop",
+			...(process.env.SENTRY_ORG && { org: process.env.SENTRY_ORG }),
+			project: process.env.SENTRY_PROJECT ?? "kilo-desktop",
 			...(uploadSourcemaps && {
 				// Absolute and rooted at `dist/`: Sentry resolves a relative glob
 				// against the process cwd, so a bare `**/*.map` would sweep the

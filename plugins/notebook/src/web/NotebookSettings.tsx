@@ -59,9 +59,8 @@ function SettingRow({
 const selectSettings = (state: { settings: NotebookSettingsValue }) => state.settings;
 
 /**
- * The Notebooks settings section. Embedded notebooks require a Kilo account
- * (DESK-3152), so the page sits behind the same sign-in gate as the Conda
- * Environments page.
+ * The Notebooks settings section. Embedded notebooks require a Kilo account,
+ * so the page sits behind the same sign-in gate as the Conda Environments page.
  */
 export function NotebookSettings() {
 	return (

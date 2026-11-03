@@ -915,8 +915,7 @@ export class SidecarCondaBackend implements CondaBackend {
 			// Plugin environments (CondaRuntime) bypass this entirely via
 			// explicit `prefix` paths at ~/.kilo-desktop/conda/envs/.
 			BRIDGE_PROTECT_STDIO: "1",
-			// The bridge enables telemetry when this is unset
-			// (anaconda/anaconda-desktop-bridge#53), so it is always stamped.
+			// The bridge enables telemetry when this is unset, so it is always stamped.
 			BRIDGE_TELEMETRY_ENABLED: telemetryEnabled ? "1" : "0",
 			...(this.#telemetryEnv && { BRIDGE_TELEMETRY_ENV: this.#telemetryEnv }),
 			// Stamped only while telemetry is enabled so a consent opt-out fully

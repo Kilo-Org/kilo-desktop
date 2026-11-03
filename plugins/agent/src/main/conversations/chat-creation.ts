@@ -10,7 +10,7 @@ import {
  * first, then a per-project preference, then the global `sandbox.enabled`
  * config. Desktop has no sandbox setting yet, so without it a user's CLI or
  * VS Code `sandbox.enabled: true` would silently confine every Desktop chat
- * (anaconda/agentic-desktop#730). `version: 0` matches the VS Code extension.
+ * `version: 0` matches the VS Code extension.
  */
 export const SANDBOX_DISABLED_SESSION_METADATA = {
 	"kilocode.sandbox": { enabled: false, version: 0 },

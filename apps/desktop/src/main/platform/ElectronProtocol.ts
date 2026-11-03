@@ -351,7 +351,7 @@ export class ElectronProtocol {
 		const appOrigin = getDesktopOrigin(input.isDevelopment);
 		// The dev-server origin only applies to the development build. Gate it on
 		// `isDevelopment` here so a packaged build can never widen the CSP or
-		// re-enable `script-src 'unsafe-inline'` (EoP 7) just because
+		// re-enable `script-src 'unsafe-inline'` just because
 		// `KILO_WEB_DEV_SERVER_URL` happens to be present in its environment. The
 		// production guarantee is thus structural, not env-dependent.
 		const developmentOrigin = input.isDevelopment ? input.developmentOrigin : undefined;

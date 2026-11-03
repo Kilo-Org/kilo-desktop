@@ -7,7 +7,7 @@ import {
 
 describe("friendlyEnvironmentsError", () => {
 	it("maps the CODE: detail form to friendly copy", () => {
-		const message = "ENV_EXISTS: prefix already exists: /Users/romulo/.conda/envs/faker";
+		const message = "ENV_EXISTS: prefix already exists: /Users/me/.conda/envs/faker";
 		const result = friendlyEnvironmentsError(new Error(message), "fallback");
 		expect(result).toContain("already exists");
 		expect(result).not.toContain("CondaValueError");

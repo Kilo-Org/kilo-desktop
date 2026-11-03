@@ -155,7 +155,6 @@ Thumbs.db
 # Agent plans
 .omo
 .kilo
-!e2e/.kilo/
 
 # App specific
 apps/desktop/.data/
@@ -184,10 +183,11 @@ ldclient-user-cache/
 /Untitled*.ipynb
 .ipynb_checkpoints/
 .virtual_documents/
+# Shared notebook conda env the app builds when a notebook runs in this folder
+.conda/
+/environment.yml
 
 # Local SBOM generation output (see .github/actions/generate-sbom)
 sbom-output/
 sbom-scan/
 
-# Threat-model scan reports — never committed (lists open gaps in detail)
-docs/security/local/

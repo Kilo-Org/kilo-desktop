@@ -1,15 +1,14 @@
 # Notebook embedding — decisions and the options not taken
 
-Companion to [embedding-handoff.md](./embedding-handoff.md). That doc tracks
-_what is built_; this one records _why it is shaped this way_, including options that were
-considered and rejected, so a later reader does not have to re-derive the tradeoffs.
+Records _why_ the notebook embedding is shaped this way, including options that were considered
+and rejected, so a later reader does not have to re-derive the tradeoffs.
 
 ## D1. The notebook bundle gets its own protocol **host**, not a path under `app`
 
 Chosen: serve nteract's built SPA at `kilo-desktop://notebook/`, a second host on the
 existing scheme. The app stays at `kilo-desktop://app/`.
 
-**Why:** three problems the handoff listed as work all disappear rather than getting solved.
+**Why:** three problems a same-origin path would need solved all disappear rather than getting solved.
 
 - nteract's Vite config sets `base: "/"`, so its `index.html` and lazy chunks reference
   **absolute** `/assets/...` paths. Our web renderer uses `base: "./"` but still emits an
@@ -17,9 +16,8 @@ existing scheme. The app stays at `kilo-desktop://app/`.
   are content-hashed so a collision is unlikely, but it would be silent. Separate hosts means
   separate roots and no patch to nteract's `base`.
 - `/` already maps to `index.html` in `resolveRendererPath`, so a dedicated host needs **no
-  directory-index fallback**, and the assertion at `ElectronProtocol.test.ts:168` that
-  `resolveRendererPath(root, "/settings/")` resolves `undefined` stays true. The handoff planned
-  to deliberately invert that test; it no longer has to.
+  directory-index fallback**, and `resolveRendererPath(root, "/settings/")` keeps resolving
+  `undefined`.
 - Separate origin means a separate CSP. The app's policy stays exactly as strict as it is today
   instead of absorbing `'wasm-unsafe-eval'` and `blob:` workers on nteract's behalf.
 
@@ -30,9 +28,9 @@ fall out of the host boundary.
 
 ### Options not taken
 
-**(a) Same-origin `/notebook/` path** — what the handoff planned. Needs nteract's `base` patched
+**(a) Same-origin `/notebook/` path** — the original plan. Needs nteract's `base` patched
 to `"./"` (or the handler rooted at the bundle dir), a directory-index fallback, and the
-`:168` assertion deliberately updated. The notebook document then shares an origin — and therefore
+`resolveRendererPath` directory test inverted. The notebook document then shares an origin — and therefore
 storage and IPC trust — with the app, and the app's CSP has to be loosened for nteract's needs.
 Rejected: strictly more work for strictly weaker isolation.
 
@@ -52,7 +50,7 @@ profile vocabulary and every resulting directive.
 
 **Why:** a CSP is a security decision about untrusted-ish content, and features are the thing being
 constrained. If the capability carried a `csp` string, the policy would be written by the party it
-restrains — and once features become loadable plugins (Decision #10), a plugin could declare
+restrains — and once features become loadable plugins, a plugin could declare
 `script-src *` and the platform would serve it.
 
 ## D3. Runtime bytes cross one transferred feature port
@@ -74,16 +72,14 @@ precedes feature boot.
 ## D4. Loopback HTTP is blob transport only
 
 The daemon's blob HTTP server binds an ephemeral port, so an exact-port CSP would make the policy a
-function of the running sidecar — the handoff's stated reason to avoid the HTTP blob server
-altogether.
+function of the running sidecar.
 
 Chosen: allow loopback HTTP for the daemon's content-addressed blob server. Runtime frames do not
 use loopback HTTP or WebSockets; they use the transferred feature port. The notebook origin can
 reach loopback blob URLs; the app origin still cannot.
 
-This does **not** foreclose the better option. Step 8 of the handoff (serve blobs from our own
-protocol via `blobStorePath()`/`resolveBlobPath`) remains available and would let this tighten to
-`'self'`. Recorded here so the wildcard is understood as an interim position, not a runtime-frame
+Serving blobs from our own protocol would let this tighten to `'self'`, but it is gated on upstream
+(see D9). Recorded here so the wildcard is understood as an interim position, not a runtime-frame
 transport.
 
 ## D5. Rich outputs get one exact route-specific CSP
@@ -145,12 +141,23 @@ The old standalone `/notebook` page, route `sidecar` manifest field, built-in si
 generic split-page layout are removed. If the notebook plugin unloads while persisted tabs exist,
 Kilo renders a closeable unavailable state until the contribution returns.
 
+## D8. Kilo uses direct Node bindings for notebook tools
+
+Chosen: bundle a Kilo plugin that loads the packaged `@runtimed/node` entry and connects to the
+same socket as the embedded notebook. The notebook feature installs that plugin through
+kilo-server's ownership-checked plugin capability and removes its previous Desktop-owned `runt`
+and `notebooks` MCP entries only after installation succeeds.
+
+This removes the `nteract-mcp` proxy, its `runt mcp` child, and their platform-specific staging
+artifacts. Kilo remains responsible for tool permission prompts and lifecycle; `runtimed` remains
+responsible for notebook state, kernels, outputs, dependencies, and persistence. The WebMCP relay
+is retained separately for right-panel navigation tools.
+
 ## D9. The in-app browser blocks remote-embedded loopback; the daemon blob server stays on loopback HTTP
 
-The daemon's unauthenticated blob/output HTTP server (`ACAO: *`, `unsafe-eval`, no `frame-ancestors`,
-an `nteract/eval` handler that checks `event.source` but not `event.origin`) is third-party and
-cannot be hardened by spawn flags. A remote page in the in-app browser (`persist:kilo-desktop-browser`)
-could iframe `/output-frame` and `eval()` there, or read `/blob/<hash>`.
+The daemon's loopback blob/output HTTP server is third-party, is not designed to be embedded by
+remote origins, and cannot be hardened by spawn flags. Remote pages in the in-app browser
+(`persist:kilo-desktop-browser`) must not be able to reach it.
 
 Chosen: close the crossing at the partition, not the daemon. `ElectronBrowserHost.initialize()`
 installs a `webRequest.onBeforeRequest` filter (`shouldCancelLoopbackRequest`) that cancels loopback
@@ -165,16 +172,4 @@ Not the D4 custom-protocol migration: the loopback URL is minted inside nteract'
 `blobs.getPort`, and the host protocol exposes no resolver seam, so that remains upstream-gated.
 
 Residual (informational, local-only): the daemon keeps listening; a same-user local process can still
-reach it directly, crossing no new boundary. Auth/`ACAO`/`eval` removal is upstream `runtimed` work.
-
-## D8. Kilo uses direct Node bindings for notebook tools
-
-Chosen: bundle a Kilo plugin that loads the packaged `@runtimed/node` entry and connects to the
-same socket as the embedded notebook. The notebook feature installs that plugin through
-kilo-server's ownership-checked plugin capability and removes its previous Desktop-owned `runt`
-and `notebooks` MCP entries only after installation succeeds.
-
-This removes the `nteract-mcp` proxy, its `runt mcp` child, and their platform-specific staging
-artifacts. Kilo remains responsible for tool permission prompts and lifecycle; `runtimed` remains
-responsible for notebook state, kernels, outputs, dependencies, and persistence. The WebMCP relay
-is retained separately for right-panel navigation tools.
+reach it directly, crossing no new boundary. Hardening the server itself is upstream `runtimed` work.

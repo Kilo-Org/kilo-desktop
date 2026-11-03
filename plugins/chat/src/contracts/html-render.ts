@@ -140,8 +140,7 @@ export const HTML_RENDER_SYSTEM_PROMPT = [
 
 /**
  * Dedicated embedded host on the app scheme that runs untrusted MCP App
- * widget HTML and agent pages, so they never run under the app origin's CSP
- * (threat-model EoP 7).
+ * widget HTML and agent pages, so they never run under the app origin's CSP.
  */
 export const MCP_APP_HOST = "mcp-app";
 export const MCP_APP_WIDGET_DOCUMENT_PATH = "/widget-host.html";

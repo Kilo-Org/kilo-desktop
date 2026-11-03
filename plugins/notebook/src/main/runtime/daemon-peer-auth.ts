@@ -21,7 +21,7 @@
  *   or replace a user-writable install outright. It raises the bar; it does not
  *   by itself stop a determined local attacker.
  *
- * Known residual risks (DESK-3090; documented, not fully closed here):
+ * Known residual risks (documented, not fully closed here):
  * - Check-vs-use (TOCTOU): the credential read uses its own short-lived
  *   connection, so a same-user attacker could rebind the socket between the
  *   check and the relay connections that actually carry code. Binding this

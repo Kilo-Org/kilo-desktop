@@ -5,7 +5,7 @@ import path from "node:path";
  * `mainSdk.storageDir` resolver (feature-registry) and the `sdk.fs` sandbox
  * (ScopedFsService) can never drift onto different directories.
  *
- * - {@link featureStorageDir} — `${userData}/plugins/<id>/` (Decision #20).
+ * - {@link featureStorageDir} — `${userData}/plugins/<id>/` (each feature owns its storage).
  *   Holds shell-owned per-feature state, notably the feature's SQLite
  *   `data.db` (+ WAL/SHM). This is `mainSdk.storageDir`.
  * - {@link featureFsSandboxDir} — `${userData}/plugins/<id>/fs/`, a dedicated

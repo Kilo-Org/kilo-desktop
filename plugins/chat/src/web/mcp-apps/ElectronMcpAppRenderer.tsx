@@ -124,7 +124,7 @@ function ElectronMcpAppFrame({
 	// Preferred path: render the widget under the dedicated `mcp-app` origin so
 	// its inline scripts execute there (isolated, opaque-origin, no preload)
 	// rather than in a blob: iframe that would inherit the trusted app origin's
-	// CSP and force `script-src 'unsafe-inline'` onto it (EoP 7). The blob
+	// CSP and force `script-src 'unsafe-inline'` onto it. The blob
 	// fallback only runs off the custom scheme (web dev server), where there is
 	// no preload bridge to elevate to.
 	const shellSrc = useMemo(() => mcpAppShellSrc(window.location), []);

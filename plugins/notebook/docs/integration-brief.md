@@ -74,7 +74,7 @@ Electron port and retain runtimed's negotiated protocol number.
   starts at login, which otherwise owns the shared singleton and blocks notebooks until it is
   stopped; any nteract-signed version is accepted. A different unsigned binary still fails closed,
   including through explicit endpoints. Without a staged bundled binary every attach fails closed.
-  Known residual risks (DESK-3090) are listed in the `daemon-peer-auth.ts` header: the check is not
+  Known residual risks are listed in the `daemon-peer-auth.ts` header: the check is not
   bound to the relay connections (TOCTOU), the readiness probe runs before it, and Windows applies
   no same-user (SID) check.
 
@@ -82,12 +82,12 @@ Electron port and retain runtimed's negotiated protocol number.
 
 1. Pin the notebook UI and `runtimed` to one nteract release and use that release's channel for
    the singleton endpoint.
-2. Keep Kilo Desktop pinned to the published `@runtimed/node@0.7.0-nightly.40958541191` package containing
+2. Keep Kilo Desktop pinned to the exact `@runtimed/node` version pinned in `plugins/notebook/package.json`, the package containing
    `@runtimed/node/electron` and its platform-native optional dependencies.
 3. Run the full repository gate and packaged Electron smoke both from a clean daemon state and
    against an already-running compatible singleton.
 4. Verify execution, Save, Save As, reopen, reconnect, concurrent attachment, and isolated rich
-   output before promoting the plugin from draft.
+   output before release.
 
 ## Current limitations
 
@@ -100,5 +100,4 @@ Electron port and retain runtimed's negotiated protocol number.
   could further tighten the notebook CSP later; runtime frames already use only the MessagePort.
 
 See [embedding-decisions.md](./embedding-decisions.md) for the durable decisions and rejected
-alternatives. The remaining handoff documents preserve the earlier spike history and are marked
-when their loopback-WebSocket or bundled-daemon designs are superseded.
+alternatives.

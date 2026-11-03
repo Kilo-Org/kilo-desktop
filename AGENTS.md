@@ -18,7 +18,7 @@ Read [CONTEXT.md](./CONTEXT.md) for architecture, terminology, and conventions. 
 
 ## Running the app
 
-Start the desktop app in dev with `pn dev` (alias for `pnpm dev` → `dev:desktop`)
+Start the desktop app in dev with `pnpm dev` (→ `dev:desktop`)
 from the workspace root. It boots the Vite web dev server on port 5173 first,
 then launches Electron pointed at it via `KILO_WEB_DEV_SERVER_URL`. Do **not**
 run `electron-forge start` (or the desktop package's `start` script) directly —
@@ -28,16 +28,12 @@ without the web dev server the renderer window loads empty.
 
 Project skills live under [`.agents/skills/`](./.agents/skills/).
 
-| Skill                   | Path                                            | Use when                                                                                                   |
-| ----------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `write-plugin`          | `.agents/skills/write-plugin/SKILL.md`          | Building or extending a kernel plugin: manifest, contracts, entries, points, domains, tests (docs/plugins) |
-| `write-vitest`          | `.agents/skills/write-vitest/SKILL.md`          | Choosing Vitest tiers and writing unit / integration / browser / app-level tests                           |
-| `write-e2e-test`        | `.agents/skills/write-e2e-test/SKILL.md`        | Writing Playwright/Electron e2e page objects, fixtures, and `@smoke` specs                                 |
-| `tdd`                   | `.agents/skills/tdd/SKILL.md`                   | New features, logic-heavy bug fixes, and refactors (not minor UI/cosmetic changes)                         |
-| `security-architecture` | `.agents/skills/security-architecture/SKILL.md` | Producing/refreshing `docs/security/security-architecture.md`, the durable security architecture overview  |
-| `threat-model`          | `.agents/skills/threat-model/SKILL.md`          | Running the STRIDE+Privacy threat-model scan (dated report in gitignored `docs/security/local/`)           |
-
-The two security skills share `docs/security/boundary-register.md` and run `docs/security/register-sync.md` first. Refresh order: `security-architecture`, then `threat-model` — see `docs/security/README.md`.
+| Skill            | Path                                     | Use when                                                                                                   |
+| ---------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `write-plugin`   | `.agents/skills/write-plugin/SKILL.md`   | Building or extending a kernel plugin: manifest, contracts, entries, points, domains, tests (docs/plugins) |
+| `write-vitest`   | `.agents/skills/write-vitest/SKILL.md`   | Choosing Vitest tiers and writing unit / integration / browser / app-level tests                           |
+| `write-e2e-test` | `.agents/skills/write-e2e-test/SKILL.md` | Writing Playwright/Electron e2e page objects, fixtures, and `@smoke` specs                                 |
+| `tdd`            | `.agents/skills/tdd/SKILL.md`            | New features, logic-heavy bug fixes, and refactors (not minor UI/cosmetic changes)                         |
 
 ## Key rules for AI agents
 

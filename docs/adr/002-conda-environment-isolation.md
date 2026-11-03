@@ -4,7 +4,7 @@
 
 ## Context
 
-PR #301 (DESK-2721) deleted `CondaService` and its `#isolationEnv` block, which
+An earlier change deleted `CondaService` and its `#isolationEnv` block, which
 set `CONDA_ENVS_PATH`, `CONDA_PKGS_DIRS`, `CONDARC`, and
 `CONDA_PLUGINS_AUTO_ACCEPT_TOS` to scope all conda operations into
 `~/.kilo-desktop/conda`. The replacement `SidecarCondaBackend`

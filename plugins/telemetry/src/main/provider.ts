@@ -35,7 +35,8 @@ interface PostHogEvent {
  * misattributed pre-login events — the tradeoff the rest of the Kilo
  * ecosystem (VS Code, JetBrains) already makes.
  *
- * Development builds never talk to PostHog.
+ * Development builds never talk to PostHog, and neither do builds without a
+ * project key (`VITE_POSTHOG_KEY`), so source builds and forks send nothing.
  */
 export class PostHogProvider implements TelemetryProvider {
 	readonly #config: TelemetryConfig;
@@ -55,6 +56,10 @@ export class PostHogProvider implements TelemetryProvider {
 	async track(entry: TelemetryEntry): Promise<void> {
 		if (this.#config.environment === "development") {
 			this.#logger.debug(`telemetry suppressed in development: '${entry.event}'`);
+			return;
+		}
+		if (!this.#config.posthogKey) {
+			this.#logger.debug(`telemetry suppressed, no PostHog key configured: '${entry.event}'`);
 			return;
 		}
 

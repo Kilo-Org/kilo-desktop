@@ -54,7 +54,7 @@ export function findPreviousTrackTag(
 		.find((tag) => getTrackReleaseVersionFromTag(track, tag) !== null);
 }
 
-// GitHub logins may carry a `[bot]` suffix (e.g. `@anaconda-renovate[bot]`).
+// GitHub logins may carry a `[bot]` suffix (e.g. `@renovate[bot]`).
 const AUTHOR = String.raw`@[-\w]+(?:\[bot\])?`;
 const PULL_REFERENCE_SUFFIXES = [
 	new RegExp(
@@ -67,7 +67,7 @@ const PULL_REFERENCE_SUFFIXES = [
 	/\s+\(#\d+\)\s*$/i,
 ];
 
-// Internal tracker ids (e.g. `DESK-3108`) mean nothing outside the team. A bare
+// Internal tracker ids (e.g. `ABC-3108`) mean nothing outside the team. A bare
 // leading id is only treated as a ticket when followed by `:` or a
 // conventional-commit prefix, so titles like "UTF-8 support" survive.
 const TICKET = String.raw`[A-Z][A-Z\d]+-\d+`;
@@ -115,7 +115,7 @@ const CONVENTIONAL_TITLE = /^(\w+)(?:\(([^)]*)\))?!?:\s/;
 /**
  * Sorts a pull-request title into a release-notes section from its
  * conventional-commit prefix (`feat(scope): …`), tolerating a leading ticket
- * id such as `[DESK-123]` or `DESK-123:`. Titles without a recognized prefix
+ * id such as `[ABC-123]` or `ABC-123:`. Titles without a recognized prefix
  * land in Other.
  */
 export function classifyReleaseNote(title: string, author?: string): ReleaseNoteSection {

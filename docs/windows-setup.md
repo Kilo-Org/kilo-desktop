@@ -68,55 +68,15 @@ Install Visual Studio from https://visualstudio.microsoft.com/
 
 During installation the setup wizard will prompt you to select workloads. Check **Desktop development with C++** — this installs the MSVC compiler and Windows SDK needed to build native Node modules.
 
-## GitHub npm Registry Access
+## Package Registry Access
 
-Private `@anaconda` packages are published on the GitHub npm registry. You need to configure npm to authenticate with it.
-
-### 1. Authorize with Anaconda SSO
-
-Any SSH keys or personal access tokens you use must be authorized for the Anaconda organization's SSO. Go to:
-
-**GitHub > Settings > SSH and GPG keys** (for SSH) or **Developer Settings > Personal access tokens** (for PATs)
-
-Click **Configure SSO** next to the relevant key/token and authorize it for the **anaconda** organization.
-
-### 2. Create `~/.npmrc`
-
-Create a file at `%USERPROFILE%\.npmrc` with the following content:
-
-```ini
-@anaconda:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=${ANACONDA_NPM_TOKEN}
-```
-
-### 3. Generate a token
-
-Generate a Personal Access Token (classic):
-
-**GitHub > Settings > Developer Settings > Personal access tokens > Tokens (classic)**
-
-Required scopes:
-
-- `repo`
-- `read:packages`
-
-> **Alternative:** You can use the token from `gh auth token` if you have the GitHub CLI installed, but note this token typically has broader permissions than necessary. A dedicated PAT with minimal scopes is preferred.
-
-### 4. Add the token to your PowerShell profile
-
-Open your profile (`notepad $PROFILE`) and add:
-
-```powershell
-$env:ANACONDA_NPM_TOKEN = "<your-token>"
-```
-
-Restart your terminal for changes to take effect.
+`pnpm install` needs a GitHub token for the GitHub Packages registry. Follow the token step in the root [README](../README.md#getting-started), then restart your terminal.
 
 ## Running the App
 
 Once everything is installed and your terminal is restarted:
 
 ```powershell
-pn install
-pn dev
+pnpm install
+pnpm dev
 ```

@@ -12,7 +12,7 @@
 
 # ── Defaults (tweak these for your setup) ─────────────────────────────────────
 
-DEFAULT_KILO_SRC="$HOME/kilo-projects/kilocode"
+DEFAULT_KILO_SRC="$HOME/src/kilocode"
 DEFAULT_KILO_ENV="KILO_EXPERIMENTAL_MCP_APPS=true"
 DEFAULT_BUN="$(command -v bun 2>/dev/null || echo "$HOME/.bun/bin/bun")"
 

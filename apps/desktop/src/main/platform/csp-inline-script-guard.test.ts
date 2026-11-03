@@ -26,11 +26,11 @@ function inlineScriptAllowed(csp: string): boolean {
 	return /'unsafe-inline'/.test(directive) && !/'sha(256|384|512)-|'nonce-/.test(directive);
 }
 
-describe("EoP 7 regression guard — inline script in the trusted app renderer", () => {
+describe("CSP regression guard — inline script in the trusted app renderer", () => {
 	it("refuses injected inline script in the production app origin", () => {
 		// The production app origin holds the `desktopApi` preload bridge, so an
 		// injected inline script (content injection / XSS) must NOT execute there.
-		// This is the whole point of EoP 7: if 'unsafe-inline' were reintroduced
+		// This is the point of the hash-pinned CSP: if 'unsafe-inline' were reintroduced
 		// without a hash/nonce, an injected <script> would run with preload
 		// capability. Asserting (not logging) so CI fails on that regression.
 		const prod = createContentSecurityPolicy();

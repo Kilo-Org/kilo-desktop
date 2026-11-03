@@ -8,9 +8,6 @@ over MCP to the bundled `kilo serve` and, when the user allows it, to external A
 Cursor, Claude Code, VS Code or `mcp-inspector`. Nothing outside the app's plugins can add, rename
 or shadow a tool: the list comes only from the kernel's extension registry.
 
-For the _consumer_ path (the app talks to the Anaconda Remote MCP), see
-[Kilo Code integration](./kilo-code-integration.md).
-
 Related code:
 
 - `plugins/agent/src/contracts/index.ts` — the `tool`, `tool-approval` and `session-config` points,

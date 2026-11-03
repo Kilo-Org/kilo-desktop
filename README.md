@@ -156,7 +156,7 @@ Run the standalone Spotlight app, then start the desktop app:
 
 ```bash
 npx @spotlightjs/spotlight   # sidecar + UI on http://localhost:8969
-pn dev                        # in another terminal
+pnpm dev                      # in another terminal
 ```
 
 The SDK forwards to the default sidecar at `http://localhost:8969/stream`. Optionally
@@ -210,10 +210,10 @@ ASAR integrity validation, and loading only from ASAR.
 unpackaged development - not a track - and is never published. Packaged builds default
 to `preview`.
 
-| Channel   | What it is                         | Who uses it                | How it ships                              |
-| --------- | ---------------------------------- | -------------------------- | ----------------------------------------- |
-| `preview` | Continuously consumable prerelease | Engineers / internal users | Scheduled cadence or manual `Release` run |
-| `stable`  | Stable customer release            | Customers                  | `vX.Y.Z` tag or manual `Release` run      |
+| Channel   | What it is                         | Who uses it              | How it ships                              |
+| --------- | ---------------------------------- | ------------------------ | ----------------------------------------- |
+| `preview` | Continuously consumable prerelease | Early adopters / testers | Scheduled cadence or manual `Release` run |
+| `stable`  | Stable customer release            | Customers                | `vX.Y.Z` tag or manual `Release` run      |
 
 Development is isolated, while Preview and Stable share one packaged identity:
 

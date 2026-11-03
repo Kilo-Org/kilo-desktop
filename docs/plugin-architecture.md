@@ -3,8 +3,7 @@
 **Status:** Implemented (October 2026; §9 records the build-up and what is
 deferred). How-to for plugin authors: [docs/plugins](./plugins/README.md).
 Supersedes the contribution model of the
-retired feature SDK (`plugin-implementation-plan.md`, Slices 1–6 and the
-original Decisions Record — deleted with that SDK in step 13b; see git history).
+retired feature SDK (deleted in step 13b).
 
 Kilo Desktop is an agentic development environment. Its plugin system is
 **intentional**, not a generic UI framework: every extension point exists
@@ -1542,7 +1541,7 @@ would replace it if a kind ever needs something other than show-or-open.
 
 ## 8. Case study: the workspace board as a plugin
 
-The workspace board (#738, #807, #815, #828, #836) is exactly the kind of
+The workspace board is exactly the kind of
 feature we want third parties to be able to build: a kanban view that
 organises sessions into user-defined columns. It was built inside kilo-ui.
 This section checks whether it could have been a separate plugin under this
@@ -1561,35 +1560,35 @@ design.
   the session-activity store, the workspaces context, session-list view state
   and pins, session row menu and rename/delete dialogs, row glyphs and status
   labels, git metadata provider mounting, and pane-canvas drag previews.
-- It required shell/SDK changes (#807): pane windows without a session, window
+- It required shell/SDK changes: pane windows without a session, window
   width, and `focusMainWindow`.
-- The pop-out could not trust its own copy of the chat runtime, so #828 added a
+- The pop-out could not trust its own copy of the chat runtime, so it added a
   hand-written request/response protocol over events for cards, open, rename,
   archive and delete, plus keeping the main window's event stream alive.
-- #815 had to mount git's PR-polling helpers in the pop-out window, because
+- It had to mount git's PR-polling helpers in the pop-out window, because
   PR data depended on a host-mounted provider.
 
 ### 8.2 Mapped onto this design
 
-| Board need                                                                        | Under this design                                                                                                                                       | Status                                              |
-| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| A place to render the board                                                       | `kilo.workbench/sessions-view`                                                                                                                          | **Built (13a)**                                     |
-| Toggle in the session-list header                                                 | `kilo.workbench/navigator-action` referencing command `kilo.workspace-board/open` (+ keybinding)                                                        | **Built (13a)** (no default keybinding, as origin)  |
-| Header actions (add column, clear, pop out)                                       | The view's `headerActions` beside its title; pop-out / dock added by the workbench for any detachable view                                              | **Built (13a)**                                     |
-| Session list with title, status, unread, archived, updatedAt, workspace, worktree | `kilo.sessions/session` domain object: observable, window-independent                                                                                   | **Strengthened** (was list/active/create)           |
-| Workspace filter incl. "No workspace"                                             | `kilo.workbench/navigator` domain object (workspace focus)                                                                                              | **Strengthened**                                    |
-| Card looks like a session row: glyph, status label, PR badge                      | Session renderers `Glyph`, `Status`, `Decorations` (`kilo.sessions/session-renderer`, provided by kilo.workbench); git's badge via `session-decoration` | **Built (13a)** (principle in §2.2)                 |
-| Card menu (pin, rename, archive, delete with worktree check)                      | Session renderer `Menu`, backed by Session methods                                                                                                      | **Built (13a)**                                     |
-| "Move on board" in sidebar row menus                                              | Board contributes to `kilo.sessions/session-menu` (column choices as a submenu)                                                                         | **Built (13a)**                                     |
-| Drag sidebar rows onto the board                                                  | Kernel typed drag and drop; navigator rows are `kilo.sessions/session` drag sources, board columns are drop targets                                     | **Built (13a)** (kernel)                            |
-| Column storage                                                                    | Board's own scoped `kv`                                                                                                                                 | Covered                                             |
-| Drop cards for deleted sessions                                                   | `deleted` event of `kilo.sessions/session`                                                                                                              | **Built (13a)**                                     |
-| Pop-out window not tied to a session                                              | Workbench pops out detachable views using the kernel `windows` capability (sessionless windows, content width, focus main)                              | Covered (the #807 changes become kernel primitives) |
-| Pop-out showing live cards and running actions (#828)                             | Sessions live in kilo.sessions in main; the kernel proxies them to every window (§2.2)                                                                  | Removed by design (step 6)                          |
-| PR badges in the pop-out (#815)                                                   | Decorations are self-sufficient (git polls in main)                                                                                                     | Removed by design                                   |
-| Feature flag                                                                      | `when: { all: ["flag:workspace-board"] }`, or simply ship it as a removable plugin                                                                      | Covered                                             |
-| Telemetry                                                                         | Declared via `kilo.telemetry/telemetry-event`                                                                                                           | Covered                                             |
-| Shared UI (inputs, dialogs, menus, drag ghost)                                    | `@kilo-desktop/ui` (shared runtime); a drag-preview primitive moves there from pane-canvas                                                              | Covered with a small `ui` addition                  |
+| Board need                                                                        | Under this design                                                                                                                                       | Status                                                 |
+| --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| A place to render the board                                                       | `kilo.workbench/sessions-view`                                                                                                                          | **Built (13a)**                                        |
+| Toggle in the session-list header                                                 | `kilo.workbench/navigator-action` referencing command `kilo.workspace-board/open` (+ keybinding)                                                        | **Built (13a)** (no default keybinding, as origin)     |
+| Header actions (add column, clear, pop out)                                       | The view's `headerActions` beside its title; pop-out / dock added by the workbench for any detachable view                                              | **Built (13a)**                                        |
+| Session list with title, status, unread, archived, updatedAt, workspace, worktree | `kilo.sessions/session` domain object: observable, window-independent                                                                                   | **Strengthened** (was list/active/create)              |
+| Workspace filter incl. "No workspace"                                             | `kilo.workbench/navigator` domain object (workspace focus)                                                                                              | **Strengthened**                                       |
+| Card looks like a session row: glyph, status label, PR badge                      | Session renderers `Glyph`, `Status`, `Decorations` (`kilo.sessions/session-renderer`, provided by kilo.workbench); git's badge via `session-decoration` | **Built (13a)** (principle in §2.2)                    |
+| Card menu (pin, rename, archive, delete with worktree check)                      | Session renderer `Menu`, backed by Session methods                                                                                                      | **Built (13a)**                                        |
+| "Move on board" in sidebar row menus                                              | Board contributes to `kilo.sessions/session-menu` (column choices as a submenu)                                                                         | **Built (13a)**                                        |
+| Drag sidebar rows onto the board                                                  | Kernel typed drag and drop; navigator rows are `kilo.sessions/session` drag sources, board columns are drop targets                                     | **Built (13a)** (kernel)                               |
+| Column storage                                                                    | Board's own scoped `kv`                                                                                                                                 | Covered                                                |
+| Drop cards for deleted sessions                                                   | `deleted` event of `kilo.sessions/session`                                                                                                              | **Built (13a)**                                        |
+| Pop-out window not tied to a session                                              | Workbench pops out detachable views using the kernel `windows` capability (sessionless windows, content width, focus main)                              | Covered (the pop-out changes become kernel primitives) |
+| Pop-out showing live cards and running actions                                    | Sessions live in kilo.sessions in main; the kernel proxies them to every window (§2.2)                                                                  | Removed by design (step 6)                             |
+| PR badges in the pop-out                                                          | Decorations are self-sufficient (git polls in main)                                                                                                     | Removed by design                                      |
+| Feature flag                                                                      | `when: { all: ["flag:workspace-board"] }`, or simply ship it as a removable plugin                                                                      | Covered                                                |
+| Telemetry                                                                         | Declared via `kilo.telemetry/telemetry-event`                                                                                                           | Covered                                                |
+| Shared UI (inputs, dialogs, menus, drag ghost)                                    | `@kilo-desktop/ui` (shared runtime); a drag-preview primitive moves there from pane-canvas                                                              | Covered with a small `ui` addition                     |
 
 Status (13a): every gap above is built and kilo.workspace-board ships as its own
 plugin (`plugins/workspace-board`, ~1.9k lines of production code). The only edits
@@ -1678,7 +1677,7 @@ Everything lands in a single PR once all plugins are built.
   design says it belongs, and adds it to the plugin list. Code is moved and
   reshaped, not rewritten.
 - **Every step boots and gets a hands-on check.** After each step the app runs
-  (`pn dev`) with exactly the plugins added so far, and still boots with the
+  (`pnpm dev`) with exactly the plugins added so far, and still boots with the
   newest one removed. The next step starts only after that check.
 - **Commit per step**, so the branch history reads as the build-up.
 - **Merge `origin/main` before each step.** Upstream changes to plugins that
@@ -1911,8 +1910,7 @@ Everything lands in a single PR once all plugins are built.
   `preload.ts` / `apps/web/src/main.tsx` (traced with esbuild);
   `ElectronWindow`'s pane windows, broadcast and route loading (the kernel's
   `openSecondary` replaced them); docs that only described the old SDK
-  (`add-a-feature`, `plugin-implementation-plan`, `plugin-ready-development`,
-  `sdk-beta-tester-report`) and the `new-feature` / `migrate-to-plugin`
+  (`add-a-feature`, `plugin-ready-development`) and the `new-feature` / `migrate-to-plugin`
   skills (the authoring docs and skill come in 13d); kilo.git's contract
   types that only kilo-ui used (`GitCapabilities`, the old state-store keys).
 - **What the host still needed moved into the host:** the embedded-web-host
@@ -1938,10 +1936,7 @@ Everything lands in a single PR once all plugins are built.
   `git-client` or `pane-layout` (the removed SDK packages no longer exist).
 - **Kept:** `packages/vite-plugin-externalize-deps` (the desktop main build
   uses it), `packages/pane-layout` (kilo.workbench). `docs/dai/domain-model.dai`
-  and the notebook docs remain origin-era records; `docs/kilo-code-integration.md`
-  is marked historical. The security register's stale rows from earlier
-  steps were fixed where this step touched them; a full refresh is the
-  `security-architecture` skill's job.
+  and the notebook docs remain origin-era records.
 
 **What building step 13a settled:**
 
@@ -1961,7 +1956,7 @@ Everything lands in a single PR once all plugins are built.
   and the focus follows the main window's saved navigator.
 - **Commands across windows:** a window now runs a command only another
   window implements (forwarded through main), replacing origin's board-window
-  event protocol (#828).
+  event protocol.
 - **Session renderers live in the workbench:** `kilo.sessions/session-renderer`
   (exclusive, contract in kilo.sessions so no plugin depends on the
   workbench's code) is provided by kilo.workbench with the session list's own
@@ -2064,7 +2059,7 @@ Everything lands in a single PR once all plugins are built.
   covers the section (owner `kilo.local-inference`, checked signed out
   until the signed-in e2e seam).
 - **Deferred:** the catalog's Anaconda API key (origin's anaconda-account
-  awaits the unified-auth rework — the catalog asks to sign in);
+  awaits the later sign-in rework — the catalog asks to sign in);
   `kilo.shell/status-item`, `composer-banner`, `terminal-env`,
   `model-catalog` / `inference-runtime` points; kilo-ui's dead local
   inference readers go with kilo-ui (step 13).
@@ -2079,7 +2074,7 @@ Everything lands in a single PR once all plugins are built.
   `notebookOpenError`). Origin's scratch tabs were keyed by the notebook's
   UUID (the pane id, once `notebook.notebook:`-prefixed), which stays their
   notebook. The pane and the settings page sit behind a copy of
-  kilo.environments' sign-in gate (origin's DESK-3152 copy).
+  kilo.environments' sign-in gate (origin's copy).
 - **Main gives panes their notebooks:** on `Panes` `opened` (and on the
   pane's `notebooks.resolvePane`, for panes restored mid-open) main records
   a new notebook id, or opens the file the pane was opened for (`opening` →
@@ -2169,7 +2164,7 @@ Everything lands in a single PR once all plugins are built.
   descriptions carry over; `conda.envs.createFromFile` stays off the agent.
   The mutating eight use `approval: "ask"` (origin's
   `buildMutatingCondaPermissionRules`); every tool `requiresSignIn` with
-  origin's DESK-3147 prompt via `kilo.agent/tool`'s new `signInPrompt`, which
+  origin's sign-in prompt via `kilo.agent/tool`'s new `signInPrompt`, which
   kilo.chat's sign-in card now reads. `conda.setup.open` emits
   `setup-requested`; the main window opens the section. While `conda` is not
   `ready`, `session-config` turns the tools off.
@@ -3491,11 +3486,11 @@ without the history of earlier sessions.
 | 57  | `kilo.agent/session-config` may add Kilo permission rules (after workspace folders, before tool ask / deny rules); plugins add detail and policy to chat's permission and question cards through `kilo.chat/interaction-renderer`, not whole custom cards                                                                                                                             |
 | 58  | Local model providers reach the composer through kilo.chat's `model-source` point (picker rail, start, model loading before prompts); kilo.chat never reads kilo.local-inference                                                                                                                                                                                                      |
 | 59  | kilo.local-inference's llama.cpp router is a kernel service and its provider entry a `kilo.agent/model-provider` source: the entry is published at activation, the process runs once the window shows                                                                                                                                                                                 |
-| 60  | Step 13 is split 13a–13d (board, deleting the old code, CI isolation checks, authoring docs); anaconda-account stays unregistered until the unified-auth rework                                                                                                                                                                                                                       |
+| 60  | Step 13 is split 13a–13d (board, deleting the old code, CI isolation checks, authoring docs); anaconda-account stays unregistered until the later sign-in rework                                                                                                                                                                                                                      |
 | 61  | Every bundled plugin is removable, kilo.shell included (the window falls back to the kernel's recovery screen); CI boots each removal and builds each bundled plugin outside the monorepo                                                                                                                                                                                             |
 | 62  | Authoring docs live in `docs/plugins` as how-to (this document stays the design), with the extension point catalog generated from manifests and contracts and checked by lint; the example plugin is a workspace package outside the bundled set, held to the same isolation checks                                                                                                   |
 | 63  | Settings categories are contributions (`kilo.shell/settings-category`, ordered by priority); sections name a category key and are ordered within it. kilo.shell ships General, AI and Developer                                                                                                                                                                                       |
-| 64  | kilo.anaconda-account is rebuilt as a standalone kernel plugin for parity with origin (the Anaconda row in Settings → Account, the catalog's API key through its `account` domain object, read by kilo.local-inference only); the unified-auth rework later changes what it does, not where it plugs in                                                                               |
+| 64  | kilo.anaconda-account is rebuilt as a standalone kernel plugin for parity with origin (the Anaconda row in Settings → Account, the catalog's API key through its `account` domain object, read by kilo.local-inference only); the later sign-in rework later changes what it does, not where it plugs in                                                                              |
 | 65  | A new chat opens in the docked layout, composer at the bottom; the welcome headline lives only on the launcher                                                                                                                                                                                                                                                                        |
 
 ---
@@ -3513,22 +3508,22 @@ Designs reviewed while shaping this plan:
   `STOPPING`), `BundleActivator.start/stop`, bundle / service / framework
   events, `ServiceTracker`, Declarative Services, lazy activation policy.
 
-- **Paseo** (`/Users/mchilvers/Work/Repos/paseo`) — workspace-as-unit with
+- **Paseo** — workspace-as-unit with
   agent/terminal/browser/changes tabs (`packages/app/src/workspace-tabs/`),
   panel registry (`packages/app/src/panels/panel-registry.ts`), data-first
   composer contributions (`packages/plugin/src/client/contracts.ts`),
   timeline renderers, `before` hooks, agent-oriented plugin docs.
-- **bb** (`/Users/mchilvers/Work/Repos/bb`) — "core uses the API" rule
+- **bb** — "core uses the API" rule
   (`AGENTS.md`), events vs decision hooks
   (`packages/plugin-sdk/src/backend-contract.ts`), tool registration +
   per-session `configure`, declarative persisted tool presentation,
   exclusive slots with `Original`, transactional activation
   (`apps/server/src/services/plugins/plugin-runtime.ts`), typed `when`
   (`packages/domain/src/app-keybindings.ts`).
-- **Orca** (`/Users/mchilvers/Work/Repos/orca`) — strict versioned manifest
+- **Orca** — strict versioned manifest
   with cross-reference validation
   (`src/shared/plugins/plugin-manifest.ts`), single host-API spec table,
   capability consent.
-- **Kilo Code** (`/Users/mchilvers/Work/Repos/kilocode`) — typed named TUI
+- **Kilo Code** ([Kilo-Org/kilocode](https://github.com/Kilo-Org/kilocode)) — typed named TUI
   slots (`packages/plugin/src/tui.ts`), command/keymap layers, VS Code
   `contributes` split of commands, menus and keybindings.

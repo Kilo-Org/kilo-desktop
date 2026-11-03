@@ -48,8 +48,8 @@ export default defineConfig(({ command }) => {
 			}),
 			sentryVitePlugin({
 				authToken: process.env.SENTRY_AUTH_TOKEN,
-				org: "anaconda-nq",
-				project: "kilo-desktop",
+				...(process.env.SENTRY_ORG && { org: process.env.SENTRY_ORG }),
+				project: process.env.SENTRY_PROJECT ?? "kilo-desktop",
 				release: {
 					name: `${appInfo.name}@${appInfo.version}`,
 					deploy: {

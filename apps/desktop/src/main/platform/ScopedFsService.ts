@@ -13,7 +13,7 @@ function isFsError(error: unknown): error is NodeJS.ErrnoException {
  * Scoped filesystem backing `sdk.fs` — a capability boundary, not raw fs.
  *
  * Every operation is confined to the calling feature's private sandbox
- * directory (the Decision #20 storage root, `${userData}/plugins/<id>/`,
+ * directory (the feature's storage root, `${userData}/plugins/<id>/`,
  * provided via `resolveSandboxRoot`). The service rejects invalid feature
  * ids, absolute paths, and any relative path that escapes the sandbox, so a
  * request can never reach another feature's files or the host filesystem.

@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { resolveDaemonSocketPath } from "./socket-path.js";
 
-const MAC = { platform: "darwin" as const, homedir: "/Users/mm" };
-const WIN = { platform: "win32" as const, homedir: "C:\\Users\\mm" };
-const LINUX = { platform: "linux" as const, homedir: "/home/mm" };
+const MAC = { platform: "darwin" as const, homedir: "/Users/user" };
+const WIN = { platform: "win32" as const, homedir: "C:\\Users\\user" };
+const LINUX = { platform: "linux" as const, homedir: "/home/user" };
 
 describe("resolveDaemonSocketPath", () => {
 	it("honors an explicit override verbatim", () => {
@@ -26,7 +26,7 @@ describe("resolveDaemonSocketPath", () => {
 
 	it("uses the stable channel-level singleton when selected", () => {
 		const socketPath = resolveDaemonSocketPath({ env: {}, channel: "stable", ...MAC });
-		expect(socketPath).toBe("/Users/mm/Library/Caches/runt/runtimed.sock");
+		expect(socketPath).toBe("/Users/user/Library/Caches/runt/runtimed.sock");
 		expect(socketPath).not.toContain("worktrees");
 	});
 
@@ -41,15 +41,15 @@ describe("resolveDaemonSocketPath", () => {
 	});
 
 	it("ignores ambient worktree variables and uses the installed singleton", () => {
-		const env = { RUNTIMED_DEV: "1", RUNTIMED_WORKSPACE_PATH: "/Users/mm/p/nteract" };
+		const env = { RUNTIMED_DEV: "1", RUNTIMED_WORKSPACE_PATH: "/Users/user/src/nteract" };
 		expect(resolveDaemonSocketPath({ env, ...MAC })).toBe(
-			"/Users/mm/Library/Caches/runt/runtimed.sock",
+			"/Users/user/Library/Caches/runt/runtimed.sock",
 		);
 	});
 
 	it("ignores XDG_CACHE_HOME on macOS, matching the daemon", () => {
 		expect(resolveDaemonSocketPath({ env: { XDG_CACHE_HOME: "/xdg" }, ...MAC })).toBe(
-			"/Users/mm/Library/Caches/runt/runtimed.sock",
+			"/Users/user/Library/Caches/runt/runtimed.sock",
 		);
 	});
 
@@ -65,7 +65,7 @@ describe("resolveDaemonSocketPath", () => {
 
 	it("falls back to ~/.cache on Linux", () => {
 		expect(resolveDaemonSocketPath({ env: {}, channel: "stable", ...LINUX })).toBe(
-			"/home/mm/.cache/runt/runtimed.sock",
+			"/home/user/.cache/runt/runtimed.sock",
 		);
 	});
 

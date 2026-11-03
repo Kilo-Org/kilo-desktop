@@ -42,7 +42,7 @@ const selectMode = (state: { mode: "light" | "dark" }) => state.mode;
  * The Notebook pane: nteract's notebook UI framed from its own protocol host,
  * talking to its notebook in main over a port the window opens and hands to
  * the frame (the daemon socket never reaches a renderer). Embedded notebooks
- * require a Kilo account (DESK-3152), so the pane sits behind the sign-in
+ * require a Kilo account, so the pane sits behind the sign-in
  * gate; while signed out the frame is unmounted and the daemon keeps the
  * notebook, which reconnects once the person signs in.
  */

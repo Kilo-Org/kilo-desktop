@@ -101,7 +101,7 @@ export class AnacondaCredentialStore {
 	}
 
 	/**
-	 * The site host (e.g. `stage.anaconda.com`, or `host:port` when
+	 * The site host (e.g. `anaconda.example.com`, or `host:port` when
 	 * self-hosted), falling back to `anaconda.com` when the config cannot be
 	 * resolved.
 	 */

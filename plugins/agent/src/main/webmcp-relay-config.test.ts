@@ -27,7 +27,7 @@ const EXPECTED_ENTRY: WebMcpRelayEntry = {
 	enabled: true,
 };
 
-/** The stdio relay child entry written by Desktop builds before #102 was resolved. */
+/** The stdio relay child entry written by older Desktop builds. */
 function legacyStdioEntry(relayId = "kilo-desktop"): Record<string, unknown> {
 	return {
 		type: "local",

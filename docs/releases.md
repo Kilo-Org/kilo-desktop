@@ -14,10 +14,10 @@ unpackaged development - not a track - and is never published. Packaged builds d
 to `preview` when `RELEASE_TRACK` is unset, and any other value throws during
 configuration.
 
-| Channel   | What it is                         | Who uses it                | How it ships                              |
-| --------- | ---------------------------------- | -------------------------- | ----------------------------------------- |
-| `preview` | Continuously consumable prerelease | Engineers / internal users | Scheduled cadence or manual `Release` run |
-| `stable`  | Stable customer release            | Customers                  | `vX.Y.Z` tag or manual `Release` run      |
+| Channel   | What it is                         | Who uses it              | How it ships                              |
+| --------- | ---------------------------------- | ------------------------ | ----------------------------------------- |
+| `preview` | Continuously consumable prerelease | Early adopters / testers | Scheduled cadence or manual `Release` run |
+| `stable`  | Stable customer release            | Customers                | `vX.Y.Z` tag or manual `Release` run      |
 
 Development has an isolated identity. Preview and Stable intentionally share one durable
 packaged identity so the About settings update-track selector (gated by the `update-track-switcher`
@@ -100,8 +100,7 @@ Artifacts are published under updater namespaces:
 kilo-desktop/<update-channel>/<platform>/<arch>/<artifact>
 ```
 
-Preview uses update channel `preview`; Stable uses `latest`, matching T3 Code's updater
-terminology. The runtime update feed URL uses the same `update-channel/platform/arch` path,
+Preview uses update channel `preview`; Stable uses `latest`. The runtime update feed URL uses the same `update-channel/platform/arch` path,
 so a build always looks for updates where its own artifacts were uploaded.
 Each track publishes from its own GitHub Environment to its own host, so packaged builds
 compile in every track's host (`UPDATE_PUBLISH_URL_PREVIEW`, `UPDATE_PUBLISH_URL_STABLE`)
@@ -110,14 +109,14 @@ falls back to `UPDATE_PUBLISH_URL` for the build's own track and is otherwise re
 All update URLs must use HTTPS.
 
 After the publish matrix completes without cancellation, the workflow gathers the
-artifacts from successful platform jobs and creates or updates a private GitHub Release
+artifacts from successful platform jobs and creates or updates a GitHub Release
 tagged with the exact packaged version: `vX.Y.Z-preview-YYMMDD-HHmmS` for Preview or
 `vX.Y.Z[-prerelease]` for Stable. The finalizer still runs when another platform job
 fails so release notes remain available for native update feeds that were already
 published. Generated notes are grouped by pull-request title prefix into Features
 (`feat`), Fixes (`fix`), Dependencies (`deps` scope or Renovate/Dependabot), and Other
 (everything else, including `e2e`/`test`/`ci` scopes), then sanitized to remove
-pull-request numbers, links, and internal ticket ids such as `[DESK-123]` before the same body is used by GitHub and the public
+pull-request numbers, links, and tracker ids such as `[ABC-123]` before the same body is used by GitHub and the public
 in-app release-note document. Preview the result for any tag without publishing with
 `pnpm --filter @kilo-desktop/desktop release:notes <tag>`.
 
@@ -183,6 +182,19 @@ with repository/environment variables:
 | `AWS_ROLE_ARN`       | IAM role assumed via GitHub OIDC            |
 | `AWS_REGION`         | Optional; defaults to `us-east-1`           |
 
+Official builds also need these service IDs. They are not committed, so source builds and
+forks report nothing and resolve feature flags to their defaults. `Build` and `Release` fail
+early when one is missing (`.github/actions/require-service-config`). Values shared by both
+tracks are repository-level variables; only the LaunchDarkly ID differs per environment.
+
+| Variable                           | Level                      | Meaning                                       |
+| ---------------------------------- | -------------------------- | --------------------------------------------- |
+| `VITE_SENTRY_DSN`                  | Repository                 | Sentry DSN for the desktop app                |
+| `VITE_BRIDGE_SENTRY_DSN`           | Repository                 | Sentry DSN passed to the conda bridge sidecar |
+| `VITE_POSTHOG_KEY`                 | Repository                 | PostHog project key for product telemetry     |
+| `SENTRY_ORG`                       | Repository                 | Sentry org slug for source-map upload         |
+| `VITE_LAUNCHDARKLY_CLIENT_SIDE_ID` | `production` and `preview` | LaunchDarkly client-side ID for that track    |
+
 `UPDATE_PUBLISH_URL_PREVIEW` and `UPDATE_PUBLISH_URL_STABLE` are repository-level variables
 (visible to both environments) because every build needs both hosts.
 
@@ -199,7 +211,7 @@ Scheduled `Release` runs compare `main` with the latest `v*-preview-*` tag and s
 publication when the commit has not changed. Manual Preview runs always publish.
 
 Stable releases publish the version committed in `apps/desktop/package.json`
-(`X.Y.Z` or `X.Y.Z-prerelease`), matching Anaconda Desktop's flow:
+(`X.Y.Z` or `X.Y.Z-prerelease`):
 
 1. Open a pull request that bumps the release-coupled manifests and lockfile:
 

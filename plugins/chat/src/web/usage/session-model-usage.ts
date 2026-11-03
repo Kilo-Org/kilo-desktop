@@ -272,7 +272,7 @@ export function toComposerUsageView(input: {
 // Session IDs on the wire are always server-assigned (`ses_...`). Before the
 // assistant-ui thread list swaps a new thread's optimistic `__LOCALID_...`
 // placeholder for the remote id, any session-scoped request carrying the
-// placeholder is rejected by the server (DESK-2884), so callers must resolve
+// placeholder is rejected by the server, so callers must resolve
 // through this instead of falling back to the local thread id.
 export function resolveServerSessionId(input: {
 	sessionId?: string | undefined;

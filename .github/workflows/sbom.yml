@@ -1,8 +1,5 @@
-# Shipped-product SBOM generation. Phase 1 of the NPI/CRA plan: merged
-# Syft+Trivy SBOMs (CycloneDX 1.6 + SPDX 2.3) of the packaged Electron app as
-# build artifacts. Phase 2 (CRA staging S3 upload via OIDC) is intentionally
-# absent here; it lands as a separate gated job once the S3 key layout is
-# confirmed with the bucket owners.
+# Shipped-product SBOM generation: merged Syft+Trivy SBOMs (CycloneDX 1.6 +
+# SPDX 2.3) of the packaged Electron app as build artifacts.
 # The app is packaged with the same track config as a release build
 # (RELEASE_TRACK + the track environment's UPDATE_PUBLISH_URL), so the SBOM
 # describes what that track ships.

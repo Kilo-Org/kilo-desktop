@@ -6,6 +6,7 @@ interface ImportMetaEnv {
 	readonly VITE_BRIDGE_SENTRY_DSN?: string;
 	readonly VITE_LAUNCHDARKLY_CLIENT_SIDE_ID?: string;
 	readonly VITE_FEATURE_FLAG_OVERRIDES?: string;
+	readonly VITE_POSTHOG_KEY?: string;
 	readonly VITE_POSTHOG_HOST?: string;
 }
 

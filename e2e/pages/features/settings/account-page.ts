@@ -21,6 +21,7 @@ export class AccountPage {
 	// The status shares the title line ("Kilo · Not signed in."), so target the name itself.
 	private readonly kiloRowTitle = () => getLocatorByTestId("account-kilo-title");
 	private readonly kiloStatus = () => getLocatorByTestId("account-kilo-status");
+	private readonly kiloEmail = () => getLocatorByTestId("account-kilo-email");
 	private readonly signInButton = () => getLocatorByTestId("account-kilo-sign-in");
 	private readonly signOutButton = () => getLocatorByTestId("account-kilo-sign-out");
 	private readonly accountDetailsPanel = () => getLocatorByTestId("kilo-account-settings");
@@ -79,6 +80,19 @@ export class AccountPage {
 		await expectElementToHaveText(this.kiloStatus(), accountData.signedOutStatus, {
 			message: "Kilo account row should report that the user is not signed in",
 		});
+	}
+
+	async verifyKiloSignedInEmail(): Promise<void> {
+		await expectElementToHaveText(this.kiloEmail(), accountData.signedInStatus, {
+			message: "Kilo account row should show the signed-in account's email",
+		});
+	}
+
+	async verifySignOutButtonVisible(): Promise<void> {
+		await expectElementToBeVisible(
+			this.signOutButton(),
+			"Sign out should be offered while signed in",
+		);
 	}
 
 	async verifySignInButtonEnabled(): Promise<void> {

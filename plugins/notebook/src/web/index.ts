@@ -1,38 +1,42 @@
-import type { MainSdk, SDK } from "@kilo-desktop/feature-sdk";
+import { createElement, type ComponentType } from "react";
 
-import { notebookBrowserRegister } from "./browserRegister.js";
-import {
-	openNotebookFileInSession,
-	registerNotebookWebMcpTools,
-	type NotebookPanelOpenFileResult,
-} from "./notebook/notebook-webmcp-tools.js";
+import { definePlugin } from "@kilo-desktop/kernel";
+import { PaneKind, type PaneProps } from "@kilo-desktop/plugin-sessions/contracts";
+import { SettingsSection } from "@kilo-desktop/plugin-shell/contracts";
+import { NotebookIcon } from "lucide-react";
 
-export { NotebookView } from "./notebook/NotebookView.js";
-export { NotebookSettings } from "./settings/NotebookSettings.js";
-export { NotebookIcon } from "lucide-react";
+import { CloseGuards, CloseGuardsContext } from "./close-guards.js";
+import { NotebookPane } from "./NotebookPane.js";
+import { NotebookSettings } from "./NotebookSettings.js";
 
-export interface NotebookViewerCapability extends Record<string, unknown> {
-	openFile(options: {
-		readonly sessionId: string;
-		readonly path: string;
-	}): Promise<NotebookPanelOpenFileResult>;
-}
+export { NotebookPane } from "./NotebookPane.js";
+export { NotebookSettings } from "./NotebookSettings.js";
 
-export interface NotebookCapabilities extends Record<string, unknown> {
-	readonly notebookViewer: NotebookViewerCapability;
+function withCloseGuards(guards: CloseGuards, Pane: ComponentType<PaneProps>) {
+	return function GuardedNotebookPane(props: PaneProps) {
+		return createElement(
+			CloseGuardsContext.Provider,
+			{ value: guards },
+			createElement(Pane, props),
+		);
+	};
 }
 
 /**
- * Renderer boot hook — registers WebMCP tools that open/list notebooks in the
- * kilo-ui chat pane layout. Runs in Electron and browser modes.
+ * kilo.notebook's renderer entry: the Notebook pane kind (kept alive, with a
+ * close guard for unsaved notebooks) and the Notebooks settings section.
  */
-export function webRegister(sdk: SDK): void {
-	sdk.plugins.expose("notebookViewer", {
-		openFile: ({ sessionId, path }) => openNotebookFileInSession(sdk, path, sessionId),
-	} satisfies NotebookViewerCapability);
-	registerNotebookWebMcpTools(sdk);
-}
-
-export function browserRegister(mainSdk: MainSdk): void {
-	notebookBrowserRegister(mainSdk);
-}
+export const notebookWebEntry = definePlugin({
+	activate(sdk) {
+		const guards = new CloseGuards();
+		sdk.extensions.implement(PaneKind, "notebook", {
+			component: withCloseGuards(guards, NotebookPane),
+			icon: NotebookIcon,
+			canClose: guards.canClose,
+		});
+		sdk.extensions.implement(SettingsSection, "notebooks", {
+			component: NotebookSettings,
+			icon: NotebookIcon,
+		});
+	},
+});

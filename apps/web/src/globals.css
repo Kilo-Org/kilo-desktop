@@ -1,8 +1,8 @@
 @import "tailwindcss";
-/* Design-system primitives, sdk-react components, and bundled plugins live outside this package —
+/* Design-system primitives, the kernel's React root, and bundled plugins live outside this package —
    include their sources so Tailwind generates the utility classes they use. */
 @source "../../../packages/ui";
-@source "../../../packages/sdk-react/src";
+@source "../../../packages/kernel/src";
 @source "../../../plugins";
 @import "@anaconda/shadcn-theme/styles.css";
 @import "@anaconda/shadcn-theme/base-global.css";
@@ -167,8 +167,6 @@ html {
 
 /* A docked sidebar carries the traffic lights, so a page header with nothing
    to show can shrink to the pane gutter. */
-@custom-variant empty-titlebar (&[data-sidebar-docked]:not(:has([data-shell-header-content] :is(nav, h1, button, a))));
-
 @custom-variant data-open (&:where([data-state="open"], [data-open]:not([data-open="false"])));
 
 @custom-variant data-closed (&:where([data-state="closed"], [data-closed]:not([data-closed="false"])));

@@ -1,4 +1,4 @@
-import { FeatureError } from "@kilo-desktop/feature-sdk/main";
+import { KernelError } from "@kilo-desktop/kernel";
 
 import type { LocalInferenceHardwareProfile, ModelCatalog } from "../../contracts/schemas.js";
 import { evaluateCatalogModel } from "../../shared/catalog/model-compatibility.js";
@@ -28,6 +28,11 @@ export class ModelCatalogService {
 		this.#readHardwareProfile = readHardwareProfile;
 	}
 
+	/** Forgets the catalog snapshot, e.g. when the Anaconda account changes. */
+	invalidate(): void {
+		this.#cachedCatalog = undefined;
+	}
+
 	async list(): Promise<ModelCatalog> {
 		const catalog = await listModelCatalog(this.#dependencies);
 		this.#cachedCatalog = catalog;
@@ -46,10 +51,7 @@ export class ModelCatalogService {
 		const resolved =
 			(this.#cachedCatalog ? find(this.#cachedCatalog) : undefined) ?? find(await this.list());
 		if (!resolved) {
-			throw new FeatureError(
-				"The selected model quantization is no longer available.",
-				"NOT_FOUND",
-			);
+			throw new KernelError("NOT_FOUND", "The selected model quantization is no longer available.");
 		}
 
 		const compatibility = evaluateCatalogModel(
@@ -57,7 +59,7 @@ export class ModelCatalogService {
 			await this.#readHardwareProfile(),
 		);
 		if (!compatibility) {
-			throw new FeatureError("This model quantization does not fit on this machine.", "BUSINESS");
+			throw new KernelError("BUSINESS", "This model quantization does not fit on this machine.");
 		}
 
 		return {

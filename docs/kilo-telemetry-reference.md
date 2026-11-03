@@ -70,11 +70,11 @@ These originate in the UI layer and must be explicitly captured. The CLI does **
 
 ### `WORK_STYLE_ONBOARDING_SHOWN` — "Work Style Onboarding Shown"
 
-|                        |                                                                                                                                                                   |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Kilocode reference** | `packages/kilo-vscode/webview-ui/src/context/work-style.tsx:98`                                                                                                   |
-| **Trigger**            | Work-style onboarding UI becomes visible for the first time; fire once (guard with a persisted `acknowledged` flag)                                               |
-| **Desktop**            | Implemented. Sent once per onboarding run when the "Choose how you want to work" step first renders (`plugins/kilo-ui/src/web/onboarding/OnboardingProvider.tsx`) |
+|                        |                                                                                                                                                                                           |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Kilocode reference** | `packages/kilo-vscode/webview-ui/src/context/work-style.tsx:98`                                                                                                                           |
+| **Trigger**            | Work-style onboarding UI becomes visible for the first time; fire once (guard with a persisted `acknowledged` flag)                                                                       |
+| **Desktop**            | Implemented. kilo.agent's work-style step announces it once per window on `kilo.agent/work-style-onboarding`; kilo.telemetry declares and sends it (`plugins/telemetry/src/web/index.ts`) |
 
 **Payload:** _(none)_
 
@@ -82,11 +82,11 @@ These originate in the UI layer and must be explicitly captured. The CLI does **
 
 ### `WORK_STYLE_SELECTED` — "Work Style Selected"
 
-|                        |                                                                                                                                             |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Kilocode reference** | `packages/kilo-vscode/webview-ui/src/context/work-style.tsx:79`                                                                             |
-| **Trigger**            | User picks a work style in the onboarding flow                                                                                              |
-| **Desktop**            | Implemented. Sent when the user presses Continue (before the global config write). The step has no Skip, so Desktop never sends `"skipped"` |
+|                        |                                                                                                                                                                                                            |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Kilocode reference** | `packages/kilo-vscode/webview-ui/src/context/work-style.tsx:79`                                                                                                                                            |
+| **Trigger**            | User picks a work style in the onboarding flow                                                                                                                                                             |
+| **Desktop**            | Implemented. Sent when the user presses Continue (before the global config write), through `kilo.agent/work-style-onboarding` and kilo.telemetry. The step has no Skip, so Desktop never sends `"skipped"` |
 
 **Payload:**
 
@@ -240,6 +240,25 @@ These are not in the VS Code extension but are natural Desktop additions:
 | `WORKSPACE_REMOVED`         | User removes a workspace                              |
 | `SESSION_CREATED_FROM_HOME` | User sends from the home composer                     |
 | `SETTINGS_CHANGED`          | User changes a setting (with `settingKey` in payload) |
+
+---
+
+## Desktop events kept from origin
+
+Sent with origin's names and payloads by the plugin that owns the surface (each declares them as `kilo.telemetry/telemetry-event`):
+
+| Event                                             | Sent by        | Payload                                  |
+| ------------------------------------------------- | -------------- | ---------------------------------------- |
+| "Page Visit"                                      | kilo.telemetry | `{ path }`                               |
+| "Pane Opened" / "Pane Closed"                     | kilo.workbench | `{ paneType }`                           |
+| "Layout Arrangement Changed"                      | kilo.workbench | `{ arrangement: "tiles" \| "carousel" }` |
+| "Layout Preset Applied" / "Layout Preset Removed" | kilo.workbench | _(none)_                                 |
+| "Layout Preset Saved"                             | kilo.workbench | `{ isUpdate, makeDefault, paneCount }`   |
+| "Layout Preset Default Changed"                   | kilo.workbench | `{ cleared }`                            |
+
+- **`path`** is origin's: the home view reports `/plugins/chat` (origin redirected `/` there and opened sessions within it); `/settings/<section>` kept its ids. The workspace board, origin's `/plugins/workspace-board`, is now a sessions view of the home page and reports `/plugins/chat` ("Workspace Board Opened" marks it).
+- **`paneType`** is origin's tab id: `kilo.<feature>/<kind>` becomes `<feature>.<kind>` (`files.files`, `git.changes`, `terminal.terminal`…), the agent pane `chat`; other plugins' kinds are sent as they are.
+- Layout events come only from what a person does (launching, closing, toggling, managing presets, Open Files / Terminal / Changes), never from layout syncs, the default layout or a preset's own pane opens.
 
 ---
 

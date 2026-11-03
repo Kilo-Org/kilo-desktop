@@ -166,6 +166,29 @@ describe("SharedCondaBridge", () => {
 		bridge.dispose();
 	});
 
+	it("starts a new bridge process after a release", async () => {
+		const bridge = new SharedCondaBridge({
+			resolveBridge: () => LAUNCH_INFO,
+			logger: silentLogger,
+		});
+		const first = bridge.acquire();
+		await first.warmUp();
+
+		bridge.release();
+		const second = bridge.acquire();
+		await second.warmUp();
+
+		expect(second).not.toBe(first);
+		expect(spawn).toHaveBeenCalledTimes(2);
+		bridge.dispose();
+	});
+
+	it("refuses to start without a bridge payload", () => {
+		const bridge = new SharedCondaBridge({ resolveBridge: () => null, logger: silentLogger });
+
+		expect(() => bridge.acquire()).toThrow("conda bridge payload was not found");
+	});
+
 	it("starts the bridge with its extra environment and the consent choice", async () => {
 		const bridge = new SharedCondaBridge({
 			resolveBridge: () => LAUNCH_INFO,

@@ -60,7 +60,7 @@ export default defineConfig({
 					dedupe: [
 						"react",
 						"react-dom",
-						"@kilo-desktop/sdk-react",
+						"@kilo-desktop/kernel",
 						"@assistant-ui/react",
 						"@assistant-ui/core",
 						"@assistant-ui/store",
@@ -73,7 +73,6 @@ export default defineConfig({
 						"react-dom",
 						"react/jsx-runtime",
 						"react/jsx-dev-runtime",
-						"@kilo-desktop/sdk-react",
 						"@tanstack/react-query",
 						"@testing-library/react",
 						"@base-ui/react/button",
@@ -104,6 +103,8 @@ export default defineConfig({
 					// the unit/integration projects; Vitest requires unique groupOrders when
 					// two projects in the same config have different maxWorkers.
 					...(process.env.CI ? { maxWorkers: 2, sequence: { groupOrder: 1 } } : {}),
+					// Interaction-heavy tests outlast the 15s default when every package runs at once (pre-push).
+					testTimeout: 30_000,
 					browser: {
 						enabled: true,
 						headless: true,

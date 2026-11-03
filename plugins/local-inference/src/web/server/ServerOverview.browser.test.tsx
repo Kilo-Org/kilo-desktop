@@ -15,14 +15,12 @@ afterEach(() => {
 
 describe("Local model server overview", () => {
 	it("shows system usage and the server connection details", async () => {
-		const copyText = vi.fn(async () => undefined);
-		const { baseElement } = renderSettings(
-			{
-				"status.get": async () => ({ status: "ready", connection }),
-				"usage.get": async () => usageSnapshot,
-			},
-			{ copyText },
-		);
+		const { baseElement, host } = await renderSettings({
+			"status.get": async () => ({ status: "ready", connection }),
+			"usage.get": async () => usageSnapshot,
+		});
+		const copyText = (text: string) => ({ text });
+		const { writeText } = host;
 		const screen = page.elementLocator(baseElement);
 		const cpu = screen.getByTestId("local-model-server-usage-cpu");
 		const ram = screen.getByTestId("local-model-server-usage-ram");
@@ -49,14 +47,14 @@ describe("Local model server overview", () => {
 			.element(screen.getByLabelText("Server Address"))
 			.toHaveValue("http://127.0.0.1:59632/v1");
 		await screen.getByRole("button", { name: "Copy server address" }).click();
-		await expect.poll(() => copyText).toHaveBeenCalledWith("http://127.0.0.1:59632/v1");
+		await expect.poll(() => writeText).toHaveBeenCalledWith(copyText("http://127.0.0.1:59632/v1"));
 		const apiKey = screen.getByLabelText("API Key");
 		await expect.element(apiKey).toHaveValue("local-secret");
 		await expect.element(apiKey).toHaveAttribute("type", "password");
 		await screen.getByRole("button", { name: "Show api key" }).click();
 		await expect.element(apiKey).toHaveAttribute("type", "text");
 		await screen.getByRole("button", { name: "Copy api key" }).click();
-		await expect.poll(() => copyText).toHaveBeenCalledWith("local-secret");
+		await expect.poll(() => writeText).toHaveBeenCalledWith(copyText("local-secret"));
 
 		const requestInfo = screen.getByRole("button", { name: "Request info" });
 		await expect.element(requestInfo).toBeEnabled();
@@ -79,10 +77,10 @@ describe("Local model server overview", () => {
 			.toHaveValue("http://127.0.0.1:59632/v1/chat/completions");
 		await requestPopover.getByRole("button", { name: "Copy Chat completions curl" }).click();
 		await expect
-			.poll(() => copyText)
-			.toHaveBeenCalledWith(
-				'curl -sS -X POST \'http://127.0.0.1:59632/v1/chat/completions\' -H \'Authorization: Bearer local-secret\' -H \'Content-Type: application/json\' -d \'{"model":"model-id","messages":[{"role":"user","content":"Hello!"}]}\'',
-			);
+			.poll(() => writeText)
+			.toHaveBeenCalledWith({
+				text: 'curl -sS -X POST \'http://127.0.0.1:59632/v1/chat/completions\' -H \'Authorization: Bearer local-secret\' -H \'Content-Type: application/json\' -d \'{"model":"model-id","messages":[{"role":"user","content":"Hello!"}]}\'',
+			});
 
 		await expect.element(screen.getByRole("group", { name: "Models" })).toBeVisible();
 		await expect
@@ -93,7 +91,7 @@ describe("Local model server overview", () => {
 
 	it("shows server settings on the page and automatically saves changes", async () => {
 		const update = vi.fn(async (settings) => settings);
-		const { baseElement } = renderSettings({
+		const { baseElement } = await renderSettings({
 			"status.get": async () => ({ status: "ready" }),
 			"usage.get": async () => usageSnapshot,
 			"settings.get": async () => ({
@@ -134,7 +132,7 @@ describe("Local model server overview", () => {
 	});
 
 	it("shows placeholders until usage is available", async () => {
-		const { baseElement } = renderSettings({
+		const { baseElement } = await renderSettings({
 			"status.get": async () => ({ status: "ready" }),
 			"usage.get": () => new Promise(() => undefined),
 		});

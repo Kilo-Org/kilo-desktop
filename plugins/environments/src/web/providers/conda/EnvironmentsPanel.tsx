@@ -1,8 +1,8 @@
-import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { useQuery } from "@tanstack/react-query";
 
-import { SettingsPageHeader, sdkQueryOptions, useSdk } from "@kilo-desktop/sdk-react";
+import { SettingsPageHeader } from "@kilo-desktop/ui/components/settings-page-header";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	DropdownMenu,
@@ -38,7 +38,9 @@ import {
 	Trash2Icon,
 } from "lucide-react";
 
-import type { CondaEnv, CondaService } from "../../../contracts/providers/conda.js";
+import type { CondaEnv } from "../../../contracts/providers/conda.js";
+import { useSelectedEnvironment } from "../../app.js";
+import { condaQueryOptions, useConda } from "../../conda.js";
 import { EnvironmentsListSkeleton } from "../../EnvironmentsListSkeleton.js";
 import { CloneEnvironmentDialog } from "./CloneEnvironmentDialog.js";
 import { CreateEnvironmentDialog } from "./CreateEnvironmentDialog.js";
@@ -52,7 +54,7 @@ import { ListViewMenu, type SortDirection } from "./ListViewMenu.js";
 import { useProviderNotReadySince } from "./useProviderNotReadySince.js";
 
 /**
- * How often to re-read `conda.envs.list` while the backend reports
+ * How often to re-read `listEnvironments` while the backend reports
  * `PROVIDER_NOT_READY`. The sidecar restarts itself on a cold start or after
  * an update; a short fixed poll clears the "starting" state the moment it
  * comes up. The per-fetch `retry` is disabled so this interval is the sole
@@ -69,36 +71,13 @@ const SORT_FIELDS = [
 ] as const;
 
 /**
- * Read the `env` search param from the shell location. When a user selects
- * an environment, we navigate to `?env=<prefix>` via `sdk.navigate`; going
- * back clears the param. This keeps TanStack Router's history tracking
- * intact — no raw `window.history.pushState` that clobbers `__TSR_index`.
- */
-function useSelectedPrefix(sdk: ReturnType<typeof useSdk<CondaService>>): string | undefined {
-	const subscribe = useCallback((fn: () => void) => sdk.location.subscribe(fn), [sdk]);
-	const getSnapshot = useCallback(() => {
-		const env = sdk.location.peek().search.env;
-		return typeof env === "string" && env ? env : undefined;
-	}, [sdk]);
-	return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-}
-
-function useGoBack(sdk: ReturnType<typeof useSdk<CondaService>>): () => void {
-	return useCallback(() => {
-		const currentPath = sdk.location.peek().path;
-		sdk.navigate(currentPath, { search: {} });
-	}, [sdk]);
-}
-
-/**
  * Loading state for callers that mount before the panel (the page's provider
  * status wait): shaped like the view the URL selects, so a deep link to
  * `?env=` shows the detail shape throughout instead of flashing the list.
  */
 export function EnvironmentsPanelLoading() {
-	const sdk = useSdk<CondaService>("environments");
-	const selectedPrefix = useSelectedPrefix(sdk);
-	const goBack = useGoBack(sdk);
+	const [selectedPrefix, setSelectedPrefix] = useSelectedEnvironment();
+	const goBack = useCallback(() => setSelectedPrefix(undefined), [setSelectedPrefix]);
 	return selectedPrefix ? (
 		<EnvironmentDetailLoading prefix={selectedPrefix} onBack={goBack} />
 	) : (
@@ -119,9 +98,8 @@ type DialogState =
 /**
  * Renderer panel for the conda provider.
  *
- * Reads `conda.envs.list` via `useSdkQuery`, which pipes through the plugin's
- * `mainRegister` handler and, in production, calls `conda env list --json`
- * inside the plugin-scoped base. The list follows the app's settings pattern
+ * Reads `listEnvironments` from `kilo.environments/conda`, which asks the
+ * bundled conda bridge in main. The list follows the app's settings pattern
  * for configured entities: header actions, a search + sort toolbar, and one
  * bordered panel of joined rows. Everything is client-side — the full dataset
  * arrives in a single RPC call.
@@ -132,9 +110,9 @@ type DialogState =
  * the list skeleton.
  */
 export function EnvironmentsPanel() {
-	const sdk = useSdk<CondaService>("environments");
+	const conda = useConda();
 	const envs = useQuery({
-		...sdkQueryOptions(sdk, "conda.envs.list"),
+		...condaQueryOptions(conda, "listEnvironments"),
 		// Fixed-interval polling (below) is the sole re-attempt mechanism for a
 		// warming-up backend; see PROVIDER_NOT_READY_POLL_MS.
 		retry: false,
@@ -150,19 +128,16 @@ export function EnvironmentsPanel() {
 		notReady: settledNotReady,
 		resolved: envs.isSuccess || (envs.isError && !settledNotReady),
 	});
-	const selectedPrefix = useSelectedPrefix(sdk);
+	const [selectedPrefix, setSelectedPrefix] = useSelectedEnvironment();
 	const [dialog, setDialog] = useState<DialogState>({ kind: "none" });
 	const closeDialog = useCallback(() => setDialog({ kind: "none" }), []);
 
 	const selectEnv = useCallback(
-		(env: CondaEnv) => {
-			const currentPath = sdk.location.peek().path;
-			sdk.navigate(currentPath, { search: { env: env.prefix } });
-		},
-		[sdk],
+		(env: CondaEnv) => setSelectedPrefix(env.prefix),
+		[setSelectedPrefix],
 	);
 
-	const goBack = useGoBack(sdk);
+	const goBack = useCallback(() => setSelectedPrefix(undefined), [setSelectedPrefix]);
 
 	const selectedEnv = useMemo(() => {
 		if (!selectedPrefix || !envs.data) return null;

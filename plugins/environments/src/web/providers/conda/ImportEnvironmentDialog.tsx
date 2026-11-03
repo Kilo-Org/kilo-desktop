@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type FormEvent } from "react";
 
-import { useSdk, useSdkMutation } from "@kilo-desktop/sdk-react";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Dialog,
@@ -35,8 +34,9 @@ import { FileUpIcon, XIcon } from "lucide-react";
 import type {
 	CondaEnvsPickFileResult,
 	CondaEnvsReadFileResult,
-	CondaService,
 } from "../../../contracts/providers/conda.js";
+import { useConda, useCondaMutation } from "../../conda.js";
+import { usePathForFile } from "../../app.js";
 import { validateEnvironmentName } from "./environment-display.js";
 import {
 	importEnvironmentJob,
@@ -105,7 +105,8 @@ interface ImportEnvironmentDialogProps {
 }
 
 export function ImportEnvironmentDialog({ open, onClose }: ImportEnvironmentDialogProps) {
-	const sdk = useSdk<CondaService>("environments");
+	const conda = useConda();
+	const pathForFile = usePathForFile();
 	const [filePath, setFilePath] = useState<string | null>(null);
 	const [fileName, setFileName] = useState<string | null>(null);
 	const [fileContent, setFileContent] = useState<string | null>(null);
@@ -126,8 +127,8 @@ export function ImportEnvironmentDialog({ open, onClose }: ImportEnvironmentDial
 	// Invalidates in-flight reads when the selection changes or a newer stage starts.
 	const stageTokenRef = useRef(0);
 
-	const mutation = useSdkMutation(sdk, "conda.envs.createFromFile", {
-		invalidates: ["conda.envs.list"],
+	const mutation = useCondaMutation(conda, "createEnvironmentFromFile", {
+		invalidates: ["listEnvironments"],
 	});
 
 	// Fetch file content when a file is selected and extract the env name.
@@ -140,8 +141,8 @@ export function ImportEnvironmentDialog({ open, onClose }: ImportEnvironmentDial
 			return;
 		}
 		setStagedHandle(null);
-		sdk
-			.invoke("conda.envs.readFile", { filePath })
+		conda
+			.readEnvironmentFile({ filePath })
 			.then((result) => {
 				if (token !== stageTokenRef.current) return;
 				const { content, stagedHandle: handle } = result as CondaEnvsReadFileResult;
@@ -162,14 +163,14 @@ export function ImportEnvironmentDialog({ open, onClose }: ImportEnvironmentDial
 		return () => {
 			stageTokenRef.current += 1;
 		};
-	}, [filePath, sdk]);
+	}, [filePath, conda]);
 
 	// Re-stage after a failed import, whose handle the main side already released.
 	async function restageFile(path: string): Promise<void> {
 		const token = ++stageTokenRef.current;
 		setStagedHandle(null);
 		try {
-			const { content, stagedHandle: handle } = (await sdk.invoke("conda.envs.readFile", {
+			const { content, stagedHandle: handle } = (await conda.readEnvironmentFile({
 				filePath: path,
 			})) as CondaEnvsReadFileResult;
 			if (token !== stageTokenRef.current) return;
@@ -224,7 +225,7 @@ export function ImportEnvironmentDialog({ open, onClose }: ImportEnvironmentDial
 				return;
 			}
 
-			const resolvedPath = sdk.shell.getPathForFile(file);
+			const resolvedPath = pathForFile(file);
 			if (!resolvedPath) {
 				setValidationError(
 					"Could not resolve file path. Import from file requires the desktop app.",
@@ -235,13 +236,13 @@ export function ImportEnvironmentDialog({ open, onClose }: ImportEnvironmentDial
 			setFilePath(resolvedPath);
 			setFileName(file.name);
 		},
-		[sdk.shell],
+		[pathForFile],
 	);
 
 	async function handleBrowse() {
 		setValidationError(null);
 		try {
-			const result = (await sdk.invoke("conda.envs.pickFile", {})) as CondaEnvsPickFileResult;
+			const result = (await conda.pickEnvironmentFile({})) as CondaEnvsPickFileResult;
 			if (result.filePath) {
 				setFilePath(result.filePath);
 				const segments = result.filePath.split(/[/\\]/);

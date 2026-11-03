@@ -5,24 +5,27 @@ import {
 	getLocatorByText,
 } from "@anaconda/playwright-utils";
 
-import { paveWorkspaceChat } from "./pave-workspace-chat.js";
+import { createAndActivateWorkspace, openNewSession } from "../chat/agent-session.js";
 
 /**
- * Page object for the composer footer's branch switcher popover. The
- * selector is contributed to the `kilo-ui/chat-composer-draft-footer`
- * zone, so the flow paves a workspace chat first (same trick as the
- * Changes pane's smoke spec). Deep coverage — grouping, search, the
- * create dialog — lives in the Vitest browser tier
- * (GitBranchSelector.browser.test.tsx); this spec only proves the
- * packaged binary renders the grouped popover against a real repository.
+ * Page object for the launcher's branch picker: kilo.git's
+ * `kilo.workbench/launcher-option` in the branch slot beside the isolation
+ * control, in the session starter's footer, for the folder a new session
+ * would work in. Deep coverage —
+ * grouping, search, the create dialog, moving to a worktree — lives in
+ * kilo.git's Vitest browser tier; this spec only proves the packaged binary
+ * renders the grouped popover against a real repository.
  */
 export class BranchSelectorPage {
-	async openInWorkspaceChat(folderPath: string, name: string): Promise<void> {
-		await paveWorkspaceChat(folderPath, name);
-		const trigger = getLocatorByTestId("git-branch-selector-trigger");
+	async openInLauncher(folderPath: string, name: string): Promise<void> {
+		await createAndActivateWorkspace(folderPath, name);
+		await openNewSession();
+		const trigger = getLocatorByTestId("launcher-isolation-footer")
+			.getByTestId("launcher-isolation")
+			.getByTestId("git-branch-selector-trigger");
 		await expectElementToBeVisible(
 			trigger,
-			"Branch selector trigger should render in the composer footer",
+			"The branch picker should show beside the isolation control in the starter's footer",
 		);
 		await click(trigger);
 	}

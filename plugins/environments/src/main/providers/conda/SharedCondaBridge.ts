@@ -1,12 +1,16 @@
-import type { MainSdk, MainSdkLogger } from "@kilo-desktop/feature-sdk/main";
+import {
+	KernelDataCollection,
+	KernelError,
+	type KernelLogger,
+	type PluginSdk,
+} from "@kilo-desktop/kernel";
+
+import type { CondaBackend } from "./CondaBackend.js";
 
 import type { BridgeLaunchInfo } from "./resolveBridgePath.js";
 import { SidecarCondaBackend } from "./SidecarCondaBackend.js";
 
-/**
- * Minimal shape of the shell's main-side preferences capability. Inlined so
- * the plugin does not take a `@kilo-desktop/contracts` dependency.
- */
+/** Data-collection consent and identity forwarded to the bridge. */
 export interface BridgePreferences {
 	readonly allowDataCollection: boolean;
 	readonly telemetryEnv: string;
@@ -20,8 +24,17 @@ export interface BridgePreferences {
 	onDidChangeAllowDataCollection(listener: (allow: boolean) => void): () => void;
 }
 
-interface PreferencesCapability extends Record<string, unknown> {
-	preferences: BridgePreferences;
+/** A conda backend that can be started ahead of its first call. */
+export interface WarmableCondaBackend extends CondaBackend {
+	warmUp(): Promise<void>;
+}
+
+/** Hands out one bridge backend, created on first use. */
+export interface CondaBridge {
+	acquire(): WarmableCondaBackend;
+	/** Stops the backend's process; the next `acquire` starts a new one. */
+	release(): void;
+	dispose(): void;
 }
 
 /**
@@ -45,7 +58,8 @@ interface PreferencesCapability extends Record<string, unknown> {
  *
  * The backend is created lazily on first `acquire()`, so exposing the
  * capability or constructing this holder performs no I/O and never spawns a
- * process on its own. `dispose()` is idempotent and owned by `mainRegister`.
+ * process on its own. `release()` stops the process (the kernel service's
+ * stop); `dispose()` also stops following consent, at deactivation.
  *
  * Exception: on Windows ARM64 the `condaRuntime` capability gets a second
  * holder (see {@link pluginBridgeEnvironment}). conda has no per-request
@@ -53,9 +67,9 @@ interface PreferencesCapability extends Record<string, unknown> {
  * `CONDA_SUBDIR` differs from the one serving user environments. That holder
  * follows the same consent preference.
  */
-export class SharedCondaBridge {
+export class SharedCondaBridge implements CondaBridge {
 	readonly #resolveBridge: () => BridgeLaunchInfo | null;
-	readonly #logger: MainSdkLogger;
+	readonly #logger: KernelLogger;
 	readonly #preferences: BridgePreferences | undefined;
 	readonly #environment: Readonly<Record<string, string>>;
 	readonly #unsubscribeConsent: (() => void) | undefined;
@@ -63,7 +77,7 @@ export class SharedCondaBridge {
 
 	constructor(options: {
 		resolveBridge: () => BridgeLaunchInfo | null;
-		logger: MainSdkLogger;
+		logger: KernelLogger;
 		preferences?: BridgePreferences | undefined;
 		environment?: Readonly<Record<string, string>>;
 	}) {
@@ -80,9 +94,9 @@ export class SharedCondaBridge {
 		if (this.#backend) return this.#backend;
 		const launchInfo = this.#resolveBridge();
 		if (!launchInfo) {
-			throw new Error(
-				"[conda-bridge] anaconda-bridge-sidecar payload not found. " +
-					"Ensure the bridge is packaged or BRIDGE_PAYLOAD is set.",
+			throw new KernelError(
+				"UNAVAILABLE",
+				"The conda bridge payload was not found. Ensure the bridge is packaged or BRIDGE_PAYLOAD is set.",
 			);
 		}
 		this.#logger.info(
@@ -107,9 +121,15 @@ export class SharedCondaBridge {
 		return this.#backend;
 	}
 
+	release(): void {
+		const backend = this.#backend;
+		this.#backend = undefined;
+		backend?.dispose();
+	}
+
 	dispose(): void {
 		this.#unsubscribeConsent?.();
-		this.#backend?.dispose();
+		this.release();
 	}
 }
 
@@ -130,7 +150,26 @@ export function pluginBridgeEnvironment(
 	return platform === "win32" && arch === "arm64" ? { CONDA_SUBDIR: "win-arm64" } : null;
 }
 
-/** The shell's preferences capability, when present. */
-export function bridgePreferences(mainSdk: MainSdk): BridgePreferences | undefined {
-	return mainSdk.plugins.get<PreferencesCapability>("preferences")?.preferences;
+/**
+ * The kernel's data-collection consent as bridge preferences, or undefined
+ * without it. The release environment maps onto the bridge's telemetry
+ * environment (`development`, else `production`).
+ */
+export function bridgePreferences(sdk: PluginSdk): BridgePreferences | undefined {
+	const consent = sdk.domains.get(KernelDataCollection);
+	if (!consent) return undefined;
+	const state = consent.getState();
+	return {
+		allowDataCollection: state.allowed,
+		telemetryEnv: state.environment === "development" ? "development" : "production",
+		installationId: state.installationId,
+		onDidChangeAllowDataCollection(listener) {
+			let allowed = consent.getState().allowed;
+			return consent.subscribe((next) => {
+				if (next.allowed === allowed) return;
+				allowed = next.allowed;
+				listener(allowed);
+			});
+		},
+	};
 }

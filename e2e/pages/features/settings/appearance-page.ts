@@ -28,6 +28,7 @@ import {
 	type ColorTheme,
 	type TextSizeSetting,
 } from "../../../testdata/appearance.js";
+import { callDomainMethod } from "../../../utils/kernel-domains.js";
 
 const { accentColor } = colorThemeData;
 const { sidebarVibrancy, textSizeSettings } = appearanceData;
@@ -59,12 +60,12 @@ export class AppearancePage {
 	private readonly resetButton = (setting: TextSizeSetting) =>
 		getLocatorByRole("button", { name: setting.resetLabel });
 	/**
-	 * Text that renders at the setting's size: a `text-sm` siderail entry outside the Appearance
-	 * page for the interface, and the preview's prompt bubble for chat.
+	 * Text that renders at the setting's size: a `text-sm` siderail entry for the interface, and
+	 * the preview's prompt bubble for chat.
 	 */
 	private readonly renderedText = (setting: TextSizeSetting) =>
 		setting.id === "ui"
-			? getLocatorByTestId("settings-section-about")
+			? getLocatorByTestId("settings-section-appearance")
 			: getLocatorByTestId("appearance-chat-text-preview").locator(":scope > p");
 
 	private readonly colorThemePicker = () => getLocatorByTestId("appearance-color-theme");
@@ -98,6 +99,22 @@ export class AppearancePage {
 	}
 
 	/** Reloads at home so the next open re-reads the stored text sizes. */
+	/** Appearance lives in main now, so tests reset it explicitly rather than by clearing storage. */
+	async resetAppearance(): Promise<void> {
+		await callDomainMethod(
+			"kilo.shell/appearance",
+			"update",
+			{
+				source: "dark",
+				themeId: "kilo",
+				accentId: "theme",
+				sidebarVibrancy: true,
+				textSizes: { ui: 13, chat: 14 },
+			},
+			"kilo.shell",
+		);
+	}
+
 	async reloadApp(): Promise<void> {
 		await getPage().evaluate(() => {
 			globalThis.location.hash = "#/";
@@ -209,6 +226,11 @@ export class AppearancePage {
 	 * Each option's swatch uses the same tokens the app applies, which makes it the expected colour.
 	 */
 	async getColorThemeOptions(): Promise<ColorTheme[]> {
+		// The listbox renders its options after the trigger opens it; wait for the default theme.
+		await expectElementToBeVisible(
+			getLocatorByTestId("appearance-color-theme-kilo"),
+			"The color theme picker should open and list the default theme",
+		);
 		const count = await getLocatorCount(this.colorThemeOptions());
 		if (count === 0) throw new Error("The color theme picker should list at least one theme");
 		const themes: ColorTheme[] = [];

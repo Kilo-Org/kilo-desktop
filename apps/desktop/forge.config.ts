@@ -98,7 +98,9 @@ const extraResources = [
 	// Copied over Squirrel's app.ico by the install hook (SquirrelUninstallIcon.ts).
 	...(process.platform === "win32" ? [path.join(packageRoot, "assets/icon.ico")] : []),
 	// Native plugin payloads must stay outside ASAR so the shell can execute them.
-	path.join(workspaceRoot, "plugins/kilo-server/resources/kilo"),
+	path.join(workspaceRoot, "plugins/agent/resources/kilo"),
+	// kilo.terminal's frame, served on its embedded host from the app's resources.
+	path.join(workspaceRoot, "plugins/terminal/resources/terminal"),
 	...notebookPackaging.extraResources,
 	...bridgePackaging.extraResources,
 ];
@@ -125,8 +127,8 @@ async function stageProductionDependencies(
 	const stagingDirectory = await mkdtemp(path.join(workspaceRoot, ".kilo-desktop-production-"));
 	const linkedDependencies = [
 		{
-			packageName: "@kilo-desktop/plugin-kilo-server",
-			source: path.join(workspaceRoot, "plugins/kilo-server"),
+			packageName: "@kilo-desktop/plugin-agent",
+			source: path.join(workspaceRoot, "plugins/agent"),
 			excludedDirectories: new Set([
 				".git",
 				".vitest",
@@ -135,11 +137,6 @@ async function stageProductionDependencies(
 				"node_modules",
 				"resources",
 			]),
-		},
-		{
-			packageName: "@kilo-desktop/plugin-kilo-ui",
-			source: path.join(workspaceRoot, "plugins/kilo-ui"),
-			excludedDirectories: new Set([".git", ".vitest", "coverage", "e2e", "node_modules"]),
 		},
 		{
 			packageName: "@kilo-desktop/plugin-notebook",
@@ -157,7 +154,14 @@ async function stageProductionDependencies(
 		{
 			packageName: "@kilo-desktop/plugin-terminal",
 			source: path.join(workspaceRoot, "plugins/terminal"),
-			excludedDirectories: new Set([".git", ".vitest", "coverage", "e2e", "node_modules"]),
+			excludedDirectories: new Set([
+				".git",
+				".vitest",
+				"coverage",
+				"e2e",
+				"node_modules",
+				"resources",
+			]),
 		},
 		{
 			packageName: "@kilo-desktop/plugin-environments",

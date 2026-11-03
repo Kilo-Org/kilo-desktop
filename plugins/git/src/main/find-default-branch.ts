@@ -1,4 +1,4 @@
-import type { GitBranch } from "../contracts/schemas.js";
+import type { GitBranch } from "../contracts/models.js";
 
 /**
  * Locate the default branch among the visible branches, the same way

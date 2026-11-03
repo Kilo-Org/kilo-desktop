@@ -1,7 +1,13 @@
 import { app, webContents as allWebContents, type Input, type WebContents } from "electron";
 
-import type { ShortcutBinding } from "@kilo-desktop/contracts";
-import { chordFromKeyboardEvent, serializeChord } from "@kilo-desktop/feature-sdk";
+import { chordFromKeyboardEvent, serializeChord } from "@kilo-desktop/kernel";
+
+/** One app-wide shortcut: a canonical chord (see `serializeChord`) bound to a command id. */
+export interface ShortcutBinding {
+	readonly chord: string;
+	readonly commandId: string;
+	readonly repeatable?: boolean;
+}
 
 /**
  * App-wide shortcut capture. Renderers push their window's bindings

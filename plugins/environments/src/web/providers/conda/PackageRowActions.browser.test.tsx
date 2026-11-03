@@ -1,18 +1,14 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import { SdkProvider } from "@kilo-desktop/sdk-react";
-import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
-
 import {
-	condaContract,
 	type CondaEnv,
 	type CondaPackage,
 	type CondaPackagesRemoveInput,
 	type CondaPackagesRemoveResult,
 } from "../../../contracts/providers/conda.js";
+import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host.js";
 import { BulkRemoveConfirmation } from "./BulkRemoveConfirmation.js";
 import { PackageRowActions } from "./PackageRowActions.js";
 import { RemovePackageConfirmation } from "./RemovePackageConfirmation.js";
@@ -33,10 +29,8 @@ const PANDAS: CondaPackage = {
 
 type RemoveHandler = (input: CondaPackagesRemoveInput) => Promise<CondaPackagesRemoveResult>;
 
-function renderWithSdk(ui: React.ReactElement, remove?: RemoveHandler) {
-	const sdk = createFakeSdk({
-		featureId: "environments",
-		channels: condaContract,
+async function renderWithSdk(ui: React.ReactElement, remove?: RemoveHandler) {
+	const hostOptions: EnvironmentsHostOptions = {
 		handlers: {
 			"conda.packages.remove":
 				remove ??
@@ -46,14 +40,8 @@ function renderWithSdk(ui: React.ReactElement, remove?: RemoveHandler) {
 					removed: input.packages,
 				})),
 		},
-	});
-	const system = createFakeFeatureSystem({ sdks: { environments: sdk } });
-	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(
-		<SdkProvider system={system}>
-			<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>
-		</SdkProvider>,
-	);
+	};
+	return renderWithConda(<>{ui}</>, hostOptions);
 }
 
 afterEach(cleanup);
@@ -61,7 +49,7 @@ afterEach(cleanup);
 describe("PackageRowActions", () => {
 	it("delegates Update… to the parent when an update is available", async () => {
 		const onUpdate = vi.fn();
-		const { baseElement } = renderWithSdk(
+		const { baseElement } = await renderWithSdk(
 			<PackageRowActions env={ENV} pkg={NUMPY} hasUpdate onUpdate={onUpdate} />,
 		);
 		const screen = page.elementLocator(baseElement);
@@ -74,7 +62,7 @@ describe("PackageRowActions", () => {
 
 	it("disables Update… when the package is already at the latest version", async () => {
 		const onUpdate = vi.fn();
-		const { baseElement } = renderWithSdk(
+		const { baseElement } = await renderWithSdk(
 			<PackageRowActions env={ENV} pkg={NUMPY} hasUpdate={false} onUpdate={onUpdate} />,
 		);
 		const screen = page.elementLocator(baseElement);
@@ -86,7 +74,7 @@ describe("PackageRowActions", () => {
 	});
 
 	it("opens the remove confirmation from the Remove action", async () => {
-		const { baseElement } = renderWithSdk(
+		const { baseElement } = await renderWithSdk(
 			<PackageRowActions env={ENV} pkg={NUMPY} hasUpdate onUpdate={() => {}} />,
 		);
 		const screen = page.elementLocator(baseElement);
@@ -106,7 +94,7 @@ describe("RemovePackageConfirmation", () => {
 			removed: input.packages,
 		}));
 		const onOpenChange = vi.fn();
-		const { baseElement } = renderWithSdk(
+		const { baseElement } = await renderWithSdk(
 			<RemovePackageConfirmation env={ENV} pkg={NUMPY} open onOpenChange={onOpenChange} />,
 			remove,
 		);
@@ -129,7 +117,7 @@ describe("RemovePackageConfirmation", () => {
 
 	it("shows the friendly error and stays open when removal fails", async () => {
 		const onOpenChange = vi.fn();
-		const { baseElement } = renderWithSdk(
+		const { baseElement } = await renderWithSdk(
 			<RemovePackageConfirmation env={ENV} pkg={NUMPY} open onOpenChange={onOpenChange} />,
 			async () => {
 				throw new Error("SOLVE_FAILED: conflict");
@@ -146,7 +134,7 @@ describe("RemovePackageConfirmation", () => {
 	it("does not close while the removal is in flight", async () => {
 		let finish!: (value: CondaPackagesRemoveResult) => void;
 		const onOpenChange = vi.fn();
-		const { baseElement } = renderWithSdk(
+		const { baseElement } = await renderWithSdk(
 			<RemovePackageConfirmation env={ENV} pkg={NUMPY} open onOpenChange={onOpenChange} />,
 			() =>
 				new Promise<CondaPackagesRemoveResult>((resolve) => {
@@ -176,7 +164,7 @@ describe("BulkRemoveConfirmation", () => {
 		}));
 		const onOpenChange = vi.fn();
 		const onSuccess = vi.fn();
-		const { baseElement } = renderWithSdk(
+		const { baseElement } = await renderWithSdk(
 			<BulkRemoveConfirmation
 				env={ENV}
 				packages={[NUMPY, PANDAS]}
@@ -209,7 +197,7 @@ describe("BulkRemoveConfirmation", () => {
 
 	it("shows the friendly error and keeps the selection when removal fails", async () => {
 		const onSuccess = vi.fn();
-		const { baseElement } = renderWithSdk(
+		const { baseElement } = await renderWithSdk(
 			<BulkRemoveConfirmation
 				env={ENV}
 				packages={[NUMPY]}

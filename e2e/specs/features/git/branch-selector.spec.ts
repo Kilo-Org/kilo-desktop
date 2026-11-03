@@ -3,13 +3,13 @@ import { test } from "../../../fixtures/features/git.js";
 test.use({ appIsolationKey: "git-branch-selector" });
 
 test.describe("Git branch selector", () => {
-	test("opens the grouped branch popover in a workspace chat's composer", async ({
+	test("opens the grouped branch popover in the launcher", async ({
 		appShellPage,
 		branchSelectorPage,
 		gitBranchWorkspace,
 	}) => {
 		await appShellPage.verifyShellIsLoaded();
-		await branchSelectorPage.openInWorkspaceChat(gitBranchWorkspace.path, gitBranchWorkspace.name);
+		await branchSelectorPage.openInLauncher(gitBranchWorkspace.path, gitBranchWorkspace.name);
 		await branchSelectorPage.verifyGroupedPopover();
 	});
 });

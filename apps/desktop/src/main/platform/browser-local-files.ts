@@ -1,9 +1,7 @@
 import { readFile, realpath, stat } from "node:fs/promises";
 
-import {
-	browserLocalFilePath,
-	createBrowserLocalFileContentSecurityPolicy,
-} from "@kilo-desktop/feature-sdk/main";
+import { browserLocalFilePath } from "./browser-local-file-url.js";
+import { createBrowserLocalFileContentSecurityPolicy } from "./embedded-web-host.js";
 
 import { contentTypeFor } from "./ElectronProtocol.js";
 

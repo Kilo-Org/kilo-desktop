@@ -6,19 +6,17 @@ import { test } from "../../../fixtures/features/browser.js";
 // initialize(); a shared key could let a sibling spec register the guard first.
 test.use({ appIsolationKey: "browser-loopback" });
 
-test.describe("Chat browser loopback guard @smoke @packaged", () => {
+test.describe("Browser loopback guard @smoke @packaged", () => {
 	test("blocks a remote page from embedding a loopback sub-resource", async ({
 		appShellPage,
 		browserPage,
 		browserGuestSessionPage,
-		browserWorkspace,
 	}) => {
 		test.slow();
 		await appShellPage.verifyShellIsLoaded();
-		// Must precede openBrowserTab(), which triggers the host's initialize().
+		// Must precede startBrowserSession(), which triggers the host's initialize().
 		await browserGuestSessionPage.captureNetworkGuardBeforeFirstPane();
-		await browserPage.createAndSelectWorkspace(browserWorkspace.path, browserWorkspace.name);
-		await browserPage.openBrowserTab();
+		await browserPage.startBrowserSession();
 		await browserGuestSessionPage.verifyRemoteEmbeddedLoopbackSubResourceIsCancelled();
 		await browserGuestSessionPage.verifyLoopbackMainFrameNavigationIsAllowed();
 	});
@@ -26,7 +24,6 @@ test.describe("Chat browser loopback guard @smoke @packaged", () => {
 	test("navigates directly to a loopback dev server and adopts its title", async ({
 		appShellPage,
 		browserPage,
-		browserWorkspace,
 	}) => {
 		// The guard must not break a direct top-level navigation to a dev server.
 		test.slow();
@@ -39,8 +36,7 @@ test.describe("Chat browser loopback guard @smoke @packaged", () => {
 			const address = server.address();
 			if (!address || typeof address === "string") throw new Error("Loopback server did not bind.");
 			await appShellPage.verifyShellIsLoaded();
-			await browserPage.createAndSelectWorkspace(browserWorkspace.path, browserWorkspace.name);
-			await browserPage.openBrowserTab();
+			await browserPage.startBrowserSession();
 			await browserPage.navigate(`127.0.0.1:${address.port}`);
 			await browserPage.verifyLoaded("Loopback Dev Server");
 		} finally {

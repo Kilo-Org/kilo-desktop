@@ -1,4 +1,5 @@
-import type { TerminalPalette } from "@kilo-desktop/feature-sdk";
+import type { TerminalPalette } from "@kilo-desktop/ui/themes/appearance-types";
+
 import {
 	TERMINAL_HOST,
 	terminalFrameHostMessageSchema,

@@ -3,6 +3,8 @@ import path from "node:path";
 
 import { getPage } from "@anaconda/playwright-utils/page-utils";
 
+import { callDomainMethod } from "../../../utils/kernel-domains.js";
+
 type FileChangeType = "create" | "update" | "delete";
 interface FileChangeBatch {
 	root: string;
@@ -13,28 +15,25 @@ interface FileChangeBatch {
 const ATTEMPT_TIMEOUT_MS = 4_000;
 const MAX_ATTEMPTS = 5;
 
+/** Waits until kilo.workspaces' watcher reports `folderPath` as actively watched. */
 export async function waitForWorkspaceWatcher(folderPath: string): Promise<void> {
 	await getPage().waitForFunction(async (expectedPath) => {
-		type InvokeResult =
-			| { ok: true; value: { directories: { path: string; state: string }[] } }
-			| { ok: false; error: { code: string; message: string } };
-		type DesktopGlobal = typeof globalThis & {
-			desktopApi: {
-				invoke(
-					channel: "feature:invoke",
-					input: { featureId: string; channel: string },
-				): Promise<InvokeResult>;
-			};
+		type Watched = { path: string; state: string };
+		type Bridge = {
+			request(
+				channel: string,
+				payload: unknown,
+			): Promise<{
+				ok: boolean;
+				value?: { domains: { id: string; state: { watched?: Watched[] } }[] };
+			}>;
 		};
-		const response = await (globalThis as DesktopGlobal).desktopApi.invoke("feature:invoke", {
-			featureId: "workspace",
-			channel: "status",
-		});
-		return (
-			response.ok &&
-			response.value.directories.some(
-				(directory) => directory.path === expectedPath && directory.state === "active",
-			)
+		const bridge = (globalThis as typeof globalThis & { kernelBridge: Bridge }).kernelBridge;
+		// Main answers `kernel:hydrate` with every domain object's current state.
+		const result = await bridge.request("kernel:hydrate", null);
+		const files = result.value?.domains.find((domain) => domain.id === "kilo.workspaces/file");
+		return (files?.state.watched ?? []).some(
+			(folder) => folder.path === expectedPath && folder.state === "active",
 		);
 	}, folderPath);
 }
@@ -43,12 +42,10 @@ export async function waitForWorkspaceWatcher(folderPath: string): Promise<void>
  * Page object for the built-in workspace watcher smoke flow.
  *
  * The watcher is headless (main-process only), so the flow drives it through
- * the two renderer-reachable bridges: workspace CRUD via
- * `desktopApi.invoke("feature:invoke", ...)` on kilo-ui (same trick as the
- * git plugin's smoke spec), and batch observation via the raw
- * "feature:event" channel the shell broadcasts main-side emissions on.
- * This exercises the real native @parcel/watcher addon inside the packaged
- * binary — the only tier that can.
+ * the kernel bridge: the workspace is created with a `kilo.workspaces/workspace`
+ * domain call, and batches are observed as `kilo.workspaces/file` `changed`
+ * domain events broadcast to the window. This exercises the real native
+ * @parcel/watcher addon inside the packaged binary — the only tier that can.
  */
 export class WorkspaceWatcherPage {
 	/**
@@ -56,27 +53,11 @@ export class WorkspaceWatcherPage {
 	 * watcher's reconcile, which subscribes the native watcher to the folder.
 	 */
 	async createWorkspace(folderPath: string, name: string): Promise<void> {
-		await getPage().evaluate(
-			async ({ folderPath, name }) => {
-				type InvokeResult =
-					| { ok: true; value: unknown }
-					| { ok: false; error: { code: string; message: string } };
-				type DesktopGlobal = typeof globalThis & {
-					desktopApi: {
-						invoke(
-							channel: "feature:invoke",
-							input: { featureId: string; channel: string; args?: unknown },
-						): Promise<InvokeResult>;
-					};
-				};
-				const response = await (globalThis as DesktopGlobal).desktopApi.invoke("feature:invoke", {
-					featureId: "kilo-ui",
-					channel: "create",
-					args: { name, folders: [{ path: folderPath, isPrimary: true }] },
-				});
-				if (!response.ok) throw new Error(`[${response.error.code}] ${response.error.message}`);
-			},
-			{ folderPath, name },
+		await callDomainMethod(
+			"kilo.workspaces/workspace",
+			"create",
+			{ name, folders: [{ path: folderPath, isPrimary: true }] },
+			"kilo.workspaces",
 		);
 		await waitForWorkspaceWatcher(folderPath);
 	}
@@ -88,7 +69,7 @@ export class WorkspaceWatcherPage {
 	 * `createWorkspace` waits for the native subscription to become active.
 	 * Multiple attempts still tolerate platform event coalescing, and the first
 	 * observed batch proves the packaged binary's full chain: native parcel events →
-	 * normalization → main event bus → IPC bridge → renderer.
+	 * normalization → domain event → kernel bridge → renderer.
 	 */
 	async writeNewFileAndAwaitCreateChange(folderPath: string, baseName: string): Promise<string> {
 		await this.#startListeningForFileChanges();
@@ -106,25 +87,25 @@ export class WorkspaceWatcherPage {
 		);
 	}
 
-	/** Collect `workspace.file-change` batches broadcast over the event bridge. Idempotent. */
+	/** Collect `kilo.workspaces/file` `changed` events broadcast to the window. Idempotent. */
 	async #startListeningForFileChanges(): Promise<void> {
 		await getPage().evaluate(() => {
-			type FeatureEventEnvelope = { featureId: string; name: string; payload?: unknown };
-			type DesktopGlobal = typeof globalThis & {
-				desktopApi: {
-					on(
-						channel: "feature:event",
-						listener: (payload: FeatureEventEnvelope) => void,
-					): () => void;
-				};
+			type DomainEvent = { id?: string; event?: string; payload?: unknown };
+			type ListenerGlobal = typeof globalThis & {
+				kernelBridge: { on(listener: (channel: string, payload: unknown) => void): () => void };
 				__workspaceFileChanges?: FileChangeBatch[];
 			};
-			const global = globalThis as DesktopGlobal;
+			const global = globalThis as ListenerGlobal;
 			if (global.__workspaceFileChanges) return;
 			global.__workspaceFileChanges = [];
-			global.desktopApi.on("feature:event", (envelope) => {
-				if (envelope.featureId === "workspace" && envelope.name === "file-change") {
-					global.__workspaceFileChanges!.push(envelope.payload as FileChangeBatch);
+			global.kernelBridge.on((channel, payload) => {
+				const message = payload as DomainEvent;
+				if (
+					channel === "kernel:domain-event" &&
+					message.id === "kilo.workspaces/file" &&
+					message.event === "changed"
+				) {
+					global.__workspaceFileChanges!.push(message.payload as FileChangeBatch);
 				}
 			});
 		});

@@ -18,7 +18,7 @@ import {
  * once this path is proven.
  */
 test.describe("Chat attachments", () => {
-	test("uploads an image, sends it, and renders the mock model's reply @smoke", async ({
+	test("uploads an image, sends it, and renders the mock model's reply @smoke @packaged", async ({
 		appShellPage,
 		chatComposerPage,
 		chatModelSelectorPage,
@@ -45,8 +45,7 @@ test.describe("Chat attachments", () => {
 
 		await chatComposerPage.addAttachment(chatAttachmentData.image.path);
 		await chatComposerPage.verifyAttachmentCount(1);
-		await chatComposerPage.typeMessage(chatAttachmentData.image.promptMarker);
-		await chatComposerPage.send();
+		await chatComposerPage.send(chatAttachmentData.image.promptMarker);
 
 		await chatComposerPage.verifyAssistantReplyVisible(
 			chatAttachmentStubReplies[chatAttachmentData.image.promptMarker]!,

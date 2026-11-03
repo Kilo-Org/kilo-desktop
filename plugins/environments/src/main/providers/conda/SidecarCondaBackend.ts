@@ -65,11 +65,11 @@ import {
 } from "vscode-jsonrpc/node";
 
 import { compareCondaVersions } from "../../../compare-conda-versions.js";
-import { FeatureError } from "@kilo-desktop/feature-sdk";
-import type { MainSdkLogger } from "@kilo-desktop/feature-sdk/main";
+import { KernelError } from "@kilo-desktop/kernel";
+import type { KernelLogger } from "@kilo-desktop/kernel";
 
 import {
-	environmentsErrorCodeToFeatureErrorCode,
+	environmentsErrorCodeToKernelErrorCode,
 	formatEnvironmentsErrorMessage,
 	type EnvironmentsErrorCode,
 } from "../../../contracts/common.js";
@@ -206,7 +206,7 @@ function classifyTraceback(
 export interface SidecarCondaBackendOptions {
 	/** Launch command for the bridge (first element is the binary, rest are args). */
 	readonly command?: readonly string[];
-	readonly logger: MainSdkLogger;
+	readonly logger: KernelLogger;
 	/**
 	 * @deprecated Use `command` instead. Kept for backward compat.
 	 */
@@ -239,7 +239,7 @@ export interface SidecarCondaBackendOptions {
 
 export class SidecarCondaBackend implements CondaBackend {
 	readonly #command: readonly string[];
-	readonly #logger: MainSdkLogger;
+	readonly #logger: KernelLogger;
 	readonly #telemetryEnv: string | undefined;
 	readonly #telemetryMachineId: string | undefined;
 	readonly #environment: Readonly<Record<string, string>>;
@@ -652,7 +652,7 @@ export class SidecarCondaBackend implements CondaBackend {
 
 	// ─── Private ──────────────────────────────────────────────────────────
 
-	#classifyRpcError(error: unknown): FeatureError {
+	#classifyRpcError(error: unknown): KernelError {
 		if (error instanceof ResponseError) {
 			const data = error.data as BridgeErrorData | undefined;
 			const domainCode = data?.code;
@@ -998,10 +998,10 @@ function hasNotExited(child: ChildProcess): boolean {
 	return child.exitCode === null && child.signalCode === null;
 }
 
-function featureError(code: EnvironmentsErrorCode, detail?: string): FeatureError {
-	return new FeatureError(
+function featureError(code: EnvironmentsErrorCode, detail?: string): KernelError {
+	return new KernelError(
+		environmentsErrorCodeToKernelErrorCode(code),
 		formatEnvironmentsErrorMessage(code, detail),
-		environmentsErrorCodeToFeatureErrorCode(code),
 	);
 }
 

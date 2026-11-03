@@ -9,6 +9,15 @@ test.describe("About settings", () => {
 		await aboutPage.waitForAboutSettled();
 	});
 
+	test("reads the version and update state and offers the application logs @smoke @packaged", async ({
+		aboutPage,
+	}) => {
+		await aboutPage.verifyVersionNumber();
+		await aboutPage.verifyUpdatesUnavailableMessage();
+		await aboutPage.verifyUpdateTrackLocked();
+		await aboutPage.verifyShowLogFileButton();
+	});
+
 	test("verifies about page layout", async ({ aboutPage }) => {
 		await aboutPage.verifyPageHeading();
 		await aboutPage.verifyPageDescription();
@@ -51,30 +60,6 @@ test.describe("About settings", () => {
 			aboutData.logFileRevealMessage,
 		);
 		await aboutPage.verifyLogFileRevealed();
-		await aboutPage.verifyRevealedFileExists();
-	});
-
-	test("verifies kilo config row when the global kilo.jsonc does not exist", async ({
-		aboutPage,
-	}) => {
-		await aboutPage.verifyKiloConfigTitle();
-		await aboutPage.verifyKiloConfigNotCreated();
-		await aboutPage.verifyShowKiloConfigButtonDisabled();
-	});
-
-	test("shows the existing global kilo.jsonc path, enables show in file manager, and reveals that exact file", async ({
-		appShellPage,
-		aboutPage,
-		globalKiloConfigPath,
-	}) => {
-		await appShellPage.verifyShellIsLoaded();
-		await appShellPage.openSettings();
-		await appShellPage.openAboutSettings();
-		await aboutPage.waitForAboutSettled();
-		await aboutPage.verifyKiloConfigPath(globalKiloConfigPath);
-		await aboutPage.verifyShowKiloConfigButtonEnabled();
-		await aboutPage.clickShowKiloConfig();
-		await aboutPage.verifyRevealedFilePath(globalKiloConfigPath, aboutData.kiloConfigRevealMessage);
 		await aboutPage.verifyRevealedFileExists();
 	});
 });

@@ -1,7 +1,7 @@
 /**
- * Settings > Account copy. Every e2e profile has an empty Kilo CLI profile, so the Account page
- * always settles signed out — even in the build-time signed-in app, whose test identity only
- * satisfies `KiloAuthGate`.
+ * Settings > Account copy. Packaged e2e builds report a fixed signed-in Kilo account
+ * (kilo.account's e2e identity) unless launched with `SIGNED_OUT_LAUNCH_ENV`; every e2e
+ * profile's Kilo CLI itself has no credentials.
  */
 export const accountData = {
 	pageTitle: "Account",
@@ -9,7 +9,11 @@ export const accountData = {
 	accountsRegionLabel: "Accounts",
 	kiloTitle: "Kilo",
 	signedOutStatus: "Not signed in.",
+	signedInStatus: "Signed in as e2e@kilo.dev",
 	signInLabel: "Sign in",
 	pageReadyState: "ready",
 	rowSummaryState: "summary",
 } as const;
+
+/** Launch env for a signed-out app: kilo.account reads the profile's real (empty) account. */
+export const SIGNED_OUT_LAUNCH_ENV = { KILO_E2E_SIGNED_OUT: "1" };

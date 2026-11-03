@@ -12,8 +12,6 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 
 const coverage = {
 	...createCoverageConfig([
-		// Renderer barrel — thin dispatcher covered by the web/index test.
-		"src/web/index.ts",
 		"src/test/**",
 		// Nav icon — trivial JSX that ships one SVG.
 		"src/web/EnvironmentsNavIcon.tsx",
@@ -29,20 +27,20 @@ const coverage = {
 		"src/mcp-app/**",
 		// Pure TypeScript interface — no runtime logic, just type declarations.
 		"src/main/providers/conda/CondaBackend.ts",
-		// MCP tools registration — thin wiring covered by integration tests.
-		"src/shared/providers/conda/tools.ts",
+		// The built widget's loader — a Vite glob over the separately-built bundle.
+		"src/web/mcp-app.ts",
 		// Bridge sidecar integration — requires a running bridge process for
 		// meaningful coverage; unit tests mock the RPC layer. Real coverage
 		// comes from the integration and e2e tiers.
 		"src/main/providers/conda/SidecarCondaBackend.ts",
-		// Type declarations with no logic.
-		"src/env.d.ts",
 	]),
 	include: ["src/**"],
 };
 
 export default defineConfig({
-	// Package-local cache — see plugins/todos/vitest.config.ts for the rationale.
+	// Package-local cache: the hoisted workspace layout would otherwise share
+	// the root node_modules/.vite between concurrently running packages
+	// (pnpm -r), corrupting the optimized-deps bundle mid-run.
 	cacheDir: path.join(root, ".vitest/cache"),
 	test: {
 		coverage,
@@ -79,8 +77,6 @@ export default defineConfig({
 						"react-dom",
 						"react/jsx-runtime",
 						"react/jsx-dev-runtime",
-						"@kilo-desktop/feature-sdk",
-						"@kilo-desktop/sdk-react",
 						"@tanstack/react-query",
 						"@testing-library/react",
 						// Base UI primitives + icons reached through
@@ -120,6 +116,8 @@ export default defineConfig({
 					// the unit/integration projects; Vitest requires unique groupOrders when
 					// two projects in the same config have different maxWorkers.
 					...(process.env.CI ? { maxWorkers: 2, sequence: { groupOrder: 1 } } : {}),
+					// Interaction-heavy tests outlast the 15s default when every package runs at once (pre-push).
+					testTimeout: 30_000,
 					browser: {
 						enabled: true,
 						headless: true,

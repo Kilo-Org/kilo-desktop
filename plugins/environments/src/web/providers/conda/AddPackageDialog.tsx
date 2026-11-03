@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { useSdk, useSdkMutation, useSdkQuery } from "@kilo-desktop/sdk-react";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Dialog,
@@ -15,11 +14,8 @@ import { toast } from "@kilo-desktop/ui/components/sonner";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
-import type {
-	CondaEnv,
-	CondaPackagesPreviewResult,
-	CondaService,
-} from "../../../contracts/providers/conda.js";
+import type { CondaEnv, CondaPackagesPreviewResult } from "../../../contracts/providers/conda.js";
+import { useConda, useCondaMutation, useCondaQuery } from "../../conda.js";
 import { parseEnvironmentsErrorMessage } from "../../../contracts/common.js";
 import { ChannelChooserPopover } from "./ChannelChooserPopover.js";
 import {
@@ -65,9 +61,9 @@ const PREVIEW_DEBOUNCE_MS = 1500;
  * the transitive dependency changes the install would make.
  */
 export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) {
-	const sdk = useSdk<CondaService>("environments");
-	const install = useSdkMutation(sdk, "conda.packages.install", {
-		invalidates: ["conda.packages.list", "conda.repodata.find"],
+	const conda = useConda();
+	const install = useCondaMutation(conda, "installPackages", {
+		invalidates: ["listPackages", "findRepodata"],
 	});
 
 	const targetName = env.name || "base";
@@ -76,10 +72,10 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 	const selection = usePackageSelection();
 	const { selected } = selection;
 
-	const prefixQuery = useSdkQuery(sdk, "conda.envs.prefixOptions");
+	const prefixQuery = useCondaQuery(conda, "prefixOptions");
 	const channels = useChannelSelection(prefixQuery.data?.channels);
 	const search = usePackageSearch({
-		sdk,
+		conda,
 		open,
 		ready: !prefixQuery.isPending,
 		query,
@@ -88,7 +84,7 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 
 	// Installed packages for this env — matching rows show their installed
 	// version and cannot be selected.
-	const installedQuery = useSdkQuery(sdk, "conda.packages.list", {
+	const installedQuery = useCondaQuery(conda, "listPackages", {
 		name: env.name || undefined,
 		prefix: env.prefix,
 	});
@@ -133,8 +129,8 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 		setPreviewLoading(true);
 		setPreviewError(null);
 		previewErrorRef.current = null;
-		sdk
-			.invoke("conda.packages.previewInstall", {
+		conda
+			.previewInstall({
 				name: targetName,
 				prefix: env.prefix,
 				packages: specs,
@@ -163,7 +159,7 @@ export function AddPackageDialog({ env, open, onClose }: AddPackageDialogProps) 
 			.finally(() => {
 				if (gen === previewGenRef.current) setPreviewLoading(false);
 			});
-	}, [selected, targetName, env.prefix, channels.channelsArg, sdk, solveKey]);
+	}, [selected, targetName, env.prefix, channels.channelsArg, conda, solveKey]);
 
 	// Auto-preview when the selection changes — debounced so rapid clicks
 	// don't fire a solver request per toggle.

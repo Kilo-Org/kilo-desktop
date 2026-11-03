@@ -35,10 +35,10 @@ function makePackage(nodeModules: string, packageName: string, files: string[] =
 // Mirrors the real workspace: scoped plugins, a package published under a
 // third-party name (the opencode SDK shim), and one that is never deployed.
 const workspacePackageNames = [
-	"@kilo-desktop/contracts",
+	"@kilo-desktop/kernel",
 	"@kilo-desktop/e2e",
 	"@kilo-desktop/plugin-notebook",
-	"@kilo-desktop/plugin-todos",
+	"@kilo-desktop/plugin-workspaces",
 	"@opencode-ai/sdk",
 ];
 
@@ -152,7 +152,7 @@ describe("pruneProductionDependencies", () => {
 	it("keeps the runtime assets workspace packages resolve at runtime", async () => {
 		const nodeModules = makeNodeModules();
 		const runtimeEntries = [
-			"build/terminal/index.html",
+			"build/notebook/index.html",
 			"dist/index.js",
 			"drizzle/0000_init.sql",
 			"drizzle/meta/_journal.json",
@@ -161,7 +161,7 @@ describe("pruneProductionDependencies", () => {
 			"plugin.json",
 			"THIRD_PARTY_NOTICES.md",
 		];
-		const packageDirectory = makePackage(nodeModules, "@kilo-desktop/plugin-todos", [
+		const packageDirectory = makePackage(nodeModules, "@kilo-desktop/plugin-workspaces", [
 			...runtimeEntries,
 			"src/main/db.ts",
 		]);
@@ -190,7 +190,7 @@ describe("pruneProductionDependencies", () => {
 
 	it("skips workspace packages that were not deployed and stray scope files", async () => {
 		const nodeModules = makeNodeModules();
-		const packageDirectory = makePackage(nodeModules, "@kilo-desktop/contracts", ["src/index.ts"]);
+		const packageDirectory = makePackage(nodeModules, "@kilo-desktop/kernel", ["src/index.ts"]);
 		writeFileSync(path.join(nodeModules, "@kilo-desktop", ".DS_Store"), "");
 
 		await prune(nodeModules);

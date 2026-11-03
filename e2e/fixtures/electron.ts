@@ -19,31 +19,27 @@ import { packagedExecutable } from "../utils/paths.js";
 const DESKTOP_URL_PREFIX = "kilo-desktop://";
 const MAIN_WINDOW_TIMEOUT_MS = 30_000;
 const KILO_SERVER_READY_TIMEOUT_MS = 120_000;
-const THREAD_LIST_HYDRATION_PROBE_MS = 30_000;
 const WORKER_APP_TIMEOUT_MS = 360_000;
 const CLOSE_TIMEOUT_MS = 10_000;
 const CLOSE_FORCE_WAIT_MS = 5_000;
 const PLAYWRIGHT_DEFAULT_TIMEOUT_MS = 30_000;
 const deferredRemovalPaths = new Set<string>();
+/**
+ * Keys whose specs need the Kilo server — chats, or the signed-in account
+ * kilo.account reads through it: their app waits for it and for the session list.
+ */
 const CHAT_ISOLATION_KEYS = new Set([
-	"browser",
-	"browser-loopback",
 	"chat",
 	"chat-approval",
 	"files",
-	"git",
 	"git-branch-selector",
 	"git-changes",
 	"git-init",
 	"git-worktrees",
-	"kilo-code",
 	"kilo-marketplace",
-	"kilo-ui",
-	"kilo-providers",
-	"local-inference",
-	"onboarding",
-	"terminal",
-	"workspaces",
+	"layout-presets",
+	"notebook",
+	"settings",
 ]);
 
 /**
@@ -69,70 +65,40 @@ async function removeDeferredPaths(): Promise<void> {
 async function waitForKiloServer(page: Page): Promise<void> {
 	page.setDefaultTimeout(KILO_SERVER_READY_TIMEOUT_MS);
 	try {
-		await page.waitForFunction(() => "desktopApi" in globalThis, undefined, {
+		await page.waitForFunction(() => "kernelBridge" in globalThis, undefined, {
 			timeout: MAIN_WINDOW_TIMEOUT_MS,
 		});
 		await page.evaluate(async () => {
-			type InvokeResult =
-				| { ok: true; value: unknown }
-				| { ok: false; error: { code: string; message: string } };
-			type DesktopGlobal = typeof globalThis & {
-				desktopApi: {
-					invoke(
-						channel: "feature:invoke",
-						input: { featureId: string; channel: string; args?: unknown },
-					): Promise<InvokeResult>;
-				};
+			type Bridge = {
+				request(channel: string, payload: unknown): Promise<{ ok: boolean; error?: unknown }>;
 			};
-			const response = await (globalThis as DesktopGlobal).desktopApi.invoke("feature:invoke", {
-				featureId: "kilo-server",
-				channel: "server.getConnection",
+			const bridge = (globalThis as typeof globalThis & { kernelBridge: Bridge }).kernelBridge;
+			const result = await bridge.request("kernel:domain-call", {
+				domainId: "kilo.agent/server",
+				method: "connect",
+				input: undefined,
+				caller: "kilo.agent",
 			});
-			if (!response.ok) throw new Error(`[${response.error.code}] ${response.error.message}`);
+			if (!result.ok) throw new Error(`Kilo server did not start: ${JSON.stringify(result.error)}`);
 		});
 	} finally {
 		page.setDefaultTimeout(PLAYWRIGHT_DEFAULT_TIMEOUT_MS);
 	}
 }
 
-const CHAT_ROUTE = "kilo-desktop://app/#/plugins/chat";
+const HOME_ROUTE = "kilo-desktop://app/#/";
 const ENABLED_NEW_CHAT = '[data-qa-id="new-chat"]:not(:disabled)';
 
-async function waitForChatRoute(page: Page): Promise<void> {
-	await page.waitForURL(CHAT_ROUTE);
-}
-
-function isTimeoutError(error: unknown): boolean {
-	return error instanceof Error && error.name === "TimeoutError";
-}
-
-async function waitForEnabledNewChat(page: Page, timeoutMs: number): Promise<boolean> {
-	try {
-		await page.locator(ENABLED_NEW_CHAT).waitFor({ timeout: timeoutMs });
-		return true;
-	} catch (error) {
-		if (!isTimeoutError(error)) throw error;
-		return false;
-	}
-}
-
 /**
- * assistant-ui ignores thread switches until the remote list has hydrated.
- * Cold Windows runners often need longer than the 30s locator default after
- * kilo-server is already accepting connections, so reuse that sidecar budget.
- *
- * The runtime bounds and retries its initial thread-list request. The fixture
- * observes that product readiness contract but never repairs a failed runtime
- * by reloading it, so cold-start regressions remain visible.
+ * The kernel shell's home view with kilo.workbench's session list ready to
+ * start a session. Cold Windows runners can take longer than the 30s locator
+ * default after the Kilo server accepts connections, so this reuses its budget.
  */
-async function waitForThreadListHydrated(page: Page): Promise<void> {
+async function waitForSessionList(page: Page): Promise<void> {
 	page.setDefaultTimeout(KILO_SERVER_READY_TIMEOUT_MS);
 	try {
-		await waitForChatRoute(page);
-		if (await waitForEnabledNewChat(page, THREAD_LIST_HYDRATION_PROBE_MS)) return;
-		throw new Error(
-			"Chat thread list did not hydrate: New session remained disabled after the bounded runtime retry",
-		);
+		await page.waitForURL(HOME_ROUTE);
+		await page.locator(ENABLED_NEW_CHAT).waitFor();
 	} finally {
 		page.setDefaultTimeout(PLAYWRIGHT_DEFAULT_TIMEOUT_MS);
 	}
@@ -270,7 +236,7 @@ async function startWindowTracing(
 /**
  * Worker-scoped packaged Electron app. Every test in the worker reuses one launch;
  * `electronApp` rebinds the page singleton and resets the hash between tests.
- * Sidecar spawn (`server.getConnection`) and thread-list hydration run here so
+ * Kilo server readiness (`kilo.agent/server.connect`) and thread-list hydration run here so
  * the first @smoke spec does not spend the locator budget waiting for either.
  * Startup failures carry main-process and Kilo CLI output in their message,
  * because no test-scoped fixture exists yet to attach files.
@@ -289,7 +255,7 @@ export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerF
 				const page = await waitForMainWindow(app);
 				if (CHAT_ISOLATION_KEYS.has(appIsolationKey)) {
 					await waitForKiloServer(page);
-					await waitForThreadListHydrated(page);
+					await waitForSessionList(page);
 				}
 			} catch (error) {
 				const diagnosed = await withStartupDiagnostics(error, log, userDataDir);
@@ -312,9 +278,9 @@ export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerF
 			globalThis.location.hash = "#/";
 		});
 		if (CHAT_ISOLATION_KEYS.has(appIsolationKey)) {
-			// Hash reset remounts chat; wait out the redirect so the next spec
-			// does not click New session against a tearing-down runtime.
-			await waitForThreadListHydrated(page);
+			// The hash reset re-renders the home view; wait for it before the
+			// spec clicks New session.
+			await waitForSessionList(page);
 		}
 		await use(sharedApp.app);
 		// Clear renderer localStorage after each test so plugin preferences

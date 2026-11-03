@@ -2,7 +2,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import tailwindcss from "@tailwindcss/vite";
-import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig, type Plugin } from "vite";
@@ -12,8 +11,11 @@ import {
 	APP_THEMES,
 	DEFAULT_APP_THEME_PREFERENCES,
 	themeCss,
-} from "../../packages/contracts/src/features/app-themes";
-import { criticalThemeStyle, themeBootstrapScript } from "@kilo-desktop/contracts/theme-tokens";
+} from "../../packages/ui/src/themes/app-themes";
+import {
+	criticalThemeStyle,
+	themeBootstrapScript,
+} from "../../packages/ui/src/themes/theme-tokens";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const srcRoot = path.resolve(root, "src");
@@ -47,11 +49,6 @@ function injectThemeBootstrap(): Plugin {
 export default defineConfig({
 	base: "./",
 	plugins: [
-		tanstackRouter({
-			target: "react",
-			routesDirectory: path.resolve(srcRoot, "routes"),
-			generatedRouteTree: path.resolve(srcRoot, "routeTree.gen.ts"),
-		}),
 		react(),
 		tailwindcss(),
 		injectThemeBootstrap(),
@@ -77,7 +74,7 @@ export default defineConfig({
 		},
 		// Linked plugin sources import these packages from their own module graph.
 		// Keep provider and consumer imports on one React/context instance.
-		dedupe: ["react", "react-dom", "@kilo-desktop/sdk-react"],
+		dedupe: ["react", "react-dom", "@kilo-desktop/kernel"],
 	},
 	server: {
 		host: "127.0.0.1",

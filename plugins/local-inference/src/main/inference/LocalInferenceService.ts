@@ -1,8 +1,8 @@
-import { lstat, realpath, rm } from "node:fs/promises";
+import { lstat, realpath, rm, stat } from "node:fs/promises";
 import { networkInterfaces } from "node:os";
 import path from "node:path";
 
-import type { MainSdkLogger } from "@kilo-desktop/feature-sdk/main";
+import type { KernelLogger } from "@kilo-desktop/kernel";
 
 import type { LocalInferenceStatus, LocalModel } from "../../contracts/schemas.js";
 import type { LocalModelSettings } from "../../shared/settings/model-settings.js";
@@ -16,7 +16,6 @@ import {
 	proxyBindHost,
 	type LocalServerSettings,
 } from "../../shared/settings/server-settings.js";
-import { MODELS_CHANGED_EVENT, STATUS_CHANGED_EVENT } from "../../contracts/events.js";
 import {
 	LLAMA_API_KEY_ENV,
 	LOCAL_PROVIDER_ID,
@@ -26,6 +25,10 @@ import { createProviderEntry } from "../integrations/kilo-provider-config.js";
 import type { LlamaRouterConnection, LlamaRouterStatus } from "../runtime/LlamaRouterManager.js";
 import type { LocalModelRegistry } from "../models/LocalModelRegistry.js";
 
+export const STATUS_CHANGED_EVENT = "status-changed";
+export const MODELS_CHANGED_EVENT = "models-changed";
+
+/** What the service publishes to Kilo: the provider entry and its environment. */
 export interface KiloCapability extends Record<string, unknown> {
 	kiloService: {
 		serverEnv: {
@@ -50,6 +53,8 @@ export interface KiloCapability extends Record<string, unknown> {
 export interface LocalInferenceServiceOptions {
 	readonly registry: LocalModelRegistry;
 	readonly managedModelsDir?: string;
+	/** Origin's models folder, whose hard links to models here are deleted with them. */
+	readonly originModelsDir?: string;
 	readonly router: {
 		readonly apiKey: string;
 		readonly status: LlamaRouterStatus;
@@ -74,8 +79,10 @@ export interface LocalInferenceServiceOptions {
 		Record<string, readonly NetworkAddress[] | undefined>
 	>;
 	readonly getKilo: () => KiloCapability | null;
+	/** Waits for `start()` before running the router (the kernel service starts it). */
+	readonly startHalted?: boolean;
 	readonly emit: (event: string, payload: unknown) => void;
-	readonly logger: MainSdkLogger;
+	readonly logger: KernelLogger;
 }
 
 export type LocalModelRemovalMode = "registry-only" | "delete-managed-file";
@@ -85,7 +92,12 @@ function isWithinDirectory(parent: string, candidate: string): boolean {
 	return relative.length > 0 && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 }
 
-async function deleteManagedModelFile(model: LocalModel, modelsDir: string): Promise<void> {
+async function deleteManagedModelFile(
+	model: LocalModel,
+	modelsDir: string,
+	originModelsDir: string | undefined,
+	logger: KernelLogger,
+): Promise<void> {
 	if (!model.managedFile) {
 		throw new Error("Only models downloaded from the catalog can be deleted by the app.");
 	}
@@ -97,6 +109,7 @@ async function deleteManagedModelFile(model: LocalModel, modelsDir: string): Pro
 	if (!isWithinDirectory(managedRoot, candidate)) {
 		throw new Error("The managed model path is outside the local models folder.");
 	}
+	let originLink: string | undefined;
 	try {
 		const details = await lstat(candidate);
 		if (details.isSymbolicLink()) {
@@ -106,10 +119,51 @@ async function deleteManagedModelFile(model: LocalModel, modelsDir: string): Pro
 		if (!isWithinDirectory(managedRoot, canonicalCandidate)) {
 			throw new Error("The managed model path is outside the local models folder.");
 		}
+		if (details.nlink > 1 && originModelsDir) {
+			originLink = await originLinkOf(
+				details,
+				path.relative(managedRoot, canonicalCandidate),
+				originModelsDir,
+			);
+		}
 	} catch (error) {
 		if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
 	}
 	await rm(candidate, { force: true });
+	if (!originLink) return;
+	await rm(originLink, { force: true }).catch((error: unknown) =>
+		logger.warn(
+			`Could not delete origin's link to ${model.path}; its space stays in use: ${error instanceof Error ? error.message : String(error)}`,
+		),
+	);
+}
+
+/**
+ * Origin's hard link to a model here, at the same place in origin's models
+ * folder, so deleting the model frees its space. Origin (kilo-ui) is the
+ * superseded install of this same app, in the same data folder: no installed
+ * origin app still uses the file, only a downgrade would read origin's
+ * registry, and it would then show the model the person deleted as missing.
+ * Any other link (a different file of the same name, or a link the person
+ * made elsewhere) is left alone.
+ */
+async function originLinkOf(
+	details: { dev: number; ino: number },
+	relative: string,
+	originModelsDir: string,
+): Promise<string | undefined> {
+	const sibling = path.join(originModelsDir, relative);
+	try {
+		const other = await lstat(sibling);
+		if (other.isSymbolicLink() || other.dev !== details.dev || other.ino !== details.ino) {
+			return undefined;
+		}
+		// Resolved once more so a symlinked origin folder can't point the delete elsewhere.
+		const resolved = await stat(sibling);
+		return resolved.ino === details.ino ? sibling : undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 export interface AddLocalModelInput {
@@ -134,7 +188,13 @@ export interface AddLocalModelInput {
  * extra llama.cpp router flags, LAN serving) persist independently and restart
  * the public proxy when they change. llama.cpp stays on loopback. Router,
  * provider, and managed-file removal transitions share one operation queue so
- * a reconcile cannot reopen a model while its file is being deleted.
+ * a reconcile cannot reopen a model while its file is being deleted. A halted
+ * service (`startHalted`, or after `stop()`) keeps the provider published but
+ * runs no router until `start()`, so the kernel service owns the process;
+ * after `stop()` the public proxy stays closed too (it may serve the LAN).
+ * Deleting a model taken over from origin also deletes origin's hard link to
+ * it (see `originLinkOf`); removing a model whose file the app doesn't manage
+ * only forgets it.
  */
 export class LocalInferenceService {
 	readonly #options: LocalInferenceServiceOptions;
@@ -142,9 +202,13 @@ export class LocalInferenceService {
 	#envDispose: (() => void) | undefined;
 	#error: string | undefined;
 	#disposed = false;
+	#halted: boolean;
+	/** Halted by `stop()`, which also closed the public proxy: nothing reopens it before `start()`. */
+	#stopped = false;
 
 	constructor(options: LocalInferenceServiceOptions) {
 		this.#options = options;
+		this.#halted = options.startHalted === true;
 	}
 
 	list(): LocalModel[] {
@@ -198,7 +262,9 @@ export class LocalInferenceService {
 		await this.#run(async () => {
 			const model = this.list().find((entry) => entry.id === id);
 			if (!model) return;
-			if (mode === "delete-managed-file") {
+			// A file the app doesn't manage (one origin's import couldn't link here,
+			// or the person's own) is never deleted: removing it only forgets it.
+			if (mode === "delete-managed-file" && model.managedFile) {
 				const managedModelsDir = this.#options.managedModelsDir;
 				if (!managedModelsDir) {
 					removalFailure = { error: new Error("Managed model deletion is unavailable.") };
@@ -206,7 +272,12 @@ export class LocalInferenceService {
 				}
 				await this.#releaseModelFile(model.id);
 				try {
-					await deleteManagedModelFile(model, managedModelsDir);
+					await deleteManagedModelFile(
+						model,
+						managedModelsDir,
+						this.#options.originModelsDir,
+						this.#options.logger,
+					);
 				} catch (error) {
 					removalFailure = { error };
 					await this.#reconcileAfterMutation(true);
@@ -311,6 +382,7 @@ export class LocalInferenceService {
 			await this.#removeProvider();
 			return;
 		}
+		if (this.#stopped) return;
 		const settings = this.serverSettings();
 		const proxy = await this.#options.proxy.ensureListening(
 			settings.port,
@@ -345,6 +417,23 @@ export class LocalInferenceService {
 		await this.reconcile();
 	}
 
+	/** Lets the router run, starting it when models are registered. */
+	start(): Promise<void> {
+		this.#halted = false;
+		this.#stopped = false;
+		return this.reconcile();
+	}
+
+	/** Stops the router and the proxy until `start()`; models and settings stay. */
+	stop(): Promise<void> {
+		this.#halted = true;
+		this.#stopped = true;
+		return this.#run(async () => {
+			this.#options.proxy.close();
+			await this.#options.router.ensureRunning([]);
+		});
+	}
+
 	reconcile(forceRestart = false): Promise<void> {
 		return this.#run(() => this.#reconcileState(forceRestart));
 	}
@@ -359,6 +448,7 @@ export class LocalInferenceService {
 			return;
 		}
 		await this.#publishProvider();
+		if (this.#halted) return;
 		const available = this.list().filter((model) => model.available);
 		if (available.length === 0) {
 			await this.#options.router.ensureRunning([]);

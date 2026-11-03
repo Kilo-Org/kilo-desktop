@@ -1,19 +1,15 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import { SdkProvider } from "@kilo-desktop/sdk-react";
-import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
-
 import {
-	condaContract,
 	type CondaEnv,
 	type CondaPackage,
 	type CondaPackagesListResult,
 	type CondaRepodataPackage,
-	type CondaService,
 } from "../../../contracts/providers/conda.js";
+import type { CondaClient } from "../../conda.js";
+import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host.js";
 import { EnvironmentDetail } from "./EnvironmentDetail.js";
 
 const MOCK_ENV: CondaEnv = { name: "dev", prefix: "/opt/conda/envs/dev" };
@@ -30,18 +26,18 @@ const MOCK_PACKAGES: CondaPackage[] = [
 ];
 
 interface HandlerOverrides {
-	packagesList?: CondaService["conda.packages.list"];
-	packagesInstall?: CondaService["conda.packages.install"];
-	packagesRemove?: CondaService["conda.packages.remove"];
-	packagesUpdate?: CondaService["conda.packages.update"];
-	channelsList?: CondaService["conda.channels.list"];
-	repodataFind?: CondaService["conda.repodata.find"];
-	prefixOptions?: CondaService["conda.envs.prefixOptions"];
+	packagesList?: CondaClient["listPackages"];
+	packagesInstall?: CondaClient["installPackages"];
+	packagesRemove?: CondaClient["removePackages"];
+	packagesUpdate?: CondaClient["updatePackages"];
+	channelsList?: CondaClient["listChannels"];
+	repodataFind?: CondaClient["findRepodata"];
+	prefixOptions?: CondaClient["prefixOptions"];
 }
 
 function defaultHandlers(
-	overrides?: HandlerOverrides | CondaService["conda.packages.list"],
-): Record<string, (...args: never[]) => Promise<unknown>> {
+	overrides?: HandlerOverrides | CondaClient["listPackages"],
+): NonNullable<EnvironmentsHostOptions["handlers"]> {
 	// Support legacy call signature: single function = packagesListHandler
 	const opts: HandlerOverrides =
 		typeof overrides === "function" ? { packagesList: overrides } : (overrides ?? {});
@@ -98,11 +94,11 @@ function defaultHandlers(
 	};
 }
 
-function renderDetail(
+async function renderDetail(
 	options: {
 		env?: CondaEnv;
 		onBack?: () => void;
-		packagesList?: CondaService["conda.packages.list"];
+		packagesList?: CondaClient["listPackages"];
 		/** Height of the surrounding shell; the detail view lives in a bounded column. */
 		hostHeight?: number;
 		/** Width of the surrounding shell, for narrow-window regressions. */
@@ -116,27 +112,21 @@ function renderDetail(
 		...options.handlers,
 		...(options.packagesList ? { packagesList: options.packagesList } : {}),
 	};
-	const sdk = createFakeSdk({
-		featureId: "environments",
-		channels: condaContract,
+	const hostOptions: EnvironmentsHostOptions = {
 		handlers: defaultHandlers(handlerOverrides),
-	});
-	const system = createFakeFeatureSystem({ sdks: { environments: sdk } });
-	const queryClient = new QueryClient({
-		defaultOptions: { queries: { retry: false } },
-	});
+	};
 
 	const detail = (
-		<SdkProvider system={system}>
-			<QueryClientProvider client={queryClient}>
-				<EnvironmentDetail env={env} onBack={onBack} />
-			</QueryClientProvider>
-		</SdkProvider>
+		<>
+			<EnvironmentDetail env={env} onBack={onBack} />
+		</>
 	);
 
-	if (options.hostHeight === undefined && options.hostWidth === undefined) return render(detail);
+	if (options.hostHeight === undefined && options.hostWidth === undefined) {
+		return renderWithConda(detail, hostOptions);
+	}
 
-	return render(
+	return renderWithConda(
 		<div
 			style={{
 				...(options.hostHeight === undefined ? {} : { height: `${options.hostHeight}px` }),
@@ -148,6 +138,7 @@ function renderDetail(
 		>
 			{detail}
 		</div>,
+		hostOptions,
 	);
 }
 
@@ -157,7 +148,7 @@ afterEach(() => {
 
 describe("EnvironmentDetail", () => {
 	it("renders the environment name and prefix", async () => {
-		const { baseElement } = renderDetail();
+		const { baseElement } = await renderDetail();
 		const screen = page.elementLocator(baseElement);
 
 		await expect
@@ -170,7 +161,7 @@ describe("EnvironmentDetail", () => {
 
 	it("calls onBack when the back button is pressed", async () => {
 		const onBack = vi.fn();
-		const { baseElement } = renderDetail({ onBack });
+		const { baseElement } = await renderDetail({ onBack });
 		const screen = page.elementLocator(baseElement);
 
 		await screen.getByTestId("environments-conda-detail-back").click();
@@ -178,7 +169,7 @@ describe("EnvironmentDetail", () => {
 	});
 
 	it("renders directory basename as the name when env.name is empty", async () => {
-		const { baseElement } = renderDetail({
+		const { baseElement } = await renderDetail({
 			env: { name: "", prefix: "/opt/conda" },
 		});
 		const screen = page.elementLocator(baseElement);
@@ -193,7 +184,7 @@ describe("EnvironmentDetail", () => {
 		const pending = new Promise<CondaPackagesListResult>((r) => {
 			resolve = r;
 		});
-		const { baseElement } = renderDetail({
+		const { baseElement } = await renderDetail({
 			packagesList: () => pending,
 		});
 		const screen = page.elementLocator(baseElement);
@@ -203,7 +194,7 @@ describe("EnvironmentDetail", () => {
 	});
 
 	it("renders a table of packages after loading", async () => {
-		const { baseElement } = renderDetail();
+		const { baseElement } = await renderDetail();
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-conda-detail-table")).toBeVisible();
@@ -213,7 +204,7 @@ describe("EnvironmentDetail", () => {
 	});
 
 	it("renders the package list without pagination", async () => {
-		const { baseElement } = renderDetail();
+		const { baseElement } = await renderDetail();
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-conda-detail-table")).toBeVisible();
@@ -222,7 +213,7 @@ describe("EnvironmentDetail", () => {
 
 	it("surfaces backend errors with a retry", async () => {
 		let calls = 0;
-		const { baseElement } = renderDetail({
+		const { baseElement } = await renderDetail({
 			packagesList: async () => {
 				calls += 1;
 				if (calls === 1) throw new Error("connection failed");
@@ -239,7 +230,7 @@ describe("EnvironmentDetail", () => {
 	});
 
 	it("shows empty state when no packages are installed", async () => {
-		const { baseElement } = renderDetail({
+		const { baseElement } = await renderDetail({
 			packagesList: async () => ({ envName: "dev", packages: [] }),
 		});
 		const screen = page.elementLocator(baseElement);
@@ -249,7 +240,7 @@ describe("EnvironmentDetail", () => {
 	});
 
 	it("filters packages by search query", async () => {
-		const { baseElement } = renderDetail();
+		const { baseElement } = await renderDetail();
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-conda-detail-table")).toBeVisible();
@@ -265,7 +256,7 @@ describe("EnvironmentDetail", () => {
 	});
 
 	it("shows no-match message when search yields no results", async () => {
-		const { baseElement } = renderDetail();
+		const { baseElement } = await renderDetail();
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-conda-detail-table")).toBeVisible();
@@ -277,7 +268,7 @@ describe("EnvironmentDetail", () => {
 	});
 
 	it("renders the environment as the page title and subtitle", async () => {
-		const { baseElement } = renderDetail();
+		const { baseElement } = await renderDetail();
 		const screen = page.elementLocator(baseElement);
 
 		await expect
@@ -297,7 +288,7 @@ describe("EnvironmentDetail", () => {
 			build: "py311_0",
 			channel: "defaults",
 		}));
-		const { baseElement } = renderDetail({
+		const { baseElement } = await renderDetail({
 			packagesList: async () => ({ envName: "dev", packages: manyPackages }),
 			hostHeight: 480,
 		});
@@ -316,7 +307,7 @@ describe("EnvironmentDetail", () => {
 	});
 
 	it("sorts packages by version from the view menu", async () => {
-		const { baseElement } = renderDetail();
+		const { baseElement } = await renderDetail();
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-conda-detail-table")).toBeVisible();
@@ -337,7 +328,7 @@ describe("EnvironmentDetail", () => {
 	});
 
 	it("shows conda badge for conda packages and pip badge for pypi packages", async () => {
-		const { baseElement } = renderDetail();
+		const { baseElement } = await renderDetail();
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-conda-detail-table")).toBeVisible();
@@ -351,7 +342,7 @@ describe("EnvironmentDetail", () => {
 	});
 
 	it("sorts packages by source from the view menu", async () => {
-		const { baseElement } = renderDetail();
+		const { baseElement } = await renderDetail();
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-conda-detail-table")).toBeVisible();
@@ -372,7 +363,7 @@ describe("EnvironmentDetail", () => {
 	});
 
 	it("sorts names descending from the view menu", async () => {
-		const { baseElement } = renderDetail();
+		const { baseElement } = await renderDetail();
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-conda-detail-table")).toBeVisible();
@@ -389,7 +380,7 @@ describe("EnvironmentDetail", () => {
 	});
 
 	it("Add Package button opens the add package dialog", async () => {
-		const { baseElement } = renderDetail();
+		const { baseElement } = await renderDetail();
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-conda-detail-table")).toBeVisible();
@@ -423,7 +414,7 @@ describe("EnvironmentDetail", () => {
 				versions: [{ version: "1.0.0", size: 512 }],
 			},
 		];
-		const { baseElement } = renderDetail({
+		const { baseElement } = await renderDetail({
 			handlers: {
 				repodataFind: async () => ({ packages: repodataPackages, truncated: false }),
 				prefixOptions: async () => ({ envsDirs: ["/opt/conda/envs"], channels: ["conda-forge"] }),
@@ -463,7 +454,7 @@ describe("EnvironmentDetail", () => {
 	});
 
 	it("per-row action menu renders Update and Remove options", async () => {
-		const { baseElement } = renderDetail();
+		const { baseElement } = await renderDetail();
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-conda-detail-table")).toBeVisible();
@@ -504,7 +495,7 @@ describe("EnvironmentDetail", () => {
 
 	it("asks repodata only for the installed conda packages, never pip ones", async () => {
 		const repodataFind = vi.fn(async () => ({ packages: [], truncated: false }));
-		renderDetail({ handlers: { repodataFind } });
+		await renderDetail({ handlers: { repodataFind } });
 
 		await vi.waitFor(() => {
 			const names = repodataFind.mock.calls.flatMap(
@@ -516,7 +507,7 @@ describe("EnvironmentDetail", () => {
 	});
 
 	it("marks upgradable rows and filters to them from the view menu", async () => {
-		const { baseElement } = renderDetail({ handlers: UPGRADE_HANDLERS });
+		const { baseElement } = await renderDetail({ handlers: UPGRADE_HANDLERS });
 		const screen = page.elementLocator(baseElement);
 
 		const badge = screen.getByTestId("environments-conda-detail-upgrade-badge");
@@ -546,7 +537,7 @@ describe("EnvironmentDetail", () => {
 	});
 
 	it("Update all opens the update sheet with every upgradable package", async () => {
-		const { baseElement } = renderDetail({ handlers: UPGRADE_HANDLERS });
+		const { baseElement } = await renderDetail({ handlers: UPGRADE_HANDLERS });
 		const screen = page.elementLocator(baseElement);
 
 		await expect
@@ -560,7 +551,7 @@ describe("EnvironmentDetail", () => {
 	});
 
 	it("per-row Update… opens the update sheet for just that package", async () => {
-		const { baseElement } = renderDetail({ handlers: UPGRADE_HANDLERS });
+		const { baseElement } = await renderDetail({ handlers: UPGRADE_HANDLERS });
 		const screen = page.elementLocator(baseElement);
 
 		await expect
@@ -578,7 +569,7 @@ describe("EnvironmentDetail", () => {
 	});
 
 	it("shows the Python version badge when python is installed", async () => {
-		const { baseElement } = renderDetail({
+		const { baseElement } = await renderDetail({
 			packagesList: async () => ({
 				envName: "dev",
 				packages: [
@@ -595,7 +586,7 @@ describe("EnvironmentDetail", () => {
 	});
 
 	it("selecting rows swaps the toolbar for bulk actions; select-all and Clear reset it", async () => {
-		const { baseElement } = renderDetail();
+		const { baseElement } = await renderDetail();
 		const screen = page.elementLocator(baseElement);
 		await expect.element(screen.getByTestId("environments-conda-detail-table")).toBeVisible();
 
@@ -629,7 +620,7 @@ describe("EnvironmentDetail", () => {
 			envName: "dev",
 			removed: ["numpy", "pandas"],
 		}));
-		const { baseElement } = renderDetail({ handlers: { packagesRemove } });
+		const { baseElement } = await renderDetail({ handlers: { packagesRemove } });
 		const screen = page.elementLocator(baseElement);
 		await expect.element(screen.getByTestId("environments-conda-detail-table")).toBeVisible();
 
@@ -654,7 +645,7 @@ describe("EnvironmentDetail", () => {
 	});
 
 	it("bulk Update opens the sheet with the selection, marking up-to-date packages", async () => {
-		const { baseElement } = renderDetail({ handlers: UPGRADE_HANDLERS });
+		const { baseElement } = await renderDetail({ handlers: UPGRADE_HANDLERS });
 		const screen = page.elementLocator(baseElement);
 		await expect
 			.element(screen.getByTestId("environments-conda-detail-upgrade-badge"))
@@ -674,7 +665,7 @@ describe("EnvironmentDetail", () => {
 	});
 
 	it("sorts by channel from the view menu", async () => {
-		const { baseElement } = renderDetail();
+		const { baseElement } = await renderDetail();
 		const screen = page.elementLocator(baseElement);
 		await expect.element(screen.getByTestId("environments-conda-detail-table")).toBeVisible();
 
@@ -701,7 +692,7 @@ describe("EnvironmentDetail — scrolling", () => {
 	}));
 
 	it("scrolls the package rows inside the table panel while the toolbar stays put", async () => {
-		const { baseElement } = renderDetail({
+		const { baseElement } = await renderDetail({
 			packagesList: async () => ({ envName: "dev", packages: manyPackages }),
 			hostHeight: 380,
 		});
@@ -727,7 +718,7 @@ describe("EnvironmentDetail — scrolling", () => {
 
 describe("EnvironmentDetail — narrow containers", () => {
 	it("never scrolls horizontally when the window is narrow", async () => {
-		const { baseElement } = renderDetail({ hostHeight: 420, hostWidth: 360 });
+		const { baseElement } = await renderDetail({ hostHeight: 420, hostWidth: 360 });
 		const screen = page.elementLocator(baseElement);
 		await expect.element(screen.getByTestId("environments-conda-detail-row").first()).toBeVisible();
 

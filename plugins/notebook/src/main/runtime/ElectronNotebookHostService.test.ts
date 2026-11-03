@@ -9,7 +9,6 @@ import type {
 } from "@runtimed/node/electron";
 import type { RelayInfo, RelaySession } from "@runtimed/node/relay";
 
-import { createFakeMainSdk } from "@kilo-desktop/testing";
 import { findRuntimedArtifact } from "../../packaging/artifacts.js";
 
 const mocks = vi.hoisted(() => ({
@@ -35,7 +34,38 @@ vi.mock("./daemon-peer-authenticator.js", () => ({
 	createDaemonPeerAuthenticator: mocks.createAuthenticator,
 }));
 
-import { ElectronNotebookHostService } from "./ElectronNotebookHostService.js";
+import {
+	ElectronNotebookHostService,
+	type NotebookHostPlatform,
+} from "./ElectronNotebookHostService.js";
+
+type FakeHost = NonNullable<NotebookHostPlatform["host"]>;
+
+/** The platform the service runs on: a logger, an optional desktop host, and recorded events. */
+function fakePlatform(
+	options: {
+		host?: Omit<FakeHost, "window"> & {
+			window: Pick<FakeHost["window"], "isFocused" | "onFocusChange"> & Record<string, unknown>;
+		};
+		logger?: NotebookHostPlatform["logger"];
+	} = {},
+) {
+	const listeners = new Map<string, Set<(payload: unknown) => void>>();
+	return {
+		logger: options.logger ?? { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+		...(options.host ? { host: options.host } : {}),
+		events: {
+			emit: (event: string, payload: unknown) => {
+				for (const listener of listeners.get(event) ?? []) listener(payload);
+			},
+			on: (event: string, listener: (payload: unknown) => void) => {
+				listeners.set(event, new Set([...(listeners.get(event) ?? []), listener]));
+			},
+		},
+	} as NotebookHostPlatform & {
+		events: { on(event: string, listener: (payload: unknown) => void): void };
+	};
+}
 
 function relay(
 	notebookId: string,
@@ -81,7 +111,7 @@ function desktopHost(overrides?: {
 	openLink?: (url: string) => Promise<boolean>;
 }) {
 	return {
-		paths: { defaultSaveDirectory: () => "/Users/test/Documents", tempDirectory: () => "/tmp" },
+		paths: { defaultSaveDirectory: () => "/Users/test/Documents" },
 		dialog: {
 			openFile: vi.fn(overrides?.openFile ?? (async () => null)),
 			saveFile: vi.fn(overrides?.saveFile ?? (async () => null)),
@@ -91,7 +121,7 @@ function desktopHost(overrides?: {
 			getTitle: () => "Kilo",
 			setTitle: vi.fn(),
 			isFocused: () => true,
-			onFocusChange: (_senderId: number, _listener: (focused: boolean) => void) => () => undefined,
+			onFocusChange: (_windowId: string, _listener: (focused: boolean) => void) => () => undefined,
 		},
 	};
 }
@@ -106,7 +136,7 @@ describe("ElectronNotebookHostService", () => {
 			const socketPath = path.join(os.tmpdir(), `kd-absent-${process.pid}-${selection}.sock`);
 			if (selection === "environment") vi.stubEnv("RUNTIMED_SOCKET_PATH", socketPath);
 			const service = new ElectronNotebookHostService({
-				mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+				platform: fakePlatform(),
 				runtimedBinaryPath: "/missing-bundled-runtime",
 				...(selection === "option" ? { socketPath } : {}),
 			});
@@ -145,8 +175,8 @@ describe("ElectronNotebookHostService", () => {
 	});
 
 	it("connects a scoped peer to the external singleton and exposes no socket to the renderer", async () => {
-		const mainSdk = createFakeMainSdk({ featureId: "notebook" });
-		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/nightly.sock" });
+		const platform = fakePlatform();
+		const service = new ElectronNotebookHostService({ platform, socketPath: "/tmp/nightly.sock" });
 		const hostPort = port();
 
 		await service.connect(
@@ -157,7 +187,7 @@ describe("ElectronNotebookHostService", () => {
 				title: "Analysis",
 				workingDirectory: "/projects/analysis",
 			},
-			42,
+			"42",
 		);
 
 		expect(mocks.createRelay).toHaveBeenCalledWith({
@@ -184,7 +214,7 @@ describe("ElectronNotebookHostService", () => {
 			relay("669d39ec-39d6-4160-815c-b46e170cde8d", undefined, ["bokeh_session"]),
 		);
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			platform: fakePlatform(),
 			socketPath: "/tmp/nightly.sock",
 		});
 
@@ -195,7 +225,7 @@ describe("ElectronNotebookHostService", () => {
 				sessionId: "kilo-1",
 				title: "Analysis",
 			},
-			42,
+			"42",
 		);
 
 		expect(server.emit).toHaveBeenCalledWith(
@@ -212,7 +242,7 @@ describe("ElectronNotebookHostService", () => {
 		const nativeRelay = relay("669d39ec-39d6-4160-815c-b46e170cde8d", canonicalNotebookPath);
 		mocks.openRelayPath.mockResolvedValueOnce(nativeRelay);
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			platform: fakePlatform(),
 			socketPath: "/tmp/nightly.sock",
 		});
 
@@ -242,7 +272,7 @@ describe("ElectronNotebookHostService", () => {
 		const nativeRelay = relay("669d39ec-39d6-4160-815c-b46e170cde8d", canonicalNotebookPath);
 		mocks.openRelayPath.mockResolvedValueOnce(nativeRelay);
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			platform: fakePlatform(),
 			socketPath: "/tmp/nightly.sock",
 		});
 
@@ -256,7 +286,7 @@ describe("ElectronNotebookHostService", () => {
 					title: "analysis.ipynb",
 					notebookPath: canonicalNotebookPath,
 				},
-				42,
+				"42",
 			);
 
 			expect(mocks.openRelayPath).toHaveBeenCalledOnce();
@@ -280,7 +310,7 @@ describe("ElectronNotebookHostService", () => {
 		const secondRelay = relay("669d39ec-39d6-4160-815c-b46e170cde8d", canonicalNotebookPath);
 		mocks.openRelayPath.mockResolvedValueOnce(firstRelay).mockResolvedValueOnce(secondRelay);
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			platform: fakePlatform(),
 			socketPath: "/tmp/nightly.sock",
 		});
 
@@ -304,7 +334,7 @@ describe("ElectronNotebookHostService", () => {
 		mocks.openRelayPath.mockResolvedValueOnce(nativeRelay);
 		vi.useFakeTimers();
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			platform: fakePlatform(),
 			socketPath: "/tmp/nightly.sock",
 		});
 
@@ -322,7 +352,7 @@ describe("ElectronNotebookHostService", () => {
 
 	it("rejects relative, non-notebook, and unreadable open-file paths", async () => {
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			platform: fakePlatform(),
 			socketPath: "/tmp/nightly.sock",
 		});
 		await expect(service.openFile("analysis.ipynb")).rejects.toThrow(/must be absolute/);
@@ -336,7 +366,7 @@ describe("ElectronNotebookHostService", () => {
 		await writeFile(notebookPath, '{"cells":[],"metadata":{},"nbformat":4,"nbformat_minor":5}');
 		mocks.openRelayPath.mockRejectedValueOnce(new Error("lock held"));
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			platform: fakePlatform(),
 			socketPath: "/tmp/nightly.sock",
 		});
 		try {
@@ -353,7 +383,7 @@ describe("ElectronNotebookHostService", () => {
 		const next = { emit: vi.fn(), close: vi.fn(async () => undefined) };
 		mocks.serve.mockReturnValueOnce(previous).mockReturnValueOnce(next);
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook", host: desktopHost() }),
+			platform: fakePlatform({ host: desktopHost() }),
 			socketPath: "/tmp/nightly.sock",
 		});
 		const args = {
@@ -361,8 +391,8 @@ describe("ElectronNotebookHostService", () => {
 			sessionId: "kilo-1",
 			title: "Analysis",
 		};
-		await service.connect(port(), args, 91);
-		await service.connect(port(), args, 91);
+		await service.connect(port(), args, "91");
+		await service.connect(port(), args, "91");
 		expect(previous.close).toHaveBeenCalledOnce();
 	});
 
@@ -378,16 +408,16 @@ describe("ElectronNotebookHostService", () => {
 		};
 		let onFocus: ((focused: boolean) => void) | undefined;
 		const host = desktopHost();
-		host.window.onFocusChange = (_senderId, listener) => {
+		host.window.onFocusChange = (_windowId, listener) => {
 			onFocus = listener;
 			return () => undefined;
 		};
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook", host }),
+			platform: fakePlatform({ host }),
 			socketPath: "/tmp/nightly.sock",
 		});
 		const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
-		await service.connect(hostPort, { notebookId, sessionId: "kilo-1", title: "Analysis" }, 91);
+		await service.connect(hostPort, { notebookId, sessionId: "kilo-1", title: "Analysis" }, "91");
 		onFocus?.(false);
 		expect(server.emit).toHaveBeenCalledWith("window.focusChanged", false);
 
@@ -401,8 +431,8 @@ describe("ElectronNotebookHostService", () => {
 	});
 
 	it("connects restored file tabs through their persisted notebook path", async () => {
-		const mainSdk = createFakeMainSdk({ featureId: "notebook" });
-		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/nightly.sock" });
+		const platform = fakePlatform();
+		const service = new ElectronNotebookHostService({ platform, socketPath: "/tmp/nightly.sock" });
 
 		await service.connect(
 			port(),
@@ -412,7 +442,7 @@ describe("ElectronNotebookHostService", () => {
 				title: "analysis.ipynb",
 				notebookPath: "/tmp/analysis.ipynb",
 			},
-			42,
+			"42",
 		);
 
 		expect(mocks.openRelayPath).toHaveBeenCalledWith("/tmp/analysis.ipynb", {
@@ -429,10 +459,9 @@ describe("ElectronNotebookHostService", () => {
 
 	it("publishes notebook dirty state without changing the application window title", async () => {
 		const setTitle = vi.fn();
-		const mainSdk = createFakeMainSdk({
-			featureId: "notebook",
+		const platform = fakePlatform({
 			host: {
-				paths: { defaultSaveDirectory: () => "/tmp", tempDirectory: () => "/tmp" },
+				paths: { defaultSaveDirectory: () => "/tmp" },
 				dialog: {
 					openFile: vi.fn(async () => null),
 					saveFile: vi.fn(async () => null),
@@ -447,8 +476,8 @@ describe("ElectronNotebookHostService", () => {
 			},
 		});
 		const dirtyChanged = vi.fn();
-		mainSdk.events.on("notebook.dirty-changed", dirtyChanged);
-		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/runtime.sock" });
+		platform.events.on("dirty-changed", dirtyChanged);
+		const service = new ElectronNotebookHostService({ platform, socketPath: "/tmp/runtime.sock" });
 
 		await service.connect(
 			port(),
@@ -457,7 +486,7 @@ describe("ElectronNotebookHostService", () => {
 				sessionId: "kilo-1",
 				title: "Analysis",
 			},
-			91,
+			"91",
 		);
 		await handler.invoke("window.setTitle", { title: "Analysis" });
 		await handler.invoke("window.setTitle", { title: "* Analysis" });
@@ -478,10 +507,9 @@ describe("ElectronNotebookHostService", () => {
 
 	it("routes Save through nteract and resolves after Save As applies its path", async () => {
 		const saveFile = vi.fn(async () => "/tmp/analysis.ipynb");
-		const mainSdk = createFakeMainSdk({
-			featureId: "notebook",
+		const platform = fakePlatform({
 			host: {
-				paths: { defaultSaveDirectory: () => "/tmp", tempDirectory: () => "/tmp" },
+				paths: { defaultSaveDirectory: () => "/tmp" },
 				dialog: { openFile: vi.fn(async () => null), saveFile },
 				externalLinks: { open: vi.fn(async () => true) },
 				window: {
@@ -493,10 +521,10 @@ describe("ElectronNotebookHostService", () => {
 			},
 		});
 		const titleChanged = vi.fn();
-		mainSdk.events.on("notebook.title-changed", titleChanged);
-		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/runtime.sock" });
+		platform.events.on("title-changed", titleChanged);
+		const service = new ElectronNotebookHostService({ platform, socketPath: "/tmp/runtime.sock" });
 		const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
-		await service.connect(port(), { notebookId, sessionId: "kilo-1", title: "Analysis" }, 91);
+		await service.connect(port(), { notebookId, sessionId: "kilo-1", title: "Analysis" }, "91");
 
 		const result = service.save(notebookId);
 		expect(server.emit).toHaveBeenCalledWith("command", {
@@ -516,10 +544,9 @@ describe("ElectronNotebookHostService", () => {
 	});
 
 	it("keeps a dirty tab open when the Save As dialog is cancelled", async () => {
-		const mainSdk = createFakeMainSdk({
-			featureId: "notebook",
+		const platform = fakePlatform({
 			host: {
-				paths: { defaultSaveDirectory: () => "/tmp", tempDirectory: () => "/tmp" },
+				paths: { defaultSaveDirectory: () => "/tmp" },
 				dialog: {
 					openFile: vi.fn(async () => null),
 					saveFile: vi.fn(async () => null),
@@ -533,9 +560,9 @@ describe("ElectronNotebookHostService", () => {
 				},
 			},
 		});
-		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/runtime.sock" });
+		const service = new ElectronNotebookHostService({ platform, socketPath: "/tmp/runtime.sock" });
 		const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
-		await service.connect(port(), { notebookId, sessionId: "kilo-1", title: "Analysis" }, 91);
+		await service.connect(port(), { notebookId, sessionId: "kilo-1", title: "Analysis" }, "91");
 
 		const result = service.save(notebookId);
 		await handler.invoke("dialog.saveFile", { defaultPath: "/tmp/analysis.ipynb" });
@@ -545,7 +572,7 @@ describe("ElectronNotebookHostService", () => {
 
 	it("reports a failed save when the notebook session is not connected", async () => {
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			platform: fakePlatform(),
 			socketPath: "/tmp/runtime.sock",
 		});
 
@@ -575,7 +602,7 @@ describe("ElectronNotebookHostService", () => {
 		);
 
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			platform: fakePlatform(),
 			socketPath: "/tmp/nightly.sock",
 		});
 		await service.connect(
@@ -585,7 +612,7 @@ describe("ElectronNotebookHostService", () => {
 				sessionId: "kilo-1",
 				title: "Analysis",
 			},
-			42,
+			"42",
 		);
 
 		expect(delivered).toEqual(bootstrap);
@@ -598,7 +625,7 @@ describe("ElectronNotebookHostService", () => {
 			throw new Error("MessagePort setup failed");
 		});
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			platform: fakePlatform(),
 			socketPath: "/tmp/nightly.sock",
 		});
 
@@ -610,7 +637,7 @@ describe("ElectronNotebookHostService", () => {
 					sessionId: "kilo-1",
 					title: "Analysis",
 				},
-				42,
+				"42",
 			),
 		).rejects.toThrow("MessagePort setup failed");
 		expect(nativeRelay.close).toHaveBeenCalledOnce();
@@ -618,10 +645,9 @@ describe("ElectronNotebookHostService", () => {
 
 	it("delegates native save dialogs to the sender-owned window", async () => {
 		const saveFile = vi.fn(async () => "/tmp/analysis.ipynb");
-		const mainSdk = createFakeMainSdk({
-			featureId: "notebook",
+		const platform = fakePlatform({
 			host: {
-				paths: { defaultSaveDirectory: () => "/Users/test/Documents", tempDirectory: () => "/tmp" },
+				paths: { defaultSaveDirectory: () => "/Users/test/Documents" },
 				dialog: { openFile: vi.fn(async () => null), saveFile },
 				externalLinks: { open: vi.fn(async () => true) },
 				window: {
@@ -632,7 +658,7 @@ describe("ElectronNotebookHostService", () => {
 				},
 			},
 		});
-		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/runtime.sock" });
+		const service = new ElectronNotebookHostService({ platform, socketPath: "/tmp/runtime.sock" });
 		await service.connect(
 			port(),
 			{
@@ -640,7 +666,7 @@ describe("ElectronNotebookHostService", () => {
 				sessionId: "kilo-1",
 				title: "Analysis",
 			},
-			91,
+			"91",
 		);
 
 		await expect(
@@ -649,17 +675,16 @@ describe("ElectronNotebookHostService", () => {
 				filters: [{ name: "Notebook", extensions: ["ipynb"] }],
 			}),
 		).resolves.toBe("/tmp/analysis.ipynb");
-		expect(saveFile).toHaveBeenCalledWith(91, {
+		expect(saveFile).toHaveBeenCalledWith("91", {
 			defaultPath: "/tmp/analysis.ipynb",
 			filters: [{ name: "Notebook", extensions: ["ipynb"] }],
 		});
 	});
 
 	it("uses the connected chat workspace as nteract's default save directory", async () => {
-		const mainSdk = createFakeMainSdk({
-			featureId: "notebook",
+		const platform = fakePlatform({
 			host: {
-				paths: { defaultSaveDirectory: () => "/Users/test/Documents", tempDirectory: () => "/tmp" },
+				paths: { defaultSaveDirectory: () => "/Users/test/Documents" },
 				dialog: {
 					openFile: vi.fn(async () => null),
 					saveFile: vi.fn(async () => null),
@@ -673,7 +698,7 @@ describe("ElectronNotebookHostService", () => {
 				},
 			},
 		});
-		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/runtime.sock" });
+		const service = new ElectronNotebookHostService({ platform, socketPath: "/tmp/runtime.sock" });
 		service.setDefaultSaveDirectory("669d39ec-39d6-4160-815c-b46e170cde8d", "/projects/analysis");
 		await service.connect(
 			port(),
@@ -682,7 +707,7 @@ describe("ElectronNotebookHostService", () => {
 				sessionId: "kilo-1",
 				title: "Analysis",
 			},
-			91,
+			"91",
 		);
 
 		await expect(handler.invoke("notebook.getDefaultSaveDirectory", undefined)).resolves.toBe(
@@ -696,10 +721,9 @@ describe("ElectronNotebookHostService", () => {
 	});
 
 	it("falls back to Documents when the chat has no workspace", async () => {
-		const mainSdk = createFakeMainSdk({
-			featureId: "notebook",
+		const platform = fakePlatform({
 			host: {
-				paths: { defaultSaveDirectory: () => "/Users/test/Documents", tempDirectory: () => "/tmp" },
+				paths: { defaultSaveDirectory: () => "/Users/test/Documents" },
 				dialog: {
 					openFile: vi.fn(async () => null),
 					saveFile: vi.fn(async () => null),
@@ -713,7 +737,7 @@ describe("ElectronNotebookHostService", () => {
 				},
 			},
 		});
-		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/runtime.sock" });
+		const service = new ElectronNotebookHostService({ platform, socketPath: "/tmp/runtime.sock" });
 		await service.connect(
 			port(),
 			{
@@ -721,7 +745,7 @@ describe("ElectronNotebookHostService", () => {
 				sessionId: "kilo-1",
 				title: "Analysis",
 			},
-			91,
+			"91",
 		);
 
 		await expect(handler.invoke("notebook.getDefaultSaveDirectory", undefined)).resolves.toBe(
@@ -733,8 +757,8 @@ describe("ElectronNotebookHostService", () => {
 		const first = relay("669d39ec-39d6-4160-815c-b46e170cde8d");
 		const second = relay("669d39ec-39d6-4160-815c-b46e170cde8d");
 		mocks.createRelay.mockResolvedValueOnce(first).mockResolvedValueOnce(second);
-		const mainSdk = createFakeMainSdk({ featureId: "notebook" });
-		const service = new ElectronNotebookHostService({ mainSdk });
+		const platform = fakePlatform();
+		const service = new ElectronNotebookHostService({ platform });
 		await service.connect(
 			port(),
 			{
@@ -742,7 +766,7 @@ describe("ElectronNotebookHostService", () => {
 				sessionId: "kilo-1",
 				title: "Analysis",
 			},
-			42,
+			"42",
 		);
 
 		await handler.invoke("daemon.reconnect", { force: true });
@@ -763,7 +787,7 @@ describe("ElectronNotebookHostService", () => {
 	it("reports an actionable failure when the selected daemon is unavailable", async () => {
 		mocks.queryDaemonInfo.mockResolvedValue(null);
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			platform: fakePlatform(),
 			socketPath: "/tmp/runtimed-nightly.sock",
 		});
 
@@ -792,7 +816,7 @@ describe("ElectronNotebookHostService", () => {
 			blobPort: 1337,
 		});
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			platform: fakePlatform(),
 			socketPath: "/tmp/nightly.sock",
 			createDaemonManager: () => ({
 				state: { status: "idle" },
@@ -816,7 +840,7 @@ describe("ElectronNotebookHostService", () => {
 	it("can warm the daemon without opening a notebook relay", async () => {
 		const ensureAvailable = vi.fn(async () => ({ status: "bundled" as const, pid: 42 }));
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			platform: fakePlatform(),
 			createDaemonManager: () => ({
 				state: { status: "idle" },
 				ensureAvailable,
@@ -832,7 +856,7 @@ describe("ElectronNotebookHostService", () => {
 	it("starts the bundled daemon before opening a relay", async () => {
 		const ensureAvailable = vi.fn(async () => ({ status: "bundled" as const, pid: 42 }));
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			platform: fakePlatform(),
 			socketPath: "/tmp/runtimed-nightly.sock",
 			runtimedBinaryPath: "/resources/runtimed-nightly",
 			createDaemonManager: () => ({
@@ -849,7 +873,7 @@ describe("ElectronNotebookHostService", () => {
 				sessionId: "kilo-1",
 				title: "Analysis",
 			},
-			42,
+			"42",
 		);
 
 		expect(ensureAvailable).toHaveBeenCalledOnce();
@@ -857,8 +881,8 @@ describe("ElectronNotebookHostService", () => {
 	});
 
 	it("answers sidecar protocol methods for daemon, blobs, and settings", async () => {
-		const mainSdk = createFakeMainSdk({ featureId: "notebook", host: desktopHost() });
-		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/nightly.sock" });
+		const platform = fakePlatform({ host: desktopHost() });
+		const service = new ElectronNotebookHostService({ platform, socketPath: "/tmp/nightly.sock" });
 		await service.connect(
 			port(),
 			{
@@ -866,7 +890,7 @@ describe("ElectronNotebookHostService", () => {
 				sessionId: "kilo-1",
 				title: "Analysis",
 			},
-			91,
+			"91",
 		);
 
 		await expect(handler.invoke("daemon.isConnected", undefined)).resolves.toBe(true);
@@ -920,8 +944,8 @@ describe("ElectronNotebookHostService", () => {
 	});
 
 	it("rejects opening or cloning notebooks outside the Kilo Desktop side panel", async () => {
-		const mainSdk = createFakeMainSdk({ featureId: "notebook", host: desktopHost() });
-		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/nightly.sock" });
+		const platform = fakePlatform({ host: desktopHost() });
+		const service = new ElectronNotebookHostService({ platform, socketPath: "/tmp/nightly.sock" });
 		await service.connect(
 			port(),
 			{
@@ -929,7 +953,7 @@ describe("ElectronNotebookHostService", () => {
 				sessionId: "kilo-1",
 				title: "Analysis",
 			},
-			91,
+			"91",
 		);
 
 		await expect(
@@ -944,8 +968,8 @@ describe("ElectronNotebookHostService", () => {
 	});
 
 	it("rejects an unsupported host method", async () => {
-		const mainSdk = createFakeMainSdk({ featureId: "notebook", host: desktopHost() });
-		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/nightly.sock" });
+		const platform = fakePlatform({ host: desktopHost() });
+		const service = new ElectronNotebookHostService({ platform, socketPath: "/tmp/nightly.sock" });
 		await service.connect(
 			port(),
 			{
@@ -953,7 +977,7 @@ describe("ElectronNotebookHostService", () => {
 				sessionId: "kilo-1",
 				title: "Analysis",
 			},
-			91,
+			"91",
 		);
 
 		await expect(
@@ -964,11 +988,10 @@ describe("ElectronNotebookHostService", () => {
 	it("opens files and external links through the desktop host", async () => {
 		const openFile = vi.fn(async () => "/tmp/opened.ipynb");
 		const openLink = vi.fn(async () => true);
-		const mainSdk = createFakeMainSdk({
-			featureId: "notebook",
+		const platform = fakePlatform({
 			host: desktopHost({ openFile, openLink }),
 		});
-		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/nightly.sock" });
+		const service = new ElectronNotebookHostService({ platform, socketPath: "/tmp/nightly.sock" });
 		await service.connect(
 			port(),
 			{
@@ -976,13 +999,13 @@ describe("ElectronNotebookHostService", () => {
 				sessionId: "kilo-1",
 				title: "Analysis",
 			},
-			91,
+			"91",
 		);
 
 		await expect(handler.invoke("dialog.openFile", { defaultPath: "/tmp" })).resolves.toBe(
 			"/tmp/opened.ipynb",
 		);
-		expect(openFile).toHaveBeenCalledWith(91, { defaultPath: "/tmp" });
+		expect(openFile).toHaveBeenCalledWith("91", { defaultPath: "/tmp" });
 		await expect(
 			handler.invoke("externalLinks.open", { url: "https://docs.anaconda.com" }),
 		).resolves.toBeUndefined();
@@ -990,11 +1013,10 @@ describe("ElectronNotebookHostService", () => {
 	});
 
 	it("rejects invalid or unauthorized external links", async () => {
-		const mainSdk = createFakeMainSdk({
-			featureId: "notebook",
+		const platform = fakePlatform({
 			host: desktopHost({ openLink: async () => false }),
 		});
-		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/nightly.sock" });
+		const service = new ElectronNotebookHostService({ platform, socketPath: "/tmp/nightly.sock" });
 		await service.connect(
 			port(),
 			{
@@ -1002,7 +1024,7 @@ describe("ElectronNotebookHostService", () => {
 				sessionId: "kilo-1",
 				title: "Analysis",
 			},
-			91,
+			"91",
 		);
 
 		await expect(handler.invoke("externalLinks.open", { url: 1 as never })).rejects.toThrow(
@@ -1015,12 +1037,11 @@ describe("ElectronNotebookHostService", () => {
 
 	it("forwards sidecar log notifications to the feature logger", async () => {
 		const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
-		const mainSdk = createFakeMainSdk({
-			featureId: "notebook",
+		const platform = fakePlatform({
 			host: desktopHost(),
 			logger,
 		});
-		const service = new ElectronNotebookHostService({ mainSdk, socketPath: "/tmp/nightly.sock" });
+		const service = new ElectronNotebookHostService({ platform, socketPath: "/tmp/nightly.sock" });
 		await service.connect(
 			port(),
 			{
@@ -1028,7 +1049,7 @@ describe("ElectronNotebookHostService", () => {
 				sessionId: "kilo-1",
 				title: "Analysis",
 			},
-			91,
+			"91",
 		);
 
 		handler.notify?.({ method: "log.debug", params: { message: "debug" } });
@@ -1044,11 +1065,11 @@ describe("ElectronNotebookHostService", () => {
 
 	it("cancels Save As when the desktop host has no dialog", async () => {
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			platform: fakePlatform(),
 			socketPath: "/tmp/nightly.sock",
 		});
 		const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
-		await service.connect(port(), { notebookId, sessionId: "kilo-1", title: "Analysis" }, 91);
+		await service.connect(port(), { notebookId, sessionId: "kilo-1", title: "Analysis" }, "91");
 
 		const result = service.save(notebookId);
 		await expect(
@@ -1059,7 +1080,7 @@ describe("ElectronNotebookHostService", () => {
 
 	it("closes active sessions when disposed", async () => {
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook", host: desktopHost() }),
+			platform: fakePlatform({ host: desktopHost() }),
 			socketPath: "/tmp/nightly.sock",
 		});
 		await service.connect(
@@ -1069,7 +1090,7 @@ describe("ElectronNotebookHostService", () => {
 				sessionId: "kilo-1",
 				title: "Analysis",
 			},
-			91,
+			"91",
 		);
 
 		await service.dispose();
@@ -1084,7 +1105,7 @@ describe("ElectronNotebookHostService", () => {
 		const nativeRelay = relay("669d39ec-39d6-4160-815c-b46e170cde8d", canonicalNotebookPath);
 		mocks.openRelayPath.mockResolvedValueOnce(nativeRelay);
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			platform: fakePlatform(),
 			socketPath: "/tmp/nightly.sock",
 		});
 
@@ -1102,7 +1123,7 @@ describe("ElectronNotebookHostService", () => {
 		const { blobPort: _blobPort, ...info } = native.info;
 		mocks.createRelay.mockResolvedValueOnce({ ...native, info: info as RelayInfo });
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook", host: desktopHost() }),
+			platform: fakePlatform({ host: desktopHost() }),
 			socketPath: "/tmp/nightly.sock",
 		});
 		await service.connect(
@@ -1112,7 +1133,7 @@ describe("ElectronNotebookHostService", () => {
 				sessionId: "kilo-1",
 				title: "Analysis",
 			},
-			91,
+			"91",
 		);
 
 		await expect(handler.invoke("blobs.getPort", undefined)).rejects.toThrow(
@@ -1122,7 +1143,7 @@ describe("ElectronNotebookHostService", () => {
 
 	it("reports an already-clean notebook as saved without prompting", async () => {
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook", host: desktopHost() }),
+			platform: fakePlatform({ host: desktopHost() }),
 			socketPath: "/tmp/nightly.sock",
 		});
 		const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
@@ -1134,7 +1155,7 @@ describe("ElectronNotebookHostService", () => {
 				title: "Analysis",
 				notebookPath: "/tmp/analysis.ipynb",
 			},
-			91,
+			"91",
 		);
 
 		await expect(service.save(notebookId)).resolves.toEqual({ outcome: "saved" });
@@ -1146,7 +1167,7 @@ describe("ElectronNotebookHostService", () => {
 
 	it("returns null from open-file when the desktop host is absent", async () => {
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			platform: fakePlatform(),
 			socketPath: "/tmp/nightly.sock",
 		});
 		await service.connect(
@@ -1156,7 +1177,7 @@ describe("ElectronNotebookHostService", () => {
 				sessionId: "kilo-1",
 				title: "Analysis",
 			},
-			91,
+			"91",
 		);
 
 		await expect(handler.invoke("dialog.openFile", { defaultPath: "/tmp" })).resolves.toBeNull();
@@ -1164,11 +1185,11 @@ describe("ElectronNotebookHostService", () => {
 
 	it("reuses an in-flight save instead of emitting a second command", async () => {
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook", host: desktopHost() }),
+			platform: fakePlatform({ host: desktopHost() }),
 			socketPath: "/tmp/nightly.sock",
 		});
 		const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
-		await service.connect(port(), { notebookId, sessionId: "kilo-1", title: "Analysis" }, 91);
+		await service.connect(port(), { notebookId, sessionId: "kilo-1", title: "Analysis" }, "91");
 
 		const first = service.save(notebookId);
 		const second = service.save(notebookId);
@@ -1185,11 +1206,11 @@ describe("ElectronNotebookHostService", () => {
 		vi.useFakeTimers();
 		try {
 			const service = new ElectronNotebookHostService({
-				mainSdk: createFakeMainSdk({ featureId: "notebook", host: desktopHost() }),
+				platform: fakePlatform({ host: desktopHost() }),
 				socketPath: "/tmp/nightly.sock",
 			});
 			const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
-			await service.connect(port(), { notebookId, sessionId: "kilo-1", title: "Analysis" }, 91);
+			await service.connect(port(), { notebookId, sessionId: "kilo-1", title: "Analysis" }, "91");
 
 			const result = service.save(notebookId);
 			await vi.advanceTimersByTimeAsync(30_000);
@@ -1204,7 +1225,7 @@ describe("ElectronNotebookHostService", () => {
 
 	it("marks the transport offline when reconnect cannot replace the relay", async () => {
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook", host: desktopHost() }),
+			platform: fakePlatform({ host: desktopHost() }),
 			socketPath: "/tmp/nightly.sock",
 		});
 		await service.connect(
@@ -1214,7 +1235,7 @@ describe("ElectronNotebookHostService", () => {
 				sessionId: "kilo-1",
 				title: "Analysis",
 			},
-			91,
+			"91",
 		);
 		mocks.createRelay.mockRejectedValueOnce(new Error("socket down"));
 
@@ -1226,7 +1247,7 @@ describe("ElectronNotebookHostService", () => {
 
 	it("refuses to connect when the daemon never becomes ready", async () => {
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			platform: fakePlatform(),
 			socketPath: "/tmp/nightly.sock",
 			createDaemonManager: () => ({
 				state: { status: "failed", reason: "gone" },
@@ -1243,7 +1264,7 @@ describe("ElectronNotebookHostService", () => {
 					sessionId: "kilo-1",
 					title: "Analysis",
 				},
-				91,
+				"91",
 			),
 		).rejects.toThrow("gone");
 	});
@@ -1251,8 +1272,7 @@ describe("ElectronNotebookHostService", () => {
 	it("drops malformed save-dialog filters instead of forwarding them", async () => {
 		const saveFile = vi.fn(async () => "/tmp/analysis.ipynb");
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({
-				featureId: "notebook",
+			platform: fakePlatform({
 				host: desktopHost({ saveFile }),
 			}),
 			socketPath: "/tmp/nightly.sock",
@@ -1264,13 +1284,13 @@ describe("ElectronNotebookHostService", () => {
 				sessionId: "kilo-1",
 				title: "Analysis",
 			},
-			91,
+			"91",
 		);
 
 		await expect(handler.invoke("dialog.saveFile", "not-an-object")).resolves.toBe(
 			"/tmp/analysis.ipynb",
 		);
-		expect(saveFile).toHaveBeenCalledWith(91, undefined);
+		expect(saveFile).toHaveBeenCalledWith("91", undefined);
 		await expect(
 			handler.invoke("dialog.saveFile", {
 				filters: [
@@ -1279,14 +1299,14 @@ describe("ElectronNotebookHostService", () => {
 				],
 			}),
 		).resolves.toBe("/tmp/analysis.ipynb");
-		expect(saveFile).toHaveBeenLastCalledWith(91, {
+		expect(saveFile).toHaveBeenLastCalledWith("91", {
 			filters: [{ name: "Notebook", extensions: ["ipynb"] }],
 		});
 	});
 
 	it("falls back to the home directory when no default save path is configured", async () => {
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			platform: fakePlatform(),
 			socketPath: "/tmp/nightly.sock",
 		});
 		await service.connect(
@@ -1296,7 +1316,7 @@ describe("ElectronNotebookHostService", () => {
 				sessionId: "kilo-1",
 				title: "Analysis",
 			},
-			91,
+			"91",
 		);
 
 		await expect(handler.invoke("notebook.getDefaultSaveDirectory", undefined)).resolves.toBe(
@@ -1315,7 +1335,7 @@ describe("ElectronNotebookHostService daemon authentication wiring", () => {
 	it("builds the authenticator from the pinned release, this user's uid, and the resolver seam", async () => {
 		const resolvePeerIdentity = vi.fn(async () => null);
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			platform: fakePlatform(),
 			socketPath: "/tmp/nightly.sock",
 			runtimedBinaryPath: "/resources/runtimed-nightly",
 			resolvePeerIdentity,
@@ -1332,7 +1352,7 @@ describe("ElectronNotebookHostService daemon authentication wiring", () => {
 
 	it("trusts no external image when no bundled binary is staged", async () => {
 		const service = new ElectronNotebookHostService({
-			mainSdk: createFakeMainSdk({ featureId: "notebook" }),
+			platform: fakePlatform(),
 			socketPath: "/tmp/nightly.sock",
 			probePeerCredentialBackend: async () => true,
 		});

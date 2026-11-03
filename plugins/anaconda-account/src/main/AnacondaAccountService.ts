@@ -1,32 +1,19 @@
 import isEqual from "lodash/isEqual.js";
 
-import type { AnacondaAccountSession } from "../contracts/schemas.js";
+import type { AnacondaAccountSession } from "../contracts/index.js";
 
 import { exchangeForApiKey, passportToUser, whoamiResponseSchema } from "./actions.js";
+import type { AnacondaCredentialStore } from "./credentials/anaconda-credential-store.js";
 import { startLoopbackAuthorize } from "./oauth/callback-server.js";
 import { OAuthCancelledError } from "./oauth/errors.js";
 import { login as oauthLogin, type LoginDependencies } from "./oauth/oauth-flow.js";
 import type { LoopbackAuthorizer, OAuthFetch, OAuthLogger } from "./oauth/types.js";
 
-/**
- * Structural mirror of the slice of the shell's main-side `auth` capability
- * (`mainSdk.plugins.get("auth").session`) this plugin uses. The shell owns the
- * Anaconda keyring and the site config; this plugin only adds the sign-in.
- */
-export interface AnacondaCredentials {
-	getApiKey(): Promise<string | null>;
-	getOAuthSettings(): Promise<AnacondaOAuthSettings>;
-	saveApiKey(apiKey: string): Promise<void>;
-	deleteApiKey(): Promise<void>;
-}
-
-export interface AnacondaOAuthSettings {
-	domain: string;
-	clientId: string;
-	issuerUrl?: string;
-	/** Tag recorded on the created API key (`kilo-desktop/<version>`). */
-	userAgent?: string;
-}
+/** The slice of {@link AnacondaCredentialStore} the account uses. */
+export type AnacondaCredentials = Pick<
+	AnacondaCredentialStore,
+	"getApiKey" | "getOAuthSettings" | "saveApiKey" | "deleteApiKey"
+>;
 
 /** Runs the OAuth PKCE flow; matches `./oauth/oauth-flow.js`'s `login`. */
 export type OAuthLogin = typeof oauthLogin;
@@ -38,10 +25,9 @@ export type AuthorizeServerFactory = (domain: string) => Promise<LoopbackAuthori
 export type ApiKeyExchanger = typeof exchangeForApiKey;
 
 export interface AnacondaAccountServiceOptions {
-	/** Resolved lazily per call: the shell capability may register after this plugin. */
-	credentials: () => AnacondaCredentials | null;
+	credentials: AnacondaCredentials;
 	fetch: OAuthFetch;
-	/** Opens the system browser; absent outside Electron (sign-in then reports an error). */
+	/** Opens the system browser; absent when the host cannot (sign-in then reports an error). */
 	openExternal: ((url: string) => Promise<boolean>) | undefined;
 	logger: OAuthLogger;
 	login?: OAuthLogin;
@@ -55,13 +41,13 @@ const CREDENTIALS_UNAVAILABLE = "Anaconda sign-in is unavailable.";
 /**
  * The Anaconda account: a convenience credential source for features that call
  * Anaconda APIs (model catalog). It is NOT the app session — app identity is
- * Kilo-backed and owned by the shell.
+ * Kilo-backed and owned by kilo.account.
  *
- * Ownership: the shell owns the keyring and site config (via the `auth`
- * capability); this service owns the OAuth loopback sign-in, the token→API-key
- * exchange, and the derived session. Signing in writes the key through the
- * shell; signing out deletes it. A key placed by any other tool (e.g.
- * `anaconda login`) reads the same way.
+ * Ownership: the credential store reads and writes the Anaconda keyring and
+ * site config, shared with the Anaconda CLI and conda; this service owns the
+ * OAuth loopback sign-in, the token→API-key exchange, and the derived session.
+ * Signing in writes the key to the keyring; signing out deletes it. A key
+ * placed by any other tool (e.g. `anaconda login`) reads the same way.
  *
  * Invariants: the session is derived from the stored key via `whoami` and
  * cached until `refresh()`/`login()`/`logout()`; concurrent refreshes share
@@ -84,7 +70,7 @@ export class AnacondaAccountService {
 	#lastApiKey: string | null = null;
 	readonly #listeners = new Set<(session: AnacondaAccountSession) => void>();
 
-	readonly #credentials: () => AnacondaCredentials | null;
+	readonly #credentials: AnacondaCredentials;
 	readonly #fetch: OAuthFetch;
 	readonly #logger: OAuthLogger;
 	readonly #login: OAuthLogin;
@@ -119,7 +105,7 @@ export class AnacondaAccountService {
 
 	/**
 	 * Run the interactive OAuth sign-in: open the browser, exchange the returned
-	 * access token for an API key, store it through the shell, then re-resolve.
+	 * access token for an API key, store it in the keyring, then re-resolve.
 	 * Callers that arrive while a sign-in is running (another window, the
 	 * catalog and the Account page) share its outcome, and the pending
 	 * authorization page is opened again — the user may have closed the tab or
@@ -149,8 +135,8 @@ export class AnacondaAccountService {
 
 	async #runLogin(): Promise<AnacondaAccountSession> {
 		this.#loginCancelled = false;
-		const credentials = this.#credentials();
-		if (!credentials || !this.#createAuthorizeServer) {
+		const credentials = this.#credentials;
+		if (!this.#createAuthorizeServer) {
 			return { status: "error", reason: CREDENTIALS_UNAVAILABLE };
 		}
 		let authorizer: LoopbackAuthorizer | undefined;
@@ -222,10 +208,8 @@ export class AnacondaAccountService {
 
 	/** Delete the stored API key and publish an anonymous session. */
 	async logout(): Promise<AnacondaAccountSession> {
-		const credentials = this.#credentials();
-		if (!credentials) return { status: "error", reason: CREDENTIALS_UNAVAILABLE };
 		try {
-			await credentials.deleteApiKey();
+			await this.#credentials.deleteApiKey();
 			this.#logger.info("logout: API key deleted from keyring");
 		} catch (cause) {
 			this.#logger.error("logout failed:", cause);
@@ -267,12 +251,8 @@ export class AnacondaAccountService {
 		session: AnacondaAccountSession;
 		apiKey: string | null;
 	}> {
-		const credentials = this.#credentials();
-		if (!credentials) {
-			return { session: { status: "error", reason: CREDENTIALS_UNAVAILABLE }, apiKey: null };
-		}
-
-		// The shell's getApiKey already degrades keyring failures to null.
+		const credentials = this.#credentials;
+		// getApiKey already degrades keyring failures to null.
 		const apiKey = await credentials.getApiKey();
 		if (!apiKey) return { session: ANONYMOUS, apiKey: null };
 

@@ -12,9 +12,9 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 
 const coverage = {
 	...createCoverageConfig([
-		// Barrel — no behavior of its own.
-		"src/web/index.ts",
 		"src/test/**",
+		// Wires the real keyring and the build's client id; the entry is tested through createAnacondaAccountMainEntry.
+		"src/main/index.ts",
 	]),
 	// Scope coverage to plugin sources so the package-local vite cache is not
 	// counted.
@@ -68,23 +68,27 @@ export default defineConfig({
 						"react-dom",
 						"react/jsx-runtime",
 						"react/jsx-dev-runtime",
-						"@kilo-desktop/feature-sdk",
-						"@kilo-desktop/sdk-react",
 						"@tanstack/react-query",
+						"@tanstack/react-router",
 						"@testing-library/react",
-						// Keep the design-system CommonJS shims in Vite's prebundle so a cold
-						// browser run does not reload midway through test collection.
 						"@base-ui/react/button",
 						"@base-ui/react/dialog",
 						"@base-ui/react/input",
 						"@base-ui/react/merge-props",
+						"@base-ui/react/radio",
+						"@base-ui/react/radio-group",
+						"@base-ui/react/select",
 						"@base-ui/react/separator",
+						"@base-ui/react/slider",
+						"@base-ui/react/switch",
 						"@base-ui/react/tooltip",
 						"@base-ui/react/use-render",
 						"class-variance-authority",
 						"clsx",
+						"cmdk",
 						"lucide-react",
 						"motion/react",
+						"sonner",
 						"tailwind-merge",
 						"use-sync-external-store/shim",
 						"use-sync-external-store/shim/with-selector",
@@ -105,6 +109,8 @@ export default defineConfig({
 					// the unit/integration projects; Vitest requires unique groupOrders when
 					// two projects in the same config have different maxWorkers.
 					...(process.env.CI ? { maxWorkers: 2, sequence: { groupOrder: 1 } } : {}),
+					// Interaction-heavy tests outlast the 15s default when every package runs at once (pre-push).
+					testTimeout: 30_000,
 					browser: {
 						enabled: true,
 						headless: true,

@@ -1,6 +1,13 @@
 import { app, Notification, type App } from "electron";
 
-import type { NotificationDeliveryResult } from "@kilo-desktop/contracts";
+/**
+ * Delivery is best-effort: `delivered: false` + `reason` reports expected
+ * capability absence (unsupported platform, permission denied) instead of throwing.
+ */
+export interface NotificationDeliveryResult {
+	readonly delivered: boolean;
+	readonly reason?: string;
+}
 
 /** Structural surface of an OS notification so tests can inject a fake. */
 export interface SystemNotificationLike {

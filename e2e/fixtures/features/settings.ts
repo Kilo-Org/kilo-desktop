@@ -6,7 +6,7 @@ import { setPage } from "@anaconda/playwright-utils/page-utils";
 import { _electron as electron, type ElectronApplication } from "playwright";
 
 import { SettingsPage } from "../../pages/features/settings/settings-page.js";
-import { SIGNED_OUT_LAUNCH_ENV } from "../../testdata/settings.js";
+import { SIGNED_OUT_LAUNCH_ENV } from "../../testdata/account.js";
 import { packagedAppLaunchEnv } from "../../utils/app-launcher.js";
 import { packagedExecutable } from "../../utils/paths.js";
 import { removePathAfterAppStops, waitForMainWindow } from "../electron.js";
@@ -16,6 +16,9 @@ export const test = shellTest.extend<{
 	settingsPage: SettingsPage;
 	signedOutApp: ElectronApplication;
 }>({
+	// Sign-in-gated sections open once kilo.account has read the e2e account through the
+	// Kilo server, so this key's worker waits for it.
+	appIsolationKey: "settings",
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
 	settingsPage: async ({}, use) => {
 		await use(new SettingsPage());

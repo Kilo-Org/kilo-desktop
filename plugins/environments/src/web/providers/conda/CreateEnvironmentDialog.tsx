@@ -1,7 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
-import { useSdk, useSdkMutation, useSdkQuery } from "@kilo-desktop/sdk-react";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Combobox,
@@ -27,7 +26,9 @@ import { cn } from "@kilo-desktop/ui/lib/utils";
 import { CheckIcon, FolderIcon } from "lucide-react";
 
 import { parseEnvironmentsErrorMessage } from "../../../contracts/common.js";
-import type { CondaRepodataFindResult, CondaService } from "../../../contracts/providers/conda.js";
+import { condaQueryKey, useConda, useCondaMutation, useCondaQuery } from "../../conda.js";
+import { useTrack } from "../../app.js";
+import type { CondaRepodataFindResult } from "../../../contracts/providers/conda.js";
 import { ChannelChooserPopover } from "./ChannelChooserPopover.js";
 import { useChannelSelection } from "./use-channel-selection.js";
 import { validateEnvironmentName } from "./environment-display.js";
@@ -97,7 +98,8 @@ function prefixCheckError(
 }
 
 export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDialogProps) {
-	const sdk = useSdk<CondaService>("environments");
+	const conda = useConda();
+	const track = useTrack();
 	const [name, setName] = useState("");
 	const [location, setLocation] = useState("");
 	const [pythonVersion, setPythonVersion] = useState(PYTHON_LATEST);
@@ -116,9 +118,9 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 		backgrounded: boolean;
 	} | null>(null);
 
-	const prefixQuery = useSdkQuery(sdk, "conda.envs.prefixOptions");
-	const mutation = useSdkMutation(sdk, "conda.envs.create", {
-		invalidates: ["conda.envs.list", "conda.envs.checkPrefix"],
+	const prefixQuery = useCondaQuery(conda, "prefixOptions");
+	const mutation = useCondaMutation(conda, "createEnvironment", {
+		invalidates: ["listEnvironments", "checkPrefix"],
 	});
 
 	const envsDirs = useMemo(() => prefixQuery.data?.envsDirs ?? [], [prefixQuery.data?.envsDirs]);
@@ -131,7 +133,7 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 	// bridge's own envs_dirs, not the location shown (and checked) here.
 	const targetPrefix =
 		trimmedName && !nameError && trimmedLocation ? joinEnvPath(trimmedLocation, trimmedName) : null;
-	const prefixCheck = useCreatePrefixCheck(sdk, targetPrefix);
+	const prefixCheck = useCreatePrefixCheck(conda, targetPrefix);
 	const createdHere = created?.prefix === targetPrefix ? created : null;
 	const justCreated = createdHere !== null;
 	const prefixError =
@@ -145,7 +147,7 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 	const canCreate = prefixCheck.status === "available" && !mutation.isPending;
 	const channels = useChannelSelection(prefixQuery.data?.channels);
 	const search = usePackageSearch({
-		sdk,
+		conda,
 		open,
 		ready: !prefixQuery.isPending,
 		query,
@@ -168,8 +170,8 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 		const args = channels.channelsArg
 			? { names: ["python"], limit: 1, channels: channels.channelsArg }
 			: { names: ["python"], limit: 1 };
-		sdk
-			.invoke("conda.repodata.find", args)
+		conda
+			.findRepodata(args)
 			.then((result) => {
 				if (cancelled) return;
 				const { packages } = result as CondaRepodataFindResult;
@@ -182,7 +184,7 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 		return () => {
 			cancelled = true;
 		};
-	}, [open, channels.channelsArg, sdk]);
+	}, [open, channels.channelsArg, conda]);
 
 	function resetForm() {
 		setName("");
@@ -213,8 +215,8 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 	function refreshAfterPrefixConflict(reason: unknown) {
 		const message = reason instanceof Error ? reason.message : String(reason);
 		if (parseEnvironmentsErrorMessage(message)?.code !== "ENV_EXISTS") return;
-		for (const channel of ["conda.envs.checkPrefix", "conda.envs.list"] as const) {
-			void queryClient.invalidateQueries({ queryKey: [sdk.featureId, channel] });
+		for (const channel of ["checkPrefix", "listEnvironments"] as const) {
+			void queryClient.invalidateQueries({ queryKey: condaQueryKey(channel) });
 		}
 	}
 
@@ -238,9 +240,7 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 		promise.then(
 			() => {
 				// Tracked before the backgrounded check so jobs moved to a toast still count.
-				void sdk.telemetry
-					.track({ event: "Environment Created", data: telemetryData })
-					.catch(() => undefined);
+				track("Environment Created", telemetryData);
 				if (pending.backgrounded) return;
 				showJobSuccess(job);
 				setCreated({ prefix: payload.prefix, envName });

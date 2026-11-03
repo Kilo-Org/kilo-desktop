@@ -1,16 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { SDK } from "@kilo-desktop/feature-sdk";
-
 import type {
 	CondaRepodataFindResult,
 	CondaRepodataPackage,
-	CondaService,
 } from "../../../contracts/providers/conda.js";
+import type { CondaClient } from "../../conda.js";
 
 /** First request size, and how much each scroll-triggered request adds. */
 export const PACKAGE_SEARCH_BATCH = 50;
-/** Hard cap on results; `conda.repodata.find` rejects larger limits. */
+/** Hard cap on results; `findRepodata` rejects larger limits. */
 export const PACKAGE_SEARCH_CAP = 500;
 const DEBOUNCE_MS = 200;
 
@@ -22,7 +20,7 @@ interface LoadedResults {
 }
 
 interface UsePackageSearchOptions {
-	sdk: SDK<CondaService>;
+	conda: CondaClient;
 	/** Search only while the owning dialog is open. */
 	open: boolean;
 	/** Hold the first request until the channel list is known. */
@@ -66,7 +64,7 @@ function dedupeByName(packages: CondaRepodataPackage[]): CondaRepodataPackage[] 
  * extends in place and keeps its scroll position.
  */
 export function usePackageSearch({
-	sdk,
+	conda,
 	open,
 	ready,
 	query,
@@ -93,8 +91,8 @@ export function usePackageSearch({
 					limit,
 					...(channels ? { channels } : {}),
 				};
-				sdk
-					.invoke("conda.repodata.find", args)
+				conda
+					.findRepodata(args)
 					.then((result) => {
 						if (stale) return;
 						const { packages, truncated } = result as CondaRepodataFindResult;
@@ -113,7 +111,7 @@ export function usePackageSearch({
 			stale = true;
 			clearTimeout(timer);
 		};
-	}, [open, ready, key, trimmed, channels, limit, sdk]);
+	}, [open, ready, key, trimmed, channels, limit, conda]);
 
 	// Results from another session would be stale on reopen; keep only a batch
 	// that still matches the (reset) query.

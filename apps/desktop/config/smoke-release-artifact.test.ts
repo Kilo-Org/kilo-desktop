@@ -8,6 +8,7 @@ import {
 	assertWindowsAuthenticodeSignature,
 	findReleaseUpdateArtifact,
 	seedDataCollectionOptOut,
+	smokeReleaseArtifact,
 	windowsAuthenticodeCheck,
 	windowsProcessTreeKill,
 } from "./smoke-release-artifact.js";
@@ -53,6 +54,14 @@ describe("release update artifact selection", () => {
 
 		await expect(findReleaseUpdateArtifact(makeDirectory, "darwin")).rejects.toThrow(
 			"Expected exactly one macOS update ZIP",
+		);
+	});
+});
+
+describe("release smoke platforms", () => {
+	it.each(["linux", "freebsd"] as const)("refuses to smoke-test %s artifacts", async (platform) => {
+		await expect(smokeReleaseArtifact(platform)).rejects.toThrow(
+			`Release artifact smoke testing is unsupported on ${platform}.`,
 		);
 	});
 });

@@ -1,5 +1,12 @@
 # Kilo Code Integration — Specification
 
+> **Historical.** This specification describes the integration as first built on the retired
+> feature SDK (`mainRegister`, `mainSdk`, `sdk.invoke`, capabilities), in the `kilo-server` and
+> `kilo-ui` plugins — all deleted in build-up step 13b. The integration now lives in the kernel
+> plugins `kilo.agent` (Kilo server, configuration, tool gateway, chats), `kilo.sessions`,
+> `kilo.workbench` and `kilo.chat`; see [plugin-architecture.md](./plugin-architecture.md). The
+> product decisions below (one `kilo serve`, directory scoping, session rulesets) still hold.
+
 Status: Draft (reference for phased implementation)
 Owner: Desktop team
 Last updated: 2026-08-06
@@ -152,7 +159,7 @@ No permission rules go into spawn config — reference-folder access is granted 
 
 **External instances**: Desktop **never adopts** foreign `kilo serve` processes. If spawn or identity verification fails, we kill the child and surface an error — we never probe localhost for "someone else's" server, never attach to a server we didn't spawn, and never reuse a port/URL across restarts. Connection details are re-learned at every spawn; the renderer re-fetches them via `server.getConnection` each launch.
 
-- **CLI provisioning (bundled — never rely on a user install)**: the plugin declares exact platform packages as optional npm dependencies, so pnpm installs the host-compatible package and records its registry integrity in `pnpm-lock.yaml`. Feature-owned `cli-distribution/stage.ts` verifies the installed package version and copies its complete `bin` directory into generated `resources/kilo/<target>/` beside the feature. Plugin-owned `scripts/fetch-cli.ts` (`pnpm --filter @kilo-desktop/plugin-kilo-server run fetch-cli`) stages into the plugin resource root and optionally loads the shell Windows signing callback from `apps/desktop/config/windows-sign.js` when Azure credentials are present. Desktop `prestart` / `premake` / `prepackage` / `prepublish` invoke that script inline. The current matrix maps macOS arm64 to `@kilocode/cli-darwin-arm64`, Windows ARM64 to `@kilocode/cli-windows-arm64`, Windows x64 to `@kilocode/cli-windows-x64-baseline`, Linux x64 to `@kilocode/cli-linux-x64-baseline`, and Linux arm64 to `@kilocode/cli-linux-arm64`. Choosing baseline for x64 at package time favors CPU compatibility and removes runtime AVX selection. Forge ships the generated root as `resources/kilo` and prunes the source npm package from production `node_modules` to avoid bundling the binary twice; `KILO_CODE_CLI_PATH` overrides the executable for local Kilo development. Binaries update only with app releases and are signed/notarized with the app (§14).
+- **CLI provisioning (bundled — never rely on a user install)**: the plugin declares exact platform packages as optional npm dependencies, so pnpm installs the host-compatible package and records its registry integrity in `pnpm-lock.yaml`. Feature-owned `cli-distribution/stage.ts` verifies the installed package version and copies its complete `bin` directory into generated `resources/kilo/<target>/` beside the feature. Plugin-owned `scripts/fetch-cli.ts` (`pnpm --filter @kilo-desktop/plugin-agent run fetch-cli`) stages into the plugin resource root and optionally loads the shell Windows signing callback from `apps/desktop/config/windows-sign.js` when Azure credentials are present. Desktop `prestart` / `premake` / `prepackage` / `prepublish` invoke that script inline. The current matrix maps macOS arm64 to `@kilocode/cli-darwin-arm64`, Windows ARM64 to `@kilocode/cli-windows-arm64`, Windows x64 to `@kilocode/cli-windows-x64-baseline`, Linux x64 to `@kilocode/cli-linux-x64-baseline`, and Linux arm64 to `@kilocode/cli-linux-arm64`. Choosing baseline for x64 at package time favors CPU compatibility and removes runtime AVX selection. Forge ships the generated root as `resources/kilo` and prunes the source npm package from production `node_modules` to avoid bundling the binary twice; `KILO_CODE_CLI_PATH` overrides the executable for local Kilo development. Binaries update only with app releases and are signed/notarized with the app (§14).
 - **Version pinning**: all five native CLI optional dependencies use the same exact version and Renovate updates them as one manual-review group. `@kilocode/sdk` remains independently pinned because its compatibility requirements differ from the bundled executable.
 
 ### 3.3 Renderer ↔ server transport & auth
@@ -234,7 +241,7 @@ Host seams remain intentionally isolated rather than expanding the plugin platfo
 2. `apps/desktop/src/main/platform/ElectronProtocol.ts` permits the dynamic loopback server in `connect-src`.
 3. Plugin `fetch-cli` optionally imports Windows signing from `apps/desktop/config/windows-sign.js` when Azure credentials are present (no reverse package dependency).
 4. Thin `BUNDLED_PLUGINS` registration entries in desktop/web (desktop passes Electron packaged-path facts into `createKiloCodeResolveAsset`).
-5. Root/`plugin-kilo-ui` workspace dependency on `@opencode-ai/sdk` (the compat package under `plugins/kilo-ui/opencode-sdk-compat/`) so the hoisted linker can resolve the react-opencode override.
+5. `plugin-chat` (and, until step 13, `plugin-kilo-ui`) workspace dependency on `@opencode-ai/sdk` (the compat package under `plugins/chat/opencode-sdk-compat/`) so the hoisted linker can resolve the react-opencode override.
 
 An external plugin will need a portable mechanism for packaged executable resources. Loopback access remains an application-level renderer policy, so `http://127.0.0.1:*` is always present in `connect-src` rather than being granted per plugin.
 

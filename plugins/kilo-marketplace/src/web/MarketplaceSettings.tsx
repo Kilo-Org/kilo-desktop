@@ -1,12 +1,4 @@
-import {
-	type ReactNode,
-	useDeferredValue,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-	useSyncExternalStore,
-} from "react";
+import { type ReactNode, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
 	BotIcon,
 	BriefcaseBusinessIcon,
@@ -41,24 +33,27 @@ import type {
 	MarketplaceItemRef,
 	MarketplaceMcpStatus,
 	MarketplaceMutationInput,
-	MarketplaceService,
 	MarketplaceTarget,
 	MarketplaceType,
 	McpMethod,
 	McpParameter,
-} from "../contracts/schemas.js";
+} from "../contracts/index.js";
 import { filterMarketplaceItems, installedScopes, matchesSearch } from "./marketplace-filter.js";
 import { mcpInstallContent } from "../contracts/mcp-config.js";
 import { McpConfigReview } from "./McpConfigReview.js";
 import { mcpConfigPreview } from "./mcp-config-preview.js";
 import { mcpLaunchCommand, missingCommand } from "./mcp-commands.js";
 import { MissingCommandAlert, MissingCommandFix, useMissingCommand } from "./MissingCommandHelp.js";
+import { SettingsPageHeader } from "@kilo-desktop/ui/components/settings-page-header";
 import {
-	sdkQueryOptions,
-	SettingsPageHeader,
-	useSdk,
-	useSdkMutation,
-} from "@kilo-desktop/sdk-react";
+	marketplaceQueryKey,
+	marketplaceQueryOptions,
+	useActiveWorkspaceId,
+	useMarketplace,
+	useMarketplaceMutation,
+	useOpenExternal,
+	useTrack,
+} from "./marketplace.js";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -1256,11 +1251,9 @@ function InstallDialog({
 	onInstalled,
 	onClose,
 }: InstallDialogProps) {
-	const sdk = useSdk<MarketplaceService>("kilo-marketplace");
+	const track = useTrack();
 	const queryClient = useQueryClient();
-	const install = useSdkMutation(sdk, "marketplace.install", {
-		invalidates: ["marketplace.list"],
-	});
+	const install = useMarketplaceMutation("install", { invalidates: ["list"] });
 	const methods = mcpMethods(item);
 	const globalInstalled = installed.some((entry) => entry.scope === "global");
 	const installedIds = installedWorkspaceIds(installed);
@@ -1354,12 +1347,7 @@ function InstallDialog({
 				}));
 		setSubmitting(true);
 		setOutcome(null);
-		void sdk.telemetry
-			.track({
-				event: "Marketplace Install Button Clicked",
-				data: itemTelemetryData(item),
-			})
-			.catch(() => undefined);
+		track("Marketplace Install Button Clicked", itemTelemetryData(item));
 		void (async () => {
 			// Sequential so concurrent writes never race on shared Kilo config; every destination is
 			// still attempted so one failure doesn't silently skip the rest.
@@ -1368,12 +1356,7 @@ function InstallDialog({
 			for (const destination of destinations) {
 				try {
 					await install.mutateAsync(destination.input);
-					void sdk.telemetry
-						.track({
-							event: "Marketplace Item Installed",
-							data: itemTelemetryData(item, destination.input.scope),
-						})
-						.catch(() => undefined);
+					track("Marketplace Item Installed", itemTelemetryData(item, destination.input.scope));
 					succeeded.push(destination.label);
 				} catch (error) {
 					failed.push({
@@ -1392,7 +1375,7 @@ function InstallDialog({
 			// the current configuration so a retry confirms what is actually installed. Successful
 			// workspaces are pruned by the availability effect once the list refreshes; narrowing
 			// explicitly keeps the retry selection correct even before that lands.
-			void queryClient.invalidateQueries({ queryKey: [sdk.featureId, "marketplace.list"] });
+			void queryClient.invalidateQueries({ queryKey: marketplaceQueryKey("list") });
 			setWorkspaceIds(
 				failed.flatMap(({ input }) => (input.workspaceId ? [input.workspaceId] : [])),
 			);
@@ -1628,16 +1611,10 @@ function InstallDialog({
 }
 
 export function MarketplaceSettings() {
-	const sdk = useSdk<MarketplaceService>("kilo-marketplace");
-	const activeWorkspaceStore = useMemo(
-		() => sdk.state.get<string | null>("kilo-ui.active-workspace"),
-		[sdk],
-	);
-	const activeWorkspaceId = useSyncExternalStore(
-		activeWorkspaceStore.subscribe,
-		activeWorkspaceStore.peek,
-		activeWorkspaceStore.peek,
-	);
+	const client = useMarketplace();
+	const track = useTrack();
+	const openExternal = useOpenExternal();
+	const activeWorkspaceId = useActiveWorkspaceId();
 	const [search, setSearch] = useState("");
 	const deferredSearch = useDeferredValue(search);
 	const searching = deferredSearch.trim().length > 0;
@@ -1668,18 +1645,12 @@ export function MarketplaceSettings() {
 	const catalogViewportRef = useRef<HTMLElement>(null);
 	const input = activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {};
 	const query = useQuery({
-		...sdkQueryOptions(sdk, "marketplace.list", input),
+		...marketplaceQueryOptions(client, "list", input),
 		placeholderData: keepPreviousData,
 	});
-	const refresh = useSdkMutation(sdk, "marketplace.refresh", {
-		invalidates: ["marketplace.list"],
-	});
-	const remove = useSdkMutation(sdk, "marketplace.remove", {
-		invalidates: ["marketplace.list"],
-	});
-	const authenticateMcp = useSdkMutation(sdk, "marketplace.authenticateMcp", {
-		invalidates: ["marketplace.list"],
-	});
+	const refresh = useMarketplaceMutation("refresh", { invalidates: ["list"] });
+	const remove = useMarketplaceMutation("remove", { invalidates: ["list"] });
+	const authenticateMcp = useMarketplaceMutation("authenticateMcp", { invalidates: ["list"] });
 	const snapshot = query.data;
 	const categoryOptions = useMemo(
 		() => [...new Set(snapshot?.items.map((item) => item.category))].toSorted(),
@@ -1846,8 +1817,8 @@ export function MarketplaceSettings() {
 	const catalogOpen = mode === "browse";
 	useEffect(() => {
 		if (!catalogOpen) return;
-		void sdk.telemetry.track({ event: "Marketplace Tab Viewed", data: {} }).catch(() => undefined);
-	}, [catalogOpen, sdk.telemetry]);
+		track("Marketplace Tab Viewed");
+	}, [catalogOpen, track]);
 
 	const confirmRemove = () => {
 		if (!removing) return;
@@ -1859,12 +1830,10 @@ export function MarketplaceSettings() {
 			},
 			{
 				onSuccess: () => {
-					void sdk.telemetry
-						.track({
-							event: "Marketplace Item Removed",
-							data: itemTelemetryData(removing.item, removing.installed.scope),
-						})
-						.catch(() => undefined);
+					track(
+						"Marketplace Item Removed",
+						itemTelemetryData(removing.item, removing.installed.scope),
+					);
 					setRemoving(null);
 				},
 			},
@@ -2031,7 +2000,7 @@ export function MarketplaceSettings() {
 														onRemove={(selected, entry) =>
 															setRemoving({ item: selected, installed: entry })
 														}
-														onOpenLink={(url) => void sdk.shell.openExternal(url)}
+														onOpenLink={openExternal}
 													/>
 												))}
 											</div>
@@ -2194,7 +2163,7 @@ export function MarketplaceSettings() {
 															installations={installations}
 															targets={snapshot?.targets ?? []}
 															onInstall={setInstalling}
-															onOpenLink={(url) => void sdk.shell.openExternal(url)}
+															onOpenLink={openExternal}
 														/>
 													) : null,
 												)}

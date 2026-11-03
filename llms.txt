@@ -1,0 +1,49 @@
+# Kilo Desktop
+
+> An Electron desktop app for agentic development, built entirely as plugins on a product-agnostic kernel (`packages/kernel`). Every feature — the shell included — is a plugin that uses the same public API a third party gets: extension points, domain objects and commands declared in a `plugin.json` manifest and defined in the plugin's `./contracts` export.
+
+Key rules for agents changing this repo:
+
+- Plugins never import another plugin's code; only its `./contracts` (and `./plugin.json`, and in tests its `./testing`). They meet through the kernel. `pnpm lint` enforces this.
+- The host (`apps/*`) provides only `kernel/*` primitives; never add product features there. The kernel never names a plugin.
+- Ids are qualified by plugin: `<plugin>/<name>` for extension points, domain objects, commands and context keys; manifests use local names.
+- Every plugin is removable: `sdk.domains.get(X)` may be `null`, a point whose owner is missing reads as empty. Activation is fast; slow work is a `kernel/service`.
+- Expected failures throw `KernelError` (its code and message cross processes).
+- Tests boot real kernels (`createPluginHost`, `createTestKernelPair`, `renderShell`); no hand-rolled kernels, no module mocks in browser tests, no dynamic imports.
+- Bundled plugins register in `packages/bundled-plugins` and the entry maps; every plugin ships an `@smoke` e2e spec. Declare every import in the plugin's `package.json` (`pnpm check:plugin-isolation`).
+- oxlint + oxfmt (not ESLint/Prettier); TypeScript strict; Zod 4; React 19.
+
+## Plugin authoring docs
+
+- [Writing a plugin](docs/plugins/README.md): what a plugin is, package layout, manifest v1 reference, lifecycle, permissions, shipping
+- [Extension points](docs/plugins/extension-points.md): kinds (additive, exclusive, decision), contributing, defining, and the generated catalog of every point
+- [Domain objects](docs/plugins/domains.md): state, methods, events, home process, caller checks, React hooks, object references
+- [Commands, keys and when](docs/plugins/commands-and-keys.md): `kernel/command`, keybindings, `when` conditions, context keys
+- [Panes and openers](docs/plugins/panes-and-openers.md): `kilo.sessions/pane`, `PaneProps`, close guards, pop-outs, `kilo.sessions/opener`
+- [Chat and agent tools](docs/plugins/chat-and-tools.md): `kilo.agent/tool`, tool renderers, composer actions and mentions
+- [Testing a plugin](docs/plugins/testing.md): plugin test hosts, reliability rules, removability and isolation checks
+- [Example plugin](examples/hello-plugin/README.md): `example.hello`, a small plugin with a domain object, command, settings section and tests
+
+## Kernel API entry points
+
+- [@kilo-desktop/kernel](packages/kernel/src/index.ts): `definePlugin`, `defineExtensionPoint`, `defineDecisionPoint`, `implementation`, `defineDomain`, `method`, `ref`, `KernelError`, `mainHost`, kernel points (`KernelCommand`, `KernelService`, `KernelQuit`, `KernelWindowView`) and domain objects (`KernelApp`, `KernelWindows`, …)
+- [@kilo-desktop/kernel/web](packages/kernel/src/web/index.ts): React bindings — `useSdk`, `useExtensions`, `useExclusive`, `useDomain`, `useDomainState`, `useContextKey`, `RenderContribution`, `useDragSource`, `useDropTarget`
+- [@kilo-desktop/kernel/main](packages/kernel/src/main/index.ts): the main-process kernel and service supervisor (host use)
+- [@kilo-desktop/kernel/testing](packages/kernel/src/testing/index.ts): `createTestKernelPair`, `createTestHost`, `createMemoryStorage`
+- [@kilo-desktop/kernel/testing/plugin-host](packages/kernel/src/testing/plugin-host.tsx): `createPluginHost` → `renderSlot`, `invoke`
+- [Plugin SDK](packages/kernel/src/sdk.ts): what `activate(sdk)` receives — `extensions`, `domains`, `context`, `ports`, `host`, `logger`, `onDispose`
+- [Manifest schema](packages/kernel/src/manifest.ts): the v1 `plugin.json` schema
+
+## Architecture
+
+- [CONTEXT.md](CONTEXT.md): packages and plugins, terminology, conventions, what not to do
+- [Plugin architecture](docs/plugin-architecture.md): the design, extensibility map, build-up plan and decision log
+- [AGENTS.md](AGENTS.md): rules and skills for coding agents
+- [Testing tiers](docs/TESTING.md): unit, integration, browser, app and e2e
+
+## Optional
+
+- [write-plugin skill](.agents/skills/write-plugin/SKILL.md): step-by-step workflow for building a plugin here
+- [plugins/workspace-board](plugins/workspace-board): a third-party-style bundled plugin built only on other plugins' contracts
+- [plugins/terminal](plugins/terminal): a pane kind with main-process services and ports
+- [plugins/updates](plugins/updates): a small renderer-only plugin with its own extension point

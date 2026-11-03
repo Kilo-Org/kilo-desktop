@@ -8,8 +8,12 @@ test.describe("Keyboard shortcuts @smoke", () => {
 		await appShellPage.verifyShellIsLoaded();
 
 		await keyboardShortcutsPage.openCheatSheet();
-		await keyboardShortcutsPage.verifyCheatSheetLists("kilo-ui.search");
+		await keyboardShortcutsPage.verifyCheatSheetLists("kilo.shell/open-settings");
 		await keyboardShortcutsPage.closeCheatSheet();
+
+		await keyboardShortcutsPage.openCommandPalette();
+		await keyboardShortcutsPage.verifyPaletteLists("kilo.shell/go-home");
+		await keyboardShortcutsPage.closeCommandPalette();
 
 		await keyboardShortcutsPage.openSettingsWithShortcut();
 		await keyboardShortcutsPage.verifySettingsOpen();

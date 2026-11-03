@@ -4,16 +4,14 @@ import {
 	cancelInputSchema,
 	cancelResultSchema,
 	ENVIRONMENTS_ERROR_MESSAGE_PATTERN,
-	ENVIRONMENTS_EVENT_NAMES,
 	environmentsErrorCodeSchema,
-	environmentsErrorCodeToFeatureErrorCode,
+	environmentsErrorCodeToKernelErrorCode,
 	formatEnvironmentsErrorMessage,
 	jobIdSchema,
 	jobKindSchema,
 	jobProgressEventSchema,
 	parseEnvironmentsErrorMessage,
 	providerSchema,
-	stagingProgressEventSchema,
 } from "./common.js";
 
 describe("providerSchema", () => {
@@ -112,21 +110,6 @@ describe("jobProgressEventSchema", () => {
 
 	it("rejects an unknown status so drift in the state machine surfaces at the boundary", () => {
 		expect(jobProgressEventSchema.safeParse({ ...base, status: "in-progress" }).success).toBe(
-			false,
-		);
-	});
-});
-
-describe("stagingProgressEventSchema", () => {
-	it("round-trips with and without a message", () => {
-		const withMsg = { provider: "conda" as const, phase: "download", message: "Fetching..." };
-		const withoutMsg = { provider: "conda" as const, phase: "verify" };
-		expect(stagingProgressEventSchema.parse(withMsg)).toEqual(withMsg);
-		expect(stagingProgressEventSchema.parse(withoutMsg)).toEqual(withoutMsg);
-	});
-
-	it("rejects an empty phase — the splash needs a slug to render", () => {
-		expect(stagingProgressEventSchema.safeParse({ provider: "conda", phase: "" }).success).toBe(
 			false,
 		);
 	});
@@ -237,7 +220,7 @@ describe("formatEnvironmentsErrorMessage / parseEnvironmentsErrorMessage", () =>
 		expect(parseEnvironmentsErrorMessage("JOB_CANCELLED")).toEqual({ code: "JOB_CANCELLED" });
 	});
 
-	it("rejects wrapped or lowercase FeatureError wrappers so a foreign error is not misclassified", () => {
+	it("rejects wrapped or lowercase KernelError wrappers so a foreign error is not misclassified", () => {
 		expect(parseEnvironmentsErrorMessage("[BUSINESS] SOLVE_FAILED: hi")).toBeNull();
 		expect(parseEnvironmentsErrorMessage("[NOT_FOUND] ENV_NOT_FOUND: no such env foo")).toBeNull();
 		expect(parseEnvironmentsErrorMessage("[business] SOLVE_FAILED: hi")).toBeNull();
@@ -260,34 +243,27 @@ describe("formatEnvironmentsErrorMessage / parseEnvironmentsErrorMessage", () =>
 	});
 });
 
-describe("environmentsErrorCodeToFeatureErrorCode", () => {
+describe("environmentsErrorCodeToKernelErrorCode", () => {
 	it("maps validation-shaped reasons to VALIDATION", () => {
-		expect(environmentsErrorCodeToFeatureErrorCode("INVALID_MATCHSPEC")).toBe("VALIDATION");
-		expect(environmentsErrorCodeToFeatureErrorCode("INVALID_CHANNEL")).toBe("VALIDATION");
-		expect(environmentsErrorCodeToFeatureErrorCode("ENV_EXISTS")).toBe("VALIDATION");
+		expect(environmentsErrorCodeToKernelErrorCode("INVALID_MATCHSPEC")).toBe("VALIDATION");
+		expect(environmentsErrorCodeToKernelErrorCode("INVALID_CHANNEL")).toBe("VALIDATION");
+		expect(environmentsErrorCodeToKernelErrorCode("ENV_EXISTS")).toBe("VALIDATION");
 	});
 
 	it("maps every *_NOT_FOUND reason to NOT_FOUND", () => {
-		expect(environmentsErrorCodeToFeatureErrorCode("ENV_NOT_FOUND")).toBe("NOT_FOUND");
-		expect(environmentsErrorCodeToFeatureErrorCode("PACKAGE_NOT_FOUND")).toBe("NOT_FOUND");
-		expect(environmentsErrorCodeToFeatureErrorCode("CHANNEL_NOT_FOUND")).toBe("NOT_FOUND");
-		expect(environmentsErrorCodeToFeatureErrorCode("JOB_NOT_FOUND")).toBe("NOT_FOUND");
+		expect(environmentsErrorCodeToKernelErrorCode("ENV_NOT_FOUND")).toBe("NOT_FOUND");
+		expect(environmentsErrorCodeToKernelErrorCode("PACKAGE_NOT_FOUND")).toBe("NOT_FOUND");
+		expect(environmentsErrorCodeToKernelErrorCode("CHANNEL_NOT_FOUND")).toBe("NOT_FOUND");
+		expect(environmentsErrorCodeToKernelErrorCode("JOB_NOT_FOUND")).toBe("NOT_FOUND");
 	});
 
 	it("falls back to BUSINESS for infrastructure and solver failures", () => {
-		expect(environmentsErrorCodeToFeatureErrorCode("PREFIX_NOT_STAGED")).toBe("BUSINESS");
-		expect(environmentsErrorCodeToFeatureErrorCode("STAGING_FAILED")).toBe("BUSINESS");
-		expect(environmentsErrorCodeToFeatureErrorCode("INSTALLER_DOWNLOAD_FAILED")).toBe("BUSINESS");
-		expect(environmentsErrorCodeToFeatureErrorCode("INSTALLER_SHA_MISMATCH")).toBe("BUSINESS");
-		expect(environmentsErrorCodeToFeatureErrorCode("SOLVE_FAILED")).toBe("BUSINESS");
-		expect(environmentsErrorCodeToFeatureErrorCode("JOB_CANCELLED")).toBe("BUSINESS");
-		expect(environmentsErrorCodeToFeatureErrorCode("PROVIDER_NOT_READY")).toBe("BUSINESS");
-	});
-});
-
-describe("ENVIRONMENTS_EVENT_NAMES", () => {
-	it("uses the plugin id as the featureId prefix", () => {
-		expect(ENVIRONMENTS_EVENT_NAMES.JOB_PROGRESS).toBe("environments.job-progress");
-		expect(ENVIRONMENTS_EVENT_NAMES.STAGING_PROGRESS).toBe("environments.staging-progress");
+		expect(environmentsErrorCodeToKernelErrorCode("PREFIX_NOT_STAGED")).toBe("BUSINESS");
+		expect(environmentsErrorCodeToKernelErrorCode("STAGING_FAILED")).toBe("BUSINESS");
+		expect(environmentsErrorCodeToKernelErrorCode("INSTALLER_DOWNLOAD_FAILED")).toBe("BUSINESS");
+		expect(environmentsErrorCodeToKernelErrorCode("INSTALLER_SHA_MISMATCH")).toBe("BUSINESS");
+		expect(environmentsErrorCodeToKernelErrorCode("SOLVE_FAILED")).toBe("BUSINESS");
+		expect(environmentsErrorCodeToKernelErrorCode("JOB_CANCELLED")).toBe("BUSINESS");
+		expect(environmentsErrorCodeToKernelErrorCode("PROVIDER_NOT_READY")).toBe("BUSINESS");
 	});
 });

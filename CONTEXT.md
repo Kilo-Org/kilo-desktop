@@ -6,140 +6,80 @@ plugin's own docs and code comments, not here. -->
 
 ## What is this project?
 
-An Electron desktop app (React renderer) that will evolve into a plugin-based platform. Features are developed today against a shim SDK that mirrors the future plugin SDK. This allows features to migrate to plugins (and later to separate repos) via filesystem moves rather than rewrites.
+An Electron desktop app (React renderer) built as plugins on a product-agnostic kernel. The design and the build-up plan live in [docs/plugin-architecture.md](./docs/plugin-architecture.md): the app boots from `packages/kernel` and every feature is a plugin (listed in `packages/bundled-plugins`). The host (`apps/*`) only provides `kernel/*` primitives. How to write a plugin: [docs/plugins](./docs/plugins/README.md) (with [examples/hello-plugin](./examples/hello-plugin) and the `write-plugin` skill).
 
 ## Architecture
 
 ```
 apps/
-├── desktop/   @kilo-desktop/desktop   Electron main + preload
-└── web/       @kilo-desktop/web       React 19 renderer (runs in Electron or standalone browser)
+├── desktop/   @kilo-desktop/desktop   Electron main + preload: the kernel host and its platform services
+└── web/       @kilo-desktop/web       Renderer entry: boots a window kernel (in Electron or a standalone browser)
 
 packages/
-├── contracts/    @kilo-desktop/contracts    Shell-internal IPC contracts (Zod schemas, LocalApi)
-├── feature-sdk/  @kilo-desktop/feature-sdk  Shim SDK — stable interface features program against
-├── sdk-react/    @kilo-desktop/sdk-react    React SDK bindings (SdkProvider, useSdk, useSdkQuery, useSdkMutation)
-├── testing/      @kilo-desktop/testing      Test utilities (createFakeSdk, createFakeMainSdk, createFakeFeatureSystem)
+├── kernel/       @kilo-desktop/kernel       Plugin kernel: extension + domain registries, lifecycle, commands, services, React root
+├── bundled-plugins/ @kilo-desktop/bundled-plugins The one list of plugins that ship, shared by main and renderer
 ├── ui/           @kilo-desktop/ui           Anaconda Design System primitives (shadcn) — shell-owned, ONE set shared by apps and plugins; never vendor copies
-└── git-client/   @kilo-desktop/git-client   Node-only git client over the system git binary (resolved via `which` — no embedded binary); typed operations and error normalization ported from GitHub Desktop
+├── git-client/   @kilo-desktop/git-client   Node-only git client over the system git binary (resolved via `which` — no embedded binary); typed operations and error normalization ported from GitHub Desktop
+├── pane-layout/  @kilo-desktop/pane-layout  Pane layout model shared by the workbench and its windows
+└── vite-plugin-externalize-deps/            Vite plugin that keeps native/runtime deps out of the main bundle
 
 e2e/              @kilo-desktop/e2e          Playwright/Electron e2e (plugin-aware)
+examples/
+└── hello-plugin/ @kilo-desktop/example-hello example.hello: the example plugin for authors — workspace-built and tested, never bundled
 plugins/          Bundled plugins — self-contained workspace packages
-├── todos/        @kilo-desktop/plugin-todos Demo plugin (plugin.json + src/{contracts,main,web})
-├── kilo-server/  @kilo-desktop/plugin-kilo-server Kilo CLI packaging and server lifecycle
-├── kilo-ui/      @kilo-desktop/plugin-kilo-ui Work sessions (sidebar, pane canvas), chat UI, and workspace management
-├── notebook/     @kilo-desktop/plugin-notebook Ephemeral nteract notebooks for chat right panels
-├── anaconda-account/ @kilo-desktop/plugin-anaconda-account Anaconda account sign-in that stores an Anaconda API key via the shell `auth` capability
-└── git/          @kilo-desktop/plugin-git Git status and live-reloading working-directory "Changes" panel (custom `kilo-git://` protocol), branch switching in the composer draft footer, and the chat worktree lifecycle exposed to other plugins as a main-side `gitService` capability
+├── shell/        @kilo-desktop/plugin-shell kilo.shell: window frame, router, settings host, command palette, appearance (kernel plugin)
+├── flags/        @kilo-desktop/plugin-flags kilo.flags: LaunchDarkly feature flags as a domain object and `flag:` context keys (kernel plugin)
+├── telemetry/    @kilo-desktop/plugin-telemetry kilo.telemetry: consented PostHog analytics for declared events, Privacy settings (kernel plugin)
+├── updates/      @kilo-desktop/plugin-updates kilo.updates: About settings, release notes and the restart-to-update notice (kernel plugin)
+├── developer/    @kilo-desktop/plugin-developer kilo.developer: the Developer settings category and Diagnostics (kernel plugin)
+├── agent/        @kilo-desktop/plugin-agent kilo.agent: Kilo CLI packaging, server lifecycle and configuration, Kilo chats, agent tool gateway and External AI apps (kernel plugin)
+├── account/      @kilo-desktop/plugin-account kilo.account: the signed-in Kilo account, terms, sign-in and Account settings (kernel plugin)
+├── workspaces/   @kilo-desktop/plugin-workspaces kilo.workspaces: workspaces, path authorisation and file watching (kernel plugin)
+├── sessions/     @kilo-desktop/plugin-sessions kilo.sessions: Work Sessions and their Kilo chats (kernel plugin)
+├── workbench/    @kilo-desktop/plugin-workbench kilo.workbench: the session list, launcher and open session's workbench (kernel plugin)
+├── chat/         @kilo-desktop/plugin-chat kilo.chat: the agent pane — a session's chat transcript and composer over react-opencode (kernel plugin)
+├── terminal/     @kilo-desktop/plugin-terminal kilo.terminal: terminal panes, shells run in main and shown in an embedded frame (kernel plugin)
+├── git/          @kilo-desktop/plugin-git kilo.git: git for workspace folders — status, branches, worktrees, the Changes pane, pull requests and repository actions (kernel plugin)
+├── files/        @kilo-desktop/plugin-files kilo.files: the Files pane (explorer and editor), file opener, `@` file mentions and links, the `open` tool (kernel plugin)
+├── browser/      @kilo-desktop/plugin-browser kilo.browser: Browser panes on the host's embedded browser, URL and HTML-file openers, web links, the `open` tool (kernel plugin)
+├── environments/ @kilo-desktop/plugin-environments kilo.environments: conda environments and packages through the bundled conda bridge — settings page, agent tools, plugin-owned environments (kernel plugin)
+├── notebook/     @kilo-desktop/plugin-notebook kilo.notebook: nteract notebooks in panes over the runtimed daemon, `*.ipynb` opener, notebook agent tools and Kilo plugin (kernel plugin)
+├── local-inference/ @kilo-desktop/plugin-local-inference kilo.local-inference: the Local Model Server — GGUF models through a managed llama.cpp router, published to Kilo as a provider and to the composer as a model source (kernel plugin)
+├── kilo-marketplace/ @kilo-desktop/plugin-kilo-marketplace kilo.marketplace: Kilo's Marketplace of agents, skills and MCP servers — the Agent Behavior settings page (kernel plugin)
+├── workspace-board/ @kilo-desktop/plugin-workspace-board kilo.workspace-board: the workspace board — sessions organised into named columns, a detachable sessions view of the workbench (kernel plugin)
+└── anaconda-account/ @kilo-desktop/plugin-anaconda-account kilo.anaconda-account: the Anaconda account — browser sign-in, the Anaconda API key in the shared Anaconda keyring, the Account settings row (kernel plugin)
 ```
 
 ## Key architectural decisions
 
-### Feature SDK (shim layer)
+The design is [docs/plugin-architecture.md](./docs/plugin-architecture.md); in short:
 
-Features program against `@kilo-desktop/feature-sdk`, not `LocalApi`.
+- **Kernel and plugins.** `packages/kernel` runs one main kernel (Electron main) and one kernel per window, joined by one transport. It knows nothing about the product: it hosts the extension registry (extension points and their implementations), the domain registry (named objects with state, methods and events, provided in one process and used from any), commands, `when` conditions, lifecycle and services.
+- **Plugins talk through the kernel.** A plugin's `plugin.json` (v1 manifest) declares what it provides and uses; another plugin is reached only through the kernel, and its `./contracts` export (types, domain and point definitions) is the one allowed import. `pnpm lint` runs `scripts/check-boundaries.mjs`.
+- **The host provides primitives, not features.** `apps/desktop/src/main/kernel` and `apps/web/src/kernel` boot the kernels and provide `kernel/*` primitives (windows, storage and kv, files, notifications, protocols, embedded hosts, shell, updater…) behind manifest permissions. Plugins never import Electron or app code.
+- **Registration.** Bundled plugins are listed once in `packages/bundled-plugins` and mapped to their entries in `apps/desktop/src/main/kernel/plugins.ts` and `apps/web/src/kernel/plugins.ts`.
+- **Storage.** Each plugin owns its data under its own storage directory (kv stores, files); nothing shares a database. Plugins that replaced origin code import origin's saved data once (decision 37).
 
-- `sdk.invoke(channel, args)` — transport-agnostic call to the feature's backend handlers
-- `sdk.client` — proxy that maps method calls to `invoke`; typed via `useSdk<ServiceType>(featureId)`
-- `sdk.events` / `mainSdk.events` — symmetric, namespaced, cross-process pub/sub
-- `sdk.state` — observable stores
-- `sdk.plugins.expose/get` / `mainSdk.plugins.expose/get` — process-local cross-feature capabilities
-- `sdk.contribute` — imperatively register dynamic UI in a stable zone. The shell owns canonical `ShellZone` outlets, including the app-wide `page-header-actions` outlet. Plugin-owned hosts declare zones in `plugin.json`, and other plugins target qualified names through declarative `contributes.zones`; `useSdkContributions(zone)` lets those hosts consume the live priority-ordered registry.
-- `contributes.providers` — declarative app-lifetime React providers from a plugin's web entry, composed by the shell inside its SDK/query providers so plugin lifecycle state and listeners are route-independent
-- `contributes.settings` — declarative settings-page sections (`id` + `component` export). The shell owns `/settings`; each section renders `SettingsPageHeader` (sdk-react) as the first child of its root, which defaults to the entry's `title` + `description`, and never hand-rolls its own h1. Optional `category` groups sidebar entries (default `General`) and optional `featureFlag` uses the same visibility semantics as `contributes.nav`
-- `contributes.deepLinks` — OS deep links on the app scheme (`kilo-desktop://{host}/{id}`). Pure data: `host`, in-app `to`, and `searchParam` for the path segment. The shell owns scheme registration and host uniqueness (`app` is reserved).
-- `sdk.commands` — commands with optional keyboard shortcuts (`useCommand`); the shell captures shortcuts app-wide in main (`before-input-event`), dispatches them, and owns user rebinding (Settings → Shortcuts)
-- `sdk.navigate` / `sdk.location` — shell navigation delegate (the router never leaks to features; full pages and nav entries are declared in `plugin.json` `contributes` and mounted by the shell)
-- `sdk.notifications/theme/shell/fs` — shell-provided services (delegate to LocalApi). `sdk.fs` is sandboxed per feature: paths are relative to `${userData}/plugins/<id>/fs/` (a sibling of the feature's SQLite `data.db`, so fs calls can't reach it); absolute/escaping paths are rejected, and browser mode has no fs (calls reject)
-- `mainSdk.logger` / `mainSdk.net.fetch` / `mainSdk.protocol` — main-process shell delegates. Electron supplies a feature-scoped `electron-log` sink, `net.fetch`, and a custom protocol handler whose schemes the plugin declares in its manifest's `protocols` array (the privileged scheme list is derived from those manifests and declared pre-app-ready in `platform/ElectronProtocol.ts`); browser/test environments provide runtime implementations or explicit fakes, and `mainSdk.protocol` is simply absent outside Electron. Plugins never import Electron or shell logging modules directly.
+### Dependency ownership (host vs plugin)
 
-In Electron: `sdk.invoke` routes through a generic `feature:invoke` IPC channel.
-In browser: `sdk.invoke` calls the handler directly in-process (no Electron needed). Only `browserRegister` boots in this mode — features without one are skipped with a warning. Node-free features opt in with `browserRegister: register`; features using Node APIs (SQLite, fs) must provide browser-safe fakes.
+**Tier 1 — Shared runtime set (host-owned singletons):** `react` / `react-dom`, `@kilo-desktop/kernel`, `@kilo-desktop/ui`, `@tanstack/react-query`, `zod` — two copies would break hooks, context or schema identity. Plugins declare them as `peerDependencies`. `@tanstack/react-router` is owned by kilo.shell; others navigate through its `kilo.shell/navigation` domain object. The Tailwind pipeline and `@anaconda/shadcn-theme` tokens belong to the renderer (`apps/web/src/globals.css` scans `packages/ui`, `packages/kernel` and `plugins/`).
 
-**Events:** renderer and main use the same `emit`/`on` shape. `emit("changed", payload)` is always stamped with the caller's feature ID, while `on("other-feature.changed", handler)` takes a fully-qualified name. In Electron, the shell relays `feature:event` envelopes between the main bus and every renderer window; origin-aware delivery prevents echo loops. Browser `SDK` and `MainSdk` share one in-process bus. Delivery is fire-and-forget, at-most-once, with no replay; late subscribers miss prior events. Payloads must be structured-cloneable and are guarded at the SDK boundary.
+**Tier 2 — Per-plugin runtime deps:** one plugin's implementation details, normal workspace deps.
 
-**Main-side capabilities:** every process owns a shared `CapabilityRegistry`. A feature may expose an API from `mainRegister` with `mainSdk.plugins.expose`; another main feature resolves it lazily with `mainSdk.plugins.get<T>(featureId)`. Missing or inactive providers return `null`, so activation order does not matter. Capabilities stay process-local—the event bridge is the cross-process primitive.
-
-Main-side cross-feature `invoke` through the shared `FeatureRouter` is intentionally not exposed. Main uses capabilities for the same typed, graceful-null contract as the renderer.
-
-**Handlers and validation:** `mainSdk.channels(channelMap)` binds the map once; `.handleAll({ ... })` registers a handler per channel and is exhaustive by type (preferred), `.handle(channel, handler)` registers one at a time. Handler types are inferred, and input and output schemas are validated at the routing boundary. Use `z.undefined()` for channels that take no input.
-
-**Errors:** expected failures throw `FeatureError` from the SDK (`throw new FeatureError("Todo not found.", "NOT_FOUND")`). The shell translates it across the IPC boundary so the message survives; generic errors are scrubbed to a generic string.
-
-**Storage:** the shell provides a per-feature data directory as `mainSdk.storageDir` (`${userData}/plugins/<id>/`, created lazily). Features that persist open their own SQLite file there (`data.db`) and ship their drizzle migrations inside the feature directory. Nothing shares a shell database. Simple JSON-shaped settings use `mainSdk.storage.kv({ defaults, namespace? })`, backed by an atomic host store with default backfill and corrupt-file recovery.
-
-**Lifecycles:** `useSdk(featureId)` returns a shared per-feature SDK instance that is NOT destroyed on component unmount. `sdk.destroy()` cleans up only what was registered through that instance. Full feature teardown (`teardownFeature`) is shell-owned and happens on feature/plugin unload only.
-
-**Plugin-owned zones:** a plugin may own a contextual UI host and declare its zones in `plugin.json`. Other plugins target the qualified zone through `contributes.zones`; the owning plugin defines the component context and instance lifecycle. The app shell remains unaware of domain-specific content rendered there.
-
-### FEATURES array (mandatory registration)
-
-Every feature registers in `apps/desktop/src/main/features/registry/features.ts`. Adding a feature = adding an entry. Never hand-edit `Application.ts` for feature-specific code.
-
-Bundled plugins register in `BUNDLED_PLUGINS` instead (`apps/desktop/src/main/features/registry/bundled-plugins.ts` for the `main` entry, `apps/web/src/features/bundled-plugins.ts` for the `web` entry). The loader (`discoverPlugins` in feature-sdk) validates each `plugin.json` at boot and feeds the registrations into the same `FEATURES` / `WEB_FEATURES` boot paths, so features and plugins boot identically.
-
-### LocalApi scope
-
-`LocalApi` (`packages/contracts/src/local-api.ts`) is reserved for **shell-level services only**: theme, notifications, shell, filesystem. Features never add methods to `LocalApi`. Feature-scoped backend calls go through `sdk.invoke`.
-
-### Feature file structure
-
-Features live in three predictable locations inside apps:
-
-```
-apps/desktop/src/main/features/<id>/    # Node services, DB, handlers (mainRegister)
-apps/web/src/features/<id>/             # React components, hooks
-packages/contracts/src/features/<id>.ts # Zod schemas (moves to plugin on migration)
-```
-
-### Plugin migration path
-
-```
-Feature in apps → Plugin in plugins/ → Plugin in external repo
-```
-
-Each transition is a filesystem move. Source code stays the same because it programs against the SDK, not shell internals.
-
-### Dependency ownership (shell vs plugin)
-
-Three tiers decide where a dependency lives:
-
-**Tier 1 — Shared Runtime Set (shell-owned singletons).** Plugins declare these as `peerDependencies` and never bundle them; the host provides exactly one runtime copy. Shared because TWO copies break correctness, not for convenience:
-
-| Package                     | Why a singleton                                                                    |
-| --------------------------- | ---------------------------------------------------------------------------------- |
-| `react` / `react-dom`       | Two copies = invalid hook calls, broken context                                    |
-| `@kilo-desktop/feature-sdk` | Shared in-memory EventBus/StateBroker/CapabilityRegistry — a 2nd copy splits them  |
-| `@kilo-desktop/sdk-react`   | React bindings must resolve the same SDK context                                   |
-| `@kilo-desktop/ui`          | One design system: context identity in stateful components; upgrades apply at once |
-| `@tanstack/react-query`     | `useSdkQuery` must hit the host's single QueryClientProvider/cache                 |
-| `zod`                       | `instanceof ZodError` identity across the `feature:invoke` validation boundary     |
-
-**Deliberately shell-only (plugins never import these):** `@tanstack/react-router` (navigation is a shell delegate — `sdk.navigate`; the host creates routes from `plugin.json`), `@kilo-desktop/contracts` (shell-internal; contract helpers come from feature-sdk), the Tailwind pipeline + `@anaconda/shadcn-theme` tokens (plugins ship class names only; the shell's `globals.css` scans `packages/ui` and `plugins/` via `@source`), and all Electron APIs (use SDK shell delegates).
-
-**Tier 2 — Per-plugin runtime deps (plugin-owned).** Implementation details of one plugin's feature (e.g. todos: `better-sqlite3`, `drizzle-orm`, its drizzle migrations). Normal workspace deps in-repo (pnpm dedupes); bundled into the plugin's build when external.
-
-**Tier 3 — Dev/test tooling.** Per-plugin `devDependencies`, never shipped: vitest, playwright, typescript, `@kilo-desktop/testing`, `@kilo-desktop/e2e`, drizzle-kit, tailwind-for-tests.
-
-**Rule of thumb:** two copies would break correctness or fork the design system → Tier 1. One plugin's business → Tier 2. Tooling → Tier 3. The singleton guarantee is implicit today (workspace hoisting); it becomes an enforced contract in Slice 5 (canonical externals list + peerDependencies + host-provided runtime).
+**Tier 3 — Dev/test tooling:** per-plugin `devDependencies` (vitest, playwright, typescript, `@kilo-desktop/e2e`).
 
 ## Terminology
 
-| Term               | Meaning                                                                                                                                                                                                                       |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Feature**        | A product capability developed inside `apps/` that programs against the SDK. Will become a plugin later.                                                                                                                      |
-| **Plugin**         | A self-contained package in `plugins/` (or external repo) with its own manifest, web code, main code, and contracts.                                                                                                          |
-| **Shell**          | The host application infrastructure: Electron lifecycle, routing, theme, notifications, IPC server. Lives in `apps/` and `packages/contracts`.                                                                                |
-| **SDK**            | `@kilo-desktop/feature-sdk` — the stable interface. Today it's a shim; later it becomes the real plugin SDK.                                                                                                                  |
-| **MainSdk**        | The main-process counterpart of the SDK. Features register typed handlers, use `mainSdk.events` / `mainSdk.plugins` for main-side communication, and consume host logging/network delegates.                                  |
-| **`sdk.invoke`**   | Transport-agnostic call from renderer to a handler registered by the same feature's `mainRegister`. NOT raw IPC.                                                                                                              |
-| **FEATURES array** | `apps/desktop/src/main/features/registry/features.ts` — mandatory data-driven registration for all features.                                                                                                                  |
-| **Shell delegate** | A shell-owned service exposed through the SDK (theme, notifications, shell, fs, auth).                                                                                                                                        |
-| **Contribution**   | UI or lifecycle behavior a plugin adds through `plugin.json`: app-lifetime providers, zone entries, routes, nav, and settings sections; conditional zone UI uses `sdk.contribute`.                                            |
-| **Capability**     | A named API exposed by one feature for others to consume via `sdk.plugins.expose/get`.                                                                                                                                        |
-| **Anaconda MCP**   | Core feature that owns the optional Anaconda Remote MCP entry and contributes its API key to the Kilo server without writing the credential into config.                                                                      |
-| **Session**        | A unit of work in a workspace ("work session"), listed in the sidebar; owns its panes and layout and has zero or more chats (today the UI gives it at most one). Has its own id, saved by kilo-ui, never derived from a chat. |
-| **Chat**           | A session's conversation with the agent, backed by a Kilo session. Use "chat" only for the conversation (chat pane, transcript, composer), "session" for the container.                                                       |
+| Term                | Meaning                                                                                                                                                      |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Kernel**          | `packages/kernel`: the product-agnostic plugin runtime (registries, lifecycle, commands, transport, React root).                                             |
+| **Plugin**          | A package in `plugins/` with a v1 `plugin.json`, a `main` and/or `web` entry, and a `./contracts` export.                                                    |
+| **Host**            | The apps that boot the kernels and provide `kernel/*` primitives (`apps/desktop`, `apps/web`).                                                               |
+| **Extension point** | A typed slot a plugin declares (`<plugin>/<point>`) for other plugins to implement — additive, exclusive or a decision chain.                                |
+| **Domain object**   | A named object (`<plugin>/<name>`) with state, methods and events, provided in one process and usable from any.                                              |
+| **Work Session**    | A unit of work in a workspace (`kilo.sessions/session`), listed in the session list; owns its panes and layout and has zero or more chats.                   |
+| **Chat Session**    | A session's conversation with the agent, backed by a Kilo session (`kilo.agent/conversation`). Use "chat" for the conversation, "session" for the container. |
+| **Pane**            | A view in a Work Session's layout (agent, terminal, browser, files, changes, notebook…), contributed through `kilo.sessions/pane`.                           |
 
 ## Conventions
 
@@ -151,28 +91,23 @@ Three tiers decide where a dependency lives:
 - **shadcn/ui** (`base-nova` style, `lucide-react` icons, `@base-ui/react` primitives) — primitives are owned source: keep them close to stock and edit them directly, marking each deviation with a `// local:` comment (`rg "local:" packages/ui/src/components` lists them). Convention: default child icons are `size-3.5` (stock `size-4`). Upgrade with `npx shadcn@latest add <name> --dry-run --diff -c packages/ui` and merge by hand; re-point stock's `cn` import to `@kilo-desktop/ui/lib/utils`. `packages/ui` is stock primitives plus a few composites shared across plugin boundaries (e.g. `SummaryCard`, `ColorSwatchPicker`); consistency comes from using stock parts without visual call-site overrides, not from new wrappers. A look repeated within one plugin is a local component in that plugin.
 - **@anaconda/shadcn-theme** for design tokens (CSS custom properties, Tailwind v4)
 - **Vitest** — `*.test.ts` (node unit), `*.integration.test.ts` (serial node), `*.browser.test.tsx` (Chromium component), `*.app.test.tsx` (full app tree)
-- **Playwright e2e** — packaged Electron via `@anaconda/playwright-utils` in the root `e2e/` package; every feature ships at least one `@smoke` spec
+- **Playwright e2e** — packaged Electron via `@anaconda/playwright-utils` in the root `e2e/` package; every plugin ships at least one `@smoke` spec
 - **Coverage** — 80% lines/branches/functions/statements (`pnpm coverage`)
 - **oxlint + oxfmt** (not ESLint/Prettier)
 - **peerDependencies** for react, react-dom, zod in publishable packages
-- Tests use `createFakeSdk` / `createFakeMainSdk` / `createLinkedFakeSdkPair` from `@kilo-desktop/testing`
+- Tests boot real kernels: `@kilo-desktop/kernel/testing` (`createTestKernelPair`, `createTestHost`), `@kilo-desktop/kernel/testing/plugin-host` (`createPluginHost` → `renderSlot`, `invoke`) and host plugins' `./testing` fixtures (e.g. `renderShell`)
+- CI boots the bundled set with each plugin removed and builds every bundled plugin outside the monorepo (`pnpm check:plugin-isolation`): declare every import in the plugin's package.json
 - Interactive elements use stable `data-qa-id` attributes (queried by Vitest browser + Playwright)
-- Cross-feature communication only through SDK primitives (events, state, plugins.get). Types and store keys for those primitives (capability types, state-store keys/values) may be imported from the owning plugin's `./contracts` export — type-sharing via contracts is not a runtime import across features
-- All events namespaced by feature ID: `featureId.eventName`
-- Expected handler failures throw `FeatureError` (never plain `Error` — its message gets scrubbed at the IPC boundary)
-- Each feature owns its own SQLite file if it persists data
-
-The kilo-ui plugin can therefore resolve kilo-server capabilities directly in main. Its renderer invokes only kilo-ui channels; it does not acquire kilo-server's SDK identity or perform cross-feature invokes. Capability lookup stays lazy so missing or later-activated providers fail gracefully without activation-order coupling.
+- Ids are qualified by their plugin: `<plugin-id>/<name>` for points, domain objects and commands
+- Expected failures throw `KernelError` (its code and message survive the process boundary; other errors are scrubbed)
 
 See [docs/TESTING.md](./docs/TESTING.md) for the full tier taxonomy and how to run each suite.
 
 ## What NOT to do
 
-- Don't add feature methods to `LocalApi`
-- Don't import from other features' source
-- Don't import from `apps/*/src/lib/` or `apps/*/src/platform/` in feature code
-- Don't copy shadcn/design-system components into features or plugins — import from `@kilo-desktop/ui`
-- Don't share DB tables across features
-- Don't use React Context for cross-feature communication
-- Don't emit un-namespaced events
+- Don't add product features to the host (`apps/*`)
+- Don't import another plugin's source (only its `./contracts`) or anything from `apps/*`
+- Don't copy shadcn/design-system components into plugins — import from `@kilo-desktop/ui`
+- Don't share storage across plugins
+- Don't use React Context for cross-plugin communication — use domain objects and extension points
 - Don't use ESLint/Prettier (use oxlint/oxfmt)

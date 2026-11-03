@@ -1,21 +1,18 @@
 import { queryOptions } from "@tanstack/react-query";
 
-import type { SDK } from "@kilo-desktop/feature-sdk";
-import { sdkQueryOptions } from "@kilo-desktop/sdk-react";
-
-import type { LocalInferenceServiceContract } from "../../contracts/schemas.js";
+import { localInferenceQueryOptions, type LocalInferenceClient } from "../local-inference.js";
 import { catalogAccountKey, type CatalogAnacondaAccount } from "./use-anaconda-account.js";
 
 /**
- * `catalog.list` query scoped to the Anaconda account it is fetched with, and
+ * The catalog read scoped to the Anaconda account it is fetched with, and
  * held until that account has resolved. Every catalog read goes through here so
  * the dialog and the settings page share one cache entry per account.
  */
 export function catalogListQueryOptions(
-	sdk: SDK<LocalInferenceServiceContract>,
+	client: LocalInferenceClient,
 	account: CatalogAnacondaAccount,
 ) {
-	const base = sdkQueryOptions(sdk, "catalog.list");
+	const base = localInferenceQueryOptions(client, "listCatalog");
 	return queryOptions({
 		...base,
 		queryKey: [...base.queryKey, catalogAccountKey(account)],

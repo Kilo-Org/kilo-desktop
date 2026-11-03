@@ -12,20 +12,9 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 
 const coverage = {
 	...createCoverageConfig([
-		// Registration glue and the component-only web entry are exercised by
-		// the integration project and app composition, which coverage excludes.
+		// Production wiring of the entry; it is tested through createGitMainEntry.
 		"src/main/index.ts",
-		"src/web/index.ts",
-		// Contextual chat contributions and the app-lifetime PR coordinator are
-		// composition surfaces: they require the Kilo model capability, GitHub
-		// CLI status, timers, and host contribution zones. Their behavior is
-		// covered through app/E2E composition rather than package unit coverage.
-		"src/web/GitActionsControl.tsx",
-		"src/web/use-repository-actions.ts",
-		"src/web/GitPrStatusProvider.tsx",
-		"src/web/GitPrStatusTargets.tsx",
-		// Shared browser-test scaffolding, not plugin source.
-		"src/web/test-utils.tsx",
+		// Shared test scaffolding, not plugin source.
 		"src/test/**",
 	]),
 	include: ["src/**"],
@@ -74,6 +63,8 @@ export default defineConfig({
 					// the unit/integration projects; Vitest requires unique groupOrders when
 					// two projects in the same config have different maxWorkers.
 					...(process.env.CI ? { maxWorkers: 2, sequence: { groupOrder: 1 } } : {}),
+					// Interaction-heavy tests outlast the 15s default when every package runs at once (pre-push).
+					testTimeout: 30_000,
 					browser: {
 						enabled: true,
 						headless: true,

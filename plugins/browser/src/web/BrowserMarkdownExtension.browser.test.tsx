@@ -1,12 +1,13 @@
-import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import { SdkProvider } from "@kilo-desktop/sdk-react";
-import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 import { MarkdownContent } from "@kilo-desktop/ui/components/markdown-content";
 
-import { BrowserMarkdownExtension } from "./BrowserMarkdownExtension.js";
+import { BROWSER_PANE_KIND, URL_OBJECT_TYPE } from "../contracts/index.js";
+import { bootBrowserHost, type BrowserHostOptions } from "../test/browser-host.js";
+import { SESSION_ID } from "../test/sessions-host.js";
+
+const WAIT = { timeout: 5_000 };
 
 /**
  * Records whether the app handled each click, then cancels the navigation so
@@ -23,65 +24,60 @@ beforeEach(() => {
 });
 afterEach(() => {
 	window.removeEventListener("click", recordClick);
-	cleanup();
 });
 
-function renderMessage(text: string, options: { sessionId?: string; withKiloUi?: boolean } = {}) {
-	const track = vi.fn(async (_input: { event: string; data: Record<string, unknown> }) => {});
-	const openExternal = vi.fn(async (_url: string) => ({ opened: true }));
-	const browserSdk = createFakeSdk({
-		featureId: "browser",
-		telemetry: { track },
-		shell: { openExternal },
-	});
-	const system = createFakeFeatureSystem({ sdks: { browser: browserSdk } });
-	const panel = {
-		listTabs: vi.fn(() => []),
-		activateTab: vi.fn(),
-		openContributedTab: vi.fn(() => ({ instanceId: "browser-1", title: "example.com" })),
-	};
-	if (options.withKiloUi !== false)
-		system.getSdk("kilo-ui").plugins.expose("chatRightPanel", panel);
-	const extension = BrowserMarkdownExtension({ sessionId: options.sessionId ?? "chat-1" });
-	render(
-		<SdkProvider system={system}>
-			<MarkdownContent text={text} extensions={[extension]} />
-		</SdkProvider>,
+async function renderMessage(
+	text: string,
+	options: BrowserHostOptions & { readonly sessionId?: string } = {},
+) {
+	const host = await bootBrowserHost({ panes: [], ...options });
+	host.render(
+		<MarkdownContent
+			text={text}
+			extensions={[host.markdownExtension(options.sessionId ?? SESSION_ID)]}
+		/>,
 	);
-	return { panel, track, openExternal };
+	return host;
 }
 
-describe("BrowserMarkdownExtension", () => {
-	it("opens a web link from a chat message in a Browser tab of that chat", async () => {
-		const { panel, track, openExternal } = renderMessage(
-			"See [the docs](https://example.com/docs).",
-		);
+describe("kilo.browser's web links", () => {
+	it("opens a web link from the agent's reply in a Browser pane of its session", async () => {
+		const host = await renderMessage("See [the docs](https://example.com/docs).");
 
 		await page.getByRole("link", { name: "the docs" }).click();
 
-		expect(panel.openContributedTab).toHaveBeenCalledWith(
-			"chat-1",
-			{ id: "browser.browser", title: "Browser" },
-			{ title: "example.com", metadata: { url: "https://example.com/docs" } },
+		await vi.waitFor(
+			() =>
+				expect(host.sessions.panes().panes).toEqual([
+					expect.objectContaining({
+						kind: BROWSER_PANE_KIND,
+						metadata: { objectType: URL_OBJECT_TYPE, objectId: "https://example.com/docs" },
+					}),
+				]),
+			WAIT,
+		);
+		await vi.waitFor(
+			() =>
+				expect(host.tracked).toEqual([
+					{ event: "Browser Tab Opened", data: { source: "chat-link" } },
+				]),
+			WAIT,
 		);
 		expect(clicks).toEqual([{ defaultPrevented: true }]);
-		expect(openExternal).not.toHaveBeenCalled();
-		expect(track).toHaveBeenCalledExactlyOnceWith({
-			event: "Browser Tab Opened",
-			data: { featureId: "browser", source: "chat-link" },
-		});
+		expect(host.opened).toEqual([]);
 	});
 
-	it("opens autolinked URLs too", async () => {
-		const { panel } = renderMessage("Server running at <http://localhost:5173/>");
-
-		await page.getByRole("link", { name: "http://localhost:5173/" }).click();
-
-		expect(panel.openContributedTab).toHaveBeenCalledWith(
-			"chat-1",
-			expect.anything(),
-			expect.objectContaining({ metadata: { url: "http://localhost:5173/" } }),
+	it("opens autolinked URLs too, reusing a pane already on the page", async () => {
+		const host = await renderMessage(
+			"Server running at <http://localhost:5173/>, see http://localhost:5173/",
 		);
+
+		await page.getByRole("link", { name: "http://localhost:5173/" }).first().click();
+		await vi.waitFor(() => expect(host.sessions.panes().panes).toHaveLength(1), WAIT);
+		await page.getByRole("link", { name: "http://localhost:5173/" }).last().click();
+		await vi.waitFor(() => expect(host.tracked).toHaveLength(2), WAIT);
+
+		expect(host.sessions.panes().panes).toHaveLength(1);
 	});
 
 	it.each([
@@ -90,20 +86,20 @@ describe("BrowserMarkdownExtension", () => {
 		["shift", { shiftKey: true }],
 		["alt", { altKey: true }],
 	] as const)("opens the default browser on %s-click", async (_name, modifiers) => {
-		const { panel, openExternal } = renderMessage("[docs](https://example.com)");
+		const host = await renderMessage("[docs](https://example.com)");
 
 		page
 			.getByRole("link", { name: "docs" })
 			.element()
 			.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ...modifiers }));
 
-		expect(openExternal).toHaveBeenCalledExactlyOnceWith("https://example.com");
-		expect(panel.openContributedTab).not.toHaveBeenCalled();
+		await vi.waitFor(() => expect(host.opened).toEqual(["https://example.com"]), WAIT);
+		expect(host.sessions.panes().panes).toEqual([]);
 		expect(clicks).toEqual([{ defaultPrevented: true }]);
 	});
 
 	it("tells the reader where a web link goes and how to open it in the default browser", async () => {
-		renderMessage(
+		await renderMessage(
 			'[docs](https://example.com/docs) and [guide](https://example.com/guide "Setup guide")',
 		);
 
@@ -121,35 +117,30 @@ describe("BrowserMarkdownExtension", () => {
 	});
 
 	it("leaves links that are not web pages alone", async () => {
-		const { panel } = renderMessage("[mail us](mailto:team@example.com)");
+		const host = await renderMessage("[mail us](mailto:team@example.com)");
 
 		await page.getByRole("link", { name: "mail us" }).click();
 
-		expect(panel.openContributedTab).not.toHaveBeenCalled();
+		expect(host.sessions.panes().panes).toEqual([]);
 		expect(clicks).toEqual([{ defaultPrevented: false }]);
 	});
 
-	it("leaves links alone outside a chat session", async () => {
-		const { panel, openExternal } = renderMessage("[docs](https://example.com)", {
-			sessionId: "",
-		});
+	it("leaves links alone outside a session", async () => {
+		const host = await renderMessage("[docs](https://example.com)", { sessionId: "" });
 
 		await page.getByRole("link", { name: "docs" }).click();
 
-		expect(panel.openContributedTab).not.toHaveBeenCalled();
-		expect(openExternal).not.toHaveBeenCalled();
+		expect(host.opened).toEqual([]);
 		expect(clicks).toEqual([{ defaultPrevented: false }]);
 	});
 
-	it("opens the default browser when the chat pane layout is unavailable", async () => {
-		const { track, openExternal } = renderMessage("[docs](https://example.com)", {
-			withKiloUi: false,
-		});
+	it("opens the default browser when no pane can take the page", async () => {
+		const host = await renderMessage("[docs](https://example.com)", { withoutSessions: true });
 
 		await page.getByRole("link", { name: "docs" }).click();
 
-		expect(openExternal).toHaveBeenCalledExactlyOnceWith("https://example.com");
+		await vi.waitFor(() => expect(host.opened).toEqual(["https://example.com"]), WAIT);
 		expect(clicks).toEqual([{ defaultPrevented: true }]);
-		expect(track).not.toHaveBeenCalled();
+		expect(host.tracked).toEqual([]);
 	});
 });

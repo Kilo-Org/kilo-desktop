@@ -1,10 +1,6 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
-
-import { SdkProvider } from "@kilo-desktop/sdk-react";
-import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 
 import type {
 	CondaEnvsCreateFromFileInput,
@@ -12,7 +8,7 @@ import type {
 	CondaEnvsPickFileResult,
 	CondaEnvsReadFileResult,
 } from "../../../contracts/providers/conda.js";
-import { condaContract } from "../../../contracts/providers/conda.js";
+import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host.js";
 import { ImportEnvironmentDialog } from "./ImportEnvironmentDialog.js";
 
 const YAML_CONTENT = "name: testenv\ndependencies:\n  - numpy\n  - pandas\n";
@@ -22,7 +18,7 @@ function notImplemented(): never {
 	throw new Error("not implemented");
 }
 
-function renderDialog(
+async function renderDialog(
 	options: {
 		pickFile?: () => CondaEnvsPickFileResult;
 		readFile?: () => CondaEnvsReadFileResult | Promise<CondaEnvsReadFileResult>;
@@ -37,9 +33,7 @@ function renderDialog(
 		options.createFromFile ??
 		(() => ({ jobId: "j", environment: { name: "testenv", prefix: "/opt/envs/testenv" } }));
 
-	const sdk = createFakeSdk({
-		featureId: "environments",
-		channels: condaContract,
+	const hostOptions: EnvironmentsHostOptions = {
 		handlers: {
 			"conda.envs.list": async () => [],
 			"conda.envs.distributions": notImplemented,
@@ -60,17 +54,14 @@ function renderDialog(
 			"conda.repodata.find": notImplemented,
 			"conda.jobs.cancel": notImplemented,
 		},
-	});
-	const system = createFakeFeatureSystem({ sdks: { environments: sdk } });
-	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	};
 	const onClose = options.onClose ?? (() => {});
 
-	return render(
-		<SdkProvider system={system}>
-			<QueryClientProvider client={queryClient}>
-				<ImportEnvironmentDialog open onClose={onClose} />
-			</QueryClientProvider>
-		</SdkProvider>,
+	return renderWithConda(
+		<>
+			<ImportEnvironmentDialog open onClose={onClose} />
+		</>,
+		hostOptions,
 	);
 }
 
@@ -78,7 +69,7 @@ afterEach(cleanup);
 
 describe("ImportEnvironmentDialog", () => {
 	it("renders the import sheet with the drop zone visible", async () => {
-		const { baseElement } = renderDialog();
+		const { baseElement } = await renderDialog();
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-import-dialog")).toBeVisible();
@@ -87,7 +78,7 @@ describe("ImportEnvironmentDialog", () => {
 	});
 
 	it("selects a file via Browse and shows the file display and YAML preview", async () => {
-		const { baseElement } = renderDialog();
+		const { baseElement } = await renderDialog();
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.click(screen.getByTestId("environments-import-browse"));
@@ -97,7 +88,7 @@ describe("ImportEnvironmentDialog", () => {
 	});
 
 	it("extracts and pre-fills the name from the YAML content", async () => {
-		const { baseElement } = renderDialog();
+		const { baseElement } = await renderDialog();
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.click(screen.getByTestId("environments-import-browse"));
@@ -113,7 +104,7 @@ describe("ImportEnvironmentDialog", () => {
 			}),
 		);
 		const onClose = vi.fn();
-		const { baseElement } = renderDialog({ createFromFile, onClose });
+		const { baseElement } = await renderDialog({ createFromFile, onClose });
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.click(screen.getByTestId("environments-import-browse"));
@@ -136,14 +127,14 @@ describe("ImportEnvironmentDialog", () => {
 	});
 
 	it("disables the submit button when no file is selected", async () => {
-		const { baseElement } = renderDialog();
+		const { baseElement } = await renderDialog();
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-import-submit")).toBeDisabled();
 	});
 
 	it("shows a validation error for an invalid name override", async () => {
-		const { baseElement } = renderDialog();
+		const { baseElement } = await renderDialog();
 		const screen = page.elementLocator(baseElement);
 
 		// Select a file first so the file-required validation passes.
@@ -166,7 +157,7 @@ describe("ImportEnvironmentDialog", () => {
 	});
 
 	it("clears the selected file when the remove button is clicked", async () => {
-		const { baseElement } = renderDialog();
+		const { baseElement } = await renderDialog();
 		const screen = page.elementLocator(baseElement);
 
 		// Select a file
@@ -184,7 +175,7 @@ describe("ImportEnvironmentDialog", () => {
 		const readFile = vi.fn(async () => {
 			throw new Error("cannot read");
 		});
-		const { baseElement } = renderDialog({ readFile });
+		const { baseElement } = await renderDialog({ readFile });
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.click(screen.getByTestId("environments-import-browse"));
@@ -209,7 +200,7 @@ describe("ImportEnvironmentDialog", () => {
 				environment: { name: "testenv", prefix: "/opt/envs/testenv" },
 			}),
 		);
-		const { baseElement } = renderDialog({
+		const { baseElement } = await renderDialog({
 			pickFile: () => ({ filePath: paths[Math.min(pick++, paths.length - 1)]! }),
 			readFile: () => ({
 				content: YAML_CONTENT,
@@ -258,7 +249,7 @@ describe("ImportEnvironmentDialog", () => {
 				jobId: "j",
 				environment: { name: "testenv", prefix: "/opt/envs/testenv" },
 			});
-		const { baseElement } = renderDialog({ readFile, createFromFile });
+		const { baseElement } = await renderDialog({ readFile, createFromFile });
 		const screen = page.elementLocator(baseElement);
 		const submit = screen.getByTestId("environments-import-submit");
 
@@ -282,7 +273,7 @@ describe("ImportEnvironmentDialog", () => {
 	});
 
 	it("handles a cancelled Browse (null filePath) gracefully", async () => {
-		const { baseElement } = renderDialog({
+		const { baseElement } = await renderDialog({
 			pickFile: () => ({ filePath: null }),
 		});
 		const screen = page.elementLocator(baseElement);
@@ -301,7 +292,7 @@ describe("ImportEnvironmentDialog", () => {
 			}),
 		);
 		const onClose = vi.fn();
-		const { baseElement } = renderDialog({ createFromFile, onClose });
+		const { baseElement } = await renderDialog({ createFromFile, onClose });
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.click(screen.getByTestId("environments-import-browse"));
@@ -323,7 +314,7 @@ describe("ImportEnvironmentDialog", () => {
 		const createFromFile = vi.fn((): never => {
 			throw new Error("ENV_EXISTS: prefix already exists");
 		});
-		const { baseElement } = renderDialog({ createFromFile });
+		const { baseElement } = await renderDialog({ createFromFile });
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.click(screen.getByTestId("environments-import-browse"));

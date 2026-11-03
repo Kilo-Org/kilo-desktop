@@ -9,5 +9,5 @@ runs:
       with:
         path: |
           plugins/notebook/resources/runtimed
-          plugins/notebook/build/notebook
+          plugins/notebook/resources/notebook
         key: notebook-resources-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('plugins/notebook/src/packaging/artifacts.ts') }}

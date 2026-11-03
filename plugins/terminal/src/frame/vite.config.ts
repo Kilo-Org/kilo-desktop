@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url";
 import { defineConfig, type Plugin } from "vite";
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
-const outputDirectory = path.resolve(directory, "../../build/terminal");
+// The host serves a plugin's `resources/` folder (packaged: the app's resources).
+const outputDirectory = path.resolve(directory, "../../resources/terminal");
 const nodeRequire = createRequire(import.meta.url);
 
 function copyGhosttyWasm(): Plugin {

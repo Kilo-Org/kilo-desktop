@@ -1,6 +1,8 @@
 import Store, { type Options } from "electron-store";
 
-import type { KvStore, KvStoreFactory, KvStoreOptions } from "@kilo-desktop/feature-sdk";
+import type { KvStore, KvStoreOptions } from "@kilo-desktop/kernel";
+
+type KvStoreFactory = <T extends Record<string, unknown>>(options: KvStoreOptions<T>) => KvStore<T>;
 
 /**
  * Namespace pattern accepted by `mainSdk.storage.kv({ namespace })`. The

@@ -2,10 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({}));
 
-import {
-	CLIPBOARD_WRITE_EMBEDDED_PERMISSION,
-	type EmbeddedWebHost,
-} from "@kilo-desktop/feature-sdk/main";
+import { CLIPBOARD_WRITE_EMBEDDED_PERMISSION, type EmbeddedWebHost } from "./embedded-web-host.js";
 
 import {
 	configureTrustedSchemes,

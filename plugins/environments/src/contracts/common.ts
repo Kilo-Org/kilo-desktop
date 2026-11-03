@@ -33,7 +33,7 @@ export type Provider = z.infer<typeof providerSchema>;
 
 /**
  * Granular reason codes for expected failures inside the environments
- * plugin. The SDK's {@link FeatureError} only carries the three-value
+ * plugin. {@link KernelError} carries only a coarse
  * `code` (VALIDATION | NOT_FOUND | BUSINESS); these strings ride in the
  * `message` field so callers can branch on the concrete reason across the
  * IPC boundary.
@@ -66,7 +66,7 @@ export type EnvironmentsErrorCode = z.infer<typeof environmentsErrorCodeSchema>;
 
 /**
  * Regex used by {@link parseEnvironmentsErrorMessage} to peel a granular
- * environments error code off the front of a FeatureError message.
+ * environments error code off the front of a KernelError message.
  *
  * Exposed so tests and consumers can share one definition.
  */
@@ -84,7 +84,7 @@ const ANSI_ESCAPE_PATTERN = /\u001b\[[0-9;?]*[ -/]*[@-~]/g;
 
 /**
  * Encode a granular reason into the string form carried by
- * `FeatureError.message` so downstream consumers can recover the reason
+ * `KernelError.message` so downstream consumers can recover the reason
  * via {@link parseEnvironmentsErrorMessage}.
  *
  * `detail` is trimmed and stripped of ANSI escape sequences. Line breaks
@@ -109,10 +109,10 @@ export function formatEnvironmentsErrorMessage(
 }
 
 /**
- * Extract the granular reason encoded in a FeatureError message
+ * Extract the granular reason encoded in a KernelError message
  * (`"CODE: detail"` — the shape {@link formatEnvironmentsErrorMessage}
  * produces). Returns `null` for messages that do not follow the convention
- * (they may still be legitimate FeatureErrors — e.g. an SDK-level
+ * (they may still be legitimate KernelErrors — e.g. a kernel-level
  * VALIDATION from the router — just not ones this plugin authored).
  */
 export function parseEnvironmentsErrorMessage(
@@ -130,7 +130,7 @@ export function parseEnvironmentsErrorMessage(
  * so onboarding a new code without classifying it is a compile error — a
  * `switch` with a `default` would silently bucket new codes as BUSINESS.
  */
-const featureErrorCodeByEnvironmentsErrorCode: Record<
+const kernelErrorCodeByEnvironmentsErrorCode: Record<
 	EnvironmentsErrorCode,
 	"VALIDATION" | "NOT_FOUND" | "BUSINESS"
 > = {
@@ -152,16 +152,16 @@ const featureErrorCodeByEnvironmentsErrorCode: Record<
 };
 
 /**
- * Map a granular reason to the three-value `FeatureError.code` alphabet
+ * Map a granular reason to the three-value `KernelError.code` alphabet
  * so the shell's IPC layer picks the right transport bucket.
  *
- * Callers throw `new FeatureError(formatEnvironmentsErrorMessage(code,
- * detail), environmentsErrorCodeToFeatureErrorCode(code))`.
+ * Callers throw `new KernelError(environmentsErrorCodeToKernelErrorCode(code),
+ * formatEnvironmentsErrorMessage(code, detail))`.
  */
-export function environmentsErrorCodeToFeatureErrorCode(
+export function environmentsErrorCodeToKernelErrorCode(
 	code: EnvironmentsErrorCode,
 ): "VALIDATION" | "NOT_FOUND" | "BUSINESS" {
-	return featureErrorCodeByEnvironmentsErrorCode[code];
+	return kernelErrorCodeByEnvironmentsErrorCode[code];
 }
 
 /* --------------------------------------------------------------------- */
@@ -221,8 +221,8 @@ const jobEnvelopeShape = {
 } as const;
 
 /**
- * Progress event emitted by the shared `JobQueue` on the plugin's event
- * bus under the fully-qualified name {@link ENVIRONMENTS_EVENT_NAMES.JOB_PROGRESS}.
+ * Progress event emitted by the shared `JobQueue` as `kilo.environments/conda`'s
+ * `job-progress`.
  *
  * Modelled as a discriminated union on `status` so callers can narrow to
  * the fields they need (e.g. `message` is only present while running;
@@ -248,35 +248,6 @@ export const jobProgressEventSchema = z.discriminatedUnion("status", [
 	z.object({ ...jobEnvelopeShape, status: z.literal("cancelled") }),
 ]);
 export type JobProgressEvent = z.infer<typeof jobProgressEventSchema>;
-
-/**
- * Progress event emitted while a provider is staging its runtime (fetching
- * an installer, running silent-install, migrating on-disk state, ...).
- * Reported to the splash via `mainSdk.boot.reportProgress` and republished
- * on the event bus under {@link ENVIRONMENTS_EVENT_NAMES.STAGING_PROGRESS}
- * for any subscriber that needs to observe boot-time work.
- *
- * `phase` is a short machine-friendly slug ("download", "install",
- * "verify"); `message` is optional prose for the splash line.
- */
-export const stagingProgressEventSchema = z.object({
-	provider: providerSchema,
-	phase: z.string().min(1),
-	message: z.string().min(1).optional(),
-});
-export type StagingProgressEvent = z.infer<typeof stagingProgressEventSchema>;
-
-/**
- * Fully-qualified event names (`<featureId>.<local>`) used when subscribing
- * on the SDK event bus. Emitters pass the unprefixed local name; subscribers
- * always use these constants to stay resilient to typos.
- */
-export const ENVIRONMENTS_EVENT_NAMES = {
-	JOB_PROGRESS: "environments.job-progress",
-	STAGING_PROGRESS: "environments.staging-progress",
-} as const;
-export type EnvironmentsEventName =
-	(typeof ENVIRONMENTS_EVENT_NAMES)[keyof typeof ENVIRONMENTS_EVENT_NAMES];
 
 /* --------------------------------------------------------------------- */
 /* Cancellation                                                          */

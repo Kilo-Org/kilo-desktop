@@ -3,7 +3,7 @@
 	"version": "1.0.0",
 	"private": true,
 	"type": "module",
-	"description": "Workspace terminals contributed to Kilo chat right panels",
+	"description": "kilo.terminal — terminal panes: interactive shells in a session's folder",
 	"exports": {
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",
@@ -19,42 +19,22 @@
 		"coverage": "vitest run --coverage"
 	},
 	"dependencies": {
+		"@kilo-desktop/kernel": "workspace:*",
+		"@kilo-desktop/plugin-agent": "workspace:*",
+		"@kilo-desktop/plugin-sessions": "workspace:*",
+		"@kilo-desktop/plugin-shell": "workspace:*",
+		"@kilo-desktop/plugin-workbench": "workspace:*",
+		"@kilo-desktop/plugin-workspaces": "workspace:*",
+		"@kilo-desktop/ui": "workspace:*",
 		"atomically": "catalog:",
 		"ghostty-web": "0.4.0-next.20.g1858a59",
-		"lucide-react": "^1.27.0",
-		"node-pty": "1.2.0-beta.15"
-	},
-	"peerDependencies": {
-		"@kilo-desktop/feature-sdk": "^0.1.0",
-		"@kilo-desktop/sdk-react": "^0.1.0",
-		"@kilo-desktop/ui": "^0.1.0",
-		"react": "^19.0.0",
-		"react-dom": "^19.0.0",
-		"zod": "^4.0.0"
-	},
-	"peerDependenciesMeta": {
-		"@kilo-desktop/sdk-react": {
-			"optional": true
-		},
-		"@kilo-desktop/ui": {
-			"optional": true
-		},
-		"react": {
-			"optional": true
-		},
-		"react-dom": {
-			"optional": true
-		}
+		"lucide-react": "catalog:",
+		"node-pty": "1.2.0-beta.15",
+		"react": "^19.2.8",
+		"react-dom": "^19.2.8",
+		"zod": "catalog:"
 	},
 	"devDependencies": {
-		"@kilo-desktop/e2e": "workspace:*",
-		"@kilo-desktop/feature-sdk": "workspace:*",
-		"@kilo-desktop/plugin-git": "workspace:*",
-		"@kilo-desktop/sdk-react": "workspace:*",
-		"@kilo-desktop/testing": "workspace:*",
-		"@kilo-desktop/ui": "workspace:*",
-		"@anaconda/playwright-utils": "2.1.0",
-		"@playwright/test": "catalog:",
 		"@tailwindcss/vite": "^4.3.3",
 		"@testing-library/react": "^16.3.2",
 		"@types/node": "^26.0.0",
@@ -65,12 +45,9 @@
 		"@vitest/browser-playwright": "5.0.5",
 		"@vitest/coverage-v8": "catalog:",
 		"playwright": "catalog:",
-		"react": "^19.2.8",
-		"react-dom": "^19.2.8",
 		"tailwindcss": "^4.3.3",
 		"typescript": "catalog:",
 		"vite": "catalog:",
-		"vitest": "catalog:",
-		"zod": "catalog:"
+		"vitest": "catalog:"
 	}
 }

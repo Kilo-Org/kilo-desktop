@@ -1,14 +1,14 @@
 {
 	"name": "@kilo-desktop/plugin-local-inference",
-	"version": "0.1.0",
+	"version": "1.0.0",
 	"private": true,
 	"type": "module",
-	"description": "Local GGUF inference through a managed llama.cpp router",
+	"description": "kilo.local-inference — the Local Model Server: GGUF models on this device through a managed llama.cpp router",
 	"exports": {
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",
 		"./web": "./src/web/index.ts",
-		"./contracts": "./src/contracts/schemas.ts"
+		"./contracts": "./src/contracts/index.ts"
 	},
 	"scripts": {
 		"check": "tsc --noEmit -p tsconfig.json",
@@ -16,46 +16,28 @@
 		"coverage": "vitest run --coverage"
 	},
 	"dependencies": {
+		"@kilo-desktop/kernel": "workspace:*",
+		"@kilo-desktop/plugin-account": "workspace:*",
+		"@kilo-desktop/plugin-agent": "workspace:*",
+		"@kilo-desktop/plugin-anaconda-account": "workspace:*",
+		"@kilo-desktop/plugin-chat": "workspace:*",
+		"@kilo-desktop/plugin-environments": "workspace:*",
+		"@kilo-desktop/plugin-flags": "workspace:*",
+		"@kilo-desktop/plugin-shell": "workspace:*",
+		"@kilo-desktop/plugin-telemetry": "workspace:*",
 		"@lobehub/icons": "^6.0.0",
 		"execa": "catalog:",
-		"lucide-react": "^1.27.0",
-		"systeminformation": "5.33.19"
+		"lucide-react": "catalog:",
+		"systeminformation": "5.33.19",
+		"zod": "catalog:"
 	},
 	"peerDependencies": {
-		"@kilo-desktop/feature-sdk": "^0.1.0",
-		"@kilo-desktop/plugin-anaconda-account": "^0.1.0",
-		"@kilo-desktop/sdk-react": "^0.1.0",
-		"@kilo-desktop/ui": "^0.1.0",
+		"@kilo-desktop/ui": "workspace:*",
 		"@tanstack/react-query": "^5.101.4",
 		"react": "^19.0.0",
-		"react-dom": "^19.0.0",
-		"zod": "^4.0.0"
-	},
-	"peerDependenciesMeta": {
-		"@kilo-desktop/plugin-anaconda-account": {
-			"optional": true
-		},
-		"@kilo-desktop/sdk-react": {
-			"optional": true
-		},
-		"@kilo-desktop/ui": {
-			"optional": true
-		},
-		"@tanstack/react-query": {
-			"optional": true
-		},
-		"react": {
-			"optional": true
-		},
-		"react-dom": {
-			"optional": true
-		}
+		"react-dom": "^19.0.0"
 	},
 	"devDependencies": {
-		"@kilo-desktop/feature-sdk": "workspace:*",
-		"@kilo-desktop/plugin-anaconda-account": "workspace:*",
-		"@kilo-desktop/sdk-react": "workspace:*",
-		"@kilo-desktop/testing": "workspace:*",
 		"@kilo-desktop/ui": "workspace:*",
 		"@tailwindcss/vite": "^4.3.3",
 		"@tanstack/react-query": "^5.101.4",
@@ -66,13 +48,13 @@
 		"@vitejs/plugin-react": "^6.0.4",
 		"@vitest/browser": "5.0.5",
 		"@vitest/browser-playwright": "5.0.5",
+		"@vitest/coverage-v8": "catalog:",
 		"playwright": "catalog:",
 		"react": "^19.2.8",
 		"react-dom": "^19.2.8",
 		"tailwindcss": "^4.3.3",
 		"typescript": "catalog:",
 		"vite": "catalog:",
-		"vitest": "catalog:",
-		"zod": "catalog:"
+		"vitest": "catalog:"
 	}
 }

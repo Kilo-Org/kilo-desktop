@@ -1,18 +1,14 @@
 import { LogInIcon, LogOutIcon } from "lucide-react";
 
-import { useFeatureFlag, useSdk } from "@kilo-desktop/sdk-react";
+import type { DomainHandle } from "@kilo-desktop/kernel";
+import { useDomain } from "@kilo-desktop/kernel/web";
 import { AnacondaLogo } from "@kilo-desktop/ui/components/anaconda-logo";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Skeleton, SkeletonText } from "@kilo-desktop/ui/components/skeleton";
 import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
-import {
-	ANACONDA_ACCOUNT_FEATURE_ID,
-	type AnacondaAccountCapabilities,
-	type AnacondaAccountCapability,
-	type AnacondaAccountSession,
-} from "../contracts/schemas.js";
+import { AnacondaAccount, type AnacondaAccountSession } from "../contracts/index.js";
 import { useAnacondaAccount } from "./useAnacondaAccount.js";
 
 /** What an Anaconda account gives you. */
@@ -20,28 +16,18 @@ const ANACONDA_ACCOUNT_SUMMARY =
 	"Browse and download models from the Anaconda model catalog, and install packages from authenticated channels like main-x.";
 
 /**
- * The Anaconda sign-in is only useful for the model catalog today, so it rolls
- * out (and back) with the catalog's flag.
+ * The Anaconda panel on the Account settings page, contributed to
+ * `kilo.account/account-panel` (behind the model catalog's flag, in the
+ * manifest). Anaconda is only a credential source for Anaconda services (it
+ * stores an API key); it never affects the Kilo account above it.
  */
-const MODEL_CATALOG_FEATURE_FLAG = "local-model-catalog";
-
-/**
- * The Anaconda panel on the Account settings page, contributed into kilo-ui's
- * `account-panels` zone. Anaconda is only a credential source for Anaconda
- * services (it stores an API key); it never affects the Kilo account above it.
- */
-
 export function AnacondaAccountRow() {
-	const sdk = useSdk(ANACONDA_ACCOUNT_FEATURE_ID);
-	const catalogEnabled = useFeatureFlag<boolean>(MODEL_CATALOG_FEATURE_FLAG, false);
-	const account = sdk.plugins.get<AnacondaAccountCapabilities>(
-		ANACONDA_ACCOUNT_FEATURE_ID,
-	)?.account;
-	if (!account || !catalogEnabled) return null;
+	const account = useDomain(AnacondaAccount);
+	if (!account) return null;
 	return <AnacondaAccountRowView account={account} />;
 }
 
-function AnacondaAccountRowView({ account }: { account: AnacondaAccountCapability }) {
+function AnacondaAccountRowView({ account }: { account: DomainHandle<typeof AnacondaAccount> }) {
 	const { session, resolving, pending, signIn, cancelSignIn, signOut } =
 		useAnacondaAccount(account);
 

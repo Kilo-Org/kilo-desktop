@@ -47,8 +47,6 @@ export default defineConfig({
 						"react-dom",
 						"react/jsx-runtime",
 						"react/jsx-dev-runtime",
-						"@kilo-desktop/feature-sdk",
-						"@kilo-desktop/sdk-react",
 						"@tanstack/react-query",
 						"@testing-library/react",
 						// Keep the design-system CommonJS shims in Vite's prebundle so a cold
@@ -82,6 +80,10 @@ export default defineConfig({
 					name: "browser",
 					include: ["src/web/**/*.browser.test.tsx"],
 					setupFiles: ["src/test/setup.ts"],
+					// Generous under parallel load.
+					expect: { poll: { timeout: 5_000 } },
+					// Interaction-heavy tests outlast the 15s default when every package runs at once (pre-push).
+					testTimeout: 30_000,
 					browser: {
 						enabled: true,
 						headless: true,

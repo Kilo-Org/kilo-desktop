@@ -2,9 +2,9 @@
 name: write-vitest
 description: >-
   Choose the right Vitest tier and write unit, integration, browser, and
-  app-level tests with createFakeSdk / createFakeFeatureSystem /
-  createBrowserLocalApi. Use when adding Vitest coverage, deciding unit vs
-  browser vs e2e, fixing coverage gates, or writing feature component tests.
+  app-level tests that boot real kernels (createTestKernelPair /
+  createTestHost, renderShell). Use when adding Vitest coverage, deciding unit
+  vs browser vs e2e, fixing coverage gates, or writing plugin component tests.
   For packaged Electron / Playwright, use write-e2e-test instead.
 ---
 
@@ -18,42 +18,29 @@ Canonical taxonomy: [docs/TESTING.md](../../../docs/TESTING.md). This skill cove
 | Need                                      | Tier         | Pattern / location                                   |
 | ----------------------------------------- | ------------ | ---------------------------------------------------- |
 | Pure logic, no I/O                        | Unit         | Co-located `*.test.ts`                               |
-| Real SQLite / FeatureRouter / migrations  | Integration  | Co-located `*.integration.test.ts` (desktop, serial) |
-| One view/hook + fake SDK or LocalApi      | Component    | Co-located `*.browser.test.tsx` (web, Chromium)      |
-| Router + providers composition            | App-level    | `apps/web/src/app/*.app.test.tsx`                    |
+| Real files / processes / a booted kernel  | Integration  | Co-located `*.integration.test.ts` (node, serial)    |
+| One view/hook in a booted test kernel     | Component    | Co-located `*.browser.test.tsx` (Chromium)           |
+| Kernel boot + bundled plugins             | App-level    | `apps/web/src/kernel/*.app.test.tsx`                 |
 | Packaged Electron / IPC / custom protocol | E2E          | **Stop — use `write-e2e-test`**                       |
 
 **Prefer Vitest over e2e** unless the assertion needs the packaged binary, IPC bridge, or custom protocol. Do not re-smoke the same CRUD journey in app-level and e2e.
 
-## Fakes (use these — never hand-roll)
+## Kernel test helpers (use these — never hand-roll a kernel or sdk)
 
-| Helper                    | Package / module                    | Use for                                     |
-| ------------------------- | ----------------------------------- | ------------------------------------------- |
-| `createFakeSdk`           | `@kilo-desktop/testing` | Feature renderer SDK (`sdk.client`, events) |
-| `createFakeMainSdk`       | `@kilo-desktop/testing` | `mainRegister` / channel handlers           |
-| `createFakeFeatureSystem` | `@kilo-desktop/testing` | Mount views under `<SdkProvider>`           |
-| `createBrowserLocalApi`   | `@/platform/browserLocalApi`        | Shell LocalApi (todos/theme); optional seed |
-| `createFeatureSystem`     | `@/platform/sdk`                    | App-level boots with real feature list      |
+| Helper                 | Package / module                           | Use for                                                  |
+| ---------------------- | ------------------------------------------ | -------------------------------------------------------- |
+| `createTestKernelPair` | `@kilo-desktop/kernel/testing`             | A main + window kernel pair with the plugins under test  |
+| `createTestHost`       | `@kilo-desktop/kernel/testing`             | Main host primitives; override only what the test needs  |
+| `createMemoryStorage`  | `@kilo-desktop/kernel/testing`             | In-memory plugin storage / kv                            |
+| `createPluginHost`     | `@kilo-desktop/kernel/testing/plugin-host` | One plugin's contributions (`renderSlot`) and domain methods (`invoke`) without the owner's UI |
+| `renderShell`          | `@kilo-desktop/plugin-shell/testing`       | Boot kilo.shell around a plugin that contributes to it   |
 
-```typescript
-// Component under SdkProvider — do not hand-build FeatureSystem literals
-import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
+Plugin-specific guidance (faking dependencies, reliability rules,
+removability): [docs/plugins/testing.md](../../../docs/plugins/testing.md).
 
-const sdk = createFakeSdk({ featureId: "my-feature", channels: myChannels, handlers });
-const system = createFakeFeatureSystem({ sdks: { "my-feature": sdk } });
-```
-
-```typescript
-// LocalApi-backed UI — override slices via seed or spread, not a full fake object
-import { createBrowserLocalApi } from "@/platform/browserLocalApi";
-
-const api = createBrowserLocalApi({
-	todos: [{ id: "1", title: "seeded", completed: false }],
-});
-// or: { ...createBrowserLocalApi(), theme: { get: async () => "dark", ... } }
-```
-
-**Never** construct ad-hoc `LocalApi` objects in feature tests. **Never** add feature methods to `LocalApi`.
+Other plugins are reached through their `./contracts` (domain and point
+definitions); fakes of another plugin provide its domain object in the test
+kernel and throw `KernelError`s, whose messages survive the process boundary.
 
 ## Patterns by tier
 
@@ -61,12 +48,13 @@ const api = createBrowserLocalApi({
 
 - Co-locate next to the module under test.
 - Node environment; no DOM.
-- Desktop services, contracts, feature-sdk modules, pure hooks (when DOM-free).
+- Desktop services, plugin main code, contracts, pure hooks (when DOM-free).
 
 ### Integration (`*.integration.test.ts`)
 
-- Real SQLite via `createDatabase` + migrations folder.
-- **Close the DB before deleting temp dirs** (Windows `EBUSY`):
+- Real files, git repositories or processes; a booted test kernel when the
+  behavior spans plugins.
+- **Close databases and handles before deleting temp dirs** (Windows `EBUSY`):
 
 ```typescript
 afterEach(() => {
@@ -86,13 +74,13 @@ afterEach(() => {
 - Vitest browser + Testing Library; `page.elementLocator(baseElement)`.
 - Interactive elements need stable `data-qa-id` (Playwright/Vitest `testIdAttribute`).
 - Prefer `getByTestId` / roles over brittle CSS.
-- Use `createFakeSdk` + `createFakeFeatureSystem` for SDK views; `createBrowserLocalApi` for shell LocalApi views.
+- Boot the plugin with `createTestKernelPair` (or `renderShell` when it contributes to kilo.shell).
 - `QueryClient` in tests: `{ defaultOptions: { queries: { retry: false } } }`.
 
 ### App-level (`*.app.test.tsx`)
 
-- Mount `AppProviders` with `createBrowserLocalApi` + `createFeatureSystem(localApi, WEB_FEATURES)`.
-- Assert shell boot and route composition only — **not** full feature CRUD.
+- Boot the web kernel with the bundled plugins (`apps/web/src/kernel/boot.app.test.tsx`).
+- Assert boot and composition only — **not** full plugin journeys.
 
 ## Coverage
 
@@ -108,16 +96,16 @@ pnpm test                 # all Vitest tiers
 pnpm coverage             # Vitest + 80% gate
 pnpm test:web
 pnpm test:desktop
-pnpm --filter @kilo-desktop/feature-sdk test
-pnpm --filter @kilo-desktop/testing test
+pnpm --filter @kilo-desktop/kernel test
+pnpm --filter @kilo-desktop/plugin-<dir> test
 ```
 
-## Feature checklist (Vitest slice)
+## Plugin checklist (Vitest slice)
 
-Every new feature must also satisfy e2e obligations in `write-e2e-test` / `docs/TESTING.md`.
+Every new plugin must also satisfy e2e obligations in `write-e2e-test` / `docs/TESTING.md`.
 
 - [ ] Service / logic unit test (`*.test.ts`)
-- [ ] Integration test if the feature persists data (`*.integration.test.ts`)
-- [ ] Component browser test with `createFakeSdk` / `createBrowserLocalApi`
+- [ ] Integration test if the plugin persists data or runs processes (`*.integration.test.ts`)
+- [ ] Component browser test in a booted test kernel
 - [ ] Stable `data-qa-id` on interactive elements
 - [ ] Coverage still passes `pnpm coverage`

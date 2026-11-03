@@ -1,5 +1,7 @@
 /* Test-only stylesheet: generates the Tailwind utilities the plugin's
    components use so browser tests get real layout/visibility. In the app,
-   the shell's globals.css scans plugin + design-system sources via @source. */
+   apps/web/src/globals.css scans plugin and design-system sources. */
 @import "tailwindcss";
 @source "../../../../packages/ui";
+@source "../../../../packages/kernel/src";
+@source "../";

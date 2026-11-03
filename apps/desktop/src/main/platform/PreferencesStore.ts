@@ -1,19 +1,18 @@
 import Store from "electron-store";
 
-import {
-	normalizeAppThemePreferences,
-	releaseTrackSchema,
-	themeSourceSchema,
-	type ReleaseTrack,
-	type ThemeSource,
-} from "@kilo-desktop/contracts";
+import { THEME_SOURCES, type ThemeSource } from "@kilo-desktop/ui/themes/theme-tokens";
+import { z } from "zod";
+
+import { RELEASE_TRACKS, type ReleaseTrack } from "$config/release.js";
 
 import { DEFAULT_LOG_LEVEL, logLevelSchema, type LogLevel } from "./logger.js";
+
+const themeSourceSchema = z.enum(THEME_SOURCES);
+const releaseTrackSchema = z.enum(RELEASE_TRACKS);
 
 export interface AppPreferences {
 	/** Last renderer-synced theme source — used to resolve cold-start native chrome. */
 	themeSource?: ThemeSource;
-	themeId?: string;
 	/** Telemetry opt-out gate. Defaults to `true` (opt-out model). */
 	allowDataCollection?: boolean;
 	/** Stable per-install id, generated once and persisted across sessions. */
@@ -64,14 +63,6 @@ export class PreferencesStore {
 
 	setThemeSource(source: ThemeSource): void {
 		this.#store.set("themeSource", source);
-	}
-
-	get themeId(): string {
-		return normalizeAppThemePreferences({ themeId: this.#store.get("themeId") }).themeId;
-	}
-
-	setThemeId(themeId: string): void {
-		this.#store.set("themeId", normalizeAppThemePreferences({ themeId }).themeId);
 	}
 
 	/** The user's saved data-collection setting. Opt-out model: defaults to `true` when unset. */

@@ -85,7 +85,7 @@ describe("friendlyEnvironmentsError", () => {
 });
 
 describe("isProviderNotReadyError", () => {
-	it("is true for a PROVIDER_NOT_READY FeatureError (with or without detail)", () => {
+	it("is true for a PROVIDER_NOT_READY KernelError (with or without detail)", () => {
 		expect(isProviderNotReadyError(new Error("PROVIDER_NOT_READY"))).toBe(true);
 		expect(
 			isProviderNotReadyError(

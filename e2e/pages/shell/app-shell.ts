@@ -1,6 +1,8 @@
 import {
 	click,
+	expectElementToBeHidden,
 	expectElementToBeVisible,
+	expectElementToHaveAttribute,
 	expectPageToHaveTitle,
 	getLocatorByTestId,
 } from "@anaconda/playwright-utils";
@@ -17,6 +19,13 @@ export class AppShellPage {
 		});
 	}
 
+	/** Packaged e2e sets KILO_SKIP_ONBOARDING, so first-run onboarding never covers a fresh profile. */
+	async verifyOnboardingHidden(): Promise<void> {
+		await expectElementToBeHidden(getLocatorByTestId("onboarding-overlay"), {
+			message: "First-run onboarding should not cover the shell in packaged e2e profiles",
+		});
+	}
+
 	async navigateToFeature(featureId: string): Promise<void> {
 		await click(this.navItem(featureId));
 	}
@@ -28,14 +37,13 @@ export class AppShellPage {
 	async verifyCustomProtocolBoot(): Promise<void> {
 		// Use the utils page singleton (not barrel getURL/waitForFunction) — those named
 		// exports resolve as non-functions under Playwright's CJS interop on CI.
-		// Shell `/` redirects to the kilo-ui chat page (plugins cannot own `/`).
-		await getPage().waitForURL("kilo-desktop://app/#/plugins/chat");
+		await getPage().waitForURL(/^kilo-desktop:\/\/app\/#\/$/);
 
-		const hasDesktopInvoke = await getPage().evaluate(
-			() => typeof (globalThis as { desktopApi?: { invoke?: unknown } }).desktopApi?.invoke,
+		const hasKernelBridge = await getPage().evaluate(
+			() => typeof (globalThis as { kernelBridge?: { request?: unknown } }).kernelBridge?.request,
 		);
-		if (hasDesktopInvoke !== "function") {
-			throw new Error("Expected window.desktopApi.invoke to be a function (preload bridge)");
+		if (hasKernelBridge !== "function") {
+			throw new Error("Expected window.kernelBridge.request to be a function (preload bridge)");
 		}
 
 		const hasRequire = await getPage().evaluate(() => "require" in globalThis);
@@ -68,33 +76,6 @@ export class AppShellPage {
 		await click(getLocatorByTestId("settings-section-about"));
 	}
 
-	async verifyAboutSettings(): Promise<void> {
-		await expectElementToBeVisible(
-			getLocatorByTestId("about-settings"),
-			"About settings should be visible in the packaged desktop app",
-		);
-		await expectElementToBeVisible(
-			getLocatorByTestId("update-status-message"),
-			"About settings should report why updates are unavailable without a configured feed",
-		);
-		await expectElementToBeVisible(
-			getLocatorByTestId("about-beta-badge"),
-			"About settings should label the app as beta",
-		);
-		await expectElementToBeVisible(
-			getLocatorByTestId("update-track"),
-			"About settings should show the selected update track",
-		);
-		await expectElementToBeVisible(
-			getLocatorByTestId("about-show-log-file"),
-			"About settings should offer access to the application log file",
-		);
-		await expectElementToBeVisible(
-			getLocatorByTestId("about-global-kilo-config"),
-			"About settings should list the Kilo config contributed by kilo-server under Support",
-		);
-	}
-
 	async openAccountSettings(): Promise<void> {
 		await click(getLocatorByTestId("settings-section-account"));
 	}
@@ -112,6 +93,33 @@ export class AppShellPage {
 			getLocatorByTestId("account-anaconda-row"),
 			"Account settings should show the Anaconda account row",
 		);
+	}
+
+	/** The top bar is part of the layout: the same height with the sidebar docked or collapsed. */
+	async verifyTopBarKeepsItsHeight(): Promise<void> {
+		const header = getLocatorByTestId("shell-page-header");
+		const docked = await header.boundingBox();
+		await click(getLocatorByTestId("sidebar-nav-toggle"));
+		await expectElementToHaveAttribute(
+			getLocatorByTestId("sidebar-nav-toggle"),
+			"aria-pressed",
+			"false",
+			{
+				message: "The sidebar should collapse",
+			},
+		);
+		const collapsed = await header.boundingBox();
+		await click(getLocatorByTestId("sidebar-nav-toggle"));
+		if (
+			!docked ||
+			!collapsed ||
+			docked.height < 40 ||
+			Math.abs(docked.height - collapsed.height) > 1
+		) {
+			throw new Error(
+				`Expected a full-height top bar in both states, got docked ${docked?.height}px and collapsed ${collapsed?.height}px`,
+			);
+		}
 	}
 
 	async leaveSettings(): Promise<void> {

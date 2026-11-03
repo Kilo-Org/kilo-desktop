@@ -11,7 +11,6 @@ import {
 export const RELEASE_PACKAGE_FILES = [
 	"apps/desktop/package.json",
 	"apps/web/package.json",
-	"packages/contracts/package.json",
 ] as const;
 
 /**

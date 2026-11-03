@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createConnection } from "node:net";
 
-import type { MainSdkLogger } from "@kilo-desktop/feature-sdk";
+import type { KernelLogger } from "@kilo-desktop/kernel";
 
 import type { PeerTrustDecision } from "./daemon-peer-auth.js";
 
@@ -64,7 +64,7 @@ export interface RuntimedDaemonManagerOptions {
 	 * stub so the control can never be omitted by accident in production.
 	 */
 	readonly authenticatePeer: AuthenticatePeer;
-	readonly logger?: Pick<MainSdkLogger, "info" | "warn">;
+	readonly logger?: Pick<KernelLogger, "info" | "warn">;
 	readonly spawnProcess?: (binaryPath: string) => ChildProcess;
 	readonly sleep?: (ms: number) => Promise<void>;
 	readonly now?: () => number;
@@ -92,7 +92,7 @@ export class RuntimedDaemonManager {
 	readonly #allowSpawn: boolean;
 	readonly #probe: () => Promise<boolean>;
 	readonly #authenticatePeer: AuthenticatePeer;
-	readonly #logger: Pick<MainSdkLogger, "info" | "warn">;
+	readonly #logger: Pick<KernelLogger, "info" | "warn">;
 	readonly #spawnProcess: (binaryPath: string) => ChildProcess;
 	readonly #sleep: (ms: number) => Promise<void>;
 	readonly #now: () => number;

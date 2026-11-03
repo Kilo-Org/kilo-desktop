@@ -1,13 +1,8 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import { SdkProvider } from "@kilo-desktop/sdk-react";
-import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
-
 import {
-	condaContract,
 	type CondaEnv,
 	type CondaEnvsCloneInput,
 	type CondaEnvsCloneResult,
@@ -17,6 +12,7 @@ import {
 	type CondaPackagesUpdateInput,
 	type CondaPackagesUpdateResult,
 } from "../../../contracts/providers/conda.js";
+import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host.js";
 import { UpdateConfirmationDialog, type UpgradablePackage } from "./UpdateConfirmationDialog.js";
 
 const ENV: CondaEnv = { name: "dev", prefix: "/opt/anaconda3/envs/dev" };
@@ -49,7 +45,7 @@ function updateResult(): CondaPackagesUpdateResult {
 	return { jobId: "job-1", envName: "dev", updated: [] };
 }
 
-function renderDialog(
+async function renderDialog(
 	options: {
 		items?: UpgradablePackage[];
 		preview?: (input: CondaPackagesPreviewInput) => Promise<CondaPackagesPreviewResult>;
@@ -75,32 +71,27 @@ function renderDialog(
 			environment: { name: input.name, prefix: `/opt/anaconda3/envs/${input.name}` },
 		}));
 
-	const sdk = createFakeSdk({
-		featureId: "environments",
-		channels: condaContract,
+	const hostOptions: EnvironmentsHostOptions = {
 		handlers: {
 			"conda.envs.list": async () => options.existingEnvs ?? [ENV],
 			"conda.envs.clone": clone,
 			"conda.packages.preview": preview,
 			"conda.packages.update": update,
 		},
-	});
-	const system = createFakeFeatureSystem({ sdks: { environments: sdk } });
-	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	};
 
-	return render(
-		<SdkProvider system={system}>
-			<QueryClientProvider client={queryClient}>
-				<UpdateConfirmationDialog
-					env={ENV}
-					upgradablePackages={items}
-					open
-					onClose={options.onClose ?? (() => {})}
-					onSuccess={options.onSuccess ?? (() => {})}
-					{...(options.onUpdatingChange ? { onUpdatingChange: options.onUpdatingChange } : {})}
-				/>
-			</QueryClientProvider>
-		</SdkProvider>,
+	return renderWithConda(
+		<>
+			<UpdateConfirmationDialog
+				env={ENV}
+				upgradablePackages={items}
+				open
+				onClose={options.onClose ?? (() => {})}
+				onSuccess={options.onSuccess ?? (() => {})}
+				{...(options.onUpdatingChange ? { onUpdatingChange: options.onUpdatingChange } : {})}
+			/>
+		</>,
+		hostOptions,
 	);
 }
 
@@ -129,7 +120,7 @@ describe("UpdateConfirmationDialog", () => {
 				removed: [change("legacy-dep", "1.0", null)],
 			}),
 		);
-		const { baseElement } = renderDialog({ preview });
+		const { baseElement } = await renderDialog({ preview });
 		const screen = page.elementLocator(baseElement);
 
 		await expect
@@ -158,7 +149,7 @@ describe("UpdateConfirmationDialog", () => {
 	});
 
 	it("shows the up-to-date state when the solver has nothing to do", async () => {
-		const { baseElement } = renderDialog({ preview: async () => emptyPreview() });
+		const { baseElement } = await renderDialog({ preview: async () => emptyPreview() });
 		const screen = page.elementLocator(baseElement);
 
 		await expect
@@ -169,7 +160,7 @@ describe("UpdateConfirmationDialog", () => {
 
 	it("surfaces solver conflicts with the friendly message and raw detail, and blocks submit", async () => {
 		const detail = "The following packages are incompatible\n└─ pin on python =3.11";
-		const { baseElement } = renderDialog({
+		const { baseElement } = await renderDialog({
 			preview: async () => {
 				throw new Error(`SOLVE_FAILED: ${detail}`);
 			},
@@ -188,7 +179,7 @@ describe("UpdateConfirmationDialog", () => {
 
 	it("clears the solver error card when the user unchecks all packages", async () => {
 		const detail = "The following packages are incompatible\n└─ pin on python =3.11";
-		const { baseElement } = renderDialog({
+		const { baseElement } = await renderDialog({
 			preview: async () => {
 				throw new Error(`SOLVE_FAILED: ${detail}`);
 			},
@@ -213,7 +204,7 @@ describe("UpdateConfirmationDialog", () => {
 
 	it("renders already up-to-date packages without a checkbox and keeps them out of the solve", async () => {
 		const preview = vi.fn(async (_input: CondaPackagesPreviewInput) => emptyPreview());
-		const { baseElement } = renderDialog({
+		const { baseElement } = await renderDialog({
 			items: [upgradable("numpy", "2.0.0", ["2.1.0"]), upgradable("requests", "2.32.3")],
 			preview,
 		});
@@ -240,7 +231,7 @@ describe("UpdateConfirmationDialog", () => {
 		const preview = vi.fn(async (_input: CondaPackagesPreviewInput) =>
 			previewWith({ upgraded: [change("libblas", "3.9.0", "3.9.1")] }),
 		);
-		const { baseElement } = renderDialog({ preview });
+		const { baseElement } = await renderDialog({ preview });
 		const screen = page.elementLocator(baseElement);
 
 		await vi.waitFor(() => {
@@ -270,7 +261,7 @@ describe("UpdateConfirmationDialog", () => {
 			if (attempt === 1) throw new Error("SOLVE_FAILED: conflict");
 			return previewWith({ upgraded: [change("libblas", "3.9.0", "3.9.1")] });
 		});
-		const { baseElement } = renderDialog({ preview });
+		const { baseElement } = await renderDialog({ preview });
 		const screen = page.elementLocator(baseElement);
 
 		const card = screen.getByTestId("environments-conda-update-confirm-error");
@@ -288,7 +279,7 @@ describe("UpdateConfirmationDialog", () => {
 
 	it("changing a package's target version re-pins the spec sent to the solver", async () => {
 		const preview = vi.fn(async (_input: CondaPackagesPreviewInput) => emptyPreview());
-		const { baseElement } = renderDialog({ preview });
+		const { baseElement } = await renderDialog({ preview });
 		const screen = page.elementLocator(baseElement);
 
 		await vi.waitFor(() => {
@@ -307,7 +298,7 @@ describe("UpdateConfirmationDialog", () => {
 	});
 
 	it("shows a single-version badge instead of a picker when only one newer version exists", async () => {
-		const { baseElement } = renderDialog({ preview: async () => emptyPreview() });
+		const { baseElement } = await renderDialog({ preview: async () => emptyPreview() });
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByRole("combobox", { name: "Version for numpy" })).toBeVisible();
@@ -318,7 +309,7 @@ describe("UpdateConfirmationDialog", () => {
 	});
 
 	it("the header checkbox unselects and reselects every updatable package", async () => {
-		const { baseElement } = renderDialog({ preview: async () => emptyPreview() });
+		const { baseElement } = await renderDialog({ preview: async () => emptyPreview() });
 		const screen = page.elementLocator(baseElement);
 		const selectAll = screen.getByTestId("environments-conda-update-confirm-select-all");
 
@@ -346,7 +337,7 @@ describe("UpdateConfirmationDialog", () => {
 
 	it("filters the package list by name without changing what is selected", async () => {
 		const preview = vi.fn(async (_input: CondaPackagesPreviewInput) => emptyPreview());
-		const { baseElement } = renderDialog({ preview });
+		const { baseElement } = await renderDialog({ preview });
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.fill(screen.getByPlaceholder("Search packages"), "pan");
@@ -358,7 +349,7 @@ describe("UpdateConfirmationDialog", () => {
 	});
 
 	it("filters the dependency panel by category and by name", async () => {
-		const { baseElement } = renderDialog({
+		const { baseElement } = await renderDialog({
 			preview: async () =>
 				previewWith({
 					upgraded: [change("libblas", "3.9.0", "3.9.1")],
@@ -394,7 +385,7 @@ describe("UpdateConfirmationDialog", () => {
 		const onClose = vi.fn();
 		const onSuccess = vi.fn();
 		const onUpdatingChange = vi.fn();
-		const { baseElement } = renderDialog({
+		const { baseElement } = await renderDialog({
 			preview: async () => emptyPreview(),
 			update,
 			onClose,
@@ -427,7 +418,7 @@ describe("UpdateConfirmationDialog", () => {
 
 	it("resets the in-flight count when the background update fails", async () => {
 		const onUpdatingChange = vi.fn();
-		const { baseElement } = renderDialog({
+		const { baseElement } = await renderDialog({
 			preview: async () => emptyPreview(),
 			update: async () => {
 				throw new Error("SOLVE_FAILED: boom");
@@ -458,7 +449,11 @@ describe("UpdateConfirmationDialog", () => {
 			order.push("update");
 			return updateResult();
 		});
-		const { baseElement } = renderDialog({ preview: async () => emptyPreview(), clone, update });
+		const { baseElement } = await renderDialog({
+			preview: async () => emptyPreview(),
+			clone,
+			update,
+		});
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.click(screen.getByTestId("environments-conda-update-confirm-backup-check"));
@@ -484,7 +479,7 @@ describe("UpdateConfirmationDialog", () => {
 	it("does not touch the environment when the backup clone fails", async () => {
 		const update = vi.fn(async (_input: CondaPackagesUpdateInput) => updateResult());
 		const onUpdatingChange = vi.fn();
-		const { baseElement } = renderDialog({
+		const { baseElement } = await renderDialog({
 			preview: async () => emptyPreview(),
 			clone: async () => {
 				throw new Error("ENV_EXISTS: already exists");
@@ -504,7 +499,7 @@ describe("UpdateConfirmationDialog", () => {
 	});
 
 	it("rejects a backup name that collides with an existing environment or is malformed", async () => {
-		const { baseElement } = renderDialog({
+		const { baseElement } = await renderDialog({
 			preview: async () => emptyPreview(),
 			existingEnvs: [ENV, { name: "dev-backup", prefix: "/opt/anaconda3/envs/dev-backup" }],
 		});
@@ -534,7 +529,11 @@ describe("UpdateConfirmationDialog", () => {
 	it("Cancel closes without starting an update", async () => {
 		const update = vi.fn(async (_input: CondaPackagesUpdateInput) => updateResult());
 		const onClose = vi.fn();
-		const { baseElement } = renderDialog({ preview: async () => emptyPreview(), update, onClose });
+		const { baseElement } = await renderDialog({
+			preview: async () => emptyPreview(),
+			update,
+			onClose,
+		});
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.click(screen.getByRole("button", { name: "Cancel" }));

@@ -1,17 +1,52 @@
 import { app, session, webContents, type Session, type WebContents } from "electron";
 
-import {
-	BROWSER_LOCAL_FILE_SCHEME,
-	isBrowserLocalFileUrl,
-	type HostBrowserController,
-	type HostBrowserState,
-	type MainSdkHostBrowser,
-} from "@kilo-desktop/feature-sdk";
-
+import { BROWSER_LOCAL_FILE_SCHEME, isBrowserLocalFileUrl } from "./browser-local-file-url.js";
 import { serveBrowserLocalFile, type LocalFileAuthorizer } from "./browser-local-files.js";
 import { attachContextMenu, type ContextMenuShell } from "./ElectronContextMenu.js";
 
 export const BROWSER_PARTITION = "persist:kilo-desktop-browser";
+
+export interface HostBrowserState {
+	readonly webContentsId: number;
+	readonly url: string;
+	readonly title: string;
+	readonly faviconUrl: string;
+	readonly loading: boolean;
+	readonly canGoBack: boolean;
+	readonly canGoForward: boolean;
+	readonly zoomFactor: number;
+	readonly failure?: {
+		readonly code: number;
+		readonly description: string;
+	};
+}
+
+export interface HostBrowserController {
+	readonly webContentsId: number;
+	navigate(url: string): Promise<void>;
+	goBack(): void;
+	goForward(): void;
+	reload(): void;
+	hardReload(): void;
+	zoomIn(): void;
+	zoomOut(): void;
+	resetZoom(): void;
+	openDevTools(): void;
+	dispose(): void;
+}
+
+/** The embedded browser host plugins with the `browser-host` permission receive. */
+export interface HostBrowser {
+	readonly partition: string;
+	initialize(): void;
+	attach(webContentsId: number, onState: (state: HostBrowserState) => void): HostBrowserController;
+	/**
+	 * Serve local files to the browser guest at `kilo-file:` URLs (see
+	 * `browserLocalFileUrl`). `authorize` gets each request's canonical path
+	 * and decides whether it may be served; until it is set, nothing is.
+	 */
+	serveLocalFiles(authorize: (canonicalPath: string) => Promise<boolean>): void;
+}
 
 const ZOOM_LEVELS = [
 	0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5,
@@ -53,7 +88,7 @@ function cleanUserAgent(userAgent: string): string {
  * the web, where the URL itself could carry its data away. The user (URL
  * bar, Back) can still go anywhere.
  */
-export class ElectronBrowserHost implements MainSdkHostBrowser {
+export class ElectronBrowserHost implements HostBrowser {
 	readonly partition = BROWSER_PARTITION;
 	#session: Session | undefined;
 	#authorizeLocalFile: LocalFileAuthorizer | undefined;

@@ -90,7 +90,7 @@ jobs:
 
       - uses: ./plugins/notebook/actions/setup-native
 
-      - uses: ./plugins/kilo-server/actions/setup-cli
+      - uses: ./plugins/agent/actions/setup-cli
 
       - uses: ./.github/actions/cache-electron-rebuild
 

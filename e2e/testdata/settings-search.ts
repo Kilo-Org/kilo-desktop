@@ -3,15 +3,14 @@ export type SettingsSearchSection = { id: string; title: string };
 /** The settings siderail filters sections by a case-insensitive title substring match. */
 export const settingsSearchData = {
 	placeholder: "Search settings",
-	matchQuery: "NOTIF",
+	matchQuery: "APPEAR",
 	noMatchQuery: "no-such-settings-section",
-	matchingSection: { id: "notifications", title: "Notifications" },
+	matchingSection: { id: "appearance", title: "Appearance" },
 	nonMatchingSections: [
-		{ id: "appearance", title: "Appearance" },
-		{ id: "account", title: "Account" },
-		{ id: "privacy", title: "Privacy" },
+		{ id: "keyboard-shortcuts", title: "Shortcuts" },
+		{ id: "diagnostics", title: "Diagnostics" },
 	],
-	twoLetterQuery: "pr",
+	twoLetterQuery: "ap",
 } as const satisfies {
 	placeholder: string;
 	matchQuery: string;

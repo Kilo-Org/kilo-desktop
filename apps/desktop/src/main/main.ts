@@ -1,7 +1,8 @@
 import { app } from "electron";
 
-import { Application } from "./Application.js";
-import { PLUGIN_PROTOCOL_SCHEMES } from "./features/registry/bundled-plugin-manifests.js";
+import { BUNDLED_PLUGINS, protocolSchemes } from "@kilo-desktop/bundled-plugins";
+
+import { KernelApplication } from "./kernel/KernelApplication.js";
 import { hasForbiddenDebugArgs } from "./platform/debug-args.js";
 import { configureAppProfile } from "./platform/ElectronApp.js";
 import {
@@ -33,14 +34,6 @@ if (electronSquirrelStartup) {
 } else {
 	configureAppProfile();
 
-	// The anaconda-desktop-bridge sidecar reads its Sentry DSN from the
-	// BRIDGE_SENTRY_DSN env var. The value is a build-time constant per release
-	// track (empty for development); publish it into process.env so the bridge
-	// inherits it when SidecarCondaBackend spawns the child. Consent gating is
-	// handled separately by BRIDGE_TELEMETRY_ENABLED.
-	const bridgeSentryDsn = import.meta.env.VITE_BRIDGE_SENTRY_DSN;
-	if (bridgeSentryDsn) process.env.BRIDGE_SENTRY_DSN = bridgeSentryDsn;
-
 	// E2E runs must never reach PostHog, Sentry, or subprocess telemetry.
 	const preferences = new PreferencesStore(undefined, { forceDataCollectionOff: isE2eBuild() });
 	configureLogging(
@@ -50,9 +43,9 @@ if (electronSquirrelStartup) {
 		}),
 	);
 	initSentry(preferences);
-	registerDesktopSchemes(PLUGIN_PROTOCOL_SCHEMES);
+	registerDesktopSchemes(protocolSchemes(BUNDLED_PLUGINS));
 
-	void new Application(preferences).start().catch((error: unknown) => {
+	void new KernelApplication(preferences).start().catch((error: unknown) => {
 		createLogger("startup").error("Kilo Desktop failed to start.", error);
 		process.exitCode = 1;
 	});

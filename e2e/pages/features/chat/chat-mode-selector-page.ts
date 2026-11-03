@@ -18,6 +18,13 @@ import {
 import { getPage } from "@anaconda/playwright-utils/page-utils";
 
 import {
+	kiloServerConnection,
+	removeWorkSession,
+	renameWorkSession,
+	sessionListRow,
+	shownAgentSessionId,
+} from "./agent-session.js";
+import {
 	chatModeSelectorData,
 	canonicalizeAgentName,
 	type ChatModeSession,
@@ -31,8 +38,8 @@ import {
  * Owns the trigger and its label, the radio menu, the comparison of the
  * rendered list against the Kilo CLI catalog, and the send-then-read-back check
  * that the created session recorded the selected agent. The catalog and session
- * data come through the same renderer bridge the app uses
- * (`server.getConnection` → Basic-auth fetch), mirroring `kilo-code-page.ts`.
+ * data are read from the Kilo server with the connection kilo.agent's server
+ * domain hands out (`kilo.agent/server.connect`).
  */
 export class ChatModeSelectorPage {
 	private readonly trigger = () => getLocatorByTestId(chatModeSelectorData.locators.triggerTestId);
@@ -44,13 +51,10 @@ export class ChatModeSelectorPage {
 		getLocatorByRole("textbox", { name: chatModeSelectorData.locators.messageInputName });
 	private readonly sendButton = () =>
 		getLocatorByTestId(chatModeSelectorData.locators.sendButtonTestId);
-	private readonly sessionListItem = (sessionId: string) =>
-		getLocator(
-			`[data-kilo-session-id="${sessionId}"] ${chatModeSelectorData.locators.sessionListItem}`,
-		);
 
 	private sessionIdsBeforeSend: readonly string[] = [];
 	private lastSentSession: ChatModeSession | undefined;
+	private lastWorkSessionId: string | undefined;
 
 	async openModeSelector(): Promise<void> {
 		await this.openMenu();
@@ -159,6 +163,8 @@ export class ChatModeSelectorPage {
 		const connection = await this.getConnection();
 		const created = await this.awaitCreatedSession(connection);
 		this.lastSentSession = created;
+		this.lastWorkSessionId = await shownAgentSessionId();
+		await renameWorkSession(this.lastWorkSessionId, created.id);
 		await expect(created.agent, "Created session should record the selected mode").toBe(
 			expectedAgent,
 		);
@@ -169,14 +175,13 @@ export class ChatModeSelectorPage {
 			this.lastSentSession,
 			"A sent session must be verified before switching back to it",
 		).toBeDefined();
-		await click(this.sessionListItem(this.lastSentSession!.id));
+		await click(sessionListRow(this.lastSentSession!.id));
 	}
 
 	async cleanupSentSession(): Promise<void> {
-		if (!this.lastSentSession) return;
-		const connection = await this.getConnection();
-		await this.deleteSession(connection, this.lastSentSession);
+		if (this.lastWorkSessionId) await removeWorkSession(this.lastWorkSessionId);
 		this.lastSentSession = undefined;
+		this.lastWorkSessionId = undefined;
 	}
 
 	private async openMenu(): Promise<void> {
@@ -201,26 +206,8 @@ export class ChatModeSelectorPage {
 	}
 
 	private async fetchCliAgentNames(): Promise<string[]> {
-		const result = await getPage().evaluate(async () => {
-			type InvokeResult =
-				| { ok: true; value: unknown }
-				| { ok: false; error: { code: string; message: string } };
-			type DesktopGlobal = typeof globalThis & {
-				desktopApi: {
-					invoke(
-						channel: "feature:invoke",
-						input: { featureId: string; channel: string; args?: unknown },
-					): Promise<InvokeResult>;
-				};
-			};
-			const response = await (globalThis as DesktopGlobal).desktopApi.invoke("feature:invoke", {
-				featureId: "kilo-server",
-				channel: "server.getConnection",
-			});
-			if (!response.ok) {
-				return { ok: false as const, error: `[${response.error.code}] ${response.error.message}` };
-			}
-			const connection = response.value as KiloConnection;
+		const kilo = await this.getConnection();
+		const result = await getPage().evaluate(async (connection) => {
 			const authorization = `Basic ${btoa(`${connection.username}:${connection.password}`)}`;
 			const agentResponse = await fetch(`${connection.baseUrl}/agent`, {
 				headers: {
@@ -236,7 +223,7 @@ export class ChatModeSelectorPage {
 				};
 			}
 			return { ok: true as const, agents: (await agentResponse.json()) as KiloAgent[] };
-		});
+		}, kilo);
 
 		await expect(result.ok, result.ok ? "" : result.error).toBe(true);
 		if (!result.ok) return [];
@@ -248,28 +235,7 @@ export class ChatModeSelectorPage {
 	}
 
 	private async getConnection(): Promise<KiloConnection> {
-		const result = await getPage().evaluate(async () => {
-			type InvokeResult =
-				| { ok: true; value: unknown }
-				| { ok: false; error: { code: string; message: string } };
-			type DesktopGlobal = typeof globalThis & {
-				desktopApi: {
-					invoke(
-						channel: "feature:invoke",
-						input: { featureId: string; channel: string; args?: unknown },
-					): Promise<InvokeResult>;
-				};
-			};
-			const response = await (globalThis as DesktopGlobal).desktopApi.invoke("feature:invoke", {
-				featureId: "kilo-server",
-				channel: "server.getConnection",
-			});
-			return response.ok
-				? { ok: true as const, connection: response.value as KiloConnection }
-				: { ok: false as const, error: `[${response.error.code}] ${response.error.message}` };
-		});
-		await expect(result.ok, result.ok ? "" : result.error).toBe(true);
-		return result.ok ? result.connection : ({} as KiloConnection);
+		return (await kiloServerConnection()) as KiloConnection;
 	}
 
 	private async listSessions(connection: KiloConnection): Promise<ChatModeSession[]> {
@@ -302,29 +268,5 @@ export class ChatModeSelectorPage {
 			`A new session with a recorded agent should appear within ${chatModeSelectorData.polling.sessionTimeoutMs}ms`,
 		).toBeDefined();
 		return created!;
-	}
-
-	private async deleteSession(connection: KiloConnection, session: ChatModeSession): Promise<void> {
-		if (!session.directory) return;
-		const result = await getPage().evaluate(
-			async ({ currentConnection, currentSession }) => {
-				const authorization = `Basic ${btoa(`${currentConnection.username}:${currentConnection.password}`)}`;
-				const url = new URL(
-					`/session/${encodeURIComponent(currentSession.id)}`,
-					currentConnection.baseUrl,
-				);
-				url.searchParams.set("directory", currentSession.directory!);
-				const response = await fetch(url, {
-					method: "DELETE",
-					headers: { Authorization: authorization },
-				});
-				return { ok: response.ok, status: response.status };
-			},
-			{ currentConnection: connection, currentSession: session },
-		);
-		await expect(
-			result.ok,
-			`Session cleanup should succeed; DELETE returned ${result.status}`,
-		).toBe(true);
 	}
 }

@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { FeatureError } from "@kilo-desktop/feature-sdk";
+import { KernelError } from "@kilo-desktop/kernel";
 import { GitPatchTooLargeError, type GitPatchFile } from "@kilo-desktop/git-client";
 
 import { createGitProtocolHandler, type GitProtocolService } from "./git-protocol.js";
@@ -51,6 +51,7 @@ function requestFor(url: string, origin?: string): Request {
 }
 
 const DESKTOP_ORIGIN = "kilo-desktop://app";
+const allowedOrigins = () => [DESKTOP_ORIGIN, "kilo-desktop-dev://app"];
 
 describe("PATCH_ROUTE (URLPattern on a non-special scheme)", () => {
 	it("matches the patch endpoint with and without a query string", () => {
@@ -74,14 +75,22 @@ describe("PATCH_ROUTE (URLPattern on a non-special scheme)", () => {
 describe("createGitProtocolHandler", () => {
 	it("rejects a non-endpoint URL with 404", async () => {
 		const { service } = createFakeService(async () => null);
-		const handler = createGitProtocolHandler({ service, existsDirectory: alwaysExists });
+		const handler = createGitProtocolHandler({
+			service,
+			existsDirectory: alwaysExists,
+			allowedOrigins,
+		});
 		const response = await handler(requestFor("kilo-git://other/patch?cwd=/repo"));
 		expect(response.status).toBe(404);
 	});
 
 	it("rejects a missing or non-absolute cwd with 400", async () => {
 		const { service, createdPatchOptions } = createFakeService(async () => null);
-		const handler = createGitProtocolHandler({ service, existsDirectory: alwaysExists });
+		const handler = createGitProtocolHandler({
+			service,
+			existsDirectory: alwaysExists,
+			allowedOrigins,
+		});
 
 		expect((await handler(requestFor("kilo-git://diff/patch"))).status).toBe(400);
 		expect((await handler(requestFor("kilo-git://diff/patch?cwd="))).status).toBe(400);
@@ -91,7 +100,11 @@ describe("createGitProtocolHandler", () => {
 
 	it("rejects a cwd that is not an existing directory with 400", async () => {
 		const { service } = createFakeService(async () => null);
-		const handler = createGitProtocolHandler({ service, existsDirectory: neverExists });
+		const handler = createGitProtocolHandler({
+			service,
+			existsDirectory: neverExists,
+			allowedOrigins,
+		});
 		expect(
 			(await handler(requestFor("kilo-git://diff/patch?cwd=/definitely/not/a/repo"))).status,
 		).toBe(400);
@@ -99,30 +112,39 @@ describe("createGitProtocolHandler", () => {
 
 	it("returns 404 when the service says the directory is not a repository", async () => {
 		const { service } = createFakeService(async () => null);
-		const handler = createGitProtocolHandler({ service, existsDirectory: alwaysExists });
+		const handler = createGitProtocolHandler({
+			service,
+			existsDirectory: alwaysExists,
+			allowedOrigins,
+		});
 		const response = await handler(requestFor("kilo-git://diff/patch?cwd=/repo"));
 		expect(response.status).toBe(404);
 		expect(await response.text()).toContain("Not a git repository");
 	});
 
-	it("returns 503 with the FeatureError message when git is missing", async () => {
+	it("returns 503 with the KernelError message when git is missing", async () => {
 		const { service } = createFakeService(async () => {
-			throw new FeatureError("Git executable not found.", "BUSINESS");
+			throw new KernelError("BUSINESS", "Git executable not found.");
 		});
-		const handler = createGitProtocolHandler({ service, existsDirectory: alwaysExists });
+		const handler = createGitProtocolHandler({
+			service,
+			existsDirectory: alwaysExists,
+			allowedOrigins,
+		});
 		const response = await handler(requestFor("kilo-git://diff/patch?cwd=/repo"));
 		expect(response.status).toBe(503);
 		expect(await response.text()).toContain("Git executable not found");
 	});
 
-	it("returns 403 with the FeatureError message when the cwd is refused by the service", async () => {
+	it("returns 403 with the KernelError message when the cwd is refused by the service", async () => {
 		const { service } = createFakeService(async () => {
-			throw new FeatureError(
-				'"/outside/workspace" is not inside a workspace folder.',
-				"VALIDATION",
-			);
+			throw new KernelError("VALIDATION", '"/outside/workspace" is not inside a workspace folder.');
 		});
-		const handler = createGitProtocolHandler({ service, existsDirectory: alwaysExists });
+		const handler = createGitProtocolHandler({
+			service,
+			existsDirectory: alwaysExists,
+			allowedOrigins,
+		});
 		const response = await handler(requestFor("kilo-git://diff/patch?cwd=/outside/workspace"));
 		expect(response.status).toBe(403);
 		expect(await response.text()).toContain("not inside a workspace folder");
@@ -133,7 +155,11 @@ describe("createGitProtocolHandler", () => {
 		const { service } = createFakeService(async () => {
 			throw tooLarge;
 		});
-		const handler = createGitProtocolHandler({ service, existsDirectory: alwaysExists });
+		const handler = createGitProtocolHandler({
+			service,
+			existsDirectory: alwaysExists,
+			allowedOrigins,
+		});
 		const response = await handler(requestFor("kilo-git://diff/patch?cwd=/repo"));
 		expect(response.status).toBe(413);
 		expect(await response.text()).toBe(tooLarge.message);
@@ -143,7 +169,11 @@ describe("createGitProtocolHandler", () => {
 		const { service } = createFakeService(async () => {
 			throw new Error("secret detail from /Users/someone");
 		});
-		const handler = createGitProtocolHandler({ service, existsDirectory: alwaysExists });
+		const handler = createGitProtocolHandler({
+			service,
+			existsDirectory: alwaysExists,
+			allowedOrigins,
+		});
 		const response = await handler(requestFor("kilo-git://diff/patch?cwd=/repo"));
 		expect(response.status).toBe(500);
 		const body = await response.text();
@@ -156,7 +186,11 @@ describe("createGitProtocolHandler", () => {
 			"diff --git a/foo b/foo\n--- a/foo\n+++ b/foo\n@@ -1 +1 @@\n-a\n+b\n",
 		);
 		const { service, releasePatch } = createFakeService(async () => patch);
-		const handler = createGitProtocolHandler({ service, existsDirectory: alwaysExists });
+		const handler = createGitProtocolHandler({
+			service,
+			existsDirectory: alwaysExists,
+			allowedOrigins,
+		});
 
 		const response = await handler(requestFor("kilo-git://diff/patch?cwd=/repo", DESKTOP_ORIGIN));
 		expect(response.status).toBe(200);
@@ -176,7 +210,11 @@ describe("createGitProtocolHandler", () => {
 	it("releases the patch when the renderer cancels mid-stream", async () => {
 		const patch = await createFilePatch("diff --git a/foo b/foo\n@@ -1 +1 @@\n-a\n+b\n");
 		const { service, releasePatch } = createFakeService(async () => patch);
-		const handler = createGitProtocolHandler({ service, existsDirectory: alwaysExists });
+		const handler = createGitProtocolHandler({
+			service,
+			existsDirectory: alwaysExists,
+			allowedOrigins,
+		});
 
 		const response = await handler(requestFor("kilo-git://diff/patch?cwd=/repo"));
 		expect(response.body).not.toBeNull();
@@ -189,7 +227,11 @@ describe("createGitProtocolHandler", () => {
 	it("returns 200 with an empty body for a zero-byte patch", async () => {
 		const patch = await createFilePatch("");
 		const { service, releasePatch } = createFakeService(async () => patch);
-		const handler = createGitProtocolHandler({ service, existsDirectory: alwaysExists });
+		const handler = createGitProtocolHandler({
+			service,
+			existsDirectory: alwaysExists,
+			allowedOrigins,
+		});
 
 		const response = await handler(requestFor("kilo-git://diff/patch?cwd=/repo"));
 		expect(response.status).toBe(200);
@@ -200,28 +242,36 @@ describe("createGitProtocolHandler", () => {
 
 	it("omits the CORS header for a foreign origin", async () => {
 		const { service } = createFakeService(async () => null);
-		const handler = createGitProtocolHandler({ service, existsDirectory: alwaysExists });
+		const handler = createGitProtocolHandler({
+			service,
+			existsDirectory: alwaysExists,
+			allowedOrigins,
+		});
 		const response = await handler(
 			requestFor("kilo-git://diff/patch?cwd=/repo", "https://evil.example"),
 		);
 		expect(response.headers.get("Access-Control-Allow-Origin")).toBeNull();
 	});
 
-	it("echoes the development scheme origin too", async () => {
+	it("echoes every allowed origin", async () => {
 		const { service } = createFakeService(async () => null);
-		const handler = createGitProtocolHandler({ service, existsDirectory: alwaysExists });
+		const handler = createGitProtocolHandler({
+			service,
+			existsDirectory: alwaysExists,
+			allowedOrigins,
+		});
 		const response = await handler(
 			requestFor("kilo-git://diff/patch?cwd=/repo", "kilo-desktop-dev://app"),
 		);
 		expect(response.headers.get("Access-Control-Allow-Origin")).toBe("kilo-desktop-dev://app");
 	});
 
-	it("does not echo the development origin when the allowlist is production-only", async () => {
+	it("reads the allowlist per request and echoes only what it holds", async () => {
 		const { service } = createFakeService(async () => null);
 		const handler = createGitProtocolHandler({
 			service,
 			existsDirectory: alwaysExists,
-			allowedOrigins: [DESKTOP_ORIGIN],
+			allowedOrigins: () => [DESKTOP_ORIGIN],
 		});
 
 		const devResponse = await handler(

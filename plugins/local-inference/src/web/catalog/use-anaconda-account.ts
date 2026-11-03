@@ -1,17 +1,82 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+	createContext,
+	createElement,
+	useCallback,
+	useContext,
+	useEffect,
+	useMemo,
+	useState,
+	useSyncExternalStore,
+	type ReactNode,
+} from "react";
 
-import type { SDK } from "@kilo-desktop/feature-sdk";
-import type {
-	AnacondaAccountCapabilities,
-	AnacondaAccountResult,
-	AnacondaAccountSession,
+import type { DomainHandle } from "@kilo-desktop/kernel";
+import { useDomain } from "@kilo-desktop/kernel/web";
+import {
+	AnacondaAccount,
+	type AnacondaAccountResult,
+	type AnacondaAccountSession,
 } from "@kilo-desktop/plugin-anaconda-account/contracts";
 
-// Type-only: the anaconda-account plugin is optional at runtime; when it is
-// absent the capability lookup is null and the catalog falls back to its
-// generic error.
+import { localInferenceQueryKey } from "../local-inference.js";
+
+export type { AnacondaAccountResult, AnacondaAccountSession };
+
+/** The Anaconda account the catalog's API key comes with, as the catalog uses it. */
+export interface AnacondaAccountProvider {
+	subscribe(listener: (session: AnacondaAccountSession) => void): () => void;
+	peek(): AnacondaAccountSession;
+	getSession(): Promise<AnacondaAccountSession>;
+	signIn(): Promise<AnacondaAccountResult>;
+	cancelSignIn(): Promise<void>;
+}
+
+/**
+ * Where the catalog finds the Anaconda account: kilo.anaconda-account's
+ * domain object, provided by {@link AnacondaAccountBoundary}. Without it
+ * (the plugin removed) the catalog falls back to its generic error.
+ */
+export const AnacondaAccountContext = createContext<AnacondaAccountProvider | undefined>(undefined);
+
+/** Adapts `kilo.anaconda-account/account` to the catalog's provider shape. */
+export function anacondaAccountProvider(
+	account: DomainHandle<typeof AnacondaAccount>,
+): AnacondaAccountProvider {
+	return {
+		subscribe: (listener) => account.subscribe((state) => listener(state.session)),
+		peek: () => account.getState().session,
+		getSession: () => account.methods.session(undefined),
+		signIn: () => account.methods.signIn(undefined),
+		cancelSignIn: () => account.methods.cancelSignIn(undefined),
+	};
+}
+
+/**
+ * Provides the Anaconda account to the catalog, and refetches the catalog
+ * whenever the account's key changes (a sign-in, sign-out or rotated key).
+ */
+export function AnacondaAccountBoundary({ children }: { children: ReactNode }) {
+	const account = useDomain(AnacondaAccount);
+	const queryClient = useQueryClient();
+	const provider = useMemo(
+		() => (account ? anacondaAccountProvider(account) : undefined),
+		[account],
+	);
+
+	useEffect(
+		() =>
+			account?.on("changed", () => {
+				void queryClient.invalidateQueries({ queryKey: localInferenceQueryKey("listCatalog") });
+			}),
+		[account, queryClient],
+	);
+
+	return createElement(AnacondaAccountContext.Provider, { value: provider }, children);
+}
+
 export interface CatalogAnacondaAccount {
-	/** False when the anaconda-account plugin is not installed/active. */
+	/** False when no Anaconda account is provided. */
 	available: boolean;
 	session: AnacondaAccountSession;
 	resolving: boolean;
@@ -29,14 +94,14 @@ const unavailableSignIn = async (): Promise<AnacondaAccountResult> => ({
 });
 
 /** The Anaconda account as the model catalog needs it, tolerating a missing provider. */
-export function useCatalogAnacondaAccount(sdk: Pick<SDK, "plugins">): CatalogAnacondaAccount {
-	const account = sdk.plugins.get<AnacondaAccountCapabilities>("anaconda-account")?.account;
+export function useCatalogAnacondaAccount(): CatalogAnacondaAccount {
+	const account = useContext(AnacondaAccountContext);
 	const session = useSyncExternalStore(
 		account?.subscribe ?? noopSubscribe,
 		account?.peek ?? unavailablePeek,
 		account?.peek ?? unavailablePeek,
 	);
-	// Keyed by capability identity so a provider that registers (or re-registers)
+	// Keyed by provider identity so a provider that registers (or re-registers)
 	// after the first render starts out resolving rather than "settled".
 	const [resolvedFor, setResolvedFor] = useState<object | undefined>(undefined);
 	const resolving = account !== undefined && resolvedFor !== account;
@@ -59,13 +124,15 @@ export function useCatalogAnacondaAccount(sdk: Pick<SDK, "plugins">): CatalogAna
 		setSigningIn(true);
 		try {
 			return await account.signIn();
+		} catch (cause) {
+			return { ok: false, reason: cause instanceof Error ? cause.message : String(cause) };
 		} finally {
 			setSigningIn(false);
 		}
 	}, [account]);
 
 	const cancelSignIn = useCallback(async (): Promise<void> => {
-		await account?.cancelSignIn();
+		await account?.cancelSignIn().catch(() => undefined);
 	}, [account]);
 
 	return { available: account !== undefined, session, resolving, signingIn, signIn, cancelSignIn };

@@ -59,8 +59,8 @@ export function createNotebookPackagingPlan(
 ): NotebookPackagingPlan {
 	const pluginRoot = options.pluginRoot ?? resolvePluginRoot();
 	const exists = options.exists ?? existsSync;
-	const stagedNotebookBundle = path.join(pluginRoot, "build/notebook");
-	const stagedKiloPlugin = path.join(pluginRoot, "build/kilo-plugin");
+	const stagedNotebookBundle = path.join(pluginRoot, "resources/notebook");
+	const stagedKiloPlugin = path.join(pluginRoot, "resources/kilo-plugin");
 	const stagedRuntimed = path.join(pluginRoot, "resources/runtimed");
 	const platform = options.platform ?? process.platform;
 	const arch = options.arch ?? process.arch;

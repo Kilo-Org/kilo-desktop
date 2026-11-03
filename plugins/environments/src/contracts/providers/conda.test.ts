@@ -6,7 +6,6 @@ import {
 	condaChannelsAddInputSchema,
 	condaChannelsListResultSchema,
 	condaChannelsRemoveInputSchema,
-	condaContract,
 	condaDistributionSchema,
 	condaEnvSchema,
 	condaEnvsCheckPrefixInputSchema,
@@ -46,6 +45,7 @@ import {
 	repodataQuerySchema,
 	subdirSchema,
 } from "./conda.js";
+import { Conda, condaExecutable } from "../index.js";
 
 describe("environmentNameSchema", () => {
 	it("accepts conda-legal names", () => {
@@ -883,37 +883,50 @@ describe("conda.envs.checkPrefix schemas", () => {
 	});
 });
 
-describe("condaContract", () => {
-	it("declares every v1 tool the delivery plan pins", () => {
-		expect(new Set(Object.keys(condaContract))).toEqual(
+describe("the conda domain object", () => {
+	it("offers every method origin's conda contract had", () => {
+		expect(new Set(Object.keys(Conda.methods))).toEqual(
 			new Set([
-				"conda.envs.list",
-				"conda.envs.distributions",
-				"conda.envs.create",
-				"conda.envs.clone",
-				"conda.envs.createFromFile",
-				"conda.envs.delete",
-				"conda.envs.pickFile",
-				"conda.envs.readFile",
-				"conda.envs.prefixOptions",
-				"conda.envs.checkPrefix",
-				"conda.packages.list",
-				"conda.packages.install",
-				"conda.packages.remove",
-				"conda.packages.update",
-				"conda.packages.preview",
-				"conda.packages.previewInstall",
-				"conda.channels.list",
-				"conda.channels.add",
-				"conda.channels.remove",
-				"conda.repodata.find",
-				"conda.jobs.cancel",
+				"listEnvironments",
+				"distributions",
+				"createEnvironment",
+				"cloneEnvironment",
+				"createEnvironmentFromFile",
+				"deleteEnvironment",
+				"pickEnvironmentFile",
+				"readEnvironmentFile",
+				"prefixOptions",
+				"checkPrefix",
+				"listPackages",
+				"installPackages",
+				"removePackages",
+				"updatePackages",
+				"previewUpdate",
+				"previewInstall",
+				"listChannels",
+				"addChannel",
+				"removeChannel",
+				"findRepodata",
+				"cancelJob",
 			]),
 		);
 	});
 
-	it("uses matching input/output schemas so the compile-time InferContract type stays honest", () => {
-		expect(condaContract["conda.envs.list"].input.parse(undefined)).toBeUndefined();
-		expect(condaContract["conda.envs.list"].output.parse([])).toEqual([]);
+	it("reads no input for a list and answers environments", () => {
+		expect(Conda.methods.listEnvironments.input.parse(undefined)).toBeUndefined();
+		expect(Conda.methods.listEnvironments.output.parse([])).toEqual([]);
+	});
+});
+
+describe("condaExecutable", () => {
+	it("finds executables in bin, or Library\\bin with .exe on Windows", () => {
+		expect(condaExecutable("/tmp/env/", "llama-server", "other")).toBe("/tmp/env/bin/llama-server");
+		expect(condaExecutable("C:\\envs\\x", "llama-server", "win32")).toBe(
+			"C:\\envs\\x\\Library\\bin\\llama-server.exe",
+		);
+		expect(condaExecutable("C:\\envs\\x", "tool.exe", "win32")).toBe(
+			"C:\\envs\\x\\Library\\bin\\tool.exe",
+		);
+		expect(() => condaExecutable("/tmp/env", "../evil", "other")).toThrow("Invalid executable");
 	});
 });

@@ -13,7 +13,7 @@ import { constants as fsConstants } from "node:fs";
 import { mkdir, open, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { FeatureError } from "@kilo-desktop/feature-sdk";
+import { KernelError } from "@kilo-desktop/kernel";
 
 const STAGING_DIR_NAME = "import-staging";
 /** conda selects its parser by extension, so a staged copy keeps a YAML suffix. */
@@ -53,10 +53,10 @@ export async function readFileNoFollow(filePath: string, maxBytes: number): Prom
 	}
 }
 
-function fileTooLargeError(maxBytes: number): FeatureError {
-	return new FeatureError(
-		`File is too large to preview (max ${maxBytes / 1024 / 1024} MB).`,
+function fileTooLargeError(maxBytes: number): KernelError {
+	return new KernelError(
 		"VALIDATION",
+		`File is too large to preview (max ${maxBytes / 1024 / 1024} MB).`,
 	);
 }
 
@@ -115,12 +115,12 @@ export class ImportStagingRegistry {
 	async resolve(handle: string): Promise<ImportStagingEntry> {
 		await this.sweep();
 		const entry = this.#entries.get(handle);
-		if (!entry) throw new FeatureError(STAGED_NOT_FOUND_MESSAGE, "VALIDATION");
+		if (!entry) throw new KernelError("VALIDATION", STAGED_NOT_FOUND_MESSAGE);
 		// A handle binds exactly one import. Pin synchronously (no await between
 		// the check and the add) so a concurrent second resolve is rejected
 		// instead of racing the first release.
 		if (this.#pinned.has(handle)) {
-			throw new FeatureError("This file is already being imported.", "VALIDATION");
+			throw new KernelError("VALIDATION", "This file is already being imported.");
 		}
 		this.#pinned.add(handle);
 		try {
@@ -174,14 +174,14 @@ export class ImportStagingRegistry {
 		} catch {
 			this.#entries.delete(entry.handle);
 			await this.#removeDir(entry.handle);
-			throw new FeatureError(STAGED_NOT_FOUND_MESSAGE, "VALIDATION");
+			throw new KernelError("VALIDATION", STAGED_NOT_FOUND_MESSAGE);
 		}
 		if (sha256(bytes) !== entry.digest) {
 			this.#entries.delete(entry.handle);
 			await this.#removeDir(entry.handle);
-			throw new FeatureError(
-				"Staged file failed an integrity check — re-select the file.",
+			throw new KernelError(
 				"VALIDATION",
+				"Staged file failed an integrity check — re-select the file.",
 			);
 		}
 	}

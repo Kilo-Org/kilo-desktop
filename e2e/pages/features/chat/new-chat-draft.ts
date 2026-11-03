@@ -11,8 +11,9 @@ const DRAFT_SETTLED_TIMEOUT_MS = 30_000;
 const DRAFT_PROBE_TIMEOUT_MS = 5_000;
 
 /**
- * Put the chat pane into a fresh draft: the active thread has status "new"
- * and no messages, which is exactly when the composer draft footer renders.
+ * Show a chat draft: the New Session page's session starter (or an Agent
+ * pane before its first message), which is exactly when the composer draft
+ * footer renders.
  *
  * A one-shot "footer present? otherwise click New session" check raced the
  * runtime: right after a hash reset or thread-list hydration the active

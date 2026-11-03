@@ -1,15 +1,16 @@
 import { autoUpdater, type FeedURLOptions } from "electron";
 
 import {
+	getReleaseNotesUrl,
+	getUpdateFeedUrl,
+	type ReleaseTrack,
+	type UpdatePublishUrls,
+} from "$config/release.js";
+import {
 	desktopReleaseNotesSchema,
 	MAX_VISIBLE_RELEASE_NOTE_ITEMS,
 	type DesktopReleaseNotes,
-	type DesktopUpdateActionResult,
-	type DesktopUpdateState,
-	type ReleaseTrack,
-} from "@kilo-desktop/contracts";
-
-import { getReleaseNotesUrl, getUpdateFeedUrl, type UpdatePublishUrls } from "$config/release.js";
+} from "$config/release-notes.js";
 
 import { UpdateFeedError, type WindowsUpdateFeed } from "./WindowsUpdateFeed.js";
 
@@ -20,6 +21,31 @@ const MAX_RELEASE_NOTES_BYTES = 256 * 1024;
 const MAX_RELEASE_NOTE_GROUPS = 6;
 const MAX_RELEASE_NOTE_ITEM_LENGTH = 220;
 const SUPPORTED_PLATFORMS = new Set<NodeJS.Platform>(["darwin", "win32"]);
+
+/** The updater's state, published to plugins as `kernel/updater`. */
+export interface DesktopUpdateState {
+	readonly enabled: boolean;
+	readonly status:
+		| "disabled"
+		| "idle"
+		| "checking"
+		| "downloading"
+		| "downloaded"
+		| "up-to-date"
+		| "error";
+	readonly track: ReleaseTrack;
+	readonly currentVersion: string;
+	readonly availableVersion: string | null;
+	readonly downloadedVersion: string | null;
+	readonly releaseNotes: readonly DesktopReleaseNotes[];
+	readonly checkedAt: string | null;
+	readonly message: string | null;
+}
+
+export interface DesktopUpdateActionResult {
+	readonly accepted: boolean;
+	readonly state: DesktopUpdateState;
+}
 
 interface NativeUpdater {
 	setFeedURL(options: FeedURLOptions): void;

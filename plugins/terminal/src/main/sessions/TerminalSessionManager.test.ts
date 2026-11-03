@@ -1,30 +1,38 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { EventEmitter } from "node:events";
-
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { HostMessagePort } from "@kilo-desktop/feature-sdk/main";
+import type { KernelPort } from "@kilo-desktop/kernel";
 
 import { TERMINAL_PROTOCOL_VERSION, type TerminalConnectionArgs } from "../../contracts/session.js";
 import { historyPath } from "./history.js";
 import type { PtyAdapter, PtyExitEvent, PtyProcess, PtySpawnOptions } from "./pty.js";
 import { TerminalSessionManager } from "./TerminalSessionManager.js";
 
-class FakePort extends EventEmitter implements HostMessagePort {
+class FakePort implements KernelPort {
 	readonly messages: unknown[] = [];
-	started = false;
 	closed = false;
+	readonly #messageListeners = new Set<(data: unknown) => void>();
+	readonly #closeListeners = new Set<() => void>();
 	postMessage(message: unknown) {
 		this.messages.push(message);
 	}
-	start() {
-		this.started = true;
+	onMessage(listener: (data: unknown) => void) {
+		this.#messageListeners.add(listener);
+		return () => void this.#messageListeners.delete(listener);
+	}
+	onClose(listener: () => void) {
+		this.#closeListeners.add(listener);
+		return () => void this.#closeListeners.delete(listener);
 	}
 	close() {
+		if (this.closed) return;
 		this.closed = true;
-		this.emit("close");
+		for (const listener of [...this.#closeListeners]) listener();
+	}
+	send(data: unknown) {
+		for (const listener of [...this.#messageListeners]) listener(data);
 	}
 }
 
@@ -79,7 +87,11 @@ async function setup(
 		resolveCwd?: (cwd?: string) => Promise<string>;
 		logger?: { error(message: string, ...args: unknown[]): void };
 		platform?: NodeJS.Platform;
-		onSessionExited?: (identity: { sessionId: string; terminalId: string }) => void;
+		onSessionExited?: (
+			identity: { sessionId: string; terminalId: string },
+			exit: { exitCode: number | null; exitSignal: number | null },
+		) => void;
+		onLabelChanged?: (identity: { sessionId: string; terminalId: string }, label: string) => void;
 	} = {},
 ) {
 	const storageDir = await mkdtemp(path.join(os.tmpdir(), "terminal-plugin-"));
@@ -106,6 +118,7 @@ async function setup(
 			: {}),
 		...(options.logger ? { logger: options.logger } : {}),
 		...(options.onSessionExited ? { onSessionExited: options.onSessionExited } : {}),
+		...(options.onLabelChanged ? { onLabelChanged: options.onLabelChanged } : {}),
 	});
 	const args: TerminalConnectionArgs = {
 		protocolVersion: TERMINAL_PROTOCOL_VERSION,
@@ -149,8 +162,8 @@ describe("TerminalSessionManager", () => {
 		const { args, manager } = await setup();
 		const first = new FakePort();
 		await manager.attach(first, args);
-		first.emit("message", { data: { type: "input", requestId: "input-1", data: "a" } });
-		first.emit("message", { data: { type: "input", requestId: "input-2", data: "b" } });
+		first.send({ type: "input", requestId: "input-1", data: "a" });
+		first.send({ type: "input", requestId: "input-2", data: "b" });
 		expect(first.messages).toContainEqual({ type: "input-accepted", count: 2 });
 		first.close();
 
@@ -193,20 +206,20 @@ describe("TerminalSessionManager", () => {
 		const { args, manager, processes } = await setup();
 		const port = new FakePort();
 		await manager.attach(port, args);
-		port.emit("message", { data: { type: "input", requestId: "input-1", data: "pwd\r" } });
-		port.emit("message", { data: { type: "resize", cols: 90, rows: 20 } });
+		port.send({ type: "input", requestId: "input-1", data: "pwd\r" });
+		port.send({ type: "resize", cols: 90, rows: 20 });
 		expect(processes[0]!.writes).toEqual(["pwd\r"]);
 		expect(port.messages).toContainEqual({ type: "ack", requestId: "input-1", ok: true });
 		expect(processes[0]!.resizes).toEqual([[90, 20]]);
 
 		processes[0]!.emitData("old output\r\n");
-		port.emit("message", { data: { type: "clear", requestId: "clear-1" } });
+		port.send({ type: "clear", requestId: "clear-1" });
 		await vi.waitFor(() =>
 			expect(port.messages).toContainEqual({ type: "ack", requestId: "clear-1", ok: true }),
 		);
 		expect(port.messages).toContainEqual({ type: "cleared" });
 
-		port.emit("message", { data: { type: "restart", requestId: "restart-1" } });
+		port.send({ type: "restart", requestId: "restart-1" });
 		await vi.waitFor(() => expect(processes).toHaveLength(2));
 		expect(processes[0]!.kills).toEqual(["SIGTERM", "SIGKILL"]);
 		processes[1]!.emitExit({ exitCode: 7, signal: null });
@@ -252,12 +265,12 @@ describe("TerminalSessionManager", () => {
 		const { args, manager, processes } = await setup();
 		const port = new FakePort();
 		await manager.attach(port, args);
-		port.emit("message", { data: { type: "unknown" } });
+		port.send({ type: "unknown" });
 		await vi.waitFor(() =>
 			expect(port.messages).toContainEqual({ type: "error", message: "Invalid terminal message." }),
 		);
 		processes[0]!.emitExit({ exitCode: 0, signal: null });
-		port.emit("message", { data: { type: "input", requestId: "input-2", data: "pwd\r" } });
+		port.send({ type: "input", requestId: "input-2", data: "pwd\r" });
 		await vi.waitFor(() =>
 			expect(port.messages).toContainEqual({
 				type: "ack",
@@ -277,17 +290,22 @@ describe("TerminalSessionManager", () => {
 		processes[0]!.emitExit({ exitCode: 0, signal: null });
 
 		expect(onSessionExited).toHaveBeenCalledOnce();
-		expect(onSessionExited).toHaveBeenCalledWith({
-			sessionId: "chat-1",
-			terminalId: "terminal-1",
-		});
+		expect(onSessionExited).toHaveBeenCalledWith(
+			{ sessionId: "chat-1", terminalId: "terminal-1" },
+			{ exitCode: 0, exitSignal: null },
+		);
 		await manager.dispose();
 	});
 
 	it("publishes the foreground command as the label and restores the numbered label when idle", async () => {
 		let foregroundProcess = "vite" as string | null;
 		const inspectForegroundProcess = vi.fn(async () => foregroundProcess);
-		const { args, manager } = await setup({ inspectForegroundProcess, processPollIntervalMs: 1 });
+		const onLabelChanged = vi.fn();
+		const { args, manager } = await setup({
+			inspectForegroundProcess,
+			processPollIntervalMs: 1,
+			onLabelChanged,
+		});
 		const port = new FakePort();
 		await manager.attach(port, args);
 
@@ -297,10 +315,29 @@ describe("TerminalSessionManager", () => {
 			expect(port.messages).toContainEqual({ type: "label", label: "Terminal 1" }),
 		);
 		expect(inspectForegroundProcess).toHaveBeenCalledWith(10);
+		const identity = { sessionId: "chat-1", terminalId: "terminal-1" };
+		expect(onLabelChanged.mock.calls).toEqual([
+			[identity, "Terminal 1"],
+			[identity, "vite"],
+			[identity, "Terminal 1"],
+		]);
 		await manager.dispose();
 	});
 
-	it("persists sanitized history and deletes it only on explicit tab close", async () => {
+	it("reports whether a terminal's shell is running", async () => {
+		const { args, manager, processes } = await setup();
+		const identity = { sessionId: args.sessionId, terminalId: args.terminalId };
+		expect(manager.isRunning(identity)).toBe(false);
+
+		await manager.attach(new FakePort(), args);
+		expect(manager.isRunning(identity)).toBe(true);
+
+		processes[0]!.emitExit({ exitCode: 0, signal: null });
+		expect(manager.isRunning(identity)).toBe(false);
+		await manager.dispose();
+	});
+
+	it("persists sanitized history and deletes it only on explicit close", async () => {
 		const { args, manager, processes, storageDir } = await setup();
 		await manager.attach(new FakePort(), args);
 		processes[0]!.emitData("kept\u001b[6n\r\n");
@@ -315,7 +352,7 @@ describe("TerminalSessionManager", () => {
 		).rejects.toMatchObject({ code: "ENOENT" });
 	});
 
-	it("does not start a terminal when its tab closes while cwd resolution is pending", async () => {
+	it("does not start a terminal when it closes while cwd resolution is pending", async () => {
 		let resolveCwd!: (cwd: string) => void;
 		const pendingCwd = new Promise<string>((resolve) => {
 			resolveCwd = resolve;

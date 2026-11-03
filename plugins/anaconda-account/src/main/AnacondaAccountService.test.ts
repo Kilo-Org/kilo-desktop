@@ -27,7 +27,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 	});
 }
 
-/** Stateful fake of the shell `auth` capability slice (keyring + site). */
+/** Stateful fake of the credential store (keyring + site). */
 function fakeCredentials(
 	initialKey: string | null = null,
 	overrides: Partial<AnacondaCredentials> = {},
@@ -58,13 +58,9 @@ function fakeCredentials(
 
 const tokens = { access_token: "access-token", token_type: "bearer", raw: {} as never };
 
-function makeService(
-	options: Partial<AnacondaAccountServiceOptions> & {
-		credentials?: () => AnacondaCredentials | null;
-	} = {},
-) {
+function makeService(options: Partial<AnacondaAccountServiceOptions> = {}) {
 	return new AnacondaAccountService({
-		credentials: () => fakeCredentials().credentials,
+		credentials: fakeCredentials().credentials,
 		fetch: vi.fn<OAuthFetch>(async () => jsonResponse(whoamiBody)),
 		openExternal: async () => true,
 		logger: silentLogger,
@@ -85,7 +81,7 @@ describe("AnacondaAccountService session", () => {
 	it("is anonymous when no key is stored", async () => {
 		const { credentials } = fakeCredentials(null);
 		const fetch = vi.fn<OAuthFetch>();
-		const service = makeService({ credentials: () => credentials, fetch });
+		const service = makeService({ credentials, fetch });
 
 		await expect(service.getSession()).resolves.toEqual({ status: "anonymous" });
 		expect(fetch).not.toHaveBeenCalled();
@@ -94,7 +90,7 @@ describe("AnacondaAccountService session", () => {
 	it("is authenticated from whoami when a key is stored", async () => {
 		const { credentials } = fakeCredentials("api-key");
 		const fetch = vi.fn<OAuthFetch>(async () => jsonResponse(whoamiBody));
-		const service = makeService({ credentials: () => credentials, fetch });
+		const service = makeService({ credentials, fetch });
 
 		await expect(service.getSession()).resolves.toEqual(SIGNED_IN);
 		expect(fetch).toHaveBeenCalledWith(
@@ -106,7 +102,7 @@ describe("AnacondaAccountService session", () => {
 	it.each([401, 403])("treats a rejected key (%i) as anonymous", async (status) => {
 		const { credentials } = fakeCredentials("bad-key");
 		const service = makeService({
-			credentials: () => credentials,
+			credentials,
 			fetch: async () => new Response("no", { status }),
 		});
 
@@ -116,15 +112,15 @@ describe("AnacondaAccountService session", () => {
 	it("reports an error for network, server and payload failures", async () => {
 		const { credentials } = fakeCredentials("api-key");
 		const offline = makeService({
-			credentials: () => credentials,
+			credentials,
 			fetch: async () => Promise.reject(new Error("offline")),
 		});
 		const serverError = makeService({
-			credentials: () => credentials,
+			credentials,
 			fetch: async () => new Response("boom", { status: 500 }),
 		});
 		const badPayload = makeService({
-			credentials: () => credentials,
+			credentials,
 			fetch: async () => jsonResponse({}),
 		});
 
@@ -140,7 +136,7 @@ describe("AnacondaAccountService session", () => {
 		const { credentials } = fakeCredentials("api-key", {
 			getOAuthSettings: async () => Promise.reject(new Error("bad config.toml")),
 		});
-		const service = makeService({ credentials: () => credentials });
+		const service = makeService({ credentials });
 
 		await expect(service.getSession()).resolves.toEqual({
 			status: "error",
@@ -148,21 +144,24 @@ describe("AnacondaAccountService session", () => {
 		});
 	});
 
-	it("reports sign-in unavailable when the shell auth capability is missing", async () => {
-		const service = makeService({ credentials: () => null });
+	it("reports sign-in unavailable when the host cannot open a browser", async () => {
+		const service = new AnacondaAccountService({
+			credentials: fakeCredentials("api-key").credentials,
+			fetch: vi.fn<OAuthFetch>(async () => jsonResponse(whoamiBody)),
+			openExternal: undefined,
+			logger: silentLogger,
+		});
 
-		await expect(service.getSession()).resolves.toEqual({
+		await expect(service.login()).resolves.toEqual({
 			status: "error",
 			reason: "Anaconda sign-in is unavailable.",
 		});
-		await expect(service.login()).resolves.toMatchObject({ status: "error" });
-		await expect(service.logout()).resolves.toMatchObject({ status: "error" });
 	});
 
 	it("caches the session until refresh and shares concurrent resolves", async () => {
 		const { credentials } = fakeCredentials("api-key");
 		const fetch = vi.fn<OAuthFetch>(async () => jsonResponse(whoamiBody));
-		const service = makeService({ credentials: () => credentials, fetch });
+		const service = makeService({ credentials, fetch });
 
 		await Promise.all([service.getSession(), service.getSession()]);
 		await service.getSession();
@@ -174,7 +173,7 @@ describe("AnacondaAccountService session", () => {
 
 	it("notifies on session transitions and on silent key rotation, not on no-ops", async () => {
 		const { credentials, setKey } = fakeCredentials("key-1");
-		const service = makeService({ credentials: () => credentials });
+		const service = makeService({ credentials });
 		const listener = vi.fn();
 		service.onChanged(listener);
 
@@ -201,7 +200,7 @@ describe("AnacondaAccountService login", () => {
 		const login = vi.fn<OAuthLogin>(async () => tokens);
 		const exchange = vi.fn<ApiKeyExchanger>(async () => "new-key");
 		const service = makeService({
-			credentials: () => credentials,
+			credentials,
 			login,
 			exchangeForApiKey: exchange,
 		});
@@ -237,7 +236,7 @@ describe("AnacondaAccountService login", () => {
 			}),
 		});
 		const login = vi.fn<OAuthLogin>(async () => tokens);
-		const service = makeService({ credentials: () => credentials, login });
+		const service = makeService({ credentials, login });
 
 		await service.login();
 
@@ -249,7 +248,7 @@ describe("AnacondaAccountService login", () => {
 			getOAuthSettings: async () => ({ domain: "anaconda.test", clientId: "" }),
 		});
 		const createAuthorizeServer = vi.fn();
-		const service = makeService({ credentials: () => credentials, createAuthorizeServer });
+		const service = makeService({ credentials, createAuthorizeServer });
 
 		await expect(service.login()).resolves.toMatchObject({ status: "error" });
 		expect(createAuthorizeServer).not.toHaveBeenCalled();
@@ -257,7 +256,7 @@ describe("AnacondaAccountService login", () => {
 
 	it("fails when the browser cannot be opened outside Electron", async () => {
 		const service = new AnacondaAccountService({
-			credentials: () => fakeCredentials().credentials,
+			credentials: fakeCredentials().credentials,
 			fetch: vi.fn<OAuthFetch>(),
 			openExternal: undefined,
 			logger: silentLogger,
@@ -272,11 +271,11 @@ describe("AnacondaAccountService login", () => {
 	it("returns the failure reason and stores nothing when a step fails", async () => {
 		const { credentials } = fakeCredentials(null);
 		const authorizeFails = makeService({
-			credentials: () => credentials,
+			credentials,
 			login: async () => Promise.reject(new Error("Timed out waiting for OAuth callback")),
 		});
 		const exchangeFails = makeService({
-			credentials: () => credentials,
+			credentials,
 			exchangeForApiKey: async () => Promise.reject(new Error("API key exchange failed (500)")),
 		});
 
@@ -326,7 +325,7 @@ describe("AnacondaAccountService login", () => {
 			await deps.authorize("https://issuer/authorize");
 			return tokens;
 		});
-		const service = makeService({ credentials: () => credentials, createAuthorizeServer, login });
+		const service = makeService({ credentials, createAuthorizeServer, login });
 
 		const first = service.login();
 		const second = service.login();
@@ -378,7 +377,7 @@ describe("AnacondaAccountService login", () => {
 		const { credentials } = fakeCredentials(null);
 		const { authorizer, login, approve } = pendingAuthorizer();
 		const service = makeService({
-			credentials: () => credentials,
+			credentials,
 			createAuthorizeServer: async () => authorizer,
 			login,
 		});
@@ -398,7 +397,7 @@ describe("AnacondaAccountService login", () => {
 		const { credentials } = fakeCredentials(null);
 		const { authorizer, login } = pendingAuthorizer();
 		const service = makeService({
-			credentials: () => credentials,
+			credentials,
 			createAuthorizeServer: async () => authorizer,
 			login,
 		});
@@ -428,7 +427,7 @@ describe("AnacondaAccountService login", () => {
 				}),
 		);
 		const service = makeService({
-			credentials: () => credentials,
+			credentials,
 			createAuthorizeServer: async () => authorizer,
 			login,
 		});
@@ -451,7 +450,7 @@ describe("AnacondaAccountService login", () => {
 		const { credentials } = fakeCredentials(null, {
 			saveApiKey: async () => Promise.reject(new Error("The Anaconda keyring is read-only.")),
 		});
-		const service = makeService({ credentials: () => credentials });
+		const service = makeService({ credentials });
 
 		await expect(service.login()).resolves.toEqual({
 			status: "error",
@@ -463,7 +462,7 @@ describe("AnacondaAccountService login", () => {
 describe("AnacondaAccountService logout", () => {
 	it("deletes the key and publishes anonymous", async () => {
 		const { credentials } = fakeCredentials("api-key");
-		const service = makeService({ credentials: () => credentials });
+		const service = makeService({ credentials });
 		await service.getSession();
 		const listener = vi.fn();
 		service.onChanged(listener);
@@ -479,7 +478,7 @@ describe("AnacondaAccountService logout", () => {
 		const { credentials } = fakeCredentials("api-key", {
 			deleteApiKey: async () => Promise.reject(new Error("The Anaconda keyring is read-only.")),
 		});
-		const service = makeService({ credentials: () => credentials });
+		const service = makeService({ credentials });
 		await service.getSession();
 
 		await expect(service.logout()).resolves.toEqual({

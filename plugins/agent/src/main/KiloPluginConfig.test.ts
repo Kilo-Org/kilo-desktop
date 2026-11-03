@@ -1,0 +1,102 @@
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { KiloPluginConfig } from "./KiloPluginConfig.js";
+
+describe("KiloPluginConfig", () => {
+	let tempDirectory: string;
+	let pluginDirectory: string;
+	let sourcePath: string;
+
+	beforeEach(async () => {
+		tempDirectory = await mkdtemp(path.join(tmpdir(), "kilo-plugin-config-"));
+		pluginDirectory = path.join(tempDirectory, "runtime", "kilo-plugins");
+		sourcePath = path.join(tempDirectory, "notebooks.js");
+		await writeFile(sourcePath, "export default { id: 'notebooks' };\n");
+	});
+
+	afterEach(async () => {
+		await rm(tempDirectory, { recursive: true, force: true });
+	});
+
+	it("lets a kernel plugin take over the file origin's short source id installed", async () => {
+		const config = new KiloPluginConfig(pluginDirectory);
+		await config.install("notebook", "notebooks", sourcePath);
+
+		await expect(config.listOwnedPluginIds("kilo.notebook")).resolves.toEqual(["notebooks"]);
+		await expect(config.install("kilo.notebook", "notebooks", sourcePath)).resolves.toEqual({
+			kind: "written",
+			reason: "updated",
+		});
+		await expect(
+			readFile(path.join(pluginDirectory, "anaconda-notebooks.js"), "utf8"),
+		).resolves.toMatch(/^\/\/ Kilo Desktop managed plugin: kilo\.notebook\/notebooks\n/);
+		await expect(config.install("kilo.other", "notebooks", sourcePath)).resolves.toMatchObject({
+			kind: "skipped-error",
+		});
+		await expect(config.remove("kilo.notebook", "notebooks")).resolves.toEqual({
+			kind: "removed",
+			reason: "explicit",
+		});
+	});
+
+	it("installs, updates, and removes a Desktop-owned Kilo plugin", async () => {
+		const config = new KiloPluginConfig(pluginDirectory);
+
+		await expect(config.install("notebook", "notebooks", sourcePath)).resolves.toEqual({
+			kind: "written",
+			reason: "created",
+		});
+		const installedPath = path.join(pluginDirectory, "anaconda-notebooks.js");
+		expect(await readFile(installedPath, "utf8")).toBe(
+			"// Kilo Desktop managed plugin: notebook/notebooks\n" +
+				"export default { id: 'notebooks' };\n",
+		);
+
+		await expect(config.install("notebook", "notebooks", sourcePath)).resolves.toEqual({
+			kind: "skipped",
+			reason: "up-to-date",
+		});
+		await writeFile(sourcePath, "export default { id: 'notebooks-v2' };\n");
+		await expect(config.install("notebook", "notebooks", sourcePath)).resolves.toEqual({
+			kind: "written",
+			reason: "updated",
+		});
+		await expect(config.remove("notebook", "notebooks")).resolves.toEqual({
+			kind: "removed",
+			reason: "explicit",
+		});
+		await expect(readFile(installedPath)).rejects.toThrow(/ENOENT/);
+	});
+
+	it("lists only plugins owned by the requested source", async () => {
+		const otherSourcePath = path.join(tempDirectory, "other.js");
+		await writeFile(otherSourcePath, "export default { id: 'other' };\n");
+		const config = new KiloPluginConfig(pluginDirectory);
+		await config.install("notebook", "notebooks", sourcePath);
+		await config.install("other-feature", "other", otherSourcePath);
+
+		await expect(config.listOwnedPluginIds("notebook")).resolves.toEqual(["notebooks"]);
+		await expect(config.listOwnedPluginIds("other-feature")).resolves.toEqual(["other"]);
+	});
+
+	it("refuses to overwrite or remove a plugin file it does not own", async () => {
+		await mkdir(pluginDirectory, { recursive: true });
+		const installedPath = path.join(pluginDirectory, "anaconda-notebooks.js");
+		await writeFile(installedPath, "export default { id: 'user-plugin' };\n");
+		const config = new KiloPluginConfig(pluginDirectory);
+
+		await expect(config.install("notebook", "notebooks", sourcePath)).resolves.toEqual({
+			kind: "skipped-error",
+			reason: "plugin file is not owned by notebook",
+		});
+		await expect(config.remove("notebook", "notebooks")).resolves.toEqual({
+			kind: "skipped",
+			reason: "not-owned",
+		});
+		expect(await readFile(installedPath, "utf8")).toContain("user-plugin");
+	});
+});

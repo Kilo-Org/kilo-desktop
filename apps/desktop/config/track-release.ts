@@ -1,7 +1,6 @@
 import path from "node:path";
 
-import { MAX_PUBLISHED_RELEASE_NOTE_ITEMS } from "@kilo-desktop/contracts";
-
+import { MAX_PUBLISHED_RELEASE_NOTE_ITEMS } from "./release-notes.js";
 import { getAppIdentity } from "./app-identity.js";
 import { getReleasePrefix, type ReleaseTrack } from "./release.js";
 

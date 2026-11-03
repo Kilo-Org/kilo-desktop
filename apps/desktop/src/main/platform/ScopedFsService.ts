@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { featureIdPattern } from "@kilo-desktop/feature-sdk";
+import { isPluginId } from "@kilo-desktop/kernel";
 
 import { BusinessError } from "./BusinessError.js";
 
@@ -24,8 +24,8 @@ export class ScopedFsService {
 	constructor(private readonly resolveSandboxRoot: (featureId: string) => string) {}
 
 	async #resolve(featureId: string, relativePath: string): Promise<string> {
-		if (!featureIdPattern.test(featureId)) {
-			throw new BusinessError("sdk.fs: invalid feature id.");
+		if (!isPluginId(featureId)) {
+			throw new BusinessError("sdk.fs: invalid plugin id.");
 		}
 		if (path.isAbsolute(relativePath)) {
 			throw new BusinessError("sdk.fs paths must be relative to the feature's sandbox directory.");

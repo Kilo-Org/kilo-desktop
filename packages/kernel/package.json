@@ -1,0 +1,46 @@
+{
+	"name": "@kilo-desktop/kernel",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "The plugin kernel: plugin runtime, extension and domain registries, lifecycle, commands and services. Knows nothing about the product.",
+	"exports": {
+		".": "./src/index.ts",
+		"./main": "./src/main/index.ts",
+		"./web": "./src/web/index.ts",
+		"./testing": "./src/testing/index.ts",
+		"./testing/plugin-host": "./src/testing/plugin-host.tsx"
+	},
+	"scripts": {
+		"check": "tsc --noEmit -p tsconfig.json",
+		"test": "vitest run",
+		"coverage": "vitest run --coverage"
+	},
+	"peerDependencies": {
+		"@kilo-desktop/ui": "^0.1.0",
+		"lucide-react": "^1.27.0",
+		"react": "^19.0.0",
+		"react-dom": "^19.0.0",
+		"zod": "^4.4.3"
+	},
+	"devDependencies": {
+		"@kilo-desktop/ui": "workspace:*",
+		"@tailwindcss/vite": "^4.3.3",
+		"@testing-library/react": "^16.3.2",
+		"@types/react": "^19.2.17",
+		"@types/react-dom": "^19.2.3",
+		"@vitejs/plugin-react": "^6.0.4",
+		"@vitest/browser": "5.0.5",
+		"@vitest/browser-playwright": "5.0.5",
+		"@vitest/coverage-v8": "catalog:",
+		"lucide-react": "catalog:",
+		"playwright": "catalog:",
+		"react": "^19.2.8",
+		"react-dom": "^19.2.8",
+		"tailwindcss": "^4.3.3",
+		"typescript": "catalog:",
+		"vite": "catalog:",
+		"vitest": "catalog:",
+		"zod": "catalog:"
+	}
+}

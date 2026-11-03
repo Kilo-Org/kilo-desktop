@@ -12,9 +12,9 @@ Electron e2e tests live in the root `e2e/` workspace package (`@kilo-desktop/e2e
 | Need                               | Tier                                | Where                      |
 | ---------------------------------- | ----------------------------------- | -------------------------- |
 | Pure logic                         | Unit `*.test.ts`                    | Co-located                 |
-| Real SQLite / FeatureRouter        | Integration `*.integration.test.ts` | Co-located in desktop      |
-| One component + `createFakeSdk`    | Component `*.browser.test.tsx`      | Co-located in web          |
-| Router + providers                 | App-level `*.app.test.tsx`          | `apps/web/src/app/`        |
+| Real files / processes / kernel    | Integration `*.integration.test.ts` | Co-located                 |
+| One component in a test kernel     | Component `*.browser.test.tsx`      | Co-located in the plugin   |
+| Kernel boot + bundled plugins      | App-level `*.app.test.tsx`          | `apps/web/src/kernel/`     |
 | Packaged Electron / IPC / protocol | E2E `@smoke` / full                 | `e2e/` or `plugins/*/e2e/` |
 
 **If it does not need Electron IPC or the packaged binary, it belongs in a Vitest browser test — not e2e.**

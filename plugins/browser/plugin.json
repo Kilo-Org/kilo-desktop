@@ -1,32 +1,105 @@
 {
-	"id": "browser",
+	"manifestVersion": 1,
+	"id": "kilo.browser",
 	"displayName": "Browser",
 	"version": "1.0.0",
-	"main": "./src/main/index.ts",
-	"web": "./src/web/index.ts",
+	"description": "Browse the web, and a workspace's HTML pages, in a session's panes.",
+	"requires": {
+		"kilo.workspaces/workspace": "optional",
+		"kilo.sessions/session": "optional",
+		"kilo.sessions/pane": "optional",
+		"kilo.sessions/opener": "optional",
+		"kilo.workbench/navigator": "optional",
+		"kilo.workbench/pane-launcher": "optional",
+		"kilo.chat/markdown-extension": "optional",
+		"kilo.agent/tool": "optional",
+		"kilo.telemetry/telemetry": "optional",
+		"kilo.telemetry/telemetry-event": "optional"
+	},
+	"permissions": {
+		"host": ["browser-host", "shell"]
+	},
+	"domains": [
+		{
+			"id": "pages",
+			"home": "main",
+			"description": "The web page each Browser pane shows: attaching its guest, navigation and page commands."
+		}
+	],
 	"contributes": {
-		"providers": [],
-		"routes": [],
-		"nav": [],
-		"zones": [
-			{
-				"zone": "kilo-ui/chat-markdown-extension",
-				"id": "web-links",
-				"component": "BrowserMarkdownExtension",
-				"label": "Web links in a Browser tab",
-				"description": "Open web links from chat messages in a Browser tab of the session.",
-				"priority": 50
-			},
-			{
-				"zone": "kilo-ui/chat-right-panel-tab",
-				"id": "browser",
-				"component": "BrowserView",
-				"label": "Browser",
-				"description": "Browse the web alongside this session.",
-				"icon": "BrowserIcon",
-				"mountPolicy": "keep-alive",
-				"priority": 40
-			}
-		]
+		"extensions": {
+			"kilo.sessions/pane": [
+				{
+					"id": "browser",
+					"title": "Browser",
+					"description": "Browse the web alongside this session.",
+					"launch": {
+						"newSession": true,
+						"inSession": true
+					},
+					"keepAlive": true,
+					"order": 60,
+					"availableWhen": {
+						"all": ["kernel/desktop"]
+					},
+					"unavailableHint": "The browser is available in the desktop app."
+				}
+			],
+			"kilo.sessions/opener": [
+				{
+					"id": "url",
+					"match": {
+						"type": "kilo.browser/url"
+					},
+					"pane": "kilo.browser/browser"
+				},
+				{
+					"id": "html-file",
+					"match": {
+						"type": "kilo.workspaces/file",
+						"pattern": "*.html"
+					},
+					"pane": "kilo.browser/browser"
+				},
+				{
+					"id": "htm-file",
+					"match": {
+						"type": "kilo.workspaces/file",
+						"pattern": "*.htm"
+					},
+					"pane": "kilo.browser/browser"
+				}
+			],
+			"kilo.chat/markdown-extension": [
+				{
+					"id": "web-links"
+				}
+			],
+			"kilo.agent/tool": [
+				{
+					"id": "open",
+					"title": "Open web page",
+					"external": false
+				}
+			],
+			"kernel/command": [
+				{
+					"id": "open-browser",
+					"title": "Open Browser",
+					"category": "Tabs",
+					"order": 42,
+					"keybinding": "Mod+Shift+B",
+					"when": {
+						"all": ["kilo.workbench/sessionActive", "kernel/desktop"]
+					}
+				}
+			],
+			"kilo.telemetry/telemetry-event": [
+				{
+					"id": "tab-opened",
+					"name": "Browser Tab Opened"
+				}
+			]
+		}
 	}
 }

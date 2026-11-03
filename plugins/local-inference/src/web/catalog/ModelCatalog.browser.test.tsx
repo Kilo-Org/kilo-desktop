@@ -1,18 +1,16 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import { FeatureError } from "@kilo-desktop/feature-sdk";
-import { SdkProvider } from "@kilo-desktop/sdk-react";
-import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
+import { KernelError } from "@kilo-desktop/kernel";
 
-import {
-	localInferenceContract,
-	type LocalInferenceHardwareProfile,
-	type ModelCatalogCapabilities,
-	type ModelCatalogEntry,
-} from "../../contracts/schemas.js";
+import type {
+	LocalInferenceHardwareProfile,
+	ModelCatalogCapabilities,
+	ModelCatalogEntry,
+} from "../../contracts/index.js";
+import { bootLocalInferenceHost } from "../../test/local-inference-host.js";
+import { AnacondaAccountContext } from "./use-anaconda-account.js";
 import { LocalModelCatalog } from "./ModelCatalog.js";
 
 afterEach(cleanup);
@@ -49,16 +47,14 @@ const recommendedCatalogModel: ModelCatalogEntry = {
 	capabilities: { chat: true, embedding: false, vision: false, toolCalling: true },
 };
 
-function renderCatalog(
+async function renderCatalog(
 	capabilities: ModelCatalogCapabilities | undefined,
 	memoryTotalBytes = 24 * 1024 ** 3,
 	extraModels: ModelCatalogEntry[] = [],
 	onSelectModel: (model: ModelCatalogEntry) => void = () => undefined,
 	containerWidth = "60rem",
 ) {
-	const sdk = createFakeSdk({
-		featureId: "local-inference",
-		channels: localInferenceContract,
+	const host = await bootLocalInferenceHost({
 		handlers: {
 			"catalog.list": async () => ({
 				models: [
@@ -98,23 +94,16 @@ function renderCatalog(
 			}),
 		},
 	});
-	const system = createFakeFeatureSystem({ sdks: { "local-inference": sdk } });
-	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-
-	return render(
-		<SdkProvider system={system}>
-			<QueryClientProvider client={queryClient}>
-				<div style={{ width: containerWidth }}>
-					<LocalModelCatalog onSelectModel={onSelectModel} />
-				</div>
-			</QueryClientProvider>
-		</SdkProvider>,
+	return host.render(
+		<div style={{ width: containerWidth }}>
+			<LocalModelCatalog onSelectModel={onSelectModel} />
+		</div>,
 	);
 }
 
 describe("LocalModelCatalog", () => {
 	it("shows catalog models in a table", async () => {
-		const { baseElement } = renderCatalog(supportedCapabilities);
+		const { baseElement } = await renderCatalog(supportedCapabilities);
 		const screen = page.elementLocator(baseElement);
 		const table = screen.getByTestId("model-catalog-table");
 
@@ -220,7 +209,7 @@ describe("LocalModelCatalog", () => {
 	});
 
 	it("searches the catalog without hiding recommendations", async () => {
-		const { baseElement } = renderCatalog(supportedCapabilities, 32 * 1024 ** 3, [
+		const { baseElement } = await renderCatalog(supportedCapabilities, 32 * 1024 ** 3, [
 			recommendedCatalogModel,
 		]);
 		const screen = page.elementLocator(baseElement);
@@ -249,7 +238,7 @@ describe("LocalModelCatalog", () => {
 	});
 
 	it("uses two columns when the catalog pane is narrow", async () => {
-		const { baseElement } = renderCatalog(
+		const { baseElement } = await renderCatalog(
 			supportedCapabilities,
 			32 * 1024 ** 3,
 			[recommendedCatalogModel],
@@ -271,7 +260,7 @@ describe("LocalModelCatalog", () => {
 
 	it("selects a recommended model for its detail view", async () => {
 		const onSelectModel = vi.fn();
-		const { baseElement } = renderCatalog(
+		const { baseElement } = await renderCatalog(
 			supportedCapabilities,
 			32 * 1024 ** 3,
 			[recommendedCatalogModel],
@@ -287,7 +276,7 @@ describe("LocalModelCatalog", () => {
 	});
 
 	it("handles catalog rows created before capabilities were added", async () => {
-		const { baseElement } = renderCatalog(undefined);
+		const { baseElement } = await renderCatalog(undefined);
 		const screen = page.elementLocator(baseElement);
 
 		await expect
@@ -318,7 +307,7 @@ describe("LocalModelCatalog", () => {
 			name: "Acme Model",
 			publisher: "Acme",
 		};
-		const { baseElement } = renderCatalog(supportedCapabilities, 24 * 1024 ** 3, [
+		const { baseElement } = await renderCatalog(supportedCapabilities, 24 * 1024 ** 3, [
 			exampleLabs,
 			acmeModel,
 		]);
@@ -329,7 +318,7 @@ describe("LocalModelCatalog", () => {
 	});
 
 	it("reports models that exceed available memory", async () => {
-		const { baseElement } = renderCatalog(supportedCapabilities, 1024 ** 3);
+		const { baseElement } = await renderCatalog(supportedCapabilities, 1024 ** 3);
 		const fitLabel = page.elementLocator(baseElement).getByText("Doesn’t Fit", { exact: true });
 
 		await expect.element(fitLabel).toBeVisible();
@@ -363,7 +352,7 @@ describe("LocalModelCatalog", () => {
 				toolCalling: false,
 			},
 		};
-		const { baseElement } = renderCatalog(
+		const { baseElement } = await renderCatalog(
 			{ ...supportedCapabilities, embedding: false },
 			24 * 1024 ** 3,
 			[legacyModel],
@@ -401,7 +390,7 @@ describe("LocalModelCatalog", () => {
 				},
 			],
 		};
-		const { baseElement } = renderCatalog(
+		const { baseElement } = await renderCatalog(
 			{ ...supportedCapabilities, embedding: false },
 			32 * 1024 ** 3,
 			[qwen35, recommendedCatalogModel],
@@ -424,7 +413,7 @@ type AuthSession =
 	| { status: "error"; reason: string };
 
 describe("LocalModelCatalog Anaconda sign-in", () => {
-	function renderWithoutKey(
+	async function renderWithoutKey(
 		initial: AuthSession = { status: "anonymous" },
 		withProvider = true,
 		options: { catalogAlwaysFails?: boolean; signInWaitsForBrowser?: boolean } = {},
@@ -450,8 +439,9 @@ describe("LocalModelCatalog Anaconda sign-in", () => {
 			publish(session);
 		};
 		const list = vi.fn(async () => {
-			if (options.catalogAlwaysFails) throw new FeatureError("No access to the catalog.");
-			if (!keyStored) throw new FeatureError("Sign in to your Anaconda account.");
+			if (options.catalogAlwaysFails)
+				throw new KernelError("BUSINESS", "No access to the catalog.");
+			if (!keyStored) throw new KernelError("BUSINESS", "Sign in to your Anaconda account.");
 			return { models: [recommendedCatalogModel], total: 1 };
 		});
 		let endPendingSignIn: () => void = () => {};
@@ -483,13 +473,7 @@ describe("LocalModelCatalog Anaconda sign-in", () => {
 			},
 			cancelSignIn: vi.fn(async () => endPendingSignIn()),
 		};
-		const sdk = createFakeSdk({
-			featureId: "local-inference",
-			channels: localInferenceContract,
-			plugins: {
-				get: <T,>(featureId: string) =>
-					(featureId === "anaconda-account" && withProvider ? { account } : null) as T | null,
-			},
+		const host = await bootLocalInferenceHost({
 			handlers: {
 				"catalog.list": list,
 				"hardware.profile": async (): Promise<LocalInferenceHardwareProfile> => ({
@@ -502,15 +486,12 @@ describe("LocalModelCatalog Anaconda sign-in", () => {
 				}),
 			},
 		});
-		const system = createFakeFeatureSystem({ sdks: { "local-inference": sdk } });
-		const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-		const tree = (showCatalog: boolean) => (
-			<SdkProvider system={system}>
-				<QueryClientProvider client={queryClient}>
+		const tree = (showCatalog: boolean) =>
+			host.wrap(
+				<AnacondaAccountContext.Provider value={withProvider ? account : undefined}>
 					{showCatalog ? <LocalModelCatalog onSelectModel={() => undefined} /> : null}
-				</QueryClientProvider>
-			</SdkProvider>
-		);
+				</AnacondaAccountContext.Provider>,
+			);
 		const view = render(tree(true));
 		return {
 			screen: page.elementLocator(view.baseElement),
@@ -524,7 +505,7 @@ describe("LocalModelCatalog Anaconda sign-in", () => {
 	}
 
 	it("offers Anaconda sign-in when no key is stored, then loads the catalog", async () => {
-		const { screen, login, list } = renderWithoutKey();
+		const { screen, login, list } = await renderWithoutKey();
 
 		await expect.element(screen.getByTestId("model-catalog-sign-in")).toBeVisible();
 		await screen.getByTestId("model-catalog-sign-in-button").click();
@@ -535,7 +516,7 @@ describe("LocalModelCatalog Anaconda sign-in", () => {
 	});
 
 	it("offers Cancel while waiting for the browser and returns to the prompt", async () => {
-		const { screen, cancelSignIn } = renderWithoutKey({ status: "anonymous" }, true, {
+		const { screen, cancelSignIn } = await renderWithoutKey({ status: "anonymous" }, true, {
 			signInWaitsForBrowser: true,
 		});
 
@@ -553,7 +534,7 @@ describe("LocalModelCatalog Anaconda sign-in", () => {
 	});
 
 	it("prompts for sign-in when reopened after signing out, instead of the cached catalog", async () => {
-		const { screen, signOut, setCatalogOpen } = renderWithoutKey({
+		const { screen, signOut, setCatalogOpen } = await renderWithoutKey({
 			status: "authenticated",
 			user: { email: "dev@anaconda.com" },
 		});
@@ -568,7 +549,7 @@ describe("LocalModelCatalog Anaconda sign-in", () => {
 	});
 
 	it("drops the catalog when signed out while it is open", async () => {
-		const { screen, signOut } = renderWithoutKey({
+		const { screen, signOut } = await renderWithoutKey({
 			status: "authenticated",
 			user: { email: "dev@anaconda.com" },
 		});
@@ -580,7 +561,7 @@ describe("LocalModelCatalog Anaconda sign-in", () => {
 	});
 
 	it("does not refetch the catalog when the first resolve finds an existing key", async () => {
-		const { screen, list } = renderWithoutKey(
+		const { screen, list } = await renderWithoutKey(
 			{ status: "authenticated", user: { email: "dev@anaconda.com" } },
 			true,
 			{ catalogAlwaysFails: true },
@@ -593,14 +574,14 @@ describe("LocalModelCatalog Anaconda sign-in", () => {
 	});
 
 	it("shows the generic error when the anaconda-account plugin is absent", async () => {
-		const { screen } = renderWithoutKey({ status: "anonymous" }, false);
+		const { screen } = await renderWithoutKey({ status: "anonymous" }, false);
 
 		await expect.element(screen.getByTestId("model-catalog-error")).toBeVisible();
 		expect(screen.getByTestId("model-catalog-sign-in").query()).toBeNull();
 	});
 
 	it("shows the generic error, not sign-in, when the Anaconda session itself errored", async () => {
-		const { screen } = renderWithoutKey({ status: "error", reason: "offline" });
+		const { screen } = await renderWithoutKey({ status: "error", reason: "offline" });
 
 		// keyStored is true for authenticated only, so the catalog still fails here.
 		await expect.element(screen.getByTestId("model-catalog-error")).toBeVisible();

@@ -2,14 +2,13 @@ import { createServer } from "node:http";
 
 import { test } from "../../../fixtures/features/browser.js";
 
-test.describe("Chat browser tab @smoke @packaged", () => {
+test.describe("Browser tab @smoke @packaged", () => {
 	test("navigates an embedded guest and adopts its page title", async ({
 		appShellPage,
 		browserPage,
-		browserWorkspace,
 	}) => {
-		// First browser-pane spec on a cold runner pays for the browser guest session,
-		// partition init, kilo-server warmup, and composer handshake before the title
+		// First browser-pane spec on a cold runner pays for the browser guest session
+		// and partition init before the title
 		// assertion clock starts. Retries succeed in ~half the budget, so grant this
 		// spec a wider window instead of leaving it as the run's flake magnet.
 		test.slow();
@@ -22,8 +21,7 @@ test.describe("Chat browser tab @smoke @packaged", () => {
 			const address = server.address();
 			if (!address || typeof address === "string") throw new Error("Loopback server did not bind.");
 			await appShellPage.verifyShellIsLoaded();
-			await browserPage.createAndSelectWorkspace(browserWorkspace.path, browserWorkspace.name);
-			await browserPage.openBrowserTab();
+			await browserPage.startBrowserSession();
 			await browserPage.navigate(`127.0.0.1:${address.port}`);
 			await browserPage.verifyLoaded("Browser Smoke Page");
 		} finally {

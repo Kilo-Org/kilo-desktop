@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { GitBranch } from "../contracts/schemas.js";
+import type { GitBranch } from "../contracts/models.js";
 import { findDefaultBranch } from "./find-default-branch.js";
 
 function local(name: string, upstream: string | null = null): GitBranch {

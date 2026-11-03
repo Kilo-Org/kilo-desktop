@@ -1,46 +1,41 @@
 # Agent tools
 
-> Plugin tools → the bundled Kilo agent and paired external AI apps, served by Desktop's main process.
+> `kilo.agent/tool` contributions → the bundled Kilo agent and paired external AI apps, served by
+> kilo.agent's tool gateway in the main process.
 
-Every tool a plugin registers through `sdk.tools` with `exposeToModelContext: true` is served
-over MCP to the bundled `kilo serve`, and, when the user allows it, to external AI apps such as
-Cursor, Claude Code, VS Code or `mcp-inspector`. Nothing outside Desktop can add, rename or
-shadow a tool: the tool list comes only from the app's own renderer, over Electron IPC.
+Every tool a plugin contributes to `kilo.agent/tool` and implements in its **main** entry is served
+over MCP to the bundled `kilo serve` and, when the user allows it, to external AI apps such as
+Cursor, Claude Code, VS Code or `mcp-inspector`. Nothing outside the app's plugins can add, rename
+or shadow a tool: the list comes only from the kernel's extension registry.
 
 For the _consumer_ path (the app talks to the Anaconda Remote MCP), see
 [Kilo Code integration](./kilo-code-integration.md).
 
 Related code:
 
-- `packages/feature-sdk/src/services/tool-registry.ts` — the registry `sdk.tools` writes to.
-- `packages/feature-sdk/src/services/tool-catalog-protocol.ts` — renderer ↔ main wire protocol.
-- `apps/web/src/platform/agent-tools/tool-catalog-publisher.ts` — renderer publisher.
-- `plugins/kilo-server/src/main/tool-gateway/` — main-side catalog and MCP endpoints.
-- `plugins/kilo-server/src/web/settings/ExternalAiAppsSettings.tsx` — Settings → External AI apps.
+- `plugins/agent/src/contracts/index.ts` — the `tool`, `tool-approval` and `session-config` points,
+  `toolWireName`, `defineTool`, `toolPermissionRules`, the `external-clients` domain object.
+- `plugins/agent/src/main/tool-gateway/` — catalog, views, MCP endpoints, the `tool-gateway` daemon.
+- `plugins/agent/src/web/external-apps/ExternalAiAppsSettings.tsx` — Settings → External AI apps.
+- `plugins/terminal/src/main/agent-tools.ts` — the first contributor.
 
 ---
 
 ## 1. Architecture
 
 ```
-┌──────────── Renderer (main window only) ────────────┐
-│ plugin webRegister(sdk) → sdk.tools.register(def)    │
-│        ▼                                             │
-│ ToolRegistry ─► tool-catalog-publisher               │
-│                   │ MessagePort kilo-server/tool-catalog (protocol v1);
-│                   │ accepted only from kilo-desktop(-dev)://app frames
-└───────────────────┼──────────────────────────────────┘
-                    ▼
-┌──────────────────── Electron main — kilo-server tool-gateway/ ─────────────────────┐
-│ ToolCatalog   validated snapshot; duplicate names keep the first, never renamed;   │
-│      │        calls routed back to the renderer over the port                      │
-│      ├──────────────────────────────┐                                              │
-│      ▼                              ▼                                              │
-│ KiloToolEndpoint                    ExternalClients (off by default)               │
-│ 127.0.0.1:<random>/mcp              127.0.0.1:<9350|9351|9352 or custom>/mcp       │
-│ per-launch bearer token (env)       per-app bearer tokens, stored as hashes        │
-│ Kilo view: caller envelope          external view: no caller context               │
-└──────┼──────────────────────────────┼──────────────────────────────────────────────┘
+┌──────────── Electron main — kilo.agent tool-gateway daemon ─────────────────────┐
+│ sdk.extensions.list(kilo.agent/tool) ─► ToolCatalog                             │
+│   (implemented in main; re-listed on point changes, announced only when what    │
+│    clients see changed)                                                         │
+│      ├──────────────────────────────┐                                           │
+│      ▼                              ▼                                           │
+│ KiloToolEndpoint                    ExternalClientsServer (flag; off by default)│
+│ 127.0.0.1:<random>/mcp              127.0.0.1:<9350|9351|9352 or custom>/mcp    │
+│ per-start bearer token (env)        per-app bearer tokens, stored as hashes     │
+│ Kilo view: caller envelope →        external view: no caller context,           │
+│   chat + Work Session               only `external` tools                       │
+└──────┼──────────────────────────────┼───────────────────────────────────────────┘
        ▼ MCP Streamable HTTP          ▼ MCP Streamable HTTP
    kilo serve (mcp.desktop)        Cursor · Claude Code · VS Code · mcp-inspector · …
 ```
@@ -50,106 +45,85 @@ never do) and only bind loopback.
 
 ---
 
-## 2. Registration
+## 2. Contributing a tool
 
-A plugin declares its tools from its **renderer** entry via the `webRegister` hook:
+Declare the tool in the manifest (presentation and policy) and implement it in main:
 
-```ts
-// plugins/todos/src/web/index.ts
-export function webRegister(sdk: SDK): void {
-	sdk.tools.register({
-		name: "list",
-		description: "List all todos.",
-		inputSchema: { type: "object", properties: {}, additionalProperties: false },
-		annotations: { readOnlyHint: true },
-		exposeToModelContext: true, // opt-in — see §3
-		handler: () => sdk.invoke("list"),
-	});
-}
+```jsonc
+// plugin.json
+"requires": { "kilo.agent/tool": "optional" },
+"contributes": { "extensions": { "kilo.agent/tool": [
+  { "id": "list", "title": "List terminals", "readOnly": true }
+] } }
 ```
 
-Namespacing is automatic: `list` becomes `todos.list` internally and `todos_list` on the wire
-(Kilo shows it as `desktop_todos_list`). Names use only `[A-Za-z0-9_]`; two tools that sanitize to
-the same name keep the first and the second is skipped with a warning. The plugin-facing
-`SdkTools` surface is deliberately just `register` + read-only `all()` (see the docstring on
-`SdkTools` in `packages/feature-sdk/src/types/sdk.ts`).
+```ts
+// main entry
+sdk.extensions.implement(
+	AgentTool,
+	"list",
+	defineTool({
+		description: "List the Terminal tabs in the calling chat's pane layout …",
+		input: z.object({}),
+		run: async (input, context) => listFor(context.sessionId),
+	}),
+);
+```
 
-**Cross-plugin RPC uses `sdk.plugins.expose` / `sdk.plugins.get<T>` — never tools.**
+Metadata: `title`, `approval` (`auto` | `ask`), `requiresSignIn`, `readOnly`, `destructive`,
+`external` (offered to external apps, default true). The input is a zod object; the gateway serves
+`z.toJSONSchema(input, { io: "input" })` and validates every call against it before `run`.
 
-### Chat pane tools
+Names: `kilo.terminal/list` is `terminal_list` on the MCP server, which Kilo shows as
+`desktop_terminal_list` (`toolWireName`); permission rules use that wire name. Two tools whose names
+sanitize alike keep the first.
 
-Tools that open content in a chat's pane layout (`notebook_open`, `files_open`,
-`git_changes_open`, `browser_open`, `terminal_open`) are owned by the plugin that contributes the
-tab. They share these rules:
+**Cross-plugin RPC uses domain objects and extension points — never tools.**
 
-- The calling chat is `context.kiloSessionId` (the Kilo caller envelope). It is never an argument
-  and never the visually focused chat. A call without it fails — which is also what every
-  external app gets, since external apps never carry caller context.
-- Panes belong to the chat's work session, not the chat. Tools map the caller to its session with
-  kilo-ui's `sessions.sessionIdOfChat(kiloSessionId)` and pass that session id to the other
-  capabilities. A chat no session owns (such as a subagent's) gets no session, and the call fails;
-  never use the Kilo session id as a session id.
-- Tabs are opened through kilo-ui's `chatRightPanel` capability.
-- Paths go through kilo-ui's `chatSessionWorkspace` capability, so a tool can only show what the
-  session's own panes could show.
-- The opener tools display content to the user. They never return file or page content, and
-  `terminal_open` takes no command.
+### Caller context
 
-`terminal_list` and `terminal_read` are the one read path: the calling chat's Terminal tabs and a
-plain-text tail of a tab's output. Nothing can write to a terminal. Output is untrusted and may
-contain secrets.
+`run` receives `ToolCallContext`: `sessionId` (the calling chat's Work Session), `chatId`, `callId`,
+`external` and an abort `signal`. Desktop's Kilo plugin stamps every `desktop_*` call with
+`__anacondaDesktopKiloCaller` (chat and call id); the gateway strips it and looks the chat up in
+`kilo.sessions/session`. A chat no session holds (a subagent's) gets `sessionId: null`, as does every
+external app. Session-bound tools (opening panes, reading terminals) refuse such calls; they never
+fall back to the visually focused session.
 
 ---
 
 ## 3. Exposure and trust
 
-| `exposeToModelContext` | Bundled Kilo agent | Paired external AI apps                     |
-| ---------------------- | ------------------ | ------------------------------------------- |
-| `false` (default)      | not served         | not served                                  |
-| `true`                 | served             | served while "Allow external AI apps" is on |
+| Metadata          | Bundled Kilo agent               | Paired external AI apps                     |
+| ----------------- | -------------------------------- | ------------------------------------------- |
+| `external: false` | served                           | not listed, refused                         |
+| `external: true`  | served                           | served while "Allow external AI apps" is on |
+| `requiresSignIn`  | refused while signed out to Kilo | refused while signed out to Kilo            |
 
-- **Kilo** reaches tools with a per-launch token that only `kilo serve` receives. Consent for
-  mutating tools is Kilo's permission rules plus the chat's approval cards (for example the
-  per-action conda cards in `plugins/kilo-ui/src/web/chat/runtime/conda-tool-permissions.ts`).
-  Because the tool list cannot be extended or renamed from outside, exact-name rules always match.
-- **External apps** get the same tools, without Kilo caller context. Desktop does **not** prompt
+A signed-out person who answers the chat's sign-in card with "Not now" declines the refused tool's
+plugin (`kilo.agent/tool-sign-in`): that plugin's `requiresSignIn` tools leave both lists, with a
+`tools/list_changed`, until they sign in.
+
+- **Kilo** reaches tools with a per-start token only `kilo serve` receives. Consent for mutating
+  tools is Kilo's permission rules: kilo.chat applies `toolPermissionRules(tools)` (an `ask` rule
+  per `approval: "ask"` tool) when it creates a chat. Because the tool list cannot be extended or
+  renamed from outside, exact-name rules always match.
+- **External apps** get the `external` tools without caller context. Desktop does **not** prompt
   for their calls: approving actions is the external app's responsibility. Desktop's controls are
-  the off-by-default switch, one revocable token per app, and loopback + `Origin` + `Host` checks.
-
-Treat `exposeToModelContext: true` as _"usable by the built-in agent and by any app the user
-pairs."_ If that is wrong for a tool, leave it off.
+  the flag, the off-by-default switch, one revocable token per app, and loopback + `Origin` +
+  `Host` checks.
 
 ---
 
-## 4. Renderer ↔ main catalog
-
-`tool-catalog-publisher.ts` opens the `kilo-server/tool-catalog` port with `{ version: 1 }` and:
-
-- sends one full snapshot (`{ type: "catalog", revision, tools }`) per registry change; changes in
-  the same tick coalesce (a plugin registering many tools at boot produces one snapshot);
-- runs `{ type: "call" }` messages through `ToolRegistry.invoke` with the context main supplies,
-  and answers `{ type: "result" }` (results cross as plain JSON);
-- discards the result of a call main cancelled. Handlers take no abort signal, so a cancelled
-  tool keeps running.
-
-`ToolCatalog` (main) keeps the latest valid snapshot and notifies endpoints only when the tool list
-actually changed. A newly attached port (a reloaded window) replaces the old one; the old port's
-pending calls fail with "outcome is unknown", so agents check state before retrying. After a
-disconnect the last tools stay listed for a few seconds, so consumers do not see every tool vanish
-and come back across a reload. Only the main window publishes; pane windows never do.
-
----
-
-## 5. Kilo endpoint
+## 4. Kilo endpoint
 
 `KiloToolEndpoint` (over the generic `McpHttpServer`) adapts Node `http` to the MCP SDK's
 Web-standard Streamable HTTP transport. Every `kilo serve` restart opens new sessions, so each
 session gets its own server; beyond 32 sessions the least recently used one is closed and its
-client re-initializes. The Kilo view adds the `__anacondaDesktopKiloCaller` property to every
-schema and lifts it out of the arguments into the handler's trusted context.
+client re-initializes.
 
-Config reconciliation (`plugins/kilo-server/src/main/webmcp-relay-config.ts`) writes a static
-entry into the app-owned `kilo.jsonc` while the endpoint is serving, and removes it otherwise:
+The `tool-gateway` daemon starts the endpoint at activation; `config-sync` waits for its first
+start, then writes (or removes, if it failed) a static entry in the app-owned `kilo.jsonc` and the
+caller-context Kilo plugin:
 
 ```jsonc
 "desktop": {
@@ -160,52 +134,45 @@ entry into the app-owned `kilo.jsonc` while the endpoint is serving, and removes
 }
 ```
 
-The per-launch URL and token never touch disk: `KiloServerManager` sets both variables at every
+The per-start URL and token never touch disk: `KiloServerManager` sets both variables at every
 spawn, strips inherited values, and the `KILO_` prefix is reserved so contributed env cannot set
-them. Entries written by earlier builds (stdio relay children) are recognized and migrated. The
-ownership sidecar `${runtime}/config/kilo/.kilo-desktop-ownership.json` tracks which MCP entries
-Desktop owns; a missing sidecar means "Desktop owns nothing", which is the user's escape hatch.
-
-Boot: kilo-server registration creates the gateway (registering the port handler), starts the
-Kilo endpoint, reconciles the entry, then lets Kilo start lazily; `configReady` is awaited before
-`ensureRunning`, so `kilo serve` never reads the config before the entry is written.
+them. A server spawned with another endpoint (the daemon restarted) is restarted. The ownership
+sidecar `${runtime}/config/kilo/.kilo-desktop-ownership.json` tracks which MCP entries Desktop owns.
 
 ---
 
-## 6. External AI apps
+## 5. External AI apps
 
-Settings → **External AI apps** (`kilo-server` settings contribution), behind the
-`external-api-apps-settings` LaunchDarkly flag. With the flag off the section is hidden and, in
-main, the endpoint never starts (even if it was enabled before), cannot be enabled, and accepts no
-new pairings.
+Settings → **External AI apps** (kilo.agent's settings section, AI group), behind the
+`external-api-apps-settings` LaunchDarkly flag. With the flag off the section is hidden and the
+endpoint never starts (it stops when the flag goes off), cannot be enabled, and accepts no new
+pairings. The state is the `kilo.agent/external-clients` domain object; only kilo.agent's own
+settings may call its methods (pairing hands out a token).
 
-- **Allow external AI apps** — off by default. While on, `ExternalClients` listens on
-  `127.0.0.1:<port>/mcp`. The default port is fixed per channel so pasted configs keep working:
-  stable `9350`, preview `9351`, development `9352`; users can choose another. A busy port leaves
-  the endpoint off with an error shown in Settings; nothing retries silently.
+- **Allow external AI apps** — off by default. The default port is fixed per channel so pasted
+  configs keep working: stable `9350`, preview `9351`, development `9352`; users can choose another.
+  A busy port leaves the endpoint off with an error shown in Settings; nothing retries silently.
 - **Paired apps** — apps can be paired only while the switch is on. Each app gets its own 256-bit
-  token, shown once. The dialog starts with generic connection settings (Streamable HTTP, URL,
-  `Authorization: Bearer` header); picking a client shows only that client's configuration:
-  Cursor, Claude Code, Codex (`~/.codex/config.toml`), VS Code, or Claude Desktop (stdio-only, via
-  the third-party `mcp-remote`). Desktop stores only the token's SHA-256. Removing an app closes its
+  token, shown once, with setup for a generic client, Cursor, Claude Code, Codex, VS Code or Claude
+  Desktop (via `mcp-remote`). Desktop stores only the token's SHA-256. Removing an app closes its
   sessions immediately. Switching the endpoint off closes every session but keeps the paired apps.
 - Requests must carry a paired token, no `Origin`, and a `Host` of the endpoint itself
   (`127.0.0.1:<port>` or `localhost:<port>`, a DNS-rebinding guard).
 - `lastUsedAt` is persisted at most once a minute per app.
-
-State changes are pushed to the Settings page as `kilo-server.external-clients-changed`.
+- Paired apps saved by earlier builds (`plugins/kilo-server/external-clients.json`) are adopted once.
 
 ---
 
-## 7. Security checklist
+## 6. Security checklist
 
-- 🔒 Only the app renderer can contribute tools, over an IPC port the shell accepts solely from
-  trusted app frames. No loopback socket accepts tool producers.
+- 🔒 Only plugins can contribute tools, through the kernel's extension registry in main. No socket
+  accepts tool producers.
 - 🔒 Both endpoints are loopback-only, bearer-protected and reject browser requests.
-- 🔒 The Kilo token is per launch and passed only through `kilo serve`'s environment.
-- 🔒 External access is off by default; tokens are per app, revocable, stored as hashes.
+- 🔒 The Kilo token is per start and passed only through `kilo serve`'s environment.
+- 🔒 External access is flag-gated and off by default; tokens are per app, revocable, stored as
+  hashes; only kilo.agent's settings can pair or change it.
 - 🔒 External apps never receive Kilo caller context, so session-bound tools refuse them.
-- ⚠️ External apps can call every exposed tool, including environment changes, without a
-  Desktop prompt. Their own approval settings apply. A token pasted into a client config file is
-  readable by same-user processes; revoke it in Settings if in doubt.
+- ⚠️ External apps can call every `external` tool without a Desktop prompt. Their own approval
+  settings apply. A token pasted into a client config file is readable by same-user processes;
+  revoke it in Settings if in doubt.
 - 🔒 Output from tools is untrusted input for the model, as with any MCP server.

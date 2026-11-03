@@ -75,6 +75,30 @@ describe("sidebar width persistence", () => {
 		expect(readStoredSidebarWidth(storage, 1280)).toBe(640);
 	});
 
+	it("falls back to the default width without storage or when it cannot be read", () => {
+		const unreadable = {
+			getItem: () => {
+				throw new Error("SecurityError");
+			},
+		};
+		const corrupt = memoryStorage({ [SIDEBAR_WIDTH_STORAGE_KEY]: "wide" });
+
+		expect(readStoredSidebarWidth(null, 1280)).toBe(SIDEBAR_WIDTH_DEFAULT);
+		expect(readStoredSidebarWidth(unreadable, 1280)).toBe(SIDEBAR_WIDTH_DEFAULT);
+		expect(readStoredSidebarWidth(corrupt, 1280)).toBe(SIDEBAR_WIDTH_DEFAULT);
+	});
+
+	it("ignores storage that is missing or refuses the write", () => {
+		const full = {
+			setItem: () => {
+				throw new Error("QuotaExceededError");
+			},
+		};
+
+		expect(() => writeStoredSidebarWidth(336, null, 1280)).not.toThrow();
+		expect(() => writeStoredSidebarWidth(336, full, 1280)).not.toThrow();
+	});
+
 	it("writes the clamped width", () => {
 		const storage = memoryStorage();
 		writeStoredSidebarWidth(336, storage, 1280);

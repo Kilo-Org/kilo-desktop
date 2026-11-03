@@ -1,15 +1,10 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import { SdkProvider } from "@kilo-desktop/sdk-react";
-import type { AuthSession, SDK } from "@kilo-desktop/feature-sdk";
-import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 import { Toaster, toast } from "@kilo-desktop/ui/components/sonner";
 
 import {
-	condaContract,
 	type CondaEnvsCheckPrefixInput,
 	type CondaEnvsCheckPrefixResult,
 	type CondaEnvsCreateInput,
@@ -18,6 +13,7 @@ import {
 	type CondaRepodataFindResult,
 	type CondaRepodataPackage,
 } from "../../../contracts/providers/conda.js";
+import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host.js";
 import { CreateEnvironmentDialog } from "./CreateEnvironmentDialog.js";
 
 function pkg(name: string, versions: string[] = []): CondaRepodataPackage {
@@ -47,20 +43,7 @@ function pkgWithSizes(
 	};
 }
 
-const AUTHENTICATED_SESSION: AuthSession = {
-	status: "authenticated",
-	user: { username: "ada" },
-};
-
-const authenticatedAuth: Partial<SDK["auth"]> = {
-	subscribe(listener) {
-		listener(AUTHENTICATED_SESSION);
-		return () => undefined;
-	},
-	peek: () => AUTHENTICATED_SESSION,
-};
-
-function renderDialog(
+async function renderDialog(
 	options: {
 		find?: () => CondaRepodataPackage[];
 		/** Full control over the search response, e.g. to page by `limit`. */
@@ -75,8 +58,7 @@ function renderDialog(
 		taken?: string[];
 		channels?: string[];
 		envsDirs?: string[];
-		auth?: Partial<SDK["auth"]>;
-		track?: SDK["telemetry"]["track"];
+		track?: (input: { event: string; data: Record<string, unknown> }) => unknown;
 	} = {},
 ) {
 	const find = options.find ?? (() => [pkg("numpy", ["1.26.4", "1.25.0"]), pkg("pandas")]);
@@ -87,9 +69,7 @@ function renderDialog(
 		options.checkPrefix ??
 		(async ({ prefix }: CondaEnvsCheckPrefixInput): Promise<CondaEnvsCheckPrefixResult> =>
 			disk.has(prefix) ? { available: false, reason: "exists-environment" } : { available: true });
-	const sdk = createFakeSdk({
-		featureId: "environments",
-		channels: condaContract,
+	const hostOptions: EnvironmentsHostOptions = {
 		handlers: {
 			"conda.envs.list": async () => [],
 			"conda.envs.prefixOptions": async () => ({
@@ -105,19 +85,15 @@ function renderDialog(
 				return result;
 			},
 		},
-		auth: options.auth ?? {},
-		...(options.track ? { telemetry: { track: options.track } } : {}),
-	});
-	const system = createFakeFeatureSystem({ sdks: { environments: sdk } });
-	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+		...(options.track ? { track: options.track } : {}),
+	};
 
-	return render(
-		<SdkProvider system={system}>
-			<QueryClientProvider client={queryClient}>
-				<CreateEnvironmentDialog open onClose={() => {}} />
-				<Toaster />
-			</QueryClientProvider>
-		</SdkProvider>,
+	return renderWithConda(
+		<>
+			<CreateEnvironmentDialog open onClose={() => {}} />
+			<Toaster />
+		</>,
+		hostOptions,
 	);
 }
 
@@ -136,7 +112,7 @@ afterEach(() => {
 
 describe("CreateEnvironmentDialog (modal)", () => {
 	it("renders the manual create modal with the package grid populated", async () => {
-		const { baseElement } = renderDialog();
+		const { baseElement } = await renderDialog();
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-create-dialog")).toBeVisible();
@@ -148,7 +124,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 	});
 
 	it("selecting a package adds it to the Selected Packages sidebar", async () => {
-		const { baseElement } = renderDialog();
+		const { baseElement } = await renderDialog();
 		const screen = page.elementLocator(baseElement);
 		const panel = screen.getByRole("complementary", { name: "Selected packages" });
 		await expect
@@ -172,7 +148,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 			jobId: "j",
 			environment: { name: "env", prefix: "/p" },
 		}));
-		const { baseElement } = renderDialog({
+		const { baseElement } = await renderDialog({
 			find: () => [pkg("numpy", ["1.26.4", "1.25.0"]), pkg("python", ["3.13.1", "3.11.9"])],
 			create,
 		});
@@ -205,7 +181,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 	it("keeps Create disabled until the prefix check for the typed name passes", async () => {
 		const check = deferred<CondaEnvsCheckPrefixResult>();
 		const checkPrefix = vi.fn(() => check.promise);
-		const { baseElement } = renderDialog({ checkPrefix });
+		const { baseElement } = await renderDialog({ checkPrefix });
 		const screen = page.elementLocator(baseElement);
 		const submit = screen.getByTestId("environments-create-submit");
 
@@ -231,7 +207,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 				available: true,
 			}),
 		);
-		const { baseElement } = renderDialog({ checkPrefix });
+		const { baseElement } = await renderDialog({ checkPrefix });
 		const screen = page.elementLocator(baseElement);
 
 		// Typing runs over CDP on real time; on a loaded machine one keystroke gap
@@ -255,7 +231,10 @@ describe("CreateEnvironmentDialog (modal)", () => {
 			jobId: "j",
 			environment: { name: "alpha-bet", prefix: "/opt/anaconda3/envs/alpha-bet" },
 		}));
-		const { baseElement } = renderDialog({ create, taken: ["/opt/anaconda3/envs/alpha-bet"] });
+		const { baseElement } = await renderDialog({
+			create,
+			taken: ["/opt/anaconda3/envs/alpha-bet"],
+		});
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.fill(screen.getByTestId("environments-create-name"), "alpha-bet");
@@ -272,7 +251,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 	});
 
 	it("explains a location the user cannot write to", async () => {
-		const { baseElement } = renderDialog({
+		const { baseElement } = await renderDialog({
 			checkPrefix: async () => ({ available: false, reason: "not-writable" }),
 		});
 		const screen = page.elementLocator(baseElement);
@@ -289,7 +268,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 
 	it("shows the name rule as soon as an invalid name is typed", async () => {
 		const checkPrefix = vi.fn(async () => ({ available: true }) as const);
-		const { baseElement } = renderDialog({ checkPrefix });
+		const { baseElement } = await renderDialog({ checkPrefix });
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.fill(screen.getByTestId("environments-create-name"), "-bad");
@@ -304,7 +283,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 			jobId: "j",
 			environment: { name: "myenv", prefix: "/opt/anaconda3/envs/myenv" },
 		}));
-		const { baseElement } = renderDialog({ create });
+		const { baseElement } = await renderDialog({ create });
 		const screen = page.elementLocator(baseElement);
 		const submit = screen.getByTestId("environments-create-submit");
 
@@ -332,7 +311,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 	it("tells the user the prefix was taken when the create itself hits an existing env", async () => {
 		const prefix = "/opt/anaconda3/envs/myenv";
 		let checks = 0;
-		const { baseElement } = renderDialog({
+		const { baseElement } = await renderDialog({
 			// Free when checked, then taken by a concurrent create before ours runs.
 			checkPrefix: async () => {
 				checks += 1;
@@ -365,7 +344,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 
 	it("tracks a created environment with coarse options only", async () => {
 		const track = vi.fn(async () => {});
-		const { baseElement } = renderDialog({ track });
+		const { baseElement } = await renderDialog({ track });
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.click(screen.getByText("numpy", { exact: true }));
@@ -376,7 +355,6 @@ describe("CreateEnvironmentDialog (modal)", () => {
 		expect(track).toHaveBeenCalledExactlyOnceWith({
 			event: "Environment Created",
 			data: {
-				featureId: "environments",
 				packageCount: 1,
 				pythonPinned: false,
 				customLocation: false,
@@ -385,7 +363,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 	});
 
 	it("opens the channel chooser popover from the Channels button", async () => {
-		const { baseElement } = renderDialog();
+		const { baseElement } = await renderDialog();
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.click(screen.getByTestId("environments-create-channels-button"));
@@ -398,7 +376,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 	});
 
 	it("offers the product channel selector when conda reports no configured channels", async () => {
-		const { baseElement } = renderDialog({ channels: [] });
+		const { baseElement } = await renderDialog({ channels: [] });
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.click(screen.getByTestId("environments-create-channels-button"));
@@ -411,7 +389,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 	});
 
 	it("shows validation error when name is empty and submit is clicked", async () => {
-		const { baseElement } = renderDialog();
+		const { baseElement } = await renderDialog();
 		const screen = page.elementLocator(baseElement);
 
 		// Name is empty by default, button should be disabled
@@ -419,7 +397,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 	});
 
 	it("shows 'No packages available' when the package search is empty", async () => {
-		const { baseElement } = renderDialog({ find: () => [] });
+		const { baseElement } = await renderDialog({ find: () => [] });
 		const screen = page.elementLocator(baseElement);
 
 		await vi.waitFor(async () => {
@@ -428,7 +406,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 	});
 
 	it("shows 'No results for ...' when search returns empty", async () => {
-		const { baseElement } = renderDialog({ find: () => [] });
+		const { baseElement } = await renderDialog({ find: () => [] });
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.fill(screen.getByTestId("environments-create-package-search"), "nonexistent");
@@ -439,7 +417,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 	});
 
 	it("removes a package from the selected sidebar", async () => {
-		const { baseElement } = renderDialog();
+		const { baseElement } = await renderDialog();
 		const screen = page.elementLocator(baseElement);
 
 		// Select numpy
@@ -456,7 +434,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 	});
 
 	it("deselects a package by clicking the row again", async () => {
-		const { baseElement } = renderDialog();
+		const { baseElement } = await renderDialog();
 		const screen = page.elementLocator(baseElement);
 
 		// Select numpy via the package row
@@ -475,7 +453,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 	});
 
 	it("displays packages without version list using a plain text version", async () => {
-		const { baseElement } = renderDialog({
+		const { baseElement } = await renderDialog({
 			find: () => [pkg("simple-pkg")],
 		});
 		const screen = page.elementLocator(baseElement);
@@ -495,7 +473,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 			packages: all.slice(0, input.limit),
 			truncated: input.limit < all.length,
 		}));
-		const { baseElement } = renderDialog({ search });
+		const { baseElement } = await renderDialog({ search });
 		const screen = page.elementLocator(baseElement);
 
 		await expect
@@ -520,7 +498,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 
 	it("asks the user to refine the search once the result cap is reached", async () => {
 		const pkgs = Array.from({ length: 5 }, (_, i) => pkg(`pkg-${i}`, ["1.0.0"]));
-		const { baseElement } = renderDialog({
+		const { baseElement } = await renderDialog({
 			search: () => ({ packages: pkgs, truncated: true }),
 		});
 		const screen = page.elementLocator(baseElement);
@@ -551,7 +529,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 			jobId: "j",
 			environment: { name: "env", prefix: "/custom/myenv" },
 		}));
-		const { baseElement } = renderDialog({ create, auth: authenticatedAuth });
+		const { baseElement } = await renderDialog({ create });
 		const screen = page.elementLocator(baseElement);
 
 		// Change location to a custom path
@@ -569,7 +547,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 	});
 
 	it("filters the Python version list via the picker search box", async () => {
-		const { baseElement } = renderDialog({
+		const { baseElement } = await renderDialog({
 			find: () => [pkg("python", ["3.13.1", "3.12.4", "3.11.9"])],
 		});
 		const screen = page.elementLocator(baseElement);
@@ -586,7 +564,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 	});
 
 	it("shows the package size column for the latest version by default", async () => {
-		const { baseElement } = renderDialog({
+		const { baseElement } = await renderDialog({
 			find: () => [
 				pkgWithSizes("numpy", [
 					{ version: "1.26.4", size: 1_500_000 },
@@ -607,7 +585,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 	});
 
 	it("updates the size column when a different version is pinned", async () => {
-		const { baseElement } = renderDialog({
+		const { baseElement } = await renderDialog({
 			find: () => [
 				pkgWithSizes("numpy", [
 					{ version: "1.26.4", size: 1_500_000 },
@@ -630,7 +608,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 	});
 
 	it("shows an em-dash for the size when a package has no versions", async () => {
-		const { baseElement } = renderDialog({
+		const { baseElement } = await renderDialog({
 			find: () => [pkg("simple-pkg")],
 		});
 		const screen = page.elementLocator(baseElement);
@@ -646,7 +624,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 	});
 
 	it("shows all merged location dirs in the dropdown with default first", async () => {
-		const { baseElement } = renderDialog({
+		const { baseElement } = await renderDialog({
 			envsDirs: ["/opt/anaconda3/envs", "/opt/miniconda3/envs", "/home/user/.conda/envs"],
 		});
 		const screen = page.elementLocator(baseElement);
@@ -672,7 +650,7 @@ describe("CreateEnvironmentDialog (modal)", () => {
 			jobId: "j",
 			environment: { name: "myenv", prefix: "/home/user/.conda/envs/myenv" },
 		}));
-		const { baseElement } = renderDialog({
+		const { baseElement } = await renderDialog({
 			create,
 			envsDirs: ["/opt/anaconda3/envs", "/home/user/.conda/envs"],
 		});

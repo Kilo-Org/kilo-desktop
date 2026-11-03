@@ -7,10 +7,11 @@
  *
  * - `plugins/<id>/…` runs `plugins/<id>/e2e/**` when that plugin has specs.
  * - Plugins whose behavior is exercised by specs elsewhere map through
- *   `RELATED_SPECS` (e.g. the Kilo server sidecar is exercised by kilo-ui).
+ *   `RELATED_SPECS` (e.g. kilo.agent's Kilo server is exercised by the chat specs).
  * - Harness changes (`e2e/`, the run-e2e and install-test-runtime actions,
  *   and `ci.yml`, which wires this selection into the e2e jobs) run
- *   everything.
+ *   everything, as do changes every plugin is built on: the kernel, the
+ *   bundled plugin list, the shared UI primitives and the hosts (`apps/`).
  *
  * Playwright matches `grep` against the test's title path, which starts with
  * the spec file path, so directory patterns select whole areas. Separators
@@ -30,6 +31,10 @@ const HARNESS_PATHS = [
 	".github/actions/run-e2e/",
 	".github/actions/install-test-runtime/",
 	".github/workflows/ci.yml",
+	"packages/kernel/",
+	"packages/bundled-plugins/",
+	"packages/ui/",
+	"apps/",
 ];
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -41,16 +46,66 @@ function specDirectory(...segments: string[]): string {
 	);
 }
 
-/** Plugins without their own specs (or with specs elsewhere) → the spec paths that cover them. */
+/**
+ * Plugin directories (`plugins/<dir>`) → the spec paths under `e2e/specs`
+ * that exercise them. A plugin with its own `plugins/<dir>/e2e/specs` runs
+ * those too.
+ */
 const RELATED_SPECS: Readonly<Record<string, readonly string[]>> = {
-	"kilo-ui": [specDirectory("e2e", "specs", "features", "chat")],
-	"kilo-server": [specDirectory("plugins", "kilo-ui", "e2e")],
-	git: [
-		specDirectory("e2e", "specs", "features", "git"),
-		specDirectory("plugins", "kilo-ui", "e2e", "specs") + "git-worktrees",
+	shell: [
+		specDirectory("e2e", "specs", "shell"),
+		specDirectory("e2e", "specs", "features", "settings"),
+		specDirectory("e2e", "specs", "features", "theme"),
 	],
+	flags: [specDirectory("e2e", "specs", "features", "flags")],
+	telemetry: [specDirectory("e2e", "specs", "features", "privacy")],
+	updates: [specDirectory("e2e", "specs", "features", "settings") + "about"],
+	chat: [specDirectory("e2e", "specs", "features", "chat")],
+	agent: [
+		specDirectory("e2e", "specs", "features", "agent"),
+		specDirectory("e2e", "specs", "features", "settings") + "about-kilo-config",
+		specDirectory("e2e", "specs", "features", "chat"),
+	],
+	account: [specDirectory("e2e", "specs", "features", "settings") + "account"],
+	workspaces: [
+		specDirectory("e2e", "specs", "features", "workspace"),
+		specDirectory("e2e", "specs", "features", "sessions"),
+	],
+	sessions: [
+		specDirectory("e2e", "specs", "features", "sessions"),
+		specDirectory("e2e", "specs", "features", "board"),
+		specDirectory("e2e", "specs", "features", "git") + "worktrees",
+	],
+	workbench: [
+		specDirectory("e2e", "specs", "features", "sessions"),
+		specDirectory("e2e", "specs", "features", "board"),
+	],
+	"workspace-board": [specDirectory("e2e", "specs", "features", "board")],
+	developer: [
+		specDirectory("e2e", "specs", "features", "developer"),
+		specDirectory("e2e", "specs", "features", "agent") + "agent-server",
+	],
+	git: [specDirectory("e2e", "specs", "features", "git")],
+	files: [specDirectory("e2e", "specs", "features", "files")],
 	browser: [specDirectory("e2e", "specs", "features", "browser")],
-	"local-inference": [specDirectory("plugins", "kilo-ui", "e2e", "specs") + "local-inference"],
+	terminal: [
+		specDirectory("e2e", "specs", "features", "terminal"),
+		specDirectory("e2e", "specs", "features", "agent") + "external-ai-apps",
+	],
+	notebook: [specDirectory("e2e", "specs", "features", "notebook")],
+	environments: [specDirectory("e2e", "specs", "features", "environments")],
+	"anaconda-account": [specDirectory("e2e", "specs", "features", "settings") + "account"],
+	"local-inference": [
+		specDirectory("e2e", "specs", "features", "local-inference"),
+		specDirectory("e2e", "specs", "features", "chat") + "chat-model-selector",
+		specDirectory("e2e", "specs", "features", "settings") + "settings",
+	],
+};
+
+/** Workspace packages owned by one plugin's behavior (`packages/<dir>` → `plugins/<dir>`). */
+const PACKAGE_PLUGINS: Readonly<Record<string, string>> = {
+	"git-client": "git",
+	"pane-layout": "workbench",
 };
 
 function selectPrE2eGrep(
@@ -63,9 +118,10 @@ function selectPrE2eGrep(
 	}
 	const patterns = new Set(["@smoke"]);
 	for (const changed of normalized) {
-		const match = /^plugins\/([^/]+)\//.exec(changed);
-		if (!match) continue;
-		const pluginId = match[1] as string;
+		const pluginMatch = /^plugins\/([^/]+)\//.exec(changed)?.[1];
+		const packageMatch = /^packages\/([^/]+)\//.exec(changed)?.[1];
+		const pluginId = pluginMatch ?? (packageMatch ? PACKAGE_PLUGINS[packageMatch] : undefined);
+		if (!pluginId) continue;
 		if (pluginHasSpecs(pluginId)) patterns.add(specDirectory("plugins", pluginId, "e2e"));
 		for (const related of RELATED_SPECS[pluginId] ?? []) patterns.add(related);
 	}

@@ -1,135 +1,53 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 
-import { SdkProvider } from "@kilo-desktop/sdk-react";
-import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
-import { SidebarProvider } from "@kilo-desktop/ui/components/sidebar";
-
-import { condaContract, type CondaService } from "../contracts/providers/conda.js";
-import { environmentsStatusContract } from "../contracts/status.js";
+import type { CondaStatus } from "../contracts/index.js";
+import {
+	renderWithConda,
+	SIGNED_IN,
+	SIGNED_OUT,
+	type EnvironmentsHostOptions,
+} from "../test/environments-host.js";
+import type { CondaClient } from "./conda.js";
 import { EnvironmentsPage } from "./EnvironmentsPage";
 
 /**
- * Render the plugin page against a fake feature system with:
- * - a configurable `environments-feature` LaunchDarkly flag (defaults to on)
- * - a `conda.envs.list` handler returning injected data
- *
- * The provider chain (`SdkProvider` + `QueryClientProvider`) mirrors what
- * the shell wires in production; without it `useSdk` / `useSdkQuery` /
- * `useFeatureFlag` throw.
+ * Render the settings page on a kernel with `kilo.environments/conda` in the
+ * given status (default ready), signed in to Kilo, listing `list`.
  */
 function renderPage(
 	options: {
-		flagEnabled?: boolean;
-		providersAvailable?: boolean;
-		status?: () => Promise<{ providersAvailable: boolean }>;
-		list?: CondaService["conda.envs.list"];
+		status?: CondaStatus;
+		identity?: EnvironmentsHostOptions["identity"];
+		list?: CondaClient["listEnvironments"];
 		/** Height of the surrounding shell; settings renders the page in a bounded scroller. */
 		hostHeight?: number;
 	} = {},
 ) {
-	const flagEnabled = options.flagEnabled ?? true;
-	const providersAvailable = options.providersAvailable ?? true;
-	const list = options.list ?? (async () => []);
-	const flags: Record<string, unknown> = { "environments-feature": flagEnabled };
-	// Gated page: render signed-in by default so tests reach the content. The
-	// session object is a constant — peek/getSnapshot must be referentially
-	// stable or useSyncExternalStore loops.
-	const authedSession = {
-		status: "authenticated",
-		user: { email: "ada@example.com" },
-	} as const;
-	const sdk = createFakeSdk({
-		featureId: "environments",
-		auth: {
-			subscribe: (fn) => {
-				fn(authedSession);
-				return () => undefined;
-			},
-			peek: () => authedSession,
-			getSession: async () => authedSession,
-		},
-		channels: { ...condaContract, ...environmentsStatusContract },
-		handlers: {
-			"environments.status": options.status ?? (async () => ({ providersAvailable })),
-			"conda.envs.list": list,
-			"conda.envs.create": async () => {
-				throw new Error("not implemented in test");
-			},
-			"conda.envs.delete": async () => {
-				throw new Error("not implemented in test");
-			},
-			"conda.packages.list": async () => {
-				throw new Error("not implemented in test");
-			},
-			"conda.packages.install": async () => {
-				throw new Error("not implemented in test");
-			},
-			"conda.packages.remove": async () => {
-				throw new Error("not implemented in test");
-			},
-			"conda.channels.list": async () => {
-				throw new Error("not implemented in test");
-			},
-			"conda.channels.add": async () => {
-				throw new Error("not implemented in test");
-			},
-			"conda.channels.remove": async () => {
-				throw new Error("not implemented in test");
-			},
-			"conda.jobs.cancel": async () => {
-				throw new Error("not implemented in test");
-			},
-		},
-		featureFlags: {
-			getAllFlags: async () => flags,
-			subscribe: (fn) => {
-				fn(flags);
-				return () => {};
-			},
-			peek: () => flags,
-		},
-	});
-	const system = createFakeFeatureSystem({ sdks: { environments: sdk } });
-	const queryClient = new QueryClient({
-		defaultOptions: { queries: { retry: false } },
-	});
-
-	const page = (
-		<SdkProvider system={system}>
-			<SidebarProvider>
-				<QueryClientProvider client={queryClient}>
-					<EnvironmentsPage />
-				</QueryClientProvider>
-			</SidebarProvider>
-		</SdkProvider>
-	);
-
-	if (options.hostHeight === undefined) return render(page);
+	const hostOptions: EnvironmentsHostOptions = {
+		status: options.status ?? "ready",
+		identity: options.identity ?? SIGNED_IN,
+		handlers: { listEnvironments: options.list ?? (async () => []) },
+	};
+	if (options.hostHeight === undefined) return renderWithConda(<EnvironmentsPage />, hostOptions);
 
 	// Mirrors the settings content area: a bounded, scrollable flex column that is
 	// the page's direct parent, as the shell arranges it in production.
-	return render(
-		<SdkProvider system={system}>
-			<SidebarProvider>
-				<div
-					style={{
-						height: `${options.hostHeight}px`,
-						display: "flex",
-						flexDirection: "column",
-						minHeight: 0,
-						overflowY: "auto",
-					}}
-					data-qa-id="test-settings-scroller"
-				>
-					<QueryClientProvider client={queryClient}>
-						<EnvironmentsPage />
-					</QueryClientProvider>
-				</div>
-			</SidebarProvider>
-		</SdkProvider>,
+	return renderWithConda(
+		<div
+			style={{
+				height: `${options.hostHeight}px`,
+				display: "flex",
+				flexDirection: "column",
+				minHeight: 0,
+				overflowY: "auto",
+			}}
+			data-qa-id="test-settings-scroller"
+		>
+			<EnvironmentsPage />
+		</div>,
+		hostOptions,
 	);
 }
 
@@ -139,7 +57,7 @@ afterEach(() => {
 
 describe("EnvironmentsPage", () => {
 	it("renders the Conda section", async () => {
-		const { baseElement } = renderPage({ list: async () => [] });
+		const { baseElement } = await renderPage({ list: async () => [] });
 		const screen = page.elementLocator(baseElement);
 
 		// The provider section carries an accessible name even though a single
@@ -148,14 +66,14 @@ describe("EnvironmentsPage", () => {
 	});
 
 	it("renders the empty state when no envs are reported", async () => {
-		const { baseElement } = renderPage({ list: async () => [] });
+		const { baseElement } = await renderPage({ list: async () => [] });
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByText(/no conda environments found/i)).toBeVisible();
 	});
 
 	it("renders envs — nameless envs show their directory and named envs show their name + prefix", async () => {
-		const { baseElement } = renderPage({
+		const { baseElement } = await renderPage({
 			list: async () => [
 				{ name: "", prefix: "/opt/conda" },
 				{ name: "dev", prefix: "/opt/conda/envs/dev" },
@@ -174,7 +92,7 @@ describe("EnvironmentsPage", () => {
 		const pending = new Promise<never[]>((r) => {
 			resolve = r;
 		});
-		const { baseElement } = renderPage({ list: () => pending });
+		const { baseElement } = await renderPage({ list: () => pending });
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByText(/loading environments/i)).toBeVisible();
@@ -182,7 +100,7 @@ describe("EnvironmentsPage", () => {
 	});
 
 	it("surfaces backend errors", async () => {
-		const { baseElement } = renderPage({
+		const { baseElement } = await renderPage({
 			list: async () => {
 				throw new Error("boom");
 			},
@@ -194,7 +112,7 @@ describe("EnvironmentsPage", () => {
 
 	describe("feature flag gate (environments-feature)", () => {
 		it("renders the not-available message when the flag is off", async () => {
-			const { baseElement } = renderPage({ flagEnabled: false });
+			const { baseElement } = await renderPage({ status: "disabled" });
 			const screen = page.elementLocator(baseElement);
 
 			const root = screen.getByTestId("environments-page");
@@ -204,7 +122,7 @@ describe("EnvironmentsPage", () => {
 		});
 
 		it("renders the conda panel when the flag is on", async () => {
-			const { baseElement } = renderPage({ flagEnabled: true });
+			const { baseElement } = await renderPage({ status: "ready" });
 			const screen = page.elementLocator(baseElement);
 
 			const root = screen.getByTestId("environments-page");
@@ -215,9 +133,30 @@ describe("EnvironmentsPage", () => {
 		});
 	});
 
+	describe("Kilo sign-in gate", () => {
+		it("asks a signed-out person to sign in instead of showing the page", async () => {
+			const { baseElement } = await renderPage({ identity: SIGNED_OUT });
+			const screen = page.elementLocator(baseElement);
+
+			await expect.element(screen.getByTestId("kilo-auth-gate-signin")).toBeVisible();
+			await expect
+				.element(screen.getByText(/Conda Environments requires a Kilo account/))
+				.toBeVisible();
+			await expect.element(screen.getByTestId("environments-page")).not.toBeInTheDocument();
+		});
+
+		it("does not ask to sign in while the feature is off", async () => {
+			const { baseElement } = await renderPage({ status: "disabled", identity: SIGNED_OUT });
+			const screen = page.elementLocator(baseElement);
+
+			await expect.element(screen.getByTestId("environments-flag-off-message")).toBeVisible();
+			await expect.element(screen.getByTestId("kilo-auth-gate-signin")).not.toBeInTheDocument();
+		});
+	});
+
 	describe("provider boot status gate", () => {
 		it("renders unavailable message when providers failed to boot", async () => {
-			const { baseElement } = renderPage({ providersAvailable: false });
+			const { baseElement } = await renderPage({ status: "unavailable" });
 			const screen = page.elementLocator(baseElement);
 
 			const root = screen.getByTestId("environments-page");
@@ -226,8 +165,8 @@ describe("EnvironmentsPage", () => {
 			await expect.element(screen.getByTestId("environments-unavailable-message")).toBeVisible();
 		});
 
-		it("shows a loading skeleton while the status resolves", async () => {
-			const { baseElement } = renderPage({ status: () => new Promise(() => {}) });
+		it("shows a loading skeleton while sign-in is not yet known", async () => {
+			const { baseElement } = await renderPage({ identity: { ...SIGNED_IN, authenticated: null } });
 			const screen = page.elementLocator(baseElement);
 
 			await expect
@@ -239,7 +178,7 @@ describe("EnvironmentsPage", () => {
 		});
 
 		it("renders normally when providers are available", async () => {
-			const { baseElement } = renderPage({ providersAvailable: true });
+			const { baseElement } = await renderPage({ status: "ready" });
 			const screen = page.elementLocator(baseElement);
 
 			await expect
@@ -257,7 +196,7 @@ describe("EnvironmentsPage — scrolling", () => {
 	}));
 
 	it("scrolls the settings page, not the environment list", async () => {
-		const { baseElement } = renderPage({
+		const { baseElement } = await renderPage({
 			list: async () => manyEnvironments,
 			hostHeight: 420,
 		});

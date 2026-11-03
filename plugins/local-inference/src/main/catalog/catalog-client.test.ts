@@ -458,7 +458,7 @@ describe("listModelCatalog", () => {
 		await expect(
 			listModelCatalog({ fetch, getApiKey: async () => null, getSiteDomain }),
 		).rejects.toMatchObject({
-			name: "FeatureError",
+			name: "KernelError",
 			message: "Sign in to your Anaconda account (Settings → Account) to view the model catalog.",
 		});
 		expect(fetch).not.toHaveBeenCalled();

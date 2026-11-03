@@ -14,7 +14,7 @@ import {
 	Trash2Icon,
 } from "lucide-react";
 
-import { SettingsPageHeader, useSdk, useSdkQuery } from "@kilo-desktop/sdk-react";
+import { SettingsPageHeader } from "@kilo-desktop/ui/components/settings-page-header";
 import { Badge } from "@kilo-desktop/ui/components/badge";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Checkbox } from "@kilo-desktop/ui/components/checkbox";
@@ -53,8 +53,8 @@ import type {
 	CondaEnv,
 	CondaPackage,
 	CondaRepodataFindResult,
-	CondaService,
 } from "../../../contracts/providers/conda.js";
+import { useConda, useCondaQuery } from "../../conda.js";
 import { ToolbarSkeleton } from "../../EnvironmentsListSkeleton.js";
 import { AddPackageDialog } from "./AddPackageDialog.js";
 import { BulkRemoveConfirmation } from "./BulkRemoveConfirmation.js";
@@ -106,9 +106,9 @@ interface EnvironmentDetailProps {
 }
 
 export function EnvironmentDetail({ env, onBack }: EnvironmentDetailProps) {
-	const sdk = useSdk<CondaService>("environments");
+	const conda = useConda();
 	const displayName = environmentDisplayName(env);
-	const packages = useSdkQuery(sdk, "conda.packages.list", {
+	const packages = useCondaQuery(conda, "listPackages", {
 		name: env.name || undefined,
 		prefix: env.prefix,
 	});
@@ -122,7 +122,7 @@ export function EnvironmentDetail({ env, onBack }: EnvironmentDetailProps) {
 
 	// Query uses the installed package names when available, or a dummy
 	// single-name that will return no results when there are no packages yet.
-	// useSdkQuery doesn't support an `enabled` option, so we always call it.
+	// The query always runs; repodataArgs decides what it asks for.
 	const repodataArgs = useMemo(
 		() =>
 			condaPackageNames.length > 0
@@ -130,7 +130,7 @@ export function EnvironmentDetail({ env, onBack }: EnvironmentDetailProps) {
 				: { names: ["__placeholder__"], limit: 1 },
 		[condaPackageNames],
 	);
-	const repodata = useSdkQuery(sdk, "conda.repodata.find", repodataArgs);
+	const repodata = useCondaQuery(conda, "findRepodata", repodataArgs);
 
 	// Single-pass derivation of two related maps from repodata:
 	//   - upgradableMap:        package name → newest available version

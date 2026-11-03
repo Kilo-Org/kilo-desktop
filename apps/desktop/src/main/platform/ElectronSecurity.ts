@@ -1,6 +1,6 @@
 import type { IpcMainInvokeEvent, Session } from "electron";
 
-import type { EmbeddedWebHost } from "@kilo-desktop/feature-sdk/main";
+import type { EmbeddedWebHost } from "./embedded-web-host.js";
 
 import { DESKTOP_HOST, DESKTOP_PRODUCTION_SCHEME, getDesktopScheme } from "./ElectronProtocol.js";
 

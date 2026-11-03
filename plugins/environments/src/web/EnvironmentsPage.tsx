@@ -1,34 +1,25 @@
 import type { ReactNode } from "react";
 
-import { SettingsPageHeader, useFeatureFlag, useSdk, useSdkQuery } from "@kilo-desktop/sdk-react";
+import { SettingsPageHeader } from "@kilo-desktop/ui/components/settings-page-header";
 
-import type { EnvironmentsStatusService } from "../contracts/status.js";
-
+import { useCondaStatus } from "./conda.js";
+import { KiloSignInGate } from "./KiloSignInGate.js";
 import {
 	EnvironmentsPanel as CondaEnvironmentsPanel,
 	EnvironmentsPanelLoading as CondaEnvironmentsPanelLoading,
 } from "./providers/conda/EnvironmentsPanel.js";
-import { KiloAuthGate } from "@kilo-desktop/sdk-react";
-
-/**
- * LaunchDarkly feature-flag key that gates the entire environments plugin.
- * Kept in sync with `FEATURE_FLAG_KEY` in
- * `plugins/environments/src/main/index.ts` — flipping this key on the
- * LaunchDarkly side enables both the main-side registration and the renderer
- * page in one step.
- */
-const FEATURE_FLAG_KEY = "environments-feature";
 
 /**
  * Environments settings section (plugin.json `contributes.settings`). Every
  * state renders a `SettingsPageHeader`; the detail view overrides its title.
  *
- * Two-gate guard:
- * 1. **Feature flag** (`environments-feature`) — off by default.
- * 2. **Provider boot status** (`environments.status`) — when the flag is on
- *    but no provider booted (e.g. bridge payload missing), the page shows an
- *    informational placeholder instead of rendering panels whose `sdk.invoke`
- *    calls would fail with `FeatureError NOT_FOUND`.
+ * Guards, from `kilo.environments/conda`'s status:
+ * 1. **Feature flag** (`environments-feature`) — off by default; the section
+ *    is hidden then, so this shows only on a direct visit.
+ * 2. **Bridge** — when the flag is on but the bundled bridge is missing, the
+ *    page shows an informational placeholder instead of panels whose calls
+ *    would fail.
+ * 3. **Kilo sign-in** — signed out, the page is replaced by a sign-in prompt.
  *
  * v1 ships a single provider (Conda). Rather than pretending to be a
  * multi-tab strip before there is a second provider, the page renders the
@@ -36,12 +27,12 @@ const FEATURE_FLAG_KEY = "environments-feature";
  * true tab strip once a second provider (uv, pip, ...) is registered.
  */
 export function EnvironmentsPage() {
-	const featureEnabled = useFeatureFlag<boolean>(FEATURE_FLAG_KEY, false);
+	const status = useCondaStatus();
 
 	// The feature flag is checked outside the Kilo gate so a signed-out user
 	// sees "not enabled for your account" without a sign-in prompt they can't
 	// act on (the flag-off state changes nothing with sign-in).
-	if (!featureEnabled) {
+	if (status === "disabled") {
 		return (
 			<EnvironmentsLayout state="flag-off">
 				<SettingsPageHeader />
@@ -53,13 +44,9 @@ export function EnvironmentsPage() {
 	}
 
 	return (
-		<KiloAuthGate
-			featureId="environments"
-			featureName="Conda Environments"
-			pendingFallback={<EnvironmentsPageLoading />}
-		>
-			<EnvironmentsPageContent />
-		</KiloAuthGate>
+		<KiloSignInGate featureName="Conda Environments" pendingFallback={<EnvironmentsPageLoading />}>
+			<EnvironmentsPageContent status={status} />
+		</KiloSignInGate>
 	);
 }
 
@@ -75,20 +62,13 @@ function EnvironmentsPageLoading() {
 	);
 }
 
-function EnvironmentsPageContent() {
-	const sdk = useSdk<EnvironmentsStatusService>("environments");
-	const statusQuery = useSdkQuery(sdk, "environments.status");
+function EnvironmentsPageContent({ status }: { status: "unavailable" | "ready" | null }) {
+	// Wait for the status before mounting provider panels, so they never call
+	// a domain that is not there yet. The skeleton matches the panel's own
+	// loading state so the two waits read as one.
+	if (status === null) return <EnvironmentsPageLoading />;
 
-	const providersAvailable = statusQuery.data?.providersAvailable ?? false;
-
-	// Wait for the status query before mounting provider panels. Rendering
-	// early would let CondaEnvironmentsPanel call conda.envs.list against an
-	// unregistered handler, flashing a transient error before the
-	// "unavailable" placeholder takes over. The skeleton matches the panel's
-	// own loading state so the two waits read as one.
-	if (statusQuery.isLoading) return <EnvironmentsPageLoading />;
-
-	if (!providersAvailable) {
+	if (status === "unavailable") {
 		return (
 			<EnvironmentsLayout state="unavailable">
 				<SettingsPageHeader />

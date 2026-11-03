@@ -2,14 +2,15 @@ import { expectElementToBeVisible, getLocatorByTestId } from "@anaconda/playwrig
 import { getPage } from "@anaconda/playwright-utils/page-utils";
 import { expect } from "@playwright/test";
 
-import { openNewChatDraft } from "./new-chat-draft.js";
+import { openAgentPaneInNewSession } from "./agent-session.js";
 
 /**
- * Put the chat into a fresh draft (which mounts the agent transcript and its
- * find scope) and open the find bar with the platform find chord.
+ * Add an Agent pane (which holds the transcript and its find scope) to a new
+ * session and open the find bar with the platform find chord. The New Session
+ * page's starter has no transcript, so the pane comes from the session header.
  */
 export async function openChatFindBar(): Promise<void> {
-	await openNewChatDraft();
+	await openAgentPaneInNewSession();
 	await getPage().keyboard.press("ControlOrMeta+f");
 	await expectElementToBeVisible(getLocatorByTestId("chat-find-bar"), {
 		message: "The find bar should open on the find chord.",

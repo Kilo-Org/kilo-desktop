@@ -1,22 +1,26 @@
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { BranchSelectorPage } from "../../pages/features/git/branch-selector-page.js";
 import { ChangesPage } from "../../pages/features/git/changes-page.js";
 import { InitButtonPage } from "../../pages/features/git/init-button-page.js";
+import { WorktreesPage } from "../../pages/features/git/worktrees-page.js";
 import { removePathAfterAppStops, test as shellTest } from "../shell.js";
 
 type GitFixtures = {
 	changesPage: ChangesPage;
 	branchSelectorPage: BranchSelectorPage;
 	initButtonPage: InitButtonPage;
+	worktreesPage: WorktreesPage;
 	gitWorkspace: { path: string; name: string };
 	/** A clone with `origin` (main HEAD + feature) and a checkout history, so the popover has all three groups. */
 	gitBranchWorkspace: { path: string; name: string };
 	/** A plain folder with files but NO `git init`, so the init entry points have a target. */
 	plainWorkspace: { path: string; name: string };
+	/** A clean repository on `main` with one commit: what `git worktree add` needs. */
+	gitWorktreeRepo: { path: string; name: string };
 };
 
 /**
@@ -60,11 +64,34 @@ export const test = shellTest.extend<GitFixtures>({
 		await use(new InitButtonPage());
 	},
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
+	worktreesPage: async ({}, use) => {
+		await use(new WorktreesPage());
+	},
+	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
+	gitWorktreeRepo: async ({}, use) => {
+		const repoPath = await realpath(await mkdtemp(path.join(os.tmpdir(), "kilo-git-worktrees-")));
+		removePathAfterAppStops(repoPath);
+		const git = (args: string[]) =>
+			execFileSync("git", ["-C", repoPath, ...args], { env: HERMETIC_GIT_ENV });
+		git(["init", "-b", "main"]);
+		git(["config", "user.email", "git-plugin-e2e@example.com"]);
+		git(["config", "user.name", "Git Plugin E2E"]);
+		git(["config", "commit.gpgsign", "false"]);
+		await writeFile(path.join(repoPath, "README.md"), "# worktree repository\n");
+		git(["add", "README.md"]);
+		git(["commit", "-m", "initial"]);
+		await use({ path: repoPath, name: path.basename(repoPath) });
+	},
+	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
 	gitWorkspace: async ({}, use) => {
 		// A real repository with one uncommitted modification, so the
-		// Changes tab has content to stream (proving the kilo-git://
+		// Changes pane has content to stream (proving the kilo-git://
 		// protocol round-trip in the packaged binary).
-		const workspacePath = await mkdtemp(path.join(os.tmpdir(), "kilo-git-workspace-"));
+		// kilo.workspaces stores folders by their realpath (macOS temp dirs are
+		// /var → /private/var symlinks), and watches and diffs those.
+		const workspacePath = await realpath(
+			await mkdtemp(path.join(os.tmpdir(), "kilo-git-workspace-")),
+		);
 		removePathAfterAppStops(workspacePath);
 		const git = (args: string[]) =>
 			execFileSync("git", ["-C", workspacePath, ...args], { env: HERMETIC_GIT_ENV });
@@ -85,7 +112,7 @@ export const test = shellTest.extend<GitFixtures>({
 		// Source repo: main (HEAD) + feature. A clone gets origin/HEAD →
 		// main; the checkout sequence gives the reflog recency, and the
 		// untracked feature populates "Other Branches".
-		const basePath = await mkdtemp(path.join(os.tmpdir(), "kilo-git-branch-"));
+		const basePath = await realpath(await mkdtemp(path.join(os.tmpdir(), "kilo-git-branch-")));
 		removePathAfterAppStops(basePath);
 		const git = (dir: string, args: string[]) =>
 			execFileSync("git", ["-C", dir, ...args], { env: HERMETIC_GIT_ENV });
@@ -118,7 +145,9 @@ export const test = shellTest.extend<GitFixtures>({
 	},
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
 	plainWorkspace: async ({}, use) => {
-		const workspacePath = await mkdtemp(path.join(os.tmpdir(), "kilo-plain-workspace-"));
+		const workspacePath = await realpath(
+			await mkdtemp(path.join(os.tmpdir(), "kilo-plain-workspace-")),
+		);
 		removePathAfterAppStops(workspacePath);
 		await writeFile(path.join(workspacePath, "README.md"), "plain folder\n");
 		await writeFile(path.join(workspacePath, "notes.txt"), "untracked from the start\n");

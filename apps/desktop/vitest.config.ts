@@ -20,14 +20,11 @@ export default defineConfig({
 			"**/run-packaging.ts",
 			// Thin `net.request`/`net.fetch` wrapper; exercised via e2e/networking.
 			"**/HttpClient.ts",
-			// Two `path.join` helpers, covered indirectly by feature-registry/ScopedFs.
+			// Two `path.join` helpers, covered indirectly by ScopedFs.
 			"**/featureStorage.ts",
 			// Monkey-patches process-global Node/Electron networking for third-party
 			// deps; no observable app seam (see file header).
 			"**/proxyAgent.ts",
-			// Fake @parcel/watcher boundary — fixture-only, exercised by the
-			// workspace watcher unit/integration suites.
-			"**/workspace/test/test-helpers.ts",
 		]),
 		projects: [
 			{

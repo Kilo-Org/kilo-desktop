@@ -12,7 +12,7 @@ await build({
 			formats: ["es"],
 			fileName: () => "index.js",
 		},
-		outDir: path.join(pluginRoot, "build/kilo-plugin"),
+		outDir: path.join(pluginRoot, "resources/kilo-plugin"),
 		emptyOutDir: true,
 		minify: false,
 		rollupOptions: {

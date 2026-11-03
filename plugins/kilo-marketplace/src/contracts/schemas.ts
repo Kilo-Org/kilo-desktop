@@ -1,7 +1,5 @@
 import { z } from "zod";
 
-import { defineContract, defineMethod, type InferContract } from "@kilo-desktop/feature-sdk";
-
 export const marketplaceTypeSchema = z.enum(["agent", "skill", "mcp"]);
 export type MarketplaceType = z.infer<typeof marketplaceTypeSchema>;
 
@@ -173,26 +171,3 @@ export type MissingMcpCommand = z.infer<typeof missingMcpCommandSchema>;
 export const marketplaceCheckCommandsResultSchema = z.object({
 	missing: z.array(missingMcpCommandSchema),
 });
-
-export const marketplaceContract = defineContract({
-	"marketplace.list": defineMethod(marketplaceListInputSchema, marketplaceSnapshotSchema),
-	"marketplace.refresh": defineMethod(marketplaceListInputSchema, marketplaceSnapshotSchema),
-	"marketplace.install": defineMethod(
-		marketplaceMutationInputSchema,
-		marketplaceMutationResultSchema,
-	),
-	"marketplace.remove": defineMethod(
-		marketplaceMutationInputSchema.omit({ method: true, parameters: true, reviewedContent: true }),
-		marketplaceMutationResultSchema,
-	),
-	"marketplace.authenticateMcp": defineMethod(
-		marketplaceMcpAuthenticateInputSchema,
-		marketplaceMutationResultSchema,
-	),
-	"marketplace.checkCommands": defineMethod(
-		marketplaceCheckCommandsInputSchema,
-		marketplaceCheckCommandsResultSchema,
-	),
-});
-
-export type MarketplaceService = InferContract<typeof marketplaceContract>;

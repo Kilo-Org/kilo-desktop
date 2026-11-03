@@ -6,7 +6,8 @@ const { accentColor } = colorThemeData;
 
 test.describe("Appearance color theme and accent @regression @packaged", () => {
 	test.beforeEach(async ({ appShellPage, appearancePage }) => {
-		// The open window keeps the last choices in memory; reload so each test starts from the defaults.
+		// Appearance is saved in main: reset it, then reload so each test starts from the defaults.
+		await appearancePage.resetAppearance();
 		await appearancePage.reloadApp();
 		await appShellPage.verifyShellIsLoaded();
 		await appShellPage.openSettings();
@@ -64,8 +65,8 @@ test.describe("Appearance color theme and accent @regression @packaged", () => {
 
 test.describe("Appearance text size @smoke @packaged", () => {
 	test.beforeEach(async ({ appShellPage, appearancePage }) => {
-		// The fixture clears storage between tests, but the open window keeps the last sizes in
-		// memory; reloading makes every test start from the defaults.
+		// Appearance is saved in main: reset it, then reload so each test starts from the defaults.
+		await appearancePage.resetAppearance();
 		await appearancePage.reloadApp();
 		await appShellPage.verifyShellIsLoaded();
 		await appShellPage.openSettings();
@@ -120,7 +121,8 @@ test.describe("Appearance text size @smoke @packaged", () => {
 
 test.describe("Appearance sidebar vibrancy @regression @packaged", () => {
 	test.beforeEach(async ({ appShellPage, appearancePage }) => {
-		// The open window keeps the last setting in memory; reload so each test starts from the default.
+		// Appearance is saved in main: reset it, then reload so each test starts from the default.
+		await appearancePage.resetAppearance();
 		await appearancePage.reloadApp();
 		await appShellPage.verifyShellIsLoaded();
 		await appShellPage.openSettings();

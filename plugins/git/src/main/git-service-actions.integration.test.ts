@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { folders as workspaceFolders } from "../test/workspace-access.js";
 import { GitService } from "./git-service.js";
 
 const directories: string[] = [];
@@ -45,7 +46,7 @@ function commitFile(repo: string, file: string, contents: string, message: strin
 function service(...folders: string[]): GitService {
 	return new GitService({
 		logger,
-		getWorkspaceFolderPaths: () => Promise.resolve(folders),
+		workspaces: workspaceFolders(...folders),
 	});
 }
 
@@ -141,7 +142,7 @@ describe("GitService repository actions (real git)", () => {
 		git(repo, ["worktree", "add", "-b", "feature", worktreeDirectory]);
 
 		await expect(service(repo, worktreeDirectory).checkout(repo, "feature")).rejects.toMatchObject({
-			name: "FeatureError",
+			name: "KernelError",
 			code: "BUSINESS",
 			message: "This branch is already checked out in another worktree.",
 		});

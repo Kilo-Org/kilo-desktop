@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { CircleAlertIcon, SquareTerminalIcon } from "lucide-react";
 
-import type { ThemeAppearance } from "@kilo-desktop/feature-sdk";
-import { useSdk } from "@kilo-desktop/sdk-react";
+import type { DomainState } from "@kilo-desktop/kernel";
+import { useDomain, useDomainState, useSdk } from "@kilo-desktop/kernel/web";
+import type { PaneProps } from "@kilo-desktop/plugin-sessions/contracts";
+import { Theme } from "@kilo-desktop/plugin-shell/contracts";
 import {
 	Empty,
 	EmptyDescription,
@@ -10,25 +12,36 @@ import {
 	EmptyMedia,
 	EmptyTitle,
 } from "@kilo-desktop/ui/components/empty";
+import type { TerminalPalette } from "@kilo-desktop/ui/themes/appearance-types";
 
-import {
-	TERMINAL_PROTOCOL_VERSION,
-	type TerminalIdentity,
-	type TerminalService,
-} from "../contracts/session.js";
+import { TERMINAL_PORT, TERMINAL_SESSION_METADATA_KEY, Terminals } from "../contracts";
+import { TERMINAL_PROTOCOL_VERSION, type TerminalIdentity } from "../contracts/session";
 import {
 	terminalFrameSrcFor,
 	terminalThemeFor,
 	trustedTerminalFrameMessageFrom,
-} from "./terminal-frame-bridge.js";
-import type { ChatRightPanelCapabilities } from "./chat-right-panel.js";
-import { registerTerminalPaneOwner } from "./terminal-pane-owners.js";
-import { TERMINAL_SESSION_METADATA_KEY } from "./tab-metadata.js";
+} from "./terminal-frame-bridge";
+import { followTerminalFocus } from "./terminal-focus";
 
 const INITIAL_COLS = 120;
 const INITIAL_ROWS = 30;
 
-function terminalThemeFromApp(appearance: ThemeAppearance, pane: HTMLElement | null) {
+interface TerminalAppearance {
+	readonly mode: "light" | "dark";
+	readonly terminal: TerminalPalette | null;
+}
+
+const selectTheme = (state: DomainState<typeof Theme>) => state;
+
+/** Without kilo.shell's theme, the document's colour scheme. */
+function documentAppearance(): TerminalAppearance {
+	return {
+		mode: document.documentElement.dataset["theme"] === "dark" ? "dark" : "light",
+		terminal: null,
+	};
+}
+
+function terminalThemeFromApp(appearance: TerminalAppearance, pane: HTMLElement | null) {
 	const styles = getComputedStyle(document.documentElement);
 	const scrollbarThumb = styles.getPropertyValue("--app-scrollbar-thumb").trim();
 	const scrollbarThumbHover = styles.getPropertyValue("--app-scrollbar-thumb-hover").trim();
@@ -46,39 +59,53 @@ function terminalThemeFromApp(appearance: ThemeAppearance, pane: HTMLElement | n
 		: theme;
 }
 
-export interface TerminalViewProps {
-	readonly sessionId: string;
-	readonly instanceId: string;
+function TerminalNotice({
+	qaId,
+	icon,
+	title,
+	description,
+}: {
+	readonly qaId: string;
+	readonly icon: ReactNode;
 	readonly title: string;
-	readonly workspaceDirectory?: string;
-	readonly workspaceFolders?: readonly { readonly path: string; readonly isPrimary: boolean }[];
-	readonly metadata?: Readonly<Record<string, string>>;
+	readonly description: string;
+}) {
+	return (
+		<div className="bg-pane flex min-h-0 flex-1" data-qa-id={qaId}>
+			<Empty>
+				<EmptyHeader>
+					<EmptyMedia variant="icon">{icon}</EmptyMedia>
+					<EmptyTitle>{title}</EmptyTitle>
+					<EmptyDescription>{description}</EmptyDescription>
+				</EmptyHeader>
+			</Empty>
+		</div>
+	);
 }
 
-export function TerminalView({
-	sessionId,
-	instanceId,
-	title,
-	workspaceFolders,
-	metadata,
-}: TerminalViewProps) {
-	const sdk = useSdk<TerminalService>("terminal");
+/**
+ * A terminal pane: an iframe on the `terminal` embedded host, handed a port
+ * to the pane's shell in main once it is ready. The pane id names the shell;
+ * a theme change remounts the frame and replays the shell's history.
+ */
+export function TerminalView({ sessionId, pane, directory }: PaneProps) {
+	const sdk = useSdk();
+	const terminals = useDomain(Terminals);
+	const theme = useDomainState(Theme, selectTheme);
 	const viewRef = useRef<HTMLDivElement>(null);
 	const frameRef = useRef<HTMLIFrameElement>(null);
 	const connectedIdentityRef = useRef<TerminalIdentity | null>(null);
-	const appearance = useSyncExternalStore(sdk.theme.subscribe, sdk.theme.appearance);
-	const primaryWorkspace = workspaceFolders?.find(({ isPrimary }) => isPrimary)?.path;
-	const panel = sdk.plugins.get<ChatRightPanelCapabilities>("kilo-ui")?.chatRightPanel;
-	const ordinal = panel
-		?.listTabs?.(sessionId)
-		.find((tab) => tab.instanceId === instanceId)?.ordinal;
-	const defaultLabel = ordinal ? `Terminal ${String(ordinal)}` : title;
-	const terminalSessionId = metadata?.[TERMINAL_SESSION_METADATA_KEY] ?? sessionId;
+	const appearance: TerminalAppearance = theme ?? documentAppearance();
+	const appearanceRef = useRef(appearance);
+	appearanceRef.current = appearance;
+	const terminalId = pane.id;
+	const terminalSessionId = pane.metadata[TERMINAL_SESSION_METADATA_KEY] ?? sessionId;
+	const defaultLabel = `Terminal ${String(pane.ordinal)}`;
 	// ponytail: Ghostty 0.4 cannot repaint ANSI palettes. Reconnect to the same
 	// PTY and replay its capped history; scroll/selection reset until Ghostty supports live themes.
 	const frameKey = JSON.stringify([
 		terminalSessionId,
-		instanceId,
+		terminalId,
 		appearance.mode,
 		appearance.terminal,
 	]);
@@ -91,41 +118,16 @@ export function TerminalView({
 		[],
 	);
 	const [connectionError, setConnectionError] = useState<string | null>(null);
-
-	useEffect(
-		() =>
-			registerTerminalPaneOwner({
-				paneSessionId: sessionId,
-				terminalSessionId,
-				terminalId: instanceId,
-			}),
-		[instanceId, sessionId, terminalSessionId],
-	);
+	const available = terminals !== null && frameSrc !== undefined;
 
 	useEffect(() => {
-		panel?.updateTab?.(sessionId, instanceId, {
-			title: defaultLabel,
-			...(!metadata?.[TERMINAL_SESSION_METADATA_KEY]
-				? {
-						metadata: {
-							...metadata,
-							[TERMINAL_SESSION_METADATA_KEY]: terminalSessionId,
-						},
-					}
-				: {}),
-		});
-		return panel?.registerTabLifecycle?.(sessionId, instanceId, {
-			onClose: () =>
-				sdk.client.close({
-					sessionId: terminalSessionId,
-					terminalId: instanceId,
-					deleteHistory: true,
-				}),
-		});
-	}, [defaultLabel, instanceId, metadata, panel, sdk, sessionId, terminalSessionId]);
+		const frame = frameRef.current;
+		if (!available || connectionError || !frame) return;
+		return followTerminalFocus(sdk, frame);
+	}, [available, connectionError, frameKey, sdk]);
 
 	useEffect(() => {
-		if (!frameSrc) return;
+		if (!available || frameSrc === undefined) return;
 		const frameUrl = new URL(frameSrc);
 		const frameOrigin = `${frameUrl.protocol}//${frameUrl.host}`;
 		let port: MessagePort | null = null;
@@ -134,21 +136,17 @@ export function TerminalView({
 		const onMessage = (event: MessageEvent<unknown>) => {
 			const frameWindow = frameRef.current?.contentWindow;
 			const message = trustedTerminalFrameMessageFrom(event, frameWindow ?? null, frameOrigin);
-			if (!message) return;
-			if (message.type === "terminal:label") {
-				panel?.updateTab?.(sessionId, instanceId, { title: message.label });
-				return;
-			}
-			if (!frameWindow || transferred) return;
+			// Labels reach the pane title from main.
+			if (message?.type !== "terminal:ready" || !frameWindow || transferred) return;
 			try {
 				const reconnecting =
 					connectedIdentityRef.current?.sessionId === terminalSessionId &&
-					connectedIdentityRef.current.terminalId === instanceId;
-				port = sdk.ports.open<MessagePort>("session", {
+					connectedIdentityRef.current.terminalId === terminalId;
+				port = sdk.ports.open(TERMINAL_PORT, {
 					protocolVersion: TERMINAL_PROTOCOL_VERSION,
 					sessionId: terminalSessionId,
-					terminalId: instanceId,
-					...(!reconnecting && primaryWorkspace ? { cwd: primaryWorkspace } : {}),
+					terminalId,
+					...(!reconnecting && directory ? { cwd: directory } : {}),
 					cols: INITIAL_COLS,
 					rows: INITIAL_ROWS,
 					initialLabel: defaultLabel,
@@ -157,13 +155,13 @@ export function TerminalView({
 					{
 						type: "terminal:connect",
 						protocolVersion: TERMINAL_PROTOCOL_VERSION,
-						theme: terminalThemeFromApp(sdk.theme.appearance(), viewRef.current),
+						theme: terminalThemeFromApp(appearanceRef.current, viewRef.current),
 					},
 					frameOrigin,
 					[port],
 				);
 				transferred = true;
-				connectedIdentityRef.current = { sessionId: terminalSessionId, terminalId: instanceId };
+				connectedIdentityRef.current = { sessionId: terminalSessionId, terminalId };
 				setConnectionError(null);
 			} catch (error) {
 				port?.close();
@@ -177,54 +175,36 @@ export function TerminalView({
 			window.removeEventListener("message", onMessage);
 			if (!transferred) port?.close();
 		};
-	}, [
-		defaultLabel,
-		frameSrc,
-		frameKey,
-		instanceId,
-		panel,
-		primaryWorkspace,
-		sdk,
-		sessionId,
-		terminalSessionId,
-	]);
+	}, [available, defaultLabel, directory, frameKey, frameSrc, sdk, terminalId, terminalSessionId]);
 
+	if (!terminals) {
+		return (
+			<TerminalNotice
+				qaId="terminal-unavailable"
+				icon={<SquareTerminalIcon aria-hidden="true" />}
+				title="Terminals aren't available here"
+				description="Terminals run in the desktop app."
+			/>
+		);
+	}
 	if (!frameSrc) {
 		return (
-			<div
-				ref={viewRef}
-				className="bg-pane flex min-h-0 flex-1"
-				data-qa-id="terminal-desktop-required"
-			>
-				<Empty>
-					<EmptyHeader>
-						<EmptyMedia variant="icon">
-							<SquareTerminalIcon aria-hidden="true" />
-						</EmptyMedia>
-						<EmptyTitle>Terminal unavailable</EmptyTitle>
-						<EmptyDescription>Terminal tabs are available in the desktop app.</EmptyDescription>
-					</EmptyHeader>
-				</Empty>
-			</div>
+			<TerminalNotice
+				qaId="terminal-desktop-required"
+				icon={<SquareTerminalIcon aria-hidden="true" />}
+				title="Terminal unavailable"
+				description="Terminal tabs are available in the desktop app."
+			/>
 		);
 	}
 	if (connectionError) {
 		return (
-			<div
-				ref={viewRef}
-				className="bg-pane flex min-h-0 flex-1"
-				data-qa-id="terminal-connection-error"
-			>
-				<Empty>
-					<EmptyHeader>
-						<EmptyMedia variant="icon">
-							<CircleAlertIcon aria-hidden="true" />
-						</EmptyMedia>
-						<EmptyTitle>Could not connect to the terminal</EmptyTitle>
-						<EmptyDescription>{connectionError}</EmptyDescription>
-					</EmptyHeader>
-				</Empty>
-			</div>
+			<TerminalNotice
+				qaId="terminal-connection-error"
+				icon={<CircleAlertIcon aria-hidden="true" />}
+				title="Could not connect to the terminal"
+				description={connectionError}
+			/>
 		);
 	}
 	return (

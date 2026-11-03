@@ -2,83 +2,97 @@ import { execFileSync } from "node:child_process";
 
 import {
 	click,
+	expectElementToBeHidden,
 	expectElementToBeVisible,
+	fill,
 	getLocatorByRole,
 	getLocatorByTestId,
 } from "@anaconda/playwright-utils";
+import { getPage } from "@anaconda/playwright-utils/page-utils";
 
-import { paveWorkspaceChat } from "./pave-workspace-chat.js";
-
-// Prevent system gitconfig reads — mirrors the fixture's HERMETIC_GIT_ENV.
-const HERMETIC_GIT_ENV: NodeJS.ProcessEnv = {
-	...process.env,
-	GIT_CONFIG_NOSYSTEM: "1",
-	GIT_CONFIG_COUNT: "0",
-};
+import {
+	createAndActivateWorkspace,
+	openNewSession,
+	waitForSessionStartedBySend,
+} from "../chat/agent-session.js";
 
 /**
- * Page object for the composer footers' "Initialize Git" buttons — the git
- * plugin's swaps inside the `kilo-ui/chat-composer-draft-footer` and
- * `kilo-ui/chat-composer-footer` zone contributions, rendered while the
- * workspace folder is not a repository. The draft footer renders for empty
- * chats, so that flow only paves a workspace chat; the thread footer renders
- * once the thread has usage data, so that flow also sends a message first.
- * Deep coverage — visibility gating, invalidation, toasts — lives in the
- * Vitest browser tier (InitializeGitButton / GitBranchSelector /
- * GitBranchLabel browser suites).
+ * Page object for kilo.git's "Initialize Git" button: its `footer` composer
+ * action under a chat's composer, shown while the chat's folder is not a
+ * repository. The footer shows once the chat exists, so the flow opens the
+ * New Session page in the workspace and sends the starter's first message,
+ * which starts the session and opens its Agent pane. Deep coverage (refresh,
+ * failures) lives in kilo.git's Vitest browser tier.
  */
 export class InitButtonPage {
-	async createWorkspaceChat(folderPath: string, name: string): Promise<void> {
-		await paveWorkspaceChat(folderPath, name);
+	private readonly button = () =>
+		getLocatorByTestId("kilo-agent-pane").getByTestId("git-init-thread-button");
+
+	/** The New Session page in a new workspace for a plain folder: no isolation to choose. */
+	async openNewSession(folderPath: string, name: string): Promise<void> {
+		// New session from an open session starts in that session's workspace,
+		// so the workspace is activated once the New Session page is showing.
+		await openNewSession();
+		await createAndActivateWorkspace(folderPath, name);
+		await expectElementToBeVisible(
+			getLocatorByTestId("launcher-headline").getByText(name, { exact: true }),
+			`The New Session page should start the session in "${name}"`,
+		);
+		await expectElementToBeHidden(
+			getLocatorByTestId("launcher-isolation-footer").getByTestId("launcher-isolation"),
+			{ message: "A folder that is not a repository offers no worktree isolation" },
+		);
 	}
 
-	async startThread(): Promise<void> {
-		await getLocatorByRole("textbox", { name: "Message input" }).fill(
+	/** The starter's first send starts the session; its chat's composer footer then shows. */
+	async startChat(): Promise<void> {
+		await fill(
+			getLocatorByRole("textbox", { name: "Message input" }),
 			"Turn this folder into a repository",
 		);
-		await click(getLocatorByRole("button", { name: "Send message" }));
-		// Waiting for the toolbar proves the thread (and its footers) started.
+		await click(getLocatorByTestId("kilo-composer-send"));
+		await waitForSessionStartedBySend();
 		await expectElementToBeVisible(
-			getLocatorByTestId("chat-pane-toolbar"),
-			"Pane toolbar should be visible after the chat starts",
+			getLocatorByTestId("kilo-agent-pane").getByTestId("kilo-composer-footer"),
+			"The chat's composer footer should show once the chat starts",
 		);
 	}
 
-	async initializeFromDraftFooter(): Promise<void> {
-		const button = getLocatorByTestId("git-init-draft-button");
+	async initializeFromFooter(): Promise<void> {
+		await this.verifyButtonShown();
+		await click(this.button());
+		await this.verifyBranchLabelReplacedButton();
+	}
+
+	/**
+	 * `git init` from a terminal, then back to the app: the footer reads the
+	 * folder again when the window regains focus, which the test raises
+	 * itself because the packaged window never loses it here.
+	 */
+	async initializeOutsideTheApp(folderPath: string): Promise<void> {
+		await this.verifyButtonShown();
+		execFileSync("git", ["init", "-b", "main"], {
+			cwd: folderPath,
+			env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1" },
+		});
+		await getPage().evaluate(() => globalThis.dispatchEvent(new Event("focus")));
+		await this.verifyBranchLabelReplacedButton();
+	}
+
+	private async verifyButtonShown(): Promise<void> {
 		await expectElementToBeVisible(
-			button,
-			"Initialize Git button should render in the draft footer for a plain workspace folder",
-		);
-		await click(button);
-		await expectElementToBeVisible(
-			getLocatorByTestId("git-branch-selector-trigger"),
-			"The branch selector should replace the init button once the repository exists",
+			this.button(),
+			"Initialize Git should show under the composer for a plain workspace folder",
 		);
 	}
 
-	async initializeFromThreadFooter(): Promise<void> {
-		const button = getLocatorByTestId("git-init-thread-button");
+	private async verifyBranchLabelReplacedButton(): Promise<void> {
 		await expectElementToBeVisible(
-			button,
-			"Initialize Git button should render in the thread footer for a plain workspace folder",
+			getLocatorByTestId("kilo-agent-pane").getByTestId("git-branch-label"),
+			"The branch label should replace the button once the repository exists",
 		);
-		await click(button);
-		await expectElementToBeVisible(
-			getLocatorByTestId("git-branch-label"),
-			"The branch label should replace the init button once the repository exists",
-		);
-	}
-
-	async initializeExternally(folderPath: string): Promise<void> {
-		await expectElementToBeVisible(
-			getLocatorByTestId("git-init-draft-button"),
-			"Initialize Git button should render before external initialization",
-		);
-		execFileSync("git", ["-C", folderPath, "init"], { env: HERMETIC_GIT_ENV });
-		await expectElementToBeVisible(
-			getLocatorByTestId("git-branch-selector-trigger"),
-			"The branch selector should appear after external initialization",
-		);
+		await expectElementToBeHidden(this.button(), {
+			message: "Initialize Git should leave once the folder is a repository",
+		});
 	}
 }

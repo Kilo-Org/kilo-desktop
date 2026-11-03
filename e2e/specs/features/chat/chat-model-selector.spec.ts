@@ -25,7 +25,7 @@ test.describe("Chat model selector", () => {
 		await chatModelSelectorPage.verifyMenuOpen();
 	});
 
-	test("shows the provider rail with Favorites and Local Model Server buttons @smoke", async ({
+	test("shows the provider rail with the Favorites button @smoke", async ({
 		appShellPage,
 		chatComposerPage,
 		chatModelSelectorPage,
@@ -35,7 +35,6 @@ test.describe("Chat model selector", () => {
 		await chatModelSelectorPage.openModelSelector();
 		await chatModelSelectorPage.verifyRailVisible();
 		await chatModelSelectorPage.verifyFavoritesButtonVisible();
-		await chatModelSelectorPage.verifyLocalServerButtonVisible();
 	});
 
 	test("shows the model search box with its placeholder @smoke", async ({
@@ -84,7 +83,7 @@ test.describe("Chat model selector", () => {
 		await chatModelSelectorPage.openModelSelector();
 		await chatModelSelectorPage.selectFavorites();
 		await chatModelSelectorPage.verifySearchVisible();
-		await chatModelSelectorPage.selectLocalModelServer();
+		await chatModelSelectorPage.selectKiloGateway();
 		await chatModelSelectorPage.verifySearchVisible();
 		await chatModelSelectorPage.selectFavorites();
 		await chatModelSelectorPage.verifySearchVisible();

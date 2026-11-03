@@ -105,7 +105,7 @@ export function EnvironmentsStartingState({
 
 /**
  * Friendly failure state for a non-transient environments load error. The
- * raw FeatureError message (Python traceback fragments, JSON-RPC plumbing)
+ * raw KernelError message (Python traceback fragments, JSON-RPC plumbing)
  * is translated to curated copy via {@link friendlyEnvironmentsError}; the
  * user can retry the read.
  */

@@ -5,14 +5,14 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
-import type { MainSdkFetch, MainSdkLogger } from "@kilo-desktop/feature-sdk/main";
+import type { KernelLogger } from "@kilo-desktop/kernel";
 
 import type { LocalModel, ModelDownload } from "../../contracts/schemas.js";
 import type { CatalogDownloadArtifact, ModelDownloadIdentity } from "./catalog-download.js";
 
 export interface ModelDownloadManagerOptions {
 	readonly modelsDir: string;
-	readonly fetch: MainSdkFetch;
+	readonly fetch: typeof globalThis.fetch;
 	readonly resolveArtifact: (identity: ModelDownloadIdentity) => Promise<CatalogDownloadArtifact>;
 	readonly resolveDownloadUrl: (
 		artifact: CatalogDownloadArtifact,
@@ -26,7 +26,7 @@ export interface ModelDownloadManagerOptions {
 		sizeBytes: number;
 	}) => Promise<LocalModel>;
 	readonly emit: (download: ModelDownload) => void;
-	readonly logger: MainSdkLogger;
+	readonly logger: KernelLogger;
 }
 
 interface DownloadRecord {

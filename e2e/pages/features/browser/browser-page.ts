@@ -8,34 +8,23 @@ import {
 	getLocatorByTestId,
 } from "@anaconda/playwright-utils";
 
-import { paveWorkspaceChat } from "../git/pave-workspace-chat.js";
+const BROWSER_KIND = "kilo.browser/browser";
 
+/**
+ * Page object for kilo.browser's Browser pane. A browser-only session starts
+ * from the launcher (no chat needed); the pane toolbar's + adds
+ * more. Deep coverage lives in kilo.browser's Vitest browser tier.
+ */
 export class BrowserPage {
-	async createAndSelectWorkspace(folderPath: string, name: string): Promise<void> {
-		await paveWorkspaceChat(folderPath, name);
-	}
-
-	async openBrowserTab(): Promise<void> {
-		const send = getLocatorByTestId("kilo-composer-send");
+	/** Starts a session from the launcher with a Browser pane, and waits for its guest. */
+	async startBrowserSession(): Promise<void> {
+		await click(getLocatorByTestId("new-chat"));
 		await expectElementToBeVisible(
-			send,
-			"Composer should be connected before starting browser smoke",
+			getLocatorByTestId("workbench-launcher"),
+			"New session should open the launcher",
 		);
-		await fill(getLocatorByRole("textbox", { name: "Message input" }), "Open the browser pane");
-		await click(send);
-		await expectElementToBeVisible(
-			getLocatorByTestId("chat-pane-toolbar"),
-			"Pane toolbar should appear after starting the chat",
-		);
-		await click(getLocatorByTestId("chat-pane-toolbar-add"));
-		const launchItem = getLocatorByTestId("chat-pane-launch-browser.browser");
-		await expectElementToBeVisible(launchItem, "Browser pane launch item should be actionable");
-		await click(launchItem);
-		const browserView = getLocatorByTestId("browser-view");
-		await expectElementToBeVisible(browserView, "Browser pane should mount");
-		await expectElementToHaveAttribute(browserView, "aria-busy", "false", {
-			message: "Browser guest should attach before navigation",
-		});
+		await click(getLocatorByTestId(`launcher-pane-${BROWSER_KIND}`));
+		await this.#waitForGuest();
 	}
 
 	async navigate(url: string): Promise<void> {
@@ -60,5 +49,13 @@ export class BrowserPage {
 			getLocatorByTestId("browser-menu"),
 			"Browser menu should remain visible after navigation",
 		);
+	}
+
+	async #waitForGuest(): Promise<void> {
+		const browserView = getLocatorByTestId("browser-view").last();
+		await expectElementToBeVisible(browserView, "Browser pane should mount");
+		await expectElementToHaveAttribute(browserView, "aria-busy", "false", {
+			message: "Browser guest should attach before navigation",
+		});
 	}
 }

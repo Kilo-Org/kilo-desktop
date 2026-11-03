@@ -11,17 +11,23 @@ import {
 	getLocator,
 	getLocatorByRole,
 	getLocatorByTestId,
-	getLocatorByText,
 	pressPageKeyboard,
 	reloadPage,
 } from "@anaconda/playwright-utils";
 import { getPage } from "@anaconda/playwright-utils/page-utils";
 
-import { openNewChatDraft } from "./new-chat-draft.js";
+import {
+	kiloServerConnection,
+	openNewSession,
+	removeWorkSession,
+	renameWorkSession,
+	sessionListRow,
+	shownAgentSessionId,
+	type KiloServerConnection as KiloConnection,
+} from "./agent-session.js";
 
-type KiloConnection = { baseUrl: string; username: string; password: string };
 type KiloSession = { id: string; directory?: string; title?: string };
-type CreatedKiloSession = KiloSession & { prompt: string };
+type CreatedKiloSession = KiloSession & { prompt: string; workSessionId: string };
 
 const SESSION_POLL_TIMEOUT_MS = 30_000;
 const SESSION_POLL_INTERVAL_MS = 500;
@@ -35,8 +41,8 @@ export class ChatApprovalSelectorPage {
 	private readonly messageInput = () => getLocatorByRole("textbox", { name: "Message input" });
 	private readonly sendButton = () => getLocatorByTestId(/^kilo-composer-send(-when-connected)?$/);
 	private readonly newChatButton = () => getLocatorByTestId("new-chat");
-	private readonly sessionListItem = (sessionId: string) =>
-		getLocator(`[data-kilo-session-id="${sessionId}"] [data-slot="aui_session-list-item-trigger"]`);
+	private readonly transcript = () =>
+		getLocatorByTestId("kilo-agent-pane").getByTestId("kilo-chat-thread");
 
 	private createdSessions: CreatedKiloSession[] = [];
 
@@ -71,8 +77,7 @@ export class ChatApprovalSelectorPage {
 	}
 
 	async switchToNewChat(): Promise<void> {
-		await click(this.newChatButton());
-		await openNewChatDraft();
+		await openNewSession();
 	}
 
 	async createPersistedChat(prompt: string): Promise<void> {
@@ -86,7 +91,11 @@ export class ChatApprovalSelectorPage {
 				(session) => !existingIds.has(session.id) && Boolean(session.directory),
 			);
 			if (created) {
-				this.createdSessions.push({ ...created, prompt });
+				// Waits for the first send to open the session. The row is found by
+				// title; the chat's own title comes from the server later.
+				const workSessionId = await shownAgentSessionId();
+				await renameWorkSession(workSessionId, prompt);
+				this.createdSessions.push({ ...created, prompt, workSessionId });
 				return;
 			}
 			await delay(SESSION_POLL_INTERVAL_MS);
@@ -99,33 +108,15 @@ export class ChatApprovalSelectorPage {
 	async switchToPersistedChat(index: number): Promise<void> {
 		const session = this.createdSessions[index];
 		if (!session) throw new Error(`No persisted test chat exists at index ${index}.`);
-		await click(this.sessionListItem(session.id));
-		await expectElementToBeVisible(getLocatorByText(session.prompt, { exact: true }), {
+		await click(sessionListRow(session.prompt));
+		// The session's title (its list row and breadcrumb) is the prompt too.
+		await expectElementToBeVisible(this.transcript().getByText(session.prompt, { exact: true }), {
 			message: `Persisted chat should display its distinct prompt: "${session.prompt}"`,
 		});
 	}
 
 	async cleanupCreatedChats(): Promise<void> {
-		const connection = await this.getConnection();
-		for (const session of this.createdSessions) {
-			if (!session.directory) continue;
-			await getPage().evaluate(
-				async ({ currentConnection, currentSession }) => {
-					const authorization = `Basic ${btoa(`${currentConnection.username}:${currentConnection.password}`)}`;
-					const url = new URL(
-						`/session/${encodeURIComponent(currentSession.id)}`,
-						currentConnection.baseUrl,
-					);
-					url.searchParams.set("directory", currentSession.directory!);
-					const response = await fetch(url, {
-						method: "DELETE",
-						headers: { Authorization: authorization },
-					});
-					if (!response.ok) throw new Error(`Session cleanup failed with ${response.status}.`);
-				},
-				{ currentConnection: connection, currentSession: session },
-			);
-		}
+		for (const session of this.createdSessions) await removeWorkSession(session.workSessionId);
 		this.createdSessions = [];
 	}
 
@@ -150,26 +141,8 @@ export class ChatApprovalSelectorPage {
 		});
 	}
 
-	private async getConnection(): Promise<KiloConnection> {
-		return getPage().evaluate(async () => {
-			type InvokeResult =
-				| { ok: true; value: unknown }
-				| { ok: false; error: { code: string; message: string } };
-			type DesktopGlobal = typeof globalThis & {
-				desktopApi: {
-					invoke(
-						channel: "feature:invoke",
-						input: { featureId: string; channel: string; args?: unknown },
-					): Promise<InvokeResult>;
-				};
-			};
-			const response = await (globalThis as DesktopGlobal).desktopApi.invoke("feature:invoke", {
-				featureId: "kilo-server",
-				channel: "server.getConnection",
-			});
-			if (!response.ok) throw new Error(`[${response.error.code}] ${response.error.message}`);
-			return response.value as KiloConnection;
-		});
+	private getConnection(): Promise<KiloConnection> {
+		return kiloServerConnection();
 	}
 
 	private async listSessions(connection: KiloConnection): Promise<KiloSession[]> {

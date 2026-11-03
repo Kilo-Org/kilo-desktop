@@ -2,7 +2,7 @@ import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import type { LocalModel, LocalModelSettings } from "../../contracts/schemas.js";
+import type { LocalModel, LocalModelSettings } from "../../contracts/index.js";
 import {
 	expandModel,
 	renderSettings,
@@ -23,7 +23,7 @@ describe("ModelSettingsPanel", () => {
 			addedAt: 1,
 			settings,
 		}));
-		const { baseElement } = renderSettings({
+		const { baseElement } = await renderSettings({
 			"models.list": async () => [
 				{
 					id: "model-alpha",
@@ -109,7 +109,7 @@ describe("ModelSettingsPanel", () => {
 				settings,
 			}),
 		);
-		const { baseElement } = renderSettings({
+		const { baseElement } = await renderSettings({
 			"models.list": async () => [
 				{
 					id: "model-alpha",
@@ -169,7 +169,7 @@ describe("ModelSettingsPanel", () => {
 				resolveFirstSave = resolve;
 			});
 		});
-		const { baseElement } = renderSettings({
+		const { baseElement } = await renderSettings({
 			"models.list": async () => [
 				{
 					id: "model-alpha",
@@ -216,7 +216,7 @@ describe("ModelSettingsPanel", () => {
 	});
 
 	it("groups model settings into tabs that flag customized values", async () => {
-		const { baseElement } = renderSettings({
+		const { baseElement } = await renderSettings({
 			"models.list": async () => [
 				{
 					id: "model-alpha",
@@ -286,7 +286,7 @@ describe("ModelSettingsPanel", () => {
 			presencePenalty: 0.2,
 			maxResponseTokens: 2048,
 		};
-		const { baseElement } = renderSettings({
+		const { baseElement } = await renderSettings({
 			"models.list": async () => [
 				{
 					id: "model-alpha",
@@ -346,7 +346,7 @@ describe("ModelSettingsPanel", () => {
 			addedAt: 1,
 			settings,
 		}));
-		const { baseElement } = renderSettings({
+		const { baseElement } = await renderSettings({
 			"models.list": async () => [
 				{
 					id: "model-alpha",
@@ -387,7 +387,7 @@ describe("ModelSettingsPanel", () => {
 			addedAt: 1,
 			settings,
 		}));
-		const { baseElement } = renderSettings({
+		const { baseElement } = await renderSettings({
 			"models.list": async () => [
 				{
 					id: "model-alpha",

@@ -4,6 +4,7 @@ import { Timeouts } from "@anaconda/playwright-utils/constants";
 import { defineConfig } from "@playwright/test";
 
 import { repoRoot } from "./utils/paths.js";
+import { unregisteredSpecGlobs } from "./utils/registered-specs.js";
 
 const isCI = Boolean(process.env.CI);
 const failOnFlakyTests = process.env.PLAYWRIGHT_FAIL_ON_FLAKY_TESTS === "true";
@@ -39,7 +40,12 @@ export default defineConfig({
 	// running from inside a .kilo/worktrees/<name> checkout (where repoRoot is
 	// inside .kilo/worktrees/) still discovers real tests and only ignores
 	// sibling worktrees under the same .kilo/ directory.
-	testIgnore: [path.join(repoRoot, ".kilo", "**"), path.join(repoRoot, "node_modules", "**")],
+	// Specs of plugins not yet rebuilt on the kernel are skipped until registered.
+	testIgnore: [
+		path.join(repoRoot, ".kilo", "**"),
+		path.join(repoRoot, "node_modules", "**"),
+		...unregisteredSpecGlobs(repoRoot),
+	],
 	...(selectedGrep ? { grep: selectedGrep } : {}),
 	...(shard ? { shard } : {}),
 	outputDir: path.join(repoRoot, "test-results"),

@@ -1,0 +1,9 @@
+/* Test-only stylesheet: generates the Tailwind utilities the plugin's
+   components use so browser tests get real layout/visibility. In the app,
+   apps/web/src/globals.css scans plugin and design-system sources. */
+@import "tailwindcss";
+@source "../../../../packages/ui";
+@source "../../../../packages/kernel/src";
+@source "../";
+/* Tests render the real shell frame (renderShell), whose card reacts to the canvas. */
+@source "../../../shell/src/web";

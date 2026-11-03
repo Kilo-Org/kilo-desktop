@@ -45,8 +45,6 @@ export default defineConfig({
 						"react-dom",
 						"react/jsx-runtime",
 						"react/jsx-dev-runtime",
-						"@kilo-desktop/feature-sdk",
-						"@kilo-desktop/sdk-react",
 						"@base-ui/react/dialog",
 						"@base-ui/react/menu",
 						"@base-ui/react/merge-props",
@@ -72,6 +70,7 @@ export default defineConfig({
 						"use-sync-external-store/shim",
 						"use-sync-external-store/shim/with-selector",
 						"zod",
+						"react-use/esm/useLatest.js",
 						"vitest",
 						"vitest/internal/browser",
 						"vitest/internal/traces",
@@ -84,6 +83,8 @@ export default defineConfig({
 					include: ["src/web/**/*.browser.test.tsx"],
 					setupFiles: ["src/test/setup.ts"],
 					fileParallelism: false,
+					// Interaction-heavy tests outlast the 15s default when every package runs at once (pre-push).
+					testTimeout: 30_000,
 					browser: {
 						enabled: true,
 						headless: true,

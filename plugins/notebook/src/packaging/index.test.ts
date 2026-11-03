@@ -33,9 +33,9 @@ describe("notebook packaging", () => {
 	it("keeps the fetched notebook UI, direct Kilo plugin, and Windows daemon mandatory", () => {
 		const pluginRoot = path.resolve("/plugin/notebook");
 		const required = new Set([
-			path.join(pluginRoot, "build/notebook/index.html"),
-			path.join(pluginRoot, "build/notebook/staged.json"),
-			path.join(pluginRoot, "build/kilo-plugin/index.js"),
+			path.join(pluginRoot, "resources/notebook/index.html"),
+			path.join(pluginRoot, "resources/notebook/staged.json"),
+			path.join(pluginRoot, "resources/kilo-plugin/index.js"),
 			path.join(pluginRoot, "resources/runtimed/win32-x64/runtimed-nightly.exe"),
 			path.join(pluginRoot, "resources/runtimed/win32-x64/staged.json"),
 		]);
@@ -49,8 +49,8 @@ describe("notebook packaging", () => {
 			}),
 		).toEqual({
 			extraResources: [
-				path.join(pluginRoot, "build/notebook"),
-				path.join(pluginRoot, "build/kilo-plugin"),
+				path.join(pluginRoot, "resources/notebook"),
+				path.join(pluginRoot, "resources/kilo-plugin"),
 				path.join(pluginRoot, "resources/runtimed"),
 			],
 			asarUnpackPackages: NOTEBOOK_ASAR_UNPACK_PACKAGES,
@@ -60,9 +60,9 @@ describe("notebook packaging", () => {
 	it("requires the Windows ARM64 daemon when packaging for win32-arm64", () => {
 		const pluginRoot = path.resolve("/plugin/notebook");
 		const required = new Set([
-			path.join(pluginRoot, "build/notebook/index.html"),
-			path.join(pluginRoot, "build/notebook/staged.json"),
-			path.join(pluginRoot, "build/kilo-plugin/index.js"),
+			path.join(pluginRoot, "resources/notebook/index.html"),
+			path.join(pluginRoot, "resources/notebook/staged.json"),
+			path.join(pluginRoot, "resources/kilo-plugin/index.js"),
 			path.join(pluginRoot, "resources/runtimed/win32-arm64/runtimed-nightly.exe"),
 			path.join(pluginRoot, "resources/runtimed/win32-arm64/staged.json"),
 		]);

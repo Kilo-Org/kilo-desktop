@@ -31,18 +31,20 @@ const cleanBuild = [
 	".vite/build/preload.cjs",
 	".vite/renderer/main_window/index.html",
 	".vite/renderer/main_window/assets/index.js",
-	"node_modules/@kilo-desktop/plugin-todos/package.json",
-	"node_modules/@kilo-desktop/plugin-todos/plugin.json",
-	"node_modules/@kilo-desktop/plugin-todos/drizzle/0000_init.sql",
-	"node_modules/@kilo-desktop/plugin-terminal/build/terminal/index.js",
+	"node_modules/@kilo-desktop/plugin-workspaces/package.json",
+	"node_modules/@kilo-desktop/plugin-workspaces/plugin.json",
+	"node_modules/@kilo-desktop/plugin-workspaces/drizzle/0000_init.sql",
+	"node_modules/@kilo-desktop/plugin-terminal/plugin.json",
+	"node_modules/@kilo-desktop/plugin-notebook/build/notebook/index.js",
 ];
 
 const workspacePackageNames = [
 	"@kilo-desktop/e2e",
-	"@kilo-desktop/feature-sdk",
-	"@kilo-desktop/plugin-kilo-server",
+	"@kilo-desktop/kernel",
+	"@kilo-desktop/plugin-agent",
+	"@kilo-desktop/plugin-notebook",
 	"@kilo-desktop/plugin-terminal",
-	"@kilo-desktop/plugin-todos",
+	"@kilo-desktop/plugin-workspaces",
 	"@kilo-desktop/ui",
 	"@opencode-ai/sdk",
 ];
@@ -79,19 +81,19 @@ describe("assertNoShippedSource", () => {
 	it("rejects TypeScript source and sourcemaps in workspace packages", async () => {
 		const buildPath = makeBuildPath([
 			...cleanBuild,
-			"node_modules/@kilo-desktop/plugin-kilo-server/src/main/KiloServerManager.ts",
+			"node_modules/@kilo-desktop/plugin-agent/src/main/KiloServerManager.ts",
 			"node_modules/@kilo-desktop/ui/src/button.tsx",
-			"node_modules/@kilo-desktop/plugin-terminal/build/terminal/index.js.map",
+			"node_modules/@kilo-desktop/plugin-notebook/build/notebook/index.js.map",
 		]);
 
 		const failure = check(buildPath);
 
 		await expect(failure).rejects.toThrow(
-			path.join("@kilo-desktop", "plugin-kilo-server", "src", "main", "KiloServerManager.ts"),
+			path.join("@kilo-desktop", "plugin-agent", "src", "main", "KiloServerManager.ts"),
 		);
 		await expect(failure).rejects.toThrow(path.join("@kilo-desktop", "ui", "src", "button.tsx"));
 		await expect(failure).rejects.toThrow(
-			path.join("@kilo-desktop", "plugin-terminal", "build", "terminal", "index.js.map"),
+			path.join("@kilo-desktop", "plugin-notebook", "build", "notebook", "index.js.map"),
 		);
 	});
 
@@ -112,8 +114,8 @@ describe("assertNoShippedSource", () => {
 			...cleanBuild,
 			"node_modules/zod/src/index.ts",
 			"node_modules/@sentry/core/build/esm/index.js.map",
-			"node_modules/@kilo-desktop/feature-sdk/node_modules/picomatch/index.d.ts",
-			"node_modules/@kilo-desktop/feature-sdk/node_modules/picomatch/index.js.map",
+			"node_modules/@kilo-desktop/kernel/node_modules/picomatch/index.d.ts",
+			"node_modules/@kilo-desktop/kernel/node_modules/picomatch/index.js.map",
 		]);
 
 		await expect(check(buildPath)).resolves.toBeUndefined();

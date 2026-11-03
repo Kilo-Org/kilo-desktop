@@ -1,23 +1,38 @@
 import { describe, expect, it, vi } from "vitest";
 
-const { setUser, init, send } = vi.hoisted(() => ({
+const { setUser, init, close, send } = vi.hoisted(() => ({
 	setUser: vi.fn(),
 	init: vi.fn(),
+	close: vi.fn(async () => true),
 	send: vi.fn(async () => ({ statusCode: 200 })),
 }));
 vi.mock("@sentry/electron/main", () => ({
 	setUser,
 	init,
-	close: vi.fn(),
+	close,
+	spotlightIntegration: () => ({ name: "Spotlight" }),
 	IPCMode: { Classic: 1 },
 	makeElectronTransport: () => ({ send, flush: vi.fn() }),
 	makeElectronOfflineTransport: (base: unknown) => base,
 }));
 vi.mock("electron", () => ({ app: { isPackaged: true } }));
 
+/** Runs `initSentry` as a dev (unpackaged) build would, restoring the packaged flag after. */
+function initAsDevBuild(preferences: PreferencesStore): void {
+	const electronApp = app as { isPackaged: boolean };
+	electronApp.isPackaged = false;
+	try {
+		initSentry(preferences);
+	} finally {
+		electronApp.isPackaged = true;
+	}
+}
+
 import type { ElectronMainOptions } from "@sentry/electron/main";
 
-import { identifySentryUser, initSentry } from "./sentry.js";
+import { app } from "electron";
+
+import { flushSentry, identifySentryUser, initSentry } from "./sentry.js";
 import type { SentryEnvelope } from "./sentry-scrub.js";
 import type { PreferencesStore } from "./PreferencesStore.js";
 
@@ -130,6 +145,59 @@ describe("initSentry", () => {
 			genAI: { inputs: false, outputs: false },
 			databaseQueryData: false,
 		});
+	});
+});
+
+describe("initSentry without a DSN", () => {
+	it("stays disabled in a packaged build", () => {
+		vi.stubEnv("VITE_SENTRY_DSN", "");
+		init.mockClear();
+
+		initSentry(fakePreferences());
+
+		vi.unstubAllEnvs();
+		expect(init).not.toHaveBeenCalled();
+	});
+
+	it("reports only to the local Spotlight sidecar in a dev build", () => {
+		vi.stubEnv("VITE_SENTRY_DSN", "");
+		vi.stubGlobal("RELEASE_TRACK", "preview");
+		init.mockClear();
+
+		initAsDevBuild(fakePreferences());
+
+		vi.unstubAllEnvs();
+		vi.unstubAllGlobals();
+		expect(init.mock.calls[0]![0]).toMatchObject({
+			dsn: "",
+			environment: "development",
+			tracesSampleRate: 1.0,
+			defaultIntegrations: false,
+			integrations: [{ name: "Spotlight" }],
+		});
+	});
+});
+
+describe("initSentry beforeSend", () => {
+	it("redacts OS usernames from error events", () => {
+		const { beforeSend } = initWithPreferences(fakePreferences());
+
+		const event = beforeSend!(
+			{ message: "failed to open /Users/jane/notebook.ipynb" } as Parameters<
+				NonNullable<ElectronMainOptions["beforeSend"]>
+			>[0],
+			{},
+		);
+
+		expect(event).toMatchObject({ message: "failed to open /Users/<redacted>/notebook.ipynb" });
+	});
+});
+
+describe("flushSentry", () => {
+	it("closes the client with a bounded timeout so quitting is not blocked", async () => {
+		await flushSentry();
+
+		expect(close).toHaveBeenCalledWith(2000);
 	});
 });
 

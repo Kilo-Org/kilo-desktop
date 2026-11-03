@@ -1,36 +1,120 @@
 {
-	"id": "notebook",
-	"displayName": "Notebook",
+	"manifestVersion": 1,
+	"id": "kilo.notebook",
+	"displayName": "Notebooks",
 	"version": "1.0.0",
-	"main": "./src/main/index.ts",
-	"web": "./src/web/index.ts",
+	"description": "Analyze data with interactive Python notebooks in a session's panes.",
+	"requires": {
+		"kilo.sessions/pane": "optional",
+		"kilo.sessions/opener": "optional",
+		"kilo.account/identity": "optional",
+		"kilo.agent/tool": "optional",
+		"kilo.agent/runtime-config": "optional",
+		"kilo.flags/flags": "optional",
+		"kilo.shell/theme": "optional",
+		"kilo.shell/settings-section": "optional"
+	},
+	"permissions": {
+		"host": ["dialogs", "shell"],
+		"embeddedHosts": ["notebook"]
+	},
+	"domains": [
+		{
+			"id": "notebooks",
+			"home": "main",
+			"description": "The notebook runtime and the notebooks Notebook panes show: status, saving, settings."
+		}
+	],
 	"contributes": {
-		"providers": [],
-		"routes": [],
-		"nav": [],
-		"zones": [
-			{
-				"zone": "kilo-ui/chat-right-panel-tab",
-				"id": "notebook",
-				"component": "NotebookView",
-				"label": "Notebook",
-				"description": "Analyze data with interactive Python notebooks.",
-				"icon": "NotebookIcon",
-				"mountPolicy": "keep-alive",
-				"priority": 50,
-				"requiresSignIn": true,
-				"signInHint": "Sign in to Kilo to use embedded notebooks."
-			}
-		],
-		"settings": [
-			{
-				"id": "notebooks",
-				"title": "Notebooks",
-				"description": "Analyze data with interactive Python notebooks.",
-				"component": "NotebookSettings",
-				"icon": "NotebookIcon",
-				"priority": 75
-			}
-		]
+		"extensions": {
+			"kilo.sessions/pane": [
+				{
+					"id": "notebook",
+					"title": "Notebook",
+					"description": "Analyze data with interactive Python notebooks.",
+					"launch": {
+						"newSession": true,
+						"inSession": true
+					},
+					"keepAlive": true,
+					"layoutKind": "notebook",
+					"order": 50,
+					"availableWhen": {
+						"all": ["kilo.account/signedIn"]
+					},
+					"unavailableHint": "Sign in to Kilo to use embedded notebooks."
+				}
+			],
+			"kilo.sessions/opener": [
+				{
+					"id": "ipynb-file",
+					"match": {
+						"type": "kilo.workspaces/file",
+						"pattern": "*.ipynb"
+					},
+					"pane": "kilo.notebook/notebook"
+				}
+			],
+			"kernel/service": [
+				{
+					"id": "runtimed",
+					"title": "Notebook runtime",
+					"kind": "daemon",
+					"startOn": "first-use",
+					"restart": {
+						"policy": "never"
+					}
+				}
+			],
+			"kilo.agent/runtime-config": [
+				{
+					"id": "kilo-plugin"
+				}
+			],
+			"kilo.agent/tool": [
+				{
+					"id": "list_open",
+					"title": "List open notebooks",
+					"requiresSignIn": true,
+					"signInPrompt": {
+						"title": "Sign in to use embedded notebooks?",
+						"body": "The agent wants to use Desktop's notebook tools. To use embedded notebooks, you must sign in to a Kilo account. Do you want to sign in?",
+						"toolsLabel": "Desktop's notebook tools"
+					},
+					"readOnly": true,
+					"external": false
+				},
+				{
+					"id": "open",
+					"title": "Open notebook",
+					"requiresSignIn": true,
+					"signInPrompt": {
+						"title": "Sign in to use embedded notebooks?",
+						"body": "The agent wants to use Desktop's notebook tools. To use embedded notebooks, you must sign in to a Kilo account. Do you want to sign in?",
+						"toolsLabel": "Desktop's notebook tools"
+					},
+					"external": false
+				},
+				{
+					"id": "open_file",
+					"title": "Open notebook file",
+					"requiresSignIn": true,
+					"signInPrompt": {
+						"title": "Sign in to use embedded notebooks?",
+						"body": "The agent wants to use Desktop's notebook tools. To use embedded notebooks, you must sign in to a Kilo account. Do you want to sign in?",
+						"toolsLabel": "Desktop's notebook tools"
+					},
+					"external": false
+				}
+			],
+			"kilo.shell/settings-section": [
+				{
+					"id": "notebooks",
+					"title": "Notebooks",
+					"description": "Analyze data with interactive Python notebooks.",
+					"priority": 75
+				}
+			]
+		}
 	}
 }

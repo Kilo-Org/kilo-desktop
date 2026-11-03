@@ -1,0 +1,130 @@
+{
+	"manifestVersion": 1,
+	"id": "kilo.workspace-board",
+	"displayName": "Workspace Board",
+	"version": "1.0.0",
+	"description": "The workspace board: sessions organised into columns you name.",
+	"requires": {
+		"kilo.sessions/session": "optional",
+		"kilo.sessions/session-menu": "optional",
+		"kilo.sessions/session-renderer": "optional",
+		"kilo.workbench/navigator": "optional",
+		"kilo.workbench/navigator-action": "optional",
+		"kilo.workbench/sessions-view": "optional",
+		"kilo.workspaces/workspace": "optional",
+		"kilo.shell/overlay": "optional",
+		"kilo.flags/flags": "optional",
+		"kilo.telemetry/telemetry": "optional",
+		"kilo.telemetry/telemetry-event": "optional"
+	},
+	"domains": [
+		{
+			"id": "board",
+			"home": "main",
+			"description": "The board's columns and the sessions placed in them."
+		}
+	],
+	"contributes": {
+		"extensions": {
+			"kilo.workbench/sessions-view": [
+				{
+					"id": "board",
+					"title": "Workspace Board",
+					"detachable": true,
+					"when": {
+						"all": ["kilo.flags/flag:workspace-board"]
+					}
+				}
+			],
+			"kilo.workbench/navigator-action": [
+				{
+					"id": "board",
+					"when": {
+						"all": ["kilo.flags/flag:workspace-board"]
+					}
+				}
+			],
+			"kilo.sessions/session-menu": [
+				{
+					"id": "add-to-board",
+					"title": "Add to board",
+					"when": {
+						"all": ["kilo.flags/flag:workspace-board"]
+					}
+				},
+				{
+					"id": "move-on-board",
+					"title": "Move on board",
+					"when": {
+						"all": ["kilo.flags/flag:workspace-board"]
+					}
+				},
+				{
+					"id": "remove-from-board",
+					"title": "Remove from board",
+					"when": {
+						"all": ["kilo.flags/flag:workspace-board"]
+					}
+				}
+			],
+			"kilo.shell/overlay": [
+				{
+					"id": "clear-board",
+					"when": {
+						"all": ["kilo.flags/flag:workspace-board"]
+					}
+				}
+			],
+			"kernel/command": [
+				{
+					"id": "open",
+					"title": "Show or hide Workspace Board",
+					"category": "Workspace Board",
+					"order": 0,
+					"when": {
+						"all": ["kilo.flags/flag:workspace-board"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "add-column",
+					"title": "Add column to Workspace Board",
+					"category": "Workspace Board",
+					"order": 1,
+					"when": {
+						"all": ["kilo.flags/flag:workspace-board"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "clear",
+					"title": "Clear Workspace Board",
+					"category": "Workspace Board",
+					"order": 2,
+					"when": {
+						"all": ["kilo.flags/flag:workspace-board"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				}
+			],
+			"kilo.telemetry/telemetry-event": [
+				{
+					"id": "board-opened",
+					"name": "Workspace Board Opened"
+				},
+				{
+					"id": "board-session-placed",
+					"name": "Workspace Board Session Placed"
+				},
+				{
+					"id": "board-column-added",
+					"name": "Workspace Board Column Added"
+				},
+				{
+					"id": "board-cleared",
+					"name": "Workspace Board Cleared"
+				}
+			]
+		}
+	}
+}

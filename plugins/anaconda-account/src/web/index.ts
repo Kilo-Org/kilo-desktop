@@ -1,17 +1,13 @@
-/**
- * Renderer entry for the Anaconda account plugin.
- *
- * `webRegister` exposes the `account` capability (session + sign-in/out) that
- * other plugins resolve with `sdk.plugins.get("anaconda-account")` — e.g. the
- * model catalog's "Sign in to Anaconda" prompt. `AnacondaAccountRow` is the
- * component the manifest contributes into kilo-ui's `account-panels` zone.
- */
-import type { SDK } from "@kilo-desktop/feature-sdk";
+import { definePlugin } from "@kilo-desktop/kernel";
+import { AccountPanel } from "@kilo-desktop/plugin-account/contracts";
 
-import { createAnacondaAccountCapability } from "./anaconda-account-capability.js";
+import { AnacondaAccountRow } from "./AnacondaAccountRow.js";
 
 export { AnacondaAccountRow } from "./AnacondaAccountRow.js";
 
-export function webRegister(sdk: SDK): void {
-	sdk.plugins.expose("account", createAnacondaAccountCapability(sdk));
-}
+/** kilo.anaconda-account's renderer entry: the Anaconda row in Settings → Account. */
+export const anacondaAccountWebEntry = definePlugin({
+	activate(sdk) {
+		sdk.extensions.implement(AccountPanel, "anaconda", AnacondaAccountRow);
+	},
+});

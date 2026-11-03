@@ -5,12 +5,11 @@
  * argv that starts the bridge process. This module reads that manifest and
  * returns the absolute launch command.
  *
- * In packaged mode:
- *   <app>/Contents/Resources/bridge/manifest.json → launch
- *
- * In dev mode:
- *   1. `BRIDGE_PAYLOAD` env var (path to a payload directory)
- *   2. `plugins/environments/resources/bridge/manifest.json`
+ * Searched in order:
+ *   1. `BRIDGE_PAYLOAD` env var (path to a payload directory, for local dev)
+ *   2. the plugin's `resources/bridge` asset folder: the app's
+ *      `Resources/bridge` when packaged, `plugins/environments/resources/bridge`
+ *      in development
  *
  * Returns `null` if the payload cannot be found (caller should fall back or throw).
  */
@@ -46,14 +45,10 @@ interface PayloadManifest {
 }
 
 export interface ResolveBridgeOptions {
-	readonly platform?: NodeJS.Platform;
-	readonly arch?: NodeJS.Architecture;
-	/** Set to true when running inside the packaged Electron app. */
-	readonly isPackaged?: boolean;
-	/** Override for `process.resourcesPath` (for testing). */
-	readonly resourcesPath?: string;
-	/** Override for plugin root (for testing / dev). */
-	readonly pluginRoot?: string;
+	/** The plugin's `resources/bridge` folder; absent where the host ships no assets. */
+	readonly bridgeDir?: string | undefined;
+	/** Defaults to `process.env`. */
+	readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
 function readManifest(bridgeDir: string): PayloadManifest | null {
@@ -112,62 +107,24 @@ function buildLaunchInfo(bridgeDir: string): BridgeLaunchInfo | null {
  */
 export function resolveBridge(options: ResolveBridgeOptions = {}): BridgeResolutionResult {
 	const searchedPaths: string[] = [];
-
-	// 1. Environment variable override (highest priority, for local dev)
-	const envOverride = process.env["BRIDGE_PAYLOAD"]?.trim();
+	const envOverride = (options.env ?? process.env)["BRIDGE_PAYLOAD"]?.trim();
 	if (envOverride) {
 		searchedPaths.push(envOverride);
 		const info = buildLaunchInfo(envOverride);
+		return info ? { kind: "found", info } : { kind: "not-found", searchedPaths };
+	}
+	if (options.bridgeDir) {
+		searchedPaths.push(options.bridgeDir);
+		const info = buildLaunchInfo(options.bridgeDir);
 		if (info) return { kind: "found", info };
-		return { kind: "not-found", searchedPaths };
 	}
-
-	// 2. Packaged app: payload is in process.resourcesPath/bridge/
-	const isPackaged =
-		options.isPackaged ??
-		(process as NodeJS.Process & { resourcesPath?: string }).resourcesPath !== undefined;
-	if (isPackaged) {
-		const resourcesPath =
-			options.resourcesPath ??
-			(process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
-		if (resourcesPath) {
-			const bridgeDir = path.join(resourcesPath, "bridge");
-			searchedPaths.push(bridgeDir);
-			const info = buildLaunchInfo(bridgeDir);
-			if (info) return { kind: "found", info };
-		}
-	}
-
-	// 3. Dev mode: look in the plugin's staged resources directory.
-	// After Vite bundles the main process, `import.meta.dirname` no longer
-	// reflects the original source tree — the define injected by
-	// vite.main.config.ts gives us the correct absolute path instead.
-	const pluginRoot =
-		options.pluginRoot ??
-		(typeof __ENVIRONMENTS_PLUGIN_ROOT__ !== "undefined"
-			? __ENVIRONMENTS_PLUGIN_ROOT__
-			: path.resolve(import.meta.dirname, "../../../.."));
-	const devBridgeDir = path.join(pluginRoot, "resources", "bridge");
-	searchedPaths.push(devBridgeDir);
-	const info = buildLaunchInfo(devBridgeDir);
-	if (info) return { kind: "found", info };
-
 	return { kind: "not-found", searchedPaths };
 }
 
-/**
- * Backward-compatible wrapper returning `BridgeLaunchInfo | null`.
- * Used by {@link CondaRuntime} which only needs the info, not the
- * searched-paths diagnostic.
- */
+/** {@link resolveBridge} without the searched-paths diagnostic. */
 export function resolveBridgeLaunchInfo(
 	options: ResolveBridgeOptions = {},
 ): BridgeLaunchInfo | null {
 	const result = resolveBridge(options);
 	return result.kind === "found" ? result.info : null;
-}
-
-export function resolveBridgeBinaryPath(options: ResolveBridgeOptions = {}): string | null {
-	const info = resolveBridgeLaunchInfo(options);
-	return info ? (info.command[0] ?? null) : null;
 }

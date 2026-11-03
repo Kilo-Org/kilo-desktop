@@ -2,16 +2,13 @@ import { execFileSync } from "node:child_process";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import {
-	click,
-	expectElementToBeVisible,
-	fill,
-	getLocatorByRole,
-	getLocatorByTestId,
-} from "@anaconda/playwright-utils";
+import { click, expectElementToBeVisible, getLocatorByTestId } from "@anaconda/playwright-utils";
 import { getPage } from "@anaconda/playwright-utils/page-utils";
 
-import { paveWorkspaceChat } from "./pave-workspace-chat.js";
+import { openNewSessionInNewWorkspace, startEmptySession } from "../chat/agent-session.js";
+import { waitForWorkspaceWatcher } from "../workspace/workspace-watcher-page.js";
+
+const CHANGES_KIND = "kilo.git/changes";
 
 // Prevent system gitconfig reads — mirrors the fixture's HERMETIC_GIT_ENV.
 const HERMETIC_GIT_ENV: NodeJS.ProcessEnv = {
@@ -28,49 +25,35 @@ const HERMETIC_GIT_ENV: NodeJS.ProcessEnv = {
 const LIVE_RELOAD_TIMEOUT_MS = 20_000;
 
 /**
- * Page object for the git plugin's "Changes" chat pane.
- *
- * The pane only exists inside a workspace chat session, so the flow first
- * paves one (same `desktopApi.invoke` trick as the files plugin's smoke
- * spec): create a workspace, bind a new chat to it, then send a message —
- * a fresh draft renders no pane canvas (`shouldShowChatCanvas`), so the
- * header toolbar that launches contributed panes only appears once the
- * thread has started. Deep coverage — streamed rendering, refresh,
- * split/unified — lives in the Vitest browser tier (GitDiffView.browser.test.tsx).
+ * Page object for kilo.git's Changes pane. The pane opens inside a session,
+ * so the flow registers the workspace, starts an empty session in it from
+ * the launcher (local: the repository's own checkout) and adds Changes from
+ * the session header's +. Deep coverage — streamed rendering, refresh,
+ * split/unified, reveal — lives in kilo.git's Vitest browser tier.
  */
 export class ChangesPage {
-	async createAndSelectWorkspace(folderPath: string, name: string): Promise<void> {
-		await paveWorkspaceChat(folderPath, name);
+	/** Registers the workspace, waits for its file watching, and starts an empty session in it. */
+	async startSessionInWorkspace(folderPath: string, name: string): Promise<void> {
+		await openNewSessionInNewWorkspace(folderPath, name);
+		await waitForWorkspaceWatcher(folderPath);
+		await startEmptySession();
 	}
 
-	async openChangesTab(): Promise<void> {
-		const send = getLocatorByTestId(/kilo-composer-send(-when-connected)?/);
-		await expectElementToBeVisible(
-			send,
-			"Composer should be ready to send before starting the chat",
-		);
-		await fill(
-			getLocatorByRole("textbox", { name: "Message input" }),
-			"Review the workspace changes",
-		);
-		await click(send);
-		// `PaneLaunchToolbar` carries one launch button per addable
-		// contribution, keyed by definition id (`<featureId>.<contributionId>`,
-		// dot unsanitized) — `git.changes` for the Changes pane.
-		await expectElementToBeVisible(
-			getLocatorByTestId("chat-pane-toolbar"),
-			"Pane toolbar should be visible after the chat starts",
-		);
+	async openChangesPane(): Promise<void> {
 		await click(getLocatorByTestId("chat-pane-toolbar-add"));
-		const launchItem = getLocatorByTestId("chat-pane-launch-git.changes");
-		await expectElementToBeVisible(launchItem, "Changes pane launch item should be actionable");
+		const launchItem = getLocatorByTestId(`chat-pane-launch-${CHANGES_KIND}`);
+		await expectElementToBeVisible(launchItem, "The + menu should offer Changes");
 		await click(launchItem);
+		await expectElementToBeVisible(
+			getLocatorByTestId("git-diff-root"),
+			"Choosing Changes should open the Changes pane",
+		);
 	}
 
-	async verifyTabMounted(): Promise<void> {
+	async verifyPaneMounted(): Promise<void> {
 		// `git-diff-view` only renders once the streamed patch published its
 		// first items, so waiting for it proves the kilo-git:// protocol
-		// round-trip succeeded, not just that the shell mounted the tab.
+		// round-trip succeeded, not just that the pane mounted.
 		await getLocatorByTestId("git-diff-view").waitFor({ state: "visible" });
 	}
 
@@ -81,7 +64,7 @@ export class ChangesPage {
 			"Initialize Git button should replace Retry in the 404 error state",
 		);
 		await click(initButton);
-		await this.verifyTabMounted();
+		await this.verifyPaneMounted();
 	}
 
 	/**

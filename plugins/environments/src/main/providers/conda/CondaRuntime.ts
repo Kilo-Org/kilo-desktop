@@ -1,34 +1,31 @@
 import { readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import type { MainSdkLogger } from "@kilo-desktop/feature-sdk/main";
+import type { KernelLogger } from "@kilo-desktop/kernel";
 
-import type {
-	CondaEnvironmentRuntime,
-	EnsureEnvironmentInput,
-	EnsureEnvironmentResult,
-} from "../../../contracts/capabilities.js";
 import {
 	channelSchema,
+	condaExecutable,
 	environmentNameSchema,
 	matchSpecSchema,
-} from "../../../contracts/providers/conda.js";
+	type EnsureEnvironmentInput,
+	type EnsureEnvironmentResult,
+} from "../../../contracts/index.js";
 
-import type { SharedCondaBridge } from "./SharedCondaBridge.js";
+import type { CondaBridge } from "./SharedCondaBridge.js";
 
 // Used when a caller passes no explicit channels. Keep `anaconda` first
 // because strict priority otherwise excludes its builds when a package with
 // the same name also exists in `defaults`.
 const FALLBACK_CHANNELS = ["anaconda", "defaults"] as const;
-const EXECUTABLE_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const STAMP_NAME = "anaconda-ensure.json";
 
 type Paths = typeof path.posix | typeof path.win32;
 
 export interface CondaRuntimeOptions {
-	/** The app's single bridge process, shared with the Conda UI provider. */
-	readonly bridge: SharedCondaBridge;
-	readonly logger: MainSdkLogger;
+	/** The app's bridge process, shared with the person's conda environments. */
+	readonly bridge: CondaBridge;
+	readonly logger: KernelLogger;
 	readonly platform?: NodeJS.Platform;
 	/**
 	 * Root for plugin environment working state (envs, package cache).
@@ -43,9 +40,9 @@ export interface CondaRuntimeOptions {
 /**
  * Owns serialized environment reconciliation for main-process consumers.
  * It talks to the app's single shared bridge process
- * ({@link SharedCondaBridge}), acquired lazily on first create; when the
- * feature flag is off the bridge binary is never spawned until a consumer
- * actually calls `ensureEnvironment` on a prefix that needs creating.
+ * ({@link CondaBridge}), acquired lazily on first create, so the bridge
+ * binary is never spawned until a consumer calls `ensureEnvironment` on a
+ * prefix that needs creating.
  *
  * A prefix that already has `conda-meta` is reused when its recorded
  * package pin still matches the request, so startup does not re-run
@@ -57,9 +54,9 @@ export interface CondaRuntimeOptions {
  * distinct writes serialize because conda's package cache does not
  * support concurrent transactions.
  */
-export class CondaRuntime implements CondaEnvironmentRuntime {
-	readonly #bridge: SharedCondaBridge;
-	readonly #logger: MainSdkLogger;
+export class CondaRuntime {
+	readonly #bridge: CondaBridge;
+	readonly #logger: KernelLogger;
 	readonly #platform: NodeJS.Platform;
 	readonly #condaFilesRoot: string;
 	readonly #jobs = new Map<string, Promise<EnsureEnvironmentResult>>();
@@ -95,14 +92,7 @@ export class CondaRuntime implements CondaEnvironmentRuntime {
 	}
 
 	executable(prefixPath: string, name: string): string {
-		if (!EXECUTABLE_NAME_PATTERN.test(name)) {
-			throw new Error(`Invalid executable name: ${name}`);
-		}
-		if (this.#platform === "win32") {
-			const executable = name.endsWith(".exe") ? name : `${name}.exe`;
-			return path.win32.join(prefixPath, "Library", "bin", executable);
-		}
-		return path.posix.join(prefixPath, "bin", name);
+		return condaExecutable(prefixPath, name, this.#platform === "win32" ? "win32" : "other");
 	}
 
 	async #ensure(

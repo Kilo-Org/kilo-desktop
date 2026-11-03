@@ -1,6 +1,5 @@
 import { useState, type FormEvent } from "react";
 
-import { useSdk, useSdkMutation } from "@kilo-desktop/sdk-react";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Dialog,
@@ -15,7 +14,8 @@ import { Field, FieldError, FieldLabel } from "@kilo-desktop/ui/components/field
 import { Input } from "@kilo-desktop/ui/components/input";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 
-import type { CondaEnv, CondaService } from "../../../contracts/providers/conda.js";
+import type { CondaEnv } from "../../../contracts/providers/conda.js";
+import { useConda, useCondaMutation } from "../../conda.js";
 import { environmentDisplayName, validateEnvironmentName } from "./environment-display.js";
 import { friendlyEnvironmentsError } from "./environments-error-message.js";
 
@@ -26,14 +26,14 @@ interface CloneEnvironmentDialogProps {
 }
 
 export function CloneEnvironmentDialog({ env, open, onClose }: CloneEnvironmentDialogProps) {
-	const sdk = useSdk<CondaService>("environments");
+	const conda = useConda();
 	const sourceName = environmentDisplayName(env);
 	const [name, setName] = useState(`${env.name || sourceName}-copy`);
 	const [validationError, setValidationError] = useState<string | null>(null);
 	const [serverError, setServerError] = useState<string | null>(null);
 
-	const mutation = useSdkMutation(sdk, "conda.envs.clone", {
-		invalidates: ["conda.envs.list"],
+	const mutation = useCondaMutation(conda, "cloneEnvironment", {
+		invalidates: ["listEnvironments"],
 	});
 
 	function validate(): boolean {

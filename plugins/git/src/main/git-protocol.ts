@@ -3,7 +3,7 @@ import { stat } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { Readable } from "node:stream";
 
-import { FeatureError } from "@kilo-desktop/feature-sdk";
+import { KernelError } from "@kilo-desktop/kernel";
 import { GitPatchTooLargeError, type GitPatchFile } from "@kilo-desktop/git-client";
 
 /**
@@ -20,8 +20,8 @@ export interface CreateGitProtocolHandlerOptions {
 	readonly service: GitProtocolService;
 	/** Injectable directory probe so unit tests need no filesystem. */
 	readonly existsDirectory?: (directory: string) => Promise<boolean>;
-	/** App-shell origins allowed to read kilo-git responses; injected by the shell, packaged-aware. */
-	readonly allowedOrigins?: readonly string[];
+	/** The app's renderer origins, allowed to read kilo-git responses; read per request. */
+	readonly allowedOrigins: () => readonly string[];
 }
 
 /**
@@ -30,13 +30,6 @@ export interface CreateGitProtocolHandlerOptions {
  * and any unmatched URL is an unknown endpoint.
  */
 const PATCH_ROUTE = new URLPattern("kilo-git://diff/patch");
-
-/**
- * Backward-compat fallback when the shell does not inject an allowlist (older
- * callers/tests): both dev and prod app-shell origins. Real runs always inject
- * the packaged-aware list via `options.allowedOrigins`.
- */
-const DEFAULT_ALLOWED_ORIGINS: readonly string[] = ["kilo-desktop://app", "kilo-desktop-dev://app"];
 
 const defaultExistsDirectory = async (directory: string): Promise<boolean> => {
 	try {
@@ -74,23 +67,23 @@ function createTextResponse(
  * Error contract (text bodies, non-200):
  * - 400 — bad `cwd` (missing, not absolute, not an existing directory)
  * - 403 — the service refused the cwd (outside every workspace folder —
- *   `VALIDATION` FeatureError)
+ *   `VALIDATION` KernelError)
  * - 404 — unknown endpoint, or not a git repository (service returned `null`)
  * - 413 — the patch exceeds the size cap; auto-refresh pauses on it
  * - 500 — unexpected failure (message deliberately generic; detail stays in
  *   git-client's log)
- * - 503 — git binary missing (`FeatureError` from the service)
+ * - 503 — git binary missing (`KernelError` from the service)
  */
 export function createGitProtocolHandler(
 	options: CreateGitProtocolHandlerOptions,
 ): (request: Request) => Promise<Response> {
 	const existsDirectory = options.existsDirectory ?? defaultExistsDirectory;
-	const allowed = new Set(options.allowedOrigins ?? DEFAULT_ALLOWED_ORIGINS);
 	return async (request: Request): Promise<Response> => {
 		// Echo only allowed origins; anything else gets no CORS grant (and the
 		// renderer's fetch fails closed).
 		const origin = request.headers.get("Origin");
-		const corsOrigin = origin !== null && allowed.has(origin) ? origin : undefined;
+		const corsOrigin =
+			origin !== null && options.allowedOrigins().includes(origin) ? origin : undefined;
 
 		const routeMatch = PATCH_ROUTE.exec(request.url);
 		if (routeMatch === null) {
@@ -114,10 +107,10 @@ export function createGitProtocolHandler(
 		try {
 			patch = await options.service.createPatch({ cwd });
 		} catch (error) {
-			if (error instanceof FeatureError) {
-				// A VALIDATION FeatureError is the service refusing this cwd
+			if (error instanceof KernelError) {
+				// A VALIDATION KernelError is the service refusing this cwd
 				// (outside every workspace folder) — 403. Any other
-				// FeatureError is a service-availability failure (git binary
+				// KernelError is a service-availability failure (git binary
 				// missing) — 503.
 				return createTextResponse(
 					error.message,

@@ -37,10 +37,9 @@ export default defineConfig({
 						"react-dom",
 						"react/jsx-runtime",
 						"react/jsx-dev-runtime",
-						"@kilo-desktop/feature-sdk",
-						"@kilo-desktop/sdk-react",
 						"@tanstack/react-query",
 						"@testing-library/react",
+						"sonner",
 						"@base-ui/react/accordion",
 						"@base-ui/react/alert-dialog",
 						"@base-ui/react/avatar",
@@ -78,11 +77,15 @@ export default defineConfig({
 					name: "browser",
 					include: ["src/web/**/*.browser.test.tsx"],
 					setupFiles: ["src/test/setup.ts"],
+					// Generous under parallel load.
+					expect: { poll: { timeout: 5_000 } },
 					// CI caps browser workers because the Linux coverage runner has only 4 vCPUs.
 					// groupOrder 1 keeps this project in a separate scheduling bucket from
 					// the unit/integration projects; Vitest requires unique groupOrders when
 					// two projects in the same config have different maxWorkers.
 					...(process.env.CI ? { maxWorkers: 2, sequence: { groupOrder: 1 } } : {}),
+					// Interaction-heavy tests outlast the 15s default when every package runs at once (pre-push).
+					testTimeout: 30_000,
 					browser: {
 						enabled: true,
 						headless: true,

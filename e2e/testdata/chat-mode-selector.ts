@@ -26,7 +26,6 @@ export const chatModeSelectorData = {
 		menuTestId: "kilo-agent-selector-content",
 		messageInputName: "Message input",
 		sendButtonTestId: /^kilo-composer-send(-when-connected)?$/,
-		sessionListItem: '[data-slot="aui_session-list-item-trigger"]',
 		busyCatalogTriggerIds: ["kilo-agent-selector-trigger", "kilo-model-selector-trigger"],
 	},
 	builtInModes: ["code", "plan", "ask", "debug"] as const,

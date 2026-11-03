@@ -8,9 +8,9 @@ import {
 	AlertDialogHeader,
 	AlertDialogTitle,
 } from "@kilo-desktop/ui/components/alert-dialog";
-import { useSdk, useSdkMutation } from "@kilo-desktop/sdk-react";
 
-import type { CondaEnv, CondaPackage, CondaService } from "../../../contracts/providers/conda.js";
+import type { CondaEnv, CondaPackage } from "../../../contracts/providers/conda.js";
+import { useConda, useCondaMutation } from "../../conda.js";
 import { environmentDisplayName } from "./environment-display.js";
 import { friendlyEnvironmentsError } from "./environments-error-message.js";
 
@@ -30,9 +30,9 @@ export function RemovePackageConfirmation({
 	open,
 	onOpenChange,
 }: RemovePackageConfirmationProps) {
-	const sdk = useSdk<CondaService>("environments");
-	const remove = useSdkMutation(sdk, "conda.packages.remove", {
-		invalidates: ["conda.packages.list", "conda.repodata.find"],
+	const conda = useConda();
+	const remove = useCondaMutation(conda, "removePackages", {
+		invalidates: ["listPackages", "findRepodata"],
 	});
 
 	const targetName = env.name || "base";

@@ -6,8 +6,8 @@ import { Readable, Writable } from "node:stream";
 
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 
-import type { MainSdkLogger } from "@kilo-desktop/feature-sdk/main";
-import { FeatureError } from "@kilo-desktop/feature-sdk/main";
+import type { KernelLogger } from "@kilo-desktop/kernel";
+import { KernelError } from "@kilo-desktop/kernel";
 
 import { REPODATA_FIND_MAX_LIMIT } from "../../../contracts/providers/conda.js";
 import { SidecarCondaBackend } from "./SidecarCondaBackend.js";
@@ -52,7 +52,7 @@ function isHealthCheck(method: string): boolean {
 	return method === "bridge.ping" || method === "conda.info";
 }
 
-const silentLogger: MainSdkLogger = {
+const silentLogger: KernelLogger = {
 	debug: () => {},
 	info: () => {},
 	warn: () => {},
@@ -1316,7 +1316,7 @@ describe("SidecarCondaBackend", () => {
 
 		it("falls back to PROVIDER_NOT_READY for unknown domain_code and logs warning", async () => {
 			const warnSpy = vi.fn();
-			const loggerWithSpy: MainSdkLogger = { ...silentLogger, warn: warnSpy };
+			const loggerWithSpy: KernelLogger = { ...silentLogger, warn: warnSpy };
 
 			mockConnection.sendRequest.mockImplementation((method: string) => {
 				if (isHealthCheck(method)) return Promise.resolve({});
@@ -1519,8 +1519,8 @@ describe("SidecarCondaBackend", () => {
 			const failure = await backend
 				.install({ name: "myenv", packages: ["cffi=2.1.1"] })
 				.catch((error: unknown) => error);
-			expect(failure).toBeInstanceOf(FeatureError);
-			expect((failure as FeatureError).message).toBe(
+			expect(failure).toBeInstanceOf(KernelError);
+			expect((failure as KernelError).message).toBe(
 				"SOLVE_FAILED: Encountered problems while solving:\n" +
 					"  - package cffi =2.1.1 requires libffi >=3.4.8\n" +
 					"\n" +

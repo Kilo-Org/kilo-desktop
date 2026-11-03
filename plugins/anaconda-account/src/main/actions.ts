@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { AnacondaAccountUser } from "../contracts/schemas.js";
+import type { AnacondaAccountUser } from "../contracts/index.js";
 
 import type { OAuthFetch } from "./oauth/types.js";
 

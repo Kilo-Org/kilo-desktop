@@ -2,13 +2,10 @@ import { EventEmitter } from "node:events";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type {
-	DesktopReleaseNotes,
-	DesktopUpdateState,
-	ReleaseTrack,
-} from "@kilo-desktop/contracts";
+import type { ReleaseTrack } from "$config/release.js";
+import type { DesktopReleaseNotes } from "$config/release-notes.js";
 
-import { DesktopUpdaterService } from "./Updater.js";
+import { DesktopUpdaterService, type DesktopUpdateState } from "./Updater.js";
 import { UpdateFeedError, type WindowsUpdateFeed } from "./WindowsUpdateFeed.js";
 
 type FakeWindowsFeed = Pick<WindowsUpdateFeed, "directory" | "prepare" | "clear">;

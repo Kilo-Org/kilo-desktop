@@ -13,12 +13,13 @@
 
 Coverage gate: **80%** lines / branches / functions / statements via the shared preset in `vitest.coverage.shared.mjs`. Call sites may add a short, intentional `extraExclude` list (generated files, vendor UI, Electron entrypoints covered by e2e).
 
-App-level tests cover router + provider composition. Feature CRUD belongs in browser component tests and e2e (protocol / IPC / packaging).
+App-level tests cover the kernel boot with the bundled plugins. Plugin journeys belong in browser component tests (in a booted test kernel) and e2e (protocol / IPC / packaging).
 
 PR E2E runs `@smoke` on Windows plus the full specs of every area the PR
 touches (`e2e/scripts/select-pr-e2e.ts`): a change under `plugins/<id>/` runs
-`plugins/<id>/e2e/**`, a few plugins map to specs elsewhere (Kilo server →
-kilo-ui), and harness changes run everything. The merge queue and nightly run
+`plugins/<id>/e2e/**`, plugins map to their specs under `e2e/specs/features`
+(kilo.agent also to the chat specs), and changes to the e2e harness, `packages/kernel`,
+`packages/bundled-plugins`, `packages/ui` or `apps/` run everything. The merge queue and nightly run
 the full suite on their platform matrices; every E2E test launches an
 OS-matched packaged application.
 
@@ -36,6 +37,13 @@ fixture sets its default key in `extend` (`shellTest.extend({ appIsolationKey:
 different key. A `test.use()` in a shared fixture module binds to whichever spec
 loads it first, so pools differ between processes and Playwright fails with
 "inconsistent test.use() options".
+
+E2E builds (`package:e2e`) report a fixed signed-in Kilo account
+(`e2e@kilo.dev`, kilo.account's e2e identity; the Kilo CLI itself stays
+signed out), read once the Kilo server is up — keys whose specs depend on it
+are in `CHAT_ISOLATION_KEYS`. A spec that needs a signed-out app runs those
+tests in a `describe` with `test.use({ appLaunchEnv: SIGNED_OUT_LAUNCH_ENV })`
+(from `e2e/testdata/account.ts`), which gives them their own worker app.
 
 E2E apps are hermetic. Each worker's profile owns its own XDG data, cache,
 config, and state directories, so Kilo CLI sessions, databases, and cache locks
@@ -85,26 +93,26 @@ Package-scoped:
 ```bash
 pnpm test:web
 pnpm test:desktop
-pnpm test:contracts
-pnpm --filter @kilo-desktop/feature-sdk test
+pnpm --filter @kilo-desktop/kernel test
+pnpm --filter @kilo-desktop/plugin-<dir> test
 ```
 
 ## Layout
 
 ```
-apps/desktop/src/**/*.test.ts              # unit
-apps/desktop/src/**/*.integration.test.ts  # integration (SQLite, FeatureRouter)
-apps/web/src/**/*.browser.test.tsx         # component (createFakeSdk / createBrowserLocalApi)
-apps/web/src/app/*.app.test.tsx            # app-level (router + providers)
+{apps,packages,plugins}/**/*.test.ts      # unit
+**/*.integration.test.ts                   # integration (real files, processes, kernels)
+plugins/<dir>/src/**/*.browser.test.tsx    # component (booted test kernel / renderShell)
+apps/web/src/kernel/*.app.test.tsx         # app-level (kernel boot + bundled plugins)
 e2e/                                       # Playwright/Electron harness
   fixtures/shell.ts                        # Electron + appShellPage only
-  fixtures/features/<id>.ts                # per-feature page fixtures
+  fixtures/features/<id>.ts                # per-area page fixtures
   fixtures/electron.ts                     # worker-scoped packaged Electron
   pages/shell/                             # shell page objects
-  pages/features/<id>/                     # feature page objects (move with plugin)
-  specs/shell/                             # boot / protocol / preload
-  specs/features/<id>/                     # feature flows
-plugins/<id>/e2e/                          # after migration — self-contained e2e
+  pages/features/<id>/                     # area page objects
+  specs/kernel/, specs/shell/              # boot / protocol / preload
+  specs/features/<id>/                     # plugin flows (owners in utils/registered-specs.ts)
+plugins/<dir>/e2e/                         # a plugin's own e2e
 ```
 
 ## Debugging a failing e2e
@@ -115,17 +123,17 @@ plugins/<id>/e2e/                          # after migration — self-contained 
 4. Open `playwright-report/index.html` (`npx playwright show-report`). CI also uploads JUnit XML and a Playwright blob report for machine-readable diagnostics.
 5. CI retries twice. PR and merge-queue checks tolerate a retry pass, while nightly sets `PLAYWRIGHT_FAIL_ON_FLAKY_TESTS=true` and fails on any flaky result. Flaky specs must still be fixed (no quarantine tag).
 
-## Feature test obligations
+## Plugin test obligations
 
-Every new feature (see `.agents/skills/new-feature/SKILL.md`) must ship:
+Every new plugin must ship:
 
-1. A service unit test
-2. A component browser test using `createFakeSdk`
+1. A unit test for its main-process logic
+2. A component browser test in a booted test kernel (`@kilo-desktop/kernel/testing`)
 3. Stable `data-qa-id` attributes on interactive elements
 4. At least one `@smoke` e2e spec with a page object
 
 Agent skills: Vitest tiers → `.agents/skills/write-vitest/SKILL.md`; Playwright e2e → `.agents/skills/write-e2e-test/SKILL.md`.
 
-When migrating to a plugin (`.agents/skills/migrate-to-plugin/SKILL.md`), move e2e pages + specs into `plugins/<id>/e2e/` and add a plugin-local `fixtures.ts`. The Playwright config already globs `plugins/*/e2e/specs/**`.
+A plugin's e2e pages and specs may live in `plugins/<dir>/e2e/` with a plugin-local `fixtures.ts`; the Playwright config globs `plugins/*/e2e/specs/**`.
 
 Plugin e2e code must load the **same** `@anaconda/playwright-utils` and `@playwright/test` as `e2e/`: playwright-utils keeps the current page in a module singleton that only the harness fixture sets. If a plugin declares these packages, pin them to the versions in `e2e/package.json`. Global setup checks this and fails fast; a second copy otherwise makes every locator in that plugin throw `Cannot read properties of undefined (reading 'getByTestId')`.

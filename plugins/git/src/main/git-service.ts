@@ -6,8 +6,7 @@ import path, { basename, isAbsolute, relative, resolve, sep } from "node:path";
 import { execa, type ExecaError } from "execa";
 import pLimit from "p-limit";
 
-import type { MainSdkLogger } from "@kilo-desktop/feature-sdk";
-import { FeatureError } from "@kilo-desktop/feature-sdk";
+import { KernelError, type KernelLogger } from "@kilo-desktop/kernel";
 import type { GitClient, GitPatchFile } from "@kilo-desktop/git-client";
 import {
 	GitErrorCode,
@@ -26,9 +25,10 @@ import type {
 	GitStatus,
 	GitWorktreeEntry,
 	GitWorktreeResult,
-} from "../contracts/schemas.js";
+} from "../contracts/models.js";
 import type { IBranch, RepositoryType, WorktreeEntry } from "@kilo-desktop/git-client";
 import { findDefaultBranch } from "./find-default-branch.js";
+import { hostPathIdentity, type PathIdentity } from "./path-identity.js";
 import {
 	BATCH_CHUNK_SIZE,
 	type BatchNodes,
@@ -36,7 +36,7 @@ import {
 	finderPick,
 	parseBatchResponse,
 } from "./pull-request-batch.js";
-import { unsupportedGitVersionToFeatureError } from "./unsupported-git-version.js";
+import { unsupportedGitVersionToKernelError } from "./unsupported-git-version.js";
 import { GIT_NOT_FOUND_MESSAGE, WorktreeManager } from "./worktree-manager.js";
 
 export interface GitPullRequest {
@@ -198,15 +198,19 @@ function recentBranchNamesOf(
 	return recentBranches;
 }
 
+/**
+ * The workspace folders git may work in, looked up per call so provider
+ * readiness never matters. `null` means workspaces are unavailable.
+ */
+export interface WorkspaceAccess {
+	/** Whether `directory` is a workspace folder or inside one. */
+	authorize(directory: string): Promise<boolean | null>;
+	folderPaths(): Promise<readonly string[] | null>;
+}
+
 export interface GitServiceOptions {
-	readonly logger: MainSdkLogger;
-	/**
-	 * Resolves the absolute workspace folder paths git operations are
-	 * allowed to run in, or `null` when the workspaces capability is
-	 * unavailable. Resolved per call (request-time), so provider boot
-	 * order is irrelevant.
-	 */
-	readonly getWorkspaceFolderPaths: () => Promise<readonly string[] | null>;
+	readonly logger: KernelLogger;
+	readonly workspaces: WorkspaceAccess;
 	/**
 	 * Base directory for generated patch files. Defaults to `os.tmpdir()`
 	 * inside git-client; the shell passes the Electron temp directory.
@@ -214,6 +218,8 @@ export interface GitServiceOptions {
 	readonly tempDir?: string;
 	/** Factory for the shared client. Overridable in tests. */
 	readonly createClient?: () => GitClientSlice;
+	/** How paths are compared; the host's by default. Overridable in tests. */
+	readonly pathIdentity?: PathIdentity;
 }
 
 /**
@@ -232,45 +238,25 @@ function assertInsideWorkingDirectory(workingDirectory: string, repoRelativePath
 		resolvedFrom === ".." ||
 		resolvedFrom.startsWith(`..${sep}`)
 	) {
-		throw new FeatureError(
-			`"${repoRelativePath}" is not a path inside the working directory.`,
+		throw new KernelError(
 			"VALIDATION",
+			`"${repoRelativePath}" is not a path inside the working directory.`,
 		);
 	}
-}
-
-/** Whether `candidate` is `folder` itself or a path inside it. */
-function isSameOrWithin(folder: string, candidate: string): boolean {
-	const relativePath = relative(folder, candidate);
-	return (
-		relativePath === "" ||
-		(relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath))
-	);
-}
-
-/** Whether `candidatePath` equals or is inside any of `folders`. */
-function isWithinFolders(candidatePath: string, folders: readonly string[]): boolean {
-	return folders.some((folderPath) => isSameOrWithin(folderPath, candidatePath));
 }
 
 const REF_HEADS_PREFIX = "refs/heads/";
 
 /**
  * Map git-client's raw worktree entries to the contract shape, dropping
- * everything the renderer must never see: detached HEAD (no branch to
- * report — and `worktreeBranch` is what marks a session as worktree-backed,
- * so a detached entry could never be one), prunable (stale registration),
- * and anything outside the workspace's folders (never adopt external
- * worktrees — mirrors kilocode). Pure and git-free, so it is unit-tested
- * without a repository.
+ * detached HEAD (no branch to report — and `worktreeBranch` is what marks a
+ * session as worktree-backed, so a detached entry could never be one) and
+ * prunable (stale registration) entries. Entries outside the workspace's
+ * folders are dropped separately by `GitService.worktrees`.
  */
-export function toWorktreeEntries(
-	entries: ReadonlyArray<WorktreeEntry>,
-	folders: readonly string[],
-): GitWorktreeEntry[] {
+function toWorktreeEntries(entries: ReadonlyArray<WorktreeEntry>): GitWorktreeEntry[] {
 	return entries.flatMap((entry) => {
 		if (entry.isDetached || entry.isPrunable || entry.branch === null) return [];
-		if (!isWithinFolders(entry.path, folders)) return [];
 		return [
 			{
 				path: entry.path,
@@ -284,14 +270,14 @@ export function toWorktreeEntries(
 	});
 }
 
-function createDefaultClient(logger: MainSdkLogger): GitClientSlice {
+function createDefaultClient(logger: KernelLogger): GitClientSlice {
 	// git-client's `GitLogger` is the narrow `{ error }` interface, which
-	// `MainSdkLogger` satisfies directly.
+	// `KernelLogger` satisfies directly.
 	return createGitClient({ logger });
 }
 
 /**
- * The git-unavailability errors mapped to a `FeatureError` across every
+ * The git-unavailability errors mapped to a `KernelError` across every
  * method: no git binary, a git older than git-client's minimum version, and
  * the macOS shim failing every invocation while the Xcode license is
  * unaccepted or the Command Line Tools are missing. Their messages must
@@ -299,18 +285,18 @@ function createDefaultClient(logger: MainSdkLogger): GitClientSlice {
  * boundary scrubs generic errors, and git-client logs the detail via the
  * adapted logger).
  */
-function gitUnavailableToFeatureError(error: unknown): unknown {
+function gitUnavailableToKernelError(error: unknown): unknown {
 	if (error instanceof GitNotDetectedError) {
-		return new FeatureError(GIT_NOT_FOUND_MESSAGE, "BUSINESS");
+		return new KernelError("BUSINESS", GIT_NOT_FOUND_MESSAGE);
 	}
 	if (error instanceof UnsupportedGitVersionError) {
-		return unsupportedGitVersionToFeatureError(error);
+		return unsupportedGitVersionToKernelError(error);
 	}
 	if (
 		isGitError(error, GitErrorCode.XcodeLicenseNotAgreed) ||
 		isGitError(error, GitErrorCode.XcodeCommandLineToolsMissing)
 	) {
-		return new FeatureError(error.result.gitErrorDescription ?? error.message, "BUSINESS");
+		return new KernelError("BUSINESS", error.result.gitErrorDescription ?? error.message);
 	}
 	return error;
 }
@@ -318,46 +304,46 @@ function gitUnavailableToFeatureError(error: unknown): unknown {
 /**
  * Expected user-facing checkout failures: git's parsed description (the
  * "already exists" / "local changes overwritten" copy) must survive the IPC
- * boundary, so they map to `FeatureError`s; git-unavailability maps through
+ * boundary, so they map to `KernelError`s; git-unavailability maps through
  * the shared fallthrough; anything else propagates unwrapped (scrubbed at
  * IPC, logged by git-client).
  */
-function checkoutErrorToFeatureError(error: unknown): unknown {
+function checkoutErrorToKernelError(error: unknown): unknown {
 	if (isGitError(error, GitErrorCode.BranchAlreadyExists)) {
-		return new FeatureError(error.result.gitErrorDescription ?? error.message, "BUSINESS");
+		return new KernelError("BUSINESS", error.result.gitErrorDescription ?? error.message);
 	}
 	if (isGitError(error, GitErrorCode.LocalChangesOverwritten)) {
-		return new FeatureError(error.result.gitErrorDescription ?? error.message, "BUSINESS");
+		return new KernelError("BUSINESS", error.result.gitErrorDescription ?? error.message);
 	}
 	if (isGitError(error, GitErrorCode.BranchAlreadyCheckedOut)) {
-		return new FeatureError(error.result.gitErrorDescription ?? error.message, "BUSINESS");
+		return new KernelError("BUSINESS", error.result.gitErrorDescription ?? error.message);
 	}
-	return gitUnavailableToFeatureError(error);
+	return gitUnavailableToKernelError(error);
 }
 
-function gitActionErrorToFeatureError(error: unknown): unknown {
+function gitActionErrorToKernelError(error: unknown): unknown {
 	if (isGitError(error)) {
-		return new FeatureError(error.result.gitErrorDescription ?? error.message, "BUSINESS");
+		return new KernelError("BUSINESS", error.result.gitErrorDescription ?? error.message);
 	}
-	return gitUnavailableToFeatureError(error);
+	return gitUnavailableToKernelError(error);
 }
 
-export function ghErrorToFeatureError(error: unknown): FeatureError {
+export function ghErrorToKernelError(error: unknown): KernelError {
 	const failure = error as Partial<ExecaError>;
 	const detail = typeof failure.stderr === "string" ? failure.stderr.trim() : "";
 	if ((failure as { code?: string }).code === "ENOENT") {
-		return new FeatureError(
-			"GitHub CLI (gh) is not installed. Install it from https://cli.github.com/.",
+		return new KernelError(
 			"BUSINESS",
+			"GitHub CLI (gh) is not installed. Install it from https://cli.github.com/.",
 		);
 	}
 	if (/auth login|not logged|authentication/i.test(detail)) {
-		return new FeatureError(
-			"Not authenticated with GitHub CLI. Run 'gh auth login' first.",
+		return new KernelError(
 			"BUSINESS",
+			"Not authenticated with GitHub CLI. Run 'gh auth login' first.",
 		);
 	}
-	return new FeatureError(detail || "GitHub CLI operation failed.", "BUSINESS");
+	return new KernelError("BUSINESS", detail || "GitHub CLI operation failed.");
 }
 
 export function classifyGithubCliError(error: unknown): Exclude<GithubCliStatus, "ready"> {
@@ -444,7 +430,7 @@ function parsePullRequest(json: string): GitPullRequest {
 			isDraft: value.isDraft,
 		};
 	} catch {
-		throw new FeatureError("GitHub CLI returned invalid pull request data.", "BUSINESS");
+		throw new KernelError("BUSINESS", "GitHub CLI returned invalid pull request data.");
 	}
 }
 
@@ -465,7 +451,7 @@ function parseJsonValue(json: string): unknown {
 	try {
 		return JSON.parse(json) as unknown;
 	} catch {
-		throw new FeatureError("GitHub CLI returned invalid pull request data.", "BUSINESS");
+		throw new KernelError("BUSINESS", "GitHub CLI returned invalid pull request data.");
 	}
 }
 
@@ -499,7 +485,7 @@ function parseJsonValue(json: string): unknown {
  *   the data probes ever run. It never resolves `null` — `missing` is an
  *   explicit kind, and `unsafe` crosses the contract so a trust flow can
  *   be added later without schema changes.
- * - The git-unavailability errors are mapped to a `FeatureError` on every
+ * - The git-unavailability errors are mapped to a `KernelError` on every
  *   method so their messages survive the IPC boundary: `GitNotDetectedError`
  *   (no git binary on PATH — git-client also reports the macOS
  *   `/usr/bin/git` shim this way when the Command Line Tools are missing,
@@ -513,11 +499,11 @@ function parseJsonValue(json: string): unknown {
  *   shim spawned despite the probe, e.g. CLT removed mid-session). Every other
  *   unexpected error propagates unwrapped (the IPC boundary scrubs generic
  *   errors, and git-client logs the detail via the adapted logger). The
- *   worktree delegate methods additionally map `GitError`s to `FeatureError`s
+ *   worktree delegate methods additionally map `GitError`s to `KernelError`s
  *   carrying git's parsed descriptions, because their failures (missing base
  *   branch, locked worktree, …) are user-facing copy.
  * - `checkout` additionally maps the two expected user-facing failures
- *   (`BranchAlreadyExists`, `LocalChangesOverwritten`) to `FeatureError`s
+ *   (`BranchAlreadyExists`, `LocalChangesOverwritten`) to `KernelError`s
  *   carrying git's parsed descriptions, so the UI can surface them. With
  *   `create`, the new branch is based on `startPoint` when given — the
  *   default branch while branching off it, per Desktop's dialog — and on
@@ -530,15 +516,14 @@ function parseJsonValue(json: string): unknown {
  *
  * Workspace containment: every directory-taking call (`status`,
  * `branches`, `repositoryType`, `checkout`, `init`, `createPatch`,
- * `getDiffContents`, `hasWorktreeWork`, `defaultBranch`) resolves the
- * workspace folders per request and rejects with a `VALIDATION` FeatureError
- * unless the directory equals or is inside one of them — this choke point
- * covers both the IPC channels and the `kilo-git://` protocol handler in one
- * place. The capability is resolved per call, so boot order never matters,
- * and an absent capability fails closed (kilo-ui is bundled and always
- * booted by the time renderer requests exist). Legitimate renderer traffic
- * always passes workspace folder paths, so the guard never trips in normal
- * use.
+ * `getDiffContents`, `hasWorktreeWork`, `defaultBranch`, the repository
+ * actions) asks kilo.workspaces' `authorize` (rule `inside`) per request and
+ * rejects with a `VALIDATION` KernelError unless the directory is a
+ * workspace folder or inside one — this choke point covers both the
+ * `kilo.git/repository` methods and the `kilo-git://` protocol handler in one
+ * place. Workspaces are looked up per call, so readiness never matters, and
+ * their absence fails closed. Legitimate renderer traffic always passes
+ * workspace folder paths, so the guard never trips in normal use.
  *
  * Repository actions and GitHub state are the service's only mutable
  * state, all process-local caches: the `gh auth status` probe (5 min on
@@ -561,7 +546,8 @@ function parseJsonValue(json: string): unknown {
  */
 export class GitService {
 	readonly #client: GitClientSlice;
-	readonly #getWorkspaceFolderPaths: () => Promise<readonly string[] | null>;
+	readonly #workspaces: WorkspaceAccess;
+	readonly #paths: PathIdentity;
 	readonly #tempDir: string | undefined;
 	/**
 	 * Patch file paths handed to callers but not yet released. The protocol
@@ -582,30 +568,32 @@ export class GitService {
 
 	constructor(options: GitServiceOptions) {
 		this.#client = options.createClient?.() ?? createDefaultClient(options.logger);
-		this.#getWorkspaceFolderPaths = options.getWorkspaceFolderPaths;
+		this.#workspaces = options.workspaces;
+		this.#paths = options.pathIdentity ?? hostPathIdentity;
 		this.#tempDir = options.tempDir;
 		this.#worktrees = new WorktreeManager({
 			client: this.#client,
 			logger: options.logger,
+			pathIdentity: this.#paths,
 			resolveDefaultBranch: (wd) => this.defaultBranch(wd),
 		});
 	}
 
 	/**
-	 * Resolve the allowed workspace folders and reject `directory` unless
-	 * it equals or is inside one of them. `null` (capability absent) is a
-	 * rejection too — containment fails closed.
+	 * Reject `directory` unless kilo.workspaces authorises it as a workspace
+	 * folder or inside one. Workspaces being unavailable is a rejection too —
+	 * containment fails closed.
 	 */
 	async #assertWithinWorkspaceFolders(directory: string): Promise<void> {
-		const folderPaths = await this.#getWorkspaceFolderPaths();
-		if (folderPaths === null) {
-			throw new FeatureError(
-				"Workspaces are unavailable, so the directory cannot be verified as part of a workspace.",
+		const allowed = await this.#workspaces.authorize(directory);
+		if (allowed === null) {
+			throw new KernelError(
 				"VALIDATION",
+				"Workspaces are unavailable, so the directory cannot be verified as part of a workspace.",
 			);
 		}
-		if (!isWithinFolders(directory, folderPaths)) {
-			throw new FeatureError(`"${directory}" is not inside a workspace folder.`, "VALIDATION");
+		if (!allowed) {
+			throw new KernelError("VALIDATION", `"${directory}" is not inside a workspace folder.`);
 		}
 	}
 
@@ -624,7 +612,7 @@ export class GitService {
 				workingDirectory: { files: [...result.workingDirectory.files] },
 			};
 		} catch (error) {
-			throw gitUnavailableToFeatureError(error);
+			throw gitUnavailableToKernelError(error);
 		}
 	}
 
@@ -638,7 +626,7 @@ export class GitService {
 		try {
 			await this.#client.exec(["commit", "-m", message], "commit", { cwd: workingDirectory });
 		} catch (error) {
-			throw gitActionErrorToFeatureError(error);
+			throw gitActionErrorToKernelError(error);
 		}
 	}
 
@@ -671,7 +659,7 @@ export class GitService {
 			]);
 			return { statusSummary, diffPatch, recentCommitSubjects };
 		} catch (error) {
-			throw gitActionErrorToFeatureError(error);
+			throw gitActionErrorToKernelError(error);
 		}
 	}
 
@@ -690,7 +678,7 @@ export class GitService {
 			.then(
 				() => undefined,
 				(error: unknown) => {
-					throw gitActionErrorToFeatureError(error);
+					throw gitActionErrorToKernelError(error);
 				},
 			)
 			.finally(() => {
@@ -711,16 +699,16 @@ export class GitService {
 		try {
 			const status = await this.#client.status({ cwd: workingDirectory });
 			const branch = status?.currentBranch;
-			if (!branch) throw new FeatureError("Checkout a branch before pushing.", "BUSINESS");
+			if (!branch) throw new KernelError("BUSINESS", "Checkout a branch before pushing.");
 			if (branch.startsWith("-")) {
-				throw new FeatureError(`"${branch}" is not a valid branch name.`, "VALIDATION");
+				throw new KernelError("VALIDATION", `"${branch}" is not a valid branch name.`);
 			}
 			const args = status.currentUpstreamBranch
 				? ["push"]
 				: ["push", "--set-upstream", DEFAULT_REMOTE_NAME, branch];
 			await this.#client.exec(args, "push", { cwd: workingDirectory });
 		} catch (error) {
-			throw gitActionErrorToFeatureError(error);
+			throw gitActionErrorToKernelError(error);
 		}
 	}
 
@@ -729,7 +717,7 @@ export class GitService {
 		try {
 			await this.#client.exec(["pull", "--ff-only"], "pull", { cwd: workingDirectory });
 		} catch (error) {
-			throw gitActionErrorToFeatureError(error);
+			throw gitActionErrorToKernelError(error);
 		}
 	}
 
@@ -738,7 +726,7 @@ export class GitService {
 		try {
 			return await this.#readOriginUrl(workingDirectory);
 		} catch (error) {
-			throw gitActionErrorToFeatureError(error);
+			throw gitActionErrorToKernelError(error);
 		}
 	}
 
@@ -812,13 +800,13 @@ export class GitService {
 			);
 			return await this.#snapshotFromCandidates(plan, candidates);
 		} catch (error) {
-			if (error instanceof FeatureError) throw error;
+			if (error instanceof KernelError) throw error;
 			// The lookup interleaves git and gh calls; a too-old git must not
 			// read as a GitHub CLI failure.
 			if (error instanceof UnsupportedGitVersionError) {
-				throw unsupportedGitVersionToFeatureError(error);
+				throw unsupportedGitVersionToKernelError(error);
 			}
-			throw ghErrorToFeatureError(error);
+			throw ghErrorToKernelError(error);
 		}
 	}
 
@@ -966,7 +954,7 @@ export class GitService {
 		const headBranch = await this.#client
 			.headBranch({ cwd: workingDirectory })
 			.catch((error: unknown) => {
-				throw gitUnavailableToFeatureError(error);
+				throw gitUnavailableToKernelError(error);
 			});
 		const branch = headBranch?.name ?? null;
 		const resolved = (githubStatus: GithubSnapshotStatus) => ({
@@ -1245,11 +1233,11 @@ export class GitService {
 			}
 			const found = await this.pullRequest(input.workingDirectory);
 			if (!found)
-				throw new FeatureError("GitHub did not return the created pull request.", "BUSINESS");
+				throw new KernelError("BUSINESS", "GitHub did not return the created pull request.");
 			return found;
 		} catch (error) {
-			if (error instanceof FeatureError) throw error;
-			throw ghErrorToFeatureError(error);
+			if (error instanceof KernelError) throw error;
+			throw ghErrorToKernelError(error);
 		} finally {
 			await rm(bodyFile, { force: true });
 		}
@@ -1274,7 +1262,7 @@ export class GitService {
 	}> {
 		await this.#assertWithinWorkspaceFolders(workingDirectory);
 		if (baseBranch.startsWith("-")) {
-			throw new FeatureError(`"${baseBranch}" is not a valid base branch.`, "VALIDATION");
+			throw new KernelError("VALIDATION", `"${baseBranch}" is not a valid base branch.`);
 		}
 		try {
 			const baseRef = await this.#resolveBaseRef(workingDirectory, baseBranch);
@@ -1304,7 +1292,7 @@ export class GitService {
 				]);
 			return { commitSummary, diffSummary, diffPatch, recentCommitSubjects, pullRequestTemplate };
 		} catch (error) {
-			throw gitActionErrorToFeatureError(error);
+			throw gitActionErrorToKernelError(error);
 		}
 	}
 
@@ -1365,7 +1353,7 @@ export class GitService {
 			}
 			return totals;
 		} catch (error) {
-			throw gitActionErrorToFeatureError(error);
+			throw gitActionErrorToKernelError(error);
 		}
 	}
 
@@ -1491,7 +1479,7 @@ export class GitService {
 				recentBranches: recentBranchNamesOf(branches, recentNames, defaultBranch),
 			};
 		} catch (error) {
-			throw gitUnavailableToFeatureError(error);
+			throw gitUnavailableToKernelError(error);
 		}
 	}
 
@@ -1509,7 +1497,7 @@ export class GitService {
 			// `tsc` enforces the alignment at this assignment.
 			return result;
 		} catch (error) {
-			throw gitUnavailableToFeatureError(error);
+			throw gitUnavailableToKernelError(error);
 		}
 	}
 
@@ -1536,7 +1524,7 @@ export class GitService {
 				...(kind === "remote" ? { track: true } : {}),
 			});
 		} catch (error) {
-			throw checkoutErrorToFeatureError(error);
+			throw checkoutErrorToKernelError(error);
 		}
 	}
 
@@ -1552,7 +1540,7 @@ export class GitService {
 		try {
 			await this.#client.initRepository({ cwd: workingDirectory });
 		} catch (error) {
-			throw gitUnavailableToFeatureError(error);
+			throw gitUnavailableToKernelError(error);
 		}
 	}
 
@@ -1575,7 +1563,7 @@ export class GitService {
 			this.#inFlightPatchPaths.add(patch.patchPath);
 			return patch;
 		} catch (error) {
-			throw gitUnavailableToFeatureError(error);
+			throw gitUnavailableToKernelError(error);
 		}
 	}
 
@@ -1588,7 +1576,7 @@ export class GitService {
 	/**
 	 * Both sides of a working-tree file's contents for diff hunk expansion.
 	 * Null sides mean that side is absent (new/untracked file, deleted file,
-	 * unborn HEAD); a side over 50 MiB rejects with a `FeatureError`.
+	 * unborn HEAD); a side over 50 MiB rejects with a `KernelError`.
 	 */
 	async getDiffContents(options: {
 		readonly workingDirectory: string;
@@ -1608,9 +1596,9 @@ export class GitService {
 			});
 		} catch (error) {
 			if (error instanceof GitFileTooLargeError) {
-				throw new FeatureError(`"${error.path}" is too large to expand.`, "BUSINESS");
+				throw new KernelError("BUSINESS", `"${error.path}" is too large to expand.`);
 			}
-			throw gitUnavailableToFeatureError(error);
+			throw gitUnavailableToKernelError(error);
 		}
 	}
 
@@ -1649,7 +1637,7 @@ export class GitService {
 			if (names.includes("master")) return "master";
 			return null;
 		} catch (error) {
-			throw gitUnavailableToFeatureError(error);
+			throw gitUnavailableToKernelError(error);
 		}
 	}
 
@@ -1667,13 +1655,33 @@ export class GitService {
 		try {
 			const [entries, folderPaths] = await Promise.all([
 				this.#client.worktrees({ cwd: workingDirectory }),
-				this.#getWorkspaceFolderPaths(),
+				this.#workspaces.folderPaths(),
 			]);
-			return toWorktreeEntries(entries, folderPaths ?? []);
+			return await this.#withinFolders(toWorktreeEntries(entries), folderPaths ?? []);
 		} catch (error) {
 			if (isGitError(error, GitErrorCode.NotAGitRepository)) return null;
-			throw gitUnavailableToFeatureError(error);
+			throw gitUnavailableToKernelError(error);
 		}
+	}
+
+	/**
+	 * The entries inside one of `folderPaths` — never adopt external
+	 * worktrees (mirrors kilocode). Both sides are canonicalized first: a
+	 * folder registered through a short name, symlink or other letter case
+	 * still holds the worktrees git lists under their long, real paths.
+	 */
+	async #withinFolders(
+		entries: readonly GitWorktreeEntry[],
+		folderPaths: readonly string[],
+	): Promise<GitWorktreeEntry[]> {
+		const paths = this.#paths;
+		const [folders, entryPaths] = await Promise.all([
+			Promise.all(folderPaths.map((folder) => paths.canonical(folder))),
+			Promise.all(entries.map((entry) => paths.canonical(entry.path))),
+		]);
+		return entries.filter((_, index) =>
+			folders.some((folder) => paths.within(folder, entryPaths[index]!)),
+		);
 	}
 
 	/**
@@ -1687,24 +1695,30 @@ export class GitService {
 		workingDirectory: string;
 		directory: string;
 	}): Promise<{ directory: string; branch: string }> {
-		const resolvedDirectory = resolve(input.directory);
-		const entries = await this.worktrees(input.workingDirectory);
-		const match = entries?.find((entry) => !entry.isMain && entry.path === resolvedDirectory);
+		const paths = this.#paths;
+		const [entries, directory] = await Promise.all([
+			this.worktrees(input.workingDirectory),
+			paths.canonical(input.directory),
+		]);
+		const linked = (entries ?? []).filter((entry) => !entry.isMain);
+		const linkedPaths = await Promise.all(linked.map((entry) => paths.canonical(entry.path)));
+		const match = linked.find((_, index) => paths.same(linkedPaths[index]!, directory));
 		if (!match) {
-			throw new FeatureError("That worktree no longer exists.", "NOT_FOUND");
+			throw new KernelError("NOT_FOUND", "That worktree no longer exists.");
 		}
 		return { directory: match.path, branch: match.branch };
 	}
 
 	/**
 	 * Create a chat worktree at `<main root>/.kilo/worktrees/` on a fresh
-	 * `kilo/<friendly-words>` branch, based on `baseBranch` (else the
-	 * default-branch chain, else the current HEAD). Returns the worktree
-	 * directory and the new branch name.
+	 * `kilo/<friendly-words>` branch (`kilo/<branch>` when named), based on
+	 * `baseBranch` (else the default-branch chain, else the current HEAD).
+	 * Returns the worktree directory and the new branch name.
 	 */
 	async createWorktree(input: {
 		workingDirectory: string;
 		baseBranch?: string;
+		branch?: string;
 	}): Promise<GitWorktreeResult> {
 		return this.#worktrees.createWorktree(input);
 	}
@@ -1729,7 +1743,7 @@ export class GitService {
 	 * already gone or never registered resolves success; an unmanaged path
 	 * is refused loudly.
 	 */
-	async removeWorktree(input: { path: string }): Promise<void> {
+	async removeWorktree(input: { path: string; deleteBranch?: boolean }): Promise<void> {
 		return this.#worktrees.removeWorktree(input);
 	}
 
@@ -1749,7 +1763,7 @@ export class GitService {
 	 * True when the worktree at `directory` has actual work relative to
 	 * `baseBranch`: uncommitted file changes (staged, unstaged, or untracked)
 	 * or commits ahead of the base. Two-tier contract, per the channel:
-	 * a containment refusal rejects with a `VALIDATION` FeatureError (the
+	 * a containment refusal rejects with a `VALIDATION` KernelError (the
 	 * directory is renderer-supplied, same deliberate choke point as every
 	 * sibling method), while every git-level failure — missing binary, spawn
 	 * failure, not a repo — resolves `false` (absence of evidence is not

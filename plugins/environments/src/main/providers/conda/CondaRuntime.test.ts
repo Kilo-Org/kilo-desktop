@@ -4,14 +4,14 @@ import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
-import type { MainSdkLogger } from "@kilo-desktop/feature-sdk/main";
+import type { KernelLogger } from "@kilo-desktop/kernel";
 
 import { CondaRuntime } from "./CondaRuntime.js";
 import { SharedCondaBridge } from "./SharedCondaBridge.js";
 import { SidecarCondaBackend } from "./SidecarCondaBackend.js";
 import type { BridgeLaunchInfo } from "./resolveBridgePath.js";
 
-const logger: MainSdkLogger = {
+const logger: KernelLogger = {
 	debug: () => {},
 	info: () => {},
 	warn: () => {},
@@ -286,7 +286,7 @@ describe("CondaRuntime", () => {
 				name: "local-inference",
 				packages: ["llama.cpp=1.2"],
 			}),
-		).rejects.toThrow(/anaconda-bridge-sidecar payload not found/);
+		).rejects.toThrow(/conda bridge payload was not found/);
 	});
 
 	it("resolves Windows conda executables from Library/bin with an exe suffix", () => {

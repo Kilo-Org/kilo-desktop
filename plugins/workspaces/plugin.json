@@ -1,0 +1,107 @@
+{
+	"manifestVersion": 1,
+	"id": "kilo.workspaces",
+	"displayName": "Workspaces",
+	"version": "1.0.0",
+	"description": "Workspaces (projects of one or more folders), path authorisation and file watching.",
+	"requires": {
+		"kilo.shell/onboarding-step": "optional",
+		"kilo.shell/overlay": "optional"
+	},
+	"permissions": {
+		"host": ["dialogs"]
+	},
+	"contextKeys": [
+		{
+			"id": "hasWorkspaces",
+			"scope": "global",
+			"description": "True while at least one workspace exists."
+		},
+		{
+			"id": "vcs",
+			"scope": "global",
+			"description": "True while a version control provider is present."
+		}
+	],
+	"extensionPoints": [
+		{
+			"id": "vcs",
+			"kind": "exclusive",
+			"description": "Version control for workspace folders: status, branches and worktrees."
+		}
+	],
+	"domains": [
+		{
+			"id": "workspace",
+			"home": "main",
+			"description": "Workspaces, the active one, folder availability and path authorisation."
+		},
+		{
+			"id": "file",
+			"home": "main",
+			"description": "Watched workspace folders and the file changes in them."
+		}
+	],
+	"contributes": {
+		"extensions": {
+			"kernel/service": [
+				{
+					"id": "watcher",
+					"title": "Workspace file watcher",
+					"kind": "daemon",
+					"startOn": "window-shown",
+					"restart": {
+						"policy": "never"
+					}
+				}
+			],
+			"kilo.shell/overlay": [
+				{
+					"id": "dialogs"
+				}
+			],
+			"kernel/command": [
+				{
+					"id": "add",
+					"title": "Add workspace",
+					"category": "Workspaces",
+					"order": 10,
+					"when": {
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "manage",
+					"title": "Manage workspaces",
+					"category": "Workspaces",
+					"order": 20,
+					"when": {
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "edit",
+					"title": "Edit workspace",
+					"category": "Workspaces",
+					"palette": false
+				},
+				{
+					"id": "delete",
+					"title": "Delete workspace",
+					"category": "Workspaces",
+					"palette": false
+				}
+			],
+			"kilo.shell/onboarding-step": [
+				{
+					"id": "workspace",
+					"label": "Workspace",
+					"priority": 700,
+					"showWhen": {
+						"none": ["kilo.workspaces/hasWorkspaces"]
+					}
+				}
+			]
+		}
+	}
+}

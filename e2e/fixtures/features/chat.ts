@@ -3,7 +3,7 @@ import { ChatAttachmentProviderPage } from "../../pages/features/chat/chat-attac
 import { ChatComposerPage } from "../../pages/features/chat/chat-composer-page.js";
 import { ChatModeSelectorPage } from "../../pages/features/chat/chat-mode-selector-page.js";
 import { ChatModelSelectorPage } from "../../pages/features/chat/chat-model-selector-page.js";
-import { ChatWelcomePage } from "../../pages/features/chat/chat-welcome-page.js";
+import { NewChatPage } from "../../pages/features/chat/new-chat-page.js";
 import { test as shellTest } from "../shell.js";
 
 type ChatFixtures = {
@@ -12,7 +12,7 @@ type ChatFixtures = {
 	chatComposerPage: ChatComposerPage;
 	chatModeSelectorPage: ChatModeSelectorPage;
 	chatModelSelectorPage: ChatModelSelectorPage;
-	chatWelcomePage: ChatWelcomePage;
+	newChatPage: NewChatPage;
 };
 
 export const test = shellTest.extend<ChatFixtures>({
@@ -38,8 +38,8 @@ export const test = shellTest.extend<ChatFixtures>({
 		await use(new ChatModelSelectorPage());
 	},
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
-	chatWelcomePage: async ({}, use) => {
-		await use(new ChatWelcomePage());
+	newChatPage: async ({}, use) => {
+		await use(new NewChatPage());
 	},
 });
 

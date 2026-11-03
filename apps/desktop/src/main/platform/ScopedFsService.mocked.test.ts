@@ -47,7 +47,7 @@ describe("ScopedFsService defensive fs failure handling", () => {
 
 		const service = makeService();
 		const error = await service
-			.exists("todos", "locked/inside.txt")
+			.exists("kilo.todos", "locked/inside.txt")
 			.catch((cause: unknown) => cause);
 
 		// translateFsError's default: unmapped codes are returned unchanged, so
@@ -66,7 +66,7 @@ describe("ScopedFsService defensive fs failure handling", () => {
 
 		const service = makeService();
 		const error = await service
-			.readFile("todos", "restricted.txt")
+			.readFile("kilo.todos", "restricted.txt")
 			.catch((cause: unknown) => cause);
 
 		expect(error).toBe(eperm);
@@ -80,7 +80,7 @@ describe("ScopedFsService defensive fs failure handling", () => {
 		mocks.readdir.mockRejectedValueOnce(weird);
 
 		const service = makeService();
-		const error = await service.readdir("todos", "any").catch((cause: unknown) => cause);
+		const error = await service.readdir("kilo.todos", "any").catch((cause: unknown) => cause);
 		expect(error).toBe(weird);
 	});
 });

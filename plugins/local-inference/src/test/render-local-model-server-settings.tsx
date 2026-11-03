@@ -1,102 +1,42 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render } from "@testing-library/react";
-import { vi } from "vitest";
-import { page } from "vitest/browser";
-
-import type { AuthSession, ChannelHandlerMap, SDK, SdkNavigation } from "@kilo-desktop/feature-sdk";
-import { SdkProvider } from "@kilo-desktop/sdk-react";
-import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
-
-import { localInferenceContract } from "../contracts/schemas.js";
 import { LocalModelServerSettings } from "../web/settings/LocalModelServerSettings.js";
+import {
+	bootLocalInferenceHost,
+	SIGNED_IN,
+	type LocalInferenceHostOptions,
+} from "./local-inference-host.js";
 
-export type LocalInferenceHandlers = ChannelHandlerMap<typeof localInferenceContract>;
+export { connection, expandModel, usageSnapshot } from "./local-inference-host.js";
 
-export const usageSnapshot = {
-	system: {
-		cpuPercent: 48.4,
-		cpuSpeedGHz: 3.5,
-		gpuMemoryUsedBytes: 4 * 1024 ** 3,
-		gpuMemoryTotalBytes: 8 * 1024 ** 3,
-		memoryUsedBytes: 10 * 1024 ** 3,
-		memoryTotalBytes: 16 * 1024 ** 3,
-	},
-};
+type Handlers = NonNullable<LocalInferenceHostOptions["handlers"]>;
 
-export const connection = {
-	baseUrl: "http://127.0.0.1:59632/v1",
-	port: 59_632,
-	apiKey: "local-secret",
-};
-
-const authenticatedSession: AuthSession = {
-	status: "authenticated",
-	user: { email: "test@example.com" },
-};
-
-export const authenticatedAuth: Partial<SDK["auth"]> = {
-	subscribe(listener) {
-		listener(authenticatedSession);
-		return () => undefined;
-	},
-	peek: () => authenticatedSession,
-	getSession: async () => authenticatedSession,
-	refresh: async () => authenticatedSession,
-};
-
-export function renderSettings(
-	handlers: Partial<LocalInferenceHandlers>,
-	shell: Partial<SDK["shell"]> = {},
-	auth: Partial<SDK["auth"]> = authenticatedAuth,
-	navigation?: Partial<SdkNavigation>,
-	featureFlags: Partial<SDK["featureFlags"]> = {},
-) {
-	// The model catalog is flag-gated (local-model-catalog, off by default);
-	// most settings tests exercise it, so default it on and let callers opt out.
-	// The model catalog is flag-gated (local-model-catalog, off by default);
-	// most settings tests exercise it, so default it on and let callers opt out.
-	// useFeatureFlag reads shellDelegates.featureFlags.peek(), so set it there.
-	const flags = { "local-model-catalog": true, ...(featureFlags.peek?.() ?? {}) };
-	const track = vi.fn(async (_input: { event: string; data: Record<string, unknown> }) => {});
-	const sdk = createFakeSdk({
-		featureId: "local-inference",
-		channels: localInferenceContract,
-		handlers: {
-			"models.list": async () => [],
-			"catalog.downloads.list": async () => [],
-			...handlers,
-		},
-		shell,
-		auth,
-		telemetry: { track },
-		...(navigation ? { navigation } : {}),
-	});
-	sdk.services.shellDelegates.featureFlags = {
-		getAllFlags: async () => flags,
-		peek: () => flags,
-		subscribe: (fn) => {
-			fn(flags);
-			return () => undefined;
-		},
-	};
-	const system = createFakeFeatureSystem({ sdks: { "local-inference": sdk } });
-	const queryClient = new QueryClient({
-		defaultOptions: { queries: { retry: false } },
-	});
-
-	const view = render(
-		<SdkProvider system={system}>
-			<QueryClientProvider client={queryClient}>
-				<LocalModelServerSettings />
-			</QueryClientProvider>
-		</SdkProvider>,
-	);
-
-	return { ...view, sdk, track };
+/** What origin's tests passed as `sdk.shell`: only the dropped-file path is still a seam. */
+export interface ShellOptions {
+	readonly getPathForFile?: (file: File) => string | null;
 }
 
-export async function expandModel(baseElement: HTMLElement, modelId: string) {
-	const trigger = page.elementLocator(baseElement).getByTestId(`local-model-trigger-${modelId}`);
-	await trigger.click();
-	return page.elementLocator(baseElement).getByTestId(`local-model-details-${modelId}`);
+/** The route the page opens on (origin's static navigation). */
+export function staticNavigation(location: { path: string; search: Record<string, string> }) {
+	return location;
+}
+
+/** Signed in to Kilo (origin's authenticated auth session). */
+export const authenticatedAuth = SIGNED_IN;
+
+/** Renders the Local Model Server settings in a kernel host (origin's `renderSettings`). */
+export async function renderSettings(
+	handlers: Handlers,
+	shell: ShellOptions = {},
+	identity: LocalInferenceHostOptions["identity"] = SIGNED_IN,
+	navigation?: { search: Record<string, string> },
+	flags?: Record<string, unknown>,
+) {
+	const host = await bootLocalInferenceHost({
+		handlers,
+		identity,
+		...(shell.getPathForFile ? { pathForFile: shell.getPathForFile } : {}),
+		...(navigation ? { search: navigation.search } : {}),
+		...(flags ? { flags } : {}),
+	});
+	const view = host.render(<LocalModelServerSettings />);
+	return { ...view, host, tracked: host.tracked };
 }

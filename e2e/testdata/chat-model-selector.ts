@@ -96,7 +96,7 @@ export const chatModelSelectorData = {
 	},
 	/**
 	 * Same gateway enrichment endpoint the app itself reads when it renders
-	 * the info tooltip (`plugins/kilo-ui/src/main/chat/gateway-model-details.ts`),
+	 * the info tooltip (`plugins/chat/src/main/gateway-model-details.ts`),
 	 * fetched independently here as a ground-truth oracle so the tooltip
 	 * assertions compare against real expected values instead of only
 	 * checking that *some* text is present. Only `description`, `context_length`,

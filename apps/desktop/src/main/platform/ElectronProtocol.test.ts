@@ -25,7 +25,7 @@ import {
 	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
 	HTML_RENDER_CONTENT_SECURITY_PROFILE,
 	type EmbeddedWebHost,
-} from "@kilo-desktop/feature-sdk/main";
+} from "./embedded-web-host.js";
 
 import {
 	createActiveUntrustedContentSecurityPolicy,

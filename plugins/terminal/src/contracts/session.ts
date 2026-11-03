@@ -1,13 +1,11 @@
 import { z } from "zod";
 
-import { defineContract, defineMethod, type InferContract } from "@kilo-desktop/feature-sdk";
-
+/**
+ * The terminal's wire protocol between a frame and main, over a port opened
+ * as `kilo.terminal/session`. Zod only, so the frame bundle stays small.
+ */
 export const TERMINAL_PROTOCOL_VERSION = 4;
 export const MAX_TERMINAL_LABEL_LENGTH = 128;
-export const TERMINAL_FEATURE_ID = "terminal";
-export const TERMINAL_SESSION_EXITED = "session-exited";
-export const TERMINAL_SESSION_EXITED_EVENT =
-	`${TERMINAL_FEATURE_ID}.${TERMINAL_SESSION_EXITED}` as const;
 
 export const terminalLabelSchema = z.string().min(1).max(MAX_TERMINAL_LABEL_LENGTH);
 
@@ -16,9 +14,6 @@ export const terminalIdentitySchema = z.object({
 	terminalId: z.string().min(1).max(512),
 });
 export type TerminalIdentity = z.infer<typeof terminalIdentitySchema>;
-
-export const terminalSessionExitedSchema = terminalIdentitySchema;
-export type TerminalSessionExited = z.infer<typeof terminalSessionExitedSchema>;
 
 export const terminalConnectionArgsSchema = terminalIdentitySchema.extend({
 	protocolVersion: z.literal(TERMINAL_PROTOCOL_VERSION),
@@ -96,17 +91,3 @@ export const terminalReadoutSchema = z.object({
 	truncated: z.boolean(),
 });
 export type TerminalReadout = z.infer<typeof terminalReadoutSchema>;
-
-export const terminalContract = defineContract({
-	close: defineMethod(
-		terminalIdentitySchema.extend({ deleteHistory: z.boolean().optional() }),
-		z.undefined(),
-	),
-	read: defineMethod(
-		terminalIdentitySchema.extend({
-			lines: z.number().int().min(0).max(MAX_TERMINAL_READ_LINES),
-		}),
-		terminalReadoutSchema.nullable(),
-	),
-});
-export type TerminalService = InferContract<typeof terminalContract>;

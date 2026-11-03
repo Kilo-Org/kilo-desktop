@@ -38,6 +38,21 @@ jobs:
       - run: pnpm lint
       - run: pnpm format:check
 
+  # Bundled plugins build outside the monorepo: manifests, exports and
+  # declared dependencies for every plugin, then each one is copied with
+  # `pnpm deploy` into a temporary folder and type-checked there.
+  plugin-isolation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
+      ANACONDA_NPM_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup-node-pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check:plugin-isolation --build all
+
   typecheck:
     runs-on: ubuntu-latest
     env:
@@ -95,7 +110,7 @@ jobs:
           with-deps: "true"
       - if: runner.os == 'Linux'
         run: pnpm exec turbo run coverage --affected --concurrency=2
-      # Turbo-managed platform tests: cached, and the three packages run
+      # Turbo-managed platform tests: cached, and the packages run
       # concurrently instead of one pnpm --filter invocation at a time.
       - name: Run platform compatibility tests
         if: runner.os != 'Linux'
@@ -103,8 +118,10 @@ jobs:
         run: >-
           pnpm exec turbo run test:platform
           --filter=@kilo-desktop/git-client
-          --filter=@kilo-desktop/plugin-kilo-server
+          --filter=@kilo-desktop/plugin-agent
+          --filter=@kilo-desktop/plugin-git
           --filter=@kilo-desktop/plugin-notebook
+          --filter=@kilo-desktop/plugin-workspaces
 
   e2e-pr:
     if: github.event_name == 'pull_request'

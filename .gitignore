@@ -159,10 +159,12 @@ Thumbs.db
 
 # App specific
 apps/desktop/.data/
-plugins/kilo-server/resources/kilo/
+plugins/agent/resources/kilo/
 # Fetched Kilo binaries under any plugin path (guards against stale copies
 # left behind by a plugin rename).
 plugins/*/resources/kilo/
+# kilo.terminal's built frame (prepare-assets).
+plugins/terminal/resources/terminal/
 build/
 release/
 playwright-report/

@@ -5,7 +5,7 @@ import process from "node:process";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { MainSdkLogger } from "@kilo-desktop/feature-sdk";
+import type { KernelLogger } from "@kilo-desktop/kernel";
 import type { IBranch, WorktreeEntry } from "@kilo-desktop/git-client";
 import {
 	GitError,
@@ -16,9 +16,10 @@ import {
 import type { IGitStringResult } from "@kilo-desktop/git-client";
 
 import type { GitClientSlice } from "./git-service.js";
+import { createPathIdentity, hostPathIdentity } from "./path-identity.js";
 import { WorktreeManager, type WorktreeManagerOptions } from "./worktree-manager.js";
 
-const logger: MainSdkLogger = {
+const logger: KernelLogger = {
 	debug: () => {},
 	info: () => {},
 	warn: () => {},
@@ -169,7 +170,10 @@ function deferred<T>() {
 function managerWith(
 	client: GitClientSlice,
 	random: () => number = () => 0,
-	fsOverrides?: Pick<WorktreeManagerOptions, "renameDirectory" | "removeDirectory" | "sleep">,
+	fsOverrides?: Pick<
+		WorktreeManagerOptions,
+		"renameDirectory" | "removeDirectory" | "sleep" | "pathIdentity"
+	>,
 ): WorktreeManager {
 	return new WorktreeManager({
 		client,
@@ -476,7 +480,7 @@ describe("WorktreeManager", () => {
 			await expect(
 				manager.createWorktree({ workingDirectory: mainRoot, baseBranch: "--orphan" }),
 			).rejects.toMatchObject({
-				name: "FeatureError",
+				name: "KernelError",
 				code: "VALIDATION",
 			});
 			expect(addWorktree).not.toHaveBeenCalled();
@@ -505,7 +509,7 @@ describe("WorktreeManager", () => {
 			await expect(
 				manager.createWorktree({ workingDirectory: mainRoot, baseBranch: "foo bar" }),
 			).rejects.toMatchObject({
-				name: "FeatureError",
+				name: "KernelError",
 				code: "VALIDATION",
 			});
 			expect(checkRefFormat).toHaveBeenCalledWith("foo bar", expect.anything());
@@ -574,7 +578,7 @@ describe("WorktreeManager", () => {
 			});
 		});
 
-		it("rejects with a FeatureError for a non-regular repository", async () => {
+		it("rejects with a KernelError for a non-regular repository", async () => {
 			const mainRoot = createMainRoot();
 			const manager = managerWith(
 				worktreeClient(mainRoot, {
@@ -583,12 +587,12 @@ describe("WorktreeManager", () => {
 			);
 
 			await expect(manager.createWorktree({ workingDirectory: mainRoot })).rejects.toMatchObject({
-				name: "FeatureError",
+				name: "KernelError",
 				code: "BUSINESS",
 			});
 		});
 
-		it("rejects with a FeatureError when the repository uses LFS but git-lfs is missing", async () => {
+		it("rejects with a KernelError when the repository uses LFS but git-lfs is missing", async () => {
 			const mainRoot = createMainRoot();
 			fs.writeFileSync(
 				path.join(mainRoot, ".gitattributes"),
@@ -607,7 +611,7 @@ describe("WorktreeManager", () => {
 			);
 
 			await expect(manager.createWorktree({ workingDirectory: mainRoot })).rejects.toMatchObject({
-				name: "FeatureError",
+				name: "KernelError",
 				code: "BUSINESS",
 				message:
 					"This repository uses Git LFS, but git-lfs was not found. Install Git LFS to create worktrees here.",
@@ -666,7 +670,7 @@ describe("WorktreeManager", () => {
 			);
 
 			await expect(manager.createWorktree({ workingDirectory: mainRoot })).rejects.toMatchObject({
-				name: "FeatureError",
+				name: "KernelError",
 				code: "BUSINESS",
 				message: expect.stringContaining("Install Git LFS"),
 			});
@@ -774,7 +778,7 @@ describe("WorktreeManager", () => {
 			);
 
 			await expect(manager.createWorktree({ workingDirectory: mainRoot })).rejects.toMatchObject({
-				name: "FeatureError",
+				name: "KernelError",
 				code: "BUSINESS",
 				message: "fatal: invalid reference",
 			});
@@ -894,7 +898,7 @@ describe("WorktreeManager", () => {
 			]);
 		});
 
-		it("maps a real add failure to a FeatureError with git's description", async () => {
+		it("maps a real add failure to a KernelError with git's description", async () => {
 			const mainRoot = createMainRoot();
 			const failure = new GitError(
 				{
@@ -910,26 +914,26 @@ describe("WorktreeManager", () => {
 			);
 
 			await expect(manager.createWorktree({ workingDirectory: mainRoot })).rejects.toMatchObject({
-				name: "FeatureError",
+				name: "KernelError",
 				code: "BUSINESS",
 				message: "fatal: invalid reference",
 			});
 		});
 
-		it("maps a missing git binary to a FeatureError", async () => {
+		it("maps a missing git binary to a KernelError", async () => {
 			const mainRoot = createMainRoot();
 			const manager = managerWith(
 				worktreeClient(mainRoot, { addWorktree: () => Promise.reject(new GitNotDetectedError()) }),
 			);
 
 			await expect(manager.createWorktree({ workingDirectory: mainRoot })).rejects.toMatchObject({
-				name: "FeatureError",
+				name: "KernelError",
 				code: "BUSINESS",
 				message: "Git was not found. Install Git, then restart Kilo Desktop.",
 			});
 		});
 
-		it("maps a git older than the minimum version to a FeatureError naming both versions", async () => {
+		it("maps a git older than the minimum version to a KernelError naming both versions", async () => {
 			const mainRoot = createMainRoot();
 			const manager = managerWith(
 				worktreeClient(mainRoot, {
@@ -940,7 +944,7 @@ describe("WorktreeManager", () => {
 			const error = await manager
 				.createWorktree({ workingDirectory: mainRoot })
 				.catch((e: unknown) => e);
-			expect(error).toMatchObject({ name: "FeatureError", code: "BUSINESS" });
+			expect(error).toMatchObject({ name: "KernelError", code: "BUSINESS" });
 			expect((error as Error).message).toContain("Git 2.14.1");
 			expect((error as Error).message).toContain("Git 2.17 or newer");
 		});
@@ -1422,7 +1426,17 @@ describe("WorktreeManager", () => {
 						pruneWorktrees: vi.fn(() => Promise.resolve()),
 					}),
 					() => 0,
-					{ renameDirectory, removeDirectory: vi.fn(async () => {}), sleep: async () => undefined },
+					{
+						renameDirectory,
+						removeDirectory: vi.fn(async () => {}),
+						sleep: async () => undefined,
+						// The host's identity is fixed at import, so mocking the platform can't make
+						// it fold case: compare by Windows rules, resolve on this host's filesystem.
+						pathIdentity: {
+							...createPathIdentity({ platform: "win32" }),
+							canonical: hostPathIdentity.canonical,
+						},
+					},
 				);
 
 				await manager.removeWorktree({ path: wt });
@@ -1505,6 +1519,26 @@ describe("WorktreeManager", () => {
 			expect(removeWorktree).not.toHaveBeenCalled();
 			expect(deleteBranch).toHaveBeenCalledWith("kilo/aback-aardvark", { cwd: mainRoot });
 			expect(pruneWorktrees).toHaveBeenCalledWith({ cwd: mainRoot });
+		});
+
+		it("drops the inferred branch of a gone worktree named through another spelling of the repo", async () => {
+			// The alias stands in for a Windows 8.3 short name or a symlinked
+			// folder: the worktree itself is gone, so only its existing parent
+			// can be resolved to the path git lists.
+			const mainRoot = createMainRoot();
+			const alias = path.join(createMainRoot(), "alias");
+			fs.symlinkSync(mainRoot, alias, "junction");
+			const deleteBranch = vi.fn(() => Promise.resolve());
+			const manager = managerWith(
+				worktreeClient(mainRoot, {
+					worktrees: () => Promise.resolve([worktreeEntry({ path: mainRoot, type: "main" })]),
+					deleteBranch,
+				}),
+			);
+
+			await manager.removeWorktree({ path: worktreePath(alias) });
+
+			expect(deleteBranch).toHaveBeenCalledWith("kilo/aback-aardvark", { cwd: mainRoot });
 		});
 
 		it("retries branch deletion when git still reports the branch in use", async () => {
@@ -1613,7 +1647,7 @@ describe("WorktreeManager", () => {
 			).resolves.toBeUndefined();
 		});
 
-		it("rejects with a FeatureError for a path outside the managed worktrees directory", async () => {
+		it("rejects with a KernelError for a path outside the managed worktrees directory", async () => {
 			const mainRoot = createMainRoot();
 			const outside = path.join(mainRoot, "important-checkout");
 			const manager = managerWith(
@@ -1627,12 +1661,12 @@ describe("WorktreeManager", () => {
 			);
 
 			await expect(manager.removeWorktree({ path: outside })).rejects.toMatchObject({
-				name: "FeatureError",
+				name: "KernelError",
 				code: "BUSINESS",
 			});
 		});
 
-		it("maps removal failures to FeatureErrors", async () => {
+		it("maps removal failures to KernelErrors", async () => {
 			const mainRoot = createMainRoot();
 			const { manager, gitRemove, renameDirectory } = removalSetup(mainRoot, "kilo/aback-aardvark");
 			renameDirectory.mockRejectedValue(new Error("EPERM: operation not permitted"));
@@ -1645,7 +1679,7 @@ describe("WorktreeManager", () => {
 			);
 
 			await expect(manager.removeWorktree({ path: worktreePath(mainRoot) })).rejects.toMatchObject({
-				name: "FeatureError",
+				name: "KernelError",
 				code: "BUSINESS",
 				message: "fatal: worktree is locked",
 			});

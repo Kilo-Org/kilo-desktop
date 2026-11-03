@@ -1,7 +1,7 @@
-import type { MainSdkLogger } from "@kilo-desktop/feature-sdk/main";
+import type { KernelLogger } from "@kilo-desktop/kernel";
 
 /** Structural logger seam so tests can pass a no-op logger. */
-export type OAuthLogger = Pick<MainSdkLogger, "info" | "warn" | "error">;
+export type OAuthLogger = Pick<KernelLogger, "info" | "warn" | "error">;
 
 // OAuth
 

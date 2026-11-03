@@ -6,14 +6,15 @@ vi.mock("execa", () => ({ execa }));
 import { UnsupportedGitVersionError } from "@kilo-desktop/git-client";
 import type { GitClient } from "@kilo-desktop/git-client";
 
-import { classifyGithubCliError, ghErrorToFeatureError, GitService } from "./git-service.js";
+import { folders } from "../test/workspace-access.js";
+import { classifyGithubCliError, ghErrorToKernelError, GitService } from "./git-service.js";
 
 const logger = { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} };
 
 function service() {
 	return new GitService({
 		logger,
-		getWorkspaceFolderPaths: () => Promise.resolve(["/repo"]),
+		workspaces: folders("/repo"),
 		createClient: () => ({}) as GitClient,
 	});
 }
@@ -57,12 +58,12 @@ describe("GitService GitHub CLI capability", () => {
 	});
 
 	it("maps GitHub CLI failures to user-facing errors", () => {
-		expect(ghErrorToFeatureError({ code: "ENOENT" }).message).toContain("not installed");
-		expect(ghErrorToFeatureError({ stderr: "Run gh auth login" }).message).toContain(
+		expect(ghErrorToKernelError({ code: "ENOENT" }).message).toContain("not installed");
+		expect(ghErrorToKernelError({ stderr: "Run gh auth login" }).message).toContain(
 			"Not authenticated",
 		);
-		expect(ghErrorToFeatureError({ stderr: "network failed" }).message).toBe("network failed");
-		expect(ghErrorToFeatureError({}).message).toBe("GitHub CLI operation failed.");
+		expect(ghErrorToKernelError({ stderr: "network failed" }).message).toBe("network failed");
+		expect(ghErrorToKernelError({}).message).toBe("GitHub CLI operation failed.");
 	});
 
 	it("classifies GitHub CLI failure shapes", () => {
@@ -90,7 +91,7 @@ function snapshotService(
 	const head = options.head === undefined ? HEAD : options.head;
 	return new GitService({
 		logger,
-		getWorkspaceFolderPaths: () => Promise.resolve(["/repo"]),
+		workspaces: folders("/repo"),
 		createClient: () =>
 			({
 				// Background polling runs this for every chat worktree: a full
@@ -263,7 +264,7 @@ describe("GitService pull request snapshot", () => {
 	it("reports a too-old git as a git problem, not a GitHub CLI failure", async () => {
 		const git = new GitService({
 			logger,
-			getWorkspaceFolderPaths: () => Promise.resolve(["/repo"]),
+			workspaces: folders("/repo"),
 			createClient: () =>
 				({
 					headBranch: () => Promise.resolve({ name: "kilo/brawny-olivine", upstream: null }),
@@ -273,7 +274,7 @@ describe("GitService pull request snapshot", () => {
 		});
 
 		const error = await git.pullRequestSnapshot("/repo").catch((e: unknown) => e);
-		expect(error).toMatchObject({ name: "FeatureError", code: "BUSINESS" });
+		expect(error).toMatchObject({ name: "KernelError", code: "BUSINESS" });
 		expect((error as Error).message).toContain("Git 2.14.1");
 	});
 

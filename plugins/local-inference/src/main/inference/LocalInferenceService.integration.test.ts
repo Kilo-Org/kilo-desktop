@@ -1,10 +1,10 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { link, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { KvStore } from "@kilo-desktop/feature-sdk";
+import type { KvStore } from "@kilo-desktop/kernel";
 
 import type { LocalModel } from "../../contracts/schemas.js";
 import { LocalInferenceService } from "./LocalInferenceService.js";
@@ -174,7 +174,7 @@ describe("LocalInferenceService", () => {
 		});
 	});
 
-	it("refuses to delete imported files and managed paths outside its models directory", async () => {
+	it("only forgets imported files, and refuses managed paths outside its models directory", async () => {
 		const importedFile = await fixture();
 		const managedRoot = path.join(tmpdir(), `managed-models-${crypto.randomUUID()}`);
 		roots.push(managedRoot);
@@ -202,9 +202,8 @@ describe("LocalInferenceService", () => {
 		});
 		const imported = await service.add({ path: importedFile });
 
-		await expect(service.remove(imported.id, "delete-managed-file")).rejects.toThrow(
-			"Only models downloaded from the catalog",
-		);
+		await expect(service.remove(imported.id, "delete-managed-file")).resolves.toBe(true);
+		expect(service.list()).toEqual([]);
 		await expect(readFile(importedFile)).resolves.toEqual(Buffer.from("GGUF"));
 
 		const mislabeled = await registry.add(importedFile, undefined, undefined, {
@@ -996,5 +995,113 @@ describe("LocalInferenceService", () => {
 			status: "error",
 			message: "Local inference could not start. Check the model files and try again.",
 		});
+	});
+
+	describe("deleting models taken over from origin", () => {
+		function serviceFor(
+			registry: LocalModelRegistry,
+			managedModelsDir: string,
+			originModelsDir?: string,
+		) {
+			return new LocalInferenceService({
+				registry,
+				managedModelsDir,
+				...(originModelsDir ? { originModelsDir } : {}),
+				router: {
+					apiKey: "secret",
+					status: { status: "idle" },
+					ensureRunning: async () => null,
+					restart: async () => null,
+					prepareModel: async () => {},
+					dispose() {},
+				},
+				proxy: {
+					ensureListening: async () => ({ baseUrl: "http://127.0.0.1:44123", port: 44123 }),
+					ensureRunning: async () => ({ baseUrl: "http://127.0.0.1:44123", port: 44123 }),
+					close() {},
+				},
+				getKilo: () => null,
+				emit: vi.fn(),
+				logger: { debug() {}, info() {}, warn() {}, error() {} },
+			});
+		}
+		async function folders() {
+			const root = path.join(tmpdir(), `local-service-${crypto.randomUUID()}`);
+			roots.push(root);
+			const own = path.join(root, "kilo.local-inference", "models");
+			const origin = path.join(root, "local-inference", "models");
+			await mkdir(own, { recursive: true });
+			await mkdir(origin, { recursive: true });
+			return { own, origin };
+		}
+
+		it("frees the space by deleting origin's link to the same file too", async () => {
+			const { own, origin } = await folders();
+			const originFile = path.join(origin, "a.gguf");
+			await writeFile(originFile, "GGUF");
+			const ownFile = path.join(own, "a.gguf");
+			await link(originFile, ownFile);
+			const unrelated = path.join(origin, "b.gguf");
+			await writeFile(unrelated, "GGUF");
+			const registry = new LocalModelRegistry(store(), () => 1);
+			const model = await registry.add(ownFile, undefined, undefined, { managedFile: true });
+			const service = serviceFor(registry, own, origin);
+
+			await service.remove(model.id, "delete-managed-file");
+
+			await expect(readFile(ownFile)).rejects.toMatchObject({ code: "ENOENT" });
+			await expect(readFile(originFile)).rejects.toMatchObject({ code: "ENOENT" });
+			expect(await readFile(unrelated, "utf8")).toBe("GGUF");
+		});
+
+		it("leaves a same-named file in origin's folder that is a different file", async () => {
+			const { own, origin } = await folders();
+			const originFile = path.join(origin, "a.gguf");
+			await writeFile(originFile, "GGUF theirs");
+			const ownFile = path.join(own, "a.gguf");
+			await writeFile(ownFile, "GGUF mine");
+			const registry = new LocalModelRegistry(store(), () => 1);
+			const model = await registry.add(ownFile, undefined, undefined, { managedFile: true });
+			const service = serviceFor(registry, own, origin);
+
+			await service.remove(model.id, "delete-managed-file");
+
+			expect(await readFile(originFile, "utf8")).toBe("GGUF theirs");
+		});
+	});
+
+	it("doesn't reopen the public proxy after an explicit stop", async () => {
+		const ensureListening = vi.fn(async () => ({
+			baseUrl: "http://127.0.0.1:44123",
+			port: 44123,
+		}));
+		const registry = new LocalModelRegistry(store(), () => 1);
+		const service = new LocalInferenceService({
+			registry,
+			router: {
+				apiKey: "secret",
+				status: { status: "idle" },
+				ensureRunning: async () => null,
+				restart: async () => null,
+				prepareModel: async () => {},
+				dispose() {},
+			},
+			proxy: { ensureListening, ensureRunning: ensureListening, close() {} },
+			getKilo: () => null,
+			emit: vi.fn(),
+			logger: { debug() {}, info() {}, warn() {}, error() {} },
+		});
+		await service.add({ path: await fixture() });
+		await service.reconcile();
+		await service.stop();
+		ensureListening.mockClear();
+
+		service.updateServerSettings({ serveOnLocalNetwork: true });
+		await service.reconcile();
+
+		expect(ensureListening).not.toHaveBeenCalled();
+
+		await service.start();
+		expect(ensureListening).toHaveBeenCalledWith(undefined, "0.0.0.0");
 	});
 });

@@ -6,6 +6,7 @@ import { realpath, stat } from "node:fs/promises";
 import {
 	serveElectronNotebookHost,
 	type ElectronHostMethod,
+	type ElectronMainPort,
 	type ElectronNotebookHostHandler,
 	type ElectronNotebookHostServer,
 	type ElectronRelaySession,
@@ -18,14 +19,9 @@ import {
 	type RelaySession,
 } from "@runtimed/node/relay";
 
-import { FeatureError } from "@kilo-desktop/feature-sdk/main";
-import type {
-	HostMessagePort,
-	MainSdk,
-	MainSdkHostDialogOptions,
-} from "@kilo-desktop/feature-sdk/main";
+import { KernelError, type KernelLogger } from "@kilo-desktop/kernel";
 
-import type { NotebookOpenFileResult, NotebookSaveResult } from "../../contracts/schemas.js";
+import type { NotebookOpenFileResult, NotebookSaveResult } from "../../contracts/index.js";
 
 import { resolveDaemonSocketPath, type BuildChannel } from "./socket-path.js";
 import { RuntimedDaemonManager, type RuntimedDaemonState } from "./RuntimedDaemonManager.js";
@@ -46,8 +42,46 @@ export interface ElectronNotebookConnectionArgs {
 	readonly workingDirectory?: string;
 }
 
+export interface NotebookDialogOptions {
+	readonly defaultPath?: string;
+	readonly filters?: readonly { readonly name: string; readonly extensions: readonly string[] }[];
+}
+
+/** What the host service needs from the app: windows, dialogs, links and where its notebooks report. */
+export interface NotebookHostPlatform {
+	readonly logger: Pick<KernelLogger, "debug" | "info" | "warn" | "error">;
+	readonly host?: {
+		readonly paths: { defaultSaveDirectory(): string };
+		readonly dialog: {
+			openFile(windowId: string, options?: NotebookDialogOptions): Promise<string | null>;
+			saveFile(windowId: string, options?: NotebookDialogOptions): Promise<string | null>;
+		};
+		readonly externalLinks: { open(url: string): Promise<boolean> };
+		readonly window: {
+			isFocused(windowId: string): boolean;
+			onFocusChange(windowId: string, listener: (focused: boolean) => void): () => void;
+		};
+	};
+	readonly events: {
+		emit(event: "dirty-changed", payload: NotebookDirtyChanged): void;
+		emit(event: "title-changed", payload: NotebookTitleChanged): void;
+	};
+}
+
+export interface NotebookDirtyChanged {
+	readonly notebookId: string;
+	readonly sessionId: string;
+	readonly dirty: boolean;
+}
+
+export interface NotebookTitleChanged {
+	readonly notebookId: string;
+	readonly sessionId: string;
+	readonly title: string;
+}
+
 export interface ElectronNotebookHostServiceOptions {
-	readonly mainSdk: MainSdk;
+	readonly platform: NotebookHostPlatform;
 	readonly runtimeChannel?: BuildChannel;
 	readonly socketPath?: string;
 	readonly runtimedBinaryPath?: string;
@@ -229,7 +263,7 @@ function readyInfo(info: RelayInfo) {
 	};
 }
 
-function normalizeDialogOptions(value: unknown): MainSdkHostDialogOptions | undefined {
+function normalizeDialogOptions(value: unknown): NotebookDialogOptions | undefined {
 	if (typeof value !== "object" || value === null) return undefined;
 	const options = value as {
 		defaultPath?: unknown;
@@ -263,7 +297,7 @@ function normalizeDialogOptions(value: unknown): MainSdkHostDialogOptions | unde
  * connected chat's working directory at creation.
  */
 export class ElectronNotebookHostService {
-	readonly #mainSdk: MainSdk;
+	readonly #platform: NotebookHostPlatform;
 	readonly #socketPath: string;
 	readonly #daemonManager: RuntimedDaemonManagerLike;
 	readonly #sessions = new Map<string, NotebookHostSession>();
@@ -273,7 +307,7 @@ export class ElectronNotebookHostService {
 	readonly #onNotebookDisconnected: ElectronNotebookHostServiceOptions["onNotebookDisconnected"];
 
 	constructor(options: ElectronNotebookHostServiceOptions) {
-		this.#mainSdk = options.mainSdk;
+		this.#platform = options.platform;
 		this.#onNotebookConnected = options.onNotebookConnected;
 		this.#onNotebookDisconnected = options.onNotebookDisconnected;
 		this.#socketPath =
@@ -302,7 +336,7 @@ export class ElectronNotebookHostService {
 		void probePeerCredentialBackend()
 			.then((available) => {
 				if (!available) {
-					this.#mainSdk.logger.warn(
+					this.#platform.logger.warn(
 						"The notebook runtime daemon cannot be authenticated: the native peer-credential backend (koffi) failed to load, so every daemon will be treated as untrusted. In packaged builds this usually means koffi's native addon was not unpacked from the app bundle.",
 					);
 				}
@@ -314,7 +348,7 @@ export class ElectronNotebookHostService {
 			allowSpawn: options.socketPath === undefined && !process.env["RUNTIMED_SOCKET_PATH"]?.trim(),
 			probe: async () => (await queryDaemonInfo({ socketPath: this.#socketPath })) !== null,
 			authenticatePeer,
-			logger: this.#mainSdk.logger,
+			logger: this.#platform.logger,
 		});
 	}
 
@@ -361,10 +395,10 @@ export class ElectronNotebookHostService {
 
 	async openFile(requestedPath: string): Promise<NotebookOpenFileResult> {
 		if (!path.isAbsolute(requestedPath)) {
-			throw new FeatureError("Notebook paths must be absolute.", "VALIDATION");
+			throw new KernelError("VALIDATION", "Notebook paths must be absolute.");
 		}
 		if (path.extname(requestedPath).toLowerCase() !== ".ipynb") {
-			throw new FeatureError("Notebook files must use the .ipynb extension.", "VALIDATION");
+			throw new KernelError("VALIDATION", "Notebook files must use the .ipynb extension.");
 		}
 
 		let notebookPath: string;
@@ -372,20 +406,20 @@ export class ElectronNotebookHostService {
 			notebookPath = await realpath(requestedPath);
 			const file = await stat(notebookPath);
 			if (!file.isFile()) {
-				throw new FeatureError("The notebook path does not point to a file.", "VALIDATION");
+				throw new KernelError("VALIDATION", "The notebook path does not point to a file.");
 			}
 		} catch (error) {
-			if (error instanceof FeatureError) throw error;
-			throw new FeatureError(`Notebook file not found: ${requestedPath}`, "NOT_FOUND");
+			if (error instanceof KernelError) throw error;
+			throw new KernelError("NOT_FOUND", `Notebook file not found: ${requestedPath}`);
 		}
 
 		const daemonState = await this.start();
 		if (daemonState.status !== "external" && daemonState.status !== "bundled") {
-			throw new FeatureError(
+			throw new KernelError(
+				"BUSINESS",
 				"reason" in daemonState
 					? daemonState.reason
 					: "The notebook runtime daemon is unavailable.",
-				"BUSINESS",
 			);
 		}
 
@@ -397,9 +431,9 @@ export class ElectronNotebookHostService {
 				description: path.basename(notebookPath),
 			});
 		} catch (error) {
-			throw new FeatureError(
-				`Could not open notebook: ${error instanceof Error ? error.message : String(error)}`,
+			throw new KernelError(
 				"BUSINESS",
+				`Could not open notebook: ${error instanceof Error ? error.message : String(error)}`,
 			);
 		}
 		const notebookId = relay.info.notebookId;
@@ -424,9 +458,9 @@ export class ElectronNotebookHostService {
 	}
 
 	async connect(
-		port: HostMessagePort,
+		port: ElectronMainPort,
 		args: ElectronNotebookConnectionArgs,
-		senderId: number,
+		windowId: string,
 	): Promise<void> {
 		const daemonState = await this.start();
 		if (daemonState.status !== "external" && daemonState.status !== "bundled") {
@@ -487,11 +521,11 @@ export class ElectronNotebookHostService {
 			server = serveElectronNotebookHost({
 				port,
 				relay,
-				handler: this.#handler(session, senderId, reconnect),
+				handler: this.#handler(session, windowId, reconnect),
 			});
 			const connectedServer = server;
 			session.server = connectedServer;
-			unlistenFocus = this.#mainSdk.host?.window.onFocusChange(senderId, (focused) => {
+			unlistenFocus = this.#platform.host?.window.onFocusChange(windowId, (focused) => {
 				connectedServer.emit("window.focusChanged", focused);
 			});
 			let cleaned = false;
@@ -518,7 +552,7 @@ export class ElectronNotebookHostService {
 			connectedServer.emit("daemon.ready", readyInfo(relay.info));
 			connectedServer.emit(
 				"window.focusChanged",
-				this.#mainSdk.host?.window.isFocused(senderId) ?? true,
+				this.#platform.host?.window.isFocused(windowId) ?? true,
 			);
 			this.#emitDirty(session);
 			this.#onNotebookConnected?.({
@@ -583,10 +617,10 @@ export class ElectronNotebookHostService {
 
 	#handler(
 		session: NotebookHostSession,
-		senderId: number,
+		windowId: string,
 		reconnect: () => Promise<void>,
 	): ElectronNotebookHostHandler {
-		const host = this.#mainSdk.host;
+		const host = this.#platform.host;
 		const invoke = async (method: ElectronHostMethod, params: unknown): Promise<unknown> => {
 			switch (method) {
 				case "daemon.isConnected":
@@ -659,14 +693,14 @@ export class ElectronNotebookHostService {
 					return [];
 				case "dialog.openFile":
 					if (!host) return null;
-					return host.dialog.openFile(senderId, normalizeDialogOptions(params));
+					return host.dialog.openFile(windowId, normalizeDialogOptions(params));
 				case "dialog.saveFile": {
 					if (!host) {
 						this.#settleSave(session, { outcome: "cancelled" });
 						return null;
 					}
 					this.#pauseSaveTimeout(session);
-					const selectedPath = await host.dialog.saveFile(senderId, normalizeDialogOptions(params));
+					const selectedPath = await host.dialog.saveFile(windowId, normalizeDialogOptions(params));
 					if (selectedPath === null) this.#settleSave(session, { outcome: "cancelled" });
 					else this.#startSaveTimeout(session);
 					return selectedPath;
@@ -694,13 +728,13 @@ export class ElectronNotebookHostService {
 			invoke: invoke as ElectronNotebookHostHandler["invoke"],
 			notify: ({ method, params }) => {
 				const level = method.slice("log.".length) as "debug" | "info" | "warn" | "error";
-				this.#mainSdk.logger[level](params.message);
+				this.#platform.logger[level](params.message);
 			},
 		};
 	}
 
 	#emitDirty(session: NotebookHostSession): void {
-		this.#mainSdk.events.emit("dirty-changed", {
+		this.#platform.events.emit("dirty-changed", {
 			notebookId: session.notebookId,
 			sessionId: session.sessionId,
 			dirty: session.dirty,
@@ -710,7 +744,7 @@ export class ElectronNotebookHostService {
 	#updateTitle(session: NotebookHostSession, title: string): void {
 		if (!title || session.title === title) return;
 		session.title = title;
-		this.#mainSdk.events.emit("title-changed", {
+		this.#platform.events.emit("title-changed", {
 			notebookId: session.notebookId,
 			sessionId: session.sessionId,
 			title,

@@ -6,7 +6,7 @@ import { resolveNotebookBundleRoot } from "./notebook-bundle-path.js";
 
 describe("resolveNotebookBundleRoot", () => {
 	it("accepts a plugin-resolved directory containing index.html", () => {
-		const candidate = "/repo/plugins/notebook/build/notebook";
+		const candidate = "/repo/plugins/notebook/resources/notebook";
 		expect(resolveNotebookBundleRoot({ candidate, exists: () => true })).toBe(candidate);
 	});
 
@@ -23,7 +23,7 @@ describe("resolveNotebookBundleRoot", () => {
 	});
 
 	it("probes index.html rather than accepting an empty directory", () => {
-		const candidate = "/repo/plugins/notebook/build/notebook";
+		const candidate = "/repo/plugins/notebook/resources/notebook";
 		const probed: string[] = [];
 		resolveNotebookBundleRoot({
 			candidate,

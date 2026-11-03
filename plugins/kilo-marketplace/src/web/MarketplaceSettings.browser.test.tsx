@@ -1,18 +1,16 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import {
-	marketplaceContract,
-	type MarketplaceItem,
-	type MarketplaceMutationInput,
-	type MarketplaceSnapshot,
-} from "../contracts/schemas.js";
+import { KernelError } from "@kilo-desktop/kernel";
+
+import type {
+	MarketplaceItem,
+	MarketplaceMutationInput,
+	MarketplaceSnapshot,
+} from "../contracts/index.js";
+import { bootMarketplaceHost } from "../test/marketplace-host.js";
 import { MarketplaceSettings } from "./MarketplaceSettings.js";
-import { FeatureError } from "@kilo-desktop/feature-sdk";
-import { SdkProvider } from "@kilo-desktop/sdk-react";
-import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
 
 const snapshot: MarketplaceSnapshot = {
 	items: [
@@ -50,13 +48,15 @@ const snapshot: MarketplaceSnapshot = {
 
 afterEach(() => cleanup());
 
-function renderPage(
+async function renderPage(
 	data: MarketplaceSnapshot = snapshot,
 	options: {
 		activeWorkspaceId?: string;
 		holdList?: boolean;
 		/** Missing launch commands mapped to the install commands main suggests for them. */
 		missingCommands?: Record<string, string[]>;
+		/** False renders a window without kilo.chat. */
+		chat?: boolean;
 	} = {},
 ) {
 	let current = data;
@@ -93,36 +93,18 @@ function renderPage(
 			? new Promise<MarketplaceSnapshot>((resolve) => heldLists.push(() => resolve(current)))
 			: Promise.resolve(current),
 	);
-	const openExternal = vi.fn(async () => ({ opened: true as const }));
-	const copyText = vi.fn(async (_text: string) => {});
-	const track = vi.fn(async (_input: { event: string; data: Record<string, unknown> }) => {});
-	const sdk = createFakeSdk({
-		featureId: "kilo-marketplace",
-		channels: marketplaceContract,
-		shell: { openExternal, copyText },
-		telemetry: { track },
-		handlers: {
-			"marketplace.list": list,
-			"marketplace.refresh": refresh,
-			"marketplace.install": install,
-			"marketplace.remove": remove,
-			"marketplace.authenticateMcp": authenticateMcp,
-			"marketplace.checkCommands": checkCommands,
-		},
+	const host = await bootMarketplaceHost({
+		handlers: { list, refresh, install, remove, authenticateMcp, checkCommands },
+		...(options.activeWorkspaceId ? { activeWorkspaceId: options.activeWorkspaceId } : {}),
+		...(options.chat === false ? {} : { startNewChat }),
 	});
-	const system = createFakeFeatureSystem({ sdks: { "kilo-marketplace": sdk } });
-	system.getSdk("kilo-ui").plugins.expose("chatComposer", { startNewChat });
-	if (options.activeWorkspaceId) {
-		system.getSdk("kilo-ui").state.register("active-workspace", options.activeWorkspaceId);
-	}
-	const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	const { baseElement } = render(
-		<SdkProvider system={system}>
-			<QueryClientProvider client={client}>
-				<MarketplaceSettings />
-			</QueryClientProvider>
-		</SdkProvider>,
-	);
+	const { baseElement } = host.render(<MarketplaceSettings />);
+	const { copyText, openExternal, queryClient: client } = host;
+	const track = {
+		get calls() {
+			return host.tracked;
+		},
+	};
 	return {
 		authenticateMcp,
 		baseElement,
@@ -168,22 +150,21 @@ async function openShowFilters() {
 
 describe("MarketplaceSettings", () => {
 	it("tracks browse opens and installs with item identity and destination", async () => {
-		const { track } = renderPage();
+		const { track } = await renderPage();
 
 		await openBrowse();
 		await page.getByTestId("marketplace-install-agent-reviewer").click();
 		await page.getByTestId("marketplace-install-confirm").click();
 		await expect.element(page.getByTestId("marketplace-install-dialog")).not.toBeInTheDocument();
 
-		expect(track.mock.calls.map(([input]) => input)).toEqual([
+		expect(track.calls).toEqual([
 			{
 				event: "Marketplace Tab Viewed",
-				data: { featureId: "kilo-marketplace" },
+				data: {},
 			},
 			{
 				event: "Marketplace Install Button Clicked",
 				data: {
-					featureId: "kilo-marketplace",
 					itemId: "reviewer",
 					itemName: "Reviewer",
 					itemType: "agent",
@@ -192,7 +173,6 @@ describe("MarketplaceSettings", () => {
 			{
 				event: "Marketplace Item Installed",
 				data: {
-					featureId: "kilo-marketplace",
 					itemId: "reviewer",
 					itemName: "Reviewer",
 					itemType: "agent",
@@ -203,7 +183,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("tracks a confirmed removal with item identity and destination", async () => {
-		const { track } = renderPage({
+		const { track } = await renderPage({
 			...snapshot,
 			installed: [{ type: "agent", id: "reviewer", scope: "global" }],
 		});
@@ -211,12 +191,11 @@ describe("MarketplaceSettings", () => {
 		await page.getByTestId("marketplace-card-trigger-agent-reviewer").click();
 		await page.getByTestId("marketplace-remove-agent-reviewer-global").click();
 		await page.getByTestId("marketplace-remove-confirm").click();
-		await expect.poll(() => track.mock.calls.length).toBe(1);
+		await expect.poll(() => track.calls.length).toBe(1);
 
-		expect(track).toHaveBeenCalledWith({
+		expect(track.calls).toContainEqual({
 			event: "Marketplace Item Removed",
 			data: {
-				featureId: "kilo-marketplace",
 				itemId: "reviewer",
 				itemName: "Reviewer",
 				itemType: "agent",
@@ -238,7 +217,7 @@ describe("MarketplaceSettings", () => {
 			iconDataUrl,
 			content: '{"type":"remote","url":"https://docs.example.com/mcp"}',
 		};
-		const { baseElement } = renderPage({
+		const { baseElement } = await renderPage({
 			...snapshot,
 			items: [mcp],
 			installed: [{ type: "mcp", id: "docs", scope: "global" }],
@@ -252,7 +231,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("uses category display names on Marketplace card badges", async () => {
-		renderPage({
+		await renderPage({
 			...snapshot,
 			items: [
 				{
@@ -281,7 +260,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("sections Marketplace results by category", async () => {
-		renderPage({
+		await renderPage({
 			...snapshot,
 			items: [
 				...snapshot.items,
@@ -310,7 +289,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("previews six items per category until View all selects that category", async () => {
-		renderPage({
+		await renderPage({
 			...snapshot,
 			items: [
 				...Array.from({ length: 8 }, (_, index) => ({
@@ -357,7 +336,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("keeps category section headers the same height with or without View all", async () => {
-		renderPage({
+		await renderPage({
 			...snapshot,
 			items: Array.from({ length: 8 }, (_, index) => ({
 				type: "agent" as const,
@@ -388,7 +367,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("keeps type filter widths stable when category counts change", async () => {
-		renderPage({
+		await renderPage({
 			...snapshot,
 			items: [
 				...Array.from({ length: 10 }, (_, index) => ({
@@ -425,7 +404,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("holds type filter counts without reporting zero while the catalog loads", async () => {
-		const { releaseList } = renderPage(
+		const { releaseList } = await renderPage(
 			{ ...snapshot, installed: [{ type: "agent", id: "reviewer", scope: "global" }] },
 			{ holdList: true },
 		);
@@ -446,7 +425,7 @@ describe("MarketplaceSettings", () => {
 	it("keeps the category tile grid shape while the catalog loads", async () => {
 		await page.viewport(1200, 800);
 		onTestFinished(() => page.viewport(414, 896));
-		const { releaseList } = renderPage(snapshot, { holdList: true });
+		const { releaseList } = await renderPage(snapshot, { holdList: true });
 
 		await openBrowse();
 		await expect.element(page.getByTestId("marketplace-loading")).toBeVisible();
@@ -489,7 +468,7 @@ describe("MarketplaceSettings", () => {
 
 		await page.viewport(1200, 800);
 		onTestFinished(() => page.viewport(414, 896));
-		renderPage({
+		await renderPage({
 			...snapshot,
 			installed: [{ type: "agent", id: "reviewer", scope: "global" }],
 		});
@@ -558,7 +537,7 @@ describe("MarketplaceSettings", () => {
 			"research",
 			"web-automation",
 		];
-		renderPage({
+		await renderPage({
 			...snapshot,
 			items: categories.map((category) => ({
 				type: "agent" as const,
@@ -585,7 +564,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("places the Marketplace scrollbar at the dialog edge without clipping the card grid", async () => {
-		renderPage({
+		await renderPage({
 			...snapshot,
 			items: Array.from({ length: 12 }, (_, index) => ({
 				type: "agent" as const,
@@ -615,7 +594,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("shows installed items on the page and opens browse items in the Marketplace modal", async () => {
-		const { baseElement } = renderPage(
+		const { baseElement } = await renderPage(
 			{
 				...snapshot,
 				installed: [
@@ -687,7 +666,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("shows and removes items configured outside the Marketplace", async () => {
-		const { remove } = renderPage({
+		const { remove } = await renderPage({
 			...snapshot,
 			items: [],
 			installed: [{ type: "agent", id: "local-helper", scope: "global" }],
@@ -713,7 +692,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("explains why unavailable workspace locations cannot be removed", async () => {
-		renderPage({
+		await renderPage({
 			...snapshot,
 			items: [],
 			installed: [{ type: "agent", id: "local-helper", scope: "workspace", workspaceId: "closed" }],
@@ -729,7 +708,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("hides runtime items outside editable config roots until built-ins are shown", async () => {
-		const { baseElement } = renderPage({
+		const { baseElement } = await renderPage({
 			...snapshot,
 			items: [],
 			included: [
@@ -767,7 +746,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("keeps multiple installed items expanded", async () => {
-		renderPage({
+		await renderPage({
 			...snapshot,
 			installed: [
 				{ type: "agent", id: "reviewer", scope: "global" },
@@ -790,7 +769,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("clips a collapsed header description at the first sentence", async () => {
-		renderPage({
+		await renderPage({
 			...snapshot,
 			items: [],
 			installed: [
@@ -818,7 +797,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("shows managed item install locations instead of its organization origin", async () => {
-		renderPage({
+		await renderPage({
 			...snapshot,
 			items: [],
 			targets: [{ id: "workspace-1", name: "Demo", directory: "/tmp/demo" }],
@@ -867,7 +846,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("shows built-in agents and skills as installed without removal actions", async () => {
-		const { baseElement } = renderPage({
+		const { baseElement } = await renderPage({
 			...snapshot,
 			included: [
 				{
@@ -934,7 +913,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("filters installed items by source and workspace", async () => {
-		const { baseElement } = renderPage({
+		const { baseElement } = await renderPage({
 			...snapshot,
 			targets: [
 				{ id: "workspace-1", name: "Demo", directory: "/tmp/demo", color: "#F87171" },
@@ -1016,7 +995,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("opens Browse from the empty installed state and switches item types with toggles", async () => {
-		const { baseElement } = renderPage();
+		const { baseElement } = await renderPage();
 		await expect
 			.element(page.getByTestId("marketplace-empty-title"))
 			.toHaveTextContent("No items installed");
@@ -1053,7 +1032,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("clears a type filter with no Marketplace matches", async () => {
-		const { baseElement } = renderPage();
+		const { baseElement } = await renderPage();
 		await openBrowse();
 
 		await page.getByTestId("marketplace-type-mcp").click();
@@ -1072,7 +1051,7 @@ describe("MarketplaceSettings", () => {
 	it("shows item details directly on Marketplace cards", async () => {
 		const description =
 			"Reviews pull requests for correctness, maintainability, security, performance, and test coverage.";
-		renderPage({
+		await renderPage({
 			...snapshot,
 			items: snapshot.items.map((item) =>
 				item.id === "reviewer"
@@ -1098,7 +1077,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("reveals the Marketplace install button on card hover and keyboard focus", async () => {
-		renderPage();
+		await renderPage();
 		await openBrowse();
 
 		const installButton = page.getByTestId("marketplace-install-agent-reviewer");
@@ -1117,7 +1096,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("disables Marketplace installation when an item is installed everywhere", async () => {
-		renderPage({
+		await renderPage({
 			...snapshot,
 			installed: [
 				{ type: "agent", id: "reviewer", scope: "global" },
@@ -1132,7 +1111,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("shows installed locations when the catalog card badge is hovered", async () => {
-		renderPage({
+		await renderPage({
 			...snapshot,
 			installed: [
 				{ type: "agent", id: "reviewer", scope: "global" },
@@ -1151,7 +1130,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("loads the Marketplace for the active workspace", async () => {
-		const { list } = renderPage(snapshot, { activeWorkspaceId: "workspace-1" });
+		const { list } = await renderPage(snapshot, { activeWorkspaceId: "workspace-1" });
 		await expect.poll(() => list).toHaveBeenCalledWith({ workspaceId: "workspace-1" });
 
 		await openBrowse();
@@ -1159,7 +1138,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("filters items and installs the selected canonical item", async () => {
-		const { install } = renderPage();
+		const { install } = await renderPage();
 		await expect.element(page.getByTestId("marketplace-page")).toBeVisible();
 		await openBrowse();
 		await expect.element(page.getByTestId("marketplace-card-grid")).toBeVisible();
@@ -1197,7 +1176,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("does not later reveal an install that the installed filters hid", async () => {
-		const { install } = renderPage({
+		const { install } = await renderPage({
 			...snapshot,
 			installed: [{ type: "skill", id: "notebooks", scope: "global" }],
 		});
@@ -1223,7 +1202,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("selects a workspace destination inside the install dialog", async () => {
-		const { install } = renderPage();
+		const { install } = await renderPage();
 		await openBrowse();
 		await page.getByTestId("marketplace-install-agent-reviewer").click();
 		await expect.element(page.getByTestId("marketplace-install-target")).toBeVisible();
@@ -1246,7 +1225,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("installs into multiple selected workspaces", async () => {
-		const { install } = renderPage({
+		const { install } = await renderPage({
 			...snapshot,
 			targets: [
 				{ id: "workspace-1", name: "Demo", directory: "/tmp/demo" },
@@ -1284,7 +1263,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("attempts every selected workspace and keeps only failed ones selected", async () => {
-		const { install } = renderPage({
+		const { install } = await renderPage({
 			...snapshot,
 			targets: [
 				{ id: "workspace-1", name: "Demo", directory: "/tmp/demo" },
@@ -1330,7 +1309,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("shows workspace identity folder icons without filesystem paths", async () => {
-		renderPage({
+		await renderPage({
 			...snapshot,
 			targets: [
 				{ id: "workspace-1", name: "Demo", directory: "/private/work/demo", color: "#F87171" },
@@ -1349,7 +1328,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("searches a larger workspace destination list by name or path", async () => {
-		renderPage({
+		await renderPage({
 			...snapshot,
 			targets: Array.from({ length: 7 }, (_, index) => ({
 				id: `workspace-${index + 1}`,
@@ -1378,7 +1357,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("offers only destinations where the item is not already installed", async () => {
-		const { install } = renderPage({
+		const { install } = await renderPage({
 			...snapshot,
 			targets: [
 				{ id: "workspace-a", name: "Workspace A", directory: "/tmp/a" },
@@ -1414,7 +1393,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("explains when the All workspaces destination is already installed", async () => {
-		renderPage({
+		await renderPage({
 			...snapshot,
 			installed: [{ type: "skill", id: "notebooks", scope: "global" }],
 		});
@@ -1438,7 +1417,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("explains when the item is installed in every workspace", async () => {
-		renderPage({
+		await renderPage({
 			...snapshot,
 			targets: [
 				{ id: "workspace-a", name: "Workspace A", directory: "/tmp/a" },
@@ -1465,7 +1444,7 @@ describe("MarketplaceSettings", () => {
 				{ id: "workspace-b", name: "Workspace B", directory: "/tmp/b" },
 			],
 		};
-		const { client, install, setSnapshot } = renderPage(initial);
+		const { client, install, setSnapshot } = await renderPage(initial);
 
 		await openBrowse();
 		await page.getByTestId("marketplace-install-agent-reviewer").click();
@@ -1530,7 +1509,7 @@ describe("MarketplaceSettings", () => {
 			errors: ["catalog offline"],
 			stale: true,
 		};
-		const { install, openExternal } = renderPage(mcpSnapshot, {
+		const { install, openExternal } = await renderPage(mcpSnapshot, {
 			activeWorkspaceId: "workspace-1",
 		});
 		await expect.element(page.getByTestId("marketplace-warning")).toBeVisible();
@@ -1584,7 +1563,7 @@ describe("MarketplaceSettings", () => {
 	};
 
 	it("warns before installing an MCP whose launch command is missing, without blocking", async () => {
-		const { copyText, install, openExternal } = renderPage(
+		const { copyText, install, openExternal } = await renderPage(
 			{ ...snapshot, items: [playwrightMcp] },
 			{ missingCommands: { npx: ["brew install node"] } },
 		);
@@ -1622,7 +1601,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("hands a missing launch command to a new chat as an unsent draft", async () => {
-		const { install, startNewChat } = renderPage(
+		const { install, startNewChat } = await renderPage(
 			{ ...snapshot, items: [playwrightMcp] },
 			{ missingCommands: { npx: [] } },
 		);
@@ -1644,7 +1623,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("merges item and method MCP parameters with method definitions taking precedence", async () => {
-		const { install } = renderPage({
+		const { install } = await renderPage({
 			...snapshot,
 			items: [
 				{
@@ -1704,7 +1683,7 @@ describe("MarketplaceSettings", () => {
 	};
 
 	it("discloses the exact command that starts an MCP before it is installed", async () => {
-		const { install } = renderPage({ ...snapshot, items: [disguisedMcp] });
+		const { install } = await renderPage({ ...snapshot, items: [disguisedMcp] });
 
 		await openBrowse();
 		await page.getByTestId("marketplace-install-mcp-readonly-docs").click();
@@ -1729,7 +1708,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("shows a remote MCP's endpoint and masks secret values in its configuration", async () => {
-		renderPage({
+		await renderPage({
 			...snapshot,
 			items: [
 				{
@@ -1774,12 +1753,12 @@ describe("MarketplaceSettings", () => {
 			...disguisedMcp,
 			content: [{ name: "NPX", content: benign, prerequisites: ["Node.js 18+"] }],
 		};
-		const { install, setSnapshot } = renderPage({ ...snapshot, items: [item] });
+		const { install, setSnapshot } = await renderPage({ ...snapshot, items: [item] });
 		install.mockImplementationOnce(async () => {
 			setSnapshot({ ...snapshot, items: [disguisedMcp] });
-			throw new FeatureError(
-				"This MCP’s configuration changed since you reviewed it. Check the updated configuration, then install again.",
+			throw new KernelError(
 				"BUSINESS",
+				"This MCP’s configuration changed since you reviewed it. Check the updated configuration, then install again.",
 			);
 		});
 
@@ -1805,7 +1784,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("scrolls tall MCP configuration while keeping install actions visible", async () => {
-		renderPage({
+		await renderPage({
 			...snapshot,
 			items: [
 				{
@@ -1846,7 +1825,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("combines type and category filters while browsing", async () => {
-		renderPage({
+		await renderPage({
 			...snapshot,
 			installed: [{ type: "agent", id: "reviewer", scope: "global" }],
 		});
@@ -1891,7 +1870,7 @@ describe("MarketplaceSettings", () => {
 			items: [snapshot.items[1]!],
 			installed: [{ type: "skill", id: "notebooks", scope: "global" }],
 		};
-		const { refresh, remove } = renderPage(installedSnapshot);
+		const { refresh, remove } = await renderPage(installedSnapshot);
 
 		const locationBadge = page.getByTestId("marketplace-card-location-summary-skill-notebooks");
 		await expect.element(locationBadge).toBeVisible();
@@ -1914,7 +1893,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("groups an item's installed locations into one card with a details panel", async () => {
-		const { baseElement, remove } = renderPage({
+		const { baseElement, remove } = await renderPage({
 			...snapshot,
 			items: [snapshot.items[0]!],
 			targets: [
@@ -1983,7 +1962,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("adds another install location from the details panel", async () => {
-		const { install } = renderPage({
+		const { install } = await renderPage({
 			...snapshot,
 			targets: [
 				{ id: "workspace-a", name: "Workspace A", directory: "/tmp/a" },
@@ -2019,7 +1998,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("hides Install when an item is installed everywhere", async () => {
-		renderPage({
+		await renderPage({
 			...snapshot,
 			targets: [{ id: "workspace-a", name: "Workspace A", directory: "/tmp/a" }],
 			installed: [
@@ -2044,7 +2023,7 @@ describe("MarketplaceSettings", () => {
 			url: "https://mcp.example.com",
 			content: '{"type":"remote","url":"https://mcp.example.com"}',
 		};
-		const { authenticateMcp } = renderPage(
+		const { authenticateMcp } = await renderPage(
 			{
 				...snapshot,
 				items: [mcp],
@@ -2096,7 +2075,7 @@ describe("MarketplaceSettings", () => {
 			url: "https://mcp.example.com",
 			content: '{"type":"remote","url":"https://mcp.example.com"}',
 		};
-		renderPage(
+		await renderPage(
 			{
 				...snapshot,
 				items: [mcp],
@@ -2117,7 +2096,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("expands and collapses an installed card from its header status badges", async () => {
-		renderPage({
+		await renderPage({
 			...snapshot,
 			items: [
 				{
@@ -2159,7 +2138,7 @@ describe("MarketplaceSettings", () => {
 			url: "https://mcp.example.com",
 			content: '{"type":"remote","url":"https://mcp.example.com"}',
 		};
-		renderPage({
+		await renderPage({
 			...snapshot,
 			items: [mcp],
 			installed: [
@@ -2191,7 +2170,7 @@ describe("MarketplaceSettings", () => {
 	});
 
 	it("tells the user how to install an installed MCP's missing launch command", async () => {
-		const { startNewChat } = renderPage(
+		const { startNewChat } = await renderPage(
 			{
 				...snapshot,
 				items: [playwrightMcp],
@@ -2227,6 +2206,29 @@ describe("MarketplaceSettings", () => {
 		await expect.element(help).not.toBeInTheDocument();
 	});
 
+	it("offers no Fix in chat in a window without kilo.chat", async () => {
+		await renderPage(
+			{
+				...snapshot,
+				items: [playwrightMcp],
+				installed: [{ type: "mcp", id: "playwright", scope: "global" }],
+				mcpInstallationStatuses: {
+					"playwright:global": {
+						status: "failed",
+						error: 'Executable not found in $PATH: "npx"',
+					},
+				},
+			},
+			{ missingCommands: { npx: ["brew install node"] }, chat: false },
+		);
+
+		await page.getByTestId("marketplace-card-trigger-mcp-playwright").click();
+		await page.getByRole("button", { name: "Fix", exact: true }).click();
+		const help = page.getByRole("dialog", { name: "npx was not found" });
+		await expect.element(help.getByText("brew install node")).toBeVisible();
+		await expect.element(help.getByRole("button", { name: "Fix in chat" })).not.toBeInTheDocument();
+	});
+
 	it("flags an installed MCP that requires client registration", async () => {
 		const mcp = {
 			type: "mcp" as const,
@@ -2237,7 +2239,7 @@ describe("MarketplaceSettings", () => {
 			url: "https://mcp.example.com",
 			content: '{"type":"remote","url":"https://mcp.example.com"}',
 		};
-		renderPage({
+		await renderPage({
 			...snapshot,
 			items: [mcp],
 			installed: [{ type: "mcp", id: "github", scope: "global" }],

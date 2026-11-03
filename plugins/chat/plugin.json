@@ -1,0 +1,305 @@
+{
+	"manifestVersion": 1,
+	"id": "kilo.chat",
+	"displayName": "Chat",
+	"version": "1.0.0",
+	"description": "The agent pane: a session's chat with the agent, its transcript and composer.",
+	"requires": {
+		"kilo.sessions/pane": "optional",
+		"kilo.sessions/session": "optional",
+		"kilo.agent/server": "optional",
+		"kilo.agent/conversation": "optional",
+		"kilo.workspaces/workspace": "optional",
+		"kilo.workbench/navigator": "optional",
+		"kilo.workbench/session-starter": "optional",
+		"kilo.agent/tool": "optional",
+		"kilo.account/identity": "optional",
+		"kilo.shell/navigation": "optional",
+		"kilo.flags/flags": "optional",
+		"kilo.shell/theme": "optional",
+		"kilo.workspaces/file": "optional",
+		"kilo.sessions/opener": "optional"
+	},
+	"permissions": {
+		"host": ["clipboard", "shell"],
+		"embeddedHosts": ["mcp-app"]
+	},
+	"contextKeys": [
+		{
+			"id": "composerFocused",
+			"scope": "window",
+			"description": "True while a chat composer in this window has keyboard focus."
+		}
+	],
+	"contributes": {
+		"extensions": {
+			"kilo.workbench/session-starter": [
+				{
+					"id": "composer",
+					"title": "Agent",
+					"paneKind": "kilo.chat/agent"
+				}
+			],
+			"kilo.sessions/pane": [
+				{
+					"id": "agent",
+					"title": "Agent",
+					"description": "Ask the agent to plan, write and run code in this session.",
+					"launch": {
+						"newSession": true,
+						"inSession": true,
+						"sessionHeader": true,
+						"tabGroup": false
+					},
+					"singleton": true,
+					"keepAlive": true,
+					"layoutKind": "agent",
+					"order": 10
+				},
+				{
+					"id": "plan",
+					"title": "Plan",
+					"description": "The plan agent's proposed plan for a chat.",
+					"launch": {
+						"newSession": false,
+						"inSession": false
+					},
+					"singleton": true,
+					"order": 20
+				},
+				{
+					"id": "subagent",
+					"title": "Subagent",
+					"description": "A subagent's conversation, live and read-only.",
+					"launch": {
+						"newSession": false,
+						"inSession": false
+					},
+					"order": 30
+				}
+			],
+			"kernel/command": [
+				{
+					"id": "focus-composer",
+					"title": "Focus the message input",
+					"category": "Composer",
+					"order": 0,
+					"keybinding": {
+						"mac": "Mod+L",
+						"default": "Ctrl+Shift+L"
+					},
+					"when": {
+						"all": ["kilo.workbench/sessionActive"]
+					}
+				},
+				{
+					"id": "send-message",
+					"title": "Send message",
+					"category": "Composer",
+					"order": 10,
+					"keybinding": "Enter",
+					"handledLocally": true,
+					"palette": false
+				},
+				{
+					"id": "new-line",
+					"title": "New line",
+					"category": "Composer",
+					"order": 11,
+					"keybinding": "Shift+Enter",
+					"handledLocally": true,
+					"palette": false
+				},
+				{
+					"id": "cycle-agent",
+					"title": "Change agent mode",
+					"category": "Composer",
+					"order": 12,
+					"keybinding": "Shift+Tab",
+					"handledLocally": true,
+					"palette": false
+				}
+			],
+			"kilo.chat/composer-action": [
+				{
+					"id": "attach",
+					"slot": "toolbar",
+					"kind": "action",
+					"title": "Add attachment",
+					"priority": 400
+				},
+				{
+					"id": "agent",
+					"slot": "toolbar",
+					"kind": "menu",
+					"title": "Agent",
+					"priority": 300
+				},
+				{
+					"id": "model",
+					"slot": "toolbar",
+					"kind": "popover",
+					"title": "Model",
+					"priority": 200
+				},
+				{
+					"id": "approval",
+					"slot": "toolbar-end",
+					"kind": "menu",
+					"title": "Approval mode",
+					"priority": 100
+				},
+				{
+					"id": "unavailable-folders",
+					"slot": "footer",
+					"kind": "view",
+					"title": "Unavailable workspace folders",
+					"priority": 200
+				},
+				{
+					"id": "unavailable-folders-draft",
+					"slot": "draft-footer",
+					"kind": "view",
+					"title": "Unavailable workspace folders",
+					"priority": 200
+				}
+			],
+			"kilo.agent/tool": [
+				{
+					"id": "html_render",
+					"title": "Show HTML page",
+					"readOnly": true,
+					"external": false
+				}
+			],
+			"kilo.chat/tool-renderer": [
+				{
+					"id": "read",
+					"tools": ["read"]
+				},
+				{
+					"id": "edit",
+					"tools": ["edit"]
+				},
+				{
+					"id": "write",
+					"tools": ["write"]
+				},
+				{
+					"id": "bash",
+					"tools": ["bash"]
+				},
+				{
+					"id": "search",
+					"tools": ["grep", "codebase_search", "semantic_search"]
+				},
+				{
+					"id": "glob",
+					"tools": ["glob", "list"]
+				},
+				{
+					"id": "web-search",
+					"tools": ["websearch", "webSearch"]
+				},
+				{
+					"id": "web-fetch",
+					"tools": ["webfetch", "webFetch"]
+				},
+				{
+					"id": "apply-patch",
+					"tools": ["apply_patch"]
+				},
+				{
+					"id": "skill",
+					"tools": ["skill"]
+				},
+				{
+					"id": "task",
+					"tools": ["task"]
+				},
+				{
+					"id": "question",
+					"tools": ["question", "ask_question", "request_user_input", "requestUserInput"]
+				},
+				{
+					"id": "todo",
+					"tools": ["todowrite", "todoread"]
+				},
+				{
+					"id": "html-render",
+					"tools": ["desktop_chat_html_render", "desktop_kilo_ui_html_render"]
+				},
+				{
+					"id": "plan-exit",
+					"tools": ["plan_exit"],
+					"standalone": true,
+					"category": "planning"
+				}
+			]
+		}
+	},
+	"extensionPoints": [
+		{
+			"id": "composer-action",
+			"kind": "additive",
+			"description": "A button, menu or popover in the composer."
+		},
+		{
+			"id": "composer-mention",
+			"kind": "additive",
+			"description": "Mentions typed after a trigger character, resolved into agent context."
+		},
+		{
+			"id": "tool-renderer",
+			"kind": "additive",
+			"description": "How calls to a tool look in the chat transcript."
+		},
+		{
+			"id": "mcp-app",
+			"kind": "additive",
+			"description": "An interactive MCP App widget shown for a tool's calls."
+		},
+		{
+			"id": "markdown-extension",
+			"kind": "additive",
+			"description": "Remark plugins and component decorators for the transcript's markdown."
+		},
+		{
+			"id": "interaction-renderer",
+			"kind": "additive",
+			"description": "Details and policies for the agent's permission requests and questions."
+		},
+		{
+			"id": "model-source",
+			"kind": "additive",
+			"description": "A local model provider: its model picker rail and model loading before prompts."
+		}
+	],
+	"domains": [
+		{
+			"id": "composer",
+			"home": "renderer",
+			"description": "This window's composers: drafts, focus, insert, start a new chat."
+		},
+		{
+			"id": "model-preferences",
+			"home": "main",
+			"description": "The model pickers' remembered choices, recent models and favourites."
+		},
+		{
+			"id": "gateway-models",
+			"home": "main",
+			"description": "The Kilo Gateway's public model catalog shown in the model picker."
+		},
+		{
+			"id": "auto-approve",
+			"home": "main",
+			"description": "Whether the agent's permission requests are answered automatically."
+		},
+		{
+			"id": "html-pages",
+			"home": "main",
+			"description": "Saves the agent's HTML pages into a workspace folder."
+		}
+	]
+}

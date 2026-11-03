@@ -14,8 +14,7 @@ import { parseArgs } from "node:util";
 
 import { execa } from "execa";
 
-import { MAX_VISIBLE_RELEASE_NOTE_ITEMS } from "@kilo-desktop/contracts";
-
+import { MAX_VISIBLE_RELEASE_NOTE_ITEMS } from "./release-notes.js";
 import {
 	extractReleaseNoteItems,
 	findPreviousTrackTag,

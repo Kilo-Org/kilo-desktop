@@ -1,11 +1,9 @@
 /**
  * Conda provider I/O contracts for the `environments` plugin.
  *
- * Every v1 conda handler (envs / packages / channels / jobs) is declared
- * here as one `defineMethod(input, output)` entry inside
- * {@link condaContract}. The main-process provider binds handlers via
- * `mainSdk.channels(condaContract).handleAll({ ... })`; the renderer types
- * calls through {@link CondaService}.
+ * The input and output schemas of `kilo.environments/conda`'s methods
+ * (envs / packages / channels / jobs); the domain object itself is in
+ * `contracts/index.ts`.
  *
  * Semantics (see the delivery plan `.kilo/plans/...conda-environments-plugin-approaches.md`):
  * - Mutating ops enqueue on the shared `JobQueue` and **return the
@@ -30,9 +28,7 @@
  */
 import { z } from "zod";
 
-import { defineContract, defineMethod, type InferContract } from "@kilo-desktop/feature-sdk";
-
-import { cancelInputSchema, cancelResultSchema, jobIdSchema } from "../common.js";
+import { jobIdSchema } from "../common.js";
 
 /* --------------------------------------------------------------------- */
 /* Primitive value schemas                                               */
@@ -788,74 +784,3 @@ export const condaRepodataFindResultSchema = z.object({
 	truncated: z.boolean(),
 });
 export type CondaRepodataFindResult = z.infer<typeof condaRepodataFindResultSchema>;
-
-/* --------------------------------------------------------------------- */
-/* Contract                                                              */
-/* --------------------------------------------------------------------- */
-
-/**
- * Feature-SDK contract for the conda provider. Method names are
- * dot-namespaced (`<domain>.<op>`) — every tool the plugin ships shares
- * this key and the provider prefix (`conda.`) is stripped by the shell
- * when publishing wire names (see `providers/conda/tools.ts` in later
- * slices).
- *
- * @example
- * ```ts
- * const { client } = useSdk<CondaService>("environments");
- * const envs = await client["conda.envs.list"]();
- * ```
- */
-export const condaContract = defineContract({
-	"conda.envs.list": defineMethod(z.undefined(), z.array(condaEnvSchema)),
-	"conda.envs.distributions": defineMethod(z.undefined(), condaEnvsDistributionsResultSchema),
-	"conda.envs.create": defineMethod(condaEnvsCreateInputSchema, condaEnvsCreateResultSchema),
-	"conda.envs.clone": defineMethod(condaEnvsCloneInputSchema, condaEnvsCloneResultSchema),
-	"conda.envs.createFromFile": defineMethod(
-		condaEnvsCreateFromFileInputSchema,
-		condaEnvsCreateFromFileResultSchema,
-	),
-	"conda.envs.delete": defineMethod(condaEnvsDeleteInputSchema, condaEnvsDeleteResultSchema),
-	"conda.envs.pickFile": defineMethod(condaEnvsPickFileInputSchema, condaEnvsPickFileResultSchema),
-	"conda.envs.readFile": defineMethod(condaEnvsReadFileInputSchema, condaEnvsReadFileResultSchema),
-	"conda.envs.prefixOptions": defineMethod(z.undefined(), condaEnvsPrefixOptionsResultSchema),
-	"conda.envs.checkPrefix": defineMethod(
-		condaEnvsCheckPrefixInputSchema,
-		condaEnvsCheckPrefixResultSchema,
-	),
-
-	"conda.packages.list": defineMethod(condaPackagesListInputSchema, condaPackagesListResultSchema),
-	"conda.packages.install": defineMethod(
-		condaPackagesInstallInputSchema,
-		condaPackagesInstallResultSchema,
-	),
-	"conda.packages.remove": defineMethod(
-		condaPackagesRemoveInputSchema,
-		condaPackagesRemoveResultSchema,
-	),
-	"conda.packages.update": defineMethod(
-		condaPackagesUpdateInputSchema,
-		condaPackagesUpdateResultSchema,
-	),
-	"conda.packages.preview": defineMethod(
-		condaPackagesPreviewInputSchema,
-		condaPackagesPreviewResultSchema,
-	),
-	"conda.packages.previewInstall": defineMethod(
-		condaPackagesPreviewInputSchema,
-		condaPackagesPreviewResultSchema,
-	),
-	"conda.channels.list": defineMethod(z.undefined(), condaChannelsListResultSchema),
-	"conda.channels.add": defineMethod(condaChannelsAddInputSchema, condaChannelsListResultSchema),
-	"conda.channels.remove": defineMethod(
-		condaChannelsRemoveInputSchema,
-		condaChannelsListResultSchema,
-	),
-
-	"conda.repodata.find": defineMethod(condaRepodataFindInputSchema, condaRepodataFindResultSchema),
-
-	"conda.jobs.cancel": defineMethod(cancelInputSchema, cancelResultSchema),
-});
-
-/** Method-style service type inferred from the contract. */
-export type CondaService = InferContract<typeof condaContract>;

@@ -4,8 +4,7 @@ import { defineConfig } from "vite";
 
 // The preload runs in Electron's isolated preload context, where a bare
 // `require("<dep>")` does not resolve (unlike the Node main process). It must
-// bundle its dependencies (e.g. `zod`, pulled in transitively via
-// `@kilo-desktop/contracts`) inline and externalize only `electron`
+// bundle its dependencies (e.g. `@sentry/electron/preload`) inline and externalize only `electron`
 // + Node built-ins. This is electron-vite's documented `build.externalizeDeps:
 // false` case: do not run the externalize plugin here.
 export default defineConfig({

@@ -1,14 +1,8 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import { SdkProvider } from "@kilo-desktop/sdk-react";
-import type { AuthSession, SDK } from "@kilo-desktop/feature-sdk";
-import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
-
 import {
-	condaContract,
 	type CondaEnv,
 	type CondaPackage,
 	type CondaPackagesInstallInput,
@@ -18,20 +12,8 @@ import {
 	type CondaRepodataFindInput,
 	type CondaRepodataPackage,
 } from "../../../contracts/providers/conda.js";
+import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host.js";
 import { AddPackageDialog } from "./AddPackageDialog.js";
-
-const AUTHENTICATED_SESSION: AuthSession = {
-	status: "authenticated",
-	user: { username: "ada" },
-};
-
-const authenticatedAuth: Partial<SDK["auth"]> = {
-	subscribe(listener) {
-		listener(AUTHENTICATED_SESSION);
-		return () => undefined;
-	},
-	peek: () => AUTHENTICATED_SESSION,
-};
 
 const ENV: CondaEnv = { name: "dev", prefix: "/opt/anaconda3/envs/dev" };
 
@@ -62,7 +44,7 @@ function solvedPreview(): CondaPackagesPreviewResult {
 	};
 }
 
-function renderDialog(
+async function renderDialog(
 	options: {
 		find?: (input: CondaRepodataFindInput) => CondaRepodataPackage[];
 		truncated?: boolean;
@@ -71,7 +53,6 @@ function renderDialog(
 		installed?: CondaPackage[];
 		channels?: string[];
 		onClose?: () => void;
-		auth?: Partial<SDK["auth"]>;
 	} = {},
 ) {
 	const find = options.find ?? (() => [pkg("numpy", ["2.1.0", "2.0.0"]), pkg("pandas")]);
@@ -79,9 +60,7 @@ function renderDialog(
 	const previewInstall = options.previewInstall ?? (async () => solvedPreview());
 	const onClose = options.onClose ?? (() => {});
 
-	const sdk = createFakeSdk({
-		featureId: "environments",
-		channels: condaContract,
+	const hostOptions: EnvironmentsHostOptions = {
 		handlers: {
 			"conda.envs.prefixOptions": async () => ({
 				envsDirs: ["/opt/anaconda3/envs"],
@@ -98,17 +77,13 @@ function renderDialog(
 			"conda.packages.install": install,
 			"conda.packages.previewInstall": previewInstall,
 		},
-		auth: options.auth ?? {},
-	});
-	const system = createFakeFeatureSystem({ sdks: { environments: sdk } });
-	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	};
 
-	return render(
-		<SdkProvider system={system}>
-			<QueryClientProvider client={queryClient}>
-				<AddPackageDialog env={ENV} open onClose={onClose} />
-			</QueryClientProvider>
-		</SdkProvider>,
+	return renderWithConda(
+		<>
+			<AddPackageDialog env={ENV} open onClose={onClose} />
+		</>,
+		hostOptions,
 	);
 }
 
@@ -142,7 +117,7 @@ afterEach(cleanup);
 describe("AddPackageDialog", () => {
 	it("searches repodata with the query and selected channels after the debounce", async () => {
 		const find = vi.fn((_input: CondaRepodataFindInput) => [pkg("numpy")]);
-		const { baseElement } = renderDialog({ find, channels: ["conda-forge"] });
+		const { baseElement } = await renderDialog({ find, channels: ["conda-forge"] });
 		const screen = page.elementLocator(baseElement);
 
 		await waitForRows(baseElement, 1);
@@ -164,7 +139,7 @@ describe("AddPackageDialog", () => {
 	});
 
 	it("shows an empty-state message when the search has no results", async () => {
-		const { baseElement } = renderDialog({ find: () => [] });
+		const { baseElement } = await renderDialog({ find: () => [] });
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.fill(screen.getByTestId("environments-conda-add-pkg-search"), "nothing");
@@ -172,7 +147,7 @@ describe("AddPackageDialog", () => {
 	});
 
 	it("dedupes repodata rows by name", async () => {
-		const { baseElement } = renderDialog({
+		const { baseElement } = await renderDialog({
 			find: () => [pkg("numpy", ["2.1.0"]), pkg("numpy", ["2.0.0"]), pkg("pandas")],
 		});
 
@@ -180,7 +155,7 @@ describe("AddPackageDialog", () => {
 	});
 
 	it("selects a package into the sidebar and removes it again", async () => {
-		const { baseElement } = renderDialog();
+		const { baseElement } = await renderDialog();
 		const screen = page.elementLocator(baseElement);
 		await waitForRows(baseElement, 2);
 		const panel = screen.getByRole("complementary", { name: "Selected packages" });
@@ -205,7 +180,7 @@ describe("AddPackageDialog", () => {
 	});
 
 	it("lists the solver's other dependency changes by category and filters them", async () => {
-		const { baseElement } = renderDialog({
+		const { baseElement } = await renderDialog({
 			previewInstall: async () => ({
 				upgraded: [{ name: "libblas", fromVersion: "3.9.0", toVersion: "3.9.1", channel: "cf" }],
 				downgraded: [],
@@ -262,7 +237,7 @@ describe("AddPackageDialog", () => {
 				nothingToDo: true,
 			};
 		});
-		const { baseElement } = renderDialog({ previewInstall });
+		const { baseElement } = await renderDialog({ previewInstall });
 		const screen = page.elementLocator(baseElement);
 		await waitForRows(baseElement, 2);
 
@@ -280,7 +255,7 @@ describe("AddPackageDialog", () => {
 	it("installs pinned specs for the chosen versions and closes on success", async () => {
 		const install = vi.fn(async (_input: CondaPackagesInstallInput) => installResult());
 		const onClose = vi.fn();
-		const { baseElement } = renderDialog({ install, onClose, channels: ["conda-forge"] });
+		const { baseElement } = await renderDialog({ install, onClose, channels: ["conda-forge"] });
 		const screen = page.elementLocator(baseElement);
 		await waitForRows(baseElement, 2);
 
@@ -313,7 +288,7 @@ describe("AddPackageDialog", () => {
 
 	it("re-pins an already-selected package when its row version changes", async () => {
 		const install = vi.fn(async (_input: CondaPackagesInstallInput) => installResult());
-		const { baseElement } = renderDialog({ install });
+		const { baseElement } = await renderDialog({ install });
 		const screen = page.elementLocator(baseElement);
 		await waitForRows(baseElement, 2);
 
@@ -331,7 +306,7 @@ describe("AddPackageDialog", () => {
 	});
 
 	it("greys out already-installed packages and refuses to select them", async () => {
-		const { baseElement } = renderDialog({
+		const { baseElement } = await renderDialog({
 			installed: [{ name: "numpy", version: "1.9.0", build: "py_0", channel: "conda-forge" }],
 		});
 		const screen = page.elementLocator(baseElement);
@@ -356,7 +331,7 @@ describe("AddPackageDialog", () => {
 	it("grows the result list on scroll instead of paginating", async () => {
 		const many = Array.from({ length: 80 }, (_, i) => pkg(`pkg-${String(i).padStart(2, "0")}`));
 		const find = vi.fn((input: CondaRepodataFindInput) => many.slice(0, input.limit));
-		const { baseElement } = renderDialog({ find, truncated: true });
+		const { baseElement } = await renderDialog({ find, truncated: true });
 		const screen = page.elementLocator(baseElement);
 
 		await waitForRows(baseElement, 50);
@@ -374,7 +349,7 @@ describe("AddPackageDialog", () => {
 
 	it("keeps the dialog open and shows the friendly error when install fails", async () => {
 		const onClose = vi.fn();
-		const { baseElement } = renderDialog({
+		const { baseElement } = await renderDialog({
 			onClose,
 			install: async () => {
 				throw new Error("SOLVE_FAILED: conflict");
@@ -401,7 +376,7 @@ describe("AddPackageDialog", () => {
 				}),
 		);
 		const onClose = vi.fn();
-		const { baseElement } = renderDialog({ install, onClose });
+		const { baseElement } = await renderDialog({ install, onClose });
 		const screen = page.elementLocator(baseElement);
 		await waitForRows(baseElement, 2);
 
@@ -427,7 +402,7 @@ describe("AddPackageDialog", () => {
 				}),
 		);
 		const onClose = vi.fn();
-		const { baseElement } = renderDialog({ install, onClose });
+		const { baseElement } = await renderDialog({ install, onClose });
 		const screen = page.elementLocator(baseElement);
 		await waitForRows(baseElement, 2);
 
@@ -450,7 +425,7 @@ describe("AddPackageDialog", () => {
 					finish = resolve;
 				}),
 		);
-		const { baseElement } = renderDialog({ install });
+		const { baseElement } = await renderDialog({ install });
 		const screen = page.elementLocator(baseElement);
 		await waitForRows(baseElement, 2);
 
@@ -475,10 +450,9 @@ describe("AddPackageDialog", () => {
 
 	it("opens the channel chooser popover and toggles the selection into the search", async () => {
 		const find = vi.fn((_input: CondaRepodataFindInput) => [pkg("numpy")]);
-		const { baseElement } = renderDialog({
+		const { baseElement } = await renderDialog({
 			find,
 			channels: ["defaults", "conda-forge"],
-			auth: authenticatedAuth,
 		});
 		const screen = page.elementLocator(baseElement);
 		await waitForRows(baseElement, 1);
@@ -506,7 +480,7 @@ describe("AddPackageDialog", () => {
 					resolvePreview = resolve;
 				}),
 		);
-		const { baseElement } = renderDialog({ previewInstall });
+		const { baseElement } = await renderDialog({ previewInstall });
 		const screen = page.elementLocator(baseElement);
 		await waitForRows(baseElement, 2);
 
@@ -542,7 +516,7 @@ describe("AddPackageDialog", () => {
 					}
 				}),
 		);
-		const { baseElement } = renderDialog({ previewInstall });
+		const { baseElement } = await renderDialog({ previewInstall });
 		const screen = page.elementLocator(baseElement);
 		await waitForRows(baseElement, 2);
 
@@ -579,10 +553,9 @@ describe("AddPackageDialog", () => {
 					}
 				}),
 		);
-		const { baseElement } = renderDialog({
+		const { baseElement } = await renderDialog({
 			previewInstall,
 			channels: ["defaults", "conda-forge"],
-			auth: authenticatedAuth,
 		});
 		const screen = page.elementLocator(baseElement);
 		await waitForRows(baseElement, 2);
@@ -615,7 +588,7 @@ describe("AddPackageDialog", () => {
 					resolvers.push(resolve);
 				}),
 		);
-		const { baseElement } = renderDialog({ previewInstall });
+		const { baseElement } = await renderDialog({ previewInstall });
 		const screen = page.elementLocator(baseElement);
 		await waitForRows(baseElement, 2);
 
@@ -651,7 +624,7 @@ describe("AddPackageDialog", () => {
 			throw new Error("SOLVE_FAILED: package conflict");
 		});
 		const install = vi.fn(async () => installResult());
-		const { baseElement } = renderDialog({ previewInstall, install });
+		const { baseElement } = await renderDialog({ previewInstall, install });
 		const screen = page.elementLocator(baseElement);
 		await waitForRows(baseElement, 2);
 

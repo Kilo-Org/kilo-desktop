@@ -4,20 +4,18 @@ import {
 	mkdir,
 	readFile,
 	readdir,
-	realpath,
 	rename,
 	rm,
 	stat,
 	writeFile,
 } from "node:fs/promises";
-import { basename, dirname, join, normalize, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import process from "node:process";
 
 import pLimit from "p-limit";
 import type { LimitFunction } from "p-limit";
 
-import type { MainSdkLogger } from "@kilo-desktop/feature-sdk";
-import { FeatureError } from "@kilo-desktop/feature-sdk";
+import { KernelError, type KernelLogger } from "@kilo-desktop/kernel";
 
 import {
 	GitErrorCode,
@@ -26,12 +24,13 @@ import {
 	isGitError,
 } from "@kilo-desktop/git-client";
 
-import { KILO_WORKTREE_SEGMENTS } from "../contracts/schemas.js";
-import type { GitWorktreeResult } from "../contracts/schemas.js";
+import { KILO_WORKTREE_SEGMENTS } from "../contracts/models.js";
+import type { GitWorktreeResult } from "../contracts/models.js";
 import { availableBranchName, generateBranchName, semanticBranchName } from "./branch-naming.js";
+import { hostPathIdentity, type PathIdentity } from "./path-identity.js";
 import type { BranchNameRandom } from "./branch-naming.js";
 import type { GitClientSlice } from "./git-service.js";
-import { unsupportedGitVersionToFeatureError } from "./unsupported-git-version.js";
+import { unsupportedGitVersionToKernelError } from "./unsupported-git-version.js";
 
 /**
  * User-facing copy for a git binary that could not be resolved. git-client
@@ -40,22 +39,29 @@ import { unsupportedGitVersionToFeatureError } from "./unsupported-git-version.j
  */
 export const GIT_NOT_FOUND_MESSAGE = "Git was not found. Install Git, then restart Kilo Desktop.";
 
+const MANAGED_BRANCH_PREFIX = "kilo/";
+
+/** Whether `branch` carries the `kilo/` ownership marker of branches made for worktrees. */
+export function isManagedBranch(branch: string): boolean {
+	return branch.startsWith(MANAGED_BRANCH_PREFIX);
+}
+
 /**
  * Worktree failures are user-facing copy (missing base branch, locked
  * worktree, …): git's parsed description must survive the IPC boundary, so
- * `GitError`s map to `FeatureError`s instead of being scrubbed to a
+ * `GitError`s map to `KernelError`s instead of being scrubbed to a
  * generic string.
  */
-function worktreeErrorToFeatureError(error: unknown): unknown {
-	if (error instanceof FeatureError) return error;
+function worktreeErrorToKernelError(error: unknown): unknown {
+	if (error instanceof KernelError) return error;
 	if (isGitError(error)) {
-		return new FeatureError(error.result.gitErrorDescription ?? error.message, "BUSINESS");
+		return new KernelError("BUSINESS", error.result.gitErrorDescription ?? error.message);
 	}
 	if (error instanceof GitNotDetectedError) {
-		return new FeatureError(GIT_NOT_FOUND_MESSAGE, "BUSINESS");
+		return new KernelError("BUSINESS", GIT_NOT_FOUND_MESSAGE);
 	}
 	if (error instanceof UnsupportedGitVersionError) {
-		return unsupportedGitVersionToFeatureError(error);
+		return unsupportedGitVersionToKernelError(error);
 	}
 	return error;
 }
@@ -79,19 +85,20 @@ function worktreeErrorToFeatureError(error: unknown): unknown {
  *   its goal state (worktree gone, `kilo/` branch gone) through early
  *   returns and inferred-branch deletion when the registration is already
  *   missing. Any path that is not a direct child of the managed directory
- *   is refused with a `FeatureError` rather than acted on.
+ *   is refused with a `KernelError` rather than acted on.
  * - `renameWorktreeBranch` ports kilocode's guard chain (managed path →
  *   HEAD still on `currentBranch` → no upstream → not on a remote →
  *   requested name differs and is valid → deduped against local and remote
  *   names). Every guard declines with `null` — rename is best-effort —
  *   while unexpected git failures throw.
- * - Caller paths are canonicalized via `realpath` (falling back to lexical
- *   `resolve` when the path no longer exists) before matching against git's
+ * - Caller paths are canonicalized (`PathIdentity.canonical`: native
+ *   realpath of the longest existing prefix) before matching against git's
  *   porcelain output: `git worktree list --porcelain` realpath-resolves its
  *   registrations, so a symlink-aliased input (macOS /tmp → /private/tmp)
- *   would otherwise silently fail to match (kilocode's `canonicalizePath`).
- *   On Windows the match is case-insensitive: git and Node often disagree
- *   on drive-letter / directory casing, and a miss used to no-op removal.
+ *   or a Windows 8.3 short name (`RUNNER~1`) would otherwise silently fail
+ *   to match (kilocode's `canonicalizePath`). Matches ignore letter case on
+ *   Windows and macOS: git and Node often disagree on drive-letter /
+ *   directory casing, and a miss used to no-op removal.
  * - The VS Code Agent Manager shares `.kilo/worktrees/` and adopts every
  *   worktree it finds there; `linkAgentManagerSession` writes its per-worktree
  *   session file so a Desktop worktree shows its session instead of an
@@ -181,17 +188,9 @@ const DELETE_TEMP_PREFIX = ".kilo-delete-";
  * (kilocode's managed-path guard): the exact-parent comparison rules out
  * sibling-prefix confusions like a `worktrees-evil` directory.
  */
-function isManagedWorktreePath(target: string, mainRoot: string): boolean {
+function isManagedWorktreePath(paths: PathIdentity, target: string, mainRoot: string): boolean {
 	const worktreesDir = resolve(mainRoot, ...KILO_WORKTREE_SEGMENTS);
-	return sameWorktreePath(dirname(resolve(target)), worktreesDir);
-}
-
-/** Git/Node path equality: case-insensitive on Windows, normalized everywhere. */
-function sameWorktreePath(left: string, right: string): boolean {
-	const a = normalize(left);
-	const b = normalize(right);
-	if (process.platform === "win32") return a.toLowerCase() === b.toLowerCase();
-	return a === b;
+	return paths.same(dirname(resolve(target)), worktreesDir);
 }
 
 function isBusyFsError(error: unknown): boolean {
@@ -218,18 +217,6 @@ function kiloBranchFromManagedDir(dirName: string): string | null {
 	if (!dirName.startsWith("kilo-")) return null;
 	const slug = dirName.slice("kilo-".length);
 	return slug.length > 0 ? `kilo/${slug}` : null;
-}
-
-/**
- * Canonicalize a caller-supplied worktree path before matching it against
- * `git worktree list --porcelain` output: git realpath-resolves its
- * registrations, so the probe side must be canonical too (kilocode's
- * `canonicalizePath`) — a symlink-aliased input (macOS /tmp, /var)
- * otherwise silently fails to match. Falls back to lexical `resolve` when
- * the path no longer exists (idempotent removal retry).
- */
-async function canonicalizePath(path: string): Promise<string> {
-	return realpath(path).catch(() => resolve(path));
 }
 
 /** Directory entry names, or `[]` when the directory does not exist yet. */
@@ -270,7 +257,7 @@ function pBool(promise: Promise<unknown>): Promise<boolean> {
 
 export interface WorktreeManagerOptions {
 	readonly client: GitClientSlice;
-	readonly logger: MainSdkLogger;
+	readonly logger: KernelLogger;
 	/** Random source for branch generation. Injectable for deterministic tests. */
 	readonly random?: BranchNameRandom;
 	/** fs.rename seam (removal's atomic first step); injectable in tests. */
@@ -290,17 +277,20 @@ export interface WorktreeManagerOptions {
 	 * Defaults to 300_000 (5 minutes). Injectable so tests can use a short TTL.
 	 */
 	readonly lfsReprobeTtl?: number;
+	/** How paths are compared; the host's by default. Overridable in tests. */
+	readonly pathIdentity?: PathIdentity;
 }
 
 export class WorktreeManager {
 	readonly #client: GitClientSlice;
-	readonly #logger: MainSdkLogger;
+	readonly #logger: KernelLogger;
 	readonly #random: BranchNameRandom;
 	readonly #renameDirectory: (from: string, to: string) => Promise<void>;
 	readonly #removeDirectory: (target: string) => Promise<void>;
 	readonly #sleep: (ms: number) => Promise<void>;
 	readonly #resolveDefaultBranch: (workingDirectory: string) => Promise<string | null>;
 	readonly #lfsReprobeTtl: number;
+	readonly #paths: PathIdentity;
 	/**
 	 * Per-repo operation mutexes: keyed by main worktree root. Each entry is a
 	 * `pLimit(1)` instance that serializes mutations for that repository; a
@@ -333,6 +323,7 @@ export class WorktreeManager {
 		this.#sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
 		this.#resolveDefaultBranch = options.resolveDefaultBranch;
 		this.#lfsReprobeTtl = options.lfsReprobeTtl ?? 300_000;
+		this.#paths = options.pathIdentity ?? hostPathIdentity;
 	}
 
 	/** Run `fn` serialized against every other mutation on the same repository. */
@@ -360,29 +351,32 @@ export class WorktreeManager {
 
 	/**
 	 * Create a chat worktree at `<main root>/.kilo/worktrees/` on a fresh
-	 * `kilo/<friendly-words>` branch, based on `baseBranch` (else the
-	 * default-branch chain, else the current HEAD). Returns the worktree
-	 * directory and the new branch name.
+	 * `kilo/<friendly-words>` branch (or `kilo/<branch>` when a name is
+	 * asked for), based on `baseBranch` (else the default-branch chain, else
+	 * the current HEAD). Returns the worktree directory and the new branch
+	 * name.
 	 */
 	async createWorktree(input: {
 		workingDirectory: string;
 		baseBranch?: string;
+		branch?: string;
 	}): Promise<GitWorktreeResult> {
 		try {
 			return await this.#createWorktreeInner(input);
 		} catch (error) {
-			throw worktreeErrorToFeatureError(error);
+			throw worktreeErrorToKernelError(error);
 		}
 	}
 
 	async #createWorktreeInner(input: {
 		workingDirectory: string;
 		baseBranch?: string;
+		branch?: string;
 	}): Promise<GitWorktreeResult> {
-		const { workingDirectory, baseBranch } = input;
+		const { workingDirectory, baseBranch, branch } = input;
 		const repositoryType = await this.#client.repositoryType(workingDirectory);
 		if (repositoryType.kind !== "regular") {
-			throw new FeatureError("Worktrees need a regular git repository.", "BUSINESS");
+			throw new KernelError("BUSINESS", "Worktrees need a regular git repository.");
 		}
 
 		// LFS pre-flight (kilocode): a worktree in an LFS repo without the
@@ -390,9 +384,9 @@ export class WorktreeManager {
 		// front instead of corrupting the working tree.
 		if (await this.#repoUsesLfs(workingDirectory, repositoryType.topLevelWorkingDirectory)) {
 			if (!(await this.#checkLfsAvailable())) {
-				throw new FeatureError(
-					"This repository uses Git LFS, but git-lfs was not found. Install Git LFS to create worktrees here.",
+				throw new KernelError(
 					"BUSINESS",
+					"This repository uses Git LFS, but git-lfs was not found. Install Git LFS to create worktrees here.",
 				);
 			}
 		}
@@ -403,7 +397,7 @@ export class WorktreeManager {
 		const worktrees = await this.#client.worktrees({ cwd: workingDirectory });
 		const mainRoot = worktrees[0]?.path;
 		if (mainRoot === undefined) {
-			throw new FeatureError("Could not resolve the main worktree of this repository.", "BUSINESS");
+			throw new KernelError("BUSINESS", "Could not resolve the main worktree of this repository.");
 		}
 		const worktreesDir = join(mainRoot, ...KILO_WORKTREE_SEGMENTS);
 
@@ -413,6 +407,7 @@ export class WorktreeManager {
 				mainRoot,
 				worktreesDir,
 				...(baseBranch === undefined ? {} : { baseBranch }),
+				...(branch === undefined ? {} : { requestedBranch: branch }),
 			}),
 		);
 	}
@@ -431,8 +426,9 @@ export class WorktreeManager {
 		mainRoot: string;
 		worktreesDir: string;
 		baseBranch?: string;
+		requestedBranch?: string;
 	}): Promise<GitWorktreeResult> {
-		const { workingDirectory, mainRoot, worktreesDir, baseBranch } = input;
+		const { workingDirectory, mainRoot, worktreesDir, baseBranch, requestedBranch } = input;
 		const baseName = baseBranch ?? (await this.#resolveDefaultBranch(workingDirectory));
 		let warning: string | undefined;
 		let remote: string | undefined;
@@ -449,7 +445,7 @@ export class WorktreeManager {
 		const freshRemoteBase = remote !== undefined && warning === undefined;
 
 		for (let attempt = 0; ; attempt++) {
-			const branch = await this.#pickBranchName(workingDirectory, worktreesDir);
+			const branch = await this.#pickBranchName(workingDirectory, worktreesDir, requestedBranch);
 			const directory = join(worktreesDir, branch.replaceAll("/", "-"));
 			const baseRef = await this.#resolveBaseRef(workingDirectory, baseName, {
 				remote,
@@ -480,7 +476,7 @@ export class WorktreeManager {
 				if (isHookError(error)) {
 					const registered = await this.#client
 						.worktrees({ cwd: workingDirectory })
-						.then((entries) => entries.some((entry) => entry.path === directory))
+						.then((entries) => entries.some((entry) => this.#paths.same(entry.path, directory)))
 						.catch(() => false);
 					if (registered) {
 						return {
@@ -512,11 +508,11 @@ export class WorktreeManager {
 	 */
 	async #validateBaseBranch(workingDirectory: string, baseName: string): Promise<void> {
 		if (baseName.startsWith("-")) {
-			throw new FeatureError(`"${baseName}" is not a valid branch name.`, "VALIDATION");
+			throw new KernelError("VALIDATION", `"${baseName}" is not a valid branch name.`);
 		}
 		const valid = await this.#client.checkRefFormat(baseName, { cwd: workingDirectory });
 		if (!valid) {
-			throw new FeatureError(`"${baseName}" is not a valid branch name.`, "VALIDATION");
+			throw new KernelError("VALIDATION", `"${baseName}" is not a valid branch name.`);
 		}
 	}
 
@@ -595,13 +591,13 @@ export class WorktreeManager {
 		requestedBranch: string;
 	}): Promise<{ branch: string } | null> {
 		try {
-			const path = await canonicalizePath(input.path);
+			const path = await this.#paths.canonical(input.path);
 			const repoKey = await this.#repoLockKey(path);
 			return await this.#withGitLock(repoKey, () =>
 				this.#renameWorktreeBranchLocked({ ...input, path }),
 			);
 		} catch (error) {
-			throw worktreeErrorToFeatureError(error);
+			throw worktreeErrorToKernelError(error);
 		}
 	}
 
@@ -613,7 +609,7 @@ export class WorktreeManager {
 		const { path: worktreePath, currentBranch, requestedBranch } = input;
 		const listing = await this.#client.worktrees({ cwd: worktreePath });
 		const mainRoot = listing[0]?.path;
-		if (mainRoot === undefined || !isManagedWorktreePath(worktreePath, mainRoot)) {
+		if (mainRoot === undefined || !isManagedWorktreePath(this.#paths, worktreePath, mainRoot)) {
 			return null;
 		}
 
@@ -662,17 +658,19 @@ export class WorktreeManager {
 
 	/**
 	 * Remove a managed chat worktree, deleting its branch when it still
-	 * carries the `kilo/` ownership marker. Idempotent: a path that is
-	 * already gone or never registered still drops the inferred `kilo/`
-	 * branch; an unmanaged path is refused loudly.
+	 * carries the `kilo/` ownership marker (unless `deleteBranch` is false).
+	 * Idempotent: a path that is already gone or never registered still
+	 * drops the inferred `kilo/` branch; an unmanaged path is refused loudly.
 	 */
-	async removeWorktree(input: { path: string }): Promise<void> {
+	async removeWorktree(input: { path: string; deleteBranch?: boolean }): Promise<void> {
 		try {
-			const path = await canonicalizePath(input.path);
+			const path = await this.#paths.canonical(input.path);
 			const repoKey = await this.#repoLockKey(path);
-			await this.#withGitLock(repoKey, () => this.#removeWorktreeLocked({ path }));
+			await this.#withGitLock(repoKey, () =>
+				this.#removeWorktreeLocked({ path, deleteBranch: input.deleteBranch !== false }),
+			);
 		} catch (error) {
-			throw worktreeErrorToFeatureError(error);
+			throw worktreeErrorToKernelError(error);
 		}
 	}
 
@@ -688,7 +686,7 @@ export class WorktreeManager {
 	 * pre-hardening behavior: `git worktree remove --force`, a best-effort
 	 * `rm` of the original path, and a prune.
 	 */
-	async #removeWorktreeLocked(input: { path: string }): Promise<void> {
+	async #removeWorktreeLocked(input: { path: string; deleteBranch: boolean }): Promise<void> {
 		const { path: worktreePath } = input;
 		// Session teardown can already have removed the directory, so a
 		// listing from the worktree path fails; walk up to the parent so
@@ -698,14 +696,14 @@ export class WorktreeManager {
 			(await this.#client.worktrees({ cwd: dirname(worktreePath) }).catch(() => null));
 		if (listing === null) return;
 
-		const entry = listing.find((item) => sameWorktreePath(item.path, worktreePath));
+		const entry = listing.find((item) => this.#paths.same(item.path, worktreePath));
 		const mainRoot = listing[0]?.path;
 		if (mainRoot === undefined) return;
-		if (!isManagedWorktreePath(worktreePath, mainRoot)) {
+		if (!isManagedWorktreePath(this.#paths, worktreePath, mainRoot)) {
 			if (entry === undefined) return;
-			throw new FeatureError(
-				"Refusing to remove this directory: it is not a Kilo-managed worktree.",
+			throw new KernelError(
 				"BUSINESS",
+				"Refusing to remove this directory: it is not a Kilo-managed worktree.",
 			);
 		}
 
@@ -739,7 +737,7 @@ export class WorktreeManager {
 			await this.#pruneWorktrees(mainRoot);
 		}
 
-		if (branch !== null && branch.startsWith("kilo/")) {
+		if (input.deleteBranch && branch !== null && isManagedBranch(branch)) {
 			await this.#deleteOwnedBranch(branch, mainRoot);
 		}
 	}
@@ -757,14 +755,15 @@ export class WorktreeManager {
 		sessionId: string;
 		baseRef?: string;
 	}): Promise<boolean> {
-		const worktreePath = await canonicalizePath(input.path);
+		const worktreePath = await this.#paths.canonical(input.path);
 		// Backfill walks every historical session; a deleted worktree must not
 		// cost a git spawn.
 		if (!(await pBool(stat(worktreePath)))) return false;
 		const listing = await this.#client.worktrees({ cwd: worktreePath }).catch(() => null);
 		const mainRoot = listing?.[0]?.path;
-		if (mainRoot === undefined || !isManagedWorktreePath(worktreePath, mainRoot)) return false;
-		if (!listing?.some((entry) => sameWorktreePath(entry.path, worktreePath))) return false;
+		if (mainRoot === undefined || !isManagedWorktreePath(this.#paths, worktreePath, mainRoot))
+			return false;
+		if (!listing?.some((entry) => this.#paths.same(entry.path, worktreePath))) return false;
 
 		const gitDir = await linkedWorktreeGitDir(worktreePath);
 		if (gitDir === null) return false;
@@ -848,13 +847,18 @@ export class WorktreeManager {
 	}
 
 	/**
-	 * Pick a `kilo/<friendly-words>` branch name deduped against existing
-	 * `kilo/` branches and the on-disk worktrees directory (kilocode's
-	 * `generateBranchName` + `availableBranch`). Reading the directory
-	 * doubles as the sweep point for orphaned `.kilo-delete-*` temp dirs
-	 * from crashed removals (kilocode's `cleanupOrphanedTempDirs`).
+	 * Pick a `kilo/<friendly-words>` branch name (or `kilo/<requested>`,
+	 * sanitized, when a name is asked for and survives sanitizing) deduped
+	 * against existing `kilo/` branches and the on-disk worktrees directory
+	 * (kilocode's `generateBranchName` + `availableBranch`). Reading the
+	 * directory doubles as the sweep point for orphaned `.kilo-delete-*`
+	 * temp dirs from crashed removals (kilocode's `cleanupOrphanedTempDirs`).
 	 */
-	async #pickBranchName(workingDirectory: string, worktreesDir: string): Promise<string> {
+	async #pickBranchName(
+		workingDirectory: string,
+		worktreesDir: string,
+		requested?: string,
+	): Promise<string> {
 		const [branches, dirEntries] = await Promise.all([
 			this.#client.branches({ cwd: workingDirectory }),
 			readDirNames(worktreesDir),
@@ -872,8 +876,11 @@ export class WorktreeManager {
 			if (entry.startsWith("kilo-")) existing.add(entry.slice("kilo-".length));
 		}
 
-		const slug = generateBranchName(undefined, [...existing], this.#random);
-		return `kilo/${availableBranchName(slug, [...existing])}`;
+		const named = requested ? semanticBranchName(requested.trim(), "kilo") : "";
+		const slug = named
+			? named.slice(MANAGED_BRANCH_PREFIX.length)
+			: generateBranchName(undefined, [...existing], this.#random);
+		return `${MANAGED_BRANCH_PREFIX}${availableBranchName(slug, [...existing])}`;
 	}
 
 	/**

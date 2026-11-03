@@ -29,7 +29,7 @@ export default defineConfig(({ command }) => {
 			externalizeDeps({
 				// Not in `dependencies`: `electron` (devDep), `@vscode/windows-ca-certs`
 				// (uninstalled optional native dep of `@vscode/proxy-agent`), and
-				// `better-sqlite3` (transitive via the bundled kilo-ui / todos plugins).
+				// `better-sqlite3` (transitive via kilo.sessions / kilo.workspaces origin imports).
 				// The plugin externalizes each name plus its `<name>/<subpath>` forms.
 				// The notebook native main externals (koffi, @runtimed/node) come from
 				// the plugin-owned NOTEBOOK_MAIN_EXTERNALS so this list and the plugin
@@ -72,13 +72,6 @@ export default defineConfig(({ command }) => {
 			...createViteEnvironmentDefinitions(viteEnvironment),
 			RELEASE_TRACK: JSON.stringify(track),
 			UPDATE_PUBLISH_URLS: JSON.stringify(getUpdatePublishUrls(process.env, track)),
-			// The environments plugin resolves bridge resources relative to its
-			// own package root. After bundling, import.meta.dirname no longer
-			// reflects the original source tree, so we inject the absolute path
-			// at build time (dev-only; packaged mode uses process.resourcesPath).
-			__ENVIRONMENTS_PLUGIN_ROOT__: JSON.stringify(
-				path.resolve(root, "../../plugins/environments"),
-			),
 		},
 		resolve: {
 			alias: {

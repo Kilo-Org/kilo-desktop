@@ -1,13 +1,9 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import { createStaticNavigation, type SdkNavigation } from "@kilo-desktop/feature-sdk";
-import { SdkProvider } from "@kilo-desktop/sdk-react";
-import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
-
-import { condaContract, type CondaService } from "../../../contracts/providers/conda.js";
+import type { CondaClient } from "../../conda.js";
+import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host.js";
 import { EnvironmentsPanel } from "./EnvironmentsPanel.js";
 
 const mockEnvironments = [
@@ -19,25 +15,24 @@ const mockEnvironments = [
 	{ name: "", prefix: "/opt/conda" },
 ];
 
-function renderPanel(
+async function renderPanel(
 	options: {
-		list?: CondaService["conda.envs.list"];
+		list?: CondaClient["listEnvironments"];
 		/** Height of the surrounding shell; the real page lives in a bounded scroller. */
 		hostHeight?: number;
 		/** Width of the surrounding shell, for narrow-window regressions. */
 		hostWidth?: number;
-		navigate?: SdkNavigation["navigate"];
+		navigate?: EnvironmentsHostOptions["navigate"];
+		followNavigation?: boolean;
 		/** Shell location search params, e.g. `{ env }` for a deep link. */
-		search?: Record<string, unknown>;
+		search?: Record<string, string>;
 	} = {},
 ) {
 	const list = options.list ?? (async () => mockEnvironments);
 	const notImpl = async () => {
 		throw new Error("not implemented in test");
 	};
-	const sdk = createFakeSdk({
-		featureId: "environments",
-		channels: condaContract,
+	const hostOptions: EnvironmentsHostOptions = {
 		handlers: {
 			"conda.envs.list": list,
 			"conda.envs.create": notImpl,
@@ -60,27 +55,22 @@ function renderPanel(
 			"conda.repodata.find": async () => ({ packages: [], truncated: false }),
 			"conda.jobs.cancel": notImpl,
 		},
-		navigation: {
-			...createStaticNavigation({ path: "/", search: options.search ?? {} }),
-			...(options.navigate ? { navigate: options.navigate } : {}),
-		},
-	});
-	const system = createFakeFeatureSystem({ sdks: { environments: sdk } });
-	const queryClient = new QueryClient({
-		defaultOptions: { queries: { retry: false } },
-	});
+		...(options.search ? { search: options.search } : {}),
+		...(options.navigate ? { navigate: options.navigate } : {}),
+		...(options.followNavigation === false ? { followNavigation: false } : {}),
+	};
 
 	const panel = (
-		<SdkProvider system={system}>
-			<QueryClientProvider client={queryClient}>
-				<EnvironmentsPanel />
-			</QueryClientProvider>
-		</SdkProvider>
+		<>
+			<EnvironmentsPanel />
+		</>
 	);
 
-	if (options.hostHeight === undefined && options.hostWidth === undefined) return render(panel);
+	if (options.hostHeight === undefined && options.hostWidth === undefined) {
+		return renderWithConda(panel, hostOptions);
+	}
 
-	return render(
+	return renderWithConda(
 		<div
 			style={{
 				...(options.hostHeight === undefined ? {} : { height: `${options.hostHeight}px` }),
@@ -92,6 +82,7 @@ function renderPanel(
 		>
 			{panel}
 		</div>,
+		hostOptions,
 	);
 }
 
@@ -101,7 +92,7 @@ afterEach(() => {
 
 describe("EnvironmentsPanel — search and sort", () => {
 	it("renders the list with its toolbar", async () => {
-		const { baseElement } = renderPanel();
+		const { baseElement } = await renderPanel();
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-controls")).toBeVisible();
@@ -117,7 +108,7 @@ describe("EnvironmentsPanel — search and sort", () => {
 	});
 
 	it("filters environments by search query (case-insensitive, matches name)", async () => {
-		const { baseElement } = renderPanel();
+		const { baseElement } = await renderPanel();
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-conda-row").first()).toBeVisible();
@@ -131,7 +122,7 @@ describe("EnvironmentsPanel — search and sort", () => {
 	});
 
 	it("filters environments by search query (matches prefix)", async () => {
-		const { baseElement } = renderPanel();
+		const { baseElement } = await renderPanel();
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-conda-row").first()).toBeVisible();
@@ -146,7 +137,7 @@ describe("EnvironmentsPanel — search and sort", () => {
 	});
 
 	it("shows an empty state with a way back when nothing matches", async () => {
-		const { baseElement } = renderPanel();
+		const { baseElement } = await renderPanel();
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-conda-row").first()).toBeVisible();
@@ -160,7 +151,7 @@ describe("EnvironmentsPanel — search and sort", () => {
 	});
 
 	it("sorts by name ascending by default and descending from the sort menu", async () => {
-		const { baseElement } = renderPanel();
+		const { baseElement } = await renderPanel();
 		const screen = page.elementLocator(baseElement);
 
 		await expect
@@ -177,7 +168,7 @@ describe("EnvironmentsPanel — search and sort", () => {
 	});
 
 	it("sorts by location from the sort menu", async () => {
-		const { baseElement } = renderPanel();
+		const { baseElement } = await renderPanel();
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-conda-row").first()).toBeVisible();
@@ -192,7 +183,7 @@ describe("EnvironmentsPanel — search and sort", () => {
 	});
 
 	it("handles base environments (empty name) in sorting", async () => {
-		const { baseElement } = renderPanel({
+		const { baseElement } = await renderPanel({
 			list: async () => [
 				{ name: "", prefix: "/opt/anaconda" },
 				{ name: "zulu", prefix: "/opt/conda/envs/zulu" },
@@ -207,7 +198,7 @@ describe("EnvironmentsPanel — search and sort", () => {
 	});
 
 	it("correctly displays an env nested inside another env's prefix", async () => {
-		const { baseElement } = renderPanel({
+		const { baseElement } = await renderPanel({
 			list: async () => [
 				{ name: "", prefix: "/opt/conda" },
 				{ name: "dev", prefix: "/opt/conda/envs/dev" },
@@ -233,7 +224,7 @@ describe("EnvironmentsPanel — search and sort", () => {
 			resolve = r;
 		});
 
-		const { baseElement } = renderPanel({ list: () => pending });
+		const { baseElement } = await renderPanel({ list: () => pending });
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-conda-loading")).toBeVisible();
@@ -250,7 +241,7 @@ describe("EnvironmentsPanel — search and sort", () => {
 	});
 
 	it("shows the detail loading state, not the list, while a linked environment loads", async () => {
-		const { baseElement } = renderPanel({
+		const { baseElement } = await renderPanel({
 			list: () => new Promise(() => {}),
 			search: { env: "/opt/conda/envs/alpha" },
 		});
@@ -266,7 +257,7 @@ describe("EnvironmentsPanel — search and sort", () => {
 
 	it("goes back to the list from the linked environment's loading state", async () => {
 		const navigate = vi.fn();
-		const { baseElement } = renderPanel({
+		const { baseElement } = await renderPanel({
 			list: () => new Promise(() => {}),
 			search: { env: "/opt/conda/envs/alpha" },
 			navigate,
@@ -274,7 +265,7 @@ describe("EnvironmentsPanel — search and sort", () => {
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.click(screen.getByRole("button", { name: "Back to environments" }));
-		expect(navigate).toHaveBeenCalledWith("/", { search: {} });
+		expect(navigate).toHaveBeenCalledWith("/settings/environments", { search: {} });
 	});
 
 	it("renders every environment without pagination", async () => {
@@ -283,7 +274,7 @@ describe("EnvironmentsPanel — search and sort", () => {
 			prefix: `/opt/conda/envs/env-${String(i).padStart(2, "0")}`,
 		}));
 
-		const { baseElement } = renderPanel({ list: async () => manyEnvs });
+		const { baseElement } = await renderPanel({ list: async () => manyEnvs });
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-conda-row").first()).toBeVisible();
@@ -292,7 +283,7 @@ describe("EnvironmentsPanel — search and sort", () => {
 
 	it("offers a retry with friendly copy when the list fails to load", async () => {
 		let calls = 0;
-		const { baseElement } = renderPanel({
+		const { baseElement } = await renderPanel({
 			list: async () => {
 				calls += 1;
 				if (calls === 1) throw new Error("SOLVE_FAILED: numpy vs pandas conflict");
@@ -303,7 +294,7 @@ describe("EnvironmentsPanel — search and sort", () => {
 
 		const state = screen.getByTestId("environments-conda-error");
 		await expect.element(state).toBeVisible();
-		// Curated copy, not the raw FeatureError internals.
+		// Curated copy, not the raw KernelError internals.
 		await expect.element(state).not.toHaveTextContent("SOLVE_FAILED");
 
 		await userEvent.click(screen.getByTestId("environments-conda-error-retry"));
@@ -312,7 +303,7 @@ describe("EnvironmentsPanel — search and sort", () => {
 
 	it("shows the backend-starting state (not an error) while the backend is not ready, and clears on recovery", async () => {
 		let calls = 0;
-		const { baseElement } = renderPanel({
+		const { baseElement } = await renderPanel({
 			list: async () => {
 				calls += 1;
 				if (calls === 1) {
@@ -342,7 +333,7 @@ describe("EnvironmentsPanel — search and sort", () => {
 		// at the start of each background refetch. The starting state must survive
 		// that transient so the 120s window accumulates and the UI does not flicker.
 		let calls = 0;
-		const { baseElement } = renderPanel({
+		const { baseElement } = await renderPanel({
 			list: async () => {
 				calls += 1;
 				throw new Error("PROVIDER_NOT_READY: anaconda-bridge-sidecar error: still starting");
@@ -362,7 +353,7 @@ describe("EnvironmentsPanel — search and sort", () => {
 	});
 
 	it("keeps the header actions available when there are no environments", async () => {
-		const { baseElement } = renderPanel({ list: async () => [] });
+		const { baseElement } = await renderPanel({ list: async () => [] });
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-conda-empty")).toBeVisible();
@@ -372,7 +363,7 @@ describe("EnvironmentsPanel — search and sort", () => {
 
 describe("EnvironmentsPanel — header and row actions", () => {
 	it("offers Create new and Import file in the New environment menu", async () => {
-		const { baseElement } = renderPanel();
+		const { baseElement } = await renderPanel();
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.click(screen.getByRole("button", { name: "New environment" }));
@@ -382,7 +373,7 @@ describe("EnvironmentsPanel — header and row actions", () => {
 	});
 
 	it("opens the Create environment dialog from the New environment menu", async () => {
-		const { baseElement } = renderPanel();
+		const { baseElement } = await renderPanel();
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.click(screen.getByTestId("environments-new-menu"));
@@ -391,7 +382,7 @@ describe("EnvironmentsPanel — header and row actions", () => {
 	});
 
 	it("opens the Import from file dialog from the New environment menu", async () => {
-		const { baseElement } = renderPanel();
+		const { baseElement } = await renderPanel();
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.click(screen.getByTestId("environments-new-menu"));
@@ -400,7 +391,7 @@ describe("EnvironmentsPanel — header and row actions", () => {
 	});
 
 	it("opens the Clone dialog from the row actions menu", async () => {
-		const { baseElement } = renderPanel();
+		const { baseElement } = await renderPanel();
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.click(screen.getByTestId("environments-row-actions").first());
@@ -410,7 +401,7 @@ describe("EnvironmentsPanel — header and row actions", () => {
 	});
 
 	it("opens the Delete confirmation from the row actions menu", async () => {
-		const { baseElement } = renderPanel();
+		const { baseElement } = await renderPanel();
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.click(screen.getByTestId("environments-row-actions").first());
@@ -420,7 +411,7 @@ describe("EnvironmentsPanel — header and row actions", () => {
 	});
 
 	it("offers no row actions for nameless envs (base or prefix-only)", async () => {
-		const { baseElement } = renderPanel({
+		const { baseElement } = await renderPanel({
 			list: async () => [{ name: "", prefix: "/opt/conda" }],
 		});
 		const screen = page.elementLocator(baseElement);
@@ -437,7 +428,7 @@ describe("EnvironmentsPanel — scrolling", () => {
 	}));
 
 	it("does not trap scroll on the environment list", async () => {
-		const { baseElement } = renderPanel({
+		const { baseElement } = await renderPanel({
 			list: async () => manyEnvironments,
 			hostHeight: 360,
 		});
@@ -449,7 +440,7 @@ describe("EnvironmentsPanel — scrolling", () => {
 	});
 
 	it("sizes the list to its rows instead of filling the available space", async () => {
-		const { baseElement } = renderPanel({
+		const { baseElement } = await renderPanel({
 			list: async () => [{ name: "solo", prefix: "/opt/conda/envs/solo" }],
 			hostHeight: 600,
 		});
@@ -461,7 +452,7 @@ describe("EnvironmentsPanel — scrolling", () => {
 	});
 
 	it("never scrolls horizontally when the window is narrow", async () => {
-		const { baseElement } = renderPanel({ hostHeight: 420, hostWidth: 360 });
+		const { baseElement } = await renderPanel({ hostHeight: 420, hostWidth: 360 });
 		const screen = page.elementLocator(baseElement);
 		await expect.element(screen.getByTestId("environments-conda-row").first()).toBeVisible();
 
@@ -473,7 +464,7 @@ describe("EnvironmentsPanel — scrolling", () => {
 describe("EnvironmentsPanel — row navigation", () => {
 	it("opens an environment from anywhere on its row except the actions menu", async () => {
 		const navigate = vi.fn();
-		const { baseElement } = renderPanel({ navigate });
+		const { baseElement } = await renderPanel({ navigate, followNavigation: false });
 		const screen = page.elementLocator(baseElement);
 		const row = screen.getByTestId("environments-conda-row").first();
 		await expect.element(row).toBeVisible();
@@ -482,7 +473,9 @@ describe("EnvironmentsPanel — row navigation", () => {
 		await row.click({ position: { x: 2, y: 2 } });
 		await row.click({ position: { x: width - 45, y: height - 2 } });
 		expect(navigate).toHaveBeenCalledTimes(2);
-		expect(navigate).toHaveBeenLastCalledWith("/", { search: { env: "/opt/conda/envs/alpha" } });
+		expect(navigate).toHaveBeenLastCalledWith("/settings/environments", {
+			search: { env: "/opt/conda/envs/alpha" },
+		});
 
 		await row.getByRole("button", { name: "Actions for alpha" }).click();
 		await expect.element(page.getByTestId("environments-row-clone")).toBeVisible();

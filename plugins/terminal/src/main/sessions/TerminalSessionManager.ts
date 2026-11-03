@@ -2,7 +2,7 @@ import { readFile, rm } from "node:fs/promises";
 
 import { writeFile as atomicWriteFile } from "atomically";
 
-import type { HostMessagePort, MainSdkLogger } from "@kilo-desktop/feature-sdk/main";
+import type { KernelLogger, KernelPort } from "@kilo-desktop/kernel";
 
 import {
 	MAX_TERMINAL_LABEL_LENGTH,
@@ -24,7 +24,7 @@ import {
 } from "./shell-launch.js";
 
 interface Subscriber {
-	readonly port: HostMessagePort;
+	readonly port: KernelPort;
 	ready: boolean;
 	queued: TerminalServerMessage[];
 }
@@ -35,6 +35,7 @@ interface Session {
 	readonly terminalId: string;
 	defaultLabel: string;
 	foregroundProcessLabel: string | null;
+	reportedLabel: string | null;
 	cwd: string;
 	cols: number;
 	rows: number;
@@ -61,17 +62,26 @@ export interface TerminalSessionManagerOptions {
 	readonly killGraceMs?: number;
 	readonly inspectForegroundProcess?: (terminalPid: number) => Promise<string | null>;
 	readonly processPollIntervalMs?: number;
-	readonly onSessionExited?: (identity: TerminalIdentity) => void;
-	readonly logger?: Pick<MainSdkLogger, "error">;
+	readonly onSessionExited?: (identity: TerminalIdentity, exit: TerminalExit) => void;
+	/** The label a terminal shows changed: its foreground process, or its default when idle. */
+	readonly onLabelChanged?: (identity: TerminalIdentity, label: string) => void;
+	readonly logger?: Pick<KernelLogger, "error">;
+}
+
+export interface TerminalExit {
+	readonly exitCode: number | null;
+	readonly exitSignal: number | null;
 }
 
 /**
- * Owns every chat terminal process, its ordered output stream, bounded durable
+ * Owns every terminal process, its ordered output stream, bounded durable
  * transcript, foreground-process label, and all renderer attachments. Sessions
  * outlive MessagePorts so a renderer reload reconnects without replacing the
  * shell. An omitted cwd preserves an existing session's workspace; only an
- * explicit cwd can replace it. The manager is the only layer allowed to spawn,
- * inspect, or signal PTYs; explicit close and app teardown share the same lifecycle.
+ * explicit cwd can replace it. Label changes are reported once per distinct
+ * label so the pane title follows them. The manager is the only layer allowed
+ * to spawn, inspect, or signal PTYs; explicit close and app teardown share the
+ * same lifecycle.
  * Accepted input is sequenced by the session so renderer reconnects retain a
  * monotonic acknowledgement boundary. Pending session creation is coordinated
  * with close and teardown so a delayed attachment cannot resurrect a terminal
@@ -92,8 +102,9 @@ export class TerminalSessionManager {
 	readonly #killGraceMs: number;
 	readonly #inspectForegroundProcess: (terminalPid: number) => Promise<string | null>;
 	readonly #processPollIntervalMs: number;
-	readonly #onSessionExited: (identity: TerminalIdentity) => void;
-	readonly #logger: Pick<MainSdkLogger, "error">;
+	readonly #onSessionExited: (identity: TerminalIdentity, exit: TerminalExit) => void;
+	readonly #onLabelChanged: (identity: TerminalIdentity, label: string) => void;
+	readonly #logger: Pick<KernelLogger, "error">;
 	#processPollTimer: ReturnType<typeof setTimeout> | null = null;
 	#processPollRunning = false;
 	#disposed = false;
@@ -109,10 +120,11 @@ export class TerminalSessionManager {
 		this.#inspectForegroundProcess = options.inspectForegroundProcess ?? inspectForegroundProcess;
 		this.#processPollIntervalMs = options.processPollIntervalMs ?? 1_000;
 		this.#onSessionExited = options.onSessionExited ?? (() => undefined);
+		this.#onLabelChanged = options.onLabelChanged ?? (() => undefined);
 		this.#logger = options.logger ?? { error: () => undefined };
 	}
 
-	async attach(port: HostMessagePort, args: TerminalConnectionArgs): Promise<void> {
+	async attach(port: KernelPort, args: TerminalConnectionArgs): Promise<void> {
 		const key = sessionKey(args.sessionId, args.terminalId);
 		this.#assertAttachable(key);
 		const cwd = await this.#resolveCwd(args.cwd);
@@ -121,6 +133,7 @@ export class TerminalSessionManager {
 		if (!session) session = await this.#getOrCreateSession(key, args, cwd);
 		this.#assertAttachable(key);
 		session.defaultLabel = truncateLabel(args.initialLabel);
+		this.#reportLabel(session);
 		if (args.cwd !== undefined && session.cwd !== cwd) {
 			await this.#replaceForWorkspace(session, cwd, args.cols, args.rows);
 		}
@@ -129,7 +142,6 @@ export class TerminalSessionManager {
 		port.postMessage(this.#snapshot(session));
 		subscriber.ready = true;
 		for (const message of subscriber.queued.splice(0)) port.postMessage(message);
-		port.start();
 		if (!session.process && session.status === "starting") await this.#start(session);
 	}
 
@@ -170,7 +182,7 @@ export class TerminalSessionManager {
 
 	/**
 	 * Plain-text tail of a terminal's transcript for agent reads. A terminal
-	 * with no live session (e.g. after an app restart, before its tab mounts)
+	 * with no live session (e.g. after an app restart, before its pane mounts)
 	 * reads from its saved transcript as "closed"; a deleted one reads as null.
 	 */
 	async read(identity: TerminalIdentity, lines: number): Promise<TerminalReadout | null> {
@@ -214,6 +226,12 @@ export class TerminalSessionManager {
 		};
 	}
 
+	/** Whether a shell is running in the terminal now. */
+	isRunning(identity: TerminalIdentity): boolean {
+		const session = this.#sessions.get(sessionKey(identity.sessionId, identity.terminalId));
+		return session?.status === "running" && session.process !== null;
+	}
+
 	async dispose(): Promise<void> {
 		if (this.#disposed) return;
 		this.#disposed = true;
@@ -252,6 +270,7 @@ export class TerminalSessionManager {
 			terminalId: args.terminalId,
 			defaultLabel: truncateLabel(args.initialLabel),
 			foregroundProcessLabel: null,
+			reportedLabel: null,
 			cwd,
 			cols: args.cols,
 			rows: args.rows,
@@ -291,19 +310,17 @@ export class TerminalSessionManager {
 		}
 	}
 
-	#attachSubscriber(session: Session, port: HostMessagePort): Subscriber {
+	#attachSubscriber(session: Session, port: KernelPort): Subscriber {
 		const subscriber: Subscriber = { port, ready: false, queued: [] };
 		session.subscribers.add(subscriber);
-		const onMessage = ({ data }: { data: unknown }) => {
+		const stopMessages = port.onMessage((data) => {
 			void this.#handleClientMessage(session, subscriber, data);
-		};
-		const onClose = () => {
+		});
+		const stopClose = port.onClose(() => {
 			session.subscribers.delete(subscriber);
-			port.off("message", onMessage);
-			port.off("close", onClose);
-		};
-		port.on("message", onMessage);
-		port.on("close", onClose);
+			stopMessages();
+			stopClose();
+		});
 		return subscriber;
 	}
 
@@ -436,7 +453,10 @@ export class TerminalSessionManager {
 			exitCode: event.exitCode,
 			exitSignal: event.signal,
 		});
-		this.#onSessionExited({ sessionId: session.sessionId, terminalId: session.terminalId });
+		this.#onSessionExited(
+			{ sessionId: session.sessionId, terminalId: session.terminalId },
+			{ exitCode: event.exitCode, exitSignal: event.signal },
+		);
 	}
 
 	#detachProcess(session: Session) {
@@ -486,6 +506,14 @@ export class TerminalSessionManager {
 		if (session.foregroundProcessLabel === normalized) return;
 		session.foregroundProcessLabel = normalized;
 		this.#broadcast(session, { type: "label", label: sessionLabel(session) });
+		this.#reportLabel(session);
+	}
+
+	#reportLabel(session: Session) {
+		const label = sessionLabel(session);
+		if (session.reportedLabel === label) return;
+		session.reportedLabel = label;
+		this.#onLabelChanged({ sessionId: session.sessionId, terminalId: session.terminalId }, label);
 	}
 
 	#scheduleProcessPoll(delay: number) {

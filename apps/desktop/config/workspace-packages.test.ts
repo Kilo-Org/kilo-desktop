@@ -13,9 +13,8 @@ describe("listWorkspacePackageNames", () => {
 
 		expect(names).toEqual(
 			expect.arrayContaining([
-				"@kilo-desktop/contracts",
-				"@kilo-desktop/plugin-kilo-ui",
-				"@kilo-desktop/plugin-todos",
+				"@kilo-desktop/kernel",
+				"@kilo-desktop/plugin-chat",
 				"@opencode-ai/sdk",
 			]),
 		);

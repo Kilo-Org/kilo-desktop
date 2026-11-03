@@ -4,7 +4,7 @@ import { stageNotebookUi } from "../src/packaging/staging/stage-notebook-ui.js";
 
 const pluginRoot = path.resolve(import.meta.dirname, "..");
 const result = await stageNotebookUi({
-	destinationDirectory: path.join(pluginRoot, "build/notebook"),
+	destinationDirectory: path.join(pluginRoot, "resources/notebook"),
 });
 
 console.log(

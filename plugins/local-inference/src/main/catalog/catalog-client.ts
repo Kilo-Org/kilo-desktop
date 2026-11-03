@@ -1,4 +1,6 @@
-import { FeatureError, type MainSdkFetch } from "@kilo-desktop/feature-sdk/main";
+import { KernelError } from "@kilo-desktop/kernel";
+
+type MainSdkFetch = typeof globalThis.fetch;
 
 import type { ModelCatalog } from "../../contracts/schemas.js";
 
@@ -34,13 +36,6 @@ function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
 	});
 }
 
-export interface AuthMainCapability extends Record<string, unknown> {
-	session: {
-		getApiKey(): Promise<string | null>;
-		getSiteDomain(): Promise<string>;
-	};
-}
-
 export interface ModelCatalogDependencies {
 	fetch: MainSdkFetch;
 	getApiKey(): Promise<string | null>;
@@ -54,7 +49,8 @@ export async function listModelCatalog({
 }: ModelCatalogDependencies): Promise<ModelCatalog> {
 	const apiKey = await getApiKey();
 	if (!apiKey) {
-		throw new FeatureError(
+		throw new KernelError(
+			"BUSINESS",
 			"Sign in to your Anaconda account (Settings → Account) to view the model catalog.",
 		);
 	}
@@ -69,7 +65,7 @@ export async function listModelCatalog({
 			},
 		});
 	} catch {
-		throw new FeatureError("The Anaconda model catalog could not be loaded.");
+		throw new KernelError("BUSINESS", "The Anaconda model catalog could not be loaded.");
 	}
 
 	if (!response.ok) {
@@ -77,19 +73,19 @@ export async function listModelCatalog({
 			response.status === 401 || response.status === 403
 				? "Your Anaconda account does not have access to the model catalog."
 				: "The Anaconda model catalog could not be loaded.";
-		throw new FeatureError(message);
+		throw new KernelError("BUSINESS", message);
 	}
 
 	let payload: unknown;
 	try {
 		payload = await response.json();
 	} catch {
-		throw new FeatureError("The Anaconda model catalog returned an invalid response.");
+		throw new KernelError("BUSINESS", "The Anaconda model catalog returned an invalid response.");
 	}
 
 	const parsed = modelCatalogApiResponseSchema.safeParse(payload);
 	if (!parsed.success) {
-		throw new FeatureError("The Anaconda model catalog returned an invalid response.");
+		throw new KernelError("BUSINESS", "The Anaconda model catalog returned an invalid response.");
 	}
 
 	return mapModelCatalog(parsed.data);
@@ -103,7 +99,7 @@ export async function getModelDownloadUrl(
 ): Promise<string> {
 	const apiKey = await abortable(getApiKey(), signal);
 	if (!apiKey) {
-		throw new FeatureError("Sign in to your Anaconda account to download models.");
+		throw new KernelError("BUSINESS", "Sign in to your Anaconda account to download models.");
 	}
 
 	const catalogUrl = await abortable(resolveCatalogUrl(getSiteDomain), signal);
@@ -123,7 +119,7 @@ export async function getModelDownloadUrl(
 		);
 	} catch (error) {
 		if (signal.aborted) throw error;
-		throw new FeatureError("The model download could not be started.");
+		throw new KernelError("BUSINESS", "The model download could not be started.");
 	}
 
 	if (!response.ok) {
@@ -131,18 +127,18 @@ export async function getModelDownloadUrl(
 			response.status === 401 || response.status === 403
 				? "Your Anaconda account does not have access to this model."
 				: "The model download could not be started.";
-		throw new FeatureError(message);
+		throw new KernelError("BUSINESS", message);
 	}
 
 	let payload: unknown;
 	try {
 		payload = await response.json();
 	} catch {
-		throw new FeatureError("The model download returned an invalid response.");
+		throw new KernelError("BUSINESS", "The model download returned an invalid response.");
 	}
 	const parsed = modelDownloadUrlResponseSchema.safeParse(payload);
 	if (!parsed.success) {
-		throw new FeatureError("The model download returned an invalid response.");
+		throw new KernelError("BUSINESS", "The model download returned an invalid response.");
 	}
 	return parsed.data.download_url;
 }

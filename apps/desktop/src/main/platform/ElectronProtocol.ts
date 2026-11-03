@@ -4,14 +4,14 @@ import path from "node:path";
 
 import { net, protocol } from "electron";
 
+import { BROWSER_LOCAL_FILE_SCHEME } from "./browser-local-file-url.js";
 import {
 	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
 	HTML_RENDER_CONTENT_SECURITY_PROFILE,
-	BROWSER_LOCAL_FILE_SCHEME,
 	createHtmlRenderContentSecurityPolicy,
 	type EmbeddedWebHost,
 	type EmbeddedWebHostSecurityProfile,
-} from "@kilo-desktop/feature-sdk/main";
+} from "./embedded-web-host.js";
 
 export const DESKTOP_HOST = "app";
 export const DESKTOP_PRODUCTION_SCHEME = "kilo-desktop";
@@ -64,15 +64,6 @@ export function getDesktopOrigin(isDevelopment: boolean, host: string = DESKTOP_
 
 export function getDesktopUrl(isDevelopment: boolean): string {
 	return `${getDesktopOrigin(isDevelopment)}/#/`;
-}
-
-export function getDesktopRouteUrl(
-	isDevelopment: boolean,
-	route: string,
-	search: Readonly<Record<string, string>>,
-): string {
-	const params = new URLSearchParams(search);
-	return `${getDesktopOrigin(isDevelopment)}/#${route}${params.size > 0 ? `?${params}` : ""}`;
 }
 
 export function registerDesktopSchemes(pluginSchemes: readonly string[]): void {

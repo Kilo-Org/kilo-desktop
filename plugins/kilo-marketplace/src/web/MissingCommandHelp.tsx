@@ -10,9 +10,15 @@ import {
 import { useQuery } from "@tanstack/react-query";
 
 import { mcpRuntime } from "../contracts/runtimes.js";
-import type { MarketplaceService, MissingMcpCommand } from "../contracts/schemas.js";
+import type { MissingMcpCommand } from "../contracts/index.js";
+import {
+	marketplaceQueryOptions,
+	useCopyText,
+	useMarketplace,
+	useOpenExternal,
+	useStartNewChat,
+} from "./marketplace.js";
 import { fixMissingCommandPrompt, installAdvice, missingCommandMessage } from "./mcp-commands.js";
-import { sdkQueryOptions, useSdk } from "@kilo-desktop/sdk-react";
 import { Alert, AlertDescription, AlertTitle } from "@kilo-desktop/ui/components/alert";
 import { Button, buttonVariants } from "@kilo-desktop/ui/components/button";
 import {
@@ -27,18 +33,13 @@ import {
 import { ExternalLink } from "@kilo-desktop/ui/components/external-link";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
-/** Structural shape of kilo-ui's `chatComposer` capability — asserted, not imported. */
-type KiloUiChatComposer = {
-	chatComposer?: { startNewChat(input: { text: string }): Promise<void> };
-};
-
 const COPIED_FEEDBACK_MS = 2000;
 
 /** Whether `command` is missing from the PATH Kilo spawns MCPs with, plus how to install it here. */
 export function useMissingCommand(command: string | undefined): MissingMcpCommand | undefined {
-	const sdk = useSdk<MarketplaceService>("kilo-marketplace");
+	const client = useMarketplace();
 	const check = useQuery({
-		...sdkQueryOptions(sdk, "marketplace.checkCommands", { commands: command ? [command] : [] }),
+		...marketplaceQueryOptions(client, "checkCommands", { commands: command ? [command] : [] }),
 		enabled: command !== undefined,
 	});
 	return check.data?.missing.find((entry) => entry.command === command);
@@ -47,7 +48,7 @@ export function useMissingCommand(command: string | undefined): MissingMcpComman
 /**
  * Install-dialog warning for a method whose launch command is missing:
  * copyable install commands for this OS, the runtime's installation guide, and
- * a Fix-in-chat draft when kilo-ui is loaded. Nothing runs without the user.
+ * a Fix-in-chat draft when kilo.chat is loaded. Nothing runs without the user.
  */
 export function MissingCommandAlert({
 	missing,
@@ -130,8 +131,8 @@ function MissingCommandActions({
 	size?: "xs" | "default";
 	onFixInChat: () => void;
 }) {
-	const sdk = useSdk<MarketplaceService>("kilo-marketplace");
-	const chat = sdk.plugins.get<KiloUiChatComposer>("kilo-ui")?.chatComposer;
+	const openExternal = useOpenExternal();
+	const startNewChat = useStartNewChat();
 	const runtime = mcpRuntime(command);
 
 	return (
@@ -139,21 +140,21 @@ function MissingCommandActions({
 			{runtime ? (
 				<ExternalLink
 					href={runtime.installUrl}
-					onOpen={(url) => void sdk.shell.openExternal(url)}
+					onOpen={openExternal}
 					className={buttonVariants({ variant: "outline", size })}
 				>
 					Installation
 					<ExternalLinkIcon data-icon="inline-end" aria-hidden />
 				</ExternalLink>
 			) : null}
-			{chat ? (
+			{startNewChat ? (
 				<Button
 					type="button"
 					variant={size === "default" ? "default" : "outline"}
 					size={size}
 					onClick={() => {
 						onFixInChat();
-						void chat.startNewChat({ text: fixMissingCommandPrompt(command) });
+						startNewChat(fixMissingCommandPrompt(command));
 					}}
 				>
 					<MessageSquareIcon data-icon="inline-start" aria-hidden />
@@ -169,10 +170,10 @@ function InstallCommandList({ commands }: { commands: readonly string[] }) {
 }
 
 function InstallCommand({ command }: { command: string }) {
-	const sdk = useSdk<MarketplaceService>("kilo-marketplace");
+	const copyText = useCopyText();
 	const [copied, setCopied] = useState(false);
 	const copy = () => {
-		void sdk.shell.copyText(command).then(
+		void copyText(command).then(
 			() => {
 				setCopied(true);
 				setTimeout(() => setCopied(false), COPIED_FEEDBACK_MS);

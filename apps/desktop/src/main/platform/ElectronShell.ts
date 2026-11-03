@@ -10,7 +10,10 @@ import {
 	type Shell,
 } from "electron";
 
-import type { MainSdkHostDialogOptions } from "@kilo-desktop/feature-sdk";
+export interface HostDialogOptions {
+	readonly filters?: readonly { readonly name: string; readonly extensions: readonly string[] }[];
+	readonly defaultPath?: string;
+}
 
 const SAFE_EXTERNAL_PROTOCOLS = new Set(["http:", "https:"]);
 
@@ -70,10 +73,7 @@ export class ElectronShell {
 		return { canceled: result.canceled, paths: result.filePaths };
 	}
 
-	async showOpenFileDialog(
-		senderId: number,
-		options?: MainSdkHostDialogOptions,
-	): Promise<string | null> {
+	async showOpenFileDialog(senderId: number, options?: HostDialogOptions): Promise<string | null> {
 		const dialogOptions: OpenDialogOptions = {
 			properties: ["openFile"],
 			...(options?.defaultPath ? { defaultPath: options.defaultPath } : {}),
@@ -93,10 +93,7 @@ export class ElectronShell {
 		return result.canceled ? null : (result.filePaths[0] ?? null);
 	}
 
-	async showSaveFileDialog(
-		senderId: number,
-		options?: MainSdkHostDialogOptions,
-	): Promise<string | null> {
+	async showSaveFileDialog(senderId: number, options?: HostDialogOptions): Promise<string | null> {
 		const dialogOptions: SaveDialogOptions = {
 			...(options?.defaultPath ? { defaultPath: options.defaultPath } : {}),
 			...(options?.filters

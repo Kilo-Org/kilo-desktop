@@ -5,13 +5,12 @@
 All network requests from the main process **must** use Electron's `net`
 (`net.fetch`), never Node `fetch`/`http`/`https` or a bundled client like axios.
 `net` routes through Chromium's network stack, which honors OS/corporate proxy
-settings and system certificate stores. Reuse the existing `electronFetch`
-(`src/main/features/auth/electron-oauth.ts`) or `HttpClient`
-(`src/main/platform/HttpClient.ts`) rather than calling `net.fetch` ad hoc.
+settings and system certificate stores. Reuse the existing `HttpClient`
+(`src/main/platform/HttpClient.ts`) rather than calling `net.fetch` ad hoc;
+plugins get it as `net.fetch` in their host services.
 
-Modules that perform HTTP (e.g. `features/auth/actions.ts`) take an injected
-`OAuthFetch` (backed by `electronFetch`) so they stay testable and never reach
-for global `fetch`.
+Modules that perform HTTP take an injected fetch so they stay testable and
+never reach for global `fetch`.
 
 ## Logging
 
@@ -25,8 +24,8 @@ Create a scoped logger with `createLogger("<subject>")`
 messages without a manual prefix:
 
 ```ts
-const logger = createLogger("auth");
-logger.info("login started"); // → tagged with the "auth" scope
+const logger = createLogger("updater");
+logger.info("login started"); // → tagged with the "updater" scope
 logger.error("login failed", cause);
 ```
 

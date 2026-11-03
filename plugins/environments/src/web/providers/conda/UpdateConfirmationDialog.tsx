@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 
 import { ArrowRightIcon, SearchIcon } from "lucide-react";
 
-import { useSdk, useSdkMutation, useSdkQuery } from "@kilo-desktop/sdk-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Checkbox } from "@kilo-desktop/ui/components/checkbox";
@@ -51,8 +50,8 @@ import type {
 	CondaEnv,
 	CondaPackage,
 	CondaPackagesPreviewResult,
-	CondaService,
 } from "../../../contracts/providers/conda.js";
+import { condaQueryKey, useConda, useCondaMutation, useCondaQuery } from "../../conda.js";
 import { parseEnvironmentsErrorMessage } from "../../../contracts/common.js";
 import { environmentDisplayName, validateEnvironmentName } from "./environment-display.js";
 import { friendlyEnvironmentsError } from "./environments-error-message.js";
@@ -129,15 +128,15 @@ export function UpdateConfirmationDialog({
 	onSuccess,
 	onUpdatingChange,
 }: UpdateConfirmationDialogProps) {
-	const sdk = useSdk<CondaService>("environments");
+	const conda = useConda();
 	const queryClient = useQueryClient();
-	const envList = useSdkQuery(sdk, "conda.envs.list");
+	const envList = useCondaQuery(conda, "listEnvironments");
 	const existingEnvNames = useMemo(
 		() => new Set((envList.data ?? []).map((e) => e.name).filter(Boolean)),
 		[envList.data],
 	);
-	const cloneMutation = useSdkMutation(sdk, "conda.envs.clone", {
-		invalidates: ["conda.envs.list"],
+	const cloneMutation = useCondaMutation(conda, "cloneEnvironment", {
+		invalidates: ["listEnvironments"],
 	});
 
 	const items = upgradablePackages;
@@ -216,8 +215,8 @@ export function UpdateConfirmationDialog({
 		setPreviewError(null);
 		setPreviewStale(false);
 		previewStaleRef.current = false;
-		sdk
-			.invoke("conda.packages.preview", {
+		conda
+			.previewUpdate({
 				name: targetName,
 				prefix: env.prefix,
 				packages: specs,
@@ -248,7 +247,7 @@ export function UpdateConfirmationDialog({
 			.finally(() => {
 				if (gen === previewGenRef.current) setPreviewLoading(false);
 			});
-	}, [upgradableItems, selectedVersions, targetName, env.prefix, sdk, selectedPkgNames]);
+	}, [upgradableItems, selectedVersions, targetName, env.prefix, conda, selectedPkgNames]);
 
 	// Reset on open
 	useEffect(() => {
@@ -345,15 +344,15 @@ export function UpdateConfirmationDialog({
 	// ─── Background operations ─────────────────────────────────────────
 
 	function invalidatePackages() {
-		void queryClient.invalidateQueries({ queryKey: [sdk.featureId, "conda.packages.list"] });
-		void queryClient.invalidateQueries({ queryKey: [sdk.featureId, "conda.repodata.find"] });
+		void queryClient.invalidateQueries({ queryKey: condaQueryKey("listPackages") });
+		void queryClient.invalidateQueries({ queryKey: condaQueryKey("findRepodata") });
 	}
 
 	function runUpdate(packageSpecs: string[], toastId: string) {
 		const count = packageSpecs.length;
 		onUpdatingChange?.(count);
-		const job = sdk
-			.invoke("conda.packages.update", {
+		const job = conda
+			.updatePackages({
 				name: targetName,
 				prefix: env.prefix,
 				packages: packageSpecs,
@@ -382,7 +381,7 @@ export function UpdateConfirmationDialog({
 				id: toastId,
 				description: `Backup complete. Resolving dependencies for ${displayName}.`,
 			});
-			await sdk.invoke("conda.packages.update", {
+			await conda.updatePackages({
 				name: targetName,
 				prefix: env.prefix,
 				packages: packageSpecs,

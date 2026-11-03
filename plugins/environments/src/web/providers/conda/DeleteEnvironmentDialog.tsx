@@ -1,4 +1,3 @@
-import { useSdk, useSdkMutation } from "@kilo-desktop/sdk-react";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -11,7 +10,9 @@ import {
 } from "@kilo-desktop/ui/components/alert-dialog";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
-import type { CondaEnv, CondaService } from "../../../contracts/providers/conda.js";
+import type { CondaEnv } from "../../../contracts/providers/conda.js";
+import { useConda, useCondaMutation } from "../../conda.js";
+import { useTrack } from "../../app.js";
 import { environmentDisplayName } from "./environment-display.js";
 import { deleteEnvironmentJob, jobToastOptions } from "./environments-toasts.js";
 
@@ -26,11 +27,12 @@ interface DeleteEnvironmentDialogProps {
  * so the dialog closes on confirm and a job toast reports the outcome.
  */
 export function DeleteEnvironmentDialog({ env, open, onClose }: DeleteEnvironmentDialogProps) {
-	const sdk = useSdk<CondaService>("environments");
+	const conda = useConda();
+	const track = useTrack();
 	const displayName = environmentDisplayName(env);
 
-	const mutation = useSdkMutation(sdk, "conda.envs.delete", {
-		invalidates: ["conda.envs.list"],
+	const mutation = useCondaMutation(conda, "deleteEnvironment", {
+		invalidates: ["listEnvironments"],
 	});
 
 	function handleDelete() {
@@ -41,7 +43,7 @@ export function DeleteEnvironmentDialog({ env, open, onClose }: DeleteEnvironmen
 		toast.promise(promise, jobToastOptions(deleteEnvironmentJob(displayName)));
 		promise.then(
 			() => {
-				void sdk.telemetry.track({ event: "Environment Removed", data: {} }).catch(() => undefined);
+				track("Environment Removed");
 			},
 			() => undefined,
 		);

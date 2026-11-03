@@ -261,6 +261,26 @@ describe("packaged production dependencies", () => {
 		expect(viteMain).toContain('"node-pty"');
 	});
 
+	it("ships the terminal frame as an app resource rather than inside the staged package", () => {
+		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
+		const frameConfig = readFileSync(
+			path.join(workspaceRoot, "plugins/terminal/src/frame/vite.config.ts"),
+			"utf8",
+		);
+		const extraResources = forge.slice(
+			forge.indexOf("const extraResources"),
+			forge.indexOf("async function moveDirectory"),
+		);
+		const stagedTerminal = forge.slice(
+			forge.indexOf('packageName: "@kilo-desktop/plugin-terminal"'),
+			forge.indexOf('packageName: "@kilo-desktop/plugin-environments"'),
+		);
+
+		expect(frameConfig).toContain('"../../resources/terminal"');
+		expect(extraResources).toContain('"plugins/terminal/resources/terminal"');
+		expect(stagedTerminal).toContain('"resources"');
+	});
+
 	it("quotes plugin prepare-assets filters so Windows cmd.exe can match packages", () => {
 		const scripts = (
 			JSON.parse(readFileSync(path.join(desktopRoot, "package.json"), "utf8")) as {
@@ -292,7 +312,7 @@ describe("packaged production dependencies", () => {
 		expect(setupNative).not.toContain("runtimed-node");
 		expect(setupNative).not.toContain("1.94.0");
 		expect(setupNative).toContain("runner.arch");
-		expect(setupNative).toContain("plugins/notebook/build/notebook");
+		expect(setupNative).toContain("plugins/notebook/resources/notebook");
 		expect(runE2e).toContain("./plugins/notebook/actions/setup-native");
 		expect(build).toContain("./plugins/notebook/actions/setup-native");
 		expect(build).toContain("windows-11-vs2026-arm");
@@ -392,7 +412,7 @@ describe("packaged production dependencies", () => {
 
 	it("caches the Kilo CLI the same way notebook binaries are cached", () => {
 		const setupCli = readFileSync(
-			path.join(workspaceRoot, "plugins/kilo-server/actions/setup-cli/action.yml"),
+			path.join(workspaceRoot, "plugins/agent/actions/setup-cli/action.yml"),
 			"utf8",
 		);
 		const runE2e = readFileSync(
@@ -404,13 +424,13 @@ describe("packaged production dependencies", () => {
 			path.join(workspaceRoot, ".github/workflows/publish_helper.yml"),
 			"utf8",
 		);
-		expect(setupCli).toContain("plugins/kilo-server/resources/kilo");
+		expect(setupCli).toContain("plugins/agent/resources/kilo");
 		expect(setupCli).toContain("runner.os");
 		expect(setupCli).toContain("runner.arch");
-		expect(setupCli).toContain("plugins/kilo-server/package.json");
+		expect(setupCli).toContain("plugins/agent/package.json");
 		expect(setupCli).toContain("pnpm-lock.yaml");
-		expect(runE2e).toContain("./plugins/kilo-server/actions/setup-cli");
-		expect(build).toContain("./plugins/kilo-server/actions/setup-cli");
-		expect(publish).toContain("./plugins/kilo-server/actions/setup-cli");
+		expect(runE2e).toContain("./plugins/agent/actions/setup-cli");
+		expect(build).toContain("./plugins/agent/actions/setup-cli");
+		expect(publish).toContain("./plugins/agent/actions/setup-cli");
 	});
 });

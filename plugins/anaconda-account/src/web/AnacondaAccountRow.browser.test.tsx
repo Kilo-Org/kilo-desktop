@@ -1,194 +1,230 @@
-import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import { SdkProvider } from "@kilo-desktop/sdk-react";
-import { toast } from "@kilo-desktop/ui/components/sonner";
-import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
+import type { DomainProvider, PluginEntry, PluginSdk } from "@kilo-desktop/kernel";
+import { testManifest } from "@kilo-desktop/kernel/testing";
+import { accountTestPlugin } from "@kilo-desktop/plugin-account/testing";
+import { renderShell, type ShellHost } from "@kilo-desktop/plugin-shell/testing";
 
-import { anacondaAccountContract, type AnacondaAccountSession } from "../contracts/schemas.js";
-import { AnacondaAccountRow } from "./AnacondaAccountRow.js";
-import { webRegister } from "./index.js";
+import manifest from "../../plugin.json";
+import {
+	ANACONDA_ACCOUNT_DEFINITIONS,
+	AnacondaAccount,
+	type AnacondaAccountResult,
+	type AnacondaAccountSession,
+} from "../contracts/index.js";
+import { anacondaAccountWebEntry } from "./index.js";
 
-vi.mock("@kilo-desktop/ui/components/sonner", () => ({
-	Toaster: () => null,
-	toast: { error: vi.fn(), success: vi.fn(), message: vi.fn() },
-}));
-
-afterEach(() => {
-	cleanup();
-	vi.clearAllMocks();
-});
+const WAIT = { timeout: 10_000 };
 
 const SIGNED_IN: AnacondaAccountSession = {
 	status: "authenticated",
 	user: { email: "dev@anaconda.com", username: "dev" },
 };
 
-function renderRow(
-	options: {
-		session?: AnacondaAccountSession | (() => Promise<AnacondaAccountSession>);
-		login?: () => Promise<AnacondaAccountSession>;
-		logout?: () => Promise<AnacondaAccountSession>;
-		cancel?: () => Promise<undefined>;
-		register?: boolean;
-		/** `local-model-catalog` flag; on by default since the panel ships with the catalog. */
-		catalogEnabled?: boolean;
-	} = {},
-) {
-	let current: AnacondaAccountSession =
-		typeof options.session === "object" ? options.session : { status: "anonymous" };
-	const login = vi.fn(
-		options.login ??
-			(async () => {
-				current = SIGNED_IN;
-				return current;
-			}),
-	);
-	const logout = vi.fn(
-		options.logout ??
-			(async () => {
-				current = { status: "anonymous" };
-				return current;
-			}),
-	);
-	const resolveSession =
-		typeof options.session === "function" ? options.session : async () => current;
-	const refresh = vi.fn(resolveSession);
-	const sdk = createFakeSdk({
-		featureId: "anaconda-account",
-		channels: anacondaAccountContract,
-		handlers: {
-			"session.get": resolveSession,
-			"session.refresh": refresh,
-			login,
-			logout,
-			"login.cancel": options.cancel ?? (async () => undefined),
+/** A stand-in for kilo.flags with the model catalog flag on or off. */
+const flagsPlugin = (catalog: boolean) => ({
+	manifest: testManifest("kilo.flags", { contextKeys: [{ id: "flag:*", scope: "global" }] }),
+	main: {
+		activate(sdk: PluginSdk) {
+			sdk.context.set("flag:local-model-catalog", catalog);
 		},
-	});
-	if (options.register !== false) webRegister(sdk);
-	const flags = { "local-model-catalog": options.catalogEnabled ?? true };
-	sdk.services.shellDelegates.featureFlags = {
-		...sdk.services.shellDelegates.featureFlags,
-		peek: () => flags,
-		subscribe: (fn) => {
-			fn(flags);
-			return () => undefined;
+	},
+});
+
+/** Stands in for kilo.anaconda-account's main entry: an account the test drives. */
+function fakeAccountMain(options: {
+	session: AnacondaAccountSession;
+	refresh?: () => Promise<AnacondaAccountSession>;
+	signIn?: (provider: DomainProvider<typeof AnacondaAccount>) => Promise<AnacondaAccountResult>;
+}) {
+	let provider: DomainProvider<typeof AnacondaAccount> | undefined;
+	const setSession = (session: AnacondaAccountSession) =>
+		provider!.update((state) => ({ ...state, session }));
+	const methods = {
+		session: vi.fn(async () => provider!.state.session),
+		refresh: vi.fn(options.refresh ?? (async () => provider!.state.session)),
+		signIn: vi.fn(async () => {
+			if (options.signIn) return options.signIn(provider!);
+			setSession(SIGNED_IN);
+			return { ok: true as const };
+		}),
+		cancelSignIn: vi.fn(),
+		signOut: vi.fn(async () => {
+			setSession({ status: "anonymous" });
+			return { ok: true as const };
+		}),
+		apiKey: vi.fn(async () => null),
+		siteDomain: vi.fn(async () => "anaconda.com"),
+	};
+	const entry: PluginEntry = {
+		activate(sdk) {
+			provider = sdk.domains.provide(AnacondaAccount, {
+				initialState: { session: options.session, signingIn: false },
+				methods,
+			});
 		},
 	};
-	const system = createFakeFeatureSystem({ sdks: { "anaconda-account": sdk } });
-	const view = render(
-		<SdkProvider system={system}>
-			<AnacondaAccountRow />
-		</SdkProvider>,
-	);
-	return { screen: page.elementLocator(view.baseElement), login, logout, refresh };
+	return { entry, methods, provider: () => provider! };
 }
 
-describe("AnacondaAccountRow", () => {
+const hosts: ShellHost[] = [];
+afterEach(async () => {
+	await Promise.all(hosts.splice(0).map((host) => host.main.stop()));
+});
+
+async function openAccountPage(
+	options: {
+		session?: AnacondaAccountSession;
+		refresh?: () => Promise<AnacondaAccountSession>;
+		signIn?: (provider: DomainProvider<typeof AnacondaAccount>) => Promise<AnacondaAccountResult>;
+		catalog?: boolean;
+		withAccountPlugin?: boolean;
+	} = {},
+) {
+	const account = fakeAccountMain({
+		session: options.session ?? { status: "anonymous" },
+		...(options.refresh ? { refresh: options.refresh } : {}),
+		...(options.signIn ? { signIn: options.signIn } : {}),
+	});
+	const host = await renderShell(
+		[
+			accountTestPlugin,
+			flagsPlugin(options.catalog ?? true),
+			...(options.withAccountPlugin === false
+				? []
+				: [
+						{
+							manifest,
+							definitions: ANACONDA_ACCOUNT_DEFINITIONS,
+							main: account.entry,
+							web: anacondaAccountWebEntry,
+						},
+					]),
+		],
+		{ desktop: true },
+	);
+	hosts.push(host);
+	window.location.hash = "#/settings/account";
+	await expect.element(page.getByTestId("account-kilo-row")).toBeInTheDocument();
+	return account;
+}
+
+describe("the Anaconda row on the Account page", () => {
 	it("shows the signed-in email and signs out", async () => {
-		const { screen, logout } = renderRow({ session: SIGNED_IN });
+		const { methods } = await openAccountPage({ session: SIGNED_IN });
 
 		await expect
-			.element(screen.getByTestId("account-anaconda-email"))
+			.element(page.getByTestId("account-anaconda-email"), WAIT)
 			.toHaveTextContent("Signed in as dev@anaconda.com");
-		await screen.getByTestId("account-anaconda-sign-out").click();
+		await page.getByTestId("account-anaconda-sign-out").click();
 
-		await vi.waitFor(() => expect(logout).toHaveBeenCalledTimes(1));
+		await vi.waitFor(() => expect(methods.signOut).toHaveBeenCalledTimes(1), WAIT);
 		await expect
-			.element(screen.getByTestId("account-anaconda-status"))
+			.element(page.getByTestId("account-anaconda-status"), WAIT)
 			.toHaveTextContent("Not signed in.");
 	});
 
 	it("signs in from the not-signed-in state", async () => {
-		const { screen, login } = renderRow();
+		const { methods } = await openAccountPage();
 
 		await expect
-			.element(screen.getByTestId("account-anaconda-status"))
+			.element(page.getByTestId("account-anaconda-status"), WAIT)
 			.toHaveTextContent("Not signed in.");
-		await screen.getByTestId("account-anaconda-sign-in").click();
+		await page.getByTestId("account-anaconda-sign-in").click();
 
-		await vi.waitFor(() => expect(login).toHaveBeenCalledTimes(1));
+		await vi.waitFor(() => expect(methods.signIn).toHaveBeenCalledTimes(1), WAIT);
 		await expect
-			.element(screen.getByTestId("account-anaconda-email"))
+			.element(page.getByTestId("account-anaconda-email"), WAIT)
 			.toHaveTextContent("Signed in as dev@anaconda.com");
 	});
 
 	it("re-checks the stored key when the row mounts", async () => {
-		const { screen, refresh } = renderRow({ session: SIGNED_IN });
+		const { methods } = await openAccountPage({ session: SIGNED_IN });
 
-		await expect.element(screen.getByTestId("account-anaconda-email")).toBeVisible();
-		expect(refresh).toHaveBeenCalledTimes(1);
+		await expect
+			.element(page.getByTestId("account-anaconda-email"), WAIT)
+			.toHaveTextContent("Signed in as dev@anaconda.com");
+		expect(methods.refresh).toHaveBeenCalledTimes(1);
 	});
 
 	it("shows the session error reason", async () => {
-		const { screen } = renderRow({ session: { status: "error", reason: "Keyring unavailable" } });
+		await openAccountPage({ session: { status: "error", reason: "Keyring unavailable" } });
 
 		await expect
-			.element(screen.getByTestId("account-anaconda-status"))
+			.element(page.getByTestId("account-anaconda-status"), WAIT)
 			.toHaveTextContent("Keyring unavailable");
 	});
 
 	it("stays loading until the session resolves", async () => {
-		const { screen } = renderRow({ session: () => new Promise(() => {}) });
+		await openAccountPage({ refresh: () => new Promise(() => {}) });
 
 		await expect
-			.element(screen.getByTestId("account-anaconda-row"))
+			.element(page.getByTestId("account-anaconda-row"), WAIT)
 			.toHaveAttribute("data-state", "loading");
 	});
 
 	it("offers Cancel while waiting for the browser and ends the sign-in quietly", async () => {
-		let endLogin: (session: AnacondaAccountSession) => void = () => {};
-		const cancel = vi.fn(async () => {
-			endLogin({ status: "anonymous" });
-			return undefined;
+		let endSignIn: () => void = () => {};
+		const { methods } = await openAccountPage({
+			signIn: (provider) => {
+				provider.update((state) => ({ ...state, signingIn: true }));
+				return new Promise((resolve) => {
+					endSignIn = () => {
+						provider.update((state) => ({ ...state, signingIn: false }));
+						resolve({ ok: false, reason: "Sign-in was cancelled.", cancelled: true });
+					};
+				});
+			},
 		});
-		const { screen } = renderRow({
-			login: () =>
-				new Promise((resolve) => {
-					endLogin = resolve;
-				}),
-			cancel,
-		});
+		methods.cancelSignIn.mockImplementation(() => endSignIn());
 
-		await screen.getByTestId("account-anaconda-sign-in").click();
+		await page.getByTestId("account-anaconda-sign-in").click();
 		await expect
-			.element(screen.getByTestId("account-anaconda-sign-in"))
+			.element(page.getByTestId("account-anaconda-sign-in"), WAIT)
 			.toHaveTextContent("Waiting for browser…");
-		await screen.getByTestId("account-anaconda-cancel-sign-in").click();
+		await page.getByTestId("account-anaconda-cancel-sign-in").click();
 
-		await vi.waitFor(() => expect(cancel).toHaveBeenCalledTimes(1));
+		await vi.waitFor(() => expect(methods.cancelSignIn).toHaveBeenCalledTimes(1), WAIT);
 		await expect
-			.element(screen.getByTestId("account-anaconda-sign-in"))
+			.element(page.getByTestId("account-anaconda-sign-in"), WAIT)
 			.toHaveTextContent("Sign in");
-		expect(screen.getByTestId("account-anaconda-cancel-sign-in").query()).toBeNull();
-		expect(toast.error).not.toHaveBeenCalled();
+		expect(page.getByTestId("account-anaconda-cancel-sign-in").query()).toBeNull();
+		expect(page.getByText("Could not sign in to Anaconda").query()).toBeNull();
 	});
 
 	it("toasts a failed sign-in", async () => {
-		const { screen } = renderRow({
-			login: async () => ({ status: "error", reason: "Port 8000 is in use." }),
+		await openAccountPage({
+			signIn: async () => ({ ok: false, reason: "Port 8000 is in use." }),
 		});
 
-		await screen.getByTestId("account-anaconda-sign-in").click();
+		await page.getByTestId("account-anaconda-sign-in").click();
 
-		await vi.waitFor(() =>
-			expect(toast.error).toHaveBeenCalledWith(
-				"Could not sign in to Anaconda",
-				expect.objectContaining({ description: "Port 8000 is in use." }),
-			),
-		);
+		await expect.element(page.getByText("Could not sign in to Anaconda"), WAIT).toBeVisible();
+		await expect.element(page.getByText("Port 8000 is in use."), WAIT).toBeVisible();
 	});
 
-	it("renders nothing while the model catalog flag is off", async () => {
-		const { screen } = renderRow({ catalogEnabled: false });
+	it("toasts a failed sign-out", async () => {
+		const { methods } = await openAccountPage({ session: SIGNED_IN });
+		methods.signOut.mockResolvedValueOnce({ ok: false, reason: "Keyring is read-only." } as never);
 
-		expect(screen.getByTestId("account-anaconda-row").query()).toBeNull();
+		await page.getByTestId("account-anaconda-sign-out").click();
+
+		await expect.element(page.getByText("Could not sign out of Anaconda"), WAIT).toBeVisible();
 	});
 
-	it("renders nothing when the account capability is not registered", async () => {
-		const { screen } = renderRow({ register: false });
+	it("is absent while the model catalog flag is off", async () => {
+		await openAccountPage({ catalog: false });
 
-		expect(screen.getByTestId("account-anaconda-row").query()).toBeNull();
+		await expect.element(page.getByTestId("account-kilo-row"), WAIT).toBeVisible();
+		expect(page.getByTestId("account-anaconda-row").query()).toBeNull();
+		expect(page.getByTestId("account-panel-kilo.anaconda-account/anaconda").query()).toBeNull();
+	});
+
+	it("is absent when kilo.anaconda-account is not installed", async () => {
+		await openAccountPage({ withAccountPlugin: false });
+
+		await expect.element(page.getByTestId("account-kilo-row"), WAIT).toBeVisible();
+		expect(page.getByTestId("account-anaconda-row").query()).toBeNull();
 	});
 });

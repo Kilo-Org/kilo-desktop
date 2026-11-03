@@ -1,0 +1,113 @@
+{
+	"manifestVersion": 1,
+	"id": "kilo.telemetry",
+	"displayName": "Telemetry",
+	"version": "1.0.0",
+	"description": "Usage analytics, sent only with consent and only for events their plugins declare, and the Privacy settings.",
+	"requires": {
+		"kilo.shell/settings-section": "optional",
+		"kilo.shell/navigation": "optional",
+		"kilo.account/identity": "optional",
+		"kilo.account/terms": "optional",
+		"kilo.shell/onboarding": "optional",
+		"kilo.workspaces/workspace": "optional",
+		"kilo.agent/work-style-onboarding": "optional"
+	},
+	"permissions": {
+		"host": ["data-collection", "shell"]
+	},
+	"extensionPoints": [
+		{
+			"id": "telemetry-event",
+			"kind": "additive",
+			"description": "An analytics event a plugin may send."
+		}
+	],
+	"domains": [
+		{
+			"id": "telemetry",
+			"home": "main",
+			"description": "Sends analytics events."
+		}
+	],
+	"contributes": {
+		"extensions": {
+			"kernel/service": [
+				{
+					"id": "posthog",
+					"title": "Usage analytics",
+					"kind": "daemon",
+					"startOn": "window-shown",
+					"restart": {
+						"policy": "never"
+					}
+				}
+			],
+			"kilo.telemetry/telemetry-event": [
+				{
+					"id": "desktop-initialized",
+					"name": "Desktop Initialized"
+				},
+				{
+					"id": "page-visit",
+					"name": "Page Visit"
+				},
+				{
+					"id": "logged-in",
+					"name": "Logged In"
+				},
+				{
+					"id": "logged-out",
+					"name": "Logged Out"
+				},
+				{
+					"id": "terms-accepted",
+					"name": "Terms Accepted"
+				},
+				{
+					"id": "terms-acceptance-linked",
+					"name": "Terms Acceptance Linked"
+				},
+				{
+					"id": "onboarding-shown",
+					"name": "Onboarding Shown"
+				},
+				{
+					"id": "work-style-onboarding-shown",
+					"name": "Work Style Onboarding Shown"
+				},
+				{
+					"id": "work-style-selected",
+					"name": "Work Style Selected"
+				},
+				{
+					"id": "onboarding-completed",
+					"name": "Onboarding Completed"
+				},
+				{
+					"id": "onboarding-skipped",
+					"name": "Onboarding Skipped"
+				},
+				{
+					"id": "workspace-created",
+					"name": "Workspace Created"
+				},
+				{
+					"id": "workspace-removed",
+					"name": "Workspace Removed"
+				}
+			],
+			"kilo.shell/settings-section": [
+				{
+					"id": "privacy",
+					"title": "Privacy",
+					"description": "Control usage analytics and crash reporting on this device.",
+					"priority": 70,
+					"when": {
+						"all": ["kernel/desktop"]
+					}
+				}
+			]
+		}
+	}
+}

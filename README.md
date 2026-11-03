@@ -4,8 +4,11 @@ Kilo Desktop is built with Electron, React, and Electron Forge.
 
 Docs:
 
-- [Add a feature across every layer](docs/add-a-feature.md) — walkthrough of one vertical
-  slice, from the shared contract to SQLite and back to the UI
+- [Writing a plugin](docs/plugins/README.md) — how-to for plugin authors: manifest, extension
+  points, domain objects, commands, panes, agent tools, testing; an
+  [example plugin](examples/hello-plugin); [llms.txt](llms.txt) for coding agents
+- [Plugin architecture](docs/plugin-architecture.md) — the kernel, the plugins, their extension
+  points and domain objects, and the build-up plan
 - [Releases, signing, and CI reference](docs/releases.md) — channels, artifacts,
   environments, credentials
 - [Notebook integration](plugins/notebook/docs/README.md) — embedding nteract's notebook UI with a
@@ -13,17 +16,17 @@ Docs:
 
 ## Tech stack
 
-| Layer           | Choice                                  | Notes                                                                                     |
-| --------------- | --------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Shell           | Electron 43 + Electron Forge 8 alpha    | Forge owns main/preload builds, packaging, makers, and S3 publishing                      |
-| Renderer        | React 19 + TanStack Router              | Standalone Vite app under `apps/web`, loaded through the custom application protocol      |
-| Styling         | Tailwind CSS 4 + shadcn Nova/Base UI    | Uses the Anaconda theme and Inter                                                         |
-| State           | TanStack React Query                    | Query factories call a web-owned `LocalApi`; Electron or in-browser adapters implement it |
-| Persistence     | better-sqlite3 13 + Drizzle ORM         | SQL migrations live in the desktop package                                                |
-| Validation      | Zod 4                                   | Shared schemas in `packages/contracts` define the IPC boundary                            |
-| Package manager | pnpm 11, hoisted linker                 | Workspace catalog pins shared versions; Forge receives a frozen production deployment     |
-| Testing         | Vitest 5 + Testing Library + Playwright | Unit tests, real-browser React tests, and packaged Electron smoke tests                   |
-| Git hooks       | Husky + lint-staged                     | Linting and formatting run before commit                                                  |
+| Layer           | Choice                                  | Notes                                                                                 |
+| --------------- | --------------------------------------- | ------------------------------------------------------------------------------------- |
+| Shell           | Electron 43 + Electron Forge 8 alpha    | Forge owns main/preload builds, packaging, makers, and S3 publishing                  |
+| Plugins         | `packages/kernel`                       | Every feature is a plugin on a product-agnostic kernel (main + one kernel per window) |
+| Renderer        | React 19 + TanStack Router              | Standalone Vite app under `apps/web`, loaded through the custom application protocol  |
+| Styling         | Tailwind CSS 4 + shadcn Nova/Base UI    | Uses the Anaconda theme and Inter                                                     |
+| State           | Kernel domain objects + TanStack Query  | Plugins publish state and methods as typed domain objects shared across processes     |
+| Validation      | Zod 4                                   | Domain-object and command contracts are Zod schemas in each plugin's `./contracts`    |
+| Package manager | pnpm 11, hoisted linker                 | Workspace catalog pins shared versions; Forge receives a frozen production deployment |
+| Testing         | Vitest 5 + Testing Library + Playwright | Unit tests, real-browser React tests, and packaged Electron smoke tests               |
+| Git hooks       | Husky + lint-staged                     | Linting and formatting run before commit                                              |
 
 ## Getting started
 
@@ -45,8 +48,8 @@ pnpm start
 
 `pnpm start` / `pnpm dev` run the web Vite server and Electron together. Electron proxies
 the renderer through `kilo-desktop-dev://app/#/` using
-`KILO_WEB_DEV_SERVER_URL`. Use `pnpm dev:web` for the React app alone (in-memory
-`LocalApi`, no Electron).
+`KILO_WEB_DEV_SERVER_URL`. Use `pnpm dev:web` for the React app alone (the kernel boots
+with a main kernel in the page, no Electron).
 
 On first launch after the Kilo rename, Desktop atomically moves a matching pre-rename
 profile into the canonical `Kilo Desktop Dev`, `Kilo Desktop Preview`, or `Kilo Desktop`
@@ -69,144 +72,65 @@ root postinstall script normalizes that mode after pnpm links the hoisted depend
 Every command runs from the repository root; each one fans out to the relevant workspace
 package with `pnpm --filter` or `pnpm -r`.
 
-| Command               | Purpose                                                                |
-| --------------------- | ---------------------------------------------------------------------- |
-| `pnpm start`          | Start web + Electron (`dev:desktop`)                                   |
-| `pnpm dev:web`        | Start the standalone React/Vite app                                    |
-| `pnpm dev:desktop`    | Start web and Electron with the custom development protocol            |
-| `pnpm run package`    | Build web, then package Electron into `apps/desktop/out/`              |
-| `pnpm run make`       | Package the app and create the current platform’s distributables       |
-| `pnpm run publish`    | Run release preflight, then make and upload with Forge’s S3 publisher  |
-| `pnpm check`          | Type-check contracts, web, desktop, and E2E projects                   |
-| `pnpm lint`           | Run oxlint                                                             |
-| `pnpm format:check`   | Verify formatting                                                      |
-| `pnpm test`           | Run package tests recursively (does not include E2E)                   |
-| `pnpm test:web`       | Web unit + browser tests                                               |
-| `pnpm test:desktop`   | Desktop unit tests                                                     |
-| `pnpm test:contracts` | Contracts registry tests                                               |
-| `pnpm test:e2e`       | Package the app and exercise the hardened executable through typed IPC |
+| Command             | Purpose                                                                |
+| ------------------- | ---------------------------------------------------------------------- |
+| `pnpm start`        | Start web + Electron (`dev:desktop`)                                   |
+| `pnpm dev:web`      | Start the standalone React/Vite app                                    |
+| `pnpm dev:desktop`  | Start web and Electron with the custom development protocol            |
+| `pnpm run package`  | Build web, then package Electron into `apps/desktop/out/`              |
+| `pnpm run make`     | Package the app and create the current platform’s distributables       |
+| `pnpm run publish`  | Run release preflight, then make and upload with Forge’s S3 publisher  |
+| `pnpm check`        | Type-check every workspace package, including E2E                      |
+| `pnpm lint`         | Run oxlint and the plugin boundary check                               |
+| `pnpm format:check` | Verify formatting                                                      |
+| `pnpm test`         | Run package tests recursively (does not include E2E)                   |
+| `pnpm test:web`     | Web unit + browser tests                                               |
+| `pnpm test:desktop` | Desktop unit tests                                                     |
+| `pnpm test:e2e`     | Package the app and exercise the hardened executable through typed IPC |
 
-Schema changes live with the feature/plugin that owns the database (Decision
-#20 — each feature owns its own SQLite file and drizzle migrations). Generate
-migrations from that package, e.g. the todos plugin:
-
-```bash
-pnpm --filter @kilo-desktop/plugin-todos db:generate
-```
+A plugin that persists data owns its storage (its kv namespaces or files under its own
+storage directory); nothing shares a database.
 
 ## Monorepo layout
 
 ```text
 /
 ├── apps/
-│   ├── desktop/                # Electron main, preload, Forge, SQLite, E2E
-│   │   ├── config/             # Release, signing, renderer staging, publish preflight
-│   │   ├── drizzle/            # Generated SQL migrations and journal
-│   │   ├── e2e/                # Playwright specs against the packaged binary
-│   │   ├── resources/
-│   │   └── src/{main,preload}/
-│   └── web/                    # Standalone React/Vite application
-│       └── src/
-│           ├── components/     # shadcn Nova / Base UI primitives
-│           ├── features/       # todos, theme (query factories + UI)
-│           ├── lib/query/      # QueryClient factory
-│           ├── platform/       # LocalApi + Electron/browser adapters
-│           └── routes/         # TanStack Router file routes
+│   ├── desktop/                # Electron main + preload: kernel host, platform services, Forge
+│   └── web/                    # Renderer entry: boots a window kernel with the bundled plugins
 ├── packages/
-│   └── contracts/              # Shared Zod schemas, typed IPC contracts, LocalApi
-├── plugins/                    # Placeholder for the future plugin system
-├── .github/
-│   ├── actions/                # Shared CI setup (node, macOS/Windows codesign)
-│   └── workflows/              # CI, build, scheduled Preview, and Stable release
+│   ├── kernel/                 # Plugin kernel: registries, lifecycle, commands, React root
+│   ├── bundled-plugins/        # The one list of plugins that ship
+│   ├── ui/                     # Design-system primitives shared by every plugin
+│   ├── git-client/             # Node-only git client
+│   └── pane-layout/            # Pane layout model
+├── plugins/                    # Bundled plugins (kilo.shell, kilo.agent, kilo.chat, …)
+├── examples/                   # Example plugins for authors (never bundled)
+├── e2e/                        # Playwright/Electron e2e
 ├── pnpm-workspace.yaml         # Workspace globs, dependency catalog, pnpm settings
 └── tsconfig.base.json          # Compiler options every package extends
 ```
 
-`pnpm-workspace.yaml` declares only `apps/*` and `packages/*`, so there are exactly three
-packages:
+[CONTEXT.md](CONTEXT.md) lists every package and plugin;
+[docs/plugin-architecture.md](docs/plugin-architecture.md) is the design and
+[docs/plugins](docs/plugins/README.md) the authoring guide.
 
-| Package                   | Path                 | Role                                                   |
-| ------------------------- | -------------------- | ------------------------------------------------------ |
-| `@kilo-desktop/contracts` | `packages/contracts` | Shared schemas and types — the only shared code        |
-| `@kilo-desktop/web`       | `apps/web`           | Renderer; builds and runs on its own                   |
-| `@kilo-desktop/desktop`   | `apps/desktop`       | Electron shell, SQLite, Forge packaging and publishing |
-
-Dependencies only ever point one way:
-
-```text
-web ─────────┐
-             ├──→ contracts        (workspace:*, imported as source)
-desktop ─────┘
-
-desktop ──→ apps/web/dist          (build artifact, not a package dependency)
-```
-
-- Neither app imports the other. `apps/desktop` never imports React code, and `apps/web`
-  never imports Electron or Node APIs.
+- The host (`apps/*`) provides only `kernel/*` primitives (windows, storage, notifications,
+  protocols…); product features live in plugins, which reach each other through the kernel
+  and import only another plugin's `./contracts`. `pnpm lint` checks these boundaries.
 - `apps/desktop` gets the renderer as a built artifact: its `prepare:web` script runs the
   web build and asserts `apps/web/dist/index.html` exists. That script is hooked into
   `prepackage`, `premake`, and `prepublish`, and `config/stage-web-renderer.ts` copies the
   output into the packaged app.
-- Shared dependency versions live in the pnpm catalog (`typescript`, `vite`, `vitest`,
-  `zod`) and are referenced as `catalog:` so both apps can never drift apart.
+- Shared dependency versions live in the pnpm catalog and are referenced as `catalog:`.
 - `nodeLinker: hoisted` exists for Electron and Forge; packaging deploys a frozen
   production dependency tree instead of relying on symlinks (`pnpm deploy` no longer needs
   `injectWorkspacePackages`).
-- Internal workspace deps always use the `workspace:*` protocol, so renderer and plugin
-  imports resolve the live workspace source through a symlink. `link:` is reserved for the
-  `overrides` section of `pnpm-workspace.yaml`. Plugins keep UI as a peer dependency at
-  runtime to preserve the shared singleton design.
+- Internal workspace deps always use the `workspace:*` protocol, consumed as TypeScript
+  source. `link:` is reserved for the `overrides` section of `pnpm-workspace.yaml`.
 - There are no TypeScript project references. Each package owns a `tsconfig.json` that
   extends `tsconfig.base.json` with `noEmit`, and `pnpm check` type-checks them
-  independently. Path aliases are per package (`@/*` → `apps/web/src`, `$config/*` →
-  `apps/desktop/config`) and mirrored in the matching Vite and Vitest configs.
-
-## Shared code
-
-`packages/contracts` is the only shared package, and it is consumed as TypeScript source:
-`exports` points at `./src/index.ts`, there is no build step and no `dist`, so each
-consumer compiles it with its own bundler (Vite for web, the main and preload Vite builds
-for desktop).
-
-It exports:
-
-| Export                                               | Purpose                                                 |
-| ---------------------------------------------------- | ------------------------------------------------------- |
-| `defineMethod`, `defineEvent`                        | Build a channel contract from Zod input/output schemas  |
-| `ipcMethods`, `ipcEvents`, `mergeChannelMaps`        | Registries of every channel the app exposes             |
-| `IpcResult`, `ipcResultSchema`, `ipcErrorCodes`      | The success/error envelope crossing the bridge          |
-| `DesktopApi`, `IpcHandlers`, channel/payload helpers | Types for the preload surface and main-process handlers |
-| `LocalApi`, `LocalApiError`                          | The host-facing facade the React app depends on         |
-| `todo*`, `theme*`, `shell*` schemas                  | Per-feature payload shapes                              |
-
-Belongs in contracts: anything both sides must agree on. Does not belong: React
-components, Electron or Node imports, and the Drizzle table schema — persistence details
-stay in `apps/desktop`.
-
-[docs/add-a-feature.md](docs/add-a-feature.md) walks through adding a channel and following
-it out to every layer.
-
-## Web and Electron decoupling
-
-`apps/web` is a normal Vite SPA with no compile-time or runtime dependency on Electron.
-The rules that keep it that way:
-
-- React and query code depends on the `LocalApi` interface only. `window.desktopApi` and
-  IPC transport details appear nowhere outside `src/platform`.
-- `apps/web/src/platform/createLocalApi.ts` selects the implementation by bridge presence
-  (`globalThis.window?.desktopApi`), not by URL or protocol sniffing.
-  `platform/electronLocalApi.ts` forwards through the preload bridge and unwraps
-  `IpcResult`; `platform/browserLocalApi.ts` implements the same interface in memory.
-- The web build uses `base: "./"` and hash history, so one `dist` works from a dev server
-  and from `kilo-desktop://app/#/`.
-- Forge’s Vite plugin builds only main and preload (`renderer: []`). Electron owns no
-  renderer build; it serves or proxies whatever the web app produced.
-- The entire handshake is one artifact and one variable: `apps/web/dist` in production,
-  `KILO_WEB_DEV_SERVER_URL` in development.
-
-The payoff: the UI is developed and tested in a plain browser, a different host (hosted
-web, another shell) only needs one new `LocalApi` adapter, and changing an IPC channel is
-a `packages/contracts` edit that fails `pnpm check` on both sides at once.
+  independently.
 
 ## Running the web app standalone
 
@@ -214,21 +138,10 @@ a `packages/contracts` edit that fails `pnpm check` on both sides at once.
 pnpm dev:web   # http://127.0.0.1:5173, strict port
 ```
 
-Without the preload bridge, `createLocalApi()` returns the in-memory browser adapter:
-todos live in an array with generated ids, theme follows `prefers-color-scheme`,
-`shell.openExternal` becomes `window.open`, and `shell.copyText` becomes the async
-clipboard API. No Electron process, no SQLite file, no IPC.
-
-| Works standalone                                     | Requires `pnpm start` or `pnpm test:e2e`                          |
-| ---------------------------------------------------- | ----------------------------------------------------------------- |
-| Routing, layout, components, Tailwind/shadcn theming | SQLite persistence across reloads                                 |
-| Query and mutation wiring against `LocalApi`         | Real IPC validation, error codes, and main-process business logic |
-| Fast HMR with no Electron restart                    | Window behavior, protocol/CSP handling, updater, packaging        |
-
-`pnpm test:web` follows the same split with two Vitest projects: `unit` runs
-`src/**/*.test.ts` in Node, and `browser` runs `src/**/*.browser.test.tsx` in real
-headless Chromium via Playwright. Both exercise the browser adapter, so the whole web
-suite runs without building or launching Electron.
+Without the preload bridge, the page boots the main kernel in-process next to the window
+kernel; plugins whose main entry needs Node are skipped. `pnpm test:web` follows the same
+split with two Vitest projects: `unit` runs `src/**/*.test.ts` in Node, and `browser` runs
+`src/**/*.browser.test.tsx` in real headless Chromium via Playwright.
 
 ## Local Sentry via Spotlight
 
@@ -274,9 +187,9 @@ persist it across launches.
 
 ## Electron architecture and security
 
-The renderer is sandboxed and has no Node.js access. The preload exposes only the
-schema-validated `window.desktopApi` surface, and the main process re-validates every
-payload against the same contracts before handling it.
+The renderer is sandboxed and has no Node.js access. The preload exposes only the kernel
+bridge (`kernelBridge`); every request crosses one kernel transport in main, which checks
+the sender and validates payloads against the target's declared contract.
 
 Production navigation uses `kilo-desktop://app/#/`; development uses
 `kilo-desktop-dev://app/#/`. OS deep links use the same scheme with a dedicated
@@ -286,8 +199,8 @@ protocol serves the independently built web `dist` — staged into
 `.vite/renderer/main_window` during packaging — or proxies the web Vite server
 in development, with a strict Content Security Policy.
 
-Forge creates an ASAR, includes `.vite`, migrations, package metadata, and required
-production dependencies, and unpacks `better-sqlite3`. The fuses plugin disables
+Forge creates an ASAR, includes `.vite`, package metadata, and required production
+dependencies, and unpacks native modules (`better-sqlite3`, `node-pty`, keytar, …). The fuses plugin disables
 RunAsNode, `NODE_OPTIONS`, and CLI inspector arguments while enabling cookie encryption,
 ASAR integrity validation, and loading only from ASAR.
 
@@ -321,18 +234,10 @@ selected track (`UPDATE_PUBLISH_URL_PREVIEW` / `UPDATE_PUBLISH_URL_STABLE`, fall
 `UPDATE_PUBLISH_URL` for the build's own track).
 Preview builds stamp a UTC timestamp onto the next patch (`0.1.2-preview-260818-14305`)
 so every publication is a newer version. Stable uses the tag or dispatch version, then records that
-version across the release-coupled desktop, web, and contracts packages and lockfile on `main`.
+version across the release-coupled desktop and web packages and lockfile on `main`.
 Forge makers read that stamped version, so macOS DMG/ZIP/`RELEASES.json`, Windows nupkg,
 and Linux DEB all publish a unique Preview version.
 
 See [docs/releases.md](docs/releases.md) for the full reference: the distribution matrix,
 build-time variables, GitHub Environments, workflows, signing credentials, and publish
 validation rules.
-
-## Not yet implemented
-
-- Plugin system runtime
-- Kilo chat integration
-- Authentication
-- Telemetry and analytics
-- Data migration from legacy Desktop

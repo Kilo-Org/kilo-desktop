@@ -37,7 +37,7 @@ describe("externalizeDeps", () => {
 				dependencies: {
 					"@github/keytar": "^7.10.6",
 					execa: "^9.6.0",
-					"@kilo-desktop/plugin-kilo-ui": "workspace:*",
+					"@kilo-desktop/plugin-chat": "workspace:*",
 				},
 			}),
 		);
@@ -70,10 +70,10 @@ describe("externalizeDeps", () => {
 
 	it("keeps excluded dependencies bundled", () => {
 		const external = resolveExternal({
-			exclude: ["@kilo-desktop/plugin-kilo-ui"],
+			exclude: ["@kilo-desktop/plugin-chat"],
 		});
 
-		expect(isExternal(external, "@kilo-desktop/plugin-kilo-ui")).toBe(false);
+		expect(isExternal(external, "@kilo-desktop/plugin-chat")).toBe(false);
 		expect(isExternal(external, "execa")).toBe(true);
 	});
 
@@ -82,7 +82,7 @@ describe("externalizeDeps", () => {
 			exclude: [/^@kilo-desktop\/.+$/],
 		});
 
-		expect(isExternal(external, "@kilo-desktop/plugin-kilo-ui")).toBe(false);
+		expect(isExternal(external, "@kilo-desktop/plugin-chat")).toBe(false);
 		expect(isExternal(external, "execa")).toBe(true);
 	});
 

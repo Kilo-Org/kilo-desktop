@@ -2,7 +2,9 @@ packages:
   - apps/*
   - packages/*
   - plugins/*
-  - plugins/kilo-ui/opencode-sdk-compat
+  # Example plugins for authors (docs/plugins): workspace packages, never bundled.
+  - examples/*
+  - plugins/chat/opencode-sdk-compat
   - e2e
 
 catalog:
@@ -41,7 +43,7 @@ nodeLinker: hoisted
 autoInstallPeers: false
 
 overrides:
-  "@assistant-ui/react-opencode>@opencode-ai/sdk": "link:plugins/kilo-ui/opencode-sdk-compat"
+  "@assistant-ui/react-opencode>@opencode-ai/sdk": "link:plugins/chat/opencode-sdk-compat"
   # Keep react-opencode on the same core/store as @assistant-ui/react so Vite
   # does not embed a second AssistantContext (breaks composer typing).
   "@assistant-ui/core": "0.3.5"
@@ -84,4 +86,7 @@ registries:
   "@anaconda": https://npm.pkg.github.com/
 
 patchedDependencies:
-  "@assistant-ui/react-opencode@0.2.17": plugins/kilo-ui/patches/@assistant-ui__react-opencode@0.2.17.patch
+  # kilo.chat: a draft's failed first send must not surface as an unhandled
+  # rejection from RemoteThreadList's fire-and-forget initialize.
+  "@assistant-ui/core@0.3.5": plugins/chat/patches/@assistant-ui__core@0.3.5.patch
+  "@assistant-ui/react-opencode@0.2.17": plugins/chat/patches/@assistant-ui__react-opencode@0.2.17.patch

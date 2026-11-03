@@ -10,12 +10,14 @@
 	},
 	"scripts": {
 		"check": "turbo run check",
+		"check:plugin-isolation": "node scripts/check-plugin-isolation.mjs",
 		"dev": "pnpm dev:desktop",
+		"docs:extension-points": "node scripts/list-extension-points.mjs --write",
 		"dev:web": "pnpm --filter @kilo-desktop/web dev",
 		"dev:desktop": "concurrently --kill-others --success first \"pnpm dev:web\" \"wait-on http://127.0.0.1:5173 && cross-env KILO_WEB_DEV_SERVER_URL=http://127.0.0.1:5173 pnpm --filter @kilo-desktop/desktop start\"",
 		"format": "oxfmt --no-error-on-unmatched-pattern",
 		"format:check": "oxfmt --check",
-		"lint": "oxlint",
+		"lint": "oxlint && node scripts/check-boundaries.mjs && node scripts/list-extension-points.mjs --check",
 		"lint:fix": "oxlint --fix",
 		"make": "pnpm --filter @kilo-desktop/desktop run make",
 		"package": "pnpm --filter @kilo-desktop/desktop run package",
@@ -28,7 +30,6 @@
 		"test": "turbo run test",
 		"test:web": "pnpm --filter @kilo-desktop/web test",
 		"test:desktop": "pnpm --filter @kilo-desktop/desktop test",
-		"test:contracts": "pnpm --filter @kilo-desktop/contracts test",
 		"test:e2e": "pnpm --filter @kilo-desktop/e2e run test:e2e",
 		"test:e2e:smoke": "pnpm --filter @kilo-desktop/e2e run test:e2e:smoke",
 		"coverage": "turbo run coverage"
@@ -43,8 +44,6 @@
 		]
 	},
 	"devDependencies": {
-		"@kilo-desktop/feature-sdk": "workspace:*",
-		"@kilo-desktop/sdk-react": "workspace:*",
 		"@kilo-desktop/ui": "workspace:*",
 		"@opencode-ai/sdk": "workspace:*",
 		"@types/node": "^26.0.0",

@@ -1,0 +1,8 @@
+/* Test-only stylesheet: generates the Tailwind utilities the board and the
+   workbench it renders inside use, so browser tests get real layout. */
+@import "tailwindcss";
+@source "../../../../packages/ui";
+@source "../../../../packages/kernel/src";
+@source "../../../shell/src";
+@source "../../../workbench/src";
+@source "../";

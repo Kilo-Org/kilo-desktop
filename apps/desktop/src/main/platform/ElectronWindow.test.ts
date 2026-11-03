@@ -2,9 +2,8 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { TRANSPARENT_WINDOW_BACKGROUND, type PaneWindow } from "@kilo-desktop/contracts";
-
-import { getDesktopRouteUrl } from "./ElectronProtocol.js";
+import { getThemeChrome } from "@kilo-desktop/ui/themes/app-themes";
+import { TRANSPARENT_WINDOW_BACKGROUND } from "@kilo-desktop/ui/themes/theme-tokens";
 
 const { createdWindows, electronApp } = vi.hoisted(() => {
 	interface FakeWindow {
@@ -112,7 +111,6 @@ vi.mock("electron", () => ({
 }));
 
 vi.mock("./ElectronProtocol.js", () => ({
-	getDesktopRouteUrl: vi.fn(() => "desktop://app/#/plugins/chat"),
 	getDesktopUrl: vi.fn(() => "desktop://app"),
 }));
 vi.mock("./ElectronSecurity.js", () => ({ isTrustedRendererUrl: vi.fn(() => true) }));
@@ -124,6 +122,15 @@ import { isTrustedRendererUrl } from "./ElectronSecurity.js";
 
 function createShell() {
 	return { openExternal: vi.fn(async () => undefined) };
+}
+
+function openSecondary(windows: ElectronWindow, width?: number) {
+	return windows.openSecondary({
+		isDevelopment: false,
+		title: "Board",
+		additionalArguments: ["--kilo-window=board"],
+		...(width === undefined ? {} : { width }),
+	});
 }
 
 describe("ElectronWindow theme chrome", () => {
@@ -151,6 +158,21 @@ describe("ElectronWindow theme chrome", () => {
 			symbolColor: "#d4d4d4",
 			height: 47,
 		});
+	});
+
+	it("keeps window names unique: only the main window is named", () => {
+		const windows = new ElectronWindow(createShell() as never, () => false);
+
+		windows.create({ isDevelopment: false });
+		openSecondary(windows);
+		openSecondary(windows);
+
+		expect(createdWindows.map((window) => window.options.name)).toEqual([
+			"Test App",
+			undefined,
+			undefined,
+		]);
+		expect(createdWindows[1]?.options.windowStatePersistence).toBeUndefined();
 	});
 
 	it("enables macOS vibrancy with a transparent window background", () => {
@@ -189,23 +211,20 @@ describe("ElectronWindow theme chrome", () => {
 		);
 	});
 
-	it("repaints both main and pane windows with the selected palette", () => {
+	it("repaints both main and secondary windows with the supplied palette", () => {
 		Object.defineProperty(process, "platform", { value: "win32" });
 		let dark = false;
-		let themeId = "kilo";
+		const palette: { chrome?: ReturnType<typeof getThemeChrome> } = {};
 		const windows = new ElectronWindow(
 			createShell() as never,
 			() => dark,
-			() => themeId,
+			() => palette.chrome,
 		);
 		windows.create({ isDevelopment: false });
-		windows.openPaneWindow(
-			{ pluginId: "kilo-ui", sessionId: "s1", paneId: "p1", title: "File", path: "/plugins/chat" },
-			false,
-		);
+		openSecondary(windows);
 
 		dark = true;
-		themeId = "dracula";
+		palette.chrome = getThemeChrome("dracula");
 		windows.applyColorScheme();
 
 		for (const window of createdWindows) {
@@ -221,10 +240,7 @@ describe("ElectronWindow theme chrome", () => {
 		Object.defineProperty(process, "platform", { value: "win32" });
 		const windows = new ElectronWindow(createShell() as never, () => true);
 		windows.create({ isDevelopment: false });
-		windows.openPaneWindow(
-			{ pluginId: "kilo-ui", sessionId: "s1", paneId: "p1", title: "File", path: "/plugins/chat" },
-			false,
-		);
+		openSecondary(windows);
 		const [fullscreen, other] = createdWindows;
 		// Electron throws this exact error from setTitleBarOverlay while the
 		// window is fullscreen on Windows, where the overlay is inactive.
@@ -322,28 +338,27 @@ describe("ElectronWindow theme chrome", () => {
 		expect(windows.main).toBeUndefined();
 	});
 
-	it("enables webviews in the main window and in popped-out pane windows", () => {
+	it("enables webviews in main and pop-out windows, with the guest guard on both", () => {
 		const windows = new ElectronWindow(createShell() as never, () => false);
 		windows.create({ isDevelopment: false });
-		windows.openPaneWindow(
-			{ pluginId: "kilo-ui", sessionId: "s1", paneId: "p1", title: "File", path: "/plugins/chat" },
-			false,
-		);
+		openSecondary(windows);
 
-		// Pane windows host the same plugin panes as the main window, including the
-		// browser pane's <webview>; without the tag the popped-out browser is blank.
-		expect(createdWindows[0]?.options.webPreferences?.webviewTag).toBe(true);
-		expect(createdWindows[1]?.options.webPreferences?.webviewTag).toBe(true);
+		for (const window of createdWindows) {
+			expect(window.options.webPreferences?.webviewTag).toBe(true);
+			const willAttach = window.webContents.on.mock.calls.find(
+				(call) => call[0] === "will-attach-webview",
+			)?.[1];
+			const denied = { preventDefault: vi.fn() };
+			willAttach?.(denied, {}, { partition: "persist:untrusted" });
+			expect(denied.preventDefault).toHaveBeenCalledOnce();
+		}
 	});
 
-	it("gives the main and pane windows the native context menu", () => {
+	it("gives the main and secondary windows the native context menu", () => {
 		const shell = createShell();
 		const windows = new ElectronWindow(shell as never, () => false);
 		windows.create({ isDevelopment: true });
-		windows.openPaneWindow(
-			{ pluginId: "kilo-ui", sessionId: "s1", paneId: "p1", title: "File", path: "/plugins/chat" },
-			false,
-		);
+		openSecondary(windows);
 
 		expect(attachContextMenu).toHaveBeenCalledWith(createdWindows[0]?.webContents, {
 			isDevelopment: true,
@@ -355,7 +370,7 @@ describe("ElectronWindow theme chrome", () => {
 		});
 	});
 
-	it("reveals, broadcasts to, and destroys the live window", () => {
+	it("reveals and destroys the live window", () => {
 		Object.defineProperty(process, "platform", { value: "darwin" });
 		const windows = new ElectronWindow(createShell() as never, () => false);
 		expect(windows.main).toBeUndefined();
@@ -370,20 +385,6 @@ describe("ElectronWindow theme chrome", () => {
 		expect(window?.focus).toHaveBeenCalled();
 		expect(electronApp.focus).toHaveBeenCalledWith({ steal: true });
 
-		windows.broadcast("auth:changed", { status: "anonymous" });
-		expect(window?.webContents.send).toHaveBeenCalledWith("auth:changed", {
-			status: "anonymous",
-		});
-
-		windows.navigateMain({
-			path: "/settings/local-model-server",
-			search: { catalogModel: "catalog-model" },
-		});
-		expect(window?.webContents.send).toHaveBeenCalledWith("shell:navigate", {
-			path: "/settings/local-model-server",
-			search: { catalogModel: "catalog-model" },
-		});
-
 		window?.isDestroyed.mockReturnValue(true);
 		expect(windows.main).toBeUndefined();
 		window?.isDestroyed.mockReturnValue(false);
@@ -392,237 +393,47 @@ describe("ElectronWindow theme chrome", () => {
 		expect(windows.main).toBeUndefined();
 	});
 
-	it("loads a deep-link route into the main window", () => {
-		const windows = new ElectronWindow(createShell() as never, () => false);
-		windows.create({
-			isDevelopment: false,
-			initialRoute: {
-				path: "/settings/local-model-server",
-				search: { catalogModel: "catalog-model" },
-			},
-		});
-
-		expect(getDesktopRouteUrl).toHaveBeenCalledWith(false, "/settings/local-model-server", {
-			catalogModel: "catalog-model",
-		});
-		expect(createdWindows[0]?.loadURL).toHaveBeenCalledWith("desktop://app/#/plugins/chat");
-
-		windows.loadMainRoute({
-			path: "/settings/local-model-server",
-			search: { catalogModel: "other-model" },
-		});
-		expect(getDesktopRouteUrl).toHaveBeenCalledWith(false, "/settings/local-model-server", {
-			catalogModel: "other-model",
-		});
-	});
-
-	it("opens, focuses, hides, and docks a session-owned pane window", () => {
-		const windows = new ElectronWindow(createShell() as never, () => false);
-		windows.create({ isDevelopment: false });
-		const pane: PaneWindow = {
-			pluginId: "kilo-ui",
-			sessionId: "session-1",
-			paneId: "file:readme.md",
-			title: "readme.md",
-			path: "/plugins/chat",
-			workspaceId: "workspace-1",
-		};
-
-		expect(windows.openPaneWindow(pane, false)).toEqual({ opened: true });
-		expect(getDesktopRouteUrl).toHaveBeenCalledWith(false, "/plugins/chat", {
-			paneWindow: "true",
-			panePluginId: "kilo-ui",
-			paneSessionId: "session-1",
-			paneId: "file:readme.md",
-			paneWorkspaceId: "workspace-1",
-		});
-		const detached = createdWindows[1];
-		expect(detached?.options.name).toBe("pane:kilo-ui:session-1:file:readme.md");
-		expect(detached?.options.webPreferences?.additionalArguments).toContain(
-			"--kilo-window-role=pane",
-		);
-		expect(detached?.options.windowStatePersistence).toBeUndefined();
-		expect(windows.listPaneWindows("kilo-ui")).toEqual([pane]);
-
-		createdWindows[0]?.isVisible.mockReturnValue(true);
-		const ready = detached?.once.mock.calls.find((call) => call[0] === "ready-to-show")?.[1];
-		ready?.();
-		expect(detached?.show).toHaveBeenCalled();
-		expect(detached?.focus).toHaveBeenCalled();
-
-		detached?.isVisible.mockReturnValue(true);
-		windows.syncPaneWindows("kilo-ui", "session-2");
-		expect(detached?.hide).toHaveBeenCalled();
-		createdWindows[0]?.isVisible.mockReturnValue(true);
-		detached?.isVisible.mockReturnValue(false);
-		windows.syncPaneWindows("kilo-ui", "session-1");
-		expect(detached?.showInactive).toHaveBeenCalled();
-
-		detached?.isVisible.mockReturnValue(true);
-		const hideMain = createdWindows[0]?.on.mock.calls.find((call) => call[0] === "hide")?.[1];
-		hideMain?.();
-		expect(detached?.hide).toHaveBeenCalledTimes(2);
-
-		detached?.isVisible.mockReturnValue(false);
-		const showMain = createdWindows[0]?.on.mock.calls.find((call) => call[0] === "show")?.[1];
-		showMain?.();
-		expect(detached?.showInactive).toHaveBeenCalledTimes(2);
-
-		expect(windows.focusPaneWindow(pane)).toEqual({ focused: true });
-		expect(detached?.focus).toHaveBeenCalledTimes(2);
-		expect(windows.dockPaneWindow(pane)).toEqual({ docked: true });
-		expect(detached?.close).toHaveBeenCalled();
-
-		const closed = detached?.on.mock.calls.find((call) => call[0] === "closed")?.[1];
-		closed?.();
-		expect(windows.listPaneWindows("kilo-ui")).toEqual([]);
-		expect(createdWindows[0]?.webContents.send).toHaveBeenCalledWith("shell:pane-window-changed", {
-			type: "docked",
-			pluginId: "kilo-ui",
-			sessionId: "session-1",
-			paneId: "file:readme.md",
-		});
-	});
-
-	it("opens a pane window outside full screen", () => {
+	it("opens a secondary window at the content width it asks for, kept within the screen", () => {
 		const windows = new ElectronWindow(createShell() as never, () => false);
 		windows.create({ isDevelopment: false });
 
-		windows.openPaneWindow(
-			{ pluginId: "kilo-ui", sessionId: "s1", paneId: "p1", title: "File", path: "/plugins/chat" },
-			false,
-		);
-
-		expect(createdWindows[1]?.options.fullscreen).toBe(false);
-	});
-
-	const boardWindow: PaneWindow = {
-		pluginId: "kilo-ui",
-		paneId: "workspace-board",
-		title: "Workspace Board",
-		path: "/plugins/workspace-board",
-	};
-
-	it("opens a session-independent pane window without a session in its route or events", () => {
-		const windows = new ElectronWindow(createShell() as never, () => false);
-		windows.create({ isDevelopment: false });
-
-		expect(windows.openPaneWindow(boardWindow, false)).toEqual({ opened: true });
-
-		expect(getDesktopRouteUrl).toHaveBeenLastCalledWith(false, "/plugins/workspace-board", {
-			paneWindow: "true",
-			panePluginId: "kilo-ui",
-			paneId: "workspace-board",
-		});
-		expect(windows.listPaneWindows("kilo-ui")).toEqual([boardWindow]);
-		expect(createdWindows[0]?.webContents.send).toHaveBeenCalledWith("shell:pane-window-changed", {
-			type: "opened",
-			pluginId: "kilo-ui",
-			paneId: "workspace-board",
-		});
-	});
-
-	it("opens a pane window at the content width it asks for, kept within the screen", () => {
-		const windows = new ElectronWindow(createShell() as never, () => false);
-		windows.create({ isDevelopment: false });
-
-		windows.openPaneWindow({ ...boardWindow, width: 1204 }, false);
+		openSecondary(windows, 1204);
 		expect(createdWindows[1]?.options).toMatchObject({ width: 1204, useContentSize: true });
 
-		windows.openPaneWindow({ ...boardWindow, paneId: "wide", width: 5000 }, false);
+		openSecondary(windows, 5000);
 		expect(createdWindows[2]?.options).toMatchObject({ width: 1440 });
 
-		windows.openPaneWindow({ ...boardWindow, paneId: "default" }, false);
+		openSecondary(windows);
 		expect(createdWindows[3]?.options).toMatchObject({ width: 960 });
 		expect(createdWindows[3]?.options).not.toHaveProperty("useContentSize");
+		expect(createdWindows[3]?.options.webPreferences?.additionalArguments).toEqual([
+			"--kilo-window=board",
+		]);
 	});
 
-	it("keeps a session-independent pane window visible whatever session is active", () => {
+	it("destroys secondary windows with the main window, past any close veto", () => {
 		const windows = new ElectronWindow(createShell() as never, () => false);
 		windows.create({ isDevelopment: false });
-		windows.openPaneWindow(boardWindow, false);
-		const detached = createdWindows[1];
+		const secondary = openSecondary(windows) as unknown as (typeof createdWindows)[number];
 
-		createdWindows[0]?.isVisible.mockReturnValue(true);
-		windows.syncPaneWindows("kilo-ui", "session-2");
-		const ready = detached?.once.mock.calls.find((call) => call[0] === "ready-to-show")?.[1];
-		ready?.();
-		expect(detached?.show).toHaveBeenCalled();
+		const closed = createdWindows[0]?.once.mock.calls.find((call) => call[0] === "closed")?.[1];
+		closed?.();
 
-		detached?.isVisible.mockReturnValue(true);
-		windows.syncPaneWindows("kilo-ui", null);
-		expect(detached?.hide).not.toHaveBeenCalled();
+		expect(secondary.destroy).toHaveBeenCalled();
+		expect(secondary.close).not.toHaveBeenCalled();
 	});
 
-	it("reveals an open session-independent pane window rather than opening another", () => {
+	it("stops following the main window once a secondary window closes", () => {
 		const windows = new ElectronWindow(createShell() as never, () => false);
 		windows.create({ isDevelopment: false });
-		windows.openPaneWindow(boardWindow, false);
+		const main = createdWindows[0]!;
+		const secondary = openSecondary(windows) as unknown as (typeof createdWindows)[number];
+		const followMain = main.once.mock.calls.find((call) => call[0] === "closed")?.[1];
 
-		expect(windows.openPaneWindow(boardWindow, false)).toEqual({ opened: false });
-		expect(createdWindows).toHaveLength(2);
-		expect(windows.focusPaneWindow({ pluginId: "kilo-ui", paneId: "workspace-board" })).toEqual({
-			focused: true,
-		});
-		expect(
-			windows.focusPaneWindow({ pluginId: "kilo-ui", sessionId: "s", paneId: "workspace-board" }),
-		).toEqual({ focused: false });
-	});
+		const secondaryClosed = secondary.once.mock.calls.find((call) => call[0] === "closed")?.[1];
+		secondaryClosed?.();
 
-	it("keeps a pane window hidden when the main window hides before the pane is ready", () => {
-		const windows = new ElectronWindow(createShell() as never, () => false);
-		windows.create({ isDevelopment: false });
-		windows.openPaneWindow(
-			{
-				pluginId: "kilo-ui",
-				sessionId: "session-1",
-				paneId: "file:readme.md",
-				title: "readme.md",
-				path: "/plugins/chat",
-			},
-			false,
-		);
-
-		const detached = createdWindows[1];
-		const ready = detached?.once.mock.calls.find((call) => call[0] === "ready-to-show")?.[1];
-		ready?.();
-
-		expect(detached?.show).not.toHaveBeenCalled();
-		expect(detached?.focus).not.toHaveBeenCalled();
-	});
-
-	it("broadcasts renderer events to every window except their origin", () => {
-		const windows = new ElectronWindow(createShell() as never, () => false);
-		windows.create({ isDevelopment: false });
-		windows.create({ isDevelopment: false });
-		const [origin, other] = createdWindows;
-		const event = { featureId: "producer", name: "changed", payload: { id: "1" } };
-
-		windows.broadcast("feature:event", event, origin?.webContents.id);
-
-		expect(origin?.webContents.send).not.toHaveBeenCalled();
-		expect(other?.webContents.send).toHaveBeenCalledWith("feature:event", event);
-	});
-
-	it("scopes title and focus capabilities to the requesting renderer", () => {
-		const windows = new ElectronWindow(createShell() as never, () => false);
-		windows.create({ isDevelopment: false });
-		windows.create({ isDevelopment: false });
-		const [first, second] = createdWindows;
-
-		expect(windows.getTitle(second!.webContents.id)).toBe("Kilo");
-		windows.setTitle(second!.webContents.id, "Analysis");
-		expect(first?.setTitle).not.toHaveBeenCalled();
-		expect(second?.setTitle).toHaveBeenCalledWith("Analysis");
-		expect(windows.isFocused(second!.webContents.id)).toBe(true);
-
-		const listener = vi.fn();
-		const unlisten = windows.onFocusChange(second!.webContents.id, listener);
-		const focus = second?.on.mock.calls.find((call) => call[0] === "focus")?.[1];
-		focus?.();
-		expect(listener).toHaveBeenCalledWith(true);
-		unlisten();
-		expect(second?.off).toHaveBeenCalledWith("focus", focus);
+		expect(main.off).toHaveBeenCalledWith("closed", followMain);
 	});
 
 	it("does not auto-show a deferred window and resolves whenReady once it paints", async () => {

@@ -10,7 +10,6 @@ import {
 	type LucideIcon,
 } from "lucide-react";
 
-import { sdkQueryOptions, useSdk } from "@kilo-desktop/sdk-react";
 import {
 	InputGroup,
 	InputGroupAddon,
@@ -33,7 +32,6 @@ import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type {
 	LocalInferenceHardwareProfile,
-	LocalInferenceServiceContract,
 	ModelCatalogCapabilities,
 	ModelCatalogEntry,
 } from "../../contracts/schemas.js";
@@ -52,6 +50,7 @@ import { ModelPerformance } from "./ModelPerformance.js";
 import { ModelRecommendations } from "./ModelRecommendations.js";
 import { getPublisherDisplayName } from "./ModelPublisherIcon.js";
 import { catalogListQueryOptions } from "./catalog-query.js";
+import { localInferenceQueryOptions, useLocalInference } from "../local-inference.js";
 import { useCatalogAnacondaAccount } from "./use-anaconda-account.js";
 
 const defaultCatalogSort: CatalogSort = "newest";
@@ -82,13 +81,13 @@ export function LocalModelCatalog({
 	onSelectModel: (model: ModelCatalogEntry) => void;
 	selectedModelId?: string | undefined;
 }) {
-	const sdk = useSdk<LocalInferenceServiceContract>("local-inference");
+	const client = useLocalInference();
 	const [search, setSearch] = useState("");
 	const deferredSearch = useDeferredValue(search);
-	const anaconda = useCatalogAnacondaAccount(sdk);
-	const catalog = useQuery(catalogListQueryOptions(sdk, anaconda));
+	const anaconda = useCatalogAnacondaAccount();
+	const catalog = useQuery(catalogListQueryOptions(client, anaconda));
 	const hardware = useQuery({
-		...sdkQueryOptions(sdk, "hardware.profile"),
+		...localInferenceQueryOptions(client, "hardwareProfile"),
 		retry: false,
 		staleTime: Number.POSITIVE_INFINITY,
 	});

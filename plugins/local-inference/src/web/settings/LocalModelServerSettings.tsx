@@ -8,18 +8,13 @@ import {
 	RefreshCwIcon,
 	SearchIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import {
-	sdkQueryKey,
-	sdkQueryOptions,
-	SettingsPageHeader,
-	useFeatureFlag,
-	useSdk,
-	useSdkMutation,
-	useSdkQuery,
-} from "@kilo-desktop/sdk-react";
+import { KernelClipboard, KernelShell } from "@kilo-desktop/kernel";
+import { useDomain, useDomainState } from "@kilo-desktop/kernel/web";
+import { Navigation } from "@kilo-desktop/plugin-shell/contracts";
+import { SettingsPageHeader } from "@kilo-desktop/ui/components/settings-page-header";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Alert, AlertAction, AlertTitle } from "@kilo-desktop/ui/components/alert";
 import { Button } from "@kilo-desktop/ui/components/button";
@@ -63,26 +58,34 @@ import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
 import { Switch } from "@kilo-desktop/ui/components/switch";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
-import type {
-	LocalInferenceServiceContract,
-	ModelDownload,
-	LocalModel,
-	LocalModelSettings,
-	ModelCatalogEntry,
-} from "../../contracts/schemas.js";
-import { modelDownloadSchema } from "../../contracts/schemas.js";
 import {
-	CATALOG_DOWNLOAD_CHANGED_EVENT,
-	MODELS_CHANGED_EVENT,
-	STATUS_CHANGED_EVENT,
-} from "../../contracts/events.js";
+	MODEL_CATALOG_FLAG,
+	type ModelDownload,
+	type LocalModel,
+	type LocalModelSettings,
+	type ModelCatalogEntry,
+} from "../../contracts/index.js";
 import { ConnectionDetails } from "../connections/ConnectionDetails.js";
-import { KiloAuthGate } from "@kilo-desktop/sdk-react";
+import { KiloSignInGate } from "../KiloSignInGate.js";
+import {
+	localInferenceQueryKey,
+	localInferenceQueryOptions,
+	useFlag,
+	useFollowLocalInference,
+	useLocalInference,
+	useLocalInferenceMutation,
+	useLocalInferenceQuery,
+	usePathForFile,
+	useTrack,
+} from "../local-inference.js";
 import { LocalModelCatalog } from "../catalog/ModelCatalog.js";
 import { ModelCatalogDialogHeader } from "../catalog/ModelCatalogAccess.js";
 import { ModelDetailPane, ModelDetailSkeleton } from "../catalog/ModelDetailPane.js";
 import { catalogListQueryOptions } from "../catalog/catalog-query.js";
-import { useCatalogAnacondaAccount } from "../catalog/use-anaconda-account.js";
+import {
+	AnacondaAccountBoundary,
+	useCatalogAnacondaAccount,
+} from "../catalog/use-anaconda-account.js";
 import {
 	catalogArtifactKey,
 	type DownloadIdentity,
@@ -111,33 +114,26 @@ import {
 const interactiveScrollbarClassName =
 	"[&_[data-slot=scroll-area-scrollbar]]:opacity-0 hover:[&_[data-slot=scroll-area-scrollbar]]:opacity-100 focus-within:[&_[data-slot=scroll-area-scrollbar]]:opacity-100";
 
-function useCatalogModelId(sdk: ReturnType<typeof useSdk<LocalInferenceServiceContract>>) {
-	const subscribe = useCallback((fn: () => void) => sdk.location.subscribe(fn), [sdk]);
-	const getSnapshot = useCallback(() => {
-		const catalogModel = sdk.location.peek().search.catalogModel;
-		if (catalogModel == null || catalogModel === "") return undefined;
-		return String(catalogModel);
-	}, [sdk]);
-	return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+/** The catalog model a `model-catalog` deep link opened (`?catalogModel=`). */
+function useCatalogModelId(): string | undefined {
+	return useDomainState(Navigation, (state) => state.search["catalogModel"] || undefined);
 }
 
 /**
- * LaunchDarkly key hiding the Model Catalog until the unified-auth rework
- * lands. Off by default: no "From catalog" entry, deep links stay inert, and
- * the catalog dialog never opens. Force on locally with
- * `VITE_FEATURE_FLAG_OVERRIDES=local-model-catalog`.
+ * The Model Catalog stays hidden behind kilo.flags' `local-model-catalog`
+ * until the unified-auth rework lands. Off by default: no "From catalog"
+ * entry, deep links stay inert, and the catalog dialog never opens.
  */
-const MODEL_CATALOG_FEATURE_FLAG = "local-model-catalog";
-
 export function LocalModelServerSettings() {
 	return (
-		<KiloAuthGate
-			featureId="local-inference"
+		<KiloSignInGate
 			featureName="Local Model Server"
 			pendingFallback={<LocalModelServerSettingsLoading />}
 		>
-			<LocalModelServerSettingsContent />
-		</KiloAuthGate>
+			<AnacondaAccountBoundary>
+				<LocalModelServerSettingsContent />
+			</AnacondaAccountBoundary>
+		</KiloSignInGate>
 	);
 }
 
@@ -251,20 +247,23 @@ function RuntimeHeading() {
 }
 
 function LocalModelServerSettingsContent() {
-	const sdk = useSdk<LocalInferenceServiceContract>("local-inference");
+	const client = useLocalInference();
 	const queryClient = useQueryClient();
+	const navigation = useDomain(Navigation);
+	const shell = useDomain(KernelShell);
+	const clipboard = useDomain(KernelClipboard);
+	const pathForFile = usePathForFile();
+	const track = useTrack();
 	const trackLocalInference = (
 		event: "Local Model Installed" | "Local Model Server Started" | "Local Model Server Stopped",
 		data: Record<string, unknown> = {},
-	) => {
-		void sdk.telemetry.track({ event, data }).catch(() => undefined);
-	};
-	const catalogEnabled = useFeatureFlag<boolean>(MODEL_CATALOG_FEATURE_FLAG, false);
+	) => track(event, data);
+	const catalogEnabled = useFlag(MODEL_CATALOG_FLAG);
 	const modelFileInput = useRef<HTMLInputElement>(null);
 	const modelSaveQueue = useRef(Promise.resolve());
 	const [catalogOpen, setCatalogOpen] = useState(false);
 	const [catalogModel, setCatalogModel] = useState<ModelCatalogEntry>();
-	const catalogModelId = useCatalogModelId(sdk);
+	const catalogModelId = useCatalogModelId();
 	const [appliedCatalogModelId, setAppliedCatalogModelId] = useState<string>();
 	const [expandedModelIds, setExpandedModelIds] = useState<ReadonlySet<string>>(() => new Set());
 	const [lastExpandedModelId, setLastExpandedModelId] = useState<string>();
@@ -272,80 +271,46 @@ function LocalModelServerSettingsContent() {
 	const [modelSourceFilter, setModelSourceFilter] = useState<ModelSourceFilter>("all");
 	const [modelFileError, setModelFileError] = useState<string>();
 	const [modelPendingDeletion, setModelPendingDeletion] = useState<LocalModel>();
-	const models = useSdkQuery(sdk, "models.list");
+	useFollowLocalInference();
+	const models = useLocalInferenceQuery("listModels");
 	const hasCatalogModels = Boolean(models.data?.some((model) => model.catalog));
-	const status = useSdkQuery(sdk, "status.get");
+	const status = useLocalInferenceQuery("status");
 	const usage = useQuery({
-		...sdkQueryOptions(sdk, "usage.get"),
+		...localInferenceQueryOptions(client, "usage"),
 		refetchInterval: 1_000,
 		refetchIntervalInBackground: false,
 	});
 	const catalogHardware = useQuery({
-		...sdkQueryOptions(sdk, "hardware.profile"),
+		...localInferenceQueryOptions(client, "hardwareProfile"),
 		enabled: catalogEnabled && catalogOpen,
 		retry: false,
 		staleTime: Number.POSITIVE_INFINITY,
 	});
-	const catalogAccount = useCatalogAnacondaAccount(sdk);
+	const catalogAccount = useCatalogAnacondaAccount();
 	const catalogMetadata = useQuery({
-		...catalogListQueryOptions(sdk, catalogAccount),
+		...catalogListQueryOptions(client, catalogAccount),
 		// Flag-gated like catalogHardware: without it, a previously
 		// catalog-imported model would still fetch metadata (and show a dead
 		// "View in catalog" affordance) after a flag rollback.
 		enabled: !catalogAccount.resolving && catalogEnabled && (hasCatalogModels || catalogOpen),
 	});
-	const catalogDownloads = useSdkQuery(sdk, "catalog.downloads.list");
-	const start = useSdkMutation(sdk, "runtime.connect", {
-		invalidates: ["status.get"],
+	const catalogDownloads = useLocalInferenceQuery("listDownloads");
+	const start = useLocalInferenceMutation("connect", { invalidates: ["status"] });
+	const stop = useLocalInferenceMutation("disconnect", { invalidates: ["status"] });
+	const retry = useLocalInferenceMutation("retry", { invalidates: ["status"] });
+	const serverSettings = useLocalInferenceQuery("settings");
+	const updateServerSettings = useLocalInferenceMutation("updateSettings", {
+		invalidates: ["settings", "status"],
 	});
-	const stop = useSdkMutation(sdk, "runtime.disconnect", {
-		invalidates: ["status.get"],
+	const addModel = useLocalInferenceMutation("addModel", {
+		invalidates: ["listModels", "status"],
 	});
-	const retry = useSdkMutation(sdk, "runtime.retry", {
-		invalidates: ["status.get"],
+	const removeModel = useLocalInferenceMutation("removeModel", {
+		invalidates: ["listModels", "status"],
 	});
-	const serverSettings = useSdkQuery(sdk, "settings.get");
-	const updateServerSettings = useSdkMutation(sdk, "settings.update", {
-		invalidates: ["settings.get", "status.get"],
+	const updateModel = useLocalInferenceMutation("updateModel", {
+		invalidates: ["listModels", "status"],
 	});
-	const addModel = useSdkMutation(sdk, "models.add", {
-		invalidates: ["models.list", "status.get"],
-	});
-	const removeModel = useSdkMutation(sdk, "models.remove", {
-		invalidates: ["models.list", "status.get"],
-	});
-	const updateModel = useSdkMutation(sdk, "models.update", {
-		invalidates: ["models.list", "status.get"],
-	});
-
-	useEffect(() => {
-		const stopStatus = sdk.events.on(`local-inference.${STATUS_CHANGED_EVENT}`, () => {
-			void queryClient.invalidateQueries({ queryKey: sdkQueryKey(sdk, "status.get") });
-		});
-		const stopModels = sdk.events.on(`local-inference.${MODELS_CHANGED_EVENT}`, () => {
-			void queryClient.invalidateQueries({ queryKey: sdkQueryKey(sdk, "models.list") });
-		});
-		const stopDownloads = sdk.events.on(
-			`local-inference.${CATALOG_DOWNLOAD_CHANGED_EVENT}`,
-			(payload) => {
-				const parsed = modelDownloadSchema.safeParse(payload);
-				if (!parsed.success) return;
-				queryClient.setQueryData<ModelDownload[]>(
-					sdkQueryKey(sdk, "catalog.downloads.list"),
-					(current) => upsertDownload(current, parsed.data),
-				);
-				if (parsed.data.status === "completed") {
-					void queryClient.invalidateQueries({ queryKey: sdkQueryKey(sdk, "models.list") });
-					void queryClient.invalidateQueries({ queryKey: sdkQueryKey(sdk, "status.get") });
-				}
-			},
-		);
-		return () => {
-			stopStatus();
-			stopModels();
-			stopDownloads();
-		};
-	}, [queryClient, sdk]);
 
 	function openCatalog(model?: ModelCatalogEntry): void {
 		if (!catalogEnabled) return;
@@ -422,16 +387,15 @@ function LocalModelServerSettingsContent() {
 		),
 	);
 	const updateDownload = (download: ModelDownload) => {
-		queryClient.setQueryData<ModelDownload[]>(
-			sdkQueryKey(sdk, "catalog.downloads.list"),
-			(current) => upsertDownload(current, download),
+		queryClient.setQueryData<ModelDownload[]>(localInferenceQueryKey("listDownloads"), (current) =>
+			upsertDownload(current, download),
 		);
 		return download;
 	};
 	const startCatalogDownload = (identity: DownloadIdentity) =>
-		sdk.client["catalog.download.start"](identity).then(updateDownload);
+		client.startDownload(identity).then(updateDownload);
 	const cancelCatalogDownload = (identity: DownloadIdentity) =>
-		sdk.client["catalog.download.cancel"](identity).then(updateDownload);
+		client.cancelDownload(identity).then(updateDownload);
 	const connectionModel =
 		visibleModelRows.find((model) => model.id === lastExpandedModelId) ?? visibleModelRows[0];
 	const setModelExpanded = (modelId: string, open: boolean) => {
@@ -456,7 +420,7 @@ function LocalModelServerSettingsContent() {
 		loadedModelIds.add(status.data.loadedModelId);
 	}
 	const copyConnectionDetail = (value: string) => {
-		void sdk.shell.copyText(value);
+		void clipboard?.methods.writeText({ text: value }).catch(() => undefined);
 	};
 	const requestModelDeletion = (model: LocalModel) => {
 		removeModel.reset();
@@ -475,7 +439,7 @@ function LocalModelServerSettingsContent() {
 			setModelFileError("Only GGUF model files can be added.");
 			return;
 		}
-		const path = sdk.shell.getPathForFile(file);
+		const path = pathForFile(file);
 		if (!path) {
 			setModelFileError("The selected file could not be resolved.");
 			return;
@@ -530,7 +494,7 @@ function LocalModelServerSettingsContent() {
 								disabled={retry.isPending || status.isFetching}
 								data-qa-id="local-model-server-retry"
 								onClick={() => {
-									if (status.data?.status === "error") retry.mutate();
+									if (status.data?.status === "error") retry.mutate(undefined);
 									else void status.refetch();
 								}}
 							>
@@ -690,7 +654,9 @@ function LocalModelServerSettingsContent() {
 									removing={removeModel.isPending}
 									onRemove={(model) => removeModel.mutate({ id: model.id, mode: "registry-only" })}
 									onReveal={(model) => {
-										void sdk.shell.showItemInFolder(model.path).catch(() => undefined);
+										void shell?.methods
+											.showItemInFolder({ path: model.path })
+											.catch(() => undefined);
 									}}
 									onDelete={requestModelDeletion}
 									onOpenCatalog={(model) => {
@@ -727,10 +693,12 @@ function LocalModelServerSettingsContent() {
 					setCatalogOpen(open);
 					if (!open) {
 						setCatalogModel(undefined);
-						const location = sdk.location.peek();
-						if (typeof location.search.catalogModel === "string") {
+						const location = navigation?.getState();
+						if (location && typeof location.search["catalogModel"] === "string") {
 							const { catalogModel: _ignored, ...search } = location.search;
-							sdk.navigate(location.path, { search, replace: true });
+							void navigation?.methods
+								.navigate({ path: location.path, search })
+								.catch(() => undefined);
 						}
 					}
 				}}

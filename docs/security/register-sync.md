@@ -16,7 +16,12 @@ should find nothing to change. Never skip it: both skills trust
    - `plugins/*/plugin.json` whose plugin is not represented in the register;
    - new `createServer` / `.listen(` / `net.fetch` / keyring / `openExternal` /
      `registerSchemesAsPrivileged` / `protocol.handle` / `spawn(` usages;
-   - new CLI-distribution, relay, sidecar, or embedded-host code.
+   - new CLI-distribution, relay, sidecar, or embedded-host code;
+   - new domain methods that hand out secrets or control (keys, tokens,
+     connections, consent answers) — they need a `caller.process` /
+     `homeCallersOnly` gate or a per-method caller check, because a domain
+     `permission` can only name a kernel host permission and window plugin
+     identity is advisory (`docs/plugins/domains.md`).
 
    Anything undocumented means the register is behind the code — add a row.
 

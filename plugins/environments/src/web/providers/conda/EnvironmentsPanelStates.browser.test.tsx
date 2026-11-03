@@ -45,7 +45,7 @@ describe("EnvironmentsStartingState", () => {
 });
 
 describe("EnvironmentsErrorState", () => {
-	it("shows friendly copy, hides raw FeatureError internals, and retries on click", async () => {
+	it("shows friendly copy, hides raw KernelError internals, and retries on click", async () => {
 		const onRetry = vi.fn();
 		const { baseElement } = render(
 			<EnvironmentsErrorState

@@ -2,8 +2,9 @@ import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import { createStaticNavigation, type AuthSession } from "@kilo-desktop/feature-sdk";
 import { revealInFileManagerLabel } from "@kilo-desktop/ui/lib/reveal-in-file-manager";
+
+import { SIGNED_OUT } from "../../test/local-inference-host.js";
 
 import type {
 	LocalInferenceHardwareProfile,
@@ -11,11 +12,12 @@ import type {
 	LocalModel,
 	ModelCatalogEntry,
 	ModelDownload,
-} from "../../contracts/schemas.js";
+} from "../../contracts/index.js";
 import {
 	authenticatedAuth,
 	expandModel,
 	renderSettings,
+	staticNavigation,
 	usageSnapshot,
 } from "../../test/render-local-model-server-settings.js";
 
@@ -82,7 +84,7 @@ describe("LocalModelServerSettings", () => {
 			available: true,
 			addedAt: 1,
 		}));
-		const { baseElement, track } = renderSettings(
+		const { baseElement, tracked } = await renderSettings(
 			{
 				"models.add": addModel,
 				"status.get": async () => ({ status: "ready", loadedModelIds: [] }),
@@ -112,15 +114,15 @@ describe("LocalModelServerSettings", () => {
 
 		await expect.poll(() => addModel).toHaveBeenCalledWith({ path: "/models/tiny.gguf" });
 		await expect
-			.poll(() => track.mock.calls.map(([input]) => input))
+			.poll(() => tracked)
 			.toContainEqual({
 				event: "Local Model Installed",
-				data: { featureId: "local-inference", source: "import" },
+				data: { source: "import" },
 			});
 	});
 
 	it("hides the catalog from the empty state when the flag is off", async () => {
-		const { baseElement } = renderSettings(
+		const { baseElement } = await renderSettings(
 			{
 				"status.get": async () => ({ status: "ready", loadedModelIds: [] }),
 				"usage.get": async () => usageSnapshot,
@@ -128,7 +130,7 @@ describe("LocalModelServerSettings", () => {
 			{},
 			authenticatedAuth,
 			undefined,
-			{ peek: () => ({ "local-model-catalog": false }) },
+			{ "local-model-catalog": false },
 		);
 		const screen = page.elementLocator(baseElement);
 		await expect.element(screen.getByText("No models added", { exact: true })).toBeVisible();
@@ -140,7 +142,7 @@ describe("LocalModelServerSettings", () => {
 	});
 
 	it("opens the local model catalog from the add model menu", async () => {
-		const { baseElement } = renderSettings({
+		const { baseElement } = await renderSettings({
 			"catalog.list": async () => ({ models: [], total: 0 }),
 			"status.get": async () => ({ status: "ready", loadedModelIds: [] }),
 			"usage.get": async () => usageSnapshot,
@@ -167,7 +169,7 @@ describe("LocalModelServerSettings", () => {
 	});
 
 	it("opens the catalog on the model from the catalogModel search param", async () => {
-		const { baseElement } = renderSettings(
+		const { baseElement } = await renderSettings(
 			{
 				"catalog.list": async () => ({ models: [catalogModel], total: 1 }),
 				"hardware.profile": async () => hardwareProfile,
@@ -176,7 +178,7 @@ describe("LocalModelServerSettings", () => {
 			},
 			{},
 			authenticatedAuth,
-			createStaticNavigation({
+			staticNavigation({
 				path: "/settings/local-model-server",
 				search: { catalogModel: catalogModel.id },
 			}),
@@ -190,7 +192,7 @@ describe("LocalModelServerSettings", () => {
 	});
 
 	it("keeps the details panel closed when the catalogModel search param is unknown", async () => {
-		const { baseElement } = renderSettings(
+		const { baseElement } = await renderSettings(
 			{
 				"catalog.list": async () => ({ models: [catalogModel], total: 1 }),
 				"hardware.profile": async () => hardwareProfile,
@@ -199,7 +201,7 @@ describe("LocalModelServerSettings", () => {
 			},
 			{},
 			authenticatedAuth,
-			createStaticNavigation({
+			staticNavigation({
 				path: "/settings/local-model-server",
 				search: { catalogModel: "missing-model" },
 			}),
@@ -214,28 +216,12 @@ describe("LocalModelServerSettings", () => {
 	});
 
 	it("closes the catalog when the session is lost while browsing", async () => {
-		let session: AuthSession = {
-			status: "authenticated",
-			user: { email: "test@example.com" },
-		};
-		const listeners = new Set<(next: AuthSession) => void>();
-		const { baseElement } = renderSettings(
-			{
-				"catalog.list": async () => ({ models: [], total: 0 }),
-				"hardware.profile": async () => hardwareProfile,
-				"status.get": async () => ({ status: "ready", loadedModelIds: [] }),
-				"usage.get": async () => usageSnapshot,
-			},
-			{},
-			{
-				subscribe(listener) {
-					listeners.add(listener);
-					listener(session);
-					return () => listeners.delete(listener);
-				},
-				peek: () => session,
-			},
-		);
+		const { baseElement, host } = await renderSettings({
+			"catalog.list": async () => ({ models: [], total: 0 }),
+			"hardware.profile": async () => hardwareProfile,
+			"status.get": async () => ({ status: "ready", loadedModelIds: [] }),
+			"usage.get": async () => usageSnapshot,
+		});
 		const screen = page.elementLocator(baseElement);
 
 		await screen.getByRole("button", { name: "Add model" }).click();
@@ -243,10 +229,10 @@ describe("LocalModelServerSettings", () => {
 		const dialog = page.getByRole("dialog", { name: "Local Model Catalog" });
 		await expect.element(dialog).toBeVisible();
 
-		session = { status: "anonymous" };
-		for (const listener of listeners) listener(session);
+		await host.setIdentity(SIGNED_OUT);
 
 		await expect.element(dialog).not.toBeInTheDocument();
+		await expect.element(page.getByTestId("kilo-auth-gate-signin")).toBeVisible();
 	});
 
 	it("retries the catalog request inside the modal", async () => {
@@ -254,7 +240,7 @@ describe("LocalModelServerSettings", () => {
 			.fn()
 			.mockRejectedValueOnce(new Error("Catalog unavailable"))
 			.mockResolvedValue({ models: [], total: 0 });
-		const { baseElement } = renderSettings({
+		const { baseElement } = await renderSettings({
 			"catalog.list": listCatalog,
 			"status.get": async () => ({ status: "ready", loadedModelIds: [] }),
 			"usage.get": async () => usageSnapshot,
@@ -286,7 +272,7 @@ describe("LocalModelServerSettings", () => {
 		const hardwareResponse = new Promise<LocalInferenceHardwareProfile>((resolve) => {
 			resolveHardware = resolve;
 		});
-		const { baseElement } = renderSettings({
+		const { baseElement } = await renderSettings({
 			"catalog.list": () => catalogResponse,
 			"hardware.profile": () => hardwareResponse,
 			"status.get": async () => ({ status: "ready", loadedModelIds: [] }),
@@ -319,7 +305,7 @@ describe("LocalModelServerSettings", () => {
 				resolveCatalog = resolve;
 			},
 		);
-		const { baseElement } = renderSettings(
+		const { baseElement } = await renderSettings(
 			{
 				"catalog.list": () => catalogResponse,
 				"hardware.profile": async () => hardwareProfile,
@@ -328,7 +314,7 @@ describe("LocalModelServerSettings", () => {
 			},
 			{},
 			authenticatedAuth,
-			createStaticNavigation({
+			staticNavigation({
 				path: "/settings/local-model-server",
 				search: { catalogModel: catalogModel.id },
 			}),
@@ -347,7 +333,7 @@ describe("LocalModelServerSettings", () => {
 	});
 
 	it("shows model details beside the catalog and selects a quantization", async () => {
-		const { baseElement } = renderSettings({
+		const { baseElement } = await renderSettings({
 			"catalog.list": async () => ({ models: [catalogModel], total: 1 }),
 			"hardware.profile": async () => hardwareProfile,
 			"status.get": async () => ({ status: "ready", loadedModelIds: [] }),
@@ -425,7 +411,7 @@ describe("LocalModelServerSettings", () => {
 
 	it("does not allow a model quantization that does not fit", async () => {
 		const startDownload = vi.fn();
-		const { baseElement } = renderSettings({
+		const { baseElement } = await renderSettings({
 			"catalog.list": async () => ({ models: [catalogModel], total: 1 }),
 			"catalog.download.start": startDownload,
 			"hardware.profile": async () => constrainedHardwareProfile,
@@ -464,7 +450,7 @@ describe("LocalModelServerSettings", () => {
 		const startDownload = vi.fn(async () => initialDownload);
 		const listModels = vi.fn(async () => models);
 		const removeModel = vi.fn(async () => ({ ok: true as const }));
-		const { baseElement, sdk } = renderSettings({
+		const { baseElement, host } = await renderSettings({
 			"catalog.list": async () => ({ models: [catalogModel], total: 1 }),
 			"catalog.download.start": startDownload,
 			"hardware.profile": async () => hardwareProfile,
@@ -492,7 +478,7 @@ describe("LocalModelServerSettings", () => {
 		const quantizationSelect = dialog.getByTestId("model-catalog-quantization-select");
 		const quantizationWidthAtZero = quantizationSelect.element().getBoundingClientRect().width;
 
-		sdk.events.emit("catalog-download-changed", {
+		await host.emitDownload({
 			...initialDownload,
 			transferredBytes: 2 * 1024 ** 3,
 			percentage: 50,
@@ -518,7 +504,7 @@ describe("LocalModelServerSettings", () => {
 				sizeBytes: 4 * 1024 ** 3,
 			},
 		];
-		sdk.events.emit("catalog-download-changed", {
+		await host.emitDownload({
 			...initialDownload,
 			status: "completed",
 			transferredBytes: 4 * 1024 ** 3,
@@ -559,7 +545,7 @@ describe("LocalModelServerSettings", () => {
 			transferredBytes: 0,
 			percentage: 0,
 		}));
-		const { baseElement, sdk } = renderSettings({
+		const { baseElement, host } = await renderSettings({
 			"catalog.list": async () => ({ models: [catalogModel], total: 1 }),
 			"catalog.downloads.list": async () => [activeDownload],
 			"catalog.download.cancel": cancelDownload,
@@ -580,7 +566,7 @@ describe("LocalModelServerSettings", () => {
 		await expect
 			.element(dialog.getByRole("button", { name: "Cancelling download" }))
 			.toBeDisabled();
-		sdk.events.emit("catalog-download-changed", {
+		await host.emitDownload({
 			...activeDownload,
 			status: "cancelled",
 		});
@@ -605,7 +591,7 @@ describe("LocalModelServerSettings", () => {
 			totalBytes: 4096,
 			percentage: 37,
 		};
-		const { baseElement } = renderSettings({
+		const { baseElement } = await renderSettings({
 			"catalog.list": async () => ({ models: [catalogModel], total: 1 }),
 			"catalog.downloads.list": async () => [activeDownload],
 			"hardware.profile": async () => hardwareProfile,
@@ -650,7 +636,7 @@ describe("LocalModelServerSettings", () => {
 			percentage: 0,
 		};
 		const startDownload = vi.fn(async () => q8Download);
-		const { baseElement } = renderSettings({
+		const { baseElement } = await renderSettings({
 			"catalog.list": async () => ({ models: [catalogModel], total: 1 }),
 			"catalog.downloads.list": async () => [q4Download],
 			"catalog.download.start": startDownload,
@@ -702,7 +688,7 @@ describe("LocalModelServerSettings", () => {
 			percentage: 0,
 			error: undefined,
 		}));
-		const { baseElement } = renderSettings({
+		const { baseElement } = await renderSettings({
 			"catalog.list": async () => ({ models: [catalogModel], total: 1 }),
 			"catalog.downloads.list": async () => [failedDownload],
 			"catalog.download.start": startDownload,
@@ -728,7 +714,7 @@ describe("LocalModelServerSettings", () => {
 
 	it("starts a disconnected server", async () => {
 		const connect = vi.fn(async () => ({ ok: true as const }));
-		const { baseElement, track } = renderSettings({
+		const { baseElement, tracked } = await renderSettings({
 			"status.get": async () => ({ status: "disconnected" }),
 			"usage.get": async () => usageSnapshot,
 			"runtime.connect": connect,
@@ -741,10 +727,10 @@ describe("LocalModelServerSettings", () => {
 		await toggle.click();
 		await expect.poll(() => connect).toHaveBeenCalledOnce();
 		await expect
-			.poll(() => track.mock.calls.map(([input]) => input))
+			.poll(() => tracked)
 			.toContainEqual({
 				event: "Local Model Server Started",
-				data: { featureId: "local-inference" },
+				data: {},
 			});
 	});
 
@@ -757,7 +743,7 @@ describe("LocalModelServerSettings", () => {
 					resolveConnect = resolve;
 				}),
 		);
-		const { baseElement, sdk } = renderSettings({
+		const { baseElement, host } = await renderSettings({
 			"status.get": async () => currentStatus,
 			"usage.get": async () => usageSnapshot,
 			"runtime.connect": connect,
@@ -768,7 +754,7 @@ describe("LocalModelServerSettings", () => {
 		await expect.poll(() => connect).toHaveBeenCalledOnce();
 
 		currentStatus = { status: "preparing-runtime" };
-		sdk.events.emit("status-changed", currentStatus);
+		await host.setStatus(currentStatus);
 
 		await expect.element(screen.getByText("Installing llama.cpp…", { exact: true })).toBeVisible();
 		resolveConnect?.({ ok: true });
@@ -776,7 +762,7 @@ describe("LocalModelServerSettings", () => {
 
 	it("stops an active server", async () => {
 		const disconnect = vi.fn(async () => ({ ok: true as const }));
-		const { baseElement, track } = renderSettings({
+		const { baseElement, tracked } = await renderSettings({
 			"status.get": async () => ({ status: "ready" }),
 			"usage.get": async () => usageSnapshot,
 			"runtime.disconnect": disconnect,
@@ -789,17 +775,17 @@ describe("LocalModelServerSettings", () => {
 		await toggle.click();
 		await expect.poll(() => disconnect).toHaveBeenCalledOnce();
 		await expect
-			.poll(() => track.mock.calls.map(([input]) => input))
+			.poll(() => tracked)
 			.toContainEqual({
 				event: "Local Model Server Stopped",
-				data: { featureId: "local-inference" },
+				data: {},
 			});
 	});
 
-	it("refreshes the displayed status when the service emits a change", async () => {
+	it("follows the status main publishes without reading it again", async () => {
 		let currentStatus: LocalInferenceStatus = { status: "starting" };
 		const statusGet = vi.fn(async () => currentStatus);
-		const { baseElement, sdk } = renderSettings({
+		const { baseElement, host } = await renderSettings({
 			"status.get": statusGet,
 			"usage.get": async () => usageSnapshot,
 		});
@@ -807,15 +793,15 @@ describe("LocalModelServerSettings", () => {
 
 		await expect.element(screen.getByText("Starting…", { exact: true })).toBeVisible();
 		currentStatus = { status: "ready", loadedModelIds: [] };
-		sdk.events.emit("status-changed", currentStatus);
+		await host.setStatus(currentStatus);
 
 		await expect.element(screen.getByText("Running", { exact: true })).toBeVisible();
-		await expect.poll(() => statusGet.mock.calls.length).toBeGreaterThanOrEqual(2);
+		expect(statusGet).toHaveBeenCalledOnce();
 	});
 
 	it("shows service errors and retries startup", async () => {
 		const retry = vi.fn(async () => ({ ok: true as const }));
-		const { baseElement } = renderSettings({
+		const { baseElement } = await renderSettings({
 			"status.get": async () => ({ status: "error", message: "Runtime failed to start" }),
 			"usage.get": async () => usageSnapshot,
 			"runtime.retry": retry,
@@ -840,7 +826,7 @@ describe("LocalModelServerSettings", () => {
 			},
 		);
 		const listCatalog = vi.fn(() => catalogResponse);
-		const { baseElement } = renderSettings({
+		const { baseElement } = await renderSettings({
 			"models.list": async () => [
 				{
 					id: "model-alpha",
@@ -875,7 +861,7 @@ describe("LocalModelServerSettings", () => {
 	});
 
 	it("searches models and filters them by catalog or imported source", async () => {
-		const { baseElement } = renderSettings({
+		const { baseElement } = await renderSettings({
 			"models.list": async () => [
 				{
 					id: "catalog-alpha",
@@ -944,38 +930,35 @@ describe("LocalModelServerSettings", () => {
 
 	it("expands model cards and exposes safe filesystem actions from their menu", async () => {
 		const removeModel = vi.fn(async () => ({ ok: true as const }));
-		const showItemInFolder = vi.fn(async () => ({ revealed: true }));
-		const { baseElement } = renderSettings(
-			{
-				"models.list": async () => [
-					{
-						id: "model-alpha",
-						name: "Alpha 8B (Q4_K_M)",
-						path: "/models/alpha.gguf",
-						available: true,
-						addedAt: 1,
-						catalog: { modelId: "catalog-model", quantizationId: "catalog-model-q4" },
-						managedFile: true,
-						sizeBytes: 4 * 1024 ** 3,
-					},
-					{
-						id: "model-beta",
-						name: "Beta 3B",
-						path: "/models/beta.gguf",
-						available: true,
-						addedAt: 2,
-					},
-				],
-				"status.get": async () => ({
-					status: "ready",
-					loadedModelIds: ["model-alpha"],
-				}),
-				"models.remove": removeModel,
-				"catalog.list": async () => ({ models: [catalogModel], total: 1 }),
-				"usage.get": async () => usageSnapshot,
-			},
-			{ showItemInFolder },
-		);
+		const { baseElement, host } = await renderSettings({
+			"models.list": async () => [
+				{
+					id: "model-alpha",
+					name: "Alpha 8B (Q4_K_M)",
+					path: "/models/alpha.gguf",
+					available: true,
+					addedAt: 1,
+					catalog: { modelId: "catalog-model", quantizationId: "catalog-model-q4" },
+					managedFile: true,
+					sizeBytes: 4 * 1024 ** 3,
+				},
+				{
+					id: "model-beta",
+					name: "Beta 3B",
+					path: "/models/beta.gguf",
+					available: true,
+					addedAt: 2,
+				},
+			],
+			"status.get": async () => ({
+				status: "ready",
+				loadedModelIds: ["model-alpha"],
+			}),
+			"models.remove": removeModel,
+			"catalog.list": async () => ({ models: [catalogModel], total: 1 }),
+			"usage.get": async () => usageSnapshot,
+		});
+		const { showItemInFolder } = host;
 		const screen = page.elementLocator(baseElement);
 		const alpha = screen.getByTestId("local-model-item-model-alpha");
 		const beta = screen.getByTestId("local-model-item-model-beta");
@@ -1023,7 +1006,7 @@ describe("LocalModelServerSettings", () => {
 		const betaAbout = betaDetails.getByRole("complementary", { name: "About Beta 3B" });
 		await expect.element(betaAbout.getByText("Imported GGUF", { exact: true })).toBeVisible();
 		await betaAbout.getByRole("button", { name: revealInFileManagerLabel() }).click();
-		await expect.poll(() => showItemInFolder).toHaveBeenCalledWith("/models/beta.gguf");
+		await expect.poll(() => showItemInFolder).toHaveBeenCalledWith({ path: "/models/beta.gguf" });
 		showItemInFolder.mockClear();
 
 		await screen.getByTestId("local-model-chevron-model-alpha").click();
@@ -1034,7 +1017,7 @@ describe("LocalModelServerSettings", () => {
 		const betaActions = screen.getByRole("button", { name: "More actions for Beta 3B" });
 		await betaActions.click();
 		await page.getByRole("menuitem", { name: revealInFileManagerLabel() }).click();
-		await expect.poll(() => showItemInFolder).toHaveBeenCalledWith("/models/beta.gguf");
+		await expect.poll(() => showItemInFolder).toHaveBeenCalledWith({ path: "/models/beta.gguf" });
 
 		await betaActions.click();
 		await page.getByRole("menuitem", { name: "Remove from model server" }).click();
@@ -1053,7 +1036,7 @@ describe("LocalModelServerSettings", () => {
 	});
 
 	it("expands a model from anywhere on its row except the actions menu", async () => {
-		const { baseElement } = renderSettings({
+		const { baseElement } = await renderSettings({
 			"models.list": async () => [
 				{
 					id: "model-alpha",
@@ -1088,7 +1071,7 @@ describe("LocalModelServerSettings", () => {
 		const removeModel = vi.fn(async () => {
 			throw new Error("The model file is busy.");
 		});
-		const { baseElement } = renderSettings({
+		const { baseElement } = await renderSettings({
 			"models.list": async () => [
 				{
 					id: "model-alpha",

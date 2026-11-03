@@ -2,16 +2,16 @@ import { test } from "../../../fixtures/features/git.js";
 
 test.use({ appIsolationKey: "git-changes" });
 
-test.describe("Git changes tab @smoke @packaged", () => {
-	test("mounts the Changes tab in a workspace chat's right panel", async ({
+test.describe("Git changes pane @smoke @packaged", () => {
+	test("opens the Changes pane in a workspace session", async ({
 		appShellPage,
 		changesPage,
 		gitWorkspace,
 	}) => {
 		await appShellPage.verifyShellIsLoaded();
-		await changesPage.createAndSelectWorkspace(gitWorkspace.path, gitWorkspace.name);
-		await changesPage.openChangesTab();
-		await changesPage.verifyTabMounted();
+		await changesPage.startSessionInWorkspace(gitWorkspace.path, gitWorkspace.name);
+		await changesPage.openChangesPane();
+		await changesPage.verifyPaneMounted();
 	});
 });
 
@@ -25,9 +25,9 @@ test.describe("Git changes live reload @packaged", () => {
 		gitWorkspace,
 	}) => {
 		await appShellPage.verifyShellIsLoaded();
-		await changesPage.createAndSelectWorkspace(gitWorkspace.path, gitWorkspace.name);
-		await changesPage.openChangesTab();
-		await changesPage.verifyTabMounted();
+		await changesPage.startSessionInWorkspace(gitWorkspace.path, gitWorkspace.name);
+		await changesPage.openChangesPane();
+		await changesPage.verifyPaneMounted();
 		await changesPage.expectTreePaths(["README.md"]);
 
 		await changesPage.writeWorkingTreeFile(gitWorkspace.path, "newfile.txt", "hey there\n");
@@ -35,5 +35,19 @@ test.describe("Git changes live reload @packaged", () => {
 
 		await changesPage.stageAndCommitAll(gitWorkspace.path, "second");
 		await changesPage.expectNoChanges();
+	});
+});
+
+test.describe("Git changes pane init", () => {
+	test("initializes a plain folder from the Changes pane's error state", async ({
+		appShellPage,
+		changesPage,
+		plainWorkspace,
+	}) => {
+		await appShellPage.verifyShellIsLoaded();
+		await changesPage.startSessionInWorkspace(plainWorkspace.path, plainWorkspace.name);
+		await changesPage.openChangesPane();
+
+		await changesPage.initializeFromErrorState();
 	});
 });

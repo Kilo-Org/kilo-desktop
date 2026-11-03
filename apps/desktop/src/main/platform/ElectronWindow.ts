@@ -2,57 +2,39 @@ import path from "node:path";
 
 import { app, BrowserWindow, screen, type BrowserWindowConstructorOptions } from "electron";
 
+import { DEFAULT_APP_THEME_PREFERENCES, getThemeChrome } from "@kilo-desktop/ui/themes/app-themes";
 import {
 	chromeFor,
-	DEFAULT_APP_THEME_PREFERENCES,
-	getThemeChrome,
-	ipcEvents,
-	type IpcEventChannel,
-	type IpcEventPayload,
-	type PaneWindow,
-	type ThemeChromeColors,
-	type ShellNavigationTarget,
 	windowBackgroundFor,
-} from "@kilo-desktop/contracts";
+	type ThemeChromeColors,
+} from "@kilo-desktop/ui/themes/theme-tokens";
 
-import { getDesktopRouteUrl, getDesktopUrl } from "./ElectronProtocol.js";
-import { isTrustedRendererUrl } from "./ElectronSecurity.js";
-import type { ElectronShell } from "./ElectronShell.js";
 import { BROWSER_PARTITION } from "./ElectronBrowserHost.js";
 import { attachContextMenu } from "./ElectronContextMenu.js";
+import { getDesktopUrl } from "./ElectronProtocol.js";
+import { isTrustedRendererUrl } from "./ElectronSecurity.js";
+import type { ElectronShell } from "./ElectronShell.js";
+
+type ThemeChromeByScheme = Readonly<Record<"light" | "dark", ThemeChromeColors>>;
 
 /** Matches the app header band (`h-12` = 48px). */
 const TITLEBAR_HEIGHT = 48;
 const TITLEBAR_OVERLAY_HEIGHT = TITLEBAR_HEIGHT - 1;
 const TRAFFIC_LIGHT_SIZE = 14;
 
-type PaneWindowRecord = {
-	descriptor: PaneWindow;
-	window: BrowserWindow;
-	ready: boolean;
-};
-
 /**
- * Owns the main BrowserWindow and its pane windows. Pane windows remain keyed
- * by plugin/session/pane identity and emit one lifecycle event whenever native
- * window state changes so renderer tabs remain the source of navigation truth.
- * A session-scoped pane window is hidden while its session is inactive; one
- * opened without a session belongs to the plugin as a whole and only follows
- * the main window's visibility.
- * Chrome reads the last renderer-synced preferences on creation and repaint,
- * falling back to the app's default palette before the first renderer sync;
- * macOS retains native vibrancy regardless of the selected palette.
+ * Owns the main BrowserWindow and the secondary windows opened beside it.
+ * Chrome uses the colours last supplied at runtime (kernel/native-theme),
+ * falling back to the app's default palette before the first sync; macOS
+ * retains native vibrancy regardless of the selected palette.
  */
 export class ElectronWindow {
 	#mainWindow: BrowserWindow | undefined;
-	#isDevelopment = false;
-	readonly #paneWindows = new Map<string, PaneWindowRecord>();
-	readonly #activePaneSessions = new Map<string, string | null>();
 
 	constructor(
 		private readonly electronShell: ElectronShell,
 		private readonly shouldUseDarkColors: () => boolean,
-		private readonly themeId: () => string | undefined = () => undefined,
+		private readonly chromeColors: () => ThemeChromeByScheme | undefined = () => undefined,
 	) {}
 
 	create(input: {
@@ -61,9 +43,11 @@ export class ElectronWindow {
 		readonly options?: BrowserWindowConstructorOptions;
 		/** When true, the window is not shown on ready-to-show. Use `reveal()` to show it. */
 		readonly deferShow?: boolean;
-		readonly initialRoute?: ShellNavigationTarget;
 	}): BrowserWindow {
 		const window = this.#createWindow(input.isDevelopment, input.preloadPath, {
+			// The saved size and position are keyed by name, which Electron requires
+			// to be unique: only the main window has one, so pop-outs can open.
+			name: app.getName(),
 			windowStatePersistence: true,
 			...input.options,
 			webPreferences: {
@@ -77,143 +61,49 @@ export class ElectronWindow {
 			window.once("ready-to-show", () => window.show());
 		}
 		window.on("closed", () => {
-			if (this.#mainWindow !== window) return;
-			this.#mainWindow = undefined;
-			for (const record of this.#paneWindows.values()) record.window.close();
+			if (this.#mainWindow === window) this.#mainWindow = undefined;
 		});
-		window.on("hide", () => this.#hidePaneWindows());
-		window.on("minimize", () => this.#hidePaneWindows());
-		window.on("show", () => this.#refreshPaneWindows());
-		window.on("restore", () => this.#refreshPaneWindows());
-		this.#isDevelopment = input.isDevelopment;
-		void window.loadURL(
-			input.initialRoute
-				? getDesktopRouteUrl(
-						input.isDevelopment,
-						input.initialRoute.path,
-						input.initialRoute.search,
-					)
-				: getDesktopUrl(input.isDevelopment),
-		);
+		void window.loadURL(getDesktopUrl(input.isDevelopment));
 		return window;
 	}
 
-	loadMainRoute(target: ShellNavigationTarget): void {
-		const window = this.main;
-		if (!window) return;
-		void window.loadURL(getDesktopRouteUrl(this.#isDevelopment, target.path, target.search));
-	}
-
-	navigateMain(target: ShellNavigationTarget): void {
-		const window = this.main;
-		if (!window) return;
-		window.webContents.send("shell:navigate", ipcEvents["shell:navigate"].payload.parse(target));
-	}
-
-	openPaneWindow(descriptor: PaneWindow, isDevelopment: boolean): { opened: boolean } {
-		const key = paneWindowKey(descriptor);
-		const existing = this.#paneWindows.get(key);
-		if (existing && !existing.window.isDestroyed()) {
-			this.reveal(existing.window);
-			return { opened: false };
-		}
-
-		const window = this.#createWindow(isDevelopment, undefined, {
-			title: descriptor.title,
-			name: paneWindowName(descriptor),
-			fullscreen: false,
-			...this.#paneWindowWidth(descriptor.width),
-			height: 720,
-			minWidth: 480,
-			minHeight: 360,
+	/**
+	 * A plugin-independent secondary window. Its identity (id, view, params)
+	 * reaches the preload through `additionalArguments`; it shows when ready
+	 * and follows the main window only by being closed with it. That close is
+	 * a `destroy()`: the main window's close already passed the kernel's close
+	 * veto, and a vetoed pop-out would outlive the window it belongs to.
+	 */
+	openSecondary(input: {
+		readonly isDevelopment: boolean;
+		readonly title: string;
+		readonly width?: number;
+		readonly height?: number;
+		readonly additionalArguments: readonly string[];
+	}): BrowserWindow {
+		const window = this.#createWindow(input.isDevelopment, undefined, {
+			title: input.title,
+			...this.#secondaryWindowWidth(input.width),
+			...(input.height === undefined ? {} : { height: input.height }),
 			webPreferences: {
-				// Pane windows can host the same plugin panes as the main window,
-				// including the browser pane's <webview>. Without this the popped-out
-				// browser renders a blank surface. The will-attach-webview guard in
-				// #createWindow still restricts guests to BROWSER_PARTITION.
+				additionalArguments: [...input.additionalArguments],
+				// Pop-outs host the same plugin panes as the main window, including
+				// the Browser pane's <webview>; without this it renders blank.
+				// Guests are still constrained by the will-attach-webview guard.
 				webviewTag: true,
-				additionalArguments: ["--kilo-window-role=pane"],
 			},
 		});
-		const record: PaneWindowRecord = { descriptor, window, ready: false };
-		this.#paneWindows.set(key, record);
-
-		window.once("ready-to-show", () => {
-			record.ready = true;
-			if (!this.#isPaneSessionActive(descriptor) || !this.main?.isVisible()) return;
-			window.show();
-			window.focus();
-		});
-		window.on("focus", () => this.#emitPaneWindowEvent(record, "focused"));
-		window.on("blur", () => this.#emitPaneWindowEvent(record, "blurred"));
-		window.on("closed", () => {
-			if (this.#paneWindows.get(key) !== record) return;
-			this.#paneWindows.delete(key);
-			this.#emitPaneWindowEvent(record, "docked");
-		});
-		void window.loadURL(
-			getDesktopRouteUrl(isDevelopment, descriptor.path, {
-				paneWindow: "true",
-				panePluginId: descriptor.pluginId,
-				...(descriptor.sessionId ? { paneSessionId: descriptor.sessionId } : {}),
-				paneId: descriptor.paneId,
-				...(descriptor.workspaceId ? { paneWorkspaceId: descriptor.workspaceId } : {}),
-			}),
-		);
-		this.#emitPaneWindowEvent(record, "opened");
-		return { opened: true };
-	}
-
-	listPaneWindows(pluginId: string): PaneWindow[] {
-		return [...this.#paneWindows.values()]
-			.filter((record) => record.descriptor.pluginId === pluginId && !record.window.isDestroyed())
-			.map((record) => record.descriptor);
-	}
-
-	focusPaneWindow(identity: Pick<PaneWindow, "pluginId" | "sessionId" | "paneId">): {
-		focused: boolean;
-	} {
-		const record = this.#paneWindows.get(paneWindowKey(identity));
-		if (!record || record.window.isDestroyed()) return { focused: false };
-		this.reveal(record.window);
-		return { focused: true };
-	}
-
-	dockPaneWindow(identity: Pick<PaneWindow, "pluginId" | "sessionId" | "paneId">): {
-		docked: boolean;
-	} {
-		const record = this.#paneWindows.get(paneWindowKey(identity));
-		if (!record || record.window.isDestroyed()) return { docked: false };
-		record.window.close();
-		return { docked: true };
-	}
-
-	syncPaneWindows(pluginId: string, activeSessionId: string | null): void {
-		this.#activePaneSessions.set(pluginId, activeSessionId);
-		this.#refreshPaneWindows(pluginId);
-	}
-
-	#hidePaneWindows(): void {
-		for (const record of this.#paneWindows.values()) {
-			if (!record.window.isDestroyed() && record.window.isVisible()) record.window.hide();
+		window.once("ready-to-show", () => window.show());
+		const main = this.main;
+		if (main) {
+			const closeWithMain = () => {
+				if (!window.isDestroyed()) window.destroy();
+			};
+			main.once("closed", closeWithMain);
+			window.once("closed", () => main.off("closed", closeWithMain));
 		}
-	}
-
-	#refreshPaneWindows(pluginId?: string): void {
-		for (const record of this.#paneWindows.values()) {
-			if (
-				(pluginId && record.descriptor.pluginId !== pluginId) ||
-				!record.ready ||
-				record.window.isDestroyed()
-			) {
-				continue;
-			}
-			if (this.#isPaneSessionActive(record.descriptor) && this.main?.isVisible()) {
-				if (!record.window.isVisible()) record.window.showInactive();
-				continue;
-			}
-			if (record.window.isVisible()) record.window.hide();
-		}
+		void window.loadURL(getDesktopUrl(input.isDevelopment));
+		return window;
 	}
 
 	/**
@@ -242,31 +132,6 @@ export class ElectronWindow {
 		return BrowserWindow.getAllWindows().filter((window) => !window.isDestroyed());
 	}
 
-	getTitle(senderId: number): string {
-		return this.#forSender(senderId)?.getTitle() ?? "";
-	}
-
-	setTitle(senderId: number, title: string): void {
-		this.#forSender(senderId)?.setTitle(title);
-	}
-
-	isFocused(senderId: number): boolean {
-		return this.#forSender(senderId)?.isFocused() ?? false;
-	}
-
-	onFocusChange(senderId: number, listener: (focused: boolean) => void): () => void {
-		const window = this.#forSender(senderId);
-		if (!window) return () => {};
-		const onFocus = () => listener(true);
-		const onBlur = () => listener(false);
-		window.on("focus", onFocus);
-		window.on("blur", onBlur);
-		return () => {
-			window.off("focus", onFocus);
-			window.off("blur", onBlur);
-		};
-	}
-
 	reveal(window = this.main): void {
 		if (!window || window.isDestroyed()) return;
 		if (window.isMinimized()) window.restore();
@@ -275,22 +140,10 @@ export class ElectronWindow {
 		window.focus();
 	}
 
-	broadcast<TChannel extends IpcEventChannel>(
-		channel: TChannel,
-		payload: IpcEventPayload<TChannel>,
-		excludeSenderId?: number,
-	): void {
-		const validatedPayload = ipcEvents[channel].payload.parse(payload);
-		for (const window of this.liveWindows) {
-			if (excludeSenderId !== undefined && window.webContents.id === excludeSenderId) continue;
-			window.webContents.send(channel, validatedPayload);
-		}
-	}
-
 	/** Repaints native chrome to match the renderer-owned theme (pushed via `theme:sync`). */
 	applyColorScheme(): void {
 		const shouldUseDarkColors = this.shouldUseDarkColors();
-		const colors = getThemeChrome(this.themeId() ?? DEFAULT_APP_THEME_PREFERENCES.themeId);
+		const colors = this.chromeColors() ?? getThemeChrome(DEFAULT_APP_THEME_PREFERENCES.themeId);
 		const chrome = chromeFor(shouldUseDarkColors, colors);
 		const background = windowBackgroundFor(shouldUseDarkColors, process.platform, colors);
 		for (const window of this.liveWindows) {
@@ -314,8 +167,6 @@ export class ElectronWindow {
 
 	destroyAll(): void {
 		for (const window of this.liveWindows) window.destroy();
-		this.#paneWindows.clear();
-		this.#activePaneSessions.clear();
 		this.#mainWindow = undefined;
 	}
 
@@ -329,12 +180,11 @@ export class ElectronWindow {
 		options?: BrowserWindowConstructorOptions,
 	): BrowserWindow {
 		const dark = this.shouldUseDarkColors();
-		const colors = getThemeChrome(this.themeId() ?? DEFAULT_APP_THEME_PREFERENCES.themeId);
+		const colors = this.chromeColors() ?? getThemeChrome(DEFAULT_APP_THEME_PREFERENCES.themeId);
 		const chrome = chromeFor(dark, colors);
 		const appName = app.getName();
 		const window = new BrowserWindow({
 			title: appName,
-			name: appName,
 			width: 1280,
 			height: 860,
 			minWidth: 720,
@@ -390,45 +240,13 @@ export class ElectronWindow {
 	}
 
 	/** A requested width sizes the content, capped to the display the main window is on. */
-	#paneWindowWidth(width: number | undefined): BrowserWindowConstructorOptions {
+	#secondaryWindowWidth(width: number | undefined): BrowserWindowConstructorOptions {
 		if (width === undefined) return { width: 960 };
 		const display = this.main
 			? screen.getDisplayMatching(this.main.getBounds())
 			: screen.getPrimaryDisplay();
 		return { width: Math.min(width, display.workArea.width), useContentSize: true };
 	}
-
-	#isPaneSessionActive(descriptor: PaneWindow): boolean {
-		if (descriptor.sessionId === undefined) return true;
-		const active = this.#activePaneSessions.get(descriptor.pluginId);
-		return active === undefined || active === descriptor.sessionId;
-	}
-
-	#emitPaneWindowEvent(
-		record: PaneWindowRecord,
-		type: "opened" | "docked" | "focused" | "blurred",
-	): void {
-		this.broadcast("shell:pane-window-changed", {
-			type,
-			pluginId: record.descriptor.pluginId,
-			sessionId: record.descriptor.sessionId,
-			paneId: record.descriptor.paneId,
-		});
-	}
-
-	#forSender(senderId: number): BrowserWindow | undefined {
-		return this.liveWindows.find((window) => window.webContents.id === senderId);
-	}
-}
-
-function paneWindowKey(identity: Pick<PaneWindow, "pluginId" | "sessionId" | "paneId">): string {
-	return JSON.stringify([identity.pluginId, identity.sessionId, identity.paneId]);
-}
-
-function paneWindowName(identity: Pick<PaneWindow, "pluginId" | "sessionId" | "paneId">): string {
-	return ["pane", identity.pluginId, identity.sessionId, identity.paneId]
-		.filter((part) => part !== undefined)
-		.join(":");
 }
 
 function systemMaterialOptions(): BrowserWindowConstructorOptions {

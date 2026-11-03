@@ -58,6 +58,59 @@ describe("ElectronShell", () => {
 		});
 	});
 
+	it("returns null when the save dialog is canceled or yields no path", async () => {
+		showSaveDialog
+			.mockResolvedValueOnce({ canceled: true, filePath: "/tmp/ignored.txt" })
+			.mockResolvedValueOnce({ canceled: false });
+		const adapter = new ElectronShell();
+
+		await expect(adapter.showSaveFileDialog(1)).resolves.toBeNull();
+		await expect(adapter.showSaveFileDialog(1)).resolves.toBeNull();
+		expect(showSaveDialog).toHaveBeenCalledWith(parentWindow, {});
+	});
+
+	it("shows an unparented save dialog when no app window exists", async () => {
+		getFocusedWindow.mockReturnValue(undefined);
+		showSaveDialog.mockResolvedValue({ canceled: false, filePath: "/tmp/out.txt" });
+		const adapter = new ElectronShell();
+
+		await expect(adapter.showSaveFileDialog(5)).resolves.toBe("/tmp/out.txt");
+		expect(showSaveDialog).toHaveBeenCalledWith({});
+	});
+
+	it("parents open-file dialogs to the requesting renderer and maps options", async () => {
+		const otherWindow = { webContents: { id: 1 } };
+		const requestingWindow = { webContents: { id: 42 } };
+		getAllWindows.mockReturnValue([otherWindow, requestingWindow]);
+		showOpenDialog.mockResolvedValue({ canceled: false, filePaths: ["/tmp/a.csv", "/tmp/b.csv"] });
+		const adapter = new ElectronShell();
+
+		await expect(
+			adapter.showOpenFileDialog(42, {
+				defaultPath: "/tmp",
+				filters: [{ name: "CSV", extensions: ["csv", "tsv"] }],
+			}),
+		).resolves.toBe("/tmp/a.csv");
+		expect(showOpenDialog).toHaveBeenCalledWith(requestingWindow, {
+			properties: ["openFile"],
+			defaultPath: "/tmp",
+			filters: [{ name: "CSV", extensions: ["csv", "tsv"] }],
+		});
+	});
+
+	it("falls back to the focused window, then unparented, for open-file dialogs", async () => {
+		showOpenDialog.mockResolvedValue({ canceled: false, filePaths: [] });
+		const adapter = new ElectronShell();
+
+		await expect(adapter.showOpenFileDialog(99)).resolves.toBeNull();
+		expect(showOpenDialog).toHaveBeenLastCalledWith(parentWindow, { properties: ["openFile"] });
+
+		getFocusedWindow.mockReturnValue(undefined);
+		showOpenDialog.mockResolvedValue({ canceled: true, filePaths: ["/tmp/ignored"] });
+		await expect(adapter.showOpenFileDialog(99)).resolves.toBeNull();
+		expect(showOpenDialog).toHaveBeenLastCalledWith({ properties: ["openFile"] });
+	});
+
 	it("maps directory dialog options and results", async () => {
 		showOpenDialog.mockResolvedValue({ canceled: false, filePaths: ["/tmp/one", "/tmp/two"] });
 		const adapter = new ElectronShell();

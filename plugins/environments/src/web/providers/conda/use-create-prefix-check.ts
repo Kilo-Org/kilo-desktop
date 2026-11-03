@@ -1,14 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
-import type { SDK } from "@kilo-desktop/feature-sdk";
-import { sdkQueryOptions } from "@kilo-desktop/sdk-react";
-
 import {
 	envPrefixSchema,
-	type CondaService,
 	type CreatePrefixUnavailableReason,
 } from "../../../contracts/providers/conda.js";
+import { condaQueryOptions, type CondaClient } from "../../conda.js";
 
 /** Wait this long after the last keystroke before checking the prefix. */
 export const PREFIX_CHECK_DEBOUNCE_MS = 400;
@@ -29,7 +26,7 @@ export type CreatePrefixCheckState =
  * unlock creation. `prefix === null` (nothing valid to check yet) is `idle`.
  */
 export function useCreatePrefixCheck(
-	sdk: SDK<CondaService>,
+	conda: CondaClient,
 	prefix: string | null,
 ): CreatePrefixCheckState {
 	const [debounced, setDebounced] = useState(prefix);
@@ -41,7 +38,7 @@ export function useCreatePrefixCheck(
 
 	const checkable = debounced !== null && envPrefixSchema.safeParse(debounced).success;
 	const query = useQuery({
-		...sdkQueryOptions(sdk, "conda.envs.checkPrefix", { prefix: debounced ?? "" }),
+		...condaQueryOptions(conda, "checkPrefix", { prefix: debounced ?? "" }),
 		enabled: checkable,
 		staleTime: 0,
 		retry: false,

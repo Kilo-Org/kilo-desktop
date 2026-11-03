@@ -1,24 +1,20 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import { SdkProvider } from "@kilo-desktop/sdk-react";
-import { createFakeFeatureSystem, createFakeSdk } from "@kilo-desktop/testing";
-
 import {
-	condaContract,
 	type CondaEnv,
 	type CondaEnvsCloneInput,
 	type CondaEnvsCloneResult,
 } from "../../../contracts/providers/conda.js";
+import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host.js";
 import { CloneEnvironmentDialog } from "./CloneEnvironmentDialog.js";
 
 function notImplemented(): never {
 	throw new Error("not implemented");
 }
 
-function renderDialog(
+async function renderDialog(
 	options: {
 		env?: CondaEnv;
 		clone?: (input: CondaEnvsCloneInput) => CondaEnvsCloneResult;
@@ -34,9 +30,7 @@ function renderDialog(
 		}));
 	const onClose = options.onClose ?? (() => {});
 
-	const sdk = createFakeSdk({
-		featureId: "environments",
-		channels: condaContract,
+	const hostOptions: EnvironmentsHostOptions = {
 		handlers: {
 			"conda.envs.list": notImplemented,
 			"conda.envs.distributions": notImplemented,
@@ -56,16 +50,13 @@ function renderDialog(
 			"conda.repodata.find": notImplemented,
 			"conda.jobs.cancel": notImplemented,
 		},
-	});
-	const system = createFakeFeatureSystem({ sdks: { environments: sdk } });
-	const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	};
 
-	return render(
-		<SdkProvider system={system}>
-			<QueryClientProvider client={queryClient}>
-				<CloneEnvironmentDialog env={env} open onClose={onClose} />
-			</QueryClientProvider>
-		</SdkProvider>,
+	return renderWithConda(
+		<>
+			<CloneEnvironmentDialog env={env} open onClose={onClose} />
+		</>,
+		hostOptions,
 	);
 }
 
@@ -73,7 +64,7 @@ afterEach(cleanup);
 
 describe("CloneEnvironmentDialog", () => {
 	it("renders the dialog with the name pre-filled as env.name-copy", async () => {
-		const { baseElement } = renderDialog();
+		const { baseElement } = await renderDialog();
 		const screen = page.elementLocator(baseElement);
 
 		await expect.element(screen.getByTestId("environments-clone-dialog")).toBeVisible();
@@ -86,7 +77,7 @@ describe("CloneEnvironmentDialog", () => {
 			environment: { name: "myenv-copy", prefix: "/p" },
 		}));
 		const onClose = vi.fn();
-		const { baseElement } = renderDialog({ clone, onClose });
+		const { baseElement } = await renderDialog({ clone, onClose });
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.click(screen.getByTestId("environments-clone-submit"));
@@ -105,7 +96,7 @@ describe("CloneEnvironmentDialog", () => {
 	});
 
 	it("shows validation error for empty name", async () => {
-		const { baseElement } = renderDialog();
+		const { baseElement } = await renderDialog();
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.clear(screen.getByTestId("environments-clone-name"));
@@ -115,7 +106,7 @@ describe("CloneEnvironmentDialog", () => {
 	});
 
 	it("shows validation error for invalid name", async () => {
-		const { baseElement } = renderDialog();
+		const { baseElement } = await renderDialog();
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.clear(screen.getByTestId("environments-clone-name"));
@@ -135,7 +126,7 @@ describe("CloneEnvironmentDialog", () => {
 		const clone = () => {
 			throw new Error("ENV_EXISTS: already exists");
 		};
-		const { baseElement } = renderDialog({ clone });
+		const { baseElement } = await renderDialog({ clone });
 		const screen = page.elementLocator(baseElement);
 
 		await userEvent.click(screen.getByTestId("environments-clone-submit"));
@@ -151,7 +142,7 @@ describe("CloneEnvironmentDialog", () => {
 
 	it("shows structural guard error when env.name is empty (prefix-only env)", async () => {
 		const env: CondaEnv = { name: "", prefix: "/opt/anaconda3" };
-		const { baseElement } = renderDialog({ env });
+		const { baseElement } = await renderDialog({ env });
 		const screen = page.elementLocator(baseElement);
 
 		// The pre-filled name uses the basename of the prefix when env.name is empty.

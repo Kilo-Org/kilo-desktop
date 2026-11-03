@@ -78,6 +78,8 @@ function formatTokenLimit(value: number): string {
 export class ChatModelSelectorPage {
 	private readonly trigger = () => getLocatorByTestId(chatModelSelectorData.locators.triggerTestId);
 	private readonly menu = () => getLocatorByTestId(chatModelSelectorData.locators.menuTestId);
+	/** Base UI marks a popup `data-closed` while its exit animation runs. */
+	private readonly closingMenu = () => this.menu().and(getLocator("[data-closed]"));
 	private readonly searchInput = () => getLocator(chatModelSelectorData.locators.searchInput);
 	private readonly rail = () => getLocatorByTestId(chatModelSelectorData.locators.railTestId);
 	private readonly railFavorites = () =>
@@ -131,8 +133,15 @@ export class ChatModelSelectorPage {
 	 * make this click close it instead, so every later step would silently
 	 * act against a closed menu. Only click when the menu is not already
 	 * open, so this stays safe to call unconditionally at the start of a test.
+	 * A menu an earlier test left open closes, animated, on the next outside
+	 * press (e.g. New session) and stays visible meanwhile, so that close is
+	 * awaited before deciding: rails clicked during it vanish mid-test.
 	 */
 	async openModelSelector(): Promise<void> {
+		await expectElementToBeHidden(
+			this.closingMenu(),
+			"A closing model selector should finish closing",
+		);
 		if (await isElementVisible(this.menu())) return;
 		await this.waitForTriggerSettled();
 		await click(this.trigger());

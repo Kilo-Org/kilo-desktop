@@ -15,16 +15,12 @@ export default defineConfig({
 	test: {
 		coverage: {
 			...createCoverageConfig([
-				// Plugin entrypoints — registration is covered by integration / e2e.
+				// The main entry's native defaults (@runtimed/node, the real host service).
 				"src/main/index.ts",
-				"src/web/index.ts",
 				"src/test/**",
 				// Binary and notebook UI staging are exercised by prepare-assets,
 				// not by unit coverage.
 				"src/packaging/staging/**",
-				// Custom-protocol MessagePort handshake and desktop runtime status.
-				// Vitest Chromium is http://localhost; covered by e2e smoke.
-				"src/web/notebook/NotebookView.tsx",
 			]),
 			include: ["src/**"],
 		},
@@ -49,15 +45,45 @@ export default defineConfig({
 			{
 				plugins: [react(), tailwindcss()],
 				resolve: { dedupe: ["react", "react-dom"] },
+				// Pre-bundle deps that Vite otherwise discovers mid-run. A re-optimize
+				// reloads the tester iframe and the orchestrator times out waiting for ready.
+				optimizeDeps: {
+					include: [
+						"react",
+						"react-dom",
+						"react/jsx-runtime",
+						"react/jsx-dev-runtime",
+						"@base-ui/react/alert-dialog",
+						"@base-ui/react/merge-props",
+						"@base-ui/react/switch",
+						"@base-ui/react/tooltip",
+						"@base-ui/react/use-render",
+						"@testing-library/react",
+						"class-variance-authority",
+						"clsx",
+						"lucide-react",
+						"tailwind-merge",
+						"zod",
+						"vitest",
+						"vitest/internal/browser",
+						"vitest/internal/traces",
+						"@vitest/browser/client",
+						"@vitest/browser/locators",
+					],
+				},
 				test: {
 					name: "browser",
 					include: ["src/web/**/*.browser.test.tsx"],
 					setupFiles: ["src/test/setup.ts"],
+					// Generous under parallel load.
+					expect: { poll: { timeout: 5_000 } },
 					// CI caps browser workers because the Linux coverage runner has only 4 vCPUs.
 					// groupOrder 1 keeps this project in a separate scheduling bucket from
 					// the unit/integration projects; Vitest requires unique groupOrders when
 					// two projects in the same config have different maxWorkers.
 					...(process.env.CI ? { maxWorkers: 2, sequence: { groupOrder: 1 } } : {}),
+					// Interaction-heavy tests outlast the 15s default when every package runs at once (pre-push).
+					testTimeout: 30_000,
 					browser: {
 						enabled: true,
 						headless: true,

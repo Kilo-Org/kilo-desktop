@@ -8,22 +8,4 @@ test.describe("Settings", () => {
 		await appShellPage.leaveSettings();
 		await appShellPage.verifyShellIsLoaded();
 	});
-
-	test("opens Account settings from the settings siderail", async ({ appShellPage }) => {
-		await appShellPage.verifyShellIsLoaded();
-		await appShellPage.openSettings();
-		await appShellPage.openAccountSettings();
-		await appShellPage.verifyAccountSettings();
-		await appShellPage.leaveSettings();
-		await appShellPage.verifyShellIsLoaded();
-	});
-
-	test("reads update state and offers application logs in About @smoke @packaged", async ({
-		appShellPage,
-	}) => {
-		await appShellPage.verifyShellIsLoaded();
-		await appShellPage.openSettings();
-		await appShellPage.openAboutSettings();
-		await appShellPage.verifyAboutSettings();
-	});
 });

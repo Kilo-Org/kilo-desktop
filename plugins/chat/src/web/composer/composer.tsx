@@ -26,6 +26,8 @@ import { ComposerTaskList } from "../tasks/ComposerTaskList";
 import { ComposerQueue } from "../thread/composer-queue";
 import { TooltipIconButton } from "../thread/tooltip-icon-button";
 import { ComposerActionSlotView, useComposerContext } from "./composer-actions";
+import { useComposerDragResize } from "./composer-height/use-composer-drag-resize";
+import { ComposerResizeHandle } from "./composer-resize-handle";
 import { KiloLexicalComposerInput } from "./kilo-lexical-composer-input";
 import { KiloSlashTrigger } from "./kilo-slash-trigger";
 import { combineFormatters, composerPlaceholder, createMentionFormatter } from "./mention-codec";
@@ -51,6 +53,7 @@ export const Composer: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 	const hasMessageQueue = useAuiState((s) => s.thread.capabilities.queue);
 	const { agent, setAgent, catalog, isCatalogPending, isCatalogError } = useChatAgentSelection();
 	const inputRef = useRef<HTMLDivElement>(null);
+	const inputHeight = useComposerDragResize(inputRef, !isDraft);
 	const plan = useApprovePlan();
 	const refining = plan.canReply;
 
@@ -133,6 +136,13 @@ export const Composer: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 							/>
 						}
 					>
+						{inputHeight.canResize ? (
+							<ComposerResizeHandle
+								ratio={inputHeight.ratio}
+								onResize={inputHeight.setRatio}
+								measureDragStart={inputHeight.measureDragStart}
+							/>
+						) : null}
 						<ComposerAttachments />
 						<KiloLexicalComposerInput
 							ref={inputRef}
@@ -140,6 +150,7 @@ export const Composer: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 							placeholder={composerPlaceholder(sources)}
 							submitMode="enter"
 							onKeyDown={handleInputKeyDown}
+							style={inputHeight.inputStyle}
 							onEnter={() => {
 								// The follow-up keeps the thread running: Enter refines instead of queueing.
 								if (!refining) return false;

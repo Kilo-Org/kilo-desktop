@@ -6,7 +6,7 @@ import {
 	type AssistantState,
 } from "@assistant-ui/react";
 import { ArrowDownIcon } from "lucide-react";
-import { useEffect, useRef, type FC } from "react";
+import { useEffect, useLayoutEffect, useRef, type FC, type RefObject } from "react";
 
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
@@ -37,11 +37,35 @@ const isDraftView = (s: AssistantState) =>
  * opens as it will look once it has messages, with the composer docked at
  * the bottom; the launcher is where a session is greeted.
  */
+const THREAD_HEIGHT_VAR = "--thread-height";
+
+/**
+ * Publishes the thread's rendered height as a CSS variable so the composer can
+ * cap itself at a share of its own pane (panes split the window, so viewport
+ * units would be wrong). Set directly on the element: a resize must not
+ * re-render the thread.
+ */
+function useThreadHeightVariable(ref: RefObject<HTMLDivElement | null>) {
+	useLayoutEffect(() => {
+		const root = ref.current;
+		if (!root) return;
+		const publish = () => root.style.setProperty(THREAD_HEIGHT_VAR, `${root.clientHeight}px`);
+		publish();
+		if (typeof ResizeObserver === "undefined") return;
+		const observer = new ResizeObserver(publish);
+		observer.observe(root);
+		return () => observer.disconnect();
+	}, [ref]);
+}
+
 export const Thread: FC = () => {
 	const isDraft = useAuiState(isDraftView);
+	const rootRef = useRef<HTMLDivElement>(null);
+	useThreadHeightVariable(rootRef);
 
 	return (
 		<ThreadPrimitive.Root
+			ref={rootRef}
 			className={cn(
 				"aui-root aui-thread-root bg-pane @container flex h-full flex-col",
 				CHAT_TYPOGRAPHY_CLASS,

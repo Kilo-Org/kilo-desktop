@@ -10,7 +10,14 @@ import {
 	PASTE_COMMAND,
 } from "lexical";
 import type { Unstable_DirectiveFormatter } from "@assistant-ui/react";
-import { type FC, type KeyboardEvent, type Ref, useEffect, useRef } from "react";
+import {
+	type CSSProperties,
+	type FC,
+	type KeyboardEvent,
+	type Ref,
+	useEffect,
+	useRef,
+} from "react";
 
 import { KiloDirectiveChip } from "./directive-chip";
 
@@ -25,6 +32,8 @@ type KiloLexicalComposerInputProps = {
 	onKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void;
 	/** Takes a plain Enter before sending or queueing does, when it returns true. */
 	onEnter?: () => boolean;
+	/** Inline sizing, e.g. a `maxHeight` replacing the default auto-grow cap. */
+	style?: CSSProperties | undefined;
 };
 
 /**
@@ -41,6 +50,7 @@ export const KiloLexicalComposerInput: FC<KiloLexicalComposerInputProps> = ({
 	submitMode,
 	onKeyDown,
 	onEnter,
+	style,
 }) => {
 	return (
 		<LexicalComposerInput
@@ -60,6 +70,7 @@ export const KiloLexicalComposerInput: FC<KiloLexicalComposerInputProps> = ({
 				"aui-composer-input caret-foreground max-h-32 w-full bg-transparent px-1 pt-0 pb-1 text-sm",
 				disabled && "pointer-events-none cursor-not-allowed opacity-60",
 			)}
+			style={style}
 		>
 			<LexicalInputAria label="Message input" />
 			<AttachmentPastePlugin />

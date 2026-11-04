@@ -53,6 +53,12 @@ overrides:
   # packages peer on zod and the graph contains both 3.x (MCP SDK 1) and
   # catalog 4.x.
   zod: ^4.6.6
+  # friendly-words (kilo.git branch names) lists its demo server and test runner
+  # as runtime deps; index.js only reads generated/words.json. Dropping them
+  # keeps express/body-parser/ava out of the packaged app.
+  "friendly-words>express": "-"
+  "friendly-words>ava": "-"
+  "friendly-words>lodash.samplesize": "-"
 
 allowBuilds:
   electron: true

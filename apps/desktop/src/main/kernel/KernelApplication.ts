@@ -51,6 +51,7 @@ import { HttpClient } from "../platform/HttpClient.js";
 import { createLogger, getLogFilePath } from "../platform/logger.js";
 import type { PreferencesStore } from "../platform/PreferencesStore.js";
 import { installProxyAgent } from "../platform/proxyAgent.js";
+import { signalReleaseSmokeReady } from "../platform/release-smoke.js";
 import { ScopedFsService } from "../platform/ScopedFsService.js";
 import { identifySentryUser } from "../platform/sentry.js";
 import { DesktopUpdaterService } from "../platform/Updater.js";
@@ -182,6 +183,7 @@ export class KernelApplication {
 		await this.#windows.whenReady();
 		this.#windows.reveal();
 		void kernel.windowShown();
+		await signalReleaseSmokeReady(process.env);
 
 		this.#disposers.push(
 			this.#app.on("activate", () => {

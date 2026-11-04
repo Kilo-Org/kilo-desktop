@@ -529,6 +529,78 @@ describe("permission and question prompts", () => {
 		await expect.element(page.getByTestId("kilo-composer-input")).toBeInTheDocument();
 	});
 
+	describe("asked while the chat wasn't open", () => {
+		async function openAfter(ask: (server: FakeKiloServer) => void) {
+			const server = new FakeKiloServer();
+			server.addChat({
+				id: "ses_a",
+				directory: "/projects/app",
+				title: "Chat",
+				messages: chatWith([reply("Ready.")]),
+			});
+			ask(server);
+			return renderAgentPane({
+				server,
+				pane: agentPane({ metadata: { chatId: "ses_a" } }),
+				chats: [chatSummary("ses_a")],
+			});
+		}
+
+		it("shows the waiting permission card once the chat opens", async () => {
+			const host = await openAfter((server) =>
+				server.permissions.push({
+					id: "per_away",
+					sessionID: "ses_a",
+					permission: "bash",
+					patterns: ["git grep maxBytes"],
+					metadata: {},
+					always: [],
+				}),
+			);
+
+			await expect.element(page.getByTestId("kilo-permission-card")).toBeVisible();
+			await expect.element(page.getByText("git grep maxBytes")).toBeVisible();
+			await page.getByTestId("kilo-permission-once").click();
+			await expect
+				.poll(() => host.server.requestsTo("POST", "/permission/per_away/reply")[0]?.body)
+				.toMatchObject({ reply: "once" });
+		});
+
+		it("shows the waiting question once the chat opens", async () => {
+			await openAfter((server) =>
+				server.questions.push({
+					id: "que_away",
+					sessionID: "ses_a",
+					questions: [
+						{
+							question: "Which branch should I review?",
+							header: "Branch",
+							options: [{ label: "main", description: "The default branch" }],
+						},
+					],
+				}),
+			);
+
+			await expect.element(page.getByText("Which branch should I review?")).toBeVisible();
+		});
+
+		it("leaves another chat's prompts to that chat", async () => {
+			await openAfter((server) =>
+				server.permissions.push({
+					id: "per_other",
+					sessionID: "ses_other",
+					permission: "bash",
+					patterns: ["ls"],
+					metadata: {},
+					always: [],
+				}),
+			);
+
+			await expect.element(page.getByTestId("kilo-composer-input")).toBeInTheDocument();
+			await expect.element(page.getByTestId("kilo-permission-card")).not.toBeInTheDocument();
+		});
+	});
+
 	it("accepts once on Enter, and says why a reply failed", async () => {
 		const host = await liveChat();
 		host.server.failingReplies.add("per_3");

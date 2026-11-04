@@ -3,6 +3,7 @@ import type { KiloClient } from "@kilocode/sdk/v2/client";
 
 import type { ChatServices } from "./chat-services";
 import { createDeferredKiloClient } from "./deferred-client";
+import { withPendingPrompts } from "./pending-prompts";
 import { withPromptOptions, type PromptOptions } from "./prompt-options";
 import { withMcpWarmup } from "./with-mcp-warmup";
 
@@ -27,7 +28,9 @@ const REQUEST_OPTIONS = { throwOnError: true } as const;
  * chat list, so the thread list is always empty: the runtime opens the pane's
  * chat by id, or starts a draft whose first send creates the chat through
  * kilo.agent (with this app's stamp, permission rules and Work Session).
- * Writes go to the chat's own directory; the event stream is the window's.
+ * Writes go to the chat's own directory; the event stream is the window's,
+ * with the prompts the chat was already waiting on replayed to each thread
+ * that subscribes (`withPendingPrompts`).
  */
 export function createChatBackend(options: ChatBackendOptions): OpenCodeRuntimeBackend {
 	const { services } = options;
@@ -84,6 +87,7 @@ export function createChatBackend(options: ChatBackendOptions): OpenCodeRuntimeB
 				throw error;
 			}
 		},
-		createEventSource: () => services.retainEvents(),
+		createEventSource: () =>
+			withPendingPrompts(services.retainEvents(), () => [...sessionClients.values()]),
 	};
 }

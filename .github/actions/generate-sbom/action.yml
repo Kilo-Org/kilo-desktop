@@ -1,5 +1,5 @@
 name: "Generate SBOM"
-# Local adaptations: sbom-name and asar-path inputs, asar extract/scan/merge steps,
+# Local adaptations: sbom-name and asar-path inputs, asar extract/scan/merge steps (pinned @electron/asar),
 # SBOM_EXCLUDE_PURL_PREFIXES filter in merge-sboms.py, explicit-name mode in generate-sbom-name.py.
 description: "Generate CycloneDX and SPDX SBOMs using Syft and Trivy with PURL-based deduplication"
 
@@ -118,7 +118,9 @@ runs:
         # (the app's full JS source) is not ours to publish.
         ASAR_EXTRACT_DIR="${{ runner.temp }}/asar.extracted"
         mkdir -p "$ASAR_EXTRACT_DIR"
-        npx --yes @electron/asar extract "$INPUT_ASAR_PATH" "$ASAR_EXTRACT_DIR"
+        # Pinned: this runs a package fetched at run time. Matches the
+        # @electron/asar version in pnpm-lock.yaml that packages the app.
+        npx --yes @electron/asar@4.2.1 extract "$INPUT_ASAR_PATH" "$ASAR_EXTRACT_DIR"
         echo "ASAR_EXTRACT_DIR=${ASAR_EXTRACT_DIR}" >> "$GITHUB_ENV"
 
     - name: Create Trivy config

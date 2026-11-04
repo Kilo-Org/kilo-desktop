@@ -157,3 +157,6 @@ jobs:
       release_track: ${{ needs.preflight.outputs.release_track }}
       release_version: ${{ needs.preflight.outputs.release_version }}
       fail_fast: ${{ needs.preflight.outputs.release_track == 'stable' }}
+      # Every Stable release ships SBOMs; Preview opts in via the
+      # SBOM_PREVIEW_ENABLED repository variable.
+      generate_sbom: ${{ needs.preflight.outputs.release_track == 'stable' || vars.SBOM_PREVIEW_ENABLED == 'true' }}

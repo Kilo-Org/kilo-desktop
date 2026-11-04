@@ -1,5 +1,7 @@
-# Shipped-product SBOM generation: merged Syft+Trivy SBOMs (CycloneDX 1.6 +
-# SPDX 2.3) of the packaged Electron app as build artifacts.
+# On-demand shipped-product SBOM generation (backfills and reruns): merged
+# Syft+Trivy SBOMs (CycloneDX 1.6 + SPDX 2.3) of the packaged Electron app as
+# build artifacts. Releases generate SBOMs automatically in publish_helper.yml's
+# sbom job from the published app trees; this workflow rebuilds the current ref.
 # The app is packaged with the same track config as a release build
 # (RELEASE_TRACK + the track environment's UPDATE_PUBLISH_URL), so the SBOM
 # describes what that track ships.
@@ -58,6 +60,7 @@ jobs:
       name: ${{ inputs.track == 'stable' && 'production' || 'preview' }}
       deployment: false
     permissions:
+      actions: read
       contents: read
       id-token: write
     env:
@@ -85,18 +88,37 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - uses: ./plugins/notebook/actions/setup-native
-
-      - uses: ./plugins/agent/actions/setup-cli
-
-      - uses: ./.github/actions/cache-electron-rebuild
-
       # Stable builds require an explicit RELEASE_VERSION; release.yml takes it
       # from the committed package.json version, so mirror that here.
       - name: Resolve Stable release version
         if: inputs.track == 'stable'
         shell: bash
         run: echo "RELEASE_VERSION=$(node -p "require('./apps/desktop/package.json').version")" >> "$GITHUB_ENV"
+
+      # Mirrors publish_helper.yml so the packaged app and SBOM name carry the
+      # track's publish version. One build time per run keeps every Preview
+      # leg on the same version, as in release.yml.
+      - name: Resolve shared Preview build time
+        if: inputs.track == 'preview'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          preview_build_time=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .created_at)
+          echo "PREVIEW_BUILD_TIME=$preview_build_time" >> "$GITHUB_ENV"
+
+      - name: Align release package versions
+        run: pnpm --filter @kilo-desktop/desktop exec tsx config/desktop-version.ts
+
+      - name: Refresh release lockfile
+        run: pnpm install --lockfile-only --ignore-scripts
+
+      - uses: ./plugins/notebook/actions/setup-native
+
+      - uses: ./plugins/agent/actions/setup-cli
+
+      - uses: ./.github/actions/cache-electron-rebuild
 
       - name: Package
         run: pnpm run package
@@ -106,41 +128,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          case "${{ matrix.os }}" in
-            mac)
-              APP_DIR=$(find apps/desktop/out -mindepth 2 -maxdepth 2 -name "*.app" -type d | head -n1)
-              [[ -n "$APP_DIR" ]] || { echo "::error::no .app bundle found under apps/desktop/out"; exit 1; }
-              PLATFORM_ARCH=$(basename "$(dirname "$APP_DIR")" | sed -E 's/^.*-//')
-              PLATFORM="darwin-${PLATFORM_ARCH}"
-              ASAR_PATH="$APP_DIR/Contents/Resources/app.asar"
-              ;;
-            windows)
-              APP_DIR=$(find apps/desktop/out -mindepth 1 -maxdepth 1 -type d -name "*-win32-*" | head -n1)
-              [[ -n "$APP_DIR" ]] || { echo "::error::no packaged dir (win32) found under apps/desktop/out"; exit 1; }
-              PLATFORM_ARCH=$(basename "$APP_DIR" | sed -E 's/^.*-//')
-              PLATFORM="win32-${PLATFORM_ARCH}"
-              ASAR_PATH=$(find "$APP_DIR" -maxdepth 2 -name "app.asar" | head -n1 || true)
-              ;;
-            linux)
-              APP_DIR=$(find apps/desktop/out -mindepth 1 -maxdepth 1 -type d -name "*-linux-*" | head -n1)
-              [[ -n "$APP_DIR" ]] || { echo "::error::no packaged dir (linux) found under apps/desktop/out"; exit 1; }
-              PLATFORM_ARCH=$(basename "$APP_DIR" | sed -E 's/^.*-//')
-              PLATFORM="linux-${PLATFORM_ARCH}"
-              ASAR_PATH=$(find "$APP_DIR" -maxdepth 2 -name "app.asar" | head -n1 || true)
-              ;;
-          esac
-
-          APP_VERSION=$(node -p "require('./apps/desktop/package.json').version")
-          # Hardcoded rather than derived from productName: this names the shipped
-          # desktop product, not the bundled kilo CLI, and must be stable for S3 keys.
-          PRODUCT=kilo-desktop
-
-          echo "app-dir=$APP_DIR" >> "$GITHUB_OUTPUT"
-          echo "platform=$PLATFORM" >> "$GITHUB_OUTPUT"
-          echo "sbom-name=${PRODUCT}_${APP_VERSION}_${PLATFORM}" >> "$GITHUB_OUTPUT"
-          if [[ -n "$ASAR_PATH" && -f "$ASAR_PATH" ]]; then
-            echo "asar-path=$ASAR_PATH" >> "$GITHUB_OUTPUT"
-          fi
+          APP_VERSION=$(node -p "require('./apps/desktop/package.json').version") \
+            bash .github/actions/generate-sbom/locate-packaged-app.sh apps/desktop/out >> "$GITHUB_OUTPUT"
 
       - name: Generate SBOM
         id: sbom

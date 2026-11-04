@@ -20,6 +20,11 @@ on:
         required: false
         type: boolean
         default: true
+      generate_sbom:
+        description: Generate SBOMs of the published packaged apps and attach them to the GitHub release
+        required: false
+        type: boolean
+        default: true
 
 concurrency:
   group: publish-${{ inputs.release_track }}
@@ -155,7 +160,109 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # Hands the exact signed app tree to the sbom job. tar keeps the .app
+      # bundle's symlinks and modes, which upload-artifact drops. continue-on-error keeps
+      # SBOM non-blocking: a failure here must not fail this leg, which on
+      # Stable (fail_fast) would cancel the other platforms mid-publish.
+      - name: Archive packaged app for SBOM
+        if: inputs.generate_sbom
+        continue-on-error: true
+        shell: bash
+        env:
+          # macOS tar otherwise adds AppleDouble ._* entries for xattrs.
+          COPYFILE_DISABLE: "1"
+        run: |
+          set -euo pipefail
+          PACKAGED_DIR=$(find apps/desktop/out -mindepth 1 -maxdepth 1 -type d \
+            \( -name "*-darwin-*" -o -name "*-win32-*" -o -name "*-linux-*" \) | head -n1)
+          [[ -n "$PACKAGED_DIR" ]] || { echo "::error::no packaged app directory found under apps/desktop/out"; exit 1; }
+          # Workspace-relative on purpose: Git Bash's GNU tar reads a Windows
+          # path like D:\a\_temp\x.tar as a remote host:file archive.
+          mkdir -p sbom-input
+          tar -cf sbom-input/packaged.tar -C "$(dirname "$PACKAGED_DIR")" "$(basename "$PACKAGED_DIR")"
+          # Already stamped by "Align release package versions", so Preview
+          # SBOMs carry the full Preview version.
+          node -p "require('./apps/desktop/package.json').version" > sbom-input/version
+
+      - name: Upload packaged app for SBOM
+        if: inputs.generate_sbom
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: packaged-${{ matrix.target }}
+          path: sbom-input/
+          if-no-files-found: error
+          # Long enough to "Re-run failed jobs" on the sbom job after a weekend.
+          retention-days: 3
+
+  # Untrusted by design: runs third-party tools (Syft, Trivy, @electron/asar)
+  # fetched at run time, with no secrets and a read-only token. Even without
+  # secrets, any step here can upload workflow artifacts under any name, so
+  # nothing published may consume what this job produces: release runs in
+  # parallel and only downloads publish's exact artifact names, and
+  # attach-sbom (our own steps only) accepts nothing but correctly named SBOM
+  # files for the trusted release tag. Non-blocking: a failed leg only leaves
+  # SBOMs off the release. Recover with "Re-run failed jobs" while the
+  # packaged-* artifacts are retained; it reruns sbom and attach-sbom only.
+  sbom:
+    needs: publish
+    if: ${{ !cancelled() && inputs.generate_sbom }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      # Keep in sync with the publish matrix.
+      matrix:
+        target: [mac, windows, windows-arm64, linux, linux-arm64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download packaged app
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: packaged-${{ matrix.target }}
+          path: ${{ runner.temp }}/sbom-input
+
+      - name: Extract and locate packaged app
+        id: packaged
+        shell: bash
+        run: |
+          set -euo pipefail
+          PACKAGED_ROOT="$RUNNER_TEMP/packaged"
+          mkdir -p "$PACKAGED_ROOT"
+          # The macOS archive carries libarchive xattr headers GNU tar does not know.
+          tar --warning=no-unknown-keyword -xf "$RUNNER_TEMP/sbom-input/packaged.tar" -C "$PACKAGED_ROOT"
+          APP_VERSION=$(cat "$RUNNER_TEMP/sbom-input/version") \
+            bash .github/actions/generate-sbom/locate-packaged-app.sh "$PACKAGED_ROOT" >> "$GITHUB_OUTPUT"
+
+      - name: Generate SBOM
+        id: sbom
+        uses: ./.github/actions/generate-sbom
+        with:
+          scan-path: ${{ steps.packaged.outputs.app-dir }}
+          sbom-name: ${{ steps.packaged.outputs.sbom-name }}
+          asar-path: ${{ steps.packaged.outputs.asar-path }}
+          upload-artifact: "false"
+          fetch-remote-licenses: "true"
+
+      - name: Upload SBOMs
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sbom-${{ matrix.target }}
+          path: |
+            ${{ steps.sbom.outputs.cyclonedx-path }}
+            ${{ steps.sbom.outputs.spdx-path }}
+          if-no-files-found: error
+          retention-days: 7
+
   release:
+    # Must not depend on sbom: it collects and publishes artifacts before any
+    # untrusted scanner runs. Known gap: re-running this job after sbom has run
+    # trusts publish's artifacts by name only, and a compromised scanner could
+    # have replaced them. Prefer a fresh release run over re-running release.
     needs: publish
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
@@ -164,6 +271,8 @@ jobs:
     permissions:
       id-token: write
       contents: write
+    outputs:
+      tag: ${{ steps.publish.outputs.tag }}
     env:
       NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
       RELEASE_TRACK: ${{ inputs.release_track }}
@@ -190,11 +299,62 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Exact publish-matrix names, never a release-* wildcard: everything
+      # downloaded here is published, and S3 trusts it by file extension.
+      # Missing names are skipped, so a partial Preview still publishes.
       - name: Download release artifacts
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: release-*
+          pattern: release-{mac,windows,windows-arm64,linux,linux-arm64}
           path: release-artifacts
 
       - name: Create GitHub release and publish track aliases
+        id: publish
         run: pnpm --filter @kilo-desktop/desktop exec tsx config/publish-track-release.ts
+
+  # Attaches the sbom job's output to the published GitHub release. Only our
+  # own steps run here (no checkout, no environment, no AWS); the tag comes
+  # from the trusted release job, and every file must be a valid-JSON SBOM
+  # named for that exact version or nothing is uploaded. Never touches S3.
+  attach-sbom:
+    needs: [release, sbom]
+    if: ${{ !cancelled() && inputs.generate_sbom && needs.release.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download SBOMs
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: sbom-{mac,windows,windows-arm64,linux,linux-arm64}
+          path: ${{ runner.temp }}/sboms
+          merge-multiple: true
+
+      - name: Attach SBOMs to the GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" == v* ]] || { echo "::error::release job reported no tag"; exit 1; }
+          SBOM_DIR="$RUNNER_TEMP/sboms"
+          mkdir -p "$SBOM_DIR"
+          VERSION="${RELEASE_TAG#v}"
+          ESCAPED_VERSION=$(printf '%s' "$VERSION" | sed 's/[.]/\\./g')
+          NAME_PATTERN="^kilo-desktop_${ESCAPED_VERSION}_(darwin|win32|linux)-(x64|arm64)\\.sbom\\.(cyclonedx|spdx)\\.json$"
+          ASSETS=()
+          while IFS= read -r -d '' entry; do
+            name=$(basename "$entry")
+            [[ -f "$entry" && ! -L "$entry" && "$name" =~ $NAME_PATTERN ]] \
+              || { echo "::error::refusing unexpected SBOM artifact entry: $name"; exit 1; }
+            jq empty "$entry" || { echo "::error::$name is not valid JSON"; exit 1; }
+            ASSETS+=("$entry")
+          done < <(find "$SBOM_DIR" -mindepth 1 -print0)
+          if [[ ${#ASSETS[@]} -eq 0 ]]; then
+            echo "::warning::no SBOMs to attach to $RELEASE_TAG"
+            exit 0
+          fi
+          gh release upload "$RELEASE_TAG" "${ASSETS[@]}" --clobber

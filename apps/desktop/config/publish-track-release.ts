@@ -1,5 +1,13 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, readdir, stat, writeFile, copyFile } from "node:fs/promises";
+import {
+	appendFile,
+	mkdtemp,
+	readFile,
+	readdir,
+	stat,
+	writeFile,
+	copyFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
@@ -116,6 +124,19 @@ async function main(): Promise<void> {
 		version,
 		workingDirectory,
 	});
+	await writeReleaseTagOutput(tag, process.env);
+}
+
+/**
+ * Exposes the tag as a job output so later jobs (attach-sbom) take it from this
+ * trusted job instead of from artifacts an untrusted job could have written.
+ */
+export async function writeReleaseTagOutput(
+	tag: string,
+	environment: { readonly GITHUB_OUTPUT?: string },
+): Promise<void> {
+	if (!environment.GITHUB_OUTPUT) return;
+	await appendFile(environment.GITHUB_OUTPUT, `tag=${tag}\n`);
 }
 
 async function findPreviousPublishedTrackTag(

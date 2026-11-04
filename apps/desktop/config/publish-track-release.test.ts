@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { publishTrackObjects } from "./publish-track-release.js";
+import { publishTrackObjects, writeReleaseTagOutput } from "./publish-track-release.js";
 
 describe("track object publication", () => {
 	it("publishes immutable notes, stable aliases, the note pointer, then the manifest", async () => {
@@ -104,5 +104,23 @@ describe("track object publication", () => {
 			),
 		).rejects.toThrow("No user-downloadable release artifacts");
 		expect(copy).toHaveBeenCalledOnce();
+	});
+});
+
+describe("release tag output", () => {
+	it("appends the published tag to the GitHub Actions step output file", async () => {
+		const directory = await mkdtemp(path.join(tmpdir(), "release-tag-output-test-"));
+		const outputFile = path.join(directory, "output");
+		await writeFile(outputFile, "existing=value\n");
+
+		await writeReleaseTagOutput("v1.2.3-preview-261104-11000", { GITHUB_OUTPUT: outputFile });
+
+		expect(await readFile(outputFile, "utf8")).toBe(
+			"existing=value\ntag=v1.2.3-preview-261104-11000\n",
+		);
+	});
+
+	it("does nothing outside GitHub Actions", async () => {
+		await expect(writeReleaseTagOutput("v1.2.3", {})).resolves.toBeUndefined();
 	});
 });

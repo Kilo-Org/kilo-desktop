@@ -1,4 +1,5 @@
 import type { Pane, PaneArrangement, SessionPanes } from "../contracts";
+import { chatPane } from "./chat-pane";
 
 /**
  * Origin's right-panel tab definitions → the pane kinds of the plugins that
@@ -14,10 +15,6 @@ export const LEGACY_PANE_KINDS: Readonly<Record<string, string>> = {
 	"kilo-ui.plan": "kilo.chat/plan",
 	"kilo-ui.subagent": "kilo.chat/subagent",
 };
-
-/** Origin's chat pane, one per session, kept under this id in its layout. */
-export const LEGACY_AGENT_KIND = "kilo.chat/agent";
-const agentPaneId = (sessionId: string) => `agent:${sessionId}`;
 
 type Record_ = Readonly<Record<string, unknown>>;
 
@@ -70,7 +67,9 @@ function readTab(value: unknown, entry: Record_): Pane | null {
 /**
  * Reads origin's `kilo-ui:right-panel-state:v3` (zustand persist) into panes
  * per session. Sessions it names but this app doesn't know are skipped. The
- * chat pane becomes an agent pane unless origin had it closed.
+ * chat pane becomes an agent pane unless origin had it closed. Origin showed
+ * the chat pane without saving it, so it only saved sessions where something
+ * else changed: the rest are left to `withChatPanes`.
  */
 export function readLegacyPanes(
 	state: unknown,
@@ -86,18 +85,8 @@ export function readLegacyPanes(
 		const tabs = Array.isArray(entry.tabs)
 			? entry.tabs.map((tab) => readTab(tab, entry)).filter((t) => t !== null)
 			: [];
-		const agent: Pane[] =
-			entry.chatPaneOpen === false
-				? []
-				: [
-						{
-							id: agentPaneId(sessionId),
-							kind: LEGACY_AGENT_KIND,
-							title,
-							metadata: {},
-							ordinal: 1,
-						},
-					];
+		// Origin's chat pane, under the same id in its layout.
+		const agent = entry.chatPaneOpen === false ? [] : [chatPane({ id: sessionId, title })];
 		const panes = [...agent, ...tabs];
 		if (panes.length === 0) continue;
 		const arrangement: PaneArrangement = entry.arrangement === "carousel" ? "carousel" : "tiles";

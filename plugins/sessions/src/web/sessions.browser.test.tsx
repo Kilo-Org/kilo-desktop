@@ -96,12 +96,11 @@ describe("handing over origin's panes", () => {
 		await vi.waitFor(() => expect(importLegacyPanes).toHaveBeenCalledWith(saved));
 	});
 
-	it("sends nothing when origin saved no panes or saved something unreadable", async () => {
+	it("still hands over when origin saved no panes or saved something unreadable", async () => {
 		const missing = await render();
 		const unreadable = await render(undefined, "{not json");
-		await new Promise((resolve) => setTimeout(resolve, 50));
 
-		expect(missing.importLegacyPanes).not.toHaveBeenCalled();
-		expect(unreadable.importLegacyPanes).not.toHaveBeenCalled();
+		await vi.waitFor(() => expect(missing.importLegacyPanes).toHaveBeenCalledWith(null));
+		await vi.waitFor(() => expect(unreadable.importLegacyPanes).toHaveBeenCalledWith(null));
 	});
 });

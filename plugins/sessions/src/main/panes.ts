@@ -11,8 +11,10 @@ import {
 	Sessions,
 	type OpenPaneInput,
 	type Pane,
+	type Session,
 	type SessionPanes,
 } from "../contracts";
+import { withChatPanes } from "./chat-pane";
 import { readLegacyPanes } from "./legacy-panes";
 
 interface PersistedPanes extends Record<string, unknown> {
@@ -42,6 +44,12 @@ export function globToRegExp(glob: string): RegExp {
  * plugin's code; the canvas owns the layout's shape and only saves it here.
  * A deleted session's panes go with it; origin's per-window state is handed
  * over once by the main window.
+ *
+ * A session holding chats that has never had panes recorded shows its chat
+ * in an agent pane: one adopted from a chat when it's created, and origin's
+ * when its panes are taken over (origin showed the chat pane without saving
+ * it). Closing every pane leaves an empty record, so a session someone
+ * emptied stays empty; a session started without a chat gets none.
  */
 export function providePanes(
 	sdk: PluginSdk,
@@ -137,7 +145,10 @@ export function providePanes(
 				if (!((await options.originSessionsImported?.()) ?? true)) return;
 				if (store.snapshot().legacyImported) return;
 				const imported = readLegacyPanes(state, knownSessionTitles());
-				const bySession = { ...imported, ...store.snapshot().bySession };
+				const bySession = withChatPanes(
+					{ ...imported, ...store.snapshot().bySession },
+					knownSessions(),
+				);
 				store.set({ bySession, legacyImported: true });
 				panes.setState({ bySession });
 			},
@@ -223,14 +234,33 @@ export function providePanes(
 		const title = kindMetadata(kind)?.title ?? "Pane";
 		return ordinal > 1 ? `${title} ${ordinal}` : title;
 	}
+	function knownSessions(): readonly Session[] {
+		return sdk.domains.get(Sessions)?.getState().sessions ?? [];
+	}
 	function knownSessionTitles(): Map<string, string> {
-		const sessions = sdk.domains.get(Sessions)?.getState().sessions ?? [];
-		return new Map(sessions.map((session) => [session.id, session.title]));
+		return new Map(knownSessions().map((session) => [session.id, session.title]));
 	}
 
-	const stop = sdk.domains.get(Sessions)?.on("deleted", ({ session }) => {
-		if (store.snapshot().bySession[session.id]) write(session.id, null);
-	});
-	sdk.onDispose(() => stop?.());
+	function showChats(sessions: readonly Session[]): void {
+		const current = store.snapshot().bySession;
+		const bySession = withChatPanes(current, sessions);
+		if (bySession === current) return;
+		store.set({ bySession });
+		panes.setState({ bySession });
+	}
+
+	const sessions = sdk.domains.get(Sessions);
+	const stops = [
+		// A session adopted from a chat is created holding it; a person's starts with none.
+		sessions?.on("created", ({ session }) => showChats([session])),
+		sessions?.on("deleted", ({ session }) => {
+			if (store.snapshot().bySession[session.id]) write(session.id, null);
+		}),
+	];
+	sdk.onDispose(() => stops.forEach((stop) => stop?.()));
+	// Earlier versions took over origin's panes without the agent panes origin
+	// showed but never saved, so they are filled in here. Before the takeover
+	// nothing is filled: a filled record would win over origin's saved panes.
+	if (store.snapshot().legacyImported) showChats(knownSessions());
 	return panes;
 }

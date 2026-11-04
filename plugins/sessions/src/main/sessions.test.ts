@@ -12,6 +12,7 @@ import { ChatOwner } from "@kilo-desktop/plugin-agent/contracts";
 import manifest from "../../plugin.json";
 import {
 	DEFAULT_SESSION_TITLE,
+	EMPTY_SESSION_PANES,
 	Panes,
 	Sessions,
 	SESSIONS_DEFINITIONS,
@@ -151,6 +152,32 @@ describe("following Kilo chats", () => {
 			chatIds: ["ses_a"],
 			createdAt: 50,
 		});
+	});
+
+	it("opens a session adopted from a chat on that chat, and a person's new session on nothing", async () => {
+		const kilo = new FakeConversations();
+		kilo.chats = [chat("ses_a")];
+		const { kernel, sessions, list } = await boot({ kilo });
+		await vi.waitFor(() => expect(list()).toHaveLength(1));
+		const adopted = list()[0]!;
+		const created = await sessions.methods.create({});
+
+		const bySession = kernel.kernelSdk.domains.get(Panes)!.getState().bySession;
+		expect(bySession[adopted.id]).toEqual({
+			panes: [
+				{
+					id: `agent:${adopted.id}`,
+					kind: "kilo.chat/agent",
+					title: "Chat ses_a",
+					metadata: {},
+					ordinal: 1,
+				},
+			],
+			activePaneId: `agent:${adopted.id}`,
+			layout: null,
+			arrangement: "tiles",
+		});
+		expect(bySession[created.id]).toBeUndefined();
 	});
 
 	it("waits until the chats have been read, then reads them all", async () => {
@@ -511,6 +538,94 @@ describe("importing origin's sessions", () => {
 		const panes = second.kernel.kernelSdk.domains.get(Panes)!.getState().bySession.wses_old;
 		expect(panes?.layout).toBe('{"groups":[]}');
 		expect(panes?.panes.map((pane) => pane.id)).toContain("t1");
+	});
+
+	it("shows the chat of every origin session holding one, as origin did without saving it", async () => {
+		const database = await originDatabase([
+			{ id: "wses_closed", chats: ["ses_a"] },
+			{ id: "wses_plain", chats: ["ses_b"] },
+			{ id: "wses_chatless", chats: [] },
+		]);
+		const { kernel } = await boot({ originDatabase: database });
+		const own = kernel.sdkFor("kilo.sessions").domains.get(Panes)!;
+
+		await own.methods.importLegacy({
+			state: {
+				state: {
+					bySessionId: {
+						wses_closed: {
+							chatPaneOpen: false,
+							tabs: [
+								{ instanceId: "t1", definitionId: "terminal.terminal", title: "Shell", ordinal: 1 },
+							],
+						},
+					},
+				},
+			},
+		});
+
+		const bySession = kernel.kernelSdk.domains.get(Panes)!.getState().bySession;
+		expect(bySession.wses_plain).toEqual({
+			panes: [
+				{
+					id: "agent:wses_plain",
+					kind: "kilo.chat/agent",
+					title: DEFAULT_SESSION_TITLE,
+					metadata: {},
+					ordinal: 1,
+				},
+			],
+			activePaneId: "agent:wses_plain",
+			layout: null,
+			arrangement: "tiles",
+		});
+		expect(bySession.wses_closed?.panes.map((pane) => pane.id)).toEqual(["t1"]);
+		expect(bySession.wses_chatless).toBeUndefined();
+	});
+
+	it("shows the chat of sessions an earlier version took over from origin without one", async () => {
+		const storage = createMemoryStorage("/data/kilo.sessions");
+		const saved = (id: string, chatIds: string[]): Session => ({
+			id,
+			title: `Session ${id}`,
+			titleSource: "chat",
+			pinned: false,
+			archived: false,
+			archiveChangedAt: 1,
+			workspaceId: null,
+			worktreeBranch: null,
+			directory: null,
+			chatIds,
+			createdAt: 1,
+			updatedAt: 1,
+		});
+		storage.saved.set("sessions", {
+			sessions: [
+				saved("wses_missed", ["ses_a"]),
+				saved("wses_emptied", ["ses_b"]),
+				saved("wses_chatless", []),
+			],
+			importedFromOrigin: true,
+		});
+		storage.saved.set("panes", {
+			bySession: { wses_emptied: { ...EMPTY_SESSION_PANES } },
+			legacyImported: true,
+		});
+
+		const { kernel } = await boot({ storage });
+
+		const bySession = kernel.kernelSdk.domains.get(Panes)!.getState().bySession;
+		expect(bySession.wses_missed?.panes).toEqual([
+			{
+				id: "agent:wses_missed",
+				kind: "kilo.chat/agent",
+				title: "Session wses_missed",
+				metadata: {},
+				ordinal: 1,
+			},
+		]);
+		expect(bySession.wses_emptied?.panes).toEqual([]);
+		expect(bySession.wses_chatless).toBeUndefined();
 	});
 
 	it("counts a file that isn't a database as imported", async () => {

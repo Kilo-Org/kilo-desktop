@@ -30,15 +30,22 @@ function handOverLegacyPins(sdk: PluginSdk): void {
 /** Where origin kept each session's panes and layout, in the main window's localStorage. */
 export const LEGACY_PANES_STORAGE_KEY = "kilo-ui:right-panel-state:v3";
 
-/** Origin's panes, handed over once like the pins; kilo.sessions ignores later hand-overs. */
-function handOverLegacyPanes(sdk: PluginSdk): void {
-	let state: unknown;
+function readLegacyPanes(): unknown {
 	try {
-		state = JSON.parse(localStorage.getItem(LEGACY_PANES_STORAGE_KEY) ?? "null");
+		return JSON.parse(localStorage.getItem(LEGACY_PANES_STORAGE_KEY) ?? "null");
 	} catch {
-		return;
+		return null;
 	}
-	if (state === null) return;
+}
+
+/**
+ * Origin's panes, handed over once like the pins; kilo.sessions ignores later
+ * hand-overs. Handed over even when origin saved none: origin showed every
+ * session's chat without saving it, and the hand-over is when kilo.sessions
+ * gives origin's sessions their agent panes.
+ */
+function handOverLegacyPanes(sdk: PluginSdk): void {
+	const state = readLegacyPanes();
 	sdk.domains.track(Panes, {
 		added: (panes) => void panes.methods.importLegacy({ state }).catch(() => undefined),
 		removed: () => {},

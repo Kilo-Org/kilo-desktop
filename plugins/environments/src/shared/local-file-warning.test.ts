@@ -9,7 +9,7 @@ describe("localCondaFileInstallWarning", () => {
 	it("flags an agent question option that installs a local conda file", () => {
 		const label = "From the local .tar.bz2 file";
 		const description =
-			"Honor the literal request and install /Users/amorais/Downloads/pandas-3.0.6-py314heb7d0cc_0.tar.bz2 " +
+			"Honor the literal request and install /Users/me/Downloads/pandas-3.0.6-py314heb7d0cc_0.tar.bz2 " +
 			"via the conda CLI (bypasses the Desktop tool's block).";
 		expect(localCondaFileInstallWarning(`${label} ${description}`)).toBe(
 			LOCAL_CONDA_FILE_INSTALL_WARNING,

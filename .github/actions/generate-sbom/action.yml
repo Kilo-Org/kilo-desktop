@@ -1,6 +1,7 @@
 name: "Generate SBOM"
 # Local adaptations: sbom-name and asar-path inputs, asar extract/scan/merge steps (pinned @electron/asar),
-# SBOM_EXCLUDE_PURL_PREFIXES filter in merge-sboms.py, explicit-name mode in generate-sbom-name.py.
+# SBOM_EXCLUDE_PURL_PREFIXES filter in merge-sboms.py, explicit-name mode in generate-sbom-name.py,
+# installed-npm Syft cataloger and min-npm-components check.
 description: "Generate CycloneDX and SPDX SBOMs using Syft and Trivy with PURL-based deduplication"
 
 inputs:
@@ -36,6 +37,10 @@ inputs:
     description: "Fetch license info from remote sources (slower but more complete)"
     required: false
     default: "true"
+  min-npm-components:
+    description: "When asar-path is set, fail if either merged SBOM lists fewer npm packages than this (guards against scans silently missing the Electron app's JavaScript dependencies). 0 disables the check."
+    required: false
+    default: "100"
   strict-validation:
     description: "Fail the workflow if SBOM validation fails (set to false to warn only)"
     required: false
@@ -134,6 +139,10 @@ runs:
     # ===========================================
     # Generate SBOMs with Syft
     # ===========================================
+    # Directory scans only run Syft's "declared" catalogers (lockfiles), which
+    # find no npm packages in a packaged app: it ships installed node_modules
+    # (inside app.asar) and no lockfile. +javascript-package-cataloger adds the
+    # installed node_modules/*/package.json cataloger on top of the defaults.
     - name: Generate SBOM with Syft (CycloneDX)
       uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
       with:
@@ -149,6 +158,7 @@ runs:
         SYFT_GOLANG_SEARCH_REMOTE_LICENSES: ${{ inputs.fetch-remote-licenses == 'true' && 'true' || 'false' }}
         SYFT_JAVA_USE_NETWORK: ${{ inputs.fetch-remote-licenses == 'true' && 'true' || 'false' }}
         SYFT_LICENSE_CONTENT: "all"
+        SYFT_SELECT_CATALOGERS: "+javascript-package-cataloger"
         SYFT_FILE_METADATA_SELECTION: "none"
         SYFT_SOURCE_NAME: ${{ github.event.repository.name }}
         SYFT_SOURCE_VERSION: ${{ github.sha }}
@@ -168,6 +178,7 @@ runs:
         SYFT_GOLANG_SEARCH_REMOTE_LICENSES: ${{ inputs.fetch-remote-licenses == 'true' && 'true' || 'false' }}
         SYFT_JAVA_USE_NETWORK: ${{ inputs.fetch-remote-licenses == 'true' && 'true' || 'false' }}
         SYFT_LICENSE_CONTENT: "all"
+        SYFT_SELECT_CATALOGERS: "+javascript-package-cataloger"
         SYFT_FILE_METADATA_SELECTION: "none"
         SYFT_SOURCE_NAME: ${{ github.event.repository.name }}
         SYFT_SOURCE_VERSION: ${{ github.sha }}
@@ -214,6 +225,10 @@ runs:
       env:
         SYFT_JAVASCRIPT_SEARCH_REMOTE_LICENSES: ${{ inputs.fetch-remote-licenses == 'true' && 'true' || 'false' }}
         SYFT_LICENSE_CONTENT: "all"
+        SYFT_SELECT_CATALOGERS: "+javascript-package-cataloger"
+        # Remote license lookup otherwise lists every package.json it reads as
+        # a CycloneDX "file" component (~600 entries for the asar).
+        SYFT_FILE_METADATA_SELECTION: "none"
 
     - name: Generate SBOM with Syft (SPDX, asar)
       if: inputs.asar-path != ''
@@ -227,6 +242,10 @@ runs:
       env:
         SYFT_JAVASCRIPT_SEARCH_REMOTE_LICENSES: ${{ inputs.fetch-remote-licenses == 'true' && 'true' || 'false' }}
         SYFT_LICENSE_CONTENT: "all"
+        SYFT_SELECT_CATALOGERS: "+javascript-package-cataloger"
+        # Remote license lookup otherwise lists every package.json it reads as
+        # a CycloneDX "file" component (~600 entries for the asar).
+        SYFT_FILE_METADATA_SELECTION: "none"
 
     # ===========================================
     # Merge SBOMs
@@ -344,6 +363,25 @@ runs:
         echo "Source breakdown (SPDX):"
         echo "  Syft: $(jq '[.packages[]?] | length' ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.syft.spdx.json)"
         echo "  Trivy: $(jq '[.packages[]?] | length' ${{ env.SBOM_DIR }}/${{ env.SBOM_BASE }}.sbom.trivy.spdx.json)"
+
+    # Not covered by strict-validation: an SBOM without the app's npm
+    # dependencies is schema-valid but wrong, and went unnoticed before.
+    - name: Check npm packages are present
+      if: inputs.asar-path != '' && inputs.min-npm-components != '0'
+      shell: bash
+      env:
+        MIN_NPM_COMPONENTS: ${{ inputs.min-npm-components }}
+      run: |
+        set -euo pipefail
+        CDX_NPM=$(jq '[.components[]? | select((.purl // "") | startswith("pkg:npm/"))] | length' \
+          "$SBOM_DIR/$SBOM_BASE.sbom.cyclonedx.json")
+        SPDX_NPM=$(jq '[.packages[]? | select(any(.externalRefs[]?; (.referenceLocator // "") | startswith("pkg:npm/")))] | length' \
+          "$SBOM_DIR/$SBOM_BASE.sbom.spdx.json")
+        echo "npm packages: CycloneDX=$CDX_NPM SPDX=$SPDX_NPM (minimum $MIN_NPM_COMPONENTS)"
+        if (( CDX_NPM < MIN_NPM_COMPONENTS || SPDX_NPM < MIN_NPM_COMPONENTS )); then
+          echo "::error::SBOM lists too few npm packages (CycloneDX=$CDX_NPM, SPDX=$SPDX_NPM, minimum $MIN_NPM_COMPONENTS); the app.asar dependencies were not catalogued."
+          exit 1
+        fi
 
     - name: Generate license summary report
       shell: bash

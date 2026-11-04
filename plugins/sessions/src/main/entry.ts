@@ -46,6 +46,32 @@ interface Persisted extends Record<string, unknown> {
 	legacyPinsImported: boolean;
 	/** Chat ids origin pinned before they had a session; pinned on adoption. */
 	pendingPinnedChatIds: string[];
+	/** Whether origin's sessions a release imported as live were reopened to their chats' archives. */
+	originArchivesReopened: boolean;
+}
+
+/**
+ * The archive change time of a session no one has archived or restored, so
+ * any archived chat archives it. Origin kept archives on its chats only, and
+ * stamped sessions it adopted chats into with the adoption time, often after
+ * the chat was archived; dating the choice to then would keep it live.
+ */
+const ARCHIVE_NEVER_CHOSEN = 0;
+
+/**
+ * A release imported origin's sessions with their creation time as their
+ * archive change, so chats archived before origin adopted them came back
+ * live. Each session still live with that stamp (the person hasn't archived
+ * or restored it since) is reopened to its chats' archives, once. Sessions
+ * this app created carry the same stamp, harmlessly: their chats' archives
+ * are later than it, so already applied.
+ */
+function reopenOriginArchives(sessions: readonly Session[]): Session[] {
+	return sessions.map((session) =>
+		!session.archived && session.archiveChangedAt === session.createdAt
+			? { ...session, archiveChangedAt: ARCHIVE_NEVER_CHOSEN }
+			: session,
+	);
 }
 
 /** What a person (or a chat, for a session adopted from it) set on a session, carried to the one replacing it. */
@@ -82,7 +108,8 @@ const errorText = (error: unknown) => (error instanceof Error ? error.message : 
  * launch, and origin's pins and panes (handed over by the main window every
  * launch) wait for it, so they are only marked imported alongside the
  * sessions they name. Chats adopted meanwhile fold back into origin's session.
- * Workspaces are taken from chats only while kilo.workspaces knows them.
+ * Origin kept archives on its chats, so its sessions take their archived state
+ * from their chats (`ARCHIVE_NEVER_CHOSEN`). Workspaces are taken from chats only while kilo.workspaces knows them.
  *
  * Isolation (decision 54) is chosen at creation: `kilo.workspaces/vcs`
  * creates or resolves the session's worktree in its workspace's primary
@@ -105,8 +132,22 @@ export function createSessionsMainEntry(options: SessionsMainOptions): PluginEnt
 					importedFromOrigin: false,
 					legacyPinsImported: false,
 					pendingPinnedChatIds: [],
+					originArchivesReopened: false,
 				},
 			});
+			if (!store.snapshot().originArchivesReopened) {
+				const { sessions: saved, importedFromOrigin } = store.snapshot();
+				try {
+					store.set({
+						...(importedFromOrigin ? { sessions: reopenOriginArchives(saved) } : {}),
+						originArchivesReopened: true,
+					});
+				} catch (error) {
+					sdk.logger.warn(
+						`Could not reopen origin's archived sessions; will try again next launch: ${errorText(error)}`,
+					);
+				}
+			}
 			let conversations: DomainHandle<typeof Conversations> | undefined;
 
 			const sessions: DomainProvider<typeof Sessions> = sdk.domains.provide(Sessions, {
@@ -404,7 +445,7 @@ export function createSessionsMainEntry(options: SessionsMainOptions): PluginEnt
 							titleSource: "default",
 							pinned: false,
 							archived: false,
-							archiveChangedAt: session.createdAt,
+							archiveChangedAt: ARCHIVE_NEVER_CHOSEN,
 							workspaceId: null,
 							worktreeBranch: null,
 							directory: null,

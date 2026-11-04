@@ -343,6 +343,62 @@ describe("importing origin's sessions", () => {
 		);
 	});
 
+	// Origin adopted chats from before work sessions into sessions it stamped
+	// with the adoption time, so their chats were often archived earlier still.
+	it("keeps a chat archived before origin gave it a session archived", async () => {
+		const database = await originDatabase([
+			{ id: "wses_archived", chats: ["ses_a"] },
+			{ id: "wses_live", chats: ["ses_b"] },
+		]);
+		const kilo = new FakeConversations();
+		kilo.chats = [
+			chat("ses_a", { createdAt: 10, updatedAt: 30, archivedAt: 30 }),
+			chat("ses_b", { createdAt: 10, updatedAt: 30 }),
+		];
+
+		const { byId } = await boot({ kilo, originDatabase: database });
+
+		await vi.waitFor(() => expect(byId("wses_archived")?.archived).toBe(true));
+		expect(byId("wses_live")?.archived).toBe(false);
+	});
+
+	it("re-archives origin's sessions a release imported as live, unless the person chose since", async () => {
+		const storage = createMemoryStorage("/data/kilo.sessions");
+		const imported = (id: string, chatId: string, archiveChangedAt: number): Session => ({
+			id,
+			title: `Chat ${chatId}`,
+			titleSource: "chat",
+			pinned: false,
+			archived: false,
+			archiveChangedAt,
+			workspaceId: "w1",
+			worktreeBranch: null,
+			directory: "/projects/app",
+			chatIds: [chatId],
+			createdAt: 42,
+			updatedAt: 200,
+		});
+		storage.saved.set("sessions", {
+			sessions: [
+				imported("wses_untouched", "ses_a", 42),
+				imported("wses_restored", "ses_b", 5_000),
+			],
+			importedFromOrigin: true,
+			legacyPinsImported: true,
+			pendingPinnedChatIds: [],
+		});
+		const kilo = new FakeConversations();
+		kilo.chats = [
+			chat("ses_a", { createdAt: 10, updatedAt: 30, archivedAt: 30 }),
+			chat("ses_b", { createdAt: 10, updatedAt: 30, archivedAt: 30 }),
+		];
+
+		const { byId } = await boot({ storage, kilo });
+
+		await vi.waitFor(() => expect(byId("wses_untouched")?.archived).toBe(true));
+		expect(byId("wses_restored")?.archived).toBe(false);
+	});
+
 	it("imports once, never overwrites, and starts empty without a readable database", async () => {
 		const storage = createMemoryStorage("/data/kilo.sessions");
 		const database = await originDatabase([{ id: "wses_old", chats: [] }]);

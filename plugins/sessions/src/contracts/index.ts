@@ -31,7 +31,8 @@ export const sessionSchema = z.object({
 	archived: z.boolean(),
 	/**
 	 * When the archived state last changed (ms). A chat archived on the server
-	 * after this archives the session; the person's later choice wins.
+	 * after this archives the session; the person's later choice wins. 0 for a
+	 * session imported from origin no one has archived or restored here yet.
 	 */
 	archiveChangedAt: z.number(),
 	workspaceId: z.string().nullable(),

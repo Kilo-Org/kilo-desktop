@@ -971,8 +971,8 @@ importers:
         specifier: 0.21.1
         version: 0.21.1(react@19.2.8)
       '@lottiefiles/dotlottie-web':
-        specifier: 0.82.0
-        version: 0.82.0
+        specifier: 0.82.1
+        version: 0.82.1
       '@shadcn/react':
         specifier: ^0.3.0
         version: 0.3.0(@types/react@19.2.17)(react@19.2.8)
@@ -4237,10 +4237,6 @@ packages:
     engines: {node: '>=18.17.0', npm: '>=9.5.0'}
     peerDependencies:
       react: ^17 || ^18 || ^19
-
-  '@lottiefiles/dotlottie-web@0.82.0':
-    resolution: {integrity: sha512-Gp0rKaBAWHs3KXO69oNu7tgh+9VYVaJqv6NDYvH0YdUJR4JxDujvX1kE03yp6o9NgeQiYnvUgHZgnZisw1Mr+Q==}
-    engines: {node: '>=18.17.0', npm: '>=9.5.0'}
 
   '@lottiefiles/dotlottie-web@0.82.1':
     resolution: {integrity: sha512-hLPdAL0dUeHKvQvXqw1p3FtvzZUHRtBsTMt3FLLgphFThsUPNUj2+U+GyttJ5H5qSt5JreLzoaD+IaKO8H/VnA==}
@@ -12002,8 +11998,6 @@ snapshots:
     dependencies:
       '@lottiefiles/dotlottie-web': 0.82.1
       react: 19.2.8
-
-  '@lottiefiles/dotlottie-web@0.82.0': {}
 
   '@lottiefiles/dotlottie-web@0.82.1': {}
 

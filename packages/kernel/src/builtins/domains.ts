@@ -40,6 +40,7 @@ export const PLUGIN_STATES = [
 	"deactivating",
 	"failed",
 	"disabled",
+	"inactive",
 ] as const;
 
 const issueSchema = z.object({

@@ -78,6 +78,10 @@ validate, order and list everything up front. Every field:
 	"main": "./src/main/index.ts", // informational; bundled entries are wired by the plugin list
 	"web": "./src/web/index.ts",
 
+	// Runs the whole plugin only while this holds, typically a feature flag
+	// (see Lifecycle). Omit to always run.
+	"when": { "all": ["kilo.flags/flag:acme-todos"] },
+
 	// Points and domain objects it uses, by qualified id. "optional" orders
 	// activation after the owner; "required" leaves this plugin unresolved
 	// (not activated) when the owner isn't active.
@@ -171,6 +175,10 @@ Rules:
 - Expected failures throw `KernelError(code, message)`. Its code and message
   cross processes; any other error arrives as a generic "The operation
   failed."
+- A plugin with a manifest `when` is `inactive` (not activated, no
+  contributions) while it doesn't hold, and starts or stops live as it
+  changes, as when its flag flips. Plugins that use its items should
+  `require` them `optional`ly.
 - Run code at app milestones by reading `kernel/app`'s `phase` (`started`,
   `ready`, `stopping`…) and listening to its `phase-changed` event. Delay or
   veto quitting with a `kernel/quit` decision.

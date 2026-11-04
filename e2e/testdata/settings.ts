@@ -26,6 +26,7 @@ const ALL_SETTINGS_SECTIONS: readonly SettingsSection[] = [
 	{ id: "account", title: "Account", owner: "kilo.account" },
 	{ id: "appearance", title: "Appearance", owner: "kilo.shell" },
 	{ id: "keyboard-shortcuts", title: "Shortcuts", owner: "kilo.shell" },
+	// kilo.developer runs behind the `developer` flag, which package:e2e forces on.
 	{ id: "diagnostics", title: "Diagnostics", owner: "kilo.developer" },
 	// Behind the LaunchDarkly `environments-feature` flag, which package:e2e does not force on,
 	// so whether the section renders depends on LaunchDarkly. Uncomment once package:e2e

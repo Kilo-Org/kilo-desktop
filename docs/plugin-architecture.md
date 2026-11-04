@@ -328,6 +328,7 @@ mention sources…) keeps its own extension points either way.
 	"engines": { "kilo-desktop": "^1.0" },
 	"main": "./src/main/index.ts",
 	"web": "./src/web/index.ts",
+	"when": { "all": ["kilo.flags/flag:notebooks"] }, // optional: run the whole plugin only while this holds
 
 	"requires": { "kilo.sessions/pane": "optional", "kilo.agent/tool": "optional" },
 	"permissions": { "embeddedHosts": ["notebook"], "protocols": [] },
@@ -985,6 +986,7 @@ with contributors today; candidate points are in the extensibility map (§7).
 ╰───────────────────────────────────────────────────────────────────────────────
 
 ╭─ kilo.developer ──────────────────────────────────────────────────────────────
+│ when kilo.flags/flag:developer (the whole plugin)
 │ ▲ —                                (others add sections under Developer)
 │ ● kilo.shell/settings-category ... Developer
 │   kilo.shell/settings-section .... Diagnostics (over kernel/app, plugins, services)
@@ -1586,7 +1588,7 @@ design.
 | Pop-out window not tied to a session                                              | Workbench pops out detachable views using the kernel `windows` capability (sessionless windows, content width, focus main)                              | Covered (the pop-out changes become kernel primitives) |
 | Pop-out showing live cards and running actions                                    | Sessions live in kilo.sessions in main; the kernel proxies them to every window (§2.2)                                                                  | Removed by design (step 6)                             |
 | PR badges in the pop-out                                                          | Decorations are self-sufficient (git polls in main)                                                                                                     | Removed by design                                      |
-| Feature flag                                                                      | `when: { all: ["flag:workspace-board"] }`, or simply ship it as a removable plugin                                                                      | Covered                                                |
+| Feature flag                                                                      | `when: { all: ["flag:workspace-board"] }` per contribution, or a manifest `when` for the whole plugin                                                   | Covered                                                |
 | Telemetry                                                                         | Declared via `kilo.telemetry/telemetry-event`                                                                                                           | Covered                                                |
 | Shared UI (inputs, dialogs, menus, drag ghost)                                    | `@kilo-desktop/ui` (shared runtime); a drag-preview primitive moves there from pane-canvas                                                              | Covered with a small `ui` addition                     |
 

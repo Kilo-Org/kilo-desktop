@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { isLocalName, isPluginId, isQualifiedId } from "./ids";
 import { HOST_PERMISSIONS } from "./permissions";
+import { whenSchema } from "./when";
 
 const pluginId = z.string().refine(isPluginId, "Plugin ids are dotted publisher.name");
 const localName = z.string().refine(isLocalName, "Invalid local name");
@@ -27,6 +28,12 @@ export const manifestSchema = z.strictObject({
 	/** Informational entry paths; bundled entries are wired by the plugin list. */
 	main: z.string().optional(),
 	web: z.string().optional(),
+	/**
+	 * Runs the plugin only while this holds (e.g. a feature flag's context key):
+	 * the kernel activates it, with its contributions, when it becomes true and
+	 * deactivates it when it turns false. Use global keys.
+	 */
+	when: whenSchema.optional(),
 	/** Extension points and domain objects this plugin needs, by qualified id. */
 	requires: z.record(qualifiedId, z.enum(["required", "optional"])).optional(),
 	permissions: z

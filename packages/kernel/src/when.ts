@@ -8,8 +8,8 @@ import { isQualifiedId, ownerOf, type QualifiedId } from "./ids";
  * an unknown or unset key is false.
  */
 export interface WhenExpression {
-	readonly all?: readonly string[];
-	readonly none?: readonly string[];
+	readonly all?: readonly string[] | undefined;
+	readonly none?: readonly string[] | undefined;
 }
 
 const contextKeyRef = z.string().refine(isQualifiedId, "Context keys are qualified: <owner>/<key>");

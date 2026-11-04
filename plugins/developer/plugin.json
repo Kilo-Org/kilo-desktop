@@ -4,7 +4,11 @@
 	"displayName": "Developer",
 	"version": "1.0.0",
 	"description": "Tools for people building and debugging Kilo: the Developer settings category and Diagnostics.",
+	"when": {
+		"all": ["kilo.flags/flag:developer"]
+	},
 	"requires": {
+		"kilo.flags/flags": "optional",
 		"kilo.shell/settings-category": "optional",
 		"kilo.shell/settings-section": "optional"
 	},

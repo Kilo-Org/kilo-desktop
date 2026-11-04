@@ -21,7 +21,7 @@ import {
 } from "./sdk";
 import { PortRegistry } from "./ports";
 import type { KernelTransport } from "./transport";
-import { ContextKeyStore, type ContextKeyValues } from "./when";
+import { ContextKeyStore, whenKeys, type ContextKeyValues } from "./when";
 
 export type PluginState =
 	| "resolved"
@@ -30,7 +30,9 @@ export type PluginState =
 	| "active"
 	| "deactivating"
 	| "failed"
-	| "disabled";
+	| "disabled"
+	/** Installed, but its manifest `when` doesn't hold; it activates once it does. */
+	| "inactive";
 
 export interface ActivationBudget {
 	/** Log a warning when activation takes longer than this. */
@@ -60,6 +62,8 @@ export interface KernelOptions {
 	readonly skipActivation?: () => boolean;
 	/** Checked after hydration; true leaves the plugin `disabled`: never activated, no contributions. */
 	readonly isDisabled?: (pluginId: string) => boolean;
+	/** Runs before a plugin's `deactivate` (main: stops its services). */
+	readonly beforeDeactivate?: (pluginId: string) => void | Promise<void>;
 	/** Builds the host services injected into one plugin's sdk. */
 	readonly hostServices?: (
 		pluginId: string,
@@ -86,7 +90,10 @@ export interface Kernel {
 	readonly kernelSdk: PluginSdk;
 	activate(): Promise<void>;
 	deactivate(): Promise<void>;
-	/** Waits for in-flight cross-process deliveries (tests and browser mode). */
+	/**
+	 * Waits for in-flight cross-process deliveries and for plugins starting or
+	 * stopping as their `when` changed (tests and browser mode).
+	 */
 	flush(): Promise<void>;
 	pluginState(pluginId: string): PluginState | undefined;
 	pluginStates(): Readonly<Record<string, PluginState>>;
@@ -122,6 +129,19 @@ interface Activation {
  * order with a time budget, isolating and rolling back failures. Lifecycle
  * phases, services and commands are layered on top by the main and renderer
  * kernels.
+ *
+ * A plugin with a manifest `when` (typically a feature flag) runs only while
+ * it holds. It is checked at the plugin's turn in activation order, so keys
+ * set by plugins activating before it (kilo.flags' cached flags) count; until
+ * then it is `inactive` and none of its contributions are registered. After
+ * the first pass the kernel follows the `when`'s keys, activating and
+ * deactivating the plugin (with its manifest contributions) one change at a
+ * time, always settling on the latest value. As at quit, plugins stop in
+ * reverse activation order and `beforeDeactivate` (main: their services) runs
+ * before each stops. Each process decides for itself
+ * from the same mirrored global keys. A plugin that `required`s items from a
+ * plugin behind a `when` stays unresolved for the launch if that plugin
+ * starts inactive, so depend on such plugins `optional`ly.
  */
 export function createKernel(options: KernelOptions): Kernel {
 	const logger = options.logger ?? SILENT_LOGGER;
@@ -298,11 +318,19 @@ export function createKernel(options: KernelOptions): Kernel {
 		}
 	};
 
-	const deactivatePlugin = async (pluginId: string): Promise<void> => {
+	const deactivatePlugin = async (
+		pluginId: string,
+		endState: PluginState = "resolved",
+	): Promise<void> => {
 		const activation = activations.get(pluginId);
 		if (!activation) return;
 		setState(pluginId, "deactivating");
 		const entry = discovery.plugins.find((plugin) => plugin.manifest.id === pluginId)?.entry;
+		try {
+			await options.beforeDeactivate?.(pluginId);
+		} catch (error) {
+			logger.error(`Preparing "${pluginId}" to deactivate failed`, error);
+		}
 		try {
 			if (entry?.deactivate) {
 				await withTimeout(
@@ -320,7 +348,45 @@ export function createKernel(options: KernelOptions): Kernel {
 		);
 		activations.delete(pluginId);
 		extensions.removePlugin(pluginId);
-		setState(pluginId, "resolved");
+		setState(pluginId, endState);
+	};
+
+	const gated = discovery.plugins.filter((plugin) => plugin.manifest.when !== undefined);
+	const whenHolds = (plugin: DiscoveredPlugin) => contextKeys.evaluate(plugin.manifest.when);
+	const addManifestContributions = (pluginId: string) => {
+		for (const contribution of discovery.contributions) {
+			if (contribution.pluginId === pluginId) extensions.addManifestContribution(contribution);
+		}
+	};
+	const startGated = async (plugin: DiscoveredPlugin): Promise<void> => {
+		addManifestContributions(plugin.manifest.id);
+		await activatePlugin(plugin);
+	};
+
+	/** Brings a plugin behind a `when` in line with it; calls are serialised through `followWhen`. */
+	const reconcile = async (plugin: DiscoveredPlugin): Promise<void> => {
+		const pluginId = plugin.manifest.id;
+		const state = states.get(pluginId);
+		if (whenHolds(plugin)) {
+			if (state === "inactive") await startGated(plugin);
+		} else if (state === "active") {
+			await deactivatePlugin(pluginId, "inactive");
+		}
+	};
+	let reconciling: Promise<void> = Promise.resolve();
+	let stopFollowing: (() => void) | undefined;
+	const followWhen = (plugins: readonly DiscoveredPlugin[]) => {
+		// Stops in reverse activation order, so a plugin stops before those it uses, as at quit.
+		const stopping = plugins.filter((plugin) => !whenHolds(plugin)).reverse();
+		const starting = plugins.filter((plugin) => whenHolds(plugin));
+		for (const plugin of [...stopping, ...starting]) {
+			// Re-reads the `when` when its turn comes, so a burst of changes settles on the latest.
+			reconciling = reconciling
+				.then(() => reconcile(plugin))
+				.catch((error) =>
+					logger.error(`Following the \`when\` of "${plugin.manifest.id}" failed`, error),
+				);
+		}
 	};
 
 	const hydrate = async (): Promise<void> => {
@@ -351,22 +417,39 @@ export function createKernel(options: KernelOptions): Kernel {
 				if (options.isDisabled?.(plugin.manifest.id)) setState(plugin.manifest.id, "disabled");
 			}
 			for (const contribution of discovery.contributions) {
-				if (states.get(contribution.pluginId) === "resolved") {
+				if (
+					states.get(contribution.pluginId) === "resolved" &&
+					manifests.get(contribution.pluginId)?.when === undefined
+				) {
 					extensions.addManifestContribution(contribution);
 				}
 			}
 			for (const plugin of discovery.plugins) {
 				if (plugin.status !== "resolved" || states.get(plugin.manifest.id) !== "resolved") continue;
-				await activatePlugin(plugin);
+				if (plugin.manifest.when === undefined) await activatePlugin(plugin);
+				else if (whenHolds(plugin)) await startGated(plugin);
+				else setState(plugin.manifest.id, "inactive");
 			}
+			if (gated.length === 0) return;
+			stopFollowing = contextKeys.subscribe((changed) => {
+				followWhen(
+					gated.filter((plugin) => whenKeys(plugin.manifest.when).some((key) => changed.has(key))),
+				);
+			});
+			// Catch up on changes made while later plugins were still activating.
+			followWhen(gated);
 		},
 		async deactivate() {
+			stopFollowing?.();
+			stopFollowing = undefined;
+			await reconciling;
 			for (const plugin of [...discovery.plugins].reverse()) {
 				await deactivatePlugin(plugin.manifest.id);
 			}
 		},
 		async flush() {
 			await options.transport?.flush?.();
+			await reconciling;
 		},
 		pluginState: (pluginId) => states.get(pluginId),
 		pluginStates: () => Object.fromEntries(states),

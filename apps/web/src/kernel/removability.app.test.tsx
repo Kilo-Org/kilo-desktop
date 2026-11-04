@@ -66,7 +66,12 @@ async function expectBooted(
 	expect(pair.renderer.issues().filter((issue) => issue.severity === "error")).toEqual([]);
 	expect(errors).toEqual([]);
 	expect(Object.keys(states)).toHaveLength(options.expected);
-	expect(Object.entries(states).filter(([, state]) => state !== "active")).toEqual([]);
+	// A plugin behind a manifest `when` (a feature flag, off here) waits `inactive`.
+	const notRunning = Object.entries(states).filter(
+		([id, state]) =>
+			state !== "active" && !(state === "inactive" && pair.renderer.manifest(id)?.when),
+	);
+	expect(notRunning).toEqual([]);
 }
 
 // A full window per case; generous so a loaded CI worker doesn't flake.

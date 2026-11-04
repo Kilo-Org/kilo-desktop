@@ -67,7 +67,7 @@ export interface MainKernelHost {
 
 export interface MainKernelOptions extends Omit<
 	KernelOptions,
-	"process" | "windowId" | "kernelDefinitions" | "kernelContextKeys"
+	"process" | "windowId" | "kernelDefinitions" | "kernelContextKeys" | "beforeDeactivate"
 > {
 	readonly host: MainKernelHost;
 	/** Upper bound for `stop()`, so quitting can never hang. */
@@ -128,6 +128,8 @@ export function createMainKernel(options: MainKernelOptions): MainKernel {
 		...options,
 		registrations: host.safeMode ? [] : options.registrations,
 		isDisabled: (pluginId) => disabledAtLaunch.has(pluginId),
+		// A plugin switched off by its `when` stops its services first, as at quit.
+		beforeDeactivate: (pluginId) => services.stopPlugin(pluginId),
 		process: "main",
 		kernelDefinitions: KERNEL_DEFINITIONS,
 		kernelContextKeys: KERNEL_CONTEXT_KEYS,

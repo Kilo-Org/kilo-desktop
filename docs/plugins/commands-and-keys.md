@@ -73,6 +73,11 @@ Every key in `all` must be true and every key in `none` false. Keys are
 qualified (`<owner>/<key>`); an unknown or unset key is false, so a
 condition on a removed plugin's key simply doesn't hold.
 
+A manifest's top-level `when` gates the whole plugin rather than one
+contribution: the kernel activates it only while the condition holds (see
+the plugin [lifecycle](./README.md#lifecycle)). Feature-flagging a plugin
+is `"when": { "all": ["kilo.flags/flag:<name>"] }`.
+
 ### Context keys
 
 | Key                                                              | Scope  | True while                                             |

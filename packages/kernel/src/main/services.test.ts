@@ -151,6 +151,107 @@ describe("service supervision — starting", () => {
 		expect(stop).toHaveBeenCalledOnce();
 		expect(statusOf(kernel, "acme.svc/svc")?.status).toBe("stopped");
 	});
+
+	it("starts a service again when its when holds once more while it is still stopping", async () => {
+		let finishStop: () => void = () => {};
+		const start = vi.fn();
+		const stop = vi.fn(() => new Promise<void>((resolve) => (finishStop = resolve)));
+		let sdk: PluginSdk | undefined;
+		const kernel = createMainKernel({
+			host: host(),
+			registrations: [
+				servicePlugin(
+					"acme.svc",
+					{ title: "Gated", kind: "daemon", when: { all: ["acme.svc/enabled"] } },
+					{ start, stop },
+					{
+						manifest: { contextKeys: [{ id: "enabled" }] },
+						activate: (pluginSdk) => {
+							sdk = pluginSdk;
+							pluginSdk.context.set("enabled", true);
+						},
+					},
+				),
+			],
+		});
+		await kernel.start();
+		await kernel.windowShown();
+
+		sdk!.context.set("enabled", false);
+		await vi.waitFor(() => expect(stop).toHaveBeenCalled());
+		sdk!.context.set("enabled", true);
+		finishStop();
+		await kernel.services.settled();
+
+		expect(start).toHaveBeenCalledTimes(2);
+		expect(statusOf(kernel, "acme.svc/svc")?.status).toBe("ready");
+	});
+});
+
+describe("service supervision — plugins behind a manifest `when`", () => {
+	/** A plugin owning `acme.flags/flag:*`, and a gated plugin running one activation daemon. */
+	function gatedService(implementation: ServiceImplementation, onDeactivate: () => void) {
+		let flags: PluginSdk | undefined;
+		const kernel = createMainKernel({
+			host: host(),
+			registrations: [
+				testPlugin("acme.flags", {
+					manifest: { contextKeys: [{ id: "flag:*", scope: "global" }] },
+					entry: {
+						activate: (sdk) => {
+							flags = sdk;
+							sdk.context.set("flag:beta", true);
+						},
+					},
+				}),
+				servicePlugin(
+					"acme.beta",
+					{ title: "Beta", kind: "daemon", startOn: "activation" },
+					implementation,
+					{
+						manifest: { when: { all: ["acme.flags/flag:beta"] } },
+						activate: (sdk) => sdk.onDispose(onDeactivate),
+					},
+				),
+			],
+		});
+		return { kernel, setFlag: (on: boolean) => flags!.context.set("flag:beta", on) };
+	}
+
+	it("stops the plugin's services before deactivating it when its `when` turns false", async () => {
+		const order: string[] = [];
+		const { kernel, setFlag } = gatedService(
+			{ start: () => {}, stop: () => void order.push("stop service") },
+			() => void order.push("deactivate plugin"),
+		);
+		await kernel.start();
+		await kernel.services.settled();
+
+		setFlag(false);
+		await kernel.flush();
+
+		expect(order).toEqual(["stop service", "deactivate plugin"]);
+		expect(statusOf(kernel, "acme.beta/svc")?.status).toBe("stopped");
+	});
+
+	it("starts the service again when the `when` turns back on while it is still stopping", async () => {
+		let finishStop: () => void = () => {};
+		const start = vi.fn();
+		const stop = vi.fn(() => new Promise<void>((resolve) => (finishStop = resolve)));
+		const { kernel, setFlag } = gatedService({ start, stop }, () => {});
+		await kernel.start();
+		await kernel.services.settled();
+
+		setFlag(false);
+		await vi.waitFor(() => expect(stop).toHaveBeenCalled());
+		setFlag(true);
+		finishStop();
+		await kernel.flush();
+		await kernel.services.settled();
+
+		expect(start).toHaveBeenCalledTimes(2);
+		expect(statusOf(kernel, "acme.beta/svc")?.status).toBe("ready");
+	});
 });
 
 describe("service supervision — failures", () => {

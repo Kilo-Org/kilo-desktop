@@ -221,6 +221,222 @@ describe("createKernel — plugin runtime", () => {
 	});
 });
 
+describe("createKernel — plugins behind a `when`", () => {
+	/** Owns `acme.flags/flag:*`; `set` flips a flag once it has activated. */
+	function flagsPlugin(initial: Record<string, boolean> = {}) {
+		let sdk: PluginSdk | undefined;
+		return {
+			set: (flag: string, on: boolean) => sdk!.context.set(`flag:${flag}`, on),
+			registration: testPlugin("acme.flags", {
+				manifest: { contextKeys: [{ id: "flag:*", scope: "global" }] },
+				entry: {
+					activate: (flagsSdk) => {
+						sdk = flagsSdk;
+						for (const [flag, on] of Object.entries(initial)) sdk.context.set(`flag:${flag}`, on);
+					},
+				},
+			}),
+		};
+	}
+
+	function gatedPlugin(
+		entry: { activate?: () => void; deactivate?: () => void } = {},
+		when: unknown = { all: ["acme.flags/flag:beta"] },
+	) {
+		return testPlugin("acme.beta", {
+			manifest: {
+				when,
+				contributes: { extensions: { "acme.host/panel": [{ id: "beta", title: "Beta" }] } },
+			},
+			entry: {
+				activate: entry.activate ?? (() => {}),
+				...(entry.deactivate ? { deactivate: entry.deactivate } : {}),
+			},
+		});
+	}
+
+	const panels = (kernel: ReturnType<typeof createKernel>) =>
+		kernel
+			.sdkFor("acme.host")
+			.extensions.list(Panel)
+			.map((panel) => panel.id);
+
+	it("leaves a plugin inactive, without its contributions, while its `when` doesn't hold", async () => {
+		const activate = vi.fn();
+		const flags = flagsPlugin();
+		const kernel = createKernel({
+			process: "main",
+			registrations: [hostPlugin(), flags.registration, gatedPlugin({ activate })],
+		});
+
+		await kernel.activate();
+
+		expect(activate).not.toHaveBeenCalled();
+		expect(kernel.pluginState("acme.beta")).toBe("inactive");
+		expect(panels(kernel)).toEqual([]);
+		expect(() => kernel.sdkFor("acme.beta")).toThrow(/not active/);
+	});
+
+	it("activates a plugin whose `when` an earlier plugin made true while starting", async () => {
+		const flags = flagsPlugin({ beta: true });
+		const kernel = createKernel({
+			process: "main",
+			registrations: [hostPlugin(), flags.registration, gatedPlugin()],
+		});
+		const transitions: string[] = [];
+		kernel.onPluginStateChange((pluginId, state) => {
+			if (pluginId === "acme.beta") transitions.push(state);
+		});
+
+		await kernel.activate();
+
+		expect(kernel.pluginState("acme.beta")).toBe("active");
+		expect(transitions).toEqual(["activating", "active"]);
+		expect(panels(kernel)).toEqual(["beta"]);
+	});
+
+	it("activates the plugin, with its contributions, as soon as its `when` holds", async () => {
+		const activate = vi.fn();
+		const flags = flagsPlugin();
+		const kernel = createKernel({
+			process: "main",
+			registrations: [hostPlugin(), flags.registration, gatedPlugin({ activate })],
+		});
+		await kernel.activate();
+
+		flags.set("beta", true);
+		await kernel.flush();
+
+		expect(activate).toHaveBeenCalledOnce();
+		expect(kernel.pluginState("acme.beta")).toBe("active");
+		expect(panels(kernel)).toEqual(["beta"]);
+	});
+
+	it("deactivates the plugin, removing its contributions, when its `when` stops holding", async () => {
+		const deactivate = vi.fn();
+		const activate = vi.fn();
+		const flags = flagsPlugin({ beta: true });
+		const kernel = createKernel({
+			process: "main",
+			registrations: [hostPlugin(), flags.registration, gatedPlugin({ activate, deactivate })],
+		});
+		await kernel.activate();
+
+		flags.set("beta", false);
+		await kernel.flush();
+
+		expect(deactivate).toHaveBeenCalledOnce();
+		expect(kernel.pluginState("acme.beta")).toBe("inactive");
+		expect(panels(kernel)).toEqual([]);
+
+		flags.set("beta", true);
+		await kernel.flush();
+
+		expect(activate).toHaveBeenCalledTimes(2);
+		expect(panels(kernel)).toEqual(["beta"]);
+	});
+
+	it("stops gated plugins after the plugins that use them, and starts them before", async () => {
+		const order: string[] = [];
+		const flags = flagsPlugin({ beta: true });
+		const Slot = defineExtensionPoint({ id: "acme.base/slot", kind: "additive" });
+		const gated = (id: string, manifest: Record<string, unknown>, definitions = {}) =>
+			testPlugin(id, {
+				manifest: { when: { all: ["acme.flags/flag:beta"] }, ...manifest },
+				definitions,
+				entry: {
+					activate: () => void order.push(`start ${id}`),
+					deactivate: () => void order.push(`stop ${id}`),
+				},
+			});
+		const kernel = createKernel({
+			process: "main",
+			registrations: [
+				flags.registration,
+				// Registered first, but uses acme.base's point, so it activates after it.
+				gated("acme.user", { requires: { "acme.base/slot": "optional" } }),
+				gated(
+					"acme.base",
+					{ extensionPoints: [{ id: "slot", kind: "additive" }] },
+					{ extensionPoints: [Slot] },
+				),
+			],
+		});
+		await kernel.activate();
+		await kernel.flush();
+		order.length = 0;
+
+		flags.set("beta", false);
+		await kernel.flush();
+		flags.set("beta", true);
+		await kernel.flush();
+
+		expect(order).toEqual([
+			"stop acme.user",
+			"stop acme.base",
+			"start acme.base",
+			"start acme.user",
+		]);
+	});
+
+	it("settles on the latest value when the `when` flips while the plugin is starting", async () => {
+		let finishActivation: () => void = () => {};
+		const flags = flagsPlugin();
+		const kernel = createKernel({
+			process: "main",
+			registrations: [
+				hostPlugin(),
+				flags.registration,
+				testPlugin("acme.beta", {
+					manifest: { when: { all: ["acme.flags/flag:beta"] } },
+					entry: {
+						activate: () => new Promise<void>((resolve) => (finishActivation = resolve)),
+					},
+				}),
+			],
+		});
+		await kernel.activate();
+
+		flags.set("beta", true);
+		await vi.waitFor(() => expect(kernel.pluginState("acme.beta")).toBe("activating"));
+		flags.set("beta", false);
+		finishActivation();
+		await kernel.flush();
+
+		expect(kernel.pluginState("acme.beta")).toBe("inactive");
+	});
+
+	it("stops following the `when` once the kernel deactivates", async () => {
+		const activate = vi.fn();
+		const kernel = createKernel({
+			process: "main",
+			registrations: [hostPlugin(), flagsPlugin().registration, gatedPlugin({ activate })],
+		});
+		await kernel.activate();
+		await kernel.deactivate();
+
+		kernel.contextKeys.set("acme.flags", "acme.flags/flag:beta", true);
+		await kernel.flush();
+
+		expect(activate).not.toHaveBeenCalled();
+		expect(kernel.pluginState("acme.beta")).toBe("inactive");
+	});
+
+	it("rejects a manifest `when` with unqualified keys", async () => {
+		const kernel = createKernel({
+			process: "main",
+			registrations: [gatedPlugin({}, { all: ["beta"] })],
+		});
+
+		await kernel.activate();
+
+		expect(kernel.pluginState("acme.beta")).toBeUndefined();
+		expect(kernel.issues()).toContainEqual(
+			expect.objectContaining({ pluginId: "acme.beta", severity: "error" }),
+		);
+	});
+});
+
 describe("createKernel — window hydration", () => {
 	it("gives up on a main process that never answers, with a TIMEOUT error", async () => {
 		vi.useFakeTimers();

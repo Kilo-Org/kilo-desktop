@@ -16,7 +16,7 @@ import {
 } from "@kilo-desktop/plugin-shell/testing";
 
 import manifest from "../../plugin.json";
-import { DEVELOPER_DEFINITIONS, DEVELOPER_SETTINGS_CATEGORY } from "../contracts";
+import { DEVELOPER_DEFINITIONS, DEVELOPER_SETTINGS_CATEGORY, DEVELOPER_FLAG } from "../contracts";
 import { developerWebEntry } from ".";
 
 const developer: GuestPlugin = {
@@ -24,6 +24,18 @@ const developer: GuestPlugin = {
 	definitions: DEVELOPER_DEFINITIONS,
 	web: developerWebEntry,
 };
+
+/** A stand-in for kilo.flags with the developer flag on or off. */
+function developerFlag(on: boolean): GuestPlugin {
+	return {
+		manifest: testManifest("kilo.flags", { contextKeys: [{ id: "flag:*", scope: "global" }] }),
+		main: {
+			activate: (sdk) => {
+				sdk.context.set(`flag:${DEVELOPER_FLAG}`, on);
+			},
+		},
+	};
+}
 
 /** A renderer plugin that contributes to points through its manifest. */
 function contributor(
@@ -87,7 +99,7 @@ async function openDiagnostics(
 	options: ShellHostOptions = {},
 ) {
 	await page.viewport(1280, 800);
-	const host = await renderShell([developer, ...plugins], options);
+	const host = await renderShell([developer, developerFlag(true), ...plugins], options);
 	window.location.hash = "#/settings/diagnostics";
 	await expect.element(page.getByTestId("diagnostics-settings")).toBeVisible();
 	return host;
@@ -111,6 +123,7 @@ describe("the Developer settings category", () => {
 	it("comes last in Settings, with Diagnostics and other plugins' developer sections under it", async () => {
 		await renderShell([
 			developer,
+			developerFlag(true),
 			contributor(
 				"acme.devtools",
 				{
@@ -135,13 +148,66 @@ describe("the Developer settings category", () => {
 		]);
 	});
 
-	it("is absent without kilo.developer", async () => {
-		await renderShell();
+	async function expectDeveloperHidden() {
 		await page.getByTestId("nav-settings").click();
 		await expect.element(page.getByTestId("settings-group-general")).toBeVisible();
 
 		await expect.element(page.getByTestId("settings-group-developer")).not.toBeInTheDocument();
 		await expect.element(page.getByTestId("settings-section-diagnostics")).not.toBeInTheDocument();
+	}
+
+	it("is absent without kilo.developer", async () => {
+		await renderShell();
+		await expectDeveloperHidden();
+	});
+
+	it("is hidden, with Diagnostics, while the developer flag is off", async () => {
+		const { main } = await renderShell([developer, developerFlag(false)]);
+		await expectDeveloperHidden();
+		expect(main.pluginState("kilo.developer")).toBe("inactive");
+	});
+
+	it("is hidden without kilo.flags, as every flag is off", async () => {
+		await renderShell([developer]);
+		await expectDeveloperHidden();
+	});
+
+	it("appears, with Diagnostics, as soon as the flag turns on, and goes when it turns off", async () => {
+		const { main } = await renderShell([developer, developerFlag(false)]);
+		await expectDeveloperHidden();
+		const setFlag = (on: boolean) =>
+			main.sdkFor("kilo.flags").context.set(`flag:${DEVELOPER_FLAG}`, on);
+
+		setFlag(true);
+
+		await expect.element(page.getByTestId("settings-group-developer")).toBeVisible();
+		await page.getByTestId("settings-section-diagnostics").click();
+		await expect.element(page.getByTestId("diagnostics-settings")).toBeVisible();
+
+		setFlag(false);
+
+		await expect.element(page.getByTestId("settings-group-developer")).not.toBeInTheDocument();
+	});
+
+	it("sends other plugins' developer sections to General while the flag is off", async () => {
+		await renderShell([
+			developer,
+			developerFlag(false),
+			contributor(
+				"acme.devtools",
+				{
+					"kilo.shell/settings-section": [
+						{ id: "inspector", title: "Inspector", category: DEVELOPER_SETTINGS_CATEGORY },
+					],
+				},
+				(sdk) => sdk.extensions.implement(SettingsSection, "inspector", { component: () => null }),
+			),
+		]);
+		await page.getByTestId("nav-settings").click();
+		await expect.element(page.getByTestId("settings-section-inspector")).toBeVisible();
+
+		await expect.element(page.getByTestId("settings-group-developer")).not.toBeInTheDocument();
+		expect(sectionsIn("general")).toContain("settings-section-inspector");
 	});
 });
 
@@ -209,9 +275,9 @@ describe("diagnostics settings", () => {
 	it("lists plugins as separate rows that start collapsed", async () => {
 		await openDiagnostics();
 
-		// kilo.shell, kilo.developer and acme.server.
+		// kilo.shell, kilo.developer, kilo.flags and acme.server.
 		const rows = page.getByTestId("diagnostics-plugins").element().children;
-		expect(rows).toHaveLength(3);
+		expect(rows).toHaveLength(4);
 		await expect
 			.element(page.getByTestId("diagnostics-plugin-details-acme.server"))
 			.not.toBeInTheDocument();
@@ -224,6 +290,7 @@ describe("diagnostics settings", () => {
 			"diagnostics-plugin-acme.server",
 			"diagnostics-plugin-acme.zeta",
 			"diagnostics-plugin-kilo.developer",
+			"diagnostics-plugin-kilo.flags",
 			"diagnostics-plugin-kilo.shell",
 		]);
 	});
@@ -531,10 +598,10 @@ describe("diagnostics settings — turning plugins on and off", () => {
 		expect(columnsOffset(kernelRow)).toBe(columnsOffset(pluginRow));
 	});
 
-	it("keeps Diagnostics and the plugins it needs on", async () => {
+	it("keeps Diagnostics and the plugins it needs on, including the flags it is behind", async () => {
 		await openDiagnostics([agentServer()], pluginsHost().options);
 
-		for (const id of ["kilo.developer", "kilo.shell"]) {
+		for (const id of ["kilo.developer", "kilo.flags", "kilo.shell"]) {
 			await expect
 				.element(page.getByTestId(`diagnostics-plugin-${id}`).getByRole("switch"))
 				.toBeDisabled();

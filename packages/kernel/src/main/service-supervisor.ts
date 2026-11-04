@@ -37,7 +37,10 @@ export interface ServiceSupervisorOptions {
  * condition is met: `activation` once plugins are active, `window-shown`
  * after the main window shows, `first-use` once someone asks for it. Crashes
  * restart with exponential backoff up to `maxRetries`; services whose
- * eligibility lapses are stopped. `restart()` starts a service afresh even
+ * eligibility lapses are stopped, and one that becomes eligible again while
+ * stopping starts once the stop settles. `stopPlugin()` stops a plugin's
+ * services ahead of its deactivation and holds them stopped until the plugin
+ * has unbound them. `restart()` starts a service afresh even
  * after it gave up or completed. At quit everything stops in reverse plugin
  * order, each stop bounded by its `stopTimeoutMs`.
  */
@@ -46,6 +49,8 @@ export class ServiceSupervisor {
 	readonly #runs = new Map<QualifiedId, Run>();
 	readonly #requested = new Set<string>();
 	readonly #pending = new Set<Promise<unknown>>();
+	/** Plugins deactivating: their services stay stopped until the plugin unbinds them. */
+	readonly #held = new Set<string>();
 	#phase: Phase = "booting";
 
 	constructor(options: ServiceSupervisorOptions) {
@@ -96,6 +101,17 @@ export class ServiceSupervisor {
 		while (this.#pending.size > 0) await Promise.allSettled([...this.#pending]);
 	}
 
+	/**
+	 * Stops a plugin's services and resolves once they have stopped, before it
+	 * deactivates. They aren't started again until the plugin has unbound them
+	 * and binds them anew (a later activation).
+	 */
+	async stopPlugin(pluginId: string): Promise<void> {
+		this.#held.add(pluginId);
+		const runs = [...this.#runs.values()].filter((run) => run.pluginId === pluginId);
+		await Promise.all(runs.map((run) => this.#stop(run)));
+	}
+
 	async stopAll(): Promise<void> {
 		this.#phase = "stopping";
 		const runs = [...this.#runs.values()].sort(
@@ -112,6 +128,10 @@ export class ServiceSupervisor {
 				.map((contribution) => [contribution.key, contribution]),
 		);
 		for (const contribution of all) this.#ensureRecord(contribution);
+		for (const pluginId of this.#held) {
+			const bound = all.some((c) => c.pluginId === pluginId && c.implementation !== undefined);
+			if (!bound) this.#held.delete(pluginId);
+		}
 		if (this.#phase === "stopping") return;
 
 		for (const run of this.#runs.values()) {
@@ -130,6 +150,7 @@ export class ServiceSupervisor {
 	}
 
 	#eligible(run: Run): boolean {
+		if (this.#held.has(run.pluginId)) return false;
 		switch (run.metadata.startOn) {
 			case "activation":
 				return this.#phase !== "booting";
@@ -240,6 +261,8 @@ export class ServiceSupervisor {
 			}
 		}
 		this.#setStatus(run, "stopped");
+		// Its plugin may have bound it again while it was stopping, which `#reconcile` skipped.
+		this.#reconcile();
 	}
 
 	#track(promise: Promise<unknown>): void {

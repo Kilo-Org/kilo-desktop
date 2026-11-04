@@ -85,7 +85,11 @@ function expectBooted({ pair, errors }: Awaited<ReturnType<typeof boot>>, expect
 	expect(pair.main.issues().filter((issue) => issue.severity === "error")).toEqual([]);
 	expect(errors).toEqual([]);
 	expect(Object.keys(states)).toHaveLength(expected);
-	expect(Object.entries(states).filter(([, state]) => state !== "active")).toEqual([]);
+	// A plugin behind a manifest `when` (a feature flag, off here) waits `inactive`.
+	const notRunning = Object.entries(states).filter(
+		([id, state]) => state !== "active" && !(state === "inactive" && pair.main.manifest(id)?.when),
+	);
+	expect(notRunning).toEqual([]);
 }
 
 // Every plugin's real main entry per case; generous so a loaded CI worker doesn't flake.

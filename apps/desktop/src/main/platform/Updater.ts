@@ -6,11 +6,7 @@ import {
 	type ReleaseTrack,
 	type UpdatePublishUrls,
 } from "$config/release.js";
-import {
-	desktopReleaseNotesSchema,
-	MAX_VISIBLE_RELEASE_NOTE_ITEMS,
-	type DesktopReleaseNotes,
-} from "$config/release-notes.js";
+import { desktopReleaseNotesSchema, type DesktopReleaseNotes } from "$config/release-notes.js";
 
 import { UpdateFeedError, type WindowsUpdateFeed } from "./WindowsUpdateFeed.js";
 
@@ -474,9 +470,7 @@ export class DesktopUpdaterService {
 			}
 			return {
 				...parsed.data,
-				items: parsed.data.items
-					.slice(0, MAX_VISIBLE_RELEASE_NOTE_ITEMS)
-					.map((item) => truncate(item, MAX_RELEASE_NOTE_ITEM_LENGTH)),
+				items: parsed.data.items.map((item) => truncate(item, MAX_RELEASE_NOTE_ITEM_LENGTH)),
 			};
 		} catch (error) {
 			this.#options.logger.warn("Release notes are unavailable", error);

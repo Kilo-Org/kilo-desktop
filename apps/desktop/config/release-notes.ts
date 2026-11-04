@@ -4,8 +4,6 @@ import { RELEASE_TRACKS } from "./release.js";
 
 /** Most items a published release-notes document may carry. */
 export const MAX_PUBLISHED_RELEASE_NOTE_ITEMS = 50;
-/** Most items per release the app keeps and shows from a release-notes document. */
-export const MAX_VISIBLE_RELEASE_NOTE_ITEMS = 8;
 
 /** The release-notes document published next to each track's update feed. */
 export const desktopReleaseNotesSchema = z.object({

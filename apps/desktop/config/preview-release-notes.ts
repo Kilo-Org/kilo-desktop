@@ -14,7 +14,6 @@ import { parseArgs } from "node:util";
 
 import { execa } from "execa";
 
-import { MAX_VISIBLE_RELEASE_NOTE_ITEMS } from "./release-notes.js";
 import {
 	extractReleaseNoteItems,
 	findPreviousTrackTag,
@@ -63,12 +62,9 @@ async function main(): Promise<void> {
 		return;
 	}
 	console.log(bodyMarkdown);
-	console.log(
-		`\n---\nIn-app items (${items.length}; the app shows the first ${MAX_VISIBLE_RELEASE_NOTE_ITEMS}):`,
-	);
+	console.log(`\n---\nIn-app items (${items.length}):`);
 	items.forEach((item, index) => {
-		const marker = index < MAX_VISIBLE_RELEASE_NOTE_ITEMS ? "*" : " ";
-		console.log(`${marker} ${String(index + 1).padStart(2)}. ${item}`);
+		console.log(`${String(index + 1).padStart(2)}. ${item}`);
 	});
 }
 

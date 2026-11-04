@@ -97,6 +97,20 @@ describe("DesktopUpdaterService", () => {
 		service.dispose();
 	});
 
+	it("keeps every published release-note item", async () => {
+		vi.useFakeTimers();
+		const items = Array.from({ length: 20 }, (_, index) => `Change ${index + 1}`);
+		const { service, updater } = createService({
+			fetch: (async () =>
+				new Response(JSON.stringify({ ...notes, items }), { status: 200 })) as typeof fetch,
+		});
+		service.start();
+		expect((await service.check()).accepted).toBe(true);
+		updater.emit("update-downloaded", {}, "", notes.version, new Date(), "");
+		await vi.waitFor(() => expect(service.state.releaseNotes[0]?.items).toEqual(items));
+		service.dispose();
+	});
+
 	it("keeps release-note failures outside the update path", async () => {
 		vi.useFakeTimers();
 		const { service, updater } = createService({

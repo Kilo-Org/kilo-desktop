@@ -208,7 +208,9 @@ export function AboutSettings() {
 										{targetRelease?.version}
 									</code>
 								</FieldLegend>
-								<ReleaseNotesList notes={state.releaseNotes} showHeading={false} />
+								<div className="scroll-fade-y max-h-64 min-h-0 overflow-y-auto">
+									<ReleaseNotesList notes={state.releaseNotes} showHeading={false} />
+								</div>
 							</FieldSet>
 						</div>
 					) : null}

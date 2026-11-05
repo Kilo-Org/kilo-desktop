@@ -64,6 +64,21 @@ const TREE_UNSAFE_CSS = `
 		--truncate-marker-fade-in-duration: 0s;
 	}
 
+	/* The tree shows the "…" marker when its cell is taller than 1lh, but at
+	   fractional zoom (e.g. 80%, 110%) sub-pixel rounding makes an unwrapped
+	   cell ~24.02px vs 24px, so every row gets a marker. A real overflow wraps
+	   to 2lh, so test against 1.5lh instead.
+	   https://github.com/pierrecomputer/pierre/issues/816 */
+	[data-truncate-marker] {
+		opacity: 0;
+	}
+
+	@container measure (height > 1.5lh) {
+		[data-truncate-marker] {
+			opacity: 1;
+		}
+	}
+
 	[data-file-tree-virtualized-scroll="true"] {
 		scrollbar-gutter: auto;
 		scrollbar-width: thin;

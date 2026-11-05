@@ -36,9 +36,9 @@ const buildDiffCacheScope = (identity: string, source: string): string =>
 
 export const parseChatPatchFiles = (patch: string, identity: string): FileDiffMetadata[] => {
 	try {
-		return parsePatchFiles(patch, buildDiffCacheScope(identity, patch)).flatMap(
-			(parsedPatch) => parsedPatch.files,
-		);
+		return parsePatchFiles(patch, {
+			cacheKeyPrefix: buildDiffCacheScope(identity, patch),
+		}).flatMap((parsedPatch) => parsedPatch.files);
 	} catch {
 		return [];
 	}

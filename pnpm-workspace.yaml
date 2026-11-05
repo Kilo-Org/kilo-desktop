@@ -8,7 +8,7 @@ packages:
   - e2e
 
 catalog:
-  "@pierre/diffs": 1.6.2
+  "@pierre/diffs": 1.6.4
   "@pierre/trees": 1.0.0-beta.6
   "@playwright/test": 1.64.1
   # Every Sentry package must resolve to the exact @sentry/core pinned by

@@ -37,8 +37,8 @@ export const profileSchema = z.object({
 	profile: z.object({
 		email: z.string(),
 		name: z.string().optional(),
-		organizations: z.array(organizationSchema).optional(),
-		selectedOrganizationId: z.string().optional(),
+		organizations: z.array(organizationSchema).nullish(),
+		selectedOrganizationId: z.string().nullish(),
 		hasPersonalAccount: z.boolean().optional(),
 	}),
 	balance: z.object({ balance: z.number() }).nullable(),

@@ -15,6 +15,7 @@ import {
 	type KiloProviderListPayload,
 } from "./model-catalog";
 import { directoryClient as createKiloDirectoryClient } from "../runtime/kilo-client";
+import { useKiloAccountKey } from "./kilo-account-key";
 
 /**
  * Guarded catalog fetch used as the query function. Exported so the
@@ -74,6 +75,7 @@ export function useKiloModelCatalog(
 	connection: KiloGlobalConnection | undefined,
 	connectionUpdatedAt = 0,
 ) {
+	const account = useKiloAccountKey();
 	const query = useQuery({
 		queryKey: [
 			"kilo.chat",
@@ -82,6 +84,7 @@ export function useKiloModelCatalog(
 			connection?.version,
 			connection?.globalDirectory,
 			connectionUpdatedAt,
+			account,
 		],
 		queryFn: () => fetchModelCatalogForConnection(connection),
 		enabled: connection !== undefined,

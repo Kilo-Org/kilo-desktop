@@ -591,6 +591,8 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 		navigatorOpened,
 		workspaceEdited,
 		signIn,
+		/** Changes kilo.account's identity; needs `identity` in the options. */
+		setIdentity: (next: IdentityState) => account?.setIdentity(next),
 		starter: starterCalls,
 		/** A session's panes, as kilo.sessions holds them. */
 		panesOf: (sessionId: string) =>

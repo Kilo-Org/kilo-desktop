@@ -19,6 +19,8 @@ export interface FakeChat {
 	readonly messages: FakeMessage[];
 	/** The agent Kilo recorded for the chat (its last prompt's), as `/session/:id` reports it. */
 	readonly agent?: string;
+	/** The model Kilo recorded for the chat, as `/session/:id` reports it. */
+	readonly model?: { readonly providerID: string; readonly id: string; readonly variant?: string };
 }
 
 export interface RecordedRequest {
@@ -302,6 +304,7 @@ export class FakeKiloServer {
 		return {
 			...(revert ? { revert: { messageID: revert } } : {}),
 			...(chat.agent ? { agent: chat.agent } : {}),
+			...(chat.model ? { model: chat.model } : {}),
 			id: chat.id,
 			slug: chat.id,
 			projectID: "project",

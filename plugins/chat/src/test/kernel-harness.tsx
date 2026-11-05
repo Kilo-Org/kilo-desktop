@@ -36,11 +36,12 @@ export const SIGNED_IN: IdentityState = {
 
 export const SIGNED_OUT: IdentityState = { ...SIGNED_IN, authenticated: false };
 
-/** kilo.account's identity in main, with `signIn` recorded. */
+/** kilo.account's identity in main, with `signIn` recorded and `setIdentity` to change who is signed in. */
 export function fakeAccount(identity: IdentityState, signIn: () => void) {
+	let provider: DomainProvider<typeof Identity> | undefined;
 	const entry: PluginEntry = {
 		activate(sdk) {
-			sdk.domains.provide(Identity, {
+			provider = sdk.domains.provide(Identity, {
 				initialState: identity,
 				methods: {
 					signIn: () => {
@@ -61,6 +62,7 @@ export function fakeAccount(identity: IdentityState, signIn: () => void) {
 		},
 		definitions: { domains: [Identity] },
 		main: entry,
+		setIdentity: (next: IdentityState) => provider?.setState(next),
 	};
 }
 

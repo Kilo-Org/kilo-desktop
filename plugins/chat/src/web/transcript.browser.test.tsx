@@ -28,6 +28,7 @@ import {
 	type FakeMessage,
 } from "../test/fake-kilo-server";
 import { SIGNED_IN, SIGNED_OUT } from "../test/kernel-harness";
+import { EMPTY_KILO_CATALOG_RETRY_LIMIT } from "./runtime/kilo-connection-error";
 import {
 	button,
 	expandAll,
@@ -1101,6 +1102,70 @@ describe("tools that need sign-in", () => {
 		await expect
 			.poll(() => JSON.stringify(promptsTo(host.server)[0]?.body ?? ""))
 			.toContain("I've signed in. Please continue.");
+	});
+
+	const kiloProvider = (model: string) => ({
+		all: [
+			{ id: "kilo", name: "Kilo", models: { [model]: { id: model, name: model, variants: {} } } },
+		],
+		default: { kilo: model },
+		connected: ["kilo"],
+	});
+
+	/**
+	 * A signed-out chat on `kilo/free` whose tool call was refused, after clicking
+	 * Sign in. `recorded` has Kilo report the chat's model, as it does once a
+	 * prompt ran with it.
+	 */
+	async function signInFromRefusedCall(callID: string, { recorded = false } = {}) {
+		const server = new FakeKiloServer();
+		server.providers = kiloProvider("free");
+		server.config = { model: "kilo/free" };
+		server.addChat({
+			id: "ses_a",
+			directory: "/projects/app",
+			title: "Chat",
+			...(recorded ? { agent: "code", model: { providerID: "kilo", id: "free" } } : {}),
+			messages: chatWith([refused(callID)], { model: { providerID: "kilo", modelID: "free" } }),
+		});
+		const host = await renderAgentPane({
+			server,
+			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			chats: [chatSummary("ses_a")],
+			identity: SIGNED_OUT,
+			plugins: [secretTools],
+		});
+		await page.getByTestId("kilo-tool-signin-prompt-signin").click();
+		await vi.waitFor(() => expect(host.signIn).toHaveBeenCalled());
+		return { server, host };
+	}
+
+	it("continues after sign-in with a model the signed-in account offers", async () => {
+		const { server, host } = await signInFromRefusedCall("call_secret_after_sign_in");
+		server.providers = kiloProvider("balanced");
+		server.config = { model: "kilo/balanced" };
+		host.setIdentity(SIGNED_IN);
+
+		await expect
+			.poll(() => promptsTo(server)[0]?.body)
+			.toMatchObject({ model: { providerID: "kilo", modelID: "balanced" } });
+	});
+
+	it("holds the follow-up when the signed-in model catalog can't be read", async () => {
+		const { server, host } = await signInFromRefusedCall("call_secret_catalog_failed", {
+			recorded: true,
+		});
+		const readsBefore = server.requestsTo("GET", "/provider").length;
+		server.providers = { all: [], default: {}, connected: [] };
+		host.setIdentity(SIGNED_IN);
+
+		// An empty catalog is read once, then retried a bounded number of times before the query fails.
+		await expect
+			.poll(() => server.requestsTo("GET", "/provider").length - readsBefore, { timeout: 10_000 })
+			.toBe(EMPTY_KILO_CATALOG_RETRY_LIMIT + 1);
+		await new Promise((resolve) => setTimeout(resolve, 500));
+
+		expect(promptsTo(server)).toEqual([]);
 	});
 
 	it("leaves other tools' errors that mention the marker alone", async () => {

@@ -1,9 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { Agent } from "@kilocode/sdk/v2/client";
 
 import type { ServerConnection as KiloGlobalConnection } from "@kilo-desktop/plugin-agent/contracts";
 import { directoryClient as createKiloDirectoryClient } from "../runtime/kilo-client";
 import { buildAgentCatalog, type KiloAgentCatalog } from "./agent-catalog";
+import { useKiloAccountKey } from "./kilo-account-key";
 
 /**
  * Guarded agent-catalog fetch used as the query function. Exported so the
@@ -26,6 +27,7 @@ export function useKiloAgentCatalog(
 	connection: KiloGlobalConnection | undefined,
 	connectionUpdatedAt = 0,
 ) {
+	const account = useKiloAccountKey();
 	return useQuery({
 		queryKey: [
 			"kilo.chat",
@@ -34,9 +36,12 @@ export function useKiloAgentCatalog(
 			connection?.version,
 			connection?.globalDirectory,
 			connectionUpdatedAt,
+			account,
 		],
 		queryFn: () => fetchAgentCatalogForConnection(connection),
 		enabled: connection !== undefined,
+		// Keeps the picker filled while an account change reads the agents again.
+		placeholderData: keepPreviousData,
 		retry: false,
 		staleTime: Number.POSITIVE_INFINITY,
 		gcTime: Number.POSITIVE_INFINITY,

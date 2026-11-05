@@ -95,7 +95,8 @@ const selectSignInIdle = (state: DomainState<typeof Identity>) =>
  * Whether a turn sent now would run for the signed-in person. Sign-in reports
  * them signed in before the model catalog refreshes, and a turn sent in
  * between still carries the signed-out model; so also wait for the flow to
- * finish and the catalog to settle on a model.
+ * finish and the catalog to settle on a model. A catalog that failed to load
+ * leaves the signed-out model selected unchecked, so it does not count.
  */
 function useReadyAfterSignIn(): boolean {
 	const signedIn = useDomainState(Identity, selectSignedIn) ?? false;
@@ -103,7 +104,8 @@ function useReadyAfterSignIn(): boolean {
 	const selection = useOptionalChatModelSelection();
 	const catalogSettled =
 		!selection ||
-		(!selection.isCatalogPending &&
+		(!selection.isCatalogError &&
+			!selection.isCatalogPending &&
 			selection.isCatalogFetching !== true &&
 			selection.model !== undefined);
 	return signedIn && idle && catalogSettled;

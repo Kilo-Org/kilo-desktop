@@ -146,20 +146,15 @@ describe("session list", () => {
 		await expect.element(page.getByTestId("session-workbench")).toBeVisible();
 	});
 
-	it("pins with the row button or shift-click, and the session moves to Pinned", async () => {
+	it("pins from the row menu, and the session moves to Pinned", async () => {
 		const { sessions } = await renderWorkbench({
 			sessions: [session("a", { title: "Fix login" })],
 		});
 
-		await row("Fix login").hover();
-		await row("Fix login").getByTestId("session-list-item-pin").click();
+		await openRowMenu("Fix login");
+		await page.getByTestId("session-menu-pin").click();
 		await vi.waitFor(() => expect(sessions.calls.setPinned).toHaveBeenCalledWith("a", true));
 		await expect.element(list().getByTestId("session-list-pinned-toggle")).toBeVisible();
-
-		await userEvent.keyboard("{Shift>}");
-		await row("Fix login").getByTestId("session-list-item-trigger").click();
-		await userEvent.keyboard("{/Shift}");
-		await vi.waitFor(() => expect(sessions.calls.setPinned).toHaveBeenCalledWith("a", false));
 	});
 
 	it("archives and restores a session", async () => {
@@ -167,8 +162,8 @@ describe("session list", () => {
 			sessions: [session("a", { title: "Fix login" })],
 		});
 
-		await row("Fix login").hover();
-		await row("Fix login").getByTestId("session-list-item-archive").click();
+		await openRowMenu("Fix login");
+		await page.getByTestId("session-menu-archive").click();
 		await vi.waitFor(() => expect(sessions.calls.setArchived).toHaveBeenCalledWith("a", true));
 
 		await list().getByTestId("session-list-archived-toggle").click();
@@ -292,6 +287,159 @@ describe("session list", () => {
 		});
 
 		expect(navigator().getState().focus).toBe("w-app");
+	});
+});
+
+describe("multi-selection", () => {
+	const trigger = (title: string) => row(title).getByTestId("session-list-item-trigger");
+	const selected = () =>
+		[...document.querySelectorAll('[data-selected] [data-qa-id="session-list-item-title"]')]
+			.map((node) => node.textContent)
+			.sort();
+	const three = () => [
+		session("a", { title: "First", updatedAt: NOW - 1_000 }),
+		session("b", { title: "Second", updatedAt: NOW - 2_000 }),
+		session("c", { title: "Third", updatedAt: NOW - 3_000 }),
+	];
+	const selectAll = async () => {
+		for (const title of ["First", "Second", "Third"]) {
+			await trigger(title).click({ modifiers: ["Meta"] });
+		}
+		await expect.poll(selected).toEqual(["First", "Second", "Third"]);
+	};
+
+	it("selects with Meta- and Shift-click without opening, and clears on Escape or a plain click", async () => {
+		const { navigator } = await renderWorkbench({ sessions: three() });
+
+		await trigger("First").click({ modifiers: ["Meta"] });
+		await trigger("Third").click({ modifiers: ["Shift"] });
+		await expect.poll(selected).toEqual(["First", "Second", "Third"]);
+		await trigger("Second").click({ modifiers: ["Meta"] });
+		await expect.poll(selected).toEqual(["First", "Third"]);
+		await expect
+			.element(page.getByTestId("session-list-selection-hint"))
+			.toHaveTextContent("2 selected · Esc to clear");
+		expect(navigator().getState().activeSessionId).toBeNull();
+
+		await userEvent.keyboard("{Escape}");
+		await expect.poll(selected).toEqual([]);
+		await expect.element(page.getByTestId("session-list-selection-hint")).not.toBeInTheDocument();
+
+		await trigger("First").click({ modifiers: ["Meta"] });
+		await trigger("Second").click();
+		await expect.poll(selected).toEqual([]);
+		await vi.waitFor(() => expect(navigator().getState().activeSessionId).toBe("b"));
+	});
+
+	it("adds the open session to the first Meta-click", async () => {
+		await renderWorkbench({ sessions: three() });
+
+		await trigger("First").click();
+		await trigger("Third").click({ modifiers: ["Meta"] });
+		await expect.poll(selected).toEqual(["First", "Third"]);
+	});
+
+	it("archives and pins a selection from the right-click menu", async () => {
+		const { sessions } = await renderWorkbench({ sessions: three() });
+		await selectAll();
+
+		await row("Second").click({ button: "right" });
+		await expect.element(page.getByText("3 sessions selected")).toBeVisible();
+		await page.getByTestId("session-bulk-pin").click();
+		await vi.waitFor(() => expect(sessions.calls.setPinned).toHaveBeenCalledTimes(3));
+		await expect.poll(selected).toEqual([]);
+
+		await selectAll();
+		await row("First").click({ button: "right" });
+		await page.getByTestId("session-bulk-archive").click();
+		await vi.waitFor(() => expect(sessions.calls.setArchived).toHaveBeenCalledTimes(3));
+	});
+
+	it("right-clicking one session shows its own menu and clears a selection it isn't in", async () => {
+		const { sessions } = await renderWorkbench({ sessions: three() });
+		await trigger("First").click({ modifiers: ["Meta"] });
+		await trigger("Second").click({ modifiers: ["Meta"] });
+
+		await row("Third").click({ button: "right" });
+		await expect.poll(selected).toEqual([]);
+		await expect.element(page.getByText(/sessions selected/)).not.toBeInTheDocument();
+		await page.getByTestId("session-menu-pin").click();
+		await vi.waitFor(() => expect(sessions.calls.setPinned).toHaveBeenCalledWith("c", true));
+	});
+
+	it("selects from the keyboard: arrows move, Shift+arrows grow and shrink, Cmd+A selects all", async () => {
+		const { navigator } = await renderWorkbench({ sessions: three() });
+		await expect.element(trigger("First")).toBeVisible();
+		(trigger("First").element() as HTMLElement).focus();
+
+		await userEvent.keyboard("{ArrowDown}");
+		await expect.element(trigger("Second")).toHaveFocus();
+		expect(selected()).toEqual([]);
+
+		await userEvent.keyboard("{Shift>}{ArrowDown}{/Shift}");
+		await expect.poll(selected).toEqual(["Second", "Third"]);
+		await expect.element(trigger("Third")).toHaveFocus();
+		await userEvent.keyboard("{Shift>}{ArrowUp}{ArrowUp}{/Shift}");
+		await expect.poll(selected).toEqual(["First", "Second"]);
+
+		await userEvent.keyboard("{Meta>}a{/Meta}");
+		await expect.poll(selected).toEqual(["First", "Second", "Third"]);
+		expect(navigator().getState().activeSessionId).toBeNull();
+	});
+
+	it("acts on the selection from the hint's menu, and clicking empty space clears it", async () => {
+		const { sessions } = await renderWorkbench({ sessions: three() });
+		await trigger("First").click({ modifiers: ["Meta"] });
+		await trigger("Second").click({ modifiers: ["Meta"] });
+
+		await page.getByTestId("session-list-selection-actions").click();
+		await page.getByTestId("session-bulk-pin").click();
+		await vi.waitFor(() => expect(sessions.calls.setPinned).toHaveBeenCalledTimes(2));
+
+		await trigger("Third").click({ modifiers: ["Meta"] });
+		await expect.poll(selected).toEqual(["Third"]);
+		const inbox = page.getByTestId("session-list-inbox").element() as HTMLElement;
+		inbox.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+		await expect.poll(selected).toEqual([]);
+	});
+
+	it("deletes a selection with one confirm and removes the worktree it orphans", async () => {
+		const shared = { directory: "/repo/.kilo/worktrees/shared", worktreeBranch: "kilo/shared" };
+		const { sessions } = await renderWorkbench({
+			sessions: [
+				session("a", { title: "First", ...shared }),
+				session("b", { title: "Second", ...shared }),
+				session("c", { title: "Third" }),
+			],
+		});
+		await selectAll();
+
+		await row("Third").click({ button: "right" });
+		await page.getByTestId("session-bulk-delete").click();
+		const dialog = page.getByTestId("session-bulk-delete-dialog");
+		await expect.element(dialog.getByText("kilo/shared")).toBeVisible();
+		await page.getByTestId("session-bulk-delete-confirm").click();
+
+		await vi.waitFor(() => expect(sessions.calls.remove).toHaveBeenCalledTimes(3));
+		expect(sessions.calls.removeWorktree).toHaveBeenCalledTimes(3);
+		await expect.element(row("First")).not.toBeInTheDocument();
+	});
+
+	it("keeps the worktrees when asked", async () => {
+		const { sessions } = await renderWorkbench({
+			sessions: [
+				session("a", { title: "First", directory: "/wt/solo", worktreeBranch: "kilo/solo" }),
+				session("b", { title: "Second" }),
+				session("c", { title: "Third" }),
+			],
+		});
+		await selectAll();
+		await row("First").click({ button: "right" });
+		await page.getByTestId("session-bulk-delete").click();
+		await page.getByTestId("session-bulk-delete-keep-worktrees").click();
+
+		await vi.waitFor(() => expect(sessions.calls.remove).toHaveBeenCalledTimes(3));
+		expect(sessions.calls.removeWorktree).not.toHaveBeenCalled();
 	});
 });
 

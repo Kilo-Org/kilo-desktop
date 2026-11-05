@@ -53,6 +53,9 @@ import { Input } from "@kilo-desktop/ui/components/input";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
+/** Every session menu (⋯, right-click, bulk) shares this width; it grows for longer labels. */
+export const SESSION_MENU_WIDTH_CLASS_NAME = "w-max min-w-44";
+
 /*
  * What a session row offers: inline rename, its menu (pin, rename, plugins'
  * `kilo.sessions/session-menu` items, archive or restore, delete) and the
@@ -349,7 +352,7 @@ export const SessionRowMenu: FC<{
 				align="end"
 				side={side}
 				sideOffset={side === "right" ? 6 : 4}
-				className="w-auto"
+				className={SESSION_MENU_WIDTH_CLASS_NAME}
 			>
 				<SessionRowMenuItems
 					session={session}
@@ -369,7 +372,7 @@ export const SessionRowMenu: FC<{
  * `choices` read their state when the menu opens rather than when the row
  * last rendered.
  */
-const SessionRowMenuItems: FC<{
+export const SessionRowMenuItems: FC<{
 	session: Session;
 	onPin: () => void;
 	onRename?: (() => void) | undefined;
@@ -392,12 +395,6 @@ const SessionRowMenuItems: FC<{
 					Rename
 				</DropdownMenuItem>
 			) : null}
-			{contributed.ordinary.length > 0 ? <DropdownMenuSeparator /> : null}
-			{contributed.ordinary.map((item) => (
-				<ContributedItem key={item.key} item={item} session={session} />
-			))}
-			{/* Removal actions last, set apart, as in the app's other menus. */}
-			<DropdownMenuSeparator />
 			{session.archived ? (
 				<DropdownMenuItem data-qa-id="session-menu-restore" onClick={onRestore}>
 					<ArchiveRestoreIcon />
@@ -409,6 +406,12 @@ const SessionRowMenuItems: FC<{
 					Archive
 				</DropdownMenuItem>
 			)}
+			{contributed.ordinary.length > 0 ? <DropdownMenuSeparator /> : null}
+			{contributed.ordinary.map((item) => (
+				<ContributedItem key={item.key} item={item} session={session} />
+			))}
+			{/* Destructive actions last, set apart, as in the app's other menus. */}
+			<DropdownMenuSeparator />
 			{contributed.destructive.map((item) => (
 				<ContributedItem key={item.key} item={item} session={session} />
 			))}

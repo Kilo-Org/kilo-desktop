@@ -1,14 +1,12 @@
+import { ContextMenu } from "@base-ui/react/context-menu";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
 	ArchiveIcon,
-	ArchiveRestoreIcon,
 	ChevronDownIcon,
 	EllipsisIcon,
 	FolderIcon,
 	MessageSquareIcon,
 	PencilIcon,
-	PinIcon,
-	PinOffIcon,
 	PlusIcon,
 	SearchIcon,
 	Trash2Icon,
@@ -23,7 +21,8 @@ import {
 	useRef,
 	useState,
 	type FC,
-	type ReactNode,
+	type KeyboardEvent,
+	type MouseEvent,
 } from "react";
 
 import type { DomainHandle } from "@kilo-desktop/kernel";
@@ -37,6 +36,7 @@ import {
 import { SessionDecoration, Sessions, type Session } from "@kilo-desktop/plugin-sessions/contracts";
 import { Workspaces, type Workspace } from "@kilo-desktop/plugin-workspaces/contracts";
 import { Button } from "@kilo-desktop/ui/components/button";
+import { Kbd } from "@kilo-desktop/ui/components/kbd";
 import {
 	Command,
 	CommandDialog,
@@ -102,8 +102,21 @@ import {
 	type SessionListShowField,
 	type SessionListView,
 } from "./session-list-view";
+import { SessionBulkDeleteDialog, SessionBulkMenuItems } from "./session-bulk-actions";
+import {
+	EMPTY_SESSION_LIST_SELECTION,
+	extendSessionListSelection,
+	selectSessionListRange,
+} from "./session-list-selection";
 import { SessionListViewMenu } from "./session-list-view-menu";
-import { SessionRenameInput, SessionRowMenu, useRenameState } from "./session-row-actions";
+import {
+	MoreActionsTrigger,
+	SESSION_MENU_WIDTH_CLASS_NAME,
+	SessionRenameInput,
+	SessionRowMenu,
+	SessionRowMenuItems,
+	useRenameState,
+} from "./session-row-actions";
 import { useSessionActions } from "./session-renderers";
 import { SessionRelativeTime, SessionRowGlyph } from "./session-row-display";
 import { SessionRowHoverCard } from "./session-row-hover-card";
@@ -127,6 +140,9 @@ import { WorkspaceFilter } from "./WorkspaceFilter";
 const sidebarSurfaceIdleClassName =
 	"bg-transparent text-sidebar-foreground transition-colors hover:bg-sidebar-accent focus-visible:bg-sidebar-accent";
 const sidebarSurfaceActiveClassName = "bg-state-selected text-sidebar-foreground transition-colors";
+/** One step above the current row, so a ⌘/⇧-click selection reads apart from it. */
+const sidebarSurfaceMultiSelectedClassName =
+	"bg-state-selected-strong text-sidebar-foreground transition-colors";
 
 /** Override Button/Input `rounded-lg` so radius matches sidebar menu items. */
 const sidebarNavRadiusClassName = "rounded-md!";
@@ -177,6 +193,12 @@ interface SessionListChrome {
 	readonly visits: LastVisited;
 	/** Session id → number chip while the go-to-session modifier is held. */
 	readonly shortcutHints: ReadonlyMap<string, string>;
+	/** ⌘/⇧-click multi-selection, by session id. */
+	readonly selectedIds: ReadonlySet<string>;
+	readonly selectRow: (id: string, range: boolean) => void;
+	readonly clearSelection: () => void;
+	/** Opens the delete confirm for the selection. */
+	readonly deleteSelection: () => void;
 }
 
 const SessionListChromeContext = createContext<SessionListChrome>({
@@ -188,6 +210,10 @@ const SessionListChromeContext = createContext<SessionListChrome>({
 	activities: {},
 	visits: { sessions: {}, originChats: {} },
 	shortcutHints: new Map(),
+	selectedIds: new Set(),
+	selectRow: () => undefined,
+	clearSelection: () => undefined,
+	deleteSelection: () => undefined,
 });
 
 type VirtualSessionListEntry =
@@ -455,6 +481,80 @@ function SessionListContent() {
 		() => new Map(sessions.map((session) => [session.id, session])),
 		[sessions],
 	);
+
+	const [selection, setSelection] = useState(EMPTY_SESSION_LIST_SELECTION);
+	const [deleting, setDeleting] = useState<readonly Session[] | null>(null);
+	const rowOrder = useMemo(
+		() => virtualEntries.flatMap((entry) => (entry.kind === "row" ? [entry.row.id] : [])),
+		[virtualEntries],
+	);
+	// Rows that leave the list (deleted, filtered, collapsed) drop out of the selection.
+	const selectedIds = useMemo(
+		() => new Set(rowOrder.filter((id) => selection.ids.has(id))),
+		[rowOrder, selection],
+	);
+	const openId = navigator.view ? null : navigator.activeSessionId;
+	const selectRow = useCallback(
+		(id: string, range: boolean) =>
+			setSelection((current) =>
+				extendSessionListSelection(current, { id, range, order: rowOrder, openId }),
+			),
+		[openId, rowOrder],
+	);
+	const clearSelection = useCallback(() => setSelection(EMPTY_SESSION_LIST_SELECTION), []);
+	const focusRow = useCallback(
+		(id: string) => {
+			const focus = () => {
+				const trigger = listRef.current?.querySelector<HTMLElement>(
+					`[data-session-id="${CSS.escape(id)}"] [data-qa-id="session-list-item-trigger"]`,
+				);
+				trigger?.focus();
+				return trigger;
+			};
+			virtualizer.scrollToIndex(virtualEntries.findIndex((entry) => entry.key === `row:${id}`));
+			// A row scrolled in from outside the window mounts on the next frame.
+			if (!focus()) requestAnimationFrame(focus);
+		},
+		[virtualEntries, virtualizer],
+	);
+	/** ↑/↓ move between sessions, ⇧↑/⇧↓ select a range, ⌘A/Ctrl+A selects every visible one. */
+	const onListKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+		if (event.target instanceof HTMLInputElement) return;
+		const id = (event.target as HTMLElement).closest<HTMLElement>("[data-session-id]")?.dataset
+			.sessionId;
+		if (!id) return;
+		if (event.key === "a" && (event.metaKey || event.ctrlKey)) {
+			event.preventDefault();
+			setSelection({ ids: new Set(rowOrder), anchor: id });
+			return;
+		}
+		if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+		const next = rowOrder[rowOrder.indexOf(id) + (event.key === "ArrowDown" ? 1 : -1)];
+		if (!next) return;
+		event.preventDefault();
+		if (event.shiftKey) {
+			setSelection((current) =>
+				selectSessionListRange(current, { from: id, to: next, order: rowOrder }),
+			);
+		}
+		focusRow(next);
+	};
+	const onListClick = (event: MouseEvent<HTMLDivElement>) => {
+		if (!(event.target as Element).closest("[data-session-id], button, input")) clearSelection();
+	};
+	const deleteSelection = useCallback(() => {
+		setDeleting([...selectedIds].flatMap((id) => sessionsById.get(id) ?? []));
+		clearSelection();
+	}, [clearSelection, selectedIds, sessionsById]);
+	const hasSelection = selectedIds.size > 0;
+	useEffect(() => {
+		if (!hasSelection) return;
+		const onKeyDown = (event: globalThis.KeyboardEvent) => {
+			if (event.key === "Escape") clearSelection();
+		};
+		document.addEventListener("keydown", onKeyDown);
+		return () => document.removeEventListener("keydown", onKeyDown);
+	}, [clearSelection, hasSelection]);
 	const chrome = useMemo<SessionListChrome>(
 		() => ({
 			show,
@@ -466,9 +566,17 @@ function SessionListContent() {
 			activities,
 			visits,
 			shortcutHints,
+			selectedIds,
+			selectRow,
+			clearSelection,
+			deleteSelection,
 		}),
 		[
 			activities,
+			clearSelection,
+			deleteSelection,
+			selectRow,
+			selectedIds,
 			navigator.activeSessionId,
 			navigator.view,
 			open,
@@ -543,6 +651,8 @@ function SessionListContent() {
 						<div
 							ref={listRef}
 							data-qa-id="session-list-inbox"
+							onKeyDown={onListKeyDown}
+							onClick={onListClick}
 							className="scroll-fade no-scrollbar relative min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain"
 						>
 							{virtualEntries.length > 0 ? (
@@ -607,8 +717,38 @@ function SessionListContent() {
 								</div>
 							) : null}
 						</div>
+						{selectedIds.size > 0 ? (
+							<div
+								data-qa-id="session-list-selection-hint"
+								className="bg-popover text-muted-foreground mt-1 flex shrink-0 items-center gap-1.5 rounded-lg border py-1 pr-1 pl-2.5 text-xs"
+							>
+								<span className="flex-1">
+									{selectedIds.size} selected · <Kbd>Esc</Kbd> to clear
+								</span>
+								<TooltipProvider delay={300}>
+									<DropdownMenu>
+										<MoreActionsTrigger
+											aria-label="Selection actions"
+											data-qa-id="session-list-selection-actions"
+										/>
+										<DropdownMenuContent
+											side="top"
+											align="end"
+											className={SESSION_MENU_WIDTH_CLASS_NAME}
+										>
+											<BulkMenuItems onDelete={deleteSelection} onDone={clearSelection} />
+										</DropdownMenuContent>
+									</DropdownMenu>
+								</TooltipProvider>
+							</div>
+						) : null}
 					</div>
 				</section>
+				<SessionBulkDeleteDialog
+					targets={deleting}
+					sessions={sessionsHandle}
+					onClose={() => setDeleting(null)}
+				/>
 			</SessionListChromeContext>
 		</div>
 	);
@@ -1043,32 +1183,6 @@ const WorkspaceEmptyRow: FC<{ workspaceId: string; label: string }> = ({ workspa
 	</div>
 );
 
-const RowHoverAction: FC<{
-	label: string;
-	tooltip: string;
-	qaId: string;
-	onClick: () => void;
-	children: ReactNode;
-}> = ({ label, tooltip, qaId, onClick, children }) => (
-	<Tooltip>
-		<TooltipTrigger
-			render={
-				<Button
-					type="button"
-					variant="ghost"
-					size="icon-xs"
-					aria-label={label}
-					data-qa-id={qaId}
-					onClick={onClick}
-				/>
-			}
-		>
-			{children}
-		</TooltipTrigger>
-		<TooltipContent side="bottom">{tooltip}</TooltipContent>
-	</Tooltip>
-);
-
 function SessionRowSlot({
 	session,
 	indented,
@@ -1087,8 +1201,24 @@ const SessionRow = memo(function SessionRow({
 	session: Session;
 	indented: boolean;
 }) {
-	const { show, activeSessionId, workspaces, sessions, open, activities, visits, shortcutHints } =
-		use(SessionListChromeContext);
+	const {
+		show,
+		activeSessionId,
+		workspaces,
+		sessions,
+		open,
+		activities,
+		visits,
+		shortcutHints,
+		selectedIds,
+		selectRow,
+		clearSelection,
+		deleteSelection,
+	} = use(SessionListChromeContext);
+	const isSelected = selectedIds.has(session.id);
+	const isBulk = isSelected && selectedIds.size > 1;
+	// Fixed when the menu opens, so acting on the selection doesn't swap its items while it closes.
+	const [bulkMenu, setBulkMenu] = useState(false);
 	const { isRenaming, startRename, finishRename, triggerRef } = useRenameState();
 	const { togglePinned, setArchived, askToDelete, dialogs } = useSessionActions(session);
 	const dragSource = useDragSource([{ type: Sessions.id, id: session.id }], {
@@ -1098,7 +1228,7 @@ const SessionRow = memo(function SessionRow({
 	const activity = activities[session.id] ?? activityOfSession(session);
 	const rowState = deriveSessionRowState(activity, lastVisitedOf(visits, session));
 	const shortcutHint = shortcutHints.get(session.id);
-	const { isArchived, canArchive, canPin } = sessionRowCapabilities(session.archived, rowState);
+	const { isArchived } = sessionRowCapabilities(session.archived, rowState);
 	const locationLabel = resolveSessionLocationLabel(activity, workspaces);
 	const workspace = workspaces.find((candidate) => candidate.id === session.workspaceId);
 	const workspaceColor = workspaceGlyphColor(workspace?.color);
@@ -1164,7 +1294,6 @@ const SessionRow = memo(function SessionRow({
 			<span
 				className={cn(
 					"text-muted-foreground ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end gap-1 text-xs leading-4 tabular-nums transition-opacity",
-					"group-hover/sidebar-row:min-w-24 group-has-[:focus-visible]/sidebar-row:min-w-24 group-has-[[data-popup-open]]/sidebar-row:min-w-24",
 					rightSlot || decorationsInTitleRow ? rowHoverLabelFadeClassName : null,
 				)}
 			>
@@ -1203,103 +1332,134 @@ const SessionRow = memo(function SessionRow({
 	const rowPad = indented ? "pl-2 pr-2.5" : "px-2.5";
 
 	return (
-		<div
-			{...dragSource}
-			data-session-id={session.id}
-			data-qa-id={isArchived ? "session-list-archived-item" : "session-list-item"}
-			data-active={isActive || undefined}
-			className={cn(
-				"group/sidebar-row @container/session-row relative mx-px min-w-0 cursor-pointer rounded-md text-left outline-none select-none",
-				isActive ? sidebarSurfaceActiveClassName : sidebarSurfaceIdleClassName,
-			)}
+		<ContextMenu.Root
+			onOpenChange={(menuOpen) => {
+				if (!menuOpen) return;
+				setBulkMenu(isBulk);
+				// As in Finder: right-clicking outside the selection acts on that session alone.
+				if (!isSelected) clearSelection();
+			}}
 		>
-			{isRenaming ? (
-				<div className={cn("flex h-7 items-center", rowPad)}>
-					<SessionRenameInput
-						title={session.title}
-						onRename={async (title) => sessions?.methods.rename({ id: session.id, title })}
-						onDone={finishRename}
-					/>
-				</div>
-			) : (
-				<SessionRowHoverCard
-					session={session}
-					title={session.title}
-					activity={activity}
-					locationLabel={locationLabel}
-					workspaceColor={workspaceColor}
-					trigger={
-						<button
-							ref={triggerRef}
-							type="button"
-							data-qa-id="session-list-item-trigger"
-							data-sidebar-select
-							aria-current={isActive ? "page" : undefined}
-							className={cn(
-								"flex w-full flex-col py-1 text-left focus-visible:outline-none",
-								rowPad,
-							)}
-							onClick={(event) => {
-								if (event.shiftKey && canPin) {
-									togglePinned();
-									return;
-								}
-								open(session.id);
-							}}
-						>
-							<span className="flex min-w-0 -translate-y-px flex-col">
-								{titleRow}
-								{infoLine}
-							</span>
-						</button>
-					}
-				/>
-			)}
-			{isRenaming ? null : (
-				<TooltipProvider delay={300}>
-					<span className={cn(rowHoverActionsClassName, "top-1 right-1.5 h-5")}>
-						{canArchive ? (
-							<RowHoverAction
-								label="Archive session"
-								tooltip="Archive"
-								qaId="session-list-item-archive"
-								onClick={() => setArchived(true)}
-							>
-								<ArchiveIcon aria-hidden />
-							</RowHoverAction>
-						) : null}
-						{isArchived ? (
-							<RowHoverAction
-								label="Restore session"
-								tooltip="Restore"
-								qaId="session-list-item-restore"
-								onClick={() => setArchived(false)}
-							>
-								<ArchiveRestoreIcon aria-hidden />
-							</RowHoverAction>
-						) : null}
-						{canPin ? (
-							<RowHoverAction
-								label={session.pinned ? "Unpin session" : "Pin session"}
-								tooltip={session.pinned ? "Unpin" : "Pin"}
-								qaId="session-list-item-pin"
-								onClick={togglePinned}
-							>
-								{session.pinned ? <PinOffIcon aria-hidden /> : <PinIcon aria-hidden />}
-							</RowHoverAction>
-						) : null}
-						<SessionRowMenu
-							session={session}
-							onPin={togglePinned}
-							onRename={startRename}
-							onArchive={() => setArchived(true)}
-							onRestore={() => setArchived(false)}
-							onDelete={askToDelete}
+			<ContextMenu.Trigger
+				{...dragSource}
+				data-session-id={session.id}
+				data-qa-id={isArchived ? "session-list-archived-item" : "session-list-item"}
+				data-active={isActive || undefined}
+				data-selected={isSelected || undefined}
+				className={cn(
+					"group/sidebar-row @container/session-row relative mx-px min-w-0 cursor-pointer rounded-md text-left outline-none select-none",
+					isSelected
+						? sidebarSurfaceMultiSelectedClassName
+						: isActive
+							? sidebarSurfaceActiveClassName
+							: sidebarSurfaceIdleClassName,
+				)}
+			>
+				{isRenaming ? (
+					<div className={cn("flex h-7 items-center", rowPad)}>
+						<SessionRenameInput
+							title={session.title}
+							onRename={async (title) => sessions?.methods.rename({ id: session.id, title })}
+							onDone={finishRename}
 						/>
-					</span>
-				</TooltipProvider>
-			)}
-			{dialogs}
-		</div>
+					</div>
+				) : (
+					<SessionRowHoverCard
+						session={session}
+						title={session.title}
+						activity={activity}
+						locationLabel={locationLabel}
+						workspaceColor={workspaceColor}
+						trigger={
+							<button
+								ref={triggerRef}
+								type="button"
+								data-qa-id="session-list-item-trigger"
+								data-sidebar-select
+								aria-current={isActive ? "page" : undefined}
+								className={cn(
+									"flex w-full flex-col py-1 text-left focus-visible:outline-none",
+									rowPad,
+								)}
+								onClick={(event) => {
+									if (event.metaKey || event.ctrlKey || event.shiftKey) {
+										selectRow(session.id, event.shiftKey);
+										return;
+									}
+									clearSelection();
+									open(session.id);
+								}}
+							>
+								<span className="flex min-w-0 -translate-y-px flex-col">
+									{titleRow}
+									{infoLine}
+								</span>
+								{isSelected ? <span className="sr-only">, selected</span> : null}
+							</button>
+						}
+					/>
+				)}
+				{isRenaming ? null : (
+					<TooltipProvider delay={300}>
+						<span className={cn(rowHoverActionsClassName, "top-1 right-1.5 h-5")}>
+							<SessionRowMenu
+								session={session}
+								onPin={togglePinned}
+								onRename={startRename}
+								onArchive={() => setArchived(true)}
+								onRestore={() => setArchived(false)}
+								onDelete={askToDelete}
+							/>
+						</span>
+					</TooltipProvider>
+				)}
+				{dialogs}
+			</ContextMenu.Trigger>
+			{/* Always mounted: unmounting it mid-close leaves Base UI's menu stuck open on remount. */}
+			<DropdownMenuContent
+				side="bottom"
+				align="start"
+				sideOffset={2}
+				className={SESSION_MENU_WIDTH_CLASS_NAME}
+			>
+				{bulkMenu ? (
+					<BulkMenuItems onDelete={deleteSelection} onDone={clearSelection} />
+				) : (
+					<SessionRowMenuItems
+						session={session}
+						onPin={togglePinned}
+						onRename={startRename}
+						onArchive={() => setArchived(true)}
+						onRestore={() => setArchived(false)}
+						onDelete={askToDelete}
+					/>
+				)}
+			</DropdownMenuContent>
+		</ContextMenu.Root>
 	);
 });
+
+/** Mounted while the right-click menu is open, so it reads the selection's current state. */
+function BulkMenuItems({ onDelete, onDone }: { onDelete: () => void; onDone: () => void }) {
+	const { selectedIds, sessions, activities, visits } = use(SessionListChromeContext);
+	const targets = (sessions?.getState().sessions ?? [])
+		.filter((session) => selectedIds.has(session.id))
+		.map((session) => ({
+			session,
+			canArchive: sessionRowCapabilities(
+				session.archived,
+				deriveSessionRowState(
+					activities[session.id] ?? activityOfSession(session),
+					lastVisitedOf(visits, session),
+				),
+			).canArchive,
+		}));
+	return (
+		<SessionBulkMenuItems
+			targets={targets}
+			sessions={sessions}
+			onDone={onDone}
+			onDelete={onDelete}
+		/>
+	);
+}

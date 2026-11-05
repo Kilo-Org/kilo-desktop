@@ -177,7 +177,7 @@ function collaborators() {
 				entry: {
 					activate(sdk) {
 						sdk.domains.provide(Composer, {
-							initialState: { drafts: {}, focusedSessionId: null },
+							initialState: { focusedSessionId: null },
 							methods: {
 								focus: unused,
 								insert: (input) => void inserted.push(input),

@@ -46,9 +46,11 @@ export interface ShellHost {
 	readonly main: MainKernel;
 	readonly renderer: RendererKernel;
 	readonly storage: ReturnType<typeof createMemoryStorage>;
+	/** Boots another window's renderer kernel (a pop-out); render into it yourself. */
+	readonly openWindow: (windowId: string) => Promise<RendererKernel>;
 }
 
-let previousHost: Pick<ShellHost, "main" | "renderer"> | undefined;
+let previousHost: { main: MainKernel; renderers: RendererKernel[] } | undefined;
 
 export async function renderShell(
 	guests: readonly GuestPlugin[] = [],
@@ -56,7 +58,7 @@ export async function renderShell(
 ): Promise<ShellHost> {
 	cleanup();
 	if (previousHost) {
-		await previousHost.renderer.deactivate();
+		for (const renderer of previousHost.renderers.reverse()) await renderer.deactivate();
 		await previousHost.main.stop();
 		previousHost = undefined;
 	}
@@ -70,7 +72,11 @@ export async function renderShell(
 		...(guest.definitions ? { definitions: guest.definitions } : {}),
 		...(entry ? { entry } : {}),
 	});
-	const { main, renderer } = await createTestKernelPair({
+	const {
+		main,
+		renderer,
+		openWindow: openKernelWindow,
+	} = await createTestKernelPair({
 		host: createTestHost({
 			desktop: options.desktop ?? false,
 			...(options.windows ? { windows: options.windows } : {}),
@@ -96,7 +102,12 @@ export async function renderShell(
 			<KernelRoot />
 		</KernelProvider>,
 	);
-	const host = { main, renderer, storage };
-	previousHost = host;
-	return host;
+	const renderers = [renderer];
+	const openWindow = async (windowId: string) => {
+		const opened = await openKernelWindow(windowId);
+		renderers.push(opened);
+		return opened;
+	};
+	previousHost = { main, renderers };
+	return { main, renderer, storage, openWindow };
 }

@@ -218,6 +218,7 @@ export function fakeConversationsMain(initial: ChatSummary[]) {
 					generate: unused,
 					generateBranchName: unused,
 					setWorktreeBranch: unused,
+					prompt: unused,
 					rename: unused,
 					delete: unused,
 					abort: unused,

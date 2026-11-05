@@ -1,11 +1,12 @@
 import type { PluginDefinitions } from "@kilo-desktop/kernel";
 
 import { AutoApprove } from "./auto-approve";
-import { Composer, ComposerAction, ComposerMention } from "./composer";
+import { Composer, ComposerAction, ComposerDrafts, ComposerMention } from "./composer";
 import { HtmlPages } from "./html-render";
 import { InteractionRenderer } from "./interactions";
 import { ModelSource } from "./model-sources";
 import { GatewayModels, ModelPreferences } from "./models";
+import { PromptQueue } from "./prompt-queue";
 import { MarkdownExtension, McpApp, ToolRenderer } from "./transcript";
 
 export * from "./auto-approve";
@@ -15,6 +16,7 @@ export * from "./interactions";
 export * from "./model-sources";
 export * from "./models";
 export * from "./panes";
+export * from "./prompt-queue";
 export * from "./transcript";
 
 /**
@@ -44,5 +46,13 @@ export const CHAT_DEFINITIONS: PluginDefinitions = {
 		InteractionRenderer,
 		ModelSource,
 	],
-	domains: [Composer, ModelPreferences, GatewayModels, AutoApprove, HtmlPages],
+	domains: [
+		Composer,
+		ComposerDrafts,
+		ModelPreferences,
+		GatewayModels,
+		PromptQueue,
+		AutoApprove,
+		HtmlPages,
+	],
 };

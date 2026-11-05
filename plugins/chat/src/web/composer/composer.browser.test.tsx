@@ -8,6 +8,7 @@ import {
 	AutoApprove,
 	Composer,
 	ComposerAction,
+	ComposerDrafts,
 	ComposerMention,
 	ModelPreferences,
 	type ComposerContext,
@@ -365,6 +366,9 @@ describe("the composer-action point", () => {
 	});
 });
 
+const drafts = (host: Awaited<ReturnType<typeof renderAgentPane>>) =>
+	host.host.main.kernelSdk.domains.get(ComposerDrafts)!;
+
 describe("the composer domain object", () => {
 	it("inserts text into a session's composer and focuses it", async () => {
 		const host = await renderAgentPane();
@@ -374,7 +378,7 @@ describe("the composer domain object", () => {
 		await composer.methods.insert({ text: "Look at this" });
 		await expect.element(input()).toHaveTextContent("Look at this");
 		await expect.element(input()).toHaveFocus();
-		await expect.poll(() => composer.getState().drafts.wses_1?.text).toBe("Look at this");
+		await expect.poll(() => drafts(host).getState().drafts.wses_1?.text).toBe("Look at this");
 		await expect.poll(() => composer.getState().focusedSessionId).toBe("wses_1");
 
 		await composer.methods.insert({ sessionId: "wses_1", text: "too" });
@@ -395,7 +399,9 @@ describe("the composer domain object", () => {
 		expect(host.sessions.calls.open).toHaveBeenCalledWith(
 			expect.objectContaining({ sessionId, kind: "kilo.chat/agent" }),
 		);
-		expect(composer.getState().drafts[sessionId]).toEqual({ text: "Install this skill" });
+		await expect
+			.poll(() => drafts(host).getState().drafts[sessionId])
+			.toEqual({ text: "Install this skill" });
 	});
 
 	it("starts a new chat in the active workspace by default", async () => {

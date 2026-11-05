@@ -1024,7 +1024,8 @@ with contributors today; candidate points are in the extensibility map (§7).
 │     abort, archive, delete, replies, sessionConfig; events created, updated,
 │     deleted, turn-started / -ended, permission- / question-requested / -resolved;
 │     generate: one structured answer from an unlisted throwaway chat — 9e;
-│     generateBranchName, setWorktreeBranch, event user-message — 9f)
+│     generateBranchName, setWorktreeBranch, event user-message — 9f;
+│     prompt: kilo.chat's queued prompts, sent from main — decision 66)
 │   message · tool-call · permission · model
 ╰───────────────────────────────────────────────────────────────────────────────
 
@@ -1133,8 +1134,11 @@ with contributors today; candidate points are in the extensibility map (§7).
 │   kernel/command ................. focus-composer (Mod+L / Ctrl+Shift+L) — 8c;
 │                                    send / new line / cycle agent (Enter, Shift+Enter,
 │                                    Shift+Tab; handledLocally, listed in Shortcuts) — 8d
-│ ◆ composer (per window: drafts, focusedSessionId; focus / insert /
+│ ◆ composer (per window: focusedSessionId; focus / insert /
 │             startNewChat) — 8d   context key: composerFocused (window) — 8c
+│   drafts (main: unsent text by Work Session, for every window) — decision 66
+│   prompt-queue (main: prompts queued while a chat works, sent in order
+│             when it goes idle; Send now, pause, reorder, edit) — decision 66
 │   model-preferences (main, kv: new-chat model per agent, effort, recent,
 │             favourites; origin's kilo-ui file adopted once, favourites
 │             handed over from localStorage once) — 8d
@@ -2794,12 +2798,13 @@ Everything lands in a single PR once all plugins are built.
   hide them until resolved, a failed reply, or 3 s — for 8e's cards). The
   mode is app-wide like origin's (no per-session override); origin's
   `kilo-ui:auto-approve` value is handed over once.
-- **`composer` domain object** (per window): `drafts` by Work Session (panes
-  report text as it changes; a remounted pane starts with it; cleared on
-  send), `focusedSessionId`, `focus`, `insert` (appends, opening the agent
+- **`composer` domain object** (per window): `focusedSessionId`, `focus`, `insert` (appends, opening the agent
   pane if needed), `startNewChat({text, workspaceId?})` (the launcher's flow:
   create the session, open it, add an Agent pane, prefill) — the replacement
   for origin's `chatComposer.startNewChat` capability kilo-marketplace used.
+  Unsent text by Work Session moved to main's `drafts` (decision 66): panes
+  report it as it changes, any window's pane for the session starts with it,
+  and it is cleared on send.
 - **Catalog freshness:** the window's query cache can't be invalidated by
   AI Providers (kilo.agent), so the model catalog is re-read when older than
   a minute on mount / focus.
@@ -3496,6 +3501,7 @@ without the history of earlier sessions.
 | 63  | Settings categories are contributions (`kilo.shell/settings-category`, ordered by priority); sections name a category key and are ordered within it. kilo.shell ships General, AI and Developer                                                                                                                                                                                       |
 | 64  | kilo.anaconda-account is rebuilt as a standalone kernel plugin for parity with origin (the Anaconda row in Settings → Account, the catalog's API key through its `account` domain object, read by kilo.local-inference only); the later sign-in rework later changes what it does, not where it plugs in                                                                              |
 | 65  | A new chat opens in the docked layout, composer at the bottom; the welcome headline lives only on the launcher                                                                                                                                                                                                                                                                        |
+| 66  | Prompts queued while a chat works and unsent composer text are kilo.chat state in main (`prompt-queue`, `drafts`), so they follow a session switch, a pop-out and a reload; the queue sends from main through kilo.agent's `conversation.prompt` when the chat goes idle, with what the window prepared when it was queued                                                            |
 
 ---
 

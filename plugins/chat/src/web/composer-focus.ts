@@ -3,7 +3,7 @@ import { Panes, Sessions } from "@kilo-desktop/plugin-sessions/contracts";
 import { Navigator } from "@kilo-desktop/plugin-workbench/contracts";
 import { Workspaces } from "@kilo-desktop/plugin-workspaces/contracts";
 
-import { AGENT_PANE_KIND, Composer, type ComposerState } from "../contracts";
+import { AGENT_PANE_KIND, Composer, ComposerDrafts, type ComposerState } from "../contracts";
 
 const COMPOSER_INPUT = '[data-slot="aui_composer-shell"] [contenteditable="true"]';
 const COMPOSER_SHELL = '[data-slot="aui_composer-shell"]';
@@ -39,22 +39,35 @@ export function appendText(current: string, text: string): string {
  *
  * - Panes register while mounted. A focus or insert asked of a session whose
  *   agent pane isn't mounted opens (or adds) it and waits for it to mount.
- * - Unsent text is kept per Work Session in the domain's `drafts` (panes
- *   report it as it changes), so a pane mounted again (a pop-out, a reload of
- *   the canvas) starts with it, and a new chat can be prefilled before its
- *   pane exists. A draft is dropped once its text is sent.
+ * - Unsent text is kept per Work Session in main's `kilo.chat/drafts` (panes
+ *   report it as it changes), so a pane mounted again, in this window or
+ *   another (a pop-out, a reload), starts with it, and a new chat can be
+ *   prefilled before its pane exists. A draft is dropped once its text is
+ *   sent. What this window wrote is read back at once (`#written`), before
+ *   main's copy arrives.
  * - `startNewChat` is the launcher's flow (create the session in a
  *   workspace, open it, add an Agent pane) with the text left unsent.
  */
 export class ComposerFocus {
 	readonly #mounted = new Set<MountedComposer>();
+	/** Drafts this window wrote that main may not have mirrored back yet. */
+	readonly #written = new Map<string, { text: string; settled: boolean }>();
 	#pending: { sessionId: string; paneId: string } | undefined;
 	#provider: DomainProvider<typeof Composer> | undefined;
+	#sdk: PluginSdk | undefined;
 
 	/** Provides the window's `composer` domain object. */
 	provide(sdk: PluginSdk): void {
+		this.#sdk = sdk;
+		let stopSettling = () => {};
+		sdk.domains.track(ComposerDrafts, {
+			added: (drafts) => {
+				stopSettling = drafts.subscribe(() => this.#settleWritten());
+			},
+			removed: () => stopSettling(),
+		});
 		this.#provider = sdk.domains.provide(Composer, {
-			initialState: { drafts: {}, focusedSessionId: null },
+			initialState: { focusedSessionId: null },
 			methods: {
 				focus: ({ sessionId }) => this.focusSession(sdk, sessionId),
 				insert: async ({ sessionId, text }) => {
@@ -83,21 +96,46 @@ export class ComposerFocus {
 	}
 
 	get state(): ComposerState {
-		return this.#provider?.state ?? { drafts: {}, focusedSessionId: null };
+		return this.#provider?.state ?? { focusedSessionId: null };
 	}
 
 	draft(sessionId: string): string {
-		return this.state.drafts[sessionId]?.text ?? "";
+		return this.#written.get(sessionId)?.text ?? this.#mainDraft(sessionId);
 	}
 
 	setDraft(sessionId: string, text: string): void {
-		const provider = this.#provider;
-		if (!provider || this.draft(sessionId) === text) return;
-		const { [sessionId]: _previous, ...others } = provider.state.drafts;
-		provider.setState({
-			...provider.state,
-			drafts: text ? { ...others, [sessionId]: { text } } : others,
-		});
+		const drafts = this.#drafts();
+		if (!drafts || this.draft(sessionId) === text) return;
+		const written = { text, settled: false };
+		this.#written.set(sessionId, written);
+		void drafts.methods
+			.set({ sessionId, text })
+			.catch((error: unknown) => console.warn("[kilo.chat] Could not keep the draft", error))
+			.finally(() => {
+				written.settled = true;
+				const current = this.#written.get(sessionId) === written;
+				if (current && this.#mainDraft(sessionId) === text) this.#written.delete(sessionId);
+			});
+	}
+
+	#drafts() {
+		return this.#sdk?.domains.get(ComposerDrafts) ?? null;
+	}
+
+	#mainDraft(sessionId: string): string {
+		return this.#drafts()?.getState().drafts[sessionId]?.text ?? "";
+	}
+
+	/**
+	 * On main's update, forgets the writes it now has, and those it answered
+	 * before (its copy holds them, or a later write from another window).
+	 */
+	#settleWritten(): void {
+		for (const [sessionId, written] of this.#written) {
+			if (written.text === this.#mainDraft(sessionId) || written.settled) {
+				this.#written.delete(sessionId);
+			}
+		}
 	}
 
 	setFocused(sessionId: string | null): void {

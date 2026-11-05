@@ -3,7 +3,7 @@ import { page, userEvent } from "vitest/browser";
 
 import { Panes, type Pane } from "@kilo-desktop/plugin-sessions/contracts";
 
-import { COMPOSER_FOCUSED_KEY } from "../contracts";
+import { COMPOSER_FOCUSED_KEY, ComposerDrafts } from "../contracts";
 import { agentPane, chatSummary, renderAgentPane, session } from "../test/chat-host";
 import {
 	assistantMessage,
@@ -456,6 +456,141 @@ describe("a turn that ends while its chat opens", () => {
 
 		await vi.waitFor(() => expect(server.openStreams).toBe(1));
 		await expect.element(page.getByTestId("kilo-composer-send")).toBeVisible();
+	});
+});
+
+describe("a prompt queued while the agent works", () => {
+	function twoChats() {
+		const server = serverWithChat();
+		server.addChat({
+			id: "ses_b",
+			directory: "/projects/app",
+			title: "Other",
+			messages: [userMessage("ses_b", "msg_b1", "Elsewhere")],
+		});
+		return server;
+	}
+
+	async function queueWhileBusy(text: string) {
+		const server = twoChats();
+		const host = await renderAgentPane({
+			server,
+			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			chats: [chatSummary("ses_a"), chatSummary("ses_b")],
+		});
+		await expect.element(page.getByText("Hello")).toBeVisible();
+		await vi.waitFor(() => expect(server.openStreams).toBe(1));
+		server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
+		await expect.element(page.getByTestId("kilo-composer-stop")).toBeVisible();
+		await userEvent.fill(composerInput(), text);
+		await page.getByTestId("kilo-composer-queue-submit").click();
+		await expect
+			.element(page.getByTestId("kilo-composer-queue-toggle"))
+			.toHaveTextContent("1 queued");
+		return { server, host };
+	}
+
+	const showChat = (host: Awaited<ReturnType<typeof renderAgentPane>>, chatId: string) =>
+		host.host.renderer.kernelSdk.domains
+			.get(Panes)!
+			.methods.update({ sessionId: "wses_1", paneId: "pane_agent", metadata: { chatId } });
+
+	it("stays queued when another chat is shown and back", async () => {
+		const { host } = await queueWhileBusy("Then add tests");
+
+		await showChat(host, "ses_b");
+		await expect.element(page.getByText("Elsewhere")).toBeVisible();
+		await showChat(host, "ses_a");
+		await expect.element(page.getByText("Hello")).toBeVisible();
+
+		await expect
+			.element(page.getByTestId("kilo-composer-queue-item").getByText("Then add tests"))
+			.toBeVisible();
+	});
+
+	it("is sent when the turn ends while another chat is shown, as it was queued", async () => {
+		const { server, host } = await queueWhileBusy("Then add tests");
+		await showChat(host, "ses_b");
+		await expect.element(page.getByText("Elsewhere")).toBeVisible();
+
+		server.emit("session.status", { sessionID: "ses_a", status: { type: "idle" } });
+		server.emit("session.idle", { sessionID: "ses_a" });
+
+		const [prompt] = await promptsTo(server, "ses_a");
+		expect(promptText(prompt!)).toBe("Then add tests");
+		expect(prompt!.directory).toBe("/projects/app");
+		expect(prompt!.body).toMatchObject({
+			agent: "code",
+			model: { providerID: "acme", modelID: "fast-1" },
+			system: expect.stringContaining("/projects/app"),
+		});
+	});
+
+	it("carries its attachment, sent as a file part", async () => {
+		const { server } = await queueWhileBusy("First");
+		const transfer = new DataTransfer();
+		transfer.items.add(new File(["# Notes"], "notes.md", { type: "text/markdown" }));
+		const dropzone = document.querySelector('[data-slot="aui_composer-shell"]')!;
+		for (const type of ["dragenter", "dragover", "drop"]) {
+			dropzone.dispatchEvent(
+				new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: transfer }),
+			);
+		}
+		await expect.element(page.getByRole("button", { name: "Remove file" })).toBeInTheDocument();
+		await userEvent.fill(composerInput(), "Read this");
+		await page.getByTestId("kilo-composer-queue-submit").click();
+		await expect
+			.element(page.getByTestId("kilo-composer-queue-toggle"))
+			.toHaveTextContent("2 queued");
+
+		server.emit("session.idle", { sessionID: "ses_a" });
+		await promptsTo(server, "ses_a");
+		server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
+		server.emit("session.idle", { sessionID: "ses_a" });
+
+		await vi.waitFor(() =>
+			expect(server.requestsTo("POST", "/session/ses_a/prompt_async")).toHaveLength(2),
+		);
+		const second = server.requestsTo("POST", "/session/ses_a/prompt_async")[1]!;
+		expect(promptText(second)).toBe("Read this");
+		expect((second.body as { parts: unknown[] }).parts).toContainEqual(
+			expect.objectContaining({
+				type: "file",
+				filename: "notes.md",
+				url: `data:text/plain;base64,${btoa("# Notes")}`,
+			}),
+		);
+	});
+
+	it("goes with the chat's pane when it pops out", async () => {
+		const { host } = await queueWhileBusy("Then add tests");
+
+		await host.popOut();
+
+		await expect
+			.element(page.getByTestId("kilo-composer-queue-item").getByText("Then add tests"))
+			.toBeVisible();
+	});
+});
+
+describe("unsent text", () => {
+	it("goes with the chat's pane when it pops out", async () => {
+		const host = await renderAgentPane({
+			server: serverWithChat(),
+			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			chats: [chatSummary("ses_a")],
+		});
+		await expect.element(page.getByText("Hello")).toBeVisible();
+		await userEvent.fill(composerInput(), "Half a thought");
+		await vi.waitFor(() =>
+			expect(host.host.main.kernelSdk.domains.get(ComposerDrafts)!.getState().drafts).toEqual({
+				wses_1: { text: "Half a thought" },
+			}),
+		);
+
+		await host.popOut();
+
+		await expect.element(composerInput()).toHaveTextContent("Half a thought");
 	});
 });
 

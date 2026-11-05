@@ -1,5 +1,7 @@
 import type { ChatInfo, KiloEvent } from "../main/conversations/activity";
 import type {
+	ChatCommandParams,
+	ChatPromptParams,
 	CreateChatParams,
 	KiloChatClient,
 	StructuredPromptParams,
@@ -107,6 +109,12 @@ export class FakeKiloChats implements KiloChatClient {
 		return typeof this.structuredAnswer === "function"
 			? (this.structuredAnswer as (params: StructuredPromptParams) => unknown)(params)
 			: this.structuredAnswer;
+	}
+	async prompt(directory: string, id: string, params: ChatPromptParams) {
+		this.#write("prompt", directory, [id, params]);
+	}
+	async command(directory: string, id: string, params: ChatCommandParams) {
+		this.#write("command", directory, [id, params]);
 	}
 	async abortChat(directory: string, id: string) {
 		this.#write("abort", directory, [id]);

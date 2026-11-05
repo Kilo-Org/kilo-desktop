@@ -1,7 +1,8 @@
 // Test host for the agent pane: the real shell with stand-ins for kilo.sessions
 // (sessions and panes in memory), kilo.workspaces, kilo.agent (its server and
-// chats, backed by a FakeKiloServer) and kilo.workbench's navigator, and the
-// pane rendered as kilo.workbench's canvas renders it.
+// chats, backed by a FakeKiloServer: chat statuses follow the server's, and
+// prompts and stops reach it as kilo.agent sends them) and kilo.workbench's
+// navigator, and the pane rendered as kilo.workbench's canvas renders it.
 import { render } from "@testing-library/react";
 import { useCallback, useState, type ReactNode } from "react";
 import { vi } from "vitest";
@@ -348,8 +349,18 @@ function fakeAgentMain(
 						setWorktreeBranch: unused,
 						rename: unused,
 						delete: unused,
-						abort: (input) => {
+						prompt: async ({ chatId, parts, command, ...rest }) => {
+							const directory = conversations.state.chats[chatId]?.directory ?? "/projects/app";
+							const path = command ? "command" : "prompt_async";
+							const body = command
+								? { command: command.name, arguments: command.arguments, ...rest }
+								: { parts, ...rest };
+							await server.post(`/session/${chatId}/${path}`, directory, body);
+						},
+						abort: async (input) => {
 							calls.abort(input);
+							const directory = conversations.state.chats[input.id]?.directory ?? "/projects/app";
+							await server.post(`/session/${input.id}/abort`, directory, {});
 						},
 						setArchived: unused,
 						permissionRequests: unused,
@@ -359,6 +370,22 @@ function fakeAgentMain(
 					},
 				},
 			);
+			// kilo.agent follows chat statuses on its own stream.
+			const followStatuses = () => {
+				const chats = conversations.state.chats;
+				let changed = false;
+				const next = Object.fromEntries(
+					Object.entries(chats).map(([id, chat]) => {
+						const status: ChatSummary["activity"]["status"] = server.isBusy(id) ? "busy" : "idle";
+						if (chat.activity.status === status) return [id, chat];
+						changed = true;
+						return [id, { ...chat, activity: { ...chat.activity, status } }];
+					}),
+				);
+				if (changed) conversations.setState({ ...conversations.state, chats: next });
+			};
+			followStatuses();
+			sdk.onDispose(server.onEvent(followStatuses));
 		},
 	};
 	const plugin = {
@@ -509,19 +536,19 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 		},
 	);
 	const { renderer } = host;
-	const contributions = new Map<
-		string,
-		ReturnType<typeof renderer.extensions.list<typeof PaneKind>>[number]
-	>(renderer.extensions.list(PaneKind).map((candidate) => [candidate.key, candidate]));
 	const directory = options.directory === undefined ? "/projects/app" : options.directory;
 	const workspaceId = options.workspaceId === undefined ? WORKSPACE.id : options.workspaceId;
 
-	/** The session's chat panes as the canvas renders them, following kilo.sessions. */
-	function Canvas() {
+	/** The session's chat panes as a window's canvas renders them, following kilo.sessions. */
+	function Canvas({ kernel }: { kernel: typeof renderer }) {
 		const state = useDomainState(
 			Panes,
 			useCallback((value: DomainState<typeof Panes>) => value.bySession[initialSession.id], []),
 		);
+		const contributions = new Map<
+			string,
+			ReturnType<typeof kernel.extensions.list<typeof PaneKind>>[number]
+		>(kernel.extensions.list(PaneKind).map((candidate) => [candidate.key, candidate]));
 		return (
 			<>
 				{(state?.panes ?? [])
@@ -578,9 +605,19 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 
 	const view = render(
 		<KernelProvider kernel={renderer}>
-			{options.starter ? <Starter {...options.starter} /> : <Canvas />}
+			{options.starter ? <Starter {...options.starter} /> : <Canvas kernel={renderer} />}
 		</KernelProvider>,
 	);
+	/** The session's panes popped out: gone from this window, shown by a window of their own. */
+	const popOut = async () => {
+		view.unmount();
+		const window = await host.openWindow("popout-1");
+		return render(
+			<KernelProvider kernel={window}>
+				<Canvas kernel={window} />
+			</KernelProvider>,
+		);
+	};
 	return {
 		host,
 		server,
@@ -594,6 +631,7 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 		/** Changes kilo.account's identity; needs `identity` in the options. */
 		setIdentity: (next: IdentityState) => account?.setIdentity(next),
 		starter: starterCalls,
+		popOut,
 		/** A session's panes, as kilo.sessions holds them. */
 		panesOf: (sessionId: string) =>
 			renderer.kernelSdk.domains.get(Panes)!.getState().bySession[sessionId],

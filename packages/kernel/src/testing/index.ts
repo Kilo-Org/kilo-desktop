@@ -28,6 +28,8 @@ export function createTestHost(overrides: Partial<MainKernelHost> = {}): MainKer
 export interface TestKernelPair {
 	readonly main: MainKernel;
 	readonly renderer: RendererKernel;
+	/** Boots another window's renderer kernel on the same main, as a pop-out window gets. */
+	readonly openWindow: (windowId: string) => Promise<RendererKernel>;
 }
 
 /** Boots a main and one renderer kernel linked in memory, with plugins activated. */
@@ -51,17 +53,21 @@ export async function createTestKernelPair(options: {
 		...(options.logger ? { logger: options.logger } : {}),
 	});
 	await main.start();
-	const renderer = createRendererKernel({
-		windowId: "main",
-		platform: "mac",
-		transport: transports.connectRenderer("main"),
-		registrations: options.renderer,
-		...(options.pathForFile ? { pathForFile: options.pathForFile } : {}),
-		...(options.logger ? { logger: options.logger } : {}),
-	});
-	await renderer.activate();
-	await main.flush();
-	return { main, renderer };
+	const openWindow = async (windowId: string) => {
+		const renderer = createRendererKernel({
+			windowId,
+			platform: "mac",
+			transport: transports.connectRenderer(windowId),
+			registrations: options.renderer,
+			...(options.pathForFile ? { pathForFile: options.pathForFile } : {}),
+			...(options.logger ? { logger: options.logger } : {}),
+		});
+		await renderer.activate();
+		await main.flush();
+		return renderer;
+	};
+	const renderer = await openWindow("main");
+	return { main, renderer, openWindow };
 }
 
 function webPluginIds(registrations: readonly PluginRegistration[]): string[] {

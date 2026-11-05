@@ -269,7 +269,7 @@ overrides:
 
 patchedDependencies:
   '@assistant-ui/core@0.3.5': 20d1cb964b0fcf06d7d9f60b4ad7c74f905039b0a49e98af1b16130a400ddac1
-  '@assistant-ui/react-opencode@0.2.17': 0f6ea8e94124075ed32d85e803f4a535e7984ad4737cec035c8c14f596561c20
+  '@assistant-ui/react-opencode@0.2.17': c47028ccaaf28bceace8b371fa1bebc162a0a88f1c266466982a0e2a5b65f184
 
 importers:
 
@@ -277,7 +277,7 @@ importers:
     dependencies:
       '@assistant-ui/react-opencode':
         specifier: 0.2.17
-        version: 0.2.17(patch_hash=0f6ea8e94124075ed32d85e803f4a535e7984ad4737cec035c8c14f596561c20)(@assistant-ui/react@0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))(@assistant-ui/tap@0.9.12(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.38)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))
+        version: 0.2.17(patch_hash=c47028ccaaf28bceace8b371fa1bebc162a0a88f1c266466982a0e2a5b65f184)(@assistant-ui/react@0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))(@assistant-ui/tap@0.9.12(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.38)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))
     devDependencies:
       '@kilo-desktop/ui':
         specifier: workspace:*
@@ -1505,7 +1505,7 @@ importers:
         version: 0.14.8(@assistant-ui/react@0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@10.2.2)
       '@assistant-ui/react-opencode':
         specifier: 0.2.17
-        version: 0.2.17(patch_hash=0f6ea8e94124075ed32d85e803f4a535e7984ad4737cec035c8c14f596561c20)(@assistant-ui/react@0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))(@assistant-ui/tap@0.9.12(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.38)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))
+        version: 0.2.17(patch_hash=c47028ccaaf28bceace8b371fa1bebc162a0a88f1c266466982a0e2a5b65f184)(@assistant-ui/react@0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))(@assistant-ui/tap@0.9.12(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.38)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))
       '@assistant-ui/tap':
         specifier: 0.9.12
         version: 0.9.12(@types/react@19.2.17)(react@19.2.8)
@@ -10632,7 +10632,7 @@ snapshots:
       - react-dom
       - supports-color
 
-  '@assistant-ui/react-opencode@0.2.17(patch_hash=0f6ea8e94124075ed32d85e803f4a535e7984ad4737cec035c8c14f596561c20)(@assistant-ui/react@0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))(@assistant-ui/tap@0.9.12(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.38)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))':
+  '@assistant-ui/react-opencode@0.2.17(patch_hash=c47028ccaaf28bceace8b371fa1bebc162a0a88f1c266466982a0e2a5b65f184)(@assistant-ui/react@0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))(@assistant-ui/tap@0.9.12(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.38)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))':
     dependencies:
       '@assistant-ui/core': 0.3.5(patch_hash=20d1cb964b0fcf06d7d9f60b4ad7c74f905039b0a49e98af1b16130a400ddac1)(@assistant-ui/store@0.3.9(@assistant-ui/tap@0.9.12(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8))(@assistant-ui/tap@0.9.12(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.38)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))
       '@assistant-ui/react': 0.15.4(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))

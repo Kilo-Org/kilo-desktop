@@ -221,6 +221,7 @@ async function boot(options: {
 								rename: unused,
 								delete: unused,
 								abort: unused,
+								prompt: unused,
 								setArchived: unused,
 								permissionRequests: unused,
 								replyPermission: unused,

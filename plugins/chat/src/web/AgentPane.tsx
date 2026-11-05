@@ -12,7 +12,12 @@ import { Workspaces, type WorkspacesState } from "@kilo-desktop/plugin-workspace
 import { FIND_BAR_FEATURE_FLAG, FindScope } from "@kilo-desktop/ui/components/find-bar";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
-import { agentPaneChatId, CHAT_ID_METADATA_KEY, type ComposerContext } from "../contracts";
+import {
+	agentPaneChatId,
+	CHAT_ID_METADATA_KEY,
+	PROMPT_QUEUE_EDITING_FLAG,
+	type ComposerContext,
+} from "../contracts";
 import { ComposerContextContext, useComposerContext } from "./composer/composer-actions";
 import { resolveMentionParts, type MentionSource } from "./composer/mention-codec";
 import { useMentionSources } from "./composer/mention-triggers";
@@ -22,7 +27,7 @@ import { ChatConnectionProvider, useChatConnection } from "./runtime/chat-connec
 import type { ChatServices } from "./runtime/chat-services";
 import type { PromptPart } from "./runtime/prompt-options";
 import { chatSystemPrompt, sessionFolders, type PromptFolder } from "./runtime/system-prompt";
-import { PROMPT_QUEUE_EDITING_FLAG, useChatRuntime } from "./runtime/use-chat-runtime";
+import { useChatRuntime } from "./runtime/use-chat-runtime";
 import { ComposerSelectionProvider, type PromptSelection } from "./selection/composer-selection";
 import { prepareForPrompt, useModelSourcesRef } from "./selection/model-source";
 import { useKiloCommandCatalog } from "./slash-commands/use-kilo-command-catalog";
@@ -209,7 +214,7 @@ export function createAgentPane(services: AgentPaneServices): FC<PaneProps> {
 					<QueryClientProvider client={services.queries}>
 						<ChatConnectionProvider services={services.chat}>
 							<ChatThread
-								key={`${mounted.generation}:${queueEditing}`}
+								key={mounted.generation}
 								chatId={mounted.chatId}
 								services={services.chat}
 								focus={services.focus}

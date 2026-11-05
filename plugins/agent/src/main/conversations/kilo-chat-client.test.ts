@@ -186,6 +186,51 @@ describe("the Kilo chat client", () => {
 		});
 	});
 
+	it("sends a chat's prompt or slash command without waiting for the turn, and without a snapshot question", async () => {
+		const { kilo, seen } = await connect();
+		const parts = [{ type: "text", text: "Fix the login" }];
+
+		await kilo.prompt("/projects/app", "ses_a", {
+			parts,
+			agent: "code",
+			model: { providerID: "acme", modelID: "fast-1" },
+			variant: "high",
+			system: "Be brief.",
+		});
+		await kilo.command("/projects/app", "ses_a", {
+			command: "review",
+			arguments: "the diff",
+			agent: "code",
+			model: { providerID: "acme", modelID: "fast-1" },
+			variant: "high",
+		});
+
+		expect(request(seen, "POST", "/session/ses_a/prompt_async")).toMatchObject({
+			directory: "/projects/app",
+			body: {
+				parts,
+				agent: "code",
+				model: { providerID: "acme", modelID: "fast-1" },
+				variant: "high",
+				system: "Be brief.",
+				snapshotInitialization: "wait",
+			},
+		});
+		await expect
+			.poll(() => request(seen, "POST", "/session/ses_a/command"))
+			.toMatchObject({
+				directory: "/projects/app",
+				body: {
+					command: "review",
+					arguments: "the diff",
+					agent: "code",
+					model: "acme/fast-1",
+					variant: "high",
+					snapshotInitialization: "wait",
+				},
+			});
+	});
+
 	it("streams the server's events with the directory they came from", async () => {
 		const { kilo } = await connect();
 		const events = [];

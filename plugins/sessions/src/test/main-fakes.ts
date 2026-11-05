@@ -71,6 +71,7 @@ export class FakeConversations {
 						generate: unused,
 						generateBranchName: unused,
 						setWorktreeBranch: unused,
+						prompt: unused,
 						abort: unused,
 						setArchived: unused,
 						permissionRequests: unused,

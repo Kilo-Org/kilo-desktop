@@ -33,7 +33,7 @@ import {
 	SANDBOX_DISABLED_SESSION_METADATA,
 	type ToolApprovalOutcome,
 } from "./chat-creation";
-import { onlyCallers, PROMPT_ANSWERING_PLUGINS } from "../callers";
+import { onlyCallers, PROMPT_ANSWERING_PLUGINS, PROMPTING_PLUGINS } from "../callers";
 import type { KiloChatClient } from "./kilo-chat-client";
 import { UserMessageTracker } from "./user-messages";
 
@@ -134,6 +134,7 @@ export function provideConversations(
 		PROMPT_ANSWERING_PLUGINS,
 		"Only kilo.chat can answer the agent's prompts.",
 	);
+	const promptersOnly = onlyCallers(PROMPTING_PLUGINS, "Only kilo.chat can send a chat prompts.");
 	const provider: DomainProvider<typeof Conversations> = sdk.domains.provide(Conversations, {
 		initialState: { ready: false, chats: {} },
 		methods: {
@@ -232,6 +233,18 @@ export function provideConversations(
 			delete: async ({ id }) => {
 				await write(id, "delete the chat", (client, directory) => client.deleteChat(directory, id));
 				applyLive({ type: "session.deleted", properties: { info: { id } } });
+			},
+			prompt: async ({ chatId, parts, command, ...options }, caller) => {
+				promptersOnly(caller);
+				await write(chatId, "send the prompt", (client, directory) =>
+					command
+						? client.command(directory, chatId, {
+								command: command.name,
+								arguments: command.arguments,
+								...options,
+							})
+						: client.prompt(directory, chatId, { parts, ...options }),
+				);
 			},
 			abort: ({ id }) =>
 				write(id, "stop the chat", (client, directory) => client.abortChat(directory, id)),

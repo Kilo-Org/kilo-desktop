@@ -29,6 +29,29 @@ export interface StructuredPromptParams {
 	};
 }
 
+export interface ChatPromptParams {
+	readonly parts: readonly Readonly<Record<string, unknown>>[];
+	readonly agent?: string | undefined;
+	readonly model?: { readonly providerID: string; readonly modelID: string } | undefined;
+	readonly variant?: string | undefined;
+	readonly system?: string | undefined;
+}
+
+export interface ChatCommandParams {
+	readonly command: string;
+	readonly arguments: string;
+	readonly agent?: string | undefined;
+	readonly model?: { readonly providerID: string; readonly modelID: string } | undefined;
+	readonly variant?: string | undefined;
+}
+
+/**
+ * Sent with every prompt and command so a slow snapshot waits silently
+ * instead of asking "Snapshot is slow — disable snapshots?": every chat shares
+ * one server and queues on a per-worktree snapshot lock (kilo.chat's policy).
+ */
+const SNAPSHOT_INITIALIZATION = "wait" as const;
+
 /**
  * The Kilo server's chats, as kilo.agent reads and changes them. Calls that
  * take no directory are global (the list, lookups by id, the event stream) or
@@ -65,6 +88,10 @@ export interface KiloChatClient {
 	deleteChat(directory: string, id: string): Promise<void>;
 	/** Sends one prompt asking for a JSON answer; resolves the reply's structured output. */
 	promptStructured(directory: string, id: string, params: StructuredPromptParams): Promise<unknown>;
+	/** Queues a prompt on the chat; resolves once the server has it, not when the turn ends. */
+	prompt(directory: string, id: string, params: ChatPromptParams): Promise<void>;
+	/** Starts a slash command; resolves once it is sent, leaving it to run. */
+	command(directory: string, id: string, params: ChatCommandParams): Promise<void>;
 	abortChat(directory: string, id: string): Promise<void>;
 	replyPermission(
 		directory: string,
@@ -208,6 +235,42 @@ export function createKiloChatClient(connection: ServerConnection): KiloChatClie
 				options,
 			);
 			return (data?.info as { structured?: unknown } | undefined)?.structured;
+		},
+		async prompt(directory, sessionID, params) {
+			await client.session.promptAsync(
+				{
+					sessionID,
+					directory,
+					parts: params.parts.map((part) => ({ ...part })) as never,
+					...(params.agent ? { agent: params.agent } : {}),
+					...(params.model ? { model: { ...params.model } } : {}),
+					...(params.variant ? { variant: params.variant } : {}),
+					...(params.system ? { system: params.system } : {}),
+					snapshotInitialization: SNAPSHOT_INITIALIZATION,
+				},
+				options,
+			);
+		},
+		async command(directory, sessionID, params) {
+			// The command call answers only once the command has run; the turn is
+			// followed on the event stream like any other.
+			void client.session
+				.command(
+					{
+						sessionID,
+						directory,
+						command: params.command,
+						arguments: params.arguments,
+						...(params.agent ? { agent: params.agent } : {}),
+						...(params.model
+							? { model: `${params.model.providerID}/${params.model.modelID}` }
+							: {}),
+						...(params.variant ? { variant: params.variant } : {}),
+						snapshotInitialization: SNAPSHOT_INITIALIZATION,
+					},
+					options,
+				)
+				.catch(() => undefined);
 		},
 		async abortChat(directory, sessionID) {
 			await client.session.abort({ sessionID, directory }, options);

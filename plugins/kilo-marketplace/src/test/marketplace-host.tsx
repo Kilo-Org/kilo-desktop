@@ -65,7 +65,7 @@ const chatPlugin = (startNewChat: NonNullable<MarketplaceHostOptions["startNewCh
 		entry: definePlugin({
 			activate(sdk) {
 				sdk.domains.provide(Composer, {
-					initialState: { drafts: {}, focusedSessionId: null },
+					initialState: { focusedSessionId: null },
 					methods: {
 						focus: () => undefined,
 						insert: () => undefined,

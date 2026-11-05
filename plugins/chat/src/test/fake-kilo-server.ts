@@ -176,8 +176,25 @@ export class FakeKiloServer {
 	 */
 	emit(type: string, properties: Record<string, unknown>, directory = "/projects/app"): void {
 		if (type === "session.status") this.#recordStatus(properties);
+		if (type === "session.idle" && typeof properties.sessionID === "string") {
+			this.#statuses.delete(properties.sessionID);
+		}
+		for (const listener of this.#statusListeners) listener();
 		const data = `data: ${JSON.stringify({ directory, payload: { type, properties } })}\n\n`;
 		for (const stream of this.#streams) stream.enqueue(this.#encoder.encode(data));
+	}
+
+	readonly #statusListeners = new Set<() => void>();
+
+	/** Whether the chat is working, as `/session/status` reports it. */
+	isBusy(chatId: string): boolean {
+		return this.#statuses.has(chatId);
+	}
+
+	/** Runs `listener` after every event, as kilo.agent's stream sees statuses change. */
+	onEvent(listener: () => void): () => void {
+		this.#statusListeners.add(listener);
+		return () => this.#statusListeners.delete(listener);
 	}
 
 	#recordStatus({ sessionID, status }: Record<string, unknown>): void {
@@ -206,6 +223,19 @@ export class FakeKiloServer {
 
 	requestsTo(method: string, path: string): RecordedRequest[] {
 		return this.requests.filter((request) => request.method === method && request.path === path);
+	}
+
+	/** A request from main (kilo.agent), which doesn't go through the window's fetch. */
+	async post(path: string, directory: string, body: unknown): Promise<void> {
+		const url = `${KILO_BASE_URL}${path}?directory=${encodeURIComponent(directory)}`;
+		const response = await this.#handle(
+			new Request(url, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(body),
+			}),
+		);
+		if (!response.ok) throw new Error(`The server refused ${path}`);
 	}
 
 	/** Intercepts fetch for this server's address until the test ends. */

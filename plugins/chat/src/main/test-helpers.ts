@@ -6,12 +6,21 @@ import { createMemoryStorage, createTestHost } from "@kilo-desktop/kernel/testin
 import {
 	AgentTool,
 	Conversations,
+	type ChatActivity,
 	type ChatSummary,
 	type PermissionRequest,
+	type PromptChatInput,
 } from "@kilo-desktop/plugin-agent/contracts";
 
 import manifest from "../../plugin.json";
-import { AutoApprove, CHAT_DEFINITIONS, GatewayModels, ModelPreferences } from "../contracts";
+import {
+	AutoApprove,
+	CHAT_DEFINITIONS,
+	GatewayModels,
+	ModelPreferences,
+	PROMPT_QUEUE_EDITING_FLAG,
+	PromptQueue,
+} from "../contracts";
 import { createChatMainEntry, type ChatMainOptions } from "./entry";
 
 export function chat(id: string, pendingPermissionIds: string[] = []): ChatSummary {
@@ -43,10 +52,29 @@ export interface FakeAgent {
 	/** The server's pending requests by chat. */
 	readonly requests: Map<string, PermissionRequest[]>;
 	readonly replies: { chatId: string; permissionId: string; reply: string }[];
+	/** Prompts sent to chats, in order. */
+	readonly prompts: PromptChatInput[];
+	/** Chats whose turn was stopped, in order. */
+	readonly aborts: string[];
 	failReplies: boolean;
 	failReads: boolean;
+	failPrompts: boolean;
+	failAborts: boolean;
 	/** While set, reading a chat's requests waits for it. */
 	readGate?: Promise<void>;
+}
+
+/** The chat's status as kilo.agent reports it. */
+export function setStatus(fake: FakeAgent, chatId: string, status: ChatActivity["status"]): void {
+	const provider = fake.conversations!;
+	const chat = provider.state.chats[chatId]!;
+	provider.setState({
+		...provider.state,
+		chats: {
+			...provider.state.chats,
+			[chatId]: { ...chat, activity: { ...chat.activity, status } },
+		},
+	});
 }
 
 /** kilo.agent in main: its chats, their permission requests and a `requiresSignIn` tool. */
@@ -80,6 +108,14 @@ function fakeAgent(chats: ChatSummary[], ready: boolean, fake: FakeAgent) {
 						if (fake.failReplies) throw new Error("refused");
 						fake.replies.push({ chatId, permissionId, reply });
 					},
+					prompt: (input: PromptChatInput) => {
+						if (fake.failPrompts) throw new Error("model unavailable");
+						fake.prompts.push(input);
+					},
+					abort: ({ id }: { id: string }) => {
+						if (fake.failAborts) throw new Error("offline");
+						fake.aborts.push(id);
+					},
 				} as never,
 			});
 		},
@@ -102,6 +138,29 @@ function fakeAgent(chats: ChatSummary[], ready: boolean, fake: FakeAgent) {
 		},
 		definitions: { domains: [Conversations], extensionPoints: [AgentTool] },
 		entry,
+	};
+}
+
+/** kilo.flags' `prompt-queue-editing` key, changed from the test. */
+function fakeFlags(queueEditing: boolean) {
+	const keys: { set?: (value: boolean) => void } = {};
+	return {
+		set: (value: boolean) => keys.set?.(value),
+		registration: {
+			manifest: {
+				manifestVersion: 1,
+				id: "kilo.flags",
+				displayName: "Flags",
+				version: "1.0.0",
+				contextKeys: [{ id: "flag:*", scope: "global" }],
+			},
+			entry: {
+				activate(sdk) {
+					keys.set = (value) => sdk.context.set(`flag:${PROMPT_QUEUE_EDITING_FLAG}`, value);
+					keys.set(queueEditing);
+				},
+			} satisfies PluginEntry,
+		},
 	};
 }
 
@@ -135,6 +194,8 @@ export interface BootOptions extends ChatMainOptions {
 	readonly storage?: ReturnType<typeof createMemoryStorage>;
 	readonly fetch?: typeof globalThis.fetch;
 	readonly withoutAgent?: boolean;
+	/** `prompt-queue-editing`. */
+	readonly queueEditing?: boolean;
 }
 
 /** kilo.chat's main entry in a main kernel, with a fake kilo.agent. */
@@ -143,19 +204,25 @@ export async function bootChatMain(options: BootOptions = {}) {
 		conversations: undefined,
 		requests: new Map(),
 		replies: [],
+		prompts: [],
+		aborts: [],
 		failReplies: false,
 		failReads: false,
+		failPrompts: false,
+		failAborts: false,
 	};
 	const storage = options.storage ?? createMemoryStorage("/data/kilo.chat");
 	const agent = fakeAgent(options.chats ?? [], options.ready ?? true, fake);
 	const chatEntry = createChatMainEntry(options);
 	const account = fakeAccount(options.signedIn ?? false);
+	const flags = fakeFlags(options.queueEditing ?? false);
 	let chatSdk: PluginSdk | undefined;
 	const kernel = createMainKernel({
 		host: createTestHost(),
 		registrations: [
 			...(options.withoutAgent ? [] : [agent]),
 			account.registration,
+			flags.registration,
 			{
 				manifest,
 				definitions: CHAT_DEFINITIONS,
@@ -179,17 +246,20 @@ export async function bootChatMain(options: BootOptions = {}) {
 		fake,
 		storage,
 		signIn: (value: boolean) => account.keys.set?.(value),
+		setQueueEditing: flags.set,
 		autoApprove: domains.get(AutoApprove)!,
 		preferences: domains.get(ModelPreferences)!,
 		gateway: domains.get(GatewayModels)!,
 		/** The domains as another plugin calls them. */
 		as: (pluginId: string) => ({
 			autoApprove: kernel.sdkFor(pluginId).domains.get(AutoApprove)!,
+			promptQueue: kernel.sdkFor(pluginId).domains.get(PromptQueue)!,
 		}),
 		/** The domains as kilo.chat's own windows call them. */
 		asChat: {
 			autoApprove: chatSdk!.domains.get(AutoApprove)!,
 			preferences: chatSdk!.domains.get(ModelPreferences)!,
+			promptQueue: chatSdk!.domains.get(PromptQueue)!,
 		},
 	};
 }

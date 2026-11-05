@@ -279,7 +279,7 @@
 		{
 			"id": "composer",
 			"home": "renderer",
-			"description": "This window's composers: drafts, focus, insert, start a new chat."
+			"description": "This window's composers: focus, insert, start a new chat."
 		},
 		{
 			"id": "model-preferences",
@@ -290,6 +290,16 @@
 			"id": "gateway-models",
 			"home": "main",
 			"description": "The Kilo Gateway's public model catalog shown in the model picker."
+		},
+		{
+			"id": "drafts",
+			"home": "main",
+			"description": "Unsent composer text by Work Session, for every window."
+		},
+		{
+			"id": "prompt-queue",
+			"home": "main",
+			"description": "Prompts queued while a chat works, sent in order when it goes idle, from any window."
 		},
 		{
 			"id": "auto-approve",

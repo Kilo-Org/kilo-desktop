@@ -596,6 +596,94 @@ describe("acting on chats", () => {
 		]);
 	});
 
+	it("sends kilo.chat's prompts and slash commands to the chat's directory, waiting out a slow snapshot", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [desktopChat("ses_a", { directory: "/projects/a" })];
+		const { kernel, whenReady } = await boot({
+			chats,
+			plugins: [
+				testPlugin("kilo.chat", { entry: { activate: () => {} } }),
+				testPlugin("acme.snoop", { entry: { activate: () => {} } }),
+			],
+		});
+		await whenReady();
+		const as = (pluginId: string) => kernel.sdkFor(pluginId).domains.get(Conversations)!;
+		const parts = [
+			{ type: "text", text: "Fix the login" },
+			{ type: "file", mime: "image/png", url: "data:image/png;base64,AAAA", filename: "a.png" },
+		];
+
+		await expect(as("acme.snoop").methods.prompt({ chatId: "ses_a", parts })).rejects.toMatchObject(
+			{ code: "PERMISSION_DENIED" },
+		);
+		await as("kilo.chat").methods.prompt({
+			chatId: "ses_a",
+			parts,
+			agent: "code",
+			model: { providerID: "acme", modelID: "fast-1" },
+			variant: "high",
+			system: "Primary folder: /projects/a",
+		});
+		await as("kilo.chat").methods.prompt({
+			chatId: "ses_a",
+			parts: [],
+			command: { name: "review", arguments: "the diff" },
+			agent: "code",
+			model: { providerID: "acme", modelID: "fast-1" },
+		});
+
+		expect(chats.writes.map(({ call, directory, args }) => [call, directory, args])).toEqual([
+			[
+				"prompt",
+				"/projects/a",
+				[
+					"ses_a",
+					{
+						parts,
+						agent: "code",
+						model: { providerID: "acme", modelID: "fast-1" },
+						variant: "high",
+						system: "Primary folder: /projects/a",
+					},
+				],
+			],
+			[
+				"command",
+				"/projects/a",
+				[
+					"ses_a",
+					{
+						command: "review",
+						arguments: "the diff",
+						agent: "code",
+						model: { providerID: "acme", modelID: "fast-1" },
+					},
+				],
+			],
+		]);
+	});
+
+	it("says why the server refused a prompt", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [desktopChat("ses_a")];
+		const { kernel, whenReady } = await boot({
+			chats,
+			plugins: [testPlugin("kilo.chat", { entry: { activate: () => {} } })],
+		});
+		await whenReady();
+		chats.failWrites = true;
+
+		await expect(
+			kernel
+				.sdkFor("kilo.chat")
+				.domains.get(Conversations)!
+				.methods.prompt({
+					chatId: "ses_a",
+					parts: [{ type: "text", text: "Hi" }],
+				}),
+		).rejects.toMatchObject({ code: "UNAVAILABLE", message: "Could not send the prompt: offline" });
+	});
+
 	it("archives with the time it happened", async () => {
 		const chats = new FakeKiloChats();
 		chats.chats = [desktopChat("ses_a")];

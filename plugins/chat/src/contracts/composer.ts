@@ -205,11 +205,29 @@ export const ComposerAction = defineExtensionPoint({
 	implementation: implementation<ComposerActionImplementation>("renderer", { required: false }),
 });
 
+// --- drafts (main) ---
+
+const draftsSchema = z.record(z.string(), z.object({ text: z.string() }));
+
+/**
+ * Unsent composer text by Work Session, in main so it goes wherever the
+ * session's agent pane is shown (a pop-out, another window, a reload) and a
+ * new chat can be prefilled before its pane exists. Kept until the app quits
+ * or the session is removed; only kilo.chat writes it.
+ */
+export const ComposerDrafts = defineDomain({
+	id: "kilo.chat/drafts",
+	home: "main",
+	state: z.object({ drafts: draftsSchema }),
+	methods: {
+		/** Empty text drops the session's draft. */
+		set: method(z.object({ sessionId: z.string().min(1), text: z.string() }), nothing),
+	},
+});
+
 // --- composer (per window) ---
 
 export const composerStateSchema = z.object({
-	/** Unsent text by Work Session, for composers that aren't shown right now too. */
-	drafts: z.record(z.string(), z.object({ text: z.string() })),
 	/** The session whose composer has keyboard focus in this window. */
 	focusedSessionId: z.string().nullable(),
 });
@@ -223,7 +241,8 @@ const sessionTarget = z.object({
 /**
  * This window's composers. `focus` and `insert` open the session's agent pane
  * if it isn't shown; `startNewChat` starts a new Agent session, as the
- * launcher does, with the text in its composer for the person to send.
+ * launcher does, with the text in its composer for the person to send. Unsent
+ * text lives in `kilo.chat/drafts`.
  */
 export const Composer = defineDomain({
 	id: "kilo.chat/composer",

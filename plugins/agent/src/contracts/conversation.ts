@@ -69,6 +69,23 @@ export const createChatInputSchema = z.object({
 });
 export type CreateChatInput = z.input<typeof createChatInputSchema>;
 
+/**
+ * A message for a chat, ready to send: its parts (text, and files as data
+ * URLs) and the options the sender chose. With `command`, Kilo runs that
+ * slash command instead and `parts` is not sent.
+ */
+export const promptChatInputSchema = z.object({
+	chatId: z.string().min(1),
+	parts: z.array(z.record(z.string(), z.unknown())),
+	agent: z.string().min(1).optional(),
+	model: z.object({ providerID: z.string().min(1), modelID: z.string().min(1) }).optional(),
+	variant: z.string().min(1).optional(),
+	/** Prepended to the agent's system prompt for this turn. */
+	system: z.string().optional(),
+	command: z.object({ name: z.string().min(1), arguments: z.string() }).optional(),
+});
+export type PromptChatInput = z.input<typeof promptChatInputSchema>;
+
 /** A permission request a chat is waiting on, as the server describes it. */
 export const permissionRequestSchema = z.object({
 	id: z.string(),
@@ -179,6 +196,12 @@ export const Conversations = defineDomain({
 		sessionConfig: method(sessionConfigInputSchema, resolvedSessionConfigSchema),
 		rename: method(chatIdInput.extend({ title: z.string().trim().min(1) }), nothing),
 		delete: method(chatIdInput, nothing),
+		/**
+		 * Sends a message to the chat (kilo.chat's alone), resolving once the
+		 * server has it, not when the turn ends. A slash command is started and
+		 * left to run.
+		 */
+		prompt: method(promptChatInputSchema, nothing),
 		/** Stops the chat's current turn. */
 		abort: method(chatIdInput, nothing),
 		setArchived: method(chatIdInput.extend({ archived: z.boolean() }), nothing),

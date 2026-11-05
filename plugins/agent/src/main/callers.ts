@@ -26,5 +26,8 @@ export function onlyCallers(
  */
 export const SERVER_CLIENT_PLUGINS = ["kilo.chat", "kilo.account", "kilo.marketplace"] as const;
 
+/** Sends prompts the person queued, on their behalf (kilo.chat's prompt queue). */
+export const PROMPTING_PLUGINS = ["kilo.chat"] as const;
+
 /** Answers the agent's permission requests and questions for the person (auto-approve, cards). */
 export const PROMPT_ANSWERING_PLUGINS = ["kilo.chat"] as const;

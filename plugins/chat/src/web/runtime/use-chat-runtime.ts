@@ -2,10 +2,14 @@ import type { AssistantRuntime } from "@assistant-ui/react";
 import { OpenCodeAttachmentAdapter, useOpenCodeRuntime } from "@assistant-ui/react-opencode";
 import { useMemo, useRef } from "react";
 
-import { createChatBackend, type ChatBackendOptions } from "./chat-backend";
+import { useDomain } from "@kilo-desktop/kernel/web";
+import { Conversations } from "@kilo-desktop/plugin-agent/contracts";
 
-/** The flag behind pausing, reordering and editing queued prompts. */
-export const PROMPT_QUEUE_EDITING_FLAG = "prompt-queue-editing";
+import { PromptQueue } from "../../contracts";
+import { createChatBackend, type ChatBackendOptions } from "./chat-backend";
+import { createMainPromptQueue } from "./main-prompt-queue";
+
+const isWorking = (status: string | undefined) => status === "busy" || status === "retry";
 
 export interface ChatRuntimeOptions extends Omit<ChatBackendOptions, "getSystem"> {
 	/** The chat to open; absent for a draft. */
@@ -20,7 +24,9 @@ export interface ChatRuntimeOptions extends Omit<ChatBackendOptions, "getSystem"
 /**
  * One pane's transcript runtime over react-opencode. The backend is made once
  * (callbacks are read through a ref) so a re-render never swaps the runtime's
- * registry; a different chat remounts the hook's owner instead.
+ * registry; a different chat remounts the hook's owner instead. Its prompt
+ * queue is the chat's queue in main (`createMainPromptQueue`), so it outlives
+ * the runtime.
  */
 export function useChatRuntime(options: ChatRuntimeOptions): AssistantRuntime {
 	const latest = useRef(options);
@@ -47,13 +53,49 @@ export function useChatRuntime(options: ChatRuntimeOptions): AssistantRuntime {
 	);
 	const adapters = useMemo(() => ({ attachments: new OpenCodeAttachmentAdapter() }), []);
 	const initialChatId = useRef(options.chatId).current;
+	const threadChatId = useRef(initialChatId);
+	const queue = useDomain(PromptQueue);
+	const conversations = useDomain(Conversations);
+	const domains = useRef({ queue, conversations });
+	domains.current = { queue, conversations };
+	const createQueue = useMemo(
+		() => () =>
+			createMainPromptQueue({
+				queue: () => domains.current.queue,
+				chatId: () => threadChatId.current,
+				chatWorking: () => {
+					const chatId = threadChatId.current;
+					const chats = domains.current.conversations?.getState().chats;
+					return !!chatId && isWorking(chats?.[chatId]?.activity.status);
+				},
+				prompt: () => {
+					const current = latest.current;
+					return {
+						getSystem: current.getSystem,
+						...(current.getAgent ? { getAgent: current.getAgent } : {}),
+						...(current.getModel ? { getModel: current.getModel } : {}),
+						...(current.getVariant ? { getVariant: current.getVariant } : {}),
+						...(current.getKnownCommandNames
+							? { getKnownCommandNames: current.getKnownCommandNames }
+							: {}),
+						...(current.resolveParts ? { resolveParts: current.resolveParts } : {}),
+					};
+				},
+				onError: (error) => console.error("[kilo.chat] Queued prompt", error),
+			}),
+		[],
+	);
 	return useOpenCodeRuntime({
 		backend,
 		...(initialChatId ? { initialSessionId: initialChatId } : {}),
-		onThreadIdChange: (chatId) => latest.current.onChatId?.(chatId),
+		onThreadIdChange: (chatId) => {
+			if (chatId) threadChatId.current = chatId;
+			latest.current.onChatId?.(chatId);
+		},
 		messageQueue: {
 			cancelBehavior: "pause",
 			...(options.queueEditing ? { userControls: true } : {}),
+			create: createQueue,
 		},
 		adapters,
 	});

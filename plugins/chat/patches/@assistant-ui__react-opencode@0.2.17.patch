@@ -1188,11 +1188,11 @@ index 6c2e3a5..9798f4c 100644
 +{"version":3,"file":"openCodeThreadState.js","names":[],"sources":["../src/openCodeThreadState.ts"],"sourcesContent":["import type {\n  Message,\n  MessageWithParts,\n  OpenCodeServerMessage,\n  OpenCodeStateEvent,\n  OpenCodeThreadState,\n  Part,\n  PendingUserMessage,\n  ThreadUserMessagePart,\n} from \"./types\";\nimport { serializeOpenCodeParts } from \"./serializeUserParts\";\n\nconst PENDING_MATCH_WINDOW_MS = 2 * 60 * 1000;\nconst MAX_UNHANDLED_EVENTS = 25;\n\nconst extractCreatedAt = (message: Message | undefined): number | undefined => {\n  const created = message?.time?.created;\n  return typeof created === \"number\" ? created : undefined;\n};\n\nconst normalizeText = (value: string) =>\n  value.trim().replace(/\\s+/g, \" \").toLowerCase();\n\nconst pendingFingerprint = (pending: PendingUserMessage) =>\n  normalizeText(pending.contentText);\n\nconst partTextFingerprint = (parts: readonly ThreadUserMessagePart[]) =>\n  normalizeText(serializeOpenCodeParts(parts));\n\nconst serverFingerprint = (message: MessageWithParts) =>\n  normalizeText(serializeOpenCodeParts(message.parts));\n\nconst sortMessageIds = (\n  messagesById: Readonly<Record<string, OpenCodeServerMessage>>,\n  ids: Iterable<string>,\n) => {\n  return [...ids].sort((leftId, rightId) => {\n    const left = messagesById[leftId];\n    const right = messagesById[rightId];\n    const leftCreated = extractCreatedAt(left?.info) ?? Number.MAX_SAFE_INTEGER;\n    const rightCreated =\n      extractCreatedAt(right?.info) ?? Number.MAX_SAFE_INTEGER;\n    if (leftCreated !== rightCreated) return leftCreated - rightCreated;\n    return leftId.localeCompare(rightId);\n  });\n};\n\nconst upsertMessage = (\n  state: OpenCodeThreadState,\n  messageId: string,\n  updater: (\n    current: OpenCodeServerMessage | undefined,\n  ) => OpenCodeServerMessage,\n): OpenCodeThreadState => {\n  const current = state.messagesById[messageId];\n  const nextMessage = updater(current);\n  const messagesById = {\n    ...state.messagesById,\n    [messageId]: nextMessage,\n  };\n  const messageOrder = current\n    ? state.messageOrder\n    : sortMessageIds(messagesById, [...state.messageOrder, messageId]);\n\n  return {\n    ...state,\n    messagesById,\n    messageOrder,\n  };\n};\n\nconst updateExistingMessage = (\n  state: OpenCodeThreadState,\n  messageId: string,\n  updater: (current: OpenCodeServerMessage) => OpenCodeServerMessage,\n): OpenCodeThreadState => {\n  const current = state.messagesById[messageId];\n  if (!current) return state;\n\n  return {\n    ...state,\n    messagesById: {\n      ...state.messagesById,\n      [messageId]: updater(current),\n    },\n  };\n};\n\nconst removePending = (\n  state: OpenCodeThreadState,\n  clientId: string,\n): OpenCodeThreadState => {\n  if (!(clientId in state.pendingUserMessages)) return state;\n  const pendingUserMessages = { ...state.pendingUserMessages };\n  delete pendingUserMessages[clientId];\n  return {\n    ...state,\n    pendingUserMessages,\n  };\n};\n\nconst findPendingMatchByHistory = (\n  state: OpenCodeThreadState,\n  message: MessageWithParts,\n) => {\n  const createdAt = extractCreatedAt(message.info);\n  const fingerprint = serverFingerprint(message);\n  const candidates = (\n    Object.values(state.pendingUserMessages) as PendingUserMessage[]\n  ).filter(\n    (pending) =>\n      pending.status === \"pending\" &&\n      (createdAt === undefined ||\n        Math.abs(pending.createdAt - createdAt) <= PENDING_MATCH_WINDOW_MS) &&\n      (fingerprint.length === 0 ||\n        pendingFingerprint(pending) === fingerprint ||\n        partTextFingerprint(pending.parts) === fingerprint),\n  );\n\n  if (candidates.length === 1) return candidates[0];\n  if (candidates.length > 1) {\n    return candidates.sort(\n      (left, right) => left.createdAt - right.createdAt,\n    )[0];\n  }\n  return undefined;\n};\n\nconst findPendingMatchByMessageInfo = (\n  state: OpenCodeThreadState,\n  message: Message,\n) => {\n  const createdAt = extractCreatedAt(message);\n  const candidates = (\n    Object.values(state.pendingUserMessages) as PendingUserMessage[]\n  ).filter(\n    (pending) =>\n      pending.status === \"pending\" &&\n      (createdAt === undefined ||\n        Math.abs(pending.createdAt - createdAt) <= PENDING_MATCH_WINDOW_MS),\n  );\n\n  if (candidates.length === 1) return candidates[0];\n  return undefined;\n};\n\nconst historyLoaded = (\n  state: OpenCodeThreadState,\n  session: OpenCodeThreadState[\"session\"],\n  messages: readonly MessageWithParts[],\n): OpenCodeThreadState => {\n  let nextState: OpenCodeThreadState = {\n    ...state,\n    session,\n    loadState: { type: \"ready\" },\n    messagesById: {} as Readonly<Record<string, OpenCodeServerMessage>>,\n    messageOrder: [],\n    sync: {\n      ...state.sync,\n      lastHistoryLoadAt: Date.now(),\n    },\n  };\n\n  const nextMessagesById: Record<string, OpenCodeServerMessage> = {};\n  for (const message of messages) {\n    const pendingMatch =\n      message.info.role === \"user\"\n        ? findPendingMatchByHistory(nextState, message)\n        : undefined;\n\n    nextMessagesById[message.info.id] = {\n      id: message.info.id,\n      info: message.info,\n      parts: message.parts,\n      shadowParts:\n        message.parts.length === 0 && pendingMatch\n          ? pendingMatch.parts\n          : undefined,\n    };\n\n    if (pendingMatch) {\n      nextState = removePending(nextState, pendingMatch.clientId);\n    }\n  }\n\n  nextState = {\n    ...nextState,\n    messagesById: nextMessagesById,\n    messageOrder: sortMessageIds(\n      nextMessagesById,\n      Object.keys(nextMessagesById),\n    ),\n  };\n\n  return nextState;\n};\n\nconst removeMessagePart = (parts: readonly Part[], partId: string) =>\n  parts.filter((part) => part.id !== partId);\n\nconst upsertMessagePart = (parts: readonly Part[], part: Part) => {\n  if (!part.id) return [...parts, part];\n  const index = parts.findIndex((candidate) => candidate.id === part.id);\n  if (index === -1) return [...parts, part];\n  const nextParts = [...parts];\n  nextParts[index] = part;\n  return nextParts;\n};\n\nconst applyMessagePartDelta = (\n  parts: readonly Part[],\n  partId: string,\n  field: string,\n  delta: string,\n) => {\n  const index = parts.findIndex((candidate) => candidate.id === partId);\n  if (index === -1) return null;\n\n  const current = parts[index];\n  if (!current) return null;\n  if (\n    field === \"text\" &&\n    (current.type === \"text\" || current.type === \"reasoning\")\n  ) {\n    const nextParts = [...parts];\n    nextParts[index] = {\n      ...current,\n      text: (current.text ?? \"\") + delta,\n    };\n    return nextParts;\n  }\n\n  return null;\n};\n\n// Parts imply activity only while status is unknown or busy. While cancelling,\n// reverting, or after an explicit idle they are cleanup output, not a new turn;\n// a new turn always announces itself with a busy session.status first.\nconst activityFromPartEvent = (\n  state: OpenCodeThreadState,\n): Pick<OpenCodeThreadState, \"runState\" | \"sessionStatus\"> => {\n  if (\n    state.runState.type === \"cancelling\" ||\n    state.sessionStatus?.type === \"idle\"\n  ) {\n    return { runState: state.runState, sessionStatus: state.sessionStatus };\n  }\n  return {\n    runState: { type: \"streaming\" },\n    sessionStatus:\n      state.sessionStatus?.type === \"retry\"\n        ? state.sessionStatus\n        : { type: \"busy\" },\n  };\n};\n\nexport const createOpenCodeThreadState = (\n  sessionId: string,\n): OpenCodeThreadState => ({\n  sessionId,\n  session: null,\n  sessionStatus: null,\n  loadState: { type: \"idle\" },\n  runState: { type: \"idle\" },\n  messageOrder: [],\n  messagesById: {} as Readonly<Record<string, OpenCodeServerMessage>>,\n  childSessionsById: {} as Readonly<Record<string, OpenCodeThreadState>>,\n  pendingUserMessages: {} as Readonly<Record<string, PendingUserMessage>>,\n  interactions: {\n    permissions: {\n      pending: {} as Readonly<\n        Record<string, import(\"./types\").OpenCodePermissionRequest>\n      >,\n      resolved: {} as Readonly<\n        Record<\n          string,\n          {\n            request: import(\"./types\").OpenCodePermissionRequest;\n            reply: import(\"./types\").OpenCodePermissionResponse;\n            respondedAt: number;\n          }\n        >\n      >,\n    },\n    questions: {\n      pending: {} as Readonly<\n        Record<string, import(\"./types\").OpenCodeQuestionRequest>\n      >,\n      answered: {} as Readonly<\n        Record<\n          string,\n          {\n            request: import(\"./types\").OpenCodeQuestionRequest;\n            answers: readonly import(\"./types\").QuestionAnswer[];\n            respondedAt: number;\n          }\n        >\n      >,\n      rejected: {} as Readonly<\n        Record<\n          string,\n          {\n            request: import(\"./types\").OpenCodeQuestionRequest;\n            rejectedAt: number;\n          }\n        >\n      >,\n    },\n  },\n  unhandledEvents: [],\n  sync: {},\n});\n\nexport const reduceOpenCodeThreadState = (\n  state: OpenCodeThreadState,\n  event: OpenCodeStateEvent,\n): OpenCodeThreadState => {\n  switch (event.type) {\n    case \"history.loading\":\n      return {\n        ...state,\n        loadState: { type: \"loading\" },\n      };\n\n    case \"history.loaded\":\n      return historyLoaded(state, event.session, event.messages);\n\n    case \"history.failed\":\n      return {\n        ...state,\n        loadState: { type: \"error\", error: event.error },\n      };\n\n    case \"run.started\":\n      return {\n        ...state,\n        runState: { type: \"streaming\" },\n        sessionStatus: { type: \"busy\" },\n      };\n\n    case \"run.cancelling\":\n      return {\n        ...state,\n        runState: { type: \"cancelling\" },\n      };\n\n    case \"run.reverting\":\n      return {\n        ...state,\n        runState: { type: \"reverting\" },\n      };\n\n    case \"run.failed\":\n      return {\n        ...state,\n        runState: { type: \"error\", error: event.error },\n      };\n\n    case \"session.updated\":\n      return {\n        ...state,\n        session: event.session,\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n\n    case \"session.status\":\n      return {\n        ...state,\n        sessionStatus: event.status,\n        runState:\n          event.status.type === \"idle\"\n            ? { type: \"idle\" }\n            : state.runState.type === \"cancelling\" ||\n                state.runState.type === \"reverting\"\n              ? state.runState\n              : { type: \"streaming\" },\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n\n    case \"session.idle\":\n      return {\n        ...state,\n        sessionStatus: { type: \"idle\" },\n        runState: { type: \"idle\" },\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n\n    case \"session.compacted\":\n      return {\n        ...state,\n        sync: {\n          ...state.sync,\n          lastCompactionAt: Date.now(),\n          lastEventAt: Date.now(),\n        },\n      };\n\n    case \"message.updated\": {\n      const pendingMatch =\n        event.info.role === \"user\"\n          ? findPendingMatchByMessageInfo(state, event.info)\n          : undefined;\n\n      let nextState = upsertMessage(state, event.info.id, (current) => ({\n        id: event.info.id,\n        info: event.info,\n        parts: current?.parts ?? [],\n        shadowParts:\n          current?.shadowParts ??\n          (pendingMatch && (current?.parts?.length ?? 0) === 0\n            ? pendingMatch.parts\n            : undefined),\n      }));\n\n      if (pendingMatch) {\n        nextState = removePending(nextState, pendingMatch.clientId);\n      }\n\n      return {\n        ...nextState,\n        sync: {\n          ...nextState.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n    }\n\n    case \"message.removed\": {\n      if (!(event.messageId in state.messagesById)) return state;\n      const messagesById = { ...state.messagesById };\n      delete messagesById[event.messageId];\n      return {\n        ...state,\n        messagesById,\n        messageOrder: state.messageOrder.filter((id) => id !== event.messageId),\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n    }\n\n    case \"part.updated\": {\n      const nextState = updateExistingMessage(\n        state,\n        event.messageId,\n        (current) => ({\n          id: event.messageId,\n          info: current.info,\n          parts: upsertMessagePart(current.parts, event.part),\n          shadowParts: current.shadowParts,\n        }),\n      );\n\n      if (nextState === state) return state;\n\n      return {\n        ...nextState,\n        ...activityFromPartEvent(state),\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n    }\n\n    case \"part.delta\": {\n      const current = state.messagesById[event.messageId];\n      const nextParts = current\n        ? applyMessagePartDelta(\n            current.parts,\n            event.partId,\n            event.field,\n            event.delta,\n          )\n        : null;\n\n      if (!current || !nextParts) return state;\n\n      return {\n        ...updateExistingMessage(state, event.messageId, () => ({\n          ...current,\n          parts: nextParts,\n        })),\n        ...activityFromPartEvent(state),\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n    }\n\n    case \"part.removed\": {\n      const nextState = updateExistingMessage(\n        state,\n        event.messageId,\n        (current) => ({\n          id: event.messageId,\n          info: current.info,\n          parts: removeMessagePart(current.parts, event.partId),\n          shadowParts: current.shadowParts,\n        }),\n      );\n\n      if (nextState === state) return state;\n\n      return {\n        ...nextState,\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n    }\n\n    case \"permission.asked\":\n      return {\n        ...state,\n        interactions: {\n          ...state.interactions,\n          permissions: {\n            ...state.interactions.permissions,\n            pending: {\n              ...state.interactions.permissions.pending,\n              [event.request.id]: event.request,\n            },\n          },\n        },\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n\n    case \"permission.replied\": {\n      const pending = { ...state.interactions.permissions.pending };\n      const request = pending[event.permissionId];\n      delete pending[event.permissionId];\n      if (!request) return state;\n\n      return {\n        ...state,\n        interactions: {\n          ...state.interactions,\n          permissions: {\n            pending,\n            resolved: {\n              ...state.interactions.permissions.resolved,\n              [event.permissionId]: {\n                request,\n                reply: event.reply,\n                respondedAt: Date.now(),\n              },\n            },\n          },\n        },\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n    }\n\n    case \"question.asked\":\n      return {\n        ...state,\n        interactions: {\n          ...state.interactions,\n          questions: {\n            ...state.interactions.questions,\n            pending: {\n              ...state.interactions.questions.pending,\n              [event.request.id]: event.request,\n            },\n          },\n        },\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n\n    case \"question.replied\": {\n      const pending = { ...state.interactions.questions.pending };\n      const request = pending[event.questionId];\n      delete pending[event.questionId];\n      if (!request) return state;\n\n      return {\n        ...state,\n        interactions: {\n          ...state.interactions,\n          questions: {\n            ...state.interactions.questions,\n            pending,\n            answered: {\n              ...state.interactions.questions.answered,\n              [event.questionId]: {\n                request,\n                answers: event.answers,\n                respondedAt: Date.now(),\n              },\n            },\n          },\n        },\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n    }\n\n    case \"question.rejected\": {\n      const pending = { ...state.interactions.questions.pending };\n      const request = pending[event.questionId];\n      delete pending[event.questionId];\n      if (!request) return state;\n\n      return {\n        ...state,\n        interactions: {\n          ...state.interactions,\n          questions: {\n            ...state.interactions.questions,\n            pending,\n            rejected: {\n              ...state.interactions.questions.rejected,\n              [event.questionId]: {\n                request,\n                rejectedAt: Date.now(),\n              },\n            },\n          },\n        },\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n    }\n\n    case \"unhandled.event\":\n      return {\n        ...state,\n        unhandledEvents: [\n          ...state.unhandledEvents.slice(-(MAX_UNHANDLED_EVENTS - 1)),\n          event.event,\n        ],\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n\n    case \"local.message.queued\":\n      return {\n        ...state,\n        pendingUserMessages: {\n          ...state.pendingUserMessages,\n          [event.pending.clientId]: event.pending,\n        },\n      };\n\n    case \"local.message.reconciled\":\n      return removePending(state, event.clientId);\n\n    case \"local.message.failed\": {\n      const current = state.pendingUserMessages[event.clientId];\n      if (!current) return state;\n      return {\n        ...state,\n        pendingUserMessages: {\n          ...state.pendingUserMessages,\n          [event.clientId]: {\n            ...current,\n            status: \"failed\",\n            error: event.error,\n          },\n        },\n        runState: { type: \"error\", error: event.error },\n      };\n    }\n  }\n};\n\n/** Stable placeholder state used before a session controller is attached. */\nexport const EMPTY_OPENCODE_THREAD_STATE =\n  createOpenCodeThreadState(\"__pending__\");\n"],"mappings":"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"}
 \ No newline at end of file
 diff --git a/dist/types.d.ts b/dist/types.d.ts
-index 20262e5..6eaf51d 100644
+index 20262e5..5767c5e 100644
 --- a/dist/types.d.ts
 +++ b/dist/types.d.ts
 @@ -1,3 +1,4 @@
-+import { OpenCodeMessageQueueControls, OpenCodeMessageQueueOptions } from "./openCodeMessageQueue.js";
++import { OpenCodeMessageQueueController, OpenCodeMessageQueueControls, OpenCodeMessageQueueOptions } from "./openCodeMessageQueue.js";
  import { AppendMessage, AppendMessage as AppendMessage$1, AssistantRuntime, AttachmentAdapter, DictationAdapter, ExternalStoreSharedOptions, FeedbackAdapter, RealtimeVoiceAdapter, SpeechSynthesisAdapter, ThreadMessageLike, ThreadMessageLike as ThreadMessageLike$1, ThreadUserMessagePart, ThreadUserMessagePart as ThreadUserMessagePart$1 } from "@assistant-ui/react";
  import { AssistantMessage, Event, EventMessagePartDelta, FilePart, GlobalSession, Message, Message as Message$1, Model, OpencodeClient, OpencodeClient as OpencodeClient$1, OpencodeClientConfig, Part, Part as Part$1, PermissionRequest, PermissionRequest as PermissionRequest$1, Provider, QuestionAnswer, QuestionAnswer as QuestionAnswer$1, QuestionRequest, QuestionRequest as QuestionRequest$1, ReasoningPart, Session, Session as Session$1, SessionStatus, SessionStatus as SessionStatus$1, SnapshotPart, StepFinishPart, StepStartPart, TextPart, ToolPart, ToolState, UserMessage } from "@opencode-ai/sdk/v2/client";
  //#region src/types.d.ts
@@ -1239,16 +1239,22 @@ index 20262e5..6eaf51d 100644
    baseUrl?: string | undefined;
    initialSessionId?: string | undefined;
    defaultModel?: {
-@@ -135,6 +165,8 @@ type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
+@@ -135,6 +165,14 @@ type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
    } | undefined;
    defaultAgent?: string | undefined;
    onError?: (error: unknown) => void;
-+  /** Enables a per-thread client-side composer queue. */
-+  messageQueue?: OpenCodeMessageQueueOptions | undefined;
++  /**
++   * Enables a per-thread client-side composer queue. `create` supplies each
++   * thread's queue instead of the built-in one, e.g. one kept outside the
++   * runtime so it outlives it.
++   */
++  messageQueue?: (OpenCodeMessageQueueOptions & {
++    create?: ((threadId: string) => OpenCodeMessageQueueController) | undefined;
++  }) | undefined;
    adapters?: {
      attachments?: AttachmentAdapter;
      speech?: SpeechSynthesisAdapter;
-@@ -156,12 +188,15 @@ type OpenCodeRuntimeExtras = {
+@@ -156,12 +194,15 @@ type OpenCodeRuntimeExtras = {
    replyToPermission: (permissionId: string, response: OpenCodePermissionResponse) => Promise<void>;
    replyToQuestion: (questionId: string, answers: readonly QuestionAnswer$1[]) => Promise<void>;
    rejectQuestion: (questionId: string) => Promise<void>;
@@ -1264,7 +1270,7 @@ index 20262e5..6eaf51d 100644
    raw: unknown;
    properties: Record<string, unknown>;
  };
-@@ -270,5 +305,5 @@ type OpenCodePartPayload = {
+@@ -270,5 +311,5 @@ type OpenCodePartPayload = {
  };
  type OpenCodeProjectedThreadMessage = ThreadMessageLike$1;
  //#endregion
@@ -1291,7 +1297,7 @@ index 48cc456..651f9e8 100644
 +{"version":3,"file":"useOpenCodeRuntime.d.ts","names":[],"sources":["../src/useOpenCodeRuntime.ts"],"mappings":";;;cAsea,qBACX,UAAS,2BACR"}
 \ No newline at end of file
 diff --git a/dist/useOpenCodeRuntime.js b/dist/useOpenCodeRuntime.js
-index d795d57..aed9f50 100644
+index d795d57..151b9e6 100644
 --- a/dist/useOpenCodeRuntime.js
 +++ b/dist/useOpenCodeRuntime.js
 @@ -1,27 +1,31 @@
@@ -1338,7 +1344,7 @@ index d795d57..aed9f50 100644
 +const getQueue = (registry, threadId, options) => {
 +	const existing = registry.queues.get(threadId);
 +	if (existing) return existing;
-+	const queue = createOpenCodeMessageQueue(options);
++	const queue = options.create ? options.create(threadId) : createOpenCodeMessageQueue(options);
 +	registry.queues.set(threadId, queue);
 +	return queue;
 +};
@@ -2937,7 +2943,7 @@ index 36f2d25..17e25be 100644
            ...state.sync,
            lastEventAt: Date.now(),
 diff --git a/src/types.ts b/src/types.ts
-index a87d890..fe9d28f 100644
+index a87d890..769edad 100644
 --- a/src/types.ts
 +++ b/src/types.ts
 @@ -11,6 +11,7 @@ import type {
@@ -2948,18 +2954,19 @@ index a87d890..fe9d28f 100644
    Message,
    OpencodeClient,
    Part,
-@@ -20,6 +21,10 @@ import type {
+@@ -20,6 +21,11 @@ import type {
    Session,
    SessionStatus,
  } from "@opencode-ai/sdk/v2/client";
 +import type {
++  OpenCodeMessageQueueController,
 +  OpenCodeMessageQueueControls,
 +  OpenCodeMessageQueueOptions,
 +} from "./openCodeMessageQueue";
  
  export type {
    AssistantMessage,
-@@ -183,6 +188,36 @@ export type OpenCodeUserMessageOptions = {
+@@ -183,6 +189,36 @@ export type OpenCodeUserMessageOptions = {
    noReply?: boolean | undefined;
  };
  
@@ -2996,7 +3003,7 @@ index a87d890..fe9d28f 100644
  export type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
    /**
     * Called whenever the active thread's canonical (remote) ID changes, so the
-@@ -194,6 +229,7 @@ export type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
+@@ -194,6 +230,7 @@ export type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
     */
    onThreadIdChange?: ((threadId: string | undefined) => void) | undefined;
    client?: OpencodeClient;
@@ -3004,16 +3011,24 @@ index a87d890..fe9d28f 100644
    baseUrl?: string | undefined;
    initialSessionId?: string | undefined;
    defaultModel?:
-@@ -204,6 +240,8 @@ export type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
+@@ -204,6 +241,16 @@ export type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
      | undefined;
    defaultAgent?: string | undefined;
    onError?: (error: unknown) => void;
-+  /** Enables a per-thread client-side composer queue. */
-+  messageQueue?: OpenCodeMessageQueueOptions | undefined;
++  /**
++   * Enables a per-thread client-side composer queue. `create` supplies each
++   * thread's queue instead of the built-in one, e.g. one kept outside the
++   * runtime so it outlives it.
++   */
++  messageQueue?:
++    | (OpenCodeMessageQueueOptions & {
++        create?: ((threadId: string) => OpenCodeMessageQueueController) | undefined;
++      })
++    | undefined;
    adapters?:
      | {
          attachments?: AttachmentAdapter;
-@@ -234,6 +272,8 @@ export type OpenCodeRuntimeExtras = {
+@@ -234,6 +281,8 @@ export type OpenCodeRuntimeExtras = {
      answers: readonly QuestionAnswer[],
    ) => Promise<void>;
    rejectQuestion: (questionId: string) => Promise<void>;
@@ -3022,7 +3037,7 @@ index a87d890..fe9d28f 100644
  };
  
  export type OpenCodeRuntime = AssistantRuntime;
-@@ -243,6 +283,7 @@ export type OpenCodeThreadStateSelector<T> = (state: OpenCodeThreadState) => T;
+@@ -243,6 +292,7 @@ export type OpenCodeThreadStateSelector<T> = (state: OpenCodeThreadState) => T;
  export type OpenCodeServerEvent = {
    type: string;
    sessionId: string | undefined;
@@ -3031,7 +3046,7 @@ index a87d890..fe9d28f 100644
    properties: Record<string, unknown>;
  };
 diff --git a/src/useOpenCodeRuntime.ts b/src/useOpenCodeRuntime.ts
-index 66a324b..6674c76 100644
+index 66a324b..62c9898 100644
 --- a/src/useOpenCodeRuntime.ts
 +++ b/src/useOpenCodeRuntime.ts
 @@ -3,6 +3,7 @@
@@ -3110,7 +3125,7 @@ index 66a324b..6674c76 100644
      dispose() {
        eventSource?.dispose();
        eventSource = null;
-@@ -61,16 +83,62 @@ const createRegistry = (
+@@ -61,16 +83,64 @@ const createRegistry = (
    };
  };
  
@@ -3121,7 +3136,9 @@ index 66a324b..6674c76 100644
 +) => {
 +  const existing = registry.queues.get(threadId);
 +  if (existing) return existing;
-+  const queue = createOpenCodeMessageQueue(options);
++  const queue = options.create
++    ? options.create(threadId)
++    : createOpenCodeMessageQueue(options);
 +  registry.queues.set(threadId, queue);
 +  return queue;
 +};
@@ -3175,7 +3192,7 @@ index 66a324b..6674c76 100644
      registry.getEventSource,
      sessionId,
    );
-@@ -95,9 +163,6 @@ const NOOP_CONTROLLER: OpenCodeThreadControllerLike = {
+@@ -95,9 +165,6 @@ const NOOP_CONTROLLER: OpenCodeThreadControllerLike = {
    rejectQuestion: async () => {},
  };
  
@@ -3185,7 +3202,7 @@ index 66a324b..6674c76 100644
  const isOpenCodeStateRunning = (state: OpenCodeThreadState): boolean =>
    state.runState.type === "streaming" ||
    state.runState.type === "cancelling" ||
-@@ -105,11 +170,66 @@ const isOpenCodeStateRunning = (state: OpenCodeThreadState): boolean =>
+@@ -105,11 +172,66 @@ const isOpenCodeStateRunning = (state: OpenCodeThreadState): boolean =>
    state.sessionStatus?.type === "busy" ||
    state.sessionStatus?.type === "retry";
  
@@ -3254,7 +3271,7 @@ index 66a324b..6674c76 100644
    const onLoadError = useEffectEvent((error: unknown) => {
      options.onError?.(error);
    });
-@@ -119,6 +239,18 @@ const useOpenCodeThreadRuntime = (
+@@ -119,6 +241,18 @@ const useOpenCodeThreadRuntime = (
      void controller.load().catch(onLoadError);
    }, [controller]);
  
@@ -3273,7 +3290,7 @@ index 66a324b..6674c76 100644
    const isRunning = isOpenCodeStateRunning(state);
  
    const messageTiming = useOpenCodeStreamingTiming(state, isRunning);
-@@ -154,90 +286,257 @@ const useOpenCodeThreadRuntime = (
+@@ -154,90 +288,257 @@ const useOpenCodeThreadRuntime = (
      [controller, state],
    );
  
@@ -3597,7 +3614,7 @@ index 66a324b..6674c76 100644
  };
  
  export const useOpenCodeRuntime = (
-@@ -245,10 +544,35 @@ export const useOpenCodeRuntime = (
+@@ -245,10 +546,35 @@ export const useOpenCodeRuntime = (
  ): AssistantRuntime => {
    const baseUrl = options.baseUrl ?? "http://localhost:4096";
    const client = useMemo(
@@ -3636,7 +3653,7 @@ index 66a324b..6674c76 100644
  
    useEffect(() => {
      return () => {
-@@ -257,8 +581,11 @@ export const useOpenCodeRuntime = (
+@@ -257,8 +583,11 @@ export const useOpenCodeRuntime = (
    }, [registry]);
  
    const adapter = useMemo(
@@ -3650,7 +3667,7 @@ index 66a324b..6674c76 100644
    );
  
    return useRemoteThreadListRuntime({
-@@ -267,6 +594,6 @@ export const useOpenCodeRuntime = (
+@@ -267,6 +596,6 @@ export const useOpenCodeRuntime = (
      initialThreadId: options.initialSessionId,
      onThreadIdChange: options.onThreadIdChange,
      // oxlint-disable-next-line react-hooks/rules-of-hooks -- runtimeHook callback is invoked by useRemoteThreadListRuntime at the appropriate hook position

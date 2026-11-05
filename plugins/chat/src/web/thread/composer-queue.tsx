@@ -21,7 +21,7 @@ import { cn } from "@kilo-desktop/ui/lib/utils";
 import { useContextKey } from "@kilo-desktop/kernel/web";
 import { flagKey } from "@kilo-desktop/plugin-flags/contracts";
 
-import { PROMPT_QUEUE_EDITING_FLAG } from "../runtime/use-chat-runtime";
+import { PROMPT_QUEUE_EDITING_FLAG } from "../../contracts";
 import { useMessageQueueControls } from "../runtime/use-message-queue-controls";
 import {
 	COMPOSER_SHELF_LIST_CLASS,
@@ -199,7 +199,8 @@ export const ComposerQueue: FC<{ steerOnEnter: boolean }> = ({ steerOnEnter }) =
 	});
 
 	// Collapsing or leaving the chat keeps an open edit (and its hold): the
-	// engine owns the edit and its draft, so only Save or Cancel releases it.
+	// queue in main owns the edit and its draft, so only Save or Cancel
+	// releases it, from any window.
 	return (
 		<ComposerShelf data-qa-id="kilo-composer-queue">
 			<ComposerShelfToggle

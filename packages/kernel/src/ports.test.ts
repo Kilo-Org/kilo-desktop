@@ -49,6 +49,42 @@ describe("ports", () => {
 		await ended;
 	});
 
+	it("holds messages sent before a handler that subscribes after an await", async () => {
+		const { main, renderer } = await createTestKernelPair({
+			main: [
+				testPlugin("acme.term", {
+					entry: {
+						activate(sdk) {
+							sdk.ports.handle("session", (port) => {
+								void new Promise((resolve) => setTimeout(resolve, 20)).then(() =>
+									port.onMessage((data) => port.postMessage({ echo: data })),
+								);
+							});
+						},
+					},
+				}),
+			],
+			renderer: [testPlugin("acme.term", { entry: { activate: () => {} } })],
+		});
+		await main.flush();
+
+		const port = renderer.sdkFor("acme.term").ports.open("session");
+		const replies: unknown[] = [];
+		const both = new Promise<void>((resolve) => {
+			port.addEventListener("message", (event) => {
+				replies.push(event.data);
+				if (replies.length === 2) resolve();
+			});
+		});
+		port.start();
+		port.postMessage("first");
+		port.postMessage("second");
+
+		await both;
+		expect(replies).toEqual([{ echo: "first" }, { echo: "second" }]);
+		port.close();
+	});
+
 	it("closes a port nobody handles", async () => {
 		const { renderer } = await createTestKernelPair({
 			main: [],

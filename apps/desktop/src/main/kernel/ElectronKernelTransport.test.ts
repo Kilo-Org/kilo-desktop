@@ -124,21 +124,68 @@ describe("ElectronKernelTransport", () => {
 		expect(received).toEqual([["hi", { process: "renderer", windowId: "w2" }]]);
 	});
 
+	/** Mimics MessagePortMain: once started, a message with no listener is lost. */
+	const fakePort = () => {
+		const listeners = new Map<string, Set<(event: { data: unknown }) => void>>();
+		return {
+			listeners,
+			emit(name: string, data?: unknown) {
+				for (const listener of listeners.get(name) ?? []) listener({ data });
+			},
+			start: vi.fn(),
+			close: vi.fn(),
+			postMessage: vi.fn(),
+			on: vi.fn((name: string, listener: (event: { data: unknown }) => void) => {
+				listeners.set(name, (listeners.get(name) ?? new Set()).add(listener));
+			}),
+			off: vi.fn((name: string, listener: (event: { data: unknown }) => void) => {
+				listeners.get(name)?.delete(listener);
+			}),
+		};
+	};
+
+	it("holds messages that arrive before the port handler subscribes", async () => {
+		const { ipcMain, transport } = setup();
+		let subscribe: (() => void) | undefined;
+		transport.onPort((_channel, _payload, port) => {
+			subscribe = () => port.onMessage((data) => port.postMessage({ echo: data }));
+		});
+		const port = fakePort();
+		ipcMain.listeners.get(KERNEL_IPC.port)!(
+			{ sender: { id: 1 }, ports: [port] },
+			{ channel: "acme.term/session" },
+		);
+
+		port.emit("message", "early");
+		port.emit("message", "also early");
+		subscribe!();
+		await Promise.resolve();
+		port.emit("message", "late");
+
+		expect(port.postMessage.mock.calls).toEqual([
+			[{ echo: "early" }],
+			[{ echo: "also early" }],
+			[{ echo: "late" }],
+		]);
+	});
+
+	it("notices a close even when the handler never listens for messages", () => {
+		const { ipcMain, transport } = setup();
+		const closed = vi.fn();
+		transport.onPort((_channel, _payload, port) => void port.onClose(closed));
+		const port = fakePort();
+		ipcMain.listeners.get(KERNEL_IPC.port)!(
+			{ sender: { id: 1 }, ports: [port] },
+			{ channel: "acme.term/session" },
+		);
+
+		expect(port.start).toHaveBeenCalled();
+		port.emit("close");
+		expect(closed).toHaveBeenCalledOnce();
+	});
+
 	it("hands ports from known windows to the port handler, and closes others", () => {
 		const { ipcMain, transport } = setup();
-		const fakePort = () => {
-			const listeners = new Map<string, (event: { data: unknown }) => void>();
-			return {
-				listeners,
-				start: vi.fn(),
-				close: vi.fn(),
-				postMessage: vi.fn(),
-				on: vi.fn((name: string, listener: (event: { data: unknown }) => void) => {
-					listeners.set(name, listener);
-				}),
-				off: vi.fn(),
-			};
-		};
 		const received: unknown[] = [];
 		const onPort = ipcMain.listeners.get(KERNEL_IPC.port)!;
 
@@ -155,7 +202,7 @@ describe("ElectronKernelTransport", () => {
 			{ sender: { id: 2 }, ports: [port] },
 			{ channel: "acme.term/session", payload: { cols: 80 } },
 		);
-		port.listeners.get("message")!({ data: "ls" });
+		port.emit("message", "ls");
 
 		expect(received).toEqual([
 			{

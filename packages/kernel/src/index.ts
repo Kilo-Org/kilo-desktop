@@ -22,4 +22,11 @@ export * from "./sdk";
 export * from "./transport";
 export * from "./when";
 export * from "./window";
-export { wrapMessagePort, type KernelPort, type PortCaller, type PortHandler } from "./ports";
+export {
+	adaptPort,
+	wrapMessagePort,
+	type KernelPort,
+	type PortCaller,
+	type PortHandler,
+	type RawPort,
+} from "./ports";

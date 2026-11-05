@@ -9,6 +9,7 @@ import {
 import { z } from "zod";
 
 import {
+	adaptPort,
 	runRequestHandler,
 	type KernelPort,
 	type KernelTransport,
@@ -36,33 +37,13 @@ type PortHandler = (
 
 /** Main's end of a renderer-opened channel, as the kernel sees it. */
 export function wrapPortMain(port: MessagePortMain): KernelPort {
-	const closeListeners = new Set<() => void>();
-	let closed = false;
-	const fireClose = () => {
-		if (closed) return;
-		closed = true;
-		for (const listener of [...closeListeners]) listener();
-	};
-	port.on("close", fireClose);
-	port.start();
-	return {
-		postMessage: (data) => {
-			if (!closed) port.postMessage(data);
-		},
-		onMessage(listener) {
-			const handler = (event: { data: unknown }) => listener(event.data);
-			port.on("message", handler);
-			return () => port.off("message", handler);
-		},
-		onClose(listener) {
-			closeListeners.add(listener);
-			return () => closeListeners.delete(listener);
-		},
-		close() {
-			port.close();
-			fireClose();
-		},
-	};
+	return adaptPort({
+		start: () => port.start(),
+		postMessage: (data) => port.postMessage(data),
+		close: () => port.close(),
+		onMessage: (listener) => port.on("message", (event) => listener(event.data)),
+		onClose: (listener) => port.on("close", listener),
+	});
 }
 
 const envelope = z.object({ channel: z.string().min(1), payload: z.unknown().optional() });

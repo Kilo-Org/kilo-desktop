@@ -88,6 +88,6 @@ export function createChatBackend(options: ChatBackendOptions): OpenCodeRuntimeB
 			}
 		},
 		createEventSource: () =>
-			withPendingPrompts(services.retainEvents(), () => [...sessionClients.values()]),
+			withPendingPrompts(services.events(), () => [...sessionClients.values()]),
 	};
 }

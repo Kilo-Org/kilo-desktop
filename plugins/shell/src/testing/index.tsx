@@ -48,11 +48,18 @@ export interface ShellHost {
 	readonly storage: ReturnType<typeof createMemoryStorage>;
 }
 
+let previousHost: Pick<ShellHost, "main" | "renderer"> | undefined;
+
 export async function renderShell(
 	guests: readonly GuestPlugin[] = [],
 	options: ShellHostOptions = {},
 ): Promise<ShellHost> {
 	cleanup();
+	if (previousHost) {
+		await previousHost.renderer.deactivate();
+		await previousHost.main.stop();
+		previousHost = undefined;
+	}
 	window.location.hash = "#/";
 	localStorage.clear();
 	for (const [key, value] of Object.entries(options.localAppearance ?? {}))
@@ -89,5 +96,7 @@ export async function renderShell(
 			<KernelRoot />
 		</KernelProvider>,
 	);
-	return { main, renderer, storage };
+	const host = { main, renderer, storage };
+	previousHost = host;
+	return host;
 }

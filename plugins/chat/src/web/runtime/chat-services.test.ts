@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { DomainHandle } from "@kilo-desktop/kernel";
 import type { AgentServer, ServerConnection } from "@kilo-desktop/plugin-agent/contracts";
 
-import { ChatServices } from "./chat-services";
+import { ChatServices, resyncOnceConnected } from "./chat-services";
 import { connectionKey, KiloClients } from "./kilo-client";
 
 type ServerStatus = "ready" | "starting" | "stopped" | "error";
@@ -87,20 +87,32 @@ describe("ChatServices.connection", () => {
 	});
 });
 
-describe("ChatServices.retainEvents", () => {
-	it("shares one stream until the last holder lets go", () => {
-		const services = new ChatServices(() => null);
-		const a = services.retainEvents();
-		const b = services.retainEvents();
-		const unsubscribe = a.subscribe(() => undefined);
-		unsubscribe();
+describe("resyncOnceConnected", () => {
+	async function* events(...items: unknown[]) {
+		yield* items;
+	}
+	const collect = async (stream: AsyncIterable<unknown>) => {
+		const seen: unknown[] = [];
+		for await (const event of stream) seen.push(event);
+		return seen;
+	};
+	const resync = { payload: { type: "stream.reconnected", properties: {} } };
 
-		a.dispose();
-		a.dispose();
-		const c = services.retainEvents();
-		b.dispose();
-		c.dispose();
-		services.dispose();
+	it("asks threads to resync once the server confirms the subscription", async () => {
+		const connected = { payload: { type: "server.connected", properties: {} } };
+		const status = { directory: "/app", payload: { type: "session.idle", properties: {} } };
+
+		await expect(collect(resyncOnceConnected(events(connected, status)))).resolves.toEqual([
+			connected,
+			resync,
+			status,
+		]);
+	});
+
+	it("passes other events through untouched", async () => {
+		const heartbeat = { payload: { type: "server.heartbeat", properties: {} } };
+
+		await expect(collect(resyncOnceConnected(events(heartbeat)))).resolves.toEqual([heartbeat]);
 	});
 });
 

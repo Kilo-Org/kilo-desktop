@@ -343,7 +343,7 @@ describe("an agent pane with a chat", () => {
 		expect(promptText(prompt!)).toBe("Read these");
 	});
 
-	it("shares one event stream between the window's panes and closes it with the last", async () => {
+	it("keeps the window's one event stream open after its last pane goes", async () => {
 		const server = serverWithChat();
 		const host = await renderAgentPane({
 			server,
@@ -353,9 +353,109 @@ describe("an agent pane with a chat", () => {
 		await vi.waitFor(() => expect(server.openStreams).toBe(1));
 
 		host.view.unmount();
+		await new Promise((resolve) => setTimeout(resolve, 100));
 
-		await vi.waitFor(() => expect(server.openStreams).toBe(0));
+		expect(server.openStreams).toBe(1);
 		expect(server.requestsTo("GET", "/global/event")).toHaveLength(1);
+	});
+
+	it("closes the previous test window's event stream before the next host opens", async () => {
+		const first = serverWithChat();
+		await renderAgentPane({
+			server: first,
+			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			chats: [chatSummary("ses_a")],
+		});
+		await vi.waitFor(() => expect(first.openStreams).toBe(1));
+
+		const second = serverWithChat();
+		await renderAgentPane({
+			server: second,
+			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			chats: [chatSummary("ses_a")],
+		});
+
+		await vi.waitFor(() => expect(first.openStreams).toBe(0));
+		await vi.waitFor(() => expect(second.openStreams).toBe(1));
+	});
+});
+
+describe("a turn that ends while its chat opens", () => {
+	const working = assistantMessage("ses_a", "msg_a1", "msg_u1", [
+		{ type: "text", text: "Working on it", time: { start: 1, end: 2 } },
+	]);
+	const unfinished = {
+		...working,
+		info: { ...working.info, finish: undefined, time: { created: Date.now() } },
+	};
+
+	function busyChat() {
+		const server = serverWithChat("ses_a", [
+			userMessage("ses_a", "msg_u1", "Hello", 1),
+			unfinished,
+		]);
+		server.addChat({
+			id: "ses_b",
+			directory: "/projects/app",
+			title: "Other",
+			messages: [userMessage("ses_b", "msg_b1", "Elsewhere")],
+		});
+		server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
+		return server;
+	}
+
+	/** Waits until the opening chat has read its status, then ends its turn. */
+	async function endTurnOnceStatusIsRead(server: FakeKiloServer, statusReadsBefore: number) {
+		await expect.element(page.getByText("Working on it")).toBeVisible();
+		await vi.waitFor(() =>
+			expect(server.requestsTo("GET", "/session/status").length).toBeGreaterThan(statusReadsBefore),
+		);
+		await expect.element(page.getByTestId("kilo-composer-stop")).toBeVisible();
+		server.chats.get("ses_a")!.messages[1] = working;
+		server.emit("message.updated", { info: working.info });
+		server.emit("session.status", { sessionID: "ses_a", status: { type: "idle" } });
+		server.emit("session.idle", { sessionID: "ses_a" });
+	}
+
+	it("shows it ended when the chat was switched to", async () => {
+		const server = busyChat();
+		const host = await renderAgentPane({
+			server,
+			pane: agentPane({ metadata: { chatId: "ses_b" } }),
+			chats: [chatSummary("ses_a"), chatSummary("ses_b")],
+		});
+		await expect.element(page.getByText("Elsewhere")).toBeVisible();
+		await vi.waitFor(() => expect(server.openStreams).toBe(1));
+		server.eventStreamDelayMs = 300;
+		const statusReads = server.requestsTo("GET", "/session/status").length;
+
+		await host.host.renderer.kernelSdk.domains
+			.get(Panes)!
+			.methods.update({ sessionId: "wses_1", paneId: "pane_agent", metadata: { chatId: "ses_a" } });
+		await endTurnOnceStatusIsRead(server, statusReads);
+
+		await expect.element(page.getByTestId("kilo-composer-send")).toBeVisible();
+		await expect.element(page.getByText("Considering next steps")).not.toBeInTheDocument();
+	});
+
+	it("shows it ended when the window's event stream was still connecting", async () => {
+		const server = busyChat();
+		let openStream!: () => void;
+		server.eventStreamGate = new Promise((resolve) => {
+			openStream = resolve;
+		});
+
+		await renderAgentPane({
+			server,
+			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			chats: [chatSummary("ses_a"), chatSummary("ses_b")],
+		});
+		await endTurnOnceStatusIsRead(server, 0);
+		expect(server.openStreams).toBe(0);
+		openStream();
+
+		await vi.waitFor(() => expect(server.openStreams).toBe(1));
+		await expect.element(page.getByTestId("kilo-composer-send")).toBeVisible();
 	});
 });
 

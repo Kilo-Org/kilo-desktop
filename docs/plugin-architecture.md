@@ -2834,8 +2834,12 @@ Everything lands in a single PR once all plugins are built.
   react-opencode (`useOpenCodeRuntime`, patched; patch and the
   `@opencode-ai/sdk` facade moved to `plugins/chat`) with an always-empty
   thread list — sessions own the list. Live message parts aren't on
-  kilo.agent's main-process stream, so the window keeps one ref-counted
-  subscription to Kilo's global stream for all its panes (decisions 50–51);
+  kilo.agent's main-process stream, so the window keeps one subscription to
+  Kilo's global stream for all its panes (decisions 50–51), opened by the
+  first pane and kept until the window goes: panes unmount on every session
+  switch, and a stream reopened per switch missed what was published while it
+  connected (a turn's end, leaving the thread "running"). Threads also resync
+  on each `server.connected`, not just react-opencode's early reconnect signal.
   kilo.agent's stream stays the source of truth for status and activity.
   The connection comes from `kilo.agent/server.connect()`, re-read after the
   server leaves `ready`; writes go to the chat's own directory.

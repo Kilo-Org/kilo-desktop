@@ -130,6 +130,10 @@ export class FakeKiloServer {
 	files: Record<string, string> = {};
 	/** MCP resources `/experimental/resource/read` serves, by URI. */
 	resources: Record<string, { mimeType: string; text: string }> = {};
+	/** How long opening `/global/event` takes, as on a busy server; events meanwhile are missed. */
+	eventStreamDelayMs = 0;
+	/** Holds opening `/global/event` until the test releases it. */
+	eventStreamGate?: Promise<void>;
 	#streams = new Set<ReadableStreamDefaultController<Uint8Array>>();
 	#encoder = new TextEncoder();
 	#nextChat = 0;
@@ -218,7 +222,13 @@ export class FakeKiloServer {
 		this.requests.push(recorded);
 		const [, first, id, action] = url.pathname.split("/");
 
-		if (url.pathname === "/global/event") return this.#eventStream(request.signal);
+		if (url.pathname === "/global/event") {
+			await this.eventStreamGate;
+			if (this.eventStreamDelayMs > 0) {
+				await new Promise((resolve) => setTimeout(resolve, this.eventStreamDelayMs));
+			}
+			return this.#eventStream(request.signal);
+		}
 		if (url.pathname === "/session/status") return json(Object.fromEntries(this.#statuses));
 		if (url.pathname === "/permission") return json(this.permissions);
 		if (url.pathname === "/question") return json(this.questions);
@@ -321,6 +331,9 @@ export class FakeKiloServer {
 			start: (start) => {
 				controller = start;
 				this.#streams.add(controller);
+				// The server greets every (re)connect before any event.
+				const greeting = { payload: { type: "server.connected", properties: {} } };
+				start.enqueue(this.#encoder.encode(`data: ${JSON.stringify(greeting)}\n\n`));
 			},
 			cancel: () => {
 				this.#streams.delete(controller);

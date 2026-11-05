@@ -603,11 +603,12 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 		);
 	}
 
-	const view = render(
+	const tree = () => (
 		<KernelProvider kernel={renderer}>
 			{options.starter ? <Starter {...options.starter} /> : <Canvas kernel={renderer} />}
-		</KernelProvider>,
+		</KernelProvider>
 	);
+	const view = render(tree());
 	/** The session's panes popped out: gone from this window, shown by a window of their own. */
 	const popOut = async () => {
 		view.unmount();
@@ -632,6 +633,8 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 		setIdentity: (next: IdentityState) => account?.setIdentity(next),
 		starter: starterCalls,
 		popOut,
+		/** Renders the window's panes again, as any change the canvas follows does. */
+		rerender: () => view.rerender(tree()),
 		/** A session's panes, as kilo.sessions holds them. */
 		panesOf: (sessionId: string) =>
 			renderer.kernelSdk.domains.get(Panes)!.getState().bySession[sessionId],

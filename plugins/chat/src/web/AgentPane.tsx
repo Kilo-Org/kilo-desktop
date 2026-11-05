@@ -382,16 +382,21 @@ function ComposerRegistration({
 }) {
 	const aui = useAui();
 	const text = useAuiState((state) => state.composer.text);
+	// Registering prefills an empty composer with the session's draft, so it
+	// must happen once per mount: a re-run while a send has just emptied the
+	// composer (before its draft is cleared) would put the sent text back.
+	const latestFocusRoot = useRef(focusRoot);
+	latestFocusRoot.current = focusRoot;
 	useEffect(
 		() =>
 			focus.register({
 				sessionId,
 				paneId,
-				focus: focusRoot,
+				focus: () => latestFocusRoot.current(),
 				getText: () => aui.composer.getState().text,
 				setText: (next) => aui.composer.setText(next),
 			}),
-		[aui, focus, focusRoot, paneId, sessionId],
+		[aui, focus, paneId, sessionId],
 	);
 	useEffect(() => focus.setDraft(sessionId, text), [focus, sessionId, text]);
 	useAuiEvent("composer.send", () => focus.setDraft(sessionId, ""));

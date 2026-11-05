@@ -592,6 +592,38 @@ describe("unsent text", () => {
 
 		await expect.element(composerInput()).toHaveTextContent("Half a thought");
 	});
+
+	it("leaves the composer once queued, even when the pane renders again as it goes", async () => {
+		const server = serverWithChat();
+		const host = await renderAgentPane({
+			server,
+			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			chats: [chatSummary("ses_a")],
+		});
+		await expect.element(page.getByText("Hello")).toBeVisible();
+		await vi.waitFor(() => expect(server.openStreams).toBe(1));
+		server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
+		await expect.element(page.getByTestId("kilo-composer-stop")).toBeVisible();
+		await userEvent.fill(composerInput(), "Then add tests");
+		await vi.waitFor(() =>
+			expect(host.host.main.kernelSdk.domains.get(ComposerDrafts)!.getState().drafts).toEqual({
+				wses_1: { text: "Then add tests" },
+			}),
+		);
+
+		// Anything the pane follows (sessions, chats, panes) can render it in the
+		// same commit as the send empties the composer.
+		(page.getByTestId("kilo-composer-queue-submit").element() as HTMLElement).click();
+		host.rerender();
+
+		await expect
+			.element(page.getByTestId("kilo-composer-queue-toggle"))
+			.toHaveTextContent("1 queued");
+		await expect.element(composerInput()).toHaveTextContent("");
+		await vi.waitFor(() =>
+			expect(host.host.main.kernelSdk.domains.get(ComposerDrafts)!.getState().drafts).toEqual({}),
+		);
+	});
 });
 
 describe("focus-composer", () => {

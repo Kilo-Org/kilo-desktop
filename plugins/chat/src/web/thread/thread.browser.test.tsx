@@ -134,9 +134,10 @@ describe("the transcript", () => {
 	});
 
 	it("explains a reply that ended in an error", async () => {
+		const prompt = userMessage("ses_a", "msg_1", "Go");
 		const failed = assistantMessage("ses_a", "msg_2", "msg_1", []);
 		await showChat([
-			userMessage("ses_a", "msg_1", "Go"),
+			prompt,
 			{
 				...failed,
 				info: {

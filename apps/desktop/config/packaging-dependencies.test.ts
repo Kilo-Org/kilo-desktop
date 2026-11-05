@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
+import { parseAllDocuments } from "yaml";
 
 import { pruneProductionDependencies } from "./prune-production-dependencies.js";
 
@@ -67,6 +68,26 @@ describe("packaged production dependencies", () => {
 		};
 		expect(notebookManifest.peerDependencies?.["@runtimed/node"]).toBe("0.7.0-nightly.40958541191");
 		expect(notebookManifest.devDependencies?.["@runtimed/node"]).toBe("0.7.0-nightly.40958541191");
+	});
+
+	it("keeps the Sentry CLI out of the packaged production dependencies", () => {
+		// `sentry` (the FSL-licensed Sentry CLI) is a build-time source-map
+		// uploader. @sentry/node lists @sentry/bundler-plugins for its bundler
+		// subpath exports, which nothing in the app loads.
+		const shipped = lockfileClosure("apps/desktop", ["dependencies", "optionalDependencies"]);
+
+		expect(shipped).toContain("@sentry/electron");
+		expect(shipped).toContain("@sentry/node");
+		expect(shipped).not.toContain("@sentry/bundler-plugins");
+		expect(shipped).not.toContain("sentry");
+	});
+
+	it("keeps the Sentry CLI available to the Vite source-map upload", () => {
+		const tooling = lockfileClosure("apps/desktop", ["devDependencies"]);
+
+		expect(tooling).toContain("@sentry/vite-plugin");
+		expect(tooling).toContain("@sentry/bundler-plugins");
+		expect(tooling).toContain("sentry");
 	});
 
 	it("keeps the WebMCP relay out of the desktop dependency graph", () => {
@@ -434,3 +455,52 @@ describe("packaged production dependencies", () => {
 		expect(publish).toContain("./plugins/agent/actions/setup-cli");
 	});
 });
+
+type LockfileDependencies = Record<string, string | { version: string }>;
+type LockfileEntry = Partial<Record<DependencyField, LockfileDependencies>>;
+type DependencyField = "dependencies" | "optionalDependencies" | "devDependencies";
+interface Lockfile {
+	importers: Record<string, LockfileEntry>;
+	snapshots: Record<string, LockfileEntry>;
+}
+
+/**
+ * Names of every package reachable from `importer` through `fields`, read from
+ * the lockfile that `pnpm deploy --frozen-lockfile` stages from. Workspace
+ * links are followed into their own importer's production dependencies.
+ */
+function lockfileClosure(importer: string, fields: readonly DependencyField[]): Set<string> {
+	// pnpm 12 writes the package-manager pins as a separate leading document.
+	const lockfile = parseAllDocuments(
+		readFileSync(path.join(workspaceRoot, "pnpm-lock.yaml"), "utf8"),
+	)
+		.map((document) => document.toJS() as Lockfile)
+		.find((document) => document.importers?.[importer]);
+	if (!lockfile) throw new Error(`pnpm-lock.yaml has no importer ${importer}`);
+	const productionFields: readonly DependencyField[] = ["dependencies", "optionalDependencies"];
+	const names = new Set<string>();
+	const visited = new Set<string>();
+
+	const visit = (entry: LockfileEntry, entryFields: readonly DependencyField[], from: string) => {
+		for (const field of entryFields) {
+			for (const [name, resolved] of Object.entries(entry[field] ?? {})) {
+				const version = typeof resolved === "string" ? resolved : resolved.version;
+				if (version.startsWith("link:")) {
+					const linked = path.posix.join(from, version.slice("link:".length));
+					if (visited.has(linked)) continue;
+					visited.add(linked);
+					visit(lockfile.importers[linked] ?? {}, productionFields, linked);
+					continue;
+				}
+				names.add(name);
+				const key = `${name}@${version}` in lockfile.snapshots ? `${name}@${version}` : version;
+				if (visited.has(key)) continue;
+				visited.add(key);
+				visit(lockfile.snapshots[key] ?? {}, productionFields, from);
+			}
+		}
+	};
+
+	visit(lockfile.importers[importer] ?? {}, fields, importer);
+	return names;
+}

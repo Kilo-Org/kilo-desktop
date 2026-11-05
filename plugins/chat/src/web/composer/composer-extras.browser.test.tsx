@@ -19,6 +19,7 @@ const input = () => page.getByTestId("kilo-composer-input");
 
 function serverWithChat(cost = 0) {
 	const server = new FakeKiloServer();
+	const prompt = userMessage("ses_a", "msg_u1", "Hello");
 	const answer = assistantMessage("ses_a", "msg_a1", "msg_u1", [
 		{ type: "text", text: "Done.", time: { start: 1, end: 2 } },
 	]);
@@ -30,7 +31,7 @@ function serverWithChat(cost = 0) {
 		id: "ses_a",
 		directory: "/projects/app",
 		title: "Fix login",
-		messages: [userMessage("ses_a", "msg_u1", "Hello"), answer],
+		messages: [prompt, answer],
 	});
 	return server;
 }

@@ -59,6 +59,12 @@ overrides:
   "friendly-words>express": "-"
   "friendly-words>ava": "-"
   "friendly-words>lodash.samplesize": "-"
+  # @sentry/node lists @sentry/bundler-plugins only for its ./vite, ./rollup,
+  # ./webpack and ./esbuild build-tool exports; its runtime entry (what
+  # @sentry/electron loads) never imports it. Dropping the edge keeps
+  # bundler-plugins and the FSL-licensed Sentry CLI (`sentry`) out of app.asar.
+  # Source-map upload still gets both through the @sentry/vite-plugin devDep.
+  "@sentry/node>@sentry/bundler-plugins": "-"
 
 allowBuilds:
   electron: true

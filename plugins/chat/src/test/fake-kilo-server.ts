@@ -34,11 +34,24 @@ export interface RecordedRequest {
 const json = (value: unknown, status = 200) =>
 	new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json" } });
 
+/**
+ * The transcript orders messages by `time.created` (ids only break ties), so
+ * stamping fixtures with `Date.now()` made a conversation's order depend on
+ * whether the clock ticked between two calls — under CI load a reply built
+ * before its prompt sorted ahead of it. This clock ticks on every message and
+ * never runs behind real time: a conversation sorts in the order it was built.
+ */
+let fixtureClock = 0;
+function nextCreated(): number {
+	fixtureClock = Math.max(fixtureClock + 1, Date.now());
+	return fixtureClock;
+}
+
 export function userMessage(
 	chatId: string,
 	id: string,
 	text: string,
-	created = Date.now(),
+	created = nextCreated(),
 ): FakeMessage {
 	return {
 		info: { id, sessionID: chatId, role: "user", time: { created }, agent: "code" },
@@ -51,7 +64,7 @@ export function assistantMessage(
 	id: string,
 	parentID: string,
 	parts: Record<string, unknown>[],
-	created = Date.now(),
+	created = nextCreated(),
 ): FakeMessage {
 	return {
 		info: {

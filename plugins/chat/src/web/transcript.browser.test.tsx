@@ -827,7 +827,9 @@ describe("reverting and retrying", () => {
 
 	it("lists the reverted prompts and restores them one at a time", async () => {
 		const first = userMessage("ses_a", "msg_1", QUESTION);
+		const firstReply = assistantMessage("ses_a", "msg_2", "msg_1", [reply("Changed login.")]);
 		const second = userMessage("ses_a", "msg_3", "Now fix signup");
+		const secondReply = assistantMessage("ses_a", "msg_4", "msg_3", [reply("Changed signup.")]);
 		const withImage = {
 			...second,
 			info: { ...second.info, ...CHANGES },
@@ -855,9 +857,9 @@ describe("reverting and retrying", () => {
 		};
 		const host = await showChat([
 			{ ...first, info: { ...first.info, ...CHANGES } },
-			assistantMessage("ses_a", "msg_2", "msg_1", [reply("Changed login.")]),
+			firstReply,
 			withImage,
-			assistantMessage("ses_a", "msg_4", "msg_3", [reply("Changed signup.")]),
+			secondReply,
 		]);
 
 		const reverts = page.getByTestId("kilo-revert-to-here-button");
@@ -885,10 +887,11 @@ describe("reverting and retrying", () => {
 	});
 
 	it("retries a prompt the Gateway refused once the person has signed in", async () => {
+		const prompt = userMessage("ses_a", "msg_1", QUESTION);
 		const failed = assistantMessage("ses_a", "msg_2", "msg_1", []);
 		const host = await showChat(
 			[
-				userMessage("ses_a", "msg_1", QUESTION),
+				prompt,
 				{
 					...failed,
 					info: {
@@ -923,13 +926,14 @@ describe("a Kilo Gateway model refused while signed out", () => {
 			connected: ["kilo"],
 		};
 		server.config = { model: "kilo/auto" };
+		const prompt = userMessage("ses_a", "msg_1", QUESTION);
 		const failed = assistantMessage("ses_a", "msg_2", "msg_1", []);
 		server.addChat({
 			id: "ses_a",
 			directory: "/projects/app",
 			title: "Chat",
 			messages: [
-				userMessage("ses_a", "msg_1", QUESTION),
+				prompt,
 				{
 					...failed,
 					info: {

@@ -125,8 +125,6 @@ export function condaTools(options: CondaToolsOptions): Record<string, ToolImple
 	register({
 		name: "conda.envs.list",
 		description:
-			"The result is rendered as an interactive UI widget in the chat. " +
-			"Do NOT repeat or summarize the tool output in your response — the user already sees it. " +
 			"List conda environments available in the plugin-scoped base. Returns each " +
 			"environment's on-disk prefix and name (base envs surface with an empty name).",
 		input: NO_INPUT,

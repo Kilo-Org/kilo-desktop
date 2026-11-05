@@ -7,14 +7,12 @@ import chatManifest from "@kilo-desktop/plugin-chat/plugin.json";
 import {
 	CHAT_DEFINITIONS,
 	InteractionRenderer,
-	McpApp,
 	type InteractionRendererImplementation,
 	type PermissionDetailProps,
 	type PermissionInteraction,
 } from "@kilo-desktop/plugin-chat/contracts";
 import { SettingsSection } from "@kilo-desktop/plugin-shell/contracts";
 
-import { CONDA_ENVS_LIST_APP_URI } from "../contracts/index.js";
 import { bootEnvironmentsHost, type EnvironmentsHost } from "../test/environments-host.js";
 import { environmentsWebEntry } from "./index.js";
 
@@ -63,19 +61,6 @@ describe("kilo.environments in the window", () => {
 
 		expect(section?.metadata.title).toBe("Conda Environments");
 		expect(section?.implementation).toBeDefined();
-	});
-
-	it("shows the conda environments widget for origin's envs list tool", async () => {
-		const host = await boot();
-		const app = host.renderer.extensions
-			.list(McpApp)
-			.find((candidate) => candidate.pluginId === "kilo.environments");
-
-		expect(app?.metadata).toMatchObject({
-			tools: ["desktop_environments_conda_envs_list"],
-			resourceUri: CONDA_ENVS_LIST_APP_URI,
-		});
-		expect(app?.implementation?.loadHtml).toBeTypeOf("function");
 	});
 
 	it("opens its settings when the agent asks", async () => {

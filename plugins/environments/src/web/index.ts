@@ -1,5 +1,5 @@
 import { definePlugin } from "@kilo-desktop/kernel";
-import { InteractionRenderer, McpApp } from "@kilo-desktop/plugin-chat/contracts";
+import { InteractionRenderer } from "@kilo-desktop/plugin-chat/contracts";
 import { Navigation, SettingsSection } from "@kilo-desktop/plugin-shell/contracts";
 
 import { Conda, ENVIRONMENTS_SETTINGS_SECTION } from "../contracts/index.js";
@@ -10,15 +10,13 @@ import {
 	condaToolInteractions,
 	localFileAnswerInteractions,
 } from "./interactions/conda-interactions.js";
-import { loadEnvsListApp } from "./mcp-app.js";
 
 export { EnvironmentsNavIcon } from "./EnvironmentsNavIcon.js";
 export { EnvironmentsPage } from "./EnvironmentsPage.js";
 
 /**
  * kilo.environments' renderer entry: the Conda Environments settings page,
- * the conda environments widget for `conda.envs.list` calls, the conda
- * details and "per action only" rule on chat's permission cards, warnings on
+ * the conda details and "per action only" rule on chat's permission cards, warnings on
  * agent answers that install a local package file, and opening the settings
  * page when the agent asks (main window only).
  */
@@ -28,7 +26,6 @@ export const environmentsWebEntry = definePlugin({
 			component: EnvironmentsPage,
 			icon: EnvironmentsNavIcon,
 		});
-		sdk.extensions.implement(McpApp, "envs-list", { loadHtml: loadEnvsListApp });
 		sdk.extensions.implement(InteractionRenderer, "conda-tools", condaToolInteractions);
 		sdk.extensions.implement(InteractionRenderer, "conda-cli", condaCliInteractions);
 		sdk.extensions.implement(

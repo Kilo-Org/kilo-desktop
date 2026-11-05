@@ -8,7 +8,6 @@
 		"kilo.flags/flags": "optional",
 		"kilo.agent/tool": "optional",
 		"kilo.agent/session-config": "optional",
-		"kilo.chat/mcp-app": "optional",
 		"kilo.chat/interaction-renderer": "optional",
 		"kilo.account/identity": "optional",
 		"kilo.shell/navigation": "optional",
@@ -205,14 +204,6 @@
 			"kilo.agent/session-config": [
 				{
 					"id": "conda"
-				}
-			],
-			"kilo.chat/mcp-app": [
-				{
-					"id": "envs-list",
-					"tools": ["desktop_environments_conda_envs_list"],
-					"resourceUri": "ui://environments/conda-envs-list",
-					"serverId": "desktop"
 				}
 			],
 			"kilo.chat/interaction-renderer": [

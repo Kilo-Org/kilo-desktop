@@ -61,9 +61,6 @@ export const ENVIRONMENTS_SETTINGS_SECTION = "environments";
 /** The `kernel/services` key of the conda bridge daemon. */
 export const BRIDGE_SERVICE_KEY = "kilo.environments/bridge";
 
-/** The conda environments widget's resource, shown for `conda.envs.list` calls. */
-export const CONDA_ENVS_LIST_APP_URI = "ui://environments/conda-envs-list";
-
 const nothing = z.undefined();
 
 export const condaStatusSchema = z.enum([

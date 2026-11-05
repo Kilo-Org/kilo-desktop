@@ -21,14 +21,8 @@ const coverage = {
 		"src/web/providers/conda/DependencyPreview.tsx",
 		// Build-time packaging tooling — runs during prepare-assets / forge, not at runtime.
 		"src/packaging/**",
-		// MCP App widget — a separately-built (vite-plugin-singlefile) iframe
-		// bundle, not part of the plugin's node/browser sources. Its entry uses
-		// top-level await and ships an index.html the coverage parser can't read.
-		"src/mcp-app/**",
 		// Pure TypeScript interface — no runtime logic, just type declarations.
 		"src/main/providers/conda/CondaBackend.ts",
-		// The built widget's loader — a Vite glob over the separately-built bundle.
-		"src/web/mcp-app.ts",
 		// Bridge sidecar integration — requires a running bridge process for
 		// meaningful coverage; unit tests mock the RPC layer. Real coverage
 		// comes from the integration and e2e tiers.

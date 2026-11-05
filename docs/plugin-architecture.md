@@ -828,7 +828,6 @@ flowchart LR
   chatSelf -->|agent/model picker · attach| composerAction
   files -->|"@ file mentions"| mention
   chatSelf -->|bash · edit · read · html_render …| renderer
-  environments -->|conda envs widget| mcpApp
   files -->|paths as links| mdExt
   git -->|status · branches · worktrees| vcs
   everyone -->|declared events| tevent
@@ -1247,7 +1246,6 @@ with contributors today; candidate points are in the extensibility map (§7).
 │                                    with origin's prompt (signInPrompt) — 12a
 │   kilo.agent/session-config ...... origin's conda bash ask rules (permissions); conda
 │                                    tools off while conda isn't ready — 12a
-│   kilo.chat/mcp-app .............. conda environments widget (built HTML) — 12a
 │   kilo.chat/interaction-renderer . conda summary + "per action only" (mutating tools),
 │                                    local-file warning (bash, answers) — 12a
 │   kernel/service ................. conda bridge (daemon, first use) — 12a
@@ -1356,7 +1354,7 @@ with contributors today; candidate points are in the extensibility map (§7).
 | kilo.chat       | `composer-action`      | A              | `{slot: toolbar \| toolbar-end \| footer \| draft-footer, kind: action \| menu \| popover \| view, title, command?, when}`; impl `useButton` / `run` · `useMenu` · `useTrigger` + `Content` (8d) · `Component` (9b) | chat (attach, agent, model, approval); git (step 9)                                                              |
 | kilo.chat       | `composer-mention`     | A              | `{trigger, title}`; impl `{search(query, ctx) → {id, label, detail?, icon?}[], resolve(item, ctx) → {text?, files?}, icon?}` (8d)                                                                                   | files (step 10)                                                                                                  |
 | kilo.chat       | `tool-renderer`        | A              | `{tools, standalone?, category?}`; impl `{component}` given the tool-call props + `Original` (8e)                                                                                                                   | chat                                                                                                             |
-| kilo.chat       | `mcp-app`              | A              | `{tools, resourceUri, serverId}`; impl (optional) `{loadHtml}` (8e)                                                                                                                                                 | environments (12a)                                                                                               |
+| kilo.chat       | `mcp-app`              | A              | `{tools, resourceUri, serverId}`; impl (optional) `{loadHtml}` (8e)                                                                                                                                                 | —                                                                                                                |
 | kilo.chat       | `markdown-extension`   | A              | impl `(ctx: {sessionId, workspaceFolders}) → {remarkPlugins?, decorateComponents?}` (8e)                                                                                                                            | files, browser                                                                                                   |
 | kilo.chat       | `interaction-renderer` | A              | `{permissions?}`; impl `{permissionTitle?, PermissionDetail?, allowAlways?, optionWarning?}` (12a)                                                                                                                  | environments                                                                                                     |
 | kilo.chat       | `model-source`         | A              | `{providerId, title, settingsSection?}`; impl `{useState() → {status, modelIds, pending}, start?, prepare?(modelId)}` (12c)                                                                                         | local-inference                                                                                                  |
@@ -1420,7 +1418,7 @@ Anatomy of the agent pane and where each point appears:
 | `composer-action`            | A    | Done   | Buttons/menus/popovers in the composer toolbar, before send, and the chat / draft footers                    | chat (attach, agent, model + effort, approval mode — shipped, 8d); git (footer branch label, draft branch / worktree menus); local-inference (local model toggle); usage (cost meter as a footer item) |
 | `composer-mention`           | A    | Done   | Trigger-char sources: `search` while typing, `resolve` at send into text and file parts (8d)                 | files (files, `@`); git (branches, commits, PRs); terminal (terminal output); browser (open tabs/page); notebook (cells); environments (envs); _ext_ Jira/Linear issues                                |
 | `tool-renderer`              | A    | Done   | Rich rendering of a tool call, receiving `Original`; `standalone`, `category` (8e)                           | chat (read, edit, bash, search, web, apply_patch, task, html_render — shipped, 8e); notebook (cell result); git (diff card); terminal (open / read rows)                                               |
-| `mcp-app`                    | A    | Done   | Interactive MCP App widgets for a tool's calls, framed in the `mcp-app` host (8e)                            | environments (conda envs list — origin's only allowed widget); _ext_ MCP servers with `ui://` apps                                                                                                     |
+| `mcp-app`                    | A    | Done   | Interactive MCP App widgets for a tool's calls, framed in the `mcp-app` host (8e)                            | _ext_ MCP servers with `ui://` apps                                                                                                                                                                    |
 | `markdown-extension`         | A    | Done   | Remark plugins and component decorators for the agent's replies (8e)                                         | files (paths as links); browser (URLs open in a pane); notebook (cell refs)                                                                                                                            |
 | `composer-context`           | A    | Next   | Auto-suggested, removable context chips from what the user is looking at                                     | files (open file + selection); browser (current URL/selection); terminal (last failed command); notebook (active cell)                                                                                 |
 | `composer-banner`            | A    | Next   | Notices above the composer                                                                                   | local-inference (model loading — a `kilo.shell/overlay` toast today, 12c); account (sign-in required); agent (server reconnecting)                                                                     |
@@ -1752,7 +1750,7 @@ Everything lands in a single PR once all plugins are built.
 | 10   | Done   | kilo.files on the kernel: Files pane kind (explorer or one file per pane, close guard), opener for `kilo.workspaces/file`, `@` mentions, file links in replies, `open` agent tool in main, `documents` over `Workspaces.authorize`, tree git status through `vcs`; files specs moved to `e2e/`.                                                                                                                                                                                                                                         |
 | 11   | Done   | kilo.browser on the kernel: Browser pane kind (kept alive, `<webview>` guests attached to main's `pages`), openers for `kilo.browser/url` and `*.html` / `*.htm` workspace files (ahead of kilo.files), web links in replies, `open` agent tool in main, Open Browser (⌘⇧B), local files authorized by kilo.workspaces; browser specs on the launcher.                                                                                                                                                                                  |
 | 12   | Done   | Remaining features, in parts 12a–12d.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| 12a  | Done   | kilo.environments on the kernel: `conda` and `conda-runtime` domain objects over one bundled conda bridge (`bridge` daemon, first use), origin's conda tools in main (same Kilo names), the Conda Environments settings page, the conda environments widget through `mcp-app`, origin's conda `bash` ask rules through `session-config`'s new `permissions`, conda details and "per action only" on chat's cards through the new `kilo.chat/interaction-renderer`.                                                                      |
+| 12a  | Done   | kilo.environments on the kernel: `conda` and `conda-runtime` domain objects over one bundled conda bridge (`bridge` daemon, first use), origin's conda tools in main (same Kilo names), the Conda Environments settings page, origin's conda `bash` ask rules through `session-config`'s new `permissions`, conda details and "per action only" on chat's cards through the new `kilo.chat/interaction-renderer`.                                                                                                                       |
 | 12b  | Done   | kilo.notebook on the kernel: the Notebook pane (origin's `notebook.notebook` tab, signed in only), the `*.ipynb` opener ahead of kilo.files, the `notebooks` domain over nteract's host service with `runtimed` as a kernel service, frames on the `host` port, the notebook Kilo plugin through `runtime-config`, origin's three notebook tools in main, the Notebooks settings page.                                                                                                                                                  |
 | 12c  | Done   | kilo.local-inference on the kernel: the `local-inference` domain object (origin's contract, `prepare`), the llama.cpp router as the `router` kernel service with llama.cpp from a `conda-runtime` environment, the provider through `kilo.agent/model-provider` and its key through `runtime-config`, the Local Model Server settings page, the model-loading toast as an overlay, and the composer's Local Model Server rail and model loading before prompts through the new `kilo.chat/model-source`.                                |
 | 12d  | Done   | kilo.marketplace on the kernel: the `marketplace` domain object over Kilo's Marketplace API (server from `kilo.agent/server`, workspaces from `kilo.workspaces`, the app's own MCP servers from `runtime-config`), the Agent Behavior settings page, "Fix in chat" through `kilo.chat/composer.startNewChat`.                                                                                                                                                                                                                           |
@@ -2195,7 +2193,8 @@ Everything lands in a single PR once all plugins are built.
   dropped files through the kernel's `pathForFile`, the two telemetry events
   declared; the section is `when` the flag's key. Origin's `KiloAuthGate`
   is a local `KiloSignInGate` over `kilo.account/identity` (no shared gate
-  yet). The widget is contributed through `mcp-app` with its built HTML.
+  yet). Origin's conda environments widget (`mcp-app`) is not carried over:
+  `conda.envs.list` renders as an ordinary tool call.
 - **No e2e specs:** origin had none for environments (the flag is off in
   e2e builds); `e2e/testdata/settings.ts` keeps its commented row owned by
   `kilo.environments`.
@@ -2690,8 +2689,8 @@ Everything lands in a single PR once all plugins are built.
   through Kilo's `/experimental/resource/read`. Widget tool calls go to
   `/experimental/mcp/call-tool` scoped to `serverId`, from the window over
   its Kilo connection — origin's main-side proxy is gone (the window already
-  holds the connection). kilo.chat ships none; kilo.environments contributes
-  its widget in step 12.
+  holds the connection). No bundled plugin contributes one (origin's conda
+  environments widget was dropped).
 - **`kilo.chat/markdown-extension`** (additive, renderer): the
   implementation is origin's factory `(ctx: {sessionId, workspaceFolders})
   → {remarkPlugins?, decorateComponents?}`, made once per transcript and
@@ -3381,8 +3380,7 @@ without the history of earlier sessions.
   8a / 8e): the mutating conda tools ask through `approval: "ask"`, origin's
   conda `bash` rules come from `session-config`'s new `permissions`, and the
   card's conda summary, local-file warning and "per action only" rule come
-  from `kilo.chat/interaction-renderer`; the envs widget through
-  `kilo.chat/mcp-app`.
+  from `kilo.chat/interaction-renderer`.
 - **Resolved in 13d — react-opencode's uncaught first-send error** (from
   step 8c): the unhandled rejection came from `@assistant-ui/core`'s
   fire-and-forget `initialize()`, not react-opencode; patched there, and

@@ -1,115 +1,20 @@
 import { describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import {
-	defineExtensionPoint,
-	KernelService,
-	KernelShell,
-	type PluginSdk,
-} from "@kilo-desktop/kernel";
-import { testManifest } from "@kilo-desktop/kernel/testing";
+import { KernelService, KernelShell } from "@kilo-desktop/kernel";
 import { SettingsSection } from "@kilo-desktop/plugin-shell/contracts";
+import { renderShell } from "@kilo-desktop/plugin-shell/testing";
+
 import {
-	renderShell,
-	type GuestPlugin,
-	type ShellHostOptions,
-} from "@kilo-desktop/plugin-shell/testing";
-
-import manifest from "../../plugin.json";
-import { DEVELOPER_DEFINITIONS, DEVELOPER_SETTINGS_CATEGORY, DEVELOPER_FLAG } from "../contracts";
-import { developerWebEntry } from ".";
-
-const developer: GuestPlugin = {
-	manifest,
-	definitions: DEVELOPER_DEFINITIONS,
-	web: developerWebEntry,
-};
-
-/** A stand-in for kilo.flags with the developer flag on or off. */
-function developerFlag(on: boolean): GuestPlugin {
-	return {
-		manifest: testManifest("kilo.flags", { contextKeys: [{ id: "flag:*", scope: "global" }] }),
-		main: {
-			activate: (sdk) => {
-				sdk.context.set(`flag:${DEVELOPER_FLAG}`, on);
-			},
-		},
-	};
-}
-
-/** A renderer plugin that contributes to points through its manifest. */
-function contributor(
-	id: string,
-	extensions: Record<string, unknown[]>,
-	activate: (sdk: PluginSdk) => void = () => {},
-	extra: Record<string, unknown> = {},
-): GuestPlugin {
-	return {
-		manifest: testManifest(id, { contributes: { extensions }, ...extra }),
-		web: { activate },
-	};
-}
-
-const ToolPanel = defineExtensionPoint({
-	id: "acme.server/tool-panel",
-	kind: "additive",
-	description: "Panels for agent tools.",
-});
-
-/** A plugin that offers a point, contributes to several, runs a service and uses permissions. */
-function agentServer(): GuestPlugin {
-	return {
-		...contributor(
-			"acme.server",
-			{
-				"kernel/service": [
-					{ id: "daemon", title: "Agent server", kind: "daemon", startOn: "activation" },
-					{
-						id: "index",
-						title: "Index files",
-						kind: "task",
-						startOn: "first-use",
-						restart: { policy: "never" },
-					},
-				],
-				"kilo.shell/settings-section": [
-					{ id: "models", title: "Models" },
-					{ id: "tools", title: "Tools" },
-				],
-				"acme.missing/panel": [{ id: "extra" }],
-			},
-			() => {},
-			{
-				description: "Runs the agent server.",
-				extensionPoints: [{ id: "tool-panel", kind: "additive" }],
-				permissions: { host: ["shell"] },
-				contextKeys: [{ id: "busy" }],
-				requires: {
-					"kilo.shell/navigation": "optional",
-					"kilo.shell/settings-section": "required",
-				},
-			},
-		),
-		definitions: { extensionPoints: [ToolPanel] },
-	};
-}
-
-async function openDiagnostics(
-	plugins: readonly GuestPlugin[] = [agentServer()],
-	options: ShellHostOptions = {},
-) {
-	await page.viewport(1280, 800);
-	const host = await renderShell([developer, developerFlag(true), ...plugins], options);
-	window.location.hash = "#/settings/diagnostics";
-	await expect.element(page.getByTestId("diagnostics-settings")).toBeVisible();
-	return host;
-}
-
-function rowIds(panelTestId: string) {
-	return [...page.getByTestId(panelTestId).element().children].map((row) =>
-		row.getAttribute("data-qa-id"),
-	);
-}
+	agentServer,
+	contributor,
+	developer,
+	developerFlag,
+	openDiagnostics,
+	pluginsHost,
+	rowIds,
+} from "../test/diagnostics";
+import { DEVELOPER_FLAG, DEVELOPER_SETTINGS_CATEGORY } from "../contracts";
 
 describe("the Developer settings category", () => {
 	const sectionsIn = (id: string) =>
@@ -330,10 +235,13 @@ describe("diagnostics settings", () => {
 				.getByRole("listitem")
 				.elements()
 				.map((item) => item.textContent),
-		).toEqual(["models", "tools"]);
+		).toEqual(["models", "tools", "safe"]);
 		await expect.element(details.getByText("shell", { exact: true })).toBeVisible();
 		await expect.element(details.getByText("acme.server/busy")).toBeVisible();
-		await expect.element(details.getByText("kilo.shell/navigation (optional)")).toBeVisible();
+		await expect
+			.element(details.getByTestId("diagnostics-link-kilo.shell/navigation"))
+			.toBeVisible();
+		await expect.element(details.getByText("optional", { exact: true })).toBeVisible();
 		await expect
 			.element(details.getByText("kilo.shell/settings-section", { exact: true }).last())
 			.toBeVisible();
@@ -481,16 +389,6 @@ describe("diagnostics settings — tabs", () => {
 });
 
 describe("diagnostics settings — turning plugins on and off", () => {
-	function pluginsHost(disabled: string[] = []) {
-		const saveDisabled = vi.fn();
-		const relaunch = vi.fn();
-		return {
-			saveDisabled,
-			relaunch,
-			options: { plugins: { loadDisabled: () => disabled, saveDisabled }, relaunch },
-		};
-	}
-
 	const restart = () => page.getByTestId("diagnostics-restart");
 
 	it("turns a plugin off from the next launch and offers to restart", async () => {

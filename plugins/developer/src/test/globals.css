@@ -7,3 +7,7 @@
 @source "../";
 /* Tests render the real shell (renderShell), whose settings layout sets the page width. */
 @source "../../../shell/src/web";
+/* The app gets these from shadcn/tailwind.css: base-ui marks orientation with
+   data-orientation, which the design system's tabs lay out by. */
+@custom-variant data-horizontal (&:where([data-orientation="horizontal"]));
+@custom-variant data-vertical (&:where([data-orientation="vertical"]));

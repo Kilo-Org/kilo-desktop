@@ -33,6 +33,12 @@ the points and domain objects declared in manifests and defined in each
 plugin's `./contracts` export, which is the one thing another plugin may
 import (`pnpm lint` checks this).
 
+To see this domain model in the running app, turn on the `developer` flag
+and open Settings → Developer → Diagnostics: its Extension points and Domain
+objects tabs list every one, and any id there drills into its definition
+(kind, metadata, state, methods and events as TypeScript types), what
+contributes to it and whether each contribution is live, and who requires it.
+
 ## Package layout
 
 ```

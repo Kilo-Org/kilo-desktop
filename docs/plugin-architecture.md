@@ -638,7 +638,7 @@ one agent conversation shown in an agent pane.
 | `kilo.flags`            | platform     | `apps/desktop/.../feature-flag`                                   | Feature-flag transport (LaunchDarkly)                                                                                                             |
 | `kilo.telemetry`        | platform     | `apps/desktop/.../telemetry`, Privacy section                     | Consent, telemetry transport (PostHog), declared events                                                                                           |
 | `kilo.updates`          | platform     | `apps/desktop/.../updates`, About, update pill                    | Update UX over the kernel updater                                                                                                                 |
-| `kilo.developer`        | platform     | kilo.shell's Diagnostics settings                                 | The Developer settings category and Diagnostics (kernel, plugins, services)                                                                       |
+| `kilo.developer`        | platform     | kilo.shell's Diagnostics settings                                 | The Developer settings category and Diagnostics (kernel, plugins, services, and an inspector over points and domain objects)                      |
 | `kilo.account`          | platform     | kilo-ui account/onboarding, `KiloAuthGate`, shell auth            | Identity, sign-in, terms, onboarding                                                                                                              |
 | `kilo.agent`            | core (model) | `plugins/kilo-server` + kilo-ui chat runtime                      | Kilo CLI server (as a service), agent config, tool gateway; the **Chat Session** domain: conversations, messages, tool calls, permission requests |
 | `kilo.sessions`         | core (model) | kilo-ui session list/activity, pane store, chat worktree handlers | The **Work Session** and **Pane** domain objects: main-process session store, status aggregation, tool-caller binding, isolation                  |
@@ -988,7 +988,7 @@ with contributors today; candidate points are in the extensibility map (§7).
 │ when kilo.flags/flag:developer (the whole plugin)
 │ ▲ —                                (others add sections under Developer)
 │ ● kilo.shell/settings-category ... Developer
-│   kilo.shell/settings-section .... Diagnostics (over kernel/app, plugins, services)
+│   kilo.shell/settings-section .... Diagnostics (over kernel/app, plugins, services, discovery)
 │ ◆ —
 ╰───────────────────────────────────────────────────────────────────────────────
 
@@ -1523,23 +1523,24 @@ would replace it if a kind ever needs something other than show-or-open.
 
 ### 7.7 Kernel and platform plugins
 
-| Owner          | Extension point       | Kind | Status | What it extends                                                     | Contributors                                                                                                      |
-| -------------- | --------------------- | ---- | ------ | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| kernel         | `service`             | A    | Now    | Supervised daemons and background tasks (§2.8)                      | flags, telemetry, agent, workspaces, sessions, notebook, environments, local-inference                            |
-| kernel         | `quit`                | D    | Next   | Proceed / ask / reject before quitting (fails open)                 | agent (a turn is running); notebook (unsaved notebook); terminal (processes running); updates (update installing) |
-| kernel         | `window-close`        | D    | Next   | Proceed / ask / reject before closing a main or pane window         | notebook (unsaved notebook in a pane window)                                                                      |
-| kilo.shell     | `onboarding-step`     | A    | Now    | `{label, layout, required?}` + `useStep(controls)`: first-run steps | account (terms, sign in); environments (set up conda); local-inference (download a model)                         |
-| kilo.shell     | `theme`               | A    | Later  | Colour themes (semantic tokens, host expands)                       | _ext_ community themes                                                                                            |
-| kilo.shell     | `menu`                | A    | Later  | Native app menu entries (reference commands)                        | every plugin with commands                                                                                        |
-| kilo.shell     | `header-action`       | A    | Later  | Buttons in the page header, beside the main view's own              | workbench (its header buttons, as the first contributor); _ext_ app-wide actions                                  |
-| kilo.shell     | `right-sidebar`       | A    | Later  | Tabbed panels in a right sidebar behind an icon rail, one open      | _ext_ notifications inbox, issue feed, app-wide assistant; developer (activity log)                               |
-| kilo.account   | `account-panel`       | A    | Now    | Panels in Settings → Account                                        | anaconda-account (Anaconda account)                                                                               |
-| kilo.account   | `account-menu`        | A    | Next   | Account menu entries (reference commands)                           | updates (check for updates); shell (settings); local-inference (usage)                                            |
-| kilo.shell     | `left-sidebar-notice` | A    | Now    | Notices above the account entry                                     | updates (restart to update); _later_ account (trial ending), agent (server needs attention)                       |
-| kilo.shell     | `status-bar-item`     | A    | Now    | Views, buttons and popovers in the status bar under the main page   | _later_ developer (plugin activity), agent (server starting), local-inference (model loaded), git (sync)          |
-| kilo.updates   | `support-row`         | A    | Now    | Rows in About → Support                                             | agent (Kilo config file); _later_ environments (conda info), local-inference (model server logs)                  |
-| kilo.telemetry | `telemetry-event`     | A    | Now    | Analytics events a plugin may send                                  | every plugin that reports usage                                                                                   |
-| kilo.developer | `diagnostics-tab`     | A    | Later  | Tabs in Settings → Developer → Diagnostics beside Plugins, Services | agent (server log and config); notebook (runtimed daemon); local-inference (model server)                         |
+| Owner          | Extension point       | Kind | Status | What it extends                                                         | Contributors                                                                                                      |
+| -------------- | --------------------- | ---- | ------ | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| kernel         | `service`             | A    | Now    | Supervised daemons and background tasks (§2.8)                          | flags, telemetry, agent, workspaces, sessions, notebook, environments, local-inference                            |
+| kernel         | `quit`                | D    | Next   | Proceed / ask / reject before quitting (fails open)                     | agent (a turn is running); notebook (unsaved notebook); terminal (processes running); updates (update installing) |
+| kernel         | `window-close`        | D    | Next   | Proceed / ask / reject before closing a main or pane window             | notebook (unsaved notebook in a pane window)                                                                      |
+| kilo.shell     | `onboarding-step`     | A    | Now    | `{label, layout, required?}` + `useStep(controls)`: first-run steps     | account (terms, sign in); environments (set up conda); local-inference (download a model)                         |
+| kilo.shell     | `theme`               | A    | Later  | Colour themes (semantic tokens, host expands)                           | _ext_ community themes                                                                                            |
+| kilo.shell     | `menu`                | A    | Later  | Native app menu entries (reference commands)                            | every plugin with commands                                                                                        |
+| kilo.shell     | `header-action`       | A    | Later  | Buttons in the page header, beside the main view's own                  | workbench (its header buttons, as the first contributor); _ext_ app-wide actions                                  |
+| kilo.shell     | `right-sidebar`       | A    | Later  | Tabbed panels in a right sidebar behind an icon rail, one open          | _ext_ notifications inbox, issue feed, app-wide assistant; developer (activity log)                               |
+| kilo.account   | `account-panel`       | A    | Now    | Panels in Settings → Account                                            | anaconda-account (Anaconda account)                                                                               |
+| kilo.account   | `account-menu`        | A    | Next   | Account menu entries (reference commands)                               | updates (check for updates); shell (settings); local-inference (usage)                                            |
+| kilo.shell     | `left-sidebar-notice` | A    | Now    | Notices above the account entry                                         | updates (restart to update); _later_ account (trial ending), agent (server needs attention)                       |
+| kilo.shell     | `status-bar-item`     | A    | Now    | Views, buttons and popovers in the status bar under the main page       | _later_ developer (plugin activity), agent (server starting), local-inference (model loaded), git (sync)          |
+| kilo.updates   | `support-row`         | A    | Now    | Rows in About → Support                                                 | agent (Kilo config file); _later_ environments (conda info), local-inference (model server logs)                  |
+| kilo.telemetry | `telemetry-event`     | A    | Now    | Analytics events a plugin may send                                      | every plugin that reports usage                                                                                   |
+| kilo.developer | `diagnostics-tab`     | A    | Later  | Tabs in Settings → Developer → Diagnostics beside Plugins, Services     | agent (server log and config); notebook (runtimed daemon); local-inference (model server)                         |
+| kilo.developer | `inspector-section`   | A    | Later  | Sections in Diagnostics' inspector for a point, domain object or plugin | agent (agent tools over a domain object); telemetry (events a plugin declares); sessions (live pane kinds)        |
 
 ---
 

@@ -8,6 +8,8 @@ import {
 	type QualifiedId,
 } from "@kilo-desktop/kernel";
 
+import { entityFor, ownerRef, type EntityRef } from "./domain-model";
+
 export interface DetailItem {
 	readonly label: string;
 	/** Each value is one line; ids render as code. */
@@ -17,6 +19,12 @@ export interface DetailItem {
 export interface DetailValue {
 	readonly code?: string;
 	readonly text?: string;
+	/** Preformatted, e.g. a type or JSON. */
+	readonly block?: string;
+	/** Opens what `code` names in the inspector. */
+	readonly link?: EntityRef;
+	/** A qualifier after the value, e.g. "optional". */
+	readonly note?: string;
 	/** Listed beneath the value, e.g. the contributions made to a point. */
 	readonly items?: readonly string[];
 }
@@ -42,8 +50,11 @@ const START_ON: Record<ServiceMetadata["startOn"], string> = {
 
 const code = (value: string): DetailValue => ({ code: value });
 const text = (value: string): DetailValue => ({ text: value });
+const pointLink = (id: string): DetailValue => ({ code: id, link: { kind: "point", id } });
+const domainLink = (id: string): DetailValue => ({ code: id, link: { kind: "domain", id } });
+const ownerLink = (id: string): DetailValue => ({ code: id, link: ownerRef(id) });
 
-function item(label: string, values: readonly DetailValue[]): DetailItem[] {
+export function item(label: string, values: readonly DetailValue[]): DetailItem[] {
 	return values.length > 0 ? [{ label, values }] : [];
 }
 
@@ -74,15 +85,18 @@ export function summarizePlugin(
 		items: [
 			...item(
 				"Extension points",
-				(manifest?.extensionPoints ?? []).map((point) => code(qualify(pluginId, point.id))),
+				(manifest?.extensionPoints ?? []).map((point) => pointLink(qualify(pluginId, point.id))),
 			),
 			...item(
 				"Domain objects",
-				(manifest?.domains ?? []).map((domain) => code(qualify(pluginId, domain.id))),
+				(manifest?.domains ?? []).map((domain) => domainLink(qualify(pluginId, domain.id))),
 			),
 			...item(
 				"Contributes to",
-				[...contributions].map(([pointId, ids]) => ({ code: pointId, items: ids })),
+				[...contributions].map(([pointId, ids]) => ({
+					...pointLink(pointId),
+					items: ids,
+				})),
 			),
 			...item("Host permissions", (manifest?.permissions?.host ?? []).map(code)),
 			...item(
@@ -91,11 +105,16 @@ export function summarizePlugin(
 			),
 			...item(
 				"Requires",
-				Object.entries(manifest?.requires ?? {}).map(([id, need]) =>
-					code(need === "optional" ? `${id} (optional)` : id),
-				),
+				Object.entries(manifest?.requires ?? {}).map(([id, need]) => {
+					const link = entityFor(kernel, id);
+					return {
+						code: id,
+						...(link ? { link } : {}),
+						...(need === "optional" ? { note: "optional" } : {}),
+					};
+				}),
 			),
-			...item("Uses turned-off plugins", [...usesTurnedOff].map(code)),
+			...item("Uses turned-off plugins", [...usesTurnedOff].map(ownerLink)),
 			...item("Problems", issues.filter((issue) => issue.pluginId === pluginId).map(describeIssue)),
 		],
 	};
@@ -112,7 +131,7 @@ export function summarizeKernel(
 ): readonly DetailItem[] {
 	const { points, domains, contextKeys } = kernel.discovery;
 	const ownedIds = (records: Iterable<{ readonly owner: string; readonly id: string }>) =>
-		[...records].filter((record) => record.owner === KERNEL_OWNER).map((record) => code(record.id));
+		[...records].filter((record) => record.owner === KERNEL_OWNER).map((record) => record.id);
 	const withId = (record: {
 		readonly owner: string;
 		readonly definition: { readonly id: string };
@@ -121,9 +140,9 @@ export function summarizeKernel(
 		id: record.definition.id,
 	});
 	return [
-		...item("Extension points", ownedIds([...points.values()].map(withId))),
-		...item("Domain objects", ownedIds([...domains.values()].map(withId))),
-		...item("Context keys", ownedIds(contextKeys)),
+		...item("Extension points", ownedIds([...points.values()].map(withId)).map(pointLink)),
+		...item("Domain objects", ownedIds([...domains.values()].map(withId)).map(domainLink)),
+		...item("Context keys", ownedIds(contextKeys).map(code)),
 		...item("Problems", issues.filter((issue) => !issue.pluginId).map(describeIssue)),
 	];
 }
@@ -152,7 +171,7 @@ export function summarizeService(
 	const metadata = contribution?.entry.metadata as ServiceMetadata | undefined;
 	const restart = metadata?.restart;
 	return [
-		{ label: "Plugin", values: [code(record.pluginId)] },
+		{ label: "Plugin", values: [ownerLink(record.pluginId)] },
 		{ label: "Kind", values: [text(serviceKindLabel(record.kind))] },
 		...item("Starts", metadata ? [text(START_ON[metadata.startOn])] : []),
 		...item(

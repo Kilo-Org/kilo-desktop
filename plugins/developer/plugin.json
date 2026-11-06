@@ -28,7 +28,7 @@
 				{
 					"id": "diagnostics",
 					"title": "Diagnostics",
-					"description": "What's running: the kernel, plugins and services, and any problems.",
+					"description": "What's running: the kernel, plugins and services, any problems, and the extension points and domain objects they share.",
 					"category": "kilo.developer/developer",
 					"priority": 10
 				}

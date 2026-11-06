@@ -83,4 +83,5 @@ runs:
     - name: Install AzureSignTool
       if: steps.validate.outputs.enabled == 'true'
       shell: bash
-      run: dotnet tool install --global AzureSignTool
+      # Pinned: this tool runs with the Key Vault signing token.
+      run: dotnet tool install --global AzureSignTool --version 7.0.1

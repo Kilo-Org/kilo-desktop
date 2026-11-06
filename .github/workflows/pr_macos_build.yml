@@ -1,9 +1,13 @@
 name: PR macOS Build
 
-# Opt-in: a signed and notarized macOS make takes ~25 minutes, so it no longer
-# runs on every PR push. Either add the `build:macos` label to a PR (it then
-# rebuilds on each push while the label stays), or run this workflow manually
-# from the Actions tab for any branch.
+# Opt-in: a macOS make takes a while, so it does not run on every PR push.
+# Either add the `build:macos` label to a PR (it then rebuilds on each push
+# while the label stays), or run this workflow manually for any branch.
+#
+# Deliberately unsigned: PR code is untrusted, so it never receives the Apple
+# Developer ID certificate or notarization key. Signed builds come only from
+# `main` through the reviewer-gated `preview`/`production` environments
+# (Build and Release workflows).
 on:
   pull_request:
     branches: [main]
@@ -39,31 +43,6 @@ jobs:
       - name: Setup Node and pnpm
         uses: ./.github/actions/setup-node-pnpm
 
-      - name: Setup macOS code signing
-        uses: ./.github/actions/setup-macos-codesign
-        with:
-          certificate_base64: ${{ secrets.OSX_BUILD_CERTIFICATE_BASE64 }}
-          certificate_password: ${{ secrets.OSX_P12_PASSWORD }}
-          notarization_key: ${{ secrets.OSX_NOTARIZATION_KEY }}
-          notarization_key_id: ${{ secrets.OSX_NOTARIZATION_KEY_ID }}
-          notarization_key_issuer: ${{ secrets.OSX_NOTARIZATION_KEY_ISSUER }}
-
-      - name: Require signing and notarization credentials
-        shell: bash
-        run: |
-          required=(APPLE_SIGNING_IDENTITY APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER)
-          missing=()
-          for name in "${required[@]}"; do
-            if [[ -z "${!name:-}" ]]; then
-              missing+=("${name}")
-            fi
-          done
-
-          if [[ "${#missing[@]}" -gt 0 ]]; then
-            echo "Missing macOS signing configuration: ${missing[*]}"
-            exit 1
-          fi
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -73,7 +52,7 @@ jobs:
 
       - uses: ./.github/actions/cache-electron-rebuild
 
-      - name: Make signed and notarized macOS artifacts
+      - name: Make unsigned macOS artifacts
         run: pnpm run make
 
       - name: Upload macOS artifacts

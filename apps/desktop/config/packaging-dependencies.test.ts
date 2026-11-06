@@ -280,6 +280,59 @@ describe("packaged production dependencies", () => {
 		expect(build).not.toContain("aws-actions/configure-aws-credentials");
 	});
 
+	// Package install scripts run arbitrary dependency code; signing material and
+	// the Sentry upload token must not exist in the job until after install.
+	it("loads signing credentials only after dependency install", () => {
+		for (const workflowPath of [
+			".github/workflows/build.yml",
+			".github/workflows/publish_helper.yml",
+		]) {
+			const workflow = readFileSync(path.join(workspaceRoot, workflowPath), "utf8");
+			const install = workflow.indexOf("pnpm install --frozen-lockfile");
+			expect(install).toBeGreaterThan(-1);
+			for (const step of [
+				"./.github/actions/setup-macos-codesign",
+				"./.github/actions/setup-windows-codesign",
+			]) {
+				const setup = workflow.indexOf(step);
+				expect(setup).toBeGreaterThan(install);
+			}
+		}
+		const publish = readFileSync(
+			path.join(workspaceRoot, ".github/workflows/publish_helper.yml"),
+			"utf8",
+		);
+		expect(publish.indexOf("SENTRY_AUTH_TOKEN")).toBeGreaterThan(
+			publish.indexOf("pnpm install --frozen-lockfile"),
+		);
+	});
+
+	it("never hands signing secrets to PR builds", () => {
+		const prBuild = readFileSync(
+			path.join(workspaceRoot, ".github/workflows/pr_macos_build.yml"),
+			"utf8",
+		);
+
+		expect(prBuild).not.toContain("setup-macos-codesign");
+		expect(prBuild).not.toMatch(/secrets\.(OSX|AZURE|APPLE)_/);
+	});
+
+	it("pins AzureSignTool, which runs with the Key Vault signing token", () => {
+		const setup = readFileSync(
+			path.join(workspaceRoot, ".github/actions/setup-windows-codesign/action.yml"),
+			"utf8",
+		);
+
+		expect(setup).toMatch(/dotnet tool install --global AzureSignTool --version \d+\.\d+\.\d+/);
+	});
+
+	it("gives CI and nightly workflows a read-only token", () => {
+		for (const workflowPath of [".github/workflows/ci.yml", ".github/workflows/nightly.yml"]) {
+			const workflow = readFileSync(path.join(workspaceRoot, workflowPath), "utf8");
+			expect(workflow).toMatch(/^permissions:\n {2}contents: read$/m);
+		}
+	});
+
 	it("finishes staging application content before ASAR integrity is sealed", () => {
 		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
 		const beforeAsar = forge.slice(forge.indexOf("beforeAsar:"), forge.indexOf("win32metadata:"));

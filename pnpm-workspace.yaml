@@ -77,7 +77,6 @@ allowBuilds:
   # ships in prebuilt @koromix/koffi-* siblings (no build script), but the koffi
   # package itself runs a native prebuild step, so it needs a build allowance.
   koffi: true
-  "@scarf/scarf": true
   fs-xattr: true
   macos-alias: true
   "@github/keytar": true

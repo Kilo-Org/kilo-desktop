@@ -76,9 +76,6 @@ jobs:
       AWS_REGION: ${{ vars.AWS_REGION }}
       AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
       AZURE_CERT_NAME: ${{ secrets.AZURE_CERT_NAME }}
-      # Source-map upload; both the `production` and `preview` environments must
-      # define it, or that track's Sentry stack traces stay minified.
-      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
       SENTRY_ORG: ${{ vars.SENTRY_ORG }}
       # Service IDs for official builds (see docs/releases.md); not committed.
       VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
@@ -101,6 +98,23 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes build-essential fakeroot libsecret-1-dev pkg-config
 
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Align release package versions
+        run: pnpm --filter @kilo-desktop/desktop exec tsx config/desktop-version.ts
+
+      - name: Refresh release lockfile
+        run: pnpm install --lockfile-only --ignore-scripts
+
+      - uses: ./plugins/notebook/actions/setup-native
+
+      - uses: ./plugins/agent/actions/setup-cli
+
+      - uses: ./.github/actions/cache-electron-rebuild
+
+      # Signing material is loaded after dependency install so package install
+      # scripts never run with the certificate, notarization key or Azure login.
       - name: Setup macOS code signing
         if: matrix.os == 'mac'
         uses: ./.github/actions/setup-macos-codesign
@@ -121,22 +135,12 @@ jobs:
           key_vault_uri: ${{ secrets.AZURE_KEY_VAULT_URI }}
           cert_name: ${{ secrets.AZURE_CERT_NAME }}
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Align release package versions
-        run: pnpm --filter @kilo-desktop/desktop exec tsx config/desktop-version.ts
-
-      - name: Refresh release lockfile
-        run: pnpm install --lockfile-only --ignore-scripts
-
-      - uses: ./plugins/notebook/actions/setup-native
-
-      - uses: ./plugins/agent/actions/setup-cli
-
-      - uses: ./.github/actions/cache-electron-rebuild
-
       - name: Build release candidate
+        env:
+          # Source-map upload; both the `production` and `preview` environments
+          # must define it, or that track's Sentry stack traces stay minified.
+          # Step-scoped so dependency install scripts never see it.
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         run: pnpm --filter @kilo-desktop/desktop run publish -- --dry-run
 
       - name: Smoke-test updater payload

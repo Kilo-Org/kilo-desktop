@@ -68,6 +68,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes fakeroot libsecret-1-dev pkg-config
 
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - uses: ./plugins/notebook/actions/setup-native
+
+      - uses: ./plugins/agent/actions/setup-cli
+
+      - uses: ./.github/actions/cache-electron-rebuild
+
+      # Signing material is loaded after dependency install so package install
+      # scripts never run with the certificate, notarization key or Azure login.
       - name: Setup macOS code signing
         if: matrix.target == 'mac'
         uses: ./.github/actions/setup-macos-codesign
@@ -87,15 +98,6 @@ jobs:
           subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           key_vault_uri: ${{ secrets.AZURE_KEY_VAULT_URI }}
           cert_name: ${{ secrets.AZURE_CERT_NAME }}
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - uses: ./plugins/notebook/actions/setup-native
-
-      - uses: ./plugins/agent/actions/setup-cli
-
-      - uses: ./.github/actions/cache-electron-rebuild
 
       - name: Make
         run: pnpm run make

@@ -206,12 +206,13 @@ tracks are repository-level variables; only the LaunchDarkly ID differs per envi
 
 ## Workflows
 
-| Workflow      | Trigger                                  | Behavior                                                                                                              |
-| ------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `CI`          | Pull request / merge queue               | Lint, format check, `pnpm check`, and package tests                                                                   |
-| `Build`       | Manual                                   | `pnpm run make -- --arch=<arch>` only; uses Preview signing configuration; GitHub artifacts named `<platform>-<arch>` |
-| `Release`     | Every three hours, or manual from `main` | Scheduled/manual Preview or manual Stable publication                                                                 |
-| `Nightly E2E` | Daily or manual                          | Full cross-platform E2E; independent from Preview releases                                                            |
+| Workflow         | Trigger                                  | Behavior                                                                                                              |
+| ---------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `CI`             | Pull request / merge queue               | Lint, format check, `pnpm check`, and package tests                                                                   |
+| `Build`          | Manual                                   | `pnpm run make -- --arch=<arch>` only; uses Preview signing configuration; GitHub artifacts named `<platform>-<arch>` |
+| `Release`        | Every three hours, or manual from `main` | Scheduled/manual Preview or manual Stable publication                                                                 |
+| `PR macOS Build` | `build:macos` PR label, or manual        | Unsigned macOS make for PR verification; never receives signing secrets                                               |
+| `Nightly E2E`    | Daily or manual                          | Full cross-platform E2E; independent from Preview releases                                                            |
 
 Scheduled `Release` runs compare `main` with the latest `v*-preview-*` tag and skip
 publication when the commit has not changed. Manual Preview runs always publish.
@@ -243,7 +244,10 @@ and the `pkg-config`/`libsecret` development packages required to rebuild keytar
 
 ## Signing credentials
 
-CI uses the following GitHub secret names:
+CI uses the following GitHub secret names. Define them on the `preview` and `production`
+environments only, never at repository or organization level, so only reviewer-gated
+`main` runs can read them. Jobs load signing material after `pnpm install`, so dependency
+install scripts never run with it.
 
 | Secret                         | Usage                                                                  |
 | ------------------------------ | ---------------------------------------------------------------------- |

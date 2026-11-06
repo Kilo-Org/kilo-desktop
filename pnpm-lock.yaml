@@ -2673,8 +2673,8 @@ importers:
         specifier: 'catalog:'
         version: 1.27.0(react@19.2.8)
       node-pty:
-        specifier: 1.2.0-beta.15
-        version: 1.2.0-beta.15
+        specifier: 1.2.0-beta.18
+        version: 1.2.0-beta.18
       react:
         specifier: ^19.2.8
         version: 19.2.8
@@ -8890,8 +8890,8 @@ packages:
     engines: {node: ^20.17.0 || >=22.9.0}
     hasBin: true
 
-  node-pty@1.2.0-beta.15:
-    resolution: {integrity: sha512-vORSzHXi4Ofl7HemVWpuudLqCPdaQb4LfpRCUpE5HPxhp4JYscl8zZwxh11p26v2wvW24WMwnMfLjhRLixrfxA==}
+  node-pty@1.2.0-beta.18:
+    resolution: {integrity: sha512-3Rej3788OnasAwoSmTZhlCeUraJ9CQldtL5b571b9+3Nv47+PaxA5VPIGOOs+16OYQePTrC1Lrs8a9/df5WPRg==}
 
   node-releases@2.0.51:
     resolution: {integrity: sha512-wRNIrw4DmVLKQlbgOMdkMx27Wrpzes2hh5Jtbi2bjPd+4wJstWIqP5A+lscnqbm0xxmT5Bpg8Lec5ItEBwx6BQ==}
@@ -16777,7 +16777,7 @@ snapshots:
       undici: 6.29.1
       which: 6.0.1
 
-  node-pty@1.2.0-beta.15:
+  node-pty@1.2.0-beta.18:
     dependencies:
       node-addon-api: 7.1.1
 

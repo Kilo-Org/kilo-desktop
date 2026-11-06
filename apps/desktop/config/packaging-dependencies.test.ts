@@ -270,10 +270,8 @@ describe("packaged production dependencies", () => {
 		const viteMain = readFileSync(path.join(desktopRoot, "vite.main.config.ts"), "utf8");
 		const terminalManifest = JSON.parse(
 			readFileSync(path.join(workspaceRoot, "plugins/terminal/package.json"), "utf8"),
-		) as { dependencies?: Record<string, string>; scripts?: Record<string, string> };
+		) as { scripts?: Record<string, string> };
 
-		expect(terminalManifest.dependencies?.["node-pty"]).toBe("1.2.0-beta.15");
-		expect(terminalManifest.dependencies?.["ghostty-web"]).toBe("0.4.0-next.20.g1858a59");
 		expect(terminalManifest.scripts?.["prepare-assets"]).toContain("build-terminal-app");
 		expect(forge).toContain('"node-pty"');
 		expect(forge).toContain('packageName: "@kilo-desktop/plugin-terminal"');

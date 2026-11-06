@@ -126,7 +126,8 @@ function describe(session: AnacondaAccountSession): string {
 function AnacondaIcon() {
 	return (
 		<SummaryCard.Icon>
-			<AnacondaLogo className="size-[18px] text-(--color-green-700)" />
+			{/* Anaconda brand green, constant across app themes. */}
+			<AnacondaLogo className="size-[18px] text-[#07ca4a]" />
 		</SummaryCard.Icon>
 	);
 }

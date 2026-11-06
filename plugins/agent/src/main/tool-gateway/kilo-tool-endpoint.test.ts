@@ -243,9 +243,19 @@ describe("KiloToolEndpoint", () => {
 	});
 
 	it("evicts the least recently used session, keeping workspaces that are still active", async () => {
-		const connection = await startEndpoint(createCatalog().catalog, { maxSessions: 2 });
-		const activeWorkspace = await connectClient(connection);
-		const idleWorkspace = await connectClient(connection);
+		const { catalog, source } = createCatalog();
+		const connection = await startEndpoint(catalog, { maxSessions: 2 });
+		// The notification stream opens after connect() resolves and counts as
+		// use; wait for it so a late stream open cannot reorder the sessions.
+		const connectSettled = async () => {
+			const client = await connectClient(connection);
+			const changed = vi.fn();
+			client.setNotificationHandler("notifications/tools/list_changed", changed);
+			await changeUntilAnnounced(source, [changed]);
+			return client;
+		};
+		const activeWorkspace = await connectSettled();
+		const idleWorkspace = await connectSettled();
 		await activeWorkspace.listTools();
 
 		const newWorkspace = await connectClient(connection);

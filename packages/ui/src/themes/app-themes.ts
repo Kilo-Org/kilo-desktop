@@ -1,6 +1,6 @@
 import type { TerminalPalette, ThemeAppearance } from "./appearance-types.js";
 
-import { themeChromeColors, type ResolvedColorScheme } from "./theme-tokens.js";
+import type { ResolvedColorScheme } from "./theme-tokens.js";
 
 export { APP_THEME_STORAGE_KEY } from "./theme-tokens.js";
 const ansiRoles = [
@@ -36,12 +36,6 @@ type ShikiTheme =
 	| "everforest-dark"
 	| "nord";
 
-type TerminalRolePalette = {
-	background: string;
-	foreground: string;
-	ansi: readonly [string, string, string, string, string, string, string, string];
-};
-
 /**
  * 30% foreground over the terminal background, xterm.js's default selection
  * strength. UI hover tints sit around 5% and disappear on the terminal canvas.
@@ -50,21 +44,24 @@ function terminalSelectionBackground(foreground: string, background: string): st
 	return mixHex(foreground, background, 0.3);
 }
 
-function terminalPalette(palette: TerminalRolePalette): TerminalPalette {
-	return {
-		background: palette.background,
-		foreground: palette.foreground,
-		cursor: palette.foreground,
-		cursorAccent: palette.background,
-		selectionBackground: terminalSelectionBackground(palette.foreground, palette.background),
-		selectionForeground: palette.foreground,
-		...(Object.fromEntries(
-			[...palette.ansi, ...palette.ansi].map((color, index) => [ansiRoles[index], color]),
-		) as { [K in (typeof ansiRoles)[number]]: string }),
-	};
-}
-
 type StringTuple<Tuple extends readonly unknown[]> = { [Index in keyof Tuple]: string };
+
+type AnsiPalette = StringTuple<typeof ansiRoles>;
+
+function terminalPalette(background: string, foreground: string, ansi: AnsiPalette) {
+	return {
+		...(Object.fromEntries(ansiRoles.map((role, index) => [role, ansi[index]])) as Record<
+			(typeof ansiRoles)[number],
+			string
+		>),
+		background,
+		foreground,
+		cursor: foreground,
+		cursorAccent: background,
+		selectionBackground: terminalSelectionBackground(foreground, background),
+		selectionForeground: foreground,
+	} satisfies TerminalPalette;
+}
 
 type RolePalette = {
 	background: string;
@@ -94,7 +91,7 @@ type RolePalette = {
 	ring?: string;
 	/** Per-theme remap of accent roles onto existing tokens (see ACCENT_ROLE_DEFAULTS). */
 	roles?: Partial<typeof ACCENT_ROLE_DEFAULTS>;
-	ansi: StringTuple<typeof ansiRoles>;
+	ansi: AnsiPalette;
 };
 
 /**
@@ -197,10 +194,7 @@ function variant(p: RolePalette, shiki: ShikiTheme, mode: ResolvedColorScheme) {
 	// ANSI hues stay canonical. Status roles split in two: the base colour is
 	// vivid for dots and icons, `-foreground` stays readable on tinted chips.
 	const { base: status, text: statusText } = statusColors(p, mode);
-	const ansi = Object.fromEntries(ansiRoles.map((role, index) => [role, p.ansi[index]])) as Record<
-		(typeof ansiRoles)[number],
-		string
-	>;
+	const terminal = terminalPalette(p.background, p.foreground, p.ansi);
 	return {
 		tokens: {
 			background: p.background,
@@ -226,11 +220,11 @@ function variant(p: RolePalette, shiki: ShikiTheme, mode: ResolvedColorScheme) {
 			border: p.border,
 			input: p.border,
 			ring: p.ring ?? p.primary,
-			"chart-1": ansi.blue,
-			"chart-2": ansi.green,
-			"chart-3": ansi.yellow,
-			"chart-4": ansi.magenta,
-			"chart-5": ansi.cyan,
+			"chart-1": terminal.blue,
+			"chart-2": terminal.green,
+			"chart-3": terminal.yellow,
+			"chart-4": terminal.magenta,
+			"chart-5": terminal.cyan,
 			sidebar: p.sidebar ?? p.background,
 			"sidebar-foreground": p.foreground,
 			"sidebar-primary": p.primary,
@@ -257,34 +251,202 @@ function variant(p: RolePalette, shiki: ShikiTheme, mode: ResolvedColorScheme) {
 			"update-surface": p.surface,
 			"update-surface-hover": p.hover,
 		},
-		terminal: {
-			...ansi,
-			background: p.background,
-			foreground: p.foreground,
-			cursor: p.foreground,
-			cursorAccent: p.background,
-			selectionBackground: terminalSelectionBackground(p.foreground, p.background),
-			selectionForeground: p.foreground,
-		},
+		terminal,
 		shiki,
 	};
 }
 
-/** CSS-owned preset: no token overrides, only a Ghostty-ready terminal palette. */
-function cssTheme(palette: TerminalRolePalette, shiki: ShikiTheme) {
-	return { tokens: null, terminal: terminalPalette(palette), shiki };
-}
+type ThemeTokens = ReturnType<typeof variant>["tokens"];
 
 export type ThemeVariant = {
-	tokens: ReturnType<typeof variant>["tokens"] | null;
-	terminal: TerminalPalette | null;
+	tokens: ThemeTokens;
+	/**
+	 * Native window paint (Electron title bar, splash, window background), which
+	 * accepts only sRGB colours. Defaults to the background and foreground tokens.
+	 */
+	chrome?: { background: string; foreground: string };
+	terminal: TerminalPalette;
 	shiki: ShikiTheme;
+};
+
+/*
+ * Anaconda is the Anaconda Design System's token table, stated in full rather
+ * than derived from a role palette so it renders exactly as the design system
+ * does. Values stay in the system's oklch: converting the near-neutral Mist
+ * steps to hex drops their hue, which tints every translucent mix built on
+ * them (hover washes, hairlines, scrollbar). Native paint and the terminal take
+ * hex equivalents. Its ANSI set has no bright hues; brights repeat the normals.
+ */
+const MIST = {
+	50: "oklch(98.7% 0.002 197.1)",
+	100: "oklch(96.3% 0.002 197.1)",
+	200: "oklch(92.5% 0.005 214.3)",
+	300: "oklch(87.2% 0.007 219.6)",
+	400: "oklch(72.3% 0.014 214.4)",
+	500: "oklch(56% 0.021 213.5)",
+	800: "oklch(27.5% 0.011 216.9)",
+	900: "oklch(21.8% 0.008 223.9)",
+	950: "oklch(14.8% 0.004 228.8)",
+} as const;
+const ANACONDA_GREEN = "oklch(0.731 0.217 146.818)";
+const ANACONDA_LIME = "oklch(0.888 0.188 138.763)";
+const ANACONDA_DARK_BACKGROUND = `color-mix(in oklch, ${MIST[950]} 50%, ${MIST[900]})`;
+const EMERALD_CHARTS = {
+	"chart-1": "oklch(84.5% 0.143 164.978)",
+	"chart-2": "oklch(69.6% 0.17 162.48)",
+	"chart-3": "oklch(59.6% 0.145 163.225)",
+	"chart-4": "oklch(50.8% 0.118 165.612)",
+	"chart-5": "oklch(43.2% 0.095 166.913)",
+};
+const ANACONDA_SCROLLBAR = {
+	"app-scrollbar-thumb": "color-mix(in oklch, var(--muted-foreground) 40%, transparent)",
+	"app-scrollbar-thumb-hover": "color-mix(in oklch, var(--muted-foreground) 60%, transparent)",
+};
+const ANACONDA_UPDATE_SURFACES = {
+	"update-surface": "color-mix(in oklch, var(--primary) 12%, transparent)",
+	"update-surface-hover": "color-mix(in oklch, var(--primary) 18%, transparent)",
+};
+
+const ANACONDA_LIGHT: ThemeVariant = {
+	tokens: {
+		background: "#ffffff",
+		foreground: MIST[950],
+		card: "#ffffff",
+		"composer-draft": "#ffffff",
+		"pane-raised-tint": MIST[100],
+		"card-foreground": MIST[950],
+		popover: "#ffffff",
+		"popover-foreground": MIST[950],
+		primary: ANACONDA_GREEN,
+		"primary-foreground": MIST[900],
+		secondary: MIST[100],
+		"secondary-foreground": MIST[900],
+		muted: MIST[100],
+		"muted-foreground": MIST[500],
+		accent: MIST[100],
+		"accent-foreground": MIST[900],
+		destructive: "oklch(50.5% 0.213 27.518)",
+		"destructive-foreground": "oklch(50.5% 0.213 27.518)",
+		border: MIST[200],
+		input: MIST[200],
+		ring: MIST[400],
+		...EMERALD_CHARTS,
+		sidebar: MIST[100],
+		"sidebar-foreground": MIST[950],
+		"sidebar-primary": MIST[900],
+		"sidebar-primary-foreground": MIST[50],
+		"sidebar-accent-foreground": MIST[900],
+		"sidebar-border": MIST[200],
+		"sidebar-ring": MIST[400],
+		"primary-ink": "var(--primary)",
+		"primary-ink-foreground": "var(--primary-foreground)",
+		"primary-soft": "var(--primary)",
+		"primary-soft-foreground": "var(--primary-foreground)",
+		info: "oklch(54.6% 0.245 262.881)",
+		"info-foreground": "oklch(54.6% 0.245 262.881)",
+		success: ANACONDA_GREEN,
+		"success-foreground": ANACONDA_GREEN,
+		warning: "oklch(55.5% 0.163 48.998)",
+		"warning-foreground": "oklch(55.5% 0.163 48.998)",
+		...ANACONDA_SCROLLBAR,
+		update: "oklch(0.567 0.165 147.295)",
+		...ANACONDA_UPDATE_SURFACES,
+	},
+	chrome: { background: "#ffffff", foreground: "#090b0c" },
+	terminal: terminalPalette("#ffffff", "#090b0c", [
+		"#090b0c",
+		"#e7000b",
+		"#07ca4a",
+		"#fe9a00",
+		"#155dfc",
+		"#9810fa",
+		"#0092b8",
+		"#f9fbfb",
+		"#090b0c",
+		"#e7000b",
+		"#07ca4a",
+		"#fe9a00",
+		"#155dfc",
+		"#9810fa",
+		"#0092b8",
+		"#f9fbfb",
+	]),
+	shiki: "pierre-light",
+};
+
+/**
+ * Background sits halfway between Mist 950 and 900, with Mist 300 text:
+ * brighter text halates on these near-black surfaces. Translucent hairlines
+ * keep one weight over both the opaque panes and the vibrancy-backed sidebar.
+ */
+const ANACONDA_DARK: ThemeVariant = {
+	tokens: {
+		background: ANACONDA_DARK_BACKGROUND,
+		foreground: MIST[300],
+		card: MIST[900],
+		"composer-draft": MIST[900],
+		"pane-raised-tint": MIST[800],
+		"card-foreground": MIST[300],
+		popover: MIST[900],
+		"popover-foreground": MIST[300],
+		primary: ANACONDA_LIME,
+		"primary-foreground": MIST[900],
+		secondary: MIST[800],
+		"secondary-foreground": MIST[300],
+		muted: MIST[800],
+		"muted-foreground": MIST[400],
+		accent: MIST[800],
+		"accent-foreground": MIST[300],
+		destructive: "oklch(70.4% 0.191 22.216)",
+		"destructive-foreground": "oklch(70.4% 0.191 22.216)",
+		border: `color-mix(in oklch, ${MIST[300]} 12%, transparent)`,
+		input: "color-mix(in oklch, #fff 15%, transparent)",
+		ring: MIST[500],
+		...EMERALD_CHARTS,
+		sidebar: ANACONDA_DARK_BACKGROUND,
+		"sidebar-foreground": MIST[300],
+		"sidebar-primary": "oklch(48.8% 0.243 264.376)",
+		"sidebar-primary-foreground": MIST[50],
+		"sidebar-accent-foreground": MIST[300],
+		"sidebar-border": `color-mix(in oklch, ${MIST[300]} 6%, transparent)`,
+		"sidebar-ring": MIST[500],
+		...ACCENT_ROLE_DEFAULTS,
+		info: "oklch(70.7% 0.165 254.624)",
+		"info-foreground": "oklch(70.7% 0.165 254.624)",
+		success: "oklch(0.856 0.12 154.325)",
+		"success-foreground": "oklch(0.856 0.12 154.325)",
+		warning: "oklch(82.8% 0.189 84.429)",
+		"warning-foreground": "oklch(82.8% 0.189 84.429)",
+		...ANACONDA_SCROLLBAR,
+		update: "var(--primary)",
+		...ANACONDA_UPDATE_SURFACES,
+	},
+	chrome: { background: "#101314", foreground: "#d0d6d8" },
+	terminal: terminalPalette("#101314", "#f9fbfb", [
+		"#22292b",
+		"#ff6467",
+		"#96f778",
+		"#a5f28d",
+		"#50a2ff",
+		"#c27aff",
+		"#00d3f3",
+		"#f9fbfb",
+		"#22292b",
+		"#ff6467",
+		"#96f778",
+		"#a5f28d",
+		"#50a2ff",
+		"#c27aff",
+		"#00d3f3",
+		"#f9fbfb",
+	]),
+	shiki: "pierre-dark",
 };
 
 export interface AppTheme {
 	id: string;
 	name: string;
-	variants: Record<ResolvedColorScheme, ThemeVariant | null>;
+	variants: Record<ResolvedColorScheme, ThemeVariant>;
 }
 
 export const APP_THEMES = [
@@ -384,43 +546,7 @@ export const APP_THEMES = [
 	{
 		id: "anaconda",
 		name: "Anaconda",
-		variants: {
-			// Surfaces stay in `@anaconda/shadcn-theme` + globals.css; Ghostty needs hex.
-			light: cssTheme(
-				{
-					background: "#ffffff",
-					foreground: "#090b0c",
-					ansi: [
-						"#090b0c",
-						"#e7000b",
-						"#07ca4a",
-						"#fe9a00",
-						"#155dfc",
-						"#9810fa",
-						"#0092b8",
-						"#f9fbfb",
-					],
-				},
-				"pierre-light",
-			),
-			dark: cssTheme(
-				{
-					background: "#101314",
-					foreground: "#f9fbfb",
-					ansi: [
-						"#22292b",
-						"#ff6467",
-						"#96f778",
-						"#a5f28d",
-						"#50a2ff",
-						"#c27aff",
-						"#00d3f3",
-						"#f9fbfb",
-					],
-				},
-				"pierre-dark",
-			),
-		},
+		variants: { light: ANACONDA_LIGHT, dark: ANACONDA_DARK },
 	},
 	{
 		id: "dracula",
@@ -923,38 +1049,64 @@ export function normalizeAppThemePreferences(value: unknown): AppThemePreference
 	};
 }
 
-export function getThemeVariant(themeId: string, mode: ResolvedColorScheme): ThemeVariant | null {
+export function getThemeVariant(themeId: string, mode: ResolvedColorScheme): ThemeVariant {
 	const theme =
 		APP_THEMES.find(({ id }) => id === themeId) ??
 		APP_THEMES.find(({ id }) => id === DEFAULT_APP_THEME_PREFERENCES.themeId)!;
 	return theme.variants[mode];
 }
 
-export function themeCss(preferences: AppThemePreferences): string {
-	const { themeId, accentId } = normalizeAppThemePreferences(preferences);
-	const accent = ACCENTS.find(({ id }) => id === accentId && id !== "theme");
+type Accent = (typeof ACCENTS)[number];
+
+function curatedAccent(accentId: string): Accent | undefined {
+	return ACCENTS.find(({ id }) => id === accentId && id !== "theme");
+}
+
+function accentTokens(accent: Accent, mode: ResolvedColorScheme): Record<string, string> {
+	const { color, foreground } = accent[mode];
+	return {
+		...ACCENT_ROLE_DEFAULTS,
+		primary: color,
+		"primary-foreground": foreground,
+		ring: color,
+		"sidebar-primary": color,
+		"sidebar-primary-foreground": foreground,
+		"sidebar-ring": color,
+	};
+}
+
+const SCHEME_SELECTORS: Record<ResolvedColorScheme, string> = {
+	light: "html:root",
+	dark: 'html:root[data-theme="dark"]',
+};
+
+function schemeRules(tokensFor: (mode: ResolvedColorScheme) => Record<string, string>): string {
 	return (["light", "dark"] as const)
 		.map((mode) => {
-			const tokens: Partial<ThemeVariant["tokens"]> = { ...getThemeVariant(themeId, mode)?.tokens };
-			if (accent) {
-				const { color, foreground } = accent[mode];
-				Object.assign(tokens, {
-					...ACCENT_ROLE_DEFAULTS,
-					primary: color,
-					"primary-foreground": foreground,
-					ring: color,
-					"sidebar-primary": color,
-					"sidebar-primary-foreground": foreground,
-					"sidebar-ring": color,
-				});
-			}
-			const declarations = Object.entries(tokens)
+			const declarations = Object.entries(tokensFor(mode))
 				.map(([key, value]) => `--${key}:${value};`)
 				.join("");
-			if (!declarations) return "";
-			return `${mode === "light" ? "html:root" : 'html:root[data-theme="dark"]'}{${declarations}}`;
+			return `${SCHEME_SELECTORS[mode]}{${declarations}}`;
 		})
 		.join("");
+}
+
+export function themeCss(preferences: AppThemePreferences): string {
+	const { themeId, accentId } = normalizeAppThemePreferences(preferences);
+	const accent = curatedAccent(accentId);
+	return schemeRules((mode) => ({
+		...getThemeVariant(themeId, mode).tokens,
+		...(accent && accentTokens(accent, mode)),
+	}));
+}
+
+/**
+ * The accent's overrides alone. The pre-paint bootstrap appends this after the
+ * saved theme's CSS, so it must not restate any theme surface.
+ */
+export function accentCss(accentId: string): string {
+	const accent = curatedAccent(accentId);
+	return accent ? schemeRules((mode) => accentTokens(accent, mode)) : "";
 }
 
 export function getThemeAppearance(
@@ -962,23 +1114,18 @@ export function getThemeAppearance(
 	mode: ResolvedColorScheme,
 ): ThemeAppearance {
 	const { themeId } = normalizeAppThemePreferences(preferences);
-	const resolved = getThemeVariant(themeId, mode);
-	return {
-		mode,
-		themeId,
-		terminal: resolved?.terminal ?? null,
-		shiki: resolved?.shiki ?? `pierre-${mode}`,
-	};
+	const { terminal, shiki } = getThemeVariant(themeId, mode);
+	return { mode, themeId, terminal, shiki };
 }
 
 export function getThemeChrome(themeId: string): {
 	light: { background: string; foreground: string };
 	dark: { background: string; foreground: string };
 } {
-	const light = getThemeVariant(themeId, "light")?.tokens ?? themeChromeColors.light;
-	const dark = getThemeVariant(themeId, "dark")?.tokens ?? themeChromeColors.dark;
+	const chrome = ({ chrome, tokens }: ThemeVariant) =>
+		chrome ?? { background: tokens.background, foreground: tokens.foreground };
 	return {
-		light: { background: light.background, foreground: light.foreground },
-		dark: { background: dark.background, foreground: dark.foreground },
+		light: chrome(getThemeVariant(themeId, "light")),
+		dark: chrome(getThemeVariant(themeId, "dark")),
 	};
 }

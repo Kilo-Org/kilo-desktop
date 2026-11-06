@@ -34,8 +34,7 @@ export function normalizeTextSizes(input: unknown): TextSizes {
 
 /**
  * Hex paint tokens for native chrome (Linux window background, splash, title-bar symbols).
- * Hex equivalents of Anaconda surfaces — Electron cannot use oklch here.
- * Dark foreground is mist-300, matching the softened `--foreground` in globals.css.
+ * Theme-independent fallback, matching the Anaconda theme in app-themes.ts.
  * macOS uses a transparent window over vibrancy instead.
  */
 export const themeChromeColors = {
@@ -58,9 +57,8 @@ export const shellGlassOpacity = {
 } as const;
 
 /**
- * Dark shell surface hex: Mist 900 — keep in sync with
- * `--sidebar` / the html glass tint in apps/web globals.css. Distinct from
- * `themeChromeColors.dark.background` (50/50 Mist 950/900), which paints content panes.
+ * Dark shell surface hex (Mist 900): first-paint fallback for `--sidebar`
+ * before the theme stylesheet applies.
  */
 export const shellGlassDarkSurface = "#161b1d";
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	accentCss,
 	ACCENT_ROLE_DEFAULTS,
 	ACCENTS,
 	APP_THEMES,
@@ -35,6 +36,12 @@ function lightness(hex: string): number {
 	const f = y > (6 / 29) ** 3 ? Math.cbrt(y) : (y * (29 / 6) ** 2) / 3 + 4 / 29;
 	return 116 * f - 16;
 }
+
+/**
+ * Themes built from a role palette. Anaconda states the design system's token
+ * table verbatim, so the derivation rules checked here do not apply to it.
+ */
+const DERIVED_THEMES = APP_THEMES.filter(({ id }) => id !== "anaconda");
 
 describe("app theme presets", () => {
 	it("provides Anaconda and complete paired palettes", () => {
@@ -93,12 +100,10 @@ describe("app theme presets", () => {
 		});
 		const anaconda = { themeId: "anaconda", accentId: "theme" };
 		expect(normalizeAppThemePreferences(anaconda)).toEqual(anaconda);
-		expect(themeCss(anaconda)).toBe("");
 		expect(themeCss(DEFAULT_APP_THEME_PREFERENCES)).toContain("--background:#111111;");
 		expect(themeCss({ themeId: "bad;}html{", accentId: "bad" })).toBe(
 			themeCss(DEFAULT_APP_THEME_PREFERENCES),
 		);
-		expect(getThemeVariant("anaconda", "light")?.tokens).toBeNull();
 		expect(getThemeVariant("unknown", "dark")).toBe(getThemeVariant("kilo", "dark"));
 		expect(getThemeChrome("unknown")).toEqual(getThemeChrome("kilo"));
 	});
@@ -158,18 +163,17 @@ describe("app theme presets", () => {
 		});
 	});
 
-	it("scopes accent-role remaps to Kilo light; every other variant aliases the accent", () => {
+	it("scopes accent-role remaps to Kilo light; every derived variant aliases the accent", () => {
 		expect(getThemeVariant("kilo", "light")?.tokens).toMatchObject({
 			"primary-ink": "var(--muted-foreground)",
 			"primary-ink-foreground": "var(--background)",
 			"primary-soft": "var(--primary)",
 			"primary-soft-foreground": "var(--primary-foreground)",
 		});
-		for (const theme of APP_THEMES) {
+		for (const theme of DERIVED_THEMES) {
 			for (const mode of ["light", "dark"] as const) {
 				if (theme.id === "kilo" && mode === "light") continue;
-				const tokens = getThemeVariant(theme.id, mode)?.tokens;
-				if (tokens) expect(tokens).toMatchObject(ACCENT_ROLE_DEFAULTS);
+				expect(getThemeVariant(theme.id, mode).tokens).toMatchObject(ACCENT_ROLE_DEFAULTS);
 			}
 		}
 	});
@@ -208,18 +212,36 @@ describe("app theme presets", () => {
 		expect(css).toContain("--sidebar-primary:#1d4ed8;");
 		expect(css).toContain("--ring:#1d4ed8;");
 		expect(css).toContain("--primary:#93c5fd;");
-		expect(css).not.toContain("--background:");
 		expect(getThemeAppearance(preferences, "dark")).toEqual(
 			getThemeAppearance({ ...preferences, accentId: "theme" }, "dark"),
 		);
 	});
 
-	it("keeps semantic and accent text readable on content surfaces and tinted controls", () => {
-		for (const theme of APP_THEMES) {
+	it("emits full light and dark surfaces for every theme, Anaconda included", () => {
+		for (const { id } of APP_THEMES) {
+			const css = themeCss({ themeId: id, accentId: "theme" });
 			for (const mode of ["light", "dark"] as const) {
-				const variant = theme.variants[mode];
-				if (!variant?.tokens) continue;
-				const { tokens } = variant;
+				expect(css).toContain(`--background:${getThemeVariant(id, mode).tokens.background};`);
+			}
+		}
+	});
+
+	// The pre-paint bootstrap appends accent CSS after the saved theme's CSS, so
+	// restating a surface here would repaint every theme with Kilo's.
+	it("emits only accent overrides from accentCss", () => {
+		expect(accentCss("theme")).toBe("");
+		for (const { id } of ACCENTS.filter(({ id }) => id !== "theme")) {
+			const css = accentCss(id);
+			expect(css).toContain("--primary:");
+			expect(css).not.toContain("--background:");
+			expect(css).not.toContain("--foreground:");
+		}
+	});
+
+	it("keeps semantic and accent text readable on content surfaces and tinted controls", () => {
+		for (const theme of DERIVED_THEMES) {
+			for (const mode of ["light", "dark"] as const) {
+				const { tokens } = theme.variants[mode];
 				for (const surface of ["background", "card", "popover"] as const) {
 					for (const role of [
 						"foreground",
@@ -297,8 +319,7 @@ describe("app theme presets", () => {
 		expect(getThemeVariant("kilo", "light")?.terminal?.selectionBackground).toBe("#b6b6b6");
 		for (const theme of APP_THEMES) {
 			for (const mode of ["light", "dark"] as const) {
-				const terminal = theme.variants[mode]?.terminal;
-				if (!terminal) continue;
+				const { terminal } = theme.variants[mode];
 				expect(
 					Math.abs(lightness(terminal.selectionBackground) - lightness(terminal.background)),
 					`${theme.id} ${mode} selection on terminal background`,

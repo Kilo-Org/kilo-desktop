@@ -33,8 +33,9 @@ Docs:
 Use Node 24 or newer (`.nvmrc` pins the version CI uses) and the pnpm version declared
 in `packageManager`.
 
-The web app depends on `@anaconda/shadcn-theme`, and `pnpm-workspace.yaml` maps the
-`@anaconda` scope to GitHub Packages, so install needs a token with `read:packages`. pnpm
+Some dependencies (`@anaconda/playwright-utils`, the desktop bridge payloads) come from the
+`@anaconda` scope, which `pnpm-workspace.yaml` maps to GitHub Packages, so install needs a
+token with `read:packages`. pnpm
 ignores env-expanded credentials in a project-level `.npmrc`, so store the token in user
 config. CI uses `actions/setup-node` with `NODE_AUTH_TOKEN` from the
 `ANACONDA_PACKAGES_TOKEN` secret.

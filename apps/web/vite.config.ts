@@ -7,6 +7,7 @@ import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig, type Plugin } from "vite";
 
 import {
+	accentCss,
 	ACCENTS,
 	APP_THEMES,
 	DEFAULT_APP_THEME_PREFERENCES,
@@ -35,9 +36,7 @@ function injectThemeBootstrap(): Plugin {
 					children: themeBootstrapScript(
 						DEFAULT_APP_THEME_PREFERENCES.themeId,
 						themes,
-						Object.fromEntries(
-							ACCENTS.map(({ id }) => [id, themeCss({ themeId: "anaconda", accentId: id })]),
-						),
+						Object.fromEntries(ACCENTS.map(({ id }) => [id, accentCss(id)])),
 					),
 					injectTo: "head-prepend",
 				},

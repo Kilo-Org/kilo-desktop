@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 
+import { themeCss } from "@kilo-desktop/ui/themes/app-themes";
+
 import { Appearance, Navigation, Theme } from "../contracts";
 import { contributor, renderShell } from "./test-support";
 
@@ -49,6 +51,20 @@ describe("appearance settings", () => {
 		await expect
 			.poll(() => document.documentElement.style.getPropertyValue("--shell-glass-opacity"))
 			.toBe("100%");
+	});
+
+	it("repaints Anaconda's own palette when switching back to the theme accent", async () => {
+		const { main } = await renderShell();
+		await main.kernelSdk.domains
+			.get(Appearance)!
+			.methods.update({ themeId: "anaconda", accentId: "blue" });
+		window.location.hash = "#/settings/appearance";
+
+		await page.getByTestId("appearance-accent-theme").click();
+
+		const appTheme = () => document.getElementById("app-theme")?.textContent ?? "";
+		await expect.poll(appTheme).toBe(themeCss({ themeId: "anaconda", accentId: "theme" }));
+		expect(appTheme()).not.toContain("#93c5fd");
 	});
 
 	it("adopts appearance saved locally by an earlier version on first run", async () => {

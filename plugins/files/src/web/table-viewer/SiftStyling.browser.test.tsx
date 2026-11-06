@@ -10,8 +10,7 @@ import { loadSiftRuntime, type SiftLoadState } from "./sift-runtime.js";
  * Sift's stylesheet arrives only with the lazily loaded adapter chunk, so this
  * file can measure the host before and after it is injected. Host tokens use
  * Kilo's real DOM contract (`html[data-theme="dark"]`) and the shadcn names
- * Sift falls back to; the shadcn theme package itself is private, so the
- * values here are stand-ins.
+ * Sift falls back to; the values here are stand-ins, not an app theme.
  */
 const HOST_TOKENS = `
 :root {

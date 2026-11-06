@@ -86,17 +86,13 @@ function applyToDocument(preferences: AppearanceState, mode: ResolvedColorScheme
 	else delete root.dataset.theme;
 	root.style.colorScheme = mode;
 
-	const css = themeCss({ themeId: preferences.themeId, accentId: preferences.accentId });
 	let style = document.getElementById("app-theme");
-	if (!css) style?.remove();
-	else {
-		if (!style) {
-			style = document.createElement("style");
-			style.id = "app-theme";
-			document.head.append(style);
-		}
-		style.textContent = css;
+	if (!style) {
+		style = document.createElement("style");
+		style.id = "app-theme";
+		document.head.append(style);
 	}
+	style.textContent = themeCss({ themeId: preferences.themeId, accentId: preferences.accentId });
 
 	if (preferences.sidebarVibrancy) root.style.removeProperty("--shell-glass-opacity");
 	else root.style.setProperty("--shell-glass-opacity", "100%");

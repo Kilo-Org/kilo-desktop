@@ -4,8 +4,6 @@
 @source "../../../packages/ui";
 @source "../../../packages/kernel/src";
 @source "../../../plugins";
-@import "@anaconda/shadcn-theme/styles.css";
-@import "@anaconda/shadcn-theme/base-global.css";
 @import "tw-animate-css";
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/manrope";
@@ -13,28 +11,23 @@
 @import "shadcn/tailwind.css";
 @import "tw-shimmer";
 
+/* Palette tokens (surfaces, text, accent, status, sidebar, charts) come from
+   the selected app theme (APP_THEMES in app-themes.ts), injected as
+   `#app-theme`. This sheet owns only theme-independent roles and the roles
+   derived from the palette. */
 :root {
 	--font-sans: "Inter Variable", sans-serif;
 	--font-heading: "Manrope Variable", sans-serif;
 	--font-mono: "Source Code Pro Variable", monospace;
-	/* Existing app roles not supplied by the alpha.2 theme. Status roles are
-	   text-strength colours: `--X` for text, icons and dots, `--X-foreground`
-	   for text on `--X-surface` tints. */
-	--destructive: var(--color-red-700);
-	--info: var(--color-blue-600);
-	--info-foreground: var(--info);
+	--radius: 0.625rem;
+	/* Status roles are text-strength colours: `--X` for text, icons and dots,
+	   `--X-foreground` for text on `--X-surface` tints. */
 	--info-surface: color-mix(in oklch, var(--info) 10%, transparent);
-	--success: var(--color-green-700);
-	--success-foreground: var(--success);
 	--success-surface: color-mix(in oklch, var(--success) 10%, transparent);
-	--warning: var(--color-amber-700);
-	--warning-foreground: var(--warning);
 	--warning-surface: color-mix(in oklch, var(--warning) 10%, transparent);
 	/* Defaults for the Appearance text-size settings, overridden inline on <html>. */
 	--app-ui-text-size: 13px;
 	--app-chat-text-size: 14px;
-	--app-scrollbar-thumb: color-mix(in oklch, var(--muted-foreground) 40%, transparent);
-	--app-scrollbar-thumb-hover: color-mix(in oklch, var(--muted-foreground) 60%, transparent);
 	--shell-glass-opacity: 64%;
 	--window-controls-width: calc(
 		100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)
@@ -42,14 +35,6 @@
 	/* Titlebar rows centre on the traffic-light line (TITLEBAR_HEIGHT / 2 in
 	   ElectronWindow.ts) and never end above a Window Controls Overlay. */
 	--shell-titlebar-height: max(2.5rem, env(titlebar-area-height, 0px));
-	/* Accent roles (ACCENT_ROLE_DEFAULTS in app-themes.ts) for CSS-owned themes. */
-	--primary-ink: var(--primary);
-	--primary-ink-foreground: var(--primary-foreground);
-	--primary-soft: var(--primary);
-	--primary-soft-foreground: var(--primary-foreground);
-	--update: var(--color-green-850);
-	--update-surface: color-mix(in oklch, var(--primary) 12%, transparent);
-	--update-surface-hover: color-mix(in oklch, var(--primary) 18%, transparent);
 	/* Quiet dividers (activity rails, code headers, nested rows). Derived so
 	   every theme's border weight carries through. */
 	--border-subtle: color-mix(in oklch, var(--border) 60%, transparent);
@@ -70,7 +55,6 @@
 	   page and card surfaces. */
 	--pane-surface: var(--background);
 	--pane-raised: var(--card);
-	--sidebar: var(--color-mist-100);
 	/* The sidebar's hover wash; selected rows step up to --state-selected. */
 	--sidebar-accent: var(--state-hover);
 	--composer-shadow: 0 12px 28px -18px rgb(0 0 0 / 0.4);
@@ -78,42 +62,22 @@
 }
 
 [data-theme="dark"] {
-	--sidebar: var(--background);
-	--background: color-mix(in oklch, var(--color-mist-950) 50%, var(--color-mist-900));
-	--card: var(--color-mist-900);
-	--popover: var(--color-mist-900);
-	/* mist-300: brighter text halates on these near-black surfaces. */
-	--foreground: var(--color-mist-300);
-	--card-foreground: var(--color-mist-300);
-	--popover-foreground: var(--color-mist-300);
-	--secondary-foreground: var(--color-mist-300);
-	--accent-foreground: var(--color-mist-300);
-	--sidebar-foreground: var(--color-mist-300);
-	--sidebar-accent-foreground: var(--color-mist-300);
-	/* Translucent hairline: keeps one apparent weight over both the opaque
-	   content panes and the vibrancy-backed sidebar, which a solid Mist step
-	   cannot — its contrast inverts with the surface beneath it. */
-	--border: color-mix(in oklch, var(--color-mist-300) 12%, transparent);
-	/* The glass sidebar keeps the lighter hairline over vibrancy. */
-	--sidebar-border: color-mix(in oklch, var(--color-mist-300) 6%, transparent);
-	/* Restated because the light override above would otherwise win over the
-	   theme package's dark value (same specificity, later source order). */
-	--destructive: var(--color-red-400);
-	--info: var(--color-blue-400);
-	--success: var(--color-green-400);
-	--warning: var(--color-amber-400);
 	--shell-glass-opacity: 80%;
-	--update: var(--primary);
-	--primary-soft: color-mix(in oklab, var(--primary) 10%, transparent);
-	--primary-soft-foreground: var(--primary);
 	/* Dark glass reads by its stroke; the drop shadow only muddies it. */
 	--composer-shadow: 0 0 #0000;
 }
 
 @layer base {
+	* {
+		@apply border-border outline-ring/50;
+	}
 	body {
 		/* Let Electron vibrancy / mica show through the app shell. */
-		@apply m-0 min-h-screen min-w-80 bg-transparent;
+		@apply text-foreground m-0 min-h-screen min-w-80 bg-transparent font-sans;
+	}
+	button:not(:disabled, [role="checkbox"], [role="radio"]),
+	[role="button"]:not(:disabled) {
+		@apply cursor-pointer;
 	}
 	/* Standard scrollbar properties only: Chromium ignores every
 	   ::-webkit-scrollbar rule on an element whose (inherited)
@@ -165,13 +129,44 @@ html {
 	padding-top: calc(3rem - var(--shell-titlebar-height));
 }
 
-/* A docked sidebar carries the traffic lights, so a page header with nothing
-   to show can shrink to the pane gutter. */
+@custom-variant dark (&:is([data-theme="dark"] *));
+
 @custom-variant data-open (&:where([data-state="open"], [data-open]:not([data-open="false"])));
 
 @custom-variant data-closed (&:where([data-state="closed"], [data-closed]:not([data-closed="false"])));
 
 @theme inline {
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+	--color-sidebar: var(--sidebar);
+	--color-sidebar-foreground: var(--sidebar-foreground);
+	--color-sidebar-primary: var(--sidebar-primary);
+	--color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+	--color-sidebar-accent: var(--sidebar-accent);
+	--color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+	--color-sidebar-border: var(--sidebar-border);
+	--color-sidebar-ring: var(--sidebar-ring);
+	--color-chart-1: var(--chart-1);
+	--color-chart-2: var(--chart-2);
+	--color-chart-3: var(--chart-3);
+	--color-chart-4: var(--chart-4);
+	--color-chart-5: var(--chart-5);
 	--color-info: var(--info);
 	--color-info-foreground: var(--info-foreground);
 	--color-primary-ink: var(--primary-ink);
@@ -193,6 +188,17 @@ html {
 	--color-state-selected-strong: var(--state-selected-strong);
 	--shadow-composer: var(--composer-shadow);
 	--shadow-composer-shelf: var(--composer-shelf-shadow);
+	--font-sans: var(--font-sans);
+	--font-mono: var(--font-mono);
+	--font-heading: var(--font-heading);
+	--radius-xs: calc(var(--radius) * 0.2);
+	--radius-sm: calc(var(--radius) * 0.6);
+	--radius-md: calc(var(--radius) * 0.8);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) * 1.4);
+	--radius-2xl: calc(var(--radius) * 1.8);
+	--radius-3xl: calc(var(--radius) * 2.2);
+	--radius-4xl: calc(var(--radius) * 2.6);
 	/* px offsets from the text-size setting; spacing stays rem so layouts do not move. */
 	--text-2xs: calc(var(--app-ui-text-size) - 2px);
 	--text-2xs--line-height: calc(var(--app-ui-text-size) + 3px);

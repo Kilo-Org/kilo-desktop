@@ -5,7 +5,6 @@ import { ACCENTS, APP_THEMES, getThemeVariant } from "@kilo-desktop/ui/themes/ap
 import {
 	DEFAULT_TEXT_SIZES,
 	TEXT_SIZE_RANGE,
-	themeChromeColors,
 	type TextSizeTarget,
 	type ThemeSource,
 } from "@kilo-desktop/ui/themes/theme-tokens";
@@ -279,23 +278,20 @@ function ChatTextPreview() {
 }
 
 function ThemeSwatch({ themeId, scheme }: { themeId: string; scheme: "light" | "dark" }) {
-	const tokens = getThemeVariant(themeId, scheme)?.tokens;
-	const background = tokens?.background ?? themeChromeColors[scheme].background;
-	const foreground = tokens?.foreground ?? themeChromeColors[scheme].foreground;
+	const { tokens } = getThemeVariant(themeId, scheme);
+	const { background, foreground } = tokens;
 	const kiloLight = themeId === "kilo" && scheme === "light";
 	return (
 		<span
 			aria-hidden="true"
 			className="inline-flex size-6 shrink-0 items-center justify-center self-center rounded-md border text-xs leading-none font-medium"
 			style={{
-				background: kiloLight ? tokens?.primary : background,
-				color: kiloLight
-					? tokens?.["primary-foreground"]
-					: (tokens?.primary ?? ACCENTS[0][scheme].color),
+				background: kiloLight ? tokens.primary : background,
+				color: kiloLight ? tokens["primary-foreground"] : tokens.primary,
 				borderColor:
 					themeId === "kilo" || themeId === "anaconda"
 						? `color-mix(in srgb, ${foreground} 35%, ${background})`
-						: (tokens?.border ?? "var(--border)"),
+						: tokens.border,
 			}}
 		>
 			Aa
@@ -329,16 +325,12 @@ function ThemePreview({ source }: { source: ThemeSource }) {
 
 const WINDOW_PALETTE = {
 	light: {
-		bar: "#ffffff",
-		sidebar: "var(--color-mist-50)",
 		line: "rgb(0 0 0 / 0.14)",
 		muted: "rgb(0 0 0 / 0.08)",
 		block: "rgb(0 0 0 / 0.05)",
 		border: "border-black/10",
 	},
 	dark: {
-		bar: themeChromeColors.dark.background,
-		sidebar: "var(--color-mist-900)",
 		line: "rgb(255 255 255 / 0.22)",
 		muted: "rgb(255 255 255 / 0.1)",
 		block: "rgb(255 255 255 / 0.06)",
@@ -348,24 +340,20 @@ const WINDOW_PALETTE = {
 
 function MiniWindow({ scheme }: { scheme: "light" | "dark" }) {
 	const { appTheme } = useAppearance();
-	const tokens = getThemeVariant(appTheme.themeId, scheme)?.tokens;
-	const chrome = tokens ?? themeChromeColors[scheme];
+	const { tokens } = getThemeVariant(appTheme.themeId, scheme);
 	const paint = WINDOW_PALETTE[scheme];
 	return (
 		<div
 			className={cn("overflow-hidden rounded-lg border shadow-xs", paint.border)}
-			style={{ background: chrome.background }}
+			style={{ background: tokens.background }}
 		>
-			<div
-				className="flex h-3.5 items-center gap-1 px-2"
-				style={{ background: tokens?.card ?? paint.bar }}
-			>
+			<div className="flex h-3.5 items-center gap-1 px-2" style={{ background: tokens.card }}>
 				<span className="size-1.5 rounded-full bg-[#ff5f57]" />
 				<span className="size-1.5 rounded-full bg-[#febc2e]" />
 				<span className="size-1.5 rounded-full bg-[#28c840]" />
 			</div>
 			<div className="flex h-20">
-				<div className="w-[30%]" style={{ background: tokens?.sidebar ?? paint.sidebar }} />
+				<div className="w-[30%]" style={{ background: tokens.sidebar }} />
 				<div className="flex flex-1 flex-col gap-1.5 p-2.5">
 					<div className="h-1.5 w-[72%] rounded-full" style={{ background: paint.line }} />
 					<div className="h-1.5 w-[48%] rounded-full" style={{ background: paint.muted }} />

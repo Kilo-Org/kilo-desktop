@@ -62,7 +62,7 @@ The design is [docs/plugin-architecture.md](./docs/plugin-architecture.md); in s
 
 ### Dependency ownership (host vs plugin)
 
-**Tier 1 — Shared runtime set (host-owned singletons):** `react` / `react-dom`, `@kilo-desktop/kernel`, `@kilo-desktop/ui`, `@tanstack/react-query`, `zod` — two copies would break hooks, context or schema identity. Plugins declare them as `peerDependencies`. `@tanstack/react-router` is owned by kilo.shell; others navigate through its `kilo.shell/navigation` domain object. The Tailwind pipeline and `@anaconda/shadcn-theme` tokens belong to the renderer (`apps/web/src/globals.css` scans `packages/ui`, `packages/kernel` and `plugins/`).
+**Tier 1 — Shared runtime set (host-owned singletons):** `react` / `react-dom`, `@kilo-desktop/kernel`, `@kilo-desktop/ui`, `@tanstack/react-query`, `zod` — two copies would break hooks, context or schema identity. Plugins declare them as `peerDependencies`. `@tanstack/react-router` is owned by kilo.shell; others navigate through its `kilo.shell/navigation` domain object. The Tailwind pipeline and theme token mappings belong to the renderer (`apps/web/src/globals.css` scans `packages/ui`, `packages/kernel` and `plugins/`).
 
 **Tier 2 — Per-plugin runtime deps:** one plugin's implementation details, normal workspace deps.
 
@@ -89,7 +89,7 @@ The design is [docs/plugin-architecture.md](./docs/plugin-architecture.md); in s
 - **React 19** — function components + hooks only
 - **TanStack Router** (file-based, hash history) + **TanStack Query**
 - **shadcn/ui** (`base-nova` style, `lucide-react` icons, `@base-ui/react` primitives) — primitives are owned source: keep them close to stock and edit them directly, marking each deviation with a `// local:` comment (`rg "local:" packages/ui/src/components` lists them). Convention: default child icons are `size-3.5` (stock `size-4`). Upgrade with `npx shadcn@latest add <name> --dry-run --diff -c packages/ui` and merge by hand; re-point stock's `cn` import to `@kilo-desktop/ui/lib/utils`. `packages/ui` is stock primitives plus a few composites shared across plugin boundaries (e.g. `SummaryCard`, `ColorSwatchPicker`); consistency comes from using stock parts without visual call-site overrides, not from new wrappers. A look repeated within one plugin is a local component in that plugin.
-- **@anaconda/shadcn-theme** for design tokens (CSS custom properties, Tailwind v4)
+- **App themes** own the design tokens: palettes live in `APP_THEMES` (`packages/ui/src/themes/app-themes.ts`) and are injected as CSS custom properties; `apps/web/src/globals.css` maps them to Tailwind v4 utilities
 - **Vitest** — `*.test.ts` (node unit), `*.integration.test.ts` (serial node), `*.browser.test.tsx` (Chromium component), `*.app.test.tsx` (full app tree)
 - **Playwright e2e** — packaged Electron via `@anaconda/playwright-utils` in the root `e2e/` package; every plugin ships at least one `@smoke` spec
 - **Coverage** — 80% lines/branches/functions/statements (`pnpm coverage`)

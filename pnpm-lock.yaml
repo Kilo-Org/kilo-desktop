@@ -548,9 +548,6 @@ importers:
 
   apps/web:
     dependencies:
-      '@anaconda/shadcn-theme':
-        specifier: 0.1.0-alpha.5
-        version: 0.1.0-alpha.5
       '@base-ui/react':
         specifier: ^1.6.0
         version: 1.6.0(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -3108,9 +3105,6 @@ packages:
     hasBin: true
     peerDependencies:
       '@playwright/test': ~1.61.1
-
-  '@anaconda/shadcn-theme@0.1.0-alpha.5':
-    resolution: {integrity: sha512-hEz7lW/edGXtqUeNaE7NaTF6Gl9IoHQpqy3JPkTVBmpmmJL2D+uen+fSh+VrI0ZVKCMhSWlaKzumiX6sYwBVEA==, tarball: https://npm.pkg.github.com/download/@anaconda/shadcn-theme/0.1.0-alpha.5/705bb7bdb7d28fb0e11bbf4d3f52dcfcd465258e}
 
   '@assistant-ui/core@0.3.5':
     resolution: {integrity: sha512-+3hFt6g+y83rbQAjbWZCvtCe4J5RIYwjcRWRly56AxIQqcXv11vFJTc4587RkOEGZTkjp8FUOA2ILEW5YoweHg==}
@@ -10586,8 +10580,6 @@ snapshots:
       - eslint-plugin-import-x
       - jiti
       - supports-color
-
-  '@anaconda/shadcn-theme@0.1.0-alpha.5': {}
 
   '@assistant-ui/core@0.3.5(patch_hash=20d1cb964b0fcf06d7d9f60b4ad7c74f905039b0a49e98af1b16130a400ddac1)(@assistant-ui/store@0.3.9(@assistant-ui/tap@0.9.12(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8))(@assistant-ui/tap@0.9.12(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(assistant-cloud@0.1.38)(react@19.2.8)(zustand@5.0.14(@types/react@19.2.17)(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))':
     dependencies:

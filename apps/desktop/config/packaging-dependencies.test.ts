@@ -241,6 +241,45 @@ describe("packaged production dependencies", () => {
 		expect(release).not.toContain("git push");
 	});
 
+	// The AWS publish roles trust only `environment:<env>:ref:refs/heads/main`
+	// OIDC subjects; a tag push or branch dispatch would present another subject.
+	it("only releases from main", () => {
+		const release = readFileSync(path.join(workspaceRoot, ".github/workflows/release.yml"), "utf8");
+		const triggers = release.slice(release.indexOf("on:"), release.indexOf("permissions:"));
+
+		expect(triggers).not.toContain("push:");
+		expect(triggers).not.toContain("tags:");
+		expect(release).toContain('if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then');
+	});
+
+	it("assumes the AWS publish role only after dependency install and build", () => {
+		const publish = readFileSync(
+			path.join(workspaceRoot, ".github/workflows/publish_helper.yml"),
+			"utf8",
+		);
+		const jobs = publish.split(/\n {2}(?=[a-z_-]+:\n)/);
+		const publishJob = jobs.find((job) => job.startsWith("publish:")) ?? "";
+		const releaseJob = jobs.find((job) => job.startsWith("release:")) ?? "";
+
+		for (const job of [publishJob, releaseJob]) {
+			const assumeRole = job.indexOf("aws-actions/configure-aws-credentials");
+			expect(assumeRole).toBeGreaterThan(-1);
+			expect(job.indexOf("pnpm install --frozen-lockfile")).toBeLessThan(assumeRole);
+		}
+		expect(publishJob.indexOf("run release:smoke")).toBeLessThan(
+			publishJob.indexOf("aws-actions/configure-aws-credentials"),
+		);
+		expect(publishJob.indexOf("aws-actions/configure-aws-credentials")).toBeLessThan(
+			publishJob.indexOf("publish --from-dry-run"),
+		);
+	});
+
+	it("never assumes the AWS publish role from manual builds", () => {
+		const build = readFileSync(path.join(workspaceRoot, ".github/workflows/build.yml"), "utf8");
+
+		expect(build).not.toContain("aws-actions/configure-aws-credentials");
+	});
+
 	it("finishes staging application content before ASAR integrity is sealed", () => {
 		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
 		const beforeAsar = forge.slice(forge.indexOf("beforeAsar:"), forge.indexOf("win32metadata:"));

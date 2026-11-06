@@ -121,12 +121,6 @@ jobs:
           key_vault_uri: ${{ secrets.AZURE_KEY_VAULT_URI }}
           cert_name: ${{ secrets.AZURE_CERT_NAME }}
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@bb84b6db015d7c3d879540350fdc17b85d6ad362
-        with:
-          aws-region: ${{ vars.AWS_REGION != '' && vars.AWS_REGION || 'us-east-1' }}
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -148,6 +142,14 @@ jobs:
       - name: Smoke-test updater payload
         if: matrix.os != 'linux'
         run: pnpm --filter @kilo-desktop/desktop run release:smoke
+
+      # Assumed only now so dependency install scripts and the build never run
+      # with write access to the update buckets.
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@bb84b6db015d7c3d879540350fdc17b85d6ad362
+        with:
+          aws-region: ${{ vars.AWS_REGION != '' && vars.AWS_REGION || 'us-east-1' }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
 
       - name: Publish tested release candidate
         run: pnpm --filter @kilo-desktop/desktop exec tsx config/run-packaging.ts publish --from-dry-run
@@ -290,12 +292,6 @@ jobs:
       - name: Setup Node and pnpm
         uses: ./.github/actions/setup-node-pnpm
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@bb84b6db015d7c3d879540350fdc17b85d6ad362
-        with:
-          aws-region: ${{ vars.AWS_REGION != '' && vars.AWS_REGION || 'us-east-1' }}
-          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -307,6 +303,14 @@ jobs:
         with:
           pattern: release-{mac,windows,windows-arm64,linux,linux-arm64}
           path: release-artifacts
+
+      # Assumed after dependency install so install scripts never hold bucket
+      # write access.
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@bb84b6db015d7c3d879540350fdc17b85d6ad362
+        with:
+          aws-region: ${{ vars.AWS_REGION != '' && vars.AWS_REGION || 'us-east-1' }}
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
 
       - name: Create GitHub release and publish track aliases
         id: publish

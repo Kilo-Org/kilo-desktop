@@ -1,9 +1,9 @@
 name: Release
 
+# Releases only run from main (no tag trigger) so the AWS publish roles can
+# trust just `environment:<preview|production>:ref:refs/heads/main` OIDC
+# subjects; a tag push or branch dispatch would present a different subject.
 on:
-  push:
-    tags:
-      - "v*.*.*"
   schedule:
     - cron: "0 */3 * * *"
   workflow_dispatch:
@@ -53,6 +53,11 @@ jobs:
           DISPATCH_TRACK: ${{ inputs.track }}
           GH_TOKEN: ${{ github.token }}
         run: |
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Releases must run from main (got $GITHUB_REF)." >&2
+            exit 1
+          fi
+
           if [[ "$GITHUB_EVENT_NAME" == "schedule" || "$DISPATCH_TRACK" == "preview" ]]; then
             echo "release_track=preview" >> "$GITHUB_OUTPUT"
             preview_build_time=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .created_at)
@@ -67,28 +72,9 @@ jobs:
           # Stable versions are bumped on main through a normal pull request; the
           # release only publishes the committed version and never writes back.
           version=$(jq -r .version apps/desktop/package.json)
-          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
-            if ! git merge-base --is-ancestor HEAD origin/main; then
-              echo "Stable release tags must point to a commit on main." >&2
-              exit 1
-            fi
-            if [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-preview-[0-9]{6}-[0-9]{5}$ ]]; then
-              echo "Preview tags are created by Preview release runs and cannot trigger Stable publication." >&2
-              exit 1
-            fi
-            if [[ "${GITHUB_REF_NAME#v}" != "$version" ]]; then
-              echo "Tag $GITHUB_REF_NAME does not match apps/desktop/package.json version $version. Bump the version on main before tagging." >&2
-              exit 1
-            fi
-          else
-            if [[ "$DISPATCH_TRACK" != "stable" ]]; then
-              echo "Unsupported release track: $DISPATCH_TRACK" >&2
-              exit 1
-            fi
-            if [[ "$GITHUB_REF_NAME" != "main" ]]; then
-              echo "Stable releases must be dispatched from main." >&2
-              exit 1
-            fi
+          if [[ "$DISPATCH_TRACK" != "stable" ]]; then
+            echo "Unsupported release track: $DISPATCH_TRACK" >&2
+            exit 1
           fi
 
           if [[ "$version" =~ -preview-[0-9]{6}-[0-9]{5}$ || ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
@@ -101,7 +87,7 @@ jobs:
             exit 1
           fi
           if [[ "$GITHUB_RUN_ATTEMPT" == "1" ]]; then
-            if [[ "$GITHUB_EVENT_NAME" != "push" ]] && git rev-parse "v$version" >/dev/null 2>&1; then
+            if git rev-parse "v$version" >/dev/null 2>&1; then
               echo "Stable tag v$version already exists. Retry its original workflow run to recover a partial publication." >&2
               exit 1
             fi

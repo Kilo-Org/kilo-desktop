@@ -17,7 +17,7 @@ configuration.
 | Channel   | What it is                         | Who uses it              | How it ships                              |
 | --------- | ---------------------------------- | ------------------------ | ----------------------------------------- |
 | `preview` | Continuously consumable prerelease | Early adopters / testers | Scheduled cadence or manual `Release` run |
-| `stable`  | Stable customer release            | Customers                | `vX.Y.Z` tag or manual `Release` run      |
+| `stable`  | Stable customer release            | Customers                | Manual `Release` run from `main`          |
 
 Development has an isolated identity. Preview and Stable intentionally share one durable
 packaged identity so the About settings update-track selector (gated by the `update-track-switcher`
@@ -182,6 +182,12 @@ with repository/environment variables:
 | `AWS_ROLE_ARN`       | IAM role assumed via GitHub OIDC            |
 | `AWS_REGION`         | Optional; defaults to `us-east-1`           |
 
+Both environments must restrict deployments to `main` (deployment branch policy), and
+`production` should require reviewer approval. Each IAM role trusts only the matching
+`environment:<name>:ref:refs/heads/main` OIDC subject, which needs the repository's OIDC
+subject template customized to include `environment` and `ref`. Jobs assume the role
+immediately before publishing, after dependency install and build.
+
 Official builds also need these service IDs. They are not committed, so source builds and
 forks report nothing and resolve feature flags to their defaults. `Build` and `Release` fail
 early when one is missing (`.github/actions/require-service-config`). Values shared by both
@@ -204,7 +210,7 @@ tracks are repository-level variables; only the LaunchDarkly ID differs per envi
 | ------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `CI`          | Pull request / merge queue               | Lint, format check, `pnpm check`, and package tests                                                                   |
 | `Build`       | Manual                                   | `pnpm run make -- --arch=<arch>` only; uses Preview signing configuration; GitHub artifacts named `<platform>-<arch>` |
-| `Release`     | Stable tag, every three hours, or manual | Scheduled/manual Preview or tagged/manual Stable publication                                                          |
+| `Release`     | Every three hours, or manual from `main` | Scheduled/manual Preview or manual Stable publication                                                                 |
 | `Nightly E2E` | Daily or manual                          | Full cross-platform E2E; independent from Preview releases                                                            |
 
 Scheduled `Release` runs compare `main` with the latest `v*-preview-*` tag and skip
@@ -220,8 +226,8 @@ Stable releases publish the version committed in `apps/desktop/package.json`
    pnpm install --lockfile-only --ignore-scripts
    ```
 
-2. After it merges, either push a `v1.2.3` tag on that `main` commit or dispatch `Release`
-   with track `stable` from `main`. A tag that does not match the committed version is rejected.
+2. After it merges, dispatch `Release` with track `stable` from `main`. Pushing a tag does
+   not trigger a release; runs from any ref other than `main` are rejected.
 
 Plain `X.Y.Z` is marked latest; suffixed Stable versions are GitHub prereleases.
 Squirrel.Windows limits the prerelease portion to 20 characters. Fresh runs reject an existing
@@ -231,7 +237,8 @@ publication. Stable workflows are serialized. The release uses only the default
 
 Signing secrets and update variables live on the GitHub Environments above. `Build`
 attaches the `preview` environment so the same codesign material is available for
-manual makes; it does not publish to S3. Linux jobs install `fakeroot` for DEB packaging
+manual makes. Signed builds therefore run only from `main`, with the same reviewer approval
+as a Preview release; `Build` never assumes the AWS role or publishes to S3. Linux jobs install `fakeroot` for DEB packaging
 and the `pkg-config`/`libsecret` development packages required to rebuild keytar.
 
 ## Signing credentials

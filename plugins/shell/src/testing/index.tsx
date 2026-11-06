@@ -9,7 +9,12 @@ import {
 	createTestHost,
 	createTestKernelPair,
 } from "@kilo-desktop/kernel/testing";
-import { KernelProvider, KernelRoot, type RendererKernel } from "@kilo-desktop/kernel/web";
+import {
+	KernelProvider,
+	KernelRoot,
+	type RendererKernel,
+	type RendererWindow,
+} from "@kilo-desktop/kernel/web";
 
 import manifest from "../../plugin.json";
 import { Onboarding } from "../contracts";
@@ -47,7 +52,10 @@ export interface ShellHost {
 	readonly renderer: RendererKernel;
 	readonly storage: ReturnType<typeof createMemoryStorage>;
 	/** Boots another window's renderer kernel (a pop-out); render into it yourself. */
-	readonly openWindow: (windowId: string) => Promise<RendererKernel>;
+	readonly openWindow: (
+		windowId: string,
+		window?: Omit<RendererWindow, "id">,
+	) => Promise<RendererKernel>;
 }
 
 let previousHost: { main: MainKernel; renderers: RendererKernel[] } | undefined;
@@ -103,8 +111,8 @@ export async function renderShell(
 		</KernelProvider>,
 	);
 	const renderers = [renderer];
-	const openWindow = async (windowId: string) => {
-		const opened = await openKernelWindow(windowId);
+	const openWindow = async (windowId: string, window?: Omit<RendererWindow, "id">) => {
+		const opened = await openKernelWindow(windowId, window);
 		renderers.push(opened);
 		return opened;
 	};

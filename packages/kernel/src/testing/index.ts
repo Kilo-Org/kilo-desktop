@@ -8,7 +8,11 @@ import {
 import type { KernelLogger } from "../sdk";
 import type { PluginRegistration } from "../plugin";
 import { createLinkedTransports } from "../transport";
-import { createRendererKernel, type RendererKernel } from "../web/renderer-kernel";
+import {
+	createRendererKernel,
+	type RendererKernel,
+	type RendererWindow,
+} from "../web/renderer-kernel";
 
 export { testManifest, testPlugin } from "../test-fixtures";
 import type { KvStore, KvStoreOptions, PluginStorage } from "../host-services";
@@ -28,8 +32,14 @@ export function createTestHost(overrides: Partial<MainKernelHost> = {}): MainKer
 export interface TestKernelPair {
 	readonly main: MainKernel;
 	readonly renderer: RendererKernel;
-	/** Boots another window's renderer kernel on the same main, as a pop-out window gets. */
-	readonly openWindow: (windowId: string) => Promise<RendererKernel>;
+	/**
+	 * Boots another window's renderer kernel on the same main, as a pop-out window gets;
+	 * pass `window` to give it a role (a `secondary` window sets `kernel/secondaryWindow`).
+	 */
+	readonly openWindow: (
+		windowId: string,
+		window?: Omit<RendererWindow, "id">,
+	) => Promise<RendererKernel>;
 }
 
 /** Boots a main and one renderer kernel linked in memory, with plugins activated. */
@@ -53,9 +63,10 @@ export async function createTestKernelPair(options: {
 		...(options.logger ? { logger: options.logger } : {}),
 	});
 	await main.start();
-	const openWindow = async (windowId: string) => {
+	const openWindow = async (windowId: string, window?: Omit<RendererWindow, "id">) => {
 		const renderer = createRendererKernel({
 			windowId,
+			...(window ? { window } : {}),
 			platform: "mac",
 			transport: transports.connectRenderer(windowId),
 			registrations: options.renderer,

@@ -375,6 +375,43 @@ describe("the workspace board", () => {
 		await vi.waitFor(() => expect(navigator().getState().activeSessionId).toBe("a"));
 		expect(windows.focusMain).toHaveBeenCalled();
 	});
+
+	it("moves and removes a card from its menu in the board's own window", async () => {
+		const { board, cards, host } = await renderBoard({
+			sessions: [session("a", { title: "Fix login" })],
+		});
+		await board().methods.place({ sessionId: "a", columnId: "backlog", index: 0 });
+		const params = { view: "kilo.workspace-board/board" };
+		const popOut = await host.openWindow("w9", {
+			role: "secondary",
+			view: "kilo.workbench/sessions-view-window",
+			params,
+		});
+		const windowView = popOut.extensions
+			.list(KernelWindowView)
+			.find((contribution) => contribution.key === "kilo.workbench/sessions-view-window")!;
+		render(
+			<KernelProvider kernel={popOut}>
+				<Above>
+					<RenderContribution contribution={windowView} props={{ params }} />
+				</Above>
+			</KernelProvider>,
+		);
+		const detached = page.getByTestId("sessions-view-window");
+		const openCardMenu = async () => {
+			await detached.getByTestId("workspace-board-card-a").hover();
+			await detached.getByRole("button", { name: "Session actions for Fix login" }).click();
+		};
+
+		await openCardMenu();
+		await page.getByTestId("session-menu-kilo.workspace-board/move-on-board").hover();
+		await page.getByTestId("session-menu-kilo.workspace-board/move-on-board-review").click();
+		await vi.waitFor(() => expect(cards()).toMatchObject({ backlog: [], review: ["a"] }));
+
+		await openCardMenu();
+		await page.getByTestId("session-menu-kilo.workspace-board/remove-from-board").click();
+		await vi.waitFor(() => expect(cards().review).toEqual([]));
+	});
 });
 
 /** The menu shows while the column's header, not one of its cards, is hovered. */

@@ -27,9 +27,9 @@ function columnsWidth(): number | undefined {
 }
 
 /**
- * kilo.workspace-board's renderer entry: the board as a sessions view in every window
- * (the workbench shows it in place or in its own window), and in the main
- * window its toggle, session-menu items, clear confirmation and commands.
+ * kilo.workspace-board's renderer entry: the board as a sessions view and its
+ * session-menu items in every window (the workbench shows it in place or in its
+ * own window), and in the main window its toggle, clear confirmation and commands.
  */
 export const boardWebEntry = definePlugin({
 	activate(sdk) {
@@ -41,12 +41,13 @@ export const boardWebEntry = definePlugin({
 			headerActions: BoardHeaderActions,
 			preferredWidth: columnsWidth,
 		});
-		if (sdk.context.get("kernel/secondaryWindow")) return;
-		sdk.extensions.implement(NavigatorAction, "board", BoardToggle);
-		sdk.extensions.implement(Overlay, "clear-board", ClearBoardDialog);
+		// The cards' session menu shows wherever the board does, popped out included.
 		for (const [id, item] of Object.entries(BOARD_MENU_ITEMS)) {
 			sdk.extensions.implement(SessionMenu, id, item);
 		}
+		if (sdk.context.get("kernel/secondaryWindow")) return;
+		sdk.extensions.implement(NavigatorAction, "board", BoardToggle);
+		sdk.extensions.implement(Overlay, "clear-board", ClearBoardDialog);
 		const navigator = () => sdk.domains.get(Navigator);
 		const command = (id: string, run: () => void) =>
 			sdk.extensions.implement(KernelCommand, id, run);

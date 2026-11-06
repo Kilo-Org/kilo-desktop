@@ -178,21 +178,21 @@ export class LaunchDarklyProvider
 }
 
 /**
- * Human-readable one-liner for identify logging. Email is masked and name /
- * username are omitted entirely so the line confirms which attributes were
- * set without persisting raw PII to log files.
+ * One-liner for identify logging. It lands in main.log, which users attach to
+ * support tickets, so it records which attributes are set rather than their
+ * values. `userId` is reduced to set/anonymous because `contextFor` keys it
+ * on the email.
  */
 function describeContext(ctx: FeatureFlagContext): string {
-	const parts: string[] = [`userId=${ctx.userId ?? "anonymous"}`, `employee=${ctx.isEmployee}`];
+	const parts: string[] = [
+		`userId=${ctx.userId ? "set" : "anonymous"}`,
+		`employee=${ctx.isEmployee}`,
+	];
 	if (ctx.subscription) parts.push(`subscription=${ctx.subscription}`);
 	if (ctx.email) parts.push(`email=${maskEmail(ctx.email)}`);
 	if (ctx.name) parts.push("name=set");
 	if (ctx.username) parts.push("username=set");
-	if (ctx.organization) {
-		parts.push(
-			`org=${ctx.organization.id}${ctx.organization.name ? ` (${ctx.organization.name})` : ""}`,
-		);
-	}
+	if (ctx.organization) parts.push(`org=${ctx.organization.id}`);
 	return parts.join(" ");
 }
 

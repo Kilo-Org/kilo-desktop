@@ -198,6 +198,36 @@ describe("LaunchDarklyProvider", () => {
 		expect(ldContext).not.toHaveProperty("name");
 	});
 
+	it("identify() logs which attributes are set without the raw email or org name", async () => {
+		const infoSpy = vi.fn();
+		const provider = makeProvider({ logger: fakeLogger({ info: infoSpy }) });
+
+		// Mirrors contextFor(): the signed-in user's userId is their email.
+		await provider.identify({
+			isEmployee: false,
+			userId: "grace.hopper@example.com",
+			email: "grace.hopper@example.com",
+			organization: { id: "org-42", name: "Hopper Industries" },
+		});
+
+		const line = infoSpy.mock.calls.map(([message]) => String(message)).join("\n");
+		expect(line).toContain("LaunchDarkly identify:");
+		expect(line).not.toContain("grace.hopper@example.com");
+		expect(line).not.toContain("Hopper Industries");
+		expect(line).toContain("userId=set");
+		expect(line).toContain("email=g***@example.com");
+		expect(line).toContain("org=org-42");
+	});
+
+	it("identify() logs an anonymous userId when signed out", async () => {
+		const infoSpy = vi.fn();
+		const provider = makeProvider({ logger: fakeLogger({ info: infoSpy }) });
+
+		await provider.identify({ isEmployee: false });
+
+		expect(infoSpy).toHaveBeenCalledWith(expect.stringContaining("userId=anonymous"));
+	});
+
 	it("identify() still applies the context when start timed out", async () => {
 		startSpy.mockResolvedValue({ status: "timeout" });
 		const provider = makeProvider();

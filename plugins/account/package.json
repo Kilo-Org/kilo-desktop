@@ -21,7 +21,7 @@
 		"@kilo-desktop/plugin-agent": "workspace:*",
 		"@kilo-desktop/plugin-shell": "workspace:*",
 		"@kilo-desktop/ui": "workspace:*",
-		"@kilocode/sdk": "7.8.18",
+		"@kilocode/sdk": "7.8.26",
 		"lucide-react": "catalog:",
 		"motion": "^14.0.0",
 		"react": "^19.2.8",

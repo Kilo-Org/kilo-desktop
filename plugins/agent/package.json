@@ -24,7 +24,7 @@
 		"@kilo-desktop/plugin-shell": "workspace:*",
 		"@kilo-desktop/plugin-updates": "workspace:*",
 		"@kilo-desktop/ui": "workspace:*",
-		"@kilocode/sdk": "7.8.18",
+		"@kilocode/sdk": "7.8.26",
 		"@modelcontextprotocol/server": "2.4.0",
 		"atomically": "catalog:",
 		"execa": "catalog:",

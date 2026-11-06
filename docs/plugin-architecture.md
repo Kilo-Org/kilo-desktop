@@ -58,7 +58,7 @@ the API a third party gets.
 │ Plugins (the delivery mechanism): kilo.shell · platform · core · feature │
 │   each one can:  ▲ offer extension points                                 │
 │                  ● contribute to extension points (including its own)     │
-│                  ◆ offer domain objects (attributes · methods · events)   │
+│                  ◆ offer domain objects (state · methods · events)        │
 ├──────────────────────────────────────────────────────────────────────────┤
 │ Kernel ("the empty app"): Electron app + plugin runtime                   │
 │   Extension registry · Domain registry (+ cross-process proxies) · `when`│
@@ -81,7 +81,7 @@ they need caller identity, must run before plugins, or enforce trust):
 | Electron lifecycle (single instance, ready, quit/teardown barrier), crash reporting, logging                                                                                                                                                                                         | Runs before and after every plugin                                                                        |
 | Plugin runtime: discovery, manifest validation, ordering from `requires`, lifecycle phases (§2.8), budgeted transactional activation, plugin status, safe mode                                                                                                                       | It is the plugin system                                                                                   |
 | Service supervision: the `kernel/service` point — start conditions, parallel start after the window shows, restart with backoff, status and progress, awaited stop in reverse dependency order under an overall quit cap                                                             | Child processes from many plugins must start, recover and stop consistently, and quitting must never hang |
-| Extension registry, domain registry with cross-process/window proxies (attributes synced, methods as calls, events broadcast), `when` evaluator                                                                                                                                      | Same                                                                                                      |
+| Extension registry, domain registry with cross-process/window proxies (state synced, methods as calls, events broadcast), `when` evaluator                                                                                                                                           | Same                                                                                                      |
 | Per-plugin scoped services injected into each SDK: storage dir, kv, sandboxed fs, logger, net, own main↔web `invoke`/ports                                                                                                                                                           | Identity-scoped — the provider must be trusted to know who is calling                                     |
 | Security: protocol schemes (from manifests, pre-app-ready), CSP / embedded-host profiles, IPC sender trust, permission enforcement                                                                                                                                                   | Enforcement cannot live with the enforced                                                                 |
 | Host primitives as **permissioned capabilities**: windows & pop-outs (including windows not tied to a session, sized content, focus main window), native app menu, dialogs, open/reveal, clipboard, OS notifications & badge, keychain, updater engine, browser host, embedded hosts | Plugins never import Electron                                                                             |
@@ -136,39 +136,56 @@ these.
 "capabilities" of earlier drafts.)
 
 A domain object type is defined once in its owner's `./contracts` and has
-four parts:
+three parts (the full guide is [docs/plugins/domains.md](./plugins/domains.md)):
 
 ```ts
-export const Session = defineDomain("kilo.sessions/session", {
-  home: "main",                                    // where the real state lives
-  attributes: SessionSchema,                       // id, title, status, unread, archived, workspaceId, worktree…
-  methods: { open, rename, pin, archive, delete },
-  events: { created: SessionSchema, updated: SessionPatch, deleted: z.object({ id: z.string() }) },
-  renderers: { Glyph, Status, Decorations, Menu }, // how it looks wherever it is shown (renderer side)
+export const Sessions = defineDomain({
+	id: "kilo.sessions/session",
+	home: "main", // where the real state lives
+	state: z.object({ sessions: z.array(sessionSchema) }),
+	methods: { create, rename, setPinned, setArchived, remove /* … */ },
+	events: {
+		created: z.object({ session: sessionSchema }),
+		updated: z.object({ before: sessionSchema, after: sessionSchema }),
+		deleted: z.object({ session: sessionSchema }),
+	},
 });
 
 // any plugin, any process, any window
-const sessions = sdk.domain(Session);              // null when no plugin provides it
-sessions.useList((list) => list.filter(isOnBoard));
-sessions.on("deleted", ({ id }) => removeCard(id));
-await sessions.archive(id);
+sdk.domains.track(Sessions, {
+	// follows the provider as it comes and goes
+	added(sessions) {
+		sessions.subscribe((state) => render(state.sessions));
+		sessions.on("deleted", ({ session }) => removeCard(session.id));
+	},
+	removed() {},
+});
+await sdk.domains.get(Sessions)?.methods.setArchived({ id, archived: true }); // get: null when unprovided
 ```
 
-- **Attributes** are observable (selector hooks over frozen snapshots); this
-  replaces `sdk.state`.
+- **State** is one zod schema, observable through `getState` / `subscribe`
+  (and `useDomainState` in React).
 - **Methods** are typed calls validated against the schema.
 - **Events** belong to the object type: only the providing plugin can emit
-  them, anyone can listen; fire-and-forget, at most once, no replay. Events are
-  no longer a kind of extension point, and `sdk.events` becomes transport
-  underneath.
+  them (validated against their schema), anyone can listen; fire-and-forget,
+  at most once, no replay — anything a late subscriber needs belongs in state
+  too. Events are not a kind of extension point, and there is no separate
+  event bus.
+- **Listeners are isolated.** A state or event listener that throws is logged
+  against the subscribing plugin and skipped; the other listeners, the
+  broadcast to windows and the provider's `emit` are unaffected.
 - **Renderers** let any surface show the object natively (a board card shows a
-  session exactly as the session list does).
+  session exactly as the session list does). They are not part of the domain
+  definition: the owner declares a renderer extension point
+  (`kilo.sessions/session-renderer`) and exports components that read through it.
 - **Process-transparent.** The implementation lives in its `home` process
   (usually main). The kernel gives every other process and window a proxy:
-  attributes arrive as live snapshots, methods are forwarded, events are
-  broadcast. A pop-out window therefore sees and acts on the same objects as
-  the main window by construction. Per-window state (composer draft, focus)
-  uses `home: "renderer"` and is not shared across windows.
+  state arrives as live snapshots, methods are forwarded, events are
+  broadcast from main to every window (in emit order per window). A pop-out
+  window therefore sees and acts on the same objects as the main window by
+  construction. Per-window state (composer draft, focus) uses
+  `home: "renderer"`; its state and events never leave that window. Windows
+  never emit to main: they call methods.
 - Lazy and graceful-null; activation order does not matter. Exactly one plugin
   may provide a given domain object type.
 - Kernel host primitives (windows, dialogs, clipboard…) are domain objects
@@ -450,8 +467,10 @@ shows in Settings → Developer → Diagnostics.
 service depends on the domain object and its status:
 
 ```ts
-const server = sdk.domain(AgentServer); // kilo.agent/server
-await server.whenReady(); // or server.use((s) => s.status) to render a pending state
+const server = sdk.domains.get(AgentServer); // kilo.agent/server
+server?.getState().status; // or render a pending state: useDomainState(AgentServer, (s) => s.status)
+// start it if needed and wait until it is ready (throws if it failed to start)
+await sdk.domains.get(KernelServices)?.methods.ensureStarted({ key: SERVER_SERVICE_KEY });
 ```
 
 With `startOn: "first-use"`, that call is what starts the service, so rarely
@@ -460,8 +479,8 @@ used plugins cost nothing at startup.
 **Rules for plugin authors**
 
 1. Activation declares and wires; slow work is a service or task.
-2. Never assume something has started; depend on a domain object's status or
-   `whenReady()`.
+2. Never assume something has started; depend on a domain object's status, or
+   on a method that waits for it (`kernel/services` `ensureStarted`).
 3. Every child process goes through `kernel/service`.
 4. Prefer `first-use` or a `when` condition to starting things just in case.
 
@@ -472,28 +491,31 @@ events) and OSGi (bundle states and events, service registered / unregistering
 events, service trackers, lazy activation). Hooks come in three kinds with
 different guarantees:
 
-| Hook kind        | Semantics                                                                                                                                                   | Examples                                                                                        |
-| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| **Notification** | A domain-object event: fire-and-forget, cannot delay or change anything. Listeners run in dependency order (reverse order while stopping)                   | `app.started`, `plugin.activated`, `window.closed`, `system.resume`                             |
-| **Awaited hook** | A function the kernel calls and awaits, with a time budget                                                                                                  | the plugin's own `activate(sdk)` / `deactivate()`; a service's `start()` / `stop()`             |
-| **Decision**     | A decision extension point (kind D): handlers answer `proceed / ask / reject` in a fixed order with a time budget; `ask` answers are merged into one prompt | `kernel/quit`, `kernel/window-close`; product decisions such as `kilo.sessions/session-archive` |
+| Hook kind        | Semantics                                                                                                                                                                                                  | Examples                                                                                                            |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| **Notification** | A domain-object event: fire-and-forget, cannot delay or change anything. Listeners run in the order they subscribed (which follows activation, so dependency order), each isolated from the others' errors | `kernel/app` `phase-changed`, `kernel/plugins` `state-changed`, `kernel/windows` `closed`, `kernel/system` `resume` |
+| **Awaited hook** | A function the kernel calls and awaits, with a time budget                                                                                                                                                 | the plugin's own `activate(sdk)` / `deactivate()`; a service's `start()` / `stop()`                                 |
+| **Decision**     | A decision extension point (kind D): handlers answer `proceed / ask / reject` in a fixed order with a time budget; `ask` answers are merged into one prompt                                                | `kernel/quit`, `kernel/window-close`; product decisions such as `kilo.sessions/session-archive`                     |
 
 Quit and window-close decisions **fail open**: a handler that errors or times
 out counts as `proceed`, and a second quit request after a prompt always quits,
 so a plugin can never trap the user. Product decisions (tool approval) fail
 closed.
 
-The kernel exposes its hooks as events on kernel-owned domain objects:
+The kernel exposes its hooks as events on kernel-owned domain objects
+(`KernelApp`, `KernelPlugins`, … from `@kilo-desktop/kernel`). Where an object
+has a lifecycle, its state holds the current value and one event reports each
+change:
 
-| Domain object       | States / events                                                                                                                                                                                                                 | Typical use                                                                         |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `kernel/app`        | `starting` → `started` (all plugins active, main window shown) → `ready` (startup services settled) → `stopping` → `stopped`                                                                                                    | Defer non-essential work to `started`; measure time-to-ready; flush on `stopping`   |
-| `kernel/plugins`    | Per plugin: `discovered` → `resolved` (requires satisfied) → `activating` → `active` → `deactivating` → `resolved`; also `unresolved`, `failed`, `disabled` (turned off by the user; `setEnabled` applies from the next launch) | Diagnostics; react to a plugin being enabled or disabled at runtime                 |
-| `kernel/services`   | Per service: `starting` → `ready` → `stopping` → `stopped`; also `restarting`, `failed`                                                                                                                                         | Show progress; wait with `whenReady()`                                              |
-| `kernel/domains`    | `provided`, `withdrawn` per domain object type; `track(Type, { added, removed })`                                                                                                                                               | Bind to a provider that appears late or goes away (removability, future hot reload) |
-| `kernel/extensions` | `contributions-changed` per extension point                                                                                                                                                                                     | Hosts re-render when contributions are added or removed at runtime                  |
-| `kernel/windows`    | `opened`, `focused`, `blurred`, `closed` (main and pane windows)                                                                                                                                                                | Pause work for hidden windows; restore pane windows                                 |
-| `kernel/system`     | `suspend`, `resume`, `online`, `offline`, `appearance-changed`, `app-focused`, `app-blurred`                                                                                                                                    | Pause polling while asleep or offline; refresh after resume                         |
+| Domain object       | States / events                                                                                                                                                                                                                                                                           | Typical use                                                                         |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `kernel/app`        | `phase`: `starting` → `started` (all plugins active, main window shown) → `ready` (startup services settled) → `stopping` → `stopped`, announced by `phase-changed`; also `url-opened`                                                                                                    | Defer non-essential work to `started`; measure time-to-ready; flush on `stopping`   |
+| `kernel/plugins`    | Per plugin: `resolved` (requires satisfied) → `activating` → `active` → `deactivating` → `resolved`; also `unresolved`, `failed`, `inactive` (its manifest `when` is false), `disabled` (turned off by the user; `setEnabled` applies from the next launch), announced by `state-changed` | Diagnostics; react to a plugin being enabled or disabled at runtime                 |
+| `kernel/services`   | Per service: `idle` → `starting` → `ready` → `stopping` → `stopped`; also `completed`, `restarting`, `failed`, announced by `status-changed`                                                                                                                                              | Show progress; start and wait with `ensureStarted`                                  |
+| `kernel/domains`    | `provided`, `withdrawn` per domain object type; `track(Type, { added, removed })`                                                                                                                                                                                                         | Bind to a provider that appears late or goes away (removability, future hot reload) |
+| `kernel/extensions` | `contributions-changed` per extension point                                                                                                                                                                                                                                               | Hosts re-render when contributions are added or removed at runtime                  |
+| `kernel/windows`    | `opened`, `focused`, `blurred`, `closed` (main and pane windows)                                                                                                                                                                                                                          | Pause work for hidden windows; restore pane windows                                 |
+| `kernel/system`     | `suspend`, `resume`, `online`, `offline`, `appearance-changed`, `app-focused`, `app-blurred`                                                                                                                                                                                              | Pause polling while asleep or offline; refresh after resume                         |
 
 Product lifecycles (a Work Session being archived, a Chat Session turn ending)
 are events on the owning plugin's domain objects, not kernel hooks.
@@ -509,16 +531,18 @@ everything else.**
 | **Delay or veto** something (quit, closing a window)       | A contribution to a decision extension point                           | Needs ordering, a time budget and merged prompts — neither a plain event nor a method on every plugin                                                                                                        |
 
 ```ts
-// plugins/notebook/src/main/index.ts
+// shaped after plugins/notebook/src/main/entry.ts
 export default definePlugin({
 	async activate(sdk) {
 		// awaited, budgeted
 		sdk.domains.provide(Notebooks, notebooksImpl);
-		sdk.services.implement("runtimed", runtimedService); // start/stop/health methods
-		sdk.domain(App).on("started", () => warmKernelList()); // notification
-		sdk.domain(System).on("resume", () => runtimed.reconnect());
-		sdk.decisions.handle("kernel/quit", () =>
-			// decision
+		sdk.extensions.implement(KernelService, "runtimed", runtimedService); // start/stop/health
+		const app = sdk.domains.get(KernelApp);
+		if (app?.getState().phase === "ready") warmKernelList(); // state first…
+		else app?.on("phase-changed", ({ phase }) => phase === "ready" && warmKernelList()); // …then notification
+		sdk.domains.get(KernelSystem)?.on("resume", () => runtimed.reconnect());
+		sdk.extensions.implement(KernelQuit, "unsaved-notebooks", () =>
+			// decision (contribution declared in plugin.json)
 			notebooks.hasUnsaved() ? { ask: "Unsaved notebooks will be lost." } : "proceed",
 		);
 	},
@@ -538,14 +562,14 @@ Rules:
   the plugin's activation and **disposed automatically** on deactivation, so
   `deactivate` is rarely needed.
 - **State, not just events.** Every lifecycle fact is also readable as state on
-  the domain object (`app.state`, `plugin.state`, `service.status`), with
-  `when…()` helpers (`app.whenStarted()`, `server.whenReady()`). A subscriber
-  that arrives late, such as a lazily activated plugin, never misses a
-  transition: it reads the current state, then listens. `domains.track` calls
-  `added` for providers that already exist.
+  the domain object (`kernel/app` `phase`, `kernel/plugins` `plugins[id].state`,
+  `kernel/services` `services[key].status`). A subscriber that arrives late,
+  such as a lazily activated plugin, never misses a transition: it reads the
+  current state, then listens. `domains.track` calls `added` for providers
+  that already exist.
 - The web entry follows the same shape (`activate(sdk)` in each window); React
-  components read lifecycle state with hooks such as `useAppState()` rather
-  than subscribing themselves.
+  components read lifecycle state with `useDomainState(KernelApp, (s) => s.phase)`
+  rather than subscribing themselves.
 
 The whole timeline with its hooks:
 

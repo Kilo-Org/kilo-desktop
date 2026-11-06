@@ -193,6 +193,7 @@ export function createKernel(options: KernelOptions): Kernel {
 			(webPlugins?.has(pluginId) ?? true) &&
 			!NEVER_RUN.has(states.get(pluginId) ?? "unresolved"),
 		onUnexpectedError: (error) => logger.error("Domain method failed", error),
+		onListenerError: (error, source) => logger.error(`Domain ${source} failed`, error),
 	});
 
 	const states = new Map<string, PluginState>(

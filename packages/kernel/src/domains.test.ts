@@ -145,6 +145,31 @@ describe("domain registry — in process", () => {
 		expect(counter.lookup(ref(Counter, "zzz"))).toBeNull();
 	});
 
+	it("keeps notifying other listeners, and the provider's call succeeds, when a listener throws", async () => {
+		const kernel = createKernel({
+			process: "main",
+			registrations: [host(), guest("acme.guest"), guest("acme.other")],
+		});
+		await kernel.activate();
+		const broken = kernel.sdkFor("acme.guest").domains.get(Counter)!;
+		const counter = kernel.sdkFor("acme.other").domains.get(Counter)!;
+		const bumps: number[] = [];
+		const seen: number[] = [];
+		broken.on("bumped", () => {
+			throw new Error("listener bug");
+		});
+		broken.subscribe(() => {
+			throw new Error("listener bug");
+		});
+		counter.on("bumped", ({ count }) => void bumps.push(count));
+		counter.subscribe((state) => void seen.push(state.count));
+
+		await expect(counter.methods.increment({ by: 2 })).resolves.toEqual({ count: 2 });
+
+		expect(bumps).toEqual([2]);
+		expect(seen).toEqual([2]);
+	});
+
 	it("validates method input and keeps expected errors while scrubbing unexpected ones", async () => {
 		const kernel = createKernel({ process: "main", registrations: [host(), guest("acme.guest")] });
 		await kernel.activate();
@@ -284,6 +309,27 @@ describe("domain registry — across processes", () => {
 
 		expect(states).toEqual([3]);
 		expect(bumps).toEqual([3]);
+	});
+
+	it("still reaches windows, and every window listener, when a listener throws", async () => {
+		const { main, renderer } = await bootPair();
+		const throwing = () => {
+			throw new Error("listener bug");
+		};
+		main.sdkFor("acme.guest").domains.get(Counter)!.on("bumped", throwing);
+		const inWindow = renderer.sdkFor("acme.guest").domains.get(Counter)!;
+		const bumps: number[] = [];
+		const states: number[] = [];
+		inWindow.on("bumped", throwing);
+		inWindow.subscribe(throwing);
+		inWindow.on("bumped", ({ count }) => void bumps.push(count));
+		inWindow.subscribe((state) => void states.push(state.count));
+
+		await main.sdkFor("acme.plain").domains.get(Counter)!.methods.increment({ by: 4 });
+		await renderer.flush();
+
+		expect(states).toEqual([4]);
+		expect(bumps).toEqual([4]);
 	});
 
 	it("forwards method calls to the home process with the caller's identity and permissions", async () => {

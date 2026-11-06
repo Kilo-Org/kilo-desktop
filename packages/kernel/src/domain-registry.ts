@@ -84,6 +84,8 @@ export interface DomainRegistryOptions {
 	 */
 	readonly isWindowCaller?: (pluginId: string) => boolean;
 	readonly onUnexpectedError?: (error: unknown) => void;
+	/** A state or event listener threw; `source` names the subscriber and what it listened to. */
+	readonly onListenerError?: (error: unknown, source: string) => void;
 }
 
 const CHANNELS = {
@@ -120,6 +122,10 @@ type CallPayload = z.output<typeof callPayload>;
  * window the claimed plugin is advisory — its plugins share a JavaScript
  * context — but a window can never act as main's kernel or a main-only
  * plugin, nor reach `homeCallersOnly` domains.
+ *
+ * Listeners are isolated: one that throws is reported and skipped, so it can't
+ * starve the other listeners, stop main's broadcast to windows, or fail the
+ * provider's `emit` / `setState` (and with it a method that already changed state).
  */
 export class DomainRegistry {
 	readonly #options: DomainRegistryOptions;
@@ -304,6 +310,15 @@ export class DomainRegistry {
 		track?: DomainTrack,
 	): DomainHandle<TDomain> {
 		const register = (dispose: () => void) => track?.(dispose) ?? dispose;
+		const isolate =
+			(listener: (value: unknown) => void, source: string) =>
+			(value: unknown): void => {
+				try {
+					listener(value);
+				} catch (error) {
+					this.#options.onListenerError?.(error, `"${caller}" ${source}`);
+				}
+			};
 		const methods = new Proxy(
 			{},
 			{
@@ -317,14 +332,20 @@ export class DomainRegistry {
 			id: entry.definition.id,
 			getState: () => entry.state as DomainState<TDomain>,
 			subscribe(listener) {
-				const wrapped = listener as (state: unknown) => void;
+				const wrapped = isolate(
+					listener as (state: unknown) => void,
+					`state listener on "${entry.definition.id}"`,
+				);
 				entry.stateListeners.add(wrapped);
 				return register(() => entry.stateListeners.delete(wrapped));
 			},
 			methods,
 			on(event, listener) {
 				const set = entry.eventListeners.get(event) ?? new Set();
-				const wrapped = listener as (payload: unknown) => void;
+				const wrapped = isolate(
+					listener as (payload: unknown) => void,
+					`listener for "${event}" on "${entry.definition.id}"`,
+				);
 				set.add(wrapped);
 				entry.eventListeners.set(event, set);
 				return register(() => set.delete(wrapped));

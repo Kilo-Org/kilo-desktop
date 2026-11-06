@@ -126,7 +126,15 @@ if (greetings) {
 Subscriptions made through `sdk` are removed when your plugin deactivates.
 To bind to a provider that may appear late or go away, use
 `sdk.domains.track(Greetings, { added(handle) {…}, removed() {…} })`;
-`added` runs at once if the provider already exists.
+`added` runs at once if the provider already exists. Subscribe inside
+`added`: a provider that is withdrawn and provided again starts with no
+listeners.
+
+Listeners run in the order they subscribed, and each one is isolated: one
+that throws is logged against your plugin and skipped, without affecting
+other listeners, the broadcast to windows or the provider's `emit`. Events
+from a `main`-home object reach every window, so filter in the listener
+rather than expecting only the events you care about.
 
 Add the domain to `requires` in your manifest (`"optional"` in nearly all
 cases) so activation is ordered after its owner, and import its definition

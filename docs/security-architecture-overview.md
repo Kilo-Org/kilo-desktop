@@ -5,7 +5,7 @@
 | Field            | Value                                                                                      |
 | ---------------- | ------------------------------------------------------------------------------------------ |
 | Audience         | Customer security reviewers, technical due-diligence teams, and readers of the source code |
-| Document version | 1.0                                                                                        |
+| Document version | 1.1                                                                                        |
 | Document owner   | Kilo engineering                                                                           |
 | Codebase version | Last reviewed at commit 056370681 in main branch (2026-11-05)                              |
 | Review cadence   | Quarterly, and before material trust-boundary, data-flow, or distribution changes          |
@@ -15,6 +15,7 @@
 | Version | Date       | Summary                                                                                                                                                                   |
 | ------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1.0     | 2026-11-05 | Established the repository-backed security architecture overview: topology, trust boundaries, identity and access model, data flows, controls, and integration inventory. |
+| 1.1     | 2026-11-09 | Agent controls: the application layers approval rules over the user's Kilo permission configuration for shell commands the CLI cannot otherwise constrain.                |
 
 ## Maintainer agent update prompt
 
@@ -304,7 +305,7 @@ sequenceDiagram
   CLI-->>UI: Streamed events
 ```
 
-Agent actions run through the CLI with the user's privileges. Which actions ask first is determined by each tool's approval policy and by the user's Kilo permission configuration; when the user turns on auto-approve, the chat answers permission requests on the user's behalf.
+Agent actions run through the CLI with the user's privileges. Which actions ask first is determined by each tool's approval policy and by the user's Kilo permission configuration, over which the application layers rules that make shell commands with unchecked write destinations, such as archive extraction, ask first; when the user turns on auto-approve, the chat answers permission requests on the user's behalf.
 
 ### 7.3 Auto-update flow
 
@@ -351,7 +352,7 @@ sequenceDiagram
 | IPC hardening                 | Sender verification, transport-derived callers, schema validation, declared permissions, and explicit caller checks on sensitive methods                                                                          |
 | Process hardening             | Single-instance lock; Electron fuses that prevent running as Node.js and enforce application archive integrity; packaged builds refuse debugging flags                                                            |
 | Local channel security        | Loopback listeners with per-launch credentials by default; standard I/O where possible; helper identity verification on shared sockets                                                                            |
-| Agent controls                | Validated application tools; per-tool approval policies; user-controlled permission configuration and auto-approve                                                                                                |
+| Agent controls                | Validated application tools; per-tool approval policies; user-controlled permission configuration and auto-approve; application-supplied approval rules for shell commands the CLI cannot otherwise constrain     |
 | Path authorization            | Workspace-folder authorization for file browsing, editing, and git operations; plugin storage confined to each plugin's directory                                                                                 |
 | Secret handling               | Kilo credentials kept in the CLI; caller-restricted release of credentials, with main-process-only credentials withheld from windows; per-launch helper credentials; logging conventions that exclude credentials |
 | Artifact and update integrity | Frozen lockfile with integrity hashes; pinned, digest-verified helper artifacts; catalog model downloads verified before install; signed releases; HTTPS update feed                                              |

@@ -1034,6 +1034,19 @@ describe("owned config environment", () => {
 		manager.dispose();
 	});
 
+	it("requires approval for archive commands in Desktop's inline config", async () => {
+		const { manager, spawn } = createHarness({ environment: { PATH: "/bin" } });
+		onTestFinished(() => manager.dispose());
+
+		await manager.ensureRunning();
+		const content = JSON.parse(spawn.mock.calls[0]![2].env.KILO_CONFIG_CONTENT!) as {
+			permission: Record<string, Record<string, string>>;
+		};
+		expect(content.permission).toEqual({
+			"bash*": { "tar *": "ask", "unzip *": "ask", "gzip *": "ask", "gunzip *": "ask" },
+		});
+	});
+
 	it("passes Desktop's managed plugins as inline config, re-read on every spawn", async () => {
 		const managedPluginDirectory = await mkdtemp(path.join(tmpdir(), "kilo-managed-plugins-"));
 		onTestFinished(() => rm(managedPluginDirectory, { recursive: true, force: true }));
@@ -1051,7 +1064,7 @@ describe("owned config environment", () => {
 
 		await manager.ensureRunning();
 		const firstEnv = spawn.mock.calls[0]![2].env;
-		expect(JSON.parse(firstEnv.KILO_CONFIG_CONTENT!)).toEqual({
+		expect(JSON.parse(firstEnv.KILO_CONFIG_CONTENT!)).toMatchObject({
 			indexing: { kilo: { baseUrl: "https://api.kilo.ai" } },
 			plugin: [pathToFileURL(callerContext).href],
 		});
@@ -1059,7 +1072,7 @@ describe("owned config environment", () => {
 
 		await writeFile(notebooks, "export default {};\n");
 		await manager.restart();
-		expect(JSON.parse(spawn.mock.calls[1]![2].env.KILO_CONFIG_CONTENT!)).toEqual({
+		expect(JSON.parse(spawn.mock.calls[1]![2].env.KILO_CONFIG_CONTENT!)).toMatchObject({
 			indexing: { kilo: { baseUrl: "https://api.kilo.ai" } },
 			plugin: [pathToFileURL(callerContext).href, pathToFileURL(notebooks).href],
 		});

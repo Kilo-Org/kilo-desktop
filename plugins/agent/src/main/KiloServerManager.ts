@@ -13,7 +13,8 @@ import isEqual from "lodash/isEqual.js";
 import type { KiloServerConnection, KiloServerStatus } from "./types.js";
 import { KILO_CLI_VERSION } from "./cli-distribution/artifacts.js";
 import type { ContributedEnvManager } from "./ContributedEnvManager.js";
-import { kiloPluginConfigContent, listManagedKiloPluginFiles } from "./managed-kilo-plugins.js";
+import { kiloInlineConfigContent } from "./kilo-inline-config.js";
+import { listManagedKiloPluginFiles } from "./managed-kilo-plugins.js";
 import { WEBMCP_ENDPOINT_TOKEN_ENV, WEBMCP_ENDPOINT_URL_ENV } from "./webmcp-relay-config.js";
 
 const execFile = promisify(execFileCallback);
@@ -235,8 +236,10 @@ function appendStderrContext(baseMessage: string, stderr: string): string {
  * need a periodic resync must use a separate signal (the boot progress
  * channel or an explicit refresh IPC), not the status event stream.
  *
- * `#createEnvironment` scrubs the inherited Kilo credential and pins the kilo
- * origin via `KILO_CONFIG_CONTENT` so project config cannot repoint it.
+ * `#createEnvironment` scrubs the inherited Kilo credential and passes
+ * Desktop's own `KILO_CONFIG_CONTENT` (`kilo-inline-config.ts`), which pins
+ * the kilo origin and makes archive commands ask, so project config cannot
+ * undo either.
  */
 export class KiloServerManager {
 	readonly #options: Required<
@@ -520,7 +523,7 @@ export class KiloServerManager {
 		let stderrCollector: StderrCollector | undefined;
 		try {
 			await this.#ensureRuntimeDirectory();
-			const configContent = await this.#managedPluginConfigContent();
+			const configContent = await this.#inlineConfigContent();
 			if (this.#disposed) throw new Error("Kilo Code has shut down.");
 			const environment = this.#createEnvironment(password, configContent);
 			const args = [
@@ -667,9 +670,9 @@ export class KiloServerManager {
 		return this.#options.environment.KILO_API_URL ?? DEFAULT_KILO_GATEWAY_ORIGIN;
 	}
 
-	async #managedPluginConfigContent(): Promise<string> {
+	async #inlineConfigContent(): Promise<string> {
 		const files = await listManagedKiloPluginFiles(this.#options.managedPluginDirectory);
-		return kiloPluginConfigContent(files, this.#kiloBaseUrl());
+		return kiloInlineConfigContent(files, this.#kiloBaseUrl());
 	}
 
 	#createEnvironment(password: string, configContent: string): NodeJS.ProcessEnv {

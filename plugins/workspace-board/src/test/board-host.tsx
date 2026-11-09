@@ -61,8 +61,10 @@ const decorationsPlugin = {
 			sdk.extensions.implement(
 				SessionDecoration,
 				"badge",
-				({ session }: SessionDecorationProps) => (
-					<span data-qa-id={`badge-${session.id}`}>#12</span>
+				({ session, interactive }: SessionDecorationProps) => (
+					<span data-qa-id={`badge-${session.id}`} data-interactive={interactive}>
+						#12
+					</span>
 				),
 			);
 		},

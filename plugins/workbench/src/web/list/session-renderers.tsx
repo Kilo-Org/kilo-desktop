@@ -144,14 +144,18 @@ function SessionStatusLabel({ session }: SessionRendererProps) {
 	);
 }
 
-function SessionDecorations({ session, slot }: SessionDecorationsProps) {
+function SessionDecorations({ session, slot, interactive = false }: SessionDecorationsProps) {
 	const decorations = useExtensions(SessionDecoration).filter(
 		(decoration) => decoration.metadata.slot === slot,
 	);
 	return (
 		<>
 			{decorations.map((decoration) => (
-				<RenderContribution key={decoration.key} contribution={decoration} props={{ session }} />
+				<RenderContribution
+					key={decoration.key}
+					contribution={decoration}
+					props={{ session, interactive }}
+				/>
 			))}
 		</>
 	);

@@ -56,10 +56,12 @@ function Decorations({
 	host,
 	slot,
 	session: shown,
+	interactive,
 }: {
 	host: GitHost;
 	slot: "row" | "hover" | "hover-branch";
 	session: Session;
+	interactive: boolean;
 }) {
 	const contributions = host.renderer.extensions
 		.list(SessionDecoration)
@@ -70,7 +72,7 @@ function Decorations({
 				<RenderContribution<SessionDecorationProps>
 					key={contribution.key}
 					contribution={contribution}
-					props={{ session: shown }}
+					props={{ session: shown, interactive }}
 				/>
 			))}
 		</>
@@ -83,9 +85,10 @@ async function renderSlot(
 	slot: "row" | "hover" | "hover-branch",
 	options: ChangesHostOptions = {},
 	shown: Session = worktreeSession,
+	interactive = false,
 ) {
 	const host = await bootGitHost({ sessions: [shown], ...options });
-	host.render(<Decorations host={host} slot={slot} session={shown} />);
+	host.render(<Decorations host={host} slot={slot} session={shown} interactive={interactive} />);
 	return host;
 }
 
@@ -97,6 +100,17 @@ describe("a session's pull request", () => {
 		await expect.element(badge.getByText("#42")).toBeVisible();
 		await expect.element(badge).toHaveAttribute("title", "PR #42: Example change");
 		await expect.element(page.getByRole("link")).not.toBeInTheDocument();
+	});
+
+	it("is a badge that opens in the browser where the surface lets it be interactive", async () => {
+		const host = await renderSlot("row", { pullRequests: WITH_PR }, worktreeSession, true);
+
+		const badge = page.getByTestId("git-session-row-pull-request");
+		await expect.element(badge, WAIT).toHaveAttribute("href", PULL_REQUEST.url);
+		await expect.element(badge).toHaveAttribute("title", "PR #42: Example change");
+		await badge.click();
+
+		await vi.waitFor(() => expect(host.opens).toEqual([PULL_REQUEST.url]), WAIT);
 	});
 
 	it("follows the lookups, and nothing shows without a pull request", async () => {

@@ -119,6 +119,10 @@ describe("the workspace board", () => {
 		await expect.element(card("a").getByTestId("session-status")).toHaveTextContent("Working");
 		await expect.element(card("a").getByRole("button", { name: "Open Busy in App" })).toBeVisible();
 		await expect.element(card("a").getByTestId("badge-a")).toBeVisible();
+		// Outside the card's open button, so a badge may be a link (git's opens the PR).
+		await expect
+			.element(card("a").getByTestId("badge-a"))
+			.toHaveAttribute("data-interactive", "true");
 		await expect
 			.element(page.getByTestId("workspace-board-column-count-backlog"))
 			.toHaveTextContent("1");

@@ -192,6 +192,12 @@ export const SessionMenu = defineExtensionPoint({
 
 export interface SessionDecorationProps {
 	readonly session: Session;
+	/**
+	 * The surface shows the decoration outside its own control (a board card),
+	 * so it may be a link or button. Without it the decoration sits inside the
+	 * session row's button and must not be interactive.
+	 */
+	readonly interactive?: boolean;
 }
 
 /**
@@ -220,6 +226,8 @@ export interface SessionGlyphProps extends SessionRendererProps {
 
 export interface SessionDecorationsProps extends SessionRendererProps {
 	readonly slot: SessionDecorationSlot;
+	/** Passed to each decoration; see {@link SessionDecorationProps.interactive}. */
+	readonly interactive?: boolean;
 }
 
 export interface SessionMenuProps extends SessionRendererProps {

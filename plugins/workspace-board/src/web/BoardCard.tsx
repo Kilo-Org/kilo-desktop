@@ -53,7 +53,8 @@ const cardActionsClassName = cn(
 /**
  * A session on the board, shown the way the session list shows it through
  * kilo.sessions' renderers: its live glyph and status, plugins' row
- * decorations (git's PR badge) and the session menu. The whole card opens
+ * decorations (git's PR badge, interactive here since it sits outside the
+ * open button) and the session menu. The whole card opens
  * the session through a stretched button beneath the content, whose layers
  * are pointer-transparent except for their own controls. The card drags the
  * session as an object reference.
@@ -160,7 +161,7 @@ export function BoardCard({
 									<Rendered
 										renderer={renderer}
 										pick={pickDecorations}
-										props={{ session, slot: "row" as const }}
+										props={{ session, slot: "row" as const, interactive: true }}
 									/>
 								</span>
 							) : null}

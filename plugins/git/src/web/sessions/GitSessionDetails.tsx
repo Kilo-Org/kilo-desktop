@@ -25,18 +25,40 @@ export function useOpenExternal(): (url: string) => void {
 	);
 }
 
-/** The session row's pull request badge (`row` decoration); nothing without a pull request. */
-export function GitSessionRowBadge({ session }: SessionDecorationProps) {
+/**
+ * The session row's pull request badge (`row` decoration); nothing without a
+ * pull request. Where the surface allows (`interactive`, a board card) it
+ * opens the pull request in the browser.
+ */
+export function GitSessionRowBadge({ session, interactive = false }: SessionDecorationProps) {
 	const pullRequest = useDirectoryPullRequest(useSessionDirectory(session));
+	const openExternal = useOpenExternal();
 	if (!pullRequest) return null;
-	return (
-		<span
-			data-qa-id="git-session-row-pull-request"
-			className={`ml-auto flex shrink-0 items-center gap-1 pl-3 tabular-nums ${pullRequestClassName(pullRequest)}`}
-			title={`PR #${pullRequest.number}: ${pullRequest.title}`}
-		>
+	const className = `ml-auto flex shrink-0 items-center gap-1 pl-3 tabular-nums ${pullRequestClassName(pullRequest)}`;
+	const title = `PR #${pullRequest.number}: ${pullRequest.title}`;
+	const content = (
+		<>
 			<GitPullRequestIcon className="size-3" aria-hidden />#{pullRequest.number}
-		</span>
+		</>
+	);
+	if (!interactive) {
+		return (
+			<span data-qa-id="git-session-row-pull-request" className={className} title={title}>
+				{content}
+			</span>
+		);
+	}
+	return (
+		<ExternalLink
+			href={pullRequest.url}
+			onOpen={openExternal}
+			data-qa-id="git-session-row-pull-request"
+			title={title}
+			draggable={false}
+			className={`${className} focus-visible:ring-ring rounded-sm hover:underline focus-visible:ring-2 focus-visible:outline-none`}
+		>
+			{content}
+		</ExternalLink>
 	);
 }
 

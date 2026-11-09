@@ -246,6 +246,8 @@ export const Conversations = defineDomain({
 		}),
 		"turn-started": z.object({ chatId: z.string() }),
 		"turn-ended": z.object({ chatId: z.string(), error: chatErrorSchema.optional() }),
+		/** Live only: a root chat, its descendants and queued background reports finished working. */
+		"work-completed": z.object({ chatId: z.string() }),
 		"permission-requested": permissionEvent,
 		"permission-resolved": permissionEvent,
 		"question-requested": questionEvent,

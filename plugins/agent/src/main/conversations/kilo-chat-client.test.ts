@@ -28,7 +28,9 @@ async function readBody(request: IncomingMessage): Promise<unknown> {
 }
 
 /** A stand-in Kilo server that records each request's directory (header or query). */
-async function fakeServer(): Promise<{ server: Server; url: string; seen: Seen[] }> {
+async function fakeServer(
+	options: { dropEvents?: boolean } = {},
+): Promise<{ server: Server; url: string; seen: Seen[] }> {
 	const seen: Seen[] = [];
 	const server = createServer(async (request, response) => {
 		const url = new URL(request.url ?? "/", "http://localhost");
@@ -43,6 +45,10 @@ async function fakeServer(): Promise<{ server: Server; url: string; seen: Seen[]
 			body: await readBody(request),
 		});
 		if (url.pathname === "/global/event") {
+			if (options.dropEvents) {
+				response.destroy();
+				return;
+			}
 			response.setHeader("content-type", "text/event-stream");
 			response.write(
 				`data: ${JSON.stringify({ directory: "/projects/app", payload: { type: "session.idle", properties: { sessionID: "ses_a" } } })}\n\n`,
@@ -74,8 +80,8 @@ afterEach(() => {
 	running = undefined;
 });
 
-async function connect() {
-	const { server, url, seen } = await fakeServer();
+async function connect(options?: Parameters<typeof fakeServer>[0]) {
+	const { server, url, seen } = await fakeServer(options);
 	running = server;
 	const kilo = createKiloChatClient({
 		baseUrl: url,
@@ -91,6 +97,28 @@ const request = (seen: Seen[], method: string, path: string) =>
 	seen.find((entry) => entry.method === method && entry.path === path);
 
 describe("the Kilo chat client", () => {
+	it("sends the drain token to the chat's directory", async () => {
+		const { kilo, seen } = await connect();
+		await kilo.drainChat(
+			"/projects/app",
+			"ses_a",
+			"completion-token",
+			new AbortController().signal,
+		);
+		expect(request(seen, "POST", "/kilocode/session/ses_a/drain")).toMatchObject({
+			directory: "/projects/app",
+			body: { token: "completion-token" },
+		});
+	});
+
+	it("leaves dropped stream recovery to the conversations provider", async () => {
+		const { kilo, seen } = await connect({ dropEvents: true });
+		const events = [];
+		for await (const event of kilo.events(new AbortController().signal)) events.push(event);
+		expect(events).toEqual([]);
+		expect(seen).toHaveLength(1);
+	});
+
 	it("reads every project's chats, statuses and prompts without a directory unless given one", async () => {
 		const { kilo, seen } = await connect();
 

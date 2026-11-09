@@ -30,6 +30,15 @@ export class FakeKiloChats implements KiloChatClient {
 	failWrites = false;
 	readonly writes: Write[] = [];
 	readonly reads: string[] = [];
+	/** Settle HTTP separately from push(session.drained), including failures arriving after abort. */
+	readonly drainRequests: {
+		readonly directory: string;
+		readonly id: string;
+		readonly token: string;
+		readonly signal: AbortSignal;
+		readonly resolve: () => void;
+		readonly reject: (error: unknown) => void;
+	}[] = [];
 	listCalls = 0;
 	subscriptions = 0;
 	#pending: (KiloEvent | "end")[] = [];
@@ -59,6 +68,7 @@ export class FakeKiloChats implements KiloChatClient {
 	}
 	async *events(signal: AbortSignal): AsyncIterable<KiloEvent> {
 		this.subscriptions += 1;
+		yield { type: "server.connected", properties: {} };
 		while (!signal.aborted) {
 			const next = this.#pending.shift();
 			if (next === "end") return;
@@ -118,6 +128,11 @@ export class FakeKiloChats implements KiloChatClient {
 	}
 	async abortChat(directory: string, id: string) {
 		this.#write("abort", directory, [id]);
+	}
+	drainChat(directory: string, id: string, token: string, signal: AbortSignal): Promise<void> {
+		return new Promise((resolve, reject) => {
+			this.drainRequests.push({ directory, id, token, signal, resolve, reject });
+		});
 	}
 	/** Full permission requests by directory, for `permissionRequests`. */
 	permissionRequestsByDirectory: Record<string, PermissionRequest[]> = {};

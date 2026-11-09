@@ -93,6 +93,8 @@ export interface KiloChatClient {
 	/** Starts a slash command; resolves once it is sent, leaving it to run. */
 	command(directory: string, id: string, params: ChatCommandParams): Promise<void>;
 	abortChat(directory: string, id: string): Promise<void>;
+	/** Waits for session work and background report delivery; completion is acknowledged on the stream. */
+	drainChat(directory: string, id: string, token: string, signal: AbortSignal): Promise<void>;
 	replyPermission(
 		directory: string,
 		requestId: string,
@@ -154,7 +156,8 @@ export function createKiloChatClient(connection: ServerConnection): KiloChatClie
 			return (data ?? []).map(({ id, sessionID }) => ({ id, sessionID }));
 		},
 		async *events(signal) {
-			const subscription = await client.global.event({ signal });
+			// The provider owns reconnect hydration and drain-token rotation.
+			const subscription = await client.global.event({ signal, sseMaxRetryAttempts: 1 });
 			const stream = subscription.stream as AsyncIterable<{
 				directory?: string;
 				payload?: { type?: unknown; properties?: Record<string, unknown> };
@@ -274,6 +277,9 @@ export function createKiloChatClient(connection: ServerConnection): KiloChatClie
 		},
 		async abortChat(directory, sessionID) {
 			await client.session.abort({ sessionID, directory }, options);
+		},
+		async drainChat(directory, sessionID, token, signal) {
+			await client.kilocode.drainSession({ sessionID, directory, token }, { ...options, signal });
 		},
 		async replyPermission(directory, requestID, reply, message) {
 			await client.permission.reply(

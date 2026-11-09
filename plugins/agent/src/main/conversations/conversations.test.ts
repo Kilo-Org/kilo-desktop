@@ -131,6 +131,205 @@ const status = (sessionID: string, type: string) => ({
 	properties: { sessionID, status: { type } },
 });
 
+describe("chat work completion", () => {
+	it.each(["ses_child", "ses_a"])(
+		"completes after stopping %s without another root turn",
+		async (stopped) => {
+			const chats = new FakeKiloChats();
+			chats.chats = [desktopChat("ses_a"), desktopChat("ses_child", { parentId: "ses_a" })];
+			const { conversations, whenReady, state } = await boot({ chats });
+			await whenReady();
+			const completed: string[] = [];
+			conversations.on("work-completed", ({ chatId }) => completed.push(chatId));
+
+			chats.push(status("ses_a", "busy"));
+			chats.push(status("ses_child", "busy"));
+			chats.push(status("ses_a", "idle"));
+			await eventually(() => expect(chats.drainRequests).toHaveLength(1));
+			const request = chats.drainRequests[0]!;
+			expect(request).toMatchObject({ directory: "/projects/app", id: "ses_a" });
+			request.resolve();
+			await conversations.methods.abort({ id: stopped });
+			chats.push({ type: "session.drain.interrupted", properties: { sessionID: stopped } });
+			chats.push({
+				type: "session.error",
+				properties: { sessionID: stopped, error: { name: "MessageAbortedError" } },
+			});
+			chats.push(status("ses_child", "idle"));
+			await eventually(() => expect(state().chats.ses_child?.activity.status).toBe("idle"));
+			expect(completed).toEqual([]);
+
+			chats.push({
+				type: "session.drained",
+				properties: { sessionID: "ses_a", token: request.token },
+			});
+			await eventually(() => expect(completed).toEqual(["ses_a"]));
+			expect(chats.drainRequests).toHaveLength(1);
+		},
+	);
+
+	it("coalesces queued report turns and accepts each matching acknowledgment only once", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [desktopChat("ses_a")];
+		const { conversations, whenReady, events, state } = await boot({ chats });
+		await whenReady();
+		const completed: string[] = [];
+		conversations.on("work-completed", ({ chatId }) => completed.push(chatId));
+		chats.push(status("ses_a", "busy"));
+		chats.push(status("ses_a", "idle"));
+		await eventually(() => expect(chats.drainRequests).toHaveLength(1));
+		const first = chats.drainRequests[0]!;
+		first.resolve();
+		for (let report = 0; report < 2; report++) {
+			chats.push(status("ses_a", "busy"));
+			chats.push(status("ses_a", "idle"));
+		}
+		const ack = { type: "session.drained", properties: { sessionID: "ses_a", token: first.token } };
+		chats.push(ack);
+		chats.push(ack);
+		chats.push({
+			type: "session.updated",
+			properties: { info: rawChat(desktopChat("ses_a", { title: "Finished" })) },
+		});
+		await eventually(() => expect(state().chats.ses_a?.title).toBe("Finished"));
+		expect(events.filter((event) => event === "turn-ended ses_a")).toHaveLength(3);
+		expect(chats.drainRequests).toHaveLength(1);
+		expect(completed).toEqual(["ses_a"]);
+	});
+
+	it("discards an acknowledgment overtaken by a new turn and waits again when that turn ends", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [desktopChat("ses_a")];
+		const { conversations, whenReady, state } = await boot({ chats });
+		await whenReady();
+		const completed: string[] = [];
+		conversations.on("work-completed", ({ chatId }) => completed.push(chatId));
+		chats.push(status("ses_a", "busy"));
+		chats.push(status("ses_a", "idle"));
+		await eventually(() => expect(chats.drainRequests).toHaveLength(1));
+		const first = chats.drainRequests[0]!;
+		chats.push(status("ses_a", "busy"));
+		chats.push({ type: "session.drained", properties: { sessionID: "ses_a", token: first.token } });
+		chats.push({
+			type: "session.updated",
+			properties: { info: rawChat(desktopChat("ses_a", { title: "Still working" })) },
+		});
+		await eventually(() => expect(state().chats.ses_a?.title).toBe("Still working"));
+		expect(completed).toEqual([]);
+		expect(first.signal.aborted).toBe(true);
+		chats.push(status("ses_a", "idle"));
+		await eventually(() => expect(chats.drainRequests).toHaveLength(2));
+		chats.push({
+			type: "session.drained",
+			properties: { sessionID: "ses_a", token: chats.drainRequests[1]!.token },
+		});
+		await eventually(() => expect(completed).toEqual(["ses_a"]));
+	});
+
+	it.each(["turn error", "late error", "deletion", "server stop", "disposal", "request failure"])(
+		"suppresses pending success after %s",
+		async (cause) => {
+			const chats = new FakeKiloChats();
+			chats.chats = [desktopChat("ses_a"), desktopChat("ses_marker")];
+			const { conversations, whenReady, state, kernel, server } = await boot({ chats });
+			await whenReady();
+			const completed: string[] = [];
+			conversations.on("work-completed", ({ chatId }) => completed.push(chatId));
+			chats.push(status("ses_a", "busy"));
+			chats.push(status("ses_a", "idle"));
+			await eventually(() => expect(chats.drainRequests).toHaveLength(1));
+			const request = chats.drainRequests[0]!;
+			if (cause === "turn error" || cause === "late error") {
+				if (cause === "turn error") chats.push(status("ses_a", "busy"));
+				chats.push({
+					type: "session.error",
+					properties: {
+						sessionID: "ses_a",
+						error: { name: "APIError", data: { message: "Failed" } },
+					},
+				});
+				chats.push(status("ses_a", "idle"));
+			} else if (cause === "deletion") {
+				await conversations.methods.delete({ id: "ses_a" });
+			} else if (cause === "server stop") {
+				server().crash("gone");
+				await eventually(() => expect(state().ready).toBe(false));
+			} else if (cause === "disposal") {
+				await kernel.stop();
+			} else {
+				request.reject(new Error("drain refused"));
+			}
+			await eventually(() => expect(request.signal.aborted).toBe(true));
+			chats.push({
+				type: "session.drained",
+				properties: { sessionID: "ses_a", token: request.token },
+			});
+			if (cause === "server stop") {
+				await kernel.kernelSdk.domains
+					.get(KernelServices)!
+					.methods.restart({ key: SERVER_SERVICE_KEY });
+				await whenReady();
+			}
+			if (cause !== "disposal") {
+				chats.push({
+					type: "session.updated",
+					properties: { info: rawChat(desktopChat("ses_marker", { title: "Observed" })) },
+				});
+				await eventually(() => expect(state().chats.ses_marker?.title).toBe("Observed"));
+			}
+			expect(completed).toEqual([]);
+			expect(chats.drainRequests).toHaveLength(1);
+		},
+	);
+
+	it("rearms only pending live work after reconnect hydration and ignores the old token", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [desktopChat("ses_a"), desktopChat("ses_startup")];
+		chats.statusMap = { ses_startup: { type: "busy" } };
+		const { conversations, whenReady, state } = await boot({ chats });
+		await whenReady();
+		const completed: string[] = [];
+		conversations.on("work-completed", ({ chatId }) => completed.push(chatId));
+		expect(chats.drainRequests).toEqual([]);
+		chats.push(status("ses_a", "busy"));
+		chats.push(status("ses_a", "idle"));
+		await eventually(() => expect(chats.drainRequests).toHaveLength(1));
+		const first = chats.drainRequests[0]!;
+		let releaseHydration = () => {};
+		const hydration = new Promise<void>((resolve) => (releaseHydration = resolve));
+		const list = chats.listChats.bind(chats);
+		chats.listChats = async () => {
+			await hydration;
+			return list();
+		};
+		chats.end();
+		await eventually(() => expect(chats.subscriptions).toBe(2));
+		expect(first.signal.aborted).toBe(true);
+		expect(chats.drainRequests).toHaveLength(1);
+		chats.push({ type: "session.drained", properties: { sessionID: "ses_a", token: first.token } });
+		releaseHydration();
+		await eventually(() => expect(chats.drainRequests).toHaveLength(2));
+		const second = chats.drainRequests[1]!;
+		expect(second.id).toBe("ses_a");
+		expect(second.token).not.toBe(first.token);
+		second.resolve();
+		first.reject(new Error("old transport failed"));
+		chats.push({ type: "session.drained", properties: { sessionID: "ses_a", token: first.token } });
+		chats.push({
+			type: "session.updated",
+			properties: { info: rawChat(desktopChat("ses_a", { title: "Reconnected" })) },
+		});
+		await eventually(() => expect(state().chats.ses_a?.title).toBe("Reconnected"));
+		expect(completed).toEqual([]);
+		expect(second.signal.aborted).toBe(false);
+		chats.push({
+			type: "session.drained",
+			properties: { sessionID: "ses_a", token: second.token },
+		});
+		await eventually(() => expect(completed).toEqual(["ses_a"]));
+	});
+});
+
 describe("following the server's chats", () => {
 	it("lists this app's chats and their subagents once the server is ready", async () => {
 		const chats = new FakeKiloChats();

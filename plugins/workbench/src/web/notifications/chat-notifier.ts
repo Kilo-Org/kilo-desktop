@@ -41,7 +41,8 @@ const sameError = (a: ChatError | undefined, b: ChatError | undefined) =>
  * live changes, so startup state never notifies. kilo.agent publishes only
  * this app's chats, so origin's hidden throwaway sessions never reach it.
  *
- * - done: a root chat's turn ends without failing (stopping is not failing).
+ * - done: the server confirms a root chat's work, including subagents and
+ *   queued background reports, is complete (stopping is not failing).
  * - needs you: an approval or question (a subagent's, at any depth, counts as
  *   its chat), or a root chat's turn failing — also when the failure arrives
  *   after the turn ended.
@@ -58,11 +59,14 @@ export function createChatNotifier(deps: ChatNotifierDeps): (event: Conversation
 
 	return (event) => {
 		switch (event.name) {
+			case "work-completed": {
+				const { chatId } = event.payload;
+				if (isRootChat(chatId)) notify("done", "done", chatId);
+				return;
+			}
 			case "turn-ended": {
 				const { chatId, error } = event.payload;
-				if (!isRootChat(chatId)) return;
-				if (error) notify("needsYou", "error", chatId);
-				else notify("done", "done", chatId);
+				if (isRootChat(chatId) && error) notify("needsYou", "error", chatId);
 				return;
 			}
 			case "permission-requested":

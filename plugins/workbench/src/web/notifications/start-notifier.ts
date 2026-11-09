@@ -61,6 +61,9 @@ export function startChatNotifier(sdk: PluginSdk): void {
 		() => undefined,
 		(conversations) => {
 			const offs = [
+				conversations.on("work-completed", (payload) =>
+					onEvent({ name: "work-completed", payload }),
+				),
 				conversations.on("turn-ended", (payload) => onEvent({ name: "turn-ended", payload })),
 				conversations.on("permission-requested", (payload) =>
 					onEvent({ name: "permission-requested", payload }),

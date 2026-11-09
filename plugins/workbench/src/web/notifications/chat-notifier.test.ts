@@ -62,6 +62,7 @@ function setup() {
 		banners,
 		finishTurn: (chatId: string, error?: { name: string; message: string }) =>
 			onEvent({ name: "turn-ended", payload: { chatId, ...(error ? { error } : {}) } }),
+		completeWork: (chatId: string) => onEvent({ name: "work-completed", payload: { chatId } }),
 		askPermission: (chatId: string) =>
 			onEvent({ name: "permission-requested", payload: { chatId, permissionId: "p" } }),
 		askQuestion: (chatId: string) =>
@@ -84,21 +85,24 @@ function setup() {
 const failure = { name: "ApiError", message: "Rate limited" };
 
 describe("createChatNotifier", () => {
-	it("plays done when a chat's turn ends", () => {
-		const { sounds, finishTurn, other } = setup();
+	it("plays done when a chat's work is complete, not when an individual turn ends", () => {
+		const { sounds, finishTurn, completeWork, other } = setup();
 
 		other();
+		finishTurn("ses-1");
 		expect(sounds).toEqual([]);
 
-		finishTurn("ses-1");
+		completeWork("ses-1");
 		expect(sounds).toEqual(["done"]);
 	});
 
 	it("ignores subagents and chats it doesn't know as chats finishing", () => {
-		const { sounds, finishTurn } = setup();
+		const { sounds, finishTurn, completeWork } = setup();
 
 		finishTurn("child-1");
 		finishTurn("unlisted");
+		completeWork("child-1");
+		completeWork("unlisted");
 
 		expect(sounds).toEqual([]);
 	});
@@ -122,14 +126,14 @@ describe("createChatNotifier", () => {
 	});
 
 	it("plays needs-you for a failure that arrives after the turn ended, once", () => {
-		const { sounds, finishTurn, updated } = setup();
+		const { sounds, completeWork, updated } = setup();
 
-		finishTurn("ses-1");
+		completeWork("ses-1");
 		updated("ses-1", {}, { lastError: failure });
 		updated("ses-1", { lastError: failure }, { lastError: failure, completedAt: 5 });
 		updated("ses-1", { status: "busy" }, { lastError: failure });
 		updated("child-1", {}, { lastError: failure });
-		finishTurn("ses-1");
+		completeWork("ses-1");
 
 		expect(sounds).toEqual(["done", "needsYou", "done"]);
 	});
@@ -154,7 +158,7 @@ describe("createChatNotifier", () => {
 	});
 
 	it("applies each cue's mode on its own", () => {
-		const { sounds, askQuestion, finishTurn, look, setMode } = setup();
+		const { sounds, askQuestion, completeWork, look, setMode } = setup();
 		look("ses-1");
 
 		setMode("needsYou", "always");
@@ -163,19 +167,20 @@ describe("createChatNotifier", () => {
 
 		look(null);
 		setMode("done", "off");
-		finishTurn("ses-1");
+		completeWork("ses-1");
 		expect(sounds).toEqual(["needsYou"]);
 	});
 
 	it("shows a system notification only while Kilo is in the background", () => {
-		const { reasons, askQuestion, askPermission, finishTurn, look, focus, setMode } = setup();
+		const { reasons, askQuestion, askPermission, finishTurn, completeWork, look, focus, setMode } =
+			setup();
 
 		look("ses-2");
 		askQuestion("ses-1");
 		expect(reasons()).toEqual([]);
 
 		focus(false);
-		finishTurn("ses-1");
+		completeWork("ses-1");
 		finishTurn("ses-2", failure);
 		setMode("needsYou", "off");
 		askPermission("ses-1");

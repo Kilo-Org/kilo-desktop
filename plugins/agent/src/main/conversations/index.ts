@@ -110,6 +110,10 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
  *   announces nothing (consumers read the state when `ready` turns true),
  *   later reads announce chats created or changed, never turns or prompts.
  * - Writes wait for the server and go to the chat's own directory.
+ * - Successful live root turns share one drain barrier until its matching
+ *   stream acknowledgment: server reservations include descendants and queued
+ *   report delivery. Dropped streams preserve intent but replace the token
+ *   after hydration; failures, deletions and server shutdown discard it.
  */
 export function provideConversations(
 	sdk: PluginSdk,
@@ -120,6 +124,16 @@ export function provideConversations(
 	const store = new ConversationStore(now);
 	let ready = false;
 	let current: { key: string; client: KiloChatClient; connection: ServerConnection } | undefined;
+	const drains = new Map<string, { token: string; controller: AbortController } | null>();
+	let activeStream:
+		| {
+				client: KiloChatClient;
+				connection: ServerConnection;
+				signal: AbortSignal;
+				connected: boolean;
+				hydrated: boolean;
+		  }
+		| undefined;
 
 	const clientFor = (connection: ServerConnection) => {
 		const key = `${connection.baseUrl}\n${connection.password}`;
@@ -368,12 +382,58 @@ export function provideConversations(
 		const before = provider.state.chats;
 		const chats = publishChats(store.chats);
 		provider.setState({ ready, chats });
+		for (const id of drains.keys()) {
+			const chat = chats[id];
+			if (!chat || chat.parentId !== null || chat.activity.lastError) cancelDrain(id);
+		}
 		if (!ready) return;
 		for (const event of diffChats(before, chats, options)) {
+			if (event.name === "turn-ended" && !event.payload.error) {
+				const id = event.payload.chatId;
+				if (chats[id]?.parentId === null && !drains.has(id)) {
+					drains.set(id, null);
+					requestDrain(id);
+				}
+			}
 			provider.emit(event.name, event.payload as never);
 		}
 		if (options.deleted && !chats[options.deleted.id]) {
 			provider.emit("deleted", { chat: options.deleted });
+		}
+	}
+
+	function cancelDrain(id: string) {
+		const request = drains.get(id);
+		drains.delete(id);
+		request?.controller.abort();
+	}
+
+	function requestDrain(id: string) {
+		if (!ready || !activeStream?.connected || !activeStream.hydrated || drains.get(id)) return;
+		const chat = provider.state.chats[id];
+		if (!chat || chat.parentId !== null || chat.activity.lastError) return cancelDrain(id);
+		const request = { token: crypto.randomUUID(), controller: new AbortController() };
+		drains.set(id, request);
+		void activeStream.client
+			.drainChat(
+				chat.directory ?? activeStream.connection.globalDirectory,
+				id,
+				request.token,
+				request.controller.signal,
+			)
+			.catch((error) => {
+				if (drains.get(id) !== request) return;
+				cancelDrain(id);
+				sdk.logger.warn(`Could not wait for Kilo chat completion: ${errorText(error)}`);
+			});
+	}
+
+	function suspendDrains(signal: AbortSignal) {
+		if (activeStream?.signal !== signal) return;
+		activeStream = undefined;
+		for (const [id, request] of drains) {
+			drains.set(id, null);
+			request?.controller.abort();
 		}
 	}
 
@@ -407,6 +467,8 @@ export function provideConversations(
 	}
 
 	function stop() {
+		for (const id of drains.keys()) cancelDrain(id);
+		activeStream = undefined;
 		if (!sync) return;
 		sync.abort();
 		sync = undefined;
@@ -423,19 +485,32 @@ export function provideConversations(
 			signal.addEventListener("abort", stopAttempt, { once: true });
 			try {
 				const client = clientFor(connection);
+				const stream = {
+					client,
+					connection,
+					signal: attempt.signal,
+					connected: false,
+					hydrated: false,
+				};
+				activeStream = stream;
 				const streaming = consume(client, attempt.signal);
 				streaming.catch(() => undefined);
-				await hydrate(client, connection, signal);
+				await hydrate(client, connection, attempt.signal);
 				if (signal.aborted) return;
 				delay = firstDelay;
-				if (!ready) {
-					ready = true;
-					publish({ activity: false });
+				if (activeStream === stream) {
+					stream.hydrated = true;
+					if (!ready) {
+						ready = true;
+						publish({ activity: false });
+					}
+					for (const id of drains.keys()) requestDrain(id);
 				}
 				await streaming;
 			} catch (error) {
 				if (!signal.aborted) sdk.logger.warn(`Kilo chat stream stopped: ${errorText(error)}`);
 			} finally {
+				suspendDrains(attempt.signal);
 				attempt.abort();
 				signal.removeEventListener("abort", stopAttempt);
 			}
@@ -448,13 +523,38 @@ export function provideConversations(
 	const userMessages = new UserMessageTracker();
 
 	async function consume(client: KiloChatClient, signal: AbortSignal) {
-		for await (const event of client.events(signal)) {
-			if (signal.aborted) return;
-			const message = userMessages.observe(event);
-			if (applyLive(event) && ready) void resolveLineage(client, signal, true);
-			if (message && ready && provider.state.chats[message.chatId]) {
-				provider.emit("user-message", message);
+		try {
+			for await (const event of client.events(signal)) {
+				if (signal.aborted) return;
+				if (event.type === "server.connected" && activeStream?.signal === signal) {
+					activeStream.connected = true;
+					for (const id of drains.keys()) requestDrain(id);
+				}
+				const message = userMessages.observe(event);
+				if (applyLive(event) && ready) void resolveLineage(client, signal, true);
+				if (event.type === "session.drained") {
+					const id = event.properties.sessionID;
+					const request = typeof id === "string" ? drains.get(id) : undefined;
+					if (typeof id === "string" && request && request.token === event.properties.token) {
+						cancelDrain(id);
+						const chat = provider.state.chats[id];
+						if (
+							ready &&
+							activeStream?.hydrated &&
+							chat?.parentId === null &&
+							chat.activity.status === "idle" &&
+							!chat.activity.lastError
+						) {
+							provider.emit("work-completed", { chatId: id });
+						}
+					}
+				}
+				if (message && ready && provider.state.chats[message.chatId]) {
+					provider.emit("user-message", message);
+				}
 			}
+		} finally {
+			suspendDrains(signal);
 		}
 	}
 
@@ -520,7 +620,7 @@ export function provideConversations(
 	});
 	sdk.onDispose(() => {
 		stopServer?.();
-		sync?.abort();
+		stop();
 	});
 
 	return { lineage: (chatId) => lineageOf(store.chats, chatId) };

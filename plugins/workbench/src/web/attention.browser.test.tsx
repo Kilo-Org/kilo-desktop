@@ -186,6 +186,9 @@ describe("chat notifications", () => {
 
 		conversations!.update(chat("c1", { completedAt: Date.now() }));
 		conversations!.events.emit("turn-ended", { chatId: "c1" });
+		conversations!.events.emit("turn-ended", { chatId: "c1" });
+		conversations!.events.emit("turn-ended", { chatId: "c1" });
+		conversations!.events.emit("work-completed", { chatId: "c1" });
 		await vi.waitFor(() =>
 			expect(shown).toHaveBeenCalledWith({
 				title: "Kilo finished",
@@ -218,7 +221,7 @@ describe("chat notifications", () => {
 		});
 		await expect.element(row("Session s1")).toBeVisible();
 
-		conversations!.events.emit("turn-ended", { chatId: "c1" });
+		conversations!.events.emit("work-completed", { chatId: "c1" });
 		conversations!.events.emit("question-requested", { chatId: "c1", questionId: "q" });
 		await new Promise((resolve) => setTimeout(resolve, 50));
 		expect(shown).not.toHaveBeenCalled();

@@ -6,7 +6,7 @@ import { setPage } from "@anaconda/playwright-utils/page-utils";
 import { _electron as electron, type ElectronApplication } from "playwright";
 
 import { RecoveryPage } from "../pages/kernel/recovery-page.js";
-import { PACKAGED_APP_RENDERING_ARGS, packagedAppLaunchEnv } from "../utils/app-launcher.js";
+import { PACKAGED_APP_POINTER_ARGS, packagedAppLaunchEnv } from "../utils/app-launcher.js";
 import { packagedExecutable } from "../utils/paths.js";
 
 import { electronFixture, removePathAfterAppStops, waitForMainWindow } from "./electron.js";
@@ -31,7 +31,7 @@ export const test = electronFixture.extend<{
 		]);
 		const app = await electron.launch({
 			executablePath: packagedExecutable(),
-			args: [`--user-data-dir=${userData}`, "--safe-mode", ...PACKAGED_APP_RENDERING_ARGS],
+			args: [`--user-data-dir=${userData}`, "--safe-mode", ...PACKAGED_APP_POINTER_ARGS],
 			env: packagedAppLaunchEnv(userData),
 		});
 		try {

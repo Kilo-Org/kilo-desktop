@@ -13,7 +13,7 @@ import { expect } from "@playwright/test";
 import { _electron as electron, type ElectronApplication } from "playwright";
 
 import { removePathAfterAppStops, waitForMainWindow } from "../../../fixtures/electron.js";
-import { PACKAGED_APP_RENDERING_ARGS, packagedAppLaunchEnv } from "../../../utils/app-launcher.js";
+import { PACKAGED_APP_POINTER_ARGS, packagedAppLaunchEnv } from "../../../utils/app-launcher.js";
 import { type ThemeSource } from "../../../testdata/theme.js";
 import { packagedExecutable } from "../../../utils/paths.js";
 
@@ -55,7 +55,7 @@ export class ThemePage {
 		const launch = () =>
 			electron.launch({
 				executablePath: packagedExecutable(),
-				args: [`--user-data-dir=${userData}`, ...PACKAGED_APP_RENDERING_ARGS],
+				args: [`--user-data-dir=${userData}`, ...PACKAGED_APP_POINTER_ARGS],
 				env: packagedAppLaunchEnv(userData),
 			});
 		let app: ElectronApplication | undefined;

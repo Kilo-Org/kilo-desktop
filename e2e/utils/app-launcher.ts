@@ -105,17 +105,15 @@ export function packagedAppLaunchEnv(
 }
 
 /**
- * Chromium switches that keep a packaged app rendering when its window is not
- * on a visible desktop. Headless Windows CI VMs report the window as occluded,
- * so Chromium stops producing frames and never recomputes `:hover`: hover-only
- * controls such as the session row's actions button stay `pointer-events-none`
- * and clicks land on the row beneath. Playwright passes the same switches when
- * it launches Chromium itself, but not for `_electron.launch`.
+ * Report a mouse to Chromium even on CI VMs that have no pointing device.
+ * Without one, `(hover: hover)` is false, and Tailwind v4 wraps every `hover:`
+ * utility in that media query: hover-revealed controls such as the session
+ * row's actions button stay `pointer-events-none` although pointer events
+ * still reach the page. Playwright passes the same setting when it launches
+ * headless Chromium itself, but not for `_electron.launch`.
  */
-export const PACKAGED_APP_RENDERING_ARGS: readonly string[] = [
-	"--disable-features=CalculateNativeWinOcclusion",
-	"--disable-backgrounding-occluded-windows",
-	"--disable-renderer-backgrounding",
+export const PACKAGED_APP_POINTER_ARGS: readonly string[] = [
+	"--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
 ];
 
 /**

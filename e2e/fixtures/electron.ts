@@ -13,7 +13,7 @@ import {
 } from "../utils/app-diagnostics.js";
 import {
 	killProcessTree,
-	PACKAGED_APP_RENDERING_ARGS,
+	PACKAGED_APP_POINTER_ARGS,
 	packagedAppLaunchEnv,
 } from "../utils/app-launcher.js";
 import { ConsoleLogCollector } from "../utils/console-log-collector.js";
@@ -159,7 +159,7 @@ async function launchApp(
 	await writeFile(path.join(userDataDir, ".gitconfig-system"), "");
 	const app = await electron.launch({
 		executablePath: packagedExecutable(),
-		args: [`--user-data-dir=${userDataDir}`, ...PACKAGED_APP_RENDERING_ARGS],
+		args: [`--user-data-dir=${userDataDir}`, ...PACKAGED_APP_POINTER_ARGS],
 		env: packagedAppLaunchEnv(userDataDir, { ...process.env, ...envOverrides }),
 	});
 	return { app, userDataDir };

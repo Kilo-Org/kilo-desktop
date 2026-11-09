@@ -1,0 +1,57 @@
+{
+	"manifestVersion": 1,
+	"id": "kilo.marketplace",
+	"displayName": "Kilo Marketplace",
+	"version": "1.0.0",
+	"description": "Browse and install agents, skills, and MCP servers into Kilo.",
+	"requires": {
+		"kilo.agent/server": "optional",
+		"kilo.agent/runtime-config": "optional",
+		"kilo.workspaces/workspace": "optional",
+		"kilo.chat/composer": "optional",
+		"kilo.shell/settings-section": "optional",
+		"kilo.telemetry/telemetry": "optional",
+		"kilo.telemetry/telemetry-event": "optional"
+	},
+	"permissions": {
+		"host": ["clipboard", "shell"]
+	},
+	"domains": [
+		{
+			"id": "marketplace",
+			"home": "main",
+			"description": "Kilo's Marketplace across the app's workspaces: list, install, remove, MCP sign-in and launch-command checks."
+		}
+	],
+	"contributes": {
+		"extensions": {
+			"kilo.shell/settings-section": [
+				{
+					"id": "kilo-marketplace",
+					"title": "Agent Behavior",
+					"description": "Manage the agents, skills, and MCPs available to Kilo.",
+					"category": "kilo.shell/ai",
+					"priority": 100
+				}
+			],
+			"kilo.telemetry/telemetry-event": [
+				{
+					"id": "marketplace-tab-viewed",
+					"name": "Marketplace Tab Viewed"
+				},
+				{
+					"id": "marketplace-install-clicked",
+					"name": "Marketplace Install Button Clicked"
+				},
+				{
+					"id": "marketplace-item-installed",
+					"name": "Marketplace Item Installed"
+				},
+				{
+					"id": "marketplace-item-removed",
+					"name": "Marketplace Item Removed"
+				}
+			]
+		}
+	}
+}

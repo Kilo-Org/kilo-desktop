@@ -1,0 +1,46 @@
+{
+	"manifestVersion": 1,
+	"id": "kilo.anaconda-account",
+	"displayName": "Anaconda Account",
+	"version": "1.0.0",
+	"description": "Sign in to Anaconda to store the API key Anaconda services, like the model catalog, use.",
+	"requires": {
+		"kilo.account/account-panel": "optional",
+		"kilo.flags/flags": "optional",
+		"kilo.telemetry/telemetry": "optional",
+		"kilo.telemetry/telemetry-event": "optional"
+	},
+	"permissions": {
+		"host": ["shell", "windows"]
+	},
+	"domains": [
+		{
+			"id": "account",
+			"home": "main",
+			"description": "The Anaconda account: its session, the browser sign-in and the stored API key."
+		}
+	],
+	"contributes": {
+		"extensions": {
+			"kilo.account/account-panel": [
+				{
+					"id": "anaconda",
+					"priority": 10,
+					"when": {
+						"all": ["kilo.flags/flag:local-model-catalog"]
+					}
+				}
+			],
+			"kilo.telemetry/telemetry-event": [
+				{
+					"id": "anaconda-logged-in",
+					"name": "Anaconda Logged In"
+				},
+				{
+					"id": "anaconda-logged-out",
+					"name": "Anaconda Logged Out"
+				}
+			]
+		}
+	}
+}

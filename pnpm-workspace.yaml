@@ -1,0 +1,103 @@
+packages:
+  - apps/*
+  - packages/*
+  - plugins/*
+  # Example plugins for authors (docs/plugins): workspace packages, never bundled.
+  - examples/*
+  - plugins/chat/opencode-sdk-compat
+  - e2e
+
+catalog:
+  "@pierre/diffs": 1.6.4
+  "@pierre/trees": 1.0.0-beta.6
+  "@playwright/test": 1.64.1
+  # Every Sentry package must resolve to the exact @sentry/core pinned by
+  # @sentry/electron, so the repo carries a single core.
+  "@sentry/electron": 8.3.0
+  "@sentry/react": 11.8.0
+  "@sentry/vite-plugin": 11.8.0
+  atomically: ^2.1.1
+  electron: ^45.1.0
+  electron-log: ^5.4.3
+  execa: ^10.0.1
+  p-limit: ^7.3.2
+  semver: ^7.8.5
+  which: ^7.0.0
+  lodash: ^4.17.21
+  lucide-react: ^1.27.0
+  playwright: 1.64.1
+  react-use: ^17.6.1
+  type-fest: ^5.8.0
+  typescript: ^7.0.2
+  vite: ^8.1.5
+  vitest: 5.1.0
+  "@vitest/coverage-v8": 5.1.0
+  "@tanstack/react-query": ^5.101.4
+  react: ^19.0.0
+  react-dom: ^19.0.0
+  zod: ^4.6.6
+
+savePrefix: ^
+
+nodeLinker: hoisted
+autoInstallPeers: false
+
+overrides:
+  "@assistant-ui/react-opencode>@opencode-ai/sdk": "link:plugins/chat/opencode-sdk-compat"
+  # Keep react-opencode on the same core/store as @assistant-ui/react so Vite
+  # does not embed a second AssistantContext (breaks composer typing).
+  "@assistant-ui/core": "0.3.5"
+  "@assistant-ui/store": "0.3.9"
+  "@assistant-ui/tap": "0.9.12"
+  # pnpm 12 deploy fails with ERR_PNPM_DEPLOY_AMBIGUOUS_PEER when workspace
+  # packages peer on zod and the graph contains both 3.x (MCP SDK 1) and
+  # catalog 4.x.
+  zod: ^4.6.6
+  # friendly-words (kilo.git branch names) lists its demo server and test runner
+  # as runtime deps; index.js only reads generated/words.json. Dropping them
+  # keeps express/body-parser/ava out of the packaged app.
+  "friendly-words>express": "-"
+  "friendly-words>ava": "-"
+  "friendly-words>lodash.samplesize": "-"
+  # @sentry/node lists @sentry/bundler-plugins only for its ./vite, ./rollup,
+  # ./webpack and ./esbuild build-tool exports; its runtime entry (what
+  # @sentry/electron loads) never imports it. Dropping the edge keeps
+  # bundler-plugins and the FSL-licensed Sentry CLI (`sentry`) out of app.asar.
+  # Source-map upload still gets both through the @sentry/vite-plugin devDep.
+  "@sentry/node>@sentry/bundler-plugins": "-"
+
+allowBuilds:
+  electron: true
+  electron-winstaller: true
+  esbuild: true
+  better-sqlite3: true
+  node-pty: true
+  # koffi is a general-purpose FFI (arbitrary syscall capability) in the main
+  # process; used only by the notebook daemon peer-credential check. Its addon
+  # ships in prebuilt @koromix/koffi-* siblings (no build script), but the koffi
+  # package itself runs a native prebuild step, so it needs a build allowance.
+  koffi: true
+  fs-xattr: true
+  macos-alias: true
+  "@github/keytar": true
+  "@anaconda/playwright-utils": false
+  unrs-resolver: false
+  # Optional native addon pulled in transitively by @vscode/proxy-agent. We
+  # never load it (addCertificatesV2 → false), so skip its native build.
+  "@vscode/windows-ca-certs": false
+  protobufjs: false
+  # Native file-watching addon used by the workspace feature. Its install
+  # script fetches the prebuild binding (node-gyp-build); allow it.
+  "@parcel/watcher": true
+
+minimumReleaseAge: 0
+
+registries:
+  default: https://registry.npmjs.org/
+  "@anaconda": https://npm.pkg.github.com/
+
+patchedDependencies:
+  # kilo.chat: a draft's failed first send must not surface as an unhandled
+  # rejection from RemoteThreadList's fire-and-forget initialize.
+  "@assistant-ui/core@0.3.5": plugins/chat/patches/@assistant-ui__core@0.3.5.patch
+  "@assistant-ui/react-opencode@0.2.17": plugins/chat/patches/@assistant-ui__react-opencode@0.2.17.patch

@@ -1,0 +1,43 @@
+{
+	"name": "@kilo-desktop/e2e",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "Playwright/Electron e2e suite for Kilo Desktop",
+	"exports": {
+		".": "./index.ts",
+		"./fixtures": "./fixtures/shell.ts"
+	},
+	"scripts": {
+		"check": "tsc --noEmit -p tsconfig.json",
+		"test:e2e": "playwright test --config playwright.config.ts",
+		"test:e2e:smoke": "playwright test --config playwright.config.ts --grep @smoke",
+		"test:e2e:headed": "playwright test --config playwright.config.ts --headed",
+		"format": "oxfmt --no-error-on-unmatched-pattern .",
+		"lint": "oxlint .",
+		"lint:fix": "oxlint --fix .",
+		"check:code-quality": "playwright-utils-check-code-quality",
+		"check:code-quality:staged": "playwright-utils-check-code-quality --staged",
+		"quality:full": "playwright-utils-quality-full",
+		"quality:report": "playwright-utils-full-quality-report",
+		"precommit": "playwright-utils-precommit"
+	},
+	"lint-staged": {
+		"{fixtures,pages,scripts,specs,utils}/**/*.ts": [
+			"oxlint --fix",
+			"oxfmt"
+		],
+		"{global-setup,index,playwright.config}.ts": [
+			"oxlint --fix",
+			"oxfmt"
+		]
+	},
+	"devDependencies": {
+		"@anaconda/playwright-utils": "2.1.0",
+		"@playwright/test": "catalog:",
+		"@types/node": "^26.0.0",
+		"playwright": "catalog:",
+		"typescript": "catalog:"
+	},
+	"dependencies": {}
+}

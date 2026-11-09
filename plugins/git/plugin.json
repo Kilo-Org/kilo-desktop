@@ -1,0 +1,169 @@
+{
+	"manifestVersion": 1,
+	"id": "kilo.git",
+	"displayName": "Git",
+	"version": "1.0.0",
+	"description": "Git for workspace folders: status, branches, worktrees, diffs, commits and pull requests.",
+	"requires": {
+		"kilo.workspaces/workspace": "optional",
+		"kilo.workspaces/file": "optional",
+		"kilo.workspaces/vcs": "optional",
+		"kilo.sessions/work-session": "optional",
+		"kilo.sessions/pane": "optional",
+		"kilo.sessions/pane-kind": "optional",
+		"kilo.workbench/workbench": "optional",
+		"kilo.workbench/launcher-option": "optional",
+		"kilo.chat/composer-action": "optional",
+		"kilo.agent/tool": "optional",
+		"kilo.shell/theme": "optional",
+		"kernel/windows": "optional",
+		"kilo.workbench/session-decoration": "optional",
+		"kilo.workbench/session-facet": "optional",
+		"kernel/shell": "optional",
+		"kilo.workbench/session-action": "optional",
+		"kilo.agent/conversation": "optional",
+		"kilo.chat/model-preferences": "optional",
+		"kilo.chat/composer": "optional",
+		"kilo.telemetry/telemetry": "optional",
+		"kilo.telemetry/telemetry-event": "optional"
+	},
+	"permissions": {
+		"protocols": ["kilo-git"],
+		"host": ["shell"]
+	},
+	"domains": [
+		{
+			"id": "repository",
+			"home": "main",
+			"description": "Git in workspace folders: status, branches, diffs, commits, pushes and pull requests."
+		},
+		{
+			"id": "pull-requests",
+			"home": "main",
+			"description": "The pull request of each session's directory, looked up in the background."
+		}
+	],
+	"contributes": {
+		"extensions": {
+			"kilo.workspaces/vcs": [
+				{
+					"id": "git"
+				}
+			],
+			"kilo.chat/composer-action": [
+				{
+					"id": "branch",
+					"slot": "footer",
+					"kind": "view",
+					"title": "Branch",
+					"priority": 100
+				}
+			],
+			"kilo.sessions/pane-kind": [
+				{
+					"id": "changes",
+					"title": "Changes",
+					"description": "Review uncommitted changes in this session's workspace.",
+					"launch": {
+						"newSession": false,
+						"inSession": true
+					},
+					"singleton": true,
+					"order": 45,
+					"availableWhen": {
+						"all": ["kilo.workspaces/vcs"]
+					},
+					"unavailableHint": "Git isn't available."
+				}
+			],
+			"kilo.workbench/launcher-option": [
+				{
+					"id": "branch",
+					"slot": "branch"
+				}
+			],
+			"kilo.agent/tool": [
+				{
+					"id": "changes_open",
+					"title": "Open changes",
+					"external": false
+				}
+			],
+			"kernel/command": [
+				{
+					"id": "open-changes",
+					"title": "Open Changes",
+					"category": "Tabs",
+					"order": 41,
+					"keybinding": "Ctrl+Shift+G",
+					"when": {
+						"all": ["kilo.workbench/sessionActive", "kilo.workspaces/vcs"]
+					}
+				},
+				{
+					"id": "commit",
+					"title": "Commit Changes",
+					"category": "Git",
+					"order": 10,
+					"when": {
+						"all": ["kilo.workbench/sessionActive", "kilo.workspaces/vcs"]
+					}
+				},
+				{
+					"id": "push",
+					"title": "Push",
+					"category": "Git",
+					"order": 11,
+					"when": {
+						"all": ["kilo.workbench/sessionActive", "kilo.workspaces/vcs"]
+					}
+				},
+				{
+					"id": "create-pull-request",
+					"title": "Create Pull Request",
+					"category": "Git",
+					"order": 12,
+					"when": {
+						"all": ["kilo.workbench/sessionActive", "kilo.workspaces/vcs"]
+					}
+				}
+			],
+			"kilo.workbench/session-decoration": [
+				{
+					"id": "pull-request",
+					"slot": "row"
+				},
+				{
+					"id": "branch",
+					"slot": "hover-branch"
+				},
+				{
+					"id": "pull-request-details",
+					"slot": "hover"
+				}
+			],
+			"kilo.workbench/session-facet": [
+				{
+					"id": "pull-request",
+					"facet": "pull-request"
+				}
+			],
+			"kilo.workbench/session-action": [
+				{
+					"id": "repository-actions",
+					"placement": "start"
+				}
+			],
+			"kilo.telemetry/telemetry-event": [
+				{
+					"id": "commit-message-generated",
+					"name": "Commit Message Generated"
+				},
+				{
+					"id": "pull-request-content-generated",
+					"name": "Pull Request Content Generated"
+				}
+			]
+		}
+	}
+}

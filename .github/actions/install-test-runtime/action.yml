@@ -1,0 +1,58 @@
+name: Install test runtime
+description: Install Electron or Playwright with bounded retries for transient download failures.
+
+inputs:
+  runtime:
+    description: >
+      Runtime to install: electron, playwright (Chromium browser), or
+      playwright-deps (only the Linux system libraries Chromium/Electron need).
+    required: true
+  package-name:
+    description: Workspace package that provides the installer.
+    required: true
+  with-deps:
+    description: Install Playwright system dependencies on Linux.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Install ${{ inputs.runtime }}
+      shell: bash
+      env:
+        RUNTIME: ${{ inputs.runtime }}
+        PACKAGE_NAME: ${{ inputs.package-name }}
+        WITH_DEPS: ${{ inputs.with-deps }}
+      run: |
+        case "$RUNTIME" in
+          electron)
+            command=(pnpm --filter "$PACKAGE_NAME" exec install-electron)
+            ;;
+          playwright)
+            command=(pnpm --filter "$PACKAGE_NAME" exec playwright install chromium)
+            if [[ "$WITH_DEPS" == "true" ]]; then
+              command+=(--with-deps)
+            fi
+            ;;
+          playwright-deps)
+            command=(pnpm --filter "$PACKAGE_NAME" exec playwright install-deps chromium)
+            ;;
+          *)
+            echo "Unsupported test runtime: $RUNTIME" >&2
+            exit 2
+            ;;
+        esac
+
+        for attempt in 1 2 3; do
+          if "${command[@]}"; then
+            exit 0
+          fi
+          if [[ "$attempt" == "3" ]]; then
+            echo "Failed to install $RUNTIME after 3 attempts." >&2
+            exit 1
+          fi
+          delay=$((attempt * 10))
+          echo "Install attempt $attempt failed; retrying in ${delay}s."
+          sleep "$delay"
+        done

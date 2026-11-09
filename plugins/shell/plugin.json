@@ -1,0 +1,194 @@
+{
+	"manifestVersion": 1,
+	"id": "kilo.shell",
+	"displayName": "Shell",
+	"version": "1.0.0",
+	"description": "The window frame, router, settings host, command palette, status bar and appearance.",
+	"requires": {
+		"kernel/windows": "optional"
+	},
+	"permissions": {
+		"host": ["appearance", "windows"]
+	},
+	"extensionPoints": [
+		{
+			"id": "main",
+			"kind": "exclusive",
+			"description": "The main area of the window, shown when the app opens."
+		},
+		{
+			"id": "left-sidebar",
+			"kind": "exclusive",
+			"description": "The left sidebar's body."
+		},
+		{
+			"id": "left-sidebar-account",
+			"kind": "exclusive",
+			"description": "The account entry at the foot of the left sidebar."
+		},
+		{
+			"id": "left-sidebar-notice",
+			"kind": "additive",
+			"description": "A notice above the account entry in the left sidebar."
+		},
+		{
+			"id": "settings-category",
+			"kind": "additive",
+			"description": "A heading in the Settings sidebar that sections sit under."
+		},
+		{
+			"id": "settings-section",
+			"kind": "additive",
+			"description": "A section of the Settings page."
+		},
+		{
+			"id": "status-bar-item",
+			"kind": "additive",
+			"description": "An item in the window's status bar: a view, a button or a popover."
+		},
+		{
+			"id": "deep-link",
+			"kind": "additive",
+			"description": "Routes an app URL host to a page."
+		},
+		{
+			"id": "onboarding-step",
+			"kind": "additive",
+			"description": "A step of first-run onboarding."
+		},
+		{
+			"id": "overlay",
+			"kind": "additive",
+			"description": "Always-mounted UI such as app-wide dialogs."
+		}
+	],
+	"domains": [
+		{
+			"id": "appearance",
+			"home": "main",
+			"description": "Appearance preferences shared by every window."
+		},
+		{
+			"id": "theme",
+			"home": "renderer",
+			"description": "The effective theme in a window."
+		},
+		{
+			"id": "navigation",
+			"home": "renderer",
+			"description": "Where the main window is, and how to move it."
+		},
+		{
+			"id": "onboarding",
+			"home": "main",
+			"description": "Whether first-run onboarding was finished or skipped."
+		}
+	],
+	"contributes": {
+		"extensions": {
+			"kernel/root": [
+				{
+					"id": "frame"
+				}
+			],
+			"kernel/command": [
+				{
+					"id": "show-shortcuts",
+					"title": "Show keyboard shortcuts",
+					"category": "App",
+					"order": 10,
+					"keybinding": "Mod+/",
+					"when": {
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "open-settings",
+					"title": "Open settings",
+					"category": "App",
+					"order": 20,
+					"keybinding": "Mod+,"
+				},
+				{
+					"id": "toggle-sidebar",
+					"title": "Show or hide the sidebar",
+					"category": "App",
+					"order": 30,
+					"keybinding": {
+						"mac": "Mod+B",
+						"default": "Ctrl+Shift+S"
+					},
+					"when": {
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "close-window",
+					"title": "Close window",
+					"category": "App",
+					"order": 40,
+					"keybinding": {
+						"mac": "Mod+W",
+						"default": "Ctrl+Shift+W"
+					},
+					"when": {
+						"all": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "command-palette",
+					"title": "Show all commands",
+					"category": "App",
+					"order": 50,
+					"keybinding": "Mod+Shift+P",
+					"palette": false,
+					"when": {
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "go-home",
+					"title": "Go home",
+					"category": "App",
+					"order": 60,
+					"when": {
+						"none": ["kernel/secondaryWindow"]
+					}
+				}
+			],
+			"kilo.shell/settings-category": [
+				{
+					"id": "general",
+					"title": "General",
+					"priority": 300
+				},
+				{
+					"id": "ai",
+					"title": "AI",
+					"priority": 200
+				}
+			],
+			"kilo.shell/settings-section": [
+				{
+					"id": "appearance",
+					"title": "Appearance",
+					"description": "Choose how Kilo looks on this device.",
+					"priority": 100
+				},
+				{
+					"id": "keyboard-shortcuts",
+					"title": "Shortcuts",
+					"description": "See, change, or turn off the app's keyboard shortcuts.",
+					"priority": 65
+				}
+			],
+			"kilo.shell/onboarding-step": [
+				{
+					"id": "features",
+					"label": "Features",
+					"priority": 100
+				}
+			]
+		}
+	}
+}

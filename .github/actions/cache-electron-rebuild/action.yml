@@ -1,0 +1,15 @@
+name: Cache Electron native rebuilds
+description: >
+  Restore the @electron/rebuild hash cache so release packaging hosts can reuse
+  native addon rebuilds when Electron and dependency versions are unchanged.
+
+runs:
+  using: composite
+  steps:
+    - name: Cache Electron rebuild artifacts
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: apps/desktop/.electron-rebuild-cache
+        key: electron-rebuild-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml') }}
+        restore-keys: |
+          electron-rebuild-${{ runner.os }}-${{ runner.arch }}-

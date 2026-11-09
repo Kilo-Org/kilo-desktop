@@ -1,0 +1,5 @@
+# Fixture repositories must check out byte-identically on every platform:
+# their bundled git indexes are compared against the working tree bytes, so
+# line-ending conversion (e.g. autocrlf on Windows runners) would make
+# pristine fixtures look modified.
+* -text

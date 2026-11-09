@@ -1,0 +1,67 @@
+{
+	"name": "kilo-desktop",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "Kilo Desktop",
+	"packageManager": "pnpm@12.16.1",
+	"engines": {
+		"node": ">=24"
+	},
+	"scripts": {
+		"check": "turbo run check",
+		"check:plugin-isolation": "node scripts/check-plugin-isolation.mjs",
+		"dev": "pnpm dev:desktop",
+		"docs:extension-points": "node scripts/list-extension-points.mjs --write",
+		"dev:web": "pnpm --filter @kilo-desktop/web dev",
+		"dev:desktop": "concurrently --kill-others --success first \"pnpm dev:web\" \"wait-on http://127.0.0.1:5173 && cross-env KILO_WEB_DEV_SERVER_URL=http://127.0.0.1:5173 pnpm --filter @kilo-desktop/desktop start\"",
+		"format": "oxfmt --no-error-on-unmatched-pattern",
+		"format:check": "oxfmt --check",
+		"lint": "oxlint && node scripts/check-boundaries.mjs && node scripts/list-extension-points.mjs --check",
+		"lint:fix": "oxlint --fix",
+		"make": "pnpm --filter @kilo-desktop/desktop run make",
+		"package": "pnpm --filter @kilo-desktop/desktop run package",
+		"package:e2e": "pnpm --filter @kilo-desktop/desktop run package:e2e",
+		"postinstall": "node -e \"try { if (process.platform !== 'win32') require('node:fs').chmodSync('node_modules/@electron-forge/cli/dist/electron-forge.js', 0o755) } catch (error) { if (error.code !== 'ENOENT') throw error }\"",
+		"prepare-assets": "pnpm --filter \"@kilo-desktop/plugin-*\" -r --if-present run prepare-assets",
+		"publish": "pnpm --filter @kilo-desktop/desktop run publish",
+		"start": "pnpm dev:desktop",
+		"prepare": "husky",
+		"test": "turbo run test",
+		"test:web": "pnpm --filter @kilo-desktop/web test",
+		"test:desktop": "pnpm --filter @kilo-desktop/desktop test",
+		"test:e2e": "pnpm --filter @kilo-desktop/e2e run test:e2e",
+		"test:e2e:smoke": "pnpm --filter @kilo-desktop/e2e run test:e2e:smoke",
+		"coverage": "turbo run coverage"
+	},
+	"lint-staged": {
+		"*.{js,mjs,cjs,ts,tsx}": [
+			"npm run lint:fix",
+			"npm run format"
+		],
+		"*.{json,md,yaml,yml,css}": [
+			"npm run format"
+		]
+	},
+	"devDependencies": {
+		"@kilo-desktop/ui": "workspace:*",
+		"@opencode-ai/sdk": "workspace:*",
+		"@types/node": "^26.0.0",
+		"@vitest/coverage-v8": "catalog:",
+		"concurrently": "^10.0.6",
+		"cross-env": "^10.1.0",
+		"globals": "^17.7.0",
+		"husky": "^9.1.7",
+		"lint-staged": "^17.2.0",
+		"oxfmt": "^0.76.0",
+		"oxlint": "^1.76.0",
+		"tsx": "^4.23.1",
+		"turbo": "^2.11.8",
+		"typescript": "catalog:",
+		"vitest": "catalog:",
+		"wait-on": "^9.5.1"
+	},
+	"dependencies": {
+		"@assistant-ui/react-opencode": "0.2.17"
+	}
+}

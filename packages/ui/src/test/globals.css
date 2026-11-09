@@ -1,0 +1,4 @@
+/* Test-only stylesheet: generates the Tailwind utilities the components use
+   so browser tests get real layout and visibility. */
+@import "tailwindcss";
+@source "../";

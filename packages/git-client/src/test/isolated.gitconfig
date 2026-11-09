@@ -1,0 +1,2 @@
+# Intentionally empty. The test suite points GIT_CONFIG_GLOBAL here so every
+# git process it spawns sees the configuration CI runners have: none.

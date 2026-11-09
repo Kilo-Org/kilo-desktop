@@ -1,0 +1,154 @@
+{
+	"manifestVersion": 1,
+	"id": "kilo.agent",
+	"displayName": "Agent",
+	"version": "1.0.0",
+	"description": "Runs the Kilo CLI server that powers agents, writes its configuration and follows its chats.",
+	"requires": {
+		"kilo.updates/support-row": "optional",
+		"kilo.shell/settings-section": "optional",
+		"kilo.shell/onboarding-step": "optional"
+	},
+	"permissions": {
+		"host": ["shell"]
+	},
+	"extensionPoints": [
+		{
+			"id": "runtime-config",
+			"kind": "additive",
+			"description": "Environment, Kilo plugins and MCP servers for the Kilo server."
+		},
+		{
+			"id": "model-provider",
+			"kind": "additive",
+			"description": "A model provider added to Kilo's config."
+		},
+		{
+			"id": "provider-panel",
+			"kind": "additive",
+			"description": "A featured provider row in AI Providers."
+		},
+		{
+			"id": "tool",
+			"kind": "additive",
+			"description": "A tool the agent (and paired external AI apps) can call."
+		},
+		{
+			"id": "tool-approval",
+			"kind": "decision",
+			"description": "Proceed, ask or reject an agent tool call."
+		},
+		{
+			"id": "session-config",
+			"kind": "additive",
+			"description": "Tools and instructions for a session's chats."
+		},
+		{
+			"id": "chat-owner",
+			"kind": "additive",
+			"description": "Says which Work Session holds a Kilo chat."
+		}
+	],
+	"domains": [
+		{
+			"id": "server",
+			"home": "main",
+			"description": "The local Kilo CLI server: status, connection and restart."
+		},
+		{
+			"id": "config",
+			"home": "main",
+			"description": "Kilo's configuration files."
+		},
+		{
+			"id": "external-clients",
+			"home": "main",
+			"description": "Paired external AI apps: their endpoint, pairing and revoking."
+		},
+		{
+			"id": "conversation",
+			"home": "main",
+			"description": "Kilo chats: the list, live activity, pending prompts and their actions."
+		},
+		{
+			"id": "tool-sign-in",
+			"home": "main",
+			"description": "Plugins whose sign-in tools the person chose to go without, until they sign in."
+		},
+		{
+			"id": "work-style-onboarding",
+			"home": "renderer",
+			"description": "The work-style onboarding step: that it was shown and what was chosen (reported by kilo.telemetry)."
+		}
+	],
+	"contributes": {
+		"extensions": {
+			"kernel/service": [
+				{
+					"id": "config-sync",
+					"title": "Kilo configuration",
+					"kind": "task",
+					"startOn": "activation",
+					"restart": {
+						"policy": "never"
+					}
+				},
+				{
+					"id": "tool-gateway",
+					"title": "Agent tools",
+					"kind": "daemon",
+					"startOn": "activation",
+					"restart": {
+						"policy": "on-failure",
+						"maxRetries": 3
+					}
+				},
+				{
+					"id": "server",
+					"title": "Kilo server",
+					"kind": "daemon",
+					"startOn": "window-shown",
+					"restart": {
+						"policy": "on-failure",
+						"maxRetries": 3
+					},
+					"stopTimeoutMs": 7000,
+					"when": {
+						"all": ["kilo.account/termsAccepted"]
+					}
+				}
+			],
+			"kilo.updates/support-row": [
+				{
+					"id": "kilo-config"
+				}
+			],
+			"kilo.shell/settings-section": [
+				{
+					"id": "kilo-providers",
+					"title": "AI Providers",
+					"description": "Choose where your models come from.",
+					"category": "kilo.shell/ai",
+					"priority": 90
+				},
+				{
+					"id": "external-ai-apps",
+					"title": "External AI apps",
+					"description": "Let apps like Cursor and Claude Code use Kilo Desktop's tools.",
+					"category": "kilo.shell/ai",
+					"priority": 70,
+					"when": {
+						"all": ["kilo.flags/flag:external-api-apps-settings"]
+					}
+				}
+			],
+			"kilo.shell/onboarding-step": [
+				{
+					"id": "work-style",
+					"label": "Work style",
+					"priority": 800
+				}
+			]
+		}
+	}
+}

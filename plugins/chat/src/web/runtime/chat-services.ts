@@ -1,0 +1,135 @@
+import {
+	OpenCodeEventSource,
+	STREAM_RECONNECTED_EVENT_TYPE,
+	type OpenCodeEventSourceLike,
+	type OpenCodeEventSubscriber,
+} from "@assistant-ui/react-opencode";
+import type { KiloClient } from "@kilocode/sdk/v2/client";
+
+import type { DomainHandle } from "@kilo-desktop/kernel";
+import type { AgentServer, ServerConnection } from "@kilo-desktop/plugin-agent/contracts";
+
+import { createDeferredKiloClient } from "./deferred-client";
+import { KiloClients } from "./kilo-client";
+
+type ServerHandle = DomainHandle<typeof AgentServer>;
+
+/** What the server sends first on every (re)connect, once it publishes to that subscription. */
+const SERVER_CONNECTED = "server.connected";
+const RESYNC_EVENT = { payload: { type: STREAM_RECONNECTED_EVENT_TYPE, properties: {} } };
+
+const eventType = (event: unknown): unknown => {
+	const outer = event as { type?: unknown; payload?: { type?: unknown } } | null;
+	return outer?.payload?.type ?? outer?.type;
+};
+
+/**
+ * `stream` with a resync for every thread after each `server.connected`.
+ * react-opencode resyncs threads (history, status, pending prompts) only on a
+ * reconnect, and as soon as it asks for the stream rather than once the server
+ * is publishing to it, so a thread that read its state while the stream was
+ * connecting would keep anything it missed meanwhile, such as its turn ending.
+ */
+export async function* resyncOnceConnected(
+	stream: AsyncIterable<unknown>,
+): AsyncGenerator<unknown> {
+	for await (const event of stream) {
+		yield event;
+		if (eventType(event) === SERVER_CONNECTED) yield RESYNC_EVENT;
+	}
+}
+
+/**
+ * What every agent pane in a window shares: how to reach the Kilo server, its
+ * clients, and one event stream.
+ *
+ * - The connection comes from `kilo.agent/server.connect()`, which waits for
+ *   the server. It is read once per server start (a restart may change the
+ *   address or password) and re-read after the server leaves `ready`.
+ * - The transcript runtime (react-opencode) needs live message parts, which
+ *   kilo.agent's main-process stream doesn't carry, so the window keeps its
+ *   own subscription to the server's global stream (decision 51). It is one
+ *   per window however many panes are open, opened by the first pane that
+ *   needs it and kept until the window goes; on a reconnect it resolves the
+ *   connection again. kilo.agent's stream stays the source of truth for chat
+ *   status and activity.
+ * - The stream outlives the panes because a pane is unmounted whenever the
+ *   person switches session. A stream reopened per switch misses whatever the
+ *   server publishes while it connects, and a thread that misses its turn's
+ *   end shows it running until it is opened again.
+ */
+export class ChatServices {
+	readonly clients = new KiloClients();
+	readonly #server: () => ServerHandle | null;
+	#watched: ServerHandle | null = null;
+	#stopWatching: (() => void) | undefined;
+	#connection: Promise<ServerConnection> | undefined;
+	#events: OpenCodeEventSource | undefined;
+
+	constructor(server: () => ServerHandle | null) {
+		this.#server = server;
+	}
+
+	/** The running server's connection, waiting for it to be ready. */
+	connection(): Promise<ServerConnection> {
+		const server = this.#server();
+		if (!server) return Promise.reject(new Error("The Kilo server isn't available."));
+		this.#watch(server);
+		if (!this.#connection) {
+			const pending = server.methods.connect(undefined);
+			this.#connection = pending;
+			pending.catch(() => {
+				if (this.#connection === pending) this.#connection = undefined;
+			});
+		}
+		return this.#connection;
+	}
+
+	/** A global client (no directory) that follows the current connection. */
+	readonly globalClient: KiloClient = createDeferredKiloClient(async () =>
+		this.clients.global(await this.connection()),
+	);
+
+	/**
+	 * The window's event stream, opened on first use. A runtime's `dispose`
+	 * only lets go of its view of it; the stream stays open until the window's
+	 * services are disposed.
+	 */
+	events(): OpenCodeEventSourceLike {
+		this.#events ??= this.#openEvents();
+		const source = this.#events;
+		return {
+			subscribe: (listener) => source.subscribe(listener),
+			dispose: () => undefined,
+		};
+	}
+
+	dispose(): void {
+		this.#stopWatching?.();
+		this.#events?.dispose();
+		this.#events = undefined;
+		this.#connection = undefined;
+	}
+
+	#openEvents(): OpenCodeEventSource {
+		const subscribe: OpenCodeEventSubscriber = async (options) => {
+			const client = this.clients.global(await this.connection());
+			const subscription = await client.global.event(options as never);
+			return { stream: resyncOnceConnected(subscription.stream as AsyncIterable<unknown>) };
+		};
+		const source = new OpenCodeEventSource(this.globalClient as never, subscribe);
+		// The source disconnects when it has no listeners; this one keeps it connected.
+		source.subscribe(() => undefined);
+		return source;
+	}
+
+	#watch(server: ServerHandle): void {
+		if (this.#watched === server) return;
+		this.#stopWatching?.();
+		this.#watched = server;
+		this.#connection = undefined;
+		this.#stopWatching = server.subscribe((state) => {
+			if (state.status !== "ready") this.#connection = undefined;
+		});
+	}
+}

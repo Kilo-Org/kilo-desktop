@@ -1,0 +1,117 @@
+# Manual Electron Forge make — artifacts only, no S3 publish.
+# Uses the preview GitHub Environment so signing secrets/vars resolve the same
+# way as a Preview release.
+
+name: Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Target platform
+        required: true
+        default: mac
+        type: choice
+        options:
+          - mac
+          - windows
+          - windows-arm64
+          - linux
+          - linux-arm64
+          - all
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ inputs.platform == 'all' && fromJSON('["mac","windows","windows-arm64","linux","linux-arm64"]') || fromJSON(format('["{0}"]', inputs.platform)) }}
+    runs-on: ${{ matrix.target == 'mac' && 'macos-latest' || matrix.target == 'windows' && 'WinLatest-x64-8vCPU-32GB' || matrix.target == 'windows-arm64' && 'windows-11-vs2026-arm' || matrix.target == 'linux-arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    timeout-minutes: 90
+    environment: preview
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
+      RELEASE_TRACK: preview
+      UPDATE_PUBLISH_URL: ${{ vars.UPDATE_PUBLISH_URL }}
+      UPDATE_PUBLISH_URL_PREVIEW: ${{ vars.UPDATE_PUBLISH_URL_PREVIEW }}
+      UPDATE_PUBLISH_URL_STABLE: ${{ vars.UPDATE_PUBLISH_URL_STABLE }}
+      AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
+      AZURE_CERT_NAME: ${{ secrets.AZURE_CERT_NAME }}
+      # Service IDs for official builds (see docs/releases.md); not committed.
+      VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
+      VITE_BRIDGE_SENTRY_DSN: ${{ vars.VITE_BRIDGE_SENTRY_DSN }}
+      VITE_LAUNCHDARKLY_CLIENT_SIDE_ID: ${{ vars.VITE_LAUNCHDARKLY_CLIENT_SIDE_ID }}
+      VITE_POSTHOG_KEY: ${{ vars.VITE_POSTHOG_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Require service configuration
+        uses: ./.github/actions/require-service-config
+
+      - name: Setup Node and pnpm
+        uses: ./.github/actions/setup-node-pnpm
+
+      - name: Install maker prerequisites
+        if: startsWith(matrix.target, 'linux')
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes fakeroot libsecret-1-dev pkg-config
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - uses: ./plugins/notebook/actions/setup-native
+
+      - uses: ./plugins/agent/actions/setup-cli
+
+      - uses: ./.github/actions/cache-electron-rebuild
+
+      # Signing material is loaded after dependency install so package install
+      # scripts never run with the certificate, notarization key or Azure login.
+      - name: Setup macOS code signing
+        if: matrix.target == 'mac'
+        uses: ./.github/actions/setup-macos-codesign
+        with:
+          certificate_base64: ${{ secrets.OSX_BUILD_CERTIFICATE_BASE64 }}
+          certificate_password: ${{ secrets.OSX_P12_PASSWORD }}
+          notarization_key: ${{ secrets.OSX_NOTARIZATION_KEY }}
+          notarization_key_id: ${{ secrets.OSX_NOTARIZATION_KEY_ID }}
+          notarization_key_issuer: ${{ secrets.OSX_NOTARIZATION_KEY_ISSUER }}
+
+      - name: Setup Windows code signing
+        if: matrix.target == 'windows' || matrix.target == 'windows-arm64'
+        uses: ./.github/actions/setup-windows-codesign
+        with:
+          client_id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant_id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          key_vault_uri: ${{ secrets.AZURE_KEY_VAULT_URI }}
+          cert_name: ${{ secrets.AZURE_CERT_NAME }}
+
+      - name: Make
+        run: pnpm run make
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ matrix.target == 'mac' && 'mac-arm64' || endsWith(matrix.target, '-arm64') && matrix.target || format('{0}-x64', matrix.target) }}
+          path: |
+            apps/desktop/out/make/**/*.dmg
+            apps/desktop/out/make/**/*.zip
+            apps/desktop/out/make/**/RELEASES.json
+            apps/desktop/out/make/**/*.exe
+            apps/desktop/out/make/**/*.nupkg
+            apps/desktop/out/make/**/RELEASES
+            apps/desktop/out/make/**/*.deb
+          if-no-files-found: error
+          retention-days: 7

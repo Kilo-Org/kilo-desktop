@@ -1,0 +1,67 @@
+{
+	"name": "@kilo-desktop/plugin-environments",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"description": "kilo.environments: conda environments and packages through the bundled conda bridge, for the person and the agent",
+	"exports": {
+		"./plugin.json": "./plugin.json",
+		"./main": "./src/main/index.ts",
+		"./web": "./src/web/index.ts",
+		"./contracts": "./src/contracts/index.ts",
+		"./packaging": "./src/packaging/index.ts"
+	},
+	"scripts": {
+		"check": "tsc --noEmit -p tsconfig.json",
+		"test": "vitest run",
+		"coverage": "vitest run --coverage",
+		"fetch-bridge": "node --env-file-if-exists=.env.local --import tsx scripts/fetch-bridge.ts",
+		"prepare-assets": "pnpm run fetch-bridge"
+	},
+	"dependencies": {
+		"@kilo-desktop/kernel": "workspace:*",
+		"@kilo-desktop/plugin-account": "workspace:*",
+		"@kilo-desktop/plugin-agent": "workspace:*",
+		"@kilo-desktop/plugin-chat": "workspace:*",
+		"@kilo-desktop/plugin-flags": "workspace:*",
+		"@kilo-desktop/plugin-shell": "workspace:*",
+		"@kilo-desktop/plugin-telemetry": "workspace:*",
+		"@tanstack/react-query": "^5.101.4",
+		"@tanstack/react-virtual": "^3.14.9",
+		"lucide-react": "catalog:",
+		"vscode-jsonrpc": "^10.0.0",
+		"zod": "catalog:"
+	},
+	"optionalDependencies": {
+		"@anaconda/desktop-bridge-payload-darwin-arm64": "0.1.20",
+		"@anaconda/desktop-bridge-payload-linux-arm64": "0.1.20",
+		"@anaconda/desktop-bridge-payload-linux-x64": "0.1.20",
+		"@anaconda/desktop-bridge-payload-win32-arm64": "0.1.20",
+		"@anaconda/desktop-bridge-payload-win32-x64": "0.1.20"
+	},
+	"devDependencies": {
+		"@kilo-desktop/ui": "workspace:*",
+		"@tailwindcss/vite": "^4.3.3",
+		"@testing-library/react": "^16.3.2",
+		"@types/node": "^26.0.0",
+		"@types/react": "^19.2.17",
+		"@types/react-dom": "^19.2.3",
+		"@vitejs/plugin-react": "^6.0.4",
+		"@vitest/browser": "5.1.0",
+		"@vitest/browser-playwright": "5.1.0",
+		"@vitest/coverage-v8": "catalog:",
+		"playwright": "catalog:",
+		"react": "^19.2.8",
+		"react-dom": "^19.2.8",
+		"tailwindcss": "^4.3.3",
+		"tsx": "^4.23.1",
+		"typescript": "catalog:",
+		"vite": "catalog:",
+		"vitest": "catalog:"
+	},
+	"peerDependencies": {
+		"@kilo-desktop/ui": "workspace:*",
+		"react": "^19.0.0",
+		"react-dom": "^19.0.0"
+	}
+}

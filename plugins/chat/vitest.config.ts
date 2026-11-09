@@ -1,0 +1,124 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
+import { playwright } from "@vitest/browser-playwright";
+import { defineConfig } from "vitest/config";
+
+import { createCoverageConfig } from "../../vitest.coverage.shared.mjs";
+
+const root = path.dirname(fileURLToPath(import.meta.url));
+
+export default defineConfig({
+	cacheDir: path.join(root, ".vitest/cache"),
+	test: {
+		coverage: {
+			...createCoverageConfig(["src/test/**"]),
+			include: ["src/**"],
+		},
+		projects: [
+			{
+				test: {
+					name: "unit",
+					include: ["src/**/*.test.ts"],
+					environment: "node",
+				},
+			},
+			{
+				plugins: [react(), tailwindcss()],
+				assetsInclude: ["**/*.lottie"],
+				resolve: {
+					dedupe: [
+						"react",
+						"react-dom",
+						"@assistant-ui/react",
+						"@assistant-ui/core",
+						"@assistant-ui/store",
+						"@assistant-ui/tap",
+					],
+				},
+				// Pre-bundle every dep discovered during a run so Vite never
+				// re-optimizes mid-run ("Vitest failed to find the current suite").
+				optimizeDeps: {
+					entries: ["src/web/**/*.browser.test.tsx", "src/test/setup.ts"],
+					holdUntilCrawlEnd: true,
+					include: [
+						"react",
+						"react-dom",
+						"react/jsx-runtime",
+						"react/jsx-dev-runtime",
+						"@assistant-ui/core",
+						"@assistant-ui/core/react",
+						"@assistant-ui/react",
+						"@assistant-ui/react-markdown",
+						"@assistant-ui/react-opencode",
+						"@kilocode/sdk/v2/client",
+						"@assistant-ui/react-lexical",
+						"@lexical/react/LexicalComposerContext",
+						"lexical",
+						"@tanstack/react-query",
+						"@tanstack/react-router",
+						"@tanstack/react-virtual",
+						"@testing-library/react",
+						"@base-ui/react/avatar",
+						"@base-ui/react/button",
+						"@base-ui/react/collapsible",
+						"@base-ui/react/dialog",
+						"@base-ui/react/input",
+						"@base-ui/react/menu",
+						"@base-ui/react/merge-props",
+						"@base-ui/react/popover",
+						"@base-ui/react/radio",
+						"@base-ui/react/radio-group",
+						"@base-ui/react/select",
+						"@base-ui/react/separator",
+						"@base-ui/react/slider",
+						"@base-ui/react/switch",
+						"@base-ui/react/toggle",
+						"@base-ui/react/tooltip",
+						"@base-ui/react/use-render",
+						"@lottiefiles/dotlottie-react",
+						"@lottiefiles/dotlottie-web",
+						"class-variance-authority",
+						"clsx",
+						"cmdk",
+						"lucide-react",
+						"motion/react",
+						"pele",
+						"remark-gfm",
+						"sonner",
+						"tailwind-merge",
+						"use-sync-external-store/shim",
+						"use-sync-external-store/shim/with-selector",
+						"zod",
+						"vitest",
+						"vitest/internal/browser",
+						"vitest/internal/traces",
+						"@vitest/browser/client",
+						"@vitest/browser/locators",
+					],
+				},
+				test: {
+					name: "browser",
+					include: ["src/web/**/*.browser.test.tsx"],
+					setupFiles: ["src/test/setup.ts"],
+					// CI caps browser workers because the Linux coverage runner has only 4 vCPUs.
+					// groupOrder 1 keeps this project in a separate scheduling bucket from
+					// the unit project; Vitest requires unique groupOrders when two projects
+					// in the same config have different maxWorkers.
+					...(process.env.CI ? { maxWorkers: 2, sequence: { groupOrder: 1 } } : {}),
+					testTimeout: 30_000,
+					browser: {
+						enabled: true,
+						headless: true,
+						provider: playwright(),
+						screenshotDirectory: ".vitest/screenshots",
+						locators: { testIdAttribute: "data-qa-id" },
+						instances: [{ browser: "chromium" }],
+					},
+				},
+			},
+		],
+	},
+});

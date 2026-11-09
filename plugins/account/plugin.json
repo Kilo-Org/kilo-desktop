@@ -1,0 +1,87 @@
+{
+	"manifestVersion": 1,
+	"id": "kilo.account",
+	"displayName": "Account",
+	"version": "1.0.0",
+	"description": "The signed-in Kilo account, terms acceptance, sign-in and Account settings.",
+	"requires": {
+		"kilo.agent/server": "optional",
+		"kilo.shell/left-sidebar-account": "optional",
+		"kilo.shell/settings-section": "optional",
+		"kilo.shell/onboarding-step": "optional",
+		"kilo.agent/provider-panel": "optional"
+	},
+	"permissions": {
+		"host": ["clipboard", "shell", "windows"]
+	},
+	"contextKeys": [
+		{
+			"id": "signedIn",
+			"scope": "global",
+			"description": "True while a Kilo account is signed in."
+		},
+		{
+			"id": "termsAccepted",
+			"scope": "global",
+			"description": "True once the current terms of service are accepted on this device."
+		}
+	],
+	"extensionPoints": [
+		{
+			"id": "account-panel",
+			"kind": "additive",
+			"description": "A panel in Settings → Account for another account."
+		}
+	],
+	"domains": [
+		{
+			"id": "identity",
+			"home": "main",
+			"description": "The signed-in Kilo account and the sign-in flow."
+		},
+		{
+			"id": "terms",
+			"home": "main",
+			"description": "Acceptance of the terms of service on this device."
+		}
+	],
+	"contributes": {
+		"extensions": {
+			"kilo.shell/left-sidebar-account": [
+				{
+					"id": "account"
+				}
+			],
+			"kilo.shell/settings-section": [
+				{
+					"id": "account",
+					"title": "Account",
+					"description": "See where you are signed in and manage your accounts.",
+					"priority": 105
+				}
+			],
+			"kilo.shell/onboarding-step": [
+				{
+					"id": "welcome",
+					"label": "Welcome",
+					"layout": "splash",
+					"priority": 1000,
+					"required": {
+						"none": ["kilo.account/termsAccepted"]
+					}
+				},
+				{
+					"id": "sign-in",
+					"label": "Sign in",
+					"priority": 900
+				}
+			],
+			"kilo.agent/provider-panel": [
+				{
+					"id": "kilo-gateway",
+					"providerId": "kilo"
+				}
+			]
+		}
+	}
+}

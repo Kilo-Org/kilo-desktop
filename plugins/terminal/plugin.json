@@ -1,0 +1,98 @@
+{
+	"manifestVersion": 1,
+	"id": "kilo.terminal",
+	"displayName": "Terminal",
+	"version": "1.0.0",
+	"description": "Terminal panes: interactive shells running in a session's folder.",
+	"requires": {
+		"kilo.sessions/pane": "optional",
+		"kilo.sessions/pane-kind": "optional",
+		"kilo.sessions/work-session": "optional",
+		"kilo.workspaces/workspace": "optional",
+		"kilo.workbench/workbench": "optional",
+		"kilo.shell/theme": "optional",
+		"kilo.agent/tool": "optional"
+	},
+	"permissions": {
+		"embeddedHosts": ["terminal"]
+	},
+	"contextKeys": [
+		{
+			"id": "terminalFocused",
+			"scope": "window",
+			"description": "True while a terminal in this window has keyboard focus."
+		}
+	],
+	"domains": [
+		{
+			"id": "terminals",
+			"home": "main",
+			"description": "The terminals in each session: list, read and close them."
+		}
+	],
+	"contributes": {
+		"extensions": {
+			"kilo.sessions/pane-kind": [
+				{
+					"id": "terminal",
+					"title": "Terminal",
+					"description": "Run commands in an interactive shell.",
+					"launch": {
+						"newSession": true,
+						"inSession": true
+					},
+					"keepAlive": true
+				}
+			],
+			"kernel/command": [
+				{
+					"id": "open",
+					"title": "Open terminal",
+					"category": "Terminal",
+					"order": 5,
+					"keybinding": "Ctrl+`",
+					"when": {
+						"all": ["kilo.workbench/sessionActive"]
+					}
+				},
+				{
+					"id": "new",
+					"title": "New terminal",
+					"category": "Terminal",
+					"order": 10,
+					"when": {
+						"all": ["kilo.workbench/sessionActive"]
+					}
+				},
+				{
+					"id": "clear",
+					"title": "Clear terminal",
+					"category": "Terminal",
+					"order": 20,
+					"keybinding": {
+						"mac": "Mod+K"
+					},
+					"when": {
+						"all": ["kilo.terminal/terminalFocused"]
+					}
+				}
+			],
+			"kilo.agent/tool": [
+				{
+					"id": "open",
+					"title": "Open terminal"
+				},
+				{
+					"id": "list",
+					"title": "List terminals",
+					"readOnly": true
+				},
+				{
+					"id": "read",
+					"title": "Read terminal",
+					"readOnly": true
+				}
+			]
+		}
+	}
+}

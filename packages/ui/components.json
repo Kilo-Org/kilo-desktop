@@ -1,0 +1,22 @@
+{
+	"$schema": "https://ui.shadcn.com/schema.json",
+	"style": "base-nova",
+	"rsc": false,
+	"tsx": true,
+	"tailwind": {
+		"config": "",
+		"css": "../../apps/web/src/globals.css",
+		"baseColor": "mist",
+		"cssVariables": true,
+		"prefix": ""
+	},
+	"iconLibrary": "lucide",
+	"rtl": false,
+	"aliases": {
+		"components": "@kilo-desktop/ui/components",
+		"utils": "@kilo-desktop/ui/lib/utils",
+		"ui": "@kilo-desktop/ui/components",
+		"lib": "@kilo-desktop/ui/lib",
+		"hooks": "@kilo-desktop/ui/hooks"
+	}
+}

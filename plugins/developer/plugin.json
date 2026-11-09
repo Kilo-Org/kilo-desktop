@@ -1,0 +1,38 @@
+{
+	"manifestVersion": 1,
+	"id": "kilo.developer",
+	"displayName": "Developer",
+	"version": "1.0.0",
+	"description": "Tools for people building and debugging Kilo: the Developer settings category and Diagnostics.",
+	"when": {
+		"all": ["kilo.flags/flag:developer"]
+	},
+	"requires": {
+		"kilo.flags/flags": "optional",
+		"kilo.shell/settings-category": "optional",
+		"kilo.shell/settings-section": "optional"
+	},
+	"permissions": {
+		"host": ["shell", "plugins"]
+	},
+	"contributes": {
+		"extensions": {
+			"kilo.shell/settings-category": [
+				{
+					"id": "developer",
+					"title": "Developer",
+					"priority": 100
+				}
+			],
+			"kilo.shell/settings-section": [
+				{
+					"id": "diagnostics",
+					"title": "Diagnostics",
+					"description": "What's running: the kernel, plugins and services, any problems, and the extension points and domain objects they share.",
+					"category": "kilo.developer/developer",
+					"priority": 10
+				}
+			]
+		}
+	}
+}

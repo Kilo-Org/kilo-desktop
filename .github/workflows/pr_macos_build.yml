@@ -1,0 +1,68 @@
+name: PR macOS Build
+
+# Opt-in: a macOS make takes a while, so it does not run on every PR push.
+# Either add the `build:macos` label to a PR (it then rebuilds on each push
+# while the label stays), or run this workflow manually for any branch.
+#
+# Deliberately unsigned: PR code is untrusted, so it never receives the Apple
+# Developer ID certificate or notarization key. Signed builds come only from
+# `main` through the reviewer-gated `preview`/`production` environments
+# (Build and Release workflows).
+on:
+  pull_request:
+    branches: [main]
+    types: [labeled, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: macOS build (optional)
+    # A `labeled` event fires for every label, so only the build label counts.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (contains(github.event.pull_request.labels.*.name, 'build:macos') &&
+      (github.event.action != 'labeled' || github.event.label.name == 'build:macos'))
+    # Job-level, so a skipped run (e.g. an unrelated label) never cancels a
+    # build that is already in progress.
+    concurrency:
+      group: pr-macos-build-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    runs-on: macos-latest
+    timeout-minutes: 90
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
+      ANACONDA_NPM_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
+      RELEASE_TRACK: preview
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node and pnpm
+        uses: ./.github/actions/setup-node-pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - uses: ./plugins/notebook/actions/setup-native
+
+      - uses: ./plugins/agent/actions/setup-cli
+
+      - uses: ./.github/actions/cache-electron-rebuild
+
+      - name: Make unsigned macOS artifacts
+        run: pnpm run make
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          # Branch names can contain "/", which artifact names reject; manual
+          # runs are identified by run id instead.
+          name: mac-arm64-${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}-${{ github.event.pull_request.head.sha || github.sha }}
+          path: |
+            apps/desktop/out/make/**/*.dmg
+            apps/desktop/out/make/**/*.zip
+          if-no-files-found: error
+          retention-days: 7

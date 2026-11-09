@@ -1,0 +1,73 @@
+{
+	"name": "@kilo-desktop/plugin-files",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"description": "kilo.files: browse, edit and mention the files in a session's workspace folders",
+	"exports": {
+		"./plugin.json": "./plugin.json",
+		"./main": "./src/main/index.ts",
+		"./web": "./src/web/index.ts",
+		"./contracts": "./src/contracts/index.ts"
+	},
+	"scripts": {
+		"check": "tsc --noEmit -p tsconfig.json",
+		"test": "vitest run",
+		"coverage": "vitest run --coverage"
+	},
+	"dependencies": {
+		"@chenglou/pretext": "^1.0.0",
+		"@kilo-desktop/kernel": "workspace:*",
+		"@kilo-desktop/plugin-agent": "workspace:*",
+		"@kilo-desktop/plugin-chat": "workspace:*",
+		"@kilo-desktop/plugin-flags": "workspace:*",
+		"@kilo-desktop/plugin-sessions": "workspace:*",
+		"@kilo-desktop/plugin-shell": "workspace:*",
+		"@kilo-desktop/plugin-telemetry": "workspace:*",
+		"@kilo-desktop/plugin-workbench": "workspace:*",
+		"@kilo-desktop/plugin-workspaces": "workspace:*",
+		"@nteract/sift": "0.6.0",
+		"@nteract/sift-csv": "0.2.0",
+		"@pierre/diffs": "catalog:",
+		"@pierre/trees": "catalog:",
+		"atomically": "catalog:",
+		"cross-spawn": "^7.0.6",
+		"globby": "^16.2.3",
+		"lucide-react": "catalog:",
+		"react-use": "catalog:",
+		"which": "^7.0.0",
+		"zod": "catalog:"
+	},
+	"peerDependencies": {
+		"@kilo-desktop/ui": "workspace:*",
+		"@tanstack/react-query": "catalog:",
+		"react": "^19.0.0",
+		"react-dom": "^19.0.0",
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"@anaconda/playwright-utils": "2.1.0",
+		"@kilo-desktop/ui": "workspace:*",
+		"@playwright/test": "catalog:",
+		"@tailwindcss/vite": "^4.3.3",
+		"@tanstack/react-query": "^5.101.4",
+		"@testing-library/react": "^16.3.2",
+		"@types/cross-spawn": "^6.0.6",
+		"@types/node": "^26.0.0",
+		"@types/react": "^19.2.17",
+		"@types/react-dom": "^19.2.3",
+		"@types/which": "^3.0.4",
+		"@vitejs/plugin-react": "^6.0.4",
+		"@vitest/browser": "5.1.0",
+		"@vitest/browser-playwright": "5.1.0",
+		"@vitest/coverage-v8": "catalog:",
+		"playwright": "catalog:",
+		"react": "^19.2.8",
+		"react-dom": "^19.2.8",
+		"tailwindcss": "^4.3.3",
+		"typescript": "catalog:",
+		"vite": "catalog:",
+		"vitest": "catalog:",
+		"zod": "catalog:"
+	}
+}

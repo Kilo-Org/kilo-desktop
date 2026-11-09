@@ -832,7 +832,8 @@ describe("FilesService", () => {
 					options: unknown,
 					callback: (error: NodeJS.ErrnoException | null, entries?: unknown) => void,
 				) => {
-					if (String(directory) === root) rootReads += 1;
+					// The walker passes forward-slash paths on Windows; compare native forms.
+					if (path.resolve(String(directory)) === root) rootReads += 1;
 					return (fs.readdir as (...args: unknown[]) => unknown)(directory, options, callback);
 				}) as typeof fs.readdir,
 			};

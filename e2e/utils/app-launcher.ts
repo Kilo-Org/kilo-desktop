@@ -106,20 +106,17 @@ export function packagedAppLaunchEnv(
 
 /**
  * Kill orphaned copies of *this* packaged app left behind by a crashed previous run.
- * Intentionally narrow — never `pkill Electron` (would hit Cursor/Figma/etc.).
+ * Intentionally narrow: matches the full executable path, never an image name.
+ * `pkill Electron` would hit Cursor/Figma/etc., and on Windows `taskkill /IM
+ * kilo-desktop.exe` would kill an installed Kilo Desktop (and any terminal or
+ * agent it hosts, possibly this very test run).
  * Kills every instance, so call it only when no worker is running: global
  * setup and teardown. Workers stop their own app by process tree.
  */
 export function killStrayProcesses(): void {
 	const executable = packagedExecutable();
 	if (process.platform === "win32") {
-		try {
-			execFileSync("taskkill", ["/F", "/IM", path.basename(executable), "/T"], {
-				stdio: "ignore",
-			});
-		} catch {
-			// Process not found — expected.
-		}
+		for (const pid of windowsProcessesAt(executable)) killProcessTree(pid);
 		return;
 	}
 
@@ -127,6 +124,35 @@ export function killStrayProcesses(): void {
 		execFileSync("pkill", ["-f", executable], { stdio: "ignore" });
 	} catch {
 		// Process not found — expected.
+	}
+}
+
+// The path travels through the environment so spaces and quotes need no escaping.
+const WINDOWS_PROCESSES_AT_PATH = [
+	"$target = [System.IO.Path]::GetFullPath($env:KILO_E2E_EXECUTABLE);",
+	"Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and",
+	"[string]::Equals([System.IO.Path]::GetFullPath($_.ExecutablePath), $target,",
+	"[System.StringComparison]::OrdinalIgnoreCase) } | ForEach-Object { $_.ProcessId }",
+].join(" ");
+
+/** Ids of running processes whose executable is exactly `executable`. */
+function windowsProcessesAt(executable: string): number[] {
+	try {
+		const output = execFileSync(
+			"powershell.exe",
+			["-NoProfile", "-NonInteractive", "-Command", WINDOWS_PROCESSES_AT_PATH],
+			{
+				encoding: "utf8",
+				env: { ...process.env, KILO_E2E_EXECUTABLE: executable },
+				stdio: ["ignore", "pipe", "ignore"],
+			},
+		);
+		return output
+			.split(/\r?\n/u)
+			.map((line) => Number(line.trim()))
+			.filter((pid) => Number.isInteger(pid) && pid > 0);
+	} catch {
+		return [];
 	}
 }
 

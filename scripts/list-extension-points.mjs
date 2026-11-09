@@ -12,6 +12,7 @@
 import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { tsImport } from "tsx/esm/api";
 
@@ -84,7 +85,9 @@ async function catalog() {
 	for (const { manifest, contracts } of plugins) {
 		const declared = manifest.extensionPoints ?? [];
 		if (declared.length === 0) continue;
-		const exported = Object.values(await tsImport(contracts, import.meta.url)).filter(isPoint);
+		const exported = Object.values(
+			await tsImport(pathToFileURL(contracts).href, import.meta.url),
+		).filter(isPoint);
 		for (const entry of declared) {
 			const id = `${manifest.id}/${entry.id}`;
 			const point = exported.find((candidate) => candidate.id === id);

@@ -415,7 +415,7 @@ describe("the open agent tool", () => {
 		const result = await callTool({ path: "src/a.ts", line: 3, column: 2 });
 
 		expect(opened).toEqual([
-			{ sessionId: "s1", ref: { type: FILE_OBJECT_TYPE, id: `${workspace}/src/a.ts` } },
+			{ sessionId: "s1", ref: { type: FILE_OBJECT_TYPE, id: path.join(workspace, "src", "a.ts") } },
 		]);
 		expect(result).toEqual({
 			sessionId: "s1",
@@ -429,7 +429,7 @@ describe("the open agent tool", () => {
 			expect(panes()[0]).toMatchObject({
 				title: "a.ts",
 				iconKey: "a.ts",
-				metadata: { objectId: `${workspace}/src/a.ts`, line: "3", column: "2" },
+				metadata: { objectId: path.join(workspace, "src", "a.ts"), line: "3", column: "2" },
 			}),
 		);
 	});

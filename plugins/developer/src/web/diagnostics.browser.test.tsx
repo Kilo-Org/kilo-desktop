@@ -483,11 +483,14 @@ describe("diagnostics settings — turning plugins on and off", () => {
 			return rect.left + rect.width / 2;
 		};
 
-		expect(center(kernelRow.getByText("starting").or(kernelRow.getByText("ready")))).toBe(
+		// Within half a pixel: sub-pixel layout differs by display scaling.
+		expect(center(kernelRow.getByText("starting").or(kernelRow.getByText("ready")))).toBeCloseTo(
 			center(pluginRow.getByText("active", { exact: true })),
+			0,
 		);
-		expect(center(kernelRow.getByTestId("diagnostics-row-chevron"))).toBe(
+		expect(center(kernelRow.getByTestId("diagnostics-row-chevron"))).toBeCloseTo(
 			center(pluginRow.getByTestId("diagnostics-row-chevron")),
+			0,
 		);
 		// The name, id and version columns start as far into each row.
 		const columnsOffset = (row: { element(): Element }) =>

@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { describe, expect, it, vi } from "vitest";
 
 import { manifestSchema, type MainHostServices } from "@kilo-desktop/kernel";
@@ -85,7 +87,7 @@ describe("createHostServices", () => {
 		const services = servicesFor(deps());
 
 		expect(services.assets?.resolve("resources/kilo")).toBe(
-			"/repo/plugins/acme.plugin/resources/kilo",
+			path.join("/repo/plugins/acme.plugin", "resources", "kilo"),
 		);
 	});
 
@@ -95,7 +97,7 @@ describe("createHostServices", () => {
 			assets: { packagedResourcesPath: "/App/Resources", pluginRoot: () => undefined },
 		});
 
-		expect(services.assets?.resolve("resources/kilo")).toBe("/App/Resources/kilo");
+		expect(services.assets?.resolve("resources/kilo")).toBe(path.join("/App/Resources", "kilo"));
 		expect(() => services.assets?.resolve("src/index.ts")).toThrow(/resources\//);
 	});
 

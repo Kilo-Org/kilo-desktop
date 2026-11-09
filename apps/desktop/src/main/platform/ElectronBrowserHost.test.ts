@@ -1,3 +1,5 @@
+import { realpath } from "node:fs/promises";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { browserSession, guest, sessionFromPartition, webContentsFromId } = vi.hoisted(() => {
@@ -59,6 +61,7 @@ vi.mock("./ElectronContextMenu.js", () => ({
 	attachContextMenu: vi.fn(() => detachContextMenu),
 }));
 
+import { browserLocalFileUrl } from "./browser-local-file-url.js";
 import { ElectronBrowserHost, shouldCancelLoopbackRequest } from "./ElectronBrowserHost.js";
 import { attachContextMenu } from "./ElectronContextMenu.js";
 
@@ -158,8 +161,10 @@ describe("ElectronBrowserHost", () => {
 		expect((await handler(new Request("kilo-file://local/etc/hosts"))).status).toBe(404);
 		const authorize = vi.fn(async () => false);
 		host.serveLocalFiles(authorize);
-		expect((await handler(new Request("kilo-file://local/etc/hosts"))).status).toBe(404);
-		expect(authorize).toHaveBeenCalled();
+		// A file that exists on every platform, so the request reaches `authorize`.
+		const existing = browserLocalFileUrl(import.meta.filename);
+		expect((await handler(new Request(existing))).status).toBe(404);
+		expect(authorize).toHaveBeenCalledWith(await realpath(import.meta.filename));
 	});
 
 	it("allows the user's own top-level navigation to a loopback dev server", () => {

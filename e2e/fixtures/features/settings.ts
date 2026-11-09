@@ -7,7 +7,7 @@ import { _electron as electron, type ElectronApplication } from "playwright";
 
 import { SettingsPage } from "../../pages/features/settings/settings-page.js";
 import { SIGNED_OUT_LAUNCH_ENV } from "../../testdata/account.js";
-import { packagedAppLaunchEnv } from "../../utils/app-launcher.js";
+import { PACKAGED_APP_POINTER_ARGS, packagedAppLaunchEnv } from "../../utils/app-launcher.js";
 import { packagedExecutable } from "../../utils/paths.js";
 import { removePathAfterAppStops, waitForMainWindow } from "../electron.js";
 import { test as shellTest } from "../shell.js";
@@ -35,7 +35,7 @@ export const test = shellTest.extend<{
 		]);
 		const app = await electron.launch({
 			executablePath: packagedExecutable(),
-			args: [`--user-data-dir=${userData}`],
+			args: [`--user-data-dir=${userData}`, ...PACKAGED_APP_POINTER_ARGS],
 			env: packagedAppLaunchEnv(userData, { ...process.env, ...SIGNED_OUT_LAUNCH_ENV }),
 		});
 		try {

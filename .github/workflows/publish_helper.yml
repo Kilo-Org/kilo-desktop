@@ -46,11 +46,11 @@ jobs:
         include:
           - target: mac
             os: mac
-            runner: macos-latest
+            runner: blacksmith-6vcpu-macos-latest
             timeout_minutes: 90
           - target: windows
             os: windows
-            runner: WinLatest-x64-8vCPU-32GB
+            runner: blacksmith-8vcpu-windows-2025
             timeout_minutes: 60
           - target: windows-arm64
             os: windows
@@ -58,11 +58,11 @@ jobs:
             timeout_minutes: 90
           - target: linux
             os: linux
-            runner: ubuntu-latest
+            runner: blacksmith-4vcpu-ubuntu-2404
             timeout_minutes: 60
           - target: linux-arm64
             os: linux
-            runner: ubuntu-24.04-arm
+            runner: blacksmith-4vcpu-ubuntu-2404-arm
             timeout_minutes: 60
     env:
       NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
@@ -213,7 +213,7 @@ jobs:
   sbom:
     needs: publish
     if: ${{ !cancelled() && inputs.generate_sbom }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 30
     permissions:
       contents: read
@@ -271,7 +271,7 @@ jobs:
     # have replaced them. Prefer a fresh release run over re-running release.
     needs: publish
     if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 30
     environment: ${{ inputs.release_track == 'stable' && 'production' || 'preview' }}
     permissions:
@@ -327,7 +327,7 @@ jobs:
   attach-sbom:
     needs: [release, sbom]
     if: ${{ !cancelled() && inputs.generate_sbom && needs.release.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     timeout-minutes: 10
     permissions:
       contents: write

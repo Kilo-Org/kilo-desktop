@@ -38,19 +38,19 @@ jobs:
         include:
           - target: mac
             os: mac
-            runner: macos-latest
+            runner: blacksmith-6vcpu-macos-latest
           - target: windows
             os: windows
-            runner: WinLatest-x64-8vCPU-32GB
+            runner: blacksmith-8vcpu-windows-2025
           - target: windows-arm64
             os: windows
             runner: windows-11-vs2026-arm
           - target: linux
             os: linux
-            runner: ubuntu-latest
+            runner: blacksmith-4vcpu-ubuntu-2404
           - target: linux-arm64
             os: linux
-            runner: ubuntu-24.04-arm
+            runner: blacksmith-4vcpu-ubuntu-2404-arm
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     # Same environment mapping as publish_helper.yml. The environment supplies

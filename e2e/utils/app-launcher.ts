@@ -105,6 +105,18 @@ export function packagedAppLaunchEnv(
 }
 
 /**
+ * Report a mouse to Chromium even on CI VMs that have no pointing device.
+ * Without one, `(hover: hover)` is false, and Tailwind v4 wraps every `hover:`
+ * utility in that media query: hover-revealed controls such as the session
+ * row's actions button stay `pointer-events-none` although pointer events
+ * still reach the page. Playwright passes the same setting when it launches
+ * headless Chromium itself, but not for `_electron.launch`.
+ */
+export const PACKAGED_APP_POINTER_ARGS: readonly string[] = [
+	"--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4",
+];
+
+/**
  * Kill orphaned copies of *this* packaged app left behind by a crashed previous run.
  * Intentionally narrow — never `pkill Electron` (would hit Cursor/Figma/etc.).
  * Kills every instance, so call it only when no worker is running: global

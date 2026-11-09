@@ -30,7 +30,7 @@ jobs:
     concurrency:
       group: pr-macos-build-${{ github.event.pull_request.number || github.ref }}
       cancel-in-progress: true
-    runs-on: macos-latest
+    runs-on: blacksmith-6vcpu-macos-latest
     timeout-minutes: 90
     env:
       NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}

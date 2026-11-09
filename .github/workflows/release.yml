@@ -4,8 +4,8 @@ name: Release
 # trust just `environment:<preview|production>:ref:refs/heads/main` OIDC
 # subjects; a tag push or branch dispatch would present a different subject.
 on:
-  # Scheduled Preview releases ("0 */3 * * *") are paused while the S3 publish
-  # pipeline is validated in this repo; restore the schedule trigger to resume.
+  schedule:
+    - cron: "0 */3 * * *"
   workflow_dispatch:
     inputs:
       track:

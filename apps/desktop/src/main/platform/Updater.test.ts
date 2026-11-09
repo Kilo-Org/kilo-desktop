@@ -83,7 +83,7 @@ describe("DesktopUpdaterService", () => {
 		const { service, updater, states } = createService();
 		service.start();
 		expect(updater.setFeedURL).toHaveBeenCalledWith({
-			url: "https://updates.example.com/kilo-desktop-ci-test/preview/darwin/arm64/RELEASES.json",
+			url: "https://updates.example.com/kilo-desktop/preview/darwin/arm64/RELEASES.json",
 			serverType: "json",
 		});
 
@@ -272,11 +272,11 @@ describe("DesktopUpdaterService", () => {
 		expect(result.accepted).toBe(true);
 		expect(persistTrack).toHaveBeenCalledWith("stable");
 		expect(updater.setFeedURL).toHaveBeenLastCalledWith({
-			url: "https://stable.example.com/kilo-desktop-ci-test/latest/darwin/arm64/RELEASES.json",
+			url: "https://stable.example.com/kilo-desktop/latest/darwin/arm64/RELEASES.json",
 			serverType: "json",
 		});
 		expect(fetchNotes).toHaveBeenLastCalledWith(
-			"https://stable.example.com/kilo-desktop-ci-test/latest/release-notes/latest.json",
+			"https://stable.example.com/kilo-desktop/latest/release-notes/latest.json",
 			expect.anything(),
 		);
 		expect(updater.checkForUpdates).toHaveBeenCalledOnce();
@@ -376,7 +376,7 @@ describe("DesktopUpdaterService", () => {
 
 		await expect(service.setTrack("stable")).rejects.toThrow("disk full");
 		expect(updater.setFeedURL).toHaveBeenLastCalledWith({
-			url: "https://updates.example.com/kilo-desktop-ci-test/preview/darwin/arm64/RELEASES.json",
+			url: "https://updates.example.com/kilo-desktop/preview/darwin/arm64/RELEASES.json",
 			serverType: "json",
 		});
 		expect(service.state.track).toBe("preview");
@@ -401,7 +401,7 @@ describe("DesktopUpdaterService on Windows", () => {
 
 		expect(windowsFeed.prepare).toHaveBeenCalledWith(
 			expect.objectContaining({
-				remoteFeedUrl: "https://updates.example.com/kilo-desktop-ci-test/preview/win32/arm64",
+				remoteFeedUrl: "https://updates.example.com/kilo-desktop/preview/win32/arm64",
 				currentVersion: "1.2.2",
 			}),
 		);

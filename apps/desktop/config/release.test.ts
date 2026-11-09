@@ -62,10 +62,10 @@ describe("release configuration", () => {
 			arch: "arm64",
 		});
 
-		expect(artifactKey).toBe("kilo-desktop-ci-test/preview/darwin/arm64/Kilo.zip");
-		expect(feedUrl).toBe("https://cdn.example.com/kilo-desktop-ci-test/preview/darwin/arm64");
+		expect(artifactKey).toBe("kilo-desktop/preview/darwin/arm64/Kilo.zip");
+		expect(feedUrl).toBe("https://cdn.example.com/kilo-desktop/preview/darwin/arm64");
 		expect(getReleaseNotesUrl({ publishUrl: "https://cdn.example.com", track: "preview" })).toBe(
-			"https://cdn.example.com/kilo-desktop-ci-test/preview/release-notes/latest.json",
+			"https://cdn.example.com/kilo-desktop/preview/release-notes/latest.json",
 		);
 		expect(
 			getReleaseNotesUrl({
@@ -73,9 +73,7 @@ describe("release configuration", () => {
 				track: "preview",
 				version: "1.2.3-preview.1",
 			}),
-		).toBe(
-			"https://cdn.example.com/kilo-desktop-ci-test/preview/release-notes/1.2.3-preview.1.json",
-		);
+		).toBe("https://cdn.example.com/kilo-desktop/preview/release-notes/1.2.3-preview.1.json");
 	});
 
 	it("rejects unknown tracks and non-HTTPS feeds", () => {
@@ -199,7 +197,7 @@ describe("release configuration", () => {
 				arch: "arm64",
 				fileName: "Kilo.zip",
 			}),
-		).toBe("kilo-desktop-ci-test/latest/darwin/arm64/Kilo.zip");
+		).toBe("kilo-desktop/latest/darwin/arm64/Kilo.zip");
 		expect(
 			getUpdateFeedUrl({
 				publishUrl: "https://cdn.example.com",
@@ -207,7 +205,7 @@ describe("release configuration", () => {
 				platform: "darwin",
 				arch: "arm64",
 			}),
-		).toBe("https://cdn.example.com/kilo-desktop-ci-test/latest/darwin/arm64");
+		).toBe("https://cdn.example.com/kilo-desktop/latest/darwin/arm64");
 	});
 
 	it("does not restamp an already-stamped preview version", () => {

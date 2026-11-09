@@ -17,6 +17,7 @@ import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import manifest from "../../plugin.json";
 import { SupportRow, UPDATES_DEFINITIONS, type UpdateState } from "../contracts";
+import { createUpdatesMainEntry, type LegalResources } from "../main/entry";
 import { updateReadyLabel } from "./updateActions";
 import { updatesWebEntry } from "./index";
 
@@ -60,6 +61,15 @@ interface UpdaterFake {
 interface ShellFake {
 	showLogs?: () => { revealed: boolean };
 	logFilePath?: () => string | Promise<string>;
+	showItemInFolder?: (path: string) => void | Promise<void>;
+}
+
+/** Files beside app.asar in a packaged build, by name. */
+function packagedResources(files: Record<string, string>): LegalResources {
+	return {
+		locate: (file) => (file in files ? `/Applications/Kilo.app/Contents/Resources/${file}` : null),
+		read: async (file) => files[file] ?? null,
+	};
 }
 
 /** A stand-in for kilo.flags that turns the track switcher flag on. */
@@ -95,11 +105,13 @@ async function renderApp(
 		flag?: boolean;
 		plugins?: readonly GuestPlugin[];
 		path?: string;
+		resources?: LegalResources;
 	} = {},
 ) {
 	const updates: GuestPlugin = {
 		manifest,
 		definitions: UPDATES_DEFINITIONS,
+		main: createUpdatesMainEntry({ resources: () => options.resources ?? packagedResources({}) }),
 		web: updatesWebEntry,
 	};
 	const host = await renderShell(
@@ -112,7 +124,7 @@ async function renderApp(
 						initialState: {},
 						methods: {
 							openExternal: () => true,
-							showItemInFolder: () => {},
+							showItemInFolder: ({ path }) => options.shell?.showItemInFolder?.(path),
 							showLogs: options.shell?.showLogs ?? (() => ({ revealed: true })),
 							logFilePath: options.shell?.logFilePath ?? (() => "/user-data/logs/main.log"),
 						},
@@ -551,5 +563,80 @@ describe("About → Support", () => {
 
 		await expect.element(page.getByTestId("about-settings")).toBeVisible();
 		await expect.element(page.getByTestId("about-support")).not.toBeInTheDocument();
+	});
+});
+
+describe("About → Legal", () => {
+	const shipped = packagedResources({
+		"THIRD_PARTY_NOTICES.txt": "THIRD-PARTY SOFTWARE NOTICES\n\nreact 19.2.8\nLicense: MIT",
+		"LICENSES.chromium.html": "<html></html>",
+	});
+
+	it("shows the notices of the third-party software the app includes", async () => {
+		await openAbout({ resources: shipped });
+
+		await page.getByTestId("about-view-third-party-notices").click();
+
+		const viewer = page.getByTestId("legal-document");
+		await expect
+			.element(viewer.getByRole("heading", { name: "Third-party notices" }))
+			.toBeVisible();
+		await expect.element(viewer.getByText(/react 19\.2\.8\s+License: MIT/)).toBeVisible();
+	});
+
+	it("reveals Chromium's notices in the file manager", async () => {
+		const showItemInFolder = vi.fn();
+		await openAbout({ resources: shipped, shell: { showItemInFolder } });
+
+		await page.getByTestId("about-show-chromium-notices").click();
+
+		await vi.waitFor(() =>
+			expect(showItemInFolder).toHaveBeenCalledWith(
+				"/Applications/Kilo.app/Contents/Resources/LICENSES.chromium.html",
+			),
+		);
+	});
+
+	it("explains that the documents come with packaged builds when they are not shipped", async () => {
+		await openAbout({ resources: packagedResources({}) });
+
+		await page.getByTestId("about-view-third-party-notices").click();
+
+		await expect
+			.element(page.getByTestId("legal-document").getByText(/included in packaged builds/))
+			.toBeVisible();
+		await expect.element(page.getByTestId("about-show-chromium-notices")).toBeDisabled();
+	});
+
+	it("explains when a shipped document cannot be read", async () => {
+		await openAbout({
+			resources: {
+				...shipped,
+				read: async () => {
+					throw new KernelError("UNAVAILABLE", "Permission denied");
+				},
+			},
+		});
+
+		await page.getByTestId("about-view-third-party-notices").click();
+
+		await expect
+			.element(page.getByTestId("legal-document").getByText(/Could not read this document/))
+			.toBeVisible();
+	});
+
+	it("reports when Chromium's notices cannot be revealed", async () => {
+		await openAbout({
+			resources: shipped,
+			shell: {
+				showItemInFolder: () => {
+					throw new KernelError("UNAVAILABLE", "No file manager");
+				},
+			},
+		});
+
+		await page.getByTestId("about-show-chromium-notices").click();
+
+		await expect.element(page.getByText("Could not show Chromium's notices")).toBeVisible();
 	});
 });

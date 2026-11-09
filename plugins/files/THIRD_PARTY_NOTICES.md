@@ -1,10 +1,17 @@
 # Third-party notices
 
-## t3code editor icons
+## t3code
 
-The editor icon artwork in `src/web/ExternalEditorIcons.tsx` is adapted from
-[t3code](https://github.com/t3dotgg/t3code).
+Ported or adapted from [t3code](https://github.com/pingdotgg/t3code).
 
+- `src/web/external-editors/ExternalEditorIcons.tsx` (the editor icon components) ← `apps/web/src/components/Icons.tsx` and `JetBrainsIcons.tsx`
+- `src/web/markdown/markdown-file-links.ts` and the test cases in `markdown-file-links.test.ts` ← `packages/shared/src/markdownLinks.ts` and `apps/web/src/markdown-links.test.ts`
+- The inline-code tagging in `src/web/markdown/remark-workspace-file-links.ts` ← `apps/web/src/components/ChatMarkdown.tsx` (`remarkTagInlineCode`)
+- `ensurePierreIconSprite` in `src/web/file-icons/PierreFileIcon.tsx` ← `apps/web/src/pierre-icons.ts`
+
+License: MIT. Copyright (c) 2026 T3 Tools Inc.
+
+```text
 MIT License
 
 Copyright (c) 2026 T3 Tools Inc.
@@ -23,7 +30,10 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE.
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ## @nteract/sift and @nteract/sift-csv
 

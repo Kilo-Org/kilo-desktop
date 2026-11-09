@@ -11,6 +11,7 @@ import {
 	getLocatorByTestId,
 	getText,
 } from "@anaconda/playwright-utils";
+import { getPage } from "@anaconda/playwright-utils/page-utils";
 import { expect } from "@playwright/test";
 import type { ElectronApplication } from "playwright";
 
@@ -73,6 +74,16 @@ export class AboutPage {
 	private readonly kiloConfigPath = () =>
 		this.kiloConfigRow().locator('[data-slot="item-description"] code');
 	private readonly showKiloConfigButton = () => getLocatorByTestId("about-show-global-kilo-config");
+
+	private readonly legalSection = () => getLocatorByTestId("about-legal");
+	private readonly legalHeading = () => this.legalSection().locator("#about-legal-heading");
+	private readonly viewThirdPartyNoticesButton = () =>
+		getLocatorByTestId("about-view-third-party-notices");
+	private readonly showChromiumNoticesButton = () =>
+		getLocatorByTestId("about-show-chromium-notices");
+	private readonly legalDocument = () => getLocatorByTestId("legal-document");
+	private readonly legalDocumentTitle = () => this.legalDocument().getByRole("heading");
+	private readonly legalDocumentText = () => getLocatorByTestId("legal-document-text");
 
 	/** Update state, the log path, and the Kilo config row each render a skeleton until they load. */
 	async waitForAboutSettled(): Promise<void> {
@@ -329,6 +340,37 @@ export class AboutPage {
 		await expectElementToHaveText(this.showKiloConfigButton(), aboutData.revealInFileManagerLabel, {
 			message: "Reveal config button should be named for the platform's file manager",
 		});
+	}
+
+	async verifyLegalSection(): Promise<void> {
+		await expectElementToBeVisible(this.legalSection(), "About should show the Legal section");
+		await expectElementToHaveText(this.legalHeading(), aboutData.legalTitle, {
+			message: "Legal section heading should read Legal",
+		});
+	}
+
+	/** The notices written beside app.asar at package time, shown in the in-app viewer. */
+	async verifyThirdPartyNoticesShown(): Promise<void> {
+		await click(this.viewThirdPartyNoticesButton());
+		await this.verifyLegalDocument(
+			aboutData.thirdPartyNoticesTitle,
+			aboutData.thirdPartyNoticesTextPattern,
+		);
+	}
+
+	async clickShowChromiumNotices(): Promise<void> {
+		await click(this.showChromiumNoticesButton());
+	}
+
+	private async verifyLegalDocument(title: string, text: RegExp): Promise<void> {
+		await expectElementToHaveText(this.legalDocumentTitle(), title, {
+			message: `The legal document viewer should be titled ${title}`,
+		});
+		await expectElementToHaveText(this.legalDocumentText(), text, {
+			message: `${title} should be the document the packaged app ships`,
+		});
+		await getPage().keyboard.press("Escape");
+		await expectElementToBeHidden(this.legalDocument(), "The viewer should close on Escape");
 	}
 
 	async clickShowKiloConfig(): Promise<void> {

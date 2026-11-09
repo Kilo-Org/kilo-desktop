@@ -5,6 +5,11 @@ import { getPayloadPackageName, readStagedManifest } from "./bridge-artifacts.js
 
 export interface BridgePackagingPlan {
 	readonly extraResources: readonly string[];
+	/**
+	 * The payload's third-party notices, merged into the app's. Absent for
+	 * payloads built before they carried notices (manifest without `notices`).
+	 */
+	readonly notices?: string;
 }
 
 export interface BridgePackagingOptions {
@@ -79,7 +84,13 @@ export function createBridgePackagingPlan(
 		);
 	}
 
+	const notices = manifest.notices ? path.join(stagedBridgeDir, manifest.notices) : undefined;
+	if (notices && !exists(notices)) {
+		throw new Error(`Bridge notices not found: ${notices}. The payload may be corrupted.`);
+	}
+
 	return {
 		extraResources: [stagedBridgeDir],
+		...(notices ? { notices } : {}),
 	};
 }

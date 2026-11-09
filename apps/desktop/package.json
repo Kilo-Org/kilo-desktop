@@ -54,6 +54,7 @@
 		"@kilo-desktop/plugin-shell": "workspace:*",
 		"@kilo-desktop/plugin-telemetry": "workspace:*",
 		"@kilo-desktop/plugin-terminal": "workspace:*",
+		"@kilo-desktop/plugin-updates": "workspace:*",
 		"@kilo-desktop/plugin-workspaces": "workspace:*",
 		"@kilo-desktop/ui": "workspace:*",
 		"@launchdarkly/node-client-sdk": "^4.0.0",

@@ -387,6 +387,9 @@ importers:
       '@kilo-desktop/plugin-terminal':
         specifier: workspace:*
         version: link:../../plugins/terminal
+      '@kilo-desktop/plugin-updates':
+        specifier: workspace:*
+        version: link:../../plugins/updates
       '@kilo-desktop/plugin-workbench':
         specifier: workspace:*
         version: link:../../plugins/workbench

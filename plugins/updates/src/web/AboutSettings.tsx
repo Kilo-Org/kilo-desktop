@@ -19,6 +19,7 @@ import { toast } from "@kilo-desktop/ui/components/sonner";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 
 import { UPDATE_TRACK_SWITCHER_KEY, type UpdateState as DesktopUpdateState } from "../contracts";
+import { AboutLegalSection } from "./AboutLegalSection";
 import { AboutSupportSection } from "./AboutSupportSection";
 import { InstallUpdateDialog } from "./InstallUpdateDialog";
 import { hasVisibleReleaseNotes, ReleaseNotesList } from "./ReleaseNotesList";
@@ -224,6 +225,7 @@ export function AboutSettings() {
 				</section>
 			</div>
 			<AboutSupportSection />
+			<AboutLegalSection />
 			{state ? (
 				<InstallUpdateDialog
 					open={confirmOpen}

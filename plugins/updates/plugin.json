@@ -3,7 +3,7 @@
 	"id": "kilo.updates",
 	"displayName": "Updates",
 	"version": "1.0.0",
-	"description": "App updates: About settings, release notes and the update-ready notice.",
+	"description": "App updates: About settings (version, release notes, support and legal notices) and the update-ready notice.",
 	"requires": {
 		"kilo.shell/settings-section": "optional",
 		"kilo.shell/left-sidebar-notice": "optional"
@@ -15,7 +15,14 @@
 		{
 			"id": "support-row",
 			"kind": "additive",
-			"description": "A row in About → Support with information to include when contacting support."
+			"description": "A row in About \u2192 Support with information to include when contacting support."
+		}
+	],
+	"domains": [
+		{
+			"id": "legal",
+			"home": "main",
+			"description": "The third-party notices shipped beside the app, shown in About \u2192 Legal."
 		}
 	],
 	"contributes": {
@@ -26,7 +33,9 @@
 					"title": "About",
 					"description": "Check the app version, manage updates, and find application logs.",
 					"priority": 110,
-					"when": { "all": ["kernel/desktop"] }
+					"when": {
+						"all": ["kernel/desktop"]
+					}
 				}
 			],
 			"kilo.shell/left-sidebar-notice": [

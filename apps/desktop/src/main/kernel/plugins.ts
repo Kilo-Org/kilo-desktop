@@ -39,6 +39,8 @@ import telemetryManifest from "@kilo-desktop/plugin-telemetry/plugin.json";
 import { telemetryMainEntry } from "@kilo-desktop/plugin-telemetry/main";
 import terminalManifest from "@kilo-desktop/plugin-terminal/plugin.json";
 import { terminalMainEntry } from "@kilo-desktop/plugin-terminal/main";
+import updatesManifest from "@kilo-desktop/plugin-updates/plugin.json";
+import { updatesMainEntry } from "@kilo-desktop/plugin-updates/main";
 import workspacesManifest from "@kilo-desktop/plugin-workspaces/plugin.json";
 import { workspacesMainEntry } from "@kilo-desktop/plugin-workspaces/main";
 
@@ -63,6 +65,7 @@ export const MAIN_ENTRIES: Readonly<Record<string, PluginEntry>> = {
 	[localInferenceManifest.id]: localInferenceMainEntry,
 	[marketplaceManifest.id]: marketplaceMainEntry,
 	[boardManifest.id]: boardMainEntry,
+	[updatesManifest.id]: updatesMainEntry,
 };
 
 /** Packages of bundled plugins that ship files in `resources/`, by plugin id. */

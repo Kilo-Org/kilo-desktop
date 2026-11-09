@@ -6,6 +6,7 @@
 	"description": "kilo.updates — app updates, About settings and the update-ready notice",
 	"exports": {
 		"./plugin.json": "./plugin.json",
+		"./main": "./src/main/index.ts",
 		"./web": "./src/web/index.ts",
 		"./contracts": "./src/contracts/index.ts",
 		"./testing": "./src/testing/index.ts"

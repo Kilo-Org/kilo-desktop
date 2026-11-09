@@ -30,6 +30,7 @@ import { signWindowsFile } from "./config/windows-sign.js";
 import { bundleVcRuntime, createVisualStudioRedistLocator } from "./config/windows-vc-runtime.js";
 import { pruneProductionDependencies } from "./config/prune-production-dependencies.js";
 import { assertNoShippedSource } from "./config/assert-no-shipped-source.js";
+import { writeAppLegalFiles } from "./config/third-party-notices.js";
 import { listWorkspacePackageNames } from "./config/workspace-packages.js";
 import { createNotebookPackagingPlan } from "@kilo-desktop/plugin-notebook/packaging";
 import { createBridgePackagingPlan } from "@kilo-desktop/plugin-environments/packaging";
@@ -103,6 +104,21 @@ const extraResources = [
 	path.join(workspaceRoot, "plugins/terminal/resources/terminal"),
 	...notebookPackaging.extraResources,
 	...bridgePackaging.extraResources,
+];
+
+// Vite `build.license` lists of every bundle that ships, read by
+// writeAppLegalFiles. Paths under the build folder are the staged renderer and
+// main/preload; the rest ship as resources or inside the renderer.
+const shippedBundleLicenseFiles = (buildPath: string): string[] => [
+	...[
+		".vite/renderer/main_window/.vite/licenses.json",
+		".vite/build/.vite/licenses.main.json",
+		".vite/build/.vite/licenses.preload.json",
+	].map((file) => path.join(buildPath, file)),
+	...[
+		"plugins/terminal/resources/terminal/.vite/licenses.json",
+		"plugins/notebook/resources/kilo-plugin/.vite/licenses.json",
+	].map((file) => path.join(workspaceRoot, file)),
 ];
 
 async function moveDirectory(source: string, destination: string): Promise<void> {
@@ -313,6 +329,24 @@ const config: ForgeConfig = {
 					arch,
 				);
 				await assertNoShippedSource(buildPath, workspacePackageNames);
+				await writeAppLegalFiles({
+					buildPath,
+					platform,
+					productName: identity.productName,
+					bundleLicenseFiles: shippedBundleLicenseFiles(buildPath),
+					packageSearchRoots: [path.join(workspaceRoot, "node_modules")],
+					workspacePackageNames,
+					componentNotices: bridgePackaging.notices
+						? [
+								{
+									title: "Conda bridge (bridge/)",
+									preamble:
+										"The conda bridge in the bridge/ folder bundles CPython and the packages below.\nThe GNU license texts its entries refer to are in bridge/licenses/.",
+									file: bridgePackaging.notices,
+								},
+							]
+						: [],
+				});
 			},
 		],
 		win32metadata: {

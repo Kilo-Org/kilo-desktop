@@ -15,6 +15,8 @@ await build({
 		outDir: path.join(pluginRoot, "resources/kilo-plugin"),
 		emptyOutDir: true,
 		minify: false,
+		// Read by the desktop packager to write the app's third-party notices.
+		license: { fileName: ".vite/licenses.json" },
 		rollupOptions: {
 			external: [/^node:/],
 		},

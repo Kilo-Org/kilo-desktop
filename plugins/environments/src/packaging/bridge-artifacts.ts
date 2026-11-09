@@ -32,6 +32,8 @@ export interface BridgePayloadManifest {
 	 * Current payloads emit both; pre-rename payloads emit only this one.
 	 */
 	readonly macho?: readonly string[];
+	/** Payload-relative path of its THIRD_PARTY_NOTICES; absent from older payloads. */
+	readonly notices?: string;
 }
 
 export interface BridgePayloadInfo {
@@ -152,6 +154,7 @@ export function isBridgePayloadManifest(value: unknown): value is BridgePayloadM
 	if (!isStringRecord(record["packages"])) return false;
 	if (record["natives"] !== undefined && !isStringArray(record["natives"])) return false;
 	if (record["macho"] !== undefined && !isStringArray(record["macho"])) return false;
+	if (record["notices"] !== undefined && typeof record["notices"] !== "string") return false;
 	return true;
 }
 

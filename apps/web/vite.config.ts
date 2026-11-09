@@ -96,5 +96,7 @@ export default defineConfig({
 		sourcemap: uploadSourcemaps,
 		outDir: "dist",
 		emptyOutDir: true,
+		// Read by the desktop packager to write the app's third-party notices.
+		license: { fileName: ".vite/licenses.json" },
 	},
 });

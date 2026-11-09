@@ -42,7 +42,11 @@ function stubHost(platform: NodeJS.Platform, arch: NodeJS.Architecture): () => v
  * Write a minimal staged payload. `target` is informational metadata copied
  * from the payload build and is not consumed by the packaging plan.
  */
-function stageFakePayload(pluginRoot: string, target: string): void {
+function stageFakePayload(
+	pluginRoot: string,
+	target: string,
+	extraManifest: Record<string, unknown> = {},
+): void {
 	const bridgeDir = path.join(pluginRoot, "resources", "bridge");
 	const binaryDir = path.join(bridgeDir, "python", "bin");
 	mkdirSync(binaryDir, { recursive: true });
@@ -58,6 +62,7 @@ function stageFakePayload(pluginRoot: string, target: string): void {
 			launch: ["python/bin/python3.11"],
 			packages: {},
 			natives: ["python/bin/python3.11"],
+			...extraManifest,
 		}),
 	);
 }
@@ -74,6 +79,42 @@ describe("createBridgePackagingPlan", () => {
 		});
 		expect(plan.extraResources).toHaveLength(1);
 		expect(plan.extraResources[0]).toBe(path.join(tempDir, "resources", "bridge"));
+	});
+
+	it("points at the third-party notices the payload ships", () => {
+		const tempDir = makeTempDir();
+		stageFakePayload(tempDir, "macos-arm64", { notices: "THIRD_PARTY_NOTICES" });
+		writeFileSync(path.join(tempDir, "resources/bridge/THIRD_PARTY_NOTICES"), "notices");
+
+		const plan = createBridgePackagingPlan({
+			pluginRoot: tempDir,
+			platform: "darwin",
+			arch: "arm64",
+		});
+
+		expect(plan.notices).toBe(path.join(tempDir, "resources", "bridge", "THIRD_PARTY_NOTICES"));
+	});
+
+	it("has no notices for a payload built before payloads carried them", () => {
+		const tempDir = makeTempDir();
+		stageFakePayload(tempDir, "macos-arm64");
+
+		const plan = createBridgePackagingPlan({
+			pluginRoot: tempDir,
+			platform: "darwin",
+			arch: "arm64",
+		});
+
+		expect(plan.notices).toBeUndefined();
+	});
+
+	it("throws when the manifest names a notices file the payload lacks", () => {
+		const tempDir = makeTempDir();
+		stageFakePayload(tempDir, "macos-arm64", { notices: "THIRD_PARTY_NOTICES" });
+
+		expect(() =>
+			createBridgePackagingPlan({ pluginRoot: tempDir, platform: "darwin", arch: "arm64" }),
+		).toThrow(/THIRD_PARTY_NOTICES/);
 	});
 
 	it("returns empty plan for genuinely unsupported platform", () => {

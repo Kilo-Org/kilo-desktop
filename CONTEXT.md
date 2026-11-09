@@ -30,7 +30,7 @@ plugins/          Bundled plugins — self-contained workspace packages
 ├── shell/        @kilo-desktop/plugin-shell kilo.shell: window frame, router, settings host, command palette, appearance (kernel plugin)
 ├── flags/        @kilo-desktop/plugin-flags kilo.flags: LaunchDarkly feature flags as a domain object and `flag:` context keys (kernel plugin)
 ├── telemetry/    @kilo-desktop/plugin-telemetry kilo.telemetry: consented PostHog analytics for declared events, Privacy settings (kernel plugin)
-├── updates/      @kilo-desktop/plugin-updates kilo.updates: About settings, release notes and the restart-to-update notice (kernel plugin)
+├── updates/      @kilo-desktop/plugin-updates kilo.updates: About settings, release notes, the restart-to-update notice and the third-party notices (kernel plugin)
 ├── developer/    @kilo-desktop/plugin-developer kilo.developer: the Developer settings category and Diagnostics (kernel plugin)
 ├── agent/        @kilo-desktop/plugin-agent kilo.agent: Kilo CLI packaging, server lifecycle and configuration, Kilo chats, agent tool gateway and External AI apps (kernel plugin)
 ├── account/      @kilo-desktop/plugin-account kilo.account: the signed-in Kilo account, terms, sign-in and Account settings (kernel plugin)

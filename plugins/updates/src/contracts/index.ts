@@ -1,7 +1,13 @@
 import type { ComponentType } from "react";
 import { z } from "zod";
 
-import { defineExtensionPoint, implementation, type PluginDefinitions } from "@kilo-desktop/kernel";
+import {
+	defineDomain,
+	defineExtensionPoint,
+	implementation,
+	method,
+	type PluginDefinitions,
+} from "@kilo-desktop/kernel";
 
 /**
  * kilo.updates' public surface: the About → Support rows other plugins add,
@@ -65,4 +71,30 @@ export interface UpdateActionResult {
 	readonly state: UpdateState;
 }
 
-export const UPDATES_DEFINITIONS: PluginDefinitions = { extensionPoints: [SupportRow] };
+export const readableLegalDocumentSchema = z.enum(["third-party-notices"]);
+export const legalDocumentSchema = z.enum([
+	...readableLegalDocumentSchema.options,
+	"chromium-notices",
+]);
+export type LegalDocument = z.output<typeof legalDocumentSchema>;
+
+/**
+ * The legal documents packaging writes beside app.asar: the third-party
+ * notices and Chromium's credits (HTML, so only located).
+ * Every method answers `null` where a document is not shipped (development).
+ */
+export const Legal = defineDomain({
+	id: "kilo.updates/legal",
+	home: "main",
+	state: z.object({}),
+	methods: {
+		/** The document's path, for revealing it in the file manager. */
+		locate: method(z.object({ document: legalDocumentSchema }), z.string().nullable()),
+		read: method(z.object({ document: readableLegalDocumentSchema }), z.string().nullable()),
+	},
+});
+
+export const UPDATES_DEFINITIONS: PluginDefinitions = {
+	extensionPoints: [SupportRow],
+	domains: [Legal],
+};

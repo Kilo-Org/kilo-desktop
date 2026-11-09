@@ -87,6 +87,9 @@ export default defineConfig(({ command }) => {
 			// stripped from the output (filesToDeleteAfterUpload). Without the token,
 			// emitting maps would ship raw `.map` files in the packaged `.app`.
 			sourcemap: uploadSourcemaps,
+			// Read by the packager to write the app's third-party notices. Main and
+			// preload share an outDir, so each names its own file.
+			license: { fileName: ".vite/licenses.main.json" },
 			lib: {
 				entry: "src/main/main.ts",
 				formats: ["es"],

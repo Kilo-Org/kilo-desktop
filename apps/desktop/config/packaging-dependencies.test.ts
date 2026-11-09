@@ -241,6 +241,24 @@ describe("packaged production dependencies", () => {
 		expect(release).not.toContain("git push");
 	});
 
+	it("writes the app's legal files from every shipped bundle once production deps are staged", () => {
+		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
+		const beforeAsar = forge.slice(forge.indexOf("beforeAsar:"), forge.indexOf("win32metadata:"));
+		const legal = beforeAsar.indexOf("await writeAppLegalFiles(");
+		expect(legal).toBeGreaterThan(beforeAsar.indexOf("stageProductionDependencies"));
+		expect(legal).toBeGreaterThan(beforeAsar.indexOf("stageWebRenderer"));
+		for (const bundle of [
+			".vite/renderer/main_window/.vite/licenses.json",
+			".vite/build/.vite/licenses.main.json",
+			".vite/build/.vite/licenses.preload.json",
+			"plugins/terminal/resources/terminal/.vite/licenses.json",
+			"plugins/notebook/resources/kilo-plugin/.vite/licenses.json",
+		]) {
+			expect(forge).toContain(`"${bundle}"`);
+		}
+		expect(forge).toContain("bridgePackaging.notices");
+	});
+
 	// The AWS publish roles trust only `environment:<env>:ref:refs/heads/main`
 	// OIDC subjects; a tag push or branch dispatch would present another subject.
 	it("only releases from main", () => {

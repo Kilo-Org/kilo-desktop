@@ -30,5 +30,7 @@ export default defineConfig({
 	build: {
 		outDir: outputDirectory,
 		emptyOutDir: true,
+		// Read by the desktop packager to write the app's third-party notices.
+		license: { fileName: ".vite/licenses.json" },
 	},
 });

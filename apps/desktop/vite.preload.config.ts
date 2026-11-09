@@ -9,6 +9,8 @@ import { defineConfig } from "vite";
 // false` case: do not run the externalize plugin here.
 export default defineConfig({
 	build: {
+		// Read by the packager to write the app's third-party notices.
+		license: { fileName: ".vite/licenses.preload.json" },
 		rollupOptions: {
 			external: [
 				"electron",

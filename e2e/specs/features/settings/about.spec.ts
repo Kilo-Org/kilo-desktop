@@ -18,6 +18,17 @@ test.describe("About settings", () => {
 		await aboutPage.verifyShowLogFileButton();
 	});
 
+	test("shows the third-party notices the app ships @smoke @packaged", async ({ aboutPage }) => {
+		await aboutPage.verifyLegalSection();
+		await aboutPage.verifyThirdPartyNoticesShown();
+		await aboutPage.clickShowChromiumNotices();
+		await aboutPage.verifyRevealedFilePath(
+			aboutData.chromiumNoticesPathPattern,
+			aboutData.chromiumNoticesRevealMessage,
+		);
+		await aboutPage.verifyRevealedFileExists();
+	});
+
 	test("verifies about page layout", async ({ aboutPage }) => {
 		await aboutPage.verifyPageHeading();
 		await aboutPage.verifyPageDescription();

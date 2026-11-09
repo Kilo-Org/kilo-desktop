@@ -24,6 +24,13 @@ export const aboutData = {
 		"Show in file manager should reveal the Kilo config path shown in the row",
 	logFileRevealMessage: "Show in file manager should reveal an absolute main.log path",
 	revealInFileManagerLabel: revealInFileManagerLabel(process.platform),
+	legalTitle: "Legal",
+	thirdPartyNoticesTitle: "Third-party notices",
+	// Written at package time; every build ships Electron, so its entry is always there.
+	thirdPartyNoticesTextPattern: /^THIRD-PARTY SOFTWARE NOTICES[\s\S]*\nElectron \d+\.\d+\.\d+\n/,
+	chromiumNoticesPathPattern: /LICENSES\.chromium\.html$/,
+	chromiumNoticesRevealMessage:
+		"Show in file manager should reveal Chromium's notices beside the app",
 } as const;
 
 function revealInFileManagerLabel(platform: NodeJS.Platform): string {

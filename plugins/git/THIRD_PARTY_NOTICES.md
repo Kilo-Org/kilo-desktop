@@ -8,10 +8,11 @@ lists the local file and the upstream file it derives from
 
 Ported or adapted from [Visual Studio Code](https://github.com/microsoft/vscode).
 
-- `src/web/lib/throttler.ts` ← `src/vs/base/common/async.ts` (`Throttler`)
-- `src/web/lib/throttler.test.ts` ← `src/vs/base/test/common/async.test.ts`
-- `src/web/use-git-diff-watcher.ts` ← `extensions/git/src/repository.ts` (`repositoryWatcher`, `DotGitWatcher`, `updateWhenIdleAndWait`) and `src/vs/platform/agentHost/node/agentHostFileMonitorService.ts` (the watch excludes)
-- `src/web/GitDiffAutoRefresh.browser.test.tsx` (the metadata-noise test) ← `src/vs/platform/agentHost/test/node/agentHostFileMonitorService.test.ts`
+- `src/web/changes/lib/throttler.ts` ← `src/vs/base/common/async.ts` (`Throttler`)
+- `src/web/changes/lib/throttler.test.ts` ← `src/vs/base/test/common/async.test.ts`
+- `src/web/changes/use-git-diff-watcher.ts` ← `extensions/git/src/repository.ts` (`repositoryWatcher`, `updateWhenIdleAndWait`)
+- `src/web/repository-watcher.ts` ← `extensions/git/src/repository.ts` (`DotGitWatcher`) and `src/vs/platform/agentHost/node/agentHostFileMonitorService.ts` (the watch excludes)
+- `src/web/changes/auto-refresh.browser.test.tsx` (the metadata-noise test) ← `src/vs/platform/agentHost/test/node/agentHostFileMonitorService.test.ts`
 - The plugin's e2e spec, `e2e/specs/features/git/changes.spec.ts` in the root e2e package ← `extensions/git/src/test/smoke.test.ts`
 
 License: MIT. Copyright (c) 2015 - present Microsoft Corporation.
@@ -46,8 +47,8 @@ Ported or adapted from [GitHub Desktop](https://github.com/desktop/desktop).
 
 - `src/main/find-default-branch.ts` ← `app/src/lib/find-default-branch.ts`
 - `src/main/git-service.ts` (recent branches) ← `app/src/lib/stores/git-store.ts`
-- `src/web/group-branches.ts` ← `app/src/ui/branches/group-branches.ts`
-- `src/web/CreateBranchDialog.tsx` (dialog copy) ← `app/src/ui/create-branch/create-branch-dialog.tsx`
+- `src/web/branches/group-branches.ts` ← `app/src/ui/branches/group-branches.ts`
+- `src/web/branches/CreateBranchDialog.tsx` (dialog copy) ← `app/src/ui/create-branch/create-branch-dialog.tsx`
 
 License: MIT. Copyright (c) GitHub, Inc.
 
@@ -79,6 +80,7 @@ Ported or adapted from [Kilo Code](https://github.com/Kilo-Org/kilocode).
 
 - `src/main/worktree-manager.ts` ← `packages/kilo-vscode/src/agent-manager/{WorktreeManager,GitOps,git-import}.ts`, `packages/kilo-vscode/src/agent-manager/project/paths.ts` and `packages/opencode/src/kilocode/cli/cmd/tui-worktree.ts`
 - `src/main/branch-naming.ts` ← `packages/kilo-vscode/src/agent-manager/branch-name.ts`
+- `src/main/branch-namer/controller.ts` ← `packages/kilo-vscode/src/agent-manager/branch-naming.ts` (`BranchNamingController`)
 
 License: MIT. Copyright (c) 2026 Kilo Code. Copyright (c) 2025 opencode.
 
@@ -111,14 +113,14 @@ SOFTWARE.
 
 Derived from [Pierre diffshub](https://github.com/pierrecomputer/pierre/tree/main/apps/diffshub).
 
-- `src/web/use-patch-loader.ts` ← `apps/diffshub/components/usePatchLoader.ts`
-- `src/web/lib/stream-git-patch-files.ts` ← `apps/diffshub/lib/streamGitPatchFiles.ts`
-- `src/web/lib/map-change-type-to-git-status.ts` ← `apps/diffshub/lib/mapChangeTypeToGitStatus.ts`
-- `src/web/lib/diff-data-accumulator.ts` ← `apps/diffshub/lib/diffsHubDataAccumulator.ts`
-- `src/web/lib/diff-data-accumulator.test.ts` (the file/directory path collision suite) ← `apps/diffshub/test/diffsHubDataAccumulator.test.ts`
-- `src/web/GitDiffSidebar.tsx` ← `apps/diffshub/components/DiffsHubFileTree.tsx`
+- `src/web/changes/use-patch-loader.ts` ← `apps/diffshub/components/usePatchLoader.ts`
+- `src/web/changes/lib/stream-git-patch-files.ts` ← `apps/diffshub/lib/streamGitPatchFiles.ts`
+- `src/web/changes/lib/map-change-type-to-git-status.ts` ← `apps/diffshub/lib/mapChangeTypeToGitStatus.ts`
+- `src/web/changes/lib/diff-data-accumulator.ts` ← `apps/diffshub/lib/diffsHubDataAccumulator.ts`
+- `src/web/changes/lib/diff-data-accumulator.test.ts` (the file/directory path collision suite) ← `apps/diffshub/test/diffsHubDataAccumulator.test.ts`
+- `src/web/changes/GitDiffSidebar.tsx` ← `apps/diffshub/components/DiffsHubFileTree.tsx`
 
-License: Apache-2.0. Copyright 2025 Pierre Computer Company. Each derived file carries a notice that it was modified for Kilo Desktop. diffshub ships no NOTICE file.
+License: Apache-2.0. Copyright 2025 Pierre Computer Company. Each derived file carries a notice that it was modified for Kilo Desktop. diffshub's `NOTICE.md` only covers a font subset that Kilo Desktop does not use, so it has nothing to reproduce here.
 
 ```text
                                  Apache License

@@ -15,6 +15,7 @@ import { Composer } from "../composer/composer";
 import { ComposerDraftFooter } from "../composer/composer-draft-footer";
 import { ComposerFooter } from "../composer/composer-footer";
 import { OpenCodeComposerInteraction } from "../interactions/opencode-composer-interaction";
+import { ConversationMapRail } from "./conversation-map-rail";
 import { ThreadMessage } from "./messages";
 import { TooltipIconButton } from "./tooltip-icon-button";
 
@@ -93,6 +94,7 @@ export const Thread: FC = () => {
 					aria-hidden
 					className="from-pane pointer-events-none sticky top-0 z-10 -mb-6 h-6 w-full shrink-0 bg-linear-to-b to-transparent"
 				/>
+				{isDraft ? null : <ConversationMapRail />}
 				<div
 					data-slot="aui_thread-column"
 					className="mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col px-1 pt-4"

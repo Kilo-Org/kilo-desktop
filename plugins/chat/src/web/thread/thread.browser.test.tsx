@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { page } from "vitest/browser";
 
 import { agentPane, chatSummary, renderAgentPane } from "../../test/chat-host";
@@ -262,5 +262,84 @@ describe("the transcript", () => {
 		await remove.click();
 
 		await expect.element(remove).not.toBeInTheDocument();
+	});
+});
+
+describe("the conversation map", () => {
+	const reply = (id: string, parentId: string, text: string) =>
+		assistantMessage("ses_a", id, parentId, [{ type: "text", text, time: { start: 1, end: 2 } }]);
+	const twoTurns = () => [
+		userMessage("ses_a", "msg_1", "First prompt"),
+		reply("msg_2", "msg_1", "First answer"),
+		userMessage("ses_a", "msg_3", "Second prompt"),
+		reply("msg_4", "msg_3", "Second answer"),
+	];
+	const rail = () => document.querySelector<HTMLElement>('[data-slot="conversation-map-rail"]');
+
+	async function showWideChat(messages: FakeMessage[]) {
+		await page.viewport(1200, 800);
+		onTestFinished(() => page.viewport(414, 896));
+		return showChat(messages);
+	}
+
+	it("stays hidden for one user turn", async () => {
+		await showWideChat([
+			userMessage("ses_a", "msg_1", "First prompt"),
+			reply("msg_2", "msg_1", "First answer"),
+		]);
+		await expect.element(page.getByText("First answer")).toBeVisible();
+
+		expect(rail()).toBeNull();
+	});
+
+	it("marks each user turn from the second one on", async () => {
+		await showWideChat(twoTurns());
+
+		const map = page.getByRole("navigation", { name: "Conversation map" });
+		await expect.element(map.getByRole("button", { name: "First prompt" })).toBeVisible();
+		await expect.element(map.getByRole("button", { name: "Second prompt" })).toBeVisible();
+	});
+
+	it("spans the viewport edge to edge whatever width the OS scrollbar gutter has", async () => {
+		await showWideChat(twoTurns());
+		await vi.waitFor(() => expect(rail()).not.toBeNull());
+
+		const viewport = document.querySelector<HTMLElement>('[data-slot="aui_thread-viewport"]')!;
+		await vi.waitFor(() => {
+			const view = viewport.getBoundingClientRect();
+			const box = rail()!.getBoundingClientRect();
+			expect(box.left).toBeCloseTo(view.left, 0);
+			expect(box.right).toBeCloseTo(view.right, 0);
+		});
+	});
+
+	it("scrolls the viewport to the clicked turn", async () => {
+		const long = "A long answer line.\n\n".repeat(80);
+		await showWideChat([
+			userMessage("ses_a", "msg_1", "First prompt"),
+			reply("msg_2", "msg_1", long),
+			userMessage("ses_a", "msg_3", "Second prompt"),
+			reply("msg_4", "msg_3", long),
+		]);
+		const viewport = document.querySelector<HTMLElement>('[data-slot="aui_thread-viewport"]')!;
+		const first = () => viewport.querySelector<HTMLElement>('[data-message-id="msg_1"]')!;
+		await vi.waitFor(() =>
+			expect(first().getBoundingClientRect().bottom).toBeLessThan(
+				viewport.getBoundingClientRect().top,
+			),
+		);
+
+		await page
+			.getByRole("navigation", { name: "Conversation map" })
+			.getByRole("button", { name: "First prompt" })
+			.click();
+		await vi.waitFor(
+			() =>
+				expect(first().getBoundingClientRect().top).toBeCloseTo(
+					viewport.getBoundingClientRect().top,
+					-1,
+				),
+			{ timeout: 3_000 },
+		);
 	});
 });

@@ -26,18 +26,20 @@ function TooltipContent({
 	align = "center",
 	alignOffset = 0,
 	positionMethod = "absolute",
+	anchor,
 	children,
 	...props
 }: TooltipPrimitive.Popup.Props &
 	Pick<
 		TooltipPrimitive.Positioner.Props,
-		"align" | "alignOffset" | "side" | "sideOffset" | "positionMethod"
+		"align" | "alignOffset" | "side" | "sideOffset" | "positionMethod" | "anchor"
 	> & {
 		arrowClassName?: string;
 	}) {
 	return (
 		<TooltipPrimitive.Portal>
 			<TooltipPrimitive.Positioner
+				anchor={anchor}
 				align={align}
 				positionMethod={positionMethod}
 				alignOffset={alignOffset}

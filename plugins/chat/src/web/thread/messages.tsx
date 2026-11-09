@@ -48,7 +48,12 @@ import { retryFailedPrompt } from "../checkpoints/retry-failed-prompt";
 import { retryFailedTurn } from "../checkpoints/retry-failed-turn";
 import { useRevertPending } from "../checkpoints/revert-pending";
 import { RevertToHereButton } from "../checkpoints/revert-to-here-button";
-import { FoldHoistedParts } from "../html-render/HtmlRenderToolUI";
+import {
+	AssistantImagePart,
+	FoldHoistedParts,
+	ToolImageAttachments,
+	TurnSavedImages,
+} from "../media/message-media";
 import { usePendingInteractions } from "../interactions/PendingInteractionsContext";
 import { useChatConnection } from "../runtime/chat-connection";
 import { getPlanProjectionForMessage } from "../plan/plan-projection";
@@ -339,7 +344,8 @@ const AssistantMessage: FC = () => {
 		s.message.parts.some(
 			(part) =>
 				((part.type === "text" || part.type === "reasoning") && Boolean(part.text.trim())) ||
-				part.type === "tool-call",
+				part.type === "tool-call" ||
+				part.type === "image",
 		),
 	);
 	const status = useAuiState((s) => s.message.status);
@@ -439,15 +445,20 @@ const AssistantMessage: FC = () => {
 									return <Reasoning {...part} />;
 								case "tool-call":
 									return (
-										<ToolCallSignInGate
-											toolCallId={part.toolCallId}
-											toolName={part.toolName}
-											result={part.result}
-											isError={part.isError}
-										>
-											{part.toolUI ?? <ToolCallFallback {...part} />}
-										</ToolCallSignInGate>
+										<>
+											<ToolCallSignInGate
+												toolCallId={part.toolCallId}
+												toolName={part.toolName}
+												result={part.result}
+												isError={part.isError}
+											>
+												{part.toolUI ?? <ToolCallFallback {...part} />}
+											</ToolCallSignInGate>
+											<ToolImageAttachments toolCallId={part.toolCallId} />
+										</>
 									);
+								case "image":
+									return <AssistantImagePart image={part.image} filename={part.filename} />;
 								case "data":
 									return part.dataRendererUI;
 								default: {
@@ -465,6 +476,7 @@ const AssistantMessage: FC = () => {
 							}
 						}}
 					</MessagePrimitive.GroupedParts>
+					<TurnSavedImages />
 					{interrupted && !isRunning && !hasTurnWorkFold ? (
 						<TurnStoppedNote duration={duration} />
 					) : null}

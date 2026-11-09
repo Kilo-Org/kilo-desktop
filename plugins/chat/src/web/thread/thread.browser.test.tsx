@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 
+import { MEDIA_PANE_KIND, mediaPaneId } from "../../contracts";
 import { agentPane, chatSummary, renderAgentPane } from "../../test/chat-host";
 import {
 	assistantMessage,
@@ -22,6 +23,13 @@ async function showChat(messages: FakeMessage[]) {
 		pane: agentPane({ metadata: { chatId: "ses_a" } }),
 		chats: [chatSummary("ses_a")],
 	});
+}
+
+function pngDataUrl(width: number, height: number): string {
+	const canvas = document.createElement("canvas");
+	canvas.width = width;
+	canvas.height = height;
+	return canvas.toDataURL("image/png");
 }
 
 const tool = (name: string, state: Record<string, unknown>) => ({
@@ -236,6 +244,89 @@ describe("the transcript", () => {
 		]);
 
 		await expect.element(page.getByRole("button", { name: "Image attachment" })).toBeVisible();
+	});
+
+	it("opens a sent image and the reply's diagram in one viewer", async () => {
+		const sent = userMessage("ses_a", "msg_1", "Draw this");
+		const host = await showChat([
+			{
+				...sent,
+				parts: [
+					...sent.parts,
+					{
+						id: "msg_1_f",
+						sessionID: "ses_a",
+						messageID: "msg_1",
+						type: "file",
+						mime: "image/png",
+						filename: "shot.png",
+						url: pngDataUrl(40, 20),
+					},
+				],
+			},
+			assistantMessage("ses_a", "msg_2", "msg_1", [
+				{
+					type: "text",
+					text: "```mermaid\nflowchart TD\n  A --> B\n```\n",
+					time: { start: 1, end: 2 },
+				},
+			]),
+		]);
+		await expect.element(page.getByTestId("chat-mermaid-expand")).toBeVisible();
+
+		await page.getByRole("button", { name: "Image attachment" }).click();
+
+		const viewer = page.getByTestId("chat-media-pane");
+		await expect.element(viewer.getByRole("heading", { name: "shot.png" })).toBeVisible();
+		await expect.element(viewer.getByTestId("media-lightbox-counter")).toHaveTextContent("1 / 2");
+		expect(document.querySelector('[role="dialog"]')).toBeNull();
+		expect(host.sessions.calls.open).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				kind: MEDIA_PANE_KIND,
+				paneId: mediaPaneId("ses_a"),
+				title: "shot.png",
+				iconKey: "image",
+			}),
+		);
+
+		await userEvent.keyboard("{ArrowRight}");
+		await expect.element(viewer.getByRole("heading", { name: "Flowchart" })).toBeVisible();
+		await expect.element(viewer.getByTestId("media-lightbox-counter")).toHaveTextContent("2 / 2");
+		await viewer.getByTestId("chat-lightbox-copy-source").click();
+		await vi.waitFor(() => expect(host.copied.at(-1)).toContain("flowchart TD"));
+
+		// Opening another item from the chat reuses its viewer pane.
+		await page.getByTestId("chat-mermaid-expand").click();
+		await expect.element(viewer.getByRole("heading", { name: "Flowchart" })).toBeVisible();
+		expect(host.panes().panes.filter((pane) => pane.kind === MEDIA_PANE_KIND)).toHaveLength(1);
+	});
+
+	it("opens an unsent image on its own", async () => {
+		await renderAgentPane();
+		const image = await (await fetch(pngDataUrl(40, 20))).blob();
+		const transfer = new DataTransfer();
+		transfer.items.add(new File([image], "draft.png", { type: "image/png" }));
+		const dropzone = document.querySelector('[data-slot="aui_composer-shell"]')!;
+		for (const type of ["dragenter", "dragover", "drop"]) {
+			dropzone.dispatchEvent(
+				new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: transfer }),
+			);
+		}
+
+		// Away from the tile's Remove button in its top corner.
+		await page
+			.getByRole("button", { name: "Image attachment" })
+			.click({ position: { x: 8, y: 48 } });
+
+		const viewer = page.getByTestId("chat-media-pane");
+		await expect.element(viewer.getByRole("heading", { name: "draft.png" })).toBeVisible();
+		expect(document.querySelector('[data-qa-id="media-lightbox-counter"]')).toBeNull();
+		// The draft's blob URL is only this window's; the pane shows the file's own data.
+		expect(
+			document
+				.querySelector('[data-qa-id="chat-media-pane"] [data-qa-id="media-lightbox-content"] img')
+				?.getAttribute("src"),
+		).toMatch(/^data:image\/png;base64,/u);
 	});
 
 	it("doesn't scroll a new chat, whose docked composer fits the pane", async () => {

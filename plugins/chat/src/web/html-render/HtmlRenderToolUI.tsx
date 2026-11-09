@@ -1,32 +1,37 @@
-import { memo, useState } from "react";
-import type {
-	PartState,
-	ToolCallMessagePartComponent,
-	ToolCallMessagePartProps,
-} from "@assistant-ui/react";
+import { memo, useMemo } from "react";
+import type { ToolCallMessagePartComponent, ToolCallMessagePartProps } from "@assistant-ui/react";
 import { DownloadIcon, Maximize2Icon } from "lucide-react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
-import { Dialog, DialogContent, DialogTitle } from "@kilo-desktop/ui/components/dialog";
 import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
 
 import { HTML_RENDER_MAX_HEIGHT, readHtmlRenderArgs, type HtmlRenderInput } from "../../contracts";
-import { isFoldHoistedPart, showsHoistedPage } from "../tools/activity-grouping";
+import { useLightboxItem, type LightboxItemInput } from "../thread/lightbox/chat-lightbox";
+import { showsHoistedPage } from "../tools/activity-grouping";
 import { ToolStatusIcon, resultText, truncate } from "../tools/tool-ui-shared";
 import { useIsInTurnWorkFold } from "../tools/turn-work-fold-context";
 import { HtmlRenderFrame } from "./HtmlRenderFrame";
 import { useSaveHtmlPage } from "./use-save-html-page";
 
+/**
+ * The page in place, with Save and Open in viewer. The viewer is the chat's
+ * Viewer pane (its gallery spans the transcript's pages, diagrams and images),
+ * or a full-window dialog where there's no pane to open.
+ */
 function HtmlRenderView({
 	html,
 	title,
 	height,
 	cacheKey,
 }: HtmlRenderInput & { readonly cacheKey: string }) {
-	const [fullScreen, setFullScreen] = useState(false);
 	const saveToWorkspace = useSaveHtmlPage();
+	const lightboxInput = useMemo<LightboxItemInput>(
+		() => ({ kind: "page", title, html }),
+		[title, html],
+	);
+	const viewer = useLightboxItem(lightboxInput);
 	return (
-		<div className="group/html-render my-3" data-qa-id="kilo-html-render">
+		<div ref={viewer.ref} className="group/html-render my-3" data-qa-id="kilo-html-render">
 			<HtmlRenderFrame
 				html={html}
 				title={title}
@@ -50,22 +55,14 @@ function HtmlRenderView({
 				<Button
 					variant="ghost"
 					size="icon-xs"
-					aria-label={`Open ${title} full screen`}
-					onClick={() => setFullScreen(true)}
+					aria-label={`Open ${title} in viewer`}
+					data-qa-id="kilo-html-render-open"
+					onClick={viewer.open}
 				>
 					<Maximize2Icon />
 				</Button>
 			</div>
-			<Dialog open={fullScreen} onOpenChange={setFullScreen}>
-				<DialogContent className="flex h-[calc(100vh-4rem)] max-w-[calc(100vw-4rem)] flex-col gap-0 p-0 sm:max-w-[calc(100vw-4rem)]">
-					<DialogTitle className="border-b px-4 py-2.5 pr-12 text-sm">{title}</DialogTitle>
-					{fullScreen ? (
-						<div className="min-h-0 flex-1 px-6 py-4">
-							<HtmlRenderFrame html={html} title={title} fit="fill" />
-						</div>
-					) : null}
-				</DialogContent>
-			</Dialog>
+			{viewer.lightbox}
 		</div>
 	);
 }
@@ -108,18 +105,3 @@ HtmlRenderPart.displayName = "HtmlRenderPart";
 export const HtmlRenderToolUI: ToolCallMessagePartComponent = (props) =>
 	useIsInTurnWorkFold() && showsHoistedPage(props) ? null : <HtmlRenderPart {...props} />;
 HtmlRenderToolUI.displayName = "HtmlRenderToolUI";
-
-/** The pages among a settled turn's folded parts, in order. */
-export function FoldHoistedParts({ parts }: { parts: readonly PartState[] }) {
-	return parts.map((part) =>
-		part.type === "tool-call" && isFoldHoistedPart(part) && showsHoistedPage(part) ? (
-			<HtmlRenderPart
-				key={part.toolCallId}
-				toolCallId={part.toolCallId}
-				args={part.args}
-				status={part.status}
-				result={part.result}
-			/>
-		) : null,
-	);
-}

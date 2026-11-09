@@ -17,6 +17,7 @@ import {
 	AutoApprove,
 	CHAT_DEFINITIONS,
 	GatewayModels,
+	MediaViewers,
 	ModelPreferences,
 	PROMPT_QUEUE_EDITING_FLAG,
 	PromptQueue,
@@ -196,6 +197,8 @@ export interface BootOptions extends ChatMainOptions {
 	readonly withoutAgent?: boolean;
 	/** `prompt-queue-editing`. */
 	readonly queueEditing?: boolean;
+	/** More main-side plugins, registered before kilo.chat. */
+	readonly registrations?: readonly unknown[];
 }
 
 /** kilo.chat's main entry in a main kernel, with a fake kilo.agent. */
@@ -223,6 +226,7 @@ export async function bootChatMain(options: BootOptions = {}) {
 			...(options.withoutAgent ? [] : [agent]),
 			account.registration,
 			flags.registration,
+			...((options.registrations ?? []) as never[]),
 			{
 				manifest,
 				definitions: CHAT_DEFINITIONS,
@@ -254,12 +258,14 @@ export async function bootChatMain(options: BootOptions = {}) {
 		as: (pluginId: string) => ({
 			autoApprove: kernel.sdkFor(pluginId).domains.get(AutoApprove)!,
 			promptQueue: kernel.sdkFor(pluginId).domains.get(PromptQueue)!,
+			mediaViewers: kernel.sdkFor(pluginId).domains.get(MediaViewers)!,
 		}),
 		/** The domains as kilo.chat's own windows call them. */
 		asChat: {
 			autoApprove: chatSdk!.domains.get(AutoApprove)!,
 			preferences: chatSdk!.domains.get(ModelPreferences)!,
 			promptQueue: chatSdk!.domains.get(PromptQueue)!,
+			mediaViewers: chatSdk!.domains.get(MediaViewers)!,
 		},
 	};
 }

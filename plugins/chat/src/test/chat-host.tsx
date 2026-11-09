@@ -58,6 +58,7 @@ import manifest from "../../plugin.json";
 import {
 	AGENT_PANE_KIND,
 	CHAT_DEFINITIONS,
+	MEDIA_PANE_KIND,
 	PLAN_PANE_KIND,
 	SUBAGENT_PANE_KIND,
 } from "../contracts";
@@ -155,7 +156,12 @@ export interface ChatHostOptions {
 	readonly starter?: { readonly isolation?: WorkSessionIsolation; readonly footer?: ReactNode };
 }
 
-const CHAT_PANE_KINDS: readonly string[] = [AGENT_PANE_KIND, PLAN_PANE_KIND, SUBAGENT_PANE_KIND];
+const CHAT_PANE_KINDS: readonly string[] = [
+	AGENT_PANE_KIND,
+	PLAN_PANE_KIND,
+	SUBAGENT_PANE_KIND,
+	MEDIA_PANE_KIND,
+];
 const SINGLETON_KINDS = new Set([AGENT_PANE_KIND, PLAN_PANE_KIND]);
 
 /** kilo.sessions' main entry, with sessions and panes kept in memory. */

@@ -1685,6 +1685,55 @@ describe("FilesView", () => {
 			.toHaveTextContent("Preview support for this file type is not available yet.");
 	});
 
+	it("previews an image in the zoomable viewer", async () => {
+		const canvas = document.createElement("canvas");
+		canvas.width = 40;
+		canvas.height = 20;
+		const base64 = canvas.toDataURL("image/png").split(",")[1]!;
+		const read: DocumentMethods["read"] = async () => ({
+			kind: "image",
+			mimeType: "image/png",
+			base64,
+			byteLength: 100,
+		});
+		await renderView({ ...handlers(), read }, filePane("assets/chart.png"));
+
+		const preview = page.getByTestId("files-image-preview");
+		await expect.element(preview.getByTestId("media-lightbox-fit")).toBeDisabled();
+		await expect
+			.poll(() =>
+				document
+					.querySelector<HTMLElement>(
+						'[data-qa-id="files-image-preview"] [data-qa-id="media-lightbox-content"]',
+					)
+					?.style.transform.includes("scale("),
+			)
+			.toBe(true);
+		await preview.getByTestId("media-lightbox-zoom-in").click();
+		await expect.element(preview.getByTestId("media-lightbox-fit")).toBeEnabled();
+		expect(
+			preview.getByRole("heading", { name: "assets/chart.png" }).element().className,
+		).toContain("sr-only");
+	});
+
+	it("previews a diagram file in the zoomable viewer, without in-place zoom", async () => {
+		const read: DocumentMethods["read"] = async () => ({
+			kind: "text",
+			contents: "flowchart TD\n  Input --> Output",
+			byteLength: 30,
+			truncated: false,
+			revision: "a".repeat(64),
+		});
+		await renderView({ ...handlers(), read }, filePane("diagram.mmd"));
+
+		const preview = page.getByTestId("files-mermaid-preview");
+		await expect
+			.element(preview.getByTestId("media-lightbox-fit"), { timeout: 15_000 })
+			.toBeDisabled();
+		await expect.element(preview.getByTestId("media-lightbox-download")).toBeEnabled();
+		expect(document.querySelector('[data-qa-id="files-mermaid-preview"] .pele-zoom')).toBeNull();
+	});
+
 	it("shows empty, truncated, list failure, and unsupported-file states", async () => {
 		await renderView({
 			...handlers(),

@@ -1,8 +1,13 @@
 import type { SyntaxHighlighterProps } from "@assistant-ui/react-markdown";
-import { MermaidDiagram } from "@kilo-desktop/ui/components/mermaid-diagram";
-import { CheckIcon, CodeXmlIcon, CopyIcon, EyeIcon } from "lucide-react";
-import { useState } from "react";
+import {
+	MermaidDiagram,
+	type MermaidDiagramState,
+} from "@kilo-desktop/ui/components/mermaid-diagram";
+import { cn } from "@kilo-desktop/ui/lib/utils";
+import { CheckIcon, CodeXmlIcon, CopyIcon, EyeIcon, Maximize2Icon } from "lucide-react";
+import { useMemo, useState } from "react";
 
+import { useLightboxItem, type LightboxItemInput } from "./lightbox/chat-lightbox";
 import { TooltipIconButton } from "./tooltip-icon-button";
 import { useCopyToClipboard } from "./use-copy-to-clipboard";
 import { useShellCopyText } from "./use-shell-copy-text";
@@ -80,16 +85,26 @@ function isClosedFence(node: CodeNode | undefined): boolean {
 }
 
 /**
- * One card per Mermaid fence: a typed header with Diagram/Source and Copy
- * actions over a single body. An unclosed fence is still streaming, so the
- * body shows source and Pele never parses a partial diagram.
+ * One card per Mermaid fence: a typed header with Expand, Diagram/Source and
+ * Copy actions over a single body. An unclosed fence is still streaming, so
+ * the body shows source and Pele never parses a partial diagram. A rendered
+ * diagram opens in the transcript lightbox on click or Expand; the inline
+ * preview has no zoom gestures of its own, so the wheel always scrolls the chat.
  */
 export function MermaidCodeBlock({ code, node }: SyntaxHighlighterProps) {
 	const isComplete = isClosedFence(node);
 	const [showSource, setShowSource] = useState(false);
+	const [diagramState, setDiagramState] = useState<MermaidDiagramState>("loading");
 	const copyText = useShellCopyText();
 	const { isCopied, copyToClipboard } = useCopyToClipboard(copyText);
 	const showDiagram = isComplete && !showSource;
+	const label = diagramLabel(code);
+	const viewable = showDiagram && diagramState === "ready";
+	const lightboxInput = useMemo<LightboxItemInput | null>(
+		() => (viewable ? { kind: "mermaid", code, label } : null),
+		[viewable, code, label],
+	);
+	const lightbox = useLightboxItem(lightboxInput);
 
 	return (
 		<div
@@ -97,8 +112,17 @@ export function MermaidCodeBlock({ code, node }: SyntaxHighlighterProps) {
 			data-qa-id="chat-mermaid-card"
 		>
 			<div className="border-border-subtle bg-muted/50 flex items-center justify-between border-b px-3.5 py-1.5 text-xs">
-				<span className="text-muted-foreground font-medium">{diagramLabel(code)}</span>
+				<span className="text-muted-foreground font-medium">{label}</span>
 				<div className="flex items-center gap-0.5">
+					{lightbox.available ? (
+						<TooltipIconButton
+							data-qa-id="chat-mermaid-expand"
+							tooltip="Open in viewer"
+							onClick={lightbox.open}
+						>
+							<Maximize2Icon />
+						</TooltipIconButton>
+					) : null}
 					{isComplete ? (
 						<TooltipIconButton
 							data-qa-id="chat-mermaid-source-toggle"
@@ -124,7 +148,20 @@ export function MermaidCodeBlock({ code, node }: SyntaxHighlighterProps) {
 				</div>
 			</div>
 			{showDiagram ? (
-				<MermaidDiagram className="p-3.5" code={code} />
+				// Pointer shortcut only: the Expand button is the keyboard path.
+				<div
+					ref={lightbox.ref}
+					className={cn(lightbox.available && "cursor-zoom-in")}
+					data-qa-id="chat-mermaid-preview"
+					onClick={lightbox.open}
+				>
+					<MermaidDiagram
+						className="p-3.5"
+						code={code}
+						zoom={false}
+						onStateChange={setDiagramState}
+					/>
+				</div>
 			) : (
 				<pre
 					className="bg-muted/30 overflow-x-auto p-3.5 text-sm leading-relaxed"

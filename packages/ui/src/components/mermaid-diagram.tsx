@@ -21,17 +21,40 @@ const diagramStyle = {
 	contain: "content",
 } as CSSProperties;
 
+export type MermaidDiagramState = "loading" | "ready" | "error";
+
 export function MermaidDiagram({
 	code,
 	className,
+	zoom = true,
+	onStateChange,
+	onReady,
 }: {
 	readonly code: string;
 	readonly className?: string;
+	/** Pele's own gestures (⌘/Ctrl+wheel, pinch, double-click, +/-); off when the caller zooms. */
+	readonly zoom?: boolean;
+	readonly onStateChange?: (state: MermaidDiagramState) => void;
+	/** The rendered SVG, for callers that measure or export it. */
+	readonly onReady?: (svg: SVGSVGElement) => void;
 }) {
 	const container = useRef<HTMLDivElement>(null);
 	const id = useId();
 	const [result, setResult] = useState<{ code: string; error?: string } | null>(null);
 	const current = result?.code === code ? result : null;
+	const state: MermaidDiagramState = !current ? "loading" : current.error ? "error" : "ready";
+	const callbacks = useRef({ onStateChange, onReady });
+	callbacks.current = { onStateChange, onReady };
+
+	useEffect(() => {
+		callbacks.current.onStateChange?.(state);
+	}, [state]);
+
+	useEffect(() => {
+		if (state !== "ready") return;
+		const svg = container.current?.querySelector("svg");
+		if (svg) callbacks.current.onReady?.(svg);
+	}, [state]);
 
 	useEffect(() => {
 		const element = container.current;
@@ -50,12 +73,18 @@ export function MermaidDiagram({
 		void import("./mermaid-renderer.js")
 			.then(({ mountMermaid }) => {
 				if (disposed) return;
-				const diagram = mountMermaid(element, code, id, {
-					onRender: () => {
-						if (!disposed) setResult({ code });
+				const diagram = mountMermaid(
+					element,
+					code,
+					id,
+					{
+						onRender: () => {
+							if (!disposed) setResult({ code });
+						},
+						onError,
 					},
-					onError,
-				});
+					{ zoom },
+				);
 				destroy = () => diagram.destroy();
 			})
 			.catch(onError);
@@ -65,7 +94,7 @@ export function MermaidDiagram({
 			destroy?.();
 			element.replaceChildren();
 		};
-	}, [code, id]);
+	}, [code, id, zoom]);
 
 	return (
 		<div

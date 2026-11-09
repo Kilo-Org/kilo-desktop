@@ -10,6 +10,7 @@ import { OpenCodeDataPart } from "../tools/opencode-data-part";
 import { PierreDiffProvider } from "../tools/PierreDiffProvider";
 import { useContributedToolkit } from "../tools/toolkit";
 import { ChatMarkdownProvider } from "./chat-markdown";
+import { ChatLightboxProvider } from "./lightbox/chat-lightbox";
 
 /**
  * The transcript's renderers: the `kilo.chat/tool-renderer` toolkit, the
@@ -26,7 +27,7 @@ export function useTranscriptAui() {
 	return aui;
 }
 
-/** What a chat's transcript renders inside: markdown, diffs, MCP Apps, subagents, reverts. */
+/** What a chat's transcript renders inside: markdown, diffs, MCP Apps, subagents, reverts, the media lightbox. */
 export function TranscriptProviders({
 	sessionId,
 	workspaceFolders,
@@ -41,7 +42,9 @@ export function TranscriptProviders({
 		<PierreDiffProvider>
 			<KiloMcpAppsHostProvider>
 				<SubagentActivityProvider>
-					<RevertPendingProvider>{children}</RevertPendingProvider>
+					<RevertPendingProvider>
+						<ChatLightboxProvider>{children}</ChatLightboxProvider>
+					</RevertPendingProvider>
 				</SubagentActivityProvider>
 			</KiloMcpAppsHostProvider>
 		</PierreDiffProvider>

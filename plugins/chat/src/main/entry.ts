@@ -9,6 +9,7 @@ import {
 	registerMcpAppHost,
 	type WriteNewFile,
 } from "./html-render";
+import { provideMediaViewers } from "./media-viewers";
 import { provideModelPreferences } from "./model-preferences";
 import { providePromptQueue } from "./prompt-queue";
 
@@ -25,8 +26,8 @@ export interface ChatMainOptions extends AutoApproveOptions {
  * pickers' remembered choices, the Kilo Gateway's model catalog, the
  * approval mode with the auto-approver that answers for every chat, the
  * prompts queued for every chat (sent from here when each goes idle) and
- * every session's unsent text — and the agent's `html_render` tool, saving its pages and the `mcp-app` host that
- * frames them and MCP App widgets.
+ * every session's unsent text — the agent's `html_render` tool, saving its pages and the `mcp-app` host that
+ * frames them and MCP App widgets, and what each media viewer pane shows.
  */
 export function createChatMainEntry(options: ChatMainOptions = {}) {
 	return definePlugin({
@@ -36,6 +37,7 @@ export function createChatMainEntry(options: ChatMainOptions = {}) {
 			providePromptQueue(sdk);
 			provideDrafts(sdk);
 			provideHtmlPages(sdk, options.writeNewFile);
+			provideMediaViewers(sdk);
 			implementHtmlRenderTool(sdk);
 			registerMcpAppHost(sdk);
 			const readOrigin = options.originModelPreferences;

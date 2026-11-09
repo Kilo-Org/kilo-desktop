@@ -24,14 +24,14 @@ type ActivityNeighbors = {
 };
 
 /**
- * Tool calls whose result is part of the answer (an `html_render` page). Like
- * t3code, they never fold: while the turn runs they show in place, outside any
- * activity group; once it settles they join the turn fold invisibly, so the
- * work on both sides folds as one, and the message shows them right below the
- * fold (`FoldHoistedParts`).
+ * Parts that are part of the answer: an `html_render` page, an image the
+ * assistant attached. Like t3code, they never fold: while the turn runs they
+ * show in place, outside any activity group; once it settles they join the
+ * turn fold invisibly, so the work on both sides folds as one, and the message
+ * shows them right below the fold (`FoldHoistedParts`).
  */
 export const isFoldHoistedPart = (part: PartState): boolean =>
-	part.type === "tool-call" && isHtmlRenderToolName(part.toolName);
+	part.type === "image" || (part.type === "tool-call" && isHtmlRenderToolName(part.toolName));
 
 /**
  * Whether a fold-hoisted call has a page to show. One that failed has none;
@@ -267,7 +267,7 @@ export const createTurnWorkGroupBy = (
 		if (!isFoldHoistedPart(part)) return pathFor(part, context);
 		const index = indices.get(part) ?? -1;
 		if (!isInFoldRange(index, layoutFor(context))) return activityGroupBy(part, context);
-		if (part.type !== "tool-call" || !showsHoistedPage(part)) return ["group-turn-work"];
+		if (part.type === "tool-call" && !showsHoistedPage(part)) return ["group-turn-work"];
 		return (
 			foldedNeighborPath(index, -1, context) ??
 			foldedNeighborPath(index, 1, context) ?? ["group-turn-work"]

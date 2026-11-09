@@ -18,7 +18,7 @@ import { flagKey } from "@kilo-desktop/plugin-flags/contracts";
 import { Panes, type Pane } from "@kilo-desktop/plugin-sessions/contracts";
 import { Telemetry } from "@kilo-desktop/plugin-telemetry/contracts";
 import { FIND_BAR_FEATURE_FLAG, FindScope } from "@kilo-desktop/ui/components/find-bar";
-import { MermaidDiagram } from "@kilo-desktop/ui/components/mermaid-diagram";
+import { MediaViewer, type LightboxItem } from "@kilo-desktop/ui/components/media-lightbox";
 import { Toggle } from "@kilo-desktop/ui/components/toggle";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Button } from "@kilo-desktop/ui/components/button";
@@ -127,6 +127,9 @@ function errorMessage(error: unknown): string {
 function basename(relativePath: string): string {
 	return relativePath.split("/").at(-1) ?? relativePath;
 }
+
+/** A single-item viewer has nothing to move to. */
+const noop = () => {};
 
 function unsupportedMessage(file: Extract<FileReadResult, { kind: "unsupported" }>): string {
 	switch (file.reason) {
@@ -634,9 +637,18 @@ export function FilesView({ sessionId, pane, workspaceFolders }: FilesViewProps)
 		(args) => documents?.methods.read(args) ?? documentsUnavailable(),
 		[documents],
 	);
-	const imageSrc = useMemo(
-		() => (file?.kind === "image" ? `data:${file.mimeType};base64,${file.base64}` : null),
-		[file],
+	const imagePreview = useMemo<LightboxItem | null>(
+		() =>
+			file?.kind === "image" && selectedPath
+				? {
+						kind: "image",
+						id: selectedPath,
+						src: `data:${file.mimeType};base64,${file.base64}`,
+						alt: selectedPath,
+						filename: basename(selectedPath),
+					}
+				: null,
+		[file, selectedPath],
 	);
 	const delimiter = tableKind?.kind === "delimited" ? tableKind.delimiter : null;
 	const truncatedText = file?.kind === "text" && file.truncated;
@@ -921,10 +933,23 @@ export function FilesView({ sessionId, pane, workspaceFolders }: FilesViewProps)
 									>
 										{selectedIsMermaid ? (
 											<div
-												className="min-h-0 flex-1 overflow-auto p-6"
+												className="flex min-h-0 flex-1 flex-col"
 												data-qa-id="files-mermaid-preview"
 											>
-												<MermaidDiagram code={draft} />
+												<MediaViewer
+													className="flex-1"
+													hideTitle
+													items={[
+														{
+															kind: "mermaid",
+															id: selectedPath,
+															code: draft,
+															label: basename(selectedPath),
+														},
+													]}
+													index={0}
+													onIndexChange={noop}
+												/>
 											</div>
 										) : (
 											<MarkdownPreview
@@ -949,15 +974,14 @@ export function FilesView({ sessionId, pane, workspaceFolders }: FilesViewProps)
 										theme={appearance.mode}
 									/>
 								)
-							) : file?.kind === "image" && imageSrc ? (
-								<div
-									className="flex flex-1 items-center justify-center overflow-auto p-6"
-									data-qa-id="files-image-preview"
-								>
-									<img
-										alt={selectedPath ?? "Workspace image"}
-										className="max-h-full max-w-full object-contain"
-										src={imageSrc}
+							) : imagePreview ? (
+								<div className="flex min-h-0 flex-1 flex-col" data-qa-id="files-image-preview">
+									<MediaViewer
+										className="flex-1"
+										hideTitle
+										items={[imagePreview]}
+										index={0}
+										onIndexChange={noop}
 									/>
 								</div>
 							) : file?.kind === "unsupported" ? (

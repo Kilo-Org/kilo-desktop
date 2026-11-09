@@ -1,4 +1,4 @@
-import { type PropsWithChildren, useEffect, useState, type FC, isValidElement } from "react";
+import { type KeyboardEvent, useEffect, useMemo, useState, type FC } from "react";
 import { CircleAlertIcon, FileTextIcon, XIcon } from "lucide-react";
 import {
 	AttachmentPrimitive,
@@ -8,16 +8,11 @@ import {
 	useAui,
 } from "@assistant-ui/react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
-import {
-	Dialog,
-	DialogTitle,
-	DialogContent,
-	DialogTrigger,
-} from "@kilo-desktop/ui/components/dialog";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Avatar, AvatarImage, AvatarFallback } from "@kilo-desktop/ui/components/avatar";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
+import { useLightboxItem, type LightboxItemInput } from "./lightbox/chat-lightbox";
 import { TooltipIconButton } from "./tooltip-icon-button";
 
 const useFileSrc = (file: File | undefined) => {
@@ -40,10 +35,13 @@ const useFileSrc = (file: File | undefined) => {
 	return src;
 };
 
-const useAttachmentSrc = () => {
-	const file = useAuiState((s) =>
+const useAttachmentFile = () =>
+	useAuiState((s) =>
 		s.attachment.type === "image" ? (s.attachment.file ?? undefined) : undefined,
 	);
+
+const useAttachmentSrc = () => {
+	const file = useAttachmentFile();
 	const src = useAuiState((s) =>
 		s.attachment.type === "image" && !s.attachment.file
 			? s.attachment.content?.find((part) => part.type === "image")?.image
@@ -52,47 +50,27 @@ const useAttachmentSrc = () => {
 	return useFileSrc(file) ?? src;
 };
 
-type AttachmentPreviewProps = {
-	src: string;
-};
-
-const AttachmentPreview: FC<AttachmentPreviewProps> = ({ src }) => {
-	const [isLoaded, setIsLoaded] = useState(false);
-	return (
-		<img
-			src={src}
-			alt="Attachment preview"
-			className={cn(
-				"block h-auto max-h-[80vh] w-auto max-w-full rounded-sm object-contain transition-opacity duration-300 motion-reduce:transition-none",
-				isLoaded
-					? "aui-attachment-preview-image-loaded opacity-100"
-					: "aui-attachment-preview-image-loading opacity-0",
-			)}
-			onLoad={() => setIsLoaded(true)}
-		/>
-	);
-};
-
-const AttachmentPreviewDialog: FC<PropsWithChildren> = ({ children }) => {
+/**
+ * An image attachment in the viewer: a sent one joins the transcript's
+ * gallery, an unsent (composer) one opens on its own.
+ */
+const useAttachmentLightbox = (gallery: boolean) => {
 	const src = useAttachmentSrc();
-
-	if (!src) return children;
-
-	return (
-		<Dialog>
-			<DialogTrigger
-				nativeButton={false}
-				className="aui-attachment-preview-trigger cursor-zoom-in"
-				render={isValidElement(children) ? children : <button type="button" />}
-			/>
-			<DialogContent className="aui-attachment-preview-dialog-content [&>button]:bg-foreground/60 [&>button]:hover:bg-foreground/80 [&_svg]:text-background p-2 sm:max-w-3xl [&>button]:rounded-full [&>button]:p-1 [&>button]:opacity-100 [&>button]:ring-0!">
-				<DialogTitle className="aui-sr-only sr-only">Image attachment preview</DialogTitle>
-				<div className="aui-attachment-preview bg-background relative mx-auto flex max-h-[80dvh] w-full items-center justify-center overflow-hidden rounded-sm">
-					<AttachmentPreview src={src} />
-				</div>
-			</DialogContent>
-		</Dialog>
+	const file = useAttachmentFile();
+	const name = useAuiState((s) => s.attachment.name);
+	const input = useMemo<LightboxItemInput | null>(
+		() =>
+			src
+				? {
+						kind: "image",
+						src,
+						...(file ? { file } : {}),
+						...(name ? { alt: name, filename: name } : {}),
+					}
+				: null,
+		[src, file, name],
 	);
+	return useLightboxItem(input, { gallery });
 };
 
 const AttachmentThumb: FC = () => {
@@ -146,6 +124,12 @@ const AttachmentUI: FC = () => {
 			? (s.attachment.status.message ?? "Upload failed")
 			: undefined,
 	);
+	const lightbox = useAttachmentLightbox(!isComposer);
+	const onTileKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+		if (event.key !== "Enter" && event.key !== " ") return;
+		event.preventDefault();
+		lightbox.open();
+	};
 
 	return (
 		<Tooltip>
@@ -156,41 +140,45 @@ const AttachmentUI: FC = () => {
 					isImage && !isComposer && "aui-attachment-root-message only:*:first:size-24",
 				)}
 			>
-				<AttachmentPreviewDialog>
-					<TooltipTrigger
-						render={
-							<div
-								className={cn(
-									"aui-attachment-tile bg-muted hover:after:bg-foreground/10 focus-visible:ring-ring/50 relative size-14 cursor-pointer overflow-hidden rounded-[calc(var(--composer-radius)-var(--composer-padding))] transition-transform outline-none after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:ring-1 after:ring-black/10 after:transition-colors after:ring-inset focus-visible:ring-3 active:scale-[0.96] motion-reduce:transition-none dark:after:ring-white/10",
-									isError && "after:ring-destructive/60 dark:after:ring-destructive/60",
-								)}
-								role="button"
-								tabIndex={0}
-								aria-label={`${typeLabel} attachment${
-									isError ? ", upload failed" : isUploading ? ", uploading" : ""
-								}`}
-							/>
-						}
-					>
-						<AttachmentThumb />
-						{isUploading && (
-							<div
-								aria-hidden="true"
-								className="aui-attachment-tile-uploading bg-background/60 animate-in fade-in-0 absolute inset-0 flex items-center justify-center backdrop-blur-[2px] motion-reduce:animate-none"
-							>
-								<Spinner className="text-muted-foreground size-4" />
-							</div>
-						)}
-						{isError && (
-							<div
-								aria-hidden="true"
-								className="aui-attachment-tile-error bg-background/70 animate-in fade-in-0 absolute inset-0 flex items-center justify-center backdrop-blur-[2px] motion-reduce:animate-none"
-							>
-								<CircleAlertIcon className="text-destructive size-4" />
-							</div>
-						)}
-					</TooltipTrigger>
-				</AttachmentPreviewDialog>
+				<TooltipTrigger
+					render={
+						<div
+							ref={lightbox.ref}
+							onClick={lightbox.open}
+							onKeyDown={lightbox.available ? onTileKeyDown : undefined}
+							data-qa-id="chat-attachment-tile"
+							className={cn(
+								"aui-attachment-tile bg-muted hover:after:bg-foreground/10 focus-visible:ring-ring/50 relative size-14 cursor-pointer overflow-hidden rounded-[calc(var(--composer-radius)-var(--composer-padding))] transition-transform outline-none after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:ring-1 after:ring-black/10 after:transition-colors after:ring-inset focus-visible:ring-3 active:scale-[0.96] motion-reduce:transition-none dark:after:ring-white/10",
+								isError && "after:ring-destructive/60 dark:after:ring-destructive/60",
+								lightbox.available && "cursor-zoom-in",
+							)}
+							role="button"
+							tabIndex={0}
+							aria-label={`${typeLabel} attachment${
+								isError ? ", upload failed" : isUploading ? ", uploading" : ""
+							}`}
+						/>
+					}
+				>
+					<AttachmentThumb />
+					{isUploading && (
+						<div
+							aria-hidden="true"
+							className="aui-attachment-tile-uploading bg-background/60 animate-in fade-in-0 absolute inset-0 flex items-center justify-center backdrop-blur-[2px] motion-reduce:animate-none"
+						>
+							<Spinner className="text-muted-foreground size-4" />
+						</div>
+					)}
+					{isError && (
+						<div
+							aria-hidden="true"
+							className="aui-attachment-tile-error bg-background/70 animate-in fade-in-0 absolute inset-0 flex items-center justify-center backdrop-blur-[2px] motion-reduce:animate-none"
+						>
+							<CircleAlertIcon className="text-destructive size-4" />
+						</div>
+					)}
+				</TooltipTrigger>
+				{lightbox.lightbox}
 				{isComposer && <AttachmentRemove />}
 			</AttachmentPrimitive.Root>
 			<TooltipContent side="top">

@@ -5,7 +5,8 @@ import {
 	type CodeHeaderProps,
 } from "@assistant-ui/react-markdown";
 import { CheckIcon, CopyIcon } from "lucide-react";
-import { memo, useMemo, type FC } from "react";
+import { memo, useMemo, useState, type ComponentProps, type FC } from "react";
+import { defaultUrlTransform, type UrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { markdownComponents as sharedMarkdownComponents } from "@kilo-desktop/ui/components/markdown-content";
@@ -17,6 +18,7 @@ import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type { ChatMarkdownContext } from "../../contracts";
 import { useChatMarkdownContext, useChatMarkdownExtensions } from "./chat-markdown";
+import { useLightboxItem, type LightboxItemInput } from "./lightbox/chat-lightbox";
 import { MermaidCodeBlock, MermaidCodeHeader } from "./mermaid-code-block";
 import { TooltipIconButton } from "./tooltip-icon-button";
 import { useCopyToClipboard } from "./use-copy-to-clipboard";
@@ -27,6 +29,18 @@ const componentsByLanguage = {
 };
 
 const NO_MARKDOWN_CONTEXT: ChatMarkdownContext = { sessionId: "", workspaceFolders: [] };
+
+const INLINE_IMAGE = /^data:image\/(?:png|jpe?g|gif|webp|avif|bmp|svg\+xml)[;,]/iu;
+
+/**
+ * react-markdown's sanitizing, except that an image may use an inline
+ * `data:image/…` source: the CSP allows those, and an image context runs no
+ * script (not even in SVG). Links keep the default rules.
+ */
+const chatUrlTransform: UrlTransform = (url, key, node) =>
+	key === "src" && node.tagName === "img" && INLINE_IMAGE.test(url)
+		? url
+		: defaultUrlTransform(url);
 
 /** An agent reply as markdown, with `kilo.chat/markdown-extension` contributions applied. */
 const MarkdownTextImpl = () => {
@@ -43,6 +57,7 @@ const MarkdownTextImpl = () => {
 			className="aui-md text-sm"
 			components={renderer.components}
 			componentsByLanguage={componentsByLanguage}
+			urlTransform={chatUrlTransform}
 			defer
 		/>
 	);
@@ -71,6 +86,75 @@ const CodeHeader: FC<CodeHeaderProps> = ({ language, code }) => {
 	);
 };
 
+/**
+ * A reply's image, openable in the transcript lightbox once it has loaded
+ * (the CSP blocks remote images, so only loadable ones are offered). An image
+ * inside a link keeps the link's behavior instead.
+ */
+function MarkdownImage({
+	node: _node,
+	className,
+	src,
+	alt,
+	onLoad,
+	onError,
+	...props
+}: ComponentProps<"img"> & { node?: unknown }) {
+	// Tied to the source it loaded: a streamed reply can swap `src` on this
+	// element, and the new one is only openable once it has loaded too.
+	const [loaded, setLoaded] = useState<{ src: string; inLink: boolean } | null>(null);
+	const lightboxInput = useMemo<LightboxItemInput | null>(
+		() =>
+			typeof src === "string" && src && loaded?.src === src && !loaded.inLink
+				? { kind: "image", src, ...(alt ? { alt } : {}) }
+				: null,
+		[loaded, src, alt],
+	);
+	const lightbox = useLightboxItem(lightboxInput);
+	const interactive = lightbox.available;
+	return (
+		<>
+			<img
+				ref={lightbox.ref}
+				// Sanitizing blanks an unsafe source; an empty `src` would refetch the page.
+				src={src || undefined}
+				alt={alt}
+				{...props}
+				className={cn(
+					"aui-md-img max-w-full rounded-md",
+					interactive &&
+						"focus-visible:ring-ring/50 cursor-zoom-in outline-none focus-visible:ring-3",
+					className,
+				)}
+				data-qa-id="chat-markdown-image"
+				role={interactive ? "button" : undefined}
+				tabIndex={interactive ? 0 : undefined}
+				aria-label={interactive ? `Open ${alt || "image"} in viewer` : undefined}
+				onLoad={(event) => {
+					const image = event.currentTarget;
+					setLoaded({ src: image.getAttribute("src") ?? "", inLink: Boolean(image.closest("a")) });
+					onLoad?.(event);
+				}}
+				onError={(event) => {
+					setLoaded(null);
+					onError?.(event);
+				}}
+				onClick={interactive ? lightbox.open : undefined}
+				onKeyDown={
+					interactive
+						? (event) => {
+								if (event.key !== "Enter" && event.key !== " ") return;
+								event.preventDefault();
+								lightbox.open();
+							}
+						: undefined
+				}
+			/>
+			{lightbox.lightbox}
+		</>
+	);
+}
+
 const markdownComponents = memoizeMarkdownComponents({
 	...sharedMarkdownComponents,
 	pre: ({ className, ...props }) => (
@@ -95,5 +179,6 @@ const markdownComponents = memoizeMarkdownComponents({
 			/>
 		);
 	},
+	img: MarkdownImage,
 	CodeHeader,
 });

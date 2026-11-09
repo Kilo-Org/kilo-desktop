@@ -118,6 +118,16 @@ describe("HtmlRenderToolUI", () => {
 		await waitFor(() => expect(opened).toEqual(["https://example.com/report?q=1"]));
 	});
 
+	it("opens the page full window where there's no Viewer pane", async () => {
+		await renderTool({ args: { title: "Chart", html: "<p>chart</p>" } });
+
+		fireEvent.click(screen.getByRole("button", { name: "Open Chart in viewer" }));
+
+		const dialog = await screen.findByRole("dialog", { name: "Chart" });
+		expect(dialog.querySelector('iframe[title="Chart"]')).not.toBeNull();
+		expect(dialog.querySelector('[data-qa-id="media-lightbox-zoom-in"]')).toBeNull();
+	});
+
 	it("caps the frame at the requested height", async () => {
 		await renderTool({
 			args: { title: "Table", height: 300, html: '<div style="height:900px">rows</div>' },

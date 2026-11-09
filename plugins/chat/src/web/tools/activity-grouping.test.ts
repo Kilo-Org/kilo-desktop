@@ -31,6 +31,9 @@ const pagePart = (toolCallId: string): PartState =>
 		args: { title: "Chart", html: "<p>chart</p>" },
 	}) as PartState;
 
+const imagePart = (): PartState =>
+	({ type: "image", image: "data:image/png;base64,AAAA" }) as PartState;
+
 const groupPaths = (parts: PartState[], options?: Parameters<typeof createActivityGroupBy>[1]) => {
 	const groupBy = createActivityGroupBy(parts, options);
 	return parts.map((part) => groupBy(part, context));
@@ -215,6 +218,24 @@ describe("createTurnWorkGroupBy", () => {
 			["group-turn-work", "group-activity", "group-terminal"],
 			[],
 		]);
+	});
+
+	it("hoists an attached image like a page, without splitting the activity around it", () => {
+		const parts = [
+			toolPart("read-1", "read"),
+			imagePart(),
+			toolPart("read-2", "read"),
+			textPart("Final answer"),
+		];
+		const groupBy = createTurnWorkGroupBy(parts);
+
+		expect(parts.map((part) => groupBy(part, context))).toEqual([
+			["group-turn-work", "group-activity", "group-reading"],
+			["group-turn-work", "group-activity", "group-reading"],
+			["group-turn-work", "group-activity", "group-reading"],
+			[],
+		]);
+		expect(groupPaths(parts)[1]).toEqual([]);
 	});
 
 	it("keeps a failed page call in the fold as its own row", () => {

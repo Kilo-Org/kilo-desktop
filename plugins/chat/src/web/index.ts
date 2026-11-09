@@ -10,6 +10,7 @@ import { AgentIcon, createAgentPane } from "./AgentPane";
 import { handOverLegacyChoices } from "./legacy-hand-over";
 import { BUILTIN_COMPOSER_ACTIONS } from "./composer/builtin-actions";
 import { ComposerFocus, followComposerFocus } from "./composer-focus";
+import { MediaIcon, MediaPane } from "./media/MediaPane";
 import { createPlanPane, PlanIcon } from "./plan/PlanPane";
 import { ChatServices } from "./runtime/chat-services";
 import { createChatSessionStarter } from "./starter/ChatSessionStarter";
@@ -19,7 +20,7 @@ import { BUILTIN_TOOL_RENDERERS } from "./tools/builtin-renderers";
 const LOCALLY_HANDLED_COMMANDS = ["send-message", "new-line", "cycle-agent"] as const;
 
 /**
- * kilo.chat's renderer entry: the agent, plan and subagent pane kinds, the
+ * kilo.chat's renderer entry: the agent, plan, subagent and media viewer pane kinds, the
  * New Session page's composer (`kilo.workbench/session-starter`), the window's composer
  * domain object, its own composer actions and transcript renderers, and the
  * composer's commands.
@@ -50,6 +51,7 @@ export const chatWebEntry = definePlugin({
 			component: createSubagentPane({ chat, queries }),
 			icon: SubagentIcon,
 		});
+		sdk.extensions.implement(PaneKind, "media", { component: MediaPane, icon: MediaIcon });
 		for (const [id, implementation] of Object.entries(BUILTIN_COMPOSER_ACTIONS)) {
 			sdk.extensions.implement(ComposerAction, id, implementation);
 		}

@@ -652,6 +652,7 @@ one agent conversation shown in an agent pane.
 | Notebook | kilo.notebook | ✓                   | ✓                      | `signedIn` | many            | —                      |
 | Plan     | kilo.chat     | —                   | — (from an agent pane) | —          | one per session | —                      |
 | Subagent | kilo.chat     | —                   | — (from an agent pane) | —          | one per child   | running                |
+| Viewer   | kilo.chat     | —                   | — (from a transcript)  | —          | one per chat    | —                      |
 
 ---
 
@@ -1452,6 +1453,7 @@ Anatomy of the agent pane and where each point appears:
 | `composer-slash-command`     | A    | Next   | `/` commands: client-side actions or prompt templates (8d shows only the server's catalog)                   | git (`/review`, `/commit`); notebook (`/analyze`); marketplace (installed Kilo commands)                                                                                                               |
 | `empty-state`                | A    | Next   | Starter prompts/cards in a new agent pane                                                                    | notebook ("Analyze a dataset"); environments ("Create an environment"); marketplace (featured agents)                                                                                                  |
 | `message-action`             | A    | Next   | Actions on a message or text selection                                                                       | workbench (fork into new session); notebook (open as notebook); git (commit these changes); chat (copy, retry)                                                                                         |
+| `lightbox-action`            | A    | Later  | Toolbar actions on the item shown in a chat's Viewer pane (diagram, image or page)                           | chat (copy Mermaid source — built in today); files (save to workspace, open in Files pane); _ext_ open in system image viewer (needs a host primitive)                                                 |
 | `interaction-renderer`       | A    | Done   | Title, details and "Always allow" policy on permission cards; answer warnings (12a)                          | environments (conda summary, local-file warning, per-action rule — shipped, 12a); _ext_ secrets prompt                                                                                                 |
 | `model-source`               | A    | Done   | Local model providers: their picker rail (before Kilo lists them), start, model loading before prompts (12c) | local-inference (Local Model Server — shipped, 12c); _ext_ Ollama, MLX                                                                                                                                 |
 | `agent-pane-action`          | A    | Next   | Agent pane header actions                                                                                    | chat (plan toggle, export); workbench (pop out)                                                                                                                                                        |
@@ -2653,6 +2655,22 @@ Everything lands in a single PR once all plugins are built.
   session entry onto the handed-over plan pane); subagent `{childSessionId,
   chatId?}` (origin's key kept). Keys and helpers are in kilo.chat's
   contracts (`PLAN_PANE_KIND`, `planPaneMetadata`, `subagentPaneId`…).
+  Later, `kilo.chat/media` ("Viewer", order 40, pane id `media:<chatId>`)
+  joined them: a chat's diagrams, images (attachments, images the assistant
+  or its tools returned, image files the turn saved) and `html_render`
+  pages, the first two zoomable, pages in their usual sandboxed frame. Its
+  items can be large, so they live in the in-memory `kilo.chat/media-viewers`
+  domain (main, so pop-outs see them) rather than pane metadata, which only
+  names the item shown. Its state broadcasts just a revision per viewer; a
+  pane takes its items from its own window when that window showed them,
+  else fetches them, so no window receives another viewer's images. Opening
+  an item sends it plus at most 19 neighbours within a small budget; main
+  holds a bounded total across viewers, dropping the least recently used.
+  Main closes viewer panes restored at launch, whose items are gone, and
+  drops items whose pane never opened. Outside a session (the New Session
+  page, the web build) the transcript falls back to a lightbox dialog. The
+  viewer itself (`MediaViewer`) is shared UI; kilo.files previews image and
+  Mermaid files with it.
 - **Each side pane runs its own runtime** (`ChatMirror`): a react-opencode
   runtime for the chat (plan: `chatId`, else the session's first chat for
   origin's panes; subagent: `chatId`, else kilo.agent's `parentId` for the

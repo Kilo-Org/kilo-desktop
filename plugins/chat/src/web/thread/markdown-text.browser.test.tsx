@@ -6,15 +6,28 @@ import {
 	type ChatModelAdapter,
 } from "@assistant-ui/react";
 import { createElement, type ComponentProps } from "react";
-import { describe, expect, it } from "vitest";
-import { page } from "vitest/browser";
+import { describe, expect, it, vi } from "vitest";
+import { page, userEvent } from "vitest/browser";
 
 import type { PluginEntry } from "@kilo-desktop/kernel";
 
 import { renderInKernel } from "../../test/kernel-harness";
 import { MarkdownExtension, type MarkdownExtensionImplementation } from "../../contracts";
 import { ChatMarkdownProvider } from "./chat-markdown";
+import { ChatLightboxProvider } from "./lightbox/chat-lightbox";
 import { MarkdownText } from "./markdown-text";
+
+function pngDataUrl(width: number, height: number): string {
+	const canvas = document.createElement("canvas");
+	canvas.width = width;
+	canvas.height = height;
+	const context = canvas.getContext("2d");
+	if (context) {
+		context.fillStyle = "teal";
+		context.fillRect(0, 0, width, height);
+	}
+	return canvas.toDataURL("image/png");
+}
 
 const model: ChatModelAdapter = {
 	async run() {
@@ -100,17 +113,19 @@ function MarkdownMessage({
 				sessionId="session-1"
 				workspaceFolders={[{ path: "/workspace/project", isPrimary: true }]}
 			>
-				<ThreadPrimitive.Root>
-					<ThreadPrimitive.Messages>
-						{() => (
-							<MessagePrimitive.Root>
-								<MessagePrimitive.Parts
-									components={{ Text: MarkdownText, Reasoning: MarkdownText }}
-								/>
-							</MessagePrimitive.Root>
-						)}
-					</ThreadPrimitive.Messages>
-				</ThreadPrimitive.Root>
+				<ChatLightboxProvider>
+					<ThreadPrimitive.Root>
+						<ThreadPrimitive.Messages>
+							{() => (
+								<MessagePrimitive.Root>
+									<MessagePrimitive.Parts
+										components={{ Text: MarkdownText, Reasoning: MarkdownText }}
+									/>
+								</MessagePrimitive.Root>
+							)}
+						</ThreadPrimitive.Messages>
+					</ThreadPrimitive.Root>
+				</ChatLightboxProvider>
 			</ChatMarkdownProvider>
 		</AssistantRuntimeProvider>
 	);
@@ -221,6 +236,91 @@ describe("MarkdownText", () => {
 		await expect
 			.element(page.getByTestId("chat-mermaid-card").getByRole("img", { name: "Mermaid diagram" }))
 			.toBeVisible();
+	});
+
+	it("opens a rendered diagram in the viewer from the preview or Expand", async () => {
+		await renderMarkdownMessage("```mermaid\nflowchart LR\n  Start --> Done\n```");
+		await expect.element(page.getByTestId("mermaid-diagram")).toHaveAttribute("aria-busy", "false");
+
+		await page.getByTestId("chat-mermaid-preview").click();
+		const viewer = page.getByRole("dialog", { name: "Flowchart" });
+		await expect.element(viewer).toBeVisible();
+		await expect
+			.poll(() => document.querySelector('[data-qa-id="media-lightbox-content"] svg.pele'), {
+				timeout: 15_000,
+			})
+			.not.toBeNull();
+		await userEvent.keyboard("{Escape}");
+		await expect.element(page.getByTestId("media-lightbox")).not.toBeInTheDocument();
+
+		await page.getByTestId("chat-mermaid-expand").click();
+		await expect.element(viewer).toBeVisible();
+		await expect.element(page.getByTestId("chat-lightbox-copy-source")).toBeVisible();
+	});
+
+	it("offers no viewer for a streaming fence, the source view, or a broken diagram", async () => {
+		await renderMarkdownMessage("```mermaid\nflowchart LR\n  Start --> Done");
+		await expect.element(page.getByTestId("chat-mermaid-source")).toBeVisible();
+		expect(document.querySelector('[data-qa-id="chat-mermaid-expand"]')).toBeNull();
+
+		await renderMarkdownMessage("```mermaid\nflowchart LR\n  Start --> Done\n```");
+		await expect.element(page.getByTestId("chat-mermaid-expand")).toBeVisible();
+		await page.getByRole("button", { name: "Show source" }).click();
+		expect(document.querySelector('[data-qa-id="chat-mermaid-expand"]')).toBeNull();
+
+		await renderMarkdownMessage("```mermaid\nnotADiagram\n  nonsense\n```");
+		await expect.element(page.getByText("Could not render this Mermaid diagram")).toBeVisible();
+		expect(document.querySelector('[data-qa-id="chat-mermaid-expand"]')).toBeNull();
+	});
+
+	it("moves between the diagrams of a reply with the arrow keys", async () => {
+		await renderMarkdownMessage(
+			"```mermaid\nflowchart LR\n  A --> B\n```\n\n```mermaid\nsequenceDiagram\n  A->>B: hi\n```",
+		);
+		await expect
+			.poll(() => document.querySelectorAll('[data-qa-id="chat-mermaid-expand"]').length, {
+				timeout: 15_000,
+			})
+			.toBe(2);
+
+		document.querySelector<HTMLElement>('[data-qa-id="chat-mermaid-expand"]')?.click();
+		await expect.element(page.getByTestId("media-lightbox-counter")).toHaveTextContent("1 / 2");
+		await expect.element(page.getByRole("dialog", { name: "Flowchart" })).toBeVisible();
+		await userEvent.keyboard("{ArrowRight}");
+		await expect.element(page.getByRole("dialog", { name: "Sequence diagram" })).toBeVisible();
+		await expect.element(page.getByTestId("media-lightbox-counter")).toHaveTextContent("2 / 2");
+	});
+
+	it("opens an inline image in the viewer, but leaves a linked image to its link", async () => {
+		const image = pngDataUrl(40, 20);
+		await renderMarkdownMessage(
+			`![Teal swatch](${image})\n\n[![Linked swatch](${image})](https://example.com)`,
+		);
+
+		await page.getByRole("button", { name: "Open Teal swatch in viewer" }).click();
+		await expect.element(page.getByRole("dialog", { name: "Teal swatch" })).toBeVisible();
+		expect(document.querySelector('[data-qa-id="media-lightbox-counter"]')).toBeNull();
+		const linked = document.querySelector('a [data-qa-id="chat-markdown-image"]');
+		expect(linked?.getAttribute("alt")).toBe("Linked swatch");
+		expect(linked?.getAttribute("role")).toBeNull();
+	});
+
+	it("offers no viewer for an image that fails to load", async () => {
+		await renderMarkdownMessage("![Broken](data:image/png;base64,AAAA)");
+
+		const broken = page.getByRole("img", { name: "Broken" });
+		await expect.element(broken).toBeInTheDocument();
+		await vi.waitFor(() => expect((broken.element() as HTMLImageElement).complete).toBe(true));
+		expect(broken.element().getAttribute("role")).toBeNull();
+		expect(broken.element().className).not.toContain("cursor-zoom-in");
+	});
+
+	it("keeps unsafe image sources sanitized", async () => {
+		await renderMarkdownMessage("![Script](javascript:alert(1)) ![Page](data:text/html,hi)");
+
+		await expect.element(page.getByRole("img", { name: "Script" })).toBeInTheDocument();
+		expect(page.getByRole("img", { name: "Script" }).element().hasAttribute("src")).toBe(false);
+		expect(page.getByRole("img", { name: "Page" }).element().hasAttribute("src")).toBe(false);
 	});
 
 	it("renders a completed fence whose code also starts an earlier diagram", async () => {

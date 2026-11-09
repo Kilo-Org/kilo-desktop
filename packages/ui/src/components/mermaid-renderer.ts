@@ -96,6 +96,7 @@ export function mountMermaid(
 	source: string,
 	id: string,
 	callbacks: Pick<MountOptions, "onRender" | "onError">,
+	{ zoom = true }: { readonly zoom?: boolean } = {},
 ) {
 	return mount(element, source, {
 		...callbacks,
@@ -109,7 +110,8 @@ export function mountMermaid(
 		sanitize: sanitizeMermaidSvg,
 		// Pele's built-in panel floats over the drawing and isn't design-system
 		// UI; a shrunk diagram stays zoomable by ⌘/Ctrl+wheel, pinch,
-		// double-click, and +/- keys.
-		zoom: { controls: false },
+		// double-click, and +/- keys. Callers that zoom the diagram themselves
+		// (the chat card opens a lightbox) turn Pele's gestures off entirely.
+		zoom: zoom ? { controls: false } : false,
 	});
 }

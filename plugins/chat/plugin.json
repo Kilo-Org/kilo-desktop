@@ -77,6 +77,17 @@
 						"inSession": false
 					},
 					"order": 30
+				},
+				{
+					"id": "media",
+					"title": "Viewer",
+					"description": "A chat's diagrams and images, to zoom, pan and download.",
+					"launch": {
+						"newSession": false,
+						"inSession": false
+					},
+					"layoutKind": "document",
+					"order": 40
 				}
 			],
 			"kernel/command": [
@@ -311,6 +322,11 @@
 			"id": "html-pages",
 			"home": "main",
 			"description": "Saves the agent's HTML pages into a workspace folder."
+		},
+		{
+			"id": "media-viewers",
+			"home": "main",
+			"description": "The diagrams and images each media viewer pane shows, kept until it closes."
 		}
 	]
 }

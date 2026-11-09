@@ -139,8 +139,14 @@ export class FakeKiloServer {
 	permissions: Record<string, unknown>[] = [];
 	/** Question requests `/question` lists. */
 	questions: Record<string, unknown>[] = [];
-	/** Workspace files `/file/content` reads, by the path asked for. */
-	files: Record<string, string> = {};
+	/**
+	 * Workspace files `/file/content` reads, by the path asked for: text, or
+	 * the server's full reply (an image's base64 content).
+	 */
+	files: Record<
+		string,
+		string | { type: string; content: string; encoding?: string; mimeType?: string }
+	> = {};
 	/** MCP resources `/experimental/resource/read` serves, by URI. */
 	resources: Record<string, { mimeType: string; text: string }> = {};
 	/** How long opening `/global/event` takes, as on a busy server; events meanwhile are missed. */
@@ -287,9 +293,8 @@ export class FakeKiloServer {
 		if (url.pathname === "/experimental/mcp/call-tool") return json({ content: [] });
 		if (url.pathname === "/file/content") {
 			const content = this.files[url.searchParams.get("path") ?? ""];
-			return content === undefined
-				? json({ message: "No such file" }, 404)
-				: json({ type: "text", content });
+			if (content === undefined) return json({ message: "No such file" }, 404);
+			return json(typeof content === "string" ? { type: "text", content } : content);
 		}
 		if (url.pathname === "/agent") return json(this.agents);
 		if (url.pathname === "/provider") return json(this.providers);

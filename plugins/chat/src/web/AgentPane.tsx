@@ -7,7 +7,7 @@ import type { DomainState } from "@kilo-desktop/kernel";
 import { useContextKey, useDomain, useDomainState } from "@kilo-desktop/kernel/web";
 import { Conversations, type CreateChatInput } from "@kilo-desktop/plugin-agent/contracts";
 import { flagKey } from "@kilo-desktop/plugin-flags/contracts";
-import { Panes, Sessions, type PaneProps } from "@kilo-desktop/plugin-sessions/contracts";
+import { Panes, WorkSessions, type PaneProps } from "@kilo-desktop/plugin-sessions/contracts";
 import { Workspaces, type WorkspacesState } from "@kilo-desktop/plugin-workspaces/contracts";
 import { FIND_BAR_FEATURE_FLAG, FindScope } from "@kilo-desktop/ui/components/find-bar";
 import { toast } from "@kilo-desktop/ui/components/sonner";
@@ -78,9 +78,9 @@ function reportStartFailure(error: unknown): void {
 export function createAgentPane(services: AgentPaneServices): FC<PaneProps> {
 	return function AgentPane({ sessionId, pane, workspaceId, directory }) {
 		const session = useDomainState(
-			Sessions,
+			WorkSessions,
 			useCallback(
-				(state: DomainState<typeof Sessions>) =>
+				(state: DomainState<typeof WorkSessions>) =>
 					state.sessions.find((candidate) => candidate.id === sessionId),
 				[sessionId],
 			),

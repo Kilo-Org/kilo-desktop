@@ -13,7 +13,7 @@
 	},
 	"domains": [
 		{
-			"id": "session",
+			"id": "work-session",
 			"home": "main",
 			"description": "Every Work Session: create, rename, pin, archive and delete."
 		},
@@ -34,22 +34,7 @@
 	},
 	"extensionPoints": [
 		{
-			"id": "session-menu",
-			"kind": "additive",
-			"description": "An item in a session's menu."
-		},
-		{
-			"id": "session-decoration",
-			"kind": "additive",
-			"description": "A badge, header item or hover detail shown with a session."
-		},
-		{
-			"id": "session-renderer",
-			"kind": "exclusive",
-			"description": "How a session looks wherever it is shown."
-		},
-		{
-			"id": "pane",
+			"id": "pane-kind",
 			"kind": "additive",
 			"description": "A kind of pane a session can hold."
 		},

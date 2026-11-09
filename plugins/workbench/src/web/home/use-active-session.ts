@@ -1,28 +1,28 @@
 import { useCallback } from "react";
 
 import { useDomainState } from "@kilo-desktop/kernel/web";
-import { Sessions, type Session } from "@kilo-desktop/plugin-sessions/contracts";
+import { WorkSessions, type WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
 import { Workspaces, type Workspace } from "@kilo-desktop/plugin-workspaces/contracts";
 
-import { Navigator, type NavigatorState } from "../../contracts";
+import { Workbench, type WorkbenchState } from "../../contracts";
 
-const selectActiveId = (state: NavigatorState) => state.activeSessionId;
+const selectActiveId = (state: WorkbenchState) => state.activeSessionId;
 
 /** The session open in this window, or null on the launcher. */
-export function useActiveSession(): Session | null {
-	const activeId = useDomainState(Navigator, selectActiveId) ?? null;
+export function useActiveSession(): WorkSession | null {
+	const activeId = useDomainState(Workbench, selectActiveId) ?? null;
 	const select = useCallback(
-		(state: { sessions: readonly Session[] }) =>
+		(state: { sessions: readonly WorkSession[] }) =>
 			activeId === null
 				? null
 				: (state.sessions.find((session) => session.id === activeId) ?? null),
 		[activeId],
 	);
-	return useDomainState(Sessions, select) ?? null;
+	return useDomainState(WorkSessions, select) ?? null;
 }
 
 /** The workspace a session belongs to, when it still exists. */
-export function useSessionWorkspace(session: Session | null): Workspace | null {
+export function useSessionWorkspace(session: WorkSession | null): Workspace | null {
 	const workspaceId = session?.workspaceId ?? null;
 	const select = useCallback(
 		(state: { workspaces: readonly Workspace[] }) =>

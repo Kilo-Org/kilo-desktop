@@ -1,4 +1,4 @@
-import type { SessionIsolation } from "@kilo-desktop/plugin-sessions/contracts";
+import type { WorkSessionIsolation } from "@kilo-desktop/plugin-sessions/contracts";
 
 import type { GitWorktreeEntry } from "../../contracts/index.js";
 
@@ -15,7 +15,7 @@ export interface ResolveBranchPickInput {
 export type BranchPickResolution =
 	| {
 			readonly kind: "retarget";
-			readonly isolation: Extract<SessionIsolation, { kind: "local" | "existing-worktree" }>;
+			readonly isolation: Extract<WorkSessionIsolation, { kind: "local" | "existing-worktree" }>;
 	  }
 	| { readonly kind: "checkout" };
 

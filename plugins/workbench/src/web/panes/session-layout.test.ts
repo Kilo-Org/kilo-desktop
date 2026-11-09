@@ -8,9 +8,9 @@ import {
 	serializeLayout,
 } from "@kilo-desktop/pane-layout";
 import {
-	EMPTY_SESSION_PANES,
+	EMPTY_WORK_SESSION_PANES,
 	type Pane,
-	type SessionPanes,
+	type WorkSessionPanes,
 } from "@kilo-desktop/plugin-sessions/contracts";
 
 import { sessionLayout } from "./session-layout";
@@ -27,8 +27,8 @@ const kindOf = (kind: string) => (kind === "test/editor" ? "document" : "tool");
 
 describe("session layout", () => {
 	it("lays out a session's panes when nothing is saved", () => {
-		const state: SessionPanes = {
-			...EMPTY_SESSION_PANES,
+		const state: WorkSessionPanes = {
+			...EMPTY_WORK_SESSION_PANES,
 			panes: [pane("a"), pane("doc")],
 			activePaneId: "a",
 		};
@@ -45,8 +45,8 @@ describe("session layout", () => {
 	it("keeps the saved arrangement, adding new panes, dropping closed ones and retitling", () => {
 		let saved = createLayout([descriptor({ id: "a", kind: "tool", title: "a" })]);
 		saved = addPane(saved, descriptor({ id: "gone", kind: "tool", title: "gone" }));
-		const state: SessionPanes = {
-			...EMPTY_SESSION_PANES,
+		const state: WorkSessionPanes = {
+			...EMPTY_WORK_SESSION_PANES,
 			panes: [pane("a", "Server"), pane("b")],
 			activePaneId: "b",
 			layout: serializeLayout(saved),
@@ -63,7 +63,12 @@ describe("session layout", () => {
 
 	it("ignores an unreadable saved layout", () => {
 		const layout = sessionLayout(
-			{ ...EMPTY_SESSION_PANES, panes: [pane("a")], layout: "{not json", activePaneId: "gone" },
+			{
+				...EMPTY_WORK_SESSION_PANES,
+				panes: [pane("a")],
+				layout: "{not json",
+				activePaneId: "gone",
+			},
 			kindOf,
 		);
 

@@ -1,5 +1,5 @@
 import { useDomain } from "@kilo-desktop/kernel/web";
-import { Panes, type Session } from "@kilo-desktop/plugin-sessions/contracts";
+import { Panes, type WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
 
 import { NewPanePicker } from "../canvas/NewPanePicker";
 import { PaneLaunchToolbar } from "../canvas/PaneLaunchToolbar";
@@ -11,7 +11,7 @@ import { panePicker, usePanePicker } from "./pane-picker";
 import { useSessionPanes } from "./SessionCanvas";
 import { usePaneKinds } from "./use-pane-kinds";
 
-function useLaunch(session: Session) {
+function useLaunch(session: WorkSession) {
 	const panes = useDomain(Panes);
 	const kinds = usePaneKinds();
 	const track = useWorkbenchTelemetry();
@@ -32,7 +32,7 @@ function useLaunch(session: Session) {
 }
 
 /** The open session's header controls: "+" and pinned kinds for a new pane, then the carousel toggle. */
-export function SessionPaneControls({ session }: { readonly session: Session }) {
+export function SessionPaneControls({ session }: { readonly session: WorkSession }) {
 	const panes = useDomain(Panes);
 	const state = useSessionPanes(session.id);
 	const { kinds, launch } = useLaunch(session);
@@ -62,7 +62,7 @@ export function SessionPaneControls({ session }: { readonly session: Session }) 
 }
 
 /** The new-pane picker (⌘T, new group right / below), for the open session. */
-export function SessionPanePicker({ session }: { readonly session: Session }) {
+export function SessionPanePicker({ session }: { readonly session: WorkSession }) {
 	const request = usePanePicker();
 	const { kinds, launch } = useLaunch(session);
 	return (

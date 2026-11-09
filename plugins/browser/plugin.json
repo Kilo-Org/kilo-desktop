@@ -6,11 +6,11 @@
 	"description": "Browse the web, and a workspace's HTML pages, in a session's panes.",
 	"requires": {
 		"kilo.workspaces/workspace": "optional",
-		"kilo.sessions/session": "optional",
+		"kilo.sessions/work-session": "optional",
 		"kilo.sessions/pane": "optional",
+		"kilo.sessions/pane-kind": "optional",
 		"kilo.sessions/opener": "optional",
-		"kilo.workbench/navigator": "optional",
-		"kilo.workbench/pane-launcher": "optional",
+		"kilo.workbench/workbench": "optional",
 		"kilo.chat/markdown-extension": "optional",
 		"kilo.agent/tool": "optional",
 		"kilo.telemetry/telemetry": "optional",
@@ -28,7 +28,7 @@
 	],
 	"contributes": {
 		"extensions": {
-			"kilo.sessions/pane": [
+			"kilo.sessions/pane-kind": [
 				{
 					"id": "browser",
 					"title": "Browser",

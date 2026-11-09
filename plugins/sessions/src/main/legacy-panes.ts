@@ -1,4 +1,4 @@
-import type { Pane, PaneArrangement, SessionPanes } from "../contracts";
+import type { Pane, PaneArrangement, WorkSessionPanes } from "../contracts";
 import { chatPane } from "./chat-pane";
 
 /**
@@ -74,11 +74,11 @@ function readTab(value: unknown, entry: Record_): Pane | null {
 export function readLegacyPanes(
 	state: unknown,
 	sessionTitles: ReadonlyMap<string, string>,
-): Record<string, SessionPanes> {
+): Record<string, WorkSessionPanes> {
 	const bySessionId =
 		isRecord(state) && isRecord(state.state) ? state.state.bySessionId : undefined;
 	if (!isRecord(bySessionId)) return {};
-	const result: Record<string, SessionPanes> = {};
+	const result: Record<string, WorkSessionPanes> = {};
 	for (const [sessionId, entry] of Object.entries(bySessionId)) {
 		const title = sessionTitles.get(sessionId);
 		if (title === undefined || !isRecord(entry)) continue;

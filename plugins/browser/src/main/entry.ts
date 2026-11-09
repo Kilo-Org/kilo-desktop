@@ -7,7 +7,7 @@ import {
 	type PluginEntry,
 	type PluginSdk,
 } from "@kilo-desktop/kernel";
-import { Panes, Sessions, type Pane } from "@kilo-desktop/plugin-sessions/contracts";
+import { Panes, WorkSessions, type Pane } from "@kilo-desktop/plugin-sessions/contracts";
 
 import {
 	BROWSER_PANE_KIND,
@@ -174,7 +174,7 @@ export function createBrowserMainEntry(options: BrowserMainOptions = {}): Plugin
 				}),
 			);
 			sdk.onDispose(
-				sdk.domains.track(Sessions, {
+				sdk.domains.track(WorkSessions, {
 					added: (handle) => {
 						sdk.onDispose(handle.on("deleted", ({ session }) => views?.closeSession(session.id)));
 					},

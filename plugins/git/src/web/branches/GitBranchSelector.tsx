@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { DomainState } from "@kilo-desktop/kernel";
 import { useDomain, useDomainState } from "@kilo-desktop/kernel/web";
-import { Sessions } from "@kilo-desktop/plugin-sessions/contracts";
+import { WorkSessions } from "@kilo-desktop/plugin-sessions/contracts";
 import type { LauncherOptionProps } from "@kilo-desktop/plugin-workbench/contracts";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
@@ -94,7 +94,7 @@ interface CheckoutInput {
 /** Sessions working in `directory` on `branch`: they would see its branch change under them. */
 function useSessionsOnBranch(directory: string, branch: string | undefined): number {
 	return (
-		useDomainState(Sessions, (state: DomainState<typeof Sessions>) =>
+		useDomainState(WorkSessions, (state: DomainState<typeof WorkSessions>) =>
 			branch === undefined
 				? 0
 				: state.sessions.filter(

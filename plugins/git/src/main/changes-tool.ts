@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import type { PluginSdk } from "@kilo-desktop/kernel";
 import { AgentTool, defineTool, type ToolCallContext } from "@kilo-desktop/plugin-agent/contracts";
-import { Panes, Sessions } from "@kilo-desktop/plugin-sessions/contracts";
+import { Panes, WorkSessions } from "@kilo-desktop/plugin-sessions/contracts";
 import { Workspaces } from "@kilo-desktop/plugin-workspaces/contracts";
 
 import {
@@ -31,7 +31,7 @@ const openChangesInput = z.object({
 /** The folders the calling chat's Work Session shows; none without a workspace. */
 function foldersOf(sdk: PluginSdk, sessionId: string): SessionFolder[] {
 	const session = sdk.domains
-		.get(Sessions)
+		.get(WorkSessions)
 		?.getState()
 		.sessions.find((candidate) => candidate.id === sessionId);
 	if (!session?.workspaceId) return [];

@@ -15,11 +15,11 @@ import {
 } from "@kilo-desktop/plugin-agent/contracts";
 import sessionsManifest from "@kilo-desktop/plugin-sessions/plugin.json";
 import {
-	DEFAULT_SESSION_TITLE,
-	Sessions,
+	DEFAULT_WORK_SESSION_TITLE,
+	WorkSessions,
 	SESSIONS_DEFINITIONS,
 	type IsolationOptions,
-	type Session,
+	type WorkSession,
 } from "@kilo-desktop/plugin-sessions/contracts";
 import { renderShell } from "@kilo-desktop/plugin-shell/testing";
 import workspacesManifest from "@kilo-desktop/plugin-workspaces/plugin.json";
@@ -30,14 +30,14 @@ import {
 } from "@kilo-desktop/plugin-workspaces/contracts";
 
 import manifest from "../../plugin.json";
-import { Navigator, WORKBENCH_DEFINITIONS } from "../contracts";
+import { Workbench, WORKBENCH_DEFINITIONS } from "../contracts";
 import { workbenchWebEntry } from "../web/index";
 
 /* Stand-ins for the plugins kilo.workbench reads, for its browser tests. */
 
 export const NOW = Date.now();
 
-export function session(id: string, patch: Partial<Session> = {}): Session {
+export function session(id: string, patch: Partial<WorkSession> = {}): WorkSession {
 	return {
 		id,
 		title: `Session ${id}`,
@@ -91,7 +91,7 @@ export function chat(
 
 /** Stands in for kilo.sessions' main entry: sessions kept in memory. */
 export function fakeSessionsMain(
-	initial: Session[],
+	initial: WorkSession[],
 	options: { isolation?: IsolationOptions | null; worktreeError?: string } = {},
 ) {
 	const calls = {
@@ -112,14 +112,14 @@ export function fakeSessionsMain(
 	};
 	const entry: PluginEntry = {
 		activate(sdk) {
-			const sessions: DomainProvider<typeof Sessions> = sdk.domains.provide(Sessions, {
+			const sessions: DomainProvider<typeof WorkSessions> = sdk.domains.provide(WorkSessions, {
 				initialState: { sessions: initial },
 				methods: {
 					create: (input) => {
 						calls.create(input);
 						fail();
 						const created = session(`wses_${sessions.state.sessions.length + 1}`, {
-							title: DEFAULT_SESSION_TITLE,
+							title: DEFAULT_WORK_SESSION_TITLE,
 							titleSource: "default",
 							workspaceId: input.workspaceId ?? null,
 							updatedAt: Date.now(),
@@ -149,7 +149,7 @@ export function fakeSessionsMain(
 					},
 				},
 			});
-			function change(id: string, patch: Partial<Session>, record: () => void): Session {
+			function change(id: string, patch: Partial<WorkSession>, record: () => void): WorkSession {
 				record();
 				fail();
 				const updated = { ...sessions.state.sessions.find((s) => s.id === id)!, ...patch };
@@ -279,7 +279,7 @@ export function fakeNotifications(main: MainKernel) {
 
 export async function renderWorkbench(
 	options: {
-		sessions?: Session[];
+		sessions?: WorkSession[];
 		workspaces?: Workspace[];
 		activeWorkspaceId?: string | null;
 		chats?: ChatSummary[];
@@ -325,6 +325,6 @@ export async function renderWorkbench(
 	);
 	const run = (command: string, args?: unknown) =>
 		host.renderer.commands.execute(`kilo.workbench/${command}`, args);
-	const navigator = () => host.renderer.kernelSdk.domains.get(Navigator)!;
+	const navigator = () => host.renderer.kernelSdk.domains.get(Workbench)!;
 	return { host, run, navigator, sessions, workspaces, conversations };
 }

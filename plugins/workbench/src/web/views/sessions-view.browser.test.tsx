@@ -5,18 +5,16 @@ import { page } from "vitest/browser";
 
 import { KernelWindowView, OBJECT_REFS_FORMAT, type PluginSdk } from "@kilo-desktop/kernel";
 import { testManifest } from "@kilo-desktop/kernel/testing";
-import { KernelProvider, RenderContribution, useExclusive } from "@kilo-desktop/kernel/web";
+import { KernelProvider, RenderContribution, useDomainState } from "@kilo-desktop/kernel/web";
+import { WorkSessions, type WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
+
+import { chat, NOW, renderWorkbench, session, workspace } from "../../test/fakes";
 import {
 	SessionDecoration,
 	SessionMenu,
-	SessionRenderer,
-	Sessions,
-	type Session,
-	type SessionRenderers,
-} from "@kilo-desktop/plugin-sessions/contracts";
-
-import { chat, NOW, renderWorkbench, session, workspace } from "../../test/fakes";
-import { SessionsView, type SessionsViewProps } from "../../contracts";
+	SessionsView,
+	type SessionsViewProps,
+} from "../../contracts";
 
 const VIEW = "test.views/timeline";
 
@@ -185,38 +183,50 @@ describe("sessions views", () => {
 	});
 });
 
-/** Renders the session renderers the way another plugin's surface does. */
-function rendererProbe() {
+/** A sessions view that shows sessions with the renderers it is handed, as the board's cards do. */
+function cardsView() {
 	const rename = vi.fn();
-	function Probe({ session: shown }: { readonly session: Session }) {
-		const renderer = useExclusive(SessionRenderer).winner;
-		if (!renderer) return null;
-		const part = (pick: (renderers: SessionRenderers) => unknown, props: object) => (
-			<RenderContribution
-				contribution={renderer}
-				select={pick as never}
-				props={{ session: shown, ...props }}
-			/>
-		);
+	function Cards({ renderers: { Glyph, Status, Decorations, Menu } }: SessionsViewProps) {
+		const sessions = useDomainState(WorkSessions, (state) => state.sessions) ?? [];
 		return (
-			<div data-qa-id={`probe-${shown.id}`}>
-				{part((r) => r.Glyph, { decorative: false })}
-				{part((r) => r.Status, {})}
-				{part((r) => r.Decorations, { slot: "row" })}
-				{part((r) => r.Menu, shown.id === "a" ? { onRename: rename, label: "Card menu" } : {})}
+			<div>
+				{sessions.map((shown) => (
+					<div key={shown.id} data-qa-id={`probe-${shown.id}`}>
+						<Glyph session={shown} />
+						<Status session={shown} />
+						<Decorations session={shown} slot="row" />
+						<Menu
+							session={shown}
+							{...(shown.id === "a" ? { onRename: rename, label: "Card menu" } : {})}
+						/>
+					</div>
+				))}
 			</div>
 		);
 	}
-	return { Probe, rename };
+	const plugin = {
+		manifest: testManifest("test.cards", {
+			requires: { "kilo.sessions/work-session": "optional" },
+			contributes: {
+				extensions: { "kilo.workbench/sessions-view": [{ id: "cards", title: "Cards" }] },
+			},
+		}),
+		web: {
+			activate(sdk: PluginSdk) {
+				sdk.extensions.implement(SessionsView, "cards", { component: Cards });
+			},
+		},
+	};
+	return { plugin, rename };
 }
 
 describe("session renderers", () => {
-	it("show a session's live status, decorations and menu outside the list", async () => {
-		const { Probe, rename } = rendererProbe();
+	it("are handed to sessions views, showing a session's live status, decorations and menu", async () => {
+		const cards = cardsView();
 		const decorations = {
 			manifest: testManifest("test.decorations", {
 				contributes: {
-					extensions: { "kilo.sessions/session-decoration": [{ id: "badge", slot: "row" }] },
+					extensions: { "kilo.workbench/session-decoration": [{ id: "badge", slot: "row" }] },
 				},
 			}),
 			web: {
@@ -224,36 +234,23 @@ describe("session renderers", () => {
 					sdk.extensions.implement(
 						SessionDecoration,
 						"badge",
-						({ session: s }: { session: Session }) => <span data-qa-id={`badge-${s.id}`}>PR</span>,
+						({ session: s }: { session: WorkSession }) => (
+							<span data-qa-id={`badge-${s.id}`}>PR</span>
+						),
 					);
 				},
 			},
 		};
-		const { host, sessions } = await renderWorkbench({
+		const { navigator, sessions } = await renderWorkbench({
 			sessions: [
 				session("a", { title: "Busy", chatIds: ["c1"] }),
 				session("b", { title: "Old", archived: true }),
 				session("c", { title: "Quiet" }),
 			],
 			chats: [chat("c1", { status: "busy", workingSince: NOW - 1_000 })],
-			guests: [decorations],
+			guests: [decorations, cards.plugin],
 		});
-		const probes = (
-			<KernelProvider kernel={host.renderer}>
-				<Above>
-					{(["a", "b", "c"] as const).map((id) => (
-						<Probe
-							key={id}
-							session={host.renderer.kernelSdk.domains
-								.get(Sessions)!
-								.getState()
-								.sessions.find((s) => s.id === id)!}
-						/>
-					))}
-				</Above>
-			</KernelProvider>
-		);
-		render(probes);
+		await navigator().methods.showView({ view: "test.cards/cards" });
 
 		const busy = page.getByTestId("probe-a");
 		await expect.element(busy.getByRole("status", { name: "Working" })).toBeVisible();
@@ -268,7 +265,7 @@ describe("session renderers", () => {
 
 		await busy.getByRole("button", { name: "Card menu" }).click();
 		await page.getByTestId("session-menu-rename").click();
-		expect(rename).toHaveBeenCalled();
+		expect(cards.rename).toHaveBeenCalled();
 		await busy.getByRole("button", { name: "Card menu" }).click();
 		await page.getByTestId("session-menu-pin").click();
 		await vi.waitFor(() => expect(sessions.calls.setPinned).toHaveBeenCalledWith("a", true));
@@ -293,7 +290,7 @@ describe("session rows", () => {
 			.dispatchEvent(new DragEvent("dragstart", { dataTransfer, bubbles: true }));
 
 		expect(JSON.parse(dataTransfer.getData(OBJECT_REFS_FORMAT))).toEqual([
-			{ type: "kilo.sessions/session", id: "a" },
+			{ type: "kilo.sessions/work-session", id: "a" },
 		]);
 	});
 
@@ -302,7 +299,7 @@ describe("session rows", () => {
 		const chooser = {
 			manifest: testManifest("test.chooser", {
 				contributes: {
-					extensions: { "kilo.sessions/session-menu": [{ id: "move", title: "Move to" }] },
+					extensions: { "kilo.workbench/session-menu": [{ id: "move", title: "Move to" }] },
 				},
 			}),
 			web: {

@@ -13,7 +13,7 @@ export interface ComposerFolder {
 /** Where a composer is: what composer actions and mentions are given. */
 export interface ComposerContext {
 	/**
-	 * The Work Session (`kilo.sessions/session`) the composer belongs to; null
+	 * The Work Session (`kilo.sessions/work-session`) the composer belongs to; null
 	 * on the New Session page, where the first send creates it.
 	 */
 	readonly sessionId: string | null;

@@ -1,6 +1,6 @@
 import { definePlugin, type PluginSdk } from "@kilo-desktop/kernel";
 
-import { Panes, Sessions } from "../contracts";
+import { Panes, WorkSessions } from "../contracts";
 
 /** Where origin kept pinned session (or chat) ids, in the main window's localStorage. */
 export const LEGACY_PINS_STORAGE_KEY = "kilo-ui.session-list-pins:v1";
@@ -21,7 +21,7 @@ function readLegacyPins(): string[] {
 function handOverLegacyPins(sdk: PluginSdk): void {
 	const ids = readLegacyPins();
 	if (ids.length === 0) return;
-	sdk.domains.track(Sessions, {
+	sdk.domains.track(WorkSessions, {
 		added: (sessions) => void sessions.methods.importLegacyPins({ ids }).catch(() => undefined),
 		removed: () => {},
 	});

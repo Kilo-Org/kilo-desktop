@@ -4,7 +4,6 @@ import { useCallback } from "react";
 
 import { KernelShell } from "@kilo-desktop/kernel";
 import { useDomain } from "@kilo-desktop/kernel/web";
-import type { SessionDecorationProps } from "@kilo-desktop/plugin-sessions/contracts";
 import { ExternalLink } from "@kilo-desktop/ui/components/external-link";
 
 import { Repository } from "../../contracts/index.js";
@@ -15,6 +14,7 @@ import {
 } from "../pull-requests/use-pull-request.js";
 import { pullRequestClassName } from "../repository-actions.js";
 import { branchesQuery, repositoryTypeQuery } from "../repository-queries.js";
+import type { SessionDecorationProps } from "@kilo-desktop/plugin-workbench/contracts";
 
 /** Opens a URL in the person's browser through kernel/shell; failures are ignored. */
 export function useOpenExternal(): (url: string) => void {

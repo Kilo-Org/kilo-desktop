@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useCallback } from "react";
 
 import { useDomain, useDomainState } from "@kilo-desktop/kernel/web";
-import type { Session } from "@kilo-desktop/plugin-sessions/contracts";
+import type { WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
 import { Workspaces, type Workspace } from "@kilo-desktop/plugin-workspaces/contracts";
 
 import { PullRequests, Repository, type PullRequestEntry } from "../../contracts/index.js";
@@ -13,7 +13,7 @@ const NO_WORKSPACES: readonly Workspace[] = [];
 const selectWorkspaces = (state: { workspaces: readonly Workspace[] }) => state.workspaces;
 
 /** The directory a session's pull request is looked up in. */
-export function useSessionDirectory(session: Session): string | null {
+export function useSessionDirectory(session: WorkSession): string | null {
 	const workspaces = useDomainState(Workspaces, selectWorkspaces) ?? NO_WORKSPACES;
 	return sessionDirectory(session, workspaces);
 }

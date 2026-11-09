@@ -14,7 +14,7 @@ import { createTestKernelPair } from "@kilo-desktop/kernel/testing";
 import { KernelProvider, RenderContribution } from "@kilo-desktop/kernel/web";
 import sessionsManifest from "@kilo-desktop/plugin-sessions/plugin.json";
 import {
-	EMPTY_SESSION_PANES,
+	EMPTY_WORK_SESSION_PANES,
 	PaneKind,
 	Panes,
 	SESSIONS_DEFINITIONS,
@@ -25,11 +25,7 @@ import {
 import shellManifest from "@kilo-desktop/plugin-shell/plugin.json";
 import { SHELL_DOMAINS, SHELL_EXTENSION_POINTS, Theme } from "@kilo-desktop/plugin-shell/contracts";
 import workbenchManifest from "@kilo-desktop/plugin-workbench/plugin.json";
-import {
-	Navigator,
-	PaneLauncher,
-	WORKBENCH_DEFINITIONS,
-} from "@kilo-desktop/plugin-workbench/contracts";
+import { Workbench, WORKBENCH_DEFINITIONS } from "@kilo-desktop/plugin-workbench/contracts";
 
 import manifest from "../../plugin.json";
 import { TERMINAL_DEFINITIONS, TERMINAL_PROTOCOL_VERSION, Terminals } from "../contracts";
@@ -69,7 +65,7 @@ export async function renderTerminalHost(
 	cleanup();
 	const opened = vi.fn((_args: unknown) => undefined);
 	const openPane = vi.fn((_input: unknown) => undefined);
-	const openOrShowPane = vi.fn((_input: { kind: string }) => undefined);
+	const workbenchOpenPane = vi.fn((_input: { kind: string }) => undefined);
 	let theme!: DomainProvider<typeof Theme>;
 
 	const terminalMain: PluginEntry = definePlugin({
@@ -91,7 +87,7 @@ export async function renderTerminalHost(
 						const pane = terminalPane({ id: "pane_new" });
 						panes.setState({
 							bySession: {
-								[input.sessionId]: { ...EMPTY_SESSION_PANES, panes: [pane] },
+								[input.sessionId]: { ...EMPTY_WORK_SESSION_PANES, panes: [pane] },
 							},
 						});
 						return pane;
@@ -118,18 +114,15 @@ export async function renderTerminalHost(
 		activate(sdk) {
 			const activeSessionId =
 				options.activeSessionId === undefined ? "wses_1" : options.activeSessionId;
-			sdk.domains.provide(Navigator, {
+			sdk.domains.provide(Workbench, {
 				initialState: { focus: null, activeSessionId, view: null, detachedViews: [] },
 				methods: {
 					setFocus: () => undefined,
-					open: () => undefined,
-					close: () => undefined,
+					openSession: () => undefined,
+					closeSession: () => undefined,
 					showView: () => undefined,
+					openPane: (input) => workbenchOpenPane(input),
 				},
-			});
-			sdk.domains.provide(PaneLauncher, {
-				initialState: {},
-				methods: { openOrShow: (input) => openOrShowPane(input) },
 			});
 			sdk.context.set("sessionActive", true);
 		},
@@ -183,7 +176,7 @@ export async function renderTerminalHost(
 		renderer,
 		opened,
 		openPane,
-		openOrShowPane,
+		workbenchOpenPane,
 		contribution,
 		setTheme: (next: ThemeState) => theme.setState(next),
 		rerender: (next: Partial<PaneProps>) => view.rerender(element(next)),

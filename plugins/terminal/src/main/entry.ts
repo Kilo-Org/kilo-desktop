@@ -9,7 +9,7 @@ import {
 	type PluginEntry,
 	type PluginSdk,
 } from "@kilo-desktop/kernel";
-import { Panes, Sessions } from "@kilo-desktop/plugin-sessions/contracts";
+import { Panes, WorkSessions } from "@kilo-desktop/plugin-sessions/contracts";
 import { Workspaces } from "@kilo-desktop/plugin-workspaces/contracts";
 
 import {
@@ -176,7 +176,7 @@ export function createTerminalMainEntry(options: TerminalMainOptions): PluginEnt
 				}),
 			);
 			sdk.onDispose(
-				sdk.domains.track(Sessions, {
+				sdk.domains.track(WorkSessions, {
 					added: (handle) => {
 						sdk.onDispose(
 							handle.on("deleted", ({ session }) => {

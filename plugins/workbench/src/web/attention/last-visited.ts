@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import type { Session } from "@kilo-desktop/plugin-sessions/contracts";
+import type { WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
 
 /*
  * When this window last showed each Work Session, kept in localStorage: a
@@ -63,7 +63,7 @@ function save(storage: StorageLike | null, visits: LastVisited): void {
 /** When the session was last shown here; undefined when never. */
 export function lastVisitedOf(
 	visits: LastVisited,
-	session: Pick<Session, "id" | "chatIds">,
+	session: Pick<WorkSession, "id" | "chatIds">,
 ): number | undefined {
 	const own = visits.sessions[session.id];
 	if (own !== undefined) return own;

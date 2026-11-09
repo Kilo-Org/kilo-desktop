@@ -4,7 +4,7 @@ import { createMainKernel } from "@kilo-desktop/kernel/main";
 import { createMemoryStorage, createTestHost } from "@kilo-desktop/kernel/testing";
 
 import manifest from "../../plugin.json";
-import { isOrphanedWorktreeSession, Sessions, SESSIONS_DEFINITIONS } from "../contracts";
+import { isOrphanedWorktreeSession, WorkSessions, SESSIONS_DEFINITIONS } from "../contracts";
 import { chat, FakeConversations, fakeWorkspaces, FakeVcs } from "../test/main-fakes";
 import { createSessionsMainEntry } from "./entry";
 import { worktreeChatLinks } from "./isolation";
@@ -36,7 +36,7 @@ async function boot(
 		}),
 	});
 	await kernel.start();
-	const sessions = kernel.kernelSdk.domains.get(Sessions)!;
+	const sessions = kernel.kernelSdk.domains.get(WorkSessions)!;
 	const byId = (sessionId: string) =>
 		sessions.getState().sessions.find((session) => session.id === sessionId);
 	return { kernel, sessions, kilo, vcs, log, byId };

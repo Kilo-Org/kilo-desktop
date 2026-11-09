@@ -4,7 +4,7 @@ import { useCallback, type FC } from "react";
 import type { DomainState } from "@kilo-desktop/kernel";
 import { useContextKey, useDomainState } from "@kilo-desktop/kernel/web";
 import { flagKey } from "@kilo-desktop/plugin-flags/contracts";
-import { Sessions, type PaneProps } from "@kilo-desktop/plugin-sessions/contracts";
+import { WorkSessions, type PaneProps } from "@kilo-desktop/plugin-sessions/contracts";
 import { Alert, AlertTitle } from "@kilo-desktop/ui/components/alert";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@kilo-desktop/ui/components/empty";
 import { FIND_BAR_FEATURE_FLAG, FindScope } from "@kilo-desktop/ui/components/find-bar";
@@ -42,9 +42,9 @@ export const PlanIcon: FC<{ className?: string }> = ({ className }) => (
 export function createPlanPane(services: ChatMirrorServices): FC<PaneProps> {
 	return function PlanPane({ sessionId, pane }) {
 		const session = useDomainState(
-			Sessions,
+			WorkSessions,
 			useCallback(
-				(state: DomainState<typeof Sessions>) =>
+				(state: DomainState<typeof WorkSessions>) =>
 					state.sessions.find((candidate) => candidate.id === sessionId),
 				[sessionId],
 			),

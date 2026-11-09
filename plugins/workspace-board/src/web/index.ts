@@ -1,7 +1,11 @@
 import { definePlugin, KernelCommand } from "@kilo-desktop/kernel";
-import { SessionMenu } from "@kilo-desktop/plugin-sessions/contracts";
 import { Overlay } from "@kilo-desktop/plugin-shell/contracts";
-import { Navigator, NavigatorAction, SessionsView } from "@kilo-desktop/plugin-workbench/contracts";
+import {
+	Workbench,
+	NavigatorAction,
+	SessionsView,
+	SessionMenu,
+} from "@kilo-desktop/plugin-workbench/contracts";
 
 import { BOARD_VIEW } from "../contracts";
 import { addColumnForNaming, requestClear, showBoard, toggleBoard } from "./board-actions";
@@ -48,7 +52,7 @@ export const boardWebEntry = definePlugin({
 		if (sdk.context.get("kernel/secondaryWindow")) return;
 		sdk.extensions.implement(NavigatorAction, "board", BoardToggle);
 		sdk.extensions.implement(Overlay, "clear-board", ClearBoardDialog);
-		const navigator = () => sdk.domains.get(Navigator);
+		const navigator = () => sdk.domains.get(Workbench);
 		const command = (id: string, run: () => void) =>
 			sdk.extensions.implement(KernelCommand, id, run);
 		command("open", () => toggleBoard(navigator(), "command"));

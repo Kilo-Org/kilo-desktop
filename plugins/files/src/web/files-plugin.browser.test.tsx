@@ -9,7 +9,7 @@ import {
 import { definePlugin } from "@kilo-desktop/kernel";
 import { PaneKind } from "@kilo-desktop/plugin-sessions/contracts";
 import workbenchManifest from "@kilo-desktop/plugin-workbench/plugin.json";
-import { PaneLauncher, WORKBENCH_DEFINITIONS } from "@kilo-desktop/plugin-workbench/contracts";
+import { Workbench, WORKBENCH_DEFINITIONS } from "@kilo-desktop/plugin-workbench/contracts";
 
 import { FILES_PANE_KIND } from "../contracts/panes.js";
 import {
@@ -164,12 +164,18 @@ describe("the Files pane kind", () => {
 
 describe("Open Files", () => {
 	it("shows the session's Files pane, or opens one, with ⌘⇧E", async () => {
-		const openOrShow = vi.fn((_input: { kind: string }) => undefined);
+		const openPane = vi.fn((_input: { kind: string }) => undefined);
 		const workbench = definePlugin({
 			activate(sdk) {
-				sdk.domains.provide(PaneLauncher, {
-					initialState: {},
-					methods: { openOrShow: (input) => openOrShow(input) },
+				sdk.domains.provide(Workbench, {
+					initialState: { focus: null, activeSessionId: "s1", view: null, detachedViews: [] },
+					methods: {
+						setFocus: () => undefined,
+						openSession: () => undefined,
+						closeSession: () => undefined,
+						showView: () => undefined,
+						openPane: (input) => openPane(input),
+					},
 				});
 				sdk.context.set("sessionActive", true);
 			},
@@ -184,7 +190,7 @@ describe("Open Files", () => {
 
 		await expect(host.renderer.keyboard.dispatch("Shift+Meta+KeyE")).resolves.toBe(true);
 
-		await vi.waitFor(() => expect(openOrShow).toHaveBeenCalledWith({ kind: FILES_PANE_KIND }));
+		await vi.waitFor(() => expect(openPane).toHaveBeenCalledWith({ kind: FILES_PANE_KIND }));
 	});
 });
 

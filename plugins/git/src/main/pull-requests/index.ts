@@ -6,7 +6,7 @@ import {
 	type PluginSdk,
 	type PluginStorage,
 } from "@kilo-desktop/kernel";
-import { Sessions } from "@kilo-desktop/plugin-sessions/contracts";
+import { WorkSessions } from "@kilo-desktop/plugin-sessions/contracts";
 import { Workspaces } from "@kilo-desktop/plugin-workspaces/contracts";
 
 import {
@@ -154,7 +154,7 @@ export function providePullRequests(
 		now,
 	});
 
-	let sessions: DomainHandle<typeof Sessions> | null = null;
+	let sessions: DomainHandle<typeof WorkSessions> | null = null;
 	let workspaces: DomainHandle<typeof Workspaces> | null = null;
 
 	function sessionDirectories(): string[] {
@@ -196,7 +196,7 @@ export function providePullRequests(
 		for (const stop of stops.splice(0)) stop();
 	});
 	sdk.onDispose(
-		sdk.domains.track(Sessions, {
+		sdk.domains.track(WorkSessions, {
 			added: (handle) => {
 				sessions = handle;
 				stops.push(handle.subscribe(updateTargets));

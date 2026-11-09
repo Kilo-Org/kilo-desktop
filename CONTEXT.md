@@ -70,16 +70,17 @@ The design is [docs/plugin-architecture.md](./docs/plugin-architecture.md); in s
 
 ## Terminology
 
-| Term                | Meaning                                                                                                                                                      |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Kernel**          | `packages/kernel`: the product-agnostic plugin runtime (registries, lifecycle, commands, transport, React root).                                             |
-| **Plugin**          | A package in `plugins/` with a v1 `plugin.json`, a `main` and/or `web` entry, and a `./contracts` export.                                                    |
-| **Host**            | The apps that boot the kernels and provide `kernel/*` primitives (`apps/desktop`, `apps/web`).                                                               |
-| **Extension point** | A typed slot a plugin declares (`<plugin>/<point>`) for other plugins to implement — additive, exclusive or a decision chain.                                |
-| **Domain object**   | A named object (`<plugin>/<name>`) with state, methods and events, provided in one process and usable from any.                                              |
-| **Work Session**    | A unit of work in a workspace (`kilo.sessions/session`), listed in the session list; owns its panes and layout and has zero or more chats.                   |
-| **Chat Session**    | A session's conversation with the agent, backed by a Kilo session (`kilo.agent/conversation`). Use "chat" for the conversation, "session" for the container. |
-| **Pane**            | A view in a Work Session's layout (agent, terminal, browser, files, changes, notebook…), contributed through `kilo.sessions/pane`.                           |
+| Term                | Meaning                                                                                                                                                                                                                                                     |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Kernel**          | `packages/kernel`: the product-agnostic plugin runtime (registries, lifecycle, commands, transport, React root).                                                                                                                                            |
+| **Plugin**          | A package in `plugins/` with a v1 `plugin.json`, a `main` and/or `web` entry, and a `./contracts` export.                                                                                                                                                   |
+| **Host**            | The apps that boot the kernels and provide `kernel/*` primitives (`apps/desktop`, `apps/web`).                                                                                                                                                              |
+| **Extension point** | A typed slot a plugin declares (`<plugin>/<point>`) for other plugins to implement — additive, exclusive or a decision chain.                                                                                                                               |
+| **Domain object**   | A named object (`<plugin>/<name>`) with state, methods and events, provided in one process and usable from any.                                                                                                                                             |
+| **Work Session**    | A unit of work in a workspace (`kilo.sessions/work-session`, `WorkSession` in code), listed in the session list; owns its panes and layout and has zero or more chats.                                                                                      |
+| **Chat Session**    | A session's conversation with the agent, backed by a Kilo session (`kilo.agent/conversation`). Use "chat" for the conversation, "session" for the container.                                                                                                |
+| **Pane**            | A view in a Work Session's layout (agent, terminal, browser, files, changes, notebook…), contributed through `kilo.sessions/pane-kind`.                                                                                                                     |
+| **Workbench**       | Each window's view of the Work Sessions (`kilo.workbench/workbench`): workspace focus, open session or sessions view, opening panes. Moving within the home view is the workbench's; leaving it (Settings, deep-linked pages) is kilo.shell's `Navigation`. |
 
 ## Conventions
 

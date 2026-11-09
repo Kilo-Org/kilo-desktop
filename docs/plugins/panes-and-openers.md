@@ -10,10 +10,10 @@ contracts are in `@kilo-desktop/plugin-sessions/contracts`.
 
 ```jsonc
 // plugin.json
-"requires": { "kilo.sessions/pane": "optional" },
+"requires": { "kilo.sessions/pane-kind": "optional" },
 "contributes": {
 	"extensions": {
-		"kilo.sessions/pane": [
+		"kilo.sessions/pane-kind": [
 			{
 				"id": "terminal",
 				"title": "Terminal",
@@ -65,7 +65,8 @@ sessions survive a plugin being removed.
 
 ## Opening and changing panes
 
-Use the `kilo.sessions/pane` domain object (`Panes`):
+Use the `kilo.sessions/pane` domain object (`Panes`); the kinds themselves
+are contributions to the `kilo.sessions/pane-kind` point:
 
 ```ts
 const panes = sdk.domains.get(Panes);
@@ -79,8 +80,11 @@ await panes?.methods.close({ sessionId, paneId });
   Keep large or live state in your own domain object, keyed by pane id.
 - Listen to `Panes` `opened` / `closed` (in main) to create or clean up
   per-pane resources.
-- The window's open session is `Navigator.getState().activeSessionId`
-  (`@kilo-desktop/plugin-workbench/contracts`).
+- The window's open session is `Workbench.getState().activeSessionId`
+  (`@kilo-desktop/plugin-workbench/contracts`). To open your kind there as a
+  person does from "+" (showing its existing pane, bringing a popped-out
+  window forward), call `Workbench.openPane({ kind })` — an "Open …" command
+  should, rather than `Panes.open`.
 
 ## Close guards
 

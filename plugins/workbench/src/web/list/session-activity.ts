@@ -1,4 +1,4 @@
-import type { Session } from "@kilo-desktop/plugin-sessions/contracts";
+import type { WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
 
 type SessionStatusType = "busy" | "retry" | "idle";
 
@@ -125,7 +125,7 @@ export function resolveSessionLocationLabel(
  * What a session itself knows, before its chats' activity is added: its
  * workspace, worktree, directory and times, nothing pending.
  */
-export function activityOfSession(session: Session): SessionActivity {
+export function activityOfSession(session: WorkSession): SessionActivity {
 	return {
 		directory: session.directory ?? undefined,
 		workspaceId: session.workspaceId ?? undefined,

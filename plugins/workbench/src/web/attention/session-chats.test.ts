@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ChatActivity, ChatSummary } from "@kilo-desktop/plugin-agent/contracts";
-import type { Session } from "@kilo-desktop/plugin-sessions/contracts";
+import type { WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
 
 import {
 	chatsOfSessions,
@@ -11,7 +11,7 @@ import {
 	type Chats,
 } from "./session-chats";
 
-function session(id: string, patch: Partial<Session> = {}): Session {
+function session(id: string, patch: Partial<WorkSession> = {}): WorkSession {
 	return {
 		id,
 		title: id,

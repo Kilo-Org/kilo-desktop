@@ -1,17 +1,17 @@
 import { definePlugin, KernelCommand, type PluginSdk } from "@kilo-desktop/kernel";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 import { ComposerAction } from "@kilo-desktop/plugin-chat/contracts";
-import { PaneKind, Panes, SessionDecoration } from "@kilo-desktop/plugin-sessions/contracts";
+import { PaneKind } from "@kilo-desktop/plugin-sessions/contracts";
 import {
 	LauncherOption,
-	Navigator,
-	PaneLauncher,
+	Workbench,
 	SessionAction,
 	SessionFacet,
+	SessionDecoration,
 } from "@kilo-desktop/plugin-workbench/contracts";
 import { Files } from "@kilo-desktop/plugin-workspaces/contracts";
 
-import { Repository } from "../../contracts/index.js";
+import { CHANGES_PANE_KIND, Repository } from "../../contracts/index.js";
 import {
 	ActionProgress,
 	ActionRequests,
@@ -20,7 +20,6 @@ import {
 import { createGitSessionActions } from "../actions/GitActionsControl.js";
 import { GitBranchSelector } from "../branches/GitBranchSelector.js";
 import { ChangesIcon, ChangesPane } from "../changes/ChangesPane.js";
-import { showChanges } from "../changes/show-changes.js";
 import { createPullRequestFacet, reportShownDirectories } from "../pull-requests/window-sources.js";
 import {
 	createGitQueryClient,
@@ -38,9 +37,7 @@ import { GitBranchFooter } from "./GitBranchFooter.js";
 
 /** Shows the Changes pane of the session this window has open. */
 async function openChanges(sdk: PluginSdk): Promise<void> {
-	const sessionId = sdk.domains.get(Navigator)?.getState().activeSessionId;
-	if (!sessionId) return;
-	await showChanges(sdk.domains.get(PaneLauncher), sdk.domains.get(Panes), sessionId);
+	await sdk.domains.get(Workbench)?.methods.openPane({ kind: CHANGES_PANE_KIND });
 }
 
 /** Hands a command to the open session's repository control. */

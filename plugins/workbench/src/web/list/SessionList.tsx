@@ -33,7 +33,7 @@ import {
 	useDragSource,
 	useExtensions,
 } from "@kilo-desktop/kernel/web";
-import { SessionDecoration, Sessions, type Session } from "@kilo-desktop/plugin-sessions/contracts";
+import { WorkSessions, type WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
 import { Workspaces, type Workspace } from "@kilo-desktop/plugin-workspaces/contracts";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Kbd } from "@kilo-desktop/ui/components/kbd";
@@ -71,7 +71,12 @@ import {
 } from "@kilo-desktop/ui/components/workspace-picker";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
-import { Navigator, NavigatorAction, type NavigatorState } from "../../contracts";
+import {
+	Workbench,
+	NavigatorAction,
+	type WorkbenchState,
+	SessionDecoration,
+} from "../../contracts";
 import { lastVisitedOf, useLastVisits, type LastVisited } from "../attention/last-visited";
 import { useSessionActivities } from "../attention/live-activity";
 import { ShortcutHintChip } from "../canvas/ShortcutHintChip";
@@ -129,7 +134,7 @@ import { WorkspaceFilter } from "./WorkspaceFilter";
  * entries, the workspace filter and view menu, then sessions grouped into
  * shelves — pinned, by status, workspace or day, and archived last. Rows are
  * virtualised; sessions come from kilo.sessions, the window's focus and open
- * session from kilo.workbench/navigator.
+ * session from kilo.workbench/workbench.
  */
 
 /**
@@ -168,20 +173,20 @@ const SESSION_ROW_ESTIMATE_PX = 30;
 const SESSION_SHELF_HEADER_PX = 30;
 const SESSION_SECTION_GAP_PX = 5;
 const DEFAULT_EXPANDED_SECTIONS: Readonly<Record<string, boolean>> = { archived: false };
-const NO_SESSIONS: readonly Session[] = [];
+const NO_SESSIONS: readonly WorkSession[] = [];
 const NO_WORKSPACES: readonly Workspace[] = [];
-const EMPTY_NAVIGATOR: NavigatorState = {
+const EMPTY_NAVIGATOR: WorkbenchState = {
 	focus: null,
 	activeSessionId: null,
 	view: null,
 	detachedViews: [],
 };
 
-const selectSessions = (state: { sessions: readonly Session[] }) => state.sessions;
+const selectSessions = (state: { sessions: readonly WorkSession[] }) => state.sessions;
 const selectWorkspaces = (state: { workspaces: readonly Workspace[] }) => state.workspaces;
-const selectNavigator = (state: NavigatorState) => state;
+const selectNavigator = (state: WorkbenchState) => state;
 
-type SessionsHandle = DomainHandle<typeof Sessions>;
+type SessionsHandle = DomainHandle<typeof WorkSessions>;
 
 interface SessionListChrome {
 	readonly show: readonly SessionListShowField[];
@@ -340,12 +345,12 @@ export function SessionList() {
 
 function SessionListContent() {
 	const { view: storedView, update, reset } = useSessionListView();
-	const sessionsHandle = useDomain(Sessions);
-	const sessions = useDomainState(Sessions, selectSessions) ?? NO_SESSIONS;
+	const sessionsHandle = useDomain(WorkSessions);
+	const sessions = useDomainState(WorkSessions, selectSessions) ?? NO_SESSIONS;
 	const workspaceSource = useWorkspacePickerSource();
 	const workspaces = useDomainState(Workspaces, selectWorkspaces) ?? NO_WORKSPACES;
-	const navigatorHandle = useDomain(Navigator);
-	const navigator = useDomainState(Navigator, selectNavigator) ?? EMPTY_NAVIGATOR;
+	const navigatorHandle = useDomain(Workbench);
+	const navigator = useDomainState(Workbench, selectNavigator) ?? EMPTY_NAVIGATOR;
 
 	const view = useMemo(
 		() => ({ ...storedView, focus: navigator.focus }),
@@ -367,7 +372,7 @@ function SessionListContent() {
 		[setFocus, update],
 	);
 	const open = useCallback(
-		(sessionId: string) => void navigatorHandle?.methods.open({ sessionId }),
+		(sessionId: string) => void navigatorHandle?.methods.openSession({ sessionId }),
 		[navigatorHandle],
 	);
 
@@ -427,7 +432,7 @@ function SessionListContent() {
 	const newSessionInWorkspace = useCallback(
 		(workspaceId: string) => {
 			workspaceSource.setActiveWorkspaceId(workspaceId);
-			void navigatorHandle?.methods.close(undefined);
+			void navigatorHandle?.methods.closeSession(undefined);
 		},
 		[navigatorHandle, workspaceSource],
 	);
@@ -483,7 +488,7 @@ function SessionListContent() {
 	);
 
 	const [selection, setSelection] = useState(EMPTY_SESSION_LIST_SELECTION);
-	const [deleting, setDeleting] = useState<readonly Session[] | null>(null);
+	const [deleting, setDeleting] = useState<readonly WorkSession[] | null>(null);
 	const rowOrder = useMemo(
 		() => virtualEntries.flatMap((entry) => (entry.kind === "row" ? [entry.row.id] : [])),
 		[virtualEntries],
@@ -768,8 +773,8 @@ function NavigatorActions() {
 }
 
 function NewSessionButton() {
-	const sessions = useDomain(Sessions);
-	const navigator = useDomain(Navigator);
+	const sessions = useDomain(WorkSessions);
+	const navigator = useDomain(Workbench);
 	const workspaces = useDomain(Workspaces);
 	return (
 		<SidebarMenuButton
@@ -877,7 +882,7 @@ function SearchWorkspaceItem({
 
 /** Search (⌘K): sessions, then archived ones, then workspaces. */
 const SessionListSearch: FC<{
-	sessions: readonly Session[];
+	sessions: readonly WorkSession[];
 	workspaces: readonly Workspace[];
 	onSelectSession: (sessionId: string) => void;
 	onSelectWorkspace: (workspaceId: string) => void;
@@ -1187,7 +1192,7 @@ function SessionRowSlot({
 	session,
 	indented,
 }: {
-	session: Session | undefined;
+	session: WorkSession | undefined;
 	indented: boolean;
 }) {
 	if (!session) return null;
@@ -1198,7 +1203,7 @@ const SessionRow = memo(function SessionRow({
 	session,
 	indented,
 }: {
-	session: Session;
+	session: WorkSession;
 	indented: boolean;
 }) {
 	const {
@@ -1221,7 +1226,7 @@ const SessionRow = memo(function SessionRow({
 	const [bulkMenu, setBulkMenu] = useState(false);
 	const { isRenaming, startRename, finishRename, triggerRef } = useRenameState();
 	const { togglePinned, setArchived, askToDelete, dialogs } = useSessionActions(session);
-	const dragSource = useDragSource([{ type: Sessions.id, id: session.id }], {
+	const dragSource = useDragSource([{ type: WorkSessions.id, id: session.id }], {
 		disabled: isRenaming,
 	});
 	const isActive = session.id === activeSessionId;

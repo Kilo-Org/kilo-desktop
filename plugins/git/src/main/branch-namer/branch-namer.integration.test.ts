@@ -16,9 +16,9 @@ import {
 } from "@kilo-desktop/plugin-agent/contracts";
 import sessionsManifest from "@kilo-desktop/plugin-sessions/plugin.json";
 import {
-	Sessions,
+	WorkSessions,
 	SESSIONS_DEFINITIONS,
-	type Session,
+	type WorkSession,
 } from "@kilo-desktop/plugin-sessions/contracts";
 import workspacesManifest from "@kilo-desktop/plugin-workspaces/plugin.json";
 import {
@@ -80,7 +80,7 @@ function isInside(folder: string, candidate: string): boolean {
 
 const nothingDone = () => new Promise((resolve) => setTimeout(resolve, 100));
 
-function session(id: string, patch: Partial<Session> = {}): Session {
+function session(id: string, patch: Partial<WorkSession> = {}): WorkSession {
 	return {
 		id,
 		title: "Session",
@@ -124,7 +124,7 @@ interface Recorded {
 
 async function boot(options: {
 	folder: string;
-	sessions?: Session[];
+	sessions?: WorkSession[];
 	chats?: ChatSummary[];
 	storage?: ReturnType<typeof createMemoryStorage>;
 	names?: (string | null)[];
@@ -137,7 +137,7 @@ async function boot(options: {
 		renamedEvents: [],
 	};
 	const names = [...(options.names ?? [])];
-	let sessions!: DomainProvider<typeof Sessions>;
+	let sessions!: DomainProvider<typeof WorkSessions>;
 	let conversations!: DomainProvider<typeof Conversations>;
 	let consumer: PluginSdk | undefined;
 	const unused = () => {
@@ -181,7 +181,7 @@ async function boot(options: {
 				definitions: SESSIONS_DEFINITIONS,
 				entry: definePlugin({
 					activate: (sdk) => {
-						sessions = sdk.domains.provide(Sessions, {
+						sessions = sdk.domains.provide(WorkSessions, {
 							initialState: { sessions: options.sessions ?? [] },
 							methods: {
 								create: unused,

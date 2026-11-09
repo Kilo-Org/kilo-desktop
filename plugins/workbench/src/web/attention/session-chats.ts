@@ -1,5 +1,5 @@
 import type { ChatSummary } from "@kilo-desktop/plugin-agent/contracts";
-import type { Session } from "@kilo-desktop/plugin-sessions/contracts";
+import type { WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
 
 import { activityOfSession, type SessionActivity } from "../list/session-activity";
 
@@ -11,7 +11,7 @@ import { activityOfSession, type SessionActivity } from "../list/session-activit
 
 export type Chats = Readonly<Record<string, ChatSummary>>;
 
-type SessionChats = Pick<Session, "id" | "chatIds">;
+type SessionChats = Pick<WorkSession, "id" | "chatIds">;
 
 /** Bounds the parent walk, as origin's prompt ancestry did; also stops a parent cycle. */
 const MAX_PARENT_HOPS = 8;
@@ -100,7 +100,7 @@ function latestRootError(chats: readonly ChatSummary[]): SessionActivity["lastEr
 	return latest?.activity.lastError;
 }
 
-function combine(session: Session, chats: readonly ChatSummary[]): SessionActivity {
+function combine(session: WorkSession, chats: readonly ChatSummary[]): SessionActivity {
 	const base = activityOfSession(session);
 	if (chats.length === 0) return base;
 	const working = chats.filter(isWorking);
@@ -125,7 +125,7 @@ function combine(session: Session, chats: readonly ChatSummary[]): SessionActivi
 
 /** Every session's activity, combined from its chats and their subagents. */
 export function sessionActivities(
-	sessions: readonly Session[],
+	sessions: readonly WorkSession[],
 	chats: Chats,
 ): Record<string, SessionActivity> {
 	const chatsBySession = chatsOfSessions(sessions, chats);

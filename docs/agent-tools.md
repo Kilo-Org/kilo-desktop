@@ -82,7 +82,7 @@ sanitize alike keep the first.
 `run` receives `ToolCallContext`: `sessionId` (the calling chat's Work Session), `chatId`, `callId`,
 `external` and an abort `signal`. Desktop's Kilo plugin stamps every `desktop_*` call with
 `__anacondaDesktopKiloCaller` (chat and call id); the gateway strips it and looks the chat up in
-`kilo.sessions/session`. A chat no session holds (a subagent's) gets `sessionId: null`, as does every
+`kilo.sessions/work-session`. A chat no session holds (a subagent's) gets `sessionId: null`, as does every
 external app. Session-bound tools (opening panes, reading terminals) refuse such calls; they never
 fall back to the visually focused session.
 

@@ -3,7 +3,7 @@ import { useMemo } from "react";
 import type { AnyDomain, DomainHandle, PluginSdk } from "@kilo-desktop/kernel";
 import { useDomainState } from "@kilo-desktop/kernel/web";
 import { Conversations } from "@kilo-desktop/plugin-agent/contracts";
-import { Sessions, type Session } from "@kilo-desktop/plugin-sessions/contracts";
+import { WorkSessions, type WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
 
 import { needsAttention, type SessionActivity } from "../list/session-activity";
 import { sessionActivities, type Chats } from "./session-chats";
@@ -18,7 +18,7 @@ export function useChats(): Chats {
 
 /** Each session's live activity, combined from its chats. */
 export function useSessionActivities(
-	sessions: readonly Session[],
+	sessions: readonly WorkSession[],
 ): Readonly<Record<string, SessionActivity>> {
 	const chats = useChats();
 	return useMemo(() => sessionActivities(sessions, chats), [chats, sessions]);
@@ -26,7 +26,7 @@ export function useSessionActivities(
 
 /** The sessions needing attention, in the given order. */
 export function sessionsNeedingAttention(sdk: PluginSdk, order: readonly string[]): string[] {
-	const sessions = sdk.domains.get(Sessions)?.getState().sessions ?? [];
+	const sessions = sdk.domains.get(WorkSessions)?.getState().sessions ?? [];
 	const chats = sdk.domains.get(Conversations)?.getState().chats ?? NO_CHATS;
 	const activities = sessionActivities(sessions, chats);
 	return order.filter((id) => needsAttention(activities[id]));

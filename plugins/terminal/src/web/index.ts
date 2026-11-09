@@ -1,6 +1,6 @@
 import { definePlugin, KernelCommand, type PluginSdk } from "@kilo-desktop/kernel";
 import { PaneKind, Panes } from "@kilo-desktop/plugin-sessions/contracts";
-import { Navigator, PaneLauncher } from "@kilo-desktop/plugin-workbench/contracts";
+import { Workbench } from "@kilo-desktop/plugin-workbench/contracts";
 
 import { TERMINAL_PANE_KIND } from "../contracts";
 import { clearFocusedTerminal } from "./terminal-focus";
@@ -19,14 +19,14 @@ export const terminalWebEntry = definePlugin({
 		sdk.extensions.implement(KernelCommand, "clear", clearFocusedTerminal);
 		sdk.extensions.implement(KernelCommand, "new", () => openTerminal(sdk));
 		sdk.extensions.implement(KernelCommand, "open", () =>
-			sdk.domains.get(PaneLauncher)?.methods.openOrShow({ kind: TERMINAL_PANE_KIND }),
+			sdk.domains.get(Workbench)?.methods.openPane({ kind: TERMINAL_PANE_KIND }),
 		);
 	},
 });
 
 /** Opens a terminal pane in the session this window has open. */
 async function openTerminal(sdk: PluginSdk): Promise<void> {
-	const sessionId = sdk.domains.get(Navigator)?.getState().activeSessionId;
+	const sessionId = sdk.domains.get(Workbench)?.getState().activeSessionId;
 	if (!sessionId) return;
 	await sdk.domains.get(Panes)?.methods.open({ sessionId, kind: TERMINAL_PANE_KIND });
 }

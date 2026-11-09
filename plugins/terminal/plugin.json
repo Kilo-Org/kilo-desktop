@@ -6,10 +6,10 @@
 	"description": "Terminal panes: interactive shells running in a session's folder.",
 	"requires": {
 		"kilo.sessions/pane": "optional",
-		"kilo.sessions/session": "optional",
+		"kilo.sessions/pane-kind": "optional",
+		"kilo.sessions/work-session": "optional",
 		"kilo.workspaces/workspace": "optional",
-		"kilo.workbench/navigator": "optional",
-		"kilo.workbench/pane-launcher": "optional",
+		"kilo.workbench/workbench": "optional",
 		"kilo.shell/theme": "optional",
 		"kilo.agent/tool": "optional"
 	},
@@ -32,7 +32,7 @@
 	],
 	"contributes": {
 		"extensions": {
-			"kilo.sessions/pane": [
+			"kilo.sessions/pane-kind": [
 				{
 					"id": "terminal",
 					"title": "Terminal",

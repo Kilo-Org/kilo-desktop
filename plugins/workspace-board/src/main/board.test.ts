@@ -7,13 +7,13 @@ import { describe, expect, it } from "vitest";
 import { definePlugin, type DomainProvider } from "@kilo-desktop/kernel";
 import { createMainKernel } from "@kilo-desktop/kernel/main";
 import { createMemoryStorage, createTestHost, testPlugin } from "@kilo-desktop/kernel/testing";
-import { Sessions, type Session } from "@kilo-desktop/plugin-sessions/contracts";
+import { WorkSessions, type WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
 
 import manifest from "../../plugin.json";
 import { Board, BOARD_DEFINITIONS, DEFAULT_BOARD, type BoardState } from "../contracts";
 import { createBoardMainEntry } from "./entry";
 
-const session = (id: string, chatIds: string[] = []): Session => ({
+const session = (id: string, chatIds: string[] = []): WorkSession => ({
 	id,
 	title: id,
 	titleSource: "user",
@@ -33,14 +33,14 @@ const unused = () => {
 };
 
 /** Stands in for kilo.sessions in main: a session list and its `deleted` event. */
-function sessionsPlugin(initial: Session[]) {
-	let provider: DomainProvider<typeof Sessions> | undefined;
+function sessionsPlugin(initial: WorkSession[]) {
+	let provider: DomainProvider<typeof WorkSessions> | undefined;
 	const plugin = testPlugin("kilo.sessions", {
-		manifest: { domains: [{ id: "session", home: "main" }] },
-		definitions: { domains: [Sessions] },
+		manifest: { domains: [{ id: "work-session", home: "main" }] },
+		definitions: { domains: [WorkSessions] },
 		entry: definePlugin({
 			activate(sdk) {
-				provider = sdk.domains.provide(Sessions, {
+				provider = sdk.domains.provide(WorkSessions, {
 					initialState: { sessions: initial },
 					methods: new Proxy({}, { get: () => unused }) as never,
 				});
@@ -49,7 +49,7 @@ function sessionsPlugin(initial: Session[]) {
 	});
 	return {
 		plugin,
-		set(sessions: Session[]) {
+		set(sessions: WorkSession[]) {
 			provider!.setState({ sessions });
 		},
 		delete(id: string) {
@@ -66,7 +66,7 @@ async function boot(
 		/** The board file kept under the plugin's previous id, kilo.board. */
 		previous?: Record<string, unknown> | "directory";
 		storage?: ReturnType<typeof createMemoryStorage>;
-		sessions?: Session[];
+		sessions?: WorkSession[];
 	} = {},
 ) {
 	const dir = await mkdtemp(path.join(tmpdir(), "board-"));

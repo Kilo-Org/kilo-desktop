@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
 import { KernelError } from "@kilo-desktop/kernel";
-import type { SessionIsolation } from "@kilo-desktop/plugin-sessions/contracts";
+import type { WorkSessionIsolation } from "@kilo-desktop/plugin-sessions/contracts";
 
 import {
 	bootGitHost,
@@ -132,7 +132,7 @@ async function renderSelector(
 	} = {},
 ) {
 	const directory = options.directory ?? "/workspace/project";
-	const onIsolationChange = vi.fn<(isolation: SessionIsolation) => void>();
+	const onIsolationChange = vi.fn<(isolation: WorkSessionIsolation) => void>();
 	const onChanged = vi.fn();
 	const sessionsOnBranch = options.sessionsOnBranch;
 	const host = await bootGitHost({

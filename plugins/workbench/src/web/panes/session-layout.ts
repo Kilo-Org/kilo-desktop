@@ -10,7 +10,7 @@ import {
 	type PaneKind as LayoutKind,
 	type PaneLayout,
 } from "@kilo-desktop/pane-layout";
-import type { SessionPanes } from "@kilo-desktop/plugin-sessions/contracts";
+import type { WorkSessionPanes } from "@kilo-desktop/plugin-sessions/contracts";
 
 /**
  * The canvas layout for a session's panes: the saved layout with panes
@@ -19,7 +19,7 @@ import type { SessionPanes } from "@kilo-desktop/plugin-sessions/contracts";
  * panes exist; the layout only arranges them.
  */
 export function sessionLayout(
-	state: SessionPanes,
+	state: WorkSessionPanes,
 	layoutKindOf: (kind: string) => LayoutKind,
 ): PaneLayout {
 	let layout = parseLayoutJson(state.layout) ?? createLayout([]);

@@ -8,16 +8,16 @@
 		"kilo.workspaces/workspace": "optional",
 		"kilo.workspaces/file": "optional",
 		"kilo.workspaces/vcs": "optional",
-		"kilo.sessions/session": "optional",
+		"kilo.sessions/work-session": "optional",
 		"kilo.sessions/pane": "optional",
-		"kilo.workbench/navigator": "optional",
-		"kilo.workbench/pane-launcher": "optional",
+		"kilo.sessions/pane-kind": "optional",
+		"kilo.workbench/workbench": "optional",
 		"kilo.workbench/launcher-option": "optional",
 		"kilo.chat/composer-action": "optional",
 		"kilo.agent/tool": "optional",
 		"kilo.shell/theme": "optional",
 		"kernel/windows": "optional",
-		"kilo.sessions/session-decoration": "optional",
+		"kilo.workbench/session-decoration": "optional",
 		"kilo.workbench/session-facet": "optional",
 		"kernel/shell": "optional",
 		"kilo.workbench/session-action": "optional",
@@ -59,7 +59,7 @@
 					"priority": 100
 				}
 			],
-			"kilo.sessions/pane": [
+			"kilo.sessions/pane-kind": [
 				{
 					"id": "changes",
 					"title": "Changes",
@@ -128,7 +128,7 @@
 					}
 				}
 			],
-			"kilo.sessions/session-decoration": [
+			"kilo.workbench/session-decoration": [
 				{
 					"id": "pull-request",
 					"slot": "row"

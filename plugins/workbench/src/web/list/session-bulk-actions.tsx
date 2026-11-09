@@ -2,7 +2,7 @@ import { ArchiveIcon, ArchiveRestoreIcon, PinIcon, PinOffIcon, Trash2Icon } from
 import { useState, type FC, type ReactNode } from "react";
 
 import type { DomainHandle } from "@kilo-desktop/kernel";
-import type { Session, Sessions } from "@kilo-desktop/plugin-sessions/contracts";
+import type { WorkSession, WorkSessions } from "@kilo-desktop/plugin-sessions/contracts";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -34,7 +34,7 @@ import { worktreesOrphanedBy } from "./session-list-selection";
  */
 
 export type SessionBulkTarget = {
-	readonly session: Session;
+	readonly session: WorkSession;
 	/** Busy sessions can't be archived, as their row hides the archive button. */
 	readonly canArchive: boolean;
 };
@@ -79,7 +79,7 @@ export function SessionBulkMenuItems({
 	onDelete,
 }: {
 	targets: readonly SessionBulkTarget[];
-	sessions: DomainHandle<typeof Sessions> | null;
+	sessions: DomainHandle<typeof WorkSessions> | null;
 	onDone: () => void;
 	onDelete: () => void;
 }): ReactNode {
@@ -162,11 +162,11 @@ export function SessionBulkMenuItems({
 
 /** The one confirm for deleting a selection; open while `targets` is set. */
 export const SessionBulkDeleteDialog: FC<{
-	targets: readonly Session[] | null;
-	sessions: DomainHandle<typeof Sessions> | null;
+	targets: readonly WorkSession[] | null;
+	sessions: DomainHandle<typeof WorkSessions> | null;
 	onClose: () => void;
 }> = ({ targets, sessions, onClose }) => {
-	const [snapshot, setSnapshot] = useState<readonly Session[]>([]);
+	const [snapshot, setSnapshot] = useState<readonly WorkSession[]>([]);
 	if (targets && targets !== snapshot) setSnapshot(targets);
 	const shown = targets ?? snapshot;
 	const worktrees = worktreesOrphanedBy(

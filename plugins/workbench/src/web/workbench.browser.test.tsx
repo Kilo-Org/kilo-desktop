@@ -3,11 +3,8 @@ import { page, userEvent } from "vitest/browser";
 
 import type { PluginEntry, PluginSdk } from "@kilo-desktop/kernel";
 import {
-	DEFAULT_SESSION_TITLE,
-	SessionDecoration,
-	SessionMenu,
-	type Session,
-	type SessionDecorationProps,
+	DEFAULT_WORK_SESSION_TITLE,
+	type WorkSession,
 } from "@kilo-desktop/plugin-sessions/contracts";
 
 import { NOW, renderWorkbench, session, workspace } from "../test/fakes";
@@ -17,12 +14,15 @@ import {
 	SessionFacet,
 	type SessionActionProps,
 	type SessionPullRequestState,
+	SessionDecoration,
+	SessionMenu,
+	type SessionDecorationProps,
 } from "../contracts";
 
 /** A plugin that adds to the session menu, decorations and the header and list actions. */
 function contributorPlugin() {
-	const shared = vi.fn<(session: Session) => void>();
-	const pushed = vi.fn<(session: Session) => void>();
+	const shared = vi.fn<(session: WorkSession) => void>();
+	const pushed = vi.fn<(session: WorkSession) => void>();
 	return {
 		shared,
 		pushed,
@@ -34,13 +34,12 @@ function contributorPlugin() {
 				version: "1.0.0",
 				contributes: {
 					extensions: {
-						"kilo.sessions/session-menu": [
+						"kilo.workbench/session-menu": [
 							{ id: "share", title: "Share" },
 							{ id: "discard", title: "Discard worktree", destructive: true },
 						],
-						"kilo.sessions/session-decoration": [
+						"kilo.workbench/session-decoration": [
 							{ id: "row-badge", slot: "row" },
-							{ id: "header-badge", slot: "header" },
 							{ id: "branch-detail", slot: "hover-branch" },
 							{ id: "pr-detail", slot: "hover" },
 						],
@@ -61,13 +60,6 @@ function contributorPlugin() {
 						"row-badge",
 						({ session: s }: SessionDecorationProps) => (
 							<span data-qa-id={`row-badge-${s.id}`}>PR</span>
-						),
-					);
-					sdk.extensions.implement(
-						SessionDecoration,
-						"header-badge",
-						({ session: s }: SessionDecorationProps) => (
-							<span data-qa-id="header-badge">{s.title}</span>
 						),
 					);
 					sdk.extensions.implement(
@@ -567,7 +559,6 @@ describe("contributions", () => {
 		);
 
 		await row("Fix login").getByTestId("session-list-item-trigger").click();
-		await expect.element(page.getByTestId("header-badge")).toHaveTextContent("Fix login");
 		await page.getByRole("button", { name: "Push" }).click();
 		expect(contributor.pushed).toHaveBeenCalledWith(expect.objectContaining({ id: "a" }));
 		const buttons = page
@@ -681,7 +672,7 @@ describe("launcher and commands", () => {
 			expect(sessions.calls.create).toHaveBeenCalledWith({ workspaceId: "w-app" }),
 		);
 		await vi.waitFor(() => expect(navigator().getState().activeSessionId).toBe("wses_1"));
-		await expect.element(row(DEFAULT_SESSION_TITLE)).toBeVisible();
+		await expect.element(row(DEFAULT_WORK_SESSION_TITLE)).toBeVisible();
 	});
 
 	it("reports a session that could not be started", async () => {

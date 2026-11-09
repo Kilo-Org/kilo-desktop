@@ -1,5 +1,5 @@
 import { definePlugin, KernelError, mainHost, type PluginSdk } from "@kilo-desktop/kernel";
-import { Sessions, type Session } from "@kilo-desktop/plugin-sessions/contracts";
+import { WorkSessions, type WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
 import { z } from "zod";
 
 import {
@@ -181,7 +181,7 @@ export function createBoardMainEntry(options: BoardMainOptions = {}) {
 				board.setState({ board: parsed.data, revision });
 				return revision;
 			}
-			function adoptChatCards(sessions: readonly Session[]): void {
+			function adoptChatCards(sessions: readonly WorkSession[]): void {
 				const before = read();
 				const known = new Set(sessions.map((session) => session.id));
 				const onBoard = before.columns.flatMap((column) => column.sessionIds);
@@ -197,7 +197,7 @@ export function createBoardMainEntry(options: BoardMainOptions = {}) {
 			}
 
 			const stops: (() => void)[] = [];
-			sdk.domains.track(Sessions, {
+			sdk.domains.track(WorkSessions, {
 				added(sessions) {
 					adoptChatCards(sessions.getState().sessions);
 					stops.push(

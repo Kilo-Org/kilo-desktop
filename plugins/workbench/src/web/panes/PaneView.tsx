@@ -5,7 +5,7 @@ import type {
 	Pane,
 	PaneImplementation,
 	PaneProps,
-	Session,
+	WorkSession,
 } from "@kilo-desktop/plugin-sessions/contracts";
 import {
 	Empty,
@@ -21,7 +21,7 @@ import { implementationOf, type PaneKinds } from "./use-pane-kinds";
 const selectComponent = (implementation: PaneImplementation) => implementation.component;
 
 /** Where a session works: its worktree, else its workspace's primary folder. */
-export function useSessionDirectory(session: Session): string | null {
+export function useSessionDirectory(session: WorkSession): string | null {
 	const workspace = useSessionWorkspace(session);
 	return (
 		session.directory ??
@@ -55,7 +55,7 @@ export function PaneView({
 	directory,
 	visible,
 }: {
-	readonly session: Session;
+	readonly session: WorkSession;
 	readonly pane: Pane;
 	readonly kinds: PaneKinds;
 	readonly directory: string | null;

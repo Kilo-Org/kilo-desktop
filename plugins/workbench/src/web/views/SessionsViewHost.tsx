@@ -23,18 +23,19 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
 import {
-	Navigator,
+	Workbench,
 	OPEN_SESSION_COMMAND,
 	SessionsView,
 	SHOW_SESSIONS_VIEW_COMMAND,
-	type NavigatorState,
+	type WorkbenchState,
 	type SessionsViewImplementation,
 	type SessionsViewProps,
 } from "../../contracts";
 import { SessionLocationBreadcrumb } from "../home/SessionLocationBreadcrumb";
 import { reportFailure } from "../list/session-row-actions";
 import { resolveWorkspaceFocus, UNSCOPED_WORKSPACE_FOCUS } from "../list/session-list-view";
-import { navigatorStorageKey, readSavedNavigator } from "../navigator";
+import { SESSION_RENDERERS } from "../list/session-renderers";
+import { workbenchStorageKey, readSavedWorkbench } from "../workbench";
 import { mainWindowId, popOutView } from "./view-windows";
 
 /*
@@ -47,9 +48,9 @@ type ViewContribution = Contribution<typeof SessionsView>;
 
 const NO_WORKSPACES: readonly Workspace[] = [];
 const selectWorkspaces = (state: { workspaces: readonly Workspace[] }) => state.workspaces;
-const selectView = (state: NavigatorState) => state.view;
-const selectDetached = (state: NavigatorState) => state.detachedViews;
-const selectFocus = (state: NavigatorState) => state.focus;
+const selectView = (state: WorkbenchState) => state.view;
+const selectDetached = (state: WorkbenchState) => state.detachedViews;
+const selectFocus = (state: WorkbenchState) => state.focus;
 
 /** The sessions view with this key, while it is contributed. */
 export function useSessionsView(key: string | null | undefined): ViewContribution | null {
@@ -59,7 +60,7 @@ export function useSessionsView(key: string | null | undefined): ViewContributio
 
 /** The sessions view this window shows in place of the open session, if any. */
 export function useShownSessionsView(): ViewContribution | null {
-	return useSessionsView(useDomainState(Navigator, selectView));
+	return useSessionsView(useDomainState(Workbench, selectView));
 }
 
 /**
@@ -67,16 +68,16 @@ export function useShownSessionsView(): ViewContribution | null {
  * follows the main window's saved one.
  */
 function useMainWindowFocus(): string | null {
-	const navigator = useDomain(Navigator);
-	const ownFocus = useDomainState(Navigator, selectFocus);
+	const navigator = useDomain(Workbench);
+	const ownFocus = useDomainState(Workbench, selectFocus);
 	const mainId = useDomainState(KernelWindows, (state) => mainWindowId(state)) ?? "main";
-	const [savedFocus, setSavedFocus] = useState(() => readSavedNavigator(mainId, false).focus);
+	const [savedFocus, setSavedFocus] = useState(() => readSavedWorkbench(mainId, false).focus);
 	useEffect(() => {
 		if (navigator) return;
-		setSavedFocus(readSavedNavigator(mainId, false).focus);
+		setSavedFocus(readSavedWorkbench(mainId, false).focus);
 		const onStorage = (event: StorageEvent) => {
-			if (event.key === navigatorStorageKey(mainId)) {
-				setSavedFocus(readSavedNavigator(mainId, false).focus);
+			if (event.key === workbenchStorageKey(mainId)) {
+				setSavedFocus(readSavedWorkbench(mainId, false).focus);
 			}
 		};
 		window.addEventListener("storage", onStorage);
@@ -88,13 +89,13 @@ function useMainWindowFocus(): string | null {
 function useViewProps(detached: boolean): SessionsViewProps {
 	const kernel = useKernel();
 	const windows = useDomain(KernelWindows);
-	const navigator = useDomain(Navigator);
+	const navigator = useDomain(Workbench);
 	const workspaces = useDomainState(Workspaces, selectWorkspaces) ?? NO_WORKSPACES;
 	const focus = resolveWorkspaceFocus(useMainWindowFocus(), workspaces);
 	const openSession = useCallback(
 		(sessionId: string) => {
 			if (!detached && navigator) {
-				void navigator.methods.open({ sessionId }).catch(() => undefined);
+				void navigator.methods.openSession({ sessionId }).catch(() => undefined);
 				return;
 			}
 			void kernel.commands
@@ -104,7 +105,10 @@ function useViewProps(detached: boolean): SessionsViewProps {
 		},
 		[detached, kernel, navigator, windows],
 	);
-	return useMemo(() => ({ focus, openSession, detached }), [detached, focus, openSession]);
+	return useMemo(
+		() => ({ focus, openSession, detached, renderers: SESSION_RENDERERS }),
+		[detached, focus, openSession],
+	);
 }
 
 const selectComponent = (implementation: SessionsViewImplementation) => implementation.component;
@@ -114,7 +118,7 @@ const selectHeaderActions = (implementation: SessionsViewImplementation) =>
 /** The view in the main area, or a placeholder while it is in its own window. */
 export function SessionsViewInPlace({ view }: { readonly view: ViewContribution }) {
 	const props = useViewProps(false);
-	const detached = useDomainState(Navigator, selectDetached) ?? [];
+	const detached = useDomainState(Workbench, selectDetached) ?? [];
 	return (
 		<div
 			data-qa-id="sessions-view"
@@ -193,9 +197,9 @@ const ViewTitle: FC<{
 export function SessionsViewHeaderActions({ view }: { readonly view: ViewContribution }) {
 	const props = useViewProps(false);
 	const windows = useDomain(KernelWindows);
-	const navigator = useDomain(Navigator);
+	const navigator = useDomain(Workbench);
 	const desktop = useContextKey("kernel/desktop");
-	const detached = useDomainState(Navigator, selectDetached) ?? [];
+	const detached = useDomainState(Workbench, selectDetached) ?? [];
 	if (detached.includes(view.key)) return null;
 	const canPopOut = view.metadata.detachable && desktop && windows !== null;
 	const popOut = () => {

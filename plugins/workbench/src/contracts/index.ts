@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode } from "react";
+import type { ComponentType, ReactNode, RefObject } from "react";
 import { z } from "zod";
 
 import {
@@ -8,11 +8,11 @@ import {
 	method,
 	type PluginDefinitions,
 } from "@kilo-desktop/kernel";
-import type { Session, SessionIsolation } from "@kilo-desktop/plugin-sessions/contracts";
+import type { WorkSession, WorkSessionIsolation } from "@kilo-desktop/plugin-sessions/contracts";
 
 /**
- * kilo.workbench's public surface: what a window is looking at (the focused
- * workspace and the active session) and the places plugins add actions to.
+ * kilo.workbench's public surface: each window's view of the Work Sessions
+ * (`Workbench`) and the places plugins add actions to.
  */
 export const WORKBENCH_PLUGIN_ID = "kilo.workbench";
 
@@ -24,7 +24,7 @@ export const WORKSPACE_ACTIVE_KEY = "kilo.workbench/workspaceActive";
 /** Focus for sessions with no workspace (workspace ids are UUIDs, so it can't collide). */
 export const UNSCOPED_WORKSPACE_FOCUS = "unscoped";
 
-export const navigatorStateSchema = z.object({
+export const workbenchStateSchema = z.object({
 	/** A workspace id, `unscoped`, or null for every session. */
 	focus: z.string().nullable(),
 	activeSessionId: z.string().nullable(),
@@ -33,41 +33,139 @@ export const navigatorStateSchema = z.object({
 	/** Sessions views this window popped out into their own windows. */
 	detachedViews: z.array(z.string()),
 });
-export type NavigatorState = z.output<typeof navigatorStateSchema>;
+export type WorkbenchState = z.output<typeof workbenchStateSchema>;
 
-/** What this window is looking at; each window has its own. */
-export const Navigator = defineDomain({
-	id: "kilo.workbench/navigator",
+/**
+ * This window's view of the Work Sessions: the workspace the session list is
+ * focused on, the open session or the sessions view shown in its place, and
+ * opening panes in the open session as a person does. Each window has its
+ * own; only the main window shows sessions.
+ *
+ * Moving within the home view is the workbench's; leaving it (Settings, a
+ * deep-linked page) is kilo.shell's `Navigation`. Opening a session or a
+ * sessions view brings the window back to the home view.
+ */
+export const Workbench = defineDomain({
+	id: "kilo.workbench/workbench",
 	home: "renderer",
-	state: navigatorStateSchema,
+	state: workbenchStateSchema,
 	methods: {
 		setFocus: method(z.object({ focus: z.string().nullable() }), z.undefined()),
 		/** Opens a session, leaving any sessions view. */
-		open: method(z.object({ sessionId: z.string() }), z.undefined()),
+		openSession: method(z.object({ sessionId: z.string() }), z.undefined()),
 		/** Back to the home view with no session open. */
-		close: method(z.undefined(), z.undefined()),
+		closeSession: method(z.undefined(), z.undefined()),
 		/**
 		 * Shows a sessions view in place of the open session, or null to go
 		 * back to it; a popped-out view's window comes to the front instead.
 		 */
 		showView: method(z.object({ view: z.string().nullable() }), z.undefined()),
+		/**
+		 * Opens a pane of a kind in the open session the way a person does from
+		 * "+": shows the session's last pane of the kind (bringing its pop-out
+		 * window forward) or opens one. Does nothing with no session open.
+		 * Plugins' "Open Files" / "Open Terminal" commands use it.
+		 */
+		openPane: method(z.object({ kind: z.string().min(1) }), z.undefined()),
 	},
 });
 
-/**
- * Opens panes in the main window's open session the way a person does from
- * "+": shows the session's last pane of a kind (bringing its pop-out window
- * forward) or opens one. Plugins' "Open Files" / "Open Terminal" commands
- * use it; it is the workbench's, so pop-outs and layout telemetry stay its own.
- */
-export const PaneLauncher = defineDomain({
-	id: "kilo.workbench/pane-launcher",
-	home: "renderer",
-	state: z.object({}),
-	methods: {
-		openOrShow: method(z.object({ kind: z.string().min(1) }), z.undefined()),
-	},
+// --- How sessions are shown ---
+
+/** One choice in a menu item's submenu; `checked` marks the current one. */
+export interface SessionMenuChoice {
+	readonly id: string;
+	readonly title: string;
+	readonly checked?: boolean;
+}
+
+export interface SessionMenuItem {
+	/** Runs the item; given the picked choice when the item has `choices`. */
+	run(session: WorkSession, choiceId?: string): void | Promise<void>;
+	/** Hides the item for sessions it doesn't apply to. */
+	appliesTo?(session: WorkSession): boolean;
+	/** Makes the item a submenu of these choices (e.g. a board's columns). */
+	choices?(session: WorkSession): readonly SessionMenuChoice[];
+}
+
+/** An item in a session's menu, wherever a session is shown (the list row, its page). */
+export const SessionMenu = defineExtensionPoint({
+	id: "kilo.workbench/session-menu",
+	kind: "additive",
+	description: "An item in a session's menu.",
+	metadata: z.object({
+		title: z.string(),
+		/** Destructive items sit apart, at the end. */
+		destructive: z.boolean().default(false),
+	}),
+	implementation: implementation<SessionMenuItem>("renderer"),
 });
+
+export const SESSION_DECORATION_SLOTS = ["row", "hover", "hover-branch"] as const;
+export type SessionDecorationSlot = (typeof SESSION_DECORATION_SLOTS)[number];
+
+export interface SessionDecorationProps {
+	readonly session: WorkSession;
+	/**
+	 * The surface shows the decoration outside its own control (a board card),
+	 * so it may be a link or button. Without it the decoration sits inside the
+	 * session row's button and must not be interactive.
+	 */
+	readonly interactive?: boolean;
+}
+
+/**
+ * Extra detail for a session: a badge on its list row (and its board card),
+ * or a line in its details on hover — `hover-branch` takes the place of the
+ * session's own branch line, `hover` lines follow the others. A button in
+ * the open session's header is a `session-action`.
+ */
+export const SessionDecoration = defineExtensionPoint({
+	id: "kilo.workbench/session-decoration",
+	kind: "additive",
+	description: "A badge or hover detail shown with a session.",
+	metadata: z.object({ slot: z.enum(SESSION_DECORATION_SLOTS) }),
+	implementation: implementation<ComponentType<SessionDecorationProps>>("renderer"),
+});
+
+export interface SessionRendererProps {
+	readonly session: WorkSession;
+}
+
+export interface SessionGlyphProps extends SessionRendererProps {
+	/** Icon only, for surfaces that show the status as text beside it. */
+	readonly decorative?: boolean;
+}
+
+export interface SessionDecorationsProps extends SessionRendererProps {
+	readonly slot: SessionDecorationSlot;
+	/** Passed to each decoration; see {@link SessionDecorationProps.interactive}. */
+	readonly interactive?: boolean;
+}
+
+export interface SessionMenuProps extends SessionRendererProps {
+	/** Starts the surface's own inline rename; without it the menu has no Rename item. */
+	readonly onRename?: () => void;
+	/** Names the session when many menus share a surface. */
+	readonly label?: string;
+	readonly side?: "right" | "bottom";
+	/** Lets inline rename return focus to the menu that started it. */
+	readonly triggerRef?: RefObject<HTMLButtonElement | null>;
+}
+
+/**
+ * How a session looks wherever it is shown, so a sessions view (the board's
+ * cards) shows it as the session list does: its live state glyph and status
+ * label, plugins' decorations for a slot, and its menu (pin, rename, archive
+ * or restore, plugins' items, delete with the worktree check). The workbench
+ * hands them to every sessions view (`SessionsViewProps.renderers`).
+ */
+export interface SessionRenderers {
+	readonly Glyph: ComponentType<SessionGlyphProps>;
+	readonly Status: ComponentType<SessionRendererProps>;
+	readonly Decorations: ComponentType<SessionDecorationsProps>;
+	readonly Menu: ComponentType<SessionMenuProps>;
+}
 
 /** Runs in the main window: opens a session there (from any window). */
 export const OPEN_SESSION_COMMAND = "kilo.workbench/open-session";
@@ -82,6 +180,8 @@ export interface SessionsViewProps {
 	readonly openSession: (sessionId: string) => void;
 	/** True in the view's own window. */
 	readonly detached: boolean;
+	/** How a session looks, as the session list shows it. */
+	readonly renderers: SessionRenderers;
 }
 
 export interface SessionsViewImplementation {
@@ -95,7 +195,7 @@ export interface SessionsViewImplementation {
 /**
  * Another view of the session collection, shown in the main area in place of
  * the open session and toggled from the session list's header (through
- * `Navigator.showView`). A `detachable` view can be popped out: the
+ * `Workbench.showView`). A `detachable` view can be popped out: the
  * workbench opens it in its own window and docks it back.
  */
 export const SessionsView = defineExtensionPoint({
@@ -110,7 +210,7 @@ export const SessionsView = defineExtensionPoint({
 });
 
 export interface SessionActionProps {
-	readonly session: Session;
+	readonly session: WorkSession;
 }
 
 /**
@@ -164,7 +264,7 @@ export interface LauncherOptionProps {
 	/** Where the new session would work: the checkout, or the existing worktree picked. */
 	readonly directory: string;
 	/** Changes where the new session works, e.g. to the worktree a branch is checked out in. */
-	readonly onIsolationChange: (isolation: SessionIsolation) => void;
+	readonly onIsolationChange: (isolation: WorkSessionIsolation) => void;
 	/** Something the launcher shows changed (a branch was checked out); reads it again. */
 	readonly onChanged: () => void;
 	readonly disabled: boolean;
@@ -353,6 +453,8 @@ export const Layouts = defineDomain({
 
 export const WORKBENCH_DEFINITIONS: PluginDefinitions = {
 	extensionPoints: [
+		SessionMenu,
+		SessionDecoration,
 		SessionAction,
 		NavigatorAction,
 		LauncherOption,
@@ -360,5 +462,5 @@ export const WORKBENCH_DEFINITIONS: PluginDefinitions = {
 		SessionFacet,
 		SessionsView,
 	],
-	domains: [Navigator, Layouts, PaneLauncher],
+	domains: [Workbench, Layouts],
 };

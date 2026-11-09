@@ -1,19 +1,9 @@
 import { MessageSquareIcon } from "lucide-react";
-import { useEffect, useRef, useState, type ComponentType } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import type { Contribution } from "@kilo-desktop/kernel";
-import {
-	RenderContribution,
-	useDomain,
-	useDragSource,
-	useExclusive,
-} from "@kilo-desktop/kernel/web";
-import {
-	SessionRenderer,
-	Sessions,
-	type Session,
-	type SessionRenderers,
-} from "@kilo-desktop/plugin-sessions/contracts";
+import { useDomain, useDragSource } from "@kilo-desktop/kernel/web";
+import { WorkSessions, type WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
+import type { SessionRenderers } from "@kilo-desktop/plugin-workbench/contracts";
 import type { Workspace } from "@kilo-desktop/plugin-workspaces/contracts";
 import { Card, CardDescription, CardHeader, CardTitle } from "@kilo-desktop/ui/components/card";
 import { Input } from "@kilo-desktop/ui/components/input";
@@ -22,26 +12,6 @@ import { workspaceGlyphColor } from "@kilo-desktop/ui/components/workspace-picke
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { RelativeTime } from "./relative-time";
-
-type RendererContribution = Contribution<typeof SessionRenderer>;
-
-/** One of the session renderers, rendered in the providing plugin's context. */
-function Rendered<TProps extends object>({
-	renderer,
-	pick,
-	props,
-}: {
-	readonly renderer: RendererContribution;
-	readonly pick: (renderers: SessionRenderers) => ComponentType<TProps>;
-	readonly props: TProps;
-}) {
-	return <RenderContribution contribution={renderer} select={pick as never} props={props} />;
-}
-
-const pickGlyph = (renderers: SessionRenderers) => renderers.Glyph;
-const pickStatus = (renderers: SessionRenderers) => renderers.Status;
-const pickDecorations = (renderers: SessionRenderers) => renderers.Decorations;
-const pickMenu = (renderers: SessionRenderers) => renderers.Menu;
 
 const cardActionsClassName = cn(
 	"pointer-events-auto flex -ml-2 w-0 overflow-hidden opacity-0 transition-opacity motion-reduce:transition-none",
@@ -52,7 +22,7 @@ const cardActionsClassName = cn(
 
 /**
  * A session on the board, shown the way the session list shows it through
- * kilo.sessions' renderers: its live glyph and status, plugins' row
+ * the renderers kilo.workbench hands its sessions views: its live glyph and status, plugins' row
  * decorations (git's PR badge, interactive here since it sits outside the
  * open button) and the session menu. The whole card opens
  * the session through a stretched button beneath the content, whose layers
@@ -62,16 +32,17 @@ const cardActionsClassName = cn(
 export function BoardCard({
 	session,
 	workspaces,
+	renderers: { Glyph, Status, Decorations, Menu },
 	onOpen,
 }: {
-	readonly session: Session;
+	readonly session: WorkSession;
 	readonly workspaces: readonly Workspace[];
+	readonly renderers: SessionRenderers;
 	readonly onOpen: (sessionId: string) => void;
 }) {
-	const renderer = useExclusive(SessionRenderer).winner;
 	const [renaming, setRenaming] = useState(false);
 	const triggerRef = useRef<HTMLButtonElement>(null);
-	const drag = useDragSource([{ type: Sessions.id, id: session.id }], { disabled: renaming });
+	const drag = useDragSource([{ type: WorkSessions.id, id: session.id }], { disabled: renaming });
 	const workspace = workspaces.find((candidate) => candidate.id === session.workspaceId);
 	const workspaceColor = workspaceGlyphColor(workspace?.color);
 	const locationLabel = workspace?.name ?? null;
@@ -98,13 +69,7 @@ export function BoardCard({
 				<CardHeader className="pointer-events-none relative flex flex-col gap-1">
 					<CardTitle className="flex h-5 w-full min-w-0 items-center gap-2 font-normal">
 						<span className="peer flex shrink-0 empty:hidden">
-							{renderer ? (
-								<Rendered
-									renderer={renderer}
-									pick={pickGlyph}
-									props={{ session, decorative: true }}
-								/>
-							) : null}
+							<Glyph session={session} decorative />
 						</span>
 						{/* The icon carries the workspace colour while the session has no live state. */}
 						<MessageSquareIcon
@@ -133,38 +98,26 @@ export function BoardCard({
 								{session.title}
 							</span>
 						)}
-						{renderer && !renaming ? (
+						{renaming ? null : (
 							<span className={cardActionsClassName}>
-								<Rendered
-									renderer={renderer}
-									pick={pickMenu}
-									props={{
-										session,
-										onRename: () => setRenaming(true),
-										triggerRef,
-										side: "bottom" as const,
-										label: `Session actions for ${session.title}`,
-									}}
+								<Menu
+									session={session}
+									onRename={() => setRenaming(true)}
+									triggerRef={triggerRef}
+									side="bottom"
+									label={`Session actions for ${session.title}`}
 								/>
 							</span>
-						) : null}
+						)}
 					</CardTitle>
 					<CardDescription className="flex h-4 w-full min-w-0 items-center gap-2 text-xs">
 						<span className="flex min-w-0">
-							{renderer ? (
-								<Rendered renderer={renderer} pick={pickStatus} props={{ session }} />
-							) : null}
+							<Status session={session} />
 						</span>
 						<span className="ml-auto flex shrink-0 items-center gap-2 tabular-nums">
-							{renderer ? (
-								<span className="pointer-events-auto flex items-center gap-1 empty:hidden">
-									<Rendered
-										renderer={renderer}
-										pick={pickDecorations}
-										props={{ session, slot: "row" as const, interactive: true }}
-									/>
-								</span>
-							) : null}
+							<span className="pointer-events-auto flex items-center gap-1 empty:hidden">
+								<Decorations session={session} slot="row" interactive />
+							</span>
 							<RelativeTime timestamp={session.updatedAt} />
 						</span>
 					</CardDescription>
@@ -174,15 +127,15 @@ export function BoardCard({
 	);
 }
 
-/** Inline rename through `Sessions.rename`: Enter or leaving saves a changed title, Escape cancels. */
+/** Inline rename through `WorkSessions.rename`: Enter or leaving saves a changed title, Escape cancels. */
 function CardRenameInput({
 	session,
 	onDone,
 }: {
-	readonly session: Session;
+	readonly session: WorkSession;
 	readonly onDone: () => void;
 }) {
-	const sessions = useDomain(Sessions);
+	const sessions = useDomain(WorkSessions);
 	const [value, setValue] = useState(session.title);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const settledRef = useRef(false);

@@ -1,9 +1,9 @@
 import type { PluginSdk } from "@kilo-desktop/kernel";
 import { Conversations } from "@kilo-desktop/plugin-agent/contracts";
-import { Sessions } from "@kilo-desktop/plugin-sessions/contracts";
+import { WorkSessions } from "@kilo-desktop/plugin-sessions/contracts";
 import { Navigation } from "@kilo-desktop/plugin-shell/contracts";
 
-import { Navigator } from "../../contracts";
+import { Workbench } from "../../contracts";
 import { lastVisitedOf, type LastVisitedStore } from "./last-visited";
 import { sessionActivities } from "./session-chats";
 import { watchDomain } from "./live-activity";
@@ -13,7 +13,7 @@ import { watchDomain } from "./live-activity";
  * is up and no sessions view covers it.
  */
 export function visibleSessionId(sdk: PluginSdk): string | null {
-	const navigator = sdk.domains.get(Navigator)?.getState();
+	const navigator = sdk.domains.get(Workbench)?.getState();
 	const path = sdk.domains.get(Navigation)?.getState().path ?? "/";
 	return path === "/" && !navigator?.view ? (navigator?.activeSessionId ?? null) : null;
 }
@@ -28,7 +28,7 @@ export function trackVisits(sdk: PluginSdk, visits: LastVisitedStore): void {
 	const check = () => {
 		const sessionId = visibleSessionId(sdk);
 		const session = sdk.domains
-			.get(Sessions)
+			.get(WorkSessions)
 			?.getState()
 			.sessions.find(({ id }) => id === sessionId);
 		if (!sessionId || !session) {
@@ -45,8 +45,8 @@ export function trackVisits(sdk: PluginSdk, visits: LastVisitedStore): void {
 		const visitedAt = lastVisitedOf(visits.snapshot(), session) ?? -Infinity;
 		if (completedAt !== undefined && completedAt > visitedAt) visits.mark(sessionId, completedAt);
 	};
-	watchDomain(sdk, Navigator, check);
+	watchDomain(sdk, Workbench, check);
 	watchDomain(sdk, Navigation, check);
-	watchDomain(sdk, Sessions, check);
+	watchDomain(sdk, WorkSessions, check);
 	watchDomain(sdk, Conversations, check);
 }

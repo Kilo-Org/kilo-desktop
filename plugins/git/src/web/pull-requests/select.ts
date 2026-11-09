@@ -1,4 +1,4 @@
-import type { Session } from "@kilo-desktop/plugin-sessions/contracts";
+import type { WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
 import type { Workspace } from "@kilo-desktop/plugin-workspaces/contracts";
 
 import type { PullRequest, PullRequestEntry } from "../../contracts/index.js";
@@ -11,7 +11,7 @@ export type CheckedOutBranch = { branch: string | undefined; observedAt: number 
  * workspace's primary folder. Sessions outside a workspace have none.
  */
 export function sessionDirectory(
-	session: Pick<Session, "workspaceId" | "directory">,
+	session: Pick<WorkSession, "workspaceId" | "directory">,
 	workspaces: readonly Workspace[],
 ): string | null {
 	if (!session.workspaceId) return null;

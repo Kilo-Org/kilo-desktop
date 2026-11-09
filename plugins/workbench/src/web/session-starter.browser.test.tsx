@@ -72,7 +72,7 @@ const kindsPlugin = {
 	manifest: testManifest("test.kinds", {
 		contributes: {
 			extensions: {
-				"kilo.sessions/pane": [
+				"kilo.sessions/pane-kind": [
 					{ id: "agent", title: "Agent", launch: { newSession: true }, order: 10 },
 					{ id: "terminal", title: "Terminal", launch: { newSession: true } },
 				],

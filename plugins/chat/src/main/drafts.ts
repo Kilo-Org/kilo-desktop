@@ -1,5 +1,5 @@
 import { KernelError, type PluginSdk } from "@kilo-desktop/kernel";
-import { Sessions } from "@kilo-desktop/plugin-sessions/contracts";
+import { WorkSessions } from "@kilo-desktop/plugin-sessions/contracts";
 
 import { CHAT_PLUGIN_ID, ComposerDrafts } from "../contracts";
 
@@ -24,7 +24,7 @@ export function provideDrafts(sdk: PluginSdk): void {
 	});
 
 	let stop = () => {};
-	sdk.domains.track(Sessions, {
+	sdk.domains.track(WorkSessions, {
 		added: (sessions) => {
 			const prune = () => {
 				const live = new Set(sessions.getState().sessions.map((session) => session.id));

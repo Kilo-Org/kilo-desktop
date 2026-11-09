@@ -12,16 +12,16 @@ import { testManifest } from "@kilo-desktop/kernel/testing";
 import { flattenPanes, parseLayoutJson } from "@kilo-desktop/pane-layout";
 import sessionsManifest from "@kilo-desktop/plugin-sessions/plugin.json";
 import {
-	EMPTY_SESSION_PANES,
+	EMPTY_WORK_SESSION_PANES,
 	PaneKind,
 	Panes,
-	Sessions,
+	WorkSessions,
 	SESSIONS_DEFINITIONS,
 	type OpenPaneInput,
 	type Pane,
 	type PaneProps,
-	type Session,
-	type SessionPanes,
+	type WorkSession,
+	type WorkSessionPanes,
 } from "@kilo-desktop/plugin-sessions/contracts";
 import { renderShell, type GuestPlugin } from "@kilo-desktop/plugin-shell/testing";
 import workspacesManifest from "@kilo-desktop/plugin-workspaces/plugin.json";
@@ -35,7 +35,7 @@ import manifest from "../../../plugin.json";
 import { fakeTelemetry } from "../../test/telemetry";
 import {
 	Layouts,
-	Navigator,
+	Workbench,
 	WORKBENCH_DEFINITIONS,
 	type LayoutPreset,
 	type LayoutTemplate,
@@ -46,7 +46,7 @@ import { workbenchWebEntry } from "../index";
 const TERMINAL = "test.panes/terminal";
 const NOTES = "test.panes/notes";
 
-const SESSION: Session = {
+const SESSION: WorkSession = {
 	id: "wses_1",
 	title: "Fix login",
 	titleSource: "user",
@@ -93,7 +93,7 @@ const pane = (id: string, kind = TERMINAL, title = id): Pane => ({
 });
 
 /** kilo.sessions' main, with sessions and panes kept in memory. */
-function fakeSessionsMain(initialPanes: SessionPanes) {
+function fakeSessionsMain(initialPanes: WorkSessionPanes) {
 	const calls = {
 		open: vi.fn<(input: OpenPaneInput) => void>(),
 		setLayout: vi.fn<(layout: string) => void>(),
@@ -101,7 +101,7 @@ function fakeSessionsMain(initialPanes: SessionPanes) {
 	let next = 0;
 	const entry: PluginEntry = {
 		activate(sdk) {
-			const sessions: DomainProvider<typeof Sessions> = sdk.domains.provide(Sessions, {
+			const sessions: DomainProvider<typeof WorkSessions> = sdk.domains.provide(WorkSessions, {
 				initialState: { sessions: [SESSION] },
 				methods: {
 					create: () => {
@@ -152,8 +152,9 @@ function fakeSessionsMain(initialPanes: SessionPanes) {
 					importLegacy: () => undefined,
 				},
 			});
-			const of = (sessionId: string) => panes.state.bySession[sessionId] ?? EMPTY_SESSION_PANES;
-			function write(sessionId: string, state: SessionPanes) {
+			const of = (sessionId: string) =>
+				panes.state.bySession[sessionId] ?? EMPTY_WORK_SESSION_PANES;
+			function write(sessionId: string, state: WorkSessionPanes) {
 				panes.setState({ bySession: { ...panes.state.bySession, [sessionId]: state } });
 			}
 		},
@@ -242,7 +243,7 @@ const panesPlugin: GuestPlugin = {
 	manifest: testManifest("test.panes", {
 		contributes: {
 			extensions: {
-				"kilo.sessions/pane": [
+				"kilo.sessions/pane-kind": [
 					{ id: "terminal", title: "Terminal", launch: { newSession: true, inSession: true } },
 					{ id: "notes", title: "Notes", launch: { newSession: false, inSession: false } },
 				],
@@ -262,13 +263,13 @@ const panesPlugin: GuestPlugin = {
 
 async function renderLayouts(
 	options: {
-		panes?: SessionPanes;
+		panes?: WorkSessionPanes;
 		layouts?: LayoutsState | null;
 		flag?: boolean;
 		open?: boolean;
 	} = {},
 ) {
-	const sessions = fakeSessionsMain(options.panes ?? EMPTY_SESSION_PANES);
+	const sessions = fakeSessionsMain(options.panes ?? EMPTY_WORK_SESSION_PANES);
 	const layouts = fakeLayoutsMain(options.layouts ?? { presets: [], defaultPresetId: null });
 	const telemetry = fakeTelemetry();
 	const host = await renderShell(
@@ -313,8 +314,8 @@ async function renderLayouts(
 	};
 }
 
-const withPanes = (panes: Pane[]): SessionPanes => ({
-	...EMPTY_SESSION_PANES,
+const withPanes = (panes: Pane[]): WorkSessionPanes => ({
+	...EMPTY_WORK_SESSION_PANES,
 	panes,
 	activePaneId: panes[0]?.id ?? null,
 });
@@ -502,7 +503,7 @@ describe("default layout", () => {
 		await page.getByTestId("launcher-start-session").click();
 
 		await vi.waitFor(() =>
-			expect(host.renderer.kernelSdk.domains.get(Navigator)!.getState().activeSessionId).toBe(
+			expect(host.renderer.kernelSdk.domains.get(Workbench)!.getState().activeSessionId).toBe(
 				"wses_new_1",
 			),
 		);
@@ -533,7 +534,7 @@ describe("default layout", () => {
 		await page.getByTestId("launcher-start-session").click();
 
 		await vi.waitFor(() =>
-			expect(host.renderer.kernelSdk.domains.get(Navigator)!.getState().activeSessionId).toBe(
+			expect(host.renderer.kernelSdk.domains.get(Workbench)!.getState().activeSessionId).toBe(
 				"wses_new_1",
 			),
 		);

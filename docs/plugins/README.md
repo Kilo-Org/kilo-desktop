@@ -26,7 +26,7 @@ three kinds of things:
   pane kind, an agent tool.
 - **Extension points** of its own, for other plugins to contribute to.
 - **Domain objects**: named objects with state, methods and events
-  (`kilo.sessions/session`), provided in one process and usable from any.
+  (`kilo.sessions/work-session`), provided in one process and usable from any.
 
 Plugins never import each other's code. They meet only through the kernel:
 the points and domain objects declared in manifests and defined in each
@@ -93,7 +93,7 @@ validate, order and list everything up front. Every field:
 	// (not activated) when the owner isn't active.
 	"requires": {
 		"kilo.shell/settings-section": "optional",
-		"kilo.sessions/session": "optional",
+		"kilo.sessions/work-session": "optional",
 	},
 
 	// What it may use from the host (see Permissions below).

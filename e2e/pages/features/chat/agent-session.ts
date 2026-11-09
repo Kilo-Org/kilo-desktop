@@ -151,12 +151,12 @@ export async function shownAgentSessionId(): Promise<string> {
 
 /** Names a Work Session (test setup), so its session list row can be found. */
 export async function renameWorkSession(id: string, title: string): Promise<void> {
-	await callDomainMethod("kilo.sessions/session", "rename", { id, title }, "kilo.sessions");
+	await callDomainMethod("kilo.sessions/work-session", "rename", { id, title }, "kilo.sessions");
 }
 
 /** Deletes a Work Session and its chats (test cleanup). */
 export async function removeWorkSession(id: string): Promise<void> {
-	await callDomainMethod("kilo.sessions/session", "remove", { id }, "kilo.sessions");
+	await callDomainMethod("kilo.sessions/work-session", "remove", { id }, "kilo.sessions");
 }
 
 /** The session list row of the Work Session titled `title`. */

@@ -8,8 +8,9 @@
 		"kilo.workspaces/workspace": "optional",
 		"kilo.workspaces/file": "optional",
 		"kilo.workspaces/vcs": "optional",
-		"kilo.sessions/session": "optional",
+		"kilo.sessions/work-session": "optional",
 		"kilo.sessions/pane": "optional",
+		"kilo.sessions/pane-kind": "optional",
 		"kilo.sessions/opener": "optional",
 		"kilo.chat/composer-mention": "optional",
 		"kilo.chat/markdown-extension": "optional",
@@ -18,7 +19,7 @@
 		"kilo.flags/flags": "optional",
 		"kilo.telemetry/telemetry": "optional",
 		"kilo.telemetry/telemetry-event": "optional",
-		"kilo.workbench/pane-launcher": "optional"
+		"kilo.workbench/workbench": "optional"
 	},
 	"domains": [
 		{
@@ -41,7 +42,7 @@
 					}
 				}
 			],
-			"kilo.sessions/pane": [
+			"kilo.sessions/pane-kind": [
 				{
 					"id": "files",
 					"title": "Files",

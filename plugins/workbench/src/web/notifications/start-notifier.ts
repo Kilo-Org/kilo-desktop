@@ -1,6 +1,6 @@
 import { KernelNotifications, KernelWindows, type PluginSdk } from "@kilo-desktop/kernel";
 import { Conversations } from "@kilo-desktop/plugin-agent/contracts";
-import { Sessions } from "@kilo-desktop/plugin-sessions/contracts";
+import { WorkSessions } from "@kilo-desktop/plugin-sessions/contracts";
 
 import { watchDomain } from "../attention/live-activity";
 import { sessionOfChat } from "../attention/session-chats";
@@ -38,7 +38,7 @@ export function startChatNotifier(sdk: PluginSdk): void {
 		},
 		isViewingChat: (chatId) => {
 			if (!windowFocused()) return false;
-			const sessions = sdk.domains.get(Sessions)?.getState().sessions ?? [];
+			const sessions = sdk.domains.get(WorkSessions)?.getState().sessions ?? [];
 			const sessionId = sessionOfChat(sessions, chats(), chatId);
 			return sessionId !== null && sessionId === visibleSessionId(sdk);
 		},

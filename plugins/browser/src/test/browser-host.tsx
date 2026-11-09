@@ -36,11 +36,7 @@ import {
 	type TrackInput,
 } from "@kilo-desktop/plugin-telemetry/contracts";
 import workbenchManifest from "@kilo-desktop/plugin-workbench/plugin.json";
-import {
-	Navigator,
-	PaneLauncher,
-	WORKBENCH_DEFINITIONS,
-} from "@kilo-desktop/plugin-workbench/contracts";
+import { Workbench, WORKBENCH_DEFINITIONS } from "@kilo-desktop/plugin-workbench/contracts";
 import { TooltipProvider } from "@kilo-desktop/ui/components/tooltip";
 
 import manifest from "../../plugin.json";
@@ -59,8 +55,8 @@ export interface BrowserHostOptions {
 	/** Leaves kilo.sessions out. */
 	readonly withoutSessions?: boolean;
 	readonly activeSessionId?: string | null;
-	/** kilo.workbench's pane launcher; left out unless given. */
-	readonly openOrShowPane?: (input: { kind: string }) => void;
+	/** What kilo.workbench's `openPane` does. */
+	readonly openPane?: (input: { kind: string }) => void;
 }
 
 export async function bootBrowserHost(options: BrowserHostOptions = {}) {
@@ -87,7 +83,7 @@ export async function bootBrowserHost(options: BrowserHostOptions = {}) {
 	});
 	const workbenchWeb: PluginEntry = definePlugin({
 		activate(sdk) {
-			sdk.domains.provide(Navigator, {
+			sdk.domains.provide(Workbench, {
 				initialState: {
 					focus: null,
 					activeSessionId:
@@ -97,18 +93,12 @@ export async function bootBrowserHost(options: BrowserHostOptions = {}) {
 				},
 				methods: {
 					setFocus: () => undefined,
-					open: () => undefined,
-					close: () => undefined,
+					openSession: () => undefined,
+					closeSession: () => undefined,
 					showView: () => undefined,
+					openPane: (input) => options.openPane?.(input),
 				},
 			});
-			const openOrShowPane = options.openOrShowPane;
-			if (openOrShowPane) {
-				sdk.domains.provide(PaneLauncher, {
-					initialState: {},
-					methods: { openOrShow: (input) => openOrShowPane(input) },
-				});
-			}
 			sdk.context.set("sessionActive", options.activeSessionId !== null);
 		},
 	});

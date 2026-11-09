@@ -15,16 +15,16 @@ import { testPlugin } from "@kilo-desktop/kernel/testing";
 import { AgentTool } from "@kilo-desktop/plugin-agent/contracts";
 import sessionsManifest from "@kilo-desktop/plugin-sessions/plugin.json";
 import {
-	EMPTY_SESSION_PANES,
+	EMPTY_WORK_SESSION_PANES,
 	PaneKind,
 	PaneOpener,
 	Panes,
-	Sessions,
+	WorkSessions,
 	SESSIONS_DEFINITIONS,
 	type OpenPaneInput,
 	type Pane,
-	type Session,
-	type SessionPanes,
+	type WorkSession,
+	type WorkSessionPanes,
 } from "@kilo-desktop/plugin-sessions/contracts";
 import workspacesManifest from "@kilo-desktop/plugin-workspaces/plugin.json";
 import { Workspaces, WORKSPACES_DEFINITIONS } from "@kilo-desktop/plugin-workspaces/contracts";
@@ -33,7 +33,7 @@ import { BROWSER_PANE_KIND } from "../contracts/index.js";
 
 export const SESSION_ID = "wses_1";
 
-export function session(id = SESSION_ID): Session {
+export function session(id = SESSION_ID): WorkSession {
 	return {
 		id,
 		title: "Session",
@@ -65,7 +65,7 @@ function matchesGlob(pattern: string, id: string): boolean {
 
 export interface SessionsHost {
 	readonly registration: PluginRegistration;
-	panes(sessionId?: string): SessionPanes;
+	panes(sessionId?: string): WorkSessionPanes;
 	setPanes(panes: readonly Pane[], sessionId?: string): void;
 	close(paneId: string, sessionId?: string): Promise<void>;
 	deleteSession(sessionId?: string): void;
@@ -74,15 +74,15 @@ export interface SessionsHost {
 
 export function createSessionsHost(initialPanes: readonly Pane[] = []): SessionsHost {
 	let panes!: DomainProvider<typeof Panes>;
-	let sessions!: DomainProvider<typeof Sessions>;
+	let sessions!: DomainProvider<typeof WorkSessions>;
 	let sdkRef!: PluginSdk;
 	let nextId = 1;
 	const updates: unknown[] = [];
 	const unused = () => {
 		throw new KernelError("NOT_FOUND", "Not faked here.");
 	};
-	const of = (sessionId: string) => panes.state.bySession[sessionId] ?? EMPTY_SESSION_PANES;
-	const write = (sessionId: string, next: SessionPanes) =>
+	const of = (sessionId: string) => panes.state.bySession[sessionId] ?? EMPTY_WORK_SESSION_PANES;
+	const write = (sessionId: string, next: WorkSessionPanes) =>
 		panes.setState({ bySession: { ...panes.state.bySession, [sessionId]: next } });
 	const requirePane = (sessionId: string, paneId: string) => {
 		const pane = of(sessionId).panes.find((candidate) => candidate.id === paneId);
@@ -122,7 +122,7 @@ export function createSessionsHost(initialPanes: readonly Pane[] = []): Sessions
 	const entry: PluginEntry = definePlugin({
 		activate(sdk) {
 			sdkRef = sdk;
-			sessions = sdk.domains.provide(Sessions, {
+			sessions = sdk.domains.provide(WorkSessions, {
 				initialState: { sessions: [session()] },
 				methods: {
 					create: unused,
@@ -137,7 +137,7 @@ export function createSessionsHost(initialPanes: readonly Pane[] = []): Sessions
 			});
 			panes = sdk.domains.provide(Panes, {
 				initialState: {
-					bySession: { [SESSION_ID]: { ...EMPTY_SESSION_PANES, panes: [...initialPanes] } },
+					bySession: { [SESSION_ID]: { ...EMPTY_WORK_SESSION_PANES, panes: [...initialPanes] } },
 				},
 				methods: {
 					open,
@@ -258,10 +258,10 @@ export const agentToolPoint = testPlugin("kilo.agent", {
 /** A kilo.files-like plugin: every workspace file opens in its pane kind, at priority -100. */
 export const filesOpener = testPlugin("kilo.files", {
 	manifest: {
-		requires: { "kilo.sessions/pane": "optional", "kilo.sessions/opener": "optional" },
+		requires: { "kilo.sessions/pane-kind": "optional", "kilo.sessions/opener": "optional" },
 		contributes: {
 			extensions: {
-				"kilo.sessions/pane": [{ id: "files", title: "Files" }],
+				"kilo.sessions/pane-kind": [{ id: "files", title: "Files" }],
 				"kilo.sessions/opener": [
 					{
 						id: "file",

@@ -9,12 +9,12 @@ import { createTestKernelPair, testPlugin } from "@kilo-desktop/kernel/testing";
 import { AgentTool, type ToolCallContext } from "@kilo-desktop/plugin-agent/contracts";
 import sessionsManifest from "@kilo-desktop/plugin-sessions/plugin.json";
 import {
-	EMPTY_SESSION_PANES,
+	EMPTY_WORK_SESSION_PANES,
 	Panes,
-	Sessions,
+	WorkSessions,
 	SESSIONS_DEFINITIONS,
 	type Pane,
-	type Session,
+	type WorkSession,
 } from "@kilo-desktop/plugin-sessions/contracts";
 import workspacesManifest from "@kilo-desktop/plugin-workspaces/plugin.json";
 import {
@@ -52,7 +52,7 @@ async function workspaceOnDisk() {
 	return { root, workspace, docs };
 }
 
-function session(id: string, patch: Partial<Session> = {}): Session {
+function session(id: string, patch: Partial<WorkSession> = {}): WorkSession {
 	return {
 		id,
 		title: "Session",
@@ -75,7 +75,7 @@ interface BootOptions {
 	readonly denyFolders?: boolean;
 	readonly withoutPanes?: boolean;
 	readonly vcsStatus?: VcsImplementation["status"];
-	readonly sessions?: readonly Session[];
+	readonly sessions?: readonly WorkSession[];
 }
 
 async function boot(options: BootOptions = {}) {
@@ -118,7 +118,7 @@ async function boot(options: BootOptions = {}) {
 
 	const sessionsMain: PluginEntry = definePlugin({
 		activate(sdk) {
-			sdk.domains.provide(Sessions, {
+			sdk.domains.provide(WorkSessions, {
 				initialState: { sessions: [...(options.sessions ?? [session("s1")])] },
 				methods: {
 					create: unused,
@@ -133,7 +133,7 @@ async function boot(options: BootOptions = {}) {
 			});
 			if (options.withoutPanes) return;
 			const current = (sessionId: string) =>
-				panes.state.bySession[sessionId] ?? EMPTY_SESSION_PANES;
+				panes.state.bySession[sessionId] ?? EMPTY_WORK_SESSION_PANES;
 			const put = (sessionId: string, pane: Pane) =>
 				panes.setState({
 					bySession: {

@@ -1,15 +1,15 @@
 import { SquareKanbanIcon } from "lucide-react";
 
 import { useDomain, useDomainState } from "@kilo-desktop/kernel/web";
-import { Navigator, type NavigatorState } from "@kilo-desktop/plugin-workbench/contracts";
+import { Workbench, type WorkbenchState } from "@kilo-desktop/plugin-workbench/contracts";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
 import { BOARD_TITLE, BOARD_VIEW } from "../contracts";
 import { toggleBoard } from "./board-actions";
 
-const selectShown = (state: NavigatorState) => state.view === BOARD_VIEW;
-const selectDetached = (state: NavigatorState) => state.detachedViews.includes(BOARD_VIEW);
+const selectShown = (state: WorkbenchState) => state.view === BOARD_VIEW;
+const selectDetached = (state: WorkbenchState) => state.detachedViews.includes(BOARD_VIEW);
 
 /**
  * Toggles between the board and the open session from the session list's
@@ -17,9 +17,9 @@ const selectDetached = (state: NavigatorState) => state.detachedViews.includes(B
  * While the board is popped out it brings that window forward instead.
  */
 export function BoardToggle() {
-	const navigator = useDomain(Navigator);
-	const shown = useDomainState(Navigator, selectShown) ?? false;
-	const detached = useDomainState(Navigator, selectDetached) ?? false;
+	const navigator = useDomain(Workbench);
+	const shown = useDomainState(Workbench, selectShown) ?? false;
+	const detached = useDomainState(Workbench, selectDetached) ?? false;
 	if (!navigator) return null;
 	const label = detached
 		? `Bring ${BOARD_TITLE} to front`

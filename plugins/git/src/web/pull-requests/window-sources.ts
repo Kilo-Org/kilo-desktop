@@ -1,7 +1,7 @@
 import type { AnyDomain, DomainHandle, PluginSdk } from "@kilo-desktop/kernel";
-import { Sessions, type Session } from "@kilo-desktop/plugin-sessions/contracts";
+import { WorkSessions, type WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
 import {
-	Navigator,
+	Workbench,
 	type SessionFacetSource,
 	type SessionPullRequestState,
 } from "@kilo-desktop/plugin-workbench/contracts";
@@ -42,11 +42,11 @@ function watch<TDomain extends AnyDomain>(
 
 interface Sources {
 	pullRequests: Watched<typeof PullRequests>;
-	sessions: Watched<typeof Sessions>;
+	sessions: Watched<typeof WorkSessions>;
 	workspaces: Watched<typeof Workspaces>;
 }
 
-const NO_SESSIONS: readonly Session[] = [];
+const NO_SESSIONS: readonly WorkSession[] = [];
 const NO_WORKSPACES: readonly Workspace[] = [];
 
 /**
@@ -81,7 +81,7 @@ export function createPullRequestFacet(
 		for (const listener of listeners) listener();
 	};
 	sources.pullRequests = watch(sdk, PullRequests, update);
-	sources.sessions = watch(sdk, Sessions, update);
+	sources.sessions = watch(sdk, WorkSessions, update);
 	sources.workspaces = watch(sdk, Workspaces, update);
 	update();
 
@@ -101,7 +101,7 @@ export function createPullRequestFacet(
  */
 export function reportShownDirectories(sdk: PluginSdk, windowId: string): void {
 	let reported: string | null = null;
-	const sources: Partial<Sources & { navigator: Watched<typeof Navigator> }> = {};
+	const sources: Partial<Sources & { navigator: Watched<typeof Workbench> }> = {};
 	const report = () => {
 		const pullRequestsHandle = sources.pullRequests?.current();
 		if (!pullRequestsHandle) {
@@ -127,8 +127,8 @@ export function reportShownDirectories(sdk: PluginSdk, windowId: string): void {
 			if (reported === key) reported = null;
 		});
 	};
-	sources.navigator = watch(sdk, Navigator, report);
-	sources.sessions = watch(sdk, Sessions, report);
+	sources.navigator = watch(sdk, Workbench, report);
+	sources.sessions = watch(sdk, WorkSessions, report);
 	sources.workspaces = watch(sdk, Workspaces, report);
 	sources.pullRequests = watch(sdk, PullRequests, report);
 	report();

@@ -1,4 +1,4 @@
-import type { ComponentType, RefObject } from "react";
+import type { ComponentType } from "react";
 import { z } from "zod";
 
 import {
@@ -19,9 +19,9 @@ import {
 export const SESSIONS_PLUGIN_ID = "kilo.sessions";
 
 /** The title of a session nobody has named and no chat has titled yet. */
-export const DEFAULT_SESSION_TITLE = "New session";
+export const DEFAULT_WORK_SESSION_TITLE = "New session";
 
-export const sessionSchema = z.object({
+export const workSessionSchema = z.object({
 	/** `wses_…` — never a chat id. */
 	id: z.string(),
 	title: z.string(),
@@ -54,18 +54,18 @@ export const sessionSchema = z.object({
 	/** True when kilo.sessions created the worktree (not one picked from existing ones). */
 	worktreeCreated: z.boolean().optional(),
 });
-export type Session = z.output<typeof sessionSchema>;
+export type WorkSession = z.output<typeof workSessionSchema>;
 
 /**
  * Where a new session works: the workspace's own checkout, a new worktree cut
  * from `baseBranch` (default: the default branch), or an existing worktree.
  */
-export const sessionIsolationSchema = z.discriminatedUnion("kind", [
+export const workSessionIsolationSchema = z.discriminatedUnion("kind", [
 	z.object({ kind: z.literal("local") }),
 	z.object({ kind: z.literal("new-worktree"), baseBranch: z.string().min(1).optional() }),
 	z.object({ kind: z.literal("existing-worktree"), directory: z.string().min(1) }),
 ]);
-export type SessionIsolation = z.output<typeof sessionIsolationSchema>;
+export type WorkSessionIsolation = z.output<typeof workSessionIsolationSchema>;
 
 export const isolationOptionsSchema = z.object({
 	/** The workspace's primary folder. */
@@ -91,7 +91,7 @@ export type IsolationOptions = z.output<typeof isolationOptionsSchema>;
  * True when the session runs in a worktree no other session shares, so
  * deleting it may offer to remove the worktree.
  */
-export function isOrphanedWorktreeSession(sessions: readonly Session[], id: string): boolean {
+export function isOrphanedWorktreeSession(sessions: readonly WorkSession[], id: string): boolean {
 	const own = sessions.find((session) => session.id === id);
 	if (!own?.worktreeBranch || !own.directory) return false;
 	return sessions.every((other) => other.id === id || other.directory !== own.directory);
@@ -100,10 +100,10 @@ export function isOrphanedWorktreeSession(sessions: readonly Session[], id: stri
 const sessionIdInput = z.object({ id: z.string().min(1) });
 
 /** Every Work Session, shared by every window. */
-export const Sessions = defineDomain({
-	id: "kilo.sessions/session",
+export const WorkSessions = defineDomain({
+	id: "kilo.sessions/work-session",
 	home: "main",
-	state: z.object({ sessions: z.array(sessionSchema) }),
+	state: z.object({ sessions: z.array(workSessionSchema) }),
 	methods: {
 		/**
 		 * Creates a session. With `isolation` it is placed now: a worktree is
@@ -114,18 +114,21 @@ export const Sessions = defineDomain({
 			z.object({
 				workspaceId: z.string().nullable().optional(),
 				title: z.string().optional(),
-				isolation: sessionIsolationSchema.optional(),
+				isolation: workSessionIsolationSchema.optional(),
 			}),
-			sessionSchema,
+			workSessionSchema,
 		),
-		rename: method(sessionIdInput.extend({ title: z.string().trim().min(1) }), sessionSchema),
-		setPinned: method(sessionIdInput.extend({ pinned: z.boolean() }), sessionSchema),
-		setArchived: method(sessionIdInput.extend({ archived: z.boolean() }), sessionSchema),
+		rename: method(sessionIdInput.extend({ title: z.string().trim().min(1) }), workSessionSchema),
+		setPinned: method(sessionIdInput.extend({ pinned: z.boolean() }), workSessionSchema),
+		setArchived: method(sessionIdInput.extend({ archived: z.boolean() }), workSessionSchema),
 		/**
 		 * Records that the session's worktree branch was renamed (its chats keep
 		 * their own stamp). Fails for a session without a worktree.
 		 */
-		setWorktreeBranch: method(sessionIdInput.extend({ branch: z.string().min(1) }), sessionSchema),
+		setWorktreeBranch: method(
+			sessionIdInput.extend({ branch: z.string().min(1) }),
+			workSessionSchema,
+		),
 		/**
 		 * Deletes the session and (best effort) its chats on the Kilo server.
 		 * `removeWorktree` then removes its worktree when no other session
@@ -155,110 +158,10 @@ export const Sessions = defineDomain({
 		importLegacyPins: method(z.object({ ids: z.array(z.string()).max(1000) }), z.undefined()),
 	},
 	events: {
-		created: z.object({ session: sessionSchema }),
-		updated: z.object({ before: sessionSchema, after: sessionSchema }),
-		deleted: z.object({ session: sessionSchema }),
+		created: z.object({ session: workSessionSchema }),
+		updated: z.object({ before: workSessionSchema, after: workSessionSchema }),
+		deleted: z.object({ session: workSessionSchema }),
 	},
-});
-
-/** One choice in a menu item's submenu; `checked` marks the current one. */
-export interface SessionMenuChoice {
-	readonly id: string;
-	readonly title: string;
-	readonly checked?: boolean;
-}
-
-export interface SessionMenuItem {
-	/** Runs the item; given the picked choice when the item has `choices`. */
-	run(session: Session, choiceId?: string): void | Promise<void>;
-	/** Hides the item for sessions it doesn't apply to. */
-	appliesTo?(session: Session): boolean;
-	/** Makes the item a submenu of these choices (e.g. a board's columns). */
-	choices?(session: Session): readonly SessionMenuChoice[];
-}
-
-/** An item in a session's menu, wherever a session is shown (the list row, its page). */
-export const SessionMenu = defineExtensionPoint({
-	id: "kilo.sessions/session-menu",
-	kind: "additive",
-	description: "An item in a session's menu.",
-	metadata: z.object({
-		title: z.string(),
-		/** Destructive items sit apart, at the end. */
-		destructive: z.boolean().default(false),
-	}),
-	implementation: implementation<SessionMenuItem>("renderer"),
-});
-
-export interface SessionDecorationProps {
-	readonly session: Session;
-	/**
-	 * The surface shows the decoration outside its own control (a board card),
-	 * so it may be a link or button. Without it the decoration sits inside the
-	 * session row's button and must not be interactive.
-	 */
-	readonly interactive?: boolean;
-}
-
-/**
- * Extra detail for a session: a badge on its list row, an item in its page
- * header, or a line in its details on hover — `hover-branch` takes the
- * place of the session's own branch line, `hover` lines follow the others.
- */
-export const SessionDecoration = defineExtensionPoint({
-	id: "kilo.sessions/session-decoration",
-	kind: "additive",
-	description: "A badge, header item or hover detail shown with a session.",
-	metadata: z.object({ slot: z.enum(["row", "header", "hover", "hover-branch"]) }),
-	implementation: implementation<ComponentType<SessionDecorationProps>>("renderer"),
-});
-
-export type SessionDecorationSlot = "row" | "header" | "hover" | "hover-branch";
-
-export interface SessionRendererProps {
-	readonly session: Session;
-}
-
-export interface SessionGlyphProps extends SessionRendererProps {
-	/** Icon only, for surfaces that show the status as text beside it. */
-	readonly decorative?: boolean;
-}
-
-export interface SessionDecorationsProps extends SessionRendererProps {
-	readonly slot: SessionDecorationSlot;
-	/** Passed to each decoration; see {@link SessionDecorationProps.interactive}. */
-	readonly interactive?: boolean;
-}
-
-export interface SessionMenuProps extends SessionRendererProps {
-	/** Starts the surface's own inline rename; without it the menu has no Rename item. */
-	readonly onRename?: () => void;
-	/** Names the session when many menus share a surface. */
-	readonly label?: string;
-	readonly side?: "right" | "bottom";
-	/** Lets inline rename return focus to the menu that started it. */
-	readonly triggerRef?: RefObject<HTMLButtonElement | null>;
-}
-
-/**
- * How a session looks wherever it is shown, so another plugin's surface (a
- * board card) shows it as the session list does: its live state glyph and
- * status label, plugins' decorations for a slot, and its menu (pin, rename,
- * archive or restore, plugins' items, delete with the worktree check).
- */
-export interface SessionRenderers {
-	readonly Glyph: ComponentType<SessionGlyphProps>;
-	readonly Status: ComponentType<SessionRendererProps>;
-	readonly Decorations: ComponentType<SessionDecorationsProps>;
-	readonly Menu: ComponentType<SessionMenuProps>;
-}
-
-/** The session renderers; the session list's plugin provides them. Exactly one wins. */
-export const SessionRenderer = defineExtensionPoint({
-	id: "kilo.sessions/session-renderer",
-	kind: "exclusive",
-	description: "How a session looks wherever it is shown.",
-	implementation: implementation<SessionRenderers>("renderer"),
 });
 
 // --- Panes ---
@@ -284,16 +187,16 @@ export type Pane = z.output<typeof paneSchema>;
 export const ARRANGEMENTS = ["tiles", "carousel"] as const;
 export type PaneArrangement = (typeof ARRANGEMENTS)[number];
 
-export const sessionPanesSchema = z.object({
+export const workSessionPanesSchema = z.object({
 	panes: z.array(paneSchema),
 	activePaneId: z.string().nullable(),
 	/** The serialized pane layout (groups, splits, sizes); null until the canvas saves one. */
 	layout: z.string().nullable(),
 	arrangement: z.enum(ARRANGEMENTS),
 });
-export type SessionPanes = z.output<typeof sessionPanesSchema>;
+export type WorkSessionPanes = z.output<typeof workSessionPanesSchema>;
 
-export const EMPTY_SESSION_PANES: SessionPanes = {
+export const EMPTY_WORK_SESSION_PANES: WorkSessionPanes = {
 	panes: [],
 	activePaneId: null,
 	layout: null,
@@ -324,7 +227,7 @@ const objectRefSchema = z.object({ type: z.string().min(1), id: z.string().min(1
 export const Panes = defineDomain({
 	id: "kilo.sessions/pane",
 	home: "main",
-	state: z.object({ bySession: z.record(z.string(), sessionPanesSchema) }),
+	state: z.object({ bySession: z.record(z.string(), workSessionPanesSchema) }),
 	methods: {
 		/** Opens a pane; a singleton kind's existing pane is activated instead. */
 		open: method(openPaneInputSchema, paneSchema),
@@ -394,7 +297,7 @@ export interface PaneImplementation {
 
 /** A kind of pane a session can hold: terminal, agent, browser… */
 export const PaneKind = defineExtensionPoint({
-	id: "kilo.sessions/pane",
+	id: "kilo.sessions/pane-kind",
 	kind: "additive",
 	description: "A kind of pane a session can hold.",
 	metadata: z.object({
@@ -450,6 +353,6 @@ export const PaneOpener = defineExtensionPoint({
 });
 
 export const SESSIONS_DEFINITIONS: PluginDefinitions = {
-	extensionPoints: [SessionMenu, SessionDecoration, SessionRenderer, PaneKind, PaneOpener],
-	domains: [Sessions, Panes],
+	extensionPoints: [PaneKind, PaneOpener],
+	domains: [WorkSessions, Panes],
 };

@@ -18,13 +18,13 @@ import {
 import { AgentTool, type ToolCallContext } from "@kilo-desktop/plugin-agent/contracts";
 import sessionsManifest from "@kilo-desktop/plugin-sessions/plugin.json";
 import {
-	EMPTY_SESSION_PANES,
+	EMPTY_WORK_SESSION_PANES,
 	Panes,
-	Sessions,
+	WorkSessions,
 	SESSIONS_DEFINITIONS,
 	type Pane,
-	type Session,
-	type SessionPanes,
+	type WorkSession,
+	type WorkSessionPanes,
 } from "@kilo-desktop/plugin-sessions/contracts";
 import workspacesManifest from "@kilo-desktop/plugin-workspaces/plugin.json";
 import { Workspaces, WORKSPACES_DEFINITIONS } from "@kilo-desktop/plugin-workspaces/contracts";
@@ -50,7 +50,7 @@ async function tempDir(prefix: string): Promise<string> {
 	return directory;
 }
 
-const SESSION: Session = {
+const SESSION: WorkSession = {
 	id: "wses_1",
 	title: "Session",
 	titleSource: "default",
@@ -78,11 +78,11 @@ const terminalPane = (id: string, metadata: Record<string, string> = {}): Pane =
  * panes before announcing it, as the real one may (its own listener can run
  * first), and without `closed` events.
  */
-function fakeSessionsMain(initial: Record<string, SessionPanes>) {
+function fakeSessionsMain(initial: Record<string, WorkSessionPanes>) {
 	let panes!: DomainProvider<typeof Panes>;
-	let sessions!: DomainProvider<typeof Sessions>;
-	const of = (sessionId: string) => panes.state.bySession[sessionId] ?? EMPTY_SESSION_PANES;
-	const write = (sessionId: string, next: SessionPanes | null) => {
+	let sessions!: DomainProvider<typeof WorkSessions>;
+	const of = (sessionId: string) => panes.state.bySession[sessionId] ?? EMPTY_WORK_SESSION_PANES;
+	const write = (sessionId: string, next: WorkSessionPanes | null) => {
 		const bySession = { ...panes.state.bySession };
 		if (next) bySession[sessionId] = next;
 		else delete bySession[sessionId];
@@ -90,7 +90,7 @@ function fakeSessionsMain(initial: Record<string, SessionPanes>) {
 	};
 	const entry: PluginEntry = definePlugin({
 		activate(sdk) {
-			sessions = sdk.domains.provide(Sessions, {
+			sessions = sdk.domains.provide(WorkSessions, {
 				initialState: { sessions: [SESSION] },
 				methods: {
 					create: () => SESSION,
@@ -202,7 +202,7 @@ function fakeManager() {
 
 async function boot(
 	options: {
-		panes?: Record<string, SessionPanes>;
+		panes?: Record<string, WorkSessionPanes>;
 		manager?: (
 			deps: TerminalManagerDeps,
 		) => ReturnType<typeof fakeManager> | TerminalSessionManager;
@@ -277,7 +277,7 @@ describe("kilo.terminal in main", () => {
 		const { sessions, fake } = await boot({
 			panes: {
 				[SESSION.id]: {
-					...EMPTY_SESSION_PANES,
+					...EMPTY_WORK_SESSION_PANES,
 					panes: [
 						terminalPane("a"),
 						terminalPane("b", { terminalSessionId: "ses_origin" }),
@@ -308,14 +308,14 @@ describe("kilo.terminal in main", () => {
 		const { main, fake } = await boot({
 			panes: {
 				[SESSION.id]: {
-					...EMPTY_SESSION_PANES,
+					...EMPTY_WORK_SESSION_PANES,
 					panes: [terminalPane("a"), terminalPane("b", { terminalSessionId: "ses_origin" })],
 				},
-				other: { ...EMPTY_SESSION_PANES, panes: [terminalPane("x")] },
+				other: { ...EMPTY_WORK_SESSION_PANES, panes: [terminalPane("x")] },
 			},
 		});
 
-		await main.kernelSdk.domains.get(Sessions)!.methods.remove({ id: SESSION.id });
+		await main.kernelSdk.domains.get(WorkSessions)!.methods.remove({ id: SESSION.id });
 		await flush();
 
 		expect(fake.close.mock.calls).toEqual([
@@ -328,7 +328,7 @@ describe("kilo.terminal in main", () => {
 		const { sessions, fake, terminals } = await boot({
 			panes: {
 				[SESSION.id]: {
-					...EMPTY_SESSION_PANES,
+					...EMPTY_WORK_SESSION_PANES,
 					panes: [terminalPane("a", { terminalSessionId: "ses_origin" })],
 				},
 			},
@@ -363,7 +363,7 @@ describe("kilo.terminal in main", () => {
 
 	it("titles the pane with the terminal's label", async () => {
 		const { sessions, fake } = await boot({
-			panes: { [SESSION.id]: { ...EMPTY_SESSION_PANES, panes: [terminalPane("a")] } },
+			panes: { [SESSION.id]: { ...EMPTY_WORK_SESSION_PANES, panes: [terminalPane("a")] } },
 		});
 		const title = () => sessions.panes().state.bySession[SESSION.id]?.panes[0]?.title;
 
@@ -388,7 +388,7 @@ describe("kilo.terminal in main", () => {
 		const { fake, terminals } = await boot({
 			panes: {
 				[SESSION.id]: {
-					...EMPTY_SESSION_PANES,
+					...EMPTY_WORK_SESSION_PANES,
 					panes: [
 						{ ...terminalPane("a"), title: "vite" },
 						terminalPane("b", { terminalSessionId: "ses_origin" }),
@@ -583,7 +583,7 @@ describe("kilo.terminal's agent tools", () => {
 		signal: new AbortController().signal,
 	});
 
-	async function bootWithTools(panes: Record<string, SessionPanes> = {}) {
+	async function bootWithTools(panes: Record<string, WorkSessionPanes> = {}) {
 		const booted = await boot({ panes });
 		const tools = booted.main.kernelSdk.extensions.list(AgentTool);
 		const call = async (id: string, input: unknown, sessionId: string | null) => {
@@ -622,7 +622,7 @@ describe("kilo.terminal's agent tools", () => {
 	it("lists the session's terminals with what they run", async () => {
 		const { call, fake } = await bootWithTools({
 			[SESSION.id]: {
-				...EMPTY_SESSION_PANES,
+				...EMPTY_WORK_SESSION_PANES,
 				panes: [
 					terminalPane("a"),
 					terminalPane("b"),
@@ -652,7 +652,7 @@ describe("kilo.terminal's agent tools", () => {
 
 	it("lists an exited terminal's exit code, and survives a terminal it can't read", async () => {
 		const { call, fake } = await bootWithTools({
-			[SESSION.id]: { ...EMPTY_SESSION_PANES, panes: [terminalPane("a"), terminalPane("b")] },
+			[SESSION.id]: { ...EMPTY_WORK_SESSION_PANES, panes: [terminalPane("a"), terminalPane("b")] },
 		});
 		fake.read.mockImplementation(async (identity: { terminalId: string }) => {
 			if (identity.terminalId === "b") throw new Error("gone");
@@ -670,7 +670,7 @@ describe("kilo.terminal's agent tools", () => {
 
 	it("reads a terminal's recent output", async () => {
 		const { call, fake } = await bootWithTools({
-			[SESSION.id]: { ...EMPTY_SESSION_PANES, panes: [terminalPane("a")] },
+			[SESSION.id]: { ...EMPTY_WORK_SESSION_PANES, panes: [terminalPane("a")] },
 		});
 		fake.read.mockResolvedValue(readout);
 
@@ -693,7 +693,7 @@ describe("kilo.terminal's agent tools", () => {
 
 	it("refuses to read a terminal outside the session, or one with no output", async () => {
 		const { call } = await bootWithTools({
-			[SESSION.id]: { ...EMPTY_SESSION_PANES, panes: [terminalPane("a")] },
+			[SESSION.id]: { ...EMPTY_WORK_SESSION_PANES, panes: [terminalPane("a")] },
 		});
 
 		await expect(call("read", { terminalId: "z" }, SESSION.id)).rejects.toThrow(

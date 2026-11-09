@@ -2,9 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useContextKey, useDomain } from "@kilo-desktop/kernel/web";
 import {
-	Sessions,
+	WorkSessions,
 	type IsolationOptions,
-	type SessionIsolation,
+	type WorkSessionIsolation,
 } from "@kilo-desktop/plugin-sessions/contracts";
 import { VCS_KEY } from "@kilo-desktop/plugin-workspaces/contracts";
 
@@ -18,12 +18,12 @@ import {
 export interface LauncherIsolation {
 	/** Null while there is nothing to choose: no version control, repository or workspace. */
 	readonly options: IsolationOptions | null;
-	readonly value: SessionIsolation | null;
-	readonly change: (value: SessionIsolation, remember?: IsolationMode) => void;
+	readonly value: WorkSessionIsolation | null;
+	readonly change: (value: WorkSessionIsolation, remember?: IsolationMode) => void;
 	readonly reload: () => void;
 }
 
-function seeded(options: IsolationOptions, mode: IsolationMode): SessionIsolation {
+function seeded(options: IsolationOptions, mode: IsolationMode): WorkSessionIsolation {
 	if (mode === "local" || isUnborn(options)) return { kind: "local" };
 	return options.defaultBranch
 		? { kind: "new-worktree", baseBranch: options.defaultBranch }
@@ -38,10 +38,10 @@ function seeded(options: IsolationOptions, mode: IsolationMode): SessionIsolatio
  * remembered mode.
  */
 export function useLauncherIsolation(workspaceId: string | null): LauncherIsolation {
-	const sessions = useDomain(Sessions);
+	const sessions = useDomain(WorkSessions);
 	const vcs = useContextKey(VCS_KEY);
 	const [loaded, setLoaded] = useState<{ workspaceId: string; options: IsolationOptions | null }>();
-	const [picked, setPicked] = useState<Record<string, SessionIsolation>>({});
+	const [picked, setPicked] = useState<Record<string, WorkSessionIsolation>>({});
 	const [generation, setGeneration] = useState(0);
 	const reload = useCallback(() => setGeneration((value) => value + 1), []);
 
@@ -70,7 +70,7 @@ export function useLauncherIsolation(workspaceId: string | null): LauncherIsolat
 			? (picked[workspaceId] ?? seeded(options, readIsolationMode(workspaceId)))
 			: null;
 	const change = useCallback(
-		(next: SessionIsolation, remember?: IsolationMode) => {
+		(next: WorkSessionIsolation, remember?: IsolationMode) => {
 			if (!workspaceId) return;
 			setPicked((current) => ({ ...current, [workspaceId]: next }));
 			if (remember) rememberIsolationMode(workspaceId, remember);

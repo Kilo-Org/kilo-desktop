@@ -20,24 +20,23 @@ import { createTestKernelPair } from "@kilo-desktop/kernel/testing";
 import { KernelProvider, RenderContribution } from "@kilo-desktop/kernel/web";
 import sessionsManifest from "@kilo-desktop/plugin-sessions/plugin.json";
 import {
-	EMPTY_SESSION_PANES,
+	EMPTY_WORK_SESSION_PANES,
 	PaneKind,
 	Panes,
-	Sessions,
+	WorkSessions,
 	SESSIONS_DEFINITIONS,
 	type OpenPaneInput,
 	type Pane,
 	type PaneImplementation,
 	type PaneProps,
-	type Session,
+	type WorkSession,
 } from "@kilo-desktop/plugin-sessions/contracts";
 import shellManifest from "@kilo-desktop/plugin-shell/plugin.json";
 import { SHELL_DOMAINS, SHELL_EXTENSION_POINTS, Theme } from "@kilo-desktop/plugin-shell/contracts";
 import workbenchManifest from "@kilo-desktop/plugin-workbench/plugin.json";
 import {
 	LauncherOption,
-	Navigator,
-	PaneLauncher,
+	Workbench,
 	WORKBENCH_DEFINITIONS,
 	type LauncherOptionProps,
 } from "@kilo-desktop/plugin-workbench/contracts";
@@ -91,7 +90,7 @@ export function workspace(folders: { path: string; isPrimary: boolean }[]): Work
 	};
 }
 
-export function session(id: string, patch: Partial<Session> = {}): Session {
+export function session(id: string, patch: Partial<WorkSession> = {}): WorkSession {
 	return {
 		id,
 		title: "Session",
@@ -111,7 +110,7 @@ export function session(id: string, patch: Partial<Session> = {}): Session {
 
 export interface ChangesHostOptions {
 	readonly folders?: { path: string; isPrimary: boolean }[];
-	readonly sessions?: Session[];
+	readonly sessions?: WorkSession[];
 	/** kilo.git's repository in main; methods left out reject. */
 	readonly repository?: RepositoryFake;
 	/** Leaves kilo.git's main entry out (no repository), as in the browser. */
@@ -119,8 +118,8 @@ export interface ChangesHostOptions {
 	/** The `kilo.workspaces/vcs` key (a version control provider is present). */
 	readonly vcs?: boolean;
 	readonly activeSessionId?: string | null;
-	/** kilo.workbench's pane launcher, receiving what it is asked to show; left out when unset. */
-	readonly paneLauncher?: (input: { kind: string }) => void;
+	/** What kilo.workbench's `openPane` does; by default it opens the pane in the open session. */
+	readonly openPane?: (input: { kind: string }) => void;
 	readonly theme?: ThemeState;
 	/** kilo.git's pull requests in main; its methods are recorded. */
 	readonly pullRequests?: Partial<PullRequestsState>;
@@ -163,7 +162,7 @@ export async function bootGitHost(options: ChangesHostOptions = {}) {
 	});
 	const sessionsMain: PluginEntry = definePlugin({
 		activate(sdk) {
-			sdk.domains.provide(Sessions, {
+			sdk.domains.provide(WorkSessions, {
 				initialState: { sessions: options.sessions ?? [session("wses_1")] },
 				methods: {
 					create: unused("create"),
@@ -183,7 +182,7 @@ export async function bootGitHost(options: ChangesHostOptions = {}) {
 						opened.push(input);
 						const pane = { ...changesPane(input.metadata), kind: input.kind };
 						panes.setState({
-							bySession: { [input.sessionId]: { ...EMPTY_SESSION_PANES, panes: [pane] } },
+							bySession: { [input.sessionId]: { ...EMPTY_WORK_SESSION_PANES, panes: [pane] } },
 						});
 						return pane;
 					},
@@ -238,22 +237,22 @@ export async function bootGitHost(options: ChangesHostOptions = {}) {
 		activate(sdk) {
 			const activeSessionId =
 				options.activeSessionId === undefined ? "wses_1" : options.activeSessionId;
-			sdk.domains.provide(Navigator, {
+			sdk.domains.provide(Workbench, {
 				initialState: { focus: null, activeSessionId, view: null, detachedViews: [] },
 				methods: {
 					setFocus: () => undefined,
-					open: () => undefined,
-					close: () => undefined,
+					openSession: () => undefined,
+					closeSession: () => undefined,
 					showView: () => undefined,
+					openPane: async (input) => {
+						if (options.openPane) return options.openPane(input);
+						if (!activeSessionId) return;
+						await sdk.domains
+							.get(Panes)
+							?.methods.open({ sessionId: activeSessionId, kind: input.kind });
+					},
 				},
 			});
-			const { paneLauncher } = options;
-			if (paneLauncher) {
-				sdk.domains.provide(PaneLauncher, {
-					initialState: {},
-					methods: { openOrShow: (input) => paneLauncher(input) },
-				});
-			}
 			sdk.context.set("sessionActive", activeSessionId !== null);
 		},
 	});

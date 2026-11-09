@@ -6,6 +6,7 @@
 	"description": "Analyze data with interactive Python notebooks in a session's panes.",
 	"requires": {
 		"kilo.sessions/pane": "optional",
+		"kilo.sessions/pane-kind": "optional",
 		"kilo.sessions/opener": "optional",
 		"kilo.account/identity": "optional",
 		"kilo.agent/tool": "optional",
@@ -27,7 +28,7 @@
 	],
 	"contributes": {
 		"extensions": {
-			"kilo.sessions/pane": [
+			"kilo.sessions/pane-kind": [
 				{
 					"id": "notebook",
 					"title": "Notebook",

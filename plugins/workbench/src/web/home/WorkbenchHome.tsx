@@ -1,4 +1,4 @@
-import type { Session } from "@kilo-desktop/plugin-sessions/contracts";
+import type { WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
 
 import { SessionCanvas } from "../panes/SessionCanvas";
 import { SessionsViewInPlace, useShownSessionsView } from "../views/SessionsViewHost";
@@ -8,7 +8,7 @@ import { Launcher } from "./Launcher";
 import { useActiveSession } from "./use-active-session";
 
 /** The open session's workbench: its pane canvas and new-pane picker. */
-function SessionWorkbench({ session }: { readonly session: Session }) {
+function SessionWorkbench({ session }: { readonly session: WorkSession }) {
 	return (
 		<div
 			data-qa-id="session-workbench"

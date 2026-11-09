@@ -5,13 +5,13 @@ import { createTestKernelPair, testPlugin } from "@kilo-desktop/kernel/testing";
 import { AgentTool, type ToolCallContext } from "@kilo-desktop/plugin-agent/contracts";
 import sessionsManifest from "@kilo-desktop/plugin-sessions/plugin.json";
 import {
-	EMPTY_SESSION_PANES,
+	EMPTY_WORK_SESSION_PANES,
 	Panes,
-	Sessions,
+	WorkSessions,
 	SESSIONS_DEFINITIONS,
 	type OpenPaneInput,
 	type Pane,
-	type Session,
+	type WorkSession,
 } from "@kilo-desktop/plugin-sessions/contracts";
 import workspacesManifest from "@kilo-desktop/plugin-workspaces/plugin.json";
 import {
@@ -35,7 +35,7 @@ const WORKSPACE: Workspace = {
 	updatedAt: 0,
 };
 
-function session(id: string, patch: Partial<Session> = {}): Session {
+function session(id: string, patch: Partial<WorkSession> = {}): WorkSession {
 	return {
 		id,
 		title: "Session",
@@ -71,7 +71,7 @@ function fakeSessionsMain() {
 			const unused = () => {
 				throw new Error("unused");
 			};
-			sdk.domains.provide(Sessions, {
+			sdk.domains.provide(WorkSessions, {
 				initialState: { sessions: SESSIONS },
 				methods: {
 					create: unused,
@@ -89,7 +89,7 @@ function fakeSessionsMain() {
 				methods: {
 					open: (input) => {
 						opened.push(input);
-						const current = panes.state.bySession[input.sessionId] ?? EMPTY_SESSION_PANES;
+						const current = panes.state.bySession[input.sessionId] ?? EMPTY_WORK_SESSION_PANES;
 						const existing = current.panes.find((pane) => pane.kind === input.kind);
 						const pane: Pane = {
 							id: existing?.id ?? `pane_${current.panes.length + 1}`,

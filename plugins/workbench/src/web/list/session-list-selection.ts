@@ -1,4 +1,4 @@
-import type { Session } from "@kilo-desktop/plugin-sessions/contracts";
+import type { WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
 
 /** Sidebar multi-selection by session id. The anchor is where ⇧-click ranges start. */
 export type SessionListSelection = {
@@ -57,7 +57,7 @@ export function selectSessionListRange(
  * orphan it together.
  */
 export function worktreesOrphanedBy(
-	sessions: readonly Session[],
+	sessions: readonly WorkSession[],
 	ids: ReadonlySet<string>,
 ): string[] {
 	const branchByDirectory = new Map<string, string>();

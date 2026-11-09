@@ -3,22 +3,22 @@ import { randomUUID } from "node:crypto";
 import { KernelError, mainHost, type DomainProvider, type PluginSdk } from "@kilo-desktop/kernel";
 
 import {
-	EMPTY_SESSION_PANES,
+	EMPTY_WORK_SESSION_PANES,
 	PaneKind,
 	PaneOpener,
 	Panes,
 	SESSIONS_PLUGIN_ID,
-	Sessions,
+	WorkSessions,
 	type OpenPaneInput,
 	type Pane,
-	type Session,
-	type SessionPanes,
+	type WorkSession,
+	type WorkSessionPanes,
 } from "../contracts";
 import { withChatPanes } from "./chat-pane";
 import { readLegacyPanes } from "./legacy-panes";
 
 interface PersistedPanes extends Record<string, unknown> {
-	bySession: Record<string, SessionPanes>;
+	bySession: Record<string, WorkSessionPanes>;
 	legacyImported: boolean;
 }
 
@@ -192,17 +192,17 @@ export function providePanes(
 		return pane;
 	}
 
-	function of(sessionId: string): SessionPanes {
-		return store.snapshot().bySession[sessionId] ?? EMPTY_SESSION_PANES;
+	function of(sessionId: string): WorkSessionPanes {
+		return store.snapshot().bySession[sessionId] ?? EMPTY_WORK_SESSION_PANES;
 	}
-	function write(sessionId: string, next: SessionPanes | null): void {
+	function write(sessionId: string, next: WorkSessionPanes | null): void {
 		const bySession = { ...store.snapshot().bySession };
 		if (next) bySession[sessionId] = next;
 		else delete bySession[sessionId];
 		store.set({ bySession });
 		panes.setState({ bySession });
 	}
-	function requirePane(current: SessionPanes, paneId: string): Pane {
+	function requirePane(current: WorkSessionPanes, paneId: string): Pane {
 		const pane = current.panes.find((candidate) => candidate.id === paneId);
 		if (!pane) throw new KernelError("NOT_FOUND", "Pane not found.");
 		return pane;
@@ -226,7 +226,7 @@ export function providePanes(
 		return sdk.extensions.list(PaneKind).find((contribution) => contribution.key === kind)
 			?.metadata;
 	}
-	function singletonPane(current: SessionPanes, kind: string): Pane | undefined {
+	function singletonPane(current: WorkSessionPanes, kind: string): Pane | undefined {
 		if (!kindMetadata(kind)?.singleton) return undefined;
 		return current.panes.find((pane) => pane.kind === kind);
 	}
@@ -234,14 +234,14 @@ export function providePanes(
 		const title = kindMetadata(kind)?.title ?? "Pane";
 		return ordinal > 1 ? `${title} ${ordinal}` : title;
 	}
-	function knownSessions(): readonly Session[] {
-		return sdk.domains.get(Sessions)?.getState().sessions ?? [];
+	function knownSessions(): readonly WorkSession[] {
+		return sdk.domains.get(WorkSessions)?.getState().sessions ?? [];
 	}
 	function knownSessionTitles(): Map<string, string> {
 		return new Map(knownSessions().map((session) => [session.id, session.title]));
 	}
 
-	function showChats(sessions: readonly Session[]): void {
+	function showChats(sessions: readonly WorkSession[]): void {
 		const current = store.snapshot().bySession;
 		const bySession = withChatPanes(current, sessions);
 		if (bySession === current) return;
@@ -249,7 +249,7 @@ export function providePanes(
 		panes.setState({ bySession });
 	}
 
-	const sessions = sdk.domains.get(Sessions);
+	const sessions = sdk.domains.get(WorkSessions);
 	const stops = [
 		// A session adopted from a chat is created holding it; a person's starts with none.
 		sessions?.on("created", ({ session }) => showChats([session])),

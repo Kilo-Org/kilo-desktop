@@ -4,11 +4,7 @@ import type { PluginSdk } from "@kilo-desktop/kernel";
 import type { MainKernelHost } from "@kilo-desktop/kernel/main";
 import { testManifest } from "@kilo-desktop/kernel/testing";
 import type { ChatSummary } from "@kilo-desktop/plugin-agent/contracts";
-import {
-	SessionDecoration,
-	type Session,
-	type SessionDecorationProps,
-} from "@kilo-desktop/plugin-sessions/contracts";
+import { type WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
 import telemetryManifest from "@kilo-desktop/plugin-telemetry/plugin.json";
 import { Telemetry, TELEMETRY_DEFINITIONS } from "@kilo-desktop/plugin-telemetry/contracts";
 import { renderWorkbench } from "@kilo-desktop/plugin-workbench/testing";
@@ -18,6 +14,10 @@ import manifest from "../../plugin.json";
 import { Board, BOARD_DEFINITIONS } from "../contracts";
 import { createBoardMainEntry } from "../main/entry";
 import { boardWebEntry } from "../web/index";
+import {
+	SessionDecoration,
+	type SessionDecorationProps,
+} from "@kilo-desktop/plugin-workbench/contracts";
 
 /** A stand-in for kilo.flags with the workspace board on or off. */
 const flagsPlugin = (on: boolean) => ({
@@ -53,7 +53,7 @@ function telemetryPlugin() {
 const decorationsPlugin = {
 	manifest: testManifest("test.decorations", {
 		contributes: {
-			extensions: { "kilo.sessions/session-decoration": [{ id: "badge", slot: "row" }] },
+			extensions: { "kilo.workbench/session-decoration": [{ id: "badge", slot: "row" }] },
 		},
 	}),
 	web: {
@@ -78,7 +78,7 @@ const decorationsPlugin = {
  */
 export async function renderBoard(
 	options: {
-		sessions?: Session[];
+		sessions?: WorkSession[];
 		workspaces?: Workspace[];
 		chats?: ChatSummary[];
 		flag?: boolean;

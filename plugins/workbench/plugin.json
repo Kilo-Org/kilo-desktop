@@ -5,20 +5,18 @@
 	"version": "1.0.0",
 	"description": "The session list, the launcher and the open session's workbench.",
 	"requires": {
-		"kilo.sessions/session": "optional",
+		"kilo.sessions/work-session": "optional",
 		"kilo.flags/flags": "optional",
-		"kilo.sessions/session-menu": "optional",
-		"kilo.sessions/session-decoration": "optional",
 		"kilo.workspaces/workspace": "optional",
 		"kilo.shell/main": "optional",
 		"kilo.shell/left-sidebar": "optional",
 		"kilo.shell/navigation": "optional",
 		"kilo.sessions/pane": "optional",
+		"kilo.sessions/pane-kind": "optional",
 		"kilo.agent/conversation": "optional",
 		"kilo.shell/settings-section": "optional",
 		"kernel/windows": "optional",
 		"kernel/notifications": "optional",
-		"kilo.sessions/session-renderer": "optional",
 		"kilo.telemetry/telemetry": "optional",
 		"kilo.telemetry/telemetry-event": "optional"
 	},
@@ -35,6 +33,16 @@
 		}
 	],
 	"extensionPoints": [
+		{
+			"id": "session-menu",
+			"kind": "additive",
+			"description": "An item in a session's menu."
+		},
+		{
+			"id": "session-decoration",
+			"kind": "additive",
+			"description": "A badge or hover detail shown with a session."
+		},
 		{
 			"id": "session-action",
 			"kind": "additive",
@@ -68,19 +76,14 @@
 	],
 	"domains": [
 		{
-			"id": "navigator",
+			"id": "workbench",
 			"home": "renderer",
-			"description": "What this window is looking at: focused workspace and active session."
+			"description": "This window's view of the Work Sessions: focused workspace, open session or sessions view, and opening panes."
 		},
 		{
 			"id": "layouts",
 			"home": "main",
 			"description": "Saved layout presets and the default one."
-		},
-		{
-			"id": "pane-launcher",
-			"home": "renderer",
-			"description": "Shows the open session's pane of a kind, or opens one, as a person would."
 		}
 	],
 	"contributes": {
@@ -591,11 +594,6 @@
 					"title": "Sessions",
 					"width": 1240,
 					"height": 760
-				}
-			],
-			"kilo.sessions/session-renderer": [
-				{
-					"id": "sessions"
 				}
 			]
 		}

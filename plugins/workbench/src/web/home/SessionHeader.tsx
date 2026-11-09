@@ -1,5 +1,4 @@
 import { RenderContribution, useExtensions } from "@kilo-desktop/kernel/web";
-import { SessionDecoration } from "@kilo-desktop/plugin-sessions/contracts";
 
 import { SessionAction } from "../../contracts";
 import { SessionPaneControls } from "../panes/SessionPaneControls";
@@ -40,10 +39,9 @@ function OpenSessionHeaderLeading() {
 }
 
 /**
- * The window header's actions while a session is open: plugins' header
- * decorations (kilo.sessions/session-decoration) and `start` session actions,
- * then the carousel toggle and "+", then `end` session actions
- * (kilo.workbench/session-action).
+ * The window header's actions while a session is open: plugins' `start`
+ * session actions, then the carousel toggle and "+", then `end` session
+ * actions (kilo.workbench/session-action).
  */
 export function SessionHeaderActions() {
 	const view = useShownSessionsView();
@@ -53,9 +51,6 @@ export function SessionHeaderActions() {
 
 function OpenSessionHeaderActions() {
 	const session = useActiveSession();
-	const decorations = useExtensions(SessionDecoration).filter(
-		(decoration) => decoration.metadata.slot === "header",
-	);
 	const actions = useExtensions(SessionAction);
 	if (!session) return null;
 	const renderActions = (placement: "start" | "end") =>
@@ -73,13 +68,6 @@ function OpenSessionHeaderActions() {
 			className="-mr-1 flex items-center gap-1 [-webkit-app-region:no-drag]"
 			data-qa-id="session-header-actions"
 		>
-			{decorations.map((decoration) => (
-				<RenderContribution
-					key={`${session.id}:${decoration.key}`}
-					contribution={decoration}
-					props={{ session }}
-				/>
-			))}
 			{renderActions("start")}
 			<SessionPaneControls session={session} />
 			{renderActions("end")}

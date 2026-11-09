@@ -1,4 +1,4 @@
-import type { Session } from "@kilo-desktop/plugin-sessions/contracts";
+import type { WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
 import { UNSCOPED_WORKSPACE_FOCUS } from "@kilo-desktop/plugin-workbench/contracts";
 
 import { deletedColumnDestination, type BoardState } from "../contracts";
@@ -6,14 +6,14 @@ import { deletedColumnDestination, type BoardState } from "../contracts";
 export interface BoardColumnView {
 	readonly id: string;
 	readonly label: string;
-	readonly cards: readonly Session[];
+	readonly cards: readonly WorkSession[];
 	/** Every card in the column, including ones the focus hides or whose session isn't known. */
 	readonly cardCount: number;
 	/** The column that receives this column's cards if it is deleted. */
 	readonly deleteDestination: string | null;
 }
 
-export function matchesFocus(session: Session, focus: string | null): boolean {
+export function matchesFocus(session: WorkSession, focus: string | null): boolean {
 	if (focus === null) return true;
 	if (focus === UNSCOPED_WORKSPACE_FOCUS) return session.workspaceId === null;
 	return session.workspaceId === focus;
@@ -25,7 +25,7 @@ export function matchesFocus(session: Session, focus: string | null): boolean {
  */
 export function resolveColumns(
 	board: BoardState,
-	sessions: ReadonlyMap<string, Session>,
+	sessions: ReadonlyMap<string, WorkSession>,
 	focus: string | null,
 ): BoardColumnView[] {
 	return board.columns.map((column) => ({

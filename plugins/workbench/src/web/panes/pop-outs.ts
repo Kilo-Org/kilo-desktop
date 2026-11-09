@@ -4,7 +4,7 @@ import { KernelWindows, type DomainHandle, type PluginSdk } from "@kilo-desktop/
 import { useDomainState } from "@kilo-desktop/kernel/web";
 import { Panes, type Pane } from "@kilo-desktop/plugin-sessions/contracts";
 
-import { Navigator } from "../../contracts";
+import { Workbench } from "../../contracts";
 
 /** The window view a popped-out pane opens in. */
 export const PANE_WINDOW_VIEW = "kilo.workbench/pane";
@@ -75,7 +75,7 @@ export function reconcilePopOuts(sdk: PluginSdk): () => void {
 	const reconcile = () => {
 		const windows = sdk.domains.get(KernelWindows);
 		if (!windows) return;
-		const activeSessionId = sdk.domains.get(Navigator)?.getState().activeSessionId ?? null;
+		const activeSessionId = sdk.domains.get(Workbench)?.getState().activeSessionId ?? null;
 		const bySession = sdk.domains.get(Panes)?.getState().bySession;
 		const current = paneWindows(windows.getState());
 		// Kept until the window's `closed` event, which follows the state that drops it.
@@ -100,12 +100,12 @@ export function reconcilePopOuts(sdk: PluginSdk): () => void {
 		stops.push(handle.subscribe(reconcile));
 		reconcile();
 	};
-	const track = (domain: typeof KernelWindows | typeof Navigator | typeof Panes) =>
+	const track = (domain: typeof KernelWindows | typeof Workbench | typeof Panes) =>
 		sdk.domains.track(domain as typeof Panes, {
 			added: (handle) => follow(handle),
 			removed: () => undefined,
 		});
-	stops.push(track(KernelWindows), track(Navigator), track(Panes));
+	stops.push(track(KernelWindows), track(Workbench), track(Panes));
 	stops.push(
 		sdk.domains.track(KernelWindows, {
 			added: (windows) =>

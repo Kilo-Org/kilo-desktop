@@ -1,7 +1,7 @@
 # Domain objects
 
 A domain object is a named object with **state**, **methods** and
-**events** — `kilo.sessions/session`, `kilo.agent/server`,
+**events** — `kilo.sessions/work-session`, `kilo.agent/server`,
 `example.hello/greetings`. Exactly one plugin provides it, in its **home**
 process. Every other process and window gets a proxy: state arrives as live
 snapshots, method calls are forwarded, events are broadcast. A pop-out
@@ -176,7 +176,7 @@ a typed reference instead of an internal id:
 ```ts
 import { ref, isRef } from "@kilo-desktop/kernel";
 
-const sessionRef = ref(Sessions, sessionId); // { type: "kilo.sessions/session", id }
+const sessionRef = ref(Sessions, sessionId); // { type: "kilo.sessions/work-session", id }
 if (isRef(Sessions, value)) open(value.id);
 ```
 

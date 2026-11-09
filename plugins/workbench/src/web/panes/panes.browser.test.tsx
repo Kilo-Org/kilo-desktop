@@ -15,15 +15,15 @@ import { render } from "@testing-library/react";
 import { flattenPanes, parseLayoutJson } from "@kilo-desktop/pane-layout";
 import sessionsManifest from "@kilo-desktop/plugin-sessions/plugin.json";
 import {
-	EMPTY_SESSION_PANES,
+	EMPTY_WORK_SESSION_PANES,
 	PaneKind,
 	Panes,
-	Sessions,
+	WorkSessions,
 	SESSIONS_DEFINITIONS,
 	type Pane,
 	type PaneProps,
-	type Session,
-	type SessionPanes,
+	type WorkSession,
+	type WorkSessionPanes,
 } from "@kilo-desktop/plugin-sessions/contracts";
 import { renderShell, type GuestPlugin } from "@kilo-desktop/plugin-shell/testing";
 import workspacesManifest from "@kilo-desktop/plugin-workspaces/plugin.json";
@@ -35,10 +35,10 @@ import {
 
 import manifest from "../../../plugin.json";
 import { fakeTelemetry } from "../../test/telemetry";
-import { Navigator, PaneLauncher, WORKBENCH_DEFINITIONS } from "../../contracts";
+import { Workbench, WORKBENCH_DEFINITIONS } from "../../contracts";
 import { workbenchWebEntry } from "../index";
 
-const SESSION: Session = {
+const SESSION: WorkSession = {
 	id: "wses_1",
 	title: "Fix login",
 	titleSource: "user",
@@ -62,7 +62,7 @@ const APP: Workspace = {
 };
 
 /** kilo.sessions' main, with panes kept in memory. */
-function fakeSessionsMain(initialPanes: Record<string, SessionPanes>) {
+function fakeSessionsMain(initialPanes: Record<string, WorkSessionPanes>) {
 	const calls = {
 		open: vi.fn(),
 		close: vi.fn(),
@@ -73,7 +73,7 @@ function fakeSessionsMain(initialPanes: Record<string, SessionPanes>) {
 	let next = 0;
 	const entry: PluginEntry = {
 		activate(sdk) {
-			const sessions: DomainProvider<typeof Sessions> = sdk.domains.provide(Sessions, {
+			const sessions: DomainProvider<typeof WorkSessions> = sdk.domains.provide(WorkSessions, {
 				initialState: { sessions: [SESSION] },
 				methods: {
 					create: () => {
@@ -140,8 +140,9 @@ function fakeSessionsMain(initialPanes: Record<string, SessionPanes>) {
 					importLegacy: () => undefined,
 				},
 			});
-			const of = (sessionId: string) => panes.state.bySession[sessionId] ?? EMPTY_SESSION_PANES;
-			function write(sessionId: string, state: SessionPanes) {
+			const of = (sessionId: string) =>
+				panes.state.bySession[sessionId] ?? EMPTY_WORK_SESSION_PANES;
+			function write(sessionId: string, state: WorkSessionPanes) {
 				panes.setState({ bySession: { ...panes.state.bySession, [sessionId]: state } });
 			}
 		},
@@ -181,7 +182,7 @@ const panesPlugin = {
 		version: "1.0.0",
 		contributes: {
 			extensions: {
-				"kilo.sessions/pane": [
+				"kilo.sessions/pane-kind": [
 					{ id: "terminal", title: "Terminal", launch: { newSession: true, inSession: true } },
 					{
 						id: "notebook",
@@ -221,7 +222,7 @@ const pinnedPlugin: GuestPlugin = {
 		version: "1.0.0",
 		contributes: {
 			extensions: {
-				"kilo.sessions/pane": [
+				"kilo.sessions/pane-kind": [
 					{
 						id: "helper",
 						title: "Helper",
@@ -241,7 +242,7 @@ const pinnedPlugin: GuestPlugin = {
 
 async function renderPanes(
 	options: {
-		panes?: Record<string, SessionPanes>;
+		panes?: Record<string, WorkSessionPanes>;
 		open?: boolean;
 		windows?: MainKernelHost["windows"];
 		extraPlugins?: readonly GuestPlugin[];
@@ -278,8 +279,8 @@ async function renderPanes(
 	);
 	const run = (command: string) => host.renderer.commands.execute(`kilo.workbench/${command}`);
 	const state = () => host.renderer.kernelSdk.domains.get(Panes)!.getState().bySession[SESSION.id];
-	const launcher = () => host.renderer.kernelSdk.domains.get(PaneLauncher)!;
-	return { host, run, state, launcher, calls: sessions.calls, tracked: telemetry.tracked };
+	const workbench = () => host.renderer.kernelSdk.domains.get(Workbench)!;
+	return { host, run, state, workbench, calls: sessions.calls, tracked: telemetry.tracked };
 }
 
 const pane = (id: string, kind = "test.panes/terminal", title = id): Pane => ({
@@ -293,8 +294,8 @@ const pane = (id: string, kind = "test.panes/terminal", title = id): Pane => ({
 const withPanes = (
 	panes: Pane[],
 	activePaneId = panes[0]?.id ?? null,
-): Record<string, SessionPanes> => ({
-	[SESSION.id]: { ...EMPTY_SESSION_PANES, panes, activePaneId },
+): Record<string, WorkSessionPanes> => ({
+	[SESSION.id]: { ...EMPTY_WORK_SESSION_PANES, panes, activePaneId },
 });
 
 describe("session panes", () => {
@@ -411,7 +412,7 @@ describe("session panes", () => {
 		const { run, state } = await renderPanes({
 			panes: {
 				[SESSION.id]: {
-					...EMPTY_SESSION_PANES,
+					...EMPTY_WORK_SESSION_PANES,
 					panes: [pane("a"), pane("b")],
 					activePaneId: "a",
 					layout: JSON.stringify({
@@ -552,7 +553,7 @@ const agentPlugin = {
 		version: "1.0.0",
 		contributes: {
 			extensions: {
-				"kilo.sessions/pane": [
+				"kilo.sessions/pane-kind": [
 					{ id: "agent", title: "Agent", launch: { newSession: true }, order: 10 },
 				],
 			},
@@ -587,7 +588,7 @@ describe("launcher", () => {
 			),
 		);
 		await vi.waitFor(() =>
-			expect(host.renderer.kernelSdk.domains.get(Navigator)!.getState().activeSessionId).toMatch(
+			expect(host.renderer.kernelSdk.domains.get(Workbench)!.getState().activeSessionId).toMatch(
 				/^wses_new_/,
 			),
 		);
@@ -635,9 +636,11 @@ describe("pop-out panes", () => {
 			.click();
 		expect(windows.focus).toHaveBeenCalledWith("w9");
 
-		await host.renderer.kernelSdk.domains.get(Navigator)!.methods.close(undefined);
+		await host.renderer.kernelSdk.domains.get(Workbench)!.methods.closeSession(undefined);
 		await vi.waitFor(() => expect(windows.setHidden).toHaveBeenCalledWith("w9", true));
-		await host.renderer.kernelSdk.domains.get(Navigator)!.methods.open({ sessionId: SESSION.id });
+		await host.renderer.kernelSdk.domains
+			.get(Workbench)!
+			.methods.openSession({ sessionId: SESSION.id });
 		await vi.waitFor(() => expect(windows.setHidden).toHaveBeenLastCalledWith("w9", false));
 
 		await page.getByTestId("chat-pane-popped-out-a").getByRole("button", { name: "Dock" }).click();
@@ -742,19 +745,19 @@ describe("layout telemetry", () => {
 	});
 });
 
-describe("opening or showing a pane kind (for other plugins' commands)", () => {
+describe("Workbench.openPane (for other plugins' commands)", () => {
 	it("opens the kind once, then shows the pane it already has", async () => {
-		const { launcher, state, calls, tracked } = await renderPanes({
+		const { workbench, state, calls, tracked } = await renderPanes({
 			panes: withPanes([pane("a"), pane("g", "test.panes/guarded", "notes.md")], "g"),
 			extraPlugins: [pinnedPlugin],
 		});
 		await expect.element(page.getByTestId("editor-g")).toBeVisible();
 
-		await launcher().methods.openOrShow({ kind: "test.panes/terminal" });
+		await workbench().methods.openPane({ kind: "test.panes/terminal" });
 		await vi.waitFor(() => expect(state()?.activePaneId).toBe("a"));
 		expect(calls.open).not.toHaveBeenCalled();
 
-		await launcher().methods.openOrShow({ kind: "test.pinned/helper" });
+		await workbench().methods.openPane({ kind: "test.pinned/helper" });
 		await vi.waitFor(() =>
 			expect(calls.open).toHaveBeenCalledWith({
 				sessionId: SESSION.id,
@@ -765,6 +768,15 @@ describe("opening or showing a pane kind (for other plugins' commands)", () => {
 		expect(tracked.mock.calls.filter(([event]) => event === "Pane Opened")).toHaveLength(1);
 	});
 
+	it("does nothing with no session open", async () => {
+		const { workbench, calls } = await renderPanes({ panes: withPanes([pane("a")]) });
+		await workbench().methods.closeSession(undefined);
+
+		await workbench().methods.openPane({ kind: "test.pinned/helper" });
+
+		expect(calls.open).not.toHaveBeenCalled();
+	});
+
 	it("brings a popped-out pane's window forward", async () => {
 		const windows = {
 			open: vi.fn(async () => "w9"),
@@ -773,7 +785,7 @@ describe("opening or showing a pane kind (for other plugins' commands)", () => {
 			setHidden: vi.fn(),
 			focusMain: vi.fn(),
 		};
-		const { host, launcher } = await renderPanes({ panes: withPanes([pane("a")]), windows });
+		const { host, workbench } = await renderPanes({ panes: withPanes([pane("a")]), windows });
 		await host.renderer.kernelSdk.domains.get(KernelWindows)!.methods.open({
 			view: "kilo.workbench/pane",
 			key: `${SESSION.id}/a`,
@@ -782,7 +794,7 @@ describe("opening or showing a pane kind (for other plugins' commands)", () => {
 		host.main.windowEvents.opened("w9", { role: "secondary", view: "kilo.workbench/pane" });
 		await expect.element(page.getByTestId("chat-pane-popped-out-a")).toBeVisible();
 
-		await launcher().methods.openOrShow({ kind: "test.panes/terminal" });
+		await workbench().methods.openPane({ kind: "test.panes/terminal" });
 
 		await vi.waitFor(() => expect(windows.focus).toHaveBeenCalledWith("w9"));
 	});

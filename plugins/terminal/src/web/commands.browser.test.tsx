@@ -72,12 +72,12 @@ describe("terminal commands", () => {
 	});
 
 	it("shows the session's terminal, or opens one, with Ctrl+`", async () => {
-		const { renderer, openOrShowPane } = await renderTerminalHost();
+		const { renderer, workbenchOpenPane } = await renderTerminalHost();
 
 		await expect(renderer.keyboard.dispatch("Ctrl+Backquote")).resolves.toBe(true);
 
 		await vi.waitFor(() =>
-			expect(openOrShowPane).toHaveBeenCalledWith({ kind: "kilo.terminal/terminal" }),
+			expect(workbenchOpenPane).toHaveBeenCalledWith({ kind: "kilo.terminal/terminal" }),
 		);
 	});
 

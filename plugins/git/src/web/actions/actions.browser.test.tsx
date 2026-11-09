@@ -6,13 +6,14 @@ import { testPlugin } from "@kilo-desktop/kernel/testing";
 import { RenderContribution } from "@kilo-desktop/kernel/web";
 import { AgentTool, Conversations, type GenerateInput } from "@kilo-desktop/plugin-agent/contracts";
 import { Composer, ComposerAction, ModelPreferences } from "@kilo-desktop/plugin-chat/contracts";
-import {
-	SessionDecoration,
-	type Session,
-	type SessionDecorationProps,
-} from "@kilo-desktop/plugin-sessions/contracts";
+import { type WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
 import { Telemetry, TelemetryEvent } from "@kilo-desktop/plugin-telemetry/contracts";
-import { SessionAction, type SessionActionProps } from "@kilo-desktop/plugin-workbench/contracts";
+import {
+	SessionAction,
+	type SessionActionProps,
+	SessionDecoration,
+	type SessionDecorationProps,
+} from "@kilo-desktop/plugin-workbench/contracts";
 
 import {
 	CHANGES_PANE_KIND,
@@ -199,7 +200,7 @@ function collaborators() {
 	};
 }
 
-function Header({ host, shown = SESSION }: { host: GitHost; shown?: Session }) {
+function Header({ host, shown = SESSION }: { host: GitHost; shown?: WorkSession }) {
 	const action = host.renderer.extensions
 		.list(SessionAction)
 		.find((contribution) => contribution.key === "kilo.git/repository-actions")!;

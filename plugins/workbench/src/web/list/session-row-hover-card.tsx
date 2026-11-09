@@ -7,18 +7,19 @@ import { CircleAlertIcon, FolderIcon, GitBranchIcon, GitForkIcon, MonitorIcon } 
 import type { FC, ReactElement, ReactNode } from "react";
 
 import { RenderContribution, useExtensions } from "@kilo-desktop/kernel/web";
-import { SessionDecoration, type Session } from "@kilo-desktop/plugin-sessions/contracts";
+import { type WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
 
 import {
 	directoryBasename,
 	formatRelativeTimeLabel,
 	type SessionActivity,
 } from "./session-activity";
+import { SessionDecoration } from "../../contracts";
 
 type SessionRowHoverCardProps = {
 	/** The row trigger; the card opens while it is hovered or focused. */
 	trigger: ReactElement;
-	session: Session;
+	session: WorkSession;
 	title: string;
 	activity: SessionActivity | undefined;
 	locationLabel: string | null;

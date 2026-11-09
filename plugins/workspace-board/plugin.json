@@ -5,10 +5,9 @@
 	"version": "1.0.0",
 	"description": "The workspace board: sessions organised into columns you name.",
 	"requires": {
-		"kilo.sessions/session": "optional",
-		"kilo.sessions/session-menu": "optional",
-		"kilo.sessions/session-renderer": "optional",
-		"kilo.workbench/navigator": "optional",
+		"kilo.sessions/work-session": "optional",
+		"kilo.workbench/session-menu": "optional",
+		"kilo.workbench/workbench": "optional",
 		"kilo.workbench/navigator-action": "optional",
 		"kilo.workbench/sessions-view": "optional",
 		"kilo.workspaces/workspace": "optional",
@@ -44,7 +43,7 @@
 					}
 				}
 			],
-			"kilo.sessions/session-menu": [
+			"kilo.workbench/session-menu": [
 				{
 					"id": "add-to-board",
 					"title": "Add to board",

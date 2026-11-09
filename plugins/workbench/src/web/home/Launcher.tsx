@@ -10,7 +10,7 @@ import {
 	useExtensions,
 } from "@kilo-desktop/kernel/web";
 import { flagKey } from "@kilo-desktop/plugin-flags/contracts";
-import { Panes, Sessions, type Session } from "@kilo-desktop/plugin-sessions/contracts";
+import { Panes, WorkSessions, type WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
 import { Workspaces, type WorkspacesState } from "@kilo-desktop/plugin-workspaces/contracts";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { useWorkspacePickerSource } from "@kilo-desktop/ui/components/workspace-picker";
@@ -18,7 +18,7 @@ import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import {
 	LauncherOption,
-	Navigator,
+	Workbench,
 	SessionStarter,
 	type LauncherOptionProps,
 	type SessionStarterProps,
@@ -47,11 +47,11 @@ function usePrimaryFolder(workspaceId: string | null): string | null {
  * the isolation chosen there. `starting` covers the time a worktree takes.
  */
 function useSessionCreation(isolation: LauncherIsolation) {
-	const sessions = useDomain(Sessions);
+	const sessions = useDomain(WorkSessions);
 	const { activeWorkspaceId } = useWorkspacePickerSource();
 	const [starting, setStarting] = useState(false);
 
-	const create = async (): Promise<Session> => {
+	const create = async (): Promise<WorkSession> => {
 		if (!sessions) throw new Error("Sessions aren't available.");
 		setStarting(true);
 		try {
@@ -195,7 +195,7 @@ function PaneKindButtons({
  */
 export function Launcher() {
 	const panes = useDomain(Panes);
-	const navigator = useDomain(Navigator);
+	const navigator = useDomain(Workbench);
 	const kinds = usePaneKinds();
 	const applyDefaultLayout = useDefaultLayout();
 	const { activeWorkspaceId } = useWorkspacePickerSource();
@@ -209,7 +209,7 @@ export function Launcher() {
 		creation
 			.create()
 			.then(async (session) => {
-				await navigator?.methods.open({ sessionId: session.id });
+				await navigator?.methods.openSession({ sessionId: session.id });
 				if (kind && panes) await launchPane(panes, session.id, kind.id, kinds.layoutKindOf);
 				else if (!kind) await applyDefaultLayout(session.id);
 			})
@@ -320,11 +320,11 @@ function LauncherPage({
 }
 
 function startedSession(
-	session: Session,
+	session: WorkSession,
 	/** The workspace's primary folder: where a session without its own directory works. */
 	workspaceDirectory: string | null,
-	sessions: NonNullable<ReturnType<typeof useDomain<typeof Sessions>>>,
-	navigator: ReturnType<typeof useDomain<typeof Navigator>>,
+	sessions: NonNullable<ReturnType<typeof useDomain<typeof WorkSessions>>>,
+	navigator: ReturnType<typeof useDomain<typeof Workbench>>,
 ): StartedSession {
 	return {
 		sessionId: session.id,
@@ -332,7 +332,7 @@ function startedSession(
 		workspaceId: session.workspaceId,
 		worktreeBranch: session.worktreeBranch,
 		open: async () => {
-			await navigator?.methods.open({ sessionId: session.id });
+			await navigator?.methods.openSession({ sessionId: session.id });
 		},
 		discard: async () => {
 			await sessions.methods.remove({ id: session.id, removeWorktree: true });

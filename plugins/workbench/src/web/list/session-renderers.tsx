@@ -1,16 +1,16 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ComponentType, type ReactNode } from "react";
 
-import { RenderContribution, useDomain, useExtensions } from "@kilo-desktop/kernel/web";
+import {
+	KernelProvider,
+	RenderContribution,
+	useDomain,
+	useExtensions,
+	useKernel,
+} from "@kilo-desktop/kernel/web";
 import {
 	isOrphanedWorktreeSession,
-	SessionDecoration,
-	Sessions,
-	type Session,
-	type SessionDecorationsProps,
-	type SessionGlyphProps,
-	type SessionMenuProps,
-	type SessionRendererProps,
-	type SessionRenderers,
+	WorkSessions,
+	type WorkSession,
 } from "@kilo-desktop/plugin-sessions/contracts";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
@@ -33,15 +33,23 @@ import {
 	SessionRowMenu,
 } from "./session-row-actions";
 import { SESSION_ROW_STATE_LABELS, SessionRowGlyph } from "./session-row-display";
+import {
+	WORKBENCH_PLUGIN_ID,
+	SessionDecoration,
+	type SessionDecorationsProps,
+	type SessionGlyphProps,
+	type SessionMenuProps,
+	type SessionRendererProps,
+	type SessionRenderers,
+} from "../../contracts";
 
 /*
- * kilo.sessions/session-renderer: a session as the session list shows it,
- * for other plugins' surfaces (a board card). The row itself uses the same
- * actions.
+ * The session renderers: a session as the session list shows it, handed to
+ * sessions views (a board card). The row itself uses the same actions.
  */
 
 /** A session's live activity (from its chats) and the row state this window shows. */
-export function useSessionRowState(session: Session): {
+export function useSessionRowState(session: WorkSession): {
 	activity: SessionActivity;
 	rowState: SessionRowState;
 } {
@@ -59,13 +67,13 @@ export function useSessionRowState(session: Session): {
  * restore, and delete behind its confirmation (with the worktree choice for
  * the last session in a worktree). `dialogs` must be rendered.
  */
-export function useSessionActions(session: Session): {
+export function useSessionActions(session: WorkSession): {
 	togglePinned: () => void;
 	setArchived: (archived: boolean) => void;
 	askToDelete: () => void;
 	dialogs: ReactNode;
 } {
-	const sessions = useDomain(Sessions);
+	const sessions = useDomain(WorkSessions);
 	const [confirmDelete, setConfirmDelete] = useState(false);
 	const [confirmWorktreeDelete, setConfirmWorktreeDelete] = useState(false);
 	const togglePinned = () =>
@@ -181,9 +189,26 @@ function SessionMenuRenderer({ session, onRename, label, side, triggerRef }: Ses
 	);
 }
 
+/**
+ * Renders a workbench component as kilo.workbench wherever it is shown: a
+ * sessions view renders the session renderers inside its own plugin's tree.
+ */
+function asWorkbench<TProps extends object>(Inner: ComponentType<TProps>): ComponentType<TProps> {
+	function AsWorkbench(props: TProps) {
+		return (
+			<KernelProvider kernel={useKernel()} as={WORKBENCH_PLUGIN_ID}>
+				<Inner {...props} />
+			</KernelProvider>
+		);
+	}
+	AsWorkbench.displayName = `AsWorkbench(${Inner.displayName ?? Inner.name})`;
+	return AsWorkbench;
+}
+
+/** How a session looks, handed to every sessions view (`SessionsViewProps.renderers`). */
 export const SESSION_RENDERERS: SessionRenderers = {
-	Glyph: SessionGlyph,
-	Status: SessionStatusLabel,
-	Decorations: SessionDecorations,
-	Menu: SessionMenuRenderer,
+	Glyph: asWorkbench(SessionGlyph),
+	Status: asWorkbench(SessionStatusLabel),
+	Decorations: asWorkbench(SessionDecorations),
+	Menu: asWorkbench(SessionMenuRenderer),
 };

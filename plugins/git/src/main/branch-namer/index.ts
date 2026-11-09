@@ -5,7 +5,7 @@ import {
 	type PluginStorage,
 } from "@kilo-desktop/kernel";
 import { Conversations } from "@kilo-desktop/plugin-agent/contracts";
-import { isOrphanedWorktreeSession, Sessions } from "@kilo-desktop/plugin-sessions/contracts";
+import { isOrphanedWorktreeSession, WorkSessions } from "@kilo-desktop/plugin-sessions/contracts";
 import type { VcsImplementation } from "@kilo-desktop/plugin-workspaces/contracts";
 
 import { createBranchNamer, type ArmedChats, type NamerTarget } from "./controller.js";
@@ -41,7 +41,7 @@ export function startBranchNamer(
 		namespace: "branch-namer",
 		defaults: { armed: {} },
 	});
-	let sessions: DomainHandle<typeof Sessions> | undefined;
+	let sessions: DomainHandle<typeof WorkSessions> | undefined;
 	let conversations: DomainHandle<typeof Conversations> | undefined;
 
 	const target = (chatId: string): NamerTarget | null => {
@@ -101,7 +101,7 @@ export function startBranchNamer(
 		stopConversations?.();
 	});
 	sdk.onDispose(
-		sdk.domains.track(Sessions, {
+		sdk.domains.track(WorkSessions, {
 			added(handle) {
 				sessions = handle;
 				const stops = [

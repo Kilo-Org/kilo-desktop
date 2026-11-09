@@ -1,4 +1,4 @@
-import type { Pane, Session, SessionPanes } from "../contracts";
+import type { Pane, WorkSession, WorkSessionPanes } from "../contracts";
 
 /**
  * kilo.chat's agent pane kind. Its contracts import these, so kilo.sessions
@@ -7,7 +7,7 @@ import type { Pane, Session, SessionPanes } from "../contracts";
 export const CHAT_PANE_KIND = "kilo.chat/agent";
 
 /** A session's agent pane; without a chat in its metadata it shows the session's first chat. */
-export function chatPane(session: Pick<Session, "id" | "title">): Pane {
+export function chatPane(session: Pick<WorkSession, "id" | "title">): Pane {
 	return {
 		id: `agent:${session.id}`,
 		kind: CHAT_PANE_KIND,
@@ -23,9 +23,9 @@ export function chatPane(session: Pick<Session, "id" | "title">): Pane {
  * panes were all closed keeps its empty record, so it stays empty.
  */
 export function withChatPanes(
-	bySession: Readonly<Record<string, SessionPanes>>,
-	sessions: readonly Session[],
-): Readonly<Record<string, SessionPanes>> {
+	bySession: Readonly<Record<string, WorkSessionPanes>>,
+	sessions: readonly WorkSession[],
+): Readonly<Record<string, WorkSessionPanes>> {
 	const missing = sessions.filter(
 		(session) => session.chatIds.length > 0 && !bySession[session.id],
 	);

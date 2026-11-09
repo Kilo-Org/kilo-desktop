@@ -2,11 +2,11 @@ import { KernelError, type PluginSdk } from "@kilo-desktop/kernel";
 import { AgentServer, type ChatSummary } from "@kilo-desktop/plugin-agent/contracts";
 import { Vcs, Workspaces, type VcsImplementation } from "@kilo-desktop/plugin-workspaces/contracts";
 
-import type { IsolationOptions, Session, SessionIsolation } from "../contracts";
+import type { IsolationOptions, WorkSession, WorkSessionIsolation } from "../contracts";
 
 /** Where a session was placed: its worktree, or nothing for the workspace's checkout. */
 export interface Placement {
-	readonly isolation: SessionIsolation["kind"];
+	readonly isolation: WorkSessionIsolation["kind"];
 	readonly directory?: string;
 	readonly branch?: string;
 	readonly baseRef?: string;
@@ -47,7 +47,7 @@ function rethrow(label: string, error: unknown): never {
 export async function placeSession(
 	sdk: PluginSdk,
 	workspaceId: string | null,
-	isolation: SessionIsolation | undefined,
+	isolation: WorkSessionIsolation | undefined,
 ): Promise<Placement | undefined> {
 	if (!isolation) return undefined;
 	if (isolation.kind === "local") return { isolation: "local" };
@@ -186,7 +186,7 @@ export function worktreeChatLinks(
 }
 
 /** Whether a session placed in a worktree at creation should link its first chat. */
-export function linksFirstChat(session: Session): boolean {
+export function linksFirstChat(session: WorkSession): boolean {
 	return (
 		(session.isolation === "new-worktree" || session.isolation === "existing-worktree") &&
 		session.directory !== null &&

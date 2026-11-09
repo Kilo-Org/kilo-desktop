@@ -4,7 +4,7 @@ import { createMainKernel } from "@kilo-desktop/kernel/main";
 import { createMemoryStorage, createTestHost, testPlugin } from "@kilo-desktop/kernel/testing";
 
 import manifest from "../../plugin.json";
-import { Panes, Sessions, SESSIONS_DEFINITIONS } from "../contracts";
+import { Panes, WorkSessions, SESSIONS_DEFINITIONS } from "../contracts";
 import { createSessionsMainEntry } from "./entry";
 import { globToRegExp } from "./panes";
 
@@ -13,7 +13,7 @@ const contributor = testPlugin("test.panes", {
 	manifest: {
 		contributes: {
 			extensions: {
-				"kilo.sessions/pane": [
+				"kilo.sessions/pane-kind": [
 					{ id: "terminal", title: "Terminal" },
 					{ id: "changes", title: "Changes", singleton: true },
 					{ id: "editor", title: "Editor" },
@@ -50,7 +50,7 @@ async function boot(storage = createMemoryStorage("/data/kilo.sessions")) {
 		hostServices: () => ({ storage }),
 	});
 	await kernel.start();
-	const sessions = kernel.kernelSdk.domains.get(Sessions)!;
+	const sessions = kernel.kernelSdk.domains.get(WorkSessions)!;
 	const panes = kernel.kernelSdk.domains.get(Panes)!;
 	const session = await sessions.methods.create({});
 	const of = (sessionId = session.id) => panes.getState().bySession[sessionId];

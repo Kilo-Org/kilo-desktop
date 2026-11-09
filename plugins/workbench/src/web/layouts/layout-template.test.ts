@@ -9,10 +9,10 @@ import {
 	type PaneLayout,
 } from "@kilo-desktop/pane-layout";
 import {
-	EMPTY_SESSION_PANES,
+	EMPTY_WORK_SESSION_PANES,
 	type OpenPaneInput,
 	type Pane,
-	type SessionPanes,
+	type WorkSessionPanes,
 } from "@kilo-desktop/plugin-sessions/contracts";
 
 import { layoutTemplateSchema, type LayoutTemplate } from "../../contracts";
@@ -57,8 +57,8 @@ const pane = (
 	ordinal: 1,
 });
 
-const session = (panes: Pane[], layout?: PaneLayout, extra: Partial<SessionPanes> = {}) => ({
-	...EMPTY_SESSION_PANES,
+const session = (panes: Pane[], layout?: PaneLayout, extra: Partial<WorkSessionPanes> = {}) => ({
+	...EMPTY_WORK_SESSION_PANES,
 	panes,
 	activePaneId: layout?.activePaneId ?? panes[0]?.id ?? null,
 	layout: layout ? serializeLayout(layout) : null,
@@ -98,7 +98,7 @@ const coding: LayoutTemplate = {
 };
 
 /** kilo.sessions' Panes, held in memory. */
-function fakePanes(initial: SessionPanes, options: { singleton?: string } = {}) {
+function fakePanes(initial: WorkSessionPanes, options: { singleton?: string } = {}) {
 	let state = initial;
 	let next = 0;
 	const open = vi.fn(async (input: OpenPaneInput) => {
@@ -195,7 +195,7 @@ describe("capturing a layout template", () => {
 		const { template } = captureLayoutTemplate(session([pane("t", TERMINAL)]), kinds);
 		expect(template.slots).toEqual([{ id: "slot-1", kind: TERMINAL }]);
 
-		const empty = captureLayoutTemplate(EMPTY_SESSION_PANES, kinds).template;
+		const empty = captureLayoutTemplate(EMPTY_WORK_SESSION_PANES, kinds).template;
 		expect(empty.slots).toEqual([]);
 		expect(empty).not.toHaveProperty("activePaneId");
 	});
@@ -364,11 +364,11 @@ describe("applying a template", () => {
 	});
 
 	it("round-trips: a captured template recreates its geometry and re-applies without opening", async () => {
-		const source = fakePanes(EMPTY_SESSION_PANES);
+		const source = fakePanes(EMPTY_WORK_SESSION_PANES);
 		await applyLayoutTemplate(source.handle, "s", coding, kinds);
 		const { template } = captureLayoutTemplate(source.state(), kinds);
 
-		const target = fakePanes(EMPTY_SESSION_PANES);
+		const target = fakePanes(EMPTY_WORK_SESSION_PANES);
 		await applyLayoutTemplate(target.handle, "s", template, kinds);
 		const restored = parseLayoutJson(target.state().layout)!;
 		expect(restored.groups.map((group) => group.preferredWidth)).toEqual([450, 550, 550]);
@@ -383,7 +383,7 @@ describe("applying a template", () => {
 	});
 
 	it("fills only the first slot of a singleton kind", async () => {
-		const panes = fakePanes(EMPTY_SESSION_PANES, { singleton: AGENT });
+		const panes = fakePanes(EMPTY_WORK_SESSION_PANES, { singleton: AGENT });
 		const template: LayoutTemplate = {
 			version: 2,
 			arrangement: "tiles",
@@ -405,7 +405,7 @@ describe("applying a template", () => {
 	});
 
 	it("saves no layout when nothing in the template can be placed", async () => {
-		const panes = fakePanes(EMPTY_SESSION_PANES);
+		const panes = fakePanes(EMPTY_WORK_SESSION_PANES);
 
 		await applyLayoutTemplate(
 			panes.handle,

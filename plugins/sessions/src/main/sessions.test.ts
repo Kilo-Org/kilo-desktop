@@ -11,12 +11,12 @@ import { ChatOwner } from "@kilo-desktop/plugin-agent/contracts";
 
 import manifest from "../../plugin.json";
 import {
-	DEFAULT_SESSION_TITLE,
-	EMPTY_SESSION_PANES,
+	DEFAULT_WORK_SESSION_TITLE,
+	EMPTY_WORK_SESSION_PANES,
 	Panes,
-	Sessions,
+	WorkSessions,
 	SESSIONS_DEFINITIONS,
-	type Session,
+	type WorkSession,
 } from "../contracts";
 import { chat, FakeConversations, fakeWorkspaces } from "../test/main-fakes";
 import { createSessionsMainEntry } from "./entry";
@@ -61,7 +61,7 @@ async function boot(
 		}),
 	});
 	await kernel.start();
-	const sessions = kernel.kernelSdk.domains.get(Sessions)!;
+	const sessions = kernel.kernelSdk.domains.get(WorkSessions)!;
 	const events: string[] = [];
 	sessions.on("created", ({ session }) => events.push(`created ${session.id}`));
 	sessions.on("updated", ({ after }) => events.push(`updated ${after.id}`));
@@ -79,7 +79,7 @@ describe("work sessions", () => {
 
 		expect(created).toMatchObject({
 			id: "wses_1",
-			title: DEFAULT_SESSION_TITLE,
+			title: DEFAULT_WORK_SESSION_TITLE,
 			titleSource: "default",
 			pinned: false,
 			archived: false,
@@ -391,7 +391,7 @@ describe("importing origin's sessions", () => {
 
 	it("re-archives origin's sessions a release imported as live, unless the person chose since", async () => {
 		const storage = createMemoryStorage("/data/kilo.sessions");
-		const imported = (id: string, chatId: string, archiveChangedAt: number): Session => ({
+		const imported = (id: string, chatId: string, archiveChangedAt: number): WorkSession => ({
 			id,
 			title: `Chat ${chatId}`,
 			titleSource: "chat",
@@ -523,7 +523,7 @@ describe("importing origin's sessions", () => {
 		};
 		const handOver = async (kernel: MainKernel) => {
 			const own = kernel.sdkFor("kilo.sessions").domains;
-			await own.get(Sessions)!.methods.importLegacyPins({ ids: ["wses_old"] });
+			await own.get(WorkSessions)!.methods.importLegacyPins({ ids: ["wses_old"] });
 			await own.get(Panes)!.methods.importLegacy({ state: legacyPanes });
 		};
 		const first = await boot({ storage, originDatabase: file });
@@ -570,7 +570,7 @@ describe("importing origin's sessions", () => {
 				{
 					id: "agent:wses_plain",
 					kind: "kilo.chat/agent",
-					title: DEFAULT_SESSION_TITLE,
+					title: DEFAULT_WORK_SESSION_TITLE,
 					metadata: {},
 					ordinal: 1,
 				},
@@ -585,7 +585,7 @@ describe("importing origin's sessions", () => {
 
 	it("shows the chat of sessions an earlier version took over from origin without one", async () => {
 		const storage = createMemoryStorage("/data/kilo.sessions");
-		const saved = (id: string, chatIds: string[]): Session => ({
+		const saved = (id: string, chatIds: string[]): WorkSession => ({
 			id,
 			title: `Session ${id}`,
 			titleSource: "chat",
@@ -608,7 +608,7 @@ describe("importing origin's sessions", () => {
 			importedFromOrigin: true,
 		});
 		storage.saved.set("panes", {
-			bySession: { wses_emptied: { ...EMPTY_SESSION_PANES } },
+			bySession: { wses_emptied: { ...EMPTY_WORK_SESSION_PANES } },
 			legacyImported: true,
 		});
 
@@ -649,12 +649,12 @@ describe("importing origin's sessions", () => {
 		const { kernel, sessions, list } = await boot({ kilo });
 		const own = await sessions.methods.create({});
 		await vi.waitFor(() => expect(list()).toHaveLength(3));
-		const ownUi = kernel.sdkFor("kilo.sessions").domains.get(Sessions)!;
+		const ownUi = kernel.sdkFor("kilo.sessions").domains.get(WorkSessions)!;
 
 		await ownUi.methods.importLegacyPins({ ids: [own.id, "ses_b", "ses_gone"] });
 		await ownUi.methods.importLegacyPins({ ids: ["ses_a"] });
 
-		const pinned = (session: Session | undefined) => session?.pinned;
+		const pinned = (session: WorkSession | undefined) => session?.pinned;
 		expect(pinned(list().find((s) => s.id === own.id))).toBe(true);
 		expect(pinned(list().find((s) => s.chatIds.includes("ses_b")))).toBe(true);
 		expect(pinned(list().find((s) => s.chatIds.includes("ses_a")))).toBe(false);

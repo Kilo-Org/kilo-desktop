@@ -1,7 +1,7 @@
 import { definePlugin, KernelCommand } from "@kilo-desktop/kernel";
 import { ComposerMention, MarkdownExtension } from "@kilo-desktop/plugin-chat/contracts";
 import { PaneKind, Panes } from "@kilo-desktop/plugin-sessions/contracts";
-import { PaneLauncher } from "@kilo-desktop/plugin-workbench/contracts";
+import { Workbench } from "@kilo-desktop/plugin-workbench/contracts";
 
 import { Documents, FILES_PANE_KIND } from "../contracts/index.js";
 import { CloseGuards } from "./close-guards.js";
@@ -31,7 +31,7 @@ export const filesWebEntry = definePlugin({
 			canClose: runtime.guards.canClose,
 		});
 		sdk.extensions.implement(KernelCommand, "open", () =>
-			sdk.domains.get(PaneLauncher)?.methods.openOrShow({ kind: FILES_PANE_KIND }),
+			sdk.domains.get(Workbench)?.methods.openPane({ kind: FILES_PANE_KIND }),
 		);
 		sdk.extensions.implement(
 			ComposerMention,

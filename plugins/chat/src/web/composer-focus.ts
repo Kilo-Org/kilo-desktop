@@ -1,6 +1,6 @@
 import type { DomainProvider, PluginSdk } from "@kilo-desktop/kernel";
-import { Panes, Sessions } from "@kilo-desktop/plugin-sessions/contracts";
-import { Navigator } from "@kilo-desktop/plugin-workbench/contracts";
+import { Panes, WorkSessions } from "@kilo-desktop/plugin-sessions/contracts";
+import { Workbench } from "@kilo-desktop/plugin-workbench/contracts";
 import { Workspaces } from "@kilo-desktop/plugin-workspaces/contracts";
 
 import { AGENT_PANE_KIND, Composer, ComposerDrafts, type ComposerState } from "../contracts";
@@ -79,7 +79,7 @@ export class ComposerFocus {
 					await this.focusSession(sdk, target);
 				},
 				startNewChat: async ({ text, workspaceId }) => {
-					const sessions = sdk.domains.get(Sessions);
+					const sessions = sdk.domains.get(WorkSessions);
 					if (!sessions) throw new Error("Sessions aren't available.");
 					const workspace =
 						workspaceId === undefined
@@ -87,7 +87,7 @@ export class ComposerFocus {
 							: workspaceId;
 					const session = await sessions.methods.create({ workspaceId: workspace });
 					this.setDraft(session.id, text);
-					await sdk.domains.get(Navigator)?.methods.open({ sessionId: session.id });
+					await sdk.domains.get(Workbench)?.methods.openSession({ sessionId: session.id });
 					await this.focusSession(sdk, session.id);
 					return { sessionId: session.id };
 				},
@@ -185,7 +185,7 @@ export class ComposerFocus {
 }
 
 function activeSession(sdk: PluginSdk): string | null {
-	return sdk.domains.get(Navigator)?.getState().activeSessionId ?? null;
+	return sdk.domains.get(Workbench)?.getState().activeSessionId ?? null;
 }
 
 /**

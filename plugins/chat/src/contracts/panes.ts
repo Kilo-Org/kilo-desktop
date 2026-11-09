@@ -1,4 +1,4 @@
-import type { Pane, Session } from "@kilo-desktop/plugin-sessions/contracts";
+import type { Pane, WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
 
 /** The agent pane kind's contribution key. */
 export const AGENT_PANE_KIND = "kilo.chat/agent";
@@ -39,7 +39,7 @@ export const subagentPaneId = (childSessionId: string): string => `subagent:${ch
  */
 export function agentPaneChatId(
 	pane: Pick<Pane, "metadata">,
-	session: Pick<Session, "chatIds"> | null | undefined,
+	session: Pick<WorkSession, "chatIds"> | null | undefined,
 ): string | null {
 	return pane.metadata[CHAT_ID_METADATA_KEY] ?? session?.chatIds[0] ?? null;
 }

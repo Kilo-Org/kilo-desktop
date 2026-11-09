@@ -6,11 +6,12 @@
 	"description": "The agent pane: a session's chat with the agent, its transcript and composer.",
 	"requires": {
 		"kilo.sessions/pane": "optional",
-		"kilo.sessions/session": "optional",
+		"kilo.sessions/pane-kind": "optional",
+		"kilo.sessions/work-session": "optional",
 		"kilo.agent/server": "optional",
 		"kilo.agent/conversation": "optional",
 		"kilo.workspaces/workspace": "optional",
-		"kilo.workbench/navigator": "optional",
+		"kilo.workbench/workbench": "optional",
 		"kilo.workbench/session-starter": "optional",
 		"kilo.agent/tool": "optional",
 		"kilo.account/identity": "optional",
@@ -40,7 +41,7 @@
 					"paneKind": "kilo.chat/agent"
 				}
 			],
-			"kilo.sessions/pane": [
+			"kilo.sessions/pane-kind": [
 				{
 					"id": "agent",
 					"title": "Agent",

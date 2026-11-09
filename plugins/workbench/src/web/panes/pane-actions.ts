@@ -9,12 +9,12 @@ import {
 	type PaneLayout,
 } from "@kilo-desktop/pane-layout";
 import {
-	EMPTY_SESSION_PANES,
+	EMPTY_WORK_SESSION_PANES,
 	type PaneArrangement,
 	type Pane,
 	type PaneImplementation,
 	type Panes,
-	type SessionPanes,
+	type WorkSessionPanes,
 } from "@kilo-desktop/plugin-sessions/contracts";
 
 import { paneTypeOf, type TrackWorkbench } from "../telemetry";
@@ -28,8 +28,8 @@ export type PanePlacement =
 	| { readonly beside: "after" | "below" }
 	| undefined;
 
-export function sessionPanesOf(panes: PanesHandle, sessionId: string): SessionPanes {
-	return panes.getState().bySession[sessionId] ?? EMPTY_SESSION_PANES;
+export function sessionPanesOf(panes: PanesHandle, sessionId: string): WorkSessionPanes {
+	return panes.getState().bySession[sessionId] ?? EMPTY_WORK_SESSION_PANES;
 }
 
 export function saveLayout(

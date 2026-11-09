@@ -7,7 +7,7 @@ import {
 	type PaneKind as LayoutKind,
 	type PaneLayout,
 } from "@kilo-desktop/pane-layout";
-import type { Pane, SessionPanes } from "@kilo-desktop/plugin-sessions/contracts";
+import type { Pane, WorkSessionPanes } from "@kilo-desktop/plugin-sessions/contracts";
 
 import type { LayoutTemplate } from "../../contracts";
 import { panesInOrder, saveLayout, sessionPanesOf, type PanesHandle } from "../panes/pane-actions";
@@ -45,7 +45,10 @@ function recreatable(kinds: TemplateKinds, kind: string | undefined): boolean {
  * pane whose kind can be recreated, grouped, sized, pinned and stacked as
  * now. Pane identities, titles and metadata are not kept.
  */
-export function captureLayoutTemplate(state: SessionPanes, kinds: TemplateKinds): CapturedTemplate {
+export function captureLayoutTemplate(
+	state: WorkSessionPanes,
+	kinds: TemplateKinds,
+): CapturedTemplate {
 	const layout = sessionLayout(state, kinds.layoutKindOf);
 	const kindOf = new Map(state.panes.map((pane) => [pane.id, pane.kind]));
 	const slots: LayoutTemplate["slots"] = [];
@@ -118,7 +121,7 @@ export interface LayoutPlan {
  */
 export function planLayoutTemplate(
 	template: LayoutTemplate,
-	state: SessionPanes,
+	state: WorkSessionPanes,
 	kinds: TemplateKinds,
 ): LayoutPlan {
 	const byId = new Map(state.panes.map((pane) => [pane.id, pane]));

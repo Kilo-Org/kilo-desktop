@@ -10,16 +10,14 @@ import {
 import {
 	PaneKind,
 	Panes,
-	SessionRenderer,
-	Sessions,
+	WorkSessions,
 	type PaneImplementation,
-	type SessionPanes,
 } from "@kilo-desktop/plugin-sessions/contracts";
 import type { PaneKind as LayoutKind } from "@kilo-desktop/pane-layout";
 import { Main, SettingsSection, LeftSidebar } from "@kilo-desktop/plugin-shell/contracts";
 import { Workspaces } from "@kilo-desktop/plugin-workspaces/contracts";
 
-import { Navigator, PaneLauncher, SessionAction } from "../contracts";
+import { Workbench, SessionAction } from "../contracts";
 import { followLastVisits, loadLastVisits } from "./attention/last-visited";
 import { sessionsNeedingAttention } from "./attention/live-activity";
 import { trackVisits } from "./attention/visits";
@@ -28,10 +26,9 @@ import { WorkbenchHome } from "./home/WorkbenchHome";
 import { LayoutPresetsMenu } from "./layouts/LayoutPresetsMenu";
 import { resetListState, sessionSearch, visibleSessions } from "./list-state";
 import { SessionList } from "./list/SessionList";
-import { SESSION_RENDERERS } from "./list/session-renderers";
 import { adjacentId, idAtShortcutSlot, nextCandidateId, NUMBERED_SLOTS } from "./numbered-sessions";
 import { startNewSession } from "./new-session";
-import { provideNavigator } from "./navigator";
+import { provideWorkbench } from "./workbench";
 import { notificationPreferences } from "./notifications/notification-preferences";
 import { NotificationSettings } from "./notifications/NotificationSettings";
 import { startChatNotifier } from "./notifications/start-notifier";
@@ -41,13 +38,12 @@ import {
 	panesInOrder,
 	sessionPanesOf,
 	setArrangement,
-	type PanesHandle,
 } from "./panes/pane-actions";
 import { panePicker } from "./panes/pane-picker";
 import { PaneWindowView } from "./panes/PaneWindowView";
 import { paneWindows, reconcilePopOuts } from "./panes/pop-outs";
 import { sessionLayout } from "./panes/session-layout";
-import { workbenchTelemetry, type TrackWorkbench } from "./telemetry";
+import { workbenchTelemetry } from "./telemetry";
 import { SessionsViewWindow } from "./views/SessionsViewHost";
 
 /** kilo.workbench's renderer entry: the session list, the home view and their commands. */
@@ -57,7 +53,6 @@ export const workbenchWebEntry = definePlugin({
 		notificationPreferences.reload();
 		sdk.extensions.implement(KernelWindowView, "pane", PaneWindowView);
 		sdk.extensions.implement(KernelWindowView, "sessions-view-window", SessionsViewWindow);
-		sdk.extensions.implement(SessionRenderer, "sessions", SESSION_RENDERERS);
 		sdk.extensions.implement(SettingsSection, "notifications", {
 			component: NotificationSettings,
 			icon: BellIcon,
@@ -67,7 +62,9 @@ export const workbenchWebEntry = definePlugin({
 			sdk.onDispose(followLastVisits());
 			return;
 		}
-		const { showInPlace } = provideNavigator(sdk);
+		const { showInPlace } = provideWorkbench(sdk, {
+			openPane: (sessionId, kind) => openOrShowPane(sdk, sessionId, kind),
+		});
 		trackVisits(sdk, loadLastVisits());
 		startChatNotifier(sdk);
 		sdk.onDispose(reconcilePopOuts(sdk));
@@ -92,18 +89,18 @@ export const workbenchWebEntry = definePlugin({
 });
 
 function openSession(sdk: PluginSdk, sessionId: string): void {
-	void sdk.domains.get(Navigator)?.methods.open({ sessionId });
+	void sdk.domains.get(Workbench)?.methods.openSession({ sessionId });
 }
 
 function implementCommands(sdk: PluginSdk, open: (sessionId: string) => void): void {
-	const activeSessionId = () => sdk.domains.get(Navigator)?.getState().activeSessionId ?? undefined;
+	const activeSessionId = () => sdk.domains.get(Workbench)?.getState().activeSessionId ?? undefined;
 	const command = (id: string, handler: () => void) =>
 		sdk.extensions.implement(KernelCommand, id, handler);
 
 	command("new-session", () =>
 		startNewSession({
-			sessions: sdk.domains.get(Sessions),
-			navigator: sdk.domains.get(Navigator),
+			sessions: sdk.domains.get(WorkSessions),
+			navigator: sdk.domains.get(Workbench),
 			workspaces: sdk.domains.get(Workspaces),
 		}),
 	);
@@ -124,7 +121,7 @@ function implementCommands(sdk: PluginSdk, open: (sessionId: string) => void): v
 		if (sessionId) open(sessionId);
 	});
 	command("toggle-pin-session", () => {
-		const sessions = sdk.domains.get(Sessions);
+		const sessions = sdk.domains.get(WorkSessions);
 		const session = sessions?.getState().sessions.find(({ id }) => id === activeSessionId());
 		if (!sessions || !session || session.archived) return;
 		void sessions.methods
@@ -144,15 +141,13 @@ function implementPaneCommands(sdk: PluginSdk): void {
 	const command = (id: string, handler: () => void) =>
 		sdk.extensions.implement(KernelCommand, id, handler);
 	const track = workbenchTelemetry(sdk);
-	const layoutKindOf = (kind: string) =>
-		sdk.extensions.list(PaneKind).find((contribution) => contribution.key === kind)?.metadata
-			.layoutKind ?? "tool";
+	const layoutKind = (kind: string) => layoutKindOf(sdk, kind);
 	const current = () => {
-		const sessionId = sdk.domains.get(Navigator)?.getState().activeSessionId;
+		const sessionId = sdk.domains.get(Workbench)?.getState().activeSessionId;
 		const panes = sdk.domains.get(Panes);
 		if (!sessionId || !panes) return null;
 		const state = sessionPanesOf(panes, sessionId);
-		const layout = sessionLayout(state, layoutKindOf);
+		const layout = sessionLayout(state, layoutKind);
 		return { sessionId, panes, state, order: panesInOrder(layout) };
 	};
 	const show = (pick: (order: string[], activeId: string | null) => string | undefined) => {
@@ -199,15 +194,6 @@ function implementPaneCommands(sdk: PluginSdk): void {
 			track,
 		).catch(() => undefined);
 	});
-	sdk.domains.provide(PaneLauncher, {
-		initialState: {},
-		methods: {
-			openOrShow: async ({ kind }) => {
-				const session = current();
-				if (session) await openOrShowPane(sdk, session, kind, layoutKindOf, track);
-			},
-		},
-	});
 	for (const slot of NUMBERED_SLOTS) {
 		command(slot === 9 ? "pane-last" : `pane-${slot}`, () =>
 			show((order) => idAtShortcutSlot(order, slot)),
@@ -215,25 +201,25 @@ function implementPaneCommands(sdk: PluginSdk): void {
 	}
 }
 
+function layoutKindOf(sdk: PluginSdk, kind: string): LayoutKind {
+	return (
+		sdk.extensions.list(PaneKind).find((contribution) => contribution.key === kind)?.metadata
+			.layoutKind ?? "tool"
+	);
+}
+
 /**
  * Shows the session's last pane of `kind` — its window when popped out — or,
  * when it has none, opens one as if picked from "+" (reported as opened).
  */
-async function openOrShowPane(
-	sdk: PluginSdk,
-	session: {
-		readonly sessionId: string;
-		readonly panes: PanesHandle;
-		readonly state: SessionPanes;
-	},
-	kind: string,
-	layoutKindOf: (kind: string) => LayoutKind,
-	track: TrackWorkbench,
-): Promise<void> {
-	const { sessionId, panes } = session;
-	const existing = session.state.panes.findLast((pane) => pane.kind === kind);
+async function openOrShowPane(sdk: PluginSdk, sessionId: string, kind: string): Promise<void> {
+	const panes = sdk.domains.get(Panes);
+	if (!panes) return;
+	const existing = sessionPanesOf(panes, sessionId).panes.findLast((pane) => pane.kind === kind);
 	if (!existing) {
-		await launchPaneForPerson(track, panes, sessionId, kind, layoutKindOf);
+		await launchPaneForPerson(workbenchTelemetry(sdk), panes, sessionId, kind, (paneKind) =>
+			layoutKindOf(sdk, paneKind),
+		);
 		return;
 	}
 	const windows = sdk.domains.get(KernelWindows);

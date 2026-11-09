@@ -1,12 +1,12 @@
 import type { DomainHandle } from "@kilo-desktop/kernel";
-import type { Sessions } from "@kilo-desktop/plugin-sessions/contracts";
+import type { WorkSessions } from "@kilo-desktop/plugin-sessions/contracts";
 import type { Workspaces } from "@kilo-desktop/plugin-workspaces/contracts";
 
-import type { Navigator } from "../contracts";
+import type { Workbench } from "../contracts";
 
 export interface NewSessionDomains {
-	readonly sessions: DomainHandle<typeof Sessions> | null;
-	readonly navigator: DomainHandle<typeof Navigator> | null;
+	readonly sessions: DomainHandle<typeof WorkSessions> | null;
+	readonly navigator: DomainHandle<typeof Workbench> | null;
 	readonly workspaces: DomainHandle<typeof Workspaces> | null;
 }
 
@@ -21,5 +21,5 @@ export function startNewSession({ sessions, navigator, workspaces }: NewSessionD
 		?.getState()
 		.sessions.find((session) => session.id === activeId)?.workspaceId;
 	if (workspaceId) void workspaces?.methods.setActive({ id: workspaceId }).catch(() => undefined);
-	void navigator.methods.close(undefined);
+	void navigator.methods.closeSession(undefined);
 }

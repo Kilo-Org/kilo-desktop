@@ -12,8 +12,7 @@ import { Fragment, useEffect, useRef, useState, type ComponentType } from "react
 
 import { useDomain } from "@kilo-desktop/kernel/web";
 import { Composer } from "@kilo-desktop/plugin-chat/contracts";
-import { Panes } from "@kilo-desktop/plugin-sessions/contracts";
-import { PaneLauncher, type SessionActionProps } from "@kilo-desktop/plugin-workbench/contracts";
+import { Workbench, type SessionActionProps } from "@kilo-desktop/plugin-workbench/contracts";
 
 import { Button } from "@kilo-desktop/ui/components/button";
 import { ButtonGroup, ButtonGroupSeparator } from "@kilo-desktop/ui/components/button-group";
@@ -36,7 +35,7 @@ import {
 	DropdownMenuTrigger,
 } from "@kilo-desktop/ui/components/dropdown-menu";
 
-import { showChanges } from "../changes/show-changes.js";
+import { CHANGES_PANE_KIND } from "../../contracts/index.js";
 import { useSessionDirectory } from "../pull-requests/use-pull-request.js";
 import type { RepositoryActionKind } from "../repository-actions.js";
 import type { ActionProgress, ActionRequests, RequestedAction } from "./action-progress.js";
@@ -75,8 +74,7 @@ export function createGitSessionActions(window: {
 }): ComponentType<SessionActionProps> {
 	function GitSessionActions({ session }: SessionActionProps) {
 		const directory = useSessionDirectory(session);
-		const panes = useDomain(Panes);
-		const launcher = useDomain(PaneLauncher);
+		const workbench = useDomain(Workbench);
 		const composer = useDomain(Composer);
 		if (!directory) return null;
 		return (
@@ -85,7 +83,9 @@ export function createGitSessionActions(window: {
 				workspaceDirectory={directory}
 				progress={window.progress}
 				requests={window.requests}
-				onOpenChanges={() => void showChanges(launcher, panes, session.id).catch(() => undefined)}
+				onOpenChanges={() =>
+					void workbench?.methods.openPane({ kind: CHANGES_PANE_KIND }).catch(() => undefined)
+				}
 				{...(composer
 					? {
 							onAppendToChat: (text: string) =>

@@ -13,11 +13,11 @@ import { ChatOwner, Conversations, type ChatSummary } from "@kilo-desktop/plugin
 import { Workspaces } from "@kilo-desktop/plugin-workspaces/contracts";
 
 import {
-	DEFAULT_SESSION_TITLE,
+	DEFAULT_WORK_SESSION_TITLE,
 	isOrphanedWorktreeSession,
-	Sessions,
+	WorkSessions,
 	SESSIONS_PLUGIN_ID,
-	type Session,
+	type WorkSession,
 } from "../contracts";
 import { readOriginSessions, type OriginSession } from "./import-origin";
 import {
@@ -41,7 +41,7 @@ export interface SessionsMainOptions {
 }
 
 interface Persisted extends Record<string, unknown> {
-	sessions: Session[];
+	sessions: WorkSession[];
 	importedFromOrigin: boolean;
 	legacyPinsImported: boolean;
 	/** Chat ids origin pinned before they had a session; pinned on adoption. */
@@ -66,7 +66,7 @@ const ARCHIVE_NEVER_CHOSEN = 0;
  * this app created carry the same stamp, harmlessly: their chats' archives
  * are later than it, so already applied.
  */
-function reopenOriginArchives(sessions: readonly Session[]): Session[] {
+function reopenOriginArchives(sessions: readonly WorkSession[]): WorkSession[] {
 	return sessions.map((session) =>
 		!session.archived && session.archiveChangedAt === session.createdAt
 			? { ...session, archiveChangedAt: ARCHIVE_NEVER_CHOSEN }
@@ -75,7 +75,7 @@ function reopenOriginArchives(sessions: readonly Session[]): Session[] {
 }
 
 /** What a person (or a chat, for a session adopted from it) set on a session, carried to the one replacing it. */
-function personalChoices(session: Session): Partial<Session> {
+function personalChoices(session: WorkSession): Partial<WorkSession> {
 	return {
 		title: session.title,
 		titleSource: session.titleSource,
@@ -150,16 +150,16 @@ export function createSessionsMainEntry(options: SessionsMainOptions): PluginEnt
 			}
 			let conversations: DomainHandle<typeof Conversations> | undefined;
 
-			const sessions: DomainProvider<typeof Sessions> = sdk.domains.provide(Sessions, {
+			const sessions: DomainProvider<typeof WorkSessions> = sdk.domains.provide(WorkSessions, {
 				initialState: { sessions: store.snapshot().sessions },
 				methods: {
 					create: async ({ workspaceId, title, isolation }) => {
 						const placement = await placeSession(sdk, workspaceId ?? null, isolation);
 						const timestamp = now();
 						const trimmed = title?.trim();
-						const session: Session = {
+						const session: WorkSession = {
 							id: createId(),
-							title: trimmed || DEFAULT_SESSION_TITLE,
+							title: trimmed || DEFAULT_WORK_SESSION_TITLE,
 							titleSource: trimmed ? "user" : "default",
 							pinned: false,
 							archived: false,
@@ -238,17 +238,17 @@ export function createSessionsMainEntry(options: SessionsMainOptions): PluginEnt
 				originSessionsImported: () => originImport,
 			});
 
-			function list(): Session[] {
+			function list(): WorkSession[] {
 				return store.snapshot().sessions;
 			}
-			function find(id: string): Session | undefined {
+			function find(id: string): WorkSession | undefined {
 				return list().find((session) => session.id === id);
 			}
-			function save(next: Session[], patch: Partial<Persisted> = {}): void {
+			function save(next: WorkSession[], patch: Partial<Persisted> = {}): void {
 				store.set({ ...patch, sessions: next });
 				sessions.setState({ sessions: next });
 			}
-			function change(id: string, patch: Partial<Session>): Session {
+			function change(id: string, patch: Partial<WorkSession>): WorkSession {
 				const before = find(id);
 				if (!before) throw new KernelError("NOT_FOUND", "Session not found.");
 				const after = { ...before, ...patch };
@@ -302,9 +302,9 @@ export function createSessionsMainEntry(options: SessionsMainOptions): PluginEnt
 				const workspaceId = knownWorkspace(chat.workspaceId);
 				if (!owner) {
 					const pending = store.snapshot().pendingPinnedChatIds;
-					const session: Session = {
+					const session: WorkSession = {
 						id: createId(),
-						title: chat.title || DEFAULT_SESSION_TITLE,
+						title: chat.title || DEFAULT_WORK_SESSION_TITLE,
 						titleSource: chat.title ? "chat" : "default",
 						pinned: pending.includes(chat.id),
 						archived: archivedAt !== undefined,
@@ -322,7 +322,7 @@ export function createSessionsMainEntry(options: SessionsMainOptions): PluginEnt
 					sessions.emit("created", { session });
 					return;
 				}
-				const patch: Partial<Session> = {};
+				const patch: Partial<WorkSession> = {};
 				const leadsTitle = owner.chatIds[0] === chat.id;
 				if (
 					leadsTitle &&
@@ -432,7 +432,7 @@ export function createSessionsMainEntry(options: SessionsMainOptions): PluginEnt
 				});
 				const kept = current.filter((session) => !adopted.includes(session));
 				const held = new Set(kept.flatMap((session) => session.chatIds));
-				const added = fresh.flatMap((session): Session[] => {
+				const added = fresh.flatMap((session): WorkSession[] => {
 					const chatIds = session.chatIds.filter((chatId) => !held.has(chatId));
 					if (session.chatIds.length > 0 && chatIds.length === 0) return [];
 					const folded = adopted.filter((candidate) => chatIds.includes(candidate.chatIds[0]!));
@@ -441,7 +441,7 @@ export function createSessionsMainEntry(options: SessionsMainOptions): PluginEnt
 					return [
 						{
 							id: session.id,
-							title: DEFAULT_SESSION_TITLE,
+							title: DEFAULT_WORK_SESSION_TITLE,
 							titleSource: "default",
 							pinned: false,
 							archived: false,

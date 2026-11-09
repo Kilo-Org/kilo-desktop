@@ -24,15 +24,15 @@ import flagsManifest from "@kilo-desktop/plugin-flags/plugin.json";
 import { FLAGS_DEFINITIONS } from "@kilo-desktop/plugin-flags/contracts";
 import sessionsManifest from "@kilo-desktop/plugin-sessions/plugin.json";
 import {
-	EMPTY_SESSION_PANES,
+	EMPTY_WORK_SESSION_PANES,
 	PaneKind,
 	Panes,
-	Sessions,
+	WorkSessions,
 	SESSIONS_DEFINITIONS,
 	type Pane,
 	type PaneImplementation,
 	type PaneProps,
-	type Session,
+	type WorkSession,
 } from "@kilo-desktop/plugin-sessions/contracts";
 import shellManifest from "@kilo-desktop/plugin-shell/plugin.json";
 import { SHELL_DOMAINS, SHELL_EXTENSION_POINTS, Theme } from "@kilo-desktop/plugin-shell/contracts";
@@ -102,7 +102,7 @@ export function filesPane(
 	return { id, kind: FILES_PANE_KIND, title, metadata, ordinal: 1 };
 }
 
-function session(directory: string | null, workspaceId: string | null): Session {
+function session(directory: string | null, workspaceId: string | null): WorkSession {
 	return {
 		id: SESSION_ID,
 		title: "Session",
@@ -137,8 +137,8 @@ export async function bootFilesHost(options: FilesHostOptions = {}) {
 		throw new KernelError("NOT_FOUND", `${name} is not faked here.`);
 	};
 
-	const current = () => panes.state.bySession[SESSION_ID] ?? EMPTY_SESSION_PANES;
-	const setSessionPanes = (patch: Partial<typeof EMPTY_SESSION_PANES>) =>
+	const current = () => panes.state.bySession[SESSION_ID] ?? EMPTY_WORK_SESSION_PANES;
+	const setSessionPanes = (patch: Partial<typeof EMPTY_WORK_SESSION_PANES>) =>
 		panes.setState({
 			bySession: { ...panes.state.bySession, [SESSION_ID]: { ...current(), ...patch } },
 		});
@@ -186,7 +186,7 @@ export async function bootFilesHost(options: FilesHostOptions = {}) {
 
 	const sessionsMain: PluginEntry = definePlugin({
 		activate(sdk) {
-			sdk.domains.provide(Sessions, {
+			sdk.domains.provide(WorkSessions, {
 				initialState: { sessions: [session(options.directory ?? null, workspaceId)] },
 				methods: {
 					create: unused("create"),
@@ -203,7 +203,7 @@ export async function bootFilesHost(options: FilesHostOptions = {}) {
 				initialState: {
 					bySession: {
 						[SESSION_ID]: {
-							...EMPTY_SESSION_PANES,
+							...EMPTY_WORK_SESSION_PANES,
 							panes: [...(options.panes ?? [])],
 							activePaneId: options.activePaneId ?? options.panes?.[0]?.id ?? null,
 						},

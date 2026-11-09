@@ -5,7 +5,7 @@ import { useCallback, type FC, type ReactNode } from "react";
 import type { DomainState } from "@kilo-desktop/kernel";
 import { useDomainState } from "@kilo-desktop/kernel/web";
 import { Conversations } from "@kilo-desktop/plugin-agent/contracts";
-import { Sessions, type PaneProps } from "@kilo-desktop/plugin-sessions/contracts";
+import { WorkSessions, type PaneProps } from "@kilo-desktop/plugin-sessions/contracts";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 
 import { CHAT_ID_METADATA_KEY, SUBAGENT_CHILD_SESSION_METADATA_KEY } from "../../contracts";
@@ -45,9 +45,9 @@ export function createSubagentPane(services: ChatMirrorServices): FC<PaneProps> 
 			),
 		);
 		const firstChat = useDomainState(
-			Sessions,
+			WorkSessions,
 			useCallback(
-				(state: DomainState<typeof Sessions>) =>
+				(state: DomainState<typeof WorkSessions>) =>
 					state.sessions.find((candidate) => candidate.id === sessionId)?.chatIds[0] ?? null,
 				[sessionId],
 			),

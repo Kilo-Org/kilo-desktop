@@ -1,4 +1,4 @@
-import { DEFAULT_SESSION_TITLE as UNTITLED_SESSION_TITLE } from "@kilo-desktop/plugin-sessions/contracts";
+import { DEFAULT_WORK_SESSION_TITLE as UNTITLED_SESSION_TITLE } from "@kilo-desktop/plugin-sessions/contracts";
 
 import { UNSCOPED_WORKSPACE_FOCUS } from "../../contracts";
 import {

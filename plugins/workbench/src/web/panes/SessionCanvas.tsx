@@ -4,10 +4,10 @@ import { KernelWindows } from "@kilo-desktop/kernel";
 import { useContextKey, useDomain, useDomainState } from "@kilo-desktop/kernel/web";
 import { findPaneGroup, serializeLayout, type PaneLayout } from "@kilo-desktop/pane-layout";
 import {
-	EMPTY_SESSION_PANES,
+	EMPTY_WORK_SESSION_PANES,
 	Panes,
-	type Session,
-	type SessionPanes,
+	type WorkSession,
+	type WorkSessionPanes,
 } from "@kilo-desktop/plugin-sessions/contracts";
 import { SHELL_CANVAS_ATTRIBUTE } from "@kilo-desktop/plugin-shell/contracts";
 import {
@@ -29,13 +29,13 @@ import { popOut, usePoppedOutPanes } from "./pop-outs";
 import { implementationOf, usePaneKinds } from "./use-pane-kinds";
 
 /** A session's panes, as kilo.sessions holds them. */
-export function useSessionPanes(sessionId: string): SessionPanes {
+export function useSessionPanes(sessionId: string): WorkSessionPanes {
 	const select = useCallback(
-		(state: { bySession: Readonly<Record<string, SessionPanes>> }) =>
-			state.bySession[sessionId] ?? EMPTY_SESSION_PANES,
+		(state: { bySession: Readonly<Record<string, WorkSessionPanes>> }) =>
+			state.bySession[sessionId] ?? EMPTY_WORK_SESSION_PANES,
 		[sessionId],
 	);
-	return useDomainState(Panes, select) ?? EMPTY_SESSION_PANES;
+	return useDomainState(Panes, select) ?? EMPTY_WORK_SESSION_PANES;
 }
 
 /**
@@ -44,7 +44,7 @@ export function useSessionPanes(sessionId: string): SessionPanes {
  * kilo.sessions, so every window follows; this window's unsaved layout gives
  * way as soon as the saved one changes.
  */
-export function SessionCanvas({ session }: { readonly session: Session }) {
+export function SessionCanvas({ session }: { readonly session: WorkSession }) {
 	const panes = useDomain(Panes);
 	const state = useSessionPanes(session.id);
 	const kinds = usePaneKinds();
@@ -55,7 +55,9 @@ export function SessionCanvas({ session }: { readonly session: Session }) {
 	const poppedOut = usePoppedOutPanes(session.id);
 	const canPopOut = desktop && windows !== null;
 	const derived = useMemo(() => sessionLayout(state, kinds.layoutKindOf), [kinds, state]);
-	const [pending, setPending] = useState<{ basis: SessionPanes; layout: PaneLayout } | null>(null);
+	const [pending, setPending] = useState<{ basis: WorkSessionPanes; layout: PaneLayout } | null>(
+		null,
+	);
 	const layout = pending?.basis === state ? pending.layout : derived;
 	const paneOrder = useMemo(() => panesInOrder(layout), [layout]);
 	const shortcutHints = useShortcutHints("pane", paneOrder);

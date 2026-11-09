@@ -21,11 +21,7 @@ import {
 
 import type { Contribution } from "@kilo-desktop/kernel";
 import { useExtensions } from "@kilo-desktop/kernel/web";
-import {
-	SessionMenu,
-	type Session,
-	type SessionMenuItem,
-} from "@kilo-desktop/plugin-sessions/contracts";
+import { type WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -52,13 +48,14 @@ import {
 import { Input } from "@kilo-desktop/ui/components/input";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
+import { SessionMenu, type SessionMenuItem } from "../../contracts";
 
 /** Every session menu (⋯, right-click, bulk) shares this width; it grows for longer labels. */
 export const SESSION_MENU_WIDTH_CLASS_NAME = "w-max min-w-44";
 
 /*
  * What a session row offers: inline rename, its menu (pin, rename, plugins'
- * `kilo.sessions/session-menu` items, archive or restore, delete) and the
+ * `kilo.workbench/session-menu` items, archive or restore, delete) and the
  * delete confirmation.
  */
 
@@ -256,7 +253,7 @@ export function MoreActionsTrigger({
 type MenuContribution = Contribution<typeof SessionMenu>;
 
 /** Plugins' menu items that apply to this session, split into ordinary and destructive. */
-function useContributedItems(session: Session): {
+function useContributedItems(session: WorkSession): {
 	ordinary: MenuContribution[];
 	destructive: MenuContribution[];
 } {
@@ -270,7 +267,7 @@ function useContributedItems(session: Session): {
 	};
 }
 
-function ContributedItem({ item, session }: { item: MenuContribution; session: Session }) {
+function ContributedItem({ item, session }: { item: MenuContribution; session: WorkSession }) {
 	const implementation = item.implementation as SessionMenuItem;
 	const run = (choiceId?: string) => {
 		void Promise.resolve()
@@ -318,7 +315,7 @@ function ContributedItem({ item, session }: { item: MenuContribution; session: S
 }
 
 export const SessionRowMenu: FC<{
-	session: Session;
+	session: WorkSession;
 	onPin: () => void;
 	/** Without it (a surface with no inline rename) the menu has no Rename item. */
 	onRename?: (() => void) | undefined;
@@ -373,7 +370,7 @@ export const SessionRowMenu: FC<{
  * last rendered.
  */
 export const SessionRowMenuItems: FC<{
-	session: Session;
+	session: WorkSession;
 	onPin: () => void;
 	onRename?: (() => void) | undefined;
 	onArchive: () => void;

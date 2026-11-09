@@ -3,7 +3,7 @@ import { useCallback } from "react";
 
 import { KernelWindows, type WindowViewProps } from "@kilo-desktop/kernel";
 import { useDomain, useDomainState, useSdk } from "@kilo-desktop/kernel/web";
-import { Sessions, type Session } from "@kilo-desktop/plugin-sessions/contracts";
+import { WorkSessions, type WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Empty,
@@ -25,11 +25,11 @@ import { usePaneKinds } from "./use-pane-kinds";
 export function PaneWindowView({ params }: WindowViewProps) {
 	const { sessionId = "", paneId = "" } = params;
 	const select = useCallback(
-		(state: { sessions: readonly Session[] }) =>
+		(state: { sessions: readonly WorkSession[] }) =>
 			state.sessions.find((session) => session.id === sessionId) ?? null,
 		[sessionId],
 	);
-	const session = useDomainState(Sessions, select) ?? null;
+	const session = useDomainState(WorkSessions, select) ?? null;
 	if (!session) return <PaneGone />;
 	return <PaneWindowContent session={session} paneId={paneId} />;
 }
@@ -38,7 +38,7 @@ function PaneWindowContent({
 	session,
 	paneId,
 }: {
-	readonly session: Session;
+	readonly session: WorkSession;
 	readonly paneId: string;
 }) {
 	const sdk = useSdk();

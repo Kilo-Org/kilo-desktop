@@ -93,14 +93,14 @@ describe("Open Changes", () => {
 		);
 	});
 
-	it("shows or opens it through kilo.workbench when that is here (pop-outs, telemetry)", async () => {
-		const paneLauncher = vi.fn();
-		const host = await bootGitHost({ activeSessionId: "wses_1", paneLauncher });
+	it("shows or opens it through kilo.workbench (pop-outs, telemetry)", async () => {
+		const openPane = vi.fn();
+		const host = await bootGitHost({ activeSessionId: "wses_1", openPane });
 
 		await host.renderer.commands.execute(OPEN_CHANGES);
 
 		await vi.waitFor(
-			() => expect(paneLauncher).toHaveBeenCalledWith({ kind: CHANGES_PANE_KIND }),
+			() => expect(openPane).toHaveBeenCalledWith({ kind: CHANGES_PANE_KIND }),
 			WAIT,
 		);
 		expect(host.opened).toEqual([]);

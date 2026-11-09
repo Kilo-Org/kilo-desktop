@@ -1,5 +1,5 @@
 import type { DomainHandle } from "@kilo-desktop/kernel";
-import type { Navigator } from "@kilo-desktop/plugin-workbench/contracts";
+import type { Workbench } from "@kilo-desktop/plugin-workbench/contracts";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import { BOARD_VIEW } from "../contracts";
@@ -8,7 +8,7 @@ import { boardStore } from "./board-store";
 import { BOARD_EVENTS, track } from "./telemetry";
 import { clearDialog, columnToName, NEW_COLUMN_LABEL } from "./ui-state";
 
-type NavigatorHandle = DomainHandle<typeof Navigator>;
+type NavigatorHandle = DomainHandle<typeof Workbench>;
 
 /** Appends a "New column" and has the board open its name for editing. */
 export function addColumnForNaming(): void {

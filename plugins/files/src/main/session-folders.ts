@@ -1,5 +1,5 @@
 import type { PluginSdk } from "@kilo-desktop/kernel";
-import { Sessions } from "@kilo-desktop/plugin-sessions/contracts";
+import { WorkSessions } from "@kilo-desktop/plugin-sessions/contracts";
 import {
 	sessionFolders,
 	Workspaces,
@@ -9,7 +9,7 @@ import {
 /** The folders a Work Session shows (its worktree standing in for the primary); none without a workspace. */
 export function foldersOfSession(sdk: PluginSdk, sessionId: string): SessionFolder[] {
 	const session = sdk.domains
-		.get(Sessions)
+		.get(WorkSessions)
 		?.getState()
 		.sessions.find((candidate) => candidate.id === sessionId);
 	if (!session?.workspaceId) return [];

@@ -4,7 +4,7 @@ import type { PluginEntry } from "@kilo-desktop/kernel";
 import { renderShell } from "@kilo-desktop/plugin-shell/testing";
 
 import manifest from "../../plugin.json";
-import { EMPTY_SESSION_PANES, Panes, Sessions, SESSIONS_DEFINITIONS } from "../contracts";
+import { EMPTY_WORK_SESSION_PANES, Panes, WorkSessions, SESSIONS_DEFINITIONS } from "../contracts";
 import { LEGACY_PANES_STORAGE_KEY, LEGACY_PINS_STORAGE_KEY, sessionsWebEntry } from "./index";
 
 /** Stands in for kilo.sessions' main entry, recording the pin handover. */
@@ -29,7 +29,7 @@ function fakeSessionsMain() {
 					importLegacy: ({ state }) => importLegacyPanes(state),
 				},
 			});
-			sdk.domains.provide(Sessions, {
+			sdk.domains.provide(WorkSessions, {
 				initialState: { sessions: [] },
 				methods: {
 					create: () => {
@@ -90,7 +90,7 @@ describe("handing over origin's pins", () => {
 
 describe("handing over origin's panes", () => {
 	it("sends the pane state origin saved in this window to kilo.sessions", async () => {
-		const saved = { state: { bySessionId: { wses_1: EMPTY_SESSION_PANES } }, version: 1 };
+		const saved = { state: { bySessionId: { wses_1: EMPTY_WORK_SESSION_PANES } }, version: 1 };
 		const { importLegacyPanes } = await render(undefined, JSON.stringify(saved));
 
 		await vi.waitFor(() => expect(importLegacyPanes).toHaveBeenCalledWith(saved));

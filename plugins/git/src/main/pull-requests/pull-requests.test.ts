@@ -5,9 +5,9 @@ import { createMainKernel, type MainKernel } from "@kilo-desktop/kernel/main";
 import { createMemoryStorage, createTestHost } from "@kilo-desktop/kernel/testing";
 import sessionsManifest from "@kilo-desktop/plugin-sessions/plugin.json";
 import {
-	Sessions,
+	WorkSessions,
 	SESSIONS_DEFINITIONS,
-	type Session,
+	type WorkSession,
 } from "@kilo-desktop/plugin-sessions/contracts";
 import workspacesManifest from "@kilo-desktop/plugin-workspaces/plugin.json";
 import { Workspaces, WORKSPACES_DEFINITIONS } from "@kilo-desktop/plugin-workspaces/contracts";
@@ -44,7 +44,7 @@ afterEach(async () => {
 	await Promise.all(kernels.splice(0).map((kernel) => kernel.stop()));
 });
 
-function session(id: string, patch: Partial<Session> = {}): Session {
+function session(id: string, patch: Partial<WorkSession> = {}): WorkSession {
 	return {
 		id,
 		title: "Session",
@@ -109,14 +109,14 @@ class FakeLookups implements PullRequestSource {
 
 async function boot(
 	options: {
-		sessions?: Session[];
+		sessions?: WorkSession[];
 		lookups?: FakeLookups;
 		storage?: ReturnType<typeof createMemoryStorage>;
 	} = {},
 ) {
 	const lookups = options.lookups ?? new FakeLookups();
 	const storage = options.storage ?? createMemoryStorage();
-	let sessions!: DomainProvider<typeof Sessions>;
+	let sessions!: DomainProvider<typeof WorkSessions>;
 	const unused = () => {
 		throw new Error("unused");
 	};
@@ -160,7 +160,7 @@ async function boot(
 				definitions: SESSIONS_DEFINITIONS,
 				entry: definePlugin({
 					activate(sdk) {
-						sessions = sdk.domains.provide(Sessions, {
+						sessions = sdk.domains.provide(WorkSessions, {
 							initialState: { sessions: options.sessions ?? [] },
 							methods: {
 								create: unused,
@@ -192,7 +192,7 @@ async function boot(
 		storage,
 		pullRequests,
 		state: () => pullRequests.getState(),
-		setSessions: (list: Session[]) => sessions.setState({ sessions: list }),
+		setSessions: (list: WorkSession[]) => sessions.setState({ sessions: list }),
 	};
 }
 

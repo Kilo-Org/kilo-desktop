@@ -2,12 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
 import { RenderContribution } from "@kilo-desktop/kernel/web";
+import { type WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
 import {
+	SessionFacet,
 	SessionDecoration,
-	type Session,
 	type SessionDecorationProps,
-} from "@kilo-desktop/plugin-sessions/contracts";
-import { SessionFacet } from "@kilo-desktop/plugin-workbench/contracts";
+} from "@kilo-desktop/plugin-workbench/contracts";
 
 import type { PullRequestEntry, PullRequestsState } from "../../contracts/index.js";
 import {
@@ -60,7 +60,7 @@ function Decorations({
 }: {
 	host: GitHost;
 	slot: "row" | "hover" | "hover-branch";
-	session: Session;
+	session: WorkSession;
 	interactive: boolean;
 }) {
 	const contributions = host.renderer.extensions
@@ -84,7 +84,7 @@ const worktreeSession = session("wses_1", { directory: WORKTREE, worktreeBranch:
 async function renderSlot(
 	slot: "row" | "hover" | "hover-branch",
 	options: ChangesHostOptions = {},
-	shown: Session = worktreeSession,
+	shown: WorkSession = worktreeSession,
 	interactive = false,
 ) {
 	const host = await bootGitHost({ sessions: [shown], ...options });

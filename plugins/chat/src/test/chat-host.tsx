@@ -27,21 +27,21 @@ import {
 } from "@kilo-desktop/plugin-agent/contracts";
 import sessionsManifest from "@kilo-desktop/plugin-sessions/plugin.json";
 import {
-	EMPTY_SESSION_PANES,
+	EMPTY_WORK_SESSION_PANES,
 	PaneKind,
 	Panes,
-	Sessions,
+	WorkSessions,
 	SESSIONS_DEFINITIONS,
 	type Pane,
 	type PaneImplementation,
-	type Session,
-	type SessionIsolation,
-	type SessionPanes,
+	type WorkSession,
+	type WorkSessionIsolation,
+	type WorkSessionPanes,
 } from "@kilo-desktop/plugin-sessions/contracts";
 import { renderShell } from "@kilo-desktop/plugin-shell/testing";
 import workbenchManifest from "@kilo-desktop/plugin-workbench/plugin.json";
 import {
-	Navigator,
+	Workbench,
 	SessionStarter,
 	WORKBENCH_DEFINITIONS,
 	type SessionStarterProps,
@@ -77,7 +77,7 @@ export const WORKSPACE: Workspace = {
 	updatedAt: 1,
 };
 
-export function session(patch: Partial<Session> = {}): Session {
+export function session(patch: Partial<WorkSession> = {}): WorkSession {
 	return {
 		id: "wses_1",
 		title: "Fix login",
@@ -129,7 +129,7 @@ export interface ChatHostOptions {
 	readonly localStorage?: Readonly<Record<string, string>>;
 	/** More plugins, e.g. ones contributing composer actions or mentions. */
 	readonly plugins?: readonly unknown[];
-	readonly session?: Session;
+	readonly session?: WorkSession;
 	readonly pane?: Pane;
 	/** The session's other panes, before the agent pane. */
 	readonly otherPanes?: readonly Pane[];
@@ -152,26 +152,26 @@ export interface ChatHostOptions {
 	 * Renders kilo.chat's session starter (the New Session page's composer)
 	 * instead of the session's panes, starting sessions as kilo.workbench does.
 	 */
-	readonly starter?: { readonly isolation?: SessionIsolation; readonly footer?: ReactNode };
+	readonly starter?: { readonly isolation?: WorkSessionIsolation; readonly footer?: ReactNode };
 }
 
 const CHAT_PANE_KINDS: readonly string[] = [AGENT_PANE_KIND, PLAN_PANE_KIND, SUBAGENT_PANE_KIND];
 const SINGLETON_KINDS = new Set([AGENT_PANE_KIND, PLAN_PANE_KIND]);
 
 /** kilo.sessions' main entry, with sessions and panes kept in memory. */
-function fakeSessionsMain(initialSession: Session, initialPanes: SessionPanes) {
+function fakeSessionsMain(initialSession: WorkSession, initialPanes: WorkSessionPanes) {
 	const calls = { update: vi.fn(), open: vi.fn(), create: vi.fn(), remove: vi.fn() };
-	let sessions!: DomainProvider<typeof Sessions>;
+	let sessions!: DomainProvider<typeof WorkSessions>;
 	let panes!: DomainProvider<typeof Panes>;
 	const unused = () => {
 		throw new KernelError("BUSINESS", "unused");
 	};
-	const of = (sessionId: string) => panes.state.bySession[sessionId] ?? EMPTY_SESSION_PANES;
-	const write = (sessionId: string, next: SessionPanes) =>
+	const of = (sessionId: string) => panes.state.bySession[sessionId] ?? EMPTY_WORK_SESSION_PANES;
+	const write = (sessionId: string, next: WorkSessionPanes) =>
 		panes.setState({ bySession: { ...panes.state.bySession, [sessionId]: next } });
 	const entry: PluginEntry = {
 		activate(sdk) {
-			sessions = sdk.domains.provide(Sessions, {
+			sessions = sdk.domains.provide(WorkSessions, {
 				initialState: { sessions: [initialSession] },
 				methods: {
 					create: (input) => {
@@ -441,17 +441,18 @@ function fakeWorkspacesWeb(edited: (args: unknown) => void): PluginEntry {
 	};
 }
 
-/** kilo.workbench's navigator in the window, with the session open. */
+/** kilo.workbench's per-window object, with the session open. */
 function fakeWorkbenchWeb(sessionId: string, opened: (sessionId: string) => void): PluginEntry {
 	return {
 		activate(sdk) {
-			sdk.domains.provide(Navigator, {
+			sdk.domains.provide(Workbench, {
 				initialState: { focus: null, activeSessionId: sessionId, view: null, detachedViews: [] },
 				methods: {
 					setFocus: () => undefined,
-					open: (input) => opened(input.sessionId),
-					close: () => undefined,
+					openSession: (input) => opened(input.sessionId),
+					closeSession: () => undefined,
 					showView: () => undefined,
+					openPane: () => undefined,
 				},
 			});
 			sdk.context.set("sessionActive", true);
@@ -485,7 +486,7 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 	const pane = options.pane ?? agentPane();
 	const others = options.otherPanes ?? [];
 	const sessions = fakeSessionsMain(initialSession, {
-		...EMPTY_SESSION_PANES,
+		...EMPTY_WORK_SESSION_PANES,
 		panes: [...others, pane],
 		activePaneId: pane.id,
 	});
@@ -580,7 +581,7 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 		const start = async (): Promise<StartedSession> => {
 			starterCalls.start();
 			setStarting(true);
-			const domain = renderer.kernelSdk.domains.get(Sessions)!;
+			const domain = renderer.kernelSdk.domains.get(WorkSessions)!;
 			const created = await domain.methods
 				.create({ workspaceId, ...(isolation ? { isolation } : {}) })
 				.finally(() => setStarting(false));

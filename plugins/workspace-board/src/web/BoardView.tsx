@@ -9,8 +9,8 @@ import {
 } from "react";
 
 import { useDomainState, useDropTarget } from "@kilo-desktop/kernel/web";
-import { Sessions, type Session } from "@kilo-desktop/plugin-sessions/contracts";
-import type { SessionsViewProps } from "@kilo-desktop/plugin-workbench/contracts";
+import { WorkSessions, type WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
+import type { SessionRenderers, SessionsViewProps } from "@kilo-desktop/plugin-workbench/contracts";
 import { Workspaces, type Workspace } from "@kilo-desktop/plugin-workspaces/contracts";
 import { ScrollArea } from "@kilo-desktop/ui/components/scroll-area";
 
@@ -22,9 +22,9 @@ import { ClearBoardDialog } from "./ClearBoardDialog";
 import { BOARD_EVENTS, track } from "./telemetry";
 import { columnToName, useSignal } from "./ui-state";
 
-const NO_SESSIONS: readonly Session[] = [];
+const NO_SESSIONS: readonly WorkSession[] = [];
 const NO_WORKSPACES: readonly Workspace[] = [];
-const selectSessions = (state: { sessions: readonly Session[] }) => state.sessions;
+const selectSessions = (state: { sessions: readonly WorkSession[] }) => state.sessions;
 const selectWorkspaces = (state: { workspaces: readonly Workspace[] }) => state.workspaces;
 
 /**
@@ -35,9 +35,9 @@ const selectWorkspaces = (state: { workspaces: readonly Workspace[] }) => state.
  * a second view of the same sessions. Columns take dropped sessions (cards
  * and session list rows) at the pointer, and reorder by their headers.
  */
-export function BoardView({ focus, openSession, detached }: SessionsViewProps) {
+export function BoardView({ focus, openSession, detached, renderers }: SessionsViewProps) {
 	const board = useBoardState();
-	const sessions = useDomainState(Sessions, selectSessions) ?? NO_SESSIONS;
+	const sessions = useDomainState(WorkSessions, selectSessions) ?? NO_SESSIONS;
 	const workspaces = useDomainState(Workspaces, selectWorkspaces) ?? NO_WORKSPACES;
 	const naming = useSignal(columnToName);
 	const sessionsById = useMemo(
@@ -68,6 +68,7 @@ export function BoardView({ focus, openSession, detached }: SessionsViewProps) {
 							index={index}
 							columnCount={columns.length}
 							workspaces={workspaces}
+							renderers={renderers}
 							dragging={reorder.dragging === column.id}
 							startNaming={naming === column.id}
 							onNamingStarted={onNamingStarted}
@@ -156,6 +157,7 @@ function BoardColumn({
 	index,
 	columnCount,
 	workspaces,
+	renderers,
 	dragging,
 	startNaming,
 	onNamingStarted,
@@ -167,6 +169,7 @@ function BoardColumn({
 	readonly index: number;
 	readonly columnCount: number;
 	readonly workspaces: readonly Workspace[];
+	readonly renderers: SessionRenderers;
 	readonly dragging: boolean;
 	readonly startNaming: boolean;
 	readonly onNamingStarted: () => void;
@@ -190,7 +193,7 @@ function BoardColumn({
 		);
 	};
 	const drop = useDropTarget({
-		accepts: [Sessions],
+		accepts: [WorkSessions],
 		onOver: (event) => setDropIndex(indexAt(event.clientY)),
 		onLeave: () => setDropIndex(null),
 		onDrop: (refs, event) => {
@@ -230,7 +233,12 @@ function BoardColumn({
 				<ol ref={listRef} className="flex flex-col gap-2 px-2 pt-1 pb-2">
 					{column.cards.map((card, cardIndex) => (
 						<CardSlot key={card.id} preview={dropIndex === cardIndex}>
-							<BoardCard session={card} workspaces={workspaces} onOpen={onOpen} />
+							<BoardCard
+								session={card}
+								workspaces={workspaces}
+								renderers={renderers}
+								onOpen={onOpen}
+							/>
 						</CardSlot>
 					))}
 					{dropIndex !== null && dropIndex >= column.cards.length ? <CardDropPreview /> : null}

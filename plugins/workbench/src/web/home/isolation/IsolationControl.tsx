@@ -1,7 +1,10 @@
 import { ChevronDownIcon, FolderIcon, GitBranchIcon, GitForkIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
-import type { IsolationOptions, SessionIsolation } from "@kilo-desktop/plugin-sessions/contracts";
+import type {
+	IsolationOptions,
+	WorkSessionIsolation,
+} from "@kilo-desktop/plugin-sessions/contracts";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Command,
@@ -84,9 +87,9 @@ function BranchLabel({ branch }: { branch: string }) {
 
 export interface IsolationControlProps {
 	readonly options: IsolationOptions;
-	readonly value: SessionIsolation;
+	readonly value: WorkSessionIsolation;
 	/** `remember` is set when the person picked local or a new worktree. */
-	readonly onChange: (value: SessionIsolation, remember?: IsolationMode) => void;
+	readonly onChange: (value: WorkSessionIsolation, remember?: IsolationMode) => void;
 	/** The menu opened: a chance to read the worktrees again. */
 	readonly onOpen?: () => void;
 	readonly disabled?: boolean;

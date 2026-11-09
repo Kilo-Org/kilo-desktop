@@ -100,6 +100,30 @@ describe("kilo.environments in the window", () => {
 		await expect.element(summary.getByText(/bioconda/).first()).toBeVisible();
 	});
 
+	it("shows a clone's source environment, not just the new name", async () => {
+		const host = await boot();
+		const tools = renderer(host, "kilo.environments/conda-tools");
+		const clone: PermissionInteraction = {
+			permission: "desktop_environments_conda_envs_clone",
+			patterns: [],
+			args: { sourceName: "scratch", sourcePrefix: "/home/u/anaconda3/envs/prod", name: "copy" },
+		};
+
+		const { baseElement } = host.render(
+			<RenderContribution<PermissionDetailProps>
+				contribution={tools.contribution}
+				props={{ request: clone }}
+				select={selectDetail}
+			/>,
+		);
+		const summary = page.elementLocator(baseElement).getByTestId("conda-permission-summary");
+
+		await expect.element(summary.getByText("Clone from")).toBeVisible();
+		await expect.element(summary.getByText("/home/u/anaconda3/envs/prod")).toBeVisible();
+		await expect.element(summary.getByText("New environment")).toBeVisible();
+		await expect.element(summary.getByText("copy")).toBeVisible();
+	});
+
 	it("warns on a bash request that installs a local package file, and asks per action", async () => {
 		const host = await boot();
 		const cli = renderer(host, "kilo.environments/conda-cli");

@@ -17,6 +17,7 @@ import { localCondaFileInstallWarning } from "../../shared/local-file-warning.js
 function hasSummaryContent(summary: CondaInvocationSummary): boolean {
 	return (
 		Boolean(summary.environment) ||
+		Boolean(summary.cloneDestination) ||
 		summary.packages.length > 0 ||
 		summary.channels.length > 0 ||
 		summary.channelsUnspecified ||
@@ -41,7 +42,13 @@ export function CondaInvocationDetail({ request }: PermissionDetailProps) {
 		<div className="grid min-w-0 gap-2" data-qa-id="conda-permission-summary">
 			<div className="border-input dark:bg-input/20 grid min-w-0 gap-1.5 rounded-lg border bg-transparent px-3 py-2.5 text-sm">
 				{summary.environment ? (
-					<SummaryRow label="Environment" value={summary.environment} />
+					<SummaryRow
+						label={summary.cloneDestination ? "Clone from" : "Environment"}
+						value={summary.environment}
+					/>
+				) : null}
+				{summary.cloneDestination ? (
+					<SummaryRow label="New environment" value={summary.cloneDestination} />
 				) : null}
 				{summary.packages.length > 0 ? (
 					<SummaryRow label="Packages" value={summary.packages.join(", ")} />

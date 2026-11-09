@@ -91,6 +91,21 @@ function channelQualifier(spec: string): string | undefined {
 	return qualifier.length > 0 ? qualifier : undefined;
 }
 
+/**
+ * The environment the card names must be the one conda acts on, so these
+ * mirror the backend's precedence: `prefix` wins over `name`
+ * (`resolveTargetParam`), and a clone reads from `sourcePrefix` over
+ * `sourceName`. Showing the other identifier would let an agent label one
+ * environment and act on another.
+ */
+function targetEnvironment(record: Record<string, unknown>): string | undefined {
+	return asNonEmptyString(record.prefix) ?? asNonEmptyString(record.name);
+}
+
+function cloneSource(record: Record<string, unknown>): string | undefined {
+	return asNonEmptyString(record.sourcePrefix) ?? asNonEmptyString(record.sourceName);
+}
+
 /** Whether the tool is one of the mutating conda tools the consent gate covers. */
 export function isMutatingCondaTool(toolName: string): boolean {
 	return MUTATING_CONDA_TOOLS.has(toolName);
@@ -112,7 +127,10 @@ export function isPerActionCondaMutation(
 }
 
 export interface CondaInvocationSummary {
+	/** The environment conda will act on — for a clone, the source. */
 	readonly environment?: string;
+	/** The new environment a clone creates. */
+	readonly cloneDestination?: string;
 	readonly packages: readonly string[];
 	readonly channels: readonly string[];
 	/** The tool accepts channels but the agent gave none, so conda uses the configured channels. */
@@ -132,7 +150,9 @@ export function summarizeCondaInvocation(
 	const record = asRecord(args);
 	if (!record) return undefined;
 
-	const environment = asNonEmptyString(record.name) ?? asNonEmptyString(record.prefix);
+	const isClone = toolName === `${CONDA_TOOL_PREFIX}envs_clone`;
+	const environment = isClone ? cloneSource(record) : targetEnvironment(record);
+	const cloneDestination = isClone ? asNonEmptyString(record.name) : undefined;
 	const packages = asStringArray(record.packages);
 	// De-duplicate so a repeated channel doesn't render twice nor produce a
 	// duplicate warning (the warnings are keyed by their text in the dialog).
@@ -177,6 +197,7 @@ export function summarizeCondaInvocation(
 
 	return {
 		...(environment ? { environment } : {}),
+		...(cloneDestination ? { cloneDestination } : {}),
 		packages,
 		channels,
 		channelsUnspecified: CHANNEL_TOOLS.has(toolName) && channels.length === 0,

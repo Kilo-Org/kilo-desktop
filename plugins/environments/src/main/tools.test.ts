@@ -96,6 +96,34 @@ describe("the conda agent tools", () => {
 	});
 });
 
+/** Agent tools that target an existing environment by `name` or `prefix`. */
+const ENV_TARGET_TOOLS = [
+	{ tool: "conda.envs.delete", extra: {} },
+	{ tool: "conda.packages.list", extra: {} },
+	{ tool: "conda.packages.install", extra: { packages: ["numpy"] } },
+	{ tool: "conda.packages.remove", extra: { packages: ["numpy"] } },
+	{ tool: "conda.packages.update", extra: { packages: ["numpy"] } },
+] as const;
+
+const PROD_PREFIX = "/home/user/anaconda3/envs/prod";
+
+describe("agent conda tools require an unambiguous environment", () => {
+	it.each(ENV_TARGET_TOOLS)("$tool refuses both name and prefix", async ({ tool, extra }) => {
+		await expect(
+			registry().invoke("environments", tool, { name: "scratch", prefix: PROD_PREFIX, ...extra }),
+		).rejects.toThrow(/exactly one of `name` or `prefix`/);
+	});
+
+	it.each(ENV_TARGET_TOOLS)("$tool accepts a name or a prefix alone", async ({ tool, extra }) => {
+		await expect(
+			registry().invoke("environments", tool, { name: "scratch", ...extra }),
+		).resolves.toBeDefined();
+		await expect(
+			registry().invoke("environments", tool, { prefix: PROD_PREFIX, ...extra }),
+		).resolves.toBeDefined();
+	});
+});
+
 /** Matches the model-facing channel refusal message from the contract. */
 const CHANNEL_REFUSAL = /cannot be a URL or a local path/i;
 

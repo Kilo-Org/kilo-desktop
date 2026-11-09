@@ -88,6 +88,48 @@ describe("summarizeCondaInvocation", () => {
 		expect(summary?.environment).toBe("/envs/x");
 	});
 
+	it("shows the prefix the backend acts on when both name and prefix are given", () => {
+		for (const tool of [
+			"desktop_environments_conda_envs_delete",
+			"desktop_environments_conda_packages_install",
+			"desktop_environments_conda_packages_remove",
+			"desktop_environments_conda_packages_update",
+		]) {
+			expect(
+				summarizeCondaInvocation(tool, {
+					name: "scratch",
+					prefix: "/home/u/anaconda3/envs/prod",
+					packages: ["numpy"],
+				})?.environment,
+			).toBe("/home/u/anaconda3/envs/prod");
+		}
+	});
+
+	it("shows the clone source as the environment and the new name as the destination", () => {
+		expect(
+			summarizeCondaInvocation("desktop_environments_conda_envs_clone", {
+				sourceName: "scratch",
+				sourcePrefix: "/home/u/anaconda3/envs/prod",
+				name: "copy",
+			}),
+		).toMatchObject({
+			environment: "/home/u/anaconda3/envs/prod",
+			cloneDestination: "copy",
+		});
+		expect(
+			summarizeCondaInvocation("desktop_environments_conda_envs_clone", {
+				sourceName: "scratch",
+				name: "copy",
+			}),
+		).toMatchObject({ environment: "scratch", cloneDestination: "copy" });
+	});
+
+	it("never reports a clone destination for other tools", () => {
+		expect(
+			summarizeCondaInvocation("desktop_environments_conda_envs_delete", { name: "e" }),
+		).not.toHaveProperty("cloneDestination");
+	});
+
 	it("de-duplicates a repeated channel so its warning (and React key) is unique", () => {
 		const summary = summarizeCondaInvocation("desktop_environments_conda_envs_create", {
 			name: "e",

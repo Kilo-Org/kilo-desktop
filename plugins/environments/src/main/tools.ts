@@ -76,6 +76,22 @@ function isNamedChannel(value: { channel: string }): boolean {
 	return agentChannelSchema.safeParse(value.channel).success;
 }
 
+/**
+ * The backend acts on `prefix` when both identifiers are given, so an agent
+ * call carrying both could name one environment on the approval card and
+ * act on another. Agents must pick one. Only the model-facing schemas
+ * refuse it: the window's own calls send both for the environment the user
+ * selected.
+ */
+function hasSingleEnvTarget(value: { name?: string | undefined; prefix?: string | undefined }) {
+	return value.name === undefined || value.prefix === undefined;
+}
+
+const AMBIGUOUS_ENV_TARGET_REFUSAL = {
+	message: "Provide exactly one of `name` or `prefix`, not both.",
+	path: ["prefix"],
+};
+
 export interface CondaToolsOptions {
 	/** The conda methods; throws while Conda Environments is unavailable. */
 	readonly conda: () => CondaMethods;
@@ -153,16 +169,23 @@ export function condaTools(options: CondaToolsOptions): Record<string, ToolImple
 		run: (input: never) => conda().createEnvironment(input, CALLER),
 	});
 
+	const mcpDeleteSchema = condaEnvsDeleteInputSchema.refine(
+		hasSingleEnvTarget,
+		AMBIGUOUS_ENV_TARGET_REFUSAL,
+	);
 	register({
 		name: "conda.envs.delete",
 		description:
 			"Delete a conda environment from the plugin-scoped base. This action " +
 			"is irreversible — every package installed into the environment is removed. " +
-			"Identify the environment by name or by prefix path.",
-		input: condaEnvsDeleteInputSchema,
+			"Identify the environment by name or by prefix path (one, not both).",
+		input: mcpDeleteSchema,
 		run: (input: never) => conda().deleteEnvironment(input, CALLER),
 	});
 
+	// `sourceName` is required by the contract, so a clone cannot be made
+	// name-XOR-prefix like the tools below; the approval card shows
+	// `sourcePrefix` (what the backend clones from) whenever it is given.
 	register({
 		name: "conda.envs.clone",
 		description:
@@ -177,24 +200,23 @@ export function condaTools(options: CondaToolsOptions): Record<string, ToolImple
 		description:
 			"List all packages installed in a conda environment, including " +
 			"pip-installed packages. Identify the environment by name or by " +
-			"prefix path. Each package includes name, version, build string, " +
+			"prefix path (one, not both). Each package includes name, version, build string, " +
 			'and source channel. Pip-installed packages have channel "pypi".',
-		input: condaPackagesListInputSchema,
+		input: condaPackagesListInputSchema.refine(hasSingleEnvTarget, AMBIGUOUS_ENV_TARGET_REFUSAL),
 		run: (input: never) => conda().listPackages(input, CALLER),
 	});
 
 	// Model-facing install/update/find schemas additionally refuse URL/local
 	// channels (C1 gate 2); the contract schemas stay permissive for the UI.
-	const mcpInstallSchema = condaPackagesInstallInputSchema.refine(
-		hasOnlyNamedChannels,
-		AGENT_CHANNEL_REFUSAL,
-	);
+	const mcpInstallSchema = condaPackagesInstallInputSchema
+		.refine(hasOnlyNamedChannels, AGENT_CHANNEL_REFUSAL)
+		.refine(hasSingleEnvTarget, AMBIGUOUS_ENV_TARGET_REFUSAL);
 	register({
 		name: "conda.packages.install",
 		description:
 			"Install one or more packages into an EXISTING conda environment " +
 			"(use conda.envs.create instead to make a new environment). Identify " +
-			"the environment by name or by prefix path, and pass one or more raw " +
+			"the environment by name or by prefix path (one, not both), and pass one or more raw " +
 			'conda MatchSpec strings (e.g. "faker", "numpy>=1.24", ' +
 			'"conda-forge::pandas"). Local file paths and URLs are rejected as ' +
 			"packages — installing from a local file has a high security risk and is " +
@@ -215,24 +237,23 @@ export function condaTools(options: CondaToolsOptions): Record<string, ToolImple
 		name: "conda.packages.remove",
 		description:
 			"Remove (uninstall) one or more packages from an EXISTING conda " +
-			"environment. Identify the environment by name or by prefix path, and " +
+			"environment. Identify the environment by name or by prefix path (one, not both), and " +
 			'pass one or more package names (e.g. "faker", "numpy"). This is ' +
 			"DESTRUCTIVE — it uninstalls the named packages and any now-orphaned " +
 			"dependencies; fails with SOLVE_FAILED when the removal cannot be " +
 			"satisfied (e.g. another installed package still requires it).",
-		input: condaPackagesRemoveInputSchema,
+		input: condaPackagesRemoveInputSchema.refine(hasSingleEnvTarget, AMBIGUOUS_ENV_TARGET_REFUSAL),
 		run: (input: never) => conda().removePackages(input, CALLER),
 	});
 
-	const mcpUpdateSchema = condaPackagesUpdateInputSchema.refine(
-		hasOnlyNamedChannels,
-		AGENT_CHANNEL_REFUSAL,
-	);
+	const mcpUpdateSchema = condaPackagesUpdateInputSchema
+		.refine(hasOnlyNamedChannels, AGENT_CHANNEL_REFUSAL)
+		.refine(hasSingleEnvTarget, AMBIGUOUS_ENV_TARGET_REFUSAL);
 	register({
 		name: "conda.packages.update",
 		description:
 			"Update packages in an EXISTING conda environment. Identify the " +
-			"environment by name or by prefix path. Two mutually exclusive modes: " +
+			"environment by name or by prefix path (one, not both). Two mutually exclusive modes: " +
 			'pass `packages` (one or more names/MatchSpecs, e.g. "numpy", ' +
 			'"conda-forge::pandas") to update just those, or set `updateAll: true` ' +
 			"(with no `packages`) to update every package in the environment. " +

@@ -105,6 +105,20 @@ export function packagedAppLaunchEnv(
 }
 
 /**
+ * Chromium switches that keep a packaged app rendering when its window is not
+ * on a visible desktop. Headless Windows CI VMs report the window as occluded,
+ * so Chromium stops producing frames and never recomputes `:hover`: hover-only
+ * controls such as the session row's actions button stay `pointer-events-none`
+ * and clicks land on the row beneath. Playwright passes the same switches when
+ * it launches Chromium itself, but not for `_electron.launch`.
+ */
+export const PACKAGED_APP_RENDERING_ARGS: readonly string[] = [
+	"--disable-features=CalculateNativeWinOcclusion",
+	"--disable-backgrounding-occluded-windows",
+	"--disable-renderer-backgrounding",
+];
+
+/**
  * Kill orphaned copies of *this* packaged app left behind by a crashed previous run.
  * Intentionally narrow — never `pkill Electron` (would hit Cursor/Figma/etc.).
  * Kills every instance, so call it only when no worker is running: global

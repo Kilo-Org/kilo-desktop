@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ExternalLinkIcon, GitBranchIcon, GitPullRequestIcon } from "lucide-react";
 import { useCallback } from "react";
 
-import { KernelShell } from "@kilo-desktop/kernel";
+import { KernelOs } from "@kilo-desktop/kernel";
 import { useDomain } from "@kilo-desktop/kernel/web";
 import { ExternalLink } from "@kilo-desktop/ui/components/external-link";
 
@@ -16,12 +16,12 @@ import { pullRequestClassName } from "../repository-actions.js";
 import { branchesQuery, repositoryTypeQuery } from "../repository-queries.js";
 import type { SessionDecorationProps } from "@kilo-desktop/plugin-workbench/contracts";
 
-/** Opens a URL in the person's browser through kernel/shell; failures are ignored. */
+/** Opens a URL in the person's browser through kernel/os; failures are ignored. */
 export function useOpenExternal(): (url: string) => void {
-	const shell = useDomain(KernelShell);
+	const os = useDomain(KernelOs);
 	return useCallback(
-		(url: string) => void shell?.methods.openExternal({ url }).catch(() => undefined),
-		[shell],
+		(url: string) => void os?.methods.openExternal({ url }).catch(() => undefined),
+		[os],
 	);
 }
 

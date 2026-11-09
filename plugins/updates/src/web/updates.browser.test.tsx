@@ -2,7 +2,7 @@ import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import { KernelError, KernelShell, KernelUpdater, type DomainProvider } from "@kilo-desktop/kernel";
+import { KernelError, KernelOs, KernelUpdater, type DomainProvider } from "@kilo-desktop/kernel";
 import type { MainKernel } from "@kilo-desktop/kernel/main";
 import { testManifest } from "@kilo-desktop/kernel/testing";
 import { createPluginHost } from "@kilo-desktop/kernel/testing/plugin-host";
@@ -16,7 +16,7 @@ import { renderShell, type GuestPlugin } from "@kilo-desktop/plugin-shell/testin
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import manifest from "../../plugin.json";
-import { SupportRow, UPDATES_DEFINITIONS, type UpdateState } from "../contracts";
+import { UPDATES_DEFINITIONS, type UpdateState } from "../contracts";
 import { createUpdatesMainEntry, type LegalResources } from "../main/entry";
 import { updateReadyLabel } from "./updateActions";
 import { updatesWebEntry } from "./index";
@@ -58,9 +58,7 @@ interface UpdaterFake {
 	install?: () => ActionResult | Promise<ActionResult>;
 }
 
-interface ShellFake {
-	showLogs?: () => { revealed: boolean };
-	logFilePath?: () => string | Promise<string>;
+interface OsFake {
 	showItemInFolder?: (path: string) => void | Promise<void>;
 }
 
@@ -82,28 +80,12 @@ const trackSwitcherFlag: GuestPlugin = {
 	},
 };
 
-function supportRows(): GuestPlugin {
-	return {
-		manifest: testManifest("acme.agent", {
-			contributes: { extensions: { "kilo.updates/support-row": [{ id: "config" }] } },
-		}),
-		web: {
-			activate: (sdk) => {
-				sdk.extensions.implement(SupportRow, "config", () => (
-					<div data-qa-id="contributed-support-row">Kilo config</div>
-				));
-			},
-		},
-	};
-}
-
 async function renderApp(
 	options: {
 		state?: UpdateState | null;
 		updater?: UpdaterFake;
-		shell?: ShellFake | null;
+		os?: OsFake;
 		flag?: boolean;
-		plugins?: readonly GuestPlugin[];
 		path?: string;
 		resources?: LegalResources;
 	} = {},
@@ -115,21 +97,19 @@ async function renderApp(
 		web: updatesWebEntry,
 	};
 	const host = await renderShell(
-		[updates, ...(options.flag === false ? [] : [trackSwitcherFlag]), ...(options.plugins ?? [])],
+		[updates, ...(options.flag === false ? [] : [trackSwitcherFlag])],
 		{
 			desktop: true,
 			beforeRender: (main) => {
-				if (options.shell !== null) {
-					main.kernelSdk.domains.provide(KernelShell, {
-						initialState: {},
-						methods: {
-							openExternal: () => true,
-							showItemInFolder: ({ path }) => options.shell?.showItemInFolder?.(path),
-							showLogs: options.shell?.showLogs ?? (() => ({ revealed: true })),
-							logFilePath: options.shell?.logFilePath ?? (() => "/user-data/logs/main.log"),
-						},
-					});
-				}
+				main.kernelSdk.domains.provide(KernelOs, {
+					initialState: {},
+					methods: {
+						openExternal: () => true,
+						showItemInFolder: ({ path }) => options.os?.showItemInFolder?.(path),
+						showLogs: () => ({ revealed: true }),
+						logFilePath: () => "/user-data/logs/main.log",
+					},
+				});
 				if (options.state !== null)
 					provideUpdater(main, options.state ?? downloadedState, options.updater ?? {});
 			},
@@ -501,68 +481,15 @@ describe("About settings", () => {
 	});
 });
 
-describe("About → Support", () => {
-	it("shows the application log's path and reveals it", async () => {
-		const showLogs = vi.fn(() => ({ revealed: true }));
-		await openAbout({ shell: { showLogs } });
+describe("About blocks", () => {
+	it("puts the version above kilo.shell's Support and Legal below it", async () => {
+		await openAbout();
 
-		await expect
-			.element(
-				page.getByTestId("about-logs").getByText("/user-data/logs/main.log", { exact: true }),
-			)
-			.toBeVisible();
-		await page.getByTestId("about-show-log-file").click();
-
-		await vi.waitFor(() => expect(showLogs).toHaveBeenCalledOnce());
-	});
-
-	it("shows a placeholder while the log path loads", async () => {
-		await openAbout({ shell: { logFilePath: () => new Promise(() => {}) } });
-
-		await expect.element(page.getByTestId("about-show-log-file")).toBeVisible();
-		expect(
-			page.getByTestId("about-logs").element().querySelector('[data-slot="skeleton-text"]'),
-		).not.toBeNull();
-	});
-
-	it("leaves the log path out when it cannot be read", async () => {
-		await openAbout({
-			shell: {
-				logFilePath: () => {
-					throw new KernelError("BUSINESS", "No log file");
-				},
-			},
-		});
-
-		await expect.element(page.getByTestId("about-show-log-file")).toBeVisible();
-		await vi.waitFor(() =>
-			expect(
-				page.getByTestId("about-logs").element().querySelector('[data-slot="item-description"]'),
-			).toBeNull(),
-		);
-	});
-
-	it("reports when the log file cannot be revealed", async () => {
-		await openAbout({ shell: { showLogs: () => ({ revealed: false }) } });
-
-		await page.getByTestId("about-show-log-file").click();
-
-		await expect.element(page.getByText("Could not show the application log file")).toBeVisible();
-	});
-
-	it("lists rows other plugins contribute", async () => {
-		await openAbout({ plugins: [supportRows()] });
-
-		const support = page.getByTestId("about-support");
-		await expect.element(support.getByTestId("about-show-log-file")).toBeVisible();
-		await expect.element(support.getByTestId("contributed-support-row")).toBeVisible();
-	});
-
-	it("is left out when there is nothing to show", async () => {
-		await openAbout({ shell: null });
-
-		await expect.element(page.getByTestId("about-settings")).toBeVisible();
-		await expect.element(page.getByTestId("about-support")).not.toBeInTheDocument();
+		await expect.element(page.getByTestId("about-legal")).toBeVisible();
+		const order = [...page.getByTestId("about-settings").element().querySelectorAll("[data-qa-id]")]
+			.map((element) => element.getAttribute("data-qa-id"))
+			.filter((id) => id === "about-version" || id === "about-support" || id === "about-legal");
+		expect(order).toEqual(["about-version", "about-support", "about-legal"]);
 	});
 });
 
@@ -586,7 +513,7 @@ describe("About → Legal", () => {
 
 	it("reveals Chromium's notices in the file manager", async () => {
 		const showItemInFolder = vi.fn();
-		await openAbout({ resources: shipped, shell: { showItemInFolder } });
+		await openAbout({ resources: shipped, os: { showItemInFolder } });
 
 		await page.getByTestId("about-show-chromium-notices").click();
 
@@ -628,7 +555,7 @@ describe("About → Legal", () => {
 	it("reports when Chromium's notices cannot be revealed", async () => {
 		await openAbout({
 			resources: shipped,
-			shell: {
+			os: {
 				showItemInFolder: () => {
 					throw new KernelError("UNAVAILABLE", "No file manager");
 				},

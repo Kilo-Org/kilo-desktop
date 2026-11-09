@@ -4,7 +4,7 @@ import { page } from "vitest/browser";
 import {
 	KernelDataCollection,
 	KernelError,
-	KernelShell,
+	KernelOs,
 	type DomainProvider,
 	type PluginSdk,
 } from "@kilo-desktop/kernel";
@@ -40,7 +40,7 @@ async function renderApp(
 		{
 			desktop: options.desktop ?? true,
 			beforeRender: (main) => {
-				main.kernelSdk.domains.provide(KernelShell, {
+				main.kernelSdk.domains.provide(KernelOs, {
 					initialState: {},
 					methods: {
 						openExternal,

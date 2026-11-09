@@ -39,7 +39,7 @@ import {
 	KernelError,
 	KernelService,
 	KernelServices,
-	KernelShell,
+	KernelOs,
 	KernelWindows,
 	mainHost,
 	type DomainHandle,
@@ -199,9 +199,9 @@ function hostPlatform(
 			},
 			externalLinks: {
 				open: async (url) => {
-					const shell = sdk.domains.get(KernelShell);
-					if (!shell || !isExternalLink(url)) return false;
-					return shell.methods.openExternal({ url }).catch(() => false);
+					const os = sdk.domains.get(KernelOs);
+					if (!os || !isExternalLink(url)) return false;
+					return os.methods.openExternal({ url }).catch(() => false);
 				},
 			},
 			window: {

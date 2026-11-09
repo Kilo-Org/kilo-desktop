@@ -17,7 +17,7 @@
 		"kilo.shell/settings-section": "optional"
 	},
 	"permissions": {
-		"host": ["dialogs", "shell"],
+		"host": ["dialogs", "os"],
 		"embeddedHosts": ["notebook"]
 	},
 	"domains": [

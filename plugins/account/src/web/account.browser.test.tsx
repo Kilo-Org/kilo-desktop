@@ -1,12 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import { testManifest } from "@kilo-desktop/kernel/testing";
-import type { GuestPlugin } from "@kilo-desktop/plugin-shell/testing";
-
 import { Onboarding } from "@kilo-desktop/plugin-shell/contracts";
 
-import { AccountPanel, KILO_TERMS_VERSION, type IdentityState } from "../contracts";
+import { KILO_TERMS_VERSION, type IdentityState } from "../contracts";
 import { renderApp, SIGNED_IN, SIGNED_OUT } from "../test/harness";
 
 describe("welcome and terms", () => {
@@ -158,6 +155,16 @@ describe("sidebar account", () => {
 });
 
 describe("Account settings", () => {
+	it("is the Kilo panel on kilo.shell's Account page, under General", async () => {
+		await renderApp({ path: "/settings/account" });
+
+		await expect
+			.element(page.getByTestId("account-panel-kilo.account/kilo").getByTestId("account-kilo-row"))
+			.toBeInTheDocument();
+		const general = page.getByTestId("settings-group-general").element().parentElement!;
+		expect(general.contains(page.getByTestId("settings-section-account").element())).toBe(true);
+	});
+
 	it("shows a signed-out Kilo row with Sign in", async () => {
 		const { methods } = await renderApp({ path: "/settings/account" });
 
@@ -197,25 +204,5 @@ describe("Account settings", () => {
 				expect.anything(),
 			),
 		);
-	});
-
-	it("lists panels other plugins add below the Kilo account", async () => {
-		const anaconda: GuestPlugin = {
-			manifest: testManifest("acme.anaconda", {
-				contributes: { extensions: { "kilo.account/account-panel": [{ id: "anaconda" }] } },
-			}),
-			web: {
-				activate: (sdk) => {
-					sdk.extensions.implement(AccountPanel, "anaconda", () => <p>Anaconda account</p>);
-				},
-			},
-		};
-		await renderApp({ guests: [anaconda], path: "/settings/account" });
-
-		await expect
-			.element(
-				page.getByTestId("account-panel-acme.anaconda/anaconda").getByText("Anaconda account"),
-			)
-			.toBeVisible();
 	});
 });

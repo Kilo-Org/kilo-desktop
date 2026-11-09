@@ -22,7 +22,6 @@
 	"dependencies": {
 		"@kilo-desktop/kernel": "workspace:*",
 		"@kilo-desktop/plugin-shell": "workspace:*",
-		"@kilo-desktop/plugin-updates": "workspace:*",
 		"@kilo-desktop/ui": "workspace:*",
 		"@kilocode/sdk": "7.8.27",
 		"@modelcontextprotocol/server": "2.4.0",

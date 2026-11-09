@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { TriangleAlertIcon } from "lucide-react";
 
-import { KernelDataCollection, KernelShell } from "@kilo-desktop/kernel";
+import { KernelDataCollection, KernelOs } from "@kilo-desktop/kernel";
 import { useDomain, useDomainState } from "@kilo-desktop/kernel/web";
 import { Alert, AlertDescription, AlertTitle } from "@kilo-desktop/ui/components/alert";
 import { ExternalLink } from "@kilo-desktop/ui/components/external-link";
@@ -22,7 +22,7 @@ const selectChoice = (state: { choice: boolean }) => state.choice;
 export function PrivacySettings() {
 	const dataCollection = useDomain(KernelDataCollection);
 	const choice = useDomainState(KernelDataCollection, selectChoice);
-	const shell = useDomain(KernelShell);
+	const os = useDomain(KernelOs);
 	const [pending, setPending] = useState<boolean | null>(null);
 	const [error, setError] = useState<string | null>(null);
 
@@ -98,7 +98,7 @@ export function PrivacySettings() {
 						free models. Learn more about data handling for free models{" "}
 						<ExternalLink
 							href={FREE_MODELS_DATA_HANDLING_URL}
-							onOpen={(url) => void shell?.methods.openExternal({ url }).catch(() => undefined)}
+							onOpen={(url) => void os?.methods.openExternal({ url }).catch(() => undefined)}
 						>
 							here
 						</ExternalLink>

@@ -1,6 +1,6 @@
 import { createElement, type ComponentProps, type ElementType, type MouseEvent } from "react";
 
-import type { DomainHandle, KernelShell } from "@kilo-desktop/kernel";
+import type { DomainHandle, KernelOs } from "@kilo-desktop/kernel";
 import type { MarkdownExtensionImplementation } from "@kilo-desktop/plugin-chat/contracts";
 import type { Panes } from "@kilo-desktop/plugin-sessions/contracts";
 import type { Telemetry } from "@kilo-desktop/plugin-telemetry/contracts";
@@ -12,7 +12,7 @@ import { openUrl } from "../shared/open-url.js";
 
 export interface WebLinksRuntime {
 	readonly panes: () => DomainHandle<typeof Panes> | null;
-	readonly shell: () => DomainHandle<typeof KernelShell> | null;
+	readonly os: () => DomainHandle<typeof KernelOs> | null;
 	readonly telemetry: () => DomainHandle<typeof Telemetry> | null;
 }
 
@@ -46,7 +46,7 @@ async function openInPane(runtime: WebLinksRuntime, sessionId: string, href: str
 function WebLink({ sessionId, Anchor, href, title, onClick, runtime, ...props }: WebLinkProps) {
 	const openExternal = () =>
 		void runtime
-			.shell()
+			.os()
 			?.methods.openExternal({ url: href })
 			.catch(() => undefined);
 	const open = (event: MouseEvent<HTMLAnchorElement>) => {

@@ -3,7 +3,7 @@ import { vi } from "vitest";
 
 import {
 	KernelClipboard,
-	KernelShell,
+	KernelOs,
 	type DomainProvider,
 	type PluginEntry,
 } from "@kilo-desktop/kernel";
@@ -106,7 +106,7 @@ export async function renderApp(
 			desktop: options.desktop ?? true,
 			onboarding: options.onboarding === true,
 			beforeRender: (main) => {
-				main.kernelSdk.domains.provide(KernelShell, {
+				main.kernelSdk.domains.provide(KernelOs, {
 					initialState: {},
 					methods: {
 						openExternal,

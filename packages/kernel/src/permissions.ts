@@ -8,7 +8,7 @@ export const HOST_PERMISSIONS = [
 	"app-menu",
 	"dialogs",
 	"clipboard",
-	"shell",
+	"os",
 	"notifications",
 	"keychain",
 	"updater",

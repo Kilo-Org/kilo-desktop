@@ -14,7 +14,7 @@
 		"kilo.agent/work-style-onboarding": "optional"
 	},
 	"permissions": {
-		"host": ["data-collection", "shell"]
+		"host": ["data-collection", "os"]
 	},
 	"extensionPoints": [
 		{

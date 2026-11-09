@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { KernelShell } from "@kilo-desktop/kernel";
+import { KernelOs } from "@kilo-desktop/kernel";
 import {
 	RenderContribution,
 	useContextKey,
@@ -19,22 +19,22 @@ import { toast } from "@kilo-desktop/ui/components/sonner";
 import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
 import { revealInFileManagerLabel } from "@kilo-desktop/ui/lib/reveal-in-file-manager";
 
-import { SupportRow } from "../contracts";
+import { SupportRow } from "../../../contracts";
 
-type Shell = NonNullable<ReturnType<typeof useDomain<typeof KernelShell>>>;
+type Os = NonNullable<ReturnType<typeof useDomain<typeof KernelOs>>>;
 
 /**
  * Settings → About "Support" card: the application log row (desktop only)
- * plus rows other plugins contribute to `kilo.updates/support-row`. Each row
+ * plus rows other plugins contribute to `kilo.shell/support-row`. Each row
  * sits in its own wrapper because `SummaryCard.Row` sets `border-0`, which
  * would otherwise cancel the card's `divide-y` separators.
  */
 export function AboutSupportSection() {
-	const shell = useDomain(KernelShell);
+	const os = useDomain(KernelOs);
 	const desktop = useContextKey("kernel/desktop");
 	const rows = useExtensions(SupportRow);
-	const logsShell = desktop ? shell : null;
-	if (!logsShell && rows.length === 0) return null;
+	const logsOs = desktop ? os : null;
+	if (!logsOs && rows.length === 0) return null;
 
 	return (
 		<FieldSet
@@ -49,9 +49,9 @@ export function AboutSupportSection() {
 				<FieldDescription>Information to include when you contact support.</FieldDescription>
 			</FieldContent>
 			<section className="border-border bg-card divide-border min-w-0 divide-y overflow-hidden rounded-lg border">
-				{logsShell ? (
+				{logsOs ? (
 					<div data-qa-id="about-logs">
-						<ApplicationLogsRow shell={logsShell} />
+						<ApplicationLogsRow os={logsOs} />
 					</div>
 				) : null}
 				{rows.map((row) => (
@@ -66,12 +66,12 @@ export function AboutSupportSection() {
 
 const REVEAL_LOG_FAILED_MESSAGE = "Could not show the application log file";
 
-function ApplicationLogsRow({ shell }: { readonly shell: Shell }) {
-	const logFilePath = useLogFilePath(shell);
+function ApplicationLogsRow({ os }: { readonly os: Os }) {
+	const logFilePath = useLogFilePath(os);
 
 	const showLogFile = async () => {
 		try {
-			const { revealed } = await shell.methods.showLogs(undefined);
+			const { revealed } = await os.methods.showLogs(undefined);
 			if (!revealed) toast.error(REVEAL_LOG_FAILED_MESSAGE);
 		} catch (error) {
 			toast.error(REVEAL_LOG_FAILED_MESSAGE, {
@@ -112,12 +112,12 @@ function ApplicationLogsRow({ shell }: { readonly shell: Shell }) {
  * `undefined` while loading; `null` when the read fails — the path is
  * display-only, so a failure just leaves it out.
  */
-function useLogFilePath(shell: Shell): string | null | undefined {
+function useLogFilePath(os: Os): string | null | undefined {
 	const [path, setPath] = useState<string | null | undefined>(undefined);
 
 	useEffect(() => {
 		let active = true;
-		shell.methods
+		os.methods
 			.logFilePath(undefined)
 			.then((result) => {
 				if (active) setPath(result);
@@ -128,7 +128,7 @@ function useLogFilePath(shell: Shell): string | null | undefined {
 		return () => {
 			active = false;
 		};
-	}, [shell]);
+	}, [os]);
 
 	return path;
 }

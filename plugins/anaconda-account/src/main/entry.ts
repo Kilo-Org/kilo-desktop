@@ -23,7 +23,7 @@ import {
 	definePlugin,
 	KernelApp,
 	KernelError,
-	KernelShell,
+	KernelOs,
 	KernelWindows,
 	mainHost,
 	type PluginEntry,
@@ -82,7 +82,7 @@ export function createAnacondaAccountMainEntry(
 				credentials,
 				fetch: (url, init) => host.net.fetch(url, init),
 				openExternal: async (url) =>
-					(await sdk.domains.get(KernelShell)?.methods.openExternal({ url })) ?? false,
+					(await sdk.domains.get(KernelOs)?.methods.openExternal({ url })) ?? false,
 				logger: sdk.logger,
 				...options.service,
 			});

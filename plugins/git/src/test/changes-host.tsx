@@ -10,7 +10,7 @@ import { expect, vi } from "vitest";
 import {
 	definePlugin,
 	KernelError,
-	KernelShell,
+	KernelOs,
 	type DomainProvider,
 	type DomainState,
 	type PluginEntry,
@@ -283,7 +283,7 @@ export async function bootGitHost(options: ChangesHostOptions = {}) {
 			...(options.renderer ?? []),
 		],
 	});
-	main.kernelSdk.domains.provide(KernelShell, {
+	main.kernelSdk.domains.provide(KernelOs, {
 		initialState: {},
 		methods: {
 			openExternal: ({ url }) => {
@@ -303,7 +303,7 @@ export async function bootGitHost(options: ChangesHostOptions = {}) {
 		opened,
 		repositoryCalls,
 		calls: (method: string) => repositoryCalls.get(method) ?? [],
-		/** URLs opened in the browser through kernel/shell. */
+		/** URLs opened in the browser through kernel/os. */
 		opens,
 		setPullRequests: (patch: Partial<PullRequestsState>) =>
 			act(async () => {

@@ -1,6 +1,5 @@
 import { definePlugin } from "@kilo-desktop/kernel";
-import { OnboardingStep, SettingsSection } from "@kilo-desktop/plugin-shell/contracts";
-import { SupportRow } from "@kilo-desktop/plugin-updates/contracts";
+import { OnboardingStep, SettingsSection, SupportRow } from "@kilo-desktop/plugin-shell/contracts";
 
 import { ExternalAiAppsNavIcon } from "./external-apps/ExternalAiAppsNavIcon";
 import { ExternalAiAppsSettings } from "./external-apps/ExternalAiAppsSettings";

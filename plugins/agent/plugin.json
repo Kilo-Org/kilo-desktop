@@ -5,12 +5,12 @@
 	"version": "1.0.0",
 	"description": "Runs the Kilo CLI server that powers agents, writes its configuration and follows its chats.",
 	"requires": {
-		"kilo.updates/support-row": "optional",
 		"kilo.shell/settings-section": "optional",
+		"kilo.shell/support-row": "optional",
 		"kilo.shell/onboarding-step": "optional"
 	},
 	"permissions": {
-		"host": ["shell"]
+		"host": ["os"]
 	},
 	"extensionPoints": [
 		{
@@ -118,7 +118,7 @@
 					}
 				}
 			],
-			"kilo.updates/support-row": [
+			"kilo.shell/support-row": [
 				{
 					"id": "kilo-config"
 				}

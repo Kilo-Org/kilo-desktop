@@ -9,7 +9,7 @@ import { vi } from "vitest";
 
 import {
 	definePlugin,
-	KernelShell,
+	KernelOs,
 	type PluginEntry,
 	type PluginRegistration,
 } from "@kilo-desktop/kernel";
@@ -130,7 +130,7 @@ export async function bootBrowserHost(options: BrowserHostOptions = {}) {
 			{ manifest, definitions: BROWSER_DEFINITIONS, entry: browserWebEntry },
 		],
 	});
-	main.kernelSdk.domains.provide(KernelShell, {
+	main.kernelSdk.domains.provide(KernelOs, {
 		initialState: {},
 		methods: {
 			openExternal: ({ url }: { url: string }) => {

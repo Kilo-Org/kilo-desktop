@@ -10,7 +10,7 @@ import {
 	KernelDialogs,
 	KernelError,
 	KernelServices,
-	KernelShell,
+	KernelOs,
 	type EmbeddedHostRegistration,
 	type PluginRegistration,
 } from "@kilo-desktop/kernel";
@@ -554,7 +554,7 @@ describe("kilo.notebook in main", () => {
 			initialState: {},
 			methods: dialogs as never,
 		});
-		host.main.kernelSdk.domains.provide(KernelShell, {
+		host.main.kernelSdk.domains.provide(KernelOs, {
 			initialState: {},
 			methods: { openExternal } as never,
 		});

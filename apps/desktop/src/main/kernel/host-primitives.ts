@@ -9,7 +9,7 @@ import {
 	KernelKeychain,
 	KernelNativeTheme,
 	KernelNotifications,
-	KernelShell,
+	KernelOs,
 	KernelUpdater,
 	type AppMenuNode,
 	type PluginSdk,
@@ -40,7 +40,7 @@ export interface HostPrimitiveDeps {
 	readonly clipboard: {
 		writeText(text: string): void | Promise<void>;
 	};
-	readonly shell: {
+	readonly os: {
 		openExternal(url: string): Promise<boolean>;
 		/** Reveals a file; false when the path was refused or the OS failed. */
 		showItemInFolder(path: string): boolean;
@@ -134,17 +134,17 @@ export function provideHostPrimitives(kernelSdk: PluginSdk, deps: HostPrimitiveD
 		},
 	});
 
-	kernelSdk.domains.provide(KernelShell, {
+	kernelSdk.domains.provide(KernelOs, {
 		initialState: {},
 		methods: {
-			openExternal: ({ url }) => deps.shell.openExternal(url),
+			openExternal: ({ url }) => deps.os.openExternal(url),
 			showItemInFolder: ({ path }) => {
-				if (!deps.shell.showItemInFolder(path)) {
+				if (!deps.os.showItemInFolder(path)) {
 					throw new KernelError("BUSINESS", "The file could not be shown in the file manager.");
 				}
 			},
-			showLogs: () => ({ revealed: deps.shell.showLogs() }),
-			logFilePath: () => deps.shell.logFilePath(),
+			showLogs: () => ({ revealed: deps.os.showLogs() }),
+			logFilePath: () => deps.os.logFilePath(),
 		},
 	});
 

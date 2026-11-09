@@ -21,7 +21,7 @@
 		"kilo.telemetry/telemetry-event": "optional"
 	},
 	"permissions": {
-		"host": ["clipboard", "shell"]
+		"host": ["clipboard", "os"]
 	},
 	"domains": [
 		{

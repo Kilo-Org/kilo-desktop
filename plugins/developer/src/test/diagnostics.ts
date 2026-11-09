@@ -87,7 +87,7 @@ export function agentServer(): GuestPlugin {
 				description: "Runs the agent server.",
 				extensionPoints: [{ id: "tool-panel", kind: "additive" }],
 				domains: [{ id: "status", home: "renderer" }],
-				permissions: { host: ["shell"] },
+				permissions: { host: ["os"] },
 				contextKeys: [{ id: "busy" }],
 				requires: {
 					"kilo.shell/navigation": "optional",

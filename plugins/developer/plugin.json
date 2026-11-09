@@ -13,7 +13,7 @@
 		"kilo.shell/settings-section": "optional"
 	},
 	"permissions": {
-		"host": ["shell", "plugins"]
+		"host": ["os", "plugins"]
 	},
 	"contributes": {
 		"extensions": {

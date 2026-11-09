@@ -2,33 +2,37 @@ import { describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
 import { testManifest } from "@kilo-desktop/kernel/testing";
+import { Overlay } from "@kilo-desktop/plugin-shell/contracts";
 import type { GuestPlugin } from "@kilo-desktop/plugin-shell/testing";
 
-import { AccountPanel } from "../../contracts";
 import { PROFILE, renderApp, SIGNED_IN, SIGNED_OUT } from "../../test/harness";
 import { KiloGatewayAccountPanel } from "./KiloGatewayAccountPanel";
 import { KiloGatewayProviderDisclosure } from "./KiloGatewayProviderCard";
 
-/** Hosts the Gateway provider row the way AI Providers does. */
+/** Hosts the Gateway provider row outside the Kilo account page, the way AI Providers does. */
 const providerRowHost: GuestPlugin = {
 	manifest: testManifest("acme.ai-providers", {
-		contributes: { extensions: { "kilo.account/account-panel": [{ id: "row" }] } },
+		contributes: { extensions: { "kilo.shell/overlay": [{ id: "row" }] } },
 	}),
 	web: {
 		activate: (sdk) => {
-			sdk.extensions.implement(AccountPanel, "row", KiloGatewayProviderDisclosure);
+			sdk.extensions.implement(Overlay, "row", KiloGatewayProviderDisclosure);
 		},
 	},
 };
 
-/** Hosts the Gateway panel the way AI Providers will (step 4b), with its own sign-out. */
+/** Hosts the Gateway panel outside the Kilo account page, with its own sign-out. */
 const providersHost: GuestPlugin = {
 	manifest: testManifest("acme.providers", {
-		contributes: { extensions: { "kilo.account/account-panel": [{ id: "gateway" }] } },
+		contributes: { extensions: { "kilo.shell/overlay": [{ id: "gateway" }] } },
 	}),
 	web: {
 		activate: (sdk) => {
-			sdk.extensions.implement(AccountPanel, "gateway", () => <KiloGatewayAccountPanel />);
+			sdk.extensions.implement(Overlay, "gateway", () => (
+				<div data-qa-id="hosted-gateway">
+					<KiloGatewayAccountPanel />
+				</div>
+			));
 		},
 	},
 };
@@ -158,33 +162,17 @@ describe("Kilo account on the Account page", () => {
 		await vi.waitFor(() => expect(methods.refresh).toHaveBeenCalled());
 	});
 
-	it("holds the page in a loading state until the account is known", async () => {
+	it("holds the Kilo row in a loading state until the account is known", async () => {
 		await openAccount({ identity: { ...SIGNED_OUT, connection: "pending", authenticated: null } });
 
-		await expect.element(page.getByTestId("account-page")).toHaveAttribute("data-state", "loading");
-	});
-
-	it("draws no frame for a contributed panel that renders nothing", async () => {
-		const empty: GuestPlugin = {
-			manifest: testManifest("acme.empty", {
-				contributes: { extensions: { "kilo.account/account-panel": [{ id: "nothing" }] } },
-			}),
-			web: {
-				activate: (sdk) => {
-					sdk.extensions.implement(AccountPanel, "nothing", () => null);
-				},
-			},
-		};
-		await openAccount({ guests: [empty] });
-
-		const frame = page.getByTestId("account-panel-acme.empty/nothing");
-		await expect.element(frame).toBeInTheDocument();
-		await expect.element(frame).not.toBeVisible();
+		await expect
+			.element(page.getByTestId("account-kilo-row"))
+			.toHaveAttribute("data-state", "loading");
 	});
 });
 
 describe("Kilo Gateway panel hosted elsewhere", () => {
-	const gateway = () => page.getByTestId("account-panel-acme.providers/gateway");
+	const gateway = () => page.getByTestId("hosted-gateway");
 
 	it("invites signing in when signed out", async () => {
 		const { methods } = await openAccount({ guests: [providersHost] });

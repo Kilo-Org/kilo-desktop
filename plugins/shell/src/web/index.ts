@@ -1,13 +1,16 @@
 import { createElement } from "react";
-import { KeyboardIcon, PaletteIcon } from "lucide-react";
+import { CircleUserIcon, InfoIcon, KeyboardIcon, PaletteIcon } from "lucide-react";
 
 import { definePlugin, KernelCommand, KernelRoot, KernelWindows } from "@kilo-desktop/kernel";
 
-import { Navigation, OnboardingStep, SettingsSection } from "../contracts";
+import { AboutSection, Navigation, OnboardingStep, SettingsSection } from "../contracts";
 import { startAppMenu } from "./app-menu";
 import { provideNavigation, routeDeepLinks } from "./navigation";
 import { featuresStep } from "./onboarding/features-step";
 import { createShellRouter } from "./router";
+import { AboutSettings } from "./settings/about/AboutSettings";
+import { AccountSettings } from "./settings/account/AccountSettings";
+import { AboutSupportSection } from "./settings/about/AboutSupportSection";
 import { AppearanceSettings } from "./settings/AppearanceSettings";
 import { ShortcutsSettings } from "./shortcuts/ShortcutsSettings";
 import { ShellRoot } from "./ShellRoot";
@@ -32,6 +35,15 @@ export const shellWebEntry = definePlugin({
 		sdk.extensions.implement(SettingsSection, "keyboard-shortcuts", {
 			component: ShortcutsSettings,
 			icon: KeyboardIcon,
+		});
+		sdk.extensions.implement(SettingsSection, "about", {
+			component: AboutSettings,
+			icon: InfoIcon,
+		});
+		sdk.extensions.implement(AboutSection, "support", AboutSupportSection);
+		sdk.extensions.implement(SettingsSection, "account", {
+			component: AccountSettings,
+			icon: CircleUserIcon,
 		});
 
 		// Bound only in secondary windows (its `when`); there ⌘W closes the window itself.

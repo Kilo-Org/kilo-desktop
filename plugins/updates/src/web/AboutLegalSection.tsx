@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { KernelShell } from "@kilo-desktop/kernel";
+import { KernelOs } from "@kilo-desktop/kernel";
 import { useDomain } from "@kilo-desktop/kernel/web";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
@@ -80,7 +80,7 @@ export function AboutLegalSection() {
 }
 
 function ChromiumNoticesRow({ legal }: { readonly legal: LegalDomain }) {
-	const shell = useDomain(KernelShell);
+	const os = useDomain(KernelOs);
 	const [path, setPath] = useState<string | null | undefined>(undefined);
 
 	useEffect(() => {
@@ -96,7 +96,7 @@ function ChromiumNoticesRow({ legal }: { readonly legal: LegalDomain }) {
 
 	const reveal = async (file: string) => {
 		try {
-			await shell?.methods.showItemInFolder({ path: file });
+			await os?.methods.showItemInFolder({ path: file });
 		} catch (error) {
 			toast.error("Could not show Chromium's notices", {
 				description: error instanceof Error ? error.message : "An unexpected error occurred.",
@@ -117,7 +117,7 @@ function ChromiumNoticesRow({ legal }: { readonly legal: LegalDomain }) {
 					size="sm"
 					variant="outline"
 					data-qa-id="about-show-chromium-notices"
-					disabled={!path || !shell}
+					disabled={!path || !os}
 					onClick={() => path && void reveal(path)}
 				>
 					{revealInFileManagerLabel()}

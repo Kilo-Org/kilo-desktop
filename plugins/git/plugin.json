@@ -19,7 +19,7 @@
 		"kernel/windows": "optional",
 		"kilo.workbench/session-decoration": "optional",
 		"kilo.workbench/session-facet": "optional",
-		"kernel/shell": "optional",
+		"kernel/os": "optional",
 		"kilo.workbench/session-action": "optional",
 		"kilo.agent/conversation": "optional",
 		"kilo.chat/model-preferences": "optional",
@@ -29,7 +29,7 @@
 	},
 	"permissions": {
 		"protocols": ["kilo-git"],
-		"host": ["shell"]
+		"host": ["os"]
 	},
 	"domains": [
 		{

@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-import { KernelShell } from "@kilo-desktop/kernel";
+import { KernelOs } from "@kilo-desktop/kernel";
 import { useDomain } from "@kilo-desktop/kernel/web";
 import { Conversations } from "@kilo-desktop/plugin-agent/contracts";
 import { ModelPreferences } from "@kilo-desktop/plugin-chat/contracts";
@@ -116,7 +116,7 @@ export function useRepositoryActions(
 ): RepositoryActions | null {
 	const repository = useDomain(Repository);
 	const pullRequests = useDomain(PullRequests);
-	const shell = useDomain(KernelShell);
+	const os = useDomain(KernelOs);
 	const telemetry = useDomain(Telemetry);
 	const writer = useWriter();
 	const queries = useQueryClient();
@@ -146,7 +146,7 @@ export function useRepositoryActions(
 	const refreshPullRequest = (settle = false) =>
 		void pullRequests?.methods.refresh({ directory, settle }).catch(() => undefined);
 	const openExternal = (url: string): Promise<boolean> =>
-		shell?.methods.openExternal({ url }).catch(() => false) ?? Promise.resolve(false);
+		os?.methods.openExternal({ url }).catch(() => false) ?? Promise.resolve(false);
 	const track = (event: string) =>
 		void telemetry?.methods.track({ event, data: {} }).catch(() => undefined);
 

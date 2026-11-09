@@ -132,6 +132,38 @@ export const SettingsSection = defineExtensionPoint({
 	implementation: implementation<SettingsSectionImplementation>("renderer"),
 });
 
+/**
+ * A block of Settings → About under the page header, ordered by `priority`
+ * (higher first). kilo.shell ships Support (priority 200); put a block above
+ * it with a higher priority or below it with a lower one.
+ */
+export const AboutSection = defineExtensionPoint({
+	id: "kilo.shell/about-section",
+	kind: "additive",
+	description: "A block of Settings → About, such as the version and updates.",
+	implementation: implementation<ComponentType>("renderer"),
+});
+
+/**
+ * A panel in Settings → Account, one per account the app can sign in to
+ * (Kilo, Anaconda), ordered by `priority`. A panel that renders nothing
+ * leaves no frame behind.
+ */
+export const AccountPanel = defineExtensionPoint({
+	id: "kilo.shell/account-panel",
+	kind: "additive",
+	description: "A panel in Settings → Account for an account the app can sign in to.",
+	implementation: implementation<ComponentType>("renderer"),
+});
+
+/** A row in About → Support, such as where a config file lives. */
+export const SupportRow = defineExtensionPoint({
+	id: "kilo.shell/support-row",
+	kind: "additive",
+	description: "A row in About → Support with information to include when contacting support.",
+	implementation: implementation<ComponentType>("renderer"),
+});
+
 /** How a status bar item's button looks right now; every field is optional. */
 export interface StatusBarItemTrigger {
 	/** Text after the icon. */
@@ -372,6 +404,9 @@ export const SHELL_EXTENSION_POINTS = [
 	Overlay,
 	SettingsCategory,
 	SettingsSection,
+	AboutSection,
+	SupportRow,
+	AccountPanel,
 	StatusBarItem,
 	DeepLink,
 	OnboardingStep,

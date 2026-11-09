@@ -1,9 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import { KernelError, KernelShell, type PluginEntry } from "@kilo-desktop/kernel";
+import { KernelError, KernelOs, type PluginEntry } from "@kilo-desktop/kernel";
 import { renderShell, type GuestPlugin } from "@kilo-desktop/plugin-shell/testing";
-import { updatesTestPlugin } from "@kilo-desktop/plugin-updates/testing";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import manifest from "../../plugin.json";
@@ -71,12 +70,11 @@ async function renderApp(
 	const showItemInFolder = vi.fn(options.showItemInFolder ?? (() => {}));
 	const guests: GuestPlugin[] = [
 		{ manifest, definitions: AGENT_DEFINITIONS, main: entry, web: agentWebEntry },
-		updatesTestPlugin,
 	];
 	await renderShell(guests, {
 		desktop: true,
 		beforeRender: (main) => {
-			main.kernelSdk.domains.provide(KernelShell, {
+			main.kernelSdk.domains.provide(KernelOs, {
 				initialState: {},
 				methods: {
 					openExternal: () => true,

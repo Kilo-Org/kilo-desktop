@@ -3,13 +3,14 @@
 	"id": "kilo.shell",
 	"displayName": "Shell",
 	"version": "1.0.0",
-	"description": "The window frame, router, settings host, command palette, status bar and appearance.",
+	"description": "The window frame, router, settings host, About and Account pages, command palette, status bar and appearance.",
 	"requires": {
 		"kernel/windows": "optional",
-		"kernel/app-menu": "optional"
+		"kernel/app-menu": "optional",
+		"kernel/os": "optional"
 	},
 	"permissions": {
-		"host": ["appearance", "windows", "app-menu"]
+		"host": ["appearance", "windows", "app-menu", "os"]
 	},
 	"extensionPoints": [
 		{
@@ -41,6 +42,21 @@
 			"id": "settings-section",
 			"kind": "additive",
 			"description": "A section of the Settings page."
+		},
+		{
+			"id": "about-section",
+			"kind": "additive",
+			"description": "A block of Settings \u2192 About, such as the version and updates."
+		},
+		{
+			"id": "support-row",
+			"kind": "additive",
+			"description": "A row in About \u2192 Support with information to include when contacting support."
+		},
+		{
+			"id": "account-panel",
+			"kind": "additive",
+			"description": "A panel in Settings \u2192 Account for an account the app can sign in to."
 		},
 		{
 			"id": "status-bar-item",
@@ -176,6 +192,21 @@
 			],
 			"kilo.shell/settings-section": [
 				{
+					"id": "about",
+					"title": "About",
+					"description": "Check the app version, manage updates, and find application logs.",
+					"priority": 110,
+					"when": {
+						"all": ["kernel/desktop"]
+					}
+				},
+				{
+					"id": "account",
+					"title": "Account",
+					"description": "See where you are signed in and manage your accounts.",
+					"priority": 105
+				},
+				{
 					"id": "appearance",
 					"title": "Appearance",
 					"description": "Choose how Kilo looks on this device.",
@@ -186,6 +217,12 @@
 					"title": "Shortcuts",
 					"description": "See, change, or turn off the app's keyboard shortcuts.",
 					"priority": 65
+				}
+			],
+			"kilo.shell/about-section": [
+				{
+					"id": "support",
+					"priority": 200
 				}
 			],
 			"kilo.shell/onboarding-step": [
@@ -200,7 +237,7 @@
 					"id": "settings",
 					"command": "kilo.shell/open-settings",
 					"menu": "app",
-					"label": "Settings…"
+					"label": "Settings\u2026"
 				},
 				{
 					"id": "command-palette",

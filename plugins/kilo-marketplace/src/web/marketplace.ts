@@ -6,12 +6,7 @@ import {
 } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 
-import {
-	KernelClipboard,
-	KernelError,
-	KernelShell,
-	type DomainMethods,
-} from "@kilo-desktop/kernel";
+import { KernelClipboard, KernelError, KernelOs, type DomainMethods } from "@kilo-desktop/kernel";
 import { useDomain, useDomainState } from "@kilo-desktop/kernel/web";
 import { Composer } from "@kilo-desktop/plugin-chat/contracts";
 import { Telemetry } from "@kilo-desktop/plugin-telemetry/contracts";
@@ -92,10 +87,10 @@ export function useActiveWorkspaceId(): string | null {
 
 /** Opens a link in the person's browser. */
 export function useOpenExternal(): (url: string) => void {
-	const shell = useDomain(KernelShell);
+	const os = useDomain(KernelOs);
 	return useCallback(
-		(url: string) => void shell?.methods.openExternal({ url }).catch(() => undefined),
-		[shell],
+		(url: string) => void os?.methods.openExternal({ url }).catch(() => undefined),
+		[os],
 	);
 }
 

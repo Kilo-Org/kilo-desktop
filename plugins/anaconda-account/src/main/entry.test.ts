@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
 	definePlugin,
-	KernelShell,
+	KernelOs,
 	type PluginRegistration,
 	type PluginSdk,
 } from "@kilo-desktop/kernel";
@@ -169,7 +169,7 @@ async function boot(
 		}),
 	});
 	kernels.push(main);
-	main.kernelSdk.domains.provide(KernelShell, {
+	main.kernelSdk.domains.provide(KernelOs, {
 		initialState: {},
 		methods: {
 			openExternal,

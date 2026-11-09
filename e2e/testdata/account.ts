@@ -11,7 +11,6 @@ export const accountData = {
 	signedOutStatus: "Not signed in.",
 	signedInStatus: "Signed in as e2e@kilo.dev",
 	signInLabel: "Sign in",
-	pageReadyState: "ready",
 	rowSummaryState: "summary",
 } as const;
 

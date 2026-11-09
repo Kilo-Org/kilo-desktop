@@ -1,18 +1,15 @@
-import { InfoIcon } from "lucide-react";
-
 import { definePlugin } from "@kilo-desktop/kernel";
-import { SettingsSection, LeftSidebarNotice } from "@kilo-desktop/plugin-shell/contracts";
+import { AboutSection, LeftSidebarNotice } from "@kilo-desktop/plugin-shell/contracts";
 
-import { AboutSettings } from "./AboutSettings";
+import { AboutLegalSection } from "./AboutLegalSection";
+import { AboutVersionSection } from "./AboutVersionSection";
 import { SidebarUpdatePill } from "./SidebarUpdatePill";
 
-/** kilo.updates' renderer entry: About settings and the update-ready notice. */
+/** kilo.updates' renderer entry: its blocks in Settings → About and the update-ready notice. */
 export const updatesWebEntry = definePlugin({
 	activate(sdk) {
-		sdk.extensions.implement(SettingsSection, "about", {
-			component: AboutSettings,
-			icon: InfoIcon,
-		});
+		sdk.extensions.implement(AboutSection, "version", AboutVersionSection);
+		sdk.extensions.implement(AboutSection, "legal", AboutLegalSection);
 		sdk.extensions.implement(LeftSidebarNotice, "update-ready", SidebarUpdatePill);
 	},
 });

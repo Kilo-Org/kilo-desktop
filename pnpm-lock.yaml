@@ -1190,9 +1190,6 @@ importers:
       '@kilo-desktop/plugin-shell':
         specifier: workspace:*
         version: link:../shell
-      '@kilo-desktop/plugin-updates':
-        specifier: workspace:*
-        version: link:../updates
       '@kilo-desktop/ui':
         specifier: workspace:*
         version: link:../../packages/ui
@@ -1309,9 +1306,9 @@ importers:
       '@kilo-desktop/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
-      '@kilo-desktop/plugin-account':
+      '@kilo-desktop/plugin-shell':
         specifier: workspace:*
-        version: link:../account
+        version: link:../shell
       '@kilo-desktop/plugin-telemetry':
         specifier: workspace:*
         version: link:../telemetry
@@ -1346,9 +1343,6 @@ importers:
       '@kilo-desktop/plugin-flags':
         specifier: workspace:*
         version: link:../flags
-      '@kilo-desktop/plugin-shell':
-        specifier: workspace:*
-        version: link:../shell
       '@kilo-desktop/ui':
         specifier: workspace:*
         version: link:../../packages/ui

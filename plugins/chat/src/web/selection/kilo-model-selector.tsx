@@ -64,7 +64,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 import { CommandItem } from "@kilo-desktop/ui/components/command";
 import { cn } from "@kilo-desktop/ui/lib/utils";
-import { KernelShell } from "@kilo-desktop/kernel";
+import { KernelOs } from "@kilo-desktop/kernel";
 import { useDomain } from "@kilo-desktop/kernel/web";
 import { Navigation } from "@kilo-desktop/plugin-shell/contracts";
 
@@ -1610,7 +1610,7 @@ const EnkryptRiskIndicator: FC<{ value: number }> = ({ value }) => {
 };
 
 const ModelInfoPopover: FC<{ model: KiloCatalogModel }> = ({ model }) => {
-	const shell = useDomain(KernelShell);
+	const os = useDomain(KernelOs);
 	const [open, setOpen] = useState(false);
 	const triggerRef = useRef<HTMLButtonElement>(null);
 	useEffect(() => {
@@ -1738,7 +1738,7 @@ const ModelInfoPopover: FC<{ model: KiloCatalogModel }> = ({ model }) => {
 				{modelPageUrl ? (
 					<ExternalLink
 						href={modelPageUrl}
-						onOpen={(url) => void shell?.methods.openExternal({ url }).catch(() => undefined)}
+						onOpen={(url) => void os?.methods.openExternal({ url }).catch(() => undefined)}
 						className={buttonVariants({ variant: "ghost", size: "xs", className: "ml-auto" })}
 					>
 						View on Kilo <ArrowRightIcon data-icon="inline-end" />

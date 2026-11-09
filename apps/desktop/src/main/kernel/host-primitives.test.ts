@@ -10,7 +10,7 @@ import {
 	KernelKeychain,
 	KernelNativeTheme,
 	KernelNotifications,
-	KernelShell,
+	KernelOs,
 	KernelUpdater,
 } from "@kilo-desktop/kernel";
 import { createMainKernel } from "@kilo-desktop/kernel/main";
@@ -60,7 +60,7 @@ function deps(overrides: Partial<HostPrimitiveDeps> = {}): HostPrimitiveDeps {
 			showMessageBox: vi.fn(async () => ({ response: 0 })),
 		},
 		clipboard: { writeText: vi.fn() },
-		shell: {
+		os: {
 			openExternal: vi.fn(async () => true),
 			showItemInFolder: vi.fn(() => true),
 			showLogs: vi.fn(() => true),
@@ -97,7 +97,7 @@ async function boot(hostDeps: HostPrimitiveDeps) {
 				manifest: {
 					permissions: {
 						host: [
-							"shell",
+							"os",
 							"clipboard",
 							"keychain",
 							"app-menu",
@@ -126,16 +126,16 @@ describe("host primitives", () => {
 		await expect(
 			kernel
 				.sdkFor("acme.plain")
-				.domains.get(KernelShell)!
+				.domains.get(KernelOs)!
 				.methods.openExternal({ url: "https://x.test" }),
 		).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
 		await expect(
 			kernel
 				.sdkFor("acme.trusted")
-				.domains.get(KernelShell)!
+				.domains.get(KernelOs)!
 				.methods.openExternal({ url: "https://x.test" }),
 		).resolves.toBe(true);
-		expect(hostDeps.shell.openExternal).toHaveBeenCalledOnce();
+		expect(hostDeps.os.openExternal).toHaveBeenCalledOnce();
 	});
 
 	it("saves through the native dialog with the caller's file filters", async () => {
@@ -349,9 +349,9 @@ describe("host primitives", () => {
 		});
 	});
 
-	it("refuses to reveal a path the shell rejects", async () => {
+	it("refuses to reveal a path the OS rejects", async () => {
 		const hostDeps = deps({
-			shell: {
+			os: {
 				openExternal: vi.fn(async () => true),
 				showItemInFolder: vi.fn((path: string) => !/[\r\n]/.test(path)),
 				showLogs: vi.fn(() => true),
@@ -359,11 +359,11 @@ describe("host primitives", () => {
 			},
 		});
 		const kernel = await boot(hostDeps);
-		const shell = kernel.sdkFor("acme.trusted").domains.get(KernelShell)!;
+		const os = kernel.sdkFor("acme.trusted").domains.get(KernelOs)!;
 
-		await expect(shell.methods.showItemInFolder({ path: "/work/a.txt" })).resolves.toBeUndefined();
+		await expect(os.methods.showItemInFolder({ path: "/work/a.txt" })).resolves.toBeUndefined();
 		await expect(
-			shell.methods.showItemInFolder({ path: "/work/a.txt\n--evil" }),
+			os.methods.showItemInFolder({ path: "/work/a.txt\n--evil" }),
 		).rejects.toMatchObject({ code: "BUSINESS" });
 	});
 
@@ -375,13 +375,13 @@ describe("host primitives", () => {
 			string,
 			(input: unknown) => Promise<unknown>
 		>;
-		const shell = domains.get(KernelShell)!.methods as unknown as Record<
+		const os = domains.get(KernelOs)!.methods as unknown as Record<
 			string,
 			(input: unknown) => Promise<unknown>
 		>;
 
 		await expect(clipboard.readText!(undefined)).rejects.toMatchObject({ code: "NOT_FOUND" });
-		await expect(shell.openPath!({ path: "/x.bin" })).rejects.toMatchObject({
+		await expect(os.openPath!({ path: "/x.bin" })).rejects.toMatchObject({
 			code: "NOT_FOUND",
 		});
 		await domains.get(KernelClipboard)!.methods.writeText({ text: "λ" });
@@ -390,10 +390,10 @@ describe("host primitives", () => {
 
 	it("gives the log file's path and reports whether it was revealed", async () => {
 		const kernel = await boot(deps());
-		const shell = kernel.sdkFor("acme.trusted").domains.get(KernelShell)!;
+		const os = kernel.sdkFor("acme.trusted").domains.get(KernelOs)!;
 
-		await expect(shell.methods.logFilePath(undefined)).resolves.toBe("/logs/main.log");
-		await expect(shell.methods.showLogs(undefined)).resolves.toEqual({ revealed: true });
+		await expect(os.methods.logFilePath(undefined)).resolves.toBe("/logs/main.log");
+		await expect(os.methods.showLogs(undefined)).resolves.toEqual({ revealed: true });
 	});
 });
 

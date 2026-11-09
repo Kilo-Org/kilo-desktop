@@ -23,7 +23,7 @@
 		"kilo.sessions/opener": "optional"
 	},
 	"permissions": {
-		"host": ["clipboard", "shell"],
+		"host": ["clipboard", "os"],
 		"embeddedHosts": ["mcp-app"]
 	},
 	"contextKeys": [

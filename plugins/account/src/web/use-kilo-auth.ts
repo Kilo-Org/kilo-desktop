@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-import { KernelClipboard, KernelShell } from "@kilo-desktop/kernel";
+import { KernelClipboard, KernelOs } from "@kilo-desktop/kernel";
 import { useContextKey, useDomain, useDomainState } from "@kilo-desktop/kernel/web";
 
 import {
@@ -58,7 +58,7 @@ const ignore = () => undefined;
 export function useKiloAuth(): KiloAuthContextValue {
 	const identity = useDomain(Identity);
 	const state = useDomainState(Identity, selectIdentity) ?? UNAVAILABLE;
-	const shell = useDomain(KernelShell);
+	const os = useDomain(KernelOs);
 	const clipboard = useDomain(KernelClipboard);
 	// In the desktop app the account is read through kilo.agent's server, so
 	// it is unavailable whenever that plugin isn't running (or is turned off).
@@ -92,8 +92,8 @@ export function useKiloAuth(): KiloAuthContextValue {
 			setOrganization: (organizationId) =>
 				call((methods) => methods.setOrganization({ organizationId })),
 			dismissOrgError: () => call((methods) => methods.dismissOrgError(undefined)),
-			openExternal: (url) => void shell?.methods.openExternal({ url }).catch(ignore),
+			openExternal: (url) => void os?.methods.openExternal({ url }).catch(ignore),
 			copyText: (text) => void clipboard?.methods.writeText({ text }).catch(ignore),
 		};
-	}, [clipboard, desktop, identity, shell, state]);
+	}, [clipboard, desktop, identity, os, state]);
 }

@@ -16,8 +16,8 @@ const ANACONDA_ACCOUNT_SUMMARY =
 	"Browse and download models from the Anaconda model catalog, and install packages from authenticated channels like main-x.";
 
 /**
- * The Anaconda panel on the Account settings page, contributed to
- * `kilo.account/account-panel` (behind the model catalog's flag, in the
+ * The Anaconda panel in Settings → Account, contributed to
+ * `kilo.shell/account-panel` (behind the model catalog's flag, in the
  * manifest). Anaconda is only a credential source for Anaconda services (it
  * stores an API key); it never affects the Kilo account above it.
  */

@@ -18,7 +18,7 @@
 	"dependencies": {
 		"@github/keytar": "^7.10.6",
 		"@kilo-desktop/kernel": "workspace:*",
-		"@kilo-desktop/plugin-account": "workspace:*",
+		"@kilo-desktop/plugin-shell": "workspace:*",
 		"@kilo-desktop/plugin-telemetry": "workspace:*",
 		"atomically": "catalog:",
 		"lodash": "catalog:",
@@ -37,7 +37,6 @@
 		"@anaconda/playwright-utils": "2.1.0",
 		"@kilo-desktop/e2e": "workspace:*",
 		"@kilo-desktop/plugin-flags": "workspace:*",
-		"@kilo-desktop/plugin-shell": "workspace:*",
 		"@kilo-desktop/ui": "workspace:*",
 		"@playwright/test": "catalog:",
 		"@tailwindcss/vite": "^4.3.3",

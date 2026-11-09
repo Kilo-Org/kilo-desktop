@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 
-import { KernelShell } from "@kilo-desktop/kernel";
+import { KernelOs } from "@kilo-desktop/kernel";
 import { useDomain } from "@kilo-desktop/kernel/web";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 import { cn } from "@kilo-desktop/ui/lib/utils";
@@ -140,7 +140,7 @@ export function HtmlRenderFrame({
 	heightCacheKey,
 	className,
 }: HtmlRenderFrameProps) {
-	const shell = useDomain(KernelShell);
+	const os = useDomain(KernelOs);
 	const linkPromptId = useId();
 	const theme = useHtmlRenderTheme();
 	const themeRef = useRef(theme);
@@ -192,13 +192,13 @@ export function HtmlRenderFrame({
 			const url = readHtmlRenderLinkUrl(event.data);
 			if (url && hasUserActivation()) {
 				confirmOpenLink(url, linkPromptId, async (target) => {
-					await shell?.methods.openExternal({ url: target });
+					await os?.methods.openExternal({ url: target });
 				});
 			}
 		};
 		window.addEventListener("message", onMessage);
 		return () => window.removeEventListener("message", onMessage);
-	}, [heightCacheKey, html, linkPromptId, shell]);
+	}, [heightCacheKey, html, linkPromptId, os]);
 
 	useEffect(() => {
 		iframeRef.current?.contentWindow?.postMessage(htmlRenderThemeMessage(theme), "*");

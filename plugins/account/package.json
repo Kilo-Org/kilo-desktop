@@ -3,13 +3,12 @@
 	"version": "1.0.0",
 	"private": true,
 	"type": "module",
-	"description": "kilo.account — the signed-in Kilo account, terms, sign-in and Account settings",
+	"description": "kilo.account — the signed-in Kilo account, terms, sign-in and its Account settings panel",
 	"exports": {
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",
 		"./web": "./src/web/index.ts",
-		"./contracts": "./src/contracts/index.ts",
-		"./testing": "./src/testing/index.ts"
+		"./contracts": "./src/contracts/index.ts"
 	},
 	"scripts": {
 		"check": "tsc --noEmit -p tsconfig.json",

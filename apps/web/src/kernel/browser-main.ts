@@ -4,7 +4,7 @@ import {
 	KernelError,
 	KernelNativeTheme,
 	KernelNotifications,
-	KernelShell,
+	KernelOs,
 	detectKeyboardPlatform,
 	type DomainProvider,
 	type KernelLogger,
@@ -65,7 +65,7 @@ export async function startBrowserMainKernel(options: {
 			},
 		},
 	});
-	kernel.kernelSdk.domains.provide(KernelShell, {
+	kernel.kernelSdk.domains.provide(KernelOs, {
 		initialState: {},
 		methods: {
 			openExternal: ({ url }) => window.open(url, "_blank", "noopener,noreferrer") !== null,

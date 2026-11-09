@@ -19,7 +19,7 @@ import {
 	type FormEvent,
 } from "react";
 
-import { KernelShell, type DomainHandle, type DomainState } from "@kilo-desktop/kernel";
+import { KernelOs, type DomainHandle, type DomainState } from "@kilo-desktop/kernel";
 import { useDomain, useDomainState } from "@kilo-desktop/kernel/web";
 import type { PaneProps } from "@kilo-desktop/plugin-sessions/contracts";
 import { Button } from "@kilo-desktop/ui/components/button";
@@ -105,7 +105,7 @@ function BrowserPageView({
 	pane,
 	visible,
 }: Pick<PaneProps, "sessionId" | "pane" | "visible"> & { readonly pages: BrowserPagesHandle }) {
-	const shell = useDomain(KernelShell);
+	const os = useDomain(KernelOs);
 	const paneId = pane.id;
 	const key = pageKey(sessionId, paneId);
 	const state = useDomainState(
@@ -324,7 +324,7 @@ function BrowserPageView({
 			setError(message(cause, "Unable to run browser command."));
 		});
 	const openInDefaultBrowser = () => {
-		void (shell?.methods.openExternal({ url: currentUrl }) ?? Promise.resolve(false))
+		void (os?.methods.openExternal({ url: currentUrl }) ?? Promise.resolve(false))
 			.catch(() => false)
 			.then((opened) => {
 				if (!opened) setError("Unable to open this page in your default browser.");

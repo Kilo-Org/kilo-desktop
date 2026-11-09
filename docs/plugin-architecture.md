@@ -735,6 +735,9 @@ flowchart LR
     status["▲ status-bar-item (A)"]
     deeplink["▲ deep-link (A)"]
     settings["▲ settings-section (A)"]
+    about["▲ about-section (A)"]
+    support["▲ support-row (A)"]
+    accountPanel["▲ account-panel (A)"]
   end
 
   shellC -->|window frame| root
@@ -746,6 +749,11 @@ flowchart LR
   localinf -->|model server| status
   localinf -->|model-catalog| deeplink
   everyone -->|settings sections| settings
+  updates -->|version and updates · legal| about
+  shellC -->|support| about
+  agent -->|Kilo config file| support
+  account -->|Kilo account| accountPanel
+  anaconda["kilo.anaconda-account"] -->|Anaconda account| accountPanel
   everyone -->|commands + keybindings| command
 ```
 
@@ -822,7 +830,7 @@ flowchart LR
   localinf -->|local llama.cpp| model
 ```
 
-#### kilo.chat, kilo.workspaces, kilo.telemetry and kilo.updates
+#### kilo.chat, kilo.workspaces and kilo.telemetry
 
 ```mermaid
 flowchart LR
@@ -848,17 +856,12 @@ flowchart LR
     tevent["▲ telemetry-event (A)"]
   end
 
-  subgraph UPDATES["kilo.updates"]
-    supportRow["▲ support-row (A)"]
-  end
-
   chatSelf -->|agent/model picker · attach| composerAction
   files -->|"@ file mentions"| mention
   chatSelf -->|bash · edit · read · html_render …| renderer
   files -->|paths as links| mdExt
   git -->|status · branches · worktrees| vcs
   everyone -->|declared events| tevent
-  agentS["kilo.agent"] -->|Kilo config file| supportRow
 ```
 
 #### kernel/service
@@ -964,7 +967,7 @@ with contributors today; candidate points are in the extensibility map (§7).
 │   system (suspend, resume, online, offline, appearance-changed)
 │   commands (execute by id, list) · keyboard dispatch (rebindable, conflict-safe)
 │   ports (a plugin's window ↔ main message ports, for streams)
-│   host primitives (permissioned): windows · appMenu · dialogs · shell (open/reveal)
+│   host primitives (permissioned): windows · appMenu · dialogs · os (open/reveal)
 │     clipboard · notifications · keychain · updater · dataCollection (consent)
 │     browserHost · embeddedHosts
 │   drag and drop of ObjectRefs
@@ -979,12 +982,16 @@ with contributors today; candidate points are in the extensibility map (§7).
 │   kilo.shell/left-sidebar-notice (A) notices above the account entry
 │   kilo.shell/settings-category (A)  sidebar headings, ordered by priority
 │   kilo.shell/settings-section (A)  schema or component, under a category
+│   kilo.shell/about-section (A) ... blocks of Settings → About, by priority
+│   kilo.shell/support-row (A) ..... rows in About → Support
+│   kilo.shell/account-panel (A) ... panels in Settings → Account (Kilo, Anaconda)
 │   kilo.shell/status-bar-item (A) . the status bar (start: app / workspace,
 │                                    end: the open session)
 │   kilo.shell/deep-link (A) ....... kilo-desktop://{host}/…
 │ ● kernel/root .................... window frame, router, settings host
 │   kilo.shell/settings-category (own)  General, AI
-│   kilo.shell/settings-section (own)  Appearance, Shortcuts (General)
+│   kilo.shell/settings-section (own)  Appearance, Shortcuts, About, Account (General)
+│   kilo.shell/about-section (own) . Support (application logs + support rows)
 │   kernel/command ................. open settings, toggle sidebar, open command palette
 │ ◆ navigation · toast · theme
 │   (hosts the command palette: a consumer of kernel/command)
@@ -1005,10 +1012,10 @@ with contributors today; candidate points are in the extensibility map (§7).
 ╰───────────────────────────────────────────────────────────────────────────────
 
 ╭─ kilo.updates ────────────────────────────────────────────────────────────────
-│ ▲ kilo.updates/support-row (A) ... rows in About → Support
+│ ▲ —
 │ ● kilo.shell/left-sidebar-notice . restart to update
-│   kilo.shell/settings-section .... About
-│ ◆ —                                (uses kernel updater)
+│   kilo.shell/about-section ....... version and updates (above Support), Legal (below)
+│ ◆ legal                            (uses kernel updater)
 ╰───────────────────────────────────────────────────────────────────────────────
 
 ╭─ kilo.developer ──────────────────────────────────────────────────────────────
@@ -1020,9 +1027,9 @@ with contributors today; candidate points are in the extensibility map (§7).
 ╰───────────────────────────────────────────────────────────────────────────────
 
 ╭─ kilo.account ────────────────────────────────────────────────────────────────
-│ ▲ kilo.account/account-panel (A) . panels in Settings → Account (Anaconda: kilo.anaconda-account)
+│ ▲ —
 │ ● kilo.shell/left-sidebar-account  account menu, sign in
-│   kilo.shell/settings-section .... Account
+│   kilo.shell/account-panel ....... the Kilo account
 │   kilo.shell/onboarding-step ..... welcome + terms (required), sign in
 │   kilo.agent/provider-panel ...... Kilo Gateway row in AI Providers
 │ ◆ identity (sign-in flow; events signed-in / signed-out)
@@ -1043,7 +1050,7 @@ with contributors today; candidate points are in the extensibility map (§7).
 │                                     · tool-gateway (daemon, activation)
 │   kilo.shell/settings-section .... AI Providers, External AI apps (flag)
 │   kilo.shell/onboarding-step ..... work style
-│   kilo.updates/support-row ....... Kilo config file
+│   kilo.shell/support-row ......... Kilo config file
 │ ◆ server (status; connect waits for ready; restart; disposeInstance — 9b) · config (user config file;
 │     MCP/skills/agents later) · external-clients (paired apps: enable, port,
 │     pair, revoke; kilo.agent's own settings only)
@@ -1184,7 +1191,7 @@ with contributors today; candidate points are in the extensibility map (§7).
 │       kilo.account/identity · kilo.shell/navigation · kilo.shell/theme · kilo.flags ·
 │       kilo.sessions/work-session · kilo.sessions/pane · kilo.workspaces/workspace ·
 │       kilo.workbench/workbench · kilo.sessions/opener · kernel/clipboard ·
-│       kernel/shell
+│       kernel/os
 ╰───────────────────────────────────────────────────────────────────────────────
 
 ╭─ kilo.git ────────────────────────────────────────────────────────────────────
@@ -1216,7 +1223,7 @@ with contributors today; candidate points are in the extensibility map (§7).
 │ uses: kilo.workspaces/workspace (authorize) · kilo.workspaces/file (changed)
 │   · kilo.sessions/work-session (setWorktreeBranch) · kilo.sessions/pane ·
 │   kilo.workbench/workbench · kilo.shell/theme · kernel/app (renderer origins) ·
-│   kernel/windows · kernel/shell · kilo.agent/conversation (generate,
+│   kernel/windows · kernel/os · kilo.agent/conversation (generate,
 │   generateBranchName, setWorktreeBranch, user-message, turn-ended) ·
 │   kilo.chat/model-preferences · kilo.chat/composer (insert) ·
 │   kilo.telemetry/telemetry
@@ -1308,11 +1315,11 @@ with contributors today; candidate points are in the extensibility map (§7).
 
 ╭─ kilo.anaconda-account ───────────────────────────────────────────────────────
 │ ▲ —
-│ ● kilo.account/account-panel ..... the Anaconda row (when flag local-model-catalog)
+│ ● kilo.shell/account-panel ....... the Anaconda account (when flag local-model-catalog)
 │   kilo.telemetry/telemetry-event . Anaconda Logged In / Logged Out
 │ ◆ account (main: session, signingIn; session, refresh, signIn, cancelSignIn,
 │   signOut, siteDomain, apiKey — kilo.local-inference only; changed)
-│ uses: kernel/shell (browser) · kernel/windows (focus after sign-in) ·
+│ uses: kernel/os (browser) · kernel/windows (focus after sign-in) ·
 │       kilo.telemetry/telemetry · the Anaconda keyring (~/.anaconda, system keychain)
 ╰───────────────────────────────────────────────────────────────────────────────
 
@@ -1364,10 +1371,11 @@ with contributors today; candidate points are in the extensibility map (§7).
 | kilo.shell      | `settings-section`     | A              | `{id, title, category: <settings-category key>, priority, schema \| component, when}`; ordered within its category                                                                                                  | shell, telemetry, updates, account, agent, workbench, chat, notebook, environments, local-inference, marketplace |
 | kilo.shell      | `status-bar-item`      | A              | `{id, title, kind: view \| action \| popover, align: start \| end, command?, priority, when}` + `Component` \| `useTrigger` with `run` or `Content`; the bar hides while no item renders                            | local-inference                                                                                                  |
 | kilo.shell      | `deep-link`            | A              | `{host, to, params}`                                                                                                                                                                                                | local-inference                                                                                                  |
+| kilo.shell      | `about-section`        | A              | Component: a block of Settings → About, ordered by priority around the shell's Support (200)                                                                                                                        | shell, updates                                                                                                   |
+| kilo.shell      | `support-row`          | A              | Row component in About → Support                                                                                                                                                                                    | agent                                                                                                            |
+| kilo.shell      | `account-panel`        | A              | Panel component in Settings → Account, ordered by priority; an empty panel leaves no frame                                                                                                                          | account, anaconda-account                                                                                        |
 | kilo.shell      | `menu-item`            | A              | `{command, menu: app \| file \| edit \| view \| window \| help, label?, group, priority, when}`: a command in the native app menu, greyed out while it can't run in the focused window                              | shell, workbench                                                                                                 |
-| kilo.account    | `account-panel`        | A              | Panel component in Settings → Account                                                                                                                                                                               | local-inference                                                                                                  |
 | kilo.telemetry  | `telemetry-event`      | A              | `{id, name}`: an event the contributing plugin may send (manifest data)                                                                                                                                             | every plugin                                                                                                     |
-| kilo.updates    | `support-row`          | A              | Row component in About → Support                                                                                                                                                                                    | agent                                                                                                            |
 | kilo.agent      | `tool`                 | A              | `{name, description, input, approval, signInPrompt?}` + handler                                                                                                                                                     | git, files, terminal, browser, notebook, environments, local-inference                                           |
 | kilo.agent      | `session-config`       | A              | `configure(ctx) → {disableTools, instructions, permissions}`; permissions are Kilo rules added at chat creation (12a)                                                                                               | environments (12a)                                                                                               |
 | kilo.agent      | `tool-approval`        | D              | `proceed / ask / reject` per tool call                                                                                                                                                                              | environments                                                                                                     |
@@ -1563,11 +1571,12 @@ would replace it if a kind ever needs something other than show-or-open.
 | kilo.shell     | `menu-item`           | A    | Now    | Commands in the native app menu, by menu and group (shell lays it out)  | shell (settings, palette, sidebar, shortcuts); workbench (new session, new tab, close tab); _later_ git, terminal |
 | kilo.shell     | `header-action`       | A    | Later  | Buttons in the page header, beside the main view's own                  | workbench (its header buttons, as the first contributor); _ext_ app-wide actions                                  |
 | kilo.shell     | `right-sidebar`       | A    | Later  | Tabbed panels in a right sidebar behind an icon rail, one open          | _ext_ notifications inbox, issue feed, app-wide assistant; developer (activity log)                               |
-| kilo.account   | `account-panel`       | A    | Now    | Panels in Settings → Account                                            | anaconda-account (Anaconda account)                                                                               |
 | kilo.account   | `account-menu`        | A    | Next   | Account menu entries (reference commands)                               | updates (check for updates); shell (settings); local-inference (usage)                                            |
 | kilo.shell     | `left-sidebar-notice` | A    | Now    | Notices above the account entry                                         | updates (restart to update); _later_ account (trial ending), agent (server needs attention)                       |
 | kilo.shell     | `status-bar-item`     | A    | Now    | Views, buttons and popovers in the status bar under the main page       | _later_ developer (plugin activity), agent (server starting), local-inference (model loaded), git (sync)          |
-| kilo.updates   | `support-row`         | A    | Now    | Rows in About → Support                                                 | agent (Kilo config file); _later_ environments (conda info), local-inference (model server logs)                  |
+| kilo.shell     | `about-section`       | A    | Now    | Blocks of Settings → About around the shell's Support                   | updates (version and updates, legal notices); _later_ agent (Kilo CLI version)                                    |
+| kilo.shell     | `support-row`         | A    | Now    | Rows in About → Support                                                 | agent (Kilo config file); _later_ environments (conda info), local-inference (model server logs)                  |
+| kilo.shell     | `account-panel`       | A    | Now    | Panels in Settings → Account                                            | account (Kilo account); anaconda-account (Anaconda account)                                                       |
 | kilo.telemetry | `telemetry-event`     | A    | Now    | Analytics events a plugin may send                                      | every plugin that reports usage                                                                                   |
 | kilo.developer | `diagnostics-tab`     | A    | Later  | Tabs in Settings → Developer → Diagnostics beside Plugins, Services     | agent (server log and config); notebook (runtimed daemon); local-inference (model server)                         |
 | kilo.developer | `inspector-section`   | A    | Later  | Sections in Diagnostics' inspector for a point, domain object or plugin | agent (agent tools over a domain object); telemetry (events a plugin declares); sessions (live pane kinds)        |
@@ -2038,7 +2047,7 @@ Everything lands in a single PR once all plugins are built.
   (`kilo-marketplace`, so `/settings/kilo-marketplace` still works); the
   active workspace comes from `Workspaces.activeId`; "Fix in chat" uses
   `kilo.chat/composer.startNewChat` and is hidden without kilo.chat; links
-  and copy through `kernel/shell` / `kernel/clipboard`. Origin had no flag;
+  and copy through `kernel/os` / `kernel/clipboard`. Origin had no flag;
   its four telemetry events are declared.
 - **e2e:** the plugin's own spec runs again (owner from its manifest); the
   settings test data already named `kilo.marketplace`.
@@ -2134,7 +2143,7 @@ Everything lands in a single PR once all plugins are built.
   frame (origin's handshake, rail capability, theme messages). Main adapts
   the kernel port to the Electron port nteract's `serveElectronNotebookHost`
   expects; dialogs, links and window focus come from `kernel/dialogs`
-  (`save` now takes `filters`), `kernel/shell` and `kernel/windows`. The
+  (`save` now takes `filters`), `kernel/os` and `kernel/windows`. The
   frame is the `notebook` embedded host (outputs `active-untrusted-content`,
   clipboard write), registered through the host's `embeddedHosts`.
 - **Kilo plugin through `runtime-config`:** `kiloPlugins.notebooks` (the
@@ -2462,8 +2471,8 @@ Everything lands in a single PR once all plugins are built.
   `hover-branch` — origin's live branch line (repository probe gated on the
   repository type, falling back to the last lookup's branch, then the
   stamped branch), taking the place of the session's own branch line; `hover`
-  — origin's PR link (opened through `kernel/shell`, kilo.git now has the
-  `shell` permission). The hover slots are new; kilo.workbench's hover card
+  — origin's PR link (opened through `kernel/os`, kilo.git now has the
+  `os` permission). The hover slots are new; kilo.workbench's hover card
   renders them. No `header` decoration: origin's header showed the PR
   through the repository actions (9e). Rows and hover hide a PR while the
   window's cached `status` shows another branch, as origin.
@@ -3272,7 +3281,7 @@ Everything lands in a single PR once all plugins are built.
 - **Optional integrations don't raise problems.** A contribution to a point
   whose owner is not installed is a warning (`absent-extension-point-owner`);
   an unknown point of an installed owner is still an error.
-- **Updater actions return `{ accepted, state }`** and `kernel/shell` gained
+- **Updater actions return `{ accepted, state }`** and `kernel/os` gained
   `logFilePath`; `showLogs` reveals the log file and reports whether it
   could. Track switching is gated in the UI only: `updater` callers are
   already limited by permission.

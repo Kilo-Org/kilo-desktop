@@ -297,10 +297,11 @@ export const KernelClipboard = defineDomain({
 	},
 });
 
-export const KernelShell = defineDomain({
-	id: "kernel/shell",
+/** Hands things to the OS: URLs to the browser, files and logs to the file manager. */
+export const KernelOs = defineDomain({
+	id: "kernel/os",
 	home: "main",
-	permission: "shell",
+	permission: "os",
 	state: z.object({}),
 	methods: {
 		openExternal: method(z.object({ url: z.string() }), z.boolean()),
@@ -481,7 +482,7 @@ export const KERNEL_DOMAINS = [
 	KernelNativeTheme,
 	KernelDialogs,
 	KernelClipboard,
-	KernelShell,
+	KernelOs,
 	KernelNotifications,
 	KernelAppMenu,
 	KernelKeychain,

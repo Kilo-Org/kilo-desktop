@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { vi } from "vitest";
 import { page } from "vitest/browser";
 
-import { KernelShell, type DomainProvider, type PluginEntry } from "@kilo-desktop/kernel";
+import { KernelOs, type DomainProvider, type PluginEntry } from "@kilo-desktop/kernel";
 import { KernelProvider } from "@kilo-desktop/kernel/web";
 import { Identity, type IdentityState } from "@kilo-desktop/plugin-account/contracts";
 import { Navigation } from "@kilo-desktop/plugin-shell/contracts";
@@ -149,7 +149,7 @@ export async function renderInKernel(
 		],
 		mainHostServices: () => ({ storage }),
 	});
-	host.main.kernelSdk.domains.provide(KernelShell, {
+	host.main.kernelSdk.domains.provide(KernelOs, {
 		initialState: {},
 		methods: {
 			openExternal: ({ url }: { url: string }) => {

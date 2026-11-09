@@ -27,13 +27,13 @@ e2e/              @kilo-desktop/e2e          Playwright/Electron e2e (plugin-awa
 examples/
 └── hello-plugin/ @kilo-desktop/example-hello example.hello: the example plugin for authors — workspace-built and tested, never bundled
 plugins/          Bundled plugins — self-contained workspace packages
-├── shell/        @kilo-desktop/plugin-shell kilo.shell: window frame, router, settings host, command palette, app menu, appearance (kernel plugin)
+├── shell/        @kilo-desktop/plugin-shell kilo.shell: window frame, router, settings host (with the About and Account pages), command palette, app menu, appearance (kernel plugin)
 ├── flags/        @kilo-desktop/plugin-flags kilo.flags: LaunchDarkly feature flags as a domain object and `flag:` context keys (kernel plugin)
 ├── telemetry/    @kilo-desktop/plugin-telemetry kilo.telemetry: consented PostHog analytics for declared events, Privacy settings (kernel plugin)
-├── updates/      @kilo-desktop/plugin-updates kilo.updates: About settings, release notes, the restart-to-update notice and the third-party notices (kernel plugin)
+├── updates/      @kilo-desktop/plugin-updates kilo.updates: the version, update and legal blocks of About, release notes and the restart-to-update notice (kernel plugin)
 ├── developer/    @kilo-desktop/plugin-developer kilo.developer: the Developer settings category and Diagnostics (kernel plugin)
 ├── agent/        @kilo-desktop/plugin-agent kilo.agent: Kilo CLI packaging, server lifecycle and configuration, Kilo chats, agent tool gateway and External AI apps (kernel plugin)
-├── account/      @kilo-desktop/plugin-account kilo.account: the signed-in Kilo account, terms, sign-in and Account settings (kernel plugin)
+├── account/      @kilo-desktop/plugin-account kilo.account: the signed-in Kilo account, terms, sign-in and its Account settings panel (kernel plugin)
 ├── workspaces/   @kilo-desktop/plugin-workspaces kilo.workspaces: workspaces, path authorisation and file watching (kernel plugin)
 ├── sessions/     @kilo-desktop/plugin-sessions kilo.sessions: Work Sessions and their Kilo chats (kernel plugin)
 ├── workbench/    @kilo-desktop/plugin-workbench kilo.workbench: the session list, launcher and open session's workbench (kernel plugin)
@@ -47,7 +47,7 @@ plugins/          Bundled plugins — self-contained workspace packages
 ├── local-inference/ @kilo-desktop/plugin-local-inference kilo.local-inference: the Local Model Server — GGUF models through a managed llama.cpp router, published to Kilo as a provider and to the composer as a model source (kernel plugin)
 ├── kilo-marketplace/ @kilo-desktop/plugin-kilo-marketplace kilo.marketplace: Kilo's Marketplace of agents, skills and MCP servers — the Agent Behavior settings page (kernel plugin)
 ├── workspace-board/ @kilo-desktop/plugin-workspace-board kilo.workspace-board: the workspace board — sessions organised into named columns, a detachable sessions view of the workbench (kernel plugin)
-└── anaconda-account/ @kilo-desktop/plugin-anaconda-account kilo.anaconda-account: the Anaconda account — browser sign-in, the Anaconda API key in the shared Anaconda keyring, the Account settings row (kernel plugin)
+└── anaconda-account/ @kilo-desktop/plugin-anaconda-account kilo.anaconda-account: the Anaconda account — browser sign-in, the Anaconda API key in the shared Anaconda keyring, its Account settings panel (kernel plugin)
 ```
 
 ## Key architectural decisions
@@ -56,7 +56,7 @@ The design is [docs/plugin-architecture.md](./docs/plugin-architecture.md); in s
 
 - **Kernel and plugins.** `packages/kernel` runs one main kernel (Electron main) and one kernel per window, joined by one transport. It knows nothing about the product: it hosts the extension registry (extension points and their implementations), the domain registry (named objects with state, methods and events, provided in one process and used from any), commands, `when` conditions, lifecycle and services.
 - **Plugins talk through the kernel.** A plugin's `plugin.json` (v1 manifest) declares what it provides and uses; another plugin is reached only through the kernel, and its `./contracts` export (types, domain and point definitions) is the one allowed import. `pnpm lint` runs `scripts/check-boundaries.mjs`.
-- **The host provides primitives, not features.** `apps/desktop/src/main/kernel` and `apps/web/src/kernel` boot the kernels and provide `kernel/*` primitives (windows, storage and kv, files, notifications, protocols, embedded hosts, shell, updater…) behind manifest permissions. Plugins never import Electron or app code.
+- **The host provides primitives, not features.** `apps/desktop/src/main/kernel` and `apps/web/src/kernel` boot the kernels and provide `kernel/*` primitives (windows, storage and kv, files, notifications, protocols, embedded hosts, OS open/reveal, updater…) behind manifest permissions. Plugins never import Electron or app code.
 - **Registration.** Bundled plugins are listed once in `packages/bundled-plugins` and mapped to their entries in `apps/desktop/src/main/kernel/plugins.ts` and `apps/web/src/kernel/plugins.ts`.
 - **Storage.** Each plugin owns its data under its own storage directory (kv stores, files); nothing shares a database. Plugins that replaced origin code import origin's saved data once (decision 37).
 

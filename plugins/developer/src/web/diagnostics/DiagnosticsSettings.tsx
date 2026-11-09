@@ -6,7 +6,7 @@ import {
 	KernelApp,
 	KernelPlugins,
 	KernelServices,
-	KernelShell,
+	KernelOs,
 	ownerOf,
 	type DomainState,
 	type QualifiedId,
@@ -241,7 +241,7 @@ export function DiagnosticsSettings() {
 	const app = useDomainState(KernelApp, selectApp);
 	const plugins = useDomainState(KernelPlugins, selectPlugins);
 	const services = useDomainState(KernelServices, selectServices) ?? {};
-	const shell = useDomain(KernelShell);
+	const os = useDomain(KernelOs);
 	const localIssues = useSyncExternalStore(
 		(onChange) => kernel.onIssuesChange(onChange),
 		() => kernel.issues(),
@@ -263,12 +263,12 @@ export function DiagnosticsSettings() {
 			<div className="flex min-w-0 flex-col gap-6" data-qa-id="diagnostics-settings">
 				<SettingsPageHeader
 					actions={
-						shell ? (
+						os ? (
 							<Button
 								variant="outline"
 								size="sm"
 								data-qa-id="diagnostics-open-logs"
-								onClick={() => void shell.methods.showLogs(undefined)}
+								onClick={() => void os.methods.showLogs(undefined)}
 							>
 								Open logs
 							</Button>

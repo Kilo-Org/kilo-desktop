@@ -1,17 +1,10 @@
-import type { ComponentType } from "react";
 import { z } from "zod";
 
-import {
-	defineDomain,
-	defineExtensionPoint,
-	implementation,
-	method,
-	type PluginDefinitions,
-} from "@kilo-desktop/kernel";
+import { defineDomain, method, type PluginDefinitions } from "@kilo-desktop/kernel";
 
 /**
- * kilo.updates' public surface: the About → Support rows other plugins add,
- * and the typed shape of `kernel/updater` state it presents.
+ * kilo.updates' public surface: the typed shape of `kernel/updater` state it
+ * presents and the legal documents shown in About → Legal.
  */
 export const UPDATES_PLUGIN_ID = "kilo.updates";
 
@@ -20,14 +13,6 @@ export const UPDATES_PLUGIN_ID = "kilo.updates";
  * stable and preview update tracks (`kilo.flags/flag:<flag>`).
  */
 export const UPDATE_TRACK_SWITCHER_KEY = "kilo.flags/flag:update-track-switcher";
-
-/** A row in About → Support, such as where a config file lives. */
-export const SupportRow = defineExtensionPoint({
-	id: "kilo.updates/support-row",
-	kind: "additive",
-	description: "A row in About → Support with information to include when contacting support.",
-	implementation: implementation<ComponentType>("renderer"),
-});
 
 export const releaseTrackSchema = z.enum(["stable", "preview"]);
 
@@ -95,6 +80,5 @@ export const Legal = defineDomain({
 });
 
 export const UPDATES_DEFINITIONS: PluginDefinitions = {
-	extensionPoints: [SupportRow],
 	domains: [Legal],
 };

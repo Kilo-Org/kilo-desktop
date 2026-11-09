@@ -311,7 +311,7 @@ export class KernelApplication {
 					window ? dialog.showMessageBox(window, options) : dialog.showMessageBox(options),
 			},
 			clipboard: { writeText: (text) => this.#shell.copyText(text) },
-			shell: {
+			os: {
 				openExternal: (url) => this.#shell.openExternal(url),
 				showItemInFolder: (filePath) => this.#shell.showItemInFolder(filePath),
 				showLogs: () => this.#shell.showItemInFolder(getLogFilePath()),

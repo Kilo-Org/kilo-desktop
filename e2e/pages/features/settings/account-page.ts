@@ -27,14 +27,7 @@ export class AccountPage {
 	private readonly accountDetailsPanel = () => getLocatorByTestId("kilo-account-settings");
 
 	async waitForAccountSettled(): Promise<void> {
-		await expectElementToHaveAttribute(
-			this.accountPage(),
-			"data-state",
-			accountData.pageReadyState,
-			{
-				message: "Account page should finish loading Kilo sign-in status",
-			},
-		);
+		await expectElementToBeVisible(this.accountPage(), "Account page should open");
 		await expectElementToBeVisible(this.settledKiloRow(), {
 			message: "Kilo account row should replace its loading skeleton",
 		});

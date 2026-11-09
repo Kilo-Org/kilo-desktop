@@ -11,7 +11,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { KernelClipboard, KernelShell } from "@kilo-desktop/kernel";
+import { KernelClipboard, KernelOs } from "@kilo-desktop/kernel";
 import { useDomain, useDomainState } from "@kilo-desktop/kernel/web";
 import { Navigation } from "@kilo-desktop/plugin-shell/contracts";
 import { SettingsPageHeader } from "@kilo-desktop/ui/components/settings-page-header";
@@ -249,7 +249,7 @@ function LocalModelServerSettingsContent() {
 	const client = useLocalInference();
 	const queryClient = useQueryClient();
 	const navigation = useDomain(Navigation);
-	const shell = useDomain(KernelShell);
+	const os = useDomain(KernelOs);
 	const clipboard = useDomain(KernelClipboard);
 	const pathForFile = usePathForFile();
 	const track = useTrack();
@@ -653,9 +653,7 @@ function LocalModelServerSettingsContent() {
 									removing={removeModel.isPending}
 									onRemove={(model) => removeModel.mutate({ id: model.id, mode: "registry-only" })}
 									onReveal={(model) => {
-										void shell?.methods
-											.showItemInFolder({ path: model.path })
-											.catch(() => undefined);
+										void os?.methods.showItemInFolder({ path: model.path }).catch(() => undefined);
 									}}
 									onDelete={requestModelDeletion}
 									onOpenCatalog={(model) => {

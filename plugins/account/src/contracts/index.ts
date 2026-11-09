@@ -1,18 +1,11 @@
-import type { ComponentType } from "react";
 import { z } from "zod";
 
-import {
-	defineDomain,
-	defineExtensionPoint,
-	implementation,
-	method,
-	type PluginDefinitions,
-} from "@kilo-desktop/kernel";
+import { defineDomain, method, type PluginDefinitions } from "@kilo-desktop/kernel";
 
 /**
  * kilo.account's public surface: the signed-in Kilo account (credentials stay
- * in the Kilo CLI; the app only reads them through the server), acceptance of
- * the terms, and the Account settings panels other plugins add.
+ * in the Kilo CLI; the app only reads them through the server) and
+ * acceptance of the terms.
  */
 export const ACCOUNT_PLUGIN_ID = "kilo.account";
 
@@ -129,15 +122,6 @@ export const Terms = defineDomain({
 	},
 });
 
-/** A panel in Settings → Account below the Kilo account, e.g. another service's sign-in. */
-export const AccountPanel = defineExtensionPoint({
-	id: "kilo.account/account-panel",
-	kind: "additive",
-	description: "A panel in Settings → Account for another account.",
-	implementation: implementation<ComponentType>("renderer"),
-});
-
 export const ACCOUNT_DEFINITIONS: PluginDefinitions = {
-	extensionPoints: [AccountPanel],
 	domains: [Identity, Terms],
 };

@@ -7,7 +7,7 @@ import {
 	definePlugin,
 	KernelClipboard,
 	KernelError,
-	KernelShell,
+	KernelOs,
 	type DomainMethods,
 	type PluginEntry,
 	type PluginRegistration,
@@ -147,7 +147,7 @@ export async function bootMarketplaceHost(options: MarketplaceHostOptions) {
 			},
 		],
 	});
-	main.kernelSdk.domains.provide(KernelShell, {
+	main.kernelSdk.domains.provide(KernelOs, {
 		initialState: {},
 		methods: {
 			openExternal: ({ url }) => {

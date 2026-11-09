@@ -1,4 +1,4 @@
-import { definePlugin, KernelCommand, KernelShell, type PluginSdk } from "@kilo-desktop/kernel";
+import { definePlugin, KernelCommand, KernelOs, type PluginSdk } from "@kilo-desktop/kernel";
 import { MarkdownExtension } from "@kilo-desktop/plugin-chat/contracts";
 import { PaneKind, Panes } from "@kilo-desktop/plugin-sessions/contracts";
 import { Telemetry } from "@kilo-desktop/plugin-telemetry/contracts";
@@ -34,7 +34,7 @@ export const browserWebEntry = definePlugin({
 			"web-links",
 			createBrowserMarkdownExtension({
 				panes: () => sdk.domains.get(Panes),
-				shell: () => sdk.domains.get(KernelShell),
+				os: () => sdk.domains.get(KernelOs),
 				telemetry: () => sdk.domains.get(Telemetry),
 			}),
 		);

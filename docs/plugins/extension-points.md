@@ -127,14 +127,14 @@ sdk.extensions.implement(StatusBarItem, "server", {
    import { defineExtensionPoint, implementation } from "@kilo-desktop/kernel";
 
    export const SupportRow = defineExtensionPoint({
-   	id: "kilo.updates/support-row",
+   	id: "acme.about/support-row",
    	kind: "additive",
    	description: "A row in About → Support.",
    	metadata: z.object({ title: z.string() }), // optional; what manifests write
    	implementation: implementation<ComponentType>("renderer"), // optional; what code binds
    });
 
-   export const UPDATES_DEFINITIONS: PluginDefinitions = { extensionPoints: [SupportRow] };
+   export const ABOUT_DEFINITIONS: PluginDefinitions = { extensionPoints: [SupportRow] };
    ```
 
    For decisions use `defineDecisionPoint({ id, process, input, failMode, timeoutMs })`.
@@ -181,7 +181,6 @@ fails when the table is stale. Each point's contract (in the owner's
 | `kernel/service`                    | kernel          | A    | main     | A supervised daemon or background task.                                         | agent, environments, flags, local-inference, notebook, telemetry, workspaces                                             |
 | `kernel/quit`                       | kernel          | D    | main     | Proceed, ask or reject before the app quits.                                    | —                                                                                                                        |
 | `kernel/window-close`               | kernel          | D    | main     | Proceed, ask or reject before a window closes.                                  | —                                                                                                                        |
-| `kilo.account/account-panel`        | kilo.account    | A    | renderer | A panel in Settings → Account for another account.                              | anaconda-account                                                                                                         |
 | `kilo.agent/runtime-config`         | kilo.agent      | A    | main     | Environment, Kilo plugins and MCP servers for the Kilo server.                  | local-inference, notebook                                                                                                |
 | `kilo.agent/model-provider`         | kilo.agent      | A    | main     | A model provider added to Kilo's config.                                        | local-inference                                                                                                          |
 | `kilo.agent/provider-panel`         | kilo.agent      | A    | renderer | A featured provider row in AI Providers.                                        | account                                                                                                                  |
@@ -203,14 +202,16 @@ fails when the table is stale. Each point's contract (in the owner's
 | `kilo.shell/left-sidebar-account`   | kilo.shell      | X    | renderer | The account entry at the foot of the left sidebar.                              | account                                                                                                                  |
 | `kilo.shell/left-sidebar-notice`    | kilo.shell      | A    | renderer | A notice above the account entry in the left sidebar.                           | updates                                                                                                                  |
 | `kilo.shell/settings-category`      | kilo.shell      | A    | data     | A heading in the Settings sidebar that sections sit under.                      | developer, shell                                                                                                         |
-| `kilo.shell/settings-section`       | kilo.shell      | A    | renderer | A section of the Settings page.                                                 | account, agent, developer, environments, local-inference, marketplace, notebook, shell, telemetry, updates, workbench    |
+| `kilo.shell/settings-section`       | kilo.shell      | A    | renderer | A section of the Settings page.                                                 | agent, developer, environments, local-inference, marketplace, notebook, shell, telemetry, workbench                      |
+| `kilo.shell/about-section`          | kilo.shell      | A    | renderer | A block of Settings → About, such as the version and updates.                   | shell, updates                                                                                                           |
+| `kilo.shell/support-row`            | kilo.shell      | A    | renderer | A row in About → Support with information to include when contacting support.   | agent                                                                                                                    |
+| `kilo.shell/account-panel`          | kilo.shell      | A    | renderer | A panel in Settings → Account for an account the app can sign in to.            | account, anaconda-account                                                                                                |
 | `kilo.shell/status-bar-item`        | kilo.shell      | A    | renderer | An item in the window's status bar: a view, a button or a popover.              | —                                                                                                                        |
 | `kilo.shell/deep-link`              | kilo.shell      | A    | data     | Routes an app URL host to a page.                                               | local-inference                                                                                                          |
 | `kilo.shell/onboarding-step`        | kilo.shell      | A    | renderer | A step of first-run onboarding.                                                 | account, agent, shell, workspaces                                                                                        |
 | `kilo.shell/overlay`                | kilo.shell      | A    | renderer | Always-mounted UI such as app-wide dialogs.                                     | local-inference, workspace-board, workspaces                                                                             |
 | `kilo.shell/menu-item`              | kilo.shell      | A    | data     | A command in the native app menu.                                               | shell, workbench                                                                                                         |
 | `kilo.telemetry/telemetry-event`    | kilo.telemetry  | A    | data     | An analytics event a plugin may send.                                           | anaconda-account, browser, environments, files, git, local-inference, marketplace, telemetry, workbench, workspace-board |
-| `kilo.updates/support-row`          | kilo.updates    | A    | renderer | A row in About → Support with information to include when contacting support.   | agent                                                                                                                    |
 | `kilo.workbench/session-menu`       | kilo.workbench  | A    | renderer | An item in a session's menu.                                                    | workspace-board                                                                                                          |
 | `kilo.workbench/session-decoration` | kilo.workbench  | A    | renderer | A badge or hover detail shown with a session.                                   | git                                                                                                                      |
 | `kilo.workbench/session-action`     | kilo.workbench  | A    | renderer | A button in an open session's header.                                           | git, workbench                                                                                                           |

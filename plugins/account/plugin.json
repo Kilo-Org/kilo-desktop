@@ -3,16 +3,16 @@
 	"id": "kilo.account",
 	"displayName": "Account",
 	"version": "1.0.0",
-	"description": "The signed-in Kilo account, terms acceptance, sign-in and Account settings.",
+	"description": "The signed-in Kilo account, terms acceptance, sign-in and the Kilo panel in Settings \u2192 Account.",
 	"requires": {
 		"kilo.agent/server": "optional",
 		"kilo.shell/left-sidebar-account": "optional",
-		"kilo.shell/settings-section": "optional",
+		"kilo.shell/account-panel": "optional",
 		"kilo.shell/onboarding-step": "optional",
 		"kilo.agent/provider-panel": "optional"
 	},
 	"permissions": {
-		"host": ["clipboard", "shell", "windows"]
+		"host": ["clipboard", "os", "windows"]
 	},
 	"contextKeys": [
 		{
@@ -24,13 +24,6 @@
 			"id": "termsAccepted",
 			"scope": "global",
 			"description": "True once the current terms of service are accepted on this device."
-		}
-	],
-	"extensionPoints": [
-		{
-			"id": "account-panel",
-			"kind": "additive",
-			"description": "A panel in Settings → Account for another account."
 		}
 	],
 	"domains": [
@@ -52,12 +45,10 @@
 					"id": "account"
 				}
 			],
-			"kilo.shell/settings-section": [
+			"kilo.shell/account-panel": [
 				{
-					"id": "account",
-					"title": "Account",
-					"description": "See where you are signed in and manage your accounts.",
-					"priority": 105
+					"id": "kilo",
+					"priority": 100
 				}
 			],
 			"kilo.shell/onboarding-step": [

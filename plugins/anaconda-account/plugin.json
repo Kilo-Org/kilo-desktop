@@ -5,13 +5,13 @@
 	"version": "1.0.0",
 	"description": "Sign in to Anaconda to store the API key Anaconda services, like the model catalog, use.",
 	"requires": {
-		"kilo.account/account-panel": "optional",
+		"kilo.shell/account-panel": "optional",
 		"kilo.flags/flags": "optional",
 		"kilo.telemetry/telemetry": "optional",
 		"kilo.telemetry/telemetry-event": "optional"
 	},
 	"permissions": {
-		"host": ["shell", "windows"]
+		"host": ["os", "windows"]
 	},
 	"domains": [
 		{
@@ -22,10 +22,10 @@
 	],
 	"contributes": {
 		"extensions": {
-			"kilo.account/account-panel": [
+			"kilo.shell/account-panel": [
 				{
 					"id": "anaconda",
-					"priority": 10,
+					"priority": 90,
 					"when": {
 						"all": ["kilo.flags/flag:local-model-catalog"]
 					}

@@ -1,70 +1,25 @@
 import { LogInIcon, LogOutIcon } from "lucide-react";
 
-import { RenderContribution, useExtensions } from "@kilo-desktop/kernel/web";
 import { Button } from "@kilo-desktop/ui/components/button";
-import { SettingsPageHeader } from "@kilo-desktop/ui/components/settings-page-header";
 import { SkeletonText } from "@kilo-desktop/ui/components/skeleton";
 import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
 
 import { ProviderIcon } from "@kilo-desktop/ui/components/provider-icon";
 import { ButtonSkeleton } from "@kilo-desktop/ui/components/button-skeleton";
 import { KiloGatewayAccountLoadingState, KiloGatewayAccountPanel } from "./KiloGatewayAccountPanel";
-import { AccountPanel } from "../../contracts";
 import { useKiloAuth } from "../use-kilo-auth";
-
-/**
- * Account settings: the Kilo account panel (sign-in status with sign-in/out
- * controls), followed by one panel per contributed account. Panels use the
- * SummaryCard row pattern so account management reads the same as the rest of
- * Settings. Kilo state comes from kilo.account's identity domain; other
- * plugins add panels through `kilo.account/account-panel`.
- */
-export function AccountSettings() {
-	const auth = useKiloAuth();
-	const contributedPanels = useExtensions(AccountPanel);
-	const kiloLoading = auth.isLoading && auth.deviceAuth.status === "idle" && !auth.profile;
-
-	return (
-		<div
-			className="flex min-w-0 flex-col gap-6"
-			data-qa-id="account-page"
-			data-state={kiloLoading ? "loading" : "ready"}
-		>
-			<SettingsPageHeader />
-			<section
-				className="flex min-w-0 flex-col gap-4"
-				aria-label="Accounts"
-				data-qa-id="account-rows"
-			>
-				<section
-					className="border-border bg-card divide-border min-w-0 divide-y overflow-hidden rounded-lg border"
-					aria-label="Kilo"
-					data-qa-id="account-panel-kilo"
-				>
-					<div>
-						<AccountKiloRow />
-					</div>
-				</section>
-				{contributedPanels.map((contribution) => (
-					<section
-						key={contribution.key}
-						// `empty:hidden`: a panel may render nothing (e.g. behind a flag);
-						// don't leave an empty bordered frame behind.
-						className="border-border bg-card min-w-0 overflow-hidden rounded-lg border empty:hidden"
-						data-qa-id={`account-panel-${contribution.key}`}
-					>
-						<RenderContribution contribution={contribution} />
-					</section>
-				))}
-			</section>
-		</div>
-	);
-}
 
 /** What a Kilo account gives you; matches the onboarding sign-in step. */
 const KILO_ACCOUNT_SUMMARY = "One account for frontier models, credits, and your team's settings.";
 
-function AccountKiloRow() {
+/**
+ * The Kilo panel in Settings → Account, contributed to
+ * `kilo.shell/account-panel`: the Kilo account row (sign-in status with
+ * sign-in/out controls, and the account's details once connected), in the
+ * SummaryCard row pattern the other account panels use. State comes from
+ * kilo.account's identity domain.
+ */
+export function KiloAccountPanel() {
 	const auth = useKiloAuth();
 	const showDeviceAuth = auth.deviceAuth.status !== "idle";
 	const connected = auth.authenticated === true;
@@ -171,7 +126,7 @@ function kiloDescription(input: {
 }
 
 /**
- * Mirrors `AccountKiloRow` while auth loads. Once credentials are known to
+ * Mirrors `KiloAccountPanel` while auth loads. Once credentials are known to
  * exist, the account details panel is reserved too, so a slow profile fetch
  * doesn't pop ~200px of balance/actions in under the row.
  */

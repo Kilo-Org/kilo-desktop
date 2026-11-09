@@ -213,7 +213,7 @@ matching `permissions.host` entry; reading their state does not.
 | `windows`         | `kernel/windows`: open, focus and close windows |
 | `dialogs`         | `kernel/dialogs`: open / save / message dialogs |
 | `clipboard`       | `kernel/clipboard`                              |
-| `shell`           | `kernel/shell`: open URLs, reveal files         |
+| `os`              | `kernel/os`: open URLs, reveal files            |
 | `notifications`   | `kernel/notifications`: OS notifications        |
 | `keychain`        | `kernel/keychain`: secrets                      |
 | `appearance`      | `kernel/native-theme`                           |

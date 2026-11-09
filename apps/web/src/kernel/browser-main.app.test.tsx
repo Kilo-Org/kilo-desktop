@@ -11,7 +11,7 @@ import {
 	type PluginRegistration,
 	KernelNativeTheme,
 	KernelNotifications,
-	KernelShell,
+	KernelOs,
 	KernelSystem,
 	SILENT_LOGGER,
 } from "@kilo-desktop/kernel";
@@ -81,7 +81,7 @@ describe("browser-mode host primitives", () => {
 		const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
 
 		await expect(
-			domains.get(KernelShell)!.methods.openExternal({ url: "https://example.test" }),
+			domains.get(KernelOs)!.methods.openExternal({ url: "https://example.test" }),
 		).resolves.toBe(false);
 		await domains.get(KernelClipboard)!.methods.writeText({ text: "copied" });
 
@@ -103,10 +103,10 @@ describe("browser-mode host primitives", () => {
 	});
 
 	it("says which desktop-only shell actions are unavailable", async () => {
-		const shell = (await start()).get(KernelShell)!;
+		const os = (await start()).get(KernelOs)!;
 
-		await expect(shell.methods.showLogs(undefined)).rejects.toMatchObject({ code: "UNAVAILABLE" });
-		await expect(shell.methods.showItemInFolder({ path: "/x" })).rejects.toMatchObject({
+		await expect(os.methods.showLogs(undefined)).rejects.toMatchObject({ code: "UNAVAILABLE" });
+		await expect(os.methods.showItemInFolder({ path: "/x" })).rejects.toMatchObject({
 			code: "UNAVAILABLE",
 		});
 	});

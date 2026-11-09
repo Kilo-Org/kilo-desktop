@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import { KernelService, KernelShell } from "@kilo-desktop/kernel";
+import { KernelService, KernelOs } from "@kilo-desktop/kernel";
 import { SettingsSection } from "@kilo-desktop/plugin-shell/contracts";
 import { renderShell } from "@kilo-desktop/plugin-shell/testing";
 
@@ -236,7 +236,7 @@ describe("diagnostics settings", () => {
 				.elements()
 				.map((item) => item.textContent),
 		).toEqual(["models", "tools", "safe"]);
-		await expect.element(details.getByText("shell", { exact: true })).toBeVisible();
+		await expect.element(details.getByText("os", { exact: true })).toBeVisible();
 		await expect.element(details.getByText("acme.server/busy")).toBeVisible();
 		await expect
 			.element(details.getByTestId("diagnostics-link-kilo.shell/navigation"))
@@ -271,7 +271,7 @@ describe("diagnostics settings — services and logs", () => {
 		const showLogs = vi.fn(() => ({ revealed: true }));
 		const { main } = await openDiagnostics();
 		main.sdkFor("acme.server").extensions.implement(KernelService, "daemon", service);
-		main.kernelSdk.domains.provide(KernelShell, {
+		main.kernelSdk.domains.provide(KernelOs, {
 			initialState: {},
 			methods: {
 				openExternal: () => true,

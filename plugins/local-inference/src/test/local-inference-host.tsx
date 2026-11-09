@@ -8,7 +8,7 @@ import {
 	definePlugin,
 	KernelClipboard,
 	KernelError,
-	KernelShell,
+	KernelOs,
 	type DomainProvider,
 	type PluginEntry,
 	type PluginRegistration,
@@ -257,7 +257,7 @@ export async function bootLocalInferenceHost(options: LocalInferenceHostOptions 
 		],
 		...(options.pathForFile ? { pathForFile: options.pathForFile } : {}),
 	});
-	main.kernelSdk.domains.provide(KernelShell, {
+	main.kernelSdk.domains.provide(KernelOs, {
 		initialState: {},
 		methods: {
 			openExternal: () => true,

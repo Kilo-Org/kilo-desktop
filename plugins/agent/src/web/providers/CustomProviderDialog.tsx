@@ -50,7 +50,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@kilo-desktop/ui/components/select";
-import { KernelShell } from "@kilo-desktop/kernel";
+import { KernelOs } from "@kilo-desktop/kernel";
 import { useDomain } from "@kilo-desktop/kernel/web";
 
 import { ApiKeyField } from "./ApiKeyField";
@@ -256,7 +256,7 @@ export function CustomProviderForm({
 	onCancel,
 	onSubmit,
 }: CustomProviderFormProps) {
-	const shell = useDomain(KernelShell);
+	const os = useDomain(KernelOs);
 	// Several inline editors can be expanded at once, so field ids must be unique per form.
 	const fieldId = useId();
 	const ids = {
@@ -382,7 +382,7 @@ export function CustomProviderForm({
 	const setupGuideLink = (
 		<ExternalLink
 			href={CUSTOM_PROVIDER_DOCS_URL}
-			onOpen={(url) => void shell?.methods.openExternal({ url }).catch(() => undefined)}
+			onOpen={(url) => void os?.methods.openExternal({ url }).catch(() => undefined)}
 		>
 			Setup guide
 			<ExternalLinkIcon className="ml-1 inline size-3" />

@@ -3,7 +3,6 @@ import { page } from "vitest/browser";
 
 import type { DomainProvider, PluginEntry, PluginSdk } from "@kilo-desktop/kernel";
 import { testManifest } from "@kilo-desktop/kernel/testing";
-import { accountTestPlugin } from "@kilo-desktop/plugin-account/testing";
 import { renderShell, type ShellHost } from "@kilo-desktop/plugin-shell/testing";
 
 import manifest from "../../plugin.json";
@@ -79,7 +78,6 @@ async function openAccountPage(
 		refresh?: () => Promise<AnacondaAccountSession>;
 		signIn?: (provider: DomainProvider<typeof AnacondaAccount>) => Promise<AnacondaAccountResult>;
 		catalog?: boolean;
-		withAccountPlugin?: boolean;
 	} = {},
 ) {
 	const account = fakeAccountMain({
@@ -89,28 +87,36 @@ async function openAccountPage(
 	});
 	const host = await renderShell(
 		[
-			accountTestPlugin,
 			flagsPlugin(options.catalog ?? true),
-			...(options.withAccountPlugin === false
-				? []
-				: [
-						{
-							manifest,
-							definitions: ANACONDA_ACCOUNT_DEFINITIONS,
-							main: account.entry,
-							web: anacondaAccountWebEntry,
-						},
-					]),
+			{
+				manifest,
+				definitions: ANACONDA_ACCOUNT_DEFINITIONS,
+				main: account.entry,
+				web: anacondaAccountWebEntry,
+			},
 		],
 		{ desktop: true },
 	);
 	hosts.push(host);
 	window.location.hash = "#/settings/account";
-	await expect.element(page.getByTestId("account-kilo-row")).toBeInTheDocument();
+	await expect.element(page.getByTestId("account-page")).toBeInTheDocument();
 	return account;
 }
 
-describe("the Anaconda row on the Account page", () => {
+describe("the Anaconda panel on the Account page", () => {
+	it("sits in its own frame on kilo.shell's Account page", async () => {
+		await openAccountPage();
+
+		await expect
+			.element(
+				page
+					.getByTestId("account-panel-kilo.anaconda-account/anaconda")
+					.getByTestId("account-anaconda-row"),
+				WAIT,
+			)
+			.toBeInTheDocument();
+	});
+
 	it("shows the signed-in email and signs out", async () => {
 		const { methods } = await openAccountPage({ session: SIGNED_IN });
 
@@ -216,15 +222,8 @@ describe("the Anaconda row on the Account page", () => {
 	it("is absent while the model catalog flag is off", async () => {
 		await openAccountPage({ catalog: false });
 
-		await expect.element(page.getByTestId("account-kilo-row"), WAIT).toBeVisible();
+		await expect.element(page.getByTestId("account-none"), WAIT).toBeVisible();
 		expect(page.getByTestId("account-anaconda-row").query()).toBeNull();
 		expect(page.getByTestId("account-panel-kilo.anaconda-account/anaconda").query()).toBeNull();
-	});
-
-	it("is absent when kilo.anaconda-account is not installed", async () => {
-		await openAccountPage({ withAccountPlugin: false });
-
-		await expect.element(page.getByTestId("account-kilo-row"), WAIT).toBeVisible();
-		expect(page.getByTestId("account-anaconda-row").query()).toBeNull();
 	});
 });

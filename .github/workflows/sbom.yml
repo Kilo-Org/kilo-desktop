@@ -38,7 +38,7 @@ jobs:
         include:
           - target: mac
             os: mac
-            runner: macos-latest
+            runner: blacksmith-6vcpu-macos-latest
           - target: windows
             os: windows
             runner: blacksmith-8vcpu-windows-2025

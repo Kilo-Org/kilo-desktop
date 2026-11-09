@@ -46,7 +46,7 @@ jobs:
         include:
           - target: mac
             os: mac
-            runner: macos-latest
+            runner: blacksmith-6vcpu-macos-latest
             timeout_minutes: 90
           - target: windows
             os: windows

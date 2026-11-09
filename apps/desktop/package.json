@@ -4,9 +4,9 @@
 	"private": true,
 	"type": "module",
 	"description": "Electron shell for Kilo Desktop",
+	"author": "Kilo Code Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
 	"productName": "Kilo",
-	"author": "Anaconda, Inc.",
-	"license": "UNLICENSED",
 	"homepage": "https://kilo.ai",
 	"main": ".vite/build/main.js",
 	"scripts": {

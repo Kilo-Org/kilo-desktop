@@ -7,6 +7,13 @@ interface WorkspaceProject {
 	path: string;
 }
 
+async function listWorkspaceProjects(workspaceRoot: string): Promise<WorkspaceProject[]> {
+	const { stdout } = await execa("pnpm", ["ls", "--recursive", "--depth", "-1", "--json"], {
+		cwd: workspaceRoot,
+	});
+	return JSON.parse(stdout) as WorkspaceProject[];
+}
+
 /**
  * Names of every pnpm workspace package, as they appear under node_modules
  * after `pnpm deploy`. Asked of pnpm rather than inferred from a scope because
@@ -14,12 +21,13 @@ interface WorkspaceProject {
  * `@opencode-ai/sdk` shim in plugins/chat/opencode-sdk-compat).
  */
 export async function listWorkspacePackageNames(workspaceRoot: string): Promise<string[]> {
-	const { stdout } = await execa("pnpm", ["ls", "--recursive", "--depth", "-1", "--json"], {
-		cwd: workspaceRoot,
-	});
-	const projects = JSON.parse(stdout) as WorkspaceProject[];
 	const root = path.resolve(workspaceRoot);
-	return projects
+	return (await listWorkspaceProjects(workspaceRoot))
 		.filter((project) => path.resolve(project.path) !== root)
 		.flatMap((project) => (project.name ? [project.name] : []));
+}
+
+/** Absolute directories of every workspace project, the root included. */
+export async function listWorkspaceDirectories(workspaceRoot: string): Promise<string[]> {
+	return (await listWorkspaceProjects(workspaceRoot)).map((project) => path.resolve(project.path));
 }

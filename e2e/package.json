@@ -4,6 +4,8 @@
 	"private": true,
 	"type": "module",
 	"description": "Playwright/Electron e2e suite for Kilo Desktop",
+	"author": "Kilo Code Inc.",
+	"license": "SEE LICENSE IN ../LICENSE.md",
 	"exports": {
 		".": "./index.ts",
 		"./fixtures": "./fixtures/shell.ts"

@@ -4,6 +4,8 @@
 	"private": true,
 	"type": "module",
 	"description": "example.hello — a minimal example plugin: a domain object in main, a command and a settings section",
+	"author": "Kilo Code Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
 	"exports": {
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",

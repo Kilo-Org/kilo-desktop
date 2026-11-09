@@ -4,6 +4,8 @@
 	"private": true,
 	"type": "module",
 	"description": "Kilo Desktop",
+	"author": "Kilo Code Inc.",
+	"license": "SEE LICENSE IN LICENSE.md",
 	"packageManager": "pnpm@12.16.1",
 	"engines": {
 		"node": ">=24"

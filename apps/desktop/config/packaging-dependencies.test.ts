@@ -241,6 +241,11 @@ describe("packaged production dependencies", () => {
 		expect(release).not.toContain("git push");
 	});
 
+	it("stamps the copyright notice on the packaged app from the shared build time", () => {
+		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
+		expect(forge).toContain("appCopyright: getAppCopyright(buildTime)");
+	});
+
 	it("writes the app's legal files from every shipped bundle once production deps are staged", () => {
 		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
 		const beforeAsar = forge.slice(forge.indexOf("beforeAsar:"), forge.indexOf("win32metadata:"));

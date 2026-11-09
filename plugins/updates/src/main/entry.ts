@@ -4,6 +4,7 @@ import { Legal, type LegalDocument } from "../contracts/index.js";
 
 /** File names packaging gives the documents beside app.asar (apps/desktop/config/third-party-notices.ts). */
 export const LEGAL_DOCUMENT_FILES: Readonly<Record<LegalDocument, string>> = {
+	license: "LICENSE.md",
 	"third-party-notices": "THIRD_PARTY_NOTICES.txt",
 	"chromium-notices": "LICENSES.chromium.html",
 };

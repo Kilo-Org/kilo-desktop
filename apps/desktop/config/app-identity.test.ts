@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	getAppCopyright,
 	getAppIdentity,
 	getDmgVolumeTitle,
 	getVersionedSetupExecutableName,
@@ -69,5 +70,19 @@ describe("app identity", () => {
 	it("uses track-specific DMG volume titles", () => {
 		expect(getDmgVolumeTitle("preview")).toBe("Kilo Preview");
 		expect(getDmgVolumeTitle("stable")).toBe("Kilo");
+	});
+});
+
+describe("app copyright", () => {
+	it("credits Kilo Code Inc. from the year the codebase started", () => {
+		expect(getAppCopyright(new Date("2026-11-04T12:00:00Z"))).toBe(
+			"Copyright © 2026 Kilo Code Inc.",
+		);
+	});
+
+	it("extends the year range as the build date advances", () => {
+		expect(getAppCopyright(new Date("2028-02-01T00:00:00Z"))).toBe(
+			"Copyright © 2026–2028 Kilo Code Inc.",
+		);
 	});
 });

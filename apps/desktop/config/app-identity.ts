@@ -17,6 +17,16 @@ export interface AppIdentity {
 	readonly windowsAppUserModelId: string;
 }
 
+// Matches the copyright line of the root LICENSE.md.
+const COPYRIGHT_HOLDER = "Kilo Code Inc.";
+const FIRST_COPYRIGHT_YEAR = 2026;
+
+export function getAppCopyright(buildTime: Date): string {
+	const year = buildTime.getUTCFullYear();
+	const years = year > FIRST_COPYRIGHT_YEAR ? `${FIRST_COPYRIGHT_YEAR}–${year}` : `${year}`;
+	return `Copyright © ${years} ${COPYRIGHT_HOLDER}`;
+}
+
 export function getDmgVolumeTitle(track: ReleaseTrack): string {
 	return track === "preview" ? "Kilo Preview" : "Kilo";
 }

@@ -4,6 +4,8 @@
 	"private": true,
 	"type": "module",
 	"description": "kilo.notebook — nteract notebooks in a session's panes",
+	"author": "Kilo Code Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
 	"exports": {
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",

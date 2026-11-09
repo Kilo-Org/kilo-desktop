@@ -4,6 +4,8 @@
 	"private": true,
 	"type": "module",
 	"description": "kilo.environments: conda environments and packages through the bundled conda bridge, for the person and the agent",
+	"author": "Kilo Code Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
 	"exports": {
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",

@@ -3,7 +3,9 @@
 	"version": "1.0.0",
 	"private": true,
 	"type": "module",
-	"description": "kilo.marketplace \u2014 Kilo's Marketplace of agents, skills and MCP servers",
+	"description": "kilo.marketplace — Kilo's Marketplace of agents, skills and MCP servers",
+	"author": "Kilo Code Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
 	"exports": {
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",

@@ -4,6 +4,8 @@
 	"private": true,
 	"type": "module",
 	"description": "kilo.shell — the window frame, router, settings host, command palette, status bar and appearance",
+	"author": "Kilo Code Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
 	"exports": {
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",

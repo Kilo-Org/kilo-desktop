@@ -77,6 +77,7 @@ export class AboutPage {
 
 	private readonly legalSection = () => getLocatorByTestId("about-legal");
 	private readonly legalHeading = () => this.legalSection().locator("#about-legal-heading");
+	private readonly viewLicenseButton = () => getLocatorByTestId("about-view-license");
 	private readonly viewThirdPartyNoticesButton = () =>
 		getLocatorByTestId("about-view-third-party-notices");
 	private readonly showChromiumNoticesButton = () =>
@@ -347,6 +348,12 @@ export class AboutPage {
 		await expectElementToHaveText(this.legalHeading(), aboutData.legalTitle, {
 			message: "Legal section heading should read Legal",
 		});
+	}
+
+	/** The license written beside app.asar at package time, shown in the in-app viewer. */
+	async verifyLicenseShown(): Promise<void> {
+		await click(this.viewLicenseButton());
+		await this.verifyLegalDocument(aboutData.licenseTitle, aboutData.licenseTextPattern);
 	}
 
 	/** The notices written beside app.asar at package time, shown in the in-app viewer. */

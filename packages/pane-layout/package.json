@@ -4,6 +4,8 @@
 	"private": true,
 	"type": "module",
 	"description": "Pane-group layout engine with Tiles and Carousel projection",
+	"author": "Kilo Code Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
 	"exports": {
 		".": "./src/index.ts"
 	},

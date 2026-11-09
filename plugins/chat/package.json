@@ -4,6 +4,8 @@
 	"private": true,
 	"type": "module",
 	"description": "kilo.chat — the agent pane: a session's chat with the agent",
+	"author": "Kilo Code Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
 	"exports": {
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",

@@ -15,8 +15,8 @@ import path from "node:path";
  * - Electron, whose LICENSE covers the runtime and which ships Chromium's
  *   credits as LICENSES.chromium.html.
  *
- * Workspace packages are first-party and never listed as third-party
- * packages. The output is deterministic: sorted, LF endings.
+ * Workspace packages are first-party (LICENSE.md) and never listed as
+ * third-party packages. The output is deterministic: sorted, LF endings.
  */
 
 export interface ThirdPartyNoticesOptions {
@@ -39,6 +39,7 @@ export interface ThirdPartyNoticesOptions {
 }
 
 export const THIRD_PARTY_NOTICES_FILE = "THIRD_PARTY_NOTICES.txt";
+export const LICENSE_FILE = "LICENSE.md";
 const CHROMIUM_CREDITS_FILE = "LICENSES.chromium.html";
 
 export interface AppLegalFilesOptions extends Omit<
@@ -49,10 +50,12 @@ export interface AppLegalFilesOptions extends Omit<
 	readonly buildPath: string;
 	/** The target platform, as Forge names it (`mas` is the Mac App Store build). */
 	readonly platform: string;
+	/** The app's own license, copied as LICENSE.md. */
+	readonly license: string;
 }
 
 /**
- * Writes THIRD_PARTY_NOTICES.txt and Chromium's credits into the
+ * Writes LICENSE.md, THIRD_PARTY_NOTICES.txt and Chromium's credits into the
  * app's resources folder, beside app.asar, where kilo.updates reads them.
  * Runs in `beforeAsar`, once the production node_modules are staged.
  *
@@ -61,7 +64,7 @@ export interface AppLegalFilesOptions extends Omit<
  * bundle on macOS (and unlisted in the DMG); the copies here are the ones that ship.
  */
 export async function writeAppLegalFiles(options: AppLegalFilesOptions): Promise<void> {
-	const { buildPath, platform, ...noticesOptions } = options;
+	const { buildPath, platform, license, ...noticesOptions } = options;
 	const resources = path.dirname(buildPath);
 	const electronRoot =
 		platform === "darwin" || platform === "mas"
@@ -75,6 +78,7 @@ export async function writeAppLegalFiles(options: AppLegalFilesOptions): Promise
 		electron: { version: electronVersion, licenseFile: path.join(electronRoot, "LICENSE") },
 	});
 	await writeFile(path.join(resources, THIRD_PARTY_NOTICES_FILE), notices);
+	await copyFile(license, path.join(resources, LICENSE_FILE));
 	await copyFile(
 		path.join(electronRoot, CHROMIUM_CREDITS_FILE),
 		path.join(resources, CHROMIUM_CREDITS_FILE),
@@ -166,7 +170,8 @@ export async function renderThirdPartyNotices(options: ThirdPartyNoticesOptions)
 		"",
 		`${options.productName} includes the third-party software listed below. Each entry gives the`,
 		"license the component declares, where its source is published, and the license",
-		"texts it ships with.",
+		"texts it ships with. The software as a whole is licensed under LICENSE.md, next",
+		"to this file.",
 		"",
 		"CONTENTS",
 		...renderContents(sections),

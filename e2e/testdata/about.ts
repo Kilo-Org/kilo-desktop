@@ -25,6 +25,8 @@ export const aboutData = {
 	logFileRevealMessage: "Show in file manager should reveal an absolute main.log path",
 	revealInFileManagerLabel: revealInFileManagerLabel(process.platform),
 	legalTitle: "Legal",
+	licenseTitle: "License",
+	licenseTextPattern: /Open Core Ventures Source Available License \(OCVSAL\) version 1\.0/,
 	thirdPartyNoticesTitle: "Third-party notices",
 	// Written at package time; every build ships Electron, so its entry is always there.
 	thirdPartyNoticesTextPattern: /^THIRD-PARTY SOFTWARE NOTICES[\s\S]*\nElectron \d+\.\d+\.\d+\n/,

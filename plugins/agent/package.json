@@ -4,6 +4,8 @@
 	"private": true,
 	"type": "module",
 	"description": "kilo.agent — the Kilo CLI server, its configuration, the agent tool gateway and the points that shape them",
+	"author": "Kilo Code Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
 	"exports": {
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",

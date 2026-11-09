@@ -4,6 +4,8 @@
 	"private": true,
 	"type": "module",
 	"description": "kilo.flags — feature flags as a domain object and flag: context keys",
+	"author": "Kilo Code Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
 	"exports": {
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",

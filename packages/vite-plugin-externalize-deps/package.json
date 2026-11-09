@@ -4,6 +4,8 @@
 	"private": true,
 	"type": "module",
 	"description": "Vite plugin that externalizes a package.json's dependencies (and Node built-ins) as an array-valued rollupOptions.external, so it merges cleanly with electron-forge's own external array under Vite 8 / Rolldown.",
+	"author": "Kilo Code Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
 	"exports": {
 		".": "./src/index.ts"
 	},

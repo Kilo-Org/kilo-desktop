@@ -4,6 +4,8 @@
 	"private": true,
 	"type": "module",
 	"description": "Anaconda Design System primitives (shadcn, base-nova style) — shell-owned, shared by apps and plugins",
+	"author": "Kilo Code Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
 	"exports": {
 		"./components/*": "./src/components/*.tsx",
 		"./hooks": "./src/hooks/index.ts",

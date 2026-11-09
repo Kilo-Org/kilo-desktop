@@ -29,13 +29,11 @@ const packagedAssets = (resources: string) => ({
 
 describe("assetResources", () => {
 	it("locates and reads documents shipped beside the app", async () => {
-		const resources = await packagedResourcesFolder({ "THIRD_PARTY_NOTICES.txt": "notices" });
+		const resources = await packagedResourcesFolder({ "LICENSE.md": "OCVSAL" });
 		const legal = assetResources(packagedAssets(resources));
 
-		expect(legal.locate("THIRD_PARTY_NOTICES.txt")).toBe(
-			path.join(resources, "THIRD_PARTY_NOTICES.txt"),
-		);
-		await expect(legal.read("THIRD_PARTY_NOTICES.txt")).resolves.toBe("notices");
+		expect(legal.locate("LICENSE.md")).toBe(path.join(resources, "LICENSE.md"));
+		await expect(legal.read("LICENSE.md")).resolves.toBe("OCVSAL");
 	});
 
 	it("answers null for documents that are not shipped", async () => {
@@ -52,8 +50,8 @@ describe("assetResources", () => {
 			},
 		};
 
-		expect(assetResources(unavailable).locate("THIRD_PARTY_NOTICES.txt")).toBeNull();
-		expect(assetResources(undefined).locate("THIRD_PARTY_NOTICES.txt")).toBeNull();
-		await expect(assetResources(undefined).read("THIRD_PARTY_NOTICES.txt")).resolves.toBeNull();
+		expect(assetResources(unavailable).locate("LICENSE.md")).toBeNull();
+		expect(assetResources(undefined).locate("LICENSE.md")).toBeNull();
+		await expect(assetResources(undefined).read("LICENSE.md")).resolves.toBeNull();
 	});
 });

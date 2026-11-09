@@ -18,8 +18,11 @@ test.describe("About settings", () => {
 		await aboutPage.verifyShowLogFileButton();
 	});
 
-	test("shows the third-party notices the app ships @smoke @packaged", async ({ aboutPage }) => {
+	test("shows the license and third-party notices the app ships @smoke @packaged", async ({
+		aboutPage,
+	}) => {
 		await aboutPage.verifyLegalSection();
+		await aboutPage.verifyLicenseShown();
 		await aboutPage.verifyThirdPartyNoticesShown();
 		await aboutPage.clickShowChromiumNotices();
 		await aboutPage.verifyRevealedFilePath(

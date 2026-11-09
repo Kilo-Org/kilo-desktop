@@ -3,7 +3,9 @@
 	"version": "1.0.0",
 	"private": true,
 	"type": "module",
-	"description": "kilo.workspace-board \u2014 the workspace board, sessions organised into columns",
+	"description": "kilo.workspace-board — the workspace board, sessions organised into columns",
+	"author": "Kilo Code Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
 	"exports": {
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",

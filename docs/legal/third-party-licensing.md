@@ -1,20 +1,25 @@
-# Third-party notices
+# Licensing and third-party notices
 
-Kilo Desktop ships third-party software: Electron and Chromium, npm packages,
-code ported from other projects and bundled programs. This page describes how
-their notices reach users and records the audit of what ships.
+Kilo Desktop is source-available under the Open Core Ventures Source Available
+License (OCVSAL) v1.0, copyright Kilo Code Inc. ([LICENSE.md](../../LICENSE.md)).
+Every workspace `package.json` declares `"author": "Kilo Code Inc."` and points
+`license` at that file (`SEE LICENSE IN …`); a test in
+`apps/desktop/config/workspace-packages.test.ts` keeps new packages in line. The
+packaged app's copyright string (macOS `NSHumanReadableCopyright`, Windows
+`LegalCopyright`) comes from `getAppCopyright` in `apps/desktop/config/app-identity.ts`.
 
 ## What ships, and how
 
 Packaging (`writeAppLegalFiles` in `apps/desktop/config/third-party-notices.ts`,
-run in Forge's `beforeAsar`) writes two files beside `app.asar`:
+run in Forge's `beforeAsar`) writes three files beside `app.asar`:
 
 | File                      | Content                                                                                                                                                                                                                                                                                                                |
 | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `LICENSE.md`              | The app's license                                                                                                                                                                                                                                                                                                      |
 | `THIRD_PARTY_NOTICES.txt` | Generated from what ships: Electron; every npm package packed into `app.asar` or bundled by Vite into a shipped bundle (each bundle's `build.license` list), with its license, NOTICE and third-party-notices files; every packed workspace package's `THIRD_PARTY_NOTICES.md`; the conda bridge payload's own notices |
 | `LICENSES.chromium.html`  | Chromium's credits, from the Electron distribution                                                                                                                                                                                                                                                                     |
 
-Settings → About → Legal shows the notices, and reveals
+Settings → About → Legal shows the license and the notices, and reveals
 Chromium's credits in the file manager (kilo.updates, `kilo.updates/legal`).
 
 Code ported from other projects is credited in the `THIRD_PARTY_NOTICES.md` of
@@ -78,9 +83,9 @@ t3code's.
 
 ## Open flags
 
-| #   | Flag                                                                                                                                                                                                                                                                                                                                       | Needs                                                  |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------ |
-| 1   | `sentry` 0.45.0 (the Sentry CLI, FSL-1.1-Apache-2.0, 15 MB) ships in `app.asar` through `@sentry/electron` → `@sentry/node` → `@sentry/bundler-plugins`. The app never runs it. FSL allows redistribution for non-competing use.                                                                                                           | Legal sign-off, or engineering prunes it               |
-| 2   | Bridge payload: frozendict (LGPL-3.0), certifi and tqdm (MPL-2.0), menuinst (no SPDX id), GPL native libraries on macOS that are never loaded (readline, gettext), packages redistributed from Anaconda `defaults`, and the license texts of libraries statically linked into CPython. The bridge repo's legal review lists each decision. | Legal decisions; a payload release with notices        |
-| 3   | The Kilo CLI binary, the nteract notebook UI (about 230 bundled npm packages) and the `runtimed` daemon (Rust crates) ship without notices for the libraries compiled into them. Their own licenses are credited; the bundled libraries' texts can only come from upstream.                                                                | Upstream to publish notices with their artifacts       |
-| 4   | `plugins/account/src/web/onboarding/DotGrid.tsx` ports a shader from Kilo Code's private, unlicensed `kilocode-landing` repository.                                                                                                                                                                                                        | Kilo Code Inc., which owns that repository, to confirm |
+| #   | Flag                                                                                                                                                                                                                                                                                                                                       | Needs                                            |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------ |
+| 1   | `sentry` 0.45.0 (the Sentry CLI, FSL-1.1-Apache-2.0, 15 MB) ships in `app.asar` through `@sentry/electron` → `@sentry/node` → `@sentry/bundler-plugins`. The app never runs it. FSL allows redistribution for non-competing use.                                                                                                           | Legal sign-off, or engineering prunes it         |
+| 2   | Bridge payload: frozendict (LGPL-3.0), certifi and tqdm (MPL-2.0), menuinst (no SPDX id), GPL native libraries on macOS that are never loaded (readline, gettext), packages redistributed from Anaconda `defaults`, and the license texts of libraries statically linked into CPython. The bridge repo's legal review lists each decision. | Legal decisions; a payload release with notices  |
+| 3   | The Kilo CLI binary, the nteract notebook UI (about 230 bundled npm packages) and the `runtimed` daemon (Rust crates) ship without notices for the libraries compiled into them. Their own licenses are credited; the bundled libraries' texts can only come from upstream.                                                                | Upstream to publish notices with their artifacts |
+| 4   | `plugins/account/src/web/onboarding/DotGrid.tsx` ports a shader from Kilo Code's private, unlicensed `kilocode-landing` repository.                                                                                                                                                                                                        | Kilo Code Inc. (the copyright holder) to confirm |

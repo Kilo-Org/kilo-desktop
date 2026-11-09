@@ -4,6 +4,8 @@
 	"private": true,
 	"type": "module",
 	"description": "The one list of plugins that ship with the app, shared by the main and renderer processes.",
+	"author": "Kilo Code Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
 	"exports": {
 		".": "./src/index.ts",
 		"./testing": "./src/testing.ts"

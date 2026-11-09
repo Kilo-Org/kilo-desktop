@@ -4,6 +4,8 @@
 	"private": true,
 	"type": "module",
 	"description": "kilo.developer — the Developer settings category and Diagnostics",
+	"author": "Kilo Code Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
 	"exports": {
 		"./plugin.json": "./plugin.json",
 		"./web": "./src/web/index.ts",

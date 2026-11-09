@@ -4,6 +4,8 @@
 	"private": true,
 	"type": "module",
 	"description": "Node-only git client — exec with error normalization, typed status parsing",
+	"author": "Kilo Code Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
 	"exports": {
 		".": "./src/index.ts"
 	},

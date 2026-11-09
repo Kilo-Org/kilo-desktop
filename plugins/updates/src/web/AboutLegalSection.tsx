@@ -19,11 +19,16 @@ import { revealInFileManagerLabel } from "@kilo-desktop/ui/lib/reveal-in-file-ma
 import { Legal } from "../contracts";
 
 type LegalDomain = NonNullable<ReturnType<typeof useDomain<typeof Legal>>>;
-type ReadableDocument = "third-party-notices";
+type ReadableDocument = "license" | "third-party-notices";
 
 const DOCUMENTS: Readonly<
 	Record<ReadableDocument, { title: string; description: string; qaId: string }>
 > = {
+	license: {
+		title: "License",
+		description: "The license Kilo Desktop is distributed under.",
+		qaId: "about-view-license",
+	},
 	"third-party-notices": {
 		title: "Third-party notices",
 		description: "The third-party software Kilo Desktop includes, with its license terms.",
@@ -32,8 +37,8 @@ const DOCUMENTS: Readonly<
 };
 
 /**
- * Settings → About "Legal" card: the notices of the third-party software
- * the app includes (licenses such as BSD-3-Clause require
+ * Settings → About "Legal" card: the app's license, the notices of the
+ * third-party software it includes (licenses such as BSD-3-Clause require
  * them to be shown) and Chromium's credits, which are HTML and so revealed
  * in the file manager instead of shown.
  */

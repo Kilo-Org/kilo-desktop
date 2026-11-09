@@ -4,6 +4,8 @@
 	"private": true,
 	"type": "module",
 	"description": "kilo.updates — app updates, About settings and the update-ready notice",
+	"author": "Kilo Code Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
 	"exports": {
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",

@@ -568,8 +568,21 @@ describe("About → Support", () => {
 
 describe("About → Legal", () => {
 	const shipped = packagedResources({
+		"LICENSE.md": "Open Core Ventures Source Available License (OCVSAL) version 1.0",
 		"THIRD_PARTY_NOTICES.txt": "THIRD-PARTY SOFTWARE NOTICES\n\nreact 19.2.8\nLicense: MIT",
 		"LICENSES.chromium.html": "<html></html>",
+	});
+
+	it("shows the license the app is distributed under", async () => {
+		await openAbout({ resources: shipped });
+
+		await page.getByTestId("about-view-license").click();
+
+		const viewer = page.getByTestId("legal-document");
+		await expect.element(viewer.getByRole("heading", { name: "License" })).toBeVisible();
+		await expect
+			.element(viewer.getByText("Open Core Ventures Source Available License (OCVSAL) version 1.0"))
+			.toBeVisible();
 	});
 
 	it("shows the notices of the third-party software the app includes", async () => {
@@ -618,7 +631,7 @@ describe("About → Legal", () => {
 			},
 		});
 
-		await page.getByTestId("about-view-third-party-notices").click();
+		await page.getByTestId("about-view-license").click();
 
 		await expect
 			.element(page.getByTestId("legal-document").getByText(/Could not read this document/))

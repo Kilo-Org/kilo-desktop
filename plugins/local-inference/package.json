@@ -4,6 +4,8 @@
 	"private": true,
 	"type": "module",
 	"description": "kilo.local-inference — the Local Model Server: GGUF models on this device through a managed llama.cpp router",
+	"author": "Kilo Code Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
 	"exports": {
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",

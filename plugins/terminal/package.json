@@ -4,6 +4,8 @@
 	"private": true,
 	"type": "module",
 	"description": "kilo.terminal — terminal panes: interactive shells in a session's folder",
+	"author": "Kilo Code Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
 	"exports": {
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",

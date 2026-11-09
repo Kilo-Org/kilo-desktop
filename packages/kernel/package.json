@@ -4,6 +4,8 @@
 	"private": true,
 	"type": "module",
 	"description": "The plugin kernel: plugin runtime, extension and domain registries, lifecycle, commands and services. Knows nothing about the product.",
+	"author": "Kilo Code Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
 	"exports": {
 		".": "./src/index.ts",
 		"./main": "./src/main/index.ts",

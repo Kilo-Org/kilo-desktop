@@ -22,7 +22,7 @@
 		{
 			"id": "legal",
 			"home": "main",
-			"description": "The third-party notices shipped beside the app, shown in About \u2192 Legal."
+			"description": "The app's license and third-party notices shipped beside the app, shown in About \u2192 Legal."
 		}
 	],
 	"contributes": {

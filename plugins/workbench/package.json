@@ -3,7 +3,9 @@
 	"version": "1.0.0",
 	"private": true,
 	"type": "module",
-	"description": "kilo.workbench \u2014 the session list and the session workbench",
+	"description": "kilo.workbench — the session list and the session workbench",
+	"author": "Kilo Code Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
 	"exports": {
 		"./plugin.json": "./plugin.json",
 		"./web": "./src/web/index.ts",

@@ -4,6 +4,8 @@
 	"private": true,
 	"type": "module",
 	"description": "kilo.anaconda-account — the Anaconda account sign-in that stores the API key Anaconda services use",
+	"author": "Kilo Code Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
 	"exports": {
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",

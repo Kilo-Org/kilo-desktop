@@ -336,13 +336,17 @@ describe("writeAppLegalFiles", () => {
 	}
 
 	it.each(["darwin", "win32", "linux"] as const)(
-		"writes the notices and Chromium's credits beside app.asar on %s",
+		"writes the license, the notices and Chromium's credits beside app.asar on %s",
 		async (platform) => {
-			const { buildPath } = await stageElectron(platform);
+			const { root, buildPath } = await stageElectron(platform);
+			const license = path.join(root, "LICENSE.md");
+			await writeFile(license, "Open Core Ventures Source Available License (OCVSAL) version 1.0");
+
 			await writeAppLegalFiles({
 				buildPath,
 				platform,
 				productName: "Kilo",
+				license,
 				bundleLicenseFiles: [],
 				packageSearchRoots: [],
 				workspacePackageNames: [],
@@ -350,6 +354,9 @@ describe("writeAppLegalFiles", () => {
 			});
 
 			const resources = path.dirname(buildPath);
+			await expect(readFile(path.join(resources, "LICENSE.md"), "utf8")).resolves.toContain(
+				"OCVSAL",
+			);
 			await expect(readFile(path.join(resources, "LICENSES.chromium.html"), "utf8")).resolves.toBe(
 				"<html>Chromium credits</html>",
 			);

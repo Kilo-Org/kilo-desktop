@@ -4,6 +4,8 @@
 	"private": true,
 	"type": "module",
 	"description": "kilo.sessions — work sessions: the model, their panes and the Kilo chats they hold",
+	"author": "Kilo Code Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
 	"exports": {
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",

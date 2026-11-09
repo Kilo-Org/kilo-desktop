@@ -4,6 +4,8 @@
 	"private": true,
 	"type": "module",
 	"description": "kilo.git: git status, branches, worktrees, diffs, commits and pull requests for workspace folders",
+	"author": "Kilo Code Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
 	"exports": {
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",

@@ -19,6 +19,7 @@ import {
 } from "./config/release.js";
 import desktopPackage from "./package.json" with { type: "json" };
 import {
+	getAppCopyright,
 	getAppIdentity,
 	getDmgVolumeTitle,
 	getVersionedSetupExecutableName,
@@ -40,11 +41,12 @@ const packageRoot = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(packageRoot, "../..");
 const webDistDirectory = path.join(workspaceRoot, "apps/web/dist");
 const track = getReleaseTrack(process.env);
+const buildTime = getPreviewBuildTime(process.env);
 const appVersion = getPublishAppVersion({
 	version: desktopPackage.version,
 	track,
 	...(process.env.RELEASE_VERSION ? { releaseVersion: process.env.RELEASE_VERSION } : {}),
-	now: getPreviewBuildTime(process.env),
+	now: buildTime,
 });
 const nativeAppVersion = getNativeAppVersion(appVersion);
 const identity = getAppIdentity(track);
@@ -290,6 +292,7 @@ const config: ForgeConfig = {
 		},
 		appBundleId: identity.appBundleId,
 		appCategoryType: "public.app-category.developer-tools",
+		appCopyright: getAppCopyright(buildTime),
 		// Windows PE FileVersion/ProductVersion accept at most four numeric
 		// components. Keep the preview prerelease on package.json and makers.
 		appVersion: nativeAppVersion,
@@ -333,6 +336,7 @@ const config: ForgeConfig = {
 					buildPath,
 					platform,
 					productName: identity.productName,
+					license: path.join(workspaceRoot, "LICENSE.md"),
 					bundleLicenseFiles: shippedBundleLicenseFiles(buildPath),
 					packageSearchRoots: [path.join(workspaceRoot, "node_modules")],
 					workspacePackageNames,

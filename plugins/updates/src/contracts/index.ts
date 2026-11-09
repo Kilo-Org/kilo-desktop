@@ -71,7 +71,7 @@ export interface UpdateActionResult {
 	readonly state: UpdateState;
 }
 
-export const readableLegalDocumentSchema = z.enum(["third-party-notices"]);
+export const readableLegalDocumentSchema = z.enum(["license", "third-party-notices"]);
 export const legalDocumentSchema = z.enum([
 	...readableLegalDocumentSchema.options,
 	"chromium-notices",
@@ -79,8 +79,8 @@ export const legalDocumentSchema = z.enum([
 export type LegalDocument = z.output<typeof legalDocumentSchema>;
 
 /**
- * The legal documents packaging writes beside app.asar: the third-party
- * notices and Chromium's credits (HTML, so only located).
+ * The legal documents packaging writes beside app.asar: the app's license,
+ * the third-party notices and Chromium's credits (HTML, so only located).
  * Every method answers `null` where a document is not shipped (development).
  */
 export const Legal = defineDomain({

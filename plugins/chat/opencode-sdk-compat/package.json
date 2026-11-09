@@ -4,6 +4,8 @@
 	"private": true,
 	"type": "module",
 	"description": "Minimal Kilo SDK compatibility facade for assistant-ui's OpenCode adapter",
+	"author": "Kilo Code Inc.",
+	"license": "SEE LICENSE IN ../../../LICENSE.md",
 	"exports": {
 		"./v2/client": "./src/v2/client.ts"
 	},

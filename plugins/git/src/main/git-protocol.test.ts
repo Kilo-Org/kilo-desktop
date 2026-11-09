@@ -22,11 +22,11 @@ afterEach(async () => {
 
 /** Fake service slice with a `releasePatch` spy and a controllable result. */
 function createFakeService(result: () => Promise<GitPatchFile | null>) {
-	const createdPatchOptions: { cwd: string }[] = [];
+	const createdPatchOptions: { cwd: string; unlimited?: boolean }[] = [];
 	const releasePatch = vi.fn(async () => {});
 	const service: GitProtocolService = {
 		async createPatch(options) {
-			createdPatchOptions.push({ cwd: options.cwd });
+			createdPatchOptions.push({ ...options });
 			return result();
 		},
 		releasePatch,
@@ -98,6 +98,24 @@ describe("createGitProtocolHandler", () => {
 		expect(createdPatchOptions).toEqual([]);
 	});
 
+	it("rejects an unlimited value other than 1 with 400", async () => {
+		const { service, createdPatchOptions } = createFakeService(async () => null);
+		const handler = createGitProtocolHandler({
+			service,
+			existsDirectory: alwaysExists,
+			allowedOrigins,
+		});
+
+		for (const value of ["true", "0", ""]) {
+			const response = await handler(
+				requestFor(`kilo-git://diff/patch?cwd=/repo&unlimited=${value}`),
+			);
+			expect(response.status).toBe(400);
+			expect(await response.text()).toContain("`unlimited`");
+		}
+		expect(createdPatchOptions).toEqual([]);
+	});
+
 	it("rejects a cwd that is not an existing directory with 400", async () => {
 		const { service } = createFakeService(async () => null);
 		const handler = createGitProtocolHandler({
@@ -163,6 +181,36 @@ describe("createGitProtocolHandler", () => {
 		const response = await handler(requestFor("kilo-git://diff/patch?cwd=/repo"));
 		expect(response.status).toBe(413);
 		expect(await response.text()).toBe(tooLarge.message);
+	});
+
+	it("exposes the oversized patch's byte length to the allowed origin", async () => {
+		const { service } = createFakeService(async () => {
+			throw new GitPatchTooLargeError(12 * 1024 * 1024, 10 * 1024 * 1024);
+		});
+		const handler = createGitProtocolHandler({
+			service,
+			existsDirectory: alwaysExists,
+			allowedOrigins,
+		});
+		const response = await handler(requestFor("kilo-git://diff/patch?cwd=/repo", DESKTOP_ORIGIN));
+		expect(response.headers.get("X-Patch-Byte-Length")).toBe(String(12 * 1024 * 1024));
+		expect(response.headers.get("Access-Control-Expose-Headers")).toBe("X-Patch-Byte-Length");
+	});
+
+	it("asks the service for an uncapped patch only with unlimited=1", async () => {
+		const { service, createdPatchOptions } = createFakeService(async () => null);
+		const handler = createGitProtocolHandler({
+			service,
+			existsDirectory: alwaysExists,
+			allowedOrigins,
+		});
+
+		await handler(requestFor("kilo-git://diff/patch?cwd=/repo"));
+		await handler(requestFor("kilo-git://diff/patch?cwd=/repo&unlimited=1"));
+		expect(createdPatchOptions).toEqual([
+			{ cwd: "/repo", unlimited: false },
+			{ cwd: "/repo", unlimited: true },
+		]);
 	});
 
 	it("returns 500 with a generic message on unexpected service failures", async () => {

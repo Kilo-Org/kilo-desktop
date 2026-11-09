@@ -72,7 +72,12 @@ function PatchLoaderHarness({
 	viewerRef: RefObject<CodeViewHandle<undefined, undefined> | null>;
 	onItems?: (items: readonly CodeViewItem<undefined>[]) => void;
 }) {
-	const result = usePatchLoader({ collapseMode: "expanded", workspaceDirectory, viewerRef });
+	const result = usePatchLoader({
+		collapseMode: "expanded",
+		workspaceDirectory,
+		unlimited: false,
+		viewerRef,
+	});
 	onItems?.(result.initialItems);
 	return (
 		<div

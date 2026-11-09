@@ -1550,14 +1550,19 @@ export class GitService {
 	 * `null` = not a git repository. The caller owns the returned patch file:
 	 * `releasePatch(patchPath)` removes it (the protocol handler hooks
 	 * stream close for that), and anything still in flight at teardown is
-	 * swept by {@link dispose}.
+	 * swept by {@link dispose}. `unlimited` lifts git-client's patch size cap
+	 * (the user's explicit "Show anyway"); the patch still streams from disk.
 	 */
-	async createPatch(options: { readonly cwd: string }): Promise<GitPatchFile | null> {
+	async createPatch(options: {
+		readonly cwd: string;
+		readonly unlimited?: boolean;
+	}): Promise<GitPatchFile | null> {
 		await this.#assertWithinWorkspaceFolders(options.cwd);
 		try {
 			const patch = await this.#client.createWorkingDirectoryPatch({
 				cwd: options.cwd,
 				...(this.#tempDir ? { tempDir: this.#tempDir } : {}),
+				...(options.unlimited ? { maxBytes: Number.POSITIVE_INFINITY } : {}),
 			});
 			if (patch === null) return null;
 			this.#inFlightPatchPaths.add(patch.patchPath);

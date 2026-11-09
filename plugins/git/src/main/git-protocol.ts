@@ -6,12 +6,17 @@ import { Readable } from "node:stream";
 import { KernelError } from "@kilo-desktop/kernel";
 import { GitPatchTooLargeError, type GitPatchFile } from "@kilo-desktop/git-client";
 
+import { PATCH_BYTE_LENGTH_HEADER } from "../contracts/index.js";
+
 /**
  * The service slice the protocol handler needs; `GitService` satisfies it.
  * Structural on purpose so the handler is unit-testable with a fake.
  */
 export interface GitProtocolService {
-	createPatch(options: { readonly cwd: string }): Promise<GitPatchFile | null>;
+	createPatch(options: {
+		readonly cwd: string;
+		readonly unlimited?: boolean;
+	}): Promise<GitPatchFile | null>;
 	/** Remove a patch file created by {@link GitProtocolService.createPatch}. */
 	releasePatch(patchPath: string): Promise<void>;
 }
@@ -25,8 +30,8 @@ export interface CreateGitProtocolHandlerOptions {
 }
 
 /**
- * Route shape: `kilo-git://diff/patch?cwd=<absolute path>`. URLPattern routes
- * a non-special scheme; the full-match components pin the single endpoint,
+ * Route shape: `kilo-git://diff/patch?cwd=<absolute path>[&unlimited=1]`.
+ * `unlimited=1` lifts the patch size cap. URLPattern routes a non-special scheme; the full-match components pin the single endpoint,
  * and any unmatched URL is an unknown endpoint.
  */
 const PATCH_ROUTE = new URLPattern("kilo-git://diff/patch");
@@ -43,6 +48,7 @@ function createTextResponse(
 	body: string,
 	status: number,
 	corsOrigin: string | undefined,
+	extraHeaders: Readonly<Record<string, string>> = {},
 ): Response {
 	return new Response(body, {
 		status,
@@ -50,6 +56,7 @@ function createTextResponse(
 			"Content-Type": "text/plain; charset=utf-8",
 			"Cache-Control": "no-store",
 			...(corsOrigin ? { "Access-Control-Allow-Origin": corsOrigin } : {}),
+			...extraHeaders,
 		},
 	});
 }
@@ -65,11 +72,13 @@ function createTextResponse(
  * error destroy.
  *
  * Error contract (text bodies, non-200):
- * - 400 — bad `cwd` (missing, not absolute, not an existing directory)
+ * - 400 — bad `cwd` (missing, not absolute, not an existing directory), or
+ *   an `unlimited` value other than `1`
  * - 403 — the service refused the cwd (outside every workspace folder —
  *   `VALIDATION` KernelError)
  * - 404 — unknown endpoint, or not a git repository (service returned `null`)
- * - 413 — the patch exceeds the size cap; auto-refresh pauses on it
+ * - 413 — the patch exceeds the size cap; auto-refresh pauses on it.
+ *   `unlimited=1` bypasses the cap. Carries `X-Patch-Byte-Length`.
  * - 500 — unexpected failure (message deliberately generic; detail stays in
  *   git-client's log)
  * - 503 — git binary missing (`KernelError` from the service)
@@ -102,10 +111,15 @@ export function createGitProtocolHandler(
 		if (!(await existsDirectory(cwd))) {
 			return createTextResponse("`cwd` must be an existing directory.", 400, corsOrigin);
 		}
+		// Strict on purpose: a typo must not silently fall back to the cap.
+		const unlimitedParam = requestUrl.searchParams.get("unlimited");
+		if (unlimitedParam !== null && unlimitedParam !== "1") {
+			return createTextResponse('`unlimited` must be "1" when present.', 400, corsOrigin);
+		}
 
 		let patch: GitPatchFile | null;
 		try {
-			patch = await options.service.createPatch({ cwd });
+			patch = await options.service.createPatch({ cwd, unlimited: unlimitedParam === "1" });
 		} catch (error) {
 			if (error instanceof KernelError) {
 				// A VALIDATION KernelError is the service refusing this cwd
@@ -119,7 +133,12 @@ export function createGitProtocolHandler(
 				);
 			}
 			if (error instanceof GitPatchTooLargeError) {
-				return createTextResponse(error.message, 413, corsOrigin);
+				// The app shell is a different origin, so a custom header
+				// must be exposed explicitly for fetch to read it.
+				return createTextResponse(error.message, 413, corsOrigin, {
+					[PATCH_BYTE_LENGTH_HEADER]: String(error.byteLength),
+					"Access-Control-Expose-Headers": PATCH_BYTE_LENGTH_HEADER,
+				});
 			}
 			return createTextResponse("The diff could not be generated.", 500, corsOrigin);
 		}

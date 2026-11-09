@@ -484,6 +484,29 @@ describe("kilo.git repository", () => {
 		expect(response.headers.get("Content-Type")).toBe("text/plain; charset=utf-8");
 	});
 
+	it("caps an oversized patch at 413 unless unlimited=1 is requested", async () => {
+		const repoDir = initRepo();
+		const line = `${"x".repeat(80)}\n`;
+		const elevenMiB = 11 * 1024 * 1024;
+		fs.writeFileSync(
+			path.join(repoDir, "huge.txt"),
+			line.repeat(Math.ceil(elevenMiB / line.length)),
+		);
+		const { protocol, addWorkspaceFolder } = await boot();
+		addWorkspaceFolder(repoDir);
+		const patchUrl = `kilo-git://diff/patch?cwd=${encodeURIComponent(repoDir)}`;
+
+		const capped = await protocol.handler(new Request(patchUrl));
+		expect(capped.status).toBe(413);
+		expect(await capped.text()).toContain("too large");
+
+		const unlimited = await protocol.handler(new Request(`${patchUrl}&unlimited=1`));
+		expect(unlimited.status).toBe(200);
+		const patch = await unlimited.text();
+		expect(patch).toContain("diff --git a/huge.txt b/huge.txt");
+		expect(Buffer.byteLength(patch)).toBeGreaterThan(10 * 1024 * 1024);
+	});
+
 	it("serves an empty 200 body for a clean working tree", async () => {
 		const repoDir = initRepo();
 		const { protocol, addWorkspaceFolder } = await boot();

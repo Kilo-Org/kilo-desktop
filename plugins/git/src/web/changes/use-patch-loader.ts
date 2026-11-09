@@ -6,6 +6,7 @@ import { type CodeViewHandle, useStableCallback } from "@pierre/diffs/react";
 import useLatest from "react-use/esm/useLatest.js";
 import { useEffect, useRef, useState, type RefObject } from "react";
 
+import { PATCH_BYTE_LENGTH_HEADER } from "../../contracts/index.js";
 import {
 	appendFileDiffToGitDiffData,
 	createGitDiffDataAccumulator,
@@ -27,11 +28,22 @@ const GENERIC_PATCH_LOAD_ERROR_MESSAGE = "The working directory diff could not b
 /** Carries the failed request's HTTP status so the UI can tailor error copy. */
 class PatchRequestError extends Error {
 	readonly status: number;
+	/** The oversized patch's byte length, reported only on a 413. */
+	readonly patchByteLength: number | null;
 
-	constructor(status: number, message: string) {
+	constructor(status: number, message: string, patchByteLength: number | null = null) {
 		super(message);
 		this.status = status;
+		this.patchByteLength = patchByteLength;
 	}
+}
+
+/** Header values are untrusted: accept only a finite non-negative integer. */
+function parsePatchByteLength(headers: Headers): number | null {
+	const raw = headers.get(PATCH_BYTE_LENGTH_HEADER);
+	if (raw === null || !/^\d+$/u.test(raw)) return null;
+	const value = Number(raw);
+	return Number.isSafeInteger(value) ? value : null;
 }
 
 export type PatchLoadState = "fetching" | "streaming" | "ready" | "error";
@@ -40,6 +52,8 @@ export interface UsePatchLoaderOptions {
 	collapseMode: "expanded" | "collapsed";
 	/** Absolute workspace directory the diff is generated for. */
 	workspaceDirectory: string;
+	/** Requests the patch without the size cap (the user's "Show anyway"). */
+	unlimited: boolean;
 	viewerRef: RefObject<CodeViewHandle<undefined, undefined> | null>;
 }
 
@@ -49,6 +63,8 @@ export interface UsePatchLoaderResult {
 	/** HTTP status of the failed request, or null for non-HTTP failures. */
 	errorStatus: number | null;
 	errorMessage: string | null;
+	/** Byte length of the oversized patch behind a 413, when the server reported it. */
+	errorPatchByteLength: number | null;
 	expandItem: (itemId: string) => void;
 	initialItems: CodeViewItem<undefined>[];
 	loadState: PatchLoadState;
@@ -79,6 +95,10 @@ export interface UsePatchLoaderResult {
  * Fetches `kilo-git://diff/patch?cwd=…` and streams the patch into the
  * CodeView imperatively (`initialItems` + `addItems`), the tree, and the
  * stats.
+ *
+ * `unlimited` appends `&unlimited=1`. Like the directory it is an effect
+ * dep, so flipping it is a fresh first load, and every later refresh
+ * keeps sending it.
  *
  * The first load per directory resets and streams progressively (remounting
  * the viewer via `viewerKey`); every later load of the same directory is an
@@ -129,6 +149,7 @@ export interface UsePatchLoaderResult {
 export function usePatchLoader({
 	collapseMode,
 	workspaceDirectory,
+	unlimited,
 	viewerRef,
 }: UsePatchLoaderOptions): UsePatchLoaderResult {
 	const [initialItems, setInitialItems] = useState<CodeViewItem<undefined>[]>([]);
@@ -138,6 +159,7 @@ export function usePatchLoader({
 	const [loadState, setLoadState] = useState<PatchLoadState>("fetching");
 	const [errorMessage, setErrorMessage] = useState<string | null>(null);
 	const [errorStatus, setErrorStatus] = useState<number | null>(null);
+	const [errorPatchByteLength, setErrorPatchByteLength] = useState<number | null>(null);
 	const [refreshing, setRefreshing] = useState(false);
 	const [refreshError, setRefreshError] = useState<string | null>(null);
 	const [viewerKey, setViewerKey] = useState(0);
@@ -269,13 +291,14 @@ export function usePatchLoader({
 					setDiffStats(null);
 					setErrorMessage(null);
 					setErrorStatus(null);
+					setErrorPatchByteLength(null);
 					setRefreshError(null);
 					setLoadState("fetching");
 				}
 
 				// Deliberately a raw fetch — see the hook doc comment.
 				const response = await fetch(
-					`kilo-git://diff/patch?cwd=${encodeURIComponent(workspaceDirectory)}`,
+					`kilo-git://diff/patch?cwd=${encodeURIComponent(workspaceDirectory)}${unlimited ? "&unlimited=1" : ""}`,
 					{
 						cache: "no-store",
 						signal,
@@ -287,6 +310,7 @@ export function usePatchLoader({
 					throw new PatchRequestError(
 						response.status,
 						detail.length > 0 ? detail : `Request failed (${response.status}).`,
+						parsePatchByteLength(response.headers),
 					);
 				}
 
@@ -485,6 +509,7 @@ export function usePatchLoader({
 
 				setErrorMessage(null);
 				setErrorStatus(null);
+				setErrorPatchByteLength(null);
 				setRefreshError(null);
 				setDiffStats({ ...accumulator.diffStats });
 				setLoadState("ready");
@@ -501,6 +526,7 @@ export function usePatchLoader({
 				setRefreshError(null);
 				setErrorMessage(message);
 				setErrorStatus(status);
+				setErrorPatchByteLength(error instanceof PatchRequestError ? error.patchByteLength : null);
 				setLoadState("error");
 				// Clear the leftover content so the sidebar never lists files
 				// next to an error panel.
@@ -523,7 +549,7 @@ export function usePatchLoader({
 		return () => {
 			throttler.dispose();
 		};
-	}, [viewerRef, workspaceDirectory]);
+	}, [unlimited, viewerRef, workspaceDirectory]);
 
 	// A disposed throttler (folder switch, unmount) rejects the queue call;
 	// the superseding load owns the view by then, so there is nothing to do.
@@ -536,6 +562,7 @@ export function usePatchLoader({
 		diffStats,
 		errorStatus,
 		errorMessage,
+		errorPatchByteLength,
 		expandItem,
 		initialItems,
 		loadState,

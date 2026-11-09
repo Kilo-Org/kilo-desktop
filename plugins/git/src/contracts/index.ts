@@ -20,13 +20,16 @@ export { githubRepositoryUrl } from "./github-remote";
 /**
  * kilo.git's public surface: it provides `kilo.workspaces/vcs` (what other
  * plugins need from version control) and owns `repository` for git's own
- * actions, plus the `kilo-git://diff/patch?cwd=<directory>` protocol that
+ * actions, plus the `kilo-git://diff/patch?cwd=<directory>[&unlimited=1]` protocol that
  * streams a working tree's patch to the Changes pane.
  */
 export const GIT_PLUGIN_ID = "kilo.git";
 
 /** The protocol scheme serving working-tree patches. */
 export const GIT_PROTOCOL_SCHEME = "kilo-git";
+
+/** `kilo-git://` 413 response header carrying the oversized patch's byte length. */
+export const PATCH_BYTE_LENGTH_HEADER = "X-Patch-Byte-Length";
 
 const path = z.string().min(1).max(32_768);
 const branchName = z.string().min(1).max(255);

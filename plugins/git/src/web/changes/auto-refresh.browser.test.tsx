@@ -1,10 +1,12 @@
 import { fireEvent } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { page } from "vitest/browser";
 
 import {
 	bootGitHost,
 	ChangesPaneHost,
 	patchResponseStream,
+	renderView,
 	resetViewTestDom,
 	ROOT,
 	stubFetch,
@@ -294,20 +296,25 @@ describe("the Changes pane's auto-refresh", () => {
 		}, WAIT);
 	});
 
-	it("pauses on a too-large diff until Retry", async () => {
+	it("pauses on a too-large diff until Reload", async () => {
 		const tooLarge =
 			"The working directory diff is too large to display (12.0 MiB; the limit is 10.0 MiB).";
 		const fetchMock = stubFetch(() =>
 			fetchMock.mock.calls.length === 1
-				? new Response(tooLarge, { status: 413 })
+				? new Response(tooLarge, {
+						status: 413,
+						headers: { "X-Patch-Byte-Length": String(12 * 1024 * 1024) },
+					})
 				: new Response(patchResponseStream()),
 		);
 		const host = await mountWithFakeClock();
 		await vi.waitFor(() => {
 			const errorText = document.querySelector('[data-qa-id="git-diff-error"]')?.textContent ?? "";
-			expect(errorText).toContain("The diff is too large to show");
-			expect(errorText).toContain(tooLarge);
-			expect(errorText).toContain("Live reload is paused.");
+			expect(errorText).toContain("The diff is too large to show by default (12.0 MiB)");
+			expect(document.querySelector('[data-qa-id="git-diff-show-anyway"]')?.textContent).toBe(
+				"Show anyway",
+			);
+			expect(document.querySelector('[data-qa-id="git-diff-retry"]')?.textContent).toBe("Reload");
 			expect(
 				document.querySelector('[data-qa-id="git-diff-tree-placeholder"]')?.textContent ?? "",
 			).toContain("Diff too large.");
@@ -323,6 +330,92 @@ describe("the Changes pane's auto-refresh", () => {
 		await waitForSettledFetches(fetchMock, 2);
 		await vi.waitFor(() => {
 			expect(document.querySelector('[data-qa-id="git-diff-view"]')).not.toBeNull();
+		}, WAIT);
+	});
+
+	it("offers Show anyway only for a too-large diff", async () => {
+		stubFetch(() => new Response("The diff could not be generated.", { status: 500 }));
+		await renderView();
+		await vi.waitFor(() => {
+			expect(document.querySelector('[data-qa-id="git-diff-retry"]')?.textContent).toBe(
+				"Try again",
+			);
+		}, WAIT);
+		expect(document.querySelector('[data-qa-id="git-diff-show-anyway"]')).toBeNull();
+	});
+
+	it("omits the size when a too-large response does not report it", async () => {
+		stubFetch(() => new Response("too large", { status: 413 }));
+		await renderView();
+		await vi.waitFor(() => {
+			const errorText = document.querySelector('[data-qa-id="git-diff-error"]')?.textContent ?? "";
+			expect(errorText).toContain("The diff is too large to show by default");
+			expect(errorText).not.toContain("(");
+		}, WAIT);
+	});
+
+	it("shows a too-large diff anyway, and live reload keeps it uncapped", async () => {
+		const patchUrl = `kilo-git://diff/patch?cwd=${encodeURIComponent(ROOT)}`;
+		const fetchMock = stubFetch((url) =>
+			url.endsWith("&unlimited=1")
+				? new Response(patchResponseStream())
+				: new Response("The working directory diff is too large to display.", { status: 413 }),
+		);
+		const host = await mountWithFakeClock();
+		await vi.waitFor(() => {
+			expect(document.querySelector('[data-qa-id="git-diff-retry"]')).not.toBeNull();
+			expect(document.querySelector('[data-qa-id="git-diff-show-anyway"]')).not.toBeNull();
+		}, WAIT);
+		await advancePastMountDebounce();
+
+		fireEvent.click(document.querySelector('[data-qa-id="git-diff-show-anyway"]')!);
+		await waitForSettledFetches(fetchMock, 2);
+		expect(fetchMock).toHaveBeenLastCalledWith(`${patchUrl}&unlimited=1`, expect.anything());
+		await waitForTreePath("README.md");
+		expect(document.querySelector('[data-qa-id="git-diff-view"]')).not.toBeNull();
+
+		await vi.advanceTimersByTimeAsync(COOLDOWN_MS);
+		await host.emitFileChanges(ROOT, ["/workspace/project/src/a.ts"]);
+		await vi.advanceTimersByTimeAsync(DEBOUNCE_PASSED_MS);
+		await waitForSettledFetches(fetchMock, 3);
+		expect(fetchMock).toHaveBeenLastCalledWith(`${patchUrl}&unlimited=1`, expect.anything());
+	});
+
+	it("drops the Show anyway override on a workspace folder switch", async () => {
+		const projectUrl = `kilo-git://diff/patch?cwd=${encodeURIComponent(ROOT)}`;
+		const otherUrl = `kilo-git://diff/patch?cwd=${encodeURIComponent("/workspace/other")}`;
+		const fetchMock = stubFetch((url) =>
+			url === projectUrl
+				? new Response("The working directory diff is too large to display.", { status: 413 })
+				: new Response(patchResponseStream()),
+		);
+		await renderView(
+			{},
+			{
+				folders: [
+					{ path: ROOT, isPrimary: true },
+					{ path: "/workspace/other", isPrimary: false },
+				],
+			},
+		);
+		await vi.waitFor(() => {
+			expect(document.querySelector('[data-qa-id="git-diff-show-anyway"]')).not.toBeNull();
+		}, WAIT);
+		fireEvent.click(document.querySelector('[data-qa-id="git-diff-show-anyway"]')!);
+		await waitForTreePath("README.md");
+
+		await page.getByTestId("git-diff-folder-select").click();
+		await page.getByRole("option", { name: "other" }).click();
+		await vi.waitFor(() => {
+			expect(fetchMock).toHaveBeenLastCalledWith(otherUrl, expect.anything());
+		}, WAIT);
+		await waitForTreePath("README.md");
+
+		await page.getByTestId("git-diff-folder-select").click();
+		await page.getByRole("option", { name: "project" }).click();
+		await vi.waitFor(() => {
+			expect(fetchMock).toHaveBeenLastCalledWith(projectUrl, expect.anything());
+			expect(document.querySelector('[data-qa-id="git-diff-show-anyway"]')).not.toBeNull();
 		}, WAIT);
 	});
 

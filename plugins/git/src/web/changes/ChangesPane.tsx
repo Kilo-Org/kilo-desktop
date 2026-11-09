@@ -1,6 +1,6 @@
 import type { CodeViewItem } from "@pierre/diffs";
 import { CodeView, type CodeViewHandle } from "@pierre/diffs/react";
-import { FolderGitIcon, GitCompareIcon, RefreshCwIcon } from "lucide-react";
+import { FileDiffIcon, FolderGitIcon, GitCompareIcon, RefreshCwIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocalStorage } from "react-use";
 
@@ -72,6 +72,16 @@ const DIFF_VIEW_UNSAFE_CSS = `
 
 const NOT_A_REPOSITORY_STATUS = 404;
 const PATCH_TOO_LARGE_STATUS = 413;
+
+const BYTES_PER_MIB = 1024 * 1024;
+
+/** MiB with one decimal, matching git-client's own too-large message. */
+function tooLargeTitle(patchByteLength: number | null): string {
+	const title = "The diff is too large to show by default";
+	return patchByteLength === null
+		? title
+		: `${title} (${(patchByteLength / BYTES_PER_MIB).toFixed(1)} MiB)`;
+}
 
 const DEFAULT_FILES_WIDTH = 224;
 const MIN_FILES_WIDTH = 160;
@@ -183,6 +193,14 @@ function GitDiffTabContent({
 	const effectiveDirectory = folders.some((folder) => folder.path === chosenDirectory)
 		? chosenDirectory
 		: workspaceDirectory;
+	// "Show anyway" is ongoing request config (later refreshes must keep
+	// sending it), scoped to the folder it was granted for: any change of
+	// effective directory revokes it, so switching back is capped again.
+	const [unlimitedDirectory, setUnlimitedDirectory] = useState<string | null>(null);
+	if (unlimitedDirectory !== null && unlimitedDirectory !== effectiveDirectory) {
+		setUnlimitedDirectory(null);
+	}
+	const unlimited = unlimitedDirectory === effectiveDirectory;
 	const viewerRef = useRef<CodeViewHandle<undefined, undefined> | null>(null);
 	const groupRef = useRef<HTMLDivElement | null>(null);
 	const rootRef = useRef<HTMLDivElement | null>(null);
@@ -223,6 +241,7 @@ function GitDiffTabContent({
 		diffStats,
 		errorStatus,
 		errorMessage,
+		errorPatchByteLength,
 		expandItem,
 		initialItems,
 		loadState,
@@ -236,6 +255,7 @@ function GitDiffTabContent({
 	} = usePatchLoader({
 		collapseMode,
 		workspaceDirectory: effectiveDirectory,
+		unlimited,
 		viewerRef,
 	});
 	// Only a too-large diff pauses auto-refresh, VS Code's `isRepositoryHuge`
@@ -377,6 +397,22 @@ function GitDiffTabContent({
 				: loadState === "ready" && fileCount === 0
 					? "No changed files."
 					: null;
+	const retryButton = (
+		<Button
+			data-qa-id="git-diff-retry"
+			disabled={refreshing}
+			onClick={refresh}
+			size="sm"
+			variant="outline"
+		>
+			{refreshing ? (
+				<Spinner data-icon="inline-start" aria-hidden="true" />
+			) : (
+				<RefreshCwIcon data-icon="inline-start" aria-hidden="true" />
+			)}
+			{errorStatus === PATCH_TOO_LARGE_STATUS ? "Reload" : "Try again"}
+		</Button>
+	);
 
 	return (
 		<div className="flex min-h-0 min-w-0 flex-1 flex-col" data-qa-id="git-diff-root" ref={rootRef}>
@@ -412,16 +448,16 @@ function GitDiffTabContent({
 										{errorStatus === NOT_A_REPOSITORY_STATUS
 											? "Not a git repository"
 											: errorStatus === PATCH_TOO_LARGE_STATUS
-												? "The diff is too large to show"
+												? tooLargeTitle(errorPatchByteLength)
 												: "The diff could not be loaded"}
 									</EmptyTitle>
-									<EmptyDescription>
-										{errorStatus === NOT_A_REPOSITORY_STATUS
-											? "This folder isn't a git repository. Initialize git to track its changes, or choose a different workspace folder."
-											: errorStatus === PATCH_TOO_LARGE_STATUS
-												? `${errorMessage} Live reload is paused. Try again once the changes are smaller.`
+									{errorStatus === PATCH_TOO_LARGE_STATUS ? null : (
+										<EmptyDescription>
+											{errorStatus === NOT_A_REPOSITORY_STATUS
+												? "This folder isn't a git repository. Initialize git to track its changes, or choose a different workspace folder."
 												: errorMessage}
-									</EmptyDescription>
+										</EmptyDescription>
+									)}
 								</EmptyHeader>
 								<EmptyContent>
 									{errorStatus === NOT_A_REPOSITORY_STATUS ? (
@@ -439,21 +475,22 @@ function GitDiffTabContent({
 											)}
 											Initialize Git
 										</Button>
+									) : errorStatus === PATCH_TOO_LARGE_STATUS ? (
+										<div className="flex gap-2">
+											{/* No pending spinner: the uncapped load swaps this panel for the loading state. */}
+											<Button
+												data-qa-id="git-diff-show-anyway"
+												disabled={refreshing}
+												onClick={() => setUnlimitedDirectory(effectiveDirectory)}
+												size="sm"
+											>
+												<FileDiffIcon data-icon="inline-start" aria-hidden="true" />
+												Show anyway
+											</Button>
+											{retryButton}
+										</div>
 									) : (
-										<Button
-											data-qa-id="git-diff-retry"
-											disabled={refreshing}
-											onClick={refresh}
-											size="sm"
-											variant="outline"
-										>
-											{refreshing ? (
-												<Spinner data-icon="inline-start" aria-hidden="true" />
-											) : (
-												<RefreshCwIcon data-icon="inline-start" aria-hidden="true" />
-											)}
-											Try again
-										</Button>
+										retryButton
 									)}
 								</EmptyContent>
 							</Empty>

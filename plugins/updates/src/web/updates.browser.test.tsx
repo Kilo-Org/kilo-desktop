@@ -164,10 +164,34 @@ describe("update-ready notice", () => {
 			.toHaveAccessibleName(`Restart to update: ${updateReadyLabel(downloadedState)}`);
 		await page.getByTestId("update-ready-pill").hover();
 		await expect.element(page.getByText("Faster startup", { exact: true })).toBeVisible();
+		await expect.element(page.getByText("1.2.3", { exact: true })).not.toBeInTheDocument();
 
 		await renderApp({ state: { ...idleState, status: "downloading" } });
 		await expect.element(page.getByTestId("app-sidebar")).toBeInTheDocument();
 		await expect.element(page.getByTestId("update-ready-pill")).not.toBeInTheDocument();
+	});
+
+	it("labels earlier notes with their version when the update itself has none", async () => {
+		await renderApp({
+			state: {
+				...downloadedState,
+				availableVersion: "1.2.4",
+				downloadedVersion: "1.2.4",
+				releaseNotes: [
+					{
+						...downloadedState.releaseNotes[0]!,
+						version: "1.2.4",
+						bodyMarkdown: "**Full Changelog**: https://github.com/acme/app/compare/v1.2.3...v1.2.4",
+						items: [],
+					},
+					downloadedState.releaseNotes[0]!,
+				],
+			},
+		});
+
+		await page.getByTestId("update-ready-pill").hover();
+		await expect.element(page.getByText("1.2.3", { exact: true })).toBeVisible();
+		await expect.element(page.getByText("Faster startup", { exact: true })).toBeVisible();
 	});
 
 	it("installs only after the person confirms", async () => {
@@ -297,6 +321,37 @@ describe("About settings", () => {
 		await expect
 			.element(page.getByText("This release improves startup reliability.", { exact: true }))
 			.toBeVisible();
+	});
+
+	it("skips a release whose notes are only the compare link, keeping the target version", async () => {
+		const republished = {
+			...downloadedState.releaseNotes[0]!,
+			version: "1.2.4",
+			bodyMarkdown: "**Full Changelog**: https://github.com/acme/app/compare/v1.2.3...v1.2.4",
+			items: [],
+		};
+		await openAbout({
+			state: {
+				...downloadedState,
+				availableVersion: "1.2.4",
+				downloadedVersion: "1.2.4",
+				releaseNotes: [republished, downloadedState.releaseNotes[0]!],
+			},
+		});
+
+		const notes = page.getByTestId("update-release-notes");
+		await expect.element(notes.getByText("1.2.4", { exact: true })).toBeVisible();
+		await expect.element(notes.getByText("1.2.3", { exact: true })).toBeVisible();
+		await expect.element(notes.getByText("Faster startup", { exact: true })).toBeVisible();
+		expect(notes.element().textContent).not.toContain("Full Changelog");
+	});
+
+	it("leaves the target release's own notes unlabeled under the heading", async () => {
+		await openAbout();
+
+		const notes = page.getByTestId("update-release-notes");
+		await expect.element(notes.getByText("1.2.3", { exact: true })).toBeVisible();
+		expect(notes.getByText("1.2.3", { exact: true }).elements()).toHaveLength(1);
 	});
 
 	it("confirms installation with an in-app dialog", async () => {

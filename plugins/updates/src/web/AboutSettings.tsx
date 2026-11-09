@@ -28,7 +28,10 @@ export function AboutSettings() {
 	const updates = useUpdates();
 	const canSwitchTrack = useContextKey(UPDATE_TRACK_SWITCHER_KEY);
 	const state = updates?.state;
-	const targetRelease = state?.releaseNotes.find(hasVisibleReleaseNotes);
+	const releaseNotesVersion =
+		state?.downloadedVersion ??
+		state?.availableVersion ??
+		state?.releaseNotes.find(hasVisibleReleaseNotes)?.version;
 	const [pending, setPending] = useState(false);
 	const [confirmOpen, setConfirmOpen] = useState(false);
 	const updateBusy = pending || state?.status === "checking" || state?.status === "downloading";
@@ -205,11 +208,15 @@ export function AboutSettings() {
 								<FieldLegend className="flex items-baseline gap-2">
 									What's changed
 									<code className="text-muted-foreground text-2xs font-medium">
-										{targetRelease?.version}
+										{releaseNotesVersion}
 									</code>
 								</FieldLegend>
 								<div className="scroll-fade-y max-h-64 min-h-0 overflow-y-auto">
-									<ReleaseNotesList notes={state.releaseNotes} showHeading={false} />
+									<ReleaseNotesList
+										notes={state.releaseNotes}
+										targetVersion={releaseNotesVersion}
+										showHeading={false}
+									/>
 								</div>
 							</FieldSet>
 						</div>

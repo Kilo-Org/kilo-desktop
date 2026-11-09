@@ -66,7 +66,10 @@ export function SidebarUpdatePill() {
 				<div className="text-sm font-medium">{label}</div>
 				{state.releaseNotes.some(hasVisibleReleaseNotes) ? (
 					<div className="border-border scroll-fade-y mt-3 min-h-0 overflow-y-auto border-t pt-3">
-						<ReleaseNotesList notes={state.releaseNotes} />
+						<ReleaseNotesList
+							notes={state.releaseNotes}
+							targetVersion={state.downloadedVersion ?? state.availableVersion}
+						/>
 					</div>
 				) : null}
 			</TooltipContent>

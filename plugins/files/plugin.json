@@ -38,7 +38,7 @@
 					"order": 10,
 					"keybinding": "Mod+Shift+E",
 					"when": {
-						"all": ["kilo.workbench/sessionActive"]
+						"all": ["kilo.workbench/paneTargetActive"]
 					}
 				}
 			],
@@ -52,7 +52,8 @@
 						"inSession": true
 					},
 					"layoutKind": "document",
-					"order": 40
+					"order": 70,
+					"openCommand": "kilo.files/open"
 				}
 			],
 			"kilo.sessions/opener": [

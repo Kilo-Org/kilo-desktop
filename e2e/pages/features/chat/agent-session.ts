@@ -6,6 +6,7 @@ import {
 } from "@anaconda/playwright-utils";
 
 import { callDomainMethod } from "../../../utils/kernel-domains.js";
+import { runFromCommandPalette } from "../../shell/command-palette.js";
 
 export const AGENT_PANE_KIND = "kilo.chat/agent";
 
@@ -75,12 +76,12 @@ export async function waitForSessionStartedBySend(): Promise<void> {
 }
 
 /**
- * Starts an empty session from the New Session page's quiet row (shown in e2e
- * builds through `new-session-pane-kinds`), without a first message.
+ * Starts an empty session from the New Session page (New empty session in
+ * the command palette), without a first message.
  */
 export async function startEmptySession(): Promise<void> {
 	await openLauncher();
-	await click(getLocatorByTestId("launcher-start-session"));
+	await runFromCommandPalette("kilo.workbench/new-empty-session");
 	await expectElementToBeVisible(
 		getLocatorByTestId("session-workbench"),
 		"Starting an empty session should open it",
@@ -88,15 +89,16 @@ export async function startEmptySession(): Promise<void> {
 }
 
 /**
- * An Agent pane added to an existing session from the session header (the
- * in-pane draft, before its first message), in a new empty session.
+ * An Agent pane added to an existing session from the session header's Agent
+ * button (the in-pane draft, before its first message), in a new empty session.
  */
 export async function openAgentPaneInNewSession(): Promise<void> {
 	await startEmptySession();
 	await click(getLocatorByTestId(`chat-pane-pinned-${AGENT_PANE_KIND}`));
+	await click(getLocatorByTestId(`chat-pane-pinned-new-${AGENT_PANE_KIND}`));
 	await expectElementToBeVisible(
 		agentPane(),
-		"Adding an Agent pane from the session header should show it",
+		"Adding an Agent pane from the session header's Agent button should show it",
 	);
 }
 

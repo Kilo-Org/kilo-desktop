@@ -8,6 +8,7 @@
 		"kilo.sessions/pane": "optional",
 		"kilo.sessions/pane-kind": "optional",
 		"kilo.sessions/opener": "optional",
+		"kilo.workbench/workbench": "optional",
 		"kilo.account/identity": "optional",
 		"kilo.agent/tool": "optional",
 		"kilo.agent/runtime-config": "optional",
@@ -40,10 +41,22 @@
 					"keepAlive": true,
 					"layoutKind": "notebook",
 					"order": 50,
+					"openCommand": "kilo.notebook/open",
 					"availableWhen": {
 						"all": ["kilo.account/signedIn"]
 					},
 					"unavailableHint": "Sign in to Kilo to use embedded notebooks."
+				}
+			],
+			"kernel/command": [
+				{
+					"id": "open",
+					"title": "Open notebook",
+					"category": "Notebooks",
+					"keybinding": "Mod+Shift+J",
+					"when": {
+						"all": ["kilo.workbench/paneTargetActive", "kilo.account/signedIn"]
+					}
 				}
 			],
 			"kilo.sessions/opener": [

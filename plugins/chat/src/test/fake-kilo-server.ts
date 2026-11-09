@@ -304,9 +304,14 @@ export class FakeKiloServer {
 		if (first !== "session" || !id) return json({ message: "Not found" }, 404);
 		const chat = this.chats.get(decodeURIComponent(id));
 		if (!chat) return json({ name: "NotFoundError", data: { message: "No such chat" } }, 404);
-		if (!action && request.method === "GET") return json(this.#info(chat));
+		if (!action && request.method === "GET") {
+			if (this.chatReadDelayMs)
+				await new Promise((resolve) => setTimeout(resolve, this.chatReadDelayMs));
+			return json(this.#info(chat));
+		}
 		if (action === "message" && request.method === "GET") return json(chat.messages);
 		if (action === "prompt_async") {
+			if (this.failPrompts) return json({ message: "The model is overloaded" }, 500);
 			this.#accept(chat, recorded.body as { parts?: Record<string, unknown>[] });
 			return new Response(null, { status: 204 });
 		}
@@ -339,6 +344,12 @@ export class FakeKiloServer {
 			}
 		}, 20);
 	}
+
+	/** Milliseconds a chat's details take to arrive, as from a busy server. */
+	chatReadDelayMs = 0;
+
+	/** Whether prompts fail, as when the server rejects them. */
+	failPrompts = false;
 
 	/** Permission and question ids whose replies fail. */
 	readonly failingReplies = new Set<string>();

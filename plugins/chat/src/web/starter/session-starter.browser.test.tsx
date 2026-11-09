@@ -22,21 +22,25 @@ const promptText = (request: RecordedRequest) =>
 		.join("");
 
 describe("the New Session page's composer", () => {
-	it("is origin's draft composer, focused, with where the session runs tucked under it", async () => {
-		await renderAgentPane({
-			starter: { footer: <span data-qa-id="test-footer">Local · main</span> },
-		});
+	it("is origin's draft composer, focused, without a strip under it while it has nothing to say", async () => {
+		await renderAgentPane({ starter: {} });
 
-		const footer = page.getByTestId("kilo-composer-draft-footer");
-		await expect.element(footer.getByTestId("test-footer")).toBeVisible();
 		await expect.element(page.getByTestId("kilo-composer-send")).toBeDisabled();
-		const composer = document.querySelector(".aui-composer-root")!.getBoundingClientRect();
-		// Tucked: the footer starts under the composer's rounded bottom edge.
-		expect(footer.element().getBoundingClientRect().top).toBeLessThan(composer.bottom);
+		await expect.element(page.getByTestId("kilo-composer-draft-footer")).not.toBeVisible();
 		await vi.waitFor(
 			() => expect(document.activeElement?.closest(".aui-composer-root")).not.toBeNull(),
 			{ timeout: 5_000 },
 		);
+	});
+
+	it("tucks a draft-footer warning under the composer", async () => {
+		await renderAgentPane({ starter: {}, unavailableFolderIds: ["f-lib"] });
+
+		const footer = page.getByTestId("kilo-composer-draft-footer");
+		await expect.element(footer.getByTestId("kilo-composer-unavailable-folders")).toBeVisible();
+		const composer = document.querySelector(".aui-composer-root")!.getBoundingClientRect();
+		// Tucked: the strip starts under the composer's rounded bottom edge.
+		expect(footer.element().getBoundingClientRect().top).toBeLessThan(composer.bottom);
 	});
 
 	it("starts the session on the first send, with the chat and an Agent pane for it, then opens it", async () => {
@@ -102,5 +106,15 @@ describe("the New Session page's composer", () => {
 			removeWorktree: true,
 		});
 		expect(host.starter.open).not.toHaveBeenCalled();
+	});
+
+	it("opens the session when its first message fails, where the chat shows why", async () => {
+		const host = await renderAgentPane({ starter: {} });
+		host.server.failPrompts = true;
+
+		await send("Try this");
+
+		await vi.waitFor(() => expect(host.starter.open).toHaveBeenCalledWith("wses_new_1"));
+		expect(host.sessions.calls.remove).not.toHaveBeenCalled();
 	});
 });

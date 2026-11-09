@@ -125,4 +125,53 @@ describe("withPromptOptions mentions", () => {
 		expect(command).toHaveBeenCalled();
 		expect(onPrompted).toHaveBeenCalledWith("ses_a");
 	});
+
+	it("says a prompt failed when preparing it fails, before anything is sent", async () => {
+		const { client, promptAsync } = fakeClient();
+		const onPrompted = vi.fn();
+		const onPromptFailed = vi.fn();
+		const wrapped = withPromptOptions(client, {
+			onPrompted,
+			onPromptFailed,
+			getSystem: async () => {
+				throw new Error("No config");
+			},
+		});
+
+		await expect(
+			wrapped.session.promptAsync({ sessionID: "ses_a", parts: [] } as never),
+		).rejects.toThrow("No config");
+
+		expect(onPromptFailed).toHaveBeenCalledWith("ses_a");
+		expect(onPrompted).not.toHaveBeenCalled();
+		expect(promptAsync).not.toHaveBeenCalled();
+	});
+
+	it("says a prompt failed when the server refuses it", async () => {
+		const { client, promptAsync } = fakeClient();
+		const onPromptFailed = vi.fn();
+		const wrapped = withPromptOptions(client, { onPromptFailed });
+		promptAsync.mockRejectedValueOnce(new Error("busy"));
+
+		await expect(
+			wrapped.session.promptAsync({ sessionID: "ses_a", parts: [] } as never),
+		).rejects.toThrow("busy");
+
+		expect(onPromptFailed).toHaveBeenCalledWith("ses_a");
+	});
+
+	it("says a command failed when preparing or sending it fails", async () => {
+		const command = vi.fn(async () => {
+			throw new Error("Unknown command");
+		});
+		const client = { session: { promptAsync: vi.fn(), prompt: vi.fn(), command } };
+		const onPromptFailed = vi.fn();
+		const wrapped = withPromptOptions(client as unknown as KiloClient, { onPromptFailed });
+
+		await expect(
+			wrapped.session.command({ sessionID: "ses_a", command: "nope", arguments: "" } as never),
+		).rejects.toThrow("Unknown command");
+
+		expect(onPromptFailed).toHaveBeenCalledWith("ses_a");
+	});
 });

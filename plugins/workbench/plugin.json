@@ -27,6 +27,11 @@
 			"description": "True while a session is open in this window."
 		},
 		{
+			"id": "paneTargetActive",
+			"scope": "window",
+			"description": "True while opening a pane has somewhere to go: an open session, or the New Session page, which starts a session with it."
+		},
+		{
 			"id": "workspaceActive",
 			"scope": "window",
 			"description": "True while the session list is focused on one workspace."
@@ -47,6 +52,11 @@
 			"id": "session-action",
 			"kind": "additive",
 			"description": "A button in an open session's header."
+		},
+		{
+			"id": "pane-kind-menu",
+			"kind": "additive",
+			"description": "Entries in the header menu of a pinned pane kind."
 		},
 		{
 			"id": "navigator-action",
@@ -130,6 +140,16 @@
 					],
 					"when": {
 						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "new-empty-session",
+					"title": "New empty session",
+					"category": "Sessions",
+					"order": 31,
+					"when": {
+						"all": ["kilo.workbench/paneTargetActive"],
+						"none": ["kilo.workbench/sessionActive"]
 					}
 				},
 				{

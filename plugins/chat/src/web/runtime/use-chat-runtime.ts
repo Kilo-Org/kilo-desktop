@@ -48,6 +48,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): AssistantRuntime {
 				},
 				resolveParts: async (parts) => (await latest.current.resolveParts?.(parts)) ?? parts,
 				onPrompted: (chatId) => latest.current.onPrompted?.(chatId),
+				onPromptFailed: (chatId) => latest.current.onPromptFailed?.(chatId),
 			}),
 		[options.services],
 	);

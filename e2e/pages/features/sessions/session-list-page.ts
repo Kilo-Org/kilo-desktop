@@ -10,6 +10,7 @@ import {
 	pressPageKeyboard,
 	reloadPage,
 } from "@anaconda/playwright-utils";
+import { runFromCommandPalette } from "../../shell/command-palette.js";
 
 /** Page object for kilo.workbench's session list (the sidebar) and launcher. */
 export class SessionListPage {
@@ -25,7 +26,7 @@ export class SessionListPage {
 			getLocatorByTestId("workbench-launcher"),
 			"New session should open the launcher",
 		);
-		await click(getLocatorByTestId("launcher-start-session"));
+		await runFromCommandPalette("kilo.workbench/new-empty-session");
 		await expectElementToBeVisible(
 			getLocatorByTestId("session-workbench"),
 			"Starting a session should open it",
@@ -36,7 +37,7 @@ export class SessionListPage {
 		await expectElementToBeVisible(this.row(title), `${title} should be listed`);
 	}
 
-	async verifyOpen(title: string): Promise<void> {
+	async verifyOpen(title: string | RegExp): Promise<void> {
 		await expectElementToBeVisible(
 			getLocatorByTestId("session-breadcrumb").getByText(title, { exact: true }),
 			`The header should name ${title}`,

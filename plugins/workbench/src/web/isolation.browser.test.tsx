@@ -37,7 +37,7 @@ const modeTrigger = () => page.getByTestId("git-draft-mode-trigger");
 describe("launcher isolation", () => {
 	it("is not offered without version control or a repository", async () => {
 		const withoutVcs = await renderLauncher();
-		await expect.element(page.getByTestId("launcher-start-session")).toBeVisible();
+		await expect.element(page.getByTestId("launcher-location")).toBeVisible();
 		expect(withoutVcs.sessions.calls.isolationOptions).not.toHaveBeenCalled();
 
 		const notARepository = await renderLauncher({ isolation: null });
@@ -45,7 +45,7 @@ describe("launcher isolation", () => {
 			() => expect(notARepository.sessions.calls.isolationOptions).toHaveBeenCalledWith("w-app"),
 			WAIT,
 		);
-		await page.getByTestId("launcher-start-session").click();
+		await notARepository.run("new-empty-session");
 
 		await vi.waitFor(
 			() =>
@@ -56,11 +56,11 @@ describe("launcher isolation", () => {
 	});
 
 	it("starts local by default, showing the current branch", async () => {
-		const { sessions } = await renderLauncher({ isolation: REPOSITORY });
+		const { sessions, run } = await renderLauncher({ isolation: REPOSITORY });
 
-		await expect.element(modeTrigger()).toHaveTextContent("Local");
+		await expect.element(modeTrigger()).toHaveTextContent("Current checkout");
 		await expect.element(page.getByTestId("git-branch-label")).toHaveTextContent("main");
-		await page.getByTestId("launcher-start-session").click();
+		await run("new-empty-session");
 
 		await vi.waitFor(
 			() =>
@@ -73,19 +73,17 @@ describe("launcher isolation", () => {
 	});
 
 	it("starts in a new worktree from the chosen base, and remembers the mode per workspace", async () => {
-		const { sessions } = await renderLauncher({ isolation: REPOSITORY });
+		const { sessions, run } = await renderLauncher({ isolation: REPOSITORY });
 
 		await modeTrigger().click();
 		await page.getByTestId("git-draft-mode-item-worktree").click();
 		await expect
-			.element(page.getByTestId("git-base-branch-trigger"))
-			.toHaveTextContent("From main");
+			.element(page.getByTestId("launcher-location"))
+			.toHaveTextContent("WorkspaceAppUseNew worktreeBase branchmain");
 		await page.getByTestId("git-base-branch-trigger").click();
 		await page.getByTestId("git-base-branch-item-develop").click();
-		await expect
-			.element(page.getByTestId("git-base-branch-trigger"))
-			.toHaveTextContent("From develop");
-		await page.getByTestId("launcher-start-session").click();
+		await expect.element(page.getByTestId("git-base-branch-trigger")).toHaveTextContent("develop");
+		await run("new-empty-session");
 
 		await vi.waitFor(
 			() =>
@@ -108,7 +106,7 @@ describe("launcher isolation", () => {
 				"git.draftMode:v1": JSON.stringify("worktree"),
 			},
 		});
-		await expect.element(modeTrigger()).toHaveTextContent("Local");
+		await expect.element(modeTrigger()).toHaveTextContent("Current checkout");
 
 		localStorage.removeItem(ISOLATION_PREFERENCE_STORAGE_KEY);
 		await renderLauncher({
@@ -120,7 +118,7 @@ describe("launcher isolation", () => {
 	});
 
 	it("starts in an existing worktree picked from the searchable list", async () => {
-		const { sessions } = await renderLauncher({ isolation: REPOSITORY });
+		const { sessions, run } = await renderLauncher({ isolation: REPOSITORY });
 
 		await modeTrigger().click();
 		await page.getByTestId("git-draft-mode-sub-existing").click();
@@ -128,7 +126,7 @@ describe("launcher isolation", () => {
 		await page.getByTestId("git-draft-mode-item-existing-old").click();
 		await expect.element(modeTrigger()).toHaveTextContent("old");
 		await expect.element(page.getByTestId("git-branch-label")).toHaveTextContent("kilo/old");
-		await page.getByTestId("launcher-start-session").click();
+		await run("new-empty-session");
 
 		await vi.waitFor(
 			() =>
@@ -146,7 +144,7 @@ describe("launcher isolation", () => {
 			localStorage: { [ISOLATION_PREFERENCE_STORAGE_KEY]: JSON.stringify({ "w-app": "worktree" }) },
 		});
 
-		await expect.element(modeTrigger()).toHaveTextContent("Local");
+		await expect.element(modeTrigger()).toHaveTextContent("Current checkout");
 		await modeTrigger().click();
 		await expect
 			.element(page.getByTestId("git-draft-mode-item-worktree"))
@@ -198,7 +196,7 @@ function branchPickerPlugin() {
 describe("a contributed branch picker", () => {
 	it("takes the read-only branch's place for the checkout and existing worktrees", async () => {
 		const picker = branchPickerPlugin();
-		const { sessions } = await renderWorkbench({
+		const { sessions, run } = await renderWorkbench({
 			workspaces: [workspace("w-app", "App")],
 			activeWorkspaceId: "w-app",
 			isolation: REPOSITORY,
@@ -220,7 +218,7 @@ describe("a contributed branch picker", () => {
 		await expect
 			.element(page.getByTestId("test-branch-picker"))
 			.toHaveTextContent("/projects/app/.kilo/worktrees/old");
-		await page.getByTestId("launcher-start-session").click();
+		await run("new-empty-session");
 
 		await vi.waitFor(
 			() =>

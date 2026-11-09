@@ -13,6 +13,7 @@
 		"kilo.workspaces/workspace": "optional",
 		"kilo.workbench/workbench": "optional",
 		"kilo.workbench/session-starter": "optional",
+		"kilo.workbench/pane-kind-menu": "optional",
 		"kilo.agent/tool": "optional",
 		"kilo.account/identity": "optional",
 		"kilo.shell/navigation": "optional",
@@ -34,6 +35,12 @@
 	],
 	"contributes": {
 		"extensions": {
+			"kilo.workbench/pane-kind-menu": [
+				{
+					"id": "agent-chats",
+					"paneKind": "kilo.chat/agent"
+				}
+			],
 			"kilo.workbench/session-starter": [
 				{
 					"id": "composer",
@@ -49,10 +56,8 @@
 					"launch": {
 						"newSession": true,
 						"inSession": true,
-						"sessionHeader": true,
-						"tabGroup": false
+						"sessionHeader": true
 					},
-					"singleton": true,
 					"keepAlive": true,
 					"layoutKind": "agent",
 					"order": 10

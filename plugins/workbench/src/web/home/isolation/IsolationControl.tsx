@@ -1,4 +1,4 @@
-import { ChevronDownIcon, FolderIcon, GitBranchIcon, GitForkIcon } from "lucide-react";
+import { ChevronDownIcon, FolderGit2Icon, GitBranchIcon, LaptopIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import type {
@@ -28,6 +28,7 @@ import {
 } from "@kilo-desktop/ui/components/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
+import { LocationField } from "../LocationField";
 import { BaseBranchPicker } from "./BaseBranchPicker";
 import type { IsolationMode } from "./isolation-preference";
 
@@ -77,9 +78,9 @@ function BranchLabel({ branch }: { branch: string }) {
 			data-qa-id="git-branch-label"
 			aria-label={`Branch ${branch}`}
 			title={branch}
-			className="text-foreground/70 flex h-7 min-w-0 items-center gap-1.5 px-2 text-xs"
+			className="text-foreground/70 flex h-7 min-w-0 items-center gap-1.5 px-2 text-[0.8rem]"
 		>
-			<GitBranchIcon className="text-foreground/40 size-3 shrink-0" aria-hidden />
+			<GitBranchIcon className="text-foreground/40 size-3.5 shrink-0" aria-hidden />
 			<span className="truncate">{branch}</span>
 		</span>
 	);
@@ -98,10 +99,12 @@ export interface IsolationControlProps {
 }
 
 /**
- * Where a new session works, as origin's draft footer chose it: the local
- * repository, a new worktree (with its base branch) or one of the
- * workspace's existing worktrees (searchable submenu, hidden when there are
- * none). New worktrees are disabled for a repository without commits.
+ * Where a new session works, as two of the launcher's location fields: "Runs
+ * in" the local repository, a new worktree or one of the workspace's existing
+ * worktrees (searchable submenu, hidden when there are none), and the branch:
+ * "From" the base branch of a new worktree, otherwise the branch checked out
+ * where the session works. New worktrees are disabled for a repository
+ * without commits.
  */
 export function IsolationControl({
 	options,
@@ -119,10 +122,19 @@ export function IsolationControl({
 			: undefined;
 	const modeLabel =
 		value.kind === "local"
-			? "Local"
+			? "Current checkout"
 			: value.kind === "new-worktree"
 				? "New worktree"
 				: (existing?.name ?? basename(value.directory));
+	const branch =
+		value.kind === "existing-worktree"
+			? existing
+				? (renderBranch?.(existing.directory) ?? <BranchLabel branch={existing.branch} />)
+				: null
+			: value.kind === "local"
+				? (renderBranch?.(options.directory) ??
+					(options.currentBranch ? <BranchLabel branch={options.currentBranch} /> : null))
+				: null;
 	const worktreeItem = (
 		<ModeItem
 			value="worktree"
@@ -133,159 +145,158 @@ export function IsolationControl({
 	);
 
 	return (
-		<div data-qa-id="launcher-isolation" className="flex min-w-0 items-center gap-1">
-			<DropdownMenu
-				open={menuOpen}
-				onOpenChange={(open) => {
-					setMenuOpen(open);
-					if (open) onOpen?.();
-				}}
-			>
-				<DropdownMenuTrigger
-					disabled={disabled}
-					render={
-						<Button
-							type="button"
-							variant="ghost"
-							size="sm"
-							aria-label="Isolation"
-							data-qa-id="git-draft-mode-trigger"
-						/>
-					}
+		<div data-qa-id="launcher-isolation" className="contents">
+			<LocationField label="Use">
+				<DropdownMenu
+					open={menuOpen}
+					onOpenChange={(open) => {
+						setMenuOpen(open);
+						if (open) onOpen?.();
+					}}
 				>
-					{value.kind === "local" ? (
-						<FolderIcon data-icon="inline-start" />
-					) : (
-						<GitForkIcon data-icon="inline-start" />
-					)}
-					<span className="truncate">{modeLabel}</span>
-					<ChevronDownIcon data-icon="inline-end" className="opacity-60" />
-				</DropdownMenuTrigger>
-				<DropdownMenuContent
-					align="start"
-					side="bottom"
-					sideOffset={6}
-					collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "none" }}
-					className="w-72"
-				>
-					<DropdownMenuGroup>
-						<DropdownMenuRadioGroup
-							value={
-								value.kind === "existing-worktree"
-									? ""
-									: value.kind === "local"
-										? "local"
-										: "worktree"
-							}
-							onValueChange={(mode) => {
-								if (mode === "local") onChange({ kind: "local" }, "local");
-								else if (mode === "worktree" && !unborn) {
-									onChange(
-										options.defaultBranch
-											? { kind: "new-worktree", baseBranch: options.defaultBranch }
-											: { kind: "new-worktree" },
-										"worktree",
-									);
-								}
-							}}
-						>
-							{unborn ? (
-								<Tooltip>
-									<TooltipTrigger render={worktreeItem} />
-									<TooltipContent>
-										This repository has no commits yet. Create an initial commit to use worktrees.
-									</TooltipContent>
-								</Tooltip>
-							) : (
-								worktreeItem
-							)}
-							<ModeItem
-								value="local"
-								title="Local repository"
-								description="Works in the repository already on your machine"
+					<DropdownMenuTrigger
+						disabled={disabled}
+						render={
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								aria-label="Isolation"
+								data-qa-id="git-draft-mode-trigger"
 							/>
-						</DropdownMenuRadioGroup>
-					</DropdownMenuGroup>
-					{options.worktrees.length > 0 ? (
-						<>
-							<DropdownMenuSeparator />
-							<DropdownMenuGroup>
-								<DropdownMenuSub>
-									<DropdownMenuSubTrigger data-qa-id="git-draft-mode-sub-existing">
-										<GitForkIcon data-icon="inline-start" />
-										<span className="truncate">Existing worktrees</span>
-									</DropdownMenuSubTrigger>
-									<DropdownMenuSubContent className="w-72 p-0">
-										<Command
-											label="Search worktrees"
-											filter={filterWorktreeItems}
-											onKeyDown={(event) => {
-												// Keeps the menu's typeahead off the search input; Escape
-												// inside the input doesn't reach the menu, so close here.
-												event.stopPropagation();
-												if (event.key === "Escape") setMenuOpen(false);
-											}}
-										>
-											<CommandInput
-												autoFocus
-												placeholder="Search worktrees"
-												data-qa-id="git-draft-mode-existing-search"
-											/>
-											<CommandList className="scroll-fade h-[min(calc(--spacing(72)---spacing(9)),calc(var(--available-height)---spacing(9)))]">
-												<CommandEmpty>No worktrees found.</CommandEmpty>
-												<CommandGroup>
-													{options.worktrees.map((worktree) => (
-														<CommandItem
-															key={worktree.directory}
-															value={worktree.directory}
-															keywords={[worktree.name, worktree.branch]}
-															data-checked={
-																value.kind === "existing-worktree" &&
-																value.directory === worktree.directory
-															}
-															data-qa-id={`git-draft-mode-item-existing-${worktree.name}`}
-															onSelect={() => {
-																onChange({
-																	kind: "existing-worktree",
-																	directory: worktree.directory,
-																});
-																setMenuOpen(false);
-															}}
-														>
-															<span className="flex min-w-0 flex-col gap-0.5">
-																<span className="truncate">{worktree.name}</span>
-																<span className="text-muted-foreground truncate text-xs">
-																	{worktree.branch}
+						}
+					>
+						{value.kind === "local" ? (
+							<LaptopIcon data-icon="inline-start" />
+						) : (
+							<FolderGit2Icon data-icon="inline-start" />
+						)}
+						<span className="truncate">{modeLabel}</span>
+						<ChevronDownIcon data-icon="inline-end" className="opacity-60" />
+					</DropdownMenuTrigger>
+					<DropdownMenuContent
+						align="start"
+						side="bottom"
+						sideOffset={6}
+						collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "none" }}
+						className="w-72"
+					>
+						<DropdownMenuGroup>
+							<DropdownMenuRadioGroup
+								value={
+									value.kind === "existing-worktree"
+										? ""
+										: value.kind === "local"
+											? "local"
+											: "worktree"
+								}
+								onValueChange={(mode) => {
+									if (mode === "local") onChange({ kind: "local" }, "local");
+									else if (mode === "worktree" && !unborn) {
+										onChange(
+											options.defaultBranch
+												? { kind: "new-worktree", baseBranch: options.defaultBranch }
+												: { kind: "new-worktree" },
+											"worktree",
+										);
+									}
+								}}
+							>
+								{unborn ? (
+									<Tooltip>
+										<TooltipTrigger render={worktreeItem} />
+										<TooltipContent>
+											This repository has no commits yet. Create an initial commit to use worktrees.
+										</TooltipContent>
+									</Tooltip>
+								) : (
+									worktreeItem
+								)}
+								<ModeItem
+									value="local"
+									title="Local repository"
+									description="Works in the repository already on your machine"
+								/>
+							</DropdownMenuRadioGroup>
+						</DropdownMenuGroup>
+						{options.worktrees.length > 0 ? (
+							<>
+								<DropdownMenuSeparator />
+								<DropdownMenuGroup>
+									<DropdownMenuSub>
+										<DropdownMenuSubTrigger data-qa-id="git-draft-mode-sub-existing">
+											<FolderGit2Icon data-icon="inline-start" />
+											<span className="truncate">Existing worktrees</span>
+										</DropdownMenuSubTrigger>
+										<DropdownMenuSubContent className="w-72 p-0">
+											<Command
+												label="Search worktrees"
+												filter={filterWorktreeItems}
+												onKeyDown={(event) => {
+													// Keeps the menu's typeahead off the search input; Escape
+													// inside the input doesn't reach the menu, so close here.
+													event.stopPropagation();
+													if (event.key === "Escape") setMenuOpen(false);
+												}}
+											>
+												<CommandInput
+													autoFocus
+													placeholder="Search worktrees"
+													data-qa-id="git-draft-mode-existing-search"
+												/>
+												<CommandList className="scroll-fade h-[min(calc(--spacing(72)---spacing(9)),calc(var(--available-height)---spacing(9)))]">
+													<CommandEmpty>No worktrees found.</CommandEmpty>
+													<CommandGroup>
+														{options.worktrees.map((worktree) => (
+															<CommandItem
+																key={worktree.directory}
+																value={worktree.directory}
+																keywords={[worktree.name, worktree.branch]}
+																data-checked={
+																	value.kind === "existing-worktree" &&
+																	value.directory === worktree.directory
+																}
+																data-qa-id={`git-draft-mode-item-existing-${worktree.name}`}
+																onSelect={() => {
+																	onChange({
+																		kind: "existing-worktree",
+																		directory: worktree.directory,
+																	});
+																	setMenuOpen(false);
+																}}
+															>
+																<span className="flex min-w-0 flex-col gap-0.5">
+																	<span className="truncate">{worktree.name}</span>
+																	<span className="text-muted-foreground truncate text-xs">
+																		{worktree.branch}
+																	</span>
 																</span>
-															</span>
-														</CommandItem>
-													))}
-												</CommandGroup>
-											</CommandList>
-										</Command>
-									</DropdownMenuSubContent>
-								</DropdownMenuSub>
-							</DropdownMenuGroup>
-						</>
-					) : null}
-				</DropdownMenuContent>
-			</DropdownMenu>
+															</CommandItem>
+														))}
+													</CommandGroup>
+												</CommandList>
+											</Command>
+										</DropdownMenuSubContent>
+									</DropdownMenuSub>
+								</DropdownMenuGroup>
+							</>
+						) : null}
+					</DropdownMenuContent>
+				</DropdownMenu>
+			</LocationField>
 			{value.kind === "new-worktree" ? (
-				<BaseBranchPicker
-					selectedBase={value.baseBranch}
-					defaultBase={options.defaultBranch}
-					branches={options.branches}
-					recentBranches={options.recentBranches}
-					onSelect={(baseBranch) => onChange({ kind: "new-worktree", baseBranch })}
-				/>
-			) : value.kind === "existing-worktree" ? (
-				existing ? (
-					(renderBranch?.(existing.directory) ?? <BranchLabel branch={existing.branch} />)
-				) : null
-			) : renderBranch ? (
-				renderBranch(options.directory)
-			) : options.currentBranch ? (
-				<BranchLabel branch={options.currentBranch} />
+				<LocationField label="Base branch">
+					<BaseBranchPicker
+						selectedBase={value.baseBranch}
+						defaultBase={options.defaultBranch}
+						branches={options.branches}
+						recentBranches={options.recentBranches}
+						disabled={disabled}
+						onSelect={(baseBranch) => onChange({ kind: "new-worktree", baseBranch })}
+					/>
+				</LocationField>
+			) : branch ? (
+				<LocationField label="Branch">{branch}</LocationField>
 			) : null}
 		</div>
 	);

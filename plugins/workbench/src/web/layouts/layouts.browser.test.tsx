@@ -500,7 +500,8 @@ describe("default layout", () => {
 			open: false,
 			layouts: { presets: [coding], defaultPresetId: "coding" },
 		});
-		await page.getByTestId("launcher-start-session").click();
+		await expect.element(page.getByTestId("workbench-launcher")).toBeVisible();
+		await host.renderer.commands.execute("kilo.workbench/new-empty-session");
 
 		await vi.waitFor(() =>
 			expect(host.renderer.kernelSdk.domains.get(Workbench)!.getState().activeSessionId).toBe(
@@ -531,7 +532,8 @@ describe("default layout", () => {
 			flag: false,
 			layouts: { presets: [coding], defaultPresetId: "coding" },
 		});
-		await page.getByTestId("launcher-start-session").click();
+		await expect.element(page.getByTestId("workbench-launcher")).toBeVisible();
+		await host.renderer.commands.execute("kilo.workbench/new-empty-session");
 
 		await vi.waitFor(() =>
 			expect(host.renderer.kernelSdk.domains.get(Workbench)!.getState().activeSessionId).toBe(

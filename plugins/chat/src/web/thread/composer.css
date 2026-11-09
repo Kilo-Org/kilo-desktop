@@ -49,6 +49,25 @@
 	--glass-opacity: 94%;
 }
 
+/* The New Session page's starter: filled like the tool tiles under it and
+   borderless, even focused; the outline comes back only while dragging. */
+.chat-starter-flat .chat-composer-glass {
+	--composer-glass-surface: color-mix(in srgb, var(--muted) 64%, transparent);
+	box-shadow: none;
+}
+
+.chat-starter-flat .chat-composer-glass:not([data-dragging="true"]) {
+	outline-color: transparent;
+}
+
+/* Its toolbar's hover matches the page's pickers and tools around it: a light
+   tint that lifts whatever is behind it by the same step. */
+.chat-starter-flat
+	.chat-composer-glass
+	button[class*="hover:bg-muted"]:is(:hover, [aria-expanded="true"], [data-popup-open]) {
+	background-color: color-mix(in oklab, var(--foreground) 7%, transparent);
+}
+
 .aui-lexical-editor {
 	position: relative;
 }

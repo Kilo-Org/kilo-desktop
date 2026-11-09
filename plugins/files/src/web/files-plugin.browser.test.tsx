@@ -178,6 +178,7 @@ describe("Open Files", () => {
 					},
 				});
 				sdk.context.set("sessionActive", true);
+				sdk.context.set("paneTargetActive", true);
 			},
 		});
 		const host = await bootFilesHost({

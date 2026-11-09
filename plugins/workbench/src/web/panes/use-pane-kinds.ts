@@ -43,7 +43,7 @@ function useOrdered(contributions: readonly PaneKindContribution[]) {
 	);
 }
 
-/** The pane kinds plugins contribute (kilo.sessions/pane), shaped for the canvas and launcher. */
+/** The pane kinds plugins contribute (kilo.sessions/pane-kind), shaped for the canvas and launcher. */
 export function usePaneKinds(): PaneKinds {
 	const contributions = useOrdered(useExtensions(PaneKind));
 	const availability = useAvailability(contributions);
@@ -67,6 +67,7 @@ export function usePaneKinds(): PaneKinds {
 				keepAlive: kind.metadata.keepAlive,
 				pinned: kind.metadata.launch.sessionHeader,
 				inTabGroups: kind.metadata.launch.tabGroup,
+				openCommand: kind.metadata.openCommand,
 			};
 		};
 		const shaped = contributions.map(toCanvas);

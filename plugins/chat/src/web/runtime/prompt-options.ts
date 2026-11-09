@@ -33,6 +33,8 @@ export interface PromptOptions {
 	readonly prepareModel?: (model: PromptModelRef) => Promise<void>;
 	/** The server accepted a prompt or command for this chat. */
 	readonly onPrompted?: (chatId: string) => void;
+	/** A prompt or command for this chat failed, preparing or sending it (the send rejects). */
+	readonly onPromptFailed?: (chatId: string) => void;
 }
 
 function isModelRef(value: unknown): value is PromptModelRef {
@@ -91,6 +93,24 @@ function commandArgs(
 }
 
 /**
+ * Runs a prompt or command for `args.sessionID`, saying it failed when any
+ * of it rejects: preparing it (system prompt, mentions, model) or sending it.
+ * The New Session page waits for the outcome of a draft's first send.
+ */
+async function reportingFailure<T>(
+	args: Record<string, unknown>,
+	options: PromptOptions,
+	run: () => Promise<T>,
+): Promise<T> {
+	try {
+		return await run();
+	} catch (error) {
+		if (typeof args.sessionID === "string") options.onPromptFailed?.(args.sessionID);
+		throw error;
+	}
+}
+
+/**
  * Wraps a Kilo client so `session.prompt` / `promptAsync` / `command` receive
  * the options read at send time, plus the desktop snapshot policy. Agent and
  * model always win (the runtime may hold stale defaults); a variant only
@@ -108,43 +128,44 @@ export function withPromptOptions(client: KiloClient, options: PromptOptions): K
 					const method = Reflect.get(session, sessionProp, sessionReceiver);
 					if (typeof method !== "function") return method;
 					if (sessionProp === "command") {
-						return async (args: Record<string, unknown>, ...rest: unknown[]) => {
-							const next = await withOptions(args, options);
-							const model = commandModel(next.model);
-							const { model: _model, ...withoutModel } = next;
-							return Reflect.apply(method, session, [
-								model === undefined ? withoutModel : { ...withoutModel, model },
-								...rest,
-							]);
-						};
+						return (args: Record<string, unknown>, ...rest: unknown[]) =>
+							reportingFailure(args, options, async () => {
+								const next = await withOptions(args, options);
+								const model = commandModel(next.model);
+								const { model: _model, ...withoutModel } = next;
+								return Reflect.apply(method, session, [
+									model === undefined ? withoutModel : { ...withoutModel, model },
+									...rest,
+								]);
+							});
 					}
 					if (sessionProp !== "prompt" && sessionProp !== "promptAsync") return method;
-					return async (args: Record<string, unknown>, ...rest: unknown[]) => {
-						const next = await withOptions(args, options);
-						const prompted = () => {
-							if (typeof next.sessionID === "string") options.onPrompted?.(next.sessionID);
-						};
-						const draft = slashCommandFromPromptArgs(next, options.getKnownCommandNames?.() ?? []);
-						const command = Reflect.get(session, "command", sessionReceiver);
-						if (draft && typeof command === "function") {
-							const result = Reflect.apply(command, session, [commandArgs(next, draft), ...rest]);
-							if (sessionProp === "promptAsync") {
-								void Promise.resolve(result).catch(() => undefined);
+					return (args: Record<string, unknown>, ...rest: unknown[]) =>
+						reportingFailure(args, options, async () => {
+							const next = await withOptions(args, options);
+							const prompted = () => {
+								if (typeof next.sessionID === "string") options.onPrompted?.(next.sessionID);
+							};
+							const draft = slashCommandFromPromptArgs(
+								next,
+								options.getKnownCommandNames?.() ?? [],
+							);
+							const command = Reflect.get(session, "command", sessionReceiver);
+							if (draft && typeof command === "function") {
+								const result = Reflect.apply(command, session, [commandArgs(next, draft), ...rest]);
+								if (sessionProp === "promptAsync") {
+									void Promise.resolve(result).catch(() => undefined);
+									prompted();
+									return;
+								}
+								const value: unknown = await result;
 								prompted();
-								return;
+								return value;
 							}
-							return Promise.resolve(result).then((value) => {
-								prompted();
-								return value;
-							});
-						}
-						return Promise.resolve(Reflect.apply(method, session, [next, ...rest])).then(
-							(value) => {
-								prompted();
-								return value;
-							},
-						);
-					};
+							const value: unknown = await Reflect.apply(method, session, [next, ...rest]);
+							prompted();
+							return value;
+						});
 				},
 			});
 		},

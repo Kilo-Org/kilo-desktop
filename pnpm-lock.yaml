@@ -2320,6 +2320,9 @@ importers:
       '@kilo-desktop/plugin-shell':
         specifier: workspace:*
         version: link:../shell
+      '@kilo-desktop/plugin-workbench':
+        specifier: workspace:*
+        version: link:../workbench
       '@kilo-desktop/plugin-workspaces':
         specifier: workspace:*
         version: link:../workspaces

@@ -21,6 +21,7 @@ import { Workbench, SessionAction } from "../contracts";
 import { followLastVisits, loadLastVisits } from "./attention/last-visited";
 import { sessionsNeedingAttention } from "./attention/live-activity";
 import { trackVisits } from "./attention/visits";
+import { startFromLauncher } from "./home/launcher-start";
 import { SessionHeaderActions, SessionHeaderLeading } from "./home/SessionHeader";
 import { WorkbenchHome } from "./home/WorkbenchHome";
 import { LayoutPresetsMenu } from "./layouts/LayoutPresetsMenu";
@@ -64,6 +65,7 @@ export const workbenchWebEntry = definePlugin({
 		}
 		const { showInPlace } = provideWorkbench(sdk, {
 			openPane: (sessionId, kind) => openOrShowPane(sdk, sessionId, kind),
+			startWithPane: (kind) => void startFromLauncher(kind),
 		});
 		trackVisits(sdk, loadLastVisits());
 		startChatNotifier(sdk);
@@ -104,6 +106,7 @@ function implementCommands(sdk: PluginSdk, open: (sessionId: string) => void): v
 			workspaces: sdk.domains.get(Workspaces),
 		}),
 	);
+	command("new-empty-session", () => startFromLauncher());
 	command("search", sessionSearch.toggle);
 	const step = (delta: 1 | -1) => {
 		const sessionId = adjacentId(visibleSessions.get(), activeSessionId(), delta);

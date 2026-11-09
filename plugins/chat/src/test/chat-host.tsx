@@ -4,7 +4,7 @@
 // prompts and stops reach it as kilo.agent sends them) and kilo.workbench's
 // navigator, and the pane rendered as kilo.workbench's canvas renders it.
 import { render } from "@testing-library/react";
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useState } from "react";
 import { vi } from "vitest";
 
 import {
@@ -153,7 +153,7 @@ export interface ChatHostOptions {
 	 * Renders kilo.chat's session starter (the New Session page's composer)
 	 * instead of the session's panes, starting sessions as kilo.workbench does.
 	 */
-	readonly starter?: { readonly isolation?: WorkSessionIsolation; readonly footer?: ReactNode };
+	readonly starter?: { readonly isolation?: WorkSessionIsolation };
 }
 
 const CHAT_PANE_KINDS: readonly string[] = [
@@ -162,7 +162,7 @@ const CHAT_PANE_KINDS: readonly string[] = [
 	SUBAGENT_PANE_KIND,
 	MEDIA_PANE_KIND,
 ];
-const SINGLETON_KINDS = new Set([AGENT_PANE_KIND, PLAN_PANE_KIND]);
+const SINGLETON_KINDS = new Set([PLAN_PANE_KIND]);
 
 /** kilo.sessions' main entry, with sessions and panes kept in memory. */
 function fakeSessionsMain(initialSession: WorkSession, initialPanes: WorkSessionPanes) {
@@ -581,7 +581,7 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 
 	const starterCalls = { open: vi.fn(), start: vi.fn() };
 	/** The New Session page around kilo.chat's starter, starting sessions as kilo.workbench does. */
-	function Starter({ isolation, footer }: NonNullable<ChatHostOptions["starter"]>) {
+	function Starter({ isolation }: NonNullable<ChatHostOptions["starter"]>) {
 		const [starting, setStarting] = useState(false);
 		const contribution = renderer.extensions.list(SessionStarter)[0]!;
 		const start = async (): Promise<StartedSession> => {
@@ -605,7 +605,7 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 		return (
 			<RenderContribution<SessionStarterProps>
 				contribution={contribution}
-				props={{ workspaceId, directory, starting, start, footer: footer ?? null }}
+				props={{ workspaceId, directory, starting, start }}
 			/>
 		);
 	}

@@ -65,6 +65,7 @@ const PARCEL_EVENT_TYPES: Record<string, FileChangeType> = {
 
 const DEFAULT_RETRY_DELAY_MS = 5000;
 const DEFAULT_MAX_RETRIES = 5;
+const DROPPED_EVENTS_LOG_INTERVAL_MS = 60_000;
 
 interface DirectorySubscription {
 	callback: (changes: FileChange[]) => void;
@@ -85,6 +86,8 @@ interface WatchedDirectory {
 	parcelSub: { unsubscribe(): Promise<void> } | null;
 	/** realpath of the watched directory when it differs from the requested one. */
 	realRoot: string | null;
+	/** When dropped OS events were last logged (0 never), to log once per burst. */
+	droppedEventsLoggedAt: number;
 }
 
 /**
@@ -114,6 +117,11 @@ interface WatchedDirectory {
  *   filters suspended paths out of `doWatch` and re-watch never resumes
  *   them — `baseWatcher.ts:103-112`); only `"failed"` (dead loop) is
  *   reset by `watchDirectory`.
+ * - FSEvents' "events were dropped … must be re-scanned" is not a failure:
+ *   macOS reports it when a burst of writes (a dependency install in a new
+ *   worktree under the folder) outruns the event thread, and the stream
+ *   keeps running. The batch it arrives with is delivered and the
+ *   subscription kept (as vscode does), with one warning per burst.
  * - Generations invalidate in-flight parcel callbacks: an errored or retired
  *   subscription may still deliver events before its unsubscribe resolves;
  *   those are dropped, which is why batches "stop flowing" during retry.
@@ -154,6 +162,7 @@ export class WorkspaceWatcher {
 				subscriptions: new Map(),
 				retryCount: 0,
 				retryTimer: null,
+				droppedEventsLoggedAt: 0,
 				generation: 0,
 				parcelSub: null,
 				realRoot: null,
@@ -293,7 +302,9 @@ export class WorkspaceWatcher {
 				dir,
 				(err, events) => {
 					if (this.#disposed || entry.generation !== generation) return;
-					if (err) {
+					if (err && isDroppedEvents(err)) {
+						this.#reportDroppedEvents(dir, entry);
+					} else if (err) {
 						this.#handleError(dir, entry, err);
 						return;
 					}
@@ -323,6 +334,22 @@ export class WorkspaceWatcher {
 		subscriptionPromise.finally(() => {
 			this.#pendingSubscriptions.delete(subscriptionPromise);
 		});
+	}
+
+	/**
+	 * The OS dropped events under a burst of changes (thousands of files
+	 * written at once, e.g. a dependency install in a new worktree). The
+	 * subscription is still alive, so it is kept: resubscribing would only
+	 * lose more events and redo native setup while the burst goes on. Logged
+	 * once per burst.
+	 */
+	#reportDroppedEvents(dir: string, entry: WatchedDirectory): void {
+		const now = Date.now();
+		if (now - entry.droppedEventsLoggedAt < DROPPED_EVENTS_LOG_INTERVAL_MS) return;
+		entry.droppedEventsLoggedAt = now;
+		this.#deps.logger.warn(
+			`The OS dropped file events for ${dir} during a burst of changes; still watching.`,
+		);
 	}
 
 	#handleError(dir: string, entry: WatchedDirectory, error: Error): void {
@@ -440,6 +467,11 @@ export class WorkspaceWatcher {
  *   EMFILE: `Unable to initialize inotify: Too many open files`
  * We keep the `.code` check as belt-and-braces for Node-wrapped errno errors.
  */
+/** FSEvents' "events were dropped … must be re-scanned": the stream itself is still alive. */
+function isDroppedEvents(error: Error): boolean {
+	return error.message.includes("must be re-scanned");
+}
+
 function isResourceExhaustion(error: Error): boolean {
 	const code = (error as NodeJS.ErrnoException).code;
 	if (code === "ENOSPC" || code === "EMFILE") return true;

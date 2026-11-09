@@ -16,6 +16,7 @@ import manifest from "../../plugin.json";
 import {
 	AutoApprove,
 	CHAT_DEFINITIONS,
+	ComposerDrafts,
 	GatewayModels,
 	MediaViewers,
 	ModelPreferences,
@@ -265,6 +266,7 @@ export async function bootChatMain(options: BootOptions = {}) {
 			autoApprove: chatSdk!.domains.get(AutoApprove)!,
 			preferences: chatSdk!.domains.get(ModelPreferences)!,
 			promptQueue: chatSdk!.domains.get(PromptQueue)!,
+			drafts: chatSdk!.domains.get(ComposerDrafts)!,
 			mediaViewers: chatSdk!.domains.get(MediaViewers)!,
 		},
 	};

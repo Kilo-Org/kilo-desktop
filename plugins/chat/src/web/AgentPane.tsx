@@ -7,7 +7,12 @@ import type { DomainState } from "@kilo-desktop/kernel";
 import { useContextKey, useDomain, useDomainState } from "@kilo-desktop/kernel/web";
 import { Conversations, type CreateChatInput } from "@kilo-desktop/plugin-agent/contracts";
 import { flagKey } from "@kilo-desktop/plugin-flags/contracts";
-import { Panes, WorkSessions, type PaneProps } from "@kilo-desktop/plugin-sessions/contracts";
+import {
+	Panes,
+	WorkSessions,
+	type Pane,
+	type PaneProps,
+} from "@kilo-desktop/plugin-sessions/contracts";
 import { Workspaces, type WorkspacesState } from "@kilo-desktop/plugin-workspaces/contracts";
 import { FIND_BAR_FEATURE_FLAG, FindScope } from "@kilo-desktop/ui/components/find-bar";
 import { toast } from "@kilo-desktop/ui/components/sonner";
@@ -70,10 +75,14 @@ function reportStartFailure(error: unknown): void {
 	});
 }
 
+const NO_PANES: readonly Pane[] = [];
+
 /**
  * The agent pane, bound to its window's services: a session's chat (the one
- * named in the pane, else the session's first) or a draft whose first send
- * creates the chat in the session's folder and records it in the pane.
+ * named in the pane, else for the session's first agent pane the session's
+ * first chat) or a draft whose first send creates a chat in the session's
+ * folder and records it in the pane. A session can hold several, each its
+ * own chat.
  */
 export function createAgentPane(services: AgentPaneServices): FC<PaneProps> {
 	return function AgentPane({ sessionId, pane, workspaceId, directory }) {
@@ -93,13 +102,20 @@ export function createAgentPane(services: AgentPaneServices): FC<PaneProps> {
 				[workspaceId],
 			),
 		);
+		const sessionPanes = useDomainState(
+			Panes,
+			useCallback(
+				(state: DomainState<typeof Panes>) => state.bySession[sessionId]?.panes ?? NO_PANES,
+				[sessionId],
+			),
+		);
 		const conversations = useDomain(Conversations);
 		const panes = useDomain(Panes);
 		const findEnabled = useContextKey(flagKey(FIND_BAR_FEATURE_FLAG));
 		const queueEditing = useContextKey(flagKey(PROMPT_QUEUE_EDITING_FLAG));
 		const rootRef = useRef<HTMLDivElement>(null);
 
-		const chatId = agentPaneChatId(pane, session);
+		const chatId = agentPaneChatId(pane, session, sessionPanes ?? NO_PANES);
 		const context: ChatContext = {
 			sessionId,
 			paneId: pane.id,
@@ -251,6 +267,7 @@ export interface ChatThreadProps {
 	readonly getSystem: (chatId: string) => Promise<string | undefined>;
 	readonly onChatId: (chatId: string | undefined) => void;
 	readonly onPrompted?: (chatId: string) => void;
+	readonly onPromptFailed?: (chatId: string) => void;
 	readonly focusRoot: () => void;
 	/** What shows the thread: the transcript and composer, or the New Session page's composer. */
 	readonly children: ReactNode;
@@ -305,6 +322,7 @@ export function ChatThread({
 							focus={focus}
 							sessionId={composer.sessionId}
 							paneId={paneId}
+							chatId={options.chatId}
 							focusRoot={focusRoot}
 						/>
 					) : null}
@@ -368,8 +386,30 @@ function CommandNames({
 	return null;
 }
 
-/** Registers the pane's composer with the window's composer domain and keeps its draft. */
+/**
+ * Registers the pane's composer with the window's composer domain and keeps
+ * its draft, once the runtime shows the pane's chat: a chat's thread loads
+ * after a placeholder thread whose composer is thrown away (and emptied)
+ * when it does.
+ */
 function ComposerRegistration({
+	chatId,
+	...props
+}: {
+	focus: ComposerFocus;
+	sessionId: string;
+	paneId: string;
+	/** The chat the pane opened, or null for a draft. */
+	chatId: string | null;
+	focusRoot: () => void;
+}) {
+	const showsChat = useAuiState(
+		(state) => chatId === null || state.threadListItem.remoteId === chatId,
+	);
+	return showsChat ? <ShownComposerRegistration {...props} /> : null;
+}
+
+function ShownComposerRegistration({
 	focus,
 	sessionId,
 	paneId,
@@ -382,7 +422,7 @@ function ComposerRegistration({
 }) {
 	const aui = useAui();
 	const text = useAuiState((state) => state.composer.text);
-	// Registering prefills an empty composer with the session's draft, so it
+	// Registering prefills an empty composer with the pane's draft, so it
 	// must happen once per mount: a re-run while a send has just emptied the
 	// composer (before its draft is cleared) would put the sent text back.
 	const latestFocusRoot = useRef(focusRoot);
@@ -398,7 +438,7 @@ function ComposerRegistration({
 			}),
 		[aui, focus, paneId, sessionId],
 	);
-	useEffect(() => focus.setDraft(sessionId, text), [focus, sessionId, text]);
-	useAuiEvent("composer.send", () => focus.setDraft(sessionId, ""));
+	useEffect(() => focus.reportDraft(sessionId, paneId, text), [focus, paneId, sessionId, text]);
+	useAuiEvent("composer.send", () => focus.reportDraft(sessionId, paneId, ""));
 	return null;
 }

@@ -104,6 +104,13 @@ export function fakeSessionsMain(
 		isolationOptions: vi.fn(),
 	};
 	let failNext: string | undefined;
+	let held: Promise<void> | undefined;
+	/** Holds the next `create` (as a worktree being made would) until released. */
+	const holdNextCreate = () => {
+		let release!: () => void;
+		held = new Promise((resolve) => (release = resolve));
+		return release;
+	};
 	const fail = () => {
 		if (!failNext) return;
 		const message = failNext;
@@ -115,8 +122,11 @@ export function fakeSessionsMain(
 			const sessions: DomainProvider<typeof WorkSessions> = sdk.domains.provide(WorkSessions, {
 				initialState: { sessions: initial },
 				methods: {
-					create: (input) => {
+					create: async (input) => {
 						calls.create(input);
+						const hold = held;
+						held = undefined;
+						await hold;
 						fail();
 						const created = session(`wses_${sessions.state.sessions.length + 1}`, {
 							title: DEFAULT_WORK_SESSION_TITLE,
@@ -160,7 +170,12 @@ export function fakeSessionsMain(
 			}
 		},
 	};
-	return { entry, calls, failNextWith: (message: string) => (failNext = message) };
+	return {
+		entry,
+		calls,
+		holdNextCreate,
+		failNextWith: (message: string) => (failNext = message),
+	};
 }
 
 /** Stands in for kilo.workspaces: workspaces in main, its dialog commands in the window. */

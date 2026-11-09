@@ -4,6 +4,8 @@ import path from "node:path";
 
 import { test as baseTest, type TestInfo } from "@playwright/test";
 import { setPage } from "@anaconda/playwright-utils/page-utils";
+
+import { setCommandPaletteApp } from "../pages/shell/command-palette.js";
 import { _electron as electron, type ElectronApplication, type Page } from "playwright";
 
 import {
@@ -273,6 +275,7 @@ export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerF
 	electronApp: async ({ appIsolationKey, sharedApp }, use) => {
 		const page = await waitForMainWindow(sharedApp.app);
 		setPage(page);
+		setCommandPaletteApp(sharedApp.app);
 		await page.evaluate(() => {
 			localStorage.clear();
 			globalThis.location.hash = "#/";

@@ -11,6 +11,37 @@ describe("agentPaneChatId", () => {
 		expect(agentPaneChatId({ metadata: {} }, { chatIds: [] })).toBeNull();
 		expect(agentPaneChatId({ metadata: {} }, undefined)).toBeNull();
 	});
+
+	describe("with the session's other agent panes", () => {
+		const agent = (id: string, chatId?: string) => ({
+			id,
+			kind: "kilo.chat/agent",
+			metadata: chatId ? { chatId } : {},
+		});
+		const session = { chatIds: ["ses_a", "ses_b"] };
+
+		it("gives the session's first chat to its first agent pane, when that names none", () => {
+			const panes = [agent("p1"), agent("p2")];
+			expect(agentPaneChatId(panes[0]!, session, panes)).toBe("ses_a");
+			expect(agentPaneChatId(panes[1]!, session, panes)).toBeNull();
+		});
+
+		it("leaves a pane added beside an agent pane a draft", () => {
+			const panes = [agent("p1", "ses_b"), agent("p2")];
+			expect(agentPaneChatId(panes[1]!, session, panes)).toBeNull();
+		});
+
+		it("leaves the first chat to the pane that names it", () => {
+			const panes = [agent("p1"), agent("p2", "ses_a")];
+			expect(agentPaneChatId(panes[0]!, session, panes)).toBeNull();
+			expect(agentPaneChatId(panes[1]!, session, panes)).toBe("ses_a");
+		});
+
+		it("ignores panes of other kinds", () => {
+			const panes = [{ id: "t", kind: "kilo.terminal/terminal", metadata: {} }, agent("p1")];
+			expect(agentPaneChatId(panes[1]!, session, panes)).toBe("ses_a");
+		});
+	});
 });
 
 describe("plan and subagent pane metadata", () => {

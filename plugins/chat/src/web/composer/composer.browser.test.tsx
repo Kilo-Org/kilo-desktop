@@ -339,8 +339,9 @@ describe("the composer-action point", () => {
 		await expect.element(page.getByTestId("kilo-wrong-selector-trigger")).not.toBeInTheDocument();
 	});
 
-	it("shows the draft footer only when something is contributed to it", async () => {
+	it("shows the New Session page's draft footer only when something is contributed to it", async () => {
 		await renderAgentPane({
+			starter: {},
 			plugins: [
 				contributor(
 					{
@@ -378,7 +379,9 @@ describe("the composer domain object", () => {
 		await composer.methods.insert({ text: "Look at this" });
 		await expect.element(input()).toHaveTextContent("Look at this");
 		await expect.element(input()).toHaveFocus();
-		await expect.poll(() => drafts(host).getState().drafts.wses_1?.text).toBe("Look at this");
+		await expect
+			.poll(() => drafts(host).getState().drafts.wses_1?.panes?.pane_agent)
+			.toBe("Look at this");
 		await expect.poll(() => composer.getState().focusedSessionId).toBe("wses_1");
 
 		await composer.methods.insert({ sessionId: "wses_1", text: "too" });

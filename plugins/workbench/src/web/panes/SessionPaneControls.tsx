@@ -1,6 +1,7 @@
-import { useDomain } from "@kilo-desktop/kernel/web";
+import { RenderContribution, useDomain, useExtensions } from "@kilo-desktop/kernel/web";
 import { Panes, type WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
 
+import { PaneKindMenu } from "../../contracts";
 import { NewPanePicker } from "../canvas/NewPanePicker";
 import { PaneLaunchToolbar } from "../canvas/PaneLaunchToolbar";
 import { PaneSessionChrome } from "../canvas/PaneSessionChrome";
@@ -37,6 +38,7 @@ export function SessionPaneControls({ session }: { readonly session: WorkSession
 	const state = useSessionPanes(session.id);
 	const { kinds, launch } = useLaunch(session);
 	const track = useWorkbenchTelemetry();
+	const menus = useExtensions(PaneKindMenu);
 	const addable = kinds.inSession.some((kind) => kind.addable);
 	return (
 		<>
@@ -44,6 +46,18 @@ export function SessionPaneControls({ session }: { readonly session: WorkSession
 				<PaneLaunchToolbar
 					kinds={kinds.inSession}
 					onLaunch={(kind) => launch(kind.id, kind.title)}
+					menuFor={(kind) => {
+						const entries = menus.filter((menu) => menu.metadata.paneKind === kind.id);
+						return entries.length > 0
+							? entries.map((menu) => (
+									<RenderContribution
+										key={`${session.id}:${menu.key}`}
+										contribution={menu}
+										props={{ session }}
+									/>
+								))
+							: null;
+					}}
 				/>
 			) : null}
 			{state.panes.length > 0 ? (

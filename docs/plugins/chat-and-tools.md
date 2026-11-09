@@ -130,7 +130,9 @@ command. Otherwise implement it:
 `use…` functions run as hooks while the composer shows, so they can read
 your domain objects. `context` has `sessionId`, `chatId` (null for a
 draft), `directory`, `workspaceId` and `workspaceFolders`. Slots:
-`toolbar`, `toolbar-end`, `footer`, `draft-footer`.
+`toolbar`, `toolbar-end`, `footer` (under an Agent pane's composer, from
+before its first message) and `draft-footer` (under the New Session page's
+composer, before there is a session).
 
 ### Mentions (`kilo.chat/composer-mention`)
 

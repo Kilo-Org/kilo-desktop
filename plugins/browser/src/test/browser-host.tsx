@@ -100,6 +100,7 @@ export async function bootBrowserHost(options: BrowserHostOptions = {}) {
 				},
 			});
 			sdk.context.set("sessionActive", options.activeSessionId !== null);
+			sdk.context.set("paneTargetActive", options.activeSessionId !== null);
 		},
 	});
 	const browserMain = createBrowserMainEntry({

@@ -14,6 +14,7 @@ import { Workspaces } from "@kilo-desktop/plugin-workspaces/contracts";
 
 import {
 	DEFAULT_WORK_SESSION_TITLE,
+	defaultSessionTitle,
 	isOrphanedWorktreeSession,
 	WorkSessions,
 	SESSIONS_PLUGIN_ID,
@@ -159,7 +160,7 @@ export function createSessionsMainEntry(options: SessionsMainOptions): PluginEnt
 						const trimmed = title?.trim();
 						const session: WorkSession = {
 							id: createId(),
-							title: trimmed || DEFAULT_WORK_SESSION_TITLE,
+							title: trimmed || defaultSessionTitle(timestamp),
 							titleSource: trimmed ? "user" : "default",
 							pinned: false,
 							archived: false,

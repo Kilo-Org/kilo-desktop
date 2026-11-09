@@ -1,4 +1,4 @@
-import { cleanup } from "@testing-library/react";
+import { act, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
@@ -15,6 +15,7 @@ import {
 } from "../../../contracts/providers/conda.js";
 import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host.js";
 import { CreateEnvironmentDialog } from "./CreateEnvironmentDialog.js";
+import { PREFIX_CHECK_DEBOUNCE_MS } from "./use-create-prefix-check.js";
 
 function pkg(name: string, versions: string[] = []): CondaRepodataPackage {
 	return {
@@ -210,17 +211,19 @@ describe("CreateEnvironmentDialog (modal)", () => {
 		const { baseElement } = await renderDialog({ checkPrefix });
 		const screen = page.elementLocator(baseElement);
 
-		// Typing runs over CDP on real time; on a loaded machine one keystroke gap
-		// can outlast the debounce. A fake debounce clock stands still while
-		// typing, and the `expect.element` poll below advances it.
+		// The debounce runs on a fake clock that only this test moves: typing
+		// over CDP let it advance mid-word on a loaded machine. Real time still
+		// passes between keystrokes, so a check that isn't debounced reaches the
+		// host and fails the assertion below.
 		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
 		try {
-			await userEvent.type(screen.getByTestId("environments-create-name"), "alpha-bet");
-
-			await expect.element(screen.getByTestId("environments-create-submit")).toBeEnabled();
+			await typeKeyByKey(screen.getByTestId("environments-create-name").element(), "alpha-bet");
+			act(() => vi.advanceTimersByTime(PREFIX_CHECK_DEBOUNCE_MS));
 		} finally {
 			vi.useRealTimers();
 		}
+
+		await expect.element(screen.getByTestId("environments-create-submit")).toBeEnabled();
 		expect(checkPrefix.mock.calls.map(([input]) => input.prefix)).toEqual([
 			"/opt/anaconda3/envs/alpha-bet",
 		]);
@@ -674,3 +677,20 @@ describe("CreateEnvironmentDialog (modal)", () => {
 		expect(payload.prefix).toBe("/home/user/.conda/envs/myenv");
 	});
 });
+
+/**
+ * Types `text` into a React-controlled input one character at a time, each
+ * rendered (and its effects run) before a real animation frame passes and
+ * the next arrives.
+ */
+async function typeKeyByKey(element: Element, text: string): Promise<void> {
+	const input = element as HTMLInputElement;
+	const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+	for (let length = 1; length <= text.length; length++) {
+		act(() => {
+			setValue.call(input, text.slice(0, length));
+			input.dispatchEvent(new Event("input", { bubbles: true }));
+		});
+		await new Promise((resolve) => requestAnimationFrame(resolve));
+	}
+}

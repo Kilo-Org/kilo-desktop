@@ -9,7 +9,8 @@ test.describe("Session list @packaged", () => {
 
 		await sessionListPage.startSessionFromLauncher();
 		await sessionListPage.verifyListed("New session");
-		await sessionListPage.verifyOpen("New session");
+		// Titled as Kilo titles a new chat, though no agent was started.
+		await sessionListPage.verifyOpen(/^New session - \d{4}-\d{2}-\d{2}T[\d:.]+Z$/);
 
 		await sessionListPage.rename("New session", "Smoke session");
 		await sessionListPage.verifyOpen("Smoke session");

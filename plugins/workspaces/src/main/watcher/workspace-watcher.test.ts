@@ -283,6 +283,24 @@ describe("WorkspaceWatcher", () => {
 			expect(received).toHaveLength(0);
 		});
 
+		it("keeps watching when the OS drops events under a burst of changes", async () => {
+			const { watcher, parcel, tick } = createTestWatcher({ retryDelayMs: 5 });
+			const received: unknown[] = [];
+			watcher.watchDirectory(PROJECT);
+			watcher.subscribe(PROJECT, {}, (changes) => received.push(changes));
+			await tick();
+
+			parcel.subscriptions[0]!.fail(
+				new Error("Events were dropped by the FSEvents client. File system must be re-scanned."),
+			);
+			parcel.subscriptions[0]!.emit([change(`${PROJECT}/a.txt`, "created")]);
+			await tick();
+
+			expect(watcher.status().directories[0]?.state).toBe("active");
+			expect(received).toHaveLength(1);
+			expect(parcel.subscribeAttempts).toEqual([PROJECT]);
+		});
+
 		it("recovers to active when a retry succeeds", async () => {
 			const { watcher, parcel, tick } = createTestWatcher({ retryDelayMs: 5 });
 			const received: unknown[] = [];

@@ -104,8 +104,10 @@ export const composerActionSlotSchema = z.enum([
 /**
  * - `toolbar`: the composer's left controls (attach, pickers).
  * - `toolbar-end`: before send (approvals).
- * - `footer`: the strip under a chat's composer (branch).
- * - `draft-footer`: the strip under a draft's composer (workspace, branch).
+ * - `footer`: the strip under a chat's composer in a session (branch), from
+ *   before its first message.
+ * - `draft-footer`: the strip under the New Session page's composer, before
+ *   there is a session (a warning about the workspace).
  */
 export type ComposerActionSlot = z.output<typeof composerActionSlotSchema>;
 
@@ -207,21 +209,37 @@ export const ComposerAction = defineExtensionPoint({
 
 // --- drafts (main) ---
 
-const draftsSchema = z.record(z.string(), z.object({ text: z.string() }));
+const sessionDraftsSchema = z.object({
+	/** Text for the session's next agent pane to start with (a new chat prefilled before its pane exists). */
+	text: z.string(),
+	/** Each agent pane's unsent text, by pane id. */
+	panes: z.record(z.string(), z.string()).optional(),
+});
+export type SessionDrafts = z.output<typeof sessionDraftsSchema>;
+
+const draftsSchema = z.record(z.string(), sessionDraftsSchema);
 
 /**
- * Unsent composer text by Work Session, in main so it goes wherever the
- * session's agent pane is shown (a pop-out, another window, a reload) and a
- * new chat can be prefilled before its pane exists. Kept until the app quits
- * or the session is removed; only kilo.chat writes it.
+ * Unsent composer text by Work Session and agent pane, in main so it goes
+ * wherever the pane is shown (a pop-out, another window, a reload). A
+ * session's own text prefills a new chat before its pane exists; the first
+ * agent pane to show takes it. Kept until the app quits or the session is
+ * removed; only kilo.chat writes it.
  */
 export const ComposerDrafts = defineDomain({
 	id: "kilo.chat/drafts",
 	home: "main",
 	state: z.object({ drafts: draftsSchema }),
 	methods: {
-		/** Empty text drops the session's draft. */
-		set: method(z.object({ sessionId: z.string().min(1), text: z.string() }), nothing),
+		/** The pane's text, or without a pane the session's; empty text drops it. */
+		set: method(
+			z.object({
+				sessionId: z.string().min(1),
+				paneId: z.string().min(1).optional(),
+				text: z.string(),
+			}),
+			nothing,
+		),
 	},
 });
 

@@ -125,6 +125,7 @@ export async function renderTerminalHost(
 				},
 			});
 			sdk.context.set("sessionActive", true);
+			sdk.context.set("paneTargetActive", true);
 		},
 	});
 

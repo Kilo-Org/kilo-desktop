@@ -30,8 +30,8 @@ async function boxOf(locator: Locator, name: string) {
 
 /**
  * A new chat before its first message. On the New Session page it is
- * kilo.chat's session starter under the welcome headline, where the session
- * runs in its tucked footer and the other pane kinds in a quiet row below.
+ * kilo.chat's session starter under the welcome headline and where the
+ * session runs, with the other pane kinds offered as tools below.
  * An Agent pane added to an existing session from its header is the in-pane
  * draft, its composer docked at the bottom of the pane.
  */
@@ -41,9 +41,7 @@ export class NewChatPage {
 	private readonly starter = () =>
 		this.launcher().getByTestId("launcher-session-starter").getByTestId("kilo-session-starter");
 	private readonly starterInput = () => this.starter().getByTestId("kilo-composer-input");
-	private readonly draftFooter = () => this.starter().getByTestId("kilo-composer-draft-footer");
-	private readonly isolationFooter = () =>
-		this.draftFooter().getByTestId("launcher-isolation-footer");
+	private readonly location = () => this.launcher().getByTestId("launcher-location");
 	private readonly startOptions = () => this.launcher().getByTestId("launcher-start-options");
 	private readonly paneKindButton = (kind: string) =>
 		this.startOptions().getByTestId(`launcher-pane-${kind}`);
@@ -87,20 +85,21 @@ export class NewChatPage {
 		).toBeLessThanOrEqual(starter.y);
 	}
 
-	/** Where the session will run — workspace chip first — tucked under the starter's composer. */
-	async verifyDraftFooterUnderComposer(): Promise<void> {
+	/** Where the session will run — workspace first — between the headline and the starter. */
+	async verifyLocationAboveStarter(): Promise<void> {
 		await expectElementToBeVisible(
-			this.isolationFooter().getByTestId("launcher-workspace-selector"),
-			"The starter's draft footer should show the workspace chip",
+			this.location().getByTestId("launcher-workspace-selector"),
+			"The New Session page should show the workspace the session runs in",
 		);
-		const input = await boxOf(this.starterInput(), "The starter's composer input");
-		const footer = await boxOf(this.draftFooter(), "The starter's draft footer");
-		expect(footer.y, "The draft footer should sit under the composer input").toBeGreaterThan(
-			input.y,
-		);
+		const location = await boxOf(this.location(), "Where the session runs");
+		const starter = await boxOf(this.starter(), "The session starter");
+		expect(
+			location.y + location.height,
+			"Where the session runs should sit above the session starter",
+		).toBeLessThanOrEqual(starter.y);
 	}
 
-	/** The other pane kinds and an empty session stay on offer; the Agent is the starter itself. */
+	/** The other pane kinds are offered as tools; the Agent is the starter itself. */
 	async verifyOtherPaneKindsOffered(): Promise<void> {
 		for (const kind of OTHER_NEW_SESSION_PANE_KINDS) {
 			await expectElementToBeVisible(
@@ -108,10 +107,6 @@ export class NewChatPage {
 				`The New Session page should offer a ${kind} session`,
 			);
 		}
-		await expectElementToBeVisible(
-			this.startOptions().getByTestId("launcher-start-session"),
-			"The New Session page should offer an empty session",
-		);
 		await expectElementToHaveCount(getLocatorByTestId(`launcher-pane-${AGENT_PANE_KIND}`), 0, {
 			message: "The New Session page should not offer an Agent pane: the starter is the agent",
 		});

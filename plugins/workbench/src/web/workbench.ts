@@ -2,8 +2,8 @@ import { KernelWindows, type DomainProvider, type PluginSdk } from "@kilo-deskto
 import { WorkSessions } from "@kilo-desktop/plugin-sessions/contracts";
 import { Navigation } from "@kilo-desktop/plugin-shell/contracts";
 
-import { Workbench, type WorkbenchState } from "../contracts";
-import { readSessionListView } from "./list/session-list-view";
+import { UNSCOPED_WORKSPACE_FOCUS, Workbench, type WorkbenchState } from "../contracts";
+import { matchesWorkspaceFocus, readSessionListView } from "./list/session-list-view";
 import { detachedViewWindows } from "./views/view-windows";
 
 type SavedState = Pick<WorkbenchState, "focus" | "activeSessionId" | "view">;
@@ -42,13 +42,18 @@ export interface WorkbenchControls {
 export interface WorkbenchOptions {
 	/** Shows or opens a pane of the kind in the open session (see `Workbench.openPane`). */
 	readonly openPane: (sessionId: string, kind: string) => Promise<void>;
+	/** With no session open: starts one from the New Session page with a pane of the kind. */
+	readonly startWithPane: (kind: string) => void;
 }
 
 /**
  * The window's `Workbench`: what it is looking at, remembered per window in
  * localStorage (under the key the workbench it replaced used).
  * Opening or closing a session, or showing a sessions view, also brings the
- * window back to the home view. A remembered session that no longer exists
+ * window back to the home view. Opening a session the list's workspace focus
+ * hides (one started in another workspace from the New Session page, or
+ * found by search) moves the focus to its workspace, so the open session is
+ * always in the list. A remembered session that no longer exists
  * is let go once sessions load; `detachedViews` follows the sessions-view
  * windows open on `kernel/windows`; `sessionActive` / `workspaceActive`
  * follow the state (a session behind a sessions view is not active).
@@ -60,7 +65,7 @@ export function provideWorkbench(sdk: PluginSdk, options: WorkbenchOptions): Wor
 		methods: {
 			setFocus: ({ focus }) => update({ focus }),
 			openSession: ({ sessionId }) => {
-				update({ activeSessionId: sessionId, view: null });
+				update({ activeSessionId: sessionId, view: null, ...revealing(sessionId) });
 				goHome();
 			},
 			closeSession: () => {
@@ -82,9 +87,21 @@ export function provideWorkbench(sdk: PluginSdk, options: WorkbenchOptions): Wor
 			openPane: async ({ kind }) => {
 				const sessionId = workbench.state.activeSessionId;
 				if (sessionId) await options.openPane(sessionId, kind);
+				else options.startWithPane(kind);
 			},
 		},
 	});
+
+	/** The focus that shows `sessionId` in the list, when the current one hides it. */
+	function revealing(sessionId: string): Partial<WorkbenchState> {
+		const { focus } = workbench.state;
+		const session = sdk.domains
+			.get(WorkSessions)
+			?.getState()
+			.sessions.find((candidate) => candidate.id === sessionId);
+		if (!session || matchesWorkspaceFocus(session.workspaceId ?? undefined, focus)) return {};
+		return { focus: session.workspaceId ?? UNSCOPED_WORKSPACE_FOCUS };
+	}
 
 	function detachedWindowId(view: string): string | null {
 		const windows = sdk.domains.get(KernelWindows)?.getState();
@@ -116,6 +133,8 @@ export function provideWorkbench(sdk: PluginSdk, options: WorkbenchOptions): Wor
 	}
 	function publishKeys(state: WorkbenchState): void {
 		sdk.context.set("sessionActive", state.activeSessionId !== null && state.view === null);
+		// With no session open and no sessions view, the window shows the New Session page.
+		sdk.context.set("paneTargetActive", state.view === null);
 		sdk.context.set("workspaceActive", state.focus !== null);
 	}
 	publishKeys(workbench.state);

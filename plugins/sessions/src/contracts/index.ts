@@ -21,6 +21,15 @@ export const SESSIONS_PLUGIN_ID = "kilo.sessions";
 /** The title of a session nobody has named and no chat has titled yet. */
 export const DEFAULT_WORK_SESSION_TITLE = "New session";
 
+/**
+ * The title a session gets when it is created, before any chat titles it:
+ * "New session - <ISO time>", as Kilo titles a new chat, so a session started
+ * without the agent reads like one started with it.
+ */
+export function defaultSessionTitle(createdAt: number): string {
+	return `${DEFAULT_WORK_SESSION_TITLE} - ${new Date(createdAt).toISOString()}`;
+}
+
 export const workSessionSchema = z.object({
 	/** `wses_…` — never a chat id. */
 	id: z.string(),
@@ -329,6 +338,8 @@ export const PaneKind = defineExtensionPoint({
 		availableWhen: whenSchema.optional(),
 		/** Why it can't be started while `availableWhen` doesn't hold. */
 		unavailableHint: z.string().optional(),
+		/** The command that opens it (`kilo.terminal/open`); its shortcut is shown where the kind is offered. */
+		openCommand: z.string().optional(),
 	}),
 	// Listed without one, so main applies a kind's manifest rules and a kind whose
 	// plugin fails to load still names its panes.

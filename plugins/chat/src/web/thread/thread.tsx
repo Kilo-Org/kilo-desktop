@@ -12,7 +12,6 @@ import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { ComposerHeader } from "../checkpoints/composer-header";
 import { Composer } from "../composer/composer";
-import { ComposerDraftFooter } from "../composer/composer-draft-footer";
 import { ComposerFooter } from "../composer/composer-footer";
 import { OpenCodeComposerInteraction } from "../interactions/opencode-composer-interaction";
 import { ConversationMapRail } from "./conversation-map-rail";
@@ -28,8 +27,8 @@ const CHAT_TYPOGRAPHY_CLASS =
 const THREAD_VIEWPORT_CLASS =
 	"relative flex flex-1 flex-col items-center overflow-x-hidden overflow-y-auto scroll-smooth";
 
-// A chat that doesn't exist yet: its composer is focused and offers the
-// `draft-footer` actions until the first message creates the chat.
+// A chat that doesn't exist yet: its composer is focused until the first
+// message creates the chat.
 const isDraftView = (s: AssistantState) =>
 	s.thread.messages.length === 0 && s.threadListItem.status === "new";
 
@@ -115,7 +114,7 @@ export const Thread: FC = () => {
 								<div className="flex flex-col gap-3">
 									<OpenCodeComposerInteraction fallback={<Composer isDraft={isDraft} />} />
 								</div>
-								{isDraft ? <ComposerDraftFooter /> : <ComposerFooter />}
+								<ComposerFooter />
 							</div>
 						</div>
 					</ThreadPrimitive.ViewportFooter>

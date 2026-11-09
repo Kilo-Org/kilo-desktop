@@ -12,6 +12,7 @@ import {
 import type { MainKernelHost } from "@kilo-desktop/kernel/main";
 import { KernelProvider, RenderContribution } from "@kilo-desktop/kernel/web";
 import { render } from "@testing-library/react";
+import { DropdownMenuItem } from "@kilo-desktop/ui/components/dropdown-menu";
 import { flattenPanes, parseLayoutJson } from "@kilo-desktop/pane-layout";
 import sessionsManifest from "@kilo-desktop/plugin-sessions/plugin.json";
 import {
@@ -35,7 +36,7 @@ import {
 
 import manifest from "../../../plugin.json";
 import { fakeTelemetry } from "../../test/telemetry";
-import { Workbench, WORKBENCH_DEFINITIONS } from "../../contracts";
+import { PaneKindMenu, Workbench, WORKBENCH_DEFINITIONS } from "../../contracts";
 import { workbenchWebEntry } from "../index";
 
 const SESSION: WorkSession = {
@@ -240,6 +241,30 @@ const pinnedPlugin: GuestPlugin = {
 	} satisfies PluginEntry,
 };
 
+/** A plugin listing entries in the pinned Helper's header menu (kilo.workbench/pane-kind-menu). */
+const helperMenuPlugin = (onPick: (sessionId: string) => void): GuestPlugin => ({
+	manifest: {
+		manifestVersion: 1,
+		id: "test.helper-menu",
+		displayName: "Helper menu",
+		version: "1.0.0",
+		contributes: {
+			extensions: {
+				"kilo.workbench/pane-kind-menu": [{ id: "recent", paneKind: "test.pinned/helper" }],
+			},
+		},
+	},
+	web: {
+		activate(sdk: PluginSdk) {
+			sdk.extensions.implement(PaneKindMenu, "recent", ({ session }) => (
+				<DropdownMenuItem data-qa-id="helper-recent" onClick={() => onPick(session.id)}>
+					Recent helper
+				</DropdownMenuItem>
+			));
+		},
+	} satisfies PluginEntry,
+});
+
 async function renderPanes(
 	options: {
 		panes?: Record<string, WorkSessionPanes>;
@@ -355,6 +380,28 @@ describe("session panes", () => {
 		await userEvent.keyboard("{Escape}");
 
 		await pinned.click();
+		await vi.waitFor(() =>
+			expect(calls.open).toHaveBeenCalledWith({
+				sessionId: SESSION.id,
+				kind: "test.pinned/helper",
+			}),
+		);
+	});
+
+	it("opens a pinned kind's contributed menu, its New item first, instead of launching", async () => {
+		const picked = vi.fn();
+		const { calls } = await renderPanes({
+			panes: withPanes([pane("a")]),
+			extraPlugins: [pinnedPlugin, helperMenuPlugin(picked)],
+		});
+
+		await page.getByTestId("chat-pane-pinned-test.pinned/helper").click();
+		await page.getByTestId("helper-recent").click();
+		expect(picked).toHaveBeenCalledWith(SESSION.id);
+		expect(calls.open).not.toHaveBeenCalled();
+
+		await page.getByTestId("chat-pane-pinned-test.pinned/helper").click();
+		await page.getByTestId("chat-pane-pinned-new-test.pinned/helper").click();
 		await vi.waitFor(() =>
 			expect(calls.open).toHaveBeenCalledWith({
 				sessionId: SESSION.id,
@@ -592,7 +639,7 @@ describe("launcher", () => {
 				/^wses_new_/,
 			),
 		);
-		await expect.element(page.getByTestId("launcher-start-session")).not.toBeInTheDocument();
+		await expect.element(page.getByTestId("workbench-launcher")).not.toBeInTheDocument();
 		await expect.element(page.getByTestId(/^terminal-pane_/)).toBeVisible();
 	});
 });

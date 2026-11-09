@@ -216,6 +216,34 @@ describe("an agent pane with a chat", () => {
 		await expect.element(page.getByText("An older chat")).toBeVisible();
 	});
 
+	it("leaves an agent pane added beside it a draft that starts a chat of its own", async () => {
+		const server = serverWithChat("ses_a", [userMessage("ses_a", "msg_u1", "The first chat")]);
+		const host = await renderAgentPane({
+			server,
+			session: session({ chatIds: ["ses_a"], directory: "/projects/app" }),
+			otherPanes: [agentPane({ id: "pane_first" })],
+			pane: agentPane({ id: "pane_second" }),
+			chats: [chatSummary("ses_a")],
+		});
+
+		const first = page.getByTestId("pane-pane_first");
+		const second = page.getByTestId("pane-pane_second");
+		await expect.element(first.getByText("The first chat")).toBeVisible();
+		await expect.element(second.getByTestId("kilo-chat-thread")).toHaveAttribute("data-draft");
+
+		await userEvent.fill(second.getByTestId("kilo-composer-input"), "A second chat");
+		await second.getByTestId("kilo-composer-send").click();
+
+		const [prompt] = await promptsTo(server, "ses_new_1");
+		expect(promptText(prompt!)).toBe("A second chat");
+		await vi.waitFor(() =>
+			expect(host.panes().panes.find((pane) => pane.id === "pane_second")?.metadata).toEqual({
+				chatId: "ses_new_1",
+			}),
+		);
+		await expect.element(first.getByText("The first chat")).toBeVisible();
+	});
+
 	it("finds a chat's folder from the server when nothing else knows it", async () => {
 		const server = serverWithChat("ses_far", [userMessage("ses_far", "msg_u1", "Far away")]);
 		await renderAgentPane({ server, pane: agentPane({ metadata: { chatId: "ses_far" } }) });
@@ -584,7 +612,7 @@ describe("unsent text", () => {
 		await userEvent.fill(composerInput(), "Half a thought");
 		await vi.waitFor(() =>
 			expect(host.host.main.kernelSdk.domains.get(ComposerDrafts)!.getState().drafts).toEqual({
-				wses_1: { text: "Half a thought" },
+				wses_1: { text: "", panes: { pane_agent: "Half a thought" } },
 			}),
 		);
 
@@ -607,7 +635,7 @@ describe("unsent text", () => {
 		await userEvent.fill(composerInput(), "Then add tests");
 		await vi.waitFor(() =>
 			expect(host.host.main.kernelSdk.domains.get(ComposerDrafts)!.getState().drafts).toEqual({
-				wses_1: { text: "Then add tests" },
+				wses_1: { text: "", panes: { pane_agent: "Then add tests" } },
 			}),
 		);
 
@@ -623,6 +651,102 @@ describe("unsent text", () => {
 		await vi.waitFor(() =>
 			expect(host.host.main.kernelSdk.domains.get(ComposerDrafts)!.getState().drafts).toEqual({}),
 		);
+	});
+});
+
+describe("unsent text, when the chat is slow to load", () => {
+	it("comes back in the popped-out pane once its chat has loaded", async () => {
+		const server = serverWithChat();
+		const host = await renderAgentPane({
+			server,
+			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			chats: [chatSummary("ses_a")],
+		});
+		await expect.element(page.getByText("Hello")).toBeVisible();
+		await userEvent.fill(composerInput(), "hi");
+		const drafts = host.host.main.kernelSdk.domains.get(ComposerDrafts)!;
+		await vi.waitFor(() => expect(drafts.getState().drafts.wses_1?.panes?.pane_agent).toBe("hi"));
+		server.chatReadDelayMs = 300;
+		const kept: (string | undefined)[] = [];
+		drafts.subscribe(() => kept.push(drafts.getState().drafts.wses_1?.panes?.pane_agent));
+
+		await host.popOut();
+
+		await expect.element(page.getByText("Hello")).toBeVisible();
+		await new Promise((resolve) => setTimeout(resolve, 400));
+		await expect.element(composerInput()).toHaveTextContent("hi");
+		expect(drafts.getState().drafts.wses_1?.panes?.pane_agent).toBe("hi");
+		expect(kept.every((text) => text === "hi")).toBe(true);
+	});
+});
+
+describe("several agent panes in a session", () => {
+	const draftsOf = (host: Awaited<ReturnType<typeof renderAgentPane>>) =>
+		host.host.main.kernelSdk.domains.get(ComposerDrafts)!.getState().drafts;
+
+	it("keeps each pane's unsent text to itself", async () => {
+		const host = await renderAgentPane({
+			otherPanes: [agentPane({ id: "pane_first" })],
+			pane: agentPane({ id: "pane_second" }),
+		});
+		const first = page.getByTestId("pane-pane_first");
+		const second = page.getByTestId("pane-pane_second");
+
+		await userEvent.fill(first.getByTestId("kilo-composer-input"), "First thought");
+		await userEvent.fill(second.getByTestId("kilo-composer-input"), "Second thought");
+
+		await vi.waitFor(() =>
+			expect(draftsOf(host).wses_1?.panes).toEqual({
+				pane_first: "First thought",
+				pane_second: "Second thought",
+			}),
+		);
+		await expect
+			.element(first.getByTestId("kilo-composer-input"))
+			.toHaveTextContent("First thought");
+	});
+
+	it("starts a pane added later empty", async () => {
+		const host = await renderAgentPane({ pane: agentPane({ id: "pane_first" }) });
+		await userEvent.fill(
+			page.getByTestId("pane-pane_first").getByTestId("kilo-composer-input"),
+			"Half a thought",
+		);
+		await vi.waitFor(() =>
+			expect(draftsOf(host).wses_1?.panes).toEqual({ pane_first: "Half a thought" }),
+		);
+
+		await host.host.renderer.kernelSdk.domains
+			.get(Panes)!
+			.methods.open({ sessionId: "wses_1", kind: "kilo.chat/agent", paneId: "pane_second" });
+
+		const second = page.getByTestId("pane-pane_second");
+		await expect.element(second.getByTestId("kilo-composer-input")).toBeVisible();
+		await expect.element(second.getByTestId("kilo-composer-input")).toHaveTextContent("");
+		expect(draftsOf(host).wses_1?.panes).toEqual({ pane_first: "Half a thought" });
+	});
+
+	it("takes each pane's unsent text with it when it pops out", async () => {
+		const host = await renderAgentPane({
+			otherPanes: [agentPane({ id: "pane_first" })],
+			pane: agentPane({ id: "pane_second" }),
+		});
+		await userEvent.fill(
+			page.getByTestId("pane-pane_second").getByTestId("kilo-composer-input"),
+			"Only in the second",
+		);
+		await vi.waitFor(() =>
+			expect(draftsOf(host).wses_1?.panes?.pane_second).toBe("Only in the second"),
+		);
+
+		await host.popOut();
+
+		await expect
+			.element(page.getByTestId("pane-pane_second").getByTestId("kilo-composer-input"))
+			.toHaveTextContent("Only in the second");
+		await expect
+			.element(page.getByTestId("pane-pane_first").getByTestId("kilo-composer-input"))
+			.toHaveTextContent("");
 	});
 });
 
@@ -655,6 +779,21 @@ describe("focus-composer", () => {
 
 		await vi.waitFor(() => expect(host.panes().activePaneId).toBe("pane_agent"));
 		await expect.element(composerInput()).toHaveFocus();
+	});
+
+	it("brings forward the session's first agent pane when it has several", async () => {
+		const host = await renderAgentPane({
+			otherPanes: [agentPane({ id: "pane_first" }), TERMINAL_PANE],
+			pane: agentPane({ id: "pane_second" }),
+		});
+		await host.host.renderer.kernelSdk.domains
+			.get(Panes)!
+			.methods.activate({ sessionId: "wses_1", paneId: "pane_term" });
+
+		await host.run("focus-composer");
+
+		await vi.waitFor(() => expect(host.panes().activePaneId).toBe("pane_first"));
+		expect(host.sessions.calls.open).not.toHaveBeenCalled();
 	});
 
 	it("adds an agent pane when the session has none", async () => {

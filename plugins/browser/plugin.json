@@ -39,6 +39,7 @@
 					},
 					"keepAlive": true,
 					"order": 60,
+					"openCommand": "kilo.browser/open-browser",
 					"availableWhen": {
 						"all": ["kernel/desktop"]
 					},
@@ -90,7 +91,7 @@
 					"order": 42,
 					"keybinding": "Mod+Shift+B",
 					"when": {
-						"all": ["kilo.workbench/sessionActive", "kernel/desktop"]
+						"all": ["kilo.workbench/paneTargetActive", "kernel/desktop"]
 					}
 				}
 			],

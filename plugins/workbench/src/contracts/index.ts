@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode, RefObject } from "react";
+import type { ComponentType, RefObject } from "react";
 import { z } from "zod";
 
 import {
@@ -63,7 +63,8 @@ export const Workbench = defineDomain({
 		/**
 		 * Opens a pane of a kind in the open session the way a person does from
 		 * "+": shows the session's last pane of the kind (bringing its pop-out
-		 * window forward) or opens one. Does nothing with no session open.
+		 * window forward) or opens one. With no session open, starts one from
+		 * the New Session page with a pane of the kind.
 		 * Plugins' "Open Files" / "Open Terminal" commands use it.
 		 */
 		openPane: method(z.object({ kind: z.string().min(1) }), z.undefined()),
@@ -225,6 +226,26 @@ export const SessionAction = defineExtensionPoint({
 	implementation: implementation<ComponentType<SessionActionProps>>("renderer"),
 });
 
+export interface PaneKindMenuProps {
+	readonly session: WorkSession;
+}
+
+/**
+ * Entries in the menu of a pane kind pinned to the session header
+ * (kilo.sessions/pane-kind `launch.sessionHeader`), under its "New <kind>" item:
+ * with one, clicking the pinned button opens the menu instead of launching.
+ * The component renders menu items (`DropdownMenuSeparator`, then
+ * `DropdownMenuGroup`s), or nothing when it has none, for `paneKind`: e.g.
+ * the agent kind's chats, to reopen a closed one.
+ */
+export const PaneKindMenu = defineExtensionPoint({
+	id: "kilo.workbench/pane-kind-menu",
+	kind: "additive",
+	description: "Entries in the header menu of a pinned pane kind.",
+	metadata: z.object({ paneKind: z.string() }),
+	implementation: implementation<ComponentType<PaneKindMenuProps>>("renderer"),
+});
+
 /** A session's pull request, as the session list filters by it. */
 export type SessionPullRequestState = "open" | "merged" | "closed";
 
@@ -290,7 +311,11 @@ export interface StartedSession {
 	readonly directory: string | null;
 	readonly workspaceId: string | null;
 	readonly worktreeBranch: string | null;
-	/** Opens the session in the window (the starter calls it once its first message is on its way). */
+	/**
+	 * Opens the session in the window (the starter calls it once its first
+	 * message is on its way). The starter must end every start with `open` or
+	 * `discard`: the New Session page takes no input until it does.
+	 */
 	open(): Promise<void>;
 	/** Deletes the session again (and a worktree it created) when the starter couldn't use it. */
 	discard(): Promise<void>;
@@ -302,16 +327,11 @@ export interface SessionStarterProps {
 	readonly workspaceId: string | null;
 	/** Where the agent would work: the workspace's primary folder, or null. */
 	readonly directory: string | null;
-	/**
-	 * kilo.workbench's controls for where the session runs (workspace,
-	 * isolation, branch). Draw them under the starter's input.
-	 */
-	readonly footer: ReactNode;
-	/** True while a session is being started (a worktree may take a while). */
+	/** True from `start()` until the started session is opened or discarded. */
 	readonly starting: boolean;
 	/**
-	 * Creates the session in the workspace with the isolation chosen in the
-	 * footer, without opening it. Rejects (having said why) when it can't.
+	 * Creates the session in the workspace with the isolation chosen above the
+	 * starter, without opening it. Rejects (having said why) when it can't.
 	 */
 	start(): Promise<StartedSession>;
 }
@@ -319,10 +339,10 @@ export interface SessionStarterProps {
 /**
  * The New Session page's body: what a person types or picks to start a
  * session (kilo.chat's composer, whose first send creates the session).
- * kilo.workbench draws the welcome headline above it. Without a starter the
- * page offers a button per pane kind a session can start with; with one,
- * behind the `new-session-pane-kinds` flag, a quiet row of the others
- * (leaving out `paneKind`, the one the starter opens).
+ * kilo.workbench draws the welcome headline and where the session runs
+ * (workspace, isolation, branch) above it, and under it the tools a session
+ * can start with instead (leaving out `paneKind`, the one the starter opens)
+ * and an empty session.
  */
 export const SessionStarter = defineExtensionPoint({
 	id: "kilo.workbench/session-starter",
@@ -330,7 +350,7 @@ export const SessionStarter = defineExtensionPoint({
 	description: "The New Session page's body: how a person starts a session.",
 	metadata: z.object({
 		title: z.string().min(1),
-		/** The `kilo.sessions/pane` kind the starter opens in the session it starts. */
+		/** The `kilo.sessions/pane-kind` kind the starter opens in the session it starts. */
 		paneKind: z.string().optional(),
 	}),
 	implementation: implementation<ComponentType<SessionStarterProps>>("renderer"),
@@ -456,6 +476,7 @@ export const WORKBENCH_DEFINITIONS: PluginDefinitions = {
 		SessionMenu,
 		SessionDecoration,
 		SessionAction,
+		PaneKindMenu,
 		NavigatorAction,
 		LauncherOption,
 		SessionStarter,

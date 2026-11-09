@@ -261,6 +261,37 @@ describe("session list", () => {
 		await vi.waitFor(() => expect(workspaces.commands.add).toHaveBeenCalled());
 	});
 
+	it("shows the workspace of a session opened while the list is focused on another", async () => {
+		const { navigator } = await renderWorkbench({
+			sessions: [session("docs", { title: "Docs work", workspaceId: "w-docs" })],
+			workspaces: [workspace("w-app", "App"), workspace("w-docs", "Docs")],
+			localStorage: {
+				"kilo.workbench.navigator:main": JSON.stringify({ focus: "w-app", activeSessionId: null }),
+			},
+		});
+		await expect.element(row("Docs work")).not.toBeInTheDocument();
+
+		await navigator().methods.openSession({ sessionId: "docs" });
+
+		await vi.waitFor(() => expect(navigator().getState().focus).toBe("w-docs"));
+		await expect.element(row("Docs work")).toBeVisible();
+	});
+
+	it("keeps the list's focus when the opened session is already in it", async () => {
+		const { navigator } = await renderWorkbench({
+			sessions: [session("app", { title: "App work", workspaceId: "w-app" })],
+			workspaces: [workspace("w-app", "App"), workspace("w-docs", "Docs")],
+			localStorage: {
+				"kilo.workbench.navigator:main": JSON.stringify({ focus: "w-app", activeSessionId: null }),
+			},
+		});
+
+		await navigator().methods.openSession({ sessionId: "app" });
+
+		await vi.waitFor(() => expect(navigator().getState().activeSessionId).toBe("app"));
+		expect(navigator().getState().focus).toBe("w-app");
+	});
+
 	it("explains an empty focused list", async () => {
 		await renderWorkbench({
 			workspaces: [workspace("w-app", "App")],
@@ -658,7 +689,7 @@ describe("contributions", () => {
 
 describe("launcher and commands", () => {
 	it("starts a session in the active workspace and opens it", async () => {
-		const { sessions, navigator } = await renderWorkbench({
+		const { sessions, navigator, run } = await renderWorkbench({
 			workspaces: [workspace("w-app", "App")],
 			activeWorkspaceId: "w-app",
 		});
@@ -666,7 +697,7 @@ describe("launcher and commands", () => {
 		await expect
 			.element(page.getByTestId("launcher-headline"))
 			.toHaveTextContent("What should we work on in App?");
-		await page.getByTestId("launcher-start-session").click();
+		await run("new-empty-session");
 
 		await vi.waitFor(() =>
 			expect(sessions.calls.create).toHaveBeenCalledWith({ workspaceId: "w-app" }),
@@ -676,10 +707,11 @@ describe("launcher and commands", () => {
 	});
 
 	it("reports a session that could not be started", async () => {
-		const { sessions } = await renderWorkbench();
+		const { sessions, run } = await renderWorkbench();
 		sessions.failNextWith("Disk full.");
+		await expect.element(page.getByTestId("workbench-launcher")).toBeVisible();
 
-		await page.getByTestId("launcher-start-session").click();
+		await run("new-empty-session");
 
 		await expect.element(page.getByText("Disk full.")).toBeVisible();
 	});

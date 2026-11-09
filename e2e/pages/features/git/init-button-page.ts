@@ -39,7 +39,7 @@ export class InitButtonPage {
 			`The New Session page should start the session in "${name}"`,
 		);
 		await expectElementToBeHidden(
-			getLocatorByTestId("launcher-isolation-footer").getByTestId("launcher-isolation"),
+			getLocatorByTestId("launcher-location").getByTestId("launcher-isolation"),
 			{ message: "A folder that is not a repository offers no worktree isolation" },
 		);
 	}

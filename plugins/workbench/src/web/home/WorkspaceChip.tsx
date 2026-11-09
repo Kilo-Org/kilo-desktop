@@ -8,7 +8,7 @@ import {
 	WorkspacePickerTrigger,
 } from "@kilo-desktop/ui/components/workspace-picker";
 
-function WorkspaceChipTrigger() {
+function WorkspaceChipTrigger({ disabled }: { readonly disabled: boolean }) {
 	const { triggerLabel, active } = useWorkspacePicker();
 	const glyph = workspaceGlyphColor(active?.color);
 	return (
@@ -20,6 +20,7 @@ function WorkspaceChipTrigger() {
 					variant="ghost"
 					size="sm"
 					className="max-w-56"
+					disabled={disabled}
 					data-qa-id="launcher-workspace-selector"
 				/>
 			}
@@ -32,10 +33,10 @@ function WorkspaceChipTrigger() {
 }
 
 /** The workspace a new session starts in, as a chip opening the workspace picker. */
-export function WorkspaceChip() {
+export function WorkspaceChip({ disabled = false }: { readonly disabled?: boolean }) {
 	return (
 		<WorkspacePickerRoot contentAlign="start">
-			<WorkspaceChipTrigger />
+			<WorkspaceChipTrigger disabled={disabled} />
 		</WorkspacePickerRoot>
 	);
 }

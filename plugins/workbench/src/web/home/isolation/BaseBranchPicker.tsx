@@ -1,4 +1,4 @@
-import { ChevronDownIcon, GitBranchIcon, GitForkIcon } from "lucide-react";
+import { ChevronDownIcon, GitBranchIcon } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
@@ -24,12 +24,14 @@ export function BaseBranchPicker({
 	defaultBase,
 	branches,
 	recentBranches,
+	disabled,
 	onSelect,
 }: {
 	readonly selectedBase: string | undefined;
 	readonly defaultBase: string | null;
 	readonly branches: readonly IsolationBranch[];
 	readonly recentBranches: readonly string[];
+	readonly disabled?: boolean | undefined;
 	readonly onSelect: (baseBranch: string) => void;
 }) {
 	const [open, setOpen] = useState(false);
@@ -55,14 +57,13 @@ export function BaseBranchPicker({
 						variant="ghost"
 						size="sm"
 						className="max-w-56"
+						disabled={disabled}
 						data-qa-id="git-base-branch-trigger"
 					/>
 				}
 			>
-				<GitForkIcon data-icon="inline-start" />
-				<span className="truncate">
-					{effectiveBase === undefined ? "From current branch" : `From ${effectiveBase}`}
-				</span>
+				<GitBranchIcon data-icon="inline-start" />
+				<span className="truncate">{effectiveBase ?? "Current branch"}</span>
 				<ChevronDownIcon data-icon="inline-end" className="opacity-60" />
 			</PopoverTrigger>
 			<PopoverContent

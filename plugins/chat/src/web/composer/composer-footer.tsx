@@ -1,6 +1,7 @@
 import type { FC, ReactNode } from "react";
 import { ArrowDownToLineIcon, ArrowUpIcon, FolderIcon, GitForkIcon } from "lucide-react";
 
+import type { ComposerUsageView } from "../usage/session-model-usage";
 import { useComposerUsageView } from "../usage/use-session-model-usage";
 import { ComposerContext as ComposerUsage } from "../usage/composer-context";
 import { CostMeter } from "../usage/cost-meter";
@@ -44,6 +45,8 @@ export const ComposerSessionMode: FC<{ isWorktree: boolean; name?: string | unde
 /**
  * The strip under a chat's composer: where the chat works (its folder or
  * worktree), `footer` composer actions (git's branch) and the chat's usage.
+ * A new chat in a session already knows where it works, so it shows the
+ * strip before its first message, with no usage yet.
  */
 export const ComposerFooter: FC = () => {
 	const view = useComposerUsageView();
@@ -52,7 +55,6 @@ export const ComposerFooter: FC = () => {
 		workspaceFolders.find((folder) => folder.isPrimary)?.path ?? workspaceFolders[0]?.path;
 	const isWorktree =
 		workspaceDirectory !== undefined && directory !== null && directory !== workspaceDirectory;
-	if (!view) return null;
 
 	return (
 		<div
@@ -70,35 +72,40 @@ export const ComposerFooter: FC = () => {
 				/>
 				<ComposerActionSlotView slot="footer" />
 			</div>
-			<ComposerUsage
-				className="relative shrink-0"
-				usage={view.context}
-				tokens={view.tokenUsage}
-				rail={
-					<span className="flex items-center gap-2.5">
-						<span className="flex items-center gap-2.5 @max-[32rem]:hidden">
-							<Metric
-								icon={<ArrowUpIcon className={metricIcon} aria-hidden />}
-								value={view.tokensInLabel}
-								qa="kilo-composer-footer-tokens-in"
-							/>
-							<Metric
-								icon={<ArrowDownToLineIcon className={metricIcon} aria-hidden />}
-								value={view.tokensOutLabel}
-								qa="kilo-composer-footer-tokens-out"
-							/>
-						</span>
-						<Metric value={view.costLabel} qa="kilo-composer-footer-cost" />
-					</span>
-				}
-			>
-				<CostMeter
-					runCost={view.runCost}
-					sessionCost={view.sessionCost}
-					lines={view.lines}
-					className="max-w-none border-0 bg-transparent p-0 shadow-none"
-				/>
-			</ComposerUsage>
+			{view ? <FooterUsage view={view} /> : null}
 		</div>
 	);
 };
+
+/** The chat's context and cost, once it has run. */
+const FooterUsage: FC<{ view: ComposerUsageView }> = ({ view }) => (
+	<ComposerUsage
+		className="relative shrink-0"
+		usage={view.context}
+		tokens={view.tokenUsage}
+		rail={
+			<span className="flex items-center gap-2.5">
+				<span className="flex items-center gap-2.5 @max-[32rem]:hidden">
+					<Metric
+						icon={<ArrowUpIcon className={metricIcon} aria-hidden />}
+						value={view.tokensInLabel}
+						qa="kilo-composer-footer-tokens-in"
+					/>
+					<Metric
+						icon={<ArrowDownToLineIcon className={metricIcon} aria-hidden />}
+						value={view.tokensOutLabel}
+						qa="kilo-composer-footer-tokens-out"
+					/>
+				</span>
+				<Metric value={view.costLabel} qa="kilo-composer-footer-cost" />
+			</span>
+		}
+	>
+		<CostMeter
+			runCost={view.runCost}
+			sessionCost={view.sessionCost}
+			lines={view.lines}
+			className="max-w-none border-0 bg-transparent p-0 shadow-none"
+		/>
+	</ComposerUsage>
+);

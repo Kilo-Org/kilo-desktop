@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
+import type { ReactNode } from "react";
+
 import type { PluginEntry } from "@kilo-desktop/kernel";
+
+import { ComposerAction } from "../../contracts";
 
 import { agentPane, chatSummary, renderAgentPane, session } from "../../test/chat-host";
 import {
@@ -243,6 +247,34 @@ describe("the footer", () => {
 	});
 });
 
+describe("a new chat's footer", () => {
+	it("says where it will work before its first message, without usage yet", async () => {
+		await renderAgentPane({
+			directory: "/worktrees/fix-login",
+			session: session({ directory: "/worktrees/fix-login", worktreeBranch: "fix-login" }),
+		});
+
+		const footer = page.getByTestId("kilo-composer-footer");
+		await expect
+			.element(footer.getByTestId("kilo-composer-session-mode"))
+			.toHaveTextContent("fix-login");
+		await expect.element(footer.getByTestId("kilo-composer-footer-cost")).not.toBeInTheDocument();
+		await expect
+			.element(page.getByRole("button", { name: "Context usage" }))
+			.not.toBeInTheDocument();
+	});
+
+	it("shows the footer composer actions, such as the branch", async () => {
+		await renderAgentPane({
+			plugins: [footerContributor(() => <span data-qa-id="test-branch">main</span>)],
+		});
+
+		await expect
+			.element(page.getByTestId("kilo-composer-footer").getByTestId("test-branch"))
+			.toHaveTextContent("main");
+	});
+});
+
 describe("unavailable workspace folders", () => {
 	const warning = () => page.getByTestId("kilo-composer-unavailable-folders");
 
@@ -262,8 +294,11 @@ describe("unavailable workspace folders", () => {
 	it("warns under a new chat's composer", async () => {
 		await renderAgentPane({ unavailableFolderIds: ["f-lib"] });
 
-		await expect.element(page.getByTestId("kilo-composer-draft-footer")).toBeVisible();
-		await expect.element(warning()).toBeVisible();
+		await expect
+			.element(
+				page.getByTestId("kilo-composer-footer").getByTestId("kilo-composer-unavailable-folders"),
+			)
+			.toBeVisible();
 	});
 
 	it("stays out of the way while every folder is there", async () => {
@@ -271,7 +306,6 @@ describe("unavailable workspace folders", () => {
 		await expect.element(input()).toBeVisible();
 
 		await expect.element(warning()).not.toBeInTheDocument();
-		await expect.element(page.getByTestId("kilo-composer-draft-footer")).not.toBeVisible();
 	});
 
 	it("says nothing for a chat outside any workspace", async () => {
@@ -281,3 +315,27 @@ describe("unavailable workspace folders", () => {
 		await expect.element(warning()).not.toBeInTheDocument();
 	});
 });
+
+/** A plugin putting `view` in the composer's footer slot. */
+function footerContributor(view: () => ReactNode) {
+	return {
+		manifest: {
+			manifestVersion: 1,
+			id: "test.footer",
+			displayName: "Footer",
+			version: "1.0.0",
+			contributes: {
+				extensions: {
+					"kilo.chat/composer-action": [
+						{ id: "branch", slot: "footer", kind: "view", title: "Branch" },
+					],
+				},
+			},
+		},
+		web: {
+			activate(sdk) {
+				sdk.extensions.implement(ComposerAction, "branch", { kind: "view", Component: view });
+			},
+		} satisfies PluginEntry,
+	};
+}

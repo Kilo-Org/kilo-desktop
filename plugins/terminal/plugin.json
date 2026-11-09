@@ -41,7 +41,9 @@
 						"newSession": true,
 						"inSession": true
 					},
-					"keepAlive": true
+					"openCommand": "kilo.terminal/open",
+					"keepAlive": true,
+					"order": 30
 				}
 			],
 			"kernel/command": [
@@ -52,7 +54,7 @@
 					"order": 5,
 					"keybinding": "Ctrl+`",
 					"when": {
-						"all": ["kilo.workbench/sessionActive"]
+						"all": ["kilo.workbench/paneTargetActive"]
 					}
 				},
 				{

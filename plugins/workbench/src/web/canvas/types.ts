@@ -16,4 +16,6 @@ export interface CanvasPaneKind {
 	readonly pinned?: boolean;
 	/** False keeps it out of tab groups' "+" menus (`launch.tabGroup`); offered there by default. */
 	readonly inTabGroups?: boolean;
+	/** The command that opens this kind; its shortcut is shown on the New Session page. */
+	readonly openCommand?: string | undefined;
 }

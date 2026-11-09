@@ -72,14 +72,15 @@ async function boot(
 }
 
 describe("work sessions", () => {
-	it("creates a session that has no chat yet, in a workspace", async () => {
-		const { sessions, events } = await boot();
+	it("creates a session that has no chat yet, in a workspace, titled as Kilo titles a new chat", async () => {
+		const createdAt = Date.UTC(2026, 10, 4, 22, 44, 38, 327);
+		const { sessions, events } = await boot({ now: () => createdAt });
 
 		const created = await sessions.methods.create({ workspaceId: "w1" });
 
 		expect(created).toMatchObject({
 			id: "wses_1",
-			title: DEFAULT_WORK_SESSION_TITLE,
+			title: "New session - 2026-11-04T22:44:38.327Z",
 			titleSource: "default",
 			pinned: false,
 			archived: false,

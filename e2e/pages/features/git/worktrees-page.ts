@@ -51,7 +51,7 @@ interface GitWorktree {
  */
 export class WorktreesPage {
 	private readonly isolation = () =>
-		getLocatorByTestId("launcher-isolation-footer").getByTestId("launcher-isolation");
+		getLocatorByTestId("launcher-location").getByTestId("launcher-isolation");
 	private readonly modeTrigger = () => this.isolation().getByTestId("git-draft-mode-trigger");
 
 	/** The New Session page in a new workspace for the repository. */
@@ -83,8 +83,8 @@ export class WorktreesPage {
 	async chooseLocal(): Promise<void> {
 		await click(this.modeTrigger());
 		await click(getLocatorByTestId("git-draft-mode-item-local"));
-		await expectElementToContainText(this.modeTrigger(), "Local", {
-			message: "The isolation control should show Local",
+		await expectElementToContainText(this.modeTrigger(), "Current checkout", {
+			message: "The isolation control should show the current checkout",
 		});
 	}
 

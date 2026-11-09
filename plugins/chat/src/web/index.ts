@@ -3,7 +3,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { definePlugin, KernelCommand } from "@kilo-desktop/kernel";
 import { AgentServer } from "@kilo-desktop/plugin-agent/contracts";
 import { PaneKind } from "@kilo-desktop/plugin-sessions/contracts";
-import { SessionStarter } from "@kilo-desktop/plugin-workbench/contracts";
+import { PaneKindMenu, SessionStarter } from "@kilo-desktop/plugin-workbench/contracts";
 
 import { ComposerAction, ToolRenderer } from "../contracts";
 import { AgentIcon, createAgentPane } from "./AgentPane";
@@ -13,6 +13,7 @@ import { ComposerFocus, followComposerFocus } from "./composer-focus";
 import { MediaIcon, MediaPane } from "./media/MediaPane";
 import { createPlanPane, PlanIcon } from "./plan/PlanPane";
 import { ChatServices } from "./runtime/chat-services";
+import { AgentChatsMenu } from "./panes/AgentChatsMenu";
 import { createChatSessionStarter } from "./starter/ChatSessionStarter";
 import { createSubagentPane, SubagentIcon } from "./subagents/SubagentPane";
 import { BUILTIN_TOOL_RENDERERS } from "./tools/builtin-renderers";
@@ -38,6 +39,7 @@ export const chatWebEntry = definePlugin({
 			component: createAgentPane({ chat, focus, queries }),
 			icon: AgentIcon,
 		});
+		sdk.extensions.implement(PaneKindMenu, "agent-chats", AgentChatsMenu);
 		sdk.extensions.implement(
 			SessionStarter,
 			"composer",

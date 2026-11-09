@@ -9,6 +9,7 @@ import {
 } from "@anaconda/playwright-utils";
 import { getAllPages, getPage } from "@anaconda/playwright-utils/page-utils";
 import { expect, type Locator, type Page } from "@playwright/test";
+import { runFromCommandPalette } from "../../shell/command-palette.js";
 
 /**
  * Page object for kilo.workspace-board's workspace board. Every step targets the
@@ -25,7 +26,11 @@ export class BoardPage {
 			globalThis.location.hash = "#/";
 		});
 		await click(getLocatorByTestId("new-chat"));
-		await click(getLocatorByTestId("launcher-start-session"));
+		await expectElementToBeVisible(
+			getLocatorByTestId("workbench-launcher"),
+			"New session should open the launcher",
+		);
+		await runFromCommandPalette("kilo.workbench/new-empty-session");
 		await expectElementToBeVisible(
 			getLocatorByTestId("session-workbench"),
 			"Starting a session should open it",

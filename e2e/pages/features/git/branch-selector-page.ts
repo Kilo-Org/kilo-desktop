@@ -20,12 +20,12 @@ export class BranchSelectorPage {
 	async openInLauncher(folderPath: string, name: string): Promise<void> {
 		await createAndActivateWorkspace(folderPath, name);
 		await openNewSession();
-		const trigger = getLocatorByTestId("launcher-isolation-footer")
+		const trigger = getLocatorByTestId("launcher-location")
 			.getByTestId("launcher-isolation")
 			.getByTestId("git-branch-selector-trigger");
 		await expectElementToBeVisible(
 			trigger,
-			"The branch picker should show beside the isolation control in the starter's footer",
+			"The branch picker should show beside the isolation control above the starter",
 		);
 		await click(trigger);
 	}

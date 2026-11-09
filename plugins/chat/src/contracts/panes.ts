@@ -32,16 +32,29 @@ export const SUBAGENT_CHILD_SESSION_METADATA_KEY = "childSessionId";
 /** A subagent pane's id: one pane per child chat (origin's tab instance id). */
 export const subagentPaneId = (childSessionId: string): string => `subagent:${childSessionId}`;
 
+type PaneRef = Pick<Pane, "id" | "kind" | "metadata">;
+
 /**
  * The chat an agent or plan pane shows: the one named in its metadata, else
- * its session's first chat (origin's panes, handed over without metadata),
- * else none — for an agent pane, a draft whose first send creates the chat.
+ * none — for an agent pane, a draft whose first send creates the chat. The
+ * session's first agent pane naming no chat shows the session's first chat
+ * (origin's panes, handed over without metadata, and a session's agent pane
+ * reopened after its last was closed), unless another of `sessionPanes`
+ * names it; agent panes added beside it start new chats.
  */
 export function agentPaneChatId(
-	pane: Pick<Pane, "metadata">,
+	pane: Pick<Pane, "metadata"> & Partial<Pick<Pane, "id">>,
 	session: Pick<WorkSession, "chatIds"> | null | undefined,
+	sessionPanes: readonly PaneRef[] = [],
 ): string | null {
-	return pane.metadata[CHAT_ID_METADATA_KEY] ?? session?.chatIds[0] ?? null;
+	const named = pane.metadata[CHAT_ID_METADATA_KEY];
+	if (named) return named;
+	const first = session?.chatIds[0];
+	if (!first) return null;
+	const agents = sessionPanes.filter((candidate) => candidate.kind === AGENT_PANE_KIND);
+	if (agents.some((candidate) => candidate.metadata[CHAT_ID_METADATA_KEY] === first)) return null;
+	const firstAgent = agents[0];
+	return !firstAgent || firstAgent.id === pane.id ? first : null;
 }
 
 export interface PlanPaneAnchors {

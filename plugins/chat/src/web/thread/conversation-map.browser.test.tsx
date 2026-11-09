@@ -10,10 +10,10 @@ const entries: ConversationMapEntry[] = [
 	{ id: "turn-3", title: "Run the tests" },
 ];
 
-function renderMap(onSelect = vi.fn()) {
+function renderMap(onSelect = vi.fn(), mapEntries = entries) {
 	const { baseElement } = render(
 		<div style={{ height: 300 }}>
-			<ConversationMap entries={entries} activeId="turn-3" onSelect={onSelect} />
+			<ConversationMap entries={mapEntries} activeId="turn-3" onSelect={onSelect} />
 		</div>,
 	);
 	return { screen: page.elementLocator(baseElement), onSelect };
@@ -55,6 +55,25 @@ describe("ConversationMap", () => {
 
 		await expect.element(tick(screen, "Apply the changes")).toHaveFocus();
 		await expect.element(page.getByText("Edit the three modules.")).toBeVisible();
+	});
+
+	it("keeps a preview with long unbroken text inside its card", async () => {
+		const path = `/Users/someone/${"nested/".repeat(20)}file.ts`;
+		const rule = "─".repeat(120);
+		const { screen } = renderMap(vi.fn(), [
+			{ id: "turn-1", title: path, preview: `Changed it: ${rule} done` },
+		]);
+
+		await userEvent.hover(screen.getByRole("button", { name: path }));
+		const preview = page.getByText(`Changed it: ${rule} done`);
+		await expect.element(preview).toBeVisible();
+
+		const card = document.querySelector('[data-slot="tooltip-content"]')!.getBoundingClientRect();
+		for (const line of [page.getByText(path).element(), preview.element()]) {
+			const box = line.getBoundingClientRect();
+			expect(box.left).toBeGreaterThanOrEqual(card.left);
+			expect(box.right).toBeLessThanOrEqual(card.right);
+		}
 	});
 
 	it("selects the clicked turn", async () => {

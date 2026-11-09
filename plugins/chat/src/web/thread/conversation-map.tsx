@@ -128,9 +128,13 @@ export function ConversationMap({
 						arrowClassName="hidden"
 						className="bg-popover text-popover-foreground border-border-subtle ring-foreground/10 pointer-events-none flex w-60 max-w-60 flex-col items-start gap-0 rounded-xl p-3.5 text-left shadow-md ring-1"
 					>
-						<p className="line-clamp-2 text-sm leading-snug font-medium">{previewEntry.title}</p>
+						{/* `anywhere`, not `break-word`: only it lets a long path or rule shrink the
+						    line's min-content, which the card's `items-start` column sizes to. */}
+						<p className="line-clamp-2 text-sm leading-snug font-medium wrap-anywhere">
+							{previewEntry.title}
+						</p>
 						{previewEntry.preview ? (
-							<p className="text-muted-foreground line-clamp-3 text-sm leading-snug">
+							<p className="text-muted-foreground line-clamp-3 text-sm leading-snug wrap-anywhere">
 								{previewEntry.preview}
 							</p>
 						) : null}

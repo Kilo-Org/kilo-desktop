@@ -13,6 +13,7 @@
 		"check:plugin-isolation": "node scripts/check-plugin-isolation.mjs",
 		"dev": "pnpm dev:desktop",
 		"docs:extension-points": "node scripts/list-extension-points.mjs --write",
+		"docs:plugin-graph": "node scripts/plugin-dependency-graph.mjs",
 		"dev:web": "pnpm --filter @kilo-desktop/web dev",
 		"dev:desktop": "concurrently --kill-others --success first \"pnpm dev:web\" \"wait-on http://127.0.0.1:5173 && cross-env KILO_WEB_DEV_SERVER_URL=http://127.0.0.1:5173 pnpm --filter @kilo-desktop/desktop start\"",
 		"format": "oxfmt --no-error-on-unmatched-pattern",

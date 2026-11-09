@@ -217,7 +217,7 @@ matching `permissions.host` entry; reading their state does not.
 | `notifications`   | `kernel/notifications`: OS notifications        |
 | `keychain`        | `kernel/keychain`: secrets                      |
 | `appearance`      | `kernel/native-theme`                           |
-| `app-menu`        | `kernel/app-menu`                               |
+| `app-menu`        | `kernel/app-menu`: the calling window's menu    |
 | `updater`         | `kernel/updater`                                |
 | `data-collection` | `kernel/data-collection`: consent               |
 | `browser-host`    | `mainHost(sdk).browser`: the embedded browser   |

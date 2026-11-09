@@ -1364,6 +1364,7 @@ with contributors today; candidate points are in the extensibility map (§7).
 | kilo.shell      | `settings-section`     | A              | `{id, title, category: <settings-category key>, priority, schema \| component, when}`; ordered within its category                                                                                                  | shell, telemetry, updates, account, agent, workbench, chat, notebook, environments, local-inference, marketplace |
 | kilo.shell      | `status-bar-item`      | A              | `{id, title, kind: view \| action \| popover, align: start \| end, command?, priority, when}` + `Component` \| `useTrigger` with `run` or `Content`; the bar hides while no item renders                            | local-inference                                                                                                  |
 | kilo.shell      | `deep-link`            | A              | `{host, to, params}`                                                                                                                                                                                                | local-inference                                                                                                  |
+| kilo.shell      | `menu-item`            | A              | `{command, menu: app \| file \| edit \| view \| window \| help, label?, group, priority, when}`: a command in the native app menu, greyed out while it can't run in the focused window                              | shell, workbench                                                                                                 |
 | kilo.account    | `account-panel`        | A              | Panel component in Settings → Account                                                                                                                                                                               | local-inference                                                                                                  |
 | kilo.telemetry  | `telemetry-event`      | A              | `{id, name}`: an event the contributing plugin may send (manifest data)                                                                                                                                             | every plugin                                                                                                     |
 | kilo.updates    | `support-row`          | A              | Row component in About → Support                                                                                                                                                                                    | agent                                                                                                            |
@@ -1559,7 +1560,7 @@ would replace it if a kind ever needs something other than show-or-open.
 | kernel         | `window-close`        | D    | Next   | Proceed / ask / reject before closing a main or pane window             | notebook (unsaved notebook in a pane window)                                                                      |
 | kilo.shell     | `onboarding-step`     | A    | Now    | `{label, layout, required?}` + `useStep(controls)`: first-run steps     | account (terms, sign in); environments (set up conda); local-inference (download a model)                         |
 | kilo.shell     | `theme`               | A    | Later  | Colour themes (semantic tokens, host expands)                           | _ext_ community themes                                                                                            |
-| kilo.shell     | `menu`                | A    | Later  | Native app menu entries (reference commands)                            | every plugin with commands                                                                                        |
+| kilo.shell     | `menu-item`           | A    | Now    | Commands in the native app menu, by menu and group (shell lays it out)  | shell (settings, palette, sidebar, shortcuts); workbench (new session, new tab, close tab); _later_ git, terminal |
 | kilo.shell     | `header-action`       | A    | Later  | Buttons in the page header, beside the main view's own                  | workbench (its header buttons, as the first contributor); _ext_ app-wide actions                                  |
 | kilo.shell     | `right-sidebar`       | A    | Later  | Tabbed panels in a right sidebar behind an icon rail, one open          | _ext_ notifications inbox, issue feed, app-wide assistant; developer (activity log)                               |
 | kilo.account   | `account-panel`       | A    | Now    | Panels in Settings → Account                                            | anaconda-account (Anaconda account)                                                                               |
@@ -3348,6 +3349,15 @@ Everything lands in a single PR once all plugins are built.
   (`kernel/keybindings`), syncs the live chords to main's capture, and
   executes wherever the handler lives (renderer → main by request, main →
   implementing window by message).
+- **The native menu is a capability; its layout is kilo.shell's.** Each
+  window sets its own tree through `kernel/app-menu` (submenus, commands, an
+  allow-listed set of OS roles with no developer tools or reload, separators),
+  because only the window can judge its commands' `when`; the host shows the
+  focused window's tree, fills in command titles and current shortcuts (shown,
+  never registered, so key capture stays in one place), runs a clicked command
+  in that window (`commands.executeInWindow`), and falls back to OS roles only
+  until a window sets a menu. kilo.shell builds the tree from
+  `kilo.shell/menu-item` contributions.
 - **One plugin list.** `BUNDLED_PLUGINS` holds manifests and contracts
   definitions; each process attaches its entries with `withEntries`. Pre-ready
   protocol schemes come from validated manifests only.

@@ -18,7 +18,8 @@
 		"kernel/windows": "optional",
 		"kernel/notifications": "optional",
 		"kilo.telemetry/telemetry": "optional",
-		"kilo.telemetry/telemetry-event": "optional"
+		"kilo.telemetry/telemetry-event": "optional",
+		"kilo.shell/menu-item": "optional"
 	},
 	"contextKeys": [
 		{
@@ -614,6 +615,29 @@
 					"title": "Sessions",
 					"width": 1240,
 					"height": 760
+				}
+			],
+			"kilo.shell/menu-item": [
+				{
+					"id": "new-session",
+					"command": "kilo.workbench/new-session",
+					"menu": "file",
+					"group": "session",
+					"priority": 30
+				},
+				{
+					"id": "new-pane",
+					"command": "kilo.workbench/new-pane",
+					"menu": "file",
+					"group": "tab",
+					"priority": 20
+				},
+				{
+					"id": "close-pane",
+					"command": "kilo.workbench/close-pane",
+					"menu": "file",
+					"group": "tab",
+					"priority": 10
 				}
 			]
 		}

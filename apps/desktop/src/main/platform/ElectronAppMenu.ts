@@ -1,20 +1,17 @@
-import { app, Menu, type MenuItemConstructorOptions } from "electron";
+import type { MenuItemConstructorOptions } from "electron";
 
-// Replaces Electron's default menu. Keeps the standard roles but the View
-// submenu has zoom/fullscreen only, no devtools or reload. Close Window moves
-// off ⌘W (close tab): ⌘⇧W on macOS, Alt+F4 elsewhere.
-
-export function buildAppMenuTemplate(
+/**
+ * The host's own menu, shown until the focused window sets one through
+ * `kernel/app-menu` (at startup, in safe mode, on the recovery screen). Only
+ * standard OS actions, so clipboard, zoom and quit keep working; the app's
+ * menu structure belongs to the plugin that sets it. No developer tools or
+ * reload.
+ */
+export function buildFallbackMenuTemplate(
 	platform: NodeJS.Platform = process.platform,
 ): MenuItemConstructorOptions[] {
 	const isMac = platform === "darwin";
-	const appName = app.getName();
-	const closeWindow: MenuItemConstructorOptions = {
-		role: "close",
-		accelerator: isMac ? "Cmd+Shift+W" : "Alt+F4",
-	};
-
-	const editMenu: MenuItemConstructorOptions = {
+	const edit: MenuItemConstructorOptions = {
 		label: "Edit",
 		submenu: [
 			{ role: "undo" },
@@ -23,14 +20,10 @@ export function buildAppMenuTemplate(
 			{ role: "cut" },
 			{ role: "copy" },
 			{ role: "paste" },
-			...(isMac
-				? ([{ role: "pasteAndMatchStyle" }, { role: "delete" }] as MenuItemConstructorOptions[])
-				: ([{ role: "delete" }] as MenuItemConstructorOptions[])),
 			{ role: "selectAll" },
 		],
 	};
-
-	const viewMenu: MenuItemConstructorOptions = {
+	const view: MenuItemConstructorOptions = {
 		label: "View",
 		submenu: [
 			{ role: "resetZoom" },
@@ -40,50 +33,28 @@ export function buildAppMenuTemplate(
 			{ role: "togglefullscreen" },
 		],
 	};
-
-	const windowMenu: MenuItemConstructorOptions = {
+	const window: MenuItemConstructorOptions = {
 		label: "Window",
-		submenu: [
-			{ role: "minimize" },
-			...(isMac
-				? ([
-						{ role: "zoom" },
-						{ type: "separator" },
-						{ role: "front" },
-					] as MenuItemConstructorOptions[])
-				: [closeWindow]),
-		],
+		submenu: [{ role: "minimize" }, { role: "close" }],
 	};
-
-	return [
-		...(isMac
-			? ([
-					{
-						label: appName,
-						submenu: [
-							{ role: "about" },
-							{ type: "separator" },
-							{ role: "services" },
-							{ type: "separator" },
-							{ role: "hide" },
-							{ role: "hideOthers" },
-							{ role: "unhide" },
-							{ type: "separator" },
-							{ role: "quit" },
-						],
-					},
-				] as MenuItemConstructorOptions[])
-			: []),
-		{
-			label: "File",
-			submenu: [isMac ? closeWindow : { role: "quit" }],
-		},
-		editMenu,
-		viewMenu,
-		windowMenu,
-	];
-}
-
-export function installAppMenu(platform: NodeJS.Platform = process.platform): void {
-	Menu.setApplicationMenu(Menu.buildFromTemplate(buildAppMenuTemplate(platform)));
+	if (isMac) {
+		return [
+			{
+				label: "App",
+				submenu: [
+					{ role: "about" },
+					{ type: "separator" },
+					{ role: "hide" },
+					{ role: "hideOthers" },
+					{ role: "unhide" },
+					{ type: "separator" },
+					{ role: "quit" },
+				],
+			},
+			edit,
+			view,
+			window,
+		];
+	}
+	return [{ label: "File", submenu: [{ role: "quit" }] }, edit, view, window];
 }

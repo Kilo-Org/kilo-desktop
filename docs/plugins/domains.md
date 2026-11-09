@@ -95,7 +95,9 @@ setSecret: (input, caller) => {
 ```
 
 The check runs in the home process, where the caller's identity is known.
-`caller.process` says where the call came from (`main` or `renderer`).
+`caller.process` says where the call came from (`main` or `renderer`), and
+`caller.windowId` which window, for a call from a renderer (the transport
+vouches for it, so a window can't claim another's id).
 
 How far to trust `caller.pluginId` depends on that process. From `main` it
 is exact. From a window it is advisory: a window's plugins share one

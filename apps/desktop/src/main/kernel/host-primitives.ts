@@ -11,6 +11,7 @@ import {
 	KernelNotifications,
 	KernelShell,
 	KernelUpdater,
+	type AppMenuNode,
 	type PluginSdk,
 } from "@kilo-desktop/kernel";
 
@@ -64,9 +65,8 @@ export interface HostPrimitiveDeps {
 		set(account: string, value: string): Promise<void>;
 		delete(account: string): Promise<void>;
 	};
-	readonly appMenu: (
-		itemsByPlugin: Readonly<Record<string, readonly { command: string; group: string }[]>>,
-	) => void;
+	/** A window's native menu tree, to show while that window is focused. */
+	readonly appMenu: (windowId: string, menus: readonly AppMenuNode[]) => void;
 	readonly nativeTheme: {
 		readonly source: ThemeSource;
 		shouldUseDarkColors(): boolean;
@@ -86,7 +86,8 @@ export interface HostPrimitiveDeps {
 /**
  * Provides the kernel's host-primitive domain objects. Each one requires the
  * matching host permission from callers (checked by the domain registry);
- * keychain entries and app-menu items are namespaced by the calling plugin.
+ * keychain entries are namespaced by the calling plugin, and an app menu
+ * belongs to the window that set it.
  */
 export function provideHostPrimitives(kernelSdk: PluginSdk, deps: HostPrimitiveDeps): void {
 	kernelSdk.domains.provide(KernelDialogs, {
@@ -186,12 +187,14 @@ export function provideHostPrimitives(kernelSdk: PluginSdk, deps: HostPrimitiveD
 		},
 	});
 
-	const appMenu = kernelSdk.domains.provide(KernelAppMenu, {
-		initialState: { items: {} },
+	kernelSdk.domains.provide(KernelAppMenu, {
+		initialState: {},
 		methods: {
-			setItems: ({ items }, caller) => {
-				appMenu.setState({ items: { ...appMenu.state.items, [caller.pluginId]: items } });
-				deps.appMenu(appMenu.state.items);
+			setMenu: ({ menus }, caller) => {
+				if (caller.windowId === undefined) {
+					throw new KernelError("VALIDATION", "An app menu is set from the window it belongs to.");
+				}
+				deps.appMenu(caller.windowId, menus);
 			},
 		},
 	});

@@ -21,6 +21,7 @@ export type CommandContribution = Contribution<typeof KernelCommand>;
 const CHANNELS = {
 	execute: "kernel:command-execute",
 	run: "kernel:command-run",
+	executeInWindow: "kernel:command-execute-in-window",
 } as const;
 
 interface ExecutePayload {
@@ -66,6 +67,12 @@ export class CommandService {
 						options.logger?.error(`Command "${key}" forwarded from main failed`, error),
 					);
 			});
+			transport.on(CHANNELS.executeInWindow, (payload) => {
+				const { key, args } = payload as ExecutePayload;
+				this.execute(key, args).catch((error: unknown) =>
+					options.logger?.error(`Command "${key}" requested by main failed`, error),
+				);
+			});
 		}
 	}
 
@@ -108,6 +115,21 @@ export class CommandService {
 		}
 		transport.send(CHANNELS.run, payload, { toWindow: window });
 		return undefined;
+	}
+
+	/**
+	 * Main: executes a command as if it were invoked in `windowId` (e.g. from
+	 * that window's native menu), so the window's own `when` conditions decide
+	 * and a command it doesn't implement is forwarded as usual. Fire-and-forget;
+	 * a failure is logged in the window.
+	 */
+	executeInWindow(windowId: string, key: string, args?: unknown): void {
+		const { transport, process } = this.#options;
+		if (process !== "main" || !transport) {
+			throw new KernelError("UNAVAILABLE", "Only main executes commands in a window.");
+		}
+		const payload = { key, ...(args === undefined ? {} : { args }) };
+		transport.send(CHANNELS.executeInWindow, payload, { toWindow: windowId });
 	}
 
 	#runLocal(key: QualifiedId, args: unknown): unknown {

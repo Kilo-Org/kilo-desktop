@@ -17,6 +17,9 @@ import { protocolSchemes, BUNDLED_PLUGINS } from "@kilo-desktop/bundled-plugins"
 import {
 	KernelCommand,
 	KernelError,
+	KernelKeybindings,
+	resolveKeybindings,
+	type AppMenuNode,
 	type EmbeddedHostRegistration,
 	type KernelLogger,
 	type KeyboardPlatform,
@@ -32,7 +35,7 @@ import { requestDevRelaunch } from "$config/dev-relaunch.js";
 
 import { restoreNativeThemeFromPreferences } from "../platform/native-theme.js";
 import { ElectronApp } from "../platform/ElectronApp.js";
-import { buildAppMenuTemplate } from "../platform/ElectronAppMenu.js";
+import { buildFallbackMenuTemplate } from "../platform/ElectronAppMenu.js";
 import { ElectronBrowserHost } from "../platform/ElectronBrowserHost.js";
 import type { EmbeddedWebHost } from "../platform/embedded-web-host.js";
 import { ElectronNotifications } from "../platform/ElectronNotifications.js";
@@ -58,7 +61,7 @@ import { DesktopUpdaterService } from "../platform/Updater.js";
 import { getProductionRendererRoot, getWebDevServerUrl } from "../platform/webDevServer.js";
 import { WindowsUpdateFeed } from "../platform/WindowsUpdateFeed.js";
 import { windowArguments } from "../../preload/window-arguments.js";
-import { withCommandItems } from "./app-menu.js";
+import { buildMenuTemplate, WindowMenus, type MenuCommands } from "./app-menu.js";
 import { ElectronKernelTransport } from "./ElectronKernelTransport.js";
 import { provideHostPrimitives, type NativeChrome } from "./host-primitives.js";
 import { createHostServices } from "./host-services.js";
@@ -119,6 +122,12 @@ export class KernelApplication {
 	readonly #storageRoot = app.getPath("userData");
 	readonly #disposers: (() => void)[] = [];
 	readonly #updaterListeners = new Set<(state: unknown) => void>();
+	readonly #menus = new WindowMenus({
+		render: (windowId, menus) =>
+			buildMenuTemplate(menus, this.#menuCommands(windowId), keyboardPlatform()),
+		fallback: () => buildFallbackMenuTemplate(),
+		show: (template) => Menu.setApplicationMenu(Menu.buildFromTemplate(template)),
+	});
 	#kernel: MainKernel | undefined;
 	#isDevelopment = false;
 	#quitting = false;
@@ -146,7 +155,7 @@ export class KernelApplication {
 		);
 
 		await this.#app.whenReady();
-		Menu.setApplicationMenu(Menu.buildFromTemplate(buildAppMenuTemplate()));
+		this.#menus.refresh();
 		this.#disposers.push(this.#shortcuts.install());
 		if (this.#isDevelopment) electronDebug({ showDevTools: false });
 
@@ -179,6 +188,7 @@ export class KernelApplication {
 
 		await kernel.start();
 		this.#watchSystem(kernel);
+		this.#watchMenuCommands(kernel);
 		this.#openMainWindow(kernel);
 		await this.#windows.whenReady();
 		this.#windows.reveal();
@@ -326,7 +336,8 @@ export class KernelApplication {
 				delete: async (account) =>
 					void (await (await loadKeytar()).deletePassword(KEYCHAIN_SERVICE, account)),
 			},
-			appMenu: (itemsByPlugin) => this.#rebuildAppMenu(itemsByPlugin),
+			appMenu: (windowId: string, menus: readonly AppMenuNode[]) =>
+				this.#menus.set(windowId, menus),
 			nativeTheme: {
 				source: nativeTheme.themeSource,
 				shouldUseDarkColors: () => nativeTheme.shouldUseDarkColors,
@@ -437,7 +448,10 @@ export class KernelApplication {
 		this.#transport.attachWindow(windowId, window.webContents);
 		kernel.windowEvents.opened(windowId, info);
 		let confirmedClose = false;
-		window.on("focus", () => kernel.windowEvents.focused(windowId));
+		window.on("focus", () => {
+			kernel.windowEvents.focused(windowId);
+			this.#menus.focus(windowId);
+		});
 		window.on("blur", () => kernel.windowEvents.blurred(windowId));
 		window.on("close", (event) => {
 			if (confirmedClose || this.#quitting) return;
@@ -451,6 +465,7 @@ export class KernelApplication {
 		window.on("closed", () => {
 			this.#transport.detachWindow(windowId);
 			kernel.windowEvents.closed(windowId);
+			this.#menus.close(windowId);
 		});
 	}
 
@@ -470,30 +485,38 @@ export class KernelApplication {
 		);
 	}
 
-	#rebuildAppMenu(
-		itemsByPlugin: Readonly<Record<string, readonly { command: string; group: string }[]>>,
-	): void {
+	/** Command titles and current shortcuts for the menu; clicks run in the menu's window. */
+	#menuCommands(windowId: string): MenuCommands {
 		const kernel = this.#kernel;
-		if (!kernel) return;
-		const commands = new Map(
-			kernel.extensions.list(KernelCommand).map((command) => [command.key, command]),
+		const declared = kernel?.commands.declared() ?? [];
+		const titles = new Map<string, string>(
+			declared.map((command) => [command.key, command.metadata.title]),
 		);
-		const items = Object.values(itemsByPlugin)
-			.flat()
-			.flatMap((item) => {
-				const command = commands.get(item.command as `${string}/${string}`);
-				if (!command) return [];
-				return [
-					{
-						label: command.metadata.title,
-						group: item.group,
-						click: () => void kernel.commands.execute(command.key).catch(() => {}),
-					},
-				];
-			});
-		Menu.setApplicationMenu(
-			Menu.buildFromTemplate(withCommandItems(buildAppMenuTemplate(), items)),
-		);
+		const { byCommand } = resolveKeybindings({
+			commands: declared.map((command) => ({
+				key: command.key,
+				scoped: command.when !== undefined,
+				metadata: command.metadata,
+			})),
+			overrides: kernel?.kernelSdk.domains.get(KernelKeybindings)?.getState().overrides ?? {},
+			platform: keyboardPlatform(),
+		});
+		return {
+			title: (key) => titles.get(key),
+			chord: (key) => byCommand[key]?.[0],
+			run: (key) => kernel?.commands.executeInWindow(windowId, key),
+		};
+	}
+
+	/** Redraws the menu when commands or their shortcuts change. */
+	#watchMenuCommands(kernel: MainKernel): void {
+		const stopCommands = kernel.extensions.subscribe((pointId) => {
+			if (pointId === KernelCommand.id) this.#menus.refresh();
+		});
+		const stopKeybindings = kernel.kernelSdk.domains
+			.get(KernelKeybindings)
+			?.subscribe(() => this.#menus.refresh());
+		this.#disposers.push(stopCommands, () => stopKeybindings?.());
 	}
 
 	/**

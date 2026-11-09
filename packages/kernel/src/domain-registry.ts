@@ -417,7 +417,10 @@ export class DomainRegistry {
 		if (!entry?.methods) {
 			throw new KernelError("UNAVAILABLE", `Domain object "${payload.domainId}" is not provided.`);
 		}
-		const caller: DomainCaller = { pluginId: payload.caller, process: from.process };
+		const caller: DomainCaller =
+			from.process === "renderer"
+				? { pluginId: payload.caller, process: "renderer", windowId: from.windowId }
+				: { pluginId: payload.caller, process: "main" };
 		if (caller.process === "renderer" && !this.#mayCallFromWindow(caller.pluginId)) {
 			throw new KernelError(
 				"PERMISSION_DENIED",

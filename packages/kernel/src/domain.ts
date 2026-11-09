@@ -90,6 +90,8 @@ export interface DomainCaller {
 	readonly pluginId: string;
 	/** The process the call came from. */
 	readonly process: "main" | "renderer";
+	/** The window a renderer call came from; the transport vouches for it. */
+	readonly windowId?: string;
 }
 
 export function defineDomain<

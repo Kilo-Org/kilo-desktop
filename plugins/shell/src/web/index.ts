@@ -4,6 +4,7 @@ import { KeyboardIcon, PaletteIcon } from "lucide-react";
 import { definePlugin, KernelCommand, KernelRoot, KernelWindows } from "@kilo-desktop/kernel";
 
 import { Navigation, OnboardingStep, SettingsSection } from "../contracts";
+import { startAppMenu } from "./app-menu";
 import { provideNavigation, routeDeepLinks } from "./navigation";
 import { featuresStep } from "./onboarding/features-step";
 import { createShellRouter } from "./router";
@@ -14,13 +15,14 @@ import { startThemeRuntime } from "./theme-runtime";
 import { createShellUiState } from "./ui-state";
 
 /**
- * kilo.shell's renderer entry. Every window gets the theme runtime and the
- * shell's settings sections; the main window also gets the router, frame,
- * navigation and deep-link routing.
+ * kilo.shell's renderer entry. Every window gets the theme runtime, its native
+ * app menu and the shell's settings sections; the main window also gets the
+ * router, frame, navigation and deep-link routing.
  */
 export const shellWebEntry = definePlugin({
 	activate(sdk) {
 		startThemeRuntime(sdk);
+		startAppMenu(sdk);
 
 		sdk.extensions.implement(OnboardingStep, "features", featuresStep);
 		sdk.extensions.implement(SettingsSection, "appearance", {

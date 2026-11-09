@@ -27,7 +27,7 @@ e2e/              @kilo-desktop/e2e          Playwright/Electron e2e (plugin-awa
 examples/
 └── hello-plugin/ @kilo-desktop/example-hello example.hello: the example plugin for authors — workspace-built and tested, never bundled
 plugins/          Bundled plugins — self-contained workspace packages
-├── shell/        @kilo-desktop/plugin-shell kilo.shell: window frame, router, settings host, command palette, appearance (kernel plugin)
+├── shell/        @kilo-desktop/plugin-shell kilo.shell: window frame, router, settings host, command palette, app menu, appearance (kernel plugin)
 ├── flags/        @kilo-desktop/plugin-flags kilo.flags: LaunchDarkly feature flags as a domain object and `flag:` context keys (kernel plugin)
 ├── telemetry/    @kilo-desktop/plugin-telemetry kilo.telemetry: consented PostHog analytics for declared events, Privacy settings (kernel plugin)
 ├── updates/      @kilo-desktop/plugin-updates kilo.updates: About settings, release notes, the restart-to-update notice and the third-party notices (kernel plugin)

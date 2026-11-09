@@ -325,16 +325,80 @@ export const KernelNotifications = defineDomain({
 	},
 });
 
-const menuItem = z.object({ command: z.string(), group: z.string() });
+/**
+ * The OS actions a native menu may carry. Developer tools and reload are
+ * deliberately absent: no plugin can put them in the menu.
+ */
+export const APP_MENU_ROLES = [
+	"about",
+	"services",
+	"hide",
+	"hideOthers",
+	"unhide",
+	"quit",
+	"undo",
+	"redo",
+	"cut",
+	"copy",
+	"paste",
+	"pasteAndMatchStyle",
+	"delete",
+	"selectAll",
+	"resetZoom",
+	"zoomIn",
+	"zoomOut",
+	"togglefullscreen",
+	"minimize",
+	"zoom",
+	"front",
+	"close",
+] as const;
+export type AppMenuRole = (typeof APP_MENU_ROLES)[number];
 
-/** Native app menu entries, each referencing a command. Items are scoped to the calling plugin. */
+export type AppMenuNode =
+	| { readonly type: "submenu"; readonly label: string; readonly items: readonly AppMenuNode[] }
+	/** Runs a `kernel/command`; its title and current shortcut are filled in by the host. */
+	| {
+			readonly type: "command";
+			readonly command: string;
+			readonly label?: string | undefined;
+			readonly enabled?: boolean | undefined;
+	  }
+	/** An OS action; `chord` (canonical, as `serializeChord`) replaces its default shortcut. */
+	| { readonly type: "role"; readonly role: AppMenuRole; readonly chord?: string | undefined }
+	| { readonly type: "separator" };
+
+const appMenuNode: z.ZodType<AppMenuNode> = z.lazy(() =>
+	z.discriminatedUnion("type", [
+		z.object({ type: z.literal("submenu"), label: z.string().min(1), items: z.array(appMenuNode) }),
+		z.object({
+			type: z.literal("command"),
+			command: z.string().min(1),
+			label: z.string().min(1).optional(),
+			enabled: z.boolean().optional(),
+		}),
+		z.object({
+			type: z.literal("role"),
+			role: z.enum(APP_MENU_ROLES),
+			chord: z.string().min(1).optional(),
+		}),
+		z.object({ type: z.literal("separator") }),
+	]),
+);
+
+/**
+ * The native app menu of the calling window: a whole tree of submenus,
+ * commands, OS roles and separators. Called from a window (the caller's
+ * window is the one whose menu is set); the menu of the focused window is
+ * shown, and the host's minimal menu until a window sets one.
+ */
 export const KernelAppMenu = defineDomain({
 	id: "kernel/app-menu",
 	home: "main",
 	permission: "app-menu",
-	state: z.object({ items: z.record(z.string(), z.array(menuItem)) }),
+	state: z.object({}),
 	methods: {
-		setItems: method(z.object({ items: z.array(menuItem) }), nothing),
+		setMenu: method(z.object({ menus: z.array(appMenuNode) }), nothing),
 	},
 });
 

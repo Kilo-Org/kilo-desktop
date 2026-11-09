@@ -1,13 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type { MenuItemConstructorOptions } from "electron";
 
-vi.mock("electron", () => ({
-	app: { getName: () => "Kilo" },
-	Menu: { setApplicationMenu: vi.fn(), buildFromTemplate: vi.fn() },
-}));
-
-import { buildAppMenuTemplate } from "./ElectronAppMenu.js";
+import { buildFallbackMenuTemplate } from "./ElectronAppMenu.js";
 
 function collectRoles(template: readonly MenuItemConstructorOptions[]): string[] {
 	const roles: string[] = [];
@@ -22,23 +17,23 @@ function collectRoles(template: readonly MenuItemConstructorOptions[]): string[]
 	return roles;
 }
 
-describe("buildAppMenuTemplate", () => {
+describe("buildFallbackMenuTemplate", () => {
 	for (const platform of ["darwin", "win32", "linux"] as const) {
 		describe(platform, () => {
 			it("never exposes developer-tools or reload items", () => {
-				const roles = collectRoles(buildAppMenuTemplate(platform));
+				const roles = collectRoles(buildFallbackMenuTemplate(platform));
 				expect(roles).not.toContain("toggleDevTools");
 				expect(roles).not.toContain("reload");
 				expect(roles).not.toContain("forceReload");
 			});
 
 			it("keeps standard edit roles so clipboard shortcuts still work", () => {
-				const roles = collectRoles(buildAppMenuTemplate(platform));
+				const roles = collectRoles(buildFallbackMenuTemplate(platform));
 				expect(roles).toEqual(expect.arrayContaining(["copy", "paste", "cut", "selectAll"]));
 			});
 
 			it("keeps zoom and fullscreen roles so those shortcuts still work", () => {
-				const roles = collectRoles(buildAppMenuTemplate(platform));
+				const roles = collectRoles(buildFallbackMenuTemplate(platform));
 				expect(roles).toEqual(
 					expect.arrayContaining(["resetZoom", "zoomIn", "zoomOut", "togglefullscreen"]),
 				);
@@ -46,8 +41,7 @@ describe("buildAppMenuTemplate", () => {
 		});
 	}
 
-	it("includes the macOS application menu with a quit role on darwin", () => {
-		const roles = collectRoles(buildAppMenuTemplate("darwin"));
-		expect(roles).toContain("quit");
+	it.each(["darwin", "win32", "linux"] as const)("keeps a way to quit on %s", (platform) => {
+		expect(collectRoles(buildFallbackMenuTemplate(platform))).toContain("quit");
 	});
 });

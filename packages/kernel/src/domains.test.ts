@@ -20,6 +20,7 @@ const Counter = defineDomain({
 	methods: {
 		increment: method(z.object({ by: z.number() }), z.object({ count: z.number() })),
 		whoami: method(z.undefined(), z.string()),
+		whichWindow: method(z.undefined(), z.string()),
 		fail: method(z.object({ expected: z.boolean() }), z.undefined()),
 	},
 	events: { bumped: z.object({ count: z.number() }) },
@@ -60,6 +61,7 @@ function provideCounter(sdk: PluginSdk): DomainProvider<typeof Counter> {
 				return { count: provider.state.count };
 			},
 			whoami: (_input, caller) => `${caller.pluginId} (${caller.process})`,
+			whichWindow: (_input, caller) => caller.windowId ?? "none",
 			fail: ({ expected }) => {
 				if (expected) throw new KernelError("NOT_FOUND", "Nothing here.");
 				throw new Error("secret internals");
@@ -363,6 +365,17 @@ describe("domain registry — across processes", () => {
 		await expect(renderer.kernelSdk.domains.get(Counter)!.methods.whoami(undefined)).resolves.toBe(
 			"kernel (renderer)",
 		);
+	});
+
+	it("tells a method which window called it", async () => {
+		const { main, renderer } = await bootPair();
+
+		await expect(
+			renderer.sdkFor("acme.guest").domains.get(Counter)!.methods.whichWindow(undefined),
+		).resolves.toBe("w1");
+		await expect(
+			main.sdkFor("acme.guest").domains.get(Counter)!.methods.whichWindow(undefined),
+		).resolves.toBe("none");
 	});
 
 	it("gives the kernel in a window only the permissions its own screens need", async () => {

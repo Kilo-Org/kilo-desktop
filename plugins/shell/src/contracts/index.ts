@@ -270,6 +270,31 @@ export const DeepLink = defineExtensionPoint({
 	}),
 });
 
+/** The native app menu's standard menus; `app` is macOS's application menu (File elsewhere). */
+export const APP_MENUS = ["app", "file", "edit", "view", "window", "help"] as const;
+export type AppMenuName = (typeof APP_MENUS)[number];
+
+/**
+ * A command in the native app menu. Items of one `group` sit together,
+ * between separators, in contribution order (priority, then plugin order).
+ * The label is the command's title unless one is given here, and the
+ * shortcut is the command's current one. An item is greyed out while its
+ * command can't run in the focused window; hide it with `when`.
+ */
+export const MenuItem = defineExtensionPoint({
+	id: "kilo.shell/menu-item",
+	kind: "additive",
+	description: "A command in the native app menu.",
+	metadata: z.object({
+		/** The `kernel/command` key to run. */
+		command: z.string().min(1),
+		menu: z.enum(APP_MENUS).default("file"),
+		/** Replaces the command's title in the menu, e.g. "Settings…". */
+		label: z.string().min(1).optional(),
+		group: z.string().min(1).default("default"),
+	}),
+});
+
 // --- Domain objects ---
 
 const textSizes = z.object({ ui: z.number(), chat: z.number() });
@@ -350,6 +375,7 @@ export const SHELL_EXTENSION_POINTS = [
 	StatusBarItem,
 	DeepLink,
 	OnboardingStep,
+	MenuItem,
 ];
 /**
  * Bump when onboarding changes enough that people who finished or skipped an

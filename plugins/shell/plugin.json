@@ -5,10 +5,11 @@
 	"version": "1.0.0",
 	"description": "The window frame, router, settings host, command palette, status bar and appearance.",
 	"requires": {
-		"kernel/windows": "optional"
+		"kernel/windows": "optional",
+		"kernel/app-menu": "optional"
 	},
 	"permissions": {
-		"host": ["appearance", "windows"]
+		"host": ["appearance", "windows", "app-menu"]
 	},
 	"extensionPoints": [
 		{
@@ -60,6 +61,11 @@
 			"id": "overlay",
 			"kind": "additive",
 			"description": "Always-mounted UI such as app-wide dialogs."
+		},
+		{
+			"id": "menu-item",
+			"kind": "additive",
+			"description": "A command in the native app menu."
 		}
 	],
 	"domains": [
@@ -187,6 +193,33 @@
 					"id": "features",
 					"label": "Features",
 					"priority": 100
+				}
+			],
+			"kilo.shell/menu-item": [
+				{
+					"id": "settings",
+					"command": "kilo.shell/open-settings",
+					"menu": "app",
+					"label": "Settings…"
+				},
+				{
+					"id": "command-palette",
+					"command": "kilo.shell/command-palette",
+					"menu": "view",
+					"group": "app",
+					"priority": 20
+				},
+				{
+					"id": "toggle-sidebar",
+					"command": "kilo.shell/toggle-sidebar",
+					"menu": "view",
+					"group": "app",
+					"priority": 10
+				},
+				{
+					"id": "show-shortcuts",
+					"command": "kilo.shell/show-shortcuts",
+					"menu": "help"
 				}
 			]
 		}

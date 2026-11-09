@@ -95,6 +95,23 @@ describe("commands", () => {
 		expect(handler).toHaveBeenCalledOnce();
 	});
 
+	it("runs a command in a given window, judged by that window's conditions", async () => {
+		const handler = vi.fn();
+		const { main, renderer } = await bootPair({
+			commands: [{ id: "close-tab", title: "Close tab", when: { all: ["acme.cmd/tabOpen"] } }],
+			manifest: { contextKeys: [{ id: "tabOpen", scope: "window" }] },
+			renderer: (sdk) => {
+				sdk.context.set("tabOpen", true);
+				sdk.extensions.implement(KernelCommand, "close-tab", handler);
+			},
+		});
+
+		main.commands.executeInWindow("w1", "acme.cmd/close-tab");
+		await renderer.flush();
+
+		expect(handler).toHaveBeenCalledOnce();
+	});
+
 	it("runs a command from a window that only another window implements", async () => {
 		const handler = vi.fn();
 		const commands = [{ id: "open", title: "Open" }];

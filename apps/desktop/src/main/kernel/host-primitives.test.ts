@@ -14,7 +14,7 @@ import {
 	KernelUpdater,
 } from "@kilo-desktop/kernel";
 import { createMainKernel } from "@kilo-desktop/kernel/main";
-import { createTestHost, testPlugin } from "@kilo-desktop/kernel/testing";
+import { createTestHost, createTestKernelPair, testPlugin } from "@kilo-desktop/kernel/testing";
 
 import { provideHostPrimitives, type HostPrimitiveDeps } from "./host-primitives.js";
 
@@ -282,17 +282,70 @@ describe("host primitives", () => {
 		expect(hostDeps.keychain.delete).toHaveBeenCalledWith("acme.trusted:token");
 	});
 
-	it("rebuilds the app menu with each plugin's items", async () => {
-		const hostDeps = deps();
-		const kernel = await boot(hostDeps);
+	describe("app menu", () => {
+		const MENUS = [
+			{
+				type: "submenu" as const,
+				label: "File",
+				items: [
+					{ type: "command" as const, command: "acme.trusted/open" },
+					{ type: "separator" as const },
+					{ type: "role" as const, role: "close" as const, chord: "Shift+Meta+KeyW" },
+				],
+			},
+		];
 
-		await kernel
-			.sdkFor("acme.trusted")
-			.domains.get(KernelAppMenu)!
-			.methods.setItems({ items: [{ command: "acme.trusted/open", group: "File" }] });
+		async function bootWindow(hostDeps: HostPrimitiveDeps) {
+			const trusted = testPlugin("acme.trusted", {
+				manifest: { permissions: { host: ["app-menu"] } },
+				entry: { activate: () => {} },
+			});
+			const pair = await createTestKernelPair({ main: [trusted], renderer: [trusted] });
+			provideHostPrimitives(pair.main.kernelSdk, hostDeps);
+			await pair.renderer.flush();
+			return pair;
+		}
 
-		expect(hostDeps.appMenu).toHaveBeenCalledWith({
-			"acme.trusted": [{ command: "acme.trusted/open", group: "File" }],
+		it("sets the menu of the window that calls", async () => {
+			const hostDeps = deps();
+			const { renderer } = await bootWindow(hostDeps);
+
+			await renderer.sdkFor("acme.trusted").domains.get(KernelAppMenu)!.methods.setMenu({
+				menus: MENUS,
+			});
+
+			expect(hostDeps.appMenu).toHaveBeenCalledWith("main", MENUS);
+		});
+
+		it("refuses a menu set from main, which belongs to no window", async () => {
+			const hostDeps = deps();
+			const { main } = await bootWindow(hostDeps);
+
+			await expect(
+				main.sdkFor("acme.trusted").domains.get(KernelAppMenu)!.methods.setMenu({ menus: MENUS }),
+			).rejects.toMatchObject({ code: "VALIDATION" });
+			expect(hostDeps.appMenu).not.toHaveBeenCalled();
+		});
+
+		it("refuses OS actions outside the allowed set, such as developer tools", async () => {
+			const hostDeps = deps();
+			const { renderer } = await bootWindow(hostDeps);
+
+			await expect(
+				renderer
+					.sdkFor("acme.trusted")
+					.domains.get(KernelAppMenu)!
+					.methods.setMenu({
+						menus: [
+							{
+								type: "submenu",
+								label: "View",
+								items: [{ type: "role", role: "toggleDevTools" as never }],
+							},
+						],
+					}),
+			).rejects.toMatchObject({ code: "VALIDATION" });
+			expect(hostDeps.appMenu).not.toHaveBeenCalled();
 		});
 	});
 

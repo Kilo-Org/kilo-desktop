@@ -1,4 +1,4 @@
-import type { GenerateInput } from "@kilo-desktop/plugin-agent/contracts";
+import type { GenerateInput } from "@kilo-desktop/plugin-core/contracts";
 
 export interface CommitMessageInput {
 	readonly directory: string;
@@ -23,7 +23,7 @@ export interface SourceControlWriter {
 	generatePullRequest(input: PullRequestContentInput): Promise<{ title: string; body: string }>;
 }
 
-/** `kilo.agent/conversation.generate`: one structured answer from a throwaway chat. */
+/** `kilo.core/generation.generate`: one structured answer from a throwaway chat. */
 export type Generate = (input: GenerateInput) => Promise<Record<string, unknown>>;
 
 const COMMIT_SYSTEM_PROMPT =
@@ -36,7 +36,7 @@ function recentSubjects(subjects: readonly string[]): string {
 /**
  * Commit and pull request text from the agent (origin's kilo-ui writer): the
  * prompts and answer shapes are kilo.git's, the throwaway chat that answers
- * them is kilo.agent's `generate`. `model` is read per call (the model new
+ * them is kilo.core's `Generation.generate`. `model` is read per call (the model new
  * chats start with); without one the server's default answers.
  */
 export function createSourceControlWriter(deps: {

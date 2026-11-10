@@ -12,9 +12,9 @@ import {
 import { Skeleton, SkeletonText } from "@kilo-desktop/ui/components/skeleton";
 import { TableCell, TableRow } from "@kilo-desktop/ui/components/table";
 
-import { catalogTableCellClassNames, ModelCatalogTableFrame } from "./ModelCatalogTableLayout.js";
-import { ModelIdentitySkeleton } from "./ModelIdentity.js";
-import { ModelPerformanceSkeleton } from "./ModelPerformance.js";
+import { catalogTableCellClassNames, ModelCatalogTableFrame } from "./ModelCatalogTableLayout";
+import { ModelIdentitySkeleton } from "./ModelIdentity";
+import { ModelPerformanceSkeleton } from "./ModelPerformance";
 
 // Distinct widths double as stable keys; row counts match the loaded views
 // (up to three recommendations per group).
@@ -126,14 +126,16 @@ export function ModelCatalogError({ message, onRetry }: { message: string; onRet
 }
 
 /**
- * The catalog needs an Anaconda API key. Signing in runs the browser flow that
- * stores one in the Anaconda keyring; it does not change the app (Kilo) session.
+ * The catalog needs its account (`title`'s, e.g. Anaconda). Signing in runs
+ * the catalog's browser flow; it does not change the app (Kilo) session.
  */
 export function ModelCatalogSignIn({
+	title,
 	signingIn,
 	onSignIn,
 	onCancel,
 }: {
+	title: string;
 	signingIn: boolean;
 	onSignIn: () => void;
 	onCancel: () => void;
@@ -144,9 +146,9 @@ export function ModelCatalogSignIn({
 				<EmptyMedia variant="icon">
 					<LibraryIcon />
 				</EmptyMedia>
-				<EmptyTitle>Sign in to Anaconda</EmptyTitle>
+				<EmptyTitle>{`Sign in to ${title}`}</EmptyTitle>
 				<EmptyDescription>
-					The model catalog uses your Anaconda account. Sign in to browse and download models.
+					{`The model catalog uses your ${title} account. Sign in to browse and download models.`}
 				</EmptyDescription>
 			</EmptyHeader>
 			<EmptyContent className="flex-row justify-center">
@@ -157,7 +159,7 @@ export function ModelCatalogSignIn({
 					data-qa-id="model-catalog-sign-in-button"
 				>
 					<LogInIcon data-icon="inline-start" />
-					{signingIn ? "Waiting for browser…" : "Sign in to Anaconda"}
+					{signingIn ? "Waiting for browser…" : `Sign in to ${title}`}
 				</Button>
 				{signingIn ? (
 					<Button variant="ghost" onClick={onCancel} data-qa-id="model-catalog-cancel-sign-in">
@@ -169,7 +171,8 @@ export function ModelCatalogSignIn({
 	);
 }
 
-export function ModelCatalogEmpty() {
+/** `title` is the catalog's (e.g. Anaconda); null without one. */
+export function ModelCatalogEmpty({ title }: { title: string | null }) {
 	return (
 		<Empty data-qa-id="model-catalog-empty">
 			<EmptyHeader>
@@ -177,7 +180,11 @@ export function ModelCatalogEmpty() {
 					<LibraryIcon />
 				</EmptyMedia>
 				<EmptyTitle>No models available</EmptyTitle>
-				<EmptyDescription>Your Anaconda account has no models available.</EmptyDescription>
+				<EmptyDescription>
+					{title === null
+						? "No models are available."
+						: `Your ${title} account has no models available.`}
+				</EmptyDescription>
 			</EmptyHeader>
 		</Empty>
 	);

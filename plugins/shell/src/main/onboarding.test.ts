@@ -4,8 +4,7 @@ import { createMainKernel } from "@kilo-desktop/kernel/main";
 import { createMemoryStorage, createTestHost } from "@kilo-desktop/kernel/testing";
 
 import manifest from "../../plugin.json";
-import { ONBOARDING_VERSION, Onboarding } from "../contracts";
-import { SHELL_DEFINITIONS } from "../definitions";
+import { ONBOARDING_VERSION, Onboarding, SHELL_DEFINITIONS } from "../contracts";
 import { createShellMainEntry, shellMainEntry } from "./index";
 
 afterEach(() => {
@@ -25,7 +24,7 @@ async function boot(
 		hostServices: () => ({ storage }),
 	});
 	await kernel.start();
-	const onboarding = kernel.kernelSdk.domains.get(Onboarding)!;
+	const onboarding = kernel.kernelSdk.domainObjects.get(Onboarding)!;
 	const events: string[] = [];
 	onboarding.on("shown", () => events.push("shown"));
 	onboarding.on("completed", () => events.push("completed"));

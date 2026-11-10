@@ -3,7 +3,7 @@
 	"version": "1.0.0",
 	"private": true,
 	"type": "module",
-	"description": "kilo.browser: web pages, and a workspace's HTML pages, in a session's panes",
+	"description": "kilo.browser: web pages, and a workspace's HTML pages, in a work session's panes",
 	"exports": {
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",
@@ -17,22 +17,17 @@
 	},
 	"dependencies": {
 		"@kilo-desktop/kernel": "workspace:*",
-		"@kilo-desktop/plugin-agent": "workspace:*",
 		"@kilo-desktop/plugin-chat": "workspace:*",
-		"@kilo-desktop/plugin-sessions": "workspace:*",
-		"@kilo-desktop/plugin-telemetry": "workspace:*",
-		"@kilo-desktop/plugin-workbench": "workspace:*",
-		"@kilo-desktop/plugin-workspaces": "workspace:*",
+		"@kilo-desktop/plugin-core": "workspace:*",
+		"@kilo-desktop/plugin-work-sessions": "workspace:*",
+		"@kilo-desktop/ui": "workspace:*",
 		"lucide-react": "catalog:",
+		"react": "^19.2.8",
+		"react-dom": "^19.2.8",
 		"zod": "catalog:"
 	},
-	"peerDependencies": {
-		"@kilo-desktop/ui": "workspace:*",
-		"react": "^19.0.0",
-		"react-dom": "^19.0.0"
-	},
 	"devDependencies": {
-		"@kilo-desktop/ui": "workspace:*",
+		"@kilo-desktop/plugin-shell": "workspace:*",
 		"@tailwindcss/vite": "^4.3.3",
 		"@testing-library/react": "^16.3.2",
 		"@types/node": "^26.0.0",
@@ -43,8 +38,6 @@
 		"@vitest/browser-playwright": "5.1.0",
 		"@vitest/coverage-v8": "catalog:",
 		"playwright": "catalog:",
-		"react": "^19.2.8",
-		"react-dom": "^19.2.8",
 		"tailwindcss": "^4.3.3",
 		"typescript": "catalog:",
 		"vite": "catalog:",

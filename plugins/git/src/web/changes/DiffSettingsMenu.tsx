@@ -15,7 +15,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/compon
 
 import type { DiffIndicators } from "@pierre/diffs";
 
-import { useDiffOptions, type DiffStyle } from "./diff-options.js";
+import { useDiffOptions, type DiffStyle } from "./diff-options";
 
 export function DiffSettingsMenu() {
 	const [{ diffIndicators, diffStyle, showBackgrounds, showLineNumbers, wrapLines }, setOpt] =

@@ -14,7 +14,7 @@
 import {
 	parseEnvironmentsErrorMessage,
 	type EnvironmentsErrorCode,
-} from "../../../contracts/common.js";
+} from "../../../contracts/common";
 
 /** Friendly, action-oriented copy per granular error code. */
 const FRIENDLY_MESSAGE: Record<EnvironmentsErrorCode, string> = {

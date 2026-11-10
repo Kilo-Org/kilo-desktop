@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { resolveBridge, resolveBridgeLaunchInfo } from "./resolveBridgePath.js";
+import { resolveBridge, resolveBridgeLaunchInfo } from "./resolveBridgePath";
 
 const LAUNCH = ["python/bin/python3.11", "-E", "-s", "-P", "-B", "-m", "anaconda_desktop_bridge"];
 

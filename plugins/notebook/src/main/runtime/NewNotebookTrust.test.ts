@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { NewNotebookTrust, type TrustSession } from "./NewNotebookTrust.js";
+import { NewNotebookTrust, type TrustSession } from "./NewNotebookTrust";
 
 const NOTEBOOK_ID = "2c7f2b1e-7e0a-4c1f-9d57-6a8b2f0c9e11";
 

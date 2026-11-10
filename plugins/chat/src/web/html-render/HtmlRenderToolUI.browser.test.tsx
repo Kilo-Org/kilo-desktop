@@ -1,18 +1,48 @@
-import type { ToolCallMessagePartProps } from "@assistant-ui/react";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 
+import { definePlugin } from "@kilo-desktop/kernel";
 import { Toaster } from "@kilo-desktop/ui/components/sonner";
 
-import { MCP_APP_SHELL_HTML_MESSAGE, MCP_APP_SHELL_READY_MESSAGE } from "../../contracts";
+import {
+	HtmlPages,
+	htmlPageFileStem,
+	MCP_APP_SHELL_HTML_MESSAGE,
+	MCP_APP_SHELL_READY_MESSAGE,
+	type SaveHtmlPageInput,
+} from "../../contracts";
 import { renderInKernel } from "../../test/kernel-harness";
+import type { ToolCallView } from "../tools/tool-call";
 import { ChatMarkdownProvider } from "../thread/chat-markdown";
 import { TurnWorkFoldContext } from "../tools/turn-work-fold-context";
 import { HtmlRenderToolUI } from "./HtmlRenderToolUI";
 
+type WriteNewFile = (path: string, content: string) => Promise<boolean>;
+
+/** kilo.chat's `html-pages` in main, writing through `writeNewFile` (false: the name is taken). */
+const htmlPagesMain = (writeNewFile: WriteNewFile) =>
+	definePlugin({
+		activate(sdk) {
+			sdk.domainObjects.provide(HtmlPages, {
+				initialState: {},
+				methods: {
+					save: async ({ workspaceDirectory, title, html }: SaveHtmlPageInput) => {
+						const stem = htmlPageFileStem(title);
+						for (let index = 1; ; index++) {
+							const relativePath = index === 1 ? `${stem}.html` : `${stem} ${index}.html`;
+							if (await writeNewFile(`${workspaceDirectory}/${relativePath}`, html)) {
+								return { relativePath };
+							}
+						}
+					},
+				},
+			});
+		},
+	});
+
 async function renderTool(
-	props: Partial<ToolCallMessagePartProps>,
+	props: Partial<ToolCallView>,
 	{
 		inFold = false,
 		workspaceDirectory,
@@ -20,18 +50,17 @@ async function renderTool(
 	}: {
 		inFold?: boolean;
 		workspaceDirectory?: string;
-		writeNewFile?: (path: string, content: string) => Promise<boolean>;
+		writeNewFile?: WriteNewFile;
 	} = {},
 ) {
 	const toolProps = {
-		type: "tool-call",
 		toolCallId: "call-1",
 		toolName: "desktop_chat_html_render",
 		args: {},
 		argsText: "",
 		status: { type: "complete" },
 		...props,
-	} as ToolCallMessagePartProps;
+	} as ToolCallView;
 	const tool = (
 		<TurnWorkFoldContext.Provider value={inFold}>
 			<HtmlRenderToolUI {...toolProps} />
@@ -42,7 +71,7 @@ async function renderTool(
 			<Toaster />
 			{workspaceDirectory ? (
 				<ChatMarkdownProvider
-					sessionId="session-1"
+					workSessionId="session-1"
 					workspaceFolders={[{ path: workspaceDirectory, isPrimary: true }]}
 				>
 					{tool}
@@ -51,7 +80,7 @@ async function renderTool(
 				tool
 			)}
 		</>,
-		{ chatMain: { writeNewFile } },
+		{ chatMain: htmlPagesMain(writeNewFile) },
 	);
 	return { ...host.view, opened: host.opened };
 }

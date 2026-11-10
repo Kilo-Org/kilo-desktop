@@ -1,0 +1,215 @@
+{
+	"manifestVersion": 1,
+	"id": "kilo.core",
+	"displayName": "Kilo",
+	"version": "1.0.0",
+	"description": "The Kilo server and everything it knows: identity, terms, AI providers and models, chats and tools.",
+	"main": "./src/main/index.ts",
+	"permissions": {
+		"host": ["os", "windows"]
+	},
+	"contextKeys": [
+		{
+			"id": "signedIn",
+			"scope": "global",
+			"description": "True while a Kilo account is signed in."
+		},
+		{
+			"id": "termsAccepted",
+			"scope": "global",
+			"description": "True once the current terms of service are accepted on this device."
+		}
+	],
+	"objectTypes": [
+		{
+			"id": "chat",
+			"description": "A Kilo chat (a Kilo session), keyed by its session id."
+		},
+		{
+			"id": "model",
+			"description": "A model of an AI provider, keyed <aiProviderId>/<modelId>."
+		}
+	],
+	"domainObjects": [
+		{
+			"id": "server",
+			"home": "main",
+			"description": "The Kilo CLI server: status, connection and restart."
+		},
+		{
+			"id": "account",
+			"home": "main",
+			"description": "The signed-in Kilo account: profile, organisations, sign-in and sign-out."
+		},
+		{
+			"id": "terms",
+			"home": "main",
+			"description": "Acceptance of the terms of service on this device."
+		},
+		{
+			"id": "chats",
+			"home": "main",
+			"description": "Kilo chats (Kilo sessions): activity, prompts, permission requests and questions.",
+			"objectType": "kilo.core/chat"
+		},
+		{
+			"id": "generation",
+			"home": "main",
+			"description": "One-shot structured calls: commit messages, PR text, branch names."
+		},
+		{
+			"id": "models",
+			"home": "main",
+			"description": "Available models with their AI providers, the preferred model, favourites, recent models and the gateway catalog.",
+			"objectType": "kilo.core/model"
+		},
+		{
+			"id": "external-apps",
+			"home": "main",
+			"description": "Paired external AI apps, plus the listener's settings and status."
+		},
+		{
+			"id": "work-style",
+			"home": "main",
+			"description": "The work style: permission rules written to the user's global Kilo config."
+		}
+	],
+	"extensionPoints": [
+		{
+			"id": "ai-provider",
+			"kind": "additive",
+			"description": "An AI provider entry in Kilo's config."
+		},
+		{
+			"id": "mcp-server",
+			"kind": "additive",
+			"description": "An MCP server added to Kilo's config."
+		},
+		{
+			"id": "agent-extension",
+			"kind": "additive",
+			"description": "An agent, command, skill or Kilo plugin added to Kilo."
+		},
+		{
+			"id": "server-env",
+			"kind": "additive",
+			"description": "Environment variables for the Kilo server process."
+		},
+		{
+			"id": "chat-config",
+			"kind": "additive",
+			"description": "Instructions and permissions for a chat, given its id, directory and stamp."
+		},
+		{
+			"id": "tool",
+			"kind": "additive",
+			"description": "A desktop tool the agent can call."
+		},
+		{
+			"id": "tool-approval",
+			"kind": "decision",
+			"description": "Proceed, ask or reject a tool call."
+		}
+	],
+	"contributes": {
+		"extensions": {
+			"kernel/identity-provider": [
+				{
+					"id": "kilo-account"
+				}
+			],
+			"kernel/flag-source": [
+				{
+					"id": "launchdarkly"
+				}
+			],
+			"kernel/telemetry-sink": [
+				{
+					"id": "posthog"
+				}
+			],
+			"kernel/flag": [
+				{
+					"id": "external-api-apps-settings",
+					"description": "External AI apps: let apps like Cursor and Claude Code use Kilo Desktop's tools.",
+					"default": false
+				}
+			],
+			"kernel/telemetry-event": [
+				{
+					"id": "desktop-initialized",
+					"name": "Desktop Initialized"
+				},
+				{
+					"id": "logged-in",
+					"name": "Logged In"
+				},
+				{
+					"id": "logged-out",
+					"name": "Logged Out"
+				},
+				{
+					"id": "terms-accepted",
+					"name": "Terms Accepted"
+				},
+				{
+					"id": "terms-linked",
+					"name": "Terms Acceptance Linked"
+				}
+			],
+			"kernel/service": [
+				{
+					"id": "config-sync",
+					"title": "Kilo configuration",
+					"kind": "task",
+					"startOn": "activation",
+					"restart": {
+						"policy": "never"
+					}
+				},
+				{
+					"id": "tool-gateway",
+					"title": "Agent tools",
+					"kind": "daemon",
+					"startOn": "activation",
+					"restart": {
+						"policy": "on-failure",
+						"maxRetries": 3
+					}
+				},
+				{
+					"id": "server",
+					"title": "Kilo server",
+					"kind": "daemon",
+					"startOn": "window-shown",
+					"restart": {
+						"policy": "on-failure",
+						"maxRetries": 3
+					},
+					"stopTimeoutMs": 7000,
+					"when": {
+						"all": ["kilo.core/termsAccepted"]
+					}
+				},
+				{
+					"id": "launchdarkly",
+					"title": "Feature flags",
+					"kind": "daemon",
+					"startOn": "activation",
+					"restart": {
+						"policy": "never"
+					}
+				},
+				{
+					"id": "posthog",
+					"title": "Usage analytics",
+					"kind": "daemon",
+					"startOn": "window-shown",
+					"restart": {
+						"policy": "never"
+					}
+				}
+			]
+		}
+	}
+}

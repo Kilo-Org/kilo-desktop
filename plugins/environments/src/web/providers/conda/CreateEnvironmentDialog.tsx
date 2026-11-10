@@ -25,29 +25,30 @@ import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 import { CheckIcon, FolderIcon } from "lucide-react";
 
-import { parseEnvironmentsErrorMessage } from "../../../contracts/common.js";
-import { condaQueryKey, useConda, useCondaMutation, useCondaQuery } from "../../conda.js";
-import { useTrack } from "../../app.js";
-import type { CondaRepodataFindResult } from "../../../contracts/providers/conda.js";
-import { ChannelChooserPopover } from "./ChannelChooserPopover.js";
-import { useChannelSelection } from "./use-channel-selection.js";
-import { validateEnvironmentName } from "./environment-display.js";
+import { parseEnvironmentsErrorMessage } from "../../../contracts/common";
+import { ENVIRONMENTS_TELEMETRY_EVENTS } from "../../../contracts/index";
+import { condaQueryKey, useConda, useCondaMutation, useCondaQuery } from "../../conda";
+import { useTrack } from "../../app";
+import type { CondaRepodataFindResult } from "../../../contracts/providers/conda";
+import { ChannelChooserPopover } from "./ChannelChooserPopover";
+import { useChannelSelection } from "./use-channel-selection";
+import { validateEnvironmentName } from "./environment-display";
 import {
 	createEnvironmentJob,
 	jobToastOptions,
 	showJobError,
 	showJobSuccess,
-} from "./environments-toasts.js";
+} from "./environments-toasts";
 import {
 	PackageResultsTable,
 	PackageSearchInput,
 	SelectedPackagesPane,
 	selectedPackageToSpec,
 	usePackageSelection,
-} from "./PackageSearch.js";
-import { PythonVersionPicker, PYTHON_LATEST } from "./PythonVersionPicker.js";
-import { useCreatePrefixCheck, type CreatePrefixCheckState } from "./use-create-prefix-check.js";
-import { usePackageSearch } from "./use-package-search.js";
+} from "./PackageSearch";
+import { PythonVersionPicker, PYTHON_LATEST } from "./PythonVersionPicker";
+import { useCreatePrefixCheck, type CreatePrefixCheckState } from "./use-create-prefix-check";
+import { usePackageSearch } from "./use-package-search";
 
 interface CreateEnvironmentDialogProps {
 	open: boolean;
@@ -240,7 +241,7 @@ export function CreateEnvironmentDialog({ open, onClose }: CreateEnvironmentDial
 		promise.then(
 			() => {
 				// Tracked before the backgrounded check so jobs moved to a toast still count.
-				track("Environment Created", telemetryData);
+				track(ENVIRONMENTS_TELEMETRY_EVENTS.environmentCreated, telemetryData);
 				if (pending.backgrounded) return;
 				showJobSuccess(job);
 				setCreated({ prefix: payload.prefix, envName });

@@ -1,27 +1,32 @@
 import { useMemo } from "react";
 
-import type { DomainHandle } from "@kilo-desktop/kernel";
-import { useDomainState } from "@kilo-desktop/kernel/web";
+import type { DomainObjectHandle } from "@kilo-desktop/kernel";
+import { useDomainObjectState } from "@kilo-desktop/kernel/web";
 import type {
 	ModelSourceImplementation,
 	ModelSourceState,
 } from "@kilo-desktop/plugin-chat/contracts";
 
-import { LocalInference, type LocalInferenceState } from "../contracts/index.js";
-import { parseLocalInferenceStatus } from "./local-model-loading-copy.js";
+import {
+	LocalModels,
+	ModelServer,
+	type LocalModelsState,
+	type ModelServerState,
+} from "../contracts/index";
+import { parseLocalInferenceStatus } from "./local-model-loading-copy";
 
 const PENDING: ModelSourceState = { status: null, modelIds: [], pending: true };
 
-const selectStatus = (state: LocalInferenceState) => state.status;
-const selectModelIds = (state: LocalInferenceState) =>
+const selectStatus = (state: ModelServerState) => state.status;
+const selectModelIds = (state: LocalModelsState) =>
 	state.models
 		.filter((model) => model.available)
 		.map((model) => model.id)
 		.join("\n");
 
 function useLocalModelSourceState(): ModelSourceState {
-	const status = useDomainState(LocalInference, selectStatus);
-	const modelIds = useDomainState(LocalInference, selectModelIds);
+	const status = useDomainObjectState(ModelServer, selectStatus);
+	const modelIds = useDomainObjectState(LocalModels, selectModelIds);
 	return useMemo(
 		() =>
 			status === null || status === undefined || modelIds === null || modelIds === undefined
@@ -41,10 +46,10 @@ function useLocalModelSourceState(): ModelSourceState {
  * chosen, and loading a model before a prompt for it is sent.
  */
 export function localModelSource(
-	domain: () => DomainHandle<typeof LocalInference> | null,
+	server: () => DomainObjectHandle<typeof ModelServer> | null,
 ): ModelSourceImplementation {
 	const methods = () => {
-		const handle = domain();
+		const handle = server();
 		if (!handle) throw new Error("The Local Model Server is unavailable.");
 		return handle.methods;
 	};

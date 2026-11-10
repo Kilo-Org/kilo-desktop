@@ -1,6 +1,11 @@
 import { z } from "zod";
 
-import { defineDomain, method, type PluginDefinitions } from "@kilo-desktop/kernel";
+import {
+	defineDomainObject,
+	defineObjectType,
+	method,
+	type PluginDefinitions,
+} from "@kilo-desktop/kernel";
 
 import {
 	gitBranchesResultSchema,
@@ -18,10 +23,12 @@ export * from "./changes";
 export { githubRepositoryUrl } from "./github-remote";
 
 /**
- * kilo.git's public surface: it provides `kilo.workspaces/vcs` (what other
- * plugins need from version control) and owns `repository` for git's own
- * actions, plus the `kilo-git://diff/patch?cwd=<directory>[&unlimited=1]` protocol that
- * streams a working tree's patch to the Changes pane.
+ * kilo.git's public surface. It fills `kilo.work-sessions/vcs` (what other
+ * plugins need from version control, in "copy" terms: a copy is a git
+ * worktree) and owns `kilo.git/repository` for git's own actions,
+ * `kilo.git/pull-requests` for the pull request of each work session's
+ * directory, and the `kilo-git://diff/patch?cwd=<directory>[&unlimited=1]`
+ * protocol that streams a working tree's patch to the Changes pane.
  */
 export const GIT_PLUGIN_ID = "kilo.git";
 
@@ -43,12 +50,14 @@ export const pullRequestContextSchema = z.object({
 	recentCommitSubjects: z.array(z.string()),
 	pullRequestTemplate: z.string().nullable(),
 });
+export type PullRequestContext = z.output<typeof pullRequestContextSchema>;
 
 export const stagedChangesSchema = z.object({
 	statusSummary: z.string(),
 	diffPatch: z.string(),
 	recentCommitSubjects: z.array(z.string()),
 });
+export type StagedChanges = z.output<typeof stagedChangesSchema>;
 
 export const worktreeBranchRenamedSchema = z.object({
 	/** The worktree whose branch was renamed. */
@@ -63,9 +72,11 @@ export type WorktreeBranchRenamed = z.output<typeof worktreeBranchRenamedSchema>
  * workspace folder (VALIDATION otherwise). Absent where git can't run (the
  * browser).
  */
-export const Repository = defineDomain({
+export const Repository = defineDomainObject({
 	id: "kilo.git/repository",
 	home: "main",
+	description:
+		"Git in workspace folders: status, branches, diffs, commits, pushes and pull requests.",
 	state: z.object({}),
 	methods: {
 		/** Whether git can run; never rejects. */
@@ -150,6 +161,12 @@ export const Repository = defineDomain({
 	},
 });
 
+/** The pull request of one directory, resolved by `kilo.git/pull-requests`; keyed by the directory. */
+export const PullRequestObjectType = defineObjectType({
+	id: "kilo.git/pull-request",
+	description: "The pull request of a work session's directory, keyed by the directory.",
+});
+
 export const pullRequestEntrySchema = z.object({
 	snapshot: pullRequestSnapshotSchema,
 	/** When the snapshot was looked up (ms). */
@@ -163,7 +180,7 @@ export type PullRequest = z.output<typeof pullRequestSchema>;
 export type GithubCliStatus = z.output<typeof githubCliStatusSchema>;
 
 export const pullRequestsStateSchema = z.object({
-	/** The last pull request lookup per session directory. */
+	/** The last pull request lookup per work session directory. */
 	byDirectory: z.record(z.string(), pullRequestEntrySchema),
 	/** The GitHub CLI as the last lookup that needed it found it. */
 	githubStatus: z.object({ status: githubCliStatusSchema, checkedAt: z.number() }).nullable(),
@@ -171,18 +188,21 @@ export const pullRequestsStateSchema = z.object({
 export type PullRequestsState = z.output<typeof pullRequestsStateSchema>;
 
 /**
- * The pull request of each Work Session's directory (its worktree, else its
+ * The pull request of each work session's directory (its copy, else its
  * workspace's primary folder), looked up in the background with the GitHub
  * CLI: every directory every 2 minutes, the ones windows show every 15
  * seconds, at most 3 lookups at a time; a directory failing 5 times in a row
  * rests for 15 minutes. Lookups pause while no window is visible.
  */
-export const PullRequests = defineDomain({
+export const PullRequests = defineDomainObject({
 	id: "kilo.git/pull-requests",
 	home: "main",
+	description: "The pull request of each work session's directory, looked up in the background.",
 	state: pullRequestsStateSchema,
+	lookup: (state, directory) => state.byDirectory[directory],
+	objectType: PullRequestObjectType,
 	methods: {
-		/** The directories a window shows (its open session's), and whether it is visible. */
+		/** The directories a window shows (its open work session's), and whether it is visible. */
 		setActive: method(
 			z.object({
 				windowId: z.string().min(1),
@@ -201,4 +221,7 @@ export const PullRequests = defineDomain({
 	},
 });
 
-export const GIT_DEFINITIONS: PluginDefinitions = { domains: [Repository, PullRequests] };
+export const GIT_DEFINITIONS: PluginDefinitions = {
+	domainObjects: [Repository, PullRequests],
+	objectTypes: [PullRequestObjectType],
+};

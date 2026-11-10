@@ -1,5 +1,14 @@
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
-import { BlocksIcon, BoxIcon, CogIcon, PuzzleIcon } from "lucide-react";
+import {
+	BlocksIcon,
+	BoxIcon,
+	CogIcon,
+	FlagIcon,
+	KeyRoundIcon,
+	PuzzleIcon,
+	ShapesIcon,
+	UserIcon,
+} from "lucide-react";
 
 import {
 	KERNEL_OWNER,
@@ -8,11 +17,11 @@ import {
 	KernelServices,
 	KernelOs,
 	ownerOf,
-	type DomainState,
+	type DomainObjectState,
 	type QualifiedId,
 	type ServiceRecord,
 } from "@kilo-desktop/kernel";
-import { useDomain, useDomainState, useKernel } from "@kilo-desktop/kernel/web";
+import { useDomainObject, useDomainObjectState, useKernel } from "@kilo-desktop/kernel/web";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { PaneTabsList, PaneTabsTrigger } from "@kilo-desktop/ui/components/pane-tabs";
 import { SettingsPageHeader } from "@kilo-desktop/ui/components/settings-page-header";
@@ -28,7 +37,14 @@ import {
 	summarizeService,
 	type IssueRecord,
 } from "./diagnostics-summary";
-import { DomainsCatalog, PointsCatalog } from "./catalogs";
+import {
+	ContextKeysCatalog,
+	DomainsCatalog,
+	FlagsCatalog,
+	ObjectTypesCatalog,
+	PointsCatalog,
+} from "./catalogs";
+import { IdentitySection } from "./identity";
 import { ownerRef, type EntityRef } from "./domain-model";
 import { Inspector } from "./inspector/Inspector";
 import { NavigationProvider, TrailScope } from "./inspector/navigation";
@@ -39,11 +55,11 @@ const SERVICE_COLUMNS = ROW_COLUMNS;
 
 const PLATFORM_NAMES = { mac: "macOS", windows: "Windows", linux: "Linux" } as const;
 
-const selectApp = (state: DomainState<typeof KernelApp>) => state;
-const selectPlugins = (state: DomainState<typeof KernelPlugins>) => state;
-const selectServices = (state: DomainState<typeof KernelServices>) => state.services;
+const selectApp = (state: DomainObjectState<typeof KernelApp>) => state;
+const selectPlugins = (state: DomainObjectState<typeof KernelPlugins>) => state;
+const selectServices = (state: DomainObjectState<typeof KernelServices>) => state.services;
 
-type PluginRecord = DomainState<typeof KernelPlugins>["plugins"][string];
+type PluginRecord = DomainObjectState<typeof KernelPlugins>["plugins"][string];
 
 function PluginRow({
 	id,
@@ -63,7 +79,7 @@ function PluginRow({
 	readonly locked: boolean;
 }) {
 	const kernel = useKernel();
-	const plugins = useDomain(KernelPlugins);
+	const plugins = useDomainObject(KernelPlugins);
 	return (
 		<ExpandableRow
 			name={id}
@@ -124,8 +140,8 @@ function PluginChanges({
 	readonly locked: ReadonlySet<string>;
 	readonly restartPending: boolean;
 }) {
-	const app = useDomain(KernelApp);
-	const plugins = useDomain(KernelPlugins);
+	const app = useDomainObject(KernelApp);
+	const plugins = useDomainObject(KernelPlugins);
 	const unlocked = ids.filter((id) => !locked.has(id)).sort();
 	const setDisabled = (pluginIds: string[]) => void plugins?.methods.setDisabled({ pluginIds });
 	return (
@@ -180,7 +196,7 @@ function ServiceRow({
 	readonly service: ServiceRecord;
 }) {
 	const kernel = useKernel();
-	const services = useDomain(KernelServices);
+	const services = useDomainObject(KernelServices);
 	return (
 		<ExpandableRow
 			name={service.title}
@@ -231,17 +247,17 @@ function uniqueIssues(issues: readonly IssueRecord[]): IssueRecord[] {
 }
 
 /**
- * What's running: the kernel, plugins and services, and any problems they
- * reported, plus the domain model (extension points, domain objects) to drill
- * into. The overview stays mounted, hidden, while the inspector shows an
+ * What's running: the kernel, plugins and services, flags and identity, and
+ * any problems they reported, plus the domain model (extension points, domain
+ * objects, object types, context keys) to drill into. The overview stays mounted, hidden, while the inspector shows an
  * entity, so coming back finds its tab, filters and expanded rows as left.
  */
 export function DiagnosticsSettings() {
 	const kernel = useKernel();
-	const app = useDomainState(KernelApp, selectApp);
-	const plugins = useDomainState(KernelPlugins, selectPlugins);
-	const services = useDomainState(KernelServices, selectServices) ?? {};
-	const os = useDomain(KernelOs);
+	const app = useDomainObjectState(KernelApp, selectApp);
+	const plugins = useDomainObjectState(KernelPlugins, selectPlugins);
+	const services = useDomainObjectState(KernelServices, selectServices) ?? {};
+	const os = useDomainObject(KernelOs);
 	const localIssues = useSyncExternalStore(
 		(onChange) => kernel.onIssuesChange(onChange),
 		() => kernel.issues(),
@@ -328,7 +344,7 @@ export function DiagnosticsSettings() {
 						/>
 					) : null}
 					<Tabs defaultValue="plugins" className="min-w-0 gap-3" data-qa-id="diagnostics-tabs">
-						<PaneTabsList aria-label="Diagnostics" className="w-full">
+						<PaneTabsList aria-label="Diagnostics" className="grid h-auto w-full grid-cols-4">
 							<PaneTabsTrigger value="plugins" data-qa-id="diagnostics-tab-plugins">
 								<PuzzleIcon aria-hidden />
 								Plugins
@@ -341,9 +357,25 @@ export function DiagnosticsSettings() {
 								<BoxIcon aria-hidden />
 								Domain objects
 							</PaneTabsTrigger>
+							<PaneTabsTrigger value="object-types" data-qa-id="diagnostics-tab-object-types">
+								<ShapesIcon aria-hidden />
+								Object types
+							</PaneTabsTrigger>
+							<PaneTabsTrigger value="context-keys" data-qa-id="diagnostics-tab-context-keys">
+								<KeyRoundIcon aria-hidden />
+								Context keys
+							</PaneTabsTrigger>
+							<PaneTabsTrigger value="flags" data-qa-id="diagnostics-tab-flags">
+								<FlagIcon aria-hidden />
+								Flags
+							</PaneTabsTrigger>
 							<PaneTabsTrigger value="services" data-qa-id="diagnostics-tab-services">
 								<CogIcon aria-hidden />
 								Services
+							</PaneTabsTrigger>
+							<PaneTabsTrigger value="identity" data-qa-id="diagnostics-tab-identity">
+								<UserIcon aria-hidden />
+								Identity
 							</PaneTabsTrigger>
 						</PaneTabsList>
 						<TabsContent value="plugins">
@@ -368,6 +400,18 @@ export function DiagnosticsSettings() {
 						</TabsContent>
 						<TabsContent value="domains">
 							<DomainsCatalog />
+						</TabsContent>
+						<TabsContent value="object-types">
+							<ObjectTypesCatalog />
+						</TabsContent>
+						<TabsContent value="context-keys">
+							<ContextKeysCatalog />
+						</TabsContent>
+						<TabsContent value="flags">
+							<FlagsCatalog />
+						</TabsContent>
+						<TabsContent value="identity">
+							<IdentitySection />
 						</TabsContent>
 						<TabsContent value="services">
 							{Object.keys(services).length > 0 ? (

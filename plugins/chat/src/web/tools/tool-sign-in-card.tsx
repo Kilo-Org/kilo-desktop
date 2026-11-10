@@ -2,10 +2,15 @@ import { useAui, useAuiState } from "@assistant-ui/react";
 import { CircleCheckIcon, CircleSlashIcon, ShieldCheckIcon } from "lucide-react";
 import { useCallback, useEffect, useState, type FC, type ReactNode } from "react";
 
-import type { DomainState } from "@kilo-desktop/kernel";
-import { useDomain, useDomainState } from "@kilo-desktop/kernel/web";
-import { Identity } from "@kilo-desktop/plugin-account/contracts";
-import { AgentTool, AgentToolSignIn, toolWireName } from "@kilo-desktop/plugin-agent/contracts";
+import type { DomainObjectState } from "@kilo-desktop/kernel";
+import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
+import {
+	Chats,
+	KiloAccount,
+	Tool,
+	toolWireName,
+	type AccountState,
+} from "@kilo-desktop/plugin-core/contracts";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 
@@ -56,7 +61,7 @@ function readCallIds(key: string): string[] {
 
 /**
  * Refused calls the person chose not to sign in for, in localStorage so the
- * card keeps saying so after a restart, when kilo.agent has forgotten the
+ * card keeps saying so after a restart, when kilo.core has forgotten the
  * decline (it keeps declines in memory, until sign-in or restart).
  */
 const declinedCalls = {
@@ -83,13 +88,13 @@ const declinedCalls = {
 	},
 };
 
-const selectSignedIn = (state: DomainState<typeof Identity>) => state.authenticated === true;
-const selectSigningIn = (state: DomainState<typeof Identity>) =>
-	state.deviceAuth.status === "initiating" ||
-	state.deviceAuth.status === "waiting" ||
-	state.deviceAuth.status === "finishing";
-const selectSignInIdle = (state: DomainState<typeof Identity>) =>
-	state.deviceAuth.status === "idle";
+const selectSignedIn = (state: AccountState) => state.signedIn === true;
+const selectSigningIn = (state: AccountState) =>
+	state.deviceSignIn.status === "initiating" ||
+	state.deviceSignIn.status === "waiting" ||
+	state.deviceSignIn.status === "finishing";
+const selectSignInIdle = (state: AccountState) => state.deviceSignIn.status === "idle";
+const selectCanSignIn = (state: AccountState) => state.connection === "connected";
 
 /**
  * Whether a turn sent now would run for the signed-in person. Sign-in reports
@@ -99,8 +104,8 @@ const selectSignInIdle = (state: DomainState<typeof Identity>) =>
  * leaves the signed-out model selected unchecked, so it does not count.
  */
 function useReadyAfterSignIn(): boolean {
-	const signedIn = useDomainState(Identity, selectSignedIn) ?? false;
-	const idle = useDomainState(Identity, selectSignInIdle) ?? true;
+	const signedIn = useDomainObjectState(KiloAccount, selectSignedIn) ?? false;
+	const idle = useDomainObjectState(KiloAccount, selectSignInIdle) ?? true;
 	const selection = useOptionalChatModelSelection();
 	const catalogSettled =
 		!selection ||
@@ -119,7 +124,7 @@ interface SignInTool {
 
 /** `toolName` when it is one of the app's agent tools that need sign-in. */
 function useSignInTool(toolName: string): SignInTool | undefined {
-	const tools = useOptionalExtensions(AgentTool);
+	const tools = useOptionalExtensions(Tool);
 	const tool = tools.find(
 		(candidate) => candidate.metadata.requiresSignIn && toolWireName(candidate.key) === toolName,
 	);
@@ -132,25 +137,25 @@ function useSignInTool(toolName: string): SignInTool | undefined {
 }
 
 /**
- * Whether the person went without `scope`'s sign-in tools, as kilo.agent's
+ * Whether the person went without `scope`'s sign-in tools, as kilo.core's
  * gateway keeps it for every agent, and the decline that withdraws them.
  */
 function useToolSignInDecline(scope: string): { declined: boolean; decline: () => void } {
-	const toolSignIn = useDomain(AgentToolSignIn);
+	const chats = useDomainObject(Chats);
 	const selectDeclined = useCallback(
-		(state: DomainState<typeof AgentToolSignIn>) => state.declined.includes(scope),
+		(state: DomainObjectState<typeof Chats>) => state.declinedSignInTools.includes(scope),
 		[scope],
 	);
-	const declined = useDomainState(AgentToolSignIn, selectDeclined) ?? false;
+	const declined = useDomainObjectState(Chats, selectDeclined) ?? false;
 	const decline = useCallback(() => {
 		// A failed decline leaves the tools listed; the agent was still told to go without them.
-		void toolSignIn?.methods.decline({ scope }).catch(() => undefined);
-	}, [toolSignIn, scope]);
+		void chats?.methods.declineSignInTools({ pluginId: scope }).catch(() => undefined);
+	}, [chats, scope]);
 	return { declined, decline };
 }
 
 /**
- * Renders a tool call in place of its normal UI when kilo.agent's gateway
+ * Renders a tool call in place of its normal UI when kilo.core's gateway
  * refused it because the person is signed out (its `[desktop:sign-in-required]`
  * marker): a sign-in card, then a note once they answer. Anything else
  * renders `children`.
@@ -186,7 +191,7 @@ const RefusedToolCall: FC<{
 }> = ({ toolCallId, prompt, scope, refusedAsDeclined }) => {
 	const aui = useAui();
 	const isRunning = useAuiState((s) => s.thread.isRunning);
-	const signedIn = useDomainState(Identity, selectSignedIn) ?? false;
+	const signedIn = useDomainObjectState(KiloAccount, selectSignedIn) ?? false;
 	const ready = useReadyAfterSignIn();
 	const { signIn } = useKiloSignIn();
 	const toolSignIn = useToolSignInDecline(scope);
@@ -236,8 +241,8 @@ const SignInPrompt: FC<{
 	onSignIn: () => void;
 	onDecline: () => void;
 }> = ({ prompt, onSignIn, onDecline }) => {
-	const signingIn = useDomainState(Identity, selectSigningIn) ?? false;
-	const canSignIn = useDomainState(Identity, (state) => state.connection === "connected") ?? false;
+	const signingIn = useDomainObjectState(KiloAccount, selectSigningIn) ?? false;
+	const canSignIn = useDomainObjectState(KiloAccount, selectCanSignIn) ?? false;
 	return (
 		<div
 			role="group"
@@ -312,7 +317,7 @@ const SignedInAfterRefusal: FC = () => {
  */
 const SignInDeclinedNote: FC<{ toolsLabel: string }> = ({ toolsLabel }) => {
 	const aui = useAui();
-	const signedIn = useDomainState(Identity, selectSignedIn) ?? false;
+	const signedIn = useDomainObjectState(KiloAccount, selectSignedIn) ?? false;
 	const ready = useReadyAfterSignIn();
 	const canAsk = useAuiState((s) => !s.thread.isRunning) && ready;
 

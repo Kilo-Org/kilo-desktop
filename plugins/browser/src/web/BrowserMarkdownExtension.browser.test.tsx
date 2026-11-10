@@ -28,20 +28,20 @@ afterEach(() => {
 
 async function renderMessage(
 	text: string,
-	options: BrowserHostOptions & { readonly sessionId?: string } = {},
+	options: BrowserHostOptions & { readonly workSessionId?: string } = {},
 ) {
 	const host = await bootBrowserHost({ panes: [], ...options });
 	host.render(
 		<MarkdownContent
 			text={text}
-			extensions={[host.markdownExtension(options.sessionId ?? SESSION_ID)]}
+			extensions={[host.markdownExtension(options.workSessionId ?? SESSION_ID)]}
 		/>,
 	);
 	return host;
 }
 
 describe("kilo.browser's web links", () => {
-	it("opens a web link from the agent's reply in a Browser pane of its session", async () => {
+	it("opens a web link from the agent's reply in a Browser pane of its work session", async () => {
 		const host = await renderMessage("See [the docs](https://example.com/docs).");
 
 		await page.getByRole("link", { name: "the docs" }).click();
@@ -51,7 +51,8 @@ describe("kilo.browser's web links", () => {
 				expect(host.sessions.panes().panes).toEqual([
 					expect.objectContaining({
 						kind: BROWSER_PANE_KIND,
-						metadata: { objectType: URL_OBJECT_TYPE, objectId: "https://example.com/docs" },
+						object: { type: URL_OBJECT_TYPE, id: "https://example.com/docs" },
+						metadata: {},
 					}),
 				]),
 			WAIT,
@@ -125,8 +126,8 @@ describe("kilo.browser's web links", () => {
 		expect(clicks).toEqual([{ defaultPrevented: false }]);
 	});
 
-	it("leaves links alone outside a session", async () => {
-		const host = await renderMessage("[docs](https://example.com)", { sessionId: "" });
+	it("leaves links alone outside a work session", async () => {
+		const host = await renderMessage("[docs](https://example.com)", { workSessionId: "" });
 
 		await page.getByRole("link", { name: "docs" }).click();
 

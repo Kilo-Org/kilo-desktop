@@ -29,12 +29,12 @@ export function useTranscriptAui() {
 
 /** What a chat's transcript renders inside: markdown, diffs, MCP Apps, subagents, reverts, the media lightbox. */
 export function TranscriptProviders({
-	sessionId,
+	workSessionId,
 	workspaceFolders,
 	children,
 }: {
-	/** Null before the session exists (the New Session page): no transcript to render. */
-	sessionId: string | null;
+	/** Null before the work session exists (the New Session page): no transcript to render. */
+	workSessionId: string | null;
 	workspaceFolders: readonly ComposerFolder[];
 	children: ReactNode;
 }) {
@@ -49,9 +49,9 @@ export function TranscriptProviders({
 			</KiloMcpAppsHostProvider>
 		</PierreDiffProvider>
 	);
-	if (!sessionId) return scoped;
+	if (!workSessionId) return scoped;
 	return (
-		<ChatMarkdownProvider sessionId={sessionId} workspaceFolders={workspaceFolders}>
+		<ChatMarkdownProvider workSessionId={workSessionId} workspaceFolders={workspaceFolders}>
 			{scoped}
 		</ChatMarkdownProvider>
 	);

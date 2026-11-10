@@ -8,13 +8,14 @@ import {
 	AutoApprove,
 	Composer,
 	ComposerAction,
-	ComposerDrafts,
 	ComposerMention,
-	ModelPreferences,
+	Drafts,
+	chatPaneObject,
 	type ComposerContext,
 } from "../../contracts";
-import { agentPane, chatSummary, renderAgentPane } from "../../test/chat-host";
+import { agentPane, chatSummary } from "../../test/chat-host";
 import { FakeKiloServer } from "../../test/fake-kilo-server";
+import { renderChat } from "../../test/render-chat";
 
 // The shell the test host renders sits over the pane (its sidebar rail over
 // the left edge where popups open, its status bar over the footer).
@@ -51,7 +52,7 @@ function contributor(extensions: Record<string, unknown[]>, web: PluginEntry) {
 	};
 }
 
-function promptBody(host: Awaited<ReturnType<typeof renderAgentPane>>, chatId: string) {
+function promptBody(host: Awaited<ReturnType<typeof renderChat>>, chatId: string) {
 	return host.server.requestsTo("POST", `/session/${chatId}/prompt_async`).at(-1)?.body as
 		| Record<string, unknown>
 		| undefined;
@@ -59,7 +60,7 @@ function promptBody(host: Awaited<ReturnType<typeof renderAgentPane>>, chatId: s
 
 describe("the composer's pickers", () => {
 	it("sends with the picked agent and model, and remembers a draft's model for new chats", async () => {
-		const host = await renderAgentPane();
+		const host = await renderChat();
 		const agent = page.getByTestId("kilo-agent-selector-trigger");
 		await expect.element(agent).toHaveTextContent("Code");
 
@@ -82,15 +83,13 @@ describe("the composer's pickers", () => {
 				agent: "plan",
 				model: { providerID: "acme", modelID: "deep-2" },
 			});
-		const preferences = host.host.main.kernelSdk.domains.get(ModelPreferences)!;
-		expect(preferences.getState().modelSelections.plan).toEqual({
-			providerID: "acme",
-			modelID: "deep-2",
-		});
+		await expect
+			.poll(() => host.core.models().state.preferences.byAgent.plan)
+			.toEqual({ aiProviderId: "acme", modelId: "deep-2" });
 	});
 
 	it("cycles the agent with Shift+Tab", async () => {
-		await renderAgentPane();
+		await renderChat();
 		const agent = page.getByTestId("kilo-agent-selector-trigger");
 		await expect.element(agent).toHaveTextContent("Code");
 
@@ -102,48 +101,69 @@ describe("the composer's pickers", () => {
 	it("shows the agent Kilo recorded for a chat the pane opens", async () => {
 		const server = new FakeKiloServer();
 		server.addChat({ id: "ses_a", directory: "/projects/app", title: "Chat", agent: "plan" });
-		await renderAgentPane({
+		await renderChat({
 			server,
-			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
 			chats: [chatSummary("ses_a")],
 		});
 
 		await expect.element(page.getByTestId("kilo-agent-selector-trigger")).toHaveTextContent("Plan");
 	});
 
-	it("lists a provider added since the catalog was read when the model picker opens", async () => {
-		const server = new FakeKiloServer();
-		await renderAgentPane({ server });
+	it("lists an AI provider kilo.core found since the picker last opened", async () => {
+		const host = await renderChat();
 		const model = page.getByTestId("kilo-model-selector-trigger");
 		await expect.poll(() => model.element().textContent).toContain("Fast One");
 
-		const providers = server.providers as { all: unknown[]; connected: string[] };
-		server.providers = {
-			...providers,
-			all: [
-				...providers.all,
-				{ id: "stub", name: "Stub", models: { m1: { id: "m1", name: "Stub One", variants: {} } } },
-			],
-			connected: [...providers.connected, "stub"],
-		};
+		host.core.calls.refreshModels.mockImplementation(() => {
+			const models = host.core.models();
+			models.setState({
+				...models.state,
+				aiProviders: {
+					...models.state.aiProviders,
+					stub: {
+						id: "stub",
+						name: "Stub",
+						connected: true,
+						source: "api",
+						env: [],
+						canDisconnect: true,
+					},
+				},
+				models: {
+					...models.state.models,
+					"stub/m1": {
+						aiProviderId: "stub",
+						modelId: "m1",
+						name: "Stub One",
+						variants: [],
+						attachments: true,
+						reasoning: false,
+						free: false,
+						byok: false,
+					},
+				},
+			});
+		});
 		await model.click();
 
 		await expect.element(page.getByTestId("kilo-model-selector-rail-stub")).toBeVisible();
+		expect(host.core.calls.refreshModels).toHaveBeenCalled();
 	});
 
 	it("switches the approval mode for every chat", async () => {
-		const host = await renderAgentPane();
+		const host = await renderChat();
 		await page.getByTestId("kilo-approval-selector-trigger").click();
 		await page.getByTestId("kilo-approval-selector-item-auto").click();
 
-		const autoApprove = host.host.main.kernelSdk.domains.get(AutoApprove)!;
+		const autoApprove = host.host.main.kernelSdk.domainObjects.get(AutoApprove)!;
 		await expect.poll(() => autoApprove.getState().mode).toBe("auto");
 	});
 });
 
 describe("slash commands", () => {
 	it("runs a known /command through the chat's command call", async () => {
-		const host = await renderAgentPane();
+		const host = await renderChat();
 		await expect.element(page.getByTestId("kilo-agent-selector-trigger")).toBeVisible();
 
 		await userEvent.fill(input(), "/review the diff");
@@ -153,6 +173,24 @@ describe("slash commands", () => {
 			.poll(() => host.server.requestsTo("POST", "/session/ses_new_1/command").at(-1)?.body)
 			.toMatchObject({ command: "review", arguments: "the diff", agent: "code" });
 		expect(host.server.requestsTo("POST", "/session/ses_new_1/prompt_async")).toEqual([]);
+	});
+
+	it("groups the / menu by source once there are skills too, and searches all of them", async () => {
+		const server = new FakeKiloServer();
+		server.commands = [
+			...server.commands,
+			{ name: "tidy", description: "Tidy imports", source: "skill", template: "", hints: [] },
+		];
+		await renderChat({ server });
+		await expect.element(page.getByTestId("kilo-agent-selector-trigger")).toBeVisible();
+
+		await input().click();
+		await userEvent.keyboard("/");
+		await page.getByText("Skills").click();
+		await expect.element(page.getByText("Tidy imports")).toBeVisible();
+
+		await userEvent.keyboard("ti");
+		await expect.element(page.getByText("Tidy imports")).toBeVisible();
 	});
 });
 
@@ -165,7 +203,7 @@ describe("the composer-mention point", () => {
 			text: `[note ${item.id}]`,
 			files: [{ url: "file:///notes/n1.md", mime: "text/markdown", filename: "n1.md" }],
 		}));
-		const host = await renderAgentPane({
+		const host = await renderChat({
 			plugins: [
 				contributor(
 					{ "kilo.chat/composer-mention": [{ id: "notes", trigger: "#", title: "Notes" }] },
@@ -209,9 +247,9 @@ describe("the composer-action point", () => {
 		const seen: ComposerContext[] = [];
 		const server = new FakeKiloServer();
 		server.addChat({ id: "ses_a", directory: "/projects/app", title: "Chat" });
-		await renderAgentPane({
+		await renderChat({
 			server,
-			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
 			chats: [chatSummary("ses_a")],
 			plugins: [
 				contributor(
@@ -271,7 +309,7 @@ describe("the composer-action point", () => {
 		await page.getByTestId("kilo-composer-action-sparkle").click();
 		expect(run).toHaveBeenCalledOnce();
 		expect(seen.at(-1)).toMatchObject({
-			sessionId: "wses_1",
+			workSessionId: "wses_1",
 			chatId: "ses_a",
 			directory: "/projects/app",
 			workspaceId: "w-app",
@@ -293,7 +331,7 @@ describe("the composer-action point", () => {
 
 	it("opens a contributed popover and skips an action implemented as another kind", async () => {
 		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-		await renderAgentPane({
+		await renderChat({
 			plugins: [
 				contributor(
 					{
@@ -340,7 +378,7 @@ describe("the composer-action point", () => {
 	});
 
 	it("shows the New Session page's draft footer only when something is contributed to it", async () => {
-		await renderAgentPane({
+		await renderChat({
 			starter: {},
 			plugins: [
 				contributor(
@@ -367,13 +405,13 @@ describe("the composer-action point", () => {
 	});
 });
 
-const drafts = (host: Awaited<ReturnType<typeof renderAgentPane>>) =>
-	host.host.main.kernelSdk.domains.get(ComposerDrafts)!;
+const drafts = (host: Awaited<ReturnType<typeof renderChat>>) =>
+	host.host.main.kernelSdk.domainObjects.get(Drafts)!;
 
 describe("the composer domain object", () => {
-	it("inserts text into a session's composer and focuses it", async () => {
-		const host = await renderAgentPane();
-		const composer = host.host.renderer.kernelSdk.domains.get(Composer)!;
+	it("inserts text into a work session's composer and focuses it", async () => {
+		const host = await renderChat();
+		const composer = host.host.renderer.kernelSdk.domainObjects.get(Composer)!;
 		await expect.element(input()).toBeVisible();
 
 		await composer.methods.insert({ text: "Look at this" });
@@ -382,36 +420,36 @@ describe("the composer domain object", () => {
 		await expect
 			.poll(() => drafts(host).getState().drafts.wses_1?.panes?.pane_agent)
 			.toBe("Look at this");
-		await expect.poll(() => composer.getState().focusedSessionId).toBe("wses_1");
+		await expect.poll(() => composer.getState().focusedWorkSessionId).toBe("wses_1");
 
-		await composer.methods.insert({ sessionId: "wses_1", text: "too" });
+		await composer.methods.insert({ workSessionId: "wses_1", text: "too" });
 		await expect.element(input()).toHaveTextContent("Look at this too");
 	});
 
-	it("starts a new chat in a new Agent session with the text unsent", async () => {
-		const host = await renderAgentPane();
-		const composer = host.host.renderer.kernelSdk.domains.get(Composer)!;
+	it("starts a new chat in a new work session with an Agent pane and the text unsent", async () => {
+		const host = await renderChat();
+		const composer = host.host.renderer.kernelSdk.domainObjects.get(Composer)!;
 
-		const { sessionId } = await composer.methods.startNewChat({
+		const { workSessionId } = await composer.methods.startChat({
 			text: "Install this skill",
 			workspaceId: null,
 		});
 
-		expect(host.sessions.calls.create).toHaveBeenCalledWith({ workspaceId: null });
-		expect(host.navigatorOpened).toHaveBeenCalledWith(sessionId);
-		expect(host.sessions.calls.open).toHaveBeenCalledWith(
-			expect.objectContaining({ sessionId, kind: "kilo.chat/agent" }),
+		expect(host.workSessions.calls.create).toHaveBeenCalledWith({ workspaceId: null });
+		expect(host.navigatorOpened).toHaveBeenCalledWith(workSessionId);
+		expect(host.workSessions.calls.open).toHaveBeenCalledWith(
+			expect.objectContaining({ workSessionId, kind: "kilo.chat/agent" }),
 		);
 		await expect
-			.poll(() => drafts(host).getState().drafts[sessionId])
+			.poll(() => drafts(host).getState().drafts[workSessionId])
 			.toEqual({ text: "Install this skill" });
 	});
 
 	it("starts a new chat in the active workspace by default", async () => {
-		const host = await renderAgentPane();
-		const composer = host.host.renderer.kernelSdk.domains.get(Composer)!;
+		const host = await renderChat();
+		const composer = host.host.renderer.kernelSdk.domainObjects.get(Composer)!;
 
-		await composer.methods.startNewChat({ text: "Hi" });
-		expect(host.sessions.calls.create).toHaveBeenCalledWith({ workspaceId: "w-app" });
+		await composer.methods.startChat({ text: "Hi" });
+		expect(host.workSessions.calls.create).toHaveBeenCalledWith({ workspaceId: "w-app" });
 	});
 });

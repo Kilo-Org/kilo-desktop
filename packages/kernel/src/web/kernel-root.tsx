@@ -1,4 +1,4 @@
-import { KernelRoot as RootPoint, KernelWindowView } from "../builtins/points";
+import { KernelRoot as RootPoint, KernelWindowView } from "../builtins/extension-points";
 import { RenderContribution, useExclusive, useExtensions, useKernel } from "./react";
 import { RecoveryScreen } from "./recovery-screen";
 

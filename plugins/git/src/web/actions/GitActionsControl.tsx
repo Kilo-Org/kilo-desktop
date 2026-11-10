@@ -10,9 +10,12 @@ import {
 } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type ComponentType } from "react";
 
-import { useDomain } from "@kilo-desktop/kernel/web";
+import { useDomainObject } from "@kilo-desktop/kernel/web";
 import { Composer } from "@kilo-desktop/plugin-chat/contracts";
-import { Workbench, type SessionActionProps } from "@kilo-desktop/plugin-workbench/contracts";
+import {
+	WorkSessionsWindow,
+	type WorkSessionActionProps,
+} from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import { Button } from "@kilo-desktop/ui/components/button";
 import { ButtonGroup, ButtonGroupSeparator } from "@kilo-desktop/ui/components/button-group";
@@ -35,11 +38,11 @@ import {
 	DropdownMenuTrigger,
 } from "@kilo-desktop/ui/components/dropdown-menu";
 
-import { CHANGES_PANE_KIND } from "../../contracts/index.js";
-import { useSessionDirectory } from "../pull-requests/use-pull-request.js";
-import type { RepositoryActionKind } from "../repository-actions.js";
-import type { ActionProgress, ActionRequests, RequestedAction } from "./action-progress.js";
-import { useRepositoryActions, type RepositoryActions } from "./use-repository-actions.js";
+import { CHANGES_PANE_KIND } from "../../contracts";
+import { useWorkSessionDirectory } from "../pull-requests/use-pull-request";
+import type { RepositoryActionKind } from "./repository-actions";
+import type { ActionProgress, ActionRequests, RequestedAction } from "./action-progress";
+import { useRepositoryActions, type RepositoryActions } from "./use-repository-actions";
 
 // Split button halves: at rest the pair reads as one ghost control; hovering
 // either half (or opening the menu) lights the whole pill, reveals the seam and
@@ -62,20 +65,20 @@ const ACTION_ICONS: Record<
 };
 
 /**
- * The open session's repository actions (`kilo.workbench/session-action`,
- * placed before the pane controls as origin's header had them): the changed
- * files summary, the commit / push / pull request split button and its
- * menu, for the session's directory. Commands' requests are run as if picked
- * from the menu.
+ * The open work session's repository actions
+ * (`kilo.work-sessions/work-session-action`, placed before the pane controls
+ * as origin's header had them): the changed files summary, the commit / push
+ * / pull request split button and its menu, for the work session's directory.
+ * Commands' requests are run as if picked from the menu.
  */
 export function createGitSessionActions(window: {
 	readonly progress: ActionProgress;
 	readonly requests: ActionRequests;
-}): ComponentType<SessionActionProps> {
-	function GitSessionActions({ session }: SessionActionProps) {
-		const directory = useSessionDirectory(session);
-		const workbench = useDomain(Workbench);
-		const composer = useDomain(Composer);
+}): ComponentType<WorkSessionActionProps> {
+	function GitSessionActions({ workSession }: WorkSessionActionProps) {
+		const directory = useWorkSessionDirectory(workSession);
+		const workSessionsWindow = useDomainObject(WorkSessionsWindow);
+		const composer = useDomainObject(Composer);
 		if (!directory) return null;
 		return (
 			<GitActions
@@ -84,13 +87,15 @@ export function createGitSessionActions(window: {
 				progress={window.progress}
 				requests={window.requests}
 				onOpenChanges={() =>
-					void workbench?.methods.openPane({ kind: CHANGES_PANE_KIND }).catch(() => undefined)
+					void workSessionsWindow?.methods
+						.openPane({ kind: CHANGES_PANE_KIND })
+						.catch(() => undefined)
 				}
 				{...(composer
 					? {
 							onAppendToChat: (text: string) =>
 								void composer.methods
-									.insert({ sessionId: session.id, text })
+									.insert({ workSessionId: workSession.id, text })
 									.catch((error: unknown) =>
 										toast.error("Could not add the error to the chat", {
 											description: error instanceof Error ? error.message : undefined,

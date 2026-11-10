@@ -1,73 +1,70 @@
 // Test host for kilo.files' web entry: main and a window linked in memory,
-// with stand-ins for kilo.workspaces (folders, file changes), kilo.sessions
-// (sessions and panes, its openers reduced to "files open here, notebooks in
-// a notebook pane"), kilo.telemetry, kilo.flags and kilo.shell's theme, and
-// kilo.files' `documents` in main faked from the test's methods. Panes render
-// as kilo.workbench's canvas renders them, from the Panes state.
+// with stand-ins (their real manifests and contracts) for kilo.work-sessions
+// (workspaces, file changes, the `hasVcs` key, work sessions, panes, their
+// openers reduced to "files open here, notebooks in a notebook pane", and the
+// window's `window` object), kilo.shell's theme, a telemetry sink with
+// consent, flags through the host's overrides, and kilo.files' `documents` in
+// main faked from the test's methods. kilo.core and kilo.chat are present for
+// their manifests. Panes render as kilo.work-sessions' canvas renders them,
+// from the Panes state.
 import { act, cleanup, render } from "@testing-library/react";
 import { useCallback, type ReactNode } from "react";
 
 import {
 	definePlugin,
+	KernelDataCollection,
 	KernelError,
-	type DomainHandle,
-	type DomainProvider,
-	type DomainState,
+	KernelTelemetrySink,
+	type DomainObjectHandle,
+	type DomainObjectProvider,
+	type DomainObjectState,
 	type PluginEntry,
 	type PluginRegistration,
 } from "@kilo-desktop/kernel";
-import { createTestKernelPair } from "@kilo-desktop/kernel/testing";
-import { KernelProvider, RenderContribution, useDomainState } from "@kilo-desktop/kernel/web";
+import { createTestHost, createTestKernelPair, testPlugin } from "@kilo-desktop/kernel/testing";
+import { KernelProvider, RenderContribution, useDomainObjectState } from "@kilo-desktop/kernel/web";
 import chatManifest from "@kilo-desktop/plugin-chat/plugin.json";
 import { CHAT_DEFINITIONS } from "@kilo-desktop/plugin-chat/contracts";
-import flagsManifest from "@kilo-desktop/plugin-flags/plugin.json";
-import { FLAGS_DEFINITIONS } from "@kilo-desktop/plugin-flags/contracts";
-import sessionsManifest from "@kilo-desktop/plugin-sessions/plugin.json";
+import coreManifest from "@kilo-desktop/plugin-core/plugin.json";
+import { CORE_DEFINITIONS } from "@kilo-desktop/plugin-core/contracts";
+import shellManifest from "@kilo-desktop/plugin-shell/plugin.json";
+import { SHELL_DEFINITIONS, Theme } from "@kilo-desktop/plugin-shell/contracts";
+import workSessionsManifest from "@kilo-desktop/plugin-work-sessions/plugin.json";
 import {
 	EMPTY_WORK_SESSION_PANES,
+	FileWatcher,
 	PaneKind,
 	Panes,
+	WORK_SESSIONS_DEFINITIONS,
 	WorkSessions,
-	SESSIONS_DEFINITIONS,
+	WorkSessionsWindow,
+	Workspaces,
+	type FileChange,
 	type Pane,
 	type PaneImplementation,
 	type PaneProps,
 	type WorkSession,
-} from "@kilo-desktop/plugin-sessions/contracts";
-import shellManifest from "@kilo-desktop/plugin-shell/plugin.json";
-import { SHELL_DOMAINS, SHELL_EXTENSION_POINTS, Theme } from "@kilo-desktop/plugin-shell/contracts";
-import telemetryManifest from "@kilo-desktop/plugin-telemetry/plugin.json";
-import {
-	Telemetry,
-	TELEMETRY_DEFINITIONS,
-	type TrackInput,
-} from "@kilo-desktop/plugin-telemetry/contracts";
-import workspacesManifest from "@kilo-desktop/plugin-workspaces/plugin.json";
-import {
-	Files,
-	Workspaces,
-	WORKSPACES_DEFINITIONS,
-	type FileChange,
-} from "@kilo-desktop/plugin-workspaces/contracts";
+} from "@kilo-desktop/plugin-work-sessions/contracts";
 import { Toaster } from "@kilo-desktop/ui/components/sonner";
 import { TooltipProvider } from "@kilo-desktop/ui/components/tooltip";
 
 import manifest from "../../plugin.json";
 import { Documents, FILES_DEFINITIONS } from "../contracts/index.js";
-import {
-	basename,
-	FILE_OBJECT_TYPE,
-	FILE_PANE_METADATA,
-	FILES_PANE_KIND,
-} from "../contracts/panes.js";
+import { basename, FILE_OBJECT_TYPE, FILES_PANE_KIND } from "../contracts/panes.js";
 import type { DocumentMethods } from "../web/documents.js";
 import { filesWebEntry } from "../web/index.js";
 
-export const SESSION_ID = "session-1";
+export const WORK_SESSION_ID = "wses_1";
 export const NOTEBOOK_PANE_KIND = "kilo.notebook/notebook";
 
-type ThemeState = DomainState<typeof Theme>;
-type UpdateInput = Parameters<DomainHandle<typeof Panes>["methods"]["update"]>[0];
+type ThemeState = DomainObjectState<typeof Theme>;
+type UpdateInput = Parameters<DomainObjectHandle<typeof Panes>["methods"]["update"]>[0];
+
+/** A telemetry event as a sink received it: its declared name and data. */
+export interface TrackedEvent {
+	readonly event: string;
+	readonly data: Readonly<Record<string, unknown>>;
+}
 
 export interface Folder {
 	readonly path: string;
@@ -77,19 +74,21 @@ export interface Folder {
 export interface FilesHostOptions {
 	/** kilo.files' `documents` in main; a missing method rejects NOT_FOUND. */
 	readonly documents?: Partial<DocumentMethods>;
-	/** The session's workspace folders; empty for a session without a workspace. */
+	/** The work session's workspace folders; empty for a work session without a workspace. */
 	readonly folders?: readonly Folder[];
-	/** The session's worktree, standing in for the primary folder. */
+	/** The work session's copy, standing in for the primary folder. */
 	readonly directory?: string | null;
 	readonly panes?: readonly Pane[];
 	readonly activePaneId?: string | null;
-	/** Flags turned on (kilo.flags' `flag:` context keys). */
+	/** Flags turned on (`kernel/flag:<id>` context keys, through the host's overrides). */
 	readonly flags?: readonly string[];
 	readonly theme?: ThemeState;
 	/** Whether `.ipynb` objects open in a notebook pane (else in Files, as without kilo.notebook). */
 	readonly notebookOpener?: boolean;
 	/** `openObject` rejects with this message. */
 	readonly openFails?: string;
+	/** What `WorkSessionsWindow.openPane` does; by default it opens the pane in the work session. */
+	readonly openPane?: (input: { kind: string }) => void;
 	readonly main?: readonly PluginRegistration[];
 	readonly renderer?: readonly PluginRegistration[];
 }
@@ -102,16 +101,21 @@ export function filesPane(
 	return { id, kind: FILES_PANE_KIND, title, metadata, ordinal: 1 };
 }
 
-function session(directory: string | null, workspaceId: string | null): WorkSession {
+/** A Files pane showing the file at `path`, as `Panes.openObject` opens it. */
+export function openedFilePane(id: string, path: string): Pane {
+	return { ...filesPane(id, {}, basename(path)), object: { type: FILE_OBJECT_TYPE, id: path } };
+}
+
+function workSession(directory: string | null, workspaceId: string | null): WorkSession {
 	return {
-		id: SESSION_ID,
+		id: WORK_SESSION_ID,
 		title: "Session",
 		titleSource: "default",
 		pinned: false,
 		archived: false,
 		archiveChangedAt: 0,
 		workspaceId,
-		worktreeBranch: directory ? "kilo/work" : null,
+		branch: directory ? "kilo/work" : null,
 		directory,
 		chatIds: [],
 		createdAt: 0,
@@ -125,22 +129,25 @@ export async function bootFilesHost(options: FilesHostOptions = {}) {
 	const folders = options.folders ?? [{ path: "/workspace", isPrimary: true }];
 	let currentFolders = folders;
 	const workspaceId = folders.length > 0 ? "w1" : null;
-	const openedObjects: { sessionId: string; ref: { type: string; id: string } }[] = [];
+	const openedObjects: { workSessionId: string; ref: { type: string; id: string } }[] = [];
 	const updates: UpdateInput[] = [];
-	const tracked: TrackInput[] = [];
-	let files!: DomainProvider<typeof Files>;
-	let panes!: DomainProvider<typeof Panes>;
-	let workspaces!: DomainProvider<typeof Workspaces>;
-	let theme: DomainProvider<typeof Theme> | undefined;
+	const tracked: TrackedEvent[] = [];
+	let files!: DomainObjectProvider<typeof FileWatcher>;
+	let panes!: DomainObjectProvider<typeof Panes>;
+	let workspaces!: DomainObjectProvider<typeof Workspaces>;
+	let theme: DomainObjectProvider<typeof Theme> | undefined;
 	let nextPane = 1;
 	const unused = (name: string) => () => {
 		throw new KernelError("NOT_FOUND", `${name} is not faked here.`);
 	};
 
-	const current = () => panes.state.bySession[SESSION_ID] ?? EMPTY_WORK_SESSION_PANES;
+	const current = () => panes.state.byWorkSession[WORK_SESSION_ID] ?? EMPTY_WORK_SESSION_PANES;
 	const setSessionPanes = (patch: Partial<typeof EMPTY_WORK_SESSION_PANES>) =>
 		panes.setState({
-			bySession: { ...panes.state.bySession, [SESSION_ID]: { ...current(), ...patch } },
+			byWorkSession: {
+				...panes.state.byWorkSession,
+				[WORK_SESSION_ID]: { ...current(), ...patch },
+			},
 		});
 	const upsert = (pane: Pane, activate = true) => {
 		const others = current().panes.filter((candidate) => candidate.id !== pane.id);
@@ -148,9 +155,9 @@ export async function bootFilesHost(options: FilesHostOptions = {}) {
 		return pane;
 	};
 
-	const workspacesMain: PluginEntry = definePlugin({
+	const workSessionsMain: PluginEntry = definePlugin({
 		activate(sdk) {
-			workspaces = sdk.domains.provide(Workspaces, {
+			workspaces = sdk.domainObjects.provide(Workspaces, {
 				initialState: {
 					workspaces:
 						folders.length > 0
@@ -180,29 +187,30 @@ export async function bootFilesHost(options: FilesHostOptions = {}) {
 					checkFolders: () => undefined,
 				},
 			});
-			files = sdk.domains.provide(Files, { initialState: { watched: [] }, methods: {} });
-		},
-	});
-
-	const sessionsMain: PluginEntry = definePlugin({
-		activate(sdk) {
-			sdk.domains.provide(WorkSessions, {
-				initialState: { sessions: [session(options.directory ?? null, workspaceId)] },
+			files = sdk.domainObjects.provide(FileWatcher, {
+				initialState: { watched: [] },
+				methods: {},
+			});
+			sdk.context.set("hasVcs", true);
+			sdk.domainObjects.provide(WorkSessions, {
+				initialState: {
+					workSessions: [workSession(options.directory ?? null, workspaceId)],
+				},
 				methods: {
 					create: unused("create"),
+					createChat: unused("createChat"),
 					rename: unused("rename"),
 					setPinned: unused("setPinned"),
 					setArchived: unused("setArchived"),
-					setWorktreeBranch: unused("setWorktreeBranch"),
+					setBranch: unused("setBranch"),
 					remove: unused("remove"),
-					importLegacyPins: unused("importLegacyPins"),
 					isolationOptions: () => null,
 				},
 			});
-			panes = sdk.domains.provide(Panes, {
+			panes = sdk.domainObjects.provide(Panes, {
 				initialState: {
-					bySession: {
-						[SESSION_ID]: {
+					byWorkSession: {
+						[WORK_SESSION_ID]: {
 							...EMPTY_WORK_SESSION_PANES,
 							panes: [...(options.panes ?? [])],
 							activePaneId: options.activePaneId ?? options.panes?.[0]?.id ?? null,
@@ -210,31 +218,34 @@ export async function bootFilesHost(options: FilesHostOptions = {}) {
 					},
 				},
 				methods: {
-					open: unused("open"),
-					openObject: ({ sessionId, ref }) => {
-						openedObjects.push({ sessionId, ref });
+					open: (input) =>
+						upsert({
+							id: `opened-${nextPane++}`,
+							kind: input.kind,
+							title: input.title ?? "Files",
+							metadata: input.metadata ?? {},
+							ordinal: 1,
+						}),
+					openObject: ({ workSessionId, ref }) => {
+						openedObjects.push({ workSessionId, ref });
 						if (options.openFails) throw new KernelError("BUSINESS", options.openFails);
 						if (ref.type !== FILE_OBJECT_TYPE) return null;
 						const notebook = options.notebookOpener && ref.id.endsWith(".ipynb");
 						const kind = notebook ? NOTEBOOK_PANE_KIND : FILES_PANE_KIND;
 						const existing = current().panes.find(
 							(pane) =>
-								pane.kind === kind &&
-								pane.metadata[FILE_PANE_METADATA.objectType] === ref.type &&
-								pane.metadata[FILE_PANE_METADATA.objectId] === ref.id,
+								pane.kind === kind && pane.object?.type === ref.type && pane.object.id === ref.id,
 						);
 						const pane: Pane = existing ?? {
 							id: `opened-${nextPane++}`,
 							kind,
 							title: notebook ? "Notebook" : basename(ref.id),
-							metadata: {
-								[FILE_PANE_METADATA.objectType]: ref.type,
-								[FILE_PANE_METADATA.objectId]: ref.id,
-							},
+							object: ref,
+							metadata: {},
 							ordinal: 1,
 						};
 						const opened = upsert(pane);
-						panes.emit("opened", { sessionId, pane: opened });
+						panes.emit("opened", { workSessionId, pane: opened });
 						return opened;
 					},
 					activate: ({ paneId }) => void setSessionPanes({ activePaneId: paneId }),
@@ -259,7 +270,6 @@ export async function bootFilesHost(options: FilesHostOptions = {}) {
 					},
 					setLayout: () => undefined,
 					setArrangement: () => undefined,
-					importLegacy: () => undefined,
 				},
 			});
 		},
@@ -268,7 +278,7 @@ export async function bootFilesHost(options: FilesHostOptions = {}) {
 	const documentsMain: PluginEntry = definePlugin({
 		activate(sdk) {
 			const fake = options.documents ?? {};
-			sdk.domains.provide(Documents, {
+			sdk.domainObjects.provide(Documents, {
 				initialState: {},
 				methods: new Proxy({} as Record<string, (input: unknown) => unknown>, {
 					get: (_target, key: string) => (input: unknown) => {
@@ -292,54 +302,84 @@ export async function bootFilesHost(options: FilesHostOptions = {}) {
 		},
 	});
 
-	const telemetryMain: PluginEntry = definePlugin({
-		activate(sdk) {
-			sdk.domains.provide(Telemetry, {
-				initialState: {},
-				methods: { track: (input) => void tracked.push(input) },
-			});
-		},
-	});
-
-	const flagsMain: PluginEntry = definePlugin({
-		activate(sdk) {
-			for (const flag of options.flags ?? []) sdk.context.set(`flag:${flag}`, true);
+	const telemetrySink = testPlugin("test.telemetry-sink", {
+		manifest: { contributes: { extensions: { "kernel/telemetry-sink": [{ id: "sink" }] } } },
+		entry: {
+			activate: (sdk) => {
+				sdk.extensions.implement(KernelTelemetrySink, "sink", {
+					deliver: ({ name, data }) => void tracked.push({ event: name, data }),
+				});
+			},
 		},
 	});
 
 	const shellWeb: PluginEntry = definePlugin({
 		activate(sdk) {
 			if (options.theme) {
-				theme = sdk.domains.provide(Theme, { initialState: options.theme, methods: {} });
+				theme = sdk.domainObjects.provide(Theme, { initialState: options.theme, methods: {} });
 			}
 		},
 	});
 
-	const shell = {
-		manifest: shellManifest,
-		definitions: { extensionPoints: SHELL_EXTENSION_POINTS, domains: SHELL_DOMAINS },
-	};
+	const workSessionsWeb: PluginEntry = definePlugin({
+		activate(sdk) {
+			sdk.domainObjects.provide(WorkSessionsWindow, {
+				initialState: {
+					focus: null,
+					activeWorkSessionId: WORK_SESSION_ID,
+					view: null,
+					detachedViews: [],
+				},
+				methods: {
+					setFocus: () => undefined,
+					openWorkSession: () => undefined,
+					closeWorkSession: () => undefined,
+					showView: () => undefined,
+					openPane: async (input) => {
+						if (options.openPane) return options.openPane(input);
+						await sdk.domainObjects
+							.get(Panes)
+							?.methods.open({ workSessionId: WORK_SESSION_ID, kind: input.kind });
+					},
+				},
+			});
+			sdk.context.set("workSessionActive", true);
+			sdk.context.set("paneTargetActive", true);
+		},
+	});
+
+	const flagOverrides = Object.fromEntries((options.flags ?? []).map((flag) => [flag, true]));
 	const { main, renderer } = await createTestKernelPair({
+		host: createTestHost({ flagOverrides }),
 		main: [
-			shell,
-			{ manifest: workspacesManifest, definitions: WORKSPACES_DEFINITIONS, entry: workspacesMain },
-			{ manifest: sessionsManifest, definitions: SESSIONS_DEFINITIONS, entry: sessionsMain },
-			{ manifest: telemetryManifest, definitions: TELEMETRY_DEFINITIONS, entry: telemetryMain },
-			{ manifest: flagsManifest, definitions: FLAGS_DEFINITIONS, entry: flagsMain },
+			{ manifest: coreManifest, definitions: CORE_DEFINITIONS },
+			{ manifest: shellManifest, definitions: SHELL_DEFINITIONS },
+			{
+				manifest: workSessionsManifest,
+				definitions: WORK_SESSIONS_DEFINITIONS,
+				entry: workSessionsMain,
+			},
 			{ manifest: chatManifest, definitions: CHAT_DEFINITIONS },
 			{ manifest, definitions: FILES_DEFINITIONS, entry: documentsMain },
+			telemetrySink,
 			...(options.main ?? []),
 		],
 		renderer: [
-			{ ...shell, entry: shellWeb },
-			{ manifest: workspacesManifest, definitions: WORKSPACES_DEFINITIONS },
-			{ manifest: sessionsManifest, definitions: SESSIONS_DEFINITIONS },
-			{ manifest: telemetryManifest, definitions: TELEMETRY_DEFINITIONS },
-			{ manifest: flagsManifest, definitions: FLAGS_DEFINITIONS },
+			{ manifest: coreManifest, definitions: CORE_DEFINITIONS },
+			{ manifest: shellManifest, definitions: SHELL_DEFINITIONS, entry: shellWeb },
+			{
+				manifest: workSessionsManifest,
+				definitions: WORK_SESSIONS_DEFINITIONS,
+				entry: workSessionsWeb,
+			},
 			{ manifest: chatManifest, definitions: CHAT_DEFINITIONS },
 			{ manifest, definitions: FILES_DEFINITIONS, entry: filesWebEntry },
 			...(options.renderer ?? []),
 		],
+	});
+	main.kernelSdk.domainObjects.provide(KernelDataCollection, {
+		initialState: { choice: true, allowed: true, installationId: "i", environment: "test" },
+		methods: { setChoice: () => {} },
 	});
 	await main.flush();
 
@@ -353,7 +393,7 @@ export async function bootFilesHost(options: FilesHostOptions = {}) {
 	return {
 		main,
 		renderer,
-		/** The session's folders now. */
+		/** The work session's folders now. */
 		folders: () => currentFolders,
 		directory: options.directory ?? null,
 		/** `Panes.openObject` calls, in order. */
@@ -375,7 +415,7 @@ export async function bootFilesHost(options: FilesHostOptions = {}) {
 				setSessionPanes({ activePaneId: paneId });
 				await main.flush();
 			}),
-		/** One kilo.workspaces file-change batch, delivered to the window. */
+		/** One `kilo.work-sessions/file-watcher` change batch, delivered to the window. */
 		emitFileChanges: (root: string, changes: readonly FileChange[]) =>
 			act(async () => {
 				files.emit("changed", { root, changes: [...changes] });
@@ -412,13 +452,13 @@ export type FilesHost = Awaited<ReturnType<typeof bootFilesHost>>;
 
 const selectComponent = (implementation: PaneImplementation) => implementation.component;
 
-/** One pane of the session as kilo.workbench's canvas renders it: its kind's component, from the Panes state. */
+/** One pane of the session as kilo.work-sessions' canvas renders it: its kind's component, from the Panes state. */
 export function PaneHost({ host, paneId }: { readonly host: FilesHost; readonly paneId: string }) {
-	const pane = useDomainState(
+	const pane = useDomainObjectState(
 		Panes,
 		useCallback(
-			(state: DomainState<typeof Panes>) =>
-				state.bySession[SESSION_ID]?.panes.find((candidate) => candidate.id === paneId),
+			(state: DomainObjectState<typeof Panes>) =>
+				state.byWorkSession[WORK_SESSION_ID]?.panes.find((candidate) => candidate.id === paneId),
 			[paneId],
 		),
 	);
@@ -427,7 +467,7 @@ export function PaneHost({ host, paneId }: { readonly host: FilesHost; readonly 
 		.find((candidate) => candidate.key === (pane?.kind ?? FILES_PANE_KIND));
 	if (!pane || !kind) return null;
 	const props: PaneProps = {
-		sessionId: SESSION_ID,
+		workSessionId: WORK_SESSION_ID,
 		pane,
 		workspaceId: host.folders().length > 0 ? "w1" : null,
 		directory: host.directory ?? host.folders().find((folder) => folder.isPrimary)?.path ?? null,
@@ -435,7 +475,7 @@ export function PaneHost({ host, paneId }: { readonly host: FilesHost; readonly 
 	};
 	return (
 		<RenderContribution
-			key={`${SESSION_ID}:${pane.id}`}
+			key={`${WORK_SESSION_ID}:${pane.id}`}
 			contribution={kind}
 			props={props}
 			select={selectComponent}

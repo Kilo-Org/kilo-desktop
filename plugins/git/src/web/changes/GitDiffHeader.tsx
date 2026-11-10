@@ -10,7 +10,7 @@ import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
-import { DiffSettingsMenu } from "./DiffSettingsMenu.js";
+import { DiffSettingsMenu } from "./DiffSettingsMenu";
 
 interface GitDiffHeaderProps {
 	readonly addedLines: number;

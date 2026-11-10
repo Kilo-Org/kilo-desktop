@@ -53,7 +53,7 @@ export interface AppLegalFilesOptions extends Omit<
 
 /**
  * Writes THIRD_PARTY_NOTICES.txt and Chromium's credits into the
- * app's resources folder, beside app.asar, where kilo.updates reads them.
+ * app's resources folder, beside app.asar, where kilo.shell (`kilo.shell/legal`) reads them.
  * Runs in `beforeAsar`, once the production node_modules are staged.
  *
  * @electron/packager extracts Electron's LICENSE, LICENSES.chromium.html and

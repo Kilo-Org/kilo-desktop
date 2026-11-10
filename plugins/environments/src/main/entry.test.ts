@@ -1,198 +1,32 @@
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
-import { KernelDialogs, KernelServices, type PluginRegistration } from "@kilo-desktop/kernel";
-import { createMainKernel } from "@kilo-desktop/kernel/main";
-import { createMemoryStorage, createTestHost, testPlugin } from "@kilo-desktop/kernel/testing";
-import {
-	AgentTool,
-	SessionConfigPoint,
-	type SessionConfig,
-	type ToolCallContext,
-} from "@kilo-desktop/plugin-agent/contracts";
-import { Flags, FLAGS_DEFINITIONS } from "@kilo-desktop/plugin-flags/contracts";
+import { KernelServices } from "@kilo-desktop/kernel";
 
-import manifest from "../../plugin.json";
-import {
-	BRIDGE_SERVICE_KEY,
-	Conda,
-	CondaRuntime,
-	ENVIRONMENTS_DEFINITIONS,
-	ENVIRONMENTS_FLAG,
-} from "../contracts/index.js";
-import type { CondaBackend } from "./providers/conda/CondaBackend.js";
-import type { BridgeLaunchInfo } from "./providers/conda/resolveBridgePath.js";
-import type { CondaBridge, WarmableCondaBackend } from "./providers/conda/SharedCondaBridge.js";
-import { createEnvironmentsMainEntry } from "./entry.js";
+import { BRIDGE_SERVICE_KEY, ENVIRONMENTS_SETTINGS_SECTION } from "../contracts/index";
+import { bootEnvironmentsMain, recordingLogger, stopEnvironmentsMains } from "./test-boot";
 
-const LAUNCH: BridgeLaunchInfo = {
-	command: ["/bridge/python"],
-	payloadRoot: "/bridge",
-	version: "1",
-};
+const boot = bootEnvironmentsMain;
 
-/** A conda runner standing in for the bridge process: records calls, answers from `answers`. */
-class FakeBridge implements CondaBridge {
-	readonly calls: { method: string; args: unknown[] }[] = [];
-	starts = 0;
-	releases = 0;
-	disposed = false;
-	readonly #backend: WarmableCondaBackend;
+const CPU = "llama.cpp==0.6.0=cpu_*";
+const METAL = "llama.cpp==0.6.0=mps_*";
+const MAIN_URL = "https://repo.anaconda.com/pkgs/main";
+const APPLE_SILICON = {
+	platform: "darwin",
+	arch: "arm64",
+	release: "24.0.0",
+	gpus: [],
+} as const;
 
-	constructor(
-		readonly environment: Readonly<Record<string, string>> | undefined,
-		answers: Partial<Record<keyof CondaBackend, unknown>>,
-	) {
-		this.#backend = new Proxy({} as WarmableCondaBackend, {
-			get:
-				(_target, method: string) =>
-				(...args: unknown[]) => {
-					if (method === "warmUp") {
-						this.starts++;
-						return Promise.resolve();
-					}
-					this.calls.push({ method, args });
-					return Promise.resolve(answers[method as keyof CondaBackend]);
-				},
-		});
-	}
+const ownMessages = (messages: unknown[][]) =>
+	messages.filter(([message]) => !String(message).startsWith("[kilo.environments] Contribution"));
 
-	acquire() {
-		return this.#backend;
-	}
-
-	release() {
-		this.releases++;
-	}
-
-	dispose() {
-		this.disposed = true;
-	}
-}
-
-const agentPoints = testPlugin("kilo.agent", {
-	manifest: {
-		extensionPoints: [
-			{ id: "tool", kind: "additive" },
-			{ id: "session-config", kind: "additive" },
-		],
-	},
-	definitions: { extensionPoints: [AgentTool, SessionConfigPoint] },
-});
-
-interface BootOptions {
-	readonly flag?: boolean;
-	readonly bridge?: BridgeLaunchInfo | null;
-	readonly answers?: Partial<Record<keyof CondaBackend, unknown>>;
-	readonly platform?: NodeJS.Platform;
-	readonly arch?: NodeJS.Architecture;
-	readonly pickedFile?: string | null;
-	readonly sentryDsn?: string;
-}
-
-async function boot(options: BootOptions = {}) {
-	const storageDir = await mkdtemp(path.join(tmpdir(), "environments-entry-"));
-	const bridges: FakeBridge[] = [];
-	let resolves = 0;
-	let flagState: Record<string, unknown> = { [ENVIRONMENTS_FLAG]: options.flag ?? true };
-	const flagListeners = new Set<() => void>();
-	const flags: PluginRegistration = testPlugin("kilo.flags", {
-		manifest: { domains: [{ id: "flags", home: "main" }] },
-		definitions: FLAGS_DEFINITIONS,
-		entry: {
-			activate(sdk) {
-				const domain = sdk.domains.provide(Flags, {
-					initialState: { flags: flagState, ready: true },
-					methods: {},
-				});
-				flagListeners.add(() => domain.setState({ flags: flagState, ready: true }));
-			},
-		},
-	});
-	const kernel = createMainKernel({
-		host: createTestHost(),
-		registrations: [
-			flags,
-			agentPoints,
-			{
-				manifest,
-				definitions: ENVIRONMENTS_DEFINITIONS,
-				entry: createEnvironmentsMainEntry({
-					resolveBridge: () => {
-						resolves++;
-						return options.bridge === undefined ? LAUNCH : options.bridge;
-					},
-					createBridge: (_sdk, bridgeOptions) => {
-						const bridge = new FakeBridge(bridgeOptions.environment, options.answers ?? {});
-						bridges.push(bridge);
-						return bridge;
-					},
-					platform: options.platform ?? "darwin",
-					arch: options.arch ?? "arm64",
-					condaFilesRoot: path.join(storageDir, "conda"),
-					...(options.sentryDsn === undefined ? {} : { sentryDsn: options.sentryDsn }),
-				}),
-			},
-		],
-		hostServices: () => ({ storage: createMemoryStorage(storageDir) }),
-	});
-	kernel.kernelSdk.domains.provide(KernelDialogs, {
-		initialState: {},
-		methods: {
-			open: () => ({ paths: options.pickedFile ? [options.pickedFile] : [] }),
-			save: () => ({ path: null }),
-			message: () => ({ response: 0, checkboxChecked: false }),
-		},
-	});
-	await kernel.start();
-	const conda = () => kernel.kernelSdk.domains.get(Conda)!;
-	const tool = (id: string) =>
-		kernel.kernelSdk.extensions
-			.list(AgentTool)
-			.find((contribution) => contribution.key === `kilo.environments/${id}`)!;
-	const callTool = (id: string, input: unknown) => {
-		const { implementation } = tool(id);
-		const context: ToolCallContext = {
-			sessionId: "wses_1",
-			chatId: "ses_1",
-			callId: "call_1",
-			external: false,
-			signal: new AbortController().signal,
-		};
-		return Promise.resolve(implementation!.run(implementation!.input.parse(input), context));
-	};
-	const sessionConfig = async (): Promise<SessionConfig> => {
-		const contribution = kernel.kernelSdk.extensions
-			.list(SessionConfigPoint)
-			.find((candidate) => candidate.key === "kilo.environments/conda")!;
-		return (await contribution.implementation!.configure({
-			sessionId: "wses_1",
-			workspaceId: "ws_1",
-			directory: "/work",
-		})) as SessionConfig;
-	};
-	const setFlag = (on: boolean) => {
-		flagState = { [ENVIRONMENTS_FLAG]: on };
-		for (const listener of flagListeners) listener();
-	};
-	return {
-		kernel,
-		bridges,
-		conda,
-		tool,
-		callTool,
-		sessionConfig,
-		setFlag,
-		resolves: () => resolves,
-	};
-}
+afterEach(stopEnvironmentsMains);
 
 describe("kilo.environments in main", () => {
 	it("serves the person's conda environments through the bridge once the flag is on", async () => {
-		const { conda, bridges, kernel } = await boot({
+		const { conda, bridges, main } = await boot({
 			answers: { list: [{ name: "dev", prefix: "/conda/envs/dev" }] },
 		});
 
@@ -204,7 +38,8 @@ describe("kilo.environments in main", () => {
 		expect(bridges[0]!.calls.map((call) => call.method)).toEqual(["list"]);
 		expect(bridges[0]!.starts).toBe(1);
 		expect(
-			kernel.kernelSdk.domains.get(KernelServices)!.getState().services[BRIDGE_SERVICE_KEY]?.status,
+			main.kernelSdk.domainObjects.get(KernelServices)!.getState().services[BRIDGE_SERVICE_KEY]
+				?.status,
 		).toBe("ready");
 	});
 
@@ -219,11 +54,15 @@ describe("kilo.environments in main", () => {
 		await expect.poll(() => conda().getState().status).toBe("ready");
 	});
 
-	it("is unavailable without the bridge payload", async () => {
-		const { conda } = await boot({ bridge: null });
+	it("is unavailable without the bridge payload, warning once", async () => {
+		const { logger, warnings } = recordingLogger();
+		const { conda } = await boot({ bridge: null, logger });
 
 		expect(conda().getState().status).toBe("unavailable");
 		await expect(conda().methods.listChannels(undefined)).rejects.toThrow("payload was not found");
+		expect(ownMessages(warnings).flat().join("\n")).toContain(
+			"The conda bridge payload was not found.",
+		);
 	});
 
 	it("emits each write's progress and returns its job id", async () => {
@@ -249,14 +88,15 @@ describe("kilo.environments in main", () => {
 	});
 
 	it("creates plugin-owned environments whatever the flag says", async () => {
-		const { kernel, bridges } = await boot({
+		const { condaRuntime, bridges } = await boot({
 			flag: false,
 			answers: { create: { name: "llama", prefix: "/x" } },
 		});
 
-		const result = await kernel.kernelSdk.domains
-			.get(CondaRuntime)!
-			.methods.ensureEnvironment({ name: "llama", packages: ["llama.cpp"] });
+		const result = await condaRuntime().methods.ensureEnvironment({
+			name: "llama",
+			packages: ["llama.cpp"],
+		});
 
 		expect(result.prefixPath).toMatch(/conda[\\/]envs[\\/]llama$/);
 		expect(bridges[0]!.calls[0]).toMatchObject({
@@ -295,26 +135,25 @@ describe("kilo.environments in main", () => {
 
 		await expect(callTool("conda.channels.list", {})).resolves.toEqual(["defaults"]);
 		expect(bridges[0]!.calls.map((call) => call.method)).toEqual(["listChannels"]);
-		expect(tool("conda.packages.install").metadata).toMatchObject({
+		expect(tool("conda.packages.install")!.metadata).toMatchObject({
 			approval: "ask",
 			requiresSignIn: true,
+			external: true,
 			signInPrompt: { toolsLabel: "Desktop's Python environment tools" },
 		});
 	});
 
-	it("asks the window to open settings for the setup tool", async () => {
-		const { callTool, conda } = await boot();
-		let requests = 0;
-		conda().on("setup-requested", () => requests++);
+	it("opens Conda Environments settings for the setup tool", async () => {
+		const { callTool, openSettings } = await boot();
 
 		await expect(callTool("conda.setup.open", {})).resolves.toEqual({ opened: true });
 
-		await expect.poll(() => requests).toBe(1);
+		expect(openSettings).toHaveBeenCalledWith(ENVIRONMENTS_SETTINGS_SECTION);
 	});
 
 	it("asks before conda-family commands in every chat, and hides its tools while unavailable", async () => {
 		const ready = await boot();
-		const config = await ready.sessionConfig();
+		const config = await ready.chatConfig();
 		expect(config.disableTools).toBeUndefined();
 		expect(config.permissions).toContainEqual({
 			permission: "bash",
@@ -323,19 +162,131 @@ describe("kilo.environments in main", () => {
 		});
 
 		const disabled = await boot({ flag: false });
-		const hidden = await disabled.sessionConfig();
+		const hidden = await disabled.chatConfig();
 		expect(hidden.permissions).toEqual(config.permissions);
 		expect(hidden.disableTools).toContain("desktop_environments_conda_envs_list");
 		expect(hidden.disableTools).toContain("desktop_environments_conda_packages_install");
+		expect(hidden.disableTools).toContain("desktop_environments_conda_setup_open");
 	});
 
 	it("releases the bridge when its service stops, and disposes it on deactivation", async () => {
-		const { kernel, bridges, conda } = await boot({ answers: { list: [] } });
+		const { main, bridges, conda } = await boot({ answers: { list: [] } });
 		await conda().methods.listEnvironments(undefined);
 
-		await kernel.stop();
+		await main.stop();
 
 		expect(bridges[0]!.releases).toBe(1);
 		expect(bridges[0]!.disposed).toBe(true);
+	});
+
+	describe("llama.cpp for the Local Model Server", () => {
+		it("installs llama.cpp into the runtime environment whatever the flag says", async () => {
+			const checked: string[] = [];
+			const { llamaRuntime, bridges, storageDir } = await boot({
+				flag: false,
+				answers: { create: { name: "local-inference-llama", prefix: "/x" } },
+				llama: {
+					readHost: async () => APPLE_SILICON,
+					accessFile: async (file) => void checked.push(file),
+				},
+			});
+
+			expect(llamaRuntime()!.metadata).toEqual({ title: "Conda" });
+			const executable = await llamaRuntime()!.implementation!.resolveExecutable();
+
+			const prefix = path.join(storageDir, "conda", "envs", "local-inference-llama");
+			expect(executable).toBe(path.join(prefix, "bin", "llama-server"));
+			expect(checked).toEqual([executable]);
+			expect(bridges[0]!.calls[0]).toMatchObject({
+				method: "create",
+				args: [
+					{ name: "local-inference-llama", packages: [METAL], channels: ["defaults"] },
+					undefined,
+					{ prefix },
+				],
+			});
+		});
+
+		it("falls back through each flavour's channels, warning of each failure", async () => {
+			const { logger, warnings } = recordingLogger();
+			const { llamaRuntime, bridges } = await boot({
+				logger,
+				answers: {
+					create: ({ packages, channels }: { packages: string[]; channels: string[] }) => {
+						if (packages[0] === METAL || channels[0] === "defaults") {
+							throw new Error(`no ${packages[0]} in ${channels[0]}`);
+						}
+						return { name: "local-inference-llama", prefix: "/x" };
+					},
+				},
+				llama: { readHost: async () => APPLE_SILICON, accessFile: async () => {} },
+			});
+
+			await expect(llamaRuntime()!.implementation!.resolveExecutable()).resolves.toMatch(
+				/llama-server$/,
+			);
+
+			expect(
+				bridges[0]!.calls.map((call) => {
+					const [{ packages, channels }] = call.args as [
+						{ packages: string[]; channels: string[] },
+					];
+					return [packages[0], channels[0]];
+				}),
+			).toEqual([
+				[METAL, "defaults"],
+				[METAL, MAIN_URL],
+				[CPU, "defaults"],
+				[CPU, MAIN_URL],
+			]);
+			const llamaWarnings = ownMessages(warnings)
+				.flat()
+				.filter((message) => String(message).includes("Could not install llama.cpp"));
+			expect(llamaWarnings).toHaveLength(3);
+		});
+
+		it("rejects with the last error when no flavour installs", async () => {
+			const { llamaRuntime } = await boot({
+				answers: {
+					create: ({ packages }: { packages: string[] }) => {
+						throw new Error(`failed ${packages[0]}`);
+					},
+				},
+				llama: { readHost: async () => APPLE_SILICON, accessFile: async () => {} },
+			});
+
+			await expect(llamaRuntime()!.implementation!.resolveExecutable()).rejects.toThrow(
+				`failed ${CPU}`,
+			);
+		});
+	});
+
+	describe("without the plugins it works with", () => {
+		it("activates without kilo.core, kilo.shell, kilo.chat or kilo.local-inference, saying nothing", async () => {
+			const { logger, warnings, errors } = recordingLogger();
+			const host = await boot({
+				withoutCore: true,
+				withoutShell: true,
+				withoutChat: true,
+				withoutLocalInference: true,
+				logger,
+				answers: { list: [] },
+			});
+
+			expect(host.conda().getState().status).toBe("ready");
+			await expect(host.conda().methods.listEnvironments(undefined)).resolves.toEqual([]);
+			expect(host.tool("conda.envs.list")).toBeUndefined();
+			expect(host.chatConfigContribution()).toBeUndefined();
+			expect(host.llamaRuntime()).toBeUndefined();
+			expect(ownMessages(warnings)).toEqual([]);
+			expect(ownMessages(errors)).toEqual([]);
+		});
+
+		it("opens nothing from the setup tool without kilo.shell", async () => {
+			const host = await boot({ withoutShell: true });
+
+			await expect(host.callTool("conda.setup.open")).resolves.toEqual({ opened: true });
+			expect(host.openSettings).not.toHaveBeenCalled();
+		});
 	});
 });

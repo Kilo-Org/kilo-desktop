@@ -1,6 +1,6 @@
-import type { LocalModel } from "../../contracts/schemas.js";
-import { hasLlamaFlagOverride } from "../../shared/settings/model-settings.js";
-import { LLAMA_API_KEY_ENV, LOCAL_PROVIDER_NAME } from "./kilo-constants.js";
+import type { LocalModel } from "../../contracts";
+import { hasLlamaFlagOverride } from "../../shared/settings/model-settings";
+import { LLAMA_API_KEY_ENV, LOCAL_PROVIDER_NAME } from "./kilo-constants";
 
 function available(models: readonly LocalModel[]): LocalModel[] {
 	return models.filter((model) => model.available);

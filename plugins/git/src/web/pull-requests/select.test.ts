@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { Workspace } from "@kilo-desktop/plugin-workspaces/contracts";
+import type { Workspace } from "@kilo-desktop/plugin-work-sessions/contracts";
 
-import type { PullRequestEntry } from "../../contracts/index.js";
-import { branchAwaitingLookup, sessionDirectory, visiblePullRequest } from "./select.js";
+import type { PullRequestEntry } from "../../contracts";
+import { branchAwaitingLookup, visiblePullRequest, workSessionDirectory } from "./select";
 
 const pullRequest = {
 	number: 649,
@@ -66,7 +66,7 @@ describe("a directory's pull request", () => {
 	});
 });
 
-describe("sessionDirectory", () => {
+describe("workSessionDirectory", () => {
 	const workspaces: Workspace[] = [
 		{
 			id: "w1",
@@ -81,11 +81,13 @@ describe("sessionDirectory", () => {
 	];
 
 	it("is the worktree, else the workspace's primary folder, and none outside a workspace", () => {
-		expect(sessionDirectory({ workspaceId: "w1", directory: "/app/.kilo/wt" }, workspaces)).toBe(
-			"/app/.kilo/wt",
-		);
-		expect(sessionDirectory({ workspaceId: "w1", directory: null }, workspaces)).toBe("/app");
-		expect(sessionDirectory({ workspaceId: "gone", directory: null }, workspaces)).toBeNull();
-		expect(sessionDirectory({ workspaceId: null, directory: "/chats/x" }, workspaces)).toBeNull();
+		expect(
+			workSessionDirectory({ workspaceId: "w1", directory: "/app/.kilo/wt" }, workspaces),
+		).toBe("/app/.kilo/wt");
+		expect(workSessionDirectory({ workspaceId: "w1", directory: null }, workspaces)).toBe("/app");
+		expect(workSessionDirectory({ workspaceId: "gone", directory: null }, workspaces)).toBeNull();
+		expect(
+			workSessionDirectory({ workspaceId: null, directory: "/chats/x" }, workspaces),
+		).toBeNull();
 	});
 });

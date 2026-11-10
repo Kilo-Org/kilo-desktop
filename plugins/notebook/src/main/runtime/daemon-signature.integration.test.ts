@@ -4,10 +4,7 @@ import { promisify } from "node:util";
 
 import { describe, expect, it } from "vitest";
 
-import {
-	MACOS_RUNTIMED_REQUIREMENT,
-	verifyRuntimedSignature,
-} from "./daemon-peer-authenticator.js";
+import { MACOS_RUNTIMED_REQUIREMENT, verifyRuntimedSignature } from "./daemon-peer-authenticator";
 
 /**
  * The signing requirement is only ever evaluated by `/usr/bin/codesign`, and a

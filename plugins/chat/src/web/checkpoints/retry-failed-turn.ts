@@ -1,4 +1,4 @@
-import type { ServerConnection } from "@kilo-desktop/plugin-agent/contracts";
+import type { ServerConnection } from "@kilo-desktop/plugin-core/contracts";
 
 import { directoryClient } from "../runtime/kilo-client";
 import { SNAPSHOT_INITIALIZATION, type PromptModelRef } from "../runtime/prompt-options";

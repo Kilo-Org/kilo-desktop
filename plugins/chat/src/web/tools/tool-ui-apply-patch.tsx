@@ -1,11 +1,11 @@
 import { memo, useMemo } from "react";
-import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 import { FileDiff, PatchDiff } from "@pierre/diffs/react";
 
 import { parseChatPatchFiles, usePierreDiffOptions } from "./pierre-diff";
 import { usePrimePierreDiffs } from "./use-prime-pierre-diffs";
 import { SoloAwareExpandableRow } from "./tool-ui-activity-row";
 import { basename, DiffCounts, getPatchInfo, str } from "./tool-ui-shared";
+import type { ToolCallComponent } from "./tool-call";
 
 interface PatchBlock {
 	type: string;
@@ -104,7 +104,7 @@ function claudeBlockToUnifiedDiff(block: PatchBlock): string {
 	return `${gitHeader}\n${fileHeader}\n${hunkHeader}\n${diffLines.join("\n")}`;
 }
 
-export const ApplyPatchDiff: ToolCallMessagePartComponent = memo(({ args, status, toolCallId }) => {
+export const ApplyPatchDiff: ToolCallComponent = memo(({ args, status, toolCallId }) => {
 	const options = usePierreDiffOptions();
 	const patchText = str(args?.patchText);
 

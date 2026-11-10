@@ -4,34 +4,42 @@
 	"displayName": "Git",
 	"version": "1.0.0",
 	"description": "Git for workspace folders: status, branches, worktrees, diffs, commits and pull requests.",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
 	"requires": {
-		"kilo.workspaces/workspace": "optional",
-		"kilo.workspaces/file": "optional",
-		"kilo.workspaces/vcs": "optional",
-		"kilo.sessions/work-session": "optional",
-		"kilo.sessions/pane": "optional",
-		"kilo.sessions/pane-kind": "optional",
-		"kilo.workbench/workbench": "optional",
-		"kilo.workbench/launcher-option": "optional",
-		"kilo.chat/composer-action": "optional",
-		"kilo.agent/tool": "optional",
-		"kilo.shell/theme": "optional",
-		"kernel/windows": "optional",
-		"kilo.workbench/session-decoration": "optional",
-		"kilo.workbench/session-facet": "optional",
-		"kernel/os": "optional",
-		"kilo.workbench/session-action": "optional",
-		"kilo.agent/conversation": "optional",
-		"kilo.chat/model-preferences": "optional",
+		"kilo.core/chats": "optional",
+		"kilo.core/generation": "optional",
+		"kilo.core/models": "optional",
+		"kilo.core/tool": "optional",
+		"kilo.work-sessions/workspaces": "optional",
+		"kilo.work-sessions/file-watcher": "optional",
+		"kilo.work-sessions/work-sessions": "optional",
+		"kilo.work-sessions/panes": "optional",
+		"kilo.work-sessions/window": "optional",
+		"kilo.work-sessions/vcs": "optional",
+		"kilo.work-sessions/pane-kind": "optional",
+		"kilo.work-sessions/work-session-decoration": "optional",
+		"kilo.work-sessions/work-session-facet": "optional",
+		"kilo.work-sessions/work-session-action": "optional",
+		"kilo.work-sessions/new-work-session-option": "optional",
 		"kilo.chat/composer": "optional",
-		"kilo.telemetry/telemetry": "optional",
-		"kilo.telemetry/telemetry-event": "optional"
+		"kilo.chat/composer-action": "optional",
+		"kilo.shell/theme": "optional",
+		"kilo.shell/notifications": "optional",
+		"kernel/windows": "optional",
+		"kernel/os": "optional"
 	},
 	"permissions": {
 		"protocols": ["kilo-git"],
 		"host": ["os"]
 	},
-	"domains": [
+	"objectTypes": [
+		{
+			"id": "pull-request",
+			"description": "The pull request of a work session's directory, keyed by the directory."
+		}
+	],
+	"domainObjects": [
 		{
 			"id": "repository",
 			"home": "main",
@@ -40,26 +48,18 @@
 		{
 			"id": "pull-requests",
 			"home": "main",
-			"description": "The pull request of each session's directory, looked up in the background."
+			"description": "The pull request of each work session's directory, looked up in the background.",
+			"objectType": "kilo.git/pull-request"
 		}
 	],
 	"contributes": {
 		"extensions": {
-			"kilo.workspaces/vcs": [
+			"kilo.work-sessions/vcs": [
 				{
 					"id": "git"
 				}
 			],
-			"kilo.chat/composer-action": [
-				{
-					"id": "branch",
-					"slot": "footer",
-					"kind": "view",
-					"title": "Branch",
-					"priority": 100
-				}
-			],
-			"kilo.sessions/pane-kind": [
+			"kilo.work-sessions/pane-kind": [
 				{
 					"id": "changes",
 					"title": "Changes",
@@ -71,18 +71,54 @@
 					"singleton": true,
 					"order": 45,
 					"availableWhen": {
-						"all": ["kilo.workspaces/vcs"]
+						"all": ["kilo.work-sessions/hasVcs"]
 					},
-					"unavailableHint": "Git isn't available."
+					"unavailableHint": "Git isn't available.",
+					"openCommand": "kilo.git/open-changes"
 				}
 			],
-			"kilo.workbench/launcher-option": [
+			"kilo.work-sessions/work-session-decoration": [
+				{
+					"id": "pull-request",
+					"slot": "row"
+				},
+				{
+					"id": "branch",
+					"slot": "hover-branch"
+				},
+				{
+					"id": "pull-request-details",
+					"slot": "hover"
+				}
+			],
+			"kilo.work-sessions/work-session-facet": [
+				{
+					"id": "pull-request",
+					"facet": "pull-request"
+				}
+			],
+			"kilo.work-sessions/work-session-action": [
+				{
+					"id": "repository-actions",
+					"placement": "start"
+				}
+			],
+			"kilo.work-sessions/new-work-session-option": [
 				{
 					"id": "branch",
 					"slot": "branch"
 				}
 			],
-			"kilo.agent/tool": [
+			"kilo.chat/composer-action": [
+				{
+					"id": "branch",
+					"slot": "footer",
+					"kind": "view",
+					"title": "Branch",
+					"priority": 100
+				}
+			],
+			"kilo.core/tool": [
 				{
 					"id": "changes_open",
 					"title": "Open changes",
@@ -97,7 +133,7 @@
 					"order": 41,
 					"keybinding": "Ctrl+Shift+G",
 					"when": {
-						"all": ["kilo.workbench/sessionActive", "kilo.workspaces/vcs"]
+						"all": ["kilo.work-sessions/workSessionActive", "kilo.work-sessions/hasVcs"]
 					}
 				},
 				{
@@ -106,7 +142,7 @@
 					"category": "Git",
 					"order": 10,
 					"when": {
-						"all": ["kilo.workbench/sessionActive", "kilo.workspaces/vcs"]
+						"all": ["kilo.work-sessions/workSessionActive", "kilo.work-sessions/hasVcs"]
 					}
 				},
 				{
@@ -115,7 +151,7 @@
 					"category": "Git",
 					"order": 11,
 					"when": {
-						"all": ["kilo.workbench/sessionActive", "kilo.workspaces/vcs"]
+						"all": ["kilo.work-sessions/workSessionActive", "kilo.work-sessions/hasVcs"]
 					}
 				},
 				{
@@ -124,37 +160,11 @@
 					"category": "Git",
 					"order": 12,
 					"when": {
-						"all": ["kilo.workbench/sessionActive", "kilo.workspaces/vcs"]
+						"all": ["kilo.work-sessions/workSessionActive", "kilo.work-sessions/hasVcs"]
 					}
 				}
 			],
-			"kilo.workbench/session-decoration": [
-				{
-					"id": "pull-request",
-					"slot": "row"
-				},
-				{
-					"id": "branch",
-					"slot": "hover-branch"
-				},
-				{
-					"id": "pull-request-details",
-					"slot": "hover"
-				}
-			],
-			"kilo.workbench/session-facet": [
-				{
-					"id": "pull-request",
-					"facet": "pull-request"
-				}
-			],
-			"kilo.workbench/session-action": [
-				{
-					"id": "repository-actions",
-					"placement": "start"
-				}
-			],
-			"kilo.telemetry/telemetry-event": [
+			"kernel/telemetry-event": [
 				{
 					"id": "commit-message-generated",
 					"name": "Commit Message Generated"

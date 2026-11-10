@@ -24,8 +24,8 @@ import {
 	PopoverTrigger,
 } from "@kilo-desktop/ui/components/popover";
 
-import type { LocalConnectionInfo } from "../../contracts/schemas.js";
-import { localConnectionRequests } from "./connection-requests.js";
+import type { LocalConnectionInfo } from "../../contracts/index";
+import { localConnectionRequests } from "./connection-requests";
 
 export function ConnectionRequestPopover({
 	connection,

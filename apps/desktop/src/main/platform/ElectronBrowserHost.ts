@@ -1,3 +1,4 @@
+import type { HostBrowser, HostBrowserController, HostBrowserState } from "@kilo-desktop/kernel";
 import { app, session, webContents, type Session, type WebContents } from "electron";
 
 import { BROWSER_LOCAL_FILE_SCHEME, isBrowserLocalFileUrl } from "./browser-local-file-url.js";
@@ -6,47 +7,7 @@ import { attachContextMenu, type ContextMenuShell } from "./ElectronContextMenu.
 
 export const BROWSER_PARTITION = "persist:kilo-desktop-browser";
 
-export interface HostBrowserState {
-	readonly webContentsId: number;
-	readonly url: string;
-	readonly title: string;
-	readonly faviconUrl: string;
-	readonly loading: boolean;
-	readonly canGoBack: boolean;
-	readonly canGoForward: boolean;
-	readonly zoomFactor: number;
-	readonly failure?: {
-		readonly code: number;
-		readonly description: string;
-	};
-}
-
-export interface HostBrowserController {
-	readonly webContentsId: number;
-	navigate(url: string): Promise<void>;
-	goBack(): void;
-	goForward(): void;
-	reload(): void;
-	hardReload(): void;
-	zoomIn(): void;
-	zoomOut(): void;
-	resetZoom(): void;
-	openDevTools(): void;
-	dispose(): void;
-}
-
-/** The embedded browser host plugins with the `browser-host` permission receive. */
-export interface HostBrowser {
-	readonly partition: string;
-	initialize(): void;
-	attach(webContentsId: number, onState: (state: HostBrowserState) => void): HostBrowserController;
-	/**
-	 * Serve local files to the browser guest at `kilo-file:` URLs (see
-	 * `browserLocalFileUrl`). `authorize` gets each request's canonical path
-	 * and decides whether it may be served; until it is set, nothing is.
-	 */
-	serveLocalFiles(authorize: (canonicalPath: string) => Promise<boolean>): void;
-}
+export type { HostBrowser, HostBrowserController, HostBrowserState };
 
 const ZOOM_LEVELS = [
 	0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4, 5,

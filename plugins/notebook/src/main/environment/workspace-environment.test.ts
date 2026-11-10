@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { findProjectFile, WorkspaceEnvironment } from "./workspace-environment.js";
+import { findProjectFile, WorkspaceEnvironment } from "./workspace-environment";
 
 const NOTEBOOK_ID = "2c7f2b1e-7e0a-4c1f-9d57-6a8b2f0c9e11";
 

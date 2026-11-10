@@ -2,12 +2,12 @@ import type { ReactNode } from "react";
 
 import { SettingsPageHeader } from "@kilo-desktop/ui/components/settings-page-header";
 
-import { useCondaStatus } from "./conda.js";
-import { KiloSignInGate } from "./KiloSignInGate.js";
+import { useCondaStatus } from "./conda";
+import { KiloSignInGate } from "./KiloSignInGate";
 import {
 	EnvironmentsPanel as CondaEnvironmentsPanel,
 	EnvironmentsPanelLoading as CondaEnvironmentsPanelLoading,
-} from "./providers/conda/EnvironmentsPanel.js";
+} from "./providers/conda/EnvironmentsPanel";
 
 /**
  * Environments settings section (plugin.json `contributes.settings`). Every

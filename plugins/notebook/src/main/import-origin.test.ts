@@ -6,8 +6,8 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createMemoryStorage } from "@kilo-desktop/kernel/testing";
 
-import { importOriginNotebookData } from "./import-origin.js";
-import { NotebookSettingsStore, NotebookStateStore } from "./settings/NotebookSettingsStore.js";
+import { importOriginNotebookData } from "./import-origin";
+import { NotebookSettingsStore, NotebookStateStore } from "./settings/NotebookSettingsStore";
 
 const directories: string[] = [];
 afterEach(async () => {

@@ -5,7 +5,7 @@ import { z } from "zod";
 import {
 	KernelApp,
 	KernelCommand,
-	KernelDomains,
+	KernelDomainObjects,
 	KernelExtensions,
 	KernelKeybindings,
 	KernelKeychain,
@@ -16,7 +16,7 @@ import {
 	KernelWindows,
 	type AppPhase,
 } from "../builtins";
-import { defineDomain } from "../domain";
+import { defineDomainObject } from "../domain-object";
 import type { DecisionAnswer } from "../extension-point";
 import type { PluginEntry, PluginRegistration } from "../plugin";
 import { testPlugin } from "../test-fixtures";
@@ -61,12 +61,12 @@ describe("main kernel — application lifecycle", () => {
 	it("moves through starting, started and ready, announcing each phase", async () => {
 		const kernel = boot([]);
 		const phases: AppPhase[] = [];
-		kernel.kernelSdk.domains
+		kernel.kernelSdk.domainObjects
 			.get(KernelApp)!
 			.on("phase-changed", ({ phase }) => void phases.push(phase));
 
 		await kernel.start();
-		expect(kernel.kernelSdk.domains.get(KernelApp)!.getState()).toMatchObject({
+		expect(kernel.kernelSdk.domainObjects.get(KernelApp)!.getState()).toMatchObject({
 			phase: "starting",
 			platform: "mac",
 			version: "1.2.3",
@@ -82,10 +82,12 @@ describe("main kernel — application lifecycle", () => {
 		const kernel = boot([], fakeHost({ rendererOrigins: ["kilo-desktop://app"] }));
 		const noOrigins = boot([]);
 
-		expect(kernel.kernelSdk.domains.get(KernelApp)!.getState().rendererOrigins).toEqual([
+		expect(kernel.kernelSdk.domainObjects.get(KernelApp)!.getState().rendererOrigins).toEqual([
 			"kilo-desktop://app",
 		]);
-		expect(noOrigins.kernelSdk.domains.get(KernelApp)!.getState().rendererOrigins).toEqual([]);
+		expect(noOrigins.kernelSdk.domainObjects.get(KernelApp)!.getState().rendererOrigins).toEqual(
+			[],
+		);
 	});
 
 	it("publishes plugin states and issues through kernel/plugins", async () => {
@@ -102,7 +104,7 @@ describe("main kernel — application lifecycle", () => {
 
 		await kernel.start();
 
-		const plugins = kernel.kernelSdk.domains.get(KernelPlugins)!.getState();
+		const plugins = kernel.kernelSdk.domainObjects.get(KernelPlugins)!.getState();
 		expect(plugins.plugins["acme.ok"]).toMatchObject({ state: "active", displayName: "acme.ok" });
 		expect(plugins.plugins["acme.bad"]?.state).toBe("failed");
 		expect(plugins.issues).toContainEqual(expect.objectContaining({ pluginId: "acme.bad" }));
@@ -127,7 +129,7 @@ describe("main kernel — application lifecycle", () => {
 		const host = fakeHost();
 		const kernel = boot([], host);
 		await kernel.start();
-		const app = kernel.kernelSdk.domains.get(KernelApp)!;
+		const app = kernel.kernelSdk.domainObjects.get(KernelApp)!;
 
 		await app.methods.quit(undefined);
 		await app.methods.relaunch({ safeMode: true });
@@ -217,7 +219,7 @@ describe("main kernel — stopping", () => {
 		await vi.advanceTimersByTimeAsync(1_000);
 
 		await expect(stopping).resolves.toBeUndefined();
-		expect(kernel.kernelSdk.domains.get(KernelApp)!.getState().phase).toBe("stopped");
+		expect(kernel.kernelSdk.domainObjects.get(KernelApp)!.getState().phase).toBe("stopped");
 	});
 });
 
@@ -225,7 +227,7 @@ describe("main kernel — window and system hooks", () => {
 	it("tracks windows and announces their events", async () => {
 		const kernel = boot([]);
 		await kernel.start();
-		const windows = kernel.kernelSdk.domains.get(KernelWindows)!;
+		const windows = kernel.kernelSdk.domainObjects.get(KernelWindows)!;
 		const events: string[] = [];
 		windows.on("opened", ({ windowId }) => void events.push(`opened:${windowId}`));
 		windows.on("focused", ({ windowId }) => void events.push(`focused:${windowId}`));
@@ -248,7 +250,7 @@ describe("main kernel — window and system hooks", () => {
 	it("updates system state and emits the matching events", async () => {
 		const kernel = boot([]);
 		await kernel.start();
-		const system = kernel.kernelSdk.domains.get(KernelSystem)!;
+		const system = kernel.kernelSdk.domainObjects.get(KernelSystem)!;
 		const events: string[] = [];
 		system.on("offline", () => void events.push("offline"));
 		system.on("appearance-changed", ({ appearance }) => void events.push(appearance));
@@ -291,7 +293,7 @@ describe("main kernel — windows", () => {
 		const kernel = boot([viewPlugin("acme.board")], fakeHost({ windows: hostWindows({ open }) }));
 		await kernel.start();
 
-		const windows = kernel.sdkFor("acme.board").domains.get(KernelWindows)!;
+		const windows = kernel.sdkFor("acme.board").domainObjects.get(KernelWindows)!;
 
 		await expect(
 			windows.methods.open({ view: "acme.board/board", params: { id: "1" } }),
@@ -312,7 +314,7 @@ describe("main kernel — windows", () => {
 		const host = hostWindows({ open: vi.fn(async () => `w${++next}`) });
 		const kernel = boot([viewPlugin("acme.board")], fakeHost({ windows: host }));
 		await kernel.start();
-		const windows = kernel.sdkFor("acme.board").domains.get(KernelWindows)!;
+		const windows = kernel.sdkFor("acme.board").domainObjects.get(KernelWindows)!;
 		const open = () =>
 			windows.methods.open({
 				view: "acme.board/board",
@@ -347,7 +349,7 @@ describe("main kernel — windows", () => {
 		const host = hostWindows();
 		const kernel = boot([viewPlugin("acme.board")], fakeHost({ windows: host }));
 		await kernel.start();
-		const windows = kernel.sdkFor("acme.board").domains.get(KernelWindows)!;
+		const windows = kernel.sdkFor("acme.board").domainObjects.get(KernelWindows)!;
 		kernel.windowEvents.opened("main", { role: "main" });
 		kernel.windowEvents.opened("w2", { role: "secondary", view: "acme.board/board" });
 
@@ -376,17 +378,17 @@ describe("main kernel — windows", () => {
 		await expect(
 			kernel
 				.sdkFor("acme.other")
-				.domains.get(KernelWindows)!
+				.domainObjects.get(KernelWindows)!
 				.methods.open({ view: "acme.board/board" }),
 		).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
 		await expect(
 			kernel
 				.sdkFor("acme.board")
-				.domains.get(KernelWindows)!
+				.domainObjects.get(KernelWindows)!
 				.methods.open({ view: "acme.board/missing" }),
 		).rejects.toMatchObject({ code: "NOT_FOUND" });
 		await expect(
-			kernel.sdkFor("acme.board").domains.get(KernelWindows)!.methods.focusMain(undefined),
+			kernel.sdkFor("acme.board").domainObjects.get(KernelWindows)!.methods.focusMain(undefined),
 		).rejects.toMatchObject({ code: "UNAVAILABLE" });
 	});
 });
@@ -399,7 +401,7 @@ describe("main kernel — keybinding overrides", () => {
 			fakeHost({ keybindings: { load: () => ({ "acme.a/one": "Alt+KeyO" }), save } }),
 		);
 		await kernel.start();
-		const keybindings = kernel.kernelSdk.domains.get(KernelKeybindings)!;
+		const keybindings = kernel.kernelSdk.domainObjects.get(KernelKeybindings)!;
 		expect(keybindings.getState().overrides).toEqual({ "acme.a/one": "Alt+KeyO" });
 
 		await keybindings.methods.setOverride({ command: "acme.a/two", chord: null });
@@ -448,20 +450,20 @@ describe("main kernel — disabled plugins", () => {
 		expect(kernel.extensions.all(KernelCommand).map((command) => command.key)).not.toContain(
 			"acme.off/go",
 		);
-		expect(kernel.kernelSdk.domains.get(KernelPlugins)!.getState()).toMatchObject({
+		expect(kernel.kernelSdk.domainObjects.get(KernelPlugins)!.getState()).toMatchObject({
 			plugins: { "acme.off": { state: "disabled" } },
 			disabled: ["acme.off"],
 		});
 	});
 
 	it("does not activate a plugin that requires a turned-off plugin", async () => {
-		const Thing = defineDomain({ id: "acme.lib/thing", home: "main", state: z.object({}) });
+		const Thing = defineDomainObject({ id: "acme.lib/thing", home: "main", state: z.object({}) });
 		const { host } = pluginsHost(["acme.lib"]);
 		const kernel = boot(
 			[
 				testPlugin("acme.lib", {
-					manifest: { domains: [{ id: "thing", home: "main" }] },
-					definitions: { domains: [Thing] },
+					manifest: { domainObjects: [{ id: "thing", home: "main" }] },
+					definitions: { domainObjects: [Thing] },
 				}),
 				testPlugin("acme.app", { manifest: { requires: { "acme.lib/thing": "required" } } }),
 			],
@@ -490,7 +492,7 @@ describe("main kernel — disabled plugins", () => {
 			host,
 		);
 		await kernel.start();
-		const plugins = kernel.sdkFor("acme.admin").domains.get(KernelPlugins)!;
+		const plugins = kernel.sdkFor("acme.admin").domainObjects.get(KernelPlugins)!;
 
 		await plugins.methods.setEnabled({ pluginId: "acme.a", enabled: false });
 		await plugins.methods.setEnabled({ pluginId: "acme.b", enabled: true });
@@ -516,7 +518,7 @@ describe("main kernel — disabled plugins", () => {
 		await expect(
 			kernel
 				.sdkFor("acme.nosy")
-				.domains.get(KernelPlugins)!
+				.domainObjects.get(KernelPlugins)!
 				.methods.setEnabled({ pluginId: "acme.a", enabled: false }),
 		).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
 	});
@@ -527,12 +529,12 @@ describe("main kernel — disabled plugins", () => {
 		await kernel.start();
 
 		await expect(
-			kernel.kernelSdk.domains
+			kernel.kernelSdk.domainObjects
 				.get(KernelPlugins)!
 				.methods.setEnabled({ pluginId: "acme.ghost", enabled: false }),
 		).rejects.toMatchObject({ code: "NOT_FOUND" });
 		await expect(
-			kernel.kernelSdk.domains
+			kernel.kernelSdk.domainObjects
 				.get(KernelPlugins)!
 				.methods.setDisabled({ pluginIds: ["acme.ghost"] }),
 		).rejects.toMatchObject({ code: "NOT_FOUND" });
@@ -541,36 +543,54 @@ describe("main kernel — disabled plugins", () => {
 
 describe("main kernel — registry hooks", () => {
 	it("announces domain objects being provided and withdrawn", async () => {
-		const Thing = defineDomain({ id: "acme.thing/thing", home: "main", state: z.object({}) });
+		const Thing = defineDomainObject({ id: "acme.thing/thing", home: "main", state: z.object({}) });
 		const kernel = boot([
 			testPlugin("acme.thing", {
-				manifest: { domains: [{ id: "thing", home: "main" }] },
-				definitions: { domains: [Thing] },
+				manifest: { domainObjects: [{ id: "thing", home: "main" }] },
+				definitions: { domainObjects: [Thing] },
 				entry: {
-					activate: (sdk) => void sdk.domains.provide(Thing, { initialState: {}, methods: {} }),
+					activate: (sdk) =>
+						void sdk.domainObjects.provide(Thing, { initialState: {}, methods: {} }),
 				},
 			}),
 		]);
-		const domains = kernel.kernelSdk.domains.get(KernelDomains)!;
+		const domainObjects = kernel.kernelSdk.domainObjects.get(KernelDomainObjects)!;
 		const events: string[] = [];
-		domains.on("provided", ({ id }) => void events.push(`provided:${id}`));
-		domains.on("withdrawn", ({ id }) => void events.push(`withdrawn:${id}`));
+		domainObjects.on("provided", ({ id }) => void events.push(`provided:${id}`));
+		domainObjects.on("withdrawn", ({ id }) => void events.push(`withdrawn:${id}`));
 
+		expect(domainObjects.lookup("acme.thing/thing")).toEqual({
+			owner: "acme.thing",
+			home: "main",
+			provided: false,
+		});
 		await kernel.start();
-		expect(domains.getState().provided).toContain("acme.thing/thing");
+		expect(domainObjects.lookup("acme.thing/thing")).toMatchObject({ provided: true });
+		expect(domainObjects.lookup("kernel/windows")).toMatchObject({
+			owner: "kernel",
+			objectType: "kernel/window",
+			provided: true,
+		});
 		await kernel.stop();
 
 		expect(events).toContain("provided:acme.thing/thing");
 		expect(events).toContain("withdrawn:acme.thing/thing");
 	});
 
-	it("announces contribution changes", async () => {
+	it("lists extension points and announces contribution changes", async () => {
 		const kernel = boot([testPlugin("acme.cmd", { entry: { activate: () => {} } })]);
 		await kernel.start();
+		const extensions = kernel.kernelSdk.domainObjects.get(KernelExtensions)!;
 		const changed: string[] = [];
-		kernel.kernelSdk.domains
-			.get(KernelExtensions)!
-			.on("contributions-changed", ({ pointId }) => void changed.push(pointId));
+		extensions.on(
+			"contributions-changed",
+			({ extensionPointId }) => void changed.push(extensionPointId),
+		);
+
+		expect(extensions.lookup("kernel/command")).toMatchObject({
+			owner: "kernel",
+			kind: "additive",
+		});
 
 		kernel.sdkFor("acme.cmd").extensions.add(KernelCommand, { id: "go", title: "Go" });
 
@@ -580,7 +600,7 @@ describe("main kernel — registry hooks", () => {
 	it("reports app focus and suspend transitions as system events", async () => {
 		const kernel = boot([]);
 		await kernel.start();
-		const system = kernel.kernelSdk.domains.get(KernelSystem)!;
+		const system = kernel.kernelSdk.domainObjects.get(KernelSystem)!;
 		const events: string[] = [];
 		for (const name of ["suspend", "resume", "app-blurred", "app-focused", "online"] as const) {
 			system.on(name, () => void events.push(name));
@@ -598,7 +618,7 @@ describe("main kernel — opened URLs", () => {
 	it("keeps a URL opened before the window shows as the launch URL, once", async () => {
 		const kernel = boot([]);
 		await kernel.start();
-		const app = kernel.kernelSdk.domains.get(KernelApp)!;
+		const app = kernel.kernelSdk.domainObjects.get(KernelApp)!;
 		const announced: string[] = [];
 		app.on("url-opened", ({ url }) => void announced.push(url));
 
@@ -616,7 +636,7 @@ describe("main kernel — opened URLs", () => {
 		await kernel.start();
 		await kernel.windowShown();
 		const announced: string[] = [];
-		kernel.kernelSdk.domains
+		kernel.kernelSdk.domainObjects
 			.get(KernelApp)!
 			.on("url-opened", ({ url }) => void announced.push(url));
 
@@ -633,17 +653,20 @@ describe("main kernel — host primitives from windows", () => {
 			entry: { activate: () => {} },
 		});
 		const { main, renderer } = await createTestKernelPair({ main: [keeper], renderer: [keeper] });
-		main.kernelSdk.domains.provide(KernelKeychain, {
+		main.kernelSdk.domainObjects.provide(KernelKeychain, {
 			initialState: {},
 			methods: { get: () => "secret", set: () => {}, delete: () => {} },
 		});
 		await main.flush();
 
 		await expect(
-			main.sdkFor("acme.keeper").domains.get(KernelKeychain)!.methods.get({ key: "token" }),
+			main.sdkFor("acme.keeper").domainObjects.get(KernelKeychain)!.methods.get({ key: "token" }),
 		).resolves.toBe("secret");
 		await expect(
-			renderer.sdkFor("acme.keeper").domains.get(KernelKeychain)!.methods.get({ key: "token" }),
+			renderer
+				.sdkFor("acme.keeper")
+				.domainObjects.get(KernelKeychain)!
+				.methods.get({ key: "token" }),
 		).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
 	});
 });

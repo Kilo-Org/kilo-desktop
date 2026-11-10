@@ -1,5 +1,7 @@
-import type { WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
-import { UNSCOPED_WORKSPACE_FOCUS } from "@kilo-desktop/plugin-workbench/contracts";
+import {
+	UNSCOPED_WORKSPACE_FOCUS,
+	type WorkSession,
+} from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import { deletedColumnDestination, type BoardState } from "../contracts";
 

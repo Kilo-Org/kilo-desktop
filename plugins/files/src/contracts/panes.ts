@@ -1,8 +1,8 @@
 import {
-	Files,
+	FileObjectType,
 	resolvePathInFolders,
-	type SessionFolder,
-} from "@kilo-desktop/plugin-workspaces/contracts";
+	type WorkSessionFolder,
+} from "@kilo-desktop/plugin-work-sessions/contracts";
 
 /**
  * The Files pane kind. A pane without a file is an explorer (the folder
@@ -10,14 +10,11 @@ import {
  */
 export const FILES_PANE_KIND = "kilo.files/files";
 
-/** The object type file panes open: `kilo.workspaces/file`, its id an absolute path. */
-export const FILE_OBJECT_TYPE = Files.id;
+/** The object type file panes open: `kilo.work-sessions/file`, its id an absolute path. */
+export const FILE_OBJECT_TYPE = FileObjectType.id;
 
-/** Pane metadata keys (origin's tab keys, plus kilo.sessions' opener keys). */
+/** Pane metadata keys (origin's tab keys). The file a pane opened is its `object`. */
 export const FILE_PANE_METADATA = {
-	/** Set by `Panes.openObject`: the object's type and id (the file's absolute path). */
-	objectType: "objectType",
-	objectId: "objectId",
 	/** The folder an explorer shows; with `relativePath`, origin's file panes. */
 	workspaceDirectory: "workspaceDirectory",
 	relativePath: "relativePath",
@@ -33,6 +30,12 @@ export interface FileTarget {
 	readonly relativePath: string;
 }
 
+/** What `filePaneTarget` reads of a pane. */
+export interface FilePaneFacts {
+	readonly object?: { readonly type: string; readonly id: string } | undefined;
+	readonly metadata: Readonly<Record<string, string>>;
+}
+
 /** Joins a folder and a `/`-separated relative path with the folder's own separator. */
 export function absoluteFilePath(workspaceDirectory: string, relativePath: string): string {
 	const separator = workspaceDirectory.includes("\\") ? "\\" : "/";
@@ -46,21 +49,20 @@ export function basename(path: string): string {
 }
 
 /**
- * The file a Files pane shows within the session's folders: its opened
+ * The file a Files pane shows within the work session's folders: its opened
  * object, else origin's folder and relative path; null for an explorer or a
  * file outside the folders.
  */
 export function filePaneTarget(
-	metadata: Readonly<Record<string, string>>,
-	folders: readonly SessionFolder[],
+	pane: FilePaneFacts,
+	folders: readonly WorkSessionFolder[],
 ): FileTarget | null {
-	const objectId = metadata[FILE_PANE_METADATA.objectId];
-	if (metadata[FILE_PANE_METADATA.objectType] === FILE_OBJECT_TYPE && objectId) {
-		const resolved = resolvePathInFolders(folders, objectId);
+	if (pane.object?.type === FILE_OBJECT_TYPE) {
+		const resolved = resolvePathInFolders(folders, pane.object.id);
 		return resolved?.relativePath ? resolved : null;
 	}
-	const workspaceDirectory = metadata[FILE_PANE_METADATA.workspaceDirectory];
-	const relativePath = metadata[FILE_PANE_METADATA.relativePath];
+	const workspaceDirectory = pane.metadata[FILE_PANE_METADATA.workspaceDirectory];
+	const relativePath = pane.metadata[FILE_PANE_METADATA.relativePath];
 	if (!workspaceDirectory || !relativePath) return null;
 	return folders.some((folder) => folder.path === workspaceDirectory)
 		? { workspaceDirectory, relativePath }

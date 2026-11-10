@@ -1,15 +1,18 @@
 import {
 	discoverPlugins,
 	type ContextKeyRecord,
+	type DiscoveredContribution,
 	type DiscoveredPlugin,
 	type DiscoveryResult,
 	type KernelIssue,
 } from "./discovery";
+import { resolveContributionResources } from "./contribution-resources";
 import { DisposableScope } from "./disposables";
-import { DomainRegistry, type DomainSnapshot } from "./domain-registry";
+import { DomainObjectRegistry, type DomainObjectSnapshot } from "./domain-object-registry";
 import { KernelError } from "./errors";
 import { ExtensionRegistry, windowOrigin } from "./extension-registry";
 import { KERNEL_OWNER, ownerOf, type QualifiedId } from "./ids";
+import type { PluginAssets } from "./host-services";
 import type { PluginManifest } from "./manifest";
 import type { PluginDefinitions, PluginRegistration } from "./plugin";
 import {
@@ -84,7 +87,7 @@ export interface Kernel {
 	readonly windowId?: string;
 	readonly discovery: DiscoveryResult;
 	readonly extensions: ExtensionRegistry;
-	readonly domains: DomainRegistry;
+	readonly domainObjects: DomainObjectRegistry;
 	readonly contextKeys: ContextKeyStore;
 	/** The kernel's own privileged sdk (owner `kernel`). */
 	readonly kernelSdk: PluginSdk;
@@ -112,7 +115,7 @@ const CHANNELS = {
 } as const;
 
 interface HydratePayload {
-	readonly domains: readonly DomainSnapshot[];
+	readonly domainObjects: readonly DomainObjectSnapshot[];
 	readonly context: ContextKeyValues;
 	readonly implementations: Readonly<Record<string, readonly string[]>>;
 }
@@ -175,7 +178,7 @@ export function createKernel(options: KernelOptions): Kernel {
 
 	const extensions = new ExtensionRegistry({
 		process: options.process,
-		points: discovery.points,
+		extensionPoints: discovery.extensionPoints,
 		contextKeys,
 		pluginOrder: (pluginId) => order.get(pluginId) ?? (pluginId === KERNEL_OWNER ? -1 : Infinity),
 		isInstalled: (pluginId) => pluginId === KERNEL_OWNER || order.has(pluginId),
@@ -183,17 +186,17 @@ export function createKernel(options: KernelOptions): Kernel {
 	});
 
 	const webPlugins = options.webPlugins ? new Set(options.webPlugins) : undefined;
-	const domains = new DomainRegistry({
+	const domainObjects = new DomainObjectRegistry({
 		process: options.process,
-		domains: discovery.domains,
+		domainObjects: discovery.domainObjects,
 		...(options.transport ? { transport: options.transport } : {}),
 		permissionsOf: (pluginId) => manifests.get(pluginId)?.permissions?.host ?? [],
 		isWindowCaller: (pluginId) =>
 			manifests.has(pluginId) &&
 			(webPlugins?.has(pluginId) ?? true) &&
 			!NEVER_RUN.has(states.get(pluginId) ?? "unresolved"),
-		onUnexpectedError: (error) => logger.error("Domain method failed", error),
-		onListenerError: (error, source) => logger.error(`Domain ${source} failed`, error),
+		onUnexpectedError: (error) => logger.error("Domain object method failed", error),
+		onListenerError: (error, source) => logger.error(`Domain object ${source} failed`, error),
 	});
 
 	const states = new Map<string, PluginState>(
@@ -218,7 +221,7 @@ export function createKernel(options: KernelOptions): Kernel {
 		scope: kernelScope,
 		isActive: () => true,
 		extensions,
-		domains,
+		domainObjects,
 		contextKeys,
 		logger,
 		host: hostServicesFor(KERNEL_OWNER, undefined),
@@ -226,7 +229,7 @@ export function createKernel(options: KernelOptions): Kernel {
 		...(options.transport ? { transport: options.transport } : {}),
 	});
 
-	wireTransport(options, extensions, contextKeys, domains);
+	wireTransport(options, extensions, contextKeys, domainObjects);
 	if (ports) {
 		options.transport?.onPort?.((channel, payload, port, from) =>
 			ports.dispatch(channel, payload, port, from),
@@ -246,7 +249,7 @@ export function createKernel(options: KernelOptions): Kernel {
 				scope,
 				isActive: () => activation.active,
 				extensions,
-				domains,
+				domainObjects,
 				contextKeys,
 				logger,
 				host: hostServicesFor(plugin.manifest.id, plugin.manifest),
@@ -354,9 +357,24 @@ export function createKernel(options: KernelOptions): Kernel {
 
 	const gated = discovery.plugins.filter((plugin) => plugin.manifest.when !== undefined);
 	const whenHolds = (plugin: DiscoveredPlugin) => contextKeys.evaluate(plugin.manifest.when);
+	const withResources = (contribution: DiscoveredContribution): DiscoveredContribution => {
+		const point = discovery.extensionPoints.get(contribution.pointId)?.definition;
+		if (options.process !== "main" || !point?.resources) return contribution;
+		const host = hostServicesFor(contribution.pluginId, manifests.get(contribution.pluginId));
+		return resolveContributionResources(
+			contribution,
+			(host as { readonly assets?: PluginAssets }).assets,
+			(reason) =>
+				logger.warn(
+					`Left \${resources} unresolved in "${contribution.pluginId}/${contribution.entry.id}": ${reason}.`,
+				),
+		);
+	};
 	const addManifestContributions = (pluginId: string) => {
 		for (const contribution of discovery.contributions) {
-			if (contribution.pluginId === pluginId) extensions.addManifestContribution(contribution);
+			if (contribution.pluginId === pluginId) {
+				extensions.addManifestContribution(withResources(contribution));
+			}
 		}
 	};
 	const startGated = async (plugin: DiscoveredPlugin): Promise<void> => {
@@ -398,7 +416,7 @@ export function createKernel(options: KernelOptions): Kernel {
 			timeoutMs,
 			() => new KernelError("TIMEOUT", `The main process did not answer within ${timeoutMs} ms.`),
 		)) as HydratePayload;
-		domains.hydrate(payload.domains);
+		domainObjects.hydrate(payload.domainObjects);
 		contextKeys.replaceScope("global", payload.context);
 		extensions.setRemoteImplementations("main", payload.implementations);
 	};
@@ -408,7 +426,7 @@ export function createKernel(options: KernelOptions): Kernel {
 		...(options.windowId === undefined ? {} : { windowId: options.windowId }),
 		discovery,
 		extensions,
-		domains,
+		domainObjects,
 		contextKeys,
 		kernelSdk,
 		async activate() {
@@ -422,7 +440,7 @@ export function createKernel(options: KernelOptions): Kernel {
 					states.get(contribution.pluginId) === "resolved" &&
 					manifests.get(contribution.pluginId)?.when === undefined
 				) {
-					extensions.addManifestContribution(contribution);
+					extensions.addManifestContribution(withResources(contribution));
 				}
 			}
 			for (const plugin of discovery.plugins) {
@@ -479,7 +497,7 @@ function wireTransport(
 	options: KernelOptions,
 	extensions: ExtensionRegistry,
 	contextKeys: ContextKeyStore,
-	domains: DomainRegistry,
+	domainObjects: DomainObjectRegistry,
 ): void {
 	const { transport } = options;
 	if (!transport) return;
@@ -489,7 +507,7 @@ function wireTransport(
 			if (from.process === "renderer")
 				extensions.clearRemoteImplementations(windowOrigin(from.windowId));
 			return {
-				domains: domains.snapshot(),
+				domainObjects: domainObjects.snapshot(),
 				context: contextKeys.snapshot("global"),
 				implementations: extensions.localImplementations(),
 			};

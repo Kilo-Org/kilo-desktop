@@ -1,7 +1,7 @@
 import { createContext, useContext, type ReactNode } from "react";
 
-import type { ModelSelectorEffortOption } from "./model-selector";
 import type { ModelSourceStatus } from "../../contracts";
+import type { ModelSelectorEffortOption } from "./model-selector";
 import type { KiloModelCatalog, KiloModelRef } from "./model-catalog";
 
 /** The first `model-source` contribution as the picker uses it. */
@@ -34,7 +34,7 @@ type ChatModelSelectionStatus = {
 	isCatalogError: boolean;
 	/** True while `provider.list` is in flight, including refetches. */
 	isCatalogFetching?: boolean;
-	/** Reads `provider.list` again, e.g. after AI Providers (kilo.agent) changed it. */
+	/** Reads kilo.core's models again, e.g. after AI Providers (kilo.core) changed it. */
 	refreshCatalog?: () => void;
 	modelSource?: ActiveModelSource | undefined;
 };

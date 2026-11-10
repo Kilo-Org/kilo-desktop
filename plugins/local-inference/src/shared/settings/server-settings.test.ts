@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { llamaFlagsFromRows } from "./model-settings.js";
+import { llamaFlagsFromRows } from "./model-settings";
 import {
 	compactServerSettings,
 	localServerSettingsSchema,
@@ -9,7 +9,7 @@ import {
 	renderRouterArgs,
 	routerMaxModels,
 	serverFlagsFromRows,
-} from "./server-settings.js";
+} from "./server-settings";
 
 describe("compactServerSettings", () => {
 	it("omits empty settings so defaults stay unset", () => {

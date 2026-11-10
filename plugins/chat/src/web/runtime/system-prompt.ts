@@ -33,7 +33,7 @@ export function sessionFolders(
 }
 
 /**
- * The workspace context, when to show visuals (`html_render`), and kilo.agent's
+ * The workspace context, when to show visuals (`html_render`), and kilo.core's
  * session-config instructions, as one system prompt.
  */
 export function chatSystemPrompt(

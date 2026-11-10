@@ -1,5 +1,4 @@
 import { memo, useMemo } from "react";
-import type { ToolCallMessagePartComponent, ToolCallMessagePartProps } from "@assistant-ui/react";
 import { useAuiState } from "@assistant-ui/react";
 import { parseDiffFromFile, parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
 import { FileDiff } from "@pierre/diffs/react";
@@ -10,6 +9,7 @@ import type { ActivitySubgroupContextValue } from "./activity-group";
 import { SoloAwareExpandableRow } from "./tool-ui-activity-row";
 import { getToolFilePath, getToolUnifiedDiffFromParts, sumFileDiffStats } from "./tool-diff-stats";
 import { basename, DiffCounts } from "./tool-ui-shared";
+import type { ToolCallComponent, ToolCallView } from "./tool-call";
 
 export { getToolFilePath, getToolUnifiedDiffFromParts, sumFileDiffStats } from "./tool-diff-stats";
 export type { FileDiffStats } from "./tool-diff-stats";
@@ -65,10 +65,8 @@ export type FileMutationDiffConfig = {
 	}) => FileDiffMetadata | null;
 };
 
-export const createFileMutationDiff = (
-	config: FileMutationDiffConfig,
-): ToolCallMessagePartComponent => {
-	const Component: ToolCallMessagePartComponent = memo((props: ToolCallMessagePartProps) => {
+export const createFileMutationDiff = (config: FileMutationDiffConfig): ToolCallComponent => {
+	const Component: ToolCallComponent = memo((props: ToolCallView) => {
 		const { args, status, toolCallId } = props;
 
 		const record = args as Record<string, unknown> | undefined;

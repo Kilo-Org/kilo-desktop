@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { defineDomain, method, type PluginDefinitions } from "@kilo-desktop/kernel";
+import { defineDomainObject, method, type PluginDefinitions } from "@kilo-desktop/kernel";
 
 import {
 	existingPathsInputSchema,
@@ -21,17 +21,32 @@ export * from "./panes";
 
 /**
  * kilo.files' public surface: the Files pane kind (`kilo.files/files`), an
- * opener for `kilo.workspaces/file` objects, `@` file mentions, file links
+ * opener for `kilo.work-sessions/file` objects, `@` file mentions, file links
  * in the agent's replies, the `open` agent tool, and `documents` — listing,
  * reading and saving files inside workspace folders, checked against
- * kilo.workspaces on every call.
+ * `kilo.work-sessions/workspaces` on every call.
  */
 export const FILES_PLUGIN_ID = "kilo.files";
 
+/** The agent tool that shows a file (origin's id, kept for its wire name `desktop_files_open`). */
+export const OPEN_FILE_TOOL_ID = "open";
+
+/** kilo.files' commands, by key (origin's ids, so saved keybindings keep working). */
+export const FILES_COMMANDS = {
+	open: "kilo.files/open",
+} as const;
+
+/** The telemetry events kilo.files declares (`kernel/telemetry-event` ids). */
+export const FILES_TELEMETRY_EVENTS = {
+	fileOpened: "file-opened",
+	notebookOpened: "notebook-opened",
+} as const;
+
 /** Files inside workspace folders, read and written in main. */
-export const Documents = defineDomain({
+export const Documents = defineDomainObject({
 	id: "kilo.files/documents",
 	home: "main",
+	description: "Listing, reading and saving files inside workspace folders.",
 	state: z.object({}),
 	methods: {
 		/** Every path in the folder (folders end in `/`), sorted; capped. */
@@ -60,5 +75,5 @@ export const Documents = defineDomain({
 });
 
 export const FILES_DEFINITIONS: PluginDefinitions = {
-	domains: [Documents],
+	domainObjects: [Documents],
 };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { checkTyposquat, checkTyposquats, extractPackageName } from "./typosquat.js";
+import { checkTyposquat, checkTyposquats, extractPackageName } from "./typosquat";
 
 // Cases mirror nteract's crates/notebook/src/typosquat.rs tests so the port keeps parity.
 describe("typosquat detection", () => {

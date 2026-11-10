@@ -4,30 +4,50 @@
 	"displayName": "Local Model Server",
 	"version": "1.0.0",
 	"description": "Run GGUF models on this device and use them in chats.",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
 	"requires": {
-		"kilo.agent/model-provider": "optional",
-		"kilo.agent/runtime-config": "optional",
-		"kilo.agent/tool": "optional",
-		"kilo.environments/conda-runtime": "optional",
+		"kilo.core/ai-provider": "optional",
+		"kilo.core/tool": "optional",
+		"kilo.core/account": "optional",
 		"kilo.chat/model-source": "optional",
-		"kilo.account/identity": "optional",
-		"kilo.anaconda-account/account": "optional",
-		"kilo.flags/flags": "optional",
 		"kilo.shell/navigation": "optional",
 		"kilo.shell/settings-section": "optional",
 		"kilo.shell/deep-link": "optional",
-		"kilo.shell/overlay": "optional",
-		"kilo.telemetry/telemetry": "optional",
-		"kilo.telemetry/telemetry-event": "optional"
+		"kilo.shell/status-bar-item": "optional"
 	},
 	"permissions": {
 		"host": ["clipboard", "os"]
 	},
-	"domains": [
+	"objectTypes": [
 		{
-			"id": "local-inference",
+			"id": "local-model",
+			"description": "A GGUF model installed in the Local Model Server, keyed by its id."
+		}
+	],
+	"domainObjects": [
+		{
+			"id": "local-models",
 			"home": "main",
-			"description": "The Local Model Server: status, models, catalog downloads, and loading a model before a prompt."
+			"description": "The GGUF models installed in the Local Model Server.",
+			"objectType": "kilo.local-inference/local-model"
+		},
+		{
+			"id": "model-server",
+			"home": "main",
+			"description": "The Local Model Server: status, settings, the model catalog and its downloads."
+		}
+	],
+	"extensionPoints": [
+		{
+			"id": "model-catalog",
+			"kind": "additive",
+			"description": "A browsable list of GGUF models to download into the Local Model Server."
+		},
+		{
+			"id": "llama-runtime",
+			"kind": "additive",
+			"description": "A way to get the llama.cpp server binary, tried by priority."
 		}
 	],
 	"contributes": {
@@ -53,28 +73,24 @@
 					}
 				}
 			],
-			"kilo.agent/model-provider": [
+			"kilo.core/ai-provider": [
 				{
 					"id": "local-model-server",
-					"providerId": "kilo-desktop-model-server"
+					"aiProviderId": "kilo-desktop-model-server"
 				}
 			],
-			"kilo.agent/runtime-config": [
-				{
-					"id": "local-model-server"
-				}
-			],
-			"kilo.agent/tool": [
+			"kilo.core/tool": [
 				{
 					"id": "settings.open",
 					"title": "Open Local Model Server settings",
-					"readOnly": true
+					"readOnly": true,
+					"external": true
 				}
 			],
 			"kilo.chat/model-source": [
 				{
 					"id": "local-model-server",
-					"providerId": "kilo-desktop-model-server",
+					"aiProviderId": "kilo-desktop-model-server",
 					"title": "Local Model Server",
 					"settingsSection": "local-model-server"
 				}
@@ -96,12 +112,21 @@
 					"pathParam": "catalogModel"
 				}
 			],
-			"kilo.shell/overlay": [
+			"kilo.shell/status-bar-item": [
 				{
-					"id": "model-loading"
+					"id": "model-loading",
+					"title": "Loading local model",
+					"kind": "view"
 				}
 			],
-			"kilo.telemetry/telemetry-event": [
+			"kernel/flag": [
+				{
+					"id": "local-model-catalog",
+					"description": "Shows the model catalog in Settings → Local Model Server.",
+					"default": false
+				}
+			],
+			"kernel/telemetry-event": [
 				{
 					"id": "local-model-installed",
 					"name": "Local Model Installed"

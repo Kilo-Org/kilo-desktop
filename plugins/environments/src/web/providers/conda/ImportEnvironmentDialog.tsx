@@ -34,16 +34,16 @@ import { FileUpIcon, XIcon } from "lucide-react";
 import type {
 	CondaEnvsPickFileResult,
 	CondaEnvsReadFileResult,
-} from "../../../contracts/providers/conda.js";
-import { useConda, useCondaMutation } from "../../conda.js";
-import { usePathForFile } from "../../app.js";
-import { validateEnvironmentName } from "./environment-display.js";
+} from "../../../contracts/providers/conda";
+import { useConda, useCondaMutation } from "../../conda";
+import { usePathForFile } from "../../app";
+import { validateEnvironmentName } from "./environment-display";
 import {
 	importEnvironmentJob,
 	jobToastOptions,
 	showJobError,
 	showJobSuccess,
-} from "./environments-toasts.js";
+} from "./environments-toasts";
 
 const ACCEPTED_EXTENSIONS = [".yml", ".yaml"];
 

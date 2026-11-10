@@ -66,12 +66,12 @@ export const Composer: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 	const icons = useMemo(() => mentionIcons(sources), [sources]);
 	const mentionContext = useMemo(
 		() => ({
-			sessionId: context.sessionId,
+			workSessionId: context.workSessionId,
 			directory: context.directory,
 			workspaceId: context.workspaceId,
 			workspaceFolders: context.workspaceFolders,
 		}),
-		[context.sessionId, context.directory, context.workspaceId, context.workspaceFolders],
+		[context.workSessionId, context.directory, context.workspaceId, context.workspaceFolders],
 	);
 
 	useEffect(() => {

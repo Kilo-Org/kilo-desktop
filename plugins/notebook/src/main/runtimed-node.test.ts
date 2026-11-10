@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { translateAsarToUnpackedPath } from "./runtimed-node.js";
+import { translateAsarToUnpackedPath } from "./runtimed-node";
 
 describe("translateAsarToUnpackedPath", () => {
 	it("points into the unpacked copy beside app.asar", () => {

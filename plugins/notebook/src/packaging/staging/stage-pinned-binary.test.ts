@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { stagedExecuteBitsAreCurrent } from "./stage-pinned-binary.js";
+import { stagedExecuteBitsAreCurrent } from "./stage-pinned-binary";
 
 describe("stagedExecuteBitsAreCurrent", () => {
 	it("does not require Unix execute bits for Windows artifacts", () => {

@@ -5,39 +5,27 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { definePlugin, type DomainProvider, type PluginSdk } from "@kilo-desktop/kernel";
-import { createMainKernel, type MainKernel } from "@kilo-desktop/kernel/main";
-import { createMemoryStorage, createTestHost, testPlugin } from "@kilo-desktop/kernel/testing";
-import agentManifest from "@kilo-desktop/plugin-agent/plugin.json";
-import {
-	AGENT_DEFINITIONS,
-	Conversations,
-	type ChatSummary,
-} from "@kilo-desktop/plugin-agent/contracts";
-import sessionsManifest from "@kilo-desktop/plugin-sessions/plugin.json";
-import {
-	WorkSessions,
-	SESSIONS_DEFINITIONS,
-	type WorkSession,
-} from "@kilo-desktop/plugin-sessions/contracts";
-import workspacesManifest from "@kilo-desktop/plugin-workspaces/plugin.json";
-import {
-	Vcs,
-	Workspaces,
-	WORKSPACES_DEFINITIONS,
-	type Workspace,
-} from "@kilo-desktop/plugin-workspaces/contracts";
+import { definePlugin } from "@kilo-desktop/kernel";
+import { createMemoryStorage } from "@kilo-desktop/kernel/testing";
+import { createGitClient } from "@kilo-desktop/git-client";
+import type { ChatSummary } from "@kilo-desktop/plugin-core/contracts";
+import type { VcsImplementation, WorkSession } from "@kilo-desktop/plugin-work-sessions/contracts";
 
-import manifest from "../../../plugin.json";
-import { GIT_DEFINITIONS, Repository } from "../../contracts/index.js";
-import { createGitMainEntry } from "../entry.js";
+import {
+	bootGitMain,
+	chat,
+	recordingLogger,
+	stopGitMains,
+	workSession,
+	type MemoryStorage,
+} from "../test-boot";
+import { activateBranchNamer } from ".";
 
 const WAIT = { timeout: 15_000 };
 const directories: string[] = [];
-const kernels: MainKernel[] = [];
 
 afterEach(async () => {
-	await Promise.all(kernels.splice(0).map((kernel) => kernel.stop()));
+	await stopGitMains();
 	for (const directory of directories.splice(0)) {
 		fs.rmSync(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 	}
@@ -61,340 +49,164 @@ const currentBranch = (directory: string) =>
 		.toString()
 		.trim();
 
-function realpathOr(target: string): string {
-	try {
-		return fs.realpathSync.native(target);
-	} catch {
-		return path.resolve(target);
-	}
-}
-
-/** Whether `candidate` is `folder` or inside it once both are resolved, like kilo.workspaces. */
-function isInside(folder: string, candidate: string): boolean {
-	const inside = path.relative(realpathOr(folder), realpathOr(candidate));
-	return (
-		inside === "" ||
-		(!inside.startsWith(`..${path.sep}`) && inside !== ".." && !path.isAbsolute(inside))
-	);
-}
-
 const nothingDone = () => new Promise((resolve) => setTimeout(resolve, 100));
 
-function session(id: string, patch: Partial<WorkSession> = {}): WorkSession {
+type NamerVcs = Pick<VcsImplementation, "renameCopyBranch" | "hasCopyWork" | "isManagedBranch">;
+
+/**
+ * The slice of `kilo.work-sessions/vcs` the namer uses, over real git: a
+ * managed branch is `kilo/…`; a rename declines unless the copy is still on
+ * `currentBranch`, and keeps `kilo/`. (kilo.git's own guard chain is the
+ * repository area's to test.)
+ */
+function gitVcs(): NamerVcs & { readonly renames: { directory: string; branch: string }[] } {
+	const git = createGitClient();
+	const renames: { directory: string; branch: string }[] = [];
 	return {
-		id,
-		title: "Session",
-		titleSource: "default",
-		pinned: false,
-		archived: false,
-		archiveChangedAt: 0,
-		workspaceId: "w1",
-		worktreeBranch: null,
-		directory: null,
-		chatIds: [],
-		createdAt: 0,
-		updatedAt: 0,
-		...patch,
+		renames,
+		isManagedBranch: (branch) => branch.startsWith("kilo/"),
+		async renameCopyBranch({ directory, currentBranch: expected, requestedBranch }) {
+			if (currentBranch(directory) !== expected) return null;
+			const branch = `kilo/${requestedBranch}`;
+			await git.renameBranch(expected, branch, { cwd: directory });
+			renames.push({ directory, branch });
+			return { branch };
+		},
+		async hasCopyWork({ directory, baseBranch }) {
+			const status = await git.status({ cwd: directory });
+			if ((status?.workingDirectory.files.length ?? 0) > 0) return true;
+			if (!baseBranch) return false;
+			const { stdout } = await git.exec(
+				["rev-list", "--count", `${baseBranch}..HEAD`],
+				"rev-list",
+				{ cwd: directory },
+			);
+			return Number(stdout.trim()) > 0;
+		},
 	};
 }
 
-function chat(id: string, directory: string, patch: Partial<ChatSummary> = {}): ChatSummary {
-	return {
-		id,
-		title: "Chat",
-		directory,
-		parentId: null,
-		workspaceId: "w1",
-		worktreeBranch: null,
-		workspaceFolders: [],
-		workSessionId: null,
-		createdAt: 0,
-		updatedAt: 0,
-		activity: { status: "idle", pendingPermissionIds: [], pendingQuestionIds: [] },
-		...patch,
-	};
-}
-
-interface Recorded {
-	generated: { chatId: string; prompt: string; model?: unknown }[];
-	sessionBranches: { id: string; branch: string }[];
-	chatBranches: { id: string; branch: string }[];
-	renamedEvents: { directory: string; branch: string }[];
+async function createCopy(repoDir: string): Promise<{ directory: string; branch: string }> {
+	const directory = path.join(repoDir, ".kilo", "worktrees", "kilo-aback-aardvark");
+	const branch = "kilo/aback-aardvark";
+	await createGitClient({ path: repoDir }).addWorktree(directory, { createBranch: branch });
+	return { directory, branch };
 }
 
 async function boot(options: {
-	folder: string;
-	sessions?: WorkSession[];
+	workSessions?: WorkSession[];
 	chats?: ChatSummary[];
-	storage?: ReturnType<typeof createMemoryStorage>;
+	storage?: MemoryStorage;
 	names?: (string | null)[];
 }) {
-	const storage = options.storage ?? createMemoryStorage();
-	const recorded: Recorded = {
-		generated: [],
-		sessionBranches: [],
-		chatBranches: [],
-		renamedEvents: [],
-	};
-	const names = [...(options.names ?? [])];
-	let sessions!: DomainProvider<typeof WorkSessions>;
-	let conversations!: DomainProvider<typeof Conversations>;
-	let consumer: PluginSdk | undefined;
-	const unused = () => {
-		throw new Error("unused");
-	};
-	const workspace: Workspace = {
-		id: "w1",
-		name: "App",
-		folders: [{ id: "f1", path: options.folder, isPrimary: true, position: 0 }],
-		createdAt: 0,
-		updatedAt: 0,
-	};
-	const kernel = createMainKernel({
-		host: createTestHost(),
-		hostServices: (pluginId) => (pluginId === manifest.id ? { storage } : {}),
-		registrations: [
-			{
-				manifest: workspacesManifest,
-				definitions: WORKSPACES_DEFINITIONS,
-				entry: definePlugin({
-					activate: (sdk) => {
-						sdk.domains.provide(Workspaces, {
-							initialState: { workspaces: [workspace], activeId: "w1", unavailableFolderIds: [] },
-							methods: {
-								create: unused,
-								update: unused,
-								remove: unused,
-								setActive: unused,
-								checkFolders: unused,
-								authorize: ({ path: target }) =>
-									isInside(options.folder, target)
-										? { allowed: true, folder: options.folder, path: target }
-										: { allowed: false },
-							},
-						});
-					},
-				}),
-			},
-			{
-				manifest: sessionsManifest,
-				definitions: SESSIONS_DEFINITIONS,
-				entry: definePlugin({
-					activate: (sdk) => {
-						sessions = sdk.domains.provide(WorkSessions, {
-							initialState: { sessions: options.sessions ?? [] },
-							methods: {
-								create: unused,
-								rename: unused,
-								setPinned: unused,
-								setArchived: unused,
-								remove: unused,
-								isolationOptions: unused,
-								importLegacyPins: unused,
-								setWorktreeBranch: ({ id, branch }) => {
-									recorded.sessionBranches.push({ id, branch });
-									const list = sessions.state.sessions.map((candidate) =>
-										candidate.id === id ? { ...candidate, worktreeBranch: branch } : candidate,
-									);
-									sessions.setState({ sessions: list });
-									return list.find((candidate) => candidate.id === id)!;
-								},
-							},
-						});
-					},
-				}),
-			},
-			{
-				manifest: agentManifest,
-				definitions: AGENT_DEFINITIONS,
-				entry: definePlugin({
-					activate: (sdk) => {
-						conversations = sdk.domains.provide(Conversations, {
-							initialState: {
-								ready: true,
-								chats: Object.fromEntries((options.chats ?? []).map((c) => [c.id, c])),
-							},
-							methods: {
-								create: unused,
-								generate: unused,
-								sessionConfig: unused,
-								rename: unused,
-								delete: unused,
-								abort: unused,
-								prompt: unused,
-								setArchived: unused,
-								permissionRequests: unused,
-								replyPermission: unused,
-								replyQuestion: unused,
-								rejectQuestion: unused,
-								generateBranchName: (input) => {
-									recorded.generated.push(input);
-									return { branch: names.length > 0 ? names.shift()! : "fix-the-login-bug" };
-								},
-								setWorktreeBranch: ({ id, branch }) => {
-									recorded.chatBranches.push({ id, branch });
-								},
-							},
-						});
-					},
-				}),
-			},
-			testPlugin("test.consumer", {
-				manifest: { requires: { "kilo.workspaces/vcs": "optional" } },
-				entry: { activate: (sdk) => void (consumer = sdk) },
-			}),
-			{ manifest, definitions: GIT_DEFINITIONS, entry: createGitMainEntry() },
-		],
+	const vcs = gitVcs();
+	const host = await bootGitMain({
+		entry: definePlugin({ activate: (sdk) => activateBranchNamer(sdk, { vcs }) }),
+		core: { chats: options.chats ?? [], names: options.names ?? [] },
+		workSessions: { workSessions: options.workSessions ?? [] },
+		...(options.storage ? { storage: options.storage } : {}),
 	});
-	kernels.push(kernel);
-	await kernel.start();
-	kernel.kernelSdk.domains
-		.get(Repository)!
-		.on("worktree-branch-renamed", (payload) => recorded.renamedEvents.push(payload));
-	const vcs = () => consumer!.extensions.exclusive(Vcs).winner!.implementation!;
-
-	const setChatStatus = (chatId: string, status: "idle" | "busy") => {
-		const current = conversations.state.chats[chatId]!;
-		conversations.setState({
-			...conversations.state,
-			chats: {
-				...conversations.state.chats,
-				[chatId]: { ...current, activity: { ...current.activity, status } },
-			},
-		});
-	};
+	const core = host.core!;
+	const workSessions = host.workSessions!;
 	return {
-		kernel,
-		storage,
-		recorded,
+		kernel: host.kernel,
+		storage: host.storage,
 		vcs,
-		/** The chat joins its session, as kilo.sessions reports it. */
-		join(sessionId: string, chatId: string, directory: string) {
-			conversations.setState({
-				...conversations.state,
-				chats: { ...conversations.state.chats, [chatId]: chat(chatId, directory) },
-			});
-			const before = sessions.state.sessions.find((candidate) => candidate.id === sessionId)!;
-			const after = { ...before, chatIds: [...before.chatIds, chatId] };
-			sessions.setState({
-				sessions: sessions.state.sessions.map((candidate) =>
-					candidate.id === sessionId ? after : candidate,
-				),
-			});
-			sessions.emit("updated", { before, after });
+		core,
+		workSessions,
+		/** The chat joins its work session, as kilo.work-sessions reports it. */
+		join(workSessionId: string, chatId: string, directory: string) {
+			core.upsert(chat(chatId, directory));
+			workSessions.join(workSessionId, chatId);
 		},
-		send(chatId: string, text: string) {
-			conversations.emit("user-message", { chatId, messageId: `msg_${text}`, text });
-		},
+		send: (chatId: string, text: string) => core.send(chatId, text),
 		/** One turn of the chat, started by `text` unless the agent carries on by itself. */
 		async turn(chatId: string, text?: string, during?: () => void) {
-			if (text !== undefined) this.send(chatId, text);
-			setChatStatus(chatId, "busy");
-			conversations.emit("turn-started", { chatId });
+			if (text !== undefined) core.send(chatId, text);
+			core.setStatus(chatId, "busy");
+			core.turnStarted(chatId);
 			await new Promise((resolve) => setTimeout(resolve, 10));
 			during?.();
-			setChatStatus(chatId, "idle");
-			conversations.emit("turn-ended", { chatId });
-		},
-		deleteSession(sessionId: string) {
-			const deleted = sessions.state.sessions.find((candidate) => candidate.id === sessionId)!;
-			sessions.setState({
-				sessions: sessions.state.sessions.filter((candidate) => candidate.id !== sessionId),
-			});
-			sessions.emit("deleted", { session: deleted });
+			core.setStatus(chatId, "idle");
+			core.turnEnded(chatId);
 		},
 	};
 }
 
-async function worktreeSession(repoDir: string) {
-	const host = await boot({ folder: repoDir });
-	const worktree = await host.vcs().createWorktree({ directory: repoDir });
-	await host.kernel.stop();
-	return worktree;
-}
-
-describe("the worktree branch namer", () => {
-	it("renames a new worktree's branch on the second prompt and records it everywhere", async () => {
+describe("the copy branch namer", () => {
+	it("renames a new copy's branch on the second prompt and records it on the work session", async () => {
 		const repoDir = initRepo();
-		const worktree = await worktreeSession(repoDir);
+		const copy = await createCopy(repoDir);
 		const host = await boot({
-			folder: repoDir,
-			sessions: [
-				session("wses_1", {
-					worktreeCreated: true,
-					directory: worktree.directory,
-					worktreeBranch: worktree.branch,
+			workSessions: [
+				workSession("wses_1", {
+					copyCreated: true,
+					directory: copy.directory,
+					branch: copy.branch,
 				}),
 			],
 		});
-		host.join("wses_1", "ses_1", worktree.directory);
+		host.join("wses_1", "ses_1", copy.directory);
 
 		host.send("ses_1", "hello");
 		await nothingDone();
-		expect(host.recorded.generated).toEqual([]);
+		expect(host.core.generated).toEqual([]);
 		host.send("ses_1", "fix the login bug");
 
-		await vi.waitFor(() => expect(host.recorded.chatBranches).toHaveLength(1), WAIT);
-		expect(host.recorded.generated).toEqual([{ chatId: "ses_1", prompt: "fix the login bug" }]);
-		expect(currentBranch(worktree.directory)).toBe("kilo/fix-the-login-bug");
-		expect(host.recorded.sessionBranches).toEqual([
+		await vi.waitFor(() => expect(host.workSessions.branches).toHaveLength(1), WAIT);
+		expect(host.core.generated).toEqual([{ chatId: "ses_1", prompt: "fix the login bug" }]);
+		expect(currentBranch(copy.directory)).toBe("kilo/fix-the-login-bug");
+		expect(host.workSessions.branches).toEqual([
 			{ id: "wses_1", branch: "kilo/fix-the-login-bug" },
 		]);
-		expect(host.recorded.chatBranches).toEqual([{ id: "ses_1", branch: "kilo/fix-the-login-bug" }]);
-		expect(host.recorded.renamedEvents).toEqual([
-			{ directory: worktree.directory, branch: "kilo/fix-the-login-bug" },
+		expect(host.vcs.renames).toEqual([
+			{ directory: copy.directory, branch: "kilo/fix-the-login-bug" },
 		]);
 		expect(host.storage.saved.get("branch-namer")).toEqual({ armed: {} });
 	});
 
-	it("names from a single prompt once its turn ends with work in the worktree", async () => {
+	it("names from a single prompt once its turn ends with work in the copy", async () => {
 		const repoDir = initRepo();
-		const worktree = await worktreeSession(repoDir);
+		const copy = await createCopy(repoDir);
 		const host = await boot({
-			folder: repoDir,
-			sessions: [
-				session("wses_1", {
-					worktreeCreated: true,
-					directory: worktree.directory,
-					worktreeBranch: worktree.branch,
+			workSessions: [
+				workSession("wses_1", {
+					copyCreated: true,
+					directory: copy.directory,
+					branch: copy.branch,
 				}),
 			],
 		});
-		host.join("wses_1", "ses_1", worktree.directory);
+		host.join("wses_1", "ses_1", copy.directory);
 
 		await host.turn("ses_1", "build the login page");
 		await nothingDone();
-		expect(host.recorded.generated).toEqual([]);
+		expect(host.core.generated).toEqual([]);
 
 		await host.turn("ses_1", undefined, () =>
-			fs.writeFileSync(path.join(worktree.directory, "login.ts"), "export {};\n"),
+			fs.writeFileSync(path.join(copy.directory, "login.ts"), "export {};\n"),
 		);
-		await vi.waitFor(() => expect(host.recorded.chatBranches).toHaveLength(1), WAIT);
+		await vi.waitFor(() => expect(host.workSessions.branches).toHaveLength(1), WAIT);
 
-		expect(host.recorded.generated).toEqual([{ chatId: "ses_1", prompt: "" }]);
-		expect(currentBranch(worktree.directory)).toBe("kilo/fix-the-login-bug");
+		expect(host.core.generated).toEqual([{ chatId: "ses_1", prompt: "" }]);
+		expect(currentBranch(copy.directory)).toBe("kilo/fix-the-login-bug");
 	});
 
-	it("leaves branches alone outside kilo/, in shared directories and in picked worktrees", async () => {
+	it("leaves branches alone outside kilo/, in shared directories and in picked copies", async () => {
 		const repoDir = initRepo();
 		const shared = `${repoDir}/.kilo/worktrees/shared`;
 		const host = await boot({
-			folder: repoDir,
-			sessions: [
-				session("wses_feature", {
-					worktreeCreated: true,
+			workSessions: [
+				workSession("wses_feature", {
+					copyCreated: true,
 					directory: `${repoDir}/.kilo/worktrees/feature`,
-					worktreeBranch: "feature",
+					branch: "feature",
 				}),
-				session("wses_shared", {
-					worktreeCreated: true,
-					directory: shared,
-					worktreeBranch: "kilo/shared",
-				}),
-				session("wses_other", { directory: shared, worktreeBranch: "kilo/shared" }),
-				session("wses_picked", {
+				workSession("wses_shared", { copyCreated: true, directory: shared, branch: "kilo/shared" }),
+				workSession("wses_other", { directory: shared, branch: "kilo/shared" }),
+				workSession("wses_picked", {
 					directory: `${repoDir}/.kilo/worktrees/picked`,
-					worktreeBranch: "kilo/picked",
+					branch: "kilo/picked",
 				}),
 			],
 		});
@@ -408,21 +220,21 @@ describe("the worktree branch namer", () => {
 		}
 		await nothingDone();
 
-		expect(host.recorded.generated).toEqual([]);
+		expect(host.core.generated).toEqual([]);
 		expect(host.storage.saved.get("branch-namer")).toEqual({ armed: {} });
 	});
 
 	it("keeps its progress across a restart and never renames twice", async () => {
 		const repoDir = initRepo();
-		const worktree = await worktreeSession(repoDir);
+		const copy = await createCopy(repoDir);
 		const storage = createMemoryStorage();
-		const placed = session("wses_1", {
-			worktreeCreated: true,
-			directory: worktree.directory,
-			worktreeBranch: worktree.branch,
+		const placed = workSession("wses_1", {
+			copyCreated: true,
+			directory: copy.directory,
+			branch: copy.branch,
 		});
-		const first = await boot({ folder: repoDir, sessions: [placed], storage });
-		first.join("wses_1", "ses_1", worktree.directory);
+		const first = await boot({ workSessions: [placed], storage });
+		first.join("wses_1", "ses_1", copy.directory);
 		first.send("ses_1", "hello");
 		await vi.waitFor(
 			() =>
@@ -434,17 +246,16 @@ describe("the worktree branch namer", () => {
 		await first.kernel.stop();
 
 		const linked = { ...placed, chatIds: ["ses_1"] };
-		const chats = [chat("ses_1", worktree.directory)];
-		const second = await boot({ folder: repoDir, sessions: [linked], chats, storage });
+		const chats = [chat("ses_1", copy.directory)];
+		const second = await boot({ workSessions: [linked], chats, storage });
 		second.send("ses_1", "fix the login bug");
-		await vi.waitFor(() => expect(second.recorded.chatBranches).toHaveLength(1), WAIT);
+		await vi.waitFor(() => expect(second.workSessions.branches).toHaveLength(1), WAIT);
 		await second.turn("ses_1", "and the logout");
 		await second.kernel.stop();
 
-		const renamed = { ...linked, worktreeBranch: "kilo/fix-the-login-bug" };
+		const renamed = { ...linked, branch: "kilo/fix-the-login-bug" };
 		const third = await boot({
-			folder: repoDir,
-			sessions: [renamed],
+			workSessions: [renamed],
 			chats,
 			storage,
 			names: ["something-else"],
@@ -453,16 +264,60 @@ describe("the worktree branch namer", () => {
 		await third.turn("ses_1", "and another");
 		await nothingDone();
 
-		expect(third.recorded.generated).toEqual([]);
-		expect(currentBranch(worktree.directory)).toBe("kilo/fix-the-login-bug");
+		expect(third.core.generated).toEqual([]);
+		expect(currentBranch(copy.directory)).toBe("kilo/fix-the-login-bug");
 	});
 
-	it("forgets the chats of a deleted session", async () => {
+	it("reads progress origin saved, with its model", async () => {
+		const repoDir = initRepo();
+		const copy = await createCopy(repoDir);
+		const storage = createMemoryStorage();
+		storage.saved.set("branch-namer", {
+			armed: {
+				ses_1: {
+					promptCount: 1,
+					idleAttempted: false,
+					model: { providerID: "kilo", modelID: "anthropic/claude" },
+				},
+				broken: { idleAttempted: true },
+			},
+		});
+		const host = await boot({
+			workSessions: [
+				workSession("wses_1", {
+					copyCreated: true,
+					directory: copy.directory,
+					branch: copy.branch,
+					chatIds: ["ses_1"],
+				}),
+			],
+			chats: [chat("ses_1", copy.directory)],
+			storage,
+			names: [null],
+		});
+
+		await host.turn("ses_1", undefined, () =>
+			fs.writeFileSync(path.join(copy.directory, "login.ts"), "export {};\n"),
+		);
+
+		await vi.waitFor(
+			() =>
+				expect(host.core.generated).toEqual([
+					{
+						chatId: "ses_1",
+						prompt: "",
+						model: { aiProviderId: "kilo", modelId: "anthropic/claude" },
+					},
+				]),
+			WAIT,
+		);
+	});
+
+	it("forgets the chats of a deleted work session", async () => {
 		const repoDir = initRepo();
 		const directory = `${repoDir}/.kilo/worktrees/gone`;
 		const host = await boot({
-			folder: repoDir,
-			sessions: [session("wses_1", { worktreeCreated: true, directory, worktreeBranch: "kilo/x" })],
+			workSessions: [workSession("wses_1", { copyCreated: true, directory, branch: "kilo/x" })],
 		});
 		host.join("wses_1", "ses_1", directory);
 		await vi.waitFor(
@@ -471,11 +326,29 @@ describe("the worktree branch namer", () => {
 			WAIT,
 		);
 
-		host.deleteSession("wses_1");
+		host.workSessions.remove("wses_1");
 
 		await vi.waitFor(
 			() => expect(host.storage.saved.get("branch-namer")).toEqual({ armed: {} }),
 			WAIT,
 		);
+	});
+
+	it("activates quietly without kilo.core and kilo.work-sessions", async () => {
+		const { logger, warnings, errors } = recordingLogger();
+
+		await bootGitMain({
+			entry: definePlugin({ activate: (sdk) => activateBranchNamer(sdk, { vcs: gitVcs() }) }),
+			core: null,
+			workSessions: null,
+			logger,
+		});
+
+		// The kernel reports kilo.git's manifest contributions to absent plugins; the namer says nothing.
+		const own = warnings.filter(
+			([message]) => !String(message).startsWith("[kilo.git] Contribution"),
+		);
+		expect(own).toEqual([]);
+		expect(errors).toEqual([]);
 	});
 });

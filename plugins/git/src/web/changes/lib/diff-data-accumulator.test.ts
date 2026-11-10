@@ -9,7 +9,7 @@ import {
 	takePendingGitDiffItems,
 	type GitDiffDataAccumulator,
 	type GitDiffTreeSource,
-} from "./diff-data-accumulator.js";
+} from "./diff-data-accumulator";
 
 function fileDiffOf(patchText: string): FileDiffMetadata {
 	const fileDiff = processFile(patchText, { isGitDiff: true });

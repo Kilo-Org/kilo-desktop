@@ -11,9 +11,9 @@ import {
 	type CondaPackagesPreviewResult,
 	type CondaPackagesUpdateInput,
 	type CondaPackagesUpdateResult,
-} from "../../../contracts/providers/conda.js";
-import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host.js";
-import { UpdateConfirmationDialog, type UpgradablePackage } from "./UpdateConfirmationDialog.js";
+} from "../../../contracts/providers/conda";
+import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host";
+import { UpdateConfirmationDialog, type UpgradablePackage } from "./UpdateConfirmationDialog";
 
 const ENV: CondaEnv = { name: "dev", prefix: "/opt/anaconda3/envs/dev" };
 

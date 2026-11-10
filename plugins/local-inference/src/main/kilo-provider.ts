@@ -1,20 +1,21 @@
-import type { ModelProviderEntry, ModelProviderSource } from "@kilo-desktop/plugin-agent/contracts";
+import type { AiProviderSource } from "@kilo-desktop/plugin-core/contracts";
 
-import type { KiloCapability } from "./inference/LocalInferenceService.js";
+import type { KiloCapability } from "./inference/LocalInferenceService";
+import { LLAMA_API_KEY_ENV } from "./integrations/kilo-constants";
 
 /**
- * The provider entry the service publishes, as kilo.agent's `model-provider`
+ * The provider entry the service publishes, as kilo.core's `ai-provider`
  * source: `kilo` is what the service writes through (origin's capability
- * shape), `source` what kilo.agent reads. Environment goes through
- * `runtime-config` instead, so `serverEnv` keeps nothing.
+ * shape), `source` what kilo.core reads. The router's API key goes with the
+ * entry as its env, so `serverEnv` keeps nothing.
  */
-export function createKiloProvider(): {
+export function createKiloProvider(apiKey: () => string): {
 	readonly kilo: KiloCapability;
-	readonly source: ModelProviderSource;
+	readonly source: AiProviderSource;
 } {
-	let entry: ModelProviderEntry | undefined;
+	let entry: Readonly<Record<string, unknown>> | undefined;
 	const listeners = new Set<() => void>();
-	const publish = async (next: ModelProviderEntry | undefined) => {
+	const publish = async (next: Readonly<Record<string, unknown>> | undefined) => {
 		entry = next;
 		for (const listener of listeners) listener();
 	};
@@ -30,7 +31,7 @@ export function createKiloProvider(): {
 			},
 		},
 		source: {
-			read: () => entry,
+			read: () => (entry ? { entry, env: { [LLAMA_API_KEY_ENV]: apiKey() } } : undefined),
 			subscribe: (onChange) => {
 				listeners.add(onChange);
 				return () => listeners.delete(onChange);

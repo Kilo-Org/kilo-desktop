@@ -1,19 +1,21 @@
 import { z } from "zod";
 
-import { defineTool, type ToolImplementation } from "@kilo-desktop/plugin-agent/contracts";
+import { defineTool, type ToolImplementation } from "@kilo-desktop/plugin-core/contracts";
 
-/** Origin's model-facing tool, now in main: it asks a main window to open the section. */
+import { OPEN_SETTINGS_TOOL } from "../contracts";
+
+/** Origin's model-facing tool, in main: it opens the section in a window. */
 export function localInferenceTools(options: {
-	readonly openSettings: () => void;
+	readonly openSettings: () => Promise<void>;
 }): Readonly<Record<string, ToolImplementation>> {
 	return {
-		"settings.open": defineTool({
+		[OPEN_SETTINGS_TOOL]: defineTool({
 			description:
 				"Open the Local Model Server settings in the desktop app. Use this when the user asks " +
 				"to view, configure, or manage their local model server or local model catalog.",
 			input: z.object({}).strict(),
-			run: () => {
-				options.openSettings();
+			run: async () => {
+				await options.openSettings();
 				return { opened: true };
 			},
 		}),

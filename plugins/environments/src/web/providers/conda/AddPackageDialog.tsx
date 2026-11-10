@@ -14,10 +14,10 @@ import { toast } from "@kilo-desktop/ui/components/sonner";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
-import type { CondaEnv, CondaPackagesPreviewResult } from "../../../contracts/providers/conda.js";
-import { useConda, useCondaMutation, useCondaQuery } from "../../conda.js";
-import { parseEnvironmentsErrorMessage } from "../../../contracts/common.js";
-import { ChannelChooserPopover } from "./ChannelChooserPopover.js";
+import type { CondaEnv, CondaPackagesPreviewResult } from "../../../contracts/providers/conda";
+import { useConda, useCondaMutation, useCondaQuery } from "../../conda";
+import { parseEnvironmentsErrorMessage } from "../../../contracts/common";
+import { ChannelChooserPopover } from "./ChannelChooserPopover";
 import {
 	ChangeFilterMenu,
 	DependencyChangeList,
@@ -25,15 +25,15 @@ import {
 	summarizeChanges,
 	type ChangeFilter,
 	type ChangeSummary,
-} from "./DependencyPreview.js";
-import { environmentDisplayName } from "./environment-display.js";
-import { friendlyEnvironmentsError } from "./environments-error-message.js";
+} from "./DependencyPreview";
+import { environmentDisplayName } from "./environment-display";
+import { friendlyEnvironmentsError } from "./environments-error-message";
 import {
 	installPackagesJob,
 	jobToastOptions,
 	showJobError,
 	showJobSuccess,
-} from "./environments-toasts.js";
+} from "./environments-toasts";
 import {
 	PackageResultsTable,
 	PackageSearchInput,
@@ -41,9 +41,9 @@ import {
 	SelectedPackagesPane,
 	selectedPackageToSpec,
 	usePackageSelection,
-} from "./PackageSearch.js";
-import { useChannelSelection } from "./use-channel-selection.js";
-import { usePackageSearch } from "./use-package-search.js";
+} from "./PackageSearch";
+import { useChannelSelection } from "./use-channel-selection";
+import { usePackageSearch } from "./use-package-search";
 
 interface AddPackageDialogProps {
 	env: CondaEnv;

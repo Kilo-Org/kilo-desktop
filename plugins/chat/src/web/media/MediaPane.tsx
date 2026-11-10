@@ -1,9 +1,9 @@
 import { AppWindowIcon, ImageIcon, WorkflowIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FC } from "react";
 
-import type { DomainState } from "@kilo-desktop/kernel";
-import { useDomain, useDomainState } from "@kilo-desktop/kernel/web";
-import { Panes, type PaneProps } from "@kilo-desktop/plugin-sessions/contracts";
+import type { DomainObjectState } from "@kilo-desktop/kernel";
+import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
+import { Panes, type PaneProps } from "@kilo-desktop/plugin-work-sessions/contracts";
 import {
 	Empty,
 	EmptyDescription,
@@ -40,14 +40,17 @@ export const MediaIcon: FC<{ className?: string; iconKey?: string }> = ({ classN
  * revision's, if any; null once they're gone.
  */
 function useViewerItems(
-	sessionId: string,
+	workSessionId: string,
 	paneId: string,
 ): { items: readonly MediaItem[] | null; loading: boolean } {
-	const key = mediaViewerKey(sessionId, paneId);
-	const viewers = useDomain(MediaViewers);
-	const revision = useDomainState(
+	const key = mediaViewerKey(workSessionId, paneId);
+	const viewers = useDomainObject(MediaViewers);
+	const revision = useDomainObjectState(
 		MediaViewers,
-		useCallback((state: DomainState<typeof MediaViewers>) => state.viewers[key]?.revision, [key]),
+		useCallback(
+			(state: DomainObjectState<typeof MediaViewers>) => state.viewers[key]?.revision,
+			[key],
+		),
 	);
 	const [fetched, setFetched] = useState<{
 		key: string;
@@ -65,7 +68,7 @@ function useViewerItems(
 		if (!viewers) return;
 		let current = true;
 		viewers.methods
-			.items({ sessionId, paneId })
+			.items({ workSessionId, paneId })
 			.then(
 				(items) => items,
 				() => null,
@@ -76,7 +79,7 @@ function useViewerItems(
 		return () => {
 			current = false;
 		};
-	}, [key, paneId, revision, sessionId, viewers]);
+	}, [key, paneId, revision, workSessionId, viewers]);
 
 	if (revision === undefined) return { items: null, loading: false };
 	const own = fetched?.key === key ? fetched : null;
@@ -88,10 +91,10 @@ function useViewerItems(
  * in main by `media-viewers`), on the one its metadata names. Moving between
  * items records the new one in the pane, retitling its tab.
  */
-export function MediaPane({ sessionId, pane }: PaneProps) {
-	const { items, loading } = useViewerItems(sessionId, pane.id);
+export function MediaPane({ workSessionId, pane }: PaneProps) {
+	const { items, loading } = useViewerItems(workSessionId, pane.id);
 	const viewed = useMemo(() => items?.map(toLightboxItem) ?? [], [items]);
-	const panes = useDomain(Panes);
+	const panes = useDomainObject(Panes);
 	const itemId = pane.metadata[MEDIA_ITEM_METADATA_KEY];
 
 	// Until the items for the item opened arrive, show nothing rather than a stale one.
@@ -138,7 +141,7 @@ export function MediaPane({ sessionId, pane }: PaneProps) {
 					if (!item || !panes) return;
 					void panes.methods
 						.update({
-							sessionId,
+							workSessionId,
 							paneId: pane.id,
 							title: mediaItemTitle(item),
 							iconKey: item.kind,

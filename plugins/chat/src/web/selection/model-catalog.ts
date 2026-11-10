@@ -4,7 +4,12 @@ import {
 	LOCAL_MODEL_SERVER_PROVIDER_NAME,
 } from "./provider-ids";
 import type { ModelOption, ModelSelectorEffortOption } from "./model-selector";
-import type { GatewayModelDetails } from "../../contracts";
+import type {
+	GatewayModelDetails,
+	ModelInfo,
+	ModelRef,
+	ModelsState,
+} from "@kilo-desktop/plugin-core/contracts";
 import { modelCostTier, type ModelCostTier } from "./model-cost";
 
 /** Selection shape accepted by `useKiloRuntime` / Kilo `session.prompt`. */
@@ -61,39 +66,6 @@ export type KiloModelCatalog = {
 	organizationId?: string | null;
 };
 
-/** Reasoning effort option from models.dev / provider payloads. */
-type KiloReasoningOption = {
-	type?: string;
-	values?: ReadonlyArray<string>;
-};
-
-/** Provider model entry from `client.provider.list()` (fields we read). */
-type KiloProviderListModel = {
-	id: string;
-	name: string;
-	providerID: string;
-	recommendedIndex?: number;
-	options?: { description?: string };
-	cost?: { output?: number };
-	/** OpenCode-style named variants (often reasoning levels). */
-	variants?: Record<string, unknown>;
-	reasoning_options?: ReadonlyArray<KiloReasoningOption>;
-	limit?: { context?: number; output?: number };
-	contextLength?: number;
-	hasUserByokAvailable?: boolean;
-};
-
-/** Provider list payload from `client.provider.list()`. */
-export type KiloProviderListPayload = {
-	all: ReadonlyArray<{
-		id: string;
-		name: string;
-		models: Record<string, KiloProviderListModel>;
-	}>;
-	default: Record<string, string>;
-	connected: ReadonlyArray<string>;
-};
-
 const EFFORT_LABELS: Record<string, string> = {
 	none: "None",
 	low: "Low",
@@ -108,29 +80,20 @@ function formatEffortLabel(id: string): string {
 	return EFFORT_LABELS[id] ?? id.charAt(0).toUpperCase() + id.slice(1);
 }
 
-function contextWindowFromProviderModel(model: KiloProviderListModel): number | undefined {
-	const context = model.limit?.context ?? model.contextLength;
-	return typeof context === "number" && Number.isFinite(context) && context > 0
-		? context
-		: undefined;
+/** A kilo.core model's reasoning efforts as picker options. */
+function effortsOf(model: ModelInfo): readonly ModelSelectorEffortOption[] | undefined {
+	if (model.variants.length === 0) return undefined;
+	return model.variants.map((id) => ({ id, name: formatEffortLabel(id) }));
 }
 
-/**
- * Resolve reasoning effort levels for a provider model.
- * Prefers OpenCode `variants` keys; falls back to `reasoning_options` effort values.
- */
-function effortsFromProviderModel(
-	model: KiloProviderListModel,
-): readonly ModelSelectorEffortOption[] | undefined {
-	const variantIds = model.variants ? Object.keys(model.variants) : [];
-	if (variantIds.length > 0) {
-		return variantIds.map((id) => ({ id, name: formatEffortLabel(id) }));
-	}
-	const effortValues = model.reasoning_options?.find((option) => option.type === "effort")?.values;
-	if (effortValues && effortValues.length > 0) {
-		return effortValues.map((id) => ({ id, name: formatEffortLabel(id) }));
-	}
-	return undefined;
+/** A kilo.core model reference in the shape Kilo's prompts and the picker use. */
+export function toKiloModelRef(ref: ModelRef): KiloModelRef {
+	return { providerID: ref.aiProviderId, modelID: ref.modelId };
+}
+
+/** A picker model as kilo.core names it. */
+export function toModelRef(ref: KiloModelRef): ModelRef {
+	return { aiProviderId: ref.providerID, modelId: ref.modelID };
 }
 
 export function modelRefToId(ref: KiloModelRef): string {
@@ -175,72 +138,64 @@ function sortProvidersForRail(providers: KiloProviderGroup[]): KiloProviderGroup
 	});
 }
 
-const PRICE_MARKER = /\s*\((?:\$+\+?|free)\)/gi;
-
-/**
- * Gateway names embed price hints like "($$$$)" or "(free)"; the row's cost
- * indicator and Free badge already convey that, so drop them (keeping the raw
- * name if nothing is left).
- */
-function displayModelName(name: string): string {
-	return name.replace(PRICE_MARKER, "").trim() || name;
+/** Who Kilo serves the gateway's models for, as kilo.core's account reports it. */
+export interface CatalogAccount {
+	/** Kilo's gateway answers (null while unknown). */
+	readonly providerReady?: boolean;
+	readonly organizationId?: string | null;
 }
 
-export function buildCatalogFromProviderList(
-	payload: KiloProviderListPayload,
-	options?: { connectedOnly?: boolean },
+/**
+ * The picker's catalog from kilo.core's models: connected AI providers in
+ * the AI Providers page's order, their models with recommendation order,
+ * efforts, cost tiers and context windows, each provider's default and the
+ * configured model. The gateway's public details come on top
+ * (`attachGatewayModelDetails`).
+ */
+export function buildCatalogFromModels(
+	state: Pick<ModelsState, "aiProviders" | "models" | "defaults" | "configuredModel">,
+	account: CatalogAccount = {},
 ): KiloModelCatalog {
-	const connectedOnly = options?.connectedOnly ?? true;
-	const connected = new Set(payload.connected);
 	const providers: KiloProviderGroup[] = [];
-	const models: KiloCatalogModel[] = [];
-
-	for (const provider of payload.all) {
-		const providerID = provider.id;
-		const isConnected = connected.has(providerID);
-		const isLocal = isLocalModelServerProvider(provider);
-		const providerName = isLocal ? LOCAL_MODEL_SERVER_PROVIDER_NAME : provider.name;
-		if ((connectedOnly || isLocal) && !isConnected) {
-			continue;
-		}
-		providers.push({
-			id: providerID,
-			name: providerName,
-			connected: isConnected,
-		});
-		for (const model of Object.values(provider.models)) {
-			const modelID = model.id;
-			const modelProviderID = model.providerID || providerID;
-			const efforts = effortsFromProviderModel(model);
-			const costTier = modelCostTier(model.cost);
-			const contextWindow = contextWindowFromProviderModel(model);
-			models.push({
-				id: modelRefToId({ providerID: modelProviderID, modelID }),
-				name: displayModelName(model.name),
-				description: model.options?.description?.trim() || providerName,
-				keywords: [providerName, modelProviderID, modelID],
-				providerID: modelProviderID,
-				modelID,
-				providerName,
-				...(model.recommendedIndex !== undefined
-					? { recommendedIndex: model.recommendedIndex }
-					: {}),
-				disabled: !isConnected,
-				...(efforts ? { efforts } : {}),
-				...(costTier ? { costTier } : {}),
-				...(contextWindow === undefined ? {} : { contextWindow }),
-				...(modelProviderID === KILO_PROVIDER_ID && model.hasUserByokAvailable === true
-					? { hasByok: true }
-					: {}),
-			});
-		}
+	const names = new Map<string, string>();
+	for (const provider of Object.values(state.aiProviders)) {
+		if (!provider.connected) continue;
+		const name = isLocalModelServerProvider(provider)
+			? LOCAL_MODEL_SERVER_PROVIDER_NAME
+			: provider.name;
+		names.set(provider.id, name);
+		providers.push({ id: provider.id, name, connected: true });
 	}
-
+	const models: KiloCatalogModel[] = [];
+	for (const model of Object.values(state.models)) {
+		const providerName = names.get(model.aiProviderId);
+		if (providerName === undefined) continue;
+		const efforts = effortsOf(model);
+		const costTier = modelCostTier({ output: model.outputPricePerMillion });
+		models.push({
+			id: modelRefToId(toKiloModelRef(model)),
+			name: model.name,
+			description: model.description?.trim() || providerName,
+			keywords: [providerName, model.aiProviderId, model.modelId],
+			providerID: model.aiProviderId,
+			modelID: model.modelId,
+			providerName,
+			disabled: false,
+			...(model.recommendedIndex === undefined ? {} : { recommendedIndex: model.recommendedIndex }),
+			...(efforts ? { efforts } : {}),
+			...(costTier ? { costTier } : {}),
+			...(model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow }),
+			...(model.aiProviderId === KILO_PROVIDER_ID && model.byok ? { hasByok: true } : {}),
+		});
+	}
 	return {
 		providers: sortProvidersForRail(providers),
 		models,
-		defaults: { ...payload.default },
-		connected: [...payload.connected],
+		defaults: { ...state.defaults },
+		...(state.configuredModel ? { configuredModel: toKiloModelRef(state.configuredModel) } : {}),
+		connected: providers.map(({ id }) => id),
+		...(account.providerReady === undefined ? {} : { providerReady: account.providerReady }),
+		...(account.organizationId === undefined ? {} : { organizationId: account.organizationId }),
 	};
 }
 
@@ -249,7 +204,7 @@ export function attachGatewayModelDetails(
 	details: readonly GatewayModelDetails[] | undefined,
 ): KiloModelCatalog | undefined {
 	if (!catalog || !details?.length) return catalog;
-	const detailsByModelID = new Map(details.map((entry) => [entry.modelID, entry]));
+	const detailsByModelID = new Map(details.map((entry) => [entry.modelId, entry]));
 	return {
 		...catalog,
 		models: catalog.models.map((model) => {
@@ -288,6 +243,19 @@ export function isSelectableModel(
 	return model.providerID === "kilo" || connected.includes(model.providerID);
 }
 
+/** Recommended models first (lower index first), the rest in the AI provider's order. */
+function byRecommendation(left: KiloCatalogModel, right: KiloCatalogModel): number {
+	const rank =
+		(left.recommendedIndex ?? Number.POSITIVE_INFINITY) -
+		(right.recommendedIndex ?? Number.POSITIVE_INFINITY);
+	return rank || 0;
+}
+
+/**
+ * The model a chat starts with when nothing was picked or configured: Auto
+ * Free, else another Kilo Auto model, else the first connected AI provider's
+ * default, else its most recommended model.
+ */
 export function pickDefaultModel(catalog: KiloModelCatalog | undefined): KiloModelRef | undefined {
 	if (!catalog) return undefined;
 	const autoFree = catalog.models.find(
@@ -307,10 +275,11 @@ export function pickDefaultModel(catalog: KiloModelCatalog | undefined): KiloMod
 	const firstConnected = catalog.providers.find((provider) => provider.connected);
 	if (!firstConnected) return undefined;
 	const defaultModelID = catalog.defaults[firstConnected.id];
-	const model = catalog.models.find(
-		(candidate) =>
-			candidate.providerID === firstConnected.id &&
-			(defaultModelID ? candidate.modelID === defaultModelID : true),
+	const offered = catalog.models.filter(
+		(candidate) => candidate.providerID === firstConnected.id && !candidate.disabled,
 	);
+	const model =
+		offered.find((candidate) => candidate.modelID === defaultModelID) ??
+		offered.toSorted(byRecommendation)[0];
 	return model ? { providerID: model.providerID, modelID: model.modelID } : undefined;
 }

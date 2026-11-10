@@ -25,7 +25,7 @@ import { access, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import type { NotebookEnvironmentPreparation, NotebookSettings } from "../../contracts/index.js";
+import type { NotebookEnvironmentPreparation, NotebookSettings } from "../../contracts";
 
 /** runtimed's precedence within one directory (`crates/runtimed/src/project_file.rs`). */
 const PROJECT_FILES = ["pyproject.toml", "pixi.toml", "environment.yml", "environment.yaml"];

@@ -5,9 +5,9 @@ import type { KernelLogger } from "@kilo-desktop/kernel";
 import type {
 	VcsFileStatusKind,
 	VcsImplementation,
-} from "@kilo-desktop/plugin-workspaces/contracts";
+} from "@kilo-desktop/plugin-work-sessions/contracts";
 
-import type { FileGitStatus, FileGitStatusEntry } from "../contracts/models.js";
+import type { FileGitStatus, FileGitStatusEntry } from "../contracts/models";
 
 /**
  * Version control kind → tree decoration status. Copied collapses into
@@ -26,12 +26,12 @@ const FILE_STATUS_BY_KIND: Record<VcsFileStatusKind, FileGitStatus> = {
 
 /**
  * Best-effort status lookup for tree decorations, through
- * `kilo.workspaces/vcs` (decision 55). Status paths are relative to the
- * repository root while the tree's are relative to the workspace folder, so
- * they only align when the folder *is* the worktree root: a `.git` entry
- * (directory, or the file of a linked worktree or submodule) gates every
- * probe, and other folders get no decorations rather than misattributed ones.
- * No provider, or a failing one, degrades to `null`.
+ * `kilo.work-sessions/vcs`. Status paths are relative to the repository root
+ * while the tree's are relative to the workspace folder, so they only align
+ * when the folder *is* the worktree root: a `.git` entry (directory, or the
+ * file of a linked worktree or submodule) gates every probe, and other
+ * folders get no decorations rather than misattributed ones. No provider, or
+ * a failing one, degrades to `null`.
  */
 export function createGitStatusLookup(
 	vcs: () => VcsImplementation | undefined,

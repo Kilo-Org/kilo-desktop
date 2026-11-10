@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { modelDisplayName } from "./model-format.js";
+import { modelDisplayName } from "./model-format";
 
 describe("modelDisplayName", () => {
 	it("drops the quantization suffix from catalog downloads", () => {

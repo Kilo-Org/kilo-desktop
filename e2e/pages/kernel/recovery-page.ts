@@ -1,4 +1,5 @@
 import {
+	expectElementToBeHidden,
 	expectElementToBeVisible,
 	getLocatorByTestId,
 	getLocatorByText,
@@ -12,6 +13,13 @@ export class RecoveryPage {
 	private readonly quit = () => getLocatorByTestId("kernel-recovery-quit");
 	private readonly status = () => getLocatorByTestId("kernel-recovery-status");
 	private readonly safeMode = () => getLocatorByText("Kilo Desktop is running in safe mode");
+
+	/** A normal start: a bundled plugin (kilo.shell) provides the interface, so the kernel stays out of sight. */
+	async verifyNotShown(): Promise<void> {
+		await expectElementToBeHidden(this.screen(), {
+			message: "A normal start should not show the kernel's own screen",
+		});
+	}
 
 	/** Started with --safe-mode: no plugins, the kernel's own screen, and a way back. */
 	async verifyRunningInSafeMode(): Promise<void> {

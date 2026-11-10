@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { DEFAULT_DIFF_OPTIONS, sanitizeDiffOptions } from "./diff-options.js";
+import { DEFAULT_DIFF_OPTIONS, sanitizeDiffOptions } from "./diff-options";
 
 describe("sanitizeDiffOptions", () => {
 	it("returns the defaults when the stored value is missing or not an object", () => {

@@ -8,8 +8,8 @@ import {
 	InputGroupInput,
 } from "@kilo-desktop/ui/components/input-group";
 
-import type { LocalConnectionInfo } from "../../contracts/schemas.js";
-import { ConnectionRequestPopover } from "./ConnectionRequestPopover.js";
+import type { LocalConnectionInfo } from "../../contracts/index";
+import { ConnectionRequestPopover } from "./ConnectionRequestPopover";
 
 function ConnectionDetail({
 	id,

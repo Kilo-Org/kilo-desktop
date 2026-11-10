@@ -53,6 +53,8 @@ export default defineConfig({
 						"@base-ui/react/slider",
 						"@base-ui/react/switch",
 						"@base-ui/react/tooltip",
+						"@base-ui/react/toggle",
+						"@base-ui/react/toggle-group",
 						"@base-ui/react/use-render",
 						"class-variance-authority",
 						"clsx",

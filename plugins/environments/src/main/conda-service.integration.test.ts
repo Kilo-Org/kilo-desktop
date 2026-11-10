@@ -13,7 +13,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { definePlugin, KernelError, type DomainMethods } from "@kilo-desktop/kernel";
+import { definePlugin, KernelError, type DomainObjectMethods } from "@kilo-desktop/kernel";
 import { createTestKernelPair } from "@kilo-desktop/kernel/testing";
 
 import manifest from "../../plugin.json";
@@ -23,10 +23,10 @@ import {
 	REPODATA_FIND_DEFAULT_LIMIT,
 	type CondaRepodataPackage,
 	type JobProgressEvent,
-} from "../contracts/index.js";
-import { createCondaService, type CondaService } from "./conda-service.js";
-import { JobQueue } from "./job-queue.js";
-import type { CondaBackend, CondaCreateFromFileRequest } from "./providers/conda/CondaBackend.js";
+} from "../contracts/index";
+import { createCondaService, type CondaService } from "./conda-service";
+import { JobQueue } from "./job-queue";
+import type { CondaBackend, CondaCreateFromFileRequest } from "./providers/conda/CondaBackend";
 
 /**
  * Full-pipeline integration test: the conda service provided as
@@ -37,7 +37,7 @@ import type { CondaBackend, CondaCreateFromFileRequest } from "./providers/conda
 async function createServiceHost() {
 	const storageDir = await mkdtemp(join(tmpdir(), "conda-service-"));
 	let service: CondaService | undefined;
-	let client: DomainMethods<typeof Conda> | undefined;
+	let client: DomainObjectMethods<typeof Conda> | undefined;
 	let stop: (() => Promise<void>) | undefined;
 	return {
 		storageDir,
@@ -55,14 +55,14 @@ async function createServiceHost() {
 						pickFile: async () => null,
 					});
 					const { dispose: _dispose, ...methods } = service;
-					sdk.domains.provide(Conda, { initialState: { status: "ready" }, methods });
+					sdk.domainObjects.provide(Conda, { initialState: { status: "ready" }, methods });
 				},
 			});
 			const { main } = await createTestKernelPair({
 				main: [{ manifest, definitions: ENVIRONMENTS_DEFINITIONS, entry }],
 				renderer: [],
 			});
-			client = main.kernelSdk.domains.get(Conda)!.methods;
+			client = main.kernelSdk.domainObjects.get(Conda)!.methods;
 			stop = () => main.stop();
 		},
 		dispose() {

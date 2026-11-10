@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { importAnacondaDesktopModels, type Entry, type File } from "./anaconda-desktop.js";
+import { importAnacondaDesktopModels, type Entry, type File } from "./anaconda-desktop";
 
 const homedirMock = vi.hoisted(() => vi.fn());
 vi.mock("node:os", async (importOriginal) => {
@@ -86,6 +86,47 @@ describe("Anaconda Desktop Models", () => {
 		await importAnacondaDesktopModels(add, logger);
 		expect(add).not.toHaveBeenCalled();
 		expect(logger.debug).toHaveBeenCalled();
+	});
+
+	it("imports nothing if anaconda-desktop config lacks a download location", async () => {
+		await writeFile(join(root, "config.json"), JSON.stringify({}));
+
+		await importAnacondaDesktopModels(add, logger);
+		expect(add).not.toHaveBeenCalled();
+		expect(logger.debug).toHaveBeenCalledWith("[anaconda-desktop] invalid configuration");
+	});
+
+	it("imports nothing if model-registry does not match its schema", async () => {
+		await writeFile(join(root, "config.json"), JSON.stringify({ downloadLocation: tempdir }));
+		await writeFile(join(root, "model-registry.db"), JSON.stringify({ collections: "none" }));
+
+		await importAnacondaDesktopModels(add, logger);
+		expect(add).not.toHaveBeenCalled();
+		expect(logger.debug).toHaveBeenCalledWith("[anaconda-desktop] invalid registry schema");
+	});
+
+	it("imports nothing if model-registry has no models collection", async () => {
+		await writeFile(join(root, "config.json"), JSON.stringify({ downloadLocation: tempdir }));
+		await writeFile(
+			join(root, "model-registry.db"),
+			JSON.stringify({ collections: [{ name: "other", data: [] }] }),
+		);
+
+		await importAnacondaDesktopModels(add, logger);
+		expect(add).not.toHaveBeenCalled();
+		expect(logger.debug).toHaveBeenCalledWith("[anaconda-desktop] no models collection found");
+	});
+
+	it("skips registry entries that are not models", async () => {
+		await writeFile(join(root, "config.json"), JSON.stringify({ downloadLocation: tempdir }));
+		await writeFile(
+			join(root, "model-registry.db"),
+			JSON.stringify({ collections: [{ name: "models", data: [{ id: "no-files" }] }] }),
+		);
+
+		await importAnacondaDesktopModels(add, logger);
+		expect(add).not.toHaveBeenCalled();
+		expect(logger.info).toHaveBeenCalledWith("Imported 0 of 0 models from Anaconda Desktop");
 	});
 
 	describe("imports valid downloaded models", () => {
@@ -225,6 +266,15 @@ describe("Anaconda Desktop Models", () => {
 				expect.stringContaining("some_specific_error_message"),
 			);
 			expect(logger.info).toHaveBeenCalledWith(expect.stringContaining("Imported 2 of 3 models"));
+		});
+
+		it("reports import failures that are not errors", async () => {
+			add.mockRejectedValueOnce("disk full");
+
+			await importAnacondaDesktopModels(add, logger);
+			expect(logger.warn).toHaveBeenCalledWith(
+				`Failed to import model "${modelA.name} (${fileA.quantization})" from Anaconda Desktop: disk full`,
+			);
 		});
 	});
 });

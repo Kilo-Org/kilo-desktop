@@ -10,11 +10,12 @@ import {
 } from "@kilo-desktop/ui/components/alert-dialog";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
-import type { CondaEnv } from "../../../contracts/providers/conda.js";
-import { useConda, useCondaMutation } from "../../conda.js";
-import { useTrack } from "../../app.js";
-import { environmentDisplayName } from "./environment-display.js";
-import { deleteEnvironmentJob, jobToastOptions } from "./environments-toasts.js";
+import { ENVIRONMENTS_TELEMETRY_EVENTS } from "../../../contracts/index";
+import type { CondaEnv } from "../../../contracts/providers/conda";
+import { useConda, useCondaMutation } from "../../conda";
+import { useTrack } from "../../app";
+import { environmentDisplayName } from "./environment-display";
+import { deleteEnvironmentJob, jobToastOptions } from "./environments-toasts";
 
 interface DeleteEnvironmentDialogProps {
 	env: CondaEnv;
@@ -43,7 +44,7 @@ export function DeleteEnvironmentDialog({ env, open, onClose }: DeleteEnvironmen
 		toast.promise(promise, jobToastOptions(deleteEnvironmentJob(displayName)));
 		promise.then(
 			() => {
-				track("Environment Removed");
+				track(ENVIRONMENTS_TELEMETRY_EVENTS.environmentRemoved);
 			},
 			() => undefined,
 		);

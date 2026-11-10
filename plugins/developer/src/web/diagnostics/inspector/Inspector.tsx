@@ -13,8 +13,11 @@ import { Button } from "@kilo-desktop/ui/components/button";
 
 import type { IssueRecord } from "../diagnostics-summary";
 import type { EntityRef } from "../domain-model";
+import { ContextKeyDetail } from "./ContextKeyDetail";
 import { DomainDetail } from "./DomainDetail";
+import { FlagDetail } from "./FlagDetail";
 import { useNavigation, TrailScope } from "./navigation";
+import { ObjectTypeDetail } from "./ObjectTypeDetail";
 import { OwnerDetail } from "./OwnerDetail";
 import { PointDetail } from "./PointDetail";
 
@@ -32,6 +35,12 @@ function Detail({
 			return <PointDetail id={entity.id} />;
 		case "domain":
 			return <DomainDetail id={entity.id} />;
+		case "objectType":
+			return <ObjectTypeDetail id={entity.id} />;
+		case "contextKey":
+			return <ContextKeyDetail id={entity.id} />;
+		case "flag":
+			return <FlagDetail id={entity.id} />;
 		case "owner":
 			return <OwnerDetail id={entity.id} issues={issues} turnedOff={turnedOff} />;
 	}

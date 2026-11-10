@@ -4,8 +4,8 @@ import { createReadStream } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { promisify } from "node:util";
 
-import { decidePeerTrust, type PeerIdentity } from "./daemon-peer-auth.js";
-import type { AuthenticatePeer } from "./RuntimedDaemonManager.js";
+import { decidePeerTrust, type PeerIdentity } from "./daemon-peer-auth";
+import type { AuthenticatePeer } from "./RuntimedDaemonManager";
 
 /**
  * Composes the OS peer-credential lookup with the pure trust decision to form

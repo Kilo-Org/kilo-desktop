@@ -6,9 +6,9 @@ import {
 	type CondaEnv,
 	type CondaEnvsDeleteInput,
 	type CondaEnvsDeleteResult,
-} from "../../../contracts/providers/conda.js";
-import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host.js";
-import { DeleteEnvironmentDialog } from "./DeleteEnvironmentDialog.js";
+} from "../../../contracts/providers/conda";
+import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host";
+import { DeleteEnvironmentDialog } from "./DeleteEnvironmentDialog";
 
 function notImplemented(): never {
 	throw new Error("not implemented");

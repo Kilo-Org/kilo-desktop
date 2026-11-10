@@ -12,9 +12,9 @@ import {
 	stubFetch,
 	WAIT,
 	waitForTreePath,
-	type ChangesHostOptions,
+	type GitHostOptions,
 	type GitHost,
-} from "../../test/changes-host.js";
+} from "../../test/git-host";
 
 afterEach(() => {
 	vi.useRealTimers();
@@ -71,7 +71,7 @@ function fakeWatcherClock(): void {
 
 /** Boots the host, arms the fake clock, then mounts the pane for `directory`. */
 async function mountWithFakeClock(
-	options: ChangesHostOptions = {},
+	options: GitHostOptions = {},
 	directory: string = ROOT,
 ): Promise<GitHost> {
 	const host = await bootGitHost(options);

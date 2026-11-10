@@ -1,258 +1,31 @@
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-	definePlugin,
-	type DomainProvider,
-	type KernelPort,
-	type PluginEntry,
-} from "@kilo-desktop/kernel";
-import {
-	createMemoryStorage,
-	createTestKernelPair,
-	testPlugin,
-} from "@kilo-desktop/kernel/testing";
-import { AgentTool, type ToolCallContext } from "@kilo-desktop/plugin-agent/contracts";
-import sessionsManifest from "@kilo-desktop/plugin-sessions/plugin.json";
+import { Tool, type ToolCallContext } from "@kilo-desktop/plugin-core/contracts";
 import {
 	EMPTY_WORK_SESSION_PANES,
-	Panes,
 	WorkSessions,
-	SESSIONS_DEFINITIONS,
-	type Pane,
-	type WorkSession,
 	type WorkSessionPanes,
-} from "@kilo-desktop/plugin-sessions/contracts";
-import workspacesManifest from "@kilo-desktop/plugin-workspaces/plugin.json";
-import { Workspaces, WORKSPACES_DEFINITIONS } from "@kilo-desktop/plugin-workspaces/contracts";
+} from "@kilo-desktop/plugin-work-sessions/contracts";
 
-import manifest from "../../plugin.json";
-import { TERMINAL_DEFINITIONS, Terminals, type TerminalExited } from "../contracts";
+import type { TerminalExited } from "../contracts";
 import { TERMINAL_PROTOCOL_VERSION, type TerminalReadout } from "../contracts/session";
-import { createTerminalMainEntry, type TerminalManagerDeps } from "./entry";
 import { historyPath } from "./sessions/history";
 import type { PtyExitEvent, PtyProcess } from "./sessions/pty";
 import { TerminalSessionManager } from "./sessions/TerminalSessionManager";
+import {
+	bootTerminalMain as boot,
+	recordingLogger,
+	stopTerminalMains,
+	tempDir,
+	terminalPane,
+	WORK_SESSION as SESSION,
+} from "./test-boot";
 
-const directories: string[] = [];
-afterEach(async () => {
-	await Promise.all(
-		directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })),
-	);
-});
-
-async function tempDir(prefix: string): Promise<string> {
-	const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), prefix)));
-	directories.push(directory);
-	return directory;
-}
-
-const SESSION: WorkSession = {
-	id: "wses_1",
-	title: "Session",
-	titleSource: "default",
-	pinned: false,
-	archived: false,
-	archiveChangedAt: 0,
-	workspaceId: null,
-	worktreeBranch: null,
-	directory: null,
-	chatIds: [],
-	createdAt: 1,
-	updatedAt: 1,
-};
-
-const terminalPane = (id: string, metadata: Record<string, string> = {}): Pane => ({
-	id,
-	kind: "kilo.terminal/terminal",
-	title: "Terminal",
-	metadata,
-	ordinal: 1,
-});
-
-/**
- * kilo.sessions in main with panes in memory. Deleting a session drops its
- * panes before announcing it, as the real one may (its own listener can run
- * first), and without `closed` events.
- */
-function fakeSessionsMain(initial: Record<string, WorkSessionPanes>) {
-	let panes!: DomainProvider<typeof Panes>;
-	let sessions!: DomainProvider<typeof WorkSessions>;
-	const of = (sessionId: string) => panes.state.bySession[sessionId] ?? EMPTY_WORK_SESSION_PANES;
-	const write = (sessionId: string, next: WorkSessionPanes | null) => {
-		const bySession = { ...panes.state.bySession };
-		if (next) bySession[sessionId] = next;
-		else delete bySession[sessionId];
-		panes.setState({ bySession });
-	};
-	const entry: PluginEntry = definePlugin({
-		activate(sdk) {
-			sessions = sdk.domains.provide(WorkSessions, {
-				initialState: { sessions: [SESSION] },
-				methods: {
-					create: () => SESSION,
-					rename: () => SESSION,
-					setPinned: () => SESSION,
-					setArchived: () => SESSION,
-					setWorktreeBranch: () => SESSION,
-					remove: ({ id }) => {
-						write(id, null);
-						sessions.emit("deleted", { session: { ...SESSION, id } });
-						return { deleted: true };
-					},
-					importLegacyPins: () => undefined,
-					isolationOptions: () => null,
-				},
-			});
-			panes = sdk.domains.provide(Panes, {
-				initialState: { bySession: initial },
-				methods: {
-					open: ({ sessionId, kind }) => {
-						const pane: Pane = {
-							id: `pane_${of(sessionId).panes.length + 1}`,
-							kind,
-							title: "Terminal",
-							metadata: {},
-							ordinal: 1,
-						};
-						write(sessionId, { ...of(sessionId), panes: [...of(sessionId).panes, pane] });
-						return pane;
-					},
-					openObject: () => null,
-					activate: () => undefined,
-					update: ({ sessionId, paneId, title }) => {
-						const current = of(sessionId);
-						const pane = {
-							...current.panes.find((candidate) => candidate.id === paneId)!,
-							...(title ? { title } : {}),
-						};
-						write(sessionId, {
-							...current,
-							panes: current.panes.map((candidate) => (candidate.id === paneId ? pane : candidate)),
-						});
-						return pane;
-					},
-					close: ({ sessionId, paneId }) => {
-						const current = of(sessionId);
-						const pane = current.panes.find((candidate) => candidate.id === paneId);
-						if (!pane) return { closed: false };
-						write(sessionId, { ...current, panes: current.panes.filter((p) => p !== pane) });
-						panes.emit("closed", { sessionId, pane });
-						return { closed: true };
-					},
-					setLayout: () => undefined,
-					setArrangement: () => undefined,
-					importLegacy: () => undefined,
-				},
-			});
-		},
-	});
-	return { entry, panes: () => panes };
-}
-
-/** kilo.workspaces in main, authorising one primary folder. */
-function fakeWorkspacesMain(primary: () => string): PluginEntry {
-	return definePlugin({
-		activate(sdk) {
-			sdk.domains.provide(Workspaces, {
-				initialState: { workspaces: [], activeId: null, unavailableFolderIds: [] },
-				methods: {
-					create: () => {
-						throw new Error("unused");
-					},
-					update: () => {
-						throw new Error("unused");
-					},
-					remove: () => ({ deleted: false }),
-					setActive: () => undefined,
-					authorize: ({ path: target, rule }) =>
-						rule === "primary" && target === primary()
-							? { allowed: true, workspaceId: "w", folder: target, path: target }
-							: { allowed: false },
-					checkFolders: () => undefined,
-				},
-			});
-		},
-	});
-}
-
-/** kilo.agent, as far as owning the agent tool point. */
-const agentToolPoint = testPlugin("kilo.agent", {
-	manifest: { extensionPoints: [{ id: "tool", kind: "additive" }] },
-	definitions: { extensionPoints: [AgentTool] },
-});
-
-function fakeManager() {
-	const manager = {
-		deps: undefined as TerminalManagerDeps | undefined,
-		attach: vi.fn(async (_port: KernelPort, _args: unknown) => undefined),
-		close: vi.fn(async () => undefined),
-		read: vi.fn(
-			async (_identity: { sessionId: string; terminalId: string }, _lines: number) =>
-				null as TerminalReadout | null,
-		),
-		isRunning: vi.fn((_identity: { sessionId: string; terminalId: string }) => false),
-		dispose: vi.fn(async () => undefined),
-	};
-	return manager;
-}
-
-async function boot(
-	options: {
-		panes?: Record<string, WorkSessionPanes>;
-		manager?: (
-			deps: TerminalManagerDeps,
-		) => ReturnType<typeof fakeManager> | TerminalSessionManager;
-		storageDir?: string;
-		originStorageDir?: string;
-		primary?: string;
-		embedded?: boolean;
-	} = {},
-) {
-	const sessions = fakeSessionsMain(options.panes ?? {});
-	const fake = fakeManager();
-	const storage = createMemoryStorage(options.storageDir ?? "/data/kilo.terminal");
-	const register = vi.fn((_registration: Record<string, unknown>) => () => undefined);
-	const entry = createTerminalMainEntry({
-		createManager: (deps) => {
-			fake.deps = deps;
-			return options.manager?.(deps) ?? fake;
-		},
-		homeDirectory: os.tmpdir(),
-		...(options.originStorageDir ? { originStorageDir: () => options.originStorageDir! } : {}),
-	});
-	const { main, renderer } = await createTestKernelPair({
-		main: [
-			agentToolPoint,
-			{ manifest: sessionsManifest, definitions: SESSIONS_DEFINITIONS, entry: sessions.entry },
-			{
-				manifest: workspacesManifest,
-				definitions: WORKSPACES_DEFINITIONS,
-				entry: fakeWorkspacesMain(() => options.primary ?? "/nowhere"),
-			},
-			{ manifest, definitions: TERMINAL_DEFINITIONS, entry },
-		],
-		renderer: [
-			agentToolPoint,
-			{ manifest: sessionsManifest, definitions: SESSIONS_DEFINITIONS },
-			{ manifest: workspacesManifest, definitions: WORKSPACES_DEFINITIONS },
-			{ manifest, definitions: TERMINAL_DEFINITIONS, entry: definePlugin({ activate: () => {} }) },
-		],
-		mainHostServices: (pluginId) =>
-			pluginId === manifest.id
-				? {
-						storage,
-						...(options.embedded === false ? {} : { embeddedHosts: { register } }),
-						assets: { resolve: (subpath: string) => `/app/${subpath}` },
-					}
-				: { storage: createMemoryStorage(`/data/${pluginId}`) },
-	});
-	const terminals = main.kernelSdk.domains.get(Terminals)!;
-	return { main, renderer, sessions, fake, storage, register, terminals };
-}
+afterEach(stopTerminalMains);
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -273,8 +46,26 @@ describe("kilo.terminal in main", () => {
 		expect(terminals).not.toBeNull();
 	});
 
+	it("activates without kilo.work-sessions and kilo.core, warning of nothing", async () => {
+		const { logger, warnings, errors } = recordingLogger();
+		const { main, terminals } = await boot({
+			withoutWorkSessions: true,
+			withoutCore: true,
+			logger,
+		});
+
+		await expect(terminals.methods.list({ workSessionId: SESSION.id })).resolves.toEqual([]);
+		expect(main.kernelSdk.extensions.list(Tool)).toEqual([]);
+		// The kernel reports kilo.terminal's manifest contributions to absent plugins; the entry says nothing.
+		const own = warnings.filter(
+			([message]) => !String(message).startsWith("[kilo.terminal] Contribution"),
+		);
+		expect(own).toEqual([]);
+		expect(errors).toEqual([]);
+	});
+
 	it("closes a terminal's shell and deletes its history when its pane closes", async () => {
-		const { sessions, fake } = await boot({
+		const { workSessions: sessions, fake } = await boot({
 			panes: {
 				[SESSION.id]: {
 					...EMPTY_WORK_SESSION_PANES,
@@ -290,8 +81,8 @@ describe("kilo.terminal in main", () => {
 		const handle = sessions.panes();
 		const close = (paneId: string) =>
 			handle.emit("closed", {
-				sessionId: SESSION.id,
-				pane: handle.state.bySession[SESSION.id]!.panes.find((pane) => pane.id === paneId)!,
+				workSessionId: SESSION.id,
+				pane: handle.state.byWorkSession[SESSION.id]!.panes.find((pane) => pane.id === paneId)!,
 			});
 		close("a");
 		close("b");
@@ -304,7 +95,7 @@ describe("kilo.terminal in main", () => {
 		]);
 	});
 
-	it("closes a deleted session's terminals, though its panes went first", async () => {
+	it("closes a deleted work session's terminals, though its panes went first", async () => {
 		const { main, fake } = await boot({
 			panes: {
 				[SESSION.id]: {
@@ -315,7 +106,7 @@ describe("kilo.terminal in main", () => {
 			},
 		});
 
-		await main.kernelSdk.domains.get(WorkSessions)!.methods.remove({ id: SESSION.id });
+		await main.kernelSdk.domainObjects.get(WorkSessions)!.methods.remove({ id: SESSION.id });
 		await flush();
 
 		expect(fake.close.mock.calls).toEqual([
@@ -324,8 +115,12 @@ describe("kilo.terminal in main", () => {
 		]);
 	});
 
-	it("closes the pane when its shell exits, announcing the exit under the pane's session", async () => {
-		const { sessions, fake, terminals } = await boot({
+	it("closes the pane when its shell exits, announcing the exit under the pane's work session", async () => {
+		const {
+			workSessions: sessions,
+			fake,
+			terminals,
+		} = await boot({
 			panes: {
 				[SESSION.id]: {
 					...EMPTY_WORK_SESSION_PANES,
@@ -342,9 +137,9 @@ describe("kilo.terminal in main", () => {
 		);
 		await flush();
 
-		expect(sessions.panes().state.bySession[SESSION.id]?.panes).toEqual([]);
+		expect(sessions.panes().state.byWorkSession[SESSION.id]?.panes).toEqual([]);
 		expect(exited).toEqual([
-			{ sessionId: SESSION.id, terminalId: "a", exitCode: 0, exitSignal: null },
+			{ workSessionId: SESSION.id, terminalId: "a", exitCode: 0, exitSignal: null },
 		]);
 		expect(fake.close).toHaveBeenCalledWith({ sessionId: "ses_origin", terminalId: "a" }, true);
 	});
@@ -362,10 +157,10 @@ describe("kilo.terminal in main", () => {
 	});
 
 	it("titles the pane with the terminal's label", async () => {
-		const { sessions, fake } = await boot({
+		const { workSessions: sessions, fake } = await boot({
 			panes: { [SESSION.id]: { ...EMPTY_WORK_SESSION_PANES, panes: [terminalPane("a")] } },
 		});
-		const title = () => sessions.panes().state.bySession[SESSION.id]?.panes[0]?.title;
+		const title = () => sessions.panes().state.byWorkSession[SESSION.id]?.panes[0]?.title;
 
 		fake.deps!.onLabelChanged({ sessionId: SESSION.id, terminalId: "a" }, "vite");
 		await vi.waitFor(() => expect(title()).toBe("vite"));
@@ -374,7 +169,7 @@ describe("kilo.terminal in main", () => {
 		fake.deps!.onLabelChanged({ sessionId: SESSION.id, terminalId: "missing" }, "vim");
 	});
 
-	it("lists, reads and closes a session's terminals", async () => {
+	it("lists, reads and closes a work session's terminals", async () => {
 		const readout: TerminalReadout = {
 			status: "running",
 			label: "vite",
@@ -400,35 +195,35 @@ describe("kilo.terminal in main", () => {
 		fake.isRunning.mockImplementation((identity) => identity.terminalId === "a");
 		fake.read.mockResolvedValue(readout);
 
-		await expect(terminals.methods.list({ sessionId: SESSION.id })).resolves.toEqual([
+		await expect(terminals.methods.list({ workSessionId: SESSION.id })).resolves.toEqual([
 			{ terminalId: "a", title: "vite", running: true },
 			{ terminalId: "b", title: "Terminal", running: false },
 		]);
-		await expect(terminals.methods.list({ sessionId: "other" })).resolves.toEqual([]);
+		await expect(terminals.methods.list({ workSessionId: "other" })).resolves.toEqual([]);
 
 		await expect(
-			terminals.methods.read({ sessionId: SESSION.id, terminalId: "b", lines: 5 }),
+			terminals.methods.read({ workSessionId: SESSION.id, terminalId: "b", lines: 5 }),
 		).resolves.toEqual(readout);
 		expect(fake.read).toHaveBeenLastCalledWith({ sessionId: "ses_origin", terminalId: "b" }, 5);
-		await terminals.methods.read({ sessionId: SESSION.id, terminalId: "a" });
+		await terminals.methods.read({ workSessionId: SESSION.id, terminalId: "a" });
 		expect(fake.read).toHaveBeenLastCalledWith({ sessionId: SESSION.id, terminalId: "a" }, 200);
 		await expect(
-			terminals.methods.read({ sessionId: SESSION.id, terminalId: "c" }),
+			terminals.methods.read({ workSessionId: SESSION.id, terminalId: "c" }),
 		).resolves.toBeNull();
 		await expect(
-			terminals.methods.read({ sessionId: SESSION.id, terminalId: "a", lines: 5_000 }),
+			terminals.methods.read({ workSessionId: SESSION.id, terminalId: "a", lines: 5_000 }),
 		).rejects.toMatchObject({ code: "VALIDATION" });
 
-		await terminals.methods.close({ sessionId: SESSION.id, terminalId: "b" });
+		await terminals.methods.close({ workSessionId: SESSION.id, terminalId: "b" });
 		expect(fake.close).toHaveBeenLastCalledWith(
 			{ sessionId: "ses_origin", terminalId: "b" },
 			false,
 		);
-		await terminals.methods.close({ sessionId: "loose", terminalId: "z", deleteHistory: true });
+		await terminals.methods.close({ workSessionId: "loose", terminalId: "z", deleteHistory: true });
 		expect(fake.close).toHaveBeenLastCalledWith({ sessionId: "loose", terminalId: "z" }, true);
 	});
 
-	it("starts terminals only in folders kilo.workspaces authorises", async () => {
+	it("starts terminals only in folders kilo.work-sessions authorises", async () => {
 		const primary = await tempDir("terminal-primary-");
 		const elsewhere = await tempDir("terminal-elsewhere-");
 		const { fake } = await boot({ primary });
@@ -575,17 +370,18 @@ describe("kilo.terminal's agent tools", () => {
 		truncated: false,
 	};
 
-	const context = (sessionId: string | null): ToolCallContext => ({
-		sessionId,
-		chatId: sessionId ? "ses_chat" : null,
-		callId: sessionId ? "call_1" : null,
-		external: sessionId === null,
+	const context = (workSessionId: string | null): ToolCallContext => ({
+		workSessionId,
+		workspaceId: null,
+		chatId: workSessionId ? "ses_chat" : null,
+		callId: workSessionId ? "call_1" : null,
+		external: workSessionId === null,
 		signal: new AbortController().signal,
 	});
 
 	async function bootWithTools(panes: Record<string, WorkSessionPanes> = {}) {
 		const booted = await boot({ panes });
-		const tools = booted.main.kernelSdk.extensions.list(AgentTool);
+		const tools = booted.main.kernelSdk.extensions.list(Tool);
 		const call = async (id: string, input: unknown, sessionId: string | null) => {
 			const tool = tools.find((contribution) => contribution.id === id)!;
 			return tool.implementation!.run(tool.implementation!.input.parse(input), context(sessionId));
@@ -606,20 +402,20 @@ describe("kilo.terminal's agent tools", () => {
 		);
 	});
 
-	it("opens a terminal pane in the calling chat's session", async () => {
-		const { call, sessions } = await bootWithTools();
+	it("opens a terminal pane in the calling chat's work session", async () => {
+		const { call, workSessions: sessions } = await bootWithTools();
 
 		await expect(call("open", {}, SESSION.id)).resolves.toEqual({
-			sessionId: SESSION.id,
+			workSessionId: SESSION.id,
 			terminalId: "pane_1",
 			title: "Terminal",
 		});
-		expect(sessions.panes().state.bySession[SESSION.id]?.panes.map((pane) => pane.kind)).toEqual([
-			"kilo.terminal/terminal",
-		]);
+		expect(
+			sessions.panes().state.byWorkSession[SESSION.id]?.panes.map((pane) => pane.kind),
+		).toEqual(["kilo.terminal/terminal"]);
 	});
 
-	it("lists the session's terminals with what they run", async () => {
+	it("lists the work session's terminals with what they run", async () => {
 		const { call, fake } = await bootWithTools({
 			[SESSION.id]: {
 				...EMPTY_WORK_SESSION_PANES,
@@ -635,7 +431,7 @@ describe("kilo.terminal's agent tools", () => {
 		);
 
 		await expect(call("list", {}, SESSION.id)).resolves.toEqual({
-			sessionId: SESSION.id,
+			workSessionId: SESSION.id,
 			terminals: [
 				{
 					terminalId: "a",
@@ -660,7 +456,7 @@ describe("kilo.terminal's agent tools", () => {
 		});
 
 		await expect(call("list", {}, SESSION.id)).resolves.toEqual({
-			sessionId: SESSION.id,
+			workSessionId: SESSION.id,
 			terminals: [
 				{ terminalId: "a", title: "Terminal", status: "exited", exitCode: 2 },
 				{ terminalId: "b", title: "Terminal" },
@@ -691,7 +487,7 @@ describe("kilo.terminal's agent tools", () => {
 		expect(fake.read).toHaveBeenLastCalledWith({ sessionId: SESSION.id, terminalId: "a" }, 200);
 	});
 
-	it("refuses to read a terminal outside the session, or one with no output", async () => {
+	it("refuses to read a terminal outside the work session, or one with no output", async () => {
 		const { call } = await bootWithTools({
 			[SESSION.id]: { ...EMPTY_WORK_SESSION_PANES, panes: [terminalPane("a")] },
 		});
@@ -704,7 +500,7 @@ describe("kilo.terminal's agent tools", () => {
 		);
 	});
 
-	it("refuses every call without a calling chat's session", async () => {
+	it("refuses every call without a calling chat's work session", async () => {
 		const { call } = await bootWithTools();
 
 		for (const [id, input] of [

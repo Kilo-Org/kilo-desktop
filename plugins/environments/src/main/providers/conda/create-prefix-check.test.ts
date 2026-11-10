@@ -12,7 +12,7 @@ import { delimiter, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { checkCreatePrefix } from "./create-prefix-check.js";
+import { checkCreatePrefix } from "./create-prefix-check";
 
 const dirs: string[] = [];
 

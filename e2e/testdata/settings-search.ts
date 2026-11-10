@@ -8,7 +8,7 @@ export const settingsSearchData = {
 	matchingSection: { id: "appearance", title: "Appearance" },
 	nonMatchingSections: [
 		{ id: "keyboard-shortcuts", title: "Shortcuts" },
-		{ id: "diagnostics", title: "Diagnostics" },
+		{ id: "privacy", title: "Privacy" },
 	],
 	twoLetterQuery: "ap",
 } as const satisfies {

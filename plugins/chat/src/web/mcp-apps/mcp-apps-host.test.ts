@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { ServerConnection } from "@kilo-desktop/plugin-agent/contracts";
+import type { ServerConnection } from "@kilo-desktop/plugin-core/contracts";
 
 import { createKiloMcpAppsHost } from "./mcp-apps-host";
 

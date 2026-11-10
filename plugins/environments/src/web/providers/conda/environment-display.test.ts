@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-	basename,
-	environmentDisplayName,
-	validateEnvironmentName,
-} from "./environment-display.js";
+import { basename, environmentDisplayName, validateEnvironmentName } from "./environment-display";
 
 describe("basename", () => {
 	it("returns the last POSIX segment", () => {

@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { discoverPlugins } from "./discovery";
-import { defineDomain } from "./domain";
+import { defineDomainObject } from "./domain-object";
 import { defineExtensionPoint } from "./extension-point";
+import { defineObjectType } from "./object-type";
 import type { PluginRegistration } from "./plugin";
 
 function manifest(id: string, extra: Record<string, unknown> = {}) {
@@ -16,14 +17,14 @@ const Panel = defineExtensionPoint({
 	metadata: z.object({ title: z.string() }),
 });
 
-const Store = defineDomain({ id: "acme.host/store", home: "main", state: z.object({}) });
+const Store = defineDomainObject({ id: "acme.host/store", home: "main", state: z.object({}) });
 
 const host: PluginRegistration = {
 	manifest: manifest("acme.host", {
 		extensionPoints: [{ id: "panel", kind: "additive" }],
-		domains: [{ id: "store", home: "main" }],
+		domainObjects: [{ id: "store", home: "main" }],
 	}),
-	definitions: { extensionPoints: [Panel], domains: [Store] },
+	definitions: { extensionPoints: [Panel], domainObjects: [Store] },
 };
 
 function contributor(id: string, extensions: Record<string, unknown[]>, extra = {}) {
@@ -31,7 +32,7 @@ function contributor(id: string, extensions: Record<string, unknown[]>, extra = 
 }
 
 describe("discoverPlugins", () => {
-	it("resolves valid plugins and exposes their points, domains and contributions", () => {
+	it("resolves valid plugins and exposes their extension points, domain objects and contributions", () => {
 		const result = discoverPlugins([
 			host,
 			contributor("acme.guest", { "acme.host/panel": [{ id: "one", title: "One" }] }),
@@ -42,8 +43,8 @@ describe("discoverPlugins", () => {
 			["acme.host", "resolved"],
 			["acme.guest", "resolved"],
 		]);
-		expect(result.points.get("acme.host/panel")?.owner).toBe("acme.host");
-		expect(result.domains.get("acme.host/store")?.owner).toBe("acme.host");
+		expect(result.extensionPoints.get("acme.host/panel")?.owner).toBe("acme.host");
+		expect(result.domainObjects.get("acme.host/store")?.owner).toBe("acme.host");
 		expect(result.contributions).toEqual([
 			{
 				pointId: "acme.host/panel",
@@ -88,7 +89,7 @@ describe("discoverPlugins", () => {
 			{ manifest: manifest("acme.other"), definitions: { extensionPoints: [Panel] } },
 		]);
 
-		expect(result.points.size).toBe(0);
+		expect(result.extensionPoints.size).toBe(0);
 		expect(result.issues.map((issue) => [issue.pluginId, issue.code])).toEqual([
 			["acme.host", "undefined-extension-point"],
 			["acme.other", "foreign-definition"],
@@ -103,7 +104,7 @@ describe("discoverPlugins", () => {
 			},
 		]);
 
-		expect(result.points.size).toBe(0);
+		expect(result.extensionPoints.size).toBe(0);
 		expect(result.issues).toEqual([
 			expect.objectContaining({ pluginId: "acme.host", code: "kind-mismatch" }),
 		]);
@@ -191,7 +192,7 @@ describe("discoverPlugins", () => {
 				...host,
 				manifest: manifest("acme.host", {
 					extensionPoints: [{ id: "panel", kind: "additive" }],
-					domains: [{ id: "store", home: "main" }],
+					domainObjects: [{ id: "store", home: "main" }],
 					requires: { "acme.gone/thing": "required" },
 				}),
 			},
@@ -204,20 +205,20 @@ describe("discoverPlugins", () => {
 	it("marks plugins in a requires cycle unresolved", () => {
 		const a = {
 			manifest: manifest("acme.a", {
-				domains: [{ id: "x", home: "main" }],
+				domainObjects: [{ id: "x", home: "main" }],
 				requires: { "acme.b/y": "required" },
 			}),
 			definitions: {
-				domains: [defineDomain({ id: "acme.a/x", home: "main", state: z.object({}) })],
+				domainObjects: [defineDomainObject({ id: "acme.a/x", home: "main", state: z.object({}) })],
 			},
 		};
 		const b = {
 			manifest: manifest("acme.b", {
-				domains: [{ id: "y", home: "main" }],
+				domainObjects: [{ id: "y", home: "main" }],
 				requires: { "acme.a/x": "required" },
 			}),
 			definitions: {
-				domains: [defineDomain({ id: "acme.b/y", home: "main", state: z.object({}) })],
+				domainObjects: [defineDomainObject({ id: "acme.b/y", home: "main", state: z.object({}) })],
 			},
 		};
 
@@ -255,7 +256,146 @@ describe("discoverPlugins", () => {
 		});
 
 		expect(result.issues).toEqual([]);
-		expect(result.points.get("kernel/root")?.owner).toBe("kernel");
+		expect(result.extensionPoints.get("kernel/root")?.owner).toBe("kernel");
 		expect(result.contributions).toHaveLength(1);
+	});
+
+	describe("object types", () => {
+		const Item = defineObjectType({ id: "acme.host/item" });
+		const Items = defineDomainObject({
+			id: "acme.host/items",
+			home: "main",
+			state: z.object({}),
+			lookup: () => null,
+			objectType: Item,
+		});
+
+		it("registers declared object types and the collection that resolves each", () => {
+			const result = discoverPlugins([
+				{
+					manifest: manifest("acme.host", {
+						objectTypes: [{ id: "item" }],
+						domainObjects: [{ id: "items", home: "main", objectType: "acme.host/item" }],
+					}),
+					definitions: { objectTypes: [Item], domainObjects: [Items] },
+				},
+			]);
+
+			expect(result.issues).toEqual([]);
+			expect(result.objectTypes.get("acme.host/item")).toEqual({
+				owner: "acme.host",
+				definition: Item,
+				collection: "acme.host/items",
+			});
+		});
+
+		it("reports object types declared without a definition, and foreign or undeclared definitions", () => {
+			const result = discoverPlugins([
+				{ manifest: manifest("acme.host", { objectTypes: [{ id: "item" }] }) },
+				{ manifest: manifest("acme.other"), definitions: { objectTypes: [Item] } },
+				{
+					manifest: manifest("acme.third"),
+					definitions: { objectTypes: [defineObjectType({ id: "acme.third/thing" })] },
+				},
+			]);
+
+			expect(result.objectTypes.size).toBe(0);
+			expect(result.issues.map((issue) => [issue.pluginId, issue.code])).toEqual([
+				["acme.host", "undefined-object-type"],
+				["acme.other", "foreign-definition"],
+				["acme.third", "undeclared-object-type"],
+			]);
+		});
+
+		it("requires a collection's object type to match its manifest and be its plugin's", () => {
+			const result = discoverPlugins([
+				{
+					manifest: manifest("acme.host", {
+						objectTypes: [{ id: "item" }],
+						domainObjects: [{ id: "items", home: "main" }],
+					}),
+					definitions: { objectTypes: [Item], domainObjects: [Items] },
+				},
+			]);
+
+			expect(result.domainObjects.size).toBe(0);
+			expect(result.issues).toEqual([
+				expect.objectContaining({ pluginId: "acme.host", code: "object-type-mismatch" }),
+			]);
+		});
+
+		it("lets only one collection resolve an object type", () => {
+			const Others = defineDomainObject({
+				id: "acme.host/others",
+				home: "main",
+				state: z.object({}),
+				lookup: () => null,
+				objectType: Item,
+			});
+			const result = discoverPlugins([
+				{
+					manifest: manifest("acme.host", {
+						objectTypes: [{ id: "item" }],
+						domainObjects: [
+							{ id: "items", home: "main", objectType: "acme.host/item" },
+							{ id: "others", home: "main", objectType: "acme.host/item" },
+						],
+					}),
+					definitions: { objectTypes: [Item], domainObjects: [Items, Others] },
+				},
+			]);
+
+			expect(result.objectTypes.get("acme.host/item")?.collection).toBe("acme.host/items");
+			expect(result.domainObjects.has("acme.host/others")).toBe(false);
+			expect(result.issues).toEqual([
+				expect.objectContaining({ pluginId: "acme.host", code: "duplicate-collection" }),
+			]);
+		});
+
+		it("requires a collection that resolves an object type to declare a lookup", () => {
+			const NoLookup = defineDomainObject({
+				id: "acme.host/items",
+				home: "main",
+				state: z.object({}),
+				objectType: Item,
+			});
+			const result = discoverPlugins([
+				{
+					manifest: manifest("acme.host", {
+						objectTypes: [{ id: "item" }],
+						domainObjects: [{ id: "items", home: "main", objectType: "acme.host/item" }],
+					}),
+					definitions: { objectTypes: [Item], domainObjects: [NoLookup] },
+				},
+			]);
+
+			expect(result.domainObjects.size).toBe(0);
+			expect(result.issues).toEqual([
+				expect.objectContaining({ pluginId: "acme.host", code: "missing-lookup" }),
+			]);
+		});
+	});
+
+	it("never lets an extension point, a domain object, a context key or an object type share an id", () => {
+		const Thing = defineExtensionPoint({ id: "acme.host/thing", kind: "additive" });
+		const ThingStore = defineDomainObject({
+			id: "acme.host/thing",
+			home: "main",
+			state: z.object({}),
+		});
+		const result = discoverPlugins([
+			{
+				manifest: manifest("acme.host", {
+					extensionPoints: [{ id: "thing", kind: "additive" }],
+					domainObjects: [{ id: "thing", home: "main" }],
+					contextKeys: [{ id: "thing" }],
+				}),
+				definitions: { extensionPoints: [Thing], domainObjects: [ThingStore] },
+			},
+		]);
+
+		expect(result.issues.map((issue) => [issue.pluginId, issue.code, issue.message])).toEqual([
+			["acme.host", "duplicate-id", expect.stringContaining('"acme.host/thing"')],
+		]);
 	});
 });

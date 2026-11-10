@@ -1,5 +1,5 @@
 import { KernelClipboard } from "@kilo-desktop/kernel";
-import { useDomain } from "@kilo-desktop/kernel/web";
+import { useDomainObject } from "@kilo-desktop/kernel/web";
 
 /**
  * Copies through the host clipboard (`kernel/clipboard`): Electron denies
@@ -7,7 +7,7 @@ import { useDomain } from "@kilo-desktop/kernel/web";
  * browser), the web clipboard is used.
  */
 export function useShellCopyText(): (text: string) => Promise<void> {
-	const clipboard = useDomain(KernelClipboard);
+	const clipboard = useDomainObject(KernelClipboard);
 	return (text: string) =>
 		clipboard
 			? clipboard.methods.writeText({ text })

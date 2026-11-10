@@ -24,6 +24,16 @@ const chatTextSize: TextSizeSetting = {
 };
 
 export const appearanceData = {
+	domainId: "kilo.shell/appearance",
+	ownerId: "kilo.shell",
+	/** `DEFAULT_APPEARANCE` in kilo.shell's contracts. */
+	defaults: {
+		source: "dark",
+		themeId: "kilo",
+		accentId: "theme",
+		sidebarVibrancy: true,
+		textSizes: { ui: 13, chat: 14 },
+	},
 	// The e2e profile starts on the default Dark theme, whose glass opacity is 80%.
 	sidebarVibrancy: {
 		cssVar: "--shell-glass-opacity",

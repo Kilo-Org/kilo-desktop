@@ -1,115 +1,11 @@
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 
-import { describe, expect, it } from "vitest";
+import { createMemoryStorage } from "@kilo-desktop/kernel/testing";
 
-import { definePlugin, type DomainProvider } from "@kilo-desktop/kernel";
-import { createMainKernel } from "@kilo-desktop/kernel/main";
-import { createMemoryStorage, createTestHost, testPlugin } from "@kilo-desktop/kernel/testing";
-import { WorkSessions, type WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
+import { BOARD_PLUGIN_ID, DEFAULT_BOARD, type BoardState } from "../contracts";
+import { bootBoardMain as boot, recordingLogger, stopBoardMains, workSession } from "./test-boot";
 
-import manifest from "../../plugin.json";
-import { Board, BOARD_DEFINITIONS, DEFAULT_BOARD, type BoardState } from "../contracts";
-import { createBoardMainEntry } from "./entry";
-
-const session = (id: string, chatIds: string[] = []): WorkSession => ({
-	id,
-	title: id,
-	titleSource: "user",
-	pinned: false,
-	archived: false,
-	archiveChangedAt: 0,
-	workspaceId: null,
-	worktreeBranch: null,
-	directory: null,
-	chatIds,
-	createdAt: 1,
-	updatedAt: 1,
-});
-
-const unused = () => {
-	throw new Error("unused");
-};
-
-/** Stands in for kilo.sessions in main: a session list and its `deleted` event. */
-function sessionsPlugin(initial: WorkSession[]) {
-	let provider: DomainProvider<typeof WorkSessions> | undefined;
-	const plugin = testPlugin("kilo.sessions", {
-		manifest: { domains: [{ id: "work-session", home: "main" }] },
-		definitions: { domains: [WorkSessions] },
-		entry: definePlugin({
-			activate(sdk) {
-				provider = sdk.domains.provide(WorkSessions, {
-					initialState: { sessions: initial },
-					methods: new Proxy({}, { get: () => unused }) as never,
-				});
-			},
-		}),
-	});
-	return {
-		plugin,
-		set(sessions: WorkSession[]) {
-			provider!.setState({ sessions });
-		},
-		delete(id: string) {
-			const deleted = provider!.state.sessions.find((candidate) => candidate.id === id)!;
-			provider!.setState({ sessions: provider!.state.sessions.filter((s) => s.id !== id) });
-			provider!.emit("deleted", { session: deleted });
-		},
-	};
-}
-
-async function boot(
-	options: {
-		origin?: string | BoardState | "directory";
-		/** The board file kept under the plugin's previous id, kilo.board. */
-		previous?: Record<string, unknown> | "directory";
-		storage?: ReturnType<typeof createMemoryStorage>;
-		sessions?: WorkSession[];
-	} = {},
-) {
-	const dir = await mkdtemp(path.join(tmpdir(), "board-"));
-	const originFile = path.join(dir, "workspace-board.json");
-	if (options.origin === "directory") await mkdir(originFile);
-	else if (typeof options.origin === "string") await writeFile(originFile, options.origin);
-	else if (options.origin) {
-		await writeFile(originFile, JSON.stringify({ version: 1, state: options.origin }));
-	}
-	const previousFile = path.join(dir, "previous-board.json");
-	if (options.previous === "directory") await mkdir(previousFile);
-	else if (options.previous) await writeFile(previousFile, JSON.stringify(options.previous));
-	const readOrNull = async (file: string) => {
-		try {
-			return await readFile(file, "utf8");
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-			throw error;
-		}
-	};
-	const storage = options.storage ?? createMemoryStorage("/data/kilo.workspace-board");
-	const sessions = sessionsPlugin(options.sessions ?? []);
-	const kernel = createMainKernel({
-		host: createTestHost(),
-		registrations: [
-			sessions.plugin,
-			{
-				manifest,
-				definitions: BOARD_DEFINITIONS,
-				entry: createBoardMainEntry({
-					readOriginBoard: () => readOrNull(originFile),
-					readPreviousBoard: () => readOrNull(previousFile),
-				}),
-			},
-		],
-		hostServices: () => ({ storage }),
-	});
-	await kernel.start();
-	const board = kernel.kernelSdk.domains.get(Board)!;
-	const columns = () => board.getState().board.columns;
-	const cards = () => Object.fromEntries(columns().map((c) => [c.id, c.sessionIds]));
-	return { board, columns, cards, storage, sessions };
-}
+afterEach(stopBoardMains);
 
 describe("the board in main", () => {
 	it("starts with the default columns and places, moves and removes cards, bumping the revision", async () => {
@@ -263,25 +159,42 @@ describe("the board in main", () => {
 		expect(invalid.board.getState().board).toEqual(DEFAULT_BOARD);
 	});
 
-	it("moves cards origin saved under a chat id to the session holding the chat", async () => {
+	it("moves cards origin saved under a chat id to the work session holding the chat", async () => {
 		const origin: BoardState = {
 			columns: [{ id: "todo", label: "To do", sessionIds: ["ses_chat", "wses_2"] }],
 		};
-		const { cards, sessions } = await boot({ origin, sessions: [session("wses_2")] });
+		const { cards, workSessions } = await boot({ origin, workSessions: [workSession("wses_2")] });
 		expect(cards().todo).toEqual(["ses_chat", "wses_2"]);
 
-		sessions.set([session("wses_1", ["ses_chat"]), session("wses_2")]);
+		workSessions.set([workSession("wses_1", ["ses_chat"]), workSession("wses_2")]);
 
 		expect(cards().todo).toEqual(["wses_1", "wses_2"]);
 	});
 
-	it("drops a deleted session's card", async () => {
-		const { board, cards, sessions } = await boot({ sessions: [session("a"), session("b")] });
+	it("drops a deleted work session's card", async () => {
+		const { board, cards, workSessions } = await boot({
+			workSessions: [workSession("a"), workSession("b")],
+		});
 		await board.methods.place({ sessionId: "a", columnId: "backlog", index: 0 });
 		await board.methods.place({ sessionId: "b", columnId: "backlog", index: 1 });
 
-		sessions.delete("a");
+		workSessions.delete("a");
 
 		expect(cards().backlog).toEqual(["b"]);
+	});
+
+	it("works without kilo.work-sessions, saying nothing at activation", async () => {
+		const { logger, warnings, errors } = recordingLogger();
+		const { board, cards } = await boot({ withoutWorkSessions: true, logger });
+
+		await board.methods.place({ sessionId: "a", columnId: "backlog", index: 0 });
+
+		expect(cards().backlog).toEqual(["a"]);
+		// The kernel reports the manifest's contributions to absent plugins; the entry says nothing.
+		const own = warnings.filter(
+			([message]) => !String(message).startsWith(`[${BOARD_PLUGIN_ID}] Contribution`),
+		);
+		expect(own).toEqual([]);
+		expect(errors).toEqual([]);
 	});
 });

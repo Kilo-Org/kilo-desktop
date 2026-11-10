@@ -10,7 +10,7 @@ how-to.
 | ---------------------------------------------------- | --------------------------------------------------------------- |
 | This page                                            | What a plugin is, the package layout, the manifest, lifecycle   |
 | [extension-points.md](./extension-points.md)         | Defining and contributing to points; the catalog of every point |
-| [domains.md](./domains.md)                           | Domain objects: state, methods, events; using them from React   |
+| [domain-objects.md](./domain-objects.md)             | Domain objects, object types, identity, flags and telemetry     |
 | [commands-and-keys.md](./commands-and-keys.md)       | Commands, keybindings, `when` and context keys                  |
 | [panes-and-openers.md](./panes-and-openers.md)       | Pane kinds, openers, close guards, pop-outs                     |
 | [chat-and-tools.md](./chat-and-tools.md)             | Agent tools, tool renderers, composer actions and mentions      |
@@ -34,10 +34,12 @@ plugin's `./contracts` export, which is the one thing another plugin may
 import (`pnpm lint` checks this).
 
 To see this domain model in the running app, turn on the `developer` flag
-and open Settings → Developer → Diagnostics: its Extension points and Domain
-objects tabs list every one, and any id there drills into its definition
-(kind, metadata, state, methods and events as TypeScript types), what
-contributes to it and whether each contribution is live, and who requires it.
+and open Settings → Developer → Diagnostics: its Extension points, Domain
+objects, Object types, Context keys and Flags tabs list every one, and any id
+there drills into its definition (kind, metadata, state, methods and events as
+TypeScript types), what contributes to it and whether each contribution is
+live, who requires it, and — for keys and flags — their current value and the
+conditions that read them.
 
 ## Package layout
 
@@ -86,7 +88,7 @@ validate, order and list everything up front. Every field:
 
 	// Runs the whole plugin only while this holds, typically a feature flag
 	// (see Lifecycle). Omit to always run.
-	"when": { "all": ["kilo.flags/flag:acme-todos"] },
+	"when": { "all": ["kernel/flag:acme-todos"] },
 
 	// Points and domain objects it uses, by qualified id. "optional" orders
 	// activation after the owner; "required" leaves this plugin unresolved
@@ -113,8 +115,19 @@ validate, order and list everything up front. Every field:
 		{ "id": "todo-source", "kind": "additive", "description": "Where todos come from." },
 	],
 
-	// Domain objects it provides (see domains.md); defined in its contracts.
-	"domains": [{ "id": "todos", "home": "main", "description": "The todo lists." }],
+	// Domain objects it provides (see domain-objects.md); defined in its contracts.
+	// A collection names the object type it resolves.
+	"domainObjects": [
+		{
+			"id": "todos",
+			"home": "main",
+			"description": "The todo lists.",
+			"objectType": "acme.todos/todo",
+		},
+	],
+
+	// Object types other plugins point at with an ObjectRef; defined in its contracts.
+	"objectTypes": [{ "id": "todo", "description": "One todo." }],
 
 	// Static contributions, by qualified point id. Each entry has a local `id`,
 	// optional `priority` (higher first) and `when`, plus the point's own fields.
@@ -126,6 +139,8 @@ validate, order and list everything up front. Every field:
 				{ "id": "todos", "title": "Todos", "category": "kilo.shell/general", "priority": 50 },
 			],
 			"kernel/command": [{ "id": "new", "title": "New todo", "keybinding": "Mod+Shift+T" }],
+			"kernel/flag": [{ "id": "acme-todos", "description": "Todo lists.", "default": false }],
+			"kernel/telemetry-event": [{ "id": "todo-created", "name": "Todo Created" }],
 		},
 	},
 }
@@ -148,7 +163,7 @@ import { Todos } from "../contracts";
 export const todosMainEntry = definePlugin({
 	activate(sdk) {
 		const store = mainHost(sdk).storage.kv({ namespace: "todos", defaults: { items: [] } });
-		sdk.domains.provide(Todos, {
+		sdk.domainObjects.provide(Todos, {
 			initialState: store.snapshot(),
 			methods: {/* … */},
 		});
@@ -174,9 +189,9 @@ export const todosMainEntry = definePlugin({
 Rules:
 
 - Never assume another plugin has started. Read a domain object's state, or
-  `sdk.domains.track(Domain, { added, removed })` to follow a provider that
+  `sdk.domainObjects.track(Domain, { added, removed })` to follow a provider that
   appears late or goes away.
-- `sdk.domains.get(Domain)` returns `null` when nobody provides it. Handle
+- `sdk.domainObjects.get(Domain)` returns `null` when nobody provides it. Handle
   that: every plugin must be removable without crashing the app.
 - Expected failures throw `KernelError(code, message)`. Its code and message
   cross processes; any other error arrives as a generic "The operation
@@ -191,14 +206,14 @@ Rules:
 
 ### Process-specific APIs
 
-| Need                                      | Where | API                                                                                                   |
-| ----------------------------------------- | ----- | ----------------------------------------------------------------------------------------------------- |
-| Own storage folder, kv stores             | main  | `mainHost(sdk).storage` (`dir`, `kv({ namespace, defaults })`)                                        |
-| Sandboxed files, fetch                    | main  | `mainHost(sdk).fs`, `mainHost(sdk).net.fetch`                                                         |
-| Shipped files                             | main  | `mainHost(sdk).assets?.resolve("resources/…")`                                                        |
-| URL schemes, embedded frames              | main  | `mainHost(sdk).protocol`, `.embeddedHosts` (need permissions)                                         |
-| A stream between your web and main halves | both  | `sdk.ports.handle(name, handler)` in main, `sdk.ports.open(name)` in a window                         |
-| React access to the kernel                | web   | `@kilo-desktop/kernel/web`: `useSdk`, `useExtensions`, `useDomain`, `useDomainState`, `useContextKey` |
+| Need                                      | Where | API                                                                                                               |
+| ----------------------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------- |
+| Own storage folder, kv stores             | main  | `mainHost(sdk).storage` (`dir`, `kv({ namespace, defaults })`)                                                    |
+| Sandboxed files, fetch                    | main  | `mainHost(sdk).fs`, `mainHost(sdk).net.fetch`                                                                     |
+| Shipped files                             | main  | `mainHost(sdk).assets?.resolve("resources/…")`                                                                    |
+| URL schemes, embedded frames              | main  | `mainHost(sdk).protocol`, `.embeddedHosts` (need permissions)                                                     |
+| A stream between your web and main halves | both  | `sdk.ports.handle(name, handler)` in main, `sdk.ports.open(name)` in a window                                     |
+| React access to the kernel                | web   | `@kilo-desktop/kernel/web`: `useSdk`, `useExtensions`, `useDomainObject`, `useDomainObjectState`, `useContextKey` |
 
 Each plugin's data lives in its own storage. Never read or write another
 plugin's files or kv; ask it through its domain object.
@@ -228,7 +243,7 @@ before the app is ready; `mainHost(sdk).protocol`), and
 `permissions.embeddedHosts` the embedded frames it serves
 (`mainHost(sdk).embeddedHosts`). Each works only for what the manifest
 declares. A plugin's own domain objects can check who is calling — see
-[domains.md](./domains.md#callers-and-permissions).
+[domain-objects.md](./domain-objects.md#callers-and-permissions).
 
 ## Shipping a bundled plugin
 

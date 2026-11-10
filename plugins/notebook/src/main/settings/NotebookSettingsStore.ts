@@ -1,6 +1,6 @@
 import type { KvStore, PluginStorage } from "@kilo-desktop/kernel";
 
-import { DEFAULT_NOTEBOOK_SETTINGS, type NotebookSettings } from "../../contracts/index.js";
+import { DEFAULT_NOTEBOOK_SETTINGS, type NotebookSettings } from "../../contracts";
 
 type SettingsPatch = { readonly [K in keyof NotebookSettings]?: NotebookSettings[K] | undefined };
 

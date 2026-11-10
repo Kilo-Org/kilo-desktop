@@ -1,8 +1,8 @@
 import { z } from "zod";
 
-import type { DomainHandle, PluginSdk } from "@kilo-desktop/kernel";
-import { AgentTool, defineTool, type ToolCallContext } from "@kilo-desktop/plugin-agent/contracts";
-import type { Panes } from "@kilo-desktop/plugin-sessions/contracts";
+import type { DomainObjectHandle, PluginSdk } from "@kilo-desktop/kernel";
+import { defineTool, Tool, type ToolCallContext } from "@kilo-desktop/plugin-core/contracts";
+import type { Panes } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import {
 	DEFAULT_TERMINAL_READ_LINES,
@@ -32,19 +32,19 @@ const readInput = z.object({
 });
 
 export interface TerminalToolDeps {
-	readonly panes: () => DomainHandle<typeof Panes> | null;
-	readonly list: (sessionId: string) => TerminalSummary[];
+	readonly panes: () => DomainObjectHandle<typeof Panes> | null;
+	readonly list: (workSessionId: string) => TerminalSummary[];
 	readonly read: (
-		sessionId: string,
+		workSessionId: string,
 		terminalId: string,
 		lines: number,
 	) => Promise<TerminalReadout | null>;
 }
 
-/** The calling chat's Work Session owns the terminals a tool opens and reads. */
-function callerSession(context: ToolCallContext): string {
-	if (!context.sessionId) throw new Error(NO_CALLER_SESSION);
-	return context.sessionId;
+/** The calling chat's work session owns the terminals a tool opens and reads. */
+function callerWorkSession(context: ToolCallContext): string {
+	if (!context.workSessionId) throw new Error(NO_CALLER_SESSION);
+	return context.workSessionId;
 }
 
 function processDetails(readout: TerminalReadout) {
@@ -56,7 +56,7 @@ function processDetails(readout: TerminalReadout) {
 }
 
 /**
- * kilo.terminal's agent tools, all scoped to the calling chat's Work Session
+ * kilo.terminal's agent tools, all scoped to the calling chat's work session
  * (trusted caller context, never visual focus):
  *
  * - `open` hands the user a new interactive shell. It takes no arguments on
@@ -69,7 +69,7 @@ function processDetails(readout: TerminalReadout) {
  */
 export function implementTerminalTools(sdk: PluginSdk, deps: TerminalToolDeps): void {
 	sdk.extensions.implement(
-		AgentTool,
+		Tool,
 		"open",
 		defineTool({
 			description:
@@ -78,17 +78,17 @@ export function implementTerminalTools(sdk: PluginSdk, deps: TerminalToolDeps): 
 				"returns no output — run commands with your own shell tool instead.",
 			input: noInput,
 			run: async (_input, context) => {
-				const sessionId = callerSession(context);
+				const workSessionId = callerWorkSession(context);
 				const panes = deps.panes();
 				if (!panes) throw new Error(PANES_UNAVAILABLE);
-				const pane = await panes.methods.open({ sessionId, kind: TERMINAL_PANE_KIND });
-				return { sessionId, terminalId: pane.id, title: pane.title };
+				const pane = await panes.methods.open({ workSessionId, kind: TERMINAL_PANE_KIND });
+				return { workSessionId, terminalId: pane.id, title: pane.title };
 			},
 		}),
 	);
 
 	sdk.extensions.implement(
-		AgentTool,
+		Tool,
 		"list",
 		defineTool({
 			description:
@@ -96,10 +96,12 @@ export function implementTerminalTools(sdk: PluginSdk, deps: TerminalToolDeps): 
 				"status, running process, working directory, and exit code.",
 			input: noInput,
 			run: async (_input, context) => {
-				const sessionId = callerSession(context);
+				const workSessionId = callerWorkSession(context);
 				const terminals = await Promise.all(
-					deps.list(sessionId).map(async (terminal) => {
-						const readout = await deps.read(sessionId, terminal.terminalId, 0).catch(() => null);
+					deps.list(workSessionId).map(async (terminal) => {
+						const readout = await deps
+							.read(workSessionId, terminal.terminalId, 0)
+							.catch(() => null);
 						return {
 							terminalId: terminal.terminalId,
 							title: terminal.title,
@@ -112,13 +114,13 @@ export function implementTerminalTools(sdk: PluginSdk, deps: TerminalToolDeps): 
 						};
 					}),
 				);
-				return { sessionId, terminals };
+				return { workSessionId, terminals };
 			},
 		}),
 	);
 
 	sdk.extensions.implement(
-		AgentTool,
+		Tool,
 		"read",
 		defineTool({
 			description:
@@ -128,13 +130,13 @@ export function implementTerminalTools(sdk: PluginSdk, deps: TerminalToolDeps): 
 				"may read out of order.",
 			input: readInput,
 			run: async ({ terminalId, lines }, context) => {
-				const sessionId = callerSession(context);
-				const terminal = deps.list(sessionId).find((entry) => entry.terminalId === terminalId);
+				const workSessionId = callerWorkSession(context);
+				const terminal = deps.list(workSessionId).find((entry) => entry.terminalId === terminalId);
 				if (!terminal) {
 					throw new Error(`No terminal "${terminalId}" in this chat. Call terminal_list first.`);
 				}
 				const readout = await deps.read(
-					sessionId,
+					workSessionId,
 					terminalId,
 					lines ?? DEFAULT_TERMINAL_READ_LINES,
 				);

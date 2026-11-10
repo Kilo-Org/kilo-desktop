@@ -5,30 +5,13 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-	type DomainHandle,
-	type DomainProvider,
-	type PluginRegistration,
-	type PluginSdk,
-} from "@kilo-desktop/kernel";
-import { createMainKernel, type MainKernel } from "@kilo-desktop/kernel/main";
-import { createTestHost, testPlugin } from "@kilo-desktop/kernel/testing";
-import {
-	Vcs,
-	Workspaces,
-	type Workspace,
-	type VcsImplementation,
-} from "@kilo-desktop/plugin-workspaces/contracts";
-
-import manifest from "../../plugin.json";
-import { GIT_DEFINITIONS, Repository, type WorktreeBranchRenamed } from "../contracts/index.js";
-import { createGitMainEntry } from "./entry.js";
+import type { WorktreeBranchRenamed } from "../contracts";
+import { APP_ORIGIN, bootGit as boot, stopBootedKernels } from "./repository/test-boot";
 
 const directories: string[] = [];
-const kernels: MainKernel[] = [];
 
 afterEach(async () => {
-	await Promise.all(kernels.splice(0).map((kernel) => kernel.stop()));
+	await stopBootedKernels();
 	// Windows: AV scanners and just-exited git processes can hold handles
 	// briefly — retry like git-client's test util does.
 	for (const directory of directories.splice(0)) {
@@ -158,146 +141,6 @@ function cloneWithCheckoutHistory(): string {
 	return cloneDir;
 }
 
-const APP_ORIGIN = "kilo-desktop://app";
-
-function isInside(folder: string, candidate: string): boolean {
-	const inside = path.relative(folder, candidate);
-	return inside === "" || (!inside.startsWith("..") && !path.isAbsolute(inside));
-}
-
-function realpathOr(target: string): string {
-	try {
-		return fs.realpathSync.native(target);
-	} catch {
-		return path.resolve(target);
-	}
-}
-
-/**
- * kilo.workspaces with the given folders; `authorize` resolves symlinks and
- * short names on both sides like the real one.
- */
-function fakeWorkspaces(folders: readonly string[]) {
-	let provider: DomainProvider<typeof Workspaces> | undefined;
-	const unused = () => {
-		throw new Error("unused");
-	};
-	const workspaceOf = (folder: string, index: number): Workspace => ({
-		id: `workspace-${index}`,
-		name: path.basename(folder),
-		folders: [{ id: `folder-${index}`, path: folder, isPrimary: true, position: 0 }],
-		createdAt: 0,
-		updatedAt: 0,
-	});
-	return {
-		registration: testPlugin("kilo.workspaces", {
-			manifest: {
-				domains: [{ id: "workspace", home: "main" }],
-				extensionPoints: [{ id: "vcs", kind: "exclusive" }],
-			},
-			definitions: { domains: [Workspaces], extensionPoints: [Vcs] },
-			entry: {
-				activate: (sdk) => {
-					provider = sdk.domains.provide(Workspaces, {
-						initialState: { workspaces: [], activeId: null, unavailableFolderIds: [] },
-						methods: {
-							create: unused,
-							update: unused,
-							remove: unused,
-							setActive: unused,
-							checkFolders: unused,
-							authorize: async ({ path: target }) => {
-								const resolved = realpathOr(target);
-								const folder = folders.find((candidate) =>
-									isInside(realpathOr(candidate), resolved),
-								);
-								return folder ? { allowed: true, folder, path: resolved } : { allowed: false };
-							},
-						},
-					});
-				},
-			},
-		}),
-		publish: () =>
-			provider?.setState({
-				workspaces: folders.map(workspaceOf),
-				activeId: null,
-				unavailableFolderIds: [],
-			}),
-	};
-}
-
-interface Booted {
-	readonly kernel: MainKernel;
-	readonly repository: DomainHandle<typeof Repository>;
-	/** kilo.git's `vcs` implementation, as another plugin sees it. */
-	readonly vcs: VcsImplementation;
-	readonly protocol: { handler(request: Request): Promise<Response> };
-	addWorkspaceFolder(folder: string): void;
-}
-
-/**
- * Boots kilo.git on a main kernel with a stand-in kilo.workspaces (left out
- * when `workspaces` is false) and a plugin that reaches git through the
- * `vcs` point. `addWorkspaceFolder` registers a folder the guard then
- * accepts, as the renderer only ever passes workspace folder paths.
- */
-async function boot(options: { workspaces?: boolean } = {}): Promise<Booted> {
-	const folders: string[] = [];
-	const workspaces = fakeWorkspaces(folders);
-	const handlers = new Map<string, (request: Request) => Response | Promise<Response>>();
-	let consumer: PluginSdk | undefined;
-	const registrations: PluginRegistration[] = [
-		{ manifest, definitions: GIT_DEFINITIONS, entry: createGitMainEntry() },
-		testPlugin("test.consumer", {
-			manifest: { requires: { "kilo.workspaces/vcs": "optional" } },
-			entry: {
-				activate: (sdk) => {
-					consumer = sdk;
-				},
-			},
-		}),
-		...(options.workspaces === false ? [] : [workspaces.registration]),
-	];
-	const kernel = createMainKernel({
-		host: createTestHost({ rendererOrigins: [APP_ORIGIN] }),
-		registrations,
-		hostServices: (pluginId) =>
-			pluginId === manifest.id
-				? {
-						protocol: {
-							handle(scheme: string, handler: (request: Request) => Response | Promise<Response>) {
-								handlers.set(scheme, handler);
-								return () => handlers.delete(scheme);
-							},
-						},
-					}
-				: {},
-	});
-	kernels.push(kernel);
-	await kernel.start();
-	return {
-		kernel,
-		repository: kernel.kernelSdk.domains.get(Repository)!,
-		get vcs() {
-			const implementation = consumer?.extensions.exclusive(Vcs).winner?.implementation;
-			if (!implementation) throw new Error("No vcs implementation.");
-			return implementation;
-		},
-		protocol: {
-			handler: async (request) => {
-				const handler = handlers.get("kilo-git");
-				if (!handler) throw new Error("kilo-git is not handled.");
-				return handler(request);
-			},
-		},
-		addWorkspaceFolder: (folder) => {
-			folders.push(folder);
-			workspaces.publish();
-		},
-	};
-}
-
 describe("kilo.git repository", () => {
 	it("registers the status channel and reports a clean repository", async () => {
 		const repoDir = initRepo();
@@ -343,7 +186,7 @@ describe("kilo.git repository", () => {
 		});
 	});
 
-	it("provides kilo.workspaces/vcs to other plugins", async () => {
+	it("provides kilo.work-sessions/vcs to other plugins", async () => {
 		const repoDir = initRepo();
 		const { vcs, addWorkspaceFolder } = await boot();
 		addWorkspaceFolder(repoDir);
@@ -406,9 +249,9 @@ describe("kilo.git repository", () => {
 		).rejects.toMatchObject({ name: "KernelError", code: "VALIDATION" });
 	});
 
-	it("fails closed when kilo.workspaces is absent", async () => {
+	it("fails closed when kilo.work-sessions is absent", async () => {
 		const repoDir = initRepo();
-		const { repository } = await boot({ workspaces: false });
+		const { repository } = await boot({ workSessions: false });
 
 		await expect(repository.methods.status({ directory: repoDir })).rejects.toMatchObject({
 			name: "KernelError",
@@ -421,13 +264,13 @@ describe("kilo.git repository", () => {
 		const repoDir = initRepo();
 		const { repository, vcs, addWorkspaceFolder } = await boot();
 		addWorkspaceFolder(repoDir);
-		const worktree = await vcs.createWorktree({ directory: repoDir });
+		const worktree = await vcs.createCopy({ directory: repoDir });
 
 		await expect(
 			repository.methods.status({ directory: worktree.directory }),
 		).resolves.toMatchObject({ currentBranch: worktree.branch });
 
-		await vcs.removeWorktree({ directory: worktree.directory });
+		await vcs.removeCopy({ directory: worktree.directory });
 	});
 
 	it("rejects status for a directory outside every workspace folder", async () => {
@@ -448,6 +291,16 @@ describe("kilo.git repository", () => {
 		const response = await protocol.handler(new Request("kilo-git://diff/patch"));
 		// cwd is validated before the service runs, with no filesystem needed.
 		expect(response.status).toBe(400);
+	});
+
+	it("stops handling the kilo-git protocol on deactivate", async () => {
+		const { kernel, protocol } = await boot();
+
+		await kernel.stop();
+
+		await expect(protocol.handler(new Request("kilo-git://diff/patch"))).rejects.toThrow(
+			"kilo-git is not handled.",
+		);
 	});
 
 	it("grants CORS to the app's renderer origins only", async () => {
@@ -739,7 +592,7 @@ describe("kilo.git repository actions", () => {
 	});
 });
 
-describe("kilo.git vcs worktrees", () => {
+describe("kilo.git vcs copies", () => {
 	function localBranches(repoDir: string): string[] {
 		return execGitOutput(repoDir, [
 			"for-each-ref",
@@ -753,7 +606,7 @@ describe("kilo.git vcs worktrees", () => {
 		const { vcs, repository, addWorkspaceFolder } = await boot();
 		addWorkspaceFolder(repoDir);
 
-		const worktree = await vcs.createWorktree({ directory: repoDir });
+		const worktree = await vcs.createCopy({ directory: repoDir });
 		expect(worktree.directory).toMatch(/[\\/]\.kilo[\\/]worktrees[\\/]kilo-/);
 		expect(worktree.branch).toMatch(/^kilo\//);
 		expect(worktree.baseRef).toBe("main");
@@ -761,7 +614,7 @@ describe("kilo.git vcs worktrees", () => {
 		const listing = execGitOutput(repoDir, ["worktree", "list", "--porcelain"]);
 		expect(listing).toContain(toGitPath(worktree.directory));
 		expect(localBranches(repoDir)).toContain(worktree.branch);
-		await expect(vcs.worktrees(repoDir)).resolves.toEqual([
+		await expect(vcs.copies(repoDir)).resolves.toEqual([
 			{ path: repoDir, name: path.basename(repoDir), branch: "main", isMain: true },
 			{
 				path: worktree.directory,
@@ -772,17 +625,17 @@ describe("kilo.git vcs worktrees", () => {
 		]);
 		await expect(repository.methods.worktrees({ directory: repoDir })).resolves.toHaveLength(2);
 		await expect(
-			vcs.resolveWorktree({ directory: repoDir, worktree: worktree.directory }),
+			vcs.resolveCopy({ directory: repoDir, copy: worktree.directory }),
 		).resolves.toEqual({ directory: worktree.directory, branch: worktree.branch });
-		await expect(vcs.hasWorktreeWork({ directory: worktree.directory })).resolves.toBe(false);
+		await expect(vcs.hasCopyWork({ directory: worktree.directory })).resolves.toBe(false);
 		fs.writeFileSync(path.join(worktree.directory, "notes.txt"), "work");
-		await expect(vcs.hasWorktreeWork({ directory: worktree.directory })).resolves.toBe(true);
+		await expect(vcs.hasCopyWork({ directory: worktree.directory })).resolves.toBe(true);
 
-		await vcs.removeWorktree({ directory: worktree.directory });
+		await vcs.removeCopy({ directory: worktree.directory });
 		expect(fs.existsSync(worktree.directory)).toBe(false);
 		expect(localBranches(repoDir)).not.toContain(worktree.branch);
 		await expect(
-			vcs.resolveWorktree({ directory: repoDir, worktree: worktree.directory }),
+			vcs.resolveCopy({ directory: repoDir, copy: worktree.directory }),
 		).rejects.toMatchObject({ code: "NOT_FOUND" });
 	});
 
@@ -796,8 +649,8 @@ describe("kilo.git vcs worktrees", () => {
 		const { vcs, repository, addWorkspaceFolder } = await boot();
 		addWorkspaceFolder(alias);
 
-		const worktree = await vcs.createWorktree({ directory: alias });
-		const listed = await vcs.worktrees(alias);
+		const worktree = await vcs.createCopy({ directory: alias });
+		const listed = await vcs.copies(alias);
 		expect(listed?.map((entry) => fs.realpathSync.native(entry.path))).toEqual([
 			repoDir,
 			fs.realpathSync.native(worktree.directory),
@@ -806,12 +659,12 @@ describe("kilo.git vcs worktrees", () => {
 			repository.methods.status({ directory: worktree.directory }),
 		).resolves.toMatchObject({ currentBranch: worktree.branch });
 		const aliased = path.join(alias, ".kilo", "worktrees", path.basename(worktree.directory));
-		await expect(vcs.resolveWorktree({ directory: alias, worktree: aliased })).resolves.toEqual({
+		await expect(vcs.resolveCopy({ directory: alias, copy: aliased })).resolves.toEqual({
 			directory: worktree.directory,
 			branch: worktree.branch,
 		});
 
-		await vcs.removeWorktree({ directory: worktree.directory });
+		await vcs.removeCopy({ directory: worktree.directory });
 	});
 
 	it("names the branch when asked and keeps it on removal when told to", async () => {
@@ -819,13 +672,13 @@ describe("kilo.git vcs worktrees", () => {
 		const { vcs, addWorkspaceFolder } = await boot();
 		addWorkspaceFolder(repoDir);
 
-		const first = await vcs.createWorktree({ directory: repoDir, branch: "Fix the Login Bug!" });
-		const second = await vcs.createWorktree({ directory: repoDir, branch: "Fix the Login Bug!" });
+		const first = await vcs.createCopy({ directory: repoDir, branch: "Fix the Login Bug!" });
+		const second = await vcs.createCopy({ directory: repoDir, branch: "Fix the Login Bug!" });
 		expect(first.branch).toBe("kilo/fix-the-login-bug");
 		expect(second.branch).toBe("kilo/fix-the-login-bug-2");
 
-		await vcs.removeWorktree({ directory: first.directory, deleteBranch: false });
-		await vcs.removeWorktree({ directory: second.directory });
+		await vcs.removeCopy({ directory: first.directory, deleteBranch: false });
+		await vcs.removeCopy({ directory: second.directory });
 		expect(localBranches(repoDir)).toContain(first.branch);
 		expect(localBranches(repoDir)).not.toContain(second.branch);
 	});
@@ -835,11 +688,11 @@ describe("kilo.git vcs worktrees", () => {
 		const { vcs, addWorkspaceFolder } = await boot();
 		addWorkspaceFolder(repoDir);
 
-		const worktree = await vcs.createWorktree({ directory: repoDir });
+		const worktree = await vcs.createCopy({ directory: repoDir });
 		const exclude = fs.readFileSync(path.join(repoDir, ".git", "info", "exclude"), "utf-8");
 		expect(exclude).toContain(".kilo/worktrees/");
 
-		await vcs.removeWorktree({ directory: worktree.directory });
+		await vcs.removeCopy({ directory: worktree.directory });
 	});
 
 	it("falls back to the local base with a warning when fetching the remote fails", async () => {
@@ -848,7 +701,7 @@ describe("kilo.git vcs worktrees", () => {
 		const { vcs, addWorkspaceFolder } = await boot();
 		addWorkspaceFolder(repoDir);
 
-		const worktree = await vcs.createWorktree({ directory: repoDir });
+		const worktree = await vcs.createCopy({ directory: repoDir });
 
 		expect(worktree.warning).toBe(
 			"Could not fetch latest main from origin; branched from local state.",
@@ -856,7 +709,7 @@ describe("kilo.git vcs worktrees", () => {
 		const listing = execGitOutput(repoDir, ["worktree", "list", "--porcelain"]);
 		expect(listing).toContain(toGitPath(worktree.directory));
 
-		await vcs.removeWorktree({ directory: worktree.directory });
+		await vcs.removeCopy({ directory: worktree.directory });
 	});
 
 	it("bases remote-tracking start points on a commit so semantic rename stays eligible", async () => {
@@ -869,7 +722,7 @@ describe("kilo.git vcs worktrees", () => {
 		const { vcs, addWorkspaceFolder } = await boot();
 		addWorkspaceFolder(repoDir);
 
-		const worktree = await vcs.createWorktree({ directory: repoDir });
+		const worktree = await vcs.createCopy({ directory: repoDir });
 
 		expect(worktree.warning).toBeUndefined();
 		// Without the `^{commit}` dereference, `worktree add -b <branch> origin/main`
@@ -882,25 +735,25 @@ describe("kilo.git vcs worktrees", () => {
 		]);
 		expect(upstream).toBe("");
 
-		const rename = await vcs.renameWorktreeBranch({
+		const rename = await vcs.renameCopyBranch({
 			directory: worktree.directory,
 			currentBranch: worktree.branch,
 			requestedBranch: "Fix the Login Bug!",
 		});
 		expect(rename).toEqual({ branch: "kilo/fix-the-login-bug" });
 
-		await vcs.removeWorktree({ directory: worktree.directory });
+		await vcs.removeCopy({ directory: worktree.directory });
 	});
 
-	it("announces worktree-branch-renamed when a rename succeeds", async () => {
+	it("announces worktree-branch-renamed and toasts when a rename succeeds", async () => {
 		const repoDir = initRepo();
-		const { vcs, repository, addWorkspaceFolder } = await boot();
+		const { vcs, repository, toasts, addWorkspaceFolder } = await boot();
 		addWorkspaceFolder(repoDir);
-		const worktree = await vcs.createWorktree({ directory: repoDir });
+		const worktree = await vcs.createCopy({ directory: repoDir });
 		const events: WorktreeBranchRenamed[] = [];
 		repository.on("worktree-branch-renamed", (payload) => events.push(payload));
 
-		const renamed = await vcs.renameWorktreeBranch({
+		const renamed = await vcs.renameCopyBranch({
 			directory: worktree.directory,
 			currentBranch: worktree.branch,
 			requestedBranch: "Fix the Login Bug!",
@@ -908,17 +761,39 @@ describe("kilo.git vcs worktrees", () => {
 
 		expect(renamed).toEqual({ branch: "kilo/fix-the-login-bug" });
 		expect(events).toEqual([{ directory: worktree.directory, branch: "kilo/fix-the-login-bug" }]);
-		await vcs.removeWorktree({ directory: worktree.directory });
+		await expect
+			.poll(() => toasts)
+			.toEqual([{ level: "success", title: "Branch renamed to kilo/fix-the-login-bug" }]);
+		await vcs.removeCopy({ directory: worktree.directory });
+	});
+
+	it("renames without kilo.shell, announcing the rename only", async () => {
+		const repoDir = initRepo();
+		const { vcs, repository, addWorkspaceFolder } = await boot({ shell: false });
+		addWorkspaceFolder(repoDir);
+		const worktree = await vcs.createCopy({ directory: repoDir });
+		const events: WorktreeBranchRenamed[] = [];
+		repository.on("worktree-branch-renamed", (payload) => events.push(payload));
+
+		await expect(
+			vcs.renameCopyBranch({
+				directory: worktree.directory,
+				currentBranch: worktree.branch,
+				requestedBranch: "Tidy up",
+			}),
+		).resolves.toEqual({ branch: "kilo/tidy-up" });
+		expect(events).toEqual([{ directory: worktree.directory, branch: "kilo/tidy-up" }]);
+		await vcs.removeCopy({ directory: worktree.directory });
 	});
 
 	it("announces nothing when a rename is declined", async () => {
 		const repoDir = initRepo();
-		const { vcs, repository } = await boot();
+		const { vcs, repository, toasts } = await boot();
 		const events: WorktreeBranchRenamed[] = [];
 		repository.on("worktree-branch-renamed", (payload) => events.push(payload));
 
 		// The main checkout is not a managed worktree.
-		const result = await vcs.renameWorktreeBranch({
+		const result = await vcs.renameCopyBranch({
 			directory: repoDir,
 			currentBranch: "main",
 			requestedBranch: "some-name",
@@ -926,25 +801,26 @@ describe("kilo.git vcs worktrees", () => {
 
 		expect(result).toBeNull();
 		expect(events).toHaveLength(0);
+		expect(toasts).toHaveLength(0);
 	});
 
 	it("links a managed worktree to an Agent Manager session once", async () => {
 		const repoDir = initRepo();
 		const { vcs, addWorkspaceFolder } = await boot();
 		addWorkspaceFolder(repoDir);
-		const worktree = await vcs.createWorktree({ directory: repoDir });
+		const worktree = await vcs.createCopy({ directory: repoDir });
 
 		await expect(
-			vcs.linkAgentManagerSession({ directory: worktree.directory, sessionId: "ses_1" }),
+			vcs.linkAgentManagerSession({ directory: worktree.directory, chatId: "ses_1" }),
 		).resolves.toBe(true);
 		await expect(
-			vcs.linkAgentManagerSession({ directory: worktree.directory, sessionId: "ses_2" }),
+			vcs.linkAgentManagerSession({ directory: worktree.directory, chatId: "ses_2" }),
 		).resolves.toBe(false);
 		await expect(
-			vcs.linkAgentManagerSession({ directory: repoDir, sessionId: "ses_3" }),
+			vcs.linkAgentManagerSession({ directory: repoDir, chatId: "ses_3" }),
 		).resolves.toBe(false);
 
-		await vcs.removeWorktree({ directory: worktree.directory });
+		await vcs.removeCopy({ directory: worktree.directory });
 	});
 });
 

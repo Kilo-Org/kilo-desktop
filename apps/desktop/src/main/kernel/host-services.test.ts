@@ -21,7 +21,12 @@ function deps(): HostServiceDeps {
 		fetch: vi.fn() as unknown as typeof fetch,
 		protocol: { register: vi.fn(), unregister: vi.fn() },
 		embeddedHosts: { register: vi.fn(() => () => {}) },
-		browser: { partition: "persist:test" },
+		browser: {
+			partition: "persist:test",
+			initialize: vi.fn(),
+			attach: vi.fn(),
+			serveLocalFiles: vi.fn(),
+		},
 		assets: { pluginRoot: (pluginId) => `/repo/plugins/${pluginId}` },
 	};
 }
@@ -78,7 +83,7 @@ describe("createHostServices", () => {
 		expect(() => services.embeddedHosts!.register({ host: "sneaky", root: undefined })).toThrow(
 			/did not declare/,
 		);
-		expect(services.browser).toEqual({ partition: "persist:test" });
+		expect(services.browser).toMatchObject({ partition: "persist:test" });
 		expect(hostDeps.protocol.register).toHaveBeenCalledOnce();
 		expect(hostDeps.embeddedHosts.register).toHaveBeenCalledOnce();
 	});

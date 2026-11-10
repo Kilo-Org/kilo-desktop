@@ -14,10 +14,10 @@ import { Field, FieldError, FieldLabel } from "@kilo-desktop/ui/components/field
 import { Input } from "@kilo-desktop/ui/components/input";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 
-import type { CondaEnv } from "../../../contracts/providers/conda.js";
-import { useConda, useCondaMutation } from "../../conda.js";
-import { environmentDisplayName, validateEnvironmentName } from "./environment-display.js";
-import { friendlyEnvironmentsError } from "./environments-error-message.js";
+import type { CondaEnv } from "../../../contracts/providers/conda";
+import { useConda, useCondaMutation } from "../../conda";
+import { environmentDisplayName, validateEnvironmentName } from "./environment-display";
+import { friendlyEnvironmentsError } from "./environments-error-message";
 
 interface CloneEnvironmentDialogProps {
 	env: CondaEnv;

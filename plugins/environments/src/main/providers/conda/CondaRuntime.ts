@@ -10,9 +10,9 @@ import {
 	matchSpecSchema,
 	type EnsureEnvironmentInput,
 	type EnsureEnvironmentResult,
-} from "../../../contracts/index.js";
+} from "../../../contracts/index";
 
-import type { CondaBridge } from "./SharedCondaBridge.js";
+import type { CondaBridge } from "./SharedCondaBridge";
 
 // Used when a caller passes no explicit channels. Keep `anaconda` first
 // because strict priority otherwise excludes its builds when a package with

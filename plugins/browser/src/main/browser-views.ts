@@ -7,7 +7,7 @@ export interface BrowserViewsListener {
 	/** A pane's page changed (attached, navigated, loaded, zoomed…). */
 	changed(page: BrowserPage): void;
 	/** A pane's page went away (closed, or its guest detached). */
-	removed(sessionId: string, paneId: string): void;
+	removed(workSessionId: string, paneId: string): void;
 }
 
 const COMMANDS: Readonly<Record<PageCommand, keyof GuestController>> = {
@@ -22,7 +22,7 @@ const COMMANDS: Readonly<Record<PageCommand, keyof GuestController>> = {
 };
 
 interface Attachment {
-	readonly sessionId: string;
+	readonly workSessionId: string;
 	readonly paneId: string;
 	readonly controller: GuestController;
 }
@@ -45,15 +45,15 @@ export class BrowserViews {
 		private readonly listener: BrowserViewsListener,
 	) {}
 
-	attach(sessionId: string, paneId: string, webContentsId: number): BrowserPage {
-		const key = pageKey(sessionId, paneId);
-		this.close(sessionId, paneId);
+	attach(workSessionId: string, paneId: string, webContentsId: number): BrowserPage {
+		const key = pageKey(workSessionId, paneId);
+		this.close(workSessionId, paneId);
 		let latest: BrowserPage | undefined;
 		let attaching = true;
 		let controller: GuestController;
 		try {
 			controller = this.host.attach(webContentsId, (state) => {
-				latest = { sessionId, paneId, ...state };
+				latest = { workSessionId, paneId, ...state };
 				if (attaching || this.#attachments.get(key)?.controller !== controller) return;
 				this.listener.changed(latest);
 			});
@@ -64,38 +64,38 @@ export class BrowserViews {
 			);
 		}
 		attaching = false;
-		this.#attachments.set(key, { sessionId, paneId, controller });
-		const page = latest ?? emptyPage(sessionId, paneId, webContentsId);
+		this.#attachments.set(key, { workSessionId, paneId, controller });
+		const page = latest ?? emptyPage(workSessionId, paneId, webContentsId);
 		this.listener.changed(page);
 		return page;
 	}
 
-	detach(sessionId: string, paneId: string, webContentsId: number): void {
-		const key = pageKey(sessionId, paneId);
+	detach(workSessionId: string, paneId: string, webContentsId: number): void {
+		const key = pageKey(workSessionId, paneId);
 		if (this.#attachments.get(key)?.controller.webContentsId !== webContentsId) return;
-		this.close(sessionId, paneId);
+		this.close(workSessionId, paneId);
 	}
 
-	async navigate(sessionId: string, paneId: string, url: string): Promise<void> {
-		await this.#required(sessionId, paneId).navigate(url);
+	async navigate(workSessionId: string, paneId: string, url: string): Promise<void> {
+		await this.#required(workSessionId, paneId).navigate(url);
 	}
 
-	run(sessionId: string, paneId: string, command: PageCommand): void {
-		const controller = this.#required(sessionId, paneId);
+	run(workSessionId: string, paneId: string, command: PageCommand): void {
+		const controller = this.#required(workSessionId, paneId);
 		(controller[COMMANDS[command]] as () => void)();
 	}
 
-	has(sessionId: string, paneId: string): boolean {
-		return this.#attachments.has(pageKey(sessionId, paneId));
+	has(workSessionId: string, paneId: string): boolean {
+		return this.#attachments.has(pageKey(workSessionId, paneId));
 	}
 
-	close(sessionId: string, paneId: string): void {
-		if (this.#dispose(pageKey(sessionId, paneId))) this.listener.removed(sessionId, paneId);
+	close(workSessionId: string, paneId: string): void {
+		if (this.#dispose(pageKey(workSessionId, paneId))) this.listener.removed(workSessionId, paneId);
 	}
 
-	closeSession(sessionId: string): void {
+	closeWorkSession(workSessionId: string): void {
 		for (const attachment of [...this.#attachments.values()]) {
-			if (attachment.sessionId === sessionId) this.close(sessionId, attachment.paneId);
+			if (attachment.workSessionId === workSessionId) this.close(workSessionId, attachment.paneId);
 		}
 	}
 
@@ -104,8 +104,8 @@ export class BrowserViews {
 		this.#attachments.clear();
 	}
 
-	#required(sessionId: string, paneId: string): GuestController {
-		const attachment = this.#attachments.get(pageKey(sessionId, paneId));
+	#required(workSessionId: string, paneId: string): GuestController {
+		const attachment = this.#attachments.get(pageKey(workSessionId, paneId));
 		if (!attachment) throw new KernelError("NOT_FOUND", "Browser tab is not ready.");
 		return attachment.controller;
 	}
@@ -119,9 +119,9 @@ export class BrowserViews {
 	}
 }
 
-function emptyPage(sessionId: string, paneId: string, webContentsId: number): BrowserPage {
+function emptyPage(workSessionId: string, paneId: string, webContentsId: number): BrowserPage {
 	return {
-		sessionId,
+		workSessionId,
 		paneId,
 		webContentsId,
 		url: "",

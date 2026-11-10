@@ -7,7 +7,7 @@ import {
 import PierreDiffWorker from "@pierre/diffs/worker/worker.js?worker";
 import { useEffect, useState, type ReactNode } from "react";
 
-import { useDiffTheme } from "./diff-theme.js";
+import { useDiffTheme } from "./diff-theme";
 
 // The same pool kilo.chat's transcripts use: Pierre keeps one singleton per
 // window, so whichever plugin asks first creates it with these options.

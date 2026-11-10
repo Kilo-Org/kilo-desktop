@@ -6,7 +6,7 @@ import {
 	KernelNotifications,
 	KernelOs,
 	detectKeyboardPlatform,
-	type DomainProvider,
+	type DomainObjectProvider,
 	type KernelLogger,
 	type KernelTransport,
 	type PluginRegistration,
@@ -65,7 +65,7 @@ export async function startBrowserMainKernel(options: {
 			},
 		},
 	});
-	kernel.kernelSdk.domains.provide(KernelOs, {
+	kernel.kernelSdk.domainObjects.provide(KernelOs, {
 		initialState: {},
 		methods: {
 			openExternal: ({ url }) => window.open(url, "_blank", "noopener,noreferrer") !== null,
@@ -75,7 +75,7 @@ export async function startBrowserMainKernel(options: {
 		},
 	});
 	// Browser mode cannot grant consent to desktop reporting.
-	kernel.kernelSdk.domains.provide(KernelDataCollection, {
+	kernel.kernelSdk.domainObjects.provide(KernelDataCollection, {
 		initialState: {
 			choice: false,
 			allowed: false,
@@ -88,13 +88,13 @@ export async function startBrowserMainKernel(options: {
 			},
 		},
 	});
-	kernel.kernelSdk.domains.provide(KernelClipboard, {
+	kernel.kernelSdk.domainObjects.provide(KernelClipboard, {
 		initialState: {},
 		methods: {
 			writeText: ({ text }) => navigator.clipboard.writeText(text),
 		},
 	});
-	kernel.kernelSdk.domains.provide(KernelNotifications, {
+	kernel.kernelSdk.domainObjects.provide(KernelNotifications, {
 		initialState: {},
 		methods: {
 			show: ({ title, body }) => {
@@ -108,9 +108,8 @@ export async function startBrowserMainKernel(options: {
 		},
 	});
 	const darkQuery = matchMedia("(prefers-color-scheme: dark)");
-	const nativeTheme: DomainProvider<typeof KernelNativeTheme> = kernel.kernelSdk.domains.provide(
-		KernelNativeTheme,
-		{
+	const nativeTheme: DomainObjectProvider<typeof KernelNativeTheme> =
+		kernel.kernelSdk.domainObjects.provide(KernelNativeTheme, {
 			initialState: { source: "system", shouldUseDarkColors: darkQuery.matches },
 			methods: {
 				setSource: ({ source }): void =>
@@ -120,8 +119,7 @@ export async function startBrowserMainKernel(options: {
 					}),
 				setChrome: () => {},
 			},
-		},
-	);
+		});
 	darkQuery.addEventListener("change", () => {
 		kernel.systemEvents.update({ appearance: darkQuery.matches ? "dark" : "light" });
 		if (nativeTheme.state.source === "system") {

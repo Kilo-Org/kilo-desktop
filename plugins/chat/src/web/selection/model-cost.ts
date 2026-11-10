@@ -1,6 +1,8 @@
 export type ModelCostTier = "low" | "medium" | "high" | "very-high";
 
-export function modelCostTier(cost: { output?: number } | undefined): ModelCostTier | undefined {
+export function modelCostTier(
+	cost: { output?: number | undefined } | undefined,
+): ModelCostTier | undefined {
 	const output = cost?.output;
 	if (output === undefined || !Number.isFinite(output) || output <= 0) {
 		return undefined;

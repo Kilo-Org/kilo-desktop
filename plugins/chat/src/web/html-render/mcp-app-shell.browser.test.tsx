@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { MCP_APP_SHELL_HTML_MESSAGE, MCP_APP_SHELL_READY_MESSAGE } from "../../contracts";
-import { mcpAppShellHtml } from "../../main/html-render";
+import { mcpAppShellHtml } from "../../main/html-render/mcp-app-host";
 
 const PROBE = `<!doctype html><body><script>
 	parent.postMessage({

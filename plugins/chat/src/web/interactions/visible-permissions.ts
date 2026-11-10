@@ -1,9 +1,9 @@
 import type { OpenCodePermissionRequest } from "@assistant-ui/react-opencode";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { DomainState } from "@kilo-desktop/kernel";
-import { useContextKey, useDomainState } from "@kilo-desktop/kernel/web";
-import { AgentTool, toolWireName } from "@kilo-desktop/plugin-agent/contracts";
+import type { DomainObjectState } from "@kilo-desktop/kernel";
+import { useContextKey, useDomainObjectState } from "@kilo-desktop/kernel/web";
+import { SIGNED_IN_KEY, Tool, toolWireName } from "@kilo-desktop/plugin-core/contracts";
 
 import {
 	AUTO_APPROVE_REVEAL_MS,
@@ -14,11 +14,10 @@ import {
 } from "../../contracts";
 import { useOptionalExtensions } from "../optional-extensions";
 
-const SIGNED_IN_KEY = "kilo.account/signedIn";
 const NOTHING_HELD: readonly string[] = [];
 
-const selectHolding = (state: DomainState<typeof AutoApprove>) => state.holding;
-const selectMode = (state: DomainState<typeof AutoApprove>) => state.mode;
+const selectHolding = (state: DomainObjectState<typeof AutoApprove>) => state.holding;
+const selectMode = (state: DomainObjectState<typeof AutoApprove>) => state.mode;
 
 export interface AutoAnswerRules {
 	readonly mode: ApprovalMode | undefined;
@@ -72,10 +71,10 @@ export function hiddenPermissions(
 export function useVisiblePermissionRequests(
 	pending: readonly OpenCodePermissionRequest[],
 ): readonly OpenCodePermissionRequest[] {
-	const holding = useDomainState(AutoApprove, selectHolding) ?? NOTHING_HELD;
-	const mode = useDomainState(AutoApprove, selectMode);
+	const holding = useDomainObjectState(AutoApprove, selectHolding) ?? NOTHING_HELD;
+	const mode = useDomainObjectState(AutoApprove, selectMode);
 	const signedIn = useContextKey(SIGNED_IN_KEY);
-	const tools = useOptionalExtensions(AgentTool);
+	const tools = useOptionalExtensions(Tool);
 	const signInTools = useMemo(
 		() =>
 			new Set(

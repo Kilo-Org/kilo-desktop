@@ -32,7 +32,7 @@ import {
 import { ColorSwatchPicker } from "@kilo-desktop/ui/components/color-swatch-picker";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
-import { useAppearance } from "../appearance";
+import { useAppearance } from "./appearance";
 
 const THEME_OPTIONS = [
 	{ value: "light", label: "Light", Icon: SunIcon },

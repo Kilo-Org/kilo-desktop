@@ -5,10 +5,9 @@ import { createMainKernel } from "@kilo-desktop/kernel/main";
 import { createMemoryStorage, createTestHost } from "@kilo-desktop/kernel/testing";
 import { getThemeChrome } from "@kilo-desktop/ui/themes/app-themes";
 
-import { Appearance, DEFAULT_APPEARANCE } from "../contracts";
+import { Appearance, DEFAULT_APPEARANCE, SHELL_DEFINITIONS } from "../contracts";
 import manifest from "../../plugin.json";
 import { shellMainEntry } from "./index";
-import { SHELL_DEFINITIONS } from "../definitions";
 
 async function boot(storage = createMemoryStorage("/data/kilo.shell")) {
 	const nativeTheme = { setSource: vi.fn(), setChrome: vi.fn() };
@@ -17,12 +16,17 @@ async function boot(storage = createMemoryStorage("/data/kilo.shell")) {
 		registrations: [{ manifest, definitions: SHELL_DEFINITIONS, entry: shellMainEntry }],
 		hostServices: () => ({ storage }),
 	});
-	kernel.kernelSdk.domains.provide(KernelNativeTheme, {
+	kernel.kernelSdk.domainObjects.provide(KernelNativeTheme, {
 		initialState: { source: "system", shouldUseDarkColors: false },
 		methods: { setSource: nativeTheme.setSource, setChrome: nativeTheme.setChrome },
 	});
 	await kernel.start();
-	return { kernel, nativeTheme, storage, appearance: kernel.kernelSdk.domains.get(Appearance)! };
+	return {
+		kernel,
+		nativeTheme,
+		storage,
+		appearance: kernel.kernelSdk.domainObjects.get(Appearance)!,
+	};
 }
 
 describe("appearance (main)", () => {
@@ -46,7 +50,7 @@ describe("appearance (main)", () => {
 			textSizes: { ui: 40, chat: 14 },
 		});
 
-		expect(next).toMatchObject({ source: "light", themeId: "nord", persisted: true });
+		expect(next).toMatchObject({ source: "light", themeId: "nord" });
 		expect(next.textSizes.ui).toBe(18);
 		expect(storage.saved.get("appearance")?.preferences).toMatchObject({
 			source: "light",
@@ -78,7 +82,16 @@ describe("appearance (main)", () => {
 		expect(second.appearance.getState()).toMatchObject({
 			source: "system",
 			sidebarVibrancy: false,
-			persisted: true,
 		});
+	});
+	it("adopts what an earlier version saved, without its persisted flag", async () => {
+		const storage = createMemoryStorage();
+		storage.saved.set("appearance", {
+			preferences: { ...DEFAULT_APPEARANCE, source: "light", persisted: true },
+		});
+
+		const { appearance } = await boot(storage);
+
+		expect(appearance.getState()).toEqual({ ...DEFAULT_APPEARANCE, source: "light" });
 	});
 });

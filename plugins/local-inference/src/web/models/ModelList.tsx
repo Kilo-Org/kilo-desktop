@@ -22,9 +22,9 @@ import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
 import { revealInFileManagerLabel } from "@kilo-desktop/ui/lib/reveal-in-file-manager";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
-import type { LocalModel, ModelCatalogEntry } from "../../contracts/schemas.js";
-import { getPublisherDisplayName, ModelPublisherIcon } from "../catalog/ModelPublisherIcon.js";
-import { formatFileSize, formatParameterCount, modelDisplayName } from "./model-format.js";
+import type { LocalModel, ModelCatalogEntry } from "../../contracts/index";
+import { getPublisherDisplayName, ModelPublisherIcon } from "../catalog/ModelPublisherIcon";
+import { formatFileSize, formatParameterCount, modelDisplayName } from "./model-format";
 
 // lucide-react 1.27 does not export Eject yet; this is the upstream glyph.
 const EjectIcon = createLucideIcon("eject", [

@@ -4,14 +4,16 @@
 	"displayName": "Terminal",
 	"version": "1.0.0",
 	"description": "Terminal panes: interactive shells running in a session's folder.",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
 	"requires": {
-		"kilo.sessions/pane": "optional",
-		"kilo.sessions/pane-kind": "optional",
-		"kilo.sessions/work-session": "optional",
-		"kilo.workspaces/workspace": "optional",
-		"kilo.workbench/workbench": "optional",
-		"kilo.shell/theme": "optional",
-		"kilo.agent/tool": "optional"
+		"kilo.core/tool": "optional",
+		"kilo.work-sessions/workspaces": "optional",
+		"kilo.work-sessions/work-sessions": "optional",
+		"kilo.work-sessions/panes": "optional",
+		"kilo.work-sessions/window": "optional",
+		"kilo.work-sessions/pane-kind": "optional",
+		"kilo.shell/theme": "optional"
 	},
 	"permissions": {
 		"embeddedHosts": ["terminal"]
@@ -23,16 +25,16 @@
 			"description": "True while a terminal in this window has keyboard focus."
 		}
 	],
-	"domains": [
+	"domainObjects": [
 		{
 			"id": "terminals",
 			"home": "main",
-			"description": "The terminals in each session: list, read and close them."
+			"description": "The terminals in each work session: list, read and close them."
 		}
 	],
 	"contributes": {
 		"extensions": {
-			"kilo.sessions/pane-kind": [
+			"kilo.work-sessions/pane-kind": [
 				{
 					"id": "terminal",
 					"title": "Terminal",
@@ -54,7 +56,7 @@
 					"order": 5,
 					"keybinding": "Ctrl+`",
 					"when": {
-						"all": ["kilo.workbench/paneTargetActive"]
+						"all": ["kilo.work-sessions/paneTargetActive"]
 					}
 				},
 				{
@@ -63,7 +65,7 @@
 					"category": "Terminal",
 					"order": 10,
 					"when": {
-						"all": ["kilo.workbench/sessionActive"]
+						"all": ["kilo.work-sessions/workSessionActive"]
 					}
 				},
 				{
@@ -79,20 +81,23 @@
 					}
 				}
 			],
-			"kilo.agent/tool": [
+			"kilo.core/tool": [
 				{
 					"id": "open",
-					"title": "Open terminal"
+					"title": "Open terminal",
+					"external": true
 				},
 				{
 					"id": "list",
 					"title": "List terminals",
-					"readOnly": true
+					"readOnly": true,
+					"external": true
 				},
 				{
 					"id": "read",
 					"title": "Read terminal",
-					"readOnly": true
+					"readOnly": true,
+					"external": true
 				}
 			]
 		}

@@ -1,10 +1,9 @@
 import { CircleAlertIcon, ListTodoIcon } from "lucide-react";
 import { useCallback, type FC } from "react";
 
-import type { DomainState } from "@kilo-desktop/kernel";
-import { useContextKey, useDomainState } from "@kilo-desktop/kernel/web";
-import { flagKey } from "@kilo-desktop/plugin-flags/contracts";
-import { WorkSessions, type PaneProps } from "@kilo-desktop/plugin-sessions/contracts";
+import { flagKey, type DomainObjectState } from "@kilo-desktop/kernel";
+import { useContextKey, useDomainObjectState } from "@kilo-desktop/kernel/web";
+import { WorkSessions, type PaneProps } from "@kilo-desktop/plugin-work-sessions/contracts";
 import { Alert, AlertTitle } from "@kilo-desktop/ui/components/alert";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@kilo-desktop/ui/components/empty";
 import { FIND_BAR_FEATURE_FLAG, FindScope } from "@kilo-desktop/ui/components/find-bar";
@@ -36,23 +35,24 @@ export const PlanIcon: FC<{ className?: string }> = ({ className }) => (
 
 /**
  * The plan pane: the plan revision opened from a chat's plan card (its
- * anchors are in the pane's metadata), over the pane's own runtime for that
- * chat — or the session's first chat for origin's panes, which name none.
+ * anchors are in the pane's metadata), over the pane's own runtime for the
+ * chat it shows (its `object`) — or the work session's first chat for
+ * origin's panes, which name none.
  */
 export function createPlanPane(services: ChatMirrorServices): FC<PaneProps> {
-	return function PlanPane({ sessionId, pane }) {
-		const session = useDomainState(
+	return function PlanPane({ workSessionId, pane }) {
+		const workSession = useDomainObjectState(
 			WorkSessions,
 			useCallback(
-				(state: DomainState<typeof WorkSessions>) =>
-					state.sessions.find((candidate) => candidate.id === sessionId),
-				[sessionId],
+				(state: DomainObjectState<typeof WorkSessions>) =>
+					state.workSessions.find((candidate) => candidate.id === workSessionId),
+				[workSessionId],
 			),
 		);
-		const chatId = agentPaneChatId(pane, session);
+		const chatId = agentPaneChatId(pane, workSession);
 		return (
 			<div className="bg-pane flex h-full min-h-0 flex-col" data-qa-id="kilo-plan-pane">
-				<ChatMirror services={services} sessionId={sessionId} chatId={chatId}>
+				<ChatMirror services={services} workSessionId={workSessionId} chatId={chatId}>
 					<PlanPaneContent
 						anchorCallId={pane.metadata[PLAN_ANCHOR_CALL_ID_METADATA_KEY] ?? null}
 						newestAnchorCallIdAtOpen={

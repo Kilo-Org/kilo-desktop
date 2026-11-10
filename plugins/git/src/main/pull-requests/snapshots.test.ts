@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { PullRequest, PullRequestSnapshot } from "../../contracts/index.js";
-import { keepDirectories, withCreatedPullRequest, withSnapshot } from "./snapshots.js";
+import type { PullRequest, PullRequestSnapshot } from "../../contracts";
+import { keepDirectories, withCreatedPullRequest, withSnapshot } from "./snapshots";
 
 const found: PullRequestSnapshot = {
 	identity: "feature|abc",

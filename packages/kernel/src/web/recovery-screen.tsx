@@ -11,10 +11,15 @@ import {
 	EmptyTitle,
 } from "@kilo-desktop/ui/components/empty";
 
-import { KernelApp, KernelPlugins, KernelServices, KernelWindows } from "../builtins/domains";
+import {
+	KernelApp,
+	KernelPlugins,
+	KernelServices,
+	KernelWindows,
+} from "../builtins/domain-objects";
 import type { KernelIssue } from "../discovery";
-import type { DomainState } from "../domain";
-import { useDomainState, useKernel } from "./react";
+import type { DomainObjectState } from "../domain-object";
+import { useDomainObjectState, useKernel } from "./react";
 
 type RecoveryReason = "no-root" | "missing-view";
 type Situation = "healthy" | "problems" | "safe-mode" | "missing-view";
@@ -22,9 +27,9 @@ type Issue = Omit<KernelIssue, "pluginId"> & { readonly pluginId?: string | unde
 
 const PLATFORM_NAMES = { mac: "macOS", windows: "Windows", linux: "Linux" } as const;
 
-const selectApp = (state: DomainState<typeof KernelApp>) => state;
-const selectPlugins = (state: DomainState<typeof KernelPlugins>) => state;
-const selectServices = (state: DomainState<typeof KernelServices>) => state.services;
+const selectApp = (state: DomainObjectState<typeof KernelApp>) => state;
+const selectPlugins = (state: DomainObjectState<typeof KernelPlugins>) => state;
+const selectServices = (state: DomainObjectState<typeof KernelServices>) => state.services;
 
 const ICONS = {
 	healthy: CircleCheckIcon,
@@ -75,9 +80,9 @@ const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ?
  */
 export function RecoveryScreen({ reason }: { readonly reason: RecoveryReason }) {
 	const kernel = useKernel();
-	const app = useDomainState(KernelApp, selectApp);
-	const plugins = useDomainState(KernelPlugins, selectPlugins);
-	const services = useDomainState(KernelServices, selectServices);
+	const app = useDomainObjectState(KernelApp, selectApp);
+	const plugins = useDomainObjectState(KernelPlugins, selectPlugins);
+	const services = useDomainObjectState(KernelServices, selectServices);
 	const localIssues = useSyncExternalStore(
 		(onChange) => kernel.onIssuesChange(onChange),
 		() => kernel.issues(),
@@ -109,9 +114,9 @@ export function RecoveryScreen({ reason }: { readonly reason: RecoveryReason }) 
 					: "healthy";
 	const copy = copyFor(situation, started.length);
 	const Icon = ICONS[situation];
-	const appMethods = kernel.kernelSdk.domains.get(KernelApp)?.methods;
+	const appMethods = kernel.kernelSdk.domainObjects.get(KernelApp)?.methods;
 	const enablePluginsAndRestart = async () => {
-		await kernel.kernelSdk.domains.get(KernelPlugins)?.methods.setDisabled({ pluginIds: [] });
+		await kernel.kernelSdk.domainObjects.get(KernelPlugins)?.methods.setDisabled({ pluginIds: [] });
 		await appMethods?.relaunch({ safeMode: false });
 	};
 
@@ -171,7 +176,7 @@ export function RecoveryScreen({ reason }: { readonly reason: RecoveryReason }) 
 							data-qa-id="kernel-recovery-close"
 							variant="outline"
 							onClick={() => {
-								void kernel.kernelSdk.domains
+								void kernel.kernelSdk.domainObjects
 									.get(KernelWindows)
 									?.methods.close({ windowId: kernel.window.id });
 							}}

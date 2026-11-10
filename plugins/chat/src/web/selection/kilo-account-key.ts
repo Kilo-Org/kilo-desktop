@@ -1,16 +1,15 @@
-import type { DomainState } from "@kilo-desktop/kernel";
-import { useDomainState } from "@kilo-desktop/kernel/web";
-import { Identity } from "@kilo-desktop/plugin-account/contracts";
+import type { DomainObjectState } from "@kilo-desktop/kernel";
+import { useDomainObjectState } from "@kilo-desktop/kernel/web";
+import { KiloAccount } from "@kilo-desktop/plugin-core/contracts";
 
-const selectAccountKey = (state: DomainState<typeof Identity>) =>
-	`${state.authenticated ?? "unknown"}:${state.profile?.currentOrgId ?? ""}`;
+const selectAccountKey = (state: DomainObjectState<typeof KiloAccount>) =>
+	`${state.signedIn ?? "unknown"}:${state.profile?.currentOrgId ?? ""}`;
 
 /**
- * Who Kilo serves models and agents for: signing in or out, or switching
- * organization, changes which ones it offers. Part of the catalog query keys
- * so those catalogs are read again then, rather than keeping a model the
- * account no longer has.
+ * Who Kilo serves agents for: signing in or out, or switching organization,
+ * changes which ones it offers. Part of the agent catalog's query key so it
+ * is read again then.
  */
 export function useKiloAccountKey(): string {
-	return useDomainState(Identity, selectAccountKey) ?? "";
+	return useDomainObjectState(KiloAccount, selectAccountKey) ?? "";
 }

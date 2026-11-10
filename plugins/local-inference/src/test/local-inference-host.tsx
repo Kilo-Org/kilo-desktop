@@ -1,3 +1,12 @@
+// Test host for kilo.local-inference's window: main and a window linked in
+// memory, with `local-models` and `model-server` answered by the test's
+// handlers (main's real entry needs Node), and stand-ins under their real
+// manifests and definitions for kilo.core (its account and `signedIn` key),
+// kilo.shell (its points and navigation), kilo.chat (its `model-source`
+// point) and kilo.work-sessions (which kilo.chat requires); the kernel's
+// flags (`flagOverrides`), a telemetry sink with consent, and its os and
+// clipboard. `model-server`'s `catalog` stands in for a `model-catalog`
+// contribution titled "Anaconda".
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -7,44 +16,46 @@ import { page } from "vitest/browser";
 import {
 	definePlugin,
 	KernelClipboard,
+	KernelDataCollection,
 	KernelError,
 	KernelOs,
-	type DomainProvider,
+	KernelTelemetrySink,
+	type DomainObjectProvider,
+	type KernelLogger,
 	type PluginEntry,
 	type PluginRegistration,
 } from "@kilo-desktop/kernel";
-import { createTestKernelPair } from "@kilo-desktop/kernel/testing";
+import { createTestHost, createTestKernelPair, testPlugin } from "@kilo-desktop/kernel/testing";
 import { KernelProvider } from "@kilo-desktop/kernel/web";
-import accountManifest from "@kilo-desktop/plugin-account/plugin.json";
+import chatManifest from "@kilo-desktop/plugin-chat/plugin.json";
+import { CHAT_DEFINITIONS } from "@kilo-desktop/plugin-chat/contracts";
+import coreManifest from "@kilo-desktop/plugin-core/plugin.json";
 import {
-	ACCOUNT_DEFINITIONS,
-	Identity,
-	type IdentityState,
-} from "@kilo-desktop/plugin-account/contracts";
-import flagsManifest from "@kilo-desktop/plugin-flags/plugin.json";
-import { Flags, FLAGS_DEFINITIONS } from "@kilo-desktop/plugin-flags/contracts";
+	CORE_DEFINITIONS,
+	KiloAccount,
+	type AccountState,
+} from "@kilo-desktop/plugin-core/contracts";
 import shellManifest from "@kilo-desktop/plugin-shell/plugin.json";
-import {
-	Navigation,
-	SHELL_DOMAINS,
-	SHELL_EXTENSION_POINTS,
-} from "@kilo-desktop/plugin-shell/contracts";
-import telemetryManifest from "@kilo-desktop/plugin-telemetry/plugin.json";
-import { Telemetry, TELEMETRY_DEFINITIONS } from "@kilo-desktop/plugin-telemetry/contracts";
+import { Navigation, SHELL_DEFINITIONS } from "@kilo-desktop/plugin-shell/contracts";
+import workSessionsManifest from "@kilo-desktop/plugin-work-sessions/plugin.json";
+import { WORK_SESSIONS_DEFINITIONS } from "@kilo-desktop/plugin-work-sessions/contracts";
 import { TooltipProvider } from "@kilo-desktop/ui/components/tooltip";
 
 import manifest from "../../plugin.json";
 import {
 	LOCAL_INFERENCE_DEFINITIONS,
-	LocalInference,
+	LocalModels,
 	MODEL_CATALOG_FLAG,
-	type LocalInferenceState,
+	ModelServer,
 	type LocalInferenceStatus,
 	type LocalModel,
+	type LocalModelsState,
+	type ModelCatalogState,
 	type ModelDownload,
-} from "../contracts/index.js";
+	type ModelServerState,
+} from "../contracts/index";
 
-/** Origin's channel keys, by `kilo.local-inference/local-inference` method. */
+/** Origin's channel keys, by method. */
 const ORIGIN_KEYS: Readonly<Record<string, string>> = {
 	status: "status.get",
 	listModels: "models.list",
@@ -68,18 +79,24 @@ const ORIGIN_KEYS: Readonly<Record<string, string>> = {
 // oxlint-disable-next-line no-explicit-any -- handlers are typed by the test that supplies them
 type Handler = (input: any) => unknown;
 
-export const SIGNED_IN: IdentityState = {
+export const SIGNED_IN: AccountState = {
 	connection: "connected",
-	authenticated: true,
+	signedIn: true,
 	profile: null,
 	profileError: null,
-	deviceAuth: { status: "idle" },
-	orgError: null,
-	isRefreshing: false,
-	isSwitchingOrg: false,
+	deviceSignIn: { status: "idle" },
+	organizationError: null,
+	refreshing: false,
+	switchingOrganization: false,
 };
 
-export const SIGNED_OUT: IdentityState = { ...SIGNED_IN, authenticated: false };
+export const SIGNED_OUT: AccountState = { ...SIGNED_IN, signedIn: false };
+
+/** The stand-in `model-catalog` contribution: Anaconda's, signed in. */
+export const ANACONDA_CATALOG: NonNullable<ModelCatalogState> = {
+	title: "Anaconda",
+	access: { status: "signed-in", accountKey: "test-user" },
+};
 
 export const usageSnapshot = {
 	system: {
@@ -98,22 +115,30 @@ export const connection = {
 	apiKey: "local-secret",
 };
 
+/** A telemetry event as a sink received it: its declared name and data. */
+export interface TrackedEvent {
+	readonly event: string;
+	readonly data: Readonly<Record<string, unknown>>;
+}
+
+export type LocalInferenceHostState = Partial<LocalModelsState & ModelServerState>;
+
 export interface LocalInferenceHostOptions {
 	/** Method fakes, keyed by method (`listModels`) or origin's key (`models.list`). */
 	readonly handlers?: Readonly<Record<string, Handler>>;
-	/** kilo.account's identity (signed in by default). */
-	readonly identity?: IdentityState;
-	/** kilo.flags' flags; the model catalog is on unless set. */
-	readonly flags?: Readonly<Record<string, unknown>>;
+	/** kilo.core's account (signed in by default); null leaves it unprovided. */
+	readonly identity?: AccountState | null;
+	/** Flag overrides; the model catalog is on unless set. */
+	readonly flags?: Readonly<Record<string, boolean | string | number>>;
 	/** The window's route search (`{ catalogModel }` for a deep link). */
 	readonly search?: Record<string, string>;
 	readonly pathForFile?: (file: File) => string | null;
-	readonly initialState?: Partial<LocalInferenceState>;
+	/** The domain objects' first state; `catalog` is Anaconda's, signed in, unless set. */
+	readonly initialState?: LocalInferenceHostState;
 	/** kilo.local-inference's renderer entry (an empty one by default). */
 	readonly webEntry?: PluginEntry;
 	readonly plugins?: readonly PluginRegistration[];
-	/** Plugins whose entry runs in main only (the window gets their manifest and definitions). */
-	readonly mainPlugins?: readonly PluginRegistration[];
+	readonly logger?: KernelLogger;
 }
 
 function asKernelError(error: unknown): KernelError {
@@ -121,133 +146,146 @@ function asKernelError(error: unknown): KernelError {
 	return new KernelError("BUSINESS", error instanceof Error ? error.message : String(error));
 }
 
+const MAIN_WINDOW = "main";
+
 /**
- * kilo.local-inference's window on a real kernel pair: the domain object
+ * kilo.local-inference's window on a real kernel pair: the domain objects
  * from `handlers` (lists default to empty; anything else missing rejects),
- * kilo.shell's navigation, telemetry, flags, kilo.account's identity, and the
- * kernel's shell and clipboard.
+ * kilo.shell's navigation, kilo.core's account, the kernel's flags,
+ * telemetry, os and clipboard.
  */
 export async function bootLocalInferenceHost(options: LocalInferenceHostOptions = {}) {
 	cleanup();
 	const handlers: Record<string, Handler> = { ...options.handlers };
 	const empty = async () => [];
-	const tracked: { event: string; data: Record<string, unknown> }[] = [];
+	const tracked: TrackedEvent[] = [];
 	const navigations: { path: string; search: Record<string, string> }[] = [];
 	const settingsOpened: (string | undefined)[] = [];
 	const showItemInFolder = vi.fn((_input: { path: string }) => undefined);
 	const writeText = vi.fn((_input: { text: string }) => undefined);
-	let domain!: DomainProvider<typeof LocalInference>;
-	let identity!: DomainProvider<typeof Identity>;
+	let models!: DomainObjectProvider<typeof LocalModels>;
+	let server!: DomainObjectProvider<typeof ModelServer>;
+	let account: DomainObjectProvider<typeof KiloAccount> | undefined;
+	let setSignedIn: (signedIn: boolean) => void = () => undefined;
+	const accountState = options.identity === undefined ? SIGNED_IN : options.identity;
 
 	const handlerFor = (method: string): Handler | undefined =>
 		handlers[method] ??
 		handlers[ORIGIN_KEYS[method] ?? ""] ??
 		(method === "listModels" || method === "listDownloads" ? empty : undefined);
 
+	const methodsFor = (definition: { readonly methods: object }) =>
+		Object.fromEntries(
+			Object.keys(definition.methods).map((method) => [
+				method,
+				async (input: unknown) => {
+					const handler = handlerFor(method);
+					if (!handler) throw new KernelError("NOT_FOUND", `${method} is not implemented in test`);
+					try {
+						return await handler(input);
+					} catch (error) {
+						throw asKernelError(error);
+					}
+				},
+			]),
+		) as never;
+
 	const localInferenceMain = definePlugin({
 		activate(sdk) {
-			domain = sdk.domains.provide(LocalInference, {
+			const initial = options.initialState ?? {};
+			models = sdk.domainObjects.provide(LocalModels, {
+				initialState: { models: initial.models ?? [] },
+				methods: methodsFor(LocalModels),
+			});
+			server = sdk.domainObjects.provide(ModelServer, {
 				initialState: {
-					status: { status: "idle" },
-					models: [],
-					downloads: [],
-					...options.initialState,
+					status: initial.status ?? { status: "idle" },
+					downloads: initial.downloads ?? [],
+					catalog: initial.catalog === undefined ? ANACONDA_CATALOG : initial.catalog,
 				},
-				methods: new Proxy({} as Record<string, Handler>, {
-					get: (_target, method: string) => async (input: unknown) => {
-						const handler = handlerFor(method);
-						if (!handler)
-							throw new KernelError("NOT_FOUND", `${method} is not implemented in test`);
-						try {
-							return await handler(input);
-						} catch (error) {
-							throw asKernelError(error);
-						}
-					},
-				}) as never,
+				methods: methodsFor(ModelServer),
 			});
 		},
 	});
 
-	const supportMain = definePlugin({
+	const coreMain = definePlugin({
 		activate(sdk) {
-			sdk.domains.provide(Telemetry, {
-				initialState: {},
-				methods: {
-					track: async (input) => {
-						tracked.push(input);
-					},
-				},
-			});
-		},
-	});
-
-	const flagsMain = definePlugin({
-		activate(sdk) {
-			sdk.domains.provide(Flags, {
-				initialState: {
-					flags: { [MODEL_CATALOG_FLAG]: true, ...options.flags },
-					ready: true,
-				},
-				methods: {},
-			});
-		},
-	});
-
-	const accountMain = definePlugin({
-		activate(sdk) {
+			if (!accountState) return;
 			const unused = () => undefined;
-			identity = sdk.domains.provide(Identity, {
-				initialState: options.identity ?? SIGNED_IN,
+			setSignedIn = (signedIn) => sdk.context.set("signedIn", signedIn);
+			setSignedIn(accountState.signedIn === true);
+			account = sdk.domainObjects.provide(KiloAccount, {
+				initialState: accountState,
 				methods: {
 					signIn: () => ({ signedIn: false }),
 					cancelSignIn: unused,
 					signOut: unused,
 					refresh: unused,
 					setOrganization: unused,
-					dismissOrgError: unused,
 				},
 			});
 		},
 	});
 
-	const shellWeb = definePlugin({
+	const shellMain = definePlugin({
 		activate(sdk) {
-			const navigation = sdk.domains.provide(Navigation, {
-				initialState: { path: "/settings/local-model-server", search: options.search ?? {} },
+			const navigation = sdk.domainObjects.provide(Navigation, {
+				initialState: {
+					windows: {
+						[MAIN_WINDOW]: { path: "/settings/local-model-server", search: options.search ?? {} },
+					},
+				},
 				methods: {
-					navigate: ({ path, search = {} }) => {
+					navigate: ({ path, search = {}, windowId = MAIN_WINDOW }) => {
 						navigations.push({ path, search });
-						navigation.setState({ path, search });
+						navigation.update((state) => ({
+							windows: { ...state.windows, [windowId]: { path, search } },
+						}));
 					},
 					openSettings: ({ section }) => void settingsOpened.push(section),
 					goHome: () => undefined,
+					openDialog: () => undefined,
+					reportLocation: () => undefined,
 				},
 			});
 		},
 	});
 
-	const shell = {
-		manifest: shellManifest,
-		definitions: { extensionPoints: SHELL_EXTENSION_POINTS, domains: SHELL_DOMAINS },
+	const telemetrySink = testPlugin("test.telemetry-sink", {
+		manifest: { contributes: { extensions: { "kernel/telemetry-sink": [{ id: "sink" }] } } },
+		entry: {
+			activate: (sdk) => {
+				sdk.extensions.implement(KernelTelemetrySink, "sink", {
+					deliver: ({ name, data }) => void tracked.push({ event: name, data }),
+				});
+			},
+		},
+	});
+
+	const core: PluginRegistration = { manifest: coreManifest, definitions: CORE_DEFINITIONS };
+	const shell: PluginRegistration = { manifest: shellManifest, definitions: SHELL_DEFINITIONS };
+	const workSessions: PluginRegistration = {
+		manifest: workSessionsManifest,
+		definitions: WORK_SESSIONS_DEFINITIONS,
 	};
+	const chat: PluginRegistration = { manifest: chatManifest, definitions: CHAT_DEFINITIONS };
 	const { main, renderer } = await createTestKernelPair({
+		host: createTestHost({ flagOverrides: { [MODEL_CATALOG_FLAG]: true, ...options.flags } }),
 		main: [
-			shell,
-			{ manifest: telemetryManifest, definitions: TELEMETRY_DEFINITIONS, entry: supportMain },
-			{ manifest: flagsManifest, definitions: FLAGS_DEFINITIONS, entry: flagsMain },
-			{ manifest: accountManifest, definitions: ACCOUNT_DEFINITIONS, entry: accountMain },
+			{ ...core, entry: coreMain },
+			{ ...shell, entry: shellMain },
+			workSessions,
+			chat,
+			telemetrySink,
 			...(options.plugins ?? []),
-			...(options.mainPlugins ?? []),
 			{ manifest, definitions: LOCAL_INFERENCE_DEFINITIONS, entry: localInferenceMain },
 		],
 		renderer: [
-			{ ...shell, entry: shellWeb },
-			{ manifest: telemetryManifest, definitions: TELEMETRY_DEFINITIONS },
-			{ manifest: flagsManifest, definitions: FLAGS_DEFINITIONS },
-			{ manifest: accountManifest, definitions: ACCOUNT_DEFINITIONS },
-			...(options.plugins ?? []),
-			...(options.mainPlugins ?? []).map(({ entry: _entry, ...registration }) => registration),
+			core,
+			shell,
+			workSessions,
+			chat,
+			...(options.plugins ?? []).map(({ entry: _entry, ...registration }) => registration),
 			{
 				manifest,
 				definitions: LOCAL_INFERENCE_DEFINITIONS,
@@ -256,8 +294,9 @@ export async function bootLocalInferenceHost(options: LocalInferenceHostOptions 
 			},
 		],
 		...(options.pathForFile ? { pathForFile: options.pathForFile } : {}),
+		...(options.logger ? { logger: options.logger } : {}),
 	});
-	main.kernelSdk.domains.provide(KernelOs, {
+	main.kernelSdk.domainObjects.provide(KernelOs, {
 		initialState: {},
 		methods: {
 			openExternal: () => true,
@@ -266,9 +305,13 @@ export async function bootLocalInferenceHost(options: LocalInferenceHostOptions 
 			logFilePath: () => "/logs/main.log",
 		},
 	});
-	main.kernelSdk.domains.provide(KernelClipboard, {
+	main.kernelSdk.domainObjects.provide(KernelClipboard, {
 		initialState: {},
 		methods: { writeText: (input) => writeText(input) },
+	});
+	main.kernelSdk.domainObjects.provide(KernelDataCollection, {
+		initialState: { choice: true, allowed: true, installationId: "i", environment: "test" },
+		methods: { setChoice: () => {} },
 	});
 	await main.flush();
 
@@ -280,9 +323,13 @@ export async function bootLocalInferenceHost(options: LocalInferenceHostOptions 
 			</QueryClientProvider>
 		</KernelProvider>
 	);
-	const update = (patch: Partial<LocalInferenceState>) =>
+	const update = (patch: LocalInferenceHostState) =>
 		act(async () => {
-			domain.setState({ ...domain.state, ...patch });
+			if (patch.models !== undefined) models.setState({ models: patch.models });
+			const { models: _models, ...serverPatch } = patch;
+			if (Object.keys(serverPatch).length > 0) {
+				server.setState({ ...server.state, ...serverPatch });
+			}
 			await main.flush();
 		});
 
@@ -297,17 +344,23 @@ export async function bootLocalInferenceHost(options: LocalInferenceHostOptions 
 		writeText,
 		wrap,
 		render: (element: ReactNode) => render(wrap(element)),
-		/** Main changed the domain object's state. */
+		/** Main changed the domain objects' state. */
 		update,
+		/** `model-server`'s provider, for handlers that change its state as main would. */
+		get modelServer() {
+			return server;
+		},
 		/** Main's server status changed (origin's `status-changed`). */
 		setStatus: (status: LocalInferenceStatus) => update({ status }),
 		/** Main's registry changed (origin's `models-changed`). */
-		setModels: (models: LocalModel[]) => update({ models }),
+		setModels: (next: LocalModel[]) => update({ models: next }),
+		/** The `model-catalog` contribution's access changed. */
+		setCatalog: (catalog: ModelCatalogState) => update({ catalog }),
 		/** A catalog download progressed (origin's `catalog-download-changed`). */
 		emitDownload: (download: ModelDownload) =>
 			update({
 				downloads: [
-					...domain.state.downloads.filter(
+					...server.state.downloads.filter(
 						(entry) =>
 							entry.modelId !== download.modelId ||
 							entry.quantizationId !== download.quantizationId,
@@ -315,15 +368,10 @@ export async function bootLocalInferenceHost(options: LocalInferenceHostOptions 
 					download,
 				],
 			}),
-		setIdentity: (next: IdentityState) =>
+		setIdentity: (next: AccountState) =>
 			act(async () => {
-				identity.setState(next);
-				await main.flush();
-			}),
-		/** The agent asked for the settings section. */
-		requestSettings: () =>
-			act(async () => {
-				domain.emit("settings-requested", {});
+				account?.setState(next);
+				setSignedIn(next.signedIn === true);
 				await main.flush();
 			}),
 	};

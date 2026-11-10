@@ -26,9 +26,9 @@ import {
 } from "@kilo-desktop/ui/components/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
-import type { DiffTheme } from "./diff-theme.js";
-import type { GitDiffTreeSource } from "./lib/diff-data-accumulator.js";
-import { folderName } from "./lib/folder-name.js";
+import type { DiffTheme } from "./diff-theme";
+import type { GitDiffTreeSource } from "./lib/diff-data-accumulator";
+import { folderName } from "./lib/folder-name";
 
 // Keeps @pierre/trees from applying its default semantic sort so the sidebar
 // follows the same patch path sequence that drives the code view.

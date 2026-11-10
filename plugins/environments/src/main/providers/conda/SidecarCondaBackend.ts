@@ -64,7 +64,7 @@ import {
 	type MessageConnection,
 } from "vscode-jsonrpc/node";
 
-import { compareCondaVersions } from "../../../compare-conda-versions.js";
+import { compareCondaVersions } from "../../../compare-conda-versions";
 import { KernelError } from "@kilo-desktop/kernel";
 import type { KernelLogger } from "@kilo-desktop/kernel";
 
@@ -72,8 +72,8 @@ import {
 	environmentsErrorCodeToKernelErrorCode,
 	formatEnvironmentsErrorMessage,
 	type EnvironmentsErrorCode,
-} from "../../../contracts/common.js";
-import { REPODATA_FIND_MAX_LIMIT } from "../../../contracts/providers/conda.js";
+} from "../../../contracts/common";
+import { REPODATA_FIND_MAX_LIMIT } from "../../../contracts/providers/conda";
 import type {
 	Channel,
 	CondaChannelsAddInput,
@@ -93,17 +93,17 @@ import type {
 	CondaPackagesUpdateResult,
 	CondaRepodataPackage,
 	EnvTarget,
-} from "../../../contracts/providers/conda.js";
-import { cloneDestinationParam } from "./clone-destination.js";
+} from "../../../contracts/providers/conda";
+import { cloneDestinationParam } from "./clone-destination";
 import type {
 	CondaBackend,
 	CondaCallContext,
 	CondaCreateFromFileRequest,
 	CondaCreateOptions,
 	CondaRepodataFilter,
-} from "./CondaBackend.js";
-import { rankRepodataMatches } from "./rank-repodata.js";
-import { parseTransactionActions } from "./transaction-actions.js";
+} from "./CondaBackend";
+import { rankRepodataMatches } from "./rank-repodata";
+import { parseTransactionActions } from "./transaction-actions";
 
 const MAX_RESTART_ATTEMPTS = 3;
 const BASE_RESTART_DELAY_MS = 1000;

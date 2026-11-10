@@ -1,24 +1,23 @@
-import type { WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
-import type { Workspace } from "@kilo-desktop/plugin-workspaces/contracts";
+import type { WorkSession, Workspace } from "@kilo-desktop/plugin-work-sessions/contracts";
 
-import type { PullRequest, PullRequestEntry } from "../../contracts/index.js";
+import type { PullRequest, PullRequestEntry } from "../../contracts";
 
 /** Which branch a `git status` read found checked out, and when. */
 export type CheckedOutBranch = { branch: string | undefined; observedAt: number };
 
 /**
- * Where a session's pull request is looked up: its worktree, else its
- * workspace's primary folder. Sessions outside a workspace have none.
+ * Where a work session's pull request is looked up: its copy (worktree), else
+ * its workspace's primary folder. Work sessions outside a workspace have none.
  */
-export function sessionDirectory(
-	session: Pick<WorkSession, "workspaceId" | "directory">,
+export function workSessionDirectory(
+	workSession: Pick<WorkSession, "workspaceId" | "directory">,
 	workspaces: readonly Workspace[],
 ): string | null {
-	if (!session.workspaceId) return null;
+	if (!workSession.workspaceId) return null;
 	return (
-		session.directory ??
+		workSession.directory ??
 		workspaces
-			.find((workspace) => workspace.id === session.workspaceId)
+			.find((workspace) => workspace.id === workSession.workspaceId)
 			?.folders.find((folder) => folder.isPrimary)?.path ??
 		null
 	);
@@ -39,11 +38,11 @@ export function branchAwaitingLookup(
 
 /**
  * The pull request for a directory, shared by the header's repository
- * actions and the session row and hover card so they always agree. The
+ * actions and the work session row and hover card so they always agree. The
  * newest observation of the checked-out branch wins: while a branch awaits
  * its lookup the PR is hidden (the header requests that lookup), and an older
- * status read (a background session's cached status) cannot hide a fresher
- * lookup. The session's stamped worktree branch is never consulted; it goes
+ * status read (a background work session's cached status) cannot hide a fresher
+ * lookup. The work session's stamped branch is never consulted; it goes
  * stale once the worktree checks out another branch, such as an existing
  * PR's head.
  */

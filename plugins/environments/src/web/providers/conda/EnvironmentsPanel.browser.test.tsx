@@ -2,9 +2,9 @@ import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import type { CondaClient } from "../../conda.js";
-import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host.js";
-import { EnvironmentsPanel } from "./EnvironmentsPanel.js";
+import type { CondaClient } from "../../conda";
+import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host";
+import { EnvironmentsPanel } from "./EnvironmentsPanel";
 
 const mockEnvironments = [
 	{ name: "alpha", prefix: "/opt/conda/envs/alpha" },

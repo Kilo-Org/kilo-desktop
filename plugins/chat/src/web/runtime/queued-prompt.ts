@@ -5,7 +5,7 @@ import {
 	toMediaWireUrl,
 } from "@assistant-ui/core/internal";
 
-import type { PreparedText, QueuedPrompt } from "../../contracts";
+import type { PreparedText, PromptPart as QueuedPromptPart, QueuedPrompt } from "../../contracts";
 import { slashCommandFromPromptArgs } from "../slash-commands/kilo-slash-command";
 import type { PromptOptions, PromptPart } from "./prompt-options";
 
@@ -68,6 +68,26 @@ function fileParts(message: AppendMessage): PromptPart[] {
 	});
 }
 
+/** Parts as a queued prompt carries them: text, and files as URLs; anything else is dropped. */
+export function toQueuedParts(parts: readonly PromptPart[]): QueuedPromptPart[] {
+	return parts.flatMap((part): QueuedPromptPart[] => {
+		if (part.type === "text" && typeof part.text === "string") {
+			return [{ type: "text", text: part.text }];
+		}
+		if (part.type === "file" && typeof part.mime === "string" && typeof part.url === "string") {
+			return [
+				{
+					type: "file",
+					mime: part.mime,
+					url: part.url,
+					...(typeof part.filename === "string" ? { filename: part.filename } : {}),
+				},
+			];
+		}
+		return [];
+	});
+}
+
 export function messageText(message: AppendMessage): string {
 	return message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
 }
@@ -100,7 +120,7 @@ export async function prepareText(
 	);
 	return {
 		text,
-		textParts,
+		textParts: toQueuedParts(textParts),
 		...(draft ? { command: { name: draft.command, arguments: draft.arguments } } : {}),
 	};
 }
@@ -126,10 +146,10 @@ export async function prepareQueuedPrompt(
 	const preview = attachmentPreview(message);
 	return {
 		...text,
-		attachmentParts: fileParts(message),
+		attachmentParts: toQueuedParts(fileParts(message)),
 		...(preview ? { attachmentPreview: preview } : {}),
 		...(agent ? { agent } : {}),
-		...(model ? { model: { providerID: model.providerID, modelID: model.modelID } } : {}),
+		...(model ? { model: { aiProviderId: model.providerID, modelId: model.modelID } } : {}),
 		...(variant ? { variant } : {}),
 		...(system ? { system } : {}),
 	};

@@ -1,6 +1,10 @@
 import {
+	flagKey,
+	type DomainObjectState,
 	type ExtensionKind,
+	type FlagRecord,
 	type Kernel,
+	type KernelDomainObjects,
 	type MethodSpecs,
 	type QualifiedId,
 	type WhenExpression,
@@ -10,14 +14,15 @@ import { formatEvent, formatMethod, formatType } from "./schema-format";
 
 /**
  * The kernel's domain model — owners (plugins and the kernel), extension
- * points, domain objects and contributions — as Diagnostics' inspector shows
- * it, read from discovery (what is declared) and this window's registries
- * (what is live here).
+ * points, domain objects, object types, context keys, flags and
+ * contributions — as Diagnostics' inspector shows it, read from discovery
+ * (what is declared), this window's registries (what is live here) and the
+ * kernel's introspection objects (what main sees).
  */
 
 /** Something the inspector can show; `owner` is a plugin or the kernel. */
 export interface EntityRef {
-	readonly kind: "owner" | "point" | "domain";
+	readonly kind: "owner" | "point" | "domain" | "objectType" | "contextKey" | "flag";
 	readonly id: string;
 }
 
@@ -27,10 +32,13 @@ export function sameEntity(a: EntityRef, b: EntityRef): boolean {
 	return a.kind === b.kind && a.id === b.id;
 }
 
-/** The point or domain object a qualified id names, if one is declared. */
+/** The point, domain object, object type or context key a qualified id names, if one is declared. */
 export function entityFor(kernel: Kernel, id: string): EntityRef | undefined {
-	if (kernel.discovery.points.has(id as QualifiedId)) return { kind: "point", id };
-	if (kernel.discovery.domains.has(id as QualifiedId)) return { kind: "domain", id };
+	const { discovery } = kernel;
+	if (discovery.extensionPoints.has(id as QualifiedId)) return { kind: "point", id };
+	if (discovery.domainObjects.has(id as QualifiedId)) return { kind: "domain", id };
+	if (discovery.objectTypes.has(id as QualifiedId)) return { kind: "objectType", id };
+	if (discovery.contextKeys.some((key) => key.id === id)) return { kind: "contextKey", id };
 	return undefined;
 }
 
@@ -90,6 +98,8 @@ export interface PointView {
 		readonly timeoutMs: number;
 		readonly input: string;
 	};
+	/** Whether `${resources}` in contributions' metadata is replaced with the contributor's folder. */
+	readonly resources: boolean;
 	/** The metadata type, or undefined when contributions carry none of their own. */
 	readonly metadata?: string;
 	readonly contributions: readonly ContributionView[];
@@ -103,7 +113,7 @@ export function describePoint(
 	id: string,
 	pluginState: PluginStateOf,
 ): PointView | undefined {
-	const record = kernel.discovery.points.get(id as QualifiedId);
+	const record = kernel.discovery.extensionPoints.get(id as QualifiedId);
 	if (!record) return undefined;
 	const { definition } = record;
 	const metadata = formatType(definition.metadata);
@@ -129,6 +139,7 @@ export function describePoint(
 					},
 				}
 			: {}),
+		resources: definition.resources ?? false,
 		...(metadata === "{}" ? {} : { metadata }),
 		contributions: contributionsTo(kernel, id as QualifiedId, pluginState),
 		requiredBy: requiredBy(kernel, id),
@@ -206,7 +217,7 @@ function describeOrigin(origin: string): string {
 	return origin === "main" ? "the main process" : "another window";
 }
 
-function conditionsOf(kernel: Kernel, when: WhenExpression | undefined): Condition[] {
+export function conditionsOf(kernel: Kernel, when: WhenExpression | undefined): Condition[] {
 	const condition = (key: string, expected: boolean): Condition => ({
 		key,
 		expected,
@@ -218,6 +229,23 @@ function conditionsOf(kernel: Kernel, when: WhenExpression | undefined): Conditi
 	];
 }
 
+/** What main reports about domain objects (`kernel/domain-objects`), when this window sees it. */
+export type MainDomainObjects = DomainObjectState<typeof KernelDomainObjects>["domainObjects"];
+
+/**
+ * Provided right now: a main-home object as main reports it (falling back to
+ * this window's mirror), a renderer-home object in this window.
+ */
+function isProvided(
+	kernel: Kernel,
+	id: QualifiedId,
+	home: "main" | "renderer",
+	main: MainDomainObjects | undefined,
+): boolean {
+	const reported = home === "main" ? main?.[id]?.provided : undefined;
+	return reported ?? kernel.domainObjects.isProvided(id);
+}
+
 export interface DomainView {
 	readonly id: string;
 	readonly owner: string;
@@ -225,8 +253,10 @@ export interface DomainView {
 	readonly description?: string;
 	readonly permission?: string;
 	readonly homeCallersOnly: boolean;
-	readonly resolvesRefs: boolean;
-	/** Provided right now, as seen from this window. */
+	readonly hasLookup: boolean;
+	/** The object type it resolves, for a collection. */
+	readonly objectType?: string;
+	/** Provided right now: main-home as main reports it, renderer-home in this window. */
 	readonly provided: boolean;
 	readonly state: string;
 	readonly methods: readonly string[];
@@ -234,8 +264,12 @@ export interface DomainView {
 	readonly requiredBy: readonly Requirement[];
 }
 
-export function describeDomain(kernel: Kernel, id: string): DomainView | undefined {
-	const record = kernel.discovery.domains.get(id as QualifiedId);
+export function describeDomain(
+	kernel: Kernel,
+	id: string,
+	main?: MainDomainObjects,
+): DomainView | undefined {
+	const record = kernel.discovery.domainObjects.get(id as QualifiedId);
 	if (!record) return undefined;
 	const { definition } = record;
 	return {
@@ -245,8 +279,9 @@ export function describeDomain(kernel: Kernel, id: string): DomainView | undefin
 		...(definition.description ? { description: definition.description } : {}),
 		...(definition.permission ? { permission: definition.permission } : {}),
 		homeCallersOnly: definition.homeCallersOnly ?? false,
-		resolvesRefs: definition.lookup !== undefined,
-		provided: kernel.domains.isProvided(id as QualifiedId),
+		hasLookup: definition.lookup !== undefined,
+		...(definition.objectType ? { objectType: definition.objectType.id } : {}),
+		provided: isProvided(kernel, definition.id, definition.home, main),
 		state: formatType(definition.state),
 		methods: Object.entries(definition.methods as MethodSpecs).map(([name, spec]) =>
 			formatMethod(name, spec),
@@ -280,7 +315,7 @@ export function listPoints(kernel: Kernel): PointEntry[] {
 	for (const { pointId } of kernel.discovery.contributions) {
 		counts.set(pointId, (counts.get(pointId) ?? 0) + 1);
 	}
-	return [...kernel.discovery.points.values()]
+	return [...kernel.discovery.extensionPoints.values()]
 		.map(({ owner, definition }) => ({
 			id: definition.id,
 			owner,
@@ -291,16 +326,172 @@ export function listPoints(kernel: Kernel): PointEntry[] {
 		.sort(byId);
 }
 
-export function listDomains(kernel: Kernel): DomainEntry[] {
-	return [...kernel.discovery.domains.values()]
+export function listDomains(kernel: Kernel, main?: MainDomainObjects): DomainEntry[] {
+	return [...kernel.discovery.domainObjects.values()]
 		.map(({ owner, definition }) => ({
 			id: definition.id,
 			owner,
 			home: definition.home,
 			...(definition.description ? { description: definition.description } : {}),
-			provided: kernel.domains.isProvided(definition.id),
+			provided: isProvided(kernel, definition.id, definition.home, main),
 		}))
 		.sort(byId);
+}
+
+// --- Object types ---
+
+export interface ObjectTypeView {
+	readonly id: string;
+	readonly owner: string;
+	readonly description?: string;
+	/** The collection that resolves references of this type. */
+	readonly collection?: string;
+	/** Whether that collection is provided right now. */
+	readonly provided: boolean;
+}
+
+function objectTypeView(
+	kernel: Kernel,
+	record: { owner: string; definition: { id: string; description?: string }; collection?: string },
+	main: MainDomainObjects | undefined,
+): ObjectTypeView {
+	const collection = record.collection as QualifiedId | undefined;
+	const home = collection && kernel.discovery.domainObjects.get(collection)?.definition.home;
+	return {
+		id: record.definition.id,
+		owner: record.owner,
+		...(record.definition.description ? { description: record.definition.description } : {}),
+		...(collection ? { collection } : {}),
+		provided: collection && home ? isProvided(kernel, collection, home, main) : false,
+	};
+}
+
+export function listObjectTypes(kernel: Kernel, main?: MainDomainObjects): ObjectTypeView[] {
+	return [...kernel.discovery.objectTypes.values()]
+		.map((record) => objectTypeView(kernel, record, main))
+		.sort(byId);
+}
+
+export function describeObjectType(
+	kernel: Kernel,
+	id: string,
+	main?: MainDomainObjects,
+): ObjectTypeView | undefined {
+	const record = kernel.discovery.objectTypes.get(id as QualifiedId);
+	return record ? objectTypeView(kernel, record, main) : undefined;
+}
+
+// --- Context keys ---
+
+/** A plugin or contribution whose `when` reads a context key. */
+export interface KeyUse {
+	readonly pluginId: string;
+	/** Absent for the plugin's own `when`; the contribution key otherwise. */
+	readonly contribution?: string;
+	readonly pointId?: string;
+	readonly key: string;
+	readonly expected: boolean;
+}
+
+export interface ContextKeyView {
+	readonly id: string;
+	readonly owner: string;
+	readonly scope: "global" | "window";
+	readonly description?: string;
+	/** A family of keys (`kernel/flag:*`) rather than one key. */
+	readonly pattern: boolean;
+	/** The keys set in this window that the entry names, with their values. */
+	readonly values: readonly { readonly key: string; readonly value: boolean }[];
+}
+
+const isPattern = (id: string) => id.endsWith("*");
+
+/** Whether context key `key` is named by the declared `id` (exactly, or by its `*` pattern). */
+export function keyMatches(id: string, key: string): boolean {
+	return isPattern(id) ? key.startsWith(id.slice(0, -1)) : id === key;
+}
+
+function contextKeyView(
+	kernel: Kernel,
+	record: { id: string; owner: string; scope: "global" | "window"; description?: string },
+): ContextKeyView {
+	const pattern = isPattern(record.id);
+	const set = kernel.contextKeys.snapshot();
+	const values = pattern
+		? Object.keys(set)
+				.filter((key) => keyMatches(record.id, key))
+				.sort()
+				.map((key) => ({ key, value: set[key] ?? false }))
+		: [{ key: record.id, value: kernel.contextKeys.get(record.id) }];
+	return {
+		id: record.id,
+		owner: record.owner,
+		scope: record.scope,
+		...(record.description ? { description: record.description } : {}),
+		pattern,
+		values,
+	};
+}
+
+export function listContextKeys(kernel: Kernel): ContextKeyView[] {
+	return kernel.discovery.contextKeys.map((record) => contextKeyView(kernel, record)).sort(byId);
+}
+
+export function describeContextKey(kernel: Kernel, id: string): ContextKeyView | undefined {
+	const record = kernel.discovery.contextKeys.find((candidate) => candidate.id === id);
+	return record ? contextKeyView(kernel, record) : undefined;
+}
+
+/** Plugins and manifest contributions whose `when` reads a key the declared `id` names. */
+export function usesOf(kernel: Kernel, id: string): KeyUse[] {
+	const uses = (
+		when: WhenExpression | undefined,
+		where: Omit<KeyUse, "key" | "expected">,
+	): KeyUse[] => [
+		...(when?.all ?? [])
+			.filter((key) => keyMatches(id, key))
+			.map((key) => ({ ...where, key, expected: true })),
+		...(when?.none ?? [])
+			.filter((key) => keyMatches(id, key))
+			.map((key) => ({ ...where, key, expected: false })),
+	];
+	return [
+		...kernel.discovery.plugins.flatMap(({ manifest }) =>
+			uses(manifest.when, { pluginId: manifest.id }),
+		),
+		...kernel.discovery.contributions.flatMap(({ pluginId, pointId, entry }) =>
+			uses(entry.when, { pluginId, pointId, contribution: `${pluginId}/${entry.id}` }),
+		),
+	];
+}
+
+// --- Flags ---
+
+export interface FlagView extends FlagRecord {
+	readonly id: string;
+	/** `kernel/flag:<id>`, true while the value is `true`. */
+	readonly contextKey: string;
+	/** What runs only while (or unless) the flag is on. */
+	readonly gates: readonly KeyUse[];
+}
+
+export function listFlags(
+	flags: Readonly<Record<string, FlagRecord>>,
+): (FlagRecord & { id: string })[] {
+	return Object.entries(flags)
+		.map(([id, record]) => ({ id, ...record }))
+		.sort(byId);
+}
+
+export function describeFlag(
+	kernel: Kernel,
+	id: string,
+	flags: Readonly<Record<string, FlagRecord>> | undefined,
+): FlagView | undefined {
+	const record = flags?.[id];
+	if (!record) return undefined;
+	const contextKey = flagKey(id);
+	return { id, ...record, contextKey, gates: usesOf(kernel, contextKey) };
 }
 
 /** Case-insensitive match on id, owner or description. */

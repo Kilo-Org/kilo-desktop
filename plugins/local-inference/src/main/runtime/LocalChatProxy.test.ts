@@ -3,9 +3,9 @@ import { connect } from "node:net";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { LAN_BIND_HOST, LOOPBACK_HOST } from "../../shared/settings/server-settings.js";
-import { allocateLoopbackPort } from "./allocatePort.js";
-import { LocalChatProxy, type LocalChatProxyConnection } from "./LocalChatProxy.js";
+import { LAN_BIND_HOST, LOOPBACK_HOST } from "../../shared/settings/server-settings";
+import { allocateLoopbackPort } from "./allocatePort";
+import { LocalChatProxy, type LocalChatProxyConnection } from "./LocalChatProxy";
 
 const servers: Array<{ close(): void }> = [];
 

@@ -1,12 +1,11 @@
-import { KernelPlugins, type DomainState, type ExtensionKind } from "@kilo-desktop/kernel";
-import { useDomainState, useKernel } from "@kilo-desktop/kernel/web";
+import { KernelPlugins, type DomainObjectState, type ExtensionKind } from "@kilo-desktop/kernel";
+import { useDomainObjectState, useKernel } from "@kilo-desktop/kernel/web";
 import { Badge } from "@kilo-desktop/ui/components/badge";
 
-import { item, type DetailItem, type DetailValue } from "../diagnostics-summary";
+import { describeCondition, item, type DetailItem, type DetailValue } from "../diagnostics-summary";
 import {
 	describePoint,
 	ownerRef,
-	type Condition,
 	type ContributionView,
 	type PointView,
 	type Requirement,
@@ -28,7 +27,7 @@ const KINDS: Record<ExtensionKind, string> = {
 	decision: "Decision — the owner asks each contributor to proceed, ask or reject",
 };
 
-const selectPlugins = (state: DomainState<typeof KernelPlugins>) => state.plugins;
+const selectPlugins = (state: DomainObjectState<typeof KernelPlugins>) => state.plugins;
 
 export const ownerValue = (id: string): DetailValue => ({ code: id, link: ownerRef(id) });
 const text = (value: string): DetailValue => ({ text: value });
@@ -57,6 +56,16 @@ function definitionItems(view: PointView): DetailItem[] {
 				),
 			],
 		},
+		...item(
+			"Resources",
+			view.resources
+				? [
+						text(
+							"${resources} in contributions' metadata is replaced with the contributor's folder",
+						),
+					]
+				: [],
+		),
 		...item(
 			"Decision",
 			view.decision
@@ -98,11 +107,6 @@ export function RequiredBy({ requirements }: { readonly requirements: readonly R
 			/>
 		</Panel>
 	);
-}
-
-function describeCondition({ key, expected, actual }: Condition): DetailValue {
-	const state = (on: boolean) => (on ? "on" : "off");
-	return text(`${key} must be ${state(expected)} — now ${state(actual)}`);
 }
 
 function hasMetadata(metadata: unknown): boolean {
@@ -167,7 +171,7 @@ function ContributionRow({ contribution }: { readonly contribution: Contribution
 export function PointDetail({ id }: { readonly id: string }) {
 	const kernel = useKernel();
 	useKernelChanges();
-	const plugins = useDomainState(KernelPlugins, selectPlugins);
+	const plugins = useDomainObjectState(KernelPlugins, selectPlugins);
 	const view = describePoint(
 		kernel,
 		id,

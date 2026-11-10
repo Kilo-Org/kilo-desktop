@@ -1,14 +1,14 @@
 import { useEffect, useMemo } from "react";
 import useLatest from "react-use/esm/useLatest.js";
 
-import { useDomain } from "@kilo-desktop/kernel/web";
+import { useDomainObject } from "@kilo-desktop/kernel/web";
 import {
 	createWorkspaceChangeFilter,
 	escapeGlob,
-	Files,
+	FileWatcher,
 	toPosixPath,
 	type FileChange,
-} from "@kilo-desktop/plugin-workspaces/contracts";
+} from "@kilo-desktop/plugin-work-sessions/contracts";
 
 const TRAILING_SLASHES = /\/+$/u;
 
@@ -23,13 +23,13 @@ export interface FileChangeOptions {
 }
 
 /**
- * Calls `onFileChange` for each batch of kilo.workspaces' file changes with
+ * Calls `onFileChange` for each batch of kilo.work-sessions' file changes with
  * a change under `dirs` or to one of `files` (of `types`, when given). The
- * window already receives every batch from kilo.workspaces' watcher, so
+ * window already receives every batch from kilo.work-sessions' watcher, so
  * this only filters them.
  */
 export function useWorkspaceFileChanges(options: FileChangeOptions): void {
-	const files = useDomain(Files);
+	const files = useDomainObject(FileWatcher);
 	const onFileChange = useLatest(options.onFileChange);
 	const includes = [
 		...(options.dirs ?? []).map(

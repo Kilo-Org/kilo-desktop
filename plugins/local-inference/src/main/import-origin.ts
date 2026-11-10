@@ -3,8 +3,8 @@ import path from "node:path";
 
 import type { KvStore } from "@kilo-desktop/kernel";
 
-import { localModelSchema, type LocalModel } from "../contracts/index.js";
-import type { PersistedLocalModels } from "./models/LocalModelRegistry.js";
+import { localModelSchema, type LocalModel } from "../contracts";
+import type { PersistedLocalModels } from "./models/LocalModelRegistry";
 
 export interface OriginLocalInferenceStore extends PersistedLocalModels {
 	/** Origin's saved models and settings were taken over (once). */

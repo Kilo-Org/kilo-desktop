@@ -63,26 +63,29 @@ describe("terminal commands", () => {
 		await expect(renderer.keyboard.dispatch("Meta+KeyK")).resolves.toBe(false);
 	});
 
-	it("opens a terminal in the window's open session", async () => {
+	it("opens a terminal in the window's open work session", async () => {
 		const { renderer, openPane } = await renderTerminalHost();
 
 		await renderer.commands.execute("kilo.terminal/new");
 
-		expect(openPane).toHaveBeenCalledWith({ sessionId: "wses_1", kind: "kilo.terminal/terminal" });
+		expect(openPane).toHaveBeenCalledWith({
+			workSessionId: "wses_1",
+			kind: "kilo.terminal/terminal",
+		});
 	});
 
-	it("shows the session's terminal, or opens one, with Ctrl+`", async () => {
-		const { renderer, workbenchOpenPane } = await renderTerminalHost();
+	it("shows the work session's terminal, or opens one, with Ctrl+`", async () => {
+		const { renderer, windowOpenPane } = await renderTerminalHost();
 
 		await expect(renderer.keyboard.dispatch("Ctrl+Backquote")).resolves.toBe(true);
 
 		await vi.waitFor(() =>
-			expect(workbenchOpenPane).toHaveBeenCalledWith({ kind: "kilo.terminal/terminal" }),
+			expect(windowOpenPane).toHaveBeenCalledWith({ kind: "kilo.terminal/terminal" }),
 		);
 	});
 
-	it("opens nothing without an open session", async () => {
-		const { renderer, openPane } = await renderTerminalHost({}, { activeSessionId: null });
+	it("opens nothing without an open work session", async () => {
+		const { renderer, openPane } = await renderTerminalHost({}, { activeWorkSessionId: null });
 
 		await renderer.commands.execute("kilo.terminal/new");
 

@@ -1,4 +1,4 @@
-import type { ModelDownload } from "../../contracts/schemas.js";
+import type { ModelDownload } from "../../contracts/index";
 
 export type DownloadIdentity = Pick<ModelDownload, "modelId" | "quantizationId">;
 

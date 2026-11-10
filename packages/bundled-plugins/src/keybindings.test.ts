@@ -36,7 +36,7 @@ const PLATFORMS: readonly KeyboardPlatform[] = ["mac", "windows", "linux"];
  */
 const INTENTIONAL_OVERRIDES: readonly { readonly narrower: string; readonly broader: string }[] = [
 	// ⌘K clears a focused terminal instead of opening session search (as in a shell).
-	{ narrower: "kilo.terminal/clear", broader: "kilo.workbench/search" },
+	{ narrower: "kilo.terminal/clear", broader: "kilo.work-sessions/search-work-sessions" },
 ];
 
 function bundledCommands(): DeclaredCommand[] {

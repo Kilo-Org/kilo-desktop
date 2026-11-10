@@ -6,8 +6,8 @@ import {
 	connection,
 	renderSettings,
 	usageSnapshot,
-} from "../../test/render-local-model-server-settings.js";
-import { usageIndicatorClass } from "./SystemMonitor.js";
+} from "../../test/render-local-model-server-settings";
+import { usageIndicatorClass } from "./SystemMonitor";
 
 afterEach(() => {
 	cleanup();

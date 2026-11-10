@@ -1,4 +1,4 @@
-import type { LocalConnectionInfo } from "../../contracts/schemas.js";
+import type { LocalConnectionInfo } from "../../contracts/index";
 
 export interface LocalConnectionRequest {
 	readonly id: "models" | "chat" | "chat-stream";

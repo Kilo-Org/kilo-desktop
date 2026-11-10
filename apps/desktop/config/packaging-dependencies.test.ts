@@ -29,10 +29,6 @@ describe("packaged production dependencies", () => {
 	const dependencies = manifest.dependencies ?? {};
 	const devDependencies = manifest.devDependencies ?? {};
 
-	it("declares ws on desktop so the Vite-external main import resolves after pnpm deploy", () => {
-		expect(dependencies.ws).toEqual(expect.stringMatching(/\S/));
-	});
-
 	it("declares koffi on desktop so the Vite-external main import resolves after pnpm deploy", () => {
 		// koffi is externalized in the main bundle and only a transitive notebook
 		// dep; without a desktop declaration pnpm deploy would not hoist it (or its
@@ -191,6 +187,23 @@ describe("packaged production dependencies", () => {
 		expect(forge).toContain('"@parcel/watcher-darwin-arm64"');
 		expect(forge).toContain('"@parcel/watcher-darwin-x64"');
 		expect(forge).toContain("...parcelWatcherBindingPackages");
+	});
+
+	it("declares @parcel/watcher on desktop so kilo.work-sessions' watcher resolves after pnpm deploy", () => {
+		const workSessionsManifest = JSON.parse(
+			readFileSync(path.join(workspaceRoot, "plugins/work-sessions/package.json"), "utf8"),
+		) as { dependencies?: Record<string, string> };
+		expect(dependencies["@parcel/watcher"]).toEqual(expect.stringMatching(/\S/));
+		expect(dependencies["@parcel/watcher"]).toBe(
+			workSessionsManifest.dependencies?.["@parcel/watcher"],
+		);
+	});
+
+	it("keeps better-sqlite3 (kilo.work-sessions' origin import) external and unpacked", () => {
+		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
+		const viteMain = readFileSync(path.join(desktopRoot, "vite.main.config.ts"), "utf8");
+		expect(forge).toContain('"better-sqlite3"');
+		expect(viteMain).toContain('"better-sqlite3"');
 	});
 
 	it("smoke-tests updater payloads before either release channel is published", () => {
@@ -383,14 +396,14 @@ describe("packaged production dependencies", () => {
 		) as { scripts?: Record<string, string> };
 
 		expect(terminalManifest.scripts?.["prepare-assets"]).toContain("build-terminal-app");
+		expect(dependencies["@kilo-desktop/plugin-terminal"]).toBe("workspace:*");
 		expect(forge).toContain('"node-pty"');
-		expect(forge).toContain('packageName: "@kilo-desktop/plugin-terminal"');
 		expect(forge).toContain("ensureNodePtySpawnHelpersExecutable");
 		expect(forge).toContain("beforeAsar");
 		expect(viteMain).toContain('"node-pty"');
 	});
 
-	it("ships the terminal frame as an app resource rather than inside the staged package", () => {
+	it("ships the terminal frame as an app resource rather than inside the staged package", async () => {
 		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
 		const frameConfig = readFileSync(
 			path.join(workspaceRoot, "plugins/terminal/src/frame/vite.config.ts"),
@@ -398,30 +411,18 @@ describe("packaged production dependencies", () => {
 		);
 		const extraResources = forge.slice(
 			forge.indexOf("const extraResources"),
-			forge.indexOf("async function moveDirectory"),
+			forge.indexOf("const shippedBundleLicenseFiles"),
 		);
-		const stagedTerminal = forge.slice(
-			forge.indexOf('packageName: "@kilo-desktop/plugin-terminal"'),
-			forge.indexOf('packageName: "@kilo-desktop/plugin-environments"'),
-		);
+		const nodeModules = await mkdtemp(path.join(os.tmpdir(), "kilo-production-dependencies-"));
+		temporaryDirectories.push(nodeModules);
+		const stagedTerminal = path.join(nodeModules, "@kilo-desktop", "plugin-terminal");
+		await mkdir(path.join(stagedTerminal, "resources", "terminal"), { recursive: true });
+
+		await pruneProductionDependencies(nodeModules, ["@kilo-desktop/plugin-terminal"]);
 
 		expect(frameConfig).toContain('"../../resources/terminal"');
 		expect(extraResources).toContain('"plugins/terminal/resources/terminal"');
-		expect(stagedTerminal).toContain('"resources"');
-	});
-
-	it("quotes plugin prepare-assets filters so Windows cmd.exe can match packages", () => {
-		const scripts = (
-			JSON.parse(readFileSync(path.join(desktopRoot, "package.json"), "utf8")) as {
-				scripts?: Record<string, string>;
-			}
-		).scripts;
-		const preparePlugins = scripts?.["prepare:plugins"] ?? "";
-		// cmd.exe treats single quotes as literals, so a filter like
-		// `'@kilo-desktop/plugin-*'` matches no workspace packages.
-		expect(preparePlugins).toContain("run prepare-assets");
-		expect(preparePlugins).not.toMatch(/--filter\s+'/);
-		expect(preparePlugins).toMatch(/--filter\s+"@kilo-desktop\/plugin-\*"/);
+		expect(existsSync(path.join(stagedTerminal, "resources"))).toBe(false);
 	});
 
 	it("does not source-build nteract artifacts on packaging hosts", () => {
@@ -539,28 +540,83 @@ describe("packaged production dependencies", () => {
 		expect(publish).toContain("./.github/actions/cache-electron-rebuild");
 	});
 
-	it("caches the Kilo CLI the same way notebook binaries are cached", () => {
+	it("ships kilo.core's Kilo CLI as an app resource outside ASAR", () => {
+		const forge = readFileSync(path.join(desktopRoot, "forge.config.ts"), "utf8");
+		const extraResources = forge.slice(
+			forge.indexOf("const extraResources"),
+			forge.indexOf("const shippedBundleLicenseFiles"),
+		);
+
+		expect(extraResources).toContain('"plugins/core/resources/kilo"');
+	});
+
+	it("packs kilo.core's THIRD_PARTY_NOTICES.md (the Kilo CLI's licence) for the app notices", () => {
+		// writeAppLegalFiles reproduces the notices of workspace packages that
+		// `pnpm deploy` packs; a `files` allowlist without it would drop them.
+		const coreRoot = path.join(workspaceRoot, "plugins/core");
+		const corePackage = JSON.parse(readFileSync(path.join(coreRoot, "package.json"), "utf8")) as {
+			files?: string[];
+		};
+
+		expect(dependencies["@kilo-desktop/plugin-core"]).toBe("workspace:*");
+		expect(readFileSync(path.join(coreRoot, "THIRD_PARTY_NOTICES.md"), "utf8")).toContain(
+			"Kilo CLI",
+		);
+		expect(corePackage.files ?? ["THIRD_PARTY_NOTICES.md"]).toContain("THIRD_PARTY_NOTICES.md");
+	});
+
+	it("stages plugin resources before packaging and dev starts", () => {
+		const scripts = (
+			JSON.parse(readFileSync(path.join(desktopRoot, "package.json"), "utf8")) as {
+				scripts?: Record<string, string>;
+			}
+		).scripts;
+		const coreScripts = (
+			JSON.parse(readFileSync(path.join(workspaceRoot, "plugins/core/package.json"), "utf8")) as {
+				scripts?: Record<string, string>;
+			}
+		).scripts;
+
+		expect(scripts?.["prepare:build"]).toContain("prepare:plugins");
+		expect(scripts?.prestart).toContain("prepare:plugins");
+		expect(coreScripts?.["prepare-assets"]).toContain("fetch-cli");
+	});
+
+	it("quotes plugin prepare-assets filters so Windows cmd.exe can match packages", () => {
+		const scripts = (
+			JSON.parse(readFileSync(path.join(desktopRoot, "package.json"), "utf8")) as {
+				scripts?: Record<string, string>;
+			}
+		).scripts;
+		const preparePlugins = scripts?.["prepare:plugins"] ?? "";
+		// cmd.exe treats single quotes as literals, so a filter like
+		// `'@kilo-desktop/plugin-*'` matches no workspace packages.
+		expect(preparePlugins).toContain("run prepare-assets");
+		expect(preparePlugins).not.toMatch(/--filter\s+'/);
+		expect(preparePlugins).toMatch(/--filter\s+"@kilo-desktop\/plugin-\*"/);
+	});
+
+	it("caches the Kilo CLI on every packaging host", () => {
 		const setupCli = readFileSync(
-			path.join(workspaceRoot, "plugins/agent/actions/setup-cli/action.yml"),
+			path.join(workspaceRoot, "plugins/core/actions/setup-cli/action.yml"),
 			"utf8",
 		);
-		const runE2e = readFileSync(
-			path.join(workspaceRoot, ".github/actions/run-e2e/action.yml"),
-			"utf8",
-		);
-		const build = readFileSync(path.join(workspaceRoot, ".github/workflows/build.yml"), "utf8");
-		const publish = readFileSync(
-			path.join(workspaceRoot, ".github/workflows/publish_helper.yml"),
-			"utf8",
-		);
-		expect(setupCli).toContain("plugins/agent/resources/kilo");
+		const workflows = [
+			".github/actions/run-e2e/action.yml",
+			".github/workflows/build.yml",
+			".github/workflows/pr_macos_build.yml",
+			".github/workflows/publish_helper.yml",
+			".github/workflows/sbom.yml",
+		].map((file) => readFileSync(path.join(workspaceRoot, file), "utf8"));
+
+		expect(setupCli).toContain("plugins/core/resources/kilo");
 		expect(setupCli).toContain("runner.os");
 		expect(setupCli).toContain("runner.arch");
-		expect(setupCli).toContain("plugins/agent/package.json");
+		expect(setupCli).toContain("plugins/core/package.json");
 		expect(setupCli).toContain("pnpm-lock.yaml");
-		expect(runE2e).toContain("./plugins/agent/actions/setup-cli");
-		expect(build).toContain("./plugins/agent/actions/setup-cli");
-		expect(publish).toContain("./plugins/agent/actions/setup-cli");
+		for (const workflow of workflows) {
+			expect(workflow).toContain("./plugins/core/actions/setup-cli");
+		}
 	});
 });
 

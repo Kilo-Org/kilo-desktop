@@ -10,12 +10,12 @@ import {
 } from "@tanstack/react-query";
 import { useMemo } from "react";
 
-import { KernelError, type DomainMethods } from "@kilo-desktop/kernel";
-import { useDomain, useDomainState } from "@kilo-desktop/kernel/web";
+import { KernelError, type DomainObjectMethods } from "@kilo-desktop/kernel";
+import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
 
-import { Conda, type CondaStatus } from "../contracts/index.js";
+import { Conda, type CondaStatus } from "../contracts/index";
 
-export type CondaClient = DomainMethods<typeof Conda>;
+export type CondaClient = DomainObjectMethods<typeof Conda>;
 export type CondaMethod = keyof CondaClient & string;
 type Input<M extends CondaMethod> = Parameters<CondaClient[M]>[0];
 type Output<M extends CondaMethod> = Awaited<ReturnType<CondaClient[M]>>;
@@ -30,13 +30,13 @@ const UNAVAILABLE_CLIENT = new Proxy({} as CondaClient, { get: () => unavailable
 
 /** This window's `kilo.environments/conda` methods; calls fail while it is not provided. */
 export function useConda(): CondaClient {
-	const conda = useDomain(Conda);
+	const conda = useDomainObject(Conda);
 	return useMemo(() => conda?.methods ?? UNAVAILABLE_CLIENT, [conda]);
 }
 
 /** Whether Conda Environments can be used; null until known. */
 export function useCondaStatus(): CondaStatus | null {
-	return useDomainState(Conda, (state) => state.status) ?? null;
+	return useDomainObjectState(Conda, (state) => state.status) ?? null;
 }
 
 /** The cache key of a conda read: `["environments", method, input?]`. */

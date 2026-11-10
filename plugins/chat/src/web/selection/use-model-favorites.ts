@@ -1,29 +1,30 @@
 import { useCallback, useMemo } from "react";
 
-import { useDomain, useDomainState } from "@kilo-desktop/kernel/web";
+import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
+import { Models, type ModelRef, type ModelsState } from "@kilo-desktop/plugin-core/contracts";
 
-import { ModelPreferences, type ModelPreferencesState, type ModelRef } from "../../contracts";
-import type { KiloModelRef } from "./model-catalog";
+import { toKiloModelRef, type KiloModelRef } from "./model-catalog";
 import { favoriteKeySet } from "./model-favorites";
 
 const NO_FAVORITES: readonly ModelRef[] = [];
-const selectFavorites = (state: ModelPreferencesState) => state.favorites;
+const selectFavorites = (state: ModelsState) => state.preferences.favorites;
 
-/** Favourite models, kept in `kilo.chat/model-preferences` so every window shares them. */
+/** Favourite models, kept in kilo.core's model preferences so every window shares them. */
 export function useModelFavorites() {
-	const preferences = useDomain(ModelPreferences);
-	const favorites = useDomainState(ModelPreferences, selectFavorites) ?? NO_FAVORITES;
-	const favoriteIds = useMemo(() => favoriteKeySet(favorites), [favorites]);
+	const models = useDomainObject(Models);
+	const favorites = useDomainObjectState(Models, selectFavorites) ?? NO_FAVORITES;
+	const favoriteIds = useMemo(() => favoriteKeySet(favorites.map(toKiloModelRef)), [favorites]);
 	const toggleFavorite = useCallback(
 		(target: KiloModelRef) => {
-			void preferences?.methods
+			void models?.methods
 				.setFavorite({
-					...target,
+					aiProviderId: target.providerID,
+					modelId: target.modelID,
 					favorite: !favoriteIds.has(`${target.providerID}/${target.modelID}`),
 				})
 				.catch(() => undefined);
 		},
-		[favoriteIds, preferences],
+		[favoriteIds, models],
 	);
 	return { favoriteIds, toggleFavorite, hasFavorites: favorites.length > 0 };
 }

@@ -4,31 +4,31 @@ import path from "node:path";
 
 import type { KernelLogger } from "@kilo-desktop/kernel";
 
-import type { LocalInferenceStatus, LocalModel } from "../../contracts/schemas.js";
-import type { LocalModelSettings } from "../../shared/settings/model-settings.js";
+import { LOCAL_AI_PROVIDER_ID, type LocalInferenceStatus, type LocalModel } from "../../contracts";
+import type { LocalModelSettings } from "../../shared/settings/model-settings";
 import {
 	advertisedListenHost,
 	localConnectionInfo,
 	type NetworkAddress,
-} from "../runtime/connection-info.js";
+} from "../runtime/connection-info";
 import {
 	compactServerSettings,
 	proxyBindHost,
 	type LocalServerSettings,
-} from "../../shared/settings/server-settings.js";
-import {
-	LLAMA_API_KEY_ENV,
-	LOCAL_PROVIDER_ID,
-	LOCAL_PROVIDER_SOURCE_ID,
-} from "../integrations/kilo-constants.js";
-import { createProviderEntry } from "../integrations/kilo-provider-config.js";
-import type { LlamaRouterConnection, LlamaRouterStatus } from "../runtime/LlamaRouterManager.js";
-import type { LocalModelRegistry } from "../models/LocalModelRegistry.js";
+} from "../../shared/settings/server-settings";
+import { LLAMA_API_KEY_ENV, LOCAL_PROVIDER_SOURCE_ID } from "../integrations/kilo-constants";
+import { createProviderEntry } from "../integrations/kilo-provider-config";
+import type { LlamaRouterConnection, LlamaRouterStatus } from "../runtime/LlamaRouterManager";
+import type { LocalModelRegistry } from "../models/LocalModelRegistry";
 
 export const STATUS_CHANGED_EVENT = "status-changed";
 export const MODELS_CHANGED_EVENT = "models-changed";
 
-/** What the service publishes to Kilo: the provider entry and its environment. */
+/**
+ * What the service publishes to Kilo: the provider entry and its environment
+ * (origin's capability shape; `createKiloProvider` adapts it to kilo.core's
+ * `ai-provider`).
+ */
 export interface KiloCapability extends Record<string, unknown> {
 	kiloService: {
 		serverEnv: {
@@ -176,7 +176,9 @@ export interface AddLocalModelInput {
 
 /**
  * Reconciles three pieces of state behind one small interface: the persisted
- * GGUF registry, the single llama.cpp router, and Kilo's managed Local provider.
+ * GGUF registry, the single llama.cpp router, and Kilo's managed Local provider
+ * (the `kilo-desktop-model-server` entry kilo.core's `ai-provider` reads,
+ * written through `getKilo`).
  *
  * Provider registration is fast and happens before llama-server is ready so
  * Kilo's first spawn already sees `kilo-desktop-model-server`. Starting the router and
@@ -393,11 +395,15 @@ export class LocalInferenceService {
 		if (kilo.kiloService.providerConfig.replace) {
 			await kilo.kiloService.providerConfig.replace(
 				LOCAL_PROVIDER_SOURCE_ID,
-				LOCAL_PROVIDER_ID,
+				LOCAL_AI_PROVIDER_ID,
 				entry,
 			);
 		} else {
-			await kilo.kiloService.providerConfig.set(LOCAL_PROVIDER_SOURCE_ID, LOCAL_PROVIDER_ID, entry);
+			await kilo.kiloService.providerConfig.set(
+				LOCAL_PROVIDER_SOURCE_ID,
+				LOCAL_AI_PROVIDER_ID,
+				entry,
+			);
 		}
 	}
 
@@ -484,7 +490,7 @@ export class LocalInferenceService {
 
 	async #removeProvider(): Promise<void> {
 		const kilo = this.#options.getKilo();
-		await kilo?.kiloService.providerConfig.remove(LOCAL_PROVIDER_SOURCE_ID, LOCAL_PROVIDER_ID);
+		await kilo?.kiloService.providerConfig.remove(LOCAL_PROVIDER_SOURCE_ID, LOCAL_AI_PROVIDER_ID);
 	}
 
 	async #unpublish(): Promise<void> {

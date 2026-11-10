@@ -1,8 +1,7 @@
 import { useCallback, useState } from "react";
 
-import { useDomain } from "@kilo-desktop/kernel/web";
-import { PaneOpener, Panes } from "@kilo-desktop/plugin-sessions/contracts";
-import { Files } from "@kilo-desktop/plugin-workspaces/contracts";
+import { useDomainObject } from "@kilo-desktop/kernel/web";
+import { FileObjectType, Opener, Panes } from "@kilo-desktop/plugin-work-sessions/contracts";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import { HtmlPages } from "../../contracts";
@@ -26,21 +25,21 @@ const joinPath = (directory: string, name: string) =>
  * the chat has no workspace folder to save into.
  */
 export function useSaveHtmlPage(): SaveHtmlPage | undefined {
-	const pages = useDomain(HtmlPages);
-	const panes = useDomain(Panes);
-	const fileOpeners = useOptionalExtensions(PaneOpener).filter(
-		(opener) => opener.metadata.match.type === Files.id,
+	const pages = useDomainObject(HtmlPages);
+	const panes = useDomainObject(Panes);
+	const fileOpeners = useOptionalExtensions(Opener).filter(
+		(opener) => opener.metadata.match.type === FileObjectType.id,
 	);
 	const chat = useChatMarkdownContext();
 	const theme = useHtmlRenderTheme();
 	const [saving, setSaving] = useState(false);
 	const workspaceDirectory = chat?.workspaceFolders.find((folder) => folder.isPrimary)?.path;
-	const sessionId = chat?.sessionId;
+	const workSessionId = chat?.workSessionId;
 	const canOpen = panes !== null && fileOpeners.length > 0;
 
 	const save = useCallback(
 		async ({ title, html }: { readonly title: string; readonly html: string }) => {
-			if (!workspaceDirectory || !sessionId || !pages) return;
+			if (!workspaceDirectory || !workSessionId || !pages) return;
 			setSaving(true);
 			try {
 				const { relativePath } = await pages.methods.save({
@@ -57,8 +56,11 @@ export function useSaveHtmlPage(): SaveHtmlPage | undefined {
 									onClick: () =>
 										void panes?.methods
 											.openObject({
-												sessionId,
-												ref: { type: Files.id, id: joinPath(workspaceDirectory, relativePath) },
+												workSessionId,
+												ref: {
+													type: FileObjectType.id,
+													id: joinPath(workspaceDirectory, relativePath),
+												},
 											})
 											.catch(() => undefined),
 								},
@@ -73,8 +75,8 @@ export function useSaveHtmlPage(): SaveHtmlPage | undefined {
 				setSaving(false);
 			}
 		},
-		[canOpen, pages, panes, sessionId, theme, workspaceDirectory],
+		[canOpen, pages, panes, theme, workSessionId, workspaceDirectory],
 	);
 
-	return workspaceDirectory && sessionId && pages ? { save, saving } : undefined;
+	return workspaceDirectory && workSessionId && pages ? { save, saving } : undefined;
 }

@@ -1,4 +1,3 @@
-import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 import { memo, type ComponentType } from "react";
 
 import type { ToolRendererImplementation, ToolRendererProps } from "../../contracts";
@@ -12,9 +11,10 @@ import { SkillActivity } from "./tool-ui-skill";
 import { TaskActivity } from "./tool-ui-task";
 import { WebFetchActivity, WebSearchActivity } from "./tool-ui-web";
 import { WriteDiff } from "./tool-ui-write";
+import type { ToolCallComponent } from "./tool-call";
 
 /** A tool-call component as a renderer that ignores `Original`. */
-function renders(Component: ToolCallMessagePartComponent): ToolRendererImplementation {
+function renders(Component: ToolCallComponent): ToolRendererImplementation {
 	const Rendered: ComponentType<ToolRendererProps> = ({ Original: _original, ...props }) => (
 		<Component {...props} />
 	);

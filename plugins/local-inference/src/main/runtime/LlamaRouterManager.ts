@@ -8,13 +8,13 @@ import type { Readable } from "node:stream";
 
 import { execa } from "execa";
 
-import type { LocalInferenceStatus, LocalModel } from "../../contracts/schemas.js";
-import { renderModelPreset } from "../integrations/kilo-provider-config.js";
+import type { LocalInferenceStatus, LocalModel } from "../../contracts";
+import { renderModelPreset } from "../integrations/kilo-provider-config";
 import {
 	compactServerSettings,
 	renderRouterArgs,
 	type LocalServerSettings,
-} from "../../shared/settings/server-settings.js";
+} from "../../shared/settings/server-settings";
 
 export type LlamaRouterStatus = LocalInferenceStatus;
 

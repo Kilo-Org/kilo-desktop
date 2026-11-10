@@ -3,14 +3,21 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 import { z } from "zod";
 
-import { defineDomain, ref, type ObjectRef } from "../domain";
+import { defineDomainObject } from "../domain-object";
+import { defineObjectType, ref, type ObjectRef } from "../object-type";
 import { defineExtensionPoint } from "../extension-point";
 import type { PluginSdk } from "../sdk";
 import { createTestKernelPair, testPlugin } from "../testing";
 import { useDragSource, useDropTarget } from "./dnd";
-import { KernelProvider, useContextKey, useDomainState, useExtensions, useSdk } from "./react";
+import {
+	KernelProvider,
+	useContextKey,
+	useDomainObjectState,
+	useExtensions,
+	useSdk,
+} from "./react";
 
-const Counter = defineDomain({
+const Counter = defineDomainObject({
 	id: "acme.host/counter",
 	home: "main",
 	state: z.object({ count: z.number() }),
@@ -22,22 +29,20 @@ const Badge = defineExtensionPoint({
 	metadata: z.object({ label: z.string() }),
 });
 
-const Session = defineDomain({ id: "acme.host/session", home: "main", state: z.object({}) });
+const Session = defineObjectType({ id: "acme.host/session" });
 
 const hostManifest = {
-	domains: [
-		{ id: "counter", home: "main" },
-		{ id: "session", home: "main" },
-	],
+	domainObjects: [{ id: "counter", home: "main" }],
+	objectTypes: [{ id: "session" }],
 	extensionPoints: [{ id: "badge", kind: "additive" }],
 	contextKeys: [{ id: "busy", scope: "window" }],
 };
-const definitions = { domains: [Counter, Session], extensionPoints: [Badge] };
+const definitions = { domainObjects: [Counter], objectTypes: [Session], extensionPoints: [Badge] };
 
 const selectCount = (state: { count: number }) => state.count;
 
 function Probe() {
-	const count = useDomainState(Counter, selectCount);
+	const count = useDomainObjectState(Counter, selectCount);
 	const badges = useExtensions(Badge);
 	const busy = useContextKey("acme.host/busy");
 	return (
@@ -58,7 +63,10 @@ async function bootProbe(ui = <Probe />) {
 				definitions,
 				entry: {
 					activate: (sdk: PluginSdk) => {
-						provider = sdk.domains.provide(Counter, { initialState: { count: 1 }, methods: {} });
+						provider = sdk.domainObjects.provide(Counter, {
+							initialState: { count: 1 },
+							methods: {},
+						});
 					},
 				},
 			}),
@@ -128,14 +136,14 @@ describe("KernelProvider", () => {
 	});
 });
 
-describe("useDomainState with an equality check", () => {
+describe("useDomainObjectState with an equality check", () => {
 	const selectParity = (state: { count: number }) => ({ even: state.count % 2 === 0 });
 	const sameParity = (a: { even: boolean }, b: { even: boolean }) => a.even === b.even;
 
 	it("re-renders only when the selection changes by that check", async () => {
 		let renders = 0;
 		function Parity() {
-			const parity = useDomainState(Counter, selectParity, sameParity);
+			const parity = useDomainObjectState(Counter, selectParity, sameParity);
 			renders += 1;
 			return <span data-qa-id="parity">{parity?.even ? "even" : "odd"}</span>;
 		}

@@ -4,9 +4,9 @@ import type {
 	LocalInferenceHardwareProfile,
 	ModelCatalogEntry,
 	ModelCatalogQuantization,
-} from "../../contracts/schemas.js";
-import { evaluateCatalogModel, hasRecommendationQuantization } from "./model-compatibility.js";
-import { getCatalogRecommendations, sortCatalogModels } from "./model-recommendations.js";
+} from "../../contracts/index";
+import { evaluateCatalogModel, hasRecommendationQuantization } from "./model-compatibility";
+import { getCatalogRecommendations, sortCatalogModels } from "./model-recommendations";
 
 const GIBIBYTE = 1024 ** 3;
 const TEST_SHA256 = "0".repeat(64);

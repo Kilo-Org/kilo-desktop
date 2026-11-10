@@ -1,19 +1,23 @@
 // Test host for kilo.browser's web entry: main and a window linked in memory,
 // with kilo.browser's real main entry on a fake embedded browser, stand-ins
-// for kilo.sessions (panes and openers), kilo.workbench's navigator,
-// kilo.telemetry and the kernel's shell, and kilo.chat's and kilo.sessions'
-// points. Panes render as kilo.workbench's canvas renders them.
+// (their real manifests and definitions) for kilo.work-sessions (panes and
+// openers in main, the window's `window` object), a telemetry sink with
+// consent and the kernel's os, and kilo.core's and kilo.chat's points. Panes
+// render as kilo.work-sessions' canvas renders them.
 import { cleanup, render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { vi } from "vitest";
 
 import {
 	definePlugin,
+	KernelDataCollection,
+	KernelError,
 	KernelOs,
+	KernelTelemetrySink,
 	type PluginEntry,
 	type PluginRegistration,
 } from "@kilo-desktop/kernel";
-import { createTestKernelPair } from "@kilo-desktop/kernel/testing";
+import { createTestKernelPair, testPlugin } from "@kilo-desktop/kernel/testing";
 import { KernelProvider, RenderContribution } from "@kilo-desktop/kernel/web";
 import chatManifest from "@kilo-desktop/plugin-chat/plugin.json";
 import {
@@ -21,22 +25,15 @@ import {
 	MarkdownExtension,
 	type MarkdownExtensionImplementation,
 } from "@kilo-desktop/plugin-chat/contracts";
-import sessionsManifest from "@kilo-desktop/plugin-sessions/plugin.json";
+import workSessionsManifest from "@kilo-desktop/plugin-work-sessions/plugin.json";
 import {
 	PaneKind,
-	SESSIONS_DEFINITIONS,
+	WORK_SESSIONS_DEFINITIONS,
+	WorkSessionsWindow,
 	type Pane,
 	type PaneImplementation,
 	type PaneProps,
-} from "@kilo-desktop/plugin-sessions/contracts";
-import telemetryManifest from "@kilo-desktop/plugin-telemetry/plugin.json";
-import {
-	Telemetry,
-	TELEMETRY_DEFINITIONS,
-	type TrackInput,
-} from "@kilo-desktop/plugin-telemetry/contracts";
-import workbenchManifest from "@kilo-desktop/plugin-workbench/plugin.json";
-import { Workbench, WORKBENCH_DEFINITIONS } from "@kilo-desktop/plugin-workbench/contracts";
+} from "@kilo-desktop/plugin-work-sessions/contracts";
 import { TooltipProvider } from "@kilo-desktop/ui/components/tooltip";
 
 import manifest from "../../plugin.json";
@@ -44,7 +41,13 @@ import { BROWSER_DEFINITIONS, BROWSER_PANE_KIND } from "../contracts/index.js";
 import { createBrowserMainEntry } from "../main/entry.js";
 import { browserWebEntry } from "../web/index.js";
 import { createFakeBrowserHost } from "./fake-browser-host.js";
-import { browserPane, createSessionsHost, SESSION_ID } from "./sessions-host.js";
+import { browserPane, coreRegistration, createSessionsHost, SESSION_ID } from "./sessions-host.js";
+
+/** A telemetry event as a sink received it: its declared name and data. */
+export interface TrackedEvent {
+	readonly event: string;
+	readonly data: Readonly<Record<string, unknown>>;
+}
 
 export interface BrowserHostOptions {
 	readonly panes?: readonly Pane[];
@@ -52,10 +55,10 @@ export interface BrowserHostOptions {
 	readonly withoutMain?: boolean;
 	/** kilo.browser's main runs without the host's embedded browser. */
 	readonly withoutHost?: boolean;
-	/** Leaves kilo.sessions out. */
+	/** Leaves kilo.work-sessions' panes out of main. */
 	readonly withoutSessions?: boolean;
 	readonly activeSessionId?: string | null;
-	/** What kilo.workbench's `openPane` does. */
+	/** What kilo.work-sessions' `WorkSessionsWindow.openPane` does. */
 	readonly openPane?: (input: { kind: string }) => void;
 }
 
@@ -65,41 +68,42 @@ export async function bootBrowserHost(options: BrowserHostOptions = {}) {
 		Element.prototype.remove.call(host);
 	}
 	const fake = createFakeBrowserHost();
-	const sessions = createSessionsHost(options.panes ?? [browserPane("pane_a")]);
-	const tracked: TrackInput[] = [];
+	const sessions = createSessionsHost({ panes: options.panes ?? [browserPane("pane_a")] });
+	const tracked: TrackedEvent[] = [];
 	const opened: string[] = [];
+	const unused = (name: string) => () => {
+		throw new KernelError("NOT_FOUND", `${name} is not faked here.`);
+	};
 
-	const telemetryMain: PluginEntry = definePlugin({
-		activate(sdk) {
-			sdk.domains.provide(Telemetry, {
-				initialState: {},
-				methods: {
-					track: (input) => {
-						tracked.push(input);
-					},
-				},
-			});
+	const telemetrySink = testPlugin("test.telemetry-sink", {
+		manifest: { contributes: { extensions: { "kernel/telemetry-sink": [{ id: "sink" }] } } },
+		entry: {
+			activate: (sdk) => {
+				sdk.extensions.implement(KernelTelemetrySink, "sink", {
+					deliver: ({ name, data }) => void tracked.push({ event: name, data }),
+				});
+			},
 		},
 	});
-	const workbenchWeb: PluginEntry = definePlugin({
+	const workSessionsWeb: PluginEntry = definePlugin({
 		activate(sdk) {
-			sdk.domains.provide(Workbench, {
+			sdk.domainObjects.provide(WorkSessionsWindow, {
 				initialState: {
 					focus: null,
-					activeSessionId:
+					activeWorkSessionId:
 						options.activeSessionId === undefined ? SESSION_ID : options.activeSessionId,
 					view: null,
 					detachedViews: [],
 				},
 				methods: {
 					setFocus: () => undefined,
-					openSession: () => undefined,
-					closeSession: () => undefined,
+					openWorkSession: () => undefined,
+					closeWorkSession: () => undefined,
 					showView: () => undefined,
 					openPane: (input) => options.openPane?.(input),
 				},
 			});
-			sdk.context.set("sessionActive", options.activeSessionId !== null);
+			sdk.context.set("workSessionActive", options.activeSessionId !== null);
 			sdk.context.set("paneTargetActive", options.activeSessionId !== null);
 		},
 	});
@@ -107,48 +111,58 @@ export async function bootBrowserHost(options: BrowserHostOptions = {}) {
 		host: () => (options.withoutHost ? undefined : fake.host),
 		windows: false,
 	});
-	const sessionsMain: PluginRegistration[] = options.withoutSessions ? [] : [sessions.registration];
+	const workSessionsMain: PluginRegistration = options.withoutSessions
+		? { manifest: workSessionsManifest, definitions: WORK_SESSIONS_DEFINITIONS }
+		: sessions.registration;
 	const { main, renderer } = await createTestKernelPair({
 		main: [
-			{ manifest: telemetryManifest, definitions: TELEMETRY_DEFINITIONS, entry: telemetryMain },
-			...sessionsMain,
-			{ manifest: workbenchManifest, definitions: WORKBENCH_DEFINITIONS },
+			coreRegistration,
+			workSessionsMain,
 			{ manifest: chatManifest, definitions: CHAT_DEFINITIONS },
 			{
 				manifest,
 				definitions: BROWSER_DEFINITIONS,
 				...(options.withoutMain ? {} : { entry: browserMain }),
 			},
+			telemetrySink,
 		],
 		renderer: [
-			{ manifest: telemetryManifest, definitions: TELEMETRY_DEFINITIONS },
-			...(options.withoutSessions
-				? []
-				: [{ manifest: sessionsManifest, definitions: SESSIONS_DEFINITIONS }]),
-			{ manifest: workbenchManifest, definitions: WORKBENCH_DEFINITIONS, entry: workbenchWeb },
+			coreRegistration,
+			{
+				manifest: workSessionsManifest,
+				definitions: WORK_SESSIONS_DEFINITIONS,
+				entry: workSessionsWeb,
+			},
 			{ manifest: chatManifest, definitions: CHAT_DEFINITIONS },
 			{ manifest, definitions: BROWSER_DEFINITIONS, entry: browserWebEntry },
 		],
 	});
-	main.kernelSdk.domains.provide(KernelOs, {
+	main.kernelSdk.domainObjects.provide(KernelOs, {
 		initialState: {},
 		methods: {
-			openExternal: ({ url }: { url: string }) => {
+			openExternal: ({ url }) => {
 				opened.push(url);
 				return true;
 			},
-		} as never,
+			showItemInFolder: unused("showItemInFolder"),
+			showLogs: unused("showLogs"),
+			logFilePath: unused("logFilePath"),
+		},
+	});
+	main.kernelSdk.domainObjects.provide(KernelDataCollection, {
+		initialState: { choice: true, allowed: true, installationId: "i", environment: "test" },
+		methods: { setChoice: () => {} },
 	});
 	await main.flush();
 
 	const paneKind = () =>
 		renderer.extensions.list(PaneKind).find((candidate) => candidate.key === BROWSER_PANE_KIND);
-	const markdownExtension = (sessionId: string) => {
+	const markdownExtension = (workSessionId: string) => {
 		const contribution = renderer.extensions
 			.list(MarkdownExtension)
 			.find((candidate) => candidate.key === "kilo.browser/web-links");
 		return (contribution!.implementation as MarkdownExtensionImplementation)({
-			sessionId,
+			workSessionId,
 			workspaceFolders: [],
 		});
 	};
@@ -171,7 +185,7 @@ export async function bootBrowserHost(options: BrowserHostOptions = {}) {
 			<RenderContribution
 				contribution={paneKind()!}
 				props={{
-					sessionId: SESSION_ID,
+					workSessionId: SESSION_ID,
 					pane: sessions.panes().panes[0] ?? browserPane("pane_a"),
 					workspaceId: null,
 					directory: null,

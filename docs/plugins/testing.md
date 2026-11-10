@@ -33,7 +33,7 @@ import {
 const host = await createPluginHost([
 	{
 		manifest: shellManifest,
-		definitions: { extensionPoints: SHELL_EXTENSION_POINTS, domains: SHELL_DOMAINS },
+		definitions: { extensionPoints: SHELL_EXTENSION_POINTS, domainObjects: SHELL_DOMAIN_OBJECTS },
 	},
 	{ manifest, definitions: HELLO_DEFINITIONS, main: helloMainEntry, web: helloWebEntry },
 ]);
@@ -61,7 +61,7 @@ and a browser test (`src/web/hello.browser.test.tsx`).
 ## Faking what you depend on
 
 - **A host primitive:** provide the kernel's domain object yourself:
-  `host.main.kernelSdk.domains.provide(KernelUpdater, { initialState, methods })`.
+  `host.main.kernelSdk.domainObjects.provide(KernelUpdater, { initialState, methods })`.
 - **Another plugin:** register a small fake with the owner's real manifest
   and definitions and an entry that provides only what you use. Fakes throw
   `KernelError`s, as the real plugin does — only those keep their message

@@ -85,11 +85,11 @@ describe("TerminalView", () => {
 	});
 
 	it.each([
-		{ sessionId: "wses_1", paneId: "pane_2" },
-		{ sessionId: "wses_2", paneId: "pane_1" },
+		{ workSessionId: "wses_1", paneId: "pane_2" },
+		{ workSessionId: "wses_2", paneId: "pane_1" },
 	])(
-		"reuses the shell on a theme reconnect and starts $sessionId/$paneId in the latest folder",
-		async ({ sessionId, paneId }) => {
+		"reuses the shell on a theme reconnect and starts $workSessionId/$paneId in the latest folder",
+		async ({ workSessionId, paneId }) => {
 			stubTerminalOrigin();
 			const view = await renderTerminalHost({ directory: "/workspace-one" });
 			await expect.element(page.getByTestId("terminal-frame")).toBeVisible();
@@ -118,13 +118,17 @@ describe("TerminalView", () => {
 			expect(lastArgs()).not.toHaveProperty("cwd");
 
 			view.rerender({
-				sessionId,
+				workSessionId,
 				pane: terminalPane({ id: paneId }),
 				directory: "/workspace-two",
 			});
 			expect((await readyFrame()).frame).not.toBe(reconnected.frame);
 			await vi.waitFor(() => expect(view.opened).toHaveBeenCalledTimes(3));
-			expect(lastArgs()).toMatchObject({ sessionId, terminalId: paneId, cwd: "/workspace-two" });
+			expect(lastArgs()).toMatchObject({
+				sessionId: workSessionId,
+				terminalId: paneId,
+				cwd: "/workspace-two",
+			});
 		},
 	);
 

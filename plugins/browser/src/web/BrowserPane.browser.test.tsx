@@ -3,7 +3,7 @@ import { page, userEvent } from "vitest/browser";
 
 import { KernelError } from "@kilo-desktop/kernel";
 
-import { BrowserPages, localFileUrl } from "../contracts/index.js";
+import { BrowserPages, FILE_OBJECT_TYPE, localFileUrl } from "../contracts/index.js";
 import { attachGuest, bootBrowserHost, webview } from "../test/browser-host.js";
 import { browserPane, SESSION_ID } from "../test/sessions-host.js";
 
@@ -14,9 +14,12 @@ const guestHost = () => document.querySelector<HTMLElement>("[data-browser-webvi
 let panes = 0;
 
 /** Each pane is new: guests outlive their pane for a moment, keyed by pane. */
-async function bootPane(metadata: Record<string, string> = {}) {
+async function bootPane(
+	metadata: Record<string, string> = {},
+	object?: Parameters<typeof browserPane>[2],
+) {
 	panes += 1;
-	const host = await bootBrowserHost({ panes: [browserPane(`pane_${panes}`, metadata)] });
+	const host = await bootBrowserHost({ panes: [browserPane(`pane_${panes}`, metadata, object)] });
 	const rendered = host.renderPane();
 	await vi.waitFor(() => webview(), WAIT);
 	return { ...host, ...rendered };
@@ -45,7 +48,7 @@ describe("the Browser pane", () => {
 	});
 
 	it("opens the page or workspace file it was opened for", async () => {
-		await bootPane({ objectType: "kilo.workspaces/file", objectId: "/work/Chart one.html" });
+		await bootPane({}, { type: FILE_OBJECT_TYPE, id: "/work/Chart one.html" });
 
 		expect(webview().getAttribute("src")).toBe(localFileUrl("/work/Chart one.html"));
 		await expect
@@ -272,7 +275,7 @@ describe("the Browser pane", () => {
 		host.unmount();
 
 		await vi.waitFor(() => expect(guest.controller.dispose).toHaveBeenCalledOnce(), WAIT);
-		expect(host.main.kernelSdk.domains.get(BrowserPages)?.getState().pages).toEqual({});
+		expect(host.main.kernelSdk.domainObjects.get(BrowserPages)?.getState().pages).toEqual({});
 	});
 
 	it("says the browser isn't available without kilo.browser's main", async () => {
@@ -284,7 +287,7 @@ describe("the Browser pane", () => {
 
 	it("reports a host without an embedded browser", async () => {
 		const host = await bootBrowserHost({ withoutHost: true });
-		host.renderPane({ sessionId: SESSION_ID });
+		host.renderPane({ workSessionId: SESSION_ID });
 
 		await expect.element(page.getByText("The browser isn't available here.")).toBeVisible();
 	});

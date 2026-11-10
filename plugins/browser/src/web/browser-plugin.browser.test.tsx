@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import type { PaneImplementation } from "@kilo-desktop/plugin-sessions/contracts";
+import type { PaneImplementation } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import { BROWSER_PANE_KIND } from "../contracts/index.js";
 import { bootBrowserHost } from "../test/browser-host.js";
@@ -50,7 +50,7 @@ describe("kilo.browser's web entry", () => {
 		expect(page.getByTestId("globe").element().querySelector("img")).toBeNull();
 	});
 
-	it("Open Browser shows or opens a Browser pane through the workbench", async () => {
+	it("Open Browser shows or opens a Browser pane through the window", async () => {
 		const openPane = vi.fn();
 		const host = await bootBrowserHost({ panes: [], openPane });
 

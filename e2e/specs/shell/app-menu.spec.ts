@@ -1,4 +1,4 @@
-import { test } from "../../fixtures/features/app-menu.js";
+import { test } from "../../fixtures/shell/app-menu.js";
 
 test.describe("Native app menu @smoke @packaged", () => {
 	test("offers shell's commands and runs the one chosen", async ({ appShellPage, appMenuPage }) => {

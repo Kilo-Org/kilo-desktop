@@ -1,4 +1,9 @@
-import { NOTEBOOK_HOST, notebookFileOf, type NotebookConnectionArgs } from "../contracts/index.js";
+import {
+	NOTEBOOK_HOST,
+	notebookFileOf,
+	type NotebookConnectionArgs,
+	type NotebookPaneFacts,
+} from "../contracts/index.js";
 
 /**
  * Matches both the production and `-dev` desktop schemes. Getting it wrong
@@ -54,15 +59,16 @@ export function nteractSrc(notebookId: string): string | undefined {
 /** What a pane's frame opens the `host` port with. */
 export function notebookHostConnectionArgs(input: {
 	readonly notebookId: string;
-	readonly sessionId: string;
+	readonly workSessionId: string;
 	readonly title: string;
 	readonly directory: string | null;
+	readonly object?: NotebookPaneFacts["object"];
 	readonly metadata: Readonly<Record<string, string>>;
 }): NotebookConnectionArgs {
-	const notebookPath = notebookFileOf({ metadata: input.metadata });
+	const notebookPath = notebookFileOf({ object: input.object, metadata: input.metadata });
 	return {
 		notebookId: input.notebookId,
-		sessionId: input.sessionId,
+		workSessionId: input.workSessionId,
 		title: input.title,
 		...(notebookPath ? { notebookPath } : {}),
 		...(input.directory ? { workingDirectory: input.directory } : {}),

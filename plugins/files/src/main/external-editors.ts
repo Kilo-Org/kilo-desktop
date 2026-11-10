@@ -3,7 +3,7 @@ import which from "which";
 
 import { KernelError } from "@kilo-desktop/kernel";
 
-import { EXTERNAL_EDITORS, type ExternalEditorId } from "../contracts/models.js";
+import { EXTERNAL_EDITORS, type ExternalEditorId } from "../contracts/models";
 
 export interface ExternalEditorServiceOptions {
 	readonly resolveCommand?: (

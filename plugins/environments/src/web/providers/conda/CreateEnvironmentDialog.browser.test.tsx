@@ -12,10 +12,10 @@ import {
 	type CondaRepodataFindInput,
 	type CondaRepodataFindResult,
 	type CondaRepodataPackage,
-} from "../../../contracts/providers/conda.js";
-import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host.js";
-import { CreateEnvironmentDialog } from "./CreateEnvironmentDialog.js";
-import { PREFIX_CHECK_DEBOUNCE_MS } from "./use-create-prefix-check.js";
+} from "../../../contracts/providers/conda";
+import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host";
+import { CreateEnvironmentDialog } from "./CreateEnvironmentDialog";
+import { PREFIX_CHECK_DEBOUNCE_MS } from "./use-create-prefix-check";
 
 function pkg(name: string, versions: string[] = []): CondaRepodataPackage {
 	return {

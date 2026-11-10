@@ -1,14 +1,15 @@
 import { z } from "zod";
 
-import { defineDomain, method, type PluginDefinitions } from "@kilo-desktop/kernel";
-import { Files } from "@kilo-desktop/plugin-workspaces/contracts";
+import { defineDomainObject, method, type PluginDefinitions } from "@kilo-desktop/kernel";
+import { FileObjectType } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 export * from "./notebook-theme";
 
 /**
  * kilo.notebook's public surface: the Notebook pane kind
  * (`kilo.notebook/notebook`, origin's `notebook.notebook` tab), the opener for
- * a workspace's `.ipynb` files, the notebook agent tools, and `notebooks` —
+ * a workspace's `.ipynb` files, the notebook agent tools, the notebook Kilo
+ * plugin and its server environment, and `notebooks` —
  * the notebook runtime (nteract's `runtimed`) and the panes' notebooks, in
  * main.
  */
@@ -16,11 +17,38 @@ export const NOTEBOOK_PLUGIN_ID = "kilo.notebook";
 
 export const NOTEBOOK_PANE_KIND = "kilo.notebook/notebook";
 
-/** Origin's right-panel tab definition, kilo.sessions' legacy key for the pane kind. */
+/** Origin's right-panel tab definition, the legacy key for the pane kind. */
 export const LEGACY_NOTEBOOK_TAB_ID = "notebook.notebook";
 
-/** kilo.workspaces' file objects (an absolute path); `.ipynb` ones open here. */
-export const FILE_OBJECT_TYPE = Files.id;
+/** kilo.work-sessions' file objects (an absolute path); `.ipynb` ones open here. */
+export const FILE_OBJECT_TYPE = FileObjectType.id;
+
+/** kilo.notebook's commands, by key (origin's id, so saved keybindings keep working). */
+export const NOTEBOOK_COMMANDS = {
+	open: "kilo.notebook/open",
+} as const;
+
+/** kilo.notebook's agent tools (origin's ids, kept for their wire names `desktop_notebook_<id>`). */
+export const NOTEBOOK_TOOL_IDS = ["list_open", "open", "open_file"] as const;
+
+/** The flag that lets the notebook runtime send its own telemetry (with consent). */
+export const NOTEBOOK_TELEMETRY_FLAG = "notebook-host-telemetry";
+
+/**
+ * The notebook Kilo plugin (`notebooks_*` tools), added to Kilo as a
+ * `kilo.core/agent-extension` from `${resources}/kilo-plugin/index.js`.
+ */
+export const NOTEBOOK_KILO_PLUGIN_CONTRIBUTION = "kilo-plugin";
+
+/**
+ * The `kilo.core/server-env` contribution telling that Kilo plugin where
+ * `@runtimed/node` and the daemon's socket are.
+ */
+export const NOTEBOOK_SERVER_ENV_CONTRIBUTION = "runtimed";
+export const NOTEBOOK_SERVER_ENV = {
+	runtimedNodePath: "NTERACT_RUNTIMED_NODE_PATH",
+	socketPath: "RUNTIMED_SOCKET_PATH",
+} as const;
 
 /**
  * The embedded host nteract's notebook UI is served from — a sibling of the
@@ -39,7 +67,7 @@ export const RUNTIMED_SERVICE_KEY = "kilo.notebook/runtimed";
 
 export const NOTEBOOK_PANE_TITLE = "Notebook";
 
-/** Pane metadata keys (origin's, so handed-over tabs keep their notebooks). */
+/** Pane metadata keys (origin's, so handed-over tabs keep their notebooks). The file a pane was opened for is its `object`. */
 export const NOTEBOOK_PANE_METADATA = {
 	/** The daemon's id for the pane's notebook (a UUID). */
 	notebookId: "notebookId",
@@ -48,10 +76,13 @@ export const NOTEBOOK_PANE_METADATA = {
 	/** `opening` while the file opens, `ready` once it did, `error` when it couldn't. */
 	openState: "notebookOpenState",
 	openError: "notebookOpenError",
-	/** Set by `Panes.openObject`: the file the pane was opened for. */
-	objectType: "objectType",
-	objectId: "objectId",
 } as const;
+
+/** What the pane helpers read of a pane. */
+export interface NotebookPaneFacts {
+	readonly object?: { readonly type: string; readonly id: string } | undefined;
+	readonly metadata: Readonly<Record<string, string>>;
+}
 
 export type NotebookOpenState = "opening" | "ready" | "error";
 
@@ -72,23 +103,16 @@ export function notebookOpenState(
 }
 
 /** The file a pane's notebook comes from, when it is file-backed. */
-export function notebookFileOf(pane: {
-	readonly metadata: Readonly<Record<string, string>>;
-}): string | undefined {
-	const { metadata } = pane;
-	if (metadata[NOTEBOOK_PANE_METADATA.notebookPath]) {
-		return metadata[NOTEBOOK_PANE_METADATA.notebookPath];
-	}
-	return metadata[NOTEBOOK_PANE_METADATA.objectType] === FILE_OBJECT_TYPE
-		? metadata[NOTEBOOK_PANE_METADATA.objectId] || undefined
-		: undefined;
+export function notebookFileOf(pane: NotebookPaneFacts): string | undefined {
+	const path = pane.metadata[NOTEBOOK_PANE_METADATA.notebookPath];
+	if (path) return path;
+	return pane.object?.type === FILE_OBJECT_TYPE ? pane.object.id || undefined : undefined;
 }
 
 /** The daemon's id for a pane's notebook; undefined until main has given it one. */
-export function notebookIdOf(pane: {
-	readonly id: string;
-	readonly metadata: Readonly<Record<string, string>>;
-}): string | undefined {
+export function notebookIdOf(
+	pane: NotebookPaneFacts & { readonly id: string },
+): string | undefined {
 	const id = pane.metadata[NOTEBOOK_PANE_METADATA.notebookId];
 	if (id) return UUID.test(id) ? id : undefined;
 	if (notebookOpenState(pane.metadata) || notebookFileOf(pane)) return undefined;
@@ -178,7 +202,7 @@ const absolutePath = z.string().min(1).max(32_768);
 /** What a pane's frame opens the `host` port with. */
 export const notebookConnectionArgsSchema = z.object({
 	notebookId: notebookIdSchema,
-	sessionId: z.string().min(1).max(512),
+	workSessionId: z.string().min(1).max(512),
 	title: z.string().min(1).max(512),
 	workingDirectory: absolutePath.optional(),
 	notebookPath: absolutePath.optional(),
@@ -192,9 +216,11 @@ export type NotebookConnectionArgs = z.infer<typeof notebookConnectionArgsSchema
  * titles the pane after it; `dirty` lists connected notebooks with unsaved
  * changes, by notebook id.
  */
-export const Notebooks = defineDomain({
+export const Notebooks = defineDomainObject({
 	id: "kilo.notebook/notebooks",
 	home: "main",
+	description:
+		"The notebook runtime and the notebooks Notebook panes show: status, saving, settings.",
 	state: z.object({
 		settings: notebookSettingsSchema,
 		dirty: z.record(z.string(), z.boolean()),
@@ -214,12 +240,12 @@ export const Notebooks = defineDomain({
 		),
 		/** Gives a pane its notebook if it has none yet (opening its file); safe to repeat. */
 		resolvePane: method(
-			z.object({ sessionId: z.string().min(1), paneId: z.string().min(1) }),
+			z.object({ workSessionId: z.string().min(1), paneId: z.string().min(1) }),
 			z.undefined(),
 		),
 	},
 });
 
 export const NOTEBOOK_DEFINITIONS: PluginDefinitions = {
-	domains: [Notebooks],
+	domainObjects: [Notebooks],
 };

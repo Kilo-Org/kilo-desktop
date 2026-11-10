@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { KernelError } from "@kilo-desktop/kernel";
 
-import { FilesService } from "./files-service.js";
+import { FilesService } from "./files-service";
 
 /**
  * Table-read seam: optionally caps every `FileHandle.read` (short reads are

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { streamGitPatchFiles } from "./stream-git-patch-files.js";
+import { streamGitPatchFiles } from "./stream-git-patch-files";
 
 function streamOf(chunks: readonly string[]): ReadableStream<Uint8Array> {
 	const encoder = new TextEncoder();

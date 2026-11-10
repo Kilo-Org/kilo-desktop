@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ExternalEditorService } from "./external-editors.js";
+import { ExternalEditorService } from "./external-editors";
 
 describe("ExternalEditorService", () => {
 	afterEach(() => {

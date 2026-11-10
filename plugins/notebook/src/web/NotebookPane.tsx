@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { useDomain, useDomainState, useSdk } from "@kilo-desktop/kernel/web";
-import type { PaneProps } from "@kilo-desktop/plugin-sessions/contracts";
+import { useDomainObject, useDomainObjectState, useSdk } from "@kilo-desktop/kernel/web";
 import { Theme } from "@kilo-desktop/plugin-shell/contracts";
+import type { PaneProps } from "@kilo-desktop/plugin-work-sessions/contracts";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Empty,
@@ -82,14 +82,14 @@ function Waiting({ qaId, title }: { readonly qaId: string; readonly title: strin
 	);
 }
 
-function NotebookPaneContent({ sessionId, pane, directory }: PaneProps) {
+function NotebookPaneContent({ workSessionId, pane, directory }: PaneProps) {
 	const sdk = useSdk();
-	const notebooks = useDomain(Notebooks);
-	const mode = useDomainState(Theme, selectMode) ?? "light";
-	const { metadata, title } = pane;
+	const notebooks = useDomainObject(Notebooks);
+	const mode = useDomainObjectState(Theme, selectMode) ?? "light";
+	const { object, metadata, title } = pane;
 	const notebookId = notebookIdOf(pane);
 	const openState = notebookOpenState(metadata);
-	const dirty = useDomainState(Notebooks, (state) =>
+	const dirty = useDomainObjectState(Notebooks, (state) =>
 		notebookId ? state.dirty[notebookId] === true : false,
 	);
 	const viewRef = useRef<HTMLDivElement>(null);
@@ -109,8 +109,8 @@ function NotebookPaneContent({ sessionId, pane, directory }: PaneProps) {
 
 	useEffect(() => {
 		if (notebookId || openState === "error" || !notebooks) return;
-		void notebooks.methods.resolvePane({ sessionId, paneId: pane.id }).catch(() => undefined);
-	}, [notebookId, notebooks, openState, pane.id, sessionId]);
+		void notebooks.methods.resolvePane({ workSessionId, paneId: pane.id }).catch(() => undefined);
+	}, [notebookId, notebooks, openState, pane.id, workSessionId]);
 
 	const closeGuard = useMemo(
 		() =>
@@ -119,7 +119,7 @@ function NotebookPaneContent({ sessionId, pane, directory }: PaneProps) {
 				: null,
 		[dirty, notebookId],
 	);
-	useCloseGuard(sessionId, pane.id, closeGuard);
+	useCloseGuard(workSessionId, pane.id, closeGuard);
 
 	useEffect(() => {
 		if (!desktopFrame || !notebooks) return;
@@ -193,7 +193,14 @@ function NotebookPaneContent({ sessionId, pane, directory }: PaneProps) {
 				Array.isArray(message.capabilities) && message.capabilities.includes("presentation.rail");
 			port = sdk.ports.open(
 				NOTEBOOK_HOST_PORT,
-				notebookHostConnectionArgs({ notebookId, sessionId, title, directory, metadata }),
+				notebookHostConnectionArgs({
+					notebookId,
+					workSessionId,
+					title,
+					directory,
+					object,
+					metadata,
+				}),
 			);
 			try {
 				frameWindow.postMessage(
@@ -226,7 +233,7 @@ function NotebookPaneContent({ sessionId, pane, directory }: PaneProps) {
 			window.removeEventListener("message", onMessage);
 			if (!transferred) port?.close();
 		};
-	}, [directory, frameSrc, metadata, notebookId, sdk, sessionId, title]);
+	}, [directory, frameSrc, metadata, notebookId, object, sdk, workSessionId, title]);
 
 	useEffect(() => {
 		if (!frameSrc) return;

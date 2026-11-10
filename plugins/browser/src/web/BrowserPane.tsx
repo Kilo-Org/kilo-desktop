@@ -19,9 +19,9 @@ import {
 	type FormEvent,
 } from "react";
 
-import { KernelOs, type DomainHandle, type DomainState } from "@kilo-desktop/kernel";
-import { useDomain, useDomainState } from "@kilo-desktop/kernel/web";
-import type { PaneProps } from "@kilo-desktop/plugin-sessions/contracts";
+import { KernelOs, type DomainObjectHandle, type DomainObjectState } from "@kilo-desktop/kernel";
+import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
+import type { PaneProps } from "@kilo-desktop/plugin-work-sessions/contracts";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Empty,
@@ -68,7 +68,7 @@ function IconButton({ label, ...props }: ComponentProps<typeof Button> & { label
 	);
 }
 
-type BrowserPagesHandle = DomainHandle<typeof BrowserPages>;
+type BrowserPagesHandle = DomainObjectHandle<typeof BrowserPages>;
 
 const message = (cause: unknown, fallback: string) =>
 	cause instanceof Error ? cause.message : fallback;
@@ -79,10 +79,12 @@ const message = (cause: unknown, fallback: string) =>
  * lives outside React (`acquireBrowserGuest`) and is laid over the pane's
  * surface, so it survives re-renders and is shown only while the pane is.
  */
-export function BrowserPane({ sessionId, pane, visible }: PaneProps) {
-	const pages = useDomain(BrowserPages);
+export function BrowserPane({ workSessionId, pane, visible }: PaneProps) {
+	const pages = useDomainObject(BrowserPages);
 	if (!pages) return <BrowserUnavailable />;
-	return <BrowserPageView pages={pages} sessionId={sessionId} pane={pane} visible={visible} />;
+	return (
+		<BrowserPageView pages={pages} workSessionId={workSessionId} pane={pane} visible={visible} />
+	);
 }
 
 function BrowserUnavailable() {
@@ -101,18 +103,18 @@ function BrowserUnavailable() {
 
 function BrowserPageView({
 	pages,
-	sessionId,
+	workSessionId,
 	pane,
 	visible,
-}: Pick<PaneProps, "sessionId" | "pane" | "visible"> & { readonly pages: BrowserPagesHandle }) {
-	const os = useDomain(KernelOs);
+}: Pick<PaneProps, "workSessionId" | "pane" | "visible"> & { readonly pages: BrowserPagesHandle }) {
+	const os = useDomainObject(KernelOs);
 	const paneId = pane.id;
-	const key = pageKey(sessionId, paneId);
-	const state = useDomainState(
+	const key = pageKey(workSessionId, paneId);
+	const state = useDomainObjectState(
 		BrowserPages,
-		useCallback((all: DomainState<typeof BrowserPages>) => all.pages[key], [key]),
+		useCallback((all: DomainObjectState<typeof BrowserPages>) => all.pages[key], [key]),
 	);
-	const restoredUrl = paneUrl(pane.metadata);
+	const restoredUrl = paneUrl(pane);
 	const initialUrlRef = useRef(restoredUrl);
 	const [partition, setPartition] = useState<string>();
 	const [draft, setDraft] = useState(restoredUrl);
@@ -134,7 +136,7 @@ function BrowserPageView({
 	const hasUrl = Boolean(currentUrl);
 	const zoom = Math.round((state?.zoomFactor ?? 1) * 100);
 	const loadProgress = useLoadingProgress(hasUrl && (state?.loading ?? false));
-	const target = { sessionId, paneId };
+	const target = { workSessionId, paneId };
 
 	useLayoutEffect(() => {
 		if (!partition) return;
@@ -222,10 +224,10 @@ function BrowserPageView({
 			attachmentReadyRef.current = false;
 			const webContentsId = attachedIdRef.current;
 			if (webContentsId) {
-				void pages.methods.detach({ sessionId, paneId, webContentsId }).catch(() => undefined);
+				void pages.methods.detach({ workSessionId, paneId, webContentsId }).catch(() => undefined);
 			}
 		},
-		[pages, paneId, sessionId],
+		[pages, paneId, workSessionId],
 	);
 
 	const attach = useCallback(
@@ -244,7 +246,7 @@ function BrowserPageView({
 				attachmentReadyRef.current = false;
 				setAttachmentReady(false);
 				void pages.methods
-					.attach({ sessionId, paneId, webContentsId })
+					.attach({ workSessionId, paneId, webContentsId })
 					.then(() => {
 						if (attachedIdRef.current !== webContentsId) return;
 						attachmentRetryPendingRef.current = false;
@@ -253,7 +255,7 @@ function BrowserPageView({
 						const pendingUrl = pendingUrlRef.current;
 						if (!pendingUrl) return;
 						pendingUrlRef.current = undefined;
-						return pages.methods.navigate({ sessionId, paneId, url: pendingUrl });
+						return pages.methods.navigate({ workSessionId, paneId, url: pendingUrl });
 					})
 					.catch((cause: unknown) => {
 						if (attachedIdRef.current !== webContentsId) return;
@@ -271,7 +273,7 @@ function BrowserPageView({
 				// The guest has not attached yet; did-attach and dom-ready retry.
 			}
 		},
-		[pages, paneId, sessionId],
+		[pages, paneId, workSessionId],
 	);
 	const closeMenu = useCallback(() => setMenuOpen(false), []);
 	useLayoutEffect(() => {

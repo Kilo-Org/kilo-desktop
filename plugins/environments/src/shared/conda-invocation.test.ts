@@ -5,7 +5,7 @@ import {
 	isMutatingCondaTool,
 	isPerActionCondaMutation,
 	summarizeCondaInvocation,
-} from "./conda-invocation.js";
+} from "./conda-invocation";
 
 describe("classifyChannel", () => {
 	it("trusts main and defaults", () => {

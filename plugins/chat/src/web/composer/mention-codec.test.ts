@@ -23,7 +23,7 @@ function source(key: string, resolve: MentionSource["implementation"]["resolve"]
 const files = source("kilo.files/files", (item) => ({ text: `@/${item.id}` }));
 const FILES = mentionType("kilo.files/files");
 const CONTEXT = {
-	sessionId: "wses_1",
+	workSessionId: "wses_1",
 	directory: "/projects/app",
 	workspaceId: null,
 	workspaceFolders: [],
@@ -85,7 +85,7 @@ describe("resolveMentionParts", () => {
 			{ type: "file", url: "file:///a", mime: "text/plain", filename: "a" },
 			{ type: "file", url: "file:///b", mime: "text/plain", filename: "b" },
 		]);
-		expect(resolve.mock.calls[0]![1]).toMatchObject({ sessionId: "wses_1" });
+		expect(resolve.mock.calls[0]![1]).toMatchObject({ workSessionId: "wses_1" });
 	});
 
 	it("keeps the label when a source gives no text or fails", async () => {
@@ -105,7 +105,7 @@ describe("resolveMentionParts", () => {
 	});
 
 	it("leaves prompts without mentions, or without sources, as they are", async () => {
-		const plain = [{ type: "text", text: "hello" }];
+		const plain = [{ type: "text" as const, text: "hello" }];
 		expect(await resolveMentionParts(plain, [files], CONTEXT)).toEqual(plain);
 		expect(await resolveMentionParts(plain, [], CONTEXT)).toEqual(plain);
 	});

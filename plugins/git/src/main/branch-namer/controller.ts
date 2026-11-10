@@ -1,14 +1,13 @@
+import type { ModelRef } from "@kilo-desktop/plugin-core/contracts";
+
 /** Prompts considered for automatic naming before disarming (kilocode's `BranchNamingController`). */
 export const MAX_PROMPTS = 4;
 
-export interface BranchNamerModel {
-	readonly providerID: string;
-	readonly modelID: string;
-}
+export type BranchNamerModel = ModelRef;
 
 /** Where an eligible chat's worktree is and what its branch is called now. */
 export interface NamerTarget {
-	readonly sessionId: string;
+	readonly workSessionId: string;
 	readonly directory: string;
 	readonly currentBranch: string;
 }
@@ -40,9 +39,9 @@ export interface BranchNamerDeps {
 		currentBranch: string;
 		requestedBranch: string;
 	}): Promise<{ branch: string } | null>;
-	hasWorktreeWork(input: { directory: string; baseBranch?: string }): Promise<boolean>;
-	/** Records the new branch on the session and its chat; failures are the caller's to log. */
-	renamed(input: { chatId: string; sessionId: string; branch: string }): Promise<void>;
+	hasCopyWork(input: { directory: string; baseBranch?: string }): Promise<boolean>;
+	/** Records the new branch on the work session (and so its chats); failures are the caller's to log. */
+	renamed(input: { chatId: string; workSessionId: string; branch: string }): Promise<void>;
 	readonly progress: {
 		load(): ArmedChats;
 		save(armed: ArmedChats): void;
@@ -141,7 +140,7 @@ export function createBranchNamer(deps: BranchNamerDeps): BranchNamer {
 		// Before recording: a failed record must never leave the chat renameable twice.
 		disarm(chatId);
 		await deps
-			.renamed({ chatId, sessionId: target.sessionId, branch: renamed.branch })
+			.renamed({ chatId, workSessionId: target.workSessionId, branch: renamed.branch })
 			.catch((error: unknown) => {
 				log(`Renamed the branch to ${renamed.branch} but could not record it: ${error}`);
 			});
@@ -167,7 +166,7 @@ export function createBranchNamer(deps: BranchNamerDeps): BranchNamer {
 		}
 		void withSlot(chatId, async (signal) => {
 			const hasWork = await deps
-				.hasWorktreeWork({
+				.hasCopyWork({
 					directory: target.directory,
 					...(state.baseRef ? { baseBranch: state.baseRef } : {}),
 				})

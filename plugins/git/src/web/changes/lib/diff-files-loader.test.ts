@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { processFile, type FileDiffMetadata } from "@pierre/diffs";
 
-import { createDiffFilesLoader } from "./diff-files-loader.js";
+import { createDiffFilesLoader } from "./diff-files-loader";
 
 const CHANGE_PATCH = `diff --git a/file.txt b/file.txt
 index 1111111..2222222 100644

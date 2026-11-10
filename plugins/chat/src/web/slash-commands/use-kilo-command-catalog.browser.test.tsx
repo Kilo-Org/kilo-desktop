@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Command } from "@kilocode/sdk/v2/client";
 
-import type { ServerConnection as KiloGlobalConnection } from "@kilo-desktop/plugin-agent/contracts";
+import type { ServerConnection as KiloGlobalConnection } from "@kilo-desktop/plugin-core/contracts";
 import {
 	fetchCommandCatalogForConnection,
 	useKiloCommandCatalog,

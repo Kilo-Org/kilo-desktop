@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-	friendlyEnvironmentsError,
-	isProviderNotReadyError,
-} from "./environments-error-message.js";
+import { friendlyEnvironmentsError, isProviderNotReadyError } from "./environments-error-message";
 
 describe("friendlyEnvironmentsError", () => {
 	it("maps the CODE: detail form to friendly copy", () => {

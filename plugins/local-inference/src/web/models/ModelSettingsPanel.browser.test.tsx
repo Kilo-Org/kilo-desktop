@@ -2,12 +2,12 @@ import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import type { LocalModel, LocalModelSettings } from "../../contracts/index.js";
+import type { LocalModel, LocalModelSettings } from "../../contracts/index";
 import {
 	expandModel,
 	renderSettings,
 	usageSnapshot,
-} from "../../test/render-local-model-server-settings.js";
+} from "../../test/render-local-model-server-settings";
 
 afterEach(() => {
 	cleanup();

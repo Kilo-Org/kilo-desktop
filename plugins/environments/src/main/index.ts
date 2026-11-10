@@ -1,6 +1,6 @@
-import { createEnvironmentsMainEntry } from "./entry.js";
+import { createEnvironmentsMainEntry } from "./entry";
 
-export { createEnvironmentsMainEntry, type EnvironmentsMainOptions } from "./entry.js";
+export { createEnvironmentsMainEntry, type EnvironmentsMainOptions } from "./entry";
 
 const bridgeSentryDsn: string | undefined = import.meta.env.VITE_BRIDGE_SENTRY_DSN;
 

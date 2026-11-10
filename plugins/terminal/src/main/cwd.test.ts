@@ -4,8 +4,8 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { DomainHandle } from "@kilo-desktop/kernel";
-import type { Authorization, Workspaces } from "@kilo-desktop/plugin-workspaces/contracts";
+import type { DomainObjectHandle } from "@kilo-desktop/kernel";
+import type { Authorization, Workspaces } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import { createTerminalCwdResolver } from "./cwd";
 
@@ -26,7 +26,7 @@ function workspacesAuthorizing(decide: (target: string) => Authorization) {
 	const authorize = vi.fn(async ({ path: target }: { path: string; rule: string }) =>
 		decide(target),
 	);
-	const handle = { methods: { authorize } } as unknown as DomainHandle<typeof Workspaces>;
+	const handle = { methods: { authorize } } as unknown as DomainObjectHandle<typeof Workspaces>;
 	return { handle, authorize };
 }
 
@@ -51,7 +51,7 @@ describe("terminal cwd resolution", () => {
 		).rejects.toMatchObject({ code: "VALIDATION" });
 	});
 
-	it("asks kilo.workspaces whether the canonical folder is a primary folder or its worktree", async () => {
+	it("asks kilo.work-sessions whether the canonical folder is a primary folder or its worktree", async () => {
 		const root = await tempRoot("terminal-auth-");
 		const primary = path.join(root, "primary");
 		const alias = path.join(root, "alias");
@@ -68,7 +68,7 @@ describe("terminal cwd resolution", () => {
 		expect(authorize).toHaveBeenCalledWith({ path: canonical, rule: "primary" });
 	});
 
-	it("refuses folders kilo.workspaces doesn't authorise, and ones that don't exist", async () => {
+	it("refuses folders kilo.work-sessions doesn't authorise, and ones that don't exist", async () => {
 		const root = await tempRoot("terminal-auth-");
 		const { handle } = workspacesAuthorizing(() => ({ allowed: false }));
 		const resolve = createTerminalCwdResolver(() => handle);

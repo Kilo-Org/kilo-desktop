@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { APPLE_DB } from "./data/apple.js";
-import { GPU_DB } from "./data/gpu.js";
-import { MOBILE_GPU_DB } from "./data/mobile.js";
-import { SBC_DB } from "./data/sbc.js";
+import { APPLE_DB } from "./data/apple";
+import { GPU_DB } from "./data/gpu";
+import { MOBILE_GPU_DB } from "./data/mobile";
+import { SBC_DB } from "./data/sbc";
 import {
 	matchCanIRunApple,
 	matchCanIRunGpu,
 	matchCanIRunMobile,
 	matchCanIRunSbc,
-} from "./match-device.js";
+} from "./match-device";
 
 describe("CanIRun hardware catalog", () => {
 	it("contains every device preset from CanIRun db81865", () => {

@@ -3,14 +3,13 @@
 	"id": "example.hello",
 	"displayName": "Hello",
 	"version": "0.1.0",
-	"description": "A minimal example plugin: a domain object in main, a command and a settings section.",
-	"engines": { "kilo-desktop": "^1.0" },
+	"description": "A minimal example plugin: a domain object in main, a command and a telemetry event.",
+	"engines": {
+		"kilo-desktop": "^1.0"
+	},
 	"main": "./src/main/index.ts",
 	"web": "./src/web/index.ts",
-	"requires": {
-		"kilo.shell/settings-section": "optional"
-	},
-	"domains": [
+	"domainObjects": [
 		{
 			"id": "greetings",
 			"home": "main",
@@ -19,18 +18,17 @@
 	],
 	"contributes": {
 		"extensions": {
-			"kilo.shell/settings-section": [
-				{
-					"id": "hello",
-					"title": "Hello",
-					"description": "Say hello and count the greetings."
-				}
-			],
 			"kernel/command": [
 				{
 					"id": "say-hello",
 					"title": "Say hello",
 					"category": "Hello"
+				}
+			],
+			"kernel/telemetry-event": [
+				{
+					"id": "greeted",
+					"name": "Hello Greeted"
 				}
 			]
 		}

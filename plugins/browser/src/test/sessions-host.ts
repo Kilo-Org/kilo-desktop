@@ -1,35 +1,36 @@
 // Stand-ins for the plugins kilo.browser works with, for main and window
-// tests: kilo.sessions (sessions and panes in memory, its openers resolved
-// as main resolves them: first matching contribution by priority, the
-// object's pane reused), kilo.workspaces (authorize answered by the test),
-// kilo.agent's tool point and a kilo.files-like opener at -100.
+// tests, under their real manifests and definitions: kilo.work-sessions (work
+// sessions and panes in memory, its openers resolved as main resolves them:
+// first matching contribution by priority, the object's pane reused; its
+// workspaces answering `authorize` with the test's function), kilo.core's
+// tool point and a kilo.files-like opener at -100.
 import {
 	definePlugin,
 	KernelError,
-	type DomainProvider,
+	type DomainObjectProvider,
 	type PluginEntry,
 	type PluginRegistration,
 	type PluginSdk,
 } from "@kilo-desktop/kernel";
 import { testPlugin } from "@kilo-desktop/kernel/testing";
-import { AgentTool } from "@kilo-desktop/plugin-agent/contracts";
-import sessionsManifest from "@kilo-desktop/plugin-sessions/plugin.json";
+import coreManifest from "@kilo-desktop/plugin-core/plugin.json";
+import { CORE_DEFINITIONS } from "@kilo-desktop/plugin-core/contracts";
+import workSessionsManifest from "@kilo-desktop/plugin-work-sessions/plugin.json";
 import {
 	EMPTY_WORK_SESSION_PANES,
+	Opener,
 	PaneKind,
-	PaneOpener,
 	Panes,
+	WORK_SESSIONS_DEFINITIONS,
 	WorkSessions,
-	SESSIONS_DEFINITIONS,
+	Workspaces,
 	type OpenPaneInput,
 	type Pane,
 	type WorkSession,
 	type WorkSessionPanes,
-} from "@kilo-desktop/plugin-sessions/contracts";
-import workspacesManifest from "@kilo-desktop/plugin-workspaces/plugin.json";
-import { Workspaces, WORKSPACES_DEFINITIONS } from "@kilo-desktop/plugin-workspaces/contracts";
+} from "@kilo-desktop/plugin-work-sessions/contracts";
 
-import { BROWSER_PANE_KIND } from "../contracts/index.js";
+import { BROWSER_PANE_KIND, FILE_OBJECT_TYPE } from "../contracts/index.js";
 
 export const SESSION_ID = "wses_1";
 
@@ -42,7 +43,7 @@ export function session(id = SESSION_ID): WorkSession {
 		archived: false,
 		archiveChangedAt: 0,
 		workspaceId: null,
-		worktreeBranch: null,
+		branch: null,
 		directory: null,
 		chatIds: [],
 		createdAt: 0,
@@ -50,11 +51,22 @@ export function session(id = SESSION_ID): WorkSession {
 	};
 }
 
-export function browserPane(id: string, metadata: Record<string, string> = {}): Pane {
-	return { id, kind: BROWSER_PANE_KIND, title: "Browser", metadata, ordinal: 1 };
+export function browserPane(
+	id: string,
+	metadata: Record<string, string> = {},
+	object?: Pane["object"],
+): Pane {
+	return {
+		id,
+		kind: BROWSER_PANE_KIND,
+		title: "Browser",
+		...(object ? { object } : {}),
+		metadata,
+		ordinal: 1,
+	};
 }
 
-/** `*.ext` style globs, as kilo.sessions matches them (case-insensitive, on the last segment). */
+/** `*.ext` style globs, as kilo.work-sessions matches them (case-insensitive, on the last segment). */
 function matchesGlob(pattern: string, id: string): boolean {
 	const source = pattern
 		.split("*")
@@ -63,46 +75,51 @@ function matchesGlob(pattern: string, id: string): boolean {
 	return new RegExp(`(^|/)${source}$`, "i").test(id);
 }
 
+export type Authorize = (input: { path: string; rule: string }) => boolean | Promise<boolean>;
+
+export interface SessionsHostOptions {
+	readonly panes?: readonly Pane[];
+	/** What kilo.work-sessions' workspaces answer to `authorize`; absent leaves workspaces out. */
+	readonly authorize?: Authorize;
+}
+
 export interface SessionsHost {
+	/** kilo.work-sessions in main. */
 	readonly registration: PluginRegistration;
-	panes(sessionId?: string): WorkSessionPanes;
-	setPanes(panes: readonly Pane[], sessionId?: string): void;
-	close(paneId: string, sessionId?: string): Promise<void>;
-	deleteSession(sessionId?: string): void;
+	panes(workSessionId?: string): WorkSessionPanes;
+	setPanes(panes: readonly Pane[], workSessionId?: string): void;
+	close(paneId: string, workSessionId?: string): Promise<void>;
+	deleteSession(workSessionId?: string): void;
 	readonly updates: unknown[];
 }
 
-export function createSessionsHost(initialPanes: readonly Pane[] = []): SessionsHost {
-	let panes!: DomainProvider<typeof Panes>;
-	let sessions!: DomainProvider<typeof WorkSessions>;
+export function createSessionsHost(options: SessionsHostOptions = {}): SessionsHost {
+	let panes!: DomainObjectProvider<typeof Panes>;
+	let workSessions!: DomainObjectProvider<typeof WorkSessions>;
 	let sdkRef!: PluginSdk;
 	let nextId = 1;
 	const updates: unknown[] = [];
 	const unused = () => {
 		throw new KernelError("NOT_FOUND", "Not faked here.");
 	};
-	const of = (sessionId: string) => panes.state.bySession[sessionId] ?? EMPTY_WORK_SESSION_PANES;
-	const write = (sessionId: string, next: WorkSessionPanes) =>
-		panes.setState({ bySession: { ...panes.state.bySession, [sessionId]: next } });
-	const requirePane = (sessionId: string, paneId: string) => {
-		const pane = of(sessionId).panes.find((candidate) => candidate.id === paneId);
+	const of = (workSessionId: string) =>
+		panes.state.byWorkSession[workSessionId] ?? EMPTY_WORK_SESSION_PANES;
+	const write = (workSessionId: string, next: WorkSessionPanes) =>
+		panes.setState({ byWorkSession: { ...panes.state.byWorkSession, [workSessionId]: next } });
+	const requirePane = (workSessionId: string, paneId: string) => {
+		const pane = of(workSessionId).panes.find((candidate) => candidate.id === paneId);
 		if (!pane) throw new KernelError("NOT_FOUND", "Pane not found.");
 		return pane;
 	};
 
 	function open(input: OpenPaneInput): Pane {
-		const current = of(input.sessionId);
+		const current = of(input.workSessionId);
 		const existing = input.paneId
 			? current.panes.find((pane) => pane.id === input.paneId)
 			: undefined;
 		if (existing) {
-			const updated = { ...existing, metadata: input.metadata ?? existing.metadata };
-			write(input.sessionId, {
-				...current,
-				panes: current.panes.map((pane) => (pane.id === existing.id ? updated : pane)),
-				activePaneId: updated.id,
-			});
-			return updated;
+			write(input.workSessionId, { ...current, activePaneId: existing.id });
+			return existing;
 		}
 		const title = sdkRef.extensions
 			.list(PaneKind)
@@ -111,129 +128,25 @@ export function createSessionsHost(initialPanes: readonly Pane[] = []): Sessions
 			id: `pane_${nextId++}`,
 			kind: input.kind,
 			title: input.title ?? title ?? "Pane",
+			...(input.object ? { object: input.object } : {}),
 			metadata: input.metadata ?? {},
 			ordinal: 1,
 		};
-		write(input.sessionId, { ...current, panes: [...current.panes, pane], activePaneId: pane.id });
-		panes.emit("opened", { sessionId: input.sessionId, pane });
+		write(input.workSessionId, {
+			...current,
+			panes: [...current.panes, pane],
+			activePaneId: pane.id,
+		});
+		panes.emit("opened", { workSessionId: input.workSessionId, pane });
 		return pane;
 	}
 
 	const entry: PluginEntry = definePlugin({
 		activate(sdk) {
 			sdkRef = sdk;
-			sessions = sdk.domains.provide(WorkSessions, {
-				initialState: { sessions: [session()] },
-				methods: {
-					create: unused,
-					rename: unused,
-					setPinned: unused,
-					setArchived: unused,
-					setWorktreeBranch: unused,
-					remove: unused,
-					isolationOptions: () => null,
-					importLegacyPins: unused,
-				},
-			});
-			panes = sdk.domains.provide(Panes, {
-				initialState: {
-					bySession: { [SESSION_ID]: { ...EMPTY_WORK_SESSION_PANES, panes: [...initialPanes] } },
-				},
-				methods: {
-					open,
-					openObject: ({ sessionId, ref }) => {
-						const opener = sdk.extensions
-							.list(PaneOpener)
-							.find(
-								({ metadata }) =>
-									metadata.match.type === ref.type &&
-									(!metadata.match.pattern || matchesGlob(metadata.match.pattern, ref.id)),
-							);
-						if (!opener) return null;
-						const already = of(sessionId).panes.find(
-							(pane) =>
-								pane.kind === opener.metadata.pane &&
-								pane.metadata.objectType === ref.type &&
-								pane.metadata.objectId === ref.id,
-						);
-						return open({
-							sessionId,
-							kind: opener.metadata.pane,
-							...(already ? { paneId: already.id } : {}),
-							metadata: { ...already?.metadata, objectType: ref.type, objectId: ref.id },
-						});
-					},
-					activate: ({ sessionId, paneId }) => {
-						requirePane(sessionId, paneId);
-						write(sessionId, { ...of(sessionId), activePaneId: paneId });
-					},
-					update: (input) => {
-						updates.push(input);
-						const { sessionId, paneId, title, iconKey, metadata } = input;
-						const current = of(sessionId);
-						const pane = requirePane(sessionId, paneId);
-						const updated: Pane = {
-							...pane,
-							...(title ? { title } : {}),
-							...(iconKey ? { iconKey } : {}),
-							...(metadata ? { metadata } : {}),
-						};
-						write(sessionId, {
-							...current,
-							panes: current.panes.map((candidate) =>
-								candidate.id === paneId ? updated : candidate,
-							),
-						});
-						return updated;
-					},
-					close: ({ sessionId, paneId }) => {
-						const current = of(sessionId);
-						const pane = current.panes.find((candidate) => candidate.id === paneId);
-						if (!pane) return { closed: false };
-						write(sessionId, {
-							...current,
-							panes: current.panes.filter((candidate) => candidate.id !== paneId),
-						});
-						panes.emit("closed", { sessionId, pane });
-						return { closed: true };
-					},
-					setLayout: unused,
-					setArrangement: unused,
-					importLegacy: unused,
-				},
-			});
-		},
-	});
-
-	return {
-		registration: { manifest: sessionsManifest, definitions: SESSIONS_DEFINITIONS, entry },
-		panes: (sessionId = SESSION_ID) => of(sessionId),
-		setPanes: (next, sessionId = SESSION_ID) =>
-			write(sessionId, { ...of(sessionId), panes: [...next] }),
-		close: async (paneId, sessionId = SESSION_ID) => {
-			await sdkRef.domains.get(Panes)!.methods.close({ sessionId, paneId });
-		},
-		deleteSession: (sessionId = SESSION_ID) => {
-			sessions.setState({ sessions: [] });
-			sessions.emit("deleted", { session: session(sessionId) });
-		},
-		updates,
-	};
-}
-
-/** kilo.workspaces answering `authorize` with the test's function. */
-export function workspacesRegistration(
-	authorize: (input: { path: string; rule: string }) => boolean | Promise<boolean>,
-): PluginRegistration {
-	const unused = () => {
-		throw new KernelError("NOT_FOUND", "Not faked here.");
-	};
-	return {
-		manifest: workspacesManifest,
-		definitions: WORKSPACES_DEFINITIONS,
-		entry: definePlugin({
-			activate(sdk) {
-				sdk.domains.provide(Workspaces, {
+			const { authorize } = options;
+			if (authorize) {
+				sdk.domainObjects.provide(Workspaces, {
 					initialState: { workspaces: [], activeId: null, unavailableFolderIds: [] },
 					methods: {
 						create: unused,
@@ -244,28 +157,132 @@ export function workspacesRegistration(
 						checkFolders: () => undefined,
 					},
 				});
-			},
-		}),
+			}
+			workSessions = sdk.domainObjects.provide(WorkSessions, {
+				initialState: { workSessions: [session()] },
+				methods: {
+					create: unused,
+					createChat: unused,
+					rename: unused,
+					setPinned: unused,
+					setArchived: unused,
+					setBranch: unused,
+					remove: unused,
+					isolationOptions: () => null,
+				},
+			});
+			panes = sdk.domainObjects.provide(Panes, {
+				initialState: {
+					byWorkSession: {
+						[SESSION_ID]: { ...EMPTY_WORK_SESSION_PANES, panes: [...(options.panes ?? [])] },
+					},
+				},
+				methods: {
+					open,
+					openObject: ({ workSessionId, ref }) => {
+						const opener = sdk.extensions
+							.list(Opener)
+							.find(
+								({ metadata }) =>
+									metadata.match.type === ref.type &&
+									(!metadata.match.pattern || matchesGlob(metadata.match.pattern, ref.id)),
+							);
+						if (!opener) return null;
+						const already = of(workSessionId).panes.find(
+							(pane) =>
+								pane.kind === opener.metadata.pane &&
+								pane.object?.type === ref.type &&
+								pane.object.id === ref.id,
+						);
+						return open({
+							workSessionId,
+							kind: opener.metadata.pane,
+							object: ref,
+							...(already ? { paneId: already.id } : {}),
+						});
+					},
+					activate: ({ workSessionId, paneId }) => {
+						requirePane(workSessionId, paneId);
+						write(workSessionId, { ...of(workSessionId), activePaneId: paneId });
+					},
+					update: (input) => {
+						updates.push(input);
+						const { workSessionId, paneId, title, iconKey, object, metadata } = input;
+						const current = of(workSessionId);
+						const pane = requirePane(workSessionId, paneId);
+						const updated: Pane = {
+							...pane,
+							...(title ? { title } : {}),
+							...(iconKey ? { iconKey } : {}),
+							...(object ? { object } : {}),
+							...(metadata ? { metadata } : {}),
+						};
+						write(workSessionId, {
+							...current,
+							panes: current.panes.map((candidate) =>
+								candidate.id === paneId ? updated : candidate,
+							),
+						});
+						return updated;
+					},
+					close: ({ workSessionId, paneId }) => {
+						const current = of(workSessionId);
+						const pane = current.panes.find((candidate) => candidate.id === paneId);
+						if (!pane) return { closed: false };
+						write(workSessionId, {
+							...current,
+							panes: current.panes.filter((candidate) => candidate.id !== paneId),
+						});
+						panes.emit("closed", { workSessionId, pane });
+						return { closed: true };
+					},
+					setLayout: unused,
+					setArrangement: unused,
+				},
+			});
+		},
+	});
+
+	return {
+		registration: {
+			manifest: workSessionsManifest,
+			definitions: WORK_SESSIONS_DEFINITIONS,
+			entry,
+		},
+		panes: (workSessionId = SESSION_ID) => of(workSessionId),
+		setPanes: (next, workSessionId = SESSION_ID) =>
+			write(workSessionId, { ...of(workSessionId), panes: [...next] }),
+		close: async (paneId, workSessionId = SESSION_ID) => {
+			await sdkRef.domainObjects.get(Panes)!.methods.close({ workSessionId, paneId });
+		},
+		deleteSession: (workSessionId = SESSION_ID) => {
+			workSessions.setState({ workSessions: [] });
+			workSessions.emit("deleted", { workSession: session(workSessionId) });
+		},
+		updates,
 	};
 }
 
-/** kilo.agent's tool point, without the gateway. */
-export const agentToolPoint = testPlugin("kilo.agent", {
-	manifest: { extensionPoints: [{ id: "tool", kind: "additive" }] },
-	definitions: { extensionPoints: [AgentTool] },
-});
+/** kilo.core's manifest and definitions, for its `tool` point (no entry: no gateway). */
+export const coreRegistration: PluginRegistration = {
+	manifest: coreManifest,
+	definitions: CORE_DEFINITIONS,
+};
 
 /** A kilo.files-like plugin: every workspace file opens in its pane kind, at priority -100. */
 export const filesOpener = testPlugin("kilo.files", {
 	manifest: {
-		requires: { "kilo.sessions/pane-kind": "optional", "kilo.sessions/opener": "optional" },
+		requires: {
+			"kilo.work-sessions/pane-kind": "optional",
+			"kilo.work-sessions/opener": "optional",
+		},
 		contributes: {
 			extensions: {
-				"kilo.sessions/pane-kind": [{ id: "files", title: "Files" }],
-				"kilo.sessions/opener": [
+				"kilo.work-sessions/pane-kind": [{ id: "files", title: "Files" }],
+				"kilo.work-sessions/opener": [
 					{
 						id: "file",
-						match: { type: "kilo.workspaces/file" },
+						match: { type: FILE_OBJECT_TYPE },
 						pane: "kilo.files/files",
 						priority: -100,
 					},

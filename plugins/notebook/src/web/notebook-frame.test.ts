@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { FILE_OBJECT_TYPE } from "../contracts/index.js";
+
 import { notebookHostConnectionArgs, notebookOriginFrom, nteractSrcFor } from "./notebook-frame.js";
 
 const NOTEBOOK_ID = "669d39ec-39d6-4160-815c-b46e170cde8d";
@@ -39,14 +41,15 @@ describe("the notebook frame", () => {
 		expect(
 			notebookHostConnectionArgs({
 				notebookId: NOTEBOOK_ID,
-				sessionId: "wses_1",
+				workSessionId: "wses_1",
 				title: "analysis.ipynb",
 				directory: "/projects",
-				metadata: { objectType: "kilo.workspaces/file", objectId: "/projects/analysis.ipynb" },
+				object: { type: FILE_OBJECT_TYPE, id: "/projects/analysis.ipynb" },
+				metadata: {},
 			}),
 		).toEqual({
 			notebookId: NOTEBOOK_ID,
-			sessionId: "wses_1",
+			workSessionId: "wses_1",
 			title: "analysis.ipynb",
 			notebookPath: "/projects/analysis.ipynb",
 			workingDirectory: "/projects",
@@ -54,11 +57,11 @@ describe("the notebook frame", () => {
 		expect(
 			notebookHostConnectionArgs({
 				notebookId: NOTEBOOK_ID,
-				sessionId: "wses_1",
+				workSessionId: "wses_1",
 				title: "Notebook",
 				directory: null,
 				metadata: {},
 			}),
-		).toEqual({ notebookId: NOTEBOOK_ID, sessionId: "wses_1", title: "Notebook" });
+		).toEqual({ notebookId: NOTEBOOK_ID, workSessionId: "wses_1", title: "Notebook" });
 	});
 });

@@ -26,9 +26,9 @@ Start from [examples/hello-plugin](../../../examples/hello-plugin). Read
 2. **Scaffold** (new plugin): copy `examples/hello-plugin` to
    `plugins/<dir>`; rename the package (`@kilo-desktop/plugin-<dir>`), the
    manifest id (`kilo.<name>` for bundled plugins) and every qualified id.
-3. **Contracts first.** Define domain objects (`defineDomain`) and any
+3. **Contracts first.** Define domain objects (`defineDomainObject`) and any
    points you own (`defineExtensionPoint`) in `src/contracts`, export a
-   `*_DEFINITIONS`, and declare them in `plugin.json` (`domains`,
+   `*_DEFINITIONS`, and declare them in `plugin.json` (`domainObjects`,
    `extensionPoints`, `contextKeys`).
 4. **Declare contributions** in `plugin.json` `contributes.extensions`
    (metadata only), with `requires` entries (`"optional"`) for every point
@@ -37,7 +37,7 @@ Start from [examples/hello-plugin](../../../examples/hello-plugin). Read
    `src/web` (components, commands acting on the window) with
    `sdk.extensions.implement(Point, localId, impl)`. Keep `activate` fast;
    slow work is a `kernel/service`.
-6. **Handle absence.** `sdk.domains.get(X)` / `useDomain(X)` may be null;
+6. **Handle absence.** `sdk.domainObjects.get(X)` / `useDomainObject(X)` may be null;
    render a sensible fallback. Throw `KernelError` for expected failures.
 7. **Test test-first** (the `tdd` skill) with real kernels:
    `createPluginHost` for contributions and domain methods, `renderShell` for

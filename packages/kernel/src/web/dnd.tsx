@@ -1,7 +1,7 @@
 import { useState, type DragEvent } from "react";
 
 import { acceptsDrag, readDraggedRefs, writeDraggedRefs } from "../dnd";
-import type { AnyDomain, ObjectRef } from "../domain";
+import type { ObjectRef, ObjectTypeDefinition } from "../object-type";
 import type { QualifiedId } from "../ids";
 
 /** Props that make an element drag the given domain object references. */
@@ -25,7 +25,7 @@ export function useDragSource(
  * element (where to insert), `onLeave` fires when it leaves or ends here.
  */
 export function useDropTarget(options: {
-	readonly accepts: readonly (AnyDomain | QualifiedId)[];
+	readonly accepts: readonly (ObjectTypeDefinition | QualifiedId)[];
 	readonly onDrop: (refs: ObjectRef[], event: DragEvent) => void;
 	readonly onOver?: (event: DragEvent) => void;
 	readonly onLeave?: () => void;

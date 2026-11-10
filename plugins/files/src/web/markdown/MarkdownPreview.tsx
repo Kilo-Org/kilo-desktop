@@ -1,5 +1,5 @@
 import { MarkdownContent } from "@kilo-desktop/ui/components/markdown-content";
-import type { MarkdownRendererComponents } from "@kilo-desktop/ui/components/markdown-extension";
+import type { MarkdownRendererComponents } from "@kilo-desktop/ui/lib/markdown-extension";
 import { createMermaidMarkdownExtension } from "@kilo-desktop/ui/components/mermaid-diagram";
 import { useEffect, useMemo, useState } from "react";
 

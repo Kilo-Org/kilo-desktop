@@ -2,12 +2,13 @@ import {
 	definePlugin,
 	KernelError,
 	mainHost,
-	type DomainHandle,
-	type DomainProvider,
+	type DomainObjectHandle,
+	type DomainObjectProvider,
+	type ObjectRef,
 	type PluginEntry,
 	type PluginSdk,
 } from "@kilo-desktop/kernel";
-import { Panes, WorkSessions, type Pane } from "@kilo-desktop/plugin-sessions/contracts";
+import { Panes, WorkSessions, type Pane } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import {
 	BROWSER_PANE_KIND,
@@ -34,12 +35,12 @@ export interface BrowserMainOptions {
 
 const UNAVAILABLE = "The browser isn't available here.";
 
-type PanesHandle = DomainHandle<typeof Panes>;
+type PanesHandle = DomainObjectHandle<typeof Panes>;
 
-function findPane(panes: PanesHandle, sessionId: string, paneId: string): Pane | undefined {
+function findPane(panes: PanesHandle, workSessionId: string, paneId: string): Pane | undefined {
 	return panes
 		.getState()
-		.bySession[sessionId]?.panes.find(
+		.byWorkSession[workSessionId]?.panes.find(
 			(pane) => pane.id === paneId && pane.kind === BROWSER_PANE_KIND,
 		);
 }
@@ -49,88 +50,101 @@ function sameMetadata(a: Readonly<Record<string, string>>, b: Readonly<Record<st
 	return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
 }
 
+function sameObject(a: ObjectRef | undefined, b: ObjectRef) {
+	return a?.type === b.type && a.id === b.id;
+}
+
 /**
  * kilo.browser in main. The host's embedded browser owns the guests' session
  * and its guards; this entry prepares it, answers its local-file requests
- * from kilo.workspaces, and keeps `pages` — each Browser pane's live guest
- * (`BrowserViews`) and its published state. A pane follows its page: title,
- * favicon, URL and the object it is (so openers reuse it), written through
- * `Panes.update`; a pane any opener creates is titled with its host or file
- * name. Closing a pane, or deleting its session, closes its page. The `open`
- * agent tool shows a web page in the calling chat's session.
+ * from kilo.work-sessions' workspaces, and keeps `pages` — each Browser
+ * pane's live guest (`BrowserViews`) and its published state. A pane follows
+ * its page: title, favicon, URL and the object it is (its `object`, so
+ * openers reuse it), written through `Panes.update`; a pane any opener
+ * creates is titled with its host or file name. Closing a pane, or deleting
+ * its work session, closes its page. The `open` agent tool shows a web page
+ * in the calling chat's work session.
  */
 export function createBrowserMainEntry(options: BrowserMainOptions = {}): PluginEntry {
 	return definePlugin({
 		activate(sdk) {
-			const host = options.host
-				? options.host(sdk)
-				: (mainHost(sdk).browser as BrowserHost | undefined);
+			const host = options.host ? options.host(sdk) : mainHost(sdk).browser;
 			const windows = options.windows ?? process.platform === "win32";
 			let panes: PanesHandle | null = null;
 
 			const followPage = (page: BrowserPage) => {
-				const pane = panes && page.url ? findPane(panes, page.sessionId, page.paneId) : undefined;
+				const pane =
+					panes && page.url ? findPane(panes, page.workSessionId, page.paneId) : undefined;
 				if (!panes || !pane) return;
-				const ref = objectRefOfUrl(page.url, windows);
+				const object = objectRefOfUrl(page.url, windows);
 				const title = page.title.trim() || pane.title;
 				const iconKey = page.faviconUrl || DEFAULT_BROWSER_ICON_KEY;
-				const metadata = {
-					...pane.metadata,
-					[BROWSER_PANE_METADATA.url]: page.url,
-					[BROWSER_PANE_METADATA.objectType]: ref.type,
-					[BROWSER_PANE_METADATA.objectId]: ref.id,
-				};
+				const metadata = { ...pane.metadata, [BROWSER_PANE_METADATA.url]: page.url };
 				const sameIcon = (pane.iconKey ?? DEFAULT_BROWSER_ICON_KEY) === iconKey;
-				if (title === pane.title && sameIcon && sameMetadata(metadata, pane.metadata)) return;
+				if (
+					title === pane.title &&
+					sameIcon &&
+					sameObject(pane.object, object) &&
+					sameMetadata(metadata, pane.metadata)
+				) {
+					return;
+				}
 				void panes.methods
 					.update({
-						sessionId: page.sessionId,
+						workSessionId: page.workSessionId,
 						paneId: page.paneId,
 						title,
 						...(sameIcon ? {} : { iconKey }),
+						object,
 						metadata,
 					})
 					.catch((error: unknown) => sdk.logger.warn("Could not update a browser pane", error));
 			};
 
 			if (host) host.serveLocalFiles(createLocalFileAuthorizer(sdk));
-			const pages: DomainProvider<typeof BrowserPages> = sdk.domains.provide(BrowserPages, {
-				initialState: { pages: {} },
-				methods: {
-					prepare: () => {
-						const { host: browser } = required();
-						browser.initialize();
-						return { partition: browser.partition };
-					},
-					attach: ({ sessionId, paneId, webContentsId }) =>
-						required().views.attach(sessionId, paneId, webContentsId),
-					detach: ({ sessionId, paneId, webContentsId }) => {
-						required().views.detach(sessionId, paneId, webContentsId);
-					},
-					navigate: async ({ sessionId, paneId, url }) => {
-						let normalized: string;
-						try {
-							normalized = normalizeBrowserUrl(url);
-						} catch (error) {
-							throw new KernelError("VALIDATION", (error as Error).message);
-						}
-						await required().views.navigate(sessionId, paneId, normalized);
-					},
-					command: ({ sessionId, paneId, command }) => {
-						required().views.run(sessionId, paneId, command);
+			const pages: DomainObjectProvider<typeof BrowserPages> = sdk.domainObjects.provide(
+				BrowserPages,
+				{
+					initialState: { pages: {} },
+					methods: {
+						prepare: () => {
+							const { host: browser } = required();
+							browser.initialize();
+							return { partition: browser.partition };
+						},
+						attach: ({ workSessionId, paneId, webContentsId }) =>
+							required().views.attach(workSessionId, paneId, webContentsId),
+						detach: ({ workSessionId, paneId, webContentsId }) => {
+							required().views.detach(workSessionId, paneId, webContentsId);
+						},
+						navigate: async ({ workSessionId, paneId, url }) => {
+							let normalized: string;
+							try {
+								normalized = normalizeBrowserUrl(url);
+							} catch (error) {
+								throw new KernelError("VALIDATION", (error as Error).message);
+							}
+							await required().views.navigate(workSessionId, paneId, normalized);
+						},
+						command: ({ workSessionId, paneId, command }) => {
+							required().views.run(workSessionId, paneId, command);
+						},
 					},
 				},
-			});
+			);
 			const views = host
 				? new BrowserViews(host, {
 						changed: (page) => {
 							pages.setState({
-								pages: { ...pages.state.pages, [pageKey(page.sessionId, page.paneId)]: page },
+								pages: {
+									...pages.state.pages,
+									[pageKey(page.workSessionId, page.paneId)]: page,
+								},
 							});
 							followPage(page);
 						},
-						removed: (sessionId, paneId) => {
-							const { [pageKey(sessionId, paneId)]: _removed, ...rest } = pages.state.pages;
+						removed: (workSessionId, paneId) => {
+							const { [pageKey(workSessionId, paneId)]: _removed, ...rest } = pages.state.pages;
 							pages.setState({ pages: rest });
 						},
 					})
@@ -143,25 +157,23 @@ export function createBrowserMainEntry(options: BrowserMainOptions = {}): Plugin
 			sdk.onDispose(() => views?.dispose());
 
 			sdk.onDispose(
-				sdk.domains.track(Panes, {
+				sdk.domainObjects.track(Panes, {
 					added: (handle) => {
 						panes = handle;
-						const stopOpened = handle.on("opened", ({ sessionId, pane }) => {
+						const stopOpened = handle.on("opened", ({ workSessionId, pane }) => {
 							if (pane.kind !== BROWSER_PANE_KIND || pane.metadata[BROWSER_PANE_METADATA.url]) {
 								return;
 							}
-							const type = pane.metadata[BROWSER_PANE_METADATA.objectType];
-							const id = pane.metadata[BROWSER_PANE_METADATA.objectId];
-							const title = type && id ? titleOfObject({ type, id }) : undefined;
+							const title = pane.object ? titleOfObject(pane.object) : undefined;
 							if (!title) return;
 							void handle.methods
-								.update({ sessionId, paneId: pane.id, title })
+								.update({ workSessionId, paneId: pane.id, title })
 								.catch((error: unknown) =>
 									sdk.logger.warn("Could not title a browser pane", error),
 								);
 						});
-						const stopClosed = handle.on("closed", ({ sessionId, pane }) => {
-							if (pane.kind === BROWSER_PANE_KIND) views?.close(sessionId, pane.id);
+						const stopClosed = handle.on("closed", ({ workSessionId, pane }) => {
+							if (pane.kind === BROWSER_PANE_KIND) views?.close(workSessionId, pane.id);
 						});
 						sdk.onDispose(() => {
 							stopOpened();
@@ -174,9 +186,11 @@ export function createBrowserMainEntry(options: BrowserMainOptions = {}): Plugin
 				}),
 			);
 			sdk.onDispose(
-				sdk.domains.track(WorkSessions, {
+				sdk.domainObjects.track(WorkSessions, {
 					added: (handle) => {
-						sdk.onDispose(handle.on("deleted", ({ session }) => views?.closeSession(session.id)));
+						sdk.onDispose(
+							handle.on("deleted", ({ workSession }) => views?.closeWorkSession(workSession.id)),
+						);
 					},
 					removed: () => {},
 				}),

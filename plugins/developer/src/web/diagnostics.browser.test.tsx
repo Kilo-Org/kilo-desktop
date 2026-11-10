@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import { KernelService, KernelOs } from "@kilo-desktop/kernel";
+import { KernelFlags, KernelOs, KernelService } from "@kilo-desktop/kernel";
 import { SettingsSection } from "@kilo-desktop/plugin-shell/contracts";
 import { renderShell } from "@kilo-desktop/plugin-shell/testing";
 
@@ -9,7 +9,8 @@ import {
 	agentServer,
 	contributor,
 	developer,
-	developerFlag,
+	DEVELOPER_ON,
+	flagSource,
 	openDiagnostics,
 	pluginsHost,
 	rowIds,
@@ -26,19 +27,22 @@ describe("the Developer settings category", () => {
 		].map((element) => element.getAttribute("data-qa-id"));
 
 	it("comes last in Settings, with Diagnostics and other plugins' developer sections under it", async () => {
-		await renderShell([
-			developer,
-			developerFlag(true),
-			contributor(
-				"acme.devtools",
-				{
-					"kilo.shell/settings-section": [
-						{ id: "inspector", title: "Inspector", category: DEVELOPER_SETTINGS_CATEGORY },
-					],
-				},
-				(sdk) => sdk.extensions.implement(SettingsSection, "inspector", { component: () => null }),
-			),
-		]);
+		await renderShell(
+			[
+				developer,
+				contributor(
+					"acme.devtools",
+					{
+						"kilo.shell/settings-section": [
+							{ id: "inspector", title: "Inspector", category: DEVELOPER_SETTINGS_CATEGORY },
+						],
+					},
+					(sdk) =>
+						sdk.extensions.implement(SettingsSection, "inspector", { component: () => null }),
+				),
+			],
+			DEVELOPER_ON,
+		);
 		await page.getByTestId("nav-settings").click();
 		await expect.element(page.getByTestId("settings-group-developer")).toBeVisible();
 
@@ -66,22 +70,31 @@ describe("the Developer settings category", () => {
 		await expectDeveloperHidden();
 	});
 
-	it("is hidden, with Diagnostics, while the developer flag is off", async () => {
-		const { main } = await renderShell([developer, developerFlag(false)]);
+	it("is hidden, with Diagnostics, while the developer flag has its default (off)", async () => {
+		const { main } = await renderShell([developer]);
 		await expectDeveloperHidden();
 		expect(main.pluginState("kilo.developer")).toBe("inactive");
 	});
 
-	it("is hidden without kilo.flags, as every flag is off", async () => {
-		await renderShell([developer]);
+	it("declares its flags while inactive, so a flag source can turn it on", async () => {
+		const { main } = await renderShell([developer]);
 		await expectDeveloperHidden();
+
+		const flags = main.kernelSdk.domainObjects.get(KernelFlags)?.getState().flags;
+		expect(flags?.[DEVELOPER_FLAG]).toMatchObject({
+			value: false,
+			default: false,
+			origin: "default",
+			pluginId: "kilo.developer",
+		});
+		expect(flags?.["force-onboarding"]).toMatchObject({ value: false, pluginId: "kilo.developer" });
 	});
 
 	it("appears, with Diagnostics, as soon as the flag turns on, and goes when it turns off", async () => {
-		const { main } = await renderShell([developer, developerFlag(false)]);
+		const source = flagSource();
+		await renderShell([developer, source.plugin]);
 		await expectDeveloperHidden();
-		const setFlag = (on: boolean) =>
-			main.sdkFor("kilo.flags").context.set(`flag:${DEVELOPER_FLAG}`, on);
+		const setFlag = (on: boolean) => source.set({ [DEVELOPER_FLAG]: on });
 
 		setFlag(true);
 
@@ -97,7 +110,6 @@ describe("the Developer settings category", () => {
 	it("sends other plugins' developer sections to General while the flag is off", async () => {
 		await renderShell([
 			developer,
-			developerFlag(false),
 			contributor(
 				"acme.devtools",
 				{
@@ -180,7 +192,7 @@ describe("diagnostics settings", () => {
 	it("lists plugins as separate rows that start collapsed", async () => {
 		await openDiagnostics();
 
-		// kilo.shell, kilo.developer, kilo.flags and acme.server.
+		// kilo.shell, kilo.developer, kilo.core and acme.server.
 		const rows = page.getByTestId("diagnostics-plugins").element().children;
 		expect(rows).toHaveLength(4);
 		await expect
@@ -195,7 +207,7 @@ describe("diagnostics settings", () => {
 			"diagnostics-plugin-acme.server",
 			"diagnostics-plugin-acme.zeta",
 			"diagnostics-plugin-kilo.developer",
-			"diagnostics-plugin-kilo.flags",
+			"diagnostics-plugin-kilo.core",
 			"diagnostics-plugin-kilo.shell",
 		]);
 	});
@@ -271,7 +283,7 @@ describe("diagnostics settings — services and logs", () => {
 		const showLogs = vi.fn(() => ({ revealed: true }));
 		const { main } = await openDiagnostics();
 		main.sdkFor("acme.server").extensions.implement(KernelService, "daemon", service);
-		main.kernelSdk.domains.provide(KernelOs, {
+		main.kernelSdk.domainObjects.provide(KernelOs, {
 			initialState: {},
 			methods: {
 				openExternal: () => true,
@@ -322,7 +334,8 @@ describe("diagnostics settings — services and logs", () => {
 		await openDiagnostics([services, agentServer()]);
 		await page.getByTestId("diagnostics-tab-services").click();
 
-		expect(rowIds("diagnostics-services")).toEqual([
+		// kilo.core's services are listed among them too.
+		expect(rowIds("diagnostics-services").filter((id) => id?.includes("acme."))).toEqual([
 			"diagnostics-service-acme.server/daemon",
 			"diagnostics-service-acme.jobs/build",
 			"diagnostics-service-acme.server/index",
@@ -435,7 +448,9 @@ describe("diagnostics settings — turning plugins on and off", () => {
 
 		await disableAll.click();
 
-		await expect.poll(() => saveDisabled).toHaveBeenLastCalledWith(["acme.server", "acme.zeta"]);
+		await expect
+			.poll(() => saveDisabled)
+			.toHaveBeenLastCalledWith(["acme.server", "acme.zeta", "kilo.core"]);
 		await expect.element(page.getByRole("switch", { name: "Enable acme.zeta" })).not.toBeChecked();
 		await expect.element(page.getByRole("switch", { name: "Enable Shell" })).toBeChecked();
 		await expect.element(disableAll).toBeDisabled();
@@ -499,10 +514,13 @@ describe("diagnostics settings — turning plugins on and off", () => {
 		expect(columnsOffset(kernelRow)).toBe(columnsOffset(pluginRow));
 	});
 
-	it("keeps Diagnostics and the plugins it needs on, including the flags it is behind", async () => {
+	it("keeps Diagnostics and the plugins it needs on", async () => {
 		await openDiagnostics([agentServer()], pluginsHost().options);
 
-		for (const id of ["kilo.developer", "kilo.flags", "kilo.shell"]) {
+		await expect
+			.element(page.getByTestId("diagnostics-plugin-kilo.core").getByRole("switch"))
+			.toBeEnabled();
+		for (const id of ["kilo.developer", "kilo.shell"]) {
 			await expect
 				.element(page.getByTestId(`diagnostics-plugin-${id}`).getByRole("switch"))
 				.toBeDisabled();

@@ -1,4 +1,4 @@
-import type { LocalInferenceStatus } from "../../contracts/schemas.js";
+import type { LocalInferenceStatus } from "../../contracts/index";
 
 export type ServerStatusPresentation = {
 	label: string;

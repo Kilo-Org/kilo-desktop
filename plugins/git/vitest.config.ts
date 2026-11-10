@@ -16,6 +16,8 @@ const coverage = {
 		"src/main/index.ts",
 		// Shared test scaffolding, not plugin source.
 		"src/test/**",
+		"src/main/test-boot.ts",
+		"src/main/repository/test-*.ts",
 	]),
 	include: ["src/**"],
 };
@@ -56,7 +58,7 @@ export default defineConfig({
 				},
 				test: {
 					name: "browser",
-					include: ["src/web/**/*.browser.test.tsx"],
+					include: ["src/web/**/*.browser.test.tsx", "src/test/**/*.browser.test.tsx"],
 					setupFiles: ["src/test/setup.ts"],
 					// CI caps browser workers because the Linux coverage runner has only 4 vCPUs.
 					// groupOrder 1 keeps this project in a separate scheduling bucket from

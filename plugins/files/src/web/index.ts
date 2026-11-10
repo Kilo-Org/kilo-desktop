@@ -1,7 +1,6 @@
 import { definePlugin, KernelCommand } from "@kilo-desktop/kernel";
 import { ComposerMention, MarkdownExtension } from "@kilo-desktop/plugin-chat/contracts";
-import { PaneKind, Panes } from "@kilo-desktop/plugin-sessions/contracts";
-import { Workbench } from "@kilo-desktop/plugin-workbench/contracts";
+import { PaneKind, Panes, WorkSessionsWindow } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import { Documents, FILES_PANE_KIND } from "../contracts/index.js";
 import { CloseGuards } from "./close-guards.js";
@@ -15,7 +14,7 @@ import { createFileMentionSource } from "./mentions/file-mention-source.js";
 /**
  * kilo.files' renderer entry: the Files pane kind (explorer and file panes,
  * with a close guard for unsaved edits) and Open Files (⌘⇧E, shown or opened
- * through kilo.workbench), `@` file mentions in the composer and file links
+ * through kilo.work-sessions' window), `@` file mentions in the composer and file links
  * in the agent's replies. The window keeps one cache of
  * kilo.files reads for them.
  */
@@ -31,20 +30,20 @@ export const filesWebEntry = definePlugin({
 			canClose: runtime.guards.canClose,
 		});
 		sdk.extensions.implement(KernelCommand, "open", () =>
-			sdk.domains.get(Workbench)?.methods.openPane({ kind: FILES_PANE_KIND }),
+			sdk.domainObjects.get(WorkSessionsWindow)?.methods.openPane({ kind: FILES_PANE_KIND }),
 		);
 		sdk.extensions.implement(
 			ComposerMention,
 			"files",
-			createFileMentionSource(runtime.queries, () => sdk.domains.get(Documents)),
+			createFileMentionSource(runtime.queries, () => sdk.domainObjects.get(Documents)),
 		);
 		sdk.extensions.implement(
 			MarkdownExtension,
 			"file-links",
 			createFilesMarkdownExtension({
 				queries: runtime.queries,
-				documents: () => sdk.domains.get(Documents),
-				panes: () => sdk.domains.get(Panes),
+				documents: () => sdk.domainObjects.get(Documents),
+				panes: () => sdk.domainObjects.get(Panes),
 			}),
 		);
 	},

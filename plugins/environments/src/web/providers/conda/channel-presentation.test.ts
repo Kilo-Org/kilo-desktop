@@ -4,7 +4,7 @@ import {
 	defaultChannelSelection,
 	getChannelPresentation,
 	selectableChannels,
-} from "./channel-presentation.js";
+} from "./channel-presentation";
 
 describe("selectableChannels", () => {
 	it("offers conda-forge and Anaconda MAIN when none are configured", () => {

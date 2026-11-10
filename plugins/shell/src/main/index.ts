@@ -3,9 +3,11 @@ import path from "node:path";
 
 import { mainHost, type PluginSdk } from "@kilo-desktop/kernel";
 
+import { assetResources } from "./asset-resources";
 import { createShellMainEntry } from "./entry";
 
-export { createShellMainEntry } from "./entry";
+export { createShellMainEntry, type ShellMainOptions } from "./entry";
+export type { LegalResources } from "./legal";
 
 /** Origin's kilo-ui kept the onboarding outcome in its own kv folder, beside this plugin's. */
 function readOriginOnboarding(sdk: PluginSdk): string | null {
@@ -21,4 +23,7 @@ function readOriginOnboarding(sdk: PluginSdk): string | null {
 }
 
 /** kilo.shell's main-process entry. */
-export const shellMainEntry = createShellMainEntry({ readOriginOnboarding });
+export const shellMainEntry = createShellMainEntry({
+	readOriginOnboarding,
+	legalResources: (sdk) => assetResources(mainHost(sdk).assets),
+});

@@ -3,28 +3,35 @@ import { describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
 import { KernelProvider, RenderContribution } from "@kilo-desktop/kernel/web";
-import { Panes, type WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
-import { PaneKindMenu, type PaneKindMenuProps } from "@kilo-desktop/plugin-workbench/contracts";
+import { paneChatId } from "../../contracts";
+import {
+	PaneKindMenu,
+	Panes,
+	type PaneKindMenuProps,
+	type WorkSession,
+} from "@kilo-desktop/plugin-work-sessions/contracts";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuTrigger,
 } from "@kilo-desktop/ui/components/dropdown-menu";
 
-import { AGENT_PANE_KIND, CHAT_ID_METADATA_KEY } from "../../contracts";
-import { agentPane, chatSummary, renderAgentPane, session } from "../../test/chat-host";
-import { sessionChats } from "./AgentChatsMenu";
+import { AGENT_PANE_KIND, chatPaneObject } from "../../contracts";
+import { agentPane, chatSummary, renderAgentPane, workSession } from "../../test/chat-host";
+import { workSessionChats } from "./AgentChatsMenu";
+import { agentPanesWeb } from "./test-agent-panes";
 
-const SESSION = session({ chatIds: ["ses_old", "ses_new"] });
+const WORK_SESSION = workSession({ chatIds: ["ses_old", "ses_new"] });
 
-/** The agent button's menu as kilo.workbench's session header renders it. */
+/** The agent button's menu as kilo.work-sessions' header renders it. */
 async function renderMenu() {
 	const host = await renderAgentPane({
-		session: SESSION,
-		pane: agentPane({ id: "pane_new", metadata: { [CHAT_ID_METADATA_KEY]: "ses_new" } }),
+		chatWeb: agentPanesWeb,
+		workSession: WORK_SESSION,
+		pane: agentPane({ id: "pane_new", object: chatPaneObject("ses_new") }),
 		chats: [
-			chatSummary("ses_old", { title: "Fix login", updatedAt: 1, workSessionId: SESSION.id }),
-			chatSummary("ses_new", { title: "Add tests", updatedAt: 2, workSessionId: SESSION.id }),
+			chatSummary("ses_old", { title: "Fix login", updatedAt: 1, workSessionId: WORK_SESSION.id }),
+			chatSummary("ses_new", { title: "Add tests", updatedAt: 2, workSessionId: WORK_SESSION.id }),
 		],
 	});
 	const { renderer } = host.host;
@@ -41,7 +48,7 @@ async function renderMenu() {
 				<DropdownMenuContent>
 					<RenderContribution<PaneKindMenuProps>
 						contribution={contribution}
-						props={{ session: SESSION }}
+						props={{ workSession: WORK_SESSION }}
 					/>
 				</DropdownMenuContent>
 			</DropdownMenu>
@@ -52,7 +59,7 @@ async function renderMenu() {
 }
 
 describe("the agent button's chats", () => {
-	it("lists the session's chats newest first, marking the open one", async () => {
+	it("lists the work session's chats newest first, marking the open one", async () => {
 		await renderMenu();
 
 		const items = page.getByRole("menuitem");
@@ -70,17 +77,19 @@ describe("the agent button's chats", () => {
 		await page.getByTestId("agent-chat-ses_old").click();
 
 		await vi.waitFor(() =>
-			expect(
-				host.panes().panes.find((pane) => pane.metadata[CHAT_ID_METADATA_KEY] === "ses_old"),
-			).toMatchObject({ kind: AGENT_PANE_KIND }),
+			expect(host.panes().panes.find((pane) => paneChatId(pane) === "ses_old")).toMatchObject({
+				kind: AGENT_PANE_KIND,
+			}),
 		);
 	});
 
 	it("shows an open chat's pane instead of opening another", async () => {
 		const host = await renderMenu();
-		await host.host.renderer.kernelSdk.domains
-			.get(Panes)!
-			.methods.open({ sessionId: SESSION.id, kind: AGENT_PANE_KIND, paneId: "pane_draft" });
+		await host.host.renderer.kernelSdk.domainObjects.get(Panes)!.methods.open({
+			workSessionId: WORK_SESSION.id,
+			kind: AGENT_PANE_KIND,
+			paneId: "pane_draft",
+		});
 
 		await page.getByTestId("agent-chat-ses_new").click();
 
@@ -89,8 +98,8 @@ describe("the agent button's chats", () => {
 	});
 });
 
-describe("sessionChats", () => {
-	it("keeps the session's root chats, newest first", () => {
+describe("workSessionChats", () => {
+	it("keeps the work session's root chats, newest first", () => {
 		const own: Pick<WorkSession, "id" | "chatIds"> = { id: "wses_1", chatIds: ["ses_a"] };
 		const chats = {
 			ses_a: chatSummary("ses_a", { updatedAt: 1 }),
@@ -99,6 +108,6 @@ describe("sessionChats", () => {
 			ses_other: chatSummary("ses_other", { workSessionId: "wses_2" }),
 		};
 
-		expect(sessionChats(own, chats).map((chat) => chat.id)).toEqual(["ses_b", "ses_a"]);
+		expect(workSessionChats(own, chats).map((chat) => chat.id)).toEqual(["ses_b", "ses_a"]);
 	});
 });

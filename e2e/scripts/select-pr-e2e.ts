@@ -7,7 +7,30 @@
  *
  * - `plugins/<id>/…` runs `plugins/<id>/e2e/**` when that plugin has specs.
  * - Plugins whose behavior is exercised by specs elsewhere map through
- *   `RELATED_SPECS` (e.g. kilo.agent's Kilo server is exercised by the chat specs).
+ *   `RELATED_SPECS`: kilo.shell's specs live in `e2e/specs/shell` and kilo.core's
+ *   in `e2e/specs/core`; each runs the other's too, since kilo.shell draws
+ *   everything the user sees of kilo.core. kilo.developer's live in
+ *   `e2e/specs/developer` and kilo.work-sessions' (also run by
+ *   `packages/pane-layout`, `PACKAGE_PLUGINS`) in `e2e/specs/work-sessions`.
+ *   kilo.chat's live in `e2e/specs/chat`; they drive the New Session page and
+ *   kilo.core's chats end to end, so kilo.work-sessions and kilo.core run them
+ *   too, and kilo.chat runs kilo.work-sessions' (layouts hold its Agent pane).
+ *   kilo.git's live in `e2e/specs/git` (also run by `packages/git-client`);
+ *   they start work sessions in worktrees through kilo.work-sessions' `vcs`
+ *   isolation, so the two run each other's. kilo.files' live in
+ *   `e2e/specs/files`. kilo.terminal's live in `e2e/specs/terminal`; it also
+ *   runs kilo.shell's external AI apps spec (apps open in a terminal).
+ *   kilo.browser's live in `e2e/specs/browser`, kilo.notebook's in
+ *   `e2e/specs/notebook` and kilo.marketplace's in `e2e/specs/marketplace`.
+ *   kilo.local-inference's live in `e2e/specs/local-inference`; it also runs
+ *   the chat model selector spec (its model source) and the settings overview
+ *   (its sign-in gated section).
+ *   kilo.environments' live in `e2e/specs/environments`.
+ *   kilo.anaconda's live in `e2e/specs/anaconda`; it also runs kilo.shell's
+ *   account specs (its Anaconda row is in Settings → Account).
+ *   kilo.workspace-board's live in `e2e/specs/workspace-board`; the board is a
+ *   view of kilo.work-sessions, so kilo.work-sessions (and `packages/pane-layout`)
+ *   runs them too.
  * - Harness changes (`e2e/`, the run-e2e and install-test-runtime actions,
  *   and `ci.yml`, which wires this selection into the e2e jobs) run
  *   everything, as do changes every plugin is built on: the kernel, the
@@ -52,60 +75,46 @@ function specDirectory(...segments: string[]): string {
  * those too.
  */
 const RELATED_SPECS: Readonly<Record<string, readonly string[]>> = {
-	shell: [
+	core: [
+		specDirectory("e2e", "specs", "core"),
 		specDirectory("e2e", "specs", "shell"),
-		specDirectory("e2e", "specs", "features", "settings"),
-		specDirectory("e2e", "specs", "features", "theme"),
+		specDirectory("e2e", "specs", "chat"),
 	],
-	flags: [specDirectory("e2e", "specs", "features", "flags")],
-	telemetry: [specDirectory("e2e", "specs", "features", "privacy")],
-	updates: [specDirectory("e2e", "specs", "features", "settings") + "about"],
-	chat: [specDirectory("e2e", "specs", "features", "chat")],
-	agent: [
-		specDirectory("e2e", "specs", "features", "agent"),
-		specDirectory("e2e", "specs", "features", "settings") + "about-kilo-config",
-		specDirectory("e2e", "specs", "features", "chat"),
+	shell: [specDirectory("e2e", "specs", "shell"), specDirectory("e2e", "specs", "core")],
+	developer: [specDirectory("e2e", "specs", "developer")],
+	"work-sessions": [
+		specDirectory("e2e", "specs", "work-sessions"),
+		specDirectory("e2e", "specs", "chat"),
+		specDirectory("e2e", "specs", "git"),
+		specDirectory("e2e", "specs", "workspace-board"),
 	],
-	account: [specDirectory("e2e", "specs", "features", "settings") + "account"],
-	workspaces: [
-		specDirectory("e2e", "specs", "features", "workspace"),
-		specDirectory("e2e", "specs", "features", "sessions"),
-	],
-	sessions: [
-		specDirectory("e2e", "specs", "features", "sessions"),
-		specDirectory("e2e", "specs", "features", "board"),
-		specDirectory("e2e", "specs", "features", "git") + "worktrees",
-	],
-	workbench: [
-		specDirectory("e2e", "specs", "features", "sessions"),
-		specDirectory("e2e", "specs", "features", "board"),
-	],
-	"workspace-board": [specDirectory("e2e", "specs", "features", "board")],
-	developer: [
-		specDirectory("e2e", "specs", "features", "developer"),
-		specDirectory("e2e", "specs", "features", "agent") + "agent-server",
-	],
-	git: [specDirectory("e2e", "specs", "features", "git")],
-	files: [specDirectory("e2e", "specs", "features", "files")],
-	browser: [specDirectory("e2e", "specs", "features", "browser")],
+	chat: [specDirectory("e2e", "specs", "chat"), specDirectory("e2e", "specs", "work-sessions")],
+	git: [specDirectory("e2e", "specs", "git"), specDirectory("e2e", "specs", "work-sessions")],
+	files: [specDirectory("e2e", "specs", "files")],
 	terminal: [
-		specDirectory("e2e", "specs", "features", "terminal"),
-		specDirectory("e2e", "specs", "features", "agent") + "external-ai-apps",
+		specDirectory("e2e", "specs", "terminal"),
+		specDirectory("e2e", "specs", "shell") + "external-ai-apps",
 	],
-	notebook: [specDirectory("e2e", "specs", "features", "notebook")],
-	environments: [specDirectory("e2e", "specs", "features", "environments")],
-	"anaconda-account": [specDirectory("e2e", "specs", "features", "settings") + "account"],
+	browser: [specDirectory("e2e", "specs", "browser")],
+	notebook: [specDirectory("e2e", "specs", "notebook")],
+	marketplace: [specDirectory("e2e", "specs", "marketplace")],
 	"local-inference": [
-		specDirectory("e2e", "specs", "features", "local-inference"),
-		specDirectory("e2e", "specs", "features", "chat") + "chat-model-selector",
-		specDirectory("e2e", "specs", "features", "settings") + "settings",
+		specDirectory("e2e", "specs", "local-inference"),
+		specDirectory("e2e", "specs", "chat") + "chat-model-selector",
+		specDirectory("e2e", "specs", "shell") + "settings-overview",
 	],
+	environments: [specDirectory("e2e", "specs", "environments")],
+	anaconda: [
+		specDirectory("e2e", "specs", "anaconda"),
+		specDirectory("e2e", "specs", "shell") + "account",
+	],
+	"workspace-board": [specDirectory("e2e", "specs", "workspace-board")],
 };
 
 /** Workspace packages owned by one plugin's behavior (`packages/<dir>` → `plugins/<dir>`). */
 const PACKAGE_PLUGINS: Readonly<Record<string, string>> = {
+	"pane-layout": "work-sessions",
 	"git-client": "git",
-	"pane-layout": "workbench",
 };
 
 function selectPrE2eGrep(

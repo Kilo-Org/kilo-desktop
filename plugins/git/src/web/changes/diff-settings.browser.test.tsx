@@ -7,14 +7,14 @@ import {
 	DIFF_OPTIONS_STORAGE_KEY,
 	DiffConfigProvider,
 	useDiffOptions,
-} from "./diff-options.js";
+} from "./diff-options";
 import {
 	patchResponseStream,
 	renderView,
 	resetViewTestDom,
 	stubFetch,
 	waitForTreePath,
-} from "../../test/changes-host.js";
+} from "../../test/git-host";
 
 function DiffOptionsProbe() {
 	const [opts, setOpt, setOpts] = useDiffOptions();

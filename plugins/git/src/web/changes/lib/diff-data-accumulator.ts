@@ -4,7 +4,7 @@
 import type { ChangeTypes, CodeViewItem, FileDiffMetadata } from "@pierre/diffs";
 import type { FileTreeGitStatusPatch, GitStatusEntry } from "@pierre/trees";
 
-import { mapChangeTypeToGitStatus } from "./map-change-type-to-git-status.js";
+import { mapChangeTypeToGitStatus } from "./map-change-type-to-git-status";
 
 /** Header stats: file count and added/deleted line totals. */
 export interface GitDiffStats {

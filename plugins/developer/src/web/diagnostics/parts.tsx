@@ -19,7 +19,7 @@ export const ROW_COLUMNS = "grid-cols-[minmax(0,min(16rem,45%))_minmax(0,1fr)_mi
 /** Catalog rows lead with a qualified id, which needs more room than a name. */
 export const CATALOG_COLUMNS = "grid-cols-[minmax(0,min(22rem,55%))_minmax(0,1fr)_minmax(0,5rem)]";
 
-const GOOD = new Set(["active", "ready", "completed", "winner", "provided"]);
+const GOOD = new Set(["active", "ready", "completed", "winner", "provided", "resolved", "on"]);
 const BAD = new Set(["failed", "unresolved", "unimplemented"]);
 
 export function StatusBadge({ status }: { readonly status: string }) {

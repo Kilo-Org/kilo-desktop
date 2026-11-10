@@ -1,18 +1,18 @@
 import type { DisposableScope, Disposer } from "./disposables";
-import type { AnyDomain } from "./domain";
+import type { AnyDomainObject } from "./domain-object";
 import type {
-	DomainHandle,
-	DomainImpl,
-	DomainProvider,
-	DomainRegistry,
-	DomainTracker,
-} from "./domain-registry";
+	DomainObjectHandle,
+	DomainObjectImpl,
+	DomainObjectProvider,
+	DomainObjectRegistry,
+	DomainObjectTracker,
+} from "./domain-object-registry";
 import { KernelError } from "./errors";
 import type {
 	AnyExtensionPoint,
 	ContributionEntry,
 	DecisionHandler,
-	ExtensionPoint,
+	ExtensionPointDefinition,
 	ImplementationOf,
 } from "./extension-point";
 import type {
@@ -24,6 +24,7 @@ import type {
 import { qualify, type QualifiedId } from "./ids";
 import type { PluginManifest } from "./manifest";
 import type { PortHandler, PortRegistry } from "./ports";
+import type { ObjectRef } from "./object-type";
 import type { KernelTransport } from "./transport";
 import type { ContextKeyStore, WhenExpression } from "./when";
 
@@ -67,19 +68,24 @@ export interface PluginExtensions {
 	exclusive<TPoint extends AnyExtensionPoint>(point: TPoint): ExclusiveResolution<TPoint>;
 	subscribe(point: AnyExtensionPoint, listener: () => void): () => void;
 	/** Runs a decision point this plugin owns. */
-	decide<TPoint extends ExtensionPoint<unknown, DecisionHandler<never>, "decision">>(
+	decide<TPoint extends ExtensionPointDefinition<unknown, DecisionHandler<never>, "decision">>(
 		point: TPoint,
 		input: DecisionInputOf<TPoint>,
 	): Promise<DecisionOutcome>;
 }
 
-export interface PluginDomains {
-	provide<TDomain extends AnyDomain>(
+export interface PluginDomainObjects {
+	provide<TDomain extends AnyDomainObject>(
 		domain: TDomain,
-		impl: DomainImpl<TDomain>,
-	): DomainProvider<TDomain>;
-	get<TDomain extends AnyDomain>(domain: TDomain): DomainHandle<TDomain> | null;
-	track<TDomain extends AnyDomain>(domain: TDomain, tracker: DomainTracker<TDomain>): () => void;
+		impl: DomainObjectImpl<TDomain>,
+	): DomainObjectProvider<TDomain>;
+	get<TDomain extends AnyDomainObject>(domain: TDomain): DomainObjectHandle<TDomain> | null;
+	track<TDomain extends AnyDomainObject>(
+		domain: TDomain,
+		tracker: DomainObjectTracker<TDomain>,
+	): () => void;
+	/** Resolves a reference through the collection that owns its object type; `null` when gone. */
+	resolve(reference: ObjectRef): unknown;
 }
 
 export interface PluginContext {
@@ -101,7 +107,7 @@ export interface PluginSdk {
 	readonly windowId?: string;
 	readonly manifest?: PluginManifest;
 	readonly extensions: PluginExtensions;
-	readonly domains: PluginDomains;
+	readonly domainObjects: PluginDomainObjects;
 	readonly context: PluginContext;
 	readonly logger: KernelLogger;
 	/** Host-provided per-plugin services; see the host package for their types. */
@@ -131,7 +137,7 @@ export interface SdkDependencies {
 	readonly scope: DisposableScope;
 	readonly isActive: () => boolean;
 	readonly extensions: ExtensionRegistry;
-	readonly domains: DomainRegistry;
+	readonly domainObjects: DomainObjectRegistry;
 	readonly contextKeys: ContextKeyStore;
 	readonly logger: KernelLogger;
 	readonly host: PluginHostServices;
@@ -140,7 +146,7 @@ export interface SdkDependencies {
 }
 
 export function createPluginSdk(deps: SdkDependencies): PluginSdk {
-	const { pluginId, scope, extensions, domains, contextKeys } = deps;
+	const { pluginId, scope, extensions, domainObjects, contextKeys } = deps;
 	const assertActive = () => {
 		if (!deps.isActive()) {
 			throw new KernelError("UNAVAILABLE", `Plugin "${pluginId}" is not active.`);
@@ -194,17 +200,18 @@ export function createPluginSdk(deps: SdkDependencies): PluginSdk {
 				return extensions.decide(point, input);
 			},
 		},
-		domains: {
+		domainObjects: {
 			provide(domain, impl) {
 				assertActive();
-				const { provider, withdraw } = domains.provide(pluginId, domain, impl);
+				const { provider, withdraw } = domainObjects.provide(pluginId, domain, impl);
 				scope.add(withdraw);
 				return provider;
 			},
-			get: (domain) => domains.get(pluginId, domain, track),
+			get: (domain) => domainObjects.get(pluginId, domain, track),
 			track(domain, tracker) {
-				return scope.add(domains.track(pluginId, domain, tracker, track));
+				return scope.add(domainObjects.track(pluginId, domain, tracker, track));
 			},
+			resolve: (reference) => domainObjects.resolve(reference),
 		},
 		context: {
 			set(key, value) {

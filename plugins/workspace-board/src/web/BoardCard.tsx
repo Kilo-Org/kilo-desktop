@@ -1,10 +1,14 @@
 import { MessageSquareIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { useDomain, useDragSource } from "@kilo-desktop/kernel/web";
-import { WorkSessions, type WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
-import type { SessionRenderers } from "@kilo-desktop/plugin-workbench/contracts";
-import type { Workspace } from "@kilo-desktop/plugin-workspaces/contracts";
+import { useDomainObject, useDragSource } from "@kilo-desktop/kernel/web";
+import {
+	WorkSessionObjectType,
+	WorkSessions,
+	type WorkSession,
+	type WorkSessionRenderers,
+	type Workspace,
+} from "@kilo-desktop/plugin-work-sessions/contracts";
 import { Card, CardDescription, CardHeader, CardTitle } from "@kilo-desktop/ui/components/card";
 import { Input } from "@kilo-desktop/ui/components/input";
 import { toast } from "@kilo-desktop/ui/components/sonner";
@@ -22,12 +26,12 @@ const cardActionsClassName = cn(
 
 /**
  * A session on the board, shown the way the session list shows it through
- * the renderers kilo.workbench hands its sessions views: its live glyph and status, plugins' row
+ * the renderers kilo.work-sessions hands its work sessions views: its live glyph and status, plugins' row
  * decorations (git's PR badge, interactive here since it sits outside the
  * open button) and the session menu. The whole card opens
  * the session through a stretched button beneath the content, whose layers
  * are pointer-transparent except for their own controls. The card drags the
- * session as an object reference.
+ * session as an object reference (`kilo.work-sessions/work-session`).
  */
 export function BoardCard({
 	session,
@@ -37,12 +41,14 @@ export function BoardCard({
 }: {
 	readonly session: WorkSession;
 	readonly workspaces: readonly Workspace[];
-	readonly renderers: SessionRenderers;
+	readonly renderers: WorkSessionRenderers;
 	readonly onOpen: (sessionId: string) => void;
 }) {
 	const [renaming, setRenaming] = useState(false);
 	const triggerRef = useRef<HTMLButtonElement>(null);
-	const drag = useDragSource([{ type: WorkSessions.id, id: session.id }], { disabled: renaming });
+	const drag = useDragSource([{ type: WorkSessionObjectType.id, id: session.id }], {
+		disabled: renaming,
+	});
 	const workspace = workspaces.find((candidate) => candidate.id === session.workspaceId);
 	const workspaceColor = workspaceGlyphColor(workspace?.color);
 	const locationLabel = workspace?.name ?? null;
@@ -69,7 +75,7 @@ export function BoardCard({
 				<CardHeader className="pointer-events-none relative flex flex-col gap-1">
 					<CardTitle className="flex h-5 w-full min-w-0 items-center gap-2 font-normal">
 						<span className="peer flex shrink-0 empty:hidden">
-							<Glyph session={session} decorative />
+							<Glyph workSession={session} decorative />
 						</span>
 						{/* The icon carries the workspace colour while the session has no live state. */}
 						<MessageSquareIcon
@@ -101,7 +107,7 @@ export function BoardCard({
 						{renaming ? null : (
 							<span className={cardActionsClassName}>
 								<Menu
-									session={session}
+									workSession={session}
 									onRename={() => setRenaming(true)}
 									triggerRef={triggerRef}
 									side="bottom"
@@ -112,11 +118,11 @@ export function BoardCard({
 					</CardTitle>
 					<CardDescription className="flex h-4 w-full min-w-0 items-center gap-2 text-xs">
 						<span className="flex min-w-0">
-							<Status session={session} />
+							<Status workSession={session} />
 						</span>
 						<span className="ml-auto flex shrink-0 items-center gap-2 tabular-nums">
 							<span className="pointer-events-auto flex items-center gap-1 empty:hidden">
-								<Decorations session={session} slot="row" interactive />
+								<Decorations workSession={session} slot="row" interactive />
 							</span>
 							<RelativeTime timestamp={session.updatedAt} />
 						</span>
@@ -135,7 +141,7 @@ function CardRenameInput({
 	readonly session: WorkSession;
 	readonly onDone: () => void;
 }) {
-	const sessions = useDomain(WorkSessions);
+	const sessions = useDomainObject(WorkSessions);
 	const [value, setValue] = useState(session.title);
 	const inputRef = useRef<HTMLInputElement>(null);
 	const settledRef = useRef(false);

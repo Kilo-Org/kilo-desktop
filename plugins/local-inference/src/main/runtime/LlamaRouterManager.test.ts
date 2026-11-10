@@ -6,13 +6,13 @@ import { PassThrough } from "node:stream";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { LocalModel } from "../../contracts/schemas.js";
+import type { LocalModel } from "../../contracts";
 import {
 	LlamaRouterManager,
 	type LlamaChildProcess,
 	type LlamaRouterManagerOptions,
 	type LlamaRouterStatus,
-} from "./LlamaRouterManager.js";
+} from "./LlamaRouterManager";
 
 const roots: string[] = [];
 

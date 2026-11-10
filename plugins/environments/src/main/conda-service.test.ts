@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { mergeEnvsDirs } from "./conda-service.js";
+import { mergeEnvsDirs } from "./conda-service";
 
 describe("mergeEnvsDirs", () => {
 	it("puts the highest-priority distribution dir first as the default", () => {

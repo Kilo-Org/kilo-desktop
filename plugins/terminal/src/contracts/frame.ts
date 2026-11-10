@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { TERMINAL_PROTOCOL_VERSION, terminalLabelSchema } from "./session.js";
+import { TERMINAL_PROTOCOL_VERSION, terminalLabelSchema } from "./session";
 
 export const TERMINAL_HOST = "terminal";
 

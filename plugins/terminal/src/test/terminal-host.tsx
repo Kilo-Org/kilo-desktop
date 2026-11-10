@@ -1,37 +1,41 @@
 // Test host for the terminal pane: main and a window linked in memory, with
-// stand-ins for kilo.sessions, kilo.workbench's navigator and kilo.shell's
-// theme, and the pane rendered as kilo.workbench's canvas renders it.
+// stand-ins (their real manifests and contracts) for kilo.work-sessions'
+// panes and window (with `workSessionActive` / `paneTargetActive`),
+// kilo.shell's theme, and kilo.terminal's `terminals` and shell port in main;
+// kilo.core is present for its manifest. The pane renders as
+// kilo.work-sessions' canvas renders it.
 import { cleanup, render } from "@testing-library/react";
 import { vi } from "vitest";
 
 import {
 	definePlugin,
-	type DomainProvider,
-	type DomainState,
+	type DomainObjectProvider,
+	type DomainObjectState,
 	type PluginEntry,
 } from "@kilo-desktop/kernel";
 import { createTestKernelPair } from "@kilo-desktop/kernel/testing";
 import { KernelProvider, RenderContribution } from "@kilo-desktop/kernel/web";
-import sessionsManifest from "@kilo-desktop/plugin-sessions/plugin.json";
+import coreManifest from "@kilo-desktop/plugin-core/plugin.json";
+import { CORE_DEFINITIONS } from "@kilo-desktop/plugin-core/contracts";
+import shellManifest from "@kilo-desktop/plugin-shell/plugin.json";
+import { SHELL_DEFINITIONS, Theme } from "@kilo-desktop/plugin-shell/contracts";
+import workSessionsManifest from "@kilo-desktop/plugin-work-sessions/plugin.json";
 import {
 	EMPTY_WORK_SESSION_PANES,
 	PaneKind,
 	Panes,
-	SESSIONS_DEFINITIONS,
+	WORK_SESSIONS_DEFINITIONS,
+	WorkSessionsWindow,
 	type Pane,
 	type PaneImplementation,
 	type PaneProps,
-} from "@kilo-desktop/plugin-sessions/contracts";
-import shellManifest from "@kilo-desktop/plugin-shell/plugin.json";
-import { SHELL_DOMAINS, SHELL_EXTENSION_POINTS, Theme } from "@kilo-desktop/plugin-shell/contracts";
-import workbenchManifest from "@kilo-desktop/plugin-workbench/plugin.json";
-import { Workbench, WORKBENCH_DEFINITIONS } from "@kilo-desktop/plugin-workbench/contracts";
+} from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import manifest from "../../plugin.json";
 import { TERMINAL_DEFINITIONS, TERMINAL_PROTOCOL_VERSION, Terminals } from "../contracts";
 import { terminalWebEntry } from "../web";
 
-export type ThemeState = DomainState<typeof Theme>;
+export type ThemeState = DomainObjectState<typeof Theme>;
 
 export const DARK_THEME: ThemeState = {
 	mode: "dark",
@@ -53,7 +57,7 @@ export const terminalPane = (overrides: Partial<Pane> = {}): Pane => ({
 export interface TerminalHostOptions {
 	/** Leaves kilo.terminal's main entry out, as in the browser. */
 	readonly withoutMain?: boolean;
-	readonly activeSessionId?: string | null;
+	readonly activeWorkSessionId?: string | null;
 	/** Leaves kilo.shell's theme out. */
 	readonly withoutTheme?: boolean;
 }
@@ -65,29 +69,29 @@ export async function renderTerminalHost(
 	cleanup();
 	const opened = vi.fn((_args: unknown) => undefined);
 	const openPane = vi.fn((_input: unknown) => undefined);
-	const workbenchOpenPane = vi.fn((_input: { kind: string }) => undefined);
-	let theme!: DomainProvider<typeof Theme>;
+	const windowOpenPane = vi.fn((_input: { kind: string }) => undefined);
+	let theme!: DomainObjectProvider<typeof Theme>;
 
 	const terminalMain: PluginEntry = definePlugin({
 		activate(sdk) {
-			sdk.domains.provide(Terminals, {
+			sdk.domainObjects.provide(Terminals, {
 				initialState: {},
 				methods: { list: () => [], read: () => null, close: () => undefined },
 			});
 			sdk.ports.handle("session", (_port, args) => opened(args));
 		},
 	});
-	const sessionsMain: PluginEntry = definePlugin({
+	const workSessionsMain: PluginEntry = definePlugin({
 		activate(sdk) {
-			const panes: DomainProvider<typeof Panes> = sdk.domains.provide(Panes, {
-				initialState: { bySession: {} },
+			const panes: DomainObjectProvider<typeof Panes> = sdk.domainObjects.provide(Panes, {
+				initialState: { byWorkSession: {} },
 				methods: {
 					open: (input) => {
 						openPane(input);
 						const pane = terminalPane({ id: "pane_new" });
 						panes.setState({
-							bySession: {
-								[input.sessionId]: { ...EMPTY_WORK_SESSION_PANES, panes: [pane] },
+							byWorkSession: {
+								[input.workSessionId]: { ...EMPTY_WORK_SESSION_PANES, panes: [pane] },
 							},
 						});
 						return pane;
@@ -98,7 +102,6 @@ export async function renderTerminalHost(
 					close: () => ({ closed: false }),
 					setLayout: () => undefined,
 					setArrangement: () => undefined,
-					importLegacy: () => undefined,
 				},
 			});
 		},
@@ -106,38 +109,37 @@ export async function renderTerminalHost(
 	const shellWeb: PluginEntry = definePlugin({
 		activate(sdk) {
 			if (!options.withoutTheme) {
-				theme = sdk.domains.provide(Theme, { initialState: DARK_THEME, methods: {} });
+				theme = sdk.domainObjects.provide(Theme, { initialState: DARK_THEME, methods: {} });
 			}
 		},
 	});
-	const workbenchWeb: PluginEntry = definePlugin({
+	const workSessionsWeb: PluginEntry = definePlugin({
 		activate(sdk) {
-			const activeSessionId =
-				options.activeSessionId === undefined ? "wses_1" : options.activeSessionId;
-			sdk.domains.provide(Workbench, {
-				initialState: { focus: null, activeSessionId, view: null, detachedViews: [] },
+			const activeWorkSessionId =
+				options.activeWorkSessionId === undefined ? "wses_1" : options.activeWorkSessionId;
+			sdk.domainObjects.provide(WorkSessionsWindow, {
+				initialState: { focus: null, activeWorkSessionId, view: null, detachedViews: [] },
 				methods: {
 					setFocus: () => undefined,
-					openSession: () => undefined,
-					closeSession: () => undefined,
+					openWorkSession: () => undefined,
+					closeWorkSession: () => undefined,
 					showView: () => undefined,
-					openPane: (input) => workbenchOpenPane(input),
+					openPane: (input) => windowOpenPane(input),
 				},
 			});
-			sdk.context.set("sessionActive", true);
+			sdk.context.set("workSessionActive", true);
 			sdk.context.set("paneTargetActive", true);
 		},
 	});
 
-	const shell = {
-		manifest: shellManifest,
-		definitions: { extensionPoints: SHELL_EXTENSION_POINTS, domains: SHELL_DOMAINS },
-	};
+	const core = { manifest: coreManifest, definitions: CORE_DEFINITIONS };
+	const shell = { manifest: shellManifest, definitions: SHELL_DEFINITIONS };
+	const workSessions = { manifest: workSessionsManifest, definitions: WORK_SESSIONS_DEFINITIONS };
 	const { main, renderer } = await createTestKernelPair({
 		main: [
+			core,
 			shell,
-			{ manifest: sessionsManifest, definitions: SESSIONS_DEFINITIONS, entry: sessionsMain },
-			{ manifest: workbenchManifest, definitions: WORKBENCH_DEFINITIONS },
+			{ ...workSessions, entry: workSessionsMain },
 			{
 				manifest,
 				definitions: TERMINAL_DEFINITIONS,
@@ -145,9 +147,9 @@ export async function renderTerminalHost(
 			},
 		],
 		renderer: [
+			core,
 			{ ...shell, entry: shellWeb },
-			{ manifest: sessionsManifest, definitions: SESSIONS_DEFINITIONS },
-			{ manifest: workbenchManifest, definitions: WORKBENCH_DEFINITIONS, entry: workbenchWeb },
+			{ ...workSessions, entry: workSessionsWeb },
 			{ manifest, definitions: TERMINAL_DEFINITIONS, entry: terminalWebEntry },
 		],
 	});
@@ -160,7 +162,7 @@ export async function renderTerminalHost(
 			<RenderContribution
 				contribution={contribution}
 				props={{
-					sessionId: "wses_1",
+					workSessionId: "wses_1",
 					pane: terminalPane(),
 					workspaceId: null,
 					directory: null,
@@ -177,7 +179,7 @@ export async function renderTerminalHost(
 		renderer,
 		opened,
 		openPane,
-		workbenchOpenPane,
+		windowOpenPane,
 		contribution,
 		setTheme: (next: ThemeState) => theme.setState(next),
 		rerender: (next: Partial<PaneProps>) => view.rerender(element(next)),

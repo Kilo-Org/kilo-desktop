@@ -1,8 +1,19 @@
 import { describe, expect, it } from "vitest";
 
+import type { ToolCallContext } from "@kilo-desktop/plugin-core/contracts";
+
 import manifest from "../../plugin.json";
-import type { CondaMethods } from "./conda-service.js";
-import { condaTools } from "./tools.js";
+import type { CondaMethods } from "./conda-service";
+import { condaTools } from "./tools";
+
+const CONTEXT: ToolCallContext = {
+	chatId: null,
+	workSessionId: null,
+	workspaceId: null,
+	callId: null,
+	external: false,
+	signal: new AbortController().signal,
+};
 
 function setup() {
 	const calls: { method: string; input: unknown }[] = [];
@@ -24,13 +35,7 @@ async function invoke(name: string, args: unknown) {
 	const parsed = tool.input.safeParse(args);
 	if (!parsed.success)
 		throw new Error(parsed.error.issues.map((issue) => issue.message).join("; "));
-	return tool.run(parsed.data, {
-		sessionId: null,
-		chatId: null,
-		callId: null,
-		external: false,
-		signal: new AbortController().signal,
-	});
+	return tool.run(parsed.data, CONTEXT);
 }
 
 function registry() {
@@ -43,20 +48,14 @@ function registry() {
 
 describe("the conda agent tools", () => {
 	it("implement exactly the tools the manifest contributes, with origin's names", () => {
-		const contributed = manifest.contributes.extensions["kilo.agent/tool"].map((tool) => tool.id);
+		const contributed = manifest.contributes.extensions["kilo.core/tool"].map((tool) => tool.id);
 		expect(Object.keys(setup().tools).sort()).toEqual([...contributed].sort());
 		expect(contributed).not.toContain("conda.envs.createFromFile");
 	});
 
 	it("forward validated input to the conda methods", async () => {
 		const { tools, calls } = setup();
-		const context = {
-			sessionId: null,
-			chatId: null,
-			callId: null,
-			external: false,
-			signal: new AbortController().signal,
-		};
+		const context = CONTEXT;
 		await tools["conda.envs.list"]!.run({}, context);
 		await tools["conda.packages.install"]!.run(
 			tools["conda.packages.install"]!.input.parse({ name: "dev", packages: ["numpy"] }),
@@ -70,20 +69,9 @@ describe("the conda agent tools", () => {
 
 	it("open settings through the window instead of navigating themselves", async () => {
 		const { tools, opened } = setup();
-		await expect(
-			Promise.resolve(
-				tools["conda.setup.open"]!.run(
-					{},
-					{
-						sessionId: null,
-						chatId: null,
-						callId: null,
-						external: false,
-						signal: new AbortController().signal,
-					},
-				),
-			),
-		).resolves.toEqual({ opened: true });
+		await expect(Promise.resolve(tools["conda.setup.open"]!.run({}, CONTEXT))).resolves.toEqual({
+			opened: true,
+		});
 		expect(opened()).toBe(1);
 	});
 

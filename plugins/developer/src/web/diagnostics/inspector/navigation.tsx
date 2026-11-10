@@ -8,9 +8,10 @@ import {
 	type ReactNode,
 } from "react";
 
-import { useKernel } from "@kilo-desktop/kernel/web";
+import { KernelDomainObjects, type DomainObjectState } from "@kilo-desktop/kernel";
+import { useDomainObjectState, useKernel } from "@kilo-desktop/kernel/web";
 
-import { sameEntity, type EntityRef } from "../domain-model";
+import { sameEntity, type EntityRef, type MainDomainObjects } from "../domain-model";
 
 /**
  * Drill-down navigation inside Diagnostics. The inspector's breadcrumbs are
@@ -97,7 +98,7 @@ export function useKernelChanges(): number {
 			const unsubscribers = [
 				kernel.extensions.subscribe(bump),
 				kernel.onPluginStateChange(bump),
-				kernel.domains.onChange(bump),
+				kernel.domainObjects.onChange(bump),
 				kernel.contextKeys.subscribe(bump),
 			];
 			return () => {
@@ -108,4 +109,12 @@ export function useKernelChanges(): number {
 	);
 	const snapshot = () => version.current;
 	return useSyncExternalStore(subscribe, snapshot, snapshot);
+}
+
+const selectMainDomainObjects = (state: DomainObjectState<typeof KernelDomainObjects>) =>
+	state.domainObjects;
+
+/** Main's view of which domain objects are provided (`kernel/domain-objects`), when this window sees it. */
+export function useMainDomainObjects(): MainDomainObjects | undefined {
+	return useDomainObjectState(KernelDomainObjects, selectMainDomainObjects) ?? undefined;
 }

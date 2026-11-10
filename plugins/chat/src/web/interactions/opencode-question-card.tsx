@@ -1,11 +1,9 @@
 import { type FormEvent, useMemo, useState } from "react";
-import {
-	type OpenCodeQuestionRequest,
-	type QuestionAnswer,
-	useOpenCodeRuntimeExtras,
-} from "@assistant-ui/react-opencode";
+import type { OpenCodeQuestionRequest, QuestionAnswer } from "@assistant-ui/react-opencode";
 import { CircleAlertIcon, ShieldAlertIcon } from "lucide-react";
 
+import { useDomainObject } from "@kilo-desktop/kernel/web";
+import { Chats } from "@kilo-desktop/plugin-core/contracts";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
@@ -24,7 +22,7 @@ import {
 } from "@kilo-desktop/ui/components/questionnaire";
 
 import { ComposerShell } from "../thread/composer-shelf";
-import { questionOptionWarnings, useInteractionRenderers } from "./interaction-renderers";
+import { questionOptionWarnings, usePermissionRenderers } from "./permission-renderers";
 import type { SubagentOrigin } from "./pending-interactions";
 
 const questionName = (index: number) => `question-${index}`;
@@ -52,6 +50,9 @@ export const encodeAnswersFromFormData = (
 		});
 	});
 
+const NO_CHATS = "Kilo isn't available right now.";
+
+/** An agent question, answered or dismissed through kilo.core's chats. */
 export const OpenCodeQuestionQuestionnaire = ({
 	request,
 	origin,
@@ -60,12 +61,12 @@ export const OpenCodeQuestionQuestionnaire = ({
 	/** Set when a subagent, not the chat's own session, asked the question. */
 	origin?: SubagentOrigin | undefined;
 }) => {
-	const { replyToQuestion, rejectQuestion } = useOpenCodeRuntimeExtras();
+	const chats = useDomainObject(Chats);
 	const [submissionState, setSubmissionState] = useState<"reply" | "reject" | null>(null);
 	const [error, setError] = useState<string | null>(null);
 
 	const items = useMemo(() => buildQuestionnaireItems(request), [request]);
-	const renderers = useInteractionRenderers();
+	const renderers = usePermissionRenderers();
 
 	const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
 		event.preventDefault();
@@ -79,7 +80,12 @@ export const OpenCodeQuestionQuestionnaire = ({
 
 		void (async () => {
 			try {
-				await replyToQuestion(request.id, answers);
+				if (!chats) throw new Error(NO_CHATS);
+				await chats.methods.replyQuestion({
+					chatId: request.sessionID,
+					questionId: request.id,
+					answers,
+				});
 			} catch (err) {
 				setError(err instanceof Error ? err.message : "Could not submit answers.");
 				setSubmissionState(null);
@@ -92,7 +98,8 @@ export const OpenCodeQuestionQuestionnaire = ({
 		setError(null);
 
 		try {
-			await rejectQuestion(request.id);
+			if (!chats) throw new Error(NO_CHATS);
+			await chats.methods.rejectQuestion({ chatId: request.sessionID, questionId: request.id });
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Could not reject the request.");
 			setSubmissionState(null);

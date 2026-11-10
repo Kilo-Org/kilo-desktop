@@ -4,31 +4,38 @@
 	"displayName": "Browser",
 	"version": "1.0.0",
 	"description": "Browse the web, and a workspace's HTML pages, in a session's panes.",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
 	"requires": {
-		"kilo.workspaces/workspace": "optional",
-		"kilo.sessions/work-session": "optional",
-		"kilo.sessions/pane": "optional",
-		"kilo.sessions/pane-kind": "optional",
-		"kilo.sessions/opener": "optional",
-		"kilo.workbench/workbench": "optional",
-		"kilo.chat/markdown-extension": "optional",
-		"kilo.agent/tool": "optional",
-		"kilo.telemetry/telemetry": "optional",
-		"kilo.telemetry/telemetry-event": "optional"
+		"kilo.core/tool": "optional",
+		"kilo.work-sessions/workspaces": "optional",
+		"kilo.work-sessions/work-sessions": "optional",
+		"kilo.work-sessions/panes": "optional",
+		"kilo.work-sessions/window": "optional",
+		"kilo.work-sessions/pane-kind": "optional",
+		"kilo.work-sessions/opener": "optional",
+		"kilo.chat/markdown-extension": "optional"
 	},
 	"permissions": {
 		"host": ["browser-host", "os"]
 	},
-	"domains": [
+	"objectTypes": [
+		{
+			"id": "page",
+			"description": "The web page a Browser pane shows, keyed <workSessionId>/<paneId>."
+		}
+	],
+	"domainObjects": [
 		{
 			"id": "pages",
 			"home": "main",
-			"description": "The web page each Browser pane shows: attaching its guest, navigation and page commands."
+			"description": "The web page each Browser pane shows: attaching its guest, navigation and page commands.",
+			"objectType": "kilo.browser/page"
 		}
 	],
 	"contributes": {
 		"extensions": {
-			"kilo.sessions/pane-kind": [
+			"kilo.work-sessions/pane-kind": [
 				{
 					"id": "browser",
 					"title": "Browser",
@@ -46,18 +53,18 @@
 					"unavailableHint": "The browser is available in the desktop app."
 				}
 			],
-			"kilo.sessions/opener": [
+			"kilo.work-sessions/opener": [
 				{
 					"id": "url",
 					"match": {
-						"type": "kilo.browser/url"
+						"type": "kilo.work-sessions/url"
 					},
 					"pane": "kilo.browser/browser"
 				},
 				{
 					"id": "html-file",
 					"match": {
-						"type": "kilo.workspaces/file",
+						"type": "kilo.work-sessions/file",
 						"pattern": "*.html"
 					},
 					"pane": "kilo.browser/browser"
@@ -65,7 +72,7 @@
 				{
 					"id": "htm-file",
 					"match": {
-						"type": "kilo.workspaces/file",
+						"type": "kilo.work-sessions/file",
 						"pattern": "*.htm"
 					},
 					"pane": "kilo.browser/browser"
@@ -76,7 +83,7 @@
 					"id": "web-links"
 				}
 			],
-			"kilo.agent/tool": [
+			"kilo.core/tool": [
 				{
 					"id": "open",
 					"title": "Open web page",
@@ -91,11 +98,11 @@
 					"order": 42,
 					"keybinding": "Mod+Shift+B",
 					"when": {
-						"all": ["kilo.workbench/paneTargetActive", "kernel/desktop"]
+						"all": ["kilo.work-sessions/paneTargetActive", "kernel/desktop"]
 					}
 				}
 			],
-			"kilo.telemetry/telemetry-event": [
+			"kernel/telemetry-event": [
 				{
 					"id": "tab-opened",
 					"name": "Browser Tab Opened"

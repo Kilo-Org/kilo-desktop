@@ -16,7 +16,7 @@ exist: [plugin-architecture.md §2.6](../plugin-architecture.md#26-commands).
 		"title": "Say hello",
 		"category": "Hello",
 		"keybinding": "Mod+Shift+H",
-		"when": { "all": ["kilo.workbench/sessionActive"] }
+		"when": { "all": ["kilo.work-sessions/workSessionActive"] }
 	}
 ]
 ```
@@ -24,7 +24,7 @@ exist: [plugin-architecture.md §2.6](../plugin-architecture.md#26-commands).
 ```ts
 // src/web/index.ts (or main: commands bind in any process)
 sdk.extensions.implement(KernelCommand, "say-hello", async () => {
-	await sdk.domains.get(Greetings)?.methods.greet({ name: "world" });
+	await sdk.domainObjects.get(Greetings)?.methods.greet({ name: "world" });
 });
 ```
 
@@ -42,11 +42,13 @@ The command's id is `example.hello/say-hello`. Metadata fields:
 | `when`, `priority` | As for every contribution                                                     |
 
 Run a command from code with `useKernel().commands.execute(id, args)` in
-React (the handler gets `args`). A window can run a command that only main
+React (the handler gets `args`), e.g.
+`commands.execute("kilo.work-sessions/open-work-session", { workSessionId })`. A window can run a command that only main
 or another window implements; the kernel forwards it.
 
 Implement a command in the window when it acts on that window (its open
-session, its focus); in main when it doesn't depend on a window.
+work session, its focus — kilo.work-sessions' `next-work-session`,
+`new-pane`); in main when it doesn't depend on a window.
 
 ## Keybindings
 
@@ -66,7 +68,7 @@ session, its focus); in main when it doesn't depend on a window.
 `when` hides or disables a contribution without running plugin code:
 
 ```jsonc
-"when": { "all": ["kilo.workbench/sessionActive", "kilo.workspaces/vcs"], "none": ["kernel/secondaryWindow"] }
+"when": { "all": ["kilo.work-sessions/workSessionActive", "kilo.work-sessions/hasVcs"], "none": ["kernel/secondaryWindow"] }
 ```
 
 Every key in `all` must be true and every key in `none` false. Keys are
@@ -76,20 +78,19 @@ condition on a removed plugin's key simply doesn't hold.
 A manifest's top-level `when` gates the whole plugin rather than one
 contribution: the kernel activates it only while the condition holds (see
 the plugin [lifecycle](./README.md#lifecycle)). Feature-flagging a plugin
-is `"when": { "all": ["kilo.flags/flag:<name>"] }`.
+is `"when": { "all": ["kernel/flag:<name>"] }`, with the flag declared as a
+`kernel/flag` contribution (see [domain-objects.md](./domain-objects.md#identity-flags-and-telemetry)).
 
 ### Context keys
 
-| Key                                                              | Scope  | True while                                             |
-| ---------------------------------------------------------------- | ------ | ------------------------------------------------------ |
-| `kernel/desktop`, `kernel/mac`, `kernel/windows`, `kernel/linux` | global | Running as the desktop app / on that OS                |
-| `kernel/safeMode`                                                | global | The app started in safe mode                           |
-| `kernel/secondaryWindow`                                         | window | This window is a pop-out                               |
-| `kilo.account/signedIn`, `kilo.account/termsAccepted`            | global | Signed in to Kilo / terms accepted                     |
-| `kilo.flags/flag:<name>`                                         | global | The feature flag is on                                 |
-| `kilo.workspaces/hasWorkspaces`, `kilo.workspaces/vcs`           | global | A workspace exists / git is available                  |
-| `kilo.workbench/sessionActive`, `kilo.workbench/workspaceActive` | window | A session is open / the list is focused on a workspace |
-| `kilo.chat/composerFocused`, `kilo.terminal/terminalFocused`     | window | That element has keyboard focus                        |
+The kernel's keys (plugins declare their own in their manifests):
+
+| Key                                                              | Scope  | True while                                    |
+| ---------------------------------------------------------------- | ------ | --------------------------------------------- |
+| `kernel/desktop`, `kernel/mac`, `kernel/windows`, `kernel/linux` | global | Running as the desktop app / on that OS       |
+| `kernel/safeMode`                                                | global | The app started in safe mode                  |
+| `kernel/flag:<id>`                                               | global | The declared feature flag's value is `true`   |
+| `kernel/secondaryWindow`                                         | window | This window is a secondary window (a pop-out) |
 
 ### Owning a key
 
@@ -104,7 +105,7 @@ sdk.context.set("hasTodos", todos.length > 0); // local name; only the owner can
 ```
 
 - `global` keys are set in main and mirrored to every window; `window` keys
-  are set in a window and only exist there (focus, the open session).
+  are set in a window and only exist there (focus, the open work session).
 - Read keys with `useContextKey("acme.todos/hasTodos")` in React, or
   `sdk.context.get` / `sdk.context.evaluate(when)` in code.
 - A key id ending in `*` declares a family (`flag:*`).

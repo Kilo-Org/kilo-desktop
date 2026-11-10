@@ -1,18 +1,21 @@
-import type { Pane, WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
+import { isRef, ref, type ObjectRef } from "@kilo-desktop/kernel";
+import { Chat } from "@kilo-desktop/plugin-core/contracts";
+import type { Pane, WorkSession } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 /** The agent pane kind's contribution key. */
 export const AGENT_PANE_KIND = "kilo.chat/agent";
 
-/** The plan pane kind: the plan agent's proposed plan for a chat, one per session. */
+/** The plan pane kind: the plan agent's proposed plan for a chat, one per work session. */
 export const PLAN_PANE_KIND = "kilo.chat/plan";
 
 /** The subagent pane kind: one subagent's transcript, one pane per child chat. */
 export const SUBAGENT_PANE_KIND = "kilo.chat/subagent";
 
 /**
- * Pane metadata naming the Kilo chat (`ses_…`) a pane shows: an agent pane's
- * chat, the chat a plan pane shows the plan of, or the chat that delegated a
- * subagent pane's child.
+ * Pane metadata naming a Kilo chat (`ses_…`): the chat a subagent pane's
+ * child was delegated by. Agent and plan panes kept their chat here before
+ * panes had an `object` (origin's panes, adopted as they were); they show
+ * it through `object` now.
  */
 export const CHAT_ID_METADATA_KEY = "chatId";
 
@@ -26,33 +29,51 @@ export const PLAN_ANCHOR_CALL_ID_METADATA_KEY = "planAnchorCallId";
  */
 export const PLAN_NEWEST_ANCHOR_CALL_ID_METADATA_KEY = "planNewestAnchorCallIdAtOpen";
 
-/** Subagent pane metadata: the child chat (`ses_…`) whose transcript it shows. */
+/**
+ * Subagent pane metadata before panes had an `object`: the child chat whose
+ * transcript it shows. Its `object` names the child now.
+ */
 export const SUBAGENT_CHILD_SESSION_METADATA_KEY = "childSessionId";
 
 /** A subagent pane's id: one pane per child chat (origin's tab instance id). */
-export const subagentPaneId = (childSessionId: string): string => `subagent:${childSessionId}`;
+export const subagentPaneId = (childChatId: string): string => `subagent:${childChatId}`;
 
-type PaneRef = Pick<Pane, "id" | "kind" | "metadata">;
+/** The `object` of a pane showing a chat. */
+export const chatPaneObject = (chatId: string): ObjectRef => ref(Chat, chatId);
 
 /**
- * The chat an agent or plan pane shows: the one named in its metadata, else
- * none — for an agent pane, a draft whose first send creates the chat. The
- * session's first agent pane naming no chat shows the session's first chat
- * (origin's panes, handed over without metadata, and a session's agent pane
- * reopened after its last was closed), unless another of `sessionPanes`
- * names it; agent panes added beside it start new chats.
+ * The chat a pane names: its `object` when that is a chat, else the chat
+ * id an adopted pane kept in `metadataKey`.
+ */
+export function paneChatId(
+	pane: Pick<Pane, "metadata"> & Partial<Pick<Pane, "object">>,
+	metadataKey: string = CHAT_ID_METADATA_KEY,
+): string | null {
+	if (isRef(Chat, pane.object)) return pane.object.id;
+	return pane.metadata[metadataKey] || null;
+}
+
+type PaneRef = Pick<Pane, "id" | "kind" | "metadata"> & Partial<Pick<Pane, "object">>;
+
+/**
+ * The chat an agent or plan pane shows: the one it names (`paneChatId`),
+ * else none — for an agent pane, a draft whose first send creates the chat.
+ * The work session's first agent pane naming no chat shows the work
+ * session's first chat (a work session's agent pane reopened after its last
+ * was closed), unless another of `workSessionPanes` names it; agent panes
+ * added beside it start new chats.
  */
 export function agentPaneChatId(
-	pane: Pick<Pane, "metadata"> & Partial<Pick<Pane, "id">>,
-	session: Pick<WorkSession, "chatIds"> | null | undefined,
-	sessionPanes: readonly PaneRef[] = [],
+	pane: Pick<Pane, "metadata"> & Partial<Pick<Pane, "id" | "object">>,
+	workSession: Pick<WorkSession, "chatIds"> | null | undefined,
+	workSessionPanes: readonly PaneRef[] = [],
 ): string | null {
-	const named = pane.metadata[CHAT_ID_METADATA_KEY];
+	const named = paneChatId(pane);
 	if (named) return named;
-	const first = session?.chatIds[0];
+	const first = workSession?.chatIds[0];
 	if (!first) return null;
-	const agents = sessionPanes.filter((candidate) => candidate.kind === AGENT_PANE_KIND);
-	if (agents.some((candidate) => candidate.metadata[CHAT_ID_METADATA_KEY] === first)) return null;
+	const agents = workSessionPanes.filter((candidate) => candidate.kind === AGENT_PANE_KIND);
+	if (agents.some((candidate) => paneChatId(candidate) === first)) return null;
 	const firstAgent = agents[0];
 	return !firstAgent || firstAgent.id === pane.id ? first : null;
 }
@@ -62,22 +83,23 @@ export interface PlanPaneAnchors {
 	readonly newestAnchorCallId: string;
 }
 
-/** The plan pane's metadata for a chat's plan revision. */
-export function planPaneMetadata(chatId: string, anchors: PlanPaneAnchors): Record<string, string> {
+/** The plan pane's metadata for a chat's plan revision (the chat is its `object`). */
+export function planPaneMetadata(anchors: PlanPaneAnchors): Record<string, string> {
 	return {
-		[CHAT_ID_METADATA_KEY]: chatId,
 		[PLAN_ANCHOR_CALL_ID_METADATA_KEY]: anchors.anchorCallId,
 		[PLAN_NEWEST_ANCHOR_CALL_ID_METADATA_KEY]: anchors.newestAnchorCallId,
 	};
 }
 
-/** The subagent pane's metadata for `childChatId`, delegated by `parentChatId` when known. */
-export function subagentPaneMetadata(
-	childChatId: string,
-	parentChatId: string | null,
-): Record<string, string> {
-	return {
-		[SUBAGENT_CHILD_SESSION_METADATA_KEY]: childChatId,
-		...(parentChatId ? { [CHAT_ID_METADATA_KEY]: parentChatId } : {}),
-	};
+/** The subagent pane's metadata: the chat that delegated it, when known (the child is its `object`). */
+export function subagentPaneMetadata(parentChatId: string | null): Record<string, string> {
+	return parentChatId ? { [CHAT_ID_METADATA_KEY]: parentChatId } : {};
 }
+
+/** The child chat a subagent pane shows. */
+export const subagentPaneChildChatId = (pane: Pick<Pane, "metadata" | "object">): string | null =>
+	paneChatId(pane, SUBAGENT_CHILD_SESSION_METADATA_KEY);
+
+/** The chat that delegated a subagent pane's child, when known. */
+export const subagentPaneParentChatId = (pane: Pick<Pane, "metadata">): string | null =>
+	pane.metadata[CHAT_ID_METADATA_KEY] || null;

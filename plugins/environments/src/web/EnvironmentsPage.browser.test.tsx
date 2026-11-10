@@ -2,14 +2,14 @@ import { cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 
-import type { CondaStatus } from "../contracts/index.js";
+import type { CondaStatus } from "../contracts/index";
 import {
 	renderWithConda,
 	SIGNED_IN,
 	SIGNED_OUT,
 	type EnvironmentsHostOptions,
-} from "../test/environments-host.js";
-import type { CondaClient } from "./conda.js";
+} from "../test/environments-host";
+import type { CondaClient } from "./conda";
 import { EnvironmentsPage } from "./EnvironmentsPage";
 
 /**
@@ -166,7 +166,7 @@ describe("EnvironmentsPage", () => {
 		});
 
 		it("shows a loading skeleton while sign-in is not yet known", async () => {
-			const { baseElement } = await renderPage({ identity: { ...SIGNED_IN, authenticated: null } });
+			const { baseElement } = await renderPage({ identity: { ...SIGNED_IN, signedIn: null } });
 			const screen = page.elementLocator(baseElement);
 
 			await expect

@@ -34,7 +34,7 @@ function servicePlugin(
 }
 
 function statusOf(kernel: ReturnType<typeof createMainKernel>, key: string) {
-	return kernel.kernelSdk.domains.get(KernelServices)!.getState().services[key];
+	return kernel.kernelSdk.domainObjects.get(KernelServices)!.getState().services[key];
 }
 
 afterEach(() => {
@@ -72,7 +72,7 @@ describe("service supervision — starting", () => {
 		expect(start).toHaveBeenCalledOnce();
 		expect(statusOf(kernel, "acme.svc/svc")).toMatchObject({ status: "ready" });
 		expect(statusOf(kernel, "acme.svc/svc")).not.toHaveProperty("progress");
-		expect(kernel.kernelSdk.domains.get(KernelApp)!.getState().phase).toBe("ready");
+		expect(kernel.kernelSdk.domainObjects.get(KernelApp)!.getState().phase).toBe("ready");
 
 		// A ready service may still report progress (e.g. indexing).
 		reportLater("Indexing…");
@@ -112,7 +112,7 @@ describe("service supervision — starting", () => {
 		await kernel.windowShown();
 		expect(start).not.toHaveBeenCalled();
 
-		await kernel.kernelSdk.domains
+		await kernel.kernelSdk.domainObjects
 			.get(KernelServices)!
 			.methods.ensureStarted({ key: "acme.svc/svc" });
 
@@ -317,12 +317,14 @@ describe("service supervision — failures", () => {
 		await vi.advanceTimersByTimeAsync(100);
 		expect(statusOf(kernel, "acme.svc/svc")?.status).toBe("failed");
 		const statuses: string[] = [];
-		kernel.kernelSdk.domains
+		kernel.kernelSdk.domainObjects
 			.get(KernelServices)!
 			.on("status-changed", ({ status }) => void statuses.push(status));
 
 		healthy = true;
-		await kernel.kernelSdk.domains.get(KernelServices)!.methods.restart({ key: "acme.svc/svc" });
+		await kernel.kernelSdk.domainObjects
+			.get(KernelServices)!
+			.methods.restart({ key: "acme.svc/svc" });
 
 		expect(statuses).toEqual(["idle", "starting", "ready"]);
 		expect(statusOf(kernel, "acme.svc/svc")).toMatchObject({ status: "ready", restarts: 0 });

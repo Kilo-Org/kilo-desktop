@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { GitBranch } from "../../contracts/index.js";
-import { groupBranches } from "./group-branches.js";
+import type { GitBranch } from "../../contracts";
+import { groupBranches } from "./group-branches";
 
 function local(name: string, upstream: string | null = null): GitBranch {
 	return { name, upstream, tip: { sha: "sha" }, ref: `refs/heads/${name}`, kind: "local" };

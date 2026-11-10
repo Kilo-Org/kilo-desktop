@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { Agent } from "@kilocode/sdk/v2/client";
 
-import type { ServerConnection as KiloGlobalConnection } from "@kilo-desktop/plugin-agent/contracts";
+import type { ServerConnection as KiloGlobalConnection } from "@kilo-desktop/plugin-core/contracts";
 import { directoryClient as createKiloDirectoryClient } from "../runtime/kilo-client";
 import { buildAgentCatalog, type KiloAgentCatalog } from "./agent-catalog";
 import { useKiloAccountKey } from "./kilo-account-key";

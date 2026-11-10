@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { GroupByContext, PartState } from "@assistant-ui/react";
 
-import { signInRequiredToolMessage } from "@kilo-desktop/plugin-agent/contracts";
+import { SIGN_IN_REQUIRED_TOOL_ERROR_CODE } from "@kilo-desktop/plugin-core/contracts";
+
+const signInRequiredToolMessage = (audience: "kilo" | "external") =>
+	`${SIGN_IN_REQUIRED_TOOL_ERROR_CODE} The ${audience} caller is not signed in to Kilo.`;
 
 import { HTML_RENDER_TOOL_NAME as HTML_RENDER_AGENT_TOOL_NAME } from "../../contracts";
 import { createActivityGroupBy, createTurnWorkGroupBy } from "./activity-grouping";

@@ -1,4 +1,4 @@
-import type { AnyDomain, ObjectRef } from "./domain";
+import type { ObjectRef, ObjectTypeDefinition } from "./object-type";
 import type { QualifiedId } from "./ids";
 
 /**
@@ -16,9 +16,9 @@ export interface DataTransferLike {
 	getData(format: string): string;
 }
 
-type Accepted = readonly (AnyDomain | QualifiedId)[];
+type Accepted = readonly (ObjectTypeDefinition | QualifiedId)[];
 
-const typeIdOf = (accepted: AnyDomain | QualifiedId): string =>
+const typeIdOf = (accepted: ObjectTypeDefinition | QualifiedId): string =>
 	typeof accepted === "string" ? accepted : accepted.id;
 
 const markerFor = (type: string): string => `${TYPE_MARKER_PREFIX}${type.toLowerCase()}`;

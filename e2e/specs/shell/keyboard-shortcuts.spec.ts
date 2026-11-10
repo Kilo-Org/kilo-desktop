@@ -1,4 +1,5 @@
-import { test } from "../../fixtures/features/keyboard-shortcuts.js";
+import { test } from "../../fixtures/shell/keyboard-shortcuts.js";
+import { runFromCommandPalette } from "../../pages/shell/command-palette.js";
 
 test.describe("Keyboard shortcuts @smoke", () => {
 	test("dispatches app shortcuts captured in the main process", async ({
@@ -16,6 +17,17 @@ test.describe("Keyboard shortcuts @smoke", () => {
 		await keyboardShortcutsPage.closeCommandPalette();
 
 		await keyboardShortcutsPage.openSettingsWithShortcut();
+		await keyboardShortcutsPage.verifySettingsOpen();
+		await appShellPage.leaveSettings();
+		await appShellPage.verifyShellIsLoaded();
+	});
+
+	test("runs a command chosen in the command palette", async ({
+		appShellPage,
+		keyboardShortcutsPage,
+	}) => {
+		await appShellPage.verifyShellIsLoaded();
+		await runFromCommandPalette("kilo.shell/open-settings");
 		await keyboardShortcutsPage.verifySettingsOpen();
 		await appShellPage.leaveSettings();
 		await appShellPage.verifyShellIsLoaded();

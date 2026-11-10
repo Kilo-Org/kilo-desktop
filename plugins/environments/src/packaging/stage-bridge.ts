@@ -22,7 +22,7 @@ import {
 	readStagedManifest,
 	resolveInstalledPayload,
 	type BridgePayloadManifest,
-} from "./bridge-artifacts.js";
+} from "./bridge-artifacts";
 
 export interface StageBridgeOptions {
 	/** Root directory for staged bridge resources (e.g., `plugins/environments/resources/bridge`). */

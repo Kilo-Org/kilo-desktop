@@ -4,7 +4,7 @@ import {
 	SIGN_IN_DECLINED_TOOL_ERROR_CODE,
 	SIGN_IN_REQUIRED_TOOL_ERROR_CODE,
 	type ToolSignInPrompt,
-} from "@kilo-desktop/plugin-agent/contracts";
+} from "@kilo-desktop/plugin-core/contracts";
 
 export type { ToolSignInPrompt };
 
@@ -28,7 +28,7 @@ interface ToolCallOutcome {
 }
 
 /**
- * Why kilo.agent's tool gateway refused this call: the person is signed out
+ * Why kilo.core's tool gateway refused this call: the person is signed out
  * (`required`), or they already chose to go without the tool (`declined`).
  * Only a failed call to one of the app's tools counts: any other tool's
  * output (a shell grepping this code, a file read) may merely contain the

@@ -6,18 +6,16 @@ import {
 	type ComposerMentionImplementation,
 	type MentionSearchContext,
 } from "@kilo-desktop/plugin-chat/contracts";
-import { definePlugin } from "@kilo-desktop/kernel";
-import { PaneKind } from "@kilo-desktop/plugin-sessions/contracts";
-import workbenchManifest from "@kilo-desktop/plugin-workbench/plugin.json";
-import { Workbench, WORKBENCH_DEFINITIONS } from "@kilo-desktop/plugin-workbench/contracts";
+import { PaneKind } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import { FILES_PANE_KIND } from "../contracts/panes.js";
 import {
 	bootFilesHost,
 	filesPane,
 	filesPaneKind,
+	openedFilePane,
 	PaneHost,
-	SESSION_ID,
+	WORK_SESSION_ID,
 	type FilesHost,
 } from "../test/files-host.js";
 import type { DocumentMethods } from "./documents.js";
@@ -58,7 +56,7 @@ function searchContext(
 	directory: string | null = workspaceFolders[0]?.path ?? null,
 ): MentionSearchContext {
 	return {
-		sessionId: SESSION_ID,
+		workSessionId: WORK_SESSION_ID,
 		directory,
 		workspaceId: workspaceFolders.length > 0 ? "w1" : null,
 		workspaceFolders,
@@ -87,7 +85,7 @@ describe("the Files pane kind", () => {
 		});
 	});
 
-	it("shows a file kilo.sessions opened as an object, from its absolute path", async () => {
+	it("shows a file kilo.work-sessions opened as an object, from its absolute path", async () => {
 		const read = vi.fn(documents().read!);
 		const host = await bootFilesHost({
 			documents: documents({ read }),
@@ -95,7 +93,7 @@ describe("the Files pane kind", () => {
 				{ path: "/workspace", isPrimary: true },
 				{ path: "/docs", isPrimary: false },
 			],
-			panes: [filesPane("p1", { objectType: "kilo.workspaces/file", objectId: "/docs/guide.md" })],
+			panes: [openedFilePane("p1", "/docs/guide.md")],
 		});
 		host.render(<PaneHost host={host} paneId="p1" />);
 
@@ -108,12 +106,7 @@ describe("the Files pane kind", () => {
 		const host = await bootFilesHost({
 			documents: documents({ read }),
 			directory: "/worktrees/fix",
-			panes: [
-				filesPane("p1", {
-					objectType: "kilo.workspaces/file",
-					objectId: "/worktrees/fix/src/App.tsx",
-				}),
-			],
+			panes: [openedFilePane("p1", "/worktrees/fix/src/App.tsx")],
 		});
 		host.render(<PaneHost host={host} paneId="p1" />);
 
@@ -129,7 +122,7 @@ describe("the Files pane kind", () => {
 		const read = vi.fn(documents().read!);
 		const host = await bootFilesHost({
 			documents: documents({ read }),
-			panes: [filesPane("p1", { objectType: "kilo.workspaces/file", objectId: "/etc/hosts" })],
+			panes: [openedFilePane("p1", "/etc/hosts")],
 		});
 		host.render(<PaneHost host={host} paneId="p1" />);
 
@@ -165,29 +158,7 @@ describe("the Files pane kind", () => {
 describe("Open Files", () => {
 	it("shows the session's Files pane, or opens one, with ⌘⇧E", async () => {
 		const openPane = vi.fn((_input: { kind: string }) => undefined);
-		const workbench = definePlugin({
-			activate(sdk) {
-				sdk.domains.provide(Workbench, {
-					initialState: { focus: null, activeSessionId: "s1", view: null, detachedViews: [] },
-					methods: {
-						setFocus: () => undefined,
-						openSession: () => undefined,
-						closeSession: () => undefined,
-						showView: () => undefined,
-						openPane: (input) => openPane(input),
-					},
-				});
-				sdk.context.set("sessionActive", true);
-				sdk.context.set("paneTargetActive", true);
-			},
-		});
-		const host = await bootFilesHost({
-			documents: documents(),
-			main: [{ manifest: workbenchManifest, definitions: WORKBENCH_DEFINITIONS }],
-			renderer: [
-				{ manifest: workbenchManifest, definitions: WORKBENCH_DEFINITIONS, entry: workbench },
-			],
-		});
+		const host = await bootFilesHost({ documents: documents(), openPane });
 
 		await expect(host.renderer.keyboard.dispatch("Shift+Meta+KeyE")).resolves.toBe(true);
 
@@ -209,7 +180,7 @@ describe("closing a Files pane", () => {
 		await userEvent.keyboard("{Control>}a{/Control}changed");
 		await expect.element(page.getByTestId("files-save")).toBeVisible();
 		const canClose = () =>
-			filesPaneKind(host).canClose!({ sessionId: SESSION_ID, pane: host.pane("p1")! });
+			filesPaneKind(host).canClose!({ workSessionId: WORK_SESSION_ID, pane: host.pane("p1")! });
 		return { host, write, canClose };
 	}
 
@@ -219,10 +190,13 @@ describe("closing a Files pane", () => {
 		await expect.element(page.getByTestId("files-tree")).toBeVisible();
 
 		await expect(
-			filesPaneKind(host).canClose!({ sessionId: SESSION_ID, pane: host.pane("p1")! }),
+			filesPaneKind(host).canClose!({ workSessionId: WORK_SESSION_ID, pane: host.pane("p1")! }),
 		).resolves.toBe(true);
 		await expect(
-			filesPaneKind(host).canClose!({ sessionId: SESSION_ID, pane: filesPane("unmounted") }),
+			filesPaneKind(host).canClose!({
+				workSessionId: WORK_SESSION_ID,
+				pane: filesPane("unmounted"),
+			}),
 		).resolves.toBe(true);
 	});
 

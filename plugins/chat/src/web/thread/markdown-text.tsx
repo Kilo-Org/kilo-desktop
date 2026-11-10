@@ -28,7 +28,7 @@ const componentsByLanguage = {
 	mermaid: { CodeHeader: MermaidCodeHeader, SyntaxHighlighter: MermaidCodeBlock },
 };
 
-const NO_MARKDOWN_CONTEXT: ChatMarkdownContext = { sessionId: "", workspaceFolders: [] };
+const NO_MARKDOWN_CONTEXT: ChatMarkdownContext = { workSessionId: "", workspaceFolders: [] };
 
 const INLINE_IMAGE = /^data:image\/(?:png|jpe?g|gif|webp|avif|bmp|svg\+xml)[;,]/iu;
 

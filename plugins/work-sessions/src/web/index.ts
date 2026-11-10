@@ -1,0 +1,32 @@
+import { definePlugin } from "@kilo-desktop/kernel";
+
+import { activateAttention } from "./attention";
+import { activateCanvas } from "./canvas";
+import { activateHome } from "./home";
+import { activateLayouts } from "./layouts";
+import { activateList } from "./list";
+import { activateNotifications } from "./notifications";
+import { activatePanes } from "./panes";
+import { activateViews } from "./views";
+import { activateWindow } from "./window";
+import { activateWorkspaces } from "./workspaces";
+
+/**
+ * kilo.work-sessions in a window, composed from areas that meet through the
+ * plugin's contracts and `./shared`. The window area goes first: it provides
+ * `kilo.work-sessions/window`, which every other area reads.
+ */
+export const workSessionsWebEntry = definePlugin({
+	activate(sdk) {
+		activateWindow(sdk);
+		activateCanvas(sdk);
+		activatePanes(sdk);
+		activateLayouts(sdk);
+		activateViews(sdk);
+		activateAttention(sdk);
+		activateList(sdk);
+		activateHome(sdk);
+		activateNotifications(sdk);
+		activateWorkspaces(sdk);
+	},
+});

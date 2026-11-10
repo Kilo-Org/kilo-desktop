@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PrStatusScheduler } from "./scheduler.js";
+import { PrStatusScheduler } from "./scheduler";
 
 const targets = [
 	{ id: "a", directory: "/a", active: true },

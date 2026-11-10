@@ -14,7 +14,7 @@ import {
 	treeHost,
 	waitForTreePath,
 	WAIT,
-} from "../../test/changes-host.js";
+} from "../../test/git-host";
 
 afterEach(resetViewTestDom);
 

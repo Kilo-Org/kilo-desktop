@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { Command } from "@kilocode/sdk/v2/client";
 
-import type { ServerConnection as KiloGlobalConnection } from "@kilo-desktop/plugin-agent/contracts";
+import type { ServerConnection as KiloGlobalConnection } from "@kilo-desktop/plugin-core/contracts";
 import { directoryClient as createKiloDirectoryClient } from "../runtime/kilo-client";
 
 export type KiloCommandCatalogEntry = Pick<

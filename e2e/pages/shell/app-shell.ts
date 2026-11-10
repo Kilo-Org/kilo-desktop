@@ -8,9 +8,11 @@ import {
 } from "@anaconda/playwright-utils";
 import { getPage } from "@anaconda/playwright-utils/page-utils";
 
+/** kilo.core reads the account through the Kilo server, whose cold start on CI can take over a minute. */
+const SIDEBAR_ACCOUNT_TIMEOUT_MS = 120_000;
+
 export class AppShellPage {
 	private readonly sidebar = () => getLocatorByTestId("app-sidebar");
-	private readonly navItem = (id: string) => getLocatorByTestId(`nav-${id}`);
 
 	async verifyShellIsLoaded(): Promise<void> {
 		await expectElementToBeVisible(this.sidebar(), "App shell sidebar should be visible on boot");
@@ -19,15 +21,11 @@ export class AppShellPage {
 		});
 	}
 
-	/** Packaged e2e sets KILO_SKIP_ONBOARDING, so first-run onboarding never covers a fresh profile. */
+	/** Packaged e2e sets KILO_SKIP_ONBOARDING unless a spec opts in, so onboarding never covers a fresh profile. */
 	async verifyOnboardingHidden(): Promise<void> {
 		await expectElementToBeHidden(getLocatorByTestId("onboarding-overlay"), {
 			message: "First-run onboarding should not cover the shell in packaged e2e profiles",
 		});
-	}
-
-	async navigateToFeature(featureId: string): Promise<void> {
-		await click(this.navItem(featureId));
 	}
 
 	async openSettings(): Promise<void> {
@@ -80,21 +78,6 @@ export class AppShellPage {
 		await click(getLocatorByTestId("settings-section-account"));
 	}
 
-	async verifyAccountSettings(): Promise<void> {
-		await expectElementToBeVisible(
-			getLocatorByTestId("account-page"),
-			"Account settings should be visible in the packaged desktop app",
-		);
-		await expectElementToBeVisible(
-			getLocatorByTestId("account-kilo-row"),
-			"Account settings should show the Kilo account row",
-		);
-		await expectElementToBeVisible(
-			getLocatorByTestId("account-anaconda-row"),
-			"Account settings should show the Anaconda account row",
-		);
-	}
-
 	/** The top bar is part of the layout: the same height with the sidebar docked or collapsed. */
 	async verifyTopBarKeepsItsHeight(): Promise<void> {
 		const header = getLocatorByTestId("shell-page-header");
@@ -120,6 +103,14 @@ export class AppShellPage {
 				`Expected a full-height top bar in both states, got docked ${docked?.height}px and collapsed ${collapsed?.height}px`,
 			);
 		}
+	}
+
+	/** The account entry at the foot of the sidebar, once kilo.core has read the account. */
+	async verifySidebarAccountSignedIn(): Promise<void> {
+		await expectElementToBeVisible(getLocatorByTestId("sidebar-kilo-account"), {
+			message: "The sidebar should show the signed-in Kilo account",
+			timeout: SIDEBAR_ACCOUNT_TIMEOUT_MS,
+		});
 	}
 
 	async leaveSettings(): Promise<void> {

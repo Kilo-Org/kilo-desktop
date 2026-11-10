@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
-import { defineDomain } from "./domain";
+import { defineDomainObject } from "./domain-object";
 import { defineExtensionPoint } from "./extension-point";
 import { createKernel } from "./kernel";
 import type { PluginSdk } from "./sdk";
@@ -14,7 +14,7 @@ const Panel = defineExtensionPoint({
 	metadata: z.object({ title: z.string() }),
 });
 
-const Store = defineDomain({
+const Store = defineDomainObject({
 	id: "acme.host/store",
 	home: "main",
 	state: z.object({ count: z.number() }),
@@ -24,9 +24,9 @@ function hostPlugin(activate: (sdk: PluginSdk) => void | Promise<void> = () => {
 	return testPlugin("acme.host", {
 		manifest: {
 			extensionPoints: [{ id: "panel", kind: "additive" }],
-			domains: [{ id: "store", home: "main" }],
+			domainObjects: [{ id: "store", home: "main" }],
 		},
-		definitions: { extensionPoints: [Panel], domains: [Store] },
+		definitions: { extensionPoints: [Panel], domainObjects: [Store] },
 		entry: { activate },
 	});
 }
@@ -79,7 +79,7 @@ describe("createKernel — plugin runtime", () => {
 			process: "main",
 			registrations: [
 				hostPlugin((sdk) => {
-					sdk.domains.provide(Store, { initialState: { count: 0 }, methods: {} });
+					sdk.domainObjects.provide(Store, { initialState: { count: 0 }, methods: {} });
 					sdk.extensions.add(Panel, { id: "own", title: "Own" });
 					throw new Error("boom");
 				}),
@@ -95,7 +95,7 @@ describe("createKernel — plugin runtime", () => {
 			expect.objectContaining({ pluginId: "acme.host", code: "activation-failed" }),
 		);
 		const reader = kernel.sdkFor("acme.other");
-		expect(reader.domains.get(Store)).toBeNull();
+		expect(reader.domainObjects.get(Store)).toBeNull();
 		expect(reader.extensions.list(Panel)).toEqual([]);
 	});
 
@@ -167,7 +167,7 @@ describe("createKernel — plugin runtime", () => {
 			process: "main",
 			registrations: [
 				hostPlugin((sdk) => {
-					sdk.domains.provide(Store, { initialState: { count: 1 }, methods: {} });
+					sdk.domainObjects.provide(Store, { initialState: { count: 1 }, methods: {} });
 					sdk.onDispose(() => void order.push("host disposed"));
 				}),
 				testPlugin("acme.guest", {
@@ -182,7 +182,7 @@ describe("createKernel — plugin runtime", () => {
 		});
 		await kernel.activate();
 		const guestSdk = kernel.sdkFor("acme.guest");
-		expect(guestSdk.domains.get(Store)).not.toBeNull();
+		expect(guestSdk.domainObjects.get(Store)).not.toBeNull();
 
 		await kernel.deactivate();
 
@@ -200,7 +200,7 @@ describe("createKernel — plugin runtime", () => {
 		await kernel.deactivate();
 
 		expect(() =>
-			captured!.domains.provide(Store, { initialState: { count: 0 }, methods: {} }),
+			captured!.domainObjects.provide(Store, { initialState: { count: 0 }, methods: {} }),
 		).toThrow(/not active/);
 	});
 

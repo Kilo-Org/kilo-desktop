@@ -4,19 +4,18 @@
 	"displayName": "Workspace Board",
 	"version": "1.0.0",
 	"description": "The workspace board: sessions organised into columns you name.",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
 	"requires": {
-		"kilo.sessions/work-session": "optional",
-		"kilo.workbench/session-menu": "optional",
-		"kilo.workbench/workbench": "optional",
-		"kilo.workbench/navigator-action": "optional",
-		"kilo.workbench/sessions-view": "optional",
-		"kilo.workspaces/workspace": "optional",
-		"kilo.shell/overlay": "optional",
-		"kilo.flags/flags": "optional",
-		"kilo.telemetry/telemetry": "optional",
-		"kilo.telemetry/telemetry-event": "optional"
+		"kilo.work-sessions/work-sessions": "optional",
+		"kilo.work-sessions/window": "optional",
+		"kilo.work-sessions/work-session-menu": "optional",
+		"kilo.work-sessions/work-session-list-action": "optional",
+		"kilo.work-sessions/work-sessions-view": "optional",
+		"kilo.work-sessions/workspaces": "optional",
+		"kilo.shell/dialog": "optional"
 	},
-	"domains": [
+	"domainObjects": [
 		{
 			"id": "board",
 			"home": "main",
@@ -25,52 +24,53 @@
 	],
 	"contributes": {
 		"extensions": {
-			"kilo.workbench/sessions-view": [
+			"kilo.work-sessions/work-sessions-view": [
 				{
 					"id": "board",
 					"title": "Workspace Board",
 					"detachable": true,
 					"when": {
-						"all": ["kilo.flags/flag:workspace-board"]
+						"all": ["kernel/flag:workspace-board"]
 					}
 				}
 			],
-			"kilo.workbench/navigator-action": [
+			"kilo.work-sessions/work-session-list-action": [
 				{
 					"id": "board",
 					"when": {
-						"all": ["kilo.flags/flag:workspace-board"]
+						"all": ["kernel/flag:workspace-board"]
 					}
 				}
 			],
-			"kilo.workbench/session-menu": [
+			"kilo.work-sessions/work-session-menu": [
 				{
 					"id": "add-to-board",
 					"title": "Add to board",
 					"when": {
-						"all": ["kilo.flags/flag:workspace-board"]
+						"all": ["kernel/flag:workspace-board"]
 					}
 				},
 				{
 					"id": "move-on-board",
 					"title": "Move on board",
 					"when": {
-						"all": ["kilo.flags/flag:workspace-board"]
+						"all": ["kernel/flag:workspace-board"]
 					}
 				},
 				{
 					"id": "remove-from-board",
 					"title": "Remove from board",
 					"when": {
-						"all": ["kilo.flags/flag:workspace-board"]
+						"all": ["kernel/flag:workspace-board"]
 					}
 				}
 			],
-			"kilo.shell/overlay": [
+			"kilo.shell/dialog": [
 				{
 					"id": "clear-board",
+					"title": "Clear Workspace Board",
 					"when": {
-						"all": ["kilo.flags/flag:workspace-board"]
+						"all": ["kernel/flag:workspace-board"]
 					}
 				}
 			],
@@ -81,7 +81,7 @@
 					"category": "Workspace Board",
 					"order": 0,
 					"when": {
-						"all": ["kilo.flags/flag:workspace-board"],
+						"all": ["kernel/flag:workspace-board"],
 						"none": ["kernel/secondaryWindow"]
 					}
 				},
@@ -91,7 +91,7 @@
 					"category": "Workspace Board",
 					"order": 1,
 					"when": {
-						"all": ["kilo.flags/flag:workspace-board"],
+						"all": ["kernel/flag:workspace-board"],
 						"none": ["kernel/secondaryWindow"]
 					}
 				},
@@ -101,12 +101,19 @@
 					"category": "Workspace Board",
 					"order": 2,
 					"when": {
-						"all": ["kilo.flags/flag:workspace-board"],
+						"all": ["kernel/flag:workspace-board"],
 						"none": ["kernel/secondaryWindow"]
 					}
 				}
 			],
-			"kilo.telemetry/telemetry-event": [
+			"kernel/flag": [
+				{
+					"id": "workspace-board",
+					"description": "Shows the Workspace Board: work sessions organised into columns.",
+					"default": false
+				}
+			],
+			"kernel/telemetry-event": [
 				{
 					"id": "board-opened",
 					"name": "Workspace Board Opened"

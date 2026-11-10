@@ -12,7 +12,7 @@ import {
 	jobProgressEventSchema,
 	parseEnvironmentsErrorMessage,
 	providerSchema,
-} from "./common.js";
+} from "./common";
 
 describe("providerSchema", () => {
 	it("accepts the v1 conda provider id", () => {

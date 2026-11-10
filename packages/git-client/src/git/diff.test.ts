@@ -44,6 +44,27 @@ async function leftoverIndexDirs(): Promise<string[]> {
 	return (await readdir(tmpdir())).filter((entry) => entry.startsWith("git-client-index-"));
 }
 
+const TEMP_DIR_ENV = ["TMPDIR", "TEMP", "TMP"] as const;
+
+/**
+ * Points `os.tmpdir()` at a fresh folder for the duration of `run`, so the
+ * throwaway index dirs other tests (or packages) create at the same moment
+ * in the shared OS temp dir can't pass for a leak.
+ */
+async function withPrivateTmpdir(run: () => Promise<void>): Promise<void> {
+	const dir = await createTestDir("private-tmp");
+	const saved = TEMP_DIR_ENV.map((name) => [name, process.env[name]] as const);
+	for (const name of TEMP_DIR_ENV) process.env[name] = dir;
+	try {
+		await run();
+	} finally {
+		for (const [name, value] of saved) {
+			if (value === undefined) delete process.env[name];
+			else process.env[name] = value;
+		}
+	}
+}
+
 describe("createWorkingDirectoryPatch", () => {
 	it("diffs a new file as an all-additions hunk", async () => {
 		const repoPath = await initialize("new-file");
@@ -395,18 +416,18 @@ describe("createWorkingDirectoryPatch", () => {
 		await makeCommit(repoPath, { entries: [{ path: "file.txt", contents: "x\n" }] });
 		await writeFile(join(repoPath, "file.txt"), "y\n");
 
-		const indexDirsBefore = new Set(await leftoverIndexDirs());
-		const patch = await createPatchOrThrow(repoPath);
-		const patchPath = patch.patchPath;
-		expect((await stat(patchPath)).size).toBeGreaterThan(0);
-		// The throwaway index dir never outlives the call — no new entries leaked.
-		const newIndexDirs = (await leftoverIndexDirs()).filter((d) => !indexDirsBefore.has(d));
-		expect(newIndexDirs).toEqual([]);
-		// The patch file does, until the caller removes it.
-		await rm(patchPath, { force: true });
-		await expect(stat(patchPath)).rejects.toMatchObject({ code: "ENOENT" });
-		// Removing an already-removed patch file is a no-op.
-		await rm(patchPath, { force: true });
+		await withPrivateTmpdir(async () => {
+			const patch = await createPatchOrThrow(repoPath);
+			const patchPath = patch.patchPath;
+			expect((await stat(patchPath)).size).toBeGreaterThan(0);
+			// The throwaway index dir never outlives the call — no entries leaked.
+			expect(await leftoverIndexDirs()).toEqual([]);
+			// The patch file does, until the caller removes it.
+			await rm(patchPath, { force: true });
+			await expect(stat(patchPath)).rejects.toMatchObject({ code: "ENOENT" });
+			// Removing an already-removed patch file is a no-op.
+			await rm(patchPath, { force: true });
+		});
 	});
 
 	it("writes the patch file into the provided tempDir", async () => {

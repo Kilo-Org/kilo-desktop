@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
-import { useDomainState } from "@kilo-desktop/kernel/web";
-import { AgentServer, type ServerConnection } from "@kilo-desktop/plugin-agent/contracts";
+import { useDomainObjectState } from "@kilo-desktop/kernel/web";
+import { KiloServer, type ServerConnection } from "@kilo-desktop/plugin-core/contracts";
 
 import type { ChatServices } from "./chat-services";
 
@@ -29,7 +29,7 @@ const selectStatus = (state: { status: string; version?: string | undefined }) =
 /** The window's Kilo connection, re-read whenever the server restarts. */
 export function useChatConnection(): ChatConnectionStatus {
 	const services = useContext(ServicesContext);
-	const status = useDomainState(AgentServer, selectStatus);
+	const status = useDomainObjectState(KiloServer, selectStatus);
 	const [connection, setConnection] = useState<ServerConnection | undefined>();
 	const ready = status?.startsWith("ready\n") ?? false;
 	useEffect(() => {

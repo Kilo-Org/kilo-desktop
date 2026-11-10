@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { ImportStagingRegistry, readFileNoFollow } from "./importStaging.js";
+import { ImportStagingRegistry, readFileNoFollow } from "./importStaging";
 
 const createdRoots: string[] = [];
 

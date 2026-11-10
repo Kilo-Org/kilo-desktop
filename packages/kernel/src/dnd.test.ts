@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { z } from "zod";
-
 import { acceptsDrag, readDraggedRefs, writeDraggedRefs, type DataTransferLike } from "./dnd";
-import { defineDomain, ref } from "./domain";
+import { defineObjectType, ref } from "./object-type";
 
-const Session = defineDomain({ id: "acme.sessions/session", home: "main", state: z.object({}) });
-const File = defineDomain({ id: "acme.files/file", home: "main", state: z.object({}) });
-const Url = defineDomain({ id: "acme.web/url", home: "main", state: z.object({}) });
+const Session = defineObjectType({ id: "acme.sessions/session" });
+const File = defineObjectType({ id: "acme.files/file" });
+const Url = defineObjectType({ id: "acme.web/url" });
 
 /** A minimal DataTransfer: formats are lowercased, as browsers do. */
 function fakeDataTransfer(): DataTransferLike & { readonly data: Map<string, string> } {

@@ -1,24 +1,24 @@
 import type { PluginSdk } from "@kilo-desktop/kernel";
-import { WorkSessions } from "@kilo-desktop/plugin-sessions/contracts";
 import {
-	sessionFolders,
+	workSessionFolders,
+	WorkSessions,
 	Workspaces,
-	type SessionFolder,
-} from "@kilo-desktop/plugin-workspaces/contracts";
+	type WorkSessionFolder,
+} from "@kilo-desktop/plugin-work-sessions/contracts";
 
-/** The folders a Work Session shows (its worktree standing in for the primary); none without a workspace. */
-export function foldersOfSession(sdk: PluginSdk, sessionId: string): SessionFolder[] {
-	const session = sdk.domains
+/** The folders a work session shows (its isolated copy standing in for the primary); none without a workspace. */
+export function foldersOfWorkSession(sdk: PluginSdk, workSessionId: string): WorkSessionFolder[] {
+	const workSession = sdk.domainObjects
 		.get(WorkSessions)
 		?.getState()
-		.sessions.find((candidate) => candidate.id === sessionId);
-	if (!session?.workspaceId) return [];
-	const workspace = sdk.domains
+		.workSessions.find((candidate) => candidate.id === workSessionId);
+	if (!workSession?.workspaceId) return [];
+	const workspace = sdk.domainObjects
 		.get(Workspaces)
 		?.getState()
-		.workspaces.find((candidate) => candidate.id === session.workspaceId);
-	return sessionFolders(
+		.workspaces.find((candidate) => candidate.id === workSession.workspaceId);
+	return workSessionFolders(
 		(workspace?.folders ?? []).map(({ path, isPrimary }) => ({ path, isPrimary })),
-		session.worktreeBranch ? session.directory : null,
+		workSession.branch ? workSession.directory : null,
 	);
 }

@@ -8,9 +8,9 @@ import {
 	parseEnvironmentsErrorMessage,
 	type EnvironmentsErrorCode,
 	type JobProgressEvent,
-} from "../contracts/common.js";
+} from "../contracts/common";
 
-import { DEFAULT_READ_CACHE_TTL_MS, JobQueue } from "./job-queue.js";
+import { DEFAULT_READ_CACHE_TTL_MS, JobQueue } from "./job-queue";
 
 /**
  * A deferred whose resolution is exposed on the object itself. Used

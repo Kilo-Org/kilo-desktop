@@ -1,7 +1,7 @@
-import { escapeGlob, toPosixPath } from "@kilo-desktop/plugin-workspaces/contracts";
+import { escapeGlob, toPosixPath } from "@kilo-desktop/plugin-work-sessions/contracts";
 
-import { KILO_WORKTREE_SEGMENTS, type GitRepositoryType } from "../../../contracts/index.js";
-import { folderName } from "./folder-name.js";
+import { KILO_WORKTREE_SEGMENTS, type GitRepositoryType } from "../../../contracts";
+import { folderName } from "./folder-name";
 
 export interface DiffWatchScope {
 	/** Native directories for `useFileChanges`' `dirs` (escaped there). */

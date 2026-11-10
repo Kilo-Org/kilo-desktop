@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
+import { definePlugin, KernelDataCollection, KernelTelemetrySink } from "@kilo-desktop/kernel";
 import { createPluginHost, type PluginHost } from "@kilo-desktop/kernel/testing/plugin-host";
 
 import manifest from "../../plugin.json";
@@ -23,7 +24,7 @@ afterEach(async () => {
 describe("greetings", () => {
 	it("greets, counts and tells listeners", async () => {
 		const host = await bootHello();
-		const greetings = host.renderer.kernelSdk.domains.get(Greetings)!;
+		const greetings = host.renderer.kernelSdk.domainObjects.get(Greetings)!;
 		const heard: string[] = [];
 		greetings.on("greeted", ({ name }) => heard.push(name));
 
@@ -39,8 +40,40 @@ describe("greetings", () => {
 
 		await host.invoke(Greetings, "reset", undefined);
 
-		const greetings = host.renderer.kernelSdk.domains.get(Greetings)!;
+		const greetings = host.renderer.kernelSdk.domainObjects.get(Greetings)!;
 		await expect.poll(() => greetings.getState()).toEqual({ count: 0, last: null });
+	});
+
+	it("reports each greeting to telemetry sinks, with consent", async () => {
+		const delivered: string[] = [];
+		const sink = {
+			manifest: {
+				manifestVersion: 1,
+				id: "example.sink",
+				displayName: "Sink",
+				version: "1.0.0",
+				contributes: { extensions: { "kernel/telemetry-sink": [{ id: "sink" }] } },
+			},
+			main: definePlugin({
+				activate: (sdk) =>
+					void sdk.extensions.implement(KernelTelemetrySink, "sink", {
+						deliver: (envelope) => void delivered.push(envelope.name),
+					}),
+			}),
+		};
+		const host = await createPluginHost([
+			{ manifest, definitions: HELLO_DEFINITIONS, main: helloMainEntry },
+			sink,
+		]);
+		hosts.push(host);
+		host.main.kernelSdk.domainObjects.provide(KernelDataCollection, {
+			initialState: { choice: true, allowed: true, installationId: "i", environment: "stable" },
+			methods: { setChoice: () => {} },
+		});
+
+		await host.invoke(Greetings, "greet", { name: "Ada" });
+
+		await expect.poll(() => delivered).toEqual(["Hello Greeted"]);
 	});
 
 	it("refuses an empty name", async () => {

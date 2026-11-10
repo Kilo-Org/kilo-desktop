@@ -10,7 +10,7 @@
 //   --write  replace the table between the catalog markers in the doc (then oxfmt it)
 //   --check  fail when the doc's table is out of date (`pnpm lint` runs this)
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -33,10 +33,11 @@ const shellArgs = (args) =>
 /** Bundled plugins in plugin-list order: { dir, manifest, contracts module path }. */
 function bundledPlugins() {
 	const names = Object.keys(
-		readJson(path.join(root, "packages/bundled-plugins/package.json")).dependencies,
+		readJson(path.join(root, "packages/bundled-plugins/package.json")).dependencies ?? {},
 	).filter((name) => name.startsWith("@kilo-desktop/plugin-"));
+	const pluginsDir = path.join(root, "plugins");
 	const byName = new Map(
-		readdirSync(path.join(root, "plugins")).flatMap((folder) => {
+		(existsSync(pluginsDir) ? readdirSync(pluginsDir) : []).flatMap((folder) => {
 			const dir = path.join(root, "plugins", folder);
 			try {
 				return [[readJson(path.join(dir, "package.json")).name, dir]];
@@ -79,7 +80,7 @@ async function catalog() {
 
 	const rows = [];
 	const kernel = await tsImport("@kilo-desktop/kernel", import.meta.url);
-	for (const point of kernel.KERNEL_POINTS) {
+	for (const point of kernel.KERNEL_DEFINITIONS.extensionPoints) {
 		rows.push({ owner: "kernel", point, purpose: point.description ?? "" });
 	}
 	for (const { manifest, contracts } of plugins) {

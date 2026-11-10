@@ -1,20 +1,25 @@
-import { cleanup } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 
-import { RenderContribution } from "@kilo-desktop/kernel/web";
+import { definePlugin, type KernelLogger } from "@kilo-desktop/kernel";
+import { createTestKernelPair } from "@kilo-desktop/kernel/testing";
+import { KernelProvider, RenderContribution } from "@kilo-desktop/kernel/web";
 import chatManifest from "@kilo-desktop/plugin-chat/plugin.json";
 import {
 	CHAT_DEFINITIONS,
-	InteractionRenderer,
-	type InteractionRendererImplementation,
+	PermissionRenderer,
+	type PermissionRendererImplementation,
 	type PermissionDetailProps,
 	type PermissionInteraction,
 } from "@kilo-desktop/plugin-chat/contracts";
 import { SettingsSection } from "@kilo-desktop/plugin-shell/contracts";
 
-import { bootEnvironmentsHost, type EnvironmentsHost } from "../test/environments-host.js";
-import { environmentsWebEntry } from "./index.js";
+import manifest from "../../plugin.json";
+import { ENVIRONMENTS_DEFINITIONS, ENVIRONMENTS_FLAG } from "../contracts/index";
+import { bootEnvironmentsHost, type EnvironmentsHost } from "../test/environments-host";
+import { EnvironmentsPage, environmentsWebEntry } from "./index";
 
 afterEach(cleanup);
 
@@ -26,7 +31,7 @@ function boot() {
 
 function interactions(host: EnvironmentsHost) {
 	return host.renderer.extensions
-		.list(InteractionRenderer)
+		.list(PermissionRenderer)
 		.filter((contribution) => contribution.pluginId === "kilo.environments");
 }
 
@@ -34,16 +39,18 @@ function renderer(host: EnvironmentsHost, id: string) {
 	const contribution = interactions(host).find((candidate) => candidate.key === id)!;
 	return {
 		contribution,
-		implementation: contribution.implementation as InteractionRendererImplementation,
+		implementation: contribution.implementation as PermissionRendererImplementation,
 	};
 }
 
-const selectDetail = (implementation: InteractionRendererImplementation) =>
+const selectDetail = (implementation: PermissionRendererImplementation) =>
 	implementation.PermissionDetail;
 
 const install: PermissionInteraction = {
 	permission: "desktop_environments_conda_packages_install",
+	toolKey: "kilo.environments/conda.packages.install",
 	patterns: [],
+	metadata: {},
 	args: { name: "dev", packages: ["numpy", "./evil-1.0.tar.bz2"], channels: ["bioconda"] },
 };
 
@@ -61,21 +68,22 @@ describe("kilo.environments in the window", () => {
 
 		expect(section?.metadata.title).toBe("Conda Environments");
 		expect(section?.implementation).toBeDefined();
-	});
 
-	it("opens its settings when the agent asks", async () => {
-		const host = await boot();
-
-		await host.requestSetup();
-
-		expect(host.settingsOpened).toEqual(["environments"]);
+		const flagged = await bootEnvironmentsHost({
+			webEntry: environmentsWebEntry,
+			plugins: [chat],
+			flags: { [ENVIRONMENTS_FLAG]: true },
+		});
+		expect(
+			flagged.renderer.extensions.list(SettingsSection).map((candidate) => candidate.key),
+		).toContain("kilo.environments/environments");
 	});
 
 	it("names a conda mutation in the card's title and withholds Always allow", async () => {
 		const host = await boot();
 		const tools = renderer(host, "kilo.environments/conda-tools");
 
-		expect(tools.contribution.metadata.permissions).toContain(install.permission);
+		expect(tools.contribution.metadata.tools).toContain(install.toolKey);
 		expect(tools.implementation.permissionTitle?.(install)).toBe("installing conda packages");
 		expect(tools.implementation.allowAlways?.(install)).toBe(false);
 	});
@@ -105,7 +113,9 @@ describe("kilo.environments in the window", () => {
 		const tools = renderer(host, "kilo.environments/conda-tools");
 		const clone: PermissionInteraction = {
 			permission: "desktop_environments_conda_envs_clone",
+			toolKey: "kilo.environments/conda.envs.clone",
 			patterns: [],
+			metadata: {},
 			args: { sourceName: "scratch", sourcePrefix: "/home/u/anaconda3/envs/prod", name: "copy" },
 		};
 
@@ -130,10 +140,13 @@ describe("kilo.environments in the window", () => {
 		const request: PermissionInteraction = {
 			permission: "bash",
 			patterns: ["conda install ./evil-1.0.tar.bz2"],
+			metadata: {},
 			args: undefined,
 		};
 
-		expect(cli.contribution.metadata.permissions).toEqual(["bash"]);
+		// Renderers match on tools, so `conda-cli` picks out `bash` requests itself.
+		expect(cli.contribution.metadata.tools).toBeUndefined();
+		expect(cli.implementation.allowAlways?.({ ...request, permission: "edit" })).toBe(true);
 		expect(cli.implementation.allowAlways?.(request)).toBe(false);
 		expect(cli.implementation.allowAlways?.({ ...request, patterns: ["ls"] })).toBe(true);
 
@@ -149,6 +162,30 @@ describe("kilo.environments in the window", () => {
 			.toBeVisible();
 	});
 
+	it("leaves requests other than bash to their own renderers", async () => {
+		const host = await boot();
+		const cli = renderer(host, "kilo.environments/conda-cli");
+
+		const { baseElement } = host.render(
+			<RenderContribution<PermissionDetailProps>
+				contribution={cli.contribution}
+				props={{
+					request: {
+						permission: "edit",
+						patterns: ["conda install ./evil-1.0.tar.bz2"],
+						metadata: {},
+						args: undefined,
+					},
+				}}
+				select={selectDetail}
+			/>,
+		);
+
+		await expect
+			.poll(() => baseElement.querySelector('[data-qa-id="conda-local-file-warning"]'))
+			.toBeNull();
+	});
+
 	it("shows nothing extra for an ordinary command", async () => {
 		const host = await boot();
 		const cli = renderer(host, "kilo.environments/conda-cli");
@@ -156,7 +193,9 @@ describe("kilo.environments in the window", () => {
 		const { baseElement } = host.render(
 			<RenderContribution<PermissionDetailProps>
 				contribution={cli.contribution}
-				props={{ request: { permission: "bash", patterns: ["ls -la"], args: undefined } }}
+				props={{
+					request: { permission: "bash", patterns: ["ls -la"], metadata: {}, args: undefined },
+				}}
 				select={selectDetail}
 			/>,
 		);
@@ -170,7 +209,7 @@ describe("kilo.environments in the window", () => {
 		const host = await boot();
 		const answers = renderer(host, "kilo.environments/local-file-answers");
 
-		expect(answers.contribution.metadata.permissions).toBeUndefined();
+		expect(answers.contribution.metadata.tools).toBeUndefined();
 		expect(
 			answers.implementation.optionWarning?.({
 				label: "Install the file",
@@ -178,5 +217,44 @@ describe("kilo.environments in the window", () => {
 			}),
 		).toMatch(/guardrail/i);
 		expect(answers.implementation.optionWarning?.({ label: "Use conda-forge" })).toBeUndefined();
+	});
+});
+
+describe("kilo.environments' renderer entry without other plugins", () => {
+	it("activates and shows its page without errors when kilo.core, kilo.shell and kilo.chat are absent", async () => {
+		const errors: unknown[][] = [];
+		const logger: KernelLogger = {
+			debug: () => undefined,
+			info: () => undefined,
+			warn: () => undefined,
+			error: (...args: unknown[]) => void errors.push(args),
+		};
+		const { main, renderer } = await createTestKernelPair({
+			main: [
+				{
+					manifest,
+					definitions: ENVIRONMENTS_DEFINITIONS,
+					entry: definePlugin({ activate: () => {} }),
+				},
+			],
+			renderer: [{ manifest, definitions: ENVIRONMENTS_DEFINITIONS, entry: environmentsWebEntry }],
+			logger,
+		});
+		await main.flush();
+
+		render(
+			<KernelProvider kernel={renderer} as={manifest.id}>
+				<QueryClientProvider
+					client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+				>
+					<EnvironmentsPage />
+				</QueryClientProvider>
+			</KernelProvider>,
+		);
+		// Without main's `conda` the status stays unknown: the page's loading state.
+		await expect
+			.element(page.getByTestId("environments-page"))
+			.toHaveAttribute("data-state", "loading");
+		expect(errors).toEqual([]);
 	});
 });

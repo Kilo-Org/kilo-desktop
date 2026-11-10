@@ -7,7 +7,7 @@ import {
 	parseLlamaFlagRow,
 	parseLlamaFlags,
 	serializeLlamaFlags,
-} from "./model-settings.js";
+} from "./model-settings";
 
 describe("parseLlamaFlags", () => {
 	it("parses pasted llama.cpp command-line arguments", () => {

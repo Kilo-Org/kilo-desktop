@@ -43,8 +43,8 @@ import {
 } from "@kilo-desktop/ui/components/table";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
-import type { CondaRepodataPackage } from "../../../contracts/providers/conda.js";
-import type { PackageSearch } from "./use-package-search.js";
+import type { CondaRepodataPackage } from "../../../contracts/providers/conda";
+import type { PackageSearch } from "./use-package-search";
 
 /** Sentinel Select value for the "latest" (unpinned) package version. */
 export const LATEST = "__latest__";

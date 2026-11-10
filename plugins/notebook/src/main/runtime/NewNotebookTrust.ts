@@ -21,7 +21,7 @@
  */
 import type { Session } from "@runtimed/node";
 
-import { checkTyposquats } from "../../shared/typosquat.js";
+import { checkTyposquats } from "../../shared/typosquat";
 
 export type TrustSession = Pick<
 	Session,

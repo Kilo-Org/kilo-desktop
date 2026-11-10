@@ -1,5 +1,4 @@
 import { memo } from "react";
-import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
@@ -10,6 +9,7 @@ import {
 	truncate,
 	type ToolCallStatusLike,
 } from "./tool-ui-shared";
+import type { ToolCallComponent } from "./tool-call";
 
 const ToolCallShell = ({
 	toolName,
@@ -43,7 +43,7 @@ const ToolCallShell = ({
 
 const SUMMARY_KEYS = ["file_path", "path", "pattern", "command", "query", "glob", "url"] as const;
 
-const ToolCallFallbackImpl: ToolCallMessagePartComponent = ({ toolName, args, status }) => {
+const ToolCallFallbackImpl: ToolCallComponent = ({ toolName, args, status }) => {
 	let summary = "";
 	if (args && typeof args === "object") {
 		for (const key of SUMMARY_KEYS) {

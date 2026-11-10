@@ -17,8 +17,8 @@ App-level tests cover the kernel boot with the bundled plugins. Plugin journeys 
 
 PR E2E runs `@smoke` on Windows plus the full specs of every area the PR
 touches (`e2e/scripts/select-pr-e2e.ts`): a change under `plugins/<id>/` runs
-`plugins/<id>/e2e/**`, plugins map to their specs under `e2e/specs/features`
-(kilo.agent also to the chat specs), and changes to the e2e harness, `packages/kernel`,
+`plugins/<id>/e2e/**`, plugins map to their specs under `e2e/specs/<area>`
+(kilo.core and kilo.shell run each other's too), and changes to the e2e harness, `packages/kernel`,
 `packages/bundled-plugins`, `packages/ui` or `apps/` run everything. The merge queue and nightly run
 the full suite on their platform matrices; every E2E test launches an
 OS-matched packaged application.
@@ -39,9 +39,11 @@ loads it first, so pools differ between processes and Playwright fails with
 "inconsistent test.use() options".
 
 E2E builds (`package:e2e`) report a fixed signed-in Kilo account
-(`e2e@kilo.dev`, kilo.account's e2e identity; the Kilo CLI itself stays
-signed out), read once the Kilo server is up — keys whose specs depend on it
-are in `CHAT_ISOLATION_KEYS`. A spec that needs a signed-out app runs those
+(`e2e@kilo.dev`, kilo.core's e2e identity; the Kilo CLI itself stays
+signed out), read once the Kilo server is up — page objects that show it wait
+for the server's cold start. Launches skip first-run onboarding and treat the
+terms as accepted (`KILO_SKIP_ONBOARDING=1`); specs that walk onboarding launch
+with `SHOW_ONBOARDING_LAUNCH_ENV` (`e2e/testdata/onboarding.ts`). A spec that needs a signed-out app runs those
 tests in a `describe` with `test.use({ appLaunchEnv: SIGNED_OUT_LAUNCH_ENV })`
 (from `e2e/testdata/account.ts`), which gives them their own worker app.
 

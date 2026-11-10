@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { page } from "vitest/browser";
 import { z } from "zod";
 
-import { defineDomain, method } from "../domain";
+import { defineDomainObject, method } from "../domain-object";
 import { defineExtensionPoint, implementation } from "../extension-point";
 import { useSdk } from "../web/react";
 import { testManifest } from "./index";
@@ -21,7 +21,7 @@ const Panel = defineExtensionPoint({
 	implementation: implementation<{ readonly component: ComponentType }>("renderer"),
 });
 
-const Counter = defineDomain({
+const Counter = defineDomainObject({
 	id: "acme.guest/counter",
 	home: "main",
 	state: z.object({}),
@@ -48,7 +48,7 @@ function WhoAmI({ label }: { readonly label: string }) {
 
 const guest = {
 	manifest: testManifest("acme.guest", {
-		domains: [{ id: "counter", home: "main" }],
+		domainObjects: [{ id: "counter", home: "main" }],
 		contributes: {
 			extensions: {
 				"acme.host/badge": [{ id: "second" }, { id: "first", priority: 1 }],
@@ -56,7 +56,7 @@ const guest = {
 			},
 		},
 	}),
-	definitions: { domains: [Counter] },
+	definitions: { domainObjects: [Counter] },
 };
 
 let host: PluginHost | undefined;
@@ -75,7 +75,7 @@ async function boot() {
 			main: {
 				activate: (sdk) => {
 					let total = 0;
-					sdk.domains.provide(Counter, {
+					sdk.domainObjects.provide(Counter, {
 						initialState: {},
 						methods: {
 							add: ({ by }) => (total += by),

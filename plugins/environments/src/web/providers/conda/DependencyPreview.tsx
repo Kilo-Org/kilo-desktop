@@ -28,13 +28,13 @@ import { cn } from "@kilo-desktop/ui/lib/utils";
 import type {
 	CondaPackageChange,
 	CondaPackagesPreviewResult,
-} from "../../../contracts/providers/conda.js";
-import { PanelList, PanelListRow } from "./PackageSearch.js";
+} from "../../../contracts/providers/conda";
+import { PanelList, PanelListRow } from "./PackageSearch";
 import {
 	PACKAGE_CHANGE_COLORS,
 	PACKAGE_CHANGE_ICONS,
 	type PackageChangeKind,
-} from "./package-change-icons.js";
+} from "./package-change-icons";
 
 export type ChangeCategory = PackageChangeKind;
 export type ChangeFilter = "all" | ChangeCategory;

@@ -1,7 +1,7 @@
 import { createConnection, type Socket } from "node:net";
 import { readlink } from "node:fs/promises";
 
-import type { PeerIdentity } from "./daemon-peer-auth.js";
+import type { PeerIdentity } from "./daemon-peer-auth";
 
 /**
  * Reads the OS peer credentials of the process listening on the daemon socket.

@@ -6,9 +6,9 @@ import {
 	type CondaEnv,
 	type CondaEnvsCloneInput,
 	type CondaEnvsCloneResult,
-} from "../../../contracts/providers/conda.js";
-import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host.js";
-import { CloneEnvironmentDialog } from "./CloneEnvironmentDialog.js";
+} from "../../../contracts/providers/conda";
+import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host";
+import { CloneEnvironmentDialog } from "./CloneEnvironmentDialog";
 
 function notImplemented(): never {
 	throw new Error("not implemented");

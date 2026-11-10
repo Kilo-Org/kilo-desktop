@@ -44,8 +44,8 @@ import {
 	REPODATA_FIND_MAX_LIMIT,
 	repodataQuerySchema,
 	subdirSchema,
-} from "./conda.js";
-import { Conda, condaExecutable } from "../index.js";
+} from "./conda";
+import { Conda, condaExecutable } from "../index";
 
 describe("environmentNameSchema", () => {
 	it("accepts conda-legal names", () => {

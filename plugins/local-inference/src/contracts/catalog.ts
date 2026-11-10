@@ -74,3 +74,5 @@ export const modelDownloadIdentitySchema = modelDownloadSchema.pick({
 	modelId: true,
 	quantizationId: true,
 });
+
+export type ModelDownloadIdentity = z.infer<typeof modelDownloadIdentitySchema>;

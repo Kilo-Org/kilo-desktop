@@ -63,6 +63,7 @@ import { WindowsUpdateFeed } from "../platform/WindowsUpdateFeed.js";
 import { windowArguments } from "../../preload/window-arguments.js";
 import { buildMenuTemplate, WindowMenus, type MenuCommands } from "./app-menu.js";
 import { ElectronKernelTransport } from "./ElectronKernelTransport.js";
+import { parseFlagOverrides } from "./flag-overrides.js";
 import { provideHostPrimitives, type NativeChrome } from "./host-primitives.js";
 import { createHostServices } from "./host-services.js";
 import { bundledPluginRoot, bundledWebPluginIds, mainRegistrations } from "./plugins.js";
@@ -233,6 +234,7 @@ export class KernelApplication {
 				version: this.#app.metadata.appVersion,
 				rendererOrigins: [getDesktopOrigin(this.#isDevelopment)],
 				safeMode: process.argv.includes(SAFE_MODE_SWITCH),
+				flagOverrides: parseFlagOverrides(import.meta.env.VITE_FEATURE_FLAG_OVERRIDES),
 				initialSystem: {
 					appearance: nativeTheme.shouldUseDarkColors ? "dark" : "light",
 					online: net.isOnline(),
@@ -499,7 +501,7 @@ export class KernelApplication {
 				scoped: command.when !== undefined,
 				metadata: command.metadata,
 			})),
-			overrides: kernel?.kernelSdk.domains.get(KernelKeybindings)?.getState().overrides ?? {},
+			overrides: kernel?.kernelSdk.domainObjects.get(KernelKeybindings)?.getState().overrides ?? {},
 			platform: keyboardPlatform(),
 		});
 		return {
@@ -514,7 +516,7 @@ export class KernelApplication {
 		const stopCommands = kernel.extensions.subscribe((pointId) => {
 			if (pointId === KernelCommand.id) this.#menus.refresh();
 		});
-		const stopKeybindings = kernel.kernelSdk.domains
+		const stopKeybindings = kernel.kernelSdk.domainObjects
 			.get(KernelKeybindings)
 			?.subscribe(() => this.#menus.refresh());
 		this.#disposers.push(stopCommands, () => stopKeybindings?.());

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { CircleAlertIcon, SquareTerminalIcon } from "lucide-react";
 
-import type { DomainState } from "@kilo-desktop/kernel";
-import { useDomain, useDomainState, useSdk } from "@kilo-desktop/kernel/web";
-import type { PaneProps } from "@kilo-desktop/plugin-sessions/contracts";
+import type { DomainObjectState } from "@kilo-desktop/kernel";
+import { useDomainObject, useDomainObjectState, useSdk } from "@kilo-desktop/kernel/web";
 import { Theme } from "@kilo-desktop/plugin-shell/contracts";
+import type { PaneProps } from "@kilo-desktop/plugin-work-sessions/contracts";
 import {
 	Empty,
 	EmptyDescription,
@@ -31,7 +31,7 @@ interface TerminalAppearance {
 	readonly terminal: TerminalPalette | null;
 }
 
-const selectTheme = (state: DomainState<typeof Theme>) => state;
+const selectTheme = (state: DomainObjectState<typeof Theme>) => state;
 
 /** Without kilo.shell's theme, the document's colour scheme. */
 function documentAppearance(): TerminalAppearance {
@@ -88,10 +88,10 @@ function TerminalNotice({
  * to the pane's shell in main once it is ready. The pane id names the shell;
  * a theme change remounts the frame and replays the shell's history.
  */
-export function TerminalView({ sessionId, pane, directory }: PaneProps) {
+export function TerminalView({ workSessionId, pane, directory }: PaneProps) {
 	const sdk = useSdk();
-	const terminals = useDomain(Terminals);
-	const theme = useDomainState(Theme, selectTheme);
+	const terminals = useDomainObject(Terminals);
+	const theme = useDomainObjectState(Theme, selectTheme);
 	const viewRef = useRef<HTMLDivElement>(null);
 	const frameRef = useRef<HTMLIFrameElement>(null);
 	const connectedIdentityRef = useRef<TerminalIdentity | null>(null);
@@ -99,7 +99,7 @@ export function TerminalView({ sessionId, pane, directory }: PaneProps) {
 	const appearanceRef = useRef(appearance);
 	appearanceRef.current = appearance;
 	const terminalId = pane.id;
-	const terminalSessionId = pane.metadata[TERMINAL_SESSION_METADATA_KEY] ?? sessionId;
+	const terminalSessionId = pane.metadata[TERMINAL_SESSION_METADATA_KEY] ?? workSessionId;
 	const defaultLabel = `Terminal ${String(pane.ordinal)}`;
 	// ponytail: Ghostty 0.4 cannot repaint ANSI palettes. Reconnect to the same
 	// PTY and replay its capped history; scroll/selection reset until Ghostty supports live themes.

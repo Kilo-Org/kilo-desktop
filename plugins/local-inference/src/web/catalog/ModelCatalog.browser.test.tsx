@@ -6,12 +6,13 @@ import { KernelError } from "@kilo-desktop/kernel";
 
 import type {
 	LocalInferenceHardwareProfile,
+	ModelCatalogAccess,
 	ModelCatalogCapabilities,
 	ModelCatalogEntry,
-} from "../../contracts/index.js";
-import { bootLocalInferenceHost } from "../../test/local-inference-host.js";
-import { AnacondaAccountContext } from "./use-anaconda-account.js";
-import { LocalModelCatalog } from "./ModelCatalog.js";
+	ModelCatalogState,
+} from "../../contracts/index";
+import { bootLocalInferenceHost, type LocalInferenceHost } from "../../test/local-inference-host";
+import { LocalModelCatalog } from "./ModelCatalog";
 
 afterEach(cleanup);
 
@@ -412,31 +413,33 @@ type AuthSession =
 	| { status: "authenticated"; user: { email?: string } }
 	| { status: "error"; reason: string };
 
+/** Origin's Anaconda session as the stand-in `model-catalog` contribution reports its access. */
+function catalogFor(session: AuthSession): ModelCatalogState {
+	const access: ModelCatalogAccess =
+		session.status === "anonymous"
+			? { status: "signed-out" }
+			: session.status === "authenticated"
+				? { status: "signed-in", accountKey: session.user.email ?? "" }
+				: { status: "error", reason: session.reason };
+	return { title: "Anaconda", access };
+}
+
 describe("LocalModelCatalog Anaconda sign-in", () => {
 	async function renderWithoutKey(
 		initial: AuthSession = { status: "anonymous" },
 		withProvider = true,
 		options: { catalogAlwaysFails?: boolean; signInWaitsForBrowser?: boolean } = {},
 	) {
-		let session = initial;
-		// Like the real capability: the cache reads anonymous until the first resolve.
-		let cached: AuthSession = { status: "anonymous" };
-		const subscribers = new Set<(next: AuthSession) => void>();
-		const publish = (next: AuthSession) => {
-			cached = next;
-			for (const fn of [...subscribers]) fn(next);
-		};
 		let keyStored = initial.status === "authenticated";
 		const login = vi.fn(async (): Promise<AuthSession> => {
 			keyStored = true;
-			session = { status: "authenticated", user: { email: "dev@anaconda.com" } };
-			publish(session);
+			const session: AuthSession = { status: "authenticated", user: { email: "dev@anaconda.com" } };
+			host.modelServer.update((state) => ({ ...state, catalog: catalogFor(session) }));
 			return session;
 		});
 		const signOut = () => {
 			keyStored = false;
-			session = { status: "anonymous" };
-			publish(session);
+			return host.setCatalog(catalogFor({ status: "anonymous" }));
 		};
 		const list = vi.fn(async () => {
 			if (options.catalogAlwaysFails)
@@ -445,37 +448,26 @@ describe("LocalModelCatalog Anaconda sign-in", () => {
 			return { models: [recommendedCatalogModel], total: 1 };
 		});
 		let endPendingSignIn: () => void = () => {};
-		// Stable identity, as `sdk.plugins.get(...).account` is in production.
-		const account = {
-			subscribe(fn: (next: AuthSession) => void) {
-				subscribers.add(fn);
-				fn(cached);
-				return () => {
-					subscribers.delete(fn);
-				};
-			},
-			peek: () => cached,
-			getSession: async () => {
-				publish(session);
-				return session;
-			},
-			signIn: async () => {
-				if (options.signInWaitsForBrowser) {
-					return new Promise<{ ok: false; reason: string; cancelled: true }>((resolve) => {
-						endPendingSignIn = () =>
-							resolve({ ok: false, reason: "Sign-in was cancelled.", cancelled: true });
-					});
-				}
-				const next = await login();
-				return next.status === "authenticated"
-					? ({ ok: true } as const)
-					: ({ ok: false, reason: "failed" } as const);
-			},
-			cancelSignIn: vi.fn(async () => endPendingSignIn()),
+		const signIn = async () => {
+			if (options.signInWaitsForBrowser) {
+				return new Promise<{ ok: false; reason: string; cancelled: true }>((resolve) => {
+					endPendingSignIn = () =>
+						resolve({ ok: false, reason: "Sign-in was cancelled.", cancelled: true });
+				});
+			}
+			const next = await login();
+			return next.status === "authenticated"
+				? ({ ok: true } as const)
+				: ({ ok: false, reason: "failed" } as const);
 		};
-		const host = await bootLocalInferenceHost({
+		const cancelSignIn = vi.fn(async () => endPendingSignIn());
+		const resolveAccess = vi.fn(async () => undefined);
+		const host: LocalInferenceHost = await bootLocalInferenceHost({
 			handlers: {
 				"catalog.list": list,
+				resolveCatalogAccess: resolveAccess,
+				signInToCatalog: signIn,
+				cancelCatalogSignIn: cancelSignIn,
 				"hardware.profile": async (): Promise<LocalInferenceHardwareProfile> => ({
 					name: "Apple M4 Pro",
 					kind: "unified-memory",
@@ -485,14 +477,15 @@ describe("LocalModelCatalog Anaconda sign-in", () => {
 					memoryBandwidthGBps: 273,
 				}),
 			},
+			// Like the real contribution: access is resolving until the first read.
+			initialState: {
+				catalog: withProvider ? { title: "Anaconda", access: { status: "resolving" } } : null,
+			},
 		});
 		const tree = (showCatalog: boolean) =>
-			host.wrap(
-				<AnacondaAccountContext.Provider value={withProvider ? account : undefined}>
-					{showCatalog ? <LocalModelCatalog onSelectModel={() => undefined} /> : null}
-				</AnacondaAccountContext.Provider>,
-			);
+			host.wrap(showCatalog ? <LocalModelCatalog onSelectModel={() => undefined} /> : null);
 		const view = render(tree(true));
+		if (withProvider) await host.setCatalog(catalogFor(initial));
 		return {
 			screen: page.elementLocator(view.baseElement),
 			login,
@@ -500,9 +493,16 @@ describe("LocalModelCatalog Anaconda sign-in", () => {
 			signOut,
 			/** Close and reopen the catalog, keeping the shared query cache. */
 			setCatalogOpen: (open: boolean) => view.rerender(tree(open)),
-			cancelSignIn: account.cancelSignIn,
+			cancelSignIn,
+			resolveAccess,
 		};
 	}
+
+	it("asks the catalog to work out its access when shown", async () => {
+		const { resolveAccess } = await renderWithoutKey();
+
+		await vi.waitFor(() => expect(resolveAccess).toHaveBeenCalled());
+	});
 
 	it("offers Anaconda sign-in when no key is stored, then loads the catalog", async () => {
 		const { screen, login, list } = await renderWithoutKey();
@@ -541,7 +541,7 @@ describe("LocalModelCatalog Anaconda sign-in", () => {
 		await expect.element(screen.getByTestId("model-catalog-table")).toBeVisible();
 
 		setCatalogOpen(false);
-		signOut();
+		await signOut();
 		setCatalogOpen(true);
 
 		await expect.element(screen.getByTestId("model-catalog-sign-in")).toBeVisible();
@@ -555,7 +555,7 @@ describe("LocalModelCatalog Anaconda sign-in", () => {
 		});
 		await expect.element(screen.getByTestId("model-catalog-table")).toBeVisible();
 
-		signOut();
+		await signOut();
 
 		await expect.element(screen.getByTestId("model-catalog-sign-in")).toBeVisible();
 	});
@@ -573,7 +573,7 @@ describe("LocalModelCatalog Anaconda sign-in", () => {
 		expect(list).toHaveBeenCalledTimes(1);
 	});
 
-	it("shows the generic error when the anaconda-account plugin is absent", async () => {
+	it("shows the generic error when no model catalog is contributed", async () => {
 		const { screen } = await renderWithoutKey({ status: "anonymous" }, false);
 
 		await expect.element(screen.getByTestId("model-catalog-error")).toBeVisible();

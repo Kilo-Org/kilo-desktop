@@ -14,7 +14,7 @@ export interface PaneVisibility {
  *
  * Visible means the pane's document is visible AND its root intersects the
  * viewport. The second half covers what focus and document visibility
- * cannot: the workbench keeps parked panes mounted and hides other groups and
+ * cannot: the work-session canvas keeps parked panes mounted and hides other groups and
  * columns with `hidden`, so a hidden Changes pane sits in a visible,
  * focused window. VS Code's SCM waits for window focus instead; this
  * follows its agent host's "only while observed" model and keeps updating

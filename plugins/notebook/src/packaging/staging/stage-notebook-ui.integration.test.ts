@@ -9,8 +9,8 @@ import { create as createTar } from "tar";
 import {
 	NOTEBOOK_THEME_MESSAGE_TYPE,
 	NOTEBOOK_THEME_READY_MESSAGE_TYPE,
-} from "../../contracts/notebook-theme.js";
-import { NTERACT_RELEASE } from "../artifacts.js";
+} from "../../contracts/notebook-theme";
+import { NTERACT_RELEASE } from "../artifacts";
 import {
 	KILO_EMBED_CHROME_CSS,
 	KILO_EMBED_CHROME_STYLE_ATTR,
@@ -21,7 +21,7 @@ import {
 	stageNotebookUi,
 	validateNotebookUiBundle,
 	validateStagedNotebookBundle,
-} from "./stage-notebook-ui.js";
+} from "./stage-notebook-ui";
 
 const directories: string[] = [];
 

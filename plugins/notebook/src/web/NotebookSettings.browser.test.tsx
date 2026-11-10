@@ -24,7 +24,7 @@ describe("Notebooks settings", () => {
 	});
 
 	it("asks a signed-out person to sign in instead of showing the settings", async () => {
-		const host = await bootNotebookHost({ identity: SIGNED_OUT });
+		const host = await bootNotebookHost({ account: SIGNED_OUT });
 		host.renderSettings();
 
 		await expect.element(page.getByTestId("kilo-auth-gate-signin")).toBeVisible();

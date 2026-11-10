@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
+import { BUNDLED_PLUGINS } from "@kilo-desktop/bundled-plugins";
 import { KernelCommand, definePlugin } from "@kilo-desktop/kernel";
 import { testManifest } from "@kilo-desktop/kernel/testing";
 
@@ -28,8 +29,11 @@ describe("kernel boot (browser mode)", () => {
 
 		render(<App />);
 
-		expect(Object.values(kernel.pluginStates())).toContain("active");
+		expect(Object.keys(kernel.pluginStates())).toHaveLength(BUNDLED_PLUGINS.length);
+		await expect.element(page.getByTestId("shell-main"), { timeout: 10_000 }).toBeVisible();
 		await expect.element(page.getByTestId("kernel-recovery")).not.toBeInTheDocument();
+		// kilo.work-sessions fills the shell's main area.
+		await expect.element(page.getByTestId("shell-home-empty")).not.toBeInTheDocument();
 	});
 
 	it("dispatches captured keys to commands", async () => {

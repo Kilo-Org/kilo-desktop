@@ -5,7 +5,7 @@ import {
 	type ArmedChats,
 	type BranchNamerDeps,
 	type NamerTarget,
-} from "./controller.js";
+} from "./controller";
 
 const DIRECTORY = "/repo/.kilo/worktrees/kilo-aback-aardvark";
 const settle = () => new Promise((resolve) => setTimeout(resolve, 5));
@@ -16,13 +16,13 @@ function setup(
 		renamedBranch?: { branch: string } | null;
 		armed?: boolean;
 		baseRef?: string;
-		hasWorktreeWork?: BranchNamerDeps["hasWorktreeWork"];
+		hasCopyWork?: BranchNamerDeps["hasCopyWork"];
 		saved?: ArmedChats;
 	} = {},
 ) {
 	let busy = false;
 	let eligible: NamerTarget | null = {
-		sessionId: "wses_1",
+		workSessionId: "wses_1",
 		directory: DIRECTORY,
 		currentBranch: "kilo/aback-aardvark",
 	};
@@ -40,15 +40,15 @@ function setup(
 		return { branch: gitBranch };
 	});
 	const renamed = vi.fn<BranchNamerDeps["renamed"]>(async () => {});
-	const hasWorktreeWork = vi.fn<BranchNamerDeps["hasWorktreeWork"]>(
-		options.hasWorktreeWork ?? (async () => true),
+	const hasCopyWork = vi.fn<BranchNamerDeps["hasCopyWork"]>(
+		options.hasCopyWork ?? (async () => true),
 	);
 	const deps: BranchNamerDeps = {
 		target: () => eligible,
 		isBusy: () => busy,
 		generate,
 		rename,
-		hasWorktreeWork,
+		hasCopyWork,
 		renamed,
 		progress: { load: () => saved, save: (armed) => (saved = armed) },
 	};
@@ -56,7 +56,7 @@ function setup(
 	if (options.armed !== false) {
 		namer.arm("ses_1", options.baseRef ? { baseRef: options.baseRef } : undefined);
 	}
-	const prompt = (text: string, model?: { providerID: string; modelID: string }) =>
+	const prompt = (text: string, model?: { aiProviderId: string; modelId: string }) =>
 		namer.prompt({ chatId: "ses_1", text, model });
 	const setBusy = () => {
 		busy = true;
@@ -83,7 +83,7 @@ function setup(
 		generate,
 		rename,
 		renamed,
-		hasWorktreeWork,
+		hasCopyWork,
 		prompt,
 		setBusy,
 		setIdle,
@@ -121,7 +121,7 @@ describe("createBranchNamer", () => {
 		await vi.waitFor(() =>
 			expect(s.renamed).toHaveBeenCalledWith({
 				chatId: "ses_1",
-				sessionId: "wses_1",
+				workSessionId: "wses_1",
 				branch: "kilo/fix-the-login-bug",
 			}),
 		);
@@ -190,23 +190,23 @@ describe("createBranchNamer", () => {
 	});
 
 	it("skips the idle path while the worktree has no work, retrying on the next turn end", async () => {
-		const s = setup({ hasWorktreeWork: async () => false });
+		const s = setup({ hasCopyWork: async () => false });
 
 		s.prompt("hello");
 		s.setBusy();
 		s.setIdle();
-		await vi.waitFor(() => expect(s.hasWorktreeWork).toHaveBeenCalledTimes(1));
+		await vi.waitFor(() => expect(s.hasCopyWork).toHaveBeenCalledTimes(1));
 		await settle();
 		expect(s.generate).not.toHaveBeenCalled();
 		expect(s.saved().ses_1).toMatchObject({ promptCount: 1, idleAttempted: false });
 
-		s.hasWorktreeWork.mockResolvedValue(true);
+		s.hasCopyWork.mockResolvedValue(true);
 		s.setIdle();
 		await vi.waitFor(() => expect(s.generate).toHaveBeenCalledTimes(1));
 	});
 
 	it("treats a failing work probe as no work", async () => {
-		const s = setup({ hasWorktreeWork: async () => Promise.reject(new Error("git failed")) });
+		const s = setup({ hasCopyWork: async () => Promise.reject(new Error("git failed")) });
 
 		await s.turn("hello");
 
@@ -249,7 +249,7 @@ describe("createBranchNamer", () => {
 		s.setIdle();
 		await settle();
 
-		expect(s.hasWorktreeWork).not.toHaveBeenCalled();
+		expect(s.hasCopyWork).not.toHaveBeenCalled();
 		expect(s.saved()).toEqual({});
 	});
 
@@ -292,7 +292,7 @@ describe("createBranchNamer", () => {
 	});
 
 	it("stays disarmed after the prompt cap", async () => {
-		const s = setup({ generatedBranch: null, hasWorktreeWork: async () => false });
+		const s = setup({ generatedBranch: null, hasCopyWork: async () => false });
 
 		for (let index = 1; index <= 9; index++) await s.turn(`prompt ${index}`);
 
@@ -302,14 +302,14 @@ describe("createBranchNamer", () => {
 	it("passes the base ref to the work probe, or nothing when cut from HEAD", async () => {
 		const withBase = setup({ baseRef: "origin/main" });
 		await withBase.turn("one detailed prompt");
-		expect(withBase.hasWorktreeWork).toHaveBeenCalledWith({
+		expect(withBase.hasCopyWork).toHaveBeenCalledWith({
 			directory: DIRECTORY,
 			baseBranch: "origin/main",
 		});
 
 		const fromHead = setup();
 		await fromHead.turn("one detailed prompt");
-		expect(fromHead.hasWorktreeWork).toHaveBeenCalledWith({ directory: DIRECTORY });
+		expect(fromHead.hasCopyWork).toHaveBeenCalledWith({ directory: DIRECTORY });
 	});
 
 	it("runs the single-prompt idle path only when a turn ends", async () => {
@@ -317,12 +317,12 @@ describe("createBranchNamer", () => {
 
 		s.prompt("one detailed prompt");
 		await settle();
-		expect(s.hasWorktreeWork).not.toHaveBeenCalled();
+		expect(s.hasCopyWork).not.toHaveBeenCalled();
 
 		s.setBusy();
 		s.namer.turnEnded("ses_1");
 		await settle();
-		expect(s.hasWorktreeWork).not.toHaveBeenCalled();
+		expect(s.hasCopyWork).not.toHaveBeenCalled();
 
 		s.setIdle();
 		await vi.waitFor(() => expect(s.generate).toHaveBeenCalledTimes(1));
@@ -331,7 +331,7 @@ describe("createBranchNamer", () => {
 	it("does not dispatch a second generation while the work probe is in flight", async () => {
 		let resolveWork!: (hasWork: boolean) => void;
 		const s = setup({
-			hasWorktreeWork: () => new Promise<boolean>((resolve) => (resolveWork = resolve)),
+			hasCopyWork: () => new Promise<boolean>((resolve) => (resolveWork = resolve)),
 		});
 
 		s.prompt("detailed first prompt");
@@ -347,7 +347,7 @@ describe("createBranchNamer", () => {
 
 	it("forwards the prompt's model, including on the idle path", async () => {
 		const s = setup({ generatedBranch: null });
-		const model = { providerID: "kilo", modelID: "anthropic/claude" };
+		const model = { aiProviderId: "kilo", modelId: "anthropic/claude" };
 
 		s.prompt("hello", model);
 		s.setBusy();

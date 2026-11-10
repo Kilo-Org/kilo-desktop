@@ -21,22 +21,22 @@ import {
 
 import { KernelError, type KernelLogger } from "@kilo-desktop/kernel";
 
-import type { NotebookOpenFileResult, NotebookSaveResult } from "../../contracts/index.js";
+import type { NotebookOpenFileResult, NotebookSaveResult } from "../../contracts";
 
-import { resolveDaemonSocketPath, type BuildChannel } from "./socket-path.js";
-import { RuntimedDaemonManager, type RuntimedDaemonState } from "./RuntimedDaemonManager.js";
-import { createDaemonPeerAuthenticator } from "./daemon-peer-authenticator.js";
-import { findRuntimedArtifact } from "../../packaging/artifacts.js";
-import { checkTyposquats } from "../../shared/typosquat.js";
+import { resolveDaemonSocketPath, type BuildChannel } from "./socket-path";
+import { RuntimedDaemonManager, type RuntimedDaemonState } from "./RuntimedDaemonManager";
+import { createDaemonPeerAuthenticator } from "./daemon-peer-authenticator";
+import { findRuntimedArtifact } from "../../packaging/artifacts";
+import { checkTyposquats } from "../../shared/typosquat";
 import {
 	isPeerCredentialBackendAvailable,
 	resolveDaemonPeerIdentity,
 	type PeerCredentialResolver,
-} from "./peer-credentials.js";
+} from "./peer-credentials";
 
 export interface ElectronNotebookConnectionArgs {
 	readonly notebookId: string;
-	readonly sessionId: string;
+	readonly workSessionId: string;
 	readonly title: string;
 	readonly notebookPath?: string;
 	readonly workingDirectory?: string;
@@ -70,13 +70,13 @@ export interface NotebookHostPlatform {
 
 export interface NotebookDirtyChanged {
 	readonly notebookId: string;
-	readonly sessionId: string;
+	readonly workSessionId: string;
 	readonly dirty: boolean;
 }
 
 export interface NotebookTitleChanged {
 	readonly notebookId: string;
-	readonly sessionId: string;
+	readonly workSessionId: string;
 	readonly title: string;
 }
 
@@ -118,7 +118,7 @@ interface PendingNotebookSave {
 
 interface NotebookHostSession {
 	readonly notebookId: string;
-	readonly sessionId: string;
+	readonly workSessionId: string;
 	readonly relay: ReconnectableRelay;
 	server?: ElectronNotebookHostServer;
 	title: string;
@@ -479,7 +479,7 @@ export class ElectronNotebookHostService {
 			}
 			const relayOptions = {
 				socketPath: this.#socketPath,
-				peerLabel: `kilo-desktop:${args.sessionId}`,
+				peerLabel: `kilo-desktop:${args.workSessionId}`,
 				description: args.title,
 			};
 			return args.notebookPath
@@ -495,7 +495,7 @@ export class ElectronNotebookHostService {
 		const relay = new ReconnectableRelay(await createSession());
 		const session: NotebookHostSession = {
 			notebookId: args.notebookId,
-			sessionId: args.sessionId,
+			workSessionId: args.workSessionId,
 			relay,
 			title: relay.info.notebookPath ? path.basename(relay.info.notebookPath) : args.title,
 			...(relay.info.notebookPath ? { path: relay.info.notebookPath } : {}),
@@ -736,7 +736,7 @@ export class ElectronNotebookHostService {
 	#emitDirty(session: NotebookHostSession): void {
 		this.#platform.events.emit("dirty-changed", {
 			notebookId: session.notebookId,
-			sessionId: session.sessionId,
+			workSessionId: session.workSessionId,
 			dirty: session.dirty,
 		});
 	}
@@ -746,7 +746,7 @@ export class ElectronNotebookHostService {
 		session.title = title;
 		this.#platform.events.emit("title-changed", {
 			notebookId: session.notebookId,
-			sessionId: session.sessionId,
+			workSessionId: session.workSessionId,
 			title,
 		});
 	}

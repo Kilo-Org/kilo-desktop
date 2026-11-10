@@ -15,9 +15,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@kilo-desktop/ui/compon
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
-import type { GitBranch } from "../../contracts/index.js";
-import { branchDisplayName } from "./branch-display-name.js";
-import { groupBranches } from "./group-branches.js";
+import type { GitBranch } from "../../contracts";
+import { branchDisplayName } from "./branch-display-name";
+import { groupBranches } from "./group-branches";
 
 const CREATE_BRANCH_VALUE = "__create-branch__";
 
@@ -90,7 +90,7 @@ function BranchItem({
 }
 
 /**
- * Presentational branch popover for the launcher's branch picker:
+ * Presentational branch popover for the New Session page's branch picker:
  * trigger, grouped command list with search, and the optional pinned
  * create item. Owns only presentation and the open/search state (cleared
  * on open, on close, and on every programmatic close — branch select,

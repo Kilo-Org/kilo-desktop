@@ -1,8 +1,12 @@
-import { definePlugin, KernelCommand, KernelOs, type PluginSdk } from "@kilo-desktop/kernel";
+import {
+	definePlugin,
+	KernelCommand,
+	KernelOs,
+	KernelTelemetry,
+	type PluginSdk,
+} from "@kilo-desktop/kernel";
 import { MarkdownExtension } from "@kilo-desktop/plugin-chat/contracts";
-import { PaneKind, Panes } from "@kilo-desktop/plugin-sessions/contracts";
-import { Telemetry } from "@kilo-desktop/plugin-telemetry/contracts";
-import { Workbench } from "@kilo-desktop/plugin-workbench/contracts";
+import { PaneKind, Panes, WorkSessionsWindow } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import { BROWSER_PANE_KIND } from "../contracts/index.js";
 import { BrowserIcon } from "./BrowserIcon.js";
@@ -13,12 +17,12 @@ export { BrowserIcon } from "./BrowserIcon.js";
 export { BrowserPane } from "./BrowserPane.js";
 
 /**
- * Shows the open session's last Browser pane, or opens one (origin's Open
- * Browser), through the workbench: a popped-out pane's window comes forward
- * and the open is reported like one from "+".
+ * Shows the open work session's last Browser pane, or opens one (origin's
+ * Open Browser), through the window: a popped-out pane's window comes
+ * forward and the open is reported like one from "+".
  */
 export async function openBrowser(sdk: PluginSdk): Promise<void> {
-	await sdk.domains.get(Workbench)?.methods.openPane({ kind: BROWSER_PANE_KIND });
+	await sdk.domainObjects.get(WorkSessionsWindow)?.methods.openPane({ kind: BROWSER_PANE_KIND });
 }
 
 /**
@@ -33,9 +37,9 @@ export const browserWebEntry = definePlugin({
 			MarkdownExtension,
 			"web-links",
 			createBrowserMarkdownExtension({
-				panes: () => sdk.domains.get(Panes),
-				os: () => sdk.domains.get(KernelOs),
-				telemetry: () => sdk.domains.get(Telemetry),
+				panes: () => sdk.domainObjects.get(Panes),
+				os: () => sdk.domainObjects.get(KernelOs),
+				telemetry: () => sdk.domainObjects.get(KernelTelemetry),
 			}),
 		);
 		sdk.extensions.implement(KernelCommand, "open-browser", () => openBrowser(sdk));

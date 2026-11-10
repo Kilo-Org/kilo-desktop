@@ -1,40 +1,43 @@
 import { KernelError } from "@kilo-desktop/kernel";
 
-import type { LocalInferenceHardwareProfile, ModelCatalog } from "../../contracts/schemas.js";
-import { evaluateCatalogModel } from "../../shared/catalog/model-compatibility.js";
-import type { CatalogDownloadArtifact, ModelDownloadIdentity } from "./catalog-download.js";
 import {
-	getModelDownloadUrl,
-	listModelCatalog,
-	type ModelCatalogDependencies,
-} from "./catalog-client.js";
+	modelCatalogSchema,
+	type LocalInferenceHardwareProfile,
+	type ModelCatalog,
+	type ModelCatalogSource,
+} from "../../contracts";
+import { evaluateCatalogModel } from "../../shared/catalog/model-compatibility";
+import type { CatalogDownloadArtifact, ModelDownloadIdentity } from "./catalog-download";
 
 /**
- * Owns authenticated catalog access, the most recent catalog snapshot, and the
- * translation from a selected model file into a machine-compatible download
- * artifact. Downloads never trust renderer-supplied metadata; every artifact
- * is resolved again against this module's validated catalog snapshot.
+ * Owns the most recent catalog snapshot read from the chosen
+ * `kilo.local-inference/model-catalog` contribution, and the translation from
+ * a selected model file into a machine-compatible download artifact.
+ * Downloads never trust renderer-supplied metadata; every artifact is
+ * resolved again against this module's validated catalog snapshot. Who may
+ * read the catalog (and how) is the contribution's business; it calls back
+ * (and the entry calls `invalidate`) when that changes.
  */
 export class ModelCatalogService {
-	readonly #dependencies: ModelCatalogDependencies;
+	readonly #source: () => ModelCatalogSource | null;
 	readonly #readHardwareProfile: () => Promise<LocalInferenceHardwareProfile>;
 	#cachedCatalog: ModelCatalog | undefined;
 
 	constructor(
-		dependencies: ModelCatalogDependencies,
+		source: () => ModelCatalogSource | null,
 		readHardwareProfile: () => Promise<LocalInferenceHardwareProfile>,
 	) {
-		this.#dependencies = dependencies;
+		this.#source = source;
 		this.#readHardwareProfile = readHardwareProfile;
 	}
 
-	/** Forgets the catalog snapshot, e.g. when the Anaconda account changes. */
+	/** Forgets the catalog snapshot, e.g. when the catalog's account changes. */
 	invalidate(): void {
 		this.#cachedCatalog = undefined;
 	}
 
 	async list(): Promise<ModelCatalog> {
-		const catalog = await listModelCatalog(this.#dependencies);
+		const catalog = modelCatalogSchema.parse(await this.#requireSource().list());
 		this.#cachedCatalog = catalog;
 		return catalog;
 	}
@@ -73,12 +76,16 @@ export class ModelCatalogService {
 		};
 	}
 
-	downloadUrl(artifact: CatalogDownloadArtifact, signal: AbortSignal): Promise<string> {
-		return getModelDownloadUrl(
-			this.#dependencies,
-			artifact.modelId,
-			artifact.quantizationId,
+	async downloadUrl(artifact: CatalogDownloadArtifact, signal: AbortSignal): Promise<string> {
+		return this.#requireSource().downloadUrl(
+			{ modelId: artifact.modelId, quantizationId: artifact.quantizationId },
 			signal,
 		);
+	}
+
+	#requireSource(): ModelCatalogSource {
+		const source = this.#source();
+		if (!source) throw new KernelError("UNAVAILABLE", "No model catalog is available.");
+		return source;
 	}
 }

@@ -6,6 +6,7 @@ import { Badge } from "@kilo-desktop/ui/components/badge";
 import { SidebarTrigger, useSidebar } from "@kilo-desktop/ui/components/sidebar";
 
 import type { MainImplementation } from "../../contracts";
+import { RightSidebarToggle } from "./RightSidebar";
 
 const selectLeading = (implementation: MainImplementation) => implementation.headerLeading;
 const selectActions = (implementation: MainImplementation) => implementation.headerActions;
@@ -75,6 +76,7 @@ export function PageHeader({
 				</div>
 				<div className="ml-auto flex shrink-0 items-center justify-end gap-2 [-webkit-app-region:no-drag]">
 					{actions ? <RenderContribution contribution={actions} select={selectActions} /> : null}
+					<RightSidebarToggle />
 				</div>
 			</motion.div>
 		</header>

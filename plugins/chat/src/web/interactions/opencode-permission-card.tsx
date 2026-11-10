@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAuiState } from "@assistant-ui/react";
-import {
-	type OpenCodePermissionRequest,
-	type OpenCodePermissionResponse,
-	useOpenCodeRuntimeExtras,
+import type {
+	OpenCodePermissionRequest,
+	OpenCodePermissionResponse,
 } from "@assistant-ui/react-opencode";
 import { CircleAlertIcon, ShieldAlertIcon } from "lucide-react";
 
@@ -11,21 +10,35 @@ import { Badge } from "@kilo-desktop/ui/components/badge";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 
-import { RenderContribution } from "@kilo-desktop/kernel/web";
+import { RenderContribution, useDomainObject } from "@kilo-desktop/kernel/web";
+import { Chats } from "@kilo-desktop/plugin-core/contracts";
 
-import type { InteractionRendererImplementation, PermissionDetailProps } from "../../contracts";
+import type {
+	PermissionDetailProps,
+	PermissionInteraction,
+	PermissionRendererImplementation,
+} from "../../contracts";
 import { ComposerShell } from "../thread/composer-shelf";
 import {
 	findPermissionToolArgs,
 	presentPermission,
-	useInteractionRenderers,
-} from "./interaction-renderers";
+	toolKeyOf,
+	useDesktopTools,
+	usePermissionRenderers,
+} from "./permission-renderers";
 import type { SubagentOrigin } from "./pending-interactions";
 import { visiblePermissionPatterns } from "./permission-labels";
 
-const selectDetail = (implementation: InteractionRendererImplementation) =>
+const selectDetail = (implementation: PermissionRendererImplementation) =>
 	implementation.PermissionDetail;
 
+/**
+ * A permission request waiting on the person, answered through kilo.core's
+ * chats (to the chat that asked: a subagent's request goes to its chat). The
+ * person's approvals are `interactive`, without which the Kilo server
+ * ignores approvals of sensitive requests. The card leaves when the server
+ * announces the reply on the stream.
+ */
 export const OpenCodePermissionCard = ({
 	request,
 	origin,
@@ -36,7 +49,7 @@ export const OpenCodePermissionCard = ({
 	origin?: SubagentOrigin | undefined;
 	acceptOnEnter?: boolean;
 }) => {
-	const { replyToPermission } = useOpenCodeRuntimeExtras();
+	const chats = useDomainObject(Chats);
 	const [submittingReply, setSubmittingReply] = useState<OpenCodePermissionResponse | null>(null);
 	const [error, setError] = useState<string | null>(null);
 
@@ -45,7 +58,13 @@ export const OpenCodePermissionCard = ({
 		setError(null);
 
 		try {
-			await replyToPermission(request.id, nextReply);
+			if (!chats) throw new Error("Kilo isn't available right now.");
+			await chats.methods.replyPermission({
+				chatId: request.sessionId,
+				permissionId: request.id,
+				reply: nextReply,
+				interactive: true,
+			});
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Could not submit the reply.");
 			setSubmittingReply(null);
@@ -93,10 +112,18 @@ export const OpenCodePermissionCard = ({
 		findPermissionToolArgs(state.thread.messages, request.tool),
 	);
 	const args = threadArgs ?? request.toolInput;
-	const renderers = useInteractionRenderers();
-	const interaction = useMemo(
-		() => ({ permission: permissionLabel, patterns, args }),
-		[permissionLabel, patterns, args],
+	const renderers = usePermissionRenderers();
+	const tools = useDesktopTools();
+	const toolKey = toolKeyOf(tools, request.permission);
+	const interaction = useMemo<PermissionInteraction>(
+		() => ({
+			permission: permissionLabel,
+			...(toolKey ? { toolKey } : {}),
+			patterns,
+			metadata: request.metadata,
+			args,
+		}),
+		[permissionLabel, toolKey, patterns, request.metadata, args],
 	);
 	const presentation = useMemo(
 		() => presentPermission(renderers, interaction),

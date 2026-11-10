@@ -1,4 +1,4 @@
-import type { GitBranchesResult } from "../../contracts/index.js";
+import type { GitBranchesResult } from "../../contracts";
 
 export interface SelectorQueryState {
 	readonly workspaceDirectory: string | undefined;

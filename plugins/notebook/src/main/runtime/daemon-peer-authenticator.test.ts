@@ -5,8 +5,8 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createDaemonPeerAuthenticator } from "./daemon-peer-authenticator.js";
-import type { PeerIdentity } from "./daemon-peer-auth.js";
+import { createDaemonPeerAuthenticator } from "./daemon-peer-authenticator";
+import type { PeerIdentity } from "./daemon-peer-auth";
 
 const SELF_UID = 501;
 const digest = (text: string) => createHash("sha256").update(text).digest("hex");

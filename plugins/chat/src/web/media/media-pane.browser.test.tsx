@@ -1,16 +1,23 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
+import { definePlugin } from "@kilo-desktop/kernel";
+
 import {
+	chatPaneObject,
 	MEDIA_ITEM_METADATA_KEY,
 	MEDIA_PANE_KIND,
 	MEDIA_IMAGE_MAX_LENGTH,
 	MEDIA_VIEWER_MAX_ITEMS,
 	mediaPaneId,
+	MediaViewers,
 	type MediaItem,
 } from "../../contracts";
-import { agentPane, chatSummary, renderAgentPane } from "../../test/chat-host";
+import { agentPane, chatSummary } from "../../test/chat-host";
 import { assistantMessage, FakeKiloServer, userMessage } from "../../test/fake-kilo-server";
+import { renderInKernel } from "../../test/kernel-harness";
+import { renderChat } from "../../test/render-chat";
+import { MediaPane } from "./MediaPane";
 import {
 	prepareViewerItems,
 	toMediaItem,
@@ -48,9 +55,9 @@ async function showDiagrams() {
 			]),
 		],
 	});
-	const host = await renderAgentPane({
+	const host = await renderChat({
 		server,
-		pane: agentPane({ metadata: { chatId: "ses_a" } }),
+		pane: agentPane({ object: chatPaneObject("ses_a") }),
 		chats: [chatSummary("ses_a")],
 	});
 	// Pele loads lazily, so the first diagrams can take a while on a cold runner.
@@ -118,17 +125,26 @@ describe("the media viewer pane", () => {
 	});
 
 	it("says there's nothing to show when its items are gone", async () => {
-		await renderAgentPane({
-			otherPanes: [
-				{
-					id: mediaPaneId("ses_gone"),
-					kind: MEDIA_PANE_KIND,
-					title: "Flowchart",
-					metadata: { [MEDIA_ITEM_METADATA_KEY]: "missing" },
-					ordinal: 1,
-				},
-			],
+		const pane = {
+			id: mediaPaneId("ses_gone"),
+			kind: MEDIA_PANE_KIND,
+			title: "Flowchart",
+			metadata: { [MEDIA_ITEM_METADATA_KEY]: "missing" },
+			ordinal: 1,
+		};
+		const viewers = definePlugin({
+			activate(sdk) {
+				sdk.domainObjects.provide(MediaViewers, {
+					initialState: { viewers: {} },
+					methods: { show: () => ({ revision: 0 }), items: () => null, discard: () => undefined },
+				});
+			},
 		});
+
+		await renderInKernel(
+			<MediaPane workSessionId="wses_1" pane={pane} workspaceId={null} directory={null} visible />,
+			{ chatMain: viewers },
+		);
 
 		await expect
 			.element(page.getByTestId("chat-media-pane-empty").getByText("Nothing to show"))

@@ -1,5 +1,5 @@
-import { getRuntimedArtifact, runtimedDownloadUrl, type RuntimedArtifact } from "../artifacts.js";
-import { stagePinnedBinary, type StagePinnedBinaryResult } from "./stage-pinned-binary.js";
+import { getRuntimedArtifact, runtimedDownloadUrl, type RuntimedArtifact } from "../artifacts";
+import { stagePinnedBinary, type StagePinnedBinaryResult } from "./stage-pinned-binary";
 
 export interface StageRuntimedOptions {
 	readonly resourceRoot: string;

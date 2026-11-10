@@ -6,13 +6,13 @@ import {
 } from "@assistant-ui/react-opencode";
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 
-import type { DomainHandle } from "@kilo-desktop/kernel";
-import type { AgentServer, ServerConnection } from "@kilo-desktop/plugin-agent/contracts";
+import type { DomainObjectHandle } from "@kilo-desktop/kernel";
+import type { KiloServer, ServerConnection } from "@kilo-desktop/plugin-core/contracts";
 
 import { createDeferredKiloClient } from "./deferred-client";
 import { KiloClients } from "./kilo-client";
 
-type ServerHandle = DomainHandle<typeof AgentServer>;
+type ServerHandle = DomainObjectHandle<typeof KiloServer>;
 
 /** What the server sends first on every (re)connect, once it publishes to that subscription. */
 const SERVER_CONNECTED = "server.connected";
@@ -43,15 +43,15 @@ export async function* resyncOnceConnected(
  * What every agent pane in a window shares: how to reach the Kilo server, its
  * clients, and one event stream.
  *
- * - The connection comes from `kilo.agent/server.connect()`, which waits for
+ * - The connection comes from `kilo.core/server.connect()`, which waits for
  *   the server. It is read once per server start (a restart may change the
  *   address or password) and re-read after the server leaves `ready`.
  * - The transcript runtime (react-opencode) needs live message parts, which
- *   kilo.agent's main-process stream doesn't carry, so the window keeps its
+ *   kilo.core's main-process stream doesn't carry, so the window keeps its
  *   own subscription to the server's global stream (decision 51). It is one
  *   per window however many panes are open, opened by the first pane that
  *   needs it and kept until the window goes; on a reconnect it resolves the
- *   connection again. kilo.agent's stream stays the source of truth for chat
+ *   connection again. kilo.core's stream stays the source of truth for chat
  *   status and activity.
  * - The stream outlives the panes because a pane is unmounted whenever the
  *   person switches session. A stream reopened per switch misses whatever the

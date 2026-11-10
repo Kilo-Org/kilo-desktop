@@ -1,8 +1,12 @@
 import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import { MEDIA_PANE_KIND, mediaPaneId } from "../../contracts";
-import { agentPane, chatSummary, renderAgentPane } from "../../test/chat-host";
+import type { AccountState } from "@kilo-desktop/plugin-core/contracts";
+
+import { chatPaneObject, MEDIA_PANE_KIND, mediaPaneId } from "../../contracts";
+import { agentPane, chatSummary } from "../../test/chat-host";
+import { renderChat } from "../../test/render-chat";
+import { SIGNED_OUT } from "../../test/kernel-harness";
 import {
 	assistantMessage,
 	FakeKiloServer,
@@ -15,13 +19,14 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-async function showChat(messages: FakeMessage[]) {
+async function showChat(messages: FakeMessage[], options: { identity?: AccountState } = {}) {
 	const server = new FakeKiloServer();
 	server.addChat({ id: "ses_a", directory: "/projects/app", title: "Chat", messages });
-	return renderAgentPane({
+	return renderChat({
 		server,
-		pane: agentPane({ metadata: { chatId: "ses_a" } }),
+		pane: agentPane({ object: chatPaneObject("ses_a") }),
 		chats: [chatSummary("ses_a")],
+		...options,
 	});
 }
 
@@ -144,19 +149,22 @@ describe("the transcript", () => {
 	it("explains a reply that ended in an error", async () => {
 		const prompt = userMessage("ses_a", "msg_1", "Go");
 		const failed = assistantMessage("ses_a", "msg_2", "msg_1", []);
-		await showChat([
-			prompt,
-			{
-				...failed,
-				info: {
-					...failed.info,
-					error: {
-						name: "APIError",
-						data: { message: 'Gateway said {"error":{"code":"PAID_MODEL_AUTH_REQUIRED"}}' },
+		await showChat(
+			[
+				prompt,
+				{
+					...failed,
+					info: {
+						...failed.info,
+						error: {
+							name: "APIError",
+							data: { message: 'Gateway said {"error":{"code":"PAID_MODEL_AUTH_REQUIRED"}}' },
+						},
 					},
 				},
-			},
-		]);
+			],
+			{ identity: SIGNED_OUT },
+		);
 
 		await expect
 			.element(page.getByTestId("chat-message-error"))
@@ -302,7 +310,7 @@ describe("the transcript", () => {
 	});
 
 	it("opens an unsent image on its own", async () => {
-		await renderAgentPane();
+		await renderChat();
 		const image = await (await fetch(pngDataUrl(40, 20))).blob();
 		const transfer = new DataTransfer();
 		transfer.items.add(new File([image], "draft.png", { type: "image/png" }));
@@ -330,7 +338,7 @@ describe("the transcript", () => {
 	});
 
 	it("doesn't scroll a new chat, whose docked composer fits the pane", async () => {
-		await renderAgentPane();
+		await renderChat();
 		await expect.element(page.getByTestId("kilo-composer-dock")).toBeVisible();
 
 		const viewport = document.querySelector<HTMLElement>('[data-slot="aui_thread-viewport"]')!;
@@ -338,7 +346,7 @@ describe("the transcript", () => {
 	});
 
 	it("removes an attachment before sending", async () => {
-		await renderAgentPane();
+		await renderChat();
 		const transfer = new DataTransfer();
 		transfer.items.add(new File(["a,b"], "data.csv", { type: "text/csv" }));
 		const dropzone = document.querySelector('[data-slot="aui_composer-shell"]')!;

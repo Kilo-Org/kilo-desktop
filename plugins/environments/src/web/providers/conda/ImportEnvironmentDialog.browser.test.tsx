@@ -7,9 +7,9 @@ import type {
 	CondaEnvsCreateFromFileResult,
 	CondaEnvsPickFileResult,
 	CondaEnvsReadFileResult,
-} from "../../../contracts/providers/conda.js";
-import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host.js";
-import { ImportEnvironmentDialog } from "./ImportEnvironmentDialog.js";
+} from "../../../contracts/providers/conda";
+import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host";
+import { ImportEnvironmentDialog } from "./ImportEnvironmentDialog";
 
 const YAML_CONTENT = "name: testenv\ndependencies:\n  - numpy\n  - pandas\n";
 const STAGED_HANDLE = "11111111-1111-4111-8111-111111111111";

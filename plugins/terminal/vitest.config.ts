@@ -19,6 +19,7 @@ export default defineConfig({
 				"src/main/index.ts",
 				"src/frame/**",
 				"src/test/**",
+				"src/main/test-*.ts",
 			]),
 			include: ["src/**"],
 		},

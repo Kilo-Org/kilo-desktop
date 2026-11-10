@@ -6,8 +6,8 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { KvStore } from "@kilo-desktop/kernel";
 
-import { LocalModelRegistry, type PersistedLocalModels } from "./LocalModelRegistry.js";
-import type { LocalModel } from "../../contracts/schemas.js";
+import { LocalModelRegistry, type PersistedLocalModels } from "./LocalModelRegistry";
+import type { LocalModel } from "../../contracts";
 
 const roots: string[] = [];
 

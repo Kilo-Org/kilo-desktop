@@ -1,6 +1,6 @@
 import { lstat, realpath, stat } from "node:fs/promises";
 
-import { KernelError, type DomainMethodImpls } from "@kilo-desktop/kernel";
+import { KernelError, type DomainObjectMethodImpls } from "@kilo-desktop/kernel";
 
 import {
 	type Conda,
@@ -25,19 +25,19 @@ import {
 	type CondaRepodataFindInput,
 	type CondaRepodataFindResult,
 	type EnvTarget,
-} from "../contracts/index.js";
-import type { JobQueue } from "./job-queue.js";
+} from "../contracts/index";
+import type { JobQueue } from "./job-queue";
 import type {
 	CondaBackend,
 	CondaCreateFromFileRequest,
 	CondaRepodataFilter,
-} from "./providers/conda/CondaBackend.js";
-import { checkCreatePrefix } from "./providers/conda/create-prefix-check.js";
+} from "./providers/conda/CondaBackend";
+import { checkCreatePrefix } from "./providers/conda/create-prefix-check";
 import {
 	ImportStagingRegistry,
 	READ_FILE_MAX_BYTES,
 	readFileNoFollow,
-} from "./providers/conda/importStaging.js";
+} from "./providers/conda/importStaging";
 
 /**
  * Read-cache TTL for `findRepodata`. The channel index changes slowly (the
@@ -88,7 +88,7 @@ export function mergeEnvsDirs(envsDirs: string[], distributions: CondaDistributi
 	return merged;
 }
 
-export type CondaMethods = DomainMethodImpls<typeof Conda>;
+export type CondaMethods = DomainObjectMethodImpls<typeof Conda>;
 export type CondaService = CondaMethods & { dispose(): void };
 
 export interface CondaServiceOptions {

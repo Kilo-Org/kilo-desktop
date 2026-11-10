@@ -5,8 +5,9 @@ import { electronFixture } from "./electron.js";
 export { removePathAfterAppStops } from "./electron.js";
 
 /**
- * Shell-owned fixtures only. Feature page objects live in per-feature fixtures
- * that extend this base (same pattern plugins use).
+ * kilo.shell's frame: the packaged app plus `appShellPage`. Feature page
+ * objects live in per-feature fixtures that extend this base
+ * (`fixtures/shell/<feature>.ts`, and `plugins/<id>/e2e/fixtures.ts`).
  */
 export const test = electronFixture.extend<{ appShellPage: AppShellPage }>({
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring

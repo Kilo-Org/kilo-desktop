@@ -9,10 +9,10 @@ import {
 	AlertDialogTitle,
 } from "@kilo-desktop/ui/components/alert-dialog";
 
-import type { CondaEnv, CondaPackage } from "../../../contracts/providers/conda.js";
-import { useConda, useCondaMutation } from "../../conda.js";
-import { environmentDisplayName } from "./environment-display.js";
-import { friendlyEnvironmentsError } from "./environments-error-message.js";
+import type { CondaEnv, CondaPackage } from "../../../contracts/providers/conda";
+import { useConda, useCondaMutation } from "../../conda";
+import { environmentDisplayName } from "./environment-display";
+import { friendlyEnvironmentsError } from "./environments-error-message";
 
 interface RemovePackageConfirmationProps {
 	env: CondaEnv;

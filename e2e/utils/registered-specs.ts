@@ -9,30 +9,27 @@ import path from "node:path";
  */
 const AREA_OWNERS: Readonly<Record<string, string>> = {
 	kernel: "kernel",
+	core: "kilo.core",
 	shell: "kilo.shell",
-	"features/agent": "kilo.agent",
-	"features/board": "kilo.workspace-board",
-	"features/browser": "kilo.browser",
-	"features/chat": "kilo.chat",
-	"features/developer": "kilo.developer",
-	"features/environments": "kilo.environments",
-	"features/files": "kilo.files",
-	"features/flags": "kilo.flags",
-	"features/git": "kilo.git",
-	"features/local-inference": "kilo.local-inference",
-	"features/notebook": "kilo.notebook",
-	"features/privacy": "kilo.telemetry",
-	"features/sessions": "kilo.workbench",
-	"features/sessions/work-sessions.spec.ts": "kilo.sessions",
-	"features/settings": "kilo.shell",
-	"features/settings/about.spec.ts": "kilo.updates",
-	"features/settings/about-kilo-config.spec.ts": "kilo.agent",
-	"features/settings/account.spec.ts": "kilo.account",
-	"features/settings/account-signed-out.spec.ts": "kilo.account",
-	"features/terminal": "kilo.terminal",
-	"features/theme": "kilo.shell",
-	"features/workspace": "kilo.workspaces",
+	developer: "kilo.developer",
+	"work-sessions": "kilo.work-sessions",
+	chat: "kilo.chat",
+	git: "kilo.git",
+	files: "kilo.files",
+	terminal: "kilo.terminal",
+	browser: "kilo.browser",
+	notebook: "kilo.notebook",
+	marketplace: "kilo.marketplace",
+	"local-inference": "kilo.local-inference",
+	environments: "kilo.environments",
+	anaconda: "kilo.anaconda",
+	"workspace-board": "kilo.workspace-board",
 };
+
+/** Folders under `plugins/`; none while the bundled set is being rebuilt (docs/plugin-plan-v2.md). */
+function pluginDirectories(pluginsDir: string): string[] {
+	return existsSync(pluginsDir) ? readdirSync(pluginsDir) : [];
+}
 
 /**
  * Plugins whose plugin.json is a v1 kernel manifest. This matches the bundled
@@ -42,7 +39,7 @@ const AREA_OWNERS: Readonly<Record<string, string>> = {
 export function registeredPluginIds(repoRoot: string): Set<string> {
 	const ids = new Set(["kernel"]);
 	const pluginsDir = path.join(repoRoot, "plugins");
-	for (const dir of readdirSync(pluginsDir)) {
+	for (const dir of pluginDirectories(pluginsDir)) {
 		const manifestPath = path.join(pluginsDir, dir, "plugin.json");
 		if (!existsSync(manifestPath)) continue;
 		const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
@@ -66,7 +63,7 @@ export function unregisteredSpecGlobs(
 		ignored.push(area.endsWith(".spec.ts") ? target : path.join(target, "**"));
 	}
 	const pluginsDir = path.join(repoRoot, "plugins");
-	for (const dir of readdirSync(pluginsDir)) {
+	for (const dir of pluginDirectories(pluginsDir)) {
 		const manifestPath = path.join(pluginsDir, dir, "plugin.json");
 		if (!existsSync(path.join(pluginsDir, dir, "e2e")) || !existsSync(manifestPath)) continue;
 		const id = (JSON.parse(readFileSync(manifestPath, "utf8")) as { id?: unknown }).id;

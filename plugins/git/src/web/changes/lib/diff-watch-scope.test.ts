@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { GitRepositoryType } from "../../../contracts/index.js";
-import { resolveDiffWatchScope } from "./diff-watch-scope.js";
+import type { GitRepositoryType } from "../../../contracts";
+import { resolveDiffWatchScope } from "./diff-watch-scope";
 
 const regular = (topLevelWorkingDirectory: string, gitDir: string): GitRepositoryType => ({
 	kind: "regular",

@@ -25,6 +25,7 @@ function resolvePackageDirectory(fromDirectory: string, packageName: string): st
 
 function pluginE2eDirectories(): string[] {
 	const pluginsRoot = path.join(repoRoot, "plugins");
+	if (!existsSync(pluginsRoot)) return [];
 	return readdirSync(pluginsRoot)
 		.map((plugin) => path.join(pluginsRoot, plugin, "e2e"))
 		.filter((directory) => existsSync(directory));

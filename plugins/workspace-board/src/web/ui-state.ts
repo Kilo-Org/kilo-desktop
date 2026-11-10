@@ -26,7 +26,10 @@ function createSignal<T>(initial: T) {
  */
 export const columnToName = createSignal<string | null>(null);
 
-/** The "Clear the board?" confirmation, opened from the header or a command. */
+/**
+ * The "Clear the board?" confirmation in the board's own window, opened from
+ * its header. The main window opens it as a `kilo.shell/dialog` instead.
+ */
 export const clearDialog = createSignal(false);
 
 export function useSignal<T>(signal: { get(): T; subscribe(listener: () => void): () => void }): T {

@@ -4,19 +4,19 @@ import useLatest from "react-use/esm/useLatest.js";
 
 import { useQuery } from "@tanstack/react-query";
 
-import { useDomain } from "@kilo-desktop/kernel/web";
+import { useDomainObject } from "@kilo-desktop/kernel/web";
 import {
 	createWorkspaceChangeFilter,
 	escapeGlob,
-	Files,
+	FileWatcher,
 	toPosixPath,
-} from "@kilo-desktop/plugin-workspaces/contracts";
+} from "@kilo-desktop/plugin-work-sessions/contracts";
 
-import { Repository } from "../../contracts/index.js";
-import { repositoryTypeQuery } from "../repository-queries.js";
-import { resolveDiffWatchScope } from "./lib/diff-watch-scope.js";
-import { Throttler } from "./lib/throttler.js";
-import type { PaneVisibility } from "./use-pane-visibility.js";
+import { Repository } from "../../contracts";
+import { repositoryTypeQuery } from "../shared/repository-queries";
+import { resolveDiffWatchScope } from "./lib/diff-watch-scope";
+import { Throttler } from "./lib/throttler";
+import type { PaneVisibility } from "./use-pane-visibility";
 
 const REFRESH_DEBOUNCE_MS = 1_000;
 const AUTO_REFRESH_COOLDOWN_MS = 5_000;
@@ -32,7 +32,7 @@ const GIT_DIR_NOISE_EXCLUDES = [
 const TRAILING_SLASHES = /\/+$/u;
 
 /**
- * Calls `onFileChange` for kilo.workspaces' file changes matching the globs
+ * Calls `onFileChange` for kilo.work-sessions' file changes matching the globs
  * (`dirs` are native directories, watched recursively) while `enabled`.
  */
 function useFileChanges(options: {
@@ -42,7 +42,7 @@ function useFileChanges(options: {
 	readonly enabled: boolean;
 	readonly onFileChange: () => void;
 }): void {
-	const files = useDomain(Files);
+	const files = useDomainObject(FileWatcher);
 	const onFileChange = useLatest(options.onFileChange);
 	const includes = [
 		...(options.includes ?? []),
@@ -95,7 +95,7 @@ export interface UseGitDiffWatcherOptions {
 }
 
 /**
- * Refreshes the working-directory diff when kilo.workspaces reports file
+ * Refreshes the working-directory diff when kilo.work-sessions' file watcher reports file
  * changes in the repository `directory` belongs to, following VS Code's
  * git extension.
  *
@@ -196,7 +196,7 @@ export function useGitDiffWatcher({
 		[changeCount],
 	);
 
-	const repository = useDomain(Repository);
+	const repository = useDomainObject(Repository);
 	const { data: repositoryType } = useQuery(repositoryTypeQuery(repository, directory));
 	const scope = resolveDiffWatchScope(directory, repositoryType);
 	const onFileChange = () => bumpChangeCount((count) => count + 1);

@@ -6,7 +6,7 @@ import { useWorkspaceFileChanges } from "../file-changes.js";
 const RELOAD_DEBOUNCE_MS = 300;
 
 /**
- * Reloads the open document when kilo.workspaces' watcher reports it changed on
+ * Reloads the open document when kilo.work-sessions' watcher reports it changed on
  * disk, vscode-style. All filtering lives in the watcher subscription: the
  * `files` option is the document's absolute path and only create/update changes
  * pass, so the callback fires exactly for disk changes to this file (watcher

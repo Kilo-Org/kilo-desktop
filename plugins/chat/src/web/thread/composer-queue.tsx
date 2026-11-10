@@ -18,8 +18,8 @@ import { Item, ItemActions, ItemContent } from "@kilo-desktop/ui/components/item
 import { Textarea } from "@kilo-desktop/ui/components/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 import { cn } from "@kilo-desktop/ui/lib/utils";
+import { flagKey } from "@kilo-desktop/kernel";
 import { useContextKey } from "@kilo-desktop/kernel/web";
-import { flagKey } from "@kilo-desktop/plugin-flags/contracts";
 
 import { PROMPT_QUEUE_EDITING_FLAG } from "../../contracts";
 import { useMessageQueueControls } from "../runtime/use-message-queue-controls";

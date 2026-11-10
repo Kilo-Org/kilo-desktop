@@ -11,7 +11,7 @@ import {
 	type JobKind,
 	type JobProgressEvent,
 	type Provider,
-} from "../contracts/common.js";
+} from "../contracts/common";
 
 /**
  * Callback the queue invokes for every {@link JobProgressEvent}. In

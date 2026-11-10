@@ -3,7 +3,7 @@
 	"version": "0.1.0",
 	"private": true,
 	"type": "module",
-	"description": "example.hello — a minimal example plugin: a domain object in main, a command and a settings section",
+	"description": "example.hello \u2014 a minimal example plugin: a domain object in main and a command",
 	"exports": {
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",
@@ -17,8 +17,6 @@
 	},
 	"dependencies": {
 		"@kilo-desktop/kernel": "workspace:*",
-		"@kilo-desktop/plugin-shell": "workspace:*",
-		"lucide-react": "catalog:",
 		"zod": "catalog:"
 	},
 	"peerDependencies": {
@@ -28,18 +26,13 @@
 	},
 	"devDependencies": {
 		"@kilo-desktop/ui": "workspace:*",
-		"@tailwindcss/vite": "^4.3.3",
 		"@types/node": "^26.0.0",
 		"@types/react": "^19.2.17",
 		"@types/react-dom": "^19.2.3",
-		"@vitejs/plugin-react": "^6.0.4",
-		"@vitest/browser": "5.0.5",
-		"@vitest/browser-playwright": "5.0.5",
 		"@vitest/coverage-v8": "catalog:",
-		"playwright": "catalog:",
+		"lucide-react": "catalog:",
 		"react": "^19.2.8",
 		"react-dom": "^19.2.8",
-		"tailwindcss": "^4.3.3",
 		"typescript": "catalog:",
 		"vite": "catalog:",
 		"vitest": "catalog:"

@@ -1,12 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+import { definePlugin } from "@kilo-desktop/kernel";
 
 import { AutoApprove } from "../../contracts";
+import { activateAutoApprove } from "../../main/auto-approve";
 import { renderInKernel } from "../../test/kernel-harness";
 import { ComposerActionView } from "../composer/composer-actions";
 import { approvalAction } from "./kilo-approval-selector";
 
 const CONTEXT = {
-	sessionId: "wses_1",
+	workSessionId: "wses_1",
 	chatId: null,
 	directory: null,
 	workspaceId: null,
@@ -21,8 +24,12 @@ async function renderSelector(mode: "manual" | "auto") {
 			implementation={approvalAction}
 			context={CONTEXT}
 		/>,
+		{ chatMain: definePlugin({ activate: (sdk) => activateAutoApprove(sdk) }) },
 	);
-	const autoApprove = host.main.kernelSdk.domains.get(AutoApprove)!;
+	await vi.waitFor(() =>
+		expect(host.renderer.sdkFor("kilo.chat").domainObjects.get(AutoApprove)).not.toBeNull(),
+	);
+	const autoApprove = host.renderer.sdkFor("kilo.chat").domainObjects.get(AutoApprove)!;
 	await autoApprove.methods.setMode({ mode });
 	return { screen: host.screen, autoApprove };
 }

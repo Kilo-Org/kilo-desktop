@@ -5,7 +5,7 @@ import { basename, delimiter, dirname, isAbsolute, join } from "node:path";
 import type {
 	CondaEnvsCheckPrefixResult,
 	CreatePrefixUnavailableReason,
-} from "../../../contracts/providers/conda.js";
+} from "../../../contracts/providers/conda";
 
 /** Names conda refuses to create (`conda.base.constants.RESERVED_ENV_NAMES`). */
 const RESERVED_ENV_NAMES = new Set(["base", "root"]);

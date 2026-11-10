@@ -5,7 +5,7 @@ import {
 	resolveDarwinPeer,
 	resolveLinuxPeer,
 	resolveWindowsPeer,
-} from "./peer-credentials.js";
+} from "./peer-credentials";
 
 /**
  * Unit coverage for the per-platform FFI resolvers, exercised with a fake koffi

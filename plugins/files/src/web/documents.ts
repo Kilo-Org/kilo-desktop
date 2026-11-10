@@ -1,10 +1,10 @@
 import { QueryClient } from "@tanstack/react-query";
 
-import type { DomainHandle } from "@kilo-desktop/kernel";
+import type { DomainObjectHandle } from "@kilo-desktop/kernel";
 
 import type { Documents } from "../contracts/index.js";
 
-export type DocumentsHandle = DomainHandle<typeof Documents>;
+export type DocumentsHandle = DomainObjectHandle<typeof Documents>;
 export type DocumentMethods = DocumentsHandle["methods"];
 export type ReadFile = DocumentMethods["read"];
 export type WriteFile = DocumentMethods["write"];

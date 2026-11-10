@@ -11,8 +11,8 @@ import {
 	type ReactNode,
 } from "react";
 
-import type { AnyDomain, DomainState } from "../domain";
-import type { DomainHandle } from "../domain-registry";
+import type { AnyDomainObject, DomainObjectState } from "../domain-object";
+import type { DomainObjectHandle } from "../domain-object-registry";
 import type { AnyExtensionPoint } from "../extension-point";
 import type { Contribution, ExclusiveResolution } from "../extension-registry";
 import type { QualifiedId } from "../ids";
@@ -118,21 +118,21 @@ export function useExclusive<TPoint extends AnyExtensionPoint>(
 }
 
 /** A domain handle for the current plugin, or null while no provider is available. */
-export function useDomain<TDomain extends AnyDomain>(
+export function useDomainObject<TDomain extends AnyDomainObject>(
 	domain: TDomain,
-): DomainHandle<TDomain> | null {
+): DomainObjectHandle<TDomain> | null {
 	const kernel = useKernel();
 	const sdk = useSdk();
 	const subscribe = useCallback(
 		(onChange: () => void) =>
-			kernel.domains.onChange((id) => {
+			kernel.domainObjects.onChange((id) => {
 				if (id === domain.id) onChange();
 			}),
 		[kernel, domain.id],
 	);
-	const read = useCallback(() => kernel.domains.isProvided(domain.id), [kernel, domain.id]);
+	const read = useCallback(() => kernel.domainObjects.isProvided(domain.id), [kernel, domain.id]);
 	const provided = useSubscription(subscribe, read, Object.is);
-	return useMemo(() => (provided ? sdk.domains.get(domain) : null), [provided, sdk, domain]);
+	return useMemo(() => (provided ? sdk.domainObjects.get(domain) : null), [provided, sdk, domain]);
 }
 
 const sameSelection = Object.is;
@@ -142,12 +142,12 @@ const sameSelection = Object.is;
  * Re-renders when the selection changes by `isEqual` (default `Object.is`),
  * so a selector that builds a new object or array needs a structural check.
  */
-export function useDomainState<TDomain extends AnyDomain, TSelected>(
+export function useDomainObjectState<TDomain extends AnyDomainObject, TSelected>(
 	domain: TDomain,
-	selector: (state: DomainState<TDomain>) => TSelected,
+	selector: (state: DomainObjectState<TDomain>) => TSelected,
 	isEqual: (a: TSelected, b: TSelected) => boolean = sameSelection,
 ): TSelected | undefined {
-	const handle = useDomain(domain);
+	const handle = useDomainObject(domain);
 	const subscribe = useCallback(
 		(onChange: () => void) => handle?.subscribe(() => onChange()) ?? (() => {}),
 		[handle],

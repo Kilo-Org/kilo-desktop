@@ -1,10 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-import type {
-	NotebookSettingsStore,
-	NotebookStateStore,
-} from "./settings/NotebookSettingsStore.js";
+import type { NotebookSettingsStore, NotebookStateStore } from "./settings/NotebookSettingsStore";
 
 /** null when the file is missing or isn't a JSON object; throws when it can't be read now. */
 async function readJson(file: string): Promise<Record<string, unknown> | null> {

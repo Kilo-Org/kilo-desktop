@@ -61,14 +61,19 @@ export const manifestSchema = z.strictObject({
 			}),
 		)
 		.optional(),
-	domains: z
+	domainObjects: z
 		.array(
 			z.strictObject({
 				id: localName,
 				home: z.enum(["main", "renderer"]),
 				description: z.string().optional(),
+				/** The object type this collection resolves. */
+				objectType: qualifiedId.optional(),
 			}),
 		)
+		.optional(),
+	objectTypes: z
+		.array(z.strictObject({ id: localName, description: z.string().optional() }))
 		.optional(),
 	contributes: z
 		.strictObject({

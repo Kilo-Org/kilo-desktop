@@ -4,7 +4,7 @@ import type { PlanPaneAnchors } from "../../contracts";
 
 export type OpenPlanPane = (anchors: PlanPaneAnchors) => void;
 
-/** Opens the session's plan pane on a revision of the chat's plan; provided by the agent pane. */
+/** Opens the work session's plan pane on a revision of the chat's plan; provided by the agent pane. */
 export const OpenPlanPaneContext = createContext<OpenPlanPane | null>(null);
 
 export function useOpenPlanPane(): OpenPlanPane | null {

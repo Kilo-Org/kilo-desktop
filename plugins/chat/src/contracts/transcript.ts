@@ -1,9 +1,8 @@
-import type { ToolCallMessagePartComponent, ToolCallMessagePartProps } from "@assistant-ui/react";
 import type { ComponentType } from "react";
-import type { Components, Options } from "react-markdown";
 import { z } from "zod";
 
 import { defineExtensionPoint, implementation } from "@kilo-desktop/kernel";
+import type { MarkdownRendererExtension } from "@kilo-desktop/ui/lib/markdown-extension";
 
 import type { ComposerFolder } from "./composer";
 
@@ -28,8 +27,30 @@ export const toolCategorySchema = z.enum([
 ]);
 export type ToolCategory = z.output<typeof toolCategorySchema>;
 
-/** A tool call as assistant-ui hands it to a renderer: args, result, status, … */
-export type ToolCallProps = ToolCallMessagePartProps;
+/** Where a tool call is: running, finished, stopped short, or waiting on the person. */
+export type ToolCallStatus =
+	| { readonly type: "running" }
+	| { readonly type: "complete" }
+	| { readonly type: "incomplete"; readonly reason?: string; readonly error?: unknown }
+	| { readonly type: "requires-action"; readonly reason?: string };
+
+/**
+ * One tool call as the transcript hands it to a renderer. kilo.chat's own
+ * shape: the transcript's chat library and Kilo's wire types stay inside
+ * kilo.chat.
+ */
+export interface ToolCallProps {
+	readonly toolCallId: string;
+	/** The name Kilo called the tool by (`bash`, `desktop_terminal_open_terminal`). */
+	readonly toolName: string;
+	readonly args: Readonly<Record<string, unknown>>;
+	/** The arguments as streamed so far (JSON text). */
+	readonly argsText: string;
+	/** The tool's output, once it has one. */
+	readonly result?: unknown;
+	readonly isError?: boolean;
+	readonly status: ToolCallStatus;
+}
 
 export interface ToolRendererProps extends ToolCallProps {
 	/**
@@ -37,7 +58,7 @@ export interface ToolRendererProps extends ToolCallProps {
 	 * renderer contributed for the tool, else the transcript's one-line
 	 * fallback. Render it to wrap or decorate the default.
 	 */
-	readonly Original: ToolCallMessagePartComponent;
+	readonly Original: ComponentType<ToolCallProps>;
 }
 
 export interface ToolRendererImplementation {
@@ -45,8 +66,9 @@ export interface ToolRendererImplementation {
 }
 
 /**
- * How calls to some tools look in the chat transcript. `tools` are the names
- * Kilo calls them by (`bash`, `desktop_terminal_open`); the highest-priority
+ * How calls to some tools look in the chat transcript. `tools` are desktop
+ * tools by `kilo.core/tool` contribution key (`kilo.terminal/open_terminal`)
+ * and Kilo's built-in tools by name (`bash`, `read`); the highest-priority
  * contribution for a tool renders it and is handed the next one as
  * `Original`. `standalone` keeps the calls out of the activity groups and the
  * settled turn's fold (cards that stay actionable); `category` puts them in a
@@ -76,9 +98,10 @@ export interface McpAppImplementation {
 
 /**
  * An MCP App widget (an interactive `ui://` resource) shown in place of a
- * tool's calls. Chat hosts only widgets contributed here, in an isolated
- * frame; a widget's own tool calls are scoped to `serverId` (`desktop`: the
- * app's agent tools).
+ * tool's calls. `tools` are matched as `tool-renderer`'s are (desktop tools
+ * by contribution key, Kilo's own by name). Chat hosts only widgets
+ * contributed here, in an isolated frame; a widget's own tool calls are
+ * scoped to `serverId` (`desktop`: the app's agent tools).
  */
 export const McpApp = defineExtensionPoint({
 	id: "kilo.chat/mcp-app",
@@ -96,19 +119,13 @@ export const McpApp = defineExtensionPoint({
 
 /** Where a transcript's markdown is shown: links and paths resolve against it. */
 export interface ChatMarkdownContext {
-	/** The Work Session the transcript belongs to; panes opened from markdown join it. */
-	readonly sessionId: string;
+	/** The work session the transcript belongs to; panes opened from markdown join it. */
+	readonly workSessionId: string;
 	readonly workspaceFolders: readonly ComposerFolder[];
 }
 
-/**
- * Remark plugins and decorators over the rendered components (the shape of
- * `@kilo-desktop/ui`'s `MarkdownRendererExtension`).
- */
-export interface ChatMarkdownExtension {
-	readonly remarkPlugins?: NonNullable<Options["remarkPlugins"]>;
-	readonly decorateComponents?: (next: Components) => Components;
-}
+/** Remark plugins and decorators over the rendered components (`@kilo-desktop/ui`'s shape). */
+export type ChatMarkdownExtension = MarkdownRendererExtension;
 
 /** Made once per transcript: remark plugins and component decorators for its markdown. */
 export type MarkdownExtensionImplementation = (

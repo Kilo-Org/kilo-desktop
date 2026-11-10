@@ -9,7 +9,7 @@ Key rules for agents changing this repo:
 - Ids are qualified by plugin: `<plugin>/<name>` for extension points, domain objects, commands and context keys; manifests use local names.
 - Every plugin is removable: `sdk.domains.get(X)` may be `null`, a point whose owner is missing reads as empty. Activation is fast; slow work is a `kernel/service`.
 - Expected failures throw `KernelError` (its code and message cross processes).
-- Tests boot real kernels (`createPluginHost`, `createTestKernelPair`, `renderShell`); no hand-rolled kernels, no module mocks in browser tests, no dynamic imports.
+- Tests boot real kernels (`createPluginHost`, `createTestKernelPair`); no hand-rolled kernels, no module mocks in browser tests, no dynamic imports.
 - Bundled plugins register in `packages/bundled-plugins` and the entry maps; every plugin ships an `@smoke` e2e spec. Declare every import in the plugin's `package.json` (`pnpm check:plugin-isolation`).
 - oxlint + oxfmt (not ESLint/Prettier); TypeScript strict; Zod 4; React 19.
 
@@ -22,7 +22,7 @@ Key rules for agents changing this repo:
 - [Panes and openers](docs/plugins/panes-and-openers.md): `kilo.sessions/pane`, `PaneProps`, close guards, pop-outs, `kilo.sessions/opener`
 - [Chat and agent tools](docs/plugins/chat-and-tools.md): `kilo.agent/tool`, tool renderers, composer actions and mentions
 - [Testing a plugin](docs/plugins/testing.md): plugin test hosts, reliability rules, removability and isolation checks
-- [Example plugin](examples/hello-plugin/README.md): `example.hello`, a small plugin with a domain object, command, settings section and tests
+- [Example plugin](examples/hello-plugin/README.md): `example.hello`, a small plugin with a domain object, a command and tests
 
 ## Kernel API entry points
 

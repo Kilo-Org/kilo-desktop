@@ -1,6 +1,6 @@
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
-import { friendlyEnvironmentsError } from "./environments-error-message.js";
+import { friendlyEnvironmentsError } from "./environments-error-message";
 
 /**
  * Wording for one long-running environments job. Every job reports through

@@ -1,7 +1,8 @@
-import type { AnyDomain } from "./domain";
+import type { AnyDomainObject } from "./domain-object";
 import type { AnyExtensionPoint } from "./extension-point";
 import { KERNEL_OWNER, ownerOf, qualify, type QualifiedId } from "./ids";
 import { manifestSchema, type PluginManifest } from "./manifest";
+import type { ObjectTypeDefinition } from "./object-type";
 import type { PluginDefinitions, PluginEntry, PluginRegistration } from "./plugin";
 import { whenKeys, whenSchema, type WhenExpression } from "./when";
 
@@ -24,14 +25,21 @@ export interface DiscoveredPlugin {
 	readonly unresolvedReasons: readonly string[];
 }
 
-export interface PointRecord {
+export interface ExtensionPointRecord {
 	readonly owner: string;
 	readonly definition: AnyExtensionPoint;
 }
 
-export interface DomainRecord {
+export interface DomainObjectRecord {
 	readonly owner: string;
-	readonly definition: AnyDomain;
+	readonly definition: AnyDomainObject;
+}
+
+export interface ObjectTypeRecord {
+	readonly owner: string;
+	readonly definition: ObjectTypeDefinition;
+	/** The collection domain object that resolves references of this type, if any. */
+	readonly collection?: QualifiedId;
 }
 
 export interface ParsedContributionEntry {
@@ -51,20 +59,22 @@ export interface ContextKeyRecord {
 	readonly id: QualifiedId;
 	readonly owner: string;
 	readonly scope: "global" | "window";
+	readonly description?: string;
 }
 
 export interface DiscoveryResult {
 	/** Valid plugins in activation order. */
 	readonly plugins: readonly DiscoveredPlugin[];
-	readonly points: ReadonlyMap<QualifiedId, PointRecord>;
-	readonly domains: ReadonlyMap<QualifiedId, DomainRecord>;
+	readonly extensionPoints: ReadonlyMap<QualifiedId, ExtensionPointRecord>;
+	readonly domainObjects: ReadonlyMap<QualifiedId, DomainObjectRecord>;
+	readonly objectTypes: ReadonlyMap<QualifiedId, ObjectTypeRecord>;
 	readonly contextKeys: readonly ContextKeyRecord[];
 	readonly contributions: readonly DiscoveredContribution[];
 	readonly issues: readonly KernelIssue[];
 }
 
 export interface DiscoveryOptions {
-	/** Points, domains and context keys owned by the kernel itself. */
+	/** Extension points, domain objects and context keys owned by the kernel itself. */
 	readonly kernelDefinitions?: PluginDefinitions;
 	readonly kernelContextKeys?: readonly ContextKeyRecord[];
 }
@@ -90,23 +100,39 @@ export function discoverPlugins(
 	const issues: KernelIssue[] = [];
 	const candidates = validateManifests(registrations, issues);
 
-	const points = new Map<QualifiedId, PointRecord>();
-	const domains = new Map<QualifiedId, DomainRecord>();
-	for (const point of options.kernelDefinitions?.extensionPoints ?? []) {
-		points.set(point.id, { owner: KERNEL_OWNER, definition: point });
+	const records: DefinitionRecords = {
+		extensionPoints: new Map(),
+		domainObjects: new Map(),
+		objectTypes: new Map(),
+	};
+	const kernel = options.kernelDefinitions;
+	for (const definition of kernel?.extensionPoints ?? []) {
+		records.extensionPoints.set(definition.id, { owner: KERNEL_OWNER, definition });
 	}
-	for (const domain of options.kernelDefinitions?.domains ?? []) {
-		domains.set(domain.id, { owner: KERNEL_OWNER, definition: domain });
+	for (const definition of kernel?.objectTypes ?? []) {
+		records.objectTypes.set(definition.id, { owner: KERNEL_OWNER, definition });
 	}
-	for (const candidate of candidates) {
-		collectDefinitions(candidate, points, domains, issues);
+	for (const definition of kernel?.domainObjects ?? []) {
+		records.domainObjects.set(definition.id, { owner: KERNEL_OWNER, definition });
+		const type = definition.objectType && records.objectTypes.get(definition.objectType.id);
+		if (type) records.objectTypes.set(type.definition.id, { ...type, collection: definition.id });
 	}
+	for (const candidate of candidates) collectDefinitions(candidate, records, issues);
+	const { extensionPoints, domainObjects, objectTypes } = records;
 
 	const contextKeys = collectContextKeys(candidates, options.kernelContextKeys ?? []);
-	const contributions = collectContributions(candidates, points, contextKeys, issues);
-	const plugins = orderAndResolve(candidates, points, domains, issues);
+	const contributions = collectContributions(candidates, extensionPoints, contextKeys, issues);
+	const plugins = orderAndResolve(candidates, extensionPoints, domainObjects, issues);
 
-	return { plugins, points, domains, contextKeys, contributions, issues };
+	return {
+		plugins,
+		extensionPoints,
+		domainObjects,
+		objectTypes,
+		contextKeys,
+		contributions,
+		issues,
+	};
 }
 
 function validateManifests(
@@ -155,84 +181,158 @@ function validateManifests(
 	return candidates;
 }
 
-function collectDefinitions(
-	{ manifest, registration }: Candidate,
-	points: Map<QualifiedId, PointRecord>,
-	domains: Map<QualifiedId, DomainRecord>,
-	issues: KernelIssue[],
-): void {
-	const pluginId = manifest.id;
-	const issue = (code: string, message: string) =>
-		issues.push({ severity: "error", code, message, pluginId });
+interface DefinitionRecords {
+	readonly extensionPoints: Map<QualifiedId, ExtensionPointRecord>;
+	readonly domainObjects: Map<QualifiedId, DomainObjectRecord>;
+	readonly objectTypes: Map<QualifiedId, ObjectTypeRecord>;
+}
 
-	const declaredPoints = new Map(
-		(manifest.extensionPoints ?? []).map((point) => [qualify(pluginId, point.id), point]),
-	);
-	const definedPoints = new Map<QualifiedId, AnyExtensionPoint>();
-	for (const definition of registration.definitions?.extensionPoints ?? []) {
+/**
+ * Pairs what a manifest declares with what its contracts define, by id.
+ * A definition outside the plugin's namespace, a declaration with no
+ * definition and a definition with no declaration are each reported.
+ */
+function pairDeclarations<TDeclared, TDefinition extends { readonly id: QualifiedId }>(
+	pluginId: string,
+	what: { readonly label: string; readonly code: string },
+	declared: readonly (TDeclared & { readonly id: string })[],
+	defined: readonly TDefinition[],
+	issue: (code: string, message: string) => void,
+): [QualifiedId, TDeclared, TDefinition][] {
+	const declarations = new Map(declared.map((entry) => [qualify(pluginId, entry.id), entry]));
+	const definitions = new Map<QualifiedId, TDefinition>();
+	for (const definition of defined) {
 		if (ownerOf(definition.id) !== pluginId) {
 			issue(
 				"foreign-definition",
-				`Extension point "${definition.id}" is outside the "${pluginId}" namespace.`,
+				`${what.label} "${definition.id}" is outside the "${pluginId}" namespace.`,
 			);
-			continue;
+		} else {
+			definitions.set(definition.id, definition);
 		}
-		definedPoints.set(definition.id, definition);
 	}
-	for (const [id, declared] of declaredPoints) {
-		const definition = definedPoints.get(id);
-		if (!definition) {
-			issue("undefined-extension-point", `Extension point "${id}" has no definition in contracts.`);
-		} else if (definition.kind !== declared.kind) {
+	const pairs: [QualifiedId, TDeclared, TDefinition][] = [];
+	for (const [id, declaration] of declarations) {
+		const definition = definitions.get(id);
+		if (definition) pairs.push([id, declaration, definition]);
+		else issue(`undefined-${what.code}`, `${what.label} "${id}" has no definition in contracts.`);
+	}
+	for (const id of definitions.keys()) {
+		if (!declarations.has(id)) {
+			issue(`undeclared-${what.code}`, `${what.label} "${id}" is not declared in plugin.json.`);
+		}
+	}
+	return pairs;
+}
+
+function collectDefinitions(
+	{ manifest, registration }: Candidate,
+	records: DefinitionRecords,
+	issues: KernelIssue[],
+): void {
+	const pluginId = manifest.id;
+	const definitions = registration.definitions ?? {};
+	const issue = (code: string, message: string) =>
+		issues.push({ severity: "error", code, message, pluginId });
+
+	const ids = [
+		...(manifest.extensionPoints ?? []),
+		...(manifest.domainObjects ?? []),
+		...(manifest.contextKeys ?? []),
+		...(manifest.objectTypes ?? []),
+	].map((entry) => qualify(pluginId, entry.id));
+	for (const id of new Set(ids.filter((id, index) => ids.indexOf(id) !== index))) {
+		issue(
+			"duplicate-id",
+			`"${id}" names more than one extension point, domain object, context key or object type.`,
+		);
+	}
+
+	for (const [id, declared, definition] of pairDeclarations(
+		pluginId,
+		{ label: "Extension point", code: "extension-point" },
+		manifest.extensionPoints ?? [],
+		definitions.extensionPoints ?? [],
+		issue,
+	)) {
+		if (definition.kind !== declared.kind) {
 			issue(
 				"kind-mismatch",
 				`Extension point "${id}" is declared "${declared.kind}" but defined "${definition.kind}".`,
 			);
 		} else {
-			points.set(id, { owner: pluginId, definition });
-		}
-	}
-	for (const id of definedPoints.keys()) {
-		if (!declaredPoints.has(id)) {
-			issue(
-				"undeclared-extension-point",
-				`Extension point "${id}" is not declared in plugin.json.`,
-			);
+			records.extensionPoints.set(id, { owner: pluginId, definition });
 		}
 	}
 
-	const declaredDomains = new Map(
-		(manifest.domains ?? []).map((domain) => [qualify(pluginId, domain.id), domain]),
-	);
-	const definedDomains = new Map<QualifiedId, AnyDomain>();
-	for (const definition of registration.definitions?.domains ?? []) {
-		if (ownerOf(definition.id) !== pluginId) {
-			issue(
-				"foreign-definition",
-				`Domain object "${definition.id}" is outside the "${pluginId}" namespace.`,
-			);
-			continue;
-		}
-		definedDomains.set(definition.id, definition);
+	for (const [id, , definition] of pairDeclarations(
+		pluginId,
+		{ label: "Object type", code: "object-type" },
+		manifest.objectTypes ?? [],
+		definitions.objectTypes ?? [],
+		issue,
+	)) {
+		records.objectTypes.set(id, { owner: pluginId, definition });
 	}
-	for (const [id, declared] of declaredDomains) {
-		const definition = definedDomains.get(id);
-		if (!definition) {
-			issue("undefined-domain", `Domain object "${id}" has no definition in contracts.`);
-		} else if (definition.home !== declared.home) {
+
+	for (const [id, declared, definition] of pairDeclarations(
+		pluginId,
+		{ label: "Domain object", code: "domain-object" },
+		manifest.domainObjects ?? [],
+		definitions.domainObjects ?? [],
+		issue,
+	)) {
+		const problem = collectionProblem(id, declared.objectType, definition, records.objectTypes);
+		if (definition.home !== declared.home) {
 			issue(
 				"home-mismatch",
 				`Domain object "${id}" is declared home "${declared.home}" but defined "${definition.home}".`,
 			);
+		} else if (problem) {
+			issue(problem.code, problem.message);
 		} else {
-			domains.set(id, { owner: pluginId, definition });
+			records.domainObjects.set(id, { owner: pluginId, definition });
+			const type = definition.objectType && records.objectTypes.get(definition.objectType.id);
+			if (type) records.objectTypes.set(type.definition.id, { ...type, collection: id });
 		}
 	}
-	for (const id of definedDomains.keys()) {
-		if (!declaredDomains.has(id)) {
-			issue("undeclared-domain", `Domain object "${id}" is not declared in plugin.json.`);
-		}
+}
+
+/** Checks the object type a collection resolves: declared alike, owned by its plugin, resolved once. */
+function collectionProblem(
+	id: QualifiedId,
+	declared: string | undefined,
+	definition: AnyDomainObject,
+	objectTypes: ReadonlyMap<QualifiedId, ObjectTypeRecord>,
+): { readonly code: string; readonly message: string } | undefined {
+	const defined = definition.objectType?.id;
+	if (declared !== defined) {
+		return {
+			code: "object-type-mismatch",
+			message: `Domain object "${id}" is declared to resolve "${declared ?? "nothing"}" but defined to resolve "${defined ?? "nothing"}".`,
+		};
 	}
+	if (defined === undefined) return undefined;
+	const type = objectTypes.get(defined);
+	if (!type || type.owner !== ownerOf(id)) {
+		return {
+			code: "foreign-object-type",
+			message: `Domain object "${id}" resolves "${defined}", which is not an object type of its plugin.`,
+		};
+	}
+	if (type.collection !== undefined) {
+		return {
+			code: "duplicate-collection",
+			message: `Object type "${defined}" is already resolved by "${type.collection}".`,
+		};
+	}
+	if (!definition.lookup) {
+		return {
+			code: "missing-lookup",
+			message: `Domain object "${id}" resolves "${defined}" but declares no lookup.`,
+		};
+	}
+	return undefined;
 }
 
 function collectContextKeys(
@@ -242,7 +342,12 @@ function collectContextKeys(
 	const keys = [...kernelKeys];
 	for (const { manifest } of candidates) {
 		for (const key of manifest.contextKeys ?? []) {
-			keys.push({ id: qualify(manifest.id, key.id), owner: manifest.id, scope: key.scope });
+			keys.push({
+				id: qualify(manifest.id, key.id),
+				owner: manifest.id,
+				scope: key.scope,
+				...(key.description === undefined ? {} : { description: key.description }),
+			});
 		}
 	}
 	return keys;
@@ -256,7 +361,7 @@ function isKnownContextKey(key: string, keys: readonly ContextKeyRecord[]): bool
 
 function collectContributions(
 	candidates: readonly Candidate[],
-	points: ReadonlyMap<QualifiedId, PointRecord>,
+	points: ReadonlyMap<QualifiedId, ExtensionPointRecord>,
 	contextKeys: readonly ContextKeyRecord[],
 	issues: KernelIssue[],
 ): DiscoveredContribution[] {
@@ -388,12 +493,12 @@ export function parseContributionEntry(
 
 function orderAndResolve(
 	candidates: readonly Candidate[],
-	points: ReadonlyMap<QualifiedId, PointRecord>,
-	domains: ReadonlyMap<QualifiedId, DomainRecord>,
+	points: ReadonlyMap<QualifiedId, ExtensionPointRecord>,
+	domainObjects: ReadonlyMap<QualifiedId, DomainObjectRecord>,
 	issues: KernelIssue[],
 ): DiscoveredPlugin[] {
 	const ownerOfItem = (id: QualifiedId): string | undefined =>
-		points.get(id)?.owner ?? domains.get(id)?.owner;
+		points.get(id)?.owner ?? domainObjects.get(id)?.owner;
 
 	const byId = new Map(candidates.map((candidate) => [candidate.manifest.id, candidate]));
 	const reasons = new Map<string, string[]>();

@@ -1,6 +1,6 @@
-import type { LocalInferenceHardwareProfile, ModelCatalogEntry } from "../../contracts/schemas.js";
-import { evaluateCatalogModel, type ModelCompatibility } from "./model-compatibility.js";
-import { getEditorialModelScore, type EditorialModelCategory } from "./model-editorial-priority.js";
+import type { LocalInferenceHardwareProfile, ModelCatalogEntry } from "../../contracts/index";
+import { evaluateCatalogModel, type ModelCompatibility } from "./model-compatibility";
+import { getEditorialModelScore, type EditorialModelCategory } from "./model-editorial-priority";
 
 export interface ModelRecommendations {
 	readonly coding: readonly ModelRecommendation[];

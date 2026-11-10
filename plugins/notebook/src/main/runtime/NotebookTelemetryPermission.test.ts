@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
 	NotebookTelemetryPermission,
 	type TelemetryRegistration,
-} from "./NotebookTelemetryPermission.js";
+} from "./NotebookTelemetryPermission";
 
 function deferred<T>() {
 	let resolve!: (value: T | PromiseLike<T>) => void;

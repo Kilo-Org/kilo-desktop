@@ -6,7 +6,7 @@ import { z } from "zod";
 
 import type { CellResult, CellSnapshot, ExecutionView, Session } from "@runtimed/node";
 
-import { checkTyposquats } from "../shared/typosquat.js";
+import { checkTyposquats } from "../shared/typosquat";
 
 import {
 	declaredDependencySpecs,
@@ -14,7 +14,7 @@ import {
 	pendingApprovalLabels,
 	requireDependencyApproval,
 	withTrustGuidance,
-} from "./dependency-approval.js";
+} from "./dependency-approval";
 
 type ToolAttachment = {
 	type: "file";

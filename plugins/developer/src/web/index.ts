@@ -7,7 +7,7 @@ import { DiagnosticsSettings } from "./diagnostics/DiagnosticsSettings";
 
 /**
  * kilo.developer's renderer entry: Settings → Developer → Diagnostics (the
- * category itself is manifest-only).
+ * category and the flags it declares are manifest-only).
  */
 export const developerWebEntry = definePlugin({
 	activate(sdk) {

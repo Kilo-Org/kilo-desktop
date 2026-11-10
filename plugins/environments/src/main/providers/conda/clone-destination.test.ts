@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { cloneDestinationParam, isCondaDistributionRoot } from "./clone-destination.js";
+import { cloneDestinationParam, isCondaDistributionRoot } from "./clone-destination";
 
 const notRoot = () => false;
 const isRoot = () => true;

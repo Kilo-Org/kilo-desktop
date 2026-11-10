@@ -1,11 +1,15 @@
 import { createElement, type ComponentType } from "react";
 
 import { definePlugin, KernelCommand } from "@kilo-desktop/kernel";
-import { PaneKind, type PaneProps } from "@kilo-desktop/plugin-sessions/contracts";
 import { SettingsSection } from "@kilo-desktop/plugin-shell/contracts";
-import { Workbench } from "@kilo-desktop/plugin-workbench/contracts";
+import {
+	PaneKind,
+	WorkSessionsWindow,
+	type PaneProps,
+} from "@kilo-desktop/plugin-work-sessions/contracts";
 import { NotebookIcon } from "lucide-react";
 
+import { NOTEBOOK_PANE_KIND } from "../contracts/index.js";
 import { CloseGuards, CloseGuardsContext } from "./close-guards.js";
 import { NotebookPane } from "./NotebookPane.js";
 import { NotebookSettings } from "./NotebookSettings.js";
@@ -36,7 +40,7 @@ export const notebookWebEntry = definePlugin({
 			canClose: guards.canClose,
 		});
 		sdk.extensions.implement(KernelCommand, "open", () =>
-			sdk.domains.get(Workbench)?.methods.openPane({ kind: "kilo.notebook/notebook" }),
+			sdk.domainObjects.get(WorkSessionsWindow)?.methods.openPane({ kind: NOTEBOOK_PANE_KIND }),
 		);
 		sdk.extensions.implement(SettingsSection, "notebooks", {
 			component: NotebookSettings,

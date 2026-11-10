@@ -1,23 +1,14 @@
-import { toolWireName, type ToolPermissionRule } from "@kilo-desktop/plugin-agent/contracts";
+import { toolWireName, type PermissionRule } from "@kilo-desktop/plugin-core/contracts";
 
-import { ENVIRONMENTS_PLUGIN_ID } from "../contracts/index.js";
+import { ENVIRONMENTS_PLUGIN_ID, MUTATING_CONDA_TOOL_IDS } from "../contracts/index";
 
 /**
  * The conda tools that change environments, packages or the configured
  * channels (channel changes alter what every later install trusts). Their
- * `kilo.agent/tool` contributions ask before each call (`approval: "ask"`);
+ * `kilo.core/tool` contributions ask before each call (`approval: "ask"`);
  * the read-only tools stay prompt-free.
  */
-export const MUTATING_CONDA_TOOL_IDS = [
-	"conda.envs.create",
-	"conda.envs.delete",
-	"conda.envs.clone",
-	"conda.packages.install",
-	"conda.packages.remove",
-	"conda.packages.update",
-	"conda.channels.add",
-	"conda.channels.remove",
-] as const;
+export { MUTATING_CONDA_TOOL_IDS };
 export type MutatingCondaToolId = (typeof MUTATING_CONDA_TOOL_IDS)[number];
 
 /** The name Kilo knows a conda tool by (`desktop_environments_conda_envs_create`). */
@@ -105,7 +96,7 @@ export function matchesMutatingCondaCli(command: string): boolean {
  * the app-side prompt, not a boundary. Pair with the bridge policy (gate 4),
  * isolation (gate 3), and agent-shell PATH/env scrubbing where available.
  */
-export function buildCondaCliPermissionRules(): ToolPermissionRule[] {
+export function buildCondaCliPermissionRules(): PermissionRule[] {
 	return condaCliMutationPatterns().map((pattern) => ({
 		permission: "bash",
 		pattern,

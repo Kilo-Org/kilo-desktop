@@ -4,10 +4,14 @@ import { FileDiffIcon, FolderGitIcon, GitCompareIcon, RefreshCwIcon } from "luci
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocalStorage } from "react-use";
 
-import type { DomainState } from "@kilo-desktop/kernel";
-import { useDomain, useDomainState } from "@kilo-desktop/kernel/web";
-import type { PaneProps } from "@kilo-desktop/plugin-sessions/contracts";
-import { Workspaces } from "@kilo-desktop/plugin-workspaces/contracts";
+import type { DomainObjectState } from "@kilo-desktop/kernel";
+import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
+import {
+	workSessionFolders,
+	Workspaces,
+	type PaneProps,
+	type WorkSessionFolder,
+} from "@kilo-desktop/plugin-work-sessions/contracts";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import {
@@ -24,23 +28,18 @@ import {
 	ResizablePanelGroup,
 } from "@kilo-desktop/ui/components/resizable";
 
-import {
-	CHANGES_PANE_METADATA,
-	Repository,
-	sessionFolders,
-	type SessionFolder,
-} from "../../contracts/index.js";
-import { useInitRepository } from "../repository-queries.js";
-import { CollapseDiffButton, collapseButtonForHeaderClick } from "./CollapseDiffButton.js";
-import { DiffConfigProvider, useDiffOptions } from "./diff-options.js";
-import { useDiffTheme } from "./diff-theme.js";
-import { GitDiffHeader } from "./GitDiffHeader.js";
-import { GitDiffSidebar } from "./GitDiffSidebar.js";
-import { createDiffFilesLoader } from "./lib/diff-files-loader.js";
-import { useGitDiffWatcher } from "./use-git-diff-watcher.js";
-import { usePaneVisibility } from "./use-pane-visibility.js";
-import { usePatchLoader } from "./use-patch-loader.js";
-import { DiffWorkerPool } from "./worker-pool.js";
+import { CHANGES_PANE_METADATA, Repository } from "../../contracts";
+import { useInitRepository } from "../shared/repository-queries";
+import { CollapseDiffButton, collapseButtonForHeaderClick } from "./CollapseDiffButton";
+import { DiffConfigProvider, useDiffOptions } from "./diff-options";
+import { useDiffTheme } from "./diff-theme";
+import { GitDiffHeader } from "./GitDiffHeader";
+import { GitDiffSidebar } from "./GitDiffSidebar";
+import { createDiffFilesLoader } from "./lib/diff-files-loader";
+import { useGitDiffWatcher } from "./use-git-diff-watcher";
+import { usePaneVisibility } from "./use-pane-visibility";
+import { usePatchLoader } from "./use-patch-loader";
+import { DiffWorkerPool } from "./worker-pool";
 
 export { GitCompareIcon as ChangesIcon } from "lucide-react";
 
@@ -106,24 +105,24 @@ function deserializeFilesWidth(raw: string): number | undefined {
 
 /**
  * The Changes pane: the uncommitted changes (staged, unstaged and untracked
- * vs HEAD) of the session's folder as a streaming CodeView with a file-tree
- * sidebar, refreshed in place from kilo.workspaces' file changes. The folder
- * picker offers the session's folders (its worktree standing in for the
+ * vs HEAD) of the work session's folder as a streaming CodeView with a file-tree
+ * sidebar, refreshed in place from kilo.work-sessions' file changes. The folder
+ * picker offers the work session's folders (its worktree standing in for the
  * primary); pane metadata from `changes_open` picks a folder and a file to
  * reveal, once per request.
  */
 export function ChangesPane({ workspaceId, directory, pane }: PaneProps) {
-	const workspaceFolders = useDomainState(
+	const workspaceFolders = useDomainObjectState(
 		Workspaces,
 		useCallback(
-			(state: DomainState<typeof Workspaces>) =>
+			(state: DomainObjectState<typeof Workspaces>) =>
 				state.workspaces.find((workspace) => workspace.id === workspaceId)?.folders,
 			[workspaceId],
 		),
 	);
 	const folders = useMemo(
 		() =>
-			sessionFolders(
+			workSessionFolders(
 				(workspaceFolders ?? []).map(({ path, isPrimary }) => ({ path, isPrimary })),
 				directory,
 			),
@@ -171,9 +170,9 @@ function GitDiffTabContent({
 }: {
 	readonly metadata: Readonly<Record<string, string>>;
 	readonly workspaceDirectory: string;
-	readonly folders: readonly SessionFolder[];
+	readonly folders: readonly WorkSessionFolder[];
 }) {
-	const repository = useDomain(Repository);
+	const repository = useDomainObject(Repository);
 	// The person's folder choice is pane-local state above the panel group:
 	// the loader re-fetches when the effective directory changes. Each new
 	// reveal request re-applies its folder once; later picks still win.
@@ -189,7 +188,7 @@ function GitDiffTabContent({
 		setAppliedRevealRequest(revealRequest);
 		if (requestedFolder) setChosenDirectory(requestedFolder);
 	}
-	// The choice wins only while it is still one of the session's folders.
+	// The choice wins only while it is still one of the work session's folders.
 	const effectiveDirectory = folders.some((folder) => folder.path === chosenDirectory)
 		? chosenDirectory
 		: workspaceDirectory;

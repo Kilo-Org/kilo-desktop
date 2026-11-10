@@ -1,7 +1,7 @@
 import si from "systeminformation";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { LocalInferenceUsage } from "../../contracts/schemas.js";
+import type { LocalInferenceUsage } from "../../contracts";
 
 import {
 	appleGpuMemoryUsedBytesFromIoreg,
@@ -9,7 +9,7 @@ import {
 	createTieredUsageSampler,
 	gpuMemoryBytesFromControllers,
 	usageFromSamples,
-} from "./resourceUsage.js";
+} from "./resourceUsage";
 
 const GIBIBYTE = 1024 ** 3;
 

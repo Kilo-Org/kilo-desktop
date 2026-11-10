@@ -1,26 +1,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { definePlugin, type DomainProvider } from "@kilo-desktop/kernel";
-import { createMainKernel, type MainKernel } from "@kilo-desktop/kernel/main";
-import { createMemoryStorage, createTestHost } from "@kilo-desktop/kernel/testing";
-import sessionsManifest from "@kilo-desktop/plugin-sessions/plugin.json";
-import {
-	WorkSessions,
-	SESSIONS_DEFINITIONS,
-	type WorkSession,
-} from "@kilo-desktop/plugin-sessions/contracts";
-import workspacesManifest from "@kilo-desktop/plugin-workspaces/plugin.json";
-import { Workspaces, WORKSPACES_DEFINITIONS } from "@kilo-desktop/plugin-workspaces/contracts";
+import { definePlugin } from "@kilo-desktop/kernel";
+import { createMemoryStorage } from "@kilo-desktop/kernel/testing";
 
-import manifest from "../../../plugin.json";
+import type { WorkSession } from "@kilo-desktop/plugin-work-sessions/contracts";
+
+import { PullRequests, type PullRequest, type PullRequestSnapshot } from "../../contracts";
+import type { PullRequestSource } from "../shared/pull-request-source";
 import {
-	GIT_DEFINITIONS,
-	PullRequests,
-	type PullRequest,
-	type PullRequestSnapshot,
-} from "../../contracts/index.js";
-import { createGitMainEntry } from "../entry.js";
-import type { PullRequestSource } from "./index.js";
+	bootGitMain,
+	stopGitMains,
+	workSession as session,
+	type MemoryStorage,
+} from "../test-boot";
+import { activatePullRequests } from ".";
 
 const WAIT = { timeout: 5_000 };
 
@@ -37,30 +30,11 @@ async function eventually(assertion: () => void): Promise<void> {
 		}
 	}
 }
-const kernels: MainKernel[] = [];
 
 afterEach(async () => {
 	vi.useRealTimers();
-	await Promise.all(kernels.splice(0).map((kernel) => kernel.stop()));
+	await stopGitMains();
 });
-
-function session(id: string, patch: Partial<WorkSession> = {}): WorkSession {
-	return {
-		id,
-		title: "Session",
-		titleSource: "default",
-		pinned: false,
-		archived: false,
-		archiveChangedAt: 0,
-		workspaceId: "w1",
-		worktreeBranch: null,
-		directory: null,
-		chatIds: [],
-		createdAt: 0,
-		updatedAt: 0,
-		...patch,
-	};
-}
 
 const PULL_REQUEST: PullRequest = {
 	number: 12,
@@ -111,94 +85,33 @@ async function boot(
 	options: {
 		sessions?: WorkSession[];
 		lookups?: FakeLookups;
-		storage?: ReturnType<typeof createMemoryStorage>;
+		storage?: MemoryStorage;
+		withoutWorkSessions?: boolean;
 	} = {},
 ) {
 	const lookups = options.lookups ?? new FakeLookups();
-	const storage = options.storage ?? createMemoryStorage();
-	let sessions!: DomainProvider<typeof WorkSessions>;
-	const unused = () => {
-		throw new Error("unused");
-	};
-	const kernel = createMainKernel({
-		host: createTestHost(),
-		hostServices: () => ({ storage }),
-		registrations: [
-			{
-				manifest: workspacesManifest,
-				definitions: WORKSPACES_DEFINITIONS,
-				entry: definePlugin({
-					activate(sdk) {
-						sdk.domains.provide(Workspaces, {
-							initialState: {
-								workspaces: [
-									{
-										id: "w1",
-										name: "App",
-										folders: [{ id: "f1", path: "/app", isPrimary: true, position: 0 }],
-										createdAt: 0,
-										updatedAt: 0,
-									},
-								],
-								activeId: "w1",
-								unavailableFolderIds: [],
-							},
-							methods: {
-								create: unused,
-								update: unused,
-								remove: unused,
-								setActive: unused,
-								authorize: () => ({ allowed: true }),
-								checkFolders: unused,
-							},
-						});
-					},
-				}),
-			},
-			{
-				manifest: sessionsManifest,
-				definitions: SESSIONS_DEFINITIONS,
-				entry: definePlugin({
-					activate(sdk) {
-						sessions = sdk.domains.provide(WorkSessions, {
-							initialState: { sessions: options.sessions ?? [] },
-							methods: {
-								create: unused,
-								rename: unused,
-								setPinned: unused,
-								setArchived: unused,
-								setWorktreeBranch: unused,
-								remove: unused,
-								importLegacyPins: unused,
-								isolationOptions: () => null,
-							},
-						});
-					},
-				}),
-			},
-			{
-				manifest,
-				definitions: GIT_DEFINITIONS,
-				entry: createGitMainEntry({ pullRequestSource: lookups }),
-			},
-		],
+	const host = await bootGitMain({
+		entry: definePlugin({
+			activate: (sdk) => void activatePullRequests(sdk, { source: lookups }),
+		}),
+		core: null,
+		workSessions: options.withoutWorkSessions ? null : { workSessions: options.sessions ?? [] },
+		...(options.storage ? { storage: options.storage } : {}),
 	});
-	kernels.push(kernel);
-	await kernel.start();
-	const pullRequests = kernel.kernelSdk.domains.get(PullRequests)!;
+	const pullRequests = host.kernel.kernelSdk.domainObjects.get(PullRequests)!;
 	return {
-		kernel,
+		kernel: host.kernel,
 		lookups,
-		storage,
+		storage: host.storage,
 		pullRequests,
 		state: () => pullRequests.getState(),
-		setSessions: (list: WorkSession[]) => sessions.setState({ sessions: list }),
+		setSessions: (list: WorkSession[]) => host.workSessions!.setWorkSessions(list),
 	};
 }
 
 const SESSIONS = [
 	session("local"),
-	session("worktree", { worktreeBranch: "kilo/fix", directory: "/app/.kilo/worktrees/fix" }),
+	session("worktree", { branch: "kilo/fix", directory: "/app/.kilo/worktrees/fix" }),
 	session("shares-checkout"),
 	session("unscoped", { workspaceId: null, directory: "/chats/x" }),
 ];
@@ -316,5 +229,54 @@ describe("kilo.git/pull-requests", () => {
 		const host = await boot({ storage });
 
 		expect(Object.keys(host.state().byDirectory)).toEqual(["/app"]);
+	});
+
+	it("drops a closed window's report, pausing until a window is visible again", async () => {
+		const lookups = new FakeLookups();
+		lookups.answers.set("/app", snapshot({ branch: "main", pullRequest: null }));
+		const host = await boot({ sessions: [session("local")], lookups });
+		host.kernel.windowEvents.opened("main", { role: "main" });
+		await host.pullRequests.methods.setActive({ windowId: "main", directories: [], visible: true });
+		await vi.waitFor(() => expect(lookups.batches).toHaveLength(1), WAIT);
+
+		host.kernel.windowEvents.closed("main");
+		await host.pullRequests.methods.setActive({
+			windowId: "other",
+			directories: [],
+			visible: false,
+		});
+		await host.pullRequests.methods.setActive({
+			windowId: "other",
+			directories: [],
+			visible: true,
+		});
+
+		await vi.waitFor(() => expect(lookups.batches).toHaveLength(2), WAIT);
+	});
+
+	it("looks a directory up again after 2 and 8 seconds when asked to settle", async () => {
+		const lookups = new FakeLookups();
+		lookups.answers.set("/app", snapshot());
+		const host = await boot({ sessions: [session("local")], lookups });
+		await host.pullRequests.methods.setActive({ windowId: "main", directories: [], visible: true });
+		await vi.waitFor(() => expect(host.state().byDirectory["/app"]).toBeDefined(), WAIT);
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+
+		await host.pullRequests.methods.refresh({ directory: "/app", settle: true });
+		await vi.advanceTimersByTimeAsync(8_000);
+
+		expect(lookups.single).toEqual(["/app", "/app", "/app"]);
+	});
+
+	it("works without kilo.work-sessions, looking nothing up", async () => {
+		const host = await boot({ withoutWorkSessions: true });
+
+		await host.pullRequests.methods.setActive({ windowId: "main", directories: [], visible: true });
+		await host.pullRequests.methods.refresh({ directory: "/app" });
+		await new Promise((resolve) => setTimeout(resolve, 20));
+
+		expect(host.lookups.batches).toEqual([]);
+		expect(host.lookups.single).toEqual([]);
+		expect(host.state().byDirectory).toEqual({});
 	});
 });

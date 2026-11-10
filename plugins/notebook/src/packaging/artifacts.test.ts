@@ -7,7 +7,7 @@ import {
 	NTERACT_RELEASE,
 	RUNTIMED_ARTIFACTS,
 	runtimedDownloadUrl,
-} from "./artifacts.js";
+} from "./artifacts";
 
 describe("notebook distribution artifacts", () => {
 	it("pins every bundled nteract component to the same nightly release", () => {

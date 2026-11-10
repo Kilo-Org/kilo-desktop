@@ -7,7 +7,7 @@ import {
 	isTriggerLoading,
 	isUnbornRepository,
 	type SelectorQueryState,
-} from "./branch-selector-state.js";
+} from "./branch-selector-state";
 
 const ready: SelectorQueryState = {
 	workspaceDirectory: "/repo",

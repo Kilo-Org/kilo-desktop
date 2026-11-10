@@ -1,6 +1,6 @@
 import { createKiloClient, type KiloClient } from "@kilocode/sdk/v2/client";
 
-import type { ServerConnection } from "@kilo-desktop/plugin-agent/contracts";
+import type { ServerConnection } from "@kilo-desktop/plugin-core/contracts";
 
 /** Identifies a running server: a restart may change its address or password. */
 export const connectionKey = (connection: ServerConnection) =>

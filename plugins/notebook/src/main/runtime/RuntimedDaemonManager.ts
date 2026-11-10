@@ -3,7 +3,7 @@ import { createConnection } from "node:net";
 
 import type { KernelLogger } from "@kilo-desktop/kernel";
 
-import type { PeerTrustDecision } from "./daemon-peer-auth.js";
+import type { PeerTrustDecision } from "./daemon-peer-auth";
 
 /**
  * Authenticates the process answering the daemon socket before we trust it.

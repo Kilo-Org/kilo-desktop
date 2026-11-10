@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createMemoryStorage } from "@kilo-desktop/kernel/testing";
 
-import { importOriginLocalInference, type OriginLocalInferenceStore } from "./import-origin.js";
+import { importOriginLocalInference, type OriginLocalInferenceStore } from "./import-origin";
 
 const directories: string[] = [];
 afterEach(async () => {

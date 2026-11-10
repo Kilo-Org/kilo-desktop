@@ -13,11 +13,11 @@ import { type Editor, type EditorOptions } from "@pierre/diffs/edit";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { useContextKey, useDomain, useDomainState } from "@kilo-desktop/kernel/web";
-import { flagKey } from "@kilo-desktop/plugin-flags/contracts";
-import { Panes, type Pane } from "@kilo-desktop/plugin-sessions/contracts";
-import { Telemetry } from "@kilo-desktop/plugin-telemetry/contracts";
-import { FIND_BAR_FEATURE_FLAG, FindScope } from "@kilo-desktop/ui/components/find-bar";
+import { flagKey, KernelTelemetry } from "@kilo-desktop/kernel";
+import { useContextKey, useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
+import { FIND_BAR_FLAG } from "@kilo-desktop/plugin-chat/contracts";
+import { Panes, type Pane } from "@kilo-desktop/plugin-work-sessions/contracts";
+import { FindScope } from "@kilo-desktop/ui/components/find-bar";
 import { MediaViewer, type LightboxItem } from "@kilo-desktop/ui/components/media-lightbox";
 import { Toggle } from "@kilo-desktop/ui/components/toggle";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
@@ -42,7 +42,7 @@ import {
 } from "@kilo-desktop/ui/components/empty";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
-import { Documents } from "../contracts/index.js";
+import { Documents, FILES_TELEMETRY_EVENTS } from "../contracts/index.js";
 import type { FileReadResult } from "../contracts/models.js";
 import {
 	absoluteFilePath,
@@ -74,7 +74,7 @@ import { useFilesTheme } from "./theme.js";
 import "./files.css";
 
 export interface FilesViewProps {
-	readonly sessionId: string;
+	readonly workSessionId: string;
 	readonly pane: Pane;
 	/** The session's folders: its workspace's, its worktree standing in for the primary. */
 	readonly workspaceFolders: readonly FilesWorkspaceFolder[];
@@ -95,9 +95,9 @@ function resolvedMetadata(
 	pane: Pane,
 	workspaceFolders: readonly FilesWorkspaceFolder[],
 ): Readonly<Record<string, string>> {
-	const target = filePaneTarget(pane.metadata, workspaceFolders);
+	const target = filePaneTarget(pane, workspaceFolders);
 	if (target) return { ...pane.metadata, ...target };
-	const objectId = pane.metadata[FILE_PANE_METADATA.objectId];
+	const objectId = pane.object?.id;
 	if (!objectId) return pane.metadata;
 	const separator = Math.max(objectId.lastIndexOf("/"), objectId.lastIndexOf("\\"));
 	return {
@@ -191,10 +191,10 @@ function revealEditorLocation(
 
 const REVEAL_FILE_FRAMES = 60;
 
-export function FilesView({ sessionId, pane, workspaceFolders }: FilesViewProps) {
-	const documents = useDomain(Documents);
-	const panes = useDomain(Panes);
-	const telemetry = useDomain(Telemetry);
+export function FilesView({ workSessionId, pane, workspaceFolders }: FilesViewProps) {
+	const documents = useDomainObject(Documents);
+	const panes = useDomainObject(Panes);
+	const telemetry = useDomainObject(KernelTelemetry);
 	const queryClient = useQueryClient();
 	const paneId = pane.id;
 	const title = pane.title;
@@ -210,7 +210,7 @@ export function FilesView({ sessionId, pane, workspaceFolders }: FilesViewProps)
 			if (!panes || samePane(current, patch)) return;
 			void panes.methods
 				.update({
-					sessionId,
+					workSessionId,
 					paneId: current.id,
 					...(patch.title === undefined ? {} : { title: patch.title }),
 					...(patch.iconKey === undefined ? {} : { iconKey: patch.iconKey }),
@@ -218,14 +218,14 @@ export function FilesView({ sessionId, pane, workspaceFolders }: FilesViewProps)
 				})
 				.catch(() => undefined);
 		},
-		[panes, sessionId],
+		[panes, workSessionId],
 	);
-	const isActivePane = useDomainState(
+	const isActivePane = useDomainObjectState(
 		Panes,
 		useCallback(
-			(state: { bySession: Readonly<Record<string, { activePaneId: string | null }>> }) =>
-				state.bySession[sessionId]?.activePaneId === paneId,
-			[paneId, sessionId],
+			(state: { byWorkSession: Readonly<Record<string, { activePaneId: string | null }>> }) =>
+				state.byWorkSession[workSessionId]?.activePaneId === paneId,
+			[paneId, workSessionId],
 		),
 	);
 	const defaultWorkspaceDirectory =
@@ -259,7 +259,7 @@ export function FilesView({ sessionId, pane, workspaceFolders }: FilesViewProps)
 	const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 	const [selectionSyncVersion, setSelectionSyncVersion] = useState(0);
 	const appearance = useFilesTheme();
-	const findEnabled = useContextKey(flagKey(FIND_BAR_FEATURE_FLAG));
+	const findEnabled = useContextKey(flagKey(FIND_BAR_FLAG));
 	const [closeRequest, setCloseRequest] = useState<CloseRequest | null>(null);
 	const editorRef = useRef<Editor<"file", undefined, undefined> | null>(null);
 	const [chosenMode, setChosenMode] = useState<{
@@ -466,8 +466,10 @@ export function FilesView({ sessionId, pane, workspaceFolders }: FilesViewProps)
 	}, []);
 
 	const track = useCallback(
-		(event: "File Opened" | "Notebook Opened", source: string) => {
-			void telemetry?.methods.track({ event, data: { source } }).catch(() => undefined);
+		(event: keyof typeof FILES_TELEMETRY_EVENTS, source: string) => {
+			void telemetry?.methods
+				.track({ event: FILES_TELEMETRY_EVENTS[event], data: { source } })
+				.catch(() => undefined);
 		},
 		[telemetry],
 	);
@@ -476,18 +478,18 @@ export function FilesView({ sessionId, pane, workspaceFolders }: FilesViewProps)
 		(relativePath: string) => {
 			if (!activeWorkspaceDirectory || !panes) return;
 			void openFile(panes, {
-				sessionId,
+				workSessionId,
 				path: absoluteFilePath(activeWorkspaceDirectory, relativePath),
 			}).then(
 				(opened) => {
 					if (!opened) return;
-					if (!isNotebookFile(relativePath)) track("File Opened", "tree");
-					else if (opened.kind !== FILES_PANE_KIND) track("Notebook Opened", "tree");
+					if (!isNotebookFile(relativePath)) track("fileOpened", "tree");
+					else if (opened.kind !== FILES_PANE_KIND) track("notebookOpened", "tree");
 				},
 				() => undefined,
 			);
 		},
-		[activeWorkspaceDirectory, panes, sessionId, track],
+		[activeWorkspaceDirectory, panes, workSessionId, track],
 	);
 
 	const selectWorkspaceFolder = useCallback(
@@ -619,7 +621,7 @@ export function FilesView({ sessionId, pane, workspaceFolders }: FilesViewProps)
 		() => (dirty ? () => new Promise<boolean>((resolve) => setCloseRequest({ resolve })) : null),
 		[dirty],
 	);
-	useCloseGuard(sessionId, paneId, closeGuard);
+	useCloseGuard(workSessionId, paneId, closeGuard);
 
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
@@ -675,7 +677,7 @@ export function FilesView({ sessionId, pane, workspaceFolders }: FilesViewProps)
 		try {
 			const opened = panes
 				? await openFile(panes, {
-						sessionId,
+						workSessionId,
 						path: absoluteFilePath(documentWorkspaceDirectory, selectedPath),
 					})
 				: null;
@@ -683,13 +685,13 @@ export function FilesView({ sessionId, pane, workspaceFolders }: FilesViewProps)
 				setNotebookOpenError("The Notebook panel is unavailable.");
 				return;
 			}
-			track("Notebook Opened", "files-button");
+			track("notebookOpened", "files-button");
 		} catch (error) {
 			setNotebookOpenError(errorMessage(error));
 		} finally {
 			setNotebookOpening(false);
 		}
-	}, [documentWorkspaceDirectory, panes, selectedPath, sessionId, track]);
+	}, [documentWorkspaceDirectory, panes, selectedPath, workSessionId, track]);
 
 	useEffect(() => {
 		setNotebookOpenError(null);

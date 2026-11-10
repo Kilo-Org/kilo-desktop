@@ -4,7 +4,7 @@ import { page } from "vitest/browser";
 
 import { revealInFileManagerLabel } from "@kilo-desktop/ui/lib/reveal-in-file-manager";
 
-import { SIGNED_OUT } from "../../test/local-inference-host.js";
+import { SIGNED_OUT } from "../../test/local-inference-host";
 
 import type {
 	LocalInferenceHardwareProfile,
@@ -12,14 +12,14 @@ import type {
 	LocalModel,
 	ModelCatalogEntry,
 	ModelDownload,
-} from "../../contracts/index.js";
+} from "../../contracts/index";
 import {
 	authenticatedAuth,
 	expandModel,
 	renderSettings,
 	staticNavigation,
 	usageSnapshot,
-} from "../../test/render-local-model-server-settings.js";
+} from "../../test/render-local-model-server-settings";
 
 afterEach(() => {
 	cleanup();

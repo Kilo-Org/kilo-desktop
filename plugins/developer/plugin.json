@@ -4,11 +4,11 @@
 	"displayName": "Developer",
 	"version": "1.0.0",
 	"description": "Tools for people building and debugging Kilo: the Developer settings category and Diagnostics.",
+	"web": "./src/web/index.ts",
 	"when": {
-		"all": ["kilo.flags/flag:developer"]
+		"all": ["kernel/flag:developer"]
 	},
 	"requires": {
-		"kilo.flags/flags": "optional",
 		"kilo.shell/settings-category": "optional",
 		"kilo.shell/settings-section": "optional"
 	},
@@ -17,6 +17,18 @@
 	},
 	"contributes": {
 		"extensions": {
+			"kernel/flag": [
+				{
+					"id": "developer",
+					"description": "Developer tools: Settings → Developer → Diagnostics.",
+					"default": false
+				},
+				{
+					"id": "force-onboarding",
+					"description": "Shows onboarding on every launch (development).",
+					"default": false
+				}
+			],
 			"kilo.shell/settings-category": [
 				{
 					"id": "developer",
@@ -28,7 +40,7 @@
 				{
 					"id": "diagnostics",
 					"title": "Diagnostics",
-					"description": "What's running: the kernel, plugins and services, any problems, and the extension points and domain objects they share.",
+					"description": "What's running: the kernel, plugins and services, flags, identity, any problems, and the domain model they share.",
 					"category": "kilo.developer/developer",
 					"priority": 10
 				}

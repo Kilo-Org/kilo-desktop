@@ -1,7 +1,7 @@
 import type { McpAppResource, McpAppsHost } from "@assistant-ui/react";
 import { createContext, useContext, useMemo, useRef, type ReactNode } from "react";
 
-import type { ServerConnection } from "@kilo-desktop/plugin-agent/contracts";
+import type { ServerConnection } from "@kilo-desktop/plugin-core/contracts";
 
 import { useChatConnection } from "../runtime/chat-connection";
 import { hostableMcpAppByResource, type HostableMcpApp } from "./mcp-app-registry";

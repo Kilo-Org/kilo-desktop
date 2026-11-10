@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import type { DomainHandle, PluginSdk } from "@kilo-desktop/kernel";
+import type { DomainObjectHandle, PluginSdk } from "@kilo-desktop/kernel";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import {
@@ -37,7 +37,7 @@ export interface BoardStore {
 	deleteColumn(columnId: string): void;
 }
 
-type BoardHandle = DomainHandle<typeof Board>;
+type BoardHandle = DomainObjectHandle<typeof Board>;
 
 /**
  * The window's view of `kilo.workspace-board/board` with optimistic changes. A change
@@ -57,7 +57,7 @@ export function createBoardStore(
 	let awaitedRevision = 0;
 	let failed = false;
 
-	const handle = (): BoardHandle | null => sdk.domains.get(Board);
+	const handle = (): BoardHandle | null => sdk.domainObjects.get(Board);
 	const saved = () => handle()?.getState();
 	const notify = () => {
 		for (const listener of listeners) listener();
@@ -71,7 +71,7 @@ export function createBoardStore(
 	};
 
 	let stopFollowing: (() => void) | undefined;
-	sdk.domains.track(Board, {
+	sdk.domainObjects.track(Board, {
 		added(board) {
 			stopFollowing = board.subscribe(() => {
 				settle();

@@ -5,7 +5,7 @@ import {
 	buildCondaCliPermissionRules,
 	condaPermissionAction,
 	matchesMutatingCondaCli,
-} from "./conda-permissions.js";
+} from "./conda-permissions";
 
 const MUTATING = [
 	"desktop_environments_conda_envs_create",

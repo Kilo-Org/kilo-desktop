@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ImageOffIcon } from "lucide-react";
 import { useMemo, useState, type KeyboardEvent } from "react";
 
-import { resolvePathInFolders } from "@kilo-desktop/plugin-workspaces/contracts";
+import { resolvePathInFolders } from "@kilo-desktop/plugin-work-sessions/contracts";
 import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import type { Pane } from "@kilo-desktop/plugin-sessions/contracts";
+import type { Pane } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import {
 	NOTEBOOK_THEME_MESSAGE_TYPE,
@@ -39,7 +39,7 @@ describe("the Notebook pane", () => {
 	it("asks a signed-out person to sign in instead of showing the notebook", async () => {
 		vi.stubEnv("VITE_NTERACT_ORIGIN", DESKTOP_ORIGIN);
 		const host = await renderPane(notebookPane("pane_a", { notebookId: NOTEBOOK_ID }), {
-			identity: SIGNED_OUT,
+			account: SIGNED_OUT,
 		});
 
 		await expect.element(page.getByTestId("kilo-auth-gate-signin")).toBeVisible();
@@ -51,13 +51,13 @@ describe("the Notebook pane", () => {
 
 		await page.getByTestId("kilo-auth-gate-sign-in-button").click();
 		await vi.waitFor(() => expect(host.signIns).toHaveLength(1), WAIT);
-		await host.setIdentity(SIGNED_IN);
+		await host.setAccount(SIGNED_IN);
 		await expect.element(page.getByTestId("notebook-frame")).toBeVisible();
 	});
 
 	it("shows its loading state until sign-in is known", async () => {
 		await renderPane(notebookPane("pane_a", { notebookId: NOTEBOOK_ID }), {
-			identity: { ...SIGNED_IN, authenticated: null, connection: "pending" },
+			account: { ...SIGNED_IN, signedIn: null, connection: "pending" },
 		});
 
 		await expect.element(page.getByTestId("notebook-view-loading")).toBeVisible();
@@ -93,7 +93,7 @@ describe("the Notebook pane", () => {
 			);
 			expect(openPort).toHaveBeenCalledExactlyOnceWith("host", {
 				notebookId: NOTEBOOK_ID,
-				sessionId: SESSION_ID,
+				workSessionId: SESSION_ID,
 				title: "Notebook",
 			});
 			expect(postMessage).toHaveBeenCalledExactlyOnceWith(
@@ -174,7 +174,7 @@ describe("the Notebook pane", () => {
 
 		expect(openPort).toHaveBeenCalledWith("host", {
 			notebookId: NOTEBOOK_ID,
-			sessionId: SESSION_ID,
+			workSessionId: SESSION_ID,
 			title: "Notebook",
 			notebookPath: "/projects/analysis.ipynb",
 			workingDirectory: "/projects",
@@ -217,7 +217,7 @@ describe("the Notebook pane", () => {
 
 		await expect.element(page.getByTestId("notebook-file-opening")).toBeVisible();
 		await vi.waitFor(
-			() => expect(host.calls.resolve).toEqual([{ sessionId: SESSION_ID, paneId: "pane_a" }]),
+			() => expect(host.calls.resolve).toEqual([{ workSessionId: SESSION_ID, paneId: "pane_a" }]),
 			WAIT,
 		);
 	});

@@ -5,15 +5,16 @@ import type { ReactNode } from "react";
 
 import type { PluginEntry } from "@kilo-desktop/kernel";
 
-import { ComposerAction } from "../../contracts";
+import { chatPaneObject, ComposerAction } from "../../contracts";
 
-import { agentPane, chatSummary, renderAgentPane, session } from "../../test/chat-host";
+import { agentPane, chatSummary, workSession } from "../../test/chat-host";
 import {
 	assistantMessage,
 	FakeKiloServer,
 	userMessage,
 	type RecordedRequest,
 } from "../../test/fake-kilo-server";
+import { renderChat } from "../../test/render-chat";
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -40,24 +41,6 @@ function serverWithChat(cost = 0) {
 	return server;
 }
 
-/** kilo.flags with the named flags on. */
-function flags(...on: string[]) {
-	return {
-		manifest: {
-			manifestVersion: 1,
-			id: "kilo.flags",
-			displayName: "Flags",
-			version: "1.0.0",
-			contextKeys: [{ id: "flag:*", scope: "global" }],
-		},
-		main: {
-			activate(sdk) {
-				for (const flag of on) sdk.context.set(`flag:${flag}`, true);
-			},
-		} satisfies PluginEntry,
-	};
-}
-
 async function promptsTo(server: FakeKiloServer, chatId: string): Promise<RecordedRequest[]> {
 	let prompts: RecordedRequest[] = [];
 	await vi.waitFor(() => {
@@ -75,7 +58,7 @@ const textOf = (prompt: RecordedRequest) =>
 
 describe("attachments", () => {
 	it("adds the files picked from the attach button", async () => {
-		await renderAgentPane();
+		await renderChat();
 		const click = vi.spyOn(HTMLInputElement.prototype, "click").mockImplementation(() => {});
 
 		await page.getByTestId("kilo-composer-action-attach").click();
@@ -92,7 +75,7 @@ describe("attachments", () => {
 	});
 
 	it("adds a file pasted into the input", async () => {
-		await renderAgentPane();
+		await renderChat();
 		await input().click();
 		const transfer = new DataTransfer();
 		transfer.items.add(new File(["png"], "shot.png", { type: "image/png" }));
@@ -108,7 +91,7 @@ describe("attachments", () => {
 
 describe("the / menu", () => {
 	it("lists Kilo's commands for the chat's folder and inserts the chosen one as a chip", async () => {
-		const host = await renderAgentPane();
+		const host = await renderChat();
 		await input().click();
 		await userEvent.keyboard("/rev");
 
@@ -125,9 +108,9 @@ describe("the / menu", () => {
 describe("Enter while the agent works", () => {
 	it("queues the text, and on an empty composer sends the next queued prompt now", async () => {
 		const server = serverWithChat();
-		await renderAgentPane({
+		await renderChat({
 			server,
-			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
 			chats: [chatSummary("ses_a")],
 		});
 		await expect.element(page.getByText("Done.")).toBeVisible();
@@ -156,11 +139,11 @@ describe("Enter while the agent works", () => {
 describe("queued prompts with prompt-queue-editing", () => {
 	it("pauses, edits and deletes queued prompts before they are sent", async () => {
 		const server = serverWithChat();
-		await renderAgentPane({
+		await renderChat({
 			server,
-			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
 			chats: [chatSummary("ses_a")],
-			plugins: [flags("prompt-queue-editing")],
+			flags: { "prompt-queue-editing": true },
 		});
 		await expect.element(page.getByText("Done.")).toBeVisible();
 		await vi.waitFor(() => expect(server.openStreams).toBe(1));
@@ -200,9 +183,9 @@ describe("queued prompts with prompt-queue-editing", () => {
 describe("the footer", () => {
 	it("shows where a chat works and its context usage", async () => {
 		const server = serverWithChat(0.42);
-		await renderAgentPane({
+		await renderChat({
 			server,
-			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
 			chats: [chatSummary("ses_a")],
 		});
 
@@ -212,9 +195,9 @@ describe("the footer", () => {
 	});
 
 	it("sits below the composer, leaving its bottom edge uncovered", async () => {
-		await renderAgentPane({
+		await renderChat({
 			server: serverWithChat(0.42),
-			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
 			chats: [chatSummary("ses_a")],
 		});
 		await expect.element(page.getByTestId("kilo-composer-session-mode")).toBeVisible();
@@ -233,11 +216,11 @@ describe("the footer", () => {
 			title: "Fix login",
 			messages: [userMessage("ses_a", "msg_u1", "Hello")],
 		});
-		await renderAgentPane({
+		await renderChat({
 			server,
 			directory: "/worktrees/fix-login",
-			session: session({ directory: "/worktrees/fix-login", worktreeBranch: "fix-login" }),
-			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			workSession: workSession({ directory: "/worktrees/fix-login", branch: "fix-login" }),
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
 			chats: [chatSummary("ses_a", { directory: "/worktrees/fix-login" })],
 		});
 
@@ -249,9 +232,9 @@ describe("the footer", () => {
 
 describe("a new chat's footer", () => {
 	it("says where it will work before its first message, without usage yet", async () => {
-		await renderAgentPane({
+		await renderChat({
 			directory: "/worktrees/fix-login",
-			session: session({ directory: "/worktrees/fix-login", worktreeBranch: "fix-login" }),
+			workSession: workSession({ directory: "/worktrees/fix-login", branch: "fix-login" }),
 		});
 
 		const footer = page.getByTestId("kilo-composer-footer");
@@ -265,7 +248,7 @@ describe("a new chat's footer", () => {
 	});
 
 	it("shows the footer composer actions, such as the branch", async () => {
-		await renderAgentPane({
+		await renderChat({
 			plugins: [footerContributor(() => <span data-qa-id="test-branch">main</span>)],
 		});
 
@@ -279,9 +262,9 @@ describe("unavailable workspace folders", () => {
 	const warning = () => page.getByTestId("kilo-composer-unavailable-folders");
 
 	it("warns under a chat's composer and opens the workspace's settings", async () => {
-		const host = await renderAgentPane({
+		const host = await renderChat({
 			server: serverWithChat(),
-			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
 			chats: [chatSummary("ses_a")],
 			unavailableFolderIds: ["f-lib"],
 		});
@@ -292,7 +275,7 @@ describe("unavailable workspace folders", () => {
 	});
 
 	it("warns under a new chat's composer", async () => {
-		await renderAgentPane({ unavailableFolderIds: ["f-lib"] });
+		await renderChat({ unavailableFolderIds: ["f-lib"] });
 
 		await expect
 			.element(
@@ -302,14 +285,14 @@ describe("unavailable workspace folders", () => {
 	});
 
 	it("stays out of the way while every folder is there", async () => {
-		await renderAgentPane();
+		await renderChat();
 		await expect.element(input()).toBeVisible();
 
 		await expect.element(warning()).not.toBeInTheDocument();
 	});
 
 	it("says nothing for a chat outside any workspace", async () => {
-		await renderAgentPane({ workspaceId: null, unavailableFolderIds: ["f-lib"] });
+		await renderChat({ workspaceId: null, unavailableFolderIds: ["f-lib"] });
 		await expect.element(input()).toBeVisible();
 
 		await expect.element(warning()).not.toBeInTheDocument();

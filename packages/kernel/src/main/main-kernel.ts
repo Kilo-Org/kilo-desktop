@@ -2,7 +2,7 @@ import {
 	KERNEL_CONTEXT_KEYS,
 	KERNEL_DEFINITIONS,
 	KernelApp,
-	KernelDomains,
+	KernelDomainObjects,
 	KernelExtensions,
 	KernelKeybindings,
 	KernelPlugins,
@@ -13,16 +13,20 @@ import {
 	KernelWindows,
 	KernelWindowView,
 	type AppPhase,
+	type FlagValue,
 } from "../builtins";
 import { CommandService } from "../commands";
 import { windowOrigin } from "../extension-registry";
-import type { DomainState } from "../domain";
-import type { DomainProvider } from "../domain-registry";
+import type { DomainObjectState } from "../domain-object";
+import type { DomainObjectProvider } from "../domain-object-registry";
 import { KernelError } from "../errors";
 import { KERNEL_OWNER, ownerOf, type QualifiedId } from "../ids";
 import { createKernel, type Kernel, type KernelOptions } from "../kernel";
 import type { KeyboardPlatform } from "../keybindings";
+import { provideFlags } from "./flags";
+import { provideIdentity } from "./identity";
 import { ServiceSupervisor } from "./service-supervisor";
+import { provideTelemetry } from "./telemetry";
 
 export interface WindowOpenRequest {
 	readonly view: QualifiedId;
@@ -63,6 +67,8 @@ export interface MainKernelHost {
 		saveDisabled(disabled: readonly string[]): void;
 	};
 	readonly initialSystem?: Partial<SystemState>;
+	/** Flag values forced by the build or the environment (development, e2e); they win over the flag source. */
+	readonly flagOverrides?: Readonly<Record<string, FlagValue>>;
 }
 
 export interface MainKernelOptions extends Omit<
@@ -114,8 +120,10 @@ export const DEFAULT_STOP_CAP_MS = 10_000;
 
 /**
  * The main-process kernel. Owns the application lifecycle and the kernel's
- * hook domain objects (`kernel/app`, `plugins`, `services`, `domains`,
- * `extensions`, `windows`, `system`, `keybindings`), runs the quit and
+ * hook domain objects (`kernel/app`, `plugins`, `services`, `domain-objects`,
+ * `extensions`, `windows`, `system`, `keybindings`) and its product
+ * vocabulary (`identity`, `flags`, `telemetry`, filled from above through
+ * their extension points), runs the quit and
  * window-close decisions, and supervises services. Host primitives (dialogs,
  * clipboard…) are provided by the host through `kernelSdk`. The plugins the
  * user turned off are read from the host once, here, so turning one on or off
@@ -144,7 +152,7 @@ export function createMainKernel(options: MainKernelOptions): MainKernel {
 	kernelSdk.context.set("safeMode", host.safeMode ?? false);
 
 	let launchUrl: string | null = null;
-	const app = kernelSdk.domains.provide(KernelApp, {
+	const app = kernelSdk.domainObjects.provide(KernelApp, {
 		initialState: {
 			phase: "starting",
 			safeMode: host.safeMode ?? false,
@@ -169,12 +177,15 @@ export function createMainKernel(options: MainKernelOptions): MainKernel {
 	};
 
 	providePlugins(core, host, [...disabledAtLaunch]);
-	provideDomainsAndExtensions(core);
+	provideDomainObjectsAndExtensions(core);
 	const windows = provideWindows(core, host);
 	const system = provideSystem(core, host);
 	provideKeybindings(core, host);
+	provideIdentity(core);
+	provideFlags(core, host.flagOverrides);
+	provideTelemetry(core);
 
-	const servicesProvider = kernelSdk.domains.provide(KernelServices, {
+	const servicesProvider = kernelSdk.domainObjects.provide(KernelServices, {
 		initialState: { services: {} },
 		methods: {
 			ensureStarted: ({ key }) => services.ensureStarted(key),
@@ -193,7 +204,7 @@ export function createMainKernel(options: MainKernelOptions): MainKernel {
 		extensions: core.extensions,
 		...(options.transport ? { transport: options.transport } : {}),
 		focusedWindow: () =>
-			Object.entries(kernelSdk.domains.get(KernelWindows)?.getState().windows ?? {}).find(
+			Object.entries(kernelSdk.domainObjects.get(KernelWindows)?.getState().windows ?? {}).find(
 				([, window]) => window.focused,
 			)?.[0],
 	});
@@ -280,7 +291,7 @@ function providePlugins(core: Kernel, host: MainKernelHost, disabledAtLaunch: st
 		host.plugins?.saveDisabled(next);
 		provider.setState(snapshot());
 	};
-	const provider: DomainProvider<typeof KernelPlugins> = core.kernelSdk.domains.provide(
+	const provider: DomainObjectProvider<typeof KernelPlugins> = core.kernelSdk.domainObjects.provide(
 		KernelPlugins,
 		{
 			initialState: snapshot(),
@@ -304,27 +315,56 @@ function providePlugins(core: Kernel, host: MainKernelHost, disabledAtLaunch: st
 	core.onIssuesChange(() => provider.setState(snapshot()));
 }
 
-function provideDomainsAndExtensions(core: Kernel): void {
-	const domains = core.kernelSdk.domains.provide(KernelDomains, {
-		initialState: { provided: [] },
+function provideDomainObjectsAndExtensions(core: Kernel): void {
+	const snapshot = () => {
+		const provided = new Set(core.domainObjects.providedIds());
+		return {
+			domainObjects: Object.fromEntries(
+				[...core.discovery.domainObjects].map(([id, { owner, definition }]) => [
+					id,
+					{
+						owner,
+						home: definition.home,
+						...(definition.description === undefined
+							? {}
+							: { description: definition.description }),
+						...(definition.objectType ? { objectType: definition.objectType.id } : {}),
+						provided: provided.has(id) || id === KernelDomainObjects.id,
+					},
+				]),
+			),
+		};
+	};
+	const domainObjects = core.kernelSdk.domainObjects.provide(KernelDomainObjects, {
+		initialState: snapshot(),
 		methods: {},
 	});
-	const publish = () =>
-		domains.setState({
-			provided: core.domains.providedIds().filter((id) => id !== KernelDomains.id),
-		});
-	publish();
-	core.domains.onChange((id, change) => {
-		if (id === KernelDomains.id) return;
-		publish();
-		domains.emit(change, { id });
+	core.domainObjects.onChange((id, change) => {
+		if (id === KernelDomainObjects.id) return;
+		domainObjects.setState(snapshot());
+		domainObjects.emit(change, { id });
 	});
 
-	const extensions = core.kernelSdk.domains.provide(KernelExtensions, {
-		initialState: {},
+	const extensions = core.kernelSdk.domainObjects.provide(KernelExtensions, {
+		initialState: {
+			extensionPoints: Object.fromEntries(
+				[...core.discovery.extensionPoints].map(([id, { owner, definition }]) => [
+					id,
+					{
+						owner,
+						kind: definition.kind,
+						...(definition.description === undefined
+							? {}
+							: { description: definition.description }),
+					},
+				]),
+			),
+		},
 		methods: {},
 	});
-	core.extensions.subscribe((pointId) => extensions.emit("contributions-changed", { pointId }));
+	core.extensions.subscribe((extensionPointId) =>
+		extensions.emit("contributions-changed", { extensionPointId }),
+	);
 }
 
 function provideWindows(core: Kernel, host: MainKernelHost): MainKernel["windowEvents"] {
@@ -352,7 +392,7 @@ function provideWindows(core: Kernel, host: MainKernelHost): MainKernel["windowE
 		patch(windowId, { hidden });
 	};
 
-	const provider: DomainProvider<typeof KernelWindows> = core.kernelSdk.domains.provide(
+	const provider: DomainObjectProvider<typeof KernelWindows> = core.kernelSdk.domainObjects.provide(
 		KernelWindows,
 		{
 			initialState: { windows: {} },
@@ -450,10 +490,10 @@ function provideWindows(core: Kernel, host: MainKernelHost): MainKernel["windowE
 	};
 }
 
-type WindowRecord = DomainState<typeof KernelWindows>["windows"][string];
+type WindowRecord = DomainObjectState<typeof KernelWindows>["windows"][string];
 
 function provideSystem(core: Kernel, host: MainKernelHost): MainKernel["systemEvents"] {
-	const provider = core.kernelSdk.domains.provide(KernelSystem, {
+	const provider = core.kernelSdk.domainObjects.provide(KernelSystem, {
 		initialState: {
 			online: true,
 			appearance: "light",
@@ -488,9 +528,8 @@ function provideKeybindings(core: Kernel, host: MainKernelHost): void {
 		provider.setState({ overrides });
 		host.keybindings?.save(overrides);
 	};
-	const provider: DomainProvider<typeof KernelKeybindings> = core.kernelSdk.domains.provide(
-		KernelKeybindings,
-		{
+	const provider: DomainObjectProvider<typeof KernelKeybindings> =
+		core.kernelSdk.domainObjects.provide(KernelKeybindings, {
 			initialState: { overrides: { ...host.keybindings?.load() } },
 			methods: {
 				setOverride: ({ command, chord }) =>
@@ -501,6 +540,5 @@ function provideKeybindings(core: Kernel, host: MainKernelHost): void {
 				},
 				resetAll: () => save({}),
 			},
-		},
-	);
+		});
 }

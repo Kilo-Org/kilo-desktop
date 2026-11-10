@@ -6,10 +6,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { KvStore } from "@kilo-desktop/kernel";
 
-import type { LocalModel } from "../../contracts/schemas.js";
-import { LocalInferenceService } from "./LocalInferenceService.js";
-import type { LlamaRouterStatus } from "../runtime/LlamaRouterManager.js";
-import { LocalModelRegistry, type PersistedLocalModels } from "../models/LocalModelRegistry.js";
+import type { LocalModel } from "../../contracts";
+import { LocalInferenceService } from "./LocalInferenceService";
+import type { LlamaRouterStatus } from "../runtime/LlamaRouterManager";
+import { LocalModelRegistry, type PersistedLocalModels } from "../models/LocalModelRegistry";
 
 const roots: string[] = [];
 

@@ -14,7 +14,7 @@ export default defineConfig({
 	cacheDir: path.join(root, ".vitest/cache"),
 	test: {
 		coverage: {
-			...createCoverageConfig(["src/test/**"]),
+			...createCoverageConfig(["src/test/**", "src/main/test-boot.ts"]),
 			include: ["src/**"],
 		},
 		projects: [
@@ -41,7 +41,11 @@ export default defineConfig({
 				// Pre-bundle every dep discovered during a run so Vite never
 				// re-optimizes mid-run ("Vitest failed to find the current suite").
 				optimizeDeps: {
-					entries: ["src/web/**/*.browser.test.tsx", "src/test/setup.ts"],
+					entries: [
+						"src/web/**/*.browser.test.tsx",
+						"src/test/**/*.browser.test.tsx",
+						"src/test/setup.ts",
+					],
 					holdUntilCrawlEnd: true,
 					include: [
 						"react",
@@ -61,21 +65,30 @@ export default defineConfig({
 						"@tanstack/react-router",
 						"@tanstack/react-virtual",
 						"@testing-library/react",
+						"@base-ui/react/accordion",
+						"@base-ui/react/alert-dialog",
 						"@base-ui/react/avatar",
 						"@base-ui/react/button",
+						"@base-ui/react/checkbox",
 						"@base-ui/react/collapsible",
+						"@base-ui/react/context-menu",
 						"@base-ui/react/dialog",
 						"@base-ui/react/input",
 						"@base-ui/react/menu",
 						"@base-ui/react/merge-props",
 						"@base-ui/react/popover",
+						"@base-ui/react/preview-card",
+						"@base-ui/react/progress",
 						"@base-ui/react/radio",
 						"@base-ui/react/radio-group",
+						"@base-ui/react/scroll-area",
 						"@base-ui/react/select",
 						"@base-ui/react/separator",
 						"@base-ui/react/slider",
 						"@base-ui/react/switch",
+						"@base-ui/react/tabs",
 						"@base-ui/react/toggle",
+						"@base-ui/react/toggle-group",
 						"@base-ui/react/tooltip",
 						"@base-ui/react/use-render",
 						"@lottiefiles/dotlottie-react",
@@ -86,6 +99,7 @@ export default defineConfig({
 						"lucide-react",
 						"motion/react",
 						"pele",
+						"picomatch",
 						"remark-gfm",
 						"sonner",
 						"tailwind-merge",
@@ -101,7 +115,7 @@ export default defineConfig({
 				},
 				test: {
 					name: "browser",
-					include: ["src/web/**/*.browser.test.tsx"],
+					include: ["src/web/**/*.browser.test.tsx", "src/test/**/*.browser.test.tsx"],
 					setupFiles: ["src/test/setup.ts"],
 					// CI caps browser workers because the Linux coverage runner has only 4 vCPUs.
 					// groupOrder 1 keeps this project in a separate scheduling bucket from

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { decidePeerTrust, type PeerIdentity } from "./daemon-peer-auth.js";
+import { decidePeerTrust, type PeerIdentity } from "./daemon-peer-auth";
 
 const OUR_UID = 501;
 

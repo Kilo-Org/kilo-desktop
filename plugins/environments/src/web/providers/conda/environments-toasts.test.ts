@@ -7,13 +7,13 @@ vi.mock("@kilo-desktop/ui/components/sonner", () => ({
 	},
 }));
 
-vi.mock("./environments-error-message.js", () => ({
+vi.mock("./environments-error-message", () => ({
 	friendlyEnvironmentsError: vi.fn((_reason: unknown, fallback: string) => fallback),
 }));
 
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
-import { friendlyEnvironmentsError } from "./environments-error-message.js";
+import { friendlyEnvironmentsError } from "./environments-error-message";
 import {
 	backupEnvironmentJob,
 	createEnvironmentJob,
@@ -24,7 +24,7 @@ import {
 	showJobError,
 	showJobSuccess,
 	updatePackagesJob,
-} from "./environments-toasts.js";
+} from "./environments-toasts";
 
 beforeEach(() => {
 	vi.clearAllMocks();

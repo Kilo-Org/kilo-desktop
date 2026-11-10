@@ -11,11 +11,11 @@ import { MarkdownAnchor, MarkdownContent } from "@kilo-desktop/ui/components/mar
 
 import type { FileLinkResolution } from "../../contracts/models.js";
 import { FILE_OBJECT_TYPE, FILES_PANE_KIND } from "../../contracts/panes.js";
-import { bootFilesHost, SESSION_ID, type FilesHost } from "../../test/files-host.js";
+import { bootFilesHost, WORK_SESSION_ID, type FilesHost } from "../../test/files-host.js";
 import type { DocumentMethods } from "../documents.js";
 
 const CONTEXT: ChatMarkdownContext = {
-	sessionId: SESSION_ID,
+	workSessionId: WORK_SESSION_ID,
 	workspaceFolders: [{ path: "/workspace/project", isPrimary: true }],
 };
 
@@ -39,7 +39,7 @@ async function boot(documents: Partial<DocumentMethods>) {
 }
 
 const opened = (path: string) => ({
-	sessionId: SESSION_ID,
+	workSessionId: WORK_SESSION_ID,
 	ref: { type: FILE_OBJECT_TYPE, id: `/workspace/project/${path}` },
 });
 

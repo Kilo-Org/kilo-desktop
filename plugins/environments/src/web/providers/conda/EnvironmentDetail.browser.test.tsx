@@ -7,10 +7,10 @@ import {
 	type CondaPackage,
 	type CondaPackagesListResult,
 	type CondaRepodataPackage,
-} from "../../../contracts/providers/conda.js";
-import type { CondaClient } from "../../conda.js";
-import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host.js";
-import { EnvironmentDetail } from "./EnvironmentDetail.js";
+} from "../../../contracts/providers/conda";
+import type { CondaClient } from "../../conda";
+import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host";
+import { EnvironmentDetail } from "./EnvironmentDetail";
 
 const MOCK_ENV: CondaEnv = { name: "dev", prefix: "/opt/conda/envs/dev" };
 

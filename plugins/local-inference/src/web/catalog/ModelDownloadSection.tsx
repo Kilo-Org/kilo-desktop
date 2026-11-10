@@ -28,11 +28,11 @@ import type {
 	LocalModel,
 	ModelCatalogEntry,
 	ModelDownload,
-} from "../../contracts/schemas.js";
-import { evaluateCatalogModel } from "../../shared/catalog/model-compatibility.js";
-import { catalogArtifactKey, type DownloadIdentity } from "./catalog-downloads.js";
-import { ModelPerformance } from "./ModelPerformance.js";
-import { formatFileSize } from "../models/model-format.js";
+} from "../../contracts/index";
+import { evaluateCatalogModel } from "../../shared/catalog/model-compatibility";
+import { catalogArtifactKey, type DownloadIdentity } from "./catalog-downloads";
+import { ModelPerformance } from "./ModelPerformance";
+import { formatFileSize } from "../models/model-format";
 
 export function ModelDownloadSection({
 	model,

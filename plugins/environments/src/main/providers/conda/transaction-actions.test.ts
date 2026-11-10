@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseActionEntries, parseTransactionActions } from "./transaction-actions.js";
+import { parseActionEntries, parseTransactionActions } from "./transaction-actions";
 
 describe("parseActionEntries", () => {
 	it("splits channel/subdir, name, version, and drops the build string", () => {

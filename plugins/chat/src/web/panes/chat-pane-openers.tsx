@@ -1,7 +1,7 @@
 import { useMemo, type ReactNode } from "react";
 
-import { useDomain } from "@kilo-desktop/kernel/web";
-import { Panes } from "@kilo-desktop/plugin-sessions/contracts";
+import { useDomainObject } from "@kilo-desktop/kernel/web";
+import { Panes } from "@kilo-desktop/plugin-work-sessions/contracts";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import {
@@ -11,6 +11,7 @@ import {
 	mediaPaneId,
 	MediaViewers,
 	mediaViewerKey,
+	chatPaneObject,
 	PLAN_PANE_KIND,
 	planPaneMetadata,
 	SUBAGENT_PANE_KIND,
@@ -36,69 +37,75 @@ function reportOpenFailure(error: unknown): void {
 }
 
 /**
- * Lets a transcript open its chat's plan (the session's one Plan pane, on the
+ * Lets a transcript open its chat's plan (the work session's one Plan pane, on the
  * revision clicked), its subagents (one Subagent pane per child chat) and its
  * diagrams and images (the chat's one Viewer pane, on the item clicked)
- * through kilo.sessions' panes. `chatId` is the chat the transcript shows.
+ * through kilo.work-sessions' panes. `chatId` is the chat the transcript shows.
  */
 export function ChatPaneOpeners({
-	sessionId,
+	workSessionId,
 	chatId,
 	children,
 }: {
-	/** Null before the session exists: nothing can be opened yet. */
-	sessionId: string | null;
+	/** Null before the work session exists: nothing can be opened yet. */
+	workSessionId: string | null;
 	chatId: string | null;
 	children: ReactNode;
 }) {
-	const panes = useDomain(Panes);
-	const viewers = useDomain(MediaViewers);
+	const panes = useDomainObject(Panes);
+	const viewers = useDomainObject(MediaViewers);
 	const openPlan = useMemo<OpenPlanPane | null>(
 		() =>
-			panes && chatId && sessionId
+			panes && chatId && workSessionId
 				? (anchors) =>
 						void panes.methods
 							.open({
-								sessionId,
+								workSessionId,
 								kind: PLAN_PANE_KIND,
 								title: "Plan",
-								metadata: planPaneMetadata(chatId, anchors),
+								object: chatPaneObject(chatId),
+								metadata: planPaneMetadata(anchors),
 							})
 							.catch(reportOpenFailure)
 				: null,
-		[chatId, panes, sessionId],
+		[chatId, panes, workSessionId],
 	);
 	const openSubagent = useMemo<OpenSubagentPane | null>(
 		() =>
-			panes && sessionId
+			panes && workSessionId
 				? (childSessionId, title) =>
 						void panes.methods
 							.open({
-								sessionId,
+								workSessionId,
 								kind: SUBAGENT_PANE_KIND,
 								paneId: subagentPaneId(childSessionId),
 								title,
-								metadata: subagentPaneMetadata(childSessionId, chatId),
+								object: chatPaneObject(childSessionId),
+								metadata: subagentPaneMetadata(chatId),
 							})
 							.catch(reportOpenFailure)
 				: null,
-		[chatId, panes, sessionId],
+		[chatId, panes, workSessionId],
 	);
 	const openMedia = useMemo<OpenMediaPane | null>(
 		() =>
-			panes && viewers && sessionId
+			panes && viewers && workSessionId
 				? async (items, itemId) => {
 						const paneId = mediaPaneId(chatId);
-						const key = mediaViewerKey(sessionId, paneId);
+						const key = mediaViewerKey(workSessionId, paneId);
 						try {
 							const shown = await prepareViewerItems(items, itemId);
 							const item = shown.find((candidate) => candidate.id === itemId);
 							if (!item) return false;
-							const { revision } = await viewers.methods.show({ sessionId, paneId, items: shown });
+							const { revision } = await viewers.methods.show({
+								workSessionId,
+								paneId,
+								items: shown,
+							});
 							handOffViewerItems(key, revision, shown);
 							try {
 								await panes.methods.open({
-									sessionId,
+									workSessionId,
 									kind: MEDIA_PANE_KIND,
 									paneId,
 									title: mediaItemTitle(item),
@@ -107,7 +114,7 @@ export function ChatPaneOpeners({
 								});
 							} catch (error) {
 								dropViewerHandoff(key);
-								await viewers.methods.discard({ sessionId, paneId }).catch(() => undefined);
+								await viewers.methods.discard({ workSessionId, paneId }).catch(() => undefined);
 								throw error;
 							}
 							return true;
@@ -117,7 +124,7 @@ export function ChatPaneOpeners({
 						}
 					}
 				: null,
-		[chatId, panes, sessionId, viewers],
+		[chatId, panes, workSessionId, viewers],
 	);
 	return (
 		<OpenPlanPaneContext.Provider value={openPlan}>

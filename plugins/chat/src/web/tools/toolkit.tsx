@@ -1,8 +1,9 @@
 import type { ToolCallMessagePartComponent, Toolkit } from "@assistant-ui/react";
-import { memo, useMemo } from "react";
+import { memo, useMemo, type ComponentType, type FC } from "react";
 
 import type { Contribution } from "@kilo-desktop/kernel";
 import { RenderContribution, useExtensions } from "@kilo-desktop/kernel/web";
+import { toolWireName } from "@kilo-desktop/plugin-core/contracts";
 
 import {
 	McpApp,
@@ -11,12 +12,21 @@ import {
 	type ToolRendererImplementation,
 } from "../../contracts";
 import { setHostableMcpApps, type HostableMcpApp } from "../mcp-apps/mcp-app-registry";
+import { toToolCallProps, type ToolCallProps } from "./tool-call";
 import { setContributedToolCategories } from "./tool-categories";
 import { ToolCallFallback } from "./tool-ui-inline";
 
 type RendererContribution = Contribution<typeof ToolRenderer>;
 
 const selectComponent = (implementation: ToolRendererImplementation) => implementation.component;
+
+/**
+ * The name Kilo calls a `tools` entry by: a desktop tool's `kilo.core/tool`
+ * contribution key (`kilo.terminal/open_terminal`) by its wire name, one of
+ * Kilo's own tools (`bash`) as it is.
+ */
+export const toolNameOf = (tool: string): string =>
+	tool.includes("/") ? toolWireName(tool) : tool;
 
 /**
  * One tool's renderers, highest priority first: each is rendered inside its
@@ -26,11 +36,11 @@ const selectComponent = (implementation: ToolRendererImplementation) => implemen
 function rendererChain(
 	contributions: readonly RendererContribution[],
 	index = 0,
-): ToolCallMessagePartComponent {
+): ComponentType<ToolCallProps> {
 	const contribution = contributions[index];
 	if (!contribution) return ToolCallFallback;
 	const Original = rendererChain(contributions, index + 1);
-	const Rendered: ToolCallMessagePartComponent = (props) => (
+	const Rendered: FC<ToolCallProps> = (props) => (
 		<RenderContribution
 			contribution={contribution}
 			props={{ ...props, Original }}
@@ -39,6 +49,13 @@ function rendererChain(
 	);
 	Rendered.displayName = `ToolRenderer(${contribution.key})`;
 	return memo(Rendered);
+}
+
+/** A chain as the transcript's tool-call part renders it, handed kilo.chat's tool-call shape. */
+function partRenderer(Chain: ComponentType<ToolCallProps>): ToolCallMessagePartComponent {
+	const Part: ToolCallMessagePartComponent = (part) => <Chain {...toToolCallProps(part)} />;
+	Part.displayName = Chain.displayName ?? "ToolRenderer";
+	return memo(Part);
 }
 
 export interface ContributedTools {
@@ -52,7 +69,7 @@ export function buildToolkit(contributions: readonly RendererContribution[]): Co
 	const categories = new Map<string, ToolCategory>();
 	for (const contribution of contributions) {
 		if (!contribution.implementation) continue;
-		for (const tool of contribution.metadata.tools) {
+		for (const tool of contribution.metadata.tools.map(toolNameOf)) {
 			const chain = byTool.get(tool) ?? [];
 			chain.push(contribution);
 			byTool.set(tool, chain);
@@ -66,7 +83,7 @@ export function buildToolkit(contributions: readonly RendererContribution[]): Co
 	for (const [tool, chain] of byTool) {
 		toolkit[tool] = {
 			type: "backend",
-			render: rendererChain(chain),
+			render: partRenderer(rendererChain(chain)),
 			...(chain[0]!.metadata.standalone ? { display: "standalone" as const } : {}),
 		};
 	}
@@ -94,7 +111,7 @@ export function hostableMcpApps(
 ): ReadonlyMap<string, HostableMcpApp> {
 	const apps = new Map<string, HostableMcpApp>();
 	for (const contribution of contributions) {
-		for (const tool of contribution.metadata.tools) {
+		for (const tool of contribution.metadata.tools.map(toolNameOf)) {
 			if (apps.has(tool)) continue;
 			apps.set(tool, {
 				resourceUri: contribution.metadata.resourceUri,

@@ -1,52 +1,58 @@
 import { describe, expect, it } from "vitest";
 
+import type { AiProvider, ModelInfo, ModelsState } from "@kilo-desktop/plugin-core/contracts";
+
 import {
 	attachGatewayModelDetails,
-	buildCatalogFromProviderList,
+	buildCatalogFromModels,
 	isKiloGatewayProvider,
 	modelRefToId,
 	parseModelId,
 	pickDefaultModel,
-	type KiloProviderListPayload,
+	toKiloModelRef,
+	toModelRef,
 } from "./model-catalog";
 
-const payload: KiloProviderListPayload = {
-	all: [
-		{
-			id: "anthropic",
-			name: "Anthropic",
-			models: {
-				"claude-sonnet": {
-					id: "claude-sonnet",
-					name: "Claude Sonnet",
-					providerID: "anthropic",
-					cost: { output: 15 },
-				},
-				"claude-opus": {
-					id: "claude-opus",
-					name: "Claude Opus",
-					providerID: "anthropic",
-				},
-			},
-		},
-		{
-			id: "openai",
-			name: "OpenAI",
-			models: {
-				"gpt-5": {
-					id: "gpt-5",
-					name: "GPT-5",
-					providerID: "openai",
-				},
-			},
-		},
+function aiProvider(id: string, name: string, connected = true): AiProvider {
+	return { id, name, connected, env: [], canDisconnect: true };
+}
+
+function model(aiProviderId: string, modelId: string, patch: Partial<ModelInfo> = {}): ModelInfo {
+	return {
+		aiProviderId,
+		modelId,
+		name: modelId,
+		variants: [],
+		attachments: true,
+		reasoning: false,
+		free: false,
+		byok: false,
+		...patch,
+	};
+}
+
+function state(
+	aiProviders: readonly AiProvider[],
+	models: readonly ModelInfo[],
+	patch: Partial<Pick<ModelsState, "defaults" | "configuredModel">> = {},
+): Pick<ModelsState, "aiProviders" | "models" | "defaults" | "configuredModel"> {
+	return {
+		aiProviders: Object.fromEntries(aiProviders.map((entry) => [entry.id, entry])),
+		models: Object.fromEntries(
+			models.map((entry) => [`${entry.aiProviderId}/${entry.modelId}`, entry]),
+		),
+		defaults: {},
+		...patch,
+	};
+}
+
+const ANTHROPIC = state(
+	[aiProvider("anthropic", "Anthropic"), aiProvider("openai", "OpenAI", false)],
+	[
+		model("anthropic", "claude-sonnet", { name: "Claude Sonnet" }),
+		model("anthropic", "claude-opus", { name: "Claude Opus" }),
 	],
-	default: {
-		anthropic: "claude-sonnet",
-		openai: "gpt-5",
-	},
-	connected: ["anthropic"],
-};
+);
 
 describe("model-catalog", () => {
 	it("round-trips model ids", () => {
@@ -64,6 +70,17 @@ describe("model-catalog", () => {
 		expect(parseModelId("bad")).toBeNull();
 	});
 
+	it("converts between kilo.core's model refs and the picker's", () => {
+		expect(toKiloModelRef({ aiProviderId: "acme", modelId: "fast-1" })).toEqual({
+			providerID: "acme",
+			modelID: "fast-1",
+		});
+		expect(toModelRef({ providerID: "acme", modelID: "fast-1" })).toEqual({
+			aiProviderId: "acme",
+			modelId: "fast-1",
+		});
+	});
+
 	it("recognizes the Kilo Gateway provider by id or name", () => {
 		expect(isKiloGatewayProvider({ id: "kilo" })).toBe(true);
 		expect(isKiloGatewayProvider({ id: "kilo", name: "Kilo Gateway" })).toBe(true);
@@ -71,498 +88,201 @@ describe("model-catalog", () => {
 		expect(isKiloGatewayProvider({ id: "anthropic", name: "Anthropic" })).toBe(false);
 	});
 
-	it("builds a connected-only catalog by default", () => {
-		const catalog = buildCatalogFromProviderList(payload);
+	it("lists connected AI providers and their models", () => {
+		const catalog = buildCatalogFromModels(ANTHROPIC);
 		expect(catalog.providers).toEqual([{ id: "anthropic", name: "Anthropic", connected: true }]);
-		expect(catalog.models.map((model) => model.id)).toEqual([
+		expect(catalog.connected).toEqual(["anthropic"]);
+		expect(catalog.models.map((entry) => entry.id)).toEqual([
 			"anthropic/claude-sonnet",
 			"anthropic/claude-opus",
 		]);
-		expect(catalog.defaults.anthropic).toBe("claude-sonnet");
-		expect(catalog.models[0]?.costTier).toBe("high");
-	});
-
-	it("strips Gateway price markers like ($$$$) and (free) from model names", () => {
-		const catalog = buildCatalogFromProviderList({
-			all: [
-				{
-					id: "kilo",
-					name: "Kilo Gateway",
-					models: {
-						"anthropic/claude-fable-5": {
-							id: "anthropic/claude-fable-5",
-							name: "Anthropic: Claude Fable 5 ($$$$)",
-							providerID: "kilo",
-						},
-						"openai/gpt-5": { id: "openai/gpt-5", name: "OpenAI: GPT-5 ($$)", providerID: "kilo" },
-						"qwen/qwen3.8-max": {
-							id: "qwen/qwen3.8-max",
-							name: "Qwen: Qwen3.8 Max (0902)",
-							providerID: "kilo",
-						},
-						"poolside/laguna-s-2.1:free": {
-							id: "poolside/laguna-s-2.1:free",
-							name: "Poolside: Laguna S 2.1 (free)",
-							providerID: "kilo",
-						},
-						"odd/only-dollars": { id: "odd/only-dollars", name: "($)", providerID: "kilo" },
-					},
-				},
-			],
-			default: {},
-			connected: ["kilo"],
+		expect(catalog.models[0]).toMatchObject({
+			name: "Claude Sonnet",
+			description: "Anthropic",
+			providerName: "Anthropic",
+			keywords: ["Anthropic", "anthropic", "claude-sonnet"],
+			disabled: false,
 		});
-
-		expect(catalog.models.map((model) => model.name)).toEqual([
-			"Anthropic: Claude Fable 5",
-			"OpenAI: GPT-5",
-			"Qwen: Qwen3.8 Max (0902)",
-			"Poolside: Laguna S 2.1",
-			"($)",
-		]);
 	});
 
-	it("preserves recommendation order metadata", () => {
-		const catalog = buildCatalogFromProviderList({
-			all: [
-				{
-					id: "kilo",
-					name: "Kilo Gateway",
-					models: {
-						"anthropic/claude-opus": {
-							id: "anthropic/claude-opus",
-							name: "Claude Opus",
-							providerID: "kilo",
-							recommendedIndex: 2,
-						},
-					},
-				},
-			],
-			default: {},
-			connected: ["kilo"],
-		});
-
-		expect(catalog.models[0]?.recommendedIndex).toBe(2);
-	});
-
-	it("attaches public details only to matching Gateway models", () => {
-		const catalog = buildCatalogFromProviderList(
-			{
-				all: [
-					{
-						id: "kilo",
-						name: "Kilo Gateway",
-						models: {
-							"openai/gpt-5": {
-								id: "openai/gpt-5",
-								name: "GPT-5",
-								providerID: "kilo",
-							},
-						},
-					},
-				],
-				default: {},
-				connected: ["kilo"],
-			},
-			{ connectedOnly: false },
+	it("leaves out models of AI providers that aren't connected", () => {
+		const catalog = buildCatalogFromModels(
+			state([aiProvider("anthropic", "Anthropic", false)], [model("anthropic", "claude-sonnet")]),
 		);
-
-		const enriched = attachGatewayModelDetails(catalog, [
-			{ modelID: "openai/gpt-5", kiloBenchScore: 0.75, mayTrainOnYourPrompts: false },
-		]);
-
-		expect(enriched?.models[0]?.details).toEqual({
-			modelID: "openai/gpt-5",
-			kiloBenchScore: 0.75,
-			mayTrainOnYourPrompts: false,
-		});
-		expect(enriched?.models[0]?.isFree).toBeUndefined();
+		expect(catalog.models).toEqual([]);
 	});
 
-	it("hoists the Gateway isFree flag onto the catalog model", () => {
-		const catalog = buildCatalogFromProviderList(
-			{
-				all: [
-					{
-						id: "kilo",
-						name: "Kilo Gateway",
-						models: {
-							"poolside/laguna-s-2.1:free": {
-								id: "poolside/laguna-s-2.1:free",
-								name: "Poolside Laguna S 2.1",
-								providerID: "kilo",
-							},
-						},
-					},
+	it("carries recommendations, descriptions, cost tiers and BYOK from kilo.core", () => {
+		const catalog = buildCatalogFromModels(
+			state(
+				[aiProvider("kilo", "Kilo Gateway"), aiProvider("anthropic", "Anthropic")],
+				[
+					model("kilo", "openai/gpt-5", {
+						recommendedIndex: 2,
+						description: "A frontier model.",
+						outputPricePerMillion: 10,
+						byok: true,
+					}),
+					model("anthropic", "claude-sonnet", { description: "  ", byok: true }),
 				],
-				default: {},
-				connected: ["kilo"],
-			},
-			{ connectedOnly: false },
-		);
-
-		const enriched = attachGatewayModelDetails(catalog, [
-			{ modelID: "poolside/laguna-s-2.1:free", isFree: true, mayTrainOnYourPrompts: true },
-		]);
-
-		expect(enriched?.models[0]?.isFree).toBe(true);
-	});
-
-	it("does not treat paid kilo-auto/* models as free; only the Gateway flag counts", () => {
-		const catalog = buildCatalogFromProviderList({
-			all: [
-				{
-					id: "kilo",
-					name: "Kilo Gateway",
-					models: {
-						"kilo-auto/efficient": {
-							id: "kilo-auto/efficient",
-							name: "Auto Efficient",
-							providerID: "kilo",
-						},
-						"kilo-auto/free": { id: "kilo-auto/free", name: "Auto Free", providerID: "kilo" },
-					},
-				},
-			],
-			default: {},
-			connected: ["kilo"],
-		});
-
-		expect(catalog.models.some((model) => model.isFree)).toBe(false);
-
-		const enriched = attachGatewayModelDetails(catalog, [
-			{ modelID: "kilo-auto/efficient", isFree: false },
-			{ modelID: "kilo-auto/free", isFree: true },
-		]);
-		const freeIds = enriched?.models.filter((model) => model.isFree).map((model) => model.modelID);
-		expect(freeIds).toEqual(["kilo-auto/free"]);
-	});
-
-	it("uses nested model descriptions for subtitles and falls back when empty", () => {
-		const catalog = buildCatalogFromProviderList({
-			...payload,
-			all: [
-				{
-					...payload.all[0]!,
-					models: {
-						"claude-sonnet": {
-							...payload.all[0]!.models["claude-sonnet"]!,
-							options: { description: "Balanced intelligence and speed." },
-						},
-						"claude-opus": {
-							...payload.all[0]!.models["claude-opus"]!,
-							options: { description: "   " },
-						},
-					},
-				},
-			],
-		});
-
-		expect(catalog.models.map((model) => model.description)).toEqual([
-			"Balanced intelligence and speed.",
-			"Anthropic",
-		]);
-	});
-
-	it("can include disconnected providers", () => {
-		const catalog = buildCatalogFromProviderList(payload, { connectedOnly: false });
-		expect(catalog.providers.map((provider) => provider.id)).toEqual(["anthropic", "openai"]);
-		expect(catalog.models.find((model) => model.id === "openai/gpt-5")?.disabled).toBe(true);
-	});
-
-	it("picks the provider default when available", () => {
-		const catalog = buildCatalogFromProviderList(payload);
-		expect(pickDefaultModel(catalog)).toEqual({
-			providerID: "anthropic",
-			modelID: "claude-sonnet",
-		});
-	});
-
-	it("ignores Kilo Gateway's provider.list default when it ranks a Gemini image model first", () => {
-		const withGeminiDefault: KiloProviderListPayload = {
-			all: [
-				{
-					id: "kilo",
-					name: "Kilo Gateway",
-					models: {
-						"kilo-auto/frontier": {
-							id: "kilo-auto/frontier",
-							name: "Auto Frontier",
-							providerID: "kilo",
-						},
-						"google/gemini-3-pro-image": {
-							id: "google/gemini-3-pro-image",
-							name: "Google: Nano Banana Pro (Gemini 3 Pro Image)",
-							providerID: "kilo",
-						},
-					},
-				},
-			],
-			default: { kilo: "google/gemini-3-pro-image" },
-			connected: ["kilo"],
-		};
-		expect(pickDefaultModel(buildCatalogFromProviderList(withGeminiDefault))).toEqual({
-			providerID: "kilo",
-			modelID: "kilo-auto/frontier",
-		});
-	});
-
-	it("prefers Auto Free over the provider-marked default", () => {
-		const withAutoFree: KiloProviderListPayload = {
-			all: [
-				{
-					id: "kilo",
-					name: "Kilo Gateway",
-					models: {
-						auto: { id: "auto", name: "Auto", providerID: "kilo" },
-						"kilo-auto/free": {
-							id: "kilo-auto/free",
-							name: "Auto Free",
-							providerID: "kilo",
-						},
-						"kilo-auto/frontier": {
-							id: "kilo-auto/frontier",
-							name: "Auto Frontier",
-							providerID: "kilo",
-						},
-					},
-				},
-			],
-			default: { kilo: "auto" },
-			connected: ["kilo"],
-		};
-		expect(pickDefaultModel(buildCatalogFromProviderList(withAutoFree))).toEqual({
-			providerID: "kilo",
-			modelID: "kilo-auto/free",
-		});
-	});
-
-	it("does not pick a disconnected Auto Free model", () => {
-		const disconnectedAutoFree: KiloProviderListPayload = {
-			all: [
-				{
-					id: "kilo",
-					name: "Kilo Gateway",
-					models: {
-						"kilo-auto/free": {
-							id: "kilo-auto/free",
-							name: "Auto Free",
-							providerID: "kilo",
-						},
-					},
-				},
-				{
-					id: "anthropic",
-					name: "Anthropic",
-					models: {
-						"claude-sonnet": {
-							id: "claude-sonnet",
-							name: "Claude Sonnet",
-							providerID: "anthropic",
-						},
-					},
-				},
-			],
-			default: { anthropic: "claude-sonnet" },
-			connected: ["anthropic"],
-		};
-		expect(
-			pickDefaultModel(
-				buildCatalogFromProviderList(disconnectedAutoFree, { connectedOnly: false }),
 			),
-		).toEqual({
-			providerID: "anthropic",
-			modelID: "claude-sonnet",
+		);
+		expect(catalog.models[0]).toMatchObject({
+			recommendedIndex: 2,
+			description: "A frontier model.",
+			costTier: "high",
+			hasByok: true,
 		});
+		expect(catalog.models[1]?.description).toBe("Anthropic");
+		expect(catalog.models[1]?.hasByok).toBeUndefined();
+		expect(catalog.models[1]?.costTier).toBeUndefined();
+	});
+
+	it("carries each provider's default and the configured model", () => {
+		const catalog = buildCatalogFromModels(
+			state([aiProvider("anthropic", "Anthropic")], [model("anthropic", "claude-sonnet")], {
+				defaults: { anthropic: "claude-sonnet" },
+				configuredModel: { aiProviderId: "anthropic", modelId: "claude-sonnet" },
+			}),
+		);
+		expect(catalog.defaults).toEqual({ anthropic: "claude-sonnet" });
+		expect(catalog.configuredModel).toEqual({ providerID: "anthropic", modelID: "claude-sonnet" });
+	});
+
+	it("carries what the account says about the gateway", () => {
+		expect(buildCatalogFromModels(ANTHROPIC).providerReady).toBeUndefined();
+		expect(
+			buildCatalogFromModels(ANTHROPIC, { providerReady: false, organizationId: "org_1" }),
+		).toMatchObject({ providerReady: false, organizationId: "org_1" });
+	});
+
+	it("maps reasoning efforts and context windows onto catalog models", () => {
+		const catalog = buildCatalogFromModels(
+			state(
+				[aiProvider("anthropic", "Anthropic")],
+				[
+					model("anthropic", "claude-sonnet", {
+						variants: ["low", "high", "custom"],
+						contextWindow: 200_000,
+					}),
+				],
+			),
+		);
+		expect(catalog.models[0]?.efforts).toEqual([
+			{ id: "low", name: "Low" },
+			{ id: "high", name: "High" },
+			{ id: "custom", name: "Custom" },
+		]);
+		expect(catalog.models[0]?.contextWindow).toBe(200_000);
 	});
 
 	it("orders providers like the AI providers page: Kilo, Local, then others by name", () => {
-		const scrambled: KiloProviderListPayload = {
-			all: [
-				{
-					id: "openai",
-					name: "OpenAI",
-					models: {
-						"gpt-5": { id: "gpt-5", name: "GPT-5", providerID: "openai" },
-					},
-				},
-				{
-					id: "kilo-desktop-model-server",
-					name: "Anaconda Local",
-					models: {
-						"qwen-3": {
-							id: "qwen-3",
-							name: "Qwen 3",
-							providerID: "kilo-desktop-model-server",
-						},
-					},
-				},
-				{
-					id: "anthropic",
-					name: "Anthropic",
-					models: {
-						"claude-sonnet": {
-							id: "claude-sonnet",
-							name: "Claude Sonnet",
-							providerID: "anthropic",
-						},
-					},
-				},
-				{
-					id: "kilo",
-					name: "Kilo Gateway",
-					models: {
-						auto: { id: "auto", name: "Auto", providerID: "kilo" },
-					},
-				},
-			],
-			default: { kilo: "auto" },
-			connected: ["openai", "kilo-desktop-model-server", "anthropic", "kilo"],
-		};
-		const catalog = buildCatalogFromProviderList(scrambled);
+		const catalog = buildCatalogFromModels(
+			state(
+				[
+					aiProvider("zeta", "Zeta"),
+					aiProvider("anthropic", "Anthropic"),
+					aiProvider("kilo-desktop-model-server", "kilo-desktop-model-server"),
+					aiProvider("kilo", "Kilo Gateway"),
+				],
+				[],
+			),
+		);
 		expect(catalog.providers.map((provider) => provider.id)).toEqual([
 			"kilo",
 			"kilo-desktop-model-server",
 			"anthropic",
-			"openai",
+			"zeta",
 		]);
+		expect(catalog.providers[1]?.name).toBe("Local Model Server");
 	});
 
-	it("normalizes the connected local provider name", () => {
-		const emptyLocal: KiloProviderListPayload = {
-			all: [
-				{
-					id: "kilo-desktop-model-server",
-					name: "Anaconda Local",
-					models: {},
-				},
-				{
-					id: "anthropic",
-					name: "Anthropic",
-					models: {
-						"claude-sonnet": {
-							id: "claude-sonnet",
-							name: "Claude Sonnet",
-							providerID: "anthropic",
-						},
-					},
-				},
-			],
-			default: { anthropic: "claude-sonnet" },
-			connected: ["kilo-desktop-model-server", "anthropic"],
-		};
-		const catalog = buildCatalogFromProviderList(emptyLocal);
-		expect(catalog.providers).toMatchObject([
-			{ id: "kilo-desktop-model-server", name: "Local Model Server" },
-			{ id: "anthropic", name: "Anthropic" },
-		]);
-	});
-
-	it("omits local models while the server is offline", () => {
-		const disconnectedLocal: KiloProviderListPayload = {
-			all: [
-				{
-					id: "kilo-desktop-model-server",
-					name: "Anaconda Local",
-					models: {
-						"qwen-3": {
-							id: "qwen-3",
-							name: "Qwen 3",
-							providerID: "kilo-desktop-model-server",
-						},
-					},
-				},
-				{
-					id: "anthropic",
-					name: "Anthropic",
-					models: {
-						"claude-sonnet": {
-							id: "claude-sonnet",
-							name: "Claude Sonnet",
-							providerID: "anthropic",
-						},
-					},
-				},
-			],
-			default: { anthropic: "claude-sonnet" },
-			connected: ["anthropic"],
-		};
-		const catalog = buildCatalogFromProviderList(disconnectedLocal);
-		expect(catalog.providers.map((provider) => provider.id)).toEqual(["anthropic"]);
-		expect(catalog.models.map((model) => model.id)).toEqual(["anthropic/claude-sonnet"]);
-	});
-
-	it("maps reasoning effort levels onto catalog models", () => {
-		const withEfforts: KiloProviderListPayload = {
-			all: [
-				{
-					id: "anthropic",
-					name: "Anthropic",
-					models: {
-						"claude-sonnet": {
-							id: "claude-sonnet",
-							name: "Claude Sonnet",
-							providerID: "anthropic",
-							reasoning_options: [{ type: "effort", values: ["low", "medium", "high", "max"] }],
-						},
-						"claude-haiku": {
-							id: "claude-haiku",
-							name: "Claude Haiku",
-							providerID: "anthropic",
-							variants: { high: {}, max: {} },
-						},
-					},
-				},
-			],
-			default: { anthropic: "claude-sonnet" },
-			connected: ["anthropic"],
-		};
-		const catalog = buildCatalogFromProviderList(withEfforts);
-		expect(catalog.models.find((model) => model.id === "anthropic/claude-sonnet")?.efforts).toEqual(
-			[
-				{ id: "low", name: "Low" },
-				{ id: "medium", name: "Med" },
-				{ id: "high", name: "High" },
-				{ id: "max", name: "Max" },
-			],
+	it("attaches gateway details only to matching Gateway models", () => {
+		const catalog = buildCatalogFromModels(
+			state(
+				[aiProvider("kilo", "Kilo Gateway"), aiProvider("anthropic", "Anthropic")],
+				[model("kilo", "openai/gpt-5"), model("anthropic", "openai/gpt-5")],
+			),
 		);
-		expect(catalog.models.find((model) => model.id === "anthropic/claude-haiku")?.efforts).toEqual([
-			{ id: "high", name: "High" },
-			{ id: "max", name: "Max" },
+		const details = { modelId: "openai/gpt-5", kiloBenchScore: 0.75 };
+
+		const enriched = attachGatewayModelDetails(catalog, [details]);
+
+		expect(enriched?.models[0]?.details).toEqual(details);
+		expect(enriched?.models[0]?.isFree).toBeUndefined();
+		expect(enriched?.models[1]?.details).toBeUndefined();
+		expect(attachGatewayModelDetails(catalog, [])).toBe(catalog);
+	});
+
+	it("does not treat paid kilo-auto/* models as free; only the Gateway flag counts", () => {
+		const catalog = buildCatalogFromModels(
+			state(
+				[aiProvider("kilo", "Kilo Gateway")],
+				[
+					model("kilo", "kilo-auto/efficient", { free: true }),
+					model("kilo", "kilo-auto/free", { free: true }),
+				],
+			),
+		);
+		expect(catalog.models.some((entry) => entry.isFree)).toBe(false);
+
+		const enriched = attachGatewayModelDetails(catalog, [
+			{ modelId: "kilo-auto/efficient", isFree: false },
+			{ modelId: "kilo-auto/free", isFree: true },
+		]);
+		expect(enriched?.models.filter((entry) => entry.isFree).map((entry) => entry.modelID)).toEqual([
+			"kilo-auto/free",
 		]);
 	});
 
-	it("copies the provider context window onto catalog models", () => {
-		const withLimits: KiloProviderListPayload = {
-			all: [
-				{
-					id: "anthropic",
-					name: "Anthropic",
-					models: {
-						"claude-sonnet": {
-							id: "claude-sonnet",
-							name: "Claude Sonnet",
-							providerID: "anthropic",
-							limit: { context: 200_000 },
-						},
-						"claude-haiku": {
-							id: "claude-haiku",
-							name: "Claude Haiku",
-							providerID: "anthropic",
-							contextLength: 64_000,
-						},
-					},
-				},
-			],
-			default: { anthropic: "claude-sonnet" },
-			connected: ["anthropic"],
-		};
-		const catalog = buildCatalogFromProviderList(withLimits);
+	it("prefers Auto Free, then another Kilo Auto model, then the first connected provider's default or most recommended", () => {
+		const kilo = aiProvider("kilo", "Kilo Gateway");
 		expect(
-			catalog.models.find((model) => model.id === "anthropic/claude-sonnet")?.contextWindow,
-		).toBe(200_000);
+			pickDefaultModel(
+				buildCatalogFromModels(
+					state(
+						[kilo],
+						[
+							model("kilo", "auto"),
+							model("kilo", "kilo-auto/free"),
+							model("kilo", "kilo-auto/frontier"),
+						],
+					),
+				),
+			),
+		).toEqual({ providerID: "kilo", modelID: "kilo-auto/free" });
 		expect(
-			catalog.models.find((model) => model.id === "anthropic/claude-haiku")?.contextWindow,
-		).toBe(64_000);
+			pickDefaultModel(
+				buildCatalogFromModels(
+					state(
+						[kilo],
+						[model("kilo", "google/gemini-3-pro-image"), model("kilo", "kilo-auto/frontier")],
+					),
+				),
+			),
+		).toEqual({ providerID: "kilo", modelID: "kilo-auto/frontier" });
+		expect(pickDefaultModel(buildCatalogFromModels(ANTHROPIC))).toEqual({
+			providerID: "anthropic",
+			modelID: "claude-sonnet",
+		});
+		expect(
+			pickDefaultModel(
+				buildCatalogFromModels(
+					state(
+						[aiProvider("anthropic", "Anthropic")],
+						[
+							model("anthropic", "claude-opus", { name: "Claude Opus" }),
+							model("anthropic", "claude-sonnet", { name: "Claude Sonnet", recommendedIndex: 0 }),
+						],
+					),
+				),
+			),
+		).toEqual({ providerID: "anthropic", modelID: "claude-sonnet" });
+		expect(
+			pickDefaultModel(
+				buildCatalogFromModels({ ...ANTHROPIC, defaults: { anthropic: "claude-opus" } }),
+			),
+		).toEqual({ providerID: "anthropic", modelID: "claude-opus" });
+		expect(pickDefaultModel(undefined)).toBeUndefined();
 	});
 });

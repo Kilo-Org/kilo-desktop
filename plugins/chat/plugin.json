@@ -3,24 +3,27 @@
 	"id": "kilo.chat",
 	"displayName": "Chat",
 	"version": "1.0.0",
-	"description": "The agent pane: a session's chat with the agent, its transcript and composer.",
+	"description": "The chat pane: a work session's chats with the agent, their transcript and composer.",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
 	"requires": {
-		"kilo.sessions/pane": "optional",
-		"kilo.sessions/pane-kind": "optional",
-		"kilo.sessions/work-session": "optional",
-		"kilo.agent/server": "optional",
-		"kilo.agent/conversation": "optional",
-		"kilo.workspaces/workspace": "optional",
-		"kilo.workbench/workbench": "optional",
-		"kilo.workbench/session-starter": "optional",
-		"kilo.workbench/pane-kind-menu": "optional",
-		"kilo.agent/tool": "optional",
-		"kilo.account/identity": "optional",
+		"kilo.core/server": "optional",
+		"kilo.core/chats": "optional",
+		"kilo.core/models": "optional",
+		"kilo.core/account": "optional",
+		"kilo.core/tool": "optional",
+		"kilo.core/tool-approval": "optional",
+		"kilo.work-sessions/workspaces": "optional",
+		"kilo.work-sessions/work-sessions": "optional",
+		"kilo.work-sessions/panes": "optional",
+		"kilo.work-sessions/window": "optional",
+		"kilo.work-sessions/pane-kind": "optional",
+		"kilo.work-sessions/pane-kind-menu": "optional",
+		"kilo.work-sessions/work-session-starter": "optional",
+		"kilo.work-sessions/opener": "optional",
 		"kilo.shell/navigation": "optional",
-		"kilo.flags/flags": "optional",
-		"kilo.shell/theme": "optional",
-		"kilo.workspaces/file": "optional",
-		"kilo.sessions/opener": "optional"
+		"kilo.shell/notifications": "optional",
+		"kilo.shell/theme": "optional"
 	},
 	"permissions": {
 		"host": ["clipboard", "os"],
@@ -33,22 +36,78 @@
 			"description": "True while a chat composer in this window has keyboard focus."
 		}
 	],
+	"domainObjects": [
+		{
+			"id": "composer",
+			"home": "renderer",
+			"description": "This window's composers: focus, insert, start a new chat."
+		},
+		{
+			"id": "drafts",
+			"home": "main",
+			"description": "Unsent composer text by work session, for every window."
+		},
+		{
+			"id": "prompt-queues",
+			"home": "main",
+			"description": "Prompts queued while a chat works, sent in order when it goes idle, from any window."
+		},
+		{
+			"id": "auto-approve",
+			"home": "main",
+			"description": "Whether the agent's permission requests are answered automatically."
+		},
+		{
+			"id": "html-pages",
+			"home": "main",
+			"description": "Saves the agent's HTML pages into a workspace folder."
+		},
+		{
+			"id": "media-viewers",
+			"home": "main",
+			"description": "The diagrams and images each media viewer pane shows, kept until it closes."
+		}
+	],
+	"extensionPoints": [
+		{
+			"id": "composer-action",
+			"kind": "additive",
+			"description": "A button, menu or popover in the composer."
+		},
+		{
+			"id": "composer-mention",
+			"kind": "additive",
+			"description": "Mentions typed after a trigger character, resolved into agent context."
+		},
+		{
+			"id": "tool-renderer",
+			"kind": "additive",
+			"description": "How calls to a tool look in the chat transcript."
+		},
+		{
+			"id": "mcp-app",
+			"kind": "additive",
+			"description": "An interactive MCP App widget shown for a tool's calls."
+		},
+		{
+			"id": "markdown-extension",
+			"kind": "additive",
+			"description": "Remark plugins and component decorators for the transcript's markdown."
+		},
+		{
+			"id": "permission-renderer",
+			"kind": "additive",
+			"description": "Details and policies for the agent's permission requests and questions."
+		},
+		{
+			"id": "model-source",
+			"kind": "additive",
+			"description": "A local model provider: its model picker rail and model loading before prompts."
+		}
+	],
 	"contributes": {
 		"extensions": {
-			"kilo.workbench/pane-kind-menu": [
-				{
-					"id": "agent-chats",
-					"paneKind": "kilo.chat/agent"
-				}
-			],
-			"kilo.workbench/session-starter": [
-				{
-					"id": "composer",
-					"title": "Agent",
-					"paneKind": "kilo.chat/agent"
-				}
-			],
-			"kilo.sessions/pane-kind": [
+			"kilo.work-sessions/pane-kind": [
 				{
 					"id": "agent",
 					"title": "Agent",
@@ -95,6 +154,19 @@
 					"order": 40
 				}
 			],
+			"kilo.work-sessions/pane-kind-menu": [
+				{
+					"id": "agent-chats",
+					"paneKind": "kilo.chat/agent"
+				}
+			],
+			"kilo.work-sessions/work-session-starter": [
+				{
+					"id": "composer",
+					"title": "Agent",
+					"paneKind": "kilo.chat/agent"
+				}
+			],
 			"kernel/command": [
 				{
 					"id": "focus-composer",
@@ -106,7 +178,7 @@
 						"default": "Ctrl+Shift+L"
 					},
 					"when": {
-						"all": ["kilo.workbench/sessionActive"]
+						"all": ["kilo.work-sessions/workSessionActive"]
 					}
 				},
 				{
@@ -135,6 +207,18 @@
 					"keybinding": "Shift+Tab",
 					"handledLocally": true,
 					"palette": false
+				}
+			],
+			"kernel/flag": [
+				{
+					"id": "prompt-queue-editing",
+					"description": "Turns on pausing, reordering and editing prompts queued while a chat works.",
+					"default": false
+				},
+				{
+					"id": "searchbar-windows-panels",
+					"description": "Turns on the find bar (Mod+F) in chat, plan and other panes.",
+					"default": false
 				}
 			],
 			"kilo.chat/composer-action": [
@@ -181,12 +265,17 @@
 					"priority": 200
 				}
 			],
-			"kilo.agent/tool": [
+			"kilo.core/tool": [
 				{
 					"id": "html_render",
 					"title": "Show HTML page",
 					"readOnly": true,
 					"external": false
+				}
+			],
+			"kilo.core/tool-approval": [
+				{
+					"id": "auto-approve"
 				}
 			],
 			"kilo.chat/tool-renderer": [
@@ -244,7 +333,7 @@
 				},
 				{
 					"id": "html-render",
-					"tools": ["desktop_chat_html_render", "desktop_kilo_ui_html_render"]
+					"tools": ["kilo.chat/html_render", "desktop_kilo_ui_html_render"]
 				},
 				{
 					"id": "plan-exit",
@@ -254,84 +343,5 @@
 				}
 			]
 		}
-	},
-	"extensionPoints": [
-		{
-			"id": "composer-action",
-			"kind": "additive",
-			"description": "A button, menu or popover in the composer."
-		},
-		{
-			"id": "composer-mention",
-			"kind": "additive",
-			"description": "Mentions typed after a trigger character, resolved into agent context."
-		},
-		{
-			"id": "tool-renderer",
-			"kind": "additive",
-			"description": "How calls to a tool look in the chat transcript."
-		},
-		{
-			"id": "mcp-app",
-			"kind": "additive",
-			"description": "An interactive MCP App widget shown for a tool's calls."
-		},
-		{
-			"id": "markdown-extension",
-			"kind": "additive",
-			"description": "Remark plugins and component decorators for the transcript's markdown."
-		},
-		{
-			"id": "interaction-renderer",
-			"kind": "additive",
-			"description": "Details and policies for the agent's permission requests and questions."
-		},
-		{
-			"id": "model-source",
-			"kind": "additive",
-			"description": "A local model provider: its model picker rail and model loading before prompts."
-		}
-	],
-	"domains": [
-		{
-			"id": "composer",
-			"home": "renderer",
-			"description": "This window's composers: focus, insert, start a new chat."
-		},
-		{
-			"id": "model-preferences",
-			"home": "main",
-			"description": "The model pickers' remembered choices, recent models and favourites."
-		},
-		{
-			"id": "gateway-models",
-			"home": "main",
-			"description": "The Kilo Gateway's public model catalog shown in the model picker."
-		},
-		{
-			"id": "drafts",
-			"home": "main",
-			"description": "Unsent composer text by Work Session, for every window."
-		},
-		{
-			"id": "prompt-queue",
-			"home": "main",
-			"description": "Prompts queued while a chat works, sent in order when it goes idle, from any window."
-		},
-		{
-			"id": "auto-approve",
-			"home": "main",
-			"description": "Whether the agent's permission requests are answered automatically."
-		},
-		{
-			"id": "html-pages",
-			"home": "main",
-			"description": "Saves the agent's HTML pages into a workspace folder."
-		},
-		{
-			"id": "media-viewers",
-			"home": "main",
-			"description": "The diagrams and images each media viewer pane shows, kept until it closes."
-		}
-	]
+	}
 }

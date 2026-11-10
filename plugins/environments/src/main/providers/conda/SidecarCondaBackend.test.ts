@@ -9,8 +9,8 @@ import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import type { KernelLogger } from "@kilo-desktop/kernel";
 import { KernelError } from "@kilo-desktop/kernel";
 
-import { REPODATA_FIND_MAX_LIMIT } from "../../../contracts/providers/conda.js";
-import { SidecarCondaBackend } from "./SidecarCondaBackend.js";
+import { REPODATA_FIND_MAX_LIMIT } from "../../../contracts/providers/conda";
+import { SidecarCondaBackend } from "./SidecarCondaBackend";
 
 // ─── Mocks ───────────────────────────────────────────────────────────────────
 

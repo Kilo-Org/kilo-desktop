@@ -1,17 +1,17 @@
 import { realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 
-import { KernelError, type DomainHandle } from "@kilo-desktop/kernel";
-import type { Workspaces } from "@kilo-desktop/plugin-workspaces/contracts";
+import { KernelError, type DomainObjectHandle } from "@kilo-desktop/kernel";
+import type { Workspaces } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 /**
  * Where a terminal may start: the home directory when no folder is asked
  * for, otherwise a workspace's primary folder or one of its managed
- * worktrees, as kilo.workspaces authorises it. Fails closed when workspaces
+ * worktrees, as kilo.work-sessions authorises it. Fails closed when workspaces
  * can't be consulted.
  */
 export function createTerminalCwdResolver(
-	workspaces: () => DomainHandle<typeof Workspaces> | null,
+	workspaces: () => DomainObjectHandle<typeof Workspaces> | null,
 	homeDirectory = homedir(),
 ): (cwd?: string) => Promise<string> {
 	return async (cwd) => {

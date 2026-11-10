@@ -1,56 +1,53 @@
 # Chat and agent tools
 
-Two plugins own the agent: **kilo.agent** (model, main process: the Kilo
-server, chats, the tool gateway) and **kilo.chat** (UI: the agent pane,
-transcript and composer). Their points let a plugin give the agent tools,
-shape how calls look, and add controls to the composer. Contracts:
-`@kilo-desktop/plugin-agent/contracts` and
-`@kilo-desktop/plugin-chat/contracts`.
+**kilo.core** (data, main process) owns the Kilo server, its chats, models
+and desktop tools; contracts: `@kilo-desktop/plugin-core/contracts`.
+**kilo.chat** draws them: the chat pane (transcript, composer, tool calls,
+permission and question cards); contracts:
+`@kilo-desktop/plugin-chat/contracts`. Both may be absent — declare their
+points `optional` in `requires`.
 
-## Agent tools (`kilo.agent/tool`)
+## Desktop tools (`kilo.core/tool`)
 
-A tool is a contribution whose implementation runs in **main**. The gateway
-offers it to Kilo chats and, unless `external: false`, to paired external AI
-apps.
+A tool is a contribution whose implementation runs in **main**. Kilo chats
+can call it; with `external: true`, paired external AI apps can too.
 
 ```jsonc
 // plugin.json
-"requires": { "kilo.agent/tool": "optional" },
+"requires": { "kilo.core/tool": "optional" },
 "contributes": {
 	"extensions": {
-		"kilo.agent/tool": [
-			{ "id": "greet", "title": "Say hello", "readOnly": false }
-		]
+		"kilo.core/tool": [{ "id": "greet", "title": "Say hello" }]
 	}
 }
 ```
 
 ```ts
 // src/main/index.ts
-import { AgentTool, defineTool } from "@kilo-desktop/plugin-agent/contracts";
+import { defineTool, Tool } from "@kilo-desktop/plugin-core/contracts";
 
 sdk.extensions.implement(
-	AgentTool,
+	Tool,
 	"greet",
 	defineTool({
 		description: "Greet someone by name and return the greeting.", // what the model reads
 		input: z.object({ name: z.string().min(1).describe("Who to greet.") }),
 		run: async ({ name }, context) => {
-			if (!context.sessionId) throw new Error("Call this from a Kilo chat.");
+			if (!context.chatId) throw new Error("Call this from a Kilo chat.");
 			return { greeting: await greetings.greet(name) };
 		},
 	}),
 );
 ```
 
-- Kilo sees the tool as `desktop_<plugin>_<id>` with `kilo.` dropped
-  (`kilo.terminal/open` → `desktop_terminal_open`; `example.hello/greet` →
-  `desktop_example_hello_greet`).
+- Tool ids are snake_case `<verb>[_<object>]` (`open_file`). Kilo sees a
+  tool as `desktop_<plugin>_<id>` with `kilo.` dropped (`toolWireName`).
 - Input is validated against `input` before `run`. Return any JSON value;
   throw to fail the call (the message goes back to the agent).
-- `context`: `sessionId` (the calling chat's Work Session, or null),
-  `chatId`, `callId`, `external`, and an abort `signal`. Act on the calling
-  session, never on whatever the person has focused.
+- `context`: `chatId`, `workSessionId` and `workspaceId` (from the calling
+  chat's stamp, null for external apps), `callId`, `external`, and an abort
+  `signal`. Act on the calling work session, never on whatever the person
+  has focused.
 
 | Metadata                  | Meaning                                                               |
 | ------------------------- | --------------------------------------------------------------------- |
@@ -58,26 +55,27 @@ sdk.extensions.implement(
 | `approval`                | `ask` makes chats ask before each call (default `auto`)               |
 | `requiresSignIn`          | Refused while signed out of Kilo; `signInPrompt` sets the card's copy |
 | `readOnly`, `destructive` | Hints for approval and presentation                                   |
-| `external`                | Offered to paired external AI apps (default `true`)                   |
+| `external`                | Offered to paired external AI apps (default `false`)                  |
 
 Expose the same action as a domain method and, if a person would use it, a
 command — all three calling one function.
 
-### Shaping chats (main)
+### Shaping chats and Kilo (main)
 
-| Point                       | Kind | Use it to                                                                                                                    |
-| --------------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `kilo.agent/session-config` | A    | `configure({ sessionId, workspaceId, directory })` → `{ disableTools, instructions, permissions }` for a session's new chats |
-| `kilo.agent/tool-approval`  | D    | Answer `"proceed"`, `{ ask }` or `{ reject }` per tool call; fails closed                                                    |
-| `kilo.agent/runtime-config` | A    | Add environment variables, Kilo plugins or MCP servers to the Kilo server                                                    |
-| `kilo.agent/model-provider` | A    | Add a model provider to Kilo's config                                                                                        |
+| Extension point             | Kind | Use it to                                                                                                                                                              |
+| --------------------------- | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kilo.core/chat-config`     | A    | `configure({ chatId, directory, workSessionId, workspaceId })` → `{ disableTools, instructions, permissions }` for a chat                                              |
+| `kilo.core/tool-approval`   | D    | Answer `"proceed"`, `{ ask }` or `{ reject }` per tool call; fails closed                                                                                              |
+| `kilo.core/ai-provider`     | A    | Add an AI provider entry (and the env it refers to) to Kilo's config                                                                                                   |
+| `kilo.core/mcp-server`      | A    | Add an MCP server to Kilo: static `{ command, args, env }` in metadata (`${resources}` is resolved by the kernel to the contributor's own folder) or an implementation |
+| `kilo.core/agent-extension` | A    | Add an agent, command, skill folder or Kilo plugin to Kilo, all data in metadata (`${resources}` is resolved by the kernel to the contributor's own folder)            |
 
 ## How tool calls look (`kilo.chat/tool-renderer`)
 
 By default a call shows as one line with its title. To draw a card instead:
 
 ```jsonc
-"kilo.chat/tool-renderer": [{ "id": "greet", "tools": ["desktop_example_hello_greet"], "standalone": false }]
+"kilo.chat/tool-renderer": [{ "id": "greet", "tools": ["example.hello/greet"], "standalone": false }]
 ```
 
 ```tsx
@@ -92,18 +90,32 @@ function GreetCard(props: ToolRendererProps) {
 }
 ```
 
-- `tools` are the names Kilo calls them by (built-in tools such as `bash`
-  too). The highest-priority renderer for a tool draws it and gets the next
-  one as `Original` — render it to wrap or decorate the default.
-- `standalone: true` keeps calls out of activity groups (cards that stay
-  actionable); `category` puts them in a built-in group (`editing`,
-  `terminal`, `web`…).
-- kilo.chat ships its own renderers through this point.
+- `tools` name desktop tools by their `kilo.core/tool` contribution key
+  (`example.hello/greet`, never the wire name) and Kilo's built-in tools by
+  name (`bash`, `read`). The highest-priority renderer for a tool draws it
+  and gets the next one as `Original` — render it to wrap or decorate the
+  default.
+- `ToolRendererProps` is kilo.chat's own shape (`toolCallId`, `toolName`,
+  `args`, `argsText`, `result`, `isError`, `status` running / complete /
+  incomplete / requires-action), not the chat library's or Kilo's types.
+- `standalone: true` keeps calls out of activity groups and the settled
+  turn's fold (cards that stay actionable); `category` puts them in a
+  built-in group (`editing`, `terminal`, `web`…).
+- kilo.chat ships its own renderers for Kilo's built-in tools through this
+  point.
 
-Related renderer points: `kilo.chat/interaction-renderer` (details and
-policy on permission and question cards), `kilo.chat/mcp-app` (interactive
-MCP App widgets for a tool's calls) and `kilo.chat/markdown-extension`
-(remark plugins and link decorators for replies, e.g. file links).
+### Other transcript points
+
+| Extension point                 | Use it to                                                                                                                                                                                                     |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kilo.chat/mcp-app`             | Show an interactive MCP App widget (`resourceUri: "ui://…"`) for a tool's calls, matched like `tool-renderer`; `loadHtml` serves it from your plugin, else it is read from the tool's MCP server (`serverId`) |
+| `kilo.chat/markdown-extension`  | Add remark plugins and component decorators to the agent's replies (file paths as links); made once per transcript from `{ workSessionId, workspaceFolders }`                                                 |
+| `kilo.chat/permission-renderer` | Add details and policies to permission and question cards: `permissionTitle`, a `PermissionDetail` view, `allowAlways: false`, a question `optionWarning`                                                     |
+
+A `permission-renderer` with `tools` (contribution keys) applies its
+permission parts only to requests from those desktop tools — matched on
+kilo.core's `PermissionRequest.toolKey`, never on wire names; without
+`tools` it applies to every request.
 
 ## The composer
 
@@ -125,14 +137,17 @@ command. Otherwise implement it:
 | `action`  | `{ kind, useButton?(context), run?(context) }`           |
 | `menu`    | `{ kind, useMenu(context) → { items, value?, select } }` |
 | `popover` | `{ kind, useTrigger?(context), Content }`                |
-| `view`    | `{ kind, Component }` drawn as-is (git's branch label)   |
+| `view`    | `{ kind, Component }` drawn as-is (a branch label)       |
 
 `use…` functions run as hooks while the composer shows, so they can read
-your domain objects. `context` has `sessionId`, `chatId` (null for a
-draft), `directory`, `workspaceId` and `workspaceFolders`. Slots:
-`toolbar`, `toolbar-end`, `footer` (under an Agent pane's composer, from
-before its first message) and `draft-footer` (under the New Session page's
-composer, before there is a session).
+your domain objects. `context` has `workSessionId` (null on the New Session
+page, where the first send creates the work session), `chatId` (null for a
+draft), `directory`, `workspaceId` and `workspaceFolders`. Slots: `toolbar`,
+`toolbar-end` (before send), `footer` (under a chat's composer in a work
+session, from before its first message) and `draft-footer` (under the New
+Session page's composer, before there is a work session). Actions are
+ordered by priority, highest first; kilo.chat's attach, agent, model and
+approval controls come through the point too.
 
 ### Mentions (`kilo.chat/composer-mention`)
 
@@ -145,7 +160,7 @@ and is resolved into the message when it is sent:
 
 ```ts
 sdk.extensions.implement(ComposerMention, "todos", {
-	search: async (query, { sessionId, signal }) =>
+	search: async (query, { workSessionId, signal }) =>
 		(await todos.find(query, signal)).map((todo) => ({ id: todo.id, label: todo.title })),
 	resolve: async (item) => ({ text: `Todo ${item.label}: ${await todos.body(item.id)}` }),
 });
@@ -157,10 +172,15 @@ commands).
 
 ### Driving the composer
 
-The per-window `kilo.chat/composer` domain object has `focus`, `insert`
-(append text to a session's composer, e.g. "Fix in chat") and
-`startNewChat({ text, workspaceId })`. kilo.chat may be absent — hide such
-actions when `sdk.domains.get(Composer)` is null.
+The per-window `kilo.chat/composer` domain object has `focus` and `insert`
+(append text to a work session's composer, e.g. "Fix in chat"; both open
+the work session's Agent pane if it isn't shown, and default to the
+window's open work session) and `startChat({ text, workspaceId })` (a new
+work session with an Agent pane and the text in its composer, as the New
+Session page does). kilo.chat may be absent — hide such actions when
+`sdk.domainObjects.get(Composer)` is null. Unsent text lives in
+`kilo.chat/drafts`.
 
-Local model servers reach the model picker through
-`kilo.chat/model-source`; see kilo.local-inference for a full example.
+The model picker reads kilo.core's `kilo.core/models`. A local model server
+also contributes to `kilo.chat/model-source`: its rail in the picker, starting
+it, and loading a model before a prompt.

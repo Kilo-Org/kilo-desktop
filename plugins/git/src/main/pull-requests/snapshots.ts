@@ -1,4 +1,4 @@
-import type { PullRequest, PullRequestEntry, PullRequestSnapshot } from "../../contracts/index.js";
+import type { PullRequest, PullRequestEntry, PullRequestSnapshot } from "../../contracts";
 
 export type PullRequestEntries = Readonly<Record<string, PullRequestEntry>>;
 

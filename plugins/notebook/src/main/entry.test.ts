@@ -1,188 +1,77 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
-	definePlugin,
-	KernelDataCollection,
 	KernelDialogs,
 	KernelError,
-	KernelServices,
 	KernelOs,
-	type EmbeddedHostRegistration,
-	type PluginRegistration,
+	KernelServices,
+	type KernelLogger,
 } from "@kilo-desktop/kernel";
 import {
-	createMemoryStorage,
-	createTestKernelPair,
-	testPlugin,
-} from "@kilo-desktop/kernel/testing";
-import {
-	AgentTool,
-	RuntimeConfigPoint,
+	AgentExtension,
+	ServerEnv,
+	Tool,
 	toolWireName,
-	type RuntimeConfigSource,
-	type ToolCallContext,
-} from "@kilo-desktop/plugin-agent/contracts";
-import { Flags, FLAGS_DEFINITIONS } from "@kilo-desktop/plugin-flags/contracts";
-import { Panes, type Pane } from "@kilo-desktop/plugin-sessions/contracts";
+	type ServerEnvSource,
+} from "@kilo-desktop/plugin-core/contracts";
 
-import manifest from "../../plugin.json";
 import {
 	FILE_OBJECT_TYPE,
-	NOTEBOOK_DEFINITIONS,
 	NOTEBOOK_HOST_PORT,
 	NOTEBOOK_PANE_KIND,
-	Notebooks,
+	NOTEBOOK_TELEMETRY_FLAG,
 	RUNTIMED_SERVICE_KEY,
 } from "../contracts/index.js";
-import { createFakeHostServices, NOTEBOOK_ID } from "../test/fake-host-service.js";
-import {
-	agentPoints,
-	createSessionsHost,
-	filesOpener,
-	notebookPane,
-	SESSION_ID,
-} from "../test/sessions-host.js";
-import { createNotebookMainEntry, type NotebookMainOptions } from "./entry.js";
+import { findRuntimedArtifact } from "../packaging/artifacts.js";
+import { NOTEBOOK_ID } from "../test/fake-host-service.js";
+import { notebookPane, SESSION_ID } from "../test/sessions-host.js";
+import type { NotebookMainOptions } from "./entry.js";
 import type { OpenTelemetryRegistration } from "./runtime/NotebookTelemetryPermission.js";
+import {
+	bootNotebookMain as boot,
+	NEW_ID,
+	recordingLogger,
+	removeLater,
+	RUNTIMED_NODE_ENTRY,
+	SOCKET_PATH,
+	stopNotebookMains,
+} from "./test-boot.js";
 
 const WAIT = { timeout: 5_000 };
-const NEW_ID = "11111111-2222-4333-8444-555555555555";
 
-interface BootOptions {
-	readonly panes?: readonly Pane[];
-	readonly entry?: Partial<NotebookMainOptions>;
-	readonly withoutSessions?: boolean;
-	readonly withoutEmbeddedHosts?: boolean;
-	readonly flags?: Record<string, unknown>;
-	readonly allowed?: boolean;
-}
-
-const temporaryDirectories: string[] = [];
 afterEach(async () => {
 	vi.unstubAllEnvs();
-	await Promise.all(
-		temporaryDirectories.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
-	);
+	await stopNotebookMains();
 });
 
-function flagsPlugin(flags: Record<string, unknown>) {
-	return testPlugin("kilo.flags", {
-		manifest: { domains: [{ id: "flags", home: "main" }] },
-		definitions: FLAGS_DEFINITIONS,
-		entry: definePlugin({
-			activate(sdk) {
-				sdk.domains.provide(Flags, { initialState: { flags, ready: true }, methods: {} });
-			},
-		}),
-	});
-}
+const tempDir = async (prefix: string) =>
+	removeLater(await mkdtemp(path.join(os.tmpdir(), prefix)));
 
-async function boot(options: BootOptions = {}) {
-	const services = createFakeHostServices();
-	const sessions = createSessionsHost(options.panes ?? []);
-	const storage = createMemoryStorage("/memory/kilo.notebook");
-	const embedded: EmbeddedHostRegistration[] = [];
-	const registrations: PluginRegistration[] = [
-		agentPoints,
-		...(options.flags ? [flagsPlugin(options.flags)] : []),
-		...(options.withoutSessions ? [] : [sessions.registration, filesOpener]),
-		{
-			manifest,
-			definitions: NOTEBOOK_DEFINITIONS,
-			entry: createNotebookMainEntry({
-				createHostService: services.create,
-				socketPath: "/tmp/runtimed.sock",
-				warmStart: false,
-				createId: () => NEW_ID,
-				resolveRuntimedBinary: () => "/resources/runtimed/runtimed-nightly",
-				resolveBundleRoot: () => "/resources/notebook",
-				resolveKiloPluginEntry: () => "/resources/kilo-plugin/index.js",
-				resolveRuntimedNodeEntry: () => "/app.asar.unpacked/node_modules/@runtimed/node/index.cjs",
-				...options.entry,
-			}),
-		},
-	];
-	const { main, renderer } = await createTestKernelPair({
-		main: registrations,
-		renderer: [
-			{ manifest, definitions: NOTEBOOK_DEFINITIONS, entry: definePlugin({ activate() {} }) },
-		],
-		mainHostServices: (pluginId) =>
-			pluginId === "kilo.notebook"
-				? {
-						storage,
-						...(options.withoutEmbeddedHosts
-							? {}
-							: {
-									embeddedHosts: {
-										register: (registration: EmbeddedHostRegistration) => {
-											embedded.push(registration);
-											return () => undefined;
-										},
-									},
-								}),
-					}
-				: {},
-	});
-	main.kernelSdk.domains.provide(KernelDataCollection, {
-		initialState: {
-			choice: true,
-			allowed: options.allowed ?? false,
-			installationId: "install",
-			environment: "development",
-		},
-		methods: { setChoice: () => undefined },
-	});
-	await main.flush();
-	const notebooks = main.kernelSdk.domains.get(Notebooks)!;
-	const panes = () => main.kernelSdk.domains.get(Panes)!;
-	const paneOf = (paneId: string) => sessions.panes().panes.find((pane) => pane.id === paneId);
-	const tool = (id: string) =>
-		main.kernelSdk.extensions
-			.list(AgentTool)
-			.find((contribution) => contribution.key === `kilo.notebook/${id}`)!;
-	const callTool = (id: string, input: unknown = {}, sessionId: string | null = SESSION_ID) => {
-		const context: ToolCallContext = {
-			sessionId,
-			chatId: sessionId ? "chat" : null,
-			callId: "call_1",
-			external: false,
-			signal: new AbortController().signal,
-		};
-		const { implementation } = tool(id);
-		return Promise.resolve().then(() =>
-			implementation!.run(implementation!.input.parse(input), context),
-		);
-	};
-	return {
-		main,
-		renderer,
-		services,
-		sessions,
-		storage,
-		embedded,
-		notebooks,
-		panes,
-		paneOf,
-		tool,
-		callTool,
-	};
-}
+const serverEnvOf = (host: Awaited<ReturnType<typeof boot>>) =>
+	host.main.kernelSdk.extensions
+		.list(ServerEnv)
+		.find((contribution) => contribution.pluginId === "kilo.notebook")?.implementation as
+		| ServerEnvSource
+		| undefined;
+
+/** The kernel reports kilo.notebook's manifest contributions to absent plugins; the entry says nothing. */
+const ownMessages = (messages: unknown[][]) =>
+	messages.filter(([message]) => !String(message).startsWith("[kilo.notebook] Contribution"));
 
 describe("kilo.notebook in main", () => {
 	it("opens workspace notebooks in a Notebook pane, ahead of Files", async () => {
 		const host = await boot();
 
 		const notebook = await host.panes().methods.openObject({
-			sessionId: SESSION_ID,
+			workSessionId: SESSION_ID,
 			ref: { type: FILE_OBJECT_TYPE, id: "/work/analysis.ipynb" },
 		});
 		const script = await host.panes().methods.openObject({
-			sessionId: SESSION_ID,
+			workSessionId: SESSION_ID,
 			ref: { type: FILE_OBJECT_TYPE, id: "/work/app.py" },
 		});
 
@@ -192,9 +81,8 @@ describe("kilo.notebook in main", () => {
 			() =>
 				expect(host.paneOf(notebook!.id)).toMatchObject({
 					title: "analysis.ipynb",
+					object: { type: FILE_OBJECT_TYPE, id: "/work/analysis.ipynb" },
 					metadata: {
-						objectType: FILE_OBJECT_TYPE,
-						objectId: "/work/analysis.ipynb",
 						notebookPath: "/work/analysis.ipynb",
 						notebookId: NOTEBOOK_ID,
 						notebookOpenState: "ready",
@@ -212,15 +100,13 @@ describe("kilo.notebook in main", () => {
 		});
 
 		const pane = await host.panes().methods.openObject({
-			sessionId: SESSION_ID,
+			workSessionId: SESSION_ID,
 			ref: { type: FILE_OBJECT_TYPE, id: "/work/analysis.ipynb" },
 		});
 
 		await vi.waitFor(
 			() =>
 				expect(host.paneOf(pane!.id)?.metadata).toEqual({
-					objectType: FILE_OBJECT_TYPE,
-					objectId: "/work/analysis.ipynb",
 					notebookPath: "/work/analysis.ipynb",
 					notebookOpenState: "error",
 					notebookOpenError: "Could not open notebook: lock held",
@@ -234,7 +120,7 @@ describe("kilo.notebook in main", () => {
 
 		const pane = await host
 			.panes()
-			.methods.open({ sessionId: SESSION_ID, kind: NOTEBOOK_PANE_KIND });
+			.methods.open({ workSessionId: SESSION_ID, kind: NOTEBOOK_PANE_KIND });
 
 		await vi.waitFor(() => expect(host.paneOf(pane.id)?.metadata.notebookId).toBe(NEW_ID), WAIT);
 		expect(host.services.created).toHaveLength(0);
@@ -251,13 +137,16 @@ describe("kilo.notebook in main", () => {
 			],
 		});
 
-		await host.notebooks.methods.resolvePane({ sessionId: SESSION_ID, paneId: "pane_restored" });
-		await host.notebooks.methods.resolvePane({ sessionId: SESSION_ID, paneId: NOTEBOOK_ID });
+		await host.notebooks.methods.resolvePane({
+			workSessionId: SESSION_ID,
+			paneId: "pane_restored",
+		});
+		await host.notebooks.methods.resolvePane({ workSessionId: SESSION_ID, paneId: NOTEBOOK_ID });
 
 		expect(host.paneOf("pane_restored")?.metadata.notebookOpenState).toBe("ready");
 		expect(host.paneOf(NOTEBOOK_ID)?.metadata).toEqual({});
 		await expect(
-			host.notebooks.methods.resolvePane({ sessionId: SESSION_ID, paneId: "pane_missing" }),
+			host.notebooks.methods.resolvePane({ workSessionId: SESSION_ID, paneId: "pane_missing" }),
 		).rejects.toThrow("Notebook pane not found.");
 	});
 
@@ -269,11 +158,13 @@ describe("kilo.notebook in main", () => {
 		});
 		expect(host.services.started).toHaveBeenCalled();
 		expect(host.services.options()).toMatchObject({
-			socketPath: "/tmp/runtimed.sock",
+			socketPath: SOCKET_PATH,
 			runtimedBinaryPath: "/resources/runtimed/runtimed-nightly",
 		});
 		expect(
-			host.main.kernelSdk.domains.get(KernelServices)!.getState().services[RUNTIMED_SERVICE_KEY],
+			host.main.kernelSdk.domainObjects.get(KernelServices)!.getState().services[
+				RUNTIMED_SERVICE_KEY
+			],
 		).toMatchObject({ status: "ready" });
 	});
 
@@ -291,8 +182,9 @@ describe("kilo.notebook in main", () => {
 			},
 		});
 		expect(
-			host.main.kernelSdk.domains.get(KernelServices)!.getState().services[RUNTIMED_SERVICE_KEY]
-				?.status,
+			host.main.kernelSdk.domainObjects.get(KernelServices)!.getState().services[
+				RUNTIMED_SERVICE_KEY
+			]?.status,
 		).toBe("failed");
 	});
 
@@ -300,7 +192,7 @@ describe("kilo.notebook in main", () => {
 		const host = await boot();
 		await host.notebooks.methods.status(undefined);
 
-		await host.main.kernelSdk.domains
+		await host.main.kernelSdk.domainObjects
 			.get(KernelServices)!
 			.methods.restart({ key: RUNTIMED_SERVICE_KEY });
 		await host.notebooks.methods.status(undefined);
@@ -330,13 +222,13 @@ describe("kilo.notebook in main", () => {
 
 		platform.events.emit("dirty-changed", {
 			notebookId: NOTEBOOK_ID,
-			sessionId: SESSION_ID,
+			workSessionId: SESSION_ID,
 			dirty: true,
 		});
 		expect(host.notebooks.getState().dirty).toEqual({ [NOTEBOOK_ID]: true });
 		platform.events.emit("dirty-changed", {
 			notebookId: NOTEBOOK_ID,
-			sessionId: SESSION_ID,
+			workSessionId: SESSION_ID,
 			dirty: true,
 		});
 		host.services.setSaveResult({ outcome: "failed", reason: "Disk full." });
@@ -354,12 +246,12 @@ describe("kilo.notebook in main", () => {
 
 		host.services.options().platform.events.emit("title-changed", {
 			notebookId: NOTEBOOK_ID,
-			sessionId: SESSION_ID,
+			workSessionId: SESSION_ID,
 			title: "renamed.ipynb",
 		});
 		host.services.options().platform.events.emit("title-changed", {
 			notebookId: "00000000-0000-4000-8000-000000000000",
-			sessionId: SESSION_ID,
+			workSessionId: SESSION_ID,
 			title: "elsewhere.ipynb",
 		});
 
@@ -367,8 +259,7 @@ describe("kilo.notebook in main", () => {
 	});
 
 	it("keeps settings in kv and its state, and takes origin's over once", async () => {
-		const originDir = await mkdtemp(path.join(os.tmpdir(), "notebook-origin-"));
-		temporaryDirectories.push(originDir);
+		const originDir = await tempDir("notebook-origin-");
 		await writeFile(
 			path.join(originDir, "settings.json"),
 			JSON.stringify({ autoCreateEnvironmentFile: false, trustNewNotebooks: true }),
@@ -407,8 +298,7 @@ describe("kilo.notebook in main", () => {
 			WAIT,
 		);
 
-		const originDir = await mkdtemp(path.join(os.tmpdir(), "notebook-origin-"));
-		temporaryDirectories.push(originDir);
+		const originDir = await tempDir("notebook-origin-");
 		await mkdir(path.join(originDir, "settings.json"));
 		const broken = await boot({ entry: { originStorageDir: () => originDir } });
 		await broken.main.flush();
@@ -417,8 +307,7 @@ describe("kilo.notebook in main", () => {
 	});
 
 	it("prepares a new notebook's environment once", async () => {
-		const workspace = await mkdtemp(path.join(os.tmpdir(), "notebook-workspace-"));
-		temporaryDirectories.push(workspace);
+		const workspace = await tempDir("notebook-workspace-");
 		const host = await boot({ entry: { homeDirectory: os.tmpdir() } });
 
 		const first = await host.notebooks.methods.prepareEnvironment({
@@ -436,25 +325,24 @@ describe("kilo.notebook in main", () => {
 
 	it("gives the Kilo server the notebook tool plugin and where the runtime is", async () => {
 		const host = await boot();
-		const source = host.main.kernelSdk.extensions
-			.list(RuntimeConfigPoint)
-			.find((contribution) => contribution.pluginId === "kilo.notebook")!
-			.implementation as RuntimeConfigSource;
 
-		expect(source.read()).toEqual({
-			kiloPlugins: { notebooks: "/resources/kilo-plugin/index.js" },
-			env: {
-				NTERACT_RUNTIMED_NODE_PATH: "/app.asar.unpacked/node_modules/@runtimed/node/index.cjs",
-				RUNTIMED_SOCKET_PATH: "/tmp/runtimed.sock",
-			},
+		expect(
+			host.main.kernelSdk.extensions
+				.list(AgentExtension)
+				.find((contribution) => contribution.pluginId === "kilo.notebook")?.metadata,
+		).toMatchObject({ type: "kilo-plugin" });
+		expect(serverEnvOf(host)?.read()).toEqual({
+			NTERACT_RUNTIMED_NODE_PATH: RUNTIMED_NODE_ENTRY,
+			RUNTIMED_SOCKET_PATH: SOCKET_PATH,
 		});
+	});
 
-		const bare = await boot({ entry: { resolveKiloPluginEntry: () => undefined } });
-		const bareSource = bare.main.kernelSdk.extensions
-			.list(RuntimeConfigPoint)
-			.find((contribution) => contribution.pluginId === "kilo.notebook")!
-			.implementation as RuntimeConfigSource;
-		expect(bareSource.read()).toEqual({});
+	it("gives the Kilo server no environment, and says so, without the runtimed node entry", async () => {
+		const { logger, warnings } = recordingLogger();
+		const bare = await boot({ entry: { resolveRuntimedNodeEntry: () => undefined }, logger });
+
+		expect(serverEnvOf(bare)?.read()).toEqual({});
+		expect(warnings.flat().join("\n")).toContain("@runtimed/node entry is unavailable");
 	});
 
 	it("serves the notebook UI on its embedded host, outputs confined", async () => {
@@ -472,11 +360,52 @@ describe("kilo.notebook in main", () => {
 		expect(without.embedded).toEqual([]);
 	});
 
+	it("finds the runtime and the notebook UI among the files it ships", async () => {
+		const artifact = findRuntimedArtifact();
+		const resources = await tempDir("notebook-assets-");
+		await mkdir(path.join(resources, "resources/notebook"), { recursive: true });
+		await writeFile(path.join(resources, "resources/notebook/index.html"), "");
+		if (artifact) {
+			await mkdir(path.join(resources, "resources/runtimed", artifact.target), { recursive: true });
+			await writeFile(
+				path.join(resources, "resources/runtimed", artifact.target, artifact.executable),
+				"",
+			);
+		}
+		const defaults = {
+			resolveRuntimedBinary: undefined,
+			resolveBundleRoot: undefined,
+		} as unknown as Partial<NotebookMainOptions>;
+		const host = await boot({
+			entry: defaults,
+			assets: { resolve: (subpath) => path.join(resources, subpath) },
+		});
+		await host.notebooks.methods.status(undefined);
+
+		expect(host.embedded[0]?.root).toBe(path.join(resources, "resources/notebook"));
+		expect(host.services.options().runtimedBinaryPath).toBe(
+			artifact
+				? path.join(resources, "resources/runtimed", artifact.target, artifact.executable)
+				: undefined,
+		);
+
+		const empty = await boot({ entry: defaults, assets: { resolve: () => "/no/such/file" } });
+		const broken = await boot({
+			entry: defaults,
+			assets: {
+				resolve: () => {
+					throw new Error("no assets");
+				},
+			},
+		});
+		expect([empty.embedded[0]?.root, broken.embedded[0]?.root]).toEqual([undefined, undefined]);
+	});
+
 	it("connects a pane's frame to its notebook over the host port", async () => {
 		const host = await boot();
 		const frameEnd = host.renderer.sdkFor("kilo.notebook").ports.open(NOTEBOOK_HOST_PORT, {
 			notebookId: NOTEBOOK_ID,
-			sessionId: SESSION_ID,
+			workSessionId: SESSION_ID,
 			title: "Notebook",
 			workingDirectory: "/work",
 		});
@@ -488,7 +417,7 @@ describe("kilo.notebook in main", () => {
 		expect(connection).toMatchObject({
 			args: {
 				notebookId: NOTEBOOK_ID,
-				sessionId: SESSION_ID,
+				workSessionId: SESSION_ID,
 				title: "Notebook",
 				workingDirectory: "/work",
 			},
@@ -521,18 +450,18 @@ describe("kilo.notebook in main", () => {
 
 		sdk.ports.open(NOTEBOOK_HOST_PORT, {
 			notebookId: "not-a-uuid",
-			sessionId: SESSION_ID,
+			workSessionId: SESSION_ID,
 			title: "x",
 		});
 		sdk.ports.open(NOTEBOOK_HOST_PORT, {
 			notebookId: NOTEBOOK_ID,
-			sessionId: SESSION_ID,
+			workSessionId: SESSION_ID,
 			title: "x",
 			notebookPath: "/work/notes.txt",
 		});
 		sdk.ports.open(NOTEBOOK_HOST_PORT, {
 			notebookId: NOTEBOOK_ID,
-			sessionId: SESSION_ID,
+			workSessionId: SESSION_ID,
 			title: "x",
 			workingDirectory: "relative",
 		});
@@ -550,11 +479,11 @@ describe("kilo.notebook in main", () => {
 			message: vi.fn(() => ({ response: 0 })),
 		};
 		const openExternal = vi.fn(() => true);
-		host.main.kernelSdk.domains.provide(KernelDialogs, {
+		host.main.kernelSdk.domainObjects.provide(KernelDialogs, {
 			initialState: {},
 			methods: dialogs as never,
 		});
-		host.main.kernelSdk.domains.provide(KernelOs, {
+		host.main.kernelSdk.domainObjects.provide(KernelOs, {
 			initialState: {},
 			methods: { openExternal } as never,
 		});
@@ -609,8 +538,7 @@ describe("kilo.notebook in main", () => {
 		onNotebookConnected?.({ notebookId: NEW_ID, untitled: false });
 
 		await vi.waitFor(
-			() =>
-				expect(openTrustSession).toHaveBeenCalledExactlyOnceWith(NOTEBOOK_ID, "/tmp/runtimed.sock"),
+			() => expect(openTrustSession).toHaveBeenCalledExactlyOnceWith(NOTEBOOK_ID, SOCKET_PATH),
 			WAIT,
 		);
 		onNotebookDisconnected?.(NOTEBOOK_ID);
@@ -627,7 +555,7 @@ describe("kilo.notebook in main", () => {
 		const host = await boot({
 			entry: { openTelemetryRegistration },
 			allowed: true,
-			flags: { "notebook-host-telemetry": true },
+			flags: { [NOTEBOOK_TELEMETRY_FLAG]: true },
 		});
 		await host.notebooks.methods.status(undefined);
 
@@ -635,35 +563,57 @@ describe("kilo.notebook in main", () => {
 
 		await vi.waitFor(() => expect(openTelemetryRegistration).toHaveBeenCalled(), WAIT);
 		expect(openTelemetryRegistration.mock.lastCall?.[0]).toMatchObject({
-			socketPath: "/tmp/runtimed.sock",
+			socketPath: SOCKET_PATH,
 		});
 	});
 
+	it("activates without kilo.work-sessions, kilo.core and kilo.shell, warning of nothing", async () => {
+		const { logger, warnings, errors } = recordingLogger();
+		const host = await boot({
+			withoutWorkSessions: true,
+			withoutCore: true,
+			withoutShell: true,
+			logger: logger satisfies KernelLogger,
+		});
+
+		expect(host.notebooks.getState().settings).toEqual({
+			autoCreateEnvironmentFile: true,
+			trustNewNotebooks: false,
+		});
+		expect(host.main.kernelSdk.extensions.list(Tool)).toEqual([]);
+		expect(serverEnvOf(host)).toBeUndefined();
+		await expect(host.notebooks.methods.status(undefined)).resolves.toMatchObject({
+			availability: { status: "available" },
+		});
+		expect(ownMessages(warnings)).toEqual([]);
+		expect(errors).toEqual([]);
+	});
+
 	describe("agent tools", () => {
-		it("lists the calling session's notebooks", async () => {
+		it("lists the calling work session's notebooks", async () => {
 			const host = await boot({
 				panes: [
 					notebookPane("pane_a", { notebookId: NOTEBOOK_ID }),
 					notebookPane("pane_b", { notebookOpenState: "opening", notebookPath: "/w/b.ipynb" }),
 				],
 			});
-			await host.panes().methods.activate({ sessionId: SESSION_ID, paneId: "pane_a" });
+			await host.panes().methods.activate({ workSessionId: SESSION_ID, paneId: "pane_a" });
 
 			await expect(host.callTool("list_open")).resolves.toEqual({
-				sessionId: SESSION_ID,
+				workSessionId: SESSION_ID,
 				notebooks: [{ notebook_id: NOTEBOOK_ID, title: "Notebook", active: true }],
 			});
 			await expect(host.callTool("list_open", {}, "wses_other")).resolves.toEqual({
-				sessionId: "wses_other",
+				workSessionId: "wses_other",
 				notebooks: [],
 			});
 		});
 
-		it("opens a new notebook in the calling session", async () => {
+		it("opens a new notebook in the calling work session", async () => {
 			const host = await boot();
 
 			await expect(host.callTool("open")).resolves.toEqual({
-				sessionId: SESSION_ID,
+				workSessionId: SESSION_ID,
 				notebook_id: NEW_ID,
 				title: "Notebook",
 			});
@@ -677,7 +627,7 @@ describe("kilo.notebook in main", () => {
 			const again = await host.callTool("open_file", { path: "/work/analysis.ipynb" });
 
 			expect(first).toEqual({
-				sessionId: SESSION_ID,
+				workSessionId: SESSION_ID,
 				notebook_id: NOTEBOOK_ID,
 				title: "analysis.ipynb",
 				path: "/work/analysis.ipynb",
@@ -706,7 +656,7 @@ describe("kilo.notebook in main", () => {
 			expect(host.paneOf("pane_a")?.metadata.notebookOpenState).toBe("ready");
 		});
 
-		it("refuses callers without a session, relative paths, and files it can't open", async () => {
+		it("refuses callers without a work session, relative paths, and files it can't open", async () => {
 			const host = await boot();
 			host.services.setOpenFile(async () => {
 				throw new Error("broken");
@@ -729,8 +679,8 @@ describe("kilo.notebook in main", () => {
 			);
 		});
 
-		it("is unavailable without kilo.sessions", async () => {
-			const host = await boot({ withoutSessions: true });
+		it("is unavailable without kilo.work-sessions", async () => {
+			const host = await boot({ withoutWorkSessions: true });
 
 			await expect(host.callTool("list_open")).rejects.toThrow("Panes are unavailable");
 			await expect(host.callTool("open")).rejects.toThrow("Panes are unavailable");
@@ -738,7 +688,7 @@ describe("kilo.notebook in main", () => {
 				"Panes are unavailable",
 			);
 			await expect(
-				host.notebooks.methods.resolvePane({ sessionId: SESSION_ID, paneId: "pane_a" }),
+				host.notebooks.methods.resolvePane({ workSessionId: SESSION_ID, paneId: "pane_a" }),
 			).rejects.toThrow("Panes are unavailable");
 		});
 

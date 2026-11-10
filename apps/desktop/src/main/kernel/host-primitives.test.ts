@@ -126,13 +126,13 @@ describe("host primitives", () => {
 		await expect(
 			kernel
 				.sdkFor("acme.plain")
-				.domains.get(KernelOs)!
+				.domainObjects.get(KernelOs)!
 				.methods.openExternal({ url: "https://x.test" }),
 		).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
 		await expect(
 			kernel
 				.sdkFor("acme.trusted")
-				.domains.get(KernelOs)!
+				.domainObjects.get(KernelOs)!
 				.methods.openExternal({ url: "https://x.test" }),
 		).resolves.toBe(true);
 		expect(hostDeps.os.openExternal).toHaveBeenCalledOnce();
@@ -150,7 +150,7 @@ describe("host primitives", () => {
 		await expect(
 			kernel
 				.sdkFor("acme.trusted")
-				.domains.get(KernelDialogs)!
+				.domainObjects.get(KernelDialogs)!
 				.methods.save({ defaultPath: "/work", filters }),
 		).resolves.toEqual({ path: "/work/out.ipynb" });
 		expect(hostDeps.dialog.showSaveDialog).toHaveBeenCalledWith(undefined, {
@@ -166,7 +166,7 @@ describe("host primitives", () => {
 			.mockResolvedValueOnce({ canceled: false, filePaths: ["/a", "/b"] })
 			.mockResolvedValueOnce({ canceled: true, filePaths: ["/ignored"] });
 		const kernel = await boot(hostDeps);
-		const dialogs = kernel.sdkFor("acme.trusted").domains.get(KernelDialogs)!;
+		const dialogs = kernel.sdkFor("acme.trusted").domainObjects.get(KernelDialogs)!;
 		const filters = [{ name: "Data", extensions: ["csv"] }];
 
 		await expect(
@@ -197,7 +197,7 @@ describe("host primitives", () => {
 			.mockResolvedValueOnce({ canceled: true, filePath: "/ignored" })
 			.mockResolvedValueOnce({ canceled: false });
 		const kernel = await boot(hostDeps);
-		const dialogs = kernel.sdkFor("acme.trusted").domains.get(KernelDialogs)!;
+		const dialogs = kernel.sdkFor("acme.trusted").domainObjects.get(KernelDialogs)!;
 
 		await expect(dialogs.methods.save({ title: "Export" })).resolves.toEqual({ path: null });
 		expect(hostDeps.dialog.showSaveDialog).toHaveBeenLastCalledWith(undefined, {
@@ -210,7 +210,7 @@ describe("host primitives", () => {
 		const hostDeps = deps();
 		vi.mocked(hostDeps.dialog.showMessageBox).mockResolvedValue({ response: 1 });
 		const kernel = await boot(hostDeps);
-		const dialogs = kernel.sdkFor("acme.trusted").domains.get(KernelDialogs)!;
+		const dialogs = kernel.sdkFor("acme.trusted").domainObjects.get(KernelDialogs)!;
 
 		await expect(
 			dialogs.methods.message({
@@ -241,7 +241,7 @@ describe("host primitives", () => {
 	it("shows notifications and sets the badge count", async () => {
 		const hostDeps = deps();
 		const kernel = await boot(hostDeps);
-		const notifications = kernel.sdkFor("acme.trusted").domains.get(KernelNotifications)!;
+		const notifications = kernel.sdkFor("acme.trusted").domainObjects.get(KernelNotifications)!;
 
 		await expect(
 			notifications.methods.show({ title: "Build done", body: "All green", silent: true }),
@@ -263,7 +263,7 @@ describe("host primitives", () => {
 
 		await kernel
 			.sdkFor("acme.trusted")
-			.domains.get(KernelKeychain)!
+			.domainObjects.get(KernelKeychain)!
 			.methods.set({ key: "token", value: "s3cret" });
 
 		expect(hostDeps.keychain.set).toHaveBeenCalledWith("acme.trusted:token", "s3cret");
@@ -273,7 +273,7 @@ describe("host primitives", () => {
 		const hostDeps = deps();
 		vi.mocked(hostDeps.keychain.get).mockResolvedValue("s3cret");
 		const kernel = await boot(hostDeps);
-		const keychain = kernel.sdkFor("acme.trusted").domains.get(KernelKeychain)!;
+		const keychain = kernel.sdkFor("acme.trusted").domainObjects.get(KernelKeychain)!;
 
 		await expect(keychain.methods.get({ key: "token" })).resolves.toBe("s3cret");
 		await keychain.methods.delete({ key: "token" });
@@ -310,7 +310,7 @@ describe("host primitives", () => {
 			const hostDeps = deps();
 			const { renderer } = await bootWindow(hostDeps);
 
-			await renderer.sdkFor("acme.trusted").domains.get(KernelAppMenu)!.methods.setMenu({
+			await renderer.sdkFor("acme.trusted").domainObjects.get(KernelAppMenu)!.methods.setMenu({
 				menus: MENUS,
 			});
 
@@ -322,7 +322,10 @@ describe("host primitives", () => {
 			const { main } = await bootWindow(hostDeps);
 
 			await expect(
-				main.sdkFor("acme.trusted").domains.get(KernelAppMenu)!.methods.setMenu({ menus: MENUS }),
+				main
+					.sdkFor("acme.trusted")
+					.domainObjects.get(KernelAppMenu)!
+					.methods.setMenu({ menus: MENUS }),
 			).rejects.toMatchObject({ code: "VALIDATION" });
 			expect(hostDeps.appMenu).not.toHaveBeenCalled();
 		});
@@ -334,7 +337,7 @@ describe("host primitives", () => {
 			await expect(
 				renderer
 					.sdkFor("acme.trusted")
-					.domains.get(KernelAppMenu)!
+					.domainObjects.get(KernelAppMenu)!
 					.methods.setMenu({
 						menus: [
 							{
@@ -359,7 +362,7 @@ describe("host primitives", () => {
 			},
 		});
 		const kernel = await boot(hostDeps);
-		const os = kernel.sdkFor("acme.trusted").domains.get(KernelOs)!;
+		const os = kernel.sdkFor("acme.trusted").domainObjects.get(KernelOs)!;
 
 		await expect(os.methods.showItemInFolder({ path: "/work/a.txt" })).resolves.toBeUndefined();
 		await expect(
@@ -370,7 +373,7 @@ describe("host primitives", () => {
 	it("offers no clipboard reads and no opening of arbitrary paths", async () => {
 		const hostDeps = deps();
 		const kernel = await boot(hostDeps);
-		const domains = kernel.sdkFor("acme.trusted").domains;
+		const domains = kernel.sdkFor("acme.trusted").domainObjects;
 		const clipboard = domains.get(KernelClipboard)!.methods as unknown as Record<
 			string,
 			(input: unknown) => Promise<unknown>
@@ -390,7 +393,7 @@ describe("host primitives", () => {
 
 	it("gives the log file's path and reports whether it was revealed", async () => {
 		const kernel = await boot(deps());
-		const os = kernel.sdkFor("acme.trusted").domains.get(KernelOs)!;
+		const os = kernel.sdkFor("acme.trusted").domainObjects.get(KernelOs)!;
 
 		await expect(os.methods.logFilePath(undefined)).resolves.toBe("/logs/main.log");
 		await expect(os.methods.showLogs(undefined)).resolves.toEqual({ revealed: true });
@@ -411,7 +414,7 @@ describe("updater", () => {
 			setTrack: vi.fn(async () => ({ accepted: false, state: declined })),
 		};
 		const kernel = await boot(deps({ updater }));
-		const methods = kernel.sdkFor("acme.trusted").domains.get(KernelUpdater)!.methods;
+		const methods = kernel.sdkFor("acme.trusted").domainObjects.get(KernelUpdater)!.methods;
 
 		await expect(methods.check(undefined)).resolves.toMatchObject({
 			accepted: true,
@@ -438,7 +441,7 @@ describe("updater", () => {
 			setTrack: vi.fn(),
 		};
 		const kernel = await boot(deps({ updater }));
-		const domain = kernel.sdkFor("acme.trusted").domains.get(KernelUpdater)!;
+		const domain = kernel.sdkFor("acme.trusted").domainObjects.get(KernelUpdater)!;
 
 		push({ ...UPDATER_STATE, status: "downloading", availableVersion: "1.1.0" });
 
@@ -450,18 +453,20 @@ describe("data collection", () => {
 	it("publishes consent, the installation id and the environment", async () => {
 		const kernel = await boot(deps({ dataCollection: consentStore({ forcedOff: true }) }));
 
-		expect(kernel.sdkFor("acme.plain").domains.get(KernelDataCollection)!.getState()).toEqual({
-			choice: true,
-			allowed: false,
-			installationId: "install-1",
-			environment: "preview",
-		});
+		expect(kernel.sdkFor("acme.plain").domainObjects.get(KernelDataCollection)!.getState()).toEqual(
+			{
+				choice: true,
+				allowed: false,
+				installationId: "install-1",
+				environment: "preview",
+			},
+		);
 	});
 
 	it("saves a permitted caller's choice and refuses other callers", async () => {
 		const store = consentStore();
 		const kernel = await boot(deps({ dataCollection: store }));
-		const dataCollection = kernel.sdkFor("acme.trusted").domains.get(KernelDataCollection)!;
+		const dataCollection = kernel.sdkFor("acme.trusted").domainObjects.get(KernelDataCollection)!;
 
 		await dataCollection.methods.setChoice({ allowed: false });
 
@@ -469,7 +474,7 @@ describe("data collection", () => {
 		await expect(
 			kernel
 				.sdkFor("acme.plain")
-				.domains.get(KernelDataCollection)!
+				.domainObjects.get(KernelDataCollection)!
 				.methods.setChoice({ allowed: true }),
 		).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
 		expect(store.setChoice).toHaveBeenCalledOnce();
@@ -479,7 +484,7 @@ describe("data collection", () => {
 		const kernel = await boot(
 			deps({ dataCollection: consentStore({ failWith: "Could not apply it everywhere." }) }),
 		);
-		const dataCollection = kernel.sdkFor("acme.trusted").domains.get(KernelDataCollection)!;
+		const dataCollection = kernel.sdkFor("acme.trusted").domainObjects.get(KernelDataCollection)!;
 
 		await expect(dataCollection.methods.setChoice({ allowed: false })).rejects.toMatchObject({
 			message: "Could not apply it everywhere.",
@@ -491,7 +496,7 @@ describe("data collection", () => {
 		const store = consentStore();
 		store.setChoice.mockRejectedValueOnce("disk full");
 		const kernel = await boot(deps({ dataCollection: store }));
-		const dataCollection = kernel.sdkFor("acme.trusted").domains.get(KernelDataCollection)!;
+		const dataCollection = kernel.sdkFor("acme.trusted").domainObjects.get(KernelDataCollection)!;
 
 		await expect(dataCollection.methods.setChoice({ allowed: false })).rejects.toMatchObject({
 			code: "BUSINESS",
@@ -504,7 +509,7 @@ describe("native theme", () => {
 	it("sets the OS colour scheme and window chrome for permitted callers", async () => {
 		const hostDeps = deps();
 		const kernel = await boot(hostDeps);
-		const nativeTheme = kernel.sdkFor("acme.trusted").domains.get(KernelNativeTheme)!;
+		const nativeTheme = kernel.sdkFor("acme.trusted").domainObjects.get(KernelNativeTheme)!;
 		const chrome = {
 			light: { background: "#ffffff", foreground: "#000000" },
 			dark: { background: "#101010", foreground: "#f0f0f0" },
@@ -519,7 +524,7 @@ describe("native theme", () => {
 		await expect(
 			kernel
 				.sdkFor("acme.plain")
-				.domains.get(KernelNativeTheme)!
+				.domainObjects.get(KernelNativeTheme)!
 				.methods.setSource({ source: "dark" }),
 		).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
 	});
@@ -540,7 +545,7 @@ describe("native theme", () => {
 				},
 			},
 		});
-		const nativeTheme = kernel.sdkFor("acme.plain").domains.get(KernelNativeTheme)!;
+		const nativeTheme = kernel.sdkFor("acme.plain").domainObjects.get(KernelNativeTheme)!;
 		expect(nativeTheme.getState()).toEqual({ source: "system", shouldUseDarkColors: false });
 
 		dark = true;

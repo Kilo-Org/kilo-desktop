@@ -20,30 +20,10 @@ import { packagedExecutable } from "../utils/paths.js";
 // Must match DESKTOP_PRODUCTION_SCHEME in apps/desktop ElectronProtocol.ts.
 const DESKTOP_URL_PREFIX = "kilo-desktop://";
 const MAIN_WINDOW_TIMEOUT_MS = 30_000;
-const KILO_SERVER_READY_TIMEOUT_MS = 120_000;
 const WORKER_APP_TIMEOUT_MS = 360_000;
 const CLOSE_TIMEOUT_MS = 10_000;
 const CLOSE_FORCE_WAIT_MS = 5_000;
-const PLAYWRIGHT_DEFAULT_TIMEOUT_MS = 30_000;
 const deferredRemovalPaths = new Set<string>();
-/**
- * Keys whose specs need the Kilo server — chats, or the signed-in account
- * kilo.account reads through it: their app waits for it and for the session list.
- */
-const CHAT_ISOLATION_KEYS = new Set([
-	"chat",
-	"chat-approval",
-	"files",
-	"git-branch-selector",
-	"git-changes",
-	"git-init",
-	"git-worktrees",
-	"kilo-marketplace",
-	"layout-presets",
-	"notebook",
-	"settings",
-]);
-
 /**
  * Test workspaces can remain open in the packaged app until worker teardown,
  * especially on Windows where active directory handles make `rm` fail with
@@ -64,46 +44,20 @@ async function removeDeferredPaths(): Promise<void> {
 	);
 }
 
-async function waitForKiloServer(page: Page): Promise<void> {
-	page.setDefaultTimeout(KILO_SERVER_READY_TIMEOUT_MS);
-	try {
-		await page.waitForFunction(() => "kernelBridge" in globalThis, undefined, {
-			timeout: MAIN_WINDOW_TIMEOUT_MS,
-		});
-		await page.evaluate(async () => {
-			type Bridge = {
-				request(channel: string, payload: unknown): Promise<{ ok: boolean; error?: unknown }>;
-			};
-			const bridge = (globalThis as typeof globalThis & { kernelBridge: Bridge }).kernelBridge;
-			const result = await bridge.request("kernel:domain-call", {
-				domainId: "kilo.agent/server",
-				method: "connect",
-				input: undefined,
-				caller: "kilo.agent",
-			});
-			if (!result.ok) throw new Error(`Kilo server did not start: ${JSON.stringify(result.error)}`);
-		});
-	} finally {
-		page.setDefaultTimeout(PLAYWRIGHT_DEFAULT_TIMEOUT_MS);
-	}
-}
-
-const HOME_ROUTE = "kilo-desktop://app/#/";
-const ENABLED_NEW_CHAT = '[data-qa-id="new-chat"]:not(:disabled)';
+/**
+ * What a booted window draws: kilo.shell's frame, its first-run onboarding
+ * (only for specs that opt into it), or the kernel's own screen (safe mode,
+ * or a plugin failure — which a spec then reports, instead of timing out).
+ */
+const WINDOW_RENDERED =
+	'[data-qa-id="shell-main"], [data-qa-id="onboarding-overlay"], [data-qa-id="kernel-recovery"]';
 
 /**
- * The kernel shell's home view with kilo.workbench's session list ready to
- * start a session. Cold Windows runners can take longer than the 30s locator
- * default after the Kilo server accepts connections, so this reuses its budget.
+ * Waits for the window to render after a load or a hash reset, so a spec's
+ * first locator does not spend its budget on plugin activation.
  */
-async function waitForSessionList(page: Page): Promise<void> {
-	page.setDefaultTimeout(KILO_SERVER_READY_TIMEOUT_MS);
-	try {
-		await page.waitForURL(HOME_ROUTE);
-		await page.locator(ENABLED_NEW_CHAT).waitFor();
-	} finally {
-		page.setDefaultTimeout(PLAYWRIGHT_DEFAULT_TIMEOUT_MS);
-	}
+async function waitForWindowRendered(page: Page): Promise<void> {
+	await page.waitForSelector(WINDOW_RENDERED, { timeout: MAIN_WINDOW_TIMEOUT_MS });
 }
 
 /**
@@ -237,9 +191,8 @@ async function startWindowTracing(
 
 /**
  * Worker-scoped packaged Electron app. Every test in the worker reuses one launch;
- * `electronApp` rebinds the page singleton and resets the hash between tests.
- * Kilo server readiness (`kilo.agent/server.connect`) and thread-list hydration run here so
- * the first @smoke spec does not spend the locator budget waiting for either.
+ * `electronApp` rebinds the page singleton and resets the hash between tests,
+ * then waits for the window to render (kilo.shell's frame on a normal start).
  * Startup failures carry main-process and Kilo CLI output in their message,
  * because no test-scoped fixture exists yet to attach files.
  */
@@ -248,17 +201,13 @@ export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerF
 	appLaunchEnv: [{}, { scope: "worker", option: true }],
 
 	sharedApp: [
-		async ({ appIsolationKey, appLaunchEnv }, use) => {
+		async ({ appIsolationKey: _appIsolationKey, appLaunchEnv }, use) => {
 			// Depending on the option gives each distinct key its own worker, app,
 			// and temporary profile while preserving sharing within that group.
 			const { app, userDataDir } = await launchApp(appLaunchEnv);
 			const log = new MainProcessLog(app);
 			try {
-				const page = await waitForMainWindow(app);
-				if (CHAT_ISOLATION_KEYS.has(appIsolationKey)) {
-					await waitForKiloServer(page);
-					await waitForSessionList(page);
-				}
+				await waitForWindowRendered(await waitForMainWindow(app));
 			} catch (error) {
 				const diagnosed = await withStartupDiagnostics(error, log, userDataDir);
 				await stopApp(app);
@@ -272,7 +221,7 @@ export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerF
 		{ scope: "worker", timeout: WORKER_APP_TIMEOUT_MS },
 	],
 
-	electronApp: async ({ appIsolationKey, sharedApp }, use) => {
+	electronApp: async ({ sharedApp }, use) => {
 		const page = await waitForMainWindow(sharedApp.app);
 		setPage(page);
 		setCommandPaletteApp(sharedApp.app);
@@ -280,11 +229,7 @@ export const electronFixture = baseTest.extend<ElectronFixtures, ElectronWorkerF
 			localStorage.clear();
 			globalThis.location.hash = "#/";
 		});
-		if (CHAT_ISOLATION_KEYS.has(appIsolationKey)) {
-			// The hash reset re-renders the home view; wait for it before the
-			// spec clicks New session.
-			await waitForSessionList(page);
-		}
+		await waitForWindowRendered(page);
 		await use(sharedApp.app);
 		// Clear renderer localStorage after each test so plugin preferences
 		// written during a test (e.g. git draft mode) do not bleed into the next.

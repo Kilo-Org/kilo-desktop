@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import { HTML_RENDER_TOOL_NAME, MEDIA_PANE_KIND } from "../../contracts";
-import { agentPane, chatSummary, renderAgentPane } from "../../test/chat-host";
+import { chatPaneObject, HTML_RENDER_TOOL_NAME, MEDIA_PANE_KIND } from "../../contracts";
+import { agentPane, chatSummary } from "../../test/chat-host";
 import {
 	assistantMessage,
 	FakeKiloServer,
@@ -10,6 +10,7 @@ import {
 	type FakeMessage,
 } from "../../test/fake-kilo-server";
 import { expandAll, toolPart } from "../../test/transcript";
+import { renderChat } from "../../test/render-chat";
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -33,9 +34,9 @@ async function showReply(parts: Record<string, unknown>[], server = new FakeKilo
 		assistantMessage("ses_a", "msg_2", "msg_1", parts),
 	];
 	server.addChat({ id: "ses_a", directory: "/projects/app", title: "Chat", messages });
-	const host = await renderAgentPane({
+	const host = await renderChat({
 		server,
-		pane: agentPane({ metadata: { chatId: "ses_a" } }),
+		pane: agentPane({ object: chatPaneObject("ses_a") }),
 		chats: [chatSummary("ses_a")],
 	});
 	return { host, server };
@@ -76,9 +77,9 @@ describe("images in a reply", () => {
 				{ ...reply, info: { ...running, time: { created: Date.now() } } },
 			],
 		});
-		await renderAgentPane({
+		await renderChat({
 			server,
-			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
 			chats: [chatSummary("ses_a")],
 		});
 

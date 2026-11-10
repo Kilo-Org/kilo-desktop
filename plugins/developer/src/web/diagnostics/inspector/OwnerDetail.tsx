@@ -1,5 +1,10 @@
-import { KERNEL_OWNER, KernelApp, KernelPlugins, type DomainState } from "@kilo-desktop/kernel";
-import { useDomainState, useKernel } from "@kilo-desktop/kernel/web";
+import {
+	KERNEL_OWNER,
+	KernelApp,
+	KernelPlugins,
+	type DomainObjectState,
+} from "@kilo-desktop/kernel";
+import { useDomainObjectState, useKernel } from "@kilo-desktop/kernel/web";
 
 import {
 	summarizeKernel,
@@ -10,11 +15,11 @@ import {
 import { DetailHeader, Details, Panel, StatusBadge } from "../parts";
 import { useKernelChanges } from "./navigation";
 
-const selectApp = (state: DomainState<typeof KernelApp>) => state;
-const selectPlugins = (state: DomainState<typeof KernelPlugins>) => state.plugins;
+const selectApp = (state: DomainObjectState<typeof KernelApp>) => state;
+const selectPlugins = (state: DomainObjectState<typeof KernelPlugins>) => state.plugins;
 
 const KERNEL_DESCRIPTION =
-	"The product-agnostic plugin runtime: the points, domain objects and context keys every plugin can use.";
+	"The product-agnostic plugin runtime: the extension points, domain objects, object types and context keys every plugin can use.";
 
 /** A plugin, or the kernel: what it offers, contributes and needs. */
 export function OwnerDetail({
@@ -28,8 +33,8 @@ export function OwnerDetail({
 }) {
 	const kernel = useKernel();
 	useKernelChanges();
-	const app = useDomainState(KernelApp, selectApp);
-	const plugins = useDomainState(KernelPlugins, selectPlugins);
+	const app = useDomainObjectState(KernelApp, selectApp);
+	const plugins = useDomainObjectState(KernelPlugins, selectPlugins);
 
 	const kernelOwner = id === KERNEL_OWNER;
 	const plugin = plugins?.[id];

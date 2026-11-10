@@ -1,4 +1,4 @@
-import type { GitBranch } from "../../contracts/index.js";
+import type { GitBranch } from "../../contracts";
 
 const REMOTE_REF_PREFIX = "refs/remotes/";
 

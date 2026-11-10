@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { createPatchFileCacheKey } from "./patch-cache-key.js";
+import { createPatchFileCacheKey } from "./patch-cache-key";
 
 const README_PATCH_V1 = `diff --git a/README.md b/README.md
 index 1111111..2222222 100644

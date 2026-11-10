@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import { Panes, type Pane } from "@kilo-desktop/plugin-sessions/contracts";
+import { Panes, type Pane } from "@kilo-desktop/plugin-work-sessions/contracts";
 
-import { COMPOSER_FOCUSED_KEY, ComposerDrafts } from "../contracts";
-import { agentPane, chatSummary, renderAgentPane, session } from "../test/chat-host";
+import { chatPaneObject, COMPOSER_FOCUSED_KEY, Drafts } from "../contracts";
+import { agentPane, chatSummary, workSession } from "../test/chat-host";
+import { renderChat } from "../test/render-chat";
 import {
 	assistantMessage,
 	FakeKiloServer,
@@ -54,7 +55,7 @@ const promptText = (request: RecordedRequest) =>
 
 describe("a draft agent pane", () => {
 	it("opens as a chat with messages will look: composer docked at the bottom, focused", async () => {
-		await renderAgentPane();
+		await renderChat();
 
 		const thread = page.getByTestId("kilo-chat-thread");
 		await expect.element(thread).toHaveAttribute("data-draft", "true");
@@ -73,13 +74,13 @@ describe("a draft agent pane", () => {
 	});
 
 	it("creates the session's chat on the first send and records it in the pane", async () => {
-		const host = await renderAgentPane({ instructions: ["Prefer small diffs."] });
+		const host = await renderChat({ instructions: ["Prefer small diffs."] });
 
 		await send("Fix the login form");
 
 		await vi.waitFor(() => expect(host.agent.calls.create).toHaveBeenCalledOnce());
 		expect(host.agent.calls.create).toHaveBeenCalledWith({
-			sessionId: "wses_1",
+			workSessionId: "wses_1",
 			directory: "/projects/app",
 			workspaceId: "w-app",
 			workspaceFolders: [
@@ -89,9 +90,9 @@ describe("a draft agent pane", () => {
 		});
 		await vi.waitFor(() =>
 			expect(host.sessions.calls.update).toHaveBeenCalledWith({
-				sessionId: "wses_1",
+				workSessionId: "wses_1",
 				paneId: "pane_agent",
-				metadata: { chatId: "ses_new_1" },
+				object: chatPaneObject("ses_new_1"),
 			}),
 		);
 		const [prompt] = await promptsTo(host.server, "ses_new_1");
@@ -109,8 +110,8 @@ describe("a draft agent pane", () => {
 	});
 
 	it("starts an unscoped session's chat without a directory", async () => {
-		const host = await renderAgentPane({
-			session: session({ workspaceId: null }),
+		const host = await renderChat({
+			workSession: workSession({ workspaceId: null }),
 			workspaceId: null,
 			directory: null,
 		});
@@ -118,18 +119,18 @@ describe("a draft agent pane", () => {
 		await send("Hi");
 
 		await vi.waitFor(() =>
-			expect(host.agent.calls.create).toHaveBeenCalledWith({
-				sessionId: "wses_1",
-				workspaceFolders: [],
-			}),
+			expect(host.agent.calls.create).toHaveBeenCalledWith({ workSessionId: "wses_1" }),
 		);
 		const [prompt] = await promptsTo(host.server, "ses_new_1");
-		expect(prompt!.directory).toBe("/chats/session-1");
+		expect(prompt!.directory).toBe("/chats/chat-1");
 	});
 
 	it("passes a worktree session's branch and folder", async () => {
-		const host = await renderAgentPane({
-			session: session({ worktreeBranch: "kilo/fix" }),
+		const host = await renderChat({
+			workSession: workSession({
+				branch: "kilo/fix",
+				directory: "/projects/app/.kilo/worktrees/fix",
+			}),
 			directory: "/projects/app/.kilo/worktrees/fix",
 		});
 
@@ -140,17 +141,13 @@ describe("a draft agent pane", () => {
 				expect.objectContaining({
 					directory: "/projects/app/.kilo/worktrees/fix",
 					worktreeBranch: "kilo/fix",
-					workspaceFolders: [
-						{ path: "/projects/app/.kilo/worktrees/fix", isPrimary: true },
-						{ path: "/projects/lib", isPrimary: false },
-					],
 				}),
 			),
 		);
 	});
 
 	it("says why a chat couldn't start and returns the message to the composer", async () => {
-		const host = await renderAgentPane({ createError: "The Kilo server isn't running." });
+		const host = await renderChat({ createError: "The Kilo server isn't running." });
 
 		await send("Try this");
 
@@ -159,12 +156,12 @@ describe("a draft agent pane", () => {
 		expect(host.sessions.calls.update).not.toHaveBeenCalled();
 	});
 
-	it("can't start a chat without kilo.agent", async () => {
-		await renderAgentPane({ withoutAgent: true });
+	it("can't start a chat without kilo.core's chats", async () => {
+		await renderChat({ withoutAgent: true });
 
 		await send("Hello?");
 
-		await expect.element(page.getByText("Kilo chats aren't available.")).toBeVisible();
+		await expect.element(page.getByText("kilo.core's chats are not available.")).toBeVisible();
 	});
 });
 
@@ -190,9 +187,9 @@ describe("an agent pane with a chat", () => {
 				{ type: "text", text: "It posts **credentials**.", time: { start: 3, end: 4 } },
 			]),
 		]);
-		await renderAgentPane({
+		await renderChat({
 			server,
-			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
 			chats: [chatSummary("ses_a")],
 		});
 
@@ -207,9 +204,9 @@ describe("an agent pane with a chat", () => {
 		const server = serverWithChat("ses_legacy", [
 			userMessage("ses_legacy", "msg_u1", "An older chat"),
 		]);
-		await renderAgentPane({
+		await renderChat({
 			server,
-			session: session({ chatIds: ["ses_legacy"], directory: "/projects/app" }),
+			workSession: workSession({ chatIds: ["ses_legacy"], directory: "/projects/app" }),
 			pane: agentPane({ id: "agent:wses_1" }),
 		});
 
@@ -218,9 +215,9 @@ describe("an agent pane with a chat", () => {
 
 	it("leaves an agent pane added beside it a draft that starts a chat of its own", async () => {
 		const server = serverWithChat("ses_a", [userMessage("ses_a", "msg_u1", "The first chat")]);
-		const host = await renderAgentPane({
+		const host = await renderChat({
 			server,
-			session: session({ chatIds: ["ses_a"], directory: "/projects/app" }),
+			workSession: workSession({ chatIds: ["ses_a"], directory: "/projects/app" }),
 			otherPanes: [agentPane({ id: "pane_first" })],
 			pane: agentPane({ id: "pane_second" }),
 			chats: [chatSummary("ses_a")],
@@ -237,25 +234,25 @@ describe("an agent pane with a chat", () => {
 		const [prompt] = await promptsTo(server, "ses_new_1");
 		expect(promptText(prompt!)).toBe("A second chat");
 		await vi.waitFor(() =>
-			expect(host.panes().panes.find((pane) => pane.id === "pane_second")?.metadata).toEqual({
-				chatId: "ses_new_1",
-			}),
+			expect(host.panes().panes.find((pane) => pane.id === "pane_second")?.object).toEqual(
+				chatPaneObject("ses_new_1"),
+			),
 		);
 		await expect.element(first.getByText("The first chat")).toBeVisible();
 	});
 
 	it("finds a chat's folder from the server when nothing else knows it", async () => {
 		const server = serverWithChat("ses_far", [userMessage("ses_far", "msg_u1", "Far away")]);
-		await renderAgentPane({ server, pane: agentPane({ metadata: { chatId: "ses_far" } }) });
+		await renderChat({ server, pane: agentPane({ object: chatPaneObject("ses_far") }) });
 
 		await expect.element(page.getByText("Far away")).toBeVisible();
 	});
 
 	it("streams the reply as it arrives", async () => {
 		const server = serverWithChat();
-		await renderAgentPane({
+		await renderChat({
 			server,
-			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
 			chats: [chatSummary("ses_a")],
 		});
 		await expect.element(page.getByText("Hello")).toBeVisible();
@@ -292,9 +289,9 @@ describe("an agent pane with a chat", () => {
 
 	it("stops the running turn", async () => {
 		const server = serverWithChat();
-		await renderAgentPane({
+		await renderChat({
 			server,
-			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
 			chats: [chatSummary("ses_a")],
 		});
 		await expect.element(page.getByText("Hello")).toBeVisible();
@@ -311,9 +308,9 @@ describe("an agent pane with a chat", () => {
 
 	it("queues a prompt sent while the agent works and sends it when the turn ends", async () => {
 		const server = serverWithChat();
-		await renderAgentPane({
+		await renderChat({
 			server,
-			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
 			chats: [chatSummary("ses_a")],
 		});
 		await expect.element(page.getByText("Hello")).toBeVisible();
@@ -341,9 +338,9 @@ describe("an agent pane with a chat", () => {
 
 	it("sends an attachment with the prompt", async () => {
 		const server = serverWithChat();
-		await renderAgentPane({
+		await renderChat({
 			server,
-			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
 			chats: [chatSummary("ses_a")],
 		});
 		await expect.element(page.getByText("Hello")).toBeVisible();
@@ -373,9 +370,9 @@ describe("an agent pane with a chat", () => {
 
 	it("keeps the window's one event stream open after its last pane goes", async () => {
 		const server = serverWithChat();
-		const host = await renderAgentPane({
+		const host = await renderChat({
 			server,
-			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
 			chats: [chatSummary("ses_a")],
 		});
 		await vi.waitFor(() => expect(server.openStreams).toBe(1));
@@ -389,17 +386,17 @@ describe("an agent pane with a chat", () => {
 
 	it("closes the previous test window's event stream before the next host opens", async () => {
 		const first = serverWithChat();
-		await renderAgentPane({
+		await renderChat({
 			server: first,
-			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
 			chats: [chatSummary("ses_a")],
 		});
 		await vi.waitFor(() => expect(first.openStreams).toBe(1));
 
 		const second = serverWithChat();
-		await renderAgentPane({
+		await renderChat({
 			server: second,
-			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
 			chats: [chatSummary("ses_a")],
 		});
 
@@ -447,9 +444,9 @@ describe("a turn that ends while its chat opens", () => {
 
 	it("shows it ended when the chat was switched to", async () => {
 		const server = busyChat();
-		const host = await renderAgentPane({
+		const host = await renderChat({
 			server,
-			pane: agentPane({ metadata: { chatId: "ses_b" } }),
+			pane: agentPane({ object: chatPaneObject("ses_b") }),
 			chats: [chatSummary("ses_a"), chatSummary("ses_b")],
 		});
 		await expect.element(page.getByText("Elsewhere")).toBeVisible();
@@ -457,9 +454,11 @@ describe("a turn that ends while its chat opens", () => {
 		server.eventStreamDelayMs = 300;
 		const statusReads = server.requestsTo("GET", "/session/status").length;
 
-		await host.host.renderer.kernelSdk.domains
-			.get(Panes)!
-			.methods.update({ sessionId: "wses_1", paneId: "pane_agent", metadata: { chatId: "ses_a" } });
+		await host.host.renderer.kernelSdk.domainObjects.get(Panes)!.methods.update({
+			workSessionId: "wses_1",
+			paneId: "pane_agent",
+			object: chatPaneObject("ses_a"),
+		});
 		await endTurnOnceStatusIsRead(server, statusReads);
 
 		await expect.element(page.getByTestId("kilo-composer-send")).toBeVisible();
@@ -473,9 +472,9 @@ describe("a turn that ends while its chat opens", () => {
 			openStream = resolve;
 		});
 
-		await renderAgentPane({
+		await renderChat({
 			server,
-			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
 			chats: [chatSummary("ses_a"), chatSummary("ses_b")],
 		});
 		await endTurnOnceStatusIsRead(server, 0);
@@ -501,9 +500,9 @@ describe("a prompt queued while the agent works", () => {
 
 	async function queueWhileBusy(text: string) {
 		const server = twoChats();
-		const host = await renderAgentPane({
+		const host = await renderChat({
 			server,
-			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
 			chats: [chatSummary("ses_a"), chatSummary("ses_b")],
 		});
 		await expect.element(page.getByText("Hello")).toBeVisible();
@@ -518,10 +517,12 @@ describe("a prompt queued while the agent works", () => {
 		return { server, host };
 	}
 
-	const showChat = (host: Awaited<ReturnType<typeof renderAgentPane>>, chatId: string) =>
-		host.host.renderer.kernelSdk.domains
-			.get(Panes)!
-			.methods.update({ sessionId: "wses_1", paneId: "pane_agent", metadata: { chatId } });
+	const showChat = (host: Awaited<ReturnType<typeof renderChat>>, chatId: string) =>
+		host.host.renderer.kernelSdk.domainObjects.get(Panes)!.methods.update({
+			workSessionId: "wses_1",
+			paneId: "pane_agent",
+			object: chatPaneObject(chatId),
+		});
 
 	it("stays queued when another chat is shown and back", async () => {
 		const { host } = await queueWhileBusy("Then add tests");
@@ -603,15 +604,15 @@ describe("a prompt queued while the agent works", () => {
 
 describe("unsent text", () => {
 	it("goes with the chat's pane when it pops out", async () => {
-		const host = await renderAgentPane({
+		const host = await renderChat({
 			server: serverWithChat(),
-			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
 			chats: [chatSummary("ses_a")],
 		});
 		await expect.element(page.getByText("Hello")).toBeVisible();
 		await userEvent.fill(composerInput(), "Half a thought");
 		await vi.waitFor(() =>
-			expect(host.host.main.kernelSdk.domains.get(ComposerDrafts)!.getState().drafts).toEqual({
+			expect(host.host.main.kernelSdk.domainObjects.get(Drafts)!.getState().drafts).toEqual({
 				wses_1: { text: "", panes: { pane_agent: "Half a thought" } },
 			}),
 		);
@@ -623,9 +624,9 @@ describe("unsent text", () => {
 
 	it("leaves the composer once queued, even when the pane renders again as it goes", async () => {
 		const server = serverWithChat();
-		const host = await renderAgentPane({
+		const host = await renderChat({
 			server,
-			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
 			chats: [chatSummary("ses_a")],
 		});
 		await expect.element(page.getByText("Hello")).toBeVisible();
@@ -634,7 +635,7 @@ describe("unsent text", () => {
 		await expect.element(page.getByTestId("kilo-composer-stop")).toBeVisible();
 		await userEvent.fill(composerInput(), "Then add tests");
 		await vi.waitFor(() =>
-			expect(host.host.main.kernelSdk.domains.get(ComposerDrafts)!.getState().drafts).toEqual({
+			expect(host.host.main.kernelSdk.domainObjects.get(Drafts)!.getState().drafts).toEqual({
 				wses_1: { text: "", panes: { pane_agent: "Then add tests" } },
 			}),
 		);
@@ -649,7 +650,7 @@ describe("unsent text", () => {
 			.toHaveTextContent("1 queued");
 		await expect.element(composerInput()).toHaveTextContent("");
 		await vi.waitFor(() =>
-			expect(host.host.main.kernelSdk.domains.get(ComposerDrafts)!.getState().drafts).toEqual({}),
+			expect(host.host.main.kernelSdk.domainObjects.get(Drafts)!.getState().drafts).toEqual({}),
 		);
 	});
 });
@@ -657,14 +658,14 @@ describe("unsent text", () => {
 describe("unsent text, when the chat is slow to load", () => {
 	it("comes back in the popped-out pane once its chat has loaded", async () => {
 		const server = serverWithChat();
-		const host = await renderAgentPane({
+		const host = await renderChat({
 			server,
-			pane: agentPane({ metadata: { chatId: "ses_a" } }),
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
 			chats: [chatSummary("ses_a")],
 		});
 		await expect.element(page.getByText("Hello")).toBeVisible();
 		await userEvent.fill(composerInput(), "hi");
-		const drafts = host.host.main.kernelSdk.domains.get(ComposerDrafts)!;
+		const drafts = host.host.main.kernelSdk.domainObjects.get(Drafts)!;
 		await vi.waitFor(() => expect(drafts.getState().drafts.wses_1?.panes?.pane_agent).toBe("hi"));
 		server.chatReadDelayMs = 300;
 		const kept: (string | undefined)[] = [];
@@ -681,11 +682,11 @@ describe("unsent text, when the chat is slow to load", () => {
 });
 
 describe("several agent panes in a session", () => {
-	const draftsOf = (host: Awaited<ReturnType<typeof renderAgentPane>>) =>
-		host.host.main.kernelSdk.domains.get(ComposerDrafts)!.getState().drafts;
+	const draftsOf = (host: Awaited<ReturnType<typeof renderChat>>) =>
+		host.host.main.kernelSdk.domainObjects.get(Drafts)!.getState().drafts;
 
 	it("keeps each pane's unsent text to itself", async () => {
-		const host = await renderAgentPane({
+		const host = await renderChat({
 			otherPanes: [agentPane({ id: "pane_first" })],
 			pane: agentPane({ id: "pane_second" }),
 		});
@@ -707,7 +708,7 @@ describe("several agent panes in a session", () => {
 	});
 
 	it("starts a pane added later empty", async () => {
-		const host = await renderAgentPane({ pane: agentPane({ id: "pane_first" }) });
+		const host = await renderChat({ pane: agentPane({ id: "pane_first" }) });
 		await userEvent.fill(
 			page.getByTestId("pane-pane_first").getByTestId("kilo-composer-input"),
 			"Half a thought",
@@ -716,9 +717,9 @@ describe("several agent panes in a session", () => {
 			expect(draftsOf(host).wses_1?.panes).toEqual({ pane_first: "Half a thought" }),
 		);
 
-		await host.host.renderer.kernelSdk.domains
+		await host.host.renderer.kernelSdk.domainObjects
 			.get(Panes)!
-			.methods.open({ sessionId: "wses_1", kind: "kilo.chat/agent", paneId: "pane_second" });
+			.methods.open({ workSessionId: "wses_1", kind: "kilo.chat/agent", paneId: "pane_second" });
 
 		const second = page.getByTestId("pane-pane_second");
 		await expect.element(second.getByTestId("kilo-composer-input")).toBeVisible();
@@ -727,7 +728,7 @@ describe("several agent panes in a session", () => {
 	});
 
 	it("takes each pane's unsent text with it when it pops out", async () => {
-		const host = await renderAgentPane({
+		const host = await renderChat({
 			otherPanes: [agentPane({ id: "pane_first" })],
 			pane: agentPane({ id: "pane_second" }),
 		});
@@ -752,7 +753,7 @@ describe("several agent panes in a session", () => {
 
 describe("focus-composer", () => {
 	it("focuses the open session's composer", async () => {
-		const host = await renderAgentPane();
+		const host = await renderChat();
 		await expect.element(composerInput()).toBeVisible();
 
 		await host.run("focus-composer");
@@ -768,12 +769,12 @@ describe("focus-composer", () => {
 	});
 
 	it("brings the session's agent pane forward first", async () => {
-		const host = await renderAgentPane({
+		const host = await renderChat({
 			otherPanes: [TERMINAL_PANE],
 		});
-		await host.host.renderer.kernelSdk.domains
+		await host.host.renderer.kernelSdk.domainObjects
 			.get(Panes)!
-			.methods.activate({ sessionId: "wses_1", paneId: "pane_term" });
+			.methods.activate({ workSessionId: "wses_1", paneId: "pane_term" });
 
 		await host.run("focus-composer");
 
@@ -782,13 +783,13 @@ describe("focus-composer", () => {
 	});
 
 	it("brings forward the session's first agent pane when it has several", async () => {
-		const host = await renderAgentPane({
+		const host = await renderChat({
 			otherPanes: [agentPane({ id: "pane_first" }), TERMINAL_PANE],
 			pane: agentPane({ id: "pane_second" }),
 		});
-		await host.host.renderer.kernelSdk.domains
+		await host.host.renderer.kernelSdk.domainObjects
 			.get(Panes)!
-			.methods.activate({ sessionId: "wses_1", paneId: "pane_term" });
+			.methods.activate({ workSessionId: "wses_1", paneId: "pane_term" });
 
 		await host.run("focus-composer");
 
@@ -797,7 +798,7 @@ describe("focus-composer", () => {
 	});
 
 	it("adds an agent pane when the session has none", async () => {
-		const host = await renderAgentPane({
+		const host = await renderChat({
 			pane: TERMINAL_PANE,
 		});
 

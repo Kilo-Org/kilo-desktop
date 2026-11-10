@@ -10,7 +10,7 @@ import {
 	isBridgePayloadManifest,
 	readStagedManifest,
 	type BridgePayloadManifest,
-} from "./bridge-artifacts.js";
+} from "./bridge-artifacts";
 
 const tempDirs: string[] = [];
 

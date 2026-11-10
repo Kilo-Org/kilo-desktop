@@ -1,39 +1,29 @@
 import {
 	KernelWindows,
 	mainHost,
-	type DomainHandle,
-	type DomainProvider,
+	type DomainObjectHandle,
+	type DomainObjectProvider,
 	type PluginSdk,
-	type PluginStorage,
 } from "@kilo-desktop/kernel";
-import { WorkSessions } from "@kilo-desktop/plugin-sessions/contracts";
-import { Workspaces } from "@kilo-desktop/plugin-workspaces/contracts";
+import { WorkSessions, Workspaces } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import {
 	MAX_BATCHED_DIRECTORIES,
 	PullRequests,
 	type GithubCliStatus,
 	type PullRequestSnapshot,
-} from "../../contracts/index.js";
-import { PrStatusScheduler, type PrStatusLoadResult, type PrStatusTarget } from "./scheduler.js";
+} from "../../contracts";
+import type { PullRequestSource } from "../shared/pull-request-source";
+import { PrStatusScheduler, type PrStatusLoadResult, type PrStatusTarget } from "./scheduler";
 import {
 	keepDirectories,
 	restoreEntries,
 	withCreatedPullRequest,
 	withSnapshot,
 	type PullRequestEntries,
-} from "./snapshots.js";
+} from "./snapshots";
 
-export { PrStatusScheduler } from "./scheduler.js";
-
-/** Pull request lookups for checkouts (kilo.git's `GitService`). */
-export interface PullRequestSource {
-	snapshot(directory: string): Promise<PullRequestSnapshot>;
-	/** At most `MAX_BATCHED_DIRECTORIES`; a null snapshot was not answered. */
-	snapshots(
-		directories: readonly string[],
-	): Promise<readonly { directory: string; snapshot: PullRequestSnapshot | null }[]>;
-}
+export { PrStatusScheduler } from "./scheduler";
 
 export interface PullRequestsOptions {
 	readonly source: PullRequestSource;
@@ -46,31 +36,30 @@ interface WindowReport {
 }
 
 /**
- * The `kilo.git/pull-requests` domain object: each Work Session's directory
+ * The `kilo.git/pull-requests` domain object: each work session's directory
  * and the pull request its checked-out branch has, kept current by one
  * `PrStatusScheduler` (origin's renderer poller, now shared by windows).
  *
- * - Targets are every session with a workspace (archived ones too: their rows
- *   show the badge), at its worktree or else the workspace's primary folder,
- *   one per directory; sessions sharing a checkout share its pull request.
+ * - Targets are every work session with a workspace (archived ones too: their
+ *   rows show the badge), at its copy or else the workspace's primary folder,
+ *   one per directory; work sessions sharing a checkout share its pull request.
  * - Windows report what they show (`setActive`): the directories of their
- *   open session, polled on the short interval, and whether they are visible.
- *   Polling starts with the first visible window and pauses while no window
- *   is; becoming visible syncs every directory once. A closed window's
- *   report is dropped.
+ *   open work session, polled on the short interval, and whether they are
+ *   visible. Polling starts with the first visible window and pauses while no
+ *   window is; becoming visible syncs every directory once. A closed window's
+ *   report is dropped (`kernel/windows`).
  * - Lookups are silent: an unusable GitHub CLI only updates `githubStatus`
  *   and keeps the last snapshot ("unavailable", never backed off).
- * - Snapshots are kept in kv and restored for a day, so rows show known pull
- *   requests at start; a directory no session uses any more is dropped once
- *   sessions are known.
+ * - Snapshots are kept in kv (`pull-requests`) and restored for a day, so rows
+ *   show known pull requests at start; a directory no work session uses any
+ *   more is dropped once work sessions are known.
  */
-export function providePullRequests(
+export function activatePullRequests(
 	sdk: PluginSdk,
 	options: PullRequestsOptions,
-): DomainProvider<typeof PullRequests> {
+): DomainObjectProvider<typeof PullRequests> {
 	const now = options.now ?? Date.now;
-	const storage = (mainHost(sdk) as { storage?: PluginStorage }).storage;
-	const store = storage?.kv<{ byDirectory: unknown }>({
+	const store = mainHost(sdk).storage.kv<{ byDirectory: unknown }>({
 		namespace: "pull-requests",
 		defaults: { byDirectory: {} },
 	});
@@ -79,31 +68,40 @@ export function providePullRequests(
 	let targets: PrStatusTarget[] = [];
 	let started = false;
 
-	const provider: DomainProvider<typeof PullRequests> = sdk.domains.provide(PullRequests, {
-		initialState: {
-			byDirectory: restoreEntries(store?.get("byDirectory"), now()),
-			githubStatus: null,
-		},
-		methods: {
-			setActive: ({ windowId, directories, visible }) => {
-				const wasVisible = isVisible();
-				reports.set(windowId, { directories, visible });
-				updateTargets();
-				if (!isVisible()) return;
-				if (!started) {
-					started = true;
-					scheduler.start();
-				} else if (!wasVisible) notifyVisibility();
+	const provider: DomainObjectProvider<typeof PullRequests> = sdk.domainObjects.provide(
+		PullRequests,
+		{
+			initialState: {
+				byDirectory: restoreEntries(store.get("byDirectory"), now()),
+				githubStatus: null,
 			},
-			refresh: ({ directory, settle }) => {
-				void scheduler.request(directory, settle ?? false);
+			methods: {
+				setActive: ({ windowId, directories, visible }) => {
+					const wasVisible = isVisible();
+					reports.set(windowId, { directories, visible });
+					updateTargets();
+					if (!isVisible()) return;
+					if (!started) {
+						started = true;
+						scheduler.start();
+					} else if (!wasVisible) notifyVisibility();
+				},
+				refresh: ({ directory, settle }) => {
+					void scheduler.request(directory, settle ?? false);
+				},
+				recordCreated: ({ directory, branch, pullRequest }) =>
+					setEntries(
+						withCreatedPullRequest(
+							provider.state.byDirectory,
+							directory,
+							branch,
+							pullRequest,
+							now(),
+						),
+					),
 			},
-			recordCreated: ({ directory, branch, pullRequest }) =>
-				setEntries(
-					withCreatedPullRequest(provider.state.byDirectory, directory, branch, pullRequest, now()),
-				),
 		},
-	});
+	);
 
 	function isVisible(): boolean {
 		return [...reports.values()].some((report) => report.visible);
@@ -115,7 +113,7 @@ export function providePullRequests(
 	function setEntries(byDirectory: PullRequestEntries): void {
 		if (byDirectory === provider.state.byDirectory) return;
 		provider.setState({ ...provider.state, byDirectory });
-		store?.set({ byDirectory });
+		store.set({ byDirectory });
 	}
 	function setGithubStatus(status: GithubCliStatus): void {
 		if (provider.state.githubStatus?.status === status) return;
@@ -154,18 +152,18 @@ export function providePullRequests(
 		now,
 	});
 
-	let sessions: DomainHandle<typeof WorkSessions> | null = null;
-	let workspaces: DomainHandle<typeof Workspaces> | null = null;
+	let workSessions: DomainObjectHandle<typeof WorkSessions> | null = null;
+	let workspaces: DomainObjectHandle<typeof Workspaces> | null = null;
 
-	function sessionDirectories(): string[] {
+	function workSessionDirectories(): string[] {
 		const folders = workspaces?.getState().workspaces ?? [];
 		const directories = new Set<string>();
-		for (const session of sessions?.getState().sessions ?? []) {
-			if (!session.workspaceId) continue;
+		for (const workSession of workSessions?.getState().workSessions ?? []) {
+			if (!workSession.workspaceId) continue;
 			const directory =
-				session.directory ??
+				workSession.directory ??
 				folders
-					.find((workspace) => workspace.id === session.workspaceId)
+					.find((workspace) => workspace.id === workSession.workspaceId)
 					?.folders.find((folder) => folder.isPrimary)?.path;
 			if (directory) directories.add(directory);
 		}
@@ -176,7 +174,7 @@ export function providePullRequests(
 		const shown = new Set(
 			[...reports.values()].flatMap((report) => (report.visible ? report.directories : [])),
 		);
-		targets = sessionDirectories().map((directory) => ({
+		targets = workSessionDirectories().map((directory) => ({
 			id: directory,
 			directory,
 			active: shown.has(directory),
@@ -191,56 +189,50 @@ export function providePullRequests(
 		void scheduler.syncTargets(targets);
 	}
 
-	const stops: (() => void)[] = [];
+	let stopWorkSessions = () => {};
+	let stopWorkspaces = () => {};
+	let stopWindows = () => {};
 	sdk.onDispose(() => {
-		for (const stop of stops.splice(0)) stop();
+		stopWorkSessions();
+		stopWorkspaces();
+		stopWindows();
+		scheduler.stop();
 	});
-	sdk.onDispose(
-		sdk.domains.track(WorkSessions, {
-			added: (handle) => {
-				sessions = handle;
-				stops.push(handle.subscribe(updateTargets));
-				updateTargets();
-			},
-			removed: () => {
-				sessions = null;
-			},
-		}),
-	);
-	sdk.onDispose(
-		sdk.domains.track(Workspaces, {
-			added: (handle) => {
-				workspaces = handle;
-				stops.push(handle.subscribe(updateTargets));
-				updateTargets();
-			},
-			removed: () => {
-				workspaces = null;
-			},
-		}),
-	);
-
-	let stopWindows: (() => void) | undefined;
-	sdk.onDispose(
-		sdk.domains.track(KernelWindows, {
-			added: (windows) => {
-				const prune = () => {
-					const open = windows.getState().windows;
-					let pruned = false;
-					for (const windowId of reports.keys()) {
-						if (open[windowId]) continue;
-						reports.delete(windowId);
-						pruned = true;
-					}
-					if (pruned) updateTargets();
-				};
-				stopWindows = windows.subscribe(prune);
-			},
-			removed: () => stopWindows?.(),
-		}),
-	);
-	sdk.onDispose(() => stopWindows?.());
-
-	sdk.onDispose(() => scheduler.stop());
+	sdk.domainObjects.track(WorkSessions, {
+		added: (handle) => {
+			workSessions = handle;
+			stopWorkSessions = handle.subscribe(updateTargets);
+			updateTargets();
+		},
+		removed: () => {
+			stopWorkSessions();
+			workSessions = null;
+		},
+	});
+	sdk.domainObjects.track(Workspaces, {
+		added: (handle) => {
+			workspaces = handle;
+			stopWorkspaces = handle.subscribe(updateTargets);
+			updateTargets();
+		},
+		removed: () => {
+			stopWorkspaces();
+			workspaces = null;
+		},
+	});
+	sdk.domainObjects.track(KernelWindows, {
+		added: (windows) => {
+			stopWindows = windows.subscribe(({ windows: open }) => {
+				let pruned = false;
+				for (const windowId of reports.keys()) {
+					if (open[windowId]) continue;
+					reports.delete(windowId);
+					pruned = true;
+				}
+				if (pruned) updateTargets();
+			});
+		},
+		removed: () => stopWindows(),
+	});
 	return provider;
 }

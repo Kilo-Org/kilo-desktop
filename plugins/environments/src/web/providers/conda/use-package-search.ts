@@ -3,8 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
 	CondaRepodataFindResult,
 	CondaRepodataPackage,
-} from "../../../contracts/providers/conda.js";
-import type { CondaClient } from "../../conda.js";
+} from "../../../contracts/providers/conda";
+import type { CondaClient } from "../../conda";
 
 /** First request size, and how much each scroll-triggered request adds. */
 export const PACKAGE_SEARCH_BATCH = 50;

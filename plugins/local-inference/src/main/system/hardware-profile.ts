@@ -1,12 +1,12 @@
 import si, { type Systeminformation } from "systeminformation";
 
-import type { LocalInferenceHardwareProfile } from "../../contracts/schemas.js";
+import type { LocalInferenceHardwareProfile } from "../../contracts";
 import {
 	matchCanIRunApple,
 	matchCanIRunGpu,
 	matchCanIRunMobile,
 	matchCanIRunSbc,
-} from "./device-catalog/match-device.js";
+} from "./device-catalog/match-device";
 
 const MEBIBYTE = 1024 ** 2;
 const GIBIBYTE = 1024 ** 3;

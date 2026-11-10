@@ -28,8 +28,9 @@ export default defineConfig(({ command }) => {
 		plugins: [
 			externalizeDeps({
 				// Not in `dependencies`: `electron` (devDep), `@vscode/windows-ca-certs`
-				// (uninstalled optional native dep of `@vscode/proxy-agent`), and
-				// `better-sqlite3` (transitive via kilo.sessions / kilo.workspaces origin imports).
+				// (uninstalled optional native dep of `@vscode/proxy-agent`),
+				// `better-sqlite3` (transitive via kilo.work-sessions' origin import)
+				// and `node-pty` (transitive via kilo.terminal's shells).
 				// The plugin externalizes each name plus its `<name>/<subpath>` forms.
 				// The notebook native main externals (koffi, @runtimed/node) come from
 				// the plugin-owned NOTEBOOK_MAIN_EXTERNALS so this list and the plugin

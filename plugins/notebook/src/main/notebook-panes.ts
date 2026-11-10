@@ -1,5 +1,5 @@
-import { KernelError, type DomainHandle } from "@kilo-desktop/kernel";
-import type { Pane, Panes } from "@kilo-desktop/plugin-sessions/contracts";
+import { KernelError, type DomainObjectHandle } from "@kilo-desktop/kernel";
+import type { Pane, Panes } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import {
 	NOTEBOOK_PANE_KIND,
@@ -16,7 +16,7 @@ export interface NotebookPaneSummary {
 }
 
 export interface NotebookPanesOptions {
-	readonly panes: () => DomainHandle<typeof Panes> | null;
+	readonly panes: () => DomainObjectHandle<typeof Panes> | null;
 	readonly openFile: (path: string) => Promise<NotebookOpenFileResult>;
 	readonly createId: () => string;
 }
@@ -51,68 +51,71 @@ export class NotebookPanes {
 	}
 
 	/** The pane with its notebook; throws when the pane is gone or its file can't be opened. */
-	resolve(sessionId: string, paneId: string): Promise<Pane> {
-		const key = `${sessionId}\u0000${paneId}`;
+	resolve(workSessionId: string, paneId: string): Promise<Pane> {
+		const key = `${workSessionId}\u0000${paneId}`;
 		const pending = this.#resolving.get(key);
 		if (pending) return pending;
-		const resolving = this.#resolve(sessionId, paneId).finally(() => this.#resolving.delete(key));
+		const resolving = this.#resolve(workSessionId, paneId).finally(() =>
+			this.#resolving.delete(key),
+		);
 		this.#resolving.set(key, resolving);
 		return resolving;
 	}
 
-	list(sessionId: string): readonly NotebookPaneSummary[] {
-		const session = this.#options.panes()?.getState().bySession[sessionId];
-		if (!session) return [];
-		return session.panes.flatMap((pane) => {
+	list(workSessionId: string): readonly NotebookPaneSummary[] {
+		const panes = this.#options.panes()?.getState().byWorkSession[workSessionId];
+		if (!panes) return [];
+		return panes.panes.flatMap((pane) => {
 			const notebookId = pane.kind === NOTEBOOK_PANE_KIND ? notebookIdOf(pane) : undefined;
 			return notebookId
-				? [{ notebook_id: notebookId, title: pane.title, active: pane.id === session.activePaneId }]
+				? [{ notebook_id: notebookId, title: pane.title, active: pane.id === panes.activePaneId }]
 				: [];
 		});
 	}
 
 	/** The pane showing a notebook file, by its path. */
-	findFile(sessionId: string, notebookPath: string): Pane | undefined {
-		return this.#notebookPanes(sessionId).find((pane) => notebookFileOf(pane) === notebookPath);
+	findFile(workSessionId: string, notebookPath: string): Pane | undefined {
+		return this.#notebookPanes(workSessionId).find((pane) => notebookFileOf(pane) === notebookPath);
 	}
 
 	/** Where a connected notebook is shown. */
-	locate(notebookId: string): { readonly sessionId: string; readonly pane: Pane } | undefined {
-		const bySession = this.#options.panes()?.getState().bySession ?? {};
-		for (const [sessionId, session] of Object.entries(bySession)) {
-			const pane = session.panes.find(
+	locate(notebookId: string): { readonly workSessionId: string; readonly pane: Pane } | undefined {
+		const byWorkSession = this.#options.panes()?.getState().byWorkSession ?? {};
+		for (const [workSessionId, panes] of Object.entries(byWorkSession)) {
+			const pane = panes.panes.find(
 				(candidate) =>
 					candidate.kind === NOTEBOOK_PANE_KIND && notebookIdOf(candidate) === notebookId,
 			);
-			if (pane) return { sessionId, pane };
+			if (pane) return { workSessionId, pane };
 		}
 		return undefined;
 	}
 
-	#notebookPanes(sessionId: string): readonly Pane[] {
+	#notebookPanes(workSessionId: string): readonly Pane[] {
 		return (
 			this.#options
 				.panes()
 				?.getState()
-				.bySession[sessionId]?.panes.filter((pane) => pane.kind === NOTEBOOK_PANE_KIND) ?? []
+				.byWorkSession[workSessionId]?.panes.filter((pane) => pane.kind === NOTEBOOK_PANE_KIND) ??
+			[]
 		);
 	}
 
-	#current(sessionId: string, paneId: string): Pane {
-		const pane = this.#notebookPanes(sessionId).find((candidate) => candidate.id === paneId);
+	#current(workSessionId: string, paneId: string): Pane {
+		const pane = this.#notebookPanes(workSessionId).find((candidate) => candidate.id === paneId);
 		if (!pane) throw new KernelError("NOT_FOUND", "Notebook pane not found.");
 		return pane;
 	}
 
-	async #resolve(sessionId: string, paneId: string): Promise<Pane> {
+	async #resolve(workSessionId: string, paneId: string): Promise<Pane> {
 		const panes = this.#options.panes();
 		if (!panes) throw new KernelError("UNAVAILABLE", "Panes are unavailable.");
-		const pane = this.#current(sessionId, paneId);
+		const pane = this.#current(workSessionId, paneId);
 		if (notebookIdOf(pane)) return pane;
 		const file = notebookFileOf(pane);
 		if (!file) {
 			return panes.methods.update({
-				sessionId,
+				workSessionId,
 				paneId,
 				metadata: {
 					...pane.metadata,
@@ -122,7 +125,7 @@ export class NotebookPanes {
 		}
 
 		await panes.methods.update({
-			sessionId,
+			workSessionId,
 			paneId,
 			title: basename(file),
 			metadata: {
@@ -138,10 +141,10 @@ export class NotebookPanes {
 			const message = errorMessage(error);
 			await panes.methods
 				.update({
-					sessionId,
+					workSessionId,
 					paneId,
 					metadata: {
-						...withoutOpenState(this.#current(sessionId, paneId).metadata),
+						...withoutOpenState(this.#current(workSessionId, paneId).metadata),
 						[NOTEBOOK_PANE_METADATA.openState]: "error",
 						[NOTEBOOK_PANE_METADATA.openError]: message,
 					},
@@ -150,11 +153,11 @@ export class NotebookPanes {
 			throw error instanceof KernelError ? error : new KernelError("BUSINESS", message);
 		}
 		return panes.methods.update({
-			sessionId,
+			workSessionId,
 			paneId,
 			title: opened.title,
 			metadata: {
-				...withoutOpenState(this.#current(sessionId, paneId).metadata),
+				...withoutOpenState(this.#current(workSessionId, paneId).metadata),
 				[NOTEBOOK_PANE_METADATA.notebookPath]: opened.path,
 				[NOTEBOOK_PANE_METADATA.notebookId]: opened.notebookId,
 				[NOTEBOOK_PANE_METADATA.openState]: "ready",

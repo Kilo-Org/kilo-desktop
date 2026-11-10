@@ -18,6 +18,7 @@ export default defineConfig({
 				// The main entry's native defaults (@runtimed/node, the real host service).
 				"src/main/index.ts",
 				"src/test/**",
+				"src/main/test-*.ts",
 				// Binary and notebook UI staging are exercised by prepare-assets,
 				// not by unit coverage.
 				"src/packaging/staging/**",

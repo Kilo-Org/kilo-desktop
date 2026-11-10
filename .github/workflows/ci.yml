@@ -121,10 +121,10 @@ jobs:
         run: >-
           pnpm exec turbo run test:platform
           --filter=@kilo-desktop/git-client
-          --filter=@kilo-desktop/plugin-agent
+          --filter=@kilo-desktop/plugin-core
           --filter=@kilo-desktop/plugin-git
           --filter=@kilo-desktop/plugin-notebook
-          --filter=@kilo-desktop/plugin-workspaces
+          --filter=@kilo-desktop/plugin-work-sessions
 
   e2e-pr:
     if: github.event_name == 'pull_request'

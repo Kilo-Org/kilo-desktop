@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { DomainHandle } from "@kilo-desktop/kernel";
-import type { AgentServer, ServerConnection } from "@kilo-desktop/plugin-agent/contracts";
+import type { DomainObjectHandle } from "@kilo-desktop/kernel";
+import type { KiloServer, ServerConnection } from "@kilo-desktop/plugin-core/contracts";
 
 import { ChatServices, resyncOnceConnected } from "./chat-services";
 import { connectionKey, KiloClients } from "./kilo-client";
@@ -27,7 +27,7 @@ function fakeServer() {
 			return () => listeners.delete(listener);
 		},
 		methods: { connect },
-	} as unknown as DomainHandle<typeof AgentServer>;
+	} as unknown as DomainObjectHandle<typeof KiloServer>;
 	return {
 		handle,
 		connect,

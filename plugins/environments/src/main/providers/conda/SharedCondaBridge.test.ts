@@ -3,7 +3,7 @@ import { Readable, Writable } from "node:stream";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SharedCondaBridge, pluginBridgeEnvironment } from "./SharedCondaBridge.js";
+import { SharedCondaBridge, pluginBridgeEnvironment } from "./SharedCondaBridge";
 
 vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
 vi.mock("vscode-jsonrpc/node", () => ({

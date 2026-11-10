@@ -4,7 +4,7 @@ import { KernelOs } from "@kilo-desktop/kernel";
 import {
 	RenderContribution,
 	useContextKey,
-	useDomain,
+	useDomainObject,
 	useExtensions,
 } from "@kilo-desktop/kernel/web";
 import { Button } from "@kilo-desktop/ui/components/button";
@@ -21,7 +21,7 @@ import { revealInFileManagerLabel } from "@kilo-desktop/ui/lib/reveal-in-file-ma
 
 import { SupportRow } from "../../../contracts";
 
-type Os = NonNullable<ReturnType<typeof useDomain<typeof KernelOs>>>;
+type Os = NonNullable<ReturnType<typeof useDomainObject<typeof KernelOs>>>;
 
 /**
  * Settings → About "Support" card: the application log row (desktop only)
@@ -30,7 +30,7 @@ type Os = NonNullable<ReturnType<typeof useDomain<typeof KernelOs>>>;
  * would otherwise cancel the card's `divide-y` separators.
  */
 export function AboutSupportSection() {
-	const os = useDomain(KernelOs);
+	const os = useDomainObject(KernelOs);
 	const desktop = useContextKey("kernel/desktop");
 	const rows = useExtensions(SupportRow);
 	const logsOs = desktop ? os : null;

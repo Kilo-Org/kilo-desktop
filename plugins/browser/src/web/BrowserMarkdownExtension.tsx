@@ -1,24 +1,23 @@
 import { createElement, type ComponentProps, type ElementType, type MouseEvent } from "react";
 
-import type { DomainHandle, KernelOs } from "@kilo-desktop/kernel";
+import type { DomainObjectHandle, KernelOs, KernelTelemetry } from "@kilo-desktop/kernel";
 import type { MarkdownExtensionImplementation } from "@kilo-desktop/plugin-chat/contracts";
-import type { Panes } from "@kilo-desktop/plugin-sessions/contracts";
-import type { Telemetry } from "@kilo-desktop/plugin-telemetry/contracts";
+import type { Panes } from "@kilo-desktop/plugin-work-sessions/contracts";
 import { MarkdownAnchor } from "@kilo-desktop/ui/components/markdown-content";
-import type { MarkdownRendererComponents } from "@kilo-desktop/ui/components/markdown-extension";
+import type { MarkdownRendererComponents } from "@kilo-desktop/ui/lib/markdown-extension";
 
-import { isWebUrl } from "../contracts/index.js";
+import { BROWSER_TELEMETRY_EVENTS, isWebUrl } from "../contracts/index.js";
 import { openUrl } from "../shared/open-url.js";
 
 export interface WebLinksRuntime {
-	readonly panes: () => DomainHandle<typeof Panes> | null;
-	readonly os: () => DomainHandle<typeof KernelOs> | null;
-	readonly telemetry: () => DomainHandle<typeof Telemetry> | null;
+	readonly panes: () => DomainObjectHandle<typeof Panes> | null;
+	readonly os: () => DomainObjectHandle<typeof KernelOs> | null;
+	readonly telemetry: () => DomainObjectHandle<typeof KernelTelemetry> | null;
 }
 
 type WebLinkProps = Omit<ComponentProps<"a">, "href"> & {
 	readonly href: string;
-	readonly sessionId: string;
+	readonly workSessionId: string;
 	readonly Anchor: ElementType;
 	readonly runtime: WebLinksRuntime;
 };
@@ -37,13 +36,13 @@ function hasModifier(event: MouseEvent): boolean {
 	return event.metaKey || event.ctrlKey || event.shiftKey || event.altKey;
 }
 
-async function openInPane(runtime: WebLinksRuntime, sessionId: string, href: string) {
+async function openInPane(runtime: WebLinksRuntime, workSessionId: string, href: string) {
 	const panes = runtime.panes();
 	if (!panes) throw new Error("The session's panes are unavailable.");
-	await openUrl(panes, sessionId, href);
+	await openUrl(panes, workSessionId, href);
 }
 
-function WebLink({ sessionId, Anchor, href, title, onClick, runtime, ...props }: WebLinkProps) {
+function WebLink({ workSessionId, Anchor, href, title, onClick, runtime, ...props }: WebLinkProps) {
 	const openExternal = () =>
 		void runtime
 			.os()
@@ -57,11 +56,14 @@ function WebLink({ sessionId, Anchor, href, title, onClick, runtime, ...props }:
 			openExternal();
 			return;
 		}
-		openInPane(runtime, sessionId, href).then(
+		openInPane(runtime, workSessionId, href).then(
 			() =>
 				void runtime
 					.telemetry()
-					?.methods.track({ event: "Browser Tab Opened", data: { source: "chat-link" } })
+					?.methods.track({
+						event: BROWSER_TELEMETRY_EVENTS.tabOpened,
+						data: { source: "chat-link" },
+					})
 					.catch(() => undefined),
 			openExternal,
 		);
@@ -72,18 +74,19 @@ function WebLink({ sessionId, Anchor, href, title, onClick, runtime, ...props }:
 /**
  * kilo.browser's `markdown-extension` (origin's BrowserMarkdownExtension): a
  * plain click on an http(s) link in the agent's replies opens it in a Browser
- * pane of the chat's session, through kilo.sessions' openers. A modified
- * click (⌘/Ctrl/Shift/Alt), or a plain click no pane can take, opens the
- * default browser. The tooltip names the URL and the modifier, since the app
- * shows no status-bar preview. Outside a session links are untouched.
+ * pane of the chat's work session, through kilo.work-sessions' openers. A
+ * modified click (⌘/Ctrl/Shift/Alt), or a plain click no pane can take,
+ * opens the default browser. The tooltip names the URL and the modifier,
+ * since the app shows no status-bar preview. Outside a work session links
+ * are untouched.
  */
 export function createBrowserMarkdownExtension(
 	runtime: WebLinksRuntime,
 ): MarkdownExtensionImplementation {
-	return ({ sessionId }) => ({
+	return ({ workSessionId }) => ({
 		decorateComponents(next: MarkdownRendererComponents) {
 			const NextAnchor = (next.a ?? MarkdownAnchor) as ElementType;
-			if (!sessionId) return next;
+			if (!workSessionId) return next;
 			return {
 				...next,
 				a({ node: _node, ...props }: ComponentProps<"a"> & { readonly node?: unknown }) {
@@ -91,7 +94,7 @@ export function createBrowserMarkdownExtension(
 						<WebLink
 							{...props}
 							href={props.href}
-							sessionId={sessionId}
+							workSessionId={workSessionId}
 							Anchor={NextAnchor}
 							runtime={runtime}
 						/>

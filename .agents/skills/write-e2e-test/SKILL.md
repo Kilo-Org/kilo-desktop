@@ -28,7 +28,7 @@ Every e2e flow uses a **page object**, a **per-feature fixture**, and a **spec**
 ### Page object
 
 ```typescript
-// e2e/pages/features/<id>/my-page.ts
+// e2e/pages/<area>/my-page.ts  (or plugins/<id>/e2e/pages/my-page.ts)
 import {
 	click,
 	expectElementToBeVisible,
@@ -53,12 +53,12 @@ export class MyPage {
 
 ### Fixture
 
-`e2e/fixtures/shell.ts` is Electron + `appShellPage` only. Feature page objects extend it:
+`e2e/fixtures/shell.ts` is Electron + `appShellPage` (kilo.shell's frame) only. Feature page objects extend it (kilo.shell's own features in `e2e/fixtures/shell/<feature>.ts`):
 
 ```typescript
-// e2e/fixtures/features/<id>.ts  (or plugins/<id>/e2e/fixtures.ts)
+// e2e/fixtures/<area>/<feature>.ts  (or plugins/<id>/e2e/fixtures.ts)
 import { test as shellTest } from "../shell.js";
-import { MyPage } from "../../pages/features/<id>/my-page.js";
+import { MyPage } from "../../pages/<area>/my-page.js";
 
 export const test = shellTest.extend<{ myPage: MyPage }>({
 	// Playwright requires `{}` destructuring; oxlint-disable no-empty-pattern when unused.
@@ -72,11 +72,11 @@ export const { expect } = test;
 ### Spec
 
 ```typescript
-import { test } from "../../../fixtures/features/<id>.js";
+import { test } from "../../fixtures/<area>/<feature>.js";
 
 test.describe("My feature @smoke", () => {
 	test("submits a value", async ({ appShellPage, myPage }) => {
-		await appShellPage.navigateToFeature("my-feature");
+		await appShellPage.verifyShellIsLoaded();
 		await myPage.submitValue("hello");
 		await myPage.verifyLoaded();
 	});
@@ -94,7 +94,8 @@ test.describe("My feature @smoke", () => {
 - **Tag smoke specs with `@smoke`** so they run on every PR. A PR also runs the full specs of the areas it changes (`e2e/scripts/select-pr-e2e.ts`); add a `RELATED_SPECS` entry when a plugin is exercised by specs outside `plugins/<id>/e2e/`.
 - **Default to the shared worker Electron app** via `shell.ts`.
 - **Set a fixture's isolation key in `extend`, never with a module-level `test.use()`** — `shellTest.extend({ appIsolationKey: "my-feature", ... })`. A `test.use()` in a fixture module binds to whichever spec loads it first and causes Playwright's "inconsistent test.use() options" flake. Call `test.use({ appIsolationKey })` only in a spec, and only for a key that differs from its fixture's default (repeating the default splits the pool into a second app).
-- **Open chat drafts with `openNewChatDraft()`** (and `selectDraftWorkspace()`) from `@kilo-desktop/e2e` — never a one-shot "footer present? else click New Chat" check, which races thread switches.
+- **Go through the UI, not main's state.** `readMainSnapshot` / `waitForDomainObjectState` (`kernel:hydrate`) make main forget what the window implements; use them only for state with no UI, last, in a worker of its own. `callDomainObject` is fine for setup (resetting state a test changed).
+- **Packaged e2e skips first-run onboarding** (`KILO_SKIP_ONBOARDING=1`, which also treats kilo.core's terms as accepted). A spec that walks onboarding launches with `SHOW_ONBOARDING_LAUNCH_ENV` (`e2e/testdata/onboarding.ts`) in its fixture.
 - **Wait for an area's settled state, not its first element.** When a page can show a loading skeleton or an error, wait for loading to finish with a timeout above the product's own request bound, and fail with the page's error text.
 - **Do not add a plugin-local `@anaconda/playwright-utils` version** that differs from `e2e/package.json` — a second copy has an unset page singleton. Global setup fails fast if a plugin resolves a different copy.
 - **Keep specs off the public internet.** Launch envs point Kilo at a local gateway stub and give every profile its own XDG directories; extend `e2e/utils/kilo-gateway-stub.ts` rather than letting a spec depend on a live endpoint.

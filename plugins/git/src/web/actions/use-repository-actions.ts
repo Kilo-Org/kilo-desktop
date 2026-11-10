@@ -1,22 +1,25 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-import { KernelOs } from "@kilo-desktop/kernel";
-import { useDomain } from "@kilo-desktop/kernel/web";
-import { Conversations } from "@kilo-desktop/plugin-agent/contracts";
-import { ModelPreferences } from "@kilo-desktop/plugin-chat/contracts";
-import { Telemetry } from "@kilo-desktop/plugin-telemetry/contracts";
+import { KernelOs, KernelTelemetry } from "@kilo-desktop/kernel";
+import { useDomainObject } from "@kilo-desktop/kernel/web";
+import { Generation, Models } from "@kilo-desktop/plugin-core/contracts";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
-import { PullRequests, Repository, type GithubCliStatus } from "../../contracts/index.js";
-import { usePullRequestEntry } from "../pull-requests/use-pull-request.js";
-import { branchAwaitingLookup, visiblePullRequest } from "../pull-requests/select.js";
+import {
+	GIT_TELEMETRY_EVENTS,
+	PullRequests,
+	Repository,
+	type GithubCliStatus,
+} from "../../contracts";
+import { usePullRequestEntry } from "../pull-requests/use-pull-request";
+import { branchAwaitingLookup, visiblePullRequest } from "../pull-requests/select";
 import {
 	normalizeDefaultBranch,
 	repositoryActions,
 	type RepositoryActionModel,
 	type RepositoryMenuAction,
-} from "../repository-actions.js";
+} from "./repository-actions";
 import {
 	branchesQuery,
 	invalidateRepositoryQueries,
@@ -24,12 +27,9 @@ import {
 	repositoryTypeQuery,
 	statusQuery,
 	workingTreeStatsQuery,
-} from "../repository-queries.js";
-import type { ActionProgress, GitActionKind } from "./action-progress.js";
-import { createSourceControlWriter, type SourceControlWriter } from "./source-control-writer.js";
-
-export const COMMIT_MESSAGE_GENERATED = "Commit Message Generated";
-export const PULL_REQUEST_CONTENT_GENERATED = "Pull Request Content Generated";
+} from "../shared/repository-queries";
+import type { ActionProgress, GitActionKind } from "./action-progress";
+import { createSourceControlWriter, type SourceControlWriter } from "./source-control-writer";
 
 const GITHUB_CLI_INSTALL_URL = "https://cli.github.com/";
 const NON_BLOCKING_TOAST_CLASS = "pointer-events-none [&_button]:pointer-events-auto";
@@ -88,25 +88,25 @@ function showGithubSetupToast(
 	});
 }
 
-/** Commit and pull request text through kilo.agent, with the model new chats start with. */
+/** Commit and pull request text through kilo.core, with the model new chats start with. */
 function useWriter(): SourceControlWriter | null {
-	const conversations = useDomain(Conversations);
-	const modelPreferences = useDomain(ModelPreferences);
+	const generation = useDomainObject(Generation);
+	const models = useDomainObject(Models);
 	return useMemo(() => {
-		if (!conversations) return null;
+		if (!generation) return null;
 		return createSourceControlWriter({
-			generate: (input) => conversations.methods.generate(input),
+			generate: (input) => generation.methods.generate(input),
 			model: () => {
-				const preferred = modelPreferences?.getState().preferred;
+				const preferred = models?.getState().preferences.preferred;
 				if (!preferred) return undefined;
 				return {
-					providerID: preferred.providerID,
-					modelID: preferred.modelID,
+					aiProviderId: preferred.aiProviderId,
+					modelId: preferred.modelId,
 					...(preferred.variant ? { variant: preferred.variant } : {}),
 				};
 			},
 		});
-	}, [conversations, modelPreferences]);
+	}, [generation, models]);
 }
 
 /** One subscription for the header control: repository reads, its pull request and runners. */
@@ -114,10 +114,10 @@ export function useRepositoryActions(
 	directory: string,
 	progressStore: ActionProgress,
 ): RepositoryActions | null {
-	const repository = useDomain(Repository);
-	const pullRequests = useDomain(PullRequests);
-	const os = useDomain(KernelOs);
-	const telemetry = useDomain(Telemetry);
+	const repository = useDomainObject(Repository);
+	const pullRequests = useDomainObject(PullRequests);
+	const os = useDomainObject(KernelOs);
+	const telemetry = useDomainObject(KernelTelemetry);
 	const writer = useWriter();
 	const queries = useQueryClient();
 	const [pushError, setPushError] = useState<string | null>(null);
@@ -223,7 +223,7 @@ export function useRepositoryActions(
 
 	/**
 	 * The branch checked out now, read from git rather than the rendered
-	 * status: a session worktree's branch can be renamed mid-flow (e.g. while
+	 * status: a work session's worktree's branch can be renamed mid-flow (e.g. while
 	 * a commit message is generating).
 	 */
 	async function readCheckedOutBranch() {
@@ -257,7 +257,7 @@ export function useRepositoryActions(
 		const context = await requireRepository().methods.stageChanges({ directory });
 		step("Generating commit message...", "generate a commit message");
 		const message = await generator.generateCommitMessage({ directory, ...context });
-		track(COMMIT_MESSAGE_GENERATED);
+		track(GIT_TELEMETRY_EVENTS.commitMessageGenerated);
 		step("Committing...", "commit");
 		await requireRepository().methods.commit({ directory, message });
 	}
@@ -278,7 +278,7 @@ export function useRepositoryActions(
 			headBranch,
 			...context,
 		});
-		track(PULL_REQUEST_CONTENT_GENERATED);
+		track(GIT_TELEMETRY_EVENTS.pullRequestContentGenerated);
 		step("Creating draft PR...", "create pull request");
 		const created = await requireRepository().methods.createPullRequest({
 			directory,

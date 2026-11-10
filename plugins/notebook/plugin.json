@@ -4,15 +4,18 @@
 	"displayName": "Notebooks",
 	"version": "1.0.0",
 	"description": "Analyze data with interactive Python notebooks in a session's panes.",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
 	"requires": {
-		"kilo.sessions/pane": "optional",
-		"kilo.sessions/pane-kind": "optional",
-		"kilo.sessions/opener": "optional",
-		"kilo.workbench/workbench": "optional",
-		"kilo.account/identity": "optional",
-		"kilo.agent/tool": "optional",
-		"kilo.agent/runtime-config": "optional",
-		"kilo.flags/flags": "optional",
+		"kilo.core/tool": "optional",
+		"kilo.core/agent-extension": "optional",
+		"kilo.core/server-env": "optional",
+		"kilo.work-sessions/work-sessions": "optional",
+		"kilo.work-sessions/workspaces": "optional",
+		"kilo.work-sessions/panes": "optional",
+		"kilo.work-sessions/window": "optional",
+		"kilo.work-sessions/pane-kind": "optional",
+		"kilo.work-sessions/opener": "optional",
 		"kilo.shell/theme": "optional",
 		"kilo.shell/settings-section": "optional"
 	},
@@ -20,7 +23,7 @@
 		"host": ["dialogs", "os"],
 		"embeddedHosts": ["notebook"]
 	},
-	"domains": [
+	"domainObjects": [
 		{
 			"id": "notebooks",
 			"home": "main",
@@ -29,7 +32,7 @@
 	],
 	"contributes": {
 		"extensions": {
-			"kilo.sessions/pane-kind": [
+			"kilo.work-sessions/pane-kind": [
 				{
 					"id": "notebook",
 					"title": "Notebook",
@@ -43,7 +46,7 @@
 					"order": 50,
 					"openCommand": "kilo.notebook/open",
 					"availableWhen": {
-						"all": ["kilo.account/signedIn"]
+						"all": ["kilo.core/signedIn"]
 					},
 					"unavailableHint": "Sign in to Kilo to use embedded notebooks."
 				}
@@ -55,15 +58,15 @@
 					"category": "Notebooks",
 					"keybinding": "Mod+Shift+J",
 					"when": {
-						"all": ["kilo.workbench/paneTargetActive", "kilo.account/signedIn"]
+						"all": ["kilo.work-sessions/paneTargetActive", "kilo.core/signedIn"]
 					}
 				}
 			],
-			"kilo.sessions/opener": [
+			"kilo.work-sessions/opener": [
 				{
 					"id": "ipynb-file",
 					"match": {
-						"type": "kilo.workspaces/file",
+						"type": "kilo.work-sessions/file",
 						"pattern": "*.ipynb"
 					},
 					"pane": "kilo.notebook/notebook"
@@ -80,12 +83,19 @@
 					}
 				}
 			],
-			"kilo.agent/runtime-config": [
+			"kilo.core/agent-extension": [
 				{
-					"id": "kilo-plugin"
+					"id": "kilo-plugin",
+					"type": "kilo-plugin",
+					"path": "${resources}/kilo-plugin/index.js"
 				}
 			],
-			"kilo.agent/tool": [
+			"kilo.core/server-env": [
+				{
+					"id": "runtimed"
+				}
+			],
+			"kilo.core/tool": [
 				{
 					"id": "list_open",
 					"title": "List open notebooks",
@@ -127,6 +137,13 @@
 					"title": "Notebooks",
 					"description": "Analyze data with interactive Python notebooks.",
 					"priority": 75
+				}
+			],
+			"kernel/flag": [
+				{
+					"id": "notebook-host-telemetry",
+					"description": "Lets the notebook runtime send its own telemetry, when the person allows data collection.",
+					"default": false
 				}
 			]
 		}

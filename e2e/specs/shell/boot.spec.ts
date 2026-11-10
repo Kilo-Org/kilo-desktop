@@ -6,5 +6,6 @@ test.describe("Shell boot @smoke @packaged", () => {
 	}) => {
 		await appShellPage.verifyShellIsLoaded();
 		await appShellPage.verifyCustomProtocolBoot();
+		await appShellPage.verifyOnboardingHidden();
 	});
 });

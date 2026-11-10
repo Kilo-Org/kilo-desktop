@@ -10,15 +10,18 @@ const ChatMarkdownContextValue = createContext<ChatMarkdownContext | null>(null)
 
 /** Where the transcript is, for markdown extensions and the agent's pages. */
 export function ChatMarkdownProvider({
-	sessionId,
+	workSessionId,
 	workspaceFolders,
 	children,
 }: {
-	sessionId: string;
+	workSessionId: string;
 	workspaceFolders: readonly ComposerFolder[];
 	children: ReactNode;
 }) {
-	const value = useMemo(() => ({ sessionId, workspaceFolders }), [sessionId, workspaceFolders]);
+	const value = useMemo(
+		() => ({ workSessionId, workspaceFolders }),
+		[workSessionId, workspaceFolders],
+	);
 	return (
 		<ChatMarkdownContextValue.Provider value={value}>{children}</ChatMarkdownContextValue.Provider>
 	);

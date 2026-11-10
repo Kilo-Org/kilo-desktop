@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { useDomain, useDomainState } from "@kilo-desktop/kernel/web";
+import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
 import { FieldError } from "@kilo-desktop/ui/components/field";
 import { SettingsPageHeader } from "@kilo-desktop/ui/components/settings-page-header";
 import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
@@ -71,8 +71,8 @@ export function NotebookSettings() {
 }
 
 function NotebookSettingsContent() {
-	const notebooks = useDomain(Notebooks);
-	const settings = useDomainState(Notebooks, selectSettings) ?? DEFAULT_NOTEBOOK_SETTINGS;
+	const notebooks = useDomainObject(Notebooks);
+	const settings = useDomainObjectState(Notebooks, selectSettings) ?? DEFAULT_NOTEBOOK_SETTINGS;
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const disabled = !notebooks || pending;

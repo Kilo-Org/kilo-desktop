@@ -7,8 +7,8 @@ import { pipeline } from "node:stream/promises";
 
 import type { KernelLogger } from "@kilo-desktop/kernel";
 
-import type { LocalModel, ModelDownload } from "../../contracts/schemas.js";
-import type { CatalogDownloadArtifact, ModelDownloadIdentity } from "./catalog-download.js";
+import type { LocalModel, ModelDownload } from "../../contracts";
+import type { CatalogDownloadArtifact, ModelDownloadIdentity } from "./catalog-download";
 
 export interface ModelDownloadManagerOptions {
 	readonly modelsDir: string;

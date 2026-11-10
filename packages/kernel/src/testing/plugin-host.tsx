@@ -15,7 +15,7 @@
  *
  * The point's owner only needs its manifest and contracts definitions, so the
  * point exists; give it entries too to test against its real behaviour. Host
- * primitives (`kernel/*` domains) are provided through `host.main.kernelSdk`.
+ * primitives (`kernel/*` domain objects) are provided through `host.main.kernelSdk`.
  * Each main-process plugin gets in-memory storage. Rendering uses React DOM
  * directly (no testing library), so it works in any DOM test environment;
  * query the returned container or the page.
@@ -23,7 +23,7 @@
 import { useMemo } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
-import type { AnyDomain, DomainMethods } from "../domain";
+import type { AnyDomainObject, DomainObjectMethods } from "../domain-object";
 import { KernelError } from "../errors";
 import type { AnyExtensionPoint, ImplementationOf } from "../extension-point";
 import type { QualifiedId } from "../ids";
@@ -64,13 +64,14 @@ export interface RenderedSlot {
 	unmount(): void;
 }
 
-type MethodName<TDomain extends AnyDomain> = keyof DomainMethods<TDomain> & string;
-type MethodInput<TDomain extends AnyDomain, TMethod extends MethodName<TDomain>> = Parameters<
-	DomainMethods<TDomain>[TMethod]
+type MethodName<TDomain extends AnyDomainObject> = keyof DomainObjectMethods<TDomain> & string;
+type MethodInput<TDomain extends AnyDomainObject, TMethod extends MethodName<TDomain>> = Parameters<
+	DomainObjectMethods<TDomain>[TMethod]
 >[0];
-type MethodOutput<TDomain extends AnyDomain, TMethod extends MethodName<TDomain>> = ReturnType<
-	DomainMethods<TDomain>[TMethod]
->;
+type MethodOutput<
+	TDomain extends AnyDomainObject,
+	TMethod extends MethodName<TDomain>,
+> = ReturnType<DomainObjectMethods<TDomain>[TMethod]>;
 
 export interface InvokeOptions {
 	/**
@@ -88,7 +89,7 @@ export interface PluginHost extends TestKernelPair {
 		options?: RenderSlotOptions<ImplementationOf<TPoint>>,
 	): RenderedSlot;
 	/** Calls a domain method from the window: as the window's kernel, or `as` a plugin. */
-	invoke<TDomain extends AnyDomain, TMethod extends MethodName<TDomain>>(
+	invoke<TDomain extends AnyDomainObject, TMethod extends MethodName<TDomain>>(
 		domain: TDomain,
 		method: TMethod,
 		input: MethodInput<TDomain, TMethod>,
@@ -185,19 +186,19 @@ export async function createPluginHost(
 			};
 		},
 		invoke(
-			domain: AnyDomain | QualifiedId,
+			domain: AnyDomainObject | QualifiedId,
 			method: string,
 			input?: unknown,
 			invokeOptions: InvokeOptions = {},
 		) {
-			const definition = typeof domain === "string" ? ({ id: domain } as AnyDomain) : domain;
+			const definition = typeof domain === "string" ? ({ id: domain } as AnyDomainObject) : domain;
 			let sdk;
 			try {
 				sdk = invokeOptions.as ? pair.renderer.sdkFor(invokeOptions.as) : pair.renderer.kernelSdk;
 			} catch (error) {
 				return Promise.reject(error);
 			}
-			const handle = sdk.domains.get(definition);
+			const handle = sdk.domainObjects.get(definition);
 			if (!handle) {
 				return Promise.reject(
 					new KernelError("UNAVAILABLE", `No plugin provides "${definition.id}".`),

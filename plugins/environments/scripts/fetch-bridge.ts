@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { stageBridge } from "../src/packaging/stage-bridge.js";
+import { stageBridge } from "../src/packaging/stage-bridge";
 
 const pluginRoot = path.resolve(import.meta.dirname, "..");
 const sourcePath = process.env["BRIDGE_PAYLOAD"]?.trim();

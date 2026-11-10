@@ -68,7 +68,12 @@ const appIcon =
 		? [path.join(packageRoot, `assets/${macIcon}`), path.join(packageRoot, "assets/icon.icns")]
 		: path.join(packageRoot, "assets/icon");
 
+// kilo.notebook's runtimed daemon, notebook UI and Kilo plugin (staged by its
+// prepare-assets), and the native packages its main process and the Kilo
+// server load from outside ASAR.
 const notebookPackaging = createNotebookPackagingPlan();
+// kilo.environments' conda bridge (staged by its prepare-assets) and the
+// third-party notices its payload carries.
 const bridgePackaging = createBridgePackagingPlan();
 const parcelWatcherBindingPackages = [
 	"@parcel/watcher-android-arm64",
@@ -84,13 +89,17 @@ const parcelWatcherBindingPackages = [
 	"@parcel/watcher-win32-arm64",
 	"@parcel/watcher-win32-x64",
 ];
+// Native addons need real filesystem paths (see packagerConfig.asar.unpack).
 const asarUnpackPackages = [
+	// kilo.work-sessions' one-time import of Kilo's own workspaces and sessions.
 	"better-sqlite3",
 	"@github/keytar",
-	// @parcel/watcher loads its native binding from a platform package. Keep
-	// that binding in the app bundle so macOS signs it with the app identity
-	// instead of Electron extracting the upstream-signed binary at runtime.
+	// kilo.work-sessions' file watcher (@parcel/watcher) loads its native
+	// binding from a platform package. Keep that binding in the app bundle so
+	// macOS signs it with the app identity instead of Electron extracting the
+	// upstream-signed binary at runtime.
 	...parcelWatcherBindingPackages,
+	// kilo.terminal's shells.
 	"node-pty",
 	...notebookPackaging.asarUnpackPackages,
 ];
@@ -98,8 +107,9 @@ const extraResources = [
 	path.join(packageRoot, "assets/icon.png"),
 	// Copied over Squirrel's app.ico by the install hook (SquirrelUninstallIcon.ts).
 	...(process.platform === "win32" ? [path.join(packageRoot, "assets/icon.ico")] : []),
-	// Native plugin payloads must stay outside ASAR so the shell can execute them.
-	path.join(workspaceRoot, "plugins/agent/resources/kilo"),
+	// kilo.core's Kilo CLI must stay outside ASAR so it can be executed; it
+	// resolves `resources/kilo` against the app's resources when packaged.
+	path.join(workspaceRoot, "plugins/core/resources/kilo"),
 	// kilo.terminal's frame, served on its embedded host from the app's resources.
 	path.join(workspaceRoot, "plugins/terminal/resources/terminal"),
 	...notebookPackaging.extraResources,
@@ -108,7 +118,7 @@ const extraResources = [
 
 // Vite `build.license` lists of every bundle that ships, read by
 // writeAppLegalFiles. Paths under the build folder are the staged renderer and
-// main/preload; the rest ship as resources or inside the renderer.
+// main/preload; the rest ship as resources.
 const shippedBundleLicenseFiles = (buildPath: string): string[] => [
 	...[
 		".vite/renderer/main_window/.vite/licenses.json",
@@ -141,59 +151,6 @@ async function stageProductionDependencies(
 	workspacePackageNames: readonly string[],
 ): Promise<void> {
 	const stagingDirectory = await mkdtemp(path.join(workspaceRoot, ".kilo-desktop-production-"));
-	const linkedDependencies = [
-		{
-			packageName: "@kilo-desktop/plugin-agent",
-			source: path.join(workspaceRoot, "plugins/agent"),
-			excludedDirectories: new Set([
-				".git",
-				".vitest",
-				"coverage",
-				"e2e",
-				"node_modules",
-				"resources",
-			]),
-		},
-		{
-			packageName: "@kilo-desktop/plugin-notebook",
-			source: path.join(workspaceRoot, "plugins/notebook"),
-			excludedDirectories: new Set([
-				".git",
-				".vitest",
-				"build",
-				"coverage",
-				"e2e",
-				"node_modules",
-				"resources",
-			]),
-		},
-		{
-			packageName: "@kilo-desktop/plugin-terminal",
-			source: path.join(workspaceRoot, "plugins/terminal"),
-			excludedDirectories: new Set([
-				".git",
-				".vitest",
-				"coverage",
-				"e2e",
-				"node_modules",
-				"resources",
-			]),
-		},
-		{
-			packageName: "@kilo-desktop/plugin-environments",
-			source: path.join(workspaceRoot, "plugins/environments"),
-			excludedDirectories: new Set([
-				".git",
-				".vitest",
-				"coverage",
-				"e2e",
-				"node_modules",
-				"resources",
-				"scripts",
-			]),
-		},
-	] as const;
-
 	try {
 		// Modern deploy consumes the committed workspace lockfile. Keep the build
 		// offline and frozen so release artifacts cannot drift when a compatible
@@ -225,18 +182,6 @@ async function stageProductionDependencies(
 				stdout: "inherit",
 			},
 		);
-		for (const dependency of linkedDependencies) {
-			const destination = path.join(stagingDirectory, "node_modules", dependency.packageName);
-			await rm(destination, { force: true, recursive: true });
-			await cp(dependency.source, destination, {
-				filter: (source) => {
-					const relativePath = path.relative(dependency.source, source);
-					const topLevelDirectory = relativePath.split(path.sep)[0];
-					return !topLevelDirectory || !dependency.excludedDirectories.has(topLevelDirectory);
-				},
-				recursive: true,
-			});
-		}
 		const stagedNodeModules = path.join(stagingDirectory, "node_modules");
 		await pruneProductionDependencies(stagedNodeModules, workspacePackageNames);
 		const packagedNodeModules = path.join(buildPath, "node_modules");
@@ -284,8 +229,8 @@ const config: ForgeConfig = {
 			// Native addons need real filesystem paths. All other production
 			// dependencies remain inside the integrity-checked ASAR.
 			// Keep this a single-level brace list. Wrapping it in another `{…}`
-			// makes @electron/asar match nothing, so signed builds die on
-			// `require("@runtimed/node")` with the .node still inside app.asar.
+			// makes @electron/asar match nothing, so signed builds fail to load
+			// native addons whose .node files stay inside app.asar.
 			unpack: `**/node_modules/{${asarUnpackPackages.join(",")}}/**`,
 		},
 		appBundleId: identity.appBundleId,

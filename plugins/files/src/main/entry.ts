@@ -1,20 +1,14 @@
 import { definePlugin, KernelError, type PluginEntry, type PluginSdk } from "@kilo-desktop/kernel";
-import { Panes } from "@kilo-desktop/plugin-sessions/contracts";
-import { Vcs, Workspaces } from "@kilo-desktop/plugin-workspaces/contracts";
+import { Panes, Vcs, Workspaces } from "@kilo-desktop/plugin-work-sessions/contracts";
 
-import { Documents } from "../contracts/index.js";
-import type { ExternalEditorId } from "../contracts/models.js";
-import {
-	basename,
-	FILE_OBJECT_TYPE,
-	FILE_PANE_METADATA,
-	FILES_PANE_KIND,
-} from "../contracts/panes.js";
-import { ExternalEditorService } from "./external-editors.js";
-import { FilesService } from "./files-service.js";
-import { createGitStatusLookup } from "./git-status.js";
-import { implementOpenTool } from "./open-tool.js";
-import { foldersOfSession } from "./session-folders.js";
+import { Documents } from "../contracts";
+import type { ExternalEditorId } from "../contracts/models";
+import { basename, FILE_OBJECT_TYPE, FILES_PANE_KIND } from "../contracts/panes";
+import { ExternalEditorService } from "./external-editors";
+import { FilesService } from "./files-service";
+import { createGitStatusLookup } from "./git-status";
+import { implementOpenTool } from "./open-tool";
+import { foldersOfWorkSession } from "./session-folders";
 
 export interface ExternalEditorLauncher {
 	listAvailable(): Promise<readonly ExternalEditorId[]>;
@@ -29,11 +23,11 @@ export interface FilesMainOptions {
 /**
  * A folder may be browsed when it is a workspace folder or one of its
  * managed worktrees (rule `folder`, origin's check); fails closed while
- * kilo.workspaces is absent.
+ * kilo.work-sessions' workspaces are absent.
  */
 function authorizeFolder(sdk: PluginSdk) {
 	return async (canonicalWorkspaceDirectory: string): Promise<void> => {
-		const workspaces = sdk.domains.get(Workspaces);
+		const workspaces = sdk.domainObjects.get(Workspaces);
 		if (!workspaces) {
 			throw new KernelError("UNAVAILABLE", "Workspaces are unavailable.");
 		}
@@ -49,20 +43,13 @@ function authorizeFolder(sdk: PluginSdk) {
 function nameOpenedFilePanes(sdk: PluginSdk): void {
 	let stop: (() => void) | undefined;
 	sdk.onDispose(
-		sdk.domains.track(Panes, {
+		sdk.domainObjects.track(Panes, {
 			added: (panes) => {
-				stop = panes.on("opened", ({ sessionId, pane }) => {
-					const objectId = pane.metadata[FILE_PANE_METADATA.objectId];
-					if (
-						pane.kind !== FILES_PANE_KIND ||
-						pane.metadata[FILE_PANE_METADATA.objectType] !== FILE_OBJECT_TYPE ||
-						!objectId
-					) {
-						return;
-					}
-					const name = basename(objectId);
+				stop = panes.on("opened", ({ workSessionId, pane }) => {
+					if (pane.kind !== FILES_PANE_KIND || pane.object?.type !== FILE_OBJECT_TYPE) return;
+					const name = basename(pane.object.id);
 					void panes.methods
-						.update({ sessionId, paneId: pane.id, title: name, iconKey: name })
+						.update({ workSessionId, paneId: pane.id, title: name, iconKey: name })
 						.catch((error: unknown) => sdk.logger.warn("Could not title a file pane", error));
 				});
 			},
@@ -74,11 +61,11 @@ function nameOpenedFilePanes(sdk: PluginSdk): void {
 
 /**
  * kilo.files in main. `documents` is origin's file service: every call
- * re-authorizes its folder with kilo.workspaces and keeps file targets
- * inside it after resolving symlinks; tree decorations come from
- * `kilo.workspaces/vcs`. The `open` agent tool shows a file of the calling
- * chat's session through kilo.sessions' openers, and file panes any opener
- * creates are titled with their file's name.
+ * re-authorizes its folder with `kilo.work-sessions/workspaces` and keeps
+ * file targets inside it after resolving symlinks; tree decorations come
+ * from `kilo.work-sessions/vcs`. The `open` agent tool shows a file of the
+ * calling chat's work session through kilo.work-sessions' openers, and file
+ * panes any opener creates are titled with their file's name.
  */
 export function createFilesMainEntry(options: FilesMainOptions = {}): PluginEntry {
 	return definePlugin({
@@ -92,7 +79,7 @@ export function createFilesMainEntry(options: FilesMainOptions = {}): PluginEntr
 				),
 			});
 
-			sdk.domains.provide(Documents, {
+			sdk.domainObjects.provide(Documents, {
 				initialState: {},
 				methods: {
 					list: ({ workspaceDirectory }) => service.list(workspaceDirectory),
@@ -121,7 +108,7 @@ export function createFilesMainEntry(options: FilesMainOptions = {}): PluginEntr
 			});
 
 			implementOpenTool(sdk, {
-				foldersOf: (sessionId) => foldersOfSession(sdk, sessionId),
+				foldersOf: (workSessionId) => foldersOfWorkSession(sdk, workSessionId),
 				existingPaths: (workspaceDirectory, relativePaths) =>
 					service.existingPaths(workspaceDirectory, relativePaths),
 			});

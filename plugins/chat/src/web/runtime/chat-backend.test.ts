@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { DomainHandle } from "@kilo-desktop/kernel";
-import type { AgentServer } from "@kilo-desktop/plugin-agent/contracts";
+import type { DomainObjectHandle } from "@kilo-desktop/kernel";
+import type { KiloServer } from "@kilo-desktop/plugin-core/contracts";
 
 import { FakeKiloServer } from "../../test/fake-kilo-server";
 import { createChatBackend } from "./chat-backend";
@@ -14,7 +14,7 @@ function servicesFor(server: FakeKiloServer): ChatServices {
 		getState: () => ({ status: "ready" }),
 		subscribe: () => () => {},
 		methods: { connect: async () => server.connection },
-	} as unknown as DomainHandle<typeof AgentServer>;
+	} as unknown as DomainObjectHandle<typeof KiloServer>;
 	return new ChatServices(() => handle);
 }
 

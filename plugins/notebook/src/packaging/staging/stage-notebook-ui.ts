@@ -17,8 +17,8 @@ import { extract as extractTar } from "tar";
 import {
 	NOTEBOOK_THEME_MESSAGE_TYPE,
 	NOTEBOOK_THEME_READY_MESSAGE_TYPE,
-} from "../../contracts/notebook-theme.js";
-import { NTERACT_NOTEBOOK_UI, NTERACT_RELEASE, type ReleaseAsset } from "../artifacts.js";
+} from "../../contracts/notebook-theme";
+import { NTERACT_NOTEBOOK_UI, NTERACT_RELEASE, type ReleaseAsset } from "../artifacts";
 
 export const NOTEBOOK_STAGE_MANIFEST = "staged.json";
 export const NTERACT_LICENSE_FILE = "LICENSE.nteract";

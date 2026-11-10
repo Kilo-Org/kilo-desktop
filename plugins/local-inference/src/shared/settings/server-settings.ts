@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { llamaFlagsFromRows, parseLlamaFlagRow } from "./model-settings.js";
+import { llamaFlagsFromRows, parseLlamaFlagRow } from "./model-settings";
 
 const FLAG_KEY = /^[a-z][a-z0-9-]*$/;
 

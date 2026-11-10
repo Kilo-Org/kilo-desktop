@@ -4,15 +4,15 @@ import path from "node:path";
 
 import type { KvStore } from "@kilo-desktop/kernel";
 
-import type { LocalModel } from "../../contracts/schemas.js";
+import type { LocalModel } from "../../contracts";
 import {
 	compactModelSettings,
 	type LocalModelSettings,
-} from "../../shared/settings/model-settings.js";
+} from "../../shared/settings/model-settings";
 import {
 	compactServerSettings,
 	type LocalServerSettings,
-} from "../../shared/settings/server-settings.js";
+} from "../../shared/settings/server-settings";
 
 export interface PersistedLocalModels extends Record<string, unknown> {
 	models: LocalModel[];

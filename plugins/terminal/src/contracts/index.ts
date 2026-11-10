@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { defineDomain, method, type PluginDefinitions } from "@kilo-desktop/kernel";
+import { defineDomainObject, method, type PluginDefinitions } from "@kilo-desktop/kernel";
 
 import { MAX_TERMINAL_READ_LINES, terminalReadoutSchema } from "./session";
 
@@ -9,7 +9,7 @@ export * from "./session";
 
 /**
  * kilo.terminal's public surface: terminal panes (a shell per pane, run in
- * main), the `terminalFocused` key, and the terminals of a session for
+ * main), the `terminalFocused` key, and the terminals of a work session for
  * whoever needs to see what they print (agent tools).
  */
 export const TERMINAL_PLUGIN_ID = "kilo.terminal";
@@ -25,15 +25,25 @@ export const TERMINAL_PORT = "session";
 
 /**
  * Pane metadata naming the shell session a pane belongs to, when it isn't the
- * pane's session: origin's panes keep the chat id their history was saved under.
+ * pane's work session: origin's panes keep the chat id their history was saved under.
  */
 export const TERMINAL_SESSION_METADATA_KEY = "terminalSessionId";
 
 export const DEFAULT_TERMINAL_READ_LINES = 200;
 
+/** kilo.terminal's commands, by key (origin's ids, so saved keybindings keep working). */
+export const TERMINAL_COMMANDS = {
+	open: "kilo.terminal/open",
+	new: "kilo.terminal/new",
+	clear: "kilo.terminal/clear",
+} as const;
+
+/** kilo.terminal's agent tools (origin's ids, kept for their wire names `desktop_terminal_<id>`). */
+export const TERMINAL_TOOL_IDS = ["open", "list", "read"] as const;
+
 const terminalTarget = z.object({
-	/** The Work Session the terminal's pane is in. */
-	sessionId: z.string().min(1).max(512),
+	/** The work session the terminal's pane is in. */
+	workSessionId: z.string().min(1).max(512),
 	/** The terminal's pane id. */
 	terminalId: z.string().min(1).max(512),
 });
@@ -52,15 +62,16 @@ export const terminalExitedSchema = terminalTarget.extend({
 });
 export type TerminalExited = z.output<typeof terminalExitedSchema>;
 
-/** The terminals open in each session; absent where shells can't run (the browser). */
-export const Terminals = defineDomain({
+/** The terminals open in each work session; absent where shells can't run (the browser). */
+export const Terminals = defineDomainObject({
 	id: "kilo.terminal/terminals",
 	home: "main",
+	description: "The terminals in each work session: list, read and close them.",
 	state: z.object({}),
 	methods: {
-		/** The session's terminal panes, in tab order. */
+		/** The work session's terminal panes, in tab order. */
 		list: method(
-			z.object({ sessionId: terminalTarget.shape.sessionId }),
+			z.object({ workSessionId: terminalTarget.shape.workSessionId }),
 			z.array(terminalSummarySchema),
 		),
 		/** A plain-text tail of what a terminal printed; null when it has printed nothing it kept. */
@@ -79,4 +90,4 @@ export const Terminals = defineDomain({
 	},
 });
 
-export const TERMINAL_DEFINITIONS: PluginDefinitions = { domains: [Terminals] };
+export const TERMINAL_DEFINITIONS: PluginDefinitions = { domainObjects: [Terminals] };

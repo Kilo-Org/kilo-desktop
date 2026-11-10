@@ -65,7 +65,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/compon
 import { CommandItem } from "@kilo-desktop/ui/components/command";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 import { KernelOs } from "@kilo-desktop/kernel";
-import { useDomain } from "@kilo-desktop/kernel/web";
+import { useDomainObject } from "@kilo-desktop/kernel/web";
 import { Navigation } from "@kilo-desktop/plugin-shell/contracts";
 
 import type { ComposerActionPopoverProps, ComposerActionTrigger } from "../../contracts";
@@ -391,7 +391,7 @@ export const KiloModelSelectorContent: FC<Pick<ComposerActionPopoverProps, "open
 	open,
 	close,
 }) => {
-	const navigation = useDomain(Navigation);
+	const navigation = useDomainObject(Navigation);
 	const { needsSignIn, signIn } = useKiloSignIn();
 	const {
 		model,
@@ -406,7 +406,7 @@ export const KiloModelSelectorContent: FC<Pick<ComposerActionPopoverProps, "open
 		refreshCatalog,
 		modelSource,
 	} = useChatModelSelection();
-	// Providers added or removed in AI Providers (kilo.agent) since the catalog
+	// Providers added or removed in AI Providers (kilo.core) since the catalog
 	// was read show up when the picker opens.
 	useEffect(() => {
 		if (open) refreshCatalog?.();
@@ -1610,7 +1610,7 @@ const EnkryptRiskIndicator: FC<{ value: number }> = ({ value }) => {
 };
 
 const ModelInfoPopover: FC<{ model: KiloCatalogModel }> = ({ model }) => {
-	const os = useDomain(KernelOs);
+	const os = useDomainObject(KernelOs);
 	const [open, setOpen] = useState(false);
 	const triggerRef = useRef<HTMLButtonElement>(null);
 	useEffect(() => {

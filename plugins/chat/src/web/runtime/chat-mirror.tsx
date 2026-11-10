@@ -2,8 +2,8 @@ import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { useCallback, type ReactNode } from "react";
 
-import { useDomain } from "@kilo-desktop/kernel/web";
-import { Conversations } from "@kilo-desktop/plugin-agent/contracts";
+import { useDomainObject } from "@kilo-desktop/kernel/web";
+import { Chats } from "@kilo-desktop/plugin-core/contracts";
 
 import { IMPLEMENTING_AGENT } from "../plan/use-approve-plan";
 import { useTranscriptAui } from "../thread/transcript-scope";
@@ -30,12 +30,12 @@ const cannotStartChats = () => Promise.reject(new Error("This pane can't start a
  */
 export function ChatMirror({
 	services,
-	sessionId,
+	workSessionId,
 	chatId,
 	children,
 }: {
 	services: ChatMirrorServices;
-	sessionId: string;
+	workSessionId: string;
 	chatId: string | null;
 	children: ReactNode;
 }) {
@@ -45,7 +45,7 @@ export function ChatMirror({
 				<MirrorRuntime
 					key={chatId ?? ""}
 					services={services.chat}
-					sessionId={sessionId}
+					workSessionId={workSessionId}
 					chatId={chatId}
 				>
 					{children}
@@ -57,33 +57,34 @@ export function ChatMirror({
 
 function MirrorRuntime({
 	services,
-	sessionId,
+	workSessionId,
 	chatId,
 	children,
 }: {
 	services: ChatServices;
-	sessionId: string;
+	workSessionId: string;
 	chatId: string | null;
 	children: ReactNode;
 }) {
-	const conversations = useDomain(Conversations);
+	const chats = useDomainObject(Chats);
 	const directoryOf = useCallback(
-		(id: string) => conversations?.getState().chats[id]?.directory ?? null,
-		[conversations],
+		(id: string) => chats?.getState().chats[id]?.directory ?? null,
+		[chats],
 	);
 	const getSystem = useCallback(
 		async (id: string) => {
-			const chat = conversations?.getState().chats[id];
-			const config = await conversations?.methods
-				.sessionConfig({
-					sessionId,
+			const chat = chats?.getState().chats[id];
+			const config = await chats?.methods
+				.chatConfig({
+					chatId: id,
+					workSessionId,
 					workspaceId: chat?.workspaceId ?? null,
 					directory: chat?.directory ?? null,
 				})
 				.catch(() => undefined);
 			return chatSystemPrompt(chat?.workspaceFolders ?? [], config?.instructions ?? []);
 		},
-		[conversations, sessionId],
+		[chats, workSessionId],
 	);
 	const runtime = useChatRuntime({
 		services,

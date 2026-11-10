@@ -2,10 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
 import type { PluginEntry } from "@kilo-desktop/kernel";
+import { modelKey, type ModelInfo, type ModelsState } from "@kilo-desktop/plugin-core/contracts";
 
 import { ModelSource, type ModelSourceImplementation, type ModelSourceState } from "../contracts";
-import { renderAgentPane } from "../test/chat-host";
-import { FakeKiloServer } from "../test/fake-kilo-server";
+import { TEST_MODELS } from "../test/fake-core";
+import { renderChat as renderAgentPane } from "../test/render-chat";
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -39,7 +40,7 @@ function localSource(implementation: ModelSourceImplementation) {
 					"kilo.chat/model-source": [
 						{
 							id: "local",
-							providerId: LOCAL,
+							aiProviderId: LOCAL,
 							title: "Local Model Server",
 							settingsSection: "local-model-server",
 						},
@@ -58,22 +59,33 @@ const state = (patch: Partial<ModelSourceState> = {}): ModelSourceState => ({
 	...patch,
 });
 
-function serverWithLocalModel() {
-	const server = new FakeKiloServer();
-	server.providers = {
-		all: [
-			{
-				id: LOCAL,
-				name: "Local",
-				models: { qwen: { id: "qwen", name: "Qwen", variants: {} } },
-			},
-		],
-		default: { [LOCAL]: "qwen" },
-		connected: [LOCAL],
-	};
-	server.config = { model: `${LOCAL}/qwen` };
-	return server;
-}
+const qwen: ModelInfo = {
+	aiProviderId: LOCAL,
+	modelId: "qwen",
+	name: "Qwen",
+	variants: [],
+	attachments: true,
+	reasoning: false,
+	free: false,
+	byok: false,
+};
+
+/** kilo.core's models with the local provider serving Qwen, its default. */
+const modelsWithLocalModel: ModelsState = {
+	...TEST_MODELS,
+	aiProviders: {
+		[LOCAL]: {
+			id: LOCAL,
+			name: "Local",
+			connected: true,
+			source: "config",
+			env: [],
+			canDisconnect: false,
+		},
+	},
+	models: { [modelKey(qwen)]: qwen },
+	defaults: { [LOCAL]: "qwen" },
+};
 
 async function send(text: string) {
 	await userEvent.fill(page.getByTestId("kilo-composer-input"), text);
@@ -85,7 +97,7 @@ describe("the model-source point", () => {
 		const loading = deferred();
 		const prepare = vi.fn(() => loading.promise);
 		const host = await renderAgentPane({
-			server: serverWithLocalModel(),
+			models: modelsWithLocalModel,
 			plugins: [localSource({ useState: () => state({ modelIds: ["qwen"] }), prepare })],
 		});
 

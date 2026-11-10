@@ -4,7 +4,7 @@ import { Badge } from "@kilo-desktop/ui/components/badge";
 import { item, type DetailItem } from "../diagnostics-summary";
 import { describeDomain, type DomainView } from "../domain-model";
 import { DetailHeader, Details, Panel, StatusBadge } from "../parts";
-import { useKernelChanges } from "./navigation";
+import { useKernelChanges, useMainDomainObjects } from "./navigation";
 import { ownerValue, RequiredBy } from "./PointDetail";
 
 const HOMES: Record<DomainView["home"], string> = {
@@ -27,9 +27,18 @@ function definitionItems(view: DomainView): DetailItem[] {
 			view.homeCallersOnly ? [{ text: `Only from the ${view.home} process` }] : [],
 		),
 		...item(
-			"References",
-			view.resolvesRefs ? [{ text: "Resolves object references against its state" }] : [],
+			"Object type",
+			view.objectType
+				? [
+						{
+							code: view.objectType,
+							link: { kind: "objectType", id: view.objectType },
+							note: "references of this type resolve to its items",
+						},
+					]
+				: [],
 		),
+		...item("Lookup", view.hasLookup ? [{ text: "Looks items up by key in its state" }] : []),
 	];
 }
 
@@ -51,7 +60,7 @@ function shapeItems(view: DomainView): DetailItem[] {
 export function DomainDetail({ id }: { readonly id: string }) {
 	const kernel = useKernel();
 	useKernelChanges();
-	const view = describeDomain(kernel, id);
+	const view = describeDomain(kernel, id, useMainDomainObjects());
 	if (!view) return <p className="text-muted-foreground text-sm">No domain object "{id}".</p>;
 	return (
 		<div className="flex min-w-0 flex-col gap-6" data-qa-id={`diagnostics-domain-${id}`}>

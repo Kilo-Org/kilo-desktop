@@ -1,6 +1,11 @@
 /* Test-only stylesheet: generates the Tailwind utilities the plugin's
    components use so browser tests get real layout/visibility. In the app,
-   the shell's globals.css scans plugin + design-system sources via @source. */
+   apps/web/src/globals.css scans plugin and design-system sources. kilo.shell,
+   kilo.work-sessions and kilo.chat are scanned too: browser tests may render
+   the shell frame, the canvas or the composer around this plugin. */
 @import "tailwindcss";
 @source "../../../../packages/ui";
-@source "../web";
+@source "../../../../packages/kernel/src";
+@source "../../../shell/src";
+@source "../../../work-sessions/src";
+@source "../";

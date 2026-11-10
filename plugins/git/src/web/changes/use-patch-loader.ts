@@ -6,17 +6,17 @@ import { type CodeViewHandle, useStableCallback } from "@pierre/diffs/react";
 import useLatest from "react-use/esm/useLatest.js";
 import { useEffect, useRef, useState, type RefObject } from "react";
 
-import { PATCH_BYTE_LENGTH_HEADER } from "../../contracts/index.js";
+import { PATCH_BYTE_LENGTH_HEADER } from "../../contracts";
 import {
 	appendFileDiffToGitDiffData,
 	createGitDiffDataAccumulator,
 	snapshotGitDiffTreeSource,
 	takePendingGitDiffItems,
-} from "./lib/diff-data-accumulator.js";
-import { createPatchFileCacheKey } from "./lib/patch-cache-key.js";
-import { streamGitPatchFiles } from "./lib/stream-git-patch-files.js";
-import { Throttler } from "./lib/throttler.js";
-import type { GitDiffStats, GitDiffTreeSource } from "./lib/diff-data-accumulator.js";
+} from "./lib/diff-data-accumulator";
+import { createPatchFileCacheKey } from "./lib/patch-cache-key";
+import { streamGitPatchFiles } from "./lib/stream-git-patch-files";
+import { Throttler } from "./lib/throttler";
+import type { GitDiffStats, GitDiffTreeSource } from "./lib/diff-data-accumulator";
 
 const STREAM_PUBLISH_INTERVAL_MS = 100;
 const STREAM_WORK_BUDGET_MS = 8;

@@ -8,9 +8,10 @@ import {
 	notebookIdOf,
 	notebookOpenState,
 	NTERACT_ELECTRON_HOST_PROTOCOL_VERSION,
-} from "./index.js";
+} from "./index";
 
 const NOTEBOOK_ID = "669d39ec-39d6-4160-815c-b46e170cde8d";
+const file = (id: string) => ({ type: FILE_OBJECT_TYPE, id });
 
 describe("notebook host contract", () => {
 	it("matches the protocol implemented by the installed nteract adapter", () => {
@@ -37,22 +38,17 @@ describe("a Notebook pane's notebook", () => {
 			notebookIdOf({ id: NOTEBOOK_ID, metadata: { notebookOpenState: "opening" } }),
 		).toBeUndefined();
 		expect(
-			notebookIdOf({
-				id: NOTEBOOK_ID,
-				metadata: { objectType: FILE_OBJECT_TYPE, objectId: "/w/a.ipynb" },
-			}),
+			notebookIdOf({ id: NOTEBOOK_ID, object: file("/w/a.ipynb"), metadata: {} }),
 		).toBeUndefined();
 	});
 
 	it("comes from its file: the opened path, else the object it was opened for", () => {
 		expect(
-			notebookFileOf({ metadata: { notebookPath: "/real/a.ipynb", objectId: "/w/a.ipynb" } }),
+			notebookFileOf({ object: file("/w/a.ipynb"), metadata: { notebookPath: "/real/a.ipynb" } }),
 		).toBe("/real/a.ipynb");
+		expect(notebookFileOf({ object: file("/w/a.ipynb"), metadata: {} })).toBe("/w/a.ipynb");
 		expect(
-			notebookFileOf({ metadata: { objectType: FILE_OBJECT_TYPE, objectId: "/w/a.ipynb" } }),
-		).toBe("/w/a.ipynb");
-		expect(
-			notebookFileOf({ metadata: { objectType: "kilo.browser/url", objectId: "x" } }),
+			notebookFileOf({ object: { type: "kilo.work-sessions/url", id: "x" }, metadata: {} }),
 		).toBeUndefined();
 		expect(notebookOpenState({ notebookOpenState: "weird" })).toBeUndefined();
 	});

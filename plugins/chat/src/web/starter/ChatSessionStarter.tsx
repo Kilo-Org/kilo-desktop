@@ -1,14 +1,19 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { useCallback, useMemo, useRef, type FC } from "react";
 
-import { useDomain, useDomainState } from "@kilo-desktop/kernel/web";
-import { Conversations } from "@kilo-desktop/plugin-agent/contracts";
-import { Panes } from "@kilo-desktop/plugin-sessions/contracts";
-import type { SessionStarterProps, StartedSession } from "@kilo-desktop/plugin-workbench/contracts";
-import { Workspaces, type WorkspacesState } from "@kilo-desktop/plugin-workspaces/contracts";
+import type { DomainObjectState } from "@kilo-desktop/kernel";
+import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
+import { Chats } from "@kilo-desktop/plugin-core/contracts";
+import {
+	Panes,
+	WorkSessions,
+	Workspaces,
+	type StartedWorkSession,
+	type WorkSessionStarterProps,
+} from "@kilo-desktop/plugin-work-sessions/contracts";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
-import { AGENT_PANE_KIND, CHAT_ID_METADATA_KEY, type ComposerContext } from "../../contracts";
+import { AGENT_PANE_KIND, chatPaneObject, type ComposerContext } from "../../contracts";
 import { ChatThread, type AgentPaneServices } from "../AgentPane";
 import { Composer } from "../composer/composer";
 import { ComposerActionSlotView } from "../composer/composer-actions";
@@ -26,7 +31,8 @@ const CHAT_TYPOGRAPHY_CLASS =
 /**
  * Origin's draft composer on the New Session page, with the `draft-footer`
  * composer actions in a strip tucked under it while any of them shows
- * something (kilo.workbench draws where the session runs above the starter).
+ * something (kilo.work-sessions draws where the work session runs above the
+ * starter).
  */
 function StarterComposer() {
 	return (
@@ -56,23 +62,25 @@ function StarterComposer() {
 	);
 }
 
-const selectWorkspaces = (state: WorkspacesState) => state.workspaces;
+const selectWorkspaces = (state: DomainObjectState<typeof Workspaces>) => state.workspaces;
 
 /**
- * kilo.chat's session starter (`kilo.workbench/session-starter`): a chat with
- * no session yet. Its first send starts the session where the launcher says,
- * creates the chat there and an Agent pane for it, and opens the session once
- * the server has the message, so the pane shows it (or once the server
- * refused it, so the pane shows why). A session whose chat can't be created
- * is discarded again, the message going back to the composer. Either way the
- * starter ends a start with `open` or `discard`, which the New Session page
- * waits for.
+ * kilo.chat's work session starter (`kilo.work-sessions/work-session-starter`):
+ * a chat with no work session yet. Its first send starts the work session
+ * where the New Session page says, creates the chat in it (stamped by
+ * kilo.work-sessions) and an Agent pane showing it, and opens the work
+ * session once the server has the message, so the pane shows it (or once
+ * the server refused it, so the pane shows why). A work session whose chat
+ * can't be created is discarded again, the message going back to the
+ * composer. Either way the starter ends a start with `open` or `discard`,
+ * which the New Session page waits for.
  */
-export function createChatSessionStarter(services: AgentPaneServices): FC<SessionStarterProps> {
+export function createChatSessionStarter(services: AgentPaneServices): FC<WorkSessionStarterProps> {
 	return function ChatSessionStarter({ workspaceId, directory, start }) {
-		const conversations = useDomain(Conversations);
-		const panes = useDomain(Panes);
-		const workspaces = useDomainState(Workspaces, selectWorkspaces);
+		const chats = useDomainObject(Chats);
+		const workSessions = useDomainObject(WorkSessions);
+		const panes = useDomainObject(Panes);
+		const workspaces = useDomainObjectState(Workspaces, selectWorkspaces);
 		const rootRef = useRef<HTMLDivElement>(null);
 		const folders = useMemo(
 			() =>
@@ -81,66 +89,68 @@ export function createChatSessionStarter(services: AgentPaneServices): FC<Sessio
 				),
 			[workspaces, workspaceId],
 		);
-		const latest = useRef({ start, folders });
-		latest.current = { start, folders };
-		const started = useRef<StartedSession | null>(null);
+		const latest = useRef({ start });
+		latest.current = { start };
+		const started = useRef<StartedWorkSession | null>(null);
 
 		const createChat = useCallback(async (): Promise<CreatedChat> => {
-			if (!conversations) throw new Error("Kilo chats aren't available.");
-			const session = await latest.current.start();
+			if (!workSessions || !chats) throw new Error("Kilo chats aren't available.");
+			const workSession = await latest.current.start();
 			try {
-				const chat = await conversations.methods.create({
-					sessionId: session.sessionId,
-					...(session.directory ? { directory: session.directory } : {}),
-					...(session.workspaceId ? { workspaceId: session.workspaceId } : {}),
-					workspaceFolders: sessionFolders(latest.current.folders, session.directory),
-					...(session.worktreeBranch ? { worktreeBranch: session.worktreeBranch } : {}),
-				});
+				const chat = await workSessions.methods.createChat({ id: workSession.workSessionId });
 				await panes?.methods.open({
-					sessionId: session.sessionId,
+					workSessionId: workSession.workSessionId,
 					kind: AGENT_PANE_KIND,
-					metadata: { [CHAT_ID_METADATA_KEY]: chat.id },
+					object: chatPaneObject(chat.id),
 				});
-				started.current = session;
+				started.current = workSession;
 				return { id: chat.id, directory: chat.directory };
 			} catch (error) {
-				await session.discard().catch(() => undefined);
+				await workSession.discard().catch(() => undefined);
 				throw error;
 			}
-		}, [conversations, panes]);
+		}, [chats, panes, workSessions]);
 
-		/** Opens the session once its first message is sent, or failed: its chat then shows why. */
+		/** Opens the work session once its first message is sent, or failed: its chat then shows why. */
 		const openStarted = useCallback(() => {
-			const session = started.current;
+			const workSession = started.current;
 			started.current = null;
-			void session?.open();
+			void workSession?.open();
 		}, []);
 
 		const directoryOf = useCallback(
-			(id: string) => conversations?.getState().chats[id]?.directory ?? null,
-			[conversations],
+			(id: string) => chats?.getState().chats[id]?.directory ?? null,
+			[chats],
 		);
 
 		const getSystem = useCallback(
 			async (id: string) => {
-				const chat = conversations?.getState().chats[id];
-				const config = await conversations?.methods
-					.sessionConfig({
-						sessionId: started.current?.sessionId ?? null,
+				const chat = chats?.getState().chats[id];
+				const config = await chats?.methods
+					.chatConfig({
+						chatId: id,
+						workSessionId: chat?.workSessionId ?? started.current?.workSessionId ?? null,
 						workspaceId: chat?.workspaceId ?? workspaceId,
 						directory: chat?.directory ?? directory,
 					})
 					.catch(() => undefined);
+				const chatFolders = chat?.workspaceFolders.length ? chat.workspaceFolders : folders;
 				return chatSystemPrompt(
-					chat?.workspaceFolders ?? sessionFolders(latest.current.folders, directory),
+					sessionFolders(chatFolders, chat?.directory ?? directory),
 					config?.instructions ?? [],
 				);
 			},
-			[conversations, directory, workspaceId],
+			[chats, directory, folders, workspaceId],
 		);
 
 		const composer: ComposerContext = useMemo(
-			() => ({ sessionId: null, chatId: null, directory, workspaceId, workspaceFolders: folders }),
+			() => ({
+				workSessionId: null,
+				chatId: null,
+				directory,
+				workspaceId,
+				workspaceFolders: folders,
+			}),
 			[directory, workspaceId, folders],
 		);
 

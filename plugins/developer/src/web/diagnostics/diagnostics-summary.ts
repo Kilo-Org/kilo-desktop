@@ -1,5 +1,6 @@
 import {
 	KERNEL_OWNER,
+	KernelFlag,
 	KernelService,
 	ownerOf,
 	qualify,
@@ -8,7 +9,7 @@ import {
 	type QualifiedId,
 } from "@kilo-desktop/kernel";
 
-import { entityFor, ownerRef, type EntityRef } from "./domain-model";
+import { conditionsOf, entityFor, ownerRef, type Condition, type EntityRef } from "./domain-model";
 
 export interface DetailItem {
 	readonly label: string;
@@ -53,6 +54,21 @@ const text = (value: string): DetailValue => ({ text: value });
 const pointLink = (id: string): DetailValue => ({ code: id, link: { kind: "point", id } });
 const domainLink = (id: string): DetailValue => ({ code: id, link: { kind: "domain", id } });
 const ownerLink = (id: string): DetailValue => ({ code: id, link: ownerRef(id) });
+const objectTypeLink = (id: string): DetailValue => ({
+	code: id,
+	link: { kind: "objectType", id },
+});
+const contextKeyLink = (id: string): DetailValue => ({
+	code: id,
+	link: { kind: "contextKey", id },
+});
+const flagLink = (id: string): DetailValue => ({ code: id, link: { kind: "flag", id } });
+
+/** `key must be on — now off`, for a `when` condition. */
+export function describeCondition({ key, expected, actual }: Condition): DetailValue {
+	const state = (on: boolean) => (on ? "on" : "off");
+	return text(`${key} must be ${state(expected)} — now ${state(actual)}`);
+}
 
 export function item(label: string, values: readonly DetailValue[]): DetailItem[] {
 	return values.length > 0 ? [{ label, values }] : [];
@@ -73,8 +89,10 @@ export function summarizePlugin(
 			.filter((owner) => owner !== pluginId && turnedOff.has(owner)),
 	);
 	const contributions = new Map<string, string[]>();
+	const flags: string[] = [];
 	for (const contribution of kernel.discovery.contributions) {
 		if (contribution.pluginId !== pluginId) continue;
+		if (contribution.pointId === KernelFlag.id) flags.push(contribution.entry.id);
 		const ids = contributions.get(contribution.pointId) ?? [];
 		ids.push(contribution.entry.id);
 		contributions.set(contribution.pointId, ids);
@@ -87,9 +105,14 @@ export function summarizePlugin(
 				"Extension points",
 				(manifest?.extensionPoints ?? []).map((point) => pointLink(qualify(pluginId, point.id))),
 			),
+			...item("Runs while", conditionsOf(kernel, manifest?.when).map(describeCondition)),
 			...item(
 				"Domain objects",
-				(manifest?.domains ?? []).map((domain) => domainLink(qualify(pluginId, domain.id))),
+				(manifest?.domainObjects ?? []).map((domain) => domainLink(qualify(pluginId, domain.id))),
+			),
+			...item(
+				"Object types",
+				(manifest?.objectTypes ?? []).map((type) => objectTypeLink(qualify(pluginId, type.id))),
 			),
 			...item(
 				"Contributes to",
@@ -101,8 +124,9 @@ export function summarizePlugin(
 			...item("Host permissions", (manifest?.permissions?.host ?? []).map(code)),
 			...item(
 				"Context keys",
-				(manifest?.contextKeys ?? []).map((key) => code(qualify(pluginId, key.id))),
+				(manifest?.contextKeys ?? []).map((key) => contextKeyLink(qualify(pluginId, key.id))),
 			),
+			...item("Flags", flags.map(flagLink)),
 			...item(
 				"Requires",
 				Object.entries(manifest?.requires ?? {}).map(([id, need]) => {
@@ -129,7 +153,7 @@ export function summarizeKernel(
 	kernel: Kernel,
 	issues: readonly IssueRecord[],
 ): readonly DetailItem[] {
-	const { points, domains, contextKeys } = kernel.discovery;
+	const { extensionPoints, domainObjects, objectTypes, contextKeys } = kernel.discovery;
 	const ownedIds = (records: Iterable<{ readonly owner: string; readonly id: string }>) =>
 		[...records].filter((record) => record.owner === KERNEL_OWNER).map((record) => record.id);
 	const withId = (record: {
@@ -140,9 +164,10 @@ export function summarizeKernel(
 		id: record.definition.id,
 	});
 	return [
-		...item("Extension points", ownedIds([...points.values()].map(withId)).map(pointLink)),
-		...item("Domain objects", ownedIds([...domains.values()].map(withId)).map(domainLink)),
-		...item("Context keys", ownedIds(contextKeys).map(code)),
+		...item("Extension points", ownedIds([...extensionPoints.values()].map(withId)).map(pointLink)),
+		...item("Domain objects", ownedIds([...domainObjects.values()].map(withId)).map(domainLink)),
+		...item("Object types", ownedIds([...objectTypes.values()].map(withId)).map(objectTypeLink)),
+		...item("Context keys", ownedIds(contextKeys).map(contextKeyLink)),
 		...item("Problems", issues.filter((issue) => !issue.pluginId).map(describeIssue)),
 	];
 }

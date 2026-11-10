@@ -1,5 +1,5 @@
-import type { DomainHandle } from "@kilo-desktop/kernel";
-import type { Pane, Panes } from "@kilo-desktop/plugin-sessions/contracts";
+import type { DomainObjectHandle } from "@kilo-desktop/kernel";
+import type { Pane, Panes } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import { normalizeWebUrl, URL_OBJECT_TYPE } from "../contracts/index.js";
 
@@ -9,18 +9,18 @@ export interface OpenedUrl {
 }
 
 /**
- * Shows a web page in its session through kilo.sessions' openers: a pane
- * already on the page is shown instead of opening another. Throws for
+ * Shows a web page in its work session through kilo.work-sessions' openers:
+ * a pane already on the page is shown instead of opening another. Throws for
  * anything but http(s), or when no opener takes web pages.
  */
 export async function openUrl(
-	panes: DomainHandle<typeof Panes>,
-	sessionId: string,
+	panes: DomainObjectHandle<typeof Panes>,
+	workSessionId: string,
 	rawUrl: string,
 ): Promise<OpenedUrl> {
 	const url = normalizeWebUrl(rawUrl);
 	const pane = await panes.methods.openObject({
-		sessionId,
+		workSessionId,
 		ref: { type: URL_OBJECT_TYPE, id: url },
 	});
 	if (!pane) throw new Error("No pane in this session opens web pages.");

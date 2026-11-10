@@ -31,7 +31,7 @@ export type OpenMediaPane = (items: readonly ViewerItem[], itemId: string) => Pr
 
 export const OpenMediaPaneContext = createContext<OpenMediaPane | null>(null);
 
-/** The media viewer pane opener; null outside a session's transcript or without panes. */
+/** The media viewer pane opener; null outside a work session's transcript or without panes. */
 export const useOpenMediaPane = (): OpenMediaPane | null => useContext(OpenMediaPaneContext);
 
 function readAsDataUrl(file: Blob): Promise<string> {

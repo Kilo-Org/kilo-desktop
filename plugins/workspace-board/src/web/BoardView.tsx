@@ -8,37 +8,44 @@ import {
 	type ReactNode,
 } from "react";
 
-import { useDomainState, useDropTarget } from "@kilo-desktop/kernel/web";
-import { WorkSessions, type WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
-import type { SessionRenderers, SessionsViewProps } from "@kilo-desktop/plugin-workbench/contracts";
-import { Workspaces, type Workspace } from "@kilo-desktop/plugin-workspaces/contracts";
+import { useDomainObjectState, useDropTarget } from "@kilo-desktop/kernel/web";
+import {
+	WorkSessionObjectType,
+	WorkSessions,
+	Workspaces,
+	type WorkSession,
+	type WorkSessionRenderers,
+	type WorkSessionsViewProps,
+	type Workspace,
+} from "@kilo-desktop/plugin-work-sessions/contracts";
 import { ScrollArea } from "@kilo-desktop/ui/components/scroll-area";
 
+import { BOARD_TELEMETRY_EVENTS } from "../contracts";
 import { insertionIndex, resolveColumns, type BoardColumnView } from "./board-columns";
 import { boardStore, useBoardState } from "./board-store";
 import { BoardCard } from "./BoardCard";
 import { BoardColumnHeader, COLUMN_DRAG_FORMAT, headingId } from "./BoardColumnHeader";
 import { ClearBoardDialog } from "./ClearBoardDialog";
-import { BOARD_EVENTS, track } from "./telemetry";
+import { track } from "./telemetry";
 import { columnToName, useSignal } from "./ui-state";
 
 const NO_SESSIONS: readonly WorkSession[] = [];
 const NO_WORKSPACES: readonly Workspace[] = [];
-const selectSessions = (state: { sessions: readonly WorkSession[] }) => state.sessions;
+const selectSessions = (state: { workSessions: readonly WorkSession[] }) => state.workSessions;
 const selectWorkspaces = (state: { workspaces: readonly Workspace[] }) => state.workspaces;
 
 /**
- * The workspace board (kilo.workbench/sessions-view): fixed-width columns on
+ * The workspace board (kilo.work-sessions/work-sessions-view): fixed-width columns on
  * one row that scrolls sideways, each only as tall as its cards until it
  * reaches the board's height. Filtered by the session list's workspace focus
  * rather than a filter of its own: the list stays beside the board, which is
  * a second view of the same sessions. Columns take dropped sessions (cards
  * and session list rows) at the pointer, and reorder by their headers.
  */
-export function BoardView({ focus, openSession, detached, renderers }: SessionsViewProps) {
+export function BoardView({ focus, openWorkSession, detached, renderers }: WorkSessionsViewProps) {
 	const board = useBoardState();
-	const sessions = useDomainState(WorkSessions, selectSessions) ?? NO_SESSIONS;
-	const workspaces = useDomainState(Workspaces, selectWorkspaces) ?? NO_WORKSPACES;
+	const sessions = useDomainObjectState(WorkSessions, selectSessions) ?? NO_SESSIONS;
+	const workspaces = useDomainObjectState(Workspaces, selectWorkspaces) ?? NO_WORKSPACES;
 	const naming = useSignal(columnToName);
 	const sessionsById = useMemo(
 		() => new Map(sessions.map((session) => [session.id, session])),
@@ -72,7 +79,7 @@ export function BoardView({ focus, openSession, detached, renderers }: SessionsV
 							dragging={reorder.dragging === column.id}
 							startNaming={naming === column.id}
 							onNamingStarted={onNamingStarted}
-							onOpen={openSession}
+							onOpen={openWorkSession}
 							onColumnDragStart={() => reorder.start(column.id)}
 							onColumnDragEnd={reorder.end}
 						/>
@@ -169,7 +176,7 @@ function BoardColumn({
 	readonly index: number;
 	readonly columnCount: number;
 	readonly workspaces: readonly Workspace[];
-	readonly renderers: SessionRenderers;
+	readonly renderers: WorkSessionRenderers;
 	readonly dragging: boolean;
 	readonly startNaming: boolean;
 	readonly onNamingStarted: () => void;
@@ -193,14 +200,14 @@ function BoardColumn({
 		);
 	};
 	const drop = useDropTarget({
-		accepts: [WorkSessions],
+		accepts: [WorkSessionObjectType],
 		onOver: (event) => setDropIndex(indexAt(event.clientY)),
 		onLeave: () => setDropIndex(null),
 		onDrop: (refs, event) => {
 			const sessionId = refs[0]!.id;
 			const shownIndex = indexAt(event.clientY, sessionId);
 			boardStore().place(sessionId, column.id, savedIndex(column, shownIndex, sessionId));
-			track(BOARD_EVENTS.placed, { source: "drag" });
+			track(BOARD_TELEMETRY_EVENTS.placed, { source: "drag" });
 		},
 	});
 

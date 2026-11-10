@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveDaemonSocketPath } from "./socket-path.js";
+import { resolveDaemonSocketPath } from "./socket-path";
 
 const MAC = { platform: "darwin" as const, homedir: "/Users/user" };
 const WIN = { platform: "win32" as const, homedir: "C:\\Users\\user" };

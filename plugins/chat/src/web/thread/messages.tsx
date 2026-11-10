@@ -29,9 +29,9 @@ import {
 	type PropsWithChildren,
 } from "react";
 
-import type { DomainState } from "@kilo-desktop/kernel";
-import { useDomainState } from "@kilo-desktop/kernel/web";
-import { Identity } from "@kilo-desktop/plugin-account/contracts";
+import type { DomainObjectState } from "@kilo-desktop/kernel";
+import { useDomainObjectState } from "@kilo-desktop/kernel/web";
+import { KiloAccount } from "@kilo-desktop/plugin-core/contracts";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
 	Collapsible,
@@ -134,11 +134,11 @@ const MessageError: FC = () => (
 	</MessagePrimitive.Error>
 );
 
-const selectAuthenticated = (state: DomainState<typeof Identity>) => state.authenticated;
-const selectConnectionUnavailable = (state: DomainState<typeof Identity>) =>
+const selectAuthenticated = (state: DomainObjectState<typeof KiloAccount>) => state.signedIn;
+const selectConnectionUnavailable = (state: DomainObjectState<typeof KiloAccount>) =>
 	state.connection === "unavailable";
-const selectSigningIn = (state: DomainState<typeof Identity>) =>
-	state.deviceAuth.status === "initiating" || state.deviceAuth.status === "waiting";
+const selectSigningIn = (state: DomainObjectState<typeof KiloAccount>) =>
+	state.deviceSignIn.status === "initiating" || state.deviceSignIn.status === "waiting";
 
 /**
  * A turn's error. A Kilo Gateway model refused while signed out offers
@@ -149,9 +149,10 @@ const KiloMessageErrorBanner: FC = () => {
 	const extras = useOptionalOpenCodeRuntimeExtras();
 	const { connection } = useChatConnection();
 	const model = useOptionalChatModelSelection()?.model;
-	const authenticated = useDomainState(Identity, selectAuthenticated) ?? null;
-	const connectionUnavailable = useDomainState(Identity, selectConnectionUnavailable) ?? true;
-	const signingIn = useDomainState(Identity, selectSigningIn) ?? false;
+	const authenticated = useDomainObjectState(KiloAccount, selectAuthenticated) ?? null;
+	const connectionUnavailable =
+		useDomainObjectState(KiloAccount, selectConnectionUnavailable) ?? true;
+	const signingIn = useDomainObjectState(KiloAccount, selectSigningIn) ?? false;
 	const { signIn } = useKiloSignIn();
 	const errorText = useAuiState((s) => messageErrorText(s.message.status));
 	const isLast = useAuiState((s) => s.message.isLast);

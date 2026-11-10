@@ -7,7 +7,7 @@
 //
 // Usage: node scripts/plugin-dependency-graph.mjs   (pnpm docs:plugin-graph)
 import { execFileSync } from "node:child_process";
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -18,7 +18,9 @@ const END = "// links:end";
 const short = (id) => id.replace(/^kilo\./, "");
 
 function manifests() {
-	return readdirSync(path.join(root, "plugins")).flatMap((folder) => {
+	const pluginsDir = path.join(root, "plugins");
+	if (!existsSync(pluginsDir)) return [];
+	return readdirSync(pluginsDir).flatMap((folder) => {
 		try {
 			return [JSON.parse(readFileSync(path.join(root, "plugins", folder, "plugin.json"), "utf8"))];
 		} catch {

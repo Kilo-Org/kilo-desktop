@@ -1,7 +1,7 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 
-import { useDomain } from "@kilo-desktop/kernel/web";
-import { Conversations } from "@kilo-desktop/plugin-agent/contracts";
+import { useDomainObject } from "@kilo-desktop/kernel/web";
+import { Chats } from "@kilo-desktop/plugin-core/contracts";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import { useChatConnection } from "../runtime/chat-connection";
@@ -95,7 +95,7 @@ const Context = createContext<Value>({
 export function SubagentActivityProvider({ children }: { children: ReactNode }) {
 	const extras = useOptionalOpenCodeRuntimeExtras();
 	const { connection } = useChatConnection();
-	const conversations = useDomain(Conversations);
+	const chats = useDomainObject(Chats);
 	const activities = useMemo(() => deriveActivities(extras), [extras]);
 	const activeActivities = useMemo(() => activities.filter(isSubagentActive), [activities]);
 	const activityByToolCallId = useMemo(
@@ -108,11 +108,11 @@ export function SubagentActivityProvider({ children }: { children: ReactNode }) 
 
 	// Aborts use the server's default "tree" scope: "session" scope leaves the
 	// target's descendants and background jobs running, which then wake the
-	// parent back up when they finish. kilo.agent stops the chats it knows (in
+	// parent back up when they finish. kilo.core stops the chats it knows (in
 	// their own folder); others go to the server from here.
 	const abortChat = async (sessionID: string, directory: string | undefined) => {
-		if (conversations?.getState().chats[sessionID]) {
-			await conversations.methods.abort({ id: sessionID });
+		if (chats?.getState().chats[sessionID]) {
+			await chats.methods.abort({ id: sessionID });
 			return;
 		}
 		const target = directory ?? extras?.session?.directory;

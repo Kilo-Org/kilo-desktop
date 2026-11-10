@@ -38,20 +38,20 @@ import {
 	Trash2Icon,
 } from "lucide-react";
 
-import type { CondaEnv } from "../../../contracts/providers/conda.js";
-import { useSelectedEnvironment } from "../../app.js";
-import { condaQueryOptions, useConda } from "../../conda.js";
-import { EnvironmentsListSkeleton } from "../../EnvironmentsListSkeleton.js";
-import { CloneEnvironmentDialog } from "./CloneEnvironmentDialog.js";
-import { CreateEnvironmentDialog } from "./CreateEnvironmentDialog.js";
-import { DeleteEnvironmentDialog } from "./DeleteEnvironmentDialog.js";
-import { EnvironmentDetail, EnvironmentDetailLoading } from "./EnvironmentDetail.js";
-import { EnvironmentsErrorState, EnvironmentsStartingState } from "./EnvironmentsPanelStates.js";
-import { ImportEnvironmentDialog } from "./ImportEnvironmentDialog.js";
-import { environmentDisplayName } from "./environment-display.js";
-import { isProviderNotReadyError } from "./environments-error-message.js";
-import { ListViewMenu, type SortDirection } from "./ListViewMenu.js";
-import { useProviderNotReadySince } from "./useProviderNotReadySince.js";
+import type { CondaEnv } from "../../../contracts/providers/conda";
+import { useSelectedEnvironment } from "../../app";
+import { condaQueryOptions, useConda } from "../../conda";
+import { EnvironmentsListSkeleton } from "../../EnvironmentsListSkeleton";
+import { CloneEnvironmentDialog } from "./CloneEnvironmentDialog";
+import { CreateEnvironmentDialog } from "./CreateEnvironmentDialog";
+import { DeleteEnvironmentDialog } from "./DeleteEnvironmentDialog";
+import { EnvironmentDetail, EnvironmentDetailLoading } from "./EnvironmentDetail";
+import { EnvironmentsErrorState, EnvironmentsStartingState } from "./EnvironmentsPanelStates";
+import { ImportEnvironmentDialog } from "./ImportEnvironmentDialog";
+import { environmentDisplayName } from "./environment-display";
+import { isProviderNotReadyError } from "./environments-error-message";
+import { ListViewMenu, type SortDirection } from "./ListViewMenu";
+import { useProviderNotReadySince } from "./useProviderNotReadySince";
 
 /**
  * How often to re-read `listEnvironments` while the backend reports

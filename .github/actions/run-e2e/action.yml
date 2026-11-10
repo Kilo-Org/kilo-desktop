@@ -51,7 +51,7 @@ runs:
 
     - uses: ./plugins/notebook/actions/setup-native
 
-    - uses: ./plugins/agent/actions/setup-cli
+    - uses: ./plugins/core/actions/setup-cli
 
     - name: Package desktop for e2e
       shell: bash

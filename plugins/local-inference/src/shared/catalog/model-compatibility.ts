@@ -2,7 +2,7 @@ import type {
 	LocalInferenceHardwareProfile,
 	ModelCatalogEntry,
 	ModelCatalogQuantization,
-} from "../../contracts/schemas.js";
+} from "../../contracts/index";
 
 // Keep the fit and Best Picks equations aligned with canirun.ai's website at
 // commit db81865. Anaconda artifact identity stays authoritative; signals that

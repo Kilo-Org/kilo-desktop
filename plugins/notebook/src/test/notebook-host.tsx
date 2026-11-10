@@ -1,41 +1,42 @@
 // Test host for kilo.notebook's web entry: main and a window linked in memory,
 // with `kilo.notebook/notebooks` answered by the test (main's real entry needs
-// Node), stand-ins for kilo.sessions (panes and openers), kilo.account's
-// identity and kilo.shell's theme. Panes render as kilo.workbench's canvas
-// renders them.
+// Node), and stand-ins under their real manifests and definitions for
+// kilo.work-sessions (panes and openers in main, the window's `window` object
+// with `paneTargetActive`), kilo.core's account (and its `signedIn` key) and
+// kilo.shell's theme. Panes render as kilo.work-sessions' canvas renders them.
 import { act, cleanup, render } from "@testing-library/react";
 import type { ReactNode } from "react";
 
 import {
 	definePlugin,
-	type DomainProvider,
+	type DomainObjectProvider,
 	type PluginEntry,
 	type PluginRegistration,
 } from "@kilo-desktop/kernel";
 import { createTestKernelPair } from "@kilo-desktop/kernel/testing";
 import { KernelProvider, RenderContribution } from "@kilo-desktop/kernel/web";
-import accountManifest from "@kilo-desktop/plugin-account/plugin.json";
+import coreManifest from "@kilo-desktop/plugin-core/plugin.json";
 import {
-	ACCOUNT_DEFINITIONS,
-	Identity,
-	type IdentityState,
-} from "@kilo-desktop/plugin-account/contracts";
-import sessionsManifest from "@kilo-desktop/plugin-sessions/plugin.json";
-import {
-	PaneKind,
-	SESSIONS_DEFINITIONS,
-	type Pane,
-	type PaneImplementation,
-	type PaneProps,
-} from "@kilo-desktop/plugin-sessions/contracts";
+	CORE_DEFINITIONS,
+	KiloAccount,
+	type AccountState,
+} from "@kilo-desktop/plugin-core/contracts";
 import shellManifest from "@kilo-desktop/plugin-shell/plugin.json";
 import {
 	SettingsSection,
-	SHELL_DOMAINS,
-	SHELL_EXTENSION_POINTS,
+	SHELL_DEFINITIONS,
 	Theme,
 	type SettingsSectionImplementation,
 } from "@kilo-desktop/plugin-shell/contracts";
+import workSessionsManifest from "@kilo-desktop/plugin-work-sessions/plugin.json";
+import {
+	PaneKind,
+	WORK_SESSIONS_DEFINITIONS,
+	WorkSessionsWindow,
+	type Pane,
+	type PaneImplementation,
+	type PaneProps,
+} from "@kilo-desktop/plugin-work-sessions/contracts";
 import { SettingsSectionProvider } from "@kilo-desktop/ui/components/settings-page-header";
 import { TooltipProvider } from "@kilo-desktop/ui/components/tooltip";
 
@@ -72,26 +73,26 @@ export interface NotebooksFake {
 		notebookId: string;
 		workingDirectory: string;
 	}) => NotebookEnvironmentPreparation | Promise<NotebookEnvironmentPreparation>;
-	resolvePane?: (input: { sessionId: string; paneId: string }) => void | Promise<void>;
+	resolvePane?: (input: { workSessionId: string; paneId: string }) => void | Promise<void>;
 }
 
-export const SIGNED_IN: IdentityState = {
+export const SIGNED_IN: AccountState = {
 	connection: "connected",
-	authenticated: true,
+	signedIn: true,
 	profile: null,
 	profileError: null,
-	deviceAuth: { status: "idle" },
-	orgError: null,
-	isRefreshing: false,
-	isSwitchingOrg: false,
+	deviceSignIn: { status: "idle" },
+	organizationError: null,
+	refreshing: false,
+	switchingOrganization: false,
 };
 
-export const SIGNED_OUT: IdentityState = { ...SIGNED_IN, authenticated: false };
+export const SIGNED_OUT: AccountState = { ...SIGNED_IN, signedIn: false };
 
 export interface NotebookHostOptions {
 	readonly panes?: readonly Pane[];
-	/** kilo.account's identity; without it there is no account plugin. */
-	readonly identity?: IdentityState | null;
+	/** kilo.core's account; null leaves it unprovided (kilo.core without its account). */
+	readonly account?: AccountState | null;
 	readonly mode?: "light" | "dark";
 	readonly notebooks?: NotebooksFake;
 	readonly settings?: NotebookSettings;
@@ -108,19 +109,23 @@ export async function bootNotebookHost(options: NotebookHostOptions = {}) {
 		prepare: [] as unknown[],
 		resolve: [] as unknown[],
 	};
-	let notebooks!: DomainProvider<typeof Notebooks>;
+	let notebooks!: DomainObjectProvider<typeof Notebooks>;
 	const sessions = createSessionsHost(options.panes ?? [notebookPane("pane_a")]);
 	const signIns: unknown[] = [];
-	let theme!: DomainProvider<typeof Theme>;
-	let identity: DomainProvider<typeof Identity> | undefined;
-	const identityState = options.identity === undefined ? SIGNED_IN : options.identity;
+	const openedPanes: { kind: string }[] = [];
+	let theme!: DomainObjectProvider<typeof Theme>;
+	let account: DomainObjectProvider<typeof KiloAccount> | undefined;
+	let setSignedIn: (signedIn: boolean) => void = () => undefined;
+	const accountState = options.account === undefined ? SIGNED_IN : options.account;
 
-	const accountMain: PluginEntry = definePlugin({
+	const coreMain: PluginEntry = definePlugin({
 		activate(sdk) {
-			if (!identityState) return;
+			if (!accountState) return;
 			const unused = () => undefined;
-			identity = sdk.domains.provide(Identity, {
-				initialState: identityState,
+			setSignedIn = (signedIn) => sdk.context.set("signedIn", signedIn);
+			setSignedIn(accountState.signedIn === true);
+			account = sdk.domainObjects.provide(KiloAccount, {
+				initialState: accountState,
 				methods: {
 					signIn: () => {
 						signIns.push(true);
@@ -130,14 +135,13 @@ export async function bootNotebookHost(options: NotebookHostOptions = {}) {
 					signOut: unused,
 					refresh: unused,
 					setOrganization: unused,
-					dismissOrgError: unused,
 				},
 			});
 		},
 	});
 	const shellWeb: PluginEntry = definePlugin({
 		activate(sdk) {
-			theme = sdk.domains.provide(Theme, {
+			theme = sdk.domainObjects.provide(Theme, {
 				initialState: {
 					mode: options.mode ?? "light",
 					themeId: "kilo",
@@ -149,16 +153,30 @@ export async function bootNotebookHost(options: NotebookHostOptions = {}) {
 			});
 		},
 	});
-	const shell = {
-		manifest: shellManifest,
-		definitions: { extensionPoints: SHELL_EXTENSION_POINTS, domains: SHELL_DOMAINS },
-	};
-	const account: PluginRegistration[] = identityState
-		? [{ manifest: accountManifest, definitions: ACCOUNT_DEFINITIONS, entry: accountMain }]
-		: [];
+	const workSessionsWeb: PluginEntry = definePlugin({
+		activate(sdk) {
+			sdk.domainObjects.provide(WorkSessionsWindow, {
+				initialState: {
+					focus: null,
+					activeWorkSessionId: SESSION_ID,
+					view: null,
+					detachedViews: [],
+				},
+				methods: {
+					setFocus: () => undefined,
+					openWorkSession: () => undefined,
+					closeWorkSession: () => undefined,
+					showView: () => undefined,
+					openPane: (input) => void openedPanes.push(input),
+				},
+			});
+			sdk.context.set("workSessionActive", true);
+			sdk.context.set("paneTargetActive", true);
+		},
+	});
 	const notebookMain: PluginEntry = definePlugin({
 		activate(sdk) {
-			notebooks = sdk.domains.provide(Notebooks, {
+			notebooks = sdk.domainObjects.provide(Notebooks, {
 				initialState: { settings: options.settings ?? DEFAULT_NOTEBOOK_SETTINGS, dirty: {} },
 				methods: {
 					status: async () => {
@@ -191,10 +209,16 @@ export async function bootNotebookHost(options: NotebookHostOptions = {}) {
 			});
 		},
 	});
+	const core: PluginRegistration = { manifest: coreManifest, definitions: CORE_DEFINITIONS };
+	const shell: PluginRegistration = { manifest: shellManifest, definitions: SHELL_DEFINITIONS };
+	const workSessions: PluginRegistration = {
+		manifest: workSessionsManifest,
+		definitions: WORK_SESSIONS_DEFINITIONS,
+	};
 	const { main, renderer } = await createTestKernelPair({
 		main: [
+			{ ...core, entry: coreMain },
 			shell,
-			...account,
 			sessions.registration,
 			{
 				manifest,
@@ -203,9 +227,9 @@ export async function bootNotebookHost(options: NotebookHostOptions = {}) {
 			},
 		],
 		renderer: [
+			core,
 			{ ...shell, entry: shellWeb },
-			...(identityState ? [{ manifest: accountManifest, definitions: ACCOUNT_DEFINITIONS }] : []),
-			{ manifest: sessionsManifest, definitions: SESSIONS_DEFINITIONS },
+			{ ...workSessions, entry: workSessionsWeb },
 			{ manifest, definitions: NOTEBOOK_DEFINITIONS, entry: notebookWebEntry },
 		],
 	});
@@ -229,7 +253,7 @@ export async function bootNotebookHost(options: NotebookHostOptions = {}) {
 			<RenderContribution
 				contribution={paneKind()}
 				props={{
-					sessionId: SESSION_ID,
+					workSessionId: SESSION_ID,
 					pane: currentPane(),
 					workspaceId: null,
 					directory: null,
@@ -247,6 +271,7 @@ export async function bootNotebookHost(options: NotebookHostOptions = {}) {
 		calls,
 		sessions,
 		signIns,
+		openedPanes,
 		paneKind,
 		currentPane,
 		setDirty: (notebookId: string, dirty: boolean) =>
@@ -259,15 +284,19 @@ export async function bootNotebookHost(options: NotebookHostOptions = {}) {
 			}),
 		sdk: renderer.sdkFor("kilo.notebook"),
 		canClose: (pane: Pane) =>
-			(paneKind().implementation as PaneImplementation).canClose!({ sessionId: SESSION_ID, pane }),
+			(paneKind().implementation as PaneImplementation).canClose!({
+				workSessionId: SESSION_ID,
+				pane,
+			}),
 		setMode: (mode: "light" | "dark") =>
 			act(async () => {
 				theme.setState({ ...theme.state, mode });
 				await main.flush();
 			}),
-		setIdentity: (next: IdentityState) =>
+		setAccount: (next: AccountState) =>
 			act(async () => {
-				identity?.setState(next);
+				account?.setState(next);
+				setSignedIn(next.signedIn === true);
 				await main.flush();
 			}),
 		renderPane: (props: Partial<PaneProps> = {}) => {

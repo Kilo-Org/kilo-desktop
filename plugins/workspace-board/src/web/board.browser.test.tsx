@@ -6,7 +6,12 @@ import { page, userEvent } from "vitest/browser";
 
 import { KernelWindowView } from "@kilo-desktop/kernel";
 import { KernelProvider, RenderContribution } from "@kilo-desktop/kernel/web";
-import { chat, NOW, session, workspace } from "@kilo-desktop/plugin-workbench/testing";
+import {
+	chat,
+	NOW,
+	workSession as session,
+	workspace,
+} from "@kilo-desktop/plugin-work-sessions/testing";
 
 import { renderBoard } from "../test/board-host";
 import { COLUMN_DRAG_FORMAT } from "./BoardColumnHeader";
@@ -79,7 +84,7 @@ describe("the workspace board", () => {
 	});
 
 	it("toggles from the session list's header in place of the open session", async () => {
-		const { navigator, tracked } = await renderBoard({
+		const { window: sessionsWindow, tracked } = await renderBoard({
 			sessions: [session("a", { title: "Fix login" })],
 		});
 
@@ -92,15 +97,15 @@ describe("the workspace board", () => {
 		for (const id of ["backlog", "in-progress", "review", "done"]) {
 			await expect.element(column(id)).toBeVisible();
 		}
-		expect(tracked).toHaveBeenCalledWith("Workspace Board Opened", { source: "toggle" });
+		await vi.waitFor(() => expect(tracked("board-opened")).toContainEqual({ source: "toggle" }));
 
 		await toggle().click();
-		await vi.waitFor(() => expect(navigator().getState().view).toBeNull());
+		await vi.waitFor(() => expect(sessionsWindow().getState().view).toBeNull());
 		await expect.element(toggle()).toHaveAttribute("aria-pressed", "false");
 	});
 
 	it("shows a card as the session list shows the session, filtered by the workspace focus", async () => {
-		const { board, navigator } = await renderBoard({
+		const { board, window: sessionsWindow } = await renderBoard({
 			sessions: [
 				session("a", { title: "Busy", chatIds: ["c1"], workspaceId: "w1" }),
 				session("b", { title: "Elsewhere", workspaceId: "w2" }),
@@ -114,7 +119,7 @@ describe("the workspace board", () => {
 		for (const id of ["a", "b", "c", "gone"]) {
 			await board().methods.place({ sessionId: id, columnId: "backlog", index: 9 });
 		}
-		await navigator().methods.showView({ view: "kilo.workspace-board/board" });
+		await sessionsWindow().methods.showView({ view: "kilo.workspace-board/board" });
 
 		await expect.element(card("a").getByTestId("session-status")).toHaveTextContent("Working");
 		await expect.element(card("a").getByRole("button", { name: "Open Busy in App" })).toBeVisible();
@@ -129,15 +134,15 @@ describe("the workspace board", () => {
 		expect(card("b").elements()).toHaveLength(0);
 		await expect.element(page.getByTestId("sessions-view-title").getByText("App")).toBeVisible();
 
-		await navigator().methods.setFocus({ focus: "unscoped" });
+		await sessionsWindow().methods.setFocus({ focus: "unscoped" });
 		await expect.element(card("c").getByTestId("session-status")).toHaveTextContent("Idle");
 		expect(card("a").elements()).toHaveLength(0);
 
-		await navigator().methods.setFocus({ focus: null });
+		await sessionsWindow().methods.setFocus({ focus: null });
 		await expect.element(card("b")).toBeVisible();
 		await card("b").getByTestId("workspace-board-card-open").click();
 		await vi.waitFor(() =>
-			expect(navigator().getState()).toMatchObject({ activeSessionId: "b", view: null }),
+			expect(sessionsWindow().getState()).toMatchObject({ activeWorkSessionId: "b", view: null }),
 		);
 	});
 
@@ -150,7 +155,9 @@ describe("the workspace board", () => {
 		await page.getByTestId("session-menu-kilo.workspace-board/add-to-board").hover();
 		await page.getByTestId("session-menu-kilo.workspace-board/add-to-board-review").click();
 		await vi.waitFor(() => expect(cards().review).toEqual(["a"]));
-		expect(tracked).toHaveBeenCalledWith("Workspace Board Session Placed", { source: "menu" });
+		await vi.waitFor(() =>
+			expect(tracked("board-session-placed")).toContainEqual({ source: "menu" }),
+		);
 
 		await openRowMenu("Fix login");
 		await page.getByTestId("session-menu-kilo.workspace-board/move-on-board").hover();
@@ -169,11 +176,15 @@ describe("the workspace board", () => {
 	});
 
 	it("offers the session menu on a card, renaming the session in place", async () => {
-		const { board, navigator, sessions } = await renderBoard({
+		const {
+			board,
+			window: sessionsWindow,
+			workSessions: sessions,
+		} = await renderBoard({
 			sessions: [session("a", { title: "Fix login" })],
 		});
 		await board().methods.place({ sessionId: "a", columnId: "backlog", index: 0 });
-		await navigator().methods.showView({ view: "kilo.workspace-board/board" });
+		await sessionsWindow().methods.showView({ view: "kilo.workspace-board/board" });
 
 		await card("a").hover();
 		await card("a").getByRole("button", { name: "Session actions for Fix login" }).click();
@@ -198,10 +209,14 @@ describe("the workspace board", () => {
 	});
 
 	it("takes a session list row dropped on a column, previewing where it lands", async () => {
-		const { cards, navigator, tracked } = await renderBoard({
+		const {
+			cards,
+			window: sessionsWindow,
+			tracked,
+		} = await renderBoard({
 			sessions: [session("a", { title: "Fix login" })],
 		});
-		await navigator().methods.showView({ view: "kilo.workspace-board/board" });
+		await sessionsWindow().methods.showView({ view: "kilo.workspace-board/board" });
 		await expect.element(column("review")).toBeVisible();
 
 		const dragged = dragOnto(row("Fix login").element(), column("review").element());
@@ -214,18 +229,24 @@ describe("the workspace board", () => {
 		await vi.waitFor(() => expect(cards().review).toEqual(["a"]));
 		await expect.element(column("review").getByTestId("workspace-board-card-a")).toBeVisible();
 		expect(column("review").getByTestId("workspace-board-drop-preview").elements()).toHaveLength(0);
-		expect(tracked).toHaveBeenCalledWith("Workspace Board Session Placed", { source: "drag" });
+		await vi.waitFor(() =>
+			expect(tracked("board-session-placed")).toContainEqual({ source: "drag" }),
+		);
 	});
 
 	it("moves cards between columns and reorders them at the pointer", async () => {
-		const { board, cards, navigator } = await renderBoard({
+		const {
+			board,
+			cards,
+			window: sessionsWindow,
+		} = await renderBoard({
 			sessions: [session("a"), session("b"), session("c")],
 		});
 		for (const id of ["a", "b"]) {
 			await board().methods.place({ sessionId: id, columnId: "backlog", index: 9 });
 		}
 		await board().methods.place({ sessionId: "c", columnId: "review", index: 0 });
-		await navigator().methods.showView({ view: "kilo.workspace-board/board" });
+		await sessionsWindow().methods.showView({ view: "kilo.workspace-board/board" });
 		await expect.element(card("b")).toBeVisible();
 
 		dragOnto(card("b").element(), card("a").element(), "top").drop();
@@ -311,21 +332,52 @@ describe("the workspace board", () => {
 		await page.getByTestId("workspace-board-clear-confirm").click();
 
 		await vi.waitFor(() => expect(cards().review).toEqual([]));
-		expect(tracked).toHaveBeenCalledWith("Workspace Board Cleared", { cards: 1 });
+		await vi.waitFor(() => expect(tracked("board-cleared")).toContainEqual({ cards: 1 }));
+	});
+
+	it("confirms clearing in kilo.shell's dialog in the main window, or says the board is empty", async () => {
+		const { board, cards, runBoard } = await renderBoard({ sessions: [session("a")] });
+		await expect.element(list()).toBeVisible();
+		await runBoard("clear");
+		await expect.element(page.getByText("The board is already empty").first()).toBeVisible();
+		expect(page.getByTestId("workspace-board-clear-dialog").elements()).toHaveLength(0);
+
+		await board().methods.place({ sessionId: "a", columnId: "review", index: 0 });
+		await runBoard("clear");
+		const dialog = page.getByTestId("workspace-board-clear-dialog");
+		await expect.element(dialog.getByText(/takes the session off the board/)).toBeVisible();
+		await dialog.getByRole("button", { name: "Cancel" }).click();
+		await vi.waitFor(() =>
+			expect(page.getByTestId("workspace-board-clear-dialog").elements()).toHaveLength(0),
+		);
+		expect(cards().review).toEqual(["a"]);
+
+		await runBoard("clear");
+		await page.getByTestId("workspace-board-clear-confirm").click();
+		await vi.waitFor(() => expect(cards().review).toEqual([]));
+		await vi.waitFor(() =>
+			expect(page.getByTestId("workspace-board-clear-dialog").elements()).toHaveLength(0),
+		);
 	});
 
 	it("opens the board, adds a column and clears it from commands", async () => {
-		const { board, navigator, runBoard } = await renderBoard({ sessions: [session("a")] });
+		const {
+			board,
+			window: sessionsWindow,
+			runBoard,
+		} = await renderBoard({ sessions: [session("a")] });
 
 		await runBoard("add-column");
-		await vi.waitFor(() => expect(navigator().getState().view).toBe("kilo.workspace-board/board"));
+		await vi.waitFor(() =>
+			expect(sessionsWindow().getState().view).toBe("kilo.workspace-board/board"),
+		);
 		await expect.element(page.getByTestId("workspace-board-column-rename")).toBeVisible();
 		await vi.waitFor(() => expect(board().getState().board.columns).toHaveLength(5));
 		await userEvent.keyboard("{Escape}");
 
 		await board().methods.place({ sessionId: "a", columnId: "review", index: 0 });
 		await runBoard("open");
-		await vi.waitFor(() => expect(navigator().getState().view).toBeNull());
+		await vi.waitFor(() => expect(sessionsWindow().getState().view).toBeNull());
 		await runBoard("clear");
 		await expect.element(page.getByTestId("workspace-board-clear-dialog")).toBeVisible();
 	});
@@ -338,12 +390,16 @@ describe("the workspace board", () => {
 			setHidden: vi.fn(),
 			focusMain: vi.fn(),
 		};
-		const { board, host, navigator } = await renderBoard({
+		const {
+			board,
+			host,
+			window: sessionsWindow,
+		} = await renderBoard({
 			sessions: [session("a", { title: "Fix login" })],
 			windows,
 		});
 		await board().methods.place({ sessionId: "a", columnId: "backlog", index: 0 });
-		await navigator().methods.showView({ view: "kilo.workspace-board/board" });
+		await sessionsWindow().methods.showView({ view: "kilo.workspace-board/board" });
 
 		await page.getByTestId("sessions-view-pop-out").click();
 		await vi.waitFor(() =>
@@ -357,7 +413,7 @@ describe("the workspace board", () => {
 
 		const windowView = host.renderer.extensions
 			.list(KernelWindowView)
-			.find((contribution) => contribution.key === "kilo.workbench/sessions-view-window")!;
+			.find((contribution) => contribution.key === "kilo.work-sessions/work-sessions-view")!;
 		render(
 			<KernelProvider kernel={host.renderer}>
 				<Above>
@@ -371,12 +427,12 @@ describe("the workspace board", () => {
 		const detached = page.getByTestId("sessions-view-window");
 		await expect.element(detached.getByTestId("workspace-board-card-a")).toBeVisible();
 		await detached.getByTestId("workspace-board-clear").click();
-		// The main window's overlay and the board's own window each mount one.
+		// The main window's kilo.shell dialog opens; the board's own dialog stays closed.
 		await expect.element(page.getByTestId("workspace-board-clear-dialog").first()).toBeVisible();
 		await userEvent.keyboard("{Escape}");
 
 		await detached.getByTestId("workspace-board-card-open").click();
-		await vi.waitFor(() => expect(navigator().getState().activeSessionId).toBe("a"));
+		await vi.waitFor(() => expect(sessionsWindow().getState().activeWorkSessionId).toBe("a"));
 		expect(windows.focusMain).toHaveBeenCalled();
 	});
 
@@ -388,12 +444,12 @@ describe("the workspace board", () => {
 		const params = { view: "kilo.workspace-board/board" };
 		const popOut = await host.openWindow("w9", {
 			role: "secondary",
-			view: "kilo.workbench/sessions-view-window",
+			view: "kilo.work-sessions/work-sessions-view",
 			params,
 		});
 		const windowView = popOut.extensions
 			.list(KernelWindowView)
-			.find((contribution) => contribution.key === "kilo.workbench/sessions-view-window")!;
+			.find((contribution) => contribution.key === "kilo.work-sessions/work-sessions-view")!;
 		render(
 			<KernelProvider kernel={popOut}>
 				<Above>
@@ -426,7 +482,7 @@ async function openColumnMenu(columnId: string) {
 
 async function renderBoardColumns() {
 	const host = await renderBoard({ sessions: [session("a")] });
-	await host.navigator().methods.showView({ view: "kilo.workspace-board/board" });
+	await host.window().methods.showView({ view: "kilo.workspace-board/board" });
 	await expect.element(column("done")).toBeVisible();
 	const columns = () => host.board().getState().board.columns;
 	return { ...host, columns };

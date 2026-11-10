@@ -3,7 +3,7 @@
 // streams events to the window's `/global/event` subscription on demand.
 import { vi } from "vitest";
 
-import type { ServerConnection } from "@kilo-desktop/plugin-agent/contracts";
+import type { ServerConnection } from "@kilo-desktop/plugin-core/contracts";
 
 export const KILO_BASE_URL = "http://kilo.test";
 
@@ -197,7 +197,10 @@ export class FakeKiloServer {
 		return this.#statuses.has(chatId);
 	}
 
-	/** Runs `listener` after every event, as kilo.agent's stream sees statuses change. */
+	/**
+	 * Runs `listener` after every event and every answered permission or
+	 * question, as kilo.core's stream sees chats change.
+	 */
 	onEvent(listener: () => void): () => void {
 		this.#statusListeners.add(listener);
 		return () => this.#statusListeners.delete(listener);
@@ -231,7 +234,7 @@ export class FakeKiloServer {
 		return this.requests.filter((request) => request.method === method && request.path === path);
 	}
 
-	/** A request from main (kilo.agent), which doesn't go through the window's fetch. */
+	/** A request from main (kilo.core), which doesn't go through the window's fetch. */
 	async post(path: string, directory: string, body: unknown): Promise<void> {
 		const url = `${KILO_BASE_URL}${path}?directory=${encodeURIComponent(directory)}`;
 		const response = await this.#handle(
@@ -362,6 +365,7 @@ export class FakeKiloServer {
 		const list = kind === "permission" ? this.permissions : this.questions;
 		const index = list.findIndex((request) => request.id === decodeURIComponent(id));
 		if (index !== -1) list.splice(index, 1);
+		for (const listener of this.#statusListeners) listener();
 		return json(true);
 	}
 

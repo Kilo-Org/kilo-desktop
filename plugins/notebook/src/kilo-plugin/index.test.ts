@@ -5,7 +5,7 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
-import { createNteractKiloPlugin } from "./index.js";
+import { createNteractKiloPlugin } from "./index";
 
 const NOTEBOOK_ID = "669d39ec-39d6-4160-815c-b46e170cde8d";
 

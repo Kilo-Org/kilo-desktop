@@ -18,7 +18,7 @@ import {
 	stubFetch,
 	treeHost,
 	waitForTreePath,
-} from "../../test/changes-host.js";
+} from "../../test/git-host";
 
 afterEach(resetViewTestDom);
 

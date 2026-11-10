@@ -1,14 +1,14 @@
 import { useAuiState } from "@assistant-ui/react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
 
-import { useDomain, useDomainState } from "@kilo-desktop/kernel/web";
-
+import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
 import {
-	GatewayModels,
-	ModelPreferences,
+	KiloAccount,
+	Models,
+	type AccountState,
 	type GatewayModelDetails,
-	type ModelPreferencesState,
-} from "../../contracts";
+	type ModelsState,
+} from "@kilo-desktop/plugin-core/contracts";
 import { useChatConnection } from "../runtime/chat-connection";
 import type { PromptModelRef } from "../runtime/prompt-options";
 import { findCatalogAgent, type KiloAgentCatalog } from "./agent-catalog";
@@ -17,8 +17,10 @@ import { ChatModelSelectionProvider, type ActiveModelSource } from "./ChatModelS
 import { KiloSessionSelectionSync } from "./KiloSessionSelectionSync";
 import {
 	attachGatewayModelDetails,
+	buildCatalogFromModels,
 	modelRefToId,
-	type KiloModelCatalog,
+	toModelRef,
+	type CatalogAccount,
 	type KiloModelRef,
 } from "./model-catalog";
 import { resolveModelEffort } from "./model-selector";
@@ -26,8 +28,7 @@ import { ModelSourceReader } from "./model-source";
 import { KILO_PROVIDER_ID } from "./provider-ids";
 import { useAgentSelection } from "./use-agent-selection";
 import { useKiloAgentCatalog } from "./use-kilo-agent-catalog";
-import { isModelCatalogPending, useKiloModelCatalog } from "./use-kilo-model-catalog";
-import { usePersistedModelSelection } from "./use-persisted-model-selection";
+import { persistedPreferences, usePersistedModelSelection } from "./use-persisted-model-selection";
 
 /** What the pane's next prompt is sent with. */
 export interface PromptSelection {
@@ -37,18 +38,70 @@ export interface PromptSelection {
 }
 
 const NO_DETAILS: readonly GatewayModelDetails[] = [];
-const selectDetails = (state: { details: readonly GatewayModelDetails[] }) => state.details;
-const selectPreferences = (state: ModelPreferencesState) => state;
+const selectDetails = (state: ModelsState) => state.gatewayCatalog.details;
+const selectModels = (state: ModelsState) => state;
+const selectAccount = (state: AccountState) => state;
 
-/** The Kilo Gateway's model details, read in main once the catalog lists Kilo models. */
-function useGatewayDetails(catalog: KiloModelCatalog | undefined): readonly GatewayModelDetails[] {
-	const gateway = useDomain(GatewayModels);
-	const details = useDomainState(GatewayModels, selectDetails) ?? NO_DETAILS;
-	const hasKiloModels = catalog?.models.some((model) => model.providerID === KILO_PROVIDER_ID);
+/** What the gateway answers for, from kilo.core's account. */
+function catalogAccount(account: AccountState | undefined): CatalogAccount {
+	if (!account) return {};
+	return {
+		...(account.connection === "pending"
+			? {}
+			: { providerReady: account.connection === "connected" }),
+		organizationId: account.profile?.currentOrgId ?? null,
+	};
+}
+
+/**
+ * The picker's catalog from kilo.core's models, with the gateway's details
+ * once it lists Kilo models (read in main, refreshed when older than a few
+ * minutes). Pending until kilo.core has read the AI providers.
+ */
+function useModelCatalog() {
+	const handle = useDomainObject(Models);
+	const models = useDomainObjectState(Models, selectModels);
+	const account = useDomainObjectState(KiloAccount, selectAccount);
+	const details = useDomainObjectState(Models, selectDetails) ?? NO_DETAILS;
+	const { providerReady, organizationId = null } = catalogAccount(account);
+	const ready = models?.ready === true;
+	const aiProviders = models?.aiProviders;
+	const entries = models?.models;
+	const defaults = models?.defaults;
+	const configuredModel = models?.configuredModel;
+	const base = useMemo(
+		() =>
+			ready && aiProviders && entries
+				? buildCatalogFromModels(
+						{
+							aiProviders,
+							models: entries,
+							defaults: defaults ?? {},
+							...(configuredModel ? { configuredModel } : {}),
+						},
+						{
+							...(providerReady === undefined ? {} : { providerReady }),
+							organizationId,
+						},
+					)
+				: undefined,
+		[ready, aiProviders, entries, defaults, configuredModel, providerReady, organizationId],
+	);
+	const hasKiloModels = base?.models.some((model) => model.providerID === KILO_PROVIDER_ID);
 	useEffect(() => {
-		if (hasKiloModels) void gateway?.methods.refresh(undefined).catch(() => undefined);
-	}, [gateway, hasKiloModels]);
-	return details;
+		if (hasKiloModels) void handle?.methods.refreshGatewayCatalog(undefined).catch(() => undefined);
+	}, [handle, hasKiloModels]);
+	const catalog = useMemo(() => attachGatewayModelDetails(base, [...details]), [base, details]);
+	const refetch = useCallback(async () => handle?.methods.refresh(undefined), [handle]);
+	const refresh = useCallback(() => void refetch().catch(() => undefined), [refetch]);
+	return {
+		catalog,
+		isPending: !ready,
+		preferences: models?.preferences,
+		handle,
+		refresh,
+		refetch,
+	};
 }
 
 /**
@@ -75,25 +128,27 @@ export function ComposerSelectionProvider({
 	const { connection } = useChatConnection();
 	const chatId = useAuiState((state) => state.threadListItem.remoteId);
 	const agentCatalog = useKiloAgentCatalog(connection);
-	const modelCatalog = useKiloModelCatalog(connection);
-	const details = useGatewayDetails(modelCatalog.data);
-	const catalog = useMemo(
-		() => attachGatewayModelDetails(modelCatalog.data, [...details]),
-		[modelCatalog.data, details],
+	const modelCatalog = useModelCatalog();
+	const { catalog, handle: modelsHandle } = modelCatalog;
+	const preferences = useMemo(
+		() => (modelCatalog.preferences ? persistedPreferences(modelCatalog.preferences) : undefined),
+		[modelCatalog.preferences],
 	);
-	const preferencesHandle = useDomain(ModelPreferences);
-	const preferences = useDomainState(ModelPreferences, selectPreferences) ?? undefined;
 	const remember = useCallback(
 		(agent: string, model: KiloModelRef, effort: string | undefined) =>
-			void preferencesHandle?.methods
-				.remember({ agent, model, ...(effort === undefined ? {} : { effort }) })
+			void modelsHandle?.methods
+				.remember({
+					agent,
+					model: toModelRef(model),
+					...(effort === undefined ? {} : { variant: effort }),
+				})
 				.catch(() => undefined),
-		[preferencesHandle],
+		[modelsHandle],
 	);
 	const recordRecent = useCallback(
 		(model: KiloModelRef) =>
-			void preferencesHandle?.methods.recordRecent(model).catch(() => undefined),
-		[preferencesHandle],
+			void modelsHandle?.methods.recordRecent(toModelRef(model)).catch(() => undefined),
+		[modelsHandle],
 	);
 
 	const agentSelection = useAgentSelection(agentCatalog.data, chatId);
@@ -127,7 +182,7 @@ export function ComposerSelectionProvider({
 
 	const { validatedModel, effort } = modelSelection;
 	const activeEffort = resolveModelEffort(
-		modelCatalog.data?.models ?? [],
+		catalog?.models ?? [],
 		validatedModel ? modelRefToId(validatedModel) : undefined,
 		effort,
 	);
@@ -153,11 +208,11 @@ export function ComposerSelectionProvider({
 			agentCatalog.isError,
 		],
 	);
-	const { refetch: refetchCatalog } = modelCatalog;
-	const refreshCatalog = useCallback(
-		() => void refetchCatalog().catch(() => undefined),
-		[refetchCatalog],
-	);
+	const {
+		refresh: refreshCatalog,
+		refetch: refetchCatalog,
+		isPending: isCatalogPending,
+	} = modelCatalog;
 	const modelValue = useMemo(
 		() => ({
 			model: modelSelection.model,
@@ -167,12 +222,12 @@ export function ComposerSelectionProvider({
 			name: modelSelection.name,
 			efforts: modelSelection.efforts,
 			catalog,
-			isCatalogPending: isModelCatalogPending(modelCatalog),
-			isCatalogError: modelCatalog.isError,
-			isCatalogFetching: modelCatalog.isFetching,
+			isCatalogPending,
+			isCatalogError: false,
+			isCatalogFetching: false,
 			refreshCatalog,
 		}),
-		[catalog, modelCatalog, modelSelection, refreshCatalog],
+		[catalog, isCatalogPending, modelSelection, refreshCatalog],
 	);
 
 	return (

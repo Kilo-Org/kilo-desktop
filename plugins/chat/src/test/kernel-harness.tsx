@@ -1,161 +1,148 @@
+// Renders a piece of kilo.chat's UI in a kernel pair, without the shell's
+// window around it: kilo.core, kilo.work-sessions and kilo.shell stand-ins in
+// main (their real manifests and contracts) and kilo.chat's own entries.
 import { cleanup, render } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { vi } from "vitest";
 import { page } from "vitest/browser";
 
-import { KernelOs, type DomainProvider, type PluginEntry } from "@kilo-desktop/kernel";
-import { KernelProvider } from "@kilo-desktop/kernel/web";
-import { Identity, type IdentityState } from "@kilo-desktop/plugin-account/contracts";
-import { Navigation } from "@kilo-desktop/plugin-shell/contracts";
-import workspacesManifest from "@kilo-desktop/plugin-workspaces/plugin.json";
 import {
-	Workspaces,
-	WORKSPACES_DEFINITIONS,
-	type Authorization,
-} from "@kilo-desktop/plugin-workspaces/contracts";
+	definePlugin,
+	KernelOs,
+	type DomainObjectProvider,
+	type PluginEntry,
+	type PluginRegistration,
+} from "@kilo-desktop/kernel";
 import {
 	createMemoryStorage,
 	createTestHost,
 	createTestKernelPair,
 } from "@kilo-desktop/kernel/testing";
+import { KernelProvider } from "@kilo-desktop/kernel/web";
+import coreManifest from "@kilo-desktop/plugin-core/plugin.json";
+import { CORE_DEFINITIONS } from "@kilo-desktop/plugin-core/contracts";
+import shellManifest from "@kilo-desktop/plugin-shell/plugin.json";
+import { Navigation, Notifications, SHELL_DEFINITIONS } from "@kilo-desktop/plugin-shell/contracts";
+import workSessionsManifest from "@kilo-desktop/plugin-work-sessions/plugin.json";
+import { WORK_SESSIONS_DEFINITIONS } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import manifest from "../../plugin.json";
 import { CHAT_DEFINITIONS } from "../contracts";
-import { createChatMainEntry, type ChatMainOptions } from "../main/entry";
+import { fakeCore, type FakeCoreOptions } from "./fake-core";
+import { fakeWorkSessionsMain, type FakeWorkSessionsMainOptions } from "./fake-work-sessions";
 
-export const SIGNED_IN: IdentityState = {
-	connection: "connected",
-	authenticated: true,
-	profile: null,
-	profileError: null,
-	deviceAuth: { status: "idle" },
-	orgError: null,
-	isRefreshing: false,
-	isSwitchingOrg: false,
-};
+export { SIGNED_IN, SIGNED_OUT } from "./fake-core";
 
-export const SIGNED_OUT: IdentityState = { ...SIGNED_IN, authenticated: false };
+/** An entry that does nothing: main only takes window calls from plugins that run there. */
+export const EMPTY_ENTRY: PluginEntry = definePlugin({ activate: () => {} });
 
-/** kilo.account's identity in main, with `signIn` recorded and `setIdentity` to change who is signed in. */
-export function fakeAccount(identity: IdentityState, signIn: () => void) {
-	let provider: DomainProvider<typeof Identity> | undefined;
-	const entry: PluginEntry = {
+/**
+ * kilo.shell's navigation and notifications in main, recording settings
+ * opened, dialogs opened and toasts shown.
+ */
+export function fakeShellMain() {
+	const calls = {
+		openSettings: vi.fn<(section: string | undefined) => void>(),
+		openDialog: vi.fn<(dialog: string, input: unknown) => void>(),
+		toast:
+			vi.fn<(toast: { level?: string; title: string; description?: string | undefined }) => void>(),
+	};
+	let navigation: DomainObjectProvider<typeof Navigation> | undefined;
+	const entry: PluginEntry = definePlugin({
 		activate(sdk) {
-			provider = sdk.domains.provide(Identity, {
-				initialState: identity,
+			navigation = sdk.domainObjects.provide(Navigation, {
+				initialState: { windows: {} },
 				methods: {
-					signIn: () => {
-						signIn();
-						return { signedIn: false };
-					},
-				} as never,
+					navigate: () => undefined,
+					openSettings: ({ section }) => calls.openSettings(section),
+					goHome: () => undefined,
+					openDialog: ({ dialog, input }) => calls.openDialog(dialog, input),
+					reportLocation: () => undefined,
+				},
 			});
-		},
-	};
-	return {
-		manifest: {
-			manifestVersion: 1,
-			id: "kilo.account",
-			displayName: "Account",
-			version: "1.0.0",
-			domains: [{ id: "identity", home: "main" }],
-		},
-		definitions: { domains: [Identity] },
-		main: entry,
-		setIdentity: (next: IdentityState) => provider?.setState(next),
-	};
-}
-
-/** kilo.workspaces in main: `authorize` answers as the test says. */
-function fakeWorkspaces(authorize: (path: string) => Authorization) {
-	const entry: PluginEntry = {
-		activate(sdk) {
-			sdk.domains.provide(Workspaces, {
-				initialState: { workspaces: [], activeId: null, unavailableFolderIds: [] },
+			sdk.domainObjects.provide(Notifications, {
+				initialState: { notices: {} },
 				methods: {
-					authorize: ({ path }: { path: string }) => authorize(path),
-				} as never,
-			});
-		},
-	};
-	return { manifest: workspacesManifest, definitions: WORKSPACES_DEFINITIONS, entry };
-}
-
-/** kilo.shell's navigation in the window: `openSettings` goes to `/settings/<section>`. */
-const fakeShell = {
-	manifest: {
-		manifestVersion: 1,
-		id: "kilo.shell",
-		displayName: "Shell",
-		version: "1.0.0",
-		domains: [{ id: "navigation", home: "renderer" }],
-	},
-	definitions: { domains: [Navigation] },
-	entry: {
-		activate(sdk) {
-			const provider: DomainProvider<typeof Navigation> = sdk.domains.provide(Navigation, {
-				initialState: { path: "/", search: {} },
-				methods: {
-					navigate: ({ path }) => provider.setState({ path, search: {} }),
-					openSettings: ({ section }) =>
-						provider.setState({ path: `/settings/${section ?? ""}`, search: {} }),
-					goHome: () => provider.setState({ path: "/", search: {} }),
+					toast: (toast) => calls.toast(toast),
+					post: ({ id }) => id ?? "notice",
+					dismiss: () => undefined,
 				},
 			});
 		},
-	} satisfies PluginEntry,
-};
+	});
+	return {
+		manifest: shellManifest,
+		definitions: SHELL_DEFINITIONS,
+		entry,
+		calls,
+		navigation: () => navigation,
+	};
+}
+
+export interface RenderInKernelOptions {
+	/** kilo.core's stand-in. */
+	readonly core?: FakeCoreOptions;
+	/** kilo.work-sessions' stand-in. */
+	readonly workSessions?: FakeWorkSessionsMainOptions;
+	/** kilo.chat's main entry (e.g. `createChatMainEntry(…)` or one area); none by default. */
+	readonly chatMain?: PluginEntry;
+	/** kilo.chat's window entry (one area); an empty one by default, as `ui` renders as kilo.chat. */
+	readonly chatWeb?: PluginEntry;
+	/** More main-side plugins. */
+	readonly plugins?: readonly PluginRegistration[];
+	/** More window-side plugins, e.g. ones contributing transcript renderers. */
+	readonly rendererPlugins?: readonly PluginRegistration[];
+}
 
 /**
- * Renders `ui` in a kernel pair with kilo.chat's main domains (preferences,
- * gateway models, approval mode), a fake kilo.account and kilo.shell's
- * navigation, without the shell's window around it. `ui` renders as
- * kilo.chat's window half, as it does inside its contributions.
+ * Renders `ui` in a kernel pair with kilo.core (signed in, `TEST_MODELS`,
+ * chats over a FakeKiloServer), kilo.work-sessions (a workspace, one work
+ * session, `authorize` allowing everything) and kilo.shell's navigation and
+ * notifications in main, and kilo.chat's entries. `ui` renders as kilo.chat's
+ * window half, as it does inside its contributions.
  */
-export async function renderInKernel(
-	ui: ReactNode,
-	options: {
-		identity?: IdentityState;
-		/** More main-side plugins. */
-		plugins?: readonly unknown[];
-		/** More window-side plugins, e.g. ones contributing transcript renderers. */
-		rendererPlugins?: readonly unknown[];
-		chatMain?: ChatMainOptions;
-		/** kilo.workspaces' answer to `authorize`; allowed by default. */
-		authorize?: (path: string) => Authorization;
-	} = {},
-) {
+export async function renderInKernel(ui: ReactNode, options: RenderInKernelOptions = {}) {
 	cleanup();
-	const signIn = vi.fn();
 	const opened: string[] = [];
-	const account = fakeAccount(options.identity ?? SIGNED_IN, signIn);
-	const workspaces = fakeWorkspaces(options.authorize ?? ((path) => ({ allowed: true, path })));
+	const workSessions = fakeWorkSessionsMain(options.workSessions);
+	const core = fakeCore({ ...options.core, onChatCreated: workSessions.attachChat });
+	const shell = fakeShellMain();
 	const storage = createMemoryStorage("/data/kilo.chat");
 	const host = await createTestKernelPair({
 		host: createTestHost(),
 		main: [
-			{ manifest: account.manifest, definitions: account.definitions, entry: account.main },
-			workspaces,
-			{ manifest, definitions: CHAT_DEFINITIONS, entry: createChatMainEntry(options.chatMain) },
-			...((options.plugins ?? []) as never[]),
+			{ manifest: coreManifest, definitions: CORE_DEFINITIONS, entry: { activate: core.activate } },
+			{ manifest: shell.manifest, definitions: shell.definitions, entry: shell.entry },
+			{
+				manifest: workSessionsManifest,
+				definitions: WORK_SESSIONS_DEFINITIONS,
+				entry: workSessions.entry,
+			},
+			{ manifest, definitions: CHAT_DEFINITIONS, entry: options.chatMain ?? EMPTY_ENTRY },
+			...(options.plugins ?? []),
 		],
 		renderer: [
-			fakeShell,
-			{ manifest: account.manifest, definitions: account.definitions },
-			{ manifest: workspaces.manifest, definitions: workspaces.definitions },
-			// An (empty) window entry: main only takes window calls from plugins that run there.
-			{ manifest, definitions: CHAT_DEFINITIONS, entry: { activate: () => {} } },
-			...((options.rendererPlugins ?? []) as never[]),
+			{ manifest: coreManifest, definitions: CORE_DEFINITIONS },
+			{ manifest: shell.manifest, definitions: shell.definitions },
+			{ manifest: workSessionsManifest, definitions: WORK_SESSIONS_DEFINITIONS },
+			{ manifest, definitions: CHAT_DEFINITIONS, entry: options.chatWeb ?? EMPTY_ENTRY },
+			...(options.rendererPlugins ?? []),
 		],
-		mainHostServices: () => ({ storage }),
+		mainHostServices: (pluginId) =>
+			pluginId === manifest.id
+				? { storage }
+				: { storage: createMemoryStorage(`/data/${pluginId}`) },
 	});
-	host.main.kernelSdk.domains.provide(KernelOs, {
+	host.main.kernelSdk.domainObjects.provide(KernelOs, {
 		initialState: {},
 		methods: {
 			openExternal: ({ url }: { url: string }) => {
 				opened.push(url);
 				return true;
 			},
+			showItemInFolder: () => undefined,
+			showLogs: () => ({ revealed: false }),
+			logFilePath: () => "/logs/main.log",
 		} as never,
 	});
 	await host.main.flush();
@@ -164,5 +151,18 @@ export async function renderInKernel(
 			{ui}
 		</KernelProvider>,
 	);
-	return { ...host, view, signIn, opened, screen: page.elementLocator(view.baseElement) };
+	return {
+		...host,
+		view,
+		core,
+		workSessions,
+		shell,
+		/** kilo.chat's main-process storage. */
+		storage,
+		/** kilo.core's `signIn` calls. */
+		signIn: core.calls.signIn,
+		/** URLs opened in the browser. */
+		opened,
+		screen: page.elementLocator(view.baseElement),
+	};
 }

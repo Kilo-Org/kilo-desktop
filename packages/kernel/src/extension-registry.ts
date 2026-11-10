@@ -2,7 +2,7 @@ import {
 	parseContributionEntry,
 	type DiscoveredContribution,
 	type ParsedContributionEntry,
-	type PointRecord,
+	type ExtensionPointRecord,
 } from "./discovery";
 import { KernelError } from "./errors";
 import type {
@@ -80,7 +80,7 @@ function ignoredContribution(
 
 export interface ExtensionRegistryOptions {
 	readonly process: "main" | "renderer";
-	readonly points: ReadonlyMap<QualifiedId, PointRecord>;
+	readonly extensionPoints: ReadonlyMap<QualifiedId, ExtensionPointRecord>;
 	readonly contextKeys: ContextKeyStore;
 	/** Activation order of plugins; ties in priority follow it. */
 	readonly pluginOrder: (pluginId: string) => number;
@@ -116,7 +116,7 @@ export class ExtensionRegistry {
 	}
 
 	hasPoint(pointId: QualifiedId): boolean {
-		return this.#options.points.has(pointId);
+		return this.#options.extensionPoints.has(pointId);
 	}
 
 	/**
@@ -126,13 +126,13 @@ export class ExtensionRegistry {
 	 * reading it finds no contributions rather than failing the host.
 	 */
 	#ownerAbsent(pointId: QualifiedId): boolean {
-		if (this.#options.points.has(pointId)) return false;
+		if (this.#options.extensionPoints.has(pointId)) return false;
 		const owner = pointId.slice(0, pointId.indexOf("/"));
 		return this.#options.isInstalled !== undefined && !this.#options.isInstalled(owner);
 	}
 
-	point(pointId: QualifiedId): PointRecord {
-		const record = this.#options.points.get(pointId);
+	point(pointId: QualifiedId): ExtensionPointRecord {
+		const record = this.#options.extensionPoints.get(pointId);
 		if (!record) throw new KernelError("NOT_FOUND", `Unknown extension point "${pointId}".`);
 		return record;
 	}

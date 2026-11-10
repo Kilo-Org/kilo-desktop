@@ -1,4 +1,4 @@
-import type { LocalModel } from "../../contracts/schemas.js";
+import type { LocalModel } from "../../contracts/index";
 
 export const modelSourceFilters = [
 	{ value: "all", label: "All models" },

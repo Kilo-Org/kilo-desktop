@@ -1,17 +1,18 @@
 import { TriangleAlertIcon } from "lucide-react";
 import type { FC } from "react";
 
-import { useDomainState, useKernel } from "@kilo-desktop/kernel/web";
-import { Workspaces, type WorkspacesState } from "@kilo-desktop/plugin-workspaces/contracts";
+import type { DomainObjectState } from "@kilo-desktop/kernel";
+import { useDomainObjectState, useKernel } from "@kilo-desktop/kernel/web";
+import { EDIT_WORKSPACE_COMMAND, Workspaces } from "@kilo-desktop/plugin-work-sessions/contracts";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
 import type { ComposerActionImplementation, ComposerContext } from "../../contracts";
 
-const selectState = (state: WorkspacesState) => state;
+const selectState = (state: DomainObjectState<typeof Workspaces>) => state;
 
 function useWorkspaceWithUnavailableFolders(workspaceId: string | null) {
-	const state = useDomainState(Workspaces, selectState);
+	const state = useDomainObjectState(Workspaces, selectState);
 	if (!workspaceId || !state) return undefined;
 	const unavailable = new Set(state.unavailableFolderIds);
 	const workspace = state.workspaces.find((candidate) => candidate.id === workspaceId);
@@ -19,8 +20,8 @@ function useWorkspaceWithUnavailableFolders(workspaceId: string | null) {
 }
 
 /**
- * A warning beside the chat's workspace when kilo.workspaces can't find some
- * of its folders; opens the workspace's settings to fix them.
+ * A warning beside the chat's workspace when kilo.work-sessions can't find
+ * some of its folders; opens the workspace's settings to fix them.
  */
 const UnavailableFoldersIndicator: FC<ComposerContext & { compact: boolean }> = ({
 	workspaceId,
@@ -42,7 +43,7 @@ const UnavailableFoldersIndicator: FC<ComposerContext & { compact: boolean }> = 
 						data-qa-id="kilo-composer-unavailable-folders"
 						onClick={() =>
 							void kernel.commands
-								.execute("kilo.workspaces/edit", { workspaceId: workspace.id })
+								.execute(EDIT_WORKSPACE_COMMAND, { workspaceId: workspace.id })
 								.catch(() => undefined)
 						}
 					/>

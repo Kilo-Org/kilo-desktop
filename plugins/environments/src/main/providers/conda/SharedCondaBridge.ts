@@ -5,10 +5,10 @@ import {
 	type PluginSdk,
 } from "@kilo-desktop/kernel";
 
-import type { CondaBackend } from "./CondaBackend.js";
+import type { CondaBackend } from "./CondaBackend";
 
-import type { BridgeLaunchInfo } from "./resolveBridgePath.js";
-import { SidecarCondaBackend } from "./SidecarCondaBackend.js";
+import type { BridgeLaunchInfo } from "./resolveBridgePath";
+import { SidecarCondaBackend } from "./SidecarCondaBackend";
 
 /** Data-collection consent and identity forwarded to the bridge. */
 export interface BridgePreferences {
@@ -156,7 +156,7 @@ export function pluginBridgeEnvironment(
  * environment (`development`, else `production`).
  */
 export function bridgePreferences(sdk: PluginSdk): BridgePreferences | undefined {
-	const consent = sdk.domains.get(KernelDataCollection);
+	const consent = sdk.domainObjects.get(KernelDataCollection);
 	if (!consent) return undefined;
 	const state = consent.getState();
 	return {

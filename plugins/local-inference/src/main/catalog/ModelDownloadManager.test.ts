@@ -5,9 +5,9 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { LocalModel, ModelDownload } from "../../contracts/schemas.js";
-import { ModelDownloadManager, type ModelDownloadManagerOptions } from "./ModelDownloadManager.js";
-import type { CatalogDownloadArtifact } from "./catalog-download.js";
+import type { LocalModel, ModelDownload } from "../../contracts";
+import { ModelDownloadManager, type ModelDownloadManagerOptions } from "./ModelDownloadManager";
+import type { CatalogDownloadArtifact } from "./catalog-download";
 
 const roots: string[] = [];
 

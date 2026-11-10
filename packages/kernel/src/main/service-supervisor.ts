@@ -1,6 +1,6 @@
-import type { KernelServices, ServiceRecord, ServiceStatus } from "../builtins/domains";
-import { KernelService, type ServiceImplementation } from "../builtins/points";
-import type { DomainProvider } from "../domain-registry";
+import type { KernelServices, ServiceRecord, ServiceStatus } from "../builtins/domain-objects";
+import { KernelService, type ServiceImplementation } from "../builtins/extension-points";
+import type { DomainObjectProvider } from "../domain-object-registry";
 import type { MetadataOf } from "../extension-point";
 import type { Contribution, ExtensionRegistry } from "../extension-registry";
 import type { QualifiedId } from "../ids";
@@ -26,7 +26,7 @@ const RUNNING: ReadonlySet<ServiceStatus> = new Set(["starting", "ready", "resta
 
 export interface ServiceSupervisorOptions {
 	readonly extensions: ExtensionRegistry;
-	readonly provider: DomainProvider<typeof KernelServices>;
+	readonly provider: DomainObjectProvider<typeof KernelServices>;
 	readonly pluginOrder: (pluginId: string) => number;
 	readonly logger: KernelLogger;
 }

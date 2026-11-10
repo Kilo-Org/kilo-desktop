@@ -11,7 +11,7 @@ import { MarkdownAnchor } from "@kilo-desktop/ui/components/markdown-content";
 import type {
 	MarkdownRendererComponents,
 	MarkdownRendererExtension,
-} from "@kilo-desktop/ui/components/markdown-extension";
+} from "@kilo-desktop/ui/lib/markdown-extension";
 
 import {
 	resolveInlineCodeFileLink,

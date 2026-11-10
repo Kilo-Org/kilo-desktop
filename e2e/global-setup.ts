@@ -10,7 +10,8 @@ import {
 import { assertSharedHarnessDependencies } from "./utils/harness-dependencies.js";
 import { prewarmKiloCli } from "./utils/kilo-cli-prewarm.js";
 import { startKiloGatewayStub } from "./utils/kilo-gateway-stub.js";
-import { chatAttachmentStubReplies } from "./testdata/chat-attachments.js";
+import { chatAttachmentStubReplies } from "./testdata/chat/attachments.js";
+import { chatSmokeStubReplies, chatSmokeStubTitles } from "./testdata/chat/smoke.js";
 
 /**
  * Runs once per Playwright invocation, before any worker launches the app.
@@ -25,10 +26,10 @@ import { chatAttachmentStubReplies } from "./testdata/chat-attachments.js";
  *   concurrent workers own live apps.
  * - Start the Kilo Gateway stub and publish its URL through `process.env`,
  *   which Playwright forwards to workers (`packagedAppLaunchEnv` reads it).
- * - Start the chat completions stub the same way, so chat-attachment specs
- *   get a deterministic assistant reply instead of a real model call.
- * - Pre-warm the packaged Kilo CLI so first-execution costs stay out of the
- *   sidecar's startup window.
+ * - Start the chat completions stub the same way, so kilo.chat's specs get a
+ *   deterministic assistant reply (and chat title) instead of a real model call.
+ * - Pre-warm kilo.core's packaged Kilo CLI so first-execution costs stay out
+ *   of the server's startup window.
  *
  * Returns the teardown Playwright runs after the last worker exits.
  */
@@ -38,7 +39,10 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
 	killStrayProcesses();
 	const gateway = await startKiloGatewayStub();
 	process.env[KILO_GATEWAY_STUB_URL_ENV] = gateway.url;
-	const chatCompletions = await startChatCompletionsStub(chatAttachmentStubReplies);
+	const chatCompletions = await startChatCompletionsStub(
+		{ ...chatAttachmentStubReplies, ...chatSmokeStubReplies },
+		chatSmokeStubTitles,
+	);
 	process.env[CHAT_COMPLETIONS_STUB_URL_ENV] = chatCompletions.url;
 	const teardown = async () => {
 		try {

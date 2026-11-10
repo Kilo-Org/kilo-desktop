@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { advertisedListenHost, localConnectionInfo, pickLanIPv4 } from "./connection-info.js";
+import { advertisedListenHost, localConnectionInfo, pickLanIPv4 } from "./connection-info";
 
 const info = localConnectionInfo(44123, "secret");
 

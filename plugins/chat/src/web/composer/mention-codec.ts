@@ -3,9 +3,9 @@ import type { Unstable_DirectiveFormatter, Unstable_DirectiveSegment } from "@as
 import type {
 	ComposerMentionImplementation,
 	MentionSearchContext,
+	PromptPart,
 	ResolvedMention,
 } from "../../contracts";
-import type { PromptPart } from "../runtime/prompt-options";
 
 /** A `composer-mention` contribution the composer can use. */
 export interface MentionSource {
@@ -99,7 +99,7 @@ export async function resolveMentionParts(
 	const files: PromptPart[] = [];
 	const resolved = await Promise.all(
 		parts.map(async (part) => {
-			if (part.type !== "text" || typeof part.text !== "string") return part;
+			if (part.type !== "text") return part;
 			const segments = formatter.parse(part.text);
 			if (!segments.some((segment) => segment.kind === "mention")) return part;
 			const texts = await Promise.all(

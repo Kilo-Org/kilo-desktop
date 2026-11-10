@@ -1,7 +1,7 @@
 import { Skeleton, SkeletonText } from "@kilo-desktop/ui/components/skeleton";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
-import type { ModelCompatibility, ModelFit } from "../../shared/catalog/model-compatibility.js";
+import type { ModelCompatibility, ModelFit } from "../../shared/catalog/model-compatibility";
 
 type PerformanceFitKind = ModelFit | "doesnt-fit";
 

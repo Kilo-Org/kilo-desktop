@@ -33,7 +33,7 @@ async function startKernel(
 }
 
 async function start() {
-	return (await startKernel()).kernelSdk.domains;
+	return (await startKernel()).kernelSdk.domainObjects;
 }
 
 /** A controllable stand-in for the OS colour-scheme media query. */
@@ -160,7 +160,7 @@ describe("browser-mode host primitives", () => {
 				},
 			],
 		});
-		const app = kernel.kernelSdk.domains.get(KernelApp)!;
+		const app = kernel.kernelSdk.domainObjects.get(KernelApp)!;
 
 		await app.methods.quit(undefined);
 		await app.methods.relaunch({});
@@ -175,13 +175,13 @@ describe("browser-mode host primitives", () => {
 		const plain = { manifest: testManifest("acme.plain") };
 		localStorage.setItem("kernel:disabled-plugins", "{ not json");
 		const first = await startKernel({ registrations: [plain] });
-		const plugins = first.kernelSdk.domains.get(KernelPlugins)!;
+		const plugins = first.kernelSdk.domainObjects.get(KernelPlugins)!;
 		expect(plugins.getState().disabled).toEqual([]);
 
 		await plugins.methods.setEnabled({ pluginId: "acme.plain", enabled: false });
 		const second = await startKernel({ registrations: [plain] });
 
-		expect(second.kernelSdk.domains.get(KernelPlugins)!.getState().disabled).toEqual([
+		expect(second.kernelSdk.domainObjects.get(KernelPlugins)!.getState().disabled).toEqual([
 			"acme.plain",
 		]);
 		localStorage.removeItem("kernel:disabled-plugins");
@@ -191,7 +191,7 @@ describe("browser-mode host primitives", () => {
 		localStorage.setItem("kernel:disabled-plugins", JSON.stringify({ "acme.plain": true }));
 		const kernel = await startKernel({ registrations: [{ manifest: testManifest("acme.plain") }] });
 
-		expect(kernel.kernelSdk.domains.get(KernelPlugins)!.getState().disabled).toEqual([]);
+		expect(kernel.kernelSdk.domainObjects.get(KernelPlugins)!.getState().disabled).toEqual([]);
 		localStorage.removeItem("kernel:disabled-plugins");
 	});
 

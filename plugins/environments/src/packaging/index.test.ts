@@ -4,8 +4,8 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { getPayloadPackageName } from "./bridge-artifacts.js";
-import { createBridgePackagingPlan } from "./index.js";
+import { getPayloadPackageName } from "./bridge-artifacts";
+import { createBridgePackagingPlan } from "./index";
 
 const tempDirs: string[] = [];
 

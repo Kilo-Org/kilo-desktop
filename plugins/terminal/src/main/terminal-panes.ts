@@ -1,26 +1,26 @@
-import type { DomainState } from "@kilo-desktop/kernel";
-import type { Pane, Panes } from "@kilo-desktop/plugin-sessions/contracts";
+import type { DomainObjectState } from "@kilo-desktop/kernel";
+import type { Pane, Panes } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import { TERMINAL_PANE_KIND, TERMINAL_SESSION_METADATA_KEY } from "../contracts";
 import type { TerminalIdentity } from "../contracts/session";
 
-type PanesState = DomainState<typeof Panes>;
+type PanesState = DomainObjectState<typeof Panes>;
 
 export interface LocatedPane {
-	readonly sessionId: string;
+	readonly workSessionId: string;
 	readonly pane: Pane;
 }
 
-/** The shell a pane shows: its own id, under its session (or the one origin saved it under). */
-export function terminalIdentityOf(sessionId: string, pane: Pane): TerminalIdentity {
+/** The shell a pane shows: its own id, under its work session (or the one origin saved it under). */
+export function terminalIdentityOf(workSessionId: string, pane: Pane): TerminalIdentity {
 	return {
-		sessionId: pane.metadata[TERMINAL_SESSION_METADATA_KEY] ?? sessionId,
+		sessionId: pane.metadata[TERMINAL_SESSION_METADATA_KEY] ?? workSessionId,
 		terminalId: pane.id,
 	};
 }
 
-export function terminalPanesOf(state: PanesState, sessionId: string): Pane[] {
-	return (state.bySession[sessionId]?.panes ?? []).filter(
+export function terminalPanesOf(state: PanesState, workSessionId: string): Pane[] {
+	return (state.byWorkSession[workSessionId]?.panes ?? []).filter(
 		(pane) => pane.kind === TERMINAL_PANE_KIND,
 	);
 }
@@ -30,43 +30,44 @@ export function locateTerminalPane(
 	state: PanesState,
 	identity: TerminalIdentity,
 ): LocatedPane | undefined {
-	for (const sessionId of Object.keys(state.bySession)) {
-		const pane = terminalPanesOf(state, sessionId).find(
+	for (const workSessionId of Object.keys(state.byWorkSession)) {
+		const pane = terminalPanesOf(state, workSessionId).find(
 			(candidate) =>
 				candidate.id === identity.terminalId &&
-				terminalIdentityOf(sessionId, candidate).sessionId === identity.sessionId,
+				terminalIdentityOf(workSessionId, candidate).sessionId === identity.sessionId,
 		);
-		if (pane) return { sessionId, pane };
+		if (pane) return { workSessionId, pane };
 	}
 	return undefined;
 }
 
 /**
- * Every terminal pane seen, by session. Entries outlive the pane state they
- * came from until they are forgotten, so a deleted session's terminals are
- * still known when its `deleted` event arrives after its panes are gone.
+ * Every terminal pane seen, by work session. Entries outlive the pane state
+ * they came from until they are forgotten, so a deleted work session's
+ * terminals are still known when its `deleted` event arrives after its panes
+ * are gone.
  */
 export class KnownTerminalPanes {
-	readonly #bySession = new Map<string, Map<string, TerminalIdentity>>();
+	readonly #byWorkSession = new Map<string, Map<string, TerminalIdentity>>();
 
 	remember(state: PanesState): void {
-		for (const sessionId of Object.keys(state.bySession)) {
-			for (const pane of terminalPanesOf(state, sessionId)) {
-				let panes = this.#bySession.get(sessionId);
-				if (!panes) this.#bySession.set(sessionId, (panes = new Map()));
-				panes.set(pane.id, terminalIdentityOf(sessionId, pane));
+		for (const workSessionId of Object.keys(state.byWorkSession)) {
+			for (const pane of terminalPanesOf(state, workSessionId)) {
+				let panes = this.#byWorkSession.get(workSessionId);
+				if (!panes) this.#byWorkSession.set(workSessionId, (panes = new Map()));
+				panes.set(pane.id, terminalIdentityOf(workSessionId, pane));
 			}
 		}
 	}
 
-	forget(sessionId: string, paneId: string): void {
-		this.#bySession.get(sessionId)?.delete(paneId);
+	forget(workSessionId: string, paneId: string): void {
+		this.#byWorkSession.get(workSessionId)?.delete(paneId);
 	}
 
-	/** Forgets a session, returning its terminals. */
-	takeSession(sessionId: string): TerminalIdentity[] {
-		const panes = this.#bySession.get(sessionId);
-		this.#bySession.delete(sessionId);
+	/** Forgets a work session, returning its terminals. */
+	takeWorkSession(workSessionId: string): TerminalIdentity[] {
+		const panes = this.#byWorkSession.get(workSessionId);
+		this.#byWorkSession.delete(workSessionId);
 		return [...(panes?.values() ?? [])];
 	}
 }

@@ -8,7 +8,7 @@
  * fall back to the prefix's last path segment.
  */
 
-import { ENVIRONMENT_NAME_PATTERN } from "../../../contracts/providers/conda.js";
+import { ENVIRONMENT_NAME_PATTERN } from "../../../contracts/providers/conda";
 
 /** Last path segment of a POSIX or Windows path, without trailing separators. */
 export function basename(prefix: string): string {

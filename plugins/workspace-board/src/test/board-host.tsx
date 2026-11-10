@@ -1,68 +1,38 @@
-import { vi } from "vitest";
-
 import type { PluginSdk } from "@kilo-desktop/kernel";
 import type { MainKernelHost } from "@kilo-desktop/kernel/main";
 import { testManifest } from "@kilo-desktop/kernel/testing";
-import type { ChatSummary } from "@kilo-desktop/plugin-agent/contracts";
-import { type WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
-import telemetryManifest from "@kilo-desktop/plugin-telemetry/plugin.json";
-import { Telemetry, TELEMETRY_DEFINITIONS } from "@kilo-desktop/plugin-telemetry/contracts";
-import { renderWorkbench } from "@kilo-desktop/plugin-workbench/testing";
-import type { Workspace } from "@kilo-desktop/plugin-workspaces/contracts";
+import type { ChatSummary } from "@kilo-desktop/plugin-core/contracts";
+import {
+	WorkSessionDecoration,
+	type WorkSession,
+	type WorkSessionDecorationProps,
+	type Workspace,
+} from "@kilo-desktop/plugin-work-sessions/contracts";
+import {
+	grantDataCollection,
+	renderWorkSessions,
+	telemetrySink,
+} from "@kilo-desktop/plugin-work-sessions/testing";
 
 import manifest from "../../plugin.json";
-import { Board, BOARD_DEFINITIONS } from "../contracts";
+import { Board, BOARD_DEFINITIONS, BOARD_FEATURE_FLAG, BOARD_PLUGIN_ID } from "../contracts";
 import { createBoardMainEntry } from "../main/entry";
 import { boardWebEntry } from "../web/index";
-import {
-	SessionDecoration,
-	type SessionDecorationProps,
-} from "@kilo-desktop/plugin-workbench/contracts";
-
-/** A stand-in for kilo.flags with the workspace board on or off. */
-const flagsPlugin = (on: boolean) => ({
-	manifest: testManifest("kilo.flags", { contextKeys: [{ id: "flag:*", scope: "global" }] }),
-	main: {
-		activate(sdk: PluginSdk) {
-			sdk.context.set("flag:workspace-board", on);
-		},
-	},
-});
-
-/** kilo.telemetry's domain, recording what the board sends. */
-function telemetryPlugin() {
-	const tracked = vi.fn<(event: string, data: Record<string, unknown>) => void>();
-	return {
-		tracked,
-		plugin: {
-			manifest: telemetryManifest,
-			definitions: TELEMETRY_DEFINITIONS,
-			main: {
-				activate(sdk: PluginSdk) {
-					sdk.domains.provide(Telemetry, {
-						initialState: {},
-						methods: { track: ({ event, data }) => void tracked(event, data) },
-					});
-				},
-			},
-		},
-	};
-}
 
 /** A row decoration, as git's pull request badge is. */
 const decorationsPlugin = {
 	manifest: testManifest("test.decorations", {
 		contributes: {
-			extensions: { "kilo.workbench/session-decoration": [{ id: "badge", slot: "row" }] },
+			extensions: { "kilo.work-sessions/work-session-decoration": [{ id: "badge", slot: "row" }] },
 		},
 	}),
 	web: {
 		activate(sdk: PluginSdk) {
 			sdk.extensions.implement(
-				SessionDecoration,
+				WorkSessionDecoration,
 				"badge",
-				({ session, interactive }: SessionDecorationProps) => (
-					<span data-qa-id={`badge-${session.id}`} data-interactive={interactive}>
+				({ workSession, interactive }: WorkSessionDecorationProps) => (
+					<span data-qa-id={`badge-${workSession.id}`} data-interactive={interactive}>
 						#12
 					</span>
 				),
@@ -72,9 +42,11 @@ const decorationsPlugin = {
 };
 
 /**
- * kilo.workspace-board on the real shell and workbench (kilo.workbench's test host),
- * with kilo.sessions, kilo.workspaces and kilo.agent's chats standing in,
- * a row decoration, kilo.flags and kilo.telemetry.
+ * kilo.workspace-board (its real main and web entries) on the real shell and
+ * kilo.work-sessions web entry (kilo.work-sessions' test host), with
+ * kilo.work-sessions' main and kilo.core's chats standing in, an optional row
+ * decoration, the `workspace-board` flag set through the host's flag
+ * overrides, and a telemetry sink with consent granted.
  */
 export async function renderBoard(
 	options: {
@@ -88,22 +60,23 @@ export async function renderBoard(
 		decorations?: boolean;
 	} = {},
 ) {
-	const telemetry = telemetryPlugin();
-	const workbench = await renderWorkbench({
-		sessions: options.sessions ?? [],
+	const sink = telemetrySink();
+	const host = await renderWorkSessions({
+		workSessions: options.sessions ?? [],
 		workspaces: options.workspaces ?? [],
 		...(options.chats ? { chats: options.chats } : {}),
 		...(options.windows ? { windows: options.windows } : {}),
 		...(options.focus !== undefined
 			? {
 					localStorage: {
-						"kilo.workbench.navigator:main": JSON.stringify({ focus: options.focus }),
+						"kilo.work-sessions.window:main": JSON.stringify({ focus: options.focus }),
 					},
 				}
 			: {}),
+		flags: { [BOARD_FEATURE_FLAG]: options.flag ?? true },
+		beforeRender: grantDataCollection,
 		guests: [
-			flagsPlugin(options.flag ?? true),
-			telemetry.plugin,
+			sink.plugin,
 			...(options.decorations ? [decorationsPlugin] : []),
 			{
 				manifest,
@@ -113,7 +86,7 @@ export async function renderBoard(
 			},
 		],
 	});
-	const board = () => workbench.host.main.kernelSdk.domains.get(Board)!;
+	const board = () => host.host.main.kernelSdk.domainObjects.get(Board)!;
 	const cards = () =>
 		Object.fromEntries(
 			board()
@@ -121,6 +94,11 @@ export async function renderBoard(
 				.board.columns.map((column) => [column.id, column.sessionIds]),
 		);
 	const runBoard = (command: string) =>
-		workbench.host.renderer.commands.execute(`kilo.workspace-board/${command}`);
-	return { ...workbench, board, cards, runBoard, tracked: telemetry.tracked };
+		host.host.renderer.commands.execute(`${BOARD_PLUGIN_ID}/${command}`);
+	/** The data of every board event sent with this id (`board-opened`…). */
+	const tracked = (event: string) =>
+		sink.delivered
+			.filter(({ key }) => key === `${BOARD_PLUGIN_ID}/${event}`)
+			.map(({ data }) => data);
+	return { ...host, board, cards, runBoard, tracked };
 }

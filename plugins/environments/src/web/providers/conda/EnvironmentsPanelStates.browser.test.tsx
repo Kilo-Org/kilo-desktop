@@ -2,7 +2,7 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import { EnvironmentsErrorState, EnvironmentsStartingState } from "./EnvironmentsPanelStates.js";
+import { EnvironmentsErrorState, EnvironmentsStartingState } from "./EnvironmentsPanelStates";
 
 afterEach(() => {
 	cleanup();

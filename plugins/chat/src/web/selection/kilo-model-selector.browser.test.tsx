@@ -1,10 +1,9 @@
 import { act, cleanup, fireEvent } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { IdentityState } from "@kilo-desktop/plugin-account/contracts";
-import { Navigation } from "@kilo-desktop/plugin-shell/contracts";
+import type { AccountState } from "@kilo-desktop/plugin-core/contracts";
+import type { GatewayModelDetails } from "@kilo-desktop/plugin-core/contracts";
 
-import type { GatewayModelDetails } from "../../contracts";
 import { renderInKernel, SIGNED_IN, SIGNED_OUT } from "../../test/kernel-harness";
 import { ComposerActionView } from "../composer/composer-actions";
 import { BUILTIN_COMPOSER_ACTIONS } from "../composer/builtin-actions";
@@ -12,7 +11,7 @@ import { ChatModelSelectionProvider } from "./ChatModelSelectionContext";
 import type { ActiveModelSource } from "./ChatModelSelectionContext";
 
 const CONTEXT = {
-	sessionId: "wses_1",
+	workSessionId: "wses_1",
 	chatId: null,
 	directory: "/projects/app",
 	workspaceId: null,
@@ -23,8 +22,8 @@ afterEach(() => {
 	cleanup();
 });
 
-const signedInAuth: IdentityState = SIGNED_IN;
-const signedOutAuth: IdentityState = SIGNED_OUT;
+const signedInAuth: AccountState = SIGNED_IN;
+const signedOutAuth: AccountState = SIGNED_OUT;
 
 const kiloCatalog = {
 	providers: [{ id: "kilo", name: "Kilo Gateway", connected: true }],
@@ -54,7 +53,7 @@ async function renderSelector({
 	navigate = () => undefined,
 	selection,
 }: {
-	auth?: IdentityState;
+	auth?: AccountState;
 	login?: () => void;
 	navigate?: (path: string, options?: { search?: Record<string, unknown> }) => void;
 	selection: {
@@ -106,12 +105,12 @@ async function renderSelector({
 				context={CONTEXT}
 			/>
 		</ChatModelSelectionProvider>,
-		{ identity: auth },
+		{ core: { account: auth } },
 	);
 	if (login) host.signIn.mockImplementation(login);
-	host.renderer.kernelSdk.domains
-		.get(Navigation)
-		?.subscribe((state) => navigate(state.path, undefined));
+	host.shell.calls.openSettings.mockImplementation((section) =>
+		navigate(`/settings/${section ?? ""}`, undefined),
+	);
 	return host.screen;
 }
 
@@ -202,7 +201,7 @@ describe("KiloModelSelector", () => {
 
 		await screen.getByTestId("kilo-model-selector-signin").click();
 		expect(login).toHaveBeenCalledOnce();
-		expect(navigate).toHaveBeenCalledWith("/settings/account", undefined);
+		expect(navigate).toHaveBeenCalledWith("/settings/kilo.shell/account", undefined);
 	});
 
 	it("hides the sign-in row unless the Kilo Gateway rail is selected", async () => {
@@ -584,7 +583,7 @@ describe("KiloModelSelector", () => {
 							modelID: "openai/gpt-5",
 							description: "Kilo Gateway",
 							details: {
-								modelID: "openai/gpt-5",
+								modelId: "openai/gpt-5",
 								description: "A frontier coding model.",
 								inputPricePerMillion: 1.25,
 								outputPricePerMillion: 10,
@@ -690,7 +689,7 @@ describe("KiloModelSelector", () => {
 							name: "Auto Frontier",
 							providerID: "kilo",
 							modelID: "auto-frontier",
-							details: { modelID: "auto-frontier", isFree: true },
+							details: { modelId: "auto-frontier", isFree: true },
 						},
 					],
 				},
@@ -723,7 +722,7 @@ describe("KiloModelSelector", () => {
 							providerID: "kilo",
 							modelID: "auto-frontier",
 							details: {
-								modelID: "auto-frontier",
+								modelId: "auto-frontier",
 								inputPricePerMillion: 0,
 								averageAttemptCostUsd: 0.004,
 							},
@@ -1277,7 +1276,7 @@ describe("KiloModelSelector", () => {
 							description: "Kilo Gateway",
 							recommendedIndex: 0,
 							details: {
-								modelID: "poolside/laguna-s-2.1:free",
+								modelId: "poolside/laguna-s-2.1:free",
 								isFree: true,
 								mayTrainOnYourPrompts: true,
 							},

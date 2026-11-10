@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { TERMINAL_PROTOCOL_VERSION } from "./session.js";
-import { terminalFrameHostMessageSchema } from "./frame.js";
+import { TERMINAL_PROTOCOL_VERSION } from "./session";
+import { terminalFrameHostMessageSchema } from "./frame";
 
 describe("terminal frame wire contract", () => {
 	it("validates versioned messages sent by the frame", () => {

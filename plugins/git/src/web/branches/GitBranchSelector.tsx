@@ -3,23 +3,25 @@ import { useState, type ReactNode } from "react";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { DomainState } from "@kilo-desktop/kernel";
-import { useDomain, useDomainState } from "@kilo-desktop/kernel/web";
-import { WorkSessions } from "@kilo-desktop/plugin-sessions/contracts";
-import type { LauncherOptionProps } from "@kilo-desktop/plugin-workbench/contracts";
+import type { DomainObjectState } from "@kilo-desktop/kernel";
+import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
+import {
+	WorkSessions,
+	type NewWorkSessionOptionProps,
+} from "@kilo-desktop/plugin-work-sessions/contracts";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 
-import { Repository, type GitBranch, type GitBranchesResult } from "../../contracts/index.js";
+import { Repository, type GitBranch, type GitBranchesResult } from "../../contracts";
 import {
 	branchesQuery,
 	invalidateRepositoryQueries,
 	repositoryQueryKey,
 	repositoryTypeQuery,
 	worktreesQuery,
-} from "../repository-queries.js";
-import { branchDisplayName } from "./branch-display-name.js";
-import { resolveBranchPick } from "./branch-pick.js";
+} from "../shared/repository-queries";
+import { branchDisplayName } from "./branch-display-name";
+import { resolveBranchPick } from "./branch-pick";
 import {
 	getPopoverMessage,
 	getTriggerLabel,
@@ -27,10 +29,10 @@ import {
 	type LoadingNotice,
 	type SelectorQueryState,
 	type UnbornNotice,
-} from "./branch-selector-state.js";
-import { BranchPickerPopover } from "./BranchPickerPopover.js";
-import { CreateBranchDialog } from "./CreateBranchDialog.js";
-import { SwitchWorktreeBranchDialog } from "./SwitchWorktreeBranchDialog.js";
+} from "./branch-selector-state";
+import { BranchPickerPopover } from "./BranchPickerPopover";
+import { CreateBranchDialog } from "./CreateBranchDialog";
+import { SwitchWorktreeBranchDialog } from "./SwitchWorktreeBranchDialog";
 
 const EMPTY_BRANCHES: ReadonlyArray<GitBranch> = [];
 const EMPTY_RECENT: ReadonlyArray<string> = [];
@@ -91,29 +93,30 @@ interface CheckoutInput {
 	readonly kind?: GitBranch["kind"] | undefined;
 }
 
-/** Sessions working in `directory` on `branch`: they would see its branch change under them. */
-function useSessionsOnBranch(directory: string, branch: string | undefined): number {
+/** Work sessions working in `directory` on `branch`: they would see its branch change under them. */
+function useWorkSessionsOnBranch(directory: string, branch: string | undefined): number {
 	return (
-		useDomainState(WorkSessions, (state: DomainState<typeof WorkSessions>) =>
+		useDomainObjectState(WorkSessions, (state: DomainObjectState<typeof WorkSessions>) =>
 			branch === undefined
 				? 0
-				: state.sessions.filter(
-						(session) => session.directory === directory && session.worktreeBranch === branch,
+				: state.workSessions.filter(
+						(workSession) => workSession.directory === directory && workSession.branch === branch,
 					).length,
 		) ?? 0
 	);
 }
 
 /**
- * The launcher's branch picker (`kilo.workbench/launcher-option`, slot
- * `branch`) for the folder a new session would work in: the checkout in
+ * The New Session page's branch picker
+ * (`kilo.work-sessions/new-work-session-option`, slot `branch`) for the folder
+ * a new work session would work in: the checkout in
  * Local mode, or the existing worktree picked. Grouped and searchable like
  * GitHub Desktop (`BranchPickerPopover`); this component owns the checkout
  * side: an optimistic trigger label while switching, the error toast, and
  * the create-and-checkout dialog (optionally based on the default branch
  * when it differs from the current one). Picking a branch already checked
- * out in another worktree of the repository moves the launcher there
- * instead of checking it out; switching a worktree other sessions work on
+ * out in another worktree of the repository moves the New Session page there
+ * instead of checking it out; switching a worktree other work sessions work on
  * asks first.
  */
 export function GitBranchSelector({
@@ -122,8 +125,8 @@ export function GitBranchSelector({
 	onIsolationChange,
 	onChanged,
 	disabled,
-}: LauncherOptionProps) {
-	const repository = useDomain(Repository);
+}: NewWorkSessionOptionProps) {
+	const repository = useDomainObject(Repository);
 	const queries = useQueryClient();
 	const typeQuery = useQuery(repositoryTypeQuery(repository, workingDirectory));
 	const isRegular = typeQuery.data?.kind === "regular";
@@ -139,7 +142,7 @@ export function GitBranchSelector({
 	const [pending, setPending] = useState<{ directory: string; branch: string } | undefined>();
 	const [pendingConfirmBranch, setPendingConfirmBranch] = useState<string | undefined>();
 	const targetsWorktree = workingDirectory !== repositoryDirectory;
-	const sessionCount = useSessionsOnBranch(
+	const sessionCount = useWorkSessionsOnBranch(
 		workingDirectory,
 		targetsWorktree ? (data?.currentBranch ?? undefined) : undefined,
 	);

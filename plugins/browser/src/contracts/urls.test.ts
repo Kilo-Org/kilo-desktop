@@ -86,17 +86,16 @@ describe("local file URLs", () => {
 
 describe("pane URLs and objects", () => {
 	it("restores the page a pane showed, else the object it was opened for", () => {
-		expect(paneUrl({ [BROWSER_PANE_METADATA.url]: "https://a.example/" })).toBe(
+		const opened = (type: string, id: string) => ({ object: { type, id }, metadata: {} });
+		expect(paneUrl({ metadata: { [BROWSER_PANE_METADATA.url]: "https://a.example/" } })).toBe(
 			"https://a.example/",
 		);
-		expect(paneUrl({ objectType: URL_OBJECT_TYPE, objectId: "https://b.example/" })).toBe(
-			"https://b.example/",
-		);
-		expect(paneUrl({ objectType: FILE_OBJECT_TYPE, objectId: "/work/a b.html" })).toBe(
+		expect(paneUrl(opened(URL_OBJECT_TYPE, "https://b.example/"))).toBe("https://b.example/");
+		expect(paneUrl(opened(FILE_OBJECT_TYPE, "/work/a b.html"))).toBe(
 			"kilo-file://local/work/a%20b.html",
 		);
-		expect(paneUrl({ objectType: "kilo.other/thing", objectId: "x" })).toBe("");
-		expect(paneUrl({})).toBe("");
+		expect(paneUrl(opened("kilo.other/thing", "x"))).toBe("");
+		expect(paneUrl({ metadata: {} })).toBe("");
 	});
 
 	it("knows a page as a workspace file or a URL", () => {

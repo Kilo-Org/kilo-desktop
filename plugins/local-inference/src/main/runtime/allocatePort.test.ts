@@ -9,7 +9,7 @@ vi.mock("node:net", async (importOriginal) => {
 	return { ...actual, createServer };
 });
 
-import { allocateLoopbackPort } from "./allocatePort.js";
+import { allocateLoopbackPort } from "./allocatePort";
 
 type ProbeAddress = { address: string; family: string; port: number } | string | null;
 

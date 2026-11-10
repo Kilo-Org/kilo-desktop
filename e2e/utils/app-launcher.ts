@@ -7,6 +7,8 @@ import { packagedExecutable, repoRoot } from "./paths.js";
 
 /** Set by global setup; the local Kilo Gateway stub every packaged launch talks to. */
 export const KILO_GATEWAY_STUB_URL_ENV = "KILO_E2E_GATEWAY_URL";
+/** Opt-in for specs that walk first-run onboarding on a fresh profile. */
+export const SHOW_ONBOARDING_ENV = "KILO_E2E_SHOW_ONBOARDING";
 
 /** Per-profile XDG base directories, so each e2e app owns its Kilo CLI state. */
 export function profileXdgDirectories(userDataDir: string): {
@@ -32,7 +34,9 @@ export function profileKiloLogDirectory(userDataDir: string): string {
 /**
  * Isolated `--user-data-dir` profiles still share the host keychain and would
  * otherwise show first-run onboarding / conda bootstrap. Every packaged e2e
- * launch — including restart fixtures — must use this env.
+ * launch — including restart fixtures — must use this env. A spec that walks
+ * first-run onboarding itself (terms, sign-in) launches with
+ * `SHOW_ONBOARDING_ENV=1`, which leaves `KILO_SKIP_ONBOARDING` off.
  *
  * The packaged app forks git processes that inherit this env, so the git
  * config paths are pinned into the worker-unique `userDataDir` and SSH is
@@ -83,7 +87,7 @@ export function packagedAppLaunchEnv(
 		...Object.fromEntries(
 			Object.entries(env).filter((entry): entry is [string, string] => entry[1] !== undefined),
 		),
-		KILO_SKIP_ONBOARDING: "1",
+		KILO_SKIP_ONBOARDING: env[SHOW_ONBOARDING_ENV] === "1" ? "0" : "1",
 		ANACONDA_SKIP_KEYRING: "1",
 		GIT_CONFIG_GLOBAL: path.join(userDataDir, ".gitconfig"),
 		GIT_CONFIG_SYSTEM: path.join(userDataDir, ".gitconfig-system"),

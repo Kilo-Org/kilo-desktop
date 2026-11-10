@@ -13,7 +13,7 @@ import {
 	runtimedRestartDelayMs,
 	type AuthenticatePeer,
 	type RuntimedDaemonManagerOptions,
-} from "./RuntimedDaemonManager.js";
+} from "./RuntimedDaemonManager";
 
 vi.mock("node:child_process", () => ({ spawn: vi.fn() }));
 

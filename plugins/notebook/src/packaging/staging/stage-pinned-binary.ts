@@ -12,7 +12,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 
-import { NTERACT_RELEASE, type NativeReleaseArtifact } from "../artifacts.js";
+import { NTERACT_RELEASE, type NativeReleaseArtifact } from "../artifacts";
 
 const DOWNLOAD_TIMEOUT_MS = 120_000;
 const STAGING_MANIFEST = "staged.json";

@@ -3,14 +3,19 @@
 	"id": "kilo.shell",
 	"displayName": "Shell",
 	"version": "1.0.0",
-	"description": "The window frame, router, settings host, About and Account pages, command palette, status bar and appearance.",
+	"description": "The window, settings, onboarding, account, AI providers, updates and About: everything the user sees of kilo.core.",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
 	"requires": {
-		"kernel/windows": "optional",
-		"kernel/app-menu": "optional",
-		"kernel/os": "optional"
+		"kilo.core/account": "optional",
+		"kilo.core/terms": "optional",
+		"kilo.core/models": "optional",
+		"kilo.core/external-apps": "optional",
+		"kilo.core/work-style": "optional",
+		"kilo.core/server": "optional"
 	},
 	"permissions": {
-		"host": ["appearance", "windows", "app-menu", "os"]
+		"host": ["appearance", "windows", "app-menu", "os", "updater", "clipboard", "data-collection"]
 	},
 	"extensionPoints": [
 		{
@@ -24,86 +29,101 @@
 			"description": "The left sidebar's body."
 		},
 		{
-			"id": "left-sidebar-account",
-			"kind": "exclusive",
-			"description": "The account entry at the foot of the left sidebar."
-		},
-		{
-			"id": "left-sidebar-notice",
+			"id": "sidebar-notice",
 			"kind": "additive",
-			"description": "A notice above the account entry in the left sidebar."
-		},
-		{
-			"id": "settings-category",
-			"kind": "additive",
-			"description": "A heading in the Settings sidebar that sections sit under."
-		},
-		{
-			"id": "settings-section",
-			"kind": "additive",
-			"description": "A section of the Settings page."
-		},
-		{
-			"id": "about-section",
-			"kind": "additive",
-			"description": "A block of Settings \u2192 About, such as the version and updates."
-		},
-		{
-			"id": "support-row",
-			"kind": "additive",
-			"description": "A row in About \u2192 Support with information to include when contacting support."
-		},
-		{
-			"id": "account-panel",
-			"kind": "additive",
-			"description": "A panel in Settings \u2192 Account for an account the app can sign in to."
+			"description": "Something to act on, at the foot of the left sidebar."
 		},
 		{
 			"id": "status-bar-item",
 			"kind": "additive",
-			"description": "An item in the window's status bar: a view, a button or a popover."
+			"description": "Ambient status in the window's status bar: a view, an action or a popover."
 		},
 		{
-			"id": "deep-link",
+			"id": "right-sidebar-panel",
 			"kind": "additive",
-			"description": "Routes an app URL host to a page."
+			"description": "A panel in the right sidebar."
+		},
+		{
+			"id": "dialog",
+			"kind": "additive",
+			"description": "An app-wide dialog opened by command."
+		},
+		{
+			"id": "settings-category",
+			"kind": "additive",
+			"description": "A heading in the Settings sidebar."
+		},
+		{
+			"id": "settings-section",
+			"kind": "additive",
+			"description": "A Settings page."
+		},
+		{
+			"id": "ai-provider-panel",
+			"kind": "additive",
+			"description": "An AI provider's panel in Settings → AI Providers."
+		},
+		{
+			"id": "account-panel",
+			"kind": "additive",
+			"description": "An account in Settings → Account."
+		},
+		{
+			"id": "about-section",
+			"kind": "additive",
+			"description": "A block of Settings → About."
+		},
+		{
+			"id": "support-row",
+			"kind": "additive",
+			"description": "A row in About → Support."
 		},
 		{
 			"id": "onboarding-step",
 			"kind": "additive",
-			"description": "A step of first-run onboarding."
-		},
-		{
-			"id": "overlay",
-			"kind": "additive",
-			"description": "Always-mounted UI such as app-wide dialogs."
+			"description": "A first-run onboarding step."
 		},
 		{
 			"id": "menu-item",
 			"kind": "additive",
 			"description": "A command in the native app menu."
+		},
+		{
+			"id": "deep-link",
+			"kind": "additive",
+			"description": "An app URL host routed to a page."
 		}
 	],
-	"domains": [
+	"domainObjects": [
 		{
 			"id": "appearance",
 			"home": "main",
-			"description": "Appearance preferences shared by every window."
+			"description": "Saved appearance preferences."
 		},
 		{
 			"id": "theme",
 			"home": "renderer",
-			"description": "The effective theme in a window."
+			"description": "The effective theme in this window."
 		},
 		{
 			"id": "navigation",
-			"home": "renderer",
-			"description": "Where the main window is, and how to move it."
+			"home": "main",
+			"description": "Where each window is, and requests to move one."
+		},
+		{
+			"id": "notifications",
+			"home": "main",
+			"description": "Toasts and in-app notices."
 		},
 		{
 			"id": "onboarding",
 			"home": "main",
-			"description": "Whether first-run onboarding was finished or skipped."
+			"description": "Whether onboarding was finished or skipped."
+		},
+		{
+			"id": "legal",
+			"home": "main",
+			"description": "The legal documents shipped with the app, shown in About → Legal."
 		}
 	],
 	"contributes": {
@@ -176,6 +196,45 @@
 					"when": {
 						"none": ["kernel/secondaryWindow"]
 					}
+				},
+				{
+					"id": "restart-server",
+					"title": "Restart Kilo",
+					"category": "Kilo",
+					"order": 10
+				}
+			],
+			"kernel/flag": [
+				{
+					"id": "update-track-switcher",
+					"description": "Lets people switch between the stable and preview update tracks.",
+					"default": false
+				}
+			],
+			"kernel/telemetry-event": [
+				{
+					"id": "page-visit",
+					"name": "Page Visit"
+				},
+				{
+					"id": "onboarding-shown",
+					"name": "Onboarding Shown"
+				},
+				{
+					"id": "onboarding-completed",
+					"name": "Onboarding Completed"
+				},
+				{
+					"id": "onboarding-skipped",
+					"name": "Onboarding Skipped"
+				},
+				{
+					"id": "work-style-shown",
+					"name": "Work Style Onboarding Shown"
+				},
+				{
+					"id": "work-style-selected",
+					"name": "Work Style Selected"
 				}
 			],
 			"kilo.shell/settings-category": [
@@ -217,15 +276,90 @@
 					"title": "Shortcuts",
 					"description": "See, change, or turn off the app's keyboard shortcuts.",
 					"priority": 65
+				},
+				{
+					"id": "privacy",
+					"title": "Privacy",
+					"description": "Control usage analytics and crash reporting on this device.",
+					"priority": 70,
+					"when": {
+						"all": ["kernel/desktop"]
+					}
+				},
+				{
+					"id": "ai-providers",
+					"title": "AI Providers",
+					"description": "Choose where your models come from.",
+					"category": "kilo.shell/ai",
+					"priority": 90
+				},
+				{
+					"id": "external-ai-apps",
+					"title": "External AI apps",
+					"description": "Let apps like Cursor and Claude Code use Kilo Desktop's tools.",
+					"category": "kilo.shell/ai",
+					"priority": 70,
+					"when": {
+						"all": ["kernel/flag:external-api-apps-settings"]
+					}
+				}
+			],
+			"kilo.shell/account-panel": [
+				{
+					"id": "kilo",
+					"priority": 100
+				}
+			],
+			"kilo.shell/ai-provider-panel": [
+				{
+					"id": "kilo-gateway",
+					"aiProviderId": "kilo"
 				}
 			],
 			"kilo.shell/about-section": [
 				{
+					"id": "version",
+					"priority": 300
+				},
+				{
 					"id": "support",
 					"priority": 200
+				},
+				{
+					"id": "legal",
+					"priority": 100
+				}
+			],
+			"kilo.shell/support-row": [
+				{
+					"id": "kilo-config"
+				}
+			],
+			"kilo.shell/sidebar-notice": [
+				{
+					"id": "update-ready"
 				}
 			],
 			"kilo.shell/onboarding-step": [
+				{
+					"id": "welcome",
+					"label": "Welcome",
+					"layout": "splash",
+					"priority": 1000,
+					"required": {
+						"none": ["kilo.core/termsAccepted"]
+					}
+				},
+				{
+					"id": "sign-in",
+					"label": "Sign in",
+					"priority": 900
+				},
+				{
+					"id": "work-style",
+					"label": "Work style",
+					"priority": 800
+				},
 				{
 					"id": "features",
 					"label": "Features",
@@ -237,7 +371,7 @@
 					"id": "settings",
 					"command": "kilo.shell/open-settings",
 					"menu": "app",
-					"label": "Settings\u2026"
+					"label": "Settings…"
 				},
 				{
 					"id": "command-palette",

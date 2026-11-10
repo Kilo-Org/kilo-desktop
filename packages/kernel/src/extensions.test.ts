@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
 import {
-	defineDecisionPoint,
+	defineDecisionExtensionPoint,
 	defineExtensionPoint,
 	implementation,
 	type DecisionAnswer,
@@ -35,7 +35,7 @@ const Root = defineExtensionPoint({
 	implementation: implementation<() => string>("main"),
 });
 
-const Quit = defineDecisionPoint({
+const Quit = defineDecisionExtensionPoint({
 	id: "acme.host/quit",
 	process: "main",
 	input: z.object({ reason: z.string() }),
@@ -43,7 +43,7 @@ const Quit = defineDecisionPoint({
 	timeoutMs: 50,
 });
 
-const Approve = defineDecisionPoint({
+const Approve = defineDecisionExtensionPoint({
 	id: "acme.host/approve",
 	process: "main",
 	input: z.object({}),

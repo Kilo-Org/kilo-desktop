@@ -2,9 +2,21 @@ import { expect, vi } from "vitest";
 import { page } from "vitest/browser";
 import { z } from "zod";
 
-import { defineDomain, defineExtensionPoint, type PluginSdk } from "@kilo-desktop/kernel";
+import {
+	defineDomainObject,
+	defineExtensionPoint,
+	defineObjectType,
+	KernelFlagSource,
+	KernelIdentityProvider,
+	KernelLinkedAccount,
+	type AccountInput,
+	type AccountSource,
+	type FlagSource,
+	type FlagValue,
+} from "@kilo-desktop/kernel";
 import { testManifest } from "@kilo-desktop/kernel/testing";
 import {
+	contributor,
 	renderShell,
 	type GuestPlugin,
 	type ShellHostOptions,
@@ -14,35 +26,75 @@ import manifest from "../../plugin.json";
 import { DEVELOPER_DEFINITIONS, DEVELOPER_FLAG } from "../contracts";
 import { developerWebEntry } from "../web";
 
+export { contributor };
+
 export const developer: GuestPlugin = {
 	manifest,
 	definitions: DEVELOPER_DEFINITIONS,
 	web: developerWebEntry,
 };
 
-/** A stand-in for kilo.flags with the developer flag on or off. */
-export function developerFlag(on: boolean): GuestPlugin {
-	return {
-		manifest: testManifest("kilo.flags", { contextKeys: [{ id: "flag:*", scope: "global" }] }),
+/** Forces the developer flag on, as the e2e build's flag overrides do. */
+export const DEVELOPER_ON: ShellHostOptions = { flags: { [DEVELOPER_FLAG]: true } };
+
+/**
+ * A flag source in main whose values a test sets, as LaunchDarkly would
+ * answer them for the identity.
+ */
+export function flagSource(initial: Record<string, FlagValue> = {}) {
+	let values: Record<string, FlagValue> = initial;
+	const listeners = new Set<() => void>();
+	const source: FlagSource = {
+		values: () => values,
+		subscribe: (listener) => {
+			listeners.add(listener);
+			return () => listeners.delete(listener);
+		},
+		identify: () => {},
+	};
+	const plugin: GuestPlugin = {
+		manifest: testManifest("acme.flags", {
+			contributes: { extensions: { "kernel/flag-source": [{ id: "source" }] } },
+		}),
 		main: {
 			activate: (sdk) => {
-				sdk.context.set(`flag:${DEVELOPER_FLAG}`, on);
+				sdk.extensions.implement(KernelFlagSource, "source", source);
 			},
+		},
+	};
+	return {
+		plugin,
+		set(next: Record<string, FlagValue>) {
+			values = next;
+			for (const listener of listeners) listener();
 		},
 	};
 }
 
-/** A renderer plugin that contributes to points through its manifest. */
-export function contributor(
-	id: string,
-	extensions: Record<string, unknown[]>,
-	activate: (sdk: PluginSdk) => void = () => {},
-	extra: Record<string, unknown> = {},
-): GuestPlugin {
+/** Plugins in main that describe the primary account and a linked one. */
+export function accounts(primary: AccountInput | null, linked?: AccountInput) {
+	const source = (account: AccountInput | null): AccountSource => ({
+		current: () => account,
+		subscribe: () => () => {},
+	});
 	return {
-		manifest: testManifest(id, { contributes: { extensions }, ...extra }),
-		web: { activate },
-	};
+		manifest: testManifest("acme.accounts", {
+			contributes: {
+				extensions: {
+					"kernel/identity-provider": [{ id: "primary" }],
+					...(linked ? { "kernel/linked-account": [{ id: "linked" }] } : {}),
+				},
+			},
+		}),
+		main: {
+			activate: (sdk) => {
+				sdk.extensions.implement(KernelIdentityProvider, "primary", source(primary));
+				if (linked) {
+					sdk.extensions.implement(KernelLinkedAccount, "linked", source(linked));
+				}
+			},
+		},
+	} satisfies GuestPlugin;
 }
 
 export const ToolPanel = defineExtensionPoint({
@@ -51,7 +103,7 @@ export const ToolPanel = defineExtensionPoint({
 	description: "Panels for agent tools.",
 });
 
-export const ServerStatus = defineDomain({
+export const ServerStatus = defineDomainObject({
 	id: "acme.server/status",
 	home: "renderer",
 	description: "Whether the agent server is up.",
@@ -59,7 +111,18 @@ export const ServerStatus = defineDomain({
 	methods: {},
 });
 
-/** A plugin that offers a point and a domain, contributes to several, runs a service and uses permissions. */
+export const Job = defineObjectType({ id: "acme.server/job", description: "One agent job." });
+
+export const Jobs = defineDomainObject({
+	id: "acme.server/jobs",
+	home: "main",
+	description: "The agent's jobs.",
+	state: z.object({ jobs: z.record(z.string(), z.object({ title: z.string() })) }),
+	lookup: (state, id) => state.jobs[id],
+	objectType: Job,
+});
+
+/** A plugin that offers a point, domain objects and an object type, contributes to several, runs a service and uses permissions. */
 export function agentServer(): GuestPlugin {
 	return {
 		...contributor(
@@ -75,6 +138,7 @@ export function agentServer(): GuestPlugin {
 						restart: { policy: "never" },
 					},
 				],
+				"kernel/flag": [{ id: "agent-beta", description: "The agent's beta features." }],
 				"kilo.shell/settings-section": [
 					{ id: "models", title: "Models" },
 					{ id: "tools", title: "Tools" },
@@ -86,16 +150,24 @@ export function agentServer(): GuestPlugin {
 			{
 				description: "Runs the agent server.",
 				extensionPoints: [{ id: "tool-panel", kind: "additive" }],
-				domains: [{ id: "status", home: "renderer" }],
+				domainObjects: [
+					{ id: "status", home: "renderer" },
+					{ id: "jobs", home: "main", objectType: "acme.server/job" },
+				],
+				objectTypes: [{ id: "job", description: "One agent job." }],
 				permissions: { host: ["os"] },
-				contextKeys: [{ id: "busy" }],
+				contextKeys: [{ id: "busy", description: "True while the agent works." }],
 				requires: {
 					"kilo.shell/navigation": "optional",
 					"kilo.shell/settings-section": "required",
 				},
 			},
 		),
-		definitions: { extensionPoints: [ToolPanel], domains: [ServerStatus] },
+		definitions: {
+			extensionPoints: [ToolPanel],
+			domainObjects: [ServerStatus, Jobs],
+			objectTypes: [Job],
+		},
 	};
 }
 
@@ -104,7 +176,10 @@ export async function openDiagnostics(
 	options: ShellHostOptions = {},
 ) {
 	await page.viewport(1280, 800);
-	const host = await renderShell([developer, developerFlag(true), ...plugins], options);
+	const host = await renderShell([developer, ...plugins], {
+		...options,
+		flags: { [DEVELOPER_FLAG]: true, ...options.flags },
+	});
 	window.location.hash = "#/settings/diagnostics";
 	await expect.element(page.getByTestId("diagnostics-settings")).toBeVisible();
 	return host;

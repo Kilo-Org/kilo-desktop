@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 
 import si from "systeminformation";
 
-import type { LocalInferenceUsage } from "../../contracts/schemas.js";
+import type { LocalInferenceUsage } from "../../contracts";
 
 interface UsageSamples {
 	readonly systemCpuPercent: number;

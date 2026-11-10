@@ -92,7 +92,7 @@ export function useMentionAdapter(
 	icons: ReadonlyMap<string, IconComponent>;
 } {
 	const [version, setVersion] = useState(0);
-	const contextKey = `${context.sessionId}\n${context.directory}\n${context.workspaceFolders.map((folder) => folder.path).join("\n")}`;
+	const contextKey = `${context.workSessionId}\n${context.directory}\n${context.workspaceFolders.map((folder) => folder.path).join("\n")}`;
 	const latest = useRef(context);
 	latest.current = context;
 	const state = useRef<SearchState>({

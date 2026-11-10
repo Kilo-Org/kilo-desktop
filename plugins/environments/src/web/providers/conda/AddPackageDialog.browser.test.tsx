@@ -11,9 +11,9 @@ import {
 	type CondaPackagesPreviewResult,
 	type CondaRepodataFindInput,
 	type CondaRepodataPackage,
-} from "../../../contracts/providers/conda.js";
-import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host.js";
-import { AddPackageDialog } from "./AddPackageDialog.js";
+} from "../../../contracts/providers/conda";
+import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host";
+import { AddPackageDialog } from "./AddPackageDialog";
 
 const ENV: CondaEnv = { name: "dev", prefix: "/opt/anaconda3/envs/dev" };
 

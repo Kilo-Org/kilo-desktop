@@ -1,12 +1,12 @@
 import { useCallback } from "react";
 
-import { useDomain, useDomainState, useKernel } from "@kilo-desktop/kernel/web";
+import { KernelTelemetry } from "@kilo-desktop/kernel";
+import { useDomainObject, useDomainObjectState, useKernel } from "@kilo-desktop/kernel/web";
 import { Navigation } from "@kilo-desktop/plugin-shell/contracts";
-import { Telemetry } from "@kilo-desktop/plugin-telemetry/contracts";
 
-/** Sends a declared telemetry event; never fails the caller. */
+/** Sends a declared telemetry event (a `kernel/telemetry-event` id); never fails the caller. */
 export function useTrack(): (event: string, data?: Record<string, unknown>) => void {
-	const telemetry = useDomain(Telemetry);
+	const telemetry = useDomainObject(KernelTelemetry);
 	return useCallback(
 		(event, data = {}) => void telemetry?.methods.track({ event, data }).catch(() => undefined),
 		[telemetry],
@@ -22,17 +22,21 @@ export function useSelectedEnvironment(): readonly [
 	string | undefined,
 	(prefix: string | undefined) => void,
 ] {
-	const navigation = useDomain(Navigation);
-	const selected = useDomainState(Navigation, (state) => state.search["env"] || undefined);
+	const windowId = useKernel().window.id;
+	const navigation = useDomainObject(Navigation);
+	const selected = useDomainObjectState(
+		Navigation,
+		(state) => state.windows[windowId]?.search["env"] || undefined,
+	);
 	const select = useCallback(
 		(prefix: string | undefined) => {
-			if (!navigation) return;
-			const path = navigation.getState().path;
+			const location = navigation?.getState().windows[windowId];
+			if (!navigation || !location) return;
 			void navigation.methods
-				.navigate({ path, search: prefix ? { env: prefix } : {} })
+				.navigate({ path: location.path, search: prefix ? { env: prefix } : {} })
 				.catch(() => undefined);
 		},
-		[navigation],
+		[navigation, windowId],
 	);
 	return [selected, select] as const;
 }

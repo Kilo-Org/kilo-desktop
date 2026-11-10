@@ -52,7 +52,7 @@ const PUBLISHED_SHAPE = /^@kilo-desktop\/(?:kernel|ui|plugin-[\w-]+)$/;
 /** Workspace libraries that one plugin owns; its deploy carries them. */
 const PRIVATE_LIBRARIES = {
 	"@kilo-desktop/git-client": "@kilo-desktop/plugin-git",
-	"@kilo-desktop/pane-layout": "@kilo-desktop/plugin-workbench",
+	"@kilo-desktop/pane-layout": "@kilo-desktop/plugin-work-sessions",
 	"@opencode-ai/sdk": "@kilo-desktop/plugin-chat",
 };
 const BUILTINS = new Set(builtinModules.flatMap((name) => [name, `node:${name}`]));
@@ -249,10 +249,14 @@ function buildSelection(plugins, examples) {
 	const all = [...plugins, ...examples];
 	if (value === "all") return all;
 	if (!value) {
-		return [
-			...REPRESENTATIVE.map((folder) => all.find(([, dir]) => path.basename(dir) === folder)),
-			...examples,
-		];
+		// Representatives not (yet) bundled are skipped: plugins return one at a
+		// time (docs/plugin-plan-v2.md).
+		const representatives = REPRESENTATIVE.flatMap((folder) => {
+			const found = all.find(([, dir]) => path.basename(dir) === folder);
+			if (!found) console.log(`  ${folder}: not bundled, skipping its build`);
+			return found ? [found] : [];
+		});
+		return [...representatives, ...examples];
 	}
 	return value.split(",").map((folder) => {
 		const found = all.find(([, dir]) => path.basename(dir) === folder);
@@ -263,7 +267,7 @@ function buildSelection(plugins, examples) {
 
 const workspace = workspacePackages();
 const bundled = Object.keys(
-	readJson(path.join(root, "packages/bundled-plugins/package.json")).dependencies,
+	readJson(path.join(root, "packages/bundled-plugins/package.json")).dependencies ?? {},
 )
 	.filter((name) => name.startsWith("@kilo-desktop/plugin-"))
 	.map((name) => [name, workspace.get(name)]);
@@ -278,8 +282,10 @@ console.log(
 	`Checked ${bundled.length} bundled and ${examples.length} example plugins' manifests, exports and imports.`,
 );
 const jobs = Math.max(1, Math.min(4, Math.floor(os.availableParallelism() / 2)));
+const selected = buildSelection(bundled, examples);
+if (selected.length === 0) console.log("No plugins to build outside the workspace.");
 const builds = await inPool(
-	buildSelection(bundled, examples).map(
+	selected.map(
 		([name, dir]) =>
 			() =>
 				buildOutside(name, dir),

@@ -9,19 +9,27 @@ import {
 } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo } from "react";
 
-import { KernelError, type DomainMethods } from "@kilo-desktop/kernel";
-import { useDomain, useDomainState, useKernel } from "@kilo-desktop/kernel/web";
-import { Flags } from "@kilo-desktop/plugin-flags/contracts";
-import { Telemetry } from "@kilo-desktop/plugin-telemetry/contracts";
+import {
+	KernelError,
+	KernelFlags,
+	KernelTelemetry,
+	type DomainObjectHandle,
+	type DomainObjectMethods,
+} from "@kilo-desktop/kernel";
+import { useDomainObject, useDomainObjectState, useKernel } from "@kilo-desktop/kernel/web";
 
 import {
-	LocalInference,
-	type LocalInferenceState,
+	LocalModels,
+	ModelServer,
+	type LocalModelsState,
 	type ModelDownload,
-} from "../contracts/index.js";
-import { upsertDownload } from "./catalog/catalog-downloads.js";
+	type ModelServerState,
+} from "../contracts/index";
+import { upsertDownload } from "./catalog/catalog-downloads";
 
-export type LocalInferenceClient = DomainMethods<typeof LocalInference>;
+/** Both domain objects' methods as one client, so call sites stay origin's (names don't collide). */
+export type LocalInferenceClient = DomainObjectMethods<typeof LocalModels> &
+	DomainObjectMethods<typeof ModelServer>;
 export type LocalInferenceMethod = keyof LocalInferenceClient & string;
 type Input<M extends LocalInferenceMethod> = Parameters<LocalInferenceClient[M]>[0];
 type Output<M extends LocalInferenceMethod> = Awaited<ReturnType<LocalInferenceClient[M]>>;
@@ -32,12 +40,36 @@ export const LOCAL_INFERENCE_QUERY_ROOT = "local-inference";
 const unavailable = () =>
 	Promise.reject(new KernelError("UNAVAILABLE", "The Local Model Server is unavailable."));
 
-const UNAVAILABLE_CLIENT = new Proxy({} as LocalInferenceClient, { get: () => unavailable });
+type AnyHandle = { readonly methods: Record<string, (input: never) => Promise<unknown>> };
 
-/** This window's `kilo.local-inference/local-inference` methods; calls fail while it is absent. */
+function methodsOf(
+	definition: { readonly methods: object },
+	handle: AnyHandle | null,
+): Record<string, (input: never) => Promise<unknown>> {
+	return Object.fromEntries(
+		Object.keys(definition.methods).map((name) => [
+			name,
+			handle ? (input: never) => handle.methods[name]!(input) : unavailable,
+		]),
+	);
+}
+
+/** One client over both domain objects; a method fails while its object is absent. */
+function localInferenceClient(
+	models: DomainObjectHandle<typeof LocalModels> | null,
+	server: DomainObjectHandle<typeof ModelServer> | null,
+): LocalInferenceClient {
+	return {
+		...methodsOf(LocalModels, models as AnyHandle | null),
+		...methodsOf(ModelServer, server as AnyHandle | null),
+	} as unknown as LocalInferenceClient;
+}
+
+/** This window's Local Model Server methods; calls fail while it is absent. */
 export function useLocalInference(): LocalInferenceClient {
-	const domain = useDomain(LocalInference);
-	return useMemo(() => domain?.methods ?? UNAVAILABLE_CLIENT, [domain]);
+	const models = useDomainObject(LocalModels);
+	const server = useDomainObject(ModelServer);
+	return useMemo(() => localInferenceClient(models, server), [models, server]);
 }
 
 export function localInferenceQueryKey<M extends LocalInferenceMethod>(
@@ -89,26 +121,32 @@ export function useLocalInferenceMutation<M extends LocalInferenceMethod>(
 
 /**
  * Keeps the cached status, models and downloads in step with the domain
- * object's state, which main updates as the server, registry and downloads
+ * objects' state, which main updates as the server, registry and downloads
  * change (origin's `status-changed` / `models-changed` /
  * `catalog-download-changed` events); a finished download reads the models
  * and status again, as origin did.
  */
 export function useFollowLocalInference(): void {
-	const domain = useDomain(LocalInference);
+	const models = useDomainObject(LocalModels);
+	const server = useDomainObject(ModelServer);
 	const queryClient = useQueryClient();
 	useEffect(() => {
-		if (!domain) return;
-		let previous: LocalInferenceState | undefined;
-		const follow = (state: LocalInferenceState) => {
-			if (previous?.status !== state.status) {
+		if (!models) return;
+		let previous = models.getState().models;
+		return models.subscribe((state) => {
+			if (previous === state.models) return;
+			previous = state.models;
+			queryClient.setQueryData(localInferenceQueryKey("listModels"), state.models);
+		});
+	}, [models, queryClient]);
+	useEffect(() => {
+		if (!server) return;
+		let previous: ModelServerState = server.getState();
+		return server.subscribe((state) => {
+			if (previous.status !== state.status) {
 				queryClient.setQueryData(localInferenceQueryKey("status"), state.status);
 			}
-			if (previous?.models !== state.models) {
-				queryClient.setQueryData(localInferenceQueryKey("listModels"), state.models);
-			}
-			const before = previous?.downloads ?? [];
-			const changed = state.downloads.filter((download) => !before.includes(download));
+			const changed = state.downloads.filter((download) => !previous.downloads.includes(download));
 			for (const download of changed) {
 				queryClient.setQueryData<ModelDownload[]>(
 					localInferenceQueryKey("listDownloads"),
@@ -119,29 +157,35 @@ export function useFollowLocalInference(): void {
 				invalidate(queryClient, ["listModels", "status"]);
 			}
 			previous = state;
-		};
-		previous = domain.getState();
-		return domain.subscribe(follow);
-	}, [domain, queryClient]);
+		});
+	}, [server, queryClient]);
+}
+
+/** The Local Model Server's installed models; null while they are not provided. */
+export function useLocalModelsState<T>(select: (state: LocalModelsState) => T): T | null {
+	return useDomainObjectState(LocalModels, select) ?? null;
 }
 
 /** The Local Model Server's state; null while it is not provided. */
-export function useLocalInferenceState<T>(select: (state: LocalInferenceState) => T): T | null {
-	return useDomainState(LocalInference, select) ?? null;
+export function useModelServerState<T>(
+	select: (state: ModelServerState) => T,
+	isEqual?: (a: T, b: T) => boolean,
+): T | null {
+	return useDomainObjectState(ModelServer, select, isEqual) ?? null;
 }
 
-/** Sends a declared telemetry event; never fails the caller. */
+/** Sends a declared telemetry event (a `kernel/telemetry-event` id); never fails the caller. */
 export function useTrack(): (event: string, data?: Record<string, unknown>) => void {
-	const telemetry = useDomain(Telemetry);
+	const telemetry = useDomainObject(KernelTelemetry);
 	return useCallback(
 		(event, data = {}) => void telemetry?.methods.track({ event, data }).catch(() => undefined),
 		[telemetry],
 	);
 }
 
-/** A kilo.flags flag; false while flags are not provided. */
+/** A declared `kernel/flag`; false until flags are known. */
 export function useFlag(name: string): boolean {
-	return useDomainState(Flags, (state) => state.flags[name] === true) ?? false;
+	return useDomainObjectState(KernelFlags, (state) => state.flags[name]?.value === true) ?? false;
 }
 
 /** The local path of a picked or dropped file; null where the window can't tell. */

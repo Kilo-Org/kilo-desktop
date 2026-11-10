@@ -12,7 +12,7 @@ import {
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { CircleAlertIcon, RefreshCwIcon } from "lucide-react";
 
-import { friendlyEnvironmentsError } from "./environments-error-message.js";
+import { friendlyEnvironmentsError } from "./environments-error-message";
 
 /**
  * How long the conda backend (anaconda-bridge-sidecar) may stay unready

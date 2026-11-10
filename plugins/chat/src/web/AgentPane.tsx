@@ -3,25 +3,27 @@ import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { BotIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FC, type ReactNode } from "react";
 
-import type { DomainState } from "@kilo-desktop/kernel";
-import { useContextKey, useDomain, useDomainState } from "@kilo-desktop/kernel/web";
-import { Conversations, type CreateChatInput } from "@kilo-desktop/plugin-agent/contracts";
-import { flagKey } from "@kilo-desktop/plugin-flags/contracts";
+import { flagKey, type DomainObjectState } from "@kilo-desktop/kernel";
+import { useContextKey, useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
+import { Chats } from "@kilo-desktop/plugin-core/contracts";
 import {
 	Panes,
 	WorkSessions,
+	Workspaces,
 	type Pane,
 	type PaneProps,
-} from "@kilo-desktop/plugin-sessions/contracts";
-import { Workspaces, type WorkspacesState } from "@kilo-desktop/plugin-workspaces/contracts";
-import { FIND_BAR_FEATURE_FLAG, FindScope } from "@kilo-desktop/ui/components/find-bar";
+	type WorkspacesState,
+} from "@kilo-desktop/plugin-work-sessions/contracts";
+import { FindScope } from "@kilo-desktop/ui/components/find-bar";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import {
 	agentPaneChatId,
-	CHAT_ID_METADATA_KEY,
+	chatPaneObject,
+	FIND_BAR_FLAG,
 	PROMPT_QUEUE_EDITING_FLAG,
 	type ComposerContext,
+	type PromptPart as MentionPart,
 } from "../contracts";
 import { ComposerContextContext, useComposerContext } from "./composer/composer-actions";
 import { resolveMentionParts, type MentionSource } from "./composer/mention-codec";
@@ -53,15 +55,13 @@ export interface AgentPaneServices {
 }
 
 interface ChatContext {
-	readonly sessionId: string;
+	readonly workSessionId: string;
 	readonly paneId: string;
-	readonly paneMetadata: Readonly<Record<string, string>>;
 	readonly workspaceId: string | null;
 	readonly directory: string | null;
-	readonly worktreeBranch: string | null;
 	readonly folders: readonly PromptFolder[];
-	readonly sessionDirectory: string | null;
-	readonly sessionChatIds: readonly string[];
+	readonly workSessionDirectory: string | null;
+	readonly workSessionChatIds: readonly string[];
 }
 
 /** Says why a draft's first send failed; the message goes back to the composer. */
@@ -78,23 +78,23 @@ function reportStartFailure(error: unknown): void {
 const NO_PANES: readonly Pane[] = [];
 
 /**
- * The agent pane, bound to its window's services: a session's chat (the one
- * named in the pane, else for the session's first agent pane the session's
- * first chat) or a draft whose first send creates a chat in the session's
- * folder and records it in the pane. A session can hold several, each its
- * own chat.
+ * The agent pane, bound to its window's services: a work session's chat (the
+ * pane's `object`, else for the work session's first agent pane its first
+ * chat) or a draft whose first send creates a chat in the work session
+ * (`WorkSessions.createChat`) and makes it the pane's `object`. A work
+ * session can hold several, each its own chat.
  */
 export function createAgentPane(services: AgentPaneServices): FC<PaneProps> {
-	return function AgentPane({ sessionId, pane, workspaceId, directory }) {
-		const session = useDomainState(
+	return function AgentPane({ workSessionId, pane, workspaceId, directory }) {
+		const workSession = useDomainObjectState(
 			WorkSessions,
 			useCallback(
-				(state: DomainState<typeof WorkSessions>) =>
-					state.sessions.find((candidate) => candidate.id === sessionId),
-				[sessionId],
+				(state: DomainObjectState<typeof WorkSessions>) =>
+					state.workSessions.find((candidate) => candidate.id === workSessionId),
+				[workSessionId],
 			),
 		);
-		const workspace = useDomainState(
+		const workspace = useDomainObjectState(
 			Workspaces,
 			useCallback(
 				(state: WorkspacesState) =>
@@ -102,39 +102,39 @@ export function createAgentPane(services: AgentPaneServices): FC<PaneProps> {
 				[workspaceId],
 			),
 		);
-		const sessionPanes = useDomainState(
+		const workSessionPanes = useDomainObjectState(
 			Panes,
 			useCallback(
-				(state: DomainState<typeof Panes>) => state.bySession[sessionId]?.panes ?? NO_PANES,
-				[sessionId],
+				(state: DomainObjectState<typeof Panes>) =>
+					state.byWorkSession[workSessionId]?.panes ?? NO_PANES,
+				[workSessionId],
 			),
 		);
-		const conversations = useDomain(Conversations);
-		const panes = useDomain(Panes);
-		const findEnabled = useContextKey(flagKey(FIND_BAR_FEATURE_FLAG));
+		const chats = useDomainObject(Chats);
+		const workSessions = useDomainObject(WorkSessions);
+		const panes = useDomainObject(Panes);
+		const findEnabled = useContextKey(flagKey(FIND_BAR_FLAG));
 		const queueEditing = useContextKey(flagKey(PROMPT_QUEUE_EDITING_FLAG));
 		const rootRef = useRef<HTMLDivElement>(null);
 
-		const chatId = agentPaneChatId(pane, session, sessionPanes ?? NO_PANES);
+		const chatId = agentPaneChatId(pane, workSession, workSessionPanes ?? NO_PANES);
 		const context: ChatContext = {
-			sessionId,
+			workSessionId,
 			paneId: pane.id,
-			paneMetadata: pane.metadata,
 			workspaceId,
 			directory,
-			worktreeBranch: session?.worktreeBranch ?? null,
 			folders: sessionFolders(
 				(workspace?.folders ?? []).map(({ path, isPrimary }) => ({ path, isPrimary })),
 				directory,
 			),
-			sessionDirectory: session?.directory ?? null,
-			sessionChatIds: session?.chatIds ?? [],
+			workSessionDirectory: workSession?.directory ?? null,
+			workSessionChatIds: workSession?.chatIds ?? [],
 		};
 		const latest = useRef(context);
 		latest.current = context;
 
 		// The chat the mounted runtime shows. While a draft creates its chat the
-		// session may list it before the pane records it; neither may remount the
+		// work session may list it before the pane records it; neither may remount the
 		// thread that is sending the first message.
 		const shownChatId = useRef(chatId);
 		const creating = useRef(false);
@@ -145,56 +145,53 @@ export function createAgentPane(services: AgentPaneServices): FC<PaneProps> {
 		}
 
 		const createChat = useCallback(async (): Promise<CreatedChat> => {
-			if (!conversations) throw new Error("Kilo chats aren't available.");
+			if (!workSessions) throw new Error("Kilo chats aren't available.");
 			const current = latest.current;
-			const input: CreateChatInput = {
-				sessionId: current.sessionId,
-				...(current.directory ? { directory: current.directory } : {}),
-				...(current.workspaceId ? { workspaceId: current.workspaceId } : {}),
-				workspaceFolders: [...current.folders],
-				...(current.worktreeBranch ? { worktreeBranch: current.worktreeBranch } : {}),
-			};
 			creating.current = true;
-			const chat = await conversations.methods.create(input).finally(() => {
-				creating.current = false;
-			});
+			const chat = await workSessions.methods
+				.createChat({ id: current.workSessionId })
+				.finally(() => {
+					creating.current = false;
+				});
 			shownChatId.current = chat.id;
-			// kilo.sessions attaches the chat to the session on its own (it was
-			// created for it), so a failed record only loses the pane's pointer.
+			// kilo.work-sessions lists the chat in the work session on its own
+			// (it is stamped with it), so a failed update only loses the pane's
+			// pointer.
 			await panes?.methods
 				.update({
-					sessionId: current.sessionId,
+					workSessionId: current.workSessionId,
 					paneId: current.paneId,
-					metadata: { ...current.paneMetadata, [CHAT_ID_METADATA_KEY]: chat.id },
+					object: chatPaneObject(chat.id),
 				})
 				.catch(() => undefined);
 			return { id: chat.id, directory: chat.directory };
-		}, [conversations, panes]);
+		}, [workSessions, panes]);
 
 		const directoryOf = useCallback(
 			(id: string) => {
-				const known = conversations?.getState().chats[id]?.directory;
+				const known = chats?.getState().chats[id]?.directory;
 				if (known) return known;
 				const current = latest.current;
-				return current.sessionChatIds.includes(id) ? current.sessionDirectory : null;
+				return current.workSessionChatIds.includes(id) ? current.workSessionDirectory : null;
 			},
-			[conversations],
+			[chats],
 		);
 
 		const getSystem = useCallback(
 			async (id: string) => {
 				const current = latest.current;
-				const folders = conversations?.getState().chats[id]?.workspaceFolders ?? current.folders;
-				const config = await conversations?.methods
-					.sessionConfig({
-						sessionId: current.sessionId,
+				const folders = chats?.getState().chats[id]?.workspaceFolders ?? current.folders;
+				const config = await chats?.methods
+					.chatConfig({
+						chatId: id,
+						workSessionId: current.workSessionId,
 						workspaceId: current.workspaceId,
 						directory: current.directory,
 					})
 					.catch(() => undefined);
 				return chatSystemPrompt(folders, config?.instructions ?? []);
 			},
-			[conversations],
+			[chats],
 		);
 
 		const folderKey = JSON.stringify(
@@ -202,7 +199,7 @@ export function createAgentPane(services: AgentPaneServices): FC<PaneProps> {
 		);
 		const composer: ComposerContext = useMemo(
 			() => ({
-				sessionId,
+				workSessionId,
 				chatId: mounted.chatId,
 				directory,
 				workspaceId,
@@ -210,7 +207,7 @@ export function createAgentPane(services: AgentPaneServices): FC<PaneProps> {
 					([path, isPrimary]) => ({ path, isPrimary }),
 				),
 			}),
-			[sessionId, mounted.chatId, directory, workspaceId, folderKey],
+			[workSessionId, mounted.chatId, directory, workspaceId, folderKey],
 		);
 
 		return (
@@ -218,7 +215,7 @@ export function createAgentPane(services: AgentPaneServices): FC<PaneProps> {
 				ref={rootRef}
 				className="flex h-full min-h-0 flex-col"
 				data-qa-id="kilo-agent-pane"
-				{...{ [SESSION_ATTRIBUTE]: sessionId }}
+				{...{ [SESSION_ATTRIBUTE]: workSessionId }}
 			>
 				<FindScope
 					enabled={findEnabled}
@@ -276,7 +273,7 @@ export interface ChatThreadProps {
 /**
  * A chat's runtime and the providers its transcript and composer read, around
  * `children`. Registered with the window's composer domain while it belongs
- * to a session.
+ * to a work session.
  */
 export function ChatThread({
 	composer,
@@ -303,7 +300,8 @@ export function ChatThread({
 		prepareModel: (model) => prepareForPrompt(model, modelSources.current),
 		resolveParts: (parts: readonly PromptPart[]) => {
 			const { chatId: _chatId, ...context } = latestComposer.current;
-			return resolveMentionParts(parts, sources.current, context);
+			// Only text parts are rewritten; the rest pass through as they came.
+			return resolveMentionParts(parts as readonly MentionPart[], sources.current, context);
 		},
 	});
 	const aui = useTranscriptAui();
@@ -317,10 +315,10 @@ export function ChatThread({
 					}}
 				>
 					<CommandNames directory={composer.directory} names={commandNames} />
-					{composer.sessionId ? (
+					{composer.workSessionId ? (
 						<ComposerRegistration
 							focus={focus}
-							sessionId={composer.sessionId}
+							workSessionId={composer.workSessionId}
 							paneId={paneId}
 							chatId={options.chatId}
 							focusRoot={focusRoot}
@@ -329,7 +327,7 @@ export function ChatThread({
 					<FollowPlanApproval />
 					<ThreadPaneOpeners>
 						<TranscriptProviders
-							sessionId={composer.sessionId}
+							workSessionId={composer.workSessionId}
 							workspaceFolders={composer.workspaceFolders}
 						>
 							{children}
@@ -361,9 +359,9 @@ function ComposerContextProvider({
 
 /** Pane openers for the chat the thread shows, once a draft has created it too. */
 function ThreadPaneOpeners({ children }: { children: ReactNode }) {
-	const { sessionId, chatId } = useComposerContext();
+	const { workSessionId, chatId } = useComposerContext();
 	return (
-		<ChatPaneOpeners sessionId={sessionId} chatId={chatId}>
+		<ChatPaneOpeners workSessionId={workSessionId} chatId={chatId}>
 			{children}
 		</ChatPaneOpeners>
 	);
@@ -397,7 +395,7 @@ function ComposerRegistration({
 	...props
 }: {
 	focus: ComposerFocus;
-	sessionId: string;
+	workSessionId: string;
 	paneId: string;
 	/** The chat the pane opened, or null for a draft. */
 	chatId: string | null;
@@ -411,12 +409,12 @@ function ComposerRegistration({
 
 function ShownComposerRegistration({
 	focus,
-	sessionId,
+	workSessionId,
 	paneId,
 	focusRoot,
 }: {
 	focus: ComposerFocus;
-	sessionId: string;
+	workSessionId: string;
 	paneId: string;
 	focusRoot: () => void;
 }) {
@@ -430,15 +428,18 @@ function ShownComposerRegistration({
 	useEffect(
 		() =>
 			focus.register({
-				sessionId,
+				workSessionId,
 				paneId,
 				focus: () => latestFocusRoot.current(),
 				getText: () => aui.composer.getState().text,
 				setText: (next) => aui.composer.setText(next),
 			}),
-		[aui, focus, paneId, sessionId],
+		[aui, focus, paneId, workSessionId],
 	);
-	useEffect(() => focus.reportDraft(sessionId, paneId, text), [focus, paneId, sessionId, text]);
-	useAuiEvent("composer.send", () => focus.reportDraft(sessionId, paneId, ""));
+	useEffect(
+		() => focus.reportDraft(workSessionId, paneId, text),
+		[focus, paneId, workSessionId, text],
+	);
+	useAuiEvent("composer.send", () => focus.reportDraft(workSessionId, paneId, ""));
 	return null;
 }

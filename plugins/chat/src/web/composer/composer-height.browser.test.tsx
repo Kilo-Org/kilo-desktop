@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import { agentPane, chatSummary, renderAgentPane } from "../../test/chat-host";
+import { chatPaneObject } from "../../contracts";
+import { agentPane, chatSummary } from "../../test/chat-host";
 import { assistantMessage, FakeKiloServer, userMessage } from "../../test/fake-kilo-server";
+import { renderChat } from "../../test/render-chat";
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -39,9 +41,9 @@ async function showChat() {
 			]),
 		],
 	});
-	const host = await renderAgentPane({
+	const host = await renderChat({
 		server,
-		pane: agentPane({ metadata: { chatId: "ses_a" } }),
+		pane: agentPane({ object: chatPaneObject("ses_a") }),
 		chats: [chatSummary("ses_a")],
 	});
 	await expect.element(page.getByText("Hi there")).toBeVisible();
@@ -75,7 +77,7 @@ describe("the composer's height", () => {
 	});
 
 	it("keeps a new chat's composer at its compact cap, without a resize edge", async () => {
-		await renderAgentPane();
+		await renderChat();
 		await expect.element(input()).toBeVisible();
 
 		expect(getComputedStyle(inputBox()).maxHeight).toBe("128px");

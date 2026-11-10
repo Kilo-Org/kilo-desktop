@@ -2,13 +2,13 @@ import { ReadonlyThreadProvider, useAuiState } from "@assistant-ui/react";
 import { BotIcon, CircleAlertIcon } from "lucide-react";
 import { useCallback, type FC, type ReactNode } from "react";
 
-import type { DomainState } from "@kilo-desktop/kernel";
-import { useDomainState } from "@kilo-desktop/kernel/web";
-import { Conversations } from "@kilo-desktop/plugin-agent/contracts";
-import { WorkSessions, type PaneProps } from "@kilo-desktop/plugin-sessions/contracts";
+import type { DomainObjectState } from "@kilo-desktop/kernel";
+import { useDomainObjectState } from "@kilo-desktop/kernel/web";
+import { Chats } from "@kilo-desktop/plugin-core/contracts";
+import { WorkSessions, type PaneProps } from "@kilo-desktop/plugin-work-sessions/contracts";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 
-import { CHAT_ID_METADATA_KEY, SUBAGENT_CHILD_SESSION_METADATA_KEY } from "../../contracts";
+import { subagentPaneChildChatId, subagentPaneParentChatId } from "../../contracts";
 import { PendingInteractionPrompt } from "../interactions/opencode-composer-interaction";
 import {
 	PendingInteractionsScope,
@@ -28,35 +28,37 @@ export const SubagentIcon: FC<{ className?: string }> = ({ className }) => (
 );
 
 /**
- * The subagent pane: one child chat's transcript, read-only, with the prompt
- * it is waiting on. It runs its own runtime for the chat that delegated it
- * (named in the pane, else kilo.agent's record of the child's parent, else
- * the session's first chat for origin's panes) and finds the child there.
+ * The subagent pane: one child chat's transcript (the chat its `object`
+ * names), read-only, with the prompt it is waiting on. It runs its own
+ * runtime for the chat that delegated it (named in the pane, else kilo.core's
+ * record of the child's parent, else the work session's first chat for
+ * origin's panes) and finds the child there.
  */
 export function createSubagentPane(services: ChatMirrorServices): FC<PaneProps> {
-	return function SubagentPane({ sessionId, pane }) {
-		const childSessionId = pane.metadata[SUBAGENT_CHILD_SESSION_METADATA_KEY];
-		const recordedParent = useDomainState(
-			Conversations,
+	return function SubagentPane({ workSessionId, pane }) {
+		const childChatId = subagentPaneChildChatId(pane) ?? undefined;
+		const recordedParent = useDomainObjectState(
+			Chats,
 			useCallback(
-				(state: DomainState<typeof Conversations>) =>
-					childSessionId ? (state.chats[childSessionId]?.parentId ?? null) : null,
-				[childSessionId],
+				(state: DomainObjectState<typeof Chats>) =>
+					childChatId ? (state.chats[childChatId]?.parentId ?? null) : null,
+				[childChatId],
 			),
 		);
-		const firstChat = useDomainState(
+		const firstChat = useDomainObjectState(
 			WorkSessions,
 			useCallback(
-				(state: DomainState<typeof WorkSessions>) =>
-					state.sessions.find((candidate) => candidate.id === sessionId)?.chatIds[0] ?? null,
-				[sessionId],
+				(state: DomainObjectState<typeof WorkSessions>) =>
+					state.workSessions.find((candidate) => candidate.id === workSessionId)?.chatIds[0] ??
+					null,
+				[workSessionId],
 			),
 		);
-		const parentChatId = pane.metadata[CHAT_ID_METADATA_KEY] ?? recordedParent ?? firstChat ?? null;
-		const workspaceFolders = useDomainState(
-			Conversations,
+		const parentChatId = subagentPaneParentChatId(pane) ?? recordedParent ?? firstChat ?? null;
+		const workspaceFolders = useDomainObjectState(
+			Chats,
 			useCallback(
-				(state: DomainState<typeof Conversations>) =>
+				(state: DomainObjectState<typeof Chats>) =>
 					parentChatId ? state.chats[parentChatId]?.workspaceFolders : undefined,
 				[parentChatId],
 			),
@@ -64,10 +66,13 @@ export function createSubagentPane(services: ChatMirrorServices): FC<PaneProps> 
 
 		return (
 			<div className="bg-pane flex h-full min-h-0 flex-col" data-qa-id="kilo-subagent-pane">
-				<ChatMirror services={services} sessionId={sessionId} chatId={parentChatId}>
-					<ChatPaneOpeners sessionId={sessionId} chatId={childSessionId ?? null}>
-						<TranscriptProviders sessionId={sessionId} workspaceFolders={workspaceFolders ?? []}>
-							<SubagentView childSessionId={childSessionId} />
+				<ChatMirror services={services} workSessionId={workSessionId} chatId={parentChatId}>
+					<ChatPaneOpeners workSessionId={workSessionId} chatId={childChatId ?? null}>
+						<TranscriptProviders
+							workSessionId={workSessionId}
+							workspaceFolders={workspaceFolders ?? []}
+						>
+							<SubagentView childSessionId={childChatId} />
 						</TranscriptProviders>
 					</ChatPaneOpeners>
 				</ChatMirror>

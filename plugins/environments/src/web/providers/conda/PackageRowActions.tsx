@@ -11,9 +11,9 @@ import {
 } from "@kilo-desktop/ui/components/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 
-import type { CondaEnv, CondaPackage } from "../../../contracts/providers/conda.js";
-import { UpdateIcon } from "./package-change-icons.js";
-import { RemovePackageConfirmation } from "./RemovePackageConfirmation.js";
+import type { CondaEnv, CondaPackage } from "../../../contracts/providers/conda";
+import { UpdateIcon } from "./package-change-icons";
+import { RemovePackageConfirmation } from "./RemovePackageConfirmation";
 
 interface PackageRowActionsProps {
 	env: CondaEnv;

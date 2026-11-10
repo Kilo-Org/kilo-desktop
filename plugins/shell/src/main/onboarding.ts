@@ -1,4 +1,9 @@
-import { mainHost, type DomainProvider, type KvStore, type PluginSdk } from "@kilo-desktop/kernel";
+import {
+	mainHost,
+	type DomainObjectProvider,
+	type KvStore,
+	type PluginSdk,
+} from "@kilo-desktop/kernel";
 
 import { ONBOARDING_VERSION, Onboarding, type OnboardingState } from "../contracts";
 
@@ -40,14 +45,17 @@ export function provideOnboarding(sdk: PluginSdk, options: OnboardingOptions = {
 		}
 	}
 
-	const onboarding: DomainProvider<typeof Onboarding> = sdk.domains.provide(Onboarding, {
-		initialState: store?.get("onboarding") ?? SKIPPED,
-		methods: {
-			complete: () => record("completed"),
-			skip: () => record("skipped"),
-			markShown: () => onboarding.emit("shown", {}),
+	const onboarding: DomainObjectProvider<typeof Onboarding> = sdk.domainObjects.provide(
+		Onboarding,
+		{
+			initialState: store?.get("onboarding") ?? SKIPPED,
+			methods: {
+				complete: () => record("completed"),
+				skip: () => record("skipped"),
+				markShown: () => onboarding.emit("shown", {}),
+			},
 		},
-	});
+	);
 
 	function record(outcome: "completed" | "skipped"): void {
 		const next: OnboardingState = { outcome, version: ONBOARDING_VERSION };

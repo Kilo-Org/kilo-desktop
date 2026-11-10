@@ -2,20 +2,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
 import { KernelError } from "@kilo-desktop/kernel";
-import type { WorkSessionIsolation } from "@kilo-desktop/plugin-sessions/contracts";
+import type { WorkSessionIsolation } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import {
 	bootGitHost,
-	LauncherBranchHost,
+	NewWorkSessionBranchHost,
 	resetViewTestDom,
-	session,
+	workSession,
 	WAIT,
-} from "../../test/changes-host.js";
-import type {
-	GitBranchesResult,
-	GitRepositoryType,
-	GitWorktreeEntry,
-} from "../../contracts/index.js";
+} from "../../test/git-host";
+import type { GitBranchesResult, GitRepositoryType, GitWorktreeEntry } from "../../contracts";
 
 type CheckoutInput = {
 	directory: string;
@@ -136,9 +132,9 @@ async function renderSelector(
 	const onChanged = vi.fn();
 	const sessionsOnBranch = options.sessionsOnBranch;
 	const host = await bootGitHost({
-		sessions: sessionsOnBranch
+		workSessions: sessionsOnBranch
 			? Array.from({ length: sessionsOnBranch.count }, (_, index) =>
-					session(`wses_${index}`, { directory, worktreeBranch: sessionsOnBranch.branch }),
+					workSession(`wses_${index}`, { directory, branch: sessionsOnBranch.branch }),
 				)
 			: [],
 		repository: {
@@ -158,7 +154,7 @@ async function renderSelector(
 		},
 	});
 	host.render(
-		<LauncherBranchHost
+		<NewWorkSessionBranchHost
 			host={host}
 			directory={directory}
 			disabled={options.disabled ?? false}
@@ -192,8 +188,8 @@ async function waitForWorktrees(host: { calls: (method: string) => unknown[] }) 
 
 afterEach(resetViewTestDom);
 
-describe("the launcher's branch picker", () => {
-	it("is disabled while the launcher starts a session", async () => {
+describe("the New Session page's branch picker", () => {
+	it("is disabled while the New Session page starts a work session", async () => {
 		await renderSelector({ branches: () => branchesResult }, { disabled: true });
 
 		await expect.element(page.getByTestId("git-branch-selector-trigger")).toHaveTextContent("main");
@@ -394,7 +390,7 @@ describe("the launcher's branch picker", () => {
 		finishCheckout?.();
 	});
 
-	it("checks out a branch when it is selected, then tells the launcher", async () => {
+	it("checks out a branch when it is selected, then tells the New Session page", async () => {
 		const checkout = vi.fn(() => Promise.resolve());
 		const host = await renderSelector({ branches: () => branchesResult, checkout });
 
@@ -710,7 +706,7 @@ describe("the launcher's branch picker", () => {
 			},
 		];
 
-		it("moves the launcher to the worktree that already has the branch, without checking out", async () => {
+		it("moves the New Session page to the worktree that already has the branch, without checking out", async () => {
 			const checkout = vi.fn(() => Promise.resolve());
 			const host = await renderSelector({
 				branches: () => ({
@@ -738,14 +734,14 @@ describe("the launcher's branch picker", () => {
 
 			await vi.waitFor(() => {
 				expect(host.onIsolationChange).toHaveBeenCalledWith({
-					kind: "existing-worktree",
+					kind: "existing-copy",
 					directory: "/workspace/project/.kilo/worktrees/kilo-feature",
 				});
 			}, WAIT);
 			expect(checkout).not.toHaveBeenCalled();
 		});
 
-		it("moves the launcher back to the checkout when the branch is checked out in the workspace checkout", async () => {
+		it("moves the New Session page back to the checkout when the branch is checked out in the workspace checkout", async () => {
 			const checkout = vi.fn(() => Promise.resolve());
 			const host = await renderSelector(
 				{

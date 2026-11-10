@@ -1,25 +1,26 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { render } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import { testPlugin } from "@kilo-desktop/kernel/testing";
-import { useExtensions } from "@kilo-desktop/kernel/web";
+import { definePlugin, type KernelLogger } from "@kilo-desktop/kernel";
+import { createTestKernelPair } from "@kilo-desktop/kernel/testing";
+import { KernelProvider, useExtensions } from "@kilo-desktop/kernel/web";
 import { ModelSource } from "@kilo-desktop/plugin-chat/contracts";
-import { Overlay, SettingsSection } from "@kilo-desktop/plugin-shell/contracts";
+import { SettingsSection, StatusBarItem } from "@kilo-desktop/plugin-shell/contracts";
 import { Toaster } from "@kilo-desktop/ui/components/sonner";
+import { TooltipProvider } from "@kilo-desktop/ui/components/tooltip";
 
-import type { LocalModel } from "../contracts/index.js";
+import manifest from "../../plugin.json";
+import { LOCAL_INFERENCE_DEFINITIONS, type LocalModel } from "../contracts/index";
 import {
 	bootLocalInferenceHost,
 	type LocalInferenceHostOptions,
-} from "../test/local-inference-host.js";
-import { localInferenceWebEntry } from "./index.js";
+} from "../test/local-inference-host";
+import { localInferenceWebEntry, LocalModelServerSettings } from "./index";
+import { LocalModelLoadingToast } from "./LocalModelLoadingToast";
 
 const WAIT = { timeout: 10_000 };
-
-const chatPoints = testPlugin("kilo.chat", {
-	manifest: { extensionPoints: [{ id: "model-source", kind: "additive" }] },
-	definitions: { extensionPoints: [ModelSource] },
-});
 
 const MODEL: LocalModel = {
 	id: "qwen-1",
@@ -34,7 +35,6 @@ function boot(handlers: LocalInferenceHostOptions["handlers"] = {}) {
 	return bootLocalInferenceHost({
 		handlers,
 		webEntry: localInferenceWebEntry,
-		plugins: [chatPoints],
 	});
 }
 
@@ -55,7 +55,7 @@ describe("kilo.local-inference's renderer entry", () => {
 		expect(host.renderer.extensions.list(SettingsSection).map((entry) => entry.key)).toEqual([
 			"kilo.local-inference/local-model-server",
 		]);
-		expect(host.renderer.extensions.list(Overlay).map((entry) => entry.key)).toEqual([
+		expect(host.renderer.extensions.list(StatusBarItem).map((entry) => entry.key)).toEqual([
 			"kilo.local-inference/model-loading",
 		]);
 	});
@@ -66,7 +66,7 @@ describe("kilo.local-inference's renderer entry", () => {
 		const host = await boot({ connect, prepare });
 		const [source] = host.renderer.extensions.list(ModelSource);
 		expect(source!.metadata).toEqual({
-			providerId: "kilo-desktop-model-server",
+			aiProviderId: "kilo-desktop-model-server",
 			title: "Local Model Server",
 			settingsSection: "local-model-server",
 		});
@@ -85,18 +85,12 @@ describe("kilo.local-inference's renderer entry", () => {
 		expect(prepare).toHaveBeenCalledWith({ modelId: "qwen-1" });
 	});
 
-	it("opens its settings section when the agent asks", async () => {
-		const host = await boot();
-
-		await host.requestSettings();
-
-		await vi.waitFor(() => expect(host.settingsOpened).toEqual(["local-model-server"]), WAIT);
-	});
-
 	it("shows a loading toast while a model loads for a prompt", async () => {
 		const host = await boot();
-		const [overlay] = host.renderer.extensions.list(Overlay);
-		const Toast = overlay!.implementation!;
+		const [item] = host.renderer.extensions.list(StatusBarItem);
+		const implementation = item!.implementation!;
+		if (implementation.kind !== "view") throw new Error("Expected a status bar view.");
+		const Toast = implementation.Component;
 		host.render(
 			<>
 				<Toaster />
@@ -113,5 +107,48 @@ describe("kilo.local-inference's renderer entry", () => {
 		await expect.element(page.getByText("Qwen 3", { exact: true })).toBeVisible();
 		await host.update({ status: { status: "ready", loadedModelIds: ["qwen-1"] } });
 		await expect.element(page.getByText("Loading model..."), WAIT).not.toBeInTheDocument();
+	});
+});
+
+describe("kilo.local-inference's renderer entry without other plugins", () => {
+	it("activates and shows its page without errors when kilo.core, kilo.shell and kilo.chat are absent", async () => {
+		const errors: unknown[][] = [];
+		const logger: KernelLogger = {
+			debug: () => undefined,
+			info: () => undefined,
+			warn: () => undefined,
+			error: (...args: unknown[]) => void errors.push(args),
+		};
+		const { main, renderer } = await createTestKernelPair({
+			main: [
+				{
+					manifest,
+					definitions: LOCAL_INFERENCE_DEFINITIONS,
+					entry: definePlugin({ activate: () => {} }),
+				},
+			],
+			renderer: [
+				{ manifest, definitions: LOCAL_INFERENCE_DEFINITIONS, entry: localInferenceWebEntry },
+			],
+			logger,
+		});
+		await main.flush();
+
+		expect(renderer.extensions.list(StatusBarItem)).toEqual([]);
+		render(
+			<KernelProvider kernel={renderer} as={manifest.id}>
+				<QueryClientProvider
+					client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+				>
+					<TooltipProvider>
+						<LocalModelLoadingToast />
+						<LocalModelServerSettings />
+					</TooltipProvider>
+				</QueryClientProvider>
+			</KernelProvider>,
+		);
+		await expect.element(page.getByTestId("local-model-server-page"), WAIT).toBeVisible();
+		await expect.element(page.getByTestId("local-model-server-error"), WAIT).toBeVisible();
+		expect(errors).toEqual([]);
 	});
 });

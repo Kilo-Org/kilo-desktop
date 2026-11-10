@@ -7,33 +7,37 @@ const FOLDERS = [
 	{ path: "/work/docs", isPrimary: false },
 ];
 
+const opened = (type: string, id: string) => ({ object: { type, id }, metadata: {} });
+const metadata = (entries: Record<string, string>) => ({ metadata: entries });
+
 describe("a Files pane's file", () => {
 	it("is the opened object's path, inside the deepest folder holding it", () => {
-		expect(
-			filePaneTarget({ objectType: FILE_OBJECT_TYPE, objectId: "/work/docs/a/b.md" }, FOLDERS),
-		).toEqual({ workspaceDirectory: "/work/docs", relativePath: "a/b.md" });
+		expect(filePaneTarget(opened(FILE_OBJECT_TYPE, "/work/docs/a/b.md"), FOLDERS)).toEqual({
+			workspaceDirectory: "/work/docs",
+			relativePath: "a/b.md",
+		});
 	});
 
-	it("is origin's folder and relative path when the folder is the session's", () => {
+	it("is origin's folder and relative path when the folder is the work session's", () => {
 		expect(
-			filePaneTarget({ workspaceDirectory: "/work/app", relativePath: "src/a.ts" }, FOLDERS),
+			filePaneTarget(
+				metadata({ workspaceDirectory: "/work/app", relativePath: "src/a.ts" }),
+				FOLDERS,
+			),
 		).toEqual({ workspaceDirectory: "/work/app", relativePath: "src/a.ts" });
 		expect(
-			filePaneTarget({ workspaceDirectory: "/elsewhere", relativePath: "src/a.ts" }, FOLDERS),
+			filePaneTarget(
+				metadata({ workspaceDirectory: "/elsewhere", relativePath: "src/a.ts" }),
+				FOLDERS,
+			),
 		).toBeNull();
 	});
 
 	it("is none for an explorer, a folder, another object type or a path outside the folders", () => {
-		expect(filePaneTarget({ workspaceDirectory: "/work/app" }, FOLDERS)).toBeNull();
-		expect(
-			filePaneTarget({ objectType: FILE_OBJECT_TYPE, objectId: "/work/app" }, FOLDERS),
-		).toBeNull();
-		expect(
-			filePaneTarget({ objectType: "kilo.browser/page", objectId: "/work/app/a" }, FOLDERS),
-		).toBeNull();
-		expect(
-			filePaneTarget({ objectType: FILE_OBJECT_TYPE, objectId: "/etc/hosts" }, FOLDERS),
-		).toBeNull();
+		expect(filePaneTarget(metadata({ workspaceDirectory: "/work/app" }), FOLDERS)).toBeNull();
+		expect(filePaneTarget(opened(FILE_OBJECT_TYPE, "/work/app"), FOLDERS)).toBeNull();
+		expect(filePaneTarget(opened("kilo.browser/page", "/work/app/a"), FOLDERS)).toBeNull();
+		expect(filePaneTarget(opened(FILE_OBJECT_TYPE, "/etc/hosts"), FOLDERS)).toBeNull();
 	});
 });
 

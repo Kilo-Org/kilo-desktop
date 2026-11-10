@@ -2,13 +2,13 @@ import path from "node:path";
 
 import { z } from "zod";
 
-import { KernelError, type DomainHandle } from "@kilo-desktop/kernel";
+import { KernelError, type DomainObjectHandle } from "@kilo-desktop/kernel";
 import {
 	defineTool,
 	type ToolCallContext,
 	type ToolImplementation,
-} from "@kilo-desktop/plugin-agent/contracts";
-import type { Panes } from "@kilo-desktop/plugin-sessions/contracts";
+} from "@kilo-desktop/plugin-core/contracts";
+import type { Panes } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import {
 	FILE_OBJECT_TYPE,
@@ -34,16 +34,16 @@ const NO_CALLER_SESSION =
 const PANES_UNAVAILABLE = "Panes are unavailable. The sessions plugin may not be loaded.";
 
 export interface NotebookToolsOptions {
-	readonly panes: () => DomainHandle<typeof Panes> | null;
+	readonly panes: () => DomainObjectHandle<typeof Panes> | null;
 	readonly notebookPanes: NotebookPanes;
 }
 
-function callerSession(context: ToolCallContext): string {
-	if (!context.sessionId) throw new KernelError("PERMISSION_DENIED", NO_CALLER_SESSION);
-	return context.sessionId;
+function callerWorkSession(context: ToolCallContext): string {
+	if (!context.workSessionId) throw new KernelError("PERMISSION_DENIED", NO_CALLER_SESSION);
+	return context.workSessionId;
 }
 
-function requirePanes(options: NotebookToolsOptions): DomainHandle<typeof Panes> {
+function requirePanes(options: NotebookToolsOptions): DomainObjectHandle<typeof Panes> {
 	const panes = options.panes();
 	if (!panes) throw new KernelError("UNAVAILABLE", PANES_UNAVAILABLE);
 	return panes;
@@ -55,7 +55,7 @@ const openFileInput = z.object({
 
 /**
  * Origin's WebMCP notebook tools, in main (Kilo chats only): list the calling
- * chat's session's notebooks, open a new one, or open an `.ipynb` file
+ * chat's work session's notebooks, open a new one, or open an `.ipynb` file
  * (reusing its pane). The ids they return are what nteract's notebook tools
  * take.
  */
@@ -70,9 +70,9 @@ export function notebookTools(options: NotebookToolsOptions): Record<string, Too
 				"the notebook_id for notebooks_diagnose when the user reports a notebook or kernel error.",
 			input: z.object({}),
 			run: (_input, context) => {
-				const sessionId = callerSession(context);
+				const workSessionId = callerWorkSession(context);
 				requirePanes(options);
-				return { sessionId, notebooks: options.notebookPanes.list(sessionId) };
+				return { workSessionId, notebooks: options.notebookPanes.list(workSessionId) };
 			},
 		}),
 		open: defineTool({
@@ -86,13 +86,13 @@ export function notebookTools(options: NotebookToolsOptions): Record<string, Too
 				"notebook_id (the panel iframe may still be finishing its handshake).",
 			input: z.object({}),
 			run: async (_input, context) => {
-				const sessionId = callerSession(context);
+				const workSessionId = callerWorkSession(context);
 				const pane = await requirePanes(options).methods.open({
-					sessionId,
+					workSessionId,
 					kind: NOTEBOOK_PANE_KIND,
 				});
-				const resolved = await options.notebookPanes.resolve(sessionId, pane.id);
-				return { sessionId, notebook_id: notebookIdOf(resolved), title: resolved.title };
+				const resolved = await options.notebookPanes.resolve(workSessionId, pane.id);
+				return { workSessionId, notebook_id: notebookIdOf(resolved), title: resolved.title };
 			},
 		}),
 		open_file: defineTool({
@@ -103,29 +103,29 @@ export function notebookTools(options: NotebookToolsOptions): Record<string, Too
 				"notebooks_* cell, kernel, and save tools. Reopening the same file focuses its existing tab.",
 			input: openFileInput,
 			run: async ({ path: notebookPath }, context) => {
-				const sessionId = callerSession(context);
+				const workSessionId = callerWorkSession(context);
 				const panes = requirePanes(options);
 				if (!path.isAbsolute(notebookPath)) {
 					throw new KernelError("VALIDATION", "Notebook paths must be absolute.");
 				}
-				const existing = options.notebookPanes.findFile(sessionId, notebookPath);
+				const existing = options.notebookPanes.findFile(workSessionId, notebookPath);
 				const pane = existing
 					? await panes.methods.open({
-							sessionId,
+							workSessionId,
 							kind: NOTEBOOK_PANE_KIND,
 							paneId: existing.id,
 							metadata: existing.metadata,
 						})
 					: await panes.methods.openObject({
-							sessionId,
+							workSessionId,
 							ref: { type: FILE_OBJECT_TYPE, id: notebookPath },
 						});
 				if (!pane || pane.kind !== NOTEBOOK_PANE_KIND) {
 					throw new KernelError("UNAVAILABLE", "Notebook files can't be opened in a pane here.");
 				}
-				const resolved = await options.notebookPanes.resolve(sessionId, pane.id);
+				const resolved = await options.notebookPanes.resolve(workSessionId, pane.id);
 				return {
-					sessionId,
+					workSessionId,
 					notebook_id: notebookIdOf(resolved),
 					title: resolved.title,
 					path: resolved.metadata[NOTEBOOK_PANE_METADATA.notebookPath] ?? notebookPath,

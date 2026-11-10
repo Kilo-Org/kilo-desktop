@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
-	SIGN_IN_DECLINED_TOOL_MESSAGE,
+	SIGN_IN_DECLINED_TOOL_ERROR_CODE,
 	SIGN_IN_REQUIRED_TOOL_ERROR_CODE,
-} from "@kilo-desktop/plugin-agent/contracts";
+} from "@kilo-desktop/plugin-core/contracts";
 
 import { isSignInRefusal, signInRefusalKind } from "./tool-sign-in";
 
+const SIGN_IN_DECLINED_TOOL_MESSAGE = `${SIGN_IN_DECLINED_TOOL_ERROR_CODE} The user chose not to sign in.`;
 const refusal = `${SIGN_IN_REQUIRED_TOOL_ERROR_CODE} The user is not signed in to Kilo.`;
 
 describe("signInRefusalKind", () => {

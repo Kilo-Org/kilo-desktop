@@ -17,7 +17,7 @@ import type {
 	CondaPackagesUpdateResult,
 	CondaRepodataPackage,
 	EnvTarget,
-} from "../../../contracts/providers/conda.js";
+} from "../../../contracts/providers/conda";
 
 /**
  * Optional callback surfaced by long-running conda operations. Providers

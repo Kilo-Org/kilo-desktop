@@ -3,7 +3,7 @@
 	"version": "1.0.0",
 	"private": true,
 	"type": "module",
-	"description": "kilo.workspace-board \u2014 the workspace board, sessions organised into columns",
+	"description": "kilo.workspace-board: the workspace board, work sessions organised into columns",
 	"exports": {
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",
@@ -17,11 +17,8 @@
 	},
 	"dependencies": {
 		"@kilo-desktop/kernel": "workspace:*",
-		"@kilo-desktop/plugin-sessions": "workspace:*",
 		"@kilo-desktop/plugin-shell": "workspace:*",
-		"@kilo-desktop/plugin-telemetry": "workspace:*",
-		"@kilo-desktop/plugin-workbench": "workspace:*",
-		"@kilo-desktop/plugin-workspaces": "workspace:*",
+		"@kilo-desktop/plugin-work-sessions": "workspace:*",
 		"lucide-react": "catalog:",
 		"zod": "catalog:"
 	},
@@ -31,7 +28,7 @@
 		"react-dom": "^19.0.0"
 	},
 	"devDependencies": {
-		"@kilo-desktop/plugin-agent": "workspace:*",
+		"@kilo-desktop/plugin-core": "workspace:*",
 		"@kilo-desktop/ui": "workspace:*",
 		"@tailwindcss/vite": "^4.3.3",
 		"@testing-library/react": "^16.3.2",

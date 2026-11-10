@@ -13,6 +13,7 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const coverage = {
 	...createCoverageConfig([
 		"src/test/**",
+		"src/main/test-*.ts",
 		// Nav icon — trivial JSX that ships one SVG.
 		"src/web/EnvironmentsNavIcon.tsx",
 		// Presentational dependency-preview components — no business logic, just

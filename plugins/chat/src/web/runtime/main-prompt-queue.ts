@@ -4,18 +4,18 @@ import type {
 	OpenCodeMessageQueueDriver,
 } from "@assistant-ui/react-opencode";
 
-import type { DomainHandle } from "@kilo-desktop/kernel";
+import type { DomainObjectHandle } from "@kilo-desktop/kernel";
 
-import type { ChatQueue, PromptQueue, PromptQueueItem } from "../../contracts";
+import type { ChatQueue, PromptQueues, PromptQueueItem } from "../../contracts";
 import { prepareQueuedPrompt, prepareText, type QueuePromptOptions } from "./queued-prompt";
 
-type PromptQueueHandle = DomainHandle<typeof PromptQueue>;
+type PromptQueueHandle = DomainObjectHandle<typeof PromptQueues>;
 
 export interface MainPromptQueueOptions {
 	readonly queue: () => PromptQueueHandle | null;
 	/** The chat the thread shows; null while a draft has none. */
 	readonly chatId: () => string | null;
-	/** Whether kilo.agent reports the chat working (the queue in main waits on the same). */
+	/** Whether kilo.core reports the chat working (the queue in main waits on the same). */
 	readonly chatWorking: () => boolean;
 	readonly prompt: () => QueuePromptOptions;
 	readonly onError: (error: unknown) => void;
@@ -31,7 +31,7 @@ const NO_QUEUE: ChatQueue = { items: [], paused: false, editing: null, sending: 
  * switch, a pop-out or a reload shows it again, from any window.
  *
  * - A message sent while nothing is in the way (the thread idle, the chat
- *   idle in kilo.agent, nothing queued or being sent) goes straight through
+ *   idle in kilo.core, nothing queued or being sent) goes straight through
  *   the runtime (`driver`), as any send: shown at once, a draft's first send
  *   creates its chat, and a failure returns it to the composer. A send that
  *   fails otherwise is queued in main, paused.

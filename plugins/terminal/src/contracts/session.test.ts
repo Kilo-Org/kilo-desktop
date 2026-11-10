@@ -5,7 +5,7 @@ import {
 	terminalClientMessageSchema,
 	terminalConnectionArgsSchema,
 	terminalServerMessageSchema,
-} from "./session.js";
+} from "./session";
 
 describe("terminal session wire contract", () => {
 	it("validates versioned connection identities and dimensions", () => {

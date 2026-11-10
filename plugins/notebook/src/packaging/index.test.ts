@@ -4,12 +4,12 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { RUNTIMED_ARTIFACTS } from "./artifacts.js";
+import { RUNTIMED_ARTIFACTS } from "./artifacts";
 import {
 	createNotebookPackagingPlan,
 	NOTEBOOK_ASAR_UNPACK_PACKAGES,
 	NOTEBOOK_MAIN_EXTERNALS,
-} from "./index.js";
+} from "./index";
 
 const require = createRequire(import.meta.url);
 

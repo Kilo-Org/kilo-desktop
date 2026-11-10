@@ -7,11 +7,11 @@ import {
 	type CondaPackage,
 	type CondaPackagesRemoveInput,
 	type CondaPackagesRemoveResult,
-} from "../../../contracts/providers/conda.js";
-import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host.js";
-import { BulkRemoveConfirmation } from "./BulkRemoveConfirmation.js";
-import { PackageRowActions } from "./PackageRowActions.js";
-import { RemovePackageConfirmation } from "./RemovePackageConfirmation.js";
+} from "../../../contracts/providers/conda";
+import { renderWithConda, type EnvironmentsHostOptions } from "../../../test/environments-host";
+import { BulkRemoveConfirmation } from "./BulkRemoveConfirmation";
+import { PackageRowActions } from "./PackageRowActions";
+import { RemovePackageConfirmation } from "./RemovePackageConfirmation";
 
 const ENV: CondaEnv = { name: "dev", prefix: "/opt/anaconda3/envs/dev" };
 const NUMPY: CondaPackage = {

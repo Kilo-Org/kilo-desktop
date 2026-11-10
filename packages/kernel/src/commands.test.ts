@@ -317,7 +317,7 @@ describe("keyboard dispatch", () => {
 			renderer: (sdk) => sdk.extensions.implement(KernelCommand, "save", handler),
 		});
 
-		await renderer.kernelSdk.domains
+		await renderer.kernelSdk.domainObjects
 			.get(KernelKeybindings)!
 			.methods.setOverride({ command: "acme.cmd/save", chord: "Alt+KeyS" });
 		await main.flush();

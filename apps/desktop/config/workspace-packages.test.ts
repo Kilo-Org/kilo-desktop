@@ -14,8 +14,11 @@ describe("listWorkspacePackageNames", () => {
 		expect(names).toEqual(
 			expect.arrayContaining([
 				"@kilo-desktop/kernel",
+				"@kilo-desktop/bundled-plugins",
+				"@kilo-desktop/plugin-core",
 				"@kilo-desktop/plugin-chat",
 				"@opencode-ai/sdk",
+				"@kilo-desktop/example-hello",
 			]),
 		);
 	});

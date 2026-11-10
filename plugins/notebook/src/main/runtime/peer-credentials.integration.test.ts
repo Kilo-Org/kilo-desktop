@@ -5,7 +5,7 @@ import { mkdtemp, realpath, rm } from "node:fs/promises";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { connectForFd, resolveDaemonPeerIdentity } from "./peer-credentials.js";
+import { connectForFd, resolveDaemonPeerIdentity } from "./peer-credentials";
 
 /**
  * Peer credentials are read through OS syscalls (koffi FFI), so this exercises

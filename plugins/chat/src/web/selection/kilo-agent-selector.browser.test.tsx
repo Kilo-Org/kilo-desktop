@@ -9,7 +9,7 @@ import { ComposerActionView } from "../composer/composer-actions";
 import { agentAction } from "./kilo-agent-selector";
 
 const CONTEXT = {
-	sessionId: "wses_1",
+	workSessionId: "wses_1",
 	chatId: null,
 	directory: null,
 	workspaceId: null,

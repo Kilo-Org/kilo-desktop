@@ -1,4 +1,4 @@
-import { KernelCommand, type CommandHandler } from "./builtins/points";
+import { KernelCommand, type CommandHandler } from "./builtins/extension-points";
 import { KernelError } from "./errors";
 import {
 	WINDOW_ORIGIN_PREFIX,

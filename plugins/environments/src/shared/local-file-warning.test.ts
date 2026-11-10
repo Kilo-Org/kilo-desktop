@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
 	LOCAL_CONDA_FILE_INSTALL_WARNING,
 	localCondaFileInstallWarning,
-} from "./local-file-warning.js";
+} from "./local-file-warning";
 
 describe("localCondaFileInstallWarning", () => {
 	it("flags an agent question option that installs a local conda file", () => {

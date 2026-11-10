@@ -14,7 +14,7 @@ export async function prepareForPrompt(
 	model: PromptModelRef,
 	sources: readonly Source[],
 ): Promise<void> {
-	const source = sources.find((candidate) => candidate.metadata.providerId === model.providerID);
+	const source = sources.find((candidate) => candidate.metadata.aiProviderId === model.providerID);
 	await source?.implementation?.prepare?.(model.modelID);
 }
 
@@ -68,7 +68,7 @@ function SourceState({
 		seen.current = modelsKey;
 		if (!first) notify.current();
 	}, [modelsKey]);
-	const { providerId, title, settingsSection } = source.metadata;
+	const { aiProviderId: providerId, title, settingsSection } = source.metadata;
 	const hasModels = state.modelIds.length > 0;
 	const active = useMemo(
 		(): ActiveModelSource => ({

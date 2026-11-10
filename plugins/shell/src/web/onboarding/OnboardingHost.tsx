@@ -12,8 +12,8 @@ import type { Contribution, WhenExpression } from "@kilo-desktop/kernel";
 import {
 	RenderContribution,
 	useContextKey,
-	useDomain,
-	useDomainState,
+	useDomainObject,
+	useDomainObjectState,
 	useExtensions,
 	useKernel,
 } from "@kilo-desktop/kernel/web";
@@ -29,8 +29,11 @@ import {
 } from "../../contracts";
 import { OnboardingFrame } from "./OnboardingFrame";
 
-/** Dev override that reopens onboarding every launch (`VITE_FEATURE_FLAG_OVERRIDES=force-onboarding`). */
-const FORCE_ONBOARDING_KEY = "kilo.flags/flag:force-onboarding";
+/**
+ * Dev override that reopens onboarding every launch
+ * (`VITE_FEATURE_FLAG_OVERRIDES=force-onboarding`), once some plugin declares the flag.
+ */
+const FORCE_ONBOARDING_KEY = "kernel/flag:force-onboarding";
 
 type Step = Contribution<typeof OnboardingStep>;
 
@@ -79,8 +82,8 @@ function useRequiredStep(steps: readonly Step[]): Step | undefined {
 export function OnboardingHost() {
 	const desktop = useContextKey("kernel/desktop");
 	const forced = useContextKey(FORCE_ONBOARDING_KEY);
-	const onboarding = useDomain(Onboarding);
-	const state = useDomainState(Onboarding, selectState);
+	const onboarding = useDomainObject(Onboarding);
+	const state = useDomainObjectState(Onboarding, selectState);
 	const kernel = useKernel();
 	const contributed = useExtensions(OnboardingStep);
 	const implemented = useMemo(

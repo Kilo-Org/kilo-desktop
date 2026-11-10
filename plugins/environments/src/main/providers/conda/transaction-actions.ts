@@ -1,8 +1,8 @@
-import { compareCondaVersions } from "../../../compare-conda-versions.js";
+import { compareCondaVersions } from "../../../compare-conda-versions";
 import type {
 	CondaPackageChange,
 	CondaPackagesPreviewResult,
-} from "../../../contracts/providers/conda.js";
+} from "../../../contracts/providers/conda";
 
 /**
  * Pure parsing of the bridge's transaction `actions` payload. Kept apart from

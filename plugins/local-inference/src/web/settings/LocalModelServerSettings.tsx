@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { KernelClipboard, KernelOs } from "@kilo-desktop/kernel";
-import { useDomain, useDomainState } from "@kilo-desktop/kernel/web";
+import { useDomainObject, useDomainObjectState, useKernel } from "@kilo-desktop/kernel/web";
 import { Navigation } from "@kilo-desktop/plugin-shell/contracts";
 import { SettingsPageHeader } from "@kilo-desktop/ui/components/settings-page-header";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
@@ -59,14 +59,15 @@ import { Switch } from "@kilo-desktop/ui/components/switch";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import {
+	LOCAL_INFERENCE_TELEMETRY_EVENTS,
 	MODEL_CATALOG_FLAG,
 	type ModelDownload,
 	type LocalModel,
 	type LocalModelSettings,
 	type ModelCatalogEntry,
-} from "../../contracts/index.js";
-import { ConnectionDetails } from "../connections/ConnectionDetails.js";
-import { KiloSignInGate } from "../KiloSignInGate.js";
+} from "../../contracts/index";
+import { ConnectionDetails } from "../connections/ConnectionDetails";
+import { KiloSignInGate } from "../KiloSignInGate";
 import {
 	localInferenceQueryKey,
 	localInferenceQueryOptions,
@@ -77,50 +78,51 @@ import {
 	useLocalInferenceQuery,
 	usePathForFile,
 	useTrack,
-} from "../local-inference.js";
-import { LocalModelCatalog } from "../catalog/ModelCatalog.js";
-import { ModelCatalogDialogHeader } from "../catalog/ModelCatalogAccess.js";
-import { ModelDetailPane, ModelDetailSkeleton } from "../catalog/ModelDetailPane.js";
-import { catalogListQueryOptions } from "../catalog/catalog-query.js";
-import {
-	AnacondaAccountBoundary,
-	useCatalogAnacondaAccount,
-} from "../catalog/use-anaconda-account.js";
+} from "../local-inference";
+import { LocalModelCatalog } from "../catalog/ModelCatalog";
+import { ModelCatalogDialogHeader } from "../catalog/ModelCatalogAccess";
+import { ModelDetailPane, ModelDetailSkeleton } from "../catalog/ModelDetailPane";
+import { catalogListQueryOptions } from "../catalog/catalog-query";
+import { CatalogAccessBoundary, useCatalogAccess } from "../catalog/use-catalog-access";
 import {
 	catalogArtifactKey,
 	type DownloadIdentity,
 	upsertDownload,
-} from "../catalog/catalog-downloads.js";
-import { ModelSettingsPanel } from "../models/ModelSettingsPanel.js";
-import { ModelList } from "../models/ModelList.js";
+} from "../catalog/catalog-downloads";
+import { ModelSettingsPanel } from "../models/ModelSettingsPanel";
+import { ModelList } from "../models/ModelList";
 import {
 	ModelListSkeleton,
 	NoMatchingModelsState,
 	NoModelsEmptyState,
-} from "../models/ModelManagementStates.js";
+} from "../models/ModelManagementStates";
 import {
 	filterLocalModels,
 	modelSourceFilters,
 	type ModelSourceFilter,
-} from "../models/model-filter.js";
-import { formatFileSize, modelDisplayName } from "../models/model-format.js";
-import { ServerSettings, ServerSettingsSkeleton } from "../server/ServerSettings.js";
-import { SystemMonitor } from "../server/SystemMonitor.js";
+} from "../models/model-filter";
+import { formatFileSize, modelDisplayName } from "../models/model-format";
+import { ServerSettings, ServerSettingsSkeleton } from "../server/ServerSettings";
+import { SystemMonitor } from "../server/SystemMonitor";
 import {
 	presentServerStatus,
 	type ServerStatusPresentation,
-} from "../server/server-status-presentation.js";
+} from "../server/server-status-presentation";
 
 const interactiveScrollbarClassName =
 	"[&_[data-slot=scroll-area-scrollbar]]:opacity-0 hover:[&_[data-slot=scroll-area-scrollbar]]:opacity-100 focus-within:[&_[data-slot=scroll-area-scrollbar]]:opacity-100";
 
 /** The catalog model a `model-catalog` deep link opened (`?catalogModel=`). */
 function useCatalogModelId(): string | undefined {
-	return useDomainState(Navigation, (state) => state.search["catalogModel"] || undefined);
+	const windowId = useKernel().window.id;
+	return useDomainObjectState(
+		Navigation,
+		(state) => state.windows[windowId]?.search["catalogModel"] || undefined,
+	);
 }
 
 /**
- * The Model Catalog stays hidden behind kilo.flags' `local-model-catalog`.
+ * The Model Catalog stays hidden behind the `local-model-catalog` flag.
  * Off by default: no "From catalog" entry, deep links stay inert, and the catalog dialog never opens.
  */
 export function LocalModelServerSettings() {
@@ -129,9 +131,9 @@ export function LocalModelServerSettings() {
 			featureName="Local Model Server"
 			pendingFallback={<LocalModelServerSettingsLoading />}
 		>
-			<AnacondaAccountBoundary>
+			<CatalogAccessBoundary>
 				<LocalModelServerSettingsContent />
-			</AnacondaAccountBoundary>
+			</CatalogAccessBoundary>
 		</KiloSignInGate>
 	);
 }
@@ -248,15 +250,16 @@ function RuntimeHeading() {
 function LocalModelServerSettingsContent() {
 	const client = useLocalInference();
 	const queryClient = useQueryClient();
-	const navigation = useDomain(Navigation);
-	const os = useDomain(KernelOs);
-	const clipboard = useDomain(KernelClipboard);
+	const windowId = useKernel().window.id;
+	const navigation = useDomainObject(Navigation);
+	const os = useDomainObject(KernelOs);
+	const clipboard = useDomainObject(KernelClipboard);
 	const pathForFile = usePathForFile();
 	const track = useTrack();
 	const trackLocalInference = (
-		event: "Local Model Installed" | "Local Model Server Started" | "Local Model Server Stopped",
+		event: keyof typeof LOCAL_INFERENCE_TELEMETRY_EVENTS,
 		data: Record<string, unknown> = {},
-	) => track(event, data);
+	) => track(LOCAL_INFERENCE_TELEMETRY_EVENTS[event], data);
 	const catalogEnabled = useFlag(MODEL_CATALOG_FLAG);
 	const modelFileInput = useRef<HTMLInputElement>(null);
 	const modelSaveQueue = useRef(Promise.resolve());
@@ -285,7 +288,7 @@ function LocalModelServerSettingsContent() {
 		retry: false,
 		staleTime: Number.POSITIVE_INFINITY,
 	});
-	const catalogAccount = useCatalogAnacondaAccount();
+	const catalogAccount = useCatalogAccess();
 	const catalogMetadata = useQuery({
 		...catalogListQueryOptions(client, catalogAccount),
 		// Flag-gated like catalogHardware: without it, a previously
@@ -447,7 +450,7 @@ function LocalModelServerSettingsContent() {
 		addModel.reset();
 		addModel.mutate(
 			{ path },
-			{ onSuccess: () => trackLocalInference("Local Model Installed", { source: "import" }) },
+			{ onSuccess: () => trackLocalInference("modelInstalled", { source: "import" }) },
 		);
 	};
 	const addModelError = modelFileError ?? addModel.error?.message;
@@ -469,11 +472,11 @@ function LocalModelServerSettingsContent() {
 						onCheckedChange={(checked) => {
 							if (checked) {
 								start.mutate(undefined, {
-									onSuccess: () => trackLocalInference("Local Model Server Started"),
+									onSuccess: () => trackLocalInference("serverStarted"),
 								});
 							} else {
 								stop.mutate(undefined, {
-									onSuccess: () => trackLocalInference("Local Model Server Stopped"),
+									onSuccess: () => trackLocalInference("serverStopped"),
 								});
 							}
 						}}
@@ -690,7 +693,7 @@ function LocalModelServerSettingsContent() {
 					setCatalogOpen(open);
 					if (!open) {
 						setCatalogModel(undefined);
-						const location = navigation?.getState();
+						const location = navigation?.getState().windows[windowId];
 						if (location && typeof location.search["catalogModel"] === "string") {
 							const { catalogModel: _ignored, ...search } = location.search;
 							void navigation?.methods

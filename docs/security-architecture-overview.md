@@ -5,9 +5,9 @@
 | Field            | Value                                                                                      |
 | ---------------- | ------------------------------------------------------------------------------------------ |
 | Audience         | Customer security reviewers, technical due-diligence teams, and readers of the source code |
-| Document version | 1.2                                                                                        |
+| Document version | 1.3                                                                                        |
 | Document owner   | Kilo engineering                                                                           |
-| Codebase version | Last reviewed at commit 056370681 in main branch (2026-11-05)                              |
+| Codebase version | Last reviewed at commit 0195dc5b (2026-11-10)                                              |
 | Review cadence   | Quarterly, and before material trust-boundary, data-flow, or distribution changes          |
 
 ## Version history
@@ -17,6 +17,7 @@
 | 1.0     | 2026-11-05 | Established the repository-backed security architecture overview: topology, trust boundaries, identity and access model, data flows, controls, and integration inventory.          |
 | 1.1     | 2026-11-09 | Agent controls: the application layers approval rules over the user's Kilo permission configuration for shell commands the CLI cannot otherwise constrain.                         |
 | 1.2     | 2026-11-09 | Targeted update: frames in application windows have no peer-to-peer (WebRTC) networking or application bridge, and agent-generated pages stay in the frame they were delivered to. |
+| 1.3     | 2026-11-10 | Feature flags: a signed-in Anaconda account's identifier and email join feature-flag evaluation as a linked account.                                                               |
 
 ## Maintainer agent update prompt
 
@@ -255,7 +256,7 @@ The main categories of outbound traffic are:
 - **Packages and models.** Package downloads from conda channels and package indexes, marketplace items, and local models from the Anaconda catalog.
 - **Web content.** Pages opened in the browser pane, with a site-icon lookup that sends each visited site's host name to a third-party icon service, and public CDN resources used by agent-generated pages and embedded interfaces.
 - **Developer tooling.** Git and pull-request traffic performed by the user's own git and GitHub CLI.
-- **Operations.** Update checks and downloads; consent-gated product analytics and crash reports; feature-flag evaluation, which carries the signed-in account's email and organization (section 10.1).
+- **Operations.** Update checks and downloads; consent-gated product analytics and crash reports; feature-flag evaluation, which carries the signed-in account's email and organization, and the identifier and email of a signed-in Anaconda account (section 10.1).
 
 ## 7. Core data flows
 
@@ -438,7 +439,7 @@ Content and configuration stay on the user's machine except for the flows in sec
 
 Only declared events are sent. Events carry application, platform, and feature-usage properties, not file contents, prompts, or chat content. Before sign-in, events are attributed to an anonymous installation identifier; after sign-in, they are attributed to the account email and linked to that identifier. The installation identifier is also passed to the bundled CLI, which uses it as its anonymous machine identifier.
 
-Feature-flag evaluation is separate from analytics and is not governed by the data-collection preference. It uses an anonymous context before sign-in and, after sign-in, the account email and organization.
+Feature-flag evaluation is separate from analytics and is not governed by the data-collection preference. It uses an anonymous context before sign-in and, after sign-in, the account email and organization. Whenever the user is signed in to an Anaconda account, with or without a Kilo sign-in, that account's identifier and email are added as a separate context, so flags can target Anaconda users.
 
 ### 10.2 Logging safety
 

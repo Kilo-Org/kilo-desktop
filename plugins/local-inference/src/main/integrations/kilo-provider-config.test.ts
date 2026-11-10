@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { LocalModel } from "../../contracts/schemas.js";
-import { createProviderEntry, renderModelPreset } from "./kilo-provider-config.js";
+import type { LocalModel } from "../../contracts";
+import { createProviderEntry, renderModelPreset } from "./kilo-provider-config";
 
 const models: LocalModel[] = [
 	{

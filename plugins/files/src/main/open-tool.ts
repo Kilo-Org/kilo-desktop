@@ -1,12 +1,16 @@
 import { z } from "zod";
 
 import type { PluginSdk } from "@kilo-desktop/kernel";
-import { AgentTool, defineTool, type ToolCallContext } from "@kilo-desktop/plugin-agent/contracts";
-import { Panes } from "@kilo-desktop/plugin-sessions/contracts";
-import { resolvePathInFolders } from "@kilo-desktop/plugin-workspaces/contracts";
+import { defineTool, Tool, type ToolCallContext } from "@kilo-desktop/plugin-core/contracts";
+import {
+	Panes,
+	resolvePathInFolders,
+	type WorkSessionFolder,
+} from "@kilo-desktop/plugin-work-sessions/contracts";
 
-import { absoluteFilePath } from "../contracts/panes.js";
-import { openFile } from "../shared/open-file.js";
+import { OPEN_FILE_TOOL_ID } from "../contracts";
+import { absoluteFilePath } from "../contracts/panes";
+import { openFile } from "../shared/open-file";
 
 const NO_CALLER_SESSION =
 	"Opening files requires an originating Kilo chat session; visual focus is never used to pick the chat.";
@@ -23,7 +27,7 @@ const openFileInput = z.object({
 });
 
 export interface OpenToolDependencies {
-	readonly foldersOf: (sessionId: string) => readonly { path: string; isPrimary: boolean }[];
+	readonly foldersOf: (workSessionId: string) => readonly WorkSessionFolder[];
 	readonly existingPaths: (
 		workspaceDirectory: string,
 		relativePaths: string[],
@@ -34,14 +38,14 @@ const reason = (cause: unknown) => (cause instanceof Error ? cause.message : Str
 
 /**
  * `open` (`desktop_files_open`): shows the user a file of the calling chat's
- * Work Session, through kilo.sessions' openers, optionally at a line and
- * column. The session comes from trusted caller context and the path must
- * be an existing file inside that session's folders.
+ * work session, through kilo.work-sessions' openers, optionally at a line and
+ * column. The work session comes from trusted caller context and the path
+ * must be an existing file inside that work session's folders.
  */
 export function implementOpenTool(sdk: PluginSdk, dependencies: OpenToolDependencies): void {
 	sdk.extensions.implement(
-		AgentTool,
-		"open",
+		Tool,
+		OPEN_FILE_TOOL_ID,
 		defineTool({
 			description:
 				"Show the user a file in the Files pane of the calling chat's pane layout, optionally " +
@@ -50,11 +54,11 @@ export function implementOpenTool(sdk: PluginSdk, dependencies: OpenToolDependen
 				"to the user; it does not return the file's contents.",
 			input: openFileInput,
 			run: async ({ path, line, column }, context: ToolCallContext) => {
-				const { sessionId } = context;
-				if (!sessionId) throw new Error(NO_CALLER_SESSION);
-				const panes = sdk.domains.get(Panes);
+				const { workSessionId } = context;
+				if (!workSessionId) throw new Error(NO_CALLER_SESSION);
+				const panes = sdk.domainObjects.get(Panes);
 				if (!panes) throw new Error(PANES_UNAVAILABLE);
-				const folders = dependencies.foldersOf(sessionId);
+				const folders = dependencies.foldersOf(workSessionId);
 				const resolved = resolvePathInFolders(folders, path);
 				if (!resolved) {
 					throw new Error(
@@ -75,14 +79,14 @@ export function implementOpenTool(sdk: PluginSdk, dependencies: OpenToolDependen
 					throw new Error(`File not found (or not a file): "${path}".`);
 				}
 				const pane = await openFile(panes, {
-					sessionId,
+					workSessionId,
 					path: absoluteFilePath(workspaceDirectory, relativePath),
 					line,
 					column,
 				});
 				if (!pane) throw new Error("No pane in this session opens files.");
 				return {
-					sessionId,
+					workSessionId,
 					paneId: pane.id,
 					workspaceDirectory,
 					relativePath,

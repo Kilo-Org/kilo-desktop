@@ -1,8 +1,8 @@
 import { Skeleton, SkeletonText } from "@kilo-desktop/ui/components/skeleton";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
-import type { ModelCatalogEntry } from "../../contracts/schemas.js";
-import { getPublisherDisplayName, ModelPublisherIcon } from "./ModelPublisherIcon.js";
+import type { ModelCatalogEntry } from "../../contracts/index";
+import { getPublisherDisplayName, ModelPublisherIcon } from "./ModelPublisherIcon";
 
 export function ModelIdentity({
 	model,

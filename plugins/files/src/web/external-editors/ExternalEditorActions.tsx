@@ -2,7 +2,7 @@ import { ChevronDownIcon } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { useDomain } from "@kilo-desktop/kernel/web";
+import { useDomainObject } from "@kilo-desktop/kernel/web";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { ButtonGroup } from "@kilo-desktop/ui/components/button-group";
 import {
@@ -52,7 +52,7 @@ export function useExternalEditorActions({
 	readonly workspaceDirectory?: string;
 	readonly relativePath?: string | null;
 }): ExternalEditorActionsModel {
-	const documents = useDomain(Documents);
+	const documents = useDomainObject(Documents);
 	const [actionError, setActionError] = useState<string | null>(null);
 	const [preferredEditorOverride, setPreferredEditorOverride] = useState<ExternalEditorId | null>(
 		null,

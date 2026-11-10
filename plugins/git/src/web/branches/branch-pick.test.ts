@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { GitWorktreeEntry } from "../../contracts/index.js";
-import { resolveBranchPick } from "./branch-pick.js";
+import type { GitWorktreeEntry } from "../../contracts";
+import { resolveBranchPick } from "./branch-pick";
 
 function entry(overrides: Partial<GitWorktreeEntry> = {}): GitWorktreeEntry {
 	return { path: "/repo/project", name: "project", branch: "main", isMain: true, ...overrides };
@@ -28,7 +28,7 @@ describe("resolveBranchPick", () => {
 			}),
 		).toEqual({
 			kind: "retarget",
-			isolation: { kind: "existing-worktree", directory: "/repo/project/.kilo/worktrees/feature" },
+			isolation: { kind: "existing-copy", directory: "/repo/project/.kilo/worktrees/feature" },
 		});
 	});
 

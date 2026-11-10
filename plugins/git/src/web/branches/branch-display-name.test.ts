@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { branchDisplayName } from "./branch-display-name.js";
+import { branchDisplayName } from "./branch-display-name";
 
 describe("branchDisplayName", () => {
 	it("keeps local branch names unchanged", () => {

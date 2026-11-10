@@ -53,23 +53,23 @@ import type {
 	CondaEnv,
 	CondaPackage,
 	CondaRepodataFindResult,
-} from "../../../contracts/providers/conda.js";
-import { useConda, useCondaQuery } from "../../conda.js";
-import { ToolbarSkeleton } from "../../EnvironmentsListSkeleton.js";
-import { AddPackageDialog } from "./AddPackageDialog.js";
-import { BulkRemoveConfirmation } from "./BulkRemoveConfirmation.js";
-import { CloneEnvironmentDialog } from "./CloneEnvironmentDialog.js";
-import { compareCondaVersions } from "./compare-conda-versions.js";
-import { DeleteEnvironmentDialog } from "./DeleteEnvironmentDialog.js";
-import { environmentDisplayName } from "./environment-display.js";
-import { ListViewMenu, type SortDirection } from "./ListViewMenu.js";
-import { PackageRowActions } from "./PackageRowActions.js";
-import { UpdateIcon } from "./package-change-icons.js";
+} from "../../../contracts/providers/conda";
+import { useConda, useCondaQuery } from "../../conda";
+import { ToolbarSkeleton } from "../../EnvironmentsListSkeleton";
+import { AddPackageDialog } from "./AddPackageDialog";
+import { BulkRemoveConfirmation } from "./BulkRemoveConfirmation";
+import { CloneEnvironmentDialog } from "./CloneEnvironmentDialog";
+import { compareCondaVersions } from "./compare-conda-versions";
+import { DeleteEnvironmentDialog } from "./DeleteEnvironmentDialog";
+import { environmentDisplayName } from "./environment-display";
+import { ListViewMenu, type SortDirection } from "./ListViewMenu";
+import { PackageRowActions } from "./PackageRowActions";
+import { UpdateIcon } from "./package-change-icons";
 import {
 	packagesLabel,
 	UpdateConfirmationDialog,
 	type UpgradablePackage,
-} from "./UpdateConfirmationDialog.js";
+} from "./UpdateConfirmationDialog";
 
 type SortField = "name" | "version" | "source" | "channel";
 

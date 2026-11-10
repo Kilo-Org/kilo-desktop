@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { Throttler } from "./throttler.js";
+import { Throttler } from "./throttler";
 
 /** VS Code's `async.timeout(0)`: a macrotask boundary, nothing more. */
 function tick(): Promise<void> {

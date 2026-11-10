@@ -1,6 +1,6 @@
 import type { CostLine } from "./cost-meter";
 import type { KiloCatalogModel } from "../selection/model-catalog";
-import type { ServerConnection as KiloGlobalConnection } from "@kilo-desktop/plugin-agent/contracts";
+import type { ServerConnection as KiloGlobalConnection } from "@kilo-desktop/plugin-core/contracts";
 import { directoryClient as createKiloDirectoryClient } from "../runtime/kilo-client";
 
 export type SessionModelUsageTokens = {

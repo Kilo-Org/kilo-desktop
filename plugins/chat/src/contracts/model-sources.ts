@@ -35,15 +35,15 @@ export interface ModelSourceImplementation {
  * rail in the composer's model picker (shown even before Kilo lists the
  * provider, with an empty state that opens `settingsSection`), starting its
  * server when the rail is chosen, and loading a model before a prompt for
- * `providerId` is sent.
+ * `aiProviderId` is sent.
  */
 export const ModelSource = defineExtensionPoint({
 	id: "kilo.chat/model-source",
 	kind: "additive",
 	description: "A local model provider: its model picker rail and model loading before prompts.",
 	metadata: z.object({
-		/** The provider's id in Kilo's provider list. */
-		providerId: z.string().min(1),
+		/** The AI provider's id in Kilo's config. */
+		aiProviderId: z.string().min(1),
 		/** The rail's label. */
 		title: z.string().min(1),
 		/** The settings section where its models are managed. */

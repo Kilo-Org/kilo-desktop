@@ -1,0 +1,50 @@
+{
+	"name": "@kilo-desktop/plugin-marketplace",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"description": "kilo.marketplace \u2014 Kilo's Marketplace of agents, skills and MCP servers",
+	"exports": {
+		"./plugin.json": "./plugin.json",
+		"./main": "./src/main/index.ts",
+		"./web": "./src/web/index.ts",
+		"./contracts": "./src/contracts/index.ts"
+	},
+	"scripts": {
+		"check": "tsc --noEmit -p tsconfig.json",
+		"test": "vitest run",
+		"coverage": "vitest run --coverage"
+	},
+	"dependencies": {
+		"@kilo-desktop/kernel": "workspace:*",
+		"@kilo-desktop/plugin-chat": "workspace:*",
+		"@kilo-desktop/plugin-core": "workspace:*",
+		"@kilo-desktop/plugin-shell": "workspace:*",
+		"@kilo-desktop/plugin-work-sessions": "workspace:*",
+		"@kilo-desktop/ui": "workspace:*",
+		"@tanstack/react-query": "^5.101.4",
+		"lucide-react": "catalog:",
+		"react": "^19.2.8",
+		"react-dom": "^19.2.8",
+		"which": "catalog:",
+		"yaml": "^2.8.2",
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"@tailwindcss/vite": "^4.3.3",
+		"@testing-library/react": "^16.3.2",
+		"@types/node": "^26.0.0",
+		"@types/react": "^19.2.17",
+		"@types/react-dom": "^19.2.3",
+		"@types/which": "^3.0.4",
+		"@vitejs/plugin-react": "^6.0.4",
+		"@vitest/browser": "5.1.0",
+		"@vitest/browser-playwright": "5.1.0",
+		"@vitest/coverage-v8": "catalog:",
+		"playwright": "catalog:",
+		"tailwindcss": "^4.3.3",
+		"typescript": "catalog:",
+		"vite": "catalog:",
+		"vitest": "catalog:"
+	}
+}

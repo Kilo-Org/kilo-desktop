@@ -4,21 +4,21 @@
 	"displayName": "Conda Environments",
 	"version": "1.0.0",
 	"description": "Manage conda environments and packages, for you and the agent.",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
 	"requires": {
-		"kilo.flags/flags": "optional",
-		"kilo.agent/tool": "optional",
-		"kilo.agent/session-config": "optional",
-		"kilo.chat/interaction-renderer": "optional",
-		"kilo.account/identity": "optional",
+		"kilo.core/tool": "optional",
+		"kilo.core/chat-config": "optional",
+		"kilo.core/account": "optional",
+		"kilo.local-inference/llama-runtime": "optional",
+		"kilo.chat/permission-renderer": "optional",
 		"kilo.shell/navigation": "optional",
-		"kilo.shell/settings-section": "optional",
-		"kilo.telemetry/telemetry": "optional",
-		"kilo.telemetry/telemetry-event": "optional"
+		"kilo.shell/settings-section": "optional"
 	},
 	"permissions": {
 		"host": ["dialogs"]
 	},
-	"domains": [
+	"domainObjects": [
 		{
 			"id": "conda",
 			"home": "main",
@@ -50,11 +50,11 @@
 					"description": "Manage your conda environments and packages.",
 					"priority": 80,
 					"when": {
-						"all": ["kilo.flags/flag:environments-feature"]
+						"all": ["kernel/flag:environments-feature"]
 					}
 				}
 			],
-			"kilo.agent/tool": [
+			"kilo.core/tool": [
 				{
 					"id": "conda.setup.open",
 					"title": "Open Conda Environments settings",
@@ -63,7 +63,8 @@
 						"title": "Enable use of secure & governed Anaconda packages for Python environments?",
 						"body": "The agent wants to use Desktop's Python environment tools. To use secure & governed packages built by Anaconda, you must sign in to a Kilo account. Do you want to sign in?",
 						"toolsLabel": "Desktop's Python environment tools"
-					}
+					},
+					"external": true
 				},
 				{
 					"id": "conda.envs.list",
@@ -74,7 +75,8 @@
 						"body": "The agent wants to use Desktop's Python environment tools. To use secure & governed packages built by Anaconda, you must sign in to a Kilo account. Do you want to sign in?",
 						"toolsLabel": "Desktop's Python environment tools"
 					},
-					"readOnly": true
+					"readOnly": true,
+					"external": true
 				},
 				{
 					"id": "conda.envs.create",
@@ -85,7 +87,8 @@
 						"body": "The agent wants to use Desktop's Python environment tools. To use secure & governed packages built by Anaconda, you must sign in to a Kilo account. Do you want to sign in?",
 						"toolsLabel": "Desktop's Python environment tools"
 					},
-					"approval": "ask"
+					"approval": "ask",
+					"external": true
 				},
 				{
 					"id": "conda.envs.delete",
@@ -97,7 +100,8 @@
 						"toolsLabel": "Desktop's Python environment tools"
 					},
 					"approval": "ask",
-					"destructive": true
+					"destructive": true,
+					"external": true
 				},
 				{
 					"id": "conda.envs.clone",
@@ -108,7 +112,8 @@
 						"body": "The agent wants to use Desktop's Python environment tools. To use secure & governed packages built by Anaconda, you must sign in to a Kilo account. Do you want to sign in?",
 						"toolsLabel": "Desktop's Python environment tools"
 					},
-					"approval": "ask"
+					"approval": "ask",
+					"external": true
 				},
 				{
 					"id": "conda.packages.list",
@@ -119,7 +124,8 @@
 						"body": "The agent wants to use Desktop's Python environment tools. To use secure & governed packages built by Anaconda, you must sign in to a Kilo account. Do you want to sign in?",
 						"toolsLabel": "Desktop's Python environment tools"
 					},
-					"readOnly": true
+					"readOnly": true,
+					"external": true
 				},
 				{
 					"id": "conda.packages.install",
@@ -130,7 +136,8 @@
 						"body": "The agent wants to use Desktop's Python environment tools. To use secure & governed packages built by Anaconda, you must sign in to a Kilo account. Do you want to sign in?",
 						"toolsLabel": "Desktop's Python environment tools"
 					},
-					"approval": "ask"
+					"approval": "ask",
+					"external": true
 				},
 				{
 					"id": "conda.packages.remove",
@@ -142,7 +149,8 @@
 						"toolsLabel": "Desktop's Python environment tools"
 					},
 					"approval": "ask",
-					"destructive": true
+					"destructive": true,
+					"external": true
 				},
 				{
 					"id": "conda.packages.update",
@@ -154,7 +162,8 @@
 						"toolsLabel": "Desktop's Python environment tools"
 					},
 					"approval": "ask",
-					"destructive": true
+					"destructive": true,
+					"external": true
 				},
 				{
 					"id": "conda.channels.list",
@@ -165,7 +174,8 @@
 						"body": "The agent wants to use Desktop's Python environment tools. To use secure & governed packages built by Anaconda, you must sign in to a Kilo account. Do you want to sign in?",
 						"toolsLabel": "Desktop's Python environment tools"
 					},
-					"readOnly": true
+					"readOnly": true,
+					"external": true
 				},
 				{
 					"id": "conda.channels.add",
@@ -176,7 +186,8 @@
 						"body": "The agent wants to use Desktop's Python environment tools. To use secure & governed packages built by Anaconda, you must sign in to a Kilo account. Do you want to sign in?",
 						"toolsLabel": "Desktop's Python environment tools"
 					},
-					"approval": "ask"
+					"approval": "ask",
+					"external": true
 				},
 				{
 					"id": "conda.channels.remove",
@@ -187,7 +198,8 @@
 						"body": "The agent wants to use Desktop's Python environment tools. To use secure & governed packages built by Anaconda, you must sign in to a Kilo account. Do you want to sign in?",
 						"toolsLabel": "Desktop's Python environment tools"
 					},
-					"approval": "ask"
+					"approval": "ask",
+					"external": true
 				},
 				{
 					"id": "conda.repodata.find",
@@ -198,37 +210,50 @@
 						"body": "The agent wants to use Desktop's Python environment tools. To use secure & governed packages built by Anaconda, you must sign in to a Kilo account. Do you want to sign in?",
 						"toolsLabel": "Desktop's Python environment tools"
 					},
-					"readOnly": true
+					"readOnly": true,
+					"external": true
 				}
 			],
-			"kilo.agent/session-config": [
+			"kilo.core/chat-config": [
 				{
 					"id": "conda"
 				}
 			],
-			"kilo.chat/interaction-renderer": [
+			"kilo.local-inference/llama-runtime": [
+				{
+					"id": "conda",
+					"title": "Conda"
+				}
+			],
+			"kilo.chat/permission-renderer": [
 				{
 					"id": "conda-tools",
-					"permissions": [
-						"desktop_environments_conda_envs_create",
-						"desktop_environments_conda_envs_delete",
-						"desktop_environments_conda_envs_clone",
-						"desktop_environments_conda_packages_install",
-						"desktop_environments_conda_packages_remove",
-						"desktop_environments_conda_packages_update",
-						"desktop_environments_conda_channels_add",
-						"desktop_environments_conda_channels_remove"
+					"tools": [
+						"kilo.environments/conda.envs.create",
+						"kilo.environments/conda.envs.delete",
+						"kilo.environments/conda.envs.clone",
+						"kilo.environments/conda.packages.install",
+						"kilo.environments/conda.packages.remove",
+						"kilo.environments/conda.packages.update",
+						"kilo.environments/conda.channels.add",
+						"kilo.environments/conda.channels.remove"
 					]
 				},
 				{
-					"id": "conda-cli",
-					"permissions": ["bash"]
+					"id": "conda-cli"
 				},
 				{
 					"id": "local-file-answers"
 				}
 			],
-			"kilo.telemetry/telemetry-event": [
+			"kernel/flag": [
+				{
+					"id": "environments-feature",
+					"description": "Shows Conda Environments: its settings page, the conda agent tools and the conda methods.",
+					"default": false
+				}
+			],
+			"kernel/telemetry-event": [
 				{
 					"id": "environment-created",
 					"name": "Environment Created"

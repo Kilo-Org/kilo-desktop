@@ -12,7 +12,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { stageBridge } from "./stage-bridge.js";
+import { stageBridge } from "./stage-bridge";
 
 /** Mode bits are meaningless on Windows, so chmod assertions only run on POSIX. */
 const onPosix = process.platform !== "win32";

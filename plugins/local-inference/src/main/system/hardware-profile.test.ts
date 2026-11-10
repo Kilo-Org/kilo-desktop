@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createHardwareProfileReader, hardwareProfileFromSnapshots } from "./hardware-profile.js";
+import { createHardwareProfileReader, hardwareProfileFromSnapshots } from "./hardware-profile";
 
 const GIBIBYTE = 1024 ** 3;
 

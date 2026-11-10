@@ -1,9 +1,11 @@
-import type { WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
+import type {
+	WorkSession,
+	WorkSessionMenuItem,
+} from "@kilo-desktop/plugin-work-sessions/contracts";
 
-import { findSessionPlacement } from "../contracts";
+import { BOARD_TELEMETRY_EVENTS, findSessionPlacement } from "../contracts";
 import { boardStore } from "./board-store";
-import { BOARD_EVENTS, track } from "./telemetry";
-import type { SessionMenuItem } from "@kilo-desktop/plugin-workbench/contracts";
+import { track } from "./telemetry";
 
 const placementOf = (session: WorkSession) =>
 	findSessionPlacement(boardStore().snapshot(), session.id);
@@ -23,11 +25,11 @@ const placeFromMenu = (session: WorkSession, columnId?: string) => {
 	const target = columnId ?? boardStore().snapshot().columns[0]?.id;
 	if (!target) return;
 	boardStore().place(session.id, target);
-	track(BOARD_EVENTS.placed, { source: "menu" });
+	track(BOARD_TELEMETRY_EVENTS.placed, { source: "menu" });
 };
 
-/** kilo.workbench/session-menu items: the session's place on the board. */
-export const BOARD_MENU_ITEMS: Readonly<Record<string, SessionMenuItem>> = {
+/** kilo.work-sessions/work-session-menu items: the session's place on the board. */
+export const BOARD_MENU_ITEMS: Readonly<Record<string, WorkSessionMenuItem>> = {
 	"add-to-board": {
 		appliesTo: (session) => boardStore().available() && !placementOf(session),
 		choices: columnChoices,

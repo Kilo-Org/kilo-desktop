@@ -1,14 +1,47 @@
 import { useCallback, useMemo, useState } from "react";
 
 import type { ModelSelectorEffortOption } from "./model-selector";
-import type { ModelPreferencesState as PersistedModelPreferences } from "../../contracts";
+import type { ModelPreferences } from "@kilo-desktop/plugin-core/contracts";
+
 import {
 	modelRefToId,
 	pickDefaultModel,
+	toKiloModelRef,
 	type KiloModelCatalog,
 	type KiloModelRef,
 } from "./model-catalog";
 import { normalizeEfforts, preserveEffort, resolveCatalogModel } from "./model-selection-utils";
+
+/** kilo.core's model preferences with models as the picker names them. */
+export interface PersistedModelPreferences {
+	/** The model last picked for a new chat with each agent. */
+	readonly modelSelections: Readonly<Record<string, KiloModelRef>>;
+	/** The model and effort last picked for a new chat with any agent. */
+	readonly preferred?: KiloModelRef & { readonly variant: string };
+	/** Effort by `agent/provider/model`. */
+	readonly variantSelections: Readonly<Record<string, string>>;
+	readonly recentModels: readonly KiloModelRef[];
+	readonly favorites: readonly KiloModelRef[];
+}
+
+export function persistedPreferences(preferences: ModelPreferences): PersistedModelPreferences {
+	return {
+		modelSelections: Object.fromEntries(
+			Object.entries(preferences.byAgent).map(([agent, model]) => [agent, toKiloModelRef(model)]),
+		),
+		...(preferences.preferred
+			? {
+					preferred: {
+						...toKiloModelRef(preferences.preferred),
+						variant: preferences.preferred.variant,
+					},
+				}
+			: {}),
+		variantSelections: preferences.variants,
+		recentModels: preferences.recent.map(toKiloModelRef),
+		favorites: preferences.favorites.map(toKiloModelRef),
+	};
+}
 
 type SelectionState = {
 	modelOverride: KiloModelRef | undefined;
@@ -118,7 +151,10 @@ function automaticDefault(
 		const resolved = resolveCatalogModel(catalog, recent);
 		if (resolved) return resolved;
 	}
-	return resolveCatalogModel(catalog, { providerID: "kilo", modelID: "kilo-auto/free" });
+	return (
+		resolveCatalogModel(catalog, { providerID: "kilo", modelID: "kilo-auto/free" }) ??
+		pickDefaultModel(catalog)
+	);
 }
 
 /**

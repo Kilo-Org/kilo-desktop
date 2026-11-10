@@ -16,7 +16,7 @@ export default defineConfig({
 	cacheDir: path.join(root, ".vitest/cache"),
 	test: {
 		coverage: {
-			...createCoverageConfig(["src/test/**", "src/main/index.ts"]),
+			...createCoverageConfig(["src/test/**", "src/main/test-*.ts", "src/main/index.ts"]),
 			include: ["src/**"],
 		},
 		projects: [

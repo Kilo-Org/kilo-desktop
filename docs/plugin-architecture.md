@@ -5,6 +5,12 @@ deferred). How-to for plugin authors: [docs/plugins](./plugins/README.md).
 Supersedes the contribution model of the
 retired feature SDK (deleted in step 13b).
 
+> **Proposed successor:** [plugin-plan-v2.md](./plugin-plan-v2.md) regroups
+> the plugins into fewer layered product areas (kilo.core, kilo.shell,
+> kilo.work-sessions, kilo.chat, features) and is being built on
+> `kilo/plugin-plan-v2`. It supersedes §4, §6 and §9; the kernel model (§2)
+> stands. Plugin names below are the pre-v2 ones.
+
 Kilo Desktop is an agentic development environment. Its plugin system is
 **intentional**, not a generic UI framework: every extension point exists
 because the product needs it, is named for what it means in the product, has a

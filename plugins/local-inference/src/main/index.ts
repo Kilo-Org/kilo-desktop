@@ -1,8 +1,8 @@
 import path from "node:path";
 
-import { createLocalInferenceMainEntry } from "./entry.js";
+import { createLocalInferenceMainEntry } from "./entry";
 
-export { createLocalInferenceMainEntry } from "./entry.js";
+export { createLocalInferenceMainEntry } from "./entry";
 
 /**
  * kilo.local-inference's main entry, taking over origin's storage (a sibling

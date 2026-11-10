@@ -3,8 +3,8 @@ import { useAuiState } from "@assistant-ui/react";
 
 import { useCallback } from "react";
 
-import { useDomainState } from "@kilo-desktop/kernel/web";
-import { Conversations, type ChatSummary } from "@kilo-desktop/plugin-agent/contracts";
+import { useDomainObjectState } from "@kilo-desktop/kernel/web";
+import { Chats, type ChatSummary } from "@kilo-desktop/plugin-core/contracts";
 
 import { useComposerContext } from "../composer/composer-actions";
 import { useChatConnection } from "../runtime/chat-connection";
@@ -52,8 +52,8 @@ export function useComposerUsageView(): ComposerUsageView | undefined {
 		threadId,
 	});
 	// A turn ending (or the chat changing) reads the usage again.
-	const activityEpoch = useDomainState(
-		Conversations,
+	const activityEpoch = useDomainObjectState(
+		Chats,
 		useCallback(
 			(state: { chats: Record<string, ChatSummary> }) => {
 				const chat = sessionID ? state.chats[sessionID] : undefined;

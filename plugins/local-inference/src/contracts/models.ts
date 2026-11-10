@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { localModelSettingsSchema } from "../shared/settings/model-settings.js";
+import { localModelSettingsSchema } from "../shared/settings/model-settings";
 
 export const localModelSchema = z.object({
 	id: z.string().min(1),

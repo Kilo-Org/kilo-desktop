@@ -6,10 +6,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { KernelLogger } from "@kilo-desktop/kernel";
 
-import { CondaRuntime } from "./CondaRuntime.js";
-import { SharedCondaBridge } from "./SharedCondaBridge.js";
-import { SidecarCondaBackend } from "./SidecarCondaBackend.js";
-import type { BridgeLaunchInfo } from "./resolveBridgePath.js";
+import { CondaRuntime } from "./CondaRuntime";
+import { SharedCondaBridge } from "./SharedCondaBridge";
+import { SidecarCondaBackend } from "./SidecarCondaBackend";
+import type { BridgeLaunchInfo } from "./resolveBridgePath";
 
 const logger: KernelLogger = {
 	debug: () => {},

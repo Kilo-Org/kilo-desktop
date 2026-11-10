@@ -18,14 +18,14 @@ import { toggleVariants } from "@kilo-desktop/ui/components/toggle";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
-import type { LocalModel, LocalModelSettings } from "../../contracts/schemas.js";
+import type { LocalModel, LocalModelSettings } from "../../contracts/index";
 import {
 	LLAMA_CPP_SAMPLING_DEFAULTS,
 	parseLlamaFlags,
 	serializeLlamaFlags,
 	type LlamaOverridableModelSetting,
-} from "../../shared/settings/model-settings.js";
-import { modelDisplayName } from "./model-format.js";
+} from "../../shared/settings/model-settings";
+import { modelDisplayName } from "./model-format";
 
 const DEFAULT_CONTEXT_LENGTH = 4096;
 const DEFAULT_MAX_RESPONSE_TOKENS = 4096;

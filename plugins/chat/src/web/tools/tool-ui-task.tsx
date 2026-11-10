@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef } from "react";
-import { useAuiState, type ToolCallMessagePartComponent } from "@assistant-ui/react";
+import { useAuiState } from "@assistant-ui/react";
 import { SquareIcon } from "lucide-react";
 
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
@@ -22,6 +22,7 @@ import { useOpenSubagentPane } from "../subagents/use-open-subagent-pane";
 import { useIsDelegationRowHidden } from "./delegation-group";
 import { ToolActivityRow } from "./tool-ui-activity-row";
 import { str, truncate, type ToolCallStatusLike } from "./tool-ui-shared";
+import type { ToolCallComponent } from "./tool-call";
 
 const asRecord = (value: unknown): Record<string, unknown> | undefined =>
 	value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
@@ -64,7 +65,7 @@ const ROW_STATUS: Record<SubagentDisplayStatus, NonNullable<ToolCallStatusLike>>
 };
 
 /** A `task` call as a one-line delegation row inside its {@link DelegationGroup}. */
-export const TaskActivity: ToolCallMessagePartComponent = memo(({ args, status, toolCallId }) => {
+export const TaskActivity: ToolCallComponent = memo(({ args, status, toolCallId }) => {
 	const hidden = useIsDelegationRowHidden(toolCallId);
 	const originalParts = useAuiState((state) => {
 		const custom = state.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;

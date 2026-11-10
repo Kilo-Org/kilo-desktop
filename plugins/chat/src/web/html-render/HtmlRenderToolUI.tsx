@@ -1,5 +1,4 @@
 import { memo, useMemo } from "react";
-import type { ToolCallMessagePartComponent, ToolCallMessagePartProps } from "@assistant-ui/react";
 import { DownloadIcon, Maximize2Icon } from "lucide-react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
@@ -12,6 +11,7 @@ import { ToolStatusIcon, resultText, truncate } from "../tools/tool-ui-shared";
 import { useIsInTurnWorkFold } from "../tools/turn-work-fold-context";
 import { HtmlRenderFrame } from "./HtmlRenderFrame";
 import { useSaveHtmlPage } from "./use-save-html-page";
+import type { ToolCallComponent, ToolCallView } from "../tools/tool-call";
 
 /**
  * The page in place, with Save and Open in viewer. The viewer is the chat's
@@ -67,10 +67,7 @@ function HtmlRenderView({
 	);
 }
 
-type HtmlRenderPartProps = Pick<
-	ToolCallMessagePartProps,
-	"toolCallId" | "args" | "status" | "result"
->;
+type HtmlRenderPartProps = Pick<ToolCallView, "toolCallId" | "args" | "status" | "result">;
 
 /** The agent's page for one `html_render` call, or its loading/error state. */
 export const HtmlRenderPart = memo(({ toolCallId, args, status, result }: HtmlRenderPartProps) => {
@@ -102,6 +99,6 @@ HtmlRenderPart.displayName = "HtmlRenderPart";
  * (`FoldHoistedParts`), so work on either side of it folds as one. A failed
  * call stays in the fold with the rest of the work.
  */
-export const HtmlRenderToolUI: ToolCallMessagePartComponent = (props) =>
+export const HtmlRenderToolUI: ToolCallComponent = (props) =>
 	useIsInTurnWorkFold() && showsHoistedPage(props) ? null : <HtmlRenderPart {...props} />;
 HtmlRenderToolUI.displayName = "HtmlRenderToolUI";

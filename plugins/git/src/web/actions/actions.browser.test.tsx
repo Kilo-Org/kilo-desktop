@@ -2,39 +2,35 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
 import { KernelError } from "@kilo-desktop/kernel";
-import { testPlugin } from "@kilo-desktop/kernel/testing";
 import { RenderContribution } from "@kilo-desktop/kernel/web";
-import { AgentTool, Conversations, type GenerateInput } from "@kilo-desktop/plugin-agent/contracts";
-import { Composer, ComposerAction, ModelPreferences } from "@kilo-desktop/plugin-chat/contracts";
-import { type WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
-import { Telemetry, TelemetryEvent } from "@kilo-desktop/plugin-telemetry/contracts";
 import {
-	SessionAction,
-	type SessionActionProps,
-	SessionDecoration,
-	type SessionDecorationProps,
-} from "@kilo-desktop/plugin-workbench/contracts";
+	WorkSessionAction,
+	WorkSessionDecoration,
+	type WorkSession,
+	type WorkSessionActionProps,
+	type WorkSessionDecorationProps,
+} from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import {
 	CHANGES_PANE_KIND,
 	type GitStatus,
 	type PullRequest,
 	type PullRequestsState,
-} from "../../contracts/index.js";
+} from "../../contracts";
+import { actionCollaborators, PREFERRED_MODEL } from "../../test/actions-host";
 import {
 	bootGitHost,
 	resetViewTestDom,
 	ROOT,
-	session,
-	type ChangesHostOptions,
+	workSession,
 	type GitHost,
 	type RepositoryFake,
-} from "../../test/changes-host.js";
+} from "../../test/git-host";
 
 afterEach(resetViewTestDom);
 
 const WAIT = { timeout: 5_000 };
-const SESSION = session("wses_1");
+const SESSION = workSession("wses_1");
 
 function status(patch: Partial<GitStatus> = {}): GitStatus {
 	return {
@@ -81,139 +77,23 @@ function repository(patch: RepositoryFake = {}): RepositoryFake {
 	};
 }
 
-/** kilo.agent, kilo.chat and kilo.telemetry as far as the actions use them. */
-function collaborators() {
-	const generated: GenerateInput[] = [];
-	const tracked: unknown[] = [];
-	const inserted: unknown[] = [];
-	let answer: Record<string, unknown> = { message: "Fix the login" };
-	const unused = () => {
-		throw new KernelError("NOT_FOUND", "unused");
-	};
-	const agent = testPlugin("kilo.agent", {
-		manifest: {
-			domains: [{ id: "conversation", home: "main" }],
-			extensionPoints: [{ id: "tool", kind: "additive" }],
-		},
-		definitions: { domains: [Conversations], extensionPoints: [AgentTool] },
-	});
-	const chat = testPlugin("kilo.chat", {
-		manifest: {
-			domains: [
-				{ id: "model-preferences", home: "main" },
-				{ id: "composer", home: "renderer" },
-			],
-			extensionPoints: [{ id: "composer-action", kind: "additive" }],
-		},
-		definitions: { domains: [ModelPreferences, Composer], extensionPoints: [ComposerAction] },
-	});
-	const telemetry = testPlugin("kilo.telemetry", {
-		manifest: {
-			domains: [{ id: "telemetry", home: "main" }],
-			extensionPoints: [{ id: "telemetry-event", kind: "additive" }],
-		},
-		definitions: { domains: [Telemetry], extensionPoints: [TelemetryEvent] },
-	});
-	const options: Pick<ChangesHostOptions, "main" | "renderer"> = {
-		main: [
-			{
-				...agent,
-				entry: {
-					activate(sdk) {
-						sdk.domains.provide(Conversations, {
-							initialState: { ready: true, chats: {} },
-							methods: new Proxy(
-								{
-									generate: (input: GenerateInput) => {
-										generated.push(input);
-										return answer;
-									},
-								} as Record<string, unknown>,
-								{ get: (target, key) => target[key as string] ?? unused },
-							) as never,
-						});
-					},
-				},
-			},
-			{
-				...chat,
-				entry: {
-					activate(sdk) {
-						sdk.domains.provide(ModelPreferences, {
-							initialState: {
-								modelSelections: {},
-								preferred: { providerID: "kilo", modelID: "fast", variant: "low" },
-								variantSelections: {},
-								recentModels: [],
-								favorites: [],
-								autoFreeModelsEnabled: true,
-							},
-							methods: {
-								remember: unused,
-								recordRecent: unused,
-								setFavorite: unused,
-								setAutoFreeEnabled: unused,
-								importLegacyFavorites: unused,
-							},
-						});
-					},
-				},
-			},
-			{
-				...telemetry,
-				entry: {
-					activate(sdk) {
-						sdk.domains.provide(Telemetry, {
-							initialState: {},
-							methods: { track: (input) => void tracked.push(input) },
-						});
-					},
-				},
-			},
-		],
-		renderer: [
-			agent,
-			{
-				...chat,
-				entry: {
-					activate(sdk) {
-						sdk.domains.provide(Composer, {
-							initialState: { focusedSessionId: null },
-							methods: {
-								focus: unused,
-								insert: (input) => void inserted.push(input),
-								startNewChat: unused,
-							},
-						});
-					},
-				},
-			},
-			telemetry,
-		],
-	};
-	return {
-		options,
-		generated,
-		tracked,
-		inserted,
-		answer: (next: Record<string, unknown>) => (answer = next),
-	};
-}
-
 function Header({ host, shown = SESSION }: { host: GitHost; shown?: WorkSession }) {
 	const action = host.renderer.extensions
-		.list(SessionAction)
+		.list(WorkSessionAction)
 		.find((contribution) => contribution.key === "kilo.git/repository-actions")!;
 	const badge = host.renderer.extensions
-		.list(SessionDecoration)
+		.list(WorkSessionDecoration)
 		.find((contribution) => contribution.metadata.slot === "row")!;
 	return (
 		<>
-			<RenderContribution<SessionActionProps> contribution={action} props={{ session: shown }} />
+			<RenderContribution<WorkSessionActionProps>
+				contribution={action}
+				props={{ workSession: shown }}
+			/>
 			<div data-qa-id="row">
-				<RenderContribution<SessionDecorationProps>
+				<RenderContribution<WorkSessionDecorationProps>
 					contribution={badge}
-					props={{ session: shown }}
+					props={{ workSession: shown }}
 				/>
 			</div>
 		</>
@@ -222,25 +102,26 @@ function Header({ host, shown = SESSION }: { host: GitHost; shown?: WorkSession 
 
 async function renderActions(
 	repositoryFake: RepositoryFake,
-	options: { pullRequests?: Partial<PullRequestsState>; activeSessionId?: string | null } = {},
+	options: { pullRequests?: Partial<PullRequestsState>; activeWorkSessionId?: string | null } = {},
 ) {
-	const peers = collaborators();
+	const peers = actionCollaborators();
 	const host = await bootGitHost({
 		repository: repositoryFake,
 		...peers.options,
 		...options,
 	});
+	peers.consent(host);
 	host.render(<Header host={host} />);
 	return { host, ...peers };
 }
 
 const primary = () => page.getByTestId("git-action-primary");
 
-describe("the open session's repository actions", () => {
-	it("sit before the pane controls in the session header", async () => {
+describe("the open work session's repository actions", () => {
+	it("sit before the pane controls in the work session header", async () => {
 		const host = await bootGitHost();
 		const action = host.renderer.extensions
-			.list(SessionAction)
+			.list(WorkSessionAction)
 			.find((contribution) => contribution.key === "kilo.git/repository-actions");
 
 		expect(action?.metadata).toEqual({ placement: "start" });
@@ -259,10 +140,13 @@ describe("the open session's repository actions", () => {
 		expect(generated[0]).toMatchObject({
 			directory: ROOT,
 			title: "Generate commit message",
-			model: { providerID: "kilo", modelID: "fast", variant: "low" },
+			model: PREFERRED_MODEL,
 		});
 		expect(generated[0]?.prompt).toContain("M a.txt");
-		expect(tracked).toEqual([{ event: "Commit Message Generated", data: {} }]);
+		await vi.waitFor(
+			() => expect(tracked()).toEqual([["kilo.git/commit-message-generated", {}]]),
+			WAIT,
+		);
 	});
 
 	it("show the changed files and open the Changes pane", async () => {
@@ -273,7 +157,7 @@ describe("the open session's repository actions", () => {
 		await summary.click();
 
 		await vi.waitFor(
-			() => expect(host.opened).toEqual([{ sessionId: "wses_1", kind: CHANGES_PANE_KIND }]),
+			() => expect(host.opened).toEqual([{ workSessionId: "wses_1", kind: CHANGES_PANE_KIND }]),
 			WAIT,
 		);
 	});
@@ -320,7 +204,10 @@ describe("the open session's repository actions", () => {
 		expect(host.calls("pullRequests.recordCreated")).toEqual([
 			{ directory: ROOT, branch: "kilo/new-name", pullRequest: created },
 		]);
-		expect(tracked).toHaveLength(2);
+		expect(tracked()).toEqual([
+			["kilo.git/commit-message-generated", {}],
+			["kilo.git/pull-request-content-generated", {}],
+		]);
 		await vi.waitFor(
 			() =>
 				expect(host.calls("pullRequests.refresh")).toContainEqual({
@@ -404,7 +291,7 @@ describe("the open session's repository actions", () => {
 				() =>
 					expect(inserted).toEqual([
 						{
-							sessionId: "wses_1",
+							workSessionId: "wses_1",
 							text: `Git error output:\n${details}\n\nHelp me diagnose and fix the Git push failure above in ${ROOT}.`,
 						},
 					]),
@@ -468,12 +355,12 @@ describe("the open session's repository actions", () => {
 describe("the repository commands", () => {
 	const COMMANDS = ["kilo.git/commit", "kilo.git/push", "kilo.git/create-pull-request"];
 
-	it("are offered while a session is open and version control is present", async () => {
+	it("are offered while a work session is open and version control is present", async () => {
 		const host = await bootGitHost();
 		const offered = () => host.renderer.commands.list().map((command) => command.key);
 		expect(offered()).toEqual(expect.arrayContaining(COMMANDS));
 		expect(
-			(await bootGitHost({ activeSessionId: null })).renderer.commands
+			(await bootGitHost({ activeWorkSessionId: null })).renderer.commands
 				.list()
 				.map((command) => command.key),
 		).not.toContain("kilo.git/commit");

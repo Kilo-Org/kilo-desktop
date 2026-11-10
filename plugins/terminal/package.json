@@ -3,7 +3,7 @@
 	"version": "1.0.0",
 	"private": true,
 	"type": "module",
-	"description": "kilo.terminal — terminal panes: interactive shells in a session's folder",
+	"description": "kilo.terminal \u2014 terminal panes: interactive shells in a work session's folder",
 	"exports": {
 		"./plugin.json": "./plugin.json",
 		"./main": "./src/main/index.ts",
@@ -20,11 +20,9 @@
 	},
 	"dependencies": {
 		"@kilo-desktop/kernel": "workspace:*",
-		"@kilo-desktop/plugin-agent": "workspace:*",
-		"@kilo-desktop/plugin-sessions": "workspace:*",
+		"@kilo-desktop/plugin-core": "workspace:*",
 		"@kilo-desktop/plugin-shell": "workspace:*",
-		"@kilo-desktop/plugin-workbench": "workspace:*",
-		"@kilo-desktop/plugin-workspaces": "workspace:*",
+		"@kilo-desktop/plugin-work-sessions": "workspace:*",
 		"@kilo-desktop/ui": "workspace:*",
 		"atomically": "catalog:",
 		"ghostty-web": "0.4.0-next.20.g1858a59",

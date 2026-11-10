@@ -8,7 +8,7 @@
  * surfaced as warnings, since they bypass the channel list.
  */
 
-import { MUTATING_CONDA_TOOL_NAMES, matchesMutatingCondaCli } from "./conda-permissions.js";
+import { MUTATING_CONDA_TOOL_NAMES, matchesMutatingCondaCli } from "./conda-permissions";
 
 const CONDA_TOOL_PREFIX = "desktop_environments_conda_";
 

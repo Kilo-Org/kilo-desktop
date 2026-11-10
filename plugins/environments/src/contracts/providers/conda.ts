@@ -28,7 +28,7 @@
  */
 import { z } from "zod";
 
-import { jobIdSchema } from "../common.js";
+import { jobIdSchema } from "../common";
 
 /* --------------------------------------------------------------------- */
 /* Primitive value schemas                                               */

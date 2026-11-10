@@ -3,8 +3,8 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import {
 	hasLlamaFlagOverride,
 	type LocalModelSettings,
-} from "../../shared/settings/model-settings.js";
-import { LOOPBACK_HOST } from "../../shared/settings/server-settings.js";
+} from "../../shared/settings/model-settings";
+import { LOOPBACK_HOST } from "../../shared/settings/server-settings";
 
 const MAX_REQUEST_BYTES = 16 * 1024 * 1024;
 const LOCAL_SYSTEM_PROMPT =

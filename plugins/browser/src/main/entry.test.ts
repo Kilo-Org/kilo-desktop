@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { PluginRegistration } from "@kilo-desktop/kernel";
+import type { KernelLogger, PluginRegistration } from "@kilo-desktop/kernel";
 import { createTestKernelPair } from "@kilo-desktop/kernel/testing";
-import { AgentTool, type ToolCallContext } from "@kilo-desktop/plugin-agent/contracts";
-import { Panes, type Pane } from "@kilo-desktop/plugin-sessions/contracts";
+import { Tool, type ToolCallContext } from "@kilo-desktop/plugin-core/contracts";
+import { Panes, type Pane } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import manifest from "../../plugin.json";
 import {
@@ -17,12 +17,12 @@ import {
 } from "../contracts/index.js";
 import { createFakeBrowserHost } from "../test/fake-browser-host.js";
 import {
-	agentToolPoint,
 	browserPane,
+	coreRegistration,
 	createSessionsHost,
 	filesOpener,
 	SESSION_ID,
-	workspacesRegistration,
+	type Authorize,
 } from "../test/sessions-host.js";
 import { createBrowserMainEntry } from "./entry.js";
 
@@ -31,17 +31,19 @@ interface BootOptions {
 	readonly withoutHost?: boolean;
 	readonly withoutWorkspaces?: boolean;
 	readonly withoutSessions?: boolean;
-	readonly authorize?: (input: { path: string; rule: string }) => boolean | Promise<boolean>;
+	readonly withoutCore?: boolean;
+	readonly authorize?: Authorize;
+	readonly logger?: KernelLogger;
 }
 
 async function boot(options: BootOptions = {}) {
 	const fake = createFakeBrowserHost();
-	const sessions = createSessionsHost(options.panes ?? [browserPane("pane_a")]);
+	const sessions = createSessionsHost({
+		panes: options.panes ?? [browserPane("pane_a")],
+		...(options.withoutWorkspaces ? {} : { authorize: options.authorize ?? (() => true) }),
+	});
 	const registrations: PluginRegistration[] = [
-		agentToolPoint,
-		...(options.withoutWorkspaces
-			? []
-			: [workspacesRegistration(options.authorize ?? (() => true))]),
+		...(options.withoutCore ? [] : [coreRegistration]),
 		...(options.withoutSessions ? [] : [sessions.registration, filesOpener]),
 		{
 			manifest,
@@ -52,18 +54,23 @@ async function boot(options: BootOptions = {}) {
 			}),
 		},
 	];
-	const { main } = await createTestKernelPair({ main: registrations, renderer: [] });
-	const pages = main.kernelSdk.domains.get(BrowserPages)!;
-	const panes = () => main.kernelSdk.domains.get(Panes)!;
+	const { main } = await createTestKernelPair({
+		main: registrations,
+		renderer: [],
+		...(options.logger ? { logger: options.logger } : {}),
+	});
+	const pages = main.kernelSdk.domainObjects.get(BrowserPages)!;
+	const panes = () => main.kernelSdk.domainObjects.get(Panes)!;
 	const tool = main.kernelSdk.extensions
-		.list(AgentTool)
+		.list(Tool)
 		.find((contribution) => contribution.key === "kilo.browser/open")!;
-	const callTool = (input: unknown, sessionId: string | null = SESSION_ID) => {
+	const callTool = (input: unknown, workSessionId: string | null = SESSION_ID) => {
 		const context: ToolCallContext = {
-			sessionId,
-			chatId: sessionId ? "chat" : null,
+			workSessionId,
+			workspaceId: null,
+			chatId: workSessionId ? "chat" : null,
 			callId: "call_1",
-			external: sessionId === null,
+			external: workSessionId === null,
 			signal: new AbortController().signal,
 		};
 		return Promise.resolve(
@@ -75,10 +82,10 @@ async function boot(options: BootOptions = {}) {
 	return { main, fake, sessions, pages, panes, callTool, settle, paneOf };
 }
 
-const target = { sessionId: SESSION_ID, paneId: "pane_a" };
+const target = { workSessionId: SESSION_ID, paneId: "pane_a" };
 
 describe("kilo.browser in main", () => {
-	it("prepares the guests' partition and answers local files from kilo.workspaces", async () => {
+	it("prepares the guests' partition and answers local files from kilo.work-sessions' workspaces", async () => {
 		const asked: unknown[] = [];
 		const { fake, pages } = await boot({
 			authorize: (input) => {
@@ -94,7 +101,7 @@ describe("kilo.browser in main", () => {
 		expect(asked[0]).toEqual({ path: "/work/app/index.html", rule: "inside" });
 	});
 
-	it("serves no local files without kilo.workspaces, or when it fails", async () => {
+	it("serves no local files without kilo.work-sessions' workspaces, or when they fail", async () => {
 		const absent = await boot({ withoutWorkspaces: true });
 		expect(await absent.fake.authorize("/work/index.html")).toBe(false);
 
@@ -113,6 +120,33 @@ describe("kilo.browser in main", () => {
 		await expect(pages.methods.attach({ ...target, webContentsId: 1 })).rejects.toThrow(
 			"isn't available here",
 		);
+	});
+
+	it("activates without kilo.work-sessions, kilo.core and the host's browser, saying nothing", async () => {
+		const warnings: unknown[][] = [];
+		const errors: unknown[][] = [];
+		const logger: KernelLogger = {
+			debug: () => {},
+			info: () => {},
+			warn: (...args) => void warnings.push(args),
+			error: (...args) => void errors.push(args),
+		};
+		const { main } = await createTestKernelPair({
+			main: [{ manifest, definitions: BROWSER_DEFINITIONS, entry: createBrowserMainEntry() }],
+			renderer: [],
+			logger,
+		});
+		await main.flush();
+
+		const pages = main.kernelSdk.domainObjects.get(BrowserPages)!;
+		await expect(pages.methods.prepare(undefined)).rejects.toThrow("isn't available here");
+		expect(main.kernelSdk.extensions.list(Tool)).toEqual([]);
+		// The kernel reports kilo.browser's manifest contributions to absent plugins; the entry says nothing.
+		const own = warnings.filter(
+			([message]) => !String(message).startsWith("[kilo.browser] Contribution"),
+		);
+		expect(own).toEqual([]);
+		expect(errors).toEqual([]);
 	});
 
 	it("attaches a pane's guest, publishes its page and drives it", async () => {
@@ -149,7 +183,7 @@ describe("kilo.browser in main", () => {
 			"Only HTTP and HTTPS URLs are supported.",
 		);
 		await expect(
-			pages.methods.command({ sessionId: SESSION_ID, paneId: "pane_b", command: "reload" }),
+			pages.methods.command({ workSessionId: SESSION_ID, paneId: "pane_b", command: "reload" }),
 		).rejects.toThrow("Browser tab is not ready.");
 	});
 
@@ -198,11 +232,8 @@ describe("kilo.browser in main", () => {
 		expect(paneOf("pane_a")).toMatchObject({
 			title: "Docs",
 			iconKey: "data:image/png;base64,AA==",
-			metadata: {
-				url: "https://example.com/docs",
-				objectType: URL_OBJECT_TYPE,
-				objectId: "https://example.com/docs",
-			},
+			object: { type: URL_OBJECT_TYPE, id: "https://example.com/docs" },
+			metadata: { url: "https://example.com/docs" },
 		});
 
 		const before = sessions.updates.length;
@@ -215,16 +246,16 @@ describe("kilo.browser in main", () => {
 		expect(paneOf("pane_a")).toMatchObject({
 			title: "Docs",
 			iconKey: "globe",
-			metadata: { objectType: FILE_OBJECT_TYPE, objectId: "/work/Chart one.html" },
+			object: { type: FILE_OBJECT_TYPE, id: "/work/Chart one.html" },
 		});
 	});
 
-	it("closes a pane's page when the pane closes or its session is deleted", async () => {
+	it("closes a pane's page when the pane closes or its work session is deleted", async () => {
 		const { fake, pages, sessions, settle } = await boot({
 			panes: [browserPane("pane_a"), browserPane("pane_b")],
 		});
 		await pages.methods.attach({ ...target, webContentsId: 1 });
-		await pages.methods.attach({ sessionId: SESSION_ID, paneId: "pane_b", webContentsId: 2 });
+		await pages.methods.attach({ workSessionId: SESSION_ID, paneId: "pane_b", webContentsId: 2 });
 
 		await sessions.close("pane_a");
 		await settle();
@@ -252,7 +283,7 @@ describe("kilo.browser's openers", () => {
 		const { panes, settle, sessions } = await boot({ panes: [] });
 
 		const pane = await panes().methods.openObject({
-			sessionId: SESSION_ID,
+			workSessionId: SESSION_ID,
 			ref: { type: URL_OBJECT_TYPE, id: "https://example.com/docs" },
 		});
 		await settle();
@@ -262,7 +293,7 @@ describe("kilo.browser's openers", () => {
 		]);
 
 		const again = await panes().methods.openObject({
-			sessionId: SESSION_ID,
+			workSessionId: SESSION_ID,
 			ref: { type: URL_OBJECT_TYPE, id: "https://example.com/docs" },
 		});
 		expect(again?.id).toBe(pane?.id);
@@ -272,7 +303,10 @@ describe("kilo.browser's openers", () => {
 	it("opens a workspace's HTML files ahead of kilo.files, titled with their name", async () => {
 		const { panes, settle, paneOf } = await boot({ panes: [] });
 		const open = (id: string) =>
-			panes().methods.openObject({ sessionId: SESSION_ID, ref: { type: FILE_OBJECT_TYPE, id } });
+			panes().methods.openObject({
+				workSessionId: SESSION_ID,
+				ref: { type: FILE_OBJECT_TYPE, id },
+			});
 
 		const html = await open("/work/site/Index.HTML");
 		const htm = await open("/work/site/old.htm");
@@ -288,25 +322,22 @@ describe("kilo.browser's openers", () => {
 });
 
 describe("the open agent tool", () => {
-	it("opens a web page in the calling chat's session", async () => {
+	it("opens a web page in the calling chat's work session", async () => {
 		const { callTool, sessions } = await boot({ panes: [] });
 
 		const result = await callTool({ url: "localhost:3000" });
 
 		const [pane] = sessions.panes().panes;
 		expect(result).toEqual({
-			sessionId: SESSION_ID,
+			workSessionId: SESSION_ID,
 			paneId: pane?.id,
 			url: "http://localhost:3000/",
 		});
-		expect(pane?.metadata).toMatchObject({
-			objectType: URL_OBJECT_TYPE,
-			objectId: "http://localhost:3000/",
-		});
+		expect(pane?.object).toEqual({ type: URL_OBJECT_TYPE, id: "http://localhost:3000/" });
 		expect(await callTool({ url: "http://localhost:3000" })).toEqual(result);
 	});
 
-	it("needs a calling session, web URLs and kilo.sessions", async () => {
+	it("needs a calling work session, web URLs and kilo.work-sessions", async () => {
 		const { callTool } = await boot();
 		await expect(callTool({ url: "example.com" }, null)).rejects.toThrow(
 			"originating Kilo chat session",

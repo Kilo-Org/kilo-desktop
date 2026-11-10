@@ -50,12 +50,12 @@ import type {
 	CondaEnv,
 	CondaPackage,
 	CondaPackagesPreviewResult,
-} from "../../../contracts/providers/conda.js";
-import { condaQueryKey, useConda, useCondaMutation, useCondaQuery } from "../../conda.js";
-import { parseEnvironmentsErrorMessage } from "../../../contracts/common.js";
-import { environmentDisplayName, validateEnvironmentName } from "./environment-display.js";
-import { friendlyEnvironmentsError } from "./environments-error-message.js";
-import { backupEnvironmentJob, jobToastOptions, updatePackagesJob } from "./environments-toasts.js";
+} from "../../../contracts/providers/conda";
+import { condaQueryKey, useConda, useCondaMutation, useCondaQuery } from "../../conda";
+import { parseEnvironmentsErrorMessage } from "../../../contracts/common";
+import { environmentDisplayName, validateEnvironmentName } from "./environment-display";
+import { friendlyEnvironmentsError } from "./environments-error-message";
+import { backupEnvironmentJob, jobToastOptions, updatePackagesJob } from "./environments-toasts";
 import {
 	ChangeFilterMenu,
 	DependencyChangeList,
@@ -63,8 +63,8 @@ import {
 	summarizeChanges,
 	type ChangeCategory,
 	type ChangeFilter,
-} from "./DependencyPreview.js";
-import { PackageSearchInput, PanelSectionHeading } from "./PackageSearch.js";
+} from "./DependencyPreview";
+import { PackageSearchInput, PanelSectionHeading } from "./PackageSearch";
 
 export interface UpgradablePackage {
 	pkg: CondaPackage;

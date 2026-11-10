@@ -2,7 +2,7 @@ import { access, constants, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
-import type { AddLocalModelInput } from "../inference/LocalInferenceService.js";
+import type { AddLocalModelInput } from "../inference/LocalInferenceService";
 
 interface Logger {
 	debug(message: string): void;

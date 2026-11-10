@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { defaultChannelSelection, selectableChannels } from "./channel-presentation.js";
+import { defaultChannelSelection, selectableChannels } from "./channel-presentation";
 
 /**
  * Channel choice for the package-search dialogs (create environment, add

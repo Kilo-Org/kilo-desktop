@@ -1,4 +1,4 @@
-import type { GitBranch } from "../../contracts/index.js";
+import type { GitBranch } from "../../contracts";
 
 export type BranchGroupIdentifier = "default" | "recent" | "other";
 

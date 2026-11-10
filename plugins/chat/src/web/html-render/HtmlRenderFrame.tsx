@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { KernelOs } from "@kilo-desktop/kernel";
-import { useDomain } from "@kilo-desktop/kernel/web";
+import { useDomainObject } from "@kilo-desktop/kernel/web";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
@@ -141,7 +141,7 @@ export function HtmlRenderFrame({
 	heightCacheKey,
 	className,
 }: HtmlRenderFrameProps) {
-	const os = useDomain(KernelOs);
+	const os = useDomainObject(KernelOs);
 	const linkPromptId = useId();
 	const theme = useHtmlRenderTheme();
 	const themeRef = useRef(theme);

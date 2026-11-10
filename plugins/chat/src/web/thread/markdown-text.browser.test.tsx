@@ -9,7 +9,7 @@ import { createElement, type ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import type { PluginEntry } from "@kilo-desktop/kernel";
+import type { PluginEntry, PluginRegistration } from "@kilo-desktop/kernel";
 
 import { renderInKernel } from "../../test/kernel-harness";
 import { MarkdownExtension, type MarkdownExtensionImplementation } from "../../contracts";
@@ -110,7 +110,7 @@ function MarkdownMessage({
 	return (
 		<AssistantRuntimeProvider runtime={runtime}>
 			<ChatMarkdownProvider
-				sessionId="session-1"
+				workSessionId="wses_1"
 				workspaceFolders={[{ path: "/workspace/project", isPrimary: true }]}
 			>
 				<ChatLightboxProvider>
@@ -134,7 +134,7 @@ function MarkdownMessage({
 function renderMarkdownMessage(
 	text: string,
 	partType: "text" | "reasoning" = "text",
-	rendererPlugins: readonly unknown[] = [],
+	rendererPlugins: readonly PluginRegistration[] = [],
 ) {
 	return renderInKernel(<MarkdownMessage text={text} partType={partType} />, { rendererPlugins });
 }

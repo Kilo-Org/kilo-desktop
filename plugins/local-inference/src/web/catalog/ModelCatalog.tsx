@@ -34,24 +34,24 @@ import type {
 	LocalInferenceHardwareProfile,
 	ModelCatalogCapabilities,
 	ModelCatalogEntry,
-} from "../../contracts/schemas.js";
-import { hasRecommendationQuantization } from "../../shared/catalog/model-compatibility.js";
-import { sortCatalogModels, type CatalogSort } from "../../shared/catalog/model-recommendations.js";
+} from "../../contracts/index";
+import { hasRecommendationQuantization } from "../../shared/catalog/model-compatibility";
+import { sortCatalogModels, type CatalogSort } from "../../shared/catalog/model-recommendations";
 import {
 	ModelCatalogEmpty,
 	ModelCatalogError,
 	ModelCatalogLoading,
 	ModelCatalogNoResults,
 	ModelCatalogSignIn,
-} from "./CatalogStates.js";
-import { catalogTableCellClassNames, ModelCatalogTableFrame } from "./ModelCatalogTableLayout.js";
-import { ModelIdentity } from "./ModelIdentity.js";
-import { ModelPerformance } from "./ModelPerformance.js";
-import { ModelRecommendations } from "./ModelRecommendations.js";
-import { getPublisherDisplayName } from "./ModelPublisherIcon.js";
-import { catalogListQueryOptions } from "./catalog-query.js";
-import { localInferenceQueryOptions, useLocalInference } from "../local-inference.js";
-import { useCatalogAnacondaAccount } from "./use-anaconda-account.js";
+} from "./CatalogStates";
+import { catalogTableCellClassNames, ModelCatalogTableFrame } from "./ModelCatalogTableLayout";
+import { ModelIdentity } from "./ModelIdentity";
+import { ModelPerformance } from "./ModelPerformance";
+import { ModelRecommendations } from "./ModelRecommendations";
+import { getPublisherDisplayName } from "./ModelPublisherIcon";
+import { catalogListQueryOptions } from "./catalog-query";
+import { localInferenceQueryOptions, useLocalInference } from "../local-inference";
+import { useCatalogAccess } from "./use-catalog-access";
 
 const defaultCatalogSort: CatalogSort = "newest";
 
@@ -84,32 +84,32 @@ export function LocalModelCatalog({
 	const client = useLocalInference();
 	const [search, setSearch] = useState("");
 	const deferredSearch = useDeferredValue(search);
-	const anaconda = useCatalogAnacondaAccount();
-	const catalog = useQuery(catalogListQueryOptions(client, anaconda));
+	const catalogAccess = useCatalogAccess();
+	const catalog = useQuery(catalogListQueryOptions(client, catalogAccess));
 	const hardware = useQuery({
 		...localInferenceQueryOptions(client, "hardwareProfile"),
 		retry: false,
 		staleTime: Number.POSITIVE_INFINITY,
 	});
-	// Only a definite "no usable key" (anonymous) prompts sign-in; an `error`
-	// session (e.g. offline whoami) or a missing anaconda-account plugin falls
-	// through to the generic retry state.
-	const needsAnacondaSignIn =
+	// Only a definite "signed out" prompts sign-in; an `error` access (e.g.
+	// offline whoami) or no catalog at all falls through to the generic retry
+	// state.
+	const needsCatalogSignIn =
 		catalog.isError &&
-		anaconda.available &&
-		!anaconda.resolving &&
-		anaconda.session.status === "anonymous";
-	const signInToAnaconda = async (): Promise<void> => {
-		const result = await anaconda.signIn();
+		catalogAccess.available &&
+		!catalogAccess.resolving &&
+		catalogAccess.access.status === "signed-out";
+	const signInToCatalog = async (): Promise<void> => {
+		const result = await catalogAccess.signIn();
 		if (!result.ok && !result.cancelled) {
-			toast.error("Could not sign in to Anaconda", { description: result.reason });
+			toast.error(`Could not sign in to ${catalogAccess.title}`, { description: result.reason });
 		}
 	};
 	// Sign-in, error and empty replace the whole catalog and center in the pane.
 	const showsFullPaneState =
 		!catalog.isPending &&
 		!hardware.isPending &&
-		(needsAnacondaSignIn || catalog.isError || catalog.data.models.length === 0);
+		(needsCatalogSignIn || catalog.isError || catalog.data.models.length === 0);
 	const filteredModels = useMemo(
 		() => filterCatalogModels(catalog.data?.models ?? [], deferredSearch),
 		[catalog.data?.models, deferredSearch],
@@ -122,16 +122,17 @@ export function LocalModelCatalog({
 		>
 			{catalog.isPending || hardware.isPending ? (
 				<ModelCatalogLoading />
-			) : needsAnacondaSignIn ? (
+			) : needsCatalogSignIn ? (
 				<ModelCatalogSignIn
-					signingIn={anaconda.signingIn}
-					onSignIn={() => void signInToAnaconda()}
-					onCancel={() => void anaconda.cancelSignIn()}
+					title={catalogAccess.title ?? ""}
+					signingIn={catalogAccess.signingIn}
+					onSignIn={() => void signInToCatalog()}
+					onCancel={() => void catalogAccess.cancelSignIn()}
 				/>
 			) : catalog.isError ? (
 				<ModelCatalogError message={catalog.error.message} onRetry={() => void catalog.refetch()} />
 			) : catalog.data.models.length === 0 ? (
-				<ModelCatalogEmpty />
+				<ModelCatalogEmpty title={catalogAccess.title} />
 			) : (
 				<>
 					{hardware.data ? (

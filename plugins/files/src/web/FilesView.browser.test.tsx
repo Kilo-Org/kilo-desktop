@@ -2,15 +2,15 @@ import { act, cleanup, fireEvent } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import type { FileChange } from "@kilo-desktop/plugin-workspaces/contracts";
-import { FIND_BAR_FEATURE_FLAG } from "@kilo-desktop/ui/components/find-bar";
+import type { FileChange } from "@kilo-desktop/plugin-work-sessions/contracts";
+import { FIND_BAR_FLAG } from "@kilo-desktop/plugin-chat/contracts";
 
 import { FILE_OBJECT_TYPE } from "../contracts/panes.js";
 import {
 	bootFilesHost,
 	filesPane,
 	PaneHost,
-	SESSION_ID,
+	WORK_SESSION_ID,
 	type FilesHost,
 	type FilesHostOptions,
 	type Folder,
@@ -49,10 +49,10 @@ function paneOf(props: ViewProps) {
 	return filesPane(props.instanceId ?? PANE_ID, props.metadata ?? {}, props.title ?? "Files 1");
 }
 
-/** The file a Files pane asked kilo.sessions to open, as `Panes.openObject` receives it. */
+/** The file a Files pane asked kilo.work-sessions to open, as `Panes.openObject` receives it. */
 function openedFile(relativePath: string, workspaceDirectory = "/workspace") {
 	return {
-		sessionId: SESSION_ID,
+		workSessionId: WORK_SESSION_ID,
 		ref: { type: FILE_OBJECT_TYPE, id: `${workspaceDirectory}/${relativePath}` },
 	};
 }
@@ -276,7 +276,9 @@ describe("FilesView", () => {
 		const view = await renderView(handlers(), { workspaceDirectory: undefined });
 
 		await vi.waitFor(() => expect(view.pane(PANE_ID)?.title).toBe("Files"));
-		expect(view.updates).toEqual([{ sessionId: SESSION_ID, paneId: PANE_ID, title: "Files" }]);
+		expect(view.updates).toEqual([
+			{ workSessionId: WORK_SESSION_ID, paneId: PANE_ID, title: "Files" },
+		]);
 	});
 
 	it("uses the full workspace path when two folders share a name", async () => {
@@ -1591,7 +1593,7 @@ describe("FilesView", () => {
 		}
 
 		it("finds text in the preview with the find chord", async () => {
-			await openPreview([FIND_BAR_FEATURE_FLAG]);
+			await openPreview([FIND_BAR_FLAG]);
 
 			pressFindChord();
 			await page.getByTestId("files-find-input").fill("install");

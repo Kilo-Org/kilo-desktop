@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { toolWireName } from "@kilo-desktop/plugin-agent/contracts";
+import { toolWireName } from "@kilo-desktop/plugin-core/contracts";
 
 import {
 	HTML_RENDER_TOOL_ID,
@@ -24,7 +24,7 @@ const theme: HtmlRenderTheme = {
 const BOOTSTRAP_MARKER = 'id="kilo-html-render-theme"';
 
 describe("HTML_RENDER_TOOL_NAME", () => {
-	it("is the name kilo.agent's gateway serves kilo.chat's tool under", () => {
+	it("is the name kilo.core's gateway serves kilo.chat's tool under", () => {
 		expect(HTML_RENDER_TOOL_NAME).toBe(toolWireName(`kilo.chat/${HTML_RENDER_TOOL_ID}`));
 	});
 

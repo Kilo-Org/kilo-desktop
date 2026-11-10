@@ -9,7 +9,7 @@ import type {
 } from "@runtimed/node/electron";
 import type { RelayInfo, RelaySession } from "@runtimed/node/relay";
 
-import { findRuntimedArtifact } from "../../packaging/artifacts.js";
+import { findRuntimedArtifact } from "../../packaging/artifacts";
 
 const mocks = vi.hoisted(() => ({
 	createRelay: vi.fn(),
@@ -30,14 +30,14 @@ vi.mock("@runtimed/node/relay", () => ({
 vi.mock("@runtimed/node/electron", () => ({
 	serveElectronNotebookHost: mocks.serve,
 }));
-vi.mock("./daemon-peer-authenticator.js", () => ({
+vi.mock("./daemon-peer-authenticator", () => ({
 	createDaemonPeerAuthenticator: mocks.createAuthenticator,
 }));
 
 import {
 	ElectronNotebookHostService,
 	type NotebookHostPlatform,
-} from "./ElectronNotebookHostService.js";
+} from "./ElectronNotebookHostService";
 
 type FakeHost = NonNullable<NotebookHostPlatform["host"]>;
 
@@ -183,7 +183,7 @@ describe("ElectronNotebookHostService", () => {
 			hostPort,
 			{
 				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-				sessionId: "kilo-1",
+				workSessionId: "kilo-1",
 				title: "Analysis",
 				workingDirectory: "/projects/analysis",
 			},
@@ -222,7 +222,7 @@ describe("ElectronNotebookHostService", () => {
 			port(),
 			{
 				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-				sessionId: "kilo-1",
+				workSessionId: "kilo-1",
 				title: "Analysis",
 			},
 			"42",
@@ -282,7 +282,7 @@ describe("ElectronNotebookHostService", () => {
 				port(),
 				{
 					notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-					sessionId: "kilo-1",
+					workSessionId: "kilo-1",
 					title: "analysis.ipynb",
 					notebookPath: canonicalNotebookPath,
 				},
@@ -388,7 +388,7 @@ describe("ElectronNotebookHostService", () => {
 		});
 		const args = {
 			notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-			sessionId: "kilo-1",
+			workSessionId: "kilo-1",
 			title: "Analysis",
 		};
 		await service.connect(port(), args, "91");
@@ -417,7 +417,11 @@ describe("ElectronNotebookHostService", () => {
 			socketPath: "/tmp/nightly.sock",
 		});
 		const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
-		await service.connect(hostPort, { notebookId, sessionId: "kilo-1", title: "Analysis" }, "91");
+		await service.connect(
+			hostPort,
+			{ notebookId, workSessionId: "kilo-1", title: "Analysis" },
+			"91",
+		);
 		onFocus?.(false);
 		expect(server.emit).toHaveBeenCalledWith("window.focusChanged", false);
 
@@ -438,7 +442,7 @@ describe("ElectronNotebookHostService", () => {
 			port(),
 			{
 				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-				sessionId: "kilo-1",
+				workSessionId: "kilo-1",
 				title: "analysis.ipynb",
 				notebookPath: "/tmp/analysis.ipynb",
 			},
@@ -483,7 +487,7 @@ describe("ElectronNotebookHostService", () => {
 			port(),
 			{
 				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-				sessionId: "kilo-1",
+				workSessionId: "kilo-1",
 				title: "Analysis",
 			},
 			"91",
@@ -493,12 +497,12 @@ describe("ElectronNotebookHostService", () => {
 
 		expect(dirtyChanged).toHaveBeenCalledWith({
 			notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-			sessionId: "kilo-1",
+			workSessionId: "kilo-1",
 			dirty: false,
 		});
 		expect(dirtyChanged).toHaveBeenLastCalledWith({
 			notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-			sessionId: "kilo-1",
+			workSessionId: "kilo-1",
 			dirty: true,
 		});
 		expect(setTitle).not.toHaveBeenCalled();
@@ -524,7 +528,7 @@ describe("ElectronNotebookHostService", () => {
 		platform.events.on("title-changed", titleChanged);
 		const service = new ElectronNotebookHostService({ platform, socketPath: "/tmp/runtime.sock" });
 		const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
-		await service.connect(port(), { notebookId, sessionId: "kilo-1", title: "Analysis" }, "91");
+		await service.connect(port(), { notebookId, workSessionId: "kilo-1", title: "Analysis" }, "91");
 
 		const result = service.save(notebookId);
 		expect(server.emit).toHaveBeenCalledWith("command", {
@@ -537,7 +541,7 @@ describe("ElectronNotebookHostService", () => {
 		await expect(result).resolves.toEqual({ outcome: "saved" });
 		expect(titleChanged).toHaveBeenCalledWith({
 			notebookId,
-			sessionId: "kilo-1",
+			workSessionId: "kilo-1",
 			title: "analysis.ipynb",
 		});
 		await expect(handler.invoke("window.getTitle", undefined)).resolves.toBe("analysis.ipynb");
@@ -562,7 +566,7 @@ describe("ElectronNotebookHostService", () => {
 		});
 		const service = new ElectronNotebookHostService({ platform, socketPath: "/tmp/runtime.sock" });
 		const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
-		await service.connect(port(), { notebookId, sessionId: "kilo-1", title: "Analysis" }, "91");
+		await service.connect(port(), { notebookId, workSessionId: "kilo-1", title: "Analysis" }, "91");
 
 		const result = service.save(notebookId);
 		await handler.invoke("dialog.saveFile", { defaultPath: "/tmp/analysis.ipynb" });
@@ -609,7 +613,7 @@ describe("ElectronNotebookHostService", () => {
 			port(),
 			{
 				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-				sessionId: "kilo-1",
+				workSessionId: "kilo-1",
 				title: "Analysis",
 			},
 			"42",
@@ -634,7 +638,7 @@ describe("ElectronNotebookHostService", () => {
 				port(),
 				{
 					notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-					sessionId: "kilo-1",
+					workSessionId: "kilo-1",
 					title: "Analysis",
 				},
 				"42",
@@ -663,7 +667,7 @@ describe("ElectronNotebookHostService", () => {
 			port(),
 			{
 				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-				sessionId: "kilo-1",
+				workSessionId: "kilo-1",
 				title: "Analysis",
 			},
 			"91",
@@ -704,7 +708,7 @@ describe("ElectronNotebookHostService", () => {
 			port(),
 			{
 				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-				sessionId: "kilo-1",
+				workSessionId: "kilo-1",
 				title: "Analysis",
 			},
 			"91",
@@ -742,7 +746,7 @@ describe("ElectronNotebookHostService", () => {
 			port(),
 			{
 				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-				sessionId: "kilo-1",
+				workSessionId: "kilo-1",
 				title: "Analysis",
 			},
 			"91",
@@ -763,7 +767,7 @@ describe("ElectronNotebookHostService", () => {
 			port(),
 			{
 				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-				sessionId: "kilo-1",
+				workSessionId: "kilo-1",
 				title: "Analysis",
 			},
 			"42",
@@ -870,7 +874,7 @@ describe("ElectronNotebookHostService", () => {
 			port(),
 			{
 				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-				sessionId: "kilo-1",
+				workSessionId: "kilo-1",
 				title: "Analysis",
 			},
 			"42",
@@ -887,7 +891,7 @@ describe("ElectronNotebookHostService", () => {
 			port(),
 			{
 				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-				sessionId: "kilo-1",
+				workSessionId: "kilo-1",
 				title: "Analysis",
 			},
 			"91",
@@ -950,7 +954,7 @@ describe("ElectronNotebookHostService", () => {
 			port(),
 			{
 				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-				sessionId: "kilo-1",
+				workSessionId: "kilo-1",
 				title: "Analysis",
 			},
 			"91",
@@ -974,7 +978,7 @@ describe("ElectronNotebookHostService", () => {
 			port(),
 			{
 				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-				sessionId: "kilo-1",
+				workSessionId: "kilo-1",
 				title: "Analysis",
 			},
 			"91",
@@ -996,7 +1000,7 @@ describe("ElectronNotebookHostService", () => {
 			port(),
 			{
 				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-				sessionId: "kilo-1",
+				workSessionId: "kilo-1",
 				title: "Analysis",
 			},
 			"91",
@@ -1021,7 +1025,7 @@ describe("ElectronNotebookHostService", () => {
 			port(),
 			{
 				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-				sessionId: "kilo-1",
+				workSessionId: "kilo-1",
 				title: "Analysis",
 			},
 			"91",
@@ -1046,7 +1050,7 @@ describe("ElectronNotebookHostService", () => {
 			port(),
 			{
 				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-				sessionId: "kilo-1",
+				workSessionId: "kilo-1",
 				title: "Analysis",
 			},
 			"91",
@@ -1069,7 +1073,7 @@ describe("ElectronNotebookHostService", () => {
 			socketPath: "/tmp/nightly.sock",
 		});
 		const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
-		await service.connect(port(), { notebookId, sessionId: "kilo-1", title: "Analysis" }, "91");
+		await service.connect(port(), { notebookId, workSessionId: "kilo-1", title: "Analysis" }, "91");
 
 		const result = service.save(notebookId);
 		await expect(
@@ -1087,7 +1091,7 @@ describe("ElectronNotebookHostService", () => {
 			port(),
 			{
 				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-				sessionId: "kilo-1",
+				workSessionId: "kilo-1",
 				title: "Analysis",
 			},
 			"91",
@@ -1130,7 +1134,7 @@ describe("ElectronNotebookHostService", () => {
 			port(),
 			{
 				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-				sessionId: "kilo-1",
+				workSessionId: "kilo-1",
 				title: "Analysis",
 			},
 			"91",
@@ -1151,7 +1155,7 @@ describe("ElectronNotebookHostService", () => {
 			port(),
 			{
 				notebookId,
-				sessionId: "kilo-1",
+				workSessionId: "kilo-1",
 				title: "Analysis",
 				notebookPath: "/tmp/analysis.ipynb",
 			},
@@ -1174,7 +1178,7 @@ describe("ElectronNotebookHostService", () => {
 			port(),
 			{
 				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-				sessionId: "kilo-1",
+				workSessionId: "kilo-1",
 				title: "Analysis",
 			},
 			"91",
@@ -1189,7 +1193,7 @@ describe("ElectronNotebookHostService", () => {
 			socketPath: "/tmp/nightly.sock",
 		});
 		const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
-		await service.connect(port(), { notebookId, sessionId: "kilo-1", title: "Analysis" }, "91");
+		await service.connect(port(), { notebookId, workSessionId: "kilo-1", title: "Analysis" }, "91");
 
 		const first = service.save(notebookId);
 		const second = service.save(notebookId);
@@ -1210,7 +1214,11 @@ describe("ElectronNotebookHostService", () => {
 				socketPath: "/tmp/nightly.sock",
 			});
 			const notebookId = "669d39ec-39d6-4160-815c-b46e170cde8d";
-			await service.connect(port(), { notebookId, sessionId: "kilo-1", title: "Analysis" }, "91");
+			await service.connect(
+				port(),
+				{ notebookId, workSessionId: "kilo-1", title: "Analysis" },
+				"91",
+			);
 
 			const result = service.save(notebookId);
 			await vi.advanceTimersByTimeAsync(30_000);
@@ -1232,7 +1240,7 @@ describe("ElectronNotebookHostService", () => {
 			port(),
 			{
 				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-				sessionId: "kilo-1",
+				workSessionId: "kilo-1",
 				title: "Analysis",
 			},
 			"91",
@@ -1261,7 +1269,7 @@ describe("ElectronNotebookHostService", () => {
 				port(),
 				{
 					notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-					sessionId: "kilo-1",
+					workSessionId: "kilo-1",
 					title: "Analysis",
 				},
 				"91",
@@ -1281,7 +1289,7 @@ describe("ElectronNotebookHostService", () => {
 			port(),
 			{
 				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-				sessionId: "kilo-1",
+				workSessionId: "kilo-1",
 				title: "Analysis",
 			},
 			"91",
@@ -1313,7 +1321,7 @@ describe("ElectronNotebookHostService", () => {
 			port(),
 			{
 				notebookId: "669d39ec-39d6-4160-815c-b46e170cde8d",
-				sessionId: "kilo-1",
+				workSessionId: "kilo-1",
 				title: "Analysis",
 			},
 			"91",

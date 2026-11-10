@@ -90,7 +90,7 @@ export interface HostPrimitiveDeps {
  * belongs to the window that set it.
  */
 export function provideHostPrimitives(kernelSdk: PluginSdk, deps: HostPrimitiveDeps): void {
-	kernelSdk.domains.provide(KernelDialogs, {
+	kernelSdk.domainObjects.provide(KernelDialogs, {
 		initialState: {},
 		methods: {
 			open: async ({ title, directory, multiple, defaultPath, filters }) => {
@@ -127,14 +127,14 @@ export function provideHostPrimitives(kernelSdk: PluginSdk, deps: HostPrimitiveD
 		},
 	});
 
-	kernelSdk.domains.provide(KernelClipboard, {
+	kernelSdk.domainObjects.provide(KernelClipboard, {
 		initialState: {},
 		methods: {
 			writeText: ({ text }) => deps.clipboard.writeText(text),
 		},
 	});
 
-	kernelSdk.domains.provide(KernelOs, {
+	kernelSdk.domainObjects.provide(KernelOs, {
 		initialState: {},
 		methods: {
 			openExternal: ({ url }) => deps.os.openExternal(url),
@@ -155,7 +155,7 @@ export function provideHostPrimitives(kernelSdk: PluginSdk, deps: HostPrimitiveD
 		installationId: consent.installationId(),
 		environment: consent.environment,
 	});
-	const dataCollection = kernelSdk.domains.provide(KernelDataCollection, {
+	const dataCollection = kernelSdk.domainObjects.provide(KernelDataCollection, {
 		initialState: consentState(),
 		methods: {
 			setChoice: async ({ allowed }) => {
@@ -174,7 +174,7 @@ export function provideHostPrimitives(kernelSdk: PluginSdk, deps: HostPrimitiveD
 	});
 	consent.onChange(() => dataCollection.setState(consentState()));
 
-	kernelSdk.domains.provide(KernelNotifications, {
+	kernelSdk.domainObjects.provide(KernelNotifications, {
 		initialState: {},
 		methods: {
 			show: ({ title, body, silent }) =>
@@ -187,7 +187,7 @@ export function provideHostPrimitives(kernelSdk: PluginSdk, deps: HostPrimitiveD
 		},
 	});
 
-	kernelSdk.domains.provide(KernelAppMenu, {
+	kernelSdk.domainObjects.provide(KernelAppMenu, {
 		initialState: {},
 		methods: {
 			setMenu: ({ menus }, caller) => {
@@ -199,7 +199,7 @@ export function provideHostPrimitives(kernelSdk: PluginSdk, deps: HostPrimitiveD
 		},
 	});
 
-	const nativeTheme = kernelSdk.domains.provide(KernelNativeTheme, {
+	const nativeTheme = kernelSdk.domainObjects.provide(KernelNativeTheme, {
 		initialState: {
 			source: deps.nativeTheme.source,
 			shouldUseDarkColors: deps.nativeTheme.shouldUseDarkColors(),
@@ -223,7 +223,7 @@ export function provideHostPrimitives(kernelSdk: PluginSdk, deps: HostPrimitiveD
 	);
 
 	const account = (pluginId: string, key: string) => `${pluginId}:${key}`;
-	kernelSdk.domains.provide(KernelKeychain, {
+	kernelSdk.domainObjects.provide(KernelKeychain, {
 		initialState: {},
 		methods: {
 			get: ({ key }, caller) => deps.keychain.get(account(caller.pluginId, key)),
@@ -234,7 +234,7 @@ export function provideHostPrimitives(kernelSdk: PluginSdk, deps: HostPrimitiveD
 
 	const updater = deps.updater;
 	if (updater) {
-		const provider = kernelSdk.domains.provide(KernelUpdater, {
+		const provider = kernelSdk.domainObjects.provide(KernelUpdater, {
 			initialState: KernelUpdater.state.parse(updater.state),
 			methods: {
 				check: async () => actionResult(await updater.check()),

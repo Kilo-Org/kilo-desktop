@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import {
 	envPrefixSchema,
 	type CreatePrefixUnavailableReason,
-} from "../../../contracts/providers/conda.js";
-import { condaQueryOptions, type CondaClient } from "../../conda.js";
+} from "../../../contracts/providers/conda";
+import { condaQueryOptions, type CondaClient } from "../../conda";
 
 /** Wait this long after the last keystroke before checking the prefix. */
 export const PREFIX_CHECK_DEBOUNCE_MS = 400;

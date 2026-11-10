@@ -51,7 +51,7 @@ describe("diagnostics inspector — navigating", () => {
 
 		const owner = page.getByTestId("diagnostics-owner-kilo.shell");
 		await expect.element(owner).toBeVisible();
-		await expect.element(owner.getByText(/The window frame|settings host/)).toBeVisible();
+		await expect.element(owner.getByText(/^The window, settings/)).toBeVisible();
 		expect(crumbs()).toEqual([
 			"Diagnostics",
 			"acme.server",
@@ -111,7 +111,7 @@ describe("diagnostics inspector — extension points", () => {
 		await openFromPlugin("acme.server", "kilo.shell/settings-section");
 
 		const detail = page.getByTestId("diagnostics-point-kilo.shell/settings-section");
-		await expect.element(detail.getByText("A section of the Settings page.")).toBeVisible();
+		await expect.element(detail.getByText("A Settings page.")).toBeVisible();
 		await expect.element(detail.getByText(/^Additive/)).toBeVisible();
 		await expect.element(detail.getByTestId("diagnostics-link-kilo.shell")).toBeVisible();
 		await expect.element(detail.getByText(/renderer process/)).toBeVisible();

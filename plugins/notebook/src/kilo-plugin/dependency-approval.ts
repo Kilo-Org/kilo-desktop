@@ -25,7 +25,7 @@ import {
 	extractPackageName,
 	normalizeName,
 	type TyposquatWarning,
-} from "../shared/typosquat.js";
+} from "../shared/typosquat";
 
 type DependencyStatus = Awaited<ReturnType<Session["getDependencyStatus"]>>;
 

@@ -11,12 +11,12 @@ import type {
 	LocalModel,
 	ModelCatalogEntry,
 	ModelDownload,
-} from "../../contracts/schemas.js";
-import type { DownloadIdentity } from "./catalog-downloads.js";
-import { ModelDownloadSection } from "./ModelDownloadSection.js";
-import { ModelPerformanceSkeleton } from "./ModelPerformance.js";
-import { getPublisherDisplayName, ModelPublisherIcon } from "./ModelPublisherIcon.js";
-import { formatParameterCount } from "../models/model-format.js";
+} from "../../contracts/index";
+import type { DownloadIdentity } from "./catalog-downloads";
+import { ModelDownloadSection } from "./ModelDownloadSection";
+import { ModelPerformanceSkeleton } from "./ModelPerformance";
+import { getPublisherDisplayName, ModelPublisherIcon } from "./ModelPublisherIcon";
+import { formatParameterCount } from "../models/model-format";
 
 const capabilityBadgeDefinitions = [
 	{ id: "chat", label: "Chat", icon: MessageCircleIcon },

@@ -24,10 +24,10 @@ export interface ChatBackendOptions extends PromptOptions {
 const REQUEST_OPTIONS = { throwOnError: true } as const;
 
 /**
- * The react-opencode backend for one agent pane's thread. Sessions own the
+ * The react-opencode backend for one agent pane's thread. Work sessions own the
  * chat list, so the thread list is always empty: the runtime opens the pane's
  * chat by id, or starts a draft whose first send creates the chat through
- * kilo.agent (with this app's stamp, permission rules and Work Session).
+ * kilo.work-sessions (with this app's stamp, permission rules and work session).
  * Writes go to the chat's own directory; the event stream is the window's,
  * with the prompts the chat was already waiting on replayed to each thread
  * that subscribes (`withPendingPrompts`).

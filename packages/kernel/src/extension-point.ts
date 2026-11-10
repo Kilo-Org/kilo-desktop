@@ -41,7 +41,7 @@ export interface DecisionSpec<TInput> {
 	readonly timeoutMs: number;
 }
 
-export interface ExtensionPoint<
+export interface ExtensionPointDefinition<
 	TMeta = unknown,
 	TImpl = unknown,
 	TKind extends ExtensionKind = ExtensionKind,
@@ -54,20 +54,31 @@ export interface ExtensionPoint<
 	readonly metadata: z.ZodType<TMeta, TMetaInput>;
 	readonly implementation?: ImplementationSpec<TImpl>;
 	readonly decision?: DecisionSpec<unknown>;
+	/**
+	 * Contributions may point into their own plugin's `resources/` folder with
+	 * `${resources}` in metadata strings; in main, the kernel replaces it with
+	 * the contributor's folder, so consumers get absolute paths and never look
+	 * up another plugin's files.
+	 */
+	readonly resources?: boolean;
 }
 
 // oxlint-disable-next-line typescript/no-explicit-any -- existential over point type parameters
-export type AnyExtensionPoint = ExtensionPoint<any, any, ExtensionKind, any>;
+export type AnyExtensionPoint = ExtensionPointDefinition<any, any, ExtensionKind, any>;
 
 export type MetadataOf<TPoint> =
-	TPoint extends ExtensionPoint<infer TMeta, unknown, ExtensionKind, unknown> ? TMeta : never;
+	TPoint extends ExtensionPointDefinition<infer TMeta, unknown, ExtensionKind, unknown>
+		? TMeta
+		: never;
 
 export type MetadataInputOf<TPoint> =
-	TPoint extends ExtensionPoint<unknown, unknown, ExtensionKind, infer TInput> ? TInput : never;
+	TPoint extends ExtensionPointDefinition<unknown, unknown, ExtensionKind, infer TInput>
+		? TInput
+		: never;
 
 export type ImplementationOf<TPoint> =
 	// oxlint-disable-next-line typescript/no-explicit-any -- inference position
-	TPoint extends ExtensionPoint<any, infer TImpl, ExtensionKind, unknown> ? TImpl : never;
+	TPoint extends ExtensionPointDefinition<any, infer TImpl, ExtensionKind, unknown> ? TImpl : never;
 
 /** Fields every contribution entry may carry besides the point's own metadata. */
 export interface ContributionCommonFields {
@@ -94,15 +105,16 @@ export function defineExtensionPoint<
 		readonly description?: string;
 		readonly metadata?: z.ZodType<TMeta, TMetaInput>;
 		readonly implementation?: ImplementationSpec<TImpl>;
+		readonly resources?: boolean;
 	} & (TKind extends "decision" ? never : unknown),
-): ExtensionPoint<TMeta, TImpl, TKind, TMetaInput> {
+): ExtensionPointDefinition<TMeta, TImpl, TKind, TMetaInput> {
 	return {
 		...definition,
 		metadata: definition.metadata ?? (EMPTY_METADATA as unknown as z.ZodType<TMeta, TMetaInput>),
 	};
 }
 
-export function defineDecisionPoint<
+export function defineDecisionExtensionPoint<
 	TInput,
 	TMeta = Record<never, never>,
 	TMetaInput = TMeta,
@@ -114,7 +126,7 @@ export function defineDecisionPoint<
 	readonly input: z.ZodType<TInput>;
 	readonly failMode: "open" | "closed";
 	readonly timeoutMs: number;
-}): ExtensionPoint<TMeta, DecisionHandler<TInput>, "decision", TMetaInput> {
+}): ExtensionPointDefinition<TMeta, DecisionHandler<TInput>, "decision", TMetaInput> {
 	return {
 		id: definition.id,
 		kind: "decision",

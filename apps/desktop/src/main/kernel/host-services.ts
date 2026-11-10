@@ -3,6 +3,7 @@ import path from "node:path";
 import {
 	KernelError,
 	type EmbeddedHostRegistration,
+	type HostBrowser,
 	type KvStoreOptions,
 	type MainHostServices,
 	type PluginHostServices,
@@ -28,7 +29,7 @@ export interface HostServiceDeps {
 	readonly embeddedHosts: {
 		register(registration: EmbeddedHostRegistration): () => void;
 	};
-	readonly browser?: unknown;
+	readonly browser?: HostBrowser;
 	readonly assets: {
 		/** Set when packaged: plugins' `resources/` folders ship here (forge `extraResource`). */
 		readonly packagedResourcesPath?: string;

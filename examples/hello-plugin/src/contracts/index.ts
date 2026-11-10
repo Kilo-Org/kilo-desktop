@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { defineDomain, method, type PluginDefinitions } from "@kilo-desktop/kernel";
+import { defineDomainObject, method, type PluginDefinitions } from "@kilo-desktop/kernel";
 
 /**
  * example.hello's public surface: what other plugins may import. Here, one
@@ -16,7 +16,7 @@ export const greetingsStateSchema = z.object({
 export type GreetingsState = z.output<typeof greetingsStateSchema>;
 
 /** The greetings said so far, kept in main and shared by every window. */
-export const Greetings = defineDomain({
+export const Greetings = defineDomainObject({
 	id: "example.hello/greetings",
 	home: "main",
 	state: greetingsStateSchema,
@@ -31,4 +31,4 @@ export const Greetings = defineDomain({
 });
 
 /** What the kernel needs to know about this plugin without running it. */
-export const HELLO_DEFINITIONS: PluginDefinitions = { domains: [Greetings] };
+export const HELLO_DEFINITIONS: PluginDefinitions = { domainObjects: [Greetings] };

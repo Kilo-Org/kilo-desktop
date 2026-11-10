@@ -4,14 +4,14 @@ import type { CodeViewItem } from "@pierre/diffs";
 import type { CodeViewHandle } from "@pierre/diffs/react";
 import type { RefObject } from "react";
 
-import { usePatchLoader } from "./use-patch-loader.js";
+import { usePatchLoader } from "./use-patch-loader";
 import {
 	SECOND_PATCH,
 	WAIT,
 	patchResponseStream,
 	resetViewTestDom,
 	stubFetch,
-} from "../../test/changes-host.js";
+} from "../../test/git-host";
 
 afterEach(resetViewTestDom);
 

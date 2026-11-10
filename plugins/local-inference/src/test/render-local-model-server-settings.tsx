@@ -1,11 +1,11 @@
-import { LocalModelServerSettings } from "../web/settings/LocalModelServerSettings.js";
+import { LocalModelServerSettings } from "../web/settings/LocalModelServerSettings";
 import {
 	bootLocalInferenceHost,
 	SIGNED_IN,
 	type LocalInferenceHostOptions,
-} from "./local-inference-host.js";
+} from "./local-inference-host";
 
-export { connection, expandModel, usageSnapshot } from "./local-inference-host.js";
+export { connection, expandModel, usageSnapshot } from "./local-inference-host";
 
 type Handlers = NonNullable<LocalInferenceHostOptions["handlers"]>;
 
@@ -28,7 +28,7 @@ export async function renderSettings(
 	shell: ShellOptions = {},
 	identity: LocalInferenceHostOptions["identity"] = SIGNED_IN,
 	navigation?: { search: Record<string, string> },
-	flags?: Record<string, unknown>,
+	flags?: LocalInferenceHostOptions["flags"],
 ) {
 	const host = await bootLocalInferenceHost({
 		handlers,

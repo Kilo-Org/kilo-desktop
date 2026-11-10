@@ -1,10 +1,10 @@
 import { memo } from "react";
-import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 
 import { SoloAwareLabelRow } from "./tool-ui-activity-row";
 import { str, truncate } from "./tool-ui-shared";
+import type { ToolCallComponent } from "./tool-call";
 
-export const SkillActivity: ToolCallMessagePartComponent = memo(({ args, status }) => {
+export const SkillActivity: ToolCallComponent = memo(({ args, status }) => {
 	const name = str((args as Record<string, unknown> | undefined)?.name);
 	const skill = name ? truncate(name) : undefined;
 

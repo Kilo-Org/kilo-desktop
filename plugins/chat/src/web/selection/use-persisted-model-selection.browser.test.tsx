@@ -2,8 +2,11 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { KiloModelCatalog, KiloModelRef } from "./model-catalog";
-import type { ModelPreferencesState as PersistedModelPreferences } from "../../contracts";
-import { usePersistedModelSelection } from "./use-persisted-model-selection";
+import {
+	persistedPreferences,
+	usePersistedModelSelection,
+	type PersistedModelPreferences,
+} from "./use-persisted-model-selection";
 
 const defaultModel: KiloModelRef = {
 	providerID: "anthropic",
@@ -57,7 +60,6 @@ describe("usePersistedModelSelection", () => {
 			variantSelections: {},
 			recentModels: [],
 			favorites: [],
-			autoFreeModelsEnabled: true,
 		};
 		const { result } = renderHook(() =>
 			usePersistedModelSelection(
@@ -79,7 +81,6 @@ describe("usePersistedModelSelection", () => {
 			variantSelections: { "code/anthropic/claude-opus": "max" },
 			recentModels: [],
 			favorites: [],
-			autoFreeModelsEnabled: true,
 		};
 		const { result } = renderHook(() =>
 			usePersistedModelSelection(
@@ -92,6 +93,36 @@ describe("usePersistedModelSelection", () => {
 
 		expect(result.current.model).toEqual(alternateModel);
 		expect(result.current.effort).toBe("max");
+	});
+
+	it("starts a signed-in person without a remembered model on a connected provider's model", () => {
+		const { result } = renderHook(() =>
+			usePersistedModelSelection(
+				{ ...catalog, defaults: {}, providerReady: true, organizationId: null },
+				undefined,
+				{ agent: "code" },
+				{
+					modelSelections: {},
+					variantSelections: {},
+					recentModels: [],
+					favorites: [],
+				},
+			),
+		);
+
+		expect(result.current.validatedModel).toEqual(defaultModel);
+	});
+
+	it("starts on the provider's default when kilo.core names one", () => {
+		const { result } = renderHook(() =>
+			usePersistedModelSelection(
+				{ ...catalog, defaults: { anthropic: "claude-opus" }, providerReady: true },
+				undefined,
+				{ agent: "code" },
+			),
+		);
+
+		expect(result.current.validatedModel).toEqual(alternateModel);
 	});
 
 	it("uses the global Kilo configured model after the agent default", () => {
@@ -139,7 +170,6 @@ describe("usePersistedModelSelection", () => {
 			variantSelections: {},
 			recentModels: [alternateModel],
 			favorites: [],
-			autoFreeModelsEnabled: true,
 		};
 		const { result } = renderHook(() =>
 			usePersistedModelSelection(orgCatalog, undefined, { agent: "code" }, preferences),
@@ -160,7 +190,6 @@ describe("usePersistedModelSelection", () => {
 			variantSelections: {},
 			recentModels: [alternateModel],
 			favorites: [],
-			autoFreeModelsEnabled: true,
 		};
 		const { result } = renderHook(() =>
 			usePersistedModelSelection(personalCatalog, undefined, { agent: "code" }, preferences),
@@ -184,7 +213,6 @@ describe("usePersistedModelSelection", () => {
 			variantSelections: {},
 			recentModels: [],
 			favorites: [],
-			autoFreeModelsEnabled: true,
 		};
 		const externalPreferences: PersistedModelPreferences = {
 			...kiloPreferences,
@@ -223,7 +251,6 @@ describe("usePersistedModelSelection", () => {
 			variantSelections: { "code/anthropic/claude-opus": "max" },
 			recentModels: [],
 			favorites: [],
-			autoFreeModelsEnabled: true,
 		};
 		const { result } = renderHook(() =>
 			usePersistedModelSelection(
@@ -477,5 +504,35 @@ describe("usePersistedModelSelection", () => {
 		rerender({ threadId: undefined });
 		act(() => result.current.resetDraftModel());
 		expect(result.current.model).toEqual(defaultModel);
+	});
+});
+
+describe("persistedPreferences", () => {
+	it("reads kilo.core's preferences with models as the picker names them", () => {
+		expect(
+			persistedPreferences({
+				byAgent: { code: { aiProviderId: "anthropic", modelId: "claude-sonnet" } },
+				preferred: { aiProviderId: "anthropic", modelId: "claude-opus", variant: "max" },
+				variants: { "code/anthropic/claude-opus": "max" },
+				recent: [{ aiProviderId: "anthropic", modelId: "claude-opus" }],
+				favorites: [{ aiProviderId: "anthropic", modelId: "claude-sonnet" }],
+				autoFreeModels: true,
+			}),
+		).toEqual({
+			modelSelections: { code: defaultModel },
+			preferred: { ...alternateModel, variant: "max" },
+			variantSelections: { "code/anthropic/claude-opus": "max" },
+			recentModels: [alternateModel],
+			favorites: [defaultModel],
+		});
+		expect(
+			persistedPreferences({
+				byAgent: {},
+				variants: {},
+				recent: [],
+				favorites: [],
+				autoFreeModels: false,
+			}).preferred,
+		).toBeUndefined();
 	});
 });

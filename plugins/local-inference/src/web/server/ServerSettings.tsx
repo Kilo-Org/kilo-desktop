@@ -17,7 +17,7 @@ import { Switch } from "@kilo-desktop/ui/components/switch";
 import type {
 	LocalModelLoadMode,
 	LocalServerSettings,
-} from "../../shared/settings/server-settings.js";
+} from "../../shared/settings/server-settings";
 
 type Draft = {
 	port: string;

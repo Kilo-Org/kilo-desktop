@@ -1,4 +1,4 @@
-import { test } from "../../fixtures/features/context-menu.js";
+import { test } from "../../fixtures/shell/context-menu.js";
 
 test.describe("Native context menu @smoke @packaged", () => {
 	test("offers native edit actions when right-clicking a text field", async ({

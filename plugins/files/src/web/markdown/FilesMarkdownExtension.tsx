@@ -6,12 +6,12 @@ import {
 } from "@tanstack/react-query";
 import { createContext, useContext, useState, type ComponentType } from "react";
 
-import type { DomainHandle } from "@kilo-desktop/kernel";
+import type { DomainObjectHandle } from "@kilo-desktop/kernel";
 import type {
 	ChatMarkdownContext,
 	MarkdownExtensionImplementation,
 } from "@kilo-desktop/plugin-chat/contracts";
-import type { Panes } from "@kilo-desktop/plugin-sessions/contracts";
+import type { Panes } from "@kilo-desktop/plugin-work-sessions/contracts";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import { absoluteFilePath } from "../../contracts/panes.js";
@@ -34,7 +34,7 @@ import { FileExistenceBatcher } from "./file-existence-batcher.js";
 export interface FileLinksRuntime {
 	readonly queries: QueryClient;
 	readonly documents: () => DocumentsHandle | null;
-	readonly panes: () => DomainHandle<typeof Panes> | null;
+	readonly panes: () => DomainObjectHandle<typeof Panes> | null;
 }
 
 interface FileLinksServices extends FileLinksRuntime {
@@ -103,7 +103,7 @@ function ResolvableFileLinkChip({
 		const panes = panesOf();
 		if (!panes) return;
 		void openFile(panes, {
-			sessionId: linkContext.sessionId,
+			workSessionId: linkContext.workSessionId,
 			path: absoluteFilePath(fileTarget.workspaceDirectory, relativePath),
 			line: fileTarget.line,
 			column: fileTarget.column,
@@ -247,7 +247,7 @@ function withFileLinks<P extends object>(services: FileLinksServices, Component:
 
 /**
  * kilo.files' `markdown-extension`: workspace file references in the agent's
- * replies become file chips that open in the session through kilo.sessions'
+ * replies become file chips that open in the session through kilo.work-sessions'
  * openers. The chips render in kilo.chat's transcript, so they bring
  * kilo.files' own query cache and domain handles; existence checks from every
  * chip share one batcher.

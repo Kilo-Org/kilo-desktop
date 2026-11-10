@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-import { getPayloadPackageName, readStagedManifest } from "./bridge-artifacts.js";
+import { getPayloadPackageName, readStagedManifest } from "./bridge-artifacts";
 
 export interface BridgePackagingPlan {
 	readonly extraResources: readonly string[];

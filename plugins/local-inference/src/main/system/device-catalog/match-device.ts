@@ -1,10 +1,10 @@
 // Device specifications synchronized with canirun.ai commit db81865.
 // Keep the four catalogs complete so local estimates cover every CanIRun preset.
 
-import { APPLE_DB } from "./data/apple.js";
-import { GPU_DB } from "./data/gpu.js";
-import { MOBILE_GPU_DB } from "./data/mobile.js";
-import { SBC_DB } from "./data/sbc.js";
+import { APPLE_DB } from "./data/apple";
+import { GPU_DB } from "./data/gpu";
+import { MOBILE_GPU_DB } from "./data/mobile";
+import { SBC_DB } from "./data/sbc";
 
 type GpuDeviceSpec = (typeof GPU_DB)[string];
 type AppleDeviceSpec = (typeof APPLE_DB)[string];

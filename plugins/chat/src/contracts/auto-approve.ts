@@ -1,12 +1,15 @@
 import { z } from "zod";
 
-import { defineDomain, method } from "@kilo-desktop/kernel";
+import { defineDomainObject, method } from "@kilo-desktop/kernel";
 
 export const approvalModeSchema = z.enum(["manual", "auto"]);
 export type ApprovalMode = z.output<typeof approvalModeSchema>;
 
 /** How long an auto-approvable request stays hidden before it is shown anyway. */
 export const AUTO_APPROVE_REVEAL_MS = 3_000;
+
+/** kilo.chat's `kilo.core/tool-approval` contribution id: Auto lets desktop tools proceed. */
+export const AUTO_APPROVE_TOOL_APPROVAL_ID = "auto-approve";
 
 /**
  * Whether the agent's permission requests are answered for the person
@@ -15,21 +18,18 @@ export const AUTO_APPROVE_REVEAL_MS = 3_000;
  * right now, which permission cards keep hidden until they are revealed
  * (`AUTO_APPROVE_REVEAL_MS`, or a failed reply drops them from the list).
  */
-export const AutoApprove = defineDomain({
+export const AutoApprove = defineDomainObject({
 	id: "kilo.chat/auto-approve",
 	home: "main",
+	description: "Whether the agent's permission requests are answered automatically.",
 	state: z.object({
 		mode: approvalModeSchema,
+		/** Permission request ids being answered or checked right now. */
 		holding: z.array(z.string()),
 	}),
 	methods: {
 		/** kilo.chat's own control only: Auto answers the agent's requests for the person. */
 		setMode: method(z.object({ mode: approvalModeSchema }), z.undefined()),
-		/**
-		 * Hands over the mode origin kept in the main window's localStorage.
-		 * Applied once; kilo.chat's own windows only.
-		 */
-		importLegacyMode: method(z.object({ mode: approvalModeSchema }), z.undefined()),
 	},
 });
 

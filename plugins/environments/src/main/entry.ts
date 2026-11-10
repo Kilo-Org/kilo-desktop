@@ -1,7 +1,8 @@
 /**
  * kilo.environments in main: one bundled conda bridge serving the person's
  * conda environments (`kilo.environments/conda`, the conda agent tools) and
- * plugin-owned ones (`kilo.environments/conda-runtime`).
+ * plugin-owned ones (`kilo.environments/conda-runtime`, and through it
+ * llama.cpp for the Local Model Server).
  *
  * Ownership and lifecycle:
  * - The bridge process belongs to the `bridge` kernel service (`first-use`):
@@ -12,54 +13,69 @@
  *   start never blocks a later call.
  * - Windows ARM64 gives `conda-runtime` a second bridge with
  *   `CONDA_SUBDIR=win-arm64` (conda has no per-request subdir); elsewhere both
- *   domains share one. The runtime's bridge starts only when an environment
- *   must be created, whatever the flag says.
- * - `conda.status` is `disabled` while the `environments-feature` flag is
- *   off, `unavailable` when no bridge payload is found (looked up once, when
- *   the flag first turns on), else `ready`; methods and tools refuse unless
- *   `ready`. The agent sees no conda tools while it is not (`session-config`).
+ *   domain objects share one. The runtime's bridge starts only when an
+ *   environment must be created, whatever the flag says.
+ * - `conda.status` is `disabled` while the kernel's `environments-feature`
+ *   flag is off, `unavailable` when no bridge payload is found (looked up
+ *   once, when the flag first turns on), else `ready`; methods and tools
+ *   refuse unless `ready`. The agent sees no conda tools while it is not
+ *   (the `kilo.core/chat-config` contribution's `disableTools`).
  * - Writes are serialised and reads cached by one `JobQueue`, whose progress
  *   events are `conda`'s `job-progress`.
  * - Every chat is created with origin's ask rules for mutating conda-family
- *   commands run through `bash` (`session-config` permissions); the mutating
+ *   commands run through `bash` (`chat-config` permissions); the mutating
  *   conda tools ask through their own `approval`.
+ * - `conda.setup.open` asks kilo.shell's `navigation` to open the settings
+ *   section; without kilo.shell it opens nothing.
+ * - The `kilo.local-inference/llama-runtime` contribution `conda` installs
+ *   llama.cpp into the `local-inference-llama` runtime environment, whatever
+ *   the flag says.
+ * - kilo.core, kilo.shell, kilo.chat and kilo.local-inference are optional:
+ *   their domain objects are looked up per call, and contributions to their
+ *   points simply go unused without them.
  */
 import {
 	definePlugin,
 	KernelDialogs,
 	KernelError,
+	KernelFlags,
 	KernelService,
 	KernelServices,
 	mainHost,
 	type PluginEntry,
 	type PluginSdk,
 } from "@kilo-desktop/kernel";
-import { Flags } from "@kilo-desktop/plugin-flags/contracts";
-import { AgentTool, SessionConfigPoint } from "@kilo-desktop/plugin-agent/contracts";
+import { ChatConfigPoint, Tool } from "@kilo-desktop/plugin-core/contracts";
+import { LlamaRuntime } from "@kilo-desktop/plugin-local-inference/contracts";
+import { Navigation } from "@kilo-desktop/plugin-shell/contracts";
 
 import {
 	BRIDGE_SERVICE_KEY,
 	Conda,
+	CONDA_CHAT_CONFIG,
+	CONDA_LLAMA_RUNTIME,
 	CondaRuntime as CondaRuntimeDomain,
 	ENVIRONMENTS_FLAG,
+	ENVIRONMENTS_SETTINGS_SECTION,
 	type CondaStatus,
-} from "../contracts/index.js";
-import { buildCondaCliPermissionRules, condaToolName } from "../shared/conda-permissions.js";
-import { createCondaService, type CondaMethods } from "./conda-service.js";
-import { JobQueue } from "./job-queue.js";
-import type { CondaBackend } from "./providers/conda/CondaBackend.js";
-import { CondaRuntime } from "./providers/conda/CondaRuntime.js";
+} from "../contracts/index";
+import { buildCondaCliPermissionRules, condaToolName } from "../shared/conda-permissions";
+import { createCondaService, type CondaMethods } from "./conda-service";
+import { JobQueue } from "./job-queue";
+import { condaLlamaRuntime } from "./llama-runtime";
+import type { CondaBackend } from "./providers/conda/CondaBackend";
+import { CondaRuntime } from "./providers/conda/CondaRuntime";
 import {
 	type BridgeLaunchInfo,
 	resolveBridgeLaunchInfo,
-} from "./providers/conda/resolveBridgePath.js";
+} from "./providers/conda/resolveBridgePath";
 import {
 	bridgePreferences,
 	pluginBridgeEnvironment,
 	SharedCondaBridge,
 	type CondaBridge,
-} from "./providers/conda/SharedCondaBridge.js";
-import { condaTools } from "./tools.js";
+} from "./providers/conda/SharedCondaBridge";
+import { condaTools } from "./tools";
 
 export interface EnvironmentsMainOptions {
 	/** Finds the bundled bridge; defaults to the plugin's `resources/bridge` (or `BRIDGE_PAYLOAD`). */
@@ -82,6 +98,8 @@ export interface EnvironmentsMainOptions {
 	 * (data-collection consent) is on.
 	 */
 	readonly sentryDsn?: string;
+	/** How the llama.cpp runtime describes this machine and checks the installed server (tests). */
+	readonly llama?: Omit<Parameters<typeof condaLlamaRuntime>[0], "conda" | "logger">;
 }
 
 const UNAVAILABLE_MESSAGES: Readonly<Record<Exclude<CondaStatus, "ready">, string>> = {
@@ -160,7 +178,7 @@ export function createEnvironmentsMainEntry(options: EnvironmentsMainOptions = {
 				...(options.platform ? { platform: options.platform } : {}),
 				...(options.condaFilesRoot ? { condaFilesRoot: options.condaFilesRoot } : {}),
 			});
-			sdk.domains.provide(CondaRuntimeDomain, {
+			sdk.domainObjects.provide(CondaRuntimeDomain, {
 				initialState: {},
 				methods: { ensureEnvironment: (input) => runtime.ensureEnvironment(input) },
 			});
@@ -175,7 +193,7 @@ export function createEnvironmentsMainEntry(options: EnvironmentsMainOptions = {
 				queue,
 				storageDir: () => host.storage.dir,
 				pickFile: async () => {
-					const dialogs = sdk.domains.get(KernelDialogs);
+					const dialogs = sdk.domainObjects.get(KernelDialogs);
 					if (!dialogs) return null;
 					const { paths } = await dialogs.methods.open({
 						filters: [{ name: "Environment files", extensions: ["yml", "yaml"] }],
@@ -185,14 +203,15 @@ export function createEnvironmentsMainEntry(options: EnvironmentsMainOptions = {
 			});
 			sdk.onDispose(() => service.dispose());
 
-			const flagOn = () => sdk.domains.get(Flags)?.getState().flags[ENVIRONMENTS_FLAG] === true;
+			const flagOn = () =>
+				sdk.domainObjects.get(KernelFlags)?.getState().flags[ENVIRONMENTS_FLAG]?.value === true;
 			const currentStatus = (): CondaStatus => {
 				if (!flagOn()) return "disabled";
 				return resolveLaunch() ? "ready" : "unavailable";
 			};
 
 			const startBridge = async () => {
-				const services = sdk.domains.get(KernelServices);
+				const services = sdk.domainObjects.get(KernelServices);
 				if (!services) return;
 				// A failed start is reported by the service; the call still gets its
 				// own chance, since the backend spawns a bridge on demand.
@@ -216,7 +235,7 @@ export function createEnvironmentsMainEntry(options: EnvironmentsMainOptions = {
 					]),
 			) as unknown as CondaMethods;
 
-			const conda = sdk.domains.provide(Conda, {
+			const conda = sdk.domainObjects.provide(Conda, {
 				initialState: { status: currentStatus() },
 				methods,
 			});
@@ -224,7 +243,7 @@ export function createEnvironmentsMainEntry(options: EnvironmentsMainOptions = {
 				const status = currentStatus();
 				if (status !== conda.state.status) conda.setState({ status });
 			};
-			const flags = sdk.domains.get(Flags);
+			const flags = sdk.domainObjects.get(KernelFlags);
 			if (flags) sdk.onDispose(flags.subscribe(follow));
 
 			sdk.extensions.implement(KernelService, "bridge", {
@@ -234,18 +253,40 @@ export function createEnvironmentsMainEntry(options: EnvironmentsMainOptions = {
 
 			const tools = condaTools({
 				conda: () => methods,
-				openSettings: () => conda.emit("setup-requested", {}),
+				openSettings: async () => {
+					await sdk.domainObjects
+						.get(Navigation)
+						?.methods.openSettings({ section: ENVIRONMENTS_SETTINGS_SECTION });
+				},
 			});
-			for (const [id, tool] of Object.entries(tools)) sdk.extensions.implement(AgentTool, id, tool);
+			for (const [id, tool] of Object.entries(tools)) sdk.extensions.implement(Tool, id, tool);
 
 			const toolNames = Object.keys(tools).map(condaToolName);
 			const cliRules = buildCondaCliPermissionRules();
-			sdk.extensions.implement(SessionConfigPoint, "conda", {
+			sdk.extensions.implement(ChatConfigPoint, CONDA_CHAT_CONFIG, {
 				configure: () => ({
 					permissions: cliRules,
 					...(conda.state.status === "ready" ? {} : { disableTools: toolNames }),
 				}),
 			});
+
+			sdk.extensions.implement(
+				LlamaRuntime,
+				CONDA_LLAMA_RUNTIME,
+				condaLlamaRuntime({
+					conda: {
+						ensureEnvironment: (input) =>
+							runtime.ensureEnvironment({
+								name: input.name,
+								packages: [...input.packages],
+								...(input.channels ? { channels: [...input.channels] } : {}),
+							}),
+						executable: (prefixPath, name) => runtime.executable(prefixPath, name),
+					},
+					logger: sdk.logger,
+					...options.llama,
+				}),
+			);
 		},
 	});
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { compareCondaVersions } from "./compare-conda-versions.js";
+import { compareCondaVersions } from "./compare-conda-versions";
 
 /**
  * Behavioural checks for the shared version comparator. Each case pins one

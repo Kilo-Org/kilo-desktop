@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { defineTool, type ToolImplementation } from "@kilo-desktop/plugin-agent/contracts";
+import { defineTool, type ToolImplementation } from "@kilo-desktop/plugin-core/contracts";
 
 import {
 	AGENT_CHANNEL_REFUSAL_MESSAGE,
@@ -15,8 +15,9 @@ import {
 	condaPackagesRemoveInputSchema,
 	condaPackagesUpdateInputSchema,
 	condaRepodataFindInputSchema,
-} from "../contracts/index.js";
-import type { CondaMethods } from "./conda-service.js";
+	ENVIRONMENTS_PLUGIN_ID,
+} from "../contracts/index";
+import type { CondaMethods } from "./conda-service";
 
 /**
  * True when every entry in a model-supplied `channels` array is a named
@@ -33,7 +34,7 @@ function hasOnlyNamedChannels(value: { channels?: string[] | undefined }): boole
 const NO_INPUT = z.object({}).strict();
 
 /** Tool calls reach the conda methods as kilo.environments' own. */
-const CALLER = { pluginId: "kilo.environments", process: "main" } as const;
+const CALLER = { pluginId: ENVIRONMENTS_PLUGIN_ID, process: "main" } as const;
 
 const AGENT_CHANNEL_REFUSAL = {
 	message: AGENT_CHANNEL_REFUSAL_MESSAGE,
@@ -95,12 +96,12 @@ const AMBIGUOUS_ENV_TARGET_REFUSAL = {
 export interface CondaToolsOptions {
 	/** The conda methods; throws while Conda Environments is unavailable. */
 	readonly conda: () => CondaMethods;
-	/** Opens Conda Environments settings in the main window. */
-	readonly openSettings: () => void;
+	/** Opens Conda Environments settings in a window. */
+	readonly openSettings: () => void | Promise<void>;
 }
 
 /**
- * The conda agent tools, by `kilo.agent/tool` contribution id. Their ids
+ * The conda agent tools, by `kilo.core/tool` contribution id. Their ids
  * carry origin's contract keys (`conda.envs.create`), so Kilo sees origin's
  * names (`desktop_environments_conda_envs_create`). Model-facing schemas omit
  * `prefix` where an agent must not pick filesystem locations and refuse URL
@@ -132,8 +133,8 @@ export function condaTools(options: CondaToolsOptions): Record<string, ToolImple
 			"and choose package channels. Use this when the user asks to set up or configure an " +
 			"environment or channel.",
 		input: NO_INPUT,
-		run: () => {
-			options.openSettings();
+		run: async () => {
+			await options.openSettings();
 			return { opened: true };
 		},
 	});

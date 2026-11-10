@@ -8,8 +8,8 @@ import { z } from "zod";
  * enforced by `tsc` where main provides `kilo.git/repository`.
  */
 
-/** The managed worktree directory (`<main root>/.kilo/worktrees/`), owned by kilo.workspaces. */
-export { KILO_WORKTREE_SEGMENTS } from "@kilo-desktop/plugin-workspaces/contracts";
+/** The managed worktree directory (`<main root>/.kilo/worktrees/`), owned by kilo.work-sessions. */
+export { KILO_WORKTREE_SEGMENTS } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 /** `GitStatusEntry` */
 export const gitStatusEntrySchema = z.enum(["M", "A", "D", "R", "C", ".", "?", "!", "U"]);

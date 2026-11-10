@@ -2,7 +2,7 @@ import { CpuIcon, GpuIcon, MemoryStickIcon, type LucideIcon } from "lucide-react
 
 import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
 
-import type { LocalInferenceUsage } from "../../contracts/schemas.js";
+import type { LocalInferenceUsage } from "../../contracts/index";
 
 const GIBIBYTE = 1024 ** 3;
 const MEBIBYTE = 1024 ** 2;

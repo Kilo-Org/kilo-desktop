@@ -18,8 +18,12 @@
  * - Frames talk to their notebook over the `host` port, adapted to the
  *   Electron port nteract's host adapter serves; the frame's bundle is the
  *   `notebook` embedded host, with outputs confined to `output-frame.html`.
- * - The Kilo server loads the notebook tool plugin through `runtime-config`;
- *   the desktop notebook tools are `kilo.agent/tool`s (signed in only).
+ * - The Kilo server loads the notebook tool plugin as a static
+ *   `kilo.core/agent-extension`; its environment (`@runtimed/node`, the
+ *   daemon's socket) is the `kilo.core/server-env` source `runtimed`. The
+ *   desktop notebook tools are `kilo.core/tool`s (signed in only).
+ * - kilo.work-sessions and kilo.core are optional: panes are
+ *   tracked, and their absence never fails activation.
  * - "Trust new notebooks", the workspace environment file and runtime
  *   telemetry (consent and the `notebook-host-telemetry` flag) follow
  *   connections as origin's did. Origin's saved settings and notebook facts
@@ -37,25 +41,27 @@ import {
 	KernelDataCollection,
 	KernelDialogs,
 	KernelError,
+	KernelFlags,
 	KernelService,
 	KernelServices,
 	KernelOs,
 	KernelWindows,
 	mainHost,
-	type DomainHandle,
+	type DomainObjectHandle,
 	type MainHostServices,
 	type PluginEntry,
 	type PluginSdk,
 } from "@kilo-desktop/kernel";
-import { AgentTool, RuntimeConfigPoint } from "@kilo-desktop/plugin-agent/contracts";
-import { Flags } from "@kilo-desktop/plugin-flags/contracts";
-import { Panes } from "@kilo-desktop/plugin-sessions/contracts";
+import { ServerEnv, Tool } from "@kilo-desktop/plugin-core/contracts";
+import { Panes } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import {
 	DEFAULT_NOTEBOOK_SETTINGS,
 	NOTEBOOK_HOST,
 	NOTEBOOK_HOST_PORT,
 	NOTEBOOK_PANE_KIND,
+	NOTEBOOK_SERVER_ENV_CONTRIBUTION,
+	NOTEBOOK_TELEMETRY_FLAG,
 	notebookConnectionArgsSchema,
 	Notebooks,
 	RUNTIMED_SERVICE_KEY,
@@ -69,7 +75,6 @@ import { electronMainPort } from "./electron-port.js";
 import { WorkspaceEnvironment } from "./environment/workspace-environment.js";
 import { importOriginNotebookData } from "./import-origin.js";
 import { NotebookPanes } from "./notebook-panes.js";
-import { notebookRuntimeConfig } from "./runtime-config.js";
 import type {
 	ElectronNotebookConnectionArgs,
 	ElectronNotebookHostServiceOptions,
@@ -82,6 +87,7 @@ import {
 } from "./runtime/NotebookTelemetryPermission.js";
 import type { RuntimedDaemonState } from "./runtime/RuntimedDaemonManager.js";
 import { resolveDaemonSocketPath, type BuildChannel } from "./runtime/socket-path.js";
+import { notebookServerEnv } from "./server-env.js";
 import { NotebookSettingsStore, NotebookStateStore } from "./settings/NotebookSettingsStore.js";
 import { notebookTools } from "./tools.js";
 
@@ -110,7 +116,6 @@ export interface NotebookMainOptions {
 	readonly runtimeChannel?: BuildChannel;
 	readonly resolveRuntimedBinary?: (host: MainHostServices) => string | undefined;
 	readonly resolveBundleRoot?: (host: MainHostServices) => string | undefined;
-	readonly resolveKiloPluginEntry?: (host: MainHostServices) => string | undefined;
 	readonly resolveRuntimedNodeEntry?: () => string | undefined;
 	/** Opens the extra peer "Trust new notebooks" holds per notebook. */
 	readonly openTrustSession?: (notebookId: string, socketPath: string) => Promise<TrustSession>;
@@ -127,7 +132,6 @@ export interface NotebookMainOptions {
 /** nteract's copy buttons call navigator.clipboard; outputs stay in opaque-origin frames. */
 const CLIPBOARD_WRITE_PERMISSION = "clipboard-sanitized-write";
 const ACTIVE_UNTRUSTED_CONTENT = "active-untrusted-content";
-const TELEMETRY_FLAG = "notebook-host-telemetry";
 const EXTERNAL_LINK_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
@@ -171,7 +175,7 @@ function hostPlatform(
 	sdk: PluginSdk,
 	events: NotebookHostPlatform["events"],
 ): NotebookHostPlatform {
-	const windows = () => sdk.domains.get(KernelWindows);
+	const windows = () => sdk.domainObjects.get(KernelWindows);
 	return {
 		logger: sdk.logger,
 		events,
@@ -179,7 +183,7 @@ function hostPlatform(
 			paths: { defaultSaveDirectory: defaultDocumentsDirectory },
 			dialog: {
 				openFile: async (_windowId, options) => {
-					const dialogs = sdk.domains.get(KernelDialogs);
+					const dialogs = sdk.domainObjects.get(KernelDialogs);
 					if (!dialogs) return null;
 					const { paths } = await dialogs.methods.open({
 						...(options?.defaultPath ? { defaultPath: options.defaultPath } : {}),
@@ -188,7 +192,7 @@ function hostPlatform(
 					return paths[0] ?? null;
 				},
 				saveFile: async (_windowId, options) => {
-					const dialogs = sdk.domains.get(KernelDialogs);
+					const dialogs = sdk.domainObjects.get(KernelDialogs);
 					if (!dialogs) return null;
 					const { path: chosen } = await dialogs.methods.save({
 						...(options?.defaultPath ? { defaultPath: options.defaultPath } : {}),
@@ -199,7 +203,7 @@ function hostPlatform(
 			},
 			externalLinks: {
 				open: async (url) => {
-					const os = sdk.domains.get(KernelOs);
+					const os = sdk.domainObjects.get(KernelOs);
 					if (!os || !isExternalLink(url)) return false;
 					return os.methods.openExternal({ url }).catch(() => false);
 				},
@@ -241,9 +245,9 @@ export function createNotebookMainEntry(options: NotebookMainOptions): PluginEnt
 			const runtimeChannel = options.runtimeChannel ?? NTERACT_RELEASE.channel;
 			const socketPath = explicitSocket ?? resolveDaemonSocketPath({ channel: runtimeChannel });
 			const runtimedBinaryPath = (options.resolveRuntimedBinary ?? defaultRuntimedBinary)(host);
-			let panesHandle: DomainHandle<typeof Panes> | null = null;
+			let panesHandle: DomainObjectHandle<typeof Panes> | null = null;
 
-			const notebooks = sdk.domains.provide(Notebooks, {
+			const notebooks = sdk.domainObjects.provide(Notebooks, {
 				initialState: { settings: DEFAULT_NOTEBOOK_SETTINGS, dirty: {} },
 				methods: {
 					status: async () => (await ensureRuntime()).status(),
@@ -255,8 +259,8 @@ export function createNotebookMainEntry(options: NotebookMainOptions): PluginEnt
 						return next;
 					},
 					prepareEnvironment: (request) => workspaceEnvironment.prepare(request),
-					resolvePane: async ({ sessionId, paneId }) => {
-						await notebookPanes.resolve(sessionId, paneId);
+					resolvePane: async ({ workSessionId, paneId }) => {
+						await notebookPanes.resolve(workSessionId, paneId);
 					},
 				},
 			});
@@ -285,7 +289,8 @@ export function createNotebookMainEntry(options: NotebookMainOptions): PluginEnt
 			const telemetry = new NotebookTelemetryPermission({
 				socketPath,
 				openRegistration: options.openTelemetryRegistration ?? (async () => null),
-				readFeatureFlag: () => sdk.domains.get(Flags)?.getState().flags[TELEMETRY_FLAG],
+				readFeatureFlag: () =>
+					sdk.domainObjects.get(KernelFlags)?.getState().flags[NOTEBOOK_TELEMETRY_FLAG]?.value,
 			});
 			const trust = new NewNotebookTrust({
 				openNotebook: (notebookId) =>
@@ -310,7 +315,7 @@ export function createNotebookMainEntry(options: NotebookMainOptions): PluginEnt
 				void telemetry.setAllowed(allowed).catch(reportTelemetryError);
 			};
 			sdk.onDispose(
-				sdk.domains.track(KernelDataCollection, {
+				sdk.domainObjects.track(KernelDataCollection, {
 					added: (handle) => {
 						followConsent(handle.getState().allowed);
 						sdk.onDispose(handle.subscribe((state) => followConsent(state.allowed)));
@@ -326,10 +331,12 @@ export function createNotebookMainEntry(options: NotebookMainOptions): PluginEnt
 			};
 			void telemetry.refreshFeatureFlag().catch(reportTelemetryError);
 			sdk.onDispose(
-				sdk.domains.track(Flags, {
+				sdk.domainObjects.track(KernelFlags, {
 					added: (handle) => {
-						followFlag(handle.getState().flags[TELEMETRY_FLAG]);
-						sdk.onDispose(handle.subscribe((state) => followFlag(state.flags[TELEMETRY_FLAG])));
+						followFlag(handle.getState().flags[NOTEBOOK_TELEMETRY_FLAG]?.value);
+						sdk.onDispose(
+							handle.subscribe((state) => followFlag(state.flags[NOTEBOOK_TELEMETRY_FLAG]?.value)),
+						);
 					},
 					removed: () => followFlag(undefined),
 				}),
@@ -352,7 +359,7 @@ export function createNotebookMainEntry(options: NotebookMainOptions): PluginEnt
 					const located = notebookPanes.locate(notebookId);
 					if (!located || located.pane.title === title || !panesHandle) return;
 					void panesHandle.methods
-						.update({ sessionId: located.sessionId, paneId: located.pane.id, title })
+						.update({ workSessionId: located.workSessionId, paneId: located.pane.id, title })
 						.catch(() => undefined);
 				},
 			} as NotebookHostPlatform["events"]);
@@ -391,7 +398,7 @@ export function createNotebookMainEntry(options: NotebookMainOptions): PluginEnt
 			});
 			const ensureRuntime = async () => {
 				// A failed start shows in Diagnostics; the caller still gets the runtime's own answer.
-				await sdk.domains
+				await sdk.domainObjects
 					.get(KernelServices)
 					?.methods.ensureStarted({ key: RUNTIMED_SERVICE_KEY })
 					.catch(() => undefined);
@@ -404,12 +411,12 @@ export function createNotebookMainEntry(options: NotebookMainOptions): PluginEnt
 				createId: options.createId ?? (() => crypto.randomUUID()),
 			});
 			sdk.onDispose(
-				sdk.domains.track(Panes, {
+				sdk.domainObjects.track(Panes, {
 					added: (handle) => {
 						panesHandle = handle;
-						const stop = handle.on("opened", ({ sessionId, pane }) => {
+						const stop = handle.on("opened", ({ workSessionId, pane }) => {
 							if (pane.kind !== NOTEBOOK_PANE_KIND) return;
-							void notebookPanes.resolve(sessionId, pane.id).catch(() => undefined);
+							void notebookPanes.resolve(workSessionId, pane.id).catch(() => undefined);
 						});
 						sdk.onDispose(stop);
 					},
@@ -422,21 +429,14 @@ export function createNotebookMainEntry(options: NotebookMainOptions): PluginEnt
 			for (const [id, tool] of Object.entries(
 				notebookTools({ panes: () => panesHandle, notebookPanes }),
 			)) {
-				sdk.extensions.implement(AgentTool, id, tool);
+				sdk.extensions.implement(Tool, id, tool);
 			}
 
 			sdk.extensions.implement(
-				RuntimeConfigPoint,
-				"kilo-plugin",
-				notebookRuntimeConfig(
-					{
-						pluginPath: (
-							options.resolveKiloPluginEntry ??
-							((services) => resolveAsset(services, "resources/kilo-plugin/index.js"))
-						)(host),
-						runtimedNodePath: options.resolveRuntimedNodeEntry?.(),
-						socketPath,
-					},
+				ServerEnv,
+				NOTEBOOK_SERVER_ENV_CONTRIBUTION,
+				notebookServerEnv(
+					{ runtimedNodePath: options.resolveRuntimedNodeEntry?.(), socketPath },
 					sdk.logger,
 				),
 			);
@@ -458,12 +458,12 @@ export function createNotebookMainEntry(options: NotebookMainOptions): PluginEnt
 				void ensureRuntime()
 					.then((service) => {
 						service.setDefaultSaveDirectory(parsed.data.notebookId, workingDirectory ?? null);
-						const { notebookId, sessionId, title } = parsed.data;
+						const { notebookId, workSessionId, title } = parsed.data;
 						return service.connect(
 							electronMainPort(port),
 							{
 								notebookId,
-								sessionId,
+								workSessionId,
 								title,
 								...(notebookPath ? { notebookPath } : {}),
 								...(workingDirectory ? { workingDirectory } : {}),
@@ -489,7 +489,7 @@ export function createNotebookMainEntry(options: NotebookMainOptions): PluginEnt
 			}
 
 			const warmStart = options.warmStart ?? process.env["KILO_NOTEBOOK_DEFER_RUNTIMED"] !== "1";
-			const app = sdk.domains.get(KernelApp);
+			const app = sdk.domainObjects.get(KernelApp);
 			if (warmStart && app) {
 				const warm = () => void ensureRuntime().catch(() => undefined);
 				if (app.getState().phase === "ready") warm();

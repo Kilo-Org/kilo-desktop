@@ -9,6 +9,8 @@ const COMPLETIONS_PATH = "/chat/completions";
 /** Introspection route workers query over HTTP — the stub runs in the global-setup process, a separate process from every worker, so only HTTP (not an in-process method) crosses that boundary. Same pattern as the Kilo Gateway stub's catalog route, queried via `getRequest` in `chat-model-selector-page.ts`. */
 export const CHAT_COMPLETIONS_STUB_INTROSPECTION_PATH = "/__e2e__/requests";
 const DEFAULT_REPLY = "MOCK_REPLY_NO_MATCH";
+/** Kilo's title agent opens its system prompt with this (case-insensitive). */
+const TITLE_REQUEST_PATTERN = /title generator/i;
 const REQUEST_LOG_LIMIT = 20;
 
 /**
@@ -44,6 +46,8 @@ export type CapturedFilePart = {
 
 export type CapturedCompletionRequest = {
 	promptText: string;
+	/** Kilo asked for the chat's title, not a reply. */
+	isTitleRequest: boolean;
 	images: CapturedImagePart[];
 	files: CapturedFilePart[];
 };
@@ -74,20 +78,29 @@ export type ChatCompletionsStub = {
  * concurrent workers mutating shared state would race; every spec instead
  * sends its own unique marker in the typed message.
  *
+ * Kilo also asks the chat's model for its title after the first message
+ * (its title agent, recognised by `TITLE_REQUEST_PATTERN` in the system
+ * prompt): `titles` answers those by the same markers, so a spec can expect
+ * a fixed session title. Title requests are not logged for introspection,
+ * so a marker always finds the reply request.
+ *
  * Streams a standard OpenAI SSE response (`stream: true` is the AI SDK's
  * default for this provider), matching the real wire format observed from
  * the packaged Kilo CLI's `@ai-sdk/openai-compatible` client.
  */
 export async function startChatCompletionsStub(
 	replies: Record<string, string>,
+	titles: Record<string, string> = {},
 ): Promise<ChatCompletionsStub> {
 	const requests: CapturedCompletionRequest[] = [];
 
 	const server = createServer((request, response) => {
 		handle(request, response, {
-			getReply: (promptText) => resolveReply(promptText, replies),
+			getReply: (captured) =>
+				resolveReply(captured.promptText, captured.isTitleRequest ? titles : replies),
 			getRequests: () => requests,
 			onRequest: (captured) => {
+				if (captured.isTitleRequest) return;
 				requests.push(captured);
 				if (requests.length > REQUEST_LOG_LIMIT) requests.shift();
 			},
@@ -124,7 +137,7 @@ async function handle(
 	request: IncomingMessage,
 	response: ServerResponse,
 	options: {
-		getReply: (promptText: string) => string;
+		getReply: (captured: CapturedCompletionRequest) => string;
 		getRequests: () => readonly CapturedCompletionRequest[];
 		onRequest: (captured: CapturedCompletionRequest) => void;
 	},
@@ -147,7 +160,7 @@ async function handle(
 	const captured = extractCaptured(parsed);
 	options.onRequest(captured);
 
-	const reply = options.getReply(captured.promptText);
+	const reply = options.getReply(captured);
 	if (parsed?.stream) {
 		writeStreamedReply(response, reply);
 	} else {
@@ -194,8 +207,12 @@ function extractCaptured(body: ChatCompletionsRequestBody | undefined): Captured
 	const promptChunks: string[] = [];
 	const images: CapturedImagePart[] = [];
 	const files: CapturedFilePart[] = [];
+	let isTitleRequest = false;
 
 	for (const message of body?.messages ?? []) {
+		if (message.role === "system" && TITLE_REQUEST_PATTERN.test(messageText(message.content))) {
+			isTitleRequest = true;
+		}
 		if (typeof message.content === "string") {
 			promptChunks.push(message.content);
 			continue;
@@ -217,7 +234,14 @@ function extractCaptured(body: ChatCompletionsRequestBody | undefined): Captured
 		}
 	}
 
-	return { promptText: promptChunks.join(" "), images, files };
+	return { promptText: promptChunks.join(" "), isTitleRequest, images, files };
+}
+
+type MessageContent = NonNullable<ChatCompletionsRequestBody["messages"]>[number]["content"];
+
+function messageText(content: MessageContent): string {
+	if (typeof content === "string") return content;
+	return (content ?? []).map((part) => part.text ?? "").join(" ");
 }
 
 function writeNonStreamedReply(response: ServerResponse, reply: string): void {

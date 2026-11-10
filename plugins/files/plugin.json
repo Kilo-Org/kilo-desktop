@@ -4,24 +4,23 @@
 	"displayName": "Files",
 	"version": "1.0.0",
 	"description": "Browse, edit and mention the files in a session's workspace folders.",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
 	"requires": {
-		"kilo.workspaces/workspace": "optional",
-		"kilo.workspaces/file": "optional",
-		"kilo.workspaces/vcs": "optional",
-		"kilo.sessions/work-session": "optional",
-		"kilo.sessions/pane": "optional",
-		"kilo.sessions/pane-kind": "optional",
-		"kilo.sessions/opener": "optional",
+		"kilo.core/tool": "optional",
+		"kilo.work-sessions/workspaces": "optional",
+		"kilo.work-sessions/file-watcher": "optional",
+		"kilo.work-sessions/vcs": "optional",
+		"kilo.work-sessions/work-sessions": "optional",
+		"kilo.work-sessions/panes": "optional",
+		"kilo.work-sessions/window": "optional",
+		"kilo.work-sessions/pane-kind": "optional",
+		"kilo.work-sessions/opener": "optional",
 		"kilo.chat/composer-mention": "optional",
 		"kilo.chat/markdown-extension": "optional",
-		"kilo.agent/tool": "optional",
-		"kilo.shell/theme": "optional",
-		"kilo.flags/flags": "optional",
-		"kilo.telemetry/telemetry": "optional",
-		"kilo.telemetry/telemetry-event": "optional",
-		"kilo.workbench/workbench": "optional"
+		"kilo.shell/theme": "optional"
 	},
-	"domains": [
+	"domainObjects": [
 		{
 			"id": "documents",
 			"home": "main",
@@ -38,11 +37,11 @@
 					"order": 10,
 					"keybinding": "Mod+Shift+E",
 					"when": {
-						"all": ["kilo.workbench/paneTargetActive"]
+						"all": ["kilo.work-sessions/paneTargetActive"]
 					}
 				}
 			],
-			"kilo.sessions/pane-kind": [
+			"kilo.work-sessions/pane-kind": [
 				{
 					"id": "files",
 					"title": "Files",
@@ -56,11 +55,11 @@
 					"openCommand": "kilo.files/open"
 				}
 			],
-			"kilo.sessions/opener": [
+			"kilo.work-sessions/opener": [
 				{
 					"id": "file",
 					"match": {
-						"type": "kilo.workspaces/file"
+						"type": "kilo.work-sessions/file"
 					},
 					"pane": "kilo.files/files",
 					"priority": -100
@@ -78,14 +77,14 @@
 					"id": "file-links"
 				}
 			],
-			"kilo.agent/tool": [
+			"kilo.core/tool": [
 				{
 					"id": "open",
 					"title": "Open file",
 					"external": false
 				}
 			],
-			"kilo.telemetry/telemetry-event": [
+			"kernel/telemetry-event": [
 				{
 					"id": "file-opened",
 					"name": "File Opened"

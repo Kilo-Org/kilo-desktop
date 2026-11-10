@@ -11,7 +11,7 @@ import {
 	DropdownMenuTrigger,
 } from "@kilo-desktop/ui/components/dropdown-menu";
 
-import { getChannelPresentation } from "./channel-presentation.js";
+import { getChannelPresentation } from "./channel-presentation";
 
 interface ChannelChooserPopoverProps {
 	open: boolean;

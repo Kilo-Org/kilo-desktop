@@ -2,13 +2,13 @@ import { CodeXmlIcon, GaugeIcon, type LucideIcon } from "lucide-react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
 
-import type { LocalInferenceHardwareProfile, ModelCatalogEntry } from "../../contracts/schemas.js";
+import type { LocalInferenceHardwareProfile, ModelCatalogEntry } from "../../contracts/index";
 import {
 	getCatalogRecommendations,
 	type ModelRecommendation,
-} from "../../shared/catalog/model-recommendations.js";
-import { ModelIdentity } from "./ModelIdentity.js";
-import { ModelPerformance } from "./ModelPerformance.js";
+} from "../../shared/catalog/model-recommendations";
+import { ModelIdentity } from "./ModelIdentity";
+import { ModelPerformance } from "./ModelPerformance";
 
 export function ModelRecommendations({
 	models,

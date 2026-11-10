@@ -1,5 +1,5 @@
 import { definePlugin, KernelError, mainHost, type PluginSdk } from "@kilo-desktop/kernel";
-import { WorkSessions, type WorkSession } from "@kilo-desktop/plugin-sessions/contracts";
+import { WorkSessions, type WorkSession } from "@kilo-desktop/plugin-work-sessions/contracts";
 import { z } from "zod";
 
 import {
@@ -55,13 +55,14 @@ export interface BoardMainOptions {
  * last column stays. A stored board that does not validate reads as the
  * default board until the next change replaces it.
  *
- * Cards are Work Session ids. A deleted session's card is dropped on
- * kilo.sessions' `deleted` event; cards of sessions that aren't known are
- * kept (kilo.sessions may still be importing) and windows hide them.
+ * Cards are work session ids. A deleted work session's card is dropped on
+ * `kilo.work-sessions/work-sessions`' `deleted` event; cards of work sessions
+ * that aren't known are kept (kilo.work-sessions may still be importing, or
+ * be absent) and windows hide them.
  * The board kept under the plugin's previous id (`kilo.board`) is adopted
  * once, with whether origin's was already imported. Origin's board is adopted
- * once; cards it saved under a chat id move to the session holding that chat
- * when sessions are known. Either import is skipped for good once the board
+ * once; cards it saved under a chat id move to the work session holding that
+ * chat when work sessions are known. Either import is skipped for good once the board
  * changes here, so a read retried on a later launch never replaces it.
  */
 export function createBoardMainEntry(options: BoardMainOptions = {}) {
@@ -113,7 +114,7 @@ export function createBoardMainEntry(options: BoardMainOptions = {}) {
 			}
 
 			let revision = 0;
-			const board = sdk.domains.provide(Board, {
+			const board = sdk.domainObjects.provide(Board, {
 				initialState: { board: read(), revision },
 				methods: {
 					place: ({ sessionId, columnId, index }) => {
@@ -181,30 +182,30 @@ export function createBoardMainEntry(options: BoardMainOptions = {}) {
 				board.setState({ board: parsed.data, revision });
 				return revision;
 			}
-			function adoptChatCards(sessions: readonly WorkSession[]): void {
+			function adoptChatCards(workSessions: readonly WorkSession[]): void {
 				const before = read();
-				const known = new Set(sessions.map((session) => session.id));
+				const known = new Set(workSessions.map((workSession) => workSession.id));
 				const onBoard = before.columns.flatMap((column) => column.sessionIds);
 				const unknown = new Set(onBoard.filter((id) => !known.has(id)));
 				if (unknown.size === 0) return;
 				const renames: Record<string, string> = {};
-				for (const session of sessions) {
-					for (const chatId of session.chatIds) {
-						if (unknown.has(chatId)) renames[chatId] = session.id;
+				for (const workSession of workSessions) {
+					for (const chatId of workSession.chatIds) {
+						if (unknown.has(chatId)) renames[chatId] = workSession.id;
 					}
 				}
 				if (Object.keys(renames).length > 0) commit(before, renameSessions(before, renames));
 			}
 
 			const stops: (() => void)[] = [];
-			sdk.domains.track(WorkSessions, {
-				added(sessions) {
-					adoptChatCards(sessions.getState().sessions);
+			sdk.domainObjects.track(WorkSessions, {
+				added(workSessions) {
+					adoptChatCards(workSessions.getState().workSessions);
 					stops.push(
-						sessions.subscribe((state) => adoptChatCards(state.sessions)),
-						sessions.on("deleted", ({ session }) => {
+						workSessions.subscribe((state) => adoptChatCards(state.workSessions)),
+						workSessions.on("deleted", ({ workSession }) => {
 							const before = read();
-							commit(before, removeSession(before, session.id));
+							commit(before, removeSession(before, workSession.id));
 						}),
 					);
 				},

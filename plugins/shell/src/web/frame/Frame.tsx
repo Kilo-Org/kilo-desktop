@@ -5,9 +5,9 @@ import { SettingsIcon } from "lucide-react";
 import {
 	RenderContribution,
 	useContextKey,
+	useDomainObjectState,
 	useExclusive,
 	useExtensions,
-	useDomainState,
 } from "@kilo-desktop/kernel/web";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
@@ -21,22 +21,19 @@ import {
 } from "@kilo-desktop/ui/components/sidebar";
 import { Toaster } from "@kilo-desktop/ui/components/sonner";
 
-import {
-	LeftSidebarAccount,
-	Main,
-	LeftSidebar,
-	Overlay,
-	LeftSidebarNotice,
-	Theme,
-	type MainImplementation,
-} from "../../contracts";
-import { CommandPalette } from "../palette/CommandPalette";
-import { SettingsSidebar } from "../settings/SettingsSidebar";
-import { KeyboardShortcutsDialog } from "../shortcuts/KeyboardShortcutsDialog";
-import { useShellUi } from "../ui-state";
+import { LeftSidebar, Main, SidebarNotice, Theme, type MainImplementation } from "../../contracts";
+// Other areas' UI the frame places: the account entry, onboarding and the settings rail.
+import { SidebarAccount } from "../account/SidebarAccount";
+import { OnboardingHost } from "../onboarding";
+import { SettingsSidebar } from "../settings";
+import { CommandPalette } from "./CommandPalette";
+import { DialogsHost } from "./DialogsHost";
+import { KeyboardShortcutsDialog } from "./KeyboardShortcutsDialog";
+import { NotificationToasts, SidebarNotices } from "./Notifications";
 import { PageHeader } from "./PageHeader";
-import { OnboardingHost } from "../onboarding/OnboardingHost";
+import { RightSidebar } from "./RightSidebar";
 import { StatusBar } from "./StatusBar";
+import { useShellUi } from "./ui-state";
 
 /** Clears macOS traffic lights (x:16, 14px lights, 8px gaps = 74px) plus a 10px gap. */
 const MAC_DESKTOP_SIDEBAR_TOGGLE_LEFT = "84px";
@@ -75,19 +72,18 @@ function SettingsButton({ settings }: { readonly settings: boolean }) {
 }
 
 /**
- * The window frame: sidebar (navigator or the settings rail, plus the
- * account entry), page header, the main pane and the status bar.
+ * The window frame: the left sidebar (navigator or the settings rail, then
+ * notices and the account entry), page header, the main pane, the status bar
+ * and the right sidebar, plus the window's dialogs, toasts and onboarding.
  * Everything inside comes from contributions to kilo.shell's points.
  */
 export function Frame({ children }: { readonly children: ReactNode }) {
 	const pathname = useRouterState({ select: (state) => state.location.pathname });
 	const settings = isSettingsPath(pathname);
 	const navigator = useExclusive(LeftSidebar).winner;
-	const account = useExclusive(LeftSidebarAccount).winner;
-	const notices = useExtensions(LeftSidebarNotice);
-	const overlays = useExtensions(Overlay);
+	const notices = useExtensions(SidebarNotice);
 	const home = useExclusive(Main).winner;
-	const mode = useDomainState(Theme, selectMode) ?? "dark";
+	const mode = useDomainObjectState(Theme, selectMode) ?? "dark";
 	const desktop = useContextKey("kernel/desktop");
 	const mac = useContextKey("kernel/mac");
 	const desktopMac = desktop && mac;
@@ -149,12 +145,13 @@ export function Frame({ children }: { readonly children: ReactNode }) {
 					className="gap-2 px-2 pt-[7px] pb-2"
 				>
 					<section aria-label="User controls" className="flex flex-col gap-2">
+						<SidebarNotices />
 						{notices.map((notice) => (
 							<RenderContribution key={notice.key} contribution={notice} />
 						))}
 						<div className="flex min-w-0 items-center">
 							<div className="flex min-w-0 flex-1 items-center">
-								{account ? <RenderContribution contribution={account} /> : null}
+								<SidebarAccount />
 							</div>
 							<SettingsButton settings={settings} />
 						</div>
@@ -177,12 +174,12 @@ export function Frame({ children }: { readonly children: ReactNode }) {
 				</div>
 				<StatusBar />
 			</SidebarInset>
+			<RightSidebar />
 			<CommandPalette />
 			<KeyboardShortcutsDialog />
 			<Toaster theme={mode} position="bottom-right" offset={{ bottom: 88 }} closeButton />
-			{overlays.map((overlay) => (
-				<RenderContribution key={overlay.key} contribution={overlay} />
-			))}
+			<NotificationToasts />
+			<DialogsHost />
 			<OnboardingHost />
 		</SidebarProvider>
 	);

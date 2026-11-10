@@ -1,4 +1,4 @@
-import type { ToolCallMessagePartComponent, ToolCallMessagePartProps } from "@assistant-ui/react";
+import type { ToolCallMessagePartProps } from "@assistant-ui/react";
 import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -39,6 +39,7 @@ import { ReadActivity } from "./tool-ui-read-search";
 import { SkillActivity } from "./tool-ui-skill";
 import { WebFetchActivity, WebSearchActivity } from "./tool-ui-web";
 import type { ActivityKind } from "./tool-categories";
+import type { ToolCallComponent } from "./tool-call";
 
 /**
  * Renders `ui` in a booted test kernel (the tool rows read kilo.shell's theme
@@ -74,7 +75,7 @@ const skillPart = (id: string, name: string) => toolPart(id, "skill", { name });
 const renderActivity = (
 	kind: ActivityKind,
 	parts: ToolCallMessagePartProps[],
-	Component: ToolCallMessagePartComponent,
+	Component: ToolCallComponent,
 ) => {
 	runtime.message.parts = parts;
 	const indices = parts.map((_, index) => index);

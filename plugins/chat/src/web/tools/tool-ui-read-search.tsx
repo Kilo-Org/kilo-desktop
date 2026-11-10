@@ -1,11 +1,11 @@
 import { memo } from "react";
-import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 
 import { SoloAwareExpandableRow, SoloAwareLabelRow } from "./tool-ui-activity-row";
 import { getToolFilePath } from "./tool-ui-file-mutation";
 import { basename, resultText, ToolOutputText, truncate } from "./tool-ui-shared";
+import type { ToolCallComponent } from "./tool-call";
 
-export const ReadActivity: ToolCallMessagePartComponent = memo(({ args, status }) => {
+export const ReadActivity: ToolCallComponent = memo(({ args, status }) => {
 	const path = getToolFilePath(args as Record<string, unknown> | undefined);
 	const fileName = path ? basename(path) : undefined;
 
@@ -21,58 +21,54 @@ export const ReadActivity: ToolCallMessagePartComponent = memo(({ args, status }
 });
 ReadActivity.displayName = "ReadActivity";
 
-export const GrepActivity: ToolCallMessagePartComponent = memo(
-	({ args, result, status, toolCallId }) => {
-		const record = args as Record<string, unknown> | undefined;
-		const pattern =
-			typeof record?.pattern === "string"
-				? record.pattern
-				: typeof record?.query === "string"
-					? record.query
-					: undefined;
-		const output = resultText(result);
-		const hasDetail = output.length > 0 && status?.type !== "running";
+export const GrepActivity: ToolCallComponent = memo(({ args, result, status, toolCallId }) => {
+	const record = args as Record<string, unknown> | undefined;
+	const pattern =
+		typeof record?.pattern === "string"
+			? record.pattern
+			: typeof record?.query === "string"
+				? record.query
+				: undefined;
+	const output = resultText(result);
+	const hasDetail = output.length > 0 && status?.type !== "running";
 
-		return (
-			<SoloAwareExpandableRow
-				kind="searching"
-				liveVerb="Searching"
-				doneVerb="Searched"
-				object={pattern ? truncate(pattern) : undefined}
-				status={status}
-				disclosureId={toolCallId}
-				hasDetail={hasDetail}
-				detail={<ToolOutputText text={output} />}
-			/>
-		);
-	},
-);
+	return (
+		<SoloAwareExpandableRow
+			kind="searching"
+			liveVerb="Searching"
+			doneVerb="Searched"
+			object={pattern ? truncate(pattern) : undefined}
+			status={status}
+			disclosureId={toolCallId}
+			hasDetail={hasDetail}
+			detail={<ToolOutputText text={output} />}
+		/>
+	);
+});
 GrepActivity.displayName = "GrepActivity";
 
-export const GlobActivity: ToolCallMessagePartComponent = memo(
-	({ args, result, status, toolCallId }) => {
-		const record = args as Record<string, unknown> | undefined;
-		const pattern =
-			typeof record?.pattern === "string"
-				? record.pattern
-				: typeof record?.glob === "string"
-					? record.glob
-					: undefined;
-		const output = resultText(result);
-		const hasDetail = output.length > 0 && status?.type !== "running";
+export const GlobActivity: ToolCallComponent = memo(({ args, result, status, toolCallId }) => {
+	const record = args as Record<string, unknown> | undefined;
+	const pattern =
+		typeof record?.pattern === "string"
+			? record.pattern
+			: typeof record?.glob === "string"
+				? record.glob
+				: undefined;
+	const output = resultText(result);
+	const hasDetail = output.length > 0 && status?.type !== "running";
 
-		return (
-			<SoloAwareExpandableRow
-				kind="searching"
-				liveVerb="Finding"
-				doneVerb="Found"
-				object={pattern ? truncate(pattern) : undefined}
-				status={status}
-				disclosureId={toolCallId}
-				hasDetail={hasDetail}
-				detail={<ToolOutputText text={output} />}
-			/>
-		);
-	},
-);
+	return (
+		<SoloAwareExpandableRow
+			kind="searching"
+			liveVerb="Finding"
+			doneVerb="Found"
+			object={pattern ? truncate(pattern) : undefined}
+			status={status}
+			disclosureId={toolCallId}
+			hasDetail={hasDetail}
+			detail={<ToolOutputText text={output} />}
+		/>
+	);
+});
 GlobActivity.displayName = "GlobActivity";

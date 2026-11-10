@@ -2,7 +2,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { resolveNotebookBundleRoot } from "./notebook-bundle-path.js";
+import { resolveNotebookBundleRoot } from "./notebook-bundle-path";
 
 describe("resolveNotebookBundleRoot", () => {
 	it("accepts a plugin-resolved directory containing index.html", () => {

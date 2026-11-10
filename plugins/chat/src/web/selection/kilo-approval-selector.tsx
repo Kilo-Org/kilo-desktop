@@ -1,6 +1,6 @@
 import { FastForwardIcon, HandIcon } from "lucide-react";
 
-import { useDomain, useDomainState } from "@kilo-desktop/kernel/web";
+import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
 
 import {
 	AutoApprove,
@@ -18,8 +18,8 @@ const selectMode = (state: { mode: ApprovalMode }) => state.mode;
 
 /** The approval picker: whether permission requests are answered for the person. */
 export function useApprovalMenu(): ComposerActionMenu {
-	const autoApprove = useDomain(AutoApprove);
-	const mode = useDomainState(AutoApprove, selectMode) ?? "manual";
+	const autoApprove = useDomainObject(AutoApprove);
+	const mode = useDomainObjectState(AutoApprove, selectMode) ?? "manual";
 	const selected = APPROVAL_MODES.find((entry) => entry.id === mode) ?? APPROVAL_MODES[0];
 	return {
 		label: selected.shortLabel,

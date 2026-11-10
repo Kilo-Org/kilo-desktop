@@ -1,8 +1,8 @@
 import { z } from "zod";
 
-import { defineDomain, method, type PluginDefinitions } from "@kilo-desktop/kernel";
+import { defineDomainObject, method, type PluginDefinitions } from "@kilo-desktop/kernel";
 
-import { cancelInputSchema, cancelResultSchema, jobProgressEventSchema } from "./common.js";
+import { cancelInputSchema, cancelResultSchema, jobProgressEventSchema } from "./common";
 import {
 	channelSchema,
 	condaChannelsAddInputSchema,
@@ -39,16 +39,18 @@ import {
 	condaRepodataFindResultSchema,
 	environmentNameSchema,
 	matchSpecSchema,
-} from "./providers/conda.js";
+} from "./providers/conda";
 
-export * from "./common.js";
-export * from "./providers/conda.js";
+export * from "./common";
+export * from "./providers/conda";
 
 /**
  * kilo.environments' public surface: the user's conda environments
  * (`conda`, behind the `environments-feature` flag) and plugin-owned
- * environments other plugins ask for (`conda-runtime`, e.g. the local model
- * server's), both served by one bundled conda bridge in main.
+ * environments other plugins ask for (`conda-runtime`), both served by one
+ * bundled conda bridge in main. It gives the Local Model Server llama.cpp
+ * from a `conda-runtime` environment (a `kilo.local-inference/llama-runtime`
+ * contribution).
  */
 export const ENVIRONMENTS_PLUGIN_ID = "kilo.environments";
 
@@ -60,6 +62,58 @@ export const ENVIRONMENTS_SETTINGS_SECTION = "environments";
 
 /** The `kernel/services` key of the conda bridge daemon. */
 export const BRIDGE_SERVICE_KEY = "kilo.environments/bridge";
+
+/**
+ * Origin's agent tools (`kilo.core/tool` ids), so Kilo still sees
+ * `desktop_environments_conda_envs_list`…; all offered to paired external
+ * apps, as origin's default did.
+ */
+export const CONDA_SETUP_TOOL = "conda.setup.open";
+export const CONDA_TOOL_IDS = [
+	"conda.envs.list",
+	"conda.envs.create",
+	"conda.envs.delete",
+	"conda.envs.clone",
+	"conda.packages.list",
+	"conda.packages.install",
+	"conda.packages.remove",
+	"conda.packages.update",
+	"conda.channels.list",
+	"conda.channels.add",
+	"conda.channels.remove",
+	"conda.repodata.find",
+] as const;
+
+/** The conda tools that change something: they ask first, and `conda-tools` details their requests. */
+export const MUTATING_CONDA_TOOL_IDS = [
+	"conda.envs.create",
+	"conda.envs.delete",
+	"conda.envs.clone",
+	"conda.packages.install",
+	"conda.packages.remove",
+	"conda.packages.update",
+	"conda.channels.add",
+	"conda.channels.remove",
+] as const;
+
+/** Its `kilo.core/chat-config` contribution: hides the conda tools while conda isn't ready, asks before conda-family `bash` commands. */
+export const CONDA_CHAT_CONFIG = "conda";
+
+/** Its `kilo.local-inference/llama-runtime` contribution: llama.cpp from a `conda-runtime` environment. */
+export const CONDA_LLAMA_RUNTIME = "conda";
+
+/** Its `kilo.chat/permission-renderer` contributions. */
+export const PERMISSION_RENDERERS = {
+	condaTools: "conda-tools",
+	condaCli: "conda-cli",
+	localFileAnswers: "local-file-answers",
+} as const;
+
+/** The telemetry events kilo.environments declares (`kernel/telemetry-event` ids). */
+export const ENVIRONMENTS_TELEMETRY_EVENTS = {
+	environmentCreated: "environment-created",
+	environmentRemoved: "environment-removed",
+} as const;
 
 const nothing = z.undefined();
 
@@ -79,9 +133,11 @@ export type CondaStatus = z.output<typeof condaStatusSchema>;
  * `job-progress` and `cancelJob`); reads are cached briefly and refreshed by
  * any write.
  */
-export const Conda = defineDomain({
+export const Conda = defineDomainObject({
 	id: "kilo.environments/conda",
 	home: "main",
+	description:
+		"The person's conda environments, packages and channels, through the bundled conda bridge.",
 	state: z.object({ status: condaStatusSchema }),
 	methods: {
 		listEnvironments: method(nothing, z.array(condaEnvSchema)),
@@ -120,8 +176,6 @@ export const Conda = defineDomain({
 	events: {
 		/** A write's progress: queued, running, then succeeded, failed or cancelled. */
 		"job-progress": jobProgressEventSchema,
-		/** The agent asked to open Conda Environments settings (main windows show them). */
-		"setup-requested": z.object({}),
 	},
 });
 
@@ -150,9 +204,10 @@ export type EnsureEnvironmentResult = z.output<typeof ensureEnvironmentResultSch
  * works whatever the `environments-feature` flag says and starts the bridge
  * only when an environment must be created.
  */
-export const CondaRuntime = defineDomain({
+export const CondaRuntime = defineDomainObject({
 	id: "kilo.environments/conda-runtime",
 	home: "main",
+	description: "Conda environments plugins own, created on demand.",
 	state: z.object({}),
 	methods: {
 		ensureEnvironment: method(ensureEnvironmentInputSchema, ensureEnvironmentResultSchema),
@@ -178,5 +233,5 @@ export function condaExecutable(
 }
 
 export const ENVIRONMENTS_DEFINITIONS: PluginDefinitions = {
-	domains: [Conda, CondaRuntime],
+	domainObjects: [Conda, CondaRuntime],
 };

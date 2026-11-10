@@ -1,5 +1,6 @@
-import type { AnyDomain } from "./domain";
+import type { AnyDomainObject } from "./domain-object";
 import type { AnyExtensionPoint } from "./extension-point";
+import type { ObjectTypeDefinition } from "./object-type";
 import type { PluginSdk } from "./sdk";
 
 /**
@@ -19,7 +20,8 @@ export function definePlugin(entry: PluginEntry): PluginEntry {
 /** Definitions from a plugin's contracts, available without activating it. */
 export interface PluginDefinitions {
 	readonly extensionPoints?: readonly AnyExtensionPoint[];
-	readonly domains?: readonly AnyDomain[];
+	readonly domainObjects?: readonly AnyDomainObject[];
+	readonly objectTypes?: readonly ObjectTypeDefinition[];
 }
 
 export interface PluginRegistration {

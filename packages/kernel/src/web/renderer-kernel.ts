@@ -64,7 +64,8 @@ export function createRendererKernel(options: RendererKernelOptions): RendererKe
 		skipActivation: () => core.contextKeys.get("kernel/safeMode"),
 		// Main reads which plugins the user turned off; renderers follow its mirrored states.
 		isDisabled: (pluginId) =>
-			core.kernelSdk.domains.get(KernelPlugins)?.getState().plugins[pluginId]?.state === "disabled",
+			core.kernelSdk.domainObjects.get(KernelPlugins)?.getState().plugins[pluginId]?.state ===
+			"disabled",
 	});
 	core.kernelSdk.context.set("secondaryWindow", window.role === "secondary");
 
@@ -77,7 +78,8 @@ export function createRendererKernel(options: RendererKernelOptions): RendererKe
 	const service = new KeyboardService({
 		commands,
 		platform: options.platform,
-		overrides: () => core.kernelSdk.domains.get(KernelKeybindings)?.getState().overrides ?? {},
+		overrides: () =>
+			core.kernelSdk.domainObjects.get(KernelKeybindings)?.getState().overrides ?? {},
 	});
 	let recording = false;
 	const recordingListeners = new Set<() => void>();
@@ -94,7 +96,7 @@ export function createRendererKernel(options: RendererKernelOptions): RendererKe
 		subscribe(listener) {
 			recordingListeners.add(listener);
 			let unsubscribeOverrides: (() => void) | undefined;
-			const unsubscribeTracker = core.kernelSdk.domains.track(KernelKeybindings, {
+			const unsubscribeTracker = core.kernelSdk.domainObjects.track(KernelKeybindings, {
 				added: (handle) => {
 					unsubscribeOverrides = handle.subscribe(() => listener());
 					listener();

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getEditorialModelScore } from "./model-editorial-priority.js";
+import { getEditorialModelScore } from "./model-editorial-priority";
 
 describe("editorial model priority", () => {
 	it("recognizes publisher-prefixed and GGUF-suffixed model names", () => {

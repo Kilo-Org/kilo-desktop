@@ -15,7 +15,7 @@ import {
 	FILE_LINK_MATCH_LIMIT,
 	type FileReadResult,
 	TABLE_LIMIT_BYTES,
-} from "../contracts/models.js";
+} from "../contracts/models";
 
 const DEFAULT_SCAN_LIMIT = 25_000;
 const DEFAULT_RESOLVE_SCAN_LIMIT = 1000;

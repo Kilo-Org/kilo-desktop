@@ -1,9 +1,17 @@
 import type { ComponentType, ReactNode } from "react";
 import { z } from "zod";
 
-import { defineDomain, defineExtensionPoint, implementation, method } from "@kilo-desktop/kernel";
+import {
+	defineDomainObject,
+	defineExtensionPoint,
+	implementation,
+	method,
+} from "@kilo-desktop/kernel";
 
 const nothing = z.undefined();
+
+/** True in a window while a chat composer has keyboard focus. */
+export const COMPOSER_FOCUSED_KEY = "kilo.chat/composerFocused";
 
 export interface ComposerFolder {
 	readonly path: string;
@@ -13,13 +21,13 @@ export interface ComposerFolder {
 /** Where a composer is: what composer actions and mentions are given. */
 export interface ComposerContext {
 	/**
-	 * The Work Session (`kilo.sessions/work-session`) the composer belongs to; null
-	 * on the New Session page, where the first send creates it.
+	 * The work session (`kilo.work-sessions/work-sessions`) the composer
+	 * belongs to; null on the New Session page, where the first send creates it.
 	 */
-	readonly sessionId: string | null;
-	/** The Kilo chat it sends to; null while it is a draft. */
+	readonly workSessionId: string | null;
+	/** The Kilo chat (`kilo.core/chats`) it sends to; null while it is a draft. */
 	readonly chatId: string | null;
-	/** Where the chat works; null when the session has no folder yet. */
+	/** Where the chat works; null when the work session has no folder yet. */
 	readonly directory: string | null;
 	readonly workspaceId: string | null;
 	readonly workspaceFolders: readonly ComposerFolder[];
@@ -47,6 +55,7 @@ export interface MentionSearchContext extends Omit<ComposerContext, "chatId"> {
 
 /** A file handed to the agent with the message, as a prompt file part. */
 export interface MentionFile {
+	/** A data URL, or a `file:` URL the server can read. */
 	readonly url: string;
 	readonly mime: string;
 	readonly filename?: string;
@@ -104,10 +113,10 @@ export const composerActionSlotSchema = z.enum([
 /**
  * - `toolbar`: the composer's left controls (attach, pickers).
  * - `toolbar-end`: before send (approvals).
- * - `footer`: the strip under a chat's composer in a session (branch), from
- *   before its first message.
+ * - `footer`: the strip under a chat's composer in a work session (branch),
+ *   from before its first message.
  * - `draft-footer`: the strip under the New Session page's composer, before
- *   there is a session (a warning about the workspace).
+ *   there is a work session (a warning about the workspace).
  */
 export type ComposerActionSlot = z.output<typeof composerActionSlotSchema>;
 
@@ -207,72 +216,37 @@ export const ComposerAction = defineExtensionPoint({
 	implementation: implementation<ComposerActionImplementation>("renderer", { required: false }),
 });
 
-// --- drafts (main) ---
-
-const sessionDraftsSchema = z.object({
-	/** Text for the session's next agent pane to start with (a new chat prefilled before its pane exists). */
-	text: z.string(),
-	/** Each agent pane's unsent text, by pane id. */
-	panes: z.record(z.string(), z.string()).optional(),
-});
-export type SessionDrafts = z.output<typeof sessionDraftsSchema>;
-
-const draftsSchema = z.record(z.string(), sessionDraftsSchema);
-
-/**
- * Unsent composer text by Work Session and agent pane, in main so it goes
- * wherever the pane is shown (a pop-out, another window, a reload). A
- * session's own text prefills a new chat before its pane exists; the first
- * agent pane to show takes it. Kept until the app quits or the session is
- * removed; only kilo.chat writes it.
- */
-export const ComposerDrafts = defineDomain({
-	id: "kilo.chat/drafts",
-	home: "main",
-	state: z.object({ drafts: draftsSchema }),
-	methods: {
-		/** The pane's text, or without a pane the session's; empty text drops it. */
-		set: method(
-			z.object({
-				sessionId: z.string().min(1),
-				paneId: z.string().min(1).optional(),
-				text: z.string(),
-			}),
-			nothing,
-		),
-	},
-});
-
 // --- composer (per window) ---
 
 export const composerStateSchema = z.object({
-	/** The session whose composer has keyboard focus in this window. */
-	focusedSessionId: z.string().nullable(),
+	/** The work session whose composer has keyboard focus in this window. */
+	focusedWorkSessionId: z.string().nullable(),
 });
 export type ComposerState = z.output<typeof composerStateSchema>;
 
-const sessionTarget = z.object({
-	/** The window's open session when absent. */
-	sessionId: z.string().min(1).optional(),
+const workSessionTarget = z.object({
+	/** The window's open work session when absent. */
+	workSessionId: z.string().min(1).optional(),
 });
 
 /**
- * This window's composers. `focus` and `insert` open the session's agent pane
- * if it isn't shown; `startNewChat` starts a new Agent session, as the
- * launcher does, with the text in its composer for the person to send. Unsent
- * text lives in `kilo.chat/drafts`.
+ * This window's composers. `focus` and `insert` open the work session's
+ * agent pane if it isn't shown; `startChat` starts a new work session with
+ * an agent pane, as the New Session page does, with the text in its
+ * composer for the person to send. Unsent text lives in `kilo.chat/drafts`.
  */
-export const Composer = defineDomain({
+export const Composer = defineDomainObject({
 	id: "kilo.chat/composer",
 	home: "renderer",
+	description: "This window's composers: focus, insert, start a new chat.",
 	state: composerStateSchema,
 	methods: {
-		focus: method(sessionTarget, nothing),
+		focus: method(workSessionTarget, nothing),
 		/** Adds text after what the composer holds. */
-		insert: method(sessionTarget.extend({ text: z.string() }), nothing),
-		startNewChat: method(
+		insert: method(workSessionTarget.extend({ text: z.string() }), nothing),
+		startChat: method(
 			z.object({ text: z.string(), workspaceId: z.string().min(1).nullable().optional() }),
-			z.object({ sessionId: z.string() }),
+			z.object({ workSessionId: z.string() }),
 		),
 	},
 });

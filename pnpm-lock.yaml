@@ -415,8 +415,8 @@ importers:
         specifier: 'catalog:'
         version: 8.3.0
       '@vscode/proxy-agent':
-        specifier: ^0.45.0
-        version: 0.45.0(supports-color@10.2.2)
+        specifier: ^0.46.0
+        version: 0.46.0(supports-color@10.2.2)
       atomically:
         specifier: 'catalog:'
         version: 2.1.1
@@ -6585,8 +6585,8 @@ packages:
   '@vitest/utils@5.1.0':
     resolution: {integrity: sha512-V+qgCwkvVw+s1t1S5TaoBHsLi5Sz/YmohCMoOu0mZ8ZQst2bKhRYARAQucWpVg8D0mv0x5MHcWXY5QdOsoiGBQ==}
 
-  '@vscode/proxy-agent@0.45.0':
-    resolution: {integrity: sha512-rSR81pniNECvd3Zr1sq0VqYL7H+02dT723sEexpoweWi9mMklwLoapHTkwK6nAtxhjXNagRkT7l2GWuripXD7Q==}
+  '@vscode/proxy-agent@0.46.0':
+    resolution: {integrity: sha512-d0xcQk+gYcZtkdKz3FL4XLdVEA1VPa2XsHvRFtChx5rSPHY0OGajwhrbhZw2gp0+KhUvyD6dRNvDyge6FUVSrg==}
     engines: {node: '>=22.15.0'}
 
   '@vscode/windows-ca-certs@0.3.4':
@@ -14095,7 +14095,7 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.2.0
 
-  '@vscode/proxy-agent@0.45.0(supports-color@10.2.2)':
+  '@vscode/proxy-agent@0.46.0(supports-color@10.2.2)':
     dependencies:
       '@tootallnate/once': 3.0.1
       agent-base: 7.1.4

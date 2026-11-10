@@ -61,7 +61,7 @@
 		"@parcel/watcher": "^2.6.0",
 		"@runtimed/node": "0.7.0-nightly.40958541191",
 		"@sentry/electron": "catalog:",
-		"@vscode/proxy-agent": "^0.45.0",
+		"@vscode/proxy-agent": "^0.46.0",
 		"atomically": "catalog:",
 		"electron-debug": "^5.0.0",
 		"electron-log": "catalog:",

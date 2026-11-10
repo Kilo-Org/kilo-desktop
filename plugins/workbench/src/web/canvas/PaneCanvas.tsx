@@ -467,11 +467,12 @@ const PaneCanvasColumn: FC<{
 						>
 							{/* One island per group: the tab row is the pane's own header, not a
 							    strip floating on the shell glass. Drop previews stay outside it.
-							    The focused island's tab divider takes the accent. */}
+							    The focused island's tab divider takes the accent, but only when
+							    another island is on screen to tell it apart from. */}
 							<div
 								className="pane-edge bg-pane group/island relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg"
 								data-qa-id="chat-pane-island"
-								data-active={active || undefined}
+								data-active={(active && !expandedGroupId && layout.groups.length > 1) || undefined}
 							>
 								<PaneTabStrip
 									canDrop={canDrop}
@@ -516,7 +517,7 @@ const PaneCanvasColumn: FC<{
 									}
 								/>
 								<div
-									className="group-data-active/island:border-primary-ink relative min-h-0 min-w-0 flex-1 border-t-[0.5px] border-(--pane-hairline) transition-colors"
+									className="group-data-active/island:border-ring relative min-h-0 min-w-0 flex-1 border-t-[0.5px] border-(--pane-hairline) transition-colors"
 									data-qa-id={`chat-pane-${pane.id}`}
 									onPointerDownCapture={(event) => {
 										if (active || event.button !== 0) return;

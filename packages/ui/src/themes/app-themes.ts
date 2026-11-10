@@ -465,16 +465,10 @@ export const APP_THEMES = [
 					mutedFill: "#f5f5f5",
 					muted: "#737373",
 					border: "#e5e5e5",
-					primary: "#ffdd00",
-					primaryForeground: "#1f1f1f",
+					// Mono: actions use ink; Kilo yellow is reserved for the logo.
+					primary: "#0a0a0a",
+					primaryForeground: "#ffffff",
 					ring: "#737373",
-					// Yellow is ~1.35:1 on white: keep it as a filled surface, use gray for small marks.
-					roles: {
-						"primary-ink": "var(--muted-foreground)",
-						"primary-ink-foreground": "var(--background)",
-						"primary-soft": "var(--primary)",
-						"primary-soft-foreground": "var(--primary-foreground)",
-					},
 					ansi: [
 						"#1f1f1f",
 						"#dc2626",
@@ -517,8 +511,10 @@ export const APP_THEMES = [
 					// background as before, #404040 over the #2b2b2b popover (a solid
 					// #292929 vanished there).
 					border: "rgb(255 255 255 / 0.1)",
-					primary: "#ffdd00",
-					primaryForeground: "#1f1f1f",
+					// Mono: actions use ink; Kilo yellow is reserved for the logo.
+					primary: "#ededed",
+					primaryForeground: "#111111",
+					ring: "#a3a3a3",
 					ansi: [
 						"#111111",
 						"#f87171",

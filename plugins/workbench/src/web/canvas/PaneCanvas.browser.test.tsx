@@ -78,6 +78,48 @@ describe("PaneCanvas", () => {
 		expect(frame?.className).not.toMatch(/border/);
 	});
 
+	it("marks the focused island only when another island is visible", async () => {
+		const renderCanvas = (layout: ReturnType<typeof createLayout>) =>
+			render(
+				<div style={{ display: "flex", width: 900, height: 400 }}>
+					<PaneCanvas
+						arrangement="tiles"
+						kinds={[]}
+						layout={layout}
+						onLaunch={vi.fn()}
+						onLayoutChange={vi.fn()}
+						onSelectPane={vi.fn()}
+						renderPane={(paneId) => <div>{paneId}</div>}
+					/>
+				</div>,
+			).baseElement;
+		const activeIslands = (root: HTMLElement) =>
+			root.querySelectorAll("[data-qa-id='chat-pane-island'][data-active]").length;
+
+		expect(
+			activeIslands(
+				renderCanvas(createLayout([{ id: "agent", kind: "agent", title: "Chat" }], "agent")),
+			),
+		).toBe(0);
+		cleanup();
+
+		const split = createLayout(
+			[
+				{ id: "agent", kind: "agent", title: "Chat" },
+				{ id: "agent-2", kind: "agent", title: "Chat 2" },
+			],
+			"agent",
+		);
+		const root = renderCanvas(split);
+		expect(activeIslands(root)).toBe(1);
+
+		await page
+			.elementLocator(root)
+			.getByRole("button", { name: "Expand Chat", exact: true })
+			.click();
+		expect(activeIslands(root)).toBe(0);
+	});
+
 	it("lets the active tab close action receive clicks through a long title", async () => {
 		const onClosePane = vi.fn();
 		const layout = createLayout(

@@ -53,8 +53,10 @@ export type ColorTheme = {
 export type AccentColor = {
 	id: string;
 	name: string;
-	/** As the browser reports computed colours (slider fill, thumb border, card ring). */
+	/** As the browser reports computed colours (slider fill; also the ring unless `ringRgb` is set). */
 	rgb: string;
+	/** Ring colour (selected theme card, slider thumb) when the theme sets its own ring; defaults to `rgb`. */
+	ringRgb?: string;
 };
 
 /** Settings > Appearance color theme and accent controls, as seen in the default Dark theme. */
@@ -64,6 +66,11 @@ export const colorThemeData = {
 		selectedThemeCard: "dark",
 		// "Theme" shows a label instead of a colour, so its expected colour (Kilo's own accent) lives
 		// here; the custom accents are read from their swatches.
-		theme: { id: "theme", name: "Theme", rgb: "rgb(255, 221, 0)" } satisfies AccentColor,
+		theme: {
+			id: "theme",
+			name: "Theme",
+			rgb: "rgb(237, 237, 237)",
+			ringRgb: "rgb(163, 163, 163)",
+		} satisfies AccentColor,
 	},
 } as const;

@@ -60,7 +60,8 @@ describe("app theme presets", () => {
 			sidebar: "#f4f4f4",
 			muted: "#f5f5f5",
 			border: "#e5e5e5",
-			primary: "#ffdd00",
+			primary: "#0a0a0a",
+			"primary-foreground": "#ffffff",
 			ring: "#737373",
 		});
 		expect(getThemeVariant("kilo", "dark")?.tokens).toMatchObject({
@@ -68,8 +69,9 @@ describe("app theme presets", () => {
 			foreground: "#d4d4d4",
 			border: "rgb(255 255 255 / 0.1)",
 			input: "rgb(255 255 255 / 0.1)",
-			primary: "#ffdd00",
-			"primary-foreground": "#1f1f1f",
+			primary: "#ededed",
+			"primary-foreground": "#111111",
+			ring: "#a3a3a3",
 			card: "#181818",
 			popover: "#2b2b2b",
 			sidebar: "#0e0e0e",
@@ -163,16 +165,9 @@ describe("app theme presets", () => {
 		});
 	});
 
-	it("scopes accent-role remaps to Kilo light; every derived variant aliases the accent", () => {
-		expect(getThemeVariant("kilo", "light")?.tokens).toMatchObject({
-			"primary-ink": "var(--muted-foreground)",
-			"primary-ink-foreground": "var(--background)",
-			"primary-soft": "var(--primary)",
-			"primary-soft-foreground": "var(--primary-foreground)",
-		});
+	it("every derived variant aliases the accent", () => {
 		for (const theme of DERIVED_THEMES) {
 			for (const mode of ["light", "dark"] as const) {
-				if (theme.id === "kilo" && mode === "light") continue;
 				expect(getThemeVariant(theme.id, mode).tokens).toMatchObject(ACCENT_ROLE_DEFAULTS);
 			}
 		}
@@ -184,7 +179,6 @@ describe("app theme presets", () => {
 		)[0]!;
 		expect(light).toContain("--primary-ink:var(--primary);");
 		expect(light).toContain("--primary-soft-foreground:var(--primary);");
-		expect(light).not.toContain("--primary-ink:var(--muted-foreground);");
 	});
 
 	it("layers curated accents over any theme without recoloring terminal", () => {

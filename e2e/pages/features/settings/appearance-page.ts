@@ -46,7 +46,7 @@ const largestChannelGap = (a: number[], b: number[]): number =>
 	Math.max(...a.map((channel, index) => Math.abs(channel - b[index]!)));
 
 const containsColor = (accent: AccentColor): RegExp =>
-	new RegExp(accent.rgb.replace(/[()]/g, "\\$&"));
+	new RegExp((accent.ringRgb ?? accent.rgb).replace(/[()]/g, "\\$&"));
 
 export class AppearancePage {
 	private readonly appearanceSettings = () => getLocatorByTestId("appearance-settings");
@@ -299,9 +299,14 @@ export class AppearancePage {
 			await expectElementToHaveCSS(this.sliderFill(setting), "background-color", accent.rgb, {
 				message: `The ${setting.title.toLowerCase()} slider should fill with the ${accent.name} accent`,
 			});
-			await expectElementToHaveCSS(this.sliderThumb(setting), "border-color", accent.rgb, {
-				message: `The ${setting.title.toLowerCase()} slider thumb should be outlined in the ${accent.name} accent`,
-			});
+			await expectElementToHaveCSS(
+				this.sliderThumb(setting),
+				"border-color",
+				accent.ringRgb ?? accent.rgb,
+				{
+					message: `The ${setting.title.toLowerCase()} slider thumb should be outlined in the ${accent.name} accent`,
+				},
+			);
 		}
 	}
 

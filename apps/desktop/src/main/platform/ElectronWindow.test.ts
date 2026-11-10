@@ -23,12 +23,14 @@ const { createdWindows, electronApp } = vi.hoisted(() => {
 				preload?: string;
 				webviewTag?: boolean;
 				devTools?: boolean;
+				nodeIntegrationInSubFrames?: boolean;
 			};
 			windowStatePersistence?: boolean;
 		};
 		webContents: {
 			id: number;
 			setWindowOpenHandler: ReturnType<typeof vi.fn>;
+			setWebRTCIPHandlingPolicy: ReturnType<typeof vi.fn>;
 			on: ReturnType<typeof vi.fn>;
 			send: ReturnType<typeof vi.fn>;
 		};
@@ -80,6 +82,7 @@ vi.mock("electron", () => ({
 		readonly webContents = {
 			id: createdWindows.length + 1,
 			setWindowOpenHandler: vi.fn(),
+			setWebRTCIPHandlingPolicy: vi.fn(),
 			on: vi.fn(),
 			send: vi.fn(),
 		};
@@ -113,12 +116,15 @@ vi.mock("electron", () => ({
 vi.mock("./ElectronProtocol.js", () => ({
 	getDesktopUrl: vi.fn(() => "desktop://app"),
 }));
-vi.mock("./ElectronSecurity.js", () => ({ isTrustedRendererUrl: vi.fn(() => true) }));
+vi.mock("./ElectronSecurity.js", () => ({
+	isTrustedRendererUrl: vi.fn(() => true),
+	isPinnedEmbeddedFrame: vi.fn(() => false),
+}));
 vi.mock("./ElectronContextMenu.js", () => ({ attachContextMenu: vi.fn() }));
 
 import { attachContextMenu } from "./ElectronContextMenu.js";
 import { ElectronWindow } from "./ElectronWindow.js";
-import { isTrustedRendererUrl } from "./ElectronSecurity.js";
+import { isPinnedEmbeddedFrame, isTrustedRendererUrl } from "./ElectronSecurity.js";
 
 function createShell() {
 	return { openExternal: vi.fn(async () => undefined) };
@@ -140,6 +146,7 @@ describe("ElectronWindow theme chrome", () => {
 		createdWindows.length = 0;
 		vi.clearAllMocks();
 		vi.mocked(isTrustedRendererUrl).mockReturnValue(true);
+		vi.mocked(isPinnedEmbeddedFrame).mockReturnValue(false);
 		Object.defineProperty(process, "platform", { value: originalPlatform });
 	});
 
@@ -209,6 +216,60 @@ describe("ElectronWindow theme chrome", () => {
 		expect(path.basename(createdWindows[0]?.options.webPreferences?.preload ?? "")).toBe(
 			"preload.cjs",
 		);
+	});
+
+	it("keeps peer-to-peer networking out of every frame of every window", () => {
+		const windows = new ElectronWindow(createShell() as never, () => false);
+
+		windows.create({
+			isDevelopment: false,
+			options: { webPreferences: { nodeIntegrationInSubFrames: false } },
+		});
+		openSecondary(windows);
+
+		for (const window of createdWindows) {
+			// The preload strips WebRTC from each subframe's realm; it has to run there.
+			expect(window.options.webPreferences?.nodeIntegrationInSubFrames).toBe(true);
+			expect(window.webContents.setWebRTCIPHandlingPolicy).toHaveBeenCalledWith(
+				"disable_non_proxied_udp",
+			);
+		}
+	});
+
+	it("holds a frame showing an agent page on that page", () => {
+		const embeddedHosts = [{ host: "mcp-app", root: undefined }];
+		const windows = new ElectronWindow(
+			createShell() as never,
+			() => false,
+			undefined,
+			() => embeddedHosts,
+		);
+		windows.create({ isDevelopment: false });
+		const willFrameNavigate = createdWindows[0]?.webContents.on.mock.calls.find(
+			(call) => call[0] === "will-frame-navigate",
+		)?.[1];
+		const navigation = (frameUrl: string, isMainFrame = false) => ({
+			url: "kilo-desktop://mcp-app/widget-host.html",
+			isMainFrame,
+			isSameDocument: false,
+			frame: { url: frameUrl },
+			preventDefault: vi.fn(),
+		});
+		vi.mocked(isPinnedEmbeddedFrame).mockImplementation(
+			(url) => url?.endsWith("html-render.html") === true,
+		);
+
+		const fromPage = navigation("kilo-desktop://mcp-app/html-render.html");
+		willFrameNavigate?.(fromPage);
+		expect(fromPage.preventDefault).toHaveBeenCalledOnce();
+		expect(isPinnedEmbeddedFrame).toHaveBeenCalledWith(
+			"kilo-desktop://mcp-app/html-render.html",
+			embeddedHosts,
+		);
+
+		const firstLoad = navigation("");
+		willFrameNavigate?.(firstLoad);
+		expect(firstLoad.preventDefault).not.toHaveBeenCalled();
 	});
 
 	it("repaints both main and secondary windows with the supplied palette", () => {

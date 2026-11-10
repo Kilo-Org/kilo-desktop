@@ -129,8 +129,9 @@ export interface HtmlRenderFrameProps {
  * page itself is untrusted: its height reports are clamped, and its link
  * requests (http(s) only) open only once the reader confirms them in app UI.
  *
- * The shell accepts HTML exactly once, so a different page needs a new frame:
- * callers key this component by the page's identity (its tool call).
+ * The frame is handed the page once and the shell accepts HTML exactly once,
+ * so a different page needs a new frame: callers key this component by the
+ * page's identity (its tool call).
  */
 export function HtmlRenderFrame({
 	html,
@@ -148,6 +149,7 @@ export function HtmlRenderFrame({
 	const iframeRef = useRef<HTMLIFrameElement>(null);
 	const shellSrc = useMemo(() => htmlRenderShellSrc(window.location), []);
 	const shellReady = useRef(false);
+	const pageDelivered = useRef(false);
 	const [shellError, setShellError] = useState(false);
 	const [contentHeight, setContentHeight] = useState(() =>
 		heightCacheKey === undefined ? undefined : reportedHeights.get(heightCacheKey),
@@ -173,13 +175,17 @@ export function HtmlRenderFrame({
 	}, [html, shellSrc]);
 
 	useEffect(() => {
-		let page: string | undefined;
 		const onMessage = (event: MessageEvent) => {
 			const frame = iframeRef.current?.contentWindow;
 			if (!frame || event.source !== frame) return;
 			if (isShellReadyMessage(event.data)) {
 				shellReady.current = true;
-				page ??= injectHtmlRenderBootstrap(html, themeRef.current);
+				// Only the frame's first document is known to be the page shell: a
+				// later READY comes from wherever the page navigated its frame
+				// (e.g. the widget shell, under a looser policy).
+				if (pageDelivered.current) return;
+				pageDelivered.current = true;
+				const page = injectHtmlRenderBootstrap(html, themeRef.current);
 				frame.postMessage({ type: MCP_APP_SHELL_HTML_MESSAGE, html: page }, "*");
 				return;
 			}

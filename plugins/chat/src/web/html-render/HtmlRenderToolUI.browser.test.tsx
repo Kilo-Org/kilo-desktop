@@ -5,6 +5,7 @@ import { userEvent } from "vitest/browser";
 
 import { Toaster } from "@kilo-desktop/ui/components/sonner";
 
+import { MCP_APP_SHELL_HTML_MESSAGE, MCP_APP_SHELL_READY_MESSAGE } from "../../contracts";
 import { renderInKernel } from "../../test/kernel-harness";
 import { ChatMarkdownProvider } from "../thread/chat-markdown";
 import { TurnWorkFoldContext } from "../tools/turn-work-fold-context";
@@ -126,6 +127,39 @@ describe("HtmlRenderToolUI", () => {
 		const dialog = await screen.findByRole("dialog", { name: "Chart" });
 		expect(dialog.querySelector('iframe[title="Chart"]')).not.toBeNull();
 		expect(dialog.querySelector('[data-qa-id="media-lightbox-zoom-in"]')).toBeNull();
+	});
+
+	it("hands the page to its frame only once, even after the frame navigates to a fresh shell", async () => {
+		const kinds: string[] = [];
+		const onMessage = (event: MessageEvent) => {
+			if (typeof event.data?.kind === "string") kinds.push(event.data.kind);
+		};
+		window.addEventListener("message", onMessage);
+		// A shell (e.g. the MCP App widget shell, under a looser policy) the page
+		// could navigate its frame to: it announces readiness like the real one.
+		const freshShell = `<script>
+			addEventListener("message", (e) => {
+				if (e.data && e.data.type === ${JSON.stringify(MCP_APP_SHELL_HTML_MESSAGE)}) parent.postMessage({ kind: "redelivered" }, "*");
+			});
+			parent.postMessage({ type: ${JSON.stringify(MCP_APP_SHELL_READY_MESSAGE)} }, "*");
+			setTimeout(() => parent.postMessage({ kind: "settled" }, "*"), 500);
+		</script>`;
+		const html = `<script>
+			addEventListener("message", (e) => {
+				if (!e.data || e.data.type !== ${JSON.stringify(MCP_APP_SHELL_HTML_MESSAGE)}) return;
+				parent.postMessage({ kind: "delivered" }, "*");
+				location.href = "data:text/html," + encodeURIComponent(${JSON.stringify(freshShell).replaceAll("</", "<\\/")});
+			});
+			parent.postMessage({ type: ${JSON.stringify(MCP_APP_SHELL_READY_MESSAGE)} }, "*");
+		</script>`;
+		try {
+			await renderTool({ args: { title: "Chart", html } });
+
+			await waitFor(() => expect(kinds).toContain("settled"), { timeout: 5_000 });
+			expect(kinds).toEqual(["delivered", "settled"]);
+		} finally {
+			window.removeEventListener("message", onMessage);
+		}
 	});
 
 	it("caps the frame at the requested height", async () => {

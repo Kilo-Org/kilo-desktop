@@ -9,10 +9,11 @@ import {
 	type ThemeChromeColors,
 } from "@kilo-desktop/ui/themes/theme-tokens";
 
+import type { EmbeddedWebHost } from "./embedded-web-host.js";
 import { BROWSER_PARTITION } from "./ElectronBrowserHost.js";
 import { attachContextMenu } from "./ElectronContextMenu.js";
 import { getDesktopUrl } from "./ElectronProtocol.js";
-import { isTrustedRendererUrl } from "./ElectronSecurity.js";
+import { isPinnedEmbeddedFrame, isTrustedRendererUrl } from "./ElectronSecurity.js";
 import type { ElectronShell } from "./ElectronShell.js";
 
 type ThemeChromeByScheme = Readonly<Record<"light" | "dark", ThemeChromeColors>>;
@@ -35,6 +36,8 @@ export class ElectronWindow {
 		private readonly electronShell: ElectronShell,
 		private readonly shouldUseDarkColors: () => boolean,
 		private readonly chromeColors: () => ThemeChromeByScheme | undefined = () => undefined,
+		/** Read per navigation: features register their hosts after windows exist. */
+		private readonly embeddedHosts: () => readonly EmbeddedWebHost[] = () => [],
 	) {}
 
 	create(input: {
@@ -204,6 +207,10 @@ export class ElectronWindow {
 				...options?.webPreferences,
 				// After the caller spread so a caller cannot re-enable it.
 				devTools: !app.isPackaged,
+				// Runs the preload in subframes too, where it strips WebRTC from
+				// untrusted content (see preload/subframe-webrtc.ts). The sandbox
+				// keeps Node out of every frame regardless.
+				nodeIntegrationInSubFrames: true,
 				additionalArguments: [...(options?.webPreferences?.additionalArguments ?? [])],
 			},
 		});
@@ -231,6 +238,13 @@ export class ElectronWindow {
 			if (isTrustedRendererUrl(url)) return;
 			event.preventDefault();
 			void this.electronShell.openExternal(url);
+		});
+		// Below the per-realm strip: with no proxy, WebRTC still reaches TURN
+		// over TCP, but no frame can send UDP to a STUN or TURN server.
+		window.webContents.setWebRTCIPHandlingPolicy("disable_non_proxied_udp");
+		window.webContents.on("will-frame-navigate", (details) => {
+			if (details.isMainFrame || details.isSameDocument) return;
+			if (isPinnedEmbeddedFrame(details.frame?.url, this.embeddedHosts())) details.preventDefault();
 		});
 		attachContextMenu(window.webContents, {
 			isDevelopment,

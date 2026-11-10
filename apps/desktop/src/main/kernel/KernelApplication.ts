@@ -110,6 +110,7 @@ export class KernelApplication {
 		this.#shell,
 		() => nativeTheme.shouldUseDarkColors,
 		() => this.#chromeStore.get("chrome") ?? undefined,
+		() => [...this.#embeddedHosts.values()],
 	);
 	readonly #protocol = new ElectronProtocol();
 	readonly #security = new ElectronSecurity();

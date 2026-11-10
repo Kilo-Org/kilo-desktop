@@ -2,12 +2,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({}));
 
-import { CLIPBOARD_WRITE_EMBEDDED_PERMISSION, type EmbeddedWebHost } from "./embedded-web-host.js";
+import {
+	ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+	CLIPBOARD_WRITE_EMBEDDED_PERMISSION,
+	HTML_RENDER_CONTENT_SECURITY_PROFILE,
+	type EmbeddedWebHost,
+} from "./embedded-web-host.js";
 
 import {
 	configureTrustedSchemes,
 	ElectronSecurity,
 	isEmbeddedHostPermissionGranted,
+	isPinnedEmbeddedFrame,
 	isTrustedIpcSender,
 	isTrustedRendererUrl,
 } from "./ElectronSecurity.js";
@@ -131,6 +137,36 @@ describe("ElectronSecurity", () => {
 				requestingUrl: "kilo-desktop://notebook/index.html",
 			});
 			expect(callback.mock.calls).toEqual([[true], [false]]);
+		});
+	});
+
+	describe("pinned embedded frames", () => {
+		const mcpAppHost: EmbeddedWebHost = {
+			host: "mcp-app",
+			root: undefined,
+			documents: { "/html-render.html": "page", "/widget-host.html": "widget" },
+			securityProfiles: {
+				"/html-render.html": HTML_RENDER_CONTENT_SECURITY_PROFILE,
+				"/widget-host.html": ACTIVE_UNTRUSTED_CONTENT_SECURITY_PROFILE,
+			},
+		};
+
+		it("pins a frame showing an agent page to that page", () => {
+			expect(isPinnedEmbeddedFrame("kilo-desktop://mcp-app/html-render.html", [mcpAppHost])).toBe(
+				true,
+			);
+		});
+
+		it.each([
+			["a frame still loading its first document", ""],
+			["a frame with no URL", undefined],
+			["an MCP App widget", "kilo-desktop://mcp-app/widget-host.html"],
+			["the app shell", "kilo-desktop://app/html-render.html"],
+			["another scheme", "https://mcp-app/html-render.html"],
+			["an unregistered host", "kilo-desktop://other/html-render.html"],
+			["a frame showing something else", "data:text/html,x"],
+		])("leaves %s free to navigate", (_label, frameUrl) => {
+			expect(isPinnedEmbeddedFrame(frameUrl, [mcpAppHost])).toBe(false);
 		});
 	});
 

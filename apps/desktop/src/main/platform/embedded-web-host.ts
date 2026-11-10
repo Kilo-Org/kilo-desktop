@@ -35,6 +35,10 @@ const HTML_RENDER_CDN_SOURCES = [
  * Served as a header for the in-chat page and embedded as a `<meta>` in a
  * saved copy, so the page is held to the same rules wherever it is opened.
  * Only uses directives a `<meta>` policy honors.
+ *
+ * No CSP directive covers WebRTC (ICE traffic bypasses `connect-src`); in
+ * chat the window's preload strips it from every subframe realm instead
+ * (`preload/subframe-webrtc.ts`).
  */
 export function createHtmlRenderContentSecurityPolicy(): string {
 	return contentOnlyPolicy("");
@@ -46,7 +50,8 @@ export function createHtmlRenderContentSecurityPolicy(): string {
  * written by the agent — except that it may also load files next to it
  * (`'self'`: its stylesheets, scripts, images, and frames). Reading them as
  * data stays off (`connect-src 'none'`), so a page cannot gather other
- * workspace files.
+ * workspace files. Browser guests run without the app preload, so unlike an
+ * in-chat page this one keeps WebRTC, which the policy cannot restrict.
  */
 export function createBrowserLocalFileContentSecurityPolicy(): string {
 	return contentOnlyPolicy("'self' ");

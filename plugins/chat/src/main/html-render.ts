@@ -98,11 +98,17 @@ const SHELL_READY_MAX_ATTEMPTS = 50;
 
 /**
  * The shell document served on the `mcp-app` host. Untrusted widget and page
- * HTML runs here — an isolated, opaque-origin, preload-less frame — instead
- * of a `blob:` frame that would inherit the app origin's CSP. It announces
- * READY to its parent, takes the HTML by postMessage (from its parent only),
- * drops its listener and writes the HTML into its own document, so the HTML
- * runs under this origin's policy and cannot trigger another write.
+ * HTML runs here — an isolated, opaque-origin frame with no app bridge —
+ * instead of a `blob:` frame that would inherit the app origin's CSP. It
+ * announces READY to its parent, takes the HTML by postMessage (from its
+ * parent only), drops its listener and writes the HTML into its own document,
+ * so the HTML runs under this origin's policy and cannot trigger another write.
+ *
+ * It first removes WebRTC, which no CSP directive contains (`connect-src`
+ * does not cover ICE, so a page could reach any STUN/TURN server it names);
+ * `document.write` keeps the same realm, so the page starts without it. The
+ * desktop host strips it from every subframe realm at creation as well, which
+ * also covers realms the page could open itself (`srcdoc` children).
  */
 export const mcpAppShellHtml = (title: string) => `<!doctype html>
 <html>
@@ -113,6 +119,9 @@ export const mcpAppShellHtml = (title: string) => `<!doctype html>
 	<body>
 		<script>
 			(function () {
+				Object.getOwnPropertyNames(window).forEach(function (name) {
+					if (/^(?:webkit)?RTC/.test(name)) delete window[name];
+				});
 				var written = false;
 				var retry;
 				function onMessage(event) {

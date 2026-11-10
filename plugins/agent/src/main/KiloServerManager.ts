@@ -223,8 +223,12 @@ function appendStderrContext(baseMessage: string, stderr: string): string {
  * stamped after inherited env at every spawn, and the running CLI is updated
  * through `/telemetry/setEnabled` on every change and every time it becomes
  * ready. Updates are serialized and always send the latest preference, so a
- * slower earlier request cannot overwrite a later choice. Opt-out never
- * restarts the CLI; events it queued before opting out may still be sent.
+ * slower earlier request cannot overwrite a later choice. When an opt-out
+ * can't reach a CLI that may still be collecting (spawned with telemetry on,
+ * or after an opt-in that may have landed), the CLI is restarted so its new
+ * spawn env carries the opt-out; a CLI known to be off is left running, so a
+ * CLI that never answers can't cause a restart loop. Events it queued before
+ * opting out may still be sent.
  *
  * **Status emission contract.** `#setStatus` flows through an
  * `#setStatus`, gated by `isEqual`, so callers observe
@@ -283,6 +287,8 @@ export class KiloServerManager {
 	#startPromise: Promise<KiloServerConnection> | undefined;
 	#disposed = false;
 	#telemetryEnabled = false;
+	/** What the running CLI is known to collect under; undefined when it may be collecting. */
+	#cliTelemetryEnabled: boolean | undefined;
 	#telemetrySync: Promise<void> = Promise.resolve();
 	/**
 	 * Snapshot of the sanitized contributed env used at the last spawn.
@@ -344,7 +350,7 @@ export class KiloServerManager {
 	async setTelemetryEnabled(enabled: boolean): Promise<void> {
 		this.#telemetryEnabled = enabled;
 		try {
-			await this.#syncTelemetry();
+			await this.#applyTelemetry();
 		} catch (error) {
 			this.#options.logger.warn(
 				`Could not set Kilo CLI telemetry to ${enabled ? "on" : "off"}: ${safeErrorMessage(error)}`,
@@ -356,6 +362,24 @@ export class KiloServerManager {
 		}
 	}
 
+	/**
+	 * Brings the running CLI in line with the latest preference. A CLI that
+	 * can't be told to opt out and may still be collecting is restarted: the
+	 * fresh spawn reads the opt-out from its environment.
+	 */
+	async #applyTelemetry(): Promise<void> {
+		try {
+			await this.#syncTelemetry();
+		} catch (error) {
+			if (this.#telemetryEnabled) throw error;
+			if (this.#disposed || !this.#connection || this.#cliTelemetryEnabled === false) return;
+			this.#options.logger.warn(
+				`Could not opt the Kilo CLI out of telemetry (${safeErrorMessage(error)}); restarting it.`,
+			);
+			await this.restart();
+		}
+	}
+
 	/** Sends the latest preference to the running CLI; a cold CLI picks it up at spawn. */
 	#syncTelemetry(): Promise<void> {
 		const sync = this.#telemetrySync
@@ -364,7 +388,14 @@ export class KiloServerManager {
 				const connection = this.#connection;
 				if (!connection || this.#disposed) return;
 				const enabled = this.#telemetryEnabled;
-				await this.#updateTelemetry(connection, enabled);
+				try {
+					await this.#updateTelemetry(connection, enabled);
+				} catch (error) {
+					// A failed opt-in may still have landed; a failed opt-out can't have turned collection on.
+					if (enabled && this.#connection === connection) this.#cliTelemetryEnabled = undefined;
+					throw error;
+				}
+				if (this.#connection === connection) this.#cliTelemetryEnabled = enabled;
 				this.#options.logger.info(`Kilo CLI telemetry set to ${enabled ? "on" : "off"}`);
 			});
 		this.#telemetrySync = sync;
@@ -526,6 +557,7 @@ export class KiloServerManager {
 			const configContent = await this.#inlineConfigContent();
 			if (this.#disposed) throw new Error("Kilo Code has shut down.");
 			const environment = this.#createEnvironment(password, configContent);
+			const spawnedWithTelemetry = environment.KILO_TELEMETRY_LEVEL !== "off";
 			const args = [
 				"serve",
 				"--hostname=127.0.0.1",
@@ -565,9 +597,10 @@ export class KiloServerManager {
 				pid: child.pid,
 			};
 			this.#connection = connection;
+			this.#cliTelemetryEnabled = spawnedWithTelemetry;
 			this.#setStatus({ status: "ready", baseUrl, version });
 			// The preference may have changed after this process read its spawn env.
-			void this.#syncTelemetry().catch((error) =>
+			void this.#applyTelemetry().catch((error) =>
 				this.#options.logger.warn(
 					`Could not sync telemetry preference: ${safeErrorMessage(error, [password, authHeader])}`,
 				),

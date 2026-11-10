@@ -52,6 +52,7 @@ export interface AgentServerManager {
 	/** Restarts in place, keeping the address and credentials. */
 	restart(): Promise<KiloServerConnection>;
 	stop(): Promise<void>;
+	/** Restarts a running CLI that can't be told to opt out, so an opt-out always applies. */
 	setTelemetryEnabled(enabled: boolean): Promise<void>;
 	contributedEnvChangedSinceSpawn(): boolean;
 	webMcpEndpointChangedSinceSpawn(): boolean;
@@ -137,7 +138,9 @@ const errorMessage = (error: unknown) => (error instanceof Error ? error.message
  * one plugin can never overwrite another's entries or the user's.
  *
  * Telemetry consent comes from `kernel/data-collection`: applied before the
- * first spawn and synced to the running CLI on change.
+ * first spawn and synced to the running CLI on change. The server manager
+ * restarts a CLI that won't accept an opt-out, so a failed sync never leaves
+ * it collecting.
  *
  * Agent tools reach Kilo as its `mcp.desktop` entry, pointing at the tool
  * gateway's endpoint through env vars set at every spawn; config-sync waits

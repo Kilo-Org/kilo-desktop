@@ -98,6 +98,21 @@ function telemetryFetch(healthGate?: Promise<void>) {
 	});
 }
 
+/** Health and telemetry requests that can be made to fail mid-test. */
+function flakyFetch(healthGate?: Promise<void>) {
+	const control = { failTelemetry: false, failHealth: false };
+	const fetch = vi.fn<typeof globalThis.fetch>(async (url) => {
+		if (String(url).endsWith("/global/health")) {
+			await healthGate;
+			return control.failHealth
+				? new Response(null, { status: 503 })
+				: Response.json({ healthy: true, version: KILO_CLI_VERSION });
+		}
+		return control.failTelemetry ? new Response(null, { status: 503 }) : Response.json(true);
+	});
+	return { fetch, control };
+}
+
 function telemetryRequests(fetch: ReturnType<typeof telemetryFetch>) {
 	return fetch.mock.calls
 		.filter(([url]) => String(url).endsWith("/telemetry/setEnabled"))
@@ -337,7 +352,7 @@ describe("KiloServerManager", () => {
 	});
 
 	it.each(["timeout", "http", "invalid"])(
-		"reports a user-visible error when a runtime change fails (%s) without stopping the CLI",
+		"reports a user-visible error when opting in fails (%s) without stopping the CLI",
 		async (failure) => {
 			const fetch = vi.fn<typeof globalThis.fetch>(async (url) => {
 				if (String(url).endsWith("/global/health"))
@@ -348,11 +363,112 @@ describe("KiloServerManager", () => {
 			const { manager, children, spawn } = createHarness({ fetch, telemetryTimeoutMs: 10 });
 			onTestFinished(() => manager.dispose());
 			await manager.ensureRunning();
-			await expect(manager.setTelemetryEnabled(false)).rejects.toMatchObject({ code: "BUSINESS" });
+			await expect(manager.setTelemetryEnabled(true)).rejects.toMatchObject({ code: "BUSINESS" });
 			expect(children[0]!.exitCode).toBeNull();
 			expect(spawn).toHaveBeenCalledOnce();
 		},
 	);
+
+	it.each(["timeout", "http", "invalid"])(
+		"restarts a collecting CLI with telemetry off when opting out fails (%s)",
+		async (failure) => {
+			let failTelemetry = false;
+			const fetch = vi.fn<typeof globalThis.fetch>(async (url) => {
+				if (String(url).endsWith("/global/health"))
+					return Response.json({ healthy: true, version: KILO_CLI_VERSION });
+				if (!failTelemetry) return Response.json(true);
+				if (failure === "timeout") return new Promise<Response>(() => undefined);
+				return failure === "http" ? new Response(null, { status: 503 }) : Response.json(false);
+			});
+			const { manager, children, spawn } = createHarness({ fetch, telemetryTimeoutMs: 10 });
+			onTestFinished(() => manager.dispose());
+			await manager.setTelemetryEnabled(true);
+			await manager.ensureRunning();
+			await vi.waitFor(() => expect(telemetryRequests(fetch)).toEqual([{ enabled: true }]));
+			failTelemetry = true;
+
+			await manager.setTelemetryEnabled(false);
+
+			expect(children[0]!.exitCode).not.toBeNull();
+			expect(spawn.mock.calls.map(([, , options]) => options.env.KILO_TELEMETRY_LEVEL)).toEqual([
+				"all",
+				"off",
+			]);
+			expect(manager.isRunning).toBe(true);
+		},
+	);
+
+	it("does not restart again when the restarted CLI also rejects the opt-out", async () => {
+		const { fetch, control } = flakyFetch();
+		const { manager, spawn } = createHarness({ fetch });
+		onTestFinished(() => manager.dispose());
+		await manager.setTelemetryEnabled(true);
+		await manager.ensureRunning();
+		await vi.waitFor(() => expect(telemetryRequests(fetch)).toHaveLength(1));
+		control.failTelemetry = true;
+
+		await manager.setTelemetryEnabled(false);
+		// The restarted CLI's ready sync fails too; it was spawned with telemetry off.
+		await vi.waitFor(() => expect(telemetryRequests(fetch)).toHaveLength(3));
+		await new Promise((resolve) => setTimeout(resolve, 20));
+
+		expect(spawn).toHaveBeenCalledTimes(2);
+		expect(manager.isRunning).toBe(true);
+	});
+
+	it("leaves a CLI spawned with telemetry off running when opting out fails", async () => {
+		const { fetch, control } = flakyFetch();
+		const { manager, children, spawn } = createHarness({ fetch });
+		onTestFinished(() => manager.dispose());
+		await manager.ensureRunning();
+		control.failTelemetry = true;
+
+		await manager.setTelemetryEnabled(false);
+
+		expect(children[0]!.exitCode).toBeNull();
+		expect(spawn).toHaveBeenCalledOnce();
+	});
+
+	it("restarts a CLI spawned with telemetry on when the opt-out arrives during startup and its ready sync fails", async () => {
+		let releaseHealth!: () => void;
+		const healthGate = new Promise<void>((resolve) => {
+			releaseHealth = resolve;
+		});
+		const { fetch, control } = flakyFetch(healthGate);
+		const { manager, spawn } = createHarness({ fetch });
+		onTestFinished(() => manager.dispose());
+		await manager.setTelemetryEnabled(true);
+		const startup = manager.ensureRunning();
+		await vi.waitFor(() => expect(spawn).toHaveBeenCalledOnce());
+		control.failTelemetry = true;
+		await manager.setTelemetryEnabled(false);
+
+		releaseHealth();
+		await startup;
+
+		await vi.waitFor(() => expect(spawn).toHaveBeenCalledTimes(2));
+		expect(spawn.mock.calls.map(([, , options]) => options.env.KILO_TELEMETRY_LEVEL)).toEqual([
+			"all",
+			"off",
+		]);
+		await vi.waitFor(() => expect(manager.isRunning).toBe(true));
+	});
+
+	it("reports an error and leaves the collecting CLI stopped when the restart that applies an opt-out fails", async () => {
+		const { fetch, control } = flakyFetch();
+		const { manager, children } = createHarness({ fetch, healthTimeoutMs: 20 });
+		onTestFinished(() => manager.dispose());
+		await manager.setTelemetryEnabled(true);
+		await manager.ensureRunning();
+		await vi.waitFor(() => expect(telemetryRequests(fetch)).toHaveLength(1));
+		control.failTelemetry = true;
+		control.failHealth = true;
+
+		await expect(manager.setTelemetryEnabled(false)).rejects.toMatchObject({ code: "BUSINESS" });
+
+		expect(children[0]!.exitCode).not.toBeNull();
+		expect(manager.isRunning).toBe(false);
+	});
 
 	it("spawns with additive Desktop config, the user's Kilo profile, loopback CORS, and a sanitized environment", async () => {
 		const { manager, spawn } = createHarness({

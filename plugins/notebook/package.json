@@ -31,7 +31,7 @@
 		"@kilo-desktop/plugin-workbench": "workspace:*",
 		"@kilo-desktop/plugin-shell": "workspace:*",
 		"@kilo-desktop/plugin-workspaces": "workspace:*",
-		"koffi": "3.3.6",
+		"koffi": "3.3.7",
 		"lucide-react": "catalog:",
 		"zod": "catalog:"
 	},

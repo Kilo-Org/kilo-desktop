@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { watcherIgnorePatterns } from "./default-excludes";
-import { createTestWatcher } from "./test/test-helpers";
+import { createTestWatcher, noopLogger } from "./test/test-helpers";
 
 const PROJECT = "/work/project";
 
@@ -335,6 +335,52 @@ describe("WorkspaceWatcher", () => {
 			expect(parcel.subscribeAttempts).toHaveLength(3);
 			await tick(20);
 			expect(parcel.subscribeAttempts).toHaveLength(3);
+		});
+
+		// Repro for the WSL (\\wsl.localhost) report: real @parcel/watcher on a
+		// 9P UNC path *resolves* subscribe(), then ~1ms later delivers
+		// "Failed to read changes" through the event callback — on every attempt.
+		it("gives up to failed when every subscription resolves and then errors (WSL UNC path)", async () => {
+			const { watcher, parcel, tick } = createTestWatcher({
+				retryDelayMs: 5,
+				maxRetries: 2,
+				subscribeFn: async (dir, onEvents, opts) => {
+					const sub = await parcel.subscribe(dir, onEvents, opts);
+					setTimeout(() => onEvents(new Error("Failed to read changes"), []), 1);
+					return sub;
+				},
+			});
+			watcher.watchDirectory(PROJECT);
+
+			await tick(200);
+
+			expect(watcher.status().directories[0]?.state).toBe("failed");
+			// Initial attempt + 2 retries, then retrying stops.
+			expect(parcel.subscribeAttempts).toHaveLength(3);
+		});
+
+		it.each([
+			["\\\\wsl.localhost\\Ubuntu\\home\\user\\project", true],
+			["\\\\WSL$\\Ubuntu\\home\\user\\project", true],
+			[PROJECT, false],
+		])("explains WSL paths when %s gives up (WSL hint: %s)", async (dir, expectsWslHint) => {
+			const errors: string[] = [];
+			const { watcher, parcel } = createTestWatcher({
+				retryDelayMs: 5,
+				maxRetries: 1,
+				logger: { ...noopLogger, error: (message) => errors.push(message) },
+			});
+			parcel.failNextSubscribes(dir, 10, new Error("Failed to read changes"));
+			watcher.watchDirectory(dir);
+
+			await vi.waitFor(() => {
+				expect(watcher.status().directories[0]?.state).toBe("failed");
+			});
+
+			expect(errors).toHaveLength(1);
+			const wslHint = "WSL folders do not support Windows file-change notifications";
+			if (expectsWslHint) expect(errors[0]).toContain(wslHint);
+			else expect(errors[0]).not.toContain(wslHint);
 		});
 
 		it("fails immediately without retrying on ENOSPC (parcel realistic message)", async () => {

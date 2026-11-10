@@ -127,4 +127,36 @@ describe("workspace file watcher", () => {
 			timeout: 5_000,
 		});
 	});
+
+	// Repro for the WSL report. Set KILO_TEST_WSL_DIR to an existing folder
+	// inside a running distro, e.g. \\wsl.localhost\Ubuntu\home\<user>\repro.
+	// Parcel resolves subscribe() there and then errors "Failed to read
+	// changes" via the callback; with retryDelayMs 50 and the default 5
+	// retries the watcher must settle on "failed" instead of retrying forever.
+	const wslDir = process.env.KILO_TEST_WSL_DIR;
+	it.skipIf(process.platform !== "win32" || !wslDir)(
+		"stops retrying a \\\\wsl.localhost workspace folder",
+		async () => {
+			const subscribeSpy = vi.spyOn(parcelWatcher, "subscribe");
+			try {
+				const booted = await boot();
+				await booted.workspaces.methods.create({ folders: [{ path: wslDir!, isPrimary: true }] });
+				await booted.kernel.windowShown();
+
+				await vi.waitFor(
+					() =>
+						expect(booted.files.getState().watched).toEqual([{ path: wslDir, state: "failed" }]),
+					{ timeout: 5_000 },
+				);
+				const attempts = subscribeSpy.mock.calls.length;
+				// Initial attempt + 5 retries, and no further attempts afterwards.
+				expect(attempts).toBe(6);
+				await new Promise((resolve) => setTimeout(resolve, 500));
+				expect(subscribeSpy.mock.calls.length).toBe(attempts);
+			} finally {
+				subscribeSpy.mockRestore();
+			}
+		},
+		10_000,
+	);
 });

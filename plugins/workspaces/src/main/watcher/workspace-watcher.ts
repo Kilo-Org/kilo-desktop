@@ -8,6 +8,7 @@ import {
 	type WatchedFolder,
 } from "../../contracts";
 import { watcherIgnorePatterns } from "./default-excludes";
+import { parcelBackend, type WatcherBackend } from "./parcel-backend";
 import { normalizeNFC, normalizeWindowsRootPath, remapRealPath } from "./path-normalization";
 
 type FileChangeType = FileChange["type"];
@@ -29,7 +30,7 @@ export interface RawWatcherEvent {
 export type WatchSubscribeFn = (
 	dir: string,
 	onEvents: (err: Error | null, events: RawWatcherEvent[]) => void,
-	opts: { ignore: string[] },
+	opts: { ignore: string[]; backend?: WatcherBackend },
 ) => Promise<{ unsubscribe(): Promise<void> }>;
 
 export interface WorkspaceWatcherDeps {
@@ -109,6 +110,12 @@ interface WatchedDirectory {
  *   (inotify limits, fd limits) and fail immediately without retrying.
  *   Parcel surfaces these as plain `Error` objects with no `.code`
  *   (`PromiseRunner.hh`, `Watcher.cc`); detection is by message substring.
+ *   The retry budget spans the directory's lifetime: a subscription that
+ *   resolves does NOT replenish it. Parcel can resolve `subscribe()` and
+ *   then error ~1ms later via the callback (WSL `\\wsl.localhost` 9P shares
+ *   report "Failed to read changes" on every attempt); resetting on resolve
+ *   turned that into an endless retry loop. Mirrors vscode's never-reset
+ *   `MAX_RESTARTS` counter (`common/watcher.ts`).
  *   `watchDirectory` on a `"failed"` directory resets the loop —
  *   `reconcileDirectories` re-watching the union on workspace updates is
  *   the recovery path. `watchDirectory` on a `"retrying"` directory is
@@ -310,7 +317,7 @@ export class WorkspaceWatcher {
 					}
 					this.#handleEvents(dir, entry, events);
 				},
-				{ ignore: watcherIgnorePatterns() },
+				subscribeOptions(),
 			)
 			.then(
 				(sub) => {
@@ -322,7 +329,6 @@ export class WorkspaceWatcher {
 					entry.parcelSub = sub;
 					entry.state = "active";
 					this.#statusChanged();
-					entry.retryCount = 0;
 				},
 				(error: Error) => {
 					if (this.#disposed || entry.generation !== generation) return;
@@ -372,10 +378,13 @@ export class WorkspaceWatcher {
 		if (entry.retryCount >= this.#maxRetries) {
 			entry.state = "failed";
 			this.#statusChanged();
+			const reason = isWslPath(dir)
+				? `WSL folders do not support Windows file-change notifications, so changes ` +
+					`in this folder will not be detected automatically.`
+				: `The directory may have been deleted or is on a filesystem without native ` +
+					`file events (network mounts); use a local directory.`;
 			this.#deps.logger.error(
-				`Watcher for ${dir} failed after ${this.#maxRetries} retries. The directory may ` +
-					`have been deleted or is on a filesystem without native file events ` +
-					`(network mounts); use a local directory.`,
+				`Watcher for ${dir} failed after ${this.#maxRetries} retries. ${reason}`,
 				error,
 			);
 			return;
@@ -456,6 +465,17 @@ export class WorkspaceWatcher {
 			);
 		});
 	}
+}
+
+/** `\\wsl.localhost\` and `\\wsl$\` UNC shares are served over 9P, which has no change notifications. */
+function isWslPath(dir: string): boolean {
+	const lower = dir.toLowerCase();
+	return lower.startsWith("\\\\wsl.localhost\\") || lower.startsWith("\\\\wsl$\\");
+}
+
+function subscribeOptions(): Parameters<WatchSubscribeFn>[2] {
+	const backend = parcelBackend(process.platform);
+	return { ignore: watcherIgnorePatterns(), ...(backend ? { backend } : {}) };
 }
 
 /**

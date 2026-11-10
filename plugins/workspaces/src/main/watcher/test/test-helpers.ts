@@ -112,6 +112,8 @@ export interface TestWatcherOptions {
 	realpath?: (path: string) => string | Promise<string>;
 	/** Override the parcel boundary (e.g. gate subscribe resolution); defaults to the fake's. */
 	subscribeFn?: WatchSubscribeFn;
+	/** Diagnostic logger; defaults to a no-op. */
+	logger?: MainSdkLogger;
 	retryDelayMs?: number;
 	maxRetries?: number;
 }
@@ -129,7 +131,7 @@ export function createTestWatcher(options: TestWatcherOptions = {}): TestWatcher
 	const watcher = new WorkspaceWatcher({
 		subscribeFn: options.subscribeFn ?? parcel.subscribe,
 		realpath: options.realpath ?? ((path: string) => path),
-		logger: noopLogger,
+		logger: options.logger ?? noopLogger,
 		emit: options.emit,
 		retryDelayMs: options.retryDelayMs,
 		maxRetries: options.maxRetries,

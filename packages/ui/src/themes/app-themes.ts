@@ -100,13 +100,21 @@ type RolePalette = {
  * remap them onto other existing tokens (never new colors).
  * - ink: link text, spinners, status dots, progress, checked toggle track.
  * - soft: selected/active chips, badges and icon tiles (wash + accent text).
+ * - brand: the few brand moments (composer Send, Beta badge); edge outlines a fill too pale for its surface.
  */
 export const ACCENT_ROLE_DEFAULTS = {
 	"primary-ink": "var(--primary)",
 	"primary-ink-foreground": "var(--primary-foreground)",
 	"primary-soft": "color-mix(in oklab, var(--primary) 10%, transparent)",
 	"primary-soft-foreground": "var(--primary)",
+	"primary-brand": "var(--primary)",
+	"primary-brand-foreground": "var(--primary-foreground)",
+	"primary-brand-edge": "transparent",
+	"primary-brand-badge": "var(--primary-soft)",
+	"primary-brand-badge-foreground": "var(--primary-soft-foreground)",
 };
+
+const KILO_YELLOW = "#ffdd00";
 
 const LIGHT_STATUS = {
 	error: "#9f1239",
@@ -342,6 +350,11 @@ const ANACONDA_LIGHT: ThemeVariant = {
 		"primary-ink-foreground": "var(--primary-foreground)",
 		"primary-soft": "var(--primary)",
 		"primary-soft-foreground": "var(--primary-foreground)",
+		"primary-brand": "var(--primary)",
+		"primary-brand-foreground": "var(--primary-foreground)",
+		"primary-brand-edge": "transparent",
+		"primary-brand-badge": "var(--primary-soft)",
+		"primary-brand-badge-foreground": "var(--primary-soft-foreground)",
 		info: "oklch(54.6% 0.245 262.881)",
 		"info-foreground": "oklch(54.6% 0.245 262.881)",
 		success: ANACONDA_GREEN,
@@ -465,10 +478,18 @@ export const APP_THEMES = [
 					mutedFill: "#f5f5f5",
 					muted: "#737373",
 					border: "#e5e5e5",
-					// Mono: actions use ink; Kilo yellow is reserved for the logo.
+					// Mono: actions use ink; Kilo yellow is reserved for the logo and brand roles.
 					primary: "#0a0a0a",
 					primaryForeground: "#ffffff",
 					ring: "#737373",
+					// Yellow is ~1.35:1 on white, so the brand fill gets a hairline edge.
+					roles: {
+						"primary-brand": KILO_YELLOW,
+						"primary-brand-foreground": "#1f1f1f",
+						"primary-brand-edge": "rgb(0 0 0 / 0.12)",
+						"primary-brand-badge": KILO_YELLOW,
+						"primary-brand-badge-foreground": "#1f1f1f",
+					},
 					ansi: [
 						"#1f1f1f",
 						"#dc2626",
@@ -511,10 +532,17 @@ export const APP_THEMES = [
 					// background as before, #404040 over the #2b2b2b popover (a solid
 					// #292929 vanished there).
 					border: "rgb(255 255 255 / 0.1)",
-					// Mono: actions use ink; Kilo yellow is reserved for the logo.
+					// Mono: actions use ink; Kilo yellow is reserved for the logo and brand roles.
 					primary: "#ededed",
 					primaryForeground: "#111111",
 					ring: "#a3a3a3",
+					roles: {
+						"primary-brand": KILO_YELLOW,
+						"primary-brand-foreground": "#1f1f1f",
+						// Inverse in dark: a second solid yellow beside Send reads loud.
+						"primary-brand-badge": "#262626",
+						"primary-brand-badge-foreground": KILO_YELLOW,
+					},
 					ansi: [
 						"#111111",
 						"#f87171",

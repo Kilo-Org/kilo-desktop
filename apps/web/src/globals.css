@@ -173,6 +173,11 @@ html {
 	--color-primary-ink-foreground: var(--primary-ink-foreground);
 	--color-primary-soft: var(--primary-soft);
 	--color-primary-soft-foreground: var(--primary-soft-foreground);
+	--color-primary-brand: var(--primary-brand);
+	--color-primary-brand-foreground: var(--primary-brand-foreground);
+	--color-primary-brand-edge: var(--primary-brand-edge);
+	--color-primary-brand-badge: var(--primary-brand-badge);
+	--color-primary-brand-badge-foreground: var(--primary-brand-badge-foreground);
 	--color-info-surface: var(--info-surface);
 	--color-success: var(--success);
 	--color-success-foreground: var(--success-foreground);

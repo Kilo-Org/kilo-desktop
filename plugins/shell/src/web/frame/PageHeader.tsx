@@ -23,7 +23,10 @@ function SidebarToggle({ open }: { readonly open: boolean }) {
 				data-qa-id="sidebar-nav-toggle"
 				className="[-webkit-app-region:no-drag]"
 			/>
-			<Badge variant="soft" data-qa-id="sidebar-beta-badge">
+			<Badge
+				className="bg-primary-brand-badge text-primary-brand-badge-foreground h-4 px-1.5 text-[10px] font-bold tracking-wide uppercase"
+				data-qa-id="sidebar-beta-badge"
+			>
 				Beta
 			</Badge>
 		</div>

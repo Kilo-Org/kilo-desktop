@@ -166,11 +166,30 @@ describe("app theme presets", () => {
 	});
 
 	it("every derived variant aliases the accent", () => {
-		for (const theme of DERIVED_THEMES) {
+		for (const theme of DERIVED_THEMES.filter(({ id }) => id !== "kilo")) {
 			for (const mode of ["light", "dark"] as const) {
 				expect(getThemeVariant(theme.id, mode).tokens).toMatchObject(ACCENT_ROLE_DEFAULTS);
 			}
 		}
+	});
+
+	it("paints Kilo's brand role yellow over its mono primary, edged only on white", () => {
+		expect(getThemeVariant("kilo", "light").tokens).toMatchObject({
+			"primary-ink": "var(--primary)",
+			"primary-brand": "#ffdd00",
+			"primary-brand-foreground": "#1f1f1f",
+			"primary-brand-edge": "rgb(0 0 0 / 0.12)",
+		});
+		expect(getThemeVariant("kilo", "dark").tokens).toMatchObject({
+			"primary-brand": "#ffdd00",
+			"primary-brand-edge": "transparent",
+			"primary-brand-badge": "#262626",
+			"primary-brand-badge-foreground": "#ffdd00",
+		});
+		const blueLight = themeCss({ themeId: "kilo", accentId: "blue" }).split(
+			'html:root[data-theme="dark"]',
+		)[0]!;
+		expect(blueLight).toContain("--primary-brand:var(--primary);");
 	});
 
 	it("restores accent-role defaults when a curated accent replaces Kilo yellow", () => {

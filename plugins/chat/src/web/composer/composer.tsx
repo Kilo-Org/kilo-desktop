@@ -311,7 +311,7 @@ const ComposerActionBar: FC<{
 								type="button"
 								variant="default"
 								size="icon"
-								className="aui-composer-send size-7 rounded-full"
+								className="aui-composer-send bg-primary-brand text-primary-brand-foreground border-primary-brand-edge hover:bg-primary-brand/85 size-7 rounded-full"
 								aria-label="Send message"
 								data-qa-id="kilo-composer-send"
 							/>

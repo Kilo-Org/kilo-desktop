@@ -280,14 +280,18 @@ function ChatTextPreview() {
 function ThemeSwatch({ themeId, scheme }: { themeId: string; scheme: "light" | "dark" }) {
 	const { tokens } = getThemeVariant(themeId, scheme);
 	const { background, foreground } = tokens;
-	const kiloLight = themeId === "kilo" && scheme === "light";
+	const kilo = themeId === "kilo";
+	// Kilo's primary is mono; its identity hue lives in the brand role (literal only for Kilo).
+	const accent = kilo ? tokens["primary-brand"]! : tokens.primary;
+	// Yellow text is unreadable on white: Kilo light keeps ink text and carries the yellow in an underline bar.
+	const kiloLight = kilo && scheme === "light";
 	return (
 		<span
 			aria-hidden="true"
-			className="inline-flex size-6 shrink-0 items-center justify-center self-center rounded-md border text-xs leading-none font-medium"
+			className="relative inline-flex size-6 shrink-0 items-center justify-center self-center overflow-hidden rounded-md border text-xs leading-none font-medium"
 			style={{
-				background: kiloLight ? tokens.primary : background,
-				color: kiloLight ? tokens["primary-foreground"] : tokens.primary,
+				background,
+				color: kiloLight ? foreground : accent,
 				borderColor:
 					themeId === "kilo" || themeId === "anaconda"
 						? `color-mix(in srgb, ${foreground} 35%, ${background})`
@@ -295,6 +299,9 @@ function ThemeSwatch({ themeId, scheme }: { themeId: string; scheme: "light" | "
 			}}
 		>
 			Aa
+			{kiloLight ? (
+				<span className="absolute inset-x-0 bottom-0 h-1" style={{ background: accent }} />
+			) : null}
 		</span>
 	);
 }

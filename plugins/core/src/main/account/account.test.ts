@@ -374,6 +374,25 @@ describe("signing in to Kilo", () => {
 		});
 	});
 
+	it("shows the browser's user code, not the poll secret in the instructions", async () => {
+		const account = new FakeKiloAccount();
+		account.authorize = async () => ({
+			url: "https://app.kilo.ai/device-auth?code=WXYZ-1234",
+			instructions: "Open https://app.kilo.ai/device-auth and enter code: 04jF-r2ARIPUwnvoNxQJ8oY1",
+		});
+		const { kernel } = await boot({ account });
+		await vi.waitFor(() => expect(accountOf(kernel).getState().signedIn).toBe(false));
+
+		void accountOf(kernel).methods.signIn(undefined);
+		await vi.waitFor(() =>
+			expect(accountOf(kernel).getState().deviceSignIn).toMatchObject({
+				status: "waiting",
+				code: "WXYZ-1234",
+				verificationUrl: "https://app.kilo.ai/device-auth?code=WXYZ-1234",
+			}),
+		);
+	});
+
 	it("shares one flow between concurrent sign-ins", async () => {
 		const { kernel, account } = await boot();
 		await vi.waitFor(() => expect(accountOf(kernel).getState().signedIn).toBe(false));

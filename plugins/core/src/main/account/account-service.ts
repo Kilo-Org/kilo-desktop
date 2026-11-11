@@ -33,6 +33,25 @@ export function parseDeviceCode(instructions: string | undefined): string | unde
 	return instructions?.match(/code:\s*(\S+)/i)?.[1];
 }
 
+/**
+ * The code the user confirms in the browser. The verification URL carries it
+ * as its `code` parameter; the instructions text carries the poll secret, which
+ * redeems the token rather than matching anything the browser shows, so it is
+ * only a fallback for a server that sends a plain URL.
+ */
+export function deviceUserCode(attempt: {
+	readonly url: string;
+	readonly instructions?: string | undefined;
+}): string | undefined {
+	try {
+		const code = new URL(attempt.url).searchParams.get("code");
+		if (code) return code;
+	} catch {
+		// Not a URL; fall back to the instructions.
+	}
+	return parseDeviceCode(attempt.instructions);
+}
+
 export function errorMessage(error: unknown, fallback: string): string {
 	if (error instanceof Error && error.message) return error.message;
 	if (typeof error === "string" && error) return error;
@@ -145,7 +164,7 @@ export class AccountService {
 		try {
 			const { url, instructions } = await client.authorize();
 			if (!current()) return { signedIn: false };
-			const code = parseDeviceCode(instructions);
+			const code = deviceUserCode({ url, instructions });
 			this.#set({
 				deviceSignIn: {
 					status: "waiting",

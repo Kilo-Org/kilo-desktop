@@ -24,6 +24,8 @@ import {
 	DropdownMenuTrigger,
 } from "@kilo-desktop/ui/components/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
+import { pickerMenuWidth } from "@kilo-desktop/ui/lib/menu-styles";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { LocationField } from "../LocationField";
 import { BaseBranchPicker } from "./BaseBranchPicker";
@@ -174,9 +176,8 @@ export function IsolationControl({
 					<DropdownMenuContent
 						align="start"
 						side="bottom"
-						sideOffset={6}
 						collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "none" }}
-						className="w-72"
+						width="rich"
 					>
 						<DropdownMenuGroup>
 							<DropdownMenuRadioGroup
@@ -225,7 +226,7 @@ export function IsolationControl({
 											<FolderGit2Icon data-icon="inline-start" />
 											<span className="truncate">Existing worktrees</span>
 										</DropdownMenuSubTrigger>
-										<DropdownMenuSubContent className="w-72 p-0">
+										<DropdownMenuSubContent className={cn(pickerMenuWidth, "p-0")}>
 											<Command
 												label="Search worktrees"
 												filter={filterWorktreeItems}
@@ -241,7 +242,7 @@ export function IsolationControl({
 													placeholder="Search worktrees"
 													data-qa-id="git-draft-mode-existing-search"
 												/>
-												<CommandList className="scroll-fade h-[min(calc(--spacing(72)---spacing(9)),calc(var(--available-height)---spacing(9)))]">
+												<CommandList className="scroll-fade">
 													<CommandEmpty>No worktrees found.</CommandEmpty>
 													<CommandGroup>
 														{options.copies.map((worktree) => (

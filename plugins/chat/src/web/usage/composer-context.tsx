@@ -102,11 +102,7 @@ export function ComposerContext({
 				data-qa-id="kilo-composer-context-popover"
 				side="top"
 				align="end"
-				sideOffset={8}
-				className={cn(
-					"bg-popover/95 data-closed:hidden flex flex-col gap-3 backdrop-blur-sm",
-					children ? "w-80" : "w-64",
-				)}
+				className={cn("data-closed:hidden flex flex-col gap-3", children ? "w-80" : "w-64")}
 			>
 				<div className="flex flex-col gap-2">
 					<p className="font-medium">Context</p>

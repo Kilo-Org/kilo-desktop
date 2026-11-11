@@ -44,7 +44,7 @@ export function DiffSettingsMenu() {
 				</TooltipTrigger>
 				<TooltipContent side="bottom">Diff settings</TooltipContent>
 			</Tooltip>
-			<DropdownMenuContent align="end" className="w-56">
+			<DropdownMenuContent align="end">
 				<DropdownMenuGroup>
 					<DropdownMenuLabel>Layout</DropdownMenuLabel>
 					<DropdownMenuRadioGroup value={diffStyle} onValueChange={setDiffStyle}>

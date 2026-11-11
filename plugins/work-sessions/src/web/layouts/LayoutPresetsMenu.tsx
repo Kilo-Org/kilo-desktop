@@ -237,7 +237,7 @@ export function LayoutPresetsMenu({ workSession }: WorkSessionActionProps) {
 						<TooltipContent side="bottom">Layouts</TooltipContent>
 					</Tooltip>
 				</TooltipProvider>
-				<DropdownMenuContent align="end" className="w-64">
+				<DropdownMenuContent align="end">
 					<DropdownMenuGroup>
 						{presets.length === 0 ? (
 							<DropdownMenuItem disabled>No layouts yet</DropdownMenuItem>

@@ -17,6 +17,7 @@ import {
 	type Unstable_TriggerItem,
 } from "@assistant-ui/react";
 import { ChevronLeftIcon, ChevronRightIcon, SparklesIcon } from "lucide-react";
+import { menuRow, menuSeparator } from "@kilo-desktop/ui/lib/menu-styles";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 type IconComponent = ComponentType<{ className?: string }>;
@@ -83,10 +84,12 @@ function resolveIcon(
 	return fallback;
 }
 
-const MENU_ITEM =
-	"flex w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-hidden select-none hover:bg-muted focus:bg-muted data-[highlighted]:bg-muted";
+const MENU_ITEM = cn(
+	menuRow,
+	"w-full cursor-pointer hover:bg-accent focus:bg-accent data-[highlighted]:bg-accent",
+);
 
-const MENU_EMPTY = "text-muted-foreground px-1.5 py-1 text-sm";
+const MENU_EMPTY = "text-muted-foreground px-2 py-1.5 text-sm";
 
 type CategoriesProps = {
 	iconMap: Record<string, IconComponent> | undefined;
@@ -106,7 +109,7 @@ const Categories: FC<CategoriesProps> = ({ iconMap, fallbackIcon, emptyLabel }) 
 							categoryId={cat.id}
 							className={cn(MENU_ITEM, "justify-between")}
 						>
-							<span className="flex min-w-0 items-center gap-1.5">
+							<span className="flex min-w-0 items-center gap-2">
 								<Icon className="size-3.5" />
 								{cat.label}
 							</span>
@@ -158,7 +161,7 @@ const Items: FC<ItemsProps> = ({
 						<ChevronLeftIcon className="size-3.5" />
 						{backLabel}
 					</ComposerPrimitive.Unstable_TriggerPopoverBack>
-					{showBack ? <div className="bg-border -mx-1 my-1 h-px" /> : null}
+					{showBack ? <div className={menuSeparator} /> : null}
 
 					{items.map((item, index) => {
 						const iconKey =

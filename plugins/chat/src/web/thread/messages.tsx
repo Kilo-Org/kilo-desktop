@@ -41,6 +41,12 @@ import {
 import { toast } from "@kilo-desktop/ui/components/sonner";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
+import {
+	MENU_SIDE_OFFSET,
+	menuRow,
+	menuSurface,
+	menuWidth,
+} from "@kilo-desktop/ui/lib/menu-styles";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { useIsAfterPendingBoundary } from "../checkpoints/checkpoint-revert";
@@ -544,15 +550,24 @@ const AssistantActionBar: FC<{ hidden: boolean }> = ({ hidden }) => (
 			<ActionBarMorePrimitive.Content
 				side="bottom"
 				align="start"
-				sideOffset={6}
-				className="aui-action-bar-more-content bg-popover/95 text-popover-foreground data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:animate-out data-[side=bottom]:slide-in-from-top-2 z-50 min-w-[8rem] overflow-hidden rounded-lg border p-1.5 shadow-lg backdrop-blur-sm"
+				sideOffset={MENU_SIDE_OFFSET}
+				className={cn(
+					"aui-action-bar-more-content data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=closed]:animate-out data-[side=bottom]:slide-in-from-top-2 z-50 overflow-hidden p-1",
+					menuSurface,
+					menuWidth.default,
+				)}
 			>
 				<ActionBarPrimitive.ExportMarkdown
 					render={
-						<ActionBarMorePrimitive.Item className="aui-action-bar-more-item hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 text-sm outline-none select-none" />
+						<ActionBarMorePrimitive.Item
+							className={cn(
+								"aui-action-bar-more-item hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground",
+								menuRow,
+							)}
+						/>
 					}
 				>
-					<DownloadIcon className="size-4" />
+					<DownloadIcon />
 					Export as Markdown
 				</ActionBarPrimitive.ExportMarkdown>
 			</ActionBarMorePrimitive.Content>

@@ -161,6 +161,7 @@ export function fakeWorkSessionsMain(initial: WorkSessionsMainState = {}) {
 	};
 	let failNext: string | undefined;
 	let held: Promise<void> | undefined;
+	let heldIsolation: { workspaceId: string; until: Promise<void> } | undefined;
 	let workSessions: DomainObjectProvider<typeof WorkSessions> | undefined;
 	let workspaces: DomainObjectProvider<typeof Workspaces> | undefined;
 	let panes: DomainObjectProvider<typeof Panes> | undefined;
@@ -218,8 +219,9 @@ export function fakeWorkSessionsMain(initial: WorkSessionsMainState = {}) {
 							? { deleted: true, copyRemoved: false, copyError: initial.copyError }
 							: { deleted: true, copyRemoved: true };
 					},
-					isolationOptions: ({ workspaceId }) => {
+					isolationOptions: async ({ workspaceId }) => {
 						calls.isolationOptions(workspaceId);
+						if (heldIsolation?.workspaceId === workspaceId) await heldIsolation.until;
 						return initial.isolation ?? null;
 					},
 				},
@@ -436,6 +438,15 @@ export function fakeWorkSessionsMain(initial: WorkSessionsMainState = {}) {
 			let release!: () => void;
 			held = new Promise((resolve) => (release = resolve));
 			return release;
+		},
+		/** Holds `isolationOptions` for a workspace (as reading a slow repository would) until released. */
+		holdIsolationOptions: (workspaceId: string) => {
+			let release!: () => void;
+			heldIsolation = { workspaceId, until: new Promise((resolve) => (release = resolve)) };
+			return () => {
+				heldIsolation = undefined;
+				release();
+			};
 		},
 		/** The next failing-capable call rejects with `message`. */
 		failNextWith: (message: string) => (failNext = message),

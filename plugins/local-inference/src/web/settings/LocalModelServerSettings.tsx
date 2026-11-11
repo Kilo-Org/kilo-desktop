@@ -546,7 +546,7 @@ function LocalModelServerSettingsContent() {
 								Add model
 								<ChevronDownIcon data-icon="inline-end" aria-hidden="true" />
 							</DropdownMenuTrigger>
-							<DropdownMenuContent align="end" className="min-w-44">
+							<DropdownMenuContent align="end">
 								<DropdownMenuGroup>
 									{catalogEnabled ? (
 										<DropdownMenuItem
@@ -616,7 +616,7 @@ function LocalModelServerSettingsContent() {
 									>
 										<ListFilterIcon aria-hidden="true" />
 									</DropdownMenuTrigger>
-									<DropdownMenuContent align="end" className="min-w-44">
+									<DropdownMenuContent align="end">
 										<DropdownMenuGroup>
 											<DropdownMenuLabel>Model source</DropdownMenuLabel>
 											<DropdownMenuRadioGroup value={modelSourceFilter}>

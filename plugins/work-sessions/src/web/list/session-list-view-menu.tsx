@@ -84,9 +84,7 @@ export const SessionListViewMenu: FC<{
 			<DropdownMenuContent
 				align="start"
 				side="right"
-				sideOffset={6}
 				collisionAvoidance={{ side: "none", align: "shift", fallbackAxisSide: "none" }}
-				className="w-56"
 			>
 				<DropdownMenuGroup>
 					<DropdownMenuSub>

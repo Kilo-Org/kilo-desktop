@@ -530,7 +530,7 @@ function InstalledFilterMenu({
 			>
 				<ListFilterIcon />
 			</DropdownMenuTrigger>
-			<DropdownMenuContent align="end" sideOffset={6} className="max-h-72 w-56 overflow-y-auto">
+			<DropdownMenuContent align="end" className="max-h-72">
 				<DropdownMenuGroup>
 					<DropdownMenuSub>
 						<DropdownMenuSubTrigger className="w-full" data-qa-id="marketplace-show-filter">

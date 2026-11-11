@@ -131,7 +131,7 @@ function ModelActionsMenu({
 			>
 				<EllipsisIcon />
 			</DropdownMenuTrigger>
-			<DropdownMenuContent align="end" className="w-max min-w-56 whitespace-nowrap">
+			<DropdownMenuContent align="end">
 				<DropdownMenuItem
 					data-qa-id={`local-model-remove-${model.id}`}
 					onClick={() => onRemove(model)}

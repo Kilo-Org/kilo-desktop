@@ -140,7 +140,7 @@ export function BoardColumnHeader({
 						>
 							<EllipsisIcon />
 						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end" className="w-auto">
+						<DropdownMenuContent align="end">
 							<DropdownMenuItem
 								data-qa-id="workspace-board-column-rename-action"
 								onClick={() => setRenaming(true)}

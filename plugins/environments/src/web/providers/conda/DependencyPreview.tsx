@@ -146,7 +146,7 @@ export function ChangeFilterMenu({
 			>
 				<ListFilterIcon aria-hidden="true" />
 			</DropdownMenuTrigger>
-			<DropdownMenuContent align="end" className="w-56">
+			<DropdownMenuContent align="end">
 				<DropdownMenuGroup>
 					<DropdownMenuLabel>Show</DropdownMenuLabel>
 					<DropdownMenuRadioGroup value={value}>

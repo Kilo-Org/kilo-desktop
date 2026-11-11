@@ -164,7 +164,7 @@ export function EnvironmentsPanel() {
 							New environment
 							<ChevronDownIcon data-icon="inline-end" aria-hidden="true" />
 						</DropdownMenuTrigger>
-						<DropdownMenuContent align="end" className="min-w-44">
+						<DropdownMenuContent align="end">
 							<DropdownMenuGroup>
 								<DropdownMenuItem
 									onClick={() => setDialog({ kind: "create" })}

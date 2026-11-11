@@ -1,5 +1,6 @@
 import {
 	EllipsisIcon,
+	CheckIcon,
 	FolderIcon,
 	FolderXIcon,
 	LayoutGridIcon,
@@ -36,6 +37,8 @@ import {
 	DropdownMenuTrigger,
 } from "./dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover";
+import { pickerMenuWidth } from "../lib/menu-styles";
+import { cn } from "../lib/utils";
 
 /** The parts of a workspace the picker shows. */
 export interface PickerWorkspace {
@@ -143,26 +146,10 @@ export function useWorkspacePicker(): WorkspacePickerContextValue {
 	return value;
 }
 
-function workspacePickerContentWidthClass(contentWidth: "max" | "fit" | "trigger"): string {
-	switch (contentWidth) {
-		case "fit":
-			return "w-max min-w-0 gap-0 p-0";
-		case "trigger":
-			return "w-(--anchor-width) min-w-0 gap-0 p-0";
-		case "max":
-			return "w-max min-w-64 gap-0 p-0";
-		default: {
-			const _exhaustive: never = contentWidth;
-			return _exhaustive;
-		}
-	}
-}
-
 export function WorkspacePickerRoot({
 	children,
 	contentAlign = "start",
 	contentSide = "bottom",
-	contentWidth = "max",
 	emptyLabel,
 	includeUnscoped = true,
 	unscopedValue = null,
@@ -172,7 +159,6 @@ export function WorkspacePickerRoot({
 	children: ReactNode;
 	contentAlign?: PopoverAlign;
 	contentSide?: PopoverSide;
-	contentWidth?: "max" | "fit" | "trigger";
 	emptyLabel?: string;
 	includeUnscoped?: boolean;
 	/** What "No workspace" selects; set it when `null` already means "All" (`emptyLabel`). */
@@ -242,21 +228,22 @@ export function WorkspacePickerRoot({
 				<PopoverContent
 					align={contentAlign}
 					side={contentSide}
-					sideOffset={6}
 					collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "none" }}
-					className={workspacePickerContentWidthClass(contentWidth)}
+					className={cn(pickerMenuWidth, "gap-0 p-0")}
 					onKeyDown={(event) => {
 						if (event.key === "Escape") setOpen(false);
 					}}
 				>
 					<Command
 						label="Search workspaces"
+						// The selected row's leading icon becomes the check, so the "…" action stays at the end.
+						className="**:data-[slot=command-item-check]:hidden"
 						value={commandValue}
 						onValueChange={setCommandValue}
 						filter={filterWorkspaceItems}
 					>
 						<CommandInput placeholder="Search workspaces" />
-						<CommandList className="scroll-fade max-h-[calc(1.75rem*5)]">
+						<CommandList className="scroll-fade">
 							{workspaces.length > 0 ? <CommandEmpty>No workspaces found.</CommandEmpty> : null}
 							<CommandGroup>
 								{emptyLabel ? (
@@ -267,8 +254,10 @@ export function WorkspacePickerRoot({
 										onSelect={() => select(null)}
 										data-checked={isEmpty}
 									>
-										<LayoutGridIcon />
-										<span className="min-w-0 flex-1 truncate">{emptyLabel}</span>
+										{isEmpty ? <CheckIcon /> : <LayoutGridIcon />}
+										<span className={cn("min-w-0 flex-1 truncate", isEmpty && "font-medium")}>
+											{emptyLabel}
+										</span>
 									</CommandItem>
 								) : null}
 								{includeUnscoped ? (
@@ -279,8 +268,10 @@ export function WorkspacePickerRoot({
 										onSelect={() => select(unscopedValue)}
 										data-checked={isUnscoped}
 									>
-										<FolderXIcon />
-										<span className="whitespace-nowrap">{UNSCOPED_LABEL}</span>
+										{isUnscoped ? <CheckIcon /> : <FolderXIcon />}
+										<span className={cn("whitespace-nowrap", isUnscoped && "font-medium")}>
+											{UNSCOPED_LABEL}
+										</span>
 									</CommandItem>
 								) : null}
 								{isLoading ? (
@@ -296,6 +287,7 @@ export function WorkspacePickerRoot({
 								) : null}
 								{workspaces.map((workspace) => {
 									const isSelected = selectedId === workspace.id;
+									const RowIcon = isSelected ? CheckIcon : FolderIcon;
 									const glyph = workspaceGlyphColor(workspace.color);
 									const unavailableFolders = hasUnavailableFolders?.(workspace.id) ?? false;
 									return (
@@ -306,13 +298,15 @@ export function WorkspacePickerRoot({
 											onSelect={() => select(workspace.id)}
 											data-checked={isSelected}
 										>
-											<FolderIcon
+											<RowIcon
 												aria-hidden
 												className={glyph ? undefined : "text-muted-foreground"}
 												{...(glyph ? { color: glyph } : {})}
 											/>
-											<span className="min-w-0 flex-1 truncate">{workspace.name}</span>
-											{/* -my-1: the 24px action sits in the row's padding so the row stays 28px. */}
+											<span className={cn("min-w-0 flex-1 truncate", isSelected && "font-medium")}>
+												{workspace.name}
+											</span>
+											{/* -my-1: the 24px action sits in the row's padding so the row stays 32px. */}
 											<span className="-my-1 flex shrink-0 items-center gap-0.5">
 												{unavailableFolders ? (
 													<Button

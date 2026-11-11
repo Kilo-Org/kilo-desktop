@@ -73,7 +73,7 @@ export function ListViewMenu<Field extends string>({
 			>
 				<ListFilterIcon aria-hidden="true" />
 			</DropdownMenuTrigger>
-			<DropdownMenuContent align="end" className="w-56">
+			<DropdownMenuContent align="end">
 				<DropdownMenuGroup>
 					<DropdownMenuSub>
 						<ListViewSubTrigger label="Sort by" value={fieldLabel} />

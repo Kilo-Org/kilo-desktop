@@ -52,7 +52,6 @@ export const PaneAddTab: FC<{
 			<DropdownMenuContent
 				align={isToolbar ? "end" : "start"}
 				side="bottom"
-				className="w-auto min-w-36"
 				data-qa-id="chat-pane-add-menu"
 			>
 				{launchers.map((kind) => {

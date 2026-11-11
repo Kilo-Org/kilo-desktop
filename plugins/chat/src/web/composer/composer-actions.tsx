@@ -256,7 +256,6 @@ const MenuAction: FC<ActionViewProps & { implementation: Of<"menu"> }> = ({
 			<DropdownMenuContent
 				align={menu.align ?? "start"}
 				side="bottom"
-				className="w-max min-w-48"
 				data-qa-id={`kilo-${id}-selector-content`}
 			>
 				<DropdownMenuRadioGroup

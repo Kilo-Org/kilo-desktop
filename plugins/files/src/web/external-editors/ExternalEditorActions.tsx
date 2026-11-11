@@ -142,7 +142,7 @@ export function ExternalEditorActions({
 				>
 					<ChevronDownIcon aria-hidden="true" />
 				</DropdownMenuTrigger>
-				<DropdownMenuContent align="end" className="min-w-48">
+				<DropdownMenuContent align="end">
 					<DropdownMenuGroup>
 						{availableEditors?.length === 0 ? (
 							<DropdownMenuItem disabled>No installed editors found</DropdownMenuItem>

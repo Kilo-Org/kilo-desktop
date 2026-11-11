@@ -182,7 +182,7 @@ export function AboutVersionSection() {
 									>
 										{state ? <SelectValue /> : <SkeletonText className="w-14" />}
 									</SelectTrigger>
-									<SelectContent align="end" alignItemWithTrigger={false}>
+									<SelectContent align="end">
 										<SelectGroup>
 											<SelectItem value="stable" data-qa-id="update-track-stable">
 												Stable

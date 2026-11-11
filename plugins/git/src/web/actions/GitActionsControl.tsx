@@ -265,7 +265,7 @@ function GitActions({
 					>
 						<ChevronDownIcon />
 					</DropdownMenuTrigger>
-					<DropdownMenuContent align="end" className="w-44">
+					<DropdownMenuContent align="end">
 						{actions.menu.map((action, index) => {
 							const Icon = ACTION_ICONS[action.id];
 							return (

@@ -35,6 +35,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@kilo-desktop/ui/components/select";
+import { MENU_SIDE_OFFSET } from "@kilo-desktop/ui/lib/menu-styles";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 export type ModelSelectorEffortOption = {
@@ -447,7 +448,7 @@ function ModelSelectorContent({
 	className,
 	align = "start",
 	side,
-	sideOffset = 6,
+	sideOffset = MENU_SIDE_OFFSET,
 	searchable,
 	shouldFilter: shouldFilterProp,
 	commandValue,
@@ -489,7 +490,7 @@ function ModelSelectorContent({
 			sideOffset={sideOffset}
 			initialFocus={initialFocus ?? focusSearchInput}
 			className={cn(
-				"bg-popover/95 w-72 min-w-(--anchor-width) overflow-hidden p-0 shadow-lg backdrop-blur-sm",
+				"w-96 max-w-(--available-width) min-w-(--anchor-width) overflow-hidden p-0 shadow-lg",
 				className,
 			)}
 			{...props}
@@ -692,7 +693,7 @@ function ModelSelectorEffort({
 				>
 					<SelectValue />
 				</SelectTrigger>
-				<SelectContent alignItemWithTrigger={false} align="end" side="top">
+				<SelectContent align="end" side="top">
 					<SelectGroup>
 						{items.map((item) => (
 							<SelectItem key={item.value} value={item.value}>

@@ -52,7 +52,6 @@ import { WorkSessionMenu, type WorkSessionMenuItem } from "../../contracts";
 import { notify, reportFailure } from "../shared/report-failure";
 
 /** Every session menu (⋯, right-click, bulk) shares this width; it grows for longer labels. */
-export const SESSION_MENU_WIDTH_CLASS_NAME = "w-max min-w-44";
 
 /*
  * What a session row offers: inline rename, its menu (pin, rename, plugins'
@@ -269,7 +268,7 @@ function ContributedItem({ item, session }: { item: MenuContribution; session: W
 				<DropdownMenuSubTrigger data-qa-id={`session-menu-${item.key}`}>
 					{item.metadata.title}
 				</DropdownMenuSubTrigger>
-				<DropdownMenuSubContent className="w-auto">
+				<DropdownMenuSubContent>
 					<DropdownMenuRadioGroup value={checked} onValueChange={(id: string) => run(id)}>
 						{choices.map((choice) => (
 							<DropdownMenuRadioItem
@@ -328,12 +327,7 @@ export const SessionRowMenu: FC<{
 				data-qa-id="session-list-item-more"
 				aria-label={label}
 			/>
-			<DropdownMenuContent
-				align="end"
-				side={side}
-				sideOffset={side === "right" ? 6 : 4}
-				className={SESSION_MENU_WIDTH_CLASS_NAME}
-			>
+			<DropdownMenuContent align="end" side={side}>
 				<SessionRowMenuItems
 					session={session}
 					onPin={onPin}

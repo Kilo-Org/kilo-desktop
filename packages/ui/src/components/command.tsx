@@ -2,6 +2,7 @@ import * as React from "react";
 import { Command as CommandPrimitive } from "cmdk";
 
 import { cn } from "@kilo-desktop/ui/lib/utils";
+import { menuListHeight, menuRow, menuSeparator } from "@kilo-desktop/ui/lib/menu-styles";
 import {
 	Dialog,
 	DialogContent,
@@ -16,7 +17,8 @@ function Command({ className, ...props }: React.ComponentProps<typeof CommandPri
 		<CommandPrimitive
 			data-slot="command"
 			className={cn(
-				"flex size-full flex-col overflow-hidden rounded-xl! bg-popover p-1 text-popover-foreground",
+				// local: popup radius in pickers; the dialog radius inside CommandDialog.
+				"flex size-full flex-col overflow-hidden rounded-lg! bg-popover p-1 text-popover-foreground in-data-[slot=dialog-content]:rounded-xl! in-data-[slot=popover-content]:bg-transparent in-data-[slot=dropdown-menu-content]:bg-transparent in-data-[slot=dropdown-menu-sub-content]:bg-transparent",
 				className,
 			)}
 			{...props}
@@ -62,7 +64,7 @@ function CommandInput({
 		// local: bare search row over a divider instead of stock's filled InputGroup.
 		<div
 			data-slot="command-input-wrapper"
-			className="-mx-1 -mt-1 mb-1 flex items-center gap-1.5 border-b px-2.5 py-2 in-data-[slot=dialog-content]:gap-2 in-data-[slot=dialog-content]:px-4 in-data-[slot=dialog-content]:py-3.5"
+			className="-mx-1 -mt-1 mb-1 flex items-center gap-2 border-b px-3 py-2 in-data-[slot=dialog-content]:gap-2 in-data-[slot=dialog-content]:px-4 in-data-[slot=dialog-content]:py-3.5"
 		>
 			<SearchIcon className="text-muted-foreground size-3.5 shrink-0" />
 			<CommandPrimitive.Input
@@ -82,7 +84,8 @@ function CommandList({ className, ...props }: React.ComponentProps<typeof Comman
 		<CommandPrimitive.List
 			data-slot="command-list"
 			className={cn(
-				"no-scrollbar max-h-72 scroll-py-1 overflow-x-hidden overflow-y-auto outline-none",
+				"scroll-py-1 overflow-x-hidden overflow-y-auto outline-none",
+				menuListHeight,
 				className,
 			)}
 			{...props}
@@ -110,9 +113,9 @@ function CommandGroup({
 	return (
 		<CommandPrimitive.Group
 			data-slot="command-group"
-			// local: menu density — no group padding, DropdownMenuLabel heading spacing.
+			// local: no group padding; headings use the shared menu label style.
 			className={cn(
-				"overflow-hidden text-foreground **:[[cmdk-group-heading]]:px-1.5 **:[[cmdk-group-heading]]:py-1 **:[[cmdk-group-heading]]:text-xs **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground",
+				"overflow-hidden text-foreground **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:text-xs **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground",
 				className,
 			)}
 			{...props}
@@ -127,8 +130,7 @@ function CommandSeparator({
 	return (
 		<CommandPrimitive.Separator
 			data-slot="command-separator"
-			// local: my-1 like DropdownMenuSeparator (groups have no padding here).
-			className={cn("-mx-1 my-1 h-px bg-border", className)}
+			className={cn(menuSeparator, className)}
 			{...props}
 		/>
 	);
@@ -142,15 +144,18 @@ function CommandItem({
 	return (
 		<CommandPrimitive.Item
 			data-slot="command-item"
-			// local: menu density — DropdownMenuItem gap/padding/radius.
 			className={cn(
-				"group/command-item relative flex cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-hidden select-none in-data-[slot=dialog-content]:rounded-lg! data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-muted data-selected:text-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5 data-selected:*:[svg]:text-foreground",
+				menuRow,
+				"group/command-item in-data-[slot=dialog-content]:rounded-lg! data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-accent data-selected:text-accent-foreground data-selected:*:[svg]:text-accent-foreground",
 				className,
 			)}
 			{...props}
 		>
 			{children}
-			<CheckIcon className="ml-auto opacity-0 group-has-data-[slot=command-shortcut]/command-item:hidden group-data-[checked=true]/command-item:opacity-100" />
+			<CheckIcon
+				data-slot="command-item-check"
+				className="ml-auto opacity-0 group-has-data-[slot=command-shortcut]/command-item:hidden group-data-[checked=true]/command-item:opacity-100"
+			/>
 		</CommandPrimitive.Item>
 	);
 }
@@ -160,7 +165,7 @@ function CommandShortcut({ className, ...props }: React.ComponentProps<"span">) 
 		<span
 			data-slot="command-shortcut"
 			className={cn(
-				"ml-auto text-xs tracking-widest text-muted-foreground group-data-selected/command-item:text-foreground",
+				"ml-auto text-xs tracking-widest text-muted-foreground group-data-selected/command-item:text-accent-foreground",
 				className,
 			)}
 			{...props}

@@ -11,6 +11,8 @@ import {
 	CommandList,
 } from "@kilo-desktop/ui/components/command";
 import { Popover, PopoverContent, PopoverTrigger } from "@kilo-desktop/ui/components/popover";
+import { pickerMenuWidth } from "@kilo-desktop/ui/lib/menu-styles";
+import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { branchDisplayName, groupBranches, type IsolationBranch } from "./group-branches";
 
@@ -69,16 +71,15 @@ export function BaseBranchPicker({
 			<PopoverContent
 				align="start"
 				side="bottom"
-				sideOffset={6}
 				collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "none" }}
-				className="w-72 gap-0 p-0"
+				className={cn(pickerMenuWidth, "gap-0 p-0")}
 				onKeyDown={(event) => {
 					if (event.key === "Escape") close();
 				}}
 			>
 				<Command label="Search branches">
 					<CommandInput placeholder="Search branches" value={search} onValueChange={setSearch} />
-					<CommandList className="scroll-fade max-h-[calc(1.75rem*5)]">
+					<CommandList className="scroll-fade">
 						<CommandEmpty>
 							{branches.length === 0 ? "No branches yet." : "No branches found."}
 						</CommandEmpty>

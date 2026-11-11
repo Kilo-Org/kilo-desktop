@@ -243,7 +243,7 @@ function ModelCatalogTable({
 					>
 						<ListFilterIcon aria-hidden="true" />
 					</DropdownMenuTrigger>
-					<DropdownMenuContent align="end" className="w-56">
+					<DropdownMenuContent align="end">
 						<DropdownMenuGroup>
 							<DropdownMenuLabel>Sort by</DropdownMenuLabel>
 							<DropdownMenuRadioGroup value={sort}>

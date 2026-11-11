@@ -123,7 +123,6 @@ import {
 import { SessionListViewMenu } from "./session-list-view-menu";
 import {
 	MoreActionsTrigger,
-	SESSION_MENU_WIDTH_CLASS_NAME,
 	SessionRenameInput,
 	SessionRowMenu,
 	SessionRowMenuItems,
@@ -743,11 +742,7 @@ function SessionListContent() {
 											aria-label="Selection actions"
 											data-qa-id="session-list-selection-actions"
 										/>
-										<DropdownMenuContent
-											side="top"
-											align="end"
-											className={SESSION_MENU_WIDTH_CLASS_NAME}
-										>
+										<DropdownMenuContent side="top" align="end">
 											<BulkMenuItems onDelete={deleteSelection} onDone={clearSelection} />
 										</DropdownMenuContent>
 									</DropdownMenu>
@@ -1151,7 +1146,7 @@ const WorkspaceShelfActions: FC<{
 						</TooltipTrigger>
 						<TooltipContent side="bottom">More</TooltipContent>
 					</Tooltip>
-					<DropdownMenuContent align="end" side="right" sideOffset={6} className="w-auto">
+					<DropdownMenuContent align="end" side="right">
 						<DropdownMenuItem onClick={() => openEdit(workspace)}>
 							<PencilIcon />
 							Edit
@@ -1432,12 +1427,7 @@ const SessionRow = memo(function SessionRow({
 				{dialogs}
 			</ContextMenu.Trigger>
 			{/* Always mounted: unmounting it mid-close leaves Base UI's menu stuck open on remount. */}
-			<DropdownMenuContent
-				side="bottom"
-				align="start"
-				sideOffset={2}
-				className={SESSION_MENU_WIDTH_CLASS_NAME}
-			>
+			<DropdownMenuContent side="bottom" align="start">
 				{bulkMenu ? (
 					<BulkMenuItems onDelete={deleteSelection} onDone={clearSelection} />
 				) : (

@@ -857,8 +857,7 @@ const GatewayModelFilter: FC<{
 			<DropdownMenuContent
 				align="end"
 				side="bottom"
-				sideOffset={6}
-				className="max-h-72 w-52"
+				className="max-h-72"
 				data-qa-id="kilo-model-filter-content"
 				onKeyDown={(event) => event.stopPropagation()}
 			>
@@ -872,7 +871,7 @@ const GatewayModelFilter: FC<{
 								) : null}
 							</span>
 						</DropdownMenuSubTrigger>
-						<DropdownMenuSubContent className="w-44" onKeyDown={(event) => event.stopPropagation()}>
+						<DropdownMenuSubContent onKeyDown={(event) => event.stopPropagation()}>
 							<DropdownMenuGroup>
 								{GATEWAY_COST_OPTIONS.map(({ id, label }) => (
 									<DropdownMenuCheckboxItem
@@ -903,7 +902,7 @@ const GatewayModelFilter: FC<{
 							</DropdownMenuSubTrigger>
 							<DropdownMenuSubContent
 								className={cn(
-									"max-h-72 w-48 overflow-y-auto p-0",
+									"max-h-72 overflow-y-auto",
 									publishers.length > 10 && "overflow-y-scroll",
 								)}
 								data-qa-id="kilo-model-filter-publisher-content"

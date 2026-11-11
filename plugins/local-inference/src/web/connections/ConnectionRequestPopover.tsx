@@ -62,7 +62,6 @@ export function ConnectionRequestPopover({
 			</PopoverTrigger>
 			<PopoverContent
 				align="end"
-				sideOffset={8}
 				className="max-h-[min(36rem,calc(100dvh-2rem))] w-[min(32rem,calc(100vw-2rem))] p-3"
 				data-qa-id="local-model-server-request-info"
 			>

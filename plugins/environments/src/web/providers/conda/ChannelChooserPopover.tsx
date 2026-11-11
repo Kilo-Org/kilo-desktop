@@ -59,7 +59,7 @@ export function ChannelChooserPopover({
 			>
 				<ListFilterIcon aria-hidden="true" />
 			</DropdownMenuTrigger>
-			<DropdownMenuContent align="end" className="w-72" data-qa-id="environments-channel-chooser">
+			<DropdownMenuContent align="end" width="rich" data-qa-id="environments-channel-chooser">
 				<DropdownMenuGroup>
 					<DropdownMenuLabel>Channels</DropdownMenuLabel>
 					{availableChannels.map((channel) => {

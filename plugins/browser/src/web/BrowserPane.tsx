@@ -406,7 +406,7 @@ function BrowserPageView({
 								</Button>
 							}
 						/>
-						<DropdownMenuContent align="end" className="min-w-52">
+						<DropdownMenuContent align="end">
 							<DropdownMenuItem
 								disabled={!hasUrl}
 								onClick={openInDefaultBrowser}

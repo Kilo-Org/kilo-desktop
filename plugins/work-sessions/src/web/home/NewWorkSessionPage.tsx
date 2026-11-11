@@ -75,9 +75,10 @@ function useSessionCreation(isolation: LauncherIsolation) {
 		inFlight.current = true;
 		setPhase("creating");
 		try {
+			const chosen = await isolation.resolve();
 			const session = await sessions.methods.create({
 				workspaceId: activeWorkspaceId,
-				...(isolation.value ? { isolation: isolation.value } : {}),
+				...(chosen ? { isolation: chosen } : {}),
 			});
 			setPhase("opening");
 			return { session, release: once(release) };
@@ -103,40 +104,38 @@ function once(run: () => void): () => void {
 function IsolationRow({
 	isolation,
 	starting,
-	workspaceId,
 }: {
 	readonly isolation: LauncherIsolation;
 	readonly starting: boolean;
-	readonly workspaceId: string | null;
 }) {
 	const branchOption = useExtensions(NewWorkSessionOption).find(
 		(contribution) => contribution.metadata.slot === "branch" && contribution.implementation,
 	);
-	if (!isolation.options || !isolation.value) return null;
-	const options = isolation.options;
-	const renderBranch =
-		branchOption && workspaceId
-			? (directory: string) => (
-					<RenderContribution<NewWorkSessionOptionProps>
-						contribution={branchOption}
-						props={{
-							workspaceId,
-							repositoryDirectory: options.directory,
-							directory,
-							onIsolationChange: (next) => isolation.change(next),
-							onChanged: isolation.reload,
-							disabled: starting,
-						}}
-					/>
-				)
-			: undefined;
+	if (!isolation.shown) return null;
+	const { workspaceId, options, value, pending } = isolation.shown;
+	const disabled = starting || pending;
+	const renderBranch = branchOption
+		? (directory: string) => (
+				<RenderContribution<NewWorkSessionOptionProps>
+					contribution={branchOption}
+					props={{
+						workspaceId,
+						repositoryDirectory: options.directory,
+						directory,
+						onIsolationChange: (next) => isolation.change(next),
+						onChanged: isolation.reload,
+						disabled,
+					}}
+				/>
+			)
+		: undefined;
 	return (
 		<IsolationControl
 			options={options}
-			value={isolation.value}
+			value={value}
 			onChange={isolation.change}
 			onOpen={isolation.reload}
-			disabled={starting}
+			disabled={disabled}
 			renderBranch={renderBranch}
 		/>
 	);
@@ -150,11 +149,9 @@ function IsolationRow({
 function LocationRow({
 	isolation,
 	starting,
-	workspaceId,
 }: {
 	readonly isolation: LauncherIsolation;
 	readonly starting: boolean;
-	readonly workspaceId: string | null;
 }) {
 	return (
 		<div
@@ -164,7 +161,7 @@ function LocationRow({
 			<LocationField label="Workspace">
 				<WorkspaceChip disabled={starting} />
 			</LocationField>
-			<IsolationRow isolation={isolation} starting={starting} workspaceId={workspaceId} />
+			<IsolationRow isolation={isolation} starting={starting} />
 		</div>
 	);
 }
@@ -241,13 +238,7 @@ export function NewWorkSessionPage() {
 	return (
 		<LauncherPage
 			starting={creation.starting}
-			location={
-				<LocationRow
-					isolation={isolation}
-					starting={creation.starting}
-					workspaceId={activeWorkspaceId}
-				/>
-			}
+			location={<LocationRow isolation={isolation} starting={creation.starting} />}
 			progress={
 				creation.phase && isolation.value?.kind === "new-copy" ? (
 					<WorktreeProgress

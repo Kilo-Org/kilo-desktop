@@ -142,7 +142,7 @@ function DiagramDownloadMenu({
 			>
 				<DownloadIcon />
 			</DropdownMenuTrigger>
-			<DropdownMenuContent align="end" className="w-auto">
+			<DropdownMenuContent align="end">
 				<DropdownMenuItem data-qa-id="media-lightbox-download-svg" onClick={() => void save("svg")}>
 					Download SVG
 				</DropdownMenuItem>

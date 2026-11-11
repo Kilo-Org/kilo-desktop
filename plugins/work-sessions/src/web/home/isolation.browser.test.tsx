@@ -144,6 +144,52 @@ describe("launcher isolation", () => {
 		);
 	});
 
+	it("keeps the row in place, disabled, while the next workspace's options load", async () => {
+		const { workSessions } = await renderLauncher({ isolation: REPOSITORY });
+		await expect.element(modeTrigger()).toHaveTextContent("Current checkout");
+		const release = workSessions.holdIsolationOptions("w-lib");
+
+		await page.getByTestId("launcher-workspace-selector").click();
+		await page.getByRole("option", { name: /Lib/ }).click();
+
+		await vi.waitFor(
+			() => expect(workSessions.calls.isolationOptions).toHaveBeenCalledWith("w-lib"),
+			WAIT,
+		);
+		await expect.element(modeTrigger()).toBeDisabled();
+		await expect.element(modeTrigger()).toHaveTextContent("Current checkout");
+		release();
+		await expect.element(modeTrigger()).toBeEnabled();
+	});
+
+	it("starts with the next workspace's isolation even before its options show", async () => {
+		const { workSessions, run } = await renderLauncher({
+			isolation: REPOSITORY,
+			localStorage: { [ISOLATION_PREFERENCE_STORAGE_KEY]: JSON.stringify({ "w-lib": "worktree" }) },
+		});
+		await expect.element(modeTrigger()).toHaveTextContent("Current checkout");
+		const release = workSessions.holdIsolationOptions("w-lib");
+
+		await page.getByTestId("launcher-workspace-selector").click();
+		await page.getByRole("option", { name: /Lib/ }).click();
+		await vi.waitFor(
+			() => expect(workSessions.calls.isolationOptions).toHaveBeenCalledWith("w-lib"),
+			WAIT,
+		);
+		const started = run("new-empty-work-session");
+		release();
+		await started;
+
+		await vi.waitFor(
+			() =>
+				expect(workSessions.calls.create).toHaveBeenCalledWith({
+					workspaceId: "w-lib",
+					isolation: { kind: "new-copy", baseBranch: "main" },
+				}),
+			WAIT,
+		);
+	});
+
 	it("keeps new worktrees off for a repository without commits", async () => {
 		await renderLauncher({
 			isolation: { ...REPOSITORY, branches: [], currentBranch: null, copies: [] },

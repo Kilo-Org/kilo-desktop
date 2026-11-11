@@ -31,8 +31,15 @@ runs:
             ;;
           playwright)
             command=(pnpm --filter "$PACKAGE_NAME" exec playwright install chromium)
+            # System deps come from apt, so a mirror or DNS blip fails every
+            # attempt. The runner images already carry the libraries Chromium
+            # needs — only extra CJK/Cyrillic fonts are ever missing, and no
+            # spec renders them — so install them best-effort and let the
+            # browser download (a CDN fetch) decide the step.
             if [[ "$WITH_DEPS" == "true" ]]; then
-              command+=(--with-deps)
+              if ! pnpm --filter "$PACKAGE_NAME" exec playwright install-deps chromium; then
+                echo "::warning::Playwright system deps failed to install; continuing with the runner's existing libraries."
+              fi
             fi
             ;;
           playwright-deps)

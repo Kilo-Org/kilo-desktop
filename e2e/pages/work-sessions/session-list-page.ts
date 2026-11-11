@@ -4,9 +4,12 @@ import {
 	click,
 	expectElementToBeHidden,
 	expectElementToBeVisible,
+	expectElementToHaveAttribute,
 	fill,
 	getAttribute,
 	getLocatorByTestId,
+	hover,
+	isElementVisible,
 	pressPageKeyboard,
 	reloadPage,
 } from "@anaconda/playwright-utils";
@@ -70,6 +73,93 @@ export class SessionListPage {
 		await expectElementToBeVisible(
 			this.list().getByTestId("session-list-pinned-toggle"),
 			"A pinned session should sit under Pinned",
+		);
+	}
+
+	/** The same menu entry unpins; it reads "Unpin" once the session is pinned. */
+	async unpin(title: string): Promise<void> {
+		await this.openMenu(title);
+		await click(getLocatorByTestId("session-menu-pin"));
+		await expectElementToBeHidden(this.list().getByTestId("session-list-pinned-toggle"), {
+			message: "Unpinning the only pinned session should drop the Pinned shelf",
+		});
+	}
+
+	/**
+	 * Shift+Click selects the row for a bulk action rather than opening it —
+	 * the same modifier the list uses to extend a selection with the keyboard.
+	 */
+	async selectWithShiftClick(title: string): Promise<void> {
+		await click(this.row(title).getByTestId("session-list-item-trigger"), {
+			modifiers: ["Shift"],
+		});
+	}
+
+	async verifySelected(title: string): Promise<void> {
+		await expectElementToHaveAttribute(this.row(title), "data-selected", "true", {
+			message: `${title} should be selected`,
+		});
+	}
+
+	/**
+	 * Opens the row menu to inspect it. The row's timestamp slot only fades on
+	 * hover rather than leaving the layer, so it can sit over the "…" trigger
+	 * and swallow the click; the trigger itself is visible and stable, so the
+	 * hit-target check is the only thing in the way.
+	 */
+	async openRowMenu(title: string): Promise<void> {
+		await hover(this.row(title));
+		await click(this.row(title).getByTestId("session-list-item-more"), { force: true });
+	}
+
+	async verifyRowMenuOffersSessionActions(): Promise<void> {
+		await expectElementToBeVisible(
+			getLocatorByTestId("session-menu-pin"),
+			"The row menu should offer Pin",
+		);
+		await expectElementToBeVisible(
+			getLocatorByTestId("session-menu-rename"),
+			"The row menu should offer Rename",
+		);
+		await expectElementToBeVisible(
+			getLocatorByTestId("session-menu-delete"),
+			"The row menu should offer Delete",
+		);
+	}
+
+	async verifyRowMenuClosed(): Promise<void> {
+		await expectElementToBeHidden(getLocatorByTestId("session-menu-rename"), {
+			message: "The row menu should be closed",
+		});
+	}
+
+	/**
+	 * Deletes the session wherever it sits. `delete` is for an archived one and
+	 * reads the Archived toggle, which is absent while nothing is archived —
+	 * this checks for the shelf before expanding it, so it suits teardown that
+	 * runs after either outcome.
+	 */
+	async deleteAnywhere(title: string): Promise<void> {
+		const archivedToggle = this.list().getByTestId("session-list-archived-toggle");
+		if (
+			(await isElementVisible(archivedToggle)) &&
+			(await getAttribute(archivedToggle, "aria-expanded")) !== "true"
+		) {
+			await click(archivedToggle);
+		}
+		await this.openRowMenu(title);
+		await click(getLocatorByTestId("session-menu-delete"));
+		await click(getLocatorByTestId("session-delete-confirm"));
+		await expectElementToBeHidden(this.row(title), {
+			message: `${title} should leave the list once deleted`,
+		});
+	}
+
+	/** The row as it renders on the Archived shelf, which must be expanded first. */
+	async verifyArchivedListed(title: string): Promise<void> {
+		await expectElementToBeVisible(
+			this.list().getByTestId("session-list-archived-item").filter({ hasText: title }),
+			`${title} should be listed on the Archived shelf`,
 		);
 	}
 

@@ -80,7 +80,13 @@ const RELATED_SPECS: Readonly<Record<string, readonly string[]>> = {
 		specDirectory("e2e", "specs", "shell"),
 		specDirectory("e2e", "specs", "chat"),
 	],
-	shell: [specDirectory("e2e", "specs", "shell"), specDirectory("e2e", "specs", "core")],
+	shell: [
+		specDirectory("e2e", "specs", "shell"),
+		specDirectory("e2e", "specs", "core"),
+		// The side menu specs assert kilo.shell's sidebar chrome (its rail,
+		// titlebar, Settings entry and account dock) around the session list.
+		specDirectory("e2e", "specs", "work-sessions"),
+	],
 	developer: [specDirectory("e2e", "specs", "developer")],
 	"work-sessions": [
 		specDirectory("e2e", "specs", "work-sessions"),

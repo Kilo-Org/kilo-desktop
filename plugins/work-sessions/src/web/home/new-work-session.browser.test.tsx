@@ -56,6 +56,25 @@ describe("the New Session page and its commands", () => {
 			.toHaveTextContent("What should we work on in Docs?");
 	});
 
+	it("New session keeps the workspace picked in the switcher over the open session's", async () => {
+		const { run, window } = await renderWorkSessions({
+			workSessions: [workSession("a", { title: "Fix login", workspaceId: "w-app" })],
+			workspaces: [workspace("w-app", "App"), workspace("w-docs", "Docs")],
+			activeWorkspaceId: "w-app",
+		});
+		await row("Fix login").getByTestId("session-list-item-trigger").click();
+		await page.getByTestId("session-list-workspace-filter").click();
+		await page.getByRole("option", { name: /Docs/ }).click();
+		await vi.waitFor(() => expect(window().getState().focus).toBe("w-docs"));
+
+		await run("new-work-session");
+
+		await vi.waitFor(() => expect(window().getState().activeWorkSessionId).toBeNull());
+		await expect
+			.element(page.getByTestId("launcher-headline"))
+			.toHaveTextContent("What should we work on in Docs?");
+	});
+
 	it("the New session entry opens the launcher too", async () => {
 		const { window } = await renderWorkSessions({ workSessions: [workSession("a")] });
 		await row("Session a").getByTestId("session-list-item-trigger").click();

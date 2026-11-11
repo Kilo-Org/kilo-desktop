@@ -5,7 +5,8 @@ import { defineExtensionPoint, implementation, whenSchema } from "@kilo-desktop/
 
 /**
  * The frame's regions are named by where they are (`main`, `left-sidebar`,
- * `sidebar-notice`, `status-bar-item`, `right-sidebar-panel`); points that
+ * `sidebar-notice`, `top-bar-title`, `top-bar-action`, `status-bar-item`,
+ * `right-sidebar-panel`); points that
  * aren't places (settings, onboarding, dialogs, deep links, menu items) are
  * named by what they are.
  */
@@ -17,10 +18,6 @@ export type IconComponent = ComponentType<{ className?: string }>;
 export interface MainImplementation {
 	/** The main-area view shown at "/". */
 	readonly component: ComponentType;
-	/** Replaces the page title in the window header. */
-	readonly headerLeading?: ComponentType;
-	/** Actions at the right of the window header. */
-	readonly headerActions?: ComponentType;
 }
 
 /**
@@ -118,6 +115,34 @@ export const StatusBarItem = defineExtensionPoint({
 		command: z.string().optional(),
 	}),
 	implementation: implementation<StatusBarItemImplementation>("renderer", { required: false }),
+});
+
+/*
+ * The top bar runs above the main area at "/": a title at the left, actions
+ * at the right. Gate contributions with `when` on what they are about (an
+ * open session, a view) so they are active only while they have something to
+ * show. With no title and no action the bar collapses to the pane gutter
+ * while the docked sidebar carries the window controls, so a contribution
+ * that renders nothing still holds it open.
+ */
+
+/**
+ * What names the main area in the top bar, in place of the `main`
+ * contribution's own `title`. Exactly one wins.
+ */
+export const TopBarTitle = defineExtensionPoint({
+	id: "kilo.shell/top-bar-title",
+	kind: "exclusive",
+	description: "What names the main area in the window's top bar, in place of its title.",
+	implementation: implementation<ComponentType>("renderer"),
+});
+
+/** Actions at the right of the top bar, ordered by priority. */
+export const TopBarAction = defineExtensionPoint({
+	id: "kilo.shell/top-bar-action",
+	kind: "additive",
+	description: "Actions at the right of the window's top bar.",
+	implementation: implementation<ComponentType>("renderer"),
 });
 
 export interface RightSidebarPanelImplementation {
@@ -349,6 +374,8 @@ export const SHELL_EXTENSION_POINTS = [
 	LeftSidebar,
 	SidebarNotice,
 	StatusBarItem,
+	TopBarTitle,
+	TopBarAction,
 	RightSidebarPanel,
 	Dialog,
 	SettingsCategory,

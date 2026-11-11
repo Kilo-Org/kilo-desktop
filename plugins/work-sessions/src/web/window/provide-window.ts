@@ -9,6 +9,7 @@ import { Navigation } from "@kilo-desktop/plugin-shell/contracts";
 import {
 	UNSCOPED_WORKSPACE_FOCUS,
 	WorkSessions,
+	WorkSessionsView,
 	WorkSessionsWindow,
 	type WorkSessionsWindowState,
 } from "../../contracts";
@@ -39,9 +40,11 @@ export interface WindowOptions {
  * its workspace, so the open work session is always in the list. A
  * remembered work session that no longer exists is let go once work sessions
  * load; `detachedViews` follows the work sessions view windows open on
- * `kernel/windows`; `workSessionActive` / `workspaceActive` /
- * `paneTargetActive` follow the state (a work session behind a work sessions
- * view is not active).
+ * `kernel/windows`; `workSessionActive` / `workSessionsViewShown` /
+ * `workspaceActive` / `paneTargetActive` follow what the window shows (a work
+ * session behind a work sessions view is not active). A saved view no plugin
+ * contributes (its plugin is off, or not activated yet) shows nothing, as in
+ * `WorkSessionsMain`, so the keys treat it as absent without forgetting it.
  */
 export function provideWorkSessionsWindow(sdk: PluginSdk, options: WindowOptions): WindowControls {
 	const windowId = sdk.windowId ?? "main";
@@ -115,15 +118,22 @@ export function provideWorkSessionsWindow(sdk: PluginSdk, options: WindowOptions
 		});
 		publishKeys(next);
 	}
+	function viewShown(view: string | null): boolean {
+		return view !== null && sdk.extensions.list(WorkSessionsView).some(({ key }) => key === view);
+	}
 	function publishKeys(state: WorkSessionsWindowState): void {
-		sdk.context.set("workSessionActive", state.activeWorkSessionId !== null && state.view === null);
+		const shown = viewShown(state.view);
+		sdk.context.set("workSessionActive", state.activeWorkSessionId !== null && !shown);
+		sdk.context.set("workSessionsViewShown", shown);
 		// With no work session open and no work sessions view, the window shows the New Session page.
-		sdk.context.set("paneTargetActive", state.view === null);
+		sdk.context.set("paneTargetActive", !shown);
 		sdk.context.set("workspaceActive", state.focus !== null);
 	}
 	publishKeys(provider.state);
 
-	const stops: (() => void)[] = [];
+	const stops: (() => void)[] = [
+		sdk.extensions.subscribe(WorkSessionsView, () => publishKeys(provider.state)),
+	];
 	sdk.domainObjects.track(WorkSessions, {
 		added(workSessions) {
 			const forgetMissing = ({ workSessions: list }: DomainObjectState<typeof WorkSessions>) => {

@@ -7,6 +7,7 @@ import {
 	getLocatorByTestId,
 } from "@anaconda/playwright-utils";
 import { getPage } from "@anaconda/playwright-utils/page-utils";
+import { expect } from "@playwright/test";
 
 /** kilo.core reads the account through the Kilo server, whose cold start on CI can take over a minute. */
 const SIDEBAR_ACCOUNT_TIMEOUT_MS = 120_000;
@@ -78,10 +79,20 @@ export class AppShellPage {
 		await click(getLocatorByTestId("settings-section-account"));
 	}
 
-	/** The top bar is part of the layout: the same height with the sidebar docked or collapsed. */
-	async verifyTopBarKeepsItsHeight(): Promise<void> {
-		const header = getLocatorByTestId("shell-page-header");
-		const docked = await header.boundingBox();
+	/**
+	 * On a page with nothing in the top bar (the New Session page), the bar
+	 * collapses while the sidebar is docked and carries the traffic lights,
+	 * and takes its full height back to clear the toggle once the sidebar
+	 * collapses. Collapsed, it keeps the window-controls overlay's height
+	 * (`env(titlebar-area-height)`, about 47px on Windows), so it is checked
+	 * by its `data-collapsed` state rather than a height.
+	 */
+	async verifyEmptyTopBarShrinksWhileDocked(): Promise<void> {
+		const topBar = getLocatorByTestId("shell-top-bar");
+		await expect(
+			topBar,
+			"The empty top bar should collapse while the sidebar is docked",
+		).toHaveAttribute("data-collapsed");
 		await click(getLocatorByTestId("sidebar-nav-toggle"));
 		await expectElementToHaveAttribute(
 			getLocatorByTestId("sidebar-nav-toggle"),
@@ -91,18 +102,16 @@ export class AppShellPage {
 				message: "The sidebar should collapse",
 			},
 		);
-		const collapsed = await header.boundingBox();
+		await expect(
+			topBar,
+			"The top bar should open to clear the toggle while the sidebar is collapsed",
+		).not.toHaveAttribute("data-collapsed");
+		await expect
+			.poll(async () => (await topBar.boundingBox())?.height ?? 0, {
+				message: "The top bar should clear the toggle while the sidebar is collapsed",
+			})
+			.toBeGreaterThanOrEqual(40);
 		await click(getLocatorByTestId("sidebar-nav-toggle"));
-		if (
-			!docked ||
-			!collapsed ||
-			docked.height < 40 ||
-			Math.abs(docked.height - collapsed.height) > 1
-		) {
-			throw new Error(
-				`Expected a full-height top bar in both states, got docked ${docked?.height}px and collapsed ${collapsed?.height}px`,
-			);
-		}
 	}
 
 	/** The account entry at the foot of the sidebar, once kilo.core has read the account. */

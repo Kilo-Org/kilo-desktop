@@ -39,6 +39,16 @@
 			"description": "Ambient status in the window's status bar: a view, an action or a popover."
 		},
 		{
+			"id": "top-bar-title",
+			"kind": "exclusive",
+			"description": "What names the main area in the window's top bar, in place of its title."
+		},
+		{
+			"id": "top-bar-action",
+			"kind": "additive",
+			"description": "Actions at the right of the window's top bar."
+		},
+		{
 			"id": "right-sidebar-panel",
 			"kind": "additive",
 			"description": "A panel in the right sidebar."

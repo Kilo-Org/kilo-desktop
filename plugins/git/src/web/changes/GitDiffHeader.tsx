@@ -30,7 +30,7 @@ interface GitDiffHeaderProps {
 
 /**
  * Toolbar atop the diff column. Relies on the shell-level `TooltipProvider`
- * (`AppSidebarLayout`) instead of a local one — same as `ShellPageHeader`.
+ * (`AppSidebarLayout`) instead of a local one — same as kilo.shell's top bar.
  */
 export function GitDiffHeader({
 	addedLines,

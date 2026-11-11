@@ -10,6 +10,8 @@
 		"kilo.core/chats": "optional",
 		"kilo.core/server": "optional",
 		"kilo.shell/main": "optional",
+		"kilo.shell/top-bar-title": "optional",
+		"kilo.shell/top-bar-action": "optional",
 		"kilo.shell/left-sidebar": "optional",
 		"kilo.shell/dialog": "optional",
 		"kilo.shell/onboarding-step": "optional",
@@ -39,6 +41,11 @@
 			"id": "workSessionActive",
 			"scope": "window",
 			"description": "True while a work session is open in this window."
+		},
+		{
+			"id": "workSessionsViewShown",
+			"scope": "window",
+			"description": "True while a work sessions view (kilo.work-sessions/sessions-view) fills this window's main area."
 		},
 		{
 			"id": "workspaceActive",
@@ -174,8 +181,39 @@
 		"extensions": {
 			"kilo.shell/main": [
 				{
-					"id": "work-sessions",
-					"title": "Sessions"
+					"id": "work-sessions"
+				}
+			],
+			"kilo.shell/top-bar-title": [
+				{
+					"id": "session-title",
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "view-title",
+					"when": {
+						"all": ["kilo.work-sessions/workSessionsViewShown"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				}
+			],
+			"kilo.shell/top-bar-action": [
+				{
+					"id": "session-actions",
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "view-actions",
+					"when": {
+						"all": ["kilo.work-sessions/workSessionsViewShown"],
+						"none": ["kernel/secondaryWindow"]
+					}
 				}
 			],
 			"kilo.shell/left-sidebar": [

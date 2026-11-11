@@ -1,10 +1,8 @@
 import { test } from "../../fixtures/shell.js";
 
 test.describe("Shell frame @smoke @packaged", () => {
-	test("keeps a full-height top bar with the sidebar docked or collapsed", async ({
-		appShellPage,
-	}) => {
+	test("shrinks an empty top bar while the sidebar is docked", async ({ appShellPage }) => {
 		await appShellPage.verifyShellIsLoaded();
-		await appShellPage.verifyTopBarKeepsItsHeight();
+		await appShellPage.verifyEmptyTopBarShrinksWhileDocked();
 	});
 });

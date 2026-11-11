@@ -1575,7 +1575,8 @@ would replace it if a kind ever needs something other than show-or-open.
 | kilo.shell     | `onboarding-step`     | A    | Now    | `{label, layout, required?}` + `useStep(controls)`: first-run steps     | account (terms, sign in); environments (set up conda); local-inference (download a model)                         |
 | kilo.shell     | `theme`               | A    | Later  | Colour themes (semantic tokens, host expands)                           | _ext_ community themes                                                                                            |
 | kilo.shell     | `menu-item`           | A    | Now    | Commands in the native app menu, by menu and group (shell lays it out)  | shell (settings, palette, sidebar, shortcuts); workbench (new session, new tab, close tab); _later_ git, terminal |
-| kilo.shell     | `header-action`       | A    | Later  | Buttons in the page header, beside the main view's own                  | workbench (its header buttons, as the first contributor); _ext_ app-wide actions                                  |
+| kilo.shell     | `top-bar-title`       | X    | Now    | Names the main area in the top bar, in place of its title; by `when`    | work-sessions (open session's breadcrumb, shown view's title)                                                     |
+| kilo.shell     | `top-bar-action`      | A    | Now    | Actions in the top bar; with no title or action active it collapses     | work-sessions (session and view actions); _ext_ app-wide actions                                                  |
 | kilo.shell     | `right-sidebar`       | A    | Later  | Tabbed panels in a right sidebar behind an icon rail, one open          | _ext_ notifications inbox, issue feed, app-wide assistant; developer (activity log)                               |
 | kilo.account   | `account-menu`        | A    | Next   | Account menu entries (reference commands)                               | updates (check for updates); shell (settings); local-inference (usage)                                            |
 | kilo.shell     | `left-sidebar-notice` | A    | Now    | Notices above the account entry                                         | updates (restart to update); _later_ account (trial ending), agent (server needs attention)                       |
@@ -3310,7 +3311,8 @@ Everything lands in a single PR once all plugins are built.
   decides what they mean), a keyboard recording pause, and safe mode in every
   process (renderers skip activation too).
 - **Settings sections and the home view bind objects, not bare components**
-  (`{ component, icon }`, `{ component, headerLeading, headerActions }`);
+  (`{ component, icon }`, `{ component, headerLeading, headerActions }`; the
+  header parts are now the `top-bar-title` and `top-bar-action` points);
   hosts render one part with `RenderContribution`'s `select`.
 - **Appearance is saved in main** and mirrored to every window; the theme is
   applied by a runtime outside React so pop-out windows follow it too, and a

@@ -74,16 +74,18 @@ it works in any host and any window.
 **The window frame.** kilo.shell names its layout regions by where they
 are, `<region>-<slot>`, so you can find where to put something:
 
-| Point                             | Where                                   | Kind |
-| --------------------------------- | --------------------------------------- | ---- |
-| `kilo.shell/main`                 | the main area                           | X    |
-| `kilo.shell/left-sidebar`         | the left sidebar's body                 | X    |
-| `kilo.shell/left-sidebar-account` | the account entry at the sidebar's foot | X    |
-| `kilo.shell/left-sidebar-notice`  | notices above the account entry         | A    |
-| `kilo.shell/status-bar-item`      | the status bar under the main area      | A    |
+| Point                             | Where                                       | Kind |
+| --------------------------------- | ------------------------------------------- | ---- |
+| `kilo.shell/main`                 | the main area                               | X    |
+| `kilo.shell/left-sidebar`         | the left sidebar's body                     | X    |
+| `kilo.shell/left-sidebar-account` | the account entry at the sidebar's foot     | X    |
+| `kilo.shell/left-sidebar-notice`  | notices above the account entry             | A    |
+| `kilo.shell/top-bar-title`        | the title in the top bar over the main area | X    |
+| `kilo.shell/top-bar-action`       | actions in the top bar                      | A    |
+| `kilo.shell/status-bar-item`      | the status bar under the main area          | A    |
 
-The exclusive ones belong to kilo.workbench and kilo.account; contribute to
-the additive ones. A notice is for something to act on ("Restart to
+An exclusive region shows a single winner, so gate a `top-bar-title` with
+`when` on what it names. A notice is for something to act on ("Restart to
 update"); the status bar is for ambient status. Settings, onboarding steps,
 deep links and overlays aren't places, so they are named by what they are.
 
@@ -212,6 +214,8 @@ fails when the table is stale. Each point's contract (in the owner's
 | `kilo.shell/left-sidebar`                     | kilo.shell           | X    | renderer | The left sidebar's body.                                                                              | work-sessions                                                                                                          |
 | `kilo.shell/sidebar-notice`                   | kilo.shell           | A    | renderer | Something to act on, at the foot of the left sidebar.                                                 | shell                                                                                                                  |
 | `kilo.shell/status-bar-item`                  | kilo.shell           | A    | renderer | Ambient status in the window's status bar: a view, an action or a popover.                            | local-inference                                                                                                        |
+| `kilo.shell/top-bar-title`                    | kilo.shell           | X    | renderer | What names the main area in the window's top bar, in place of its title.                              | work-sessions                                                                                                          |
+| `kilo.shell/top-bar-action`                   | kilo.shell           | A    | renderer | Actions at the right of the window's top bar.                                                         | work-sessions                                                                                                          |
 | `kilo.shell/right-sidebar-panel`              | kilo.shell           | A    | renderer | A panel in the right sidebar.                                                                         | —                                                                                                                      |
 | `kilo.shell/dialog`                           | kilo.shell           | A    | renderer | An app-wide dialog opened by command.                                                                 | work-sessions, workspace-board                                                                                         |
 | `kilo.shell/settings-category`                | kilo.shell           | A    | data     | A heading in the Settings sidebar.                                                                    | developer, shell                                                                                                       |

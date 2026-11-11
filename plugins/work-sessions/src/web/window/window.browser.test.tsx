@@ -7,10 +7,12 @@ import { testManifest } from "@kilo-desktop/kernel/testing";
 import { NOW, paneKindPlugin, renderWorkSessions, workSession, workspace } from "../../testing";
 import {
 	WorkSessionAction,
+	WorkSessionsView,
 	type WorkSessionActionProps,
 	type WorkSession,
 	PANE_TARGET_ACTIVE_KEY,
 	WORK_SESSION_ACTIVE_KEY,
+	WORK_SESSIONS_VIEW_SHOWN_KEY,
 	WORKSPACE_ACTIVE_KEY,
 } from "../../contracts";
 import { visibleWorkSessions } from "../shared/list-state";
@@ -19,6 +21,20 @@ import { registerNewWorkSessionStart } from "../shared/new-work-session-start";
 const saved = (state: Record<string, unknown>) => ({
 	"kilo.work-sessions.window:main": JSON.stringify(state),
 });
+
+/** A plugin contributing the `test.board/board` work sessions view. */
+const boardPlugin = {
+	manifest: testManifest("test.board", {
+		contributes: {
+			extensions: { "kilo.work-sessions/work-sessions-view": [{ id: "board", title: "Board" }] },
+		},
+	}),
+	web: definePlugin({
+		activate(sdk: PluginSdk) {
+			sdk.extensions.implement(WorkSessionsView, "board", { component: () => <p>Board body</p> });
+		},
+	}),
+};
 
 /** A plugin adding buttons to the open work session's header. */
 function headerActionsPlugin() {
@@ -173,7 +189,10 @@ describe("the window object", () => {
 	});
 
 	it("publishes whether a work session is open, a workspace is focused and a pane has a target", async () => {
-		const { window, host } = await renderWorkSessions({ workSessions: [workSession("a")] });
+		const { window, host } = await renderWorkSessions({
+			workSessions: [workSession("a")],
+			guests: [boardPlugin],
+		});
 		const key = (id: string) => host.renderer.contextKeys.get(id);
 		expect([
 			key(WORK_SESSION_ACTIVE_KEY),
@@ -185,8 +204,41 @@ describe("the window object", () => {
 		await window().methods.setFocus({ focus: "unscoped" });
 		expect([key(WORK_SESSION_ACTIVE_KEY), key(WORKSPACE_ACTIVE_KEY)]).toEqual([true, true]);
 
+		expect(key(WORK_SESSIONS_VIEW_SHOWN_KEY)).toBe(false);
+
 		await window().methods.showView({ view: "test.board/board" });
-		expect([key(WORK_SESSION_ACTIVE_KEY), key(PANE_TARGET_ACTIVE_KEY)]).toEqual([false, false]);
+		expect([
+			key(WORK_SESSION_ACTIVE_KEY),
+			key(PANE_TARGET_ACTIVE_KEY),
+			key(WORK_SESSIONS_VIEW_SHOWN_KEY),
+		]).toEqual([false, false, true]);
+	});
+
+	it("leaves the window's top bar empty on the New Session page, and fills it for an open work session", async () => {
+		const { window } = await renderWorkSessions({
+			workSessions: [workSession("a", { title: "Fix login" })],
+		});
+		const header = page.getByTestId("shell-top-bar");
+		await expect.element(header).toHaveAttribute("data-collapsed");
+
+		await window().methods.openWorkSession({ workSessionId: "a" });
+		await expect.element(header.getByText("Fix login")).toBeVisible();
+		await expect.element(header).not.toHaveAttribute("data-collapsed");
+
+		await window().methods.closeWorkSession(undefined);
+		await expect.element(header).toHaveAttribute("data-collapsed");
+	});
+
+	it("keeps the open work session's top bar while its saved view's plugin is gone", async () => {
+		const { host } = await renderWorkSessions({
+			workSessions: [workSession("a", { title: "Fix login" })],
+			localStorage: saved({ focus: null, activeWorkSessionId: "a", view: "gone.plugin/view" }),
+		});
+
+		await expect.element(page.getByTestId("session-workbench")).toBeVisible();
+		await expect.element(page.getByTestId("shell-top-bar").getByText("Fix login")).toBeVisible();
+		expect(host.renderer.contextKeys.get(WORK_SESSION_ACTIVE_KEY)).toBe(true);
+		expect(host.renderer.contextKeys.get(WORK_SESSIONS_VIEW_SHOWN_KEY)).toBe(false);
 	});
 
 	it("opens a pane of a kind in the open work session, showing its last one of the kind again", async () => {

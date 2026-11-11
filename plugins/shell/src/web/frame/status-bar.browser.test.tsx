@@ -5,7 +5,7 @@ import { page } from "vitest/browser";
 
 import { KernelCommand } from "@kilo-desktop/kernel";
 
-import { StatusBarItem, type StatusBarItemImplementation } from "../../contracts";
+import { Main, StatusBarItem, type StatusBarItemImplementation } from "../../contracts";
 import { contributor, renderShell } from "../../testing";
 
 const bar = () => page.getByTestId("shell-status-bar");
@@ -159,15 +159,23 @@ describe("the status bar", () => {
 	it("mirrors the top bar's height, with items level with the sidebar footer", async () => {
 		await page.viewport(1280, 800);
 		await renderShell([
-			items([{ id: "summary", title: "Summary", kind: "action" }], {
-				summary: { kind: "action", useTrigger: () => ({ label: "21 plugins" }), run: () => {} },
-			}),
+			items(
+				[{ id: "summary", title: "Summary", kind: "action" }],
+				{
+					summary: { kind: "action", useTrigger: () => ({ label: "21 plugins" }), run: () => {} },
+				},
+				{
+					// A titled home, so the top bar keeps its full height to mirror.
+					extensions: { "kilo.shell/main": [{ id: "home", title: "Sessions" }] },
+					activate: (sdk) => sdk.extensions.implement(Main, "home", { component: () => null }),
+				},
+			),
 		]);
 		await expect.element(bar().getByRole("button", { name: "Summary" })).toBeVisible();
 
 		const box = (element: Element) => element.getBoundingClientRect();
 		const middle = (element: Element) => box(element).top + box(element).height / 2;
-		const header = box(page.getByTestId("shell-page-header").element());
+		const header = box(page.getByTestId("shell-top-bar").element());
 		const main = box(page.getByTestId("shell-main").element());
 		const barBox = box(bar().element());
 		expect(barBox.height).toBe(header.height);

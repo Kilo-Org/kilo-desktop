@@ -2,6 +2,7 @@ import { useEffect, type CSSProperties, type ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { SettingsIcon } from "lucide-react";
 
+import type { Contribution } from "@kilo-desktop/kernel";
 import {
 	RenderContribution,
 	useContextKey,
@@ -21,7 +22,14 @@ import {
 } from "@kilo-desktop/ui/components/sidebar";
 import { Toaster } from "@kilo-desktop/ui/components/sonner";
 
-import { LeftSidebar, Main, SidebarNotice, Theme, type MainImplementation } from "../../contracts";
+import {
+	LeftSidebar,
+	Main,
+	SidebarNotice,
+	Theme,
+	TopBarAction,
+	TopBarTitle,
+} from "../../contracts";
 // Other areas' UI the frame places: the account entry, onboarding and the settings rail.
 import { SidebarAccount } from "../account/SidebarAccount";
 import { OnboardingHost } from "../onboarding";
@@ -30,9 +38,9 @@ import { CommandPalette } from "./CommandPalette";
 import { DialogsHost } from "./DialogsHost";
 import { KeyboardShortcutsDialog } from "./KeyboardShortcutsDialog";
 import { NotificationToasts, SidebarNotices } from "./Notifications";
-import { PageHeader } from "./PageHeader";
-import { RightSidebar } from "./RightSidebar";
+import { RightSidebar, useRightSidebarToggleShown } from "./RightSidebar";
 import { StatusBar } from "./StatusBar";
+import { TopBar } from "./TopBar";
 import { useShellUi } from "./ui-state";
 
 /** Clears macOS traffic lights (x:16, 14px lights, 8px gaps = 74px) plus a 10px gap. */
@@ -42,6 +50,7 @@ const DEFAULT_SIDEBAR_TOGGLE_LEFT = "0.75rem";
 const SIDEBAR_TOGGLE_CLEARANCE = "5.25rem";
 
 const selectMode = (state: { mode: "light" | "dark" }) => state.mode;
+const NO_ACTIONS: readonly Contribution<typeof TopBarAction>[] = [];
 
 export function isSettingsPath(pathname: string): boolean {
 	return pathname === "/settings" || pathname.startsWith("/settings/");
@@ -73,7 +82,7 @@ function SettingsButton({ settings }: { readonly settings: boolean }) {
 
 /**
  * The window frame: the left sidebar (navigator or the settings rail, then
- * notices and the account entry), page header, the main pane, the status bar
+ * notices and the account entry), top bar, the main pane, the status bar
  * and the right sidebar, plus the window's dialogs, toasts and onboarding.
  * Everything inside comes from contributions to kilo.shell's points.
  */
@@ -88,9 +97,15 @@ export function Frame({ children }: { readonly children: ReactNode }) {
 	const mac = useContextKey("kernel/mac");
 	const desktopMac = desktop && mac;
 
-	const homeImplementation = home?.implementation as MainImplementation | undefined;
 	const atHome = pathname === "/";
 	const title = settings ? "Settings" : atHome ? home?.metadata.title : undefined;
+	const titleWinner = useExclusive(TopBarTitle).winner;
+	const actionContributions = useExtensions(TopBarAction);
+	// The top bar's contributions are about the main area, so they show only at "/".
+	const titleContribution = atHome ? titleWinner : undefined;
+	const actions = atHome ? actionContributions : NO_ACTIONS;
+	const rightSidebarToggle = useRightSidebarToggleShown();
+	const topBarEmpty = !titleContribution && !title && actions.length === 0 && !rightSidebarToggle;
 	const style = {
 		"--shell-sidebar-toggle-left": desktopMac
 			? MAC_DESKTOP_SIDEBAR_TOGGLE_LEFT
@@ -160,10 +175,12 @@ export function Frame({ children }: { readonly children: ReactNode }) {
 			</Sidebar>
 			{/* Keep overflow off the inset: Electron ignores drag regions inside overflow:hidden ancestors. */}
 			<SidebarInset className="h-svh min-h-0 min-w-0 bg-transparent">
-				<PageHeader
+				<TopBar
 					title={title}
-					leading={atHome && home && homeImplementation?.headerLeading ? home : undefined}
-					actions={atHome && home && homeImplementation?.headerActions ? home : undefined}
+					titleContribution={titleContribution}
+					actions={actions}
+					rightSidebarToggle={rightSidebarToggle}
+					empty={topBarEmpty}
 				/>
 				{/* has-[[data-shell-canvas]] is SHELL_CANVAS_ATTRIBUTE, spelled out for Tailwind. */}
 				<div
@@ -174,7 +191,7 @@ export function Frame({ children }: { readonly children: ReactNode }) {
 				</div>
 				<StatusBar />
 			</SidebarInset>
-			<RightSidebar />
+			<RightSidebar topBarEmpty={topBarEmpty} />
 			<CommandPalette />
 			<KeyboardShortcutsDialog />
 			<Toaster theme={mode} position="bottom-right" offset={{ bottom: 88 }} closeButton />

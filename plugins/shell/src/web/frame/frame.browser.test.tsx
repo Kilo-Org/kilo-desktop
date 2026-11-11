@@ -3,6 +3,7 @@ import { page } from "vitest/browser";
 import { ListIcon } from "lucide-react";
 
 import { KernelCommand } from "@kilo-desktop/kernel";
+import type { RendererKernel } from "@kilo-desktop/kernel/web";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import {
@@ -14,6 +15,8 @@ import {
 	RightSidebarPanel,
 	SidebarNotice,
 	StatusBarItem,
+	TopBarAction,
+	TopBarTitle,
 	type DialogProps,
 } from "../../contracts";
 import { contributor, renderShell } from "../../testing";
@@ -23,14 +26,15 @@ function product() {
 		"acme.product",
 		{
 			"kilo.shell/main": [{ id: "home", title: "Sessions" }],
+			"kilo.shell/top-bar-action": [{ id: "new-session" }],
 			"kilo.shell/left-sidebar": [{ id: "sessions" }],
 			"kilo.shell/status-bar-item": [{ id: "server", title: "Server status" }],
 		},
 		(sdk) => {
-			sdk.extensions.implement(Main, "home", {
-				component: () => <div>Home body</div>,
-				headerActions: () => <button type="button">New session</button>,
-			});
+			sdk.extensions.implement(Main, "home", { component: () => <div>Home body</div> });
+			sdk.extensions.implement(TopBarAction, "new-session", () => (
+				<button type="button">New session</button>
+			));
 			sdk.extensions.implement(LeftSidebar, "sessions", () => <div>Session list</div>);
 			sdk.extensions.implement(StatusBarItem, "server", {
 				kind: "view",
@@ -51,7 +55,7 @@ describe("shell frame", () => {
 		await expect.element(page.getByText("Home body")).toBeVisible();
 		await expect.element(page.getByText("Session list")).toBeVisible();
 		await expect.element(page.getByText("Server ready")).toBeVisible();
-		await expect.element(page.getByTestId("shell-page-heading")).toHaveTextContent("Sessions");
+		await expect.element(page.getByTestId("shell-top-bar-title")).toHaveTextContent("Sessions");
 		await expect.element(page.getByRole("button", { name: "New session" })).toBeVisible();
 	});
 
@@ -84,7 +88,7 @@ describe("shell frame", () => {
 
 		await page.getByTestId("nav-settings").click();
 		await expect.element(page.getByTestId("settings-page")).toBeVisible();
-		await expect.element(page.getByTestId("shell-page-heading")).toHaveTextContent("Settings");
+		await expect.element(page.getByTestId("shell-top-bar-title")).toHaveTextContent("Settings");
 
 		await page.getByTestId("settings-back").click();
 		await expect.element(page.getByText("Home body")).toBeVisible();
@@ -109,6 +113,107 @@ describe("shell frame", () => {
 		await expect
 			.element(page.getByTestId("sidebar-nav-toggle"))
 			.toHaveAttribute("aria-pressed", "false");
+	});
+});
+
+describe("top bar", () => {
+	const OPEN = "acme.home/sessionOpen";
+
+	/** A home whose top bar contributions are active only while a session is open (`acme.home/sessionOpen`). */
+	function home(parts: readonly ("title" | "action")[] = [], title?: string) {
+		const whileOpen = (id: string) => [{ id, when: { all: [OPEN] } }];
+		return contributor(
+			"acme.home",
+			{
+				"kilo.shell/main": [{ id: "home", ...(title ? { title } : {}) }],
+				"kilo.shell/top-bar-title": parts.includes("title") ? whileOpen("title") : [],
+				"kilo.shell/top-bar-action": parts.includes("action") ? whileOpen("action") : [],
+			},
+			(sdk) => {
+				sdk.extensions.implement(Main, "home", { component: () => <div>Home body</div> });
+				if (parts.includes("title")) {
+					sdk.extensions.implement(TopBarTitle, "title", () => <span>Session title</span>);
+				}
+				if (parts.includes("action")) {
+					sdk.extensions.implement(TopBarAction, "action", () => (
+						<button type="button">Share</button>
+					));
+				}
+			},
+			{ contextKeys: [{ id: "sessionOpen", scope: "window" }] },
+		);
+	}
+
+	const header = () => page.getByTestId("shell-top-bar");
+	const headerHeight = () => header().element().getBoundingClientRect().height;
+	async function openSession(renderer: RendererKernel, open: boolean) {
+		await expect.element(page.getByText("Home body")).toBeVisible();
+		renderer.sdkFor("acme.home").context.set("sessionOpen", open);
+	}
+
+	it("collapses to the pane gutter while the sidebar is docked and nothing is active", async () => {
+		await renderShell([home(["title", "action"])]);
+		await expect.element(page.getByText("Home body")).toBeVisible();
+
+		await expect.element(header()).toHaveAttribute("data-collapsed");
+		await expect.poll(headerHeight).toBeLessThanOrEqual(8);
+	});
+
+	it.each([
+		["a title", "title", "Session title"],
+		["an action", "action", "Share"],
+	] as const)("opens up while it has %s", async (_, part, text) => {
+		const { renderer } = await renderShell([home([part])]);
+		await expect.element(header()).toHaveAttribute("data-collapsed");
+
+		await openSession(renderer, true);
+		await expect.element(header().getByText(text)).toBeVisible();
+		await expect.element(header()).not.toHaveAttribute("data-collapsed");
+		await expect.poll(headerHeight).toBeGreaterThanOrEqual(40);
+
+		await openSession(renderer, false);
+		await expect.element(header()).toHaveAttribute("data-collapsed");
+	});
+
+	it("shows the top-bar-title winner in place of the main contribution's title", async () => {
+		const { renderer } = await renderShell([home(["title"], "Sessions")]);
+		await expect.element(page.getByTestId("shell-top-bar-title")).toHaveTextContent("Sessions");
+		await expect.element(header()).not.toHaveAttribute("data-collapsed");
+
+		await openSession(renderer, true);
+		await expect.element(header().getByText("Session title")).toBeVisible();
+		await expect.element(page.getByTestId("shell-top-bar-title")).not.toBeInTheDocument();
+	});
+
+	it("stays open for the right sidebar toggle, and keeps the sidebar level with the main pane", async () => {
+		await renderShell([home(), panels(1)]);
+		await expect.element(page.getByText("Outline body")).toBeVisible();
+		await expect.poll(headerHeight).toBeLessThanOrEqual(8);
+		const top = (testId: string) => page.getByTestId(testId).element().getBoundingClientRect().top;
+		await expect.poll(() => top("right-sidebar")).toBe(top("shell-main"));
+
+		await page.getByTestId("right-sidebar-close").click();
+		await expect.element(page.getByTestId("right-sidebar-open")).toBeVisible();
+		await expect.element(header()).not.toHaveAttribute("data-collapsed");
+	});
+
+	it("keeps its full height while the sidebar is collapsed, to clear the toggle", async () => {
+		const { renderer } = await renderShell([home()]);
+		await expect.element(page.getByText("Home body")).toBeVisible();
+		await renderer.commands.execute("kilo.shell/toggle-sidebar");
+
+		await expect.element(header()).not.toHaveAttribute("data-collapsed");
+		await expect.poll(headerHeight).toBeGreaterThanOrEqual(40);
+	});
+
+	it("leaves out the home view's title and actions in Settings", async () => {
+		const { renderer } = await renderShell([home(["action"])]);
+		await openSession(renderer, true);
+		await expect.element(header().getByText("Share")).toBeVisible();
+
+		await renderer.commands.execute("kilo.shell/open-settings");
+		await expect.element(page.getByTestId("shell-top-bar-title")).toHaveTextContent("Settings");
+		await expect.element(header().getByText("Share")).not.toBeInTheDocument();
 	});
 });
 

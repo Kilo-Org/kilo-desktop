@@ -4,6 +4,8 @@ import { defineDomainObject, method } from "@kilo-desktop/kernel";
 
 /** True in a window while a work session is open. */
 export const WORK_SESSION_ACTIVE_KEY = "kilo.work-sessions/workSessionActive";
+/** True in a window while a work sessions view fills its main area. */
+export const WORK_SESSIONS_VIEW_SHOWN_KEY = "kilo.work-sessions/workSessionsViewShown";
 /** True in a window while the session list is focused on one workspace. */
 export const WORKSPACE_ACTIVE_KEY = "kilo.work-sessions/workspaceActive";
 /**

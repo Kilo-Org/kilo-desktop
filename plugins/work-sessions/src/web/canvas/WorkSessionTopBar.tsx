@@ -11,14 +11,8 @@ import {
 } from "../views/WorkSessionsViewHost";
 import { SessionLocationBreadcrumb } from "./SessionLocationBreadcrumb";
 
-/** The window header's leading content while a work sessions view shows or a work session is open. */
-export function WorkSessionHeaderLeading() {
-	const view = useShownWorkSessionsView();
-	if (view) return <WorkSessionsViewHeaderLeading view={view} />;
-	return <OpenWorkSessionHeaderLeading />;
-}
-
-function OpenWorkSessionHeaderLeading() {
+/** The top bar's title while a work session is open (`session-title`): its workspace and title. */
+export function WorkSessionTopBarTitle() {
 	const workSession = useActiveWorkSession();
 	const workspace = useWorkSessionWorkspace(workSession);
 	if (!workSession) return null;
@@ -41,17 +35,11 @@ function OpenWorkSessionHeaderLeading() {
 }
 
 /**
- * The window header's actions while a work session is open: plugins'
- * `start` work session actions, then "+" and the carousel toggle, then `end`
- * ones (`kilo.work-sessions/work-session-action`).
+ * The top bar's actions while a work session is open (`session-actions`):
+ * plugins' `start` work session actions, then "+" and the carousel toggle,
+ * then `end` ones (`kilo.work-sessions/work-session-action`).
  */
-export function WorkSessionHeaderActions() {
-	const view = useShownWorkSessionsView();
-	if (view) return <WorkSessionsViewHeaderActions view={view} />;
-	return <OpenWorkSessionHeaderActions />;
-}
-
-function OpenWorkSessionHeaderActions() {
+export function WorkSessionTopBarActions() {
 	const workSession = useActiveWorkSession();
 	const actions = useExtensions(WorkSessionAction);
 	if (!workSession) return null;
@@ -75,4 +63,16 @@ function OpenWorkSessionHeaderActions() {
 			{renderActions("end")}
 		</div>
 	);
+}
+
+/** The shown work sessions view's title in the top bar (`view-title`). */
+export function ViewTopBarTitle() {
+	const view = useShownWorkSessionsView();
+	return view ? <WorkSessionsViewHeaderLeading view={view} /> : null;
+}
+
+/** The shown work sessions view's actions in the top bar (`view-actions`). */
+export function ViewTopBarActions() {
+	const view = useShownWorkSessionsView();
+	return view ? <WorkSessionsViewHeaderActions view={view} /> : null;
 }

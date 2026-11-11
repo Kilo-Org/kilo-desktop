@@ -20,15 +20,19 @@ export interface NewWorkSessionOptionProps {
 }
 
 /**
- * A choice on the New Session page. `branch` takes the place of the
- * read-only branch beside the isolation control (local and existing-copy
- * modes); the first contribution by priority wins.
+ * A choice on the New Session page; the first contribution by priority wins
+ * each slot.
+ * - `branch`: takes the place of the read-only branch beside the isolation
+ *   control (local and existing-copy modes).
+ * - `setup`: in place of the isolation control while the workspace has
+ *   nothing to choose (not under version control). Given the primary folder
+ *   as both directories; calls `onChanged` once there is something to choose.
  */
 export const NewWorkSessionOption = defineExtensionPoint({
 	id: "kilo.work-sessions/new-work-session-option",
 	kind: "additive",
 	description: "A choice on the New Session page, beside where the session runs.",
-	metadata: z.object({ slot: z.enum(["branch"]) }),
+	metadata: z.object({ slot: z.enum(["branch", "setup"]) }),
 	implementation: implementation<ComponentType<NewWorkSessionOptionProps>>("renderer"),
 });
 

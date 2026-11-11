@@ -258,11 +258,13 @@ describe("a contributed branch picker", () => {
 			workspaces: [workspace("w-app", "App")],
 			activeWorkspaceId: "w-app",
 			isolation: REPOSITORY,
-			guests: [picker.plugin],
+			guests: [picker.plugin, setupOptionPlugin().plugin],
 		});
 
 		await expect.element(page.getByTestId("test-branch-picker")).toHaveTextContent("/projects/app");
 		expect(page.getByTestId("git-branch-label").query()).toBeNull();
+		// A repository has something to choose, so a `setup` option stays out of the way.
+		expect(page.getByTestId("test-setup").query()).toBeNull();
 		expect(picker.shown).toHaveBeenLastCalledWith(
 			expect.objectContaining({
 				workspaceId: "w-app",
@@ -299,6 +301,72 @@ describe("a contributed branch picker", () => {
 
 		await expect.element(page.getByTestId("git-base-branch-trigger")).toBeVisible();
 		expect(page.getByTestId("test-branch-picker").query()).toBeNull();
+	});
+});
+
+/** Contributes a setup option that reports what it was given and says the page changed. */
+function setupOptionPlugin() {
+	const shown = vi.fn<(props: NewWorkSessionOptionProps) => void>();
+	return {
+		shown,
+		plugin: {
+			manifest: {
+				manifestVersion: 1,
+				id: "test.setup",
+				displayName: "Setup",
+				version: "1.0.0",
+				contributes: {
+					extensions: {
+						"kilo.work-sessions/new-work-session-option": [{ id: "setup", slot: "setup" }],
+					},
+				},
+			},
+			web: {
+				activate(sdk: PluginSdk) {
+					sdk.extensions.implement(
+						NewWorkSessionOption,
+						"setup",
+						(props: NewWorkSessionOptionProps) => {
+							shown(props);
+							return (
+								<button type="button" data-qa-id="test-setup" onClick={props.onChanged}>
+									Set up {props.directory}
+								</button>
+							);
+						},
+					);
+				},
+			},
+		},
+	};
+}
+
+describe("a contributed setup option", () => {
+	it("shows for a workspace with nothing to choose, and reads the options again once used", async () => {
+		const setup = setupOptionPlugin();
+		const { workSessions } = await renderWorkSessions({
+			workspaces: [workspace("w-app", "App")],
+			activeWorkspaceId: "w-app",
+			isolation: null,
+			guests: [setup.plugin],
+		});
+
+		await expect.element(page.getByTestId("test-setup")).toHaveTextContent("Set up /projects/app");
+		expect(setup.shown).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				workspaceId: "w-app",
+				repositoryDirectory: "/projects/app",
+				directory: "/projects/app",
+			}),
+		);
+		const reads = workSessions.calls.isolationOptions.mock.calls.length;
+
+		await page.getByTestId("test-setup").click();
+
+		await vi.waitFor(
+			() => expect(workSessions.calls.isolationOptions.mock.calls.length).toBeGreaterThan(reads),
+			WAIT,
+		);
 	});
 });
 

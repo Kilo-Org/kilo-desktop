@@ -410,14 +410,18 @@ export function ChangesPaneHost({
 	);
 }
 
-/** The New Session page's branch slot as kilo.work-sessions renders it. */
-export function NewWorkSessionBranchHost({
+/** A kilo.git New Session page option as kilo.work-sessions renders it. */
+export function NewWorkSessionOptionHost({
 	host,
+	optionId = "branch",
 	...props
-}: Partial<NewWorkSessionOptionProps> & { readonly host: GitHost }) {
+}: Partial<NewWorkSessionOptionProps> & {
+	readonly host: GitHost;
+	readonly optionId?: "branch" | "init";
+}) {
 	const contribution = host.renderer.extensions
 		.list(NewWorkSessionOption)
-		.find((candidate) => candidate.key === "kilo.git/branch")!;
+		.find((candidate) => candidate.key === `kilo.git/${optionId}`)!;
 	return (
 		<RenderContribution<NewWorkSessionOptionProps>
 			contribution={contribution}

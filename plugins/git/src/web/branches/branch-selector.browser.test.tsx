@@ -6,7 +6,7 @@ import type { WorkSessionIsolation } from "@kilo-desktop/plugin-work-sessions/co
 
 import {
 	bootGitHost,
-	NewWorkSessionBranchHost,
+	NewWorkSessionOptionHost,
 	resetViewTestDom,
 	workSession,
 	WAIT,
@@ -154,7 +154,7 @@ async function renderSelector(
 		},
 	});
 	host.render(
-		<NewWorkSessionBranchHost
+		<NewWorkSessionOptionHost
 			host={host}
 			directory={directory}
 			disabled={options.disabled ?? false}
@@ -993,5 +993,40 @@ describe("the New Session page's branch picker", () => {
 				.toBeVisible();
 			await expect.element(page.getByTestId("git-branch-create-base")).not.toBeInTheDocument();
 		});
+	});
+});
+
+describe("Initialize Git on the New Session page", () => {
+	it("initializes a folder that is not a repository, then has the page read it again", async () => {
+		const directory = "/workspace/plain";
+		let type: GitRepositoryType = { kind: "missing" };
+		const inits: string[] = [];
+		const onChanged = vi.fn();
+		const host = await bootGitHost({
+			repository: {
+				repositoryType: () => type,
+				branches: () => ({ currentBranch: "main", branches: [], recentBranches: [] }),
+				init: (input: { directory: string }) => {
+					inits.push(input.directory);
+					type = { kind: "regular", topLevelWorkingDirectory: directory, gitDir: ".git" };
+				},
+			},
+		});
+		host.render(
+			<NewWorkSessionOptionHost
+				host={host}
+				optionId="init"
+				repositoryDirectory={directory}
+				directory={directory}
+				onChanged={onChanged}
+			/>,
+		);
+		const button = page.getByTestId("git-init-new-session-button");
+
+		await button.click();
+
+		await vi.waitFor(() => expect(inits).toEqual([directory]), WAIT);
+		await vi.waitFor(() => expect(onChanged).toHaveBeenCalled(), WAIT);
+		await expect.element(button).not.toBeInTheDocument();
 	});
 });

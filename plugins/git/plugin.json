@@ -107,6 +107,10 @@
 				{
 					"id": "branch",
 					"slot": "branch"
+				},
+				{
+					"id": "init",
+					"slot": "setup"
 				}
 			],
 			"kilo.chat/composer-action": [

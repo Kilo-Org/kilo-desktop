@@ -1,17 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { FolderGit2Icon, GitBranchIcon } from "lucide-react";
+import { GitBranchIcon } from "lucide-react";
 
 import { useDomainObject } from "@kilo-desktop/kernel/web";
 import type { ComposerContext } from "@kilo-desktop/plugin-chat/contracts";
-import { Button } from "@kilo-desktop/ui/components/button";
-import { Spinner } from "@kilo-desktop/ui/components/spinner";
 
 import { Repository } from "../../contracts";
-import {
-	branchesQuery,
-	repositoryTypeQuery,
-	useInitRepository,
-} from "../shared/repository-queries";
+import { branchesQuery, repositoryTypeQuery } from "../shared/repository-queries";
+import { InitializeGitButton } from "./InitializeGitButton";
 
 type Probe =
 	| { readonly kind: "missing" }
@@ -42,32 +37,18 @@ function useBranchProbe(directory: string): Probe | null {
 	return { kind: "branch", branch: branches.data.currentBranch ?? "Detached HEAD" };
 }
 
-function InitializeGitButton({ directory }: { directory: string }) {
-	const { isPending, init } = useInitRepository();
-	return (
-		<Button
-			className="text-foreground/70 [&_svg]:text-foreground/40"
-			data-qa-id="git-init-thread-button"
-			disabled={isPending}
-			onClick={() => init(directory)}
-			size="sm"
-			type="button"
-			variant="ghost"
-		>
-			{isPending ? (
-				<Spinner data-icon="inline-start" aria-hidden="true" />
-			) : (
-				<FolderGit2Icon data-icon="inline-start" />
-			)}
-			Initialize Git
-		</Button>
-	);
-}
-
 function BranchLabel({ directory }: { directory: string }) {
 	const probe = useBranchProbe(directory);
 	if (!probe) return null;
-	if (probe.kind === "missing") return <InitializeGitButton directory={directory} />;
+	if (probe.kind === "missing") {
+		return (
+			<InitializeGitButton
+				directory={directory}
+				qaId="git-init-thread-button"
+				className="text-foreground/70"
+			/>
+		);
+	}
 	if (probe.kind !== "branch") return null;
 	return (
 		<span

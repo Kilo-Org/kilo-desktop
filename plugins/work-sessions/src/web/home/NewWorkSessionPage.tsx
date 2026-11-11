@@ -100,18 +100,44 @@ function once(run: () => void): () => void {
 	};
 }
 
-/** Isolation (local, new worktree, existing worktree) and branch, when the workspace is a repository. */
+/**
+ * Isolation (local, new worktree, existing worktree) and branch when the
+ * workspace is a repository; otherwise the contributed `setup` option.
+ */
 function IsolationRow({
 	isolation,
 	starting,
+	activeWorkspaceId,
+	primaryFolder,
 }: {
 	readonly isolation: LauncherIsolation;
 	readonly starting: boolean;
+	readonly activeWorkspaceId: string | null;
+	readonly primaryFolder: string | null;
 }) {
-	const branchOption = useExtensions(NewWorkSessionOption).find(
-		(contribution) => contribution.metadata.slot === "branch" && contribution.implementation,
-	);
-	if (!isolation.shown) return null;
+	const optionContributions = useExtensions(NewWorkSessionOption);
+	const optionFor = (slot: "branch" | "setup") =>
+		optionContributions.find(
+			(contribution) => contribution.metadata.slot === slot && contribution.implementation,
+		);
+	const branchOption = optionFor("branch");
+	const setupOption = optionFor("setup");
+	if (!isolation.shown) {
+		if (!setupOption || !activeWorkspaceId || !primaryFolder) return null;
+		return (
+			<RenderContribution<NewWorkSessionOptionProps>
+				contribution={setupOption}
+				props={{
+					workspaceId: activeWorkspaceId,
+					repositoryDirectory: primaryFolder,
+					directory: primaryFolder,
+					onIsolationChange: (next) => isolation.change(next),
+					onChanged: isolation.reload,
+					disabled: starting,
+				}}
+			/>
+		);
+	}
 	const { workspaceId, options, value, pending } = isolation.shown;
 	const disabled = starting || pending;
 	const renderBranch = branchOption
@@ -149,9 +175,13 @@ function IsolationRow({
 function LocationRow({
 	isolation,
 	starting,
+	activeWorkspaceId,
+	primaryFolder,
 }: {
 	readonly isolation: LauncherIsolation;
 	readonly starting: boolean;
+	readonly activeWorkspaceId: string | null;
+	readonly primaryFolder: string | null;
 }) {
 	return (
 		<div
@@ -161,7 +191,12 @@ function LocationRow({
 			<LocationField label="Workspace">
 				<WorkspaceChip disabled={starting} />
 			</LocationField>
-			<IsolationRow isolation={isolation} starting={starting} />
+			<IsolationRow
+				isolation={isolation}
+				starting={starting}
+				activeWorkspaceId={activeWorkspaceId}
+				primaryFolder={primaryFolder}
+			/>
 		</div>
 	);
 }
@@ -176,7 +211,8 @@ function LocationRow({
  * Under it, sessions start without spending tokens: with a tool (each pane
  * kind offered for new sessions, `pane-kind` `launch.newSession`, but
  * the starter's own) or empty. A `new-work-session-option` may take the place of the
- * read-only branch (kilo.git's branch picker).
+ * read-only branch (kilo.git's branch picker) or, for a folder not under version
+ * control, of the isolation control (kilo.git's Initialize Git).
  */
 export function NewWorkSessionPage() {
 	const panes = useDomainObject(Panes);
@@ -238,7 +274,14 @@ export function NewWorkSessionPage() {
 	return (
 		<LauncherPage
 			starting={creation.starting}
-			location={<LocationRow isolation={isolation} starting={creation.starting} />}
+			location={
+				<LocationRow
+					isolation={isolation}
+					starting={creation.starting}
+					activeWorkspaceId={activeWorkspaceId}
+					primaryFolder={directory}
+				/>
+			}
 			progress={
 				creation.phase && isolation.value?.kind === "new-copy" ? (
 					<WorktreeProgress

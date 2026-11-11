@@ -6,13 +6,15 @@ import { testManifest } from "@kilo-desktop/kernel/testing";
 
 import {
 	PaneKind,
+	WorkSessions,
 	WorkSessionsWindow,
 	WorkSessionStarter,
 	type IsolationOptions,
 	type StartedWorkSession,
+	type WorkSession,
 	type WorkSessionStarterProps,
 } from "../../contracts";
-import { renderWorkSessions, workspace } from "../../testing";
+import { renderWorkSessions, workSession, workspace } from "../../testing";
 
 const WAIT = { timeout: 5_000 };
 
@@ -118,7 +120,9 @@ const kindsPlugin = {
 	},
 };
 
-function renderNewSession(options: { isolation?: IsolationOptions | null } = {}) {
+function renderNewSession(
+	options: { isolation?: IsolationOptions | null; workSessions?: WorkSession[] } = {},
+) {
 	return renderWorkSessions({
 		workspaces: [workspace("w-app", "App")],
 		activeWorkspaceId: "w-app",
@@ -127,10 +131,58 @@ function renderNewSession(options: { isolation?: IsolationOptions | null } = {})
 	});
 }
 
+const openRow = (title: string) =>
+	page
+		.getByTestId("kilo-thread-list")
+		.getByTestId("session-list-item")
+		.filter({ hasText: title })
+		.getByTestId("session-list-item-trigger")
+		.click();
+
 const follows = (first: Element, second: Element) =>
 	Boolean(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING);
 
 describe("the New Session page with a session starter", () => {
+	it("asks the starter to take focus each time New session is clicked on the page", async () => {
+		await renderNewSession();
+		await expect.element(page.getByTestId("test-starter")).toBeVisible();
+		expect(lastProps?.focusRequest).toBeFalsy();
+
+		await page.getByTestId("new-chat").click();
+		await vi.waitFor(() => expect(lastProps?.focusRequest).toBeTruthy(), WAIT);
+		const first = lastProps!.focusRequest;
+
+		await page.getByTestId("new-chat").click();
+		await vi.waitFor(() => expect(lastProps?.focusRequest).not.toBe(first), WAIT);
+		expect(lastProps?.focusRequest).toBeTruthy();
+	});
+
+	it("asks the starter New session shows from an open session to take focus", async () => {
+		await renderNewSession({ workSessions: [workSession("a", { workspaceId: "w-app" })] });
+		await openRow("Session a");
+		await expect.element(page.getByTestId("test-starter")).not.toBeInTheDocument();
+
+		await page.getByTestId("new-chat").click();
+
+		await expect.element(page.getByTestId("test-starter")).toBeVisible();
+		expect(lastProps?.focusRequest).toBeTruthy();
+	});
+
+	it("doesn't ask again when the page shows without New session", async () => {
+		const { host } = await renderNewSession({
+			workSessions: [workSession("a", { workspaceId: "w-app" })],
+		});
+		await page.getByTestId("new-chat").click();
+		await vi.waitFor(() => expect(lastProps?.focusRequest).toBeTruthy(), WAIT);
+		await openRow("Session a");
+		await expect.element(page.getByTestId("test-starter")).not.toBeInTheDocument();
+
+		await host.renderer.kernelSdk.domainObjects.get(WorkSessions)!.methods.remove({ id: "a" });
+
+		await expect.element(page.getByTestId("test-starter")).toBeVisible();
+		expect(lastProps?.focusRequest).toBeFalsy();
+	});
+
 	it("says where the session runs in one labelled row, between the headline and the starter", async () => {
 		await renderNewSession({ isolation: REPOSITORY });
 

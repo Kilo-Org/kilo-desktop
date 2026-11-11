@@ -34,6 +34,26 @@ describe("the New Session page's composer", () => {
 		);
 	});
 
+	it("takes focus from the button that asked for the page", async () => {
+		const host = await renderChat({ starter: {} });
+		await expect.element(composerInput()).toBeVisible();
+		const newSession = document.createElement("button");
+		newSession.textContent = "New session";
+		document.body.append(newSession);
+		try {
+			newSession.focus();
+
+			host.starter.requestFocus();
+
+			await vi.waitFor(
+				() => expect(document.activeElement?.closest(".aui-composer-root")).not.toBeNull(),
+				{ timeout: 5_000 },
+			);
+		} finally {
+			newSession.remove();
+		}
+	});
+
 	it("tucks a draft-footer warning under the composer", async () => {
 		await renderChat({ starter: {}, unavailableFolderIds: ["f-lib"] });
 

@@ -12,6 +12,7 @@ import {
 	WorkSessionsWindow,
 	type WorkSessionsWindowState,
 } from "../../contracts";
+import { requestLauncherFocus } from "../home/launcher-focus";
 import { matchesWorkspaceFocus } from "../shared/workspace-focus";
 import { detachedViewWindows } from "../views/view-windows";
 import { readSavedWindow, writeSavedWindow } from "./saved-window";
@@ -57,6 +58,7 @@ export function provideWorkSessionsWindow(sdk: PluginSdk, options: WindowOptions
 				closeWorkSession: () => {
 					update({ activeWorkSessionId: null, view: null });
 					goHome();
+					requestLauncherFocus();
 				},
 				showView: ({ view }) => {
 					const windowOfView = view && detachedWindowId(view);

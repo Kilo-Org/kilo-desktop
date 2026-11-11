@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { useCallback, useMemo, useRef, type FC } from "react";
+import { useCallback, useEffect, useMemo, useRef, type FC } from "react";
 
 import type { DomainObjectState } from "@kilo-desktop/kernel";
 import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
@@ -73,10 +73,11 @@ const selectWorkspaces = (state: DomainObjectState<typeof Workspaces>) => state.
  * the server refused it, so the pane shows why). A work session whose chat
  * can't be created is discarded again, the message going back to the
  * composer. Either way the starter ends a start with `open` or `discard`,
- * which the New Session page waits for.
+ * which the New Session page waits for. Each `focusRequest` (New session)
+ * focuses the composer.
  */
 export function createChatSessionStarter(services: AgentPaneServices): FC<WorkSessionStarterProps> {
-	return function ChatSessionStarter({ workspaceId, directory, start }) {
+	return function ChatSessionStarter({ workspaceId, directory, start, focusRequest }) {
 		const chats = useDomainObject(Chats);
 		const workSessions = useDomainObject(WorkSessions);
 		const panes = useDomainObject(Panes);
@@ -92,6 +93,13 @@ export function createChatSessionStarter(services: AgentPaneServices): FC<WorkSe
 		const latest = useRef({ start });
 		latest.current = { start };
 		const started = useRef<StartedWorkSession | null>(null);
+
+		useEffect(() => {
+			if (!focusRequest) return;
+			// After the editor has mounted, when the page was just shown.
+			const frame = requestAnimationFrame(() => focusComposerIn(rootRef.current));
+			return () => cancelAnimationFrame(frame);
+		}, [focusRequest]);
 
 		const createChat = useCallback(async (): Promise<CreatedChat> => {
 			if (!workSessions || !chats) throw new Error("Kilo chats aren't available.");

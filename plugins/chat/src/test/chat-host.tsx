@@ -246,6 +246,7 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 	}
 
 	const starterCalls = { open: vi.fn<(workSessionId: string) => void>(), start: vi.fn() };
+	let starterFocusRequest = 0;
 	/** The New Session page around kilo.chat's starter, starting work sessions as kilo.work-sessions does. */
 	function Starter({ isolation }: NonNullable<ChatHostOptions["starter"]>) {
 		const [starting, setStarting] = useState(false);
@@ -272,7 +273,7 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 		return (
 			<RenderContribution<WorkSessionStarterProps>
 				contribution={contribution}
-				props={{ workspaceId, directory, starting, start }}
+				props={{ workspaceId, directory, starting, start, focusRequest: starterFocusRequest }}
 			/>
 		);
 	}
@@ -320,7 +321,14 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 		signIn: core.calls.signIn,
 		/** Changes kilo.core's account. */
 		setIdentity: (next: AccountState) => core.setAccount(next),
-		starter: starterCalls,
+		starter: {
+			...starterCalls,
+			/** Asks the starter to take focus, as kilo.work-sessions does on New session. */
+			requestFocus: () => {
+				starterFocusRequest += 1;
+				view.rerender(tree());
+			},
+		},
 		popOut,
 		/** Renders the window's panes again, as any change the canvas follows does. */
 		rerender: () => view.rerender(tree()),

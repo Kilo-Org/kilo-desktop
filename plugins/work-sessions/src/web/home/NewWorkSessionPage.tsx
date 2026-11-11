@@ -31,6 +31,7 @@ import { usePaneKinds, type CanvasPaneKind } from "../shared/pane-kinds";
 import { reportFailure } from "../shared/report-failure";
 import { IsolationControl } from "./isolation/IsolationControl";
 import { useLauncherIsolation, type LauncherIsolation } from "./isolation/use-launcher-isolation";
+import { useLauncherFocusRequest } from "./launcher-focus";
 import { LocationField } from "./LocationField";
 import { StartWithTool } from "./StartWithTool";
 import { WelcomeHeadline } from "./WelcomeHeadline";
@@ -192,6 +193,7 @@ export function NewWorkSessionPage() {
 	const starter = useExtensions(WorkSessionStarter).find(
 		(contribution) => contribution.implementation,
 	);
+	const focusRequest = useLauncherFocusRequest();
 
 	const [startingKind, setStartingKind] = useState<string | null>(null);
 
@@ -264,6 +266,7 @@ export function NewWorkSessionPage() {
 								workspaceId: activeWorkspaceId,
 								directory,
 								starting: creation.starting,
+								focusRequest,
 								start,
 							}}
 						/>

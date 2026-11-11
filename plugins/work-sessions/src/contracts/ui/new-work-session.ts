@@ -58,6 +58,12 @@ export interface WorkSessionStarterProps {
 	/** True from `start()` until the started work session is opened or discarded. */
 	readonly starting: boolean;
 	/**
+	 * Changes each time a person asks for the New Session page (New session,
+	 * ⌘N) — take keyboard focus then, from the button that asked. 0 (or
+	 * absent) when the page shows for another reason.
+	 */
+	readonly focusRequest?: number;
+	/**
 	 * Creates the work session in the workspace with the isolation chosen
 	 * above the starter, without opening it. Rejects (having said why) when it
 	 * can't.

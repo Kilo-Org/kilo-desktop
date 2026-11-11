@@ -138,6 +138,7 @@ function fakeCore(options: FakeModelsOptions) {
 
 	const initialState: ModelsState = {
 		ready: options.ready ?? true,
+		followingAccount: false,
 		aiProviders: options.aiProviders ?? aiProviders(),
 		models: {},
 		defaults: {},

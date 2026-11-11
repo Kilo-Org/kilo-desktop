@@ -97,6 +97,8 @@ function useModelCatalog() {
 	return {
 		catalog,
 		isPending: !ready,
+		/** Still the previous account's models, until kilo.core reads them for the new one. */
+		isFollowingAccount: models?.followingAccount === true,
 		preferences: models?.preferences,
 		handle,
 		refresh,
@@ -212,6 +214,7 @@ export function ComposerSelectionProvider({
 		refresh: refreshCatalog,
 		refetch: refetchCatalog,
 		isPending: isCatalogPending,
+		isFollowingAccount,
 	} = modelCatalog;
 	const modelValue = useMemo(
 		() => ({
@@ -224,10 +227,10 @@ export function ComposerSelectionProvider({
 			catalog,
 			isCatalogPending,
 			isCatalogError: false,
-			isCatalogFetching: false,
+			isCatalogFetching: isFollowingAccount,
 			refreshCatalog,
 		}),
-		[catalog, isCatalogPending, modelSelection, refreshCatalog],
+		[catalog, isCatalogPending, isFollowingAccount, modelSelection, refreshCatalog],
 	);
 
 	return (

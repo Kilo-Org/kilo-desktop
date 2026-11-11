@@ -58,6 +58,7 @@ const model = (
 /** The FakeKiloServer's `/provider` fixture as kilo.core lists it: Acme with two models. */
 export const TEST_MODELS: ModelsState = {
 	ready: true,
+	followingAccount: false,
 	aiProviders: {
 		acme: {
 			id: "acme",

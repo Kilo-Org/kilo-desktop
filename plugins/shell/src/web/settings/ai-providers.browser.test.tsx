@@ -27,6 +27,7 @@ function providerPanels() {
 function coreWithModels(sdk: PluginSdk) {
 	const initialState: ModelsState = {
 		ready: true,
+		followingAccount: false,
 		aiProviders: {},
 		models: {},
 		defaults: {},

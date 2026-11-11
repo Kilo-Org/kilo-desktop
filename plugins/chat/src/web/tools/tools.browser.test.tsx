@@ -9,6 +9,7 @@ import {
 	SIGN_IN_REQUIRED_TOOL_ERROR_CODE,
 	Tool,
 	toolWireName,
+	type ModelsState,
 } from "@kilo-desktop/plugin-core/contracts";
 
 import { chatPaneObject, McpApp, ToolRenderer, type ToolRendererProps } from "../../contracts";
@@ -647,6 +648,73 @@ describe("tools that need sign-in", () => {
 		await expect
 			.poll(() => JSON.stringify(promptsTo(host.server)[0]?.body ?? ""))
 			.toContain("I've signed in. Please continue.");
+	});
+
+	/** kilo.core's models when Kilo's gateway offers only `modelId`, its default. */
+	const kiloModels = (modelId: string): ModelsState => ({
+		...TEST_MODELS,
+		aiProviders: {
+			kilo: {
+				id: "kilo",
+				name: "Kilo Gateway",
+				connected: true,
+				source: "kilo",
+				env: [],
+				canDisconnect: false,
+			},
+		},
+		models: {
+			[`kilo/${modelId}`]: {
+				aiProviderId: "kilo",
+				modelId,
+				name: modelId,
+				variants: [],
+				attachments: true,
+				reasoning: false,
+				free: false,
+				byok: false,
+			},
+		},
+		defaults: { kilo: modelId },
+		configuredModel: { aiProviderId: "kilo", modelId },
+	});
+
+	it("continues after sign-in only once the signed-in account's models are read", async () => {
+		const server = new FakeKiloServer();
+		server.addChat({
+			id: "ses_a",
+			directory: "/projects/app",
+			title: "Chat",
+			agent: "code",
+			model: { providerID: "kilo", id: "kilo-auto/free" },
+			messages: chatWith([refused("call_secret_race")], {
+				model: { providerID: "kilo", modelID: "kilo-auto/free" },
+			}),
+		});
+		const host = await renderChat({
+			server,
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
+			chats: [chatSummary("ses_a")],
+			identity: SIGNED_OUT,
+			models: kiloModels("kilo-auto/free"),
+			plugins: [secretTools],
+		});
+		await page.getByTestId("kilo-tool-signin-prompt-signin").click();
+		await vi.waitFor(() => expect(host.signIn).toHaveBeenCalled());
+
+		// kilo.core as sign-in finishes: its models follow the new account before
+		// the account's change reaches the window, and are read for it a moment later.
+		const models = host.core.models();
+		models.setState({ ...models.state, followingAccount: true });
+		host.setIdentity(SIGNED_IN);
+		await new Promise((resolve) => setTimeout(resolve, 500));
+		expect(promptsTo(server)).toEqual([]);
+
+		models.setState(kiloModels("kilo-auto/balanced"));
+
+		await expect
+			.poll(() => promptsTo(server)[0]?.body)
+			.toMatchObject({ model: { providerID: "kilo", modelID: "kilo-auto/balanced" } });
 	});
 
 	it("leaves other tools' errors that mention the marker alone", async () => {

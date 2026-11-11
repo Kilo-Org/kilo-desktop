@@ -6,7 +6,12 @@ import {
 	type PluginRegistration,
 } from "@kilo-desktop/kernel";
 import { createMainKernel } from "@kilo-desktop/kernel/main";
-import { createMemoryStorage, createTestHost, testPlugin } from "@kilo-desktop/kernel/testing";
+import {
+	createMemoryStorage,
+	createTestHost,
+	createTestKernelPair,
+	testPlugin,
+} from "@kilo-desktop/kernel/testing";
 
 import manifest from "../../../plugin.json";
 import {
@@ -79,6 +84,8 @@ interface BootOptions extends Partial<ModelsOptions> {
 	readonly account?: AccountState;
 	/** Contributes `local-server` to `kilo.core/ai-provider` from acme.local. */
 	readonly localServer?: boolean;
+	/** Also boots a window's kernel linked to main. */
+	readonly withWindow?: boolean;
 }
 
 /** kilo.core's models area in a main kernel, with fakes of kilo.core's server and account. */
@@ -150,21 +157,29 @@ async function bootModels(options: BootOptions = {}) {
 			},
 		}),
 	});
-	const kernel = createMainKernel({
-		host: createTestHost(),
-		registrations: [
-			core,
-			testPlugin("kilo.shell"),
-			testPlugin("acme.other"),
-			...(options.localServer ? [localServer] : []),
-		],
-		hostServices: () => ({ storage, net: { fetch: vi.fn<typeof fetch>() } }),
-	});
-	await kernel.start();
+	const registrations = [
+		core,
+		testPlugin("kilo.shell"),
+		testPlugin("acme.other"),
+		...(options.localServer ? [localServer] : []),
+	];
+	const hostServices = () => ({ storage, net: { fetch: vi.fn<typeof fetch>() } });
+	const pair = options.withWindow
+		? await createTestKernelPair({
+				main: registrations,
+				renderer: [{ manifest, definitions: CORE_DEFINITIONS }],
+				mainHostServices: hostServices,
+			})
+		: undefined;
+	const kernel =
+		pair?.main ?? createMainKernel({ host: createTestHost(), registrations, hostServices });
+	if (!pair) await kernel.start();
 	const models = kernel.kernelSdk.domainObjects.get(Models)!;
 	const asPlugin = (pluginId: string) => kernel.sdkFor(pluginId).domainObjects.get(Models)!;
 	return {
 		kernel,
+		/** A window's kernel, with `withWindow`. */
+		window: pair?.renderer,
 		fake,
 		storage,
 		models,
@@ -522,6 +537,95 @@ describe("AI providers and models", () => {
 		setAccount(SIGNED_OUT);
 		await readsSettled(4);
 		expect(fake.calls.list).toBe(4);
+	});
+
+	it("says its lists are the previous account's until they are read for a new account", async () => {
+		const { models, fake, setAccount, readsSettled } = await bootModels({ account: SIGNED_OUT });
+		await readsSettled(1);
+		await vi.waitFor(() => expect(models.getState().ready).toBe(true));
+		expect(models.getState().followingAccount).toBe(false);
+		let open!: () => void;
+		fake.listGate = new Promise((resolve) => (open = resolve));
+
+		setAccount(signedIn("org-1"));
+
+		// Before the account's change reaches anyone else, so no window sees it without this.
+		expect(models.getState().followingAccount).toBe(true);
+		fake.list = { all: [anthropic], connected: ["anthropic"] };
+		open();
+		await vi.waitFor(() => expect(models.getState().followingAccount).toBe(false));
+		expect(Object.keys(models.getState().models)).toEqual(["anthropic/sonnet"]);
+	});
+
+	it("reaches a window as following the account before the account's change does", async () => {
+		const { window, fake, setAccount, readsSettled } = await bootModels({
+			account: SIGNED_OUT,
+			withWindow: true,
+		});
+		await readsSettled(1);
+		fake.listGate = new Promise(() => {});
+		const account = window!.kernelSdk.domainObjects.get(KiloAccount)!;
+		const windowModels = window!.kernelSdk.domainObjects.get(Models)!;
+		await vi.waitFor(() => expect(windowModels.getState().ready).toBe(true));
+		const seenWhenSignedIn: boolean[] = [];
+		account.subscribe((state) => {
+			if (state.signedIn) seenWhenSignedIn.push(windowModels.getState().followingAccount);
+		});
+
+		setAccount(signedIn("org-1"));
+
+		await vi.waitFor(() => expect(seenWhenSignedIn).toEqual([true]));
+	});
+
+	it("keeps following the account while the server it waits for isn't ready", async () => {
+		const { models, setAccount, setServerStatus, readsSettled } = await bootModels({
+			account: SIGNED_OUT,
+		});
+		await readsSettled(1);
+		setServerStatus("stopped");
+
+		setAccount(signedIn("org-1"));
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(models.getState().followingAccount).toBe(true);
+
+		setServerStatus("ready");
+		await readsSettled(2);
+		await vi.waitFor(() => expect(models.getState().followingAccount).toBe(false));
+	});
+
+	it("keeps following the account while reading for it fails, until a read lands", async () => {
+		const { models, fake, setAccount, readsSettled } = await bootModels({ account: SIGNED_OUT });
+		await readsSettled(1);
+		fake.listError = new Error("connection refused");
+
+		setAccount(signedIn("org-1"));
+		await readsSettled(2);
+		await new Promise((resolve) => setTimeout(resolve, 20));
+		expect(models.getState().followingAccount).toBe(true);
+
+		delete fake.listError;
+		await models.methods.refresh(undefined);
+		expect(models.getState().followingAccount).toBe(false);
+	});
+
+	it("keeps following the account when it changes again during a read", async () => {
+		const { models, fake, setAccount, readsSettled } = await bootModels({ account: SIGNED_OUT });
+		await readsSettled(1);
+		let open!: () => void;
+		fake.listGate = new Promise((resolve) => (open = resolve));
+		setAccount(signedIn("org-1"));
+		await readsSettled(2);
+		let openSecond!: () => void;
+		const second = new Promise<void>((resolve) => (openSecond = resolve));
+
+		setAccount(signedIn("org-2"));
+		fake.listGate = second;
+		open();
+		await readsSettled(3);
+		expect(models.getState().followingAccount).toBe(true);
+
+		openSecond();
+		await vi.waitFor(() => expect(models.getState().followingAccount).toBe(false));
 	});
 
 	it("marks plugin-contributed AI providers and follows contribution changes", async () => {

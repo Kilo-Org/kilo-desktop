@@ -145,6 +145,13 @@ export type CustomAiProvider = z.input<typeof customAiProviderSchema>;
 export const modelsStateSchema = z.object({
 	/** False until the AI providers were read from the running server. */
 	ready: z.boolean(),
+	/**
+	 * True from a change of signed-in account or organisation until the AI
+	 * providers are read for it: until then (including while that read keeps
+	 * failing) the lists are the previous account's, and a model picked from
+	 * them may not be offered.
+	 */
+	followingAccount: z.boolean(),
 	aiProviders: z.record(z.string(), aiProviderSchema),
 	/** Models of connected AI providers, by `<aiProviderId>/<modelId>`. */
 	models: z.record(z.string(), modelSchema),

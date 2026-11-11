@@ -44,6 +44,13 @@ import { presentEnvNames } from "./present-env";
  * AI providers at all means Kilo is still loading them, so it is read again
  * a few times before it is believed. A failed read keeps the last state.
  *
+ * An account change sets `followingAccount` inside the account's own update
+ * (state listeners run before the change is sent to windows, so every window
+ * sees it first), and only a read that started after the latest change and
+ * landed clears it; a failed read leaves the previous account's lists, so it
+ * stays set. Chat waits on it so a turn isn't sent with a model only the
+ * previous account was offered.
+ *
  * Mutations hand credentials to Kilo, so they (and `customAiProvider`,
  * `presentEnv`) are refused to every caller but kilo.core, kilo.shell and
  * the main kernel. Kilo's gateway and plugin-contributed AI providers are
@@ -111,11 +118,14 @@ export async function activateModels(sdk: PluginSdk, options: ModelsOptions): Pr
 	let connecting = false;
 	let startServerOnNextRead = false;
 	let emptyListReads = 0;
+	/** Counts changes of signed-in account or organisation, to tell which read settles one. */
+	let accountChanges = 0;
 	let emptyListTimer: ReturnType<typeof setTimeout> | undefined;
 	sdk.onDispose(() => clearTimeout(emptyListTimer));
 
 	const initialState: ModelsState = {
 		ready: false,
+		followingAccount: false,
 		aiProviders: {},
 		models: {},
 		defaults: {},
@@ -232,7 +242,7 @@ export async function activateModels(sdk: PluginSdk, options: ModelsOptions): Pr
 					readAgain = false;
 					const start = startServerOnNextRead;
 					startServerOnNextRead = false;
-					failure = await readOnce(start).then(
+					failure = await readOnce(start, accountChanges).then(
 						() => undefined,
 						(error: unknown) => error ?? new Error("The AI providers could not be read."),
 					);
@@ -245,7 +255,8 @@ export async function activateModels(sdk: PluginSdk, options: ModelsOptions): Pr
 		return reading;
 	}
 
-	async function readOnce(startServer: boolean): Promise<void> {
+	/** `forAccount` is the account change it reads for; a later change keeps following. */
+	async function readOnce(startServer: boolean, forAccount: number): Promise<void> {
 		const server = sdk.domainObjects.get(KiloServer);
 		if (!startServer && server?.getState().status !== "ready") return;
 		connecting = true;
@@ -264,6 +275,7 @@ export async function activateModels(sdk: PluginSdk, options: ModelsOptions): Pr
 		models.update(({ configuredModel: _previous, ...state }) => ({
 			...state,
 			ready: true,
+			followingAccount: state.followingAccount && forAccount !== accountChanges,
 			...mapped,
 		}));
 	}
@@ -297,6 +309,9 @@ export async function activateModels(sdk: PluginSdk, options: ModelsOptions): Pr
 					const next = accountKey(state, key);
 					if (next.signedIn === key.signedIn && next.organizationId === key.organizationId) return;
 					key = next;
+					// Synchronously: see the design comment.
+					accountChanges += 1;
+					models.update((current) => ({ ...current, followingAccount: true }));
 					readAutomatically();
 				});
 			},

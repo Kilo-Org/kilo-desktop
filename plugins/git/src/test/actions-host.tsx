@@ -40,6 +40,7 @@ export function actionCollaborators() {
 			sdk.domainObjects.provide(Models, {
 				initialState: {
 					ready: true,
+					followingAccount: false,
 					aiProviders: {},
 					models: {},
 					defaults: {},

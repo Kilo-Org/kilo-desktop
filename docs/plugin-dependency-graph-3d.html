@@ -65,18 +65,10 @@
 				border-radius: 6px;
 				padding: 6px 8px;
 			}
-			.controls button[aria-pressed="true"] {
-				background: #3a4152;
-				border-color: #59627a;
-			}
 			.controls .sep {
 				width: 1px;
 				background: #343a48;
 				margin: 0 4px;
-			}
-			.controls button:disabled {
-				opacity: 0.4;
-				cursor: default;
 			}
 			#info {
 				position: absolute;
@@ -119,31 +111,13 @@
 		<canvas id="c"></canvas>
 		<header>
 			<h1>Plugin dependency graph</h1>
-			<p>
-				From each <code>plugins/*/plugin.json</code> <code>requires</code> (all optional). Arrows
-				point from a plugin to the plugins it uses; link width is the number of domains / points
-				used. Node size is how many plugins depend on it. The kernel node shows only explicit
-				<code>kernel/*</code> requires &mdash; every plugin runs on the kernel. Hover to highlight
-				neighbours. Click a plugin (or pick one below) to show only what it requires; click another
-				to follow the chain; click empty space or press <kbd>Esc</kbd> to show everything.
-			</p>
+			<p>Click a plugin to see everything it requires.</p>
 		</header>
 		<div id="info"></div>
 		<div class="controls">
 			<select id="focus" aria-label="Show requirements of">
 				<option value="">All plugins</option>
 			</select>
-			<button id="direct" aria-pressed="false" title="Only the plugins it names in requires">
-				Direct
-			</button>
-			<button
-				id="transitive"
-				aria-pressed="true"
-				title="Everything it requires, and what those require"
-			>
-				All requirements
-			</button>
-			<button id="clear" disabled>Show all</button>
 			<span class="sep"></span>
 			<button id="reset">Reset view</button>
 			<button id="side">Side view</button>
@@ -154,18 +128,13 @@
 			import { View, InstancedMesh, Lines, cylinder } from "phoria2";
 			import { chart } from "phoria2/charts";
 
+			// "core" is the Kilo server plugin (kilo.core) and requires nothing, so it is the base every
+			// other plugin builds on.
 			const TIER = {
 				kernel: "kernel",
-				shell: "base",
-				updates: "base",
-				agent: "foundation",
-				account: "foundation",
-				flags: "foundation",
-				workspaces: "foundation",
-				telemetry: "foundation",
-				sessions: "core",
-				workbench: "core",
-				chat: "core",
+				core: "base",
+				shell: "foundation",
+				"work-sessions": "foundation",
 			};
 
 			// Plugin -> plugin edges; points = number of distinct domains / extension points required.
@@ -242,8 +211,8 @@
 						field: "tier",
 						title: "Tier",
 						scale: {
-							domain: ["feature", "core", "foundation", "base", "kernel"],
-							range: ["#4cc9f0", "#f72585", "#f8961e", "#90be6d", "#e9e9f0"],
+							domain: ["feature", "foundation", "base", "kernel"],
+							range: ["#4cc9f0", "#f8961e", "#90be6d", "#e9e9f0"],
 						},
 					},
 					size: "dependents",
@@ -257,7 +226,7 @@
 							{ field: "points", title: "Points / domains" },
 						],
 					},
-					layout: { tiers: "tier", order: ["kernel", "base", "foundation", "core", "feature"] },
+					layout: { tiers: "tier", order: ["kernel", "base", "foundation", "feature"] },
 					highlight: "neighbours",
 					tooltip: [
 						"id",
@@ -357,20 +326,15 @@
 
 			const $ = (sel) => document.querySelector(sel);
 			const info = $("#info"),
-				focusSelect = $("#focus"),
-				directBtn = $("#direct"),
-				transitiveBtn = $("#transitive"),
-				clearBtn = $("#clear");
+				focusSelect = $("#focus");
 			const nodeById = new Map(nodes.map((n) => [n.id, n]));
 			const label = (id) => (id === "kernel" ? "kernel/*" : `kilo.${id}`);
 
 			for (const id of ids) focusSelect.add(new Option(label(id), id));
 
 			let focused = null;
-			let transitive = true;
 
 			function requirementsOf(id) {
-				if (!transitive) return new Set([id, ...nodeById.get(id).usesList]);
 				const seen = new Set([id]);
 				const queue = [id];
 				while (queue.length) {
@@ -389,30 +353,19 @@
 				info.innerHTML = `<h2>${label(d.id)}</h2><dl>
     <dt>Tier</dt><dd>${d.tier}</dd>
     <dt>Uses (${d.uses})</dt><dd>${d.usesList.join(", ") || "—"}</dd>
-    ${required && transitive ? `<dt>All reqs (${required.length})</dt><dd>${required.join(", ") || "—"}</dd>` : ""}
+    ${required ? `<dt>All reqs (${required.length})</dt><dd>${required.join(", ") || "—"}</dd>` : ""}
     <dt>Used by (${d.dependents})</dt><dd>${d.usedByList.join(", ") || "—"}</dd></dl>`;
 				info.style.display = "block";
 			}
 
-			function syncControls() {
-				focusSelect.value = focused ?? "";
-				clearBtn.disabled = !focused;
-				directBtn.setAttribute("aria-pressed", String(!transitive));
-				transitiveBtn.setAttribute("aria-pressed", String(transitive));
-			}
-
 			function applyFocus() {
-				syncControls();
+				focusSelect.value = focused ?? "";
 				if (!focused) {
 					graph.update({ nodes, links });
 					info.style.display = "none";
 				} else {
 					const shown = requirementsOf(focused);
-					// direct: only the selected plugin's own links; transitive: the whole requirement subgraph
-					const shownLinks = links.filter(
-						(l) =>
-							shown.has(l.source) && shown.has(l.target) && (transitive || l.source === focused),
-					);
+					const shownLinks = links.filter((l) => shown.has(l.source) && shown.has(l.target));
 					graph.update({ nodes: nodes.filter((n) => shown.has(n.id)), links: shownLinks });
 					showNode(nodeById.get(focused), shown);
 				}
@@ -454,14 +407,6 @@
 			});
 
 			focusSelect.onchange = () => focus(focusSelect.value);
-			clearBtn.onclick = () => focus(null);
-			function setTransitive(value) {
-				transitive = value;
-				if (focused) applyFocus();
-				else syncControls();
-			}
-			directBtn.onclick = () => setTransitive(false);
-			transitiveBtn.onclick = () => setTransitive(true);
 			addEventListener("keydown", (e) => {
 				if (e.key === "Escape" && focused) focus(null);
 			});

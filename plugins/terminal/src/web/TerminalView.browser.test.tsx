@@ -36,6 +36,20 @@ describe("TerminalView", () => {
 		expect(opened.mock.calls[0]![0]).not.toHaveProperty("cwd");
 	});
 
+	it("starts a no-workspace session's terminal at home, not in its chat's folder", async () => {
+		stubTerminalOrigin();
+		const { opened } = await renderTerminalHost({
+			workspaceId: null,
+			directory: "/app-data/chats/session-1",
+		});
+		await expect.element(page.getByTestId("terminal-frame")).toBeVisible();
+
+		await readyFrame();
+
+		await vi.waitFor(() => expect(opened).toHaveBeenCalledOnce());
+		expect(opened.mock.calls[0]![0]).not.toHaveProperty("cwd");
+	});
+
 	it("connects the trusted frame to the pane's shell in the session's folder", async () => {
 		stubTerminalOrigin();
 		document.documentElement.style.setProperty("--pane-surface", "#181818");
@@ -43,6 +57,7 @@ describe("TerminalView", () => {
 		document.documentElement.style.setProperty("--app-scrollbar-thumb-hover", "#222222");
 		const { opened } = await renderTerminalHost({
 			pane: terminalPane({ ordinal: 2, metadata: { terminalSessionId: "ses_origin" } }),
+			workspaceId: "ws_1",
 			directory: "/workspace",
 		});
 		await expect.element(page.getByTestId("terminal-frame")).toBeVisible();
@@ -91,14 +106,17 @@ describe("TerminalView", () => {
 		"reuses the shell on a theme reconnect and starts $workSessionId/$paneId in the latest folder",
 		async ({ workSessionId, paneId }) => {
 			stubTerminalOrigin();
-			const view = await renderTerminalHost({ directory: "/workspace-one" });
+			const view = await renderTerminalHost({
+				workspaceId: "ws_1",
+				directory: "/workspace-one",
+			});
 			await expect.element(page.getByTestId("terminal-frame")).toBeVisible();
 			const lastArgs = () => view.opened.mock.lastCall?.[0];
 
 			const { frame } = await readyFrame();
 			await vi.waitFor(() => expect(lastArgs()).toMatchObject({ cwd: "/workspace-one" }));
 
-			view.rerender({ directory: "/workspace-two" });
+			view.rerender({ workspaceId: "ws_1", directory: "/workspace-two" });
 			expect(document.querySelector('[data-qa-id="terminal-frame"]')).toBe(frame);
 
 			await act(async () =>
@@ -120,6 +138,7 @@ describe("TerminalView", () => {
 			view.rerender({
 				workSessionId,
 				pane: terminalPane({ id: paneId }),
+				workspaceId: "ws_1",
 				directory: "/workspace-two",
 			});
 			expect((await readyFrame()).frame).not.toBe(reconnected.frame);

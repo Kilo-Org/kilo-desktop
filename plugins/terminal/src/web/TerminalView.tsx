@@ -88,8 +88,10 @@ function TerminalNotice({
  * to the pane's shell in main once it is ready. The pane id names the shell;
  * a theme change remounts the frame and replays the shell's history.
  */
-export function TerminalView({ workSessionId, pane, directory }: PaneProps) {
+export function TerminalView({ workSessionId, pane, workspaceId, directory }: PaneProps) {
 	const sdk = useSdk();
+	// Without a workspace the session's folder is a chat's internal scratch folder; start at home.
+	const cwd = workspaceId === null ? null : directory;
 	const terminals = useDomainObject(Terminals);
 	const theme = useDomainObjectState(Theme, selectTheme);
 	const viewRef = useRef<HTMLDivElement>(null);
@@ -146,7 +148,7 @@ export function TerminalView({ workSessionId, pane, directory }: PaneProps) {
 					protocolVersion: TERMINAL_PROTOCOL_VERSION,
 					sessionId: terminalSessionId,
 					terminalId,
-					...(!reconnecting && directory ? { cwd: directory } : {}),
+					...(!reconnecting && cwd ? { cwd } : {}),
 					cols: INITIAL_COLS,
 					rows: INITIAL_ROWS,
 					initialLabel: defaultLabel,
@@ -175,7 +177,7 @@ export function TerminalView({ workSessionId, pane, directory }: PaneProps) {
 			window.removeEventListener("message", onMessage);
 			if (!transferred) port?.close();
 		};
-	}, [available, defaultLabel, directory, frameKey, frameSrc, sdk, terminalId, terminalSessionId]);
+	}, [available, cwd, defaultLabel, frameKey, frameSrc, sdk, terminalId, terminalSessionId]);
 
 	if (!terminals) {
 		return (

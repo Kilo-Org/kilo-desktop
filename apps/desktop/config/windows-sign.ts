@@ -97,6 +97,27 @@ export async function hasExistingAuthenticodeSignature(filePath: string): Promis
 	}
 }
 
+interface ExecFileFailure {
+	readonly code?: number | string;
+	readonly stdout?: string;
+	readonly stderr?: string;
+}
+
+/**
+ * execFile's rejection message is only the command line; AzureSignTool's
+ * diagnosis (Key Vault 403, unknown cert, timestamp failure) lives in
+ * stdout/stderr. Forge prints just `error.message`, so fold the output in.
+ */
+function signingFailure(filePath: string, error: unknown): Error {
+	const { code, stdout, stderr } = (error ?? {}) as ExecFileFailure;
+	const details = [stderr?.trim(), stdout?.trim()].filter(Boolean).join("\n");
+	const exitCode = code === undefined ? "" : ` (exit code ${code})`;
+	return new Error(
+		`AzureSignTool failed to sign ${filePath}${exitCode}${details ? `:\n${details}` : ""}`,
+		{ cause: error },
+	);
+}
+
 /**
  * Signs a Windows binary with AzureSignTool using Key Vault Managed Identity / az login.
  * Callers must only invoke this when Azure signing mode is selected; missing credentials fail hard.
@@ -126,15 +147,21 @@ export async function signWindowsFile(
 	}
 
 	console.log(`Signing file with AzureSignTool: ${filePath}`);
-	const { stdout, stderr } = await execFile(
-		"AzureSignTool",
-		["sign", "-kvu", vaultUri, "-kvc", certName, "-tr", TIMESTAMP_URL, "-v", "-kvm", filePath],
-		{
-			windowsHide: true,
-			maxBuffer: 10 * 1024 * 1024,
-		},
-	);
+	let output: { stdout?: string; stderr?: string };
+	try {
+		output = await execFile(
+			"AzureSignTool",
+			["sign", "-kvu", vaultUri, "-kvc", certName, "-tr", TIMESTAMP_URL, "-v", "-kvm", filePath],
+			{
+				windowsHide: true,
+				maxBuffer: 10 * 1024 * 1024,
+			},
+		);
+	} catch (error) {
+		throw signingFailure(filePath, error);
+	}
 
+	const { stdout, stderr } = output;
 	if (stderr?.trim()) {
 		console.error(stderr);
 	}

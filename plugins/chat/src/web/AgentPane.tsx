@@ -10,7 +10,6 @@ import {
 	Panes,
 	WorkSessions,
 	Workspaces,
-	type Pane,
 	type PaneProps,
 	type WorkspacesState,
 } from "@kilo-desktop/plugin-work-sessions/contracts";
@@ -18,7 +17,7 @@ import { FindScope } from "@kilo-desktop/ui/components/find-bar";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import {
-	agentPaneChatId,
+	paneChatId,
 	chatPaneObject,
 	FIND_BAR_FLAG,
 	PROMPT_QUEUE_EDITING_FLAG,
@@ -75,12 +74,9 @@ function reportStartFailure(error: unknown): void {
 	});
 }
 
-const NO_PANES: readonly Pane[] = [];
-
 /**
- * The agent pane, bound to its window's services: a work session's chat (the
- * pane's `object`, else for the work session's first agent pane its first
- * chat) or a draft whose first send creates a chat in the work session
+ * The agent pane, bound to its window's services: the chat it names (its
+ * `object`) or, naming none, a draft whose first send creates a chat in the work session
  * (`WorkSessions.createChat`) and makes it the pane's `object`. A work
  * session can hold several, each its own chat.
  */
@@ -102,14 +98,6 @@ export function createAgentPane(services: AgentPaneServices): FC<PaneProps> {
 				[workspaceId],
 			),
 		);
-		const workSessionPanes = useDomainObjectState(
-			Panes,
-			useCallback(
-				(state: DomainObjectState<typeof Panes>) =>
-					state.byWorkSession[workSessionId]?.panes ?? NO_PANES,
-				[workSessionId],
-			),
-		);
 		const chats = useDomainObject(Chats);
 		const workSessions = useDomainObject(WorkSessions);
 		const panes = useDomainObject(Panes);
@@ -117,7 +105,7 @@ export function createAgentPane(services: AgentPaneServices): FC<PaneProps> {
 		const queueEditing = useContextKey(flagKey(PROMPT_QUEUE_EDITING_FLAG));
 		const rootRef = useRef<HTMLDivElement>(null);
 
-		const chatId = agentPaneChatId(pane, workSession, workSessionPanes ?? NO_PANES);
+		const chatId = paneChatId(pane);
 		const context: ChatContext = {
 			workSessionId,
 			paneId: pane.id,

@@ -9,7 +9,8 @@ import {
 } from "lucide-react";
 import { useEffect, useId, useState, type ReactNode } from "react";
 
-import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
+import { useDomainObject, useDomainObjectState, useSdk } from "@kilo-desktop/kernel/web";
+import { Chats } from "@kilo-desktop/plugin-core/contracts";
 import { Alert, AlertDescription, AlertTitle } from "@kilo-desktop/ui/components/alert";
 import {
 	AlertDialog,
@@ -62,17 +63,21 @@ import { cn } from "@kilo-desktop/ui/lib/utils";
 import {
 	LayoutPresets,
 	Panes,
+	type Pane,
 	type LayoutPreset,
 	type LayoutPresetsState,
 	type WorkSessionActionProps,
 } from "../../contracts";
-import { sessionPanesOf } from "../shared/pane-actions";
-import { usePaneKinds } from "../shared/pane-kinds";
+import { openerFor } from "../../contracts/model/openers";
+import { closePane, sessionPanesOf } from "../shared/pane-actions";
+import { implementationOf, usePaneKinds } from "../shared/pane-kinds";
 import { notify } from "../shared/report-failure";
 import { useTracker } from "../shared/telemetry";
+import { closedChatsOf } from "./closed-chats";
 import {
 	applyLayoutTemplate,
 	captureLayoutTemplate,
+	planLayoutTemplate,
 	type CapturedTemplate,
 } from "./layout-template";
 
@@ -119,6 +124,42 @@ function LayoutAction({
 	);
 }
 
+const LIST_FORMAT = new Intl.ListFormat("en", { type: "conjunction" });
+
+const titlesOf = (panes: readonly Pane[]) => LIST_FORMAT.format(panes.map((pane) => pane.title));
+
+/**
+ * What applying a layout closes: the panes it has no slot for, split into
+ * those that can be opened again (a chat, a file) and those whose contents
+ * are lost (a terminal's process, an unsent draft).
+ */
+function ClosingPanes({
+	panes,
+	reopens,
+}: {
+	readonly panes: readonly Pane[];
+	readonly reopens: (pane: Pane) => boolean;
+}) {
+	const reopenable = panes.filter(reopens);
+	const lost = panes.filter((pane) => !reopens(pane));
+	const verb = (count: number, one: string, many: string) => (count === 1 ? one : many);
+	return (
+		<>
+			<p>
+				This layout has no place for {titlesOf(panes)}, so applying it closes{" "}
+				{verb(panes.length, "it", "them")}.
+			</p>
+			{reopenable.length > 0 ? <p>{titlesOf(reopenable)} can be reopened later.</p> : null}
+			{lost.length > 0 ? (
+				<p>
+					{titlesOf(lost)} can't be reopened: anything running or unsent in{" "}
+					{verb(lost.length, "it", "them")} is lost.
+				</p>
+			) : null}
+		</>
+	);
+}
+
 /** One layout action at a time, with its failure kept for the open dialog or a toast. */
 function useLayoutAction() {
 	const [pending, setPending] = useState(false);
@@ -146,6 +187,8 @@ export function LayoutPresetsMenu({ workSession }: WorkSessionActionProps) {
 	const layouts = useDomainObject(LayoutPresets);
 	const state = useDomainObjectState(LayoutPresets, selectState);
 	const panes = useDomainObject(Panes);
+	const chats = useDomainObject(Chats);
+	const sdk = useSdk();
 	const kinds = usePaneKinds();
 	const fieldId = useId();
 	const action = useLayoutAction();
@@ -157,12 +200,16 @@ export function LayoutPresetsMenu({ workSession }: WorkSessionActionProps) {
 	const [renaming, setRenaming] = useState<LayoutPreset | null>(null);
 	const [updating, setUpdating] = useState<LayoutPreset | null>(null);
 	const [deleting, setDeleting] = useState<LayoutPreset | null>(null);
+	const [confirming, setConfirming] = useState<{
+		readonly preset: LayoutPreset;
+		readonly closing: readonly Pane[];
+	} | null>(null);
 	const { pending, error } = action;
 
 	useEffect(() => {
-		if (!error || snapshot || managing || deleting) return;
+		if (!error || snapshot || managing || deleting || confirming) return;
 		notify({ level: "error", title: "Layout action failed", description: error });
-	}, [deleting, error, managing, snapshot]);
+	}, [confirming, deleting, error, managing, snapshot]);
 
 	if (!layouts || !state) return null;
 	const methods = layouts.methods;
@@ -193,11 +240,49 @@ export function LayoutPresetsMenu({ workSession }: WorkSessionActionProps) {
 		}
 	}
 
+	function closedChats() {
+		if (!panes) return [];
+		return closedChatsOf(
+			workSession,
+			chats?.getState().chats ?? {},
+			sessionPanesOf(panes, workSession.id).panes,
+			(object) => openerFor(sdk, object),
+		);
+	}
+
+	/** Whether a closed pane can be opened again: it shows an object (a chat, a file) an opener opens. */
+	function reopens(pane: Pane): boolean {
+		return pane.object !== undefined && openerFor(sdk, pane.object) !== undefined;
+	}
+
+	/** Applies a preset, first asking when it would close panes it has no slot for. */
 	function apply(preset: LayoutPreset) {
 		if (!panes) return;
+		const { unplaced } = planLayoutTemplate(
+			preset.template,
+			sessionPanesOf(panes, workSession.id),
+			kinds,
+			{ closed: closedChats() },
+		);
+		if (unplaced.length > 0) setConfirming({ preset, closing: unplaced });
+		else applyNow(preset);
+	}
+
+	function applyNow(preset: LayoutPreset, onApplied?: () => void) {
+		if (!panes) return;
 		action.run(
-			() => applyLayoutTemplate(panes, workSession.id, preset.template, kinds),
-			() => track("layout-preset-applied"),
+			() =>
+				applyLayoutTemplate(panes, workSession.id, preset.template, kinds, {
+					closed: closedChats(),
+					close: (pane) =>
+						closePane(panes, workSession.id, pane.id, (kind) =>
+							implementationOf(kinds.byKey.get(kind)),
+						),
+				}),
+			() => {
+				onApplied?.();
+				track("layout-preset-applied");
+			},
 		);
 	}
 
@@ -463,6 +548,39 @@ export function LayoutPresetsMenu({ workSession }: WorkSessionActionProps) {
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
+			<AlertDialog
+				open={confirming !== null}
+				onOpenChange={(open) => {
+					if (!open && !pending) {
+						setConfirming(null);
+						action.setError(null);
+					}
+				}}
+			>
+				<AlertDialogContent>
+					<AlertDialogHeader>
+						<AlertDialogTitle>Apply {confirming?.preset.name}?</AlertDialogTitle>
+						<AlertDialogDescription render={<div />} className="space-y-2">
+							{confirming ? <ClosingPanes panes={confirming.closing} reopens={reopens} /> : null}
+						</AlertDialogDescription>
+					</AlertDialogHeader>
+					{errorAlert}
+					<AlertDialogFooter>
+						<AlertDialogCancel data-qa-id="chat-layout-apply-cancel" disabled={pending}>
+							Cancel
+						</AlertDialogCancel>
+						<AlertDialogAction
+							data-qa-id="chat-layout-apply-confirm"
+							disabled={pending}
+							onClick={() => {
+								if (confirming) applyNow(confirming.preset, () => setConfirming(null));
+							}}
+						>
+							{pending ? "Applying..." : "Apply layout"}
+						</AlertDialogAction>
+					</AlertDialogFooter>
+				</AlertDialogContent>
+			</AlertDialog>
 			<AlertDialog
 				open={deleting !== null}
 				onOpenChange={(open) => {

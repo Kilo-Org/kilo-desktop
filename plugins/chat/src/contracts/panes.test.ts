@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-	agentPaneChatId,
 	chatPaneObject,
 	paneChatId,
 	planPaneMetadata,
@@ -19,60 +18,6 @@ describe("paneChatId", () => {
 			paneChatId({ metadata: {}, object: { type: "kilo.work-sessions/file", id: "/a" } }),
 		).toBeNull();
 		expect(paneChatId({ metadata: {} })).toBeNull();
-	});
-});
-
-describe("agentPaneChatId", () => {
-	it("prefers the chat the pane names, then the work session's first, else none", () => {
-		expect(
-			agentPaneChatId({ metadata: {}, object: chatPaneObject("ses_b") }, { chatIds: ["ses_a"] }),
-		).toBe("ses_b");
-		expect(agentPaneChatId({ metadata: { chatId: "ses_b" } }, { chatIds: ["ses_a"] })).toBe(
-			"ses_b",
-		);
-		expect(agentPaneChatId({ metadata: {} }, { chatIds: ["ses_a", "ses_c"] })).toBe("ses_a");
-		expect(agentPaneChatId({ metadata: {} }, { chatIds: [] })).toBeNull();
-		expect(agentPaneChatId({ metadata: {} }, undefined)).toBeNull();
-	});
-
-	describe("with the work session's other agent panes", () => {
-		const agent = (id: string, chatId?: string) => ({
-			id,
-			kind: "kilo.chat/agent",
-			metadata: {},
-			...(chatId ? { object: chatPaneObject(chatId) } : {}),
-		});
-		const workSession = { chatIds: ["ses_a", "ses_b"] };
-
-		it("gives the work session's first chat to its first agent pane, when that names none", () => {
-			const panes = [agent("p1"), agent("p2")];
-			expect(agentPaneChatId(panes[0]!, workSession, panes)).toBe("ses_a");
-			expect(agentPaneChatId(panes[1]!, workSession, panes)).toBeNull();
-		});
-
-		it("leaves a pane added beside an agent pane a draft", () => {
-			const panes = [agent("p1", "ses_b"), agent("p2")];
-			expect(agentPaneChatId(panes[1]!, workSession, panes)).toBeNull();
-		});
-
-		it("leaves the first chat to the pane that names it", () => {
-			const panes = [agent("p1"), agent("p2", "ses_a")];
-			expect(agentPaneChatId(panes[0]!, workSession, panes)).toBeNull();
-			expect(agentPaneChatId(panes[1]!, workSession, panes)).toBe("ses_a");
-		});
-
-		it("counts an adopted pane naming the chat in its metadata", () => {
-			const panes = [
-				agent("p1"),
-				{ id: "p2", kind: "kilo.chat/agent", metadata: { chatId: "ses_a" } },
-			];
-			expect(agentPaneChatId(panes[0]!, workSession, panes)).toBeNull();
-		});
-
-		it("ignores panes of other kinds", () => {
-			const panes = [{ id: "t", kind: "kilo.terminal/terminal", metadata: {} }, agent("p1")];
-			expect(agentPaneChatId(panes[1]!, workSession, panes)).toBe("ses_a");
-		});
 	});
 });
 

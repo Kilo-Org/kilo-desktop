@@ -8,7 +8,7 @@ import {
 import { testPlugin } from "@kilo-desktop/kernel/testing";
 
 import { bootWorkSessions, storageWithWorkspaces, type MemoryStorage } from "../test-boot";
-import { globToRegExp } from "./openers";
+import { globToRegExp } from "../../contracts/model/openers";
 import { paneTypeOf } from "./index";
 
 /** A plugin with pane kinds and openers, declared in its manifest only. */

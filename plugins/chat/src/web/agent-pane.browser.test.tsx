@@ -200,25 +200,29 @@ describe("an agent pane with a chat", () => {
 		expect(server.requestsTo("GET", "/session/ses_a")[0]!.directory).toBe("/projects/app");
 	});
 
-	it("shows the session's chat in a pane handed over without metadata", async () => {
-		const server = serverWithChat("ses_legacy", [
-			userMessage("ses_legacy", "msg_u1", "An older chat"),
-		]);
+	it("starts a new chat in an agent pane naming none, though the session's chat is closed", async () => {
+		const server = serverWithChat("ses_a", [userMessage("ses_a", "msg_u1", "The closed chat")]);
 		await renderChat({
 			server,
-			workSession: workSession({ chatIds: ["ses_legacy"], directory: "/projects/app" }),
-			pane: agentPane({ id: "agent:wses_1" }),
+			workSession: workSession({ chatIds: ["ses_a"], directory: "/projects/app" }),
+			pane: agentPane({ id: "pane_new" }),
+			chats: [chatSummary("ses_a")],
 		});
 
-		await expect.element(page.getByText("An older chat")).toBeVisible();
+		await userEvent.fill(page.getByTestId("kilo-composer-input"), "Something new");
+		await page.getByTestId("kilo-composer-send").click();
+
+		const [prompt] = await promptsTo(server, "ses_new_1");
+		expect(promptText(prompt!)).toBe("Something new");
+		expect(page.getByText("The closed chat").elements()).toHaveLength(0);
 	});
 
-	it("leaves an agent pane added beside it a draft that starts a chat of its own", async () => {
+	it("leaves an agent pane added beside another a draft that starts a chat of its own", async () => {
 		const server = serverWithChat("ses_a", [userMessage("ses_a", "msg_u1", "The first chat")]);
 		const host = await renderChat({
 			server,
 			workSession: workSession({ chatIds: ["ses_a"], directory: "/projects/app" }),
-			otherPanes: [agentPane({ id: "pane_first" })],
+			otherPanes: [agentPane({ id: "pane_first", object: chatPaneObject("ses_a") })],
 			pane: agentPane({ id: "pane_second" }),
 			chats: [chatSummary("ses_a")],
 		});
@@ -687,11 +691,14 @@ describe("several agent panes in a session", () => {
 
 	it("keeps each pane's unsent text to itself", async () => {
 		const host = await renderChat({
-			otherPanes: [agentPane({ id: "pane_first" })],
+			server: serverWithChat(),
+			otherPanes: [agentPane({ id: "pane_first", object: chatPaneObject("ses_a") })],
 			pane: agentPane({ id: "pane_second" }),
+			chats: [chatSummary("ses_a")],
 		});
 		const first = page.getByTestId("pane-pane_first");
 		const second = page.getByTestId("pane-pane_second");
+		await expect.element(first.getByText("Hello")).toBeVisible();
 
 		await userEvent.fill(first.getByTestId("kilo-composer-input"), "First thought");
 		await userEvent.fill(second.getByTestId("kilo-composer-input"), "Second thought");
@@ -729,7 +736,7 @@ describe("several agent panes in a session", () => {
 
 	it("takes each pane's unsent text with it when it pops out", async () => {
 		const host = await renderChat({
-			otherPanes: [agentPane({ id: "pane_first" })],
+			otherPanes: [agentPane({ id: "pane_first", object: chatPaneObject("ses_a") })],
 			pane: agentPane({ id: "pane_second" }),
 		});
 		await userEvent.fill(

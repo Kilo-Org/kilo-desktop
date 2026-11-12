@@ -35,6 +35,7 @@ import manifest from "../../plugin.json";
 import {
 	AGENT_PANE_KIND,
 	CHAT_DEFINITIONS,
+	chatPaneObject,
 	CHAT_PLUGIN_ID,
 	MEDIA_PANE_KIND,
 	PLAN_PANE_KIND,
@@ -82,6 +83,7 @@ export interface ChatHostOptions {
 	readonly otherSessionPanes?: Readonly<Record<string, WorkSessionPanes>>;
 	/** The open work session's saved layout (serialized). */
 	readonly layout?: string;
+	/** The agent pane; by default one showing the work session's first chat, if it has one. */
 	readonly pane?: Pane;
 	/** The work session's other panes, before the agent pane. */
 	readonly otherPanes?: readonly Pane[];
@@ -150,7 +152,9 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 	const server = options.server ?? new FakeKiloServer();
 	server.install();
 	const initialWorkSession = options.workSession ?? options.session ?? workSession();
-	const pane = options.pane ?? agentPane();
+	const firstChatId = initialWorkSession.chatIds[0];
+	const pane =
+		options.pane ?? agentPane(firstChatId ? { object: chatPaneObject(firstChatId) } : {});
 	const others = options.otherPanes ?? [];
 	const initialPanes = options.withoutPane ? [...others] : [...others, pane];
 	const workSessions = fakeWorkSessionsMain({

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
 import { flattenPanes, parseLayoutJson } from "@kilo-desktop/pane-layout";
+import type { ChatSummary } from "@kilo-desktop/plugin-core/contracts";
 
 import {
 	CHAT_LAYOUTS_FLAG,
@@ -14,6 +15,7 @@ import {
 	type WorkSessionPanes,
 } from "../../contracts";
 import {
+	chat,
 	grantDataCollection,
 	pane as paneRecord,
 	paneKindPlugin,
@@ -65,9 +67,33 @@ const panesPlugin = paneKindPlugin("test.panes", [
 	},
 ]);
 
+/** A chat-showing kind, which chats (`kilo.core/chat`) open in, as kilo.chat's agent pane. */
+const AGENT = "test.agents/agent";
+const agentsPlugin = paneKindPlugin(
+	"test.agents",
+	[
+		{
+			id: "agent",
+			metadata: { title: "Agent", launch: { newSession: true, inSession: true } },
+			component: ({ pane: shown }: PaneProps) => (
+				<div data-qa-id={`agent-${shown.id}`}>{shown.object?.id ?? "new"}</div>
+			),
+		},
+	],
+	{
+		extensions: {
+			"kilo.work-sessions/opener": [
+				{ id: "chat", match: { type: "kilo.core/chat" }, pane: "test.agents/agent" },
+			],
+		},
+	},
+);
+
 async function renderLayouts(
 	options: {
 		panes?: WorkSessionPanes;
+		session?: typeof SESSION;
+		chats?: ChatSummary[];
 		layouts?: { presets: LayoutPreset[]; defaultPresetId: string | null } | null;
 		flag?: boolean;
 		open?: boolean;
@@ -75,7 +101,8 @@ async function renderLayouts(
 ) {
 	const sink = telemetrySink();
 	const rendered = await renderWorkSessions({
-		workSessions: [SESSION],
+		workSessions: [options.session ?? SESSION],
+		...(options.chats ? { chats: options.chats } : {}),
 		workspaces: [APP],
 		activeWorkspaceId: APP.id,
 		panes: { [SESSION.id]: options.panes ?? EMPTY_WORK_SESSION_PANES },
@@ -87,7 +114,7 @@ async function renderLayouts(
 				}),
 		...(options.open === false ? {} : { open: SESSION.id }),
 		flags: { [CHAT_LAYOUTS_FLAG]: options.flag !== false },
-		guests: [panesPlugin, sink.plugin],
+		guests: [panesPlugin, agentsPlugin, sink.plugin],
 		beforeRender: grantDataCollection,
 	});
 	const panesOf = (workSessionId: string) => rendered.panesState(workSessionId);
@@ -170,6 +197,106 @@ describe("layout presets menu", () => {
 		expect(layout.groups.map((group) => group.preferredWidth)).toEqual([500, 420]);
 		expect(layout.activePaneId).toBe(flattenPanes(layout)[1]?.id);
 		await vi.waitFor(() => expect(sink.events("layout-preset-applied")).toEqual([{}]));
+	});
+
+	it("fills spare agent slots with the session's closed chats, newest first, then new agents", async () => {
+		const agentSlot = (id: string) => ({ id, kind: AGENT });
+		const agents: LayoutPreset = {
+			id: "agents",
+			name: "Agents",
+			template: {
+				version: 2,
+				arrangement: "tiles",
+				slots: ["a", "b", "c", "d"].map(agentSlot),
+				groups: ["a", "b", "c", "d"].map((id) => ({
+					id: `g-${id}`,
+					tabs: [id],
+					activePaneId: id,
+					width: 400,
+					pinned: false,
+				})),
+			},
+		};
+		const { calls, panesOf } = await renderLayouts({
+			session: { ...SESSION, chatIds: ["ses_open", "ses_old", "ses_new"] },
+			chats: [
+				chat("ses_open", {}, { updatedAt: 3 }),
+				chat("ses_old", {}, { updatedAt: 1 }),
+				chat("ses_new", {}, { updatedAt: 2 }),
+			],
+			panes: withPanes([
+				paneRecord("open", AGENT, {
+					title: "Agent",
+					object: { type: "kilo.core/chat", id: "ses_open" },
+				}),
+			]),
+			layouts: { presets: [agents], defaultPresetId: null },
+		});
+		await menu().click();
+		await page.getByTestId("chat-layout-apply-agents").click();
+
+		await vi.waitFor(() => expect(calls.openPane).toHaveBeenCalledTimes(3));
+		expect(calls.openPane.mock.calls.map(([input]) => input.object?.id ?? null)).toEqual([
+			"ses_new",
+			"ses_old",
+			null,
+		]);
+		await vi.waitFor(() => {
+			const layout = parseLayoutJson(panesOf(SESSION.id)?.layout);
+			expect(layout && flattenPanes(layout)).toHaveLength(4);
+		});
+	});
+
+	it("warns before closing every pane the layout has no slot for, then closes them", async () => {
+		const oneAgent: LayoutPreset = {
+			id: "solo",
+			name: "Solo",
+			template: {
+				version: 2,
+				arrangement: "tiles",
+				slots: [{ id: "a", kind: AGENT }],
+				groups: [{ id: "g", tabs: ["a"], activePaneId: "a", width: 400, pinned: false }],
+			},
+		};
+		const { calls, panesOf } = await renderLayouts({
+			panes: withPanes([
+				paneRecord("p1", AGENT, { title: "Agent" }),
+				paneRecord("p2", AGENT, {
+					title: "Agent 2",
+					object: { type: "kilo.core/chat", id: "ses_b" },
+				}),
+				paneRecord("p3", AGENT, { title: "Agent 3" }),
+				pane("t", TERMINAL, "Server"),
+			]),
+			layouts: { presets: [oneAgent], defaultPresetId: null },
+		});
+
+		await menu().click();
+		await page.getByTestId("chat-layout-apply-solo").click();
+		const warning = page.getByRole("alertdialog");
+		await expect
+			.element(warning.getByText("no place for Agent 2, Agent 3, and Server", { exact: false }))
+			.toBeVisible();
+		await expect
+			.element(warning.getByText("Agent 2 can be reopened later", { exact: false }))
+			.toBeVisible();
+		await expect
+			.element(warning.getByText("Agent 3 and Server can't be reopened", { exact: false }))
+			.toBeVisible();
+		await page.getByTestId("chat-layout-apply-cancel").click();
+		await expect.element(warning).not.toBeInTheDocument();
+		expect(calls.closePane).not.toHaveBeenCalled();
+
+		await menu().click();
+		await page.getByTestId("chat-layout-apply-solo").click();
+		await page.getByTestId("chat-layout-apply-confirm").click();
+
+		await vi.waitFor(() => expect(calls.closePane).toHaveBeenCalledTimes(3));
+		expect(calls.closePane.mock.calls.map(([id]) => id)).toEqual(["p2", "p3", "t"]);
+		await vi.waitFor(() => {
+			const layout = parseLayoutJson(panesOf(SESSION.id)?.layout);
+			expect(layout?.groups.map((group) => group.tabs.map((tab) => tab.id))).toEqual([["p1"]]);
+		});
 	});
 
 	it("manages the default, renames and deletes with confirmation", async () => {

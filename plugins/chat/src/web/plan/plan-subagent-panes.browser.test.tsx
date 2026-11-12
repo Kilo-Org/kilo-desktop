@@ -232,11 +232,11 @@ describe("the plan pane", () => {
 	});
 	const planPaneOf = (chatId: string) => planPaneRecord({ object: chatPaneObject(chatId) });
 
-	it("shows origin's plan pane for the work session's chat and approves from there", async () => {
+	it("shows the plan pane for its chat and approves from there", async () => {
 		const fake = server(planTurn());
 		await show(fake, {
 			workSession: workSession({ chatIds: ["ses_a"] }),
-			otherPanes: [planPaneRecord()],
+			otherPanes: [planPaneOf("ses_a")],
 		});
 
 		await expect.element(planPane().getByText("Patch the session check"), WAIT).toBeVisible();

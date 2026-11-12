@@ -161,6 +161,15 @@
 					"paneKind": "kilo.chat/agent"
 				}
 			],
+			"kilo.work-sessions/opener": [
+				{
+					"id": "chat",
+					"match": {
+						"type": "kilo.core/chat"
+					},
+					"pane": "kilo.chat/agent"
+				}
+			],
 			"kilo.work-sessions/work-session-starter": [
 				{
 					"id": "composer",

@@ -20,7 +20,7 @@ import {
 import { PaneKind } from "../../contracts/ui/pane-kind";
 import { panesStore } from "../storage/stores";
 import { track } from "../telemetry";
-import { openerFor } from "./openers";
+import { openerFor } from "../../contracts/model/openers";
 
 export interface PanesOptions {
 	readonly createId?: () => string;

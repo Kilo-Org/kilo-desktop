@@ -13,8 +13,9 @@ import { PaneAddTab } from "./PaneAddTab";
 import type { CanvasPaneKind } from "../shared/pane-kinds";
 
 /**
- * The session header's "+" menu, then a button for each kind pinned to the
- * header. `menuFor` gives a pinned kind's contributed menu entries, if any
+ * The session header's "+" menu (every addable kind, as a group's "+" offers
+ * them), then a button for each kind pinned to the header. `menuFor` gives a
+ * pinned kind's contributed menu entries, if any
  * (kilo.workbench/pane-kind-menu): its button then opens a menu, "New <kind>"
  * first, instead of launching.
  */
@@ -23,8 +24,8 @@ export const PaneLaunchToolbar: FC<{
 	onLaunch: (kind: CanvasPaneKind) => void;
 	menuFor?: (kind: CanvasPaneKind) => ReactNode;
 }> = ({ kinds, onLaunch, menuFor }) => {
-	const listed = kinds.filter((kind) => kind.addable && !kind.pinned);
-	const pinned = kinds.filter((kind) => kind.addable && kind.pinned);
+	const listed = kinds.filter((kind) => kind.addable);
+	const pinned = listed.filter((kind) => kind.pinned);
 	return (
 		<div
 			className="flex h-7 shrink-0 items-center gap-1 [-webkit-app-region:no-drag]"

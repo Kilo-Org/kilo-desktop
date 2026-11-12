@@ -98,7 +98,16 @@ describe("the media viewer pane", () => {
 				document.querySelector('[data-qa-id="chat-media-pane"]')?.contains(document.activeElement),
 			)
 			.toBe(true);
-		await userEvent.keyboard("+");
+		// A further remount can still swallow one key on a slow runner, so zoom
+		// until the view leaves fit-to-window rather than trusting a single press.
+		const fit = () =>
+			document.querySelector<HTMLButtonElement>('[data-qa-id="media-lightbox-fit"]');
+		await expect
+			.poll(async () => {
+				if (fit()?.disabled) await userEvent.keyboard("+");
+				return fit()?.disabled;
+			})
+			.toBe(false);
 		await expect.element(viewer.getByTestId("media-lightbox-fit")).toBeEnabled();
 	});
 

@@ -1,6 +1,6 @@
 import type { ObjectRef, PluginSdk } from "@kilo-desktop/kernel";
 
-import { Opener } from "../../contracts/model";
+import { Opener } from "./panes";
 
 /** `*` matches within a path segment, `**` across segments, `?` one character; matched against the id's end. */
 export function globToRegExp(glob: string): RegExp {

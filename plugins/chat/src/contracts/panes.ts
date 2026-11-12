@@ -1,6 +1,6 @@
 import { isRef, ref, type ObjectRef } from "@kilo-desktop/kernel";
 import { Chat } from "@kilo-desktop/plugin-core/contracts";
-import type { Pane, WorkSession } from "@kilo-desktop/plugin-work-sessions/contracts";
+import type { Pane } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 /** The agent pane kind's contribution key. */
 export const AGENT_PANE_KIND = "kilo.chat/agent";
@@ -43,7 +43,9 @@ export const chatPaneObject = (chatId: string): ObjectRef => ref(Chat, chatId);
 
 /**
  * The chat a pane names: its `object` when that is a chat, else the chat
- * id an adopted pane kept in `metadataKey`.
+ * id an adopted pane kept in `metadataKey`. An agent pane naming none is a
+ * new chat, whose first send creates it; a closed chat is reopened only by
+ * opening a pane on it (the Agent button's menu, a layout preset).
  */
 export function paneChatId(
 	pane: Pick<Pane, "metadata"> & Partial<Pick<Pane, "object">>,
@@ -51,31 +53,6 @@ export function paneChatId(
 ): string | null {
 	if (isRef(Chat, pane.object)) return pane.object.id;
 	return pane.metadata[metadataKey] || null;
-}
-
-type PaneRef = Pick<Pane, "id" | "kind" | "metadata"> & Partial<Pick<Pane, "object">>;
-
-/**
- * The chat an agent or plan pane shows: the one it names (`paneChatId`),
- * else none — for an agent pane, a draft whose first send creates the chat.
- * The work session's first agent pane naming no chat shows the work
- * session's first chat (a work session's agent pane reopened after its last
- * was closed), unless another of `workSessionPanes` names it; agent panes
- * added beside it start new chats.
- */
-export function agentPaneChatId(
-	pane: Pick<Pane, "metadata"> & Partial<Pick<Pane, "id" | "object">>,
-	workSession: Pick<WorkSession, "chatIds"> | null | undefined,
-	workSessionPanes: readonly PaneRef[] = [],
-): string | null {
-	const named = paneChatId(pane);
-	if (named) return named;
-	const first = workSession?.chatIds[0];
-	if (!first) return null;
-	const agents = workSessionPanes.filter((candidate) => candidate.kind === AGENT_PANE_KIND);
-	if (agents.some((candidate) => paneChatId(candidate) === first)) return null;
-	const firstAgent = agents[0];
-	return !firstAgent || firstAgent.id === pane.id ? first : null;
 }
 
 export interface PlanPaneAnchors {

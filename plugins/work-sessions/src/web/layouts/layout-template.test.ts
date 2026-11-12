@@ -237,11 +237,11 @@ describe("planning a template for a session", () => {
 			["two", "pty-a"],
 		]);
 		expect(plan.opens).toEqual([{ slotId: "diff", kind: CHANGES }]);
-		expect(plan.extras.map((extra) => extra.id)).toEqual(["doc"]);
+		expect(plan.unplaced.map((extra) => extra.id)).toEqual(["doc"]);
 		expect(plan.skipped).toEqual([]);
 	});
 
-	it("skips slots whose kind no plugin here contributes, keeping such panes as extras", () => {
+	it("skips slots whose kind no plugin here contributes, leaving such panes unplaced", () => {
 		const template: LayoutTemplate = {
 			...coding,
 			slots: [...coding.slots.slice(0, 2), { id: "terminal", kind: "gone.plugin/terminal" }],
@@ -252,7 +252,110 @@ describe("planning a template for a session", () => {
 
 		expect(plan.skipped).toEqual(["terminal"]);
 		expect(plan.opens.map((open) => open.slotId)).toEqual(["chat", "changes"]);
-		expect(plan.extras.map((extra) => extra.id)).toEqual(["old"]);
+		expect(plan.unplaced.map((extra) => extra.id)).toEqual(["old"]);
+	});
+});
+
+describe("filling a template's spare slots with closed objects", () => {
+	const agents = (count: number): LayoutTemplate => {
+		const slots = Array.from({ length: count }, (_, index) => ({ id: `a${index}`, kind: AGENT }));
+		return {
+			version: 2,
+			arrangement: "tiles",
+			slots,
+			groups: slots.map((slot) => ({
+				id: `g-${slot.id}`,
+				tabs: [slot.id],
+				activePaneId: slot.id,
+				width: 400,
+				pinned: false,
+			})),
+		};
+	};
+	const chat = (id: string) => ({ kind: AGENT, object: { type: "kilo.core/chat" as const, id } });
+
+	it("reuses open panes, then reopens closed objects in order, then opens new panes", () => {
+		const state = session([pane("open", AGENT)]);
+
+		const plan = planLayoutTemplate(agents(4), state, kinds, {
+			closed: [chat("ses_b"), chat("ses_c")],
+		});
+
+		expect(plan.reused.get("a0")?.id).toBe("open");
+		expect(plan.opens).toEqual([
+			{ slotId: "a1", kind: AGENT, object: { type: "kilo.core/chat", id: "ses_b" } },
+			{ slotId: "a2", kind: AGENT, object: { type: "kilo.core/chat", id: "ses_c" } },
+			{ slotId: "a3", kind: AGENT },
+		]);
+	});
+
+	it("only reopens an object in a slot of the kind that opens it", () => {
+		const plan = planLayoutTemplate(coding, session([]), kinds, {
+			closed: [{ kind: TERMINAL, object: { type: "test/thing" as const, id: "t" } }, chat("ses_a")],
+		});
+
+		expect(plan.opens).toEqual([
+			{ slotId: "chat", kind: AGENT, object: { type: "kilo.core/chat", id: "ses_a" } },
+			{ slotId: "changes", kind: CHANGES },
+			{ slotId: "terminal", kind: TERMINAL, object: { type: "test/thing", id: "t" } },
+		]);
+	});
+
+	it("opens each reopened slot's pane on its object", async () => {
+		const panes = fakePanes(EMPTY_WORK_SESSION_PANES);
+
+		await applyLayoutTemplate(panes.handle, "s", agents(2), kinds, { closed: [chat("ses_a")] });
+
+		expect(panes.open.mock.calls.map(([input]) => input)).toEqual([
+			{
+				workSessionId: "s",
+				kind: AGENT,
+				object: { type: "kilo.core/chat", id: "ses_a" },
+				activate: false,
+			},
+			{ workSessionId: "s", kind: AGENT, activate: false },
+		]);
+	});
+});
+
+describe("panes a template has no slot for", () => {
+	const oneAgent: LayoutTemplate = {
+		version: 2,
+		arrangement: "tiles",
+		slots: [{ id: "a", kind: AGENT }],
+		groups: [{ id: "g", tabs: ["a"], activePaneId: "a", width: 400, pinned: false }],
+	};
+	const threeAgentsAndANote = () =>
+		session([pane("p1", AGENT), pane("p2", AGENT), pane("p3", AGENT), pane("doc", FILE)]);
+
+	it("are unplaced, whatever their kind, in tab order", () => {
+		const plan = planLayoutTemplate(oneAgent, threeAgentsAndANote(), kinds);
+
+		expect(plan.reused.get("a")?.id).toBe("p1");
+		expect(plan.unplaced.map((unplaced) => unplaced.id)).toEqual(["p2", "p3", "doc"]);
+	});
+
+	it("are closed, keeping any that refuse in a column at the end", async () => {
+		const panes = fakePanes(threeAgentsAndANote());
+		const close = vi.fn(async (closing: Pane) => closing.id === "p2");
+
+		await applyLayoutTemplate(panes.handle, "s", oneAgent, kinds, { close });
+
+		expect(close.mock.calls.map(([closing]) => closing.id)).toEqual(["p2", "p3", "doc"]);
+		const layout = parseLayoutJson(panes.state().layout)!;
+		expect(layout.groups.map((group) => group.tabs.map((tab) => tab.id))).toEqual([
+			["p1"],
+			["p3", "doc"],
+		]);
+	});
+
+	it("stay, in a column at the end, when nothing closes them", async () => {
+		const panes = fakePanes(threeAgentsAndANote());
+
+		await applyLayoutTemplate(panes.handle, "s", oneAgent, kinds);
+
+		const layout = parseLayoutJson(panes.state().layout)!;
+		expect(flattenPanes(layout).map((placed) => placed.id)).toEqual(["p1", "p2", "p3", "doc"]);
 	});
 });
 

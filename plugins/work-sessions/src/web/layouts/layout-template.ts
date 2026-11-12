@@ -7,6 +7,7 @@ import {
 	type PaneKind as LayoutKind,
 	type PaneLayout,
 } from "@kilo-desktop/pane-layout";
+import type { ObjectRef } from "@kilo-desktop/kernel";
 import type { LayoutTemplate, Pane, WorkSessionPanes } from "../../contracts";
 import { panesInOrder, saveLayout, sessionPanesOf, type PanesHandle } from "../shared/pane-actions";
 import { sessionLayout } from "../shared/session-layout";
@@ -101,34 +102,57 @@ export function captureLayoutTemplate(
 	};
 }
 
+/** Something the work session holds but no pane shows (a closed chat), and the pane kind that opens it. */
+export interface ClosedObject {
+	readonly kind: string;
+	readonly object: ObjectRef;
+}
+
 export interface LayoutPlan {
 	/** Slots filled by panes the work session already has. */
 	readonly reused: ReadonlyMap<string, Pane>;
-	/** Slots that need a new pane, in template order. */
-	readonly opens: readonly { readonly slotId: string; readonly kind: string }[];
+	/** Slots that need a new pane, in template order: on a closed object, or empty. */
+	readonly opens: readonly {
+		readonly slotId: string;
+		readonly kind: string;
+		readonly object?: ObjectRef;
+	}[];
 	/** Slots left out because no plugin in this window contributes their kind. */
 	readonly skipped: readonly string[];
-	/** Panes the template has no slot for: kept open, in a column of their own. */
-	readonly extras: readonly Pane[];
+	/** Panes the template has no slot for, in tab order: closed when the caller closes them. */
+	readonly unplaced: readonly Pane[];
+}
+
+export interface TemplateOptions {
+	/** Closed objects, in the order to reopen them (see `planLayoutTemplate`). */
+	readonly closed?: readonly ClosedObject[];
+	/**
+	 * Closes an unplaced pane, false when it stays (its kind's `canClose`
+	 * declined). Panes that stay keep a column at the end.
+	 */
+	readonly close?: (pane: Pane) => Promise<boolean>;
 }
 
 /**
  * How a template applies to a work session. Each slot reuses the work session's next
- * unused pane of its kind (in the order the tabs show), else opens one;
- * nothing is closed, so panes left over stay reachable.
+ * unused pane of its kind (in the order the tabs show), else reopens the next
+ * of `closed` its kind opens (a closed chat in an agent slot), else opens an
+ * empty one. Panes left over are unplaced, whatever their kind.
  */
 export function planLayoutTemplate(
 	template: LayoutTemplate,
 	state: WorkSessionPanes,
 	kinds: TemplateKinds,
+	{ closed = [] }: Pick<TemplateOptions, "closed"> = {},
 ): LayoutPlan {
 	const byId = new Map(state.panes.map((pane) => [pane.id, pane]));
 	const unused = panesInOrder(sessionLayout(state, kinds.layoutKindOf)).flatMap((id) => {
 		const pane = byId.get(id);
 		return pane ? [pane] : [];
 	});
+	const reopenable = [...closed];
 	const reused = new Map<string, Pane>();
-	const opens: { slotId: string; kind: string }[] = [];
+	const opens: { slotId: string; kind: string; object?: ObjectRef }[] = [];
 	const skipped: string[] = [];
 	for (const slot of template.slots) {
 		if (!kinds.byKey.has(slot.kind)) {
@@ -136,10 +160,15 @@ export function planLayoutTemplate(
 			continue;
 		}
 		const index = unused.findIndex((pane) => pane.kind === slot.kind);
-		if (index === -1) opens.push({ slotId: slot.id, kind: slot.kind });
-		else reused.set(slot.id, unused.splice(index, 1)[0]!);
+		if (index !== -1) {
+			reused.set(slot.id, unused.splice(index, 1)[0]!);
+			continue;
+		}
+		const reopen = reopenable.findIndex((candidate) => candidate.kind === slot.kind);
+		const object = reopen === -1 ? undefined : reopenable.splice(reopen, 1)[0]!.object;
+		opens.push({ slotId: slot.id, kind: slot.kind, ...(object ? { object } : {}) });
 	}
-	return { reused, opens, skipped, extras: unused };
+	return { reused, opens, skipped, unplaced: unused };
 }
 
 /**
@@ -205,24 +234,40 @@ export function buildTemplateLayout(
 	};
 }
 
-/** Applies a template to a work session: opens what's missing, then saves its layout and arrangement. */
+/**
+ * Applies a template to a work session: closes the panes it has no slot for (`close`),
+ * opens what's missing (on `closed` objects first, see `planLayoutTemplate`),
+ * then saves its layout and arrangement.
+ */
 export async function applyLayoutTemplate(
 	panes: PanesHandle,
 	workSessionId: string,
 	template: LayoutTemplate,
 	kinds: TemplateKinds,
+	{ closed, close }: TemplateOptions = {},
 ): Promise<void> {
-	const plan = planLayoutTemplate(template, sessionPanesOf(panes, workSessionId), kinds);
+	const plan = planLayoutTemplate(template, sessionPanesOf(panes, workSessionId), kinds, {
+		...(closed ? { closed } : {}),
+	});
+	const kept: Pane[] = [];
+	for (const pane of plan.unplaced) {
+		if (!close || !(await close(pane))) kept.push(pane);
+	}
 	const bySlot = new Map(plan.reused);
 	const placed = new Set([...plan.reused.values()].map((pane) => pane.id));
-	for (const { slotId, kind } of plan.opens) {
-		const pane = await panes.methods.open({ workSessionId, kind, activate: false });
+	for (const { slotId, kind, object } of plan.opens) {
+		const pane = await panes.methods.open({
+			workSessionId,
+			kind,
+			...(object ? { object } : {}),
+			activate: false,
+		});
 		// A singleton kind hands back its one pane; it fills only the first slot.
 		if (placed.has(pane.id)) continue;
 		placed.add(pane.id);
 		bySlot.set(slotId, pane);
 	}
-	const layout = buildTemplateLayout(template, bySlot, plan.extras, kinds.layoutKindOf);
+	const layout = buildTemplateLayout(template, bySlot, kept, kinds.layoutKindOf);
 	if (layout.groups.length > 0) await saveLayout(panes, workSessionId, layout);
 	await panes.methods.setArrangement({ workSessionId, arrangement: template.arrangement });
 }

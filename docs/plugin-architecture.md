@@ -3061,17 +3061,24 @@ Everything lands in a single PR once all plugins are built.
 - **Layout presets live in kilo.workbench's main entry** (`layouts` domain
   object, kv): slots name pane kinds; origin's chat / changes / terminal /
   files slots map to the agent, git, terminal and files kinds, adopted once.
-  Applying reuses the session's panes of each kind in tab order, opens the
-  rest in the background, closes nothing (extras keep a column at the end),
+  Applying reuses the session's panes of each kind in tab order, reopens the
+  session's closed objects in the remaining slots of the kind their `opener`
+  names (closed chats in agent slots, most recently active first), opens the
+  rest empty in the background, and closes every pane it has no slot for
+  after one confirmation that says which can be reopened (they show an
+  object an opener opens) and which are lost; a pane whose kind's `canClose`
+  declines keeps a column at the end,
   and skips kinds not installed. The default applies to sessions started
   empty from the launcher. Still behind `chat-layouts`; preset telemetry
   waits for layouts events. Browser mode has no presets.
 - **The header** shows plugins' header decorations, then "+" and a button for
-  each pane kind pinned there (`launch.sessionHeader`; left out of that "+"
-  menu; the Agent kind is), then the carousel toggle, then session actions
+  each pane kind pinned there (`launch.sessionHeader`; still offered in that
+  "+" menu; the Agent kind is), then the carousel toggle, then session actions
   (presets). A pinned kind with `kilo.workbench/pane-kind-menu` entries opens
   a menu, "New <kind>" first: the Agent button lists the session's chats, so
-  a closed agent pane can be reopened (its chat outlives the pane).
+  a closed agent pane can be reopened (its chat outlives the pane). "New
+  agent", "+" and the picker always start a new chat: an agent pane naming
+  no chat is a draft, never the session's closed chat.
 
 **What building step 6c settled:**
 

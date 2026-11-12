@@ -71,7 +71,7 @@ const panesPlugin = paneKindPlugin("test.panes", [
 	},
 ]);
 
-/** A singleton kind with its own button in the session header, kept out of tab groups' "+". */
+/** A singleton kind with its own button in the session header, kept out of tab groups' "+" (but not the header's). */
 const pinnedPlugin = paneKindPlugin("test.pinned", [
 	{
 		id: "helper",
@@ -164,7 +164,7 @@ describe("session panes", () => {
 			.not.toBeInTheDocument();
 	});
 
-	it("puts kinds pinned to the header after '+', which leaves them out, and before the carousel", async () => {
+	it("puts kinds pinned to the header after '+', which still offers them, and before the carousel", async () => {
 		const { calls } = await renderPanes({
 			panes: withPanes([pane("a")]),
 			extraPlugins: [pinnedPlugin],
@@ -185,7 +185,7 @@ describe("session panes", () => {
 			.toBeInTheDocument();
 		await expect
 			.element(page.getByTestId("chat-pane-launch-test.pinned/helper"))
-			.not.toBeInTheDocument();
+			.toBeInTheDocument();
 		await userEvent.keyboard("{Escape}");
 
 		await pinned.click();

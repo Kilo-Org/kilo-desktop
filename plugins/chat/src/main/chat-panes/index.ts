@@ -10,7 +10,7 @@ import {
 
 import {
 	AGENT_PANE_KIND,
-	agentPaneChatId,
+	paneChatId,
 	chatPaneObject,
 	SUBAGENT_PANE_KIND,
 	subagentPaneChildChatId,
@@ -63,7 +63,7 @@ export function chatPaneStatus(chats: ChatsState | null, chatId: string | null):
  *   no chat, and one whose panes were all closed keeps its empty record, so
  *   neither gets a pane it didn't ask for. This was kilo.sessions' job before
  *   the agent pane kind moved to kilo.chat.
- * - **Pane status.** Each agent pane's chat (`agentPaneChatId`) and each
+ * - **Pane status.** Each agent pane's chat (`paneChatId`) and each
  *   subagent pane's child chat set the pane's `status` from kilo.core's
  *   chats: `attention` while it (or a subagent of it) waits on a permission
  *   or question, `busy` while it works, cleared otherwise — also when
@@ -103,25 +103,19 @@ export function activateChatPanes(sdk: PluginSdk): void {
 		}
 	}
 
-	function paneChat(pane: Pane, workSession: WorkSession | undefined, all: readonly Pane[]) {
-		if (pane.kind === AGENT_PANE_KIND) return agentPaneChatId(pane, workSession, all);
+	function paneChat(pane: Pane) {
+		if (pane.kind === AGENT_PANE_KIND) return paneChatId(pane);
 		if (pane.kind === SUBAGENT_PANE_KIND) return subagentPaneChildChatId(pane);
 		return undefined;
 	}
 
 	function syncStatuses(): void {
-		const { panes, workSessions, chats } = handles();
+		const { panes, chats } = handles();
 		if (!panes) return;
 		const chatsState = chats?.getState() ?? null;
-		const byId = new Map(
-			(workSessions?.getState().workSessions ?? []).map((workSession) => [
-				workSession.id,
-				workSession,
-			]),
-		);
 		for (const [workSessionId, record] of Object.entries(panes.getState().byWorkSession)) {
 			for (const pane of record.panes) {
-				const chatId = paneChat(pane, byId.get(workSessionId), record.panes);
+				const chatId = paneChat(pane);
 				if (chatId === undefined) continue;
 				const status = chatPaneStatus(chatsState, chatId);
 				const key = `${workSessionId}/${pane.id}`;

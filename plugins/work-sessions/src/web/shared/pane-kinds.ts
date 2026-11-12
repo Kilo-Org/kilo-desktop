@@ -20,7 +20,7 @@ export interface CanvasPaneKind {
 	readonly unavailableHint?: string | undefined;
 	/** Keep mounted while hidden. */
 	readonly keepAlive: boolean;
-	/** Has its own button in the session header instead of a place in the header's "+" menu (`launch.sessionHeader`). */
+	/** Also has its own button in the session header, after its "+" menu (`launch.sessionHeader`). */
 	readonly pinned?: boolean;
 	/** False keeps it out of tab groups' "+" menus (`launch.tabGroup`); offered there by default. */
 	readonly inTabGroups?: boolean;

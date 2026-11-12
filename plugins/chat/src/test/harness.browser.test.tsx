@@ -13,15 +13,12 @@ import {
 
 import { testWebEntry } from "@kilo-desktop/plugin-work-sessions/testing";
 
-import { agentPaneChatId } from "../contracts";
+import { paneChatId } from "../contracts";
 import { chatSummary, renderAgentPane, workSession } from "./chat-host";
 import { renderInKernel } from "./kernel-harness";
 
-function AgentPaneProbe({ pane, workSessionId }: PaneProps) {
-	const workSession = useDomainObjectState(WorkSessions, (state) =>
-		state.workSessions.find((candidate) => candidate.id === workSessionId),
-	);
-	const chatId = agentPaneChatId(pane, workSession);
+function AgentPaneProbe({ pane }: PaneProps) {
+	const chatId = paneChatId(pane);
 	return <p data-qa-id="probe">{chatId ?? "draft"}</p>;
 }
 
@@ -67,9 +64,10 @@ describe("renderAgentPane", () => {
 		const host = await renderAgentPane({ chatWeb: probeWeb });
 		const sdk = host.host.renderer.sdkFor("kilo.chat");
 
-		const chat = await sdk.domainObjects.get(WorkSessions)!.methods.createChat({ id: "wses_1" });
+		const workSessions = sdk.domainObjects.get(WorkSessions)!;
+		const chat = await workSessions.methods.createChat({ id: "wses_1" });
 		await vi.waitFor(() =>
-			expect(document.querySelector('[data-qa-id="probe"]')?.textContent).toBe(chat.id),
+			expect(workSessions.getState().workSessions[0]?.chatIds).toContain(chat.id),
 		);
 		await sdk.domainObjects.get(Chats)!.methods.prompt({
 			chatId: chat.id,

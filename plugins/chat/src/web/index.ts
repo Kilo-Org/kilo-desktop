@@ -8,7 +8,7 @@ import {
 	WorkSessionStarter,
 } from "@kilo-desktop/plugin-work-sessions/contracts";
 
-import { agentPaneChatId, ComposerAction, ToolRenderer } from "../contracts";
+import { ComposerAction, paneChatId, ToolRenderer } from "../contracts";
 import { AgentIcon, createAgentPane } from "./AgentPane";
 import { BUILTIN_COMPOSER_ACTIONS } from "./composer/builtin-actions";
 import { activateComposerFocus, ComposerFocus } from "./composer-focus";
@@ -47,8 +47,8 @@ export const chatWebEntry = definePlugin({
 			component: createAgentPane({ chat, focus, queries }),
 			icon: AgentIcon,
 			// Loads the chat the pane would show, so opening the work session shows it at once.
-			prefetch: ({ workSession, pane, panes }) => {
-				const chatId = agentPaneChatId(pane, workSession, panes);
+			prefetch: ({ workSession, pane }) => {
+				const chatId = paneChatId(pane);
 				if (!chatId) return;
 				const directory =
 					sdk.domainObjects.get(Chats)?.getState().chats[chatId]?.directory ??

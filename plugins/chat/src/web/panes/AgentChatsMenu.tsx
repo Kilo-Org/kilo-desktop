@@ -18,7 +18,7 @@ import {
 } from "@kilo-desktop/ui/components/dropdown-menu";
 import { toast } from "@kilo-desktop/ui/components/sonner";
 
-import { AGENT_PANE_KIND, agentPaneChatId, chatPaneObject } from "../../contracts";
+import { AGENT_PANE_KIND, paneChatId, chatPaneObject } from "../../contracts";
 
 /** A work session's own chats (subagents excluded), newest first. */
 export function workSessionChats(
@@ -60,8 +60,7 @@ export function AgentChatsMenu({ workSession }: PaneKindMenuProps) {
 	if (!panes || chats.length === 0) return null;
 	const all = workSessionPanes?.panes ?? [];
 	const agentPanes = all.filter((pane) => pane.kind === AGENT_PANE_KIND);
-	const paneOf = (chatId: string) =>
-		agentPanes.find((pane) => agentPaneChatId(pane, workSession, all) === chatId);
+	const paneOf = (chatId: string) => agentPanes.find((pane) => paneChatId(pane) === chatId);
 	const show = (chatId: string) => {
 		const open = paneOf(chatId);
 		void (

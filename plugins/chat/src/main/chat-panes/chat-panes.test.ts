@@ -158,7 +158,7 @@ describe("pane status", () => {
 		});
 	});
 
-	it("follows the first chat in a work session's draft agent pane", async () => {
+	it("leaves a draft agent pane unbadged by the work session's closed chat", async () => {
 		const { core, workSessions } = await bootChatMain({
 			chats: [chat("ses_a")],
 			workSessions: {
@@ -169,7 +169,7 @@ describe("pane status", () => {
 		core.setStatus("ses_a", "busy");
 		await settle();
 
-		expect(workSessions!.panesOf("wses_1").panes[0]?.status).toBe("busy");
+		expect(workSessions!.panesOf("wses_1").panes[0]?.status).toBeUndefined();
 	});
 
 	it("clears every badge while kilo.core is away, and a badge saved from an earlier run", async () => {

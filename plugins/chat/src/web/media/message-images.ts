@@ -69,21 +69,33 @@ export interface SavedImage {
 /**
  * The image files a turn wrote: those its steps' snapshots list as changed
  * (`patch` parts, which cover scripts and shell commands too) and those its
- * file tools wrote. Each path once, at its latest revision, in first-written
- * order; at most `SAVED_IMAGES_LIMIT`, with how many more there were.
+ * file tools wrote. A snapshot image counts only when a tool call's input
+ * names it, so a checkout or pull that swaps fixture images in shows none.
+ * Each path once, at its latest revision, in first-written order; at most
+ * `SAVED_IMAGES_LIMIT`, with how many more there were.
  */
 export function savedImages(parts: unknown): { images: SavedImage[]; more: number } {
+	const list = Array.isArray(parts) ? parts : [];
+	// shortcut: a script that builds the file name at runtime isn't matched; parse its output paths if that matters.
+	const toolInputs = list
+		.map((part) => {
+			const entry = record(part);
+			return entry?.type === "tool" ? JSON.stringify(record(entry.state)?.input ?? "") : "";
+		})
+		.join("\n");
 	const byPath = new Map<string, string>();
 	const note = (path: string, revision: string) => {
 		if (!path || !imageMimeForPath(path)) return;
 		byPath.set(path, revision);
 	};
-	for (const part of Array.isArray(parts) ? parts : []) {
+	for (const part of list) {
 		const entry = record(part);
 		if (!entry) continue;
 		if (entry.type === "patch" && Array.isArray(entry.files)) {
 			const revision = typeof entry.hash === "string" ? entry.hash : "";
-			for (const file of entry.files) if (typeof file === "string") note(file, revision);
+			for (const file of entry.files) {
+				if (typeof file === "string" && toolInputs.includes(fileName(file))) note(file, revision);
+			}
 		}
 		if (entry.type === "tool" && typeof entry.tool === "string") {
 			const state = record(entry.state);

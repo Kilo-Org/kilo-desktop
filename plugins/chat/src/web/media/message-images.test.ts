@@ -47,7 +47,7 @@ describe("savedImages", () => {
 			{ type: "patch", hash: "h1", files: ["/w/plot.png", "/w/src/app.ts"] },
 			tool("call_1", "write", { input: { filePath: "/w/logo.svg" } }),
 			tool("call_2", "write", { status: "running", input: { filePath: "/w/draft.png" } }),
-			tool("call_3", "bash", { input: { command: "python plot.py" } }),
+			tool("call_3", "bash", { input: { command: "python plot.py -o plot.png" } }),
 			{ type: "patch", hash: "h2", files: ["/w/plot.png"] },
 		];
 
@@ -61,13 +61,25 @@ describe("savedImages", () => {
 		expect(savedImages(undefined)).toEqual({ images: [], more: 0 });
 	});
 
+	it("skips snapshot images no tool call names, like files a checkout changed", () => {
+		const parts = [
+			tool("call_1", "bash", { input: { command: "git checkout feature" } }),
+			{ type: "patch", hash: "h1", files: ["/w/e2e/fixtures/sample-receipt.png"] },
+		];
+
+		expect(savedImages(parts)).toEqual({ images: [], more: 0 });
+	});
+
 	it("caps how many it lists", () => {
 		const files = Array.from(
 			{ length: SAVED_IMAGES_LIMIT + 3 },
 			(_, index) => `/w/${String(index)}.png`,
 		);
 
-		const { images, more } = savedImages([{ type: "patch", hash: "h", files }]);
+		const { images, more } = savedImages([
+			tool("call_1", "bash", { input: { command: `touch ${files.join(" ")}` } }),
+			{ type: "patch", hash: "h", files },
+		]);
 
 		expect(images).toHaveLength(SAVED_IMAGES_LIMIT);
 		expect(more).toBe(3);

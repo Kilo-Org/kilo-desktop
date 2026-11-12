@@ -134,7 +134,7 @@ describe("images in a reply", () => {
 		};
 		await showReply(
 			[
-				toolPart("bash", { input: { command: "python plot.py" } }),
+				toolPart("bash", { input: { command: "python plot.py -o out/plot.png && rm gone.png" } }),
 				{
 					type: "patch",
 					hash: "h1",

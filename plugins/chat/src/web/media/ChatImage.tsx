@@ -30,7 +30,7 @@ interface ChatImageProps {
 
 const IMAGE_CLASS: Record<Size, string> = {
 	md: "max-h-80 max-w-full",
-	sm: "h-28 max-w-60",
+	sm: "max-h-28 max-w-60",
 };
 
 function ViewableImage({

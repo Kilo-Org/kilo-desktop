@@ -21,6 +21,7 @@
 		"kilo.work-sessions/pane-kind-menu": "optional",
 		"kilo.work-sessions/work-session-starter": "optional",
 		"kilo.work-sessions/opener": "optional",
+		"kilo.work-sessions/permission-auto-answer": "optional",
 		"kilo.shell/navigation": "optional",
 		"kilo.shell/notifications": "optional",
 		"kilo.shell/theme": "optional"
@@ -165,6 +166,11 @@
 					"id": "composer",
 					"title": "Agent",
 					"paneKind": "kilo.chat/agent"
+				}
+			],
+			"kilo.work-sessions/permission-auto-answer": [
+				{
+					"id": "auto-approve"
 				}
 			],
 			"kernel/command": [

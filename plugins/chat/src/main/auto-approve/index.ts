@@ -12,9 +12,9 @@ import {
 	ToolApproval,
 	type PermissionRequest,
 } from "@kilo-desktop/plugin-core/contracts";
+import { PERMISSION_AUTO_ANSWER_TIMEOUT_MS } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import {
-	AUTO_APPROVE_REVEAL_MS,
 	AUTO_APPROVE_TOOL_APPROVAL_ID,
 	AutoApprove,
 	CHAT_PLUGIN_ID,
@@ -65,7 +65,7 @@ export interface AutoApproveOptions {
  *   in Auto.
  */
 export function activateAutoApprove(sdk: PluginSdk, options: AutoApproveOptions = {}): void {
-	const revealAfterMs = options.revealAfterMs ?? AUTO_APPROVE_REVEAL_MS;
+	const revealAfterMs = options.revealAfterMs ?? PERMISSION_AUTO_ANSWER_TIMEOUT_MS;
 	const store = mainHost(sdk).storage.kv<PersistedMode>({
 		namespace: "auto-approve",
 		defaults: { mode: "manual" },

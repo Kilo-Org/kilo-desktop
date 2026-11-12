@@ -1,7 +1,8 @@
 import type { OpenCodePermissionRequest } from "@assistant-ui/react-opencode";
 import { describe, expect, it } from "vitest";
 
-import { AUTO_APPROVE_REVEAL_MS } from "../../contracts";
+import { PERMISSION_AUTO_ANSWER_TIMEOUT_MS } from "@kilo-desktop/plugin-work-sessions/contracts";
+
 import { autoAnswers, hiddenPermissions, type AutoAnswerRules } from "./visible-permissions";
 
 const request = (
@@ -59,9 +60,9 @@ describe("hiddenPermissions", () => {
 	it("hides what main will answer until it reveals it", () => {
 		const pending = [request("a")];
 		expect(hiddenPermissions(pending, state)).toEqual(pending);
-		expect(hiddenPermissions(pending, { ...state, now: 1_000 + AUTO_APPROVE_REVEAL_MS })).toEqual(
-			[],
-		);
+		expect(
+			hiddenPermissions(pending, { ...state, now: 1_000 + PERMISSION_AUTO_ANSWER_TIMEOUT_MS }),
+		).toEqual([]);
 	});
 
 	it("shows what main held and let go", () => {

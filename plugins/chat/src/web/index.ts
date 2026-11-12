@@ -12,6 +12,7 @@ import { agentPaneChatId, ComposerAction, ToolRenderer } from "../contracts";
 import { AgentIcon, createAgentPane } from "./AgentPane";
 import { BUILTIN_COMPOSER_ACTIONS } from "./composer/builtin-actions";
 import { activateComposerFocus, ComposerFocus } from "./composer-focus";
+import { implementPermissionAutoAnswer } from "./interactions/visible-permissions";
 import { handOverLegacyChoices } from "./legacy-hand-over";
 import { MediaIcon, MediaPane } from "./media/MediaPane";
 import { AgentChatsMenu } from "./panes/AgentChatsMenu";
@@ -28,7 +29,8 @@ const LOCALLY_HANDLED_COMMANDS = ["send-message", "new-line", "cycle-agent"] as 
  * kilo.chat in a window: the agent, plan, subagent and media pane kinds, the
  * New Session page's composer (`kilo.work-sessions/work-session-starter`), the
  * window's composer domain object, its own composer actions and transcript
- * renderers, and the composer's commands. One `ChatServices` (the live
+ * renderers, the composer's commands, and which permission requests Auto
+ * approve answers (`kilo.work-sessions/permission-auto-answer`). One `ChatServices` (the live
  * connection to the Kilo server and its event stream) and one query cache are
  * shared by every pane in the window.
  */
@@ -79,6 +81,7 @@ export const chatWebEntry = definePlugin({
 		for (const id of LOCALLY_HANDLED_COMMANDS) {
 			sdk.extensions.implement(KernelCommand, id, () => undefined);
 		}
+		implementPermissionAutoAnswer(sdk);
 		handOverLegacyChoices(sdk);
 	},
 });

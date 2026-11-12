@@ -1,17 +1,15 @@
 import type { OpenCodePermissionRequest } from "@assistant-ui/react-opencode";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { DomainObjectState } from "@kilo-desktop/kernel";
+import type { DomainObjectState, PluginSdk } from "@kilo-desktop/kernel";
 import { useContextKey, useDomainObjectState } from "@kilo-desktop/kernel/web";
 import { SIGNED_IN_KEY, Tool, toolWireName } from "@kilo-desktop/plugin-core/contracts";
-
 import {
-	AUTO_APPROVE_REVEAL_MS,
-	AutoApprove,
-	needsPerson,
-	neverAutoReplied,
-	type ApprovalMode,
-} from "../../contracts";
+	PERMISSION_AUTO_ANSWER_TIMEOUT_MS,
+	PermissionAutoAnswer,
+} from "@kilo-desktop/plugin-work-sessions/contracts";
+
+import { AutoApprove, needsPerson, neverAutoReplied, type ApprovalMode } from "../../contracts";
 import { useOptionalExtensions } from "../optional-extensions";
 
 const NOTHING_HELD: readonly string[] = [];
@@ -26,7 +24,10 @@ export interface AutoAnswerRules {
 }
 
 /** Whether main's auto-approver will take this request (mirrors its rules). */
-export function autoAnswers(request: OpenCodePermissionRequest, rules: AutoAnswerRules): boolean {
+export function autoAnswers(
+	request: Pick<OpenCodePermissionRequest, "permission" | "metadata">,
+	rules: AutoAnswerRules,
+): boolean {
 	if (rules.mode === "auto") return !needsPerson(request.metadata);
 	return (
 		!rules.signedIn &&
@@ -37,9 +38,28 @@ export function autoAnswers(request: OpenCodePermissionRequest, rules: AutoAnswe
 }
 
 /**
+ * Tells kilo.work-sessions' notifier which requests main's auto-approver
+ * answers, so "Kilo needs you" sounds only for those a person must answer.
+ */
+export function implementPermissionAutoAnswer(sdk: PluginSdk): void {
+	sdk.extensions.implement(PermissionAutoAnswer, "auto-approve", (request) =>
+		autoAnswers(request, {
+			mode: sdk.domainObjects.get(AutoApprove)?.getState().mode,
+			signedIn: sdk.context.get(SIGNED_IN_KEY) === true,
+			signInTools: new Set(
+				sdk.extensions
+					.list(Tool)
+					.filter((tool) => tool.metadata.requiresSignIn)
+					.map((tool) => toolWireName(tool.key)),
+			),
+		}),
+	);
+}
+
+/**
  * The pending requests the cards keep hidden: those main is answering
  * (`holding`), and those it will answer but has not reported yet, for
- * `AUTO_APPROVE_REVEAL_MS` after they were asked — unless main already held
+ * `PERMISSION_AUTO_ANSWER_TIMEOUT_MS` after they were asked — unless main already held
  * and `released` them.
  */
 export function hiddenPermissions(
@@ -55,7 +75,7 @@ export function hiddenPermissions(
 		(request) =>
 			state.holding.includes(request.id) ||
 			(!state.released.has(request.id) &&
-				state.now - request.askedAt < AUTO_APPROVE_REVEAL_MS &&
+				state.now - request.askedAt < PERMISSION_AUTO_ANSWER_TIMEOUT_MS &&
 				autoAnswers(request, state.rules)),
 	);
 }
@@ -63,7 +83,7 @@ export function hiddenPermissions(
 /**
  * Pending permissions as the cards should show them. Requests main's
  * auto-approver is answering (`holding`) stay hidden until it resolves them,
- * fails, or lets them go after `AUTO_APPROVE_REVEAL_MS`. A request it will
+ * fails, or lets them go after `PERMISSION_AUTO_ANSWER_TIMEOUT_MS`. A request it will
  * take but has not reported yet (the window can hear of it first) is hidden
  * for that long too, unless main already held and released it. Returns
  * `pending` itself when nothing is hidden.
@@ -100,7 +120,7 @@ export function useVisiblePermissionRequests(
 	);
 	const unreported = hidden.filter((request) => !holding.includes(request.id));
 	const nextRevealAt = unreported.length
-		? Math.min(...unreported.map((request) => request.askedAt)) + AUTO_APPROVE_REVEAL_MS
+		? Math.min(...unreported.map((request) => request.askedAt)) + PERMISSION_AUTO_ANSWER_TIMEOUT_MS
 		: undefined;
 	useEffect(() => {
 		if (nextRevealAt === undefined) return;

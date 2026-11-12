@@ -4,7 +4,15 @@ import { page } from "vitest/browser";
 import type { MainKernel } from "@kilo-desktop/kernel/main";
 import { Navigation } from "@kilo-desktop/plugin-shell/contracts";
 
-import { chat, fakeNotifications, NOW, renderWorkSessions, workSession } from "../../testing";
+import { PermissionAutoAnswer } from "../../contracts";
+import {
+	chat,
+	fakeNotifications,
+	NOW,
+	paneKindPlugin,
+	renderWorkSessions,
+	workSession,
+} from "../../testing";
 import {
 	NOTIFICATION_PREFERENCES_STORAGE_KEY,
 	ORIGIN_NOTIFICATION_PREFERENCES_STORAGE_KEY,
@@ -74,6 +82,50 @@ describe("chat notifications", () => {
 		chats!.events.emit("question-requested", { chatId: "c1", questionId: "q" });
 		await new Promise((resolve) => setTimeout(resolve, 50));
 		expect(shown).not.toHaveBeenCalled();
+	});
+
+	it("stays quiet for a permission request another plugin answers for the person", async () => {
+		let shown: ReturnType<typeof fakeNotifications> | undefined;
+		const autoApprover = paneKindPlugin("test.auto-approver", [], {
+			extensions: { "kilo.work-sessions/permission-auto-answer": [{ id: "auto" }] },
+			activate: (sdk) =>
+				sdk.extensions.implement(
+					PermissionAutoAnswer,
+					"auto",
+					(request) => request.permission === "external_directory",
+				),
+		});
+		const { chats } = await renderWorkSessions({
+			workSessions: [workSession("s1", { chatIds: ["c1"] })],
+			chats: [chat("c1", { status: "busy", workingSince: NOW })],
+			guests: [autoApprover],
+			beforeRender: (kernel) => {
+				shown = background(kernel);
+			},
+		});
+		await expect.element(row("Session s1")).toBeVisible();
+		const request = (id: string, permission: string) => ({
+			id,
+			chatId: "c1",
+			permission,
+			patterns: ["*"],
+			metadata: {},
+		});
+		chats!.setPermissionRequests([request("read", "external_directory"), request("rm", "bash")]);
+
+		chats!.events.emit("permission-requested", { chatId: "c1", permissionId: "read" });
+		await new Promise((resolve) => setTimeout(resolve, 50));
+		expect(shown).not.toHaveBeenCalled();
+
+		chats!.events.emit("permission-requested", { chatId: "c1", permissionId: "rm" });
+		await vi.waitFor(() =>
+			expect(shown).toHaveBeenCalledWith({
+				title: "Kilo needs your approval",
+				body: "Open Kilo to continue.",
+				silent: true,
+			}),
+		);
+		expect(shown).toHaveBeenCalledTimes(1);
 	});
 });
 

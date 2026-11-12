@@ -239,5 +239,6 @@ fails when the table is stale. Each point's contract (in the owner's
 | `kilo.work-sessions/work-session-list-action` | kilo.work-sessions   | A    | renderer | A button in the session list's header.                                                                | workspace-board                                                                                                        |
 | `kilo.work-sessions/new-work-session-option`  | kilo.work-sessions   | A    | renderer | A choice on the New Session page, beside where the session runs.                                      | git                                                                                                                    |
 | `kilo.work-sessions/work-session-starter`     | kilo.work-sessions   | X    | renderer | The New Session page's body: how a person starts a session.                                           | chat                                                                                                                   |
+| `kilo.work-sessions/permission-auto-answer`   | kilo.work-sessions   | A    | renderer | Whether a plugin answers an agent permission request for the person.                                  | chat                                                                                                                   |
 
 <!-- catalog:end -->

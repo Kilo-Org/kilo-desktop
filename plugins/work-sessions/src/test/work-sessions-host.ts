@@ -20,7 +20,12 @@ import {
 } from "@kilo-desktop/kernel";
 import type { MainKernel, MainKernelHost } from "@kilo-desktop/kernel/main";
 import { testManifest } from "@kilo-desktop/kernel/testing";
-import { Chats, type ChatActivity, type ChatSummary } from "@kilo-desktop/plugin-core/contracts";
+import {
+	Chats,
+	type ChatActivity,
+	type ChatSummary,
+	type PermissionRequest,
+} from "@kilo-desktop/plugin-core/contracts";
 import { renderShell, type GuestPlugin } from "@kilo-desktop/plugin-shell/testing";
 
 import manifest from "../../plugin.json";
@@ -468,6 +473,7 @@ export type FakeWorkSessionsMain = ReturnType<typeof fakeWorkSessionsMain>;
 export function fakeChats(initial: readonly ChatSummary[]) {
 	let provider: DomainObjectProvider<typeof Chats> | undefined;
 	const deleted = vi.fn<(id: string) => void>();
+	let permissionRequests: readonly PermissionRequest[] = [];
 	const unused = () => {
 		throw new KernelError("UNAVAILABLE", "Not in this test.");
 	};
@@ -488,7 +494,8 @@ export function fakeChats(initial: readonly ChatSummary[]) {
 					prompt: unused,
 					abort: unused,
 					setArchived: unused,
-					permissionRequests: () => [],
+					permissionRequests: ({ id }) =>
+						permissionRequests.filter((request) => request.chatId === id),
 					replyPermission: unused,
 					replyQuestion: unused,
 					rejectQuestion: unused,
@@ -497,6 +504,10 @@ export function fakeChats(initial: readonly ChatSummary[]) {
 			});
 		},
 		deleted,
+		/** The permission requests the server reports as pending. */
+		setPermissionRequests(requests: readonly PermissionRequest[]) {
+			permissionRequests = requests;
+		},
 		/** A chat changed, as kilo.core announces it. */
 		update(next: ChatSummary) {
 			const current = provider!.state;

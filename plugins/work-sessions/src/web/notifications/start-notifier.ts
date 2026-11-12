@@ -1,7 +1,7 @@
 import { KernelNotifications, KernelWindows, type PluginSdk } from "@kilo-desktop/kernel";
 import { Chats } from "@kilo-desktop/plugin-core/contracts";
 
-import { WorkSessions } from "../../contracts";
+import { PermissionAutoAnswer, WorkSessions } from "../../contracts";
 import { watchDomain } from "../attention/live-activity";
 import { sessionOfChat } from "../attention/session-chats";
 import { visibleSessionId } from "../attention/visits";
@@ -20,7 +20,9 @@ const ALERT_TITLES: Record<AlertReason, string> = {
  * Plays chat sounds and shows system notifications, in the main window only:
  * pop-out windows would otherwise double every cue. The app counts as focused
  * while any of its windows is; you are looking at a chat while the main
- * window is focused and shows the chat's session.
+ * window is focused and shows the chat's session. A permission request
+ * plays nothing when a `permission-auto-answer` contribution takes it, or it
+ * was answered before it could be read.
  */
 export function startChatNotifier(sdk: PluginSdk): void {
 	const windows = () => sdk.domainObjects.get(KernelWindows)?.getState().windows;
@@ -29,8 +31,21 @@ export function startChatNotifier(sdk: PluginSdk): void {
 		return record ? record.focused : document.hasFocus();
 	};
 	const chats = () => sdk.domainObjects.get(Chats)?.getState().chats ?? {};
+	const lifetime = new AbortController();
+	sdk.onDispose(() => lifetime.abort());
 	const onEvent = createChatNotifier({
 		chats,
+		signal: lifetime.signal,
+		isAnsweredForPerson: async (chatId, permissionId) => {
+			const handle = sdk.domainObjects.get(Chats);
+			if (!handle) return false;
+			const requests = await handle.methods.permissionRequests({ id: chatId });
+			const request = requests.find((candidate) => candidate.id === permissionId);
+			if (!request) return true;
+			return sdk.extensions
+				.list(PermissionAutoAnswer)
+				.some((contribution) => contribution.implementation?.(request) === true);
+		},
 		getMode: (cue) => notificationPreferences.get()[cue],
 		isAppFocused: () => {
 			const all = windows();

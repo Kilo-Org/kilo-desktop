@@ -5,9 +5,6 @@ import { defineDomainObject, method } from "@kilo-desktop/kernel";
 export const approvalModeSchema = z.enum(["manual", "auto"]);
 export type ApprovalMode = z.output<typeof approvalModeSchema>;
 
-/** How long an auto-approvable request stays hidden before it is shown anyway. */
-export const AUTO_APPROVE_REVEAL_MS = 3_000;
-
 /** kilo.chat's `kilo.core/tool-approval` contribution id: Auto lets desktop tools proceed. */
 export const AUTO_APPROVE_TOOL_APPROVAL_ID = "auto-approve";
 
@@ -16,7 +13,8 @@ export const AUTO_APPROVE_TOOL_APPROVAL_ID = "auto-approve";
  * (`auto`, origin's app-wide mode) or left to them (`manual`), answered in
  * main for every window. `holding` lists requests being answered or checked
  * right now, which permission cards keep hidden until they are revealed
- * (`AUTO_APPROVE_REVEAL_MS`, or a failed reply drops them from the list).
+ * (kilo.work-sessions' `PERMISSION_AUTO_ANSWER_TIMEOUT_MS`, when the
+ * notifier sounds for them too, or a failed reply drops them from the list).
  */
 export const AutoApprove = defineDomainObject({
 	id: "kilo.chat/auto-approve",

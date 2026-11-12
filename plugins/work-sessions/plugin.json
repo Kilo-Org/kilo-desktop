@@ -175,6 +175,11 @@
 			"id": "work-session-starter",
 			"kind": "exclusive",
 			"description": "The New Session page's body: how a person starts a session."
+		},
+		{
+			"id": "permission-auto-answer",
+			"kind": "additive",
+			"description": "Whether a plugin answers an agent permission request for the person."
 		}
 	],
 	"contributes": {

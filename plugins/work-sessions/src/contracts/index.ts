@@ -17,6 +17,7 @@ import {
 	LayoutPresets,
 	NewWorkSessionOption,
 	PaneKind,
+	PermissionAutoAnswer,
 	PaneKindMenu,
 	WorkSessionAction,
 	WorkSessionDecoration,
@@ -65,6 +66,7 @@ export const WORK_SESSIONS_DEFINITIONS: PluginDefinitions = {
 		WorkSessionListAction,
 		NewWorkSessionOption,
 		WorkSessionStarter,
+		PermissionAutoAnswer,
 	],
 	domainObjects: [Workspaces, FileWatcher, WorkSessions, Panes, WorkSessionsWindow, LayoutPresets],
 	objectTypes: [

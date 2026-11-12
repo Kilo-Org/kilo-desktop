@@ -1,6 +1,7 @@
 import type { DomainObjectEventName, DomainObjectEventPayload } from "@kilo-desktop/kernel";
 import type { ChatError, Chats } from "@kilo-desktop/plugin-core/contracts";
 
+import { PERMISSION_AUTO_ANSWER_TIMEOUT_MS } from "../../contracts";
 import { rootChatOf, type ChatsById } from "../attention/session-chats";
 
 export type ChatCue = "done" | "needsYou";
@@ -23,6 +24,13 @@ export type ChatEvent = {
 export interface ChatNotifierDeps {
 	/** kilo.core's chats: root chats have no `parentId`. */
 	chats: () => ChatsById;
+	/** Aborted when the notifier goes away: pending rechecks are dropped. */
+	signal: AbortSignal;
+	/**
+	 * True when a plugin answers this permission request for the person
+	 * (kilo.chat's auto-approve) or it is already answered: no one is needed.
+	 */
+	isAnsweredForPerson: (chatId: string, permissionId: string) => Promise<boolean>;
 	getMode: (cue: ChatCue) => NotificationMode;
 	isAppFocused: () => boolean;
 	/** True when you're looking at this (root) chat's session right now. */
@@ -45,10 +53,16 @@ const sameError = (a: ChatError | undefined, b: ChatError | undefined) =>
  *   queued background reports, is complete (stopping is not failing).
  * - needs you: an approval or question (a subagent's, at any depth, counts as
  *   its chat), or a root chat's turn failing — also when the failure arrives
- *   after the turn ended.
+ *   after the turn ended. An approval a plugin answers for the person (Auto
+ *   approve), or one it can't tell about, sounds only if still pending after
+ *   `PERMISSION_AUTO_ANSWER_TIMEOUT_MS`, when its card shows anyway.
  */
-export function createChatNotifier(deps: ChatNotifierDeps): (event: ChatEvent) => void {
+export function createChatNotifier(
+	deps: ChatNotifierDeps,
+): (event: ChatEvent) => void | Promise<void> {
 	const isRootChat = (id: string) => deps.chats()[id]?.parentId === null;
+	const rechecks = new Set<ReturnType<typeof setTimeout>>();
+	deps.signal.addEventListener("abort", () => rechecks.forEach(clearTimeout), { once: true });
 
 	const notify = (cue: ChatCue, reason: AlertReason, chatId: string) => {
 		const mode = deps.getMode(cue);
@@ -69,8 +83,23 @@ export function createChatNotifier(deps: ChatNotifierDeps): (event: ChatEvent) =
 				if (isRootChat(chatId) && error) notify("needsYou", "error", chatId);
 				return;
 			}
-			case "permission-requested":
-				return notify("needsYou", "permission", rootChatOf(deps.chats(), event.payload.chatId));
+			case "permission-requested": {
+				const { chatId, permissionId } = event.payload;
+				const rootId = rootChatOf(deps.chats(), chatId);
+				const notifyIfStillPending = () => {
+					if (deps.signal.aborted) return;
+					const recheck = setTimeout(() => {
+						rechecks.delete(recheck);
+						const pending = deps.chats()[chatId]?.activity.pendingPermissionIds ?? [];
+						if (pending.includes(permissionId)) notify("needsYou", "permission", rootId);
+					}, PERMISSION_AUTO_ANSWER_TIMEOUT_MS);
+					rechecks.add(recheck);
+				};
+				return deps.isAnsweredForPerson(chatId, permissionId).then((answered) => {
+					if (answered) notifyIfStillPending();
+					else notify("needsYou", "permission", rootId);
+				}, notifyIfStillPending);
+			}
 			case "question-requested":
 				return notify("needsYou", "question", rootChatOf(deps.chats(), event.payload.chatId));
 			case "updated": {

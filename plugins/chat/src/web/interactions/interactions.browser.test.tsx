@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import type { PluginEntry } from "@kilo-desktop/kernel";
 import { defineTool, Tool, toolWireName } from "@kilo-desktop/plugin-core/contracts";
+import { PermissionAutoAnswer } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import {
 	AutoApprove,
@@ -230,6 +231,29 @@ describe("permission requests", () => {
 			metadata: { sandboxEscalation: true },
 		});
 		await expect.element(page.getByText("sudo ls")).toBeVisible();
+	});
+
+	it("tell the notifier which ones Auto answers, so only the rest sound", async () => {
+		const host = await liveChat();
+		const answeredForPerson = (metadata: Record<string, unknown> = {}) =>
+			host.host.renderer.extensions.list(PermissionAutoAnswer).some((contribution) =>
+				contribution.implementation?.({
+					id: "per_1",
+					chatId: "ses_a",
+					permission: "external_directory",
+					patterns: ["/tmp/*"],
+					metadata,
+				}),
+			);
+		expect(answeredForPerson()).toBe(false);
+
+		await host.host.renderer
+			.sdkFor("kilo.chat")
+			.domainObjects.get(AutoApprove)!
+			.methods.setMode({ mode: "auto" });
+
+		await expect.poll(() => answeredForPerson()).toBe(true);
+		expect(answeredForPerson({ sandboxEscalation: true })).toBe(false);
 	});
 
 	it("offers only Allow once when Kilo has nothing to remember", async () => {

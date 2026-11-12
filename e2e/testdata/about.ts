@@ -4,9 +4,8 @@ export const aboutData = {
 	betaBadgeLabel: "Beta",
 	// Semver with an optional prerelease tag, e.g. `0.1.13-preview-261019-10491`.
 	versionPattern: /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/,
-	// The e2e build has no update feed; Linux has no auto-updater at all.
-	updatesUnavailablePattern:
-		/^(?:(?:Stable|Preview) updates are not configured for this build|Automatic updates are not available on this platform)\.$/,
+	// The e2e build has no update host compiled in, on any platform.
+	updatesUnavailablePattern: /^(?:Stable|Preview) updates are not configured for this build\.$/,
 	checkForUpdatesLabel: "Check for updates",
 	updateTrackTitle: "Update track",
 	updateTrackDescription: "Use stable releases or preview builds.",

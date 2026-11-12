@@ -41,11 +41,11 @@ publishes a version that sorts newer than the installed Preview.
 
 Forge uses only official makers:
 
-| Platform | Architectures | Maker output                                   | Update behavior                                                       |
-| -------- | ------------- | ---------------------------------------------- | --------------------------------------------------------------------- |
-| macOS    | arm64         | DMG, ZIP, and `RELEASES.json`                  | `update-electron-app` consumes the ZIP manifest                       |
-| Windows  | x64, arm64    | Squirrel Setup EXE, full NUPKG, and `RELEASES` | `update-electron-app` uses the Squirrel feed                          |
-| Linux    | x64, arm64    | DEB                                            | Updates are provided by the package repository or manual installation |
+| Platform | Architectures | Maker output                                   | Update behavior                                                        |
+| -------- | ------------- | ---------------------------------------------- | ---------------------------------------------------------------------- |
+| macOS    | arm64         | DMG, ZIP, and `RELEASES.json`                  | `update-electron-app` consumes the ZIP manifest                        |
+| Windows  | x64, arm64    | Squirrel Setup EXE, full NUPKG, and `RELEASES` | `update-electron-app` uses the Squirrel feed                           |
+| Linux    | x64, arm64    | DEB                                            | The app checks `latest.json` and links the DEB; installation is manual |
 
 Each architecture builds on a native runner: Windows ARM64 on `windows-11-vs2026-arm` and
 Linux ARM64 on `ubuntu-24.04-arm`, with the same plugins as their x64 counterparts. The pinned
@@ -53,10 +53,14 @@ Linux ARM64 on `ubuntu-24.04-arm`, with the same plugins as their x64 counterpar
 `@runtimed/node-win32-arm64-msvc` optional dependency in `apps/desktop` uses the same version
 as the wrapper. PR and nightly E2E remain on Windows x64.
 
-Automatic Electron update checks run only in packaged Windows and macOS builds. They are
-disabled when the selected track has no update host compiled in and never start on
-Linux. Squirrel install, update, and uninstall launches are handled before normal
-application startup.
+Automatic Electron updates run only in packaged Windows and macOS builds. Packaged Linux
+builds never touch Electron's updater and never install anything: they read the selected
+track's `latest.json` on the same schedule, and when it names a newer version with a DEB
+for the running architecture on that track's update host, About and the sidebar offer a
+**Download** link to it. A newer release without such a DEB is reported as a failed check
+rather than "up to date", and never withdraws a download already on offer. Update checks on every platform are disabled when the selected
+track has no update host compiled in. Squirrel install, update, and uninstall launches are
+handled before normal application startup.
 
 Preview packaging stamps the desktop `package.json` version (then restores it) so every
 Forge maker — DMG, ZIP, `RELEASES.json`, Squirrel nupkg/`RELEASES`, and DEB — names
@@ -135,7 +139,8 @@ download records with platform, architecture, artifact type, size, SHA-256, and 
 immutable Forge artifact URL for that release. Stable installer aliases and moving JSON
 pointers use short-lived cache headers; versioned artifacts and release notes are
 immutable. The workflow uploads aliases before `latest.json`, whose immutable download
-URLs make the manifest the final atomic publication pointer. Native auto-update feeds
+URLs make the manifest the final atomic publication pointer. Linux update checks read it
+and link its immutable DEB URL. Native auto-update feeds
 remain at their existing `channel/platform/arch` paths.
 
 Each immutable release-note document includes the previous release version for its

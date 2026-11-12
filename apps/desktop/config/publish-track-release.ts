@@ -37,6 +37,9 @@ import {
 	getUpdatePublishUrl,
 	type ReleaseTrack,
 } from "./release.js";
+import type { TrackDownloadManifestEntry, TrackReleaseManifest } from "./release-manifest.js";
+
+export type { TrackReleaseManifest };
 
 const MOVING_CACHE_CONTROL = "public,max-age=60,must-revalidate";
 const IMMUTABLE_CACHE_CONTROL = "public,max-age=31536000,immutable";
@@ -203,25 +206,6 @@ interface TrackObjectPublicationInput {
 	readonly publishUrl: string;
 	readonly version: string;
 	readonly workingDirectory: string;
-}
-
-interface TrackDownloadManifestEntry {
-	readonly platform: "linux" | "macos" | "windows";
-	readonly arch: string;
-	readonly type: "deb" | "dmg" | "setup" | "zip";
-	readonly fileName: string;
-	readonly url: string;
-	readonly size: number;
-	readonly sha256: string;
-}
-
-export interface TrackReleaseManifest {
-	readonly schemaVersion: 1;
-	readonly track: ReleaseTrack;
-	readonly version: string;
-	readonly publishedAt: string;
-	readonly releaseNotesUrl: string;
-	readonly downloads: TrackDownloadManifestEntry[];
 }
 
 type S3ObjectCopier = (

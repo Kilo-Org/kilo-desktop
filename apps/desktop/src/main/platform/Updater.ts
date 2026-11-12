@@ -1,11 +1,14 @@
 import { autoUpdater, type FeedURLOptions } from "electron";
+import { gt } from "semver";
 
 import {
 	getReleaseNotesUrl,
+	getTrackManifestUrl,
 	getUpdateFeedUrl,
 	type ReleaseTrack,
 	type UpdatePublishUrls,
 } from "$config/release.js";
+import { trackReleaseManifestSchema } from "$config/release-manifest.js";
 import { desktopReleaseNotesSchema, type DesktopReleaseNotes } from "$config/release-notes.js";
 
 import { UpdateFeedError, type WindowsUpdateFeed } from "./WindowsUpdateFeed.js";
@@ -13,10 +16,12 @@ import { UpdateFeedError, type WindowsUpdateFeed } from "./WindowsUpdateFeed.js"
 const STARTUP_DELAY_MS = 15_000;
 const POLL_INTERVAL_MS = 10 * 60_000;
 const RELEASE_NOTES_RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 60_000, 120_000, 300_000] as const;
-const MAX_RELEASE_NOTES_BYTES = 256 * 1024;
+const MAX_DOCUMENT_BYTES = 256 * 1024;
 const MAX_RELEASE_NOTE_GROUPS = 6;
 const MAX_RELEASE_NOTE_ITEM_LENGTH = 220;
-const SUPPORTED_PLATFORMS = new Set<NodeJS.Platform>(["darwin", "win32"]);
+const SUPPORTED_PLATFORMS = new Set<NodeJS.Platform>(["darwin", "win32", "linux"]);
+/** Platforms the app can't update itself on: it only checks and links the package. */
+const MANUAL_UPDATE_PLATFORMS = new Set<NodeJS.Platform>(["linux"]);
 
 /** The updater's state, published to plugins as `kernel/updater`. */
 export interface DesktopUpdateState {
@@ -27,12 +32,14 @@ export interface DesktopUpdateState {
 		| "checking"
 		| "downloading"
 		| "downloaded"
+		| "available"
 		| "up-to-date"
 		| "error";
 	readonly track: ReleaseTrack;
 	readonly currentVersion: string;
 	readonly availableVersion: string | null;
 	readonly downloadedVersion: string | null;
+	readonly downloadUrl: string | null;
 	readonly releaseNotes: readonly DesktopReleaseNotes[];
 	readonly checkedAt: string | null;
 	readonly message: string | null;
@@ -42,6 +49,11 @@ export interface DesktopUpdateActionResult {
 	readonly accepted: boolean;
 	readonly state: DesktopUpdateState;
 }
+
+type ManualRelease =
+	| { readonly kind: "current" }
+	| { readonly kind: "no-package"; readonly version: string }
+	| { readonly kind: "available"; readonly version: string; readonly downloadUrl: string };
 
 interface NativeUpdater {
 	setFeedURL(options: FeedURLOptions): void;
@@ -89,9 +101,22 @@ interface DesktopUpdaterServiceOptions {
  * Squirrel's own HTTP client is rejected by the CDN. The mirror is prepared
  * inside `check()`, so a newer release reaches "downloading" before Squirrel
  * runs, and an up-to-date result never invokes Squirrel at all.
+ *
+ * On Linux the system package manager owns the install, so the native updater
+ * is never touched and nothing is downloaded or installed in-app. A check reads
+ * the track's `latest.json` manifest and, when it names a newer version with a
+ * package for this architecture on the track's own update host, reports
+ * `available` with that package's URL for the person to download. A newer
+ * release without such a package is reported as an error, not "up to date".
+ * Once an update is available, background polls stay quiet: they don't flash
+ * `checking`, don't drop the offer when a poll fails or the next release has
+ * no package yet, and reuse the release notes while the version is unchanged.
+ * A track change abandons a background poll (aborting its requests and
+ * ignoring its result) instead of being refused while it runs.
  */
 export class DesktopUpdaterService {
 	readonly #options: DesktopUpdaterServiceOptions;
+	readonly #manual: boolean;
 	readonly #updater: NativeUpdater;
 	readonly #windowsFeed: DesktopUpdaterServiceOptions["windowsFeed"];
 	readonly #feedAbort = new AbortController();
@@ -100,12 +125,15 @@ export class DesktopUpdaterService {
 	#pollTimer: ReturnType<typeof setInterval> | undefined;
 	#releaseNotesRetryTimer: ReturnType<typeof setTimeout> | undefined;
 	#checkInFlight = false;
+	/** The running Linux check; replaced or cleared to abandon it. */
+	#manualCheck: { readonly abort: AbortController; readonly background: boolean } | null = null;
 	#disposed = false;
 	#latestReleaseNotes: DesktopReleaseNotes | null = null;
 	#state: DesktopUpdateState;
 
 	constructor(options: DesktopUpdaterServiceOptions) {
 		this.#options = options;
+		this.#manual = MANUAL_UPDATE_PLATFORMS.has(options.platform);
 		this.#updater = options.updater ?? (autoUpdater as unknown as NativeUpdater);
 		this.#windowsFeed = options.platform === "win32" ? options.windowsFeed : undefined;
 		const disabledReason = this.#disabledReason(options.track);
@@ -116,6 +144,7 @@ export class DesktopUpdaterService {
 			currentVersion: options.currentVersion,
 			availableVersion: null,
 			downloadedVersion: null,
+			downloadUrl: null,
 			releaseNotes: [],
 			checkedAt: null,
 			message: disabledReason,
@@ -128,10 +157,17 @@ export class DesktopUpdaterService {
 
 	start(): () => void {
 		if (!this.#state.enabled) {
-			this.#options.logger.info(this.#state.message ?? "Automatic updates are disabled.");
+			this.#options.logger.info(this.#state.message ?? "Updates are disabled.");
 			return () => this.dispose();
 		}
 
+		if (!this.#manual) this.#listenToNativeUpdater();
+		this.#startupTimer = setTimeout(() => void this.check(), STARTUP_DELAY_MS);
+		this.#pollTimer = setInterval(() => void this.check(), POLL_INTERVAL_MS);
+		return () => this.dispose();
+	}
+
+	#listenToNativeUpdater(): void {
 		this.#updater.setFeedURL(this.#feedOptions());
 		this.#listen("checking-for-update", () => {
 			if (this.#state.status !== "downloading") {
@@ -162,10 +198,6 @@ export class DesktopUpdaterService {
 		this.#listen("error", (...args: never[]) => {
 			this.#handleError(args[0] as Error | undefined);
 		});
-
-		this.#startupTimer = setTimeout(() => void this.check(), STARTUP_DELAY_MS);
-		this.#pollTimer = setInterval(() => void this.check(), POLL_INTERVAL_MS);
-		return () => this.dispose();
 	}
 
 	async check(): Promise<DesktopUpdateActionResult> {
@@ -178,6 +210,7 @@ export class DesktopUpdaterService {
 		) {
 			return { accepted: false, state: this.#state };
 		}
+		if (this.#manual) return this.#checkManually();
 
 		this.#checkInFlight = true;
 		this.#setState({ status: "checking", checkedAt: new Date().toISOString(), message: null });
@@ -192,6 +225,108 @@ export class DesktopUpdaterService {
 			this.#handleError(error instanceof Error ? error : undefined);
 			return { accepted: true, state: this.#state };
 		}
+	}
+
+	async #checkManually(): Promise<DesktopUpdateActionResult> {
+		const background = this.#state.status === "available";
+		const check = new AbortController();
+		this.#manualCheck = { abort: check, background };
+		this.#checkInFlight = true;
+		const isCurrent = () => this.#manualCheck?.abort === check && !this.#disposed;
+		if (!background) {
+			this.#setState({ status: "checking", checkedAt: new Date().toISOString(), message: null });
+		}
+		try {
+			const result = await this.#fetchManualRelease(check.signal);
+			if (!isCurrent()) return { accepted: true, state: this.#state };
+			if (result.kind === "available") {
+				const releaseNotes = await this.#releaseNotesFor(result.version, check.signal);
+				if (!isCurrent()) return { accepted: true, state: this.#state };
+				this.#setState({
+					status: "available",
+					availableVersion: result.version,
+					downloadUrl: result.downloadUrl,
+					releaseNotes,
+					checkedAt: new Date().toISOString(),
+					message: null,
+				});
+			} else if (background && result.kind === "no-package") {
+				// The offer on screen is still a valid download; a newer release
+				// whose Linux package hasn't been published yet doesn't undo it.
+				this.#options.logger.warn(
+					`Keeping the offered update: ${result.version} has no Linux package for ${this.#options.arch}.`,
+				);
+			} else {
+				this.#setState({
+					status: result.kind === "current" ? "up-to-date" : "error",
+					availableVersion: null,
+					downloadUrl: null,
+					releaseNotes: [],
+					checkedAt: new Date().toISOString(),
+					message:
+						result.kind === "current"
+							? null
+							: `Version ${result.version} has no Linux package for ${this.#options.arch} yet. Try again later.`,
+				});
+			}
+		} catch (error) {
+			if (!isCurrent()) return { accepted: true, state: this.#state };
+			if (background) {
+				this.#options.logger.warn("Background update check failed", error);
+			} else {
+				this.#handleError(error instanceof Error ? error : undefined);
+			}
+		} finally {
+			if (this.#manualCheck?.abort === check) {
+				this.#manualCheck = null;
+				this.#checkInFlight = false;
+			}
+		}
+		return { accepted: true, state: this.#state };
+	}
+
+	/** Abandons a quiet re-check of an offered update, so a track change can go ahead. */
+	#cancelBackgroundCheck(): void {
+		if (!this.#manualCheck?.background) return;
+		this.#manualCheck.abort.abort();
+		this.#manualCheck = null;
+		this.#checkInFlight = false;
+	}
+
+	/** Release notes for an offered version, reusing the ones already shown for it. */
+	async #releaseNotesFor(version: string, signal: AbortSignal): Promise<DesktopReleaseNotes[]> {
+		if (version === this.#state.availableVersion && this.#state.releaseNotes.length > 0) {
+			return [...this.#state.releaseNotes];
+		}
+		const target = await this.#fetchReleaseNotes(version, signal);
+		return this.#fetchReleaseNoteHistory(target, signal);
+	}
+
+	/** What the track's manifest offers this installation. */
+	async #fetchManualRelease(signal: AbortSignal): Promise<ManualRelease> {
+		const track = this.#state.track;
+		const publishUrl = this.#options.publishUrls[track];
+		const manifestUrl = getTrackManifestUrl({ publishUrl, track });
+		if (!manifestUrl) throw new Error("Update manifest URL is unavailable.");
+		const parsed = trackReleaseManifestSchema.safeParse(
+			await this.#fetchDocument(manifestUrl, signal),
+		);
+		if (!parsed.success || parsed.data.track !== track) {
+			throw new Error("Update manifest did not match the expected schema or track.");
+		}
+		const manifest = parsed.data;
+		if (!gt(manifest.version, this.#options.currentVersion)) return { kind: "current" };
+
+		const updateHost = new URL(publishUrl).origin;
+		const download = manifest.downloads.find(
+			(entry) =>
+				entry.platform === "linux" &&
+				entry.type === "deb" &&
+				entry.arch === this.#options.arch &&
+				isHostedAt(entry.url, updateHost),
+		);
+		if (!download) return { kind: "no-package", version: manifest.version };
+		return { kind: "available", version: manifest.version, downloadUrl: download.url };
 	}
 
 	/** Returns whether Squirrel should run against the prepared local mirror. */
@@ -221,6 +356,7 @@ export class DesktopUpdaterService {
 	async setTrack(track: ReleaseTrack): Promise<DesktopUpdateActionResult> {
 		if (this.#disposed) return { accepted: false, state: this.#state };
 		if (track === this.#state.track) return { accepted: false, state: this.#state };
+		this.#cancelBackgroundCheck();
 		if (
 			this.#checkInFlight ||
 			this.#state.status === "checking" ||
@@ -243,11 +379,12 @@ export class DesktopUpdaterService {
 		}
 
 		const previousTrack = this.#state.track;
-		if (this.#state.enabled) this.#updater.setFeedURL(this.#feedOptions(track));
+		const usesNativeFeed = this.#state.enabled && !this.#manual;
+		if (usesNativeFeed) this.#updater.setFeedURL(this.#feedOptions(track));
 		try {
 			this.#options.persistTrack(track);
 		} catch (error) {
-			if (this.#state.enabled) this.#updater.setFeedURL(this.#feedOptions(previousTrack));
+			if (usesNativeFeed) this.#updater.setFeedURL(this.#feedOptions(previousTrack));
 			throw error;
 		}
 
@@ -258,6 +395,7 @@ export class DesktopUpdaterService {
 			track,
 			availableVersion: null,
 			downloadedVersion: null,
+			downloadUrl: null,
 			releaseNotes: [],
 			checkedAt: null,
 			message: this.#state.enabled ? null : this.#disabledReason(track),
@@ -268,7 +406,12 @@ export class DesktopUpdaterService {
 	}
 
 	install(): DesktopUpdateActionResult {
-		if (!this.#state.enabled || this.#state.status !== "downloaded" || this.#disposed) {
+		if (
+			this.#manual ||
+			!this.#state.enabled ||
+			this.#state.status !== "downloaded" ||
+			this.#disposed
+		) {
 			return { accepted: false, state: this.#state };
 		}
 		try {
@@ -295,9 +438,9 @@ export class DesktopUpdaterService {
 	}
 
 	#disabledReason(track: ReleaseTrack): string | null {
-		if (!this.#options.isPackaged) return "Automatic updates are available in packaged builds.";
+		if (!this.#options.isPackaged) return "Update checks run only in packaged builds.";
 		if (!SUPPORTED_PLATFORMS.has(this.#options.platform)) {
-			return "Automatic updates are not available on this platform.";
+			return "Updates are not available on this platform.";
 		}
 		if (!this.#options.publishUrls[track]) return unconfiguredTrackMessage(track);
 		return null;
@@ -336,7 +479,7 @@ export class DesktopUpdaterService {
 	#handleError(error: Error | undefined): void {
 		this.#checkInFlight = false;
 		const duringDownload = this.#state.status === "downloading";
-		this.#options.logger.error("Automatic updater reported an error", error);
+		this.#options.logger.error("Updater reported an error", error);
 		const httpDetail =
 			error instanceof UpdateFeedError && error.status !== undefined
 				? ` The update server responded with HTTP ${error.status}.`
@@ -418,6 +561,7 @@ export class DesktopUpdaterService {
 
 	async #fetchReleaseNoteHistory(
 		target: DesktopReleaseNotes | null,
+		signal?: AbortSignal,
 	): Promise<DesktopReleaseNotes[]> {
 		if (!target) return [];
 		const releases = [target];
@@ -435,7 +579,7 @@ export class DesktopUpdaterService {
 				break;
 			}
 			seen.add(previousVersion);
-			const previous = await this.#fetchReleaseNotes(previousVersion);
+			const previous = await this.#fetchReleaseNotes(previousVersion, signal);
 			if (!previous) break;
 			releases.push(previous);
 			previousVersion = previous.previousVersion;
@@ -443,7 +587,10 @@ export class DesktopUpdaterService {
 		return releases;
 	}
 
-	async #fetchReleaseNotes(version?: string): Promise<DesktopReleaseNotes | null> {
+	async #fetchReleaseNotes(
+		version?: string,
+		signal?: AbortSignal,
+	): Promise<DesktopReleaseNotes | null> {
 		const url = getReleaseNotesUrl({
 			publishUrl: this.#options.publishUrls[this.#state.track],
 			track: this.#state.track,
@@ -451,16 +598,7 @@ export class DesktopUpdaterService {
 		});
 		if (!url) return null;
 		try {
-			const response = await this.#options.fetch(url, {
-				headers: { Accept: "application/json" },
-				signal: AbortSignal.timeout(5_000),
-			});
-			if (!response.ok) throw new Error(`Release notes returned HTTP ${response.status}.`);
-			const body = await response.text();
-			if (Buffer.byteLength(body, "utf8") > MAX_RELEASE_NOTES_BYTES) {
-				throw new Error("Release notes exceeded the size limit.");
-			}
-			const parsed = desktopReleaseNotesSchema.safeParse(JSON.parse(body));
+			const parsed = desktopReleaseNotesSchema.safeParse(await this.#fetchDocument(url, signal));
 			if (
 				!parsed.success ||
 				parsed.data.track !== this.#state.track ||
@@ -476,6 +614,38 @@ export class DesktopUpdaterService {
 			this.#options.logger.warn("Release notes are unavailable", error);
 			return null;
 		}
+	}
+
+	/**
+	 * A small JSON document from the update host, parsed but not yet validated.
+	 * Gives up after five seconds, on dispose, or when `signal` aborts.
+	 */
+	async #fetchDocument(url: string, signal?: AbortSignal): Promise<unknown> {
+		const response = await this.#options.fetch(url, {
+			headers: { Accept: "application/json" },
+			signal: AbortSignal.any([
+				AbortSignal.timeout(5_000),
+				this.#feedAbort.signal,
+				...(signal ? [signal] : []),
+			]),
+		});
+		if (!response.ok) {
+			throw new UpdateFeedError(`${url} returned HTTP ${response.status}.`, response.status);
+		}
+		const body = await response.text();
+		if (Buffer.byteLength(body, "utf8") > MAX_DOCUMENT_BYTES) {
+			throw new Error(`${url} exceeded the size limit.`);
+		}
+		return JSON.parse(body);
+	}
+}
+
+function isHostedAt(url: string, origin: string): boolean {
+	try {
+		const parsed = new URL(url);
+		return parsed.protocol === "https:" && parsed.origin === origin;
+	} catch {
+		return false;
 	}
 }
 

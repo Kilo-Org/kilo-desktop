@@ -46,6 +46,7 @@ const UPDATER_STATE = {
 	currentVersion: "1.0.0",
 	availableVersion: null,
 	downloadedVersion: null,
+	downloadUrl: null,
 	message: null,
 	checkedAt: null,
 	releaseNotes: [],

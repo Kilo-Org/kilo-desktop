@@ -16,15 +16,20 @@ export interface Updates {
 	install(): Promise<UpdateActionResult>;
 }
 
+const PREVIEW_MODE = import.meta.env.DEV ? import.meta.env.VITE_UPDATE_PREVIEW : undefined;
 const PREVIEW_STATE: UpdaterState | null =
-	import.meta.env.DEV && import.meta.env.VITE_UPDATE_PREVIEW === "downloaded"
+	PREVIEW_MODE === "downloaded" || PREVIEW_MODE === "available"
 		? {
 				enabled: true,
-				status: "downloaded",
+				status: PREVIEW_MODE,
 				track: "preview",
 				currentVersion: "0.1.0",
 				availableVersion: "0.2.0-preview-260918-12000",
-				downloadedVersion: "0.2.0-preview-260918-12000",
+				downloadedVersion: PREVIEW_MODE === "downloaded" ? "0.2.0-preview-260918-12000" : null,
+				downloadUrl:
+					PREVIEW_MODE === "available"
+						? "https://example.com/kilo-desktop/preview/linux/x64/kilo-desktop.deb"
+						: null,
 				checkedAt: new Date().toISOString(),
 				message: null,
 				releaseNotes: [
@@ -66,8 +71,8 @@ const selectState = (state: UpdaterState) => state;
 
 /**
  * The desktop updater (`kernel/updater`); null where there is no updater
- * (browser mode). `VITE_UPDATE_PREVIEW=downloaded` fakes a ready
- * update in development.
+ * (browser mode). `VITE_UPDATE_PREVIEW=downloaded` fakes a ready update and
+ * `VITE_UPDATE_PREVIEW=available` a download-only (Linux) one in development.
  */
 export function useUpdates(): Updates | null {
 	const updater = useDomainObject(KernelUpdater);

@@ -31,6 +31,12 @@ export function getInstallConfirmationMessage(
 	return [title, description, windowsNote].filter(Boolean).join("\n\n");
 }
 
+export function updateAvailableLabel(state: Pick<DesktopUpdateState, "availableVersion">): string {
+	return state.availableVersion
+		? `Version ${state.availableVersion} is available to download`
+		: "An update is available to download";
+}
+
 export function updateReadyLabel(state: DesktopUpdateState): string {
 	return state.downloadedVersion
 		? `Update ${state.downloadedVersion} ready to install`

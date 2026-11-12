@@ -8,6 +8,7 @@ import {
 	getPublishAppVersion,
 	getReleaseTrack,
 	getReleaseNotesUrl,
+	getTrackManifestUrl,
 	getUpdateFeedUrl,
 	getUpdatePublishUrl,
 	getUpdatePublishUrls,
@@ -74,6 +75,10 @@ describe("release configuration", () => {
 				version: "1.2.3-preview.1",
 			}),
 		).toBe("https://cdn.example.com/kilo-desktop/preview/release-notes/1.2.3-preview.1.json");
+		expect(getTrackManifestUrl({ publishUrl: "https://cdn.example.com/", track: "stable" })).toBe(
+			"https://cdn.example.com/kilo-desktop/latest/latest.json",
+		);
+		expect(getTrackManifestUrl({ publishUrl: "", track: "stable" })).toBeUndefined();
 	});
 
 	it("rejects unknown tracks and non-HTTPS feeds", () => {

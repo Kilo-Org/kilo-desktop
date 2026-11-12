@@ -23,7 +23,7 @@ import {
 import type { LegalResources } from "../../main/legal";
 import { renderShell } from "../../testing";
 import { activateUpdates } from "./index";
-import { updateReadyLabel } from "./updateActions";
+import { updateAvailableLabel, updateReadyLabel } from "./updateActions";
 
 type UpdateState = UpdaterState;
 
@@ -34,6 +34,7 @@ const downloadedState: UpdateState = {
 	currentVersion: "1.2.2",
 	availableVersion: "1.2.3",
 	downloadedVersion: "1.2.3",
+	downloadUrl: null,
 	checkedAt: "2026-08-26T12:00:00.000Z",
 	message: null,
 	releaseNotes: [
@@ -54,6 +55,15 @@ const idleState: UpdateState = {
 	releaseNotes: [],
 };
 
+/** A Linux update: checked and offered, but downloaded and installed by hand. */
+const availableState: UpdateState = {
+	...downloadedState,
+	status: "available",
+	downloadedVersion: null,
+	downloadUrl:
+		"https://updates.example.com/kilo-desktop/latest/linux/x64/kilo-desktop_1.2.3_amd64.deb",
+};
+
 type ActionResult = { accepted: boolean; state: UpdateState };
 
 interface UpdaterFake {
@@ -63,6 +73,7 @@ interface UpdaterFake {
 }
 
 interface OsFake {
+	openExternal?: (url: string) => boolean | Promise<boolean>;
 	showItemInFolder?: (path: string) => void | Promise<void>;
 }
 
@@ -96,7 +107,7 @@ async function renderApp(
 			main.kernelSdk.domainObjects.provide(KernelOs, {
 				initialState: {},
 				methods: {
-					openExternal: () => true,
+					openExternal: ({ url }) => options.os?.openExternal?.(url) ?? true,
 					showItemInFolder: ({ path }) => options.os?.showItemInFolder?.(path),
 					showLogs: () => ({ revealed: true }),
 					logFilePath: () => "/user-data/logs/main.log",
@@ -224,6 +235,26 @@ describe("update-ready notice", () => {
 	});
 });
 
+describe("update-available notice", () => {
+	it("says an update is available and opens About, which owns the download", async () => {
+		const openExternal = vi.fn(() => true);
+		await renderApp({ state: availableState, os: { openExternal } });
+
+		const pill = page.getByTestId("update-available-pill");
+		await expect
+			.element(pill)
+			.toHaveAccessibleName(`Update available: ${updateAvailableLabel(availableState)}`);
+		await expect.element(page.getByTestId("update-ready-pill")).not.toBeInTheDocument();
+		await pill.hover();
+		await expect.element(page.getByText("Faster startup", { exact: true })).toBeVisible();
+
+		await pill.click();
+
+		await expect.element(page.getByTestId("update-download")).toBeVisible();
+		expect(openExternal).not.toHaveBeenCalled();
+	});
+});
+
 describe("update-ready notice on its own", () => {
 	it("renders through the sidebar-notice point without the shell's window", async () => {
 		cleanup();
@@ -239,6 +270,34 @@ describe("update-ready notice on its own", () => {
 			await expect.element(page.getByTestId("update-ready-pill")).toBeVisible();
 			expect(slot.keys()).toEqual(["kilo.shell/update-ready"]);
 			expect(document.querySelector('[data-qa-id="app-sidebar"]')).toBeNull();
+		} finally {
+			await host.dispose();
+		}
+	});
+
+	it("opens the download itself where there is no settings page to open", async () => {
+		cleanup();
+		const host = await createPluginHost(
+			[{ manifest, definitions: SHELL_DEFINITIONS, web: { activate: activateUpdates } }],
+			{ host: { desktop: true } },
+		);
+		try {
+			const openExternal = vi.fn((_url: string) => true);
+			host.main.kernelSdk.domainObjects.provide(KernelOs, {
+				initialState: {},
+				methods: {
+					openExternal: ({ url }) => openExternal(url),
+					showItemInFolder: () => undefined,
+					showLogs: () => ({ revealed: true }),
+					logFilePath: () => "/user-data/logs/main.log",
+				},
+			});
+			provideUpdater(host.main, availableState, {});
+			host.renderSlot(SidebarNotice);
+
+			await page.getByTestId("update-available-pill").click();
+
+			await vi.waitFor(() => expect(openExternal).toHaveBeenCalledWith(availableState.downloadUrl));
 		} finally {
 			await host.dispose();
 		}
@@ -358,6 +417,32 @@ describe("About settings", () => {
 		await page.getByTestId("update-install-confirm").click();
 		await vi.waitFor(() => expect(install).toHaveBeenCalledOnce());
 		expect(confirm).not.toHaveBeenCalled();
+	});
+
+	it("links the download of an update that must be installed by hand", async () => {
+		const openExternal = vi.fn(() => true);
+		await openAbout({ state: availableState, os: { openExternal } });
+
+		await expect
+			.element(page.getByTestId("update-status-message"))
+			.toHaveTextContent("Version 1.2.3 is available to download.");
+		await expect
+			.element(page.getByTestId("about-version").getByText("Faster startup", { exact: true }))
+			.toBeVisible();
+		await expect.element(page.getByTestId("update-install")).not.toBeInTheDocument();
+		await expect.element(page.getByTestId("update-track")).toBeEnabled();
+
+		await page.getByTestId("update-download").click();
+
+		await vi.waitFor(() => expect(openExternal).toHaveBeenCalledWith(availableState.downloadUrl));
+	});
+
+	it("explains when the download link cannot be opened", async () => {
+		await openAbout({ state: availableState, os: { openExternal: () => false } });
+
+		await page.getByTestId("update-download").click();
+
+		await expect.element(page.getByText("Could not open the download link")).toBeVisible();
 	});
 
 	it("checks again and shows the result", async () => {

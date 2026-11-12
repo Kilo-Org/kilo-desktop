@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { getInstallConfirmationMessage, updateReadyLabel } from "./updateActions";
+import {
+	getInstallConfirmationMessage,
+	updateAvailableLabel,
+	updateReadyLabel,
+} from "./updateActions";
 
 const state = { downloadedVersion: "1.2.3", availableVersion: "1.2.3" };
 
@@ -19,5 +23,6 @@ describe("update wording", () => {
 		expect(updateReadyLabel({ ...state, downloadedVersion: null } as never)).toBe(
 			"Update ready to install",
 		);
+		expect(updateAvailableLabel(unknown)).toBe("An update is available to download");
 	});
 });

@@ -454,6 +454,8 @@ export const UPDATER_STATUSES = [
 	"checking",
 	"downloading",
 	"downloaded",
+	/** A newer version exists but must be downloaded and installed by hand (`downloadUrl`). */
+	"available",
 	"up-to-date",
 	"error",
 ] as const;
@@ -472,7 +474,7 @@ export const releaseNotesSchema = z.object({
 export type ReleaseNotes = z.output<typeof releaseNotesSchema>;
 
 export const updaterStateSchema = z.object({
-	/** False where the app can't update itself (unpackaged, unsupported platform). */
+	/** False where the app can't check for updates (unpackaged, unsupported platform). */
 	enabled: z.boolean(),
 	status: z.enum(UPDATER_STATUSES),
 	/** The release track the app follows, e.g. `stable` or `preview`. */
@@ -480,6 +482,8 @@ export const updaterStateSchema = z.object({
 	currentVersion: z.string(),
 	availableVersion: z.string().nullable(),
 	downloadedVersion: z.string().nullable(),
+	/** Where to get `availableVersion` while the status is `available`. */
+	downloadUrl: z.string().nullable(),
 	/** What went wrong, or why updating is disabled. */
 	message: z.string().nullable(),
 	/** ISO date-time of the last check. */

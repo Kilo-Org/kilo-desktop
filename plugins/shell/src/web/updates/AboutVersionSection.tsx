@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { DownloadIcon } from "lucide-react";
 
 import { useContextKey } from "@kilo-desktop/kernel/web";
 import { Badge } from "@kilo-desktop/ui/components/badge";
@@ -22,11 +23,14 @@ import type { UpdaterState as DesktopUpdateState } from "@kilo-desktop/kernel";
 import { BETA_BADGES_FLAG, UPDATE_TRACK_SWITCHER_FLAG } from "../../contracts";
 import { InstallUpdateDialog } from "./InstallUpdateDialog";
 import { hasVisibleReleaseNotes, ReleaseNotesList } from "./ReleaseNotesList";
+import { updateAvailableLabel } from "./updateActions";
+import { useOpenDownload } from "./useOpenDownload";
 import { useUpdates } from "./useUpdates";
 
 /**
  * Settings → About's top block, contributed to `kilo.shell/about-section`:
- * the version, the update check or install, the update track (behind its
+ * the version, the update check, install or download (where the app can't
+ * install updates itself), the update track (behind its
  * flag) and the release notes worth reading.
  */
 export function AboutVersionSection() {
@@ -40,6 +44,8 @@ export function AboutVersionSection() {
 		state?.releaseNotes.find(hasVisibleReleaseNotes)?.version;
 	const [pending, setPending] = useState(false);
 	const [confirmOpen, setConfirmOpen] = useState(false);
+	const openDownload = useOpenDownload();
+	const downloadUrl = state?.status === "available" ? state.downloadUrl : null;
 	const updateBusy = pending || state?.status === "checking" || state?.status === "downloading";
 
 	const check = async () => {
@@ -137,6 +143,15 @@ export function AboutVersionSection() {
 							{state?.status === "downloaded" ? (
 								<Button size="sm" data-qa-id="update-install" onClick={() => setConfirmOpen(true)}>
 									Restart to update
+								</Button>
+							) : downloadUrl ? (
+								<Button
+									size="sm"
+									data-qa-id="update-download"
+									onClick={() => void openDownload(downloadUrl)}
+								>
+									<DownloadIcon data-icon="inline-start" aria-hidden="true" />
+									Download
 								</Button>
 							) : (
 								<Button
@@ -243,7 +258,7 @@ function getUpdateDescription(state: DesktopUpdateState): string {
 	switch (state.status) {
 		case "disabled":
 		case "error":
-			return state.message ?? "Automatic updates are unavailable.";
+			return state.message ?? "Updates are unavailable.";
 		case "checking":
 			return "Checking for a newer version…";
 		case "downloading":
@@ -252,6 +267,8 @@ function getUpdateDescription(state: DesktopUpdateState): string {
 			return targetVersion
 				? `Version ${targetVersion} is ready to install.`
 				: "An update is ready to install.";
+		case "available":
+			return `${updateAvailableLabel(state)}.`;
 		case "up-to-date":
 			return "You're up to date.";
 		case "idle":

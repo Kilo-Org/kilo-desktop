@@ -189,6 +189,19 @@ export function getReleaseNotesUrl(input: {
 	return `${url.toString().replace(/\/+$/, "")}/${getReleasePrefix(input.track)}/release-notes/${fileName}`;
 }
 
+/** The track's `latest.json` pointer: version and per-platform download records. */
+export function getTrackManifestUrl(input: {
+	readonly publishUrl: string;
+	readonly track: ReleaseTrack;
+}): string | undefined {
+	if (!input.publishUrl) return undefined;
+	const url = new URL(input.publishUrl);
+	if (url.protocol !== "https:") {
+		throw new Error("UPDATE_PUBLISH_URL must use HTTPS.");
+	}
+	return `${url.toString().replace(/\/+$/, "")}/${getReleasePrefix(input.track)}/latest.json`;
+}
+
 export function validatePublishEnvironment(
 	environment: PublishEnvironment,
 	platform: NodeJS.Platform,

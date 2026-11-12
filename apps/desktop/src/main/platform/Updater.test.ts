@@ -30,6 +30,7 @@ function createService(
 	overrides: {
 		isPackaged?: boolean;
 		platform?: NodeJS.Platform;
+		arch?: string;
 		publishUrls?: Readonly<Record<ReleaseTrack, string>>;
 		fetch?: typeof fetch;
 		updater?: FakeNativeUpdater;
@@ -45,7 +46,7 @@ function createService(
 	const service = new DesktopUpdaterService({
 		isPackaged: overrides.isPackaged ?? true,
 		platform: overrides.platform ?? "darwin",
-		arch: "arm64",
+		arch: overrides.arch ?? "arm64",
 		track: overrides.track ?? "preview",
 		currentVersion: overrides.currentVersion ?? "1.2.2",
 		publishUrls: overrides.publishUrls ?? {
@@ -380,6 +381,318 @@ describe("DesktopUpdaterService", () => {
 			serverType: "json",
 		});
 		expect(service.state.track).toBe("preview");
+		service.dispose();
+	});
+});
+
+describe("DesktopUpdaterService on Linux", () => {
+	const debUrl = (host: string, channel: string, arch: string) =>
+		`${host}/kilo-desktop/${channel}/linux/${arch}/kilo-desktop_${notes.version}_${arch}.deb`;
+	const download = (
+		arch: string,
+		url = debUrl("https://updates.example.com", "preview", arch),
+	) => ({
+		platform: "linux" as const,
+		arch,
+		type: "deb" as const,
+		fileName: "kilo-desktop.deb",
+		url,
+		size: 1024,
+		sha256: "abc123",
+	});
+	const manifest = {
+		schemaVersion: 1 as const,
+		track: "preview" as const,
+		version: notes.version,
+		publishedAt: notes.publishedAt,
+		releaseNotesUrl: `https://updates.example.com/kilo-desktop/preview/release-notes/${notes.version}.json`,
+		downloads: [
+			download("x64"),
+			download("arm64"),
+			{ ...download("arm64"), platform: "macos" as const, type: "dmg" as const },
+		],
+	};
+
+	interface Documents {
+		manifest?: unknown;
+		notes?: unknown;
+		/** Answers manifest requests with this HTTP status instead of the manifest. */
+		manifestStatus?: number;
+		/** Leaves manifest requests pending until their signal aborts. */
+		hangManifest?: boolean;
+	}
+
+	/**
+	 * Serves the track manifest and release notes like the update host does.
+	 * `documents` is read on every request, so a test can change it between checks.
+	 */
+	function serve(documents: Documents = {}) {
+		return vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+			const url = String(input);
+			const isManifest = url.endsWith("/latest.json") && !url.includes("/release-notes/");
+			if (isManifest && documents.hangManifest) {
+				return new Promise<Response>((_, reject) => {
+					init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+				});
+			}
+			if (isManifest && documents.manifestStatus) {
+				return new Response("unavailable", { status: documents.manifestStatus });
+			}
+			const body = url.includes("/release-notes/")
+				? (documents.notes ?? notes)
+				: isManifest
+					? (documents.manifest ?? manifest)
+					: undefined;
+			return body === undefined
+				? new Response("missing", { status: 404 })
+				: new Response(JSON.stringify(body), { status: 200 });
+		});
+	}
+
+	const releaseNoteRequests = (fetchDocuments: ReturnType<typeof serve>) =>
+		fetchDocuments.mock.calls.filter(([input]) => String(input).includes("/release-notes/")).length;
+
+	/** A Linux service that has already offered the preview package. */
+	async function offered(documents: Documents = {}) {
+		vi.useFakeTimers();
+		const fetchDocuments = serve(documents);
+		const created = createService({ platform: "linux", fetch: fetchDocuments as typeof fetch });
+		created.service.start();
+		await created.service.check();
+		expect(created.service.state.status).toBe("available");
+		return { ...created, fetchDocuments, offeredAt: created.states.length };
+	}
+
+	it("checks without the native updater and offers this architecture's package", async () => {
+		vi.useFakeTimers();
+		const fetchDocuments = serve();
+		const { service, updater } = createService({
+			platform: "linux",
+			arch: "arm64",
+			fetch: fetchDocuments as typeof fetch,
+		});
+		service.start();
+		expect(service.state).toMatchObject({ enabled: true, status: "idle", downloadUrl: null });
+		expect(updater.setFeedURL).not.toHaveBeenCalled();
+
+		expect((await service.check()).accepted).toBe(true);
+
+		expect(fetchDocuments).toHaveBeenCalledWith(
+			"https://updates.example.com/kilo-desktop/preview/latest.json",
+			expect.anything(),
+		);
+		expect(service.state).toMatchObject({
+			status: "available",
+			availableVersion: notes.version,
+			downloadedVersion: null,
+			downloadUrl: debUrl("https://updates.example.com", "preview", "arm64"),
+			releaseNotes: [notes],
+		});
+		expect(updater.checkForUpdates).not.toHaveBeenCalled();
+		expect(service.install().accepted).toBe(false);
+		expect(updater.quitAndInstall).not.toHaveBeenCalled();
+		service.dispose();
+	});
+
+	it("reports up to date when the published version is not newer", async () => {
+		vi.useFakeTimers();
+		const { service } = createService({
+			platform: "linux",
+			currentVersion: notes.version,
+			fetch: serve() as typeof fetch,
+		});
+		service.start();
+
+		await service.check();
+
+		expect(service.state).toMatchObject({
+			status: "up-to-date",
+			availableVersion: null,
+			downloadUrl: null,
+		});
+		service.dispose();
+	});
+
+	it("says when a newer release has no package for this architecture yet", async () => {
+		vi.useFakeTimers();
+		const { service } = createService({
+			platform: "linux",
+			arch: "arm64",
+			fetch: serve({ manifest: { ...manifest, downloads: [download("x64")] } }) as typeof fetch,
+		});
+		service.start();
+
+		await service.check();
+
+		expect(service.state).toMatchObject({
+			status: "error",
+			availableVersion: null,
+			downloadUrl: null,
+			message: `Version ${notes.version} has no Linux package for arm64 yet. Try again later.`,
+		});
+		service.dispose();
+	});
+
+	it("never offers a package hosted outside the track's update host", async () => {
+		vi.useFakeTimers();
+		const offHost = download("arm64", debUrl("https://downloads.example.net", "preview", "arm64"));
+		const { service } = createService({
+			platform: "linux",
+			fetch: serve({ manifest: { ...manifest, downloads: [offHost] } }) as typeof fetch,
+		});
+		service.start();
+
+		await service.check();
+
+		expect(service.state).toMatchObject({
+			status: "error",
+			downloadUrl: null,
+			message: expect.stringContaining("no Linux package"),
+		});
+		service.dispose();
+	});
+
+	it("reports a failed check when the manifest is unavailable or malformed", async () => {
+		vi.useFakeTimers();
+		for (const [documents, message] of [
+			[{ manifestStatus: 503 }, /update check failed\. The update server responded with HTTP 503/],
+			[{ manifest: { ...manifest, track: "stable" } }, /update check failed/],
+			[{ manifest: { ...manifest, version: "latest" } }, /update check failed/],
+		] as const) {
+			const { service } = createService({
+				platform: "linux",
+				fetch: serve(documents) as typeof fetch,
+			});
+			service.start();
+
+			await service.check();
+
+			expect(service.state).toMatchObject({
+				status: "error",
+				message: expect.stringMatching(message),
+			});
+			expect((await service.check()).accepted).toBe(true);
+			service.dispose();
+		}
+	});
+
+	it.each<[string, Documents]>([
+		["the manifest is unavailable", { manifestStatus: 503 }],
+		[
+			"a newer release has no package for this architecture yet",
+			{
+				manifest: {
+					...manifest,
+					version: "1.2.4-preview-260827-12000",
+					downloads: [download("x64")],
+				},
+			},
+		],
+	])("quietly keeps the offer when, in the background, %s", async (_, change) => {
+		const documents: Documents = {};
+		const { service, states, offeredAt } = await offered(documents);
+		const offer = service.state;
+		Object.assign(documents, change);
+
+		await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+		expect(states.slice(offeredAt)).toEqual([]);
+		expect(service.state).toEqual(offer);
+		service.dispose();
+	});
+
+	it("reuses the release notes while the offered version is unchanged", async () => {
+		const documents: Documents = {};
+		const { service, fetchDocuments } = await offered(documents);
+		const requested = releaseNoteRequests(fetchDocuments);
+		documents.notes = { unavailable: true };
+
+		await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+		expect(releaseNoteRequests(fetchDocuments)).toBe(requested);
+		expect(service.state.releaseNotes).toEqual([notes]);
+		service.dispose();
+	});
+
+	it("lets a track change cancel a background check", async () => {
+		const persistTrack = vi.fn();
+		const stableDeb = download("arm64", debUrl("https://stable.example.com", "latest", "arm64"));
+		const documents: Documents = {};
+		vi.useFakeTimers();
+		const fetchDocuments = serve(documents);
+		const { service } = createService({
+			platform: "linux",
+			persistTrack,
+			fetch: fetchDocuments as typeof fetch,
+		});
+		service.start();
+		await service.check();
+		documents.hangManifest = true;
+		await vi.advanceTimersByTimeAsync(10 * 60_000);
+
+		documents.hangManifest = false;
+		documents.manifest = { ...manifest, track: "stable", version: "1.3.0", downloads: [stableDeb] };
+		documents.notes = { ...notes, track: "stable", version: "1.3.0" };
+		const result = await service.setTrack("stable");
+
+		expect(result.accepted).toBe(true);
+		expect(persistTrack).toHaveBeenCalledWith("stable");
+		expect(service.state).toMatchObject({
+			track: "stable",
+			status: "available",
+			availableVersion: "1.3.0",
+			downloadUrl: stableDeb.url,
+		});
+		service.dispose();
+	});
+
+	it("still offers the package when its release notes are unavailable", async () => {
+		vi.useFakeTimers();
+		const fetchDocuments = vi.fn(async (input: string | URL | Request) =>
+			String(input).includes("/release-notes/")
+				? new Response("unavailable", { status: 503 })
+				: new Response(JSON.stringify(manifest), { status: 200 }),
+		);
+		const { service } = createService({ platform: "linux", fetch: fetchDocuments as typeof fetch });
+		service.start();
+
+		await service.check();
+
+		expect(service.state).toMatchObject({ status: "available", releaseNotes: [] });
+		service.dispose();
+	});
+
+	it("switches tracks and checks the new track's manifest", async () => {
+		vi.useFakeTimers();
+		const persistTrack = vi.fn();
+		const stableNotes = { ...notes, track: "stable" as const, version: "1.3.0" };
+		const stableDeb = download("arm64", debUrl("https://stable.example.com", "latest", "arm64"));
+		const fetchDocuments = serve({
+			manifest: { ...manifest, track: "stable", version: "1.3.0", downloads: [stableDeb] },
+			notes: stableNotes,
+		});
+		const { service, updater } = createService({
+			platform: "linux",
+			persistTrack,
+			fetch: fetchDocuments as typeof fetch,
+		});
+		service.start();
+
+		const result = await service.setTrack("stable");
+
+		expect(result.accepted).toBe(true);
+		expect(persistTrack).toHaveBeenCalledWith("stable");
+		expect(updater.setFeedURL).not.toHaveBeenCalled();
+		expect(fetchDocuments).toHaveBeenCalledWith(
+			"https://stable.example.com/kilo-desktop/latest/latest.json",
+			expect.anything(),
+		);
+		expect(service.state).toMatchObject({
+			track: "stable",
+			status: "available",
+			availableVersion: "1.3.0",
+			downloadUrl: stableDeb.url,
+		});
 		service.dispose();
 	});
 });

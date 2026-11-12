@@ -356,7 +356,7 @@ the user sees of `kilo.core`.
 | -------------------------------- | --------------- | -------------------------------------------------------------------------------------------- |
 | `kilo.shell/main`                | exclusive       | The main area                                                                                |
 | `kilo.shell/left-sidebar`        | exclusive       | The left sidebar's body                                                                      |
-| `kilo.shell/sidebar-notice`      | additive        | Something to act on ("Restart to update")                                                    |
+| `kilo.shell/sidebar-notice`      | additive        | Something to act on ("Restart to update", "Update available")                                |
 | `kilo.shell/top-bar-title`       | exclusive       | What names the main area in the top bar, in place of its title                               |
 | `kilo.shell/top-bar-action`      | additive        | Actions in the top bar                                                                       |
 | `kilo.shell/status-bar-item`     | additive        | Ambient status: a view, an action or a popover                                               |

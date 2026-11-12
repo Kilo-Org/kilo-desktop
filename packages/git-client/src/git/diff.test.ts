@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readFile, readdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { mkdir } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join, sep } from "node:path";
+import { basename, join, sep } from "node:path";
 
 import { createGitClient } from "../client.js";
 import {
@@ -38,10 +37,6 @@ async function readPatchText(patch: GitPatchFile): Promise<string> {
 
 async function removePatchFile(patch: GitPatchFile): Promise<void> {
 	await rm(patch.patchPath, { force: true });
-}
-
-async function leftoverIndexDirs(): Promise<string[]> {
-	return (await readdir(tmpdir())).filter((entry) => entry.startsWith("git-client-index-"));
 }
 
 describe("createWorkingDirectoryPatch", () => {
@@ -395,13 +390,21 @@ describe("createWorkingDirectoryPatch", () => {
 		await makeCommit(repoPath, { entries: [{ path: "file.txt", contents: "x\n" }] });
 		await writeFile(join(repoPath, "file.txt"), "y\n");
 
-		const indexDirsBefore = new Set(await leftoverIndexDirs());
-		const patch = await createPatchOrThrow(repoPath);
-		const patchPath = patch.patchPath;
+		// Other suites (e.g. plugin-git's integration tests) create index dirs in
+		// the shared tmpdir concurrently, so give this call a private tmpdir.
+		const privateTmp = await createTestDir("private-tmp");
+		vi.stubEnv("TMPDIR", privateTmp);
+		vi.stubEnv("TMP", privateTmp);
+		vi.stubEnv("TEMP", privateTmp);
+		let patchPath: string;
+		try {
+			patchPath = (await createPatchOrThrow(repoPath)).patchPath;
+		} finally {
+			vi.unstubAllEnvs();
+		}
 		expect((await stat(patchPath)).size).toBeGreaterThan(0);
-		// The throwaway index dir never outlives the call — no new entries leaked.
-		const newIndexDirs = (await leftoverIndexDirs()).filter((d) => !indexDirsBefore.has(d));
-		expect(newIndexDirs).toEqual([]);
+		// The throwaway index dir never outlives the call: only the patch remains.
+		expect(await readdir(privateTmp)).toEqual([basename(patchPath)]);
 		// The patch file does, until the caller removes it.
 		await rm(patchPath, { force: true });
 		await expect(stat(patchPath)).rejects.toMatchObject({ code: "ENOENT" });

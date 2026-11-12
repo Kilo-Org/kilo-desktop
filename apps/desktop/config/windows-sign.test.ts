@@ -169,6 +169,26 @@ describe("windows signing helpers", () => {
 		error.mockRestore();
 	});
 
+	it("includes AzureSignTool output in the error when signing fails", async () => {
+		promisifiedExecFile.mockRejectedValue(
+			Object.assign(new Error("Command failed: AzureSignTool sign"), {
+				code: 1,
+				stdout: "Signing file app.exe\n",
+				stderr: "Forbidden: caller lacks keys/sign permission\n",
+			}),
+		);
+
+		const exe = await temporaryFile("app.exe", buildMinimalPE());
+		const signing = signWindowsFile(exe, {
+			AZURE_KEY_VAULT_URI: "https://example.vault.azure.net/",
+			AZURE_CERT_NAME: "codesign",
+		});
+
+		await expect(signing).rejects.toThrow(`AzureSignTool failed to sign ${exe} (exit code 1)`);
+		await expect(signing).rejects.toThrow("Forbidden: caller lacks keys/sign permission");
+		await expect(signing).rejects.toThrow("Signing file app.exe");
+	});
+
 	it("skips native modules that are not Windows PE binaries", async () => {
 		const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
 		const filePath = await temporaryNativeModule(new Uint8Array([0xcf, 0xfa, 0xed, 0xfe]));

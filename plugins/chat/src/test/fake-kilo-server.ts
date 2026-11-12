@@ -138,6 +138,8 @@ export class FakeKiloServer {
 			hints: [],
 		},
 	];
+	/** Holds answering `/command` until the test releases it. */
+	commandsGate?: Promise<void>;
 	/** Permission requests `/permission` lists. */
 	permissions: Record<string, unknown>[] = [];
 	/** Question requests `/question` lists. */
@@ -305,7 +307,10 @@ export class FakeKiloServer {
 		if (url.pathname === "/agent") return json(this.agents);
 		if (url.pathname === "/provider") return json(this.providers);
 		if (url.pathname === "/config") return json(this.config);
-		if (url.pathname === "/command") return json(this.commands);
+		if (url.pathname === "/command") {
+			await this.commandsGate;
+			return json(this.commands);
+		}
 		if (url.pathname === "/kilo/auth-status") return json({ authenticated: false });
 		if (first !== "session" || !id) return json({ message: "Not found" }, 404);
 		const chat = this.chats.get(decodeURIComponent(id));
@@ -334,6 +339,7 @@ export class FakeKiloServer {
 			return json(info);
 		}
 		if (action === "command") return json({ info: {}, parts: [] });
+		if (action === "summarize") return this.summarize(chat);
 		return json({ message: "Not found" }, 404);
 	}
 
@@ -373,6 +379,9 @@ export class FakeKiloServer {
 			}
 		}, 20);
 	}
+
+	/** How `/session/:id/summarize` (compacting a chat) answers; accepted by default. */
+	summarize: (chat: FakeChat) => Response | Promise<Response> = () => json(true);
 
 	/** Milliseconds a chat's details take to arrive, as from a busy server. */
 	chatReadDelayMs = 0;

@@ -1,7 +1,7 @@
 import type { PluginDefinitions } from "@kilo-desktop/kernel";
 
 import { AutoApprove } from "./auto-approve";
-import { Composer, ComposerAction, ComposerMention } from "./composer";
+import { ClientSlashCommand, Composer, ComposerAction, ComposerMention } from "./composer";
 import { Drafts } from "./drafts";
 import { HtmlPages } from "./html-pages";
 import { MediaViewers } from "./media-viewers";
@@ -24,8 +24,9 @@ export * from "./transcript";
 
 /**
  * kilo.chat's public surface: the chat pane (a work session's chat with the
- * agent), its composer (the `composer` domain object, the `composer-action`
- * and `composer-mention` points and the `composerFocused` key), its
+ * agent), its composer (the `composer` domain object, the `composer-action`,
+ * `composer-mention` and `client-slash-command` points and the
+ * `composerFocused` key), its
  * transcript (the `tool-renderer`, `mcp-app` and `markdown-extension`
  * points, and `html-pages` for saving the agent's pages), its permission
  * and question cards (the `permission-renderer` point), local model servers
@@ -44,6 +45,7 @@ export const CHAT_DEFINITIONS: PluginDefinitions = {
 	extensionPoints: [
 		ComposerAction,
 		ComposerMention,
+		ClientSlashCommand,
 		ToolRenderer,
 		McpApp,
 		MarkdownExtension,

@@ -30,14 +30,18 @@ import { resolveMentionParts, type MentionSource } from "./composer/mention-code
 import { useMentionSources } from "./composer/mention-triggers";
 import { focusComposerIn, SESSION_ATTRIBUTE, type ComposerFocus } from "./composer-focus";
 import type { CreatedChat } from "./runtime/chat-backend";
-import { ChatConnectionProvider, useChatConnection } from "./runtime/chat-connection";
+import { ChatConnectionProvider } from "./runtime/chat-connection";
 import type { ChatServices } from "./runtime/chat-services";
 import type { PromptPart } from "./runtime/prompt-options";
 import { chatSystemPrompt, sessionFolders, type PromptFolder } from "./runtime/system-prompt";
 import { useChatRuntime } from "./runtime/use-chat-runtime";
 import { ComposerSelectionProvider, type PromptSelection } from "./selection/composer-selection";
 import { prepareForPrompt, useModelSourcesRef } from "./selection/model-source";
-import { useKiloCommandCatalog } from "./slash-commands/use-kilo-command-catalog";
+import {
+	ClientSlashSelectionProvider,
+	serverCommandNames,
+	useSlashCommands,
+} from "./slash-commands/client-slash-commands";
 import { ChatPaneOpeners } from "./panes/chat-pane-openers";
 import { FollowPlanApproval } from "./plan/follow-plan-approval";
 import { Thread } from "./thread/thread";
@@ -298,6 +302,7 @@ export function ChatThread({
 		},
 	});
 	const aui = useTranscriptAui();
+	const getSelection = useCallback(() => selection.current, []);
 	return (
 		<AssistantRuntimeProvider aui={aui} runtime={runtime}>
 			<ComposerContextProvider composer={composer}>
@@ -307,25 +312,27 @@ export function ChatThread({
 						selection.current = next;
 					}}
 				>
-					<CommandNames directory={composer.directory} names={commandNames} />
-					{composer.workSessionId ? (
-						<ComposerRegistration
-							focus={focus}
-							workSessionId={composer.workSessionId}
-							paneId={paneId}
-							chatId={options.chatId}
-							focusRoot={focusRoot}
-						/>
-					) : null}
-					<FollowPlanApproval />
-					<ThreadPaneOpeners>
-						<TranscriptProviders
-							workSessionId={composer.workSessionId}
-							workspaceFolders={composer.workspaceFolders}
-						>
-							{children}
-						</TranscriptProviders>
-					</ThreadPaneOpeners>
+					<ClientSlashSelectionProvider getSelection={getSelection}>
+						<CommandNames directory={composer.directory} names={commandNames} />
+						{composer.workSessionId ? (
+							<ComposerRegistration
+								focus={focus}
+								workSessionId={composer.workSessionId}
+								paneId={paneId}
+								chatId={options.chatId}
+								focusRoot={focusRoot}
+							/>
+						) : null}
+						<FollowPlanApproval />
+						<ThreadPaneOpeners>
+							<TranscriptProviders
+								workSessionId={composer.workSessionId}
+								workspaceFolders={composer.workspaceFolders}
+							>
+								{children}
+							</TranscriptProviders>
+						</ThreadPaneOpeners>
+					</ClientSlashSelectionProvider>
 				</ComposerSelectionProvider>
 			</ComposerContextProvider>
 		</AssistantRuntimeProvider>
@@ -360,7 +367,11 @@ function ThreadPaneOpeners({ children }: { children: ReactNode }) {
 	);
 }
 
-/** Keeps Kilo's slash command names for the chat's folder where prompts can read them. */
+/**
+ * Keeps the names of Kilo's slash commands for the chat's folder where
+ * prompts can read them: the server's only, as the `/` menu lists them
+ * (without those a client command hides), so a client command is never sent.
+ */
 function CommandNames({
 	directory,
 	names,
@@ -368,12 +379,8 @@ function CommandNames({
 	directory: string | null;
 	names: { current: readonly string[] };
 }) {
-	const { connection } = useChatConnection();
-	const catalog = useKiloCommandCatalog(connection, directory ?? undefined);
-	names.current = useMemo(
-		() => (catalog.data ?? []).map((command) => command.name),
-		[catalog.data],
-	);
+	const { commands } = useSlashCommands(directory);
+	names.current = useMemo(() => serverCommandNames(commands), [commands]);
 	return null;
 }
 

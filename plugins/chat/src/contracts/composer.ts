@@ -6,6 +6,7 @@ import {
 	defineExtensionPoint,
 	implementation,
 	method,
+	type CommandHandler,
 } from "@kilo-desktop/kernel";
 
 const nothing = z.undefined();
@@ -100,6 +101,98 @@ export const ComposerMention = defineExtensionPoint({
 		title: z.string().min(1),
 	}),
 	implementation: implementation<ComposerMentionImplementation>("renderer"),
+});
+
+// --- client-slash-command ---
+
+/** The model a prompt from the pane would be sent with. */
+export interface ClientSlashCommandModel {
+	readonly providerID: string;
+	readonly modelID: string;
+}
+
+/**
+ * What the `/` menu passes the command it runs: the composer it was typed
+ * in, with the pane's picks.
+ */
+export interface ClientSlashCommandContext extends ComposerContext {
+	/** What the pane's next prompt would be sent with. */
+	readonly selection: {
+		readonly agent?: string | undefined;
+		readonly model?: ClientSlashCommandModel | undefined;
+		readonly variant?: string | undefined;
+	};
+	/** The chat is running a turn. */
+	readonly running: boolean;
+}
+
+const nullableId = z.string().nullable();
+
+export const clientSlashCommandContextSchema: z.ZodType<ClientSlashCommandContext> = z.object({
+	workSessionId: nullableId,
+	chatId: nullableId,
+	directory: nullableId,
+	workspaceId: nullableId,
+	workspaceFolders: z.array(z.object({ path: z.string(), isPrimary: z.boolean() })),
+	selection: z.object({
+		agent: z.string().optional(),
+		model: z.object({ providerID: z.string(), modelID: z.string() }).optional(),
+		variant: z.string().optional(),
+	}),
+	running: z.boolean(),
+});
+
+/**
+ * A `kernel/command` handler for a command placed in the `/` menu: `run`
+ * gets the `ClientSlashCommandContext` the menu passes as the command's
+ * argument. Run without one (from the palette, a key, the app menu), it
+ * warns and does nothing, so declare such commands with `palette: false`
+ * and no keybinding.
+ */
+export function slashCommandHandler(
+	run: (context: ClientSlashCommandContext) => unknown,
+): CommandHandler {
+	return (args) => {
+		const context = clientSlashCommandContextSchema.safeParse(args);
+		if (!context.success) {
+			console.warn(
+				"[kilo.chat] A slash command was run without the composer's context; it runs from the / menu only.",
+			);
+			return undefined;
+		}
+		return run(context.data);
+	};
+}
+
+/** What may follow `/`; `:` is left to the server's `name:skill` / `name:mcp` forms. */
+const clientSlashName = z
+	.string()
+	.regex(/^[A-Za-z][\w-]*$/, "Letters, digits, `-` and `_`, starting with a letter.");
+
+/**
+ * Places a `kernel/command` in the composer's `/` menu (`/compact`): it runs
+ * in the window instead of being sent to the agent, given the
+ * `ClientSlashCommandContext` as its argument (implement it with
+ * `slashCommandHandler`). It is listed under Actions, above the server's
+ * commands, while its command is available, and hides a server command of
+ * the same name; its aliases match when searching or sending but never hide
+ * a server command. Prompt templates are not client commands: they are
+ * server commands, added through `kilo.core/agent-extension`.
+ */
+export const ClientSlashCommand = defineExtensionPoint({
+	id: "kilo.chat/client-slash-command",
+	kind: "additive",
+	description: "Places a kernel command in the composer's / menu.",
+	metadata: z.object({
+		/** The `kernel/command` key it runs. */
+		command: z.string().min(1),
+		/** Typed after `/`. */
+		name: clientSlashName,
+		/** Shown in the menu; the command's title when absent. */
+		description: z.string().optional(),
+		/** Other names it answers to (`/smol` for `/compact`). */
+		aliases: z.array(clientSlashName).default([]),
+	}),
 });
 
 // --- composer-action ---

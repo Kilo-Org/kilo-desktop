@@ -71,6 +71,20 @@ describe("kilo.chat manifest", () => {
 		]);
 	});
 
+	it("places its /compact command in the / menu, and only there", () => {
+		expect(contributions("kilo.chat/client-slash-command")).toEqual([
+			expect.objectContaining({
+				id: "compact",
+				command: CHAT_COMMANDS.compact,
+				name: "compact",
+				aliases: ["smol", "condense"],
+			}),
+		]);
+		const compact = contributions("kernel/command").find((entry) => entry.id === "compact");
+		expect(compact).toMatchObject({ palette: false });
+		expect(compact).not.toHaveProperty("keybinding");
+	});
+
 	it("names html_render as Kilo calls it", () => {
 		expect(keys("kilo.core/tool")).toEqual([`${CHAT_PLUGIN_ID}/${HTML_RENDER_TOOL_ID}`]);
 		expect(toolWireName(`${CHAT_PLUGIN_ID}/${HTML_RENDER_TOOL_ID}`)).toBe(HTML_RENDER_TOOL_NAME);

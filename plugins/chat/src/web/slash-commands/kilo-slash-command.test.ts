@@ -1,23 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { Command } from "@kilocode/sdk/v2/client";
 
 import {
 	createKiloSlashFormatter,
 	extractPromptText,
-	groupKiloCommandsBySource,
-	mapKiloCommand,
 	isLeadingSlashQuery,
 	parseSlashDraft,
 	slashCommandFromPromptArgs,
+	slashSourceCategory,
 } from "./kilo-slash-command";
-
-const initCommand: Command = {
-	name: "init",
-	description: "Create an AGENTS.md",
-	source: "command",
-	template: "/init $ARGUMENTS",
-	hints: ["initialize"],
-};
 
 describe("parseSlashDraft", () => {
 	it("parses a command and trailing arguments", () => {
@@ -54,6 +44,7 @@ describe("createKiloSlashFormatter", () => {
 			["compact", "command"],
 			["frontend-design", "skill"],
 			["browser", "mcp"],
+			["smol", "action"],
 		]),
 	);
 
@@ -79,6 +70,9 @@ describe("createKiloSlashFormatter", () => {
 		expect(formatter.parse("/browser open docs")).toEqual([
 			{ kind: "mention", type: "mcp", label: "browser", id: "browser" },
 			{ kind: "text", text: " open docs" },
+		]);
+		expect(formatter.parse("/smol")).toEqual([
+			{ kind: "mention", type: "action", label: "smol", id: "smol" },
 		]);
 	});
 
@@ -123,51 +117,11 @@ describe("isLeadingSlashQuery", () => {
 	});
 });
 
-describe("mapKiloCommand", () => {
-	it("maps a Kilo command onto slash-menu fields", () => {
-		expect(mapKiloCommand(initCommand)).toEqual({
-			id: "init",
-			label: "init",
-			description: "Create an AGENTS.md",
-			icon: "command",
-		});
-	});
-
-	it("defaults the icon to command when source is missing", () => {
-		const { source: _source, ...withoutSource } = initCommand;
-		expect(mapKiloCommand(withoutSource).icon).toBe("command");
-	});
-});
-
-describe("groupKiloCommandsBySource", () => {
-	it("groups commands by source and omits empty categories", () => {
-		expect(
-			groupKiloCommandsBySource([
-				mapKiloCommand(initCommand),
-				mapKiloCommand({
-					...initCommand,
-					name: "frontend-design",
-					source: "skill",
-					description: "Create UI",
-				}),
-				mapKiloCommand({
-					...initCommand,
-					name: "browser",
-					source: "mcp",
-					description: "Browser tools",
-				}),
-			]).map((group) => [group.id, group.items.map((item) => item.id)]),
-		).toEqual([
-			["command", ["init"]],
-			["skill", ["frontend-design"]],
-			["mcp", ["browser"]],
-		]);
-	});
-
-	it("stays a single group when every command shares a source", () => {
-		expect(
-			groupKiloCommandsBySource([mapKiloCommand(initCommand)]).map((group) => group.id),
-		).toEqual(["command"]);
+describe("slashSourceCategory", () => {
+	it("files a server command under its source, and under commands without one", () => {
+		expect(slashSourceCategory("skill")).toBe("skill");
+		expect(slashSourceCategory("mcp")).toBe("mcp");
+		expect(slashSourceCategory(undefined)).toBe("command");
 	});
 });
 

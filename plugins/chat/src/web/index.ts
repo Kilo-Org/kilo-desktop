@@ -10,6 +10,7 @@ import {
 
 import { ComposerAction, paneChatId, ToolRenderer } from "../contracts";
 import { AgentIcon, createAgentPane } from "./AgentPane";
+import { createCompactCommand } from "./compaction/compact-command";
 import { BUILTIN_COMPOSER_ACTIONS } from "./composer/builtin-actions";
 import { activateComposerFocus, ComposerFocus } from "./composer-focus";
 import { implementPermissionAutoAnswer } from "./interactions/visible-permissions";
@@ -29,8 +30,9 @@ const LOCALLY_HANDLED_COMMANDS = ["send-message", "new-line", "cycle-agent"] as 
  * kilo.chat in a window: the agent, plan, subagent and media pane kinds, the
  * New Session page's composer (`kilo.work-sessions/work-session-starter`), the
  * window's composer domain object, its own composer actions and transcript
- * renderers, the composer's commands, and which permission requests Auto
- * approve answers (`kilo.work-sessions/permission-auto-answer`). One `ChatServices` (the live
+ * renderers, the composer's commands (`compact`, placed in the `/` menu by its
+ * manifest), and which permission requests Auto approve answers
+ * (`kilo.work-sessions/permission-auto-answer`). One `ChatServices` (the live
  * connection to the Kilo server and its event stream) and one query cache are
  * shared by every pane in the window.
  */
@@ -75,6 +77,7 @@ export const chatWebEntry = definePlugin({
 		for (const [id, implementation] of Object.entries(BUILTIN_COMPOSER_ACTIONS)) {
 			sdk.extensions.implement(ComposerAction, id, implementation);
 		}
+		sdk.extensions.implement(KernelCommand, "compact", createCompactCommand(chat));
 		for (const [id, implementation] of Object.entries(BUILTIN_TOOL_RENDERERS)) {
 			sdk.extensions.implement(ToolRenderer, id, implementation);
 		}

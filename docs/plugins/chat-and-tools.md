@@ -170,6 +170,58 @@ sdk.extensions.implement(ComposerMention, "todos", {
 with the message. The trigger is one character other than `/` (slash
 commands).
 
+### Slash commands (`kilo.chat/client-slash-command`)
+
+The `/` menu lists the Kilo server's commands for the chat's folder (its
+commands, skills and MCP prompts) and **client** commands: `kernel/command`s
+that run in the window instead of being sent to the agent (`/compact`). The
+plugin contributes the command; a `client-slash-command` entry places it in
+the menu, and kilo.chat decides what it is given:
+
+```jsonc
+"kernel/command": [
+	{ "id": "wave", "title": "Wave at the agent", "palette": false }
+],
+"kilo.chat/client-slash-command": [
+	{ "id": "wave", "command": "acme.tools/wave", "name": "wave", "aliases": ["hi"] }
+]
+```
+
+```ts
+sdk.extensions.implement(
+	KernelCommand,
+	"wave",
+	slashCommandHandler(({ chatId, directory, selection, running }) =>
+		greet(chatId, selection.model),
+	),
+);
+```
+
+Picking the command in the menu, or sending a draft that starts with
+`/wave` (or an alias), clears the composer and executes the command with a
+`ClientSlashCommandContext` as its argument; arguments typed after the name
+are ignored and nothing is sent. The context is the composer's (as for
+actions) plus the pane's `selection` (agent, model, variant) and whether
+the chat is `running`. `slashCommandHandler` checks it and hands it to the
+function, which shows its own toasts for anything it refuses; a command
+that throws is reported as `/wave failed`. The menu shows the placement's
+`description`, or the command's title, and lists the placement only while
+its command is available (implemented, its `when` holding).
+
+The palette, keybindings and the app menu run commands without that
+context, and `slashCommandHandler` ignores such runs, so declare a command
+meant for `/` with `palette: false` and no keybinding.
+
+As in Kilo's VS Code extension, client commands are listed first (Actions)
+and hide a server command of the same name; aliases match when searching or
+sending but never hide a server command, and a server command's exact name
+wins over a client alias. Of two placements with one name, the higher
+priority is kept.
+
+A prompt template (text the agent runs, with `$ARGUMENTS`) is not a client
+command: contribute it to `kilo.core/agent-extension` (`type: "command"`) so
+the server lists and runs it.
+
 ### Driving the composer
 
 The per-window `kilo.chat/composer` domain object has `focus` and `insert`

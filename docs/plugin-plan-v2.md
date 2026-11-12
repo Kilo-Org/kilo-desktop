@@ -606,15 +606,16 @@ features use them (e.g. git inserts text into the composer).
 
 **Extension points** (renderer)
 
-| Extension point                 | Kind     | What a plugin contributes                                                                                             |
-| ------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
-| `kilo.chat/composer-action`     | additive | A button, menu or popover in the composer                                                                             |
-| `kilo.chat/composer-mention`    | additive | Mentions after a trigger character, resolved to object refs                                                           |
-| `kilo.chat/tool-renderer`       | additive | How a tool's calls look in the transcript, through our own props type                                                 |
-| `kilo.chat/mcp-app`             | additive | An interactive widget for a tool's calls                                                                              |
-| `kilo.chat/markdown-extension`  | additive | Additions to the transcript's markdown, through our own types                                                         |
-| `kilo.chat/permission-renderer` | additive | Detail for a permission request, matched on tool contribution keys, not wire names                                    |
-| `kilo.chat/model-source`        | additive | A local AI provider's rail in the model picker, starting it and loading a model before a prompt (restored in step 11) |
+| Extension point                  | Kind     | What a plugin contributes                                                                                             |
+| -------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `kilo.chat/composer-action`      | additive | A button, menu or popover in the composer                                                                             |
+| `kilo.chat/composer-mention`     | additive | Mentions after a trigger character, resolved to object refs                                                           |
+| `kilo.chat/client-slash-command` | additive | A `kernel/command` placed in the `/` menu, run in the window with the pane's context (added after step 14)            |
+| `kilo.chat/tool-renderer`        | additive | How a tool's calls look in the transcript, through our own props type                                                 |
+| `kilo.chat/mcp-app`              | additive | An interactive widget for a tool's calls                                                                              |
+| `kilo.chat/markdown-extension`   | additive | Additions to the transcript's markdown, through our own types                                                         |
+| `kilo.chat/permission-renderer`  | additive | Detail for a permission request, matched on tool contribution keys, not wire names                                    |
+| `kilo.chat/model-source`         | additive | A local AI provider's rail in the model picker, starting it and loading a model before a prompt (restored in step 11) |
 
 **Context keys:** `composerFocused`.
 
@@ -627,8 +628,9 @@ features use them (e.g. git inserts text into the composer).
 | `kilo.work-sessions/work-session-starter` | `composer`                                                                                    |
 | `kilo.core/tool`                          | `html_render`                                                                                 |
 | `kilo.core/tool-approval`                 | `auto-approve`                                                                                |
-| `kernel/command`                          | `focus-composer`                                                                              |
+| `kernel/command`                          | `focus-composer`, `compact` (`session.summarize` with the pane's model; `/` menu only)        |
 | `kilo.chat/composer-action`               | `attach`, `agent`, `model`, `approval`, `unavailable-folders`                                 |
+| `kilo.chat/client-slash-command`          | `compact` (places `kilo.chat/compact` as `/compact`, `/smol`, `/condense`)                    |
 | `kilo.chat/tool-renderer`                 | The built-in Kilo tools (read, edit, bash, search, task, question, todo, …) and `html_render` |
 
 kilo.chat holds kilo.core's caller rights to prompt chats, answer their
@@ -679,6 +681,21 @@ permission requests and questions, and connect to the Kilo server directly.
   main and web entries in the shell with kilo.core and kilo.work-sessions
   stand-ins. e2e: chat specs restored, a `@smoke` spec (prompt from the New
   Session page, reply, title), `layout-presets` un-`fixme`d.
+- **Client slash commands (added after step 14).** Plugins contribute what a
+  `/` command does as a `kernel/command`; `kilo.chat/client-slash-command`
+  only places it in the menu (`{command, name, description?, aliases}`, no
+  implementation, as `kilo.shell/menu-item` places commands in the app
+  menu), listed while the command is available. kilo.chat executes it with
+  a `ClientSlashCommandContext` (the composer context, the pane's agent /
+  model / variant and `running`) as its argument; `slashCommandHandler`
+  (contracts) checks it and ignores runs without one, so such commands are
+  declared `palette: false` with no keybinding. The `/` menu merges
+  placements with the server's `command.list` as Kilo's VS Code extension
+  does (Actions first, a client name hides a server command, aliases never
+  do, a skill clashing with a command is `name:skill`). Picking one or
+  sending `/name …` clears the draft and runs it; only server names reach
+  `session.command`. Prompt templates stay on `kilo.core/agent-extension`.
+  kilo.chat ships `kilo.chat/compact`, placed as `/compact`.
 
 ---
 
@@ -1498,6 +1515,10 @@ done.
 | Windows skill links                                                | Before release          | `KiloSkillConfig`'s junction path and its removal fallback are untested (tests ran on macOS).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `production.ts` wiring has no tests                                | Ongoing                 | Each kilo.core area's real wiring is excluded from coverage; the e2e smoke spec is its only check.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | Lost origin favourites                                             | Accepted                | Favourites that only lived in a window's localStorage can't be adopted from main.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Refresh the `/` menu's server commands when Kilo restarts          | When convenient         | kilo.chat caches `command.list` per `[baseUrl, version, directory]` forever; `KiloServerManager.restart()` keeps the port and version, so commands added by config or `agent-extension` only show after a window reload. VS Code refetches on reconnect and reload.                                                                                                                                                                                                                                                                                                                                        |
+| More client slash commands                                         | When a need appears     | `/new`, `/models`, `/agents`, `/variant` (the pickers need a way to be opened from outside them); arguments and nested sub-commands (VS Code's `/review …`).                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Slash commands from the palette and keys                           | When a need appears     | Commands placed in the `/` menu are `palette: false` because the palette, keybindings and app menu pass no `ClientSlashCommandContext`; Settings → Shortcuts still lists them, and a key bound there only warns. Resolve the focused composer's context when none is passed (`MountedComposer.getContext` in `ComposerFocus`) to offer them everywhere.                                                                                                                                                                                                                                                    |
+| Typed arguments for command placements                             | With a second surface   | `kernel/command` handlers take `args?: unknown`; each surface that passes context (composer actions, slash placements) defines and checks its own shape (`slashCommandHandler`). A shared way for a placement point to declare its argument schema would replace these.                                                                                                                                                                                                                                                                                                                                    |
 
 ## Decisions on the earlier open questions
 

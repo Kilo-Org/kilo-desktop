@@ -8,6 +8,11 @@ export const CHAT_COMMANDS = {
 	newLine: "kilo.chat/new-line",
 	/** Shown in keyboard help only: the composer handles Shift+Tab itself. */
 	cycleAgent: "kilo.chat/cycle-agent",
+	/**
+	 * Summarizes a chat to free up its context; run from the `/` menu
+	 * (`/compact`), given its `ClientSlashCommandContext`.
+	 */
+	compact: "kilo.chat/compact",
 } as const;
 
 /**

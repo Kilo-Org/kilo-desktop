@@ -2,7 +2,8 @@ import { FileTextIcon, GitBranchIcon, SparklesIcon } from "lucide-react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import { KernelCommand, type PluginEntry } from "@kilo-desktop/kernel";
+import { KernelCommand, type CommandHandler, type PluginEntry } from "@kilo-desktop/kernel";
+import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import {
 	AutoApprove,
@@ -11,10 +12,12 @@ import {
 	ComposerMention,
 	Drafts,
 	chatPaneObject,
+	slashCommandHandler,
+	type ClientSlashCommandContext,
 	type ComposerContext,
 } from "../../contracts";
 import { agentPane, chatSummary } from "../../test/chat-host";
-import { FakeKiloServer } from "../../test/fake-kilo-server";
+import { assistantMessage, FakeKiloServer, userMessage } from "../../test/fake-kilo-server";
 import { renderChat } from "../../test/render-chat";
 
 // The shell the test host renders sits over the pane (its sidebar rail over
@@ -32,6 +35,8 @@ beforeEach(() => {
 afterEach(() => {
 	vi.unstubAllGlobals();
 	document.querySelector('style[data-test="rail"]')?.remove();
+	// Sonner's toasts are global: left up, they cover the next test's composer.
+	toast.dismiss();
 });
 
 const input = () => page.getByTestId("kilo-composer-input");
@@ -191,6 +196,238 @@ describe("slash commands", () => {
 
 		await userEvent.keyboard("ti");
 		await expect.element(page.getByText("Tidy imports")).toBeVisible();
+	});
+});
+
+describe("client slash commands", () => {
+	/** A pane on an existing chat in /projects/app, its model loaded. */
+	async function renderOnChat(server = new FakeKiloServer()) {
+		server.addChat({
+			id: "ses_a",
+			directory: "/projects/app",
+			title: "Chat",
+			messages: [
+				userMessage("ses_a", "msg_u1", "Hello"),
+				assistantMessage("ses_a", "msg_a1", "msg_u1", [
+					{ type: "text", text: "Done.", time: { start: 1, end: 2 } },
+				]),
+			],
+		});
+		const host = await renderChat({
+			server,
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
+			chats: [chatSummary("ses_a")],
+		});
+		await expect.element(page.getByText("Done.")).toBeVisible();
+		await expect
+			.poll(() => page.getByTestId("kilo-model-selector-trigger").element().textContent)
+			.toContain("Fast One");
+		return host;
+	}
+
+	const summarizeCalls = (host: Awaited<ReturnType<typeof renderChat>>) =>
+		host.server.requestsTo("POST", "/session/ses_a/summarize");
+
+	async function expectOneCompaction(host: Awaited<ReturnType<typeof renderChat>>) {
+		await expect.poll(() => summarizeCalls(host).length).toBe(1);
+		expect(summarizeCalls(host)[0]).toMatchObject({
+			directory: "/projects/app",
+			body: { providerID: "acme", modelID: "fast-1" },
+		});
+		expect(host.server.requestsTo("POST", "/session/ses_a/prompt_async")).toEqual([]);
+		expect(host.server.requestsTo("POST", "/session/ses_a/command")).toEqual([]);
+		await expect.element(input()).toHaveTextContent("");
+		expect(summarizeCalls(host)).toHaveLength(1);
+	}
+
+	it("lists Actions while the server's commands are still loading", async () => {
+		const server = new FakeKiloServer();
+		server.commandsGate = new Promise(() => undefined);
+		await renderChat({ server });
+		await expect.element(page.getByTestId("kilo-agent-selector-trigger")).toBeVisible();
+
+		await input().click();
+		await userEvent.keyboard("/comp");
+		await expect
+			.element(page.getByText("Summarize the chat so far to free up context"))
+			.toBeVisible();
+	});
+
+	it("compacts the chat when /compact is picked from the menu", async () => {
+		const host = await renderOnChat();
+		await input().click();
+		await userEvent.keyboard("/");
+		await page.getByText("Actions").click();
+		await page.getByText("Summarize the chat so far to free up context").click();
+
+		await expectOneCompaction(host);
+	});
+
+	it("compacts once for /compact or an alias followed by Enter", async () => {
+		const host = await renderOnChat();
+		await input().click();
+		await userEvent.keyboard("/compact");
+		await userEvent.keyboard("{Enter}");
+		await expectOneCompaction(host);
+
+		await userEvent.keyboard("/smol");
+		await userEvent.keyboard("{Enter}");
+		await expect.poll(() => summarizeCalls(host).length).toBe(2);
+	});
+
+	it("compacts, sending nothing, when /compact is sent with arguments or the Send button", async () => {
+		const host = await renderOnChat();
+		await input().click();
+		await userEvent.keyboard("/compact now please");
+		await userEvent.keyboard("{Enter}");
+		await expectOneCompaction(host);
+
+		await userEvent.fill(input(), "/compact");
+		await sendButton().click();
+		await expect.poll(() => summarizeCalls(host).length).toBe(2);
+		expect(host.server.requestsTo("POST", "/session/ses_a/prompt_async")).toEqual([]);
+	});
+
+	it("hides a server command with a client command's name", async () => {
+		const server = new FakeKiloServer();
+		server.commands = [
+			...server.commands,
+			{ name: "compact", description: "The server's compact", template: "", hints: [] },
+		];
+		await renderChat({ server });
+		await expect.element(page.getByTestId("kilo-agent-selector-trigger")).toBeVisible();
+
+		await input().click();
+		await userEvent.keyboard("/compact");
+		await expect
+			.element(page.getByText("Summarize the chat so far to free up context"))
+			.toBeVisible();
+		await expect.element(page.getByText("The server's compact")).not.toBeInTheDocument();
+	});
+
+	it("explains instead of compacting a chat that hasn't started", async () => {
+		const host = await renderChat();
+		await expect.element(page.getByTestId("kilo-agent-selector-trigger")).toBeVisible();
+		await input().click();
+		await userEvent.keyboard("/compact");
+		await userEvent.keyboard("{Enter}");
+		await expect.element(page.getByText("Nothing to compact yet")).toBeVisible();
+		expect(host.server.requests.some((request) => request.path.endsWith("/summarize"))).toBe(false);
+	});
+
+	it("explains instead of compacting a chat mid-turn", async () => {
+		const server = new FakeKiloServer();
+		const onChat = await renderOnChat(server);
+		await vi.waitFor(() => expect(server.openStreams).toBe(1));
+		server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
+		await expect.element(page.getByTestId("kilo-composer-stop")).toBeVisible();
+		await input().click();
+		await userEvent.keyboard("/compact");
+		await userEvent.keyboard("{Enter}");
+		await expect.element(page.getByText("Wait for the agent to finish")).toBeVisible();
+		expect(summarizeCalls(onChat)).toEqual([]);
+	});
+
+	it("reports a compaction the server refuses", async () => {
+		const server = new FakeKiloServer();
+		server.summarize = () =>
+			new Response(JSON.stringify({ message: "The model is overloaded" }), {
+				status: 500,
+				headers: { "content-type": "application/json" },
+			});
+		await renderOnChat(server);
+		await input().click();
+		await userEvent.keyboard("/compact");
+		await userEvent.keyboard("{Enter}");
+
+		await expect.element(page.getByText("Couldn't compact the chat")).toBeVisible();
+		await expect.element(page.getByText("The model is overloaded")).toBeVisible();
+	});
+
+	/**
+	 * A pane on a chat with acme.tools' `wave` command placed in the `/` menu
+	 * as `/wave`; `implement` binds the command, or leaves it unimplemented.
+	 */
+	async function renderWithWave(implement?: CommandHandler) {
+		const server = new FakeKiloServer();
+		server.addChat({ id: "ses_a", directory: "/projects/app", title: "Chat" });
+		const host = await renderChat({
+			server,
+			pane: agentPane({ object: chatPaneObject("ses_a") }),
+			chats: [chatSummary("ses_a")],
+			plugins: [
+				{
+					manifest: {
+						manifestVersion: 1,
+						id: "acme.tools",
+						displayName: "Acme tools",
+						version: "1.0.0",
+						requires: { "kilo.chat/client-slash-command": "optional" },
+						contributes: {
+							extensions: {
+								"kernel/command": [{ id: "wave", title: "Wave at the agent", palette: false }],
+								"kilo.chat/client-slash-command": [
+									{ id: "wave", command: "acme.tools/wave", name: "wave" },
+								],
+							},
+						},
+					},
+					web: {
+						activate(sdk) {
+							if (implement) sdk.extensions.implement(KernelCommand, "wave", implement);
+						},
+					},
+				},
+			],
+		});
+		await expect
+			.poll(() => page.getByTestId("kilo-model-selector-trigger").element().textContent)
+			.toContain("Fast One");
+		return host;
+	}
+
+	it("runs another plugin's placed command with the composer's context", async () => {
+		const run = vi.fn<(context: ClientSlashCommandContext) => void>();
+		const host = await renderWithWave(slashCommandHandler(run));
+
+		await input().click();
+		await userEvent.keyboard("/wave");
+		await page.getByText("Wave at the agent").click();
+
+		await expect.poll(() => run.mock.calls.length).toBe(1);
+		expect(run.mock.calls[0]![0]).toMatchObject({
+			workSessionId: "wses_1",
+			chatId: "ses_a",
+			directory: "/projects/app",
+			selection: { agent: "code", model: { providerID: "acme", modelID: "fast-1" } },
+			running: false,
+		});
+		await expect.element(input()).toHaveTextContent("");
+		expect(host.server.requestsTo("POST", "/session/ses_a/command")).toEqual([]);
+	});
+
+	it("leaves out a placement whose command isn't available, sending /name as a prompt", async () => {
+		const host = await renderWithWave();
+
+		await input().click();
+		await userEvent.keyboard("/wave");
+		await expect.element(page.getByText("Wave at the agent")).not.toBeInTheDocument();
+
+		await userEvent.keyboard(" hello");
+		await userEvent.keyboard("{Enter}");
+		await expect.poll(() => promptBody(host, "ses_a")).toBeDefined();
+		expect(JSON.stringify(promptBody(host, "ses_a"))).toContain("/wave hello");
+	});
+
+	it("reports a placed command that fails", async () => {
+		await renderWithWave(() => Promise.reject(new Error("No hands")));
+
+		await input().click();
+		await userEvent.keyboard("/wave");
+		await userEvent.keyboard("{Enter}");
+
+		await expect.element(page.getByText("/wave failed")).toBeVisible();
+		await expect.element(page.getByText("No hands")).toBeVisible();
 	});
 });
 

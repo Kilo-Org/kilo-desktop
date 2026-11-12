@@ -8,6 +8,7 @@ import {
 	type FC,
 	type FormEvent,
 	type KeyboardEvent,
+	type MouseEvent,
 } from "react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
@@ -18,6 +19,10 @@ import { useApprovePlan } from "../plan/use-approve-plan";
 
 import { useChatAgentSelection } from "../selection/ChatAgentSelectionContext";
 import { cycleCatalogAgent, OPTIMISTIC_AGENT_CATALOG } from "../selection/agent-catalog";
+import {
+	useRunTypedClientSlashCommand,
+	useSlashCommands,
+} from "../slash-commands/client-slash-commands";
 import { useKiloSlashFormatter } from "../slash-commands/use-kilo-slash-formatter";
 import { ComposerSubagentStrip } from "../subagents/ComposerSubagentStrip";
 import { useSubagentActivity } from "../subagents/SubagentActivityContext";
@@ -57,7 +62,9 @@ export const Composer: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 	const plan = useApprovePlan();
 	const refining = plan.canReply;
 
-	const slashFormatter = useKiloSlashFormatter(context.directory);
+	const slash = useSlashCommands(context.directory);
+	const runTypedClientCommand = useRunTypedClientSlashCommand(slash.commands);
+	const slashFormatter = useKiloSlashFormatter(slash.commands);
 	const sources = useMentionSources();
 	const formatter = useMemo(
 		() => combineFormatters(slashFormatter, createMentionFormatter(sources), isMentionType),
@@ -152,18 +159,22 @@ export const Composer: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 							onKeyDown={handleInputKeyDown}
 							style={inputHeight.inputStyle}
 							onEnter={() => {
+								if (runTypedClientCommand({ fromEnter: true })) return true;
 								// The follow-up keeps the thread running: Enter refines instead of queueing.
 								if (!refining) return false;
 								if (!aui.composer.getState().isEmpty) plan.refine();
 								return true;
 							}}
 						/>
-						<KiloSlashTrigger directory={context.directory} formatter={formatter} />
+						<KiloSlashTrigger slash={slash} formatter={formatter} />
 						<MentionTriggers sources={sources} context={mentionContext} formatter={formatter} />
 						<ComposerActionBar
 							refining={refining}
 							refinePending={plan.submitting}
 							onRefine={() => plan.refine()}
+							onSendClick={(event) => {
+								if (runTypedClientCommand({ fromEnter: false })) event.preventDefault();
+							}}
 						/>
 					</ComposerPrimitive.AttachmentDropzone>
 				</ComposerPrimitive.Root>
@@ -176,7 +187,9 @@ const ComposerActionBar: FC<{
 	refining: boolean;
 	refinePending: boolean;
 	onRefine: () => void;
-}> = ({ refining, refinePending, onRefine }) => {
+	/** Runs before Send or Queue sends; preventing the event keeps the draft from being sent. */
+	onSendClick: (event: MouseEvent<HTMLButtonElement>) => void;
+}> = ({ refining, refinePending, onRefine, onSendClick }) => {
 	const aui = useAui();
 	const isRunning = useAuiState((s) => s.thread.isRunning);
 	const isComposerEmpty = useAuiState((s) => s.composer.isEmpty);
@@ -255,6 +268,7 @@ const ComposerActionBar: FC<{
 					<>
 						{!refining && canQueue && !isComposerEmpty ? (
 							<ComposerPrimitive.Send
+								onClick={onSendClick}
 								render={
 									<Button
 										type="button"
@@ -304,6 +318,7 @@ const ComposerActionBar: FC<{
 				) : null}
 				{!refining && !busy ? (
 					<ComposerPrimitive.Send
+						onClick={onSendClick}
 						render={
 							<TooltipIconButton
 								tooltip="Send message"

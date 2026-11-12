@@ -5,83 +5,90 @@ import {
 	type Unstable_SlashCommand,
 	type Unstable_TriggerItem,
 } from "@assistant-ui/react";
+import type { Unstable_TriggerAdapter } from "@assistant-ui/core";
 import { SlashIcon } from "lucide-react";
 import { useMemo, type FC } from "react";
 
-import { useChatConnection } from "../runtime/chat-connection";
-import {
-	groupKiloCommandsBySource,
-	isLeadingSlashQuery,
-	mapKiloCommand,
-	type KiloSlashCommandFields,
-} from "../slash-commands/kilo-slash-command";
+import { isLeadingSlashQuery } from "../slash-commands/kilo-slash-command";
 import { SLASH_CATEGORY_ICONS } from "../slash-commands/kilo-slash-icons";
-import { useKiloCommandCatalog } from "../slash-commands/use-kilo-command-catalog";
+import {
+	groupSlashCommands,
+	searchSlashCommands,
+	type SlashMenuCommand,
+} from "../slash-commands/merge-slash-commands";
+import {
+	useRunClientSlashCommand,
+	type SlashCommandsState,
+} from "../slash-commands/client-slash-commands";
 import { ComposerTriggerPopover } from "./trigger-popover";
 
-/** The `/` menu: Kilo's commands, skills and MCP prompts for the chat's folder. */
+/**
+ * The `/` menu: client commands (Actions) and Kilo's commands, skills and
+ * MCP prompts for the chat's folder. Picking a server command leaves its chip
+ * for the person to add arguments and send; picking a client command runs it
+ * and clears the draft.
+ */
 export const KiloSlashTrigger: FC<{
-	directory: string | null;
+	slash: SlashCommandsState;
 	formatter: Unstable_DirectiveFormatter;
-}> = ({ directory, formatter }) => {
-	const { connection } = useChatConnection();
-	const catalog = useKiloCommandCatalog(connection, directory ?? undefined);
+}> = ({ slash, formatter }) => {
+	const { commands, isServerPending } = slash;
 	const composerText = useAuiState((s) => s.composer.text);
+	const runClientCommand = useRunClientSlashCommand();
 
-	const fields = useMemo(() => (catalog.data ?? []).map(mapKiloCommand), [catalog.data]);
-	const commands = useMemo<Unstable_SlashCommand[]>(
+	const executable = useMemo<Unstable_SlashCommand[]>(
 		() =>
-			fields.map((command) => ({
-				...command,
-				execute: noop,
-			})),
-		[fields],
+			commands.map((command) => {
+				const { clientKey } = command;
+				return {
+					id: command.id,
+					label: command.label,
+					...(command.description ? { description: command.description } : {}),
+					icon: command.category,
+					execute: clientKey ? () => runClientCommand(clientKey) : noop,
+				};
+			}),
+		[commands, runClientCommand],
 	);
-	const groups = useMemo(() => groupKiloCommandsBySource(fields), [fields]);
-
-	const slash = unstable_useSlashCommandAdapter({
-		commands,
+	const menu = unstable_useSlashCommandAdapter({
+		commands: executable,
 		iconMap: SLASH_CATEGORY_ICONS,
 		fallbackIcon: SlashIcon,
 	});
 
-	const adapter = useMemo(() => {
-		const search = (query: string) => (slash.adapter.search?.(query) ?? []).map(withSourceType);
-		if (groups.length < 2) return { ...slash.adapter, search };
+	const adapter = useMemo<Unstable_TriggerAdapter>(() => {
+		const search = (query: string) => searchSlashCommands(query, commands).map(toTriggerItem);
+		const groups = groupSlashCommands(commands);
+		if (groups.length < 2) return { categories: () => [], categoryItems: () => [], search };
 		const itemsByCategory = new Map(
-			groups.map((group) => [group.id, group.items.map(toTriggerItem)] as const),
+			groups.map((group) => [group.id as string, group.items.map(toTriggerItem)] as const),
 		);
 		return {
 			categories: () => groups.map(({ id, label }) => ({ id, label })),
 			categoryItems: (categoryId) => itemsByCategory.get(categoryId) ?? [],
 			search,
 		};
-	}, [groups, slash.adapter]);
+	}, [commands]);
 
 	return (
 		<ComposerTriggerPopover
 			char="/"
-			{...slash}
+			{...menu}
 			adapter={isLeadingSlashQuery(composerText) ? adapter : undefined}
-			action={{ ...slash.action, formatter }}
-			isLoading={catalog.isPending}
+			action={{ ...menu.action, formatter }}
+			isLoading={isServerPending}
 		/>
 	);
 };
 
 function noop(): void {}
 
-function toTriggerItem(command: KiloSlashCommandFields): Unstable_TriggerItem {
+function toTriggerItem(command: SlashMenuCommand): Unstable_TriggerItem {
 	return {
 		id: command.id,
-		type: command.icon,
-		label: command.label ?? command.id,
+		type: command.category,
+		label: command.label,
 		...(command.description ? { description: command.description } : {}),
-		...(command.icon ? { metadata: { icon: command.icon } } : {}),
+		metadata: { icon: command.category },
 	};
-}
-
-function withSourceType(item: Unstable_TriggerItem): Unstable_TriggerItem {
-	const icon = item.metadata?.icon;
-	return typeof icon === "string" ? { ...item, type: icon } : item;
 }

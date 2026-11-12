@@ -81,6 +81,11 @@
 			"description": "Mentions typed after a trigger character, resolved into agent context."
 		},
 		{
+			"id": "client-slash-command",
+			"kind": "additive",
+			"description": "Places a kernel command in the composer's / menu."
+		},
+		{
 			"id": "tool-renderer",
 			"kind": "additive",
 			"description": "How calls to a tool look in the chat transcript."
@@ -221,6 +226,13 @@
 					"keybinding": "Shift+Tab",
 					"handledLocally": true,
 					"palette": false
+				},
+				{
+					"id": "compact",
+					"title": "Compact the chat",
+					"category": "Composer",
+					"order": 20,
+					"palette": false
 				}
 			],
 			"kernel/flag": [
@@ -277,6 +289,15 @@
 					"kind": "view",
 					"title": "Unavailable workspace folders",
 					"priority": 200
+				}
+			],
+			"kilo.chat/client-slash-command": [
+				{
+					"id": "compact",
+					"command": "kilo.chat/compact",
+					"name": "compact",
+					"description": "Summarize the chat so far to free up context",
+					"aliases": ["smol", "condense"]
 				}
 			],
 			"kilo.core/tool": [

@@ -1,32 +1,21 @@
 import type { Unstable_DirectiveFormatter, Unstable_DirectiveSegment } from "@assistant-ui/react";
 
-import type { KiloCommandCatalogEntry } from "./use-kilo-command-catalog";
-
 export type SlashDraft = {
 	command: string;
 	arguments: string;
 };
 
-export type KiloSlashCommandFields = {
-	id: string;
-	label: string;
-	description?: string;
-	icon: string;
-};
-
-export type SlashCommandGroup = {
-	id: string;
-	label: string;
-	items: KiloSlashCommandFields[];
-};
-
-export const SLASH_SOURCE_CATEGORIES = [
+/** The `/` menu's groups, in order: client commands (Actions), then the server's by source. */
+export const SLASH_CATEGORIES = [
+	{ id: "action", label: "Actions" },
 	{ id: "command", label: "Commands" },
 	{ id: "skill", label: "Skills" },
 	{ id: "mcp", label: "MCP" },
 ] as const;
 
-export type SlashSourceCategory = (typeof SLASH_SOURCE_CATEGORIES)[number]["id"];
+export type SlashCategory = (typeof SLASH_CATEGORIES)[number]["id"];
+/** Where a server command comes from. */
+export type SlashSourceCategory = Exclude<SlashCategory, "action">;
 
 export function slashSourceCategory(source: string | undefined): SlashSourceCategory {
 	if (source === "skill" || source === "mcp") return source;
@@ -52,7 +41,7 @@ export function isLeadingSlashQuery(text: string): boolean {
 }
 
 export function createKiloSlashFormatter(
-	known: ReadonlyMap<string, SlashSourceCategory>,
+	known: ReadonlyMap<string, SlashCategory>,
 ): Unstable_DirectiveFormatter {
 	return {
 		serialize(item) {
@@ -79,31 +68,6 @@ export function createKiloSlashFormatter(
 			return segments;
 		},
 	};
-}
-
-export function mapKiloCommand(command: KiloCommandCatalogEntry): KiloSlashCommandFields {
-	return {
-		id: command.name,
-		label: command.name,
-		...(command.description ? { description: command.description } : {}),
-		icon: slashSourceCategory(command.source),
-	};
-}
-
-export function groupKiloCommandsBySource(
-	commands: readonly KiloSlashCommandFields[],
-): SlashCommandGroup[] {
-	const buckets = new Map<string, KiloSlashCommandFields[]>();
-	for (const command of commands) {
-		const source = slashSourceCategory(command.icon);
-		const items = buckets.get(source) ?? [];
-		items.push(command);
-		buckets.set(source, items);
-	}
-	return SLASH_SOURCE_CATEGORIES.flatMap((category) => {
-		const items = buckets.get(category.id);
-		return items?.length ? [{ ...category, items }] : [];
-	});
 }
 
 export function extractPromptText(args: Record<string, unknown>): string {

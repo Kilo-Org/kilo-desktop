@@ -1402,6 +1402,7 @@ with contributors today; candidate points are in the extensibility map (§7).
 | kilo.workbench  | `sessions-view`        | A              | `{title, detachable}` + `{component, headerActions?, preferredWidth?}` given `{focus, openSession, detached}`; shown via `Workbench.showView` (13a)                                                                 |
 | kilo.chat       | `composer-action`      | A              | `{slot: toolbar \| toolbar-end \| footer \| draft-footer, kind: action \| menu \| popover \| view, title, command?, when}`; impl `useButton` / `run` · `useMenu` · `useTrigger` + `Content` (8d) · `Component` (9b) | chat (attach, agent, model, approval); git (step 9)                                                              |
 | kilo.chat       | `composer-mention`     | A              | `{trigger, title}`; impl `{search(query, ctx) → {id, label, detail?, icon?}[], resolve(item, ctx) → {text?, files?}, icon?}` (8d)                                                                                   | files (step 10)                                                                                                  |
+| kilo.chat       | `client-slash-command` | A              | `{command, name, description?, aliases?}`, no impl: places a `kernel/command` in the `/` menu, run with the composer context + the pane's agent / model / variant and `running`; hides a same-named server command  | chat (`/compact`)                                                                                                |
 | kilo.chat       | `tool-renderer`        | A              | `{tools, standalone?, category?}`; impl `{component}` given the tool-call props + `Original` (8e)                                                                                                                   | chat                                                                                                             |
 | kilo.chat       | `mcp-app`              | A              | `{tools, resourceUri, serverId}`; impl (optional) `{loadHtml}` (8e)                                                                                                                                                 | —                                                                                                                |
 | kilo.chat       | `markdown-extension`   | A              | impl `(ctx: {sessionId, workspaceFolders}) → {remarkPlugins?, decorateComponents?}` (8e)                                                                                                                            | files, browser                                                                                                   |
@@ -1455,7 +1456,7 @@ Anatomy of the agent pane and where each point appears:
 │ composer-banner:    ⚠ Local model loading… · Sign in to use notebooks       │
 │ composer-context:   [main.py:10–40 ×] [localhost:3000 ×] [last error ×]    │
 │ > Fix the failing test in @tests/test_api.py  /review                      │
-│     composer-mention (@…) · composer-slash-command (/…) · paste-handler    │
+│     composer-mention (@…) · client-slash-command (/…) · paste-handler      │
 │ [+ attachment-source ▾]   [composer-action …]              [Send ▾]        │
 │                                                     composer-send-option   │
 │ message-dispatch (D): checked before the message leaves                    │
@@ -1472,7 +1473,7 @@ Anatomy of the agent pane and where each point appears:
 | `composer-context`           | A    | Next   | Auto-suggested, removable context chips from what the user is looking at                                     | files (open file + selection); browser (current URL/selection); terminal (last failed command); notebook (active cell)                                                                                 |
 | `composer-banner`            | A    | Next   | Notices above the composer                                                                                   | local-inference (model loading — a `kilo.shell/overlay` toast today, 12c); account (sign-in required); agent (server reconnecting)                                                                     |
 | `composer-attachment-source` | A    | Next   | "+" menu sources; host owns the picker, plugin supplies `search`                                             | browser (screenshot of pane); files (file picker); terminal (selection); _ext_ Figma, Google Drive                                                                                                     |
-| `composer-slash-command`     | A    | Next   | `/` commands: client-side actions or prompt templates (8d shows only the server's catalog)                   | git (`/review`, `/commit`); notebook (`/analyze`); marketplace (installed Kilo commands)                                                                                                               |
+| `client-slash-command`       | A    | Done   | Places `kernel/command`s in the `/` menu, merged with the server's; templates stay on `agent-extension`      | chat (`/compact` — shipped); chat (`/new`, `/models`, `/agents`); git (`/commit` action); marketplace (installed Kilo commands, as templates)                                                          |
 | `empty-state`                | A    | Next   | Starter prompts/cards in a new agent pane                                                                    | notebook ("Analyze a dataset"); environments ("Create an environment"); marketplace (featured agents)                                                                                                  |
 | `message-action`             | A    | Next   | Actions on a message or text selection                                                                       | workbench (fork into new session); notebook (open as notebook); git (commit these changes); chat (copy, retry)                                                                                         |
 | `lightbox-action`            | A    | Later  | Toolbar actions on the item shown in a chat's Viewer pane (diagram, image or page)                           | chat (copy Mermaid source — built in today); files (save to workspace, open in Files pane); _ext_ open in system image viewer (needs a host primitive)                                                 |
@@ -3502,9 +3503,13 @@ without the history of earlier sessions.
   - Decide on i18n before many more manifests carry English strings.
   - A general "bind to the providing plugin" helper for components handed
     across plugins through domain objects — step 8 renderers.
-  - Command `slash` (composer `/` menu), `section` (Shortcuts grouping),
-    `editable` (fires in text fields), and `run` returning false to decline
-    a key — when composer actions and shortcuts need them (step 8).
+  - Command `section` (Shortcuts grouping), `editable` (fires in text
+    fields), and `run` returning false to decline a key — when composer
+    actions and shortcuts need them (step 8). (A command `slash` flag is
+    superseded by `kilo.chat/client-slash-command`, a placement naming a
+    kernel command, as `kilo.shell/menu-item` does: where a command shows
+    and the context it is given — the pane it was typed in — belong to the
+    surface, not the kernel.)
   - Pane lifecycle: preview and pinned tabs, reopen-closed with restore
     data, canonical tab ids, stable tab objects, mobile views — step 6.
   - A link-handler decision point (`priority`, `match`, `open`, `exists`)

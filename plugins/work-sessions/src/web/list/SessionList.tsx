@@ -5,8 +5,10 @@ import {
 	ChevronDownIcon,
 	EllipsisIcon,
 	FolderIcon,
+	FolderOpenIcon,
 	MessageSquareIcon,
 	PencilIcon,
+	PinIcon,
 	PlusIcon,
 	SearchIcon,
 	Trash2Icon,
@@ -1072,6 +1074,7 @@ const SessionShelfHeader: FC<{
 }> = ({ tone, label, workspace, onNewSessionInWorkspace, expanded, onToggle }) => {
 	const classes = shelfHeaderTones[tone];
 	const glyph = workspaceGlyphColor(workspace?.color);
+	const WorkspaceFolderIcon = expanded ? FolderOpenIcon : FolderIcon;
 	const qaId =
 		tone === "workspace" ? "session-list-workspace-toggle" : `session-list-${tone}-toggle`;
 	return (
@@ -1095,23 +1098,27 @@ const SessionShelfHeader: FC<{
 				)}
 			>
 				{tone === "workspace" ? (
-					<FolderIcon
+					<WorkspaceFolderIcon
 						aria-hidden
 						className="size-3.5 shrink-0"
 						{...(glyph ? { color: glyph } : {})}
 					/>
 				) : tone === "archived" ? (
 					<ArchiveIcon aria-hidden className="size-3.5 shrink-0" />
+				) : tone === "pinned" ? (
+					<PinIcon aria-hidden className="size-3.5 shrink-0" />
 				) : null}
 				<span className={cn("min-w-0 truncate text-sm font-normal", classes.label)}>{label}</span>
-				<ChevronDownIcon
-					aria-hidden
-					className={cn(
-						"size-3 opacity-0 transition-[opacity,transform] group-hover/shelf:opacity-100 group-hover/workspace-row:opacity-100 group-focus-visible/shelf:opacity-100 group-focus-within/workspace-row:opacity-100",
-						classes.chevron,
-						!expanded && "-rotate-90",
-					)}
-				/>
+				{tone === "workspace" ? null : (
+					<ChevronDownIcon
+						aria-hidden
+						className={cn(
+							"size-3 opacity-0 transition-[opacity,transform] group-hover/shelf:opacity-100 group-focus-visible/shelf:opacity-100",
+							classes.chevron,
+							!expanded && "-rotate-90",
+						)}
+					/>
+				)}
 			</Button>
 			{tone === "workspace" && workspace ? (
 				<WorkspaceShelfActions

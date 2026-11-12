@@ -134,7 +134,7 @@ export function SidebarAccount() {
 							/>
 						}
 					>
-						<Avatar className="size-[22px]">
+						<Avatar className="size-[22px] after:hidden">
 							<AvatarFallback className="text-2xs">{initials || <UserIcon />}</AvatarFallback>
 						</Avatar>
 						<div className="grid min-w-0 flex-1 text-left text-sm">

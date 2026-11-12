@@ -1,11 +1,15 @@
 import {
+	clear,
 	click,
 	expectElementToBeEnabled,
 	expectElementToBeHidden,
 	expectElementToBeVisible,
+	expectElementToHaveAttribute,
 	expectElementToHaveCount,
+	fill,
 	getAttribute,
 	getLocatorByRole,
+	getLocatorByText,
 	getLocatorByTestId,
 	pressPageKeyboard,
 } from "@anaconda/playwright-utils";
@@ -42,6 +46,78 @@ export class SidemenuPage {
 
 	async openSearch(): Promise<void> {
 		await click(this.search());
+	}
+
+	async typeSearchQuery(query: string): Promise<void> {
+		await fill(this.searchInput(), query);
+	}
+
+	async clearSearchQuery(): Promise<void> {
+		await clear(this.searchInput());
+	}
+
+	async selectSearchScopeWorkspaces(): Promise<void> {
+		await click(getLocatorByTestId("session-search-filter-workspaces"));
+	}
+
+	/** The dialog's own explanation of an empty result list. */
+	async verifySearchMessage(message: string): Promise<void> {
+		await expectElementToBeVisible(getLocatorByText(message), {
+			message: `The search dialog should say "${message}"`,
+		});
+	}
+
+	async verifySearchMessageAbsent(message: string): Promise<void> {
+		await expectElementToBeHidden(getLocatorByText(message), {
+			message: `The search dialog should no longer say "${message}"`,
+		});
+	}
+
+	private readonly unavailableWarning = () =>
+		getLocatorByTestId("workspace-filter-unavailable-folders-indicator");
+	private readonly workspaceFilter = () =>
+		getLocatorByRole("combobox", { name: "Filter by workspace" });
+
+	/**
+	 * Points the list's workspace filter at one workspace. The filter's warning
+	 * is about the workspace it is focused on, which is the window's filter
+	 * value — not whichever workspace is merely active.
+	 */
+	async focusWorkspaceInFilter(name: string): Promise<void> {
+		await click(this.workspaceFilter());
+		await click(getLocatorByRole("option", { name, exact: false }));
+		await expectElementToBeVisible(
+			this.workspaceFilter().getByText(name, { exact: true }),
+			`The filter should be focused on ${name}`,
+		);
+	}
+
+	async verifyUnavailableFoldersWarning(workspaceName: string): Promise<void> {
+		await expectElementToHaveAttribute(
+			this.unavailableWarning(),
+			"aria-label",
+			`${workspaceName} has unavailable folders`,
+			{ message: `The filter should warn that ${workspaceName} has unavailable folders` },
+		);
+	}
+
+	async verifyNoUnavailableFoldersWarning(): Promise<void> {
+		await expectElementToBeHidden(this.unavailableWarning(), {
+			message: "The filter should not warn while every folder is reachable",
+		});
+	}
+
+	async openUnavailableFoldersWarning(): Promise<void> {
+		await click(this.unavailableWarning());
+	}
+
+	async verifyWorkspaceSettingsOpen(): Promise<void> {
+		await expectElementToBeVisible(
+			getLocatorByTestId("workspace-form-dialog").getByRole("heading", {
+				name: "Edit workspace",
+			}),
+			"The warning should open the workspace's settings",
+		);
 	}
 
 	async openViewMenu(): Promise<void> {
@@ -153,6 +229,18 @@ export class SidemenuPage {
 			this.pinnedShelf(),
 			"Session list should hold no Pinned shelf while nothing is pinned",
 		);
+	}
+
+	async verifyArchivedShelfCollapsed(): Promise<void> {
+		await expectElementToHaveAttribute(this.archivedShelf(), "aria-expanded", "false", {
+			message: "The Archived shelf should start collapsed",
+		});
+	}
+
+	async verifyArchivedShelfExpanded(): Promise<void> {
+		await expectElementToHaveAttribute(this.archivedShelf(), "aria-expanded", "true", {
+			message: "The Archived shelf should still be expanded",
+		});
 	}
 
 	async verifyArchivedShelfVisible(): Promise<void> {

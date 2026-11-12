@@ -66,4 +66,78 @@ test.describe("Side menu with sessions @packaged", () => {
 		await sidemenuPage.expandArchivedShelf();
 		await sessionListPage.verifyArchivedListed(SESSION);
 	});
+
+	test("abandons an inline rename on Escape, keeping the old title", async ({
+		sessionListPage,
+	}) => {
+		await sessionListPage.startRename(SESSION);
+		await sessionListPage.typeRenameTitle("Discarded name");
+		await sessionListPage.cancelRename();
+
+		await sessionListPage.verifyRenameClosed();
+		await sessionListPage.verifyListed(SESSION);
+		await sessionListPage.verifyNotListed("Discarded name");
+	});
+
+	test("keeps the old title when the new one is blank", async ({ sessionListPage }) => {
+		await sessionListPage.startRename(SESSION);
+		await sessionListPage.typeRenameTitle("   ");
+		await sessionListPage.commitRename();
+
+		await sessionListPage.verifyRenameClosed();
+		await sessionListPage.verifyListed(SESSION);
+	});
+
+	test("says why the session search is empty, per query and scope", async ({ sidemenuPage }) => {
+		await sidemenuPage.openSearch();
+		await sidemenuPage.verifySearchDialogOpen();
+
+		await sidemenuPage.typeSearchQuery("nothing matches this");
+		await sidemenuPage.verifySearchMessage("No results.");
+
+		await sidemenuPage.clearSearchQuery();
+		await sidemenuPage.verifySearchMessageAbsent("No results.");
+
+		await sidemenuPage.selectSearchScopeWorkspaces();
+		await sidemenuPage.verifySearchMessage("No workspaces yet.");
+
+		// Leave the dialog closed, or it covers the rows that teardown deletes.
+		await sidemenuPage.closeWithEscape();
+		await sidemenuPage.verifySearchDialogClosed();
+	});
+
+	// Both of these need the packaged app: the shelf preference is real
+	// localStorage and pin/archive come back from main's store over IPC. The
+	// harness clears localStorage around every test, so the reload has to
+	// happen inside the test that set the preference.
+	test("keeps the Archived shelf expanded across a window reload", async ({
+		sidemenuPage,
+		sessionListPage,
+	}) => {
+		await sessionListPage.archive(SESSION);
+
+		// Remount first: the shelf's expanded state lives in the list's React
+		// state, which outlives a test, so without this the shelf may already
+		// be open and expanding it would write no preference to persist.
+		await sessionListPage.reloadWindow();
+		await sidemenuPage.verifyArchivedShelfCollapsed();
+		await sidemenuPage.expandArchivedShelf();
+		await sessionListPage.verifyArchivedListed(SESSION);
+
+		await sessionListPage.reloadWindow();
+		await sidemenuPage.verifyArchivedShelfExpanded();
+		await sessionListPage.verifyArchivedListed(SESSION);
+	});
+
+	test("keeps a session pinned across a window reload", async ({
+		sidemenuPage,
+		sessionListPage,
+	}) => {
+		await sessionListPage.pin(SESSION);
+		await sidemenuPage.verifyPinnedShelfVisible();
+
+		await sessionListPage.reloadWindow();
+		await sidemenuPage.verifyPinnedShelfVisible();
+		await sessionListPage.verifyListed(SESSION);
+	});
 });

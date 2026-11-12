@@ -1,4 +1,4 @@
-import type { Locator } from "@playwright/test";
+import { expect, type Locator } from "@playwright/test";
 
 import {
 	click,
@@ -6,15 +6,23 @@ import {
 	expectElementToBeVisible,
 	expectElementToHaveAttribute,
 	fill,
+	focus,
 	getAttribute,
 	getLocatorByTestId,
+	getLocatorByText,
+	getLocatorCount,
 	hover,
 	isElementVisible,
 	pressPageKeyboard,
 	reloadPage,
 } from "@anaconda/playwright-utils";
 
-import { NewWorkSessionPage } from "./new-work-session-page.js";
+import { callDomainObject } from "../../utils/kernel-bridge.js";
+import {
+	createAndActivateWorkspace,
+	NewWorkSessionPage,
+	WORK_SESSIONS_CALLER,
+} from "./new-work-session-page.js";
 
 /** Page object for kilo.work-sessions' session list (the sidebar). */
 export class SessionListPage {
@@ -25,10 +33,166 @@ export class SessionListPage {
 		this.list()
 			.getByTestId(/^session-list-(archived-)?item$/)
 			.filter({ hasText: title });
+	/**
+	 * The row only while it is active. `row` matches the archived variant too,
+	 * so it stays "visible" once the Archived shelf is expanded — which makes
+	 * any "it left the list" assertion depend on the shelf's state.
+	 */
+	private readonly activeRow = (title: string): Locator =>
+		this.list().getByTestId("session-list-item").filter({ hasText: title });
+
+	private readonly renameInput = () => getLocatorByTestId("session-list-item-rename");
 
 	/** Opens the New Session page and starts an empty session from it. */
 	async startSessionFromNewSessionPage(): Promise<void> {
 		await this.#newWorkSession.openAndStartEmptySession();
+	}
+
+	/**
+	 * Seeds sessions straight through the domain object. Starting them from the
+	 * New Session page costs a second each, which a virtualized list needs far
+	 * too many of to be worth doing through the UI.
+	 */
+	async seedSessions(titles: readonly string[]): Promise<void> {
+		for (const title of titles) {
+			await callDomainObject({
+				domainId: "kilo.work-sessions/work-sessions",
+				method: "create",
+				input: { title },
+				caller: WORK_SESSIONS_CALLER,
+			});
+		}
+	}
+
+	/** Registers a workspace and makes it the focused one (test setup). */
+	async createWorkspaceAt(folderPath: string, name: string): Promise<void> {
+		await createAndActivateWorkspace(folderPath, name);
+	}
+
+	/** Asks main to re-check which workspace folders it can still reach. */
+	async recheckWorkspaceFolders(): Promise<void> {
+		await callDomainObject({
+			domainId: "kilo.work-sessions/workspaces",
+			method: "checkFolders",
+			caller: WORK_SESSIONS_CALLER,
+		});
+	}
+
+	/** Starts an inline rename from the row menu, leaving the field open. */
+	async startRename(title: string): Promise<void> {
+		await this.openRowMenu(title);
+		await click(getLocatorByTestId("session-menu-rename"));
+		await expectElementToBeVisible(this.renameInput(), "The rename field should open");
+	}
+
+	async typeRenameTitle(next: string): Promise<void> {
+		await fill(this.renameInput(), next);
+	}
+
+	async cancelRename(): Promise<void> {
+		await pressPageKeyboard("Escape");
+	}
+
+	async commitRename(): Promise<void> {
+		await pressPageKeyboard("Enter");
+	}
+
+	async verifyRenameClosed(): Promise<void> {
+		await expectElementToBeHidden(this.renameInput(), {
+			message: "The rename field should close",
+		});
+	}
+
+	/** Adds a row to the selection without opening it. */
+	async selectWithMetaClick(title: string): Promise<void> {
+		await click(this.row(title).getByTestId("session-list-item-trigger"), {
+			modifiers: ["Meta"],
+		});
+	}
+
+	/** The selection's own menu, which the rows open on right-click. */
+	async openSelectionMenu(title: string): Promise<void> {
+		await click(this.row(title), { button: "right" });
+	}
+
+	async verifySelectionCount(count: number): Promise<void> {
+		await expectElementToBeVisible(getLocatorByText(`${count} sessions selected`), {
+			message: `The selection menu should name ${count} sessions`,
+		});
+	}
+
+	async restoreSelection(): Promise<void> {
+		await click(getLocatorByTestId("session-bulk-restore"));
+	}
+
+	async verifyBulkArchiveAbsent(): Promise<void> {
+		await expectElementToBeHidden(getLocatorByTestId("session-bulk-archive"), {
+			message: "An already-archived selection should not offer Archive",
+		});
+	}
+
+	/** How many rows the virtualized list is holding in the DOM right now. */
+	async mountedRowCount(): Promise<number> {
+		return getLocatorCount(this.list().getByTestId("session-list-item"));
+	}
+
+	async verifyFewerRowsMountedThan(total: number): Promise<void> {
+		const mounted = await this.mountedRowCount();
+		expect(mounted, "The list should mount some rows").toBeGreaterThan(0);
+		expect(mounted, `The list should mount fewer than all ${total} sessions`).toBeLessThan(total);
+	}
+
+	/** Listed and not archived — restoring puts a session back here. */
+	async verifyActiveListed(title: string): Promise<void> {
+		await expectElementToBeVisible(
+			this.activeRow(title),
+			`${title} should be back in the active list`,
+		);
+	}
+
+	async verifyNotListed(title: string): Promise<void> {
+		await expectElementToBeHidden(this.row(title), {
+			message: `${title} should not be mounted yet`,
+		});
+	}
+
+	async focusRow(title: string): Promise<void> {
+		await focus(this.row(title).getByTestId("session-list-item-trigger"));
+	}
+
+	async pressArrowDown(times: number): Promise<void> {
+		for (let step = 0; step < times; step += 1) {
+			await pressPageKeyboard("ArrowDown");
+		}
+	}
+
+	// The library has no focus assertion, so this uses Playwright's, as the
+	// chat find page object does.
+	async verifyRowFocused(title: string): Promise<void> {
+		await expect(
+			this.row(title).getByTestId("session-list-item-trigger"),
+			`${title} should hold the focus`,
+		).toBeFocused();
+	}
+
+	/**
+	 * The row list carries every session's height, not just the mounted rows',
+	 * so the scrollbar represents the whole history. Geometry and scrolling by
+	 * pixel have no wrapper in the library.
+	 */
+	async verifyRowListTallerThanViewport(): Promise<void> {
+		const rows = await this.list().getByTestId("session-list-virtual-list").boundingBox();
+		const inbox = await this.list().getByTestId("session-list-inbox").boundingBox();
+		expect(
+			rows?.height ?? 0,
+			"The row list should span more than the visible inbox",
+		).toBeGreaterThan(inbox?.height ?? 0);
+	}
+
+	async scrollToBottom(): Promise<void> {
+		await this.list()
+			.getByTestId("session-list-inbox")
+			.evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
 	}
 
 	async verifyListed(title: string): Promise<void> {
@@ -166,7 +330,7 @@ export class SessionListPage {
 	async archive(title: string): Promise<void> {
 		await this.openMenu(title);
 		await click(getLocatorByTestId("session-menu-archive"));
-		await expectElementToBeHidden(this.row(title), {
+		await expectElementToBeHidden(this.activeRow(title), {
 			message: "An archived session should leave the active list",
 		});
 	}

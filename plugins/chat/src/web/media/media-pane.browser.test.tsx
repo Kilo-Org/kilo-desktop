@@ -91,6 +91,13 @@ describe("the media viewer pane", () => {
 		await expect
 			.poll(() => document.querySelector('[data-qa-id="media-lightbox-zoom-level"]')?.textContent)
 			.toMatch(/%$/u);
+		// Stepping remounts the view, and it takes focus back in an effect. Wait
+		// for that, or the key lands on the body and never reaches the lightbox.
+		await expect
+			.poll(() =>
+				document.querySelector('[data-qa-id="chat-media-pane"]')?.contains(document.activeElement),
+			)
+			.toBe(true);
 		await userEvent.keyboard("+");
 		await expect.element(viewer.getByTestId("media-lightbox-fit")).toBeEnabled();
 	});

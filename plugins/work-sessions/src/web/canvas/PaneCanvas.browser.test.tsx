@@ -1578,7 +1578,7 @@ describe("PaneCanvas", () => {
 				/>
 			</div>
 		);
-		const { baseElement, rerender } = render(view(400));
+		const { baseElement, rerender } = render(view(560));
 		const screen = page.elementLocator(baseElement);
 		const left = screen.getByRole("button", { name: "Scroll tabs left" });
 		const right = screen.getByRole("button", { name: "Scroll tabs right" });
@@ -1591,14 +1591,14 @@ describe("PaneCanvas", () => {
 		await expect.element(left).not.toBeInTheDocument();
 		await expect.element(right).toBeVisible();
 		expect(onSelectPane).not.toHaveBeenCalled();
-		rerender(view(1100));
+		rerender(view(1540));
 		await expect.element(left).not.toBeInTheDocument();
 		await expect.element(right).not.toBeInTheDocument();
-		rerender(view(400));
+		rerender(view(560));
 		await expect.element(right).toBeVisible();
 
 		for (const id of ["notes", "files", "output"]) layout = removePane(layout, id);
-		rerender(view(400));
+		rerender(view(560));
 
 		await vi.waitFor(() => {
 			const strip = screen.getByTestId("chat-pane-tabs").element();
@@ -1613,7 +1613,7 @@ describe("PaneCanvas", () => {
 			.not.toBeInTheDocument();
 	});
 	it("reveals newly active tabs past either edge without interrupting manual scrolling", async () => {
-		await page.viewport(900, 600);
+		await page.viewport(1260, 600);
 		let layout = createLayout(
 			[
 				{ id: "agent", kind: "agent", title: "Chat" },
@@ -1629,7 +1629,7 @@ describe("PaneCanvas", () => {
 		}
 		layout = setActivePane(layout, "agent");
 		const view = () => (
-			<div style={{ display: "flex", width: 400, height: 400 }}>
+			<div style={{ display: "flex", width: 560, height: 400 }}>
 				<PaneCanvas
 					arrangement="tiles"
 					kinds={[]}

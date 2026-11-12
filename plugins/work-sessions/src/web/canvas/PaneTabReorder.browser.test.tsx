@@ -5,7 +5,7 @@ import { createLayout, movePaneToGroup } from "@kilo-desktop/pane-layout";
 import { renderDragCanvas, startPaneDrag } from "./test-helpers";
 
 beforeEach(async () => {
-	await page.viewport(1200, 700);
+	await page.viewport(1450, 700);
 	await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 });
 afterEach(cleanup);
@@ -55,7 +55,7 @@ function setup(sourceId: string) {
 	);
 	initial = movePaneToGroup(initial, "notes", "group:agent");
 	initial = movePaneToGroup(initial, "files", "group:agent");
-	const { baseElement, commit } = renderDragCanvas(initial, { width: 1150 });
+	const { baseElement, commit } = renderDragCanvas(initial, { width: 1400 });
 	const group = baseElement.querySelector<HTMLElement>("[data-pane-group-id='group:agent']")!;
 	const strip = group.querySelector<HTMLElement>("[data-pane-group-tabs]")!;
 	const source = baseElement.querySelector<HTMLElement>(

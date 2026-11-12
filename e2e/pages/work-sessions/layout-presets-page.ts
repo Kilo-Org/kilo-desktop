@@ -32,11 +32,11 @@ export class LayoutPresetsPage {
 	/** A new empty session with an Agent pane: a layout with one reusable pane to save. */
 	async openSessionWithAgentPane(): Promise<void> {
 		await this.#newWorkSession.openAndStartEmptySession();
-		await click(getLocatorByTestId(`chat-pane-pinned-${AGENT_PANE_KIND}`));
-		await click(getLocatorByTestId(`chat-pane-pinned-new-${AGENT_PANE_KIND}`));
+		await click(getLocatorByTestId("chat-pane-toolbar-add"));
+		await click(getLocatorByTestId(`chat-pane-launch-${AGENT_PANE_KIND}`));
 		await expectElementToBeVisible(
 			this.agentPane(),
-			"Adding an Agent pane from the session header's Agent button should show it",
+			"Adding an Agent pane from the session header's + menu should show it",
 		);
 		await expectElementToBeVisible(this.menu(), "An open session should offer its Layouts menu");
 	}

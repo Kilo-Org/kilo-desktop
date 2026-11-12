@@ -34,8 +34,8 @@ export const objectRefSchema: z.ZodType<ObjectRef, ObjectRef> = z.object({
 	id: z.string().min(1),
 });
 
-/** What a pane's tab badge says: working, or waiting for the person. */
-export const PANE_STATUSES = ["busy", "attention"] as const;
+/** What a pane's tab says: working, waiting for the person, or finished while not on screen. */
+export const PANE_STATUSES = ["busy", "attention", "unread"] as const;
 export type PaneStatus = (typeof PANE_STATUSES)[number];
 
 export const paneSchema = z.object({
@@ -89,6 +89,13 @@ export const openPaneInputSchema = z.object({
 	paneId: z.string().min(1).optional(),
 	/** Makes it the work session's active pane (default true). */
 	activate: z.boolean().optional(),
+	/**
+	 * Where a new pane goes: `tab` joins the active pane's group (what a
+	 * person picking a pane expects); `group`, the default, leaves it to the
+	 * canvas, which gives it its own column beside the others (an agent's
+	 * pane, so the chat stays in view).
+	 */
+	placement: z.enum(["tab", "group"]).optional(),
 });
 export type OpenPaneInput = z.input<typeof openPaneInputSchema>;
 

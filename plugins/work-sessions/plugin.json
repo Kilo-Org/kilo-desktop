@@ -132,11 +132,6 @@
 			"description": "A kind of pane a work session can hold."
 		},
 		{
-			"id": "pane-kind-menu",
-			"kind": "additive",
-			"description": "Entries in the header menu of a pinned pane kind."
-		},
-		{
 			"id": "work-session-menu",
 			"kind": "additive",
 			"description": "An item in a work session's menu."

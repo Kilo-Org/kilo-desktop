@@ -1,6 +1,8 @@
-import { RenderContribution, useDomainObject, useExtensions } from "@kilo-desktop/kernel/web";
+import type { ReactNode } from "react";
 
-import { PaneKindMenu, Panes, type WorkSession } from "../../contracts";
+import { useDomainObject } from "@kilo-desktop/kernel/web";
+
+import { Panes, type WorkSession } from "../../contracts";
 import { NewPanePicker } from "../canvas/NewPanePicker";
 import { PaneLaunchToolbar } from "../canvas/PaneLaunchToolbar";
 import { PaneSessionChrome } from "../canvas/PaneSessionChrome";
@@ -27,36 +29,30 @@ function useLaunch(workSession: WorkSession) {
 
 /**
  * The open work session's header controls: "+" and pinned kinds for a new
- * pane (a pinned kind with `pane-kind-menu` entries opens its menu), then
- * the carousel toggle.
+ * pane, then `children` (plugins' `end` actions), then the carousel toggle, last.
  */
-export function SessionPaneControls({ workSession }: { readonly workSession: WorkSession }) {
+export function SessionPaneControls({
+	workSession,
+	children,
+}: {
+	readonly workSession: WorkSession;
+	readonly children?: ReactNode;
+}) {
 	const panes = useDomainObject(Panes);
 	const state = useWorkSessionPanes(workSession.id);
 	const { kinds, launch } = useLaunch(workSession);
 	const track = useTracker();
-	const menus = useExtensions(PaneKindMenu);
 	const addable = kinds.inSession.some((kind) => kind.addable);
 	return (
 		<>
 			{addable ? (
 				<PaneLaunchToolbar
 					kinds={kinds.inSession}
-					onLaunch={(kind) => launch(kind.id, kind.title)}
-					menuFor={(kind) => {
-						const entries = menus.filter((menu) => menu.metadata.paneKind === kind.id);
-						return entries.length > 0
-							? entries.map((menu) => (
-									<RenderContribution
-										key={`${workSession.id}:${menu.key}`}
-										contribution={menu}
-										props={{ workSession }}
-									/>
-								))
-							: null;
-					}}
+					// The header "+" adds a tab group; other launches add a tab.
+					onLaunch={(kind) => launch(kind.id, kind.title, { beside: "after" })}
 				/>
 			) : null}
+			{children}
 			{state.panes.length > 0 ? (
 				<PaneSessionChrome
 					arrangement={state.arrangement}

@@ -1,7 +1,13 @@
 import { KernelCommand, KernelWindows, type PluginSdk } from "@kilo-desktop/kernel";
 import type { PaneKind as LayoutKind } from "@kilo-desktop/pane-layout";
 
-import { PaneKind, Panes, WorkSessionsWindow, type PaneImplementation } from "../../contracts";
+import {
+	PaneKind,
+	Panes,
+	paneWindows,
+	WorkSessionsWindow,
+	type PaneImplementation,
+} from "../../contracts";
 import { visibleWorkSessions } from "../shared/list-state";
 import { adjacentId, idAtShortcutSlot, NUMBERED_SLOTS } from "../shared/numbered";
 import {
@@ -14,7 +20,6 @@ import {
 import { sessionLayout } from "../shared/session-layout";
 import { trackerFor } from "../shared/telemetry";
 import { panePicker } from "../panes/pane-picker";
-import { paneWindows } from "../panes/pop-outs";
 
 type Command = (id: string, handler: (args?: unknown) => void) => void;
 

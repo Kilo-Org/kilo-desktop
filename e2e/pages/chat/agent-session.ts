@@ -96,16 +96,16 @@ export async function startEmptySession(): Promise<void> {
 }
 
 /**
- * An Agent pane added to an existing work session from its header's Agent
- * button (the in-pane draft, before its first message), in a new empty one.
+ * An Agent pane added to an existing work session from its header's "+"
+ * menu (the in-pane draft, before its first message), in a new empty one.
  */
 export async function openAgentPaneInNewSession(): Promise<void> {
 	await startEmptySession();
-	await click(getLocatorByTestId(`chat-pane-pinned-${AGENT_PANE_KIND}`));
-	await click(getLocatorByTestId(`chat-pane-pinned-new-${AGENT_PANE_KIND}`));
+	await click(getLocatorByTestId("chat-pane-toolbar-add"));
+	await click(getLocatorByTestId(`chat-pane-launch-${AGENT_PANE_KIND}`));
 	await expectElementToBeVisible(
 		agentPane(),
-		"Adding an Agent pane from the session header's Agent button should show it",
+		"Adding an Agent pane from the session header's + menu should show it",
 	);
 }
 

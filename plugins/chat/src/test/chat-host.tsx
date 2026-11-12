@@ -9,6 +9,7 @@ import { useCallback, useState } from "react";
 import { vi } from "vitest";
 
 import { KernelClipboard, type DomainObjectState, type PluginEntry } from "@kilo-desktop/kernel";
+import type { MainKernelHost } from "@kilo-desktop/kernel/main";
 import { KernelProvider, RenderContribution, useDomainObjectState } from "@kilo-desktop/kernel/web";
 import type { AccountState, ChatSummary, ModelsState } from "@kilo-desktop/plugin-core/contracts";
 import { renderShell, type GuestPlugin } from "@kilo-desktop/plugin-shell/testing";
@@ -58,6 +59,8 @@ export { WORKSPACE, agentPane, workSession } from "./fake-work-sessions";
 export const session = workSession;
 
 export interface ChatHostOptions {
+	/** The host's windows, for pop-outs. */
+	readonly windows?: MainKernelHost["windows"];
 	/** kilo.chat's main entry (`createChatMainEntry(…)`, or one area); none by default. */
 	readonly chatMain?: PluginEntry;
 	/** kilo.chat's window entry: the real `chatWebEntry`, or the areas a test is about. */
@@ -204,6 +207,7 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 			...(options.localStorage ? { localAppearance: options.localStorage } : {}),
 			...(options.flags ? { flags: options.flags } : {}),
 			...(options.desktop ? { desktop: true } : {}),
+			...(options.windows ? { windows: options.windows } : {}),
 			beforeRender: (main) => {
 				main.kernelSdk.domainObjects.provide(KernelClipboard, {
 					initialState: {},

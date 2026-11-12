@@ -185,8 +185,8 @@ export interface WorkSessionActionProps {
 }
 
 /**
- * A button in an open work session's header: `start` ones before the pane
- * controls (the carousel toggle and "+"), `end` ones after them.
+ * A button in an open work session's header: `start` ones before "+", `end`
+ * ones after it; the carousel toggle stays last.
  */
 export const WorkSessionAction = defineExtensionPoint({
 	id: "kilo.work-sessions/work-session-action",

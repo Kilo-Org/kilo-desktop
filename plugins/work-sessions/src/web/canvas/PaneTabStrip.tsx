@@ -7,13 +7,15 @@ import {
 	PinOffIcon,
 	XIcon,
 } from "lucide-react";
-import type { CSSProperties, FC, ReactNode } from "react";
+import type { FC, ReactNode } from "react";
 
 import type { PaneDescriptor } from "@kilo-desktop/pane-layout";
 import { Button } from "@kilo-desktop/ui/components/button";
 import {
+	PANE_TAB_STATUS_ICON_CLASS_NAME,
 	PANE_TAB_TONE_CLASS_NAME,
 	PANE_TAB_TRIGGER_CLASS_NAME,
+	PaneTabStatusIcon,
 	type PaneTabTone,
 } from "@kilo-desktop/ui/components/pane-tabs";
 import { Toggle } from "@kilo-desktop/ui/components/toggle";
@@ -27,27 +29,6 @@ import { PaneTabTooltip } from "./PaneTabTooltip";
 import { ShortcutHintChip } from "../shared/ShortcutHintChip";
 import { usePaneDrag } from "./use-pane-drag";
 import "./pane-drag.css";
-
-const STATUS_LABEL: Record<PaneStatus, string> = {
-	busy: "Working",
-	attention: "Needs your attention",
-};
-
-/** A dot after the tab's title: pulsing while the pane works, steady while it waits for the person. */
-function PaneStatusBadge({ paneId, status }: { paneId: string; status: PaneStatus }) {
-	return (
-		<span
-			role="status"
-			aria-label={STATUS_LABEL[status]}
-			data-qa-id={`chat-pane-tab-status-${paneId}`}
-			data-status={status}
-			className={cn(
-				"size-1.5 shrink-0 rounded-full",
-				status === "busy" ? "bg-info motion-safe:animate-pulse" : "bg-warning",
-			)}
-		/>
-	);
-}
 
 function stopActionBubble(event: { stopPropagation: () => void }) {
 	event.stopPropagation();
@@ -130,6 +111,8 @@ export const PaneTabStrip: FC<{
 			>
 				{panes.map((pane) => {
 					const active = pane.id === activePaneId;
+					// The tab its group shows: it alone offers expand and pop out, and keeps its buttons visible.
+					const shown = pane.id === selectedPaneId;
 					const tone: PaneTabTone =
 						active && highlighted ? "focused" : pane.id === selectedPaneId ? "selected" : "idle";
 					const poppedOut = poppedOutPaneIds?.has(pane.id) === true;
@@ -144,16 +127,17 @@ export const PaneTabStrip: FC<{
 					const ExpandIcon = paneExpanded ? Minimize2Icon : Maximize2Icon;
 					const WindowIcon = poppedOut ? Minimize2Icon : ExternalLinkIcon;
 					const closable = Boolean(onClose) && (canClose?.(pane) ?? true);
-					const actionCount = Number(Boolean(onExpand)) + Number(windowable) + Number(closable);
+					// Instant, like browser tabs: space is kept, so hovering never moves the title.
+					// Buttons drop their `transition-all`, which would otherwise animate the inherited visibility.
 					const actionVisibilityClassName = cn(
-						"pointer-events-none absolute inset-y-0 right-0.5 z-10 flex items-center opacity-0 transition-opacity duration-150 motion-reduce:transition-none group-hover/pane-tab:pointer-events-auto group-hover/pane-tab:opacity-100 group-focus-within/pane-tab:pointer-events-auto group-focus-within/pane-tab:opacity-100",
-						active && "pointer-events-auto opacity-100",
+						"flex shrink-0 items-center pr-0.5 invisible group-hover/pane-tab:visible group-focus-within/pane-tab:visible [&_button]:transition-none",
+						shown && "visible",
 					);
 					return (
 						<div
 							key={pane.id}
 							className={cn(
-								"group/pane-tab relative flex h-7 min-w-40 max-w-56 shrink-0 overflow-hidden rounded-md transition-colors",
+								"group/pane-tab relative flex h-7 w-56 shrink-0 overflow-hidden rounded-md",
 								PANE_TAB_TONE_CLASS_NAME[tone],
 								poppedOut && "border border-dashed border-info/70",
 							)}
@@ -161,9 +145,6 @@ export const PaneTabStrip: FC<{
 							data-pane-tab={pane.id}
 							data-active={active ? "true" : undefined}
 							data-popped-out={poppedOut ? "true" : undefined}
-							style={
-								{ "--pane-tab-actions-width": `${actionCount * 1.25 + 0.5}rem` } as CSSProperties
-							}
 						>
 							<TabsPrimitive.Tab
 								data-slot="tabs-trigger"
@@ -193,27 +174,31 @@ export const PaneTabStrip: FC<{
 									poppedOut ? undefined : (event) => finishPointerDrag(event, true)
 								}
 							>
-								<Icon
-									className={cn(
-										"size-3.5 shrink-0",
-										iconOverride ? undefined : PANE_KIND_ICON_CLASS[pane.kind],
-									)}
-									{...(iconOverride?.iconKey ? { iconKey: iconOverride.iconKey } : {})}
-									aria-hidden
-								/>
+								<PaneTabStatusIcon status={status} data-qa-id={`chat-pane-tab-status-${pane.id}`}>
+									<Icon
+										className={cn(
+											"size-3.5 shrink-0",
+											status
+												? PANE_TAB_STATUS_ICON_CLASS_NAME[status]
+												: iconOverride
+													? undefined
+													: PANE_KIND_ICON_CLASS[pane.kind],
+										)}
+										{...(iconOverride?.iconKey ? { iconKey: iconOverride.iconKey } : {})}
+										{...(iconOverride && status ? { status } : {})}
+										aria-hidden
+									/>
+								</PaneTabStatusIcon>
 								<span
 									className={cn(
 										"min-w-0 flex-1 truncate text-left",
-										shortcutHint
-											? // Room for the widest chip ("Ctrl+9"), which overlays the title's end.
-												"[mask-image:linear-gradient(to_right,black_calc(100%-3.25rem),transparent_calc(100%-2.75rem))]"
-											: actionCount > 0 &&
-													"group-hover/pane-tab:[mask-image:linear-gradient(to_right,black_calc(100%-var(--pane-tab-actions-width)),transparent_calc(100%-var(--pane-tab-actions-width)+0.5rem))] group-focus-within/pane-tab:[mask-image:linear-gradient(to_right,black_calc(100%-var(--pane-tab-actions-width)),transparent_calc(100%-var(--pane-tab-actions-width)+0.5rem))] group-data-[active]/pane-tab:[mask-image:linear-gradient(to_right,black_calc(100%-var(--pane-tab-actions-width)),transparent_calc(100%-var(--pane-tab-actions-width)+0.5rem))]",
+										// Room for the widest chip ("Ctrl+9"), which overlays the title's end.
+										shortcutHint &&
+											"[mask-image:linear-gradient(to_right,black_calc(100%-3.25rem),transparent_calc(100%-2.75rem))]",
 									)}
 								>
 									{pane.title}
 								</span>
-								{status ? <PaneStatusBadge paneId={pane.id} status={status} /> : null}
 							</TabsPrimitive.Tab>
 							{shortcutHint ? (
 								// Overlaid, not in the flow, so holding the modifier never resizes the tab.
@@ -222,7 +207,8 @@ export const PaneTabStrip: FC<{
 								</span>
 							) : null}
 							<div className={cn(actionVisibilityClassName, shortcutHint && "hidden")}>
-								{onExpand ? (
+								{/* Other tabs offer only close. */}
+								{shown && onExpand ? (
 									<PaneTabTooltip content={paneExpanded ? "Restore" : "Expand"}>
 										<Button
 											type="button"
@@ -241,7 +227,7 @@ export const PaneTabStrip: FC<{
 										</Button>
 									</PaneTabTooltip>
 								) : null}
-								{windowable ? (
+								{(shown || poppedOut) && windowable ? (
 									<PaneTabTooltip content={poppedOut ? "Dock" : "Pop out"}>
 										<Button
 											type="button"

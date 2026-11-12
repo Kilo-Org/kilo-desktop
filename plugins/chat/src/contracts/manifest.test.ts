@@ -66,8 +66,8 @@ describe("kilo.chat manifest", () => {
 		expect(contributions("kilo.work-sessions/work-session-starter")).toEqual([
 			expect.objectContaining({ id: "composer", paneKind: AGENT_PANE_KIND }),
 		]);
-		expect(contributions("kilo.work-sessions/pane-kind-menu")).toEqual([
-			expect.objectContaining({ id: "agent-chats", paneKind: AGENT_PANE_KIND }),
+		expect(contributions("kilo.work-sessions/work-session-action")).toEqual([
+			expect.objectContaining({ id: "agents", placement: "end" }),
 		]);
 	});
 

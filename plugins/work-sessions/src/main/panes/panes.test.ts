@@ -6,6 +6,12 @@ import {
 	type TelemetryEnvelope,
 } from "@kilo-desktop/kernel";
 import { testPlugin } from "@kilo-desktop/kernel/testing";
+import {
+	createLayout,
+	parseLayoutJson,
+	serializeLayout,
+	setActivePane,
+} from "@kilo-desktop/pane-layout";
 
 import { bootWorkSessions, storageWithWorkspaces, type MemoryStorage } from "../test-boot";
 import { globToRegExp } from "../../contracts/model/openers";
@@ -47,6 +53,38 @@ async function boot(storage: MemoryStorage = storageWithWorkspaces()) {
 }
 
 describe("panes", () => {
+	it("places a pane opened as a tab in the active pane's group; other panes stay for the canvas", async () => {
+		const { panes, workSession, of } = await boot();
+		const target = { workSessionId: workSession.id };
+		const a = await panes.methods.open({ ...target, kind: "test.panes/terminal" });
+		const b = await panes.methods.open({ ...target, kind: "test.panes/terminal" });
+		const saved = setActivePane(
+			createLayout([
+				{ id: a.id, kind: "tool", title: "a" },
+				{ id: b.id, kind: "tool", title: "b" },
+			]),
+			a.id,
+		);
+		await panes.methods.setLayout({
+			...target,
+			layout: serializeLayout(saved),
+			activePaneId: a.id,
+		});
+
+		const tab = await panes.methods.open({
+			...target,
+			kind: "test.panes/editor",
+			placement: "tab",
+		});
+		const tabs = () =>
+			parseLayoutJson(of()?.layout)?.groups.map((group) => group.tabs.map((t) => t.id));
+		expect(tabs()).toEqual([[a.id, tab.id], [b.id]]);
+		expect(parseLayoutJson(of()?.layout)?.activePaneId).toBe(tab.id);
+
+		await panes.methods.open({ ...target, kind: "test.panes/terminal" });
+		expect(tabs()).toEqual([[a.id, tab.id], [b.id]]);
+	});
+
 	it("opens panes numbered per kind, activating each", async () => {
 		const { panes, workSession, of } = await boot();
 		const opened: string[] = [];

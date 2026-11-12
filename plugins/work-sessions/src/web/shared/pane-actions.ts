@@ -22,7 +22,7 @@ import { sessionLayout } from "./session-layout";
 
 export type PanesHandle = DomainObjectHandle<typeof Panes>;
 
-/** Where a launched pane goes: its own column (default), a group's tabs, or beside the active group. */
+/** Where a launched pane goes: a tab of the active group (none given), a group's tabs, or beside the active group. */
 export type PanePlacement =
 	| { readonly into: string }
 	| { readonly beside: "after" | "below" }
@@ -64,7 +64,12 @@ export async function launchPane(
 	const before = sessionPanesOf(panes, workSessionId);
 	const anchor = sessionLayout(before, layoutKindOf);
 	const anchorGroup = anchor.activePaneId ? findPaneGroup(anchor, anchor.activePaneId) : undefined;
-	const pane = await panes.methods.open({ workSessionId, kind });
+	// No placement given (⌘T): a tab of the active group, as a person picking a pane expects.
+	const pane = await panes.methods.open({
+		workSessionId,
+		kind,
+		...(placement ? {} : { placement: "tab" as const }),
+	});
 	const opened = !before.panes.some((existing) => existing.id === pane.id);
 	if (!placement || !opened) return { pane, opened };
 	const target = "into" in placement ? placement.into : anchorGroup?.id;

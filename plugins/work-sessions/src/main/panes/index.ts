@@ -8,6 +8,17 @@ import {
 } from "@kilo-desktop/kernel";
 
 import {
+	addPane,
+	createLayout,
+	descriptor,
+	findPaneGroup,
+	movePaneToGroup,
+	parseLayoutJson,
+	serializeLayout,
+	setActivePane,
+} from "@kilo-desktop/pane-layout";
+
+import {
 	EMPTY_WORK_SESSION_PANES,
 	Panes,
 	WorkSessions,
@@ -55,7 +66,9 @@ const sameRef = (left: ObjectRef | undefined, right: ObjectRef) =>
  * serialized layout and arrangement, kept in kv and shared by every window.
  * Opening applies the pane kind's manifest rules (`singleton`, its title)
  * without its plugin's code, and objects open through `opener`
- * contributions; the canvas owns the layout's shape and only saves it here.
+ * contributions; the canvas owns the layout's shape and only saves it here,
+ * except that a pane opened as a `tab` joins the active pane's group in the
+ * same write, so it never flashes as a column first.
  * A deleted work session's panes go with it. Every pane opened or closed is
  * reported to telemetry by its kind.
  */
@@ -159,6 +172,7 @@ export function activatePanes(sdk: PluginSdk, options: PanesOptions = {}): void 
 			...current,
 			panes: [...current.panes, pane],
 			activePaneId: activate || current.activePaneId === null ? pane.id : current.activePaneId,
+			...(input.placement === "tab" ? tabLayout(current, pane, activate) : {}),
 		});
 		panes.emit("opened", { workSessionId: input.workSessionId, pane });
 		track(sdk, "pane-opened", { paneType: paneTypeOf(pane.kind) });
@@ -192,6 +206,28 @@ export function activatePanes(sdk: PluginSdk, options: PanesOptions = {}): void 
 			...(object ? { object } : {}),
 			...(status ? { status } : {}),
 		};
+	}
+	/**
+	 * The layout with `pane` as a tab of the active pane's group. Before the
+	 * canvas saves one, it starts from what the canvas shows: a column per pane.
+	 */
+	function tabLayout(current: WorkSessionPanes, pane: Pane, activate: boolean) {
+		const { activePaneId } = current;
+		if (!activePaneId) return {};
+		const descriptorOf = (open: Pane) =>
+			descriptor({
+				id: open.id,
+				kind: kindMetadata(open.kind)?.layoutKind ?? "tool",
+				title: open.title,
+			});
+		const saved =
+			parseLayoutJson(current.layout) ??
+			createLayout(current.panes.map(descriptorOf), activePaneId);
+		const group = findPaneGroup(saved, activePaneId);
+		if (!group) return {};
+		let layout = movePaneToGroup(addPane(saved, descriptorOf(pane)), pane.id, group.id);
+		if (!activate) layout = setActivePane(layout, activePaneId);
+		return { layout: serializeLayout(layout) };
 	}
 	function kindMetadata(kind: string) {
 		return sdk.extensions.list(PaneKind).find((contribution) => contribution.key === kind)

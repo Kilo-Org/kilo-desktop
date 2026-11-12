@@ -1,6 +1,6 @@
 import { AssistantRuntimeProvider, useAui, useAuiEvent, useAuiState } from "@assistant-ui/react";
 import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
-import { BotIcon } from "lucide-react";
+import { BotIcon, BotMessageSquareIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FC, type ReactNode } from "react";
 
 import { flagKey, type DomainObjectState } from "@kilo-desktop/kernel";
@@ -11,6 +11,7 @@ import {
 	WorkSessions,
 	Workspaces,
 	type PaneProps,
+	type PaneStatus,
 	type WorkspacesState,
 } from "@kilo-desktop/plugin-work-sessions/contracts";
 import { FindScope } from "@kilo-desktop/ui/components/find-bar";
@@ -42,9 +43,13 @@ import { FollowPlanApproval } from "./plan/follow-plan-approval";
 import { Thread } from "./thread/thread";
 import { TranscriptProviders, useTranscriptAui } from "./thread/transcript-scope";
 
-export const AgentIcon: FC<{ className?: string }> = ({ className }) => (
-	<BotIcon className={className} />
-);
+/** The agent tab's icon: a speech bubble while the agent waits for the person's answer. */
+export const AgentIcon: FC<{ className?: string; status?: PaneStatus }> = ({ className, status }) =>
+	status === "attention" ? (
+		<BotMessageSquareIcon className={className} />
+	) : (
+		<BotIcon className={className} />
+	);
 
 export interface AgentPaneServices {
 	readonly chat: ChatServices;

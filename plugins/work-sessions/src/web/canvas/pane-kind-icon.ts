@@ -3,8 +3,14 @@ import type { ComponentType } from "react";
 
 import type { PaneKind } from "@kilo-desktop/pane-layout";
 
+import type { PaneStatus } from "../../contracts";
+
 export type PaneIconOverride = {
-	readonly Icon: ComponentType<{ readonly className?: string; readonly iconKey?: string }>;
+	readonly Icon: ComponentType<{
+		readonly className?: string;
+		readonly iconKey?: string;
+		readonly status?: PaneStatus;
+	}>;
 	readonly iconKey?: string;
 };
 

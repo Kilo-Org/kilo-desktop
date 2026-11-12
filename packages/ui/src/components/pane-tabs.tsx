@@ -1,4 +1,5 @@
 import { Tabs as TabsPrimitive } from "@base-ui/react/tabs";
+import type { ComponentProps, ReactNode } from "react";
 
 import { buttonVariants } from "@kilo-desktop/ui/components/button";
 import { cn } from "@kilo-desktop/ui/lib/utils";
@@ -51,5 +52,54 @@ export function PaneTabsTrigger({ className, ...props }: TabsPrimitive.Tab.Props
 			)}
 			{...props}
 		/>
+	);
+}
+
+/** What a pane is doing, as its tab (and any list of panes) shows it. */
+export type PaneTabStatus = "busy" | "attention" | "unread";
+
+export const PANE_TAB_STATUS_LABEL: Record<PaneTabStatus, string> = {
+	busy: "Working",
+	attention: "Needs your attention",
+	unread: "Unread",
+};
+
+/** The icon's colour per status: pulsing blue while working, amber while waiting, bright while unread. */
+export const PANE_TAB_STATUS_ICON_CLASS_NAME: Record<PaneTabStatus, string> = {
+	busy: "text-info motion-safe:animate-pulse",
+	attention: "text-warning",
+	unread: "text-foreground",
+};
+
+/**
+ * Wraps a pane's icon so it carries the pane's status: announced, and with
+ * the unread dot (the brand colour: Kilo yellow) on its corner. The icon
+ * itself takes `PANE_TAB_STATUS_ICON_CLASS_NAME[status]`.
+ */
+export function PaneTabStatusIcon({
+	status,
+	children,
+	...props
+}: {
+	status: PaneTabStatus | null | undefined;
+	children: ReactNode;
+} & Omit<ComponentProps<"span">, "children">) {
+	if (!status) return children;
+	return (
+		<span
+			role="status"
+			aria-label={PANE_TAB_STATUS_LABEL[status]}
+			data-status={status}
+			className="relative flex shrink-0"
+			{...props}
+		>
+			{children}
+			{status === "unread" ? (
+				<span
+					aria-hidden
+					className="bg-primary-brand ring-background absolute -top-0.5 -right-0.5 size-1.5 rounded-full ring-1"
+				/>
+			) : null}
+		</span>
 	);
 }

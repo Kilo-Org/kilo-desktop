@@ -1107,8 +1107,6 @@ with contributors today; candidate points are in the extensibility map (§7).
 │                                            hover-branch, 9d), given the session
 │   kilo.workbench/session-action (A) ..... workbench header actions (placement start
 │                                            / end, 9e)
-│   kilo.workbench/pane-kind-menu (A) ..... entries in a pinned pane kind's header
-│                                            menu (agent: the session's chats)
 │   kilo.workbench/navigator-action (A) ... session-list header buttons
 │   kilo.workbench/launcher-option (A) .... launcher options (slot branch, 9c)
 │   kilo.workbench/session-starter (X) .... the New Session page's body, given
@@ -1160,7 +1158,7 @@ with contributors today; candidate points are in the extensibility map (§7).
 │                                    permission cards; answer warnings — 12a
 │   kilo.chat/model-source (A) ..... local model provider: picker rail, start,
 │                                    prepare before prompts — 12c
-│ ● kilo.workbench/pane-kind-menu .. the Agent button's chats: reopen a closed agent pane
+│ ● kilo.workbench/session-action .. Agents: open chats (status, pop-outs), reopen closed
 │ ● kilo.workbench/session-starter . the New Session page's composer: first send starts
 │                                    the session, chat and Agent pane, then opens it
 │   kilo.sessions/pane-kind ........ Agent (8c; order 10, listed first in every "+"; one chat
@@ -1499,24 +1497,23 @@ Anatomy of the agent pane and where each point appears:
 
 ### 7.3 kilo.workbench — the session workbench (UI)
 
-| Extension point          | Kind | Status | What it extends                                                                                                                                     | Contributors                                                                                      |
-| ------------------------ | ---- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `session-decoration`     | A    | Now    | Session row badge or hover detail — wherever the workbench shows a session                                                                          | git (branch, PR); terminal (running processes); agent (cost)                                      |
-| `session-menu`           | A    | Now    | Session menu wherever a session is shown — sidebar row, board card (references commands)                                                            | sessions (pin, rename, archive, delete); git (create PR); board (add / move / remove from board)  |
-| `session-action`         | A    | Now    | Workbench header actions, `placement` start (before the pane controls) or end                                                                       | workbench (layouts, pop out); git (commit/push/PR, 9e)                                            |
-| `pane-kind-menu`         | A    | Now    | Entries under "New <kind>" in the menu of a kind pinned to the session header (`launch.sessionHeader`); with one, the button opens the menu         | chat (the session's chats, to reopen a closed agent pane). Candidates: terminal / browser recents |
-| `navigator-action`       | A    | Now    | Buttons in the session-list header (references commands)                                                                                            | workbench (new session, filter); board (open board)                                               |
-| `sessions-view`          | A    | Now    | Alternative main-area views of the session collection; toggled from the navigator header; workbench handles pop-out                                 | board (kanban); _ext_ timeline, calendar                                                          |
-| `session-template`       | A    | Next   | Launcher templates: isolation + panes + initial prompt + agent                                                                                      | notebook ("Notebook analysis"); git ("Review a PR"); _ext_ "Fix a Jira issue"                     |
-| `layout-preset`          | A    | Next   | Pane arrangements (today a hard-coded enum)                                                                                                         | workbench (defaults); notebook (agent + notebook + files); git (agent + changes)                  |
-| `resource-action`        | A    | Next   | Actions on an `ObjectRef` (file, URL, selection) wherever it appears — may be replaced by commands that target an object type (open decision, §2.6) | chat (add to composer); git (stage, discard, blame); files (reveal); browser (open in browser)    |
-| `launcher-option`        | A    | Now    | Session-creation options, folded into `WorkSessions.create` (slot `branch` beside the isolation control, 9c; `setup` in its place without VCS)      | git (branch picker, 9c; Initialize Git); environments (conda env); _ext_ issue picker             |
-| `session-starter`        | X    | Now    | The New Session page's body, under workbench's location row: given `start()`, which creates the session without opening it                          | chat (origin's draft composer); _ext_ a form-based starter (issue → session)                      |
-| `session-facet`          | A    | Now    | Read-only facts per session the session list filters by (facet `pull-request`, 9d); more facets as filters need them                                | git (pull request state, 9d); _ext_ issue state                                                   |
-| `navigator-filter`       | A    | Later  | Session list filters/groups                                                                                                                         | git (by branch); chat (needs input)                                                               |
-| `session-activity`       | A    | Later  | Live state a session's row, attention and unread combine (today only its Kilo chats, read from `kilo.agent/conversation`)                           | terminal (command running / waiting for input); notebook (kernel busy)                            |
-| `notification-cue`       | A    | Later  | Cues the notifier sounds and shows under the Notifications settings (today the built-in chat "done" / "needs you")                                  | terminal (long command finished); git (checks finished)                                           |
-| `permission-auto-answer` | A    | Now    | Whether a plugin answers an agent permission request for the person, so "needs you" sounds only for requests a person must answer                   | chat (Auto approve, signed-out sign-in tools); _ext_ a policy plugin's allow rules                |
+| Extension point          | Kind | Status | What it extends                                                                                                                                     | Contributors                                                                                     |
+| ------------------------ | ---- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `session-decoration`     | A    | Now    | Session row badge or hover detail — wherever the workbench shows a session                                                                          | git (branch, PR); terminal (running processes); agent (cost)                                     |
+| `session-menu`           | A    | Now    | Session menu wherever a session is shown — sidebar row, board card (references commands)                                                            | sessions (pin, rename, archive, delete); git (create PR); board (add / move / remove from board) |
+| `session-action`         | A    | Now    | Workbench header actions, `placement` start (before the pane controls) or end                                                                       | workbench (layouts, pop out); git (commit/push/PR, 9e); chat (Agents)                            |
+| `navigator-action`       | A    | Now    | Buttons in the session-list header (references commands)                                                                                            | workbench (new session, filter); board (open board)                                              |
+| `sessions-view`          | A    | Now    | Alternative main-area views of the session collection; toggled from the navigator header; workbench handles pop-out                                 | board (kanban); _ext_ timeline, calendar                                                         |
+| `session-template`       | A    | Next   | Launcher templates: isolation + panes + initial prompt + agent                                                                                      | notebook ("Notebook analysis"); git ("Review a PR"); _ext_ "Fix a Jira issue"                    |
+| `layout-preset`          | A    | Next   | Pane arrangements (today a hard-coded enum)                                                                                                         | workbench (defaults); notebook (agent + notebook + files); git (agent + changes)                 |
+| `resource-action`        | A    | Next   | Actions on an `ObjectRef` (file, URL, selection) wherever it appears — may be replaced by commands that target an object type (open decision, §2.6) | chat (add to composer); git (stage, discard, blame); files (reveal); browser (open in browser)   |
+| `launcher-option`        | A    | Now    | Session-creation options, folded into `WorkSessions.create` (slot `branch` beside the isolation control, 9c; `setup` in its place without VCS)      | git (branch picker, 9c; Initialize Git); environments (conda env); _ext_ issue picker            |
+| `session-starter`        | X    | Now    | The New Session page's body, under workbench's location row: given `start()`, which creates the session without opening it                          | chat (origin's draft composer); _ext_ a form-based starter (issue → session)                     |
+| `session-facet`          | A    | Now    | Read-only facts per session the session list filters by (facet `pull-request`, 9d); more facets as filters need them                                | git (pull request state, 9d); _ext_ issue state                                                  |
+| `navigator-filter`       | A    | Later  | Session list filters/groups                                                                                                                         | git (by branch); chat (needs input)                                                              |
+| `session-activity`       | A    | Later  | Live state a session's row, attention and unread combine (today only its Kilo chats, read from `kilo.agent/conversation`)                           | terminal (command running / waiting for input); notebook (kernel busy)                           |
+| `notification-cue`       | A    | Later  | Cues the notifier sounds and shows under the Notifications settings (today the built-in chat "done" / "needs you")                                  | terminal (long command finished); git (checks finished)                                          |
+| `permission-auto-answer` | A    | Now    | Whether a plugin answers an agent permission request for the person, so "needs you" sounds only for requests a person must answer                   | chat (Auto approve, signed-out sign-in tools); _ext_ a policy plugin's allow rules               |
 
 Beside these points, the workbench's per-window `kilo.workbench/workbench`
 domain object has `openPane({ kind })`: plugins' "Open Files / Terminal /
@@ -3071,14 +3068,16 @@ Everything lands in a single PR once all plugins are built.
   and skips kinds not installed. The default applies to sessions started
   empty from the launcher. Still behind `chat-layouts`; preset telemetry
   waits for layouts events. Browser mode has no presets.
-- **The header** shows plugins' header decorations, then "+" and a button for
-  each pane kind pinned there (`launch.sessionHeader`; still offered in that
-  "+" menu; the Agent kind is), then the carousel toggle, then session actions
-  (presets). A pinned kind with `kilo.workbench/pane-kind-menu` entries opens
-  a menu, "New <kind>" first: the Agent button lists the session's chats, so
-  a closed agent pane can be reopened (its chat outlives the pane). "New
-  agent", "+" and the picker always start a new chat: an agent pane naming
-  no chat is a draft, never the session's closed chat.
+- **The header** shows plugins' header decorations and `start` session
+  actions, then "+" (adds a tab group; every addable kind, pinned ones
+  included) and a button for each pane kind pinned there
+  (`launch.sessionHeader`), then `end` session actions (chat's Agents: the
+  session's chats, open ones with their tab status and pop-out mark, then
+  closed ones to reopen — a chat outlives its pane), then the carousel toggle,
+  last. "+" and the picker always start a new chat: an agent pane naming no
+  chat is a draft. An agent pane's tab carries its chat's title ("New chat"
+  for a draft) and its status on the icon: working, waiting for the person,
+  or unread (finished off screen).
 
 **What building step 6c settled:**
 
@@ -3090,7 +3089,8 @@ Everything lands in a single PR once all plugins are built.
   render as unavailable. A deleted session's panes go with it.
 - **The canvas owns the layout's shape; kilo.sessions owns which panes
   exist.** kilo.workbench derives the layout from the saved one (panes opened
-  since join as their own column, closed ones drop out, titles follow), shows
+  since join as their own column, closed ones drop out, titles follow; a pane
+  opened with `placement: "tab"` is put in the active pane's group by main), shows
   a change at once and saves it; another window's save replaces it.
 - **Origin's state is handed over once** by the main window (after origin's
   sessions import): its tab definitions map to the kinds of the plugins that

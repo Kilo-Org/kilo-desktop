@@ -36,8 +36,8 @@ export function WorkSessionTopBarTitle() {
 
 /**
  * The top bar's actions while a work session is open (`session-actions`):
- * plugins' `start` work session actions, then "+" and the carousel toggle,
- * then `end` ones (`kilo.work-sessions/work-session-action`).
+ * plugins' `start` work session actions, then "+", then `end` ones
+ * (`kilo.work-sessions/work-session-action`), then the carousel toggle.
  */
 export function WorkSessionTopBarActions() {
 	const workSession = useActiveWorkSession();
@@ -59,8 +59,7 @@ export function WorkSessionTopBarActions() {
 			data-qa-id="session-header-actions"
 		>
 			{renderActions("start")}
-			<SessionPaneControls workSession={workSession} />
-			{renderActions("end")}
+			<SessionPaneControls workSession={workSession}>{renderActions("end")}</SessionPaneControls>
 		</div>
 	);
 }

@@ -6,7 +6,6 @@ import { KernelWindowView, KernelWindows } from "@kilo-desktop/kernel";
 import type { MainKernel, MainKernelHost } from "@kilo-desktop/kernel/main";
 import { KernelProvider, RenderContribution } from "@kilo-desktop/kernel/web";
 import { flattenPanes, parseLayoutJson } from "@kilo-desktop/pane-layout";
-import { DropdownMenuItem } from "@kilo-desktop/ui/components/dropdown-menu";
 import { render } from "@testing-library/react";
 
 import {
@@ -22,7 +21,6 @@ import {
 } from "../../testing";
 import {
 	EMPTY_WORK_SESSION_PANES,
-	PaneKindMenu,
 	Panes,
 	type Pane,
 	type PaneProps,
@@ -51,7 +49,9 @@ const panesPlugin = paneKindPlugin("test.panes", [
 		id: "terminal",
 		metadata: { title: "Terminal", launch: { newSession: true, inSession: true } },
 		component: Terminal,
-		icon: TerminalIcon,
+		icon: ({ className, status }) => (
+			<TerminalIcon className={className} data-icon-status={status ?? "none"} />
+		),
 	},
 	{
 		id: "notebook",
@@ -83,21 +83,6 @@ const pinnedPlugin = paneKindPlugin("test.pinned", [
 		component: () => <div>Helper</div>,
 	},
 ]);
-
-/** A plugin listing entries in the pinned Helper's header menu (kilo.work-sessions/pane-kind-menu). */
-const helperMenuPlugin = (onPick: (workSessionId: string) => void): GuestPlugin =>
-	paneKindPlugin("test.helper-menu", [], {
-		extensions: {
-			"kilo.work-sessions/pane-kind-menu": [{ id: "recent", paneKind: "test.pinned/helper" }],
-		},
-		activate(sdk) {
-			sdk.extensions.implement(PaneKindMenu, "recent", ({ workSession: shown }) => (
-				<DropdownMenuItem data-qa-id="helper-recent" onClick={() => onPick(shown.id)}>
-					Recent helper
-				</DropdownMenuItem>
-			));
-		},
-	});
 
 async function renderPanes(
 	options: {
@@ -151,6 +136,20 @@ describe("session panes", () => {
 			.toHaveTextContent("wses_1 · Terminal · /projects/app · visible");
 	});
 
+	it("adds a tab group from the header '+', beside the active one", async () => {
+		const { state } = await renderPanes({ panes: withPanes([pane("a")]) });
+		await expect.element(page.getByTestId("terminal-a")).toBeVisible();
+
+		await page.getByTestId("chat-pane-toolbar-add").click();
+		await page.getByTestId("chat-pane-launch-test.panes/terminal").click();
+
+		await vi.waitFor(() => {
+			const layout = parseLayoutJson(state()?.layout);
+			expect(layout?.groups.map((group) => group.tabs.length)).toEqual([1, 1]);
+			expect(layout?.groups[0]?.tabs[0]?.id).toBe("a");
+		});
+	});
+
 	it("lists a gated kind as unavailable, with why", async () => {
 		await renderPanes({ panes: withPanes([pane("a")]) });
 
@@ -189,28 +188,6 @@ describe("session panes", () => {
 		await userEvent.keyboard("{Escape}");
 
 		await pinned.click();
-		await vi.waitFor(() =>
-			expect(calls.openPane).toHaveBeenCalledWith({
-				workSessionId: SESSION.id,
-				kind: "test.pinned/helper",
-			}),
-		);
-	});
-
-	it("opens a pinned kind's contributed menu, its New item first, instead of launching", async () => {
-		const picked = vi.fn();
-		const { calls } = await renderPanes({
-			panes: withPanes([pane("a")]),
-			extraPlugins: [pinnedPlugin, helperMenuPlugin(picked)],
-		});
-
-		await page.getByTestId("chat-pane-pinned-test.pinned/helper").click();
-		await page.getByTestId("helper-recent").click();
-		expect(picked).toHaveBeenCalledWith(SESSION.id);
-		expect(calls.openPane).not.toHaveBeenCalled();
-
-		await page.getByTestId("chat-pane-pinned-test.pinned/helper").click();
-		await page.getByTestId("chat-pane-pinned-new-test.pinned/helper").click();
 		await vi.waitFor(() =>
 			expect(calls.openPane).toHaveBeenCalledWith({
 				workSessionId: SESSION.id,
@@ -373,12 +350,14 @@ describe("tab commands", () => {
 	});
 
 	it("opens a new tab from the picker, or a new group beside the active one", async () => {
-		const { run, state } = await renderPanes({ panes: withPanes([pane("a")]) });
+		const { run, state, calls } = await renderPanes({ panes: withPanes([pane("a")]) });
 		await expect.element(page.getByTestId("terminal-a")).toBeVisible();
 
 		await run("new-pane");
 		await page.getByTestId("new-pane-picker-test.panes/terminal").click();
 		await vi.waitFor(() => expect(state()?.panes).toHaveLength(2));
+		// Main places it in the active group (panes.test.ts).
+		expect(calls.openPane).toHaveBeenCalledWith(expect.objectContaining({ placement: "tab" }));
 
 		await run("new-group-below");
 		await page.getByTestId("new-pane-picker-test.panes/terminal").click();
@@ -530,6 +509,7 @@ describe("WorkSessionsWindow.openPane (for other plugins' commands)", () => {
 			expect(calls.openPane).toHaveBeenCalledWith({
 				workSessionId: SESSION.id,
 				kind: "test.pinned/helper",
+				placement: "tab",
 			}),
 		);
 		expect(calls.openPane).toHaveBeenCalledTimes(1);
@@ -605,6 +585,13 @@ describe("pane status", () => {
 			.toHaveAttribute("data-status", "busy");
 		await panes.methods.update({ workSessionId: SESSION.id, paneId: "b", status: "attention" });
 		await expect.element(page.getByRole("status", { name: "Needs your attention" })).toBeVisible();
+		// The kind's icon is told the status, so it can change its shape.
+		expect(
+			page.getByTestId("chat-pane-tab-status-b").element().querySelector("svg"),
+		).toHaveAttribute("data-icon-status", "attention");
+
+		await panes.methods.update({ workSessionId: SESSION.id, paneId: "b", status: "unread" });
+		await expect.element(page.getByRole("status", { name: "Unread" })).toBeVisible();
 
 		await panes.methods.update({ workSessionId: SESSION.id, paneId: "a", status: null });
 		await expect.element(page.getByTestId("chat-pane-tab-status-a")).not.toBeInTheDocument();

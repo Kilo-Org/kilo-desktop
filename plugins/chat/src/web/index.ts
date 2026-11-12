@@ -4,7 +4,7 @@ import { definePlugin, KernelCommand } from "@kilo-desktop/kernel";
 import { Chats, KiloServer } from "@kilo-desktop/plugin-core/contracts";
 import {
 	PaneKind,
-	PaneKindMenu,
+	WorkSessionAction,
 	WorkSessionStarter,
 } from "@kilo-desktop/plugin-work-sessions/contracts";
 
@@ -15,7 +15,7 @@ import { activateComposerFocus, ComposerFocus } from "./composer-focus";
 import { implementPermissionAutoAnswer } from "./interactions/visible-permissions";
 import { handOverLegacyChoices } from "./legacy-hand-over";
 import { MediaIcon, MediaPane } from "./media/MediaPane";
-import { AgentChatsMenu } from "./panes/AgentChatsMenu";
+import { AgentsMenu } from "./panes/AgentsMenu";
 import { createPlanPane, PlanIcon } from "./plan/PlanPane";
 import { ChatServices } from "./runtime/chat-services";
 import { createChatSessionStarter } from "./starter/ChatSessionStarter";
@@ -65,7 +65,7 @@ export const chatWebEntry = definePlugin({
 			icon: SubagentIcon,
 		});
 		sdk.extensions.implement(PaneKind, "media", { component: MediaPane, icon: MediaIcon });
-		sdk.extensions.implement(PaneKindMenu, "agent-chats", AgentChatsMenu);
+		sdk.extensions.implement(WorkSessionAction, "agents", AgentsMenu);
 		sdk.extensions.implement(
 			WorkSessionStarter,
 			"composer",

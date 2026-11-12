@@ -153,7 +153,9 @@ describe("a draft agent pane", () => {
 
 		await expect.element(page.getByText("Could not start the chat")).toBeVisible();
 		await expect.element(composerInput()).toHaveTextContent("Try this");
-		expect(host.sessions.calls.update).not.toHaveBeenCalled();
+		expect(host.sessions.calls.update).not.toHaveBeenCalledWith(
+			expect.objectContaining({ object: expect.anything() }),
+		);
 	});
 
 	it("can't start a chat without kilo.core's chats", async () => {

@@ -505,7 +505,6 @@ Isolation is generic: a session records `local`, `new-copy` or
 | `kilo.work-sessions/work-session-action`      | additive  | A button in the open session's header                                                                          |
 | `kilo.work-sessions/work-session-list-action` | additive  | A button in the session list's header                                                                          |
 | `kilo.work-sessions/new-work-session-option`  | additive  | A choice on the New Session page                                                                               |
-| `kilo.work-sessions/pane-kind-menu`           | additive  | A menu for one pane kind in the session header (chat lists the session's chats)                                |
 | `kilo.work-sessions/work-session-starter`     | exclusive | What the New Session page starts with (the chat composer)                                                      |
 
 **Context keys:** `hasWorkspaces`, `hasVcs` (renamed so it no longer shares
@@ -624,7 +623,7 @@ features use them (e.g. git inserts text into the composer).
 | To                                        | Contributions                                                                                 |
 | ----------------------------------------- | --------------------------------------------------------------------------------------------- |
 | `kilo.work-sessions/pane-kind`            | `agent`, `plan`, `subagent`, `media`                                                          |
-| `kilo.work-sessions/pane-kind-menu`       | `agent-chats`                                                                                 |
+| `kilo.work-sessions/work-session-action`  | `agents`                                                                                      |
 | `kilo.work-sessions/work-session-starter` | `composer`                                                                                    |
 | `kilo.core/tool`                          | `html_render`                                                                                 |
 | `kilo.core/tool-approval`                 | `auto-approve`                                                                                |

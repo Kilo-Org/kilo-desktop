@@ -18,7 +18,7 @@
 		"kilo.work-sessions/panes": "optional",
 		"kilo.work-sessions/window": "optional",
 		"kilo.work-sessions/pane-kind": "optional",
-		"kilo.work-sessions/pane-kind-menu": "optional",
+		"kilo.work-sessions/work-session-action": "optional",
 		"kilo.work-sessions/work-session-starter": "optional",
 		"kilo.work-sessions/opener": "optional",
 		"kilo.work-sessions/permission-auto-answer": "optional",
@@ -27,7 +27,7 @@
 		"kilo.shell/theme": "optional"
 	},
 	"permissions": {
-		"host": ["clipboard", "os"],
+		"host": ["clipboard", "os", "windows"],
 		"embeddedHosts": ["mcp-app"]
 	},
 	"contextKeys": [
@@ -115,8 +115,7 @@
 					"description": "Ask the agent to plan, write and run code in this session.",
 					"launch": {
 						"newSession": true,
-						"inSession": true,
-						"sessionHeader": true
+						"inSession": true
 					},
 					"keepAlive": true,
 					"layoutKind": "agent",
@@ -155,10 +154,10 @@
 					"order": 40
 				}
 			],
-			"kilo.work-sessions/pane-kind-menu": [
+			"kilo.work-sessions/work-session-action": [
 				{
-					"id": "agent-chats",
-					"paneKind": "kilo.chat/agent"
+					"id": "agents",
+					"placement": "end"
 				}
 			],
 			"kilo.work-sessions/opener": [

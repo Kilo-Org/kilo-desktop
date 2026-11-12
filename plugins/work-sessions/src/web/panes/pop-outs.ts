@@ -8,33 +8,16 @@ import {
 } from "@kilo-desktop/kernel";
 import { useDomainObjectState } from "@kilo-desktop/kernel/web";
 
-import { Panes, WorkSessionsWindow, type Pane } from "../../contracts";
-
-/** The window view a popped-out pane opens in. */
-export const PANE_WINDOW_VIEW = "kilo.work-sessions/pane";
+import {
+	PANE_WINDOW_VIEW,
+	Panes,
+	paneWindows,
+	WorkSessionsWindow,
+	type Pane,
+	type PaneWindow,
+} from "../../contracts";
 
 type WindowsState = DomainObjectState<typeof KernelWindows>;
-type WindowRecord = WindowsState["windows"][string];
-
-export interface PaneWindow {
-	readonly windowId: string;
-	readonly workSessionId: string;
-	readonly paneId: string;
-	readonly hidden: boolean;
-}
-
-function paneWindowOf(windowId: string, window: WindowRecord): PaneWindow | null {
-	const { workSessionId, paneId } = window.params;
-	if (window.view !== PANE_WINDOW_VIEW || !workSessionId || !paneId) return null;
-	return { windowId, workSessionId, paneId, hidden: window.hidden };
-}
-
-export function paneWindows(state: WindowsState): PaneWindow[] {
-	return Object.entries(state.windows).flatMap(([windowId, window]) => {
-		const paneWindow = paneWindowOf(windowId, window);
-		return paneWindow ? [paneWindow] : [];
-	});
-}
 
 const NO_POP_OUTS: ReadonlyMap<string, string> = new Map();
 

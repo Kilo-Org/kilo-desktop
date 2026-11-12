@@ -1,0 +1,109 @@
+name: Bug report
+description: Report something in Kilo Desktop that doesn't work as expected
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please search [existing issues](https://github.com/Kilo-Org/kilo-desktop/issues?q=is%3Aissue) first, including closed ones.
+
+        **Security vulnerabilities:** don't open a public issue. Follow [SECURITY.md](https://github.com/Kilo-Org/kilo-desktop/blob/main/SECURITY.md) instead.
+
+  - type: checkboxes
+    id: searched
+    attributes:
+      label: Existing issues
+      options:
+        - label: I searched the existing issues and this bug hasn't been reported.
+          required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of Kilo Desktop is this about? It helps us route your report.
+      options:
+        - Chat and work sessions
+        - Files and git changes
+        - Terminal
+        - Browser
+        - Notebooks
+        - Environments (conda)
+        - Local models
+        - Marketplace
+        - Sign-in and accounts
+        - Settings
+        - Installation and updates
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the bug. What did you expect to happen instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce this bug?
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Kilo Desktop version
+      description: Shown in Settings → About.
+      placeholder: e.g., 0.1.15 or 0.1.16-preview-261103-14305
+    validations:
+      required: true
+
+  - type: dropdown
+    id: track
+    attributes:
+      label: Update track
+      options:
+        - Stable
+        - Preview
+        - Built from source
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      description: Include the version and the processor architecture.
+      placeholder: e.g., macOS 26.1 (Apple silicon), Windows 11 (x64), Ubuntu 24.04 (x64)
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Settings → About → Support shows where the application log is. Paste only the relevant lines.
+
+        **This issue is public, and the log is not redacted.** It contains your OS username, file and project paths, and can include details about your accounts, models, and environments. Replace your username and remove anything private before you post.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or recordings
+      description: Drag and drop images or videos here.
+    validations:
+      required: false

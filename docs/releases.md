@@ -1,7 +1,8 @@
 # Releases, signing, and CI reference
 
 Reference material for packaging, publishing, and signing Kilo Desktop. See
-the [README](../README.md) for the development workflow and repository architecture.
+[CONTRIBUTING.md](../CONTRIBUTING.md) for the development workflow and
+[architecture.md](architecture.md) for the repository architecture.
 
 Implementation lives in `apps/desktop/config/`: `release.ts` (channels, artifact keys,
 feed URLs), `signing.ts` (credential resolution), `windows-sign.ts` (post-make Windows
@@ -37,15 +38,21 @@ native update feed immediately and persists across restarts. Electron's native u
 force downgrades, so a newer Preview installation returns to Stable only when the Stable channel
 publishes a version that sorts newer than the installed Preview.
 
+On first launch after the Kilo rename, Desktop atomically moves a matching pre-rename
+profile into the canonical `Kilo Desktop Dev`, `Kilo Desktop Preview`, or `Kilo Desktop`
+directory when that target does not already exist. Existing canonical profiles are never
+overwritten or merged. Chat reads also recognize the pre-rename ownership key so existing
+sessions remain visible; newly created sessions write only `kilo-desktop` metadata.
+
 ## Distribution matrix
 
 Forge uses only official makers:
 
-| Platform | Architectures | Maker output                                   | Update behavior                                                       |
-| -------- | ------------- | ---------------------------------------------- | --------------------------------------------------------------------- |
-| macOS    | arm64         | DMG, ZIP, and `RELEASES.json`                  | `update-electron-app` consumes the ZIP manifest                       |
-| Windows  | x64, arm64    | Squirrel Setup EXE, full NUPKG, and `RELEASES` | `update-electron-app` uses the Squirrel feed                          |
-| Linux    | x64, arm64    | DEB                                            | Updates are provided by the package repository or manual installation |
+| Platform | Architectures | Maker output                                   | Update behavior                                                                                                                                                                                                            |
+| -------- | ------------- | ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS    | arm64         | DMG, ZIP, and `RELEASES.json`                  | Electron `autoUpdater` (Squirrel.Mac) reads `RELEASES.json` with `serverType: "json"`. Squirrel.Mac checks that the update's code signature matches the running app.                                                       |
+| Windows  | x64, arm64    | Squirrel Setup EXE, full NUPKG, and `RELEASES` | Electron `autoUpdater` (Squirrel.Windows) reads a local mirror. `WindowsUpdateFeed` downloads `RELEASES` and the full NUPKG through Electron `net`, checks size and SHA-1, and stages them under `userData/squirrel-feed`. |
+| Linux    | x64, arm64    | DEB                                            | Updates are provided by the package repository or manual installation                                                                                                                                                      |
 
 Each architecture builds on a native runner: Windows ARM64 on `windows-11-vs2026-arm` and
 Linux ARM64 on `blacksmith-4vcpu-ubuntu-2404-arm`, with the same plugins as their x64 counterparts. The pinned

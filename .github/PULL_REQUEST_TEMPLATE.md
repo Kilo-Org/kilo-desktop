@@ -1,3 +1,9 @@
+<!--
+Outside contributors: thanks for your interest. Pull requests are welcome, but they might
+not be merged, because community contributions are not our focus right now. Please open
+an issue first so we can confirm we would take the change. See CONTRIBUTING.md.
+-->
+
 ## Problem
 
 <!-- What problem does this solve? Why does it matter? Link the issue/ticket. -->

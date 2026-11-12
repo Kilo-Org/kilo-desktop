@@ -19,7 +19,7 @@ function WorkspaceChipTrigger({ disabled }: { readonly disabled: boolean }) {
 					type="button"
 					variant="ghost"
 					size="sm"
-					className="max-w-56"
+					className="max-w-80"
 					disabled={disabled}
 					data-qa-id="launcher-workspace-selector"
 				/>

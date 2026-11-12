@@ -186,7 +186,7 @@ function LocationRow({
 	return (
 		<div
 			data-qa-id="launcher-location"
-			className="mt-4 flex w-full flex-wrap items-center justify-center gap-x-6 gap-y-1"
+			className="flex w-full flex-wrap items-center justify-center gap-x-6 gap-y-1"
 		>
 			<LocationField label="Workspace">
 				<WorkspaceChip disabled={starting} />

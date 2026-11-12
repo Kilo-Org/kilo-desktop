@@ -64,7 +64,7 @@ describe("launcher isolation", () => {
 	it("starts local by default, showing the current branch", async () => {
 		const { workSessions, run } = await renderLauncher({ isolation: REPOSITORY });
 
-		await expect.element(modeTrigger()).toHaveTextContent("Current checkout");
+		await expect.element(modeTrigger()).toHaveTextContent("Local repository");
 		await expect.element(page.getByTestId("git-branch-label")).toHaveTextContent("main");
 		await run("new-empty-work-session");
 
@@ -112,7 +112,7 @@ describe("launcher isolation", () => {
 				"git.draftMode:v1": JSON.stringify("worktree"),
 			},
 		});
-		await expect.element(modeTrigger()).toHaveTextContent("Current checkout");
+		await expect.element(modeTrigger()).toHaveTextContent("Local repository");
 
 		localStorage.removeItem(ISOLATION_PREFERENCE_STORAGE_KEY);
 		await renderLauncher({
@@ -146,7 +146,7 @@ describe("launcher isolation", () => {
 
 	it("keeps the row in place, disabled, while the next workspace's options load", async () => {
 		const { workSessions } = await renderLauncher({ isolation: REPOSITORY });
-		await expect.element(modeTrigger()).toHaveTextContent("Current checkout");
+		await expect.element(modeTrigger()).toHaveTextContent("Local repository");
 		const release = workSessions.holdIsolationOptions("w-lib");
 
 		await page.getByTestId("launcher-workspace-selector").click();
@@ -157,7 +157,7 @@ describe("launcher isolation", () => {
 			WAIT,
 		);
 		await expect.element(modeTrigger()).toBeDisabled();
-		await expect.element(modeTrigger()).toHaveTextContent("Current checkout");
+		await expect.element(modeTrigger()).toHaveTextContent("Local repository");
 		release();
 		await expect.element(modeTrigger()).toBeEnabled();
 	});
@@ -167,7 +167,7 @@ describe("launcher isolation", () => {
 			isolation: REPOSITORY,
 			localStorage: { [ISOLATION_PREFERENCE_STORAGE_KEY]: JSON.stringify({ "w-lib": "worktree" }) },
 		});
-		await expect.element(modeTrigger()).toHaveTextContent("Current checkout");
+		await expect.element(modeTrigger()).toHaveTextContent("Local repository");
 		const release = workSessions.holdIsolationOptions("w-lib");
 
 		await page.getByTestId("launcher-workspace-selector").click();
@@ -196,7 +196,7 @@ describe("launcher isolation", () => {
 			localStorage: { [ISOLATION_PREFERENCE_STORAGE_KEY]: JSON.stringify({ "w-app": "worktree" }) },
 		});
 
-		await expect.element(modeTrigger()).toHaveTextContent("Current checkout");
+		await expect.element(modeTrigger()).toHaveTextContent("Local repository");
 		await modeTrigger().click();
 		await expect
 			.element(page.getByTestId("git-draft-mode-item-worktree"))

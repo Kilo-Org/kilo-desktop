@@ -80,7 +80,7 @@ export class WorktreesPage {
 	async chooseLocal(): Promise<void> {
 		await click(this.modeTrigger());
 		await click(getLocatorByTestId("git-draft-mode-item-local"));
-		await expectElementToContainText(this.modeTrigger(), "Current checkout", {
+		await expectElementToContainText(this.modeTrigger(), "Local repository", {
 			message: "The isolation control should show the current checkout",
 		});
 	}

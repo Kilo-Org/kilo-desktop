@@ -1,14 +1,15 @@
 import { motion, useTransform } from "motion/react";
 
 import type { Contribution } from "@kilo-desktop/kernel";
-import { RenderContribution } from "@kilo-desktop/kernel/web";
+import { RenderContribution, useContextKey } from "@kilo-desktop/kernel/web";
 import { Badge } from "@kilo-desktop/ui/components/badge";
 import { SidebarTrigger, useSidebar } from "@kilo-desktop/ui/components/sidebar";
 
-import type { TopBarAction, TopBarTitle } from "../../contracts";
+import { BETA_BADGES_FLAG, type TopBarAction, type TopBarTitle } from "../../contracts";
 import { RightSidebarToggle } from "./RightSidebar";
 
 function SidebarToggle({ open }: { readonly open: boolean }) {
+	const beta = useContextKey(`kernel/flag:${BETA_BADGES_FLAG}`);
 	return (
 		<div
 			className="titlebar-row pointer-events-auto fixed top-0 z-40 flex items-center gap-1.5 [-webkit-app-region:no-drag]"
@@ -20,12 +21,14 @@ function SidebarToggle({ open }: { readonly open: boolean }) {
 				data-qa-id="sidebar-nav-toggle"
 				className="[-webkit-app-region:no-drag]"
 			/>
-			<Badge
-				className="bg-primary-brand-badge text-primary-brand-badge-foreground h-4 px-1.5 text-[10px] font-bold tracking-wide uppercase"
-				data-qa-id="sidebar-beta-badge"
-			>
-				Beta
-			</Badge>
+			{beta ? (
+				<Badge
+					className="bg-primary-brand-badge text-primary-brand-badge-foreground h-4 px-1.5 text-[10px] font-bold tracking-wide uppercase"
+					data-qa-id="sidebar-beta-badge"
+				>
+					Beta
+				</Badge>
+			) : null}
 		</div>
 	);
 }

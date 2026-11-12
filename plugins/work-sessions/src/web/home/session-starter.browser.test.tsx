@@ -188,7 +188,7 @@ describe("the New Session page with a session starter", () => {
 
 		const location = page.getByTestId("launcher-location");
 		// Each group's text is its screen-reader label, then its value.
-		await expect.element(location).toHaveTextContent("WorkspaceAppUseCurrent checkoutBranchmain");
+		await expect.element(location).toHaveTextContent("WorkspaceAppUseLocal repositoryBranchmain");
 		const starter = page.getByTestId("test-starter");
 		expect(follows(page.getByTestId("launcher-headline").element(), location.element())).toBe(true);
 		expect(follows(location.element(), starter.element())).toBe(true);

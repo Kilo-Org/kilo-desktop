@@ -121,7 +121,7 @@ export function IsolationControl({
 			: undefined;
 	const modeLabel =
 		value.kind === "local"
-			? "Current checkout"
+			? "Local repository"
 			: value.kind === "new-copy"
 				? "New worktree"
 				: (existing?.name ?? basename(value.directory));

@@ -2,6 +2,8 @@ import { ArrowRightIcon } from "lucide-react";
 import { motion } from "motion/react";
 import { useRef } from "react";
 
+import { useContextKey } from "@kilo-desktop/kernel/web";
+import { BETA_BADGES_FLAG } from "../../../contracts";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { Checkbox } from "@kilo-desktop/ui/components/checkbox";
 import { DialogDescription, DialogTitle } from "@kilo-desktop/ui/components/dialog";
@@ -44,6 +46,7 @@ export function WelcomeStep({
 	onContinue: () => void;
 }) {
 	const logoRef = useRef<HTMLDivElement>(null);
+	const beta = useContextKey(`kernel/flag:${BETA_BADGES_FLAG}`);
 
 	return (
 		<div
@@ -64,7 +67,7 @@ export function WelcomeStep({
 				<div ref={logoRef}>
 					<KiloWelcomeLogo className="text-foreground mb-0" sizeClassName="size-16" />
 				</div>
-				<BetaWordmark className="text-foreground w-15" />
+				{beta ? <BetaWordmark className="text-foreground w-15" /> : null}
 			</motion.div>
 
 			<motion.div className="flex flex-col items-center gap-2" {...blurUp(0.25)}>

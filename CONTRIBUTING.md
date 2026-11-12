@@ -27,11 +27,13 @@ how-to questions, and discussion, join the [Kilo Discord](https://kilo.ai/discor
    opening a duplicate.
 2. Use the issue template. Include your Kilo Desktop version, update track (Stable or
    Preview), and operating system.
-3. Include the relevant lines of the application log when they help: **Settings → About →
-   Support** shows where the log file is. Issues are public and the log is not redacted: it
-   contains your OS username and file and project paths, and can include details about your
-   accounts, models, and environments. Replace your username and remove anything private
-   before you post.
+3. Attach the application log when it helps: **Settings → About → Support** shows where the
+   log file is. Copy it, trim the copy to the lines around the problem, and attach the
+   trimmed file to the issue instead of pasting the log inline. Issues are public and the log
+   is not redacted: it contains your OS username and file and project paths, and can include
+   model and provider names, account details, environment details, and parts of your
+   project's contents. Replace your username and remove anything private before you attach
+   it.
 4. Keep each issue to one problem.
 
 Do not mass-create issues through automation or agents. Open an issue only when you have

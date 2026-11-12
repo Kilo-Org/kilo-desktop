@@ -93,10 +93,9 @@ body:
     attributes:
       label: Logs
       description: |
-        Settings → About → Support shows where the application log is. Paste only the relevant lines.
+        Settings → About → Support shows where the application log is. Copy it, trim the copy to the lines around the problem, and attach the trimmed file here by dragging it in. Don't paste the log inline.
 
-        **This issue is public, and the log is not redacted.** It contains your OS username, file and project paths, and can include details about your accounts, models, and environments. Replace your username and remove anything private before you post.
-      render: shell
+        **This issue is public, and the log is not redacted.** It contains your OS username and file and project paths. It can also include model and provider names, account details, environment details, and parts of your project's contents. Replace your username and remove anything private before you attach it.
     validations:
       required: false
 

@@ -427,6 +427,34 @@ describe("importing origin's work sessions", () => {
 		);
 	});
 
+	// kilo.chat gives a work session made from chats its agent pane when it is created.
+	it("announces origin's work sessions as created", async () => {
+		const database = await originDatabase([
+			{ id: "wses_old", chats: ["ses_a"] },
+			{ id: "wses_older", chats: ["ses_b"] },
+		]);
+
+		// Held until `boot` has subscribed to the events.
+		let release!: () => void;
+		const opened = new Promise<void>((resolve) => (release = resolve));
+		const { events, list } = await boot({
+			core: withChats(chat("ses_a"), chat("ses_b")),
+			options: {
+				workSessions: () => ({
+					originDatabase: database,
+					loadSqlite: async () => {
+						await opened;
+						return Database;
+					},
+				}),
+			},
+		});
+		release();
+
+		await vi.waitFor(() => expect(list()).toHaveLength(2));
+		expect(events).toEqual(expect.arrayContaining(["created wses_old", "created wses_older"]));
+	});
+
 	// Origin adopted chats from before work sessions into sessions it stamped
 	// with the adoption time, so their chats were often archived earlier still.
 	it("keeps a chat archived before origin gave it a work session archived", async () => {

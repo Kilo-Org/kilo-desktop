@@ -88,7 +88,9 @@ export async function importOriginWorkSessions(
  * adopted origin's chats into work sessions of their own; such a work session
  * (every chat it holds belongs to one origin session) is folded into
  * origin's, keeping what the person changed on it. A chat held by any other
- * work session stays there and leaves origin's.
+ * work session stays there and leaves origin's. Each added work session is
+ * announced as created, like one adopted from a chat, so kilo.chat gives it
+ * its agent pane (origin showed every session's chat without saving a pane).
  */
 function mergeOriginSessions(
 	registry: WorkSessionRegistry,
@@ -134,4 +136,5 @@ function mergeOriginSessions(
 	});
 	registry.save([...kept, ...added], { importedFromOrigin: true });
 	for (const workSession of adopted) registry.announceDeleted(workSession);
+	for (const workSession of added) registry.announceCreated(workSession);
 }

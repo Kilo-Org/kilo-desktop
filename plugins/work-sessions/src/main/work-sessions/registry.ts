@@ -44,6 +44,10 @@ export class WorkSessionRegistry {
 
 	add(workSession: WorkSession): void {
 		this.save([...this.list(), workSession]);
+		this.announceCreated(workSession);
+	}
+
+	announceCreated(workSession: WorkSession): void {
 		this.#provider.emit("created", { workSession });
 	}
 

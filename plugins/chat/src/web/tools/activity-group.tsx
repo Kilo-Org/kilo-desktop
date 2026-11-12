@@ -98,17 +98,39 @@ const ownsPendingPermission = (
 	permissions: readonly {
 		tool?: { messageID?: string; callID?: string } | undefined;
 	}[],
-	messageId: string | undefined,
+	stepIds: ReadonlySet<string | undefined>,
 ): boolean => {
 	for (const permission of permissions) {
 		const tool = permission.tool;
-		if (!tool?.callID || (tool.messageID && tool.messageID !== messageId)) continue;
+		if (!tool?.callID || (tool.messageID && !stepIds.has(tool.messageID))) continue;
 		for (const index of indices) {
 			const part = parts[index];
 			if (part && getPartToolCallId(part) === tool.callID) return true;
 		}
 	}
 	return false;
+};
+
+/**
+ * The server message ids behind a transcript message. Consecutive assistant
+ * steps are projected as one message under the first step's id, while a
+ * permission names the step whose tool asked.
+ */
+const useMessageStepIds = (): ReadonlySet<string | undefined> => {
+	const messageId = useAuiState((s) => s.message.id);
+	const opencodeParts = useAuiState((s) => {
+		const custom = s.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
+		return custom?.opencode?.parts;
+	});
+	return useMemo(() => {
+		const ids = new Set<string | undefined>([messageId]);
+		if (Array.isArray(opencodeParts)) {
+			for (const part of opencodeParts as readonly { messageID?: unknown }[]) {
+				if (typeof part?.messageID === "string") ids.add(part.messageID);
+			}
+		}
+		return ids;
+	}, [messageId, opencodeParts]);
 };
 
 const AUTO_COLLAPSE_DELAY = 1600;
@@ -383,7 +405,7 @@ export const useActivityGroupSpacing = (group: GroupLike): string | undefined =>
 
 const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group, children }) => {
 	const parts = useAuiState((s) => s.message.parts);
-	const messageId = useAuiState((s) => s.message.id);
+	const stepIds = useMessageStepIds();
 	const messageStatusType = useAuiState((s) => s.message.status?.type);
 	const opencodeParts = useAuiState((s) => {
 		const custom = s.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
@@ -402,8 +424,8 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 		[parts, group.indices, pendingQuestions, messageStatusType],
 	);
 	const hasPendingPermission = useMemo(
-		() => ownsPendingPermission(parts, group.indices, pendingPermissions, messageId),
-		[parts, group.indices, pendingPermissions, messageId],
+		() => ownsPendingPermission(parts, group.indices, pendingPermissions, stepIds),
+		[parts, group.indices, pendingPermissions, stepIds],
 	);
 
 	const disclosureId = `activity:${group.indices[0] ?? 0}`;
@@ -458,15 +480,8 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 
 	// One subgroup is already a collapsible (thinking, or a single tool kind).
 	// Wrapping it in "N tools used" would force a second expand for the same row.
-	if (summary.segments.length <= 1) {
-		return (
-			<ActivityGroupManualOpenContext.Provider value={keepActivityGroupOpen}>
-				<div data-slot="activity-group" className={spacing}>
-					{children}
-				</div>
-			</ActivityGroupManualOpenContext.Provider>
-		);
-	}
+	const headless = summary.segments.length <= 1;
+	const preview = !headless && streaming && userOpen !== true;
 
 	const activeLoading = Boolean(
 		activeSegment?.running ||
@@ -474,106 +489,73 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 		(hasPendingAsk && activeSegment?.kind === "asking"),
 	);
 	const compactSegmentStart =
-		!streaming && userOpen !== true ? lastActiveSegmentStartRef.current : null;
+		!headless && !streaming && userOpen !== true ? lastActiveSegmentStartRef.current : null;
 	const settlingSegmentStart = settlingHold ? compactSegmentStart : null;
 	const settlingSegment =
 		settlingSegmentStart !== null
 			? summary.segments.find((segment) => segment.indices[0] === settlingSegmentStart)
 			: undefined;
-	const settlingIndex = settlingSegment ? summary.segments.indexOf(settlingSegment) : -1;
-	const settlingDiffStats =
-		settlingSegment?.kind === "editing" || settlingSegment?.kind === "writing"
-			? getGroupDiffStats(parts, settlingSegment.indices, opencodeParts)
-			: null;
 	const triggerLabel = settlingSegment
 		? getKindMeta(settlingSegment.kind).doneLabel(getSegmentStats(parts, settlingSegment))
 		: open
 			? "Show less"
 			: summary.label;
 
-	if (streaming && userOpen !== true) {
-		const previewOpen = activeSegmentShouldExpand;
-		const label = activeSegment
-			? getKindMeta(activeSegment.kind).liveLabel(getSegmentStats(parts, activeSegment))
-			: summary.label;
-		const activeIndex = activeSegment ? summary.segments.indexOf(activeSegment) : -1;
-		const stackItems = summary.iconItems.map((item, index) => ({
-			...item,
-			colored: index === activeIndex,
-			loading: index === activeIndex && activeLoading,
-		}));
-		return (
-			<div data-slot="activity-group" className={spacing}>
-				<button
-					type="button"
-					aria-expanded={previewOpen}
-					onClick={() => {
-						setUserOpen(true);
-					}}
-					className="text-muted-foreground hover:text-foreground flex max-w-full items-center gap-2 py-1 text-sm transition-colors"
-				>
-					<ActivityIconStack items={stackItems} className="-space-x-1" />
-					<span className="min-w-0 truncate font-medium">
-						<ActivityLabel label={label} shimmer={activeLoading} />
-					</span>
-					<ActivityDisclosureIcon open={previewOpen} />
-				</button>
-				{previewOpen ? (
-					<ActivityProgressIndexContext.Provider value={furthestActiveIndexRef.current}>
-						<ActivityStreamContext.Provider value={true}>
-							<div className="mt-1 flex flex-col gap-0.5 pb-1">{children}</div>
-						</ActivityStreamContext.Provider>
-					</ActivityProgressIndexContext.Provider>
-				) : null}
-			</div>
-		);
-	}
-
+	// One element tree for every mode (headless, streaming preview, settled):
+	// a tool finishing flips the mode, and a different tree would remount the
+	// tool rows under it, replaying their entrance and dropping their state.
 	return (
-		<ActivityGroupManualOpenContext.Provider value={keepActivityGroupOpen}>
+		<ActivityGroupManualOpenContext.Provider value={preview ? null : keepActivityGroupOpen}>
 			<div data-slot="activity-group" className={spacing}>
 				<Collapsible
-					open={open}
+					open={headless || (preview ? activeSegmentShouldExpand : open)}
 					style={
 						{
 							"--animation-duration": `${GROUP_ANIMATION_DURATION}ms`,
 						} as CSSProperties
 					}
 					onOpenChange={(next) => {
-						setUserOpen(next);
+						// The streaming preview's header pins the group open.
+						setUserOpen(preview || next);
 					}}
 				>
-					<CollapsibleTrigger
-						aria-label={triggerLabel}
-						className="text-muted-foreground hover:text-foreground flex max-w-full items-center gap-2 py-1 text-sm transition-colors"
-					>
-						{open && !settlingSegment ? null : (
-							<ActivityIconStack
-								items={
-									settlingSegment
-										? summary.iconItems.map((item, index) => ({
-												...item,
-												colored: index === settlingIndex,
-												loading: false,
-											}))
-										: summary.iconItems
-								}
-								className="-space-x-1"
+					{headless ? null : preview ? (
+						<CollapsibleTrigger className={GROUP_TRIGGER_CLASS_NAME}>
+							<StreamingGroupHeader
+								summary={summary}
+								parts={parts}
+								activeSegment={activeSegment}
+								activeLoading={activeLoading}
+								open={activeSegmentShouldExpand}
 							/>
-						)}
-						<ActivityTriggerLabel label={triggerLabel}>
-							{open && !settlingSegment ? "Show less" : <ActivityLabel label={triggerLabel} />}
-						</ActivityTriggerLabel>
-						{settlingDiffStats ? <DiffCounts {...settlingDiffStats} /> : null}
-						<ActivityDisclosureIcon open={open} />
-					</CollapsibleTrigger>
+						</CollapsibleTrigger>
+					) : (
+						<CollapsibleTrigger aria-label={triggerLabel} className={GROUP_TRIGGER_CLASS_NAME}>
+							<SettledGroupHeader
+								summary={summary}
+								parts={parts}
+								opencodeParts={opencodeParts}
+								open={open}
+								label={triggerLabel}
+								settlingSegment={settlingSegment}
+							/>
+						</CollapsibleTrigger>
+					)}
 					<CollapsibleContent
-						className={cn(ACTIVITY_CONTENT_ANIMATION, "duration-(--animation-duration)")}
+						className={
+							headless
+								? undefined
+								: cn(ACTIVITY_CONTENT_ANIMATION, "duration-(--animation-duration)")
+						}
 					>
-						<ActivityProgressIndexContext.Provider value={furthestActiveIndexRef.current}>
+						<ActivityProgressIndexContext.Provider
+							value={headless ? -1 : furthestActiveIndexRef.current}
+						>
 							<ActivitySettlingSegmentContext.Provider value={compactSegmentStart}>
-								<ActivityStreamContext.Provider value={compactSegmentStart !== null}>
-									<div className="mt-1 flex flex-col gap-0.5 pb-1">{children}</div>
+								<ActivityStreamContext.Provider value={preview || compactSegmentStart !== null}>
+									<div className={headless ? undefined : "mt-1 flex flex-col gap-0.5 pb-1"}>
+										{children}
+									</div>
 								</ActivityStreamContext.Provider>
 							</ActivitySettlingSegmentContext.Provider>
 						</ActivityProgressIndexContext.Provider>
@@ -584,6 +566,75 @@ const ActivityGroupImpl: FC<PropsWithChildren<{ group: GroupLike }>> = ({ group,
 	);
 };
 
+const GROUP_TRIGGER_CLASS_NAME =
+	"text-muted-foreground hover:text-foreground flex max-w-full items-center gap-2 py-1 text-sm transition-colors";
+
+type ActivitySummary = ReturnType<typeof summarizeActivity>;
+
+const StreamingGroupHeader: FC<{
+	summary: ActivitySummary;
+	parts: readonly ActivityPart[];
+	activeSegment: ActivitySegment | undefined;
+	activeLoading: boolean;
+	open: boolean;
+}> = ({ summary, parts, activeSegment, activeLoading, open }) => {
+	const label = activeSegment
+		? getKindMeta(activeSegment.kind).liveLabel(getSegmentStats(parts, activeSegment))
+		: summary.label;
+	const activeIndex = activeSegment ? summary.segments.indexOf(activeSegment) : -1;
+	const stackItems = summary.iconItems.map((item, index) => ({
+		...item,
+		colored: index === activeIndex,
+		loading: index === activeIndex && activeLoading,
+	}));
+	return (
+		<>
+			<ActivityIconStack items={stackItems} className="-space-x-1" />
+			<span className="min-w-0 truncate font-medium">
+				<ActivityLabel label={label} shimmer={activeLoading} />
+			</span>
+			<ActivityDisclosureIcon open={open} />
+		</>
+	);
+};
+
+const SettledGroupHeader: FC<{
+	summary: ActivitySummary;
+	parts: readonly ActivityPart[];
+	opencodeParts: unknown;
+	open: boolean;
+	label: string;
+	settlingSegment: ActivitySegment | undefined;
+}> = ({ summary, parts, opencodeParts, open, label, settlingSegment }) => {
+	const settlingIndex = settlingSegment ? summary.segments.indexOf(settlingSegment) : -1;
+	const settlingDiffStats =
+		settlingSegment?.kind === "editing" || settlingSegment?.kind === "writing"
+			? getGroupDiffStats(parts, settlingSegment.indices, opencodeParts)
+			: null;
+	return (
+		<>
+			{open && !settlingSegment ? null : (
+				<ActivityIconStack
+					items={
+						settlingSegment
+							? summary.iconItems.map((item, index) => ({
+									...item,
+									colored: index === settlingIndex,
+									loading: false,
+								}))
+							: summary.iconItems
+					}
+					className="-space-x-1"
+				/>
+			)}
+			<ActivityTriggerLabel label={label}>
+				{open && !settlingSegment ? "Show less" : <ActivityLabel label={label} />}
+			</ActivityTriggerLabel>
+			{settlingDiffStats ? <DiffCounts {...settlingDiffStats} /> : null}
+			<ActivityDisclosureIcon open={open} />
+		</>
+	);
+};
 export const ActivityGroup = memo(ActivityGroupImpl);
 ActivityGroup.displayName = "ActivityGroup";
 
@@ -593,7 +644,7 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 	children,
 }) => {
 	const parts = useAuiState((s) => s.message.parts);
-	const messageId = useAuiState((s) => s.message.id);
+	const stepIds = useMessageStepIds();
 	const messageRequiresAction = useAuiState((s) => s.message.status?.type === "requires-action");
 	const opencodeParts = useAuiState((s) => {
 		const custom = s.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
@@ -621,8 +672,8 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 		[kind, parts, segment.indices, pendingQuestions, messageRequiresAction],
 	);
 	const hasPendingPermission = useMemo(
-		() => ownsPendingPermission(parts, segment.indices, pendingPermissions, messageId),
-		[parts, segment.indices, pendingPermissions, messageId],
+		() => ownsPendingPermission(parts, segment.indices, pendingPermissions, stepIds),
+		[parts, segment.indices, pendingPermissions, stepIds],
 	);
 
 	const disclosureId = `subgroup:${kind}:${group.indices[0] ?? 0}`;
@@ -688,77 +739,24 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 		(stats.count === 1 &&
 			!runningTerminalHasCommand &&
 			soloRowHidesItself(kind, parts[segment.indices[0]!]));
-	if (labelOnly) {
-		if (streamCollapsed) {
-			if (segment.indices.length <= 1) return null;
-			return (
-				<ActivitySubgroupContext.Provider value={subgroupContext}>
-					<ActivitySubgroupManualOpenContext.Provider value={keepActivitySubgroupOpen}>
-						<div className="border-border-subtle mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
-							{children}
-						</div>
-					</ActivitySubgroupManualOpenContext.Provider>
-				</ActivitySubgroupContext.Provider>
-			);
-		}
-		const label = active ? meta.liveLabel(stats) : meta.doneLabel(stats);
-		const showChildren = kind !== "asking" && segment.indices.length > 1;
-		return (
-			<ActivitySubgroupContext.Provider value={subgroupContext}>
-				<ActivitySubgroupManualOpenContext.Provider value={keepActivitySubgroupOpen}>
-					<div className="text-muted-foreground flex items-center gap-2 py-1 text-sm">
-						<ActivityIconStack
-							items={[
-								{
-									icon: meta.icon,
-									label: meta.label,
-									className: meta.circleClassName,
-									colored: active,
-									loading: active,
-								},
-							]}
-						/>
-						<span className="min-w-0 truncate font-medium">
-							<ActivityLabel
-								label={label}
-								object={kind === "skill" ? (stats.skill ?? "") : undefined}
-								shimmer={active}
-							/>
-						</span>
-					</div>
-					{showChildren ? (
-						<div className="border-border-subtle mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
-							{children}
-						</div>
-					) : null}
-				</ActivitySubgroupManualOpenContext.Provider>
-			</ActivitySubgroupContext.Provider>
-		);
-	}
-
-	if (streamCollapsed) {
-		return (
-			<ActivitySubgroupContext.Provider value={subgroupContext}>
-				<ActivitySubgroupManualOpenContext.Provider value={keepActivitySubgroupOpen}>
-					{kind === "thinking" ? (
-						<ThinkingStreamText streaming={segment.running}>{children}</ThinkingStreamText>
-					) : (
-						<div className="border-border-subtle mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">
-							{children}
-						</div>
-					)}
-				</ActivitySubgroupManualOpenContext.Provider>
-			</ActivitySubgroupContext.Provider>
-		);
-	}
+	if (labelOnly && streamCollapsed && segment.indices.length <= 1) return null;
 
 	const label = active ? meta.liveLabel(stats) : meta.doneLabel(stats);
+	const disclosure = !labelOnly && !streamCollapsed;
+	const contentOpen = streamCollapsed
+		? true
+		: labelOnly
+			? kind !== "asking" && segment.indices.length > 1
+			: open;
 
+	// One element tree whether the subgroup is a bare row, a streamed list or a
+	// disclosure: a tool finishing turns its label-only row into a disclosure,
+	// and a different tree would remount the rows under it.
 	return (
 		<ActivitySubgroupContext.Provider value={subgroupContext}>
 			<ActivitySubgroupManualOpenContext.Provider value={keepActivitySubgroupOpen}>
 				<Collapsible
-					open={open}
+					open={contentOpen}
 					style={
 						{
 							"--animation-duration": `${SUBGROUP_ANIMATION_DURATION}ms`,
@@ -768,28 +766,55 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 						setToggled(next);
 					}}
 				>
-					<CollapsibleTrigger className="text-muted-foreground hover:text-foreground flex max-w-full items-center gap-2 py-1 text-sm transition-colors">
-						<ActivityIconStack
-							items={[
-								{
-									icon: meta.icon,
-									label: meta.label,
-									className: meta.circleClassName,
-									colored: active || open,
-									loading: canBeActive && segment.running,
-								},
-							]}
-						/>
-						<span className="min-w-0 truncate font-medium">
-							<ActivityLabel label={label} shimmer={segment.running} />
-						</span>
-						{diffStats ? <DiffCounts {...diffStats} /> : null}
-						<ActivityDisclosureIcon open={open} />
-					</CollapsibleTrigger>
+					{streamCollapsed ? null : disclosure ? (
+						<CollapsibleTrigger className="text-muted-foreground hover:text-foreground flex max-w-full items-center gap-2 py-1 text-sm transition-colors">
+							<ActivityIconStack
+								items={[
+									{
+										icon: meta.icon,
+										label: meta.label,
+										className: meta.circleClassName,
+										colored: active || open,
+										loading: canBeActive && segment.running,
+									},
+								]}
+							/>
+							<span className="min-w-0 truncate font-medium">
+								<ActivityLabel label={label} shimmer={segment.running} />
+							</span>
+							{diffStats ? <DiffCounts {...diffStats} /> : null}
+							<ActivityDisclosureIcon open={open} />
+						</CollapsibleTrigger>
+					) : (
+						<div className="text-muted-foreground flex items-center gap-2 py-1 text-sm">
+							<ActivityIconStack
+								items={[
+									{
+										icon: meta.icon,
+										label: meta.label,
+										className: meta.circleClassName,
+										colored: active,
+										loading: active,
+									},
+								]}
+							/>
+							<span className="min-w-0 truncate font-medium">
+								<ActivityLabel
+									label={label}
+									object={kind === "skill" ? (stats.skill ?? "") : undefined}
+									shimmer={active}
+								/>
+							</span>
+						</div>
+					)}
 					<CollapsibleContent
-						className={cn(ACTIVITY_CONTENT_ANIMATION, "duration-(--animation-duration)")}
+						className={
+							disclosure
+								? cn(ACTIVITY_CONTENT_ANIMATION, "duration-(--animation-duration)")
+								: undefined
+						}
 					>
-						{kind === "thinking" ? (
+						{kind === "thinking" && !labelOnly ? (
 							<ThinkingStreamText streaming={segment.running}>{children}</ThinkingStreamText>
 						) : (
 							<div className="border-border-subtle mt-0.5 mb-1 ml-[12.5px] flex flex-col border-l pl-3">

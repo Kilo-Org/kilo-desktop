@@ -133,6 +133,19 @@ describe("projectOpenCodeThreadRepository with a projection cache", () => {
 		);
 	});
 
+	it("keeps a turn's id when its next step starts", () => {
+		const cache = createOpenCodeProjectionCache();
+		const { messages } = streaming();
+		const beforeStep = threadMessages(
+			projectOpenCodeThreadRepository(stateOf(messages.slice(0, -1)), {}, cache),
+		);
+		const afterStep = threadMessages(projectOpenCodeThreadRepository(stateOf(messages), {}, cache));
+
+		expect(beforeStep.at(-1)?.id).toBe("msg-4");
+		expect(afterStep.at(-1)?.id).toBe("msg-4");
+		expect(afterStep.at(-1)?.status).toEqual({ type: "running" });
+	});
+
 	it("re-projects a settled message once the run it belongs to stops", () => {
 		const cache = createOpenCodeProjectionCache();
 		const { messages } = streaming();

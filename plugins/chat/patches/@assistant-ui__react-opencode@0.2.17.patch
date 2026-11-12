@@ -460,7 +460,7 @@ index 2ee4f06..013cb77 100644
  //# sourceMappingURL=openCodeMessageProjection.d.ts.map
 \ No newline at end of file
 diff --git a/dist/openCodeMessageProjection.js b/dist/openCodeMessageProjection.js
-index 014532f..dd201bb 100644
+index 014532f..c34310c 100644
 --- a/dist/openCodeMessageProjection.js
 +++ b/dist/openCodeMessageProjection.js
 @@ -3,6 +3,10 @@ import { projectOpenCodePermissionApproval, projectResolvedOpenCodePermissionApp
@@ -579,7 +579,7 @@ index 014532f..dd201bb 100644
  		const maybeMessage = isRecord(error) && isRecord(error.data) && typeof error.data.message === "string" ? error.data.message : void 0;
  		const fallbackMessage = typeof error === "string" ? error : isRecord(error) && typeof error.name === "string" ? error.name : "OpenCode run failed";
  		return {
-@@ -290,30 +318,54 @@ const getMessageStatus = (state, message) => {
+@@ -290,30 +318,55 @@ const getMessageStatus = (state, message) => {
  			error: maybeMessage ?? fallbackMessage
  		};
  	}
@@ -639,16 +639,22 @@ index 014532f..dd201bb 100644
  	}
 -	return merged;
 +	return groups.map((sources) => ({
++		id: sources[0].id,
 +		sources,
 +		message: sources[0]?.info?.role === "assistant" ? mergeAssistantSteps(sources) : sources[0]
 +	}));
  };
 -const projectServerMessage = (state, message, timing) => {
-+const projectServerMessage = (state, message, timing, activity) => {
++const projectServerMessage = (state, id, message, timing, activity) => {
  	if (!message.info) return null;
  	const metadata = { custom: { opencode: {
  		originalMessage: message.info,
-@@ -326,7 +378,7 @@ const projectServerMessage = (state, message, timing) => {
+@@ -322,11 +375,11 @@ const projectServerMessage = (state, message, timing) => {
+ 	if (message.info.role === "assistant") {
+ 		const assistantInfo = message.info;
+ 		return {
+-			id: message.info.id,
++			id,
  			role: "assistant",
  			createdAt: new Date(message.info.time?.created ?? Date.now()),
  			content: projectAssistantContent(state, message),
@@ -657,7 +663,16 @@ index 014532f..dd201bb 100644
  			metadata: {
  				custom: {
  					...metadata.custom,
-@@ -364,18 +416,87 @@ const projectPendingMessage = (pending) => ({
+@@ -343,7 +396,7 @@ const projectServerMessage = (state, message, timing) => {
+ 	if (message.info.role === "user") {
+ 		const { content, attachments } = projectUserMessage(message);
+ 		return {
+-			id: message.info.id,
++			id,
+ 			role: "user",
+ 			createdAt: new Date(message.info.time?.created ?? Date.now()),
+ 			content,
+@@ -364,18 +417,87 @@ const projectPendingMessage = (pending) => ({
  		error: pending.status === "failed" ? pending.error instanceof Error ? pending.error.message : String(pending.error ?? "Failed to send message") : void 0
  	} } }
  });
@@ -685,7 +700,7 @@ index 014532f..dd201bb 100644
 -	})).map((message) => projectServerMessage(state, message, messageTiming[message.id])).filter((message) => message !== null);
 -	const pendingMessages = Object.values(state.pendingUserMessages).sort((left, right) => left.createdAt - right.createdAt).map((pending) => projectPendingMessage(pending));
 +	const activity = getRunActivity(state);
-+	const serverMessages = groupServerMessages(visibleServerMessages(state)).map(({ message }) => projectServerMessage(state, message, messageTiming[message.id], activity)).filter((message) => message !== null);
++	const serverMessages = groupServerMessages(visibleServerMessages(state)).map(({ id, message }) => projectServerMessage(state, id, message, messageTiming[message.id], activity)).filter((message) => message !== null);
 +	const pendingMessages = sortedPendingMessages(state).map(projectPendingMessage);
  	return mergeProjectedMessages(serverMessages, pendingMessages);
  }
@@ -714,13 +729,13 @@ index 014532f..dd201bb 100644
 +	const seen = /* @__PURE__ */ new Set();
 +	const serverMessages = [];
 +	for (const group of groupServerMessages(visibleServerMessages(state))) {
-+		const id = group.message.id;
++		const { id } = group;
 +		seen.add(id);
-+		const timing = messageTiming[id];
++		const timing = messageTiming[group.message.id];
 +		const inputs = projectionInputs(state, group, timing, activity);
 +		let entry = cache.server.get(id);
 +		if (!entry || !sameInputs(entry.inputs, inputs)) {
-+			const projected = projectServerMessage(state, group.message, timing, activity);
++			const projected = projectServerMessage(state, id, group.message, timing, activity);
 +			entry = {
 +				inputs,
 +				message: projected ? toThreadMessage(projected) : null
@@ -2618,7 +2633,7 @@ index 4ac43be..a33d6e0 100644
    OpenCodeStateEvent,
    OpenCodeThreadControllerLike,
 diff --git a/src/openCodeMessageProjection.ts b/src/openCodeMessageProjection.ts
-index 2c792f2..f959702 100644
+index 2c792f2..0df4514 100644
 --- a/src/openCodeMessageProjection.ts
 +++ b/src/openCodeMessageProjection.ts
 @@ -28,6 +28,22 @@ type ProjectedContentPart = Exclude<
@@ -2749,7 +2764,7 @@ index 2c792f2..f959702 100644
      const maybeMessage =
        isRecord(error) &&
        isRecord(error.data) &&
-@@ -557,52 +635,96 @@ const getMessageStatus = (
+@@ -557,52 +635,105 @@ const getMessageStatus = (
      };
    }
  
@@ -2779,8 +2794,15 @@ index 2c792f2..f959702 100644
 -  messages: readonly OpenCodeServerMessage[],
 -): OpenCodeServerMessage[] => {
 -  const merged: OpenCodeServerMessage[] = [];
-+/** One transcript message: a user message, or a run of assistant steps. */
++/**
++ * One transcript message: a user message, or a run of assistant steps.
++ * `id` is the first step's id, so the projected message keeps its identity
++ * (React key, cache entry, disclosure state) as later steps join the run;
++ * `message` carries the latest step's id, which status, timing and the
++ * server read.
++ */
 +interface ServerMessageGroup {
++  readonly id: string;
 +  readonly sources: readonly OpenCodeServerMessage[];
 +  readonly message: OpenCodeServerMessage;
 +}
@@ -2850,6 +2872,7 @@ index 2c792f2..f959702 100644
 -
 -  return merged;
 +  return groups.map((sources) => ({
++    id: sources[0]!.id,
 +    sources,
 +    message:
 +      sources[0]?.info?.role === "assistant"
@@ -2860,6 +2883,7 @@ index 2c792f2..f959702 100644
  
  const projectServerMessage = (
    state: OpenCodeThreadState,
++  id: string,
    message: OpenCodeServerMessage,
 -  timing?: MessageTiming,
 +  timing: MessageTiming | undefined,
@@ -2867,7 +2891,12 @@ index 2c792f2..f959702 100644
  ): OpenCodeProjectedThreadMessage | null => {
    if (!message.info) return null;
  
-@@ -622,7 +744,7 @@ const projectServerMessage = (
+@@ -618,11 +749,11 @@ const projectServerMessage = (
+   if (message.info.role === "assistant") {
+     const assistantInfo = message.info as AssistantMessage;
+     return {
+-      id: message.info.id,
++      id,
        role: "assistant",
        createdAt: new Date(message.info.time?.created ?? Date.now()),
        content: projectAssistantContent(state, message),
@@ -2876,7 +2905,16 @@ index 2c792f2..f959702 100644
        metadata: {
          custom: {
            ...metadata.custom,
-@@ -675,39 +797,173 @@ const projectPendingMessage = (
+@@ -640,7 +771,7 @@ const projectServerMessage = (
+   if (message.info.role === "user") {
+     const { content, attachments } = projectUserMessage(message);
+     return {
+-      id: message.info.id,
++      id,
+       role: "user",
+       createdAt: new Date(message.info.time?.created ?? Date.now()),
+       content,
+@@ -675,39 +806,185 @@ const projectPendingMessage = (
    },
  });
  
@@ -2931,8 +2969,14 @@ index 2c792f2..f959702 100644
 +): OpenCodeProjectedThreadMessage[] {
 +  const activity = getRunActivity(state);
 +  const serverMessages = groupServerMessages(visibleServerMessages(state))
-+    .map(({ message }) =>
-+      projectServerMessage(state, message, messageTiming[message.id], activity),
++    .map(({ id, message }) =>
++      projectServerMessage(
++        state,
++        id,
++        message,
++        messageTiming[message.id],
++        activity,
++      ),
      )
      .filter(
        (message): message is OpenCodeProjectedThreadMessage => message !== null,
@@ -3016,13 +3060,19 @@ index 2c792f2..f959702 100644
 +  const seen = new Set<string>();
 +  const serverMessages: ThreadMessage[] = [];
 +  for (const group of groupServerMessages(visibleServerMessages(state))) {
-+    const id = group.message.id;
++    const { id } = group;
 +    seen.add(id);
-+    const timing = messageTiming[id];
++    const timing = messageTiming[group.message.id];
 +    const inputs = projectionInputs(state, group, timing, activity);
 +    let entry = cache.server.get(id);
 +    if (!entry || !sameInputs(entry.inputs, inputs)) {
-+      const projected = projectServerMessage(state, group.message, timing, activity);
++      const projected = projectServerMessage(
++        state,
++        id,
++        group.message,
++        timing,
++        activity,
++      );
 +      entry = { inputs, message: projected ? toThreadMessage(projected) : null };
 +      cache.server.set(id, entry);
 +    }

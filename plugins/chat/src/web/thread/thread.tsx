@@ -157,25 +157,35 @@ const ComposerDockMask: FC = () => (
 	</>
 );
 
-const ThreadScrollToBottom: FC = () => (
-	<ThreadPrimitive.ScrollToBottom
-		render={
-			<TooltipIconButton
-				tooltip="Scroll to bottom"
-				variant="outline"
-				className="aui-thread-scroll-to-bottom dark:border-border dark:bg-background dark:hover:bg-muted absolute -top-12 z-10 self-center rounded-full p-4 disabled:invisible"
-				data-qa-id="chat-scroll-to-bottom"
-			/>
-		}
-	>
-		<ArrowDownIcon />
-	</ThreadPrimitive.ScrollToBottom>
-);
-
-// Long distances jump instead of gliding: older messages are measured lazily
-// (`content-visibility`) and re-rasterize as a scroll crosses them. The scroll
-// is reasserted when the run starts so its status rows are included.
+// Long distances jump instead of gliding: the messages a long glide crosses
+// mount and are measured as it passes (windowing, `content-visibility`), and
+// every height change restarts the smooth scroll toward the new bottom, so it
+// stutters all the way down.
 const SMOOTH_SCROLL_VIEWPORT_HEIGHTS = 1.5;
+
+const scrollToBottomBehavior = (viewport: HTMLElement | null): ScrollBehavior => {
+	if (!viewport) return "smooth";
+	const distance = viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop;
+	return distance > viewport.clientHeight * SMOOTH_SCROLL_VIEWPORT_HEIGHTS ? "instant" : "smooth";
+};
+
+const ThreadScrollToBottom: FC = () => {
+	const isAtBottom = useThreadViewport((s) => s.isAtBottom);
+	const scrollToBottom = useThreadViewport((s) => s.scrollToBottom);
+	const viewport = useThreadViewport((s) => s.element.viewport);
+	return (
+		<TooltipIconButton
+			tooltip="Scroll to bottom"
+			variant="outline"
+			className="aui-thread-scroll-to-bottom dark:border-border dark:bg-background dark:hover:bg-muted absolute -top-12 z-10 self-center rounded-full p-4 disabled:invisible"
+			data-qa-id="chat-scroll-to-bottom"
+			disabled={isAtBottom}
+			onClick={() => scrollToBottom({ behavior: scrollToBottomBehavior(viewport) })}
+		>
+			<ArrowDownIcon />
+		</TooltipIconButton>
+	);
+};
 
 /**
  * `composer.send` fires only for sends the person makes; queued prompts that
@@ -194,13 +204,8 @@ const ScrollToBottomOnSend: FC = () => {
 		[],
 	);
 	useAuiEvent("composer.send", () => {
-		const distance = viewport
-			? viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop
-			: 0;
-		const behavior =
-			viewport && distance > viewport.clientHeight * SMOOTH_SCROLL_VIEWPORT_HEIGHTS
-				? "instant"
-				: "smooth";
+		// The scroll is reasserted when the run starts so its status rows are included.
+		const behavior = scrollToBottomBehavior(viewport);
 		runStartScrollBehavior.current = isRunning ? null : behavior;
 		scrollToBottom({ behavior });
 	});

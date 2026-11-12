@@ -289,6 +289,16 @@ describe("session list", () => {
 
 describe("multi-selection", () => {
 	const trigger = (title: string) => row(title).getByTestId("session-list-item-trigger");
+	// A row's hover card opens 600ms into a hover and, flipped below the row in
+	// the narrow test viewport, covers the next one; leaving the row after each
+	// click keeps a slow run from clicking into the card.
+	const clickRow = async (
+		title: string,
+		options?: Parameters<ReturnType<typeof trigger>["click"]>[0],
+	) => {
+		await trigger(title).click(options);
+		await userEvent.unhover(trigger(title));
+	};
 	const selected = () =>
 		[...document.querySelectorAll('[data-selected] [data-qa-id="session-list-item-title"]')]
 			.map((node) => node.textContent)
@@ -300,7 +310,7 @@ describe("multi-selection", () => {
 	];
 	const selectAll = async () => {
 		for (const title of ["First", "Second", "Third"]) {
-			await trigger(title).click({ modifiers: ["Meta"] });
+			await clickRow(title, { modifiers: ["Meta"] });
 		}
 		await expect.poll(selected).toEqual(["First", "Second", "Third"]);
 	};
@@ -308,10 +318,10 @@ describe("multi-selection", () => {
 	it("selects with Meta- and Shift-click without opening, and clears on Escape or a plain click", async () => {
 		const { window } = await renderWorkSessions({ workSessions: three() });
 
-		await trigger("First").click({ modifiers: ["Meta"] });
-		await trigger("Third").click({ modifiers: ["Shift"] });
+		await clickRow("First", { modifiers: ["Meta"] });
+		await clickRow("Third", { modifiers: ["Shift"] });
 		await expect.poll(selected).toEqual(["First", "Second", "Third"]);
-		await trigger("Second").click({ modifiers: ["Meta"] });
+		await clickRow("Second", { modifiers: ["Meta"] });
 		await expect.poll(selected).toEqual(["First", "Third"]);
 		await expect
 			.element(page.getByTestId("session-list-selection-hint"))
@@ -322,8 +332,8 @@ describe("multi-selection", () => {
 		await expect.poll(selected).toEqual([]);
 		await expect.element(page.getByTestId("session-list-selection-hint")).not.toBeInTheDocument();
 
-		await trigger("First").click({ modifiers: ["Meta"] });
-		await trigger("Second").click();
+		await clickRow("First", { modifiers: ["Meta"] });
+		await clickRow("Second");
 		await expect.poll(selected).toEqual([]);
 		await vi.waitFor(() => expect(window().getState().activeWorkSessionId).toBe("b"));
 	});
@@ -331,8 +341,8 @@ describe("multi-selection", () => {
 	it("adds the open session to the first Meta-click", async () => {
 		await renderWorkSessions({ workSessions: three() });
 
-		await trigger("First").click();
-		await trigger("Third").click({ modifiers: ["Meta"] });
+		await clickRow("First");
+		await clickRow("Third", { modifiers: ["Meta"] });
 		await expect.poll(selected).toEqual(["First", "Third"]);
 	});
 
@@ -354,8 +364,8 @@ describe("multi-selection", () => {
 
 	it("right-clicking one session shows its own menu and clears a selection it isn't in", async () => {
 		const { workSessions } = await renderWorkSessions({ workSessions: three() });
-		await trigger("First").click({ modifiers: ["Meta"] });
-		await trigger("Second").click({ modifiers: ["Meta"] });
+		await clickRow("First", { modifiers: ["Meta"] });
+		await clickRow("Second", { modifiers: ["Meta"] });
 
 		await row("Third").click({ button: "right" });
 		await expect.poll(selected).toEqual([]);
@@ -386,14 +396,14 @@ describe("multi-selection", () => {
 
 	it("acts on the selection from the hint's menu, and clicking empty space clears it", async () => {
 		const { workSessions } = await renderWorkSessions({ workSessions: three() });
-		await trigger("First").click({ modifiers: ["Meta"] });
-		await trigger("Second").click({ modifiers: ["Meta"] });
+		await clickRow("First", { modifiers: ["Meta"] });
+		await clickRow("Second", { modifiers: ["Meta"] });
 
 		await page.getByTestId("session-list-selection-actions").click();
 		await page.getByTestId("session-bulk-pin").click();
 		await vi.waitFor(() => expect(workSessions.calls.setPinned).toHaveBeenCalledTimes(2));
 
-		await trigger("Third").click({ modifiers: ["Meta"] });
+		await clickRow("Third", { modifiers: ["Meta"] });
 		await expect.poll(selected).toEqual(["Third"]);
 		const inbox = page.getByTestId("session-list-inbox").element() as HTMLElement;
 		inbox.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -488,7 +498,15 @@ describe("view options", () => {
 	it("shows update times and workspaces on request, and hides decorations with PR", async () => {
 		const contributor = contributorPlugin();
 		await renderWorkSessions({
-			workSessions: [workSession("a", { title: "Fix login", workspaceId: "w-app" })],
+			// Updated a minute before this test, not before the file loaded: a
+			// slow run reaches it more than a minute after NOW.
+			workSessions: [
+				workSession("a", {
+					title: "Fix login",
+					workspaceId: "w-app",
+					updatedAt: Date.now() - 60_000,
+				}),
+			],
 			workspaces: [workspace("w-app", "App")],
 			guests: [contributor.plugin],
 		});

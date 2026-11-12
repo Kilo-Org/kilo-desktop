@@ -243,7 +243,7 @@ overrides:
   '@sentry/node>@sentry/bundler-plugins': '-'
 
 patchedDependencies:
-  '@assistant-ui/react-opencode@0.2.17': b3205135d0c0c3425caa3ec4f391807ad8c2bc9a05740e657dd609c12738b01b
+  '@assistant-ui/react-opencode@0.2.17': a57c9e0b460072f394811249c4520b16e44811dbb1b2ea76ac75b300ad1754cf
 
 importers:
 
@@ -251,7 +251,7 @@ importers:
     dependencies:
       '@assistant-ui/react-opencode':
         specifier: 0.2.17
-        version: 0.2.17(patch_hash=b3205135d0c0c3425caa3ec4f391807ad8c2bc9a05740e657dd609c12738b01b)(@assistant-ui/react@0.15.35(@opentelemetry/api@1.9.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.2.8))(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(react@19.2.8)
+        version: 0.2.17(patch_hash=a57c9e0b460072f394811249c4520b16e44811dbb1b2ea76ac75b300ad1754cf)(@assistant-ui/react@0.15.35(@opentelemetry/api@1.9.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.2.8))(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(react@19.2.8)
     devDependencies:
       '@kilo-desktop/ui':
         specifier: workspace:*
@@ -1173,7 +1173,7 @@ importers:
         version: 0.14.25(@assistant-ui/react@0.15.35(@opentelemetry/api@1.9.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(supports-color@10.2.2)
       '@assistant-ui/react-opencode':
         specifier: 0.2.17
-        version: 0.2.17(patch_hash=b3205135d0c0c3425caa3ec4f391807ad8c2bc9a05740e657dd609c12738b01b)(@assistant-ui/react@0.15.35(@opentelemetry/api@1.9.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.2.8))(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(react@19.2.8)
+        version: 0.2.17(patch_hash=a57c9e0b460072f394811249c4520b16e44811dbb1b2ea76ac75b300ad1754cf)(@assistant-ui/react@0.15.35(@opentelemetry/api@1.9.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.2.8))(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(react@19.2.8)
       '@assistant-ui/tap':
         specifier: 0.9.25
         version: 0.9.25(@types/react@19.2.17)(react@19.2.8)
@@ -10040,7 +10040,7 @@ snapshots:
       - react-dom
       - supports-color
 
-  '@assistant-ui/react-opencode@0.2.17(patch_hash=b3205135d0c0c3425caa3ec4f391807ad8c2bc9a05740e657dd609c12738b01b)(@assistant-ui/react@0.15.35(@opentelemetry/api@1.9.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.2.8))(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(react@19.2.8)':
+  '@assistant-ui/react-opencode@0.2.17(patch_hash=a57c9e0b460072f394811249c4520b16e44811dbb1b2ea76ac75b300ad1754cf)(@assistant-ui/react@0.15.35(@opentelemetry/api@1.9.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8)))(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.2.8))(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(react@19.2.8)':
     dependencies:
       '@assistant-ui/core': 0.3.35(@assistant-ui/store@0.3.23(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.2.8))(@types/react@19.2.17)(react@19.2.8))(@assistant-ui/tap@0.9.25(@types/react@19.2.17)(react@19.2.8))(@opentelemetry/api@1.9.1)(@types/react@19.2.17)(react@19.2.8)
       '@assistant-ui/react': 0.15.35(@opentelemetry/api@1.9.1)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(use-sync-external-store@1.6.0(react@19.2.8))

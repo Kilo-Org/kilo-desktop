@@ -92,6 +92,9 @@ allowBuilds:
 
 minimumReleaseAge: 0
 
+# @anaconda/playwright-utils is only on GitHub Packages. The desktop bridge
+# payloads are published to npmjs and pinned there with pnpm's built-in
+# `npmjs:` registry prefix (plugins/environments/package.json).
 registries:
   default: https://registry.npmjs.org/
   "@anaconda": https://npm.pkg.github.com/

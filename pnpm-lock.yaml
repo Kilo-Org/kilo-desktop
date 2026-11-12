@@ -1542,20 +1542,20 @@ importers:
         version: 5.1.0(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/coverage-v8@5.1.0)(@vitest/ui@5.1.0)(vite@8.1.6(@types/node@26.6.6)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
     optionalDependencies:
       '@anaconda/desktop-bridge-payload-darwin-arm64':
-        specifier: 0.1.20
-        version: 0.1.20
+        specifier: npmjs:0.1.21
+        version: npmjs:0.1.21
       '@anaconda/desktop-bridge-payload-linux-arm64':
-        specifier: 0.1.20
-        version: 0.1.20
+        specifier: npmjs:0.1.21
+        version: npmjs:0.1.21
       '@anaconda/desktop-bridge-payload-linux-x64':
-        specifier: 0.1.20
-        version: 0.1.20
+        specifier: npmjs:0.1.21
+        version: npmjs:0.1.21
       '@anaconda/desktop-bridge-payload-win32-arm64':
-        specifier: 0.1.20
-        version: 0.1.20
+        specifier: npmjs:0.1.21
+        version: npmjs:0.1.21
       '@anaconda/desktop-bridge-payload-win32-x64':
-        specifier: 0.1.20
-        version: 0.1.20
+        specifier: npmjs:0.1.21
+        version: npmjs:0.1.21
 
   plugins/files:
     dependencies:
@@ -2406,28 +2406,28 @@ packages:
     resolution: {integrity: sha512-cUD0PT0YX+rImRhfn7BfMRduP/tX/Zqt/N0dHlAyn2RlcJssCb5KsCJkhln61eh9vuJDkH8wKn3L8zJzzWXPFg==}
     engines: {node: '>=18'}
 
-  '@anaconda/desktop-bridge-payload-darwin-arm64@0.1.20':
-    resolution: {integrity: sha512-JxuN6zwT0gR43vwMHFliS4U6GUwGPj08EJSOvTFAzUdSvrjIZvW9LE3tdEoGT0kBP18ib4tnr0IxiuEMqzMwBA==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-darwin-arm64/0.1.20/91cbea0a4eb4a3078247c5c88a90812f19b51fb3}
+  '@anaconda/desktop-bridge-payload-darwin-arm64@npmjs:0.1.21':
+    resolution: {integrity: sha512-szY1oV9cMLtiRIuj87Bti/IiwTg1H/q7HseqLxHRVvmJJDd3tMgE7zf4YM0lgDT7O0oU0GoZDfCjRdLAT3SXnw==}
     cpu: [arm64]
     os: [darwin]
 
-  '@anaconda/desktop-bridge-payload-linux-arm64@0.1.20':
-    resolution: {integrity: sha512-lw/fpzP1ldKy5TlFYh3mC3AFI3CSTQ+RhwF/lGgIYWItPtBSPGaT8+GZ/bRMmbWV4/aehRJOfGsBJnDkGMju1A==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-linux-arm64/0.1.20/b20aac0f3fcbed127dda12bc747e7565bb7f1e31}
+  '@anaconda/desktop-bridge-payload-linux-arm64@npmjs:0.1.21':
+    resolution: {integrity: sha512-iIwvjiUnh6U6lEeCyLdaOMmPb4DnXPqtRTglnUe3o4aP5ksfla/1+2MtKmw/GGE63Es3KmCLjJSD66nNTIX4tA==}
     cpu: [arm64]
     os: [linux]
 
-  '@anaconda/desktop-bridge-payload-linux-x64@0.1.20':
-    resolution: {integrity: sha512-ofAwxn0+KHV6zl3MZswEBrTOIfdlZo0U2hE7f+6WGLcXqWvddW9qfx8lRc1LdaAlJuotpdgK37PP8i3DEJaFdQ==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-linux-x64/0.1.20/53ae21df76713c9ad54c5d69a2eb1074e5751923}
+  '@anaconda/desktop-bridge-payload-linux-x64@npmjs:0.1.21':
+    resolution: {integrity: sha512-NDDoeLseFmbcaPga6Hc4WOk/datjRp+NTemCxC+CE2h9Sd5wppDHKn93QGlRklPEp0vNT95kMzEe1H6wdzhjmA==}
     cpu: [x64]
     os: [linux]
 
-  '@anaconda/desktop-bridge-payload-win32-arm64@0.1.20':
-    resolution: {integrity: sha512-IGEZojvsZv9LimntMUYxa4R7MCZnm5bCK7iAx7qvWBdef7jx2iUHl2gwHcBpC4es89csJdfuUg5XLAO9vegPeg==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-win32-arm64/0.1.20/99e171324bfabcdc8bb301122d694e97618470e9}
+  '@anaconda/desktop-bridge-payload-win32-arm64@npmjs:0.1.21':
+    resolution: {integrity: sha512-SJFZRbLA+ch/5SjkdioaiyPIWBIuu/4igOSkyvyGvlcNgy4sKmTR9DiEvrpx4SAzrNXB2Wif+CDo4F52ymPypw==}
     cpu: [arm64]
     os: [win32]
 
-  '@anaconda/desktop-bridge-payload-win32-x64@0.1.20':
-    resolution: {integrity: sha512-U1+oKM0d61cOgb5ewfwYNBjyYpd1bjgfOea1TeMMHtxkadEv+8iBTcGg0MMcYOEzYHv/DRB3PUTjeYJsSA/fng==, tarball: https://npm.pkg.github.com/download/@anaconda/desktop-bridge-payload-win32-x64/0.1.20/920fa9a7e456a8295810c382b5ef5949d6e2d688}
+  '@anaconda/desktop-bridge-payload-win32-x64@npmjs:0.1.21':
+    resolution: {integrity: sha512-vNeThKHinOCcscx1WnMzwp0vrv1pVboLGa4f8skQ6+td1ORgQzEnQTAjIP54hcIVnffLzjtg5OSuLlSlbRQxcg==}
     cpu: [x64]
     os: [win32]
 
@@ -9940,19 +9940,19 @@ snapshots:
       ansi-styles: 6.2.3
       is-fullwidth-code-point: 5.1.0
 
-  '@anaconda/desktop-bridge-payload-darwin-arm64@0.1.20':
+  '@anaconda/desktop-bridge-payload-darwin-arm64@npmjs:0.1.21':
     optional: true
 
-  '@anaconda/desktop-bridge-payload-linux-arm64@0.1.20':
+  '@anaconda/desktop-bridge-payload-linux-arm64@npmjs:0.1.21':
     optional: true
 
-  '@anaconda/desktop-bridge-payload-linux-x64@0.1.20':
+  '@anaconda/desktop-bridge-payload-linux-x64@npmjs:0.1.21':
     optional: true
 
-  '@anaconda/desktop-bridge-payload-win32-arm64@0.1.20':
+  '@anaconda/desktop-bridge-payload-win32-arm64@npmjs:0.1.21':
     optional: true
 
-  '@anaconda/desktop-bridge-payload-win32-x64@0.1.20':
+  '@anaconda/desktop-bridge-payload-win32-x64@npmjs:0.1.21':
     optional: true
 
   '@anaconda/playwright-utils@2.1.0(@playwright/test@1.64.1)(jiti@2.7.0)(supports-color@10.2.2)':

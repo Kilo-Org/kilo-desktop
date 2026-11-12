@@ -433,6 +433,7 @@ describe("nteract Kilo plugin", () => {
 	it("executes selected existing cells in order and combines their results", async () => {
 		const session = {
 			notebookId: NOTEBOOK_ID,
+			listCells: vi.fn(async () => []),
 			executeCell: vi
 				.fn()
 				.mockResolvedValueOnce({
@@ -748,6 +749,7 @@ describe("nteract Kilo plugin", () => {
 		) {
 			return {
 				notebookId: NOTEBOOK_ID,
+				listCells: vi.fn(async () => []),
 				addDependencies: vi.fn(async () => undefined),
 				removeDependencies: vi.fn(async () => 1),
 				syncEnvironment: vi.fn(async () => undefined),
@@ -792,21 +794,67 @@ describe("nteract Kilo plugin", () => {
 			return { ...toolContext(), ask: ask as never };
 		}
 
-		it("makes dependency approval prompt even when the agent allows every permission", async () => {
+		it("makes dependency and execution approval prompt even when the agent allows every permission", async () => {
 			const hooks = await hooksFor(approvalSession());
 			const unconfigured: { permission?: unknown } = {};
 			const allowAll: { permission?: unknown } = { permission: { "*": "allow" } };
-			const userChoice: { permission?: unknown } = { permission: { notebooks_trust: "allow" } };
+			const userChoice: { permission?: unknown } = {
+				permission: { notebooks_trust: "allow", notebooks_execute: "deny" },
+			};
+			const allowExecute: { permission?: unknown } = {
+				permission: { notebooks_execute: "allow" },
+			};
+			const rememberedApproval: { permission?: unknown } = {
+				permission: { notebooks_execute: { [`ses_x:${NOTEBOOK_ID}`]: "allow" } },
+			};
+			const userPatterns = { "*": "allow", a: "deny" };
+			const userWildcard: { permission?: unknown } = {
+				permission: { notebooks_execute: userPatterns },
+			};
 
-			for (const config of [unconfigured, allowAll, userChoice]) await hooks.config?.(config);
+			for (const config of [
+				unconfigured,
+				allowAll,
+				userChoice,
+				allowExecute,
+				rememberedApproval,
+				userWildcard,
+			]) {
+				await hooks.config?.(config);
+			}
 
-			expect(unconfigured.permission).toEqual({ notebooks_trust: "ask" });
-			// Kilo evaluates the last matching rule, so the later entry overrides the catch-all.
+			expect(unconfigured.permission).toEqual({
+				notebooks_trust: "ask",
+				notebooks_execute: "ask",
+			});
+			// Kilo evaluates the last matching rule, so the later entries override the catch-all.
 			expect(Object.entries(allowAll.permission as object)).toEqual([
 				["*", "allow"],
 				["notebooks_trust", "ask"],
+				["notebooks_execute", "ask"],
 			]);
-			expect(userChoice.permission).toEqual({ notebooks_trust: "allow" });
+			expect(userChoice.permission).toEqual({
+				notebooks_trust: "allow",
+				notebooks_execute: "deny",
+			});
+			expect(allowExecute.permission).toEqual({
+				notebooks_execute: "allow",
+				notebooks_trust: "ask",
+			});
+			// Remembered "Always allow" rules must not drop the gate for everything else;
+			// the catch-all comes first so the later, specific allows still win.
+			const { notebooks_execute: remembered } = rememberedApproval.permission as {
+				notebooks_execute: object;
+			};
+			expect(Object.entries(remembered)).toEqual([
+				["*", "ask"],
+				[`ses_x:${NOTEBOOK_ID}`, "allow"],
+			]);
+			expect((userWildcard.permission as Record<string, unknown>).notebooks_execute).toEqual({
+				"*": "allow",
+				a: "deny",
+			});
+			expect(Object.keys(userPatterns)).toEqual(["*", "a"]);
 		});
 
 		it("adds default-approved packages to a trusted notebook without asking", async () => {
@@ -1146,6 +1194,373 @@ describe("nteract Kilo plugin", () => {
 					toolContext(),
 				),
 			).rejects.toThrow(/need approval before.*uv: evil-pkg.*approve_trust/s);
+		});
+	});
+
+	describe("execution approval", () => {
+		type AskRequest = {
+			permission: string;
+			patterns: string[];
+			always: string[];
+			metadata: Record<string, unknown>;
+		};
+
+		const RUN_DESCRIPTION =
+			"The code runs on your computer with your permissions. Only allow code you expect.";
+		const SESSION_SCOPE = `kilo-session-1:${NOTEBOOK_ID}`;
+
+		function cellResult(cellId: string) {
+			return {
+				cellId,
+				executionId: `execution-${cellId}`,
+				executionCount: 1,
+				status: "done",
+				success: true,
+				outputs: [],
+			};
+		}
+
+		function executionSession() {
+			return {
+				notebookId: NOTEBOOK_ID,
+				getCell: vi.fn(async (cellId: string) => ({ id: cellId })),
+				listCells: vi.fn(async () => [
+					{ id: "md", cellType: "markdown", position: "a0", source: "# t", metadataJson: "{}" },
+					{ id: "cell-1", cellType: "code", position: "a1", source: "1", metadataJson: "{}" },
+				]),
+				createCell: vi.fn(async () => "cell-new"),
+				runCell: vi.fn(async () => cellResult("cell-run")),
+				executeCell: vi.fn(async (cellId: string) => cellResult(cellId)),
+				addDependencies: vi.fn(async () => undefined),
+				syncEnvironment: vi.fn(async () => undefined),
+				getDependencyStatus: vi.fn(async () => ({
+					fingerprint: "deps-1",
+					trust: { status: "trusted", needsApproval: false },
+				})),
+				dependencyFingerprint: vi.fn(async () => "deps-1"),
+				interruptKernel: vi.fn(async () => undefined),
+				restartKernel: vi.fn(async () => undefined),
+				getRuntimeStatus: vi.fn(async () => ({ status: "idle" })),
+				close: vi.fn(async () => undefined),
+			};
+		}
+
+		async function hooksFor(session: ReturnType<typeof executionSession>) {
+			return createNteractKiloPlugin({
+				loadRuntimedNode: () => ({ openNotebook: vi.fn(async () => session) }),
+			})();
+		}
+
+		function approving() {
+			return vi.fn(async (_request: AskRequest) => undefined);
+		}
+
+		function rejecting() {
+			return vi.fn(async (_request: AskRequest) => {
+				throw new Error("The user rejected permission to use this specific tool call.");
+			});
+		}
+
+		function contextWithAsk(ask: ReturnType<typeof vi.fn>) {
+			return { ...toolContext(), ask: ask as never };
+		}
+
+		it("asks once, per notebook, before run_cell executes code", async () => {
+			const session = executionSession();
+			const ask = approving();
+
+			await (
+				await hooksFor(session)
+			).tool.notebooks_run_cell.execute(
+				{ notebook_id: NOTEBOOK_ID, code: "print('hi')" },
+				contextWithAsk(ask),
+			);
+
+			expect(ask).toHaveBeenCalledExactlyOnceWith({
+				permission: "notebooks_execute",
+				patterns: [SESSION_SCOPE],
+				always: [SESSION_SCOPE],
+				metadata: {
+					toolName: "Run notebook code",
+					title: "Run code in this notebook?",
+					description: RUN_DESCRIPTION,
+					notebook_id: NOTEBOOK_ID,
+					action: "run",
+					code: "print('hi')",
+				},
+			});
+			expect(session.runCell).toHaveBeenCalledOnce();
+		});
+
+		it("asks to execute before asking about run_cell dependencies", async () => {
+			const session = executionSession();
+			const ask = approving();
+
+			await (
+				await hooksFor(session)
+			).tool.notebooks_run_cell.execute(
+				{ notebook_id: NOTEBOOK_ID, code: "import requests", dependencies: ["requests"] },
+				contextWithAsk(ask),
+			);
+
+			expect(ask.mock.calls.map(([request]) => request.permission)).toEqual([
+				"notebooks_execute",
+				"notebooks_trust",
+			]);
+		});
+
+		it("changes nothing when the user rejects running code", async () => {
+			const session = executionSession();
+			const hooks = await hooksFor(session);
+			const ask = rejecting();
+
+			await expect(
+				hooks.tool.notebooks_run_cell.execute(
+					{ notebook_id: NOTEBOOK_ID, code: "1", dependencies: ["requests"] },
+					contextWithAsk(ask),
+				),
+			).rejects.toThrow(/rejected/);
+			await expect(
+				hooks.tool.notebooks_create_cell.execute(
+					{ notebook_id: NOTEBOOK_ID, source: "1", and_run: true },
+					contextWithAsk(ask),
+				),
+			).rejects.toThrow(/rejected/);
+			await expect(
+				hooks.tool.notebooks_execute.execute(
+					{ notebook_id: NOTEBOOK_ID, cell_ids: ["cell-1"] },
+					contextWithAsk(ask),
+				),
+			).rejects.toThrow(/rejected/);
+			await expect(
+				hooks.tool.notebooks_kernel.execute(
+					{ notebook_id: NOTEBOOK_ID, action: "restart" },
+					contextWithAsk(ask),
+				),
+			).rejects.toThrow(/rejected/);
+
+			expect(ask).toHaveBeenCalledTimes(4);
+			expect(ask.mock.calls.every(([request]) => request.permission === "notebooks_execute")).toBe(
+				true,
+			);
+			expect(session.addDependencies).not.toHaveBeenCalled();
+			expect(session.runCell).not.toHaveBeenCalled();
+			expect(session.createCell).not.toHaveBeenCalled();
+			expect(session.executeCell).not.toHaveBeenCalled();
+			expect(session.restartKernel).not.toHaveBeenCalled();
+		});
+
+		it("asks before creating a cell that will run", async () => {
+			const session = executionSession();
+			const ask = approving();
+
+			await (
+				await hooksFor(session)
+			).tool.notebooks_create_cell.execute(
+				{ notebook_id: NOTEBOOK_ID, source: "x = 1", and_run: true },
+				contextWithAsk(ask),
+			);
+
+			expect(ask).toHaveBeenCalledExactlyOnceWith(
+				expect.objectContaining({
+					permission: "notebooks_execute",
+					metadata: expect.objectContaining({
+						title: "Run code in this notebook?",
+						action: "run",
+						code: "x = 1",
+					}),
+				}),
+			);
+			expect(session.executeCell).toHaveBeenCalledWith("cell-new", { timeoutMs: 120_000 });
+		});
+
+		it("does not ask to create a cell that will not run", async () => {
+			const session = executionSession();
+			const hooks = await hooksFor(session);
+			const ask = approving();
+
+			await hooks.tool.notebooks_create_cell.execute(
+				{ notebook_id: NOTEBOOK_ID, source: "x = 1" },
+				contextWithAsk(ask),
+			);
+			await hooks.tool.notebooks_create_cell.execute(
+				{ notebook_id: NOTEBOOK_ID, source: "# t", cell_type: "markdown", and_run: true },
+				contextWithAsk(ask),
+			);
+
+			expect(ask).not.toHaveBeenCalled();
+			expect(session.createCell).toHaveBeenCalledTimes(2);
+			expect(session.executeCell).not.toHaveBeenCalled();
+		});
+
+		it("asks once for a batch of cells, numbered by their place in the notebook", async () => {
+			const session = executionSession();
+			session.listCells.mockResolvedValue([
+				{ id: "md", cellType: "markdown", position: "a0", source: "# t", metadataJson: "{}" },
+				{ id: "cell-1", cellType: "code", position: "a1", source: "1", metadataJson: "{}" },
+				{ id: "cell-2", cellType: "code", position: "a2", source: "2", metadataJson: "{}" },
+				{ id: "md-2", cellType: "markdown", position: "a3", source: "#", metadataJson: "{}" },
+				{ id: "cell-3", cellType: "code", position: "a4", source: "3", metadataJson: "{}" },
+			]);
+			const ask = approving();
+
+			await (
+				await hooksFor(session)
+			).tool.notebooks_execute.execute(
+				{ notebook_id: NOTEBOOK_ID, cell_ids: ["cell-3", "cell-1", "cell-2"] },
+				contextWithAsk(ask),
+			);
+
+			expect(ask).toHaveBeenCalledExactlyOnceWith({
+				permission: "notebooks_execute",
+				patterns: [SESSION_SCOPE],
+				always: [SESSION_SCOPE],
+				metadata: {
+					toolName: "Run notebook code",
+					title: "Run 3 notebook cells?",
+					description: RUN_DESCRIPTION,
+					notebook_id: NOTEBOOK_ID,
+					action: "execute",
+					cell_ids: ["cell-3", "cell-1", "cell-2"],
+					cell_numbers: [5, 2, 3],
+					all_cells: false,
+				},
+			});
+			expect(session.executeCell).toHaveBeenCalledTimes(3);
+		});
+
+		it("titles an all-cells run and skips the prompt when there is nothing to run", async () => {
+			const session = executionSession();
+			const hooks = await hooksFor(session);
+			const ask = approving();
+
+			await hooks.tool.notebooks_execute.execute({ notebook_id: NOTEBOOK_ID }, contextWithAsk(ask));
+			expect(ask.mock.calls[0]?.[0].metadata).toMatchObject({
+				title: "Run all code cells?",
+				cell_ids: ["cell-1"],
+				cell_numbers: [2],
+				all_cells: true,
+			});
+
+			session.listCells.mockResolvedValueOnce([]);
+			await hooks.tool.notebooks_execute.execute({ notebook_id: NOTEBOOK_ID }, contextWithAsk(ask));
+			expect(ask).toHaveBeenCalledOnce();
+		});
+
+		it("asks before restarting the kernel but not to interrupt or inspect it", async () => {
+			const session = executionSession();
+			const hooks = await hooksFor(session);
+			const ask = approving();
+
+			await hooks.tool.notebooks_kernel.execute(
+				{ notebook_id: NOTEBOOK_ID, action: "status" },
+				contextWithAsk(ask),
+			);
+			await hooks.tool.notebooks_kernel.execute(
+				{ notebook_id: NOTEBOOK_ID, action: "interrupt" },
+				contextWithAsk(ask),
+			);
+			expect(ask).not.toHaveBeenCalled();
+
+			await hooks.tool.notebooks_kernel.execute(
+				{ notebook_id: NOTEBOOK_ID, action: "restart" },
+				contextWithAsk(ask),
+			);
+			expect(ask).toHaveBeenCalledExactlyOnceWith(
+				expect.objectContaining({
+					permission: "notebooks_execute",
+					patterns: [SESSION_SCOPE],
+					always: [SESSION_SCOPE],
+					metadata: expect.objectContaining({
+						title: "Restart the notebook kernel?",
+						action: "restart",
+					}),
+				}),
+			);
+			expect(session.restartKernel).toHaveBeenCalledOnce();
+		});
+
+		const OTHER_NOTEBOOK_ID = "0b7f3a52-8c1e-4d6a-9f2b-3e4d5c6b7a81";
+		type Hooks = Awaited<ReturnType<typeof hooksFor>>;
+		type Context = ReturnType<typeof contextWithAsk>;
+		const executingCalls: [
+			string,
+			(hooks: Hooks, notebookId: string, context: Context) => unknown,
+		][] = [
+			[
+				"run_cell",
+				(hooks, notebookId, context) =>
+					hooks.tool.notebooks_run_cell.execute({ notebook_id: notebookId, code: "1" }, context),
+			],
+			[
+				"create_cell with and_run",
+				(hooks, notebookId, context) =>
+					hooks.tool.notebooks_create_cell.execute(
+						{ notebook_id: notebookId, source: "1", and_run: true },
+						context,
+					),
+			],
+			[
+				"execute",
+				(hooks, notebookId, context) =>
+					hooks.tool.notebooks_execute.execute({ notebook_id: notebookId }, context),
+			],
+			[
+				"kernel restart",
+				(hooks, notebookId, context) =>
+					hooks.tool.notebooks_kernel.execute(
+						{ notebook_id: notebookId, action: "restart" },
+						context,
+					),
+			],
+		];
+
+		it.each(executingCalls)(
+			"scopes %s approval to one notebook in one Kilo session",
+			async (_name, run) => {
+				const hooks = await hooksFor(executionSession());
+				const ask = approving();
+				const inSession = (sessionID: string) => ({ ...contextWithAsk(ask), sessionID });
+
+				await run(hooks, NOTEBOOK_ID, inSession("kilo-session-1"));
+				await run(hooks, NOTEBOOK_ID, inSession("kilo-session-2"));
+				await run(hooks, OTHER_NOTEBOOK_ID, inSession("kilo-session-1"));
+
+				expect(ask.mock.calls.map(([request]) => [request.patterns, request.always])).toEqual([
+					[[`kilo-session-1:${NOTEBOOK_ID}`], [`kilo-session-1:${NOTEBOOK_ID}`]],
+					[[`kilo-session-2:${NOTEBOOK_ID}`], [`kilo-session-2:${NOTEBOOK_ID}`]],
+					[[`kilo-session-1:${OTHER_NOTEBOOK_ID}`], [`kilo-session-1:${OTHER_NOTEBOOK_ID}`]],
+				]);
+				expect(ask.mock.calls.map(([request]) => request.metadata.notebook_id)).toEqual([
+					NOTEBOOK_ID,
+					NOTEBOOK_ID,
+					OTHER_NOTEBOOK_ID,
+				]);
+			},
+		);
+
+		it("refuses cancelled calls and placeholder ids before asking", async () => {
+			const session = executionSession();
+			const hooks = await hooksFor(session);
+			const ask = approving();
+			const aborted = new AbortController();
+			aborted.abort();
+			const cancelled = { ...contextWithAsk(ask), abort: aborted.signal };
+
+			await expect(
+				hooks.tool.notebooks_run_cell.execute({ notebook_id: NOTEBOOK_ID, code: "1" }, cancelled),
+			).rejects.toThrow(/cancelled/);
+			await expect(
+				hooks.tool.notebooks_create_cell.execute(
+					{ notebook_id: NOTEBOOK_ID, source: "1", and_run: true },
+					cancelled,
+				),
+			).rejects.toThrow(/cancelled/);
+			await expect(
+				hooks.tool.notebooks_run_cell.execute({ notebook_id: "?", code: "1" }, contextWithAsk(ask)),
+			).rejects.toThrow(/notebook_id must be a notebook UUID/);
+
+			expect(ask).not.toHaveBeenCalled();
 		});
 	});
 

@@ -661,7 +661,10 @@ permission requests and questions, and connect to the Kilo server directly.
   asked once per tool at chat creation); Auto mode answers requests as they
   come.
 - **Names.** `permission-renderer` (was `interaction-renderer`) matches on
-  `toolKey`; `tool-renderer` entries with `/` are contribution keys mapped
+  `toolKey`, or on Kilo's permission name through `permissions` for requests
+  no desktop tool raises (kilo.notebook's `notebooks_execute`, asked by its
+  Kilo plugin); renderers see `request.permission`, never the card's
+  `metadata.toolName` label. `tool-renderer` entries with `/` are contribution keys mapped
   to wire names (`kilo.chat/html_render` → `desktop_chat_html_render`).
   Contracts carry kilo.chat's own `ToolCallProps`; built-in renderers loosen
   `result`/`isError` so assistant-ui parts spread in. Flags

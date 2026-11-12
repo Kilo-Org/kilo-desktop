@@ -8,7 +8,8 @@ import { cn } from "@kilo-desktop/ui/lib/utils";
 
 // Wording copied from the Kilo VS Code extension (webview-ui/src/i18n/en.ts,
 // `workStyle.choice.*`). Its "visibility" bullets are dropped: they describe
-// display preferences Desktop doesn't have.
+// display preferences Desktop doesn't have. High autonomy's detail differs: it
+// writes no rules, so Kilo's defaults still ask before bash and notebook code.
 const CHOICE_COPY: Record<WorkStyle, { title: string; description: string; detail: string }> = {
 	"human-in-the-loop": {
 		title: "Review first",
@@ -18,7 +19,8 @@ const CHOICE_COPY: Record<WorkStyle, { title: string; description: string; detai
 	autonomous: {
 		title: "High autonomy",
 		description: "Fewer interruptions, streamlined interface.",
-		detail: "Edits files and runs commands in the workspace without asking.",
+		detail:
+			"Edits files in the workspace without asking. Still asks before running commands or notebook code.",
 	},
 };
 

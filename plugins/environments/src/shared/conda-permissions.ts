@@ -89,8 +89,10 @@ export function matchesMutatingCondaCli(command: string): boolean {
  *
  * The MCP conda tools are gated above, but the agent can instead shell out to
  * `conda`/`mamba`/`micromamba` (e.g. to install a local package file the tool
- * refuses), and bash is otherwise auto-allowed — so the CLI path would run a
- * privileged install with no prompt. These rules close that substitution gap.
+ * refuses). Bash may still be allowed — by the user's config, an earlier
+ * "Always allow", or Auto mode — so the CLI path could run a privileged install
+ * with no prompt. These rules keep conda mutations on per-action ask whatever
+ * bash's own rule is, closing that substitution gap.
  *
  * Command-string matching is bypassable (wrappers, `sh -c`, aliases); this is
  * the app-side prompt, not a boundary. Pair with the bridge policy (gate 4),

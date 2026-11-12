@@ -13,12 +13,13 @@ function contribution(
 	key: string,
 	implementation: PermissionRendererContribution["implementation"],
 	tools?: string[],
+	permissions?: string[],
 ): PermissionRendererContribution {
 	return {
 		key,
 		pluginId: key.split("/")[0]!,
 		pointId: "kilo.chat/permission-renderer",
-		metadata: tools ? { tools } : {},
+		metadata: { ...(tools ? { tools } : {}), ...(permissions ? { permissions } : {}) },
 		implementation,
 		priority: 0,
 	} as unknown as PermissionRendererContribution;
@@ -64,6 +65,17 @@ describe("presenting a permission request", () => {
 		expect(permissionRenderers(contributions, {}).map((c) => c.key)).toEqual(["acme.a/z"]);
 	});
 
+	it("applies contributions for a Kilo permission no desktop tool raises", () => {
+		const execute = contribution("acme.a/x", {}, undefined, ["acme_execute"]);
+		const either = contribution("acme.a/y", {}, ["acme.a/install"], ["acme_execute"]);
+		const other = contribution("acme.a/z", {}, undefined, ["bash"]);
+		const contributions = [execute, either, other];
+		expect(
+			permissionRenderers(contributions, { permission: "acme_execute" }).map((c) => c.key),
+		).toEqual(["acme.a/x", "acme.a/y"]);
+		expect(permissionRenderers(contributions, request).map((c) => c.key)).toEqual(["acme.a/y"]);
+	});
+
 	it("finds the tool contribution a permission names by its wire name", () => {
 		const tools = [{ key: "kilo.terminal/open_terminal" }, { key: "acme.a/install" }];
 		expect(toolKeyOf(tools, "desktop_terminal_open_terminal")).toBe("kilo.terminal/open_terminal");
@@ -86,10 +98,22 @@ describe("presenting a permission request", () => {
 		expect(presentation.details.map((c) => c.key)).toEqual(["acme.a/y"]);
 	});
 
+	it("hides the request's patterns if any contribution does", () => {
+		const presentation = presentPermission(
+			[
+				contribution("acme.a/x", { showPatterns: () => true }),
+				contribution("acme.a/y", { showPatterns: () => false }),
+			],
+			request,
+		);
+		expect(presentation.showPatterns).toBe(false);
+	});
+
 	it("keeps the card's defaults without contributions", () => {
 		expect(presentPermission([], request)).toEqual({
 			title: undefined,
 			allowAlways: true,
+			showPatterns: true,
 			details: [],
 		});
 	});

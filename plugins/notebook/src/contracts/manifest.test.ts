@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { discoverPlugins, KERNEL_CONTEXT_KEYS, KERNEL_DEFINITIONS } from "@kilo-desktop/kernel";
+import chatManifest from "@kilo-desktop/plugin-chat/plugin.json";
+import { CHAT_DEFINITIONS } from "@kilo-desktop/plugin-chat/contracts";
 import coreManifest from "@kilo-desktop/plugin-core/plugin.json";
 import { CORE_DEFINITIONS, toolWireName } from "@kilo-desktop/plugin-core/contracts";
 import shellManifest from "@kilo-desktop/plugin-shell/plugin.json";
@@ -30,12 +32,13 @@ describe("kilo.notebook manifest", () => {
 				{ manifest: coreManifest, definitions: CORE_DEFINITIONS },
 				{ manifest: shellManifest, definitions: SHELL_DEFINITIONS },
 				{ manifest: workSessionsManifest, definitions: WORK_SESSIONS_DEFINITIONS },
+				{ manifest: chatManifest, definitions: CHAT_DEFINITIONS },
 				{ manifest, definitions: NOTEBOOK_DEFINITIONS },
 			],
 			{ kernelDefinitions: KERNEL_DEFINITIONS, kernelContextKeys: KERNEL_CONTEXT_KEYS },
 		);
 
-	it("agrees with its contracts and those of the kernel, kilo.core, kilo.shell and kilo.work-sessions", () => {
+	it("agrees with its contracts and those of the kernel, kilo.core, kilo.shell, kilo.work-sessions and kilo.chat", () => {
 		expect(discover().issues).toEqual([]);
 	});
 
@@ -86,6 +89,12 @@ describe("kilo.notebook manifest", () => {
 			"desktop_notebook_list_open",
 			"desktop_notebook_open",
 			"desktop_notebook_open_file",
+		]);
+	});
+
+	it("details the code-run permission its Kilo plugin asks for, matched on the permission name", () => {
+		expect(contributions("kilo.chat/permission-renderer")).toEqual([
+			{ id: "execute", permissions: ["notebooks_execute"] },
 		]);
 	});
 

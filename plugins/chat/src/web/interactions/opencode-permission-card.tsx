@@ -115,20 +115,22 @@ export const OpenCodePermissionCard = ({
 	const renderers = usePermissionRenderers();
 	const tools = useDesktopTools();
 	const toolKey = toolKeyOf(tools, request.permission);
+	// Renderers see Kilo's permission name; the label may be a tool's friendlier `metadata.toolName`.
 	const interaction = useMemo<PermissionInteraction>(
 		() => ({
-			permission: permissionLabel,
+			permission: request.permission,
 			...(toolKey ? { toolKey } : {}),
 			patterns,
 			metadata: request.metadata,
 			args,
 		}),
-		[permissionLabel, toolKey, patterns, request.metadata, args],
+		[request.permission, toolKey, patterns, request.metadata, args],
 	);
 	const presentation = useMemo(
 		() => presentPermission(renderers, interaction),
 		[renderers, interaction],
 	);
+	const shownPatterns = presentation.showPatterns ? patterns : [];
 	const description = request.metadata["description"];
 	// "Always allow" remembers exactly `request.always`; with nothing to remember it would only act as
 	// "Allow once". A contribution may withhold it so the request is answered one call at a time.
@@ -163,11 +165,11 @@ export const OpenCodePermissionCard = ({
 				</div>
 			</div>
 
-			{(patterns.length > 0 || request.toolInput !== undefined) && (
+			{(shownPatterns.length > 0 || request.toolInput !== undefined) && (
 				<div className="grid min-w-0 gap-2">
-					{patterns.length > 0 ? (
+					{shownPatterns.length > 0 ? (
 						<div className="grid min-w-0 gap-2">
-							{patterns.map((pattern) => (
+							{shownPatterns.map((pattern) => (
 								<div
 									key={pattern}
 									className="border-input dark:bg-input/20 min-w-0 rounded-lg border bg-transparent px-3 py-2.5 text-sm"

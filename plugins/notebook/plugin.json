@@ -16,6 +16,7 @@
 		"kilo.work-sessions/window": "optional",
 		"kilo.work-sessions/pane-kind": "optional",
 		"kilo.work-sessions/opener": "optional",
+		"kilo.chat/permission-renderer": "optional",
 		"kilo.shell/theme": "optional",
 		"kilo.shell/settings-section": "optional"
 	},
@@ -144,6 +145,12 @@
 					"id": "notebook-host-telemetry",
 					"description": "Lets the notebook runtime send its own telemetry, when the person allows data collection.",
 					"default": false
+				}
+			],
+			"kilo.chat/permission-renderer": [
+				{
+					"id": "execute",
+					"permissions": ["notebooks_execute"]
 				}
 			]
 		}

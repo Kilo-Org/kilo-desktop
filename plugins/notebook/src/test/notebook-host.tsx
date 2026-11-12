@@ -2,8 +2,9 @@
 // with `kilo.notebook/notebooks` answered by the test (main's real entry needs
 // Node), and stand-ins under their real manifests and definitions for
 // kilo.work-sessions (panes and openers in main, the window's `window` object
-// with `paneTargetActive`), kilo.core's account (and its `signedIn` key) and
-// kilo.shell's theme. Panes render as kilo.work-sessions' canvas renders them.
+// with `paneTargetActive`), kilo.core's account (and its `signedIn` key),
+// kilo.shell's theme and kilo.chat's extension points. Panes render as
+// kilo.work-sessions' canvas renders them.
 import { act, cleanup, render } from "@testing-library/react";
 import type { ReactNode } from "react";
 
@@ -15,6 +16,8 @@ import {
 } from "@kilo-desktop/kernel";
 import { createTestKernelPair } from "@kilo-desktop/kernel/testing";
 import { KernelProvider, RenderContribution } from "@kilo-desktop/kernel/web";
+import chatManifest from "@kilo-desktop/plugin-chat/plugin.json";
+import { CHAT_DEFINITIONS } from "@kilo-desktop/plugin-chat/contracts";
 import coreManifest from "@kilo-desktop/plugin-core/plugin.json";
 import {
 	CORE_DEFINITIONS,
@@ -211,6 +214,7 @@ export async function bootNotebookHost(options: NotebookHostOptions = {}) {
 	});
 	const core: PluginRegistration = { manifest: coreManifest, definitions: CORE_DEFINITIONS };
 	const shell: PluginRegistration = { manifest: shellManifest, definitions: SHELL_DEFINITIONS };
+	const chat: PluginRegistration = { manifest: chatManifest, definitions: CHAT_DEFINITIONS };
 	const workSessions: PluginRegistration = {
 		manifest: workSessionsManifest,
 		definitions: WORK_SESSIONS_DEFINITIONS,
@@ -219,6 +223,7 @@ export async function bootNotebookHost(options: NotebookHostOptions = {}) {
 		main: [
 			{ ...core, entry: coreMain },
 			shell,
+			chat,
 			sessions.registration,
 			{
 				manifest,
@@ -229,6 +234,7 @@ export async function bootNotebookHost(options: NotebookHostOptions = {}) {
 		renderer: [
 			core,
 			{ ...shell, entry: shellWeb },
+			chat,
 			{ ...workSessions, entry: workSessionsWeb },
 			{ manifest, definitions: NOTEBOOK_DEFINITIONS, entry: notebookWebEntry },
 		],
@@ -306,6 +312,7 @@ export async function bootNotebookHost(options: NotebookHostOptions = {}) {
 				rerenderPane: (next: Partial<PaneProps>) => view.rerender(wrap(paneElement(next))),
 			};
 		},
+		render: (ui: ReactNode) => render(wrap(ui)),
 		renderSettings: () => {
 			const section = settingsSection();
 			const Component = (section.implementation as SettingsSectionImplementation).component;

@@ -24,6 +24,7 @@
 	},
 	"dependencies": {
 		"@kilo-desktop/kernel": "workspace:*",
+		"@kilo-desktop/plugin-chat": "workspace:*",
 		"@kilo-desktop/plugin-core": "workspace:*",
 		"@kilo-desktop/plugin-shell": "workspace:*",
 		"@kilo-desktop/plugin-work-sessions": "workspace:*",

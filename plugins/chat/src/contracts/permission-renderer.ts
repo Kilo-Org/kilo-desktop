@@ -14,7 +14,10 @@ export interface PermissionInteraction {
 	readonly toolKey?: string;
 	/** The request's patterns (a `bash` request's command), without the bare `*` wildcard. */
 	readonly patterns: readonly string[];
-	/** The server's flags (`sandboxEscalation`, `configProtected`, `skillShell`…). */
+	/**
+	 * What the tool attached to its request (`context.ask`'s `metadata`), with
+	 * the server's flags (`sandboxEscalation`, `configProtected`, `skillShell`…).
+	 */
 	readonly metadata: Readonly<Record<string, unknown>>;
 	/** The tool call's arguments, when the transcript has them. */
 	readonly args: unknown;
@@ -41,6 +44,11 @@ export interface PermissionRendererImplementation {
 	readonly PermissionDetail?: ComponentType<PermissionDetailProps>;
 	/** False hides "Always allow": the request is answered one call at a time. */
 	readonly allowAlways?: (request: PermissionInteraction) => boolean;
+	/**
+	 * False hides the request's patterns, for opaque ones (an id) that a
+	 * `PermissionDetail` presents better. "Always allow" still remembers them.
+	 */
+	readonly showPatterns?: (request: PermissionInteraction) => boolean;
 	/** A warning shown under a question's answer (e.g. one that bypasses a guardrail). */
 	readonly optionWarning?: (option: QuestionOptionInteraction) => string | undefined;
 }
@@ -51,7 +59,10 @@ export interface PermissionRendererImplementation {
  * withholding "Always allow", warnings on answers. `tools` limits the
  * permission parts to requests from those desktop tools, by `kilo.core/tool`
  * contribution key (matched on `PermissionRequest.toolKey`, never on wire
- * names); without it they apply to every request.
+ * names). `permissions` limits them to requests for those Kilo permissions,
+ * for ones no desktop tool raises (a Kilo plugin's `context.ask`, such as
+ * `notebooks_execute`). A request matching either applies; without both they
+ * apply to every request.
  */
 export const PermissionRenderer = defineExtensionPoint({
 	id: "kilo.chat/permission-renderer",
@@ -59,15 +70,22 @@ export const PermissionRenderer = defineExtensionPoint({
 	description: "Details and policies for the agent's permission requests and questions.",
 	metadata: z.object({
 		tools: z.array(z.string().min(1)).min(1).optional(),
+		permissions: z.array(z.string().min(1)).min(1).optional(),
 	}),
 	implementation: implementation<PermissionRendererImplementation>("renderer"),
 });
 
 /** Whether a contribution's permission parts apply to a request. */
 export function permissionRendererApplies(
-	metadata: { readonly tools?: readonly string[] | undefined },
-	request: Pick<PermissionInteraction, "toolKey">,
+	metadata: {
+		readonly tools?: readonly string[] | undefined;
+		readonly permissions?: readonly string[] | undefined;
+	},
+	request: Partial<Pick<PermissionInteraction, "toolKey" | "permission">>,
 ): boolean {
-	if (!metadata.tools) return true;
-	return request.toolKey !== undefined && metadata.tools.includes(request.toolKey);
+	if (!metadata.tools && !metadata.permissions) return true;
+	const byTool = request.toolKey !== undefined && !!metadata.tools?.includes(request.toolKey);
+	const byPermission =
+		request.permission !== undefined && !!metadata.permissions?.includes(request.permission);
+	return byTool || byPermission;
 }

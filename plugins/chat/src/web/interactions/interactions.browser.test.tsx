@@ -330,6 +330,75 @@ describe("permission requests", () => {
 			args: { packages: ["numpy"] },
 		});
 	});
+
+	it("show what permission renderers for a Kilo permission add, matched on its name, not the card's label", async () => {
+		const host = await showChat(chatWith([reply("Ready.")]), {
+			plugins: [
+				contributor(
+					{ "kilo.chat/permission-renderer": [{ id: "run", permissions: ["acme_execute"] }] },
+					{
+						web: {
+							activate(sdk) {
+								sdk.extensions.implement(PermissionRenderer, "run", {
+									PermissionDetail: ({ request }: PermissionDetailProps) => (
+										<p data-qa-id="acme-run-detail">{request.permission}</p>
+									),
+								});
+							},
+						},
+					},
+				),
+			],
+		});
+		await vi.waitFor(() => expect(host.server.openStreams).toBe(1));
+
+		host.server.askPermission("ses_a", {
+			id: "per_run",
+			permission: "acme_execute",
+			patterns: ["notebook-1"],
+			metadata: { toolName: "Run code", title: "Run code?" },
+		});
+
+		const card = page.getByTestId("kilo-permission-card");
+		await expect.element(card.getByText("Run code", { exact: true })).toBeVisible();
+		await expect.element(page.getByTestId("acme-run-detail")).toHaveTextContent("acme_execute");
+	});
+
+	it("hide the request's patterns when a renderer summarizes its metadata instead", async () => {
+		const host = await showChat(chatWith([reply("Ready.")]), {
+			plugins: [
+				contributor(
+					{ "kilo.chat/permission-renderer": [{ id: "run", permissions: ["acme_execute"] }] },
+					{
+						web: {
+							activate(sdk) {
+								sdk.extensions.implement(PermissionRenderer, "run", {
+									showPatterns: () => false,
+									PermissionDetail: ({ request }: PermissionDetailProps) => (
+										<p data-qa-id="acme-run-detail">{String(request.metadata["notebook"])}</p>
+									),
+								});
+							},
+						},
+					},
+				),
+			],
+		});
+		await vi.waitFor(() => expect(host.server.openStreams).toBe(1));
+
+		host.server.askPermission("ses_a", {
+			id: "per_run",
+			permission: "acme_execute",
+			patterns: ["notebook-1"],
+			always: ["notebook-1"],
+			metadata: { toolName: "Run code", title: "Run code?", notebook: "analysis.ipynb" },
+		});
+
+		const card = page.getByTestId("kilo-permission-card");
+		await expect.element(page.getByTestId("acme-run-detail")).toHaveTextContent("analysis.ipynb");
+		await expect.element(card.getByText("notebook-1")).not.toBeInTheDocument();
+		await expect.element(page.getByTestId("kilo-permission-always")).toBeVisible();
+	});
 });
 
 describe("agent questions", () => {

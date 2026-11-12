@@ -15,6 +15,7 @@ import {
 	requireDependencyApproval,
 	withTrustGuidance,
 } from "./dependency-approval";
+import { EXECUTE_PERMISSION, requireExecutionApproval } from "./execution-approval";
 
 type ToolAttachment = {
 	type: "file";
@@ -409,19 +410,35 @@ function summarizeKernelState(
 
 const TRUST_PERMISSION = "notebooks_trust";
 
+const PROMPTED_PERMISSIONS = [TRUST_PERMISSION, EXECUTE_PERMISSION];
+
 /**
- * Kilo's built-in agents default every permission to `"*": "allow"`, so a
- * dependency approval would otherwise be granted without the user ever seeing
- * it. Kilo runs plugin `config` hooks before building agent permissions; an
- * explicit user setting for `notebooks_trust` still wins.
+ * Kilo's built-in agents default every permission to `"*": "allow"`, so
+ * dependency approvals and notebook code execution would otherwise proceed
+ * without the user ever seeing them. Kilo runs plugin `config` hooks before
+ * building agent permissions; an explicit user scalar setting still wins.
+ *
+ * "Always allow" makes Kilo persist per-pattern objects such as
+ * `{ "<session>:<notebook>": "allow" }`. Without a catch-all, every other
+ * pattern would fall through to the agent's `"*": "allow"`, so such objects get
+ * a leading `"*": "ask"`. It must come first: Kilo evaluates the last matching
+ * rule, so the specific allows after it still win. Objects that already carry
+ * `"*"` express the user's own choice and are left alone.
  */
-function requireTrustPrompt(config: { permission?: unknown }): void {
+function requireNotebookPrompts(config: { permission?: unknown }): void {
 	if (config.permission === undefined) config.permission = {};
 	const permission = config.permission;
 	if (typeof permission !== "object" || permission === null) return;
-	if (!(TRUST_PERMISSION in permission)) {
-		(permission as Record<string, unknown>)[TRUST_PERMISSION] = "ask";
+	const rules = permission as Record<string, unknown>;
+	for (const key of PROMPTED_PERMISSIONS) {
+		const value = rules[key];
+		if (!(key in rules)) rules[key] = "ask";
+		else if (isPatternMap(value) && !("*" in value)) rules[key] = { "*": "ask", ...value };
 	}
+}
+
+function isPatternMap(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 type DependencyStatus = Awaited<ReturnType<Session["getDependencyStatus"]>>;
@@ -450,6 +467,19 @@ async function assertAnchorExists(session: Session, afterCellId: string | null |
 	if (typeof afterCellId === "string" && !(await session.getCell(afterCellId))) {
 		throw new Error(`after_cell_id ${afterCellId} was not found`);
 	}
+}
+
+/**
+ * 1-based places in the notebook, markdown included, as a person counts cells
+ * scrolling it; a cell's `position` is an opaque fractional index. Unknown ids
+ * get no number (executing them fails anyway).
+ */
+function cellNumbersOf(cells: readonly CellSnapshot[], cellIds: readonly string[]): number[] {
+	const numbers = new Map(cells.map((cell, index) => [cell.id, index + 1]));
+	return cellIds.flatMap((id) => {
+		const number = numbers.get(id);
+		return number === undefined ? [] : [number];
+	});
 }
 
 /** Applies one edit to the local replica; resolves to null when the cell does not exist. */
@@ -538,6 +568,7 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 			async execute(args, context) {
 				if (context.abort.aborted) throw new Error("Notebook execution was cancelled.");
 				const session = await sessions.open(args.notebook_id, context);
+				await requireExecutionApproval(context, args.notebook_id, { kind: "run", code: args.code });
 				if (args.dependencies?.length) {
 					await requireDependencyApproval(context, session, args.notebook_id, {
 						kind: "add",
@@ -586,14 +617,21 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 				if (context.abort.aborted) throw new Error("Notebook cell creation was cancelled.");
 				const session = await sessions.open(args.notebook_id, context);
 				const cellType = args.cell_type ?? "code";
+				const runAfterCreate = Boolean(args.and_run) && cellType === "code";
 				await assertAnchorExists(session, args.after_cell_id);
+				if (runAfterCreate) {
+					await requireExecutionApproval(context, args.notebook_id, {
+						kind: "run",
+						code: args.source ?? "",
+					});
+				}
 				const cellId = await session.createCell(args.source ?? "", {
 					cellType,
 					...(args.after_cell_id === null ? { index: 0 } : {}),
 					...(typeof args.after_cell_id === "string" ? { afterCellId: args.after_cell_id } : {}),
 				});
 				sessions.assertConnected(session);
-				if (args.and_run && cellType === "code") {
+				if (runAfterCreate) {
 					const result = await withTrustGuidance(session, () =>
 						session.executeCell(cellId, {
 							timeoutMs: Math.round((args.timeout_secs ?? 120) * 1000),
@@ -705,11 +743,17 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 			},
 			async execute(args, context) {
 				const session = await sessions.open(args.notebook_id, context);
+				const cells = await session.listCells();
 				const cellIds =
-					args.cell_ids ??
-					(await session.listCells())
-						.filter((cell) => cell.cellType === "code")
-						.map((cell) => cell.id);
+					args.cell_ids ?? cells.filter((cell) => cell.cellType === "code").map((cell) => cell.id);
+				if (cellIds.length > 0) {
+					await requireExecutionApproval(context, args.notebook_id, {
+						kind: "execute",
+						cellIds,
+						cellNumbers: cellNumbersOf(cells, cellIds),
+						allCells: args.cell_ids === undefined,
+					});
+				}
 				const results: CellResult[] = [];
 				for (const cellId of cellIds) {
 					if (context.abort.aborted) throw new Error("Notebook execution was cancelled.");
@@ -893,7 +937,10 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 			async execute(args, context) {
 				const session = await sessions.open(args.notebook_id, context);
 				if (args.action === "interrupt") await session.interruptKernel();
-				if (args.action === "restart") await session.restartKernel();
+				if (args.action === "restart") {
+					await requireExecutionApproval(context, args.notebook_id, { kind: "restart" });
+					await session.restartKernel();
+				}
 				const status = await session.getRuntimeStatus();
 				return {
 					title: "Notebook kernel",
@@ -950,7 +997,7 @@ export function createNteractKiloPlugin(dependencies: PluginDependencies = {}) {
 
 		return {
 			config: async (config: { permission?: unknown }) => {
-				requireTrustPrompt(config);
+				requireNotebookPrompts(config);
 			},
 			tool: {
 				notebooks_create_cell: createCell,

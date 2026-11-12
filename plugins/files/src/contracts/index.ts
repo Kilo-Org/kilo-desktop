@@ -51,6 +51,11 @@ export const Documents = defineDomainObject({
 	methods: {
 		/** Every path in the folder (folders end in `/`), sorted; capped. */
 		list: method(listInputSchema, filesListResultSchema),
+		/**
+		 * The folder's files only, skipping gitignored paths (`node_modules`,
+		 * `.venv`, …) and nested worktrees, sorted; capped. What `@` mentions offer.
+		 */
+		listFiles: method(listInputSchema, filesListResultSchema),
 		/** Finds a file a link names: exactly, or by its path's ending. */
 		resolveFileLink: method(fileInputSchema, fileLinkResolutionSchema),
 		/** Which of the paths are files inside the folder. */

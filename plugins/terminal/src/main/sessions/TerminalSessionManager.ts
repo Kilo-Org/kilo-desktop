@@ -56,6 +56,12 @@ export interface TerminalSessionManagerOptions {
 	readonly adapter: PtyAdapter;
 	readonly storageDir: string;
 	readonly resolveCwd: (cwd?: string) => Promise<string>;
+	/**
+	 * Settles once the process environment is complete. A shell keeps the
+	 * environment it starts with, so a terminal restored as the window opens
+	 * waits for the login shell's PATH and locale rather than living without.
+	 */
+	readonly environmentReady?: () => Promise<void>;
 	readonly platform?: NodeJS.Platform;
 	readonly env?: NodeJS.ProcessEnv;
 	readonly persistDebounceMs?: number;
@@ -96,6 +102,7 @@ export class TerminalSessionManager {
 	readonly #adapter: PtyAdapter;
 	readonly #storageDir: string;
 	readonly #resolveCwd: (cwd?: string) => Promise<string>;
+	readonly #environmentReady: () => Promise<void>;
 	readonly #platform: NodeJS.Platform;
 	readonly #env: NodeJS.ProcessEnv;
 	readonly #persistDebounceMs: number;
@@ -113,6 +120,7 @@ export class TerminalSessionManager {
 		this.#adapter = options.adapter;
 		this.#storageDir = options.storageDir;
 		this.#resolveCwd = options.resolveCwd;
+		this.#environmentReady = options.environmentReady ?? (() => Promise.resolve());
 		this.#platform = options.platform ?? process.platform;
 		this.#env = options.env ?? process.env;
 		this.#persistDebounceMs = options.persistDebounceMs ?? 40;
@@ -398,6 +406,7 @@ export class TerminalSessionManager {
 	}
 
 	async #start(session: Session): Promise<boolean> {
+		await this.#environmentReady();
 		try {
 			const process = spawnFirstAvailableShell(
 				this.#adapter,

@@ -19,6 +19,7 @@ import {
 	type FilesHost,
 } from "../test/files-host.js";
 import type { DocumentMethods } from "./documents.js";
+import { FILE_MENTION_RESULT_LIMIT } from "./mentions/file-mention-source.js";
 
 const documents = (overrides: Partial<DocumentMethods> = {}): Partial<DocumentMethods> => ({
 	list: async ({ workspaceDirectory }) => ({
@@ -26,6 +27,11 @@ const documents = (overrides: Partial<DocumentMethods> = {}): Partial<DocumentMe
 			workspaceDirectory === "/docs"
 				? ["guide.md"]
 				: ["src/", "src/App.tsx", "src/app.css", "README.md"],
+		truncated: false,
+	}),
+	listFiles: async ({ workspaceDirectory }) => ({
+		paths:
+			workspaceDirectory === "/docs" ? ["guide.md"] : ["src/App.tsx", "src/app.css", "README.md"],
 		truncated: false,
 	}),
 	read: async () => ({
@@ -253,8 +259,8 @@ describe("@ file mentions", () => {
 	});
 
 	it("searches a single folder's files by path and resolves them to origin's @/relative paths", async () => {
-		const list = vi.fn(documents().list!);
-		const host = await bootFilesHost({ documents: documents({ list }) });
+		const listFiles = vi.fn(documents().listFiles!);
+		const host = await bootFilesHost({ documents: documents({ listFiles }) });
 		const { source } = mentionSource(host);
 		const context = searchContext([{ path: "/workspace", isPrimary: true }]);
 
@@ -268,7 +274,7 @@ describe("@ file mentions", () => {
 		expect(source.resolve(items[0]!, context)).toEqual({ text: "@/src/App.tsx" });
 
 		await source.search("readme", context);
-		expect(list).toHaveBeenCalledOnce();
+		expect(listFiles).toHaveBeenCalledOnce();
 	});
 
 	it("uses absolute paths across folders, and the directory without a workspace", async () => {
@@ -292,7 +298,7 @@ describe("@ file mentions", () => {
 	it("offers nothing from a folder it cannot list", async () => {
 		const host = await bootFilesHost({
 			documents: documents({
-				list: async () => {
+				listFiles: async () => {
 					throw new Error("denied");
 				},
 			}),
@@ -304,6 +310,27 @@ describe("@ file mentions", () => {
 				searchContext([{ path: "/workspace", isPrimary: true }]),
 			),
 		).resolves.toEqual([]);
+	});
+
+	it("ranks name matches above path matches and caps the results", async () => {
+		const paths = [
+			...Array.from({ length: 200 }, (_, index) => `deep/nested/app/file-${String(index)}.ts`),
+			"src/components/AppShell.tsx",
+			"app.ts",
+		];
+		const host = await bootFilesHost({
+			documents: documents({ listFiles: async () => ({ paths, truncated: false }) }),
+		});
+		const { source } = mentionSource(host);
+		const context = searchContext([{ path: "/workspace", isPrimary: true }]);
+
+		const found = await source.search("app", context);
+		expect(found).toHaveLength(FILE_MENTION_RESULT_LIMIT);
+		expect(found.slice(0, 2).map(({ id }) => id)).toEqual([
+			"app.ts",
+			"src/components/AppShell.tsx",
+		]);
+		await expect(source.search("", context)).resolves.toHaveLength(FILE_MENTION_RESULT_LIMIT);
 	});
 
 	it("renders file-type icons for its items", async () => {

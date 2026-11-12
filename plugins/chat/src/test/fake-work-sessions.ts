@@ -98,6 +98,7 @@ export function fakeWorkSessionsMain(options: FakeWorkSessionsMainOptions = {}) 
 		update: vi.fn(),
 		close: vi.fn(),
 		authorize: vi.fn(),
+		setLayout: vi.fn(),
 	};
 	let workSessions!: DomainObjectProvider<typeof WorkSessions>;
 	let panes!: DomainObjectProvider<typeof Panes>;
@@ -308,7 +309,15 @@ export function fakeWorkSessionsMain(options: FakeWorkSessionsMainOptions = {}) 
 					panes.emit("closed", { workSessionId, pane: closed });
 					return { closed: true };
 				},
-				setLayout: () => undefined,
+				setLayout: ({ workSessionId, layout, activePaneId }) => {
+					calls.setLayout({ workSessionId, layout });
+					const current = of(workSessionId);
+					write(workSessionId, {
+						...current,
+						layout,
+						...(activePaneId !== undefined ? { activePaneId } : {}),
+					});
+				},
 				setArrangement: () => undefined,
 			},
 		});

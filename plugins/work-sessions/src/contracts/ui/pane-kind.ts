@@ -29,6 +29,20 @@ export interface PaneImplementation {
 		readonly workSessionId: string;
 		readonly pane: Pane;
 	}) => Promise<boolean>;
+	/**
+	 * Called when the person shows they mean to open a work session holding
+	 * one of its panes (they rest the pointer on its row): load ahead what the
+	 * pane would load once shown, so opening is instant. Best effort and
+	 * possibly repeated; the work session may never open.
+	 */
+	readonly prefetch?: (input: PanePrefetchInput) => void;
+}
+
+export interface PanePrefetchInput {
+	readonly workSession: WorkSession;
+	readonly pane: Pane;
+	/** Every pane in the work session, in order. */
+	readonly panes: readonly Pane[];
 }
 
 /**

@@ -55,8 +55,21 @@ export interface PluginEmbeddedHosts {
 	register(registration: EmbeddedHostRegistration): () => void;
 }
 
+/**
+ * The process environment as the person's login shell sets it (PATH, tool
+ * homes, proxies). A packaged app starts with the operating system's bare
+ * environment and the host completes it shortly after launch, while the
+ * window is already up; code that spawns a tool or resolves one on PATH
+ * waits for `ready()` first, or it finds the bare PATH (and may keep it).
+ */
+export interface PluginEnvironment {
+	ready(): Promise<void>;
+}
+
 export interface MainHostServices {
 	readonly storage: PluginStorage;
+	/** Absent where the host's environment is complete from the start (tests, development). */
+	readonly environment?: PluginEnvironment;
 	readonly fs: PluginFs;
 	readonly net: PluginNet;
 	readonly protocol?: PluginProtocol;
@@ -122,6 +135,11 @@ export interface HostBrowser {
 export interface PluginAssets {
 	/** Absolute path of `subpath` (starting `resources/`) for this plugin. */
 	resolve(subpath: string): string;
+}
+
+/** Resolves once the process environment is complete (see `PluginEnvironment`). */
+export function environmentReady(sdk: PluginSdk): Promise<void> {
+	return mainHost(sdk).environment?.ready() ?? Promise.resolve();
 }
 
 /** Typed access to the main-process host services of a plugin's sdk. */

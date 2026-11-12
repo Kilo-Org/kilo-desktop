@@ -31,6 +31,7 @@ vi.mock("@assistant-ui/react-opencode", () => ({
 	projectOpenCodeThreadMessages: () => [],
 }));
 
+import { PendingInteractionsProvider } from "../interactions/PendingInteractionsContext";
 import { ActivityGroup, ActivitySubgroup, ManualDisclosureProvider } from "./activity-group";
 import { ApplyPatchDiff } from "./tool-ui-apply-patch";
 import { BashTerminal } from "./tool-ui-bash";
@@ -49,7 +50,11 @@ import type { ToolCallComponent } from "./tool-call";
 async function mount(ui: ReactNode, { fakeTimers = false } = {}) {
 	const host = await renderInKernel(null);
 	if (fakeTimers) vi.useFakeTimers();
-	const wrap = (node: ReactNode) => <KernelProvider kernel={host.renderer}>{node}</KernelProvider>;
+	const wrap = (node: ReactNode) => (
+		<KernelProvider kernel={host.renderer}>
+			<PendingInteractionsProvider>{node}</PendingInteractionsProvider>
+		</KernelProvider>
+	);
 	host.view.rerender(wrap(ui));
 	return { ...host.view, rerender: (node: ReactNode) => host.view.rerender(wrap(node)) };
 }

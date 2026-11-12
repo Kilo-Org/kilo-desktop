@@ -239,6 +239,7 @@ describe("Sift adapter (real @nteract/sift)", () => {
 		const contents = "city,score\nÅre,3\nOslo,1\n";
 		const handlers: DocumentMethods = {
 			list: async () => ({ paths: [], truncated: false }),
+			listFiles: async () => ({ paths: [], truncated: false }),
 			existingPaths: async ({ relativePaths }) => ({ paths: relativePaths }),
 			resolveFileLink: async () => ({ kind: "none", paths: [], truncated: false }),
 			read: async () => ({

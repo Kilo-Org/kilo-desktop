@@ -561,7 +561,9 @@ a name with the `vcs` extension point), `workSessionActive`,
   with metadata object ids turned into `object`, `layouts.json`); origin
   import markers carry over; better-sqlite3 is loaded lazily and its
   absence counts as nothing to import. Window state moves from
-  `kilo.workbench.navigator:<windowId>` to `kilo.work-sessions.window:<windowId>`;
+  `kilo.workbench.navigator:<windowId>` to `kilo.work-sessions.window:<windowId>`
+  and keeps only the workspace focus: the open work session and shown view
+  are not restored, so every launch opens on the New Session page;
   origin's pins are handed over once through `setPinned`.
 - **Toasts go through `kilo.shell/notifications`** (the in-progress
   "Removing worktree…" toast is gone).

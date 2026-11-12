@@ -62,9 +62,8 @@ import {
 } from "../media/message-media";
 import { usePendingInteractions } from "../interactions/PendingInteractionsContext";
 import { useChatConnection } from "../runtime/chat-connection";
-import { getPlanProjectionForMessage } from "../plan/plan-projection";
-import { usePlanThreadProjection } from "../plan/use-plan-thread-projection";
-import { useOptionalOpenCodeRuntimeExtras } from "../runtime/use-optional-opencode-runtime-extras";
+import { usePlanHiddenCallIds } from "../plan/use-plan-thread-projection";
+import { useOptionalOpenCodeSession } from "../runtime/use-optional-opencode-runtime-extras";
 import { useOptionalChatModelSelection } from "../selection/ChatModelSelectionContext";
 import { isKiloGatewayProvider } from "../selection/model-catalog";
 import { useKiloSignIn } from "../selection/use-kilo-sign-in";
@@ -152,7 +151,7 @@ const selectSigningIn = (state: DomainObjectState<typeof KiloAccount>) =>
  */
 const KiloMessageErrorBanner: FC = () => {
 	const aui = useAui();
-	const extras = useOptionalOpenCodeRuntimeExtras();
+	const session = useOptionalOpenCodeSession() ?? null;
 	const { connection } = useChatConnection();
 	const model = useOptionalChatModelSelection()?.model;
 	const authenticated = useDomainObjectState(KiloAccount, selectAuthenticated) ?? null;
@@ -166,7 +165,6 @@ const KiloMessageErrorBanner: FC = () => {
 	const offerSignIn = isKiloModel && !connectionUnavailable && authenticated === false;
 	const signedIn = authenticated === true && isKiloSignInError(errorText);
 	const retrying = useRef(false);
-	const session = extras?.session ?? null;
 
 	const retry = () => {
 		if (retrying.current) return;
@@ -335,10 +333,7 @@ const TurnWorkDisclosure: FC<
 const AssistantMessage: FC = () => {
 	const messageParts = useAuiState((s) => s.message.parts);
 	const messageId = useAuiState((s) => s.message.id);
-	const hiddenPlanCallIds = getPlanProjectionForMessage(
-		usePlanThreadProjection(),
-		messageId,
-	)?.hiddenCallIds;
+	const hiddenPlanCallIds = usePlanHiddenCallIds(messageId);
 	const pendingInteractions = usePendingInteractions();
 	const pendingUserInteractions =
 		pendingInteractions.questions.length + pendingInteractions.permissions.length;
@@ -410,7 +405,7 @@ const AssistantMessage: FC = () => {
 				dimmed ? "pointer-events-none opacity-50" : undefined,
 			)}
 		>
-			<ManualDisclosureProvider>
+			<ManualDisclosureProvider scope={messageId}>
 				<div
 					data-slot="aui_assistant-message-content"
 					className="text-foreground px-2 leading-relaxed wrap-break-word"

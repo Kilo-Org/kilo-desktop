@@ -20,12 +20,14 @@ import {
 	WORK_SESSIONS_DEFINITIONS,
 	WorkSessionStarter,
 	WorkSessions,
+	WorkSessionsWindow,
 	type Pane,
 	type PaneImplementation,
 	type PaneProps,
 	type StartedWorkSession,
 	type WorkSession,
 	type WorkSessionIsolation,
+	type WorkSessionPanes,
 	type WorkSessionStarterProps,
 } from "@kilo-desktop/plugin-work-sessions/contracts";
 
@@ -62,8 +64,9 @@ export interface ChatHostOptions {
 	/**
 	 * kilo.work-sessions' window entry: its real one (`testWebEntry` from
 	 * `@kilo-desktop/plugin-work-sessions/testing`, which renders the canvas
-	 * itself), or by default a `window` object with the work session open and
-	 * kilo.chat's panes rendered by this host.
+	 * itself; the host opens the work session in it), or by default a `window`
+	 * object with the work session open and kilo.chat's panes rendered by this
+	 * host.
 	 */
 	readonly workSessionsWeb?: PluginEntry;
 	/** What the window's localStorage holds at launch, e.g. what origin left there. */
@@ -75,6 +78,10 @@ export interface ChatHostOptions {
 	readonly session?: WorkSession;
 	/** More work sessions in main, after the open one. */
 	readonly otherWorkSessions?: readonly WorkSession[];
+	/** Panes of work sessions other than the open one, by work session id. */
+	readonly otherSessionPanes?: Readonly<Record<string, WorkSessionPanes>>;
+	/** The open work session's saved layout (serialized). */
+	readonly layout?: string;
 	readonly pane?: Pane;
 	/** The work session's other panes, before the agent pane. */
 	readonly otherPanes?: readonly Pane[];
@@ -149,10 +156,12 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 	const workSessions = fakeWorkSessionsMain({
 		workSessions: [initialWorkSession, ...(options.otherWorkSessions ?? [])],
 		panes: {
+			...options.otherSessionPanes,
 			[initialWorkSession.id]: {
 				...EMPTY_WORK_SESSION_PANES,
 				panes: initialPanes,
 				activePaneId: initialPanes.at(-1)?.id ?? null,
+				...(options.layout ? { layout: options.layout } : {}),
 			},
 		},
 		...(options.unavailableFolderIds ? { unavailableFolderIds: options.unavailableFolderIds } : {}),
@@ -204,6 +213,12 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 		},
 	);
 	const { renderer } = host;
+	// The real window entry launches on the New Session page; open the work session as the fake does.
+	if (options.workSessionsWeb && !options.starter) {
+		await renderer.kernelSdk.domainObjects
+			.get(WorkSessionsWindow)
+			?.methods.openWorkSession({ workSessionId: initialWorkSession.id });
+	}
 	const directory = options.directory === undefined ? "/projects/app" : options.directory;
 	const workspaceId = options.workspaceId === undefined ? WORKSPACE.id : options.workspaceId;
 

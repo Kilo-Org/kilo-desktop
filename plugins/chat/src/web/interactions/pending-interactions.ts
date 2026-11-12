@@ -38,6 +38,24 @@ type OwnPendingInteractions = {
 	questions: readonly OpenCodeQuestionRequest[];
 };
 
+const sameItems = <T>(left: readonly T[], right: readonly T[]) =>
+	left.length === right.length && left.every((item, index) => item === right[index]);
+
+/** Whether two collections hold the same prompts, so a consumer needn't re-render. */
+export function samePendingInteractions(
+	left: PendingInteractions,
+	right: PendingInteractions,
+): boolean {
+	return (
+		left === right ||
+		(left.rootSessionId === right.rootSessionId &&
+			sameItems(left.permissions, right.permissions) &&
+			sameItems(left.questions, right.questions) &&
+			left.subagentTitles.size === right.subagentTitles.size &&
+			[...left.subagentTitles].every(([id, title]) => right.subagentTitles.get(id) === title))
+	);
+}
+
 const byAskedAt = (a: { askedAt: number }, b: { askedAt: number }) => a.askedAt - b.askedAt;
 
 function taskTitleForChild(

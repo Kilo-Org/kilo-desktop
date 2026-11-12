@@ -13,9 +13,24 @@ import { Button } from "@kilo-desktop/ui/components/button";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 import { PaneTabTooltipScope } from "./PaneTabTooltip";
 
+/** `ids`, or the previous array while it holds the same ids. */
+function useStableIds(ids: readonly string[]): readonly string[] {
+	const last = useRef(ids);
+	if (last.current.length !== ids.length || last.current.some((id, index) => id !== ids[index])) {
+		last.current = ids;
+	}
+	return last.current;
+}
+
+/*
+ * Every layout effect here reads layout (scroll widths, boxes, computed
+ * style). The canvas re-renders every tab strip on each frame of a splitter
+ * drag, so they key on the tab ids' content, not the caller's fresh array:
+ * otherwise each frame forced a synchronous layout per tab group.
+ */
 export function PaneTabScrollArea({
 	scrollRef,
-	tabIds,
+	tabIds: tabIdsProp,
 	activeTabId,
 	children,
 	onWheelCapture,
@@ -26,6 +41,7 @@ export function PaneTabScrollArea({
 	tabIds: readonly string[];
 	activeTabId: string;
 }) {
+	const tabIds = useStableIds(tabIdsProp);
 	const [overflow, setOverflow] = useState({ left: false, right: false });
 	const previousTabIds = useRef(tabIds);
 	const [scrolling, setScrolling] = useState(false);

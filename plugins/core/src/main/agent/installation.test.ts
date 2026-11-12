@@ -36,6 +36,7 @@ describe("resolveKiloInstallation", () => {
 		).toEqual({
 			executablePath: path.resolve("./local-kilo"),
 			treeSitterWasmDirectory: path.join(path.dirname(path.resolve("./local-kilo")), "tree-sitter"),
+			custom: true,
 		});
 	});
 
@@ -65,6 +66,7 @@ describe("resolveKiloInstallation", () => {
 			).toEqual({
 				executablePath: path.resolve("./env-kilo"),
 				treeSitterWasmDirectory: path.join(path.dirname(path.resolve("./env-kilo")), "tree-sitter"),
+				custom: true,
 			});
 		} finally {
 			if (previous === undefined) delete process.env.KILO_CODE_CLI_PATH;

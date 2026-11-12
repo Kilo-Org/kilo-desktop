@@ -3,6 +3,7 @@ import { useEffect, useMemo, type ReactNode } from "react";
 
 import type { ComposerFolder } from "../../contracts";
 import { RevertPendingProvider } from "../checkpoints/revert-pending";
+import { PendingInteractionsProvider } from "../interactions/PendingInteractionsContext";
 import { ElectronMcpAppRenderer } from "../mcp-apps/ElectronMcpAppRenderer";
 import { KiloMcpAppsHostProvider } from "../mcp-apps/mcp-apps-host";
 import { SubagentActivityProvider } from "../subagents/SubagentActivityContext";
@@ -42,9 +43,11 @@ export function TranscriptProviders({
 		<PierreDiffProvider>
 			<KiloMcpAppsHostProvider>
 				<SubagentActivityProvider>
-					<RevertPendingProvider>
-						<ChatLightboxProvider>{children}</ChatLightboxProvider>
-					</RevertPendingProvider>
+					<PendingInteractionsProvider>
+						<RevertPendingProvider>
+							<ChatLightboxProvider>{children}</ChatLightboxProvider>
+						</RevertPendingProvider>
+					</PendingInteractionsProvider>
 				</SubagentActivityProvider>
 			</KiloMcpAppsHostProvider>
 		</PierreDiffProvider>

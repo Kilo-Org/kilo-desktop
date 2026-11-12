@@ -25,6 +25,7 @@ export function resolveKiloInstallation(
 		return {
 			executablePath,
 			treeSitterWasmDirectory: path.join(path.dirname(executablePath), "tree-sitter"),
+			custom: true,
 		};
 	}
 

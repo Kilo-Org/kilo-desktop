@@ -69,9 +69,8 @@ describe("work sessions views", () => {
 			workSessions: [session("a", { title: "Fix login", workspaceId: "w1" })],
 			workspaces: [workspace("w1", "App")],
 			guests: [viewsPlugin],
-			localStorage: {
-				"kilo.work-sessions.window:main": JSON.stringify({ focus: "w1", activeWorkSessionId: "a" }),
-			},
+			localStorage: { "kilo.work-sessions.window:main": JSON.stringify({ focus: "w1" }) },
+			open: "a",
 		});
 		await expect.element(page.getByTestId("session-workbench")).toBeVisible();
 
@@ -88,7 +87,6 @@ describe("work sessions views", () => {
 		await expect.element(page.getByRole("button", { name: "Timeline action" })).toBeVisible();
 		expect(page.getByTestId("sessions-view-pop-out").elements()).toHaveLength(0);
 		expect(row("Fix login").element().getAttribute("data-active")).toBeNull();
-		expect(localStorage.getItem("kilo.work-sessions.window:main")).toContain(VIEW);
 
 		await page.getByRole("button", { name: "Open a" }).click();
 
@@ -96,13 +94,11 @@ describe("work sessions views", () => {
 		expect(window().getState()).toMatchObject({ activeWorkSessionId: "a", view: null });
 	});
 
-	it("falls back to the open session when the saved view is no longer contributed", async () => {
-		await renderWorkSessions({
-			workSessions: [session("a")],
-			localStorage: {
-				"kilo.work-sessions.window:main": JSON.stringify({ activeWorkSessionId: "a", view: VIEW }),
-			},
-		});
+	it("falls back to the open session when the shown view is not contributed", async () => {
+		const { window } = await renderWorkSessions({ workSessions: [session("a")], open: "a" });
+
+		await window().methods.showView({ view: VIEW });
+
 		await expect.element(page.getByTestId("session-workbench")).toBeVisible();
 	});
 

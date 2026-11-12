@@ -1,4 +1,8 @@
-import type { AppendMessage, QueueItemState } from "@assistant-ui/react";
+import type {
+	AppendMessage,
+	ExternalThreadQueueAdapter,
+	QueueItemState,
+} from "@assistant-ui/react";
 import type {
 	OpenCodeMessageQueueController,
 	OpenCodeMessageQueueDriver,
@@ -51,17 +55,37 @@ export function createMainPromptQueue(
 	let version = 0;
 	let localDraft: { id: string; text: string } | undefined;
 
+	// assistant-ui routes every send made during a run through `steer`; only a
+	// message marked `steer` asks to stop the turn. Main has one lane: moving an
+	// item into the steer lane sends it now, any other move reorders.
 	const adapter: OpenCodeMessageQueueController["adapter"] = {
 		items: [],
-		enqueue: (message, { steer }) => void enqueue(message, steer),
-		steer: (id) => call((queue, chatId) => queue.methods.steer({ chatId, id })),
+		steerItems: [],
+		enqueue: (message) => void enqueue(message, false),
+		steer: (message) => void enqueue(message, message.steer === true),
+		move: (id, placement) => {
+			if (placement.lane === "steer") {
+				call((queue, chatId) => queue.methods.steer({ chatId, id }));
+				return;
+			}
+			const ids = reorderedIds(
+				view.items.map((item) => item.id),
+				id,
+				placement,
+			);
+			if (ids) call((queue, chatId) => queue.methods.reorder({ chatId, ids }));
+		},
+		edit: (id, message) => {
+			const text = message.content
+				.flatMap((part) => (part.type === "text" ? [part.text] : []))
+				.join("");
+			call(async (queue, chatId) => {
+				const prepared = await prepareText(text.trim(), options.prompt());
+				await queue.methods.commitEdit({ chatId, id, text: prepared });
+			});
+		},
 		remove: (id) => call((queue, chatId) => queue.methods.remove({ chatId, id })),
-		clear: (reason) =>
-			call((queue, chatId) =>
-				reason === "cancel-run"
-					? queue.methods.stopped({ chatId })
-					: queue.methods.clear({ chatId }),
-			),
+		__internal_notifyCancelled: () => call((queue, chatId) => queue.methods.stopped({ chatId })),
 	};
 
 	function readView(): ChatQueue {
@@ -192,10 +216,31 @@ export function createMainPromptQueue(
 	};
 }
 
+/** `ids` with `id` moved to `placement`, or null when it isn't queued. */
+function reorderedIds(
+	ids: readonly string[],
+	id: string,
+	{ insertAfter, insertBefore }: Parameters<ExternalThreadQueueAdapter["move"]>[1],
+): string[] | null {
+	const rest = ids.filter((candidate) => candidate !== id);
+	const anchor = insertAfter ?? insertBefore;
+	if (rest.length === ids.length || (anchor != null && !rest.includes(anchor))) return null;
+	const index =
+		insertAfter !== undefined
+			? insertAfter === null
+				? 0
+				: rest.indexOf(insertAfter) + 1
+			: insertBefore !== undefined && insertBefore !== null
+				? rest.indexOf(insertBefore)
+				: rest.length;
+	return [...rest.slice(0, index), id, ...rest.slice(index)];
+}
+
 function toItemState(item: PromptQueueItem): QueueItemState {
 	return {
 		id: item.id,
 		prompt: item.prompt,
+		parts: [{ type: "text", text: item.prompt }],
 		...(item.attachmentPreview ? { attachmentPreview: item.attachmentPreview } : {}),
 	} as QueueItemState;
 }

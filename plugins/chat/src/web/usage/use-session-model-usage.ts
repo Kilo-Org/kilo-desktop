@@ -9,7 +9,7 @@ import { Chats, type ChatSummary } from "@kilo-desktop/plugin-core/contracts";
 import { useComposerContext } from "../composer/composer-actions";
 import { useChatConnection } from "../runtime/chat-connection";
 import { useChatModelSelection } from "../selection/ChatModelSelectionContext";
-import { useOptionalOpenCodeRuntimeExtras } from "../runtime/use-optional-opencode-runtime-extras";
+import { useOptionalOpenCodeSession } from "../runtime/use-optional-opencode-runtime-extras";
 import {
 	fallbackTotalsFromMessages,
 	fetchSessionModelUsage,
@@ -41,8 +41,7 @@ export function useComposerUsageView(): ComposerUsageView | undefined {
 	const threadId = useAuiState((state) => state.threadListItem.id);
 	const remoteId = useAuiState((state) => state.threadListItem.remoteId);
 	const isRunning = useAuiState((state) => state.thread.isRunning);
-	const extras = useOptionalOpenCodeRuntimeExtras();
-	const session = asSessionRef(extras?.session);
+	const session = asSessionRef(useOptionalOpenCodeSession());
 	const { connection, isPending: isConnectionPending } = useChatConnection();
 	const { model, catalog } = useChatModelSelection();
 	const { directory: composerDirectory } = useComposerContext();

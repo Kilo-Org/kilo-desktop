@@ -26,11 +26,22 @@ import { createLogger } from "./logger.js";
  *   is a no-op for it — it exists purely for third-party deps.
  * - `getProxySupport: "on"` means the patch activates only when a caller did NOT
  *   supply its own custom `agent`/`dispatcher`; it is additive, not fighting.
- * - Env-var proxies (`HTTP(S)_PROXY`/`NO_PROXY`) come from `process.env`, which
- *   the bootstrap sequence populates from the login shell (via `shell-env`).
+ * - Env-var proxies (`HTTP(S)_PROXY`/`NO_PROXY`) are read from `process.env` on
+ *   every request: the bootstrap installs the patch before the login shell's
+ *   environment (via `shell-env`) arrives, and the resolver would otherwise
+ *   keep the values it saw when created.
  * - This is a monkey-patch of process-global singletons for the process
  *   lifetime; there is nothing to tear down.
  */
+const environmentProxy = (env: NodeJS.ProcessEnv = process.env) =>
+	env.https_proxy || env.HTTPS_PROXY || env.http_proxy || env.HTTP_PROXY || undefined;
+
+const environmentNoProxy = (env: NodeJS.ProcessEnv = process.env) =>
+	(env.no_proxy || env.NO_PROXY || "")
+		.split(",")
+		.map((entry) => entry.trim())
+		.filter(Boolean);
+
 export function installProxyAgent(): void {
 	const logger = createLogger("proxy-agent");
 	const require = createRequire(import.meta.url);
@@ -45,9 +56,9 @@ export function installProxyAgent(): void {
 
 	const params: ProxyAgentParams = {
 		resolveProxy: (url) => session.defaultSession.resolveProxy(url),
-		getProxyURL: () => undefined,
+		getProxyURL: environmentProxy,
 		getProxySupport: () => "on",
-		getNoProxyConfig: () => [],
+		getNoProxyConfig: environmentNoProxy,
 		isAdditionalFetchSupportEnabled: () => true,
 		isWebSocketPatchEnabled: () => false,
 		addCertificatesV1: () => false,
@@ -58,7 +69,8 @@ export function installProxyAgent(): void {
 		getLogLevel: () => LogLevel.Info,
 		proxyResolveTelemetry: () => {},
 		isUseHostProxyEnabled: () => true,
-		env: process.env,
+		// Read live through getProxyURL/getNoProxyConfig instead.
+		env: {},
 	};
 
 	const { resolveProxyWithRequest, resolveProxyURL } = createProxyResolver(params);

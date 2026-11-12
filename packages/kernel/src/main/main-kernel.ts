@@ -90,9 +90,17 @@ interface SystemState {
 export interface MainKernel extends Kernel {
 	readonly services: ServiceSupervisor;
 	readonly commands: CommandService;
-	/** Activates plugins (phase stays `starting` until the window shows). */
-	start(): Promise<void>;
-	/** The main window is visible: `started`, then window-shown services, then `ready`. */
+	/**
+	 * Activates plugins (phase stays `starting` until the window shows) and
+	 * resolves. Services wait for `environmentReady`: the host's process
+	 * environment is final (the login shell's), as services spawn processes
+	 * that inherit it. Activation services start as soon as it settles.
+	 */
+	start(options?: { readonly environmentReady?: Promise<unknown> }): Promise<void>;
+	/**
+	 * The main window is visible: `started`, then (once the environment is
+	 * ready) window-shown services, then `ready`.
+	 */
 	windowShown(): Promise<void>;
 	/** Runs `kernel/quit`; resolves true when the app should quit. */
 	requestQuit(): Promise<boolean>;
@@ -210,18 +218,29 @@ export function createMainKernel(options: MainKernelOptions): MainKernel {
 	});
 
 	let promptedToQuit = false;
+	/** Settles once the host's process environment is final (see `start`). */
+	let environmentReady: Promise<void> = Promise.resolve();
 	const stopCapMs = options.stopCapMs ?? DEFAULT_STOP_CAP_MS;
 
 	return {
 		...core,
 		services,
 		commands,
-		async start() {
+		async start(startOptions) {
 			await core.activate();
-			services.markActivated();
+			if (!startOptions?.environmentReady) {
+				services.markActivated();
+				return;
+			}
+			environmentReady = startOptions.environmentReady.then(
+				() => undefined,
+				() => undefined,
+			);
+			void environmentReady.then(() => services.markActivated());
 		},
 		async windowShown() {
 			setPhase("started");
+			await environmentReady;
 			await services.markWindowShown();
 			setPhase("ready");
 		},

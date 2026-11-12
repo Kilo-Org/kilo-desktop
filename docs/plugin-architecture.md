@@ -440,7 +440,7 @@ work:
   "id": "server",
   "title": "Kilo agent server",
   "kind": "daemon",                       // or "task": one-off background work
-  "startOn": "window-shown",              // | "first-use" | "activation" (discouraged)
+  "startOn": "window-shown",              // | "first-use" | "activation" (only for what the UI waits on, e.g. the Kilo server)
   "when": { "all": ["termsAccepted"] },   // e.g. don't spawn before the terms gate
   "restart": { "policy": "on-failure", "maxRetries": 5 },
   "stopTimeout": "5s"
@@ -584,6 +584,8 @@ The whole timeline with its hooks:
 kernel   discover manifests → resolve requires
 app      starting
 plugins  in dependency order: plugin.activating → activate() → plugin.activated
+services startOn: activation, once the host's environment is final (the login
+         shell's; read while plugins activate, at most 10 s)
 windows  main window opened
 app      started                      ← "the UI is up": defer non-essential work to here
 services startOn: window-shown → service.starting → start() → service.ready | failed
@@ -605,15 +607,15 @@ opened or one of its commands being run — without changing these hooks.
 
 **Startup today → under this model**
 
-| Today                                                                                                       | Becomes                                                                                                                              |
-| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Every `mainRegister` awaited in sequence behind the splash; window created only after all finish            | Fast activation; window shown in phase 3; slow work in services                                                                      |
-| Kilo spawned as a side effect of the renderer's auth check; up to 60 s + 10 s with no UI                    | `kilo.agent` `server` service, `startOn: window-shown` (terms gate added with kilo.account, step 4); progress in Diagnostics         |
-| kilo-server's `configReady` holds up the splash                                                             | `kilo.agent`'s `config-sync` task, started at activation without blocking the window; the server service and `connect()` wait for it |
-| local-inference router, environments conda bridge, notebook runtimed each hand-rolled                       | Services: router `when` a model is configured; bridge and runtimed `startOn: first-use`                                              |
-| Crash handling differs per plugin; only notebook's shutdown is awaited; the shutdown barrier has no timeout | Kernel restart policy; awaited `stop()` with `stopTimeout`; overall quit cap                                                         |
-| Hard-coded boot order (`feature-order.ts`)                                                                  | Order derived from `requires`                                                                                                        |
-| One-off startup work (legacy cleanup, migrations, adopting old files)                                       | `task` services after the window is up, unless activation genuinely needs it                                                         |
+| Today                                                                                                       | Becomes                                                                                                                                                 |
+| ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Every `mainRegister` awaited in sequence behind the splash; window created only after all finish            | Fast activation; window shown in phase 3; slow work in services                                                                                         |
+| Kilo spawned as a side effect of the renderer's auth check; up to 60 s + 10 s with no UI                    | `kilo.agent` `server` service, `startOn: activation` alongside the window loading (terms gate added with kilo.account, step 4); progress in Diagnostics |
+| kilo-server's `configReady` holds up the splash                                                             | `kilo.agent`'s `config-sync` task, started at activation without blocking the window; the server service and `connect()` wait for it                    |
+| local-inference router, environments conda bridge, notebook runtimed each hand-rolled                       | Services: router `when` a model is configured; bridge and runtimed `startOn: first-use`                                                                 |
+| Crash handling differs per plugin; only notebook's shutdown is awaited; the shutdown barrier has no timeout | Kernel restart policy; awaited `stop()` with `stopTimeout`; overall quit cap                                                                            |
+| Hard-coded boot order (`feature-order.ts`)                                                                  | Order derived from `requires`                                                                                                                           |
+| One-off startup work (legacy cleanup, migrations, adopting old files)                                       | `task` services after the window is up, unless activation genuinely needs it                                                                            |
 
 ---
 
@@ -1052,7 +1054,7 @@ with contributors today; candidate points are in the extensibility map (§7).
 │   kilo.agent/runtime-config (A) .. env, Kilo plugins, MCP servers (read at server start)
 │   kilo.agent/model-provider (A) .. a provider entry in Kilo's config
 │   kilo.agent/chat-owner (A) ...... which Work Session holds a chat (kilo.sessions)
-│ ● kernel/service ................. server (daemon, window-shown) · config-sync (task, activation)
+│ ● kernel/service ................. server (daemon, activation) · config-sync (task, activation)
 │                                     · tool-gateway (daemon, activation)
 │   kilo.shell/settings-section .... AI Providers, External AI apps (flag)
 │   kilo.shell/onboarding-step ..... work style
@@ -1084,7 +1086,8 @@ with contributors today; candidate points are in the extensibility map (§7).
 ╰───────────────────────────────────────────────────────────────────────────────
 
 ╭─ kilo.sessions (model: Work Sessions) ────────────────────────────────────────
-│ ▲ kilo.sessions/pane-kind (A) ......... pane kinds: launch, singleton, keepAlive, order, availableWhen
+│ ▲ kilo.sessions/pane-kind (A) ......... pane kinds: launch, singleton, keepAlive, order, availableWhen;
+│                                         prefetch (a session's row hovered: load its panes ahead)
 │   kilo.sessions/opener (A) ....... open an ObjectRef in a pane (first match; "Open with" later)
 │ ● kilo.agent/chat-owner .......... the session holding a chat
 │                                    (pin, rename, archive, delete are each host's built-ins)
@@ -1161,7 +1164,8 @@ with contributors today; candidate points are in the extensibility map (§7).
 │ ● kilo.workbench/session-starter . the New Session page's composer: first send starts
 │                                    the session, chat and Agent pane, then opens it
 │   kilo.sessions/pane-kind ........ Agent (8c; order 10, listed first in every "+"; one chat
-│                                    per pane, several per session), Plan (singleton,
+│                                    per pane, several per session; prefetch loads its
+│                                    chat's history on hover), Plan (singleton,
 │                                    anchors in metadata), Subagent (one per child chat,
 │                                    id subagent:<child>) — neither in the launcher or "+" (8f)
 │   kilo.chat/composer-action (own)  attach, agent picker, model picker (+ effort),
@@ -1238,8 +1242,8 @@ with contributors today; candidate points are in the extensibility map (§7).
 
 ╭─ kilo.files ──────────────────────────────────────────────────────────────────
 │ ▲ —
-│ ■ documents (main) ............... list, read, write, existingPaths,
-│   resolveFileLink, gitStatus, external editors
+│ ■ documents (main) ............... list, listFiles, read, write,
+│   existingPaths, resolveFileLink, gitStatus, external editors
 │ ● kilo.sessions/pane-kind ............. Files (explorer, or one file; canClose)
 │   kilo.sessions/opener ........... any file (priority -100)
 │   kilo.chat/composer-mention ..... @ Files
@@ -1994,7 +1998,7 @@ Everything lands in a single PR once all plugins are built.
 - **Where a sessions view shows:** `kilo.workbench/sessions-view` renders in
   the home area in place of the open session (origin's full-page route),
   with the session list beside it; `Navigator.showView` picks it (per window,
-  remembered), opening a session leaves it, and its title (focused workspace
+  not kept across launches), opening a session leaves it, and its title (focused workspace
   › view title) and `headerActions` take the window header. A session behind
   a view isn't active: no row highlight, no visit, `sessionActive` off.
 - **Pop-out, generic:** a `detachable` view gets the workbench's Pop out
@@ -3096,8 +3100,9 @@ Everything lands in a single PR once all plugins are built.
 **What building step 6b settled:**
 
 - **The navigator is per window** (decision 42): `kilo.workbench/navigator`
-  holds the workspace focus and the open session, remembered per window in
-  localStorage (a first run adopts origin's session-list filter). Opening or
+  holds the workspace focus and the open session. Only the focus is
+  remembered per window in localStorage (a first run adopts origin's
+  session-list filter); every launch opens on the New Session page. Opening or
   closing a session also brings the window home; a deleted open session is
   let go. `sessionActive` / `workspaceActive` follow it. The rest of origin's
   view options (grouping, ordering, shown fields, status filter, archived

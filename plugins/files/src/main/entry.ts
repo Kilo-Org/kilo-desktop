@@ -1,4 +1,10 @@
-import { definePlugin, KernelError, type PluginEntry, type PluginSdk } from "@kilo-desktop/kernel";
+import {
+	definePlugin,
+	environmentReady,
+	KernelError,
+	type PluginEntry,
+	type PluginSdk,
+} from "@kilo-desktop/kernel";
 import { Panes, Vcs, Workspaces } from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import { Documents } from "../contracts";
@@ -83,6 +89,7 @@ export function createFilesMainEntry(options: FilesMainOptions = {}): PluginEntr
 				initialState: {},
 				methods: {
 					list: ({ workspaceDirectory }) => service.list(workspaceDirectory),
+					listFiles: ({ workspaceDirectory }) => service.listFiles(workspaceDirectory),
 					resolveFileLink: ({ workspaceDirectory, relativePath }) =>
 						service.resolveFileLink(workspaceDirectory, relativePath),
 					existingPaths: async ({ workspaceDirectory, relativePaths }) => ({
@@ -96,10 +103,13 @@ export function createFilesMainEntry(options: FilesMainOptions = {}): PluginEntr
 						const entries = await service.gitStatus(workspaceDirectory);
 						return entries === null ? null : { entries };
 					},
-					listExternalEditors: async () => ({
-						editors: [...(await editorLauncher.listAvailable())],
-					}),
+					// Editors are found on PATH, so both wait for the complete environment.
+					listExternalEditors: async () => {
+						await environmentReady(sdk);
+						return { editors: [...(await editorLauncher.listAvailable())] };
+					},
 					openExternalEditor: async ({ workspaceDirectory, relativePath, editor }) => {
+						await environmentReady(sdk);
 						const targetPath = await service.resolveFilePath(workspaceDirectory, relativePath);
 						await editorLauncher.open(editor, targetPath);
 						return { opened: true as const };

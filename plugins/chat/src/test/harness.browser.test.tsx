@@ -55,13 +55,6 @@ describe("renderAgentPane", () => {
 			workSessionsWeb: testWebEntry,
 			workSession: workSession({ chatIds: ["ses_a"] }),
 			chats: [chatSummary("ses_a")],
-			localStorage: {
-				"kilo.work-sessions.window:main": JSON.stringify({
-					focus: null,
-					activeWorkSessionId: "wses_1",
-					view: null,
-				}),
-			},
 		});
 
 		await vi.waitFor(

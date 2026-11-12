@@ -10,6 +10,10 @@ import { createCoverageConfig } from "../../vitest.coverage.shared.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 
+// `pnpm perf` (KILO_PERF=1) runs the benchmarks in src/perf on the browser
+// project instead of the tests; they never run with the suite.
+const perf = process.env.KILO_PERF === "1";
+
 export default defineConfig({
 	// Package-local cache: the hoisted workspace layout would otherwise share
 	// the root node_modules/.vite between concurrently running packages.
@@ -22,6 +26,7 @@ export default defineConfig({
 				"src/web/index.ts",
 				"src/test/**",
 				"src/testing/**",
+				"src/perf/**",
 				// Main's test kernels and fakes.
 				"src/main/test-boot.ts",
 				"src/main/file-watcher/watcher/test/**",
@@ -97,8 +102,10 @@ export default defineConfig({
 					],
 				},
 				test: {
-					name: "browser",
-					include: ["src/web/**/*.browser.test.tsx"],
+					name: perf ? "perf" : "browser",
+					include: perf
+						? ["src/perf/**/*.perf.browser.test.tsx"]
+						: ["src/web/**/*.browser.test.tsx"],
 					setupFiles: ["src/test/setup.ts"],
 					...(process.env.CI ? { maxWorkers: 2, sequence: { groupOrder: 1 } } : {}),
 					// Interaction-heavy tests outlast the 15s default when every package runs at once (pre-push).

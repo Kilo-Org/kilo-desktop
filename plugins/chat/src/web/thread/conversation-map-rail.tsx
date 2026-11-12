@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
+import { useOlderHistoryStatus } from "../runtime/use-optional-opencode-runtime-extras";
 import { ConversationMap, type ConversationMapEntry } from "./conversation-map";
 
 const TITLE_LENGTH = 72;
@@ -132,6 +133,43 @@ const describeTurn = ({ head, members }: Turn): ConversationMapEntry => {
 	};
 };
 
+const sameEntry = (left: ConversationMapEntry, right: ConversationMapEntry) =>
+	left.id === right.id && left.title === right.title && left.preview === right.preview;
+
+const sameMembers = (left: readonly ThreadMessage[], right: readonly ThreadMessage[]) =>
+	left.length === right.length && left.every((member, index) => member === right[index]);
+
+/*
+ * A streamed token gives the thread a new messages array while every settled
+ * message keeps its object, so a turn's entry is kept while its messages are
+ * unchanged, and while what it shows is: describing every turn on every
+ * token would cost the whole conversation's text per token.
+ */
+const describedTurns = new WeakMap<
+	ThreadMessage,
+	{ members: readonly ThreadMessage[]; entry: ConversationMapEntry }
+>();
+
+const describeTurnOnce = (turn: Turn): ConversationMapEntry => {
+	const cached = describedTurns.get(turn.head);
+	if (cached && sameMembers(cached.members, turn.members)) return cached.entry;
+	const described = describeTurn(turn);
+	const entry = cached && sameEntry(cached.entry, described) ? cached.entry : described;
+	describedTurns.set(turn.head, { members: [...turn.members], entry });
+	return entry;
+};
+
+/** `next`, or `previous` while it holds the same entries. */
+const keepEntries = (
+	previous: readonly ConversationMapEntry[] | undefined,
+	next: readonly ConversationMapEntry[],
+) =>
+	previous &&
+	previous.length === next.length &&
+	previous.every((entry, index) => entry === next[index])
+		? previous
+		: next;
+
 /**
  * The conversation map docked to the thread viewport's edge: one tick per user
  * turn, from the second turn on, that marks the turn being read and those in
@@ -154,7 +192,11 @@ export function ConversationMapRail({
 	const scheduleRef = useRef<(() => void) | undefined>(undefined);
 
 	const turns = useMemo(() => groupIntoTurns(messages), [messages]);
-	const entries = useMemo(() => turns.map(describeTurn), [turns]);
+	const entriesRef = useRef<readonly ConversationMapEntry[] | undefined>(undefined);
+	const entries = useMemo(
+		() => (entriesRef.current = keepEntries(entriesRef.current, turns.map(describeTurnOnce))),
+		[turns],
+	);
 
 	/** Which turn each message belongs to, so a message in view marks its turn. */
 	const turnOf = useMemo(() => {
@@ -184,18 +226,34 @@ export function ConversationMapRail({
 
 			// One pass yields both facts the rail draws: which turn is being read,
 			// and which turns the viewport currently holds.
-			let current: string | undefined;
+			// Messages stack in document order, so the first one reaching the
+			// viewport is found by bisection: reading every message's box from the
+			// top made each scroll frame cost the whole session's layout.
+			const elements = viewport.querySelectorAll<HTMLElement>("[data-message-id]");
+			const headOf = (element: HTMLElement) => {
+				const id = element.dataset["messageId"];
+				return id === undefined ? undefined : owners.get(id);
+			};
+			let low = 0;
+			let high = elements.length;
+			while (low < high) {
+				const middle = (low + high) >> 1;
+				if (elements[middle]!.getBoundingClientRect().bottom <= view.top) low = middle + 1;
+				else high = middle;
+			}
+			// The turn being read may have started above the viewport.
+			let current = low > 0 ? headOf(elements[low - 1]!) : undefined;
 			const onScreen: string[] = [];
-			for (const element of viewport.querySelectorAll<HTMLElement>("[data-message-id]")) {
+			for (let index = low; index < elements.length; index += 1) {
+				const element = elements[index]!;
 				const box = element.getBoundingClientRect();
 				if (box.top >= view.bottom) break;
 
-				const id = element.dataset["messageId"];
-				const head = id === undefined ? undefined : owners.get(id);
+				const head = headOf(element);
 				if (head === undefined) continue;
 
 				if (box.top <= line) current = head;
-				if (box.bottom > view.top && !onScreen.includes(head)) onScreen.push(head);
+				if (!onScreen.includes(head)) onScreen.push(head);
 			}
 
 			setActiveId(current ?? owners.values().next().value);
@@ -239,6 +297,9 @@ export function ConversationMapRail({
 		return () => observer.disconnect();
 	}, [viewport]);
 
+	// A map of part of the session would misplace every tick once the rest lands.
+	const historyComplete = useOlderHistoryStatus() === "complete";
+
 	const select = useCallback(
 		(id: string) => {
 			if (!viewport) return;
@@ -257,7 +318,7 @@ export function ConversationMapRail({
 		[viewport],
 	);
 
-	if (turns.length < 2) return null;
+	if (turns.length < 2 || !historyComplete) return null;
 
 	return (
 		<div

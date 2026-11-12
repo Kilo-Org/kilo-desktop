@@ -60,6 +60,7 @@ function csv(contents: string, extra: Partial<Extract<FileReadResult, { kind: "t
 function baseHandlers(read: DocumentMethods["read"]): DocumentMethods {
 	return {
 		list: async () => ({ paths: [], truncated: false }),
+		listFiles: async () => ({ paths: [], truncated: false }),
 		existingPaths: async ({ relativePaths }) => ({ paths: relativePaths }),
 		resolveFileLink: async () => ({ kind: "none", paths: [], truncated: false }),
 		read,

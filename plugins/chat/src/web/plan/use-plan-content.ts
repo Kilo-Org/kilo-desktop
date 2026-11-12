@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { useChatConnection } from "../runtime/chat-connection";
 import { directoryClient } from "../runtime/kilo-client";
-import { useOptionalOpenCodeRuntimeExtras } from "../runtime/use-optional-opencode-runtime-extras";
+import { useOptionalOpenCodeSession } from "../runtime/use-optional-opencode-runtime-extras";
 import type { PlanProjection } from "./plan-projection";
 
 export type PlanContentState = {
@@ -17,7 +17,7 @@ export type PlanContentState = {
  */
 export function usePlanContent(projection: PlanProjection): PlanContentState {
 	const { connection } = useChatConnection();
-	const session = useOptionalOpenCodeRuntimeExtras()?.session;
+	const session = useOptionalOpenCodeSession();
 	const directory = session?.directory;
 	const needsFile = Boolean(projection.path) && !projection.markdown;
 

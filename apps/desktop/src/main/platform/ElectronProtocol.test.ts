@@ -60,7 +60,11 @@ describe("ElectronProtocol", () => {
 		registerDesktopSchemes(["kilo-git"]);
 		expect(protocol.registerSchemesAsPrivileged).toHaveBeenCalledWith(
 			expect.arrayContaining([
-				expect.objectContaining({ scheme: "kilo-desktop" }),
+				// codeCache: Chromium keeps V8's code cache for a custom scheme only when it opts in.
+				expect.objectContaining({
+					scheme: "kilo-desktop",
+					privileges: expect.objectContaining({ standard: true, codeCache: true }),
+				}),
 				expect.objectContaining({ scheme: "kilo-desktop-dev" }),
 				// Plugin protocol schemes are manifest-declared (mainSdk.protocol).
 				expect.objectContaining({

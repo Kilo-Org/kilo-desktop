@@ -34,7 +34,7 @@ const tickIndex = (target: EventTarget | null): Preview | null => {
 };
 
 /** A rail of ticks, one per turn, that previews a turn on hover and jumps to it on click. */
-export function ConversationMap({
+export const ConversationMap = memo(function ConversationMap({
 	entries,
 	activeId,
 	visibleIds,
@@ -143,7 +143,7 @@ export function ConversationMap({
 			</Tooltip>
 		</>
 	);
-}
+});
 
 /**
  * The rail's single turn preview. A tooltip per tick made mounting a long

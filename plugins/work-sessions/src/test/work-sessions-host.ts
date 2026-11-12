@@ -582,6 +582,7 @@ export interface TestPaneKind {
 	readonly component?: ComponentType<PaneProps>;
 	readonly icon?: PaneImplementation["icon"];
 	readonly canClose?: PaneImplementation["canClose"];
+	readonly prefetch?: PaneImplementation["prefetch"];
 }
 
 /** A test plugin contributing pane kinds (`kilo.work-sessions/pane-kind`). */
@@ -611,6 +612,7 @@ export function paneKindPlugin(
 						component: kind.component,
 						...(kind.icon ? { icon: kind.icon } : {}),
 						...(kind.canClose ? { canClose: kind.canClose } : {}),
+						...(kind.prefetch ? { prefetch: kind.prefetch } : {}),
 					});
 				}
 				extra.activate?.(sdk);
@@ -631,7 +633,7 @@ export interface RenderWorkSessionsOptions extends WorkSessionsMainState {
 	readonly guests?: readonly GuestPlugin[];
 	/** localStorage seeded before the kernels start (a window's saved state). */
 	readonly localStorage?: Readonly<Record<string, string>>;
-	/** Opens this work session in the main window before it renders. */
+	/** Opens this work session in the main window once it has rendered. */
 	readonly open?: string;
 	readonly beforeRender?: (main: MainKernel) => void;
 	/** The host's windows: pop-outs are offered (desktop) when set. */
@@ -650,13 +652,6 @@ export async function renderWorkSessions(options: RenderWorkSessionsOptions = {}
 	const main = fakeWorkSessionsMain(options);
 	const chats = options.chats ? fakeChats(options.chats) : undefined;
 	const storage: Record<string, string> = { ...options.localStorage };
-	if (options.open) {
-		storage["kilo.work-sessions.window:main"] = JSON.stringify({
-			focus: null,
-			activeWorkSessionId: options.open,
-			view: null,
-		});
-	}
 	const host = await renderShell(
 		[
 			{
@@ -685,6 +680,7 @@ export async function renderWorkSessions(options: RenderWorkSessionsOptions = {}
 	const window = () => host.renderer.kernelSdk.domainObjects.get(WorkSessionsWindow)!;
 	const panesState = (workSessionId: string) =>
 		main.panes().state.byWorkSession[workSessionId] ?? EMPTY_WORK_SESSION_PANES;
+	if (options.open) await window().methods.openWorkSession({ workSessionId: options.open });
 	return {
 		host,
 		run,

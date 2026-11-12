@@ -8,14 +8,18 @@ import {
 import { ArrowDownIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, type FC, type RefObject } from "react";
 
+import { useFindScopeOpen } from "@kilo-desktop/ui/components/find-bar";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import { ComposerHeader } from "../checkpoints/composer-header";
 import { Composer } from "../composer/composer";
 import { ComposerFooter } from "../composer/composer-footer";
 import { OpenCodeComposerInteraction } from "../interactions/opencode-composer-interaction";
+import { ManualDisclosureMemoryProvider } from "../tools/activity-group";
 import { ConversationMapRail } from "./conversation-map-rail";
+import { WindowedMessages } from "./message-window";
 import { ThreadMessage } from "./messages";
+import { OlderHistoryStatus } from "./older-history-status";
 import { TooltipIconButton } from "./tooltip-icon-button";
 
 import "./composer.css";
@@ -23,6 +27,14 @@ import "./composer.css";
 /** Chat text size in place of the UI one; prose at 1.5x, the WCAG 1.4.8 minimum. */
 const CHAT_TYPOGRAPHY_CLASS =
 	"[--app-ui-text-size:var(--app-chat-text-size)] [--leading-relaxed:1.5]";
+
+/**
+ * Block layout, not a flex column: a streamed token grows the last message,
+ * and a flex container lays out every one of its children again, the
+ * windowing's placeholders included, so each token's layout cost grew with
+ * the session's length. Block layout leaves the messages above untouched.
+ */
+const MESSAGE_GROUP_CLASS = "space-y-4 empty:hidden";
 
 const THREAD_VIEWPORT_CLASS =
 	"relative flex flex-1 flex-col items-center overflow-x-hidden overflow-y-auto scroll-smooth";
@@ -98,8 +110,8 @@ export const Thread: FC = () => {
 					data-slot="aui_thread-column"
 					className="mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col px-1 pt-4"
 				>
-					<div data-slot="aui_message-group" className="mb-16 flex flex-col gap-y-4 empty:hidden">
-						<ThreadPrimitive.Messages>{() => <ThreadMessage />}</ThreadPrimitive.Messages>
+					<div data-slot="aui_message-group" className={cn("mb-16", MESSAGE_GROUP_CLASS)}>
+						<TranscriptMessages />
 					</div>
 					<ThreadPrimitive.ViewportFooter
 						/* Transparent so sticky glass can blur scrolled messages behind the shell. */
@@ -123,6 +135,17 @@ export const Thread: FC = () => {
 		</ThreadPrimitive.Root>
 	);
 };
+
+/**
+ * The transcript's messages, windowed to those near the viewport (see
+ * message-window.tsx); all of them while the find bar searches.
+ */
+const TranscriptMessages: FC = () => (
+	<ManualDisclosureMemoryProvider>
+		<OlderHistoryStatus />
+		<WindowedMessages Message={ThreadMessage} disabled={useFindScopeOpen()} />
+	</ManualDisclosureMemoryProvider>
+);
 
 // The fill under the dock is exactly the footer's pb-1.5, so it reaches the
 // pane's bottom edge: any taller and it overflows the viewport, which scrolls.
@@ -210,8 +233,8 @@ export const ReadonlyThread: FC = () => (
 			className={cn(THREAD_VIEWPORT_CLASS, "[scrollbar-gutter:stable_both-edges]")}
 		>
 			<div className="mx-auto flex w-full max-w-(--thread-max-width) flex-1 flex-col px-1 pt-4">
-				<div data-slot="aui_message-group" className="flex flex-col gap-y-4 empty:hidden">
-					<ThreadPrimitive.Messages>{() => <ThreadMessage />}</ThreadPrimitive.Messages>
+				<div data-slot="aui_message-group" className={MESSAGE_GROUP_CLASS}>
+					<TranscriptMessages />
 				</div>
 			</div>
 		</ThreadPrimitive.Viewport>

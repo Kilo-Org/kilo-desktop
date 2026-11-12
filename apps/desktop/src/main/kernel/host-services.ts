@@ -22,6 +22,8 @@ export interface HostServiceDeps {
 		remove(pluginId: string, path: string): Promise<void>;
 	};
 	readonly fetch: typeof globalThis.fetch;
+	/** Settles once the login shell's environment is applied to `process.env`. */
+	readonly environmentReady?: Promise<unknown>;
 	readonly protocol: {
 		register(scheme: string, handler: (request: Request) => Response | Promise<Response>): void;
 		unregister(scheme: string): void;
@@ -72,6 +74,17 @@ export function createHostServices(
 			remove: (path) => deps.fs.remove(pluginId, path),
 		},
 		net: { fetch: deps.fetch },
+		...(deps.environmentReady
+			? {
+					environment: {
+						ready: () =>
+							deps.environmentReady!.then(
+								() => undefined,
+								() => undefined,
+							),
+					},
+				}
+			: {}),
 		...(declaredSchemes.size > 0
 			? {
 					protocol: {

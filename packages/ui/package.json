@@ -23,8 +23,8 @@
 		"react-dom": "^19.0.0"
 	},
 	"dependencies": {
-		"@assistant-ui/react": "0.15.4",
-		"@assistant-ui/react-markdown": "^0.14.8",
+		"@assistant-ui/react": "0.15.35",
+		"@assistant-ui/react-markdown": "^0.14.25",
 		"@base-ui/react": "^1.6.0",
 		"@lobehub/icons": "^6.0.0",
 		"@lottiefiles/dotlottie-react": "0.21.1",

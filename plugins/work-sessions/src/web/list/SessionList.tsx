@@ -130,6 +130,7 @@ import {
 } from "./session-row-actions";
 import { useSessionActions } from "./session-renderers";
 import { SessionRelativeTime, SessionRowGlyph } from "./session-row-display";
+import { usePrefetchWorkSession } from "./use-prefetch-work-session";
 import { SessionRowHoverCard } from "./session-row-hover-card";
 import { usePullRequestFacet } from "./use-pull-request-facet";
 import { useSessionListView } from "./use-session-list-view";
@@ -200,6 +201,9 @@ interface SessionListChrome {
 	readonly workspaces: readonly Workspace[];
 	readonly sessions: SessionsHandle | null;
 	readonly open: (sessionId: string) => void;
+	/** The pointer came to rest on a session's row: load it ahead (`usePrefetchWorkSession`). */
+	readonly intendToOpen: (sessionId: string) => void;
+	readonly cancelIntentToOpen: () => void;
 	readonly activities: Readonly<Record<string, SessionActivity>>;
 	readonly visits: LastVisited;
 	/** Session id → number chip while the go-to-session modifier is held. */
@@ -218,6 +222,8 @@ const SessionListChromeContext = createContext<SessionListChrome>({
 	workspaces: [],
 	sessions: null,
 	open: () => undefined,
+	intendToOpen: () => undefined,
+	cancelIntentToOpen: () => undefined,
 	activities: {},
 	visits: { sessions: {}, originChats: {} },
 	shortcutHints: new Map(),
@@ -381,6 +387,7 @@ function SessionListContent() {
 		(workSessionId: string) => void navigatorHandle?.methods.openWorkSession({ workSessionId }),
 		[navigatorHandle],
 	);
+	const prefetch = usePrefetchWorkSession();
 
 	const [expanded, setExpanded] = useState<Record<string, boolean>>(() => ({
 		...DEFAULT_EXPANDED_SECTIONS,
@@ -574,6 +581,8 @@ function SessionListContent() {
 			workspaces,
 			sessions: sessionsHandle,
 			open,
+			intendToOpen: prefetch.intend,
+			cancelIntentToOpen: prefetch.cancel,
 			activities,
 			visits,
 			shortcutHints,
@@ -591,6 +600,7 @@ function SessionListContent() {
 			navigator.activeWorkSessionId,
 			navigator.view,
 			open,
+			prefetch,
 			sessionsHandle,
 			shortcutHints,
 			show,
@@ -1214,6 +1224,8 @@ const SessionRow = memo(function SessionRow({
 		workspaces,
 		sessions,
 		open,
+		intendToOpen,
+		cancelIntentToOpen,
 		activities,
 		visits,
 		shortcutHints,
@@ -1357,6 +1369,8 @@ const SessionRow = memo(function SessionRow({
 				data-qa-id={isArchived ? "session-list-archived-item" : "session-list-item"}
 				data-active={isActive || undefined}
 				data-selected={isSelected || undefined}
+				onPointerEnter={isActive ? undefined : () => intendToOpen(session.id)}
+				onPointerLeave={cancelIntentToOpen}
 				className={cn(
 					"group/sidebar-row @container/session-row relative mx-px min-w-0 cursor-pointer rounded-md text-left outline-none select-none",
 					isSelected

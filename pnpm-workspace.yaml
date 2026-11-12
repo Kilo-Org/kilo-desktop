@@ -46,9 +46,9 @@ overrides:
   "@assistant-ui/react-opencode>@opencode-ai/sdk": "link:plugins/chat/opencode-sdk-compat"
   # Keep react-opencode on the same core/store as @assistant-ui/react so Vite
   # does not embed a second AssistantContext (breaks composer typing).
-  "@assistant-ui/core": "0.3.5"
-  "@assistant-ui/store": "0.3.9"
-  "@assistant-ui/tap": "0.9.12"
+  "@assistant-ui/core": "0.3.35"
+  "@assistant-ui/store": "0.3.23"
+  "@assistant-ui/tap": "0.9.25"
   # pnpm 12 deploy fails with ERR_PNPM_DEPLOY_AMBIGUOUS_PEER when workspace
   # packages peer on zod and the graph contains both 3.x (MCP SDK 1) and
   # catalog 4.x.
@@ -97,7 +97,4 @@ registries:
   "@anaconda": https://npm.pkg.github.com/
 
 patchedDependencies:
-  # kilo.chat: a draft's failed first send must not surface as an unhandled
-  # rejection from RemoteThreadList's fire-and-forget initialize.
-  "@assistant-ui/core@0.3.5": plugins/chat/patches/@assistant-ui__core@0.3.5.patch
   "@assistant-ui/react-opencode@0.2.17": plugins/chat/patches/@assistant-ui__react-opencode@0.2.17.patch

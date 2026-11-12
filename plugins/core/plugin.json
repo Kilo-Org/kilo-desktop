@@ -181,7 +181,7 @@
 					"id": "server",
 					"title": "Kilo server",
 					"kind": "daemon",
-					"startOn": "window-shown",
+					"startOn": "activation",
 					"restart": {
 						"policy": "on-failure",
 						"maxRetries": 3

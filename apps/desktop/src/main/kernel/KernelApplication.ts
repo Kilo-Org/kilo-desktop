@@ -98,6 +98,9 @@ function kernelLogger(): KernelLogger {
  * about the product; everything visible comes from plugins (or the kernel's
  * recovery screen when there are none).
  */
+/** How long the login shell may take to report its environment (VS Code allows the same). */
+const LOGIN_ENVIRONMENT_TIMEOUT_MS = 10_000;
+
 export class KernelApplication {
 	readonly #app = new ElectronApp();
 	readonly #logger = createLogger("app");
@@ -133,9 +136,44 @@ export class KernelApplication {
 	#kernel: MainKernel | undefined;
 	#isDevelopment = false;
 	#quitting = false;
+	/** Settles once the login shell's environment is in `process.env` (see `start`). */
+	#loginEnvironment: Promise<void> = Promise.resolve();
 	#windowSequence = 0;
 
 	constructor(private readonly preferences: PreferencesStore) {}
+
+	/** Logs a startup milestone with the time since the process started. */
+	#mark(milestone: string): void {
+		this.#logger.info(`Startup: ${milestone} at ${Math.round(performance.now())} ms.`);
+	}
+
+	/**
+	 * Reads the login shell's environment into `process.env`, giving up after
+	 * `LOGIN_ENVIRONMENT_TIMEOUT_MS`: the shell runs the person's startup
+	 * files, and one that hangs must not hold the app back. A late reply is
+	 * dropped, so the environment never changes under processes already
+	 * spawned.
+	 */
+	async #syncLoginEnvironment(): Promise<void> {
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const timeout = new Promise<"timeout">((resolve) => {
+			timer = setTimeout(() => resolve("timeout"), LOGIN_ENVIRONMENT_TIMEOUT_MS);
+		});
+		try {
+			const environment = await Promise.race([shellEnv(), timeout]);
+			if (environment === "timeout") {
+				this.#logger.warn(
+					`login-shell env took over ${LOGIN_ENVIRONMENT_TIMEOUT_MS} ms; continuing with inherited env`,
+				);
+				return;
+			}
+			Object.assign(process.env, environment);
+		} catch (error) {
+			this.#logger.warn("login-shell env sync failed; continuing with inherited env", error);
+		} finally {
+			clearTimeout(timer);
+		}
+	}
 
 	async start(): Promise<void> {
 		const identity = getAppIdentity(this.#app.metadata.isPackaged ? RELEASE_TRACK : "development");
@@ -148,6 +186,11 @@ export class KernelApplication {
 		configureTrustedSchemes(this.#isDevelopment);
 		restoreNativeThemeFromPreferences(this.preferences);
 		identifySentryUser(this.preferences);
+		// The login shell's environment (PATH, proxies, tool homes) takes
+		// seconds to read. It runs while plugins activate and the window
+		// loads, and is in place before anything spawns a tool.
+		const loginEnvironment = this.#isDevelopment ? Promise.resolve() : this.#syncLoginEnvironment();
+		this.#loginEnvironment = loginEnvironment;
 
 		const kernel = this.#createKernel(identity.squirrelName);
 		this.#kernel = kernel;
@@ -170,13 +213,6 @@ export class KernelApplication {
 			embeddedHosts: () => [...this.#embeddedHosts.values()],
 			pluginSchemes,
 		});
-		if (!this.#isDevelopment) {
-			try {
-				Object.assign(process.env, await shellEnv());
-			} catch (error) {
-				this.#logger.warn("login-shell env sync failed; continuing with inherited env", error);
-			}
-		}
 		installProxyAgent();
 		this.#disposers.push(
 			this.#security.install(session.defaultSession, {
@@ -188,12 +224,20 @@ export class KernelApplication {
 			),
 		);
 
-		await kernel.start();
+		this.#mark("app ready");
+		// The window opens as soon as plugins are active; the login shell's
+		// environment arrives meanwhile. Everything that spawns tools waits for
+		// it: services (the kernel holds them), and plugin code that resolves or
+		// spawns a tool on request (`environmentReady(sdk)`).
+		await kernel.start({ environmentReady: loginEnvironment });
+		this.#mark("plugins activated");
+		void loginEnvironment.then(() => this.#mark("login environment ready"));
 		this.#watchSystem(kernel);
 		this.#watchMenuCommands(kernel);
 		this.#openMainWindow(kernel);
 		await this.#windows.whenReady();
 		this.#windows.reveal();
+		this.#mark("window shown");
 		void kernel.windowShown();
 		await signalReleaseSmokeReady(process.env);
 
@@ -281,6 +325,7 @@ export class KernelApplication {
 						kv: (dir) => createFeatureKvStoreFactory(dir),
 						fs,
 						fetch: this.#http.fetch,
+						environmentReady: this.#loginEnvironment,
 						protocol: {
 							register: (scheme, handler) =>
 								this.#protocol.registerFeatureScheme(scheme, async (request) => handler(request)),

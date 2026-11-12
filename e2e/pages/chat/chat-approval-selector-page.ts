@@ -33,11 +33,16 @@ const SESSION_POLL_TIMEOUT_MS = 30_000;
 const SESSION_POLL_INTERVAL_MS = 500;
 
 export class ChatApprovalSelectorPage {
-	private readonly trigger = () => getLocatorByTestId("kilo-approval-selector-trigger");
-	private readonly triggerLabel = () => getLocator('[data-slot="composer-approval-label"]');
-	private readonly menu = () => getLocatorByTestId("kilo-approval-selector-content");
-	private readonly manualItem = () => getLocatorByTestId("kilo-approval-selector-item-manual");
-	private readonly autoItem = () => getLocatorByTestId("kilo-approval-selector-item-auto");
+	private readonly trigger = () =>
+		getLocatorByTestId("kilo-approval-selector-trigger", { onlyVisible: true });
+	private readonly triggerLabel = () =>
+		getLocator('[data-slot="composer-approval-label"]', { onlyVisible: true });
+	private readonly menu = () =>
+		getLocatorByTestId("kilo-approval-selector-content", { onlyVisible: true });
+	private readonly manualItem = () =>
+		getLocatorByTestId("kilo-approval-selector-item-manual", { onlyVisible: true });
+	private readonly autoItem = () =>
+		getLocatorByTestId("kilo-approval-selector-item-auto", { onlyVisible: true });
 	private readonly messageInput = () => getLocatorByRole("textbox", { name: "Message input" });
 	private readonly sendButton = () => getLocatorByTestId(/^kilo-composer-send(-when-connected)?$/);
 	private readonly newChatButton = () => getLocatorByTestId("new-chat");

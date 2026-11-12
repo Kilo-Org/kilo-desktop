@@ -31,6 +31,9 @@ export interface RecordedRequest {
 	readonly body: unknown;
 }
 
+const encodeCursor = (id: string) => btoa(JSON.stringify({ id }));
+const decodeCursor = (cursor: string) => (JSON.parse(atob(cursor)) as { id: string }).id;
+
 const json = (value: unknown, status = 200) =>
 	new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json" } });
 
@@ -312,7 +315,11 @@ export class FakeKiloServer {
 				await new Promise((resolve) => setTimeout(resolve, this.chatReadDelayMs));
 			return json(this.#info(chat));
 		}
-		if (action === "message" && request.method === "GET") return json(chat.messages);
+		if (action === "message" && request.method === "GET") {
+			if (this.historyReadDelayMs)
+				await new Promise((resolve) => setTimeout(resolve, this.historyReadDelayMs));
+			return this.#messagePage(chat, url.searchParams);
+		}
 		if (action === "prompt_async") {
 			if (this.failPrompts) return json({ message: "The model is overloaded" }, 500);
 			this.#accept(chat, recorded.body as { parts?: Record<string, unknown>[] });
@@ -328,6 +335,25 @@ export class FakeKiloServer {
 		}
 		if (action === "command") return json({ info: {}, parts: [] });
 		return json({ message: "Not found" }, 404);
+	}
+
+	/**
+	 * `/session/:id/message` as Kilo serves it: everything without a `limit`;
+	 * with one, the newest `limit` messages older than the `before` cursor,
+	 * oldest first, and an `X-Next-Cursor` header while older ones remain.
+	 */
+	#messagePage(chat: FakeChat, search: URLSearchParams): Response {
+		const limit = Number(search.get("limit") ?? 0);
+		if (!limit) return json(chat.messages);
+		const before = search.get("before");
+		const end = before
+			? chat.messages.findIndex((message) => message.info.id === decodeCursor(before))
+			: chat.messages.length;
+		if (end === -1) return json({ message: "Bad cursor" }, 400);
+		const start = Math.max(0, end - limit);
+		const headers: Record<string, string> = { "content-type": "application/json" };
+		if (start > 0) headers["X-Next-Cursor"] = encodeCursor(chat.messages[start]!.info.id);
+		return new Response(JSON.stringify(chat.messages.slice(start, end)), { headers });
 	}
 
 	/** Records the prompt as the chat's next user message and publishes it, as Kilo does. */
@@ -350,6 +376,9 @@ export class FakeKiloServer {
 
 	/** Milliseconds a chat's details take to arrive, as from a busy server. */
 	chatReadDelayMs = 0;
+
+	/** Milliseconds a chat's messages take to arrive, as a long history does. */
+	historyReadDelayMs = 0;
 
 	/** Whether prompts fail, as when the server rejects them. */
 	failPrompts = false;

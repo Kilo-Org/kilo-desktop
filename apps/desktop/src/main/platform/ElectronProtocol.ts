@@ -76,6 +76,10 @@ export function registerDesktopSchemes(pluginSchemes: readonly string[]): void {
 				supportFetchAPI: true,
 				corsEnabled: true,
 				stream: true,
+				// Chromium keeps V8's code cache only for http(s) unless a custom
+				// scheme opts in, so every launch compiled the renderer's scripts
+				// from scratch.
+				codeCache: true,
 			},
 		})),
 		// Workspace files in the Browser tab (handled on the browser partition

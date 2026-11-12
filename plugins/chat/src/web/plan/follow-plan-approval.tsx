@@ -1,7 +1,9 @@
-import { useOpenCodeQuestions } from "@assistant-ui/react-opencode";
 import { useEffect, useRef } from "react";
 
-import { useOptionalOpenCodeRuntimeExtras } from "../runtime/use-optional-opencode-runtime-extras";
+import {
+	useOptionalOpenCodeSession,
+	usePendingQuestions,
+} from "../runtime/use-optional-opencode-runtime-extras";
 import { useOptionalChatAgentSelection } from "../selection/ChatAgentSelectionContext";
 import { findPlanFollowupRequest } from "./plan-followup";
 
@@ -14,8 +16,8 @@ const isPlanningAgent = (agent: string) => agent === "plan" || agent === "archit
  */
 export function FollowPlanApproval() {
 	const selection = useOptionalChatAgentSelection();
-	const followupId = findPlanFollowupRequest(useOpenCodeQuestions())?.id;
-	const kiloAgent = useOptionalOpenCodeRuntimeExtras()?.session?.agent;
+	const followupId = findPlanFollowupRequest(usePendingQuestions())?.id;
+	const kiloAgent = useOptionalOpenCodeSession()?.agent;
 	const agentWhileAsked = useRef<string | undefined>(undefined);
 	const answeredFrom = useRef<string | undefined>(undefined);
 	const asked = useRef(followupId);

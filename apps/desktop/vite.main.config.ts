@@ -91,10 +91,12 @@ export default defineConfig(({ command }) => {
 			// Read by the packager to write the app's third-party notices. Main and
 			// preload share an outDir, so each names its own file.
 			license: { fileName: ".vite/licenses.main.json" },
+			// Two entries: `main.js` (src/main/boot.ts, the package's `main`) turns on
+			// Node's compile cache before importing `app.js`, the app itself.
 			lib: {
-				entry: "src/main/main.ts",
+				entry: { main: "src/main/boot.ts", app: "src/main/main.ts" },
 				formats: ["es"],
-				fileName: () => "main.js",
+				fileName: (_format, name) => `${name}.js`,
 			},
 			rollupOptions: {
 				// Vite treats this lib build as a client consumer, so Rolldown would

@@ -1,4 +1,10 @@
-import { definePlugin, KernelError, mainHost, type PluginEntry } from "@kilo-desktop/kernel";
+import {
+	definePlugin,
+	environmentReady,
+	KernelError,
+	mainHost,
+	type PluginEntry,
+} from "@kilo-desktop/kernel";
 import { KiloServer, McpServer } from "@kilo-desktop/plugin-core/contracts";
 import { Workspaces } from "@kilo-desktop/plugin-work-sessions/contracts";
 
@@ -38,7 +44,17 @@ export function createMarketplaceMainEntry(options: MarketplaceMainOptions = {})
 				logger: sdk.logger,
 				...options,
 			});
-			sdk.domainObjects.provide(Marketplace, { initialState: {}, methods: api });
+			sdk.domainObjects.provide(Marketplace, {
+				initialState: {},
+				methods: {
+					...api,
+					// Commands are found on PATH, so the check waits for the complete environment.
+					checkCommands: async (input) => {
+						await environmentReady(sdk);
+						return api.checkCommands(input);
+					},
+				},
+			});
 		},
 	});
 }

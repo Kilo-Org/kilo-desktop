@@ -32,17 +32,18 @@ export interface WindowOptions {
 }
 
 /**
- * The window's `WorkSessionsWindow`: what it is looking at, remembered per
- * window in localStorage. Opening or closing a work session, or showing a
- * work sessions view, also brings the window back to the home view. Opening
- * a work session the list's workspace focus hides (one started in another
- * workspace from the New Session page, or found by search) moves the focus to
- * its workspace, so the open work session is always in the list. A
- * remembered work session that no longer exists is let go once work sessions
- * load; `detachedViews` follows the work sessions view windows open on
+ * The window's `WorkSessionsWindow`: what it is looking at. Only the
+ * workspace focus is remembered (per window, in localStorage); every launch
+ * opens on the New Session page with no work session or view shown. Opening
+ * or closing a work session, or showing a work sessions view, also brings the
+ * window back to the home view. Opening a work session the list's workspace
+ * focus hides (one started in another workspace from the New Session page, or
+ * found by search) moves the focus to its workspace, so the open work session
+ * is always in the list. An open work session deleted elsewhere is let go;
+ * `detachedViews` follows the work sessions view windows open on
  * `kernel/windows`; `workSessionActive` / `workSessionsViewShown` /
  * `workspaceActive` / `paneTargetActive` follow what the window shows (a work
- * session behind a work sessions view is not active). A saved view no plugin
+ * session behind a work sessions view is not active). A view no plugin
  * contributes (its plugin is off, or not activated yet) shows nothing, as in
  * `WorkSessionsMain`, so the keys treat it as absent without forgetting it.
  */
@@ -51,7 +52,12 @@ export function provideWorkSessionsWindow(sdk: PluginSdk, options: WindowOptions
 	const provider: DomainObjectProvider<typeof WorkSessionsWindow> = sdk.domainObjects.provide(
 		WorkSessionsWindow,
 		{
-			initialState: { ...readSavedWindow(windowId), detachedViews: [] },
+			initialState: {
+				...readSavedWindow(windowId),
+				activeWorkSessionId: null,
+				view: null,
+				detachedViews: [],
+			},
 			methods: {
 				setFocus: ({ focus }) => update({ focus }),
 				openWorkSession: ({ workSessionId }) => {
@@ -111,11 +117,7 @@ export function provideWorkSessionsWindow(sdk: PluginSdk, options: WindowOptions
 	function update(patch: Partial<WorkSessionsWindowState>): void {
 		const next = { ...provider.state, ...patch };
 		provider.setState(next);
-		writeSavedWindow(windowId, {
-			focus: next.focus,
-			activeWorkSessionId: next.activeWorkSessionId,
-			view: next.view,
-		});
+		writeSavedWindow(windowId, { focus: next.focus });
 		publishKeys(next);
 	}
 	function viewShown(view: string | null): boolean {

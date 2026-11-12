@@ -129,6 +129,7 @@ const handlers = (): DocumentMethods => ({
 		paths: ["docs/", "docs/readme.md", "src/", "src/index.ts"],
 		truncated: false,
 	}),
+	listFiles: async () => ({ paths: ["docs/readme.md", "src/index.ts"], truncated: false }),
 	existingPaths: async ({ relativePaths }) => ({ paths: relativePaths }),
 	resolveFileLink: async () => ({ kind: "none", paths: [], truncated: false }),
 	read: async ({ relativePath }) => ({

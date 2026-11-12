@@ -6,6 +6,7 @@ import type {
 import { AtSignIcon } from "lucide-react";
 import {
 	createContext,
+	useCallback,
 	useContext,
 	useEffect,
 	useMemo,
@@ -168,16 +169,21 @@ const MentionTrigger: FC<{
 	const { adapter, isLoading, icons } = useMentionAdapter(source, context);
 	const SourceIcon: IconComponent = source.implementation.icon ?? AtSignIcon;
 	const noun = source.title.toLocaleLowerCase();
+	const directive = useMemo(() => ({ formatter }), [formatter]);
+	const renderItemIcon = useCallback(
+		(item: Unstable_TriggerItem) => {
+			const Icon = icons.get(item.id);
+			return Icon ? <Icon className="size-3.5 shrink-0" /> : null;
+		},
+		[icons],
+	);
 	return (
 		<ComposerTriggerPopover
 			char={source.trigger}
 			adapter={adapter}
-			directive={{ formatter }}
+			directive={directive}
 			fallbackIcon={SourceIcon}
-			renderItemIcon={(item) => {
-				const Icon = icons.get(item.id);
-				return Icon ? <Icon className="size-3.5 shrink-0" /> : null;
-			}}
+			renderItemIcon={renderItemIcon}
 			isLoading={isLoading}
 			emptyItemsLabel={`No matching ${noun}`}
 			loadingLabel={`Loading ${noun}…`}

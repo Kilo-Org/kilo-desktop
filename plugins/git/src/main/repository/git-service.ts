@@ -220,6 +220,26 @@ export interface GitServiceOptions {
 	readonly createClient?: () => GitClientSlice;
 	/** How paths are compared; the host's by default. Overridable in tests. */
 	readonly pathIdentity?: PathIdentity;
+	/**
+	 * Settles once the process environment is complete (`environmentReady`).
+	 * git and gh are found on PATH, and the client keeps the git binary it
+	 * finds first, so nothing runs before this.
+	 */
+	readonly environmentReady?: () => Promise<void>;
+}
+
+/** `client`, each of whose (async) methods first waits for `ready`. */
+function afterEnvironment(client: GitClientSlice, ready: () => Promise<void>): GitClientSlice {
+	return new Proxy(client, {
+		get(target, prop, receiver) {
+			const value: unknown = Reflect.get(target, prop, receiver);
+			if (typeof value !== "function") return value;
+			return async (...args: unknown[]) => {
+				await ready();
+				return Reflect.apply(value, target, args);
+			};
+		},
+	});
 }
 
 /**
@@ -546,6 +566,7 @@ function parseJsonValue(json: string): unknown {
  */
 export class GitService {
 	readonly #client: GitClientSlice;
+	readonly #environmentReady: () => Promise<void>;
 	readonly #workspaces: WorkspaceAccess;
 	readonly #paths: PathIdentity;
 	readonly #tempDir: string | undefined;
@@ -567,7 +588,11 @@ export class GitService {
 	readonly #fetches = new Map<string, { promise: Promise<void> | null; settledAt: number }>();
 
 	constructor(options: GitServiceOptions) {
-		this.#client = options.createClient?.() ?? createDefaultClient(options.logger);
+		const client = options.createClient?.() ?? createDefaultClient(options.logger);
+		this.#environmentReady = options.environmentReady ?? (() => Promise.resolve());
+		this.#client = options.environmentReady
+			? afterEnvironment(client, options.environmentReady)
+			: client;
 		this.#workspaces = options.workspaces;
 		this.#paths = options.pathIdentity ?? hostPathIdentity;
 		this.#tempDir = options.tempDir;
@@ -746,6 +771,7 @@ export class GitService {
 		if (!force && this.#githubCliProbePromise) return this.#githubCliProbePromise;
 		const probe = (async () => {
 			let status: GithubCliStatus;
+			await this.#environmentReady();
 			try {
 				const result = await execa("gh", ["auth", "status"], {
 					reject: false,
@@ -1136,7 +1162,8 @@ export class GitService {
 		return result.exitCode === 0;
 	}
 
-	#gh(workingDirectory: string, args: string[]) {
+	async #gh(workingDirectory: string, args: string[]) {
+		await this.#environmentReady();
 		return execa("gh", args, {
 			cwd: workingDirectory,
 			reject: false,

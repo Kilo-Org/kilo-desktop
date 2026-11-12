@@ -146,10 +146,9 @@ const Items: FC<ItemsProps> = ({
 	const showBack = Boolean(activeCategoryId) && !isSearchMode;
 	useEffect(() => {
 		if (!highlightedItemId) return;
-		const highlightedItem = Array.from(
-			itemsRef.current?.querySelectorAll<HTMLElement>("[role=option]") ?? [],
-		).find((item) => item.id === highlightedItemId);
-		highlightedItem?.scrollIntoView({ block: "nearest", inline: "nearest" });
+		itemsRef.current
+			?.querySelector(`[role=option]#${CSS.escape(highlightedItemId)}`)
+			?.scrollIntoView({ block: "nearest", inline: "nearest" });
 	}, [highlightedItemId]);
 	return (
 		<ComposerPrimitive.Unstable_TriggerPopoverItems ref={itemsRef}>

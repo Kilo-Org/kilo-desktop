@@ -22,6 +22,12 @@ interface Run {
 	attempt: Promise<void> | undefined;
 }
 
+function deferred(): { readonly promise: Promise<void>; resolve(): void } {
+	let resolve = () => {};
+	const promise = new Promise<void>((settle) => (resolve = settle));
+	return { promise, resolve };
+}
+
 const RUNNING: ReadonlySet<ServiceStatus> = new Set(["starting", "ready", "restarting"]);
 
 export interface ServiceSupervisorOptions {
@@ -34,8 +40,10 @@ export interface ServiceSupervisorOptions {
 /**
  * Runs `kernel/service` contributions. A service is eligible when its
  * contribution is active (implemented, `when` holds) and its `startOn`
- * condition is met: `activation` once plugins are active, `window-shown`
- * after the main window shows, `first-use` once someone asks for it. Crashes
+ * condition is met: `activation` once plugins are active (and the host's
+ * environment is final), `window-shown` after the main window shows,
+ * `first-use` once someone asks for it after booting; `ensureStarted()` on a
+ * service the phase still holds waits for the phase. Crashes
  * restart with exponential backoff up to `maxRetries`; services whose
  * eligibility lapses are stopped, and one that becomes eligible again while
  * stopping starts once the stop settles. `stopPlugin()` stops a plugin's
@@ -52,6 +60,8 @@ export class ServiceSupervisor {
 	/** Plugins deactivating: their services stay stopped until the plugin unbinds them. */
 	readonly #held = new Set<string>();
 	#phase: Phase = "booting";
+	/** Settles on the next phase change, for `ensureStarted` waiting on one. */
+	#phaseChanged = deferred();
 
 	constructor(options: ServiceSupervisorOptions) {
 		this.#options = options;
@@ -62,22 +72,30 @@ export class ServiceSupervisor {
 	}
 
 	markActivated(): void {
-		if (this.#phase === "booting") this.#phase = "activated";
+		if (this.#phase === "booting") this.#setPhase("activated");
 		this.#reconcile();
 	}
 
 	/** Starts window-shown services and resolves once their first start attempts settle. */
 	async markWindowShown(): Promise<void> {
-		if (this.#phase === "booting" || this.#phase === "activated") this.#phase = "window-shown";
+		if (this.#phase === "booting" || this.#phase === "activated") this.#setPhase("window-shown");
 		this.#reconcile();
 		await this.settled();
 	}
 
-	/** Starts a first-use service (if needed) and resolves when it is ready or completed. */
+	/**
+	 * Starts a first-use service (if needed) and resolves when it is ready or
+	 * completed. A service the phase still holds (booting, or window-shown
+	 * before the window) is waited for.
+	 */
 	async ensureStarted(key: string): Promise<void> {
 		this.#requested.add(key);
 		this.#reconcile();
-		const run = this.#runs.get(key as QualifiedId);
+		let run = this.#runs.get(key as QualifiedId);
+		while (run && !run.attempt && run.status === "idle" && this.#heldByPhase(run)) {
+			await this.#phaseChanged.promise;
+			run = this.#runs.get(key as QualifiedId);
+		}
 		if (run?.attempt) await run.attempt;
 		if (run?.status === "failed") throw new Error(`Service "${key}" failed to start.`);
 	}
@@ -113,7 +131,7 @@ export class ServiceSupervisor {
 	}
 
 	async stopAll(): Promise<void> {
-		this.#phase = "stopping";
+		this.#setPhase("stopping");
 		const runs = [...this.#runs.values()].sort(
 			(a, b) => this.#options.pluginOrder(b.pluginId) - this.#options.pluginOrder(a.pluginId),
 		);
@@ -157,8 +175,22 @@ export class ServiceSupervisor {
 			case "window-shown":
 				return this.#phase === "window-shown";
 			case "first-use":
-				return this.#requested.has(run.key);
+				return this.#phase !== "booting" && this.#requested.has(run.key);
 		}
+	}
+
+	/** Whether only the phase keeps `run` from starting (a later phase will start it). */
+	#heldByPhase(run: Run): boolean {
+		if (this.#held.has(run.pluginId) || this.#phase === "stopping") return false;
+		if (this.#phase === "booting") return true;
+		return run.metadata.startOn === "window-shown" && this.#phase !== "window-shown";
+	}
+
+	#setPhase(phase: Phase): void {
+		this.#phase = phase;
+		const changed = this.#phaseChanged;
+		this.#phaseChanged = deferred();
+		changed.resolve();
 	}
 
 	#ensureRecord(contribution: Contribution<typeof KernelService>): void {

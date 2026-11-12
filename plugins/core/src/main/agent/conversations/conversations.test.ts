@@ -50,7 +50,7 @@ async function boot(
 			chatReconnectDelayMs: 5,
 		},
 	});
-	// Not awaited: a held server keeps the window-shown services starting.
+	// Not awaited: window-shown services (analytics) never hold the test; the server starts on activation.
 	void kernel.windowShown();
 	const conversations = kernel.kernelSdk.domainObjects.get(Chats)!;
 	const generation = kernel.kernelSdk.domainObjects.get(Generation)!;

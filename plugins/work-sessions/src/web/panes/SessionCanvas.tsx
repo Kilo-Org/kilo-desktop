@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { KernelWindows } from "@kilo-desktop/kernel";
 import { useContextKey, useDomainObject } from "@kilo-desktop/kernel/web";
@@ -23,11 +23,61 @@ import { PaneView } from "./PaneView";
 import { popOut, usePoppedOutPanes } from "./pop-outs";
 import { useWorkSessionPanes } from "./use-work-session-panes";
 
+/** How long a layout rests before it is saved: a splitter drag saves once, when it stops. */
+const LAYOUT_SAVE_DELAY_MS = 150;
+
+/** What a pending layout was made from: the saved layout and which panes exist. */
+const basisOf = (state: WorkSessionPanes) =>
+	`${state.layout ?? ""}|${state.panes.map((pane) => pane.id).join(",")}`;
+
+/**
+ * Saves the latest layout once changes pause, and at once when the canvas
+ * goes. A save writes the session's panes to disk in main and broadcasts them
+ * to every window, so saving each pointer move of a drag made the drag lag
+ * behind its own echo.
+ */
+function useCoalescedLayoutSave(
+	panes: ReturnType<typeof useDomainObject<typeof Panes>>,
+	workSessionId: string,
+) {
+	const queued = useRef<PaneLayout | null>(null);
+	const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+	const target = useRef({ panes, workSessionId });
+	target.current = { panes, workSessionId };
+
+	const flush = () => {
+		clearTimeout(timer.current);
+		timer.current = undefined;
+		const layout = queued.current;
+		queued.current = null;
+		const { panes: handle, workSessionId: id } = target.current;
+		if (!layout || !handle) return;
+		void saveLayout(handle, id, layout).catch(
+			reportFailure("Could not save the layout", "The panes went back to where they were."),
+		);
+	};
+	const flushRef = useRef(flush);
+	flushRef.current = flush;
+	// Leaving the session (or the canvas unmounting) saves what is waiting.
+	useEffect(() => () => flushRef.current(), [workSessionId]);
+
+	return {
+		schedule(layout: PaneLayout) {
+			queued.current = layout;
+			clearTimeout(timer.current);
+			timer.current = setTimeout(() => flushRef.current(), LAYOUT_SAVE_DELAY_MS);
+		},
+		/** The active pane the waiting save will record, if one waits. */
+		queuedActivePaneId: () => queued.current?.activePaneId,
+	};
+}
+
 /**
  * The open work session's pane canvas. The panes domain object holds which
  * panes exist; the canvas arranges them. A layout change shows at once and
- * is saved to the panes domain object, so every window follows; this
- * window's unsaved layout gives way as soon as the saved one changes.
+ * is saved to the panes domain object once changes pause, so every window
+ * follows; this window's unsaved layout gives way as soon as the saved
+ * layout or the set of panes changes.
  */
 export function SessionCanvas({ workSession }: { readonly workSession: WorkSession }) {
 	const panes = useDomainObject(Panes);
@@ -39,19 +89,17 @@ export function SessionCanvas({ workSession }: { readonly workSession: WorkSessi
 	const poppedOut = usePoppedOutPanes(workSession.id);
 	const canPopOut = desktop && windows !== null;
 	const derived = useMemo(() => sessionLayout(state, kinds.layoutKindOf), [kinds, state]);
-	const [pending, setPending] = useState<{ basis: WorkSessionPanes; layout: PaneLayout } | null>(
-		null,
-	);
-	const layout = pending?.basis === state ? pending.layout : derived;
+	const [pending, setPending] = useState<{ basis: string; layout: PaneLayout } | null>(null);
+	const basis = basisOf(state);
+	const layout = pending?.basis === basis ? pending.layout : derived;
+	const layoutSave = useCoalescedLayoutSave(panes, workSession.id);
 	const paneOrder = useMemo(() => panesInOrder(layout), [layout]);
 	const shortcutHints = useShortcutHints("pane", paneOrder);
 
 	const changeLayout = (next: PaneLayout) => {
 		if (!panes || serializeLayout(next) === serializeLayout(layout)) return;
-		setPending({ basis: state, layout: next });
-		void saveLayout(panes, workSession.id, next).catch(
-			reportFailure("Could not save the layout", "The panes went back to where they were."),
-		);
+		setPending({ basis, layout: next });
+		layoutSave.schedule(next);
 	};
 	const failed = (action: string) => reportFailure(`Could not ${action}`, "Nothing changed.");
 	const paneOf = (paneId: string) => state.panes.find((candidate) => candidate.id === paneId);
@@ -96,11 +144,13 @@ export function SessionCanvas({ workSession }: { readonly workSession: WorkSessi
 				arrangement={state.arrangement}
 				kinds={kinds.inSession}
 				onLayoutChange={changeLayout}
-				onSelectPane={(paneId) =>
+				onSelectPane={(paneId) => {
+					// The waiting layout save records the active pane too.
+					if (layoutSave.queuedActivePaneId() === paneId || state.activePaneId === paneId) return;
 					void panes?.methods
 						.activate({ workSessionId: workSession.id, paneId })
-						.catch(failed("show the pane"))
-				}
+						.catch(failed("show the pane"));
+				}}
 				onClosePane={(paneId) => {
 					if (!panes) return;
 					void closePane(panes, workSession.id, paneId, (kind) =>

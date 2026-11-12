@@ -68,7 +68,9 @@ jobs:
       - uses: ./.github/actions/turbo-cache
       # --affected: on depth-1 checkouts turbo can't resolve the merge base
       # and safely falls back to running every package.
-      - run: pnpm exec turbo run check --affected
+      # --concurrency=4: turbo's default of 10 parallel tsc runs exhausts the
+      # 16 GB runner on a full (uncached) check; the kernel kills one (exit 137).
+      - run: pnpm exec turbo run check --affected --concurrency=4
 
   test:
     strategy:

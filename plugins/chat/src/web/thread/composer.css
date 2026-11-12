@@ -81,11 +81,16 @@
 	outline: none;
 }
 
-.aui-lexical-placeholder {
+/* Lexical wraps the placeholder in an unstyled aria-hidden div; position that
+   wrapper so it inherits the editor's padding and lines up with the caret. */
+.aui-lexical-editor > :has(> .aui-lexical-placeholder) {
 	pointer-events: none;
 	position: absolute;
 	inset: 0;
 	padding: inherit;
+}
+
+.aui-lexical-placeholder {
 	color: color-mix(in oklab, var(--color-muted-foreground) 80%, transparent);
 }
 

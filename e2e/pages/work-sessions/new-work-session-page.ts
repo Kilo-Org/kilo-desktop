@@ -33,7 +33,7 @@ export class NewWorkSessionPage {
 	async startEmptySession(): Promise<void> {
 		await runFromCommandPalette("kilo.work-sessions/new-empty-work-session");
 		await expectElementToBeVisible(
-			getLocatorByTestId("session-workbench"),
+			getLocatorByTestId("session-workbench", { onlyVisible: true }),
 			"Starting an empty session should open it",
 		);
 	}

@@ -10,6 +10,8 @@ import type { DomainObjectHandle } from "@kilo-desktop/kernel";
 import type { KiloServer, ServerConnection } from "@kilo-desktop/plugin-core/contracts";
 
 import { createDeferredKiloClient } from "./deferred-client";
+import { createEventBatcher } from "./event-batcher";
+import { HistoryPrefetch } from "./history-prefetch";
 import { KiloClients } from "./kilo-client";
 
 type ServerHandle = DomainObjectHandle<typeof KiloServer>;
@@ -65,6 +67,7 @@ export class ChatServices {
 	#stopWatching: (() => void) | undefined;
 	#connection: Promise<ServerConnection> | undefined;
 	#events: OpenCodeEventSource | undefined;
+	#batcher = createEventBatcher();
 
 	constructor(server: () => ServerHandle | null) {
 		this.#server = server;
@@ -91,23 +94,50 @@ export class ChatServices {
 	);
 
 	/**
-	 * The window's event stream, opened on first use. A runtime's `dispose`
-	 * only lets go of its view of it; the stream stays open until the window's
-	 * services are disposed.
+	 * The window's event stream, opened on first use and delivered in
+	 * batches (see event-batcher.ts). A runtime's `dispose` only lets go of
+	 * its view of it; the stream stays open until the window's services are
+	 * disposed.
 	 */
 	events(): OpenCodeEventSourceLike {
 		this.#events ??= this.#openEvents();
-		const source = this.#events;
+		const batcher = this.#batcher;
 		return {
-			subscribe: (listener) => source.subscribe(listener),
+			subscribe: (listener) => batcher.subscribe(listener),
 			dispose: () => undefined,
 		};
 	}
 
+	/** Chat histories loaded ahead of opening (see history-prefetch.ts). */
+	readonly history = new HistoryPrefetch();
+
+	/**
+	 * Loads `chatId`'s history ahead, so opening it shows the transcript
+	 * without a round trip. Best effort: a failure is the opening thread's to
+	 * report when it loads.
+	 */
+	prefetchHistory(chatId: string, directory: string | null): void {
+		// The stream must be open for an event about the chat to drop a stale prefetch.
+		this.events();
+		void (async () => {
+			const connection = await this.connection();
+			const where = directory ?? (await this.#directoryOf(chatId));
+			if (where) this.history.prefetch(chatId, this.clients.directory(connection, where));
+		})().catch(() => undefined);
+	}
+
+	async #directoryOf(chatId: string): Promise<string | null> {
+		const { data } = await this.globalClient.session.get({ sessionID: chatId });
+		return data?.directory ?? null;
+	}
+
 	dispose(): void {
+		this.history.clear();
 		this.#stopWatching?.();
 		this.#events?.dispose();
 		this.#events = undefined;
+		this.#batcher.dispose();
+		this.#batcher = createEventBatcher();
 		this.#connection = undefined;
 	}
 
@@ -118,8 +148,14 @@ export class ChatServices {
 			return { stream: resyncOnceConnected(subscription.stream as AsyncIterable<unknown>) };
 		};
 		const source = new OpenCodeEventSource(this.globalClient as never, subscribe);
-		// The source disconnects when it has no listeners; this one keeps it connected.
-		source.subscribe(() => undefined);
+		// The batcher is the source's one listener, which also keeps it connected.
+		// Anything about a chat (or a reconnect) makes its prefetched history stale.
+		const batcher = this.#batcher;
+		source.subscribe((event) => {
+			if (event.type === STREAM_RECONNECTED_EVENT_TYPE) this.history.clear();
+			else this.history.invalidate(event.sessionId);
+			batcher.push(event);
+		});
 		return source;
 	}
 

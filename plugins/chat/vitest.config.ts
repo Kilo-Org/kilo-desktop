@@ -9,12 +9,15 @@ import { defineConfig } from "vitest/config";
 import { createCoverageConfig } from "../../vitest.coverage.shared.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
+// `pnpm perf` (KILO_PERF=1) runs the benchmarks in src/perf on the browser
+// project instead of the tests; they never run with the suite.
+const perf = process.env.KILO_PERF === "1";
 
 export default defineConfig({
 	cacheDir: path.join(root, ".vitest/cache"),
 	test: {
 		coverage: {
-			...createCoverageConfig(["src/test/**", "src/main/test-boot.ts"]),
+			...createCoverageConfig(["src/test/**", "src/perf/**", "src/main/test-boot.ts"]),
 			include: ["src/**"],
 		},
 		projects: [
@@ -28,6 +31,9 @@ export default defineConfig({
 			{
 				plugins: [react(), tailwindcss()],
 				assetsInclude: ["**/*.lottie"],
+				define: {
+					"import.meta.env.KILO_PERF_PROFILE": JSON.stringify(process.env.KILO_PERF_PROFILE ?? ""),
+				},
 				resolve: {
 					dedupe: [
 						"react",
@@ -44,6 +50,7 @@ export default defineConfig({
 					entries: [
 						"src/web/**/*.browser.test.tsx",
 						"src/test/**/*.browser.test.tsx",
+						"src/perf/**/*.perf.browser.test.tsx",
 						"src/test/setup.ts",
 					],
 					holdUntilCrawlEnd: true,
@@ -114,8 +121,10 @@ export default defineConfig({
 					],
 				},
 				test: {
-					name: "browser",
-					include: ["src/web/**/*.browser.test.tsx", "src/test/**/*.browser.test.tsx"],
+					name: perf ? "perf" : "browser",
+					include: perf
+						? ["src/perf/**/*.perf.browser.test.tsx"]
+						: ["src/web/**/*.browser.test.tsx", "src/test/**/*.browser.test.tsx"],
 					setupFiles: ["src/test/setup.ts"],
 					// CI caps browser workers because the Linux coverage runner has only 4 vCPUs.
 					// groupOrder 1 keeps this project in a separate scheduling bucket from
@@ -129,6 +138,8 @@ export default defineConfig({
 						provider: playwright(),
 						screenshotDirectory: ".vitest/screenshots",
 						locators: { testIdAttribute: "data-qa-id" },
+						// Benchmarks run at a desktop window's size: panes split real widths.
+						...(perf ? { viewport: { width: 1600, height: 1000 } } : {}),
 						instances: [{ browser: "chromium" }],
 					},
 				},

@@ -1,15 +1,19 @@
 import type { WorkSessionsWindowState } from "../../contracts";
 
-export type SavedWindow = Pick<WorkSessionsWindowState, "focus" | "activeWorkSessionId" | "view">;
+/**
+ * What a window remembers across launches: only the list's workspace focus.
+ * The open work session and work sessions view are not remembered, so every
+ * launch starts on the New Session page.
+ */
+export type SavedWindow = Pick<WorkSessionsWindowState, "focus">;
 
-/** Where a window remembers what it was looking at. */
 export const savedWindowKey = (windowId: string) => `kilo.work-sessions.window:${windowId}`;
-/** Where kilo.workbench, which this replaced, remembered it (`activeSessionId`). */
+/** Where kilo.workbench, which this replaced, remembered it. */
 const legacyWindowKey = (windowId: string) => `kilo.workbench.navigator:${windowId}`;
 /** Origin's session list view, whose workspace filter a first run adopts. */
 const ORIGIN_LIST_VIEW_KEY = "kilo-ui.session-list-view:v1";
 
-const EMPTY: SavedWindow = { focus: null, activeWorkSessionId: null, view: null };
+const EMPTY: SavedWindow = { focus: null };
 const text = (value: unknown) => (typeof value === "string" ? value : null);
 
 function readJson(key: string): Record<string, unknown> | null {
@@ -20,29 +24,15 @@ function readJson(key: string): Record<string, unknown> | null {
 }
 
 /**
- * A window's saved state. A first run takes kilo.workbench's saved state,
+ * A window's saved state. A first run takes kilo.workbench's saved focus,
  * else (with `adoptOrigin`) origin's session-list workspace filter.
  */
 export function readSavedWindow(windowId: string, adoptOrigin = true): SavedWindow {
 	try {
-		const saved = readJson(savedWindowKey(windowId));
-		if (saved) {
-			return {
-				focus: text(saved.focus),
-				activeWorkSessionId: text(saved.activeWorkSessionId),
-				view: text(saved.view),
-			};
-		}
-		const legacy = readJson(legacyWindowKey(windowId));
-		if (legacy) {
-			return {
-				focus: text(legacy.focus),
-				activeWorkSessionId: text(legacy.activeSessionId),
-				view: text(legacy.view),
-			};
-		}
+		const saved = readJson(savedWindowKey(windowId)) ?? readJson(legacyWindowKey(windowId));
+		if (saved) return { focus: text(saved.focus) };
 		if (!adoptOrigin) return EMPTY;
-		return { ...EMPTY, focus: text(readJson(ORIGIN_LIST_VIEW_KEY)?.focus) || null };
+		return { focus: text(readJson(ORIGIN_LIST_VIEW_KEY)?.focus) || null };
 	} catch {
 		return EMPTY;
 	}

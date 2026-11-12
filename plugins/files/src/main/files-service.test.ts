@@ -143,6 +143,31 @@ describe("FilesService", () => {
 		});
 	});
 
+	it("lists only files for mentions, skipping gitignored, .git and worktree paths", async () => {
+		const workspace = await temporaryWorkspace();
+		await mkdir(path.join(workspace, "src", "generated"), { recursive: true });
+		await mkdir(path.join(workspace, "node_modules", "dep"), { recursive: true });
+		await mkdir(path.join(workspace, ".git"), { recursive: true });
+		await mkdir(path.join(workspace, ".kilo", "worktrees", "kilo-x"), { recursive: true });
+		await writeFile(path.join(workspace, ".gitignore"), ".env\nnode_modules/\n");
+		await writeFile(path.join(workspace, ".env"), "SECRET=hunter2");
+		await writeFile(path.join(workspace, ".git", "HEAD"), "ref: refs/heads/main\n");
+		await writeFile(path.join(workspace, ".kilo", "worktrees", "kilo-x", "README.md"), "readme");
+		await writeFile(path.join(workspace, "node_modules", "dep", "index.js"), "ignored");
+		await writeFile(path.join(workspace, "src", ".gitignore"), "generated/\n");
+		await writeFile(path.join(workspace, "src", "generated", "code.ts"), "ignored");
+		await writeFile(path.join(workspace, "src", "index.ts"), "export {};");
+
+		const service = new FilesService({
+			authorize: async () => undefined,
+			gitStatus: async () => null,
+		});
+		await expect(service.listFiles(workspace)).resolves.toEqual({
+			paths: [".gitignore", "src/.gitignore", "src/index.ts"],
+			truncated: false,
+		});
+	});
+
 	it("excludes the root .git directory but not nested worktree .git pointer files or other dot files", async () => {
 		const workspace = await temporaryWorkspace();
 		await mkdir(path.join(workspace, ".git", "objects"), { recursive: true });

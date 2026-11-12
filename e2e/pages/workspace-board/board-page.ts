@@ -32,7 +32,7 @@ export class BoardPage {
 		);
 		await runFromCommandPalette("kilo.work-sessions/new-empty-work-session");
 		await expectElementToBeVisible(
-			getLocatorByTestId("session-workbench"),
+			getLocatorByTestId("session-workbench", { onlyVisible: true }),
 			"Starting a session should open it",
 		);
 		const row = this.activeRow();
@@ -88,7 +88,7 @@ export class BoardPage {
 	async openSession(columnId: string): Promise<void> {
 		await click(this.card(columnId).getByTestId("workspace-board-card-open"));
 		await expectElementToBeVisible(
-			getLocatorByTestId("session-workbench"),
+			getLocatorByTestId("session-workbench", { onlyVisible: true }),
 			"Opening a card should show its session",
 		);
 	}
@@ -102,7 +102,7 @@ export class BoardPage {
 			"The board should open in its own window",
 		);
 		await expectElementToBeVisible(
-			getLocatorByTestId("session-workbench"),
+			getLocatorByTestId("session-workbench", { onlyVisible: true }),
 			"The main window should go back to the session",
 		);
 	}

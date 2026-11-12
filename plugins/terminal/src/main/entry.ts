@@ -2,6 +2,7 @@ import {
 	definePlugin,
 	mainHost,
 	type DomainObjectHandle,
+	environmentReady,
 	type DomainObjectProvider,
 	type KernelLogger,
 	type KernelPort,
@@ -44,6 +45,8 @@ export interface TerminalManagerLike {
 
 export interface TerminalManagerDeps {
 	readonly storageDir: string;
+	/** Settles once the process environment is complete; shells start after it. */
+	readonly environmentReady: () => Promise<void>;
 	readonly resolveCwd: (cwd?: string) => Promise<string>;
 	readonly onSessionExited: (identity: TerminalIdentity, exit: TerminalExit) => void;
 	readonly onLabelChanged: (identity: TerminalIdentity, label: string) => void;
@@ -130,6 +133,7 @@ export function createTerminalMainEntry(options: TerminalMainOptions): PluginEnt
 
 			const manager = options.createManager({
 				storageDir: host.storage.dir,
+				environmentReady: () => environmentReady(sdk),
 				resolveCwd: createTerminalCwdResolver(
 					() => sdk.domainObjects.get(Workspaces),
 					options.homeDirectory,

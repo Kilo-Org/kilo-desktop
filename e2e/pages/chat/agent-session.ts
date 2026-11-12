@@ -90,7 +90,7 @@ export async function startEmptySession(): Promise<void> {
 	await openLauncher();
 	await runFromCommandPalette("kilo.work-sessions/new-empty-work-session");
 	await expectElementToBeVisible(
-		getLocatorByTestId("session-workbench"),
+		getLocatorByTestId("session-workbench", { onlyVisible: true }),
 		"Starting an empty session should open it",
 	);
 }

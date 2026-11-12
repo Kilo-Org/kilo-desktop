@@ -2,7 +2,7 @@ import { useAuiState } from "@assistant-ui/react";
 import { useEffect } from "react";
 
 import type { KiloModelRef } from "../selection/model-catalog";
-import { useOptionalOpenCodeRuntimeExtras } from "../runtime/use-optional-opencode-runtime-extras";
+import { useOptionalOpenCodeSession } from "../runtime/use-optional-opencode-runtime-extras";
 
 type KiloSessionSelectionSyncProps = {
 	hydrateAgent: (threadId: string, agent: string) => void;
@@ -25,7 +25,7 @@ export function KiloSessionSelectionSync({
 	hydrateModel,
 }: KiloSessionSelectionSyncProps) {
 	const remoteId = useAuiState((state) => state.threadListItem.remoteId);
-	const session = useOptionalOpenCodeRuntimeExtras()?.session;
+	const session = useOptionalOpenCodeSession();
 	const sessionId = session?.id;
 	const agent = session?.agent;
 	const providerID = session?.model?.providerID;

@@ -1,9 +1,13 @@
 import { useAui } from "@assistant-ui/react";
-import { useOpenCodeQuestions } from "@assistant-ui/react-opencode";
+import type { OpenCodeRuntimeExtras } from "@assistant-ui/react-opencode";
 import { useState } from "react";
 import { create } from "zustand";
 
-import { useOptionalOpenCodeRuntimeExtras } from "../runtime/use-optional-opencode-runtime-extras";
+import {
+	selectOpenCodeExtras,
+	useOpenCodeExtrasSlice,
+	usePendingQuestions,
+} from "../runtime/use-optional-opencode-runtime-extras";
 import { useOptionalChatAgentSelection } from "../selection/ChatAgentSelectionContext";
 import {
 	PLAN_IMPLEMENT_FALLBACK_PROMPT,
@@ -50,11 +54,18 @@ const errorText = (caught: unknown, fallback: string) =>
  * question. Without one (an older server), approving sends origin's
  * implement prompt instead.
  */
+const selectCanReply = () => true;
+
 export function useApprovePlan(options?: { fallbackApprovalScope?: string }) {
 	const aui = useAui();
 	const selection = useOptionalChatAgentSelection();
-	const pendingQuestions = useOpenCodeQuestions();
-	const replyToQuestion = useOptionalOpenCodeRuntimeExtras()?.replyToQuestion;
+	const pendingQuestions = usePendingQuestions();
+	// Read at reply time: the extras (and their functions) change with every streamed token.
+	const canReplyToQuestions = useOpenCodeExtrasSlice(selectCanReply) === true;
+	const replyToQuestion = canReplyToQuestions
+		? (...args: Parameters<OpenCodeRuntimeExtras["replyToQuestion"]>) =>
+				selectOpenCodeExtras(aui.thread.getState().extras)!.replyToQuestion(...args)
+		: undefined;
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 

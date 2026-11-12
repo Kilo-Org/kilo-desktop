@@ -95,14 +95,45 @@ index 9f1e69a..7d8d2c6 100644
 \ No newline at end of file
 +{"version":3,"file":"OpenCodeEventSource.js","names":[],"sources":["../src/OpenCodeEventSource.ts"],"sourcesContent":["import type { OpencodeClient } from \"@opencode-ai/sdk/v2/client\";\nimport type { OpenCodeServerEvent } from \"./types\";\n\ntype Listener = (event: OpenCodeServerEvent) => void;\n\nexport type OpenCodeEventSubscriber = (options: {\n  signal: AbortSignal;\n  sseMaxRetryAttempts: number;\n}) => Promise<{ stream: AsyncIterable<unknown> }>;\n\nconst asRecord = (value: unknown): Record<string, unknown> | null => {\n  return typeof value === \"object\" && value !== null\n    ? (value as Record<string, unknown>)\n    : null;\n};\n\nconst extractSessionId = (\n  type: string,\n  properties: Record<string, unknown>,\n): string | undefined => {\n  if (typeof properties.sessionID === \"string\") {\n    return properties.sessionID;\n  }\n\n  const info = asRecord(properties.info);\n  if (info) {\n    if (typeof info.sessionID === \"string\") {\n      return info.sessionID;\n    }\n\n    if (\n      (type === \"session.created\" ||\n        type === \"session.updated\" ||\n        type === \"session.deleted\") &&\n      typeof info.id === \"string\"\n    ) {\n      return info.id;\n    }\n  }\n\n  const part = asRecord(properties.part);\n  if (part && typeof part.sessionID === \"string\") {\n    return part.sessionID;\n  }\n\n  return undefined;\n};\n\nconst normalizeEventPayload = (event: unknown): OpenCodeServerEvent | null => {\n  const outer = asRecord(event);\n  if (!outer) return null;\n\n  const payload = asRecord(outer.payload);\n  const candidate = payload ?? outer;\n\n  if (\n    typeof candidate.type !== \"string\" ||\n    !(\"properties\" in candidate) ||\n    !asRecord(candidate.properties)\n  ) {\n    return null;\n  }\n\n  const normalized = {\n    type: candidate.type,\n    properties: candidate.properties as Record<string, unknown>,\n    directory: typeof outer.directory === \"string\" ? outer.directory : undefined,\n    sessionId: extractSessionId(\n      candidate.type,\n      candidate.properties as Record<string, unknown>,\n    ),\n    raw: event,\n  } satisfies OpenCodeServerEvent;\n\n  return normalized;\n};\n\nexport const STREAM_RECONNECTED_EVENT_TYPE = \"stream.reconnected\";\n\nexport class OpenCodeEventSource {\n  private readonly listeners = new Set<Listener>();\n  private readonly reconnectDelayMs = 1_000;\n  private readonly maxReconnectDelayMs = 30_000;\n  private abortController: AbortController | null = null;\n  private connectionPromise: Promise<void> | null = null;\n  private stopped = false;\n  private nextReconnectDelayMs = this.reconnectDelayMs;\n  private hadConnection = false;\n\n  private readonly client: OpencodeClient;\n  private readonly subscribeToEvents: OpenCodeEventSubscriber;\n  private readonly onEvent: ((event: OpenCodeServerEvent) => void) | undefined;\n\n  constructor(\n    client: OpencodeClient,\n    subscribeToEvents?: OpenCodeEventSubscriber,\n    onEvent?: (event: OpenCodeServerEvent) => void,\n  ) {\n    this.client = client;\n    this.subscribeToEvents =\n      subscribeToEvents ??\n      ((options) => this.client.event.subscribe(undefined, options));\n    this.onEvent = onEvent;\n  }\n\n  public subscribe(listener: Listener) {\n    this.listeners.add(listener);\n    this.connect();\n\n    return () => {\n      this.listeners.delete(listener);\n      if (this.listeners.size === 0) {\n        this.disconnect();\n      }\n    };\n  }\n\n  public dispose() {\n    this.stopped = true;\n    this.disconnect();\n  }\n\n  private emit(event: OpenCodeServerEvent) {\n    for (const listener of this.listeners) {\n      try {\n        listener(event);\n      } catch (error) {\n        console.error(\"[react-opencode] Listener threw an error\", error);\n      }\n    }\n  }\n\n  private connect() {\n    if (this.connectionPromise || this.stopped) return;\n    const connection = this.run().finally(() => {\n      if (this.connectionPromise === connection) {\n        this.connectionPromise = null;\n        if (!this.stopped && this.listeners.size > 0) {\n          this.connect();\n        }\n      }\n    });\n    this.connectionPromise = connection;\n  }\n\n  private disconnect() {\n    this.abortController?.abort();\n    this.abortController = null;\n  }\n\n  private async run() {\n    while (!this.stopped) {\n      if (this.listeners.size === 0) return;\n\n      const abortController = new AbortController();\n      this.abortController = abortController;\n      let failedToConnect = true;\n      let reconnectDelayMs = this.reconnectDelayMs;\n\n      try {\n        const subscription = await this.subscribeToEvents({\n          signal: abortController.signal,\n          sseMaxRetryAttempts: 1,\n        });\n        failedToConnect = false;\n        this.nextReconnectDelayMs = this.reconnectDelayMs;\n\n        if (this.hadConnection) {\n          this.emit({\n            type: STREAM_RECONNECTED_EVENT_TYPE,\n            sessionId: undefined,\n            raw: undefined,\n            properties: {},\n          });\n        }\n        this.hadConnection = true;\n\n        for await (const event of subscription.stream) {\n          if (abortController.signal.aborted || this.stopped) {\n            return;\n          }\n\n          const normalized = normalizeEventPayload(event);\n          if (!normalized) continue;\n          this.onEvent?.(normalized);\n          this.emit(normalized);\n        }\n        if (abortController.signal.aborted || this.stopped) {\n          return;\n        }\n      } catch (error) {\n        if (abortController.signal.aborted || this.stopped) return;\n        console.warn(\n          \"[react-opencode] OpenCode event stream disconnected\",\n          error,\n        );\n        if (failedToConnect) {\n          reconnectDelayMs = this.nextReconnectDelayMs;\n          this.nextReconnectDelayMs = Math.min(\n            this.nextReconnectDelayMs * 2,\n            this.maxReconnectDelayMs,\n          );\n        }\n      } finally {\n        if (this.abortController === abortController) {\n          this.abortController = null;\n        }\n      }\n\n      if (this.listeners.size === 0) return;\n\n      await new Promise((resolve) => setTimeout(resolve, reconnectDelayMs));\n    }\n  }\n}\n"],"mappings":";AAUA,MAAM,YAAY,UAAmD;CACnE,OAAO,OAAO,UAAU,YAAY,UAAU,OACzC,QACD;AACN;AAEA,MAAM,oBACJ,MACA,eACuB;CACvB,IAAI,OAAO,WAAW,cAAc,UAClC,OAAO,WAAW;CAGpB,MAAM,OAAO,SAAS,WAAW,IAAI;CACrC,IAAI,MAAM;EACR,IAAI,OAAO,KAAK,cAAc,UAC5B,OAAO,KAAK;EAGd,KACG,SAAS,qBACR,SAAS,qBACT,SAAS,sBACX,OAAO,KAAK,OAAO,UAEnB,OAAO,KAAK;CAEhB;CAEA,MAAM,OAAO,SAAS,WAAW,IAAI;CACrC,IAAI,QAAQ,OAAO,KAAK,cAAc,UACpC,OAAO,KAAK;AAIhB;AAEA,MAAM,yBAAyB,UAA+C;CAC5E,MAAM,QAAQ,SAAS,KAAK;CAC5B,IAAI,CAAC,OAAO,OAAO;CAGnB,MAAM,YADU,SAAS,MAAM,OACP,KAAK;CAE7B,IACE,OAAO,UAAU,SAAS,YAC1B,EAAE,gBAAgB,cAClB,CAAC,SAAS,UAAU,UAAU,GAE9B,OAAO;CAcT,OAAO;EAVL,MAAM,UAAU;EAChB,YAAY,UAAU;EACtB,WAAW,OAAO,MAAM,cAAc,WAAW,MAAM,YAAY,KAAA;EACnE,WAAW,iBACT,UAAU,MACV,UAAU,UACZ;EACA,KAAK;CAGS;AAClB;AAEA,MAAa,gCAAgC;AAE7C,IAAa,sBAAb,MAAiC;CAC/B,4BAA6B,IAAI,IAAc;CAC/C,mBAAoC;CACpC,sBAAuC;CACvC,kBAAkD;CAClD,oBAAkD;CAClD,UAAkB;CAClB,uBAA+B,KAAK;CACpC,gBAAwB;CAExB;CACA;CACA;CAEA,YACE,QACA,mBACA,SACA;EACA,KAAK,SAAS;EACd,KAAK,oBACH,uBACE,YAAY,KAAK,OAAO,MAAM,UAAU,KAAA,GAAW,OAAO;EAC9D,KAAK,UAAU;CACjB;CAEA,UAAiB,UAAoB;EACnC,KAAK,UAAU,IAAI,QAAQ;EAC3B,KAAK,QAAQ;EAEb,aAAa;GACX,KAAK,UAAU,OAAO,QAAQ;GAC9B,IAAI,KAAK,UAAU,SAAS,GAC1B,KAAK,WAAW;EAEpB;CACF;CAEA,UAAiB;EACf,KAAK,UAAU;EACf,KAAK,WAAW;CAClB;CAEA,KAAa,OAA4B;EACvC,KAAK,MAAM,YAAY,KAAK,WAC1B,IAAI;GACF,SAAS,KAAK;EAChB,SAAS,OAAO;GACd,QAAQ,MAAM,4CAA4C,KAAK;EACjE;CAEJ;CAEA,UAAkB;EAChB,IAAI,KAAK,qBAAqB,KAAK,SAAS;EAC5C,MAAM,aAAa,KAAK,IAAI,CAAC,CAAC,cAAc;GAC1C,IAAI,KAAK,sBAAsB,YAAY;IACzC,KAAK,oBAAoB;IACzB,IAAI,CAAC,KAAK,WAAW,KAAK,UAAU,OAAO,GACzC,KAAK,QAAQ;GAEjB;EACF,CAAC;EACD,KAAK,oBAAoB;CAC3B;CAEA,aAAqB;EACnB,KAAK,iBAAiB,MAAM;EAC5B,KAAK,kBAAkB;CACzB;CAEA,MAAc,MAAM;EAClB,OAAO,CAAC,KAAK,SAAS;GACpB,IAAI,KAAK,UAAU,SAAS,GAAG;GAE/B,MAAM,kBAAkB,IAAI,gBAAgB;GAC5C,KAAK,kBAAkB;GACvB,IAAI,kBAAkB;GACtB,IAAI,mBAAmB,KAAK;GAE5B,IAAI;IACF,MAAM,eAAe,MAAM,KAAK,kBAAkB;KAChD,QAAQ,gBAAgB;KACxB,qBAAqB;IACvB,CAAC;IACD,kBAAkB;IAClB,KAAK,uBAAuB,KAAK;IAEjC,IAAI,KAAK,eACP,KAAK,KAAK;KACR,MAAM;KACN,WAAW,KAAA;KACX,KAAK,KAAA;KACL,YAAY,CAAC;IACf,CAAC;IAEH,KAAK,gBAAgB;IAErB,WAAW,MAAM,SAAS,aAAa,QAAQ;KAC7C,IAAI,gBAAgB,OAAO,WAAW,KAAK,SACzC;KAGF,MAAM,aAAa,sBAAsB,KAAK;KAC9C,IAAI,CAAC,YAAY;KACjB,KAAK,UAAU,UAAU;KACzB,KAAK,KAAK,UAAU;IACtB;IACA,IAAI,gBAAgB,OAAO,WAAW,KAAK,SACzC;GAEJ,SAAS,OAAO;IACd,IAAI,gBAAgB,OAAO,WAAW,KAAK,SAAS;IACpD,QAAQ,KACN,uDACA,KACF;IACA,IAAI,iBAAiB;KACnB,mBAAmB,KAAK;KACxB,KAAK,uBAAuB,KAAK,IAC/B,KAAK,uBAAuB,GAC5B,KAAK,mBACP;IACF;GACF,UAAU;IACR,IAAI,KAAK,oBAAoB,iBAC3B,KAAK,kBAAkB;GAE3B;GAEA,IAAI,KAAK,UAAU,SAAS,GAAG;GAE/B,MAAM,IAAI,SAAS,YAAY,WAAW,SAAS,gBAAgB,CAAC;EACtE;CACF;AACF"}
 \ No newline at end of file
+diff --git a/dist/OpenCodeThreadController.d.ts b/dist/OpenCodeThreadController.d.ts
+index 6ccaa3d..a240225 100644
+--- a/dist/OpenCodeThreadController.d.ts
++++ b/dist/OpenCodeThreadController.d.ts
+@@ -3,6 +3,8 @@ import { OpenCodeEventSource } from "./OpenCodeEventSource.js";
+ import { AppendMessage } from "@assistant-ui/react";
+ import { OpencodeClient } from "@opencode-ai/sdk/v2/client";
+ //#region src/OpenCodeThreadController.d.ts
++/** Messages a session's history opens with; the older ones follow in the background. */
++declare const OPEN_CODE_HISTORY_PAGE_SIZE = 50;
+ type OpenCodeEventSourceProvider = () => Pick<OpenCodeEventSource, "subscribe">;
+ declare class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+   private state;
+@@ -53,5 +55,5 @@ declare class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+   private dispatch;
+ }
+ //#endregion
+-export { OpenCodeThreadController };
++export { OPEN_CODE_HISTORY_PAGE_SIZE, OpenCodeThreadController };
+ //# sourceMappingURL=OpenCodeThreadController.d.ts.map
+\ No newline at end of file
 diff --git a/dist/OpenCodeThreadController.js b/dist/OpenCodeThreadController.js
-index 81f121b..5b29761 100644
+index 81f121b..100b8e4 100644
 --- a/dist/OpenCodeThreadController.js
 +++ b/dist/OpenCodeThreadController.js
-@@ -103,6 +103,13 @@ const isSupportedDelta = (state, messageId, partId, field) => {
+@@ -103,13 +103,34 @@ const isSupportedDelta = (state, messageId, partId, field) => {
  	if (!part) return false;
  	return field === "text" && (part.type === "text" || part.type === "reasoning");
  };
++/** Messages a session's history opens with; the older ones follow in the background. */
++const OPEN_CODE_HISTORY_PAGE_SIZE = 50;
++/** A `limit` covering every older message: the server takes `before` only with one. */
++const OLDER_HISTORY_LIMIT = 1e6;
++/** The cursor to the messages older than a page, absent once there are none. */
++const nextHistoryCursor = (result) => result?.response?.headers?.get("X-Next-Cursor") ?? void 0;
++const whenIdle = () => new Promise((resolve) => {
++	if (typeof requestIdleCallback === "function") requestIdleCallback(() => resolve(), { timeout: 1e3 });
++	else setTimeout(resolve, 0);
++});
 +const STATUS_EVENT_TYPES = /* @__PURE__ */ new Set([
 +	"session.status",
 +	"session.idle",
@@ -113,23 +144,63 @@ index 81f121b..5b29761 100644
  var OpenCodeThreadController = class OpenCodeThreadController {
  	state;
  	listeners = /* @__PURE__ */ new Set();
-@@ -110,6 +117,7 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+ 	getEventSource;
  	unsubscribeFromEvents = null;
++	stopStaleWatch = null;
++	stale = false;
  	loadPromise = null;
++	historyEpoch = 0;
  	reconnectSyncToken = 0;
 +	statusEpoch = 0;
  	childControllersById = /* @__PURE__ */ new Map();
  	childSessionIdByPartId = /* @__PURE__ */ new Map();
  	ancestorSessionIds;
-@@ -159,6 +167,7 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -158,9 +179,12 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+ 	}
  	discard() {
  		this.loadPromise = null;
++		this.historyEpoch += 1;
  		this.reconnectSyncToken += 1;
 +		this.statusEpoch += 1;
  		this.unsubscribeFromEvents?.();
  		this.unsubscribeFromEvents = null;
++		this.stopWatchingForStaleness();
  		for (const entry of this.childControllersById.values()) {
-@@ -252,14 +261,13 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+ 			entry.unsubscribe?.();
+ 			entry.controller.discard();
+@@ -230,6 +254,7 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+ 	syncChildSessionIndex(event) {
+ 		switch (event.type) {
+ 			case "history.loaded":
++			case "history.prepended":
+ 			case "message.removed":
+ 				this.rebuildChildSessionIndex();
+ 				break;
+@@ -242,8 +267,23 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+ 			default: break;
+ 		}
+ 	}
++	watchForStaleness() {
++		if (this.stopStaleWatch) return;
++		this.stopStaleWatch = this.getEventSource().subscribe((event) => {
++			if (event.type !== "stream.reconnected" && event.sessionId !== this.sessionId) return;
++			this.stale = true;
++			this.stopWatchingForStaleness();
++		});
++	}
++	stopWatchingForStaleness() {
++		this.stopStaleWatch?.();
++		this.stopStaleWatch = null;
++	}
+ 	ensureEventSubscription() {
+ 		if (this.unsubscribeFromEvents) return;
++		this.stopWatchingForStaleness();
++		if (this.stale && this.state.loadState.type === "ready") this.refreshInBackground();
++		this.stale = false;
+ 		this.unsubscribeFromEvents = this.getEventSource().subscribe((event) => {
+ 			if (event.type === "stream.reconnected") {
+ 				this.handleStreamReconnect();
+@@ -252,14 +292,13 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  			if (event.sessionId !== this.sessionId) return;
  			this.handleServerEvent(event);
  		});
@@ -150,7 +221,7 @@ index 81f121b..5b29761 100644
  			if (status) this.dispatch({
  				type: "session.status",
  				status
-@@ -269,6 +277,12 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -269,6 +308,12 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  				sessionId: this.sessionId
  			});
  		});
@@ -163,7 +234,89 @@ index 81f121b..5b29761 100644
  		this.client.permission.list(void 0, OPEN_CODE_REQUEST_OPTIONS).catch(() => null).then((response) => {
  			if (!response || token !== this.reconnectSyncToken) return;
  			for (const item of response.data ?? []) {
-@@ -358,6 +372,7 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -297,6 +342,7 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+ 	dispose() {
+ 		this.unsubscribeFromEvents?.();
+ 		this.unsubscribeFromEvents = null;
++		this.stopWatchingForStaleness();
+ 		this.detachChildControllers();
+ 		this.listeners.clear();
+ 	}
+@@ -314,19 +360,37 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+ 				this.unsubscribeFromEvents?.();
+ 				this.unsubscribeFromEvents = null;
+ 				this.detachChildControllers();
++				this.watchForStaleness();
+ 			}
+ 		};
+ 	};
+ 	async load(force = false) {
+ 		if (this.loadPromise && !force) return this.loadPromise;
+ 		this.dispatch({ type: "history.loading" });
+-		const request = Promise.all([this.client.session.get({ sessionID: this.sessionId }, OPEN_CODE_REQUEST_OPTIONS), this.client.session.messages({ sessionID: this.sessionId }, OPEN_CODE_REQUEST_OPTIONS)]).then(([sessionResponse, messagesResponse]) => {
++		const epoch = ++this.historyEpoch;
++		const request = Promise.all([this.client.session.get({ sessionID: this.sessionId }, OPEN_CODE_REQUEST_OPTIONS), this.client.session.messages({
++			sessionID: this.sessionId,
++			limit: OPEN_CODE_HISTORY_PAGE_SIZE
++		}, OPEN_CODE_REQUEST_OPTIONS)]).then(async ([sessionResponse, messagesResponse]) => {
+ 			if (this.loadPromise !== request) return;
++			const session = sessionResponse.data ?? null;
++			let messages = (messagesResponse.data ?? []).slice();
++			let cursor = nextHistoryCursor(messagesResponse);
++			const revertId = session?.revert?.messageID;
++			const oldestId = messages[0]?.info.id;
++			if (cursor && revertId && oldestId && revertId <= oldestId) {
++				const older = await this.fetchOlderHistory(cursor);
++				if (this.loadPromise !== request) return;
++				messages = [...older, ...messages];
++				cursor = void 0;
++			}
+ 			this.dispatch({
+ 				type: "history.loaded",
+-				session: sessionResponse.data ?? null,
+-				messages: (messagesResponse.data ?? []).slice()
++				session,
++				messages,
++				olderHistory: cursor ? { type: "loading" } : { type: "complete" }
+ 			});
++			if (cursor && oldestId) this.loadOlderHistory(cursor, oldestId, epoch);
+ 		}).catch((error) => {
+ 			if (this.loadPromise !== request) throw error;
+ 			this.dispatch({
+@@ -343,6 +407,32 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+ 	refresh() {
+ 		return this.load(true);
+ 	}
++	async loadOlderHistory(cursor, boundaryId, epoch) {
++		await whenIdle();
++		if (epoch !== this.historyEpoch) return;
++		try {
++			const messages = await this.fetchOlderHistory(cursor);
++			if (epoch !== this.historyEpoch) return;
++			this.dispatch({
++				type: "history.prepended",
++				messages,
++				boundaryId
++			});
++		} catch (error) {
++			if (epoch !== this.historyEpoch) return;
++			this.dispatch({
++				type: "history.olderFailed",
++				error
++			});
++		}
++	}
++	async fetchOlderHistory(before) {
++		return ((await this.client.session.messages({
++			sessionID: this.sessionId,
++			limit: OLDER_HISTORY_LIMIT,
++			before
++		}, OPEN_CODE_REQUEST_OPTIONS)).data ?? []).slice();
++	}
+ 	createPendingMessage(message) {
+ 		const parts = flattenMessageParts(message);
+ 		return {
+@@ -358,6 +448,7 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  		};
  	}
  	async promptMessage(message, pending, options) {
@@ -171,7 +324,7 @@ index 81f121b..5b29761 100644
  		this.dispatch({ type: "run.started" });
  		try {
  			await this.client.session.promptAsync({
-@@ -424,10 +439,13 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -424,10 +515,13 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  	async revert(messageId) {
  		this.dispatch({ type: "run.reverting" });
  		try {
@@ -186,7 +339,7 @@ index 81f121b..5b29761 100644
  		} catch (error) {
  			this.dispatch({
  				type: "run.failed",
-@@ -437,7 +455,16 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -437,7 +531,16 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  		}
  	}
  	async unrevert() {
@@ -204,7 +357,7 @@ index 81f121b..5b29761 100644
  	}
  	async fork(messageId) {
  		const response = await this.client.session.fork({
-@@ -450,7 +477,8 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -450,7 +553,8 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  	async replyToPermission(permissionId, response) {
  		await this.client.permission.reply({
  			requestID: permissionId,
@@ -214,7 +367,7 @@ index 81f121b..5b29761 100644
  		}, OPEN_CODE_REQUEST_OPTIONS);
  		this.dispatch({
  			type: "permission.replied",
-@@ -621,6 +649,7 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+@@ -621,6 +725,7 @@ var OpenCodeThreadController = class OpenCodeThreadController {
  		});
  	}
  	dispatch(event) {
@@ -222,53 +375,67 @@ index 81f121b..5b29761 100644
  		const nextState = reduceOpenCodeThreadState(this.state, event);
  		if (nextState === this.state) return;
  		this.state = nextState;
+@@ -629,6 +734,6 @@ var OpenCodeThreadController = class OpenCodeThreadController {
+ 	}
+ };
+ //#endregion
+-export { OpenCodeThreadController };
++export { OPEN_CODE_HISTORY_PAGE_SIZE, OpenCodeThreadController };
+ 
+ //# sourceMappingURL=OpenCodeThreadController.js.map
+\ No newline at end of file
 diff --git a/dist/index.d.ts b/dist/index.d.ts
-index e97bb56..efa630c 100644
+index e97bb56..5a4d67d 100644
 --- a/dist/index.d.ts
 +++ b/dist/index.d.ts
 @@ -1,11 +1,12 @@
 -import { AssistantMessage, Event, FilePart, GlobalSession, Message, MessageWithParts, Model, OpenCodeLoadState, OpenCodePartPayload, OpenCodePermissionRequest, OpenCodePermissionResponse, OpenCodeProjectedThreadMessage, OpenCodeQuestionRequest, OpenCodeRunState, OpenCodeRuntime, OpenCodeRuntimeExtras, OpenCodeRuntimeOptions, OpenCodeServerEvent, OpenCodeServerMessage, OpenCodeStateEvent, OpenCodeThreadControllerLike, OpenCodeThreadControllerSnapshot, OpenCodeThreadState, OpenCodeThreadStateSelector, OpenCodeUnhandledEvent, OpenCodeUserMessageOptions, OpencodeClient, OpencodeClientConfig, Part, PendingUserMessage, PermissionRequest, Provider, QuestionAnswer, QuestionRequest, ReasoningPart, Session, SessionStatus, SnapshotPart, StepFinishPart, StepStartPart, TextPart, ToolPart, ToolState, UserMessage } from "./types.js";
 -import { OpenCodeEventSource, STREAM_RECONNECTED_EVENT_TYPE } from "./OpenCodeEventSource.js";
+-import { OpenCodeThreadController } from "./OpenCodeThreadController.js";
 +import { OpenCodeMessageQueueController, OpenCodeMessageQueueControls, OpenCodeMessageQueueDriver, OpenCodeMessageQueueOptions, createOpenCodeMessageQueue } from "./openCodeMessageQueue.js";
-+import { AssistantMessage, Event, FilePart, GlobalSession, Message, MessageWithParts, Model, OpenCodeEventSourceLike, OpenCodeLoadState, OpenCodePartPayload, OpenCodePermissionRequest, OpenCodePermissionResponse, OpenCodeProjectedThreadMessage, OpenCodeQuestionRequest, OpenCodeRunState, OpenCodeRuntime, OpenCodeRuntimeBackend, OpenCodeRuntimeExtras, OpenCodeRuntimeOptions, OpenCodeServerEvent, OpenCodeServerMessage, OpenCodeSessionRef, OpenCodeStateEvent, OpenCodeThreadControllerLike, OpenCodeThreadControllerSnapshot, OpenCodeThreadState, OpenCodeThreadStateSelector, OpenCodeUnhandledEvent, OpenCodeUserMessageOptions, OpencodeClient, OpencodeClientConfig, Part, PendingUserMessage, PermissionRequest, Provider, QuestionAnswer, QuestionRequest, ReasoningPart, Session, SessionStatus, SnapshotPart, StepFinishPart, StepStartPart, TextPart, ToolPart, ToolState, UserMessage } from "./types.js";
++import { AssistantMessage, Event, FilePart, GlobalSession, Message, MessageWithParts, Model, OpenCodeEventSourceLike, OpenCodeLoadState, OpenCodeOlderHistory, OpenCodePartPayload, OpenCodePermissionRequest, OpenCodePermissionResponse, OpenCodeProjectedThreadMessage, OpenCodeQuestionRequest, OpenCodeRunState, OpenCodeRuntime, OpenCodeRuntimeBackend, OpenCodeRuntimeExtras, OpenCodeRuntimeOptions, OpenCodeServerEvent, OpenCodeServerMessage, OpenCodeSessionRef, OpenCodeStateEvent, OpenCodeThreadControllerLike, OpenCodeThreadControllerSnapshot, OpenCodeThreadState, OpenCodeThreadStateSelector, OpenCodeUnhandledEvent, OpenCodeUserMessageOptions, OpencodeClient, OpencodeClientConfig, Part, PendingUserMessage, PermissionRequest, Provider, QuestionAnswer, QuestionRequest, ReasoningPart, Session, SessionStatus, SnapshotPart, StepFinishPart, StepStartPart, TextPart, ToolPart, ToolState, UserMessage } from "./types.js";
 +import { OpenCodeEventSource, OpenCodeEventSubscriber, STREAM_RECONNECTED_EVENT_TYPE } from "./OpenCodeEventSource.js";
- import { OpenCodeThreadController } from "./OpenCodeThreadController.js";
++import { OPEN_CODE_HISTORY_PAGE_SIZE, OpenCodeThreadController } from "./OpenCodeThreadController.js";
  import { useOpenCodePermissions, useOpenCodeQuestions, useOpenCodeRuntimeExtras, useOpenCodeSession, useOpenCodeThreadState } from "./hooks.js";
  import { useOpenCodeRuntime } from "./useOpenCodeRuntime.js";
  import { OpenCodeAttachmentAdapter, OpenCodeAttachmentAdapterOptions } from "./openCodeAttachmentAdapter.js";
  import { useOpenCodeStreamingTiming } from "./useOpenCodeStreamingTiming.js";
  import { createOpenCodeThreadState, reduceOpenCodeThreadState } from "./openCodeThreadState.js";
 -import { projectOpenCodeThreadMessages } from "./openCodeMessageProjection.js";
-+import { LocalMcpApp, projectOpenCodeThreadMessages, setLocalMcpApps } from "./openCodeMessageProjection.js";
++import { LocalMcpApp, OpenCodeProjectionCache, createOpenCodeProjectionCache, projectOpenCodeThreadMessages, projectOpenCodeThreadRepository, setLocalMcpApps } from "./openCodeMessageProjection.js";
  import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 -export { type AssistantMessage, type Event, type FilePart, type GlobalSession, type Message, type MessageWithParts, type Model, OpenCodeAttachmentAdapter, type OpenCodeAttachmentAdapterOptions, OpenCodeEventSource, type OpenCodeLoadState, type OpenCodePartPayload, type OpenCodePermissionRequest, type OpenCodePermissionResponse, type OpenCodeProjectedThreadMessage, type OpenCodeQuestionRequest, type OpenCodeRunState, type OpenCodeRuntime, type OpenCodeRuntimeExtras, type OpenCodeRuntimeOptions, type OpenCodeServerEvent, type OpenCodeServerMessage, type OpenCodeStateEvent, OpenCodeThreadController, type OpenCodeThreadControllerLike, type OpenCodeThreadControllerSnapshot, type OpenCodeThreadState, type OpenCodeThreadStateSelector, type OpenCodeUnhandledEvent, type OpenCodeUserMessageOptions, type OpencodeClient, type OpencodeClientConfig, type Part, type PendingUserMessage, type PermissionRequest, type Provider, type QuestionAnswer, type QuestionRequest, type ReasoningPart, STREAM_RECONNECTED_EVENT_TYPE, type Session, type SessionStatus, type SnapshotPart, type StepFinishPart, type StepStartPart, type TextPart, type ToolPart, type ToolState, type UserMessage, createOpenCodeThreadState, createOpencodeClient, projectOpenCodeThreadMessages, reduceOpenCodeThreadState, useOpenCodePermissions, useOpenCodeQuestions, useOpenCodeRuntime, useOpenCodeRuntimeExtras, useOpenCodeSession, useOpenCodeStreamingTiming, useOpenCodeThreadState };
 \ No newline at end of file
-+export { type AssistantMessage, type Event, type FilePart, type GlobalSession, type LocalMcpApp, type Message, type MessageWithParts, type Model, OpenCodeAttachmentAdapter, type OpenCodeAttachmentAdapterOptions, OpenCodeEventSource, type OpenCodeEventSourceLike, type OpenCodeEventSubscriber, type OpenCodeLoadState, type OpenCodeMessageQueueController, type OpenCodeMessageQueueControls, type OpenCodeMessageQueueDriver, type OpenCodeMessageQueueOptions, type OpenCodePartPayload, type OpenCodePermissionRequest, type OpenCodePermissionResponse, type OpenCodeProjectedThreadMessage, type OpenCodeQuestionRequest, type OpenCodeRunState, type OpenCodeRuntime, type OpenCodeRuntimeBackend, type OpenCodeRuntimeExtras, type OpenCodeRuntimeOptions, type OpenCodeServerEvent, type OpenCodeServerMessage, type OpenCodeSessionRef, type OpenCodeStateEvent, OpenCodeThreadController, type OpenCodeThreadControllerLike, type OpenCodeThreadControllerSnapshot, type OpenCodeThreadState, type OpenCodeThreadStateSelector, type OpenCodeUnhandledEvent, type OpenCodeUserMessageOptions, type OpencodeClient, type OpencodeClientConfig, type Part, type PendingUserMessage, type PermissionRequest, type Provider, type QuestionAnswer, type QuestionRequest, type ReasoningPart, STREAM_RECONNECTED_EVENT_TYPE, type Session, type SessionStatus, type SnapshotPart, type StepFinishPart, type StepStartPart, type TextPart, type ToolPart, type ToolState, type UserMessage, createOpenCodeMessageQueue, createOpenCodeThreadState, createOpencodeClient, projectOpenCodeThreadMessages, reduceOpenCodeThreadState, setLocalMcpApps, useOpenCodePermissions, useOpenCodeQuestions, useOpenCodeRuntime, useOpenCodeRuntimeExtras, useOpenCodeSession, useOpenCodeStreamingTiming, useOpenCodeThreadState };
++export { OPEN_CODE_HISTORY_PAGE_SIZE, type AssistantMessage, type Event, type FilePart, type GlobalSession, type LocalMcpApp, type Message, type MessageWithParts, type Model, OpenCodeAttachmentAdapter, type OpenCodeAttachmentAdapterOptions, OpenCodeEventSource, type OpenCodeEventSourceLike, type OpenCodeEventSubscriber, type OpenCodeLoadState, type OpenCodeMessageQueueController, type OpenCodeOlderHistory, type OpenCodeMessageQueueControls, type OpenCodeMessageQueueDriver, type OpenCodeMessageQueueOptions, type OpenCodePartPayload, type OpenCodePermissionRequest, type OpenCodePermissionResponse, type OpenCodeProjectedThreadMessage, type OpenCodeProjectionCache, type OpenCodeQuestionRequest, type OpenCodeRunState, type OpenCodeRuntime, type OpenCodeRuntimeBackend, type OpenCodeRuntimeExtras, type OpenCodeRuntimeOptions, type OpenCodeServerEvent, type OpenCodeServerMessage, type OpenCodeSessionRef, type OpenCodeStateEvent, OpenCodeThreadController, type OpenCodeThreadControllerLike, type OpenCodeThreadControllerSnapshot, type OpenCodeThreadState, type OpenCodeThreadStateSelector, type OpenCodeUnhandledEvent, type OpenCodeUserMessageOptions, type OpencodeClient, type OpencodeClientConfig, type Part, type PendingUserMessage, type PermissionRequest, type Provider, type QuestionAnswer, type QuestionRequest, type ReasoningPart, STREAM_RECONNECTED_EVENT_TYPE, type Session, type SessionStatus, type SnapshotPart, type StepFinishPart, type StepStartPart, type TextPart, type ToolPart, type ToolState, type UserMessage, createOpenCodeMessageQueue, createOpenCodeProjectionCache, createOpenCodeThreadState, createOpencodeClient, projectOpenCodeThreadMessages, projectOpenCodeThreadRepository, reduceOpenCodeThreadState, setLocalMcpApps, useOpenCodePermissions, useOpenCodeQuestions, useOpenCodeRuntime, useOpenCodeRuntimeExtras, useOpenCodeSession, useOpenCodeStreamingTiming, useOpenCodeThreadState };
 \ No newline at end of file
 diff --git a/dist/index.js b/dist/index.js
-index 835997d..49cd4cf 100644
+index 835997d..0358789 100644
 --- a/dist/index.js
 +++ b/dist/index.js
-@@ -2,9 +2,10 @@ import { OpenCodeEventSource, STREAM_RECONNECTED_EVENT_TYPE } from "./OpenCodeEv
+@@ -1,10 +1,11 @@
+ import { OpenCodeEventSource, STREAM_RECONNECTED_EVENT_TYPE } from "./OpenCodeEventSource.js";
  import { createOpenCodeThreadState, reduceOpenCodeThreadState } from "./openCodeThreadState.js";
- import { OpenCodeThreadController } from "./OpenCodeThreadController.js";
+-import { OpenCodeThreadController } from "./OpenCodeThreadController.js";
++import { OPEN_CODE_HISTORY_PAGE_SIZE, OpenCodeThreadController } from "./OpenCodeThreadController.js";
  import { useOpenCodePermissions, useOpenCodeQuestions, useOpenCodeRuntimeExtras, useOpenCodeSession, useOpenCodeThreadState } from "./hooks.js";
 -import { projectOpenCodeThreadMessages } from "./openCodeMessageProjection.js";
-+import { projectOpenCodeThreadMessages, setLocalMcpApps } from "./openCodeMessageProjection.js";
++import { createOpenCodeProjectionCache, projectOpenCodeThreadMessages, projectOpenCodeThreadRepository, setLocalMcpApps } from "./openCodeMessageProjection.js";
 +import { createOpenCodeMessageQueue } from "./openCodeMessageQueue.js";
  import { useOpenCodeStreamingTiming } from "./useOpenCodeStreamingTiming.js";
  import { useOpenCodeRuntime } from "./useOpenCodeRuntime.js";
  import { OpenCodeAttachmentAdapter } from "./openCodeAttachmentAdapter.js";
  import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 -export { OpenCodeAttachmentAdapter, OpenCodeEventSource, OpenCodeThreadController, STREAM_RECONNECTED_EVENT_TYPE, createOpenCodeThreadState, createOpencodeClient, projectOpenCodeThreadMessages, reduceOpenCodeThreadState, useOpenCodePermissions, useOpenCodeQuestions, useOpenCodeRuntime, useOpenCodeRuntimeExtras, useOpenCodeSession, useOpenCodeStreamingTiming, useOpenCodeThreadState };
-+export { OpenCodeAttachmentAdapter, OpenCodeEventSource, OpenCodeThreadController, STREAM_RECONNECTED_EVENT_TYPE, createOpenCodeMessageQueue, createOpenCodeThreadState, createOpencodeClient, projectOpenCodeThreadMessages, reduceOpenCodeThreadState, setLocalMcpApps, useOpenCodePermissions, useOpenCodeQuestions, useOpenCodeRuntime, useOpenCodeRuntimeExtras, useOpenCodeSession, useOpenCodeStreamingTiming, useOpenCodeThreadState };
++export { OPEN_CODE_HISTORY_PAGE_SIZE, OpenCodeAttachmentAdapter, OpenCodeEventSource, OpenCodeThreadController, STREAM_RECONNECTED_EVENT_TYPE, createOpenCodeMessageQueue, createOpenCodeProjectionCache, createOpenCodeThreadState, createOpencodeClient, projectOpenCodeThreadMessages, projectOpenCodeThreadRepository, reduceOpenCodeThreadState, setLocalMcpApps, useOpenCodePermissions, useOpenCodeQuestions, useOpenCodeRuntime, useOpenCodeRuntimeExtras, useOpenCodeSession, useOpenCodeStreamingTiming, useOpenCodeThreadState };
 diff --git a/dist/openCodeMessageProjection.d.ts b/dist/openCodeMessageProjection.d.ts
-index 2ee4f06..7f2f54a 100644
+index 2ee4f06..013cb77 100644
 --- a/dist/openCodeMessageProjection.d.ts
 +++ b/dist/openCodeMessageProjection.d.ts
-@@ -1,8 +1,13 @@
- import { OpenCodeProjectedThreadMessage, OpenCodeThreadState } from "./types.js";
- import { ExportedMessageRepository, MessageTiming } from "@assistant-ui/react";
+@@ -1,8 +1,22 @@
+-import { OpenCodeProjectedThreadMessage, OpenCodeThreadState } from "./types.js";
+-import { ExportedMessageRepository, MessageTiming } from "@assistant-ui/react";
++import { OpenCodeProjectedThreadMessage, OpenCodeThreadState, PendingUserMessage } from "./types.js";
++import { ExportedMessageRepository, MessageTiming, ThreadMessage } from "@assistant-ui/react";
  //#region src/openCodeMessageProjection.d.ts
 +interface LocalMcpApp {
 +  resourceUri: string;
@@ -276,14 +443,24 @@ index 2ee4f06..7f2f54a 100644
 +}
 +declare function setLocalMcpApps(registry: Record<string, LocalMcpApp>): void;
  declare function projectOpenCodeThreadMessages(state: OpenCodeThreadState, messageTiming?: Record<string, MessageTiming>): OpenCodeProjectedThreadMessage[];
- declare function projectOpenCodeThreadRepository(state: OpenCodeThreadState, messageTiming?: Record<string, MessageTiming>): ExportedMessageRepository;
+-declare function projectOpenCodeThreadRepository(state: OpenCodeThreadState, messageTiming?: Record<string, MessageTiming>): ExportedMessageRepository;
++interface ProjectionCacheEntry {
++  readonly inputs: readonly unknown[];
++  readonly message: ThreadMessage | null;
++}
++interface OpenCodeProjectionCache {
++  readonly server: Map<string, ProjectionCacheEntry>;
++  readonly pending: WeakMap<PendingUserMessage, ThreadMessage>;
++}
++declare const createOpenCodeProjectionCache: () => OpenCodeProjectionCache;
++declare function projectOpenCodeThreadRepository(state: OpenCodeThreadState, messageTiming?: Record<string, MessageTiming>, cache?: OpenCodeProjectionCache): ExportedMessageRepository;
  //#endregion
 -export { projectOpenCodeThreadMessages, projectOpenCodeThreadRepository };
-+export { type LocalMcpApp, projectOpenCodeThreadMessages, projectOpenCodeThreadRepository, setLocalMcpApps };
++export { type LocalMcpApp, type OpenCodeProjectionCache, createOpenCodeProjectionCache, projectOpenCodeThreadMessages, projectOpenCodeThreadRepository, setLocalMcpApps };
  //# sourceMappingURL=openCodeMessageProjection.d.ts.map
 \ No newline at end of file
 diff --git a/dist/openCodeMessageProjection.js b/dist/openCodeMessageProjection.js
-index 014532f..8efa18e 100644
+index 014532f..dd201bb 100644
 --- a/dist/openCodeMessageProjection.js
 +++ b/dist/openCodeMessageProjection.js
 @@ -3,6 +3,10 @@ import { projectOpenCodePermissionApproval, projectResolvedOpenCodePermissionApp
@@ -359,7 +536,7 @@ index 014532f..8efa18e 100644
  	}
  	return content;
  };
-@@ -264,16 +279,24 @@ const projectUserMessage = (message) => {
+@@ -264,17 +279,29 @@ const projectUserMessage = (message) => {
  	if (message.parts.length === 0) return splitUserParts(message.shadowParts ?? []);
  	const content = [];
  	const attachments = [];
@@ -380,15 +557,21 @@ index 014532f..8efa18e 100644
  		attachments
  	};
  };
+-const getMessageStatus = (state, message) => {
 +const CANCELLED_STATUS = {
 +	type: "incomplete",
 +	reason: "cancelled"
 +};
 +const endsBetweenSteps = (message) => message.info?.finish === "tool-calls" && !message.parts.some((part) => part.type === "tool" && part.tool === "plan_exit" && part.state?.status === "completed");
- const getMessageStatus = (state, message) => {
++const getRunActivity = (state) => ({
++	lastAssistantId: state.messageOrder.findLast((messageId) => state.messagesById[messageId]?.info?.role === "assistant"),
++	isActiveRun: state.runState.type === "streaming" || state.runState.type === "cancelling" || state.runState.type === "reverting" || state.sessionStatus?.type === "busy" || state.sessionStatus?.type === "retry"
++});
++const getMessageStatus = (state, message, activity = getRunActivity(state)) => {
  	if (!isAssistantMessage(message.info)) return;
  	if (hasPendingInteractionForMessage(state, message)) return {
-@@ -282,6 +305,7 @@ const getMessageStatus = (state, message) => {
+ 		type: "requires-action",
+@@ -282,6 +309,7 @@ const getMessageStatus = (state, message) => {
  	};
  	if (message.info.error) {
  		const error = message.info.error;
@@ -396,13 +579,13 @@ index 014532f..8efa18e 100644
  		const maybeMessage = isRecord(error) && isRecord(error.data) && typeof error.data.message === "string" ? error.data.message : void 0;
  		const fallbackMessage = typeof error === "string" ? error : isRecord(error) && typeof error.name === "string" ? error.name : "OpenCode run failed";
  		return {
-@@ -290,7 +314,13 @@ const getMessageStatus = (state, message) => {
+@@ -290,30 +318,54 @@ const getMessageStatus = (state, message) => {
  			error: maybeMessage ?? fallbackMessage
  		};
  	}
 -	if (!message.info.finish) return { type: "running" };
-+	const isActiveMessage = state.messageOrder.findLast((messageId) => state.messagesById[messageId]?.info?.role === "assistant") === message.id;
-+	const isActiveRun = state.runState.type === "streaming" || state.runState.type === "cancelling" || state.runState.type === "reverting" || state.sessionStatus?.type === "busy" || state.sessionStatus?.type === "retry";
++	const isActiveMessage = activity.lastAssistantId === message.id;
++	const { isActiveRun } = activity;
 +	if (!message.info.finish) {
 +		if (!isActiveMessage || !isActiveRun) return CANCELLED_STATUS;
 +		return { type: "running" };
@@ -411,26 +594,70 @@ index 014532f..8efa18e 100644
  	return {
  		type: "complete",
  		reason: "stop"
-@@ -300,10 +330,17 @@ const mergeServerMessages = (messages) => {
- 	const merged = [];
+ 	};
+ };
+-const mergeServerMessages = (messages) => {
+-	const merged = [];
++const isBackgroundUserMessage = (message) => message.info?.role === "user" && message.parts.some((part) => part.type === "text" && part.synthetic === true && part.metadata?.background === true);
++const mergeAssistantSteps = (steps) => {
++	if (steps.length === 1) return steps[0];
++	const first = steps[0];
++	const last = steps[steps.length - 1];
++	const hasShadowParts = steps.some((step) => step.shadowParts);
++	return {
++		id: last.id,
++		info: {
++			...last.info,
++			time: {
++				...last.info.time,
++				created: first.info.time?.created ?? last.info.time?.created
++			}
++		},
++		parts: steps.flatMap((step) => step.parts),
++		shadowParts: hasShadowParts ? steps.flatMap((step) => step.shadowParts ?? []) : void 0
++	};
++};
++const groupServerMessages = (messages) => {
++	const groups = [];
  	for (const message of messages) {
- 		const previous = merged[merged.length - 1];
-+		if (message.info?.role === "user" && message.parts.some((part) => part.type === "text" && part.synthetic === true && part.metadata?.background === true)) continue;
- 		if (previous?.info?.role === "assistant" && message.info?.role === "assistant") {
- 			merged[merged.length - 1] = {
- 				id: message.id,
+-		const previous = merged[merged.length - 1];
+-		if (previous?.info?.role === "assistant" && message.info?.role === "assistant") {
+-			merged[merged.length - 1] = {
+-				id: message.id,
 -				info: message.info,
-+				info: {
-+					...message.info,
-+					time: {
-+						...message.info.time,
-+						created: previous.info.time?.created ?? message.info.time?.created
-+					}
-+				},
- 				parts: [...previous.parts, ...message.parts],
- 				shadowParts: previous.shadowParts || message.shadowParts ? [...previous.shadowParts ?? [], ...message.shadowParts ?? []] : void 0
- 			};
-@@ -364,11 +401,24 @@ const projectPendingMessage = (pending) => ({
+-				parts: [...previous.parts, ...message.parts],
+-				shadowParts: previous.shadowParts || message.shadowParts ? [...previous.shadowParts ?? [], ...message.shadowParts ?? []] : void 0
+-			};
++		if (isBackgroundUserMessage(message)) continue;
++		const previous = groups[groups.length - 1];
++		if (previous?.[0]?.info?.role === "assistant" && message.info?.role === "assistant") {
++			previous.push(message);
+ 			continue;
+ 		}
+-		merged.push(message);
++		groups.push([message]);
+ 	}
+-	return merged;
++	return groups.map((sources) => ({
++		sources,
++		message: sources[0]?.info?.role === "assistant" ? mergeAssistantSteps(sources) : sources[0]
++	}));
+ };
+-const projectServerMessage = (state, message, timing) => {
++const projectServerMessage = (state, message, timing, activity) => {
+ 	if (!message.info) return null;
+ 	const metadata = { custom: { opencode: {
+ 		originalMessage: message.info,
+@@ -326,7 +378,7 @@ const projectServerMessage = (state, message, timing) => {
+ 			role: "assistant",
+ 			createdAt: new Date(message.info.time?.created ?? Date.now()),
+ 			content: projectAssistantContent(state, message),
+-			status: getMessageStatus(state, message),
++			status: getMessageStatus(state, message, activity),
+ 			metadata: {
+ 				custom: {
+ 					...metadata.custom,
+@@ -364,18 +416,87 @@ const projectPendingMessage = (pending) => ({
  		error: pending.status === "failed" ? pending.error instanceof Error ? pending.error.message : String(pending.error ?? "Failed to send message") : void 0
  	} } }
  });
@@ -446,23 +673,84 @@ index 014532f..8efa18e 100644
 +		}];
 +	});
 +};
++const visibleServerMessages = (state) => applyRevertVisibility(state.messageOrder.flatMap((messageId) => {
++	const message = state.messagesById[messageId];
++	return message ? [message] : [];
++}), state.session?.revert);
++const sortedPendingMessages = (state) => Object.values(state.pendingUserMessages).sort((left, right) => left.createdAt - right.createdAt);
  function projectOpenCodeThreadMessages(state, messageTiming = {}) {
 -	const serverMessages = mergeServerMessages(state.messageOrder.flatMap((messageId) => {
-+	const visibleServerMessages = applyRevertVisibility(state.messageOrder.flatMap((messageId) => {
- 		const message = state.messagesById[messageId];
- 		return message ? [message] : [];
+-		const message = state.messagesById[messageId];
+-		return message ? [message] : [];
 -	})).map((message) => projectServerMessage(state, message, messageTiming[message.id])).filter((message) => message !== null);
-+	}), state.session?.revert);
-+	const serverMessages = mergeServerMessages(visibleServerMessages).map((message) => projectServerMessage(state, message, messageTiming[message.id])).filter((message) => message !== null);
- 	const pendingMessages = Object.values(state.pendingUserMessages).sort((left, right) => left.createdAt - right.createdAt).map((pending) => projectPendingMessage(pending));
+-	const pendingMessages = Object.values(state.pendingUserMessages).sort((left, right) => left.createdAt - right.createdAt).map((pending) => projectPendingMessage(pending));
++	const activity = getRunActivity(state);
++	const serverMessages = groupServerMessages(visibleServerMessages(state)).map(({ message }) => projectServerMessage(state, message, messageTiming[message.id], activity)).filter((message) => message !== null);
++	const pendingMessages = sortedPendingMessages(state).map(projectPendingMessage);
  	return mergeProjectedMessages(serverMessages, pendingMessages);
  }
-@@ -376,6 +426,6 @@ function projectOpenCodeThreadRepository(state, messageTiming = {}) {
- 	return ExportedMessageRepository.fromArray(projectOpenCodeThreadMessages(state, messageTiming));
+-function projectOpenCodeThreadRepository(state, messageTiming = {}) {
+-	return ExportedMessageRepository.fromArray(projectOpenCodeThreadMessages(state, messageTiming));
++const createOpenCodeProjectionCache = () => ({
++	server: /* @__PURE__ */ new Map(),
++	pending: /* @__PURE__ */ new WeakMap()
++});
++const sameInputs = (left, right) => left.length === right.length && left.every((value, index) => Object.is(value, right[index]));
++const toThreadMessage = (message) => ExportedMessageRepository.fromArray([message]).messages[0].message;
++const projectionInputs = (state, group, timing, activity) => {
++	const { message } = group;
++	const inputs = [...group.sources, timing];
++	if (message.info?.role !== "assistant") return inputs;
++	const isActiveMessage = activity.lastAssistantId === message.id;
++	inputs.push(isActiveMessage, isActiveMessage && activity.isActiveRun, state.interactions.permissions, state.interactions.questions.pending, _localMcpApps);
++	for (const part of message.parts) {
++		const childSessionId = getOpenCodeTaskSessionId(part);
++		if (childSessionId) inputs.push(state.childSessionsById[childSessionId]);
++	}
++	return inputs;
++};
++const projectCachedThreadMessages = (state, messageTiming, cache) => {
++	const activity = getRunActivity(state);
++	const seen = /* @__PURE__ */ new Set();
++	const serverMessages = [];
++	for (const group of groupServerMessages(visibleServerMessages(state))) {
++		const id = group.message.id;
++		seen.add(id);
++		const timing = messageTiming[id];
++		const inputs = projectionInputs(state, group, timing, activity);
++		let entry = cache.server.get(id);
++		if (!entry || !sameInputs(entry.inputs, inputs)) {
++			const projected = projectServerMessage(state, group.message, timing, activity);
++			entry = {
++				inputs,
++				message: projected ? toThreadMessage(projected) : null
++			};
++			cache.server.set(id, entry);
++		}
++		if (entry.message) serverMessages.push(entry.message);
++	}
++	for (const id of cache.server.keys()) if (!seen.has(id)) cache.server.delete(id);
++	const pendingMessages = sortedPendingMessages(state).map((pending) => {
++		let message = cache.pending.get(pending);
++		if (!message) {
++			message = toThreadMessage(projectPendingMessage(pending));
++			cache.pending.set(pending, message);
++		}
++		return message;
++	});
++	return mergeProjectedMessages(serverMessages, pendingMessages);
++};
++function projectOpenCodeThreadRepository(state, messageTiming = {}, cache) {
++	if (!cache) return ExportedMessageRepository.fromArray(projectOpenCodeThreadMessages(state, messageTiming));
++	const messages = projectCachedThreadMessages(state, messageTiming, cache);
++	return { messages: messages.map((message, index) => ({
++		parentId: index > 0 ? messages[index - 1].id : null,
++		message
++	})) };
  }
  //#endregion
 -export { projectOpenCodeThreadMessages, projectOpenCodeThreadRepository };
-+export { projectOpenCodeThreadMessages, projectOpenCodeThreadRepository, setLocalMcpApps };
++export { createOpenCodeProjectionCache, projectOpenCodeThreadMessages, projectOpenCodeThreadRepository, setLocalMcpApps };
  
 -//# sourceMappingURL=openCodeMessageProjection.js.map
 \ No newline at end of file
@@ -1137,7 +1425,7 @@ index 1131af1..f0b20bc 100644
 +{"version":3,"file":"openCodeThreadListAdapter.js","names":[],"sources":["../src/openCodeThreadListAdapter.ts"],"sourcesContent":["import {\n  type GlobalSession,\n} from \"@opencode-ai/sdk/v2/client\";\nimport { OPEN_CODE_REQUEST_OPTIONS } from \"./openCodeRequestOptions\";\nimport type { OpenCodeRuntimeBackend } from \"./types\";\n\nconst isArchivedSession = (session: Pick<GlobalSession, \"time\">) => {\n  return typeof session.time.archived === \"number\";\n};\n\nconst mapThreadMetadata = (session: {\n  id: string;\n  title: string;\n  time: { archived?: number };\n}) => ({\n  status: isArchivedSession(session as GlobalSession)\n    ? (\"archived\" as const)\n    : (\"regular\" as const),\n  remoteId: session.id,\n  externalId: session.id,\n  title: session.title,\n});\n\nexport const createOpenCodeThreadListAdapter = (\n  backend: OpenCodeRuntimeBackend,\n  getSessionTitle: (sessionId: string) => string | undefined = () => undefined,\n) => ({\n  list: async (params?: { after?: string }) => {\n    if (backend.listSessionPage) {\n      const page = await backend.listSessionPage(\n        params?.after ? { after: params.after } : {},\n      );\n      return {\n        threads: page.sessions\n          .filter((session) => !session.parentID)\n          .map(mapThreadMetadata),\n        ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),\n      };\n    }\n    const response = await backend.globalClient.experimental.session.list(\n      {\n        roots: true,\n        archived: true,\n      },\n      OPEN_CODE_REQUEST_OPTIONS,\n    );\n    const sessions = new Map<string, GlobalSession>();\n\n    for (const session of response.data ?? []) {\n      if (session.parentID) continue;\n      backend.getSessionClient({ id: session.id, directory: session.directory });\n      sessions.set(session.id, session);\n    }\n\n    return {\n      threads: [...sessions.values()].map(mapThreadMetadata),\n    };\n  },\n  rename: async (remoteId: string, newTitle: string) => {\n    // Mirroring session.title into the list must not echo it back to the\n    // server (and must not race a freshly generated title).\n    if (getSessionTitle(remoteId)?.trim() === newTitle) return;\n    await backend.getSessionClient({ id: remoteId }).session.update(\n      {\n        sessionID: remoteId,\n        title: newTitle,\n      },\n      OPEN_CODE_REQUEST_OPTIONS,\n    );\n  },\n  archive: async (remoteId: string) => {\n    await backend.getSessionClient({ id: remoteId }).session.update(\n      {\n        sessionID: remoteId,\n        time: { archived: Date.now() },\n      },\n      OPEN_CODE_REQUEST_OPTIONS,\n    );\n  },\n  unarchive: async (remoteId: string) => {\n    await backend.getSessionClient({ id: remoteId }).session.update(\n      {\n        sessionID: remoteId,\n        // The SDK models archived timestamps as numbers, but OpenCode uses\n        // `null` here to clear the archived flag when unarchiving.\n        time: { archived: null as never } as never,\n      },\n      OPEN_CODE_REQUEST_OPTIONS,\n    );\n  },\n  delete: async (remoteId: string) => {\n    await backend.getSessionClient({ id: remoteId }).session.delete(\n      {\n        sessionID: remoteId,\n      },\n      OPEN_CODE_REQUEST_OPTIONS,\n    );\n  },\n  initialize: async () => {\n    const session = await backend.initializeSession();\n    if (!session.id) {\n      throw new Error(\"Failed to create OpenCode session\");\n    }\n    backend.getSessionClient(session);\n    return {\n      remoteId: session.id,\n      externalId: session.id,\n    };\n  },\n  // RemoteThreadList calls generateTitle on the first runEnd and replaces the\n  // list title with the streamed text — an empty stream would clear it. Stream\n  // the session's own title so Kilo stays the source of truth.\n  generateTitle: async (remoteId: string) => {\n    const title = getSessionTitle(remoteId)?.trim();\n    return new ReadableStream({\n      start(controller) {\n        if (title) {\n          controller.enqueue({ type: \"part-start\", path: [0], part: { type: \"text\" } });\n          controller.enqueue({ type: \"text-delta\", path: [0], textDelta: title });\n          controller.enqueue({ type: \"part-finish\", path: [0] });\n        }\n        controller.close();\n      },\n    });\n  },\n  fetch: async (threadId: string) => {\n    const response = await backend.getSessionClient({ id: threadId }).session.get(\n      {\n        sessionID: threadId,\n      },\n      OPEN_CODE_REQUEST_OPTIONS,\n    );\n    if (!response.data?.id) {\n      throw new Error(\"OpenCode session not found\");\n    }\n    backend.getSessionClient({\n      id: response.data.id,\n      directory: (response.data as GlobalSession).directory,\n    });\n    return mapThreadMetadata(response.data as GlobalSession);\n  },\n});\n"],"mappings":";;AAMA,MAAM,qBAAqB,YAAyC;CAClE,OAAO,OAAO,QAAQ,KAAK,aAAa;AAC1C;AAEA,MAAM,qBAAqB,aAIpB;CACL,QAAQ,kBAAkB,OAAwB,IAC7C,aACA;CACL,UAAU,QAAQ;CAClB,YAAY,QAAQ;CACpB,OAAO,QAAQ;AACjB;AAEA,MAAa,mCACX,aACI;CACJ,MAAM,YAAY;EAChB,MAAM,WAAW,MAAM,QAAQ,aAAa,aAAa,QAAQ,KAC/D;GACE,OAAO;GACP,UAAU;EACZ,GACA,yBACF;EACA,MAAM,2BAAW,IAAI,IAA2B;EAEhD,KAAK,MAAM,WAAW,SAAS,QAAQ,CAAC,GAAG;GACzC,IAAI,QAAQ,UAAU;GACtB,QAAQ,iBAAiB;IAAE,IAAI,QAAQ;IAAI,WAAW,QAAQ;GAAU,CAAC;GACzE,SAAS,IAAI,QAAQ,IAAI,OAAO;EAClC;EAEA,OAAO,EACL,SAAS,CAAC,GAAG,SAAS,OAAO,CAAC,CAAC,CAAC,IAAI,iBAAiB,EACvD;CACF;CACA,QAAQ,OAAO,UAAkB,aAAqB;EACpD,MAAM,QAAQ,iBAAiB,EAAE,IAAI,SAAS,CAAC,CAAC,CAAC,QAAQ,OACvD;GACE,WAAW;GACX,OAAO;EACT,GACA,yBACF;CACF;CACA,SAAS,OAAO,aAAqB;EACnC,MAAM,QAAQ,iBAAiB,EAAE,IAAI,SAAS,CAAC,CAAC,CAAC,QAAQ,OACvD;GACE,WAAW;GACX,MAAM,EAAE,UAAU,KAAK,IAAI,EAAE;EAC/B,GACA,yBACF;CACF;CACA,WAAW,OAAO,aAAqB;EACrC,MAAM,QAAQ,iBAAiB,EAAE,IAAI,SAAS,CAAC,CAAC,CAAC,QAAQ,OACvD;GACE,WAAW;GAGX,MAAM,EAAE,UAAU,KAAc;EAClC,GACA,yBACF;CACF;CACA,QAAQ,OAAO,aAAqB;EAClC,MAAM,QAAQ,iBAAiB,EAAE,IAAI,SAAS,CAAC,CAAC,CAAC,QAAQ,OACvD,EACE,WAAW,SACb,GACA,yBACF;CACF;CACA,YAAY,YAAY;EACtB,MAAM,UAAU,MAAM,QAAQ,kBAAkB;EAChD,IAAI,CAAC,QAAQ,IACX,MAAM,IAAI,MAAM,mCAAmC;EAErD,QAAQ,iBAAiB,OAAO;EAChC,OAAO;GACL,UAAU,QAAQ;GAClB,YAAY,QAAQ;EACtB;CACF;CAGA,eAAe,YACb,IAAI,eAAe,EACjB,MAAM,YAAY;EAChB,WAAW,MAAM;CACnB,EACF,CAAC;CACH,OAAO,OAAO,aAAqB;EACjC,MAAM,WAAW,MAAM,QAAQ,iBAAiB,EAAE,IAAI,SAAS,CAAC,CAAC,CAAC,QAAQ,IACxE,EACE,WAAW,SACb,GACA,yBACF;EACA,IAAI,CAAC,SAAS,MAAM,IAClB,MAAM,IAAI,MAAM,4BAA4B;EAE9C,QAAQ,iBAAiB;GACvB,IAAI,SAAS,KAAK;GAClB,WAAY,SAAS,KAAuB;EAC9C,CAAC;EACD,OAAO,kBAAkB,SAAS,IAAqB;CACzD;AACF"}
 \ No newline at end of file
 diff --git a/dist/openCodeThreadState.js b/dist/openCodeThreadState.js
-index 6419b83..6a41d51 100644
+index 6419b83..b8b3578 100644
 --- a/dist/openCodeThreadState.js
 +++ b/dist/openCodeThreadState.js
 @@ -1,6 +1,16 @@
@@ -1158,7 +1446,111 @@ index 6419b83..6a41d51 100644
  const extractCreatedAt = (message) => {
  	const created = message?.time?.created;
  	return typeof created === "number" ? created : void 0;
-@@ -252,8 +262,7 @@ const reduceOpenCodeThreadState = (state, event) => {
+@@ -9,16 +19,21 @@ const normalizeText = (value) => value.trim().replace(/\s+/g, " ").toLowerCase()
+ const pendingFingerprint = (pending) => normalizeText(pending.contentText);
+ const partTextFingerprint = (parts) => normalizeText(serializeOpenCodeParts(parts));
+ const serverFingerprint = (message) => normalizeText(serializeOpenCodeParts(message.parts));
++/** Transcript order: by creation time, ids breaking ties. */
++const compareMessages = (left, right, leftId, rightId) => {
++	const leftCreated = extractCreatedAt(left?.info) ?? Number.MAX_SAFE_INTEGER;
++	const rightCreated = extractCreatedAt(right?.info) ?? Number.MAX_SAFE_INTEGER;
++	if (leftCreated !== rightCreated) return leftCreated - rightCreated;
++	return leftId.localeCompare(rightId);
++};
+ const sortMessageIds = (messagesById, ids) => {
+-	return [...ids].sort((leftId, rightId) => {
+-		const left = messagesById[leftId];
+-		const right = messagesById[rightId];
+-		const leftCreated = extractCreatedAt(left?.info) ?? Number.MAX_SAFE_INTEGER;
+-		const rightCreated = extractCreatedAt(right?.info) ?? Number.MAX_SAFE_INTEGER;
+-		if (leftCreated !== rightCreated) return leftCreated - rightCreated;
+-		return leftId.localeCompare(rightId);
+-	});
++	return [...ids].sort((leftId, rightId) => compareMessages(messagesById[leftId], messagesById[rightId], leftId, rightId));
+ };
++const toServerMessage = (message) => ({
++	id: message.info.id,
++	info: message.info,
++	parts: message.parts
++});
+ const upsertMessage = (state, messageId, updater) => {
+ 	const current = state.messagesById[messageId];
+ 	const nextMessage = updater(current);
+@@ -65,11 +80,12 @@ const findPendingMatchByMessageInfo = (state, message) => {
+ 	const candidates = Object.values(state.pendingUserMessages).filter((pending) => pending.status === "pending" && (createdAt === void 0 || Math.abs(pending.createdAt - createdAt) <= PENDING_MATCH_WINDOW_MS));
+ 	if (candidates.length === 1) return candidates[0];
+ };
+-const historyLoaded = (state, session, messages) => {
++const historyLoaded = (state, session, messages, olderHistory = { type: "complete" }) => {
+ 	let nextState = {
+ 		...state,
+ 		session,
+ 		loadState: { type: "ready" },
++		olderHistory,
+ 		messagesById: {},
+ 		messageOrder: [],
+ 		sync: {
+@@ -88,6 +104,15 @@ const historyLoaded = (state, session, messages) => {
+ 		};
+ 		if (pendingMatch) nextState = removePending(nextState, pendingMatch.clientId);
+ 	}
++	const oldestId = messages[0]?.info.id;
++	if (olderHistory.type !== "complete" && oldestId) {
++		const oldest = nextMessagesById[oldestId];
++		for (const id of state.messageOrder) {
++			const kept = state.messagesById[id];
++			if (compareMessages(kept, oldest, id, oldestId) >= 0) break;
++			if (kept) nextMessagesById[id] = kept;
++		}
++	}
+ 	nextState = {
+ 		...nextState,
+ 		messagesById: nextMessagesById,
+@@ -95,6 +120,26 @@ const historyLoaded = (state, session, messages) => {
+ 	};
+ 	return nextState;
+ };
++const historyPrepended = (state, messages, boundaryId) => {
++	const boundary = state.messagesById[boundaryId];
++	const messagesById = {};
++	for (const id of state.messageOrder) {
++		const held = state.messagesById[id];
++		if (!held) continue;
++		if (boundary && compareMessages(held, boundary, id, boundaryId) < 0) continue;
++		messagesById[id] = held;
++	}
++	for (const message of messages) {
++		if (message.info.id in messagesById) continue;
++		messagesById[message.info.id] = toServerMessage(message);
++	}
++	return {
++		...state,
++		olderHistory: { type: "complete" },
++		messagesById,
++		messageOrder: sortMessageIds(messagesById, Object.keys(messagesById))
++	};
++};
+ const removeMessagePart = (parts, partId) => parts.filter((part) => part.id !== partId);
+ const upsertMessagePart = (parts, part) => {
+ 	if (!part.id) return [...parts, part];
+@@ -149,7 +194,15 @@ const reduceOpenCodeThreadState = (state, event) => {
+ 			...state,
+ 			loadState: { type: "loading" }
+ 		};
+-		case "history.loaded": return historyLoaded(state, event.session, event.messages);
++		case "history.loaded": return historyLoaded(state, event.session, event.messages, event.olderHistory);
++		case "history.prepended": return historyPrepended(state, event.messages, event.boundaryId);
++		case "history.olderFailed": return {
++			...state,
++			olderHistory: {
++				type: "failed",
++				error: event.error
++			}
++		};
+ 		case "history.failed": return {
+ 			...state,
+ 			loadState: {
+@@ -252,8 +305,7 @@ const reduceOpenCodeThreadState = (state, event) => {
  			if (nextState === state) return state;
  			return {
  				...nextState,
@@ -1168,7 +1560,7 @@ index 6419b83..6a41d51 100644
  				sync: {
  					...state.sync,
  					lastEventAt: Date.now()
-@@ -269,8 +278,7 @@ const reduceOpenCodeThreadState = (state, event) => {
+@@ -269,8 +321,7 @@ const reduceOpenCodeThreadState = (state, event) => {
  					...current,
  					parts: nextParts
  				})),
@@ -1188,7 +1580,7 @@ index 6c2e3a5..9798f4c 100644
 +{"version":3,"file":"openCodeThreadState.js","names":[],"sources":["../src/openCodeThreadState.ts"],"sourcesContent":["import type {\n  Message,\n  MessageWithParts,\n  OpenCodeServerMessage,\n  OpenCodeStateEvent,\n  OpenCodeThreadState,\n  Part,\n  PendingUserMessage,\n  ThreadUserMessagePart,\n} from \"./types\";\nimport { serializeOpenCodeParts } from \"./serializeUserParts\";\n\nconst PENDING_MATCH_WINDOW_MS = 2 * 60 * 1000;\nconst MAX_UNHANDLED_EVENTS = 25;\n\nconst extractCreatedAt = (message: Message | undefined): number | undefined => {\n  const created = message?.time?.created;\n  return typeof created === \"number\" ? created : undefined;\n};\n\nconst normalizeText = (value: string) =>\n  value.trim().replace(/\\s+/g, \" \").toLowerCase();\n\nconst pendingFingerprint = (pending: PendingUserMessage) =>\n  normalizeText(pending.contentText);\n\nconst partTextFingerprint = (parts: readonly ThreadUserMessagePart[]) =>\n  normalizeText(serializeOpenCodeParts(parts));\n\nconst serverFingerprint = (message: MessageWithParts) =>\n  normalizeText(serializeOpenCodeParts(message.parts));\n\nconst sortMessageIds = (\n  messagesById: Readonly<Record<string, OpenCodeServerMessage>>,\n  ids: Iterable<string>,\n) => {\n  return [...ids].sort((leftId, rightId) => {\n    const left = messagesById[leftId];\n    const right = messagesById[rightId];\n    const leftCreated = extractCreatedAt(left?.info) ?? Number.MAX_SAFE_INTEGER;\n    const rightCreated =\n      extractCreatedAt(right?.info) ?? Number.MAX_SAFE_INTEGER;\n    if (leftCreated !== rightCreated) return leftCreated - rightCreated;\n    return leftId.localeCompare(rightId);\n  });\n};\n\nconst upsertMessage = (\n  state: OpenCodeThreadState,\n  messageId: string,\n  updater: (\n    current: OpenCodeServerMessage | undefined,\n  ) => OpenCodeServerMessage,\n): OpenCodeThreadState => {\n  const current = state.messagesById[messageId];\n  const nextMessage = updater(current);\n  const messagesById = {\n    ...state.messagesById,\n    [messageId]: nextMessage,\n  };\n  const messageOrder = current\n    ? state.messageOrder\n    : sortMessageIds(messagesById, [...state.messageOrder, messageId]);\n\n  return {\n    ...state,\n    messagesById,\n    messageOrder,\n  };\n};\n\nconst updateExistingMessage = (\n  state: OpenCodeThreadState,\n  messageId: string,\n  updater: (current: OpenCodeServerMessage) => OpenCodeServerMessage,\n): OpenCodeThreadState => {\n  const current = state.messagesById[messageId];\n  if (!current) return state;\n\n  return {\n    ...state,\n    messagesById: {\n      ...state.messagesById,\n      [messageId]: updater(current),\n    },\n  };\n};\n\nconst removePending = (\n  state: OpenCodeThreadState,\n  clientId: string,\n): OpenCodeThreadState => {\n  if (!(clientId in state.pendingUserMessages)) return state;\n  const pendingUserMessages = { ...state.pendingUserMessages };\n  delete pendingUserMessages[clientId];\n  return {\n    ...state,\n    pendingUserMessages,\n  };\n};\n\nconst findPendingMatchByHistory = (\n  state: OpenCodeThreadState,\n  message: MessageWithParts,\n) => {\n  const createdAt = extractCreatedAt(message.info);\n  const fingerprint = serverFingerprint(message);\n  const candidates = (\n    Object.values(state.pendingUserMessages) as PendingUserMessage[]\n  ).filter(\n    (pending) =>\n      pending.status === \"pending\" &&\n      (createdAt === undefined ||\n        Math.abs(pending.createdAt - createdAt) <= PENDING_MATCH_WINDOW_MS) &&\n      (fingerprint.length === 0 ||\n        pendingFingerprint(pending) === fingerprint ||\n        partTextFingerprint(pending.parts) === fingerprint),\n  );\n\n  if (candidates.length === 1) return candidates[0];\n  if (candidates.length > 1) {\n    return candidates.sort(\n      (left, right) => left.createdAt - right.createdAt,\n    )[0];\n  }\n  return undefined;\n};\n\nconst findPendingMatchByMessageInfo = (\n  state: OpenCodeThreadState,\n  message: Message,\n) => {\n  const createdAt = extractCreatedAt(message);\n  const candidates = (\n    Object.values(state.pendingUserMessages) as PendingUserMessage[]\n  ).filter(\n    (pending) =>\n      pending.status === \"pending\" &&\n      (createdAt === undefined ||\n        Math.abs(pending.createdAt - createdAt) <= PENDING_MATCH_WINDOW_MS),\n  );\n\n  if (candidates.length === 1) return candidates[0];\n  return undefined;\n};\n\nconst historyLoaded = (\n  state: OpenCodeThreadState,\n  session: OpenCodeThreadState[\"session\"],\n  messages: readonly MessageWithParts[],\n): OpenCodeThreadState => {\n  let nextState: OpenCodeThreadState = {\n    ...state,\n    session,\n    loadState: { type: \"ready\" },\n    messagesById: {} as Readonly<Record<string, OpenCodeServerMessage>>,\n    messageOrder: [],\n    sync: {\n      ...state.sync,\n      lastHistoryLoadAt: Date.now(),\n    },\n  };\n\n  const nextMessagesById: Record<string, OpenCodeServerMessage> = {};\n  for (const message of messages) {\n    const pendingMatch =\n      message.info.role === \"user\"\n        ? findPendingMatchByHistory(nextState, message)\n        : undefined;\n\n    nextMessagesById[message.info.id] = {\n      id: message.info.id,\n      info: message.info,\n      parts: message.parts,\n      shadowParts:\n        message.parts.length === 0 && pendingMatch\n          ? pendingMatch.parts\n          : undefined,\n    };\n\n    if (pendingMatch) {\n      nextState = removePending(nextState, pendingMatch.clientId);\n    }\n  }\n\n  nextState = {\n    ...nextState,\n    messagesById: nextMessagesById,\n    messageOrder: sortMessageIds(\n      nextMessagesById,\n      Object.keys(nextMessagesById),\n    ),\n  };\n\n  return nextState;\n};\n\nconst removeMessagePart = (parts: readonly Part[], partId: string) =>\n  parts.filter((part) => part.id !== partId);\n\nconst upsertMessagePart = (parts: readonly Part[], part: Part) => {\n  if (!part.id) return [...parts, part];\n  const index = parts.findIndex((candidate) => candidate.id === part.id);\n  if (index === -1) return [...parts, part];\n  const nextParts = [...parts];\n  nextParts[index] = part;\n  return nextParts;\n};\n\nconst applyMessagePartDelta = (\n  parts: readonly Part[],\n  partId: string,\n  field: string,\n  delta: string,\n) => {\n  const index = parts.findIndex((candidate) => candidate.id === partId);\n  if (index === -1) return null;\n\n  const current = parts[index];\n  if (!current) return null;\n  if (\n    field === \"text\" &&\n    (current.type === \"text\" || current.type === \"reasoning\")\n  ) {\n    const nextParts = [...parts];\n    nextParts[index] = {\n      ...current,\n      text: (current.text ?? \"\") + delta,\n    };\n    return nextParts;\n  }\n\n  return null;\n};\n\n// Parts imply activity only while status is unknown or busy. While cancelling,\n// reverting, or after an explicit idle they are cleanup output, not a new turn;\n// a new turn always announces itself with a busy session.status first.\nconst activityFromPartEvent = (\n  state: OpenCodeThreadState,\n): Pick<OpenCodeThreadState, \"runState\" | \"sessionStatus\"> => {\n  if (\n    state.runState.type === \"cancelling\" ||\n    state.sessionStatus?.type === \"idle\"\n  ) {\n    return { runState: state.runState, sessionStatus: state.sessionStatus };\n  }\n  return {\n    runState: { type: \"streaming\" },\n    sessionStatus:\n      state.sessionStatus?.type === \"retry\"\n        ? state.sessionStatus\n        : { type: \"busy\" },\n  };\n};\n\nexport const createOpenCodeThreadState = (\n  sessionId: string,\n): OpenCodeThreadState => ({\n  sessionId,\n  session: null,\n  sessionStatus: null,\n  loadState: { type: \"idle\" },\n  runState: { type: \"idle\" },\n  messageOrder: [],\n  messagesById: {} as Readonly<Record<string, OpenCodeServerMessage>>,\n  childSessionsById: {} as Readonly<Record<string, OpenCodeThreadState>>,\n  pendingUserMessages: {} as Readonly<Record<string, PendingUserMessage>>,\n  interactions: {\n    permissions: {\n      pending: {} as Readonly<\n        Record<string, import(\"./types\").OpenCodePermissionRequest>\n      >,\n      resolved: {} as Readonly<\n        Record<\n          string,\n          {\n            request: import(\"./types\").OpenCodePermissionRequest;\n            reply: import(\"./types\").OpenCodePermissionResponse;\n            respondedAt: number;\n          }\n        >\n      >,\n    },\n    questions: {\n      pending: {} as Readonly<\n        Record<string, import(\"./types\").OpenCodeQuestionRequest>\n      >,\n      answered: {} as Readonly<\n        Record<\n          string,\n          {\n            request: import(\"./types\").OpenCodeQuestionRequest;\n            answers: readonly import(\"./types\").QuestionAnswer[];\n            respondedAt: number;\n          }\n        >\n      >,\n      rejected: {} as Readonly<\n        Record<\n          string,\n          {\n            request: import(\"./types\").OpenCodeQuestionRequest;\n            rejectedAt: number;\n          }\n        >\n      >,\n    },\n  },\n  unhandledEvents: [],\n  sync: {},\n});\n\nexport const reduceOpenCodeThreadState = (\n  state: OpenCodeThreadState,\n  event: OpenCodeStateEvent,\n): OpenCodeThreadState => {\n  switch (event.type) {\n    case \"history.loading\":\n      return {\n        ...state,\n        loadState: { type: \"loading\" },\n      };\n\n    case \"history.loaded\":\n      return historyLoaded(state, event.session, event.messages);\n\n    case \"history.failed\":\n      return {\n        ...state,\n        loadState: { type: \"error\", error: event.error },\n      };\n\n    case \"run.started\":\n      return {\n        ...state,\n        runState: { type: \"streaming\" },\n        sessionStatus: { type: \"busy\" },\n      };\n\n    case \"run.cancelling\":\n      return {\n        ...state,\n        runState: { type: \"cancelling\" },\n      };\n\n    case \"run.reverting\":\n      return {\n        ...state,\n        runState: { type: \"reverting\" },\n      };\n\n    case \"run.failed\":\n      return {\n        ...state,\n        runState: { type: \"error\", error: event.error },\n      };\n\n    case \"session.updated\":\n      return {\n        ...state,\n        session: event.session,\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n\n    case \"session.status\":\n      return {\n        ...state,\n        sessionStatus: event.status,\n        runState:\n          event.status.type === \"idle\"\n            ? { type: \"idle\" }\n            : state.runState.type === \"cancelling\" ||\n                state.runState.type === \"reverting\"\n              ? state.runState\n              : { type: \"streaming\" },\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n\n    case \"session.idle\":\n      return {\n        ...state,\n        sessionStatus: { type: \"idle\" },\n        runState: { type: \"idle\" },\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n\n    case \"session.compacted\":\n      return {\n        ...state,\n        sync: {\n          ...state.sync,\n          lastCompactionAt: Date.now(),\n          lastEventAt: Date.now(),\n        },\n      };\n\n    case \"message.updated\": {\n      const pendingMatch =\n        event.info.role === \"user\"\n          ? findPendingMatchByMessageInfo(state, event.info)\n          : undefined;\n\n      let nextState = upsertMessage(state, event.info.id, (current) => ({\n        id: event.info.id,\n        info: event.info,\n        parts: current?.parts ?? [],\n        shadowParts:\n          current?.shadowParts ??\n          (pendingMatch && (current?.parts?.length ?? 0) === 0\n            ? pendingMatch.parts\n            : undefined),\n      }));\n\n      if (pendingMatch) {\n        nextState = removePending(nextState, pendingMatch.clientId);\n      }\n\n      return {\n        ...nextState,\n        sync: {\n          ...nextState.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n    }\n\n    case \"message.removed\": {\n      if (!(event.messageId in state.messagesById)) return state;\n      const messagesById = { ...state.messagesById };\n      delete messagesById[event.messageId];\n      return {\n        ...state,\n        messagesById,\n        messageOrder: state.messageOrder.filter((id) => id !== event.messageId),\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n    }\n\n    case \"part.updated\": {\n      const nextState = updateExistingMessage(\n        state,\n        event.messageId,\n        (current) => ({\n          id: event.messageId,\n          info: current.info,\n          parts: upsertMessagePart(current.parts, event.part),\n          shadowParts: current.shadowParts,\n        }),\n      );\n\n      if (nextState === state) return state;\n\n      return {\n        ...nextState,\n        ...activityFromPartEvent(state),\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n    }\n\n    case \"part.delta\": {\n      const current = state.messagesById[event.messageId];\n      const nextParts = current\n        ? applyMessagePartDelta(\n            current.parts,\n            event.partId,\n            event.field,\n            event.delta,\n          )\n        : null;\n\n      if (!current || !nextParts) return state;\n\n      return {\n        ...updateExistingMessage(state, event.messageId, () => ({\n          ...current,\n          parts: nextParts,\n        })),\n        ...activityFromPartEvent(state),\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n    }\n\n    case \"part.removed\": {\n      const nextState = updateExistingMessage(\n        state,\n        event.messageId,\n        (current) => ({\n          id: event.messageId,\n          info: current.info,\n          parts: removeMessagePart(current.parts, event.partId),\n          shadowParts: current.shadowParts,\n        }),\n      );\n\n      if (nextState === state) return state;\n\n      return {\n        ...nextState,\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n    }\n\n    case \"permission.asked\":\n      return {\n        ...state,\n        interactions: {\n          ...state.interactions,\n          permissions: {\n            ...state.interactions.permissions,\n            pending: {\n              ...state.interactions.permissions.pending,\n              [event.request.id]: event.request,\n            },\n          },\n        },\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n\n    case \"permission.replied\": {\n      const pending = { ...state.interactions.permissions.pending };\n      const request = pending[event.permissionId];\n      delete pending[event.permissionId];\n      if (!request) return state;\n\n      return {\n        ...state,\n        interactions: {\n          ...state.interactions,\n          permissions: {\n            pending,\n            resolved: {\n              ...state.interactions.permissions.resolved,\n              [event.permissionId]: {\n                request,\n                reply: event.reply,\n                respondedAt: Date.now(),\n              },\n            },\n          },\n        },\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n    }\n\n    case \"question.asked\":\n      return {\n        ...state,\n        interactions: {\n          ...state.interactions,\n          questions: {\n            ...state.interactions.questions,\n            pending: {\n              ...state.interactions.questions.pending,\n              [event.request.id]: event.request,\n            },\n          },\n        },\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n\n    case \"question.replied\": {\n      const pending = { ...state.interactions.questions.pending };\n      const request = pending[event.questionId];\n      delete pending[event.questionId];\n      if (!request) return state;\n\n      return {\n        ...state,\n        interactions: {\n          ...state.interactions,\n          questions: {\n            ...state.interactions.questions,\n            pending,\n            answered: {\n              ...state.interactions.questions.answered,\n              [event.questionId]: {\n                request,\n                answers: event.answers,\n                respondedAt: Date.now(),\n              },\n            },\n          },\n        },\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n    }\n\n    case \"question.rejected\": {\n      const pending = { ...state.interactions.questions.pending };\n      const request = pending[event.questionId];\n      delete pending[event.questionId];\n      if (!request) return state;\n\n      return {\n        ...state,\n        interactions: {\n          ...state.interactions,\n          questions: {\n            ...state.interactions.questions,\n            pending,\n            rejected: {\n              ...state.interactions.questions.rejected,\n              [event.questionId]: {\n                request,\n                rejectedAt: Date.now(),\n              },\n            },\n          },\n        },\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n    }\n\n    case \"unhandled.event\":\n      return {\n        ...state,\n        unhandledEvents: [\n          ...state.unhandledEvents.slice(-(MAX_UNHANDLED_EVENTS - 1)),\n          event.event,\n        ],\n        sync: {\n          ...state.sync,\n          lastEventAt: Date.now(),\n        },\n      };\n\n    case \"local.message.queued\":\n      return {\n        ...state,\n        pendingUserMessages: {\n          ...state.pendingUserMessages,\n          [event.pending.clientId]: event.pending,\n        },\n      };\n\n    case \"local.message.reconciled\":\n      return removePending(state, event.clientId);\n\n    case \"local.message.failed\": {\n      const current = state.pendingUserMessages[event.clientId];\n      if (!current) return state;\n      return {\n        ...state,\n        pendingUserMessages: {\n          ...state.pendingUserMessages,\n          [event.clientId]: {\n            ...current,\n            status: \"failed\",\n            error: event.error,\n          },\n        },\n        runState: { type: \"error\", error: event.error },\n      };\n    }\n  }\n};\n\n/** Stable placeholder state used before a session controller is attached. */\nexport const EMPTY_OPENCODE_THREAD_STATE =\n  createOpenCodeThreadState(\"__pending__\");\n"],"mappings":"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"}
 \ No newline at end of file
 diff --git a/dist/types.d.ts b/dist/types.d.ts
-index 20262e5..5767c5e 100644
+index 20262e5..f6a6390 100644
 --- a/dist/types.d.ts
 +++ b/dist/types.d.ts
 @@ -1,3 +1,4 @@
@@ -1196,7 +1588,33 @@ index 20262e5..5767c5e 100644
  import { AppendMessage, AppendMessage as AppendMessage$1, AssistantRuntime, AttachmentAdapter, DictationAdapter, ExternalStoreSharedOptions, FeedbackAdapter, RealtimeVoiceAdapter, SpeechSynthesisAdapter, ThreadMessageLike, ThreadMessageLike as ThreadMessageLike$1, ThreadUserMessagePart, ThreadUserMessagePart as ThreadUserMessagePart$1 } from "@assistant-ui/react";
  import { AssistantMessage, Event, EventMessagePartDelta, FilePart, GlobalSession, Message, Message as Message$1, Model, OpencodeClient, OpencodeClient as OpencodeClient$1, OpencodeClientConfig, Part, Part as Part$1, PermissionRequest, PermissionRequest as PermissionRequest$1, Provider, QuestionAnswer, QuestionAnswer as QuestionAnswer$1, QuestionRequest, QuestionRequest as QuestionRequest$1, ReasoningPart, Session, Session as Session$1, SessionStatus, SessionStatus as SessionStatus$1, SnapshotPart, StepFinishPart, StepStartPart, TextPart, ToolPart, ToolState, UserMessage } from "@opencode-ai/sdk/v2/client";
  //#region src/types.d.ts
-@@ -116,6 +117,34 @@ type OpenCodeUserMessageOptions = {
+@@ -69,11 +70,25 @@ type OpenCodeUnhandledEvent = {
+   properties: Record<string, unknown>;
+   seenAt: number;
+ };
++/**
++ * Whether the server holds messages older than those loaded: a session loads
++ * its newest page first and the rest after (`loading` until it lands).
++ */
++type OpenCodeOlderHistory = {
++  type: "complete";
++} | {
++  type: "loading";
++} | {
++  type: "failed";
++  error: unknown;
++};
+ type OpenCodeThreadState = {
+   sessionId: string;
+   session: Session$1 | null;
+   sessionStatus: SessionStatus$1 | null;
+   loadState: OpenCodeLoadState;
++  /** Absent means complete. */
++  olderHistory?: OpenCodeOlderHistory;
+   runState: OpenCodeRunState;
+   messageOrder: readonly string[];
+   messagesById: Readonly<Record<string, OpenCodeServerMessage>>;
+@@ -116,6 +131,34 @@ type OpenCodeUserMessageOptions = {
    agent?: string | undefined;
    noReply?: boolean | undefined;
  };
@@ -1231,7 +1649,7 @@ index 20262e5..5767c5e 100644
  type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
    /**
     * Called whenever the active thread's canonical (remote) ID changes, so the
-@@ -127,6 +156,7 @@ type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
+@@ -127,6 +170,7 @@ type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
     */
    onThreadIdChange?: ((threadId: string | undefined) => void) | undefined;
    client?: OpencodeClient$1;
@@ -1239,7 +1657,7 @@ index 20262e5..5767c5e 100644
    baseUrl?: string | undefined;
    initialSessionId?: string | undefined;
    defaultModel?: {
-@@ -135,6 +165,14 @@ type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
+@@ -135,6 +179,14 @@ type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
    } | undefined;
    defaultAgent?: string | undefined;
    onError?: (error: unknown) => void;
@@ -1254,7 +1672,7 @@ index 20262e5..5767c5e 100644
    adapters?: {
      attachments?: AttachmentAdapter;
      speech?: SpeechSynthesisAdapter;
-@@ -156,12 +194,15 @@ type OpenCodeRuntimeExtras = {
+@@ -156,12 +208,15 @@ type OpenCodeRuntimeExtras = {
    replyToPermission: (permissionId: string, response: OpenCodePermissionResponse) => Promise<void>;
    replyToQuestion: (questionId: string, answers: readonly QuestionAnswer$1[]) => Promise<void>;
    rejectQuestion: (questionId: string) => Promise<void>;
@@ -1270,12 +1688,27 @@ index 20262e5..5767c5e 100644
    raw: unknown;
    properties: Record<string, unknown>;
  };
-@@ -270,5 +311,5 @@ type OpenCodePartPayload = {
+@@ -171,6 +226,14 @@ type OpenCodeStateEvent = {
+   type: "history.loaded";
+   session: Session$1 | null;
+   messages: readonly MessageWithParts[];
++  olderHistory?: OpenCodeOlderHistory;
++} | {
++  type: "history.prepended";
++  messages: readonly MessageWithParts[];
++  boundaryId: string;
++} | {
++  type: "history.olderFailed";
++  error: unknown;
+ } | {
+   type: "history.failed";
+   error: unknown;
+@@ -270,5 +333,5 @@ type OpenCodePartPayload = {
  };
  type OpenCodeProjectedThreadMessage = ThreadMessageLike$1;
  //#endregion
 -export { type AppendMessage, type AssistantMessage, type Event, type EventMessagePartDelta, type FilePart, type GlobalSession, type Message, MessageWithParts, type Model, OpenCodeLoadState, OpenCodePartPayload, OpenCodePermissionRequest, OpenCodePermissionResponse, OpenCodeProjectedThreadMessage, OpenCodeQuestionRequest, OpenCodeRunState, OpenCodeRuntime, OpenCodeRuntimeExtras, OpenCodeRuntimeOptions, OpenCodeServerEvent, OpenCodeServerMessage, OpenCodeStateEvent, OpenCodeThreadControllerLike, OpenCodeThreadControllerSnapshot, OpenCodeThreadState, OpenCodeThreadStateSelector, OpenCodeUnhandledEvent, OpenCodeUserMessageOptions, type OpencodeClient, type OpencodeClientConfig, type Part, PendingUserMessage, type PermissionRequest, type Provider, type QuestionAnswer, type QuestionRequest, type ReasoningPart, type Session, type SessionStatus, type SnapshotPart, type StepFinishPart, type StepStartPart, type TextPart, type ThreadMessageLike, type ThreadUserMessagePart, type ToolPart, type ToolState, type UserMessage };
-+export { type AppendMessage, type AssistantMessage, type Event, type EventMessagePartDelta, type FilePart, type GlobalSession, type Message, MessageWithParts, type Model, OpenCodeEventSourceLike, OpenCodeLoadState, OpenCodePartPayload, OpenCodePermissionRequest, OpenCodePermissionResponse, OpenCodeProjectedThreadMessage, OpenCodeQuestionRequest, OpenCodeRunState, OpenCodeRuntime, OpenCodeRuntimeBackend, OpenCodeRuntimeExtras, OpenCodeRuntimeOptions, OpenCodeServerEvent, OpenCodeServerMessage, OpenCodeSessionRef, OpenCodeStateEvent, OpenCodeThreadControllerLike, OpenCodeThreadControllerSnapshot, OpenCodeThreadState, OpenCodeThreadStateSelector, OpenCodeUnhandledEvent, OpenCodeUserMessageOptions, type OpencodeClient, type OpencodeClientConfig, type Part, PendingUserMessage, type PermissionRequest, type Provider, type QuestionAnswer, type QuestionRequest, type ReasoningPart, type Session, type SessionStatus, type SnapshotPart, type StepFinishPart, type StepStartPart, type TextPart, type ThreadMessageLike, type ThreadUserMessagePart, type ToolPart, type ToolState, type UserMessage };
++export { type AppendMessage, type AssistantMessage, type Event, type EventMessagePartDelta, type FilePart, type GlobalSession, type Message, MessageWithParts, type Model, OpenCodeEventSourceLike, OpenCodeLoadState, OpenCodeOlderHistory, OpenCodePartPayload, OpenCodePermissionRequest, OpenCodePermissionResponse, OpenCodeProjectedThreadMessage, OpenCodeQuestionRequest, OpenCodeRunState, OpenCodeRuntime, OpenCodeRuntimeBackend, OpenCodeRuntimeExtras, OpenCodeRuntimeOptions, OpenCodeServerEvent, OpenCodeServerMessage, OpenCodeSessionRef, OpenCodeStateEvent, OpenCodeThreadControllerLike, OpenCodeThreadControllerSnapshot, OpenCodeThreadState, OpenCodeThreadStateSelector, OpenCodeUnhandledEvent, OpenCodeUserMessageOptions, type OpencodeClient, type OpencodeClientConfig, type Part, PendingUserMessage, type PermissionRequest, type Provider, type QuestionAnswer, type QuestionRequest, type ReasoningPart, type Session, type SessionStatus, type SnapshotPart, type StepFinishPart, type StepStartPart, type TextPart, type ThreadMessageLike, type ThreadUserMessagePart, type ToolPart, type ToolState, type UserMessage };
  //# sourceMappingURL=types.d.ts.map
 \ No newline at end of file
 diff --git a/dist/types.d.ts.map b/dist/types.d.ts.map
@@ -1297,7 +1730,7 @@ index 48cc456..651f9e8 100644
 +{"version":3,"file":"useOpenCodeRuntime.d.ts","names":[],"sources":["../src/useOpenCodeRuntime.ts"],"mappings":";;;cAsea,qBACX,UAAS,2BACR"}
 \ No newline at end of file
 diff --git a/dist/useOpenCodeRuntime.js b/dist/useOpenCodeRuntime.js
-index d795d57..151b9e6 100644
+index d795d57..fb9f644 100644
 --- a/dist/useOpenCodeRuntime.js
 +++ b/dist/useOpenCodeRuntime.js
 @@ -1,27 +1,31 @@
@@ -1308,7 +1741,8 @@ index d795d57..151b9e6 100644
  import { OpenCodeThreadController } from "./OpenCodeThreadController.js";
  import { openCodeExtras } from "./openCodeExtras.js";
  import { toOpenCodePermissionResponse } from "./openCodePermissionApproval.js";
- import { projectOpenCodeThreadRepository } from "./openCodeMessageProjection.js";
+-import { projectOpenCodeThreadRepository } from "./openCodeMessageProjection.js";
++import { createOpenCodeProjectionCache, projectOpenCodeThreadRepository } from "./openCodeMessageProjection.js";
  import { createOpenCodeThreadListAdapter } from "./openCodeThreadListAdapter.js";
 +import { createOpenCodeMessageQueue } from "./openCodeMessageQueue.js";
  import { useOpenCodeControllerState } from "./useOpenCodeControllerState.js";
@@ -1379,7 +1813,7 @@ index d795d57..151b9e6 100644
  	registry.controllers.set(sessionId, controller);
  	return controller;
  };
-@@ -52,10 +86,43 @@ const NOOP_CONTROLLER = {
+@@ -52,19 +86,69 @@ const NOOP_CONTROLLER = {
  	replyToQuestion: async () => {},
  	rejectQuestion: async () => {}
  };
@@ -1425,11 +1859,14 @@ index d795d57..151b9e6 100644
  	const onLoadError = useEffectEvent((error) => {
  		options.onError?.(error);
  	});
-@@ -63,7 +130,17 @@ const useOpenCodeThreadRuntime = (controller, options) => {
+ 	useEffect(() => {
  		if (controller === NOOP_CONTROLLER) return;
++		const { loadState } = controller.getState();
++		if (loadState.type === "ready" || loadState.type === "loading") return;
  		controller.load().catch(onLoadError);
  	}, [controller]);
 -	const messageTiming = useOpenCodeStreamingTiming(state, isOpenCodeStateRunning(state));
+-	const messageRepository = useMemo(() => projectOpenCodeThreadRepository(state, messageTiming), [state, messageTiming]);
 +	useEffect(() => {
 +		if (listStatus === "new" || !sessionTitle) return;
 +		if (aui.threadListItem.getState().title === sessionTitle) return;
@@ -1441,10 +1878,16 @@ index d795d57..151b9e6 100644
 +	]);
 +	const isRunning = isOpenCodeStateRunning(state);
 +	const messageTiming = useOpenCodeStreamingTiming(state, isRunning);
- 	const messageRepository = useMemo(() => projectOpenCodeThreadRepository(state, messageTiming), [state, messageTiming]);
++	const projectionCache = useMemo(() => createOpenCodeProjectionCache(), [controller]);
++	const messageRepository = useMemo(() => projectOpenCodeThreadRepository(state, messageTiming, projectionCache), [
++		state,
++		messageTiming,
++		projectionCache
++	]);
  	const extras = useMemo(() => openCodeExtras.provide({
  		session: state.session,
-@@ -79,24 +156,16 @@ const useOpenCodeThreadRuntime = (controller, options) => {
+ 		state,
+@@ -79,24 +163,16 @@ const useOpenCodeThreadRuntime = (controller, options) => {
  		replyToQuestion: (questionId, answers) => controller.replyToQuestion(questionId, answers),
  		rejectQuestion: (questionId) => controller.rejectQuestion(questionId)
  	}), [controller, state]);
@@ -1472,7 +1915,7 @@ index d795d57..151b9e6 100644
  			} catch (error) {
  				options.onError?.(error);
  				throw error;
-@@ -131,36 +200,179 @@ const useOpenCodeThreadRuntime = (controller, options) => {
+@@ -131,36 +207,179 @@ const useOpenCodeThreadRuntime = (controller, options) => {
  				throw error;
  			}
  		}
@@ -1762,13 +2205,34 @@ index 4acaaa7..8576332 100644
          }
          if (abortController.signal.aborted || this.stopped) {
 diff --git a/src/OpenCodeThreadController.ts b/src/OpenCodeThreadController.ts
-index 5ebfe4f..d52a6a3 100644
+index 5ebfe4f..29ef78c 100644
 --- a/src/OpenCodeThreadController.ts
 +++ b/src/OpenCodeThreadController.ts
-@@ -216,6 +216,14 @@ const isSupportedDelta = (
+@@ -216,13 +216,62 @@ const isSupportedDelta = (
    );
  };
  
++/** Messages a session's history opens with; the older ones follow in the background. */
++export const OPEN_CODE_HISTORY_PAGE_SIZE = 50;
++
++/** A `limit` covering every older message: the server takes `before` only with one. */
++const OLDER_HISTORY_LIMIT = 1_000_000;
++
++/** The cursor to the messages older than a page, absent once there are none. */
++const nextHistoryCursor = (result: unknown): string | undefined =>
++  (result as { response?: Response } | undefined)?.response?.headers?.get(
++    "X-Next-Cursor",
++  ) ?? undefined;
++
++const whenIdle = () =>
++  new Promise<void>((resolve) => {
++    if (typeof requestIdleCallback === "function") {
++      requestIdleCallback(() => resolve(), { timeout: 1_000 });
++    } else {
++      setTimeout(resolve, 0);
++    }
++  });
++
 +const STATUS_EVENT_TYPES: ReadonlySet<OpenCodeStateEvent["type"]> = new Set([
 +  "session.status",
 +  "session.idle",
@@ -1780,9 +2244,26 @@ index 5ebfe4f..d52a6a3 100644
  export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
    private state: OpenCodeThreadState;
    private readonly listeners = new Set<() => void>();
-@@ -223,6 +231,9 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+   private readonly getEventSource: OpenCodeEventSourceProvider;
    private unsubscribeFromEvents: (() => void) | null = null;
++  /*
++   * While no one listens, the controller only watches whether the stream
++   * brought anything for its session (or reconnected). A listener returning
++   * then refreshes the history only if it did: a thread shown again after
++   * being hidden (a kept work session, a tab switched back) doesn't fetch and
++   * rebuild its whole history when nothing changed.
++   */
++  private stopStaleWatch: (() => void) | null = null;
++  private stale = false;
    private loadPromise: Promise<void> | null = null;
++  /*
++   * A history loads its newest page, shows it, then fetches everything older
++   * once the browser is idle and adds it in one dispatch: a long session opens
++   * at the cost of a page, and its full history (for the conversation map,
++   * find and revert) follows without stalling the first paint. Each load bumps
++   * the epoch, so older history fetched for a superseded load is dropped.
++   */
++  private historyEpoch = 0;
    private reconnectSyncToken = 0;
 +  // Bumped by every event that sets run/session status, so a status fetch
 +  // that resolves after a newer live event cannot overwrite it.
@@ -1790,15 +2271,61 @@ index 5ebfe4f..d52a6a3 100644
    private readonly childControllersById = new Map<
      string,
      ChildControllerEntry
-@@ -305,6 +316,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -304,9 +353,12 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+ 
    private discard() {
      this.loadPromise = null;
++    this.historyEpoch += 1;
      this.reconnectSyncToken += 1;
 +    this.statusEpoch += 1;
      this.unsubscribeFromEvents?.();
      this.unsubscribeFromEvents = null;
++    this.stopWatchingForStaleness();
      for (const entry of this.childControllersById.values()) {
-@@ -428,26 +440,35 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+       entry.unsubscribe?.();
+       entry.controller.discard();
+@@ -403,6 +455,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+   private syncChildSessionIndex(event: OpenCodeStateEvent) {
+     switch (event.type) {
+       case "history.loaded":
++      case "history.prepended":
+       case "message.removed":
+         this.rebuildChildSessionIndex();
+         break;
+@@ -417,8 +470,32 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+     }
+   }
+ 
++  private watchForStaleness() {
++    if (this.stopStaleWatch) return;
++    this.stopStaleWatch = this.getEventSource().subscribe((event) => {
++      if (
++        event.type !== STREAM_RECONNECTED_EVENT_TYPE &&
++        event.sessionId !== this.sessionId
++      ) {
++        return;
++      }
++      this.stale = true;
++      this.stopWatchingForStaleness();
++    });
++  }
++
++  private stopWatchingForStaleness() {
++    this.stopStaleWatch?.();
++    this.stopStaleWatch = null;
++  }
++
+   private ensureEventSubscription() {
+     if (this.unsubscribeFromEvents) return;
++    this.stopWatchingForStaleness();
++    if (this.stale && this.state.loadState.type === "ready") {
++      this.refreshInBackground();
++    }
++    this.stale = false;
+ 
+     this.unsubscribeFromEvents = this.getEventSource().subscribe((event) => {
+       if (event.type === STREAM_RECONNECTED_EVENT_TYPE) {
+@@ -428,26 +505,35 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
        if (event.sessionId !== this.sessionId) return;
        this.handleServerEvent(event);
      });
@@ -1844,7 +2371,108 @@ index 5ebfe4f..d52a6a3 100644
  
      void this.client.permission
        .list(undefined, OPEN_CODE_REQUEST_OPTIONS)
-@@ -578,6 +599,11 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -483,6 +569,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+   public dispose() {
+     this.unsubscribeFromEvents?.();
+     this.unsubscribeFromEvents = null;
++    this.stopWatchingForStaleness();
+     this.detachChildControllers();
+     this.listeners.clear();
+   }
+@@ -507,6 +594,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+         this.unsubscribeFromEvents?.();
+         this.unsubscribeFromEvents = null;
+         this.detachChildControllers();
++        this.watchForStaleness();
+       }
+     };
+   };
+@@ -515,6 +603,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+     if (this.loadPromise && !force) return this.loadPromise;
+ 
+     this.dispatch({ type: "history.loading" });
++    const epoch = ++this.historyEpoch;
+ 
+     const request = Promise.all([
+       this.client.session.get(
+@@ -522,19 +611,36 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+         OPEN_CODE_REQUEST_OPTIONS,
+       ),
+       this.client.session.messages(
+-        { sessionID: this.sessionId },
++        { sessionID: this.sessionId, limit: OPEN_CODE_HISTORY_PAGE_SIZE },
+         OPEN_CODE_REQUEST_OPTIONS,
+       ),
+     ])
+-      .then(([sessionResponse, messagesResponse]) => {
++      .then(async ([sessionResponse, messagesResponse]) => {
+         if (this.loadPromise !== request) return;
++        const session = sessionResponse.data ?? null;
++        let messages = (
++          (messagesResponse.data ?? []) as MessageWithParts[]
++        ).slice();
++        let cursor = nextHistoryCursor(messagesResponse);
++        // A reverted session hides everything from its revert point on, so a
++        // page that starts at or after it would show nothing: load it all.
++        const revertId = session?.revert?.messageID;
++        const oldestId = messages[0]?.info.id;
++        if (cursor && revertId && oldestId && revertId <= oldestId) {
++          const older = await this.fetchOlderHistory(cursor);
++          if (this.loadPromise !== request) return;
++          messages = [...older, ...messages];
++          cursor = undefined;
++        }
+         this.dispatch({
+           type: "history.loaded",
+-          session: sessionResponse.data ?? null,
+-          messages: (
+-            (messagesResponse.data ?? []) as MessageWithParts[]
+-          ).slice(),
++          session,
++          messages,
++          olderHistory: cursor ? { type: "loading" } : { type: "complete" },
+         });
++        if (cursor && oldestId) {
++          void this.loadOlderHistory(cursor, oldestId, epoch);
++        }
+       })
+       .catch((error) => {
+         if (this.loadPromise !== request) throw error;
+@@ -555,6 +661,33 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+     return this.load(true);
+   }
+ 
++  private async loadOlderHistory(
++    cursor: string,
++    boundaryId: string,
++    epoch: number,
++  ) {
++    // After the first page has painted: parsing and merging a long history
++    // is a long task of its own.
++    await whenIdle();
++    if (epoch !== this.historyEpoch) return;
++    try {
++      const messages = await this.fetchOlderHistory(cursor);
++      if (epoch !== this.historyEpoch) return;
++      this.dispatch({ type: "history.prepended", messages, boundaryId });
++    } catch (error) {
++      if (epoch !== this.historyEpoch) return;
++      this.dispatch({ type: "history.olderFailed", error });
++    }
++  }
++
++  private async fetchOlderHistory(before: string) {
++    const response = await this.client.session.messages(
++      { sessionID: this.sessionId, limit: OLDER_HISTORY_LIMIT, before },
++      OPEN_CODE_REQUEST_OPTIONS,
++    );
++    return ((response.data ?? []) as MessageWithParts[]).slice();
++  }
++
+   private createPendingMessage(message: AppendMessage): PendingUserMessage {
+     const parts = flattenMessageParts(
+       message,
+@@ -578,6 +711,11 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
      pending: PendingUserMessage,
      options?: OpenCodeUserMessageOptions,
    ) {
@@ -1856,7 +2484,7 @@ index 5ebfe4f..d52a6a3 100644
      this.dispatch({ type: "run.started" });
  
      try {
-@@ -675,13 +701,23 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -675,13 +813,23 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
    public async revert(messageId: string) {
      this.dispatch({ type: "run.reverting" });
      try {
@@ -1881,7 +2509,7 @@ index 5ebfe4f..d52a6a3 100644
      } catch (error) {
        this.dispatch({ type: "run.failed", error });
        throw error;
-@@ -689,12 +725,23 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -689,12 +837,23 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
    }
  
    public async unrevert() {
@@ -1911,7 +2539,7 @@ index 5ebfe4f..d52a6a3 100644
    }
  
    public async fork(messageId: string) {
-@@ -719,6 +766,13 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -719,6 +878,13 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
        {
          requestID: permissionId,
          reply: response,
@@ -1925,7 +2553,7 @@ index 5ebfe4f..d52a6a3 100644
        },
        OPEN_CODE_REQUEST_OPTIONS,
      );
-@@ -963,6 +1017,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
+@@ -963,6 +1129,7 @@ export class OpenCodeThreadController implements OpenCodeThreadControllerLike {
    }
  
    private dispatch(event: Parameters<typeof reduceOpenCodeThreadState>[1]) {
@@ -1934,16 +2562,20 @@ index 5ebfe4f..d52a6a3 100644
      if (nextState === this.state) return;
      this.state = nextState;
 diff --git a/src/index.ts b/src/index.ts
-index 4ac43be..3ad2e24 100644
+index 4ac43be..a33d6e0 100644
 --- a/src/index.ts
 +++ b/src/index.ts
-@@ -19,17 +19,30 @@ export { useOpenCodeStreamingTiming } from "./useOpenCodeStreamingTiming";
+@@ -19,17 +19,37 @@ export { useOpenCodeStreamingTiming } from "./useOpenCodeStreamingTiming";
  export {
    OpenCodeEventSource,
    STREAM_RECONNECTED_EVENT_TYPE,
 +  type OpenCodeEventSubscriber,
  } from "./OpenCodeEventSource";
- export { OpenCodeThreadController } from "./OpenCodeThreadController";
+-export { OpenCodeThreadController } from "./OpenCodeThreadController";
++export {
++  OPEN_CODE_HISTORY_PAGE_SIZE,
++  OpenCodeThreadController,
++} from "./OpenCodeThreadController";
 +export {
 +  createOpenCodeMessageQueue,
 +  type OpenCodeMessageQueueController,
@@ -1957,19 +2589,23 @@ index 4ac43be..3ad2e24 100644
  } from "./openCodeThreadState";
 -export { projectOpenCodeThreadMessages } from "./openCodeMessageProjection";
 +export {
++  createOpenCodeProjectionCache,
 +  projectOpenCodeThreadMessages,
++  projectOpenCodeThreadRepository,
 +  setLocalMcpApps,
 +  type LocalMcpApp,
++  type OpenCodeProjectionCache,
 +} from "./openCodeMessageProjection";
  
  export type {
    MessageWithParts,
    OpenCodeLoadState,
++  OpenCodeOlderHistory,
 +  OpenCodeEventSourceLike,
    OpenCodePartPayload,
    OpenCodePermissionRequest,
    OpenCodePermissionResponse,
-@@ -37,9 +50,11 @@ export type {
+@@ -37,9 +57,11 @@ export type {
    OpenCodeQuestionRequest,
    OpenCodeRunState,
    OpenCodeRuntime,
@@ -1982,7 +2618,7 @@ index 4ac43be..3ad2e24 100644
    OpenCodeStateEvent,
    OpenCodeThreadControllerLike,
 diff --git a/src/openCodeMessageProjection.ts b/src/openCodeMessageProjection.ts
-index 2c792f2..c660a69 100644
+index 2c792f2..f959702 100644
 --- a/src/openCodeMessageProjection.ts
 +++ b/src/openCodeMessageProjection.ts
 @@ -28,6 +28,22 @@ type ProjectedContentPart = Exclude<
@@ -2059,7 +2695,7 @@ index 2c792f2..c660a69 100644
            ...(currentStepId() ? { parentId: currentStepId() } : {}),
          });
          break;
-@@ -520,6 +561,21 @@ const projectUserMessage = (
+@@ -520,9 +561,43 @@ const projectUserMessage = (
    return { content, attachments };
  };
  
@@ -2078,10 +2714,32 @@ index 2c792f2..c660a69 100644
 +      part.state?.status === "completed",
 +  );
 +
++/** What every message's status reads about the run, computed once per projection. */
++interface RunActivity {
++  readonly lastAssistantId: string | undefined;
++  readonly isActiveRun: boolean;
++}
++
++const getRunActivity = (state: OpenCodeThreadState): RunActivity => ({
++  lastAssistantId: state.messageOrder.findLast(
++    (messageId) => state.messagesById[messageId]?.info?.role === "assistant",
++  ),
++  isActiveRun:
++    state.runState.type === "streaming" ||
++    state.runState.type === "cancelling" ||
++    state.runState.type === "reverting" ||
++    state.sessionStatus?.type === "busy" ||
++    state.sessionStatus?.type === "retry",
++});
++
  const getMessageStatus = (
    state: OpenCodeThreadState,
    message: OpenCodeServerMessage,
-@@ -537,6 +593,9 @@ const getMessageStatus = (
++  activity: RunActivity = getRunActivity(state),
+ ): OpenCodeProjectedThreadMessage["status"] => {
+   if (!isAssistantMessage(message.info)) {
+     return undefined;
+@@ -537,6 +612,9 @@ const getMessageStatus = (
  
    if (message.info.error) {
      const error = message.info.error;
@@ -2091,20 +2749,12 @@ index 2c792f2..c660a69 100644
      const maybeMessage =
        isRecord(error) &&
        isRecord(error.data) &&
-@@ -557,12 +616,30 @@ const getMessageStatus = (
+@@ -557,52 +635,96 @@ const getMessageStatus = (
      };
    }
  
-+  const isActiveMessage =
-+    state.messageOrder.findLast(
-+      (messageId) => state.messagesById[messageId]?.info?.role === "assistant",
-+    ) === message.id;
-+  const isActiveRun =
-+    state.runState.type === "streaming" ||
-+    state.runState.type === "cancelling" ||
-+    state.runState.type === "reverting" ||
-+    state.sessionStatus?.type === "busy" ||
-+    state.sessionStatus?.type === "retry";
++  const isActiveMessage = activity.lastAssistantId === message.id;
++  const { isActiveRun } = activity;
 +
    if (!message.info.finish) {
 +    if (!isActiveMessage || !isActiveRun) return CANCELLED_STATUS;
@@ -2122,43 +2772,119 @@ index 2c792f2..c660a69 100644
    return {
      type: "complete",
      reason: "stop",
-@@ -577,13 +654,31 @@ const mergeServerMessages = (
-   for (const message of messages) {
-     const previous = merged[merged.length - 1];
+   };
+ };
  
-+    if (
-+      message.info?.role === "user" &&
-+      message.parts.some(
-+        (part) =>
-+          part.type === "text" &&
-+          part.synthetic === true &&
-+          part.metadata?.background === true,
-+      )
-+    ) {
-+      continue;
-+    }
+-const mergeServerMessages = (
+-  messages: readonly OpenCodeServerMessage[],
+-): OpenCodeServerMessage[] => {
+-  const merged: OpenCodeServerMessage[] = [];
++/** One transcript message: a user message, or a run of assistant steps. */
++interface ServerMessageGroup {
++  readonly sources: readonly OpenCodeServerMessage[];
++  readonly message: OpenCodeServerMessage;
++}
+ 
+-  for (const message of messages) {
+-    const previous = merged[merged.length - 1];
++const isBackgroundUserMessage = (message: OpenCodeServerMessage) =>
++  message.info?.role === "user" &&
++  message.parts.some(
++    (part) =>
++      part.type === "text" &&
++      part.synthetic === true &&
++      part.metadata?.background === true,
++  );
+ 
++const mergeAssistantSteps = (
++  steps: readonly OpenCodeServerMessage[],
++): OpenCodeServerMessage => {
++  if (steps.length === 1) return steps[0]!;
++  const first = steps[0]!;
++  const last = steps[steps.length - 1]!;
++  const hasShadowParts = steps.some((step) => step.shadowParts);
++  return {
++    id: last.id,
++    info: {
++      ...last.info!,
++      time: {
++        ...last.info!.time,
++        created: first.info!.time?.created ?? last.info!.time?.created,
++      },
++    } as OpenCodeServerMessage["info"],
++    parts: steps.flatMap((step) => step.parts),
++    shadowParts: hasShadowParts
++      ? steps.flatMap((step) => step.shadowParts ?? [])
++      : undefined,
++  };
++};
 +
++const groupServerMessages = (
++  messages: readonly OpenCodeServerMessage[],
++): ServerMessageGroup[] => {
++  const groups: OpenCodeServerMessage[][] = [];
++  for (const message of messages) {
++    if (isBackgroundUserMessage(message)) continue;
++    const previous = groups[groups.length - 1];
      if (
-       previous?.info?.role === "assistant" &&
+-      previous?.info?.role === "assistant" &&
++      previous?.[0]?.info?.role === "assistant" &&
        message.info?.role === "assistant"
      ) {
-       merged[merged.length - 1] = {
-         id: message.id,
+-      merged[merged.length - 1] = {
+-        id: message.id,
 -        info: message.info,
-+        info: {
-+          ...message.info,
-+          time: {
-+            ...message.info.time,
-+            created: previous.info.time?.created ?? message.info.time?.created,
-+          },
-+        },
-         parts: [...previous.parts, ...message.parts],
-         shadowParts:
-           previous.shadowParts || message.shadowParts
-@@ -675,17 +770,43 @@ const projectPendingMessage = (
+-        parts: [...previous.parts, ...message.parts],
+-        shadowParts:
+-          previous.shadowParts || message.shadowParts
+-            ? [...(previous.shadowParts ?? []), ...(message.shadowParts ?? [])]
+-            : undefined,
+-      };
++      previous.push(message);
+       continue;
+     }
+-
+-    merged.push(message);
++    groups.push([message]);
+   }
+-
+-  return merged;
++  return groups.map((sources) => ({
++    sources,
++    message:
++      sources[0]?.info?.role === "assistant"
++        ? mergeAssistantSteps(sources)
++        : sources[0]!,
++  }));
+ };
+ 
+ const projectServerMessage = (
+   state: OpenCodeThreadState,
+   message: OpenCodeServerMessage,
+-  timing?: MessageTiming,
++  timing: MessageTiming | undefined,
++  activity: RunActivity,
+ ): OpenCodeProjectedThreadMessage | null => {
+   if (!message.info) return null;
+ 
+@@ -622,7 +744,7 @@ const projectServerMessage = (
+       role: "assistant",
+       createdAt: new Date(message.info.time?.created ?? Date.now()),
+       content: projectAssistantContent(state, message),
+-      status: getMessageStatus(state, message),
++      status: getMessageStatus(state, message, activity),
+       metadata: {
+         custom: {
+           ...metadata.custom,
+@@ -675,39 +797,173 @@ const projectPendingMessage = (
    },
  });
  
+-export function projectOpenCodeThreadMessages(
+-  state: OpenCodeThreadState,
+-  messageTiming: Record<string, MessageTiming> = {},
+-): OpenCodeProjectedThreadMessage[] {
+-  const mergedServerMessages = mergeServerMessages(
 +type SessionRevert = NonNullable<OpenCodeThreadState["session"]>["revert"];
 +
 +const applyRevertVisibility = (
@@ -2182,24 +2908,165 @@ index 2c792f2..c660a69 100644
 +  });
 +};
 +
- export function projectOpenCodeThreadMessages(
-   state: OpenCodeThreadState,
-   messageTiming: Record<string, MessageTiming> = {},
- ): OpenCodeProjectedThreadMessage[] {
--  const mergedServerMessages = mergeServerMessages(
-+  const visibleServerMessages = applyRevertVisibility(
++const visibleServerMessages = (state: OpenCodeThreadState) =>
++  applyRevertVisibility(
      state.messageOrder.flatMap((messageId: string) => {
        const message = state.messagesById[messageId];
        return message ? [message] : [];
      }),
 +    state.session?.revert,
++  );
++
++const sortedPendingMessages = (state: OpenCodeThreadState) =>
++  (Object.values(state.pendingUserMessages) as PendingUserMessage[]).sort(
++    (left, right) => left.createdAt - right.createdAt,
    );
  
-+  const mergedServerMessages = mergeServerMessages(visibleServerMessages);
+-  const serverMessages = mergedServerMessages
+-    .map((message) =>
+-      projectServerMessage(state, message, messageTiming[message.id]),
++export function projectOpenCodeThreadMessages(
++  state: OpenCodeThreadState,
++  messageTiming: Record<string, MessageTiming> = {},
++): OpenCodeProjectedThreadMessage[] {
++  const activity = getRunActivity(state);
++  const serverMessages = groupServerMessages(visibleServerMessages(state))
++    .map(({ message }) =>
++      projectServerMessage(state, message, messageTiming[message.id], activity),
+     )
+     .filter(
+       (message): message is OpenCodeProjectedThreadMessage => message !== null,
+     );
+ 
+-  const pendingMessages = (
+-    Object.values(state.pendingUserMessages) as PendingUserMessage[]
+-  )
+-    .sort((left, right) => left.createdAt - right.createdAt)
+-    .map((pending) => projectPendingMessage(pending));
++  const pendingMessages = sortedPendingMessages(state).map(projectPendingMessage);
+ 
+   return mergeProjectedMessages(serverMessages, pendingMessages);
+ }
+ 
++/*
++ * Projection cache. A streamed token changes one part of one message, but
++ * projecting rebuilds every message from the whole thread state; without a
++ * cache every ThreadMessage is new on every token, so every message's
++ * components render again and a token costs O(session). The cache keeps a
++ * message's converted ThreadMessage while everything its projection reads is
++ * unchanged by identity: its source server messages, its timing, the run
++ * activity its status reads, the thread's pending interactions, its task
++ * tools' child sessions, and the local MCP app registry. Reducers replace the
++ * objects they change, so identity is a sound key. Entries live as long as
++ * the cache (one per runtime) and are dropped once their message is gone.
++ */
++interface ProjectionCacheEntry {
++  readonly inputs: readonly unknown[];
++  readonly message: ThreadMessage | null;
++}
 +
-   const serverMessages = mergedServerMessages
-     .map((message) =>
-       projectServerMessage(state, message, messageTiming[message.id]),
++export interface OpenCodeProjectionCache {
++  readonly server: Map<string, ProjectionCacheEntry>;
++  readonly pending: WeakMap<PendingUserMessage, ThreadMessage>;
++}
++
++export const createOpenCodeProjectionCache = (): OpenCodeProjectionCache => ({
++  server: new Map(),
++  pending: new WeakMap(),
++});
++
++const sameInputs = (left: readonly unknown[], right: readonly unknown[]) =>
++  left.length === right.length &&
++  left.every((value, index) => Object.is(value, right[index]));
++
++const toThreadMessage = (message: OpenCodeProjectedThreadMessage) =>
++  ExportedMessageRepository.fromArray([message]).messages[0]!.message;
++
++const projectionInputs = (
++  state: OpenCodeThreadState,
++  group: ServerMessageGroup,
++  timing: MessageTiming | undefined,
++  activity: RunActivity,
++): unknown[] => {
++  const { message } = group;
++  const inputs: unknown[] = [...group.sources, timing];
++  if (message.info?.role !== "assistant") return inputs;
++  // Status reads the run's activity only for the turn's latest message.
++  const isActiveMessage = activity.lastAssistantId === message.id;
++  inputs.push(
++    isActiveMessage,
++    isActiveMessage && activity.isActiveRun,
++    state.interactions.permissions,
++    state.interactions.questions.pending,
++    _localMcpApps,
++  );
++  for (const part of message.parts) {
++    const childSessionId = getOpenCodeTaskSessionId(part);
++    if (childSessionId) inputs.push(state.childSessionsById[childSessionId]);
++  }
++  return inputs;
++};
++
++const projectCachedThreadMessages = (
++  state: OpenCodeThreadState,
++  messageTiming: Record<string, MessageTiming>,
++  cache: OpenCodeProjectionCache,
++): ThreadMessage[] => {
++  const activity = getRunActivity(state);
++  const seen = new Set<string>();
++  const serverMessages: ThreadMessage[] = [];
++  for (const group of groupServerMessages(visibleServerMessages(state))) {
++    const id = group.message.id;
++    seen.add(id);
++    const timing = messageTiming[id];
++    const inputs = projectionInputs(state, group, timing, activity);
++    let entry = cache.server.get(id);
++    if (!entry || !sameInputs(entry.inputs, inputs)) {
++      const projected = projectServerMessage(state, group.message, timing, activity);
++      entry = { inputs, message: projected ? toThreadMessage(projected) : null };
++      cache.server.set(id, entry);
++    }
++    if (entry.message) serverMessages.push(entry.message);
++  }
++  for (const id of cache.server.keys()) if (!seen.has(id)) cache.server.delete(id);
++
++  const pendingMessages = sortedPendingMessages(state).map((pending) => {
++    let message = cache.pending.get(pending);
++    if (!message) {
++      message = toThreadMessage(projectPendingMessage(pending));
++      cache.pending.set(pending, message);
++    }
++    return message;
++  });
++
++  return mergeProjectedMessages(
++    serverMessages as unknown as OpenCodeProjectedThreadMessage[],
++    pendingMessages as unknown as OpenCodeProjectedThreadMessage[],
++  ) as unknown as ThreadMessage[];
++};
++
+ export function projectOpenCodeThreadRepository(
+   state: OpenCodeThreadState,
+   messageTiming: Record<string, MessageTiming> = {},
+-) {
+-  return ExportedMessageRepository.fromArray(
+-    projectOpenCodeThreadMessages(state, messageTiming),
+-  );
++  cache?: OpenCodeProjectionCache,
++): ExportedMessageRepository {
++  if (!cache) {
++    return ExportedMessageRepository.fromArray(
++      projectOpenCodeThreadMessages(state, messageTiming),
++    );
++  }
++  const messages = projectCachedThreadMessages(state, messageTiming, cache);
++  return {
++    messages: messages.map((message, index) => ({
++      parentId: index > 0 ? messages[index - 1]!.id : null,
++      message,
++    })),
++  };
+ }
 diff --git a/src/openCodeMessageQueue.ts b/src/openCodeMessageQueue.ts
 new file mode 100644
 index 0000000..8d922b7
@@ -2884,10 +3751,149 @@ index b1ea661..84c5679 100644
    },
  });
 diff --git a/src/openCodeThreadState.ts b/src/openCodeThreadState.ts
-index 36f2d25..17e25be 100644
+index 36f2d25..7869e0f 100644
 --- a/src/openCodeThreadState.ts
 +++ b/src/openCodeThreadState.ts
-@@ -233,6 +233,28 @@ const applyMessagePartDelta = (
+@@ -1,6 +1,7 @@
+ import type {
+   Message,
+   MessageWithParts,
++  OpenCodeOlderHistory,
+   OpenCodeServerMessage,
+   OpenCodeStateEvent,
+   OpenCodeThreadState,
+@@ -30,21 +31,39 @@ const partTextFingerprint = (parts: readonly ThreadUserMessagePart[]) =>
+ const serverFingerprint = (message: MessageWithParts) =>
+   normalizeText(serializeOpenCodeParts(message.parts));
+ 
++/** Transcript order: by creation time, ids breaking ties. */
++const compareMessages = (
++  left: OpenCodeServerMessage | undefined,
++  right: OpenCodeServerMessage | undefined,
++  leftId: string,
++  rightId: string,
++) => {
++  const leftCreated = extractCreatedAt(left?.info) ?? Number.MAX_SAFE_INTEGER;
++  const rightCreated = extractCreatedAt(right?.info) ?? Number.MAX_SAFE_INTEGER;
++  if (leftCreated !== rightCreated) return leftCreated - rightCreated;
++  return leftId.localeCompare(rightId);
++};
++
+ const sortMessageIds = (
+   messagesById: Readonly<Record<string, OpenCodeServerMessage>>,
+   ids: Iterable<string>,
+ ) => {
+-  return [...ids].sort((leftId, rightId) => {
+-    const left = messagesById[leftId];
+-    const right = messagesById[rightId];
+-    const leftCreated = extractCreatedAt(left?.info) ?? Number.MAX_SAFE_INTEGER;
+-    const rightCreated =
+-      extractCreatedAt(right?.info) ?? Number.MAX_SAFE_INTEGER;
+-    if (leftCreated !== rightCreated) return leftCreated - rightCreated;
+-    return leftId.localeCompare(rightId);
+-  });
++  return [...ids].sort((leftId, rightId) =>
++    compareMessages(
++      messagesById[leftId],
++      messagesById[rightId],
++      leftId,
++      rightId,
++    ),
++  );
+ };
+ 
++const toServerMessage = (message: MessageWithParts): OpenCodeServerMessage => ({
++  id: message.info.id,
++  info: message.info,
++  parts: message.parts,
++});
++
+ const upsertMessage = (
+   state: OpenCodeThreadState,
+   messageId: string,
+@@ -144,15 +163,25 @@ const findPendingMatchByMessageInfo = (
+   return undefined;
+ };
+ 
++/*
++ * History arrives newest first: `history.loaded` brings the newest page and
++ * says whether older messages remain (`olderHistory`), and
++ * `history.prepended` brings everything older than that page's oldest
++ * message. A reload while the older history is still to come keeps the older
++ * messages it already holds rather than dropping a scrolled-up reader's
++ * transcript to one page; the older history that follows replaces them.
++ */
+ const historyLoaded = (
+   state: OpenCodeThreadState,
+   session: OpenCodeThreadState["session"],
+   messages: readonly MessageWithParts[],
++  olderHistory: OpenCodeOlderHistory = { type: "complete" },
+ ): OpenCodeThreadState => {
+   let nextState: OpenCodeThreadState = {
+     ...state,
+     session,
+     loadState: { type: "ready" },
++    olderHistory,
+     messagesById: {} as Readonly<Record<string, OpenCodeServerMessage>>,
+     messageOrder: [],
+     sync: {
+@@ -183,6 +212,16 @@ const historyLoaded = (
+     }
+   }
+ 
++  const oldestId = messages[0]?.info.id;
++  if (olderHistory.type !== "complete" && oldestId) {
++    const oldest = nextMessagesById[oldestId];
++    for (const id of state.messageOrder) {
++      const kept = state.messagesById[id];
++      if (compareMessages(kept, oldest, id, oldestId) >= 0) break;
++      if (kept) nextMessagesById[id] = kept;
++    }
++  }
++
+   nextState = {
+     ...nextState,
+     messagesById: nextMessagesById,
+@@ -195,6 +234,38 @@ const historyLoaded = (
+   return nextState;
+ };
+ 
++/**
++ * Everything older than `boundaryId` (the loaded page's oldest message),
++ * replacing what was held before it. Without the boundary (removed since),
++ * only messages not already held are added.
++ */
++const historyPrepended = (
++  state: OpenCodeThreadState,
++  messages: readonly MessageWithParts[],
++  boundaryId: string,
++): OpenCodeThreadState => {
++  const boundary = state.messagesById[boundaryId];
++  const messagesById: Record<string, OpenCodeServerMessage> = {};
++  for (const id of state.messageOrder) {
++    const held = state.messagesById[id];
++    if (!held) continue;
++    if (boundary && compareMessages(held, boundary, id, boundaryId) < 0) {
++      continue;
++    }
++    messagesById[id] = held;
++  }
++  for (const message of messages) {
++    if (message.info.id in messagesById) continue;
++    messagesById[message.info.id] = toServerMessage(message);
++  }
++  return {
++    ...state,
++    olderHistory: { type: "complete" },
++    messagesById,
++    messageOrder: sortMessageIds(messagesById, Object.keys(messagesById)),
++  };
++};
++
+ const removeMessagePart = (parts: readonly Part[], partId: string) =>
+   parts.filter((part) => part.id !== partId);
+ 
+@@ -233,6 +304,28 @@ const applyMessagePartDelta = (
    return null;
  };
  
@@ -2916,7 +3922,30 @@ index 36f2d25..17e25be 100644
  export const createOpenCodeThreadState = (
    sessionId: string,
  ): OpenCodeThreadState => ({
-@@ -444,11 +466,7 @@ export const reduceOpenCodeThreadState = (
+@@ -302,7 +395,21 @@ export const reduceOpenCodeThreadState = (
+       };
+ 
+     case "history.loaded":
+-      return historyLoaded(state, event.session, event.messages);
++      return historyLoaded(
++        state,
++        event.session,
++        event.messages,
++        event.olderHistory,
++      );
++
++    case "history.prepended":
++      return historyPrepended(state, event.messages, event.boundaryId);
++
++    case "history.olderFailed":
++      return {
++        ...state,
++        olderHistory: { type: "failed", error: event.error },
++      };
+ 
+     case "history.failed":
+       return {
+@@ -444,11 +551,7 @@ export const reduceOpenCodeThreadState = (
  
        return {
          ...nextState,
@@ -2929,7 +3958,7 @@ index 36f2d25..17e25be 100644
          sync: {
            ...state.sync,
            lastEventAt: Date.now(),
-@@ -474,11 +492,7 @@ export const reduceOpenCodeThreadState = (
+@@ -474,11 +577,7 @@ export const reduceOpenCodeThreadState = (
            ...current,
            parts: nextParts,
          })),
@@ -2943,7 +3972,7 @@ index 36f2d25..17e25be 100644
            ...state.sync,
            lastEventAt: Date.now(),
 diff --git a/src/types.ts b/src/types.ts
-index a87d890..769edad 100644
+index a87d890..83109cc 100644
 --- a/src/types.ts
 +++ b/src/types.ts
 @@ -11,6 +11,7 @@ import type {
@@ -2966,7 +3995,30 @@ index a87d890..769edad 100644
  
  export type {
    AssistantMessage,
-@@ -183,6 +189,36 @@ export type OpenCodeUserMessageOptions = {
+@@ -117,11 +123,22 @@ export type OpenCodeUnhandledEvent = {
+   seenAt: number;
+ };
+ 
++/**
++ * Whether the server holds messages older than those loaded: a session loads
++ * its newest page first and the rest after (`loading` until it lands).
++ */
++export type OpenCodeOlderHistory =
++  | { type: "complete" }
++  | { type: "loading" }
++  | { type: "failed"; error: unknown };
++
+ export type OpenCodeThreadState = {
+   sessionId: string;
+   session: Session | null;
+   sessionStatus: SessionStatus | null;
+   loadState: OpenCodeLoadState;
++  /** Absent means complete. */
++  olderHistory?: OpenCodeOlderHistory;
+   runState: OpenCodeRunState;
+   messageOrder: readonly string[];
+   messagesById: Readonly<Record<string, OpenCodeServerMessage>>;
+@@ -183,6 +200,36 @@ export type OpenCodeUserMessageOptions = {
    noReply?: boolean | undefined;
  };
  
@@ -3003,7 +4055,7 @@ index a87d890..769edad 100644
  export type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
    /**
     * Called whenever the active thread's canonical (remote) ID changes, so the
-@@ -194,6 +230,7 @@ export type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
+@@ -194,6 +241,7 @@ export type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
     */
    onThreadIdChange?: ((threadId: string | undefined) => void) | undefined;
    client?: OpencodeClient;
@@ -3011,7 +4063,7 @@ index a87d890..769edad 100644
    baseUrl?: string | undefined;
    initialSessionId?: string | undefined;
    defaultModel?:
-@@ -204,6 +241,16 @@ export type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
+@@ -204,6 +252,16 @@ export type OpenCodeRuntimeOptions = ExternalStoreSharedOptions & {
      | undefined;
    defaultAgent?: string | undefined;
    onError?: (error: unknown) => void;
@@ -3028,7 +4080,7 @@ index a87d890..769edad 100644
    adapters?:
      | {
          attachments?: AttachmentAdapter;
-@@ -234,6 +281,8 @@ export type OpenCodeRuntimeExtras = {
+@@ -234,6 +292,8 @@ export type OpenCodeRuntimeExtras = {
      answers: readonly QuestionAnswer[],
    ) => Promise<void>;
    rejectQuestion: (questionId: string) => Promise<void>;
@@ -3037,7 +4089,7 @@ index a87d890..769edad 100644
  };
  
  export type OpenCodeRuntime = AssistantRuntime;
-@@ -243,6 +292,7 @@ export type OpenCodeThreadStateSelector<T> = (state: OpenCodeThreadState) => T;
+@@ -243,6 +303,7 @@ export type OpenCodeThreadStateSelector<T> = (state: OpenCodeThreadState) => T;
  export type OpenCodeServerEvent = {
    type: string;
    sessionId: string | undefined;
@@ -3045,8 +4097,23 @@ index a87d890..769edad 100644
    raw: unknown;
    properties: Record<string, unknown>;
  };
+@@ -255,7 +316,14 @@ export type OpenCodeStateEvent =
+       type: "history.loaded";
+       session: Session | null;
+       messages: readonly MessageWithParts[];
++      olderHistory?: OpenCodeOlderHistory;
++    }
++  | {
++      type: "history.prepended";
++      messages: readonly MessageWithParts[];
++      boundaryId: string;
+     }
++  | { type: "history.olderFailed"; error: unknown }
+   | { type: "history.failed"; error: unknown }
+   | { type: "session.updated"; session: Session }
+   | { type: "session.status"; status: SessionStatus }
 diff --git a/src/useOpenCodeRuntime.ts b/src/useOpenCodeRuntime.ts
-index 66a324b..62c9898 100644
+index 66a324b..6aa4c3b 100644
 --- a/src/useOpenCodeRuntime.ts
 +++ b/src/useOpenCodeRuntime.ts
 @@ -3,6 +3,7 @@
@@ -3080,7 +4147,15 @@ index 66a324b..62c9898 100644
    OpenCodeRuntimeOptions,
    OpenCodeThreadControllerLike,
    OpenCodeThreadState,
-@@ -26,29 +37,40 @@ import { projectOpenCodeThreadRepository } from "./openCodeMessageProjection";
+@@ -22,33 +33,47 @@ import type {
+ import { OpenCodeEventSource } from "./OpenCodeEventSource";
+ import { toOpenCodePermissionResponse } from "./openCodePermissionApproval";
+ import { OpenCodeThreadController } from "./OpenCodeThreadController";
+-import { projectOpenCodeThreadRepository } from "./openCodeMessageProjection";
++import {
++  createOpenCodeProjectionCache,
++  projectOpenCodeThreadRepository,
++} from "./openCodeMessageProjection";
  import { EMPTY_OPENCODE_THREAD_STATE } from "./openCodeThreadState";
  import { openCodeExtras } from "./openCodeExtras";
  import { createOpenCodeThreadListAdapter } from "./openCodeThreadListAdapter";
@@ -3125,7 +4200,7 @@ index 66a324b..62c9898 100644
      dispose() {
        eventSource?.dispose();
        eventSource = null;
-@@ -61,16 +83,64 @@ const createRegistry = (
+@@ -61,16 +86,64 @@ const createRegistry = (
    };
  };
  
@@ -3192,7 +4267,7 @@ index 66a324b..62c9898 100644
      registry.getEventSource,
      sessionId,
    );
-@@ -95,9 +165,6 @@ const NOOP_CONTROLLER: OpenCodeThreadControllerLike = {
+@@ -95,9 +168,6 @@ const NOOP_CONTROLLER: OpenCodeThreadControllerLike = {
    rejectQuestion: async () => {},
  };
  
@@ -3202,7 +4277,7 @@ index 66a324b..62c9898 100644
  const isOpenCodeStateRunning = (state: OpenCodeThreadState): boolean =>
    state.runState.type === "streaming" ||
    state.runState.type === "cancelling" ||
-@@ -105,11 +172,66 @@ const isOpenCodeStateRunning = (state: OpenCodeThreadState): boolean =>
+@@ -105,27 +175,104 @@ const isOpenCodeStateRunning = (state: OpenCodeThreadState): boolean =>
    state.sessionStatus?.type === "busy" ||
    state.sessionStatus?.type === "retry";
  
@@ -3271,7 +4346,14 @@ index 66a324b..62c9898 100644
    const onLoadError = useEffectEvent((error: unknown) => {
      options.onError?.(error);
    });
-@@ -119,6 +241,18 @@ const useOpenCodeThreadRuntime = (
+ 
++  // A loaded thread stays current through the event stream, so an effect
++  // replay (a hidden Activity shown again, StrictMode) doesn't load the whole
++  // history again; only a thread that hasn't loaded, or failed to, loads.
+   useEffect(() => {
+     if (controller === NOOP_CONTROLLER) return;
++    const { loadState } = controller.getState();
++    if (loadState.type === "ready" || loadState.type === "loading") return;
      void controller.load().catch(onLoadError);
    }, [controller]);
  
@@ -3290,7 +4372,21 @@ index 66a324b..62c9898 100644
    const isRunning = isOpenCodeStateRunning(state);
  
    const messageTiming = useOpenCodeStreamingTiming(state, isRunning);
-@@ -154,90 +288,257 @@ const useOpenCodeThreadRuntime = (
+ 
++  const projectionCache = useMemo(
++    () => createOpenCodeProjectionCache(),
++    [controller],
++  );
+   const messageRepository = useMemo(
+-    () => projectOpenCodeThreadRepository(state, messageTiming),
+-    [state, messageTiming],
++    () =>
++      projectOpenCodeThreadRepository(state, messageTiming, projectionCache),
++    [state, messageTiming, projectionCache],
+   );
+ 
+   const extras = useMemo(
+@@ -154,90 +301,257 @@ const useOpenCodeThreadRuntime = (
      [controller, state],
    );
  
@@ -3493,12 +4589,7 @@ index 66a324b..62c9898 100644
 +  const liveState = useOpenCodeControllerState(controller);
 +  const liveHasUserMessage = liveThreadHasUserMessage(liveState);
 +  const threadStore = useOpenCodeThreadStore(controller, options);
- 
--  const fallbackRuntime = useExternalStoreRuntime<ThreadMessage>({
--    isDisabled: true,
--    isLoading: true,
--    messageRepository: ExportedMessageRepository.fromArray([]),
--    onNew: NOOP_ON_NEW,
++
 +  const optimisticRepository = useMemo(
 +    () => ExportedMessageRepository.fromArray(optimisticMessages),
 +    [optimisticMessages],
@@ -3508,7 +4599,12 @@ index 66a324b..62c9898 100644
 +    if (!liveHasUserMessage || optimisticMessages.length === 0) return;
 +    setOptimisticMessages([]);
 +  }, [liveHasUserMessage, optimisticMessages.length]);
-+
+ 
+-  const fallbackRuntime = useExternalStoreRuntime<ThreadMessage>({
+-    isDisabled: true,
+-    isLoading: true,
+-    messageRepository: ExportedMessageRepository.fromArray([]),
+-    onNew: NOOP_ON_NEW,
 +  const newThreadStore = useMemo<ExternalStoreAdapter<ThreadMessage>>(
 +    () => ({
 +      ...pickExternalStoreSharedOptions(options),
@@ -3614,7 +4710,7 @@ index 66a324b..62c9898 100644
  };
  
  export const useOpenCodeRuntime = (
-@@ -245,10 +546,35 @@ export const useOpenCodeRuntime = (
+@@ -245,10 +559,35 @@ export const useOpenCodeRuntime = (
  ): AssistantRuntime => {
    const baseUrl = options.baseUrl ?? "http://localhost:4096";
    const client = useMemo(
@@ -3653,7 +4749,7 @@ index 66a324b..62c9898 100644
  
    useEffect(() => {
      return () => {
-@@ -257,8 +583,11 @@ export const useOpenCodeRuntime = (
+@@ -257,8 +596,11 @@ export const useOpenCodeRuntime = (
    }, [registry]);
  
    const adapter = useMemo(
@@ -3667,7 +4763,7 @@ index 66a324b..62c9898 100644
    );
  
    return useRemoteThreadListRuntime({
-@@ -267,6 +596,6 @@ export const useOpenCodeRuntime = (
+@@ -267,6 +609,6 @@ export const useOpenCodeRuntime = (
      initialThreadId: options.initialSessionId,
      onThreadIdChange: options.onThreadIdChange,
      // oxlint-disable-next-line react-hooks/rules-of-hooks -- runtimeHook callback is invoked by useRemoteThreadListRuntime at the appropriate hook position

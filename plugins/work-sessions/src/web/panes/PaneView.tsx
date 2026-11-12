@@ -1,4 +1,5 @@
 import { PuzzleIcon } from "lucide-react";
+import { memo } from "react";
 
 import { RenderContribution } from "@kilo-desktop/kernel/web";
 import {
@@ -30,8 +31,12 @@ function UnavailablePane({ title }: { readonly title: string }) {
 	);
 }
 
-/** A pane's content from its kind's component, or why it can't be shown. */
-export function PaneView({
+/**
+ * A pane's content from its kind's component, or why it can't be shown.
+ * Memoized: the canvas re-renders on every layout change (each frame of a
+ * splitter drag), and a pane's content (a transcript, a terminal) needn't.
+ */
+export const PaneView = memo(function PaneView({
 	workSession,
 	pane,
 	kinds,
@@ -62,4 +67,4 @@ export function PaneView({
 			select={selectComponent}
 		/>
 	);
-}
+});

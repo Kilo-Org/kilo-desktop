@@ -136,7 +136,7 @@ describe("the window object", () => {
 		expect(window().getState().focus).toBe("w-app");
 	});
 
-	it("adopts kilo.workbench's saved state, else origin's workspace filter, on first run", async () => {
+	it("adopts kilo.workbench's saved focus, else origin's workspace filter, on first run", async () => {
 		const first = await renderWorkSessions({
 			workSessions: [workSession("a")],
 			workspaces: [workspace("w-app", "App")],
@@ -144,7 +144,7 @@ describe("the window object", () => {
 				"kilo.workbench.navigator:main": JSON.stringify({ focus: "w-app", activeSessionId: "a" }),
 			},
 		});
-		expect(first.window().getState()).toMatchObject({ focus: "w-app", activeWorkSessionId: "a" });
+		expect(first.window().getState()).toMatchObject({ focus: "w-app", activeWorkSessionId: null });
 
 		const second = await renderWorkSessions({
 			workspaces: [workspace("w-app", "App")],
@@ -153,24 +153,41 @@ describe("the window object", () => {
 		expect(second.window().getState().focus).toBe("w-app");
 	});
 
-	it("remembers what the window shows across reloads, and survives unreadable storage", async () => {
-		const { window } = await renderWorkSessions({ workSessions: [workSession("a")] });
-		await window().methods.setFocus({ focus: "w-app" });
-		await window().methods.openWorkSession({ workSessionId: "a" });
-		expect(JSON.parse(localStorage.getItem("kilo.work-sessions.window:main")!)).toEqual({
-			focus: "unscoped",
-			activeWorkSessionId: "a",
-			view: null,
+	it("launches on the New Session page, remembering only the workspace focus", async () => {
+		const { window } = await renderWorkSessions({
+			workSessions: [workSession("a", { workspaceId: "w-app" })],
+			workspaces: [workspace("w-app", "App")],
+			localStorage: saved({ focus: "w-app", activeWorkSessionId: "a", view: "test.board/board" }),
 		});
 
-		const broken = await renderWorkSessions({
+		expect(window().getState()).toMatchObject({
+			focus: "w-app",
+			activeWorkSessionId: null,
+			view: null,
+		});
+		await expect.element(page.getByTestId("workbench-launcher")).toBeVisible();
+
+		await window().methods.openWorkSession({ workSessionId: "a" });
+		expect(JSON.parse(localStorage.getItem("kilo.work-sessions.window:main")!)).toEqual({
+			focus: "w-app",
+		});
+	});
+
+	it("survives unreadable storage", async () => {
+		const { window } = await renderWorkSessions({
 			localStorage: { "kilo.work-sessions.window:main": "{not json" },
 		});
-		expect(broken.window().getState()).toMatchObject({ focus: null, activeWorkSessionId: null });
+		expect(window().getState()).toMatchObject({ focus: null, activeWorkSessionId: null });
 	});
 
 	it("forgets an open work session that was deleted elsewhere", async () => {
-		const { window } = await renderWorkSessions({ open: "gone" });
+		const { window, main } = await renderWorkSessions({
+			workSessions: [workSession("a")],
+			open: "a",
+		});
+		expect(window().getState().activeWorkSessionId).toBe("a");
+
+		main.workSessions().setState({ workSessions: [] });
 
 		await vi.waitFor(() => expect(window().getState().activeWorkSessionId).toBeNull());
 	});
@@ -229,11 +246,13 @@ describe("the window object", () => {
 		await expect.element(header).toHaveAttribute("data-collapsed");
 	});
 
-	it("keeps the open work session's top bar while its saved view's plugin is gone", async () => {
-		const { host } = await renderWorkSessions({
+	it("keeps the open work session's top bar while the view shown has no plugin", async () => {
+		const { host, window } = await renderWorkSessions({
 			workSessions: [workSession("a", { title: "Fix login" })],
-			localStorage: saved({ focus: null, activeWorkSessionId: "a", view: "gone.plugin/view" }),
+			open: "a",
 		});
+
+		await window().methods.showView({ view: "gone.plugin/view" });
 
 		await expect.element(page.getByTestId("session-workbench")).toBeVisible();
 		await expect.element(page.getByTestId("shell-top-bar").getByText("Fix login")).toBeVisible();

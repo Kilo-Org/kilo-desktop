@@ -4,7 +4,7 @@ import { open, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 
 import { writeFile as atomicWriteFile } from "atomically";
-import { globbyStream } from "globby";
+import { globbyStream, type Options as GlobbyOptions } from "globby";
 
 import { KernelError } from "@kilo-desktop/kernel";
 
@@ -20,12 +20,12 @@ import {
 const DEFAULT_SCAN_LIMIT = 25_000;
 const DEFAULT_RESOLVE_SCAN_LIMIT = 1000;
 /**
- * Gitignored paths are skipped by the walk itself (`gitignore: true`), so dependency
- * and environment trees such as `node_modules` or `.venv` never use up the scan limit.
- * Worktrees live under `{repo}/.kilo/worktrees`; anchoring that ignore to the walk root
+ * Walks that look for project files (link lookups, `@` mention lists) pair these with
+ * `gitignore: true`, so dependency and environment trees such as `node_modules` or
+ * `.venv` never use up the scan limit. Worktrees live under `{repo}/.kilo/worktrees`; anchoring that ignore to the walk root
  * keeps a main repo's search out of its worktrees and a worktree's out of nested ones.
  */
-const LINK_WALK_IGNORES = ["**/.git/**", ".kilo/worktrees/**"];
+const PROJECT_WALK_IGNORES = ["**/.git/**", ".kilo/worktrees/**"];
 const GLOB_SPECIAL_CHARACTERS = /[[\]()*?!{}]/gu;
 const DEFAULT_TEXT_LIMIT_BYTES = 1024 * 1024;
 const DEFAULT_IMAGE_LIMIT_BYTES = 10 * 1024 * 1024;
@@ -124,7 +124,7 @@ function byPathLengthThenName(left: string, right: string): number {
 	return left.length - right.length || left.localeCompare(right);
 }
 
-interface BasenameWalk {
+interface ScanResult {
 	readonly paths: string[];
 	readonly truncated: boolean;
 }
@@ -159,7 +159,7 @@ export class FilesService {
 	private readonly fileSystem: FileSystem;
 	private readonly tableLimitBytes: number;
 	private readonly resolveScanLimit: number;
-	private readonly pendingBasenameWalks = new Map<string, Promise<BasenameWalk>>();
+	private readonly pendingScanResults = new Map<string, Promise<ScanResult>>();
 
 	constructor(private readonly options: FilesServiceOptions) {
 		this.scanLimit = options.scanLimit ?? DEFAULT_SCAN_LIMIT;
@@ -170,7 +170,31 @@ export class FilesService {
 		this.resolveScanLimit = options.resolveScanLimit ?? DEFAULT_RESOLVE_SCAN_LIMIT;
 	}
 
-	async list(workspaceDirectory: string): Promise<{ paths: string[]; truncated: boolean }> {
+	/** Every entry the explorer shows: folders (ending in `/`) and files, gitignored ones included. */
+	list(workspaceDirectory: string): Promise<ScanResult> {
+		return this.scan(workspaceDirectory, {
+			ignore: [".git", ".git/**"],
+			markDirectories: true,
+			onlyFiles: false,
+		});
+	}
+
+	/**
+	 * Files a user would mention: gitignored and nested-worktree paths are skipped
+	 * by the walk itself, so dependency trees neither slow it nor use up the cap.
+	 */
+	listFiles(workspaceDirectory: string): Promise<ScanResult> {
+		return this.scan(workspaceDirectory, {
+			ignore: PROJECT_WALK_IGNORES,
+			gitignore: true,
+			onlyFiles: true,
+		});
+	}
+
+	private async scan(
+		workspaceDirectory: string,
+		walk: Pick<GlobbyOptions, "gitignore" | "ignore" | "markDirectories" | "onlyFiles">,
+	): Promise<ScanResult> {
 		const root = await this.authorizedRoot(workspaceDirectory);
 		// The walk below suppresses traversal errors, which would turn an
 		// unreadable root into a silently empty listing. Read the root once
@@ -186,12 +210,10 @@ export class FilesService {
 		let truncated = false;
 
 		for await (const entry of globbyStream("**/*", {
+			...walk,
 			cwd: root,
 			dot: true,
 			followSymbolicLinks: false,
-			ignore: [".git", ".git/**"],
-			markDirectories: true,
-			onlyFiles: false,
 			fs: this.fileSystem,
 			// A directory can vanish or be locked mid-walk (temp dirs, AV scans,
 			// editors). fast-glob only suppresses ENOENT by default, so a
@@ -263,18 +285,18 @@ export class FilesService {
 		};
 	}
 
-	private basenameWalk(root: string, basename: string): Promise<BasenameWalk> {
+	private basenameWalk(root: string, basename: string): Promise<ScanResult> {
 		const key = `${root}\0${basename}`;
-		const pending = this.pendingBasenameWalks.get(key);
+		const pending = this.pendingScanResults.get(key);
 		if (pending) return pending;
 		const walk = this.walkBasename(root, basename).finally(() => {
-			this.pendingBasenameWalks.delete(key);
+			this.pendingScanResults.delete(key);
 		});
-		this.pendingBasenameWalks.set(key, walk);
+		this.pendingScanResults.set(key, walk);
 		return walk;
 	}
 
-	private async walkBasename(root: string, basename: string): Promise<BasenameWalk> {
+	private async walkBasename(root: string, basename: string): Promise<ScanResult> {
 		const paths: string[] = [];
 		let truncated = false;
 		for await (const entry of globbyStream(`**/${escapeGlobSegment(basename)}`, {
@@ -283,7 +305,7 @@ export class FilesService {
 			followSymbolicLinks: false,
 			onlyFiles: true,
 			gitignore: true,
-			ignore: LINK_WALK_IGNORES,
+			ignore: PROJECT_WALK_IGNORES,
 			fs: this.fileSystem,
 			suppressErrors: true,
 		})) {

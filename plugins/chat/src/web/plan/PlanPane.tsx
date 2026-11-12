@@ -14,7 +14,7 @@ import {
 	PLAN_ANCHOR_CALL_ID_METADATA_KEY,
 	PLAN_NEWEST_ANCHOR_CALL_ID_METADATA_KEY,
 } from "../../contracts";
-import { useOptionalOpenCodeRuntimeExtras } from "../runtime/use-optional-opencode-runtime-extras";
+import { useOptionalOpenCodeSession } from "../runtime/use-optional-opencode-runtime-extras";
 import { ChatMirror, type ChatMirrorServices } from "../runtime/chat-mirror";
 import { ApprovePlanButton } from "./ApprovePlanButton";
 import { proposedPlanTitle, stripDisplayedPlanMarkdown } from "./plan-markdown";
@@ -101,7 +101,7 @@ function PlanRevision({
 	planThread: PlanThreadProjection;
 }) {
 	const findEnabled = useContextKey(flagKey(FIND_BAR_FEATURE_FLAG));
-	const chatId = useOptionalOpenCodeRuntimeExtras()?.session?.id;
+	const chatId = useOptionalOpenCodeSession()?.id;
 	const { approve, submitting, approved, error } = useApprovePlan({
 		fallbackApprovalScope: `${chatId}:${projection.anchorCallId}`,
 	});

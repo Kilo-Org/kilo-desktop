@@ -100,6 +100,76 @@ describe("service supervision — starting", () => {
 		expect(start).toHaveBeenCalledOnce();
 	});
 
+	it("holds activation services until the host's environment is ready", async () => {
+		const start = vi.fn();
+		let environmentReady = () => {};
+		const kernel = createMainKernel({
+			host: host(),
+			registrations: [
+				servicePlugin(
+					"acme.svc",
+					{ title: "Early", kind: "daemon", startOn: "activation" },
+					{ start },
+				),
+			],
+		});
+
+		await kernel.start({
+			environmentReady: new Promise<void>((resolve) => (environmentReady = resolve)),
+		});
+		const shown = kernel.windowShown();
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		expect(start).not.toHaveBeenCalled();
+		environmentReady();
+		await shown;
+
+		expect(start).toHaveBeenCalledOnce();
+	});
+
+	it("holds first-use services until booted, and has ensureStarted wait for them", async () => {
+		const start = vi.fn();
+		let environmentReady = () => {};
+		const kernel = createMainKernel({
+			host: host(),
+			registrations: [
+				servicePlugin(
+					"acme.svc",
+					{ title: "Lazy", kind: "daemon", startOn: "first-use" },
+					{ start },
+				),
+			],
+		});
+		await kernel.start({
+			environmentReady: new Promise<void>((resolve) => (environmentReady = resolve)),
+		});
+
+		const ensured = kernel.services.ensureStarted("acme.svc/svc");
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		expect(start).not.toHaveBeenCalled();
+		environmentReady();
+		await ensured;
+
+		expect(start).toHaveBeenCalledOnce();
+		expect(statusOf(kernel, "acme.svc/svc")).toMatchObject({ status: "ready" });
+	});
+
+	it("has ensureStarted wait for a window-shown service until the window shows", async () => {
+		const start = vi.fn();
+		const kernel = createMainKernel({
+			host: host(),
+			registrations: [servicePlugin("acme.svc", { title: "Router", kind: "daemon" }, { start })],
+		});
+		await kernel.start();
+
+		const ensured = kernel.services.ensureStarted("acme.svc/svc");
+		await new Promise((resolve) => setTimeout(resolve, 10));
+		expect(start).not.toHaveBeenCalled();
+		await kernel.windowShown();
+		await ensured;
+
+		expect(start).toHaveBeenCalledOnce();
+	});
+
 	it("starts first-use services only when asked, and marks tasks completed", async () => {
 		const start = vi.fn();
 		const kernel = createMainKernel({

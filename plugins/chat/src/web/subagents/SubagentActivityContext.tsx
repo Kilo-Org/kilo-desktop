@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { useDomainObject } from "@kilo-desktop/kernel/web";
 import { Chats } from "@kilo-desktop/plugin-core/contracts";
@@ -68,6 +68,19 @@ function deriveActivities(
 	return activities;
 }
 
+const sameActivity = (left: SubagentActivity, right: SubagentActivity) =>
+	left.childSessionId === right.childSessionId &&
+	left.toolCallId === right.toolCallId &&
+	left.title === right.title &&
+	left.typeLabel === right.typeLabel &&
+	left.status === right.status &&
+	left.directory === right.directory;
+
+const sameActivities = (left: readonly SubagentActivity[], right: readonly SubagentActivity[]) =>
+	left === right ||
+	(left.length === right.length &&
+		left.every((activity, index) => sameActivity(activity, right[index]!)));
+
 const isSubagentActive = (activity: SubagentActivity) => isActiveSubagentStatus(activity.status);
 
 export type SubagentStopTarget = Pick<SubagentActivity, "childSessionId" | "directory">;
@@ -96,7 +109,12 @@ export function SubagentActivityProvider({ children }: { children: ReactNode }) 
 	const extras = useOptionalOpenCodeRuntimeExtras();
 	const { connection } = useChatConnection();
 	const chats = useDomainObject(Chats);
-	const activities = useMemo(() => deriveActivities(extras), [extras]);
+	// Extras change with every streamed token; the activities rarely do. Keeping
+	// them (and the context value) while unchanged spares every message a render.
+	const derived = useMemo(() => deriveActivities(extras), [extras]);
+	const lastActivities = useRef(derived);
+	if (!sameActivities(lastActivities.current, derived)) lastActivities.current = derived;
+	const activities = lastActivities.current;
 	const activeActivities = useMemo(() => activities.filter(isSubagentActive), [activities]);
 	const activityByToolCallId = useMemo(
 		() => new Map(activities.map((activity) => [activity.toolCallId, activity])),
@@ -159,15 +177,20 @@ export function SubagentActivityProvider({ children }: { children: ReactNode }) 
 			"Could not stop subagents",
 		);
 	};
-	const value: Value = {
-		activities,
-		activeActivities,
-		activityByToolCallId,
-		hasActiveSubagents,
-		stoppingIds,
-		stopSubagent,
-		stopAllSubagents,
-	};
+	const actions = useRef({ stopSubagent, stopAllSubagents });
+	actions.current = { stopSubagent, stopAllSubagents };
+	const value = useMemo<Value>(
+		() => ({
+			activities,
+			activeActivities,
+			activityByToolCallId,
+			hasActiveSubagents,
+			stoppingIds,
+			stopSubagent: (target) => actions.current.stopSubagent(target),
+			stopAllSubagents: () => actions.current.stopAllSubagents(),
+		}),
+		[activities, activeActivities, activityByToolCallId, hasActiveSubagents, stoppingIds],
+	);
 	return <Context.Provider value={value}>{children}</Context.Provider>;
 }
 

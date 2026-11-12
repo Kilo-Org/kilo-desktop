@@ -49,17 +49,42 @@ export const useRevertRangeHasFileChanges = (): boolean =>
 	useAuiState((s) => {
 		const extras = selectOpenCodeExtras(s.thread.extras);
 		if (!extras) return false;
-		const messageId = s.message.id;
-		const messageIndex = extras.state.messageOrder.indexOf(messageId);
-		if (messageIndex === -1) return false;
-		for (let i = messageIndex; i < extras.state.messageOrder.length; i++) {
-			const msgId = extras.state.messageOrder[i];
-			if (msgId === undefined) continue;
-			const info = extras.state.messagesById[msgId]?.info;
-			if (info?.role === "user" && (info.summary?.diffs?.length ?? 0) > 0) return true;
-		}
-		return false;
+		const { indexById, lastChangedUserIndex } = fileChangeIndex(extras.state);
+		const messageIndex = indexById.get(s.message.id);
+		return messageIndex !== undefined && messageIndex <= lastChangedUserIndex;
 	});
+
+type ThreadState = NonNullable<ReturnType<typeof selectOpenCodeExtras>>["state"];
+
+interface FileChangeIndex {
+	readonly indexById: ReadonlyMap<string, number>;
+	/** The last user message that recorded file changes; -1 when none did. */
+	readonly lastChangedUserIndex: number;
+}
+
+/*
+ * Every user message asks this on every store update, so it is computed once
+ * per thread state: scanning the rest of the thread per message made each
+ * streamed token cost O(messages²).
+ */
+const fileChangeIndexes = new WeakMap<ThreadState, FileChangeIndex>();
+
+function fileChangeIndex(state: ThreadState): FileChangeIndex {
+	const cached = fileChangeIndexes.get(state);
+	if (cached) return cached;
+	const indexById = new Map<string, number>();
+	let lastChangedUserIndex = -1;
+	state.messageOrder.forEach((messageId, index) => {
+		indexById.set(messageId, index);
+		const info = state.messagesById[messageId]?.info;
+		if (info?.role === "user" && (info.summary?.diffs?.length ?? 0) > 0) {
+			lastChangedUserIndex = index;
+		}
+	});
+	const index = { indexById, lastChangedUserIndex };
+	fileChangeIndexes.set(state, index);
+	return index;
+}
 
 export type ComposerPrompt = {
 	text: string;

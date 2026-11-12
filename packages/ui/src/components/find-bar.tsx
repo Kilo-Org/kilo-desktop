@@ -1,4 +1,12 @@
-import { useEffect, useRef, type ComponentProps, type RefObject } from "react";
+import {
+	createContext,
+	useContext,
+	useEffect,
+	useRef,
+	useState,
+	type ComponentProps,
+	type RefObject,
+} from "react";
 import { ChevronDownIcon, ChevronUpIcon, XIcon } from "lucide-react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
@@ -87,7 +95,17 @@ export interface FindBarProps {
 	readonly placeholder?: string;
 	/** Extra classes for the bar container, e.g. to offset its position below a pane header. */
 	readonly className?: string;
+	readonly onOpenChange?: (open: boolean) => void;
 }
+
+const FindScopeOpenContext = createContext(false);
+
+/**
+ * Whether the enclosing find scope's bar is open. Content that renders only
+ * part of itself (a windowed list) renders all of it while open: find
+ * searches the DOM.
+ */
+export const useFindScopeOpen = () => useContext(FindScopeOpenContext);
 
 /**
  * Shared per-pane find bar for DOM content. Mounted once inside a pane's find
@@ -105,8 +123,12 @@ export function FindBar({
 	qaPrefix,
 	placeholder,
 	className,
+	onOpenChange,
 }: FindBarProps) {
 	const find = useDomFind({ rootRef, ...(searchRootSelector ? { searchRootSelector } : {}) });
+	const onOpenChangeRef = useRef(onOpenChange);
+	onOpenChangeRef.current = onOpenChange;
+	useEffect(() => onOpenChangeRef.current?.(find.open), [find.open]);
 	const { openBar } = find;
 	const inputRef = useRef<HTMLInputElement>(null);
 
@@ -246,6 +268,7 @@ export function FindScope({
 	...props
 }: FindScopeProps) {
 	const scopeRef = useRef<HTMLDivElement>(null);
+	const [open, setOpen] = useState(false);
 	// One tree for both states: the bar's slot stays in place so toggling the
 	// flag at runtime never remounts the pane's content.
 	return (
@@ -262,9 +285,12 @@ export function FindScope({
 					{...(searchRootSelector ? { searchRootSelector } : {})}
 					{...(placeholder ? { placeholder } : {})}
 					{...(barClassName ? { className: barClassName } : {})}
+					onOpenChange={setOpen}
 				/>
 			) : null}
-			{children}
+			<FindScopeOpenContext.Provider value={enabled && open}>
+				{children}
+			</FindScopeOpenContext.Provider>
 		</div>
 	);
 }

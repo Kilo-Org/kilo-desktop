@@ -1,14 +1,14 @@
 import { QueryClient } from "@tanstack/react-query";
 
 import { definePlugin, KernelCommand } from "@kilo-desktop/kernel";
-import { KiloServer } from "@kilo-desktop/plugin-core/contracts";
+import { Chats, KiloServer } from "@kilo-desktop/plugin-core/contracts";
 import {
 	PaneKind,
 	PaneKindMenu,
 	WorkSessionStarter,
 } from "@kilo-desktop/plugin-work-sessions/contracts";
 
-import { ComposerAction, ToolRenderer } from "../contracts";
+import { agentPaneChatId, ComposerAction, ToolRenderer } from "../contracts";
 import { AgentIcon, createAgentPane } from "./AgentPane";
 import { BUILTIN_COMPOSER_ACTIONS } from "./composer/builtin-actions";
 import { activateComposerFocus, ComposerFocus } from "./composer-focus";
@@ -44,6 +44,15 @@ export const chatWebEntry = definePlugin({
 		sdk.extensions.implement(PaneKind, "agent", {
 			component: createAgentPane({ chat, focus, queries }),
 			icon: AgentIcon,
+			// Loads the chat the pane would show, so opening the work session shows it at once.
+			prefetch: ({ workSession, pane, panes }) => {
+				const chatId = agentPaneChatId(pane, workSession, panes);
+				if (!chatId) return;
+				const directory =
+					sdk.domainObjects.get(Chats)?.getState().chats[chatId]?.directory ??
+					workSession.directory;
+				chat.prefetchHistory(chatId, directory);
+			},
 		});
 		sdk.extensions.implement(PaneKind, "plan", {
 			component: createPlanPane({ chat, queries }),

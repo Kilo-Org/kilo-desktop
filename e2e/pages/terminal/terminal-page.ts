@@ -35,7 +35,7 @@ export class TerminalPage {
 		);
 		await click(getLocatorByTestId(`launcher-pane-${TERMINAL_KIND}`));
 		await expectElementToBeVisible(
-			getLocatorByTestId("session-workbench"),
+			getLocatorByTestId("session-workbench", { onlyVisible: true }),
 			"Starting a terminal session should open it",
 		);
 		return this.#waitForNewTerminalId(existing);

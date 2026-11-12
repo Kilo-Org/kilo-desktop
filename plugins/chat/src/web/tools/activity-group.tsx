@@ -288,16 +288,47 @@ const ManualDisclosureContext = createContext<ManualDisclosureContextValue | nul
 const ActivityGroupManualOpenContext = createContext<(() => void) | null>(null);
 const ActivitySubgroupManualOpenContext = createContext<(() => void) | null>(null);
 
-export const ManualDisclosureProvider: FC<PropsWithChildren> = ({ children }) => {
-	const [openById, setOpenById] = useState<ReadonlyMap<string, boolean>>(() => new Map());
-	const setOpen = useCallback((id: string, open: boolean) => {
-		setOpenById((current) => {
-			if (current.get(id) === open) return current;
-			const next = new Map(current);
-			next.set(id, open);
-			return next;
-		});
-	}, []);
+/**
+ * What each message's disclosures were left as, kept for the thread: a
+ * windowed transcript unmounts messages scrolled far away, and one scrolled
+ * back keeps what the reader opened or closed.
+ */
+const ManualDisclosureMemoryContext = createContext<Map<
+	string,
+	ReadonlyMap<string, boolean>
+> | null>(null);
+
+export const ManualDisclosureMemoryProvider: FC<PropsWithChildren> = ({ children }) => {
+	const [memory] = useState(() => new Map<string, ReadonlyMap<string, boolean>>());
+	return (
+		<ManualDisclosureMemoryContext.Provider value={memory}>
+			{children}
+		</ManualDisclosureMemoryContext.Provider>
+	);
+};
+
+/** Disclosure state for one message; `scope` (its id) keeps it in the thread's memory. */
+export const ManualDisclosureProvider: FC<PropsWithChildren<{ scope?: string }>> = ({
+	scope,
+	children,
+}) => {
+	const memory = useContext(ManualDisclosureMemoryContext);
+	const remembered = scope !== undefined ? memory?.get(scope) : undefined;
+	const [openById, setOpenById] = useState<ReadonlyMap<string, boolean>>(
+		() => remembered ?? new Map(),
+	);
+	const setOpen = useCallback(
+		(id: string, open: boolean) => {
+			setOpenById((current) => {
+				if (current.get(id) === open) return current;
+				const next = new Map(current);
+				next.set(id, open);
+				if (scope !== undefined) memory?.set(scope, next);
+				return next;
+			});
+		},
+		[memory, scope],
+	);
 	const value = useMemo(() => ({ openById, setOpen }), [openById, setOpen]);
 	return (
 		<ManualDisclosureContext.Provider value={value}>{children}</ManualDisclosureContext.Provider>

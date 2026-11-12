@@ -6,7 +6,7 @@ import { Button } from "@kilo-desktop/ui/components/button";
 import { Skeleton } from "@kilo-desktop/ui/components/skeleton";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
-import { useOptionalOpenCodeRuntimeExtras } from "../runtime/use-optional-opencode-runtime-extras";
+import { useOptionalOpenCodeSession } from "../runtime/use-optional-opencode-runtime-extras";
 import { OPTIMISTIC_AGENT_CATALOG } from "../selection/agent-catalog";
 import { ApprovePlanButton } from "./ApprovePlanButton";
 import { buildCollapsedProposedPlanPreviewMarkdown, proposedPlanTitle } from "./plan-markdown";
@@ -32,7 +32,7 @@ type PlanCardProps = {
 
 export const PlanCard: FC<PlanCardProps> = memo(({ projection }) => {
 	const planThread = usePlanThreadProjection();
-	const chatId = useOptionalOpenCodeRuntimeExtras()?.session?.id;
+	const chatId = useOptionalOpenCodeSession()?.id;
 	const openPlan = useOpenPlanPane();
 	const {
 		approve,

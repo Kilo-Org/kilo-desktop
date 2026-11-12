@@ -39,6 +39,9 @@ function lazyInstallation(sdk: PluginSdk): KiloInstallation {
 		get treeSitterWasmDirectory() {
 			return resolve().treeSitterWasmDirectory;
 		},
+		get custom() {
+			return resolve().custom ?? false;
+		},
 	};
 }
 
@@ -48,7 +51,6 @@ function createKiloServer(input: ServerInput, sdk: PluginSdk): KiloServerManager
 		...input.directories,
 		...(input.installationId !== undefined ? { installationId: input.installationId } : {}),
 		corsOrigins: input.corsOrigins,
-		allowVersionMismatch: Boolean(process.env.KILO_CODE_CLI_PATH?.trim()),
 		fetch: mainHost(sdk).net.fetch,
 		logger: sdk.logger,
 		onStatusChange: input.onStatusChange,
@@ -62,7 +64,11 @@ export function productionAgentOptions(sdk: PluginSdk): AgentOptions {
 	return {
 		createServer: createKiloServer,
 		createChatClient: createKiloChatClient,
-		userConfigDirectory: resolveUserConfigDirectory(),
+		// Read when used: activation runs before the login shell's environment
+		// (which may set XDG_CONFIG_HOME) is in place.
+		get userConfigDirectory() {
+			return resolveUserConfigDirectory();
+		},
 		originExternalClients: originExternalClientsFile(mainHost(sdk).storage.dir),
 	};
 }

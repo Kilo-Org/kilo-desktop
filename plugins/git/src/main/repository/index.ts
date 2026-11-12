@@ -1,4 +1,5 @@
 import {
+	environmentReady,
 	KernelApp,
 	mainHost,
 	type DomainObjectProvider,
@@ -171,6 +172,7 @@ function vcsOf(
 export function activateRepository(sdk: PluginSdk, options: RepositoryOptions): RepositoryArea {
 	const service = new GitService({
 		logger: sdk.logger,
+		environmentReady: () => environmentReady(sdk),
 		workspaces: workspaceAccess(sdk),
 		...(options.tempDir === undefined ? {} : { tempDir: options.tempDir }),
 		...(options.createClient === undefined ? {} : { createClient: options.createClient }),

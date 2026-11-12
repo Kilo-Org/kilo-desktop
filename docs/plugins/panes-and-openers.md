@@ -61,7 +61,7 @@ The kind's id is its contribution key (`kilo.terminal/terminal`).
 | `directory`     | Where the work session works (its copy, else the workspace's primary folder) |
 | `visible`       | True while the pane is the one shown in its group                            |
 
-The implementation is `{ component, icon?, canClose? }`. A pane of a kind
+The implementation is `{ component, icon?, canClose?, prefetch? }`. A pane of a kind
 whose plugin is missing stays listed and renders as "unavailable", so
 work sessions survive a plugin being removed.
 
@@ -112,6 +112,24 @@ sdk.extensions.implement(PaneKind, "files", {
 Return `false` to keep the pane. Guards fail open: one that throws lets the
 pane close, so a bug can never trap the person. `@kilo-desktop/ui` has the
 standard Save / Discard / Cancel dialog (`@kilo-desktop/ui/components/pane-close-dialog`).
+
+## Prefetch
+
+To make opening a work session instant, add `prefetch`. It is called when
+the person rests the pointer on the session's row (100 ms), once per pane of
+the kind, with the work session, the pane and all its panes. Load what the
+pane would load when shown; the session may never open, and the call may
+repeat:
+
+```ts
+sdk.extensions.implement(PaneKind, "agent", {
+	component: AgentPane,
+	prefetch: ({ workSession, pane, panes }) => history.prefetch(chatOf(pane, workSession, panes)),
+});
+```
+
+Keep what it loads only while it is current: kilo.chat drops a prefetched
+history on any event for the chat, and after 30 s.
 
 ## Pop-outs
 

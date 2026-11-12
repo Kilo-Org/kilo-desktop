@@ -105,6 +105,11 @@ test.describe("Chat approval selector", () => {
 			await chatApprovalSelectorPage.openApprovalSelector();
 			await chatApprovalSelectorPage.selectAutoApproval();
 			await chatApprovalSelectorPage.verifyApprovalLabel("Auto");
+			// A radio choice leaves the menu open. Close it before leaving: the work
+			// session stays mounted but hidden, and React's Activity doesn't hide a
+			// portaled popup, so one left mid-close would linger in the page.
+			await chatApprovalSelectorPage.closeWithEscape();
+			await chatApprovalSelectorPage.verifyApprovalMenuClosed();
 
 			await chatApprovalSelectorPage.switchToPersistedChat(1);
 			await chatApprovalSelectorPage.verifyApprovalLabel("Auto");

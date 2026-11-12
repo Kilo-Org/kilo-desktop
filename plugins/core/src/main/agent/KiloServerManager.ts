@@ -32,6 +32,8 @@ class KiloOperationalError extends Error {}
 export interface KiloInstallation {
 	readonly executablePath: string;
 	readonly treeSitterWasmDirectory: string;
+	/** A developer's own CLI (`KILO_CODE_CLI_PATH`), which may be any version. */
+	readonly custom?: boolean;
 }
 
 export interface KiloChildProcess {
@@ -564,6 +566,7 @@ export class KiloServerManager {
 				`--port=${preferredPort ?? 0}`,
 				...this.#options.corsOrigins.map((origin) => `--cors=${origin}`),
 			];
+			const spawnedAt = performance.now();
 			child = this.#options.spawn(this.#options.installation.executablePath, args, {
 				cwd: this.#options.runtimeDirectory,
 				detached: this.#options.platform !== "win32",
@@ -578,11 +581,15 @@ export class KiloServerManager {
 			if (!stderrCollector) child.stderr?.resume();
 
 			const baseUrl = await this.#waitForListeningUrl(child);
+			const listeningAt = performance.now();
 			// Server is listening — stderr is no longer needed for diagnostics.
 			stderrCollector?.stop();
 			const version = await this.#waitForHealthy(baseUrl, authHeader);
+			const healthyAt = performance.now();
 			if (this.#disposed) throw new Error("Kilo Code has shut down.");
-			if (!this.#options.allowVersionMismatch && version !== this.#options.expectedVersion) {
+			const versionPinned =
+				!this.#options.allowVersionMismatch && !this.#options.installation.custom;
+			if (versionPinned && version !== this.#options.expectedVersion) {
 				throw new KiloOperationalError(
 					`Kilo server version mismatch: expected ${this.#options.expectedVersion}, got ${version}.`,
 				);
@@ -605,7 +612,9 @@ export class KiloServerManager {
 					`Could not sync telemetry preference: ${safeErrorMessage(error, [password, authHeader])}`,
 				),
 			);
-			this.#options.logger.info(`Ready at ${baseUrl} (version ${version}).`);
+			this.#options.logger.info(
+				`Ready at ${baseUrl} (version ${version}): listening ${Math.round(listeningAt - spawnedAt)} ms after spawn, healthy ${Math.round(healthyAt - listeningAt)} ms later; ${Math.round(healthyAt)} ms after launch.`,
+			);
 			return this.#publicConnection(connection);
 		} catch (error) {
 			stderrCollector?.stop();

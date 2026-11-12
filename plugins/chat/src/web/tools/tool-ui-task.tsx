@@ -5,7 +5,7 @@ import { SquareIcon } from "lucide-react";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
-import { useOptionalOpenCodeRuntimeExtras } from "../runtime/use-optional-opencode-runtime-extras";
+import { useOpenCodeExtrasSlice } from "../runtime/use-optional-opencode-runtime-extras";
 import {
 	useDelegationRevealNonce,
 	useDelegationRevealStore,
@@ -71,8 +71,15 @@ export const TaskActivity: ToolCallComponent = memo(({ args, status, toolCallId 
 		const custom = state.message.metadata?.custom as { opencode?: { parts?: unknown } } | undefined;
 		return custom?.opencode?.parts;
 	});
-	const extras = useOptionalOpenCodeRuntimeExtras();
 	const { activityByToolCallId, stoppingIds, stopSubagent } = useSubagentActivity();
+	const knownChildSessionId =
+		activityByToolCallId.get(toolCallId)?.childSessionId ??
+		childSessionIdForToolCall(originalParts, toolCallId);
+	const childDirectory = useOpenCodeExtrasSlice((extras) =>
+		knownChildSessionId
+			? extras.state?.childSessionsById?.[knownChildSessionId]?.session?.directory
+			: undefined,
+	);
 	const openPane = useOpenSubagentPane();
 	const ref = useRevealRow(toolCallId, hidden);
 	if (hidden) return null;
@@ -85,11 +92,7 @@ export const TaskActivity: ToolCallComponent = memo(({ args, status, toolCallId 
 	const title = activity?.title ?? taskTitleFromArgs(args) ?? "Delegated task";
 	const typeLabel =
 		activity?.typeLabel ?? subagentTypeLabel(str(asRecord(args)?.subagent_type).trim());
-	const directory =
-		activity?.directory ??
-		(childSessionId
-			? extras?.state?.childSessionsById?.[childSessionId]?.session?.directory
-			: undefined);
+	const directory = activity?.directory ?? childDirectory;
 	const stopping = childSessionId ? stoppingIds.has(childSessionId) : false;
 	const canStop = active && childSessionId !== undefined;
 

@@ -1,8 +1,10 @@
+import { MessageNotSentError } from "@assistant-ui/react";
 import type { OpenCodeRuntimeBackend, OpenCodeSessionRef } from "@assistant-ui/react-opencode";
 import type { KiloClient } from "@kilocode/sdk/v2/client";
 
 import type { ChatServices } from "./chat-services";
 import { createDeferredKiloClient } from "./deferred-client";
+import { withPrefetchedHistory } from "./history-prefetch";
 import { withPendingPrompts } from "./pending-prompts";
 import { withPromptOptions, type PromptOptions } from "./prompt-options";
 import { withMcpWarmup } from "./with-mcp-warmup";
@@ -62,9 +64,13 @@ export function createChatBackend(options: ChatBackendOptions): OpenCodeRuntimeB
 					services.connection(),
 					directoryOf(ref.id),
 				]);
-				return withPromptOptions(
-					withMcpWarmup(services.clients.directory(connection, directory)),
-					options,
+				return withPrefetchedHistory(
+					withPromptOptions(
+						withMcpWarmup(services.clients.directory(connection, directory)),
+						options,
+					),
+					ref.id,
+					services.history,
 				);
 			});
 			sessionClients.set(ref.id, client);
@@ -84,7 +90,8 @@ export function createChatBackend(options: ChatBackendOptions): OpenCodeRuntimeB
 				return ref;
 			} catch (error) {
 				options.onCreateFailed?.(error);
-				throw error;
+				// Nothing reached the server: the composer takes the draft back.
+				throw new MessageNotSentError(error instanceof Error ? error.message : undefined);
 			}
 		},
 		createEventSource: () =>

@@ -59,6 +59,30 @@ describe("createHostServices", () => {
 		expect(hostDeps.fs.readFile).toHaveBeenCalledWith("acme.plugin", "notes/a.txt");
 	});
 
+	it("tells plugins when the login environment is ready, even if reading it failed", async () => {
+		let settle: (value?: unknown) => void = () => {};
+		const pending = new Promise((resolve) => (settle = resolve));
+		const ready = vi.fn();
+		servicesFor({ ...deps(), environmentReady: pending })
+			.environment!.ready()
+			.then(ready);
+
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(ready).not.toHaveBeenCalled();
+		settle();
+		await vi.waitFor(() => expect(ready).toHaveBeenCalledOnce());
+
+		let fail: (reason: unknown) => void = () => {};
+		const failing = new Promise((_resolve, reject) => (fail = reject));
+		const afterFailure = servicesFor({ ...deps(), environmentReady: failing }).environment!.ready();
+		fail(new Error("shell broke"));
+		await expect(afterFailure).resolves.toBeUndefined();
+	});
+
+	it("leaves the environment out where the host's is complete from the start", () => {
+		expect(servicesFor(deps()).environment).toBeUndefined();
+	});
+
 	it("offers protocols, embedded hosts and the browser host only when declared", () => {
 		const services = servicesFor(deps());
 

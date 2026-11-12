@@ -87,7 +87,7 @@ describe("createMainPromptQueue", () => {
 	it("sends straight through the runtime while nothing is in the way", async () => {
 		const { queue, queues, send } = setup();
 
-		queue.adapter.enqueue(message("Hi"), { steer: false });
+		queue.adapter.enqueue(message("Hi"));
 		await flush();
 
 		expect(send).toHaveBeenCalledOnce();
@@ -97,7 +97,7 @@ describe("createMainPromptQueue", () => {
 	it("sends a draft's first message through the runtime, which creates its chat", async () => {
 		const { queue, send } = setup({ chatId: () => null, chatWorking: () => true });
 
-		queue.adapter.enqueue(message("Hi"), { steer: true });
+		queue.adapter.steer(message("Hi", { steer: true }));
 		await flush();
 
 		expect(send).toHaveBeenCalledOnce();
@@ -106,7 +106,7 @@ describe("createMainPromptQueue", () => {
 	it("queues in main while the chat works, prepared as the composer holds it", async () => {
 		const { queue, queues, send } = setup({ chatWorking: () => true });
 
-		queue.adapter.enqueue(message("Then add tests"), { steer: false });
+		queue.adapter.enqueue(message("Then add tests"));
 		await flush();
 
 		expect(send).not.toHaveBeenCalled();
@@ -116,11 +116,11 @@ describe("createMainPromptQueue", () => {
 		});
 	});
 
-	it("queues a steer and anything sent while the thread runs", async () => {
+	it("queues a steer and anything sent while the thread runs, which comes as a steer", async () => {
 		const { queue, queues } = setup();
-		queue.adapter.enqueue(message("Now"), { steer: true });
+		queue.adapter.steer(message("Now", { steer: true }));
 		queue.setRunning(true);
-		queue.adapter.enqueue(message("Later"), { steer: false });
+		queue.adapter.steer(message("Later"));
 		await flush();
 
 		expect(
@@ -135,7 +135,7 @@ describe("createMainPromptQueue", () => {
 		const { queue, queues, send, onError } = setup();
 		send.mockRejectedValueOnce(new Error("offline"));
 
-		queue.adapter.enqueue(message("Hi"), { steer: false });
+		queue.adapter.enqueue(message("Hi"));
 		await vi.waitFor(() =>
 			expect(queues.call).toHaveBeenCalledWith(
 				"enqueue",
@@ -149,7 +149,7 @@ describe("createMainPromptQueue", () => {
 		const { queue, queues, send } = setup();
 		send.mockResolvedValueOnce("returned-to-composer");
 
-		queue.adapter.enqueue(message("Hi"), { steer: false });
+		queue.adapter.enqueue(message("Hi"));
 		await flush();
 
 		expect(queues.call).not.toHaveBeenCalled();
@@ -158,7 +158,7 @@ describe("createMainPromptQueue", () => {
 	it("says a prompt couldn't be queued without the queue", async () => {
 		const { queue, onError } = setup({ queue: () => null, chatWorking: () => true });
 
-		queue.adapter.enqueue(message("Hi"), { steer: false });
+		queue.adapter.enqueue(message("Hi"));
 		await flush();
 
 		expect(onError).toHaveBeenCalledWith(new Error("The prompt couldn't be queued."));
@@ -174,14 +174,15 @@ describe("createMainPromptQueue", () => {
 		queues.set("ses_a", { ...EMPTY, items: [item], paused: true });
 
 		expect(listener).toHaveBeenCalled();
-		expect(queue.adapter.items).toEqual([{ id: "q1", prompt: "First" }]);
+		expect(queue.adapter.items).toEqual([
+			{ id: "q1", prompt: "First", parts: [{ type: "text", text: "First" }] },
+		]);
 		expect(queue.getControlsState()).toEqual({ paused: true, editingId: undefined });
 		expect(queue.getSnapshot()).toBeGreaterThan(0);
 
-		queue.adapter.steer("q1");
+		queue.adapter.move("q1", { lane: "steer", insertAfter: null });
 		queue.adapter.remove("q1");
-		queue.adapter.clear("cancel-run");
-		queue.adapter.clear("edit");
+		queue.adapter.__internal_notifyCancelled?.();
 		queue.pause();
 		queue.resume();
 		queue.reorder(["q1"]);
@@ -191,12 +192,34 @@ describe("createMainPromptQueue", () => {
 			"steer",
 			"remove",
 			"stopped",
-			"clear",
 			"pause",
 			"resume",
 			"reorder",
 		]);
 		stop();
+	});
+
+	it("reorders an item moved within the queue", async () => {
+		const queues = fakeQueues({
+			ses_a: {
+				...EMPTY,
+				items: ["q1", "q2", "q3"].map((id) => ({ id, prompt: id, text: id })),
+			},
+		});
+		const { queue } = setup({}, queues);
+		queue.subscribe(() => undefined);
+
+		queue.adapter.move("q3", { insertAfter: null });
+		queue.adapter.move("q1", { insertBefore: "q3" });
+		queue.adapter.move("q2", {});
+		queue.adapter.move("q1", { insertAfter: "missing" });
+		await flush();
+
+		expect(queues.call.mock.calls).toEqual([
+			["reorder", { chatId: "ses_a", ids: ["q3", "q1", "q2"] }],
+			["reorder", { chatId: "ses_a", ids: ["q2", "q1", "q3"] }],
+			["reorder", { chatId: "ses_a", ids: ["q1", "q3", "q2"] }],
+		]);
 	});
 
 	it("answers edits at once from the mirrored state", async () => {

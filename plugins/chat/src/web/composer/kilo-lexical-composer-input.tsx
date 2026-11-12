@@ -15,6 +15,7 @@ import {
 	type FC,
 	type KeyboardEvent,
 	type Ref,
+	useCallback,
 	useEffect,
 	useRef,
 } from "react";
@@ -52,13 +53,18 @@ export const KiloLexicalComposerInput: FC<KiloLexicalComposerInputProps> = ({
 	onEnter,
 	style,
 }) => {
+	// Stable, so a re-render doesn't detach and re-attach it (and set the label again).
+	const attachInput = useCallback(
+		(node: HTMLDivElement | null) => {
+			if (typeof ref === "function") ref(node);
+			else if (ref) ref.current = node;
+			node?.querySelector("[contenteditable]")?.setAttribute("aria-label", "Message input");
+		},
+		[ref],
+	);
 	return (
 		<LexicalComposerInput
-			ref={(node) => {
-				if (typeof ref === "function") ref(node);
-				else if (ref) ref.current = node;
-				node?.querySelector("[contenteditable]")?.setAttribute("aria-label", "Message input");
-			}}
+			ref={attachInput}
 			formatter={formatter}
 			directiveChip={KiloDirectiveChip}
 			placeholder={placeholder}
@@ -159,7 +165,7 @@ function SteerQueueOnEnterPlugin({
 				const composer = aui.composer.getState();
 				if (!composer.isEmpty || composer.queue.length === 0) return false;
 				event.preventDefault();
-				aui.composer.queueItem({ index: 0 }).steer();
+				aui.composer.queueItem({ index: 0 }).move({ lane: "steer", insertAfter: null });
 				return true;
 			},
 			COMMAND_PRIORITY_CRITICAL,

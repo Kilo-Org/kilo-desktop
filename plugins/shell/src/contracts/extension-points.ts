@@ -24,6 +24,8 @@ export interface MainImplementation {
  * Put on the root of main-area content that brings its own surfaces (e.g.
  * pane islands): while it is in the page, the frame drops its card and inset
  * so that content sits straight on the window. `{ [SHELL_CANVAS_ATTRIBUTE]: "" }`.
+ * A marker under a `hidden` element doesn't count, so content kept mounted
+ * out of sight (e.g. under a hidden `Activity`) must sit in one.
  */
 export const SHELL_CANVAS_ATTRIBUTE = "data-shell-canvas";
 

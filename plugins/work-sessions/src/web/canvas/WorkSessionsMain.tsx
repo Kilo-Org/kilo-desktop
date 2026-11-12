@@ -46,14 +46,22 @@ function useRecentWorkSessionIds(openId: string | null, closed: boolean): readon
 	return recent.current;
 }
 
-/** A recently opened work session, shown while open and kept mounted but hidden otherwise. */
+/**
+ * A recently opened work session, shown while open and kept mounted but hidden otherwise.
+ *
+ * The `hidden` wrapper sits outside the `Activity` so it changes in the same
+ * commit as the page shown instead: the shell ignores a canvas marker under a
+ * `hidden` element, and a hidden session's DOM (marker included) stays in the page.
+ */
 function KeptWorkSession({ id, shown }: { readonly id: string; readonly shown: boolean }) {
 	const workSession = useWorkSession(id);
 	if (!workSession) return null;
 	return (
-		<Activity mode={shown ? "visible" : "hidden"}>
-			<OpenWorkSession workSession={workSession} />
-		</Activity>
+		<div hidden={!shown} className="contents">
+			<Activity mode={shown ? "visible" : "hidden"}>
+				<OpenWorkSession workSession={workSession} />
+			</Activity>
+		</div>
 	);
 }
 

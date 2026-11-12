@@ -187,10 +187,10 @@ export function Frame({ children }: { readonly children: ReactNode }) {
 					rightSidebarToggle={rightSidebarToggle}
 					empty={topBarEmpty}
 				/>
-				{/* has-[[data-shell-canvas]] is SHELL_CANVAS_ATTRIBUTE, spelled out for Tailwind. */}
+				{/* [data-shell-canvas] is SHELL_CANVAS_ATTRIBUTE, spelled out for Tailwind; one under a `hidden` element doesn't count. */}
 				<div
 					data-qa-id="shell-main"
-					className="bg-card pane-edge mx-2 mb-2 flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain rounded-lg [--pane-surface:var(--color-card)] has-[[data-shell-canvas]]:m-0 has-[[data-shell-canvas]]:overflow-visible has-[[data-shell-canvas]]:rounded-none has-[[data-shell-canvas]]:bg-transparent has-[[data-shell-canvas]]:ring-0"
+					className="bg-card pane-edge mx-2 mb-2 flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overscroll-contain rounded-lg [--pane-surface:var(--color-card)] has-[[data-shell-canvas]:not([hidden]_*)]:m-0 has-[[data-shell-canvas]:not([hidden]_*)]:overflow-visible has-[[data-shell-canvas]:not([hidden]_*)]:rounded-none has-[[data-shell-canvas]:not([hidden]_*)]:bg-transparent has-[[data-shell-canvas]:not([hidden]_*)]:ring-0"
 				>
 					{children}
 				</div>

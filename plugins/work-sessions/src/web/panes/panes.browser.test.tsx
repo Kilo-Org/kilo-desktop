@@ -225,6 +225,29 @@ describe("session panes", () => {
 		expect(frame().overflowY).toBe("visible");
 	});
 
+	it("brings the shell's card back on the New Session page while a left work session stays mounted", async () => {
+		const other = workSession("wses_2", { title: "Other", workspaceId: APP.id });
+		const frame = () => getComputedStyle(page.getByTestId("shell-main").element());
+		const { window } = await renderWorkSessions({
+			workSessions: [SESSION, other],
+			workspaces: [APP],
+			activeWorkspaceId: APP.id,
+			panes: { ...withPanes([pane("a")]), [other.id]: panesOf([pane("b")]) },
+			open: SESSION.id,
+			guests: [panesPlugin],
+		});
+		await expect.element(page.getByTestId("session-canvas")).toBeVisible();
+
+		// Leaving SESSION for another keeps it mounted (hidden); closing that one shows the New Session page.
+		await window().methods.openWorkSession({ workSessionId: other.id });
+		await window().methods.closeWorkSession(undefined);
+
+		await expect.element(page.getByTestId("workbench-launcher")).toBeVisible();
+		expect(page.getByTestId("session-canvas").elements()).toHaveLength(1);
+		expect(frame().marginLeft).not.toBe("0px");
+		expect(frame().overflowY).toBe("auto");
+	});
+
 	it("shows a pane whose plugin isn't here as unavailable", async () => {
 		await renderPanes({ panes: withPanes([pane("x", "gone.plugin/thing", "Old pane")]) });
 

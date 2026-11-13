@@ -59,7 +59,7 @@
 		"@kilo-desktop/ui": "workspace:*",
 		"@launchdarkly/node-client-sdk": "^4.0.0",
 		"@parcel/watcher": "^2.6.0",
-		"@runtimed/node": "0.7.0-nightly.40958541191",
+		"@runtimed/node": "0.8.0",
 		"@sentry/electron": "catalog:",
 		"@vscode/proxy-agent": "^0.45.0",
 		"atomically": "catalog:",
@@ -77,7 +77,7 @@
 		"zod": "catalog:"
 	},
 	"optionalDependencies": {
-		"@runtimed/node-win32-arm64-msvc": "0.7.0-nightly.40958541191"
+		"@runtimed/node-win32-arm64-msvc": "0.8.0"
 	},
 	"devDependencies": {
 		"@kilo-desktop/vite-plugin-externalize-deps": "workspace:*",

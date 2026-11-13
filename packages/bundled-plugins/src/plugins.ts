@@ -22,6 +22,8 @@ import boardManifest from "@kilo-desktop/plugin-workspace-board/plugin.json";
 import { BOARD_DEFINITIONS } from "@kilo-desktop/plugin-workspace-board/contracts";
 import developerManifest from "@kilo-desktop/plugin-developer/plugin.json";
 import { DEVELOPER_DEFINITIONS } from "@kilo-desktop/plugin-developer/contracts";
+import domainMapManifest from "@kilo-desktop/plugin-domain-map/plugin.json";
+import { DOMAIN_MAP_DEFINITIONS } from "@kilo-desktop/plugin-domain-map/contracts";
 import shellManifest from "@kilo-desktop/plugin-shell/plugin.json";
 import { SHELL_DEFINITIONS } from "@kilo-desktop/plugin-shell/contracts";
 import terminalManifest from "@kilo-desktop/plugin-terminal/plugin.json";
@@ -52,4 +54,5 @@ export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
 	{ manifest: anacondaManifest, definitions: ANACONDA_DEFINITIONS },
 	{ manifest: boardManifest, definitions: BOARD_DEFINITIONS },
 	{ manifest: developerManifest, definitions: DEVELOPER_DEFINITIONS },
+	{ manifest: domainMapManifest, definitions: DOMAIN_MAP_DEFINITIONS },
 ];

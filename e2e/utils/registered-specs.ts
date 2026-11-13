@@ -12,6 +12,7 @@ const AREA_OWNERS: Readonly<Record<string, string>> = {
 	core: "kilo.core",
 	shell: "kilo.shell",
 	developer: "kilo.developer",
+	"domain-map": "kilo.domain-map",
 	"work-sessions": "kilo.work-sessions",
 	chat: "kilo.chat",
 	git: "kilo.git",

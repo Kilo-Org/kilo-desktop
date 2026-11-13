@@ -1,0 +1,13 @@
+/* Test-only stylesheet: generates the Tailwind utilities the plugin's
+   components use so browser tests get real layout/visibility. In the app,
+   apps/web/src/globals.css scans plugin and design-system sources. */
+@import "tailwindcss";
+@source "../../../../packages/ui";
+@source "../../../../packages/kernel/src";
+@source "../";
+/* Tests render the real shell (renderShell), whose settings layout sets the page width. */
+@source "../../../shell/src/web";
+/* The app gets these from shadcn/tailwind.css: base-ui marks orientation with
+   data-orientation, which the design system's tabs lay out by. */
+@custom-variant data-horizontal (&:where([data-orientation="horizontal"]));
+@custom-variant data-vertical (&:where([data-orientation="vertical"]));

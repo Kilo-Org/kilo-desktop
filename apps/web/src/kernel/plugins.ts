@@ -7,6 +7,8 @@ import chatManifest from "@kilo-desktop/plugin-chat/plugin.json";
 import { chatWebEntry } from "@kilo-desktop/plugin-chat/web";
 import developerManifest from "@kilo-desktop/plugin-developer/plugin.json";
 import { developerWebEntry } from "@kilo-desktop/plugin-developer/web";
+import domainMapManifest from "@kilo-desktop/plugin-domain-map/plugin.json";
+import { domainMapWebEntry } from "@kilo-desktop/plugin-domain-map/web";
 import environmentsManifest from "@kilo-desktop/plugin-environments/plugin.json";
 import { environmentsWebEntry } from "@kilo-desktop/plugin-environments/web";
 import filesManifest from "@kilo-desktop/plugin-files/plugin.json";
@@ -44,4 +46,5 @@ export const WEB_ENTRIES: Readonly<Record<string, PluginEntry>> = {
 	[anacondaManifest.id]: anacondaWebEntry,
 	[boardManifest.id]: boardWebEntry,
 	[developerManifest.id]: developerWebEntry,
+	[domainMapManifest.id]: domainMapWebEntry,
 };

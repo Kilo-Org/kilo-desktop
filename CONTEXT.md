@@ -23,7 +23,7 @@ packages/
 ├── pane-layout/  @kilo-desktop/pane-layout  Pane layout model shared by kilo.work-sessions and its windows
 └── vite-plugin-externalize-deps/            Vite plugin that keeps native/runtime deps out of the main bundle
 
-e2e/              @kilo-desktop/e2e          Playwright/Electron e2e (plugin-aware; kernel, kilo.core, kilo.shell, kilo.developer, kilo.work-sessions, kilo.chat, kilo.git, kilo.files, kilo.terminal, kilo.browser, kilo.notebook, kilo.marketplace, kilo.local-inference, kilo.environments, kilo.anaconda and kilo.workspace-board specs)
+e2e/              @kilo-desktop/e2e          Playwright/Electron e2e (plugin-aware; kernel, kilo.core, kilo.shell, kilo.developer, kilo.domain-map, kilo.work-sessions, kilo.chat, kilo.git, kilo.files, kilo.terminal, kilo.browser, kilo.notebook, kilo.marketplace, kilo.local-inference, kilo.environments, kilo.anaconda and kilo.workspace-board specs)
 examples/
 ├── hello-plugin/ @kilo-desktop/example-hello example.hello: the example plugin for authors — workspace-built and tested, never bundled
 └── right-panel-plugin/ @kilo-desktop/example-right-panel example.right-panel: example panels in the shell's right sidebar rail — never bundled
@@ -33,6 +33,7 @@ plugins/          Bundled plugins, rebuilt layer by layer (docs/plugin-plan-v2.m
 ├── chat/         @kilo-desktop/plugin-chat  kilo.chat: the chat pane — a work session's chats with the agent, drawn from kilo.core
 ├── core/         @kilo-desktop/plugin-core  kilo.core: the Kilo CLI server and everything it knows (data only, no UI)
 ├── developer/    @kilo-desktop/plugin-developer kilo.developer: Settings → Developer → Diagnostics, behind the `developer` flag
+├── domain-map/   @kilo-desktop/plugin-domain-map kilo.domain-map: the app's domain objects in 3D, live, in the shell's right sidebar, behind the `developer` flag
 ├── environments/ @kilo-desktop/plugin-environments kilo.environments: conda environments and packages through the bundled conda bridge, for the person and the agent
 ├── files/        @kilo-desktop/plugin-files kilo.files: the Files pane — browse, edit and mention the files in a work session's workspace folders
 ├── git/          @kilo-desktop/plugin-git   kilo.git: git for workspace folders — work sessions' isolation (`kilo.work-sessions/vcs`), the Changes pane, branches, repository actions and pull requests

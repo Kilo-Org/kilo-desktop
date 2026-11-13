@@ -550,6 +550,9 @@ importers:
       '@kilo-desktop/plugin-developer':
         specifier: workspace:*
         version: link:../../plugins/developer
+      '@kilo-desktop/plugin-domain-map':
+        specifier: workspace:*
+        version: link:../../plugins/domain-map
       '@kilo-desktop/plugin-environments':
         specifier: workspace:*
         version: link:../../plugins/environments
@@ -811,6 +814,9 @@ importers:
       '@kilo-desktop/plugin-developer':
         specifier: workspace:*
         version: link:../../plugins/developer
+      '@kilo-desktop/plugin-domain-map':
+        specifier: workspace:*
+        version: link:../../plugins/domain-map
       '@kilo-desktop/plugin-environments':
         specifier: workspace:*
         version: link:../../plugins/environments
@@ -1538,6 +1544,76 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 5.1.0(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/coverage-v8@5.1.0)(@vitest/ui@5.1.0)(vite@8.1.6(@types/node@26.6.6)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.0))
+      zod:
+        specifier: ^4.6.6
+        version: 4.6.7
+
+  plugins/domain-map:
+    dependencies:
+      '@kilo-desktop/kernel':
+        specifier: workspace:*
+        version: link:../../packages/kernel
+      '@kilo-desktop/plugin-shell':
+        specifier: workspace:*
+        version: link:../shell
+      lucide-react:
+        specifier: 'catalog:'
+        version: 1.73.0(@types/react@19.2.17)(react@19.3.1)
+      phoria2:
+        specifier: 1.3.0
+        version: 1.3.0
+    devDependencies:
+      '@kilo-desktop/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+      '@tailwindcss/vite':
+        specifier: ^4.3.5
+        version: 4.3.5(vite@8.1.6(@types/node@26.6.6)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+      '@testing-library/react':
+        specifier: ^16.3.2
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.2.3(@types/react@19.2.17))(@types/react@19.2.17)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+      '@types/node':
+        specifier: ^26.0.0
+        version: 26.6.6
+      '@types/react':
+        specifier: ^19.2.17
+        version: 19.2.17
+      '@types/react-dom':
+        specifier: ^19.2.3
+        version: 19.2.3(@types/react@19.2.17)
+      '@vitejs/plugin-react':
+        specifier: ^6.0.4
+        version: 6.0.4(vite@8.1.6(@types/node@26.6.6)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+      '@vitest/browser':
+        specifier: 5.1.0
+        version: 5.1.0(vite@8.1.6(@types/node@26.6.6)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))(vitest@5.1.0)
+      '@vitest/browser-playwright':
+        specifier: 5.1.0
+        version: 5.1.0(playwright@1.65.1)(vite@8.1.6(@types/node@26.6.6)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))(vitest@5.1.0)
+      '@vitest/coverage-v8':
+        specifier: 'catalog:'
+        version: 5.1.0(@vitest/browser@5.1.0)(vitest@5.1.0)
+      playwright:
+        specifier: 'catalog:'
+        version: 1.65.1
+      react:
+        specifier: ^19.3.1
+        version: 19.3.1
+      react-dom:
+        specifier: ^19.3.1
+        version: 19.3.1(react@19.3.1)
+      tailwindcss:
+        specifier: ^4.3.5
+        version: 4.3.5
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vite:
+        specifier: 'catalog:'
+        version: 8.1.6(@types/node@26.6.6)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1)
+      vitest:
+        specifier: 'catalog:'
+        version: 5.1.0(@opentelemetry/api@1.9.1)(@types/node@26.6.6)(@vitest/browser-playwright@5.1.0)(@vitest/coverage-v8@5.1.0)(@vitest/ui@5.1.0)(vite@8.1.6(@types/node@26.6.6)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
       zod:
         specifier: ^4.6.6
         version: 4.6.7
@@ -8539,6 +8615,9 @@ packages:
   pele@1.13.0:
     resolution: {integrity: sha512-Ie8UKY9x00MsuR3jO6AzUwzK2Z6MIV3Tf4EDdITiuk8Uaz8K7g0R082WqsqNaSU8DdgkrRvZThzhit83mi/uiw==}
     engines: {node: '>=20'}
+
+  phoria2@1.3.0:
+    resolution: {integrity: sha512-YlhmW9gCeuB1KucOvTCn17zCZt8WkU6+mgo2Vyx6wLt9jYtwg8VcEJOg8bOytEFj4StLg/MTkrZNM9Ohegttqw==}
 
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
@@ -16427,6 +16506,8 @@ snapshots:
   pe-library@1.0.1: {}
 
   pele@1.13.0: {}
+
+  phoria2@1.3.0: {}
 
   picocolors@1.1.1: {}
 

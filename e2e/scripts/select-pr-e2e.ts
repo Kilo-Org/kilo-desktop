@@ -88,6 +88,7 @@ const RELATED_SPECS: Readonly<Record<string, readonly string[]>> = {
 		specDirectory("e2e", "specs", "work-sessions"),
 	],
 	developer: [specDirectory("e2e", "specs", "developer")],
+	"domain-map": [specDirectory("e2e", "specs", "domain-map")],
 	"work-sessions": [
 		specDirectory("e2e", "specs", "work-sessions"),
 		specDirectory("e2e", "specs", "chat"),

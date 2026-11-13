@@ -1,0 +1,25 @@
+{
+	"manifestVersion": 1,
+	"id": "kilo.domain-map",
+	"displayName": "Domain Map",
+	"version": "1.0.0",
+	"description": "The app's domain objects in 3D, live, in the shell's right sidebar: who owns them, which plugins declare they use them, and their events as they happen.",
+	"web": "./src/web/index.ts",
+	"when": {
+		"all": ["kernel/flag:developer"]
+	},
+	"requires": {
+		"kilo.shell/right-sidebar-panel": "optional"
+	},
+	"contributes": {
+		"extensions": {
+			"kilo.shell/right-sidebar-panel": [
+				{
+					"id": "domain-map",
+					"title": "Domain Map",
+					"width": 760
+				}
+			]
+		}
+	}
+}

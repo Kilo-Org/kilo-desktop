@@ -24,6 +24,7 @@
 		"@kilo-desktop/plugin-browser": "workspace:*",
 		"@kilo-desktop/plugin-chat": "workspace:*",
 		"@kilo-desktop/plugin-developer": "workspace:*",
+		"@kilo-desktop/plugin-domain-map": "workspace:*",
 		"@kilo-desktop/plugin-environments": "workspace:*",
 		"@kilo-desktop/plugin-files": "workspace:*",
 		"@kilo-desktop/plugin-git": "workspace:*",

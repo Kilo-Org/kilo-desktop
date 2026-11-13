@@ -17,9 +17,19 @@ import {
  */
 const execFileAsync = promisify(execFile);
 const darwin = process.platform === "darwin";
-const NTERACT_NIGHTLY_DAEMON = "/Applications/nteract Nightly.app/Contents/MacOS/runtimed";
+const INSTALLED_DAEMONS = [
+	{ name: "Stable", path: "/Applications/nteract.app/Contents/MacOS/runtimed" },
+	{ name: "Nightly", path: "/Applications/nteract Nightly.app/Contents/MacOS/runtimed" },
+] as const;
 
 describe.runIf(darwin)("verifyRuntimedSignature (darwin)", () => {
+	it("trusts the stable bundled basename without retaining the nightly signer exception", () => {
+		expect(MACOS_RUNTIMED_REQUIREMENT).toContain(
+			'certificate leaf[subject.OU] = "Z5788K4JT7" and identifier "runtimed"',
+		);
+		expect(MACOS_RUNTIMED_REQUIREMENT).not.toContain('identifier "runtimed-nightly"');
+	});
+
 	it("compiles as a valid code requirement", async () => {
 		await expect(
 			execFileAsync("/usr/bin/csreq", [`-r=${MACOS_RUNTIMED_REQUIREMENT}`, "-t"]),
@@ -30,10 +40,12 @@ describe.runIf(darwin)("verifyRuntimedSignature (darwin)", () => {
 		expect(await verifyRuntimedSignature("/bin/ls")).toBe(false);
 	});
 
-	it.runIf(existsSync(NTERACT_NIGHTLY_DAEMON))(
-		"accepts the daemon shipped in an installed nteract Nightly app",
-		async () => {
-			expect(await verifyRuntimedSignature(NTERACT_NIGHTLY_DAEMON)).toBe(true);
-		},
-	);
+	for (const daemon of INSTALLED_DAEMONS) {
+		it.runIf(existsSync(daemon.path))(
+			`accepts the daemon shipped in an installed nteract ${daemon.name} app`,
+			async () => {
+				expect(await verifyRuntimedSignature(daemon.path)).toBe(true);
+			},
+		);
+	}
 });

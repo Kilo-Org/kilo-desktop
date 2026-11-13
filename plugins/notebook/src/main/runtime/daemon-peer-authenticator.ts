@@ -44,7 +44,7 @@ async function hashExecutable(path: string): Promise<string> {
 const execFileAsync = promisify(execFile);
 /**
  * Signing identities trusted for a daemon we attach to but did not spawn:
- * - Anaconda (`Z5788K4JT7`): Forge re-signs our bundled `runtimed-nightly`, so
+ * - Anaconda (`Z5788K4JT7`): Forge re-signs our bundled `runtimed`, so
  *   another Kilo installation's daemon no longer matches the unsigned digest.
  * - nteract: the notarized, hardened-runtime `runtimed` inside an installed
  *   nteract app. Its launchd agent starts at login and owns the shared channel
@@ -57,7 +57,7 @@ const execFileAsync = promisify(execFile);
  * not enforced here.
  */
 export const MACOS_RUNTIMED_REQUIREMENT =
-	'anchor apple generic and ((certificate leaf[subject.OU] = "Z5788K4JT7" and identifier "runtimed-nightly") or ((certificate leaf[subject.OU] = "2YJ64GUAVW" or certificate leaf[subject.OU] = "8E54RDNN6Z") and identifier "runtimed"))';
+	'anchor apple generic and ((certificate leaf[subject.OU] = "Z5788K4JT7" and identifier "runtimed") or ((certificate leaf[subject.OU] = "2YJ64GUAVW" or certificate leaf[subject.OU] = "8E54RDNN6Z") and identifier "runtimed"))';
 
 export async function verifyRuntimedSignature(path: string): Promise<boolean> {
 	if (process.platform !== "darwin") return false;

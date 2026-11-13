@@ -47,12 +47,14 @@ import {
 	SESSION_ID,
 } from "../test/sessions-host.js";
 import { createNotebookMainEntry, type NotebookMainOptions } from "./entry.js";
+import { resolveDaemonSocketPath } from "./runtime/socket-path.js";
 import type { OpenTelemetryRegistration } from "./runtime/NotebookTelemetryPermission.js";
 
 const WAIT = { timeout: 5_000 };
 const NEW_ID = "11111111-2222-4333-8444-555555555555";
 
 interface BootOptions {
+	readonly useDefaultSocket?: boolean;
 	readonly panes?: readonly Pane[];
 	readonly entry?: Partial<NotebookMainOptions>;
 	readonly withoutSessions?: boolean;
@@ -95,7 +97,7 @@ async function boot(options: BootOptions = {}) {
 			definitions: NOTEBOOK_DEFINITIONS,
 			entry: createNotebookMainEntry({
 				createHostService: services.create,
-				socketPath: "/tmp/runtimed.sock",
+				...(options.useDefaultSocket ? {} : { socketPath: "/tmp/runtimed.sock" }),
 				warmStart: false,
 				createId: () => NEW_ID,
 				resolveRuntimedBinary: () => "/resources/runtimed/runtimed-nightly",
@@ -174,6 +176,22 @@ async function boot(options: BootOptions = {}) {
 }
 
 describe("kilo.notebook in main", () => {
+	it("uses the stable singleton for the pinned notebook release", async () => {
+		vi.stubEnv("RUNTIMED_SOCKET_PATH", "");
+		const host = await boot({ useDefaultSocket: true });
+		await host.notebooks.methods.status(undefined);
+		expect(host.services.options()).toMatchObject({
+			runtimeChannel: "stable",
+		});
+		const source = host.main.kernelSdk.extensions
+			.list(RuntimeConfigPoint)
+			.find((contribution) => contribution.pluginId === "kilo.notebook")!
+			.implementation as RuntimeConfigSource;
+		expect(source.read().env?.["RUNTIMED_SOCKET_PATH"]).toBe(
+			resolveDaemonSocketPath({ channel: "stable" }),
+		);
+	});
+
 	it("opens workspace notebooks in a Notebook pane, ahead of Files", async () => {
 		const host = await boot();
 

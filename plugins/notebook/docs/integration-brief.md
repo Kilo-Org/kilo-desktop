@@ -68,7 +68,7 @@ Electron port and retain runtimed's negotiated protocol number.
   to must run an executable whose SHA-256 matches the pinned release artifact. This allows an
   identical daemon from another Kilo installation. A macOS-signed executable can differ from the
   unsigned release bytes, so the alternative is a valid signature bound to Anaconda's Developer ID
-  team and the `runtimed-nightly` identifier, or to one of nteract's Developer ID teams (NumFOCUS
+  team and the `runtimed` identifier, or to one of nteract's Developer ID teams (NumFOCUS
   `2YJ64GUAVW` since nteract#4228, or the earlier `8E54RDNN6Z`) and the `runtimed` identifier. The
   latter admits the daemon a co-installed nteract app's launchd agent
   starts at login, which otherwise owns the shared singleton and blocks notebooks until it is
@@ -79,6 +79,9 @@ Electron port and retain runtimed's negotiated protocol number.
   no same-user (SID) check.
 
 ## Release verification
+
+The embedded UI and bundled daemon are pinned to nteract 2.10.0 stable. The notebook
+plugin uses the stable singleton, independently of Kilo Desktop's own release track.
 
 1. Pin the notebook UI and `runtimed` to one nteract release and use that release's channel for
    the singleton endpoint.

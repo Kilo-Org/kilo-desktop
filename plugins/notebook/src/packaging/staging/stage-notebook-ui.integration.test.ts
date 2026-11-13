@@ -10,7 +10,6 @@ import {
 	NOTEBOOK_THEME_MESSAGE_TYPE,
 	NOTEBOOK_THEME_READY_MESSAGE_TYPE,
 } from "../../contracts/notebook-theme.js";
-import { NTERACT_RELEASE } from "../artifacts.js";
 import {
 	KILO_EMBED_CHROME_CSS,
 	KILO_EMBED_CHROME_STYLE_ATTR,
@@ -394,11 +393,11 @@ describe("notebook bundle validation", () => {
 			const destination = path.join(root, "staged");
 			await stageFixture(path.join(root, "archive"), destination);
 			await writeFile(path.join(destination, "orphan.js"), "unexpected");
-			await expect(validateStagedNotebookBundle(destination)).rejects.toThrow(
+			await expect(validateStagedNotebookBundle(destination, NIGHTLY_RELEASE)).rejects.toThrow(
 				/does not exactly cover/,
 			);
 			expect(await readFile(path.join(destination, NOTEBOOK_STAGE_MANIFEST), "utf8")).toContain(
-				NTERACT_RELEASE.commit,
+				NIGHTLY_RELEASE.commit,
 			);
 		},
 	);
@@ -419,7 +418,7 @@ describe("notebook bundle validation", () => {
 					"</head><body></body></html>",
 				].join(""),
 			);
-			await expect(validateStagedNotebookBundle(destination)).rejects.toThrow(
+			await expect(validateStagedNotebookBundle(destination, NIGHTLY_RELEASE)).rejects.toThrow(
 				/missing kilo embed chrome CSS/,
 			);
 		},

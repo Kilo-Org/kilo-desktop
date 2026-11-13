@@ -2,13 +2,13 @@
 
 ## Document metadata
 
-| Field            | Value                                                                                      |
-| ---------------- | ------------------------------------------------------------------------------------------ |
-| Audience         | Customer security reviewers, technical due-diligence teams, and readers of the source code |
-| Document version | 1.1                                                                                        |
-| Document owner   | Kilo engineering                                                                           |
-| Codebase version | Last reviewed at commit 056370681 in main branch (2026-11-05)                              |
-| Review cadence   | Quarterly, and before material trust-boundary, data-flow, or distribution changes          |
+| Field            | Value                                                                                                                      |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Audience         | Customer security reviewers, technical due-diligence teams, and readers of the source code                                 |
+| Document version | 1.2                                                                                                                        |
+| Document owner   | Kilo engineering                                                                                                           |
+| Codebase version | General review: 056370681 (2026-11-05); local-helper review: 8de1de5 plus the stable notebook runtime upgrade (2026-11-13) |
+| Review cadence   | Quarterly, and before material trust-boundary, data-flow, or distribution changes                                          |
 
 ## Version history
 
@@ -16,6 +16,7 @@
 | ------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1.0     | 2026-11-05 | Established the repository-backed security architecture overview: topology, trust boundaries, identity and access model, data flows, controls, and integration inventory. |
 | 1.1     | 2026-11-09 | Agent controls: the application layers approval rules over the user's Kilo permission configuration for shell commands the CLI cannot otherwise constrain.                |
+| 1.2     | 2026-11-13 | Clarified notebook daemon identity verification while moving the embedded runtime to its stable release channel.                                                          |
 
 ## Maintainer agent update prompt
 
@@ -204,7 +205,7 @@ All plugins are first-party code bundled with the application, and their main-pr
 
 ### 5.3 Local service authentication
 
-Local helper channels are authenticated rather than trusted by address. The application's helper and tool listeners bind the loopback interface by default and require credentials generated at launch, or issued when the user pairs an external app, and the application passes launch credentials only to the components that need them. Helpers that need no listener communicate over standard input and output. When the application starts or attaches to a helper over a shared local socket, it verifies the helper process. Serving the local model server on the local network is an explicit user setting.
+Local helper channels are authenticated rather than trusted by address. The application's helper and tool listeners bind the loopback interface by default and require credentials generated at launch, or issued when the user pairs an external app, and the application passes launch credentials only to the components that need them. Helpers that need no listener communicate over standard input and output. When the application starts or attaches to a helper over a shared local socket, it verifies the helper process. For the notebook daemon, this means the spawned child identity or a pinned executable digest, with trusted macOS signing identities as an alternative for a shared daemon. Moving the embedded notebook runtime to the stable channel preserves those checks; it does not trust a process merely because it owns the endpoint. Serving the local model server on the local network is an explicit user setting.
 
 ### 5.4 Credential storage
 

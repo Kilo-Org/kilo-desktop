@@ -45,6 +45,7 @@
 		"@kilo-desktop/plugin-local-inference": "workspace:*",
 		"@kilo-desktop/plugin-marketplace": "workspace:*",
 		"@kilo-desktop/plugin-notebook": "workspace:*",
+		"@kilo-desktop/plugin-pages": "workspace:*",
 		"@kilo-desktop/plugin-shell": "workspace:*",
 		"@kilo-desktop/plugin-terminal": "workspace:*",
 		"@kilo-desktop/plugin-work-sessions": "workspace:*",

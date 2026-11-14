@@ -23,7 +23,7 @@ packages/
 ├── pane-layout/  @kilo-desktop/pane-layout  Pane layout model shared by kilo.work-sessions and its windows
 └── vite-plugin-externalize-deps/            Vite plugin that keeps native/runtime deps out of the main bundle
 
-e2e/              @kilo-desktop/e2e          Playwright/Electron e2e (plugin-aware; kernel, kilo.core, kilo.shell, kilo.developer, kilo.work-sessions, kilo.chat, kilo.git, kilo.files, kilo.terminal, kilo.browser, kilo.notebook, kilo.marketplace, kilo.local-inference, kilo.environments, kilo.anaconda and kilo.workspace-board specs)
+e2e/              @kilo-desktop/e2e          Playwright/Electron e2e (plugin-aware; kernel, kilo.core, kilo.shell, kilo.developer, kilo.work-sessions, kilo.chat, kilo.git, kilo.files, kilo.terminal, kilo.browser, kilo.notebook, kilo.marketplace, kilo.local-inference, kilo.environments, kilo.anaconda, kilo.workspace-board and kilo.pages specs)
 examples/
 ├── hello-plugin/ @kilo-desktop/example-hello example.hello: the example plugin for authors — workspace-built and tested, never bundled
 └── right-panel-plugin/ @kilo-desktop/example-right-panel example.right-panel: example panels in the shell's right sidebar rail — never bundled
@@ -39,6 +39,7 @@ plugins/          Bundled plugins, rebuilt layer by layer (docs/plugin-plan-v2.m
 ├── local-inference/ @kilo-desktop/plugin-local-inference kilo.local-inference: the Local Model Server — GGUF models on this device through a managed llama.cpp router, offered to Kilo as an AI provider and to the composer's model picker
 ├── marketplace/  @kilo-desktop/plugin-marketplace kilo.marketplace: Kilo's Marketplace of agents, skills and MCP servers — the Agent Behavior settings section
 ├── notebook/     @kilo-desktop/plugin-notebook kilo.notebook: Notebook panes — nteract notebooks over the runtimed daemon, the `*.ipynb` opener, notebook agent tools and Kilo plugin
+├── pages/        @kilo-desktop/plugin-pages kilo.pages: (spike) Pages panes — nteract Pages served on this device by a celld sidecar, shared with the agent as an MCP server
 ├── shell/        @kilo-desktop/plugin-shell kilo.shell: the window and everything the user sees of kilo.core
 ├── terminal/     @kilo-desktop/plugin-terminal kilo.terminal: terminal panes — interactive shells (node-pty) in a work session's folder, drawn in an embedded frame
 ├── work-sessions/ @kilo-desktop/plugin-work-sessions kilo.work-sessions: workspaces, work sessions and their panes, and everything the user sees of them

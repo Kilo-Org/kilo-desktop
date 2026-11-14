@@ -14,6 +14,7 @@ import gitManifest from "@kilo-desktop/plugin-git/plugin.json";
 import localInferenceManifest from "@kilo-desktop/plugin-local-inference/plugin.json";
 import marketplaceManifest from "@kilo-desktop/plugin-marketplace/plugin.json";
 import notebookManifest from "@kilo-desktop/plugin-notebook/plugin.json";
+import pagesManifest from "@kilo-desktop/plugin-pages/plugin.json";
 import shellManifest from "@kilo-desktop/plugin-shell/plugin.json";
 import terminalManifest from "@kilo-desktop/plugin-terminal/plugin.json";
 import workSessionsManifest from "@kilo-desktop/plugin-work-sessions/plugin.json";
@@ -41,6 +42,7 @@ describe("bundled plugin wiring", () => {
 		terminalManifest.id,
 		browserManifest.id,
 		notebookManifest.id,
+		pagesManifest.id,
 		marketplaceManifest.id,
 		localInferenceManifest.id,
 		environmentsManifest.id,
@@ -66,6 +68,7 @@ describe("bundled plugin wiring", () => {
 		expect(webIds).toContain(terminalManifest.id);
 		expect(webIds).toContain(browserManifest.id);
 		expect(webIds).toContain(notebookManifest.id);
+		expect(webIds).toContain(pagesManifest.id);
 		expect(webIds).toContain(marketplaceManifest.id);
 		expect(webIds).toContain(localInferenceManifest.id);
 		expect(webIds).toContain(environmentsManifest.id);
@@ -105,6 +108,14 @@ describe("bundled plugin wiring", () => {
 		expect(root).toBeDefined();
 		const manifest = JSON.parse(readFileSync(path.join(root!, "plugin.json"), "utf8"));
 		expect(manifest.id).toBe(environmentsManifest.id);
+	});
+
+	it("resolves kilo.pages' package folder, where its Pages build and celld are staged into resources/", () => {
+		const root = bundledPluginRoot(pagesManifest.id);
+
+		expect(root).toBeDefined();
+		const manifest = JSON.parse(readFileSync(path.join(root!, "plugin.json"), "utf8"));
+		expect(manifest.id).toBe(pagesManifest.id);
 	});
 
 	it("has no package folder for plugins without resources", () => {

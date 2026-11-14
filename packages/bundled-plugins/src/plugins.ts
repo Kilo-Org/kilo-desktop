@@ -10,6 +10,8 @@ import gitManifest from "@kilo-desktop/plugin-git/plugin.json";
 import { GIT_DEFINITIONS } from "@kilo-desktop/plugin-git/contracts";
 import notebookManifest from "@kilo-desktop/plugin-notebook/plugin.json";
 import { NOTEBOOK_DEFINITIONS } from "@kilo-desktop/plugin-notebook/contracts";
+import pagesManifest from "@kilo-desktop/plugin-pages/plugin.json";
+import { PAGES_DEFINITIONS } from "@kilo-desktop/plugin-pages/contracts";
 import marketplaceManifest from "@kilo-desktop/plugin-marketplace/plugin.json";
 import { MARKETPLACE_DEFINITIONS } from "@kilo-desktop/plugin-marketplace/contracts";
 import localInferenceManifest from "@kilo-desktop/plugin-local-inference/plugin.json";
@@ -46,6 +48,7 @@ export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
 	{ manifest: terminalManifest, definitions: TERMINAL_DEFINITIONS },
 	{ manifest: browserManifest, definitions: BROWSER_DEFINITIONS },
 	{ manifest: notebookManifest, definitions: NOTEBOOK_DEFINITIONS },
+	{ manifest: pagesManifest, definitions: PAGES_DEFINITIONS },
 	{ manifest: marketplaceManifest, definitions: MARKETPLACE_DEFINITIONS },
 	{ manifest: localInferenceManifest, definitions: LOCAL_INFERENCE_DEFINITIONS },
 	{ manifest: environmentsManifest, definitions: ENVIRONMENTS_DEFINITIONS },

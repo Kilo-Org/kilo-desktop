@@ -1573,6 +1573,8 @@ would replace it if a kind ever needs something other than show-or-open.
 | kilo.local-inference | `model-catalog`          | A    | Later  | Model catalog sources                                                    | local-inference (Anaconda catalog); _ext_ Hugging Face                           |
 | kilo.local-inference | `inference-runtime`      | X    | Later  | Runtimes that serve models                                               | local-inference (llama.cpp); _ext_ MLX, Ollama                                   |
 | kilo.marketplace     | `marketplace-source`     | A    | Next   | Catalogs of agents/skills/MCPs                                           | marketplace (Kilo); account (organisation-private); _ext_ Anaconda curated       |
+| kilo.pages           | `page-template`          | A    | Later  | Starting points for a new Page                                           | notebook (a notebook's outputs as a Page); chat (a chat's summary as a Page)     |
+| kilo.pages           | `page-data-source`       | A    | Later  | Data a Page's tables and charts can read (Pages' Parquet sources)        | environments (a conda env's datasets); files (workspace CSV/Parquet)             |
 
 ### 7.7 Kernel and platform plugins
 

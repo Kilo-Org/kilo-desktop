@@ -1,0 +1,81 @@
+{
+	"manifestVersion": 1,
+	"id": "kilo.pages",
+	"displayName": "Pages",
+	"version": "0.1.0",
+	"description": "Write rich-text Pages with the agent, served by nteract Pages on this device.",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
+	"requires": {
+		"kilo.core/mcp-server": "optional",
+		"kilo.core/server-env": "optional",
+		"kilo.work-sessions/window": "optional",
+		"kilo.work-sessions/pane-kind": "optional"
+	},
+	"permissions": {
+		"host": ["browser-host"]
+	},
+	"domainObjects": [
+		{
+			"id": "server",
+			"home": "main",
+			"description": "The local Pages server: its status, and starting it for a pane."
+		}
+	],
+	"contributes": {
+		"extensions": {
+			"kernel/service": [
+				{
+					"id": "server",
+					"title": "Pages server",
+					"kind": "daemon",
+					"startOn": "first-use",
+					"restart": {
+						"policy": "on-failure",
+						"maxRetries": 2
+					},
+					"stopTimeoutMs": 10000
+				}
+			],
+			"kilo.work-sessions/pane-kind": [
+				{
+					"id": "pages",
+					"title": "Pages",
+					"description": "Write rich-text Pages, with the agent.",
+					"launch": {
+						"newSession": true,
+						"inSession": true
+					},
+					"singleton": true,
+					"keepAlive": true,
+					"order": 60,
+					"openCommand": "kilo.pages/open",
+					"availableWhen": {
+						"all": ["kernel/desktop"]
+					},
+					"unavailableHint": "Pages opens in the desktop app."
+				}
+			],
+			"kernel/command": [
+				{
+					"id": "open",
+					"title": "Open Pages",
+					"category": "Pages",
+					"when": {
+						"all": ["kilo.work-sessions/paneTargetActive"]
+					}
+				}
+			],
+			"kilo.core/mcp-server": [
+				{
+					"id": "pages-local"
+				}
+			],
+			"kilo.core/server-env": [
+				{
+					"id": "pages"
+				}
+			]
+		}
+	}
+}

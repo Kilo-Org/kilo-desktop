@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { cp, mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -116,6 +117,11 @@ const extraResources = [
 	path.join(workspaceRoot, "plugins/terminal/resources/terminal"),
 	...notebookPackaging.extraResources,
 	...bridgePackaging.extraResources,
+	// kilo.pages (spike): the Pages build and celld, when its prepare-assets staged
+	// them; without them the plugin reports Pages as unavailable.
+	...["pages-server", "celld"]
+		.map((name) => path.join(workspaceRoot, "plugins/pages/resources", name))
+		.filter((resource) => existsSync(resource)),
 ];
 
 // Vite `build.license` lists of every bundle that ships, read by

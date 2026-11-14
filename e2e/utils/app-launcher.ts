@@ -105,6 +105,8 @@ export function packagedAppLaunchEnv(
 		npm_config_offline: "true",
 		npm_config_cache: path.join(userDataDir, "npm-cache"),
 		KILO_NOTEBOOK_DEFER_RUNTIMED: "1",
+		// kilo.pages starts celld on first use only, not for every worker.
+		KILO_PAGES_DEFER_SERVER: "1",
 	};
 }
 

@@ -19,6 +19,8 @@ import marketplaceManifest from "@kilo-desktop/plugin-marketplace/plugin.json";
 import { marketplaceWebEntry } from "@kilo-desktop/plugin-marketplace/web";
 import notebookManifest from "@kilo-desktop/plugin-notebook/plugin.json";
 import { notebookWebEntry } from "@kilo-desktop/plugin-notebook/web";
+import pagesManifest from "@kilo-desktop/plugin-pages/plugin.json";
+import { pagesWebEntry } from "@kilo-desktop/plugin-pages/web";
 import shellManifest from "@kilo-desktop/plugin-shell/plugin.json";
 import { shellWebEntry } from "@kilo-desktop/plugin-shell/web";
 import terminalManifest from "@kilo-desktop/plugin-terminal/plugin.json";
@@ -38,6 +40,7 @@ export const WEB_ENTRIES: Readonly<Record<string, PluginEntry>> = {
 	[terminalManifest.id]: terminalWebEntry,
 	[browserManifest.id]: browserWebEntry,
 	[notebookManifest.id]: notebookWebEntry,
+	[pagesManifest.id]: pagesWebEntry,
 	[marketplaceManifest.id]: marketplaceWebEntry,
 	[localInferenceManifest.id]: localInferenceWebEntry,
 	[environmentsManifest.id]: environmentsWebEntry,

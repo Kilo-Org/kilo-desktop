@@ -23,6 +23,8 @@ import marketplaceManifest from "@kilo-desktop/plugin-marketplace/plugin.json";
 import { marketplaceMainEntry } from "@kilo-desktop/plugin-marketplace/main";
 import notebookManifest from "@kilo-desktop/plugin-notebook/plugin.json";
 import { notebookMainEntry } from "@kilo-desktop/plugin-notebook/main";
+import pagesManifest from "@kilo-desktop/plugin-pages/plugin.json";
+import { pagesMainEntry } from "@kilo-desktop/plugin-pages/main";
 import shellManifest from "@kilo-desktop/plugin-shell/plugin.json";
 import { shellMainEntry } from "@kilo-desktop/plugin-shell/main";
 import terminalManifest from "@kilo-desktop/plugin-terminal/plugin.json";
@@ -43,6 +45,7 @@ export const MAIN_ENTRIES: Readonly<Record<string, PluginEntry>> = {
 	[terminalManifest.id]: terminalMainEntry,
 	[browserManifest.id]: browserMainEntry,
 	[notebookManifest.id]: notebookMainEntry,
+	[pagesManifest.id]: pagesMainEntry,
 	[marketplaceManifest.id]: marketplaceMainEntry,
 	[localInferenceManifest.id]: localInferenceMainEntry,
 	[environmentsManifest.id]: environmentsMainEntry,
@@ -55,6 +58,7 @@ const ASSET_PACKAGES: Readonly<Record<string, string>> = {
 	[coreManifest.id]: "@kilo-desktop/plugin-core",
 	[terminalManifest.id]: "@kilo-desktop/plugin-terminal",
 	[notebookManifest.id]: "@kilo-desktop/plugin-notebook",
+	[pagesManifest.id]: "@kilo-desktop/plugin-pages",
 	[environmentsManifest.id]: "@kilo-desktop/plugin-environments",
 };
 

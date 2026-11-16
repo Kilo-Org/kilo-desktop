@@ -95,6 +95,12 @@ updates:
         patterns:
           - "playwright"
           - "@playwright/*"
+      # @tailwindcss/vite pins tailwindcss to its own exact version, so bumping
+      # tailwindcss alone leaves the build on the old compiler.
+      tailwind:
+        patterns:
+          - "tailwindcss"
+          - "@tailwindcss/*"
 
   # "/" covers .github/workflows; the composite actions are scanned explicitly.
   # Actions stay pinned to a commit SHA with a `# vX.Y.Z` comment, and

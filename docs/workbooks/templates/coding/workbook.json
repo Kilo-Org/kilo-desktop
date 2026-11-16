@@ -1,0 +1,70 @@
+{
+	"schemaVersion": 1,
+	"id": "coding",
+	"name": "Coding",
+	"description": "Build or change software in small, verifiable increments: plan, decide, build, review.",
+	"icon": "code",
+	"brief": {
+		"file": "pages/brief.md",
+		"fields": [
+			{
+				"id": "goal",
+				"label": "Goal",
+				"required": true,
+				"hint": "What should be true when this is done? Your own words are kept verbatim."
+			},
+			{
+				"id": "context",
+				"label": "Context and links",
+				"hint": "Issue, error output, related PRs, where in the code."
+			},
+			{
+				"id": "acceptance",
+				"label": "Acceptance criteria",
+				"hint": "How we will know it works. The agent proposes these if left empty."
+			},
+			{
+				"id": "constraints",
+				"label": "Constraints and non-goals",
+				"hint": "What must not change; what is deliberately out of scope."
+			}
+		]
+	},
+	"guide": {
+		"file": "AGENTS.md",
+		"title": "How to work here"
+	},
+	"firstMove": "Refine the Brief (ask about anything missing, propose acceptance criteria), then draft the Plan as small increments, and stop for the user to confirm before building.",
+	"sections": [
+		{ "id": "plan", "title": "Plan", "itemType": "plan-step", "file": "pages/plan.md" },
+		{ "id": "tasks", "title": "Tasks", "itemType": "task", "file": "pages/tasks.md" },
+		{
+			"id": "decisions",
+			"title": "Decisions",
+			"itemType": "decision",
+			"file": "pages/decisions.md"
+		},
+		{ "id": "findings", "title": "Findings", "itemType": "finding", "file": "pages/findings.md" },
+		{
+			"id": "questions",
+			"title": "Open questions",
+			"itemType": "question",
+			"file": "pages/questions.md"
+		},
+		{ "id": "snippets", "title": "Snippets", "itemType": "reference", "file": "pages/snippets.md" },
+		{
+			"id": "artifacts",
+			"title": "Artifacts",
+			"itemType": "artifact",
+			"file": "pages/artifacts.md"
+		},
+		{ "id": "review", "title": "Review", "itemType": "finding", "file": "pages/review.md" },
+		{
+			"id": "follow-ups",
+			"title": "Follow-ups",
+			"itemType": "task",
+			"file": "pages/follow-ups.md"
+		},
+		{ "id": "notes", "title": "Notes", "itemType": "note", "file": "pages/notes.md" }
+	]
+}

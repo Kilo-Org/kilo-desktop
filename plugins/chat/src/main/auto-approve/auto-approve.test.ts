@@ -34,8 +34,13 @@ describe("auto mode", () => {
 		await settle();
 
 		expect(core.replies).toEqual([{ chatId: "ses_a", permissionId: "per_1", reply: "once" }]);
+		// Still listed: a window may not have dropped the request yet, and would show its card.
 		core.resolve("ses_a", "per_1");
-		expect(autoApprove.getState().holding).toEqual([]);
+		expect(autoApprove.getState().holding).toEqual(["per_1"]);
+
+		core.requests.set("ses_a", [request("per_2", "ses_a")]);
+		core.ask("ses_a", "per_2");
+		expect(autoApprove.getState().holding).toEqual(["per_2"]);
 	});
 
 	it("shows the request when the reply fails, or after the reveal delay", async () => {

@@ -22,7 +22,7 @@ export const AutoApprove = defineDomainObject({
 	description: "Whether the agent's permission requests are answered automatically.",
 	state: z.object({
 		mode: approvalModeSchema,
-		/** Permission request ids being answered or checked right now. */
+		/** Permission request ids being answered or checked right now; may still list ones just resolved. */
 		holding: z.array(z.string()),
 	}),
 	methods: {

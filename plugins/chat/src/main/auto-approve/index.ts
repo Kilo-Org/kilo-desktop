@@ -53,7 +53,8 @@ export interface AutoApproveOptions {
  *   while signed out. The gateway will refuse it, so asking first only puts
  *   Kilo's prompt before (or, if denied, instead of) chat's sign-in prompt.
  * - A request being answered or checked is in `holding` (cards hide it) until
- *   it resolves, the reply fails, or `revealAfterMs` passes.
+ *   the reply fails or `revealAfterMs` passes. One that resolves stays listed
+ *   until the next change (see `forget`).
  * - `generation` changes with the mode, so a drain stops when the mode does.
  * - The mode is app-wide, as origin's was, in kv (namespace `auto-approve`,
  *   unchanged since the previous kilo.chat).
@@ -117,11 +118,17 @@ export function activateAutoApprove(sdk: PluginSdk, options: AutoApproveOptions 
 	}
 
 	function release(permissionId: string): void {
-		const timer = held.get(permissionId);
-		if (timer === undefined) return;
-		clearTimeout(timer);
-		held.delete(permissionId);
-		publishHolding();
+		if (forget(permissionId)) publishHolding();
+	}
+
+	/**
+	 * Lets go of a resolved request without publishing. Each window drops it
+	 * on its own stream; a `holding` update arriving first would show its card
+	 * in place of the composer for a moment. The id leaves with the next publish.
+	 */
+	function forget(permissionId: string): boolean {
+		clearTimeout(held.get(permissionId));
+		return held.delete(permissionId);
 	}
 
 	/** Contribution keys of the `kilo.core/tool`s refused while signed out. */
@@ -192,7 +199,7 @@ export function activateAutoApprove(sdk: PluginSdk, options: AutoApproveOptions 
 				handle.on("permission-requested", ({ chatId, permissionId }) => {
 					void consider(chatId, permissionId);
 				}),
-				handle.on("permission-resolved", ({ permissionId }) => release(permissionId)),
+				handle.on("permission-resolved", ({ permissionId }) => void forget(permissionId)),
 				handle.subscribe((state) => {
 					if (state.ready && !ready) void drain(generation);
 					ready = state.ready;

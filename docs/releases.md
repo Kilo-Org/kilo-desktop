@@ -197,8 +197,11 @@ with repository/environment variables:
 Both environments must restrict deployments to `main` (deployment branch policy), and
 `production` should require reviewer approval. Each IAM role trusts only the matching
 `environment:<name>:ref:refs/heads/main` OIDC subject, which needs the repository's OIDC
-subject template customized to include `environment` and `ref`. Jobs assume the role
-immediately before publishing, after dependency install and build.
+subject template set to `include_claim_keys: ["repo", "context", "ref"]` (immutable
+subject). `context` renders as `environment:<name>` for environment jobs. Do not list
+`environment` itself: GitHub then refuses tokens to every job without an environment,
+including Dependabot update jobs. Jobs assume the role immediately before publishing,
+after dependency install and build.
 
 Official builds also need these service IDs. They are not committed, so source builds and
 forks report nothing and resolve feature flags to their defaults. `Build` and `Release` fail

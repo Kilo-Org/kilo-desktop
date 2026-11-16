@@ -1,0 +1,20 @@
+# Mirror CI checks locally.
+# Lint + format run in parallel with turbo check + test.
+# --affected scopes turbo to packages changed since origin/main;
+# turbo caching skips unchanged tasks within those packages.
+# Concurrency is capped: each test task runs its own vitest worker pool and
+# Chromium, and running every package at once starves them (Vite builds time
+# out, browser sessions fail to connect).
+pnpm lint &
+LINT_PID=$!
+pnpm format:check &
+FMT_PID=$!
+
+pnpm turbo run check test --affected --concurrency=50% --output-logs=errors-only &
+TURBO_PID=$!
+
+FAILED=0
+wait $LINT_PID  || FAILED=1
+wait $FMT_PID   || FAILED=1
+wait $TURBO_PID || FAILED=1
+exit $FAILED

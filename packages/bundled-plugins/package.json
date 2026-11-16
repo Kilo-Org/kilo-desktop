@@ -1,0 +1,45 @@
+{
+	"name": "@kilo-desktop/bundled-plugins",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "The one list of plugins that ship with the app, shared by the main and renderer processes.",
+	"author": "Anaconda, Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
+	"exports": {
+		".": "./src/index.ts",
+		"./testing": "./src/testing.ts"
+	},
+	"scripts": {
+		"check": "tsc --noEmit -p tsconfig.json",
+		"test": "vitest run",
+		"coverage": "vitest run --coverage"
+	},
+	"dependencies": {
+		"@kilo-desktop/kernel": "workspace:*",
+		"@kilo-desktop/plugin-anaconda": "workspace:*",
+		"@kilo-desktop/plugin-browser": "workspace:*",
+		"@kilo-desktop/plugin-chat": "workspace:*",
+		"@kilo-desktop/plugin-core": "workspace:*",
+		"@kilo-desktop/plugin-developer": "workspace:*",
+		"@kilo-desktop/plugin-environments": "workspace:*",
+		"@kilo-desktop/plugin-files": "workspace:*",
+		"@kilo-desktop/plugin-git": "workspace:*",
+		"@kilo-desktop/plugin-local-inference": "workspace:*",
+		"@kilo-desktop/plugin-marketplace": "workspace:*",
+		"@kilo-desktop/plugin-notebook": "workspace:*",
+		"@kilo-desktop/plugin-shell": "workspace:*",
+		"@kilo-desktop/plugin-terminal": "workspace:*",
+		"@kilo-desktop/plugin-work-sessions": "workspace:*",
+		"@kilo-desktop/plugin-workspace-board": "workspace:*"
+	},
+	"peerDependencies": {
+		"zod": "^4.4.3"
+	},
+	"devDependencies": {
+		"@vitest/coverage-v8": "catalog:",
+		"typescript": "catalog:",
+		"vitest": "catalog:",
+		"zod": "catalog:"
+	}
+}

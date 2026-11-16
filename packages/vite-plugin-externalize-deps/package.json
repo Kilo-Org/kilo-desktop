@@ -1,0 +1,27 @@
+{
+	"name": "@kilo-desktop/vite-plugin-externalize-deps",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "Vite plugin that externalizes a package.json's dependencies (and Node built-ins) as an array-valued rollupOptions.external, so it merges cleanly with electron-forge's own external array under Vite 8 / Rolldown.",
+	"author": "Anaconda, Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"check": "tsc --noEmit -p tsconfig.json",
+		"test": "vitest run",
+		"coverage": "vitest run --coverage"
+	},
+	"peerDependencies": {
+		"vite": "*"
+	},
+	"devDependencies": {
+		"@types/node": "^26.0.0",
+		"@vitest/coverage-v8": "catalog:",
+		"typescript": "catalog:",
+		"vite": "catalog:",
+		"vitest": "catalog:"
+	}
+}

@@ -1,0 +1,8 @@
+@import "tailwindcss";
+@source "../../../../packages/ui";
+@source "../web";
+
+/* The app's pane surface (apps/web/src/globals.css), so `bg-pane` resolves. */
+@theme inline {
+	--color-pane: var(--pane-surface);
+}

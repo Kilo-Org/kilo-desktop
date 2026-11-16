@@ -1,0 +1,133 @@
+{
+	"fill-specializations": [
+		{
+			"value": {
+				"automatic-gradient": "display-p3:0.24255,0.48853,0.97266,1.00000",
+				"orientation": {
+					"start": {
+						"x": 0.5,
+						"y": 1
+					},
+					"stop": {
+						"x": 0.5,
+						"y": 0
+					}
+				}
+			}
+		},
+		{
+			"appearance": "dark",
+			"value": {
+				"linear-gradient": [
+					"display-p3:0.10339,0.21154,0.41749,1.00000",
+					"display-p3:0.03878,0.08275,0.17003,1.00000"
+				]
+			}
+		}
+	],
+	"groups": [
+		{
+			"blend-mode-specializations": [
+				{
+					"value": "normal"
+				},
+				{
+					"appearance": "tinted",
+					"value": "normal"
+				}
+			],
+			"blur-material": null,
+			"hidden": false,
+			"layers": [
+				{
+					"blend-mode": "normal",
+					"fill-specializations": [
+						{
+							"value": {
+								"solid": "extended-gray:1.00000,1.00000"
+							}
+						},
+						{
+							"appearance": "dark",
+							"value": {
+								"solid": "display-p3:0.97304,1.00000,0.93241,1.00000"
+							}
+						},
+						{
+							"appearance": "tinted",
+							"value": "automatic"
+						}
+					],
+					"glass": false,
+					"hidden": false,
+					"image-name": "logo-mark.png",
+					"name": "logo-mark",
+					"position": {
+						"scale": 1.12,
+						"translation-in-points": [0, 0]
+					}
+				},
+				{
+					"blend-mode": "normal",
+					"glass": false,
+					"hidden": false,
+					"image-name": "grid.png",
+					"name": "grid",
+					"opacity-specializations": [
+						{
+							"value": 0.6
+						},
+						{
+							"appearance": "dark",
+							"value": 0.3
+						}
+					]
+				}
+			],
+			"lighting": "individual",
+			"shadow": {
+				"kind": "neutral",
+				"opacity": 0.5
+			},
+			"specular-specializations": [
+				{
+					"value": true
+				},
+				{
+					"appearance": "dark",
+					"value": true
+				},
+				{
+					"appearance": "tinted",
+					"value": true
+				}
+			],
+			"translucency-specializations": [
+				{
+					"value": {
+						"enabled": true,
+						"value": 0.2
+					}
+				},
+				{
+					"appearance": "dark",
+					"value": {
+						"enabled": true,
+						"value": 0.3
+					}
+				},
+				{
+					"appearance": "tinted",
+					"value": {
+						"enabled": true,
+						"value": 0.2
+					}
+				}
+			]
+		}
+	],
+	"supported-platforms": {
+		"circles": ["watchOS"],
+		"squares": "shared"
+	}
+}

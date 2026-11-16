@@ -1,0 +1,27 @@
+/* Test-only stylesheet: generates the Tailwind utilities the plugin's
+   components use so browser tests get real layout/visibility. In the app,
+   apps/web/src/globals.css scans plugin and design-system sources. kilo.shell
+   and kilo.work-sessions are scanned too: browser tests render the shell
+   frame (and may render the canvas) around this plugin. */
+@import "tailwindcss";
+@source "../../../../packages/ui";
+@source "../../../../packages/kernel/src";
+@source "../../../shell/src";
+@source "../../../work-sessions/src";
+@source "../";
+
+@theme inline {
+	--color-pane: var(--pane-surface);
+	--color-pane-raised: var(--pane-raised);
+}
+
+/* The frame's titlebar geometry, as in apps/web/src/globals.css. */
+:root {
+	--shell-titlebar-height: max(2.5rem, env(titlebar-area-height, 0px));
+	--window-controls-width: 0px;
+}
+
+@utility titlebar-row {
+	height: var(--shell-titlebar-height);
+	padding-top: calc(3rem - var(--shell-titlebar-height));
+}

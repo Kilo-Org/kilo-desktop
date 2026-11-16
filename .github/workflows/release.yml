@@ -1,0 +1,148 @@
+name: Release
+
+# Releases only run from main (no tag trigger) so the AWS publish roles can
+# trust just `environment:<preview|production>:ref:refs/heads/main` OIDC
+# subjects; a tag push or branch dispatch would present a different subject.
+on:
+  schedule:
+    - cron: "0 */3 * * *"
+  workflow_dispatch:
+    inputs:
+      track:
+        description: Release track
+        required: true
+        default: stable
+        type: choice
+        options:
+          - preview
+          - stable
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event_name == 'schedule' && 'preview' || inputs.track || 'stable' }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      has_changes: ${{ steps.changes.outputs.has_changes }}
+      preview_build_time: ${{ steps.release.outputs.preview_build_time }}
+      release_track: ${{ steps.release.outputs.release_track }}
+      release_version: ${{ steps.release.outputs.release_version }}
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
+      ANACONDA_NPM_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Resolve release track and version
+        id: release
+        shell: bash
+        env:
+          DISPATCH_TRACK: ${{ inputs.track }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Releases must run from main (got $GITHUB_REF)." >&2
+            exit 1
+          fi
+
+          if [[ "$GITHUB_EVENT_NAME" == "schedule" || "$DISPATCH_TRACK" == "preview" ]]; then
+            echo "release_track=preview" >> "$GITHUB_OUTPUT"
+            preview_build_time=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .created_at)
+            if [[ -z "$preview_build_time" ]]; then
+              echo "Could not resolve the shared Preview build time." >&2
+              exit 1
+            fi
+            echo "preview_build_time=$preview_build_time" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Stable versions are bumped on main through a normal pull request; the
+          # release only publishes the committed version and never writes back.
+          version=$(jq -r .version apps/desktop/package.json)
+          if [[ "$DISPATCH_TRACK" != "stable" ]]; then
+            echo "Unsupported release track: $DISPATCH_TRACK" >&2
+            exit 1
+          fi
+
+          if [[ "$version" =~ -preview-[0-9]{6}-[0-9]{5}$ || ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Stable releases require apps/desktop/package.json to hold X.Y.Z or X.Y.Z-prerelease (got $version)." >&2
+            exit 1
+          fi
+          prerelease="${version#*-}"
+          if [[ "$prerelease" != "$version" && ${#prerelease} -gt 20 ]]; then
+            echo "Stable prerelease identifiers must be at most 20 characters for Squirrel.Windows." >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_RUN_ATTEMPT" == "1" ]]; then
+            if git rev-parse "v$version" >/dev/null 2>&1; then
+              echo "Stable tag v$version already exists. Retry its original workflow run to recover a partial publication." >&2
+              exit 1
+            fi
+            set +e
+            release_lookup=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v$version" 2>&1)
+            release_lookup_status=$?
+            set -e
+            if [[ "$release_lookup_status" == "0" ]]; then
+              echo "Stable release v$version already exists. Retry its original workflow run to recover a partial publication." >&2
+              exit 1
+            fi
+            if [[ "$release_lookup" != *"HTTP 404"* ]]; then
+              echo "Could not verify whether Stable release v$version exists: $release_lookup" >&2
+              exit 1
+            fi
+          fi
+          echo "release_track=stable" >> "$GITHUB_OUTPUT"
+          echo "release_version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Check for changes since the latest Preview
+        id: changes
+        shell: bash
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" != "schedule" ]]; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          latest_preview_tag=$(git tag --list 'v*-preview-*' --sort=-creatordate | head -n 1)
+          if [[ -z "$latest_preview_tag" ]]; then
+            echo "No previous Preview release found. Proceeding."
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$(git rev-parse "$latest_preview_tag^{commit}")" == "$(git rev-parse HEAD)" ]]; then
+            echo "No changes since $latest_preview_tag. Skipping Preview release."
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Changes detected since $latest_preview_tag."
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  publish:
+    needs: preflight
+    if: needs.preflight.outputs.has_changes == 'true'
+    permissions:
+      contents: write
+      id-token: write
+    uses: ./.github/workflows/publish_helper.yml
+    secrets: inherit
+    with:
+      preview_build_time: ${{ needs.preflight.outputs.preview_build_time }}
+      release_track: ${{ needs.preflight.outputs.release_track }}
+      release_version: ${{ needs.preflight.outputs.release_version }}
+      fail_fast: ${{ needs.preflight.outputs.release_track == 'stable' }}
+      # Every Stable release ships SBOMs; Preview opts in via the
+      # SBOM_PREVIEW_ENABLED repository variable.
+      generate_sbom: ${{ needs.preflight.outputs.release_track == 'stable' || vars.SBOM_PREVIEW_ENABLED == 'true' }}

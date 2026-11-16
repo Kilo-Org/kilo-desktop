@@ -1,0 +1,52 @@
+import { memo } from "react";
+
+import { SoloAwareExpandableRow, hostnameFromUrl } from "./tool-ui-activity-row";
+import { resultText, ToolOutputText, truncate } from "./tool-ui-shared";
+import type { ToolCallComponent } from "./tool-call";
+
+export const WebSearchActivity: ToolCallComponent = memo(({ args, result, status, toolCallId }) => {
+	const query =
+		typeof (args as Record<string, unknown> | undefined)?.query === "string"
+			? ((args as Record<string, unknown>).query as string)
+			: undefined;
+	const output = resultText(result);
+	const hasDetail = output.length > 0 && status?.type !== "running";
+
+	return (
+		<SoloAwareExpandableRow
+			kind="web"
+			liveVerb="Searching"
+			doneVerb="Searched"
+			object={query ? truncate(query) : undefined}
+			status={status}
+			disclosureId={toolCallId}
+			hasDetail={hasDetail}
+			detail={<ToolOutputText text={output} />}
+		/>
+	);
+});
+WebSearchActivity.displayName = "WebSearchActivity";
+
+export const WebFetchActivity: ToolCallComponent = memo(({ args, result, status, toolCallId }) => {
+	const url =
+		typeof (args as Record<string, unknown> | undefined)?.url === "string"
+			? ((args as Record<string, unknown>).url as string)
+			: undefined;
+	const host = url ? hostnameFromUrl(url) : undefined;
+	const output = resultText(result);
+	const hasDetail = output.length > 0 && status?.type !== "running";
+
+	return (
+		<SoloAwareExpandableRow
+			kind="web"
+			liveVerb="Fetching"
+			doneVerb="Fetched"
+			object={host ? truncate(host) : undefined}
+			status={status}
+			disclosureId={toolCallId}
+			hasDetail={hasDetail}
+			detail={<ToolOutputText text={output} />}
+		/>
+	);
+});
+WebFetchActivity.displayName = "WebFetchActivity";

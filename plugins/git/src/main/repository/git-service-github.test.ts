@@ -1,0 +1,462 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const { execa } = vi.hoisted(() => ({ execa: vi.fn() }));
+vi.mock("execa", () => ({ execa }));
+
+import { UnsupportedGitVersionError } from "@kilo-desktop/git-client";
+import type { GitClient } from "@kilo-desktop/git-client";
+
+import { folders } from "./test-workspace-access";
+import { classifyGithubCliError, ghErrorToKernelError, GitService } from "./git-service";
+
+const logger = { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} };
+
+function service() {
+	return new GitService({
+		logger,
+		workspaces: folders("/repo"),
+		createClient: () => ({}) as GitClient,
+	});
+}
+
+beforeEach(() => {
+	execa.mockReset();
+});
+
+describe("GitService GitHub CLI capability", () => {
+	it("reports ready and caches a successful probe", async () => {
+		execa.mockResolvedValue({ exitCode: 0, stderr: "" });
+		const git = service();
+
+		await expect(git.githubCliStatus()).resolves.toEqual({ status: "ready" });
+		await expect(git.githubCliStatus()).resolves.toEqual({ status: "ready" });
+		expect(execa).toHaveBeenCalledTimes(1);
+	});
+
+	it("classifies missing, unauthenticated, timeout, and generic failures", async () => {
+		const cases = [
+			[{ code: "ENOENT" }, "missing"],
+			[{ stderr: "Run gh auth login" }, "unauthenticated"],
+			[{ timedOut: true }, "timeout"],
+			[{ stderr: "network failed" }, "error"],
+		] as const;
+
+		for (const [failure, expected] of cases) {
+			execa.mockRejectedValueOnce(failure);
+			await expect(service().githubCliStatus()).resolves.toEqual({ status: expected });
+		}
+	});
+
+	it("classifies a nonzero auth-status result and force bypasses the cache", async () => {
+		execa
+			.mockResolvedValueOnce({ exitCode: 1, stderr: "not logged into any GitHub hosts" })
+			.mockResolvedValueOnce({ exitCode: 0, stderr: "" });
+		const git = service();
+
+		await expect(git.githubCliStatus()).resolves.toEqual({ status: "unauthenticated" });
+		await expect(git.githubCliStatus(true)).resolves.toEqual({ status: "ready" });
+	});
+
+	it("maps GitHub CLI failures to user-facing errors", () => {
+		expect(ghErrorToKernelError({ code: "ENOENT" }).message).toContain("not installed");
+		expect(ghErrorToKernelError({ stderr: "Run gh auth login" }).message).toContain(
+			"Not authenticated",
+		);
+		expect(ghErrorToKernelError({ stderr: "network failed" }).message).toBe("network failed");
+		expect(ghErrorToKernelError({}).message).toBe("GitHub CLI operation failed.");
+	});
+
+	it("classifies GitHub CLI failure shapes", () => {
+		expect(classifyGithubCliError({ code: "ENOENT" })).toBe("missing");
+		expect(classifyGithubCliError({ timedOut: true })).toBe("timeout");
+		expect(classifyGithubCliError({ stderr: "authentication required" })).toBe("unauthenticated");
+		expect(classifyGithubCliError({ stderr: "network failed" })).toBe("error");
+	});
+});
+
+const HEAD = "aaf0640c751fcf21b2743b189ec3e531ad02a808";
+
+function snapshotService(
+	options: {
+		origin?: string | null;
+		head?: string | null;
+		upstream?: string;
+		/** `ancestor..descendant` pairs `merge-base --is-ancestor` confirms. */
+		ancestry?: readonly string[];
+		/** `git config -z --get-regexp` output for the branch's tracking config. */
+		branchConfig?: string;
+	} = {},
+) {
+	const origin = options.origin === undefined ? "git@github.com:acme/repo.git" : options.origin;
+	const head = options.head === undefined ? HEAD : options.head;
+	return new GitService({
+		logger,
+		workspaces: folders("/repo"),
+		createClient: () =>
+			({
+				// Background polling runs this for every chat worktree: a full
+				// status would scan each working tree (and start its fsmonitor).
+				status: () => Promise.reject(new Error("pull request lookups must not scan the worktree")),
+				headBranch: () =>
+					Promise.resolve({ name: "kilo/brawny-olivine", upstream: options.upstream ?? null }),
+				exec: (args: readonly string[]) => {
+					if (args[0] === "rev-parse") {
+						return Promise.resolve(
+							head
+								? { exitCode: 0, stdout: `${head}\n`, stderr: "" }
+								: { exitCode: 1, stdout: "", stderr: "" },
+						);
+					}
+					if (args[0] === "remote") {
+						return Promise.resolve(
+							origin
+								? { exitCode: 0, stdout: `${origin}\n`, stderr: "" }
+								: { exitCode: 2, stdout: "", stderr: "" },
+						);
+					}
+					if (args[0] === "merge-base") {
+						const related = options.ancestry?.includes(`${args[2]}..${args[3]}`) ?? false;
+						return Promise.resolve({ exitCode: related ? 0 : 1, stdout: "", stderr: "" });
+					}
+					if (args[0] === "config") {
+						const stdout = options.branchConfig ?? "";
+						return Promise.resolve({ exitCode: stdout ? 0 : 1, stdout, stderr: "" });
+					}
+					return Promise.reject(new Error(`unexpected git ${args.join(" ")}`));
+				},
+				defaultBranch: () => Promise.resolve("main"),
+			}) as unknown as GitClient,
+	});
+}
+
+function pullRequest(patch: Record<string, unknown>) {
+	return {
+		number: 525,
+		url: "https://github.com/acme/repo/pull/525",
+		title: "unrelated",
+		baseRefName: "main",
+		headRefName: "kilo/investigate-e2e-test-flakiness",
+		headRefOid: "aeb3e04d",
+		state: "MERGED",
+		isDraft: false,
+		updatedAt: "2026-09-22T00:00:00Z",
+		...patch,
+	};
+}
+
+describe("GitService pull request snapshot", () => {
+	it("does not adopt a merged pull request that only shares HEAD", async () => {
+		execa.mockImplementation(async (_command: string, args: string[] = []) => {
+			if (args[0] === "auth") return { exitCode: 0, stdout: "", stderr: "" };
+			if (args[0] === "repo") {
+				return { exitCode: 0, stdout: JSON.stringify({ nameWithOwner: "acme/repo" }), stderr: "" };
+			}
+			if (args[1] === "view") return { exitCode: 1, stdout: "", stderr: "no pull requests found" };
+			if (args.includes("--search")) {
+				return { exitCode: 0, stdout: JSON.stringify([pullRequest({})]), stderr: "" };
+			}
+			if (args.includes("--head")) return { exitCode: 0, stdout: "[]", stderr: "" };
+			return { exitCode: 1, stdout: "", stderr: `unexpected ${args.join(" ")}` };
+		});
+
+		await expect(snapshotService().pullRequestSnapshot("/repo")).resolves.toMatchObject({
+			branch: "kilo/brawny-olivine",
+			pullRequest: null,
+		});
+	});
+
+	it("does not adopt the base branch's open pull request for a new branch at the same HEAD", async () => {
+		execa.mockImplementation(async (_command: string, args: string[] = []) => {
+			if (args[0] === "auth") return { exitCode: 0, stdout: "", stderr: "" };
+			if (args[0] === "repo") {
+				return { exitCode: 0, stdout: JSON.stringify({ nameWithOwner: "acme/repo" }), stderr: "" };
+			}
+			if (args[1] === "view") return { exitCode: 1, stdout: "", stderr: "no pull requests found" };
+			if (args.includes("--search")) {
+				return {
+					exitCode: 0,
+					stdout: JSON.stringify([
+						pullRequest({ headRefName: "feature/base", headRefOid: HEAD, state: "OPEN" }),
+					]),
+					stderr: "",
+				};
+			}
+			if (args.includes("--head")) return { exitCode: 0, stdout: "[]", stderr: "" };
+			return { exitCode: 1, stdout: "", stderr: `unexpected ${args.join(" ")}` };
+		});
+
+		await expect(snapshotService().pullRequestSnapshot("/repo")).resolves.toMatchObject({
+			branch: "kilo/brawny-olivine",
+			pullRequest: null,
+		});
+	});
+
+	it("accepts an open pull request at HEAD whose head is the upstream branch", async () => {
+		execa.mockImplementation(async (_command: string, args: string[] = []) => {
+			if (args[0] === "auth") return { exitCode: 0, stdout: "", stderr: "" };
+			if (args[0] === "repo") {
+				return { exitCode: 0, stdout: JSON.stringify({ nameWithOwner: "acme/repo" }), stderr: "" };
+			}
+			if (args[1] === "view") return { exitCode: 1, stdout: "", stderr: "no pull requests found" };
+			if (args.includes("--search")) {
+				return {
+					exitCode: 0,
+					stdout: JSON.stringify([
+						pullRequest({
+							number: 12,
+							url: "https://github.com/acme/repo/pull/12",
+							title: "this branch",
+							headRefName: "renamed",
+							headRefOid: HEAD,
+							state: "OPEN",
+						}),
+					]),
+					stderr: "",
+				};
+			}
+			return { exitCode: 1, stdout: "", stderr: `unexpected ${args.join(" ")}` };
+		});
+
+		await expect(
+			snapshotService({ upstream: "origin/renamed" }).pullRequestSnapshot("/repo"),
+		).resolves.toMatchObject({
+			pullRequest: { number: 12, state: "open" },
+		});
+		expect(execa).toHaveBeenCalledWith(
+			"gh",
+			expect.arrayContaining(["--state", "open", "--search", `${HEAD} is:pr`]),
+			expect.anything(),
+		);
+	});
+
+	it("never spawns gh for a non-GitHub origin", async () => {
+		await expect(
+			snapshotService({ origin: "git@gitlab.com:acme/repo.git" }).pullRequestSnapshot("/repo"),
+		).resolves.toMatchObject({ githubStatus: "unsupported", pullRequest: null });
+		expect(execa).not.toHaveBeenCalled();
+	});
+
+	it("reports an unusable GitHub CLI as status instead of failing", async () => {
+		execa.mockImplementation(async () => {
+			throw { code: "ENOENT" };
+		});
+
+		await expect(snapshotService().pullRequestSnapshot("/repo")).resolves.toMatchObject({
+			githubStatus: "missing",
+			pullRequest: null,
+		});
+		expect(execa).toHaveBeenCalledTimes(1);
+	});
+
+	it("resolves an unborn branch without querying pull requests", async () => {
+		execa.mockResolvedValue({ exitCode: 0, stdout: "", stderr: "" });
+
+		await expect(
+			snapshotService({ head: null }).pullRequestSnapshot("/repo"),
+		).resolves.toMatchObject({
+			branch: "kilo/brawny-olivine",
+			githubStatus: "ready",
+			pullRequest: null,
+		});
+		expect(execa).toHaveBeenCalledTimes(1);
+	});
+
+	it("reports a too-old git as a git problem, not a GitHub CLI failure", async () => {
+		const git = new GitService({
+			logger,
+			workspaces: folders("/repo"),
+			createClient: () =>
+				({
+					headBranch: () => Promise.resolve({ name: "kilo/brawny-olivine", upstream: null }),
+					exec: () => Promise.reject(new UnsupportedGitVersionError("2.14.1", "2.17.0")),
+					defaultBranch: () => Promise.resolve("main"),
+				}) as unknown as GitClient,
+		});
+
+		const error = await git.pullRequestSnapshot("/repo").catch((e: unknown) => e);
+		expect(error).toMatchObject({ name: "KernelError", code: "BUSINESS" });
+		expect((error as Error).message).toContain("Git 2.14.1");
+	});
+
+	it("filters branch-name matches to the origin owner", async () => {
+		execa.mockImplementation(async (_command: string, args: string[] = []) => {
+			if (args[0] === "auth") return { exitCode: 0, stdout: "", stderr: "" };
+			if (args[0] === "repo") {
+				return { exitCode: 0, stdout: JSON.stringify({ nameWithOwner: "acme/repo" }), stderr: "" };
+			}
+			if (args[1] === "view") return { exitCode: 1, stdout: "", stderr: "no pull requests found" };
+			if (args.includes("--search")) return { exitCode: 0, stdout: "[]", stderr: "" };
+			if (args.includes("--head")) {
+				return {
+					exitCode: 0,
+					stdout: JSON.stringify([
+						pullRequest({ number: 7, state: "OPEN", headRepositoryOwner: { login: "someone" } }),
+						pullRequest({ number: 8, state: "OPEN", headRepositoryOwner: { login: "Acme" } }),
+					]),
+					stderr: "",
+				};
+			}
+			return { exitCode: 1, stdout: "", stderr: `unexpected ${args.join(" ")}` };
+		});
+
+		await expect(snapshotService().pullRequestSnapshot("/repo")).resolves.toMatchObject({
+			pullRequest: { number: 8 },
+		});
+		expect(execa).toHaveBeenCalledWith(
+			"gh",
+			expect.arrayContaining(["--head", "kilo/brawny-olivine"]),
+			expect.anything(),
+		);
+	});
+
+	describe("a merged pull request found by branch name", () => {
+		const PR_HEAD = "bbf0640c751fcf21b2743b189ec3e531ad02a808";
+		const MERGE = "ccf0640c751fcf21b2743b189ec3e531ad02a808";
+
+		function mockMergedByName(patch: Record<string, unknown> = {}) {
+			execa.mockImplementation(async (_command: string, args: string[] = []) => {
+				if (args[0] === "auth") return { exitCode: 0, stdout: "", stderr: "" };
+				if (args[0] === "repo") {
+					return {
+						exitCode: 0,
+						stdout: JSON.stringify({ nameWithOwner: "acme/repo" }),
+						stderr: "",
+					};
+				}
+				if (args[1] === "view") {
+					return {
+						exitCode: 0,
+						stdout: JSON.stringify(
+							pullRequest({
+								number: 3,
+								headRefName: "kilo/brawny-olivine",
+								headRefOid: PR_HEAD,
+								mergeCommit: { oid: MERGE },
+								...patch,
+							}),
+						),
+						stderr: "",
+					};
+				}
+				return { exitCode: 1, stdout: "", stderr: `unexpected ${args.join(" ")}` };
+			});
+		}
+
+		it.each([
+			["HEAD contains its head", [`${PR_HEAD}..HEAD`], 3],
+			["HEAD trails its head", [`HEAD..${PR_HEAD}`], 3],
+			["a recreated branch shares none of its history", [], undefined],
+			["HEAD also contains its merge commit", [`${PR_HEAD}..HEAD`, `${MERGE}..HEAD`], undefined],
+		])("is kept only when it is in the checkout's history: %s", async (_, ancestry, number) => {
+			mockMergedByName();
+
+			const snapshot = await snapshotService({ ancestry }).pullRequestSnapshot("/repo");
+
+			expect(snapshot.pullRequest?.number).toBe(number);
+		});
+
+		it("treats a head that is not an object name as unknown instead of passing it to git", async () => {
+			mockMergedByName({ headRefOid: "--output=/tmp/x" });
+
+			await expect(snapshotService().pullRequestSnapshot("/repo")).resolves.toMatchObject({
+				pullRequest: { number: 3 },
+			});
+		});
+	});
+});
+
+describe("GitService batched pull request snapshots", () => {
+	const OTHER = "/repo/.kilo/worktrees/other";
+
+	function batchService(options: Parameters<typeof snapshotService>[0] = {}) {
+		const git = snapshotService(options);
+		return {
+			snapshots: (directories: readonly string[]) => git.pullRequestSnapshots(directories),
+		};
+	}
+
+	function mockGithub(graphql: () => { exitCode: number; stdout: string }) {
+		execa.mockImplementation(async (_command: string, args: string[] = []) => {
+			if (args[0] === "auth") return { exitCode: 0, stdout: "", stderr: "" };
+			if (args[0] === "repo") {
+				return { exitCode: 0, stdout: JSON.stringify({ nameWithOwner: "acme/repo" }), stderr: "" };
+			}
+			if (args[0] === "api") return { ...graphql(), stderr: "" };
+			return { exitCode: 1, stdout: "", stderr: `unexpected ${args.join(" ")}` };
+		});
+	}
+
+	const ghCalls = (subcommand: string) =>
+		execa.mock.calls.filter(([, args]) => (args as string[])[0] === subcommand);
+
+	it("answers every directory of a repository with one GraphQL request", async () => {
+		mockGithub(() => ({
+			exitCode: 0,
+			stdout: JSON.stringify({
+				data: {
+					repository: {
+						b0: {
+							nodes: [
+								pullRequest({
+									number: 9,
+									state: "OPEN",
+									headRefName: "kilo/brawny-olivine",
+									isCrossRepository: false,
+								}),
+							],
+						},
+						c0: null,
+						b1: { nodes: [] },
+						c1: { associatedPullRequests: { nodes: [] } },
+					},
+				},
+			}),
+		}));
+
+		const results = await batchService().snapshots(["/repo", OTHER, "/outside"]);
+
+		expect(results).toEqual([
+			{
+				workingDirectory: "/repo",
+				snapshot: expect.objectContaining({ pullRequest: expect.objectContaining({ number: 9 }) }),
+			},
+			{
+				workingDirectory: OTHER,
+				snapshot: expect.objectContaining({ branch: "kilo/brawny-olivine", pullRequest: null }),
+			},
+			{ workingDirectory: "/outside", snapshot: null },
+		]);
+		expect(ghCalls("api")).toHaveLength(1);
+		expect(ghCalls("pr")).toHaveLength(0);
+	});
+
+	it("leaves a refs/pull tracking branch to the per-directory lookup", async () => {
+		mockGithub(() => ({
+			exitCode: 0,
+			stdout: JSON.stringify({ data: { repository: { b0: { nodes: [] }, c0: null } } }),
+		}));
+
+		const results = await batchService({
+			branchConfig: "branch.kilo/brawny-olivine.merge\nrefs/pull/5/head\0",
+		}).snapshots(["/repo"]);
+
+		expect(results).toEqual([{ workingDirectory: "/repo", snapshot: null }]);
+	});
+
+	it("leaves every directory to the per-directory lookup when the request fails", async () => {
+		mockGithub(() => ({ exitCode: 1, stdout: "" }));
+
+		const results = await batchService().snapshots(["/repo", OTHER]);
+
+		expect(results.map(({ snapshot }) => snapshot)).toEqual([null, null]);
+	});
+
+	it("resolves unsupported directories without spawning gh", async () => {
+		const results = await batchService({ origin: "git@gitlab.com:acme/repo.git" }).snapshots([
+			"/repo",
+		]);
+
+		expect(results[0]?.snapshot).toMatchObject({ githubStatus: "unsupported" });
+		expect(execa).not.toHaveBeenCalled();
+	});
+});

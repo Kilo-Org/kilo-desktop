@@ -1,0 +1,13 @@
+name: Cache Kilo CLI
+description: >
+  Restore the platform-specific Kilo CLI staged by prepare-assets. The cache
+  key tracks the package manifest and lockfile that pin the native CLI package.
+
+runs:
+  using: composite
+  steps:
+    - name: Cache Kilo CLI
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: plugins/core/resources/kilo
+        key: kilo-cli-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('plugins/core/package.json', 'pnpm-lock.yaml') }}

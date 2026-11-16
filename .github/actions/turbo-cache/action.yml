@@ -1,0 +1,13 @@
+name: Turbo Cache
+description: Restore and save the Turborepo local file cache between CI runs.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .turbo/cache
+        key: turbo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('turbo.json', 'pnpm-lock.yaml') }}-${{ github.sha }}
+        restore-keys: |
+          turbo-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('turbo.json', 'pnpm-lock.yaml') }}-
+          turbo-${{ runner.os }}-${{ runner.arch }}-

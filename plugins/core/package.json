@@ -1,0 +1,52 @@
+{
+	"name": "@kilo-desktop/plugin-core",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"description": "kilo.core \u2014 the Kilo server and everything it knows: identity, terms, AI providers and models, chats and tools",
+	"author": "Anaconda, Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
+	"exports": {
+		"./plugin.json": "./plugin.json",
+		"./main": "./src/main/index.ts",
+		"./contracts": "./src/contracts/index.ts",
+		"./cli-distribution": "./src/main/agent/cli-distribution/index.ts"
+	},
+	"scripts": {
+		"check": "tsc --noEmit -p tsconfig.json",
+		"fetch-cli": "tsx scripts/fetch-cli.ts",
+		"prepare-assets": "pnpm run fetch-cli",
+		"test": "vitest run",
+		"test:platform": "vitest run --project integration",
+		"coverage": "vitest run --coverage"
+	},
+	"dependencies": {
+		"@kilo-desktop/kernel": "workspace:*",
+		"@kilocode/sdk": "7.8.27",
+		"@launchdarkly/node-client-sdk": "^4.0.0",
+		"@modelcontextprotocol/server": "2.4.0",
+		"atomically": "catalog:",
+		"execa": "catalog:",
+		"jsonc-parser": "^3.3.1",
+		"lodash": "catalog:",
+		"zod": "catalog:"
+	},
+	"optionalDependencies": {
+		"@kilocode/cli-darwin-arm64": "7.8.27",
+		"@kilocode/cli-linux-arm64": "7.8.27",
+		"@kilocode/cli-linux-x64-baseline": "7.8.27",
+		"@kilocode/cli-windows-arm64": "7.8.27",
+		"@kilocode/cli-windows-x64-baseline": "7.8.27"
+	},
+	"devDependencies": {
+		"@modelcontextprotocol/client": "^2.0.0",
+		"@types/lodash": "^4.17.20",
+		"@types/node": "^26.0.0",
+		"@types/react": "^19.2.17",
+		"@vitest/coverage-v8": "catalog:",
+		"tsx": "^4.23.1",
+		"typescript": "catalog:",
+		"vite": "catalog:",
+		"vitest": "catalog:"
+	}
+}

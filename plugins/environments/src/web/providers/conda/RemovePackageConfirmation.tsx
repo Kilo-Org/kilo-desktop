@@ -1,0 +1,92 @@
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+} from "@kilo-desktop/ui/components/alert-dialog";
+
+import type { CondaEnv, CondaPackage } from "../../../contracts/providers/conda";
+import { useConda, useCondaMutation } from "../../conda";
+import { environmentDisplayName } from "./environment-display";
+import { friendlyEnvironmentsError } from "./environments-error-message";
+
+interface RemovePackageConfirmationProps {
+	env: CondaEnv;
+	pkg: CondaPackage;
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+}
+
+/**
+ * Confirmation dialog for removing a single package from a conda environment.
+ */
+export function RemovePackageConfirmation({
+	env,
+	pkg,
+	open,
+	onOpenChange,
+}: RemovePackageConfirmationProps) {
+	const conda = useConda();
+	const remove = useCondaMutation(conda, "removePackages", {
+		invalidates: ["listPackages", "findRepodata"],
+	});
+
+	const targetName = env.name || "base";
+	const displayName = environmentDisplayName(env);
+
+	function handleConfirm() {
+		remove.mutate(
+			{ name: targetName, prefix: env.prefix, packages: [pkg.name] },
+			{
+				onSuccess: () => {
+					remove.reset();
+					onOpenChange(false);
+				},
+			},
+		);
+	}
+
+	function handleOpenChange(next: boolean) {
+		if (!next && remove.isPending) return;
+		if (!next) remove.reset();
+		onOpenChange(next);
+	}
+
+	return (
+		<AlertDialog open={open} onOpenChange={handleOpenChange}>
+			<AlertDialogContent data-qa-id="environments-conda-remove-pkg-dialog">
+				<AlertDialogHeader>
+					<AlertDialogTitle>Remove {pkg.name}?</AlertDialogTitle>
+					<AlertDialogDescription>
+						This will uninstall <strong>{pkg.name}</strong> ({pkg.version}) from the{" "}
+						<strong>{displayName}</strong> environment. Dependent packages may also be removed.
+					</AlertDialogDescription>
+					{remove.isError && (
+						<p
+							className="text-destructive text-sm"
+							role="alert"
+							data-qa-id="environments-conda-remove-pkg-error"
+						>
+							{friendlyEnvironmentsError(remove.error, "Could not remove the package.")}
+						</p>
+					)}
+				</AlertDialogHeader>
+				<AlertDialogFooter>
+					<AlertDialogCancel disabled={remove.isPending}>Cancel</AlertDialogCancel>
+					<AlertDialogAction
+						variant="destructive"
+						disabled={remove.isPending}
+						onClick={handleConfirm}
+						data-qa-id="environments-conda-remove-pkg-confirm-btn"
+					>
+						{remove.isPending ? "Removing\u2026" : "Remove"}
+					</AlertDialogAction>
+				</AlertDialogFooter>
+			</AlertDialogContent>
+		</AlertDialog>
+	);
+}

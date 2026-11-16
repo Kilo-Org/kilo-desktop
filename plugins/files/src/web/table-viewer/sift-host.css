@@ -1,0 +1,11 @@
+/*
+ * Host inputs for @nteract/sift. Sift resolves its neutrals from the shadcn
+ * tokens Kilo's theme defines (--background, --card, --foreground,
+ * --muted-foreground, --border, --radius) and follows [data-theme="dark"]; the
+ * font is the one input without a shadcn fallback. It is set on :root so the
+ * overlays Sift appends to <body> (column menu, popovers, detail sheet) use
+ * the same font as the table.
+ */
+:root {
+	--sift-font-family: var(--font-sans);
+}

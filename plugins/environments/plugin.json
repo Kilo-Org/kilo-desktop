@@ -1,0 +1,268 @@
+{
+	"manifestVersion": 1,
+	"id": "kilo.environments",
+	"displayName": "Conda Environments",
+	"version": "1.0.0",
+	"description": "Manage conda environments and packages, for you and the agent.",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
+	"requires": {
+		"kilo.core/tool": "optional",
+		"kilo.core/chat-config": "optional",
+		"kilo.core/account": "optional",
+		"kilo.local-inference/llama-runtime": "optional",
+		"kilo.chat/permission-renderer": "optional",
+		"kilo.shell/navigation": "optional",
+		"kilo.shell/settings-section": "optional"
+	},
+	"permissions": {
+		"host": ["dialogs"]
+	},
+	"domainObjects": [
+		{
+			"id": "conda",
+			"home": "main",
+			"description": "The person's conda environments, packages and channels, through the bundled conda bridge."
+		},
+		{
+			"id": "conda-runtime",
+			"home": "main",
+			"description": "Conda environments plugins own (e.g. the local model server's), created on demand."
+		}
+	],
+	"contributes": {
+		"extensions": {
+			"kernel/service": [
+				{
+					"id": "bridge",
+					"title": "Conda bridge",
+					"kind": "daemon",
+					"startOn": "first-use",
+					"restart": {
+						"policy": "never"
+					}
+				}
+			],
+			"kilo.shell/settings-section": [
+				{
+					"id": "environments",
+					"title": "Conda Environments",
+					"description": "Manage your conda environments and packages.",
+					"priority": 80,
+					"when": {
+						"all": ["kernel/flag:environments-feature"]
+					}
+				}
+			],
+			"kilo.core/tool": [
+				{
+					"id": "conda.setup.open",
+					"title": "Open Conda Environments settings",
+					"requiresSignIn": true,
+					"signInPrompt": {
+						"title": "Enable use of secure & governed Anaconda packages for Python environments?",
+						"body": "The agent wants to use Desktop's Python environment tools. To use secure & governed packages built by Anaconda, you must sign in to a Kilo account. Do you want to sign in?",
+						"toolsLabel": "Desktop's Python environment tools"
+					},
+					"external": true
+				},
+				{
+					"id": "conda.envs.list",
+					"title": "List conda environments",
+					"requiresSignIn": true,
+					"signInPrompt": {
+						"title": "Enable use of secure & governed Anaconda packages for Python environments?",
+						"body": "The agent wants to use Desktop's Python environment tools. To use secure & governed packages built by Anaconda, you must sign in to a Kilo account. Do you want to sign in?",
+						"toolsLabel": "Desktop's Python environment tools"
+					},
+					"readOnly": true,
+					"external": true
+				},
+				{
+					"id": "conda.envs.create",
+					"title": "Create a conda environment",
+					"requiresSignIn": true,
+					"signInPrompt": {
+						"title": "Enable use of secure & governed Anaconda packages for Python environments?",
+						"body": "The agent wants to use Desktop's Python environment tools. To use secure & governed packages built by Anaconda, you must sign in to a Kilo account. Do you want to sign in?",
+						"toolsLabel": "Desktop's Python environment tools"
+					},
+					"approval": "ask",
+					"external": true
+				},
+				{
+					"id": "conda.envs.delete",
+					"title": "Delete a conda environment",
+					"requiresSignIn": true,
+					"signInPrompt": {
+						"title": "Enable use of secure & governed Anaconda packages for Python environments?",
+						"body": "The agent wants to use Desktop's Python environment tools. To use secure & governed packages built by Anaconda, you must sign in to a Kilo account. Do you want to sign in?",
+						"toolsLabel": "Desktop's Python environment tools"
+					},
+					"approval": "ask",
+					"destructive": true,
+					"external": true
+				},
+				{
+					"id": "conda.envs.clone",
+					"title": "Clone a conda environment",
+					"requiresSignIn": true,
+					"signInPrompt": {
+						"title": "Enable use of secure & governed Anaconda packages for Python environments?",
+						"body": "The agent wants to use Desktop's Python environment tools. To use secure & governed packages built by Anaconda, you must sign in to a Kilo account. Do you want to sign in?",
+						"toolsLabel": "Desktop's Python environment tools"
+					},
+					"approval": "ask",
+					"external": true
+				},
+				{
+					"id": "conda.packages.list",
+					"title": "List conda packages",
+					"requiresSignIn": true,
+					"signInPrompt": {
+						"title": "Enable use of secure & governed Anaconda packages for Python environments?",
+						"body": "The agent wants to use Desktop's Python environment tools. To use secure & governed packages built by Anaconda, you must sign in to a Kilo account. Do you want to sign in?",
+						"toolsLabel": "Desktop's Python environment tools"
+					},
+					"readOnly": true,
+					"external": true
+				},
+				{
+					"id": "conda.packages.install",
+					"title": "Install conda packages",
+					"requiresSignIn": true,
+					"signInPrompt": {
+						"title": "Enable use of secure & governed Anaconda packages for Python environments?",
+						"body": "The agent wants to use Desktop's Python environment tools. To use secure & governed packages built by Anaconda, you must sign in to a Kilo account. Do you want to sign in?",
+						"toolsLabel": "Desktop's Python environment tools"
+					},
+					"approval": "ask",
+					"external": true
+				},
+				{
+					"id": "conda.packages.remove",
+					"title": "Remove conda packages",
+					"requiresSignIn": true,
+					"signInPrompt": {
+						"title": "Enable use of secure & governed Anaconda packages for Python environments?",
+						"body": "The agent wants to use Desktop's Python environment tools. To use secure & governed packages built by Anaconda, you must sign in to a Kilo account. Do you want to sign in?",
+						"toolsLabel": "Desktop's Python environment tools"
+					},
+					"approval": "ask",
+					"destructive": true,
+					"external": true
+				},
+				{
+					"id": "conda.packages.update",
+					"title": "Update conda packages",
+					"requiresSignIn": true,
+					"signInPrompt": {
+						"title": "Enable use of secure & governed Anaconda packages for Python environments?",
+						"body": "The agent wants to use Desktop's Python environment tools. To use secure & governed packages built by Anaconda, you must sign in to a Kilo account. Do you want to sign in?",
+						"toolsLabel": "Desktop's Python environment tools"
+					},
+					"approval": "ask",
+					"destructive": true,
+					"external": true
+				},
+				{
+					"id": "conda.channels.list",
+					"title": "List conda channels",
+					"requiresSignIn": true,
+					"signInPrompt": {
+						"title": "Enable use of secure & governed Anaconda packages for Python environments?",
+						"body": "The agent wants to use Desktop's Python environment tools. To use secure & governed packages built by Anaconda, you must sign in to a Kilo account. Do you want to sign in?",
+						"toolsLabel": "Desktop's Python environment tools"
+					},
+					"readOnly": true,
+					"external": true
+				},
+				{
+					"id": "conda.channels.add",
+					"title": "Add a conda channel",
+					"requiresSignIn": true,
+					"signInPrompt": {
+						"title": "Enable use of secure & governed Anaconda packages for Python environments?",
+						"body": "The agent wants to use Desktop's Python environment tools. To use secure & governed packages built by Anaconda, you must sign in to a Kilo account. Do you want to sign in?",
+						"toolsLabel": "Desktop's Python environment tools"
+					},
+					"approval": "ask",
+					"external": true
+				},
+				{
+					"id": "conda.channels.remove",
+					"title": "Remove a conda channel",
+					"requiresSignIn": true,
+					"signInPrompt": {
+						"title": "Enable use of secure & governed Anaconda packages for Python environments?",
+						"body": "The agent wants to use Desktop's Python environment tools. To use secure & governed packages built by Anaconda, you must sign in to a Kilo account. Do you want to sign in?",
+						"toolsLabel": "Desktop's Python environment tools"
+					},
+					"approval": "ask",
+					"external": true
+				},
+				{
+					"id": "conda.repodata.find",
+					"title": "Find conda packages",
+					"requiresSignIn": true,
+					"signInPrompt": {
+						"title": "Enable use of secure & governed Anaconda packages for Python environments?",
+						"body": "The agent wants to use Desktop's Python environment tools. To use secure & governed packages built by Anaconda, you must sign in to a Kilo account. Do you want to sign in?",
+						"toolsLabel": "Desktop's Python environment tools"
+					},
+					"readOnly": true,
+					"external": true
+				}
+			],
+			"kilo.core/chat-config": [
+				{
+					"id": "conda"
+				}
+			],
+			"kilo.local-inference/llama-runtime": [
+				{
+					"id": "conda",
+					"title": "Conda"
+				}
+			],
+			"kilo.chat/permission-renderer": [
+				{
+					"id": "conda-tools",
+					"tools": [
+						"kilo.environments/conda.envs.create",
+						"kilo.environments/conda.envs.delete",
+						"kilo.environments/conda.envs.clone",
+						"kilo.environments/conda.packages.install",
+						"kilo.environments/conda.packages.remove",
+						"kilo.environments/conda.packages.update",
+						"kilo.environments/conda.channels.add",
+						"kilo.environments/conda.channels.remove"
+					]
+				},
+				{
+					"id": "conda-cli"
+				},
+				{
+					"id": "local-file-answers"
+				}
+			],
+			"kernel/flag": [
+				{
+					"id": "environments-feature",
+					"description": "Shows Conda Environments: its settings page, the conda agent tools and the conda methods.",
+					"default": false
+				}
+			],
+			"kernel/telemetry-event": [
+				{
+					"id": "environment-created",
+					"name": "Environment Created"
+				},
+				{
+					"id": "environment-removed",
+					"name": "Environment Removed"
+				}
+			]
+		}
+	}
+}

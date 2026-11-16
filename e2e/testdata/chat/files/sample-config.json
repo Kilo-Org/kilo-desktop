@@ -1,0 +1,5 @@
+{
+	"fixture": "chat-attachments",
+	"reference": "CONFIG-9023",
+	"purpose": "e2e attachment coverage for application/json content"
+}

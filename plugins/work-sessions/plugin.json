@@ -1,0 +1,828 @@
+{
+	"manifestVersion": 1,
+	"id": "kilo.work-sessions",
+	"displayName": "Work sessions",
+	"version": "1.0.0",
+	"description": "Workspaces, work sessions and their panes, and everything the user sees of them: workspace management, the session list, the canvas and the New Session page.",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
+	"requires": {
+		"kilo.core/chats": "optional",
+		"kilo.core/server": "optional",
+		"kilo.shell/main": "optional",
+		"kilo.shell/top-bar-title": "optional",
+		"kilo.shell/top-bar-action": "optional",
+		"kilo.shell/left-sidebar": "optional",
+		"kilo.shell/dialog": "optional",
+		"kilo.shell/onboarding-step": "optional",
+		"kilo.shell/settings-section": "optional",
+		"kilo.shell/menu-item": "optional",
+		"kilo.shell/navigation": "optional",
+		"kilo.shell/notifications": "optional",
+		"kernel/windows": "optional",
+		"kernel/notifications": "optional",
+		"kernel/keybindings": "optional"
+	},
+	"permissions": {
+		"host": ["dialogs", "windows", "notifications"]
+	},
+	"contextKeys": [
+		{
+			"id": "hasWorkspaces",
+			"scope": "global",
+			"description": "True while at least one workspace exists."
+		},
+		{
+			"id": "hasVcs",
+			"scope": "global",
+			"description": "True while a version control contribution (kilo.work-sessions/vcs) is present."
+		},
+		{
+			"id": "workSessionActive",
+			"scope": "window",
+			"description": "True while a work session is open in this window."
+		},
+		{
+			"id": "workSessionsViewShown",
+			"scope": "window",
+			"description": "True while a work sessions view (kilo.work-sessions/sessions-view) fills this window's main area."
+		},
+		{
+			"id": "workspaceActive",
+			"scope": "window",
+			"description": "True while the session list is focused on one workspace."
+		},
+		{
+			"id": "paneTargetActive",
+			"scope": "window",
+			"description": "True while opening a pane has somewhere to go: an open session, or the New Session page, which starts a session with it."
+		}
+	],
+	"objectTypes": [
+		{
+			"id": "workspace",
+			"description": "A workspace: a named project of one or more folders, keyed by its id."
+		},
+		{
+			"id": "work-session",
+			"description": "A work session: a workspace, where it works and the chats it holds, keyed by its id."
+		},
+		{
+			"id": "pane",
+			"description": "A pane open in a work session, keyed <workSessionId>/<paneId>."
+		},
+		{
+			"id": "file",
+			"description": "A file or folder, keyed by its absolute path."
+		},
+		{
+			"id": "url",
+			"description": "A web page, keyed by its URL."
+		}
+	],
+	"domainObjects": [
+		{
+			"id": "workspaces",
+			"home": "main",
+			"description": "Workspaces, the active one, folder availability and path authorisation.",
+			"objectType": "kilo.work-sessions/workspace"
+		},
+		{
+			"id": "file-watcher",
+			"home": "main",
+			"description": "Watched workspace folders and the file changes in them."
+		},
+		{
+			"id": "work-sessions",
+			"home": "main",
+			"description": "Every work session: create, rename, pin, archive and delete, and the chats it holds.",
+			"objectType": "kilo.work-sessions/work-session"
+		},
+		{
+			"id": "panes",
+			"home": "main",
+			"description": "The panes open in every work session, their layout and arrangement.",
+			"objectType": "kilo.work-sessions/pane"
+		},
+		{
+			"id": "window",
+			"home": "renderer",
+			"description": "This window's view of the work sessions: focused workspace, open work session or work sessions view, and opening panes."
+		},
+		{
+			"id": "layout-presets",
+			"home": "main",
+			"description": "Saved layout presets and the default one."
+		}
+	],
+	"extensionPoints": [
+		{
+			"id": "vcs",
+			"kind": "exclusive",
+			"description": "Version control for workspace folders: status, branches and the isolated copies work sessions run in."
+		},
+		{
+			"id": "opener",
+			"kind": "additive",
+			"description": "Opens an object (a file, a URL) in a pane kind."
+		},
+		{
+			"id": "pane-kind",
+			"kind": "additive",
+			"description": "A kind of pane a work session can hold."
+		},
+		{
+			"id": "work-session-menu",
+			"kind": "additive",
+			"description": "An item in a work session's menu."
+		},
+		{
+			"id": "work-session-decoration",
+			"kind": "additive",
+			"description": "A badge or hover detail shown with a work session."
+		},
+		{
+			"id": "work-session-facet",
+			"kind": "additive",
+			"description": "Read-only facts about work sessions the session list filters by."
+		},
+		{
+			"id": "work-sessions-view",
+			"kind": "additive",
+			"description": "Another view of the work sessions, shown in place of the open work session."
+		},
+		{
+			"id": "work-session-action",
+			"kind": "additive",
+			"description": "A button in an open work session's header."
+		},
+		{
+			"id": "work-session-list-action",
+			"kind": "additive",
+			"description": "A button in the session list's header."
+		},
+		{
+			"id": "new-work-session-option",
+			"kind": "additive",
+			"description": "A choice on the New Session page, beside where the session runs."
+		},
+		{
+			"id": "work-session-starter",
+			"kind": "exclusive",
+			"description": "The New Session page's body: how a person starts a session."
+		},
+		{
+			"id": "permission-auto-answer",
+			"kind": "additive",
+			"description": "Whether a plugin answers an agent permission request for the person."
+		}
+	],
+	"contributes": {
+		"extensions": {
+			"kilo.shell/main": [
+				{
+					"id": "work-sessions"
+				}
+			],
+			"kilo.shell/top-bar-title": [
+				{
+					"id": "session-title",
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "view-title",
+					"when": {
+						"all": ["kilo.work-sessions/workSessionsViewShown"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				}
+			],
+			"kilo.shell/top-bar-action": [
+				{
+					"id": "session-actions",
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "view-actions",
+					"when": {
+						"all": ["kilo.work-sessions/workSessionsViewShown"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				}
+			],
+			"kilo.shell/left-sidebar": [
+				{
+					"id": "work-sessions"
+				}
+			],
+			"kilo.shell/dialog": [
+				{
+					"id": "workspace-dialogs",
+					"title": "Workspaces"
+				}
+			],
+			"kilo.shell/onboarding-step": [
+				{
+					"id": "workspace",
+					"label": "Workspace",
+					"priority": 700,
+					"showWhen": {
+						"none": ["kilo.work-sessions/hasWorkspaces"]
+					}
+				}
+			],
+			"kilo.shell/settings-section": [
+				{
+					"id": "notifications",
+					"title": "Notifications",
+					"description": "A sound, plus a system notification while Kilo is in the background. “When I'm not looking” skips the session you have open.",
+					"priority": 72
+				}
+			],
+			"kilo.shell/menu-item": [
+				{
+					"id": "new-work-session",
+					"command": "kilo.work-sessions/new-work-session",
+					"menu": "file",
+					"group": "session",
+					"priority": 30
+				},
+				{
+					"id": "new-pane",
+					"command": "kilo.work-sessions/new-pane",
+					"menu": "file",
+					"group": "tab",
+					"priority": 20
+				},
+				{
+					"id": "close-pane",
+					"command": "kilo.work-sessions/close-pane",
+					"menu": "file",
+					"group": "tab",
+					"priority": 10
+				}
+			],
+			"kernel/window-view": [
+				{
+					"id": "pane",
+					"title": "Pane",
+					"width": 720,
+					"height": 720
+				},
+				{
+					"id": "work-sessions-view",
+					"title": "Sessions",
+					"width": 1240,
+					"height": 760
+				}
+			],
+			"kernel/service": [
+				{
+					"id": "file-watcher",
+					"title": "Workspace file watcher",
+					"kind": "daemon",
+					"startOn": "window-shown",
+					"restart": {
+						"policy": "never"
+					}
+				}
+			],
+			"kernel/command": [
+				{
+					"id": "new-work-session",
+					"title": "New session",
+					"category": "Sessions",
+					"order": 30,
+					"keybinding": [
+						{
+							"mac": "Mod+N",
+							"default": "Ctrl+Shift+N"
+						},
+						"Mod+Shift+O"
+					],
+					"when": {
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "new-empty-work-session",
+					"title": "New empty session",
+					"category": "Sessions",
+					"order": 31,
+					"when": {
+						"all": ["kilo.work-sessions/paneTargetActive"],
+						"none": ["kilo.work-sessions/workSessionActive"]
+					}
+				},
+				{
+					"id": "search-work-sessions",
+					"title": "Search sessions and workspaces",
+					"category": "Sessions",
+					"order": 0,
+					"keybinding": {
+						"mac": "Mod+K",
+						"default": "Ctrl+Shift+K"
+					},
+					"when": {
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "next-work-session",
+					"title": "Next session",
+					"category": "Sessions",
+					"order": 20,
+					"keybinding": [
+						"Ctrl+Tab",
+						{
+							"mac": "Mod+Alt+ArrowDown",
+							"default": "Alt+ArrowDown"
+						}
+					],
+					"repeatable": true,
+					"when": {
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "previous-work-session",
+					"title": "Previous session",
+					"category": "Sessions",
+					"order": 21,
+					"keybinding": [
+						"Ctrl+Shift+Tab",
+						{
+							"mac": "Mod+Alt+ArrowUp",
+							"default": "Alt+ArrowUp"
+						}
+					],
+					"repeatable": true,
+					"when": {
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "next-attention-work-session",
+					"title": "Go to next session that needs attention",
+					"category": "Sessions",
+					"order": 22,
+					"keybinding": {
+						"mac": "Mod+Alt+A",
+						"default": "Ctrl+Shift+A"
+					},
+					"when": {
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "toggle-pin-work-session",
+					"title": "Pin or unpin session",
+					"category": "Sessions",
+					"order": 31,
+					"keybinding": {
+						"mac": "Mod+Alt+P",
+						"default": "Ctrl+Alt+P"
+					},
+					"when": {
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "work-session-1",
+					"title": "Go to session 1",
+					"category": "Sessions",
+					"order": 1,
+					"palette": false,
+					"keybinding": {
+						"mac": "Ctrl+1",
+						"default": "Alt+1"
+					},
+					"when": {
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "work-session-2",
+					"title": "Go to session 2",
+					"category": "Sessions",
+					"order": 2,
+					"palette": false,
+					"keybinding": {
+						"mac": "Ctrl+2",
+						"default": "Alt+2"
+					},
+					"when": {
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "work-session-3",
+					"title": "Go to session 3",
+					"category": "Sessions",
+					"order": 3,
+					"palette": false,
+					"keybinding": {
+						"mac": "Ctrl+3",
+						"default": "Alt+3"
+					},
+					"when": {
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "work-session-4",
+					"title": "Go to session 4",
+					"category": "Sessions",
+					"order": 4,
+					"palette": false,
+					"keybinding": {
+						"mac": "Ctrl+4",
+						"default": "Alt+4"
+					},
+					"when": {
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "work-session-5",
+					"title": "Go to session 5",
+					"category": "Sessions",
+					"order": 5,
+					"palette": false,
+					"keybinding": {
+						"mac": "Ctrl+5",
+						"default": "Alt+5"
+					},
+					"when": {
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "work-session-6",
+					"title": "Go to session 6",
+					"category": "Sessions",
+					"order": 6,
+					"palette": false,
+					"keybinding": {
+						"mac": "Ctrl+6",
+						"default": "Alt+6"
+					},
+					"when": {
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "work-session-7",
+					"title": "Go to session 7",
+					"category": "Sessions",
+					"order": 7,
+					"palette": false,
+					"keybinding": {
+						"mac": "Ctrl+7",
+						"default": "Alt+7"
+					},
+					"when": {
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "work-session-8",
+					"title": "Go to session 8",
+					"category": "Sessions",
+					"order": 8,
+					"palette": false,
+					"keybinding": {
+						"mac": "Ctrl+8",
+						"default": "Alt+8"
+					},
+					"when": {
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "work-session-last",
+					"title": "Go to last session",
+					"category": "Sessions",
+					"order": 9,
+					"palette": false,
+					"keybinding": {
+						"mac": "Ctrl+9",
+						"default": "Alt+9"
+					},
+					"when": {
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "new-pane",
+					"title": "New tab",
+					"category": "Tabs",
+					"order": 30,
+					"keybinding": {
+						"mac": "Mod+T",
+						"default": "Ctrl+Shift+T"
+					},
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "close-pane",
+					"title": "Close tab",
+					"category": "Tabs",
+					"order": 31,
+					"keybinding": {
+						"mac": "Mod+W",
+						"default": "Ctrl+Shift+W"
+					},
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "new-group-right",
+					"title": "New group to the right",
+					"category": "Tabs",
+					"order": 32,
+					"keybinding": {
+						"mac": "Mod+\\",
+						"default": "Ctrl+Shift+\\"
+					},
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "new-group-below",
+					"title": "New group below",
+					"category": "Tabs",
+					"order": 33,
+					"keybinding": {
+						"mac": "Alt+Mod+\\",
+						"default": "Ctrl+Alt+Shift+\\"
+					},
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "next-pane",
+					"title": "Next tab",
+					"category": "Tabs",
+					"order": 20,
+					"repeatable": true,
+					"keybinding": {
+						"mac": "Mod+Alt+ArrowRight",
+						"default": "Ctrl+PageDown"
+					},
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "previous-pane",
+					"title": "Previous tab",
+					"category": "Tabs",
+					"order": 21,
+					"repeatable": true,
+					"keybinding": {
+						"mac": "Mod+Alt+ArrowLeft",
+						"default": "Ctrl+PageUp"
+					},
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "toggle-carousel",
+					"title": "Toggle carousel",
+					"category": "Tabs",
+					"order": 40,
+					"keybinding": {
+						"mac": "Ctrl+Mod+C",
+						"default": "Ctrl+Alt+C"
+					},
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "pane-1",
+					"title": "Go to tab 1",
+					"category": "Tabs",
+					"order": 1,
+					"palette": false,
+					"keybinding": "Mod+1",
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "pane-2",
+					"title": "Go to tab 2",
+					"category": "Tabs",
+					"order": 2,
+					"palette": false,
+					"keybinding": "Mod+2",
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "pane-3",
+					"title": "Go to tab 3",
+					"category": "Tabs",
+					"order": 3,
+					"palette": false,
+					"keybinding": "Mod+3",
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "pane-4",
+					"title": "Go to tab 4",
+					"category": "Tabs",
+					"order": 4,
+					"palette": false,
+					"keybinding": "Mod+4",
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "pane-5",
+					"title": "Go to tab 5",
+					"category": "Tabs",
+					"order": 5,
+					"palette": false,
+					"keybinding": "Mod+5",
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "pane-6",
+					"title": "Go to tab 6",
+					"category": "Tabs",
+					"order": 6,
+					"palette": false,
+					"keybinding": "Mod+6",
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "pane-7",
+					"title": "Go to tab 7",
+					"category": "Tabs",
+					"order": 7,
+					"palette": false,
+					"keybinding": "Mod+7",
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "pane-8",
+					"title": "Go to tab 8",
+					"category": "Tabs",
+					"order": 8,
+					"palette": false,
+					"keybinding": "Mod+8",
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "pane-last",
+					"title": "Go to last tab",
+					"category": "Tabs",
+					"order": 9,
+					"palette": false,
+					"keybinding": "Mod+9",
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "open-work-session",
+					"title": "Open session",
+					"category": "Sessions",
+					"palette": false
+				},
+				{
+					"id": "show-work-sessions-view",
+					"title": "Show sessions view",
+					"category": "Sessions",
+					"palette": false
+				},
+				{
+					"id": "add-workspace",
+					"title": "Add workspace",
+					"category": "Workspaces",
+					"order": 10,
+					"when": {
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "manage-workspaces",
+					"title": "Manage workspaces",
+					"category": "Workspaces",
+					"order": 20,
+					"when": {
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "edit-workspace",
+					"title": "Edit workspace",
+					"category": "Workspaces",
+					"palette": false
+				},
+				{
+					"id": "delete-workspace",
+					"title": "Delete workspace",
+					"category": "Workspaces",
+					"palette": false
+				}
+			],
+			"kernel/flag": [
+				{
+					"id": "chat-layouts",
+					"description": "Turns on layout presets: saving, applying and defaulting pane layouts from an open session's header.",
+					"default": false
+				}
+			],
+			"kernel/telemetry-event": [
+				{
+					"id": "workspace-created",
+					"name": "Workspace Created"
+				},
+				{
+					"id": "workspace-removed",
+					"name": "Workspace Removed"
+				},
+				{
+					"id": "pane-opened",
+					"name": "Pane Opened"
+				},
+				{
+					"id": "pane-closed",
+					"name": "Pane Closed"
+				},
+				{
+					"id": "layout-arrangement-changed",
+					"name": "Layout Arrangement Changed"
+				},
+				{
+					"id": "layout-preset-applied",
+					"name": "Layout Preset Applied"
+				},
+				{
+					"id": "layout-preset-saved",
+					"name": "Layout Preset Saved"
+				},
+				{
+					"id": "layout-preset-removed",
+					"name": "Layout Preset Removed"
+				},
+				{
+					"id": "layout-preset-default-changed",
+					"name": "Layout Preset Default Changed"
+				}
+			],
+			"kilo.work-sessions/work-session-action": [
+				{
+					"id": "layouts",
+					"when": {
+						"all": ["kernel/flag:chat-layouts"]
+					}
+				}
+			]
+		}
+	}
+}

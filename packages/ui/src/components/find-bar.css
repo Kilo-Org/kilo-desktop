@@ -1,0 +1,11 @@
+/* Paints find matches via the CSS Custom Highlight API. Ranges are registered
+   by useDomFind under these two fixed highlight names. */
+::highlight(kilo-find) {
+	background-color: color-mix(in srgb, var(--color-primary) 28%, transparent);
+	color: inherit;
+}
+
+::highlight(kilo-find-active) {
+	background-color: var(--color-primary);
+	color: var(--color-primary-foreground);
+}

@@ -1,0 +1,53 @@
+{
+	"name": "@kilo-desktop/plugin-terminal",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"description": "kilo.terminal \u2014 terminal panes: interactive shells in a work session's folder",
+	"author": "Anaconda, Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
+	"exports": {
+		"./plugin.json": "./plugin.json",
+		"./main": "./src/main/index.ts",
+		"./web": "./src/web/index.ts",
+		"./contracts": "./src/contracts/index.ts",
+		"./packaging": "./src/packaging/artifacts.ts"
+	},
+	"scripts": {
+		"build-terminal-app": "vite build --config src/frame/vite.config.ts",
+		"prepare-assets": "pnpm run build-terminal-app",
+		"check": "tsc --noEmit -p tsconfig.json",
+		"test": "vitest run",
+		"coverage": "vitest run --coverage"
+	},
+	"dependencies": {
+		"@kilo-desktop/kernel": "workspace:*",
+		"@kilo-desktop/plugin-core": "workspace:*",
+		"@kilo-desktop/plugin-shell": "workspace:*",
+		"@kilo-desktop/plugin-work-sessions": "workspace:*",
+		"@kilo-desktop/ui": "workspace:*",
+		"atomically": "catalog:",
+		"ghostty-web": "0.4.0-next.20.g1858a59",
+		"lucide-react": "catalog:",
+		"node-pty": "1.2.0-beta.18",
+		"react": "^19.2.8",
+		"react-dom": "^19.2.8",
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"@tailwindcss/vite": "^4.3.3",
+		"@testing-library/react": "^16.3.2",
+		"@types/node": "^26.0.0",
+		"@types/react": "^19.2.17",
+		"@types/react-dom": "^19.2.3",
+		"@vitejs/plugin-react": "^6.0.4",
+		"@vitest/browser": "5.1.0",
+		"@vitest/browser-playwright": "5.1.0",
+		"@vitest/coverage-v8": "catalog:",
+		"playwright": "catalog:",
+		"tailwindcss": "^4.3.3",
+		"typescript": "catalog:",
+		"vite": "catalog:",
+		"vitest": "catalog:"
+	}
+}

@@ -1,0 +1,145 @@
+{
+	"manifestVersion": 1,
+	"id": "kilo.local-inference",
+	"displayName": "Local Model Server",
+	"version": "1.0.0",
+	"description": "Run GGUF models on this device and use them in chats.",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
+	"requires": {
+		"kilo.core/ai-provider": "optional",
+		"kilo.core/tool": "optional",
+		"kilo.core/account": "optional",
+		"kilo.chat/model-source": "optional",
+		"kilo.shell/navigation": "optional",
+		"kilo.shell/settings-section": "optional",
+		"kilo.shell/deep-link": "optional",
+		"kilo.shell/status-bar-item": "optional"
+	},
+	"permissions": {
+		"host": ["clipboard", "os"]
+	},
+	"objectTypes": [
+		{
+			"id": "local-model",
+			"description": "A GGUF model installed in the Local Model Server, keyed by its id."
+		}
+	],
+	"domainObjects": [
+		{
+			"id": "local-models",
+			"home": "main",
+			"description": "The GGUF models installed in the Local Model Server.",
+			"objectType": "kilo.local-inference/local-model"
+		},
+		{
+			"id": "model-server",
+			"home": "main",
+			"description": "The Local Model Server: status, settings, the model catalog and its downloads."
+		}
+	],
+	"extensionPoints": [
+		{
+			"id": "model-catalog",
+			"kind": "additive",
+			"description": "A browsable list of GGUF models to download into the Local Model Server."
+		},
+		{
+			"id": "llama-runtime",
+			"kind": "additive",
+			"description": "A way to get the llama.cpp server binary, tried by priority."
+		}
+	],
+	"contributes": {
+		"extensions": {
+			"kernel/service": [
+				{
+					"id": "router",
+					"title": "Local model server",
+					"kind": "daemon",
+					"startOn": "window-shown",
+					"restart": {
+						"policy": "never"
+					},
+					"stopTimeoutMs": 6000
+				},
+				{
+					"id": "import",
+					"title": "Import Anaconda Desktop models",
+					"kind": "task",
+					"startOn": "window-shown",
+					"restart": {
+						"policy": "never"
+					}
+				}
+			],
+			"kilo.core/ai-provider": [
+				{
+					"id": "local-model-server",
+					"aiProviderId": "kilo-desktop-model-server"
+				}
+			],
+			"kilo.core/tool": [
+				{
+					"id": "settings.open",
+					"title": "Open Local Model Server settings",
+					"readOnly": true,
+					"external": true
+				}
+			],
+			"kilo.chat/model-source": [
+				{
+					"id": "local-model-server",
+					"aiProviderId": "kilo-desktop-model-server",
+					"title": "Local Model Server",
+					"settingsSection": "local-model-server"
+				}
+			],
+			"kilo.shell/settings-section": [
+				{
+					"id": "local-model-server",
+					"title": "Local Model Server",
+					"description": "Run models on this device",
+					"category": "kilo.shell/ai",
+					"priority": 80
+				}
+			],
+			"kilo.shell/deep-link": [
+				{
+					"id": "model-catalog",
+					"host": "model-catalog",
+					"path": "/settings/local-model-server",
+					"pathParam": "catalogModel"
+				}
+			],
+			"kilo.shell/status-bar-item": [
+				{
+					"id": "model-loading",
+					"title": "Loading local model",
+					"kind": "view"
+				}
+			],
+			"kernel/flag": [
+				{
+					"id": "local-model-catalog",
+					"description": "Shows the model catalog in Settings → Local Model Server.",
+					"default": false
+				}
+			],
+			"kernel/telemetry-event": [
+				{
+					"id": "local-model-installed",
+					"name": "Local Model Installed"
+				},
+				{
+					"id": "local-model-server-started",
+					"name": "Local Model Server Started"
+				},
+				{
+					"id": "local-model-server-stopped",
+					"name": "Local Model Server Stopped"
+				}
+			]
+		}
+	}
+}

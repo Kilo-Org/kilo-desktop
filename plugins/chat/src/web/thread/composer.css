@@ -1,0 +1,192 @@
+/* Composer chrome: frosted glass surfaces, Lexical input, directive chips,
+   toolbar container queries, and docked-corner fills.
+
+   Glass recipe matches t3code: translucent card tint + blur + slight
+   saturate in both color schemes. */
+
+:root {
+	--glass-blur: 12px;
+	--glass-opacity: 80%;
+	--glass-saturation: 1.14;
+	/* Shared by the docked glass outline and the draft composer border so
+	   both composers brighten the same way when the input has focus. */
+	--composer-focus-stroke: color-mix(in oklab, var(--muted-foreground) 30%, transparent);
+}
+
+[data-theme="dark"] {
+	--glass-blur: 16px;
+	--glass-saturation: 1.08;
+}
+
+.chat-composer-glass {
+	/* Pane frames set --pane-raised so the glass stays a step above the pane
+	   surface; outside panes it falls back to card. */
+	--composer-glass-surface: var(--pane-raised, var(--card));
+	--composer-glass-stroke: var(--border-subtle);
+	background: color-mix(in srgb, var(--composer-glass-surface) var(--glass-opacity), transparent);
+	-webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+	backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
+	/* Chromium clips `border` at rounded corners when backdrop-filter is on
+	   the same element. Outline is painted after the filter and stays intact. */
+	outline: 1px solid var(--composer-glass-stroke);
+	outline-offset: -1px;
+}
+
+.chat-composer-glass.chat-composer-surface {
+	border-color: transparent;
+}
+
+.chat-composer-glass:focus-within {
+	--composer-glass-stroke: var(--composer-focus-stroke);
+}
+
+.chat-composer-glass[data-dragging="true"] {
+	--composer-glass-stroke: var(--ring);
+	outline-style: dashed;
+}
+
+.chat-composer-surface {
+	--glass-opacity: 94%;
+}
+
+/* The New Session page's starter: filled like the tool tiles under it and
+   borderless, even focused; the outline comes back only while dragging. */
+.chat-starter-flat .chat-composer-glass {
+	--composer-glass-surface: color-mix(in srgb, var(--muted) 64%, transparent);
+	box-shadow: none;
+}
+
+.chat-starter-flat .chat-composer-glass:not([data-dragging="true"]) {
+	outline-color: transparent;
+}
+
+/* Its toolbar's hover matches the page's pickers and tools around it: a light
+   tint that lifts whatever is behind it by the same step. */
+.chat-starter-flat
+	.chat-composer-glass
+	button[class*="hover:bg-muted"]:is(:hover, [aria-expanded="true"], [data-popup-open]) {
+	background-color: color-mix(in oklab, var(--foreground) 7%, transparent);
+}
+
+.aui-lexical-editor {
+	position: relative;
+}
+
+.aui-composer-input {
+	height: fit-content;
+}
+
+.aui-lexical-input {
+	min-height: 2.75rem;
+	outline: none;
+}
+
+/* Lexical wraps the placeholder in an unstyled aria-hidden div; position that
+   wrapper so it inherits the editor's padding and lines up with the caret. */
+.aui-lexical-editor > :has(> .aui-lexical-placeholder) {
+	pointer-events: none;
+	position: absolute;
+	inset: 0;
+	padding: inherit;
+}
+
+.aui-lexical-placeholder {
+	color: color-mix(in oklab, var(--color-muted-foreground) 80%, transparent);
+}
+
+.aui-lexical-input span[contenteditable="false"]:has(.aui-directive-chip) {
+	vertical-align: baseline;
+}
+
+.aui-directive-chip {
+	display: inline-flex;
+	align-items: baseline;
+	gap: 0.2em;
+	padding-inline: 0.4em;
+	border: none;
+	border-radius: 0.35rem;
+	background: var(--color-primary-soft);
+	color: var(--color-primary-soft-foreground);
+	font-size: inherit;
+	font-weight: 500;
+	line-height: inherit;
+	vertical-align: baseline;
+	white-space: nowrap;
+}
+
+.aui-directive-chip svg {
+	width: 0.85em;
+	height: 0.85em;
+	flex-shrink: 0;
+	align-self: center;
+}
+
+.aui-directive-chip[data-directive-type="file"] {
+	margin-inline-end: 0.25em;
+	background: color-mix(in oklab, var(--color-accent) 40%, transparent);
+	box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-border) 70%, transparent);
+	color: var(--color-foreground);
+}
+
+.aui-composer-action-wrapper {
+	container: composer-actions / inline-size;
+}
+
+@container composer-actions (width <= 30rem) {
+	[data-slot="composer-agent-label"],
+	[data-slot="composer-approval-label"] {
+		display: none;
+	}
+}
+
+@container composer-actions (width <= 24rem) {
+	[data-slot="model-selector-effort"] {
+		display: none;
+	}
+}
+
+@container composer-actions (width <= 18rem) {
+	[data-slot="model-selector-name"],
+	[data-slot="model-selector-value"][data-model-selected="false"] {
+		display: none;
+	}
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+	.chat-composer-glass {
+		background: var(--composer-glass-surface);
+	}
+}
+
+/* Opaque wedges cover the docked composer's bottom corner cutouts so
+   scrolled messages cannot show through below the glass surface.
+   The mask starts at the outer radius so the stroke stays visible. */
+.composer-corner-fill {
+	pointer-events: none;
+	position: absolute;
+	width: var(--composer-radius);
+	height: var(--composer-radius);
+	background-color: var(--pane-surface, var(--background));
+	-webkit-mask: var(--composer-corner-mask);
+	mask: var(--composer-corner-mask);
+}
+
+.composer-corner-fill-bl {
+	bottom: 0;
+	left: 0;
+	--composer-corner-mask: radial-gradient(
+		circle at 100% 0,
+		transparent var(--composer-radius),
+		#000 var(--composer-radius)
+	);
+}
+
+.composer-corner-fill-br {
+	right: 0;
+	bottom: 0;
+	--composer-corner-mask: radial-gradient(
+		circle at 0 0,
+		transparent var(--composer-radius),
+		#000 var(--composer-radius)
+	);
+}

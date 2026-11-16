@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Terminal</title>
+	</head>
+	<body>
+		<div id="app">
+			<div id="terminal-state" class="terminal-state" hidden>
+				<span id="status" data-qa-id="terminal-status">Connecting…</span>
+				<button id="restart" type="button" data-qa-id="terminal-restart">Restart</button>
+			</div>
+			<div
+				id="terminal"
+				data-qa-id="ghostty-terminal"
+				data-accepted-input-count="0"
+				aria-busy="true"
+			></div>
+			<div
+				id="terminal-scrollbar"
+				class="terminal-scrollbar"
+				data-qa-id="terminal-scrollbar"
+				role="scrollbar"
+				aria-label="Terminal scrollback"
+				aria-controls="terminal"
+				aria-orientation="vertical"
+				tabindex="0"
+				hidden
+			>
+				<div id="terminal-scrollbar-thumb" class="terminal-scrollbar-thumb"></div>
+			</div>
+			<pre
+				id="accessible-output"
+				class="screen-reader-output"
+				role="log"
+				aria-live="polite"
+				data-qa-id="terminal-output"
+			></pre>
+			<div id="error" class="error" hidden data-qa-id="terminal-error"></div>
+		</div>
+		<script type="module" src="/main.ts"></script>
+	</body>
+</html>

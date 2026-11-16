@@ -1,0 +1,199 @@
+import type { SyntaxHighlighterProps } from "@assistant-ui/react-markdown";
+import {
+	getHighlighterIfLoaded,
+	getSharedHighlighter,
+	type DiffsHighlighter,
+	type DiffsStreamTokenizer,
+	type ThemedToken,
+} from "@pierre/diffs";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+
+import { useDiffTheme } from "../tools/diff-theme";
+import { tokenStyle } from "./token-style";
+
+/** Past this a block stays plain: every token becomes a DOM node. */
+const MAX_HIGHLIGHT_LENGTH = 50_000;
+const TOKENIZE_MAX_LINE_LENGTH = 1_000;
+const PLAIN_LANGUAGES = new Set(["", "text", "txt", "plain", "plaintext"]);
+
+/**
+ * The window's shared Shiki highlighter (the one file previews use) once it
+ * has `language` and `theme` loaded; until then, or for a language Shiki
+ * lacks, nothing. Loading is lazy so a reply without code pays nothing. A
+ * failed load is not remembered: it may be a missing grammar, but it may also
+ * be a theme or chunk failure that a later block can recover from.
+ */
+function useLoadedHighlighter(language: string, theme: string): DiffsHighlighter | undefined {
+	const highlightable = !PLAIN_LANGUAGES.has(language);
+	const loaded = highlightable ? getHighlighterIfLoaded({ theme, lang: language }) : undefined;
+	const [, setLoadCount] = useState(0);
+
+	useEffect(() => {
+		if (!highlightable || loaded) return;
+		let cancelled = false;
+		getSharedHighlighter({ themes: [theme], langs: [language], preferredHighlighter: "shiki-js" })
+			.catch(() => undefined)
+			.finally(() => {
+				if (!cancelled) setLoadCount((count) => count + 1);
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [highlightable, loaded, language, theme]);
+
+	return loaded;
+}
+
+function tokenNode(token: ThemedToken, foreground: string): ReactNode {
+	const style = tokenStyle(token, foreground);
+	// Token offsets are absolute in the stream, so they key every line alike.
+	if (!style) return <Fragment key={token.offset}>{token.content}</Fragment>;
+	return (
+		<span key={token.offset} style={style}>
+			{token.content}
+		</span>
+	);
+}
+
+/**
+ * One block's incremental highlighting. The chat reveals text frame by frame,
+ * so `code` grows on nearly every commit; a stream tokenizer (`stable` tokens
+ * for closed lines, `unstable` for the provisional last one) keeps each commit
+ * proportional to the new text instead of re-tokenizing the whole fence. The
+ * session is keyed by language and theme and rebuilt when `code` no longer
+ * extends what it consumed. Elements for stable tokens are kept, so React
+ * reuses them across commits.
+ */
+interface HighlightSession {
+	readonly language: string;
+	readonly theme: string;
+	readonly foreground: string;
+	readonly tokenizer: DiffsStreamTokenizer;
+	code: string;
+	stable: ReactNode[];
+	unstable: ReactNode[];
+	rendered: ReactNode[];
+}
+
+type Sessions = { current: HighlightSession | null };
+
+function startSession(
+	sessions: Sessions,
+	highlighter: DiffsHighlighter,
+	language: string,
+	theme: string,
+): HighlightSession {
+	sessions.current?.tokenizer.dispose();
+	const session: HighlightSession = {
+		language,
+		theme,
+		foreground: highlighter.getTheme(theme).fg.toLowerCase(),
+		tokenizer: highlighter.createStreamTokenizer({
+			lang: language,
+			theme,
+			tokenizeMaxLineLength: TOKENIZE_MAX_LINE_LENGTH,
+		}),
+		code: "",
+		stable: [],
+		unstable: [],
+		rendered: [],
+	};
+	sessions.current = session;
+	return session;
+}
+
+/**
+ * Feeds `code` to the session and returns the rendered tokens, which always
+ * spell out exactly `code`. Called during render on purpose: the tokenizer
+ * only ever appends, and an identical `code` returns the previous render, so a
+ * repeated or discarded render cannot double-feed it.
+ */
+function highlight(
+	sessions: Sessions,
+	highlighter: DiffsHighlighter,
+	language: string,
+	theme: string,
+	code: string,
+): ReactNode {
+	const current = sessions.current;
+	const session =
+		current &&
+		current.language === language &&
+		current.theme === theme &&
+		code.startsWith(current.code)
+			? current
+			: startSession(sessions, highlighter, language, theme);
+	if (code === session.code) return session.rendered;
+
+	const result = session.tokenizer.enqueue(code.slice(session.code.length));
+	if (result instanceof Promise) {
+		// Every Shiki backend tokenizes synchronously; an asynchronous one could
+		// only color this text after the commit, so leave it plain instead.
+		void result.catch(() => undefined);
+		sessions.current = null;
+		session.tokenizer.dispose();
+		return code;
+	}
+
+	const { stable, unstable } = result;
+	for (const token of stable) session.stable.push(tokenNode(token, session.foreground));
+	session.unstable = unstable.map((token) => tokenNode(token, session.foreground));
+	session.code = code;
+	session.rendered = [...session.stable, ...session.unstable];
+	return session.rendered;
+}
+
+/**
+ * The colored tokens of `code`, or `code` itself past the size cap, until the
+ * grammar loads, or for a language Shiki lacks, so the text is always exactly
+ * the fence's code.
+ */
+function HighlightedCode({ code, language }: { readonly code: string; readonly language: string }) {
+	const { shiki: theme } = useDiffTheme();
+	const highlighter = useLoadedHighlighter(language, theme);
+	const sessions = useRef<HighlightSession | null>(null);
+
+	useEffect(
+		() => () => {
+			sessions.current?.tokenizer.dispose();
+			sessions.current = null;
+		},
+		[],
+	);
+
+	if (code.length > MAX_HIGHLIGHT_LENGTH) {
+		// The session cannot resume past the cap; release its tokenizer and elements.
+		sessions.current?.tokenizer.dispose();
+		sessions.current = null;
+		return code;
+	}
+	if (!highlighter) {
+		// A theme switch has no highlighter for a moment; keep the colors of the
+		// text already shown instead of flashing it plain.
+		const session = sessions.current;
+		return session?.language === language && session.code === code ? session.rendered : code;
+	}
+	return highlight(sessions, highlighter, language, theme, code);
+}
+
+/**
+ * A fenced code block colored by Shiki in the window's theme, rendered through
+ * the markdown `Pre`/`Code` it is given so chat styling and component
+ * decorators still apply. The highlighting state lives in a child: the
+ * memoized `Pre` only re-renders when the fence's markdown node changes, so a
+ * grammar or theme that loads later must update below it.
+ */
+export function HighlightedCodeBlock({
+	components: { Pre, Code },
+	language,
+	code,
+}: SyntaxHighlighterProps) {
+	const normalizedLanguage = language.trim().toLowerCase();
+	return (
+		<Pre data-qa-id="chat-code-block" data-language={normalizedLanguage || undefined}>
+			<Code>
+				<HighlightedCode code={code} language={normalizedLanguage} />
+			</Code>
+		</Pre>
+	);
+}

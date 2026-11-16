@@ -1,0 +1,136 @@
+{
+	"manifestVersion": 1,
+	"id": "kilo.workspace-board",
+	"displayName": "Workspace Board",
+	"version": "1.0.0",
+	"description": "The workspace board: sessions organised into columns you name.",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
+	"requires": {
+		"kilo.work-sessions/work-sessions": "optional",
+		"kilo.work-sessions/window": "optional",
+		"kilo.work-sessions/work-session-menu": "optional",
+		"kilo.work-sessions/work-session-list-action": "optional",
+		"kilo.work-sessions/work-sessions-view": "optional",
+		"kilo.work-sessions/workspaces": "optional",
+		"kilo.shell/dialog": "optional"
+	},
+	"domainObjects": [
+		{
+			"id": "board",
+			"home": "main",
+			"description": "The board's columns and the sessions placed in them."
+		}
+	],
+	"contributes": {
+		"extensions": {
+			"kilo.work-sessions/work-sessions-view": [
+				{
+					"id": "board",
+					"title": "Workspace Board",
+					"detachable": true,
+					"when": {
+						"all": ["kernel/flag:workspace-board"]
+					}
+				}
+			],
+			"kilo.work-sessions/work-session-list-action": [
+				{
+					"id": "board",
+					"when": {
+						"all": ["kernel/flag:workspace-board"]
+					}
+				}
+			],
+			"kilo.work-sessions/work-session-menu": [
+				{
+					"id": "add-to-board",
+					"title": "Add to board",
+					"when": {
+						"all": ["kernel/flag:workspace-board"]
+					}
+				},
+				{
+					"id": "move-on-board",
+					"title": "Move on board",
+					"when": {
+						"all": ["kernel/flag:workspace-board"]
+					}
+				},
+				{
+					"id": "remove-from-board",
+					"title": "Remove from board",
+					"when": {
+						"all": ["kernel/flag:workspace-board"]
+					}
+				}
+			],
+			"kilo.shell/dialog": [
+				{
+					"id": "clear-board",
+					"title": "Clear Workspace Board",
+					"when": {
+						"all": ["kernel/flag:workspace-board"]
+					}
+				}
+			],
+			"kernel/command": [
+				{
+					"id": "open",
+					"title": "Show or hide Workspace Board",
+					"category": "Workspace Board",
+					"order": 0,
+					"when": {
+						"all": ["kernel/flag:workspace-board"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "add-column",
+					"title": "Add column to Workspace Board",
+					"category": "Workspace Board",
+					"order": 1,
+					"when": {
+						"all": ["kernel/flag:workspace-board"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "clear",
+					"title": "Clear Workspace Board",
+					"category": "Workspace Board",
+					"order": 2,
+					"when": {
+						"all": ["kernel/flag:workspace-board"],
+						"none": ["kernel/secondaryWindow"]
+					}
+				}
+			],
+			"kernel/flag": [
+				{
+					"id": "workspace-board",
+					"description": "Shows the Workspace Board: work sessions organised into columns.",
+					"default": false
+				}
+			],
+			"kernel/telemetry-event": [
+				{
+					"id": "board-opened",
+					"name": "Workspace Board Opened"
+				},
+				{
+					"id": "board-session-placed",
+					"name": "Workspace Board Session Placed"
+				},
+				{
+					"id": "board-column-added",
+					"name": "Workspace Board Column Added"
+				},
+				{
+					"id": "board-cleared",
+					"name": "Workspace Board Cleared"
+				}
+			]
+		}
+	}
+}

@@ -1,0 +1,237 @@
+@import "tailwindcss";
+/* Design-system primitives, the kernel's React root, and bundled plugins live outside this package —
+   include their sources so Tailwind generates the utility classes they use. */
+@source "../../../packages/ui";
+@source "../../../packages/kernel/src";
+@source "../../../plugins";
+@import "tw-animate-css";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/manrope";
+@import "@fontsource-variable/source-code-pro";
+@import "shadcn/tailwind.css";
+@import "tw-shimmer";
+
+/* Palette tokens (surfaces, text, accent, status, sidebar, charts) come from
+   the selected app theme (APP_THEMES in app-themes.ts), injected as
+   `#app-theme`. This sheet owns only theme-independent roles and the roles
+   derived from the palette. */
+:root {
+	--font-sans: "Inter Variable", sans-serif;
+	--font-heading: "Manrope Variable", sans-serif;
+	--font-mono: "Source Code Pro Variable", monospace;
+	--radius: 0.625rem;
+	/* Status roles are text-strength colours: `--X` for text, icons and dots,
+	   `--X-foreground` for text on `--X-surface` tints. */
+	--info-surface: color-mix(in oklch, var(--info) 10%, transparent);
+	--success-surface: color-mix(in oklch, var(--success) 10%, transparent);
+	--warning-surface: color-mix(in oklch, var(--warning) 10%, transparent);
+	/* Defaults for the Appearance text-size settings, overridden inline on <html>. */
+	--app-ui-text-size: 13px;
+	--app-chat-text-size: 14px;
+	--shell-glass-opacity: 64%;
+	--window-controls-width: calc(
+		100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)
+	);
+	/* Titlebar rows centre on the traffic-light line (TITLEBAR_HEIGHT / 2 in
+	   ElectronWindow.ts) and never end above a Window Controls Overlay. */
+	--shell-titlebar-height: max(2.5rem, env(titlebar-area-height, 0px));
+	/* Quiet dividers (activity rails, code headers, nested rows). Derived so
+	   every theme's border weight carries through. */
+	--border-subtle: color-mix(in oklch, var(--border) 60%, transparent);
+	/* Interaction state scale: overlays, so one definition reads on every
+	   surface (shell glass, panes, popovers) in every theme and mode. Themes own
+	   solid surfaces and never restate these; one whose identity hue is not in
+	   its text may retint them through --state-tint. Selected is the session
+	   list's current row and an unfocused pane's shown tab; strong is the
+	   focused pane's tab. */
+	--state-tint: var(--foreground);
+	--state-hover: color-mix(in oklch, var(--state-tint) 4%, transparent);
+	--state-selected: color-mix(in oklch, var(--state-tint) 7%, transparent);
+	--state-selected-strong: color-mix(in oklch, var(--state-tint) 10%, transparent);
+	--ghost-hover: var(--state-hover);
+	/* Pane hairline: the island edge and its tab-row divider. */
+	--pane-hairline: color-mix(in oklch, var(--foreground) 15%, transparent);
+	/* Pane frames override these locally; outside a pane they fall back to the
+	   page and card surfaces. */
+	--pane-surface: var(--background);
+	--pane-raised: var(--card);
+	/* The sidebar's hover wash; selected rows step up to --state-selected. */
+	--sidebar-accent: var(--state-hover);
+	--composer-shadow: 0 12px 28px -18px rgb(0 0 0 / 0.4);
+	--composer-shelf-shadow: 0 8px 24px -20px rgb(0 0 0 / 0.7);
+}
+
+[data-theme="dark"] {
+	--shell-glass-opacity: 80%;
+	/* Dark glass reads by its stroke; the drop shadow only muddies it. */
+	--composer-shadow: 0 0 #0000;
+}
+
+@layer base {
+	* {
+		@apply border-border outline-ring/50;
+	}
+	body {
+		/* Let Electron vibrancy / mica show through the app shell. */
+		@apply text-foreground m-0 min-h-screen min-w-80 bg-transparent font-sans;
+	}
+	button:not(:disabled, [role="checkbox"], [role="radio"]),
+	[role="button"]:not(:disabled) {
+		@apply cursor-pointer;
+	}
+	/* Standard scrollbar properties only: Chromium ignores every
+	   ::-webkit-scrollbar rule on an element whose (inherited)
+	   scrollbar-color or scrollbar-width is set, so mixing the two is dead code. */
+	* {
+		scrollbar-width: thin;
+	}
+	html {
+		@apply font-sans antialiased;
+		scrollbar-color: var(--app-scrollbar-thumb) transparent;
+	}
+}
+
+/* App chrome over native window materials. Tint lives on `html` (also in
+   criticalThemeStyle) so reload first-paint matches the loaded shell.
+   `.app-shell-glass` stays a semantic marker; no second fill. */
+html {
+	--shell-glass-surface: var(--sidebar);
+	background: color-mix(
+		in srgb,
+		var(--shell-glass-surface) var(--shell-glass-opacity),
+		transparent
+	);
+}
+
+.app-shell-glass {
+	background: transparent;
+}
+
+/* Electron titlebar drag. Keep the region on an ancestor that is NOT inside
+   `overflow: hidden` / `transform` / `filter` — those break hit-testing.
+   Interactive descendants opt out so buttons stay clickable. */
+.drag-region {
+	-webkit-app-region: drag;
+}
+
+.drag-region :is(button, a, input, textarea, select, [role="button"]) {
+	-webkit-app-region: no-drag;
+}
+
+/* Hairline edge for panes on the shell glass: one device pixel on HiDPI, and
+   a ring so it follows the radius without shifting layout. */
+@utility pane-edge {
+	@apply ring-[0.5px] ring-(--pane-hairline);
+}
+
+@utility titlebar-row {
+	height: var(--shell-titlebar-height);
+	padding-top: calc(3rem - var(--shell-titlebar-height));
+}
+
+@custom-variant dark (&:is([data-theme="dark"] *));
+
+@custom-variant data-open (&:where([data-state="open"], [data-open]:not([data-open="false"])));
+
+@custom-variant data-closed (&:where([data-state="closed"], [data-closed]:not([data-closed="false"])));
+
+@theme inline {
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+	--color-sidebar: var(--sidebar);
+	--color-sidebar-foreground: var(--sidebar-foreground);
+	--color-sidebar-primary: var(--sidebar-primary);
+	--color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+	--color-sidebar-accent: var(--sidebar-accent);
+	--color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+	--color-sidebar-border: var(--sidebar-border);
+	--color-sidebar-ring: var(--sidebar-ring);
+	--color-chart-1: var(--chart-1);
+	--color-chart-2: var(--chart-2);
+	--color-chart-3: var(--chart-3);
+	--color-chart-4: var(--chart-4);
+	--color-chart-5: var(--chart-5);
+	--color-info: var(--info);
+	--color-info-foreground: var(--info-foreground);
+	--color-primary-ink: var(--primary-ink);
+	--color-primary-ink-foreground: var(--primary-ink-foreground);
+	--color-primary-soft: var(--primary-soft);
+	--color-primary-soft-foreground: var(--primary-soft-foreground);
+	--color-primary-brand: var(--primary-brand);
+	--color-primary-brand-foreground: var(--primary-brand-foreground);
+	--color-primary-brand-edge: var(--primary-brand-edge);
+	--color-primary-brand-badge: var(--primary-brand-badge);
+	--color-primary-brand-badge-foreground: var(--primary-brand-badge-foreground);
+	--color-info-surface: var(--info-surface);
+	--color-success: var(--success);
+	--color-success-foreground: var(--success-foreground);
+	--color-success-surface: var(--success-surface);
+	--color-warning: var(--warning);
+	--color-warning-foreground: var(--warning-foreground);
+	--color-warning-surface: var(--warning-surface);
+	--color-border-subtle: var(--border-subtle);
+	--color-pane: var(--pane-surface);
+	--color-pane-raised: var(--pane-raised);
+	--color-state-hover: var(--state-hover);
+	--color-state-selected: var(--state-selected);
+	--color-state-selected-strong: var(--state-selected-strong);
+	--shadow-composer: var(--composer-shadow);
+	--shadow-composer-shelf: var(--composer-shelf-shadow);
+	--font-sans: var(--font-sans);
+	--font-mono: var(--font-mono);
+	--font-heading: var(--font-heading);
+	--radius-xs: calc(var(--radius) * 0.2);
+	--radius-sm: calc(var(--radius) * 0.6);
+	--radius-md: calc(var(--radius) * 0.8);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) * 1.4);
+	--radius-2xl: calc(var(--radius) * 1.8);
+	--radius-3xl: calc(var(--radius) * 2.2);
+	--radius-4xl: calc(var(--radius) * 2.6);
+	/* px offsets from the text-size setting; spacing stays rem so layouts do not move. */
+	--text-2xs: calc(var(--app-ui-text-size) - 2px);
+	--text-2xs--line-height: calc(var(--app-ui-text-size) + 3px);
+	--text-xs: calc(var(--app-ui-text-size) - 1px);
+	--text-xs--line-height: calc(var(--app-ui-text-size) + 3px);
+	--text-sm: var(--app-ui-text-size);
+	--text-sm--line-height: calc(var(--app-ui-text-size) + 7px);
+	--text-base: calc(var(--app-ui-text-size) + 3px);
+	--text-base--line-height: calc(var(--app-ui-text-size) + 11px);
+	--text-lg: calc(var(--app-ui-text-size) + 5px);
+	--text-lg--line-height: calc(var(--app-ui-text-size) + 15px);
+	--text-xl: calc(var(--app-ui-text-size) + 7px);
+	--text-xl--line-height: calc(var(--app-ui-text-size) + 15px);
+
+	@keyframes collapsible-down {
+		from {
+			height: 0;
+		}
+		to {
+			height: var(--radix-collapsible-content-height, var(--collapsible-panel-height, auto));
+		}
+	}
+	@keyframes collapsible-up {
+		from {
+			height: var(--radix-collapsible-content-height, var(--collapsible-panel-height, auto));
+		}
+		to {
+			height: 0;
+		}
+	}
+}

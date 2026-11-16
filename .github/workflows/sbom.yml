@@ -1,0 +1,143 @@
+# On-demand shipped-product SBOM generation (backfills and reruns): merged
+# Syft+Trivy SBOMs (CycloneDX 1.6 + SPDX 2.3) of the packaged Electron app as
+# build artifacts. Releases generate SBOMs automatically in publish_helper.yml's
+# sbom job from the published app trees; this workflow rebuilds the current ref.
+# The app is packaged with the same track config as a release build
+# (RELEASE_TRACK + the track environment's UPDATE_PUBLISH_URL), so the SBOM
+# describes what that track ships.
+
+name: SBOM
+
+on:
+  workflow_dispatch:
+    inputs:
+      track:
+        description: Release track whose build configuration to package
+        required: true
+        default: stable
+        type: choice
+        options:
+          - stable
+          - preview
+
+concurrency:
+  group: sbom-${{ github.ref }}-${{ inputs.track }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  sbom:
+    strategy:
+      fail-fast: false
+      # Keep in sync with the release matrix in publish_helper.yml: every
+      # shipped target needs an SBOM. Forge packages for the runner's own
+      # arch, so each arch needs a native runner.
+      matrix:
+        include:
+          - target: mac
+            os: mac
+            runner: macos-latest
+          - target: windows
+            os: windows
+            runner: WinLatest-x64-8vCPU-32GB
+          - target: windows-arm64
+            os: windows
+            runner: windows-11-vs2026-arm
+          - target: linux
+            os: linux
+            runner: ubuntu-latest
+          - target: linux-arm64
+            os: linux
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    # Same environment mapping as publish_helper.yml. The environment supplies
+    # the track's build config (UPDATE_PUBLISH_URL) and, later, the S3 upload
+    # role; this job deploys nothing, so it must not record a deployment.
+    environment:
+      name: ${{ inputs.track == 'stable' && 'production' || 'preview' }}
+      deployment: false
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    env:
+      NODE_AUTH_TOKEN: ${{ secrets.ANACONDA_PACKAGES_TOKEN }}
+      RELEASE_TRACK: ${{ inputs.track }}
+      UPDATE_PUBLISH_URL: ${{ vars.UPDATE_PUBLISH_URL }}
+      UPDATE_PUBLISH_URL_PREVIEW: ${{ vars.UPDATE_PUBLISH_URL_PREVIEW }}
+      UPDATE_PUBLISH_URL_STABLE: ${{ vars.UPDATE_PUBLISH_URL_STABLE }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node and pnpm
+        uses: ./.github/actions/setup-node-pnpm
+
+      - name: Install maker prerequisites
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes fakeroot libsecret-1-dev pkg-config
+
+      # SBOMs only need the packaged (unsigned) app tree; production signing /
+      # notarization / Azure Key Vault secrets are intentionally not wired in.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Stable builds require an explicit RELEASE_VERSION; release.yml takes it
+      # from the committed package.json version, so mirror that here.
+      - name: Resolve Stable release version
+        if: inputs.track == 'stable'
+        shell: bash
+        run: echo "RELEASE_VERSION=$(node -p "require('./apps/desktop/package.json').version")" >> "$GITHUB_ENV"
+
+      # Mirrors publish_helper.yml so the packaged app and SBOM name carry the
+      # track's publish version. One build time per run keeps every Preview
+      # leg on the same version, as in release.yml.
+      - name: Resolve shared Preview build time
+        if: inputs.track == 'preview'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          preview_build_time=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .created_at)
+          echo "PREVIEW_BUILD_TIME=$preview_build_time" >> "$GITHUB_ENV"
+
+      - name: Align release package versions
+        run: pnpm --filter @kilo-desktop/desktop exec tsx config/desktop-version.ts
+
+      - name: Refresh release lockfile
+        run: pnpm install --lockfile-only --ignore-scripts
+
+      - uses: ./plugins/notebook/actions/setup-native
+
+      - uses: ./plugins/core/actions/setup-cli
+
+      - uses: ./.github/actions/cache-electron-rebuild
+
+      - name: Package
+        run: pnpm run package
+
+      - name: Locate packaged app
+        id: packaged
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_VERSION=$(node -p "require('./apps/desktop/package.json').version") \
+            bash .github/actions/generate-sbom/locate-packaged-app.sh apps/desktop/out >> "$GITHUB_OUTPUT"
+
+      - name: Generate SBOM
+        id: sbom
+        uses: ./.github/actions/generate-sbom
+        with:
+          scan-path: ${{ steps.packaged.outputs.app-dir }}
+          sbom-name: ${{ steps.packaged.outputs.sbom-name }}
+          asar-path: ${{ steps.packaged.outputs.asar-path }}
+          upload-artifact: "true"
+          artifact-retention-days: "90"
+          fetch-remote-licenses: "true"

@@ -1,0 +1,29 @@
+{
+	"name": "@kilo-desktop/git-client",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "Node-only git client — exec with error normalization, typed status parsing",
+	"author": "Anaconda, Inc.",
+	"license": "SEE LICENSE IN ../../LICENSE.md",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"check": "tsc --noEmit -p tsconfig.json",
+		"test": "vitest run",
+		"test:platform": "vitest run",
+		"coverage": "vitest run --coverage"
+	},
+	"dependencies": {
+		"@types/semver": "^7",
+		"@types/which": "^3.0.4",
+		"semver": "catalog:",
+		"which": "catalog:"
+	},
+	"devDependencies": {
+		"@vitest/coverage-v8": "catalog:",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	}
+}

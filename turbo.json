@@ -1,0 +1,50 @@
+{
+	"$schema": "https://v2-11-8.turborepo.dev/schema.json",
+	"futureFlags": {
+		"affectedUsingTaskInputs": true,
+		"globalConfiguration": true
+	},
+	"global": {
+		"inputs": ["tsconfig.base.json", "pnpm-workspace.yaml", "pnpm-lock.yaml", ".nvmrc"]
+	},
+	"tasks": {
+		"transit": {
+			"dependsOn": ["^transit"]
+		},
+		"check": {
+			"dependsOn": ["transit"],
+			"inputs": ["$TURBO_DEFAULT$"],
+			"outputs": ["node_modules/.cache/tsconfig.tsbuildinfo"]
+		},
+		"test": {
+			"dependsOn": ["transit"],
+			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.coverage.shared.mjs"],
+			"outputs": []
+		},
+		"coverage": {
+			"dependsOn": ["transit"],
+			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.coverage.shared.mjs"],
+			"outputs": ["coverage/**"]
+		},
+		"test:platform": {
+			"dependsOn": ["transit"],
+			"inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/vitest.coverage.shared.mjs"],
+			"outputs": []
+		},
+		"build": {
+			"dependsOn": ["^build"],
+			"outputs": ["dist/**"],
+			"env": ["SENTRY_AUTH_TOKEN", "SENTRY_ORG", "SENTRY_PROJECT", "APP_MODE", "NODE_ENV"]
+		},
+		"db:generate": {
+			"cache": false
+		},
+		"fetch-cli": {
+			"cache": false
+		},
+		"dev": {
+			"persistent": true,
+			"cache": false
+		}
+	}
+}

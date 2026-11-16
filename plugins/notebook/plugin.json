@@ -1,0 +1,158 @@
+{
+	"manifestVersion": 1,
+	"id": "kilo.notebook",
+	"displayName": "Notebooks",
+	"version": "1.0.0",
+	"description": "Analyze data with interactive Python notebooks in a session's panes.",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
+	"requires": {
+		"kilo.core/tool": "optional",
+		"kilo.core/agent-extension": "optional",
+		"kilo.core/server-env": "optional",
+		"kilo.work-sessions/work-sessions": "optional",
+		"kilo.work-sessions/workspaces": "optional",
+		"kilo.work-sessions/panes": "optional",
+		"kilo.work-sessions/window": "optional",
+		"kilo.work-sessions/pane-kind": "optional",
+		"kilo.work-sessions/opener": "optional",
+		"kilo.chat/permission-renderer": "optional",
+		"kilo.shell/theme": "optional",
+		"kilo.shell/settings-section": "optional"
+	},
+	"permissions": {
+		"host": ["dialogs", "os"],
+		"embeddedHosts": ["notebook"]
+	},
+	"domainObjects": [
+		{
+			"id": "notebooks",
+			"home": "main",
+			"description": "The notebook runtime and the notebooks Notebook panes show: status, saving, settings."
+		}
+	],
+	"contributes": {
+		"extensions": {
+			"kilo.work-sessions/pane-kind": [
+				{
+					"id": "notebook",
+					"title": "Notebook",
+					"description": "Analyze data with interactive Python notebooks.",
+					"launch": {
+						"newSession": true,
+						"inSession": true
+					},
+					"keepAlive": true,
+					"layoutKind": "notebook",
+					"order": 50,
+					"openCommand": "kilo.notebook/open",
+					"availableWhen": {
+						"all": ["kilo.core/signedIn"]
+					},
+					"unavailableHint": "Sign in to Kilo to use embedded notebooks."
+				}
+			],
+			"kernel/command": [
+				{
+					"id": "open",
+					"title": "Open notebook",
+					"category": "Notebooks",
+					"keybinding": "Mod+Shift+J",
+					"when": {
+						"all": ["kilo.work-sessions/paneTargetActive", "kilo.core/signedIn"]
+					}
+				}
+			],
+			"kilo.work-sessions/opener": [
+				{
+					"id": "ipynb-file",
+					"match": {
+						"type": "kilo.work-sessions/file",
+						"pattern": "*.ipynb"
+					},
+					"pane": "kilo.notebook/notebook"
+				}
+			],
+			"kernel/service": [
+				{
+					"id": "runtimed",
+					"title": "Notebook runtime",
+					"kind": "daemon",
+					"startOn": "first-use",
+					"restart": {
+						"policy": "never"
+					}
+				}
+			],
+			"kilo.core/agent-extension": [
+				{
+					"id": "kilo-plugin",
+					"type": "kilo-plugin",
+					"path": "${resources}/kilo-plugin/index.js"
+				}
+			],
+			"kilo.core/server-env": [
+				{
+					"id": "runtimed"
+				}
+			],
+			"kilo.core/tool": [
+				{
+					"id": "list_open",
+					"title": "List open notebooks",
+					"requiresSignIn": true,
+					"signInPrompt": {
+						"title": "Sign in to use embedded notebooks?",
+						"body": "The agent wants to use Desktop's notebook tools. To use embedded notebooks, you must sign in to a Kilo account. Do you want to sign in?",
+						"toolsLabel": "Desktop's notebook tools"
+					},
+					"readOnly": true,
+					"external": false
+				},
+				{
+					"id": "open",
+					"title": "Open notebook",
+					"requiresSignIn": true,
+					"signInPrompt": {
+						"title": "Sign in to use embedded notebooks?",
+						"body": "The agent wants to use Desktop's notebook tools. To use embedded notebooks, you must sign in to a Kilo account. Do you want to sign in?",
+						"toolsLabel": "Desktop's notebook tools"
+					},
+					"external": false
+				},
+				{
+					"id": "open_file",
+					"title": "Open notebook file",
+					"requiresSignIn": true,
+					"signInPrompt": {
+						"title": "Sign in to use embedded notebooks?",
+						"body": "The agent wants to use Desktop's notebook tools. To use embedded notebooks, you must sign in to a Kilo account. Do you want to sign in?",
+						"toolsLabel": "Desktop's notebook tools"
+					},
+					"external": false
+				}
+			],
+			"kilo.shell/settings-section": [
+				{
+					"id": "notebooks",
+					"title": "Notebooks",
+					"description": "Analyze data with interactive Python notebooks.",
+					"priority": 75
+				}
+			],
+			"kernel/flag": [
+				{
+					"id": "notebook-host-telemetry",
+					"description": "Lets the notebook runtime send its own telemetry, when the person allows data collection.",
+					"default": false
+				}
+			],
+			"kilo.chat/permission-renderer": [
+				{
+					"id": "execute",
+					"permissions": ["notebooks_execute"]
+				}
+			]
+		}
+	}
+}

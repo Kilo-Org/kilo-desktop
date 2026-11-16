@@ -1,0 +1,413 @@
+{
+	"manifestVersion": 1,
+	"id": "kilo.shell",
+	"displayName": "Shell",
+	"version": "1.0.0",
+	"description": "The window, settings, onboarding, account, AI providers, updates and About: everything the user sees of kilo.core.",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
+	"requires": {
+		"kilo.core/account": "optional",
+		"kilo.core/terms": "optional",
+		"kilo.core/models": "optional",
+		"kilo.core/external-apps": "optional",
+		"kilo.core/work-style": "optional",
+		"kilo.core/server": "optional"
+	},
+	"permissions": {
+		"host": ["appearance", "windows", "app-menu", "os", "updater", "clipboard", "data-collection"]
+	},
+	"extensionPoints": [
+		{
+			"id": "main",
+			"kind": "exclusive",
+			"description": "The main area of the window, shown when the app opens."
+		},
+		{
+			"id": "left-sidebar",
+			"kind": "exclusive",
+			"description": "The left sidebar's body."
+		},
+		{
+			"id": "sidebar-notice",
+			"kind": "additive",
+			"description": "Something to act on, at the foot of the left sidebar."
+		},
+		{
+			"id": "status-bar-item",
+			"kind": "additive",
+			"description": "Ambient status in the window's status bar: a view, an action or a popover."
+		},
+		{
+			"id": "top-bar-title",
+			"kind": "exclusive",
+			"description": "What names the main area in the window's top bar, in place of its title."
+		},
+		{
+			"id": "top-bar-action",
+			"kind": "additive",
+			"description": "Actions at the right of the window's top bar."
+		},
+		{
+			"id": "right-sidebar-panel",
+			"kind": "additive",
+			"description": "A panel in the right sidebar, opened from its icon in the rail."
+		},
+		{
+			"id": "dialog",
+			"kind": "additive",
+			"description": "An app-wide dialog opened by command."
+		},
+		{
+			"id": "settings-category",
+			"kind": "additive",
+			"description": "A heading in the Settings sidebar."
+		},
+		{
+			"id": "settings-section",
+			"kind": "additive",
+			"description": "A Settings page."
+		},
+		{
+			"id": "ai-provider-panel",
+			"kind": "additive",
+			"description": "An AI provider's panel in Settings → AI Providers."
+		},
+		{
+			"id": "account-panel",
+			"kind": "additive",
+			"description": "An account in Settings → Account."
+		},
+		{
+			"id": "about-section",
+			"kind": "additive",
+			"description": "A block of Settings → About."
+		},
+		{
+			"id": "support-row",
+			"kind": "additive",
+			"description": "A row in About → Support."
+		},
+		{
+			"id": "onboarding-step",
+			"kind": "additive",
+			"description": "A first-run onboarding step."
+		},
+		{
+			"id": "menu-item",
+			"kind": "additive",
+			"description": "A command in the native app menu."
+		},
+		{
+			"id": "deep-link",
+			"kind": "additive",
+			"description": "An app URL host routed to a page."
+		}
+	],
+	"domainObjects": [
+		{
+			"id": "appearance",
+			"home": "main",
+			"description": "Saved appearance preferences."
+		},
+		{
+			"id": "theme",
+			"home": "renderer",
+			"description": "The effective theme in this window."
+		},
+		{
+			"id": "navigation",
+			"home": "main",
+			"description": "Where each window is, and requests to move one."
+		},
+		{
+			"id": "notifications",
+			"home": "main",
+			"description": "Toasts and in-app notices."
+		},
+		{
+			"id": "onboarding",
+			"home": "main",
+			"description": "Whether onboarding was finished or skipped."
+		},
+		{
+			"id": "legal",
+			"home": "main",
+			"description": "The legal documents shipped with the app, shown in About → Legal."
+		}
+	],
+	"contributes": {
+		"extensions": {
+			"kernel/root": [
+				{
+					"id": "frame"
+				}
+			],
+			"kernel/command": [
+				{
+					"id": "show-shortcuts",
+					"title": "Show keyboard shortcuts",
+					"category": "App",
+					"order": 10,
+					"keybinding": "Mod+/",
+					"when": {
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "open-settings",
+					"title": "Open settings",
+					"category": "App",
+					"order": 20,
+					"keybinding": "Mod+,"
+				},
+				{
+					"id": "toggle-sidebar",
+					"title": "Show or hide the sidebar",
+					"category": "App",
+					"order": 30,
+					"keybinding": {
+						"mac": "Mod+B",
+						"default": "Ctrl+Shift+S"
+					},
+					"when": {
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "close-window",
+					"title": "Close window",
+					"category": "App",
+					"order": 40,
+					"keybinding": {
+						"mac": "Mod+W",
+						"default": "Ctrl+Shift+W"
+					},
+					"when": {
+						"all": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "command-palette",
+					"title": "Show all commands",
+					"category": "App",
+					"order": 50,
+					"keybinding": "Mod+Shift+P",
+					"palette": false,
+					"when": {
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "go-home",
+					"title": "Go home",
+					"category": "App",
+					"order": 60,
+					"when": {
+						"none": ["kernel/secondaryWindow"]
+					}
+				},
+				{
+					"id": "restart-server",
+					"title": "Restart Kilo",
+					"category": "Kilo",
+					"order": 10
+				}
+			],
+			"kernel/flag": [
+				{
+					"id": "update-track-switcher",
+					"description": "Lets people switch between the stable and preview update tracks.",
+					"default": false
+				},
+				{
+					"id": "beta-badges",
+					"description": "Shows the Beta badges: beside the sidebar toggle, on Settings → About and the onboarding wordmark.",
+					"default": false
+				}
+			],
+			"kernel/telemetry-event": [
+				{
+					"id": "page-visit",
+					"name": "Page Visit"
+				},
+				{
+					"id": "onboarding-shown",
+					"name": "Onboarding Shown"
+				},
+				{
+					"id": "onboarding-completed",
+					"name": "Onboarding Completed"
+				},
+				{
+					"id": "onboarding-skipped",
+					"name": "Onboarding Skipped"
+				},
+				{
+					"id": "work-style-shown",
+					"name": "Work Style Onboarding Shown"
+				},
+				{
+					"id": "work-style-selected",
+					"name": "Work Style Selected"
+				}
+			],
+			"kilo.shell/settings-category": [
+				{
+					"id": "general",
+					"title": "General",
+					"priority": 300
+				},
+				{
+					"id": "ai",
+					"title": "AI",
+					"priority": 200
+				}
+			],
+			"kilo.shell/settings-section": [
+				{
+					"id": "about",
+					"title": "About",
+					"description": "Check the app version, manage updates, and find application logs.",
+					"priority": 110,
+					"when": {
+						"all": ["kernel/desktop"]
+					}
+				},
+				{
+					"id": "account",
+					"title": "Account",
+					"description": "See where you are signed in and manage your accounts.",
+					"priority": 105
+				},
+				{
+					"id": "appearance",
+					"title": "Appearance",
+					"description": "Choose how Kilo looks on this device.",
+					"priority": 100
+				},
+				{
+					"id": "keyboard-shortcuts",
+					"title": "Shortcuts",
+					"description": "See, change, or turn off the app's keyboard shortcuts.",
+					"priority": 65
+				},
+				{
+					"id": "privacy",
+					"title": "Privacy",
+					"description": "Control usage analytics and crash reporting on this device.",
+					"priority": 70,
+					"when": {
+						"all": ["kernel/desktop"]
+					}
+				},
+				{
+					"id": "ai-providers",
+					"title": "AI Providers",
+					"description": "Choose where your models come from.",
+					"category": "kilo.shell/ai",
+					"priority": 90
+				},
+				{
+					"id": "external-ai-apps",
+					"title": "External AI apps",
+					"description": "Let apps like Cursor and Claude Code use Kilo Desktop's tools.",
+					"category": "kilo.shell/ai",
+					"priority": 70,
+					"when": {
+						"all": ["kernel/flag:external-api-apps-settings"]
+					}
+				}
+			],
+			"kilo.shell/account-panel": [
+				{
+					"id": "kilo",
+					"priority": 100
+				}
+			],
+			"kilo.shell/ai-provider-panel": [
+				{
+					"id": "kilo-gateway",
+					"aiProviderId": "kilo"
+				}
+			],
+			"kilo.shell/about-section": [
+				{
+					"id": "version",
+					"priority": 300
+				},
+				{
+					"id": "support",
+					"priority": 200
+				},
+				{
+					"id": "legal",
+					"priority": 100
+				}
+			],
+			"kilo.shell/support-row": [
+				{
+					"id": "kilo-config"
+				}
+			],
+			"kilo.shell/sidebar-notice": [
+				{
+					"id": "update-ready"
+				}
+			],
+			"kilo.shell/onboarding-step": [
+				{
+					"id": "welcome",
+					"label": "Welcome",
+					"layout": "splash",
+					"priority": 1000,
+					"required": {
+						"none": ["kilo.core/termsAccepted"]
+					}
+				},
+				{
+					"id": "sign-in",
+					"label": "Sign in",
+					"priority": 900
+				},
+				{
+					"id": "work-style",
+					"label": "Work style",
+					"priority": 800
+				},
+				{
+					"id": "features",
+					"label": "Features",
+					"priority": 100
+				}
+			],
+			"kilo.shell/menu-item": [
+				{
+					"id": "settings",
+					"command": "kilo.shell/open-settings",
+					"menu": "app",
+					"label": "Settings…"
+				},
+				{
+					"id": "command-palette",
+					"command": "kilo.shell/command-palette",
+					"menu": "view",
+					"group": "app",
+					"priority": 20
+				},
+				{
+					"id": "toggle-sidebar",
+					"command": "kilo.shell/toggle-sidebar",
+					"menu": "view",
+					"group": "app",
+					"priority": 10
+				},
+				{
+					"id": "show-shortcuts",
+					"command": "kilo.shell/show-shortcuts",
+					"menu": "help"
+				}
+			]
+		}
+	}
+}

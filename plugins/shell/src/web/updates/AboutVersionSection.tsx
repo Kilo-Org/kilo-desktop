@@ -1,0 +1,286 @@
+import { useState } from "react";
+import { DownloadIcon } from "lucide-react";
+
+import { useContextKey } from "@kilo-desktop/kernel/web";
+import { Badge } from "@kilo-desktop/ui/components/badge";
+import { Button } from "@kilo-desktop/ui/components/button";
+import { SkeletonText } from "@kilo-desktop/ui/components/skeleton";
+import { FieldLegend, FieldSet } from "@kilo-desktop/ui/components/field";
+import { SummaryCard } from "@kilo-desktop/ui/components/summary-card";
+import {
+	Select,
+	SelectContent,
+	SelectGroup,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@kilo-desktop/ui/components/select";
+import { toast } from "@kilo-desktop/ui/components/sonner";
+import { Spinner } from "@kilo-desktop/ui/components/spinner";
+
+import type { UpdaterState as DesktopUpdateState } from "@kilo-desktop/kernel";
+
+import { BETA_BADGES_FLAG, UPDATE_TRACK_SWITCHER_FLAG } from "../../contracts";
+import { InstallUpdateDialog } from "./InstallUpdateDialog";
+import { hasVisibleReleaseNotes, ReleaseNotesList } from "./ReleaseNotesList";
+import { updateAvailableLabel } from "./updateActions";
+import { useOpenDownload } from "./useOpenDownload";
+import { useUpdates } from "./useUpdates";
+
+/**
+ * Settings → About's top block, contributed to `kilo.shell/about-section`:
+ * the version, the update check, install or download (where the app can't
+ * install updates itself), the update track (behind its
+ * flag) and the release notes worth reading.
+ */
+export function AboutVersionSection() {
+	const updates = useUpdates();
+	const canSwitchTrack = useContextKey(`kernel/flag:${UPDATE_TRACK_SWITCHER_FLAG}`);
+	const beta = useContextKey(`kernel/flag:${BETA_BADGES_FLAG}`);
+	const state = updates?.state;
+	const releaseNotesVersion =
+		state?.downloadedVersion ??
+		state?.availableVersion ??
+		state?.releaseNotes.find(hasVisibleReleaseNotes)?.version;
+	const [pending, setPending] = useState(false);
+	const [confirmOpen, setConfirmOpen] = useState(false);
+	const openDownload = useOpenDownload();
+	const downloadUrl = state?.status === "available" ? state.downloadUrl : null;
+	const updateBusy = pending || state?.status === "checking" || state?.status === "downloading";
+
+	const check = async () => {
+		if (!updates || pending) return;
+		setPending(true);
+		try {
+			const result = await updates.check();
+			if (!result.accepted && result.state.status !== "downloaded") {
+				toast.info("An update check is already in progress.");
+			}
+		} catch (error) {
+			toast.error("Could not check for updates", {
+				description: error instanceof Error ? error.message : "An unexpected error occurred.",
+			});
+		} finally {
+			setPending(false);
+		}
+	};
+
+	const setTrack = async (track: string | null) => {
+		if (!updates || pending || !track || track === state?.track) return;
+		setPending(true);
+		try {
+			const result = await updates.setTrack(track);
+			if (!result.accepted) {
+				toast.error("Could not change update track", {
+					description: result.state.message ?? "The update track could not be changed.",
+				});
+			}
+		} catch (error) {
+			toast.error("Could not change update track", {
+				description: error instanceof Error ? error.message : "An unexpected error occurred.",
+			});
+		} finally {
+			setPending(false);
+		}
+	};
+
+	const install = async () => {
+		if (!updates || !state) return;
+		try {
+			const result = await updates.install();
+			if (!result.accepted || result.state.message) {
+				toast.error("Could not install update", {
+					description: result.state.message ?? undefined,
+				});
+			}
+		} catch (error) {
+			toast.error("Could not install update", {
+				description: error instanceof Error ? error.message : "An unexpected error occurred.",
+			});
+		}
+	};
+
+	return (
+		<>
+			<section
+				className="border-border bg-card divide-border min-w-0 divide-y overflow-hidden rounded-lg border"
+				data-qa-id="about-version"
+			>
+				<div>
+					<SummaryCard.Row>
+						<SummaryCard.Content>
+							<SummaryCard.Title>
+								Version
+								{state ? (
+									<code className="text-muted-foreground text-2xs font-medium">
+										{state.currentVersion}
+									</code>
+								) : (
+									<SkeletonText className="text-2xs w-12" />
+								)}
+								{beta ? (
+									<Badge variant="soft" data-qa-id="about-beta-badge">
+										Beta
+									</Badge>
+								) : null}
+							</SummaryCard.Title>
+							{state ? (
+								<SummaryCard.Description data-qa-id="update-status-message">
+									{getUpdateDescription(state)}
+								</SummaryCard.Description>
+							) : (
+								<SummaryCard.Description
+									role="status"
+									aria-busy="true"
+									aria-label="Loading update information"
+									data-qa-id="update-status-message"
+								>
+									<SkeletonText className="w-56" />
+								</SummaryCard.Description>
+							)}
+						</SummaryCard.Content>
+						<SummaryCard.Actions>
+							{state?.status === "downloaded" ? (
+								<Button size="sm" data-qa-id="update-install" onClick={() => setConfirmOpen(true)}>
+									Restart to update
+								</Button>
+							) : downloadUrl ? (
+								<Button
+									size="sm"
+									data-qa-id="update-download"
+									onClick={() => void openDownload(downloadUrl)}
+								>
+									<DownloadIcon data-icon="inline-start" aria-hidden="true" />
+									Download
+								</Button>
+							) : (
+								<Button
+									size="sm"
+									variant="outline"
+									disabled={!state?.enabled || updateBusy}
+									data-qa-id="update-check"
+									onClick={() => void check()}
+								>
+									{pending || state?.status === "checking" || state?.status === "downloading" ? (
+										<Spinner data-icon="inline-start" aria-hidden="true" />
+									) : null}
+									{getUpdateButtonLabel(state, pending)}
+								</Button>
+							)}
+						</SummaryCard.Actions>
+					</SummaryCard.Row>
+				</div>
+				{canSwitchTrack ? (
+					<div>
+						<SummaryCard.Row>
+							<SummaryCard.Content>
+								<SummaryCard.Title>
+									<label htmlFor="update-track">Update track</label>
+								</SummaryCard.Title>
+								<SummaryCard.Description>
+									Use stable releases or preview builds.
+								</SummaryCard.Description>
+							</SummaryCard.Content>
+							<SummaryCard.Actions>
+								<Select
+									value={state?.track ?? "preview"}
+									items={[
+										{ value: "stable", label: "Stable" },
+										{ value: "preview", label: "Preview" },
+									]}
+									onValueChange={(track) => void setTrack(track)}
+								>
+									<SelectTrigger
+										id="update-track"
+										size="sm"
+										aria-label="Update track"
+										className="w-36"
+										disabled={!state?.enabled || updateBusy || state?.status === "downloaded"}
+										data-qa-id="update-track"
+									>
+										{state ? <SelectValue /> : <SkeletonText className="w-14" />}
+									</SelectTrigger>
+									<SelectContent align="end">
+										<SelectGroup>
+											<SelectItem value="stable" data-qa-id="update-track-stable">
+												Stable
+											</SelectItem>
+											<SelectItem value="preview" data-qa-id="update-track-preview">
+												Preview
+											</SelectItem>
+										</SelectGroup>
+									</SelectContent>
+								</Select>
+							</SummaryCard.Actions>
+						</SummaryCard.Row>
+					</div>
+				) : null}
+
+				{state?.releaseNotes.some(hasVisibleReleaseNotes) ? (
+					// Native fieldsets paint their border and background from the legend's
+					// midline, so the surface lives on this wrapper instead.
+					<div className="bg-background/60 p-4">
+						<FieldSet data-qa-id="update-release-notes">
+							<FieldLegend className="flex items-baseline gap-2">
+								What's changed
+								<code className="text-muted-foreground text-2xs font-medium">
+									{releaseNotesVersion}
+								</code>
+							</FieldLegend>
+							<div className="scroll-fade-y max-h-64 min-h-0 overflow-y-auto">
+								<ReleaseNotesList
+									notes={state.releaseNotes}
+									targetVersion={releaseNotesVersion}
+									showHeading={false}
+								/>
+							</div>
+						</FieldSet>
+					</div>
+				) : null}
+			</section>
+			{state ? (
+				<InstallUpdateDialog
+					open={confirmOpen}
+					onOpenChange={setConfirmOpen}
+					state={state}
+					onConfirm={() => {
+						setConfirmOpen(false);
+						void install();
+					}}
+				/>
+			) : null}
+		</>
+	);
+}
+
+function getUpdateDescription(state: DesktopUpdateState): string {
+	const targetVersion = state.downloadedVersion ?? state.availableVersion;
+	switch (state.status) {
+		case "disabled":
+		case "error":
+			return state.message ?? "Updates are unavailable.";
+		case "checking":
+			return "Checking for a newer version…";
+		case "downloading":
+			return targetVersion ? `Downloading version ${targetVersion}…` : "Downloading update…";
+		case "downloaded":
+			return targetVersion
+				? `Version ${targetVersion} is ready to install.`
+				: "An update is ready to install.";
+		case "available":
+			return `${updateAvailableLabel(state)}.`;
+		case "up-to-date":
+			return "You're up to date.";
+		case "idle":
+			return "Current version of the application.";
+	}
+}
+
+function getUpdateButtonLabel(
+	state: DesktopUpdateState | null | undefined,
+	pending: boolean,
+): string {
+	if (pending || state?.status === "checking") return "Checking…";
+	if (state?.status === "downloading") return "Downloading…";
+	return "Check for updates";
+}

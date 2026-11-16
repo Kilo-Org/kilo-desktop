@@ -1,0 +1,31 @@
+{
+	"manifestVersion": 1,
+	"id": "example.right-panel",
+	"displayName": "Right panel",
+	"version": "0.1.0",
+	"description": "An example plugin contributing two panels to the shell's right sidebar, each opened from its icon in the rail.",
+	"engines": {
+		"kilo-desktop": "^1.0"
+	},
+	"web": "./src/web/index.tsx",
+	"requires": {
+		"kilo.shell/right-sidebar-panel": "optional"
+	},
+	"contributes": {
+		"extensions": {
+			"kilo.shell/right-sidebar-panel": [
+				{
+					"id": "notes",
+					"title": "Scratch notes",
+					"priority": 20
+				},
+				{
+					"id": "activity",
+					"title": "Activity",
+					"priority": 10,
+					"width": 360
+				}
+			]
+		}
+	}
+}

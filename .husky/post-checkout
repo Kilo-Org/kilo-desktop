@@ -1,0 +1,16 @@
+# Install dependencies in freshly created worktrees (e.g. Kilo Agent Manager).
+# git passes: $1 = previous HEAD, $2 = new HEAD, $3 = 1 for branch checkouts.
+# A null previous HEAD (all zeros) means a new worktree; branch switches are skipped.
+[ "$3" = "1" ] || exit 0
+case "$1" in
+	*[!0]*) exit 0 ;;
+esac
+[ -n "$CI" ] && exit 0
+
+cd "$(git rev-parse --show-toplevel)" || exit 0
+
+echo "post-checkout: new worktree detected, running pnpm install..."
+if ! pnpm install --frozen-lockfile --prefer-offline; then
+	echo "post-checkout: pnpm install failed; run it manually in $(pwd)" >&2
+fi
+exit 0

@@ -1,0 +1,11 @@
+/* Test-only stylesheet: generates the Tailwind utilities the panels and the
+   shell use, so browser tests get real layout and visibility. In the app,
+   apps/web/src/globals.css scans plugin and design-system sources. */
+@import "tailwindcss";
+@source "../../../../packages/ui";
+@source "../../../../packages/kernel/src";
+@source "../";
+/* Tests render the real shell (renderShell), whose frame lays out the rail and panel. */
+@source "../../../../plugins/shell/src/web";
+@custom-variant data-horizontal (&:where([data-orientation="horizontal"]));
+@custom-variant data-vertical (&:where([data-orientation="vertical"]));

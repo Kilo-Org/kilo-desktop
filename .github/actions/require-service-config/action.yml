@@ -1,0 +1,20 @@
+name: Require service configuration
+description: >
+  Fail an official build early when a GitHub Environment is missing a service ID.
+  The IDs are not committed, so a build without them would silently ship with
+  crash reporting, product telemetry, and feature flags turned off.
+runs:
+  using: composite
+  steps:
+    - name: Check service IDs
+      shell: bash
+      run: |
+        missing=()
+        for name in VITE_SENTRY_DSN VITE_BRIDGE_SENTRY_DSN VITE_LAUNCHDARKLY_CLIENT_SIDE_ID VITE_POSTHOG_KEY; do
+          value="${!name:-}"
+          if [ -z "${value//[[:space:]]/}" ]; then missing+=("$name"); fi
+        done
+        if [ ${#missing[@]} -gt 0 ]; then
+          echo "::error::Missing environment variables for an official build: ${missing[*]}"
+          exit 1
+        fi

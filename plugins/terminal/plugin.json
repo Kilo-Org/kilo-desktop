@@ -1,0 +1,105 @@
+{
+	"manifestVersion": 1,
+	"id": "kilo.terminal",
+	"displayName": "Terminal",
+	"version": "1.0.0",
+	"description": "Terminal panes: interactive shells running in a session's folder.",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
+	"requires": {
+		"kilo.core/tool": "optional",
+		"kilo.work-sessions/workspaces": "optional",
+		"kilo.work-sessions/work-sessions": "optional",
+		"kilo.work-sessions/panes": "optional",
+		"kilo.work-sessions/window": "optional",
+		"kilo.work-sessions/pane-kind": "optional",
+		"kilo.shell/theme": "optional"
+	},
+	"permissions": {
+		"embeddedHosts": ["terminal"]
+	},
+	"contextKeys": [
+		{
+			"id": "terminalFocused",
+			"scope": "window",
+			"description": "True while a terminal in this window has keyboard focus."
+		}
+	],
+	"domainObjects": [
+		{
+			"id": "terminals",
+			"home": "main",
+			"description": "The terminals in each work session: list, read and close them."
+		}
+	],
+	"contributes": {
+		"extensions": {
+			"kilo.work-sessions/pane-kind": [
+				{
+					"id": "terminal",
+					"title": "Terminal",
+					"description": "Run commands in an interactive shell.",
+					"launch": {
+						"newSession": true,
+						"inSession": true
+					},
+					"openCommand": "kilo.terminal/open",
+					"keepAlive": true,
+					"order": 30
+				}
+			],
+			"kernel/command": [
+				{
+					"id": "open",
+					"title": "Open terminal",
+					"category": "Terminal",
+					"order": 5,
+					"keybinding": "Ctrl+`",
+					"when": {
+						"all": ["kilo.work-sessions/paneTargetActive"]
+					}
+				},
+				{
+					"id": "new",
+					"title": "New terminal",
+					"category": "Terminal",
+					"order": 10,
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive"]
+					}
+				},
+				{
+					"id": "clear",
+					"title": "Clear terminal",
+					"category": "Terminal",
+					"order": 20,
+					"keybinding": {
+						"mac": "Mod+K"
+					},
+					"when": {
+						"all": ["kilo.terminal/terminalFocused"]
+					}
+				}
+			],
+			"kilo.core/tool": [
+				{
+					"id": "open",
+					"title": "Open terminal",
+					"external": true
+				},
+				{
+					"id": "list",
+					"title": "List terminals",
+					"readOnly": true,
+					"external": true
+				},
+				{
+					"id": "read",
+					"title": "Read terminal",
+					"readOnly": true,
+					"external": true
+				}
+			]
+		}
+	}
+}

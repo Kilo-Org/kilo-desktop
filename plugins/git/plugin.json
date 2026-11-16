@@ -1,0 +1,185 @@
+{
+	"manifestVersion": 1,
+	"id": "kilo.git",
+	"displayName": "Git",
+	"version": "1.0.0",
+	"description": "Git for workspace folders: status, branches, worktrees, diffs, commits and pull requests.",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
+	"requires": {
+		"kilo.core/chats": "optional",
+		"kilo.core/generation": "optional",
+		"kilo.core/models": "optional",
+		"kilo.core/tool": "optional",
+		"kilo.work-sessions/workspaces": "optional",
+		"kilo.work-sessions/file-watcher": "optional",
+		"kilo.work-sessions/work-sessions": "optional",
+		"kilo.work-sessions/panes": "optional",
+		"kilo.work-sessions/window": "optional",
+		"kilo.work-sessions/vcs": "optional",
+		"kilo.work-sessions/pane-kind": "optional",
+		"kilo.work-sessions/work-session-decoration": "optional",
+		"kilo.work-sessions/work-session-facet": "optional",
+		"kilo.work-sessions/work-session-action": "optional",
+		"kilo.work-sessions/new-work-session-option": "optional",
+		"kilo.work-sessions/opener": "optional",
+		"kilo.chat/composer": "optional",
+		"kilo.chat/composer-action": "optional",
+		"kilo.shell/theme": "optional",
+		"kilo.shell/notifications": "optional",
+		"kernel/windows": "optional",
+		"kernel/os": "optional",
+		"kernel/clipboard": "optional"
+	},
+	"permissions": {
+		"protocols": ["kilo-git"],
+		"host": ["os", "clipboard"]
+	},
+	"objectTypes": [
+		{
+			"id": "pull-request",
+			"description": "The pull request of a work session's directory, keyed by the directory."
+		}
+	],
+	"domainObjects": [
+		{
+			"id": "repository",
+			"home": "main",
+			"description": "Git in workspace folders: status, branches, diffs, commits, pushes and pull requests."
+		},
+		{
+			"id": "pull-requests",
+			"home": "main",
+			"description": "The pull request of each work session's directory, looked up in the background.",
+			"objectType": "kilo.git/pull-request"
+		}
+	],
+	"contributes": {
+		"extensions": {
+			"kilo.work-sessions/vcs": [
+				{
+					"id": "git"
+				}
+			],
+			"kilo.work-sessions/pane-kind": [
+				{
+					"id": "changes",
+					"title": "Changes",
+					"description": "Review uncommitted changes in this session's workspace.",
+					"launch": {
+						"newSession": false,
+						"inSession": true
+					},
+					"singleton": true,
+					"order": 45,
+					"availableWhen": {
+						"all": ["kilo.work-sessions/hasVcs"]
+					},
+					"unavailableHint": "Git isn't available.",
+					"openCommand": "kilo.git/open-changes"
+				}
+			],
+			"kilo.work-sessions/work-session-decoration": [
+				{
+					"id": "pull-request",
+					"slot": "row"
+				},
+				{
+					"id": "branch",
+					"slot": "hover-branch"
+				},
+				{
+					"id": "pull-request-details",
+					"slot": "hover"
+				}
+			],
+			"kilo.work-sessions/work-session-facet": [
+				{
+					"id": "pull-request",
+					"facet": "pull-request"
+				}
+			],
+			"kilo.work-sessions/work-session-action": [
+				{
+					"id": "repository-actions",
+					"placement": "start"
+				}
+			],
+			"kilo.work-sessions/new-work-session-option": [
+				{
+					"id": "branch",
+					"slot": "branch"
+				},
+				{
+					"id": "init",
+					"slot": "setup"
+				}
+			],
+			"kilo.chat/composer-action": [
+				{
+					"id": "branch",
+					"slot": "footer",
+					"kind": "view",
+					"title": "Branch",
+					"priority": 100
+				}
+			],
+			"kilo.core/tool": [
+				{
+					"id": "changes_open",
+					"title": "Open changes",
+					"external": false
+				}
+			],
+			"kernel/command": [
+				{
+					"id": "open-changes",
+					"title": "Open Changes",
+					"category": "Tabs",
+					"order": 41,
+					"keybinding": "Ctrl+Shift+G",
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive", "kilo.work-sessions/hasVcs"]
+					}
+				},
+				{
+					"id": "commit",
+					"title": "Commit Changes",
+					"category": "Git",
+					"order": 10,
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive", "kilo.work-sessions/hasVcs"]
+					}
+				},
+				{
+					"id": "push",
+					"title": "Push",
+					"category": "Git",
+					"order": 11,
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive", "kilo.work-sessions/hasVcs"]
+					}
+				},
+				{
+					"id": "create-pull-request",
+					"title": "Create Pull Request",
+					"category": "Git",
+					"order": 12,
+					"when": {
+						"all": ["kilo.work-sessions/workSessionActive", "kilo.work-sessions/hasVcs"]
+					}
+				}
+			],
+			"kernel/telemetry-event": [
+				{
+					"id": "commit-message-generated",
+					"name": "Commit Message Generated"
+				},
+				{
+					"id": "pull-request-content-generated",
+					"name": "Pull Request Content Generated"
+				}
+			]
+		}
+	}
+}

@@ -1,0 +1,36 @@
+{
+	"manifestVersion": 1,
+	"id": "example.hello",
+	"displayName": "Hello",
+	"version": "0.1.0",
+	"description": "A minimal example plugin: a domain object in main, a command and a telemetry event.",
+	"engines": {
+		"kilo-desktop": "^1.0"
+	},
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
+	"domainObjects": [
+		{
+			"id": "greetings",
+			"home": "main",
+			"description": "How many greetings were said, and to whom last."
+		}
+	],
+	"contributes": {
+		"extensions": {
+			"kernel/command": [
+				{
+					"id": "say-hello",
+					"title": "Say hello",
+					"category": "Hello"
+				}
+			],
+			"kernel/telemetry-event": [
+				{
+					"id": "greeted",
+					"name": "Hello Greeted"
+				}
+			]
+		}
+	}
+}

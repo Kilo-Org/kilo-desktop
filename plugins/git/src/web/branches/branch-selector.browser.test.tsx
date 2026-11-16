@@ -83,7 +83,7 @@ const remoteBranchesResult: GitBranchesResult = {
 	],
 };
 
-/** Default + Recent + Other all populated: main is the default, feature-x recent, develop other. */
+/** Every group populated: main is the default, feature-x recent, topic local, develop remote. */
 const groupedResult: GitBranchesResult = {
 	currentBranch: "main",
 	defaultBranch: "main",
@@ -97,6 +97,7 @@ const groupedResult: GitBranchesResult = {
 			kind: "local",
 		},
 		{ name: "main", upstream: null, tip: { sha: "a" }, ref: "refs/heads/main", kind: "local" },
+		{ name: "topic", upstream: null, tip: { sha: "d" }, ref: "refs/heads/topic", kind: "local" },
 		{
 			name: "origin/develop",
 			upstream: null,
@@ -287,36 +288,33 @@ describe("the New Session page's branch picker", () => {
 		await openTrigger("Select branch", "Something went wrong!");
 	});
 
-	it("renders the Desktop-parity group headings with branches in their buckets", async () => {
+	it("groups branches into Default, Recent, Local and Remote", async () => {
 		await renderSelector({ branches: () => groupedResult });
 
 		await page.getByTestId("git-branch-selector-trigger").click();
 
-		const defaultHeading = page.getByText("Default Branch");
-		const recentHeading = page.getByText("Recent Branches");
-		const otherHeading = page.getByText("Other Branches");
-		await expect.element(defaultHeading).toBeVisible();
-		await expect.element(recentHeading).toBeVisible();
-		await expect.element(otherHeading).toBeVisible();
+		for (const heading of ["Default", "Recent", "Local", "Remote"]) {
+			await expect.element(page.getByText(heading, { exact: true })).toBeVisible();
+		}
 
 		// Bucket membership by document order: each item follows its own
 		// group's heading and precedes the next group's.
+		const heading = (text: string) => page.getByText(text, { exact: true }).element();
 		const isBetween = (item: string, after: string, before?: string) => {
 			const itemElement = page.getByTestId(`git-branch-item-${item}`).element();
-			const afterElement = page.getByText(after).element();
 			expect(
-				itemElement.compareDocumentPosition(afterElement) & Node.DOCUMENT_POSITION_PRECEDING,
+				itemElement.compareDocumentPosition(heading(after)) & Node.DOCUMENT_POSITION_PRECEDING,
 			).toBe(Node.DOCUMENT_POSITION_PRECEDING);
 			if (before !== undefined) {
-				const beforeElement = page.getByText(before).element();
 				expect(
-					itemElement.compareDocumentPosition(beforeElement) & Node.DOCUMENT_POSITION_FOLLOWING,
+					itemElement.compareDocumentPosition(heading(before)) & Node.DOCUMENT_POSITION_FOLLOWING,
 				).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 			}
 		};
-		isBetween("main", "Default Branch", "Recent Branches");
-		isBetween("feature-x", "Recent Branches", "Other Branches");
-		isBetween("develop", "Other Branches");
+		isBetween("main", "Default", "Recent");
+		isBetween("feature-x", "Recent", "Local");
+		isBetween("topic", "Local", "Remote");
+		isBetween("develop", "Remote");
 	});
 
 	it("auto-hides groups whose branches do not match the search", async () => {
@@ -328,13 +326,13 @@ describe("the New Session page's branch picker", () => {
 
 		await expect.element(page.getByTestId("git-branch-item-develop")).toBeVisible();
 		// cmdk hides an emptied group via aria-hidden rather than removing it.
-		await expect.element(page.getByText("Default Branch")).not.toBeVisible();
-		await expect.element(page.getByText("Recent Branches")).not.toBeVisible();
+		await expect.element(page.getByText("Default", { exact: true })).not.toBeVisible();
+		await expect.element(page.getByText("Recent", { exact: true })).not.toBeVisible();
 
 		await search.fill("feature");
 		await expect.element(page.getByTestId("git-branch-item-feature-x")).toBeVisible();
-		await expect.element(page.getByText("Default Branch")).not.toBeVisible();
-		await expect.element(page.getByText("Other Branches")).not.toBeVisible();
+		await expect.element(page.getByText("Default", { exact: true })).not.toBeVisible();
+		await expect.element(page.getByText("Remote", { exact: true })).not.toBeVisible();
 	});
 
 	it("lists branches with the current one checked", async () => {
@@ -415,7 +413,9 @@ describe("the New Session page's branch picker", () => {
 
 		await page.getByTestId("git-branch-selector-trigger").click();
 		await expect.element(page.getByTestId("git-branch-item-feature")).toBeVisible();
-		await expect.element(page.getByText("origin/feature")).not.toBeInTheDocument();
+		await expect
+			.element(page.getByTestId("git-branch-item-feature"))
+			.toHaveTextContent("origin/feature");
 		await page.getByTestId("git-branch-item-feature").click();
 
 		await vi.waitFor(() => {

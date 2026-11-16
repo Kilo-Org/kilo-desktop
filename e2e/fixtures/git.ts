@@ -93,7 +93,7 @@ export const test = workSessionsTest.extend<GitFixtures>({
 	gitBranchWorkspace: async ({}, use) => {
 		// Source repo: main (HEAD) + feature. A clone gets origin/HEAD →
 		// main; the checkout sequence gives the reflog recency, and the
-		// untracked feature populates "Other Branches".
+		// remote-only origin/feature populates "Remote".
 		const basePath = await temporaryFolder("kilo-git-branch-");
 		const source = path.join(basePath, "source");
 		const remote = path.join(basePath, "remote.git");

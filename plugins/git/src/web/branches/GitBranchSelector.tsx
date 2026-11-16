@@ -1,7 +1,7 @@
 import { GitBranchIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { DomainObjectState } from "@kilo-desktop/kernel";
 import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
@@ -128,11 +128,17 @@ export function GitBranchSelector({
 }: NewWorkSessionOptionProps) {
 	const repository = useDomainObject(Repository);
 	const queries = useQueryClient();
-	const typeQuery = useQuery(repositoryTypeQuery(repository, workingDirectory));
+	// Switching workspace keeps the previous folder's branch on screen until the new one's
+	// arrives, instead of flashing a loading state in the New Session page's capsule.
+	const typeQuery = useQuery({
+		...repositoryTypeQuery(repository, workingDirectory),
+		placeholderData: keepPreviousData,
+	});
 	const isRegular = typeQuery.data?.kind === "regular";
 	const query = useQuery({
 		...branchesQuery(repository, workingDirectory),
 		enabled: repository !== null && isRegular,
+		placeholderData: keepPreviousData,
 	});
 	const data = query.data;
 	const worktrees = useQuery(worktreesQuery(repository, repositoryDirectory));
@@ -247,7 +253,8 @@ export function GitBranchSelector({
 				triggerIcon={<GitBranchIcon data-icon="inline-start" />}
 				triggerLabel={label}
 				triggerLoading={isTriggerLoading(state, pendingBranch)}
-				triggerDisabled={disabled}
+				// The previous folder's list stays up while this one loads; not pickable meanwhile.
+				triggerDisabled={disabled || query.isPlaceholderData}
 				triggerTestId="git-branch-selector-trigger"
 				branches={listData?.branches ?? EMPTY_BRANCHES}
 				defaultBranch={listData?.defaultBranch}

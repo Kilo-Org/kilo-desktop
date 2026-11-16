@@ -1,4 +1,11 @@
-import { ChevronDownIcon, FolderGit2Icon, GitBranchIcon, LaptopIcon } from "lucide-react";
+import {
+	ChevronDownIcon,
+	FolderGit2Icon,
+	FoldersIcon,
+	GitBranchIcon,
+	LaptopIcon,
+	type LucideIcon,
+} from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import type { IsolationOptions, WorkSessionIsolation } from "../../../contracts";
@@ -47,11 +54,13 @@ function filterWorktreeItems(value: string, search: string, keywords?: string[])
 
 function ModeItem({
 	value,
+	icon: Icon,
 	title,
 	description,
 	disabled,
 }: {
 	value: IsolationMode;
+	icon: LucideIcon;
 	title: string;
 	description: string;
 	disabled?: boolean;
@@ -62,7 +71,10 @@ function ModeItem({
 			closeOnClick
 			disabled={disabled}
 			data-qa-id={`git-draft-mode-item-${value}`}
+			className="items-start"
 		>
+			{/* Aligned to the title line, not centered on title + description. */}
+			<Icon aria-hidden className="text-muted-foreground mt-[3px]" />
 			<span className="flex min-w-0 flex-col gap-0.5">
 				<span>{title}</span>
 				<span className="text-muted-foreground text-xs">{description}</span>
@@ -137,6 +149,7 @@ export function IsolationControl({
 	const worktreeItem = (
 		<ModeItem
 			value="worktree"
+			icon={FolderGit2Icon}
 			title="New worktree"
 			description="Creates a separate copy for this session"
 			disabled={unborn}
@@ -212,6 +225,7 @@ export function IsolationControl({
 								)}
 								<ModeItem
 									value="local"
+									icon={LaptopIcon}
 									title="Local repository"
 									description="Works in the repository already on your machine"
 								/>
@@ -223,7 +237,7 @@ export function IsolationControl({
 								<DropdownMenuGroup>
 									<DropdownMenuSub>
 										<DropdownMenuSubTrigger data-qa-id="git-draft-mode-sub-existing">
-											<FolderGit2Icon data-icon="inline-start" />
+											<FoldersIcon className="text-muted-foreground" />
 											<span className="truncate">Existing worktrees</span>
 										</DropdownMenuSubTrigger>
 										<DropdownMenuSubContent className={cn(pickerMenuWidth, "p-0")}>
@@ -262,7 +276,12 @@ export function IsolationControl({
 																	});
 																	setMenuOpen(false);
 																}}
+																className="items-start"
 															>
+																<FolderGit2Icon
+																	aria-hidden
+																	className="text-muted-foreground mt-[3px]"
+																/>
 																<span className="flex min-w-0 flex-col gap-0.5">
 																	<span className="truncate">{worktree.name}</span>
 																	<span className="text-muted-foreground truncate text-xs">

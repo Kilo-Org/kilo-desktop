@@ -32,6 +32,7 @@ import { reportFailure } from "../shared/report-failure";
 import { IsolationControl } from "./isolation/IsolationControl";
 import { useLauncherIsolation, type LauncherIsolation } from "./isolation/use-launcher-isolation";
 import { useLauncherFocusRequest } from "./launcher-focus";
+import { LocationCapsule } from "./LocationCapsule";
 import { LocationField } from "./LocationField";
 import { StartWithTool } from "./StartWithTool";
 import { WelcomeHeadline } from "./WelcomeHeadline";
@@ -100,6 +101,23 @@ function once(run: () => void): () => void {
 	};
 }
 
+/** How long the next workspace's options may load before the row shows as disabled. */
+const SLOW_PENDING_MS = 300;
+
+/** `value`, but turning true only once it has stayed true for `delay` ms. */
+function useDelayedFlag(value: boolean, delay: number): boolean {
+	const [delayed, setDelayed] = useState(false);
+	useEffect(() => {
+		if (!value) {
+			setDelayed(false);
+			return;
+		}
+		const timer = setTimeout(() => setDelayed(true), delay);
+		return () => clearTimeout(timer);
+	}, [value, delay]);
+	return value && delayed;
+}
+
 /**
  * Isolation (local, new worktree, existing worktree) and branch when the
  * workspace is a repository; otherwise the contributed `setup` option.
@@ -122,6 +140,7 @@ function IsolationRow({
 		);
 	const branchOption = optionFor("branch");
 	const setupOption = optionFor("setup");
+	const slowPending = useDelayedFlag(isolation.shown?.pending ?? false, SLOW_PENDING_MS);
 	if (!isolation.shown) {
 		if (!setupOption || !activeWorkspaceId || !primaryFolder) return null;
 		return (
@@ -139,7 +158,7 @@ function IsolationRow({
 		);
 	}
 	const { workspaceId, options, value, pending } = isolation.shown;
-	const disabled = starting || pending;
+	const disabled = starting || slowPending;
 	const renderBranch = branchOption
 		? (directory: string) => (
 				<RenderContribution<NewWorkSessionOptionProps>
@@ -156,14 +175,17 @@ function IsolationRow({
 			)
 		: undefined;
 	return (
-		<IsolationControl
-			options={options}
-			value={value}
-			onChange={isolation.change}
-			onOpen={isolation.reload}
-			disabled={disabled}
-			renderBranch={renderBranch}
-		/>
+		// Not interactive while pending, but only shown disabled once loading is slow.
+		<div className="contents" inert={pending}>
+			<IsolationControl
+				options={options}
+				value={value}
+				onChange={isolation.change}
+				onOpen={isolation.reload}
+				disabled={disabled}
+				renderBranch={renderBranch}
+			/>
+		</div>
 	);
 }
 
@@ -184,19 +206,18 @@ function LocationRow({
 	readonly primaryFolder: string | null;
 }) {
 	return (
-		<div
-			data-qa-id="launcher-location"
-			className="flex w-full flex-wrap items-center justify-center gap-x-6 gap-y-1"
-		>
-			<LocationField label="Workspace">
-				<WorkspaceChip disabled={starting} />
-			</LocationField>
-			<IsolationRow
-				isolation={isolation}
-				starting={starting}
-				activeWorkspaceId={activeWorkspaceId}
-				primaryFolder={primaryFolder}
-			/>
+		<div data-qa-id="launcher-location" className="@container flex w-full justify-center">
+			<LocationCapsule>
+				<LocationField label="Workspace">
+					<WorkspaceChip disabled={starting} />
+				</LocationField>
+				<IsolationRow
+					isolation={isolation}
+					starting={starting}
+					activeWorkspaceId={activeWorkspaceId}
+					primaryFolder={primaryFolder}
+				/>
+			</LocationCapsule>
 		</div>
 	);
 }

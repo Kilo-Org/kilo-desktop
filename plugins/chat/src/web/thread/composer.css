@@ -49,10 +49,13 @@
 	--glass-opacity: 94%;
 }
 
-/* The New Session page's starter: filled like the tool tiles under it and
-   borderless, even focused; the outline comes back only while dragging. */
+/* The New Session page's starter: a flat muted fill, borderless even when
+   focused; the outline comes back only while dragging. No glass: nothing
+   scrolls under it, and the backdrop filter tinted it unevenly. */
 .chat-starter-flat .chat-composer-glass {
-	--composer-glass-surface: color-mix(in srgb, var(--muted) 64%, transparent);
+	background: color-mix(in oklab, var(--color-muted) 60%, transparent);
+	-webkit-backdrop-filter: none;
+	backdrop-filter: none;
 	box-shadow: none;
 }
 

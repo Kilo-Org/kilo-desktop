@@ -195,15 +195,44 @@ describe("the New Session page with a session starter", () => {
 		expect(lastProps).toMatchObject({ workspaceId: "w-app", directory: "/projects/app" });
 	});
 
-	it("draws each label inside its picker, so the picker's menu opens under the label", async () => {
+	it("joins workspace, isolation and branch in one capsule, each label drawn in its picker", async () => {
 		await renderNewSession({ isolation: REPOSITORY });
 
+		const capsule = page.getByTestId("launcher-location-capsule");
+		for (const label of ["Workspace", "Use", "Branch"]) {
+			await expect.element(capsule.getByRole("group", { name: label })).toBeVisible();
+		}
+		const separator = (label: string) =>
+			getComputedStyle(capsule.getByRole("group", { name: label }).element(), "::before").content;
+		expect(separator("Use")).toBe('""');
+		expect(separator("Workspace")).toBe("none");
+
 		const checkout = page.getByTestId("git-draft-mode-trigger");
-		await expect.element(checkout).toBeVisible();
 		expect(getComputedStyle(checkout.element(), "::before").content).toBe('"Use"');
 		await checkout.click();
 		await expect.element(page.getByTestId("git-draft-mode-item-worktree")).toBeVisible();
 		await userEvent.keyboard("{Escape}");
+	});
+
+	it("shrinks the capsule's segments to fit a narrow row instead of clipping them", async () => {
+		await renderNewSession({ isolation: REPOSITORY });
+		const capsule = page.getByTestId("launcher-location-capsule");
+		await expect.element(page.getByTestId("git-draft-mode-trigger")).toBeVisible();
+
+		page.getByTestId("launcher-location").element().setAttribute("style", "width: 360px");
+
+		const capsuleBox = () => capsule.element().getBoundingClientRect();
+		// Settled: the capsule has finished easing to its (row-capped) content width.
+		await vi.waitFor(() =>
+			expect(capsuleBox().width).toBeCloseTo(
+				capsule.element().firstElementChild!.getBoundingClientRect().width,
+				0,
+			),
+		);
+
+		for (const button of capsule.element().querySelectorAll("button")) {
+			expect(button.getBoundingClientRect().right).toBeLessThanOrEqual(capsuleBox().right + 0.5);
+		}
 	});
 
 	it("offers the other pane kinds under the starter, their shortcuts shown on hover", async () => {

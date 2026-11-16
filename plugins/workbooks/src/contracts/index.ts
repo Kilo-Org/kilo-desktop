@@ -1,5 +1,9 @@
 import type { PluginDefinitions } from "@kilo-desktop/kernel";
 
+import { WorkbookTemplatePoint, WorkbookTemplates } from "./templates";
+
+export * from "./templates";
+
 /**
  * kilo.workbooks' public surface. A workbook keeps what chats learn and decide
  * about a piece of work, outside any one chat, for the person and several
@@ -11,4 +15,7 @@ export const WORKBOOKS_PLUGIN_ID = "kilo.workbooks";
 export const WORKBOOKS_FEATURE_FLAG = "workbooks";
 
 /** What the kernel needs to know about this plugin without running it. */
-export const WORKBOOKS_DEFINITIONS: PluginDefinitions = {};
+export const WORKBOOKS_DEFINITIONS: PluginDefinitions = {
+	domainObjects: [WorkbookTemplates],
+	extensionPoints: [WorkbookTemplatePoint],
+};

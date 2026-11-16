@@ -6,8 +6,27 @@
 	"description": "Workbooks: where what chats learn and decide about a piece of work is kept, created from workbook templates.",
 	"main": "./src/main/index.ts",
 	"web": "./src/web/index.ts",
+	"extensionPoints": [
+		{
+			"id": "template",
+			"kind": "additive",
+			"description": "A workbook template offered when creating a workbook."
+		}
+	],
+	"domainObjects": [
+		{
+			"id": "templates",
+			"home": "main",
+			"description": "The workbook templates on offer, and any skipped as invalid."
+		}
+	],
 	"contributes": {
 		"extensions": {
+			"kilo.workbooks/template": [
+				{
+					"id": "coding"
+				}
+			],
 			"kernel/flag": [
 				{
 					"id": "workbooks",

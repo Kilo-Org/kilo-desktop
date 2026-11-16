@@ -414,6 +414,25 @@ describe("deleting a worktree session", () => {
 		expect(workSessions.calls.removeCopy).not.toHaveBeenCalled();
 	});
 
+	it("keeps a long branch name inside the dialog", async () => {
+		await renderWorkSessions({
+			workSessions: [
+				{ ...worktreeSession, branch: "kilo/remove-sidebar-list-hover-animation-and-more-words" },
+			],
+		});
+
+		await askToDelete();
+		const dialog = page.getByTestId("session-delete-worktree-dialog");
+		await expect.element(dialog).toBeVisible();
+
+		const dialogBox = dialog.element().getBoundingClientRect();
+		const itemsBox = page
+			.getByTestId("session-delete-worktree-items")
+			.element()
+			.getBoundingClientRect();
+		expect(itemsBox.right).toBeLessThanOrEqual(dialogBox.right);
+	});
+
 	it("says why a worktree could not be removed", async () => {
 		await renderWorkSessions({ workSessions: [worktreeSession], copyError: "worktree is locked" });
 

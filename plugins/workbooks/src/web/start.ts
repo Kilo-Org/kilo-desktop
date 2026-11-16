@@ -17,12 +17,18 @@ export interface StartDeps {
  */
 export async function startFromWorkbook(
 	deps: StartDeps,
-	input: { readonly workbookId: string; readonly workspaceId: string; readonly focus?: string },
+	input: {
+		readonly workbookId: string;
+		readonly workspaceId: string;
+		readonly focus?: string;
+		readonly fresh?: boolean;
+	},
 ): Promise<string> {
 	const { workbooks, sessions, composer } = ready(deps);
 	const text = await workbooks.methods.kickoff({
 		workbookId: input.workbookId,
 		...(input.focus ? { focus: input.focus } : {}),
+		...(input.fresh ? { fresh: true } : {}),
 	});
 	const { workSessionId } = await composer.methods.startChat({
 		text,
@@ -39,7 +45,11 @@ export async function startNewWorkbook(
 ): Promise<string> {
 	const { workbooks } = ready(deps);
 	const workbook = await workbooks.methods.create(input);
-	return startFromWorkbook(deps, { workbookId: workbook.id, workspaceId: input.workspaceId });
+	return startFromWorkbook(deps, {
+		workbookId: workbook.id,
+		workspaceId: input.workspaceId,
+		fresh: true,
+	});
 }
 
 function ready(deps: StartDeps) {

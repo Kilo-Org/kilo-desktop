@@ -43,7 +43,11 @@ describe("starting a work session from a workbook", () => {
 		expect(started).toEqual([
 			{ text: expect.stringContaining('"Fix the server bug"'), workspaceId: "ws-1", workSessionId },
 		]);
-		expect(started[0]!.text).toContain("How to work here");
+		const text = started[0]!.text;
+		expect(text).toContain("## First\n\nRefine the Brief");
+		expect(text).toContain("## Brief\n\n**Workbook template:** Coding");
+		expect(text).toContain("Fix the bug");
+		expect(text).toContain("## How to work here\n\nThis is the agent guide");
 		const workbookId = deps.workbooks!.getState().workbooks[0]!.id;
 		await expect.poll(() => sessions.getState().bySession).toEqual({ [workSessionId]: workbookId });
 		expect(sessions.lookup(workSessionId)).toBe(workbookId);
@@ -64,7 +68,8 @@ describe("starting a work session from a workbook", () => {
 			focus: "Plan step 2",
 		});
 
-		expect(started[0]!.text).toContain("Work on this: Plan step 2");
+		expect(started[0]!.text).toContain("## Work on this\n\nPlan step 2");
+		expect(started[0]!.text).not.toContain("## First\n\n");
 	});
 
 	it("forgets a session's workbook when the session is deleted or the workbook forgotten", async () => {
@@ -104,6 +109,22 @@ describe("starting a work session from a workbook", () => {
 		await expect(
 			sessions.methods.setActive({ workSessionId: id, workbookId: "nope" }),
 		).rejects.toMatchObject({ code: "NOT_FOUND" });
+	});
+
+	it("points at the Brief and guide when Pages can't be read", async () => {
+		const { deps, started, pages } = await boot();
+		const workbook = await deps.workbooks!.methods.create({
+			workspaceId: "ws-1",
+			templateId: "coding",
+			name: "W",
+			values: { goal: "g" },
+		});
+		pages.failOn = "read_page";
+
+		await startFromWorkbook(deps, { workbookId: workbook.id, workspaceId: "ws-1" });
+
+		expect(started[0]!.text).toContain("Read the Brief (the project document) first.");
+		expect(started[0]!.text).toContain('Read the "How to work here" page');
 	});
 
 	it("says what's missing when workbooks or chats aren't available", async () => {

@@ -80,9 +80,43 @@ export function provideWorkbooks(sdk: PluginSdk, deps: WorkbookStoreDeps): void 
 				save(remaining);
 				return { forgotten: true };
 			},
-			kickoff: ({ workbookId, focus }) => kickoffText(find(workbookId), focus),
+			kickoff: async ({ workbookId, focus, fresh }) => {
+				const workbook = find(workbookId);
+				const pages = deps.pages(workbook.backend, deps.workspace(workbook.workspaceId)?.directory);
+				const [brief, guide] = await Promise.all([
+					readMarkdown(pages, { project_id: workbook.projectId }),
+					readMarkdown(pages, { page_id: workbook.guidePageId }),
+				]);
+				const firstMove = fresh ? deps.template(workbook.templateId)?.firstMove : undefined;
+				return kickoffText(workbook, {
+					...(brief ? { brief } : {}),
+					...(guide ? { guide } : {}),
+					...(firstMove ? { firstMove } : {}),
+					...(focus ? { focus } : {}),
+				});
+			},
 		},
 	});
+
+	/** A page's markdown, or undefined when Pages can't be read (the kick-off then points at it instead). */
+	async function readMarkdown(
+		pages: PagesToolCaller,
+		target: Readonly<Record<string, string>>,
+	): Promise<string | undefined> {
+		try {
+			const page = (await pages.call("read_page", { ...target, comments: "none" })) as {
+				blocks?: { markdown?: string }[];
+			};
+			const text = (page?.blocks ?? [])
+				.map((block) => block.markdown ?? "")
+				.join("\n\n")
+				.trim();
+			return text || undefined;
+		} catch (error) {
+			sdk.logger.warn(`Couldn't read a workbook page for the kick-off: ${String(error)}`);
+			return undefined;
+		}
+	}
 
 	function addWorkbook(input: Omit<Workbook, "id" | "createdAt">): Workbook {
 		const workbook: Workbook = { ...input, id: newId(), createdAt: now().toISOString() };

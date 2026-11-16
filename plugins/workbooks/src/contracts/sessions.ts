@@ -28,5 +28,7 @@ export const kickoffInputSchema = z.object({
 	workbookId: z.string().min(1),
 	/** A plan step or other item to work on, as its text. */
 	focus: z.string().optional(),
+	/** True for a workbook just created: the template's first move is included. */
+	fresh: z.boolean().optional(),
 });
 export type KickoffInput = z.output<typeof kickoffInputSchema>;

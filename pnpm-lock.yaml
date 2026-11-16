@@ -220,8 +220,8 @@ catalogs:
       specifier: ^5.4.3
       version: 5.4.4
     execa:
-      specifier: ^10.0.1
-      version: 10.0.1
+      specifier: ^10.2.1
+      version: 10.2.1
     lodash:
       specifier: ^4.17.21
       version: 4.18.1
@@ -409,7 +409,7 @@ importers:
         version: 12.0.0
       execa:
         specifier: 'catalog:'
-        version: 10.0.1
+        version: 10.2.1
       koffi:
         specifier: 3.3.8
         version: 3.3.8
@@ -1420,7 +1420,7 @@ importers:
         version: 2.1.1
       execa:
         specifier: 'catalog:'
-        version: 10.0.1
+        version: 10.2.1
       jsonc-parser:
         specifier: ^3.3.1
         version: 3.3.1
@@ -1801,7 +1801,7 @@ importers:
         version: 5.101.4(react@19.2.8)
       execa:
         specifier: 'catalog:'
-        version: 10.0.1
+        version: 10.2.1
       friendly-words:
         specifier: 1.3.1
         version: 1.3.1
@@ -1895,7 +1895,7 @@ importers:
         version: 5.101.4(react@19.2.8)
       execa:
         specifier: 'catalog:'
-        version: 10.0.1
+        version: 10.2.1
       lucide-react:
         specifier: 'catalog:'
         version: 1.27.0(react@19.2.8)
@@ -2117,7 +2117,7 @@ importers:
         version: 5.1.0(@vitest/browser@5.1.0)(vitest@5.1.0)
       execa:
         specifier: 'catalog:'
-        version: 10.0.1
+        version: 10.2.1
       playwright:
         specifier: 'catalog:'
         version: 1.65.1
@@ -7103,8 +7103,8 @@ packages:
     resolution: {integrity: sha512-adbxcyWV46qiHyvSp50TKt05tB4tK3HcmF7/nxfAdhnox83seTDbwnaqKO4sXRy7roHAIFqJP/Rw/AuEbX61LA==}
     engines: {node: '>=6'}
 
-  execa@10.0.1:
-    resolution: {integrity: sha512-ge98qjkRK4IB7tL7Ju/6qmm5LHoH1eEMt5FNZrz3f4UIYhF28lggX20z3FaX1sgc67msLEn0N0BscOs29iuwyw==}
+  execa@10.2.1:
+    resolution: {integrity: sha512-/Bofl3ZBh2Q4/PG0W63qFzP5vDAypi8Zc90UWTBzaDNIYiX7apPOd0N6L8hG8CojUdq4V51adu8BObP+iVsSTw==}
     engines: {node: '>=22'}
 
   execa@5.1.1:
@@ -8750,6 +8750,10 @@ packages:
 
   pretty-ms@9.3.0:
     resolution: {integrity: sha512-gjVS5hOP+M3wMm5nmNOucbIrqudzs9v/57bWRHQWLYklXqoXKrVfYW2W9+glfGsqtPgpiz5WwyEEB+ksXIx3gQ==}
+    engines: {node: '>=18'}
+
+  pretty-ms@9.3.1:
+    resolution: {integrity: sha512-HzMy3Geq23nVALD/M2LliU+F+M+gVNsvkQWWqeBZ8HDiCgzo6YPJ/Omrmtq24EFrIsk0a3EkQGEd7bDOo+IhGA==}
     engines: {node: '>=18'}
 
   proc-log@6.1.0:
@@ -14758,7 +14762,7 @@ snapshots:
       strip-eof: 1.0.0
     optional: true
 
-  execa@10.0.1:
+  execa@10.2.1:
     dependencies:
       '@sindresorhus/merge-streams': 4.0.0
       figures: 6.1.0
@@ -14767,7 +14771,7 @@ snapshots:
       is-plain-obj: 4.1.0
       is-stream: 4.0.1
       npm-run-path: 6.0.0
-      pretty-ms: 9.3.0
+      pretty-ms: 9.3.1
       signal-exit: 4.1.0
       strip-final-newline: 4.0.0
       which-command: 0.1.0
@@ -16670,6 +16674,10 @@ snapshots:
       react-is: 17.0.2
 
   pretty-ms@9.3.0:
+    dependencies:
+      parse-ms: 4.0.0
+
+  pretty-ms@9.3.1:
     dependencies:
       parse-ms: 4.0.0
 

@@ -1,4 +1,4 @@
-import { ChevronDownIcon, GitBranchIcon } from "lucide-react";
+import { ChevronDownIcon, CloudIcon, GitBranchIcon } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
@@ -14,7 +14,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@kilo-desktop/ui/compon
 import { pickerMenuWidth } from "@kilo-desktop/ui/lib/menu-styles";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
-import { branchDisplayName, groupBranches, type IsolationBranch } from "./group-branches";
+import {
+	branchDisplayName,
+	groupBranches,
+	splitRemoteBranch,
+	type IsolationBranch,
+} from "./group-branches";
 
 /**
  * Origin's base-branch picker for a new worktree: the grouped, searchable
@@ -87,19 +92,31 @@ export function BaseBranchPicker({
 							<CommandGroup key={group.identifier} heading={group.heading}>
 								{group.items.map((branch) => {
 									const label = branchDisplayName(branch);
+									const remote = branch.kind === "remote";
 									return (
 										<CommandItem
 											key={branch.ref}
 											data-qa-id={`git-base-branch-item-${label}`}
-											value={label}
+											value={remote ? branch.name : label}
 											data-checked={branch.name === effectiveBase}
 											onSelect={() => {
 												onSelect(branch.name);
 												close();
 											}}
 										>
-											<GitBranchIcon className="text-muted-foreground" />
-											<span className="min-w-0 truncate">{label}</span>
+											{remote ? (
+												<CloudIcon className="text-muted-foreground" />
+											) : (
+												<GitBranchIcon className="text-muted-foreground" />
+											)}
+											<span className="min-w-0 truncate">
+												{remote ? (
+													<span className="text-muted-foreground">
+														{splitRemoteBranch(branch).remote}/
+													</span>
+												) : null}
+												{label}
+											</span>
 										</CommandItem>
 									);
 								})}

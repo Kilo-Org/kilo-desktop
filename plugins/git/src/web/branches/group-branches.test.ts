@@ -18,16 +18,20 @@ function remote(name: string): GitBranch {
 }
 
 describe("groupBranches", () => {
-	it("groups into Default, Recent, and Other", () => {
+	it("groups into Default, Recent, Local, and Remote", () => {
 		const main = local("main");
 		const feature = local("feature");
 		const topic = local("topic");
+		const spike = local("spike");
 		const develop = remote("origin/develop");
 
-		expect(groupBranches([main, feature, topic, develop], "main", ["topic", "feature"])).toEqual([
-			{ identifier: "default", heading: "Default Branch", items: [main] },
-			{ identifier: "recent", heading: "Recent Branches", items: [topic, feature] },
-			{ identifier: "other", heading: "Other Branches", items: [develop] },
+		expect(
+			groupBranches([main, feature, topic, spike, develop], "main", ["topic", "feature"]),
+		).toEqual([
+			{ identifier: "default", heading: "Default", items: [main] },
+			{ identifier: "recent", heading: "Recent", items: [topic, feature] },
+			{ identifier: "local", heading: "Local", items: [spike] },
+			{ identifier: "remote", heading: "Remote", items: [develop] },
 		]);
 	});
 
@@ -35,7 +39,7 @@ describe("groupBranches", () => {
 		const originMain = remote("origin/main");
 
 		expect(groupBranches([originMain], "origin/main", [])).toEqual([
-			{ identifier: "default", heading: "Default Branch", items: [originMain] },
+			{ identifier: "default", heading: "Default", items: [originMain] },
 		]);
 	});
 
@@ -43,7 +47,7 @@ describe("groupBranches", () => {
 		const feature = local("feature");
 
 		expect(groupBranches([feature], undefined, [])).toEqual([
-			{ identifier: "other", heading: "Other Branches", items: [feature] },
+			{ identifier: "local", heading: "Local", items: [feature] },
 		]);
 	});
 
@@ -52,18 +56,18 @@ describe("groupBranches", () => {
 		const feature = local("feature");
 
 		expect(groupBranches([main, feature], "main", ["main", "feature"])).toEqual([
-			{ identifier: "default", heading: "Default Branch", items: [main] },
-			{ identifier: "recent", heading: "Recent Branches", items: [feature] },
+			{ identifier: "default", heading: "Default", items: [main] },
+			{ identifier: "recent", heading: "Recent", items: [feature] },
 		]);
 	});
 
-	it("omits the Other group when every branch is default or recent", () => {
+	it("omits the Local and Remote groups when every branch is default or recent", () => {
 		const main = local("main");
 		const feature = local("feature");
 
 		expect(groupBranches([main, feature], "main", ["feature"])).toEqual([
-			{ identifier: "default", heading: "Default Branch", items: [main] },
-			{ identifier: "recent", heading: "Recent Branches", items: [feature] },
+			{ identifier: "default", heading: "Default", items: [main] },
+			{ identifier: "recent", heading: "Recent", items: [feature] },
 		]);
 	});
 

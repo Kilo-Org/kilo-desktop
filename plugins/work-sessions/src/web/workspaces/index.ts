@@ -1,4 +1,4 @@
-import { KernelCommand, type PluginSdk } from "@kilo-desktop/kernel";
+import { KernelCommand, KernelDialogs, type PluginSdk } from "@kilo-desktop/kernel";
 import { Dialog, Navigation, OnboardingStep } from "@kilo-desktop/plugin-shell/contracts";
 
 import {
@@ -7,13 +7,15 @@ import {
 	type Workspace,
 	type WorkspaceDialogInput,
 } from "../../contracts";
+import { reportFailure } from "../shared/report-failure";
 import { workspaceStep } from "./onboarding/workspace-step";
 import { WorkspaceDialogsDialog } from "./WorkspaceDialogs";
 
 /**
  * The workspaces area: the workspace dialogs (a `kilo.shell/dialog`, opened
  * by the add / manage / edit / delete commands through kilo.shell's
- * navigation) and the onboarding step that creates the first workspace.
+ * navigation), Open folder, and the onboarding step that creates the first
+ * workspace.
  */
 export function activateWorkspaces(sdk: PluginSdk): void {
 	sdk.extensions.implement(Dialog, "workspace-dialogs", WorkspaceDialogsDialog);
@@ -27,6 +29,9 @@ export function activateWorkspaces(sdk: PluginSdk): void {
 		});
 	command("add-workspace", () => ({ mode: "create" }));
 	command("manage-workspaces", () => ({ mode: "manage" }));
+	sdk.extensions.implement(KernelCommand, "open-folder", () =>
+		openFolder(sdk).catch(reportFailure("Could not open folder", "No workspace was opened.")),
+	);
 	command("edit-workspace", (args) => {
 		const workspace = workspaceFromArgs(sdk, args);
 		return workspace ? { mode: "edit", workspaceId: workspace.id } : null;
@@ -79,6 +84,35 @@ function handOverLegacyActive(sdk: PluginSdk): void {
 		},
 	});
 	sdk.onDispose(() => stop?.());
+}
+
+/**
+ * The one-step way in: the folder's workspace becomes active. A workspace
+ * whose primary folder it already is is reused rather than duplicated;
+ * otherwise a new one takes the folder's name (made unique by `create`).
+ */
+async function openFolder(sdk: PluginSdk): Promise<void> {
+	const dialogs = sdk.domainObjects.get(KernelDialogs);
+	const workspaces = sdk.domainObjects.get(Workspaces);
+	if (!dialogs || !workspaces) return;
+	const {
+		paths: [path],
+	} = await dialogs.methods.open({ title: "Open folder", directory: true });
+	if (!path) return;
+	const existing = workspaces
+		.getState()
+		.workspaces.find((workspace) =>
+			workspace.folders.some((folder) => folder.isPrimary && folder.path === path),
+		);
+	const id =
+		existing?.id ??
+		(
+			await workspaces.methods.create({
+				folders: [{ path, isPrimary: true }],
+				source: "open-folder",
+			})
+		).id;
+	await workspaces.methods.setActive({ id });
 }
 
 /** The workspace named by `{ workspaceId }` in a command's arguments. */

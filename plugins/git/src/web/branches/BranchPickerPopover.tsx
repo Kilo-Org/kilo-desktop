@@ -1,4 +1,4 @@
-import { ChevronDownIcon, GitBranchIcon, PlusIcon } from "lucide-react";
+import { ChevronDownIcon, CloudIcon, GitBranchIcon, PlusIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
@@ -17,7 +17,7 @@ import { pickerMenuWidth } from "@kilo-desktop/ui/lib/menu-styles";
 import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import type { GitBranch } from "../../contracts";
-import { branchDisplayName } from "./branch-display-name";
+import { branchDisplayName, splitRemoteBranch } from "./branch-display-name";
 import { groupBranches } from "./group-branches";
 
 const CREATE_BRANCH_VALUE = "__create-branch__";
@@ -76,16 +76,26 @@ function BranchItem({
 	onSelect: (branch: GitBranch) => void;
 }) {
 	const label = branchDisplayName(branch);
+	const remote = branch.kind === "remote";
 	return (
 		<CommandItem
 			data-qa-id={`${itemTestIdPrefix}${label}`}
-			value={label}
+			value={remote ? branch.name : label}
 			data-checked={checked}
 			disabled={disabled}
 			onSelect={() => onSelect(branch)}
 		>
-			<GitBranchIcon className="text-muted-foreground" />
-			<span className="min-w-0 truncate">{label}</span>
+			{remote ? (
+				<CloudIcon className="text-muted-foreground" />
+			) : (
+				<GitBranchIcon className="text-muted-foreground" />
+			)}
+			<span className="min-w-0 truncate">
+				{remote ? (
+					<span className="text-muted-foreground">{splitRemoteBranch(branch).remote}/</span>
+				) : null}
+				{label}
+			</span>
 		</CommandItem>
 	);
 }
@@ -100,8 +110,7 @@ function BranchItem({
  * (checkout or pure state write), the note copy for probe states, the
  * `triggerLoading` flag for the trigger's loading look, and the create
  * flow behind `onCreateBranch`. Checked state compares full contract
- * names while items display `branchDisplayName` labels — a local and
- * remote branch can share a display label by design.
+ * names; remote items show their remote as a muted prefix.
  */
 export function BranchPickerPopover({
 	triggerIcon,

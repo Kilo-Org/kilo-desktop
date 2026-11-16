@@ -14,7 +14,12 @@
 		"kilo.shell/dialog": "optional",
 		"kilo.shell/navigation": "optional",
 		"kilo.chat/composer": "optional",
-		"kilo.core/tool": "optional"
+		"kilo.core/tool": "optional",
+		"kilo.work-sessions/work-session-action": "optional",
+		"kilo.chat/tool-renderer": "optional"
+	},
+	"permissions": {
+		"host": ["os"]
 	},
 	"extensionPoints": [
 		{
@@ -111,6 +116,32 @@
 				{
 					"id": "set_where_i_left_off",
 					"title": "Update where I left off",
+					"when": {
+						"all": ["kernel/flag:workbooks"]
+					}
+				}
+			],
+			"kilo.work-sessions/work-session-action": [
+				{
+					"id": "workbook",
+					"placement": "start",
+					"when": {
+						"all": ["kernel/flag:workbooks"]
+					}
+				}
+			],
+			"kilo.chat/tool-renderer": [
+				{
+					"id": "receipts",
+					"tools": [
+						"kilo.workbooks/read_workbook",
+						"kilo.workbooks/add_plan_step",
+						"kilo.workbooks/set_step_status",
+						"kilo.workbooks/record_decision",
+						"kilo.workbooks/file_item",
+						"kilo.workbooks/set_where_i_left_off"
+					],
+					"standalone": true,
 					"when": {
 						"all": ["kernel/flag:workbooks"]
 					}

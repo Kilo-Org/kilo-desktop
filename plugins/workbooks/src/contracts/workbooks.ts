@@ -56,6 +56,22 @@ export const createWorkbookInputSchema = z.object({
 });
 export type CreateWorkbookInput = z.output<typeof createWorkbookInputSchema>;
 
+export const STEP_STATUSES = ["todo", "in_progress", "blocked", "done"] as const;
+
+/** Where a workbook is at, read from Pages: what a resume view shows. */
+export const workbookProgressSchema = z.object({
+	whereILeftOff: z.array(z.string()),
+	steps: z.array(
+		z.object({ number: z.number(), title: z.string(), status: z.enum(STEP_STATUSES) }),
+	),
+	/** The suggested next step, when there is one. */
+	next: z.object({ number: z.number(), title: z.string() }).optional(),
+	openTasks: z.number(),
+	openQuestions: z.number(),
+	openReview: z.number(),
+});
+export type WorkbookProgress = z.output<typeof workbookProgressSchema>;
+
 /**
  * Every workspace's workbooks, kept by kilo.workbooks (the workbooks
  * themselves live in Pages). Forgetting a workbook removes only the reference.
@@ -71,6 +87,8 @@ export const Workbooks = defineDomainObject({
 		add: method(addWorkbookInputSchema, workbookSchema),
 		rename: method(z.object({ id: z.string(), name: z.string().trim().min(1) }), workbookSchema),
 		forget: method(z.object({ id: z.string() }), z.object({ forgotten: z.boolean() })),
+		/** Where the workbook is at (Where I left off, plan progress, open items), read from Pages. */
+		progress: method(z.object({ workbookId: z.string() }), workbookProgressSchema),
 		/** The first message for a chat starting work on a workbook, optionally on one item. */
 		kickoff: method(kickoffInputSchema, z.string()),
 	},

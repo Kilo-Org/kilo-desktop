@@ -10,6 +10,7 @@ import {
 } from "../contracts";
 import { createWorkbookContent } from "./create-workbook";
 import { kickoffText } from "./kickoff";
+import { nextStep, openQuestions, openTasks, planSteps, whereILeftOff } from "./progress";
 import type { PagesToolCaller } from "./pages-tools";
 
 interface SavedWorkbooks extends Record<string, unknown> {
@@ -80,6 +81,35 @@ export function provideWorkbooks(sdk: PluginSdk, deps: WorkbookStoreDeps): void 
 				save(remaining);
 				return { forgotten: true };
 			},
+			progress: async ({ workbookId }) => {
+				const workbook = find(workbookId);
+				const pages = deps.pages(workbook.backend, deps.workspace(workbook.workspaceId)?.directory);
+				const page = (itemType: string, id?: string) =>
+					workbook.sections.find((section) =>
+						id ? section.id === id : section.itemType === itemType,
+					);
+				const read = async (section: { pageId: string } | undefined) =>
+					section ? ((await readMarkdown(pages, { page_id: section.pageId })) ?? "") : "";
+				const [brief, plan, tasks, questions, review] = await Promise.all([
+					readMarkdown(pages, { project_id: workbook.projectId }, { strict: true }).then(
+						(text) => text ?? "",
+					),
+					read(page("plan-step")),
+					read(page("task", "tasks")),
+					read(page("question")),
+					read(page("finding", "review")),
+				]);
+				const steps = planSteps(plan);
+				const next = nextStep(steps);
+				return {
+					whereILeftOff: whereILeftOff(brief),
+					steps,
+					...(next ? { next: { number: next.number, title: next.title } } : {}),
+					openTasks: openTasks(tasks),
+					openQuestions: openQuestions(questions),
+					openReview: openTasks(review),
+				};
+			},
 			kickoff: async ({ workbookId, focus, fresh }) => {
 				const workbook = find(workbookId);
 				const pages = deps.pages(workbook.backend, deps.workspace(workbook.workspaceId)?.directory);
@@ -102,6 +132,7 @@ export function provideWorkbooks(sdk: PluginSdk, deps: WorkbookStoreDeps): void 
 	async function readMarkdown(
 		pages: PagesToolCaller,
 		target: Readonly<Record<string, string>>,
+		options: { readonly strict?: boolean } = {},
 	): Promise<string | undefined> {
 		try {
 			const page = (await pages.call("read_page", { ...target, comments: "none" })) as {
@@ -113,6 +144,7 @@ export function provideWorkbooks(sdk: PluginSdk, deps: WorkbookStoreDeps): void 
 				.trim();
 			return text || undefined;
 		} catch (error) {
+			if (options.strict) throw error;
 			sdk.logger.warn(`Couldn't read a workbook page for the kick-off: ${String(error)}`);
 			return undefined;
 		}

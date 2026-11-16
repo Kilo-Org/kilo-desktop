@@ -26,6 +26,7 @@ import {
 	type TemplateSummary,
 	type Workbook,
 } from "../contracts";
+import { ResumeWorkbook } from "./ResumeWorkbook";
 import { startFromWorkbook, startNewWorkbook, type StartDeps } from "./start";
 
 const selectActiveWorkspace = (state: { activeId: string | null }) => state.activeId;
@@ -50,6 +51,7 @@ export function StartWorkbookDialog({ close }: DialogProps) {
 	);
 	const templates = useDomainObjectState(WorkbookTemplates, selectTemplates) ?? [];
 	const [busy, setBusy] = useState(false);
+	const [resuming, setResuming] = useState<Workbook | null>(null);
 	const [error, setError] = useState<string | null>(null);
 
 	const run = async (start: () => Promise<unknown>) => {
@@ -89,13 +91,25 @@ export function StartWorkbookDialog({ close }: DialogProps) {
 							</TabsTrigger>
 						</TabsList>
 						<TabsContent value="continue">
-							<ContinueWorkbook
-								workbooks={workbooks}
-								busy={busy}
-								onStart={(workbook) =>
-									run(() => startFromWorkbook(deps, { workbookId: workbook.id, workspaceId }))
-								}
-							/>
+							{resuming ? (
+								<ResumeWorkbook
+									workbook={resuming}
+									workbooks={deps.workbooks}
+									busy={busy}
+									onBack={() => setResuming(null)}
+									onStart={({ focus }) =>
+										run(() =>
+											startFromWorkbook(deps, {
+												workbookId: resuming.id,
+												workspaceId,
+												...(focus ? { focus } : {}),
+											}),
+										)
+									}
+								/>
+							) : (
+								<ContinueWorkbook workbooks={workbooks} onPick={setResuming} />
+							)}
 						</TabsContent>
 						<TabsContent value="new">
 							<NewWorkbook
@@ -120,12 +134,10 @@ export function StartWorkbookDialog({ close }: DialogProps) {
 
 function ContinueWorkbook({
 	workbooks,
-	busy,
-	onStart,
+	onPick,
 }: {
 	readonly workbooks: readonly Workbook[];
-	readonly busy: boolean;
-	readonly onStart: (workbook: Workbook) => void;
+	readonly onPick: (workbook: Workbook) => void;
 }) {
 	if (workbooks.length === 0) {
 		return (
@@ -143,11 +155,10 @@ function ContinueWorkbook({
 						type="button"
 						size="sm"
 						variant="outline"
-						disabled={busy}
 						data-qa-id={`workbooks-continue-${workbook.id}`}
-						onClick={() => onStart(workbook)}
+						onClick={() => onPick(workbook)}
 					>
-						Start session
+						Open
 					</Button>
 				</li>
 			))}

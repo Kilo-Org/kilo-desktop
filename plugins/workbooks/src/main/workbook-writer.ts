@@ -1,6 +1,6 @@
 import { KernelError } from "@kilo-desktop/kernel";
 
-import type { Workbook, WorkbookSectionRef } from "../contracts";
+import { STEP_STATUSES, type Workbook, type WorkbookSectionRef } from "../contracts";
 import type { PagesToolCaller } from "./pages-tools";
 
 interface Block {
@@ -13,7 +13,7 @@ interface ReadPage {
 	readonly blocks: readonly Block[];
 }
 
-export const STEP_STATUSES = ["todo", "in_progress", "blocked", "done"] as const;
+export { STEP_STATUSES };
 export type StepStatus = (typeof STEP_STATUSES)[number];
 
 const TASK_LINE = /^(\s*)- \[([ xX])\] (.*)$/;

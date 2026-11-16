@@ -387,8 +387,8 @@ importers:
         specifier: ^2.6.0
         version: 2.6.0
       '@runtimed/node':
-        specifier: 0.8.0
-        version: 0.8.0
+        specifier: 0.8.1
+        version: 0.8.1
       '@sentry/electron':
         specifier: 'catalog:'
         version: 8.3.0
@@ -515,8 +515,8 @@ importers:
         version: 2.9.0
     optionalDependencies:
       '@runtimed/node-win32-arm64-msvc':
-        specifier: 0.8.0
-        version: 0.8.0
+        specifier: 0.8.1
+        version: 0.8.1
 
   apps/web:
     dependencies:
@@ -2086,8 +2086,8 @@ importers:
         specifier: ^26.2.1
         version: 26.6.0
       '@runtimed/node':
-        specifier: 0.8.0
-        version: 0.8.0
+        specifier: 0.8.1
+        version: 0.8.1
       '@tailwindcss/vite':
         specifier: ^4.3.3
         version: 4.3.3(vite@8.1.6(@types/node@26.6.6)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.9.0))
@@ -5220,35 +5220,35 @@ packages:
   '@rtsao/scc@1.1.0':
     resolution: {integrity: sha512-zt6OdqaDoOnJ1ZYsCYGt9YmWzDXl4vQdKTyJev62gFhRGKdx7mcT54V9KIjg+d2wi9EXsPvAPKe7i7WjfVWB8g==}
 
-  '@runtimed/node-darwin-arm64@0.8.0':
-    resolution: {integrity: sha512-fycYyOwF2b+R86na8P/nku5T5/c4hIebay/fYJY/mHiFWWy/ZC1JPkq6wyezynd6mgKsg1uNbOJXGZIaGhyKYg==}
+  '@runtimed/node-darwin-arm64@0.8.1':
+    resolution: {integrity: sha512-b1jgoFBjTqi4xEtxgHfW7fDfMlcl3gkbXw9pBMZpwIKtq7Y7WHg3VjaVjD4TJ1I62MimEHysKzDaCtEYe+8SBQ==}
     cpu: [arm64]
     os: [darwin]
 
-  '@runtimed/node-linux-arm64-gnu@0.8.0':
-    resolution: {integrity: sha512-qFuerd0rVXCD9SK4UCauGDcaO2WUObYJNFiyeybjVYdPVPQSdBIA+ZQrkk+l/1QzKgGOrH84pM7O2ws4a9aLdg==}
+  '@runtimed/node-linux-arm64-gnu@0.8.1':
+    resolution: {integrity: sha512-LBMZnvfZQpdfCjIVTQeEIYKIPbqNWyiHujH+w8hRcySCchvh6Bw9wmf5sLU+Tpi0TV7ypyrIkrEAQiVuHLh1jA==}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
 
-  '@runtimed/node-linux-x64-gnu@0.8.0':
-    resolution: {integrity: sha512-3OiEQWz2SgkwLdcX7dX6OzEf8STVQ3fk9w9UnCNshreO5TZKlc4Y3pNbRrGu0xQdJHVllfEt7WMkE7hxC6Qf6w==}
+  '@runtimed/node-linux-x64-gnu@0.8.1':
+    resolution: {integrity: sha512-1Yec/IUILG/SJsPORQss+VKsBt1eQTi/BIdas0mTjFB9UeQbWXAHWc3NHjjDcmdHFCl/pNR4DsC7czF1iTSdwg==}
     cpu: [x64]
     os: [linux]
     libc: [glibc]
 
-  '@runtimed/node-win32-arm64-msvc@0.8.0':
-    resolution: {integrity: sha512-RFqPhn4fju4nUVNdhR+Sq+3DpF7+Lm6NMy57pGCBOhfqTt6Kjwp/AKldB7be7xsKL4OzVFay4ZuA5qIQwmaGaw==}
+  '@runtimed/node-win32-arm64-msvc@0.8.1':
+    resolution: {integrity: sha512-9sCp4rdVbTRVniaZ3wsmXgZ3TiZa6uoRgMhjjsXyf3lJfmxu0AcUte0D3dUZZwvR56MehgFPv/CzZlJ7V2OQOQ==}
     cpu: [arm64]
     os: [win32]
 
-  '@runtimed/node-win32-x64-msvc@0.8.0':
-    resolution: {integrity: sha512-uMs8awMdRcL15po9h+3FcLTzr0PhJMQ8b3QTny9GsU2S5jodf3t7bxc45FX2QyKa8XJ6G+KPejtlqwgmCT0E+w==}
+  '@runtimed/node-win32-x64-msvc@0.8.1':
+    resolution: {integrity: sha512-PjU5gCuOna2Hy2tz0MYGw8xpw8/bSGqylaEyZVhRB8VH4wyhq6P5CbgSqAP6DISBo47QIfhcxlpaV+9tGWVmtQ==}
     cpu: [x64]
     os: [win32]
 
-  '@runtimed/node@0.8.0':
-    resolution: {integrity: sha512-emLbQreJCB3cvdBBmCTSTydjI1xJL/QHdyrMQoe6PgVlZWnHs4onCyKsElhnK/LomthmB0Sj+tGIW+XF+NUOXg==}
+  '@runtimed/node@0.8.1':
+    resolution: {integrity: sha512-NJIVbJkBVpxHAHsL91fK8CRDz6RtXkyJyr1iqvGtNyHZqSTXLzXx1ruht9N35x1/Z4RNcuJhcUy/3Mm36aOVLw==}
 
   '@sec-ant/readable-stream@0.4.1':
     resolution: {integrity: sha512-831qok9r2t8AlxLko40y2ebgSDhenenCatLVeW/uBtnHPyhHOvG0C7TvfgecV+wHzIm5KUICgzmVpWS+IMEAeg==}
@@ -12813,30 +12813,30 @@ snapshots:
 
   '@rtsao/scc@1.1.0': {}
 
-  '@runtimed/node-darwin-arm64@0.8.0':
+  '@runtimed/node-darwin-arm64@0.8.1':
     optional: true
 
-  '@runtimed/node-linux-arm64-gnu@0.8.0':
+  '@runtimed/node-linux-arm64-gnu@0.8.1':
     optional: true
 
-  '@runtimed/node-linux-x64-gnu@0.8.0':
+  '@runtimed/node-linux-x64-gnu@0.8.1':
     optional: true
 
-  '@runtimed/node-win32-arm64-msvc@0.8.0':
+  '@runtimed/node-win32-arm64-msvc@0.8.1':
     optional: true
 
-  '@runtimed/node-win32-x64-msvc@0.8.0':
+  '@runtimed/node-win32-x64-msvc@0.8.1':
     optional: true
 
-  '@runtimed/node@0.8.0':
+  '@runtimed/node@0.8.1':
     dependencies:
       rxjs: 7.8.2
     optionalDependencies:
-      '@runtimed/node-darwin-arm64': 0.8.0
-      '@runtimed/node-linux-arm64-gnu': 0.8.0
-      '@runtimed/node-linux-x64-gnu': 0.8.0
-      '@runtimed/node-win32-arm64-msvc': 0.8.0
-      '@runtimed/node-win32-x64-msvc': 0.8.0
+      '@runtimed/node-darwin-arm64': 0.8.1
+      '@runtimed/node-linux-arm64-gnu': 0.8.1
+      '@runtimed/node-linux-x64-gnu': 0.8.1
+      '@runtimed/node-win32-arm64-msvc': 0.8.1
+      '@runtimed/node-win32-x64-msvc': 0.8.1
 
   '@sec-ant/readable-stream@0.4.1': {}
 

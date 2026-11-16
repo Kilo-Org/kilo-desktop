@@ -25,7 +25,7 @@
 		"@kilo-desktop/plugin-shell": "workspace:*",
 		"@kilo-desktop/plugin-work-sessions": "workspace:*",
 		"@kilo-desktop/ui": "workspace:*",
-		"@nteract/sift": "0.6.0",
+		"@nteract/sift": "0.7.0",
 		"@nteract/sift-csv": "0.3.0",
 		"@pierre/diffs": "catalog:",
 		"@pierre/trees": "catalog:",

@@ -39,6 +39,8 @@ async function renderSection(options: { pages?: FakePages; workspaceId?: string 
 	return { ...booted, started, log };
 }
 
+const moreDetails = () => page.getByTestId("workbooks-more-details").element().textContent;
+
 describe("Start from a workbook on the New Session page", () => {
 	it("creates a workbook from the Coding template and starts a session on it", async () => {
 		const { host, started, log, pages } = await renderSection();
@@ -151,9 +153,12 @@ describe("Start from a workbook on the New Session page", () => {
 
 		await userEvent.click(page.getByTestId("workbooks-new"));
 		await expect.element(page.getByTestId("workbooks-template-coding")).toBeVisible();
-		await expect.element(page.getByTestId("workbooks-field-acceptance")).toBeVisible();
-		await userEvent.click(page.getByTestId("workbooks-template-blank"));
+		await expect
+			.poll(() => moreDetails())
+			.toMatch(/Context and links, Acceptance criteria, Constraints and non-goals\W+optional$/);
 		await expect.element(page.getByTestId("workbooks-field-acceptance")).not.toBeInTheDocument();
+		await userEvent.click(page.getByTestId("workbooks-template-blank"));
+		await expect.element(page.getByTestId("workbooks-more-details")).not.toBeInTheDocument();
 		await userEvent.fill(page.getByTestId("workbooks-name").element(), "Scratch");
 		await userEvent.fill(page.getByTestId("workbooks-field-goal").element(), "Poke at things");
 		await userEvent.click(page.getByTestId("workbooks-create"));
@@ -163,6 +168,26 @@ describe("Start from a workbook on the New Session page", () => {
 		expect(workbook).toMatchObject({ templateId: "blank", name: "Scratch" });
 		expect(workbook!.sections.map((section) => section.id)).toEqual(["notes"]);
 		expect(started[0]!.text).toContain("adding anything worth keeping to Notes");
+	});
+
+	it("folds the optional Brief fields into More details, keeping what's filled in", async () => {
+		const { host, pages } = await renderSection();
+
+		await userEvent.click(page.getByTestId("workbooks-new"));
+		await userEvent.click(page.getByTestId("workbooks-more-details"));
+		await userEvent.fill(page.getByTestId("workbooks-field-acceptance").element(), "It ticks");
+		await expect.poll(() => moreDetails()).toMatch(/1 filled in$/);
+		await userEvent.fill(page.getByTestId("workbooks-name").element(), "Clock");
+		await userEvent.fill(page.getByTestId("workbooks-field-goal").element(), "Show the time");
+		await userEvent.click(page.getByTestId("workbooks-create"));
+
+		await expect
+			.poll(() => host.renderer.kernelSdk.domainObjects.get(Workbooks)!.getState().workbooks.length)
+			.toBe(1);
+		const [workbook] = host.renderer.kernelSdk.domainObjects.get(Workbooks)!.getState().workbooks;
+		expect(pages.markdown(pages.documentOf(workbook!.projectId))).toContain(
+			"## Acceptance criteria\n\nIt ticks",
+		);
 	});
 
 	it("shows why a workbook couldn't be created, starting no session", async () => {

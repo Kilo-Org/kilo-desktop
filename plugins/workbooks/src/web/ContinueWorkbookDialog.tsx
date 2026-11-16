@@ -49,7 +49,10 @@ export function ContinueWorkbookDialog({
 	);
 	return (
 		<Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
-			<DialogContent data-qa-id="workbooks-continue-dialog" className="sm:max-w-lg">
+			<DialogContent
+				data-qa-id="workbooks-continue-dialog"
+				className="max-h-[min(48rem,calc(100dvh-4rem))] grid-rows-[auto_minmax(0,1fr)] sm:max-w-lg"
+			>
 				<DialogHeader>
 					<DialogTitle>Existing workbook</DialogTitle>
 					<DialogDescription>
@@ -57,43 +60,45 @@ export function ContinueWorkbookDialog({
 						new chat starts from the workbook's Brief and guide.
 					</DialogDescription>
 				</DialogHeader>
-				{picked ? (
-					<ResumeWorkbook
-						workbook={picked}
-						workbooks={handle}
-						busy={busy}
-						{...(workbooks.length > 1 ? { onBack: () => setPicked(null) } : {})}
-						onStart={(choice) => onStart(picked, choice)}
-					/>
-				) : (
-					<ItemGroup className="gap-2" data-qa-id="workbooks-list">
-						{workbooks.map((workbook) => (
-							<Item key={workbook.id} variant="outline" size="sm">
-								<ItemMedia variant="icon">
-									<NotebookTabsIcon />
-								</ItemMedia>
-								<ItemContent className="min-w-0">
-									<ItemTitle className="truncate">{workbook.name}</ItemTitle>
-									<ItemDescription>
-										Started {new Date(workbook.createdAt).toLocaleDateString()}
-									</ItemDescription>
-								</ItemContent>
-								<ItemActions>
-									<Button
-										type="button"
-										size="sm"
-										variant="outline"
-										data-qa-id={`workbooks-continue-${workbook.id}`}
-										onClick={() => setPicked(workbook)}
-									>
-										Open
-									</Button>
-								</ItemActions>
-							</Item>
-						))}
-					</ItemGroup>
-				)}
-				{error ? <FieldError data-qa-id="workbooks-start-error">{error}</FieldError> : null}
+				<div className="scroll-fade-y -mx-4 flex min-h-0 flex-col gap-4 overflow-y-auto px-4">
+					{picked ? (
+						<ResumeWorkbook
+							workbook={picked}
+							workbooks={handle}
+							busy={busy}
+							{...(workbooks.length > 1 ? { onBack: () => setPicked(null) } : {})}
+							onStart={(choice) => onStart(picked, choice)}
+						/>
+					) : (
+						<ItemGroup className="gap-2" data-qa-id="workbooks-list">
+							{workbooks.map((workbook) => (
+								<Item key={workbook.id} variant="outline" size="sm">
+									<ItemMedia variant="icon">
+										<NotebookTabsIcon />
+									</ItemMedia>
+									<ItemContent className="min-w-0">
+										<ItemTitle className="truncate">{workbook.name}</ItemTitle>
+										<ItemDescription>
+											Started {new Date(workbook.createdAt).toLocaleDateString()}
+										</ItemDescription>
+									</ItemContent>
+									<ItemActions>
+										<Button
+											type="button"
+											size="sm"
+											variant="outline"
+											data-qa-id={`workbooks-continue-${workbook.id}`}
+											onClick={() => setPicked(workbook)}
+										>
+											Open
+										</Button>
+									</ItemActions>
+								</Item>
+							))}
+						</ItemGroup>
+					)}
+					{error ? <FieldError data-qa-id="workbooks-start-error">{error}</FieldError> : null}
+				</div>
 			</DialogContent>
 		</Dialog>
 	);

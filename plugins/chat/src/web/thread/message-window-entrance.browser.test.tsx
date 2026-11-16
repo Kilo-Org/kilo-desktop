@@ -5,9 +5,9 @@ import {
 	useExternalStoreRuntime,
 	type ThreadMessageLike,
 } from "@assistant-ui/react";
-import { act, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { useState, type FC } from "react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { WindowedMessages } from "./message-window";
 
@@ -32,6 +32,8 @@ const Message: FC = () => {
 	// Any animation stands in for the entrance one; the test stylesheet has no tw-animate-css.
 	return <div data-testid={`message-${role}`} className="animate-spin" />;
 };
+
+afterEach(cleanup);
 
 let setSnapshot: (snapshot: Snapshot) => void = () => undefined;
 

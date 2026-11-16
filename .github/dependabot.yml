@@ -7,10 +7,15 @@ version: 2
 # there). Dependabot reads secrets from its own store, not Actions secrets, so
 # ANACONDA_PACKAGES_TOKEN must also exist under Settings > Secrets > Dependabot.
 # CI runs on Dependabot PRs read that same store.
+#
+# `scope` is required: without it Dependabot infers the default registry from
+# the @anaconda tarball URLs in pnpm-lock.yaml and resolves every package from
+# GitHub Packages, which serves stale metadata for public packages.
 registries:
   github-packages:
     type: npm-registry
     url: https://npm.pkg.github.com
+    scope: "@anaconda"
     token: ${{secrets.ANACONDA_PACKAGES_TOKEN}}
 
 updates:

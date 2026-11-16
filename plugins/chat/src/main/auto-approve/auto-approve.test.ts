@@ -24,17 +24,42 @@ describe("needsPerson", () => {
 });
 
 describe("auto mode", () => {
-	it("answers a request once, holding it back until it resolves", async () => {
-		const { core, autoApprove } = await boot({ chats: [chat("ses_a")] });
+	it("answers a request once, holding it back until windows have dropped it", async () => {
+		const { core, autoApprove } = await boot({
+			chats: [chat("ses_a")],
+			dropResolvedAfterMs: 20,
+		});
 		await autoApprove.methods.setMode({ mode: "auto" });
 		core.requests.set("ses_a", [request("per_1", "ses_a")]);
 
 		core.ask("ses_a", "per_1");
-		expect(autoApprove.getState().holding).toEqual(["per_1"]);
 		await settle();
 
 		expect(core.replies).toEqual([{ chatId: "ses_a", permissionId: "per_1", reply: "once" }]);
+		expect(autoApprove.getState().holding).toEqual(["per_1"]);
+		// Still listed: a window may not have dropped the request yet, and would show its card.
 		core.resolve("ses_a", "per_1");
+		expect(autoApprove.getState().holding).toEqual(["per_1"]);
+		// Then dropped, so a window that missed the resolve shows the card rather than hide it for good.
+		await new Promise((resolve) => setTimeout(resolve, 30));
+		expect(autoApprove.getState().holding).toEqual([]);
+	});
+
+	it("does not hold a request while reading it, so one a person must answer is never hidden", async () => {
+		const { core, autoApprove } = await boot({ chats: [chat("ses_a")] });
+		await autoApprove.methods.setMode({ mode: "auto" });
+		core.requests.set("ses_a", [
+			request("per_sandbox", "ses_a", { metadata: { sandboxEscalation: true } }),
+		]);
+		let finishRead = () => {};
+		core.readGate = new Promise<void>((resolve) => (finishRead = resolve));
+
+		core.ask("ses_a", "per_sandbox");
+		await settle();
+		expect(autoApprove.getState().holding).toEqual([]);
+
+		finishRead();
+		await settle();
 		expect(autoApprove.getState().holding).toEqual([]);
 	});
 
@@ -160,8 +185,9 @@ describe("auto mode", () => {
 			removableCore: true,
 		});
 		await autoApprove.methods.setMode({ mode: "auto" });
-		core.readGate = new Promise<void>(() => {});
+		core.requests.set("ses_a", [request("per_1", "ses_a")]);
 		core.ask("ses_a", "per_1");
+		await settle();
 		expect(autoApprove.getState().holding).toEqual(["per_1"]);
 
 		await setCorePresent(false);

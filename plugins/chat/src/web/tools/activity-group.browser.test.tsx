@@ -663,6 +663,19 @@ describe("Self-describing solo tool rows", () => {
 		expect(queryByRole("button")).toBeNull();
 	});
 
+	it("keeps a tool running while auto-approve answers its permission request", async () => {
+		// No prompt is visible: the request is held, so only the status says "requires-action".
+		const part = {
+			...toolPart("call-1", "websearch", { query: "Numba" }),
+			status: { type: "requires-action" as const, reason: "tool-calls" as const },
+		};
+		runtime.message.status = { type: "requires-action" };
+		const { baseElement, queryByRole } = await renderActivity("web", [part], WebSearchActivity);
+
+		expect(baseElement.textContent).toContain("Browsing the web");
+		expect(queryByRole("button")).toBeNull();
+	});
+
 	it("renders a quiet solo command as a single non-collapsible line", async () => {
 		runtime.message.status = { type: "complete" };
 		const { baseElement, queryByRole } = await renderActivity(

@@ -651,6 +651,10 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 		return custom?.opencode?.parts;
 	});
 	const { questions: pendingQuestions, permissions: pendingPermissions } = usePendingInteractions();
+	// "requires-action" with no prompt showing is a request auto-approve is
+	// answering: the tool is still running, and treating it as waiting would
+	// swap its row for an open disclosure until the answer lands.
+	const promptShowing = pendingQuestions.length + pendingPermissions.length > 0;
 	const segment = useMemo<ActivitySegment>(() => {
 		const indices = group.indices.filter((index) => {
 			const part = parts[index];
@@ -661,10 +665,13 @@ const ActivitySubgroupImpl: FC<PropsWithChildren<{ group: GroupLike; kind: Activ
 		for (const index of indices) {
 			const status = parts[index]?.status;
 			if (status?.type === "running") running = true;
-			if (status?.type === "requires-action") requiresAction = true;
+			if (status?.type === "requires-action") {
+				if (promptShowing) requiresAction = true;
+				else running = true;
+			}
 		}
 		return { kind, indices, running, requiresAction };
-	}, [parts, group.indices, kind]);
+	}, [parts, group.indices, kind, promptShowing]);
 	const hasPendingAsk = useMemo(
 		() =>
 			kind === "asking" &&

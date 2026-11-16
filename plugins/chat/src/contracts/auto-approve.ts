@@ -11,10 +11,10 @@ export const AUTO_APPROVE_TOOL_APPROVAL_ID = "auto-approve";
 /**
  * Whether the agent's permission requests are answered for the person
  * (`auto`, origin's app-wide mode) or left to them (`manual`), answered in
- * main for every window. `holding` lists requests being answered or checked
- * right now, which permission cards keep hidden until they are revealed
- * (kilo.work-sessions' `PERMISSION_AUTO_ANSWER_TIMEOUT_MS`, when the
- * notifier sounds for them too, or a failed reply drops them from the list).
+ * main for every window. `holding` lists requests main is answering, and for
+ * a moment ones it just resolved, which permission cards keep hidden until
+ * they leave the list (kilo.work-sessions' `PERMISSION_AUTO_ANSWER_TIMEOUT_MS`,
+ * when the notifier sounds for them too, or a failed reply).
  */
 export const AutoApprove = defineDomainObject({
 	id: "kilo.chat/auto-approve",
@@ -22,7 +22,7 @@ export const AutoApprove = defineDomainObject({
 	description: "Whether the agent's permission requests are answered automatically.",
 	state: z.object({
 		mode: approvalModeSchema,
-		/** Permission request ids being answered or checked right now. */
+		/** Permission request ids main is answering, and for a moment ones it just resolved. */
 		holding: z.array(z.string()),
 	}),
 	methods: {

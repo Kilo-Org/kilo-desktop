@@ -37,7 +37,15 @@ type ChatsHandle = DomainObjectHandle<typeof Chats>;
 
 export interface AutoApproveOptions {
 	readonly revealAfterMs?: number;
+	readonly dropResolvedAfterMs?: number;
 }
+
+/**
+ * How long a resolved request stays in `holding`: long enough for each
+ * window's own stream to drop it first, short enough that a window which
+ * missed the resolve shows the card soon instead of hiding it for good.
+ */
+const DROP_RESOLVED_AFTER_MS = 1_000;
 
 /**
  * The `auto-approve` domain object: origin's renderer auto-approver, moved to
@@ -52,8 +60,12 @@ export interface AutoApproveOptions {
  * - **Manual:** one kind is still answered: a call to a `requiresSignIn` tool
  *   while signed out. The gateway will refuse it, so asking first only puts
  *   Kilo's prompt before (or, if denied, instead of) chat's sign-in prompt.
- * - A request being answered or checked is in `holding` (cards hide it) until
- *   it resolves, the reply fails, or `revealAfterMs` passes.
+ * - A request it has decided to answer is in `holding` (cards hide it) until
+ *   the reply fails or `revealAfterMs` passes. One that resolves stays listed
+ *   for `dropResolvedAfterMs` (see `dropResolved`). A request is not held
+ *   while it is read: the windows already hide, for a while, those they
+ *   predict it will answer, and holding the rest would hide prompts a person
+ *   must answer.
  * - `generation` changes with the mode, so a drain stops when the mode does.
  * - The mode is app-wide, as origin's was, in kv (namespace `auto-approve`,
  *   unchanged since the previous kilo.chat).
@@ -66,6 +78,7 @@ export interface AutoApproveOptions {
  */
 export function activateAutoApprove(sdk: PluginSdk, options: AutoApproveOptions = {}): void {
 	const revealAfterMs = options.revealAfterMs ?? PERMISSION_AUTO_ANSWER_TIMEOUT_MS;
+	const dropResolvedAfterMs = options.dropResolvedAfterMs ?? DROP_RESOLVED_AFTER_MS;
 	const store = mainHost(sdk).storage.kv<PersistedMode>({
 		namespace: "auto-approve",
 		defaults: { mode: "manual" },
@@ -124,6 +137,21 @@ export function activateAutoApprove(sdk: PluginSdk, options: AutoApproveOptions 
 		publishHolding();
 	}
 
+	/**
+	 * Lets go of a resolved request after `dropResolvedAfterMs`. Each window
+	 * drops it on its own stream; a `holding` update arriving first would show
+	 * its card in place of the composer for a moment.
+	 */
+	function dropResolved(permissionId: string): void {
+		const timer = held.get(permissionId);
+		if (timer === undefined) return;
+		clearTimeout(timer);
+		held.set(
+			permissionId,
+			setTimeout(() => release(permissionId), dropResolvedAfterMs),
+		);
+	}
+
 	/** Contribution keys of the `kilo.core/tool`s refused while signed out. */
 	function signInTools(): Set<string> {
 		return new Set(
@@ -149,21 +177,23 @@ export function activateAutoApprove(sdk: PluginSdk, options: AutoApproveOptions 
 		const auto = provider.state.mode === "auto";
 		if (!auto && (sdk.context.get(SIGNED_IN_KEY) || signInTools().size === 0)) return;
 		const snapshot = generation;
-		hold(permissionId);
 		try {
 			const request = await requestOf(handle, chatId, permissionId);
 			// The mode changed while reading: what was decided for it no longer holds.
-			if (generation !== snapshot) return release(permissionId);
-			if (!request || neverAutoReplied(request.metadata)) return release(permissionId);
+			if (generation !== snapshot) return;
+			if (!request || neverAutoReplied(request.metadata)) return;
 			if (auto) {
-				if (request.metadata["skillShell"] === true) release(permissionId);
+				// Skill-shell is answered unheld: the server refuses machine replies, so its card must show.
+				if (request.metadata["skillShell"] !== true) hold(permissionId);
 			} else if (
 				request.metadata["skillShell"] === true ||
 				sdk.context.get(SIGNED_IN_KEY) ||
 				!request.toolKey ||
 				!signInTools().has(request.toolKey)
 			) {
-				return release(permissionId);
+				return;
+			} else {
+				hold(permissionId);
 			}
 			await handle.methods.replyPermission({ chatId, permissionId, reply: "once" });
 		} catch (error) {
@@ -192,7 +222,7 @@ export function activateAutoApprove(sdk: PluginSdk, options: AutoApproveOptions 
 				handle.on("permission-requested", ({ chatId, permissionId }) => {
 					void consider(chatId, permissionId);
 				}),
-				handle.on("permission-resolved", ({ permissionId }) => release(permissionId)),
+				handle.on("permission-resolved", ({ permissionId }) => dropResolved(permissionId)),
 				handle.subscribe((state) => {
 					if (state.ready && !ready) void drain(generation);
 					ready = state.ready;

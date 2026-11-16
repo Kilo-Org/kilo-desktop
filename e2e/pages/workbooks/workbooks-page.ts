@@ -20,9 +20,10 @@ export class WorkbooksPage {
 
 	async verifyCodingTemplateOffered(): Promise<void> {
 		await click(getLocatorByTestId("workbooks-new"));
+		await click(getLocatorByTestId("workbooks-template-coding"));
 		await expectElementToBeVisible(
 			getLocatorByTestId("workbooks-field-goal"),
-			"New workbook should open on the Coding template's Brief",
+			"Choosing Coding should move on to its Brief",
 		);
 	}
 

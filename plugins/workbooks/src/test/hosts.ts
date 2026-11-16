@@ -190,6 +190,9 @@ function kiloFetch(pages: FakePages, directories: (string | undefined)[]): typeo
 	};
 }
 
+/** Another plugin to boot alongside kilo.workbooks. */
+export type GuestPlugin = Parameters<typeof createPluginHost>[0][number];
+
 export interface WorkbooksHost {
 	readonly host: PluginHost;
 	readonly pages: FakePages;
@@ -201,7 +204,7 @@ export async function bootWorkbooks(
 	options: {
 		readonly pages?: FakePages;
 		readonly storage?: ReturnType<typeof createMemoryStorage>;
-		readonly others?: readonly Parameters<typeof createPluginHost>[0][number][];
+		readonly others?: readonly GuestPlugin[];
 		/** Reach Pages the real way: through a (stand-in) Kilo server over HTTP. */
 		readonly viaKilo?: boolean;
 		readonly workSessions?: { current?: WorkSessionsControl };

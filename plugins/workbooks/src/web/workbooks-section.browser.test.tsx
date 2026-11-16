@@ -3,11 +3,19 @@ import { page, userEvent } from "vitest/browser";
 
 import type { PluginHost } from "@kilo-desktop/kernel/testing/plugin-host";
 
-import { SessionWorkbooks, Workbooks } from "../contracts";
+import { definePlugin } from "@kilo-desktop/kernel";
+
+import { SessionWorkbooks, WorkbookTemplatePoint, Workbooks } from "../contracts";
 import { FakePages } from "../test/fake-pages";
 import { NewWorkSessionSection } from "@kilo-desktop/plugin-work-sessions/contracts";
 
-import { bootWorkbooks, pageStart, type PageStarts, type StartedChat } from "../test/hosts";
+import {
+	bootWorkbooks,
+	pageStart,
+	type GuestPlugin,
+	type PageStarts,
+	type StartedChat,
+} from "../test/hosts";
 
 const hosts: PluginHost[] = [];
 const slots: { unmount(): void }[] = [];
@@ -17,12 +25,56 @@ afterEach(async () => {
 	await Promise.all(hosts.splice(0).map((host) => host.dispose()));
 });
 
-async function renderSection(options: { pages?: FakePages; workspaceId?: string | null } = {}) {
+/** A plugin contributing simple templates, enough to need the filter. */
+function manyTemplates(names: readonly string[]) {
+	const id = (name: string) => name.toLowerCase();
+	return {
+		manifest: {
+			manifestVersion: 1,
+			id: "example.templates",
+			displayName: "Templates",
+			version: "1.0.0",
+			requires: { "kilo.workbooks/template": "optional" },
+			contributes: {
+				extensions: { "kilo.workbooks/template": names.map((name) => ({ id: id(name) })) },
+			},
+		},
+		main: definePlugin({
+			activate(sdk) {
+				for (const name of names) {
+					sdk.extensions.implement(WorkbookTemplatePoint, id(name), {
+						read: () => ({
+							id: id(name),
+							name,
+							description: `For ${name.toLowerCase()} work.`,
+							brief: {
+								markdown: "{{goal}}",
+								fields: [{ id: "goal", label: "Goal", required: true }],
+							},
+							guide: { title: "How to work here", markdown: "Be good." },
+							firstMove: "Go.",
+							sections: [{ id: "notes", title: "Notes", itemType: "note", markdown: "Notes." }],
+						}),
+					});
+				}
+			},
+		}),
+	};
+}
+
+async function renderSection(
+	options: {
+		pages?: FakePages;
+		workspaceId?: string | null;
+		others?: readonly GuestPlugin[];
+	} = {},
+) {
 	const started: StartedChat[] = [];
 	const log: PageStarts = { opened: [], discarded: [] };
 	const booted = await bootWorkbooks({
 		started,
 		...(options.pages ? { pages: options.pages } : {}),
+		...(options.others ? { others: options.others } : {}),
 	});
 	hosts.push(booted.host);
 	slots.push(
@@ -39,14 +91,20 @@ async function renderSection(options: { pages?: FakePages; workspaceId?: string 
 	return { ...booted, started, log };
 }
 
+/** Opens New workbook and picks a template, landing on its Brief. */
+async function newWorkbook(templateId = "coding") {
+	await userEvent.click(page.getByTestId("workbooks-new"));
+	await userEvent.click(page.getByTestId(`workbooks-template-${templateId}`));
+	await expect.element(page.getByTestId("workbooks-new-form")).toBeVisible();
+}
+
 const moreDetails = () => page.getByTestId("workbooks-more-details").element().textContent;
 
 describe("Start from a workbook on the New Session page", () => {
 	it("creates a workbook from the Coding template and starts a session on it", async () => {
 		const { host, started, log, pages } = await renderSection();
 
-		await userEvent.click(page.getByTestId("workbooks-new"));
-		await expect.element(page.getByTestId("workbooks-new-form")).toBeVisible();
+		await newWorkbook();
 		await expect.element(page.getByTestId("workbooks-create")).toBeDisabled();
 		await userEvent.fill(page.getByTestId("workbooks-name").element(), "Fix the server bug");
 		await userEvent.fill(
@@ -148,15 +206,19 @@ describe("Start from a workbook on the New Session page", () => {
 		expect(started[0]!.text).not.toContain("## Work on this");
 	});
 
-	it("asks for a template, then that template's Brief", async () => {
+	it("asks for a template first, then that template's Brief, with Back to the templates", async () => {
 		const { host, started } = await renderSection();
 
 		await userEvent.click(page.getByTestId("workbooks-new"));
 		await expect.element(page.getByTestId("workbooks-template-coding")).toBeVisible();
+		await expect.element(page.getByTestId("workbooks-template-blank")).toBeVisible();
+		await expect.element(page.getByTestId("workbooks-template-filter")).not.toBeInTheDocument();
+		await userEvent.click(page.getByTestId("workbooks-template-coding"));
 		await expect
 			.poll(() => moreDetails())
 			.toMatch(/Context and links, Acceptance criteria, Constraints and non-goals\W+optional$/);
 		await expect.element(page.getByTestId("workbooks-field-acceptance")).not.toBeInTheDocument();
+		await userEvent.click(page.getByTestId("workbooks-back"));
 		await userEvent.click(page.getByTestId("workbooks-template-blank"));
 		await expect.element(page.getByTestId("workbooks-more-details")).not.toBeInTheDocument();
 		await userEvent.fill(page.getByTestId("workbooks-name").element(), "Scratch");
@@ -170,10 +232,24 @@ describe("Start from a workbook on the New Session page", () => {
 		expect(started[0]!.text).toContain("adding anything worth keeping to Notes");
 	});
 
+	it("filters the templates once there are many", async () => {
+		await renderSection({
+			others: [manyTemplates(["Recipe", "Research", "Release", "Incident", "Analysis"])],
+		});
+
+		await userEvent.click(page.getByTestId("workbooks-new"));
+		await userEvent.fill(page.getByTestId("workbooks-template-filter").element(), "re");
+		await expect.element(page.getByTestId("workbooks-template-recipe")).toBeVisible();
+		await expect.element(page.getByTestId("workbooks-template-release")).toBeVisible();
+		await expect.element(page.getByTestId("workbooks-template-analysis")).not.toBeInTheDocument();
+		await userEvent.fill(page.getByTestId("workbooks-template-filter").element(), "zzz");
+		await expect.element(page.getByText('No templates match "zzz".')).toBeVisible();
+	});
+
 	it("folds the optional Brief fields into More details, keeping what's filled in", async () => {
 		const { host, pages } = await renderSection();
 
-		await userEvent.click(page.getByTestId("workbooks-new"));
+		await newWorkbook();
 		await userEvent.click(page.getByTestId("workbooks-more-details"));
 		await userEvent.fill(page.getByTestId("workbooks-field-acceptance").element(), "It ticks");
 		await expect.poll(() => moreDetails()).toMatch(/1 filled in$/);
@@ -194,7 +270,7 @@ describe("Start from a workbook on the New Session page", () => {
 		const pages = new FakePages();
 		pages.failOn = "create_project";
 		const { log } = await renderSection({ pages });
-		await userEvent.click(page.getByTestId("workbooks-new"));
+		await newWorkbook();
 
 		await userEvent.fill(page.getByTestId("workbooks-name").element(), "X");
 		await userEvent.fill(page.getByTestId("workbooks-field-goal").element(), "g");

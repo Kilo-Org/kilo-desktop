@@ -17,6 +17,7 @@ import {
 	criticalThemeStyle,
 	themeBootstrapScript,
 } from "../../packages/ui/src/themes/theme-tokens";
+import desktopInfo from "../desktop/package.json";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const srcRoot = path.resolve(root, "src");
@@ -55,6 +56,11 @@ export default defineConfig({
 			authToken: process.env.SENTRY_AUTH_TOKEN,
 			...(process.env.SENTRY_ORG && { org: process.env.SENTRY_ORG }),
 			project: process.env.SENTRY_PROJECT ?? "kilo-desktop",
+			// Same release as the main process (vite.main.config.ts). Unset, the
+			// plugin injects the git SHA, so renderer events land in a release
+			// Sentry cannot filter or resolve by version. The desktop manifest is
+			// stamped with the track's publish version before release builds.
+			release: { name: `${desktopInfo.name}@${desktopInfo.version}` },
 			...(uploadSourcemaps && {
 				// Absolute and rooted at `dist/`: Sentry resolves a relative glob
 				// against the process cwd, so a bare `**/*.map` would sweep the

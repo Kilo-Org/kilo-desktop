@@ -3,8 +3,9 @@ import { init as reactInit } from "@sentry/react";
 
 import { getKernelBridge } from "./bridge";
 
-// Renderer events are sent through the main process, so dsn, release and
-// environment passed here have no effect. Standalone browser mode has no main
+// Renderer events are sent through the main process, so dsn and environment
+// passed here have no effect. The release is the one the Sentry Vite plugin
+// injects at build time (vite.config.ts). Standalone browser mode has no main
 // process to receive them, so Sentry is skipped there.
 //
 // Pins the `sendDefaultPii: false` baseline; mirrors DATA_COLLECTION in the

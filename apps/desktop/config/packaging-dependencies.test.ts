@@ -86,6 +86,19 @@ describe("packaged production dependencies", () => {
 		expect(tooling).toContain("sentry");
 	});
 
+	it("names the renderer's Sentry release after the desktop version, like the main process", () => {
+		// Without an explicit name the Sentry Vite plugin injects the git commit
+		// SHA, splitting one build into a SHA release (renderer) and a version
+		// release (main) that Sentry cannot filter or resolve by version.
+		const main = readFileSync(path.join(desktopRoot, "vite.main.config.ts"), "utf8");
+		const renderer = readFileSync(path.join(workspaceRoot, "apps/web/vite.config.ts"), "utf8");
+
+		expect(main).toContain('import appInfo from "./package.json"');
+		expect(main).toContain("name: `${appInfo.name}@${appInfo.version}`");
+		expect(renderer).toContain('import desktopInfo from "../desktop/package.json"');
+		expect(renderer).toContain("release: { name: `${desktopInfo.name}@${desktopInfo.version}` }");
+	});
+
 	it("keeps the WebMCP relay out of the desktop dependency graph", () => {
 		expect(dependencies["@mcp-b/webmcp-local-relay"]).toBeUndefined();
 	});

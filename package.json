@@ -59,7 +59,7 @@
 		"oxfmt": "^0.78.0",
 		"oxlint": "^1.76.0",
 		"tsx": "^4.23.15",
-		"turbo": "^2.11.8",
+		"turbo": "^2.11.11",
 		"typescript": "catalog:",
 		"vitest": "catalog:",
 		"wait-on": "^9.5.1"

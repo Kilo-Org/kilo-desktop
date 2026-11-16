@@ -70,7 +70,7 @@ During installation the setup wizard will prompt you to select workloads. Check 
 
 ## Package Registry Access
 
-`pnpm install` needs a GitHub token for the GitHub Packages registry. Follow the token step in the root [README](../README.md#getting-started), then restart your terminal.
+`pnpm install` needs a GitHub token for the GitHub Packages registry. Follow the token step in [CONTRIBUTING.md](../CONTRIBUTING.md#1-install-dependencies), then restart your terminal.
 
 ## Running the App
 

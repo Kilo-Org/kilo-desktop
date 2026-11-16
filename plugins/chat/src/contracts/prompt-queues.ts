@@ -5,9 +5,6 @@ import { modelRefSchema, promptChatInputSchema } from "@kilo-desktop/plugin-core
 
 const nothing = z.undefined();
 
-/** The flag behind pausing, reordering and editing queued prompts. */
-export const PROMPT_QUEUE_EDITING_FLAG = "prompt-queue-editing";
-
 /** A message part as `kilo.core/chats` `prompt` takes it: text, or a file as a data URL. */
 const promptPartSchema = promptChatInputSchema.shape.parts.element;
 export type PromptPart = z.output<typeof promptPartSchema>;

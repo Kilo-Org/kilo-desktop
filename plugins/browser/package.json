@@ -24,8 +24,8 @@
 		"@kilo-desktop/plugin-work-sessions": "workspace:*",
 		"@kilo-desktop/ui": "workspace:*",
 		"lucide-react": "catalog:",
-		"react": "^19.2.8",
-		"react-dom": "^19.2.8",
+		"react": "^19.3.1",
+		"react-dom": "^19.3.1",
 		"zod": "catalog:"
 	},
 	"devDependencies": {

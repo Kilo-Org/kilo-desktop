@@ -109,8 +109,6 @@ export interface ChatHostOptions {
 	readonly declinedSignIns?: readonly string[];
 	/** Folder ids kilo.work-sessions reports it can't find. */
 	readonly unavailableFolderIds?: readonly string[];
-	/** Flag values (`kernel/flag:<id>`), e.g. `{ "prompt-queue-editing": true }`. */
-	readonly flags?: Readonly<Record<string, boolean | string | number>>;
 	readonly desktop?: boolean;
 	/**
 	 * Renders kilo.chat's work session starter (the New Session page's
@@ -205,7 +203,6 @@ export async function renderAgentPane(options: ChatHostOptions = {}) {
 		{
 			core: core.activate,
 			...(options.localStorage ? { localAppearance: options.localStorage } : {}),
-			...(options.flags ? { flags: options.flags } : {}),
 			...(options.desktop ? { desktop: true } : {}),
 			...(options.windows ? { windows: options.windows } : {}),
 			beforeRender: (main) => {

@@ -9,7 +9,6 @@
 	"requires": {
 		"kilo.core/ai-provider": "optional",
 		"kilo.core/tool": "optional",
-		"kilo.core/account": "optional",
 		"kilo.chat/model-source": "optional",
 		"kilo.shell/navigation": "optional",
 		"kilo.shell/settings-section": "optional",

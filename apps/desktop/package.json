@@ -20,7 +20,7 @@
 		"prepare:plugins": "pnpm --filter \"@kilo-desktop/plugin-*\" -r --if-present run prepare-assets",
 		"make": "tsx config/run-packaging.ts make",
 		"package": "tsx config/run-packaging.ts package",
-		"package:e2e": "cross-env ELECTRON_ENABLE_INSPECT=true ELECTRON_SKIP_NATIVE_REBUILD=true VITE_FEATURE_FLAG_OVERRIDES=chat-layouts,update-track-switcher,external-api-apps-settings,workspace-board,searchbar-windows-panels,local-model-catalog,developer,beta-badges VITE_KILO_E2E_AUTH=1 pnpm run package",
+		"package:e2e": "cross-env ELECTRON_ENABLE_INSPECT=true ELECTRON_SKIP_NATIVE_REBUILD=true VITE_FEATURE_FLAG_OVERRIDES=chat-layouts,update-track-switcher,external-api-apps-settings,workspace-board,local-model-catalog,developer VITE_KILO_E2E_AUTH=1 pnpm run package",
 		"publish": "tsx config/run-packaging.ts publish",
 		"release:smoke": "tsx config/smoke-release-artifact.ts",
 		"release:notes": "tsx config/preview-release-notes.ts",
@@ -51,7 +51,7 @@
 		"@kilo-desktop/plugin-workspace-board": "workspace:*",
 		"@kilo-desktop/ui": "workspace:*",
 		"@parcel/watcher": "^2.6.0",
-		"@runtimed/node": "0.8.0",
+		"@runtimed/node": "0.8.1",
 		"@sentry/electron": "catalog:",
 		"@vscode/proxy-agent": "^0.46.0",
 		"electron-debug": "^5.0.0",
@@ -59,14 +59,14 @@
 		"electron-squirrel-startup": "^1.0.1",
 		"electron-store": "^12.0.0",
 		"execa": "catalog:",
-		"koffi": "3.3.7",
+		"koffi": "3.3.8",
 		"lodash": "catalog:",
 		"semver": "catalog:",
 		"shell-env": "^4.0.3",
 		"zod": "catalog:"
 	},
 	"optionalDependencies": {
-		"@runtimed/node-win32-arm64-msvc": "0.8.0"
+		"@runtimed/node-win32-arm64-msvc": "0.8.1"
 	},
 	"devDependencies": {
 		"@kilo-desktop/vite-plugin-externalize-deps": "workspace:*",
@@ -97,6 +97,6 @@
 		"typescript": "catalog:",
 		"vite": "catalog:",
 		"vitest": "catalog:",
-		"yaml": "^2.8.2"
+		"yaml": "^2.9.1"
 	}
 }

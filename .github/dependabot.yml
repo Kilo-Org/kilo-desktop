@@ -1,0 +1,127 @@
+version: 2
+
+# Every Dependabot PR is reviewed and merged by hand: the main ruleset requires a
+# code-owner approval, which a bot cannot give.
+
+# @anaconda/playwright-utils lives on GitHub Packages (.npmrc scopes @anaconda
+# there). Dependabot reads secrets from its own store, not Actions secrets, so
+# ANACONDA_PACKAGES_TOKEN must also exist under Settings > Secrets > Dependabot.
+# CI runs on Dependabot PRs read that same store.
+#
+# `scope` is required: without it Dependabot infers the default registry from
+# the @anaconda tarball URLs in pnpm-lock.yaml and resolves every package from
+# GitHub Packages, which serves stale metadata for public packages.
+registries:
+  github-packages:
+    type: npm-registry
+    url: https://npm.pkg.github.com
+    scope: "@anaconda"
+    token: ${{secrets.ANACONDA_PACKAGES_TOKEN}}
+
+updates:
+  # One scan covers the whole pnpm workspace, including catalog entries in
+  # pnpm-workspace.yaml.
+  - package-ecosystem: "npm"
+    directory: "/"
+    registries:
+      - github-packages
+    schedule:
+      interval: "daily"
+    cooldown:
+      default-days: 1
+    open-pull-requests-limit: 10
+    # Raise the range floor on every bump (`^19.0.0` -> `^19.3.1`); exact pins
+    # (the Kilo CLI packages) stay exact. Not `increase-if-necessary`: that
+    # makes in-range bumps lockfile-only, which Dependabot cannot do for
+    # `catalog:` entries (NoChangeError), so electron, react, vite and other
+    # caret catalog entries would only ever get major-version PRs.
+    versioning-strategy: increase
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    ignore:
+      # Compromised releases: https://osv.dev/vulnerability/MAL-2026-2307
+      - dependency-name: "axios"
+        versions: ["0.30.4", "1.14.1"]
+      # @assistant-ui core/store/tap are pinned through pnpm overrides to match
+      # react-opencode and its patch; upgrade the family by hand.
+      - dependency-name: "@assistant-ui/*"
+      # @sentry/react and @sentry/vite-plugin must match the @sentry/core pinned
+      # by @sentry/electron. When Dependabot bumps @sentry/electron, set both to
+      # the @sentry/core version in
+      # https://unpkg.com/@sentry/electron@<version>/package.json and run
+      # `pnpm install` in the same PR; CI typecheck fails until react matches.
+      # If no @sentry/vite-plugin release matches, temporarily use
+      # @sentry/bundler-plugins (`sentryVitePlugin` from
+      # @sentry/bundler-plugins/vite) at that version.
+      - dependency-name: "@sentry/react"
+      - dependency-name: "@sentry/vite-plugin"
+      # Must come from the same nteract commit as the runtimed daemon and
+      # notebook UI pinned by the notebook plugin's packaging artifacts.
+      - dependency-name: "@runtimed/node"
+      - dependency-name: "@runtimed/node-*"
+      # Tracks the `next` dist-tag; the `latest` 0.4.0 (Dec 2025) is older than
+      # the pinned prerelease and lacks APIs the terminal plugin uses. Bump by hand.
+      - dependency-name: "ghostty-web"
+    # When a dependency matches several groups, Dependabot uses the most
+    # specific pattern, not the first group listed.
+    groups:
+      # Bundled CLI platform packages move together for manual compatibility
+      # testing.
+      kilo-cli:
+        patterns:
+          - "@kilocode/cli-*"
+      # oxfmt releases change formatter output, so its PR fails
+      # `format:check` until someone runs `pnpm format` on the branch and
+      # pushes. A human push also re-triggers CI, which a bot push would not.
+      oxfmt:
+        patterns:
+          - "oxfmt"
+      lexical:
+        patterns:
+          - "lexical"
+          - "@lexical/*"
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+      vitest:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+      playwright:
+        patterns:
+          - "playwright"
+          - "@playwright/*"
+      # @tailwindcss/vite pins tailwindcss to its own exact version, so bumping
+      # tailwindcss alone leaves the build on the old compiler.
+      tailwind:
+        patterns:
+          - "tailwindcss"
+          - "@tailwindcss/*"
+
+  # "/" covers .github/workflows; the composite actions are scanned explicitly.
+  # Actions stay pinned to a commit SHA with a `# vX.Y.Z` comment, and
+  # Dependabot updates both.
+  - package-ecosystem: "github-actions"
+    directories:
+      - "/"
+      - "/.github/actions/*"
+      - "/plugins/*/actions/*"
+    schedule:
+      interval: "daily"
+    cooldown:
+      default-days: 1
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    groups:
+      # One PR for routine bumps; majors stay as separate PRs.
+      actions-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"

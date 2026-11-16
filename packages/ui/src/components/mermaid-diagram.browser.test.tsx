@@ -32,7 +32,7 @@ describe("MermaidDiagram", () => {
 
 		await expect.element(page.getByText("Could not render this Mermaid diagram")).toBeVisible();
 		await expect.element(page.getByText("nonsense", { exact: false })).toBeVisible();
-		expect(onStateChange).toHaveBeenLastCalledWith("error");
+		await expect.poll(() => onStateChange.mock.lastCall?.[0]).toBe("error");
 	});
 });
 

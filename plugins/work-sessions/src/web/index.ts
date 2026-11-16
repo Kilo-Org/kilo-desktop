@@ -2,6 +2,7 @@ import { definePlugin } from "@kilo-desktop/kernel";
 
 import { activateAttention } from "./attention";
 import { activateCanvas } from "./canvas";
+import { activateDesignReview } from "./design-review";
 import { activateHome } from "./home";
 import { activateLayouts } from "./layouts";
 import { activateList } from "./list";
@@ -28,5 +29,6 @@ export const workSessionsWebEntry = definePlugin({
 		activateHome(sdk);
 		activateNotifications(sdk);
 		activateWorkspaces(sdk);
+		if (import.meta.env.DEV) activateDesignReview(sdk);
 	},
 });

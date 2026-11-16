@@ -32,16 +32,16 @@ export class BranchSelectorPage {
 
 	async verifyGroupedPopover(): Promise<void> {
 		await expectElementToBeVisible(
-			getLocatorByText("Default Branch", { exact: true }),
-			"Default Branch group heading should render",
+			getLocatorByText("Default", { exact: true }),
+			"Default group heading should render",
 		);
 		await expectElementToBeVisible(
-			getLocatorByText("Recent Branches", { exact: true }),
-			"Recent Branches group heading should render",
+			getLocatorByText("Recent", { exact: true }),
+			"Recent group heading should render",
 		);
 		await expectElementToBeVisible(
-			getLocatorByText("Other Branches", { exact: true }),
-			"Other Branches group heading should render",
+			getLocatorByText("Remote", { exact: true }),
+			"Remote group heading should render",
 		);
 		await expectElementToBeVisible(
 			getLocatorByTestId("git-branch-item-main"),

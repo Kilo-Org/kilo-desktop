@@ -1,6 +1,6 @@
 import type { AssistantRuntime, Attachment, CompleteAttachment } from "@assistant-ui/react";
 import { useOpenCodeRuntime } from "@assistant-ui/react-opencode";
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 
 import { useDomainObject } from "@kilo-desktop/kernel/web";
 import { Chats } from "@kilo-desktop/plugin-core/contracts";
@@ -9,6 +9,7 @@ import { useLatestRef } from "@kilo-desktop/ui/hooks/use-latest-ref";
 import { PromptQueues } from "../../contracts";
 import { KiloAttachmentAdapter } from "./attachment-adapter";
 import { createChatBackend, type ChatBackendOptions } from "./chat-backend";
+import { handleFailedEdit } from "./failed-edit";
 import { createFirstPromptHandover, type UnsentMessage } from "./first-prompt-handover";
 import { createMainPromptQueue } from "./main-prompt-queue";
 import type { QueuePromptOptions } from "./queued-prompt";
@@ -149,6 +150,8 @@ export function useChatRuntime(options: ChatRuntimeOptions): AssistantRuntime {
 			...(handover ? { onTaken: () => handover.taken() } : {}),
 			onError: (error) => console.error("[kilo.chat] Queued prompt", error),
 		});
+	// The runtime's own `onError` reaches it through this, set once it commits.
+	const committedRuntime = useRef<AssistantRuntime | null>(null);
 	const runtime = useOpenCodeRuntime({
 		backend,
 		...(initialChatId ? { initialSessionId: initialChatId } : {}),
@@ -162,7 +165,13 @@ export function useChatRuntime(options: ChatRuntimeOptions): AssistantRuntime {
 			create: createQueue,
 		},
 		adapters,
+		onError: (error) => {
+			handleFailedEdit(error, committedRuntime.current?.thread.composer);
+		},
 	});
+	useLayoutEffect(() => {
+		committedRuntime.current = runtime;
+	}, [runtime]);
 	useEffect(
 		() => (handover ? followDraft(runtime, (message) => handover.noteDraft(message)) : undefined),
 		[handover, runtime],

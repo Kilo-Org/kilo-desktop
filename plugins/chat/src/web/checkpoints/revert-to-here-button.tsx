@@ -9,6 +9,7 @@ import {
 	messageToComposerPrompt,
 	restoreToComposer,
 	useHasOpenCodeExtras,
+	useIsAnsweredPrompt,
 	useRevertRangeHasFileChanges,
 } from "./checkpoint-revert";
 import { useRevertPending } from "./revert-pending";
@@ -16,10 +17,7 @@ import { TooltipIconButton } from "../thread/tooltip-icon-button";
 
 export const RevertToHereButton: FC = () => {
 	const hasExtras = useHasOpenCodeExtras();
-	// Consecutive assistant messages are fused by the projection, so the
-	// immediate-next-message check is equivalent to the extension's
-	// `turn.assistant.length > 0` answered gating.
-	const answered = useAuiState((s) => s.thread.messages[s.message.index + 1]?.role === "assistant");
+	const answered = useIsAnsweredPrompt();
 	const hasFileChanges = useRevertRangeHasFileChanges();
 	const isRunning = useAuiState((s) => s.thread.isRunning);
 	const messageId = useAuiState((s) => s.message.id);
@@ -50,7 +48,7 @@ export const RevertToHereButton: FC = () => {
 			// retains shadowParts-derived content for retry-emptied messages (whose
 			// server-side `parts` were cleared by retryFailedTurn), which the
 			// server-side serverMessageToComposerPrompt cannot recover.
-			await restoreToComposer(aui, messageToComposerPrompt(message));
+			await restoreToComposer(aui.thread.composer(), messageToComposerPrompt(message));
 		} catch {
 			// Clears on revert failure AND on post-revert composer-restore failure.
 			// In the latter case the revert already landed; RevertPendingProvider

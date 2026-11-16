@@ -18,31 +18,20 @@ import { useApprovePlan } from "../plan/use-approve-plan";
 
 import { useChatAgentSelection } from "../selection/ChatAgentSelectionContext";
 import { cycleCatalogAgent, OPTIMISTIC_AGENT_CATALOG } from "../selection/agent-catalog";
-import {
-	useRunTypedClientSlashCommand,
-	useSlashCommands,
-} from "../slash-commands/client-slash-commands";
-import { kiloSlashFormatter } from "../slash-commands/use-kilo-slash-formatter";
+import { useRunTypedClientSlashCommand } from "../slash-commands/client-slash-commands";
 import { ComposerSubagentStrip } from "../subagents/ComposerSubagentStrip";
 import { useSubagentActivity } from "../subagents/SubagentActivityContext";
 import { ComposerAttachments } from "../thread/attachment";
 import { ComposerTaskList } from "../tasks/ComposerTaskList";
 import { ComposerQueue } from "../thread/composer-queue";
 import { TooltipIconButton } from "../thread/tooltip-icon-button";
-import { ComposerActionSlotView, useComposerContext } from "./composer-actions";
+import { ComposerActionSlotView } from "./composer-actions";
 import { useComposerDragResize } from "./composer-height/use-composer-drag-resize";
 import { ComposerResizeHandle } from "./composer-resize-handle";
 import { KiloLexicalComposerInput } from "./kilo-lexical-composer-input";
 import { KiloSlashTrigger } from "./kilo-slash-trigger";
-import { combineFormatters, composerPlaceholder, createMentionFormatter } from "./mention-codec";
-import {
-	MentionIconsContext,
-	MentionTriggers,
-	mentionIcons,
-	useMentionSources,
-} from "./mention-triggers";
-
-const isMentionType = (type: string) => type.startsWith("m_");
+import { MentionIconsContext, MentionTriggers } from "./mention-triggers";
+import { useComposerInputWiring } from "./use-composer-input-wiring";
 
 /**
  * The composer: queued prompts, attachments, the rich input with its `/` and
@@ -52,7 +41,6 @@ const isMentionType = (type: string) => type.startsWith("m_");
  */
 export const Composer: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 	const aui = useAui();
-	const context = useComposerContext();
 	const isComposerEmpty = useAuiState((s) => s.composer.isEmpty);
 	const hasMessageQueue = useAuiState((s) => s.thread.capabilities.queue);
 	const { agent, setAgent, catalog, isCatalogPending, isCatalogError } = useChatAgentSelection();
@@ -61,22 +49,9 @@ export const Composer: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 	const plan = useApprovePlan();
 	const refining = plan.canReply;
 
-	const slash = useSlashCommands(context.directory);
+	const { slash, sources, formatter, placeholder, icons, mentionContext } =
+		useComposerInputWiring();
 	const runTypedClientCommand = useRunTypedClientSlashCommand(slash.commands);
-	const sources = useMentionSources();
-	// Past the hooks, so the compiler caches it on `slash.commands` and `sources`.
-	const formatter = combineFormatters(
-		kiloSlashFormatter(slash.commands),
-		createMentionFormatter(sources),
-		isMentionType,
-	);
-	const icons = mentionIcons(sources);
-	const mentionContext = {
-		workSessionId: context.workSessionId,
-		directory: context.directory,
-		workspaceId: context.workspaceId,
-		workspaceFolders: context.workspaceFolders,
-	};
 
 	useEffect(() => {
 		if (!isDraft) return;
@@ -151,7 +126,7 @@ export const Composer: FC<{ isDraft: boolean }> = ({ isDraft }) => {
 						<KiloLexicalComposerInput
 							ref={inputRef}
 							formatter={formatter}
-							placeholder={composerPlaceholder(sources)}
+							placeholder={placeholder}
 							submitMode="enter"
 							onKeyDown={handleInputKeyDown}
 							style={inputHeight.inputStyle}

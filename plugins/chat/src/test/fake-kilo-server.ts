@@ -348,6 +348,7 @@ export class FakeKiloServer {
 		}
 		if (action === "abort") return json(true);
 		if (action === "revert" || action === "unrevert") {
+			if (this.failReverts) return json({ message: "The session is busy" }, 500);
 			const { messageID } = (recorded.body ?? {}) as { messageID?: string };
 			const reverted = action === "revert" && messageID ? { messageID } : undefined;
 			const info = { ...this.#info(chat), ...(reverted ? { revert: reverted } : {}) };
@@ -417,6 +418,9 @@ export class FakeKiloServer {
 
 	/** Whether prompts fail, as when the server rejects them. */
 	failPrompts = false;
+
+	/** Whether reverts fail, as when the session is busy. */
+	failReverts = false;
 
 	/** Permission and question ids whose replies fail. */
 	readonly failingReplies = new Set<string>();

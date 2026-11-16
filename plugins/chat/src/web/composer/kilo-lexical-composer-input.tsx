@@ -37,6 +37,12 @@ type KiloLexicalComposerInputProps = {
 	onEnter?: () => boolean;
 	/** Inline sizing, e.g. a `maxHeight` replacing the default auto-grow cap. */
 	style?: CSSProperties | undefined;
+	/** The input's accessible name. */
+	label?: string;
+	qaId?: string;
+	/** Whether Enter steers or queues prompts; an input without a queue (editing a sent message) turns it off. */
+	queueOnEnter?: boolean;
+	autoFocus?: boolean;
 };
 
 /**
@@ -54,13 +60,17 @@ export const KiloLexicalComposerInput: FC<KiloLexicalComposerInputProps> = ({
 	onKeyDown,
 	onEnter,
 	style,
+	label = "Message input",
+	qaId = "kilo-composer-input",
+	queueOnEnter = true,
+	autoFocus,
 }) => {
 	const editorGeneration = useEditorGeneration();
-	// Cached on `ref`, so a re-render doesn't detach and re-attach it (and set the label again).
+	// Cached on `ref` and `label`, so a re-render doesn't detach and re-attach it (and set the label again).
 	const attachInput = (node: HTMLDivElement | null) => {
 		if (typeof ref === "function") ref(node);
 		else if (ref) ref.current = node;
-		node?.querySelector("[contenteditable]")?.setAttribute("aria-label", "Message input");
+		node?.querySelector("[contenteditable]")?.setAttribute("aria-label", label);
 	};
 	return (
 		<LexicalComposerInput
@@ -71,7 +81,7 @@ export const KiloLexicalComposerInput: FC<KiloLexicalComposerInputProps> = ({
 			placeholder={placeholder}
 			cancelOnEscape={cancelOnEscape}
 			submitMode={submitMode}
-			aria-label="Message input"
+			aria-label={label}
 			onKeyDown={onKeyDown}
 			className={cn(
 				"aui-composer-input caret-foreground max-h-32 w-full bg-transparent px-1 pt-0 pb-1 text-sm",
@@ -79,11 +89,16 @@ export const KiloLexicalComposerInput: FC<KiloLexicalComposerInputProps> = ({
 			)}
 			style={style}
 		>
-			<LexicalInputAria label="Message input" />
+			<LexicalInputAria label={label} qaId={qaId} />
 			<AttachmentPastePlugin />
-			<SteerQueueOnEnterPlugin disabled={disabled} submitMode={submitMode} />
-			<QueueEnterWhileRunningPlugin />
+			{queueOnEnter ? (
+				<>
+					<SteerQueueOnEnterPlugin disabled={disabled} submitMode={submitMode} />
+					<QueueEnterWhileRunningPlugin />
+				</>
+			) : null}
 			{onEnter ? <EnterOverridePlugin onEnter={onEnter} /> : null}
+			{autoFocus ? <FocusAtEndPlugin /> : null}
 		</LexicalComposerInput>
 	);
 };
@@ -118,15 +133,15 @@ function useEditorGeneration(): number {
 	return generation;
 }
 
-function LexicalInputAria({ label }: { label: string }) {
+function LexicalInputAria({ label, qaId }: { label: string; qaId: string }) {
 	const [editor] = useLexicalComposerContext();
 	useEffect(
 		() =>
 			editor.registerRootListener((root) => {
 				root?.setAttribute("aria-label", label);
-				root?.setAttribute("data-qa-id", "kilo-composer-input");
+				root?.setAttribute("data-qa-id", qaId);
 			}),
-		[editor, label],
+		[editor, label, qaId],
 	);
 	return null;
 }
@@ -203,6 +218,23 @@ function SteerQueueOnEnterPlugin({
 		);
 	}, [aui, canQueue, disabled, editor, submitMode]);
 
+	return null;
+}
+
+/**
+ * Focuses the input with the caret after its text once it is shown. Waits a
+ * frame: the text arrives from the composer's state after mount, and the
+ * click that opened the input may still be settling focus.
+ */
+function FocusAtEndPlugin() {
+	const [editor] = useLexicalComposerContext();
+	useEffect(() => {
+		const frame = requestAnimationFrame(() => {
+			editor.focus(undefined, { defaultSelection: "rootEnd" });
+			editor.getRootElement()?.focus({ preventScroll: true });
+		});
+		return () => cancelAnimationFrame(frame);
+	}, [editor]);
 	return null;
 }
 

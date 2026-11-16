@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { page } from "vitest/browser";
+import { page, userEvent } from "vitest/browser";
 
 import type { PluginEntry } from "@kilo-desktop/kernel";
 import type { ModelsState } from "@kilo-desktop/plugin-core/contracts";
+import { toast } from "@kilo-desktop/ui/components/sonner";
 
 import {
 	chatPaneObject,
@@ -22,6 +23,8 @@ import { expectPresent } from "../test/transcript";
 
 afterEach(() => {
 	vi.unstubAllGlobals();
+	// Sonner's toasts are global: left up, they would show in the next test.
+	toast.dismiss();
 });
 
 const QUESTION = "What does login do?";
@@ -214,6 +217,171 @@ describe("reverting and retrying", () => {
 		await expect
 			.poll(() => promptsTo(host.server)[0]?.body)
 			.toMatchObject({ messageID: "msg_1", parts: [] });
+	});
+});
+
+describe("editing a prompt", () => {
+	const editButton = () => page.getByTestId("kilo-edit-message-button");
+
+	it("offers Edit on an answered prompt, even one that changed nothing", async () => {
+		await showChat(chatWith([reply("Nothing to change.")]));
+
+		await expect.element(editButton()).toBeInTheDocument();
+		await expect.element(editButton()).toBeEnabled();
+	});
+
+	it("offers no Edit on a prompt that has no answer yet", async () => {
+		await showChat([userMessage("ses_a", "msg_1", QUESTION)]);
+
+		await expect.element(page.getByTestId("chat-message-copy")).toBeInTheDocument();
+		expect(document.querySelector('[data-qa-id="kilo-edit-message-button"]')).toBeNull();
+	});
+
+	it("waits for the agent to finish before editing", async () => {
+		const host = await showChat(chatWith([reply("Working.")]));
+		await vi.waitFor(() => expect(host.server.openStreams).toBe(1));
+
+		host.server.emit("session.status", { sessionID: "ses_a", status: { type: "busy" } });
+
+		await expect.element(editButton()).toBeDisabled();
+	});
+
+	const withCsv = (): FakeMessage[] => {
+		const [prompt, answer] = chatWith([reply("Read it.")]);
+		return [
+			{
+				...prompt!,
+				parts: [
+					...prompt!.parts,
+					{
+						id: "msg_1_d",
+						sessionID: "ses_a",
+						messageID: "msg_1",
+						type: "file",
+						mime: "text/csv",
+						filename: "data.csv",
+						url: "data:text/csv;base64,YSxi",
+					},
+				],
+			},
+			answer!,
+		];
+	};
+	const editor = () => page.getByTestId("kilo-edit-message-composer");
+	const editorInput = () => page.getByTestId("kilo-edit-message-input");
+	const editorTiles = () =>
+		document.querySelectorAll(
+			'[data-qa-id="kilo-edit-message-composer"] [data-qa-id="chat-attachment-tile"]',
+		).length;
+	const startEditing = async () => {
+		await expect.element(editButton()).toBeInTheDocument();
+		(editButton().element() as HTMLElement).click();
+		await expect.element(editorInput()).toHaveTextContent(QUESTION);
+	};
+	const changesSent = (server: FakeKiloServer) =>
+		server.requestsTo("POST", "/session/ses_a/revert").length + promptsTo(server).length;
+
+	it("edits the prompt in place, starting from what Revert would restore", async () => {
+		const host = await showChat(withCsv());
+
+		await startEditing();
+
+		await expect.poll(editorTiles).toBe(1);
+		await expect.element(page.getByTestId("kilo-composer-input")).toHaveTextContent("");
+
+		await page.getByTestId("kilo-edit-message-cancel").click();
+
+		await expect.element(editor()).not.toBeInTheDocument();
+		await expect.element(page.getByText(QUESTION).first()).toBeInTheDocument();
+		expect(changesSent(host.server)).toBe(0);
+	});
+
+	it("puts the prompt back as it was on Escape", async () => {
+		const host = await showChat(chatWith([reply("Read it.")]));
+		await startEditing();
+		await expect.element(editorInput()).toHaveFocus();
+
+		await userEvent.keyboard("{Escape}");
+
+		await expect.element(editor()).not.toBeInTheDocument();
+		expect(changesSent(host.server)).toBe(0);
+	});
+
+	const EDITED = "What does signup do?";
+	const revertsAndPrompts = (server: FakeKiloServer) =>
+		server.requests
+			.filter(
+				(request) =>
+					request.method === "POST" &&
+					(request.path.endsWith("/revert") || request.path.endsWith("/prompt_async")),
+			)
+			.map((request) => request.path.split("/").at(-1));
+
+	it("saves the edit by reverting to the prompt, then sending the edit", async () => {
+		const host = await showChat(withCsv());
+		await startEditing();
+		await expect.poll(editorTiles).toBe(1);
+
+		await userEvent.fill(editorInput(), EDITED);
+		await page.getByTestId("kilo-edit-message-save").click();
+
+		await expect.poll(() => revertsAndPrompts(host.server)).toEqual(["revert", "prompt_async"]);
+		expect(host.server.requestsTo("POST", "/session/ses_a/revert")[0]?.body).toMatchObject({
+			messageID: "msg_1",
+		});
+		expect(promptsTo(host.server)[0]?.body).toMatchObject({
+			parts: expect.arrayContaining([
+				expect.objectContaining({ type: "text", text: EDITED }),
+				expect.objectContaining({ type: "file", filename: "data.csv" }),
+			]),
+		});
+		await expect.element(editor()).not.toBeInTheDocument();
+	});
+
+	it("saves the edit on Enter", async () => {
+		const host = await showChat(chatWith([reply("Read it.")]));
+		await startEditing();
+
+		await userEvent.fill(editorInput(), EDITED);
+		await userEvent.keyboard("{Enter}");
+
+		await expect.poll(() => revertsAndPrompts(host.server)).toEqual(["revert", "prompt_async"]);
+	});
+
+	it("keeps editing when the revert fails, sending nothing", async () => {
+		const host = await showChat(chatWith([reply("Read it.")]));
+		host.server.failReverts = true;
+		await startEditing();
+
+		await userEvent.fill(editorInput(), EDITED);
+		await page.getByTestId("kilo-edit-message-save").click();
+
+		await expect.element(page.getByText("Could not edit the message.")).toBeVisible();
+		await expect.element(editorInput()).toHaveTextContent(EDITED);
+		expect(revertsAndPrompts(host.server)).toEqual(["revert"]);
+	});
+
+	it("hands the edit to the composer when it can't be sent after the revert", async () => {
+		const host = await showChat(withCsv());
+		host.server.failPrompts = true;
+		await startEditing();
+		await expect.poll(editorTiles).toBe(1);
+
+		await userEvent.fill(editorInput(), EDITED);
+		await page.getByTestId("kilo-edit-message-save").click();
+
+		await expect.element(page.getByText("Could not edit the message.")).toBeVisible();
+		await expect.element(page.getByTestId("kilo-composer-header")).toBeVisible();
+		await expect.element(page.getByTestId("kilo-composer-input")).toHaveTextContent(EDITED);
+		await expect
+			.poll(
+				() =>
+					document.querySelectorAll(
+						'[data-slot="aui_composer-shell"] [data-qa-id="chat-attachment-tile"]',
+					).length,
+			)
+			.toBe(1);
+		await expect.element(editor()).not.toBeInTheDocument();
 	});
 });
 

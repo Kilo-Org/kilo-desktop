@@ -24,7 +24,8 @@ export function ResumeWorkbook({
 	readonly workbook: Workbook;
 	readonly workbooks: DomainObjectHandle<typeof Workbooks> | null;
 	readonly busy: boolean;
-	readonly onBack: () => void;
+	/** Back to the list; absent when there is nothing to go back to. */
+	readonly onBack?: () => void;
 	readonly onStart: (choice: ResumeChoice) => void;
 }) {
 	const [progress, setProgress] = useState<WorkbookProgress | null>(null);
@@ -46,15 +47,17 @@ export function ResumeWorkbook({
 		<div className="flex flex-col gap-3 py-2" data-qa-id="workbooks-resume">
 			<div className="flex items-center justify-between gap-2">
 				<h3 className="truncate text-sm font-medium">{workbook.name}</h3>
-				<Button
-					type="button"
-					size="sm"
-					variant="ghost"
-					data-qa-id="workbooks-resume-back"
-					onClick={onBack}
-				>
-					Back
-				</Button>
+				{onBack ? (
+					<Button
+						type="button"
+						size="sm"
+						variant="ghost"
+						data-qa-id="workbooks-resume-back"
+						onClick={onBack}
+					>
+						Back
+					</Button>
+				) : null}
 			</div>
 			{progress ? (
 				<>

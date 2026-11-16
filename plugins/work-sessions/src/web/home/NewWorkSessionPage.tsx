@@ -340,7 +340,7 @@ export function NewWorkSessionPage() {
 				onStart={startWith}
 			/>
 			{sections.map((contribution) => (
-				<div key={contribution.key} data-qa-id="launcher-section" className="mt-6 w-full">
+				<div key={contribution.key} data-qa-id="launcher-section" className="mt-2 w-full">
 					<RenderContribution<NewWorkSessionSectionProps>
 						contribution={contribution}
 						props={{

@@ -13,7 +13,7 @@ test.describe("Workbooks @smoke", () => {
 		await diagnosticsPage.verifyFlagOrigin("workbooks", "override");
 	});
 
-	test("offers Start from a workbook on the New Session page, with the Coding template", async ({
+	test("offers New workbook on the New Session page, opening the Coding template's Brief", async ({
 		appShellPage,
 		workbooksPage,
 	}) => {

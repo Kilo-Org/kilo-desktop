@@ -43,6 +43,7 @@ describe("Start from a workbook on the New Session page", () => {
 	it("creates a workbook from the Coding template and starts a session on it", async () => {
 		const { host, started, log, pages } = await renderSection();
 
+		await userEvent.click(page.getByTestId("workbooks-new"));
 		await expect.element(page.getByTestId("workbooks-new-form")).toBeVisible();
 		await expect.element(page.getByTestId("workbooks-create")).toBeDisabled();
 		await userEvent.fill(page.getByTestId("workbooks-name").element(), "Fix the server bug");
@@ -53,6 +54,7 @@ describe("Start from a workbook on the New Session page", () => {
 		await userEvent.click(page.getByTestId("workbooks-create"));
 
 		await expect.poll(() => log.opened).toEqual(["wses_1"]);
+		await expect.element(page.getByTestId("workbooks-new-dialog")).not.toBeInTheDocument();
 		const workbooks = host.renderer.kernelSdk.domainObjects.get(Workbooks)!.getState().workbooks;
 		expect(workbooks.map((workbook) => workbook.name)).toEqual(["Fix the server bug"]);
 		expect(pages.projects.size).toBe(1);
@@ -63,15 +65,14 @@ describe("Start from a workbook on the New Session page", () => {
 
 	it("continues a workbook already in the workspace", async () => {
 		const { host, started, log } = await renderSection();
-		const workbook = await host.invoke(Workbooks, "create", {
+		await host.invoke(Workbooks, "create", {
 			workspaceId: "ws-1",
 			templateId: "coding",
 			name: "Existing",
 			values: { goal: "g" },
 		});
 
-		await userEvent.click(page.getByTestId("workbooks-tab-continue"));
-		await userEvent.click(page.getByTestId(`workbooks-continue-${workbook.id}`));
+		await userEvent.click(page.getByTestId("workbooks-continue"));
 
 		await expect
 			.element(page.getByTestId("workbooks-resume-progress"))
@@ -104,8 +105,7 @@ describe("Start from a workbook on the New Session page", () => {
 			operations: [{ op: "insert_markdown", markdown: "- [ ] One\n- [ ] Two" }],
 		});
 
-		await userEvent.click(page.getByTestId("workbooks-tab-continue"));
-		await userEvent.click(page.getByTestId(`workbooks-continue-${workbook.id}`));
+		await userEvent.click(page.getByTestId("workbooks-continue"));
 
 		await expect
 			.element(page.getByTestId("workbooks-resume-open"))
@@ -124,9 +124,16 @@ describe("Start from a workbook on the New Session page", () => {
 			name: "Offline",
 			values: { goal: "g" },
 		});
+		await host.invoke(Workbooks, "create", {
+			workspaceId: "ws-1",
+			templateId: "coding",
+			name: "Another",
+			values: { goal: "g" },
+		});
 		pages.failOn = "read_page";
 
-		await userEvent.click(page.getByTestId("workbooks-tab-continue"));
+		await userEvent.click(page.getByTestId("workbooks-continue"));
+		await expect.element(page.getByTestId("workbooks-list")).toBeVisible();
 		await userEvent.click(page.getByTestId(`workbooks-continue-${workbook.id}`));
 		await userEvent.click(page.getByTestId("workbooks-resume-back"));
 		await userEvent.click(page.getByTestId(`workbooks-continue-${workbook.id}`));
@@ -143,6 +150,7 @@ describe("Start from a workbook on the New Session page", () => {
 		const pages = new FakePages();
 		pages.failOn = "create_project";
 		const { log } = await renderSection({ pages });
+		await userEvent.click(page.getByTestId("workbooks-new"));
 
 		await userEvent.fill(page.getByTestId("workbooks-name").element(), "X");
 		await userEvent.fill(page.getByTestId("workbooks-field-goal").element(), "g");
@@ -150,14 +158,17 @@ describe("Start from a workbook on the New Session page", () => {
 
 		await expect.element(page.getByTestId("workbooks-start-error")).toBeVisible();
 		expect(log.opened).toEqual([]);
+		await expect.element(page.getByTestId("workbooks-new-dialog")).toBeVisible();
 	});
 
-	it("explains an empty workspace", async () => {
+	it("offers only New workbook while the workspace has none, and closes its dialog on Cancel", async () => {
 		await renderSection();
 
-		await userEvent.click(page.getByTestId("workbooks-tab-continue"));
-
-		await expect.element(page.getByTestId("workbooks-none")).toBeVisible();
+		await expect.element(page.getByTestId("workbooks-new")).toBeVisible();
+		await expect.element(page.getByTestId("workbooks-continue")).not.toBeInTheDocument();
+		await userEvent.click(page.getByTestId("workbooks-new"));
+		await userEvent.click(page.getByRole("button", { name: "Cancel" }));
+		await expect.element(page.getByTestId("workbooks-new-dialog")).not.toBeInTheDocument();
 	});
 });
 

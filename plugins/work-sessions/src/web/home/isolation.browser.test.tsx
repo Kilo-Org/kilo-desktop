@@ -151,6 +151,8 @@ describe("launcher isolation", () => {
 
 		await page.getByTestId("launcher-workspace-selector").click();
 		await page.getByRole("option", { name: /Lib/ }).click();
+		// A quick load shows no disabled state; only a slow one does.
+		expect(modeTrigger().element()).toBeEnabled();
 
 		await vi.waitFor(
 			() => expect(workSessions.calls.isolationOptions).toHaveBeenCalledWith("w-lib"),

@@ -49,7 +49,7 @@ function ToolTile({
 		<button
 			type="button"
 			disabled={disabled || Boolean(kind.unavailableHint)}
-			className="group bg-muted/60 hover:bg-muted focus-visible:ring-ring/50 disabled:hover:bg-muted/60 @container flex h-11 min-w-0 items-center gap-1.5 rounded-[10px] ps-3 pe-2 text-start text-[13px] transition-colors outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-50"
+			className="group bg-foreground/6 hover:bg-foreground/9 focus-visible:ring-ring/50 disabled:hover:bg-foreground/6 @container flex h-11 min-w-0 items-center gap-1.5 rounded-[10px] ps-3 pe-2 text-start text-[13px] transition-colors outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-50"
 			data-qa-id={`launcher-pane-${kind.id}`}
 			title={kind.unavailableHint ?? kind.description}
 			onClick={() => onStart(kind)}

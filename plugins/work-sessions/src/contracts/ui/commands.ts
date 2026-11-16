@@ -20,8 +20,6 @@ export const CLOSE_PANE_COMMAND = "kilo.work-sessions/close-pane";
 
 /** Opens the workspace dialog to add a workspace. */
 export const ADD_WORKSPACE_COMMAND = "kilo.work-sessions/add-workspace";
-/** Picks a folder and makes its workspace active, creating one named after the folder if needed. */
-export const OPEN_FOLDER_COMMAND = "kilo.work-sessions/open-folder";
 /** Opens the workspace dialog's list of workspaces. */
 export const MANAGE_WORKSPACES_COMMAND = "kilo.work-sessions/manage-workspaces";
 /** Opens the workspace dialog to edit a workspace. Args `{ workspaceId }`. */

@@ -1,7 +1,7 @@
 import {
 	EllipsisIcon,
+	CheckIcon,
 	FolderIcon,
-	FolderOpenIcon,
 	FolderXIcon,
 	LayoutGridIcon,
 	PencilIcon,
@@ -46,8 +46,6 @@ export interface PickerWorkspace {
 	readonly name: string;
 	/** `#RRGGBB`. */
 	readonly color?: string | undefined;
-	/** A muted second line, e.g. the primary folder's path. */
-	readonly detail?: string | undefined;
 }
 
 type Workspace = PickerWorkspace;
@@ -65,8 +63,6 @@ export interface WorkspacePickerSource {
 	readonly isUnavailable: boolean;
 	hasUnavailableFolders(workspaceId: string): boolean;
 	openCreate(): void;
-	/** Picks a folder and starts working in it; the picker offers "Open folder…" only when set. */
-	openFolder?(): void;
 	openEdit(workspace: PickerWorkspace): void;
 	openDelete(workspace: PickerWorkspace): void;
 }
@@ -100,6 +96,8 @@ const NO_COMMAND_SELECTION = "__no-workspace-command-selection__";
 const UNSCOPED_COMMAND_VALUE = "dont-work-in-a-workspace";
 const ALL_WORKSPACES_COMMAND_VALUE = "all-workspaces";
 const UNSCOPED_LABEL = "No workspace";
+
+/** Hide CommandItem's built-in check — opacity-0 still reserves layout space. */
 
 type PopoverAlign = "start" | "center" | "end";
 type PopoverSide = "top" | "right" | "bottom" | "left";
@@ -176,7 +174,6 @@ export function WorkspacePickerRoot({
 		isUnavailable,
 		hasUnavailableFolders,
 		openCreate,
-		openFolder,
 		openEdit,
 		openDelete,
 	} = useWorkspacePickerSource();
@@ -239,6 +236,8 @@ export function WorkspacePickerRoot({
 				>
 					<Command
 						label="Search workspaces"
+						// The selected row's leading icon becomes the check, so the "…" action stays at the end.
+						className="**:data-[slot=command-item-check]:hidden"
 						value={commandValue}
 						onValueChange={setCommandValue}
 						filter={filterWorkspaceItems}
@@ -255,8 +254,10 @@ export function WorkspacePickerRoot({
 										onSelect={() => select(null)}
 										data-checked={isEmpty}
 									>
-										<LayoutGridIcon className="text-muted-foreground" />
-										<span className="min-w-0 flex-1 truncate">{emptyLabel}</span>
+										{isEmpty ? <CheckIcon /> : <LayoutGridIcon />}
+										<span className={cn("min-w-0 flex-1 truncate", isEmpty && "font-medium")}>
+											{emptyLabel}
+										</span>
 									</CommandItem>
 								) : null}
 								{includeUnscoped ? (
@@ -267,8 +268,10 @@ export function WorkspacePickerRoot({
 										onSelect={() => select(unscopedValue)}
 										data-checked={isUnscoped}
 									>
-										<FolderXIcon className="text-muted-foreground" />
-										<span className="min-w-0 flex-1 whitespace-nowrap">{UNSCOPED_LABEL}</span>
+										{isUnscoped ? <CheckIcon /> : <FolderXIcon />}
+										<span className={cn("whitespace-nowrap", isUnscoped && "font-medium")}>
+											{UNSCOPED_LABEL}
+										</span>
 									</CommandItem>
 								) : null}
 								{isLoading ? (
@@ -284,8 +287,8 @@ export function WorkspacePickerRoot({
 								) : null}
 								{workspaces.map((workspace) => {
 									const isSelected = selectedId === workspace.id;
+									const RowIcon = isSelected ? CheckIcon : FolderIcon;
 									const glyph = workspaceGlyphColor(workspace.color);
-									const detail = workspace.detail;
 									const unavailableFolders = hasUnavailableFolders?.(workspace.id) ?? false;
 									return (
 										<CommandItem
@@ -294,18 +297,14 @@ export function WorkspacePickerRoot({
 											keywords={[workspace.name]}
 											onSelect={() => select(workspace.id)}
 											data-checked={isSelected}
-											className={cn(detail && "items-start")}
 										>
-											<FolderIcon
+											<RowIcon
 												aria-hidden
-												className={cn(!glyph && "text-muted-foreground", detail && "mt-[3px]")}
+												className={glyph ? undefined : "text-muted-foreground"}
 												{...(glyph ? { color: glyph } : {})}
 											/>
-											<span className="flex min-w-0 flex-1 flex-col gap-0.5">
-												<span className="truncate">{workspace.name}</span>
-												{detail ? (
-													<span className="text-muted-foreground truncate text-xs">{detail}</span>
-												) : null}
+											<span className={cn("min-w-0 flex-1 truncate", isSelected && "font-medium")}>
+												{workspace.name}
 											</span>
 											{/* -my-1: the 24px action sits in the row's padding so the row stays 32px. */}
 											<span className="-my-1 flex shrink-0 items-center gap-0.5">
@@ -381,19 +380,6 @@ export function WorkspacePickerRoot({
 						{/* Outside the list, so it must opt out of cmdk hiding it while filtering. */}
 						<CommandSeparator alwaysRender />
 						<CommandGroup forceMount>
-							{openFolder ? (
-								<CommandItem
-									data-qa-id="workspace-open-folder-command"
-									value="open-folder"
-									onSelect={() => {
-										setOpen(false);
-										openFolder();
-									}}
-								>
-									<FolderOpenIcon />
-									Open folder…
-								</CommandItem>
-							) : null}
 							<CommandItem
 								data-qa-id="workspace-create-command"
 								value="create-workspace"

@@ -163,51 +163,13 @@ async function renderApp(
 			},
 		},
 	);
-	const run = (command: "add-workspace" | "manage-workspaces" | "open-folder") =>
+	const run = (command: "add-workspace" | "manage-workspaces") =>
 		host.renderer.commands.execute(`kilo.work-sessions/${command}`);
 	return { ...fake, open, host, run };
 }
 
 const formDialog = () => page.getByTestId("workspace-form-dialog");
 const manager = () => page.getByTestId("workspace-manager-dialog");
-
-describe("Open folder", () => {
-	it("creates a workspace named after the picked folder and makes it active", async () => {
-		const { run, calls } = await renderApp({ pickedFolders: ["/projects/site"] });
-
-		await run("open-folder");
-
-		await vi.waitFor(() =>
-			expect(calls.create).toHaveBeenCalledWith({
-				folders: [{ path: "/projects/site", isPrimary: true }],
-				source: "open-folder",
-			}),
-		);
-		await vi.waitFor(() => expect(calls.setActive).toHaveBeenCalledWith("w-1"));
-	});
-
-	it("reuses the workspace whose primary folder it already is", async () => {
-		const { run, calls } = await renderApp({
-			workspaces: [APP],
-			pickedFolders: ["/projects/app"],
-		});
-
-		await run("open-folder");
-
-		await vi.waitFor(() => expect(calls.setActive).toHaveBeenCalledWith("w-app"));
-		expect(calls.create).not.toHaveBeenCalled();
-	});
-
-	it("does nothing when the picker is cancelled", async () => {
-		const { run, calls, open } = await renderApp({ pickedFolders: [] });
-
-		await run("open-folder");
-
-		await vi.waitFor(() => expect(open).toHaveBeenCalled());
-		expect(calls.create).not.toHaveBeenCalled();
-		expect(calls.setActive).not.toHaveBeenCalled();
-	});
-});
 
 describe("Manage workspaces", () => {
 	it("explains there are none yet, and creates one from the footer", async () => {

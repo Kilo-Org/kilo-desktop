@@ -12,7 +12,6 @@
 		"kilo.shell/main": "optional",
 		"kilo.shell/top-bar-title": "optional",
 		"kilo.shell/top-bar-action": "optional",
-		"kilo.shell/status-bar-item": "optional",
 		"kilo.shell/left-sidebar": "optional",
 		"kilo.shell/dialog": "optional",
 		"kilo.shell/onboarding-step": "optional",
@@ -199,13 +198,6 @@
 						"all": ["kilo.work-sessions/workSessionsViewShown"],
 						"none": ["kernel/secondaryWindow"]
 					}
-				}
-			],
-			"kilo.shell/status-bar-item": [
-				{
-					"id": "design-review",
-					"title": "Design review",
-					"kind": "view"
 				}
 			],
 			"kilo.shell/top-bar-action": [
@@ -752,15 +744,6 @@
 					"title": "Add workspace",
 					"category": "Workspaces",
 					"order": 10,
-					"when": {
-						"none": ["kernel/secondaryWindow"]
-					}
-				},
-				{
-					"id": "open-folder",
-					"title": "Open folder…",
-					"category": "Workspaces",
-					"order": 15,
 					"when": {
 						"none": ["kernel/secondaryWindow"]
 					}

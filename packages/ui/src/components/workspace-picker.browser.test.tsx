@@ -108,36 +108,6 @@ describe("workspace picker", () => {
 		expect(source.setActiveWorkspaceId).not.toHaveBeenCalled();
 	});
 
-	it("checks the selected workspace and keeps its colour", async () => {
-		renderPicker({ activeWorkspaceId: "w-b" });
-		await open();
-
-		const beta = page.getByRole("option", { name: /Beta/ }).element();
-		expect(beta.getAttribute("data-checked")).toBe("true");
-		expect(beta.querySelector("svg")?.getAttribute("stroke")).toBe("#34D399");
-	});
-
-	it("shows a workspace's detail under its name", async () => {
-		renderPicker({ workspaces: [{ ...WORKSPACES[0]!, detail: "/repos/alpha" }] });
-		await open();
-
-		await expect.element(page.getByText("/repos/alpha")).toBeVisible();
-	});
-
-	it("offers Open folder only when the host can open one", async () => {
-		renderPicker();
-		await open();
-		await expect.element(page.getByText("Open folder…")).not.toBeInTheDocument();
-		cleanup();
-
-		const openFolder = vi.fn();
-		renderPicker({ openFolder });
-		await open();
-		await page.getByRole("option", { name: /Open folder/ }).click();
-
-		expect(openFolder).toHaveBeenCalled();
-	});
-
 	it("offers to create a workspace", async () => {
 		const source = renderPicker({ workspaces: [] });
 		await open();

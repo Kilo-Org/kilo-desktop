@@ -4,8 +4,13 @@ import { createPluginHost, type PluginHost } from "@kilo-desktop/kernel/testing/
 import coreManifest from "@kilo-desktop/plugin-core/plugin.json";
 import { CORE_DEFINITIONS, KiloServer } from "@kilo-desktop/plugin-core/contracts";
 import workSessionsManifest from "@kilo-desktop/plugin-work-sessions/plugin.json";
+import chatManifest from "@kilo-desktop/plugin-chat/plugin.json";
+import { CHAT_DEFINITIONS, Composer } from "@kilo-desktop/plugin-chat/contracts";
+import shellManifest from "@kilo-desktop/plugin-shell/plugin.json";
+import { Navigation, SHELL_DEFINITIONS } from "@kilo-desktop/plugin-shell/contracts";
 import {
 	WORK_SESSIONS_DEFINITIONS,
+	WorkSessions,
 	Workspaces,
 	type Workspace,
 } from "@kilo-desktop/plugin-work-sessions/contracts";
@@ -28,8 +33,16 @@ const unused = () => {
 	throw new KernelError("UNAVAILABLE", "not in this test");
 };
 
-/** kilo.work-sessions' workspaces, in memory, for kilo.workbooks to read. */
-export function workSessionsStandIn(workspaces: Workspace[] = [WORKSPACE]) {
+/** Lets a test delete a work session, as kilo.work-sessions would announce it. */
+export interface WorkSessionsControl {
+	delete(id: string): void;
+}
+
+/** kilo.work-sessions' workspaces and work sessions, in memory, for kilo.workbooks to read. */
+export function workSessionsStandIn(
+	workspaces: Workspace[] = [WORKSPACE],
+	control: { current?: WorkSessionsControl } = {},
+) {
 	return {
 		manifest: workSessionsManifest,
 		definitions: WORK_SESSIONS_DEFINITIONS,
@@ -42,6 +55,84 @@ export function workSessionsStandIn(workspaces: Workspace[] = [WORKSPACE]) {
 						unavailableFolderIds: [],
 					},
 					methods: new Proxy({}, { get: () => unused }) as never,
+				});
+				const sessions = sdk.domainObjects.provide(WorkSessions, {
+					initialState: { workSessions: [] },
+					methods: new Proxy({}, { get: () => unused }) as never,
+				});
+				control.current = {
+					delete: (id) =>
+						sessions.emit("deleted", {
+							workSession: {
+								id,
+								title: "",
+								titleSource: "default",
+								pinned: false,
+								archived: false,
+								archiveChangedAt: 0,
+								workspaceId: null,
+								branch: null,
+								directory: null,
+								chatIds: [],
+								createdAt: 0,
+								updatedAt: 0,
+							},
+						}),
+				};
+			},
+		}),
+	};
+}
+
+/** What the chat stand-in's composer was asked to start. */
+export interface StartedChat {
+	readonly text: string;
+	readonly workspaceId: string | null | undefined;
+	readonly workSessionId: string;
+}
+
+/** kilo.chat's composer in the window: records chats started, numbering their sessions. */
+export function chatStandIn(started: StartedChat[]) {
+	return {
+		manifest: chatManifest,
+		definitions: CHAT_DEFINITIONS,
+		web: definePlugin({
+			activate(sdk) {
+				sdk.domainObjects.provide(Composer, {
+					initialState: { focusedWorkSessionId: null },
+					methods: {
+						focus: () => undefined,
+						insert: () => undefined,
+						startChat: ({ text, workspaceId }) => {
+							const workSessionId = `wses_${started.length + 1}`;
+							started.push({ text, workspaceId, workSessionId });
+							return { workSessionId };
+						},
+					},
+				});
+			},
+		}),
+	};
+}
+
+export const shellRegistration = { manifest: shellManifest, definitions: SHELL_DEFINITIONS };
+
+/** kilo.shell's navigation, recording the dialogs opened. */
+function shellStandIn(dialogs: string[]) {
+	return {
+		...shellRegistration,
+		main: definePlugin({
+			activate(sdk) {
+				sdk.domainObjects.provide(Navigation, {
+					initialState: { windows: {} },
+					methods: new Proxy(
+						{
+							openDialog: ({ dialog }: { dialog: string }) => {
+								dialogs.push(dialog);
+							},
+						},
+						{ get: (target, key) => (target as Record<string | symbol, unknown>)[key] ?? unused },
+					) as never,
 				});
 			},
 		}),
@@ -110,6 +201,10 @@ export async function bootWorkbooks(
 		readonly others?: readonly Parameters<typeof createPluginHost>[0][number][];
 		/** Reach Pages the real way: through a (stand-in) Kilo server over HTTP. */
 		readonly viaKilo?: boolean;
+		readonly workSessions?: { current?: WorkSessionsControl };
+		readonly started?: StartedChat[];
+		/** Records dialogs opened through kilo.shell's navigation. */
+		readonly dialogs?: string[];
 	} = {},
 ): Promise<WorkbooksHost> {
 	const pages = options.pages ?? new FakePages();
@@ -118,7 +213,9 @@ export async function bootWorkbooks(
 	const host = await createPluginHost(
 		[
 			options.viaKilo ? coreWithServer() : coreRegistration,
-			workSessionsStandIn(),
+			workSessionsStandIn([WORKSPACE], options.workSessions),
+			options.dialogs ? shellStandIn(options.dialogs) : shellRegistration,
+			chatStandIn(options.started ?? []),
 			{
 				manifest,
 				definitions: WORKBOOKS_DEFINITIONS,

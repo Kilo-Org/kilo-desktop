@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import { KernelError, mainHost, type PluginSdk } from "@kilo-desktop/kernel";
 
 import {
@@ -11,6 +9,7 @@ import {
 	type WorkbookTemplate,
 } from "../contracts";
 import { createWorkbookContent } from "./create-workbook";
+import { kickoffText } from "./kickoff";
 import type { PagesToolCaller } from "./pages-tools";
 
 interface SavedWorkbooks extends Record<string, unknown> {
@@ -37,7 +36,7 @@ export interface WorkbookStoreDeps {
  */
 export function provideWorkbooks(sdk: PluginSdk, deps: WorkbookStoreDeps): void {
 	const now = deps.now ?? (() => new Date());
-	const newId = deps.newId ?? randomUUID;
+	const newId = deps.newId ?? (() => globalThis.crypto.randomUUID());
 	const store = mainHost(sdk).storage.kv<SavedWorkbooks>({
 		namespace: "workbooks",
 		defaults: { workbooks: [] },
@@ -81,6 +80,7 @@ export function provideWorkbooks(sdk: PluginSdk, deps: WorkbookStoreDeps): void 
 				save(remaining);
 				return { forgotten: true };
 			},
+			kickoff: ({ workbookId, focus }) => kickoffText(find(workbookId), focus),
 		},
 	});
 

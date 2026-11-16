@@ -4,6 +4,10 @@ import { discoverPlugins, KERNEL_CONTEXT_KEYS, KERNEL_DEFINITIONS } from "@kilo-
 
 import coreManifest from "@kilo-desktop/plugin-core/plugin.json";
 import { CORE_DEFINITIONS } from "@kilo-desktop/plugin-core/contracts";
+import chatManifest from "@kilo-desktop/plugin-chat/plugin.json";
+import { CHAT_DEFINITIONS } from "@kilo-desktop/plugin-chat/contracts";
+import shellManifest from "@kilo-desktop/plugin-shell/plugin.json";
+import { SHELL_DEFINITIONS } from "@kilo-desktop/plugin-shell/contracts";
 import workSessionsManifest from "@kilo-desktop/plugin-work-sessions/plugin.json";
 import { WORK_SESSIONS_DEFINITIONS } from "@kilo-desktop/plugin-work-sessions/contracts";
 
@@ -15,6 +19,8 @@ describe("kilo.workbooks manifest", () => {
 		discoverPlugins(
 			[
 				{ manifest: coreManifest, definitions: CORE_DEFINITIONS },
+				{ manifest: shellManifest, definitions: SHELL_DEFINITIONS },
+				{ manifest: chatManifest, definitions: CHAT_DEFINITIONS },
 				{ manifest: workSessionsManifest, definitions: WORK_SESSIONS_DEFINITIONS },
 				{ manifest, definitions: WORKBOOKS_DEFINITIONS },
 			],

@@ -1,0 +1,239 @@
+import { useState, type FormEvent } from "react";
+
+import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
+import { Composer } from "@kilo-desktop/plugin-chat/contracts";
+import type { DialogProps } from "@kilo-desktop/plugin-shell/contracts";
+import { Workspaces } from "@kilo-desktop/plugin-work-sessions/contracts";
+import { Button } from "@kilo-desktop/ui/components/button";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@kilo-desktop/ui/components/dialog";
+import { Input } from "@kilo-desktop/ui/components/input";
+import { Label } from "@kilo-desktop/ui/components/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@kilo-desktop/ui/components/tabs";
+import { Textarea } from "@kilo-desktop/ui/components/textarea";
+
+import {
+	SessionWorkbooks,
+	WorkbookTemplates,
+	Workbooks,
+	workbooksIn,
+	type TemplateSummary,
+	type Workbook,
+} from "../contracts";
+import { startFromWorkbook, startNewWorkbook, type StartDeps } from "./start";
+
+const selectActiveWorkspace = (state: { activeId: string | null }) => state.activeId;
+const selectWorkbooks = (state: { workbooks: Workbook[] }) => state.workbooks;
+const selectTemplates = (state: { templates: TemplateSummary[] }) => state.templates;
+
+/**
+ * Starts a work session from a workbook in the active workspace: continue one
+ * already there, or create one from a template by filling in its Brief. The
+ * session opens with the kick-off message in its composer, unsent.
+ */
+export function StartWorkbookDialog({ close }: DialogProps) {
+	const deps: StartDeps = {
+		workbooks: useDomainObject(Workbooks),
+		sessions: useDomainObject(SessionWorkbooks),
+		composer: useDomainObject(Composer),
+	};
+	const workspaceId = useDomainObjectState(Workspaces, selectActiveWorkspace) ?? null;
+	const workbooks = workbooksIn(
+		useDomainObjectState(Workbooks, selectWorkbooks) ?? [],
+		workspaceId,
+	);
+	const templates = useDomainObjectState(WorkbookTemplates, selectTemplates) ?? [];
+	const [busy, setBusy] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+
+	const run = async (start: () => Promise<unknown>) => {
+		setBusy(true);
+		setError(null);
+		try {
+			await start();
+			close();
+		} catch (failure) {
+			setError(failure instanceof Error ? failure.message : String(failure));
+			setBusy(false);
+		}
+	};
+
+	return (
+		<Dialog open onOpenChange={(open) => !open && close()}>
+			<DialogContent data-qa-id="workbooks-start-dialog" className="sm:max-w-lg">
+				<DialogHeader>
+					<DialogTitle>Start from a workbook</DialogTitle>
+					<DialogDescription>
+						A workbook keeps what your chats learn and decide, so a new chat starts from it instead
+						of from pasted text.
+					</DialogDescription>
+				</DialogHeader>
+				{workspaceId === null ? (
+					<p className="text-muted-foreground text-sm" data-qa-id="workbooks-no-workspace">
+						Open a workspace first: workbooks belong to a workspace.
+					</p>
+				) : (
+					<Tabs defaultValue={workbooks.length > 0 ? "continue" : "new"}>
+						<TabsList>
+							<TabsTrigger value="continue" data-qa-id="workbooks-tab-continue">
+								Continue a workbook
+							</TabsTrigger>
+							<TabsTrigger value="new" data-qa-id="workbooks-tab-new">
+								New from template
+							</TabsTrigger>
+						</TabsList>
+						<TabsContent value="continue">
+							<ContinueWorkbook
+								workbooks={workbooks}
+								busy={busy}
+								onStart={(workbook) =>
+									run(() => startFromWorkbook(deps, { workbookId: workbook.id, workspaceId }))
+								}
+							/>
+						</TabsContent>
+						<TabsContent value="new">
+							<NewWorkbook
+								templates={templates}
+								busy={busy}
+								onCreate={(templateId, name, values) =>
+									run(() => startNewWorkbook(deps, { workspaceId, templateId, name, values }))
+								}
+							/>
+						</TabsContent>
+					</Tabs>
+				)}
+				{error ? (
+					<p role="alert" className="text-destructive text-sm" data-qa-id="workbooks-start-error">
+						{error}
+					</p>
+				) : null}
+			</DialogContent>
+		</Dialog>
+	);
+}
+
+function ContinueWorkbook({
+	workbooks,
+	busy,
+	onStart,
+}: {
+	readonly workbooks: readonly Workbook[];
+	readonly busy: boolean;
+	readonly onStart: (workbook: Workbook) => void;
+}) {
+	if (workbooks.length === 0) {
+		return (
+			<p className="text-muted-foreground py-4 text-sm" data-qa-id="workbooks-none">
+				No workbooks in this workspace yet. Create one from a template.
+			</p>
+		);
+	}
+	return (
+		<ul className="flex flex-col gap-1 py-2" data-qa-id="workbooks-list">
+			{workbooks.map((workbook) => (
+				<li key={workbook.id} className="flex items-center justify-between gap-2">
+					<span className="truncate text-sm">{workbook.name}</span>
+					<Button
+						type="button"
+						size="sm"
+						variant="outline"
+						disabled={busy}
+						data-qa-id={`workbooks-continue-${workbook.id}`}
+						onClick={() => onStart(workbook)}
+					>
+						Start session
+					</Button>
+				</li>
+			))}
+		</ul>
+	);
+}
+
+function NewWorkbook({
+	templates,
+	busy,
+	onCreate,
+}: {
+	readonly templates: readonly TemplateSummary[];
+	readonly busy: boolean;
+	readonly onCreate: (templateId: string, name: string, values: Record<string, string>) => void;
+}) {
+	const [templateId, setTemplateId] = useState(templates[0]?.id ?? "");
+	const [name, setName] = useState("");
+	const [values, setValues] = useState<Record<string, string>>({});
+	const template = templates.find((candidate) => candidate.id === templateId) ?? templates[0];
+	if (!template) {
+		return (
+			<p className="text-muted-foreground py-4 text-sm">No workbook templates are available.</p>
+		);
+	}
+	const missing = template.fields.some((field) => field.required && !values[field.id]?.trim());
+	const submit = (event: FormEvent) => {
+		event.preventDefault();
+		onCreate(template.id, name.trim(), values);
+	};
+	return (
+		<form className="flex flex-col gap-3 py-2" onSubmit={submit} data-qa-id="workbooks-new-form">
+			{templates.length > 1 ? (
+				<div className="flex flex-wrap gap-1" role="radiogroup" aria-label="Template">
+					{templates.map((candidate) => (
+						<Button
+							key={candidate.id}
+							type="button"
+							size="sm"
+							variant={candidate.id === template.id ? "secondary" : "ghost"}
+							role="radio"
+							aria-checked={candidate.id === template.id}
+							data-qa-id={`workbooks-template-${candidate.id}`}
+							onClick={() => setTemplateId(candidate.id)}
+						>
+							{candidate.name}
+						</Button>
+					))}
+				</div>
+			) : null}
+			<p className="text-muted-foreground text-xs">{template.description}</p>
+			<div className="flex flex-col gap-1.5">
+				<Label htmlFor="workbook-name">Name</Label>
+				<Input
+					id="workbook-name"
+					value={name}
+					placeholder="e.g. Fix the bug in the Kilo server"
+					data-qa-id="workbooks-name"
+					onChange={(event) => setName(event.target.value)}
+				/>
+			</div>
+			{template.fields.map((field) => (
+				<div key={field.id} className="flex flex-col gap-1.5">
+					<Label htmlFor={`workbook-field-${field.id}`}>
+						{field.label}
+						{field.required ? " (required)" : ""}
+					</Label>
+					<Textarea
+						id={`workbook-field-${field.id}`}
+						rows={field.required ? 3 : 2}
+						placeholder={field.hint}
+						value={values[field.id] ?? ""}
+						data-qa-id={`workbooks-field-${field.id}`}
+						onChange={(event) => setValues({ ...values, [field.id]: event.target.value })}
+					/>
+				</div>
+			))}
+			<DialogFooter>
+				<Button
+					type="submit"
+					disabled={busy || missing || !name.trim()}
+					data-qa-id="workbooks-create"
+				>
+					{busy ? "Creating…" : "Create and start"}
+				</Button>
+			</DialogFooter>
+		</form>
+	);
+}

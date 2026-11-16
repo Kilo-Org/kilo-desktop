@@ -1,0 +1,5 @@
+/* Test-only stylesheet: generates the Tailwind utilities the workbook dialog
+   and the design-system parts it uses need, so browser tests get real layout. */
+@import "tailwindcss";
+@source "../../../../packages/ui";
+@source "../";

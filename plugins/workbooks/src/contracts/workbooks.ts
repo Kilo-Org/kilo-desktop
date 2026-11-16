@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { defineDomainObject, method } from "@kilo-desktop/kernel";
 
+import { kickoffInputSchema } from "./sessions";
 import { ITEM_TYPES } from "./templates";
 
 /**
@@ -70,6 +71,8 @@ export const Workbooks = defineDomainObject({
 		add: method(addWorkbookInputSchema, workbookSchema),
 		rename: method(z.object({ id: z.string(), name: z.string().trim().min(1) }), workbookSchema),
 		forget: method(z.object({ id: z.string() }), z.object({ forgotten: z.boolean() })),
+		/** The first message for a chat starting work on a workbook, optionally on one item. */
+		kickoff: method(kickoffInputSchema, z.string()),
 	},
 	lookup: (state, id) => state.workbooks.find((workbook) => workbook.id === id),
 });

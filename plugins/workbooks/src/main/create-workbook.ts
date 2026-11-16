@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import { KernelError } from "@kilo-desktop/kernel";
 
 import type { WorkbookSectionRef, WorkbookTemplate } from "../contracts";
@@ -61,7 +59,7 @@ export async function createWorkbookContent(
 	if (missing.length > 0) {
 		throw new KernelError("VALIDATION", `Fill in the Brief first: ${missing.join(", ")}.`);
 	}
-	const nonce = content.nonce ?? (() => randomUUID().replaceAll("-", ""));
+	const nonce = content.nonce ?? (() => globalThis.crypto.randomUUID().replaceAll("-", ""));
 
 	const project = (await pages.call("create_project", {
 		title: name,

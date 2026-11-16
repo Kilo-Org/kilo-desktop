@@ -19,21 +19,33 @@
 	},
 	"dependencies": {
 		"@kilo-desktop/kernel": "workspace:*",
+		"@kilo-desktop/plugin-chat": "workspace:*",
 		"@kilo-desktop/plugin-core": "workspace:*",
+		"@kilo-desktop/plugin-shell": "workspace:*",
 		"@kilo-desktop/plugin-work-sessions": "workspace:*",
+		"lucide-react": "catalog:",
 		"zod": "catalog:"
 	},
 	"peerDependencies": {
+		"@kilo-desktop/ui": "workspace:*",
 		"react": "^19.0.0",
 		"react-dom": "^19.0.0"
 	},
 	"devDependencies": {
+		"@kilo-desktop/ui": "workspace:*",
+		"@tailwindcss/vite": "^4.3.3",
+		"@testing-library/react": "^16.3.2",
 		"@types/node": "^26.0.0",
 		"@types/react": "^19.2.17",
 		"@types/react-dom": "^19.2.3",
+		"@vitejs/plugin-react": "^6.0.4",
+		"@vitest/browser": "5.1.0",
+		"@vitest/browser-playwright": "5.1.0",
 		"@vitest/coverage-v8": "catalog:",
+		"playwright": "catalog:",
 		"react": "^19.2.8",
 		"react-dom": "^19.2.8",
+		"tailwindcss": "^4.3.3",
 		"typescript": "catalog:",
 		"vite": "catalog:",
 		"vitest": "catalog:"

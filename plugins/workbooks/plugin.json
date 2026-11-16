@@ -8,7 +8,12 @@
 	"web": "./src/web/index.ts",
 	"requires": {
 		"kilo.core/server": "optional",
-		"kilo.work-sessions/workspaces": "optional"
+		"kilo.work-sessions/workspaces": "optional",
+		"kilo.work-sessions/work-sessions": "optional",
+		"kilo.work-sessions/work-session-list-action": "optional",
+		"kilo.shell/dialog": "optional",
+		"kilo.shell/navigation": "optional",
+		"kilo.chat/composer": "optional"
 	},
 	"extensionPoints": [
 		{
@@ -27,6 +32,11 @@
 			"id": "workbooks",
 			"home": "main",
 			"description": "Every workspace's workbooks: their template and where each part lives in Pages."
+		},
+		{
+			"id": "session-workbooks",
+			"home": "main",
+			"description": "Each work session's active workbook."
 		}
 	],
 	"contributes": {
@@ -41,6 +51,23 @@
 					"id": "workbooks",
 					"description": "Shows Workbooks: start work sessions from a workbook, created from a workbook template.",
 					"default": false
+				}
+			],
+			"kilo.work-sessions/work-session-list-action": [
+				{
+					"id": "workbooks",
+					"when": {
+						"all": ["kernel/flag:workbooks"]
+					}
+				}
+			],
+			"kilo.shell/dialog": [
+				{
+					"id": "start",
+					"title": "Start from a workbook",
+					"when": {
+						"all": ["kernel/flag:workbooks"]
+					}
 				}
 			]
 		}

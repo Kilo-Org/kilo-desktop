@@ -1,8 +1,10 @@
 import type { PluginDefinitions } from "@kilo-desktop/kernel";
 
 import { WorkbookTemplatePoint, WorkbookTemplates } from "./templates";
+import { SessionWorkbooks } from "./sessions";
 import { Workbooks } from "./workbooks";
 
+export * from "./sessions";
 export * from "./templates";
 export * from "./workbooks";
 
@@ -18,6 +20,9 @@ export const WORKBOOKS_FEATURE_FLAG = "workbooks";
 
 /** What the kernel needs to know about this plugin without running it. */
 export const WORKBOOKS_DEFINITIONS: PluginDefinitions = {
-	domainObjects: [WorkbookTemplates, Workbooks],
+	domainObjects: [WorkbookTemplates, Workbooks, SessionWorkbooks],
 	extensionPoints: [WorkbookTemplatePoint],
 };
+
+/** The `kilo.shell/dialog` that starts a work session from a workbook, by contribution key. */
+export const START_DIALOG = "kilo.workbooks/start";

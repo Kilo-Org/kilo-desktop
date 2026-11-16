@@ -13,6 +13,7 @@ import { BUILT_IN_TEMPLATES } from "./built-in-templates";
 import { kiloPagesCaller } from "./kilo-pages";
 import type { PagesToolCaller } from "./pages-tools";
 import { provideTemplates } from "./template-registry";
+import { provideSessionWorkbooks } from "./session-workbooks";
 import { provideWorkbooks } from "./workbook-store";
 
 export interface WorkbooksMainOptions {
@@ -46,6 +47,7 @@ export function createWorkbooksMainEntry(options: WorkbooksMainOptions = {}): Pl
 				},
 				pages,
 			});
+			provideSessionWorkbooks(sdk);
 		},
 	});
 }

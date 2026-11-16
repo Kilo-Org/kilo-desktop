@@ -235,18 +235,6 @@
 					"palette": false
 				}
 			],
-			"kernel/flag": [
-				{
-					"id": "prompt-queue-editing",
-					"description": "Turns on pausing, reordering and editing prompts queued while a chat works.",
-					"default": false
-				},
-				{
-					"id": "searchbar-windows-panels",
-					"description": "Turns on the find bar (Mod+F) in chat, plan and other panes.",
-					"default": false
-				}
-			],
 			"kilo.chat/composer-action": [
 				{
 					"id": "attach",

@@ -17,12 +17,6 @@ import { cn } from "@kilo-desktop/ui/lib/utils";
 
 import "./find-bar.css";
 
-/**
- * Rollout flag for per-pane find. This package can't read flags, so each
- * consumer reads it (`useFeatureFlag`) and passes it to `FindScope`'s `enabled`.
- */
-export const FIND_BAR_FEATURE_FLAG = "searchbar-windows-panels";
-
 const FIND_SCOPE_SELECTOR = "[data-find-scope]";
 
 // `navigator.platform` is deprecated but frozen in Chromium; it is the
@@ -245,11 +239,6 @@ export interface FindScopeProps
 	extends Omit<ComponentProps<"div">, "ref">, Omit<FindBarProps, "rootRef" | "className"> {
 	/** Extra classes for the floating bar, e.g. `top-14` to clear a pane header. */
 	readonly barClassName?: string;
-	/**
-	 * When false the container still renders (same layout) but has no bar, is
-	 * not a find scope, and leaves the chord alone. Defaults to true.
-	 */
-	readonly enabled?: boolean;
 }
 
 /**
@@ -262,35 +251,23 @@ export function FindScope({
 	qaPrefix,
 	placeholder,
 	barClassName,
-	enabled = true,
 	className,
 	children,
 	...props
 }: FindScopeProps) {
 	const scopeRef = useRef<HTMLDivElement>(null);
 	const [open, setOpen] = useState(false);
-	// One tree for both states: the bar's slot stays in place so toggling the
-	// flag at runtime never remounts the pane's content.
 	return (
-		<div
-			{...props}
-			ref={scopeRef}
-			data-find-scope={enabled || undefined}
-			className={cn("relative", className)}
-		>
-			{enabled ? (
-				<FindBar
-					rootRef={scopeRef}
-					qaPrefix={qaPrefix}
-					{...(searchRootSelector ? { searchRootSelector } : {})}
-					{...(placeholder ? { placeholder } : {})}
-					{...(barClassName ? { className: barClassName } : {})}
-					onOpenChange={setOpen}
-				/>
-			) : null}
-			<FindScopeOpenContext.Provider value={enabled && open}>
-				{children}
-			</FindScopeOpenContext.Provider>
+		<div {...props} ref={scopeRef} data-find-scope className={cn("relative", className)}>
+			<FindBar
+				rootRef={scopeRef}
+				qaPrefix={qaPrefix}
+				{...(searchRootSelector ? { searchRootSelector } : {})}
+				{...(placeholder ? { placeholder } : {})}
+				{...(barClassName ? { className: barClassName } : {})}
+				onOpenChange={setOpen}
+			/>
+			<FindScopeOpenContext.Provider value={open}>{children}</FindScopeOpenContext.Provider>
 		</div>
 	);
 }

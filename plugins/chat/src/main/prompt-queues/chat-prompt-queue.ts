@@ -13,15 +13,12 @@ interface Entry {
 	readonly prompt: QueuedPrompt;
 	/** Listed as waiting; false while it is being sent. */
 	readonly visible: boolean;
-	/** Held by Stop (without queue editing): sent only by Send now. */
-	readonly parked: boolean;
 }
 
 /** What a chat's queue needs from the rest of main. */
 export interface QueueHost {
 	readonly send: (prompt: QueuedPrompt) => Promise<void>;
 	readonly abort: () => Promise<void>;
-	readonly queueEditing: () => boolean;
 	readonly changed: () => void;
 }
 
@@ -38,9 +35,7 @@ export interface QueueHost {
  * - Send now (`steer`) stops the turn and sends its prompt once the chat is
  *   idle, ahead of the rest. A refused send or stop pauses the queue, so
  *   nothing retries without the person.
- * - With queue editing, one visible `paused` holds everything and Stop sets
- *   it. Without, Stop parks what waited (later prompts still go) and the
- *   pause is internal, cleared by Send now. Switching maps one onto the other.
+ * - `paused` holds everything; Stop sets it while something waits.
  * - An open edit holds automatic sending and pins its prompt.
  */
 export class ChatPromptQueue {
@@ -53,14 +48,11 @@ export class ChatPromptQueue {
 	#working: boolean | null = null;
 	#awaitingStart = false;
 	#startTimer: ReturnType<typeof setTimeout> | undefined;
-	#queueEditing: boolean;
 
 	constructor(
 		private readonly host: QueueHost,
 		private readonly nextId: () => string,
-	) {
-		this.#queueEditing = host.queueEditing();
-	}
+	) {}
 
 	/** Nothing to keep: a queue made again later reads the chat's status afresh. */
 	get empty(): boolean {
@@ -78,7 +70,7 @@ export class ChatPromptQueue {
 				text: prompt.text,
 				...(prompt.attachmentPreview ? { attachmentPreview: prompt.attachmentPreview } : {}),
 			}));
-		const paused = this.#queueEditing && this.#paused;
+		const paused = this.#paused;
 		const sending = this.#operation === "sending" || this.#awaitingStart;
 		if (items.length === 0 && !paused && !this.#editing && !sending) return null;
 		return { items, paused, editing: this.#editing, sending };
@@ -87,12 +79,8 @@ export class ChatPromptQueue {
 	enqueue(prompt: QueuedPrompt, options: { steer?: boolean; failed?: boolean }): string {
 		const id = this.nextId();
 		const sendsFromIdle =
-			!options.steer &&
-			!options.failed &&
-			this.#idle() &&
-			this.#operation === "idle" &&
-			(this.#queueEditing || !this.#paused);
-		this.#entries = [...this.#entries, { id, prompt, visible: true, parked: false }];
+			!options.steer && !options.failed && this.#idle() && this.#operation === "idle";
+		this.#entries = [...this.#entries, { id, prompt, visible: true }];
 		if (options.failed) this.#paused = true;
 		this.#notify();
 		if (options.steer) this.steer(id);
@@ -104,7 +92,6 @@ export class ChatPromptQueue {
 	steer(id: string): void {
 		if (this.#operation !== "idle" || id === this.#editing?.id) return;
 		if (!this.#entries.some((entry) => entry.id === id)) return;
-		if (!this.#queueEditing) this.#paused = false;
 		if (this.#idle()) {
 			this.#dispatch(id);
 			return;
@@ -143,11 +130,7 @@ export class ChatPromptQueue {
 	}
 
 	stopped(): void {
-		if (!this.#queueEditing) {
-			this.#entries = this.#entries.map((entry) => ({ ...entry, parked: true }));
-		} else if (this.#entries.some((entry) => entry.visible)) {
-			this.#paused = true;
-		}
+		if (this.#entries.some((entry) => entry.visible)) this.#paused = true;
 		this.#notify();
 	}
 
@@ -227,25 +210,6 @@ export class ChatPromptQueue {
 		this.#advance();
 	}
 
-	setQueueEditing(queueEditing: boolean): void {
-		if (queueEditing === this.#queueEditing) return;
-		this.#queueEditing = queueEditing;
-		if (queueEditing) {
-			if (this.#entries.some((entry) => entry.parked)) this.#paused = true;
-			this.#entries = this.#entries.map((entry) => ({ ...entry, parked: false }));
-		} else {
-			if (this.#paused || this.#editing) {
-				this.#entries = this.#entries.map((entry) =>
-					entry.visible ? { ...entry, parked: true } : entry,
-				);
-			}
-			this.#paused = false;
-			this.#editing = null;
-		}
-		this.#notify();
-		this.#advance();
-	}
-
 	/** kilo.core's status for the chat; null while unknown. */
 	setWorking(working: boolean | null): void {
 		if (working === this.#working) return;
@@ -282,7 +246,7 @@ export class ChatPromptQueue {
 	#advance(): void {
 		if (this.#operation !== "idle" || !this.#idle()) return;
 		if (this.#paused || this.#editing) return;
-		const head = this.#entries.find((entry) => !entry.parked);
+		const head = this.#entries[0];
 		if (head) this.#dispatch(head.id);
 	}
 

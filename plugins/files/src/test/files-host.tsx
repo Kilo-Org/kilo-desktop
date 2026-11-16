@@ -3,7 +3,7 @@
 // (workspaces, file changes, the `hasVcs` key, work sessions, panes, their
 // openers reduced to "files open here, notebooks in a notebook pane", and the
 // window's `window` object), kilo.shell's theme, a telemetry sink with
-// consent, flags through the host's overrides, and kilo.files' `documents` in
+// consent, and kilo.files' `documents` in
 // main faked from the test's methods. kilo.core and kilo.chat are present for
 // their manifests. Panes render as kilo.work-sessions' canvas renders them,
 // from the Panes state.
@@ -80,8 +80,6 @@ export interface FilesHostOptions {
 	readonly directory?: string | null;
 	readonly panes?: readonly Pane[];
 	readonly activePaneId?: string | null;
-	/** Flags turned on (`kernel/flag:<id>` context keys, through the host's overrides). */
-	readonly flags?: readonly string[];
 	readonly theme?: ThemeState;
 	/** Whether `.ipynb` objects open in a notebook pane (else in Files, as without kilo.notebook). */
 	readonly notebookOpener?: boolean;
@@ -348,9 +346,8 @@ export async function bootFilesHost(options: FilesHostOptions = {}) {
 		},
 	});
 
-	const flagOverrides = Object.fromEntries((options.flags ?? []).map((flag) => [flag, true]));
 	const { main, renderer } = await createTestKernelPair({
-		host: createTestHost({ flagOverrides }),
+		host: createTestHost(),
 		main: [
 			{ manifest: coreManifest, definitions: CORE_DEFINITIONS },
 			{ manifest: shellManifest, definitions: SHELL_DEFINITIONS },

@@ -172,7 +172,6 @@ export function createChatSessionStarter(services: AgentPaneServices): FC<WorkSe
 							focus={services.focus}
 							paneId="new-session"
 							composer={composer}
-							queueEditing={false}
 							createChat={createChat}
 							directoryOf={directoryOf}
 							getSystem={getSystem}

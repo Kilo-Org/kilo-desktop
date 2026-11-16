@@ -2,7 +2,7 @@ import { render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { page } from "vitest/browser";
 
-import { chatPaneObject, FIND_BAR_FLAG, SUBAGENT_PANE_KIND, subagentPaneId } from "../../contracts";
+import { chatPaneObject, SUBAGENT_PANE_KIND, subagentPaneId } from "../../contracts";
 import { agentPane, chatSummary } from "../../test/chat-host";
 import { assistantMessage, FakeKiloServer, userMessage } from "../../test/fake-kilo-server";
 import { toolPart } from "../../test/transcript";
@@ -20,7 +20,7 @@ afterEach(() => {
 
 const TURNS = 60;
 
-async function openLongChat(flags?: Record<string, boolean>) {
+async function openLongChat() {
 	const server = new FakeKiloServer();
 	server.addChat({
 		id: "ses_a",
@@ -32,7 +32,6 @@ async function openLongChat(flags?: Record<string, boolean>) {
 		server,
 		pane: agentPane({ object: chatPaneObject("ses_a") }),
 		chats: [chatSummary("ses_a")],
-		...(flags ? { flags } : {}),
 	});
 	await expect
 		.element(page.getByText(`Final answer for turn ${TURNS}.`), { timeout: 15_000 })
@@ -130,7 +129,7 @@ describe("windowed transcript", () => {
 	});
 
 	it("renders every message while the find bar is open, as find searches the page", async () => {
-		await openLongChat({ [FIND_BAR_FLAG]: true });
+		await openLongChat();
 		await vi.waitFor(() => expect(placeholders().length).toBeGreaterThan(TURNS));
 
 		const mac = /mac/i.test(navigator.platform);

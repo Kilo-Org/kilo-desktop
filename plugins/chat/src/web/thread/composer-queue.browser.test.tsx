@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import { chatPaneObject, PROMPT_QUEUE_EDITING_FLAG } from "../../contracts";
+import { chatPaneObject } from "../../contracts";
 import { agentPane, chatSummary } from "../../test/chat-host";
 import { FakeKiloServer, userMessage, type RecordedRequest } from "../../test/fake-kilo-server";
 import { renderChat } from "../../test/render-chat";
@@ -17,7 +17,7 @@ const textOf = (request: RecordedRequest) =>
 		.join("");
 
 /** A chat that is working, with `texts` queued behind its turn. */
-async function queueBehindTurn(texts: readonly string[], editing = true) {
+async function queueBehindTurn(texts: readonly string[]) {
 	const server = new FakeKiloServer();
 	server.addChat({
 		id: "ses_a",
@@ -29,7 +29,6 @@ async function queueBehindTurn(texts: readonly string[], editing = true) {
 		server,
 		pane: agentPane({ object: chatPaneObject("ses_a") }),
 		chats: [chatSummary("ses_a")],
-		...(editing ? { flags: { [PROMPT_QUEUE_EDITING_FLAG]: true } } : {}),
 	});
 	await expect.element(page.getByText("Hello")).toBeVisible();
 	await vi.waitFor(() => expect(server.openStreams).toBe(1));
@@ -52,7 +51,7 @@ const endTurn = (server: FakeKiloServer) => {
 
 describe("the composer's queue", () => {
 	it("collapses and expands its list", async () => {
-		await queueBehindTurn(["First"], false);
+		await queueBehindTurn(["First"]);
 		await expect.element(items().getByText("First")).toBeVisible();
 
 		await page.getByTestId("kilo-composer-queue-toggle").click();
@@ -60,11 +59,10 @@ describe("the composer's queue", () => {
 		await page.getByTestId("kilo-composer-queue-toggle").click();
 
 		await expect.element(items().getByText("First")).toBeVisible();
-		expect(page.getByTestId("kilo-composer-queue-pause").query()).toBeNull();
 	});
 
 	it("deletes a queued prompt before it is sent", async () => {
-		const server = await queueBehindTurn(["First", "Second"], false);
+		const server = await queueBehindTurn(["First", "Second"]);
 
 		await items().first().getByTestId("kilo-composer-queue-delete").click();
 		await expect
@@ -78,9 +76,7 @@ describe("the composer's queue", () => {
 			]),
 		);
 	});
-});
 
-describe("the composer's queue with prompt-queue-editing", () => {
 	it("holds what waits while paused and sends it once resumed", async () => {
 		const server = await queueBehindTurn(["First"]);
 

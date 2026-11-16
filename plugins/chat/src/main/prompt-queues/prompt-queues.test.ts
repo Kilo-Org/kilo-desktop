@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { flagKey } from "@kilo-desktop/kernel";
-
-import { PROMPT_QUEUE_EDITING_FLAG, PromptQueues, type QueuedPrompt } from "../../contracts";
+import { PromptQueues, type QueuedPrompt } from "../../contracts";
 import { bootChatMain, chat, settle } from "../test-boot";
 
 const working = (id: string) => {
@@ -14,11 +12,10 @@ function prompt(text: string, patch: Partial<QueuedPrompt> = {}): QueuedPrompt {
 	return { text, textParts: [{ type: "text", text }], attachmentParts: [], ...patch };
 }
 
-async function bootBusy(options: { queueEditing?: boolean; chats?: string[] } = {}) {
+async function bootBusy(options: { chats?: string[] } = {}) {
 	const booted = await bootChatMain({
 		chats: (options.chats ?? ["ses_a"]).map(working),
 		workSessions: null,
-		flags: { [PROMPT_QUEUE_EDITING_FLAG]: options.queueEditing ?? true },
 	});
 	const queue = booted.chatSdk.domainObjects.get(PromptQueues)!;
 	const fake = booted.core;
@@ -33,12 +30,7 @@ async function bootBusy(options: { queueEditing?: boolean; chats?: string[] } = 
 		setStatus("ses_a", "idle");
 		await settle();
 	};
-	const setQueueEditing = (value: boolean) =>
-		booted.kernel.kernelSdk.context.set(
-			flagKey(PROMPT_QUEUE_EDITING_FLAG).slice("kernel/".length),
-			value,
-		);
-	return { ...booted, fake, queue, setStatus, enqueue, sent, items, turn, setQueueEditing };
+	return { ...booted, fake, queue, setStatus, enqueue, sent, items, turn };
 }
 
 describe("queued prompts", () => {
@@ -199,25 +191,6 @@ describe("queued prompts", () => {
 		expect(sent()).toEqual(["Later"]);
 	});
 
-	it("without queue editing, holds only what waited when the turn was stopped", async () => {
-		const { queue, setStatus, enqueue, sent, turn } = await bootBusy({ queueEditing: false });
-		const parked = await enqueue("Parked");
-
-		await queue.methods.stopped({ chatId: "ses_a" });
-		setStatus("ses_a", "idle");
-		await settle();
-		await enqueue("After stop");
-		await settle();
-		expect(sent()).toEqual(["After stop"]);
-
-		await turn();
-		expect(sent()).toEqual(["After stop"]);
-
-		await queue.methods.steer({ chatId: "ses_a", id: parked });
-		await settle();
-		expect(sent()).toEqual(["After stop", "Parked"]);
-	});
-
 	it("keeps a prompt the server refused, paused, for the person to send again", async () => {
 		const { queue, fake, setStatus, enqueue, sent, items } = await bootBusy();
 		const id = await enqueue("Refused");
@@ -319,22 +292,6 @@ describe("queued prompts", () => {
 		expect(sent()).toEqual(["Draft me"]);
 	});
 
-	it("turns a pause into held prompts and back when queue editing is switched", async () => {
-		const booted = await bootBusy({ queueEditing: true });
-		const { queue, setStatus, enqueue, sent } = booted;
-		await enqueue("Held");
-		await queue.methods.pause({ chatId: "ses_a" });
-
-		booted.setQueueEditing(false);
-		setStatus("ses_a", "idle");
-		await settle();
-		expect(sent()).toEqual([]);
-		expect(queue.getState().queues.ses_a?.paused).toBe(false);
-
-		booted.setQueueEditing(true);
-		expect(queue.getState().queues.ses_a?.paused).toBe(true);
-	});
-
 	it("drops a chat's queue when it is cleared or the chat is deleted", async () => {
 		const { queue, fake, enqueue, items } = await bootBusy({ chats: ["ses_a"] });
 		await enqueue("Gone");
@@ -380,7 +337,6 @@ describe("queued prompts", () => {
 			chats: [working("ses_a")],
 			workSessions: null,
 			removableCore: true,
-			flags: { [PROMPT_QUEUE_EDITING_FLAG]: true },
 		});
 		const queue = booted.chatSdk.domainObjects.get(PromptQueues)!;
 		const { id } = await queue.methods.enqueue({ chatId: "ses_a", prompt: prompt("Orphan") });

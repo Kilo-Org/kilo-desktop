@@ -2,8 +2,8 @@ import { click, expectElementToBeVisible, getLocatorByTestId } from "@anaconda/p
 import { getPage } from "@anaconda/playwright-utils/page-utils";
 
 /**
- * Page object for kilo.workbooks: the New workbook and Continue a workbook
- * tiles on the New Session page and their dialogs. Creating a workbook needs a signed-in Pages MCP server, so specs stop
+ * Page object for kilo.workbooks: the Workbook picker on the New Session page
+ * and its New workbook wizard. Creating a workbook needs a signed-in Pages MCP server, so specs stop
  * short of it.
  */
 export class WorkbooksPage {
@@ -13,12 +13,13 @@ export class WorkbooksPage {
 		});
 		await click(getLocatorByTestId("new-chat"));
 		await expectElementToBeVisible(
-			getLocatorByTestId("workbooks-new"),
-			"The New Session page should offer New workbook",
+			getLocatorByTestId("workbooks-picker-trigger"),
+			"The New Session page should offer the Workbook picker",
 		);
 	}
 
 	async verifyCodingTemplateOffered(): Promise<void> {
+		await click(getLocatorByTestId("workbooks-picker-trigger"));
 		await click(getLocatorByTestId("workbooks-new"));
 		await click(getLocatorByTestId("workbooks-template-coding"));
 		await expectElementToBeVisible(

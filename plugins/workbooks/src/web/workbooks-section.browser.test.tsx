@@ -7,7 +7,10 @@ import { definePlugin } from "@kilo-desktop/kernel";
 
 import { SessionWorkbooks, WorkbookTemplatePoint, Workbooks } from "../contracts";
 import { FakePages } from "../test/fake-pages";
-import { NewWorkSessionSection } from "@kilo-desktop/plugin-work-sessions/contracts";
+import {
+	NewWorkSessionSection,
+	type NewWorkSessionSectionProps,
+} from "@kilo-desktop/plugin-work-sessions/contracts";
 
 import {
 	bootWorkbooks,
@@ -67,6 +70,8 @@ async function renderSection(
 		pages?: FakePages;
 		workspaceId?: string | null;
 		others?: readonly GuestPlugin[];
+		/** Overrides the page's start(), e.g. to fail. */
+		start?: NewWorkSessionSectionProps["start"];
 	} = {},
 ) {
 	const started: StartedChat[] = [];
@@ -82,7 +87,7 @@ async function renderSection(
 			workspaceId: options.workspaceId === undefined ? "ws-1" : options.workspaceId,
 			directory: "/repo",
 			disabled: false,
-			start: pageStart(log),
+			start: options.start ?? pageStart(log),
 		}),
 	);
 	if (options.workspaceId !== null) {
@@ -91,9 +96,21 @@ async function renderSection(
 	return { ...booted, started, log };
 }
 
+/** Opens the Workbook picker. */
+async function openPicker() {
+	await userEvent.click(page.getByTestId("workbooks-picker-trigger"));
+	await expect.element(page.getByTestId("workbooks-picker")).toBeVisible();
+}
+
+/** Opens the picker's New workbook, landing on the template step. */
+async function openNewWorkbook() {
+	await openPicker();
+	await userEvent.click(page.getByTestId("workbooks-new"));
+}
+
 /** Opens New workbook and picks a template, landing on its Brief. */
 async function newWorkbook(templateId = "coding") {
-	await userEvent.click(page.getByTestId("workbooks-new"));
+	await openNewWorkbook();
 	await userEvent.click(page.getByTestId(`workbooks-template-${templateId}`));
 	await expect.element(page.getByTestId("workbooks-new-form")).toBeVisible();
 }
@@ -132,19 +149,19 @@ describe("Start from a workbook on the New Session page", () => {
 			values: { goal: "g" },
 		});
 
-		await userEvent.click(page.getByTestId("workbooks-continue"));
+		await openPicker();
 		await userEvent.click(page.getByTestId(`workbooks-continue-${workbook.id}`));
 
 		await expect.poll(() => log.opened).toEqual(["wses_1"]);
 		expect(started[0]!.text).toContain('"Existing"');
 		expect(started[0]!.text).not.toContain("## Work on this");
-		await expect.element(page.getByTestId("workbooks-continue-dialog")).not.toBeInTheDocument();
+		await expect.element(page.getByTestId("workbooks-picker")).not.toBeInTheDocument();
 	});
 
 	it("asks for a template first, then that template's Brief, with Back to the templates", async () => {
 		const { host, started } = await renderSection();
 
-		await userEvent.click(page.getByTestId("workbooks-new"));
+		await openNewWorkbook();
 		await expect.element(page.getByTestId("workbooks-template-coding")).toBeVisible();
 		await expect.element(page.getByTestId("workbooks-template-blank")).toBeVisible();
 		await expect.element(page.getByTestId("workbooks-template-filter")).not.toBeInTheDocument();
@@ -179,7 +196,7 @@ describe("Start from a workbook on the New Session page", () => {
 		const clock = await create("Right side panel clock", "coding");
 		const notes = await create("Reading notes", "blank");
 
-		await userEvent.click(page.getByTestId("workbooks-continue"));
+		await openPicker();
 
 		await expect
 			.poll(() => page.getByTestId(`workbooks-continue-${clock.id}`).element().textContent)
@@ -205,7 +222,7 @@ describe("Start from a workbook on the New Session page", () => {
 			others: [manyTemplates(["Recipe", "Research", "Release", "Incident", "Analysis"])],
 		});
 
-		await userEvent.click(page.getByTestId("workbooks-new"));
+		await openNewWorkbook();
 		await userEvent.fill(page.getByTestId("workbooks-template-filter").element(), "re");
 		await expect.element(page.getByTestId("workbooks-template-recipe")).toBeVisible();
 		await expect.element(page.getByTestId("workbooks-template-release")).toBeVisible();
@@ -249,18 +266,51 @@ describe("Start from a workbook on the New Session page", () => {
 		await expect.element(page.getByTestId("workbooks-new-dialog")).toBeVisible();
 	});
 
-	it("disables Existing workbook while the workspace has none, and closes New workbook on Cancel", async () => {
+	it("offers New workbook in an empty workspace's picker, and closes the wizard on Cancel", async () => {
 		await renderSection();
 
-		await expect.element(page.getByTestId("workbooks-new")).toBeEnabled();
-		await expect.element(page.getByTestId("workbooks-continue")).toBeDisabled();
+		await openPicker();
+		await expect.element(page.getByText("No workbooks in this workspace yet.")).toBeVisible();
 		await userEvent.click(page.getByTestId("workbooks-new"));
+		await expect.element(page.getByTestId("workbooks-new-dialog")).toBeVisible();
 		await userEvent.click(page.getByRole("button", { name: "Cancel" }));
 		await expect.element(page.getByTestId("workbooks-new-dialog")).not.toBeInTheDocument();
 	});
-});
 
-describe("without a workspace", () => {
+	it("starts no session when the page can't start one, and can be used again", async () => {
+		let attempts = 0;
+		const { host, started } = await renderSection({
+			start: async () => {
+				attempts += 1;
+				throw new Error("no worktree");
+			},
+		});
+		const workbook = await host.invoke(Workbooks, "create", {
+			workspaceId: "ws-1",
+			templateId: "coding",
+			name: "Stuck",
+			values: { goal: "g" },
+		});
+
+		await openPicker();
+		await userEvent.click(page.getByTestId(`workbooks-continue-${workbook.id}`));
+
+		await expect.poll(() => attempts).toBe(1);
+		await expect.element(page.getByTestId("workbooks-picker-trigger")).toBeEnabled();
+		expect(started).toEqual([]);
+	});
+
+	it("opens the picker from the keyboard", async () => {
+		await renderSection();
+
+		page.getByTestId("workbooks-picker-trigger").element().focus();
+		await userEvent.keyboard("{ArrowDown}");
+
+		await expect.element(page.getByTestId("workbooks-picker")).toBeVisible();
+		await userEvent.keyboard("{Escape}");
+		await expect.element(page.getByTestId("workbooks-picker")).not.toBeInTheDocument();
+	});
+
 	it("shows nothing: workbooks belong to a workspace", async () => {
 		await renderSection({ workspaceId: null });
 

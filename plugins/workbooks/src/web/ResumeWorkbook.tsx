@@ -45,20 +45,6 @@ export function ResumeWorkbook({
 	const done = progress?.steps.filter((step) => step.status === "done").length ?? 0;
 	return (
 		<div className="flex flex-col gap-3 py-2" data-qa-id="workbooks-resume">
-			<div className="flex items-center justify-between gap-2">
-				<h3 className="truncate text-sm font-medium">{workbook.name}</h3>
-				{onBack ? (
-					<Button
-						type="button"
-						size="sm"
-						variant="ghost"
-						data-qa-id="workbooks-resume-back"
-						onClick={onBack}
-					>
-						Back
-					</Button>
-				) : null}
-			</div>
 			{progress ? (
 				<>
 					{progress.steps.length > 0 ? (
@@ -85,7 +71,20 @@ export function ResumeWorkbook({
 						: "Reading where this workbook is at…"}
 				</p>
 			)}
-			<div className="flex flex-wrap gap-2">
+			<div className="flex flex-wrap items-center gap-2">
+				{onBack ? (
+					<Button
+						type="button"
+						size="sm"
+						variant="ghost"
+						className="mr-auto"
+						disabled={busy}
+						data-qa-id="workbooks-resume-back"
+						onClick={onBack}
+					>
+						Back
+					</Button>
+				) : null}
 				{progress?.next ? (
 					<Button
 						type="button"

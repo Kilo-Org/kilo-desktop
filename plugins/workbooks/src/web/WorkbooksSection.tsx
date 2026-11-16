@@ -106,6 +106,7 @@ export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessio
 			{open === "continue" ? (
 				<ContinueWorkbookDialog
 					workbooks={workbooks}
+					templates={templates}
 					handle={deps.workbooks}
 					busy={running}
 					error={error}

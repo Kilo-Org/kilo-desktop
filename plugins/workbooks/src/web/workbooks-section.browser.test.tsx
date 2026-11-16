@@ -125,7 +125,7 @@ describe("Start from a workbook on the New Session page", () => {
 
 	it("continues a workbook already in the workspace", async () => {
 		const { host, started, log } = await renderSection();
-		await host.invoke(Workbooks, "create", {
+		const workbook = await host.invoke(Workbooks, "create", {
 			workspaceId: "ws-1",
 			templateId: "coding",
 			name: "Existing",
@@ -133,6 +133,7 @@ describe("Start from a workbook on the New Session page", () => {
 		});
 
 		await userEvent.click(page.getByTestId("workbooks-continue"));
+		await userEvent.click(page.getByTestId(`workbooks-continue-${workbook.id}`));
 
 		await expect
 			.element(page.getByTestId("workbooks-resume-progress"))
@@ -166,6 +167,7 @@ describe("Start from a workbook on the New Session page", () => {
 		});
 
 		await userEvent.click(page.getByTestId("workbooks-continue"));
+		await userEvent.click(page.getByTestId(`workbooks-continue-${workbook.id}`));
 
 		await expect
 			.element(page.getByTestId("workbooks-resume-open"))
@@ -230,6 +232,39 @@ describe("Start from a workbook on the New Session page", () => {
 		expect(workbook).toMatchObject({ templateId: "blank", name: "Scratch" });
 		expect(workbook!.sections.map((section) => section.id)).toEqual(["notes"]);
 		expect(started[0]!.text).toContain("adding anything worth keeping to Notes");
+	});
+
+	it("lists the workspace's workbooks with their template, and searches them", async () => {
+		const { host } = await renderSection();
+		const create = (name: string, templateId: string) =>
+			host.invoke(Workbooks, "create", {
+				workspaceId: "ws-1",
+				templateId,
+				name,
+				values: { goal: "g" },
+			});
+		const clock = await create("Right side panel clock", "coding");
+		const notes = await create("Reading notes", "blank");
+
+		await userEvent.click(page.getByTestId("workbooks-continue"));
+
+		await expect
+			.poll(() => page.getByTestId(`workbooks-continue-${clock.id}`).element().textContent)
+			.toContain("Right side panel clockCoding");
+		await expect
+			.poll(() => page.getByTestId(`workbooks-continue-${notes.id}`).element().textContent)
+			.toContain("Reading notesBlank");
+		await userEvent.fill(page.getByPlaceholder("Search workbooks").element(), "clock");
+		await expect
+			.element(page.getByTestId(`workbooks-continue-${notes.id}`))
+			.not.toBeInTheDocument();
+		await userEvent.fill(page.getByPlaceholder("Search workbooks").element(), "blank");
+		await expect.element(page.getByTestId(`workbooks-continue-${notes.id}`)).toBeVisible();
+		await expect
+			.element(page.getByTestId(`workbooks-continue-${clock.id}`))
+			.not.toBeInTheDocument();
+		await userEvent.fill(page.getByPlaceholder("Search workbooks").element(), "zzz");
+		await expect.element(page.getByText("No workbooks found.")).toBeVisible();
 	});
 
 	it("filters the templates once there are many", async () => {

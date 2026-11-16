@@ -1,11 +1,4 @@
-import {
-	ArrowRightIcon,
-	ChevronDownIcon,
-	CodeIcon,
-	NotebookIcon,
-	NotebookTabsIcon,
-	type LucideIcon,
-} from "lucide-react";
+import { ArrowRightIcon, ChevronDownIcon } from "lucide-react";
 import { useState, type FormEvent, type ReactNode } from "react";
 
 import { Button } from "@kilo-desktop/ui/components/button";
@@ -42,6 +35,7 @@ import {
 } from "@kilo-desktop/ui/components/wizard-step-indicator";
 
 import type { BriefField, TemplateSummary } from "../contracts";
+import { templateIcon } from "./template-icons";
 
 type NewWorkbookStep = "template" | "brief";
 
@@ -52,11 +46,6 @@ const STEPS: readonly WizardStep<NewWorkbookStep>[] = [
 
 /** Past this many templates, the template step offers a filter. */
 const FILTER_FROM = 7;
-
-const TEMPLATE_ICONS: Readonly<Record<string, LucideIcon>> = {
-	code: CodeIcon,
-	notebook: NotebookIcon,
-};
 
 /**
  * Creates a workbook from a template, as a two-step wizard in the style of
@@ -209,7 +198,7 @@ function TemplateChoiceItem({
 	readonly template: TemplateSummary;
 	readonly onSelect: () => void;
 }) {
-	const Icon = TEMPLATE_ICONS[template.icon ?? ""] ?? NotebookTabsIcon;
+	const Icon = templateIcon(template.icon);
 	return (
 		<Item
 			render={<button type="button" />}

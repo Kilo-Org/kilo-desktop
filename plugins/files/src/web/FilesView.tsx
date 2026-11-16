@@ -13,9 +13,8 @@ import { type Editor, type EditorOptions } from "@pierre/diffs/edit";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { flagKey, KernelTelemetry } from "@kilo-desktop/kernel";
-import { useContextKey, useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
-import { FIND_BAR_FLAG } from "@kilo-desktop/plugin-chat/contracts";
+import { KernelTelemetry } from "@kilo-desktop/kernel";
+import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
 import { Panes, type Pane } from "@kilo-desktop/plugin-work-sessions/contracts";
 import { FindScope } from "@kilo-desktop/ui/components/find-bar";
 import { MediaViewer, type LightboxItem } from "@kilo-desktop/ui/components/media-lightbox";
@@ -259,7 +258,6 @@ export function FilesView({ workSessionId, pane, workspaceFolders }: FilesViewPr
 	const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
 	const [selectionSyncVersion, setSelectionSyncVersion] = useState(0);
 	const appearance = useFilesTheme();
-	const findEnabled = useContextKey(flagKey(FIND_BAR_FLAG));
 	const [closeRequest, setCloseRequest] = useState<CloseRequest | null>(null);
 	const editorRef = useRef<Editor<"file", undefined, undefined> | null>(null);
 	const [chosenMode, setChosenMode] = useState<{
@@ -927,7 +925,6 @@ export function FilesView({ workSessionId, pane, workspaceFolders }: FilesViewPr
 							) : file?.kind === "text" && selectedPath ? (
 								renderMarkdown && selectedHasPreview ? (
 									<FindScope
-										enabled={findEnabled}
 										className="flex min-h-0 flex-1 flex-col"
 										searchRootSelector={`[data-qa-id="files-${selectedIsMermaid ? "mermaid" : "markdown"}-preview"]`}
 										qaPrefix="files-find"

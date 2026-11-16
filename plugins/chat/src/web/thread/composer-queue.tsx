@@ -18,10 +18,7 @@ import { Item, ItemActions, ItemContent } from "@kilo-desktop/ui/components/item
 import { Textarea } from "@kilo-desktop/ui/components/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@kilo-desktop/ui/components/tooltip";
 import { cn } from "@kilo-desktop/ui/lib/utils";
-import { flagKey } from "@kilo-desktop/kernel";
-import { useContextKey } from "@kilo-desktop/kernel/web";
 
-import { PROMPT_QUEUE_EDITING_FLAG } from "../../contracts";
 import { useMessageQueueControls } from "../runtime/use-message-queue-controls";
 import {
 	COMPOSER_SHELF_LIST_CLASS,
@@ -135,9 +132,7 @@ function moveId(ids: readonly string[], id: string, delta: number): string[] | u
 
 export const ComposerQueue: FC<{ steerOnEnter: boolean }> = ({ steerOnEnter }) => {
 	const items = useAuiState((s) => s.composer.queue);
-	const enhanced = useContextKey(flagKey(PROMPT_QUEUE_EDITING_FLAG));
-	const runtimeControls = useMessageQueueControls();
-	const controls = enhanced ? runtimeControls : undefined;
+	const controls = useMessageQueueControls();
 	const [collapsed, setCollapsed] = useState(false);
 	const [dragOrder, setDragOrder] = useState<readonly string[] | null>(null);
 	const [announcement, setAnnouncement] = useState("");
@@ -169,13 +164,6 @@ export const ComposerQueue: FC<{ steerOnEnter: boolean }> = ({ steerOnEnter }) =
 		setAnnouncement(`Moved to position ${next.indexOf(id) + 1} of ${next.length}`);
 	};
 
-	const listProps = {
-		id: "kilo-composer-queue-items",
-		role: "list",
-		"aria-label": "Queued messages",
-		className: cn(COMPOSER_SHELF_LIST_CLASS, "flex flex-col"),
-	};
-
 	const rows = order.map((id) => {
 		const index = liveIds.indexOf(id);
 		const item = items[index];
@@ -186,7 +174,6 @@ export const ComposerQueue: FC<{ steerOnEnter: boolean }> = ({ steerOnEnter }) =
 					queueItem={item}
 					isFirst={index === 0}
 					showEnterHint={steerOnEnter}
-					enhanced={enhanced}
 					controls={controls}
 					canReorder={canReorder}
 					reducedMotion={reducedMotion ?? false}
@@ -218,24 +205,24 @@ export const ComposerQueue: FC<{ steerOnEnter: boolean }> = ({ steerOnEnter }) =
 					) : null}
 				</span>
 			</ComposerShelfToggle>
-			{!collapsed && enhanced ? (
+			{collapsed ? null : (
 				<Reorder.Group
 					as="div"
 					axis="y"
 					layoutScroll
 					values={order}
 					onReorder={updateDragOrder}
-					{...listProps}
+					id="kilo-composer-queue-items"
+					role="list"
+					aria-label="Queued messages"
+					className={cn(COMPOSER_SHELF_LIST_CLASS, "flex flex-col")}
 				>
 					{rows}
 				</Reorder.Group>
-			) : null}
-			{!collapsed && !enhanced ? <div {...listProps}>{rows}</div> : null}
-			{enhanced ? (
-				<span className="sr-only" aria-live="polite" data-qa-id="kilo-composer-queue-announcer">
-					{announcement}
-				</span>
-			) : null}
+			)}
+			<span className="sr-only" aria-live="polite" data-qa-id="kilo-composer-queue-announcer">
+				{announcement}
+			</span>
 		</ComposerShelf>
 	);
 };
@@ -244,8 +231,6 @@ type QueueItemRowProps = {
 	queueItem: QueueItemState;
 	isFirst: boolean;
 	showEnterHint: boolean;
-	/** prompt-queue-editing: a draggable Reorder item with a full-text tooltip. */
-	enhanced: boolean;
 	controls: OpenCodeMessageQueueControls | undefined;
 	canReorder: boolean;
 	reducedMotion: boolean;
@@ -258,7 +243,6 @@ const QueueItemRow: FC<QueueItemRowProps> = ({
 	queueItem,
 	isFirst,
 	showEnterHint,
-	enhanced,
 	controls,
 	canReorder,
 	reducedMotion,
@@ -330,12 +314,12 @@ const QueueItemRow: FC<QueueItemRowProps> = ({
 	return (
 		<Item
 			size="xs"
-			{...(enhanced ? { render: reorderItem, "data-dragging": dragging } : {})}
+			render={reorderItem}
+			data-dragging={dragging}
 			role="listitem"
 			className={cn(
 				COMPOSER_SHELF_ROW_CLASS,
-				enhanced &&
-					"data-[dragging=true]:bg-muted data-[dragging=true]:z-10 data-[dragging=true]:shadow-sm data-[dragging=true]:after:hidden",
+				"data-[dragging=true]:bg-muted data-[dragging=true]:z-10 data-[dragging=true]:shadow-sm data-[dragging=true]:after:hidden",
 				isEditing && "h-auto flex-col items-stretch gap-1.5 py-1.5 pr-1.5",
 			)}
 			data-qa-id="kilo-composer-queue-item"
@@ -373,11 +357,7 @@ const QueueItemRow: FC<QueueItemRowProps> = ({
 					) : null}
 					{attachmentPreview ? <QueueAttachmentPreview attachment={attachmentPreview} /> : null}
 					<ItemContent className="min-w-0">
-						{enhanced ? (
-							<QueuePromptText text={queueItem.prompt} />
-						) : (
-							<QueueItemPrimitive.Text className="text-foreground/90 truncate text-sm" />
-						)}
+						<QueuePromptText text={queueItem.prompt} />
 					</ItemContent>
 					<ItemActions className="gap-1.5">
 						<QueueItemPrimitive.Steer

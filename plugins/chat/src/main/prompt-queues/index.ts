@@ -1,5 +1,4 @@
 import {
-	flagKey,
 	KernelError,
 	type DomainObjectCaller,
 	type DomainObjectHandle,
@@ -7,13 +6,7 @@ import {
 } from "@kilo-desktop/kernel";
 import { Chats, type ChatStatus } from "@kilo-desktop/plugin-core/contracts";
 
-import {
-	CHAT_PLUGIN_ID,
-	PROMPT_QUEUE_EDITING_FLAG,
-	PromptQueues,
-	type ChatQueue,
-	type QueuedPrompt,
-} from "../../contracts";
+import { CHAT_PLUGIN_ID, PromptQueues, type ChatQueue, type QueuedPrompt } from "../../contracts";
 import { ChatPromptQueue } from "./chat-prompt-queue";
 
 type ChatsHandle = DomainObjectHandle<typeof Chats>;
@@ -39,7 +32,6 @@ export function activatePromptQueues(sdk: PluginSdk): void {
 			throw new KernelError("PERMISSION_DENIED", "Only kilo.chat can queue prompts.");
 		}
 	};
-	const queueEditing = () => sdk.context.get(flagKey(PROMPT_QUEUE_EDITING_FLAG));
 
 	function publish(): void {
 		const views: Record<string, ChatQueue> = {};
@@ -70,7 +62,6 @@ export function activatePromptQueues(sdk: PluginSdk): void {
 						if (!chats) throw new Error("Kilo chats aren't available.");
 						await chats.methods.abort({ id: chatId });
 					},
-					queueEditing,
 					changed: () => publish(),
 				},
 				() => `queued-${++counter}`,
@@ -175,16 +166,6 @@ export function activatePromptQueues(sdk: PluginSdk): void {
 			followStatus();
 		},
 	});
-
-	let editing = queueEditing();
-	sdk.onDispose(
-		sdk.context.subscribe(() => {
-			const value = queueEditing();
-			if (value === editing) return;
-			editing = value;
-			for (const queue of queues.values()) queue.setQueueEditing(value);
-		}),
-	);
 
 	sdk.onDispose(() => {
 		for (const queue of queues.values()) queue.dispose();

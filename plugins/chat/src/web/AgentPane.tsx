@@ -3,8 +3,8 @@ import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { BotIcon, BotMessageSquareIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FC, type ReactNode } from "react";
 
-import { flagKey, type DomainObjectState } from "@kilo-desktop/kernel";
-import { useContextKey, useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
+import type { DomainObjectState } from "@kilo-desktop/kernel";
+import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
 import { Chats } from "@kilo-desktop/plugin-core/contracts";
 import {
 	Panes,
@@ -20,8 +20,6 @@ import { toast } from "@kilo-desktop/ui/components/sonner";
 import {
 	paneChatId,
 	chatPaneObject,
-	FIND_BAR_FLAG,
-	PROMPT_QUEUE_EDITING_FLAG,
 	type ComposerContext,
 	type PromptPart as MentionPart,
 } from "../contracts";
@@ -110,8 +108,6 @@ export function createAgentPane(services: AgentPaneServices): FC<PaneProps> {
 		const chats = useDomainObject(Chats);
 		const workSessions = useDomainObject(WorkSessions);
 		const panes = useDomainObject(Panes);
-		const findEnabled = useContextKey(flagKey(FIND_BAR_FLAG));
-		const queueEditing = useContextKey(flagKey(PROMPT_QUEUE_EDITING_FLAG));
 		const rootRef = useRef<HTMLDivElement>(null);
 
 		const chatId = paneChatId(pane);
@@ -215,7 +211,6 @@ export function createAgentPane(services: AgentPaneServices): FC<PaneProps> {
 				{...{ [SESSION_ATTRIBUTE]: workSessionId }}
 			>
 				<FindScope
-					enabled={findEnabled}
 					className="flex min-h-0 flex-1 flex-col"
 					searchRootSelector='[data-slot="aui_message-group"]'
 					qaPrefix="chat-find"
@@ -230,7 +225,6 @@ export function createAgentPane(services: AgentPaneServices): FC<PaneProps> {
 								focus={services.focus}
 								paneId={pane.id}
 								composer={composer}
-								queueEditing={queueEditing}
 								createChat={createChat}
 								directoryOf={directoryOf}
 								getSystem={getSystem}
@@ -255,7 +249,6 @@ export interface ChatThreadProps {
 	readonly focus: ComposerFocus;
 	readonly paneId: string;
 	readonly composer: ComposerContext;
-	readonly queueEditing: boolean;
 	readonly createChat: () => Promise<CreatedChat>;
 	readonly directoryOf: (chatId: string) => string | null;
 	readonly getSystem: (chatId: string) => Promise<string | undefined>;

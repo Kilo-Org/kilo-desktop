@@ -17,8 +17,6 @@ export interface ChatRuntimeOptions extends Omit<ChatBackendOptions, "getSystem"
 	readonly getSystem: NonNullable<ChatBackendOptions["getSystem"]>;
 	/** The thread's chat id once it is known (a draft's after its first send). */
 	readonly onChatId?: (chatId: string | undefined) => void;
-	/** Queued prompts can be paused, reordered and edited (`prompt-queue-editing`). */
-	readonly queueEditing?: boolean;
 }
 
 /**
@@ -95,7 +93,7 @@ export function useChatRuntime(options: ChatRuntimeOptions): AssistantRuntime {
 		},
 		messageQueue: {
 			cancelBehavior: "pause",
-			...(options.queueEditing ? { userControls: true } : {}),
+			userControls: true,
 			create: createQueue,
 		},
 		adapters,

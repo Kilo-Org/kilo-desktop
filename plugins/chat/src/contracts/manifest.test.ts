@@ -15,12 +15,10 @@ import {
 	CHAT_DEFINITIONS,
 	CHAT_PLUGIN_ID,
 	COMPOSER_FOCUSED_KEY,
-	FIND_BAR_FLAG,
 	HTML_RENDER_TOOL_ID,
 	HTML_RENDER_TOOL_NAME,
 	MEDIA_PANE_KIND,
 	PLAN_PANE_KIND,
-	PROMPT_QUEUE_EDITING_FLAG,
 	SUBAGENT_PANE_KIND,
 } from "./index";
 
@@ -47,7 +45,7 @@ describe("kilo.chat manifest", () => {
 	const keys = (point: `${string}/${string}`) =>
 		contributions(point).map((entry) => `${CHAT_PLUGIN_ID}/${String(entry.id)}`);
 
-	it("contributes the pane kinds, commands and flags its contracts name", () => {
+	it("contributes the pane kinds and commands its contracts name", () => {
 		expect(keys("kilo.work-sessions/pane-kind")).toEqual([
 			AGENT_PANE_KIND,
 			PLAN_PANE_KIND,
@@ -55,10 +53,6 @@ describe("kilo.chat manifest", () => {
 			MEDIA_PANE_KIND,
 		]);
 		expect(keys("kernel/command")).toEqual(Object.values(CHAT_COMMANDS));
-		expect(keys("kernel/flag")).toEqual([
-			`${CHAT_PLUGIN_ID}/${PROMPT_QUEUE_EDITING_FLAG}`,
-			`${CHAT_PLUGIN_ID}/${FIND_BAR_FLAG}`,
-		]);
 		expect(COMPOSER_FOCUSED_KEY).toBe(`${CHAT_PLUGIN_ID}/${manifest.contextKeys[0]!.id}`);
 	});
 

@@ -7,7 +7,6 @@ import { vi } from "vitest";
 import {
 	definePlugin,
 	type DomainObjectProvider,
-	type FlagValue,
 	type KernelLogger,
 	type PluginEntry,
 	type PluginRegistration,
@@ -255,8 +254,6 @@ export interface BootOptions extends ChatMainOptions {
 	readonly chatHostServices?: Readonly<Record<string, unknown>>;
 	/** kilo.chat's main entry; `createChatMainEntry(options)` by default. */
 	readonly entry?: PluginEntry;
-	/** Host flag overrides, e.g. `{ "prompt-queue-editing": true }`. */
-	readonly flags?: Readonly<Record<string, FlagValue>>;
 	/** More main-side plugins, registered before kilo.chat. */
 	readonly plugins?: readonly PluginRegistration[];
 	readonly logger?: KernelLogger;
@@ -278,7 +275,7 @@ export async function bootChatMain(options: BootOptions = {}) {
 			? [gate.registration, core.gatedRegistration()]
 			: [core.registration];
 	const kernel = createMainKernel({
-		host: createTestHost(options.flags ? { flagOverrides: options.flags } : {}),
+		host: createTestHost(),
 		registrations: [
 			...coreRegistrations,
 			...(workSessions

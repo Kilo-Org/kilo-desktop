@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
 import type { FileChange } from "@kilo-desktop/plugin-work-sessions/contracts";
-import { FIND_BAR_FLAG } from "@kilo-desktop/plugin-chat/contracts";
 
 import { FILE_OBJECT_TYPE } from "../contracts/panes.js";
 import {
@@ -1575,8 +1574,8 @@ describe("FilesView", () => {
 			revision: "a".repeat(64),
 		});
 
-		async function openPreview(flags: readonly string[]) {
-			await renderView({ ...handlers(), read: readme }, filePane("docs/readme.md"), { flags });
+		async function openPreview() {
+			await renderView({ ...handlers(), read: readme }, filePane("docs/readme.md"));
 			await page.getByTestId("files-markdown-toggle").click();
 			await expect.element(page.getByTestId("files-markdown-preview")).toBeVisible();
 		}
@@ -1594,7 +1593,7 @@ describe("FilesView", () => {
 		}
 
 		it("finds text in the preview with the find chord", async () => {
-			await openPreview([FIND_BAR_FLAG]);
+			await openPreview();
 
 			pressFindChord();
 			await page.getByTestId("files-find-input").fill("install");
@@ -1602,15 +1601,6 @@ describe("FilesView", () => {
 			await vi.waitFor(() =>
 				expect(document.querySelector('[data-qa-id="files-find-count"]')?.textContent).toBe("1/2"),
 			);
-		});
-
-		it("leaves the chord alone while the searchbar flag is off", async () => {
-			await openPreview([]);
-
-			const event = pressFindChord();
-
-			expect(event.defaultPrevented).toBe(false);
-			expect(document.querySelector("[data-find-scope]")).toBeNull();
 		});
 	});
 

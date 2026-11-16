@@ -1,12 +1,10 @@
 import { CircleAlertIcon, ListTodoIcon } from "lucide-react";
 import type { FC } from "react";
 
-import { flagKey } from "@kilo-desktop/kernel";
-import { useContextKey } from "@kilo-desktop/kernel/web";
 import type { PaneProps } from "@kilo-desktop/plugin-work-sessions/contracts";
 import { Alert, AlertTitle } from "@kilo-desktop/ui/components/alert";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@kilo-desktop/ui/components/empty";
-import { FIND_BAR_FEATURE_FLAG, FindScope } from "@kilo-desktop/ui/components/find-bar";
+import { FindScope } from "@kilo-desktop/ui/components/find-bar";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 
 import {
@@ -91,7 +89,6 @@ function PlanRevision({
 	projection: PlanProjection;
 	planThread: PlanThreadProjection;
 }) {
-	const findEnabled = useContextKey(flagKey(FIND_BAR_FEATURE_FLAG));
 	const chatId = useOptionalOpenCodeSession()?.id;
 	const { approve, submitting, approved, error } = useApprovePlan({
 		fallbackApprovalScope: `${chatId}:${projection.anchorCallId}`,
@@ -105,7 +102,6 @@ function PlanRevision({
 
 	return (
 		<FindScope
-			enabled={findEnabled}
 			className="flex min-h-0 flex-1 flex-col"
 			data-qa-id="chat-pane-plan"
 			searchRootSelector='[data-qa-id="chat-pane-plan-body"]'

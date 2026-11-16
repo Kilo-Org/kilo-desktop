@@ -670,8 +670,9 @@ permission requests and questions, and connect to the Kilo server directly.
   `metadata.toolName` label. `tool-renderer` entries with `/` are contribution keys mapped
   to wire names (`kilo.chat/html_render` → `desktop_chat_html_render`).
   Contracts carry kilo.chat's own `ToolCallProps`; built-in renderers loosen
-  `result`/`isError` so assistant-ui parts spread in. Flags
-  `prompt-queue-editing` and `searchbar-windows-panels` are declared here.
+  `result`/`isError` so assistant-ui parts spread in. Its former flags
+  `prompt-queue-editing` and `searchbar-windows-panels` were removed once
+  fully rolled out; queue editing and the find bar are unconditional.
 - **Contracts never import `.tsx`.** Main loads every bundled contract;
   `MarkdownRendererExtension` moved to `@kilo-desktop/ui/lib/markdown-extension`.
   A plugin whose contracts import a library ships its types as a dependency
@@ -787,8 +788,8 @@ files inside workspace folders, as origin had it).
   metadata}, folders)` still reads origin's `workspaceDirectory` +
   `relativePath`. The `open` tool's result names `workSessionId`.
 - **Wiring.** Git decorations come from the `kilo.work-sessions/vcs` winner;
-  the find bar reads `kernel/flag:searchbar-windows-panels` (kilo.chat's
-  flag); `file-opened` and `notebook-opened` go through `kernel/telemetry`.
+  the find bar is always on (its `searchbar-windows-panels` flag was
+  removed); `file-opened` and `notebook-opened` go through `kernel/telemetry`.
 - **Packaging.** Nothing kilo.files-specific to restore: Vite bundles the
   Sift WASM as assets.
 - **Tests.** `src/main/test-boot.ts` boots main on a real kernel;

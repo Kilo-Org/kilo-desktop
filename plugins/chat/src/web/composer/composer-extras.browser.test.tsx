@@ -136,14 +136,13 @@ describe("Enter while the agent works", () => {
 	});
 });
 
-describe("queued prompts with prompt-queue-editing", () => {
+describe("queued prompts", () => {
 	it("pauses, edits and deletes queued prompts before they are sent", async () => {
 		const server = serverWithChat();
 		await renderChat({
 			server,
 			pane: agentPane({ object: chatPaneObject("ses_a") }),
 			chats: [chatSummary("ses_a")],
-			flags: { "prompt-queue-editing": true },
 		});
 		await expect.element(page.getByText("Done.")).toBeVisible();
 		await vi.waitFor(() => expect(server.openStreams).toBe(1));

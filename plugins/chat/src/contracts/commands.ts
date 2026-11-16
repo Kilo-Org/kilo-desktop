@@ -14,9 +14,3 @@ export const CHAT_COMMANDS = {
 	 */
 	compact: "kilo.chat/compact",
 } as const;
-
-/**
- * The `kernel/flag` behind the find bar in chat, plan and other panes
- * (`@kilo-desktop/ui`'s `FIND_BAR_FEATURE_FLAG`); kilo.chat declares it.
- */
-export const FIND_BAR_FLAG = "searchbar-windows-panels";

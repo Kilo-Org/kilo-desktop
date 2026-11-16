@@ -2,7 +2,7 @@
 
 A workbook is where the information from chats about one piece of work is kept, by the user and by several agents, so that work outlives any one chat or session. Workbooks are created from **workbook templates**. Design and decisions live in the workbooks themselves (see "Workbooks (Spike)" and "Workbooks: first cut" in Pages).
 
-The pre-rolled templates live in `plugins/workbooks/templates/` and ship as built-ins through kilo.workbooks' own `kilo.workbooks/template` extension point; other plugins contribute templates the same way. A contribution's `read()` returns the template with its content resolved (`WorkbookTemplate` in kilo.workbooks' contracts); invalid templates are skipped and reported in `kilo.workbooks/templates`.
+The pre-rolled templates (Coding; Blank) live in `plugins/workbooks/templates/` and ship as built-ins through kilo.workbooks' own `kilo.workbooks/template` extension point; other plugins contribute templates the same way. A contribution's `read()` returns the template with its content resolved (`WorkbookTemplate` in kilo.workbooks' contracts); invalid templates are skipped and reported in `kilo.workbooks/templates`.
 
 ## Template format
 
@@ -21,7 +21,7 @@ The pre-rolled templates live in `plugins/workbooks/templates/` and ship as buil
 
 ## In the app (prototype, behind the `workbooks` flag)
 
-- **Start from a workbook:** two tiles on the New Session page (`kilo.work-sessions/new-work-session-section`), styled like its tool tiles. **New workbook** opens a dialog to pick a template and fill in its Brief; **Continue a workbook** (shown once the workspace has one) opens a dialog with a resume view: where it left off, plan progress, open items and suggested next steps. The session starts where the page says (workspace, isolation); its composer holds a kick-off message carrying the Brief, the guide and the first move or chosen step, for the person to send.
+- **Start from a workbook:** two tiles on the New Session page (`kilo.work-sessions/new-work-session-section`), styled like its tool tiles. **New workbook** opens a dialog to pick a template (Coding, or Blank: just a Brief and a Notes page) and fill in its Brief; **Existing workbook** (disabled until the workspace has one) opens a dialog with a resume view: where it left off, plan progress, open items and suggested next steps. The session starts where the page says (workspace, isolation); its composer holds a kick-off message carrying the Brief, the guide and the first move or chosen step, for the person to send.
 - **Workbook tools** (`desktop_workbooks_*`): `read_workbook`, `add_plan_step`, `set_step_status`, `record_decision`, `file_item`, `set_where_i_left_off`. They find the chat's workbook from its work session and write the guide's formats.
 - **In chats:** the open session's header shows its workbook; workbook tool calls render as one-line filing receipts.
 - **Pages** is reached through Kilo's own MCP connection to the user's `pages` server, from the workspace's primary folder; kilo.workbooks is one of kilo.core's Kilo-server clients for this.

@@ -1,0 +1,24 @@
+{
+	"schemaVersion": 1,
+	"id": "blank",
+	"name": "Blank",
+	"description": "Just a Brief and a Notes page: for anything that doesn't fit another template.",
+	"icon": "notebook",
+	"brief": {
+		"file": "pages/brief.md",
+		"fields": [
+			{
+				"id": "goal",
+				"label": "What's this about?",
+				"required": true,
+				"hint": "In your own words; it's kept verbatim at the top of the Brief."
+			}
+		]
+	},
+	"guide": {
+		"file": "AGENTS.md",
+		"title": "How to work here"
+	},
+	"firstMove": "Ask about anything unclear in the Brief, then get going, adding anything worth keeping to Notes as you go.",
+	"sections": [{ "id": "notes", "title": "Notes", "itemType": "note", "file": "pages/notes.md" }]
+}

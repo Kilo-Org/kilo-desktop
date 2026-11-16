@@ -14,13 +14,14 @@ import { Field, FieldDescription, FieldError, FieldLabel } from "@kilo-desktop/u
 import { Input } from "@kilo-desktop/ui/components/input";
 import { Spinner } from "@kilo-desktop/ui/components/spinner";
 import { Textarea } from "@kilo-desktop/ui/components/textarea";
-import { ToggleGroup, ToggleGroupItem } from "@kilo-desktop/ui/components/toggle-group";
+import { RadioGroup, RadioGroupItem } from "@kilo-desktop/ui/components/radio-group";
 
 import type { TemplateSummary } from "../contracts";
 
 /**
- * Creates a workbook from a template: pick the template, name the workbook
- * and fill in its Brief (only the template's required fields must be given;
+ * Creates a workbook from a template: pick the template (radio cards, as
+ * onboarding's work style), name the workbook and fill in its Brief, whose
+ * fields follow the template picked (only the template's required fields must be given;
  * the first agent asks about the rest). Stays open, showing why, when the
  * workbook can't be created.
  */
@@ -61,28 +62,30 @@ export function NewWorkbookDialog({
 				</DialogHeader>
 				{template ? (
 					<form onSubmit={submit} className="flex flex-col gap-4" data-qa-id="workbooks-new-form">
-						{templates.length > 1 ? (
-							<Field>
-								<FieldLabel>Template</FieldLabel>
-								<ToggleGroup
-									value={[template.id]}
-									onValueChange={(next) => next[0] && setTemplateId(next[0])}
-									variant="outline"
-									size="sm"
-								>
-									{templates.map((candidate) => (
-										<ToggleGroupItem
-											key={candidate.id}
-											value={candidate.id}
-											data-qa-id={`workbooks-template-${candidate.id}`}
-										>
-											{candidate.name}
-										</ToggleGroupItem>
-									))}
-								</ToggleGroup>
-								<FieldDescription>{template.description}</FieldDescription>
-							</Field>
-						) : null}
+						<Field>
+							<FieldLabel id="workbooks-template-label">Template</FieldLabel>
+							<RadioGroup
+								aria-labelledby="workbooks-template-label"
+								value={template.id}
+								onValueChange={(next) => setTemplateId(String(next))}
+								disabled={busy}
+								className="grid-cols-[repeat(auto-fit,minmax(12rem,1fr))]"
+							>
+								{templates.map((candidate) => (
+									<label
+										key={candidate.id}
+										data-qa-id={`workbooks-template-${candidate.id}`}
+										className="bg-foreground/5 hover:bg-foreground/8 has-data-checked:ring-primary-ink flex cursor-pointer items-start gap-3 rounded-xl p-3 ring-1 ring-transparent transition-[background-color,box-shadow] has-disabled:cursor-not-allowed has-disabled:opacity-60"
+									>
+										<RadioGroupItem value={candidate.id} className="bg-background mt-0.5" />
+										<span className="flex min-w-0 flex-col gap-0.5">
+											<span className="text-sm font-medium">{candidate.name}</span>
+											<span className="text-muted-foreground text-xs">{candidate.description}</span>
+										</span>
+									</label>
+								))}
+							</RadioGroup>
+						</Field>
 						<Field>
 							<FieldLabel htmlFor="workbooks-name">Name</FieldLabel>
 							<Input

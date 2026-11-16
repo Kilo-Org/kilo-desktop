@@ -51,10 +51,10 @@ export function ContinueWorkbookDialog({
 		<Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
 			<DialogContent data-qa-id="workbooks-continue-dialog" className="sm:max-w-lg">
 				<DialogHeader>
-					<DialogTitle>Continue a workbook</DialogTitle>
+					<DialogTitle>Existing workbook</DialogTitle>
 					<DialogDescription>
-						Pick up where the last session left off. The new chat starts from the workbook's Brief
-						and guide.
+						Start a session on a workbook in this workspace, where the last session left off. The
+						new chat starts from the workbook's Brief and guide.
 					</DialogDescription>
 				</DialogHeader>
 				{picked ? (

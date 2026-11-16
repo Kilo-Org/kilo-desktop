@@ -48,6 +48,9 @@
 			"kilo.workbooks/template": [
 				{
 					"id": "coding"
+				},
+				{
+					"id": "blank"
 				}
 			],
 			"kernel/flag": [

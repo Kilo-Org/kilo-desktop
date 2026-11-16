@@ -25,8 +25,9 @@ type Open = "new" | "continue" | null;
 
 /**
  * Workbooks on the New Session page (`kilo.work-sessions/new-work-session-section`):
- * two tiles in the style of the page's tool tiles, "New workbook" and (when
- * the workspace has any) "Continue a workbook", each opening its dialog. The
+ * two tiles in the style of the page's tool tiles, each opening its dialog:
+ * "New workbook" (pick a template, fill in its Brief) and "Existing workbook"
+ * (disabled, saying why, until the workspace has one). The
  * session starts where the page says (workspace, isolation) and opens with
  * the kick-off in its composer, unsent; the dialog closes once it has.
  */
@@ -78,17 +79,19 @@ export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessio
 				starting={running && open === "new"}
 				onClick={() => show("new")}
 			/>
-			{workbooks.length > 0 ? (
-				<WorkbookTile
-					Icon={NotebookTabsIcon}
-					title="Continue a workbook"
-					description="Start a session where a workbook in this workspace left off."
-					qaId="workbooks-continue"
-					disabled={disabled}
-					starting={running && open === "continue"}
-					onClick={() => show("continue")}
-				/>
-			) : null}
+			<WorkbookTile
+				Icon={NotebookTabsIcon}
+				title="Existing workbook"
+				description={
+					workbooks.length > 0
+						? "Start a session on a workbook in this workspace, where it left off."
+						: "No workbooks in this workspace yet: start one with New workbook."
+				}
+				qaId="workbooks-continue"
+				disabled={disabled || workbooks.length === 0}
+				starting={running && open === "continue"}
+				onClick={() => show("continue")}
+			/>
 			{open === "new" ? (
 				<NewWorkbookDialog
 					templates={templates}

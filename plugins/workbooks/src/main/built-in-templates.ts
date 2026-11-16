@@ -1,3 +1,7 @@
+import blankManifest from "../../templates/blank/workbook.json";
+import blankGuide from "../../templates/blank/AGENTS.md?raw";
+import blankBrief from "../../templates/blank/pages/brief.md?raw";
+import blankNotes from "../../templates/blank/pages/notes.md?raw";
 import codingManifest from "../../templates/coding/workbook.json";
 import codingGuide from "../../templates/coding/AGENTS.md?raw";
 import codingArtifacts from "../../templates/coding/pages/artifacts.md?raw";
@@ -29,5 +33,11 @@ export const BUILT_IN_TEMPLATES = {
 			"pages/review.md": codingReview,
 			"pages/snippets.md": codingSnippets,
 			"pages/tasks.md": codingTasks,
+		}),
+	blank: () =>
+		templateFromFiles(blankManifest, {
+			"AGENTS.md": blankGuide,
+			"pages/brief.md": blankBrief,
+			"pages/notes.md": blankNotes,
 		}),
 } as const;

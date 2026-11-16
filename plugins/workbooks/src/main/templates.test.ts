@@ -72,7 +72,7 @@ describe("workbook templates", () => {
 
 		await expect
 			.poll(() => templates.getState().templates.map((template) => template.id))
-			.toEqual(["coding"]);
+			.toEqual(["coding", "blank"]);
 		const coding = await host.invoke(WorkbookTemplates, "get", { id: "coding" });
 
 		expect(coding.name).toBe("Coding");
@@ -99,13 +99,28 @@ describe("workbook templates", () => {
 		expect(templates.getState().issues).toEqual([]);
 	});
 
+	it("offers a Blank template: the Brief and a Notes page", async () => {
+		const { host } = await boot();
+
+		const blank = await host.invoke(WorkbookTemplates, "get", { id: "blank" });
+
+		expect(blank.name).toBe("Blank");
+		expect(blank.sections.map((section) => [section.id, section.itemType])).toEqual([
+			["notes", "note"],
+		]);
+		expect(blank.brief.fields).toEqual([
+			expect.objectContaining({ id: "goal", label: "What's this about?", required: true }),
+		]);
+		expect(blank.guide.markdown).toContain("add it to **Notes** straight away");
+	});
+
 	it("offers templates other plugins contribute", async () => {
 		const { host, templates } = await boot(templatePlugin({ recipe: () => recipe }));
 
 		await expect
 			.poll(() => templates.getState().templates.map((template) => template.id))
-			.toEqual(["coding", "recipe"]);
-		expect(templates.getState().templates[1]).toMatchObject({
+			.toEqual(["coding", "blank", "recipe"]);
+		expect(templates.getState().templates[2]).toMatchObject({
 			name: "Recipe",
 			source: "example.templates/recipe",
 			fields: [{ id: "dish", label: "Dish", required: true }],
@@ -151,7 +166,10 @@ describe("workbook templates", () => {
 		expect(messages[2]).toBe("can't read it");
 		expect(messages[3]).toContain("at least one required field");
 		expect(messages[4]).toContain('section "method" appears more than once');
-		expect(templates.getState().templates.map((template) => template.id)).toEqual(["coding"]);
+		expect(templates.getState().templates.map((template) => template.id)).toEqual([
+			"coding",
+			"blank",
+		]);
 	});
 
 	it("refuses an unknown template id", async () => {

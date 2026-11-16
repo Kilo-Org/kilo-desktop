@@ -23,7 +23,7 @@ packages/
 ├── pane-layout/  @kilo-desktop/pane-layout  Pane layout model shared by kilo.work-sessions and its windows
 └── vite-plugin-externalize-deps/            Vite plugin that keeps native/runtime deps out of the main bundle
 
-e2e/              @kilo-desktop/e2e          Playwright/Electron e2e (plugin-aware; kernel, kilo.core, kilo.shell, kilo.developer, kilo.work-sessions, kilo.chat, kilo.git, kilo.files, kilo.terminal, kilo.browser, kilo.notebook, kilo.marketplace, kilo.local-inference, kilo.environments, kilo.anaconda and kilo.workspace-board specs)
+e2e/              @kilo-desktop/e2e          Playwright/Electron e2e (plugin-aware; kernel, kilo.core, kilo.shell, kilo.developer, kilo.work-sessions, kilo.chat, kilo.git, kilo.files, kilo.terminal, kilo.browser, kilo.notebook, kilo.marketplace, kilo.local-inference, kilo.environments, kilo.anaconda, kilo.workspace-board and kilo.workbooks specs)
 examples/
 ├── hello-plugin/ @kilo-desktop/example-hello example.hello: the example plugin for authors — workspace-built and tested, never bundled
 └── right-panel-plugin/ @kilo-desktop/example-right-panel example.right-panel: example panels in the shell's right sidebar rail — never bundled
@@ -42,6 +42,7 @@ plugins/          Bundled plugins, rebuilt layer by layer (docs/plugin-plan-v2.m
 ├── shell/        @kilo-desktop/plugin-shell kilo.shell: the window and everything the user sees of kilo.core
 ├── terminal/     @kilo-desktop/plugin-terminal kilo.terminal: terminal panes — interactive shells (node-pty) in a work session's folder, drawn in an embedded frame
 ├── work-sessions/ @kilo-desktop/plugin-work-sessions kilo.work-sessions: workspaces, work sessions and their panes, and everything the user sees of them
+├── workbooks/    @kilo-desktop/plugin-workbooks kilo.workbooks: workbooks — what chats learn and decide about a piece of work, kept outside any one chat and created from workbook templates (prototype, behind the `workbooks` flag)
 └── workspace-board/ @kilo-desktop/plugin-workspace-board kilo.workspace-board: the workspace board — work sessions organised into named columns, a detachable work sessions view of kilo.work-sessions
 ```
 

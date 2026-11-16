@@ -1568,6 +1568,8 @@ would replace it if a kind ever needs something other than show-or-open.
 | kilo.local-inference | `model-catalog`          | A    | Later  | Model catalog sources                                                    | local-inference (Anaconda catalog); _ext_ Hugging Face                           |
 | kilo.local-inference | `inference-runtime`      | X    | Later  | Runtimes that serve models                                               | local-inference (llama.cpp); _ext_ MLX, Ollama                                   |
 | kilo.marketplace     | `marketplace-source`     | A    | Next   | Catalogs of agents/skills/MCPs                                           | marketplace (Kilo); account (organisation-private); _ext_ Anaconda curated       |
+| kilo.workbooks       | `template`               | A    | Next   | Workbook templates offered when creating a workbook                      | workbooks (Coding); _ext_ workspace and user templates, marketplace              |
+| kilo.workbooks       | `section-action`         | A    | Later  | Actions on a workbook section or item ("start a session from this step") | workbooks (plan steps); chat (ask agent about item); git (open PR)               |
 
 ### 7.7 Kernel and platform plugins
 

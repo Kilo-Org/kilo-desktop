@@ -24,6 +24,7 @@ const AREA_OWNERS: Readonly<Record<string, string>> = {
 	environments: "kilo.environments",
 	anaconda: "kilo.anaconda",
 	"workspace-board": "kilo.workspace-board",
+	workbooks: "kilo.workbooks",
 };
 
 /** Folders under `plugins/`; none while the bundled set is being rebuilt (docs/plugin-plan-v2.md). */

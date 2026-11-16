@@ -27,6 +27,8 @@ import workSessionsManifest from "@kilo-desktop/plugin-work-sessions/plugin.json
 import { workSessionsWebEntry } from "@kilo-desktop/plugin-work-sessions/web";
 import boardManifest from "@kilo-desktop/plugin-workspace-board/plugin.json";
 import { boardWebEntry } from "@kilo-desktop/plugin-workspace-board/web";
+import workbooksManifest from "@kilo-desktop/plugin-workbooks/plugin.json";
+import { workbooksWebEntry } from "@kilo-desktop/plugin-workbooks/web";
 
 /** Renderer entries of bundled plugins, by plugin id. Grows one plugin at a time. */
 export const WEB_ENTRIES: Readonly<Record<string, PluginEntry>> = {
@@ -43,5 +45,6 @@ export const WEB_ENTRIES: Readonly<Record<string, PluginEntry>> = {
 	[environmentsManifest.id]: environmentsWebEntry,
 	[anacondaManifest.id]: anacondaWebEntry,
 	[boardManifest.id]: boardWebEntry,
+	[workbooksManifest.id]: workbooksWebEntry,
 	[developerManifest.id]: developerWebEntry,
 };

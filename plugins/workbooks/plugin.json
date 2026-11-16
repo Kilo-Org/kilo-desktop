@@ -1,0 +1,20 @@
+{
+	"manifestVersion": 1,
+	"id": "kilo.workbooks",
+	"displayName": "Workbooks",
+	"version": "0.1.0",
+	"description": "Workbooks: where what chats learn and decide about a piece of work is kept, created from workbook templates.",
+	"main": "./src/main/index.ts",
+	"web": "./src/web/index.ts",
+	"contributes": {
+		"extensions": {
+			"kernel/flag": [
+				{
+					"id": "workbooks",
+					"description": "Shows Workbooks: start work sessions from a workbook, created from a workbook template.",
+					"default": false
+				}
+			]
+		}
+	}
+}

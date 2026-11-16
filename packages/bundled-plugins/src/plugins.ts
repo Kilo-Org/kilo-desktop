@@ -28,6 +28,8 @@ import terminalManifest from "@kilo-desktop/plugin-terminal/plugin.json";
 import { TERMINAL_DEFINITIONS } from "@kilo-desktop/plugin-terminal/contracts";
 import workSessionsManifest from "@kilo-desktop/plugin-work-sessions/plugin.json";
 import { WORK_SESSIONS_DEFINITIONS } from "@kilo-desktop/plugin-work-sessions/contracts";
+import workbooksManifest from "@kilo-desktop/plugin-workbooks/plugin.json";
+import { WORKBOOKS_DEFINITIONS } from "@kilo-desktop/plugin-workbooks/contracts";
 
 import type { BundledPlugin } from "./registrations";
 
@@ -51,5 +53,6 @@ export const BUNDLED_PLUGINS: readonly BundledPlugin[] = [
 	{ manifest: environmentsManifest, definitions: ENVIRONMENTS_DEFINITIONS },
 	{ manifest: anacondaManifest, definitions: ANACONDA_DEFINITIONS },
 	{ manifest: boardManifest, definitions: BOARD_DEFINITIONS },
+	{ manifest: workbooksManifest, definitions: WORKBOOKS_DEFINITIONS },
 	{ manifest: developerManifest, definitions: DEVELOPER_DEFINITIONS },
 ];

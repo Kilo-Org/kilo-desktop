@@ -31,6 +31,8 @@ import workSessionsManifest from "@kilo-desktop/plugin-work-sessions/plugin.json
 import { workSessionsMainEntry } from "@kilo-desktop/plugin-work-sessions/main";
 import boardManifest from "@kilo-desktop/plugin-workspace-board/plugin.json";
 import { boardMainEntry } from "@kilo-desktop/plugin-workspace-board/main";
+import workbooksManifest from "@kilo-desktop/plugin-workbooks/plugin.json";
+import { workbooksMainEntry } from "@kilo-desktop/plugin-workbooks/main";
 
 /** Main-process entries of bundled plugins, by plugin id. Grows one plugin at a time. */
 export const MAIN_ENTRIES: Readonly<Record<string, PluginEntry>> = {
@@ -48,6 +50,7 @@ export const MAIN_ENTRIES: Readonly<Record<string, PluginEntry>> = {
 	[environmentsManifest.id]: environmentsMainEntry,
 	[anacondaManifest.id]: anacondaMainEntry,
 	[boardManifest.id]: boardMainEntry,
+	[workbooksManifest.id]: workbooksMainEntry,
 };
 
 /** Packages of bundled plugins that ship files in `resources/`, by plugin id. */

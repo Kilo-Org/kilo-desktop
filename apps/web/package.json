@@ -33,6 +33,7 @@
 		"@kilo-desktop/plugin-shell": "workspace:*",
 		"@kilo-desktop/plugin-terminal": "workspace:*",
 		"@kilo-desktop/plugin-work-sessions": "workspace:*",
+		"@kilo-desktop/plugin-workbooks": "workspace:*",
 		"@kilo-desktop/plugin-workspace-board": "workspace:*",
 		"@kilo-desktop/ui": "workspace:*",
 		"@sentry/electron": "catalog:",

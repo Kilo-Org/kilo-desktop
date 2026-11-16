@@ -27,7 +27,7 @@ const workbookIdInput = z
 	.min(1)
 	.optional()
 	.describe(
-		"Only when the calling chat isn't in a work session with an active workbook (e.g. a subagent): the workbook's id.",
+		"Leave out: the chat's own workbook is used. Only for a chat outside a workbook session (e.g. a subagent): the workbook's id or its Pages project id (prj_…).",
 	);
 
 /**
@@ -53,7 +53,9 @@ export function implementWorkbookTools(sdk: PluginSdk, deps: WorkbookToolDeps): 
 				"This chat has no workbook: its work session wasn't started from one. Start a session from a workbook, or pass workbookId.",
 			);
 		}
-		const workbook = workbooks?.getState().workbooks.find((candidate) => candidate.id === id);
+		const workbook = workbooks
+			?.getState()
+			.workbooks.find((candidate) => candidate.id === id || candidate.projectId === id);
 		if (!workbook) throw new KernelError("NOT_FOUND", `No workbook "${id}".`);
 		return { workbook, writer: new WorkbookWriter(deps.pages(workbook), workbook, today) };
 	};

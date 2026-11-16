@@ -19,7 +19,7 @@ export interface KickoffContent {
 export function kickoffText(workbook: Workbook, content: KickoffContent = {}): string {
 	const where = workbook.url ?? `Pages project ${workbook.projectId}`;
 	const sections = [
-		`We're working on the workbook "${workbook.name}": ${where} (Pages project id ${workbook.projectId}). Keep it current as you work, following its guide below.`,
+		`We're working on the workbook "${workbook.name}": ${where} (Pages project id ${workbook.projectId}). Keep it current as you work, following its guide below. The workbook tools (desktop_workbooks_*) already know this workbook: don't pass an id.`,
 	];
 	if (content.focus?.trim()) sections.push(`## Work on this\n\n${content.focus.trim()}`);
 	else if (content.firstMove) sections.push(`## First\n\n${content.firstMove}`);

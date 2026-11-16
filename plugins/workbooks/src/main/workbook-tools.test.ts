@@ -79,11 +79,17 @@ describe("workbook tools", () => {
 	});
 
 	it("add numbered plan steps and set their status, ticking done steps", async () => {
-		const { call, page } = await boot();
+		const { call, page, pages, workbook } = await boot();
 
 		await expect(
 			call("add_plan_step", { title: "Build it", intent: "make it work" }),
 		).resolves.toEqual({ section: "plan", step: 2 });
+		// Pages keeps the template's Plan (intro, heading, list) as one block: the step joins its list.
+		expect(page("plan")).toContain(
+			"the user confirms before building.\n- [ ] **2. Build it**: make it work",
+		);
+		const plan = workbook.sections.find((section) => section.id === "plan")!;
+		expect(pages.pages.get(plan.pageId)!.blocks).toHaveLength(1);
 		await call("set_step_status", { step: "2", status: "in_progress" });
 		expect(page("plan")).toContain("- [ ] **2. Build it**: make it work · in progress");
 
@@ -165,6 +171,9 @@ describe("workbook tools", () => {
 		await expect(call("read_workbook", { workbookId: workbook.id }, null)).resolves.toMatchObject({
 			showing: "brief",
 		});
+		await expect(
+			call("read_workbook", { workbookId: workbook.projectId }, null),
+		).resolves.toMatchObject({ workbook: { id: workbook.id } });
 		await expect(call("read_workbook", { workbookId: "nope" }, null)).rejects.toThrow(
 			'No workbook "nope"',
 		);

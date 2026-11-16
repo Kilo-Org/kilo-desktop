@@ -102,18 +102,9 @@ export class FakePages implements PagesToolCaller {
 		return { page_id: id, url: `https://pages.test/p/${id}` };
 	}
 
-	/** Splits markdown into blocks at blank lines, keeping fenced code together, as Pages does. */
+	/** One block for the whole of the markdown, as Pages keeps a page created or inserted in one go. */
 	#blocks(markdown: string): FakeBlock[] {
-		const parts: string[] = [];
-		let fenced = false;
-		for (const chunk of markdown.split("\n\n")) {
-			if (fenced) parts[parts.length - 1] += `\n\n${chunk}`;
-			else parts.push(chunk);
-			if ((chunk.match(/```/g) ?? []).length % 2 === 1) fenced = !fenced;
-		}
-		return parts
-			.filter((part) => part.trim())
-			.map((part) => ({ node_id: this.#id("n"), markdown: part }));
+		return markdown.trim() ? [{ node_id: this.#id("n"), markdown }] : [];
 	}
 
 	#target(args: Args): FakePage {

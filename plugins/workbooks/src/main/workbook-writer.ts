@@ -17,6 +17,8 @@ export { STEP_STATUSES };
 export type StepStatus = (typeof STEP_STATUSES)[number];
 
 const TASK_LINE = /^(\s*)- \[([ xX])\] (.*)$/;
+const LIST_LINE = /^\s*- /;
+const TRAILING_DATE = /\s*\(\d{4}-\d{2}-\d{2}\)[.\s]*$/;
 const STATUS_SUFFIX = / · (in progress|blocked:.*|done:.*)$/;
 const STEP_NUMBER = /^\*\*(\d+)\./;
 
@@ -107,8 +109,8 @@ export class WorkbookWriter {
 	}
 
 	async recordDecision(decision: string, why: string, rejected?: string): Promise<string> {
-		const rejectedText = rejected?.trim() ? ` Rejected: ${oneLine(rejected)}.` : "";
-		const line = `- **${sentence(decision)}** Why: ${oneLine(why)}.${rejectedText} (${this.today()})`;
+		const rejectedText = rejected?.trim() ? ` Rejected: ${sentence(rejected)}` : "";
+		const line = `- **${sentence(decision)}** Why: ${sentence(why)}${rejectedText} (${this.today()})`;
 		await this.#appendListItem(this.sectionFor("decision").pageId, () => line);
 		return line;
 	}
@@ -128,7 +130,7 @@ export class WorkbookWriter {
 				return line;
 			}
 			case "finding": {
-				const evidence = extra ? ` Evidence: ${oneLine(extra)}.` : "";
+				const evidence = extra ? ` Evidence: ${sentence(extra)}` : "";
 				const line = `- **${sentence(text)}**${evidence} (${this.today()})`;
 				await this.#appendListItem(section.pageId, () => line);
 				return line;
@@ -168,26 +170,29 @@ export class WorkbookWriter {
 		return entry;
 	}
 
+	/**
+	 * Appends a list item after the page's last list item, in the same block
+	 * (Pages may keep a page's intro, headings and list in one block), so a
+	 * section stays one list; a page with no list yet gets one at the end.
+	 */
 	async #appendListItem(pageId: string, line: (existingLines: string[]) => string): Promise<void> {
 		await this.#withRetry(async () => {
 			const page = await this.#read({ pageId });
-			const lists = page.blocks.filter((block) => /^\s*- /.test(block.markdown ?? ""));
-			const existing = lists.flatMap((block) => (block.markdown ?? "").split("\n"));
-			const last = lists.at(-1);
-			const item = line(existing);
-			await this.#edit(
-				{ pageId },
-				page.revision,
-				last
-					? [
-							{
-								op: "replace_block_markdown",
-								node_id: last.node_id,
-								markdown: `${last.markdown}\n${item}`,
-							},
-						]
-					: [{ op: "insert_markdown", markdown: item }],
+			const lines = page.blocks.flatMap((block) => (block.markdown ?? "").split("\n"));
+			const item = line(lines);
+			const last = page.blocks.findLast((block) =>
+				(block.markdown ?? "").split("\n").some((candidate) => LIST_LINE.test(candidate)),
 			);
+			if (!last) {
+				await this.#edit({ pageId }, page.revision, [{ op: "insert_markdown", markdown: item }]);
+				return;
+			}
+			const blockLines = (last.markdown ?? "").split("\n");
+			const at = blockLines.findLastIndex((candidate) => LIST_LINE.test(candidate));
+			blockLines.splice(at + 1, 0, item);
+			await this.#edit({ pageId }, page.revision, [
+				{ op: "replace_block_markdown", node_id: last.node_id, markdown: blockLines.join("\n") },
+			]);
 		});
 	}
 
@@ -230,11 +235,12 @@ export class WorkbookWriter {
 	}
 }
 
+/** One line of text, without a trailing date (the writer adds its own). */
 function oneLine(text: string): string {
-	return text.replace(/\s+/g, " ").trim();
+	return text.replace(/\s+/g, " ").trim().replace(TRAILING_DATE, "");
 }
 
-/** Text ending in one full stop (or its own ? or !), for bold item leads. */
+/** Text ending in one full stop (or its own ? or !). */
 function sentence(text: string): string {
 	const trimmed = oneLine(text);
 	return /[.?!]$/.test(trimmed) ? trimmed : `${trimmed}.`;

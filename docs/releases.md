@@ -1,7 +1,8 @@
 # Releases, signing, and CI reference
 
 Reference material for packaging, publishing, and signing Kilo Desktop. See
-the [README](../README.md) for the development workflow and repository architecture.
+[CONTRIBUTING.md](../CONTRIBUTING.md) for the development workflow and
+[architecture.md](architecture.md) for the repository architecture.
 
 Implementation lives in `apps/desktop/config/`: `release.ts` (channels, artifact keys,
 feed URLs), `signing.ts` (credential resolution), `windows-sign.ts` (post-make Windows
@@ -36,6 +37,12 @@ default user-data directory. Installing one replaces the other. Track selection 
 native update feed immediately and persists across restarts. Electron's native updater does not
 force downgrades, so a newer Preview installation returns to Stable only when the Stable channel
 publishes a version that sorts newer than the installed Preview.
+
+On first launch after the Kilo rename, Desktop atomically moves a matching pre-rename
+profile into the canonical `Kilo Desktop Dev`, `Kilo Desktop Preview`, or `Kilo Desktop`
+directory when that target does not already exist. Existing canonical profiles are never
+overwritten or merged. Chat reads also recognize the pre-rename ownership key so existing
+sessions remain visible; newly created sessions write only `kilo-desktop` metadata.
 
 ## Distribution matrix
 

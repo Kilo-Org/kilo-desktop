@@ -66,12 +66,12 @@ describe("kilo.chat manifest", () => {
 	});
 
 	it("ranks the agents menu ahead of the layouts menu in the work session header", () => {
-		const priorityOf = (pluginId: string, id: string) =>
-			discover()
+		const priorityOf = (pluginId: string, id: string): number =>
+			(discover()
 				.plugins.find((plugin) => plugin.manifest.id === pluginId)!
 				.manifest.contributes!.extensions!["kilo.work-sessions/work-session-action"]!.find(
 					(entry) => entry.id === id,
-				)!.priority ?? 0;
+				)!.priority as number | undefined) ?? 0;
 		expect(priorityOf(CHAT_PLUGIN_ID, "agents")).toBeGreaterThan(
 			priorityOf(workSessionsManifest.id, "layouts"),
 		);

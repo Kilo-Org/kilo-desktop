@@ -68,3 +68,16 @@ export function filePaneTarget(
 		? { workspaceDirectory, relativePath }
 		: null;
 }
+
+/**
+ * The absolute path of the file a Files pane shows: its opened object, else
+ * origin's folder and relative path; undefined for an explorer.
+ */
+export function filePanePath(pane: FilePaneFacts): string | undefined {
+	if (pane.object?.type === FILE_OBJECT_TYPE) return pane.object.id || undefined;
+	const workspaceDirectory = pane.metadata[FILE_PANE_METADATA.workspaceDirectory];
+	const relativePath = pane.metadata[FILE_PANE_METADATA.relativePath];
+	return workspaceDirectory && relativePath
+		? absoluteFilePath(workspaceDirectory, relativePath)
+		: undefined;
+}

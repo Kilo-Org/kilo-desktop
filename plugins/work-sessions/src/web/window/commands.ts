@@ -1,4 +1,9 @@
-import { KernelCommand, KernelWindows, type PluginSdk } from "@kilo-desktop/kernel";
+import {
+	KernelClipboard,
+	KernelCommand,
+	KernelWindows,
+	type PluginSdk,
+} from "@kilo-desktop/kernel";
 import type { PaneKind as LayoutKind } from "@kilo-desktop/pane-layout";
 
 import {
@@ -6,20 +11,29 @@ import {
 	Panes,
 	paneWindows,
 	WorkSessionsWindow,
+	type Pane,
 	type PaneImplementation,
+	type WorkSessionPanes,
 } from "../../contracts";
+import { paneMoves } from "../canvas/pane-moves";
 import { visibleWorkSessions } from "../shared/list-state";
 import { adjacentId, idAtShortcutSlot, NUMBERED_SLOTS } from "../shared/numbered";
 import {
 	closePane,
+	closePanes,
 	launchPane,
 	panesInOrder,
+	panesToClose,
 	sessionPanesOf,
 	setArrangement,
+	type CloseScope,
 } from "../shared/pane-actions";
+import { foldersOfWorkSession, paneFilePath, relativePanePath } from "../shared/pane-path";
+import { notify, reportFailure } from "../shared/report-failure";
 import { sessionLayout } from "../shared/session-layout";
 import { trackerFor } from "../shared/telemetry";
 import { panePicker } from "../panes/pane-picker";
+import { popOut } from "../panes/pop-outs";
 
 type Command = (id: string, handler: (args?: unknown) => void) => void;
 
@@ -81,6 +95,13 @@ function implementationOf(sdk: PluginSdk, kind: string): PaneImplementation | un
 		?.implementation as PaneImplementation | undefined;
 }
 
+/** The pane a tab command names (`{ paneId }`), else the active one; undefined when it isn't open. */
+function targetPane(state: WorkSessionPanes, args: unknown): Pane | undefined {
+	const named = (args as { paneId?: unknown } | undefined)?.paneId;
+	const paneId = typeof named === "string" ? named : state.activePaneId;
+	return state.panes.find((pane) => pane.id === paneId);
+}
+
 /** Tab commands act on the panes of this window's open work session. */
 export function implementPaneCommands(sdk: PluginSdk): void {
 	const command = commandOf(sdk);
@@ -91,7 +112,13 @@ export function implementPaneCommands(sdk: PluginSdk): void {
 		if (!workSessionId || !panes) return null;
 		const state = sessionPanesOf(panes, workSessionId);
 		const layout = sessionLayout(state, (kind) => layoutKindOf(sdk, kind));
-		return { workSessionId, panes, state, order: panesInOrder(layout) };
+		return { workSessionId, panes, state, layout, order: panesInOrder(layout) };
+	};
+	/** The open work session and the pane a tab command acts on; null when either is missing. */
+	const target = (args: unknown) => {
+		const session = current();
+		const pane = session && targetPane(session.state, args);
+		return session && pane ? { session, pane } : null;
 	};
 	const show = (pick: (order: string[], activeId: string | null) => string | undefined) => {
 		const session = current();
@@ -109,13 +136,69 @@ export function implementPaneCommands(sdk: PluginSdk): void {
 	command("new-group-below", () =>
 		panePicker.open({ placement: { beside: "below" }, title: "New group" }),
 	);
-	command("close-pane", () => {
-		const session = current();
-		const paneId = session?.state.activePaneId;
-		if (!session || !paneId) return;
-		void closePane(session.panes, session.workSessionId, paneId, (kind) =>
+	command("close-pane", (args) => {
+		const { session, pane } = target(args) ?? {};
+		if (!session || !pane) return;
+		void closePane(session.panes, session.workSessionId, pane.id, (kind) =>
 			implementationOf(sdk, kind),
 		).catch(() => undefined);
+	});
+	const closeGroup = (scope: CloseScope) => (args?: unknown) => {
+		const { session, pane } = target(args) ?? {};
+		if (!session || !pane) return;
+		// Taken before the first close: each close changes the layout.
+		const paneIds = panesToClose(session.layout, pane.id, scope);
+		void closePanes(session.panes, session.workSessionId, paneIds, (kind) =>
+			implementationOf(sdk, kind),
+		).then((failed) => {
+			if (failed === 0) return;
+			notify({
+				level: "error",
+				title: `Could not close ${failed} ${failed === 1 ? "tab" : "tabs"}`,
+				description: "The others closed.",
+			});
+		});
+	};
+	command("close-other-panes", closeGroup("others"));
+	command("close-panes-to-the-right", closeGroup("right"));
+	command("close-all-panes", closeGroup("all"));
+	const copyPath = (relative: boolean) => (args?: unknown) => {
+		const { session, pane } = target(args) ?? {};
+		const path = pane && paneFilePath(pane, implementationOf(sdk, pane.kind));
+		if (!session || !path) return;
+		const text = relative
+			? relativePanePath(path, foldersOfWorkSession(sdk, session.workSessionId))
+			: path;
+		const clipboard = sdk.domainObjects.get(KernelClipboard);
+		void (
+			clipboard
+				? clipboard.methods.writeText({ text })
+				: globalThis.navigator.clipboard.writeText(text)
+		).catch(reportFailure("Could not copy the path", "The clipboard isn't available."));
+	};
+	command("copy-pane-path", copyPath(false));
+	command("copy-pane-relative-path", copyPath(true));
+	for (const direction of ["up", "down", "left", "right"] as const) {
+		command(`move-pane-${direction}`, (args) => {
+			const { session, pane } = target(args) ?? {};
+			if (session && pane) {
+				paneMoves.request({ workSessionId: session.workSessionId, paneId: pane.id, direction });
+			}
+		});
+	}
+	command("move-pane-to-new-window", (args) => {
+		const { session, pane } = target(args) ?? {};
+		const windows = sdk.context.get("kernel/desktop") ? sdk.domainObjects.get(KernelWindows) : null;
+		if (!session || !pane || !windows) return;
+		const window = paneWindows(windows.getState()).find(
+			(candidate) =>
+				candidate.workSessionId === session.workSessionId && candidate.paneId === pane.id,
+		);
+		void (
+			window
+				? windows.methods.focus({ windowId: window.windowId })
+				: popOut(windows, session.workSessionId, pane)
+		).catch(reportFailure("Could not move the tab into a new window", "Nothing changed."));
 	});
 	command("next-pane", () => show((order, active) => adjacentId(order, active ?? undefined, 1)));
 	command("previous-pane", () =>

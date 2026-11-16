@@ -21,6 +21,7 @@ import {
 	getPaneColumns,
 	getScrollTarget,
 	PANE_GAP,
+	paneDirectionTarget,
 	projectLayout,
 	resizeColumn,
 	resizeStackDivider,
@@ -28,6 +29,7 @@ import {
 	togglePin,
 	type Arrangement,
 	type PaneDescriptor,
+	type PaneDirection,
 	type PaneLayout,
 	type ProjectedColumn,
 	type ProjectedGroup,
@@ -50,6 +52,7 @@ import {
 	shouldStartCarouselPan,
 } from "./carousel-gestures";
 import { applyPaneDrop, changesPanePlacement, type PaneDrop } from "./pane-drop";
+import type { PaneMoveRequests } from "./pane-moves";
 import { usePaneExpand } from "./pane-expand";
 import type { PaneIconOverride } from "./pane-kind-icon";
 import { PaneAddTab } from "./PaneAddTab";
@@ -61,7 +64,7 @@ import {
 	type PaneContentMountRegistry,
 } from "./PaneContentMount";
 import { PaneHost } from "./PaneHost";
-import { PaneTabStrip } from "./PaneTabStrip";
+import { PaneTabStrip, type PaneTabMenuTarget } from "./PaneTabStrip";
 import type { PaneStatus } from "../../contracts";
 import type { CanvasPaneKind } from "../shared/pane-kinds";
 import { usePaneFrameFocus } from "./use-pane-frame-focus";
@@ -395,6 +398,7 @@ const PaneCanvasColumn: FC<{
 	iconForPane?: (paneId: string) => PaneIconOverride | undefined;
 	shortcutHints?: ReadonlyMap<string, string>;
 	statusForPane?: (paneId: string) => PaneStatus | undefined;
+	tabMenu?: (tab: PaneTabMenuTarget) => ReactNode;
 }> = ({
 	canDrop,
 	column,
@@ -422,6 +426,7 @@ const PaneCanvasColumn: FC<{
 	iconForPane,
 	shortcutHints,
 	statusForPane,
+	tabMenu,
 }) => {
 	const columnExpanded = expandedGroupId
 		? column.groups.some((group) => group.id === expandedGroupId)
@@ -494,6 +499,7 @@ const PaneCanvasColumn: FC<{
 									{...(iconForPane ? { iconForPane } : {})}
 									{...(shortcutHints ? { shortcutHints } : {})}
 									{...(statusForPane ? { statusForPane } : {})}
+									{...(tabMenu ? { tabMenu } : {})}
 									onSelect={(paneId) => {
 										onLayoutChange(setActivePane(layout, paneId));
 										onSelectPane(paneId);
@@ -597,6 +603,10 @@ export interface PaneCanvasProps {
 	readonly shortcutHints?: ReadonlyMap<string, string>;
 	/** A badge on a pane's tab: working, or waiting for the person. */
 	readonly statusForPane?: (paneId: string) => PaneStatus | undefined;
+	/** A tab's right-click menu items; see `PaneTabStrip`. */
+	readonly tabMenu?: (tab: PaneTabMenuTarget) => ReactNode;
+	/** Tab commands' moves (one step up, down, left or right) for this canvas to carry out. */
+	readonly moveRequests?: PaneMoveRequests;
 }
 
 export const PaneCanvas: FC<PaneCanvasProps> = ({
@@ -618,6 +628,8 @@ export const PaneCanvas: FC<PaneCanvasProps> = ({
 	iconForPane,
 	shortcutHints,
 	statusForPane,
+	tabMenu,
+	moveRequests,
 }) => {
 	const viewportRef = useRef<HTMLDivElement>(null);
 	const trackRef = useRef<HTMLDivElement>(null);
@@ -751,6 +763,28 @@ export const PaneCanvas: FC<PaneCanvasProps> = ({
 		onSelectPane(next.activePaneId);
 	};
 
+	// As a drop would, on the panes shown here: a popped-out pane doesn't move,
+	// and a group whose tabs are all popped out still counts as a neighbour.
+	const onMoveRequest = useEffectEvent(
+		({ paneId, direction }: { paneId: string; direction: PaneDirection }) => {
+			if (poppedOutPaneIds?.has(paneId)) return;
+			const target = paneDirectionTarget(
+				withoutPoppedOutPanes(layoutRef.current, poppedOutPaneIds),
+				paneId,
+				direction,
+			);
+			if (!target) return;
+			onDrop({
+				kind: "pane",
+				sourceId: paneId,
+				targetKind: "group",
+				targetId: target.targetGroupId,
+				position: target.position,
+			});
+		},
+	);
+	useEffect(() => moveRequests?.subscribe(onMoveRequest), [moveRequests]);
+
 	const renderColumn = (
 		column: ProjectedColumn,
 		index: number,
@@ -805,6 +839,7 @@ export const PaneCanvas: FC<PaneCanvasProps> = ({
 			{...(iconForPane ? { iconForPane } : {})}
 			{...(shortcutHints ? { shortcutHints } : {})}
 			{...(statusForPane ? { statusForPane } : {})}
+			{...(tabMenu ? { tabMenu } : {})}
 		/>
 	);
 

@@ -46,8 +46,10 @@ Electron shell is hardened. Every feature is a plugin on a product-agnostic kern
 - The host (`apps/*`) provides only `kernel/*` primitives (windows, storage, notifications,
   protocols…). Product features live in plugins, which reach each other through the kernel
   and import only another plugin's `./contracts`. `pnpm lint` checks these boundaries.
-  CI also boots the bundled set with each plugin removed, and
-  `pnpm check:plugin-isolation` builds every bundled plugin outside the monorepo.
+  CI also boots the bundled set with each plugin removed, and runs
+  `pnpm check:plugin-isolation --build all` to build every bundled plugin outside the
+  monorepo (a plain local run checks every plugin's manifest and imports but builds only
+  `workspace-board` and the example plugins).
 - A plugin that persists data owns its storage (its kv namespaces or files under its own
   storage directory). Nothing shares a database.
 - `apps/desktop` gets the renderer as a built artifact: its `prepare:web` script runs the
@@ -73,7 +75,8 @@ pnpm dev:web   # http://127.0.0.1:5173, strict port
 Without the preload bridge, the page boots the main kernel in-process next to the window
 kernel; plugins whose main entry needs Node are skipped. `pnpm test:web` follows the same
 split with two Vitest projects: `unit` runs `src/**/*.test.ts` in Node, and `browser` runs
-`src/**/*.browser.test.tsx` in real headless Chromium via Playwright. See
+`src/**/*.browser.test.tsx` and `src/**/*.app.test.tsx` in real headless Chromium via
+Playwright. See
 [TESTING.md](TESTING.md) for every test tier.
 
 ## Electron architecture and security

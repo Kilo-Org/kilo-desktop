@@ -104,21 +104,21 @@ Electron e2e suite.
 Every command runs from the repository root and fans out to the relevant workspace
 packages.
 
-| Command                       | Purpose                                                                      |
-| ----------------------------- | ---------------------------------------------------------------------------- |
-| `pnpm dev`                    | Start web + Electron                                                         |
-| `pnpm dev:web`                | Start the standalone React/Vite app                                          |
-| `pnpm check`                  | Type-check every workspace package, including e2e                            |
-| `pnpm lint`                   | Run oxlint, the plugin boundary check, and the extension-point catalog check |
-| `pnpm check:plugin-isolation` | Check plugin manifests and imports, and build plugins outside the monorepo   |
-| `pnpm docs:extension-points`  | Regenerate the extension-point catalog after changing a point                |
-| `pnpm format`                 | Format with oxfmt                                                            |
-| `pnpm format:check`           | Verify formatting                                                            |
-| `pnpm test`                   | Run package tests (does not include e2e)                                     |
-| `pnpm coverage`               | Run tests with the 80% coverage gate                                         |
-| `pnpm test:e2e`               | Package the app and exercise the hardened executable                         |
-| `pnpm run package`            | Build web, then package Electron into `apps/desktop/out/`                    |
-| `pnpm run make`               | Package the app and create the current platform's distributables             |
+| Command                       | Purpose                                                                                                                                            |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm dev`                    | Start web + Electron                                                                                                                               |
+| `pnpm dev:web`                | Start the standalone React/Vite app                                                                                                                |
+| `pnpm check`                  | Type-check every workspace package, including e2e                                                                                                  |
+| `pnpm lint`                   | Run oxlint, the plugin boundary check, and the extension-point catalog check                                                                       |
+| `pnpm check:plugin-isolation` | Check plugin manifests and imports, and build a representative set of plugins outside the monorepo (`--build all` builds every plugin, as CI does) |
+| `pnpm docs:extension-points`  | Regenerate the extension-point catalog after changing a point                                                                                      |
+| `pnpm format`                 | Format with oxfmt                                                                                                                                  |
+| `pnpm format:check`           | Verify formatting                                                                                                                                  |
+| `pnpm test`                   | Run package tests (does not include e2e)                                                                                                           |
+| `pnpm coverage`               | Run tests with the 80% coverage gate                                                                                                               |
+| `pnpm test:e2e`               | Package the app and exercise the hardened executable                                                                                               |
+| `pnpm run package`            | Build web, then package Electron into `apps/desktop/out/`                                                                                          |
+| `pnpm run make`               | Package the app and create the current platform's distributables                                                                                   |
 
 Local builds are unsigned and don't check for updates. [docs/releases.md](docs/releases.md)
 covers signing, release tracks, and publishing.

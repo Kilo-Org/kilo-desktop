@@ -65,6 +65,15 @@ describe("release highlights files", () => {
 		).resolves.toBeNull();
 	});
 
+	it("refuses a file named after the tag instead of the version", async () => {
+		const directory = await mkdtemp(path.join(tmpdir(), "release-highlights-test-"));
+		await writeFile(path.join(directory, "v1.2.3.md"), "- Workspaces now sync\n");
+
+		await expect(readReleaseHighlights(directory, "1.2.3")).rejects.toThrow(
+			"Rename release-highlights/v1.2.3.md to 1.2.3.md",
+		);
+	});
+
 	it("treats a missing highlights directory as no highlights", async () => {
 		const directory = path.join(tmpdir(), "release-highlights-test-missing", "nested");
 		await expect(readReleaseHighlights(directory, "1.2.3")).resolves.toBeNull();

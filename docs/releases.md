@@ -130,7 +130,8 @@ Add it in the Stable version-bump pull request so the wording is reviewed with t
 Preview versions are stamped at build time, so the file effectively applies to Stable. The
 file is Markdown, but the app lists only its list items (`- …`), in order and as plain text
 (links and emphasis are stripped), so write anything users must see, including URLs, as
-list items; publishing fails if it has none. `release:notes` includes the highlights for the
+list items; publishing fails if it has none, or if the file is named after the tag
+(`v1.2.3.md`), and the publish log names the highlights file used, if any. `release:notes` includes the highlights for the
 tag's version (or `--version`). Release notes are immutable once published, so preview them
 before dispatching the release.
 

@@ -19,8 +19,20 @@ export async function readReleaseHighlights(
 	directory: string,
 	version: string,
 ): Promise<string | null> {
+	const highlights = await readOptional(path.join(directory, `${version}.md`));
+	if (
+		highlights === null &&
+		(await readOptional(path.join(directory, `v${version}.md`))) !== null
+	) {
+		// Named after the tag: publishing without the highlights would go unnoticed.
+		throw new Error(`Rename release-highlights/v${version}.md to ${version}.md.`);
+	}
+	return highlights;
+}
+
+async function readOptional(file: string): Promise<string | null> {
 	try {
-		return await readFile(path.join(directory, `${version}.md`), "utf8");
+		return await readFile(file, "utf8");
 	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
 		throw error;

@@ -87,9 +87,15 @@ async function main(): Promise<void> {
 			},
 		},
 	);
+	const highlights = await readReleaseHighlights(RELEASE_HIGHLIGHTS_DIRECTORY, version);
+	console.log(
+		highlights === null
+			? `Release highlights: none (no release-highlights/${version}.md).`
+			: `Release highlights: release-highlights/${version}.md.`,
+	);
 	const bodyMarkdown = withReleaseHighlights(
 		sanitizeGeneratedReleaseNotes(groupGeneratedReleaseNotes(generated.body)),
-		await readReleaseHighlights(RELEASE_HIGHLIGHTS_DIRECTORY, version),
+		highlights,
 	);
 	const publishedAt = new Date().toISOString();
 	const releaseNotes = {

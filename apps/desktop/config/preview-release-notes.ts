@@ -65,7 +65,7 @@ async function main(): Promise<void> {
 				target: values.target,
 			});
 
-	const version = values.version ?? tag?.replace(/^v/, "");
+	const version = (values.version ?? tag)?.replace(/^v/, "");
 	const bodyMarkdown = withReleaseHighlights(
 		sanitizeGeneratedReleaseNotes(groupGeneratedReleaseNotes(rawBody)),
 		version ? await readReleaseHighlights(RELEASE_HIGHLIGHTS_DIRECTORY, version) : null,

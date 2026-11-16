@@ -18,6 +18,11 @@
 			"id": "templates",
 			"home": "main",
 			"description": "The workbook templates on offer, and any skipped as invalid."
+		},
+		{
+			"id": "workbooks",
+			"home": "main",
+			"description": "Every workspace's workbooks: their template and where each part lives in Pages."
 		}
 	],
 	"contributes": {

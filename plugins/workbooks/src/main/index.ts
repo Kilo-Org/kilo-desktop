@@ -3,6 +3,7 @@ import { definePlugin } from "@kilo-desktop/kernel";
 import { WorkbookTemplatePoint } from "../contracts";
 import { BUILT_IN_TEMPLATES } from "./built-in-templates";
 import { provideTemplates } from "./template-registry";
+import { provideWorkbooks } from "./workbook-store";
 
 /**
  * kilo.workbooks in main: the workbook templates on offer (its built-ins
@@ -15,5 +16,6 @@ export const workbooksMainEntry = definePlugin({
 			sdk.extensions.implement(WorkbookTemplatePoint, id, { read });
 		}
 		provideTemplates(sdk);
+		provideWorkbooks(sdk);
 	},
 });

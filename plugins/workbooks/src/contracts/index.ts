@@ -1,8 +1,10 @@
 import type { PluginDefinitions } from "@kilo-desktop/kernel";
 
 import { WorkbookTemplatePoint, WorkbookTemplates } from "./templates";
+import { Workbooks } from "./workbooks";
 
 export * from "./templates";
+export * from "./workbooks";
 
 /**
  * kilo.workbooks' public surface. A workbook keeps what chats learn and decide
@@ -16,6 +18,6 @@ export const WORKBOOKS_FEATURE_FLAG = "workbooks";
 
 /** What the kernel needs to know about this plugin without running it. */
 export const WORKBOOKS_DEFINITIONS: PluginDefinitions = {
-	domainObjects: [WorkbookTemplates],
+	domainObjects: [WorkbookTemplates, Workbooks],
 	extensionPoints: [WorkbookTemplatePoint],
 };

@@ -48,7 +48,7 @@ Forge uses only official makers:
 | Linux    | x64, arm64    | DEB                                            | The app checks `latest.json` and links the DEB; installation is manual |
 
 Each architecture builds on a native runner: Windows ARM64 on `windows-11-vs2026-arm` and
-Linux ARM64 on `ubuntu-24.04-arm`, with the same plugins as their x64 counterparts. The pinned
+Linux ARM64 on `blacksmith-4vcpu-ubuntu-2404-arm`, with the same plugins as their x64 counterparts. The pinned
 `@runtimed/node` nightly includes native bindings for every release target. The explicit
 `@runtimed/node-win32-arm64-msvc` optional dependency in `apps/desktop` uses the same version
 as the wrapper. PR and nightly E2E remain on Windows x64.

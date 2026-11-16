@@ -1080,8 +1080,9 @@ access, not UI.
   `settings-requested` event.
 - **The loading toast** is a `kilo.shell/status-bar-item` view (always
   mounted, renders nothing), replacing origin's `kilo.shell/overlay`.
-- **Sign-in gate.** The settings page uses kilo.notebook's port of origin's
-  `KiloSignInGate` (`KiloAccount`, `kilo.core/signedIn`).
+- **No sign-in gate.** The settings page originally used kilo.notebook's port
+  of origin's `KiloSignInGate`; it was dropped so local models work without a
+  Kilo account (the Anaconda catalog keeps its own sign-in).
 - **No host packaging.** `systeminformation` and `@lobehub/icons` are
   bundled; `execa` was already an `apps/desktop` dependency.
 - **Tests.** `src/main/test-boot.ts` and `test-catalog.ts` (a stand-in

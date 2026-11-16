@@ -1,0 +1,53 @@
+name: Feature request
+description: Suggest an idea or improvement for Kilo Desktop
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. The team reviews every request, but we can't promise to build all of them.
+
+  - type: checkboxes
+    id: searched
+    attributes:
+      label: Existing issues
+      options:
+        - label: I searched the existing issues and this hasn't been suggested.
+          required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of Kilo Desktop is this about? It helps us route your request.
+      options:
+        - Chat and work sessions
+        - Files and git changes
+        - Terminal
+        - Browser
+        - Notebooks
+        - Environments (conda)
+        - Local models
+        - Marketplace
+        - Sign-in and accounts
+        - Settings
+        - Installation and updates
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe what you're trying to do and what gets in the way today.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would you like to happen?
+      description: Describe the change you have in mind. Mention any alternatives you considered.
+    validations:
+      required: true

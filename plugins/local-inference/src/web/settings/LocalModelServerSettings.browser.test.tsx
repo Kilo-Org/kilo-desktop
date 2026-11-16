@@ -215,24 +215,19 @@ describe("LocalModelServerSettings", () => {
 			.not.toBeInTheDocument();
 	});
 
-	it("closes the catalog when the session is lost while browsing", async () => {
-		const { baseElement, host } = await renderSettings({
-			"catalog.list": async () => ({ models: [], total: 0 }),
-			"hardware.profile": async () => hardwareProfile,
-			"status.get": async () => ({ status: "ready", loadedModelIds: [] }),
-			"usage.get": async () => usageSnapshot,
-		});
+	it("works without a Kilo sign-in", async () => {
+		const { baseElement } = await renderSettings(
+			{
+				"status.get": async () => ({ status: "ready", loadedModelIds: [] }),
+				"usage.get": async () => usageSnapshot,
+			},
+			{},
+			SIGNED_OUT,
+		);
 		const screen = page.elementLocator(baseElement);
 
-		await screen.getByRole("button", { name: "Add model" }).click();
-		await page.getByRole("menuitem", { name: "From catalog" }).click();
-		const dialog = page.getByRole("dialog", { name: "Local Model Catalog" });
-		await expect.element(dialog).toBeVisible();
-
-		await host.setIdentity(SIGNED_OUT);
-
-		await expect.element(dialog).not.toBeInTheDocument();
-		await expect.element(page.getByTestId("kilo-auth-gate-signin")).toBeVisible();
+		await expect.element(screen.getByRole("button", { name: "Add model" })).toBeEnabled();
+		await expect.element(screen.getByTestId("local-model-server-toggle")).toBeEnabled();
 	});
 
 	it("retries the catalog request inside the modal", async () => {

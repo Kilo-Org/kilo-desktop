@@ -152,22 +152,21 @@ import { WorkspaceFilter } from "./WorkspaceFilter";
  * wash (the same fill as an unfocused pane's shown tab).
  */
 const sidebarSurfaceIdleClassName =
-	"bg-transparent text-sidebar-foreground transition-colors hover:bg-sidebar-accent focus-visible:bg-sidebar-accent";
-const sidebarSurfaceActiveClassName = "bg-state-selected text-sidebar-foreground transition-colors";
+	"bg-transparent text-sidebar-foreground hover:bg-sidebar-accent focus-visible:bg-sidebar-accent";
+const sidebarSurfaceActiveClassName = "bg-state-selected text-sidebar-foreground";
 /** One step above the current row, so a ⌘/⇧-click selection reads apart from it. */
-const sidebarSurfaceMultiSelectedClassName =
-	"bg-state-selected-strong text-sidebar-foreground transition-colors";
+const sidebarSurfaceMultiSelectedClassName = "bg-state-selected-strong text-sidebar-foreground";
 
 /** Override Button/Input `rounded-lg` so radius matches sidebar menu items. */
 const sidebarNavRadiusClassName = "rounded-md!";
 
 /**
  * Hover actions sit over the status slot: hidden until row hover, keyboard
- * focus, or an open dropdown, then cross-fade with the status label (which
- * fades out via the matching group classes on the label itself).
+ * focus, or an open dropdown, then swap with the status label (which hides
+ * via the matching group classes on the label itself).
  */
 const rowHoverActionsClassName =
-	"pointer-events-none absolute flex items-center opacity-0 transition-opacity group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100 has-[[data-popup-open]]:pointer-events-auto has-[[data-popup-open]]:opacity-100";
+	"pointer-events-none absolute flex items-center opacity-0 group-hover/sidebar-row:pointer-events-auto group-hover/sidebar-row:opacity-100 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100 has-[[data-popup-open]]:pointer-events-auto has-[[data-popup-open]]:opacity-100";
 
 const rowHoverLabelFadeClassName =
 	"group-hover/sidebar-row:opacity-0 group-has-[:focus-visible]/sidebar-row:opacity-0 group-has-[[data-popup-open]]/sidebar-row:opacity-0";
@@ -175,7 +174,7 @@ const rowHoverLabelFadeClassName =
 const narrowRowYieldsTimeClassName = "@max-[14rem]/session-row:peer-[:not(:empty)]/pr:hidden";
 
 const workspaceHeaderActionsClassName =
-	"pointer-events-none mr-1 flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/workspace-row:pointer-events-auto group-hover/workspace-row:opacity-100 group-focus-within/workspace-row:pointer-events-auto group-focus-within/workspace-row:opacity-100 group-has-[[data-popup-open]]/workspace-row:pointer-events-auto group-has-[[data-popup-open]]/workspace-row:opacity-100";
+	"pointer-events-none mr-1 flex shrink-0 items-center gap-0.5 opacity-0 group-hover/workspace-row:pointer-events-auto group-hover/workspace-row:opacity-100 group-focus-within/workspace-row:pointer-events-auto group-focus-within/workspace-row:opacity-100 group-has-[[data-popup-open]]/workspace-row:pointer-events-auto group-has-[[data-popup-open]]/workspace-row:opacity-100";
 
 const SESSION_LIST_OVERSCAN = 10;
 const SESSION_ROW_ESTIMATE_PX = 30;
@@ -637,7 +636,7 @@ function SessionListContent() {
 					<div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 						<div
 							data-qa-id="session-list-grouping-header"
-							className="hover:bg-sidebar-accent focus-within:bg-sidebar-accent has-[[data-popup-open]]:bg-sidebar-accent flex h-[30px] min-w-0 shrink-0 items-center gap-0.5 rounded-md pr-1 transition-colors"
+							className="hover:bg-sidebar-accent focus-within:bg-sidebar-accent has-[[data-popup-open]]:bg-sidebar-accent flex h-[30px] min-w-0 shrink-0 items-center gap-0.5 rounded-md pr-1"
 						>
 							<WorkspaceFilter
 								value={focus}
@@ -1082,7 +1081,7 @@ const SessionShelfHeader: FC<{
 			className={cn(
 				"flex items-center",
 				tone === "workspace" &&
-					"group/workspace-row hover:bg-sidebar-accent focus-within:bg-sidebar-accent rounded-md transition-colors",
+					"group/workspace-row hover:bg-sidebar-accent focus-within:bg-sidebar-accent rounded-md",
 			)}
 			data-slot={`session-list-${tone}-header`}
 		>
@@ -1113,7 +1112,7 @@ const SessionShelfHeader: FC<{
 					<ChevronDownIcon
 						aria-hidden
 						className={cn(
-							"size-3 opacity-0 transition-[opacity,transform] group-hover/shelf:opacity-100 group-focus-visible/shelf:opacity-100",
+							"size-3 opacity-0 transition-transform group-hover/shelf:opacity-100 group-focus-visible/shelf:opacity-100",
 							classes.chevron,
 							!expanded && "-rotate-90",
 						)}
@@ -1323,7 +1322,7 @@ const SessionRow = memo(function SessionRow({
 			</span>
 			<span
 				className={cn(
-					"text-muted-foreground ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end gap-1 text-xs leading-4 tabular-nums transition-opacity",
+					"text-muted-foreground ml-auto flex h-6 min-w-8 shrink-0 items-center justify-end gap-1 text-xs leading-4 tabular-nums",
 					rightSlot || decorationsInTitleRow ? rowHoverLabelFadeClassName : null,
 				)}
 			>

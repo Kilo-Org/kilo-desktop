@@ -36,6 +36,10 @@ import {
  *   placeholder above the viewport turns into a message of another height.
  * - The viewport is found from the DOM, not assistant-ui's viewport state,
  *   which can drop its element during a re-render while the element stays.
+ * - A session shown again reconnects before its pane's portal host is back
+ *   in the page (the transcript's effects run first), so with no connected
+ *   message to find the viewport from, the lookup retries each frame until
+ *   one is; otherwise no scroll would mount anything until the ids changed.
  * - `disabled` mounts everything: the find bar searches the DOM.
  */
 
@@ -74,6 +78,7 @@ function createMessageWindowStore(): MessageWindowStore {
 	let measuredTotal = 0;
 	let root: Element | null = null;
 	let frame = 0;
+	let retry = 0;
 	let stopFollowing: (() => void) | null = null;
 
 	const notify = (id: string) => {
@@ -157,9 +162,23 @@ function createMessageWindowStore(): MessageWindowStore {
 	const disconnect = () => {
 		cancelAnimationFrame(frame);
 		frame = 0;
+		cancelAnimationFrame(retry);
+		retry = 0;
 		stopFollowing?.();
 		stopFollowing = null;
 		root = null;
+	};
+	const connectToViewport = () => {
+		const viewport = viewportOf(elements);
+		if (viewport && viewport === root) return;
+		disconnect();
+		if (viewport) connect(viewport);
+		else if (elements.size > 0) {
+			retry = requestAnimationFrame(() => {
+				retry = 0;
+				connectToViewport();
+			});
+		}
 	};
 
 	return {
@@ -183,12 +202,7 @@ function createMessageWindowStore(): MessageWindowStore {
 		},
 		heightOf: (id) =>
 			heights.get(id) ?? (heights.size > 0 ? measuredTotal / heights.size : DEFAULT_HEIGHT),
-		connectToViewport() {
-			const viewport = viewportOf(elements);
-			if (viewport === root) return;
-			disconnect();
-			if (viewport) connect(viewport);
-		},
+		connectToViewport,
 		disconnect,
 	};
 }

@@ -8,12 +8,22 @@
  *   pnpm --filter @kilo-desktop/desktop release:notes v0.1.13 --target main
  *   pnpm --filter @kilo-desktop/desktop release:notes --body-file notes.md
  *   pnpm --filter @kilo-desktop/desktop release:notes v0.1.12 --json
+ *   pnpm --filter @kilo-desktop/desktop release:notes --body-file notes.md --version 1.0.0
+ *
+ * Highlights from `release-highlights/<version>.md` lead the notes, as they
+ * would when publishing; the version comes from the tag unless `--version`
+ * names it.
  */
 import { readFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 
 import { execa } from "execa";
 
+import {
+	readReleaseHighlights,
+	RELEASE_HIGHLIGHTS_DIRECTORY,
+	withReleaseHighlights,
+} from "./release-highlights.js";
 import {
 	extractReleaseNoteItems,
 	findPreviousTrackTag,
@@ -23,8 +33,8 @@ import {
 } from "./track-release.js";
 import type { ReleaseTrack } from "./release.js";
 
-const USAGE = `Usage: release:notes <tag> [--previous <tag>] [--target <ref>] [--repo <owner/name>] [--json]
-       release:notes --body-file <path> [--json]`;
+const USAGE = `Usage: release:notes <tag> [--previous <tag>] [--target <ref>] [--repo <owner/name>] [--version <version>] [--json]
+       release:notes --body-file <path> [--version <version>] [--json]`;
 
 async function main(): Promise<void> {
 	const { values, positionals } = parseArgs({
@@ -34,6 +44,7 @@ async function main(): Promise<void> {
 			target: { type: "string" },
 			repo: { type: "string" },
 			"body-file": { type: "string" },
+			version: { type: "string" },
 			json: { type: "boolean", default: false },
 			help: { type: "boolean", short: "h", default: false },
 		},
@@ -54,7 +65,11 @@ async function main(): Promise<void> {
 				target: values.target,
 			});
 
-	const bodyMarkdown = sanitizeGeneratedReleaseNotes(groupGeneratedReleaseNotes(rawBody));
+	const version = (values.version ?? tag)?.replace(/^v/, "");
+	const bodyMarkdown = withReleaseHighlights(
+		sanitizeGeneratedReleaseNotes(groupGeneratedReleaseNotes(rawBody)),
+		version ? await readReleaseHighlights(RELEASE_HIGHLIGHTS_DIRECTORY, version) : null,
+	);
 	const items = extractReleaseNoteItems(bodyMarkdown);
 
 	if (values.json) {

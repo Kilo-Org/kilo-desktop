@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/Kilo-Org/kilo-desktop/blob/main/SECURITY.md
+    about: Don't open a public issue. Follow the disclosure process in SECURITY.md.
+  - name: Join the Kilo Discord
+    url: https://kilo.ai/discord
+    about: For support, how-to questions, and discussion.

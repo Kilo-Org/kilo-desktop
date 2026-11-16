@@ -22,7 +22,7 @@ export const SETTINGS_GROUPS = [
  * Every bundled settings section (`kilo.shell/settings-section`), as origin
  * listed them. Diagnostics (kilo.developer) and External AI apps (kilo.core's
  * `external-api-apps-settings`) are flag-gated; `package:e2e` forces both
- * flags on. Notebooks and Local Model Server are sign-in gated.
+ * flags on. Notebooks is sign-in gated.
  */
 export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
 	{ id: "about", title: "About" },
@@ -52,7 +52,6 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
 	{
 		id: "local-model-server",
 		title: "Local Model Server",
-		signInGated: true,
 		contentTestId: "local-model-server-page",
 	},
 	{ id: "external-ai-apps", title: "External AI apps" },

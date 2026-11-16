@@ -48,7 +48,7 @@ Forge uses only official makers:
 | Linux    | x64, arm64    | DEB                                            | The app checks `latest.json` and links the DEB; installation is manual |
 
 Each architecture builds on a native runner: Windows ARM64 on `windows-11-vs2026-arm` and
-Linux ARM64 on `ubuntu-24.04-arm`, with the same plugins as their x64 counterparts. The pinned
+Linux ARM64 on `blacksmith-4vcpu-ubuntu-2404-arm`, with the same plugins as their x64 counterparts. The pinned
 `@runtimed/node` nightly includes native bindings for every release target. The explicit
 `@runtimed/node-win32-arm64-msvc` optional dependency in `apps/desktop` uses the same version
 as the wrapper. PR and nightly E2E remain on Windows x64.
@@ -101,7 +101,7 @@ Maker artifacts are written to `apps/desktop/out/make/`.
 Artifacts are published under updater namespaces:
 
 ```text
-kilo-desktop-ci-test/<update-channel>/<platform>/<arch>/<artifact>
+kilo-desktop/<update-channel>/<platform>/<arch>/<artifact>
 ```
 
 Preview uses update channel `preview`; Stable uses `latest`. The runtime update feed URL uses the same `update-channel/platform/arch` path,
@@ -128,10 +128,10 @@ Each update channel exposes stable public download pointers in addition to its i
 artifacts:
 
 ```text
-kilo-desktop-ci-test/<update-channel>/latest.json
-kilo-desktop-ci-test/<update-channel>/latest/<platform>/<arch>/<installer>
-kilo-desktop-ci-test/<update-channel>/release-notes/<version>.json
-kilo-desktop-ci-test/<update-channel>/release-notes/latest.json
+kilo-desktop/<update-channel>/latest.json
+kilo-desktop/<update-channel>/latest/<platform>/<arch>/<installer>
+kilo-desktop/<update-channel>/release-notes/<version>.json
+kilo-desktop/<update-channel>/release-notes/latest.json
 ```
 
 `latest.json` contains the version, publication time, immutable release-note URL, and

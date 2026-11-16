@@ -48,10 +48,10 @@ describe("track object publication", () => {
 		);
 
 		expect(copies.map(({ key }) => key)).toEqual([
-			"kilo-desktop-ci-test/latest/release-notes/1.2.3.json",
-			"kilo-desktop-ci-test/latest/latest/linux/x64/kilo-desktop.deb",
-			"kilo-desktop-ci-test/latest/release-notes/latest.json",
-			"kilo-desktop-ci-test/latest/latest.json",
+			"kilo-desktop/latest/release-notes/1.2.3.json",
+			"kilo-desktop/latest/latest/linux/x64/kilo-desktop.deb",
+			"kilo-desktop/latest/release-notes/latest.json",
+			"kilo-desktop/latest/latest.json",
 		]);
 		expect(copies[0]).toMatchObject({
 			cacheControl: "public,max-age=31536000,immutable",
@@ -65,7 +65,7 @@ describe("track object publication", () => {
 			track: "stable",
 			version: "1.2.3",
 			releaseNotesUrl:
-				"https://downloads.example.test/kilo-desktop-ci-test/latest/release-notes/1.2.3.json",
+				"https://downloads.example.test/kilo-desktop/latest/release-notes/1.2.3.json",
 			downloads: [
 				{
 					arch: "x64",
@@ -74,7 +74,7 @@ describe("track object publication", () => {
 					sha256: "c7c5c1d70c5dec4416ab6158afd0b223ef40c29b1dc1f97ed9428b94d4cadb1c",
 					size: 8,
 					type: "deb",
-					url: "https://downloads.example.test/kilo-desktop-ci-test/latest/linux/x64/kilo-desktop_1.2.3_amd64.deb",
+					url: "https://downloads.example.test/kilo-desktop/latest/linux/x64/kilo-desktop_1.2.3_amd64.deb",
 				},
 			],
 		});

@@ -60,6 +60,9 @@ updates:
       # notebook UI pinned by the notebook plugin's packaging artifacts.
       - dependency-name: "@runtimed/node"
       - dependency-name: "@runtimed/node-*"
+      # Tracks the `next` dist-tag; the `latest` 0.4.0 (Dec 2025) is older than
+      # the pinned prerelease and lacks APIs the terminal plugin uses. Bump by hand.
+      - dependency-name: "ghostty-web"
     # When a dependency matches several groups, Dependabot uses the most
     # specific pattern, not the first group listed.
     groups:

@@ -45,7 +45,7 @@
 	},
 	"devDependencies": {
 		"@kilo-desktop/plugin-work-sessions": "workspace:*",
-		"@tailwindcss/vite": "^4.3.3",
+		"@tailwindcss/vite": "^4.3.5",
 		"@testing-library/react": "^16.3.2",
 		"@types/node": "^26.0.0",
 		"@types/react": "^19.2.17",

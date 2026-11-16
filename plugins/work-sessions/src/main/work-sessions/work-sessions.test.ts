@@ -184,6 +184,35 @@ describe("creating chats", () => {
 	});
 });
 
+describe("forking chats", () => {
+	it("forks one of its chats and lists the fork as soon as it returns", async () => {
+		const { workSessions, core, byId } = await boot();
+		const { id } = await workSessions.methods.create({ workspaceId: "w1" });
+		const source = await workSessions.methods.createChat({ id });
+		await vi.waitFor(() => expect(byId(id)?.chatIds).toEqual([source.id]));
+
+		const fork = await workSessions.methods.forkChat({
+			id,
+			chatId: source.id,
+			messageId: "msg_2",
+		});
+
+		expect(core.forked).toEqual([{ id: source.id, messageId: "msg_2" }]);
+		expect(fork.workSessionId).toBe(id);
+		expect(byId(id)?.chatIds).toEqual([source.id, fork.id]);
+	});
+
+	it("refuses a chat that isn't in the work session, without forking it", async () => {
+		const { workSessions, core } = await boot();
+		const { id } = await workSessions.methods.create({ workspaceId: "w1" });
+
+		await expect(
+			workSessions.methods.forkChat({ id, chatId: "ses_elsewhere", messageId: "msg_2" }),
+		).rejects.toMatchObject({ code: "NOT_FOUND" });
+		expect(core.forked).toEqual([]);
+	});
+});
+
 describe("following Kilo chats", () => {
 	it("adopts this app's root chats that have no work session", async () => {
 		const core = new FakeCore();

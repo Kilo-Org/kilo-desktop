@@ -69,6 +69,7 @@ export class FakeCore {
 	readonly renamed: [string, string][] = [];
 	readonly branches: [string, string][] = [];
 	readonly deleted: string[] = [];
+	readonly forked: { id: string; messageId: string }[] = [];
 	failWrites = false;
 	failDispose = false;
 	#provider: DomainObjectProvider<typeof Chats> | undefined;
@@ -95,6 +96,17 @@ export class FakeCore {
 							});
 							this.upsert(created);
 							return created;
+						},
+						// Like kilo.core, whose `created` event may reach listeners after this returns.
+						fork: ({ id, messageId }) => {
+							this.forked.push({ id, messageId });
+							const source = this.chats.find((candidate) => candidate.id === id);
+							if (!source) throw new KernelError("NOT_FOUND", "The chat was not found.");
+							return {
+								...source,
+								id: `ses_fork_${this.forked.length}`,
+								title: `${source.title} (fork #1)`,
+							};
 						},
 						setWorktreeBranch: ({ id, branch }) => {
 							if (this.failWrites) throw new Error("offline");

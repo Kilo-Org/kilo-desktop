@@ -33,9 +33,23 @@ export const eventually = <T>(assertion: () => T) => vi.waitFor(assertion, { tim
 
 const cleanups: (() => Promise<unknown> | unknown)[] = [];
 
+/**
+ * Each plugin's kv per storage folder, so a kernel booted again on the same
+ * folder (a restart) reads what the last one wrote.
+ */
+const storages = new Map<string, ReturnType<typeof createMemoryStorage>>();
+
+function storageFor(storage: string, pluginId: string) {
+	const key = `${storage}\0${pluginId}`;
+	let found = storages.get(key);
+	if (!found) storages.set(key, (found = createMemoryStorage(storage)));
+	return found;
+}
+
 /** Stops every kernel and removes every folder the tests made; call from `afterEach`. */
 export async function cleanUpAgents(): Promise<void> {
 	for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+	storages.clear();
 }
 
 /** Runs `cleanup` with the booted agents' cleanup (MCP clients, folders). */
@@ -69,7 +83,7 @@ export interface BootOptions {
 	readonly signedIn?: boolean;
 	readonly externalApps?: boolean;
 	readonly chats?: FakeKiloChats;
-	/** kilo.core's storage folder (a fresh one by default). */
+	/** kilo.core's storage folder (a fresh one by default); booting again on it keeps its kv. */
 	readonly storage?: string;
 	readonly agent?: Partial<AgentOptions>;
 	/** Waits for the server service to be ready (when the window shows and terms are accepted). */
@@ -149,7 +163,7 @@ export async function bootAgent(options: BootOptions = {}): Promise<BootedAgent>
 		hostServices: (pluginId) => {
 			const root = options.pluginRoots?.[pluginId];
 			return {
-				storage: createMemoryStorage(storage),
+				storage: storageFor(storage, pluginId),
 				...(root ? { assets: { resolve: (subpath: string) => path.join(root, subpath) } } : {}),
 			};
 		},

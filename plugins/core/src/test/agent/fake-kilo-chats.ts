@@ -7,7 +7,7 @@ import type {
 	StructuredPromptParams,
 } from "../../main/agent/conversations/kilo-chat-client";
 import type { PendingRequest } from "../../main/agent/conversations/store";
-import type { PermissionRequest } from "../../contracts";
+import type { PermissionRequest, PermissionRule } from "../../contracts";
 
 export interface Write {
 	readonly call: string;
@@ -28,6 +28,10 @@ export class FakeKiloChats implements KiloChatClient {
 	> = {};
 	failList = false;
 	failWrites = false;
+	/** Calls (as recorded in `writes`, or `getPermission`) that fail with "offline". */
+	readonly failing = new Set<string>();
+	/** Each chat's stored permission rules. */
+	permissionsById: Record<string, readonly PermissionRule[]> = {};
 	readonly writes: Write[] = [];
 	readonly reads: string[] = [];
 	/** Settle HTTP separately from push(session.drained), including failures arriving after abort. */
@@ -44,6 +48,8 @@ export class FakeKiloChats implements KiloChatClient {
 	#pending: (KiloEvent | "end")[] = [];
 	#wake: (() => void) | undefined;
 	#created = 0;
+	#forked = 0;
+	readonly #gates = new Map<string, Promise<void>>();
 
 	async listChats() {
 		this.listCalls += 1;
@@ -98,9 +104,53 @@ export class FakeKiloChats implements KiloChatClient {
 	}
 	async updateChat(directory: string, id: string, patch: object) {
 		this.#write("update", directory, [id, patch]);
+		await this.#gates.get("update");
+	}
+	/** Like the server: the stamp is cloned, the rules are not, and `session.created` comes first. */
+	async forkChat(directory: string, id: string, messageId: string) {
+		this.#write("fork", directory, [id, messageId]);
+		const source = this.chats.find((chat) => chat.id === id);
+		if (!source) throw new Error(`Session not found: ${id}`);
+		const info: ChatInfo = {
+			id: `ses_fork_${++this.#forked}`,
+			title: `${source.title} (fork #1)`,
+			parentId: null,
+			directory,
+			metadata: structuredClone(source.metadata),
+			createdAt: 600,
+			updatedAt: 600,
+		};
+		this.chats.push(info);
+		this.push({ type: "session.created", properties: { info: rawChat(info) } });
+		await this.#gates.get("fork");
+		return info;
+	}
+	async recordForkHandoff(directory: string, id: string) {
+		this.#write("handoff", directory, [id]);
+		await this.#gates.get("handoff");
+	}
+	async getChatPermission(directory: string, id: string) {
+		this.reads.push(`permission ${directory} ${id}`);
+		if (this.failing.has("getPermission")) throw new Error("offline");
+		return this.permissionsById[id] ?? [];
+	}
+	/** Holds `call` (`fork`, `update`, `handoff`) after it is recorded until the returned release runs. */
+	hold(call: string): () => void {
+		let release = () => {};
+		this.#gates.set(
+			call,
+			new Promise<void>((resolve) => {
+				release = () => {
+					this.#gates.delete(call);
+					resolve();
+				};
+			}),
+		);
+		return release;
 	}
 	async deleteChat(directory: string, id: string) {
 		this.#write("delete", directory, [id]);
+		this.chats = this.chats.filter((chat) => chat.id !== id);
 	}
 	/** What `generateBranchName` answers. */
 	branchName: string | null = "fix-login";
@@ -164,7 +214,7 @@ export class FakeKiloChats implements KiloChatClient {
 	}
 
 	#write(call: string, directory: string, args: readonly unknown[]) {
-		if (this.failWrites) throw new Error("offline");
+		if (this.failWrites || this.failing.has(call)) throw new Error("offline");
 		this.writes.push({ call, directory, args });
 	}
 }

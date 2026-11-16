@@ -179,6 +179,17 @@ export const Chats = defineDomainObject({
 		create: method(createChatInputSchema, chatSummarySchema),
 		/** Rewrites the worktree branch in the chat's stamp, keeping the rest of it. */
 		setWorktreeBranch: method(chatIdInput.extend({ branch: z.string().min(1) }), nothing),
+		/**
+		 * Forks a root chat at one of its user messages into a new chat in the
+		 * same directory, carrying the messages strictly before `messageId` and
+		 * the source's stamp and permission rules, plus a hidden note telling
+		 * the agent it was forked (as VS Code and JetBrains do). The fork is
+		 * published only once its rules are applied; a fork whose rules can't
+		 * be applied is never published and is deleted, retried until the
+		 * server no longer lists it. `NOT_FOUND` for an unknown chat,
+		 * `VALIDATION` for a subagent's.
+		 */
+		fork: method(chatIdInput.extend({ messageId: z.string().min(1) }), chatSummarySchema),
 		/** What `kilo.core/chat-config` contributions want for a chat. */
 		chatConfig: method(chatConfigContextSchema, resolvedChatConfigSchema),
 		rename: method(chatIdInput.extend({ title: z.string().trim().min(1) }), nothing),
@@ -230,7 +241,11 @@ export const Chats = defineDomainObject({
 		updated: z.object({ before: chatSummarySchema, after: chatSummarySchema }),
 		/** The chat was deleted on the server. */
 		deleted: chatEvent,
-		/** Someone sent the chat a message (announced with its first text part). */
+		/**
+		 * Someone sent the chat a message (announced with its first text part).
+		 * A fork replays its copied user messages under new ids, so a fork's
+		 * earlier messages may be announced too.
+		 */
 		"user-message": z.object({
 			chatId: z.string(),
 			messageId: z.string(),

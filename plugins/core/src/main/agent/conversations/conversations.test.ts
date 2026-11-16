@@ -27,9 +27,11 @@ async function boot(
 		chats?: FakeKiloChats;
 		plugins?: readonly PluginRegistration[];
 		holdServer?: boolean;
+		/** A folder an earlier boot used, to boot again as after a restart. */
+		root?: string;
 	} = {},
 ) {
-	const root = await tempDir("kilo-conversations-");
+	const root = options.root ?? (await tempDir("kilo-conversations-"));
 	const chats = options.chats ?? new FakeKiloChats();
 	let server: FakeServer | undefined;
 	let release = () => {};
@@ -81,6 +83,7 @@ async function boot(
 	const state = () => conversations.getState();
 	const whenReady = () => eventually(() => expect(state().ready).toBe(true));
 	return {
+		root,
 		kernel,
 		conversations,
 		generation,
@@ -933,7 +936,12 @@ describe("one structured answer", () => {
 		});
 		expect(remove).toEqual({ call: "delete", directory: "/projects/app", args: ["ses_new_1"] });
 
-		chats.push({ type: "session.created", properties: { info: rawChat(chats.chats[1]!) } });
+		// A late announcement of the throwaway chat, already deleted.
+		const throwaway = desktopChat("ses_new_1", {
+			title: "Generate commit message",
+			metadata: null,
+		});
+		chats.push({ type: "session.created", properties: { info: rawChat(throwaway) } });
 		await new Promise((resolve) => setTimeout(resolve, 20));
 		expect(Object.keys(state().chats)).toEqual(["ses_a"]);
 		expect(events).toEqual([]);
@@ -1088,5 +1096,366 @@ describe("worktree branch naming", () => {
 				model: { aiProviderId: "kilo", modelId: "fast" },
 			},
 		]);
+	});
+});
+
+describe("forking chats", () => {
+	/** Drops the event stream and waits until kilo.core has reconnected and read the list again. */
+	async function reread(chats: FakeKiloChats) {
+		const listed = chats.listCalls;
+		const subscribed = chats.subscriptions;
+		chats.end();
+		await eventually(() => {
+			expect(chats.listCalls).toBeGreaterThan(listed);
+			expect(chats.subscriptions).toBeGreaterThan(subscribed);
+		});
+		// Lets the read settle and anything it starts (the unfinished-fork retry) run.
+		await new Promise((resolve) => setTimeout(resolve, 20));
+	}
+
+	const stamped = (id: string) =>
+		desktopChat(id, {
+			metadata: { "kilo-desktop": { workspaceId: "w1", workSessionId: "wses_1" } },
+		});
+
+	it("forks at a message into a new chat with the same stamp, which joins the list", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [stamped("ses_a")];
+		const { conversations, whenReady, state, events } = await boot({ chats });
+		await whenReady();
+
+		const fork = await conversations.methods.fork({ id: "ses_a", messageId: "msg_2" });
+
+		expect(chats.writes.map(({ call, directory, args }) => [call, directory, args])).toEqual([
+			["fork", "/projects/app", ["ses_a", "msg_2"]],
+			["handoff", "/projects/app", ["ses_fork_1"]],
+		]);
+		expect(fork).toMatchObject({
+			id: "ses_fork_1",
+			title: "Chat ses_a (fork #1)",
+			parentId: null,
+			directory: "/projects/app",
+			workSessionId: "wses_1",
+			workspaceId: "w1",
+		});
+		expect(state().chats[fork.id]).toEqual(fork);
+		await eventually(() => expect(events).toEqual([`created ${fork.id}`]));
+	});
+
+	it("carries the source chat's permission rules to the fork", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [stamped("ses_a")];
+		const rules = [
+			{ permission: "external_directory", pattern: "/projects/lib", action: "allow" as const },
+			{ permission: "desktop_notebook_open", pattern: "*", action: "deny" as const },
+		];
+		chats.permissionsById.ses_a = rules;
+		const { conversations, whenReady } = await boot({ chats });
+		await whenReady();
+
+		const fork = await conversations.methods.fork({ id: "ses_a", messageId: "msg_2" });
+
+		expect(chats.writes.map(({ call, directory, args }) => [call, directory, args])).toEqual([
+			["fork", "/projects/app", ["ses_a", "msg_2"]],
+			["update", "/projects/app", [fork.id, { permission: rules }]],
+			["handoff", "/projects/app", [fork.id]],
+		]);
+	});
+
+	it("hands the fork its hidden note before anyone can prompt it", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [stamped("ses_a")];
+		const { kernel, whenReady } = await boot({
+			chats,
+			plugins: [testPlugin("kilo.chat", { entry: { activate: () => {} } })],
+		});
+		await whenReady();
+		const asChat = kernel.sdkFor("kilo.chat").domainObjects.get(Chats)!;
+
+		const fork = await asChat.methods.fork({ id: "ses_a", messageId: "msg_2" });
+		await asChat.methods.prompt({ chatId: fork.id, parts: [{ type: "text", text: "Try B" }] });
+
+		expect(chats.writes.map(({ call, directory, args }) => [call, directory, args[0]])).toEqual([
+			["fork", "/projects/app", "ses_a"],
+			["handoff", "/projects/app", fork.id],
+			["prompt", "/projects/app", fork.id],
+		]);
+	});
+
+	it("still lists a fork whose hidden note couldn't be sent", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [stamped("ses_a")];
+		chats.failing.add("handoff");
+		const { conversations, whenReady, state } = await boot({ chats });
+		await whenReady();
+
+		const fork = await conversations.methods.fork({ id: "ses_a", messageId: "msg_2" });
+
+		expect(state().chats[fork.id]).toEqual(fork);
+	});
+
+	it("refuses an unknown chat without asking the server", async () => {
+		const chats = new FakeKiloChats();
+		const { conversations, whenReady } = await boot({ chats });
+		await whenReady();
+
+		await expect(
+			conversations.methods.fork({ id: "ses_unknown", messageId: "msg_2" }),
+		).rejects.toMatchObject({ code: "NOT_FOUND" });
+		expect(chats.writes).toEqual([]);
+	});
+
+	it("refuses a subagent's chat", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [stamped("ses_a"), desktopChat("ses_child", { parentId: "ses_a" })];
+		const { conversations, whenReady, state } = await boot({ chats });
+		await whenReady();
+		expect(state().chats.ses_child).toBeDefined();
+
+		await expect(
+			conversations.methods.fork({ id: "ses_child", messageId: "msg_2" }),
+		).rejects.toMatchObject({ code: "VALIDATION" });
+		expect(chats.writes).toEqual([]);
+	});
+
+	it("forks nothing when the source's permission rules can't be read", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [stamped("ses_a")];
+		chats.failing.add("getPermission");
+		const { conversations, whenReady } = await boot({ chats });
+		await whenReady();
+
+		await expect(
+			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
+		).rejects.toMatchObject({
+			code: "UNAVAILABLE",
+			message: "Could not read the chat's permissions: offline",
+		});
+		expect(chats.writes).toEqual([]);
+	});
+
+	it("says why the server couldn't fork it", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [stamped("ses_a")];
+		chats.failing.add("fork");
+		const { conversations, whenReady } = await boot({ chats });
+		await whenReady();
+
+		await expect(
+			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
+		).rejects.toMatchObject({ code: "UNAVAILABLE", message: "Could not fork the chat: offline" });
+	});
+
+	it("deletes a fork whose permission rules can't be applied, never listing it", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [stamped("ses_a")];
+		chats.permissionsById.ses_a = [{ permission: "bash", pattern: "*", action: "ask" }];
+		chats.failing.add("update");
+		const { conversations, whenReady, state, events } = await boot({ chats });
+		await whenReady();
+
+		await expect(
+			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
+		).rejects.toMatchObject({
+			code: "UNAVAILABLE",
+			message: "Could not apply the chat's permissions: offline",
+		});
+		expect(chats.writes.map(({ call, args }) => [call, args])).toEqual([
+			["fork", ["ses_a", "msg_2"]],
+			["delete", ["ses_fork_1"]],
+		]);
+		// The stream is in order: once this lands, so has the fork's `session.created`.
+		chats.push(status("ses_a", "busy"));
+		await eventually(() => expect(state().chats.ses_a?.activity.status).toBe("busy"));
+		expect(state().chats.ses_fork_1).toBeUndefined();
+		expect(events.filter((event) => event.includes("ses_fork"))).toEqual([]);
+	});
+
+	it("never lists a fork whose rules failed and whose deletion failed too, even once re-read", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [stamped("ses_a")];
+		chats.permissionsById.ses_a = [{ permission: "bash", pattern: "*", action: "ask" }];
+		chats.failing.add("update");
+		chats.failing.add("delete");
+		const { conversations, whenReady, state, events } = await boot({ chats });
+		await whenReady();
+
+		await expect(
+			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
+		).rejects.toMatchObject({ code: "UNAVAILABLE" });
+		await reread(chats);
+		chats.push(status("ses_a", "busy"));
+		await eventually(() => expect(state().chats.ses_a?.activity.status).toBe("busy"));
+
+		expect(chats.chats.map(({ id }) => id)).toContain("ses_fork_1");
+		expect(state().chats.ses_fork_1).toBeUndefined();
+		expect(events.filter((event) => event.includes("ses_fork"))).toEqual([]);
+	});
+
+	it("deletes a fork it couldn't delete before once the chat list is read again", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [stamped("ses_a")];
+		chats.permissionsById.ses_a = [{ permission: "bash", pattern: "*", action: "ask" }];
+		chats.failing.add("update");
+		chats.failing.add("delete");
+		const { conversations, whenReady, state } = await boot({ chats });
+		await whenReady();
+		await expect(
+			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
+		).rejects.toMatchObject({ code: "UNAVAILABLE" });
+		chats.failing.delete("delete");
+
+		await reread(chats);
+
+		await eventually(() =>
+			expect(chats.writes.filter(({ call }) => call === "delete")).toEqual([
+				{ call: "delete", directory: "/projects/app", args: ["ses_fork_1"] },
+			]),
+		);
+		await reread(chats);
+		expect(chats.writes.filter(({ call }) => call === "delete")).toHaveLength(1);
+		expect(state().chats.ses_fork_1).toBeUndefined();
+	});
+
+	it("tries deleting it again on the next read when a retry fails too", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [stamped("ses_a")];
+		chats.permissionsById.ses_a = [{ permission: "bash", pattern: "*", action: "ask" }];
+		chats.failing.add("update");
+		chats.failing.add("delete");
+		const { conversations, whenReady, state, events } = await boot({ chats });
+		await whenReady();
+		await expect(
+			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
+		).rejects.toMatchObject({ code: "UNAVAILABLE" });
+
+		await reread(chats);
+		expect(state().chats.ses_fork_1).toBeUndefined();
+		chats.failing.delete("delete");
+		await reread(chats);
+
+		await eventually(() =>
+			expect(chats.writes.filter(({ call }) => call === "delete")).toHaveLength(1),
+		);
+		expect(chats.chats.map(({ id }) => id)).toEqual(["ses_a"]);
+		expect(events.filter((event) => event.includes("ses_fork"))).toEqual([]);
+	});
+
+	it("forgets an unfinished fork the server no longer lists, without deleting it", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [stamped("ses_a")];
+		chats.permissionsById.ses_a = [{ permission: "bash", pattern: "*", action: "ask" }];
+		chats.failing.add("update");
+		chats.failing.add("delete");
+		const { conversations, whenReady } = await boot({ chats });
+		await whenReady();
+		await expect(
+			conversations.methods.fork({ id: "ses_a", messageId: "msg_2" }),
+		).rejects.toMatchObject({ code: "UNAVAILABLE" });
+		chats.chats = chats.chats.filter(({ id }) => id !== "ses_fork_1");
+		chats.failing.delete("delete");
+
+		await reread(chats);
+		chats.chats.push(stamped("ses_fork_1"));
+		await reread(chats);
+
+		expect(chats.writes.filter(({ call }) => call === "delete")).toEqual([]);
+	});
+
+	it("leaves a fork still being made to its own fork call when the list is read meanwhile", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [stamped("ses_a")];
+		chats.permissionsById.ses_a = [{ permission: "bash", pattern: "*", action: "ask" }];
+		const release = chats.hold("update");
+		const { conversations, whenReady, state } = await boot({ chats });
+		await whenReady();
+
+		const forking = conversations.methods.fork({ id: "ses_a", messageId: "msg_2" });
+		await eventually(() =>
+			expect(chats.writes.map(({ call }) => call)).toEqual(["fork", "update"]),
+		);
+		await reread(chats);
+		release();
+		const fork = await forking;
+
+		expect(chats.writes.filter(({ call }) => call === "delete")).toEqual([]);
+		expect(state().chats[fork.id]).toEqual(fork);
+	});
+
+	it("deletes a fork the app stopped making midway, after it starts again", async () => {
+		const before = new FakeKiloChats();
+		before.chats = [stamped("ses_a")];
+		before.permissionsById.ses_a = [{ permission: "bash", pattern: "*", action: "ask" }];
+		before.hold("update");
+		const first = await boot({ chats: before });
+		await first.whenReady();
+		void first.conversations.methods
+			.fork({ id: "ses_a", messageId: "msg_2" })
+			.catch(() => undefined);
+		await eventually(() =>
+			expect(before.writes.map(({ call }) => call)).toEqual(["fork", "update"]),
+		);
+		await first.kernel.stop();
+
+		const after = new FakeKiloChats();
+		after.chats = [stamped("ses_a"), stamped("ses_fork_1")];
+		const { whenReady, state, events } = await boot({ chats: after, root: first.root });
+		await whenReady();
+
+		await eventually(() =>
+			expect(after.writes).toEqual([
+				{ call: "delete", directory: "/projects/app", args: ["ses_fork_1"] },
+			]),
+		);
+		expect(state().chats.ses_fork_1).toBeUndefined();
+		expect(events.filter((event) => event.includes("ses_fork"))).toEqual([]);
+	});
+
+	it("keeps nothing to clean up after restarting when the source had no rules", async () => {
+		const before = new FakeKiloChats();
+		before.chats = [stamped("ses_a")];
+		before.hold("handoff");
+		const first = await boot({ chats: before });
+		await first.whenReady();
+		void first.conversations.methods
+			.fork({ id: "ses_a", messageId: "msg_2" })
+			.catch(() => undefined);
+		await eventually(() =>
+			expect(before.writes.map(({ call }) => call)).toEqual(["fork", "handoff"]),
+		);
+		await first.kernel.stop();
+
+		const after = new FakeKiloChats();
+		after.chats = [stamped("ses_a"), stamped("ses_fork_1")];
+		const { whenReady, state } = await boot({ chats: after, root: first.root });
+		await whenReady();
+		await reread(after);
+
+		expect(state().chats.ses_fork_1).toBeDefined();
+		expect(after.writes).toEqual([]);
+	});
+
+	it("lists the fork only once its permission rules are applied", async () => {
+		const chats = new FakeKiloChats();
+		chats.chats = [stamped("ses_a")];
+		chats.permissionsById.ses_a = [{ permission: "bash", pattern: "*", action: "ask" }];
+		const release = chats.hold("update");
+		const { conversations, whenReady, state, events } = await boot({ chats });
+		await whenReady();
+
+		const forking = conversations.methods.fork({ id: "ses_a", messageId: "msg_2" });
+		await eventually(() =>
+			expect(chats.writes.map(({ call }) => call)).toEqual(["fork", "update"]),
+		);
+		chats.push(status("ses_a", "busy"));
+		await eventually(() => expect(state().chats.ses_a?.activity.status).toBe("busy"));
+		expect(state().chats.ses_fork_1).toBeUndefined();
+		expect(events.filter((event) => event.includes("ses_fork"))).toEqual([]);
+
+		release();
+		const fork = await forking;
+
+		expect(state().chats[fork.id]).toEqual(fork);
+		expect(events.filter((event) => event.includes("ses_fork"))).toEqual(["created ses_fork_1"]);
 	});
 });

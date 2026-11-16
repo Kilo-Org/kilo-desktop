@@ -48,6 +48,12 @@ function SourceProbe() {
 	);
 }
 
+/** This plugin's status bar items; other booted plugins (work-sessions' dev-only panel) add their own. */
+const ownStatusItems = (host: Awaited<ReturnType<typeof boot>>) =>
+	host.renderer.extensions
+		.list(StatusBarItem)
+		.filter((entry) => entry.key.startsWith("kilo.local-inference/"));
+
 describe("kilo.local-inference's renderer entry", () => {
 	it("contributes the Local Model Server settings section and loading toast", async () => {
 		const host = await boot();
@@ -55,7 +61,7 @@ describe("kilo.local-inference's renderer entry", () => {
 		expect(host.renderer.extensions.list(SettingsSection).map((entry) => entry.key)).toEqual([
 			"kilo.local-inference/local-model-server",
 		]);
-		expect(host.renderer.extensions.list(StatusBarItem).map((entry) => entry.key)).toEqual([
+		expect(ownStatusItems(host).map((entry) => entry.key)).toEqual([
 			"kilo.local-inference/model-loading",
 		]);
 	});
@@ -87,7 +93,7 @@ describe("kilo.local-inference's renderer entry", () => {
 
 	it("shows a loading toast while a model loads for a prompt", async () => {
 		const host = await boot();
-		const [item] = host.renderer.extensions.list(StatusBarItem);
+		const [item] = ownStatusItems(host);
 		const implementation = item!.implementation!;
 		if (implementation.kind !== "view") throw new Error("Expected a status bar view.");
 		const Toast = implementation.Component;

@@ -140,7 +140,7 @@ describe("Start from a workbook on the New Session page", () => {
 		await expect.poll(() => sessions.getState().bySession).toEqual({ wses_1: workbooks[0]!.id });
 	});
 
-	it("continues a workbook already in the workspace", async () => {
+	it("selects a workbook, then starts a session on it from Start session", async () => {
 		const { host, started, log } = await renderSection();
 		const workbook = await host.invoke(Workbooks, "create", {
 			workspaceId: "ws-1",
@@ -148,9 +148,23 @@ describe("Start from a workbook on the New Session page", () => {
 			name: "Existing",
 			values: { goal: "g" },
 		});
+		await expect.element(page.getByTestId("workbooks-start")).not.toBeInTheDocument();
 
 		await openPicker();
 		await userEvent.click(page.getByTestId(`workbooks-continue-${workbook.id}`));
+
+		await expect.element(page.getByTestId("workbooks-picker")).not.toBeInTheDocument();
+		await expect
+			.poll(() => page.getByTestId("workbooks-picker-trigger").element().textContent)
+			.toContain("Existing");
+		expect(log.opened).toEqual([]);
+		await openPicker();
+		await expect
+			.element(page.getByTestId(`workbooks-continue-${workbook.id}`))
+			.toHaveAttribute("data-checked", "true");
+		await userEvent.keyboard("{Escape}");
+
+		await userEvent.click(page.getByTestId("workbooks-start"));
 
 		await expect.poll(() => log.opened).toEqual(["wses_1"]);
 		expect(started[0]!.text).toContain('"Existing"');
@@ -294,10 +308,31 @@ describe("Start from a workbook on the New Session page", () => {
 
 		await openPicker();
 		await userEvent.click(page.getByTestId(`workbooks-continue-${workbook.id}`));
+		await userEvent.click(page.getByTestId("workbooks-start"));
 
 		await expect.poll(() => attempts).toBe(1);
-		await expect.element(page.getByTestId("workbooks-picker-trigger")).toBeEnabled();
+		await expect.element(page.getByTestId("workbooks-start")).toBeEnabled();
 		expect(started).toEqual([]);
+	});
+
+	it("drops the selection when the workbook is forgotten", async () => {
+		const { host } = await renderSection();
+		const workbook = await host.invoke(Workbooks, "create", {
+			workspaceId: "ws-1",
+			templateId: "coding",
+			name: "Soon gone",
+			values: { goal: "g" },
+		});
+		await openPicker();
+		await userEvent.click(page.getByTestId(`workbooks-continue-${workbook.id}`));
+		await expect.element(page.getByTestId("workbooks-start")).toBeVisible();
+
+		await host.invoke(Workbooks, "forget", { id: workbook.id });
+
+		await expect.element(page.getByTestId("workbooks-start")).not.toBeInTheDocument();
+		await expect
+			.poll(() => page.getByTestId("workbooks-picker-trigger").element().textContent)
+			.toBe("Workbook");
 	});
 
 	it("opens the picker from the keyboard", async () => {

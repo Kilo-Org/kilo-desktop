@@ -1,4 +1,4 @@
-import { ChevronDownIcon, NotebookTabsIcon, PlusIcon } from "lucide-react";
+import { ArrowRightIcon, ChevronDownIcon, NotebookTabsIcon, PlusIcon } from "lucide-react";
 import { useState, type KeyboardEvent } from "react";
 
 import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
@@ -38,6 +38,10 @@ const selectTemplates = (state: { templates: TemplateSummary[] }) => state.templ
 const NO_SELECTION = "__no-workbook-selection__";
 const NEW_WORKBOOK = "new-workbook";
 
+/** The New Session page's tool-tile look. */
+const TILE =
+	"bg-muted/60 hover:bg-muted focus-visible:ring-ring/50 disabled:hover:bg-muted/60 flex h-11 min-w-0 items-center gap-1.5 rounded-[10px] ps-3 pe-2 text-start text-[13px] transition-colors outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-50";
+
 // Rows carry the workbook's name and template as keywords, so search never matches the id.
 function filterByKeywords(value: string, search: string, keywords?: string[]): number {
 	const terms = keywords && keywords.length > 0 ? keywords : [value];
@@ -50,9 +54,10 @@ function filterByKeywords(value: string, search: string, keywords?: string[]): n
  * one "Workbook" tile, in the style of the page's tool tiles, that opens a
  * searchable picker built to the dropdown standard (as the workspace picker):
  * the workspace's workbooks, then "New workbook" pinned under the list, which
- * opens the New workbook wizard. Picking a workbook starts the session where
- * the page says (workspace, isolation), its composer holding the kick-off,
- * unsent; a failure is a toast, since the picker has closed.
+ * opens the New workbook wizard. Picking a workbook selects it (the tile then
+ * names it) and shows a "Start session" tile beside it: the go action, which
+ * starts the session where the page says (workspace, isolation), its composer
+ * holding the kick-off, unsent. A failure is a toast.
  */
 export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessionSectionProps) {
 	const deps: StartDeps = {
@@ -70,10 +75,12 @@ export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessio
 	const [commandValue, setCommandValue] = useState(NO_SELECTION);
 	const [creating, setCreating] = useState(false);
 	const [running, setRunning] = useState(false);
+	const [selectedId, setSelectedId] = useState<string | null>(null);
+	// A selection that left the workspace (forgotten, or another workspace) is no selection.
+	const selected = workbooks.find((workbook) => workbook.id === selectedId) ?? null;
 	const [error, setError] = useState<string | null>(null);
 
 	const startExisting = async (workbook: Workbook) => {
-		setOpen(false);
 		setRunning(true);
 		try {
 			await startFromWorkbook(deps, { workbookId: workbook.id });
@@ -84,6 +91,11 @@ export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessio
 		} finally {
 			setRunning(false);
 		}
+	};
+
+	const select = (workbook: Workbook) => {
+		setSelectedId(workbook.id);
+		setOpen(false);
 	};
 
 	const create = async (templateId: string, name: string, values: Record<string, string>) => {
@@ -125,19 +137,25 @@ export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessio
 						<button
 							type="button"
 							disabled={disabled || running}
-							title="Start a session from a workbook: one in this workspace, or a new one."
+							title="Choose a workbook in this workspace, or start a new one."
+							aria-label={selected ? `Workbook: ${selected.name}` : "Choose a workbook"}
 							data-qa-id="workbooks-picker-trigger"
 							onKeyDown={onTriggerKeyDown}
-							className="bg-muted/60 hover:bg-muted focus-visible:ring-ring/50 disabled:hover:bg-muted/60 aria-expanded:bg-muted flex h-11 min-w-0 items-center gap-1.5 rounded-[10px] ps-3 pe-2 text-start text-[13px] transition-colors outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-50"
+							className={cn(TILE, "aria-expanded:bg-muted")}
 						/>
 					}
 				>
-					{running ? (
-						<Spinner aria-hidden className="size-3.5 shrink-0" />
-					) : (
-						<NotebookTabsIcon className="size-3.5 shrink-0" />
-					)}
-					<span className="whitespace-nowrap">Workbook</span>
+					{(() => {
+						const Icon = selected
+							? templateIcon(
+									templates.find((candidate) => candidate.id === selected.templateId)?.icon,
+								)
+							: NotebookTabsIcon;
+						return <Icon className="size-3.5 shrink-0" />;
+					})()}
+					<span className={cn("min-w-0 truncate", !selected && "whitespace-nowrap")}>
+						{selected ? selected.name : "Workbook"}
+					</span>
 					<ChevronDownIcon className="text-muted-foreground ms-auto size-3.5 shrink-0" />
 				</PopoverTrigger>
 				<PopoverContent
@@ -175,7 +193,8 @@ export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessio
 											value={workbook.id}
 											keywords={[workbook.name, template?.name ?? workbook.templateId]}
 											data-qa-id={`workbooks-continue-${workbook.id}`}
-											onSelect={() => void startExisting(workbook)}
+											data-checked={workbook.id === selected?.id}
+											onSelect={() => select(workbook)}
 										>
 											<Icon className="text-muted-foreground" />
 											<span className="min-w-0 flex-1 truncate">{workbook.name}</span>
@@ -207,6 +226,23 @@ export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessio
 					</Command>
 				</PopoverContent>
 			</Popover>
+			{selected ? (
+				<button
+					type="button"
+					disabled={disabled || running}
+					title={`Start a session on "${selected.name}": the new chat starts from its Brief and guide.`}
+					data-qa-id="workbooks-start"
+					className={TILE}
+					onClick={() => void startExisting(selected)}
+				>
+					{running ? (
+						<Spinner aria-hidden className="size-3.5 shrink-0" />
+					) : (
+						<ArrowRightIcon className="size-3.5 shrink-0" />
+					)}
+					<span className="whitespace-nowrap">Start session</span>
+				</button>
+			) : null}
 			{creating ? (
 				<NewWorkbookDialog
 					templates={templates}

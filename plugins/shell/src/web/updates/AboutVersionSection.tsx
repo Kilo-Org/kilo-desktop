@@ -2,7 +2,6 @@ import { useState } from "react";
 import { DownloadIcon } from "lucide-react";
 
 import { useContextKey } from "@kilo-desktop/kernel/web";
-import { Badge } from "@kilo-desktop/ui/components/badge";
 import { Button } from "@kilo-desktop/ui/components/button";
 import { SkeletonText } from "@kilo-desktop/ui/components/skeleton";
 import { FieldLegend, FieldSet } from "@kilo-desktop/ui/components/field";
@@ -20,7 +19,7 @@ import { Spinner } from "@kilo-desktop/ui/components/spinner";
 
 import type { UpdaterState as DesktopUpdateState } from "@kilo-desktop/kernel";
 
-import { BETA_BADGES_FLAG, UPDATE_TRACK_SWITCHER_FLAG } from "../../contracts";
+import { UPDATE_TRACK_SWITCHER_FLAG } from "../../contracts";
 import { InstallUpdateDialog } from "./InstallUpdateDialog";
 import { hasVisibleReleaseNotes, ReleaseNotesList } from "./ReleaseNotesList";
 import { updateAvailableLabel } from "./updateActions";
@@ -36,7 +35,6 @@ import { useUpdates } from "./useUpdates";
 export function AboutVersionSection() {
 	const updates = useUpdates();
 	const canSwitchTrack = useContextKey(`kernel/flag:${UPDATE_TRACK_SWITCHER_FLAG}`);
-	const beta = useContextKey(`kernel/flag:${BETA_BADGES_FLAG}`);
 	const state = updates?.state;
 	const releaseNotesVersion =
 		state?.downloadedVersion ??
@@ -118,11 +116,6 @@ export function AboutVersionSection() {
 								) : (
 									<SkeletonText className="text-2xs w-12" />
 								)}
-								{beta ? (
-									<Badge variant="soft" data-qa-id="about-beta-badge">
-										Beta
-									</Badge>
-								) : null}
 							</SummaryCard.Title>
 							{state ? (
 								<SummaryCard.Description data-qa-id="update-status-message">

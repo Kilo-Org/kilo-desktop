@@ -16,9 +16,6 @@ export const SHELL_PLUGIN_ID = "kilo.shell";
 /** The flag that lets people switch between the stable and preview update tracks. */
 export const UPDATE_TRACK_SWITCHER_FLAG = "update-track-switcher";
 
-/** The flag that shows the app's Beta badges (header, About, onboarding wordmark). */
-export const BETA_BADGES_FLAG = "beta-badges";
-
 export const SHELL_DEFINITIONS: PluginDefinitions = {
 	extensionPoints: SHELL_EXTENSION_POINTS,
 	domainObjects: SHELL_DOMAIN_OBJECTS,

@@ -38,7 +38,6 @@ export class AboutPage {
 	private readonly versionSection = () => getLocatorByTestId("about-version");
 	private readonly versionNumber = () =>
 		this.versionSection().locator('[data-slot="item-title"] code');
-	private readonly betaBadge = () => getLocatorByTestId("about-beta-badge");
 	private readonly updateStatusMessage = () => getLocatorByTestId("update-status-message");
 	private readonly checkForUpdatesButton = () => getLocatorByTestId("update-check");
 	private readonly installUpdateButton = () => getLocatorByTestId("update-install");
@@ -129,13 +128,6 @@ export class AboutPage {
 		await expectElementToBeVisible(this.versionNumber(), "About should display the app version");
 		await expectElementToHaveText(this.versionNumber(), aboutData.versionPattern, {
 			message: "App version should be a semantic version",
-		});
-	}
-
-	async verifyBetaBadge(): Promise<void> {
-		await expectElementToBeVisible(this.betaBadge(), "About should label the app as beta");
-		await expectElementToHaveText(this.betaBadge(), aboutData.betaBadgeLabel, {
-			message: "Beta badge should read Beta",
 		});
 	}
 

@@ -219,11 +219,6 @@
 					"id": "update-track-switcher",
 					"description": "Lets people switch between the stable and preview update tracks.",
 					"default": false
-				},
-				{
-					"id": "beta-badges",
-					"description": "Shows the Beta badges: beside the sidebar toggle, on Settings → About and the onboarding wordmark.",
-					"default": false
 				}
 			],
 			"kernel/telemetry-event": [

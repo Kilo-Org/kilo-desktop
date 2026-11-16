@@ -135,77 +135,10 @@ describe("Start from a workbook on the New Session page", () => {
 		await userEvent.click(page.getByTestId("workbooks-continue"));
 		await userEvent.click(page.getByTestId(`workbooks-continue-${workbook.id}`));
 
-		await expect
-			.element(page.getByTestId("workbooks-resume-progress"))
-			.toHaveTextContent("0 of 1 plan steps done");
-		await userEvent.click(page.getByTestId("workbooks-resume-next"));
-
 		await expect.poll(() => log.opened).toEqual(["wses_1"]);
 		expect(started[0]!.text).toContain('"Existing"');
-		expect(started[0]!.text).toContain("Plan step 1: Refine the Brief and draft this Plan");
-	});
-
-	it("shows where a workbook left off and its open items, and can go back", async () => {
-		const { host, pages, started } = await renderSection();
-		const workbook = await host.invoke(Workbooks, "create", {
-			workspaceId: "ws-1",
-			templateId: "coding",
-			name: "Busy",
-			values: { goal: "g" },
-		});
-		const section = (id: string) =>
-			workbook.sections.find((candidate) => candidate.id === id)!.pageId;
-		await pages.call("edit_page", {
-			page_id: section("questions"),
-			conflict_scope: "target",
-			operations: [{ op: "insert_markdown", markdown: "- **Support Windows?** CI cost" }],
-		});
-		await pages.call("edit_page", {
-			page_id: section("tasks"),
-			conflict_scope: "target",
-			operations: [{ op: "insert_markdown", markdown: "- [ ] One\n- [ ] Two" }],
-		});
-
-		await userEvent.click(page.getByTestId("workbooks-continue"));
-		await userEvent.click(page.getByTestId(`workbooks-continue-${workbook.id}`));
-
-		await expect
-			.element(page.getByTestId("workbooks-resume-open"))
-			.toHaveTextContent("1 open question · 2 open tasks");
-		await userEvent.click(page.getByTestId("workbooks-resume-questions"));
-		await expect.poll(() => started.length).toBe(1);
-		expect(started[0]!.text).toContain("open questions");
-	});
-
-	it("can go back from a workbook, and start it without a focus when Pages can't be read", async () => {
-		const pages = new FakePages();
-		const { host, started } = await renderSection({ pages });
-		const workbook = await host.invoke(Workbooks, "create", {
-			workspaceId: "ws-1",
-			templateId: "coding",
-			name: "Offline",
-			values: { goal: "g" },
-		});
-		await host.invoke(Workbooks, "create", {
-			workspaceId: "ws-1",
-			templateId: "coding",
-			name: "Another",
-			values: { goal: "g" },
-		});
-		pages.failOn = "read_page";
-
-		await userEvent.click(page.getByTestId("workbooks-continue"));
-		await expect.element(page.getByTestId("workbooks-list")).toBeVisible();
-		await userEvent.click(page.getByTestId(`workbooks-continue-${workbook.id}`));
-		await userEvent.click(page.getByTestId("workbooks-resume-back"));
-		await userEvent.click(page.getByTestId(`workbooks-continue-${workbook.id}`));
-
-		await expect
-			.element(page.getByTestId("workbooks-resume-loading"))
-			.toHaveTextContent("Couldn't read where this workbook is at.");
-		await userEvent.click(page.getByTestId("workbooks-resume-start"));
-		await expect.poll(() => started.length).toBe(1);
 		expect(started[0]!.text).not.toContain("## Work on this");
+		await expect.element(page.getByTestId("workbooks-continue-dialog")).not.toBeInTheDocument();
 	});
 
 	it("asks for a template first, then that template's Brief, with Back to the templates", async () => {

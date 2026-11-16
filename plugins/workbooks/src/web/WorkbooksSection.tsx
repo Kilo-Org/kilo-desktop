@@ -107,15 +107,10 @@ export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessio
 				<ContinueWorkbookDialog
 					workbooks={workbooks}
 					templates={templates}
-					handle={deps.workbooks}
 					busy={running}
 					error={error}
 					onClose={() => setOpen(null)}
-					onStart={(workbook, { focus }) =>
-						run(() =>
-							startFromWorkbook(deps, { workbookId: workbook.id, ...(focus ? { focus } : {}) }),
-						)
-					}
+					onStart={(workbook) => run(() => startFromWorkbook(deps, { workbookId: workbook.id }))}
 				/>
 			) : null}
 		</div>

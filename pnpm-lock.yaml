@@ -961,8 +961,8 @@ importers:
         specifier: ^1.9.0
         version: 1.9.0(@types/react@19.2.17)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@lobehub/icons':
-        specifier: ^6.0.0
-        version: 6.0.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        specifier: ^6.15.2
+        version: 6.15.2(lucide-react@1.73.0(@types/react@19.2.17)(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@lottiefiles/dotlottie-react':
         specifier: 0.21.1
         version: 0.21.1(react@19.3.1)
@@ -1888,8 +1888,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/ui
       '@lobehub/icons':
-        specifier: ^6.0.0
-        version: 6.0.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
+        specifier: ^6.15.2
+        version: 6.15.2(lucide-react@1.73.0(@types/react@19.2.17)(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@tanstack/react-query':
         specifier: ^5.107.1
         version: 5.107.1(@types/react@19.2.17)(react@19.3.1)
@@ -3669,10 +3669,11 @@ packages:
       typescript:
         optional: true
 
-  '@lobehub/icons@6.0.0':
-    resolution: {integrity: sha512-DlL5xpjU9FJJWs40pfHzvo8HPklxY/hxj3Z73VQrIv9DsfyirMVlE8EWTNqeItaqcJkgTk+Qg3ZuIOcLmgfCmA==}
+  '@lobehub/icons@6.15.2':
+    resolution: {integrity: sha512-RR7DYUAhWOLNNR5AAPS1tRv/XKyt/utup+ZuOxRu2UhLnwE3tsvjaDQQ9c2/s89W4F7mg23GS9JlEbj7wuK+mw==}
     peerDependencies:
       '@lobehub/ui': ^6.0.0
+      lucide-react: ^0.469.0 || ^1.0.0
       react: ^19.0.0
       react-dom: ^19.0.0
 
@@ -7973,11 +7974,6 @@ packages:
   lru_map@0.4.1:
     resolution: {integrity: sha512-I+lBvqMMFfqaV8CJCISjI3wbjmwVu/VyOoU7+qtu9d7ioW5klMgsTTiUOUp+DJvfTTzKXoPbyC6YfgkNcyPSOg==}
 
-  lucide-react@0.469.0:
-    resolution: {integrity: sha512-28vvUnnKQ/dBwiCQtwJw7QauYnE7yd2Cyp4tTTJpvglX4EMpbflcdBgrgToX2j71B3YvugK/NH3BGUk+E/p/Fw==}
-    peerDependencies:
-      react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
-
   lucide-react@1.73.0:
     resolution: {integrity: sha512-fVOzGviL9mTfHenG1PbCfIceavyGlnpYNSYr+aGZHLRymAJ7DTP6KHuqt0uBkCKAoenr1UVkwSbDIYt2xIesEQ==}
     peerDependencies:
@@ -11344,10 +11340,10 @@ snapshots:
     optionalDependencies:
       typescript: 7.0.2
 
-  '@lobehub/icons@6.0.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
+  '@lobehub/icons@6.15.2(lucide-react@1.73.0(@types/react@19.2.17)(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)':
     dependencies:
       es-toolkit: 1.52.0
-      lucide-react: 0.469.0(react@19.3.1)
+      lucide-react: 1.73.0(@types/react@19.2.17)(react@19.3.1)
       polished: 4.3.1
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
@@ -15611,10 +15607,6 @@ snapshots:
       yallist: 3.1.1
 
   lru_map@0.4.1: {}
-
-  lucide-react@0.469.0(react@19.3.1):
-    dependencies:
-      react: 19.3.1
 
   lucide-react@1.73.0(@types/react@19.2.17)(react@19.3.1):
     dependencies:

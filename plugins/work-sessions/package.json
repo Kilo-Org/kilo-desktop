@@ -21,7 +21,7 @@
 		"perf": "KILO_PERF=1 vitest run --project perf --silent=false"
 	},
 	"dependencies": {
-		"@base-ui/react": "^1.6.0",
+		"@base-ui/react": "^1.9.0",
 		"@kilo-desktop/kernel": "workspace:*",
 		"@kilo-desktop/pane-layout": "workspace:*",
 		"@kilo-desktop/plugin-core": "workspace:*",

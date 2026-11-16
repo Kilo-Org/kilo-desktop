@@ -430,43 +430,47 @@ function BrowserPageView({
 								Open DevTools
 							</DropdownMenuItem>
 							<DropdownMenuSeparator />
-							<DropdownMenuGroup>
-								<DropdownMenuLabel className="text-foreground flex items-center justify-between py-1 font-normal">
-									<span className={!ready ? "opacity-50" : undefined}>Zoom</span>
-									<span className="flex items-center gap-1">
-										<Button
-											type="button"
-											variant="outline"
-											size="icon-sm"
-											aria-label="Zoom out"
-											disabled={!ready || zoom <= 25}
-											onClick={command("zoomOut")}
-										>
-											<MinusIcon />
-										</Button>
-										<span className="w-12 text-center text-xs tabular-nums">{zoom}%</span>
-										<Button
-											type="button"
-											variant="outline"
-											size="icon-sm"
-											aria-label="Zoom in"
-											disabled={!ready || zoom >= 500}
-											onClick={command("zoomIn")}
-										>
-											<PlusIcon />
-										</Button>
-										<Button
-											type="button"
-											variant="ghost"
-											size="icon-sm"
-											aria-label="Reset zoom"
-											disabled={!ready || zoom === 100}
-											onClick={command("resetZoom")}
-										>
-											<RotateCcwIcon />
-										</Button>
-									</span>
+							{/* The controls sit beside the label, not in it: Base UI hides group
+							    labels from the accessibility tree, which would hide them too. */}
+							<DropdownMenuGroup className="flex items-center justify-between pe-2">
+								<DropdownMenuLabel
+									className={cn("text-foreground py-1 font-normal", !ready && "opacity-50")}
+								>
+									Zoom
 								</DropdownMenuLabel>
+								<span className="flex items-center gap-1">
+									<Button
+										type="button"
+										variant="outline"
+										size="icon-sm"
+										aria-label="Zoom out"
+										disabled={!ready || zoom <= 25}
+										onClick={command("zoomOut")}
+									>
+										<MinusIcon />
+									</Button>
+									<span className="w-12 text-center text-xs tabular-nums">{zoom}%</span>
+									<Button
+										type="button"
+										variant="outline"
+										size="icon-sm"
+										aria-label="Zoom in"
+										disabled={!ready || zoom >= 500}
+										onClick={command("zoomIn")}
+									>
+										<PlusIcon />
+									</Button>
+									<Button
+										type="button"
+										variant="ghost"
+										size="icon-sm"
+										aria-label="Reset zoom"
+										disabled={!ready || zoom === 100}
+										onClick={command("resetZoom")}
+									>
+										<RotateCcwIcon />
+									</Button>
+								</span>
 							</DropdownMenuGroup>
 						</DropdownMenuContent>
 					</DropdownMenu>

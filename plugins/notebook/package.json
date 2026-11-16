@@ -38,11 +38,11 @@
 		"zod": "catalog:"
 	},
 	"peerDependencies": {
-		"@runtimed/node": "0.8.0"
+		"@runtimed/node": "0.8.1"
 	},
 	"devDependencies": {
 		"7zip-bin-full": "^26.2.1",
-		"@runtimed/node": "0.8.0",
+		"@runtimed/node": "0.8.1",
 		"@tailwindcss/vite": "^4.3.3",
 		"@testing-library/react": "^16.3.2",
 		"@types/node": "^26.0.0",

@@ -80,7 +80,7 @@ Electron port and retain runtimed's negotiated protocol number.
 
 ## Release verification
 
-The embedded UI and bundled daemon are pinned to nteract 2.10.0 stable. The notebook
+The embedded UI and bundled daemon are pinned to nteract 2.10.1 stable. The notebook
 plugin uses the stable singleton, independently of Kilo Desktop's own release track.
 
 1. Pin the notebook UI and `runtimed` to one nteract release and use that release's channel for

@@ -15,6 +15,7 @@ export default defineConfig({
 		coverage: {
 			...createCoverageConfig(),
 			include: ["src/**"],
+			exclude: ["src/test/**", "src/**/*.test.ts"],
 		},
 		include: ["src/**/*.test.ts"],
 		environment: "node",

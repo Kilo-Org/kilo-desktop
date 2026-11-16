@@ -6,6 +6,10 @@
 	"description": "Workbooks: where what chats learn and decide about a piece of work is kept, created from workbook templates.",
 	"main": "./src/main/index.ts",
 	"web": "./src/web/index.ts",
+	"requires": {
+		"kilo.core/server": "optional",
+		"kilo.work-sessions/workspaces": "optional"
+	},
 	"extensionPoints": [
 		{
 			"id": "template",

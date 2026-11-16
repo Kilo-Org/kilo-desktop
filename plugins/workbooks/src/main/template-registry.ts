@@ -20,7 +20,9 @@ type TemplateContribution = Contribution<typeof WorkbookTemplatePoint>;
  * hides the others. Contributions are taken in the registry's priority order;
  * the subscription is disposed with the plugin.
  */
-export function provideTemplates(sdk: PluginSdk): void {
+export function provideTemplates(sdk: PluginSdk): {
+	find(id: string): WorkbookTemplate | undefined;
+} {
 	let templates = new Map<string, WorkbookTemplate>();
 	const warned = new Set<string>();
 
@@ -74,6 +76,7 @@ export function provideTemplates(sdk: PluginSdk): void {
 
 	reread();
 	sdk.extensions.subscribe(WorkbookTemplatePoint, reread);
+	return { find: (id) => templates.get(id) };
 }
 
 function readTemplate(

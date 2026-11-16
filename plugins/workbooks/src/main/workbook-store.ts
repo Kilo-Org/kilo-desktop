@@ -2,24 +2,42 @@ import { randomUUID } from "node:crypto";
 
 import { KernelError, mainHost, type PluginSdk } from "@kilo-desktop/kernel";
 
-import { Workbooks, workbookSchema, type Workbook } from "../contracts";
+import {
+	DEFAULT_PAGES_MCP_SERVER,
+	Workbooks,
+	workbookSchema,
+	type Workbook,
+	type WorkbookBackend,
+	type WorkbookTemplate,
+} from "../contracts";
+import { createWorkbookContent } from "./create-workbook";
+import type { PagesToolCaller } from "./pages-tools";
 
 interface SavedWorkbooks extends Record<string, unknown> {
 	workbooks: unknown[];
+}
+
+export interface WorkbookStoreDeps {
+	readonly template: (id: string) => WorkbookTemplate | undefined;
+	/** The workspace's name and the folder whose Kilo instance holds the MCP connection. */
+	readonly workspace: (
+		id: string,
+	) => { readonly name: string; readonly directory?: string } | undefined;
+	readonly pages: (backend: WorkbookBackend, directory: string | undefined) => PagesToolCaller;
+	readonly now?: () => Date;
+	readonly newId?: () => string;
 }
 
 /**
  * Provides `kilo.workbooks/workbooks`: every workspace's workbook references,
  * saved in this plugin's kv store. Saved entries are re-validated on load and
  * any that no longer parse are dropped (with a warning) rather than failing
- * the plugin. The store holds references only; the content is in Pages.
+ * the plugin. The store holds references only; the content is in Pages, and
+ * `create` records a workbook only once its whole Pages copy has succeeded.
  */
-export function provideWorkbooks(
-	sdk: PluginSdk,
-	options: { readonly now?: () => Date; readonly newId?: () => string } = {},
-): void {
-	const now = options.now ?? (() => new Date());
-	const newId = options.newId ?? randomUUID;
+export function provideWorkbooks(sdk: PluginSdk, deps: WorkbookStoreDeps): void {
+	const now = deps.now ?? (() => new Date());
+	const newId = deps.newId ?? randomUUID;
 	const store = mainHost(sdk).storage.kv<SavedWorkbooks>({
 		namespace: "workbooks",
 		defaults: { workbooks: [] },
@@ -35,14 +53,23 @@ export function provideWorkbooks(
 	const workbooks = sdk.domainObjects.provide(Workbooks, {
 		initialState: { workbooks: loaded },
 		methods: {
-			add: (input) => {
-				const workbook: Workbook = { ...input, id: newId(), createdAt: now().toISOString() };
-				save([...workbooks.state.workbooks, workbook]);
-				return workbook;
+			create: async ({ workspaceId, templateId, name, values }) => {
+				const template = deps.template(templateId);
+				if (!template) throw new KernelError("NOT_FOUND", `No workbook template "${templateId}".`);
+				const workspace = deps.workspace(workspaceId);
+				if (!workspace) throw new KernelError("NOT_FOUND", `No workspace "${workspaceId}".`);
+				const backend: WorkbookBackend = { kind: "pages-mcp", server: DEFAULT_PAGES_MCP_SERVER };
+				const content = await createWorkbookContent(deps.pages(backend, workspace.directory), {
+					template,
+					name,
+					values,
+					workspaceLabel: workspace.name,
+				});
+				return addWorkbook({ workspaceId, name, templateId, backend, ...content });
 			},
+			add: (input) => addWorkbook(input),
 			rename: ({ id, name }) => {
-				const existing = find(id);
-				const renamed = { ...existing, name };
+				const renamed = { ...find(id), name };
 				save(
 					workbooks.state.workbooks.map((workbook) => (workbook.id === id ? renamed : workbook)),
 				);
@@ -56,6 +83,12 @@ export function provideWorkbooks(
 			},
 		},
 	});
+
+	function addWorkbook(input: Omit<Workbook, "id" | "createdAt">): Workbook {
+		const workbook: Workbook = { ...input, id: newId(), createdAt: now().toISOString() };
+		save([...workbooks.state.workbooks, workbook]);
+		return workbook;
+	}
 
 	function find(id: string): Workbook {
 		const workbook = workbooks.state.workbooks.find((candidate) => candidate.id === id);

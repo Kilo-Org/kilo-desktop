@@ -1,21 +1,67 @@
-import { definePlugin } from "@kilo-desktop/kernel";
+import {
+	definePlugin,
+	KernelError,
+	mainHost,
+	type PluginEntry,
+	type PluginSdk,
+} from "@kilo-desktop/kernel";
+import { KiloServer } from "@kilo-desktop/plugin-core/contracts";
+import { Workspaces } from "@kilo-desktop/plugin-work-sessions/contracts";
 
-import { WorkbookTemplatePoint } from "../contracts";
+import { WorkbookTemplatePoint, type WorkbookBackend } from "../contracts";
 import { BUILT_IN_TEMPLATES } from "./built-in-templates";
+import { kiloPagesCaller } from "./kilo-pages";
+import type { PagesToolCaller } from "./pages-tools";
 import { provideTemplates } from "./template-registry";
 import { provideWorkbooks } from "./workbook-store";
 
+export interface WorkbooksMainOptions {
+	/** How Pages is reached; defaults to Kilo's MCP connection. Tests pass an in-memory Pages. */
+	readonly pages?: (backend: WorkbookBackend, directory: string | undefined) => PagesToolCaller;
+}
+
 /**
  * kilo.workbooks in main: the workbook templates on offer (its built-ins
- * shipped through its own `template` point), and later each workspace's
- * workbook references and the workbook agent tools.
+ * shipped through its own `template` point), each workspace's workbooks and,
+ * later, the workbook agent tools.
  */
-export const workbooksMainEntry = definePlugin({
-	activate(sdk) {
-		for (const [id, read] of Object.entries(BUILT_IN_TEMPLATES)) {
-			sdk.extensions.implement(WorkbookTemplatePoint, id, { read });
-		}
-		provideTemplates(sdk);
-		provideWorkbooks(sdk);
-	},
-});
+export function createWorkbooksMainEntry(options: WorkbooksMainOptions = {}): PluginEntry {
+	return definePlugin({
+		activate(sdk) {
+			for (const [id, read] of Object.entries(BUILT_IN_TEMPLATES)) {
+				sdk.extensions.implement(WorkbookTemplatePoint, id, { read });
+			}
+			const templates = provideTemplates(sdk);
+			const pages = options.pages ?? kiloPages(sdk);
+			provideWorkbooks(sdk, {
+				template: templates.find,
+				workspace: (id) => {
+					const workspace = sdk.domainObjects
+						.get(Workspaces)
+						?.getState()
+						.workspaces.find((candidate) => candidate.id === id);
+					if (!workspace) return undefined;
+					const primary = workspace.folders.find((folder) => folder.isPrimary);
+					return { name: workspace.name, ...(primary ? { directory: primary.path } : {}) };
+				},
+				pages,
+			});
+		},
+	});
+}
+
+function kiloPages(sdk: PluginSdk) {
+	return (backend: WorkbookBackend, directory: string | undefined): PagesToolCaller =>
+		kiloPagesCaller({
+			connect: async () => {
+				const server = sdk.domainObjects.get(KiloServer);
+				if (!server) throw new KernelError("UNAVAILABLE", "Kilo isn't available.");
+				return server.methods.connect(undefined);
+			},
+			fetch: mainHost(sdk).net.fetch,
+			server: backend.server,
+			...(directory ? { directory } : {}),
+		});
+}
+
+export const workbooksMainEntry = createWorkbooksMainEntry();

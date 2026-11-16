@@ -1,17 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createMemoryStorage } from "@kilo-desktop/kernel/testing";
-import { createPluginHost, type PluginHost } from "@kilo-desktop/kernel/testing/plugin-host";
+import type { PluginHost } from "@kilo-desktop/kernel/testing/plugin-host";
 
-import manifest from "../../plugin.json";
-import {
-	WORKBOOKS_DEFINITIONS,
-	Workbooks,
-	workbooksIn,
-	type AddWorkbookInput,
-	type Workbook,
-} from "../contracts";
-import { workbooksMainEntry } from "./index";
+import { Workbooks, workbooksIn, type AddWorkbookInput, type Workbook } from "../contracts";
+import { FakePages } from "../test/fake-pages";
+import { bootWorkbooks } from "../test/hosts";
 
 const hosts: PluginHost[] = [];
 
@@ -19,13 +13,19 @@ afterEach(async () => {
 	await Promise.all(hosts.splice(0).map((host) => host.dispose()));
 });
 
-async function boot(storage = createMemoryStorage("/memory/kilo.workbooks")) {
-	const host = await createPluginHost(
-		[{ manifest, definitions: WORKBOOKS_DEFINITIONS, main: workbooksMainEntry }],
-		{ mainHostServices: () => ({ storage }) },
-	);
+async function boot(
+	storage = createMemoryStorage("/memory/kilo.workbooks"),
+	pages = new FakePages(),
+) {
+	const { host, directories } = await bootWorkbooks({ storage, pages });
 	hosts.push(host);
-	return { host, storage, workbooks: host.renderer.kernelSdk.domainObjects.get(Workbooks)! };
+	return {
+		host,
+		storage,
+		pages,
+		directories,
+		workbooks: host.renderer.kernelSdk.domainObjects.get(Workbooks)!,
+	};
 }
 
 const input = (overrides: Partial<AddWorkbookInput> = {}): AddWorkbookInput => ({
@@ -93,6 +93,66 @@ describe("workbooks", () => {
 
 		const { workbooks } = await boot(storage);
 
+		expect(workbooks.getState().workbooks).toEqual([]);
+	});
+});
+
+describe("creating a workbook", () => {
+	it("copies the template into Pages through the workspace's folder and records it", async () => {
+		const { host, pages, directories, workbooks } = await boot();
+
+		const created = await host.invoke(Workbooks, "create", {
+			workspaceId: "ws-1",
+			templateId: "coding",
+			name: "Fix the server bug",
+			values: { goal: "Fix the bug in the Kilo server" },
+		});
+
+		expect(created).toMatchObject({
+			workspaceId: "ws-1",
+			name: "Fix the server bug",
+			templateId: "coding",
+			backend: { kind: "pages-mcp", server: "pages" },
+		});
+		expect(directories).toEqual(["/repo"]);
+		expect(pages.projects.get(created.projectId)?.description).toBe(
+			"Workbook · Coding · workspace: Kilo Desktop",
+		);
+		expect(created.sections).toHaveLength(10);
+		await expect.poll(() => workbooks.getState().workbooks).toEqual([created]);
+	});
+
+	it("reaches Pages through Kilo's MCP connection by default", async () => {
+		const { host, pages, directories } = await bootWorkbooks({ viaKilo: true });
+		hosts.push(host);
+
+		const created = await host.invoke(Workbooks, "create", {
+			workspaceId: "ws-1",
+			templateId: "coding",
+			name: "Via Kilo",
+			values: { goal: "g" },
+		});
+
+		expect(pages.projects.get(created.projectId)?.title).toBe("Via Kilo");
+		expect(new Set(directories)).toEqual(new Set(["/repo"]));
+	});
+
+	it("records nothing when Pages fails, and refuses unknown templates and workspaces", async () => {
+		const pages = new FakePages();
+		pages.failOn = "create_page";
+		const { host, workbooks } = await boot(undefined, pages);
+		const create = (overrides: Record<string, string> = {}) =>
+			host.invoke(Workbooks, "create", {
+				workspaceId: "ws-1",
+				templateId: "coding",
+				name: "x",
+				values: { goal: "g" },
+				...overrides,
+			});
+
+		await expect(create()).rejects.toThrow();
+		await expect(create({ templateId: "nope" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+		await expect(create({ workspaceId: "nope" })).rejects.toMatchObject({ code: "NOT_FOUND" });
 		expect(workbooks.getState().workbooks).toEqual([]);
 	});
 });

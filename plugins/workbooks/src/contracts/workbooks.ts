@@ -43,6 +43,18 @@ export type Workbook = z.output<typeof workbookSchema>;
 export const addWorkbookInputSchema = workbookSchema.omit({ id: true, createdAt: true });
 export type AddWorkbookInput = z.output<typeof addWorkbookInputSchema>;
 
+/** The Kilo MCP server workbooks are created on until a backend can be chosen. */
+export const DEFAULT_PAGES_MCP_SERVER = "pages";
+
+export const createWorkbookInputSchema = z.object({
+	workspaceId: z.string().min(1),
+	templateId: z.string().min(1),
+	name: z.string().trim().min(1).max(200),
+	/** Brief field values by field id; the template's required fields must be filled. */
+	values: z.record(z.string(), z.string()),
+});
+export type CreateWorkbookInput = z.output<typeof createWorkbookInputSchema>;
+
 /**
  * Every workspace's workbooks, kept by kilo.workbooks (the workbooks
  * themselves live in Pages). Forgetting a workbook removes only the reference.
@@ -52,6 +64,9 @@ export const Workbooks = defineDomainObject({
 	home: "main",
 	state: z.object({ workbooks: z.array(workbookSchema) }),
 	methods: {
+		/** Copies a template into a new Pages Project and adds it to the workspace. */
+		create: method(createWorkbookInputSchema, workbookSchema),
+		/** Adds a reference to a workbook that already exists in Pages. */
 		add: method(addWorkbookInputSchema, workbookSchema),
 		rename: method(z.object({ id: z.string(), name: z.string().trim().min(1) }), workbookSchema),
 		forget: method(z.object({ id: z.string() }), z.object({ forgotten: z.boolean() })),

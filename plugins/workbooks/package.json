@@ -19,6 +19,8 @@
 	},
 	"dependencies": {
 		"@kilo-desktop/kernel": "workspace:*",
+		"@kilo-desktop/plugin-core": "workspace:*",
+		"@kilo-desktop/plugin-work-sessions": "workspace:*",
 		"zod": "catalog:"
 	},
 	"peerDependencies": {

@@ -17,6 +17,8 @@ export const SERVER_CLIENT_PLUGINS: readonly string[] = [
 	"kilo.shell",
 	"kilo.chat",
 	"kilo.marketplace",
+	// Calls the Pages tools on Kilo's MCP connections to read and write workbooks.
+	"kilo.workbooks",
 ];
 
 export const serverStatusSchema = z.object({

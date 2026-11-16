@@ -1311,7 +1311,7 @@ with contributors today; candidate points are in the extensibility map (§7).
 │   kilo.chat/model-source ......... Local Model Server rail, start, prepare — 12c
 │   kernel/service ................. router (daemon, window shown), Anaconda Desktop
 │                                    import (task) — 12c
-│   kilo.shell/settings-section .... Local Model Server (behind the sign-in gate) — 12c
+│   kilo.shell/settings-section .... Local Model Server (no sign-in required) — 12c
 │   kilo.shell/deep-link ........... model-catalog (pathParam catalogModel) — 12c
 │   kilo.shell/overlay ............. model-loading toast — 12c
 │   kilo.telemetry/telemetry-event . Local Model Installed / Server Started / Stopped — 12c

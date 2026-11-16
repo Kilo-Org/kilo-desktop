@@ -92,7 +92,7 @@
 		"electron-winstaller": "5.4.4",
 		"p-defer": "^4.0.1",
 		"playwright": "catalog:",
-		"tsx": "^4.23.1",
+		"tsx": "^4.23.15",
 		"type-fest": "catalog:",
 		"typescript": "catalog:",
 		"vite": "catalog:",

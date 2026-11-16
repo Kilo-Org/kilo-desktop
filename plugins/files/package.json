@@ -26,7 +26,7 @@
 		"@kilo-desktop/plugin-work-sessions": "workspace:*",
 		"@kilo-desktop/ui": "workspace:*",
 		"@nteract/sift": "0.6.0",
-		"@nteract/sift-csv": "0.2.0",
+		"@nteract/sift-csv": "0.3.0",
 		"@pierre/diffs": "catalog:",
 		"@pierre/trees": "catalog:",
 		"@tanstack/react-query": "^5.101.4",

@@ -165,8 +165,6 @@ export async function bootLocalInferenceHost(options: LocalInferenceHostOptions 
 	const writeText = vi.fn((_input: { text: string }) => undefined);
 	let models!: DomainObjectProvider<typeof LocalModels>;
 	let server!: DomainObjectProvider<typeof ModelServer>;
-	let account: DomainObjectProvider<typeof KiloAccount> | undefined;
-	let setSignedIn: (signedIn: boolean) => void = () => undefined;
 	const accountState = options.identity === undefined ? SIGNED_IN : options.identity;
 
 	const handlerFor = (method: string): Handler | undefined =>
@@ -212,9 +210,8 @@ export async function bootLocalInferenceHost(options: LocalInferenceHostOptions 
 		activate(sdk) {
 			if (!accountState) return;
 			const unused = () => undefined;
-			setSignedIn = (signedIn) => sdk.context.set("signedIn", signedIn);
-			setSignedIn(accountState.signedIn === true);
-			account = sdk.domainObjects.provide(KiloAccount, {
+			sdk.context.set("signedIn", accountState.signedIn === true);
+			sdk.domainObjects.provide(KiloAccount, {
 				initialState: accountState,
 				methods: {
 					signIn: () => ({ signedIn: false }),
@@ -367,12 +364,6 @@ export async function bootLocalInferenceHost(options: LocalInferenceHostOptions 
 					),
 					download,
 				],
-			}),
-		setIdentity: (next: AccountState) =>
-			act(async () => {
-				account?.setState(next);
-				setSignedIn(next.signedIn === true);
-				await main.flush();
 			}),
 	};
 }

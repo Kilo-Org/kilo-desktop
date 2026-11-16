@@ -7,9 +7,8 @@ import {
 } from "@anaconda/playwright-utils";
 
 /**
- * Settings → Local Model Server (kilo.local-inference). The section sits
- * behind Kilo sign-in; the e2e build reports a signed-in account once the
- * Kilo server is up, so the settled page is the server page itself.
+ * Settings → Local Model Server (kilo.local-inference). The page needs no
+ * Kilo sign-in, so it opens straight onto the server page.
  */
 export class LocalModelServerPage {
 	private readonly sectionEntry = () => getLocatorByTestId("settings-section-local-model-server");
@@ -18,11 +17,8 @@ export class LocalModelServerPage {
 
 	async open(): Promise<void> {
 		await click(this.sectionEntry());
-		await expectElementToBeVisible(
-			this.page(),
-			"Local Model Server settings should open once Kilo sign-in resolves",
-		);
-		await expectElementToBeHidden(getLocatorByTestId("local-model-server-page-loading"), {
+		await expectElementToBeVisible(this.page(), "Local Model Server settings should open");
+		await expectElementToBeHidden(getLocatorByTestId("local-model-server-status-pending"), {
 			message: "Local Model Server settings should finish loading the server status",
 		});
 	}

@@ -67,7 +67,6 @@ import {
 	type ModelCatalogEntry,
 } from "../../contracts/index";
 import { ConnectionDetails } from "../connections/ConnectionDetails";
-import { KiloSignInGate } from "../KiloSignInGate";
 import {
 	localInferenceQueryKey,
 	localInferenceQueryOptions,
@@ -127,65 +126,9 @@ function useCatalogModelId(): string | undefined {
  */
 export function LocalModelServerSettings() {
 	return (
-		<KiloSignInGate
-			featureName="Local Model Server"
-			pendingFallback={<LocalModelServerSettingsLoading />}
-		>
-			<CatalogAccessBoundary>
-				<LocalModelServerSettingsContent />
-			</CatalogAccessBoundary>
-		</KiloSignInGate>
-	);
-}
-
-const PENDING_SERVER_STATUS = presentServerStatus(undefined, undefined, true, false);
-const noop = () => undefined;
-
-/**
- * The page's first-render shape (every query pending), shown while the Kilo
- * auth gate resolves so the gate wait and the data wait read as one skeleton.
- */
-function LocalModelServerSettingsLoading() {
-	return (
-		<div
-			className="flex min-w-0 flex-col gap-6"
-			data-qa-id="local-model-server-page-loading"
-			aria-busy="true"
-		>
-			<SettingsPageHeader
-				actions={
-					<ServerStatusToggle
-						presentation={PENDING_SERVER_STATUS}
-						labelPending
-						disabled
-						onCheckedChange={noop}
-					/>
-				}
-			/>
-			<div className="flex min-w-0 flex-col gap-8">
-				<div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
-					<SystemMonitor usage={undefined} loading />
-					<ConnectionDetails connection={undefined} modelId={undefined} onCopy={noop} />
-				</div>
-				<FieldSet className="mt-1 min-w-0" aria-labelledby="models-heading">
-					<div className="flex items-center justify-between gap-4">
-						<ModelsHeading />
-						<Button type="button" size="sm" disabled>
-							<PlusIcon data-icon="inline-start" aria-hidden="true" />
-							Add model
-							<ChevronDownIcon data-icon="inline-end" aria-hidden="true" />
-						</Button>
-					</div>
-					<ModelListSkeleton />
-				</FieldSet>
-				<FieldSet className="min-w-0" aria-labelledby="runtime-heading">
-					<RuntimeHeading />
-					<div className="bg-card min-w-0 overflow-hidden rounded-lg border">
-						<ServerSettingsSkeleton />
-					</div>
-				</FieldSet>
-			</div>
-		</div>
+		<CatalogAccessBoundary>
+			<LocalModelServerSettingsContent />
+		</CatalogAccessBoundary>
 	);
 }
 

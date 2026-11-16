@@ -162,7 +162,8 @@
 			"kilo.work-sessions/work-session-action": [
 				{
 					"id": "agents",
-					"placement": "end"
+					"placement": "end",
+					"priority": 10
 				}
 			],
 			"kilo.work-sessions/opener": [

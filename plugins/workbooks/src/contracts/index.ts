@@ -23,6 +23,3 @@ export const WORKBOOKS_DEFINITIONS: PluginDefinitions = {
 	domainObjects: [WorkbookTemplates, Workbooks, SessionWorkbooks],
 	extensionPoints: [WorkbookTemplatePoint],
 };
-
-/** The `kilo.shell/dialog` that starts a work session from a workbook, by contribution key. */
-export const START_DIALOG = "kilo.workbooks/start";

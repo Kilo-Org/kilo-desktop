@@ -2,17 +2,8 @@ import { useState, type FormEvent } from "react";
 
 import { useDomainObject, useDomainObjectState } from "@kilo-desktop/kernel/web";
 import { Composer } from "@kilo-desktop/plugin-chat/contracts";
-import type { DialogProps } from "@kilo-desktop/plugin-shell/contracts";
-import { Workspaces } from "@kilo-desktop/plugin-work-sessions/contracts";
+import type { NewWorkSessionSectionProps } from "@kilo-desktop/plugin-work-sessions/contracts";
 import { Button } from "@kilo-desktop/ui/components/button";
-import {
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogFooter,
-	DialogHeader,
-	DialogTitle,
-} from "@kilo-desktop/ui/components/dialog";
 import { Input } from "@kilo-desktop/ui/components/input";
 import { Label } from "@kilo-desktop/ui/components/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@kilo-desktop/ui/components/tabs";
@@ -29,106 +20,106 @@ import {
 import { ResumeWorkbook } from "./ResumeWorkbook";
 import { startFromWorkbook, startNewWorkbook, type StartDeps } from "./start";
 
-const selectActiveWorkspace = (state: { activeId: string | null }) => state.activeId;
 const selectWorkbooks = (state: { workbooks: Workbook[] }) => state.workbooks;
 const selectTemplates = (state: { templates: TemplateSummary[] }) => state.templates;
 
 /**
- * Starts a work session from a workbook in the active workspace: continue one
- * already there, or create one from a template by filling in its Brief. The
- * session opens with the kick-off message in its composer, unsent.
+ * "Start from a workbook" on the New Session page
+ * (`kilo.work-sessions/new-work-session-section`): continue a workbook in the
+ * workspace, seeing where it's at first, or create one from a template by
+ * filling in its Brief. The session starts where the page says (workspace,
+ * isolation) and opens with the kick-off in its composer, unsent.
  */
-export function StartWorkbookDialog({ close }: DialogProps) {
+export function WorkbooksSection({ workspaceId, disabled, start }: NewWorkSessionSectionProps) {
 	const deps: StartDeps = {
 		workbooks: useDomainObject(Workbooks),
 		sessions: useDomainObject(SessionWorkbooks),
 		composer: useDomainObject(Composer),
+		start,
 	};
-	const workspaceId = useDomainObjectState(Workspaces, selectActiveWorkspace) ?? null;
 	const workbooks = workbooksIn(
 		useDomainObjectState(Workbooks, selectWorkbooks) ?? [],
 		workspaceId,
 	);
 	const templates = useDomainObjectState(WorkbookTemplates, selectTemplates) ?? [];
-	const [busy, setBusy] = useState(false);
+	const [running, setRunning] = useState(false);
 	const [resuming, setResuming] = useState<Workbook | null>(null);
 	const [error, setError] = useState<string | null>(null);
+	const busy = running || disabled;
 
-	const run = async (start: () => Promise<unknown>) => {
-		setBusy(true);
+	const run = async (starting: () => Promise<unknown>) => {
+		setRunning(true);
 		setError(null);
 		try {
-			await start();
-			close();
+			await starting();
 		} catch (failure) {
 			setError(failure instanceof Error ? failure.message : String(failure));
-			setBusy(false);
+		} finally {
+			setRunning(false);
 		}
 	};
 
+	if (workspaceId === null) return null;
 	return (
-		<Dialog open onOpenChange={(open) => !open && close()}>
-			<DialogContent data-qa-id="workbooks-start-dialog" className="sm:max-w-lg">
-				<DialogHeader>
-					<DialogTitle>Start from a workbook</DialogTitle>
-					<DialogDescription>
-						A workbook keeps what your chats learn and decide, so a new chat starts from it instead
-						of from pasted text.
-					</DialogDescription>
-				</DialogHeader>
-				{workspaceId === null ? (
-					<p className="text-muted-foreground text-sm" data-qa-id="workbooks-no-workspace">
-						Open a workspace first: workbooks belong to a workspace.
-					</p>
-				) : (
-					<Tabs defaultValue={workbooks.length > 0 ? "continue" : "new"}>
-						<TabsList>
-							<TabsTrigger value="continue" data-qa-id="workbooks-tab-continue">
-								Continue a workbook
-							</TabsTrigger>
-							<TabsTrigger value="new" data-qa-id="workbooks-tab-new">
-								New from template
-							</TabsTrigger>
-						</TabsList>
-						<TabsContent value="continue">
-							{resuming ? (
-								<ResumeWorkbook
-									workbook={resuming}
-									workbooks={deps.workbooks}
-									busy={busy}
-									onBack={() => setResuming(null)}
-									onStart={({ focus }) =>
-										run(() =>
-											startFromWorkbook(deps, {
-												workbookId: resuming.id,
-												workspaceId,
-												...(focus ? { focus } : {}),
-											}),
-										)
-									}
-								/>
-							) : (
-								<ContinueWorkbook workbooks={workbooks} onPick={setResuming} />
-							)}
-						</TabsContent>
-						<TabsContent value="new">
-							<NewWorkbook
-								templates={templates}
-								busy={busy}
-								onCreate={(templateId, name, values) =>
-									run(() => startNewWorkbook(deps, { workspaceId, templateId, name, values }))
-								}
-							/>
-						</TabsContent>
-					</Tabs>
-				)}
-				{error ? (
-					<p role="alert" className="text-destructive text-sm" data-qa-id="workbooks-start-error">
-						{error}
-					</p>
-				) : null}
-			</DialogContent>
-		</Dialog>
+		<section
+			aria-labelledby="workbooks-section-title"
+			data-qa-id="workbooks-section"
+			className="border-border/60 flex w-full flex-col gap-3 rounded-xl border p-4"
+		>
+			<div className="flex flex-col gap-0.5">
+				<h2 id="workbooks-section-title" className="text-sm font-medium">
+					Start from a workbook
+				</h2>
+				<p className="text-muted-foreground text-xs">
+					A workbook keeps what your chats learn and decide, so a new chat starts from it instead of
+					from pasted text.
+				</p>
+			</div>
+			<Tabs defaultValue={workbooks.length > 0 ? "continue" : "new"}>
+				<TabsList>
+					<TabsTrigger value="continue" data-qa-id="workbooks-tab-continue">
+						Continue a workbook
+					</TabsTrigger>
+					<TabsTrigger value="new" data-qa-id="workbooks-tab-new">
+						New from template
+					</TabsTrigger>
+				</TabsList>
+				<TabsContent value="continue">
+					{resuming ? (
+						<ResumeWorkbook
+							workbook={resuming}
+							workbooks={deps.workbooks}
+							busy={busy}
+							onBack={() => setResuming(null)}
+							onStart={({ focus }) =>
+								run(() =>
+									startFromWorkbook(deps, {
+										workbookId: resuming.id,
+										...(focus ? { focus } : {}),
+									}),
+								)
+							}
+						/>
+					) : (
+						<ContinueWorkbook workbooks={workbooks} onPick={setResuming} />
+					)}
+				</TabsContent>
+				<TabsContent value="new">
+					<NewWorkbook
+						templates={templates}
+						busy={busy}
+						onCreate={(templateId, name, values) =>
+							run(() => startNewWorkbook(deps, { workspaceId, templateId, name, values }))
+						}
+					/>
+				</TabsContent>
+			</Tabs>
+			{error ? (
+				<p role="alert" className="text-destructive text-sm" data-qa-id="workbooks-start-error">
+					{error}
+				</p>
+			) : null}
+		</section>
 	);
 }
 
@@ -236,7 +227,7 @@ function NewWorkbook({
 					/>
 				</div>
 			))}
-			<DialogFooter>
+			<div className="flex justify-end">
 				<Button
 					type="submit"
 					disabled={busy || missing || !name.trim()}
@@ -244,7 +235,7 @@ function NewWorkbook({
 				>
 					{busy ? "Creating…" : "Create and start"}
 				</Button>
-			</DialogFooter>
+			</div>
 		</form>
 	);
 }

@@ -1,42 +1,47 @@
-import { render, type RenderResult } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { page, userEvent } from "vitest/browser";
 
-import { KernelProvider } from "@kilo-desktop/kernel/web";
 import type { PluginHost } from "@kilo-desktop/kernel/testing/plugin-host";
 
 import { SessionWorkbooks, Workbooks } from "../contracts";
 import { FakePages } from "../test/fake-pages";
-import { bootWorkbooks, type StartedChat } from "../test/hosts";
-import { StartWorkbookDialog } from "./StartWorkbookDialog";
-import { WorkbooksButton } from "./WorkbooksButton";
+import { NewWorkSessionSection } from "@kilo-desktop/plugin-work-sessions/contracts";
+
+import { bootWorkbooks, pageStart, type PageStarts, type StartedChat } from "../test/hosts";
 
 const hosts: PluginHost[] = [];
-const views: RenderResult[] = [];
+const slots: { unmount(): void }[] = [];
 
 afterEach(async () => {
-	views.splice(0).forEach((view) => view.unmount());
+	slots.splice(0).forEach((slot) => slot.unmount());
 	await Promise.all(hosts.splice(0).map((host) => host.dispose()));
 });
 
-async function renderDialog(options: { pages?: FakePages } = {}) {
+async function renderSection(options: { pages?: FakePages; workspaceId?: string | null } = {}) {
 	const started: StartedChat[] = [];
-	const booted = await bootWorkbooks({ started, ...options });
+	const log: PageStarts = { opened: [], discarded: [] };
+	const booted = await bootWorkbooks({
+		started,
+		...(options.pages ? { pages: options.pages } : {}),
+	});
 	hosts.push(booted.host);
-	const close = vi.fn();
-	views.push(
-		render(
-			<KernelProvider kernel={booted.host.renderer}>
-				<StartWorkbookDialog close={close} input={undefined} />
-			</KernelProvider>,
-		),
+	slots.push(
+		booted.host.renderSlot(NewWorkSessionSection, {
+			workspaceId: options.workspaceId === undefined ? "ws-1" : options.workspaceId,
+			directory: "/repo",
+			disabled: false,
+			start: pageStart(log),
+		}),
 	);
-	return { ...booted, started, close };
+	if (options.workspaceId !== null) {
+		await expect.element(page.getByTestId("workbooks-section")).toBeVisible();
+	}
+	return { ...booted, started, log };
 }
 
-describe("Start from a workbook", () => {
+describe("Start from a workbook on the New Session page", () => {
 	it("creates a workbook from the Coding template and starts a session on it", async () => {
-		const { host, started, close, pages } = await renderDialog();
+		const { host, started, log, pages } = await renderSection();
 
 		await expect.element(page.getByTestId("workbooks-new-form")).toBeVisible();
 		await expect.element(page.getByTestId("workbooks-create")).toBeDisabled();
@@ -47,7 +52,7 @@ describe("Start from a workbook", () => {
 		);
 		await userEvent.click(page.getByTestId("workbooks-create"));
 
-		await expect.poll(() => close.mock.calls.length).toBe(1);
+		await expect.poll(() => log.opened).toEqual(["wses_1"]);
 		const workbooks = host.renderer.kernelSdk.domainObjects.get(Workbooks)!.getState().workbooks;
 		expect(workbooks.map((workbook) => workbook.name)).toEqual(["Fix the server bug"]);
 		expect(pages.projects.size).toBe(1);
@@ -57,7 +62,7 @@ describe("Start from a workbook", () => {
 	});
 
 	it("continues a workbook already in the workspace", async () => {
-		const { host, started, close } = await renderDialog();
+		const { host, started, log } = await renderSection();
 		const workbook = await host.invoke(Workbooks, "create", {
 			workspaceId: "ws-1",
 			templateId: "coding",
@@ -73,13 +78,13 @@ describe("Start from a workbook", () => {
 			.toHaveTextContent("0 of 1 plan steps done");
 		await userEvent.click(page.getByTestId("workbooks-resume-next"));
 
-		await expect.poll(() => close.mock.calls.length).toBe(1);
+		await expect.poll(() => log.opened).toEqual(["wses_1"]);
 		expect(started[0]!.text).toContain('"Existing"');
 		expect(started[0]!.text).toContain("Plan step 1: Refine the Brief and draft this Plan");
 	});
 
 	it("shows where a workbook left off and its open items, and can go back", async () => {
-		const { host, pages, started } = await renderDialog();
+		const { host, pages, started } = await renderSection();
 		const workbook = await host.invoke(Workbooks, "create", {
 			workspaceId: "ws-1",
 			templateId: "coding",
@@ -112,7 +117,7 @@ describe("Start from a workbook", () => {
 
 	it("can go back from a workbook, and start it without a focus when Pages can't be read", async () => {
 		const pages = new FakePages();
-		const { host, started } = await renderDialog({ pages });
+		const { host, started } = await renderSection({ pages });
 		const workbook = await host.invoke(Workbooks, "create", {
 			workspaceId: "ws-1",
 			templateId: "coding",
@@ -134,21 +139,21 @@ describe("Start from a workbook", () => {
 		expect(started[0]!.text).not.toContain("## Work on this");
 	});
 
-	it("shows why a workbook couldn't be created, and stays open", async () => {
+	it("shows why a workbook couldn't be created, starting no session", async () => {
 		const pages = new FakePages();
 		pages.failOn = "create_project";
-		const { close } = await renderDialog({ pages });
+		const { log } = await renderSection({ pages });
 
 		await userEvent.fill(page.getByTestId("workbooks-name").element(), "X");
 		await userEvent.fill(page.getByTestId("workbooks-field-goal").element(), "g");
 		await userEvent.click(page.getByTestId("workbooks-create"));
 
 		await expect.element(page.getByTestId("workbooks-start-error")).toBeVisible();
-		expect(close).not.toHaveBeenCalled();
+		expect(log.opened).toEqual([]);
 	});
 
 	it("explains an empty workspace", async () => {
-		await renderDialog();
+		await renderSection();
 
 		await userEvent.click(page.getByTestId("workbooks-tab-continue"));
 
@@ -156,21 +161,10 @@ describe("Start from a workbook", () => {
 	});
 });
 
-describe("the session list's Workbooks button", () => {
-	it("opens Start from a workbook", async () => {
-		const dialogs: string[] = [];
-		const booted = await bootWorkbooks({ dialogs });
-		hosts.push(booted.host);
-		views.push(
-			render(
-				<KernelProvider kernel={booted.host.renderer}>
-					<WorkbooksButton />
-				</KernelProvider>,
-			),
-		);
+describe("without a workspace", () => {
+	it("shows nothing: workbooks belong to a workspace", async () => {
+		await renderSection({ workspaceId: null });
 
-		await userEvent.click(page.getByTestId("session-list-workbooks"));
-
-		await expect.poll(() => dialogs).toEqual(["kilo.workbooks/start"]);
+		await expect.element(page.getByTestId("workbooks-section")).not.toBeInTheDocument();
 	});
 });

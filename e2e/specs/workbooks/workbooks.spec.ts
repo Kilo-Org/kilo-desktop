@@ -13,12 +13,12 @@ test.describe("Workbooks @smoke", () => {
 		await diagnosticsPage.verifyFlagOrigin("workbooks", "override");
 	});
 
-	test("opens Start from a workbook from the session list, offering the Coding template", async ({
+	test("offers Start from a workbook on the New Session page, with the Coding template", async ({
 		appShellPage,
 		workbooksPage,
 	}) => {
 		await appShellPage.verifyShellIsLoaded();
-		await workbooksPage.openStartDialog();
+		await workbooksPage.openNewSessionPage();
 		await workbooksPage.verifyCodingTemplateOffered();
 	});
 });

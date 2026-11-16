@@ -8,8 +8,10 @@ import {
 	PaneKind,
 	WorkSessions,
 	WorkSessionsWindow,
+	NewWorkSessionSection,
 	WorkSessionStarter,
 	type IsolationOptions,
+	type NewWorkSessionSectionProps,
 	type StartedWorkSession,
 	type WorkSession,
 	type WorkSessionStarterProps,
@@ -116,6 +118,33 @@ const kindsPlugin = {
 			sdk.extensions.implement(PaneKind, "agent", { component: () => null });
 			sdk.extensions.implement(PaneKind, "terminal", { component: () => null });
 			sdk.extensions.implement(PaneKind, "notebook", { component: () => null });
+		},
+	},
+};
+
+let sectionStarted: StartedWorkSession[] = [];
+
+/** A section that starts a session from its own button. */
+function TestSection(props: NewWorkSessionSectionProps) {
+	return (
+		<button
+			type="button"
+			data-qa-id="test-section"
+			disabled={props.disabled}
+			onClick={() => void props.start().then((session) => sectionStarted.push(session))}
+		>
+			From a section in {props.workspaceId}
+		</button>
+	);
+}
+
+const sectionPlugin = {
+	manifest: testManifest("test.section", {
+		contributes: { extensions: { "kilo.work-sessions/new-work-session-section": [{ id: "s" }] } },
+	}),
+	web: {
+		activate(sdk: PluginSdk) {
+			sdk.extensions.implement(NewWorkSessionSection, "s", TestSection);
 		},
 	},
 };
@@ -310,6 +339,35 @@ describe("the New Session page with a session starter", () => {
 		);
 		await vi.waitFor(() => expect(window().getState().activeWorkSessionId).toBe("wses_1"), WAIT);
 		expect(started).toEqual([]);
+	});
+
+	it("shows sections under the tools, which start sessions where the location row says", async () => {
+		sectionStarted = [];
+		const { workSessions, window } = await renderWorkSessions({
+			workspaces: [workspace("w-app", "App")],
+			activeWorkspaceId: "w-app",
+			guests: [starterPlugin, kindsPlugin, sectionPlugin],
+			isolation: REPOSITORY,
+		});
+		await expect
+			.element(page.getByTestId("launcher-section"))
+			.toHaveTextContent("From a section in w-app");
+		expect(
+			follows(
+				page.getByTestId("launcher-pane-test.kinds/terminal").element(),
+				page.getByTestId("launcher-section").element(),
+			),
+		).toBe(true);
+
+		await page.getByTestId("launcher-section").getByRole("button").click();
+
+		await vi.waitFor(() => expect(sectionStarted).toHaveLength(1), WAIT);
+		expect(workSessions.calls.create).toHaveBeenCalledWith({
+			workspaceId: "w-app",
+			isolation: { kind: "local" },
+		});
+		await sectionStarted[0]!.open();
+		await vi.waitFor(() => expect(window().getState().activeWorkSessionId).toBe("wses_1"), WAIT);
 	});
 
 	it("starts the session where the location row says without showing it, until asked to", async () => {

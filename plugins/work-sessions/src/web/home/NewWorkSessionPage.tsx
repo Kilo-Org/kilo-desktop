@@ -13,12 +13,14 @@ import { useWorkspacePickerSource } from "@kilo-desktop/ui/components/workspace-
 
 import {
 	NewWorkSessionOption,
+	NewWorkSessionSection,
 	Panes,
 	WorkSessions,
 	WorkSessionsWindow,
 	WorkSessionStarter,
 	Workspaces,
 	type NewWorkSessionOptionProps,
+	type NewWorkSessionSectionProps,
 	type StartedWorkSession,
 	type WorkSession,
 	type WorkSessionStarterProps,
@@ -233,7 +235,9 @@ function LocationRow({
  * kind offered for new sessions, `pane-kind` `launch.newSession`, but
  * the starter's own) or empty. A `new-work-session-option` may take the place of the
  * read-only branch (kilo.git's branch picker) or, for a folder not under version
- * control, of the isolation control (kilo.git's Initialize Git).
+ * control, of the isolation control (kilo.git's Initialize Git). Under all of
+ * that, `new-work-session-section`s offer roomier ways to start (kilo.workbooks'
+ * Start from a workbook), each given the same `start()` as the starter.
  */
 export function NewWorkSessionPage() {
 	const panes = useDomainObject(Panes);
@@ -248,6 +252,9 @@ export function NewWorkSessionPage() {
 		(contribution) => contribution.implementation,
 	);
 	const focusRequest = useLauncherFocusRequest();
+	const sections = useExtensions(NewWorkSessionSection).filter(
+		(contribution) => contribution.implementation,
+	);
 
 	const [startingKind, setStartingKind] = useState<string | null>(null);
 
@@ -332,6 +339,19 @@ export function NewWorkSessionPage() {
 				startingKind={startingKind}
 				onStart={startWith}
 			/>
+			{sections.map((contribution) => (
+				<div key={contribution.key} data-qa-id="launcher-section" className="mt-6 w-full">
+					<RenderContribution<NewWorkSessionSectionProps>
+						contribution={contribution}
+						props={{
+							workspaceId: activeWorkspaceId,
+							directory,
+							disabled: !creation.available || creation.starting,
+							start,
+						}}
+					/>
+				</div>
+			))}
 		</LauncherPage>
 	);
 }

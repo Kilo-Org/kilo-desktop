@@ -94,3 +94,31 @@ export const WorkSessionStarter = defineExtensionPoint({
 	}),
 	implementation: implementation<ComponentType<WorkSessionStarterProps>>("renderer"),
 });
+
+/** What a New Session page section is given. */
+export interface NewWorkSessionSectionProps {
+	/** The workspace a work session would start in; null for none. */
+	readonly workspaceId: string | null;
+	/** The workspace's primary folder, or null. */
+	readonly directory: string | null;
+	/** True while the page can't start a session (none available, or one is starting). */
+	readonly disabled: boolean;
+	/**
+	 * Creates a work session with the workspace and isolation chosen on the
+	 * page, without opening it; end with its `open` or `discard`, as the
+	 * starter does.
+	 */
+	start(): Promise<StartedWorkSession>;
+}
+
+/**
+ * A section of the New Session page under the starter and the tools: another
+ * way to start a work session that needs more room than a tile (e.g. starting
+ * from a workbook). Sections show in priority order.
+ */
+export const NewWorkSessionSection = defineExtensionPoint({
+	id: "kilo.work-sessions/new-work-session-section",
+	kind: "additive",
+	description: "A section of the New Session page: another way to start a session.",
+	implementation: implementation<ComponentType<NewWorkSessionSectionProps>>("renderer"),
+});

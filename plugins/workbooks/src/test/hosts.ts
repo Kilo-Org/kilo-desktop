@@ -7,11 +7,12 @@ import workSessionsManifest from "@kilo-desktop/plugin-work-sessions/plugin.json
 import chatManifest from "@kilo-desktop/plugin-chat/plugin.json";
 import { CHAT_DEFINITIONS, Composer } from "@kilo-desktop/plugin-chat/contracts";
 import shellManifest from "@kilo-desktop/plugin-shell/plugin.json";
-import { Navigation, SHELL_DEFINITIONS } from "@kilo-desktop/plugin-shell/contracts";
+import { SHELL_DEFINITIONS } from "@kilo-desktop/plugin-shell/contracts";
 import {
 	WORK_SESSIONS_DEFINITIONS,
 	WorkSessions,
 	Workspaces,
+	type StartedWorkSession,
 	type Workspace,
 } from "@kilo-desktop/plugin-work-sessions/contracts";
 
@@ -84,14 +85,13 @@ export function workSessionsStandIn(
 	};
 }
 
-/** What the chat stand-in's composer was asked to start. */
+/** What the chat stand-in's composer was asked to hold. */
 export interface StartedChat {
 	readonly text: string;
-	readonly workspaceId: string | null | undefined;
-	readonly workSessionId: string;
+	readonly workSessionId: string | undefined;
 }
 
-/** kilo.chat's composer in the window: records chats started, numbering their sessions. */
+/** kilo.chat's composer in the window: records the text put in each session's composer. */
 export function chatStandIn(started: StartedChat[]) {
 	return {
 		manifest: chatManifest,
@@ -102,12 +102,10 @@ export function chatStandIn(started: StartedChat[]) {
 					initialState: { focusedWorkSessionId: null },
 					methods: {
 						focus: () => undefined,
-						insert: () => undefined,
-						startChat: ({ text, workspaceId }) => {
-							const workSessionId = `wses_${started.length + 1}`;
-							started.push({ text, workspaceId, workSessionId });
-							return { workSessionId };
+						insert: ({ workSessionId, text }) => {
+							started.push({ text, workSessionId });
 						},
+						startChat: unused,
 					},
 				});
 			},
@@ -115,29 +113,34 @@ export function chatStandIn(started: StartedChat[]) {
 	};
 }
 
-export const shellRegistration = { manifest: shellManifest, definitions: SHELL_DEFINITIONS };
+/** What happened to the sessions a `pageStart` created. */
+export interface PageStarts {
+	readonly opened: string[];
+	readonly discarded: string[];
+}
 
-/** kilo.shell's navigation, recording the dialogs opened. */
-function shellStandIn(dialogs: string[]) {
-	return {
-		...shellRegistration,
-		main: definePlugin({
-			activate(sdk) {
-				sdk.domainObjects.provide(Navigation, {
-					initialState: { windows: {} },
-					methods: new Proxy(
-						{
-							openDialog: ({ dialog }: { dialog: string }) => {
-								dialogs.push(dialog);
-							},
-						},
-						{ get: (target, key) => (target as Record<string | symbol, unknown>)[key] ?? unused },
-					) as never,
-				});
+/** The New Session page's `start()`: numbered sessions, recording which were opened or discarded. */
+export function pageStart(log: PageStarts = { opened: [], discarded: [] }) {
+	let next = 0;
+	return async (): Promise<StartedWorkSession> => {
+		next += 1;
+		const workSessionId = `wses_${next}`;
+		return {
+			workSessionId,
+			directory: "/repo",
+			workspaceId: "ws-1",
+			branch: null,
+			open: async () => {
+				log.opened.push(workSessionId);
 			},
-		}),
+			discard: async () => {
+				log.discarded.push(workSessionId);
+			},
+		};
 	};
 }
+
+export const shellRegistration = { manifest: shellManifest, definitions: SHELL_DEFINITIONS };
 
 export const coreRegistration = { manifest: coreManifest, definitions: CORE_DEFINITIONS };
 
@@ -205,8 +208,6 @@ export async function bootWorkbooks(
 		readonly started?: StartedChat[];
 		/** The `workbooks` flag; on unless a test turns it off. */
 		readonly flag?: boolean;
-		/** Records dialogs opened through kilo.shell's navigation. */
-		readonly dialogs?: string[];
 	} = {},
 ): Promise<WorkbooksHost> {
 	const pages = options.pages ?? new FakePages();
@@ -216,7 +217,7 @@ export async function bootWorkbooks(
 		[
 			options.viaKilo ? coreWithServer() : coreRegistration,
 			workSessionsStandIn([WORKSPACE], options.workSessions),
-			options.dialogs ? shellStandIn(options.dialogs) : shellRegistration,
+			shellRegistration,
 			chatStandIn(options.started ?? []),
 			{
 				manifest,

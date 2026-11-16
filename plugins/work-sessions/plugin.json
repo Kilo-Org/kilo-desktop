@@ -172,6 +172,11 @@
 			"description": "The New Session page's body: how a person starts a session."
 		},
 		{
+			"id": "new-work-session-section",
+			"kind": "additive",
+			"description": "A section of the New Session page: another way to start a session."
+		},
+		{
 			"id": "permission-auto-answer",
 			"kind": "additive",
 			"description": "Whether a plugin answers an agent permission request for the person."
@@ -241,7 +246,7 @@
 				{
 					"id": "notifications",
 					"title": "Notifications",
-					"description": "A sound, plus a system notification while Kilo is in the background. “When I'm not looking” skips the session you have open.",
+					"description": "A sound, plus a system notification while Kilo is in the background. \u201cWhen I'm not looking\u201d skips the session you have open.",
 					"priority": 72
 				}
 			],

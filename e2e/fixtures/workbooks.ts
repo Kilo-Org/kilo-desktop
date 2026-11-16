@@ -5,9 +5,7 @@ import { test as developerTest } from "./developer.js";
 export const test = developerTest.extend<{ workbooksPage: WorkbooksPage }>({
 	// oxlint-disable-next-line no-empty-pattern -- Playwright requires `{}` destructuring
 	workbooksPage: async ({}, use) => {
-		const workbooksPage = new WorkbooksPage();
-		await use(workbooksPage);
-		await workbooksPage.closeStartDialog();
+		await use(new WorkbooksPage());
 	},
 });
 

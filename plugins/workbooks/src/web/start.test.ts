@@ -5,7 +5,13 @@ import type { PluginHost } from "@kilo-desktop/kernel/testing/plugin-host";
 import { Composer } from "@kilo-desktop/plugin-chat/contracts";
 
 import { SessionWorkbooks, Workbooks } from "../contracts";
-import { bootWorkbooks, type StartedChat, type WorkSessionsControl } from "../test/hosts";
+import {
+	bootWorkbooks,
+	pageStart,
+	type PageStarts,
+	type StartedChat,
+	type WorkSessionsControl,
+} from "../test/hosts";
 import { startFromWorkbook, startNewWorkbook, type StartDeps } from "./start";
 
 const hosts: PluginHost[] = [];
@@ -21,17 +27,19 @@ async function boot() {
 	hosts.push(booted.host);
 	const objects = booted.host.renderer.kernelSdk.domainObjects;
 	await expect.poll(() => objects.get(SessionWorkbooks)).not.toBeNull();
+	const log: PageStarts = { opened: [], discarded: [] };
 	const deps: StartDeps = {
+		start: pageStart(log),
 		workbooks: objects.get(Workbooks),
 		sessions: objects.get(SessionWorkbooks),
 		composer: objects.get(Composer),
 	};
-	return { ...booted, started, workSessions, deps, sessions: objects.get(SessionWorkbooks)! };
+	return { ...booted, started, workSessions, deps, log, sessions: objects.get(SessionWorkbooks)! };
 }
 
 describe("starting a work session from a workbook", () => {
 	it("creates the workbook, starts a chat with the kick-off left in the composer, and makes it active", async () => {
-		const { deps, started, sessions } = await boot();
+		const { deps, started, sessions, log } = await boot();
 
 		const workSessionId = await startNewWorkbook(deps, {
 			workspaceId: "ws-1",
@@ -41,8 +49,9 @@ describe("starting a work session from a workbook", () => {
 		});
 
 		expect(started).toEqual([
-			{ text: expect.stringContaining('"Fix the server bug"'), workspaceId: "ws-1", workSessionId },
+			{ text: expect.stringContaining('"Fix the server bug"'), workSessionId },
 		]);
+		expect(log.opened).toEqual([workSessionId]);
 		const text = started[0]!.text;
 		expect(text).toContain("## First\n\nRefine the Brief");
 		expect(text).toContain("## Brief\n\n**Workbook template:** Coding");
@@ -64,7 +73,6 @@ describe("starting a work session from a workbook", () => {
 
 		await startFromWorkbook(deps, {
 			workbookId: workbook.id,
-			workspaceId: "ws-1",
 			focus: "Plan step 2",
 		});
 
@@ -121,22 +129,54 @@ describe("starting a work session from a workbook", () => {
 		});
 		pages.failOn = "read_page";
 
-		await startFromWorkbook(deps, { workbookId: workbook.id, workspaceId: "ws-1" });
+		await startFromWorkbook(deps, { workbookId: workbook.id });
 
 		expect(started[0]!.text).toContain("Read the Brief (the project document) first.");
 		expect(started[0]!.text).toContain('Read the "How to work here" page');
 	});
 
+	it("creates no session for a workbook it can't find, and discards one it couldn't record", async () => {
+		const { deps, log, host } = await boot();
+
+		await expect(startFromWorkbook(deps, { workbookId: "nope" })).rejects.toMatchObject({
+			code: "NOT_FOUND",
+		});
+		expect(log.opened).toEqual([]);
+
+		const workbook = await host.invoke(Workbooks, "create", {
+			workspaceId: "ws-1",
+			templateId: "coding",
+			name: "W",
+			values: { goal: "g" },
+		});
+		const failing = {
+			...deps,
+			sessions: {
+				...deps.sessions!,
+				methods: {
+					setActive: async () => {
+						throw new Error("can't record");
+					},
+				},
+			} as unknown as StartDeps["sessions"],
+		};
+		await expect(startFromWorkbook(failing, { workbookId: workbook.id })).rejects.toThrow(
+			"can't record",
+		);
+		expect(log.discarded).toEqual(["wses_1"]);
+		expect(log.opened).toEqual([]);
+	});
+
 	it("says what's missing when workbooks or chats aren't available", async () => {
 		await expect(
 			startFromWorkbook(
-				{ workbooks: null, sessions: null, composer: null },
-				{ workbookId: "w", workspaceId: "ws" },
+				{ workbooks: null, sessions: null, composer: null, start: pageStart() },
+				{ workbookId: "w" },
 			),
 		).rejects.toThrow("Workbooks aren't available.");
 		const { deps } = await boot();
 		await expect(
-			startFromWorkbook({ ...deps, composer: null }, { workbookId: "w", workspaceId: "ws" }),
+			startFromWorkbook({ ...deps, composer: null }, { workbookId: "w" }),
 		).rejects.toThrow("Chats aren't available in this window.");
 	});
 });

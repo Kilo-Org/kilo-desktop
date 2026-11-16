@@ -10,13 +10,11 @@
 		"kilo.core/server": "optional",
 		"kilo.work-sessions/workspaces": "optional",
 		"kilo.work-sessions/work-sessions": "optional",
-		"kilo.work-sessions/work-session-list-action": "optional",
-		"kilo.shell/dialog": "optional",
-		"kilo.shell/navigation": "optional",
 		"kilo.chat/composer": "optional",
 		"kilo.core/tool": "optional",
 		"kilo.work-sessions/work-session-action": "optional",
-		"kilo.chat/tool-renderer": "optional"
+		"kilo.chat/tool-renderer": "optional",
+		"kilo.work-sessions/new-work-session-section": "optional"
 	},
 	"permissions": {
 		"host": ["os"]
@@ -57,23 +55,6 @@
 					"id": "workbooks",
 					"description": "Shows Workbooks: start work sessions from a workbook, created from a workbook template.",
 					"default": false
-				}
-			],
-			"kilo.work-sessions/work-session-list-action": [
-				{
-					"id": "workbooks",
-					"when": {
-						"all": ["kernel/flag:workbooks"]
-					}
-				}
-			],
-			"kilo.shell/dialog": [
-				{
-					"id": "start",
-					"title": "Start from a workbook",
-					"when": {
-						"all": ["kernel/flag:workbooks"]
-					}
 				}
 			],
 			"kilo.core/tool": [
@@ -142,6 +123,14 @@
 						"kilo.workbooks/set_where_i_left_off"
 					],
 					"standalone": true,
+					"when": {
+						"all": ["kernel/flag:workbooks"]
+					}
+				}
+			],
+			"kilo.work-sessions/new-work-session-section": [
+				{
+					"id": "workbooks",
 					"when": {
 						"all": ["kernel/flag:workbooks"]
 					}
